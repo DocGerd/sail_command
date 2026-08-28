@@ -434,6 +434,31 @@ describe('LiveView', () => {
     expect(screen.getByRole('button', { name: 'Stop live view' })).toBeEnabled();
   });
 
+  // #705: the gps-hint dismiss button was converted from a bare <button> to
+  // the Button primitive. Renders the null-render phase FIRST (no plan
+  // loaded yet, so the hint cannot exist at all) and only then transitions
+  // into the live state that shows it — a component with a null-render phase
+  // needs at least one test exercised this way (this repo shipped dead
+  // production code under an all-green suite once, from every test handing
+  // a component its live state at first render; see RouteLayer/#688 Major A
+  // in the routing history for the precedent).
+  it('#705: the gps-hint dismiss button is absent until shown, reachable by its accessible role/name once shown, and dismisses the hint on click', async () => {
+    const { wp, emitError } = fakeWatchPosition();
+    renderLive(wp, TEST_PLAN);
+
+    // Null-render phase: no GPS error has fired yet, so the hint (and its
+    // dismiss button) must not exist in the accessibility tree at all.
+    expect(screen.queryByRole('button', { name: 'Got it' })).not.toBeInTheDocument();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
+    act(() => emitError('denied'));
+
+    const dismissButton = await screen.findByRole('button', { name: 'Got it' });
+    fireEvent.click(dismissButton);
+
+    expect(screen.queryByRole('button', { name: 'Got it' })).not.toBeInTheDocument();
+  });
+
   it('renders its readout into the provided panel slot via a portal, with no map instance required', async () => {
     // #31: the wide layout passes a panel-column DOM node; the textual readout
     // must render into it (not inline in MapView's subtree, the base

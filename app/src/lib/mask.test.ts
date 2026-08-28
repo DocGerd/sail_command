@@ -53,7 +53,14 @@ describe('NavMask', () => {
       rows: 2000,
     };
     const m = makeMask((_, c) => (c < 1600 ? 0 : 200), fineGridMeta);
-    const onLand = { lat: 54.75, lon: 10.205 }; // col ~1600 (land), ~32m from col 1600 center
+    // #622: col 1599 is land (c < 1600 in the mask fn above); at lat 54.75
+    // this cell is ~16-32 m west of the col-1600 water boundary, well
+    // inside the 300 m snap radius. The PREVIOUS point here (lon 10.205)
+    // was col 1610 — already water (c >= 1600) — so isNavigable/
+    // snapToNavigable never touched the land-snap path at all: the
+    // assertions passed vacuously before the behaviour under test ran.
+    const onLand = { lat: 54.75, lon: 10.1998 };
+    expect(m.isNavigable(onLand, 3.0)).toBe(false); // land — confirms this point actually needs snapping
     const snapped = m.snapToNavigable(onLand, 3.0);
     expect(snapped).not.toBeNull();
     expect(m.isNavigable(snapped!, 3.0)).toBe(true);

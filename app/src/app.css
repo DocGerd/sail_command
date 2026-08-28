@@ -364,6 +364,27 @@ select {
   color: var(--sc-banner-error-fg);
 }
 
+/* #703: standalone treatment for a `<p role="alert">` that carries NO other
+   class to attach a `[role='alert']` compound override to — RouteSummary's
+   stale-forecast and no-route/unreadable lines, and PlansList's top-level
+   action-error line. A FRESH class rather than a modifier of any existing
+   muted rule (`.planner-guidance`/`.options-help`), so there is no base rule
+   for it to lose to on source order — the `.chip-shallow`/`.chip-shallow-
+   cautious` trap this file has already paid for twice needs two classes in
+   conflict to occur at all. Same --sc-banner-error-* family, border-left +
+   background wash + bold weight as `.planner-guidance[role='alert']` above,
+   so every alert-role paragraph in the app reads as the same hazard tier. */
+.inline-alert {
+  margin: 0;
+  padding: 0.4rem 0.6rem;
+  border-left: 3px solid var(--sc-banner-error-fg);
+  border-radius: 4px;
+  background: var(--sc-banner-error-bg);
+  color: var(--sc-banner-error-fg);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
 /* #708: no min-* override here any more — the global `button { min-height:
    44px; min-width: 44px }` floor (top of this file, "Cockpit-use,
    boat-glove-friendly touch targets") now applies unmodified. The 32px
@@ -2447,6 +2468,61 @@ select {
   font-size: 0.85rem;
 }
 
+/* #747: the mechanism/exposure/locator/remedy DETAIL sentence now renders
+   inside a Disclosure (RouteSummary.tsx), collapsed by default (open when
+   the plan is in the severe/below-draft tier — see that component's own
+   comment for why), so the box shows only its headline by default instead of
+   a five-sentence unconditional wall of prose. `.shallow-warning__caveat`
+   above stays a SIBLING of the Disclosure, never a child of it, per that
+   rule's own "never hidden behind a Disclosure" comment.
+   COMPOUND SELECTOR (`.sc-disclosure.shallow-warning-disclosure`), never a
+   bare `.shallow-warning-disclosure` alone — `.sc-disclosure` (below, in the
+   "Disclosure" section) is a single-class selector too and a same-
+   specificity modifier is a coin flip on source order, exactly the
+   `.chip-shallow`/`.route-layer-controls-disclosure` trap this file has
+   already paid for twice. Strips the primitive's own bordered/padded box
+   (`.shallow-warning` above already supplies the border-left + background
+   wash) back down to just the chevron + summary/body mechanics. */
+.sc-disclosure.shallow-warning-disclosure {
+  border: none;
+  padding: 0;
+}
+
+/* PR #763 review Blocker 2: the summary now holds a multi-sentence
+   paragraph (lead + usedDepthM + exposure), not a short label — the
+   primitive's own `.sc-disclosure-summary` is `display:flex;
+   align-items:center` for a short row (chevron + label), so without this
+   the summary content and the chevron would sit as TWO independent flex
+   items fighting for row width instead of one wrapping paragraph next to
+   the chevron. `align-items: flex-start` keeps the chevron pinned to the
+   first line rather than vertically centred against a now-taller,
+   possibly-multi-line block. `.shallow-warning__summary` is the SINGLE flex
+   item holding both summary spans — `flex: 1 1 auto; min-width: 0` is the
+   same shrink-to-fit pattern `.settings-seamark-size-row .sc-slider` above
+   already uses, letting the paragraph wrap and shrink instead of forcing
+   the row wider than its container. */
+.shallow-warning-disclosure > .sc-disclosure-summary {
+  align-items: flex-start;
+}
+
+.shallow-warning__summary {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The usedDepthM/exposure addition (Blocker 2) reads at normal weight,
+   distinct from the bold `.shallow-warning__lead` beside it — it is still
+   part of the always-visible summary, but the LEAD stays the one emphasised
+   fact, matching `.shallow-warning__detail`'s own normal-weight convention
+   for "what happened" content once it moves out of the lead's spotlight. */
+.shallow-warning__summary-detail {
+  font-weight: 400;
+}
+
+.shallow-warning-disclosure > .sc-disclosure-body {
+  padding: 0;
+}
+
 /* #504: MODIFIER on .shallow-warning above — applied together with the base
    class, never alone, when the mask's own TOLERANCE_M means this plan's
    used depth could have a cautious reading below the boat's draft. A
@@ -2572,12 +2648,41 @@ select {
   gap: 0.25rem 1rem;
 }
 
+/* #698: a CSS-only scroll-shadow affordance. `.route-legs` is `overflow-x:
+   auto` with no scrollbar guarantee (iOS Safari hides them entirely), so
+   without this there was NO signal that the table scrolls at all — the
+   #638 shape recurring (a safety-adjacent surface reachable only by an
+   undiscoverable scroll). Four layered backgrounds, the classic
+   `background-attachment: local`/`scroll` pairing: two "cover" gradients
+   (`--sc-bg`, matching the Card this table sits in, fading to transparent)
+   scroll WITH the table's content (`local`) and mask the shadow at
+   whichever edge is already fully scrolled-to; two "shadow" gradients
+   (`--sc-border`, fading to transparent) stay fixed to the table's visible
+   edges (`scroll`) and only show through once the matching cover has
+   scrolled clear. Net effect: a shadow appears at an edge exactly when
+   there is more, unscrolled content in that direction, and both vanish
+   together once the table fits (no overflow, nothing to hint at) — pure
+   CSS, no JS scroll listener, no branching on overflow state, correct in
+   both themes because `--sc-bg`/`--sc-border` already vary by theme. */
 .route-legs {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.85rem;
   display: block;
   overflow-x: auto;
+  background:
+    linear-gradient(to right, var(--sc-bg) 0%, transparent 100%),
+    linear-gradient(to left, var(--sc-bg) 0%, transparent 100%) 100% 0,
+    linear-gradient(to right, var(--sc-border) 0%, transparent 100%) 0 0,
+    linear-gradient(to left, var(--sc-border) 0%, transparent 100%) 100% 0;
+  background-repeat: no-repeat;
+  background-color: var(--sc-bg);
+  background-size:
+    24px 100%,
+    24px 100%,
+    10px 100%,
+    10px 100%;
+  background-attachment: local, local, scroll, scroll;
 }
 
 .route-legs th,
@@ -2830,14 +2935,22 @@ select {
 }
 
 /* #566: `draftProvenance.note`, rendered for every boat (BoatPicker.tsx
-   says why). Shares `.boat-option-keel`'s treatment — same grid column,
-   same undimmed body colour, same size — since it carries the same
-   safety-adjacent weight (draft feeds the depth gate); a smaller, dimmed
-   citation style would read as decoration, which the comment above already
-   rejects for this exact class of text. */
+   says why). Shares `.boat-option-keel`'s SIZE and undimmed body colour —
+   since it carries the same safety-adjacent weight (draft feeds the depth
+   gate), a smaller, dimmed citation style would read as decoration, which
+   the comment above already rejects for this exact class of text.
+   #701: differentiated by TYPE (a left border + small left padding), not by
+   dimming — prominence is unchanged, but the border keeps this citation from
+   visually merging with the keel caveat immediately above it when both
+   render (two fleet boats: a German keel-caveat sentence directly followed
+   by an English provenance note, previously read as one run-on paragraph).
+   `--sc-border` already has a dark-mode value via the token itself, so no
+   separate `@media (prefers-color-scheme: dark)` override is needed here. */
 .boat-option-draft-note {
   grid-column: 2;
   margin: 0;
+  padding-left: 0.5rem;
+  border-left: 2px solid var(--sc-border);
   font-size: 0.85rem;
 }
 
@@ -3045,11 +3158,39 @@ select {
    decoration; every animation plays once on appearance. */
 
 /* Empty/first-run + disabled-reason line under the primary action. Muted,
-   quiet — guidance, not an error. */
+   quiet — guidance, not an error. Note: `role="alert"` instances of this
+   class (GPX import failure, the disabled-reason line, PlansList's offline
+   recalc line) get the override immediately below, NOT this rule — this one
+   is deliberately unconditional (no `:not([role='alert'])`), since it stays
+   correct for both cases and the override below always wins on specificity. */
 .planner-guidance {
   margin: 0;
   font-size: 0.85rem;
   color: color-mix(in srgb, var(--sc-fg) 65%, transparent);
+}
+
+/* #703: a `role="alert"` string (blocking/safety-relevant) rendered with the
+   SAME muted treatment as a plain FYI hint — no visual urgency distinguished
+   'you cannot proceed' from 'here's a tip'. Reuses the app's existing
+   --sc-banner-error-* token family (already token-complete in both themes,
+   see .banner-error above) rather than inventing a fourth palette, and
+   carries the urgency in THREE non-colour channels too (border-left shape,
+   background wash, bold weight) so colour is never the only signal (WCAG
+   1.4.1) — the same multi-channel shape .shallow-warning/.marginal-depth-
+   notice already use for this exact hazard family elsewhere in this file.
+   ATTRIBUTE-COMPOUND selector (`.planner-guidance[role='alert']`), not a
+   bare modifier class: an attribute selector adds specificity beyond the
+   bare class REGARDLESS of source order, sidestepping the #493/#506
+   single-class-modifier-loses-to-a-later-base-rule trap by construction
+   rather than by careful placement — and needs no markup change at any of
+   the three existing call sites, which already carry `role="alert"`. */
+.planner-guidance[role='alert'] {
+  padding: 0.4rem 0.6rem;
+  border-left: 3px solid var(--sc-banner-error-fg);
+  border-radius: 4px;
+  background: var(--sc-banner-error-bg);
+  color: var(--sc-banner-error-fg);
+  font-weight: 600;
 }
 
 /* GPX import (#3): the import control sits atop the Trip card. Its success and
@@ -3238,6 +3379,19 @@ select {
   margin: 0;
   font-size: 0.8rem;
   color: color-mix(in srgb, var(--sc-fg) 65%, transparent);
+}
+
+/* #703: same override as `.planner-guidance[role='alert']` above (own
+   comment there carries the full rationale) — SettingsPanel's invalid-MMSI
+   line is the one `.options-help` instance that also carries `role="alert"`. */
+.options-help[role='alert'] {
+  padding: 0.4rem 0.6rem;
+  border-left: 3px solid var(--sc-banner-error-fg);
+  border-radius: 4px;
+  background: var(--sc-banner-error-bg);
+  color: var(--sc-banner-error-fg);
+  font-size: 0.85rem;
+  font-weight: 600;
 }
 
 .route-legs-note {
@@ -3475,6 +3629,44 @@ select {
   max-width: 32rem;
   max-height: 85vh;
   overflow-y: auto;
+}
+
+/* #696: title row + the near-title icon close button. `.sc-btn`'s base rule
+   sits ABOVE `.sc-btn-ghost`/-primary/-secondary in source order (see
+   CLAUDE.md's single-class-modifier-loses-to-later-base-rule rule), so
+   `.about-close-btn` on its own would never lose to anything declared here —
+   but it's still scoped through the `.about-dialog-header` ancestor
+   (descendant selector, matching the `.compass-control .compass-btn`
+   pattern) rather than as a bare `.about-close-btn` rule, so this override
+   stays order-independent regardless of where a future `.sc-btn` reorder
+   lands. */
+.about-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0 0 0.75rem;
+}
+
+.about-dialog-header h2 {
+  margin: 0;
+}
+
+.about-dialog-header .about-close-btn {
+  padding: 0.35rem;
+  flex-shrink: 0;
+}
+
+.about-close-icon-svg {
+  width: 1.1rem;
+  height: 1.1rem;
+  display: block;
+}
+
+.about-close-icon-svg line {
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
 }
 
 .about-tagline {

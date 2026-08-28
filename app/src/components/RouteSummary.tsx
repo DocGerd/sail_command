@@ -207,77 +207,152 @@ export function ShallowWarning({
   //    (2.0, 2.2] — precisely the band where it is actionable.
   const safetyDepthMinM = safetyDepthFieldFor(plan.request.boat).min;
   const showRemedy = exposureDist !== null && isWide && shallow.usedDepthM > safetyDepthMinM;
-  // #504 wave 4: ONE role="alert" region (a <div>, not a <p>) holding three
-  // children — lead/detail/caveat — so a screen reader still announces one
-  // region while sighted users get a real visual hierarchy instead of one
-  // dense, uniformly-bold paragraph. LEAD carries the new #493 cautious-floor
-  // fact (the most severe, most actionable thing this warning says) and is
-  // the only emphasised part; DETAIL is the "what happened" mechanism at
-  // normal weight; CAVEAT is the chart-accuracy hedge, visually secondary but
-  // never hidden behind a click — it is a safety statement about the limits
-  // of this warning in an app with no chart authority of its own.
+  // #54 spec C.4(a), fixed in #539: renders THE PLAN'S OWN boat's draft — see
+  // the `draftM` read above for why the plan, not the picker, decides.
+  // #596 (fixed here): PR #590 review (MAJOR, round 2) found that #525 made
+  // `formatNm`/`formatKn` locale-aware while every depth figure in this
+  // banner (draft/requested/used/minGate) stayed on a bare `toFixed(1)`,
+  // mixing a comma-formatted distance (`exposureDist` below, via `formatNm`,
+  // and the confinement sentence's `{radius}`) beside still-point-formatted
+  // depths in ONE German sentence. That was left as a known, accepted-for-now
+  // inconsistency — depthDisclosure.ts's `formatDepthM` predates #525 with
+  // its own "separate, wider copy decision" scoping note, and fixing it was
+  // #596's job, not this PR's. It is fixed now: every depth figure in this
+  // component goes through `formatDepthM`, so a German sentence never mixes
+  // the two conventions again.
+  const leadText = t(isSevere ? 'route.shallow.leadSevere' : 'route.shallow.lead', {
+    cautious: cautiousM,
+    draft: formatDepthM(draftM, lang),
+  });
+  // #703/#516 increment 1's exposure figure and this plan's own usedDepthM
+  // BOTH need to be visible without interaction (PR #763 review Blocker 2:
+  // usedDepthM is the gate the route was ACTUALLY planned at, and the
+  // exposure distance answers "how much of my route" — inseparable from
+  // "how shallow"). Rendered in a SEPARATE span
+  // (`shallow-warning__summary-detail`), never appended into
+  // `shallow-warning__lead` itself, so the exact-text pins on the lead
+  // elsewhere in this file's test suite stay meaningful.
+  const usedDepthText = t('route.shallow.usedDepth', {
+    used: formatDepthM(shallow.usedDepthM, lang),
+  });
+  // #504 wave 4 / #747: ONE role="alert" region (a <div>, not a <p>) holding
+  // a headline SUMMARY, a collapsible detail body and an always-visible
+  // caveat — so a screen reader still announces one region while sighted
+  // users get a real visual hierarchy instead of one dense, uniformly-bold
+  // paragraph (pre-#747) or, before that, a five-sentence unconditional wall
+  // of prose that pushed the actual Ergebnis stats below the fold on a
+  // phone (#747's own live DE example).
+  //
+  // #747 constraint 1 (read before touching this): content inside a closed
+  // <details> drops out of the accessibility tree, so whatever is in the
+  // SUMMARY is the entire safety signal a screen reader gets without an
+  // explicit expand. The summary therefore carries THREE things, never just
+  // the lead: `leadText` (the #493 cautious-floor figure and, in the severe
+  // case, the below-draft fact), `usedDepthText` (Blocker 2 above), and the
+  // exposure sentence when `exposureDist` has resolved to a real, non-zero
+  // measurement. Everything else — confined/detail/locator/remedy, the
+  // "what happened" MECHANISM rather than the hazard itself — stays behind
+  // the Disclosure, since #747's own DoD only requires the hazard, not its
+  // explanation, to survive a collapse.
+  //
+  // #747 constraint 2: `defaultOpen={isSevere}` — the below-draft case is
+  // meant to start EXPANDED and every other case collapsed. That is true
+  // ONLY on a fresh mount: Disclosure.tsx's `useState(defaultOpen)` seeds
+  // once and never re-syncs on a later `defaultOpen` prop change, so a plan
+  // SWAPPED into an already-mounted RouteSummary/PlannerPanel would keep
+  // whichever open/closed state the PREVIOUS plan's disclosure had,
+  // regardless of the new plan's own severity (PR #763 review Blocker 1,
+  // MEASURED: mild plan -> new severe plan id rendered collapsed). Both call
+  // sites now pass `key={plan.id}` on this component specifically to force a
+  // real remount — and therefore a fresh `useState` seed — on every genuine
+  // plan change; see those call sites' own comments. The claim above is
+  // therefore accurate given that key, not despite it.
+  //
+  // The CAVEAT stays a SIBLING of the Disclosure, never a child of it: the
+  // `.shallow-warning__caveat` CSS rule (app.css) already documents "NEVER
+  // hidden behind a Disclosure or any click — it is a safety statement about
+  // the limits of the warning above it" — a constraint #747 must not
+  // silently violate by nesting it inside the collapsible body.
+  //
+  // Accepted consequence, same shape as the showRemedy comment above:
+  // manually opening the Disclosure mutates DOM inside this role="alert"
+  // container, so it can re-trigger an assistive-tech announcement of the
+  // newly-revealed text — acceptable here since that text is exactly what
+  // the user just asked to see.
   return (
     <div className={containerClassName} role="alert">
-      <p className="shallow-warning__lead">
-        {/* #54 spec C.4(a), fixed in #539: renders THE PLAN'S OWN boat's
-            draft — see the `draftM` read above for why the plan, not the
-            picker, decides.
-            #596 (fixed here): PR #590 review (MAJOR, round 2) found that
-            #525 made `formatNm`/`formatKn` locale-aware while every depth
-            figure in this banner (draft/requested/used/minGate) stayed on a
-            bare `toFixed(1)`, mixing a comma-formatted distance
-            (`exposureDist` below, via `formatNm`, and the confinement
-            sentence's `{radius}`) beside still-point-formatted depths in ONE
-            German sentence. That was left as a known, accepted-for-now
-            inconsistency — depthDisclosure.ts's `formatDepthM` predates #525
-            with its own "separate, wider copy decision" scoping note, and
-            fixing it was #596's job, not this PR's. It is fixed now: every
-            depth figure in this component goes through `formatDepthM`, so a
-            German sentence never mixes the two conventions again. */}
-        {t(isSevere ? 'route.shallow.leadSevere' : 'route.shallow.lead', {
-          cautious: cautiousM,
-          draft: formatDepthM(draftM, lang),
-        })}
-      </p>
-      <p className="shallow-warning__detail">
-        {exposureDist !== null && (
-          <>
-            {t('route.shallow.exposure', {
-              dist: exposureDist,
-              requested: formatDepthM(shallow.requestedDepthM, lang),
-            })}{' '}
-          </>
-        )}
-        {/* #516 increment 2: rendered right after the exposure sentence above,
-            never re-sequenced relative to it — a self-contained sentence
-            (never "all of it", which would bind to the exposure sentence's
-            position, the #493/#504 anaphora lesson). Stays ahead of the
-            existing mechanism/locator sentences below, whose own referents
-            are untouched. */}
-        {showConfined && (
-          <>{t('route.shallow.confined', { radius: formatNm(APPROACH_RADIUS_M / 1852, lang) })} </>
-        )}
-        {t('route.shallow.detail', {
-          requested: formatDepthM(shallow.requestedDepthM, lang),
-          used: formatDepthM(shallow.usedDepthM, lang),
-          minGate: formatDepthM(shallow.minGateDepthM, lang),
-        })}
-        {locator && (
-          <>
-            {' '}
-            {t(locator.count === 1 ? 'route.shallow.locator' : 'route.shallow.locator.plural', {
-              count: locator.count,
-              time: formatTime(locator.firstTimeMs, lang),
-            })}
-          </>
-        )}
-        {/* PR #523 review, Minor 3: the remedy renders LAST, after the
-            mechanism sentence that justifies it — a reader must learn the
-            router already reduced the gate on their behalf before being
-            advised to reduce it themselves. Gated on showRemedy, whose three
-            conditions are enumerated at its declaration. */}
-        {showRemedy && <> {t('route.shallow.remedy')}</>}
-      </p>
+      <Disclosure
+        className="shallow-warning-disclosure"
+        defaultOpen={isSevere}
+        summary={
+          <span className="shallow-warning__summary">
+            <span className="shallow-warning__lead">{leadText}</span>
+            {/* PR #763 review Blocker 2: usedDepthM and the exposure
+                distance stay OUTSIDE the collapsible body too (this is an
+                ADDITION alongside `.shallow-warning__detail`'s own existing
+                mention of both, not a relocation of it) — deliberately kept
+                in its OWN span, never appended into `.shallow-warning__lead`
+                itself, so every exact-text `.toBe()` pin on the lead
+                elsewhere in this file's test suite keeps reading only the
+                lead sentence. */}
+            <span className="shallow-warning__summary-detail">
+              {' '}
+              {usedDepthText}
+              {exposureDist !== null && (
+                <>
+                  {' '}
+                  {t('route.shallow.exposure', {
+                    dist: exposureDist,
+                    requested: formatDepthM(shallow.requestedDepthM, lang),
+                  })}
+                </>
+              )}
+            </span>
+          </span>
+        }
+      >
+        <p className="shallow-warning__detail">
+          {/* PR #763 review Major A: the exposure sentence used to render
+              HERE TOO, duplicating the copy now in the always-visible
+              summary above (Blocker 2) — the severe case defaults OPEN, so
+              both were showing at once, making the box BIGGER than pre-#763
+              for the exact case #747 was filed about (measured: EN 589 ->
+              711 chars, +20.7%; DE 690 -> 854, +23.8%)
+              (jsdom fixture, mocked 0.3 nm exposure, no locator/remedy).
+              Dropped here; it is
+              never lost, only no longer duplicated — `route.shallow.confined`
+              is self-contained (its own comment says so) and does not
+              reference the exposure sentence's position, so removing it does
+              not strand an anaphoric reference. */}
+          {showConfined && (
+            <>
+              {t('route.shallow.confined', {
+                radius: formatNm(APPROACH_RADIUS_M / 1852, lang),
+              })}{' '}
+            </>
+          )}
+          {t('route.shallow.detail', {
+            requested: formatDepthM(shallow.requestedDepthM, lang),
+            used: formatDepthM(shallow.usedDepthM, lang),
+            minGate: formatDepthM(shallow.minGateDepthM, lang),
+          })}
+          {locator && (
+            <>
+              {' '}
+              {t(locator.count === 1 ? 'route.shallow.locator' : 'route.shallow.locator.plural', {
+                count: locator.count,
+                time: formatTime(locator.firstTimeMs, lang),
+              })}
+            </>
+          )}
+          {/* PR #523 review, Minor 3: the remedy renders LAST, after the
+              mechanism sentence that justifies it — a reader must learn the
+              router already reduced the gate on their behalf before being
+              advised to reduce it themselves. Gated on showRemedy, whose
+              three conditions are enumerated at its declaration. */}
+          {showRemedy && <> {t('route.shallow.remedy')}</>}
+        </p>
+      </Disclosure>
       <p className="shallow-warning__caveat">{t('route.shallow.caveat')}</p>
     </div>
   );
@@ -672,16 +747,49 @@ export default function RouteSummary({
           : renderRigVerdict(rigRecommendation.kind, plan.result.comparisonComplete, sailTabs, t)}
       </Chip>
 
-      {stale && <p role="alert">{t('route.staleForecast')}</p>}
+      {/* #703: bare `<p role="alert">` carried no visual treatment at all —
+          same muted body-copy problem as `.planner-guidance`/`.options-help`
+          elsewhere, just with no class to attach a compound-selector override
+          to. `.inline-alert` is a standalone class for exactly this shape
+          (see its app.css comment for why it's a fresh class rather than a
+          modifier of an existing muted rule). */}
+      {stale && (
+        <p className="inline-alert" role="alert">
+          {t('route.staleForecast')}
+        </p>
+      )}
 
       {/* #53: plan-level shallow-water warning — both rigs solved at the same
           relaxed gate, so this renders on BOTH rig tabs (it sits outside the
           per-rig branch below). Persisted with the plan, so a reloaded plan
           renders it identically. #452: shared with PlannerPanel's compact
           Ergebnis strip via the ShallowWarning component above, so the same
-          plan-level warning is visible without switching to this tab too. */}
+          plan-level warning is visible without switching to this tab too.
+          #747/Blocker 1: a key on this component is REQUIRED, not decorative
+          — Disclosure.tsx's `useState(defaultOpen)` seeds once at first
+          mount and never re-syncs on a `defaultOpen` prop change, so without
+          it a plan-to-plan transition (same mounted RouteSummary, a new plan
+          swapped in) keeps whatever open/closed state the FIRST plan's
+          disclosure had.
+          PR #763 review round 3, RESIDUAL BLOCKER: `key={plan.id}` alone
+          narrows the bug rather than closing it — `usePlanFlow.ts`'s
+          #114 recalculate-and-replace flow (`replacePlanId`) re-plans an
+          EXISTING plan id against a fresh forecast, so the relaxation tier
+          (and therefore `usedDepthM`/`isSevere`) can flip while `id` stays
+          the SAME — same key, no remount, `useState` stays seeded from the
+          previous, milder plan (MEASURED: same-id mild->severe transition
+          still rendered closed under the `plan.id`-only key). Every plan
+          write refreshes `createdAtMs` too (`usePlanFlow.ts`, `Date.now()`
+          on every run including a replace), so `${plan.id}-${plan.createdAtMs}`
+          changes on every genuine re-plan, replace included, forcing the
+          remount `plan.id` alone could not guarantee. */}
       {plan.result.shallow && (
-        <ShallowWarning shallow={plan.result.shallow} legs={result?.legs ?? null} plan={plan} />
+        <ShallowWarning
+          key={`${plan.id}-${plan.createdAtMs}`}
+          shallow={plan.result.shallow}
+          legs={result?.legs ?? null}
+          plan={plan}
+        />
       )}
 
       {/* #612: the complement of the banner above — a quiet route-scoped line
@@ -703,7 +811,7 @@ export default function RouteSummary({
           ever rendered at a time. */}
       <div role="tabpanel" id={RIG_TABPANEL_ID} aria-labelledby={rigTabId(rig)}>
         {!result || !summary ? (
-          <p role="alert">
+          <p className="inline-alert" role="alert">
             {/* #662: this branch renders ONLY for a SAVED plan (`plan` is a
               required prop, so this is never the live-planning failure
               surface — that one is App.tsx's own Retry-button banner). When
@@ -801,6 +909,17 @@ export default function RouteSummary({
                       independent confirmation of one another. */}
                     <th scope="col">{t('route.legs.duration')}</th>
                     <th scope="col">{t('route.legs.kind')}</th>
+                    {/* #698: the safety signal moved from last-of-ten to
+                      immediately after Kind — its natural home, since it
+                      qualifies the leg exactly as Kind does. Column 10 of
+                      10 sat off-screen behind the horizontal scroll this
+                      table needs at narrow widths (phonePortrait and
+                      below), with nothing signalling that more columns
+                      existed at all, so the app's only per-leg depth
+                      warning was reliably invisible on the device most
+                      likely to be read on deck. Header and cell order move
+                      together — see the matching <td> below. */}
+                    <th scope="col">{t('route.legs.shallow')}</th>
                     {/* #379: this column shows headingDeg, which is course over
                       ground despite its field name — no leeway model exists
                       in this app, so a true heading value would be
@@ -811,7 +930,6 @@ export default function RouteSummary({
                     <th scope="col">{t('route.legs.speed')}</th>
                     <th scope="col">{t('route.legs.distance')}</th>
                     <th scope="col">{t('route.legs.maneuver')}</th>
-                    <th scope="col">{t('route.legs.shallow')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -832,32 +950,6 @@ export default function RouteSummary({
                         <td>{formatLegDuration(leg.endTimeMs - leg.startTimeMs)}</td>
                         <td>
                           <LegKindChip leg={leg} rig={rig} />
-                        </td>
-                        <td>{formatHeading(leg.headingDeg)}</td>
-                        <td>
-                          {leg.kind === 'sail' ? `${Math.round(Math.abs(leg.twaDeg))}°` : '—'}
-                        </td>
-                        <td>{formatKn(leg.twsKn, lang)}</td>
-                        {/* #439: NOT formatLegNm — speed keeps formatKn's one-
-                          decimal precision unchanged. Raising distance alone
-                          (below) to two decimals reopens the algebraic-
-                          mismatch readability concern this file's own
-                          comment on the table header warns about (distance/
-                          duration/speed are dependent by construction);
-                          flagged in the PR body rather than silently
-                          resolved by also touching speed's precision here. */}
-                        <td>{formatKn(leg.speedKn, lang)}</td>
-                        <td>{formatLegNm(leg.distanceNm, lang)}</td>
-                        <td>
-                          {leg.maneuverAtStart && (
-                            <span className="chip chip-maneuver">
-                              {t(
-                                leg.maneuverAtStart === 'tack'
-                                  ? 'route.maneuver.tack'
-                                  : 'route.maneuver.gybe',
-                              )}
-                            </span>
-                          )}
                         </td>
                         <td>
                           {leg.shallow ? (
@@ -894,6 +986,32 @@ export default function RouteSummary({
                                 marginal={legInfo.depthM >= gateM}
                               />
                             )
+                          )}
+                        </td>
+                        <td>{formatHeading(leg.headingDeg)}</td>
+                        <td>
+                          {leg.kind === 'sail' ? `${Math.round(Math.abs(leg.twaDeg))}°` : '—'}
+                        </td>
+                        <td>{formatKn(leg.twsKn, lang)}</td>
+                        {/* #439: NOT formatLegNm — speed keeps formatKn's one-
+                          decimal precision unchanged. Raising distance alone
+                          (below) to two decimals reopens the algebraic-
+                          mismatch readability concern this file's own
+                          comment on the table header warns about (distance/
+                          duration/speed are dependent by construction);
+                          flagged in the PR body rather than silently
+                          resolved by also touching speed's precision here. */}
+                        <td>{formatKn(leg.speedKn, lang)}</td>
+                        <td>{formatLegNm(leg.distanceNm, lang)}</td>
+                        <td>
+                          {leg.maneuverAtStart && (
+                            <span className="chip chip-maneuver">
+                              {t(
+                                leg.maneuverAtStart === 'tack'
+                                  ? 'route.maneuver.tack'
+                                  : 'route.maneuver.gybe',
+                              )}
+                            </span>
                           )}
                         </td>
                       </tr>

@@ -18,6 +18,7 @@ import {
 } from '../types';
 import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
 import { defaultBoatSnapshot } from '../types';
+import { polarKey } from '../data/boats';
 
 // #54: the pre-#54 shape exposed `r.genoa`/`r.fock`/`r.genoaReason`/
 // `r.fockReason` directly.
@@ -65,6 +66,58 @@ describe('planRoute', () => {
     expect(() => planRoute({ ...req, sailIds: ['fock'] }, uniformWindGrid(12, 0), partial)).toThrow(
       '#54: no polar table for salona-45/fock',
     );
+  });
+
+  // #601: `Object.hasOwn`, not a bare `!== undefined` chain lookup, is what
+  // makes `polarFor`'s guard (planRoute.ts, ~:379) correct against a polars
+  // map that is an ordinary object literal (the shape `app/sweep/sweepArms.ts`
+  // and `app/src/test/fixtures.ts`'s `testPlanDeps` both build, per the
+  // corrected comment above `polarFor`) — `in` and a bare property read both
+  // walk the PROTOTYPE CHAIN, and every `Object.getOwnPropertyNames
+  // (Object.prototype)` member passes a bare `!== undefined` check (#614's
+  // precedent bug in this exact shape). Derived from
+  // `Object.getOwnPropertyNames`, never a hand-written list — a hand-written
+  // 8 previously missed `__defineGetter__`/`__defineSetter__`/
+  // `__lookupGetter__`/`__lookupSetter__` — and asserted non-empty so a
+  // stubbed-to-`[]` table cannot make this pass vacuously.
+  it('#601: every Object.prototype own-property name reads as ABSENT from an ordinary polars map under Object.hasOwn, though NOT under a bare `!== undefined` check', () => {
+    const PROTOTYPE_NAMES = Object.getOwnPropertyNames(Object.prototype);
+    expect(PROTOTYPE_NAMES.length).toBeGreaterThan(0);
+    const polars: Record<string, PolarTable> = {};
+    for (const name of PROTOTYPE_NAMES) {
+      // The vulnerability class #601 hardens against: a bare `!== undefined`
+      // lookup resolves the INHERITED Object.prototype member and reads it
+      // as "present" even though `name` was never set as an own key.
+      expect((polars as Record<string, unknown>)[name]).not.toBeUndefined();
+      // `Object.hasOwn` — what `polarFor`'s guard actually uses — correctly
+      // reports it absent.
+      expect(Object.hasOwn(polars, name)).toBe(false);
+    }
+  });
+
+  // #601, mutation-checkable against the REAL `planRoute.ts` guard (not a
+  // copy of its logic): every real lookup key is `polarKey(boatId, sailId)`
+  // = `${boatId}/${sailId}`, which always contains a literal "/" and so can
+  // never equal a bare Object.prototype member name (none of those 12 names
+  // contain "/") — the reachability argument that avoided a #282 sweep for
+  // this change. This test instead poisons the polars map's PROTOTYPE (not
+  // its own keys) with an entry at the REAL computed key, which a plain
+  // object literal built by ANY caller (protocol.ts uses Object.create(null)
+  // and is immune; the sweep harness and test fixtures do not) can carry.
+  // Reverting `polarFor`'s `Object.hasOwn` check back to a bare
+  // `!== undefined` makes this test go RED: the guard would then silently
+  // accept the inherited, wrong table instead of throwing.
+  it('#601: a polars map whose PROTOTYPE carries the requested key is still rejected — Object.hasOwn, not a chain lookup', () => {
+    const key = polarKey(deps.boat.id, 'fock');
+    const poisonedPolars = Object.create({ [key]: SLOW_FOCK }) as Record<string, PolarTable>;
+    // Sanity: the malicious table IS reachable via a bare `!== undefined`
+    // chain lookup — that is the vulnerability class this guards against.
+    expect(poisonedPolars[key]).toBe(SLOW_FOCK);
+    expect(Object.hasOwn(poisonedPolars, key)).toBe(false);
+    const poisoned = { ...deps, polars: poisonedPolars };
+    expect(() =>
+      planRoute({ ...req, sailIds: ['fock'] }, uniformWindGrid(12, 0), poisoned),
+    ).toThrow(`#54: no polar table for ${key}`);
   });
 
   // #54 review: an EMPTY sailIds makes `runAll` return [], and the plan-level
