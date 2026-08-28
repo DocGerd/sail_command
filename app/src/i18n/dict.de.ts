@@ -145,7 +145,7 @@ export const de = {
   'error.windService':
     'Windvorhersage konnte nicht geladen werden. Bitte in Kürze erneut versuchen.',
   'error.internal':
-    'Routenplanung unerwartet fehlgeschlagen. Eine andere Route oder andere Einstellungen helfen eher als ein erneuter Versuch mit derselben Anfrage.',
+    'Routenplanung unerwartet fehlgeschlagen. Bei wiederholtem Auftreten die App neu laden.',
   // #662: RouteSummary.tsx's fallback for a SAVED plan whose stored no-route
   // reason cannot be trusted (PR #656 / #614 made `reason` fall back to
   // `null` for a value outside the NoRouteReason union). This render site is

@@ -140,8 +140,7 @@ export const en = {
   'error.offline': 'Wind forecast service is unreachable. Check your connection and try again.',
   'error.rateLimited': 'Wind forecast service rate limit reached. Wait a moment and try again.',
   'error.windService': 'Wind forecast could not be loaded. Try again in a moment.',
-  'error.internal':
-    'Route planning failed unexpectedly. A different route or settings are more likely to help than trying again with the same request.',
+  'error.internal': 'Route planning failed unexpectedly. If it keeps happening, reload the app.',
   // #662: RouteSummary.tsx's fallback for a SAVED plan whose stored no-route
   // reason cannot be trusted (PR #656 / #614 made `reason` fall back to
   // `null` for a value outside the NoRouteReason union). This render site is

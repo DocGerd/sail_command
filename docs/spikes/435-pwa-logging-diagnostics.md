@@ -249,10 +249,10 @@ behavioural premise stated as a fact, and it is very likely false.**
 Nothing here measures how often About is opened before a reload, and the
 app's own copy pushes the user the other way — `dict.en.ts:96`:
 
-> Route planning failed unexpectedly. Try again; if it keeps happening,
+> Route planning failed unexpectedly. If it keeps happening,
 > **reload the app.**
 
-The German twin agrees — `dict.de.ts:98`, "…bei wiederholtem Auftreten die
+The German twin agrees — `dict.de.ts:98`, "…Bei wiederholtem Auftreten die
 App neu laden" — so the argument does not rest on one dictionary.
 
 An in-memory-only buffer is therefore destroyed by the user following the
