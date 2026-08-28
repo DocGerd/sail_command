@@ -278,11 +278,19 @@ describe('#54 spec N.2: the keel assumption is disclosed on the picker', () => {
     //
     // It must be the DESCRIPTION, not the name: the accessible name stays
     // the boat + draft + tier, and the paragraph is what the caveat lives in.
+    //
+    // #701: the id list now ALSO always carries the draft-provenance note's
+    // id (space-separated, per the `aria-describedby` spec) — the note used
+    // to render with no id at all and was reachable by nothing. This test
+    // stays scoped to the KEEL half of that list; BoatPicker.test.tsx's
+    // '#701: every radio's aria-describedby always includes the
+    // draft-provenance note' row covers the note half across every boat.
     renderPicker();
     const radio = screen.getByRole('radio', { name: /Deep 46/ });
     const describedBy = radio.getAttribute('aria-describedby');
-    expect(describedBy).toBe('boat-option-deep-46-keel');
-    const caveat = document.getElementById(describedBy!);
+    expect(describedBy).toBe('boat-option-deep-46-keel boat-option-deep-46-note');
+    const [keelId] = describedBy!.split(' ');
+    const caveat = document.getElementById(keelId!);
     expect(caveat?.textContent).toContain('Assumed keel');
     // ...and the caveat must NOT have leaked into the accessible NAME, which
     // is the failure mode the picker's own comment rejects folding it in for.
@@ -290,14 +298,20 @@ describe('#54 spec N.2: the keel assumption is disclosed on the picker', () => {
     expect(screen.getByRole('radio', { name: /Deep 46/ })).toBeInTheDocument();
   });
 
-  it('omits aria-describedby entirely for a boat that declares no assumption', () => {
-    // `exactOptionalPropertyTypes`: the prop is OMITTED rather than set to
-    // `undefined`. A radio pointing at an id that renders nothing is a
-    // dangling reference, and some AT announces nothing at all for one.
+  it('omits the keel id from aria-describedby for a boat that declares no assumption', () => {
+    // `exactOptionalPropertyTypes`: the keel-caveat PARAGRAPH is omitted
+    // rather than rendered empty. A radio pointing at an id that renders
+    // nothing is a dangling reference, and some AT announces nothing at all
+    // for one.
+    //
+    // #701: the attribute itself is NO LONGER omitted here — it must always
+    // carry the draft-provenance note's id (renamed from "omits
+    // aria-describedby entirely", which was the exact defect #701 fixed: a
+    // hull-verified boat's own citation was unreachable because the whole
+    // attribute was gated on the same condition as the keel caveat).
     renderPicker();
-    expect(screen.getByRole('radio', { name: /Salona 45/ }).hasAttribute('aria-describedby')).toBe(
-      false,
-    );
+    const radio = screen.getByRole('radio', { name: /Salona 45/ });
+    expect(radio.getAttribute('aria-describedby')).toBe('boat-option-salona-45-note');
   });
 
   it('renders it for that boat ONLY, not for every row', () => {

@@ -240,8 +240,8 @@ export default function PlansList({ online, busy, onRecalculate }: PlansListProp
                   )}
                 </span>
               </div>
-              <button
-                type="button"
+              <Button
+                variant="ghost"
                 className="plans-list-delete"
                 onClick={() => handleDeleteTap(p.id)}
                 aria-label={
@@ -249,7 +249,7 @@ export default function PlansList({ online, busy, onRecalculate }: PlansListProp
                 }
               >
                 {pendingDeleteId === p.id ? '✓' : '🗑'}
-              </button>
+              </Button>
             </li>
           ) : (
             <li key={p.id} className="plans-list-row">
@@ -266,17 +266,17 @@ export default function PlansList({ online, busy, onRecalculate }: PlansListProp
                 </span>
                 <span className="chip chip-rig">{t(sailLabelKey(p.recommended))}</span>
               </button>
-              <button
-                type="button"
+              <Button
+                variant="ghost"
                 className="plans-list-recalc-toggle"
                 onClick={() => handleRecalcTap(p)}
                 aria-label={t('plansList.recalc')}
                 aria-expanded={recalc?.planId === p.id}
               >
                 ⟳
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="ghost"
                 className="plans-list-delete"
                 onClick={() => handleDeleteTap(p.id)}
                 aria-label={
@@ -284,7 +284,7 @@ export default function PlansList({ online, busy, onRecalculate }: PlansListProp
                 }
               >
                 {pendingDeleteId === p.id ? '✓' : '🗑'}
-              </button>
+              </Button>
               {recalc?.planId === p.id && (
                 <div className="plans-list-recalc" role="group" aria-label={t('plansList.recalc')}>
                   <Field

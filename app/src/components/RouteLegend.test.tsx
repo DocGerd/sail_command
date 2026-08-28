@@ -36,7 +36,7 @@ describe('RouteLegend', () => {
       ['Motor (engine only)', 'route-legend-line-motor'],
       ['Tack/gybe', 'route-legend-maneuver'],
       ['Heading change', 'route-legend-heading'],
-      ['Via waypoint', 'route-legend-via'],
+      ['Waypoint', 'route-legend-via'],
     ];
     for (const [label, cls] of entries) {
       const li = screen.getByText(label).closest('li');
