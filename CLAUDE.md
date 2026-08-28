@@ -52,9 +52,10 @@ making design-level decisions; do not silently deviate.
   ask-gate hook, and a subagent writing there would slip a spec edit past
   the gate. A spike doc is evidence for a decision, never a spec — promoting
   one to a spec is a main-session act.
-  Design records live in THREE places and only two survive a clone: audited
-  2026-08-28, `docs/superpowers/specs/` 8 files, `docs/spikes/` 12, `docs/adr/`
-  2 — but `.superpowers/` is GITIGNORED and held the ONLY design document for
+  Design records live in FOUR places and three survive a clone: audited
+  2026-08-28, `docs/superpowers/specs/` 8 files, `docs/spikes/` 12 and
+  `docs/adr/` 2 ADRs plus a README index are all COMMITTED — but
+  `.superpowers/` is GITIGNORED and held the ONLY design document for
   #243 until it was committed as a spike doc this session. Roughly a third of
   shipped features have a committed spec; the rest were built from an issue with
   their reasoning surviving only as CLAUDE.md prose. When an SDD-style workflow
@@ -2022,17 +2023,19 @@ making design-level decisions; do not silently deviate.
   width whatever its label needs, and with no `overflow: hidden` in that
   chain a too-long label spills silently past its own box edge instead of
   growing, wrapping or clipping — so a border-box read cannot see it. Assert
-  Same family: **`Element.getClientRects().length` is ALWAYS 1 for a block box**
-  and does NOT reveal wrapping (measured in Chromium: a 10-line-wrapped div and
-  a one-line div both report 1; a `Range` over the same text reports 10 vs 1) —
-  use a Range over the TEXT NODE. And **jest-dom's `toHaveTextContent` strips
-  U+00A0 in BOTH branches** (`/\s+/g` normalising, plus an explicit escape in
-  the non-normalising branch; jest-dom 7.0.1), so NO such assertion can ever pin
-  a non-breaking space — verify one at the BYTE level (`grep -P '\x{00a0}'`).
-  `JSON.stringify` does not escape U+00A0 either, so a raw-nbsp failure and a
-  plain-space failure print identical text.
   `scrollWidth <= clientWidth` on the container (#299;
   `app/e2e/layout.spec.ts`'s own comment carries the full mechanism).
+- **Three more measurement methods that answer the wrong question.**
+  `Element.getClientRects().length` is ALWAYS 1 for a block box and does NOT
+  reveal wrapping (measured in Chromium 2026-08-28: a 10-line-wrapped div and a
+  one-line div both report 1; a `Range` over the same text reports 10 vs 1) —
+  use a Range over the TEXT NODE. jest-dom's `toHaveTextContent` strips U+00A0
+  in BOTH branches (`/\s+/g` normalising, plus an explicit escape in the
+  non-normalising branch; read against jest-dom 7.0.1, 2026-08-28), so NO such
+  assertion can ever pin a non-breaking space — verify one at the BYTE level
+  (`grep -P '\x{00a0}'`). And `JSON.stringify` does not escape U+00A0, so a
+  raw-nbsp failure and a plain-space failure print identical text: the
+  discrimination must live in the assertion, never in what a human reads.
 - A green workflow run proves the RUN was healthy, not that the intended
   VERSION of the workflow executed: `workflow_dispatch --ref X` resolves the
   workflow FILE from X's tip. Verify by inspecting the artifact it produced,
@@ -3401,11 +3404,12 @@ making design-level decisions; do not silently deviate.
   decides which hook is correct.
 - The destructive-git guard pattern-matches `-f` anywhere in a compound command:
   never combine `gh api -f …` with `git push` in one Bash call — split them.
-  OBSERVED 2026-08-28, a NEW trigger for the same whole-JSON-as-haystack class:
+  MEASURED 2026-08-28, a NEW trigger for the same whole-JSON-as-haystack class:
   a `git push` was blocked "Force-push blocked" with no `-f`/`--force` anywhere
   in the command — the agent's own Bash tool `description` field carried the
-  substring ("no -f nearby"). Resubmitting with a clean description pushed first
-  try. Keep `-f` out of the `description` on any `git push` call.
+  substring ("no -f nearby"). Confirmed by feeding synthetic PreToolUse JSON to
+  the hook: identical command, clean description passes, `-f` in the description
+  denies. Keep `-f` out of the `description` on any `git push` call.
   It lives OUTSIDE this repo (`~/.claude/hooks/guard-destructive-git.sh`,
   global/personal, unversioned, shared across concurrent sessions) — NOT
   covered by #216, which is the notices-regen and nudge hooks; #233
