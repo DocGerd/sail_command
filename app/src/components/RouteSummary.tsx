@@ -801,6 +801,17 @@ export default function RouteSummary({
                       independent confirmation of one another. */}
                     <th scope="col">{t('route.legs.duration')}</th>
                     <th scope="col">{t('route.legs.kind')}</th>
+                    {/* #698: the safety signal moved from last-of-ten to
+                      immediately after Kind — its natural home, since it
+                      qualifies the leg exactly as Kind does. Column 10 of
+                      10 sat off-screen behind the horizontal scroll this
+                      table needs at narrow widths (phonePortrait and
+                      below), with nothing signalling that more columns
+                      existed at all, so the app's only per-leg depth
+                      warning was reliably invisible on the device most
+                      likely to be read on deck. Header and cell order move
+                      together — see the matching <td> below. */}
+                    <th scope="col">{t('route.legs.shallow')}</th>
                     {/* #379: this column shows headingDeg, which is course over
                       ground despite its field name — no leeway model exists
                       in this app, so a true heading value would be
@@ -811,7 +822,6 @@ export default function RouteSummary({
                     <th scope="col">{t('route.legs.speed')}</th>
                     <th scope="col">{t('route.legs.distance')}</th>
                     <th scope="col">{t('route.legs.maneuver')}</th>
-                    <th scope="col">{t('route.legs.shallow')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -832,32 +842,6 @@ export default function RouteSummary({
                         <td>{formatLegDuration(leg.endTimeMs - leg.startTimeMs)}</td>
                         <td>
                           <LegKindChip leg={leg} rig={rig} />
-                        </td>
-                        <td>{formatHeading(leg.headingDeg)}</td>
-                        <td>
-                          {leg.kind === 'sail' ? `${Math.round(Math.abs(leg.twaDeg))}°` : '—'}
-                        </td>
-                        <td>{formatKn(leg.twsKn, lang)}</td>
-                        {/* #439: NOT formatLegNm — speed keeps formatKn's one-
-                          decimal precision unchanged. Raising distance alone
-                          (below) to two decimals reopens the algebraic-
-                          mismatch readability concern this file's own
-                          comment on the table header warns about (distance/
-                          duration/speed are dependent by construction);
-                          flagged in the PR body rather than silently
-                          resolved by also touching speed's precision here. */}
-                        <td>{formatKn(leg.speedKn, lang)}</td>
-                        <td>{formatLegNm(leg.distanceNm, lang)}</td>
-                        <td>
-                          {leg.maneuverAtStart && (
-                            <span className="chip chip-maneuver">
-                              {t(
-                                leg.maneuverAtStart === 'tack'
-                                  ? 'route.maneuver.tack'
-                                  : 'route.maneuver.gybe',
-                              )}
-                            </span>
-                          )}
                         </td>
                         <td>
                           {leg.shallow ? (
@@ -894,6 +878,32 @@ export default function RouteSummary({
                                 marginal={legInfo.depthM >= gateM}
                               />
                             )
+                          )}
+                        </td>
+                        <td>{formatHeading(leg.headingDeg)}</td>
+                        <td>
+                          {leg.kind === 'sail' ? `${Math.round(Math.abs(leg.twaDeg))}°` : '—'}
+                        </td>
+                        <td>{formatKn(leg.twsKn, lang)}</td>
+                        {/* #439: NOT formatLegNm — speed keeps formatKn's one-
+                          decimal precision unchanged. Raising distance alone
+                          (below) to two decimals reopens the algebraic-
+                          mismatch readability concern this file's own
+                          comment on the table header warns about (distance/
+                          duration/speed are dependent by construction);
+                          flagged in the PR body rather than silently
+                          resolved by also touching speed's precision here. */}
+                        <td>{formatKn(leg.speedKn, lang)}</td>
+                        <td>{formatLegNm(leg.distanceNm, lang)}</td>
+                        <td>
+                          {leg.maneuverAtStart && (
+                            <span className="chip chip-maneuver">
+                              {t(
+                                leg.maneuverAtStart === 'tack'
+                                  ? 'route.maneuver.tack'
+                                  : 'route.maneuver.gybe',
+                              )}
+                            </span>
                           )}
                         </td>
                       </tr>

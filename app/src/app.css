@@ -2572,12 +2572,41 @@ select {
   gap: 0.25rem 1rem;
 }
 
+/* #698: a CSS-only scroll-shadow affordance. `.route-legs` is `overflow-x:
+   auto` with no scrollbar guarantee (iOS Safari hides them entirely), so
+   without this there was NO signal that the table scrolls at all — the
+   #638 shape recurring (a safety-adjacent surface reachable only by an
+   undiscoverable scroll). Four layered backgrounds, the classic
+   `background-attachment: local`/`scroll` pairing: two "cover" gradients
+   (`--sc-bg`, matching the Card this table sits in, fading to transparent)
+   scroll WITH the table's content (`local`) and mask the shadow at
+   whichever edge is already fully scrolled-to; two "shadow" gradients
+   (`--sc-border`, fading to transparent) stay fixed to the table's visible
+   edges (`scroll`) and only show through once the matching cover has
+   scrolled clear. Net effect: a shadow appears at an edge exactly when
+   there is more, unscrolled content in that direction, and both vanish
+   together once the table fits (no overflow, nothing to hint at) — pure
+   CSS, no JS scroll listener, no branching on overflow state, correct in
+   both themes because `--sc-bg`/`--sc-border` already vary by theme. */
 .route-legs {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.85rem;
   display: block;
   overflow-x: auto;
+  background:
+    linear-gradient(to right, var(--sc-bg) 0%, transparent 100%),
+    linear-gradient(to left, var(--sc-bg) 0%, transparent 100%) 100% 0,
+    linear-gradient(to right, var(--sc-border) 0%, transparent 100%) 0 0,
+    linear-gradient(to left, var(--sc-border) 0%, transparent 100%) 100% 0;
+  background-repeat: no-repeat;
+  background-color: var(--sc-bg);
+  background-size:
+    24px 100%,
+    24px 100%,
+    10px 100%,
+    10px 100%;
+  background-attachment: local, local, scroll, scroll;
 }
 
 .route-legs th,
