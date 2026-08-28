@@ -3472,6 +3472,44 @@ select {
   overflow-y: auto;
 }
 
+/* #696: title row + the near-title icon close button. `.sc-btn`'s base rule
+   sits ABOVE `.sc-btn-ghost`/-primary/-secondary in source order (see
+   CLAUDE.md's single-class-modifier-loses-to-later-base-rule rule), so
+   `.about-close-btn` on its own would never lose to anything declared here —
+   but it's still scoped through the `.about-dialog-header` ancestor
+   (descendant selector, matching the `.compass-control .compass-btn`
+   pattern) rather than as a bare `.about-close-btn` rule, so this override
+   stays order-independent regardless of where a future `.sc-btn` reorder
+   lands. */
+.about-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0 0 0.75rem;
+}
+
+.about-dialog-header h2 {
+  margin: 0;
+}
+
+.about-dialog-header .about-close-btn {
+  padding: 0.35rem;
+  flex-shrink: 0;
+}
+
+.about-close-icon-svg {
+  width: 1.1rem;
+  height: 1.1rem;
+  display: block;
+}
+
+.about-close-icon-svg line {
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+}
+
 .about-tagline {
   margin: 0 0 0.75rem;
   font-size: 0.9rem;
