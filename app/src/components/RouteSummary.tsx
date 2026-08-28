@@ -312,20 +312,16 @@ export function ShallowWarning({
         }
       >
         <p className="shallow-warning__detail">
-          {exposureDist !== null && (
-            <>
-              {t('route.shallow.exposure', {
-                dist: exposureDist,
-                requested: formatDepthM(shallow.requestedDepthM, lang),
-              })}{' '}
-            </>
-          )}
-          {/* #516 increment 2: rendered right after the exposure sentence
-              above, never re-sequenced relative to it — a self-contained
-              sentence (never "all of it", which would bind to the exposure
-              sentence's position, the #493/#504 anaphora lesson). Stays
-              ahead of the existing mechanism/locator sentences below, whose
-              own referents are untouched. */}
+          {/* PR #763 review Major A: the exposure sentence used to render
+              HERE TOO, duplicating the copy now in the always-visible
+              summary above (Blocker 2) — the severe case defaults OPEN, so
+              both were showing at once, making the box BIGGER than pre-#763
+              for the exact case #747 was filed about (measured: EN 589 ->
+              711 chars, +20.7%; DE 690 -> 854, +23.8%). Dropped here; it is
+              never lost, only no longer duplicated — `route.shallow.confined`
+              is self-contained (its own comment says so) and does not
+              reference the exposure sentence's position, so removing it does
+              not strand an anaphoric reference. */}
           {showConfined && (
             <>
               {t('route.shallow.confined', {
@@ -767,19 +763,27 @@ export default function RouteSummary({
           renders it identically. #452: shared with PlannerPanel's compact
           Ergebnis strip via the ShallowWarning component above, so the same
           plan-level warning is visible without switching to this tab too.
-          #747/Blocker 1: `key={plan.id}` is REQUIRED, not decorative —
-          Disclosure.tsx's `useState(defaultOpen)` seeds once at first mount
-          and never re-syncs on a `defaultOpen` prop change, so without this
-          key a plan-to-plan transition (same mounted RouteSummary, a new
-          plan swapped in) keeps whatever open/closed state the FIRST plan's
-          disclosure had — a severe plan replacing a mild one would render
-          collapsed despite `defaultOpen={isSevere}` being true. Keying on
-          `plan.id` forces React to unmount/remount ShallowWarning (and so
-          Disclosure) on every genuine plan change, reseeding `useState` from
-          the new plan's own `isSevere`. */}
+          #747/Blocker 1: a key on this component is REQUIRED, not decorative
+          — Disclosure.tsx's `useState(defaultOpen)` seeds once at first
+          mount and never re-syncs on a `defaultOpen` prop change, so without
+          it a plan-to-plan transition (same mounted RouteSummary, a new plan
+          swapped in) keeps whatever open/closed state the FIRST plan's
+          disclosure had.
+          PR #763 review round 3, RESIDUAL BLOCKER: `key={plan.id}` alone
+          narrows the bug rather than closing it — `usePlanFlow.ts`'s
+          #114 recalculate-and-replace flow (`replacePlanId`) re-plans an
+          EXISTING plan id against a fresh forecast, so the relaxation tier
+          (and therefore `usedDepthM`/`isSevere`) can flip while `id` stays
+          the SAME — same key, no remount, `useState` stays seeded from the
+          previous, milder plan (MEASURED: same-id mild->severe transition
+          still rendered closed under the `plan.id`-only key). Every plan
+          write refreshes `createdAtMs` too (`usePlanFlow.ts`, `Date.now()`
+          on every run including a replace), so `${plan.id}-${plan.createdAtMs}`
+          changes on every genuine re-plan, replace included, forcing the
+          remount `plan.id` alone could not guarantee. */}
       {plan.result.shallow && (
         <ShallowWarning
-          key={plan.id}
+          key={`${plan.id}-${plan.createdAtMs}`}
           shallow={plan.result.shallow}
           legs={result?.legs ?? null}
           plan={plan}

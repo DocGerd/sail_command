@@ -228,16 +228,27 @@ describe('#516: ShallowWarning exposure sentence', () => {
   it('renders the rendered NUMBER (never just that a key resolved) once the mask loads', async () => {
     mockedLoad.mockResolvedValue(shallowMask());
     const container = await renderAndSettle([EXPOSURE_LEG]);
+    // PR #763 review Major A: the exposure sentence moved to the
+    // always-visible `.shallow-warning__summary-detail` (Blocker 2) and is
+    // no longer duplicated inside the collapsible `.shallow-warning__detail`
+    // — so the settle gate and the exposure-VALUE assertions read the
+    // summary now; the remedy/mechanism assertions below are unaffected,
+    // since that copy never moved.
     await waitFor(() => {
-      expect(container.querySelector('.shallow-warning__detail')?.textContent).toMatch(/nm/);
+      expect(container.querySelector('.shallow-warning__summary-detail')?.textContent).toMatch(
+        /nm/,
+      );
     });
+    const summaryDetail = container.querySelector('.shallow-warning__summary-detail');
     const detail = container.querySelector('.shallow-warning__detail');
     // Hand-verified in shallowExposure.test.ts's own independent derivation:
     // this exact leg/mask geometry yields ~3.0 nm, which formatNm renders as
     // "3.0 nm" (toFixed(1)). Asserting the VALUE, not that SOME sentence
     // rendered — the #388 prose-vs-value trap.
-    expect(detail?.textContent).toContain('3.0 nm of this route crosses water charted shallower');
-    expect(detail?.textContent).toContain('safety depth of 3.0 m');
+    expect(summaryDetail?.textContent).toContain(
+      '3.0 nm of this route crosses water charted shallower',
+    );
+    expect(summaryDetail?.textContent).toContain('safety depth of 3.0 m');
     // The remedy line is paired with it (same gating condition) — always
     // appears alongside the exposure figure, never alone.
     const text = detail?.textContent ?? '';
@@ -318,15 +329,21 @@ describe('#516: ShallowWarning exposure sentence', () => {
     mockedLoad.mockResolvedValue(shallowMask());
     setWideLayout(false);
     const narrow = await renderAndSettle([EXPOSURE_LEG]);
+    // PR #763 review Major A: settle gate + exposure-VALUE read from the
+    // always-visible summary (see the first test in this file for the full
+    // rationale).
     await waitFor(() => {
-      expect(narrow.querySelector('.shallow-warning__detail')?.textContent).toMatch(/nm/);
+      expect(narrow.querySelector('.shallow-warning__summary-detail')?.textContent).toMatch(/nm/);
     });
     const narrowBanners = narrow.querySelectorAll('[role="alert"].shallow-warning');
     expect(narrowBanners).toHaveLength(1);
+    const narrowSummaryDetail = narrowBanners[0].querySelector('.shallow-warning__summary-detail');
     const narrowDetail = narrowBanners[0].querySelector('.shallow-warning__detail');
     expect(narrowBanners[0].querySelector('.shallow-warning__lead')?.textContent).toBeTruthy();
     expect(narrowBanners[0].querySelector('.shallow-warning__caveat')?.textContent).toBeTruthy();
-    expect(narrowDetail?.textContent).toContain('3.0 nm of this route crosses water charted');
+    expect(narrowSummaryDetail?.textContent).toContain(
+      '3.0 nm of this route crosses water charted',
+    );
     expect(narrowDetail?.textContent).toContain('was not passable');
     expect(narrowDetail?.textContent).not.toContain('lower safety depth setting');
 
@@ -334,14 +351,15 @@ describe('#516: ShallowWarning exposure sentence', () => {
     setWideLayout(true);
     const wide = await renderAndSettle([EXPOSURE_LEG]);
     await waitFor(() => {
-      expect(wide.querySelector('.shallow-warning__detail')?.textContent).toMatch(/nm/);
+      expect(wide.querySelector('.shallow-warning__summary-detail')?.textContent).toMatch(/nm/);
     });
     const wideBanners = wide.querySelectorAll('[role="alert"].shallow-warning');
     expect(wideBanners).toHaveLength(1);
+    const wideSummaryDetail = wideBanners[0].querySelector('.shallow-warning__summary-detail');
     const wideDetail = wideBanners[0].querySelector('.shallow-warning__detail');
     expect(wideBanners[0].querySelector('.shallow-warning__lead')?.textContent).toBeTruthy();
     expect(wideBanners[0].querySelector('.shallow-warning__caveat')?.textContent).toBeTruthy();
-    expect(wideDetail?.textContent).toContain('3.0 nm of this route crosses water charted');
+    expect(wideSummaryDetail?.textContent).toContain('3.0 nm of this route crosses water charted');
     expect(wideDetail?.textContent).toContain('was not passable');
     expect(wideDetail?.textContent).toContain('lower safety depth setting');
   });
@@ -354,11 +372,18 @@ describe('#516: ShallowWarning exposure sentence', () => {
     // figure is still true and still renders.
     mockedLoad.mockResolvedValue(shallowMask());
     const container = await renderAndSettle([EXPOSURE_LEG], SAFETY_DEPTH_FIELD.min);
+    // PR #763 review Major A: settle gate + exposure-VALUE read from the
+    // always-visible summary.
     await waitFor(() => {
-      expect(container.querySelector('.shallow-warning__detail')?.textContent).toMatch(/nm/);
+      expect(container.querySelector('.shallow-warning__summary-detail')?.textContent).toMatch(
+        /nm/,
+      );
     });
+    const summaryDetail = container.querySelector('.shallow-warning__summary-detail');
     const detail = container.querySelector('.shallow-warning__detail');
-    expect(detail?.textContent).toContain('3.0 nm of this route crosses water charted shallower');
+    expect(summaryDetail?.textContent).toContain(
+      '3.0 nm of this route crosses water charted shallower',
+    );
     expect(detail?.textContent).not.toContain('lower safety depth setting');
   });
 
@@ -388,8 +413,11 @@ describe('#516: ShallowWarning exposure sentence', () => {
         <RouteSummary plan={elanPlan} rig="genoa" onRigChange={vi.fn()} />
       </I18nProvider>,
     );
+    // PR #763 review Major A: settle gate reads the always-visible summary
+    // (see the file's first test for the full rationale) — the remedy
+    // assertion below is unaffected, since that copy never moved.
     await waitFor(() => {
-      expect(elan.querySelector('.shallow-warning__detail')?.textContent).toMatch(/nm/);
+      expect(elan.querySelector('.shallow-warning__summary-detail')?.textContent).toMatch(/nm/);
     });
     expect(elan.querySelector('.shallow-warning__detail')?.textContent).toContain(
       'lower safety depth setting',
@@ -411,10 +439,13 @@ describe('#516: ShallowWarning exposure sentence', () => {
     // individually load-bearing under any mutation measured here.
     const salona = await renderAndSettle([EXPOSURE_LEG], IN_BAND_USED_DEPTH_M);
     await waitFor(() => {
-      expect(salona.querySelector('.shallow-warning__detail')?.textContent).toMatch(/nm/);
+      expect(salona.querySelector('.shallow-warning__summary-detail')?.textContent).toMatch(/nm/);
     });
+    const salonaSummaryDetail = salona.querySelector('.shallow-warning__summary-detail');
     const salonaDetail = salona.querySelector('.shallow-warning__detail');
-    expect(salonaDetail?.textContent).toContain('of this route crosses water charted shallower');
+    expect(salonaSummaryDetail?.textContent).toContain(
+      'of this route crosses water charted shallower',
+    );
     expect(salonaDetail?.textContent).not.toContain('lower safety depth setting');
   });
 
@@ -458,16 +489,22 @@ describe('#516 increment 2: ShallowWarning confinement sentence', () => {
   it('suppresses the confinement sentence when a shallow cell falls outside APPROACH_RADIUS_M of every waypoint — never a negation', async () => {
     mockedLoad.mockResolvedValue(unconfinedShallowMask());
     const container = await renderAndSettle([EXPOSURE_LEG]);
+    // PR #763 review Major A: settle gate reads the always-visible summary.
     await waitFor(() => {
-      expect(container.querySelector('.shallow-warning__detail')?.textContent).toMatch(/nm/);
+      expect(container.querySelector('.shallow-warning__summary-detail')?.textContent).toMatch(
+        /nm/,
+      );
     });
+    const summaryDetail = container.querySelector('.shallow-warning__summary-detail');
     const detail = container.querySelector('.shallow-warning__detail');
     const text = detail?.textContent ?? '';
     expect(text).not.toContain('Every stretch below your safety depth');
     // false/null suppress SILENTLY — never render a negation of the claim.
     expect(text).not.toMatch(/not.*confined|not.*within/i);
-    // The exposure sentence itself is unaffected by the suppression.
-    expect(text).toContain('of this route crosses water charted');
+    // The exposure sentence itself is unaffected by the suppression — now in
+    // the always-visible summary rather than this collapsible detail body
+    // (PR #763 review Major A).
+    expect(summaryDetail?.textContent).toContain('of this route crosses water charted');
   });
 
   it('omits the confinement sentence alongside the exposure sentence while the mask is still loading', async () => {

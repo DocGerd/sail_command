@@ -1274,8 +1274,52 @@ describe('#493: cautious depth disclosure', () => {
         'details.shallow-warning-disclosure',
       ) as HTMLDetailsElement | null;
       expect(severeDetails).not.toBeNull();
-      // Without `key={plan.id}`, this reads `false` — the mild plan's
+      // Without `key={plan.id}}`, this reads `false` — the mild plan's
       // closed state surviving the transition (MEASURED).
+      expect(severeDetails?.open).toBe(true);
+    });
+
+    // PR #763 review round 3, RESIDUAL BLOCKER: the transition test above
+    // changes `plan.id`, so a `key={plan.id}`-only fix already passes it —
+    // it cannot catch the #114 recalculate-and-replace shape, where
+    // `usePlanFlow.ts`'s `replacePlanId` keeps `id` FIXED while re-planning
+    // against a fresh forecast (a new `createdAtMs`), so severity can flip
+    // with no remount under a `plan.id`-only key. This row holds `id` fixed
+    // and changes ONLY `createdAtMs` (what a real replace always refreshes),
+    // which is exactly the shape `key={plan.id}` alone is blind to.
+    it("#763 review round 3: re-opens on a SAME-id replace (createdAtMs changes, id does not)", () => {
+      const mildPlan = makeSeverityPlan(BOUNDARY_USED_DEPTH_M);
+      mildPlan.id = 'plan-same-id';
+      mildPlan.createdAtMs = 1_000;
+      const { rerender, container } = render(
+        <I18nProvider>
+          <RouteSummary plan={mildPlan} rig="genoa" onRigChange={vi.fn()} />
+        </I18nProvider>,
+      );
+      const mildDetails = container.querySelector(
+        'details.shallow-warning-disclosure',
+      ) as HTMLDetailsElement | null;
+      expect(mildDetails).not.toBeNull();
+      expect(mildDetails?.open).toBe(false);
+
+      const severePlan = makeSeverityPlan(BELOW_BOUNDARY_USED_DEPTH_M);
+      severePlan.id = 'plan-same-id'; // SAME id — a #114 replace, not a new plan.
+      severePlan.createdAtMs = 2_000; // every replan/replace refreshes this.
+      rerender(
+        <I18nProvider>
+          <RouteSummary plan={severePlan} rig="genoa" onRigChange={vi.fn()} />
+        </I18nProvider>,
+      );
+      const banner = container.querySelector('.shallow-warning');
+      expect(banner).toHaveClass('shallow-warning--severe');
+      const severeDetails = container.querySelector(
+        'details.shallow-warning-disclosure',
+      ) as HTMLDetailsElement | null;
+      expect(severeDetails).not.toBeNull();
+      // Under a `key={plan.id}`-only fix this reads `false` (MEASURED,
+      // reviewer's mutation) — the id is unchanged, so React reuses the
+      // same ShallowWarning instance and its Disclosure's `useState` stays
+      // seeded from the mild plan.
       expect(severeDetails?.open).toBe(true);
     });
   });
