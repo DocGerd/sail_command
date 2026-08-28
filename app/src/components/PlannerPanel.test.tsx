@@ -358,6 +358,50 @@ describe('PlannerPanel', () => {
     expect(within(originSection).getByRole('combobox')).toBeInTheDocument();
   });
 
+  // #737: reopening a picked endpoint via "Ändern"/"Change" used to drop
+  // focus to <body> — the Change button unmounts and nothing called
+  // .focus() on the combobox that replaced it (the OPENING side of #695,
+  // which only covers the four EXIT paths). Mutation-checked: removing the
+  // `autoFocus={editingOrigin}`/`autoFocus={editingDestination}` prop wiring
+  // in PlannerPanel.tsx reds exactly these two rows.
+  it('#737: focuses the origin combobox when Change reopens it', () => {
+    renderPanel({
+      origin: {
+        source: 'harbor',
+        point: FLENSBURG.snap,
+        harborId: FLENSBURG.id,
+        label: 'Flensburg',
+      },
+    });
+    const originSection = screen.getByRole('region', { name: 'Origin' });
+    fireEvent.click(within(originSection).getByRole('button', { name: 'Change' }));
+    expect(within(originSection).getByRole('combobox')).toHaveFocus();
+  });
+
+  it('#737: focuses the destination combobox when Change reopens it', () => {
+    renderPanel({
+      destination: {
+        source: 'harbor',
+        point: MARSTAL.snap,
+        harborId: MARSTAL.id,
+        label: 'Marstal',
+      },
+    });
+    const destinationSection = screen.getByRole('region', { name: 'Destination' });
+    fireEvent.click(within(destinationSection).getByRole('button', { name: 'Change' }));
+    expect(within(destinationSection).getByRole('combobox')).toHaveFocus();
+  });
+
+  // #737 (design rule, see the module-level #695 comment this fix extends):
+  // the trigger must be the Change click itself, never merely "a combobox is
+  // showing" — a cold load with no endpoint picked yet also renders the
+  // combobox (origin/destination null), and that path must NOT steal focus.
+  it('#737: does not autofocus the origin combobox on initial mount before anything is picked', () => {
+    renderPanel();
+    const originSection = screen.getByRole('region', { name: 'Origin' });
+    expect(within(originSection).getByRole('combobox')).not.toHaveFocus();
+  });
+
   it('reverts a re-picked selected endpoint to its row when the search is dismissed with Escape', () => {
     renderPanel({
       origin: {

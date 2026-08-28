@@ -152,7 +152,7 @@ export const de = {
   'error.windService':
     'Windvorhersage konnte nicht geladen werden. Bitte in Kürze erneut versuchen.',
   'error.internal':
-    'Routenplanung unerwartet fehlgeschlagen. Erneut versuchen; bei wiederholtem Auftreten die App neu laden.',
+    'Routenplanung unerwartet fehlgeschlagen. Bei wiederholtem Auftreten die App neu laden.',
   // #662: RouteSummary.tsx's fallback for a SAVED plan whose stored no-route
   // reason cannot be trusted (PR #656 / #614 made `reason` fall back to
   // `null` for a value outside the NoRouteReason union). This render site is
@@ -205,12 +205,12 @@ export const de = {
   'error.noRoute.snapDestination':
     'Das Ziel ist nicht befahrbar — einen Punkt mindestens 300 m von Land oder Flachwasser wählen.',
   'error.noRoute.snapVia':
-    'Ein Zwischenpunkt ist nicht befahrbar — einen Punkt mindestens 300 m von Land oder Flachwasser wählen.',
+    'Ein Wegpunkt ist nicht befahrbar — einen Punkt mindestens 300 m von Land oder Flachwasser wählen.',
   // #432: die Suche wurde abgebrochen, BEVOR sie fertig war — anders als die
   // übrigen error.noRoute.*-Texte ist das ausdrücklich keine Aussage darüber,
   // ob es eine Route gibt.
   'error.noRoute.searchBudget':
-    'Die Routenberechnung hat ihr Zeitlimit erreicht, bevor sie fertig war — das heißt nicht, dass es keine Route gibt. Ein näheres Ziel, weniger Zwischenpunkte oder eine kleinere Tiefen-Komfortspanne helfen; ein schnelleres Gerät ebenfalls.',
+    'Die Routenberechnung hat ihr Zeitlimit erreicht, bevor sie fertig war — das heißt nicht, dass es keine Route gibt. Ein näheres Ziel, weniger Wegpunkte oder eine kleinere Tiefen-Komfortspanne helfen; ein schnelleres Gerät ebenfalls.',
   'error.replanStaleWind':
     'Die gespeicherte Windvorhersage deckt die Abfahrtszeit dieses Plans nicht mehr ab. Route neu planen, um eine aktuelle Vorhersage zu laden.',
   'error.replanInit':
@@ -416,7 +416,7 @@ export const de = {
   'route.legend.motor': 'Motor (ohne Segelleistung)',
   'route.legend.maneuver': 'Wende/Halse',
   'route.legend.headingChange': 'Kursänderung',
-  'route.legend.via': 'Zwischenpunkt',
+  'route.legend.via': 'Wegpunkt',
   // #651 fix-wave, MAJOR 1: siehe dict.en.ts's Kommentar für die vollständige
   // Begründung (die alte Formulierung war für die neue MARGINAL-Population
   // sachlich falsch, da diese per Definition auf oder über dem Gate kartiert
@@ -717,6 +717,9 @@ export const de = {
   'about.open': 'Über SailCommand',
   'about.title': 'Über SailCommand',
   'about.close': 'Schließen',
+  // #696: siehe die englische Zwillingsdatei für den Grund, warum dies ein
+  // eigener Schlüssel ist statt 'about.close' wiederzuverwenden.
+  'about.closeDialog': 'Dialog schließen',
   'about.version': 'Version {version}',
   'about.changelog.title': 'Was ist neu',
   'about.changelog.langNote': 'Das Änderungsprotokoll wird auf Englisch geführt.',
@@ -761,7 +764,7 @@ export const de = {
   'ais.popup.shipType': 'Schiffstyp',
   'ais.popup.sog': 'SOG',
   'ais.popup.cog': 'COG',
-  'ais.popup.age': 'Letztes Signal vor',
+  'ais.popup.age': 'Letztes Signal',
   'ais.disclaimer':
     'AIS-Abdeckung stammt von freiwilligen Landstationen und ist nicht garantiert oder vollständig. Diese Anzeige ist eine Aufmerksamkeitshilfe, keine Kollisionsverhütung und kein Navigationsgerät.',
   'options.ais.apiKey.label': 'AIS-API-Schlüssel (aisstream.io)',

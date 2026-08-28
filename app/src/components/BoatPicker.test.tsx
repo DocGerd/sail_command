@@ -207,6 +207,40 @@ describe('#54 BoatPicker against the shipped catalogue', () => {
     ).toBeInTheDocument();
   });
 
+  it('#701: every radio’s aria-describedby always includes the draft-provenance note, by id', () => {
+    renderPicker();
+    for (const boat of BOATS) {
+      const radio = document.getElementById(`boat-option-${boat.id}`);
+      expect(radio, boat.id).not.toBeNull();
+      const describedBy = radio!.getAttribute('aria-describedby');
+      // Before this fix, a hull-verified boat (today the Salona 45 alone)
+      // rendered NO `aria-describedby` at all — the whole attribute was
+      // gated on `keelUnverified`, same as the keel caveat it was meant to
+      // point at. This assertion is what reds under that regression, since
+      // the loop below cannot distinguish "attribute absent" from "id list
+      // missing the note" once `.split(' ')` runs on a null string.
+      expect(describedBy, `${boat.id}: no aria-describedby at all`).not.toBeNull();
+      const ids = describedBy!.split(' ');
+      const noteId = `boat-option-${boat.id}-note`;
+      expect(ids, boat.id).toContain(noteId);
+      const noteEl = document.getElementById(noteId);
+      expect(noteEl, `${boat.id}: no element with id ${noteId}`).not.toBeNull();
+      expect(noteEl?.textContent, boat.id).toBe(boat.draftProvenance.note);
+
+      const keelId = `boat-option-${boat.id}-keel`;
+      if (boat.draftProvenance.hullVerified) {
+        // No keel caveat renders for a hull-verified boat, so its id must
+        // not be referenced either — a dangling aria-describedby id would be
+        // its own, separate accessibility defect.
+        expect(ids, boat.id).not.toContain(keelId);
+        expect(document.getElementById(keelId), boat.id).toBeNull();
+      } else {
+        expect(ids, boat.id).toContain(keelId);
+        expect(document.getElementById(keelId), boat.id).not.toBeNull();
+      }
+    }
+  });
+
   it('#707: draftProvenance.note and every sail’s polarProvenance.note carry lang="en" (WCAG 2.1 SC 3.1.2) under the German-default render', () => {
     renderPicker();
     // renderPicker() sets sc-lang to 'en' (see its own comment), but

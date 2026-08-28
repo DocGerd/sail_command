@@ -246,7 +246,8 @@ function armCameraRest(page: Page) {
 // the PRIVATE field, not a public API call.
 //
 // maplibre-gl 6 removed `Map#isEasing()`: `Map` no longer extends `Camera`, it
-// now HOLDS one (`_camera`, `ui/map.ts:576`), and `isEasing()` lives only on
+// now HOLDS one (the `_camera: Camera;` field, `ui/map.ts` ~:594, re-derived
+// against maplibre-gl@6.5.0, 2026-08-28), and `isEasing()` lives only on
 // that `Camera` (`ui/camera.ts:1189-1191`). CompassControl.tsx's production
 // guard was rewritten to avoid this private field entirely (#253) — this e2e
 // harness is the ONE deliberate exception, and the asymmetry is intentional:
