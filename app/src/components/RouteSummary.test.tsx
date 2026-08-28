@@ -646,12 +646,13 @@ describe('RouteSummary', () => {
   it('shows a stale-forecast warning when departure is more than 12h after the forecast fetch', () => {
     const plan = makePlan({ departureMs: FETCHED_AT_MS + 12 * 3_600_000 + 1 });
     renderSummary({ plan });
-    expect(screen.getByText(/12 hours/i)).toBeInTheDocument();
+    // #748: shortened from a full sentence to a label-style "> 12 h old" form.
+    expect(screen.getByText(/12 h old/i)).toBeInTheDocument();
   });
 
   it('hides the stale-forecast warning when departure is within 12h of the forecast fetch', () => {
     renderSummary();
-    expect(screen.queryByText(/hours old relative to departure/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/12 h old/i)).not.toBeInTheDocument();
   });
 
   it('renders a no-route message instead of stats/legs when the selected rig has no result', () => {

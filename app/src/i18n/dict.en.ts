@@ -255,8 +255,23 @@ export const en = {
   // plan's search was cut short".
   'route.comparisonIncomplete':
     'The search ran out of time before comparing both sails, so no faster rig is claimed',
-  'route.staleForecast':
-    'Forecast is more than 12 hours old relative to departure — wind conditions may have changed since it was fetched.',
+  // #748: was a 21-word explanatory sentence; shortened to a label-style
+  // form using the conventional "> Nh" age notation (WMO/DWD forecast-time
+  // shorthand, e.g. DWD's "+180 Stunden" horizon phrasing). #748's own
+  // research established this app has NO model reference/initialisation
+  // time to print (Open-Meteo's standard forecast endpoint exposes only
+  // `generationtime_ms` — API processing time, not a run time) — only
+  // `windGrid.fetchedAtMs`, a CLIENT fetch time, and `STALE_THRESHOLD_MS`
+  // (lib/plan.ts), a 12h BUILD-TIME constant. Printing a computed exact age
+  // or fetch timestamp needs new params at BOTH call sites (App.tsx's Banner
+  // and this key's RouteSummary.tsx use — #748's own constraint: never
+  // change one and leave the other), and App.tsx is outside this fix's file
+  // scope — so this is #748's Option 3 (age-only, no absolute timestamp),
+  // deliberately using the KNOWN threshold rather than fabricating a
+  // per-plan age this string has no data to fill in. A richer Option 1/2
+  // treatment (an honest "fetched HH:MMZ" or a real model run time) is a
+  // follow-up, not this fix.
+  'route.staleForecast': 'Forecast > 12 h old',
   // #504 fix wave 4: restructured from ONE dense paragraph into three parts
   // inside ONE role="alert" region (ShallowWarning, RouteSummary.tsx: a
   // <div> with .lead/.detail/.caveat children) — leads with the most

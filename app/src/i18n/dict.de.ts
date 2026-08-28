@@ -248,8 +248,9 @@ export const de = {
   // MsgKey helper (resultVerdictKey in lib/resultSummary.ts).
   'route.comparisonIncomplete':
     'Die Suche wurde durch Zeitüberschreitung abgebrochen, bevor beide Segel verglichen werden konnten — es wird kein schnelleres Rigg angegeben',
-  'route.staleForecast':
-    'Die Wettervorhersage ist mehr als 12 Stunden älter als die Abfahrt — die Windbedingungen können sich seither geändert haben.',
+  // #748: see dict.en.ts for the full rationale (conventional "> Nh" age
+  // shorthand, the model-reference-time blocker, and why this is Option 3).
+  'route.staleForecast': 'Vorhersage > 12 h alt',
   // #53/#452: honest passage-planning-aid copy — see dict.en.ts's comment
   // for why {used} < {requested} always holds here, why the closing
   // sentence deliberately does not imply unflagged water is safe, and why
