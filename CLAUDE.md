@@ -52,6 +52,14 @@ making design-level decisions; do not silently deviate.
   ask-gate hook, and a subagent writing there would slip a spec edit past
   the gate. A spike doc is evidence for a decision, never a spec — promoting
   one to a spec is a main-session act.
+  Design records live in FOUR places and three survive a clone: audited
+  2026-08-28, `docs/superpowers/specs/` 8 files, `docs/spikes/` 12 and
+  `docs/adr/` 2 ADRs plus a README index are all COMMITTED — but
+  `.superpowers/` is GITIGNORED and held the ONLY design document for
+  #243 until it was committed as a spike doc this session. Roughly a third of
+  shipped features have a committed spec; the rest were built from an issue with
+  their reasoning surviving only as CLAUDE.md prose. When an SDD-style workflow
+  writes a design doc, check WHERE it landed.
 - `app/src/test/` is the DENSEST cluster of source-SCANNING guards: most of
   them read a FOREIGN artifact (`readFileSync`, or `import.meta.glob(…,
   {query:'?raw'})` for source scans) and assert against it — **but `?raw` glob
@@ -76,7 +84,13 @@ making design-level decisions; do not silently deviate.
   an `app.css` literal against a TS constant, and `app/src/app.css.test.ts`
   scans the stylesheet from the `app/src/` top level — so before touching
   `app.css`, enumerate with `grep -rln 'app\.css' app/src
-  --include='*.test.ts*'` rather than trusting any list here. And
+  --include='*.test.ts*'` rather than trusting any list here — but that grep
+  counts FILES CONTAINING THE STRING, not guards: measured 2026-08-28 it
+  returned 11, of which only 7 read the stylesheet via `readFileSync`, three
+  (`BoatPicker`/`ScaleBar`/`Slider.test.tsx`) merely MENTION it in a comment and
+  cannot fail on a CSS change, and one (`sailLiteralCallSites.test.ts`) globs
+  `?raw` over `.ts`/`.tsx` only, so it is NOT an instance of the vacuous-`?raw`
+  trap above. Classify each hit before quoting a number. And
   `.github/workflows/coverage.yml`'s `timeout-minutes` is NOT guarded at all:
   `timeoutBudgetVsJobCap.test.ts` DECLARES `JOB_CAP_MINUTES = 240` rather than
   reading it (PR #351 removed the read after four fail-opens), so the two are
@@ -467,6 +481,15 @@ making design-level decisions; do not silently deviate.
   which carries that fake's other pinned invariant (`addLayer` drops layers on
   a truthy-but-missing `beforeId`, #163). Re-derived against
   `maplibre-gl@6.5.0`, 2026-08-26.
+- **`useState(defaultOpen)` seeds ONCE, and `key={plan.id}` does NOT close it.**
+  `Disclosure` never re-syncs its seed, so a new SEVERE plan rendered with the
+  severe class and below-draft summary while staying COLLAPSED (measured, PR
+  #763). Keying on `plan.id` still misses the recalculate-and-replace path:
+  `usePlanFlow.ts` uses `id: opts.replacePlanId ?? crypto.randomUUID()` and
+  `App.tsx` passes `replacePlanId: recalcPlan.id` (#114) — same id, no remount —
+  while that path re-plans against a fresh forecast, so severity can flip with
+  the id unchanged. Use ``key={`${plan.id}-${plan.createdAtMs}`}``. A
+  fresh-mount test passes with either bug live; only a TRANSITION test sees them.
 - `Leg` is a discriminated union on `kind`: sail legs carry `board` + `twaDeg`;
   motor legs have `board: null` and NO `twaDeg` property. Narrow on `kind`,
   never cast.
@@ -2002,6 +2025,17 @@ making design-level decisions; do not silently deviate.
   growing, wrapping or clipping — so a border-box read cannot see it. Assert
   `scrollWidth <= clientWidth` on the container (#299;
   `app/e2e/layout.spec.ts`'s own comment carries the full mechanism).
+- **Three more measurement methods that answer the wrong question.**
+  `Element.getClientRects().length` is ALWAYS 1 for a block box and does NOT
+  reveal wrapping (measured in Chromium 2026-08-28: a 10-line-wrapped div and a
+  one-line div both report 1; a `Range` over the same text reports 10 vs 1) —
+  use a Range over the TEXT NODE. jest-dom's `toHaveTextContent` strips U+00A0
+  in BOTH branches (`/\s+/g` normalising, plus an explicit escape in the
+  non-normalising branch; read against jest-dom 7.0.1, 2026-08-28), so NO such
+  assertion can ever pin a non-breaking space — verify one at the BYTE level
+  (`grep -P '\x{00a0}'`). And `JSON.stringify` does not escape U+00A0, so a
+  raw-nbsp failure and a plain-space failure print identical text: the
+  discrimination must live in the assertion, never in what a human reads.
 - A green workflow run proves the RUN was healthy, not that the intended
   VERSION of the workflow executed: `workflow_dispatch --ref X` resolves the
   workflow FILE from X's tip. Verify by inspecting the artifact it produced,
@@ -3370,6 +3404,12 @@ making design-level decisions; do not silently deviate.
   decides which hook is correct.
 - The destructive-git guard pattern-matches `-f` anywhere in a compound command:
   never combine `gh api -f …` with `git push` in one Bash call — split them.
+  MEASURED 2026-08-28, a NEW trigger for the same whole-JSON-as-haystack class:
+  a `git push` was blocked "Force-push blocked" with no `-f`/`--force` anywhere
+  in the command — the agent's own Bash tool `description` field carried the
+  substring ("no -f nearby"). Confirmed by feeding synthetic PreToolUse JSON to
+  the hook: identical command, clean description passes, `-f` in the description
+  denies. Keep `-f` out of the `description` on any `git push` call.
   It lives OUTSIDE this repo (`~/.claude/hooks/guard-destructive-git.sh`,
   global/personal, unversioned, shared across concurrent sessions) — NOT
   covered by #216, which is the notices-regen and nudge hooks; #233
@@ -3631,6 +3671,13 @@ making design-level decisions; do not silently deviate.
   `.claude/settings.local.json`; global `~/.claude/` is personal cross-project
   only. Never commit secrets (AIS BYOK stays runtime-supplied). Full convention
   in CONTRIBUTING.md (#185).
+- **The Edit/Write tools JSON-DECODE `\uXXXX` escapes in file content**, so an
+  escape you meant to show AS TEXT lands as the raw character instead. Observed
+  twice on 2026-08-28 — once in a spike doc about non-breaking spaces, and again
+  while writing THIS bullet, which introduced a raw U+00A0 into CLAUDE.md and
+  had to be repaired via Python. Anything that must display an escape sequence
+  literally needs a byte-level check afterwards (`grep -P '\x{00a0}'`) or must
+  be written via Bash/Python, which do not decode.
 - **`.claude/settings.json` PostToolUse hooks fire on every Edit/Write**, and one
   of them REWRITES what you just wrote: `.ts/.tsx/.css/.json` are auto-`prettier
   --write`n, so the file on disk differs from your edit (don't re-Read and
