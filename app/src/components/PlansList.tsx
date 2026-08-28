@@ -194,7 +194,15 @@ export default function PlansList({ online, busy, onRecalculate }: PlansListProp
 
   return (
     <>
-      {error && <p role="alert">{t(error)}</p>}
+      {/* #703: bare `<p role="alert">` carried no visual treatment at all —
+          same shape as RouteSummary's stale-forecast/no-route lines, see
+          `.inline-alert`'s app.css comment for why this is a standalone
+          class rather than a modifier of an existing muted rule. */}
+      {error && (
+        <p className="inline-alert" role="alert">
+          {t(error)}
+        </p>
+      )}
       <ul className="plans-list">
         {plans.map((p) =>
           // #54 spec §I.3: a record the read-time normaliser cannot handle is

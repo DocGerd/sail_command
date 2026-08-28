@@ -825,8 +825,20 @@ export default function PlannerPanel({
               derived as `plan?.result.shallow ?? null`, so `shallow` truthy
               already implies `plan` non-null at runtime — TS just can't see
               that implication across the two separately-computed variables. */}
+          {/* #747/Blocker 1, narrowed further in PR #763 review round 3 —
+              see RouteSummary.tsx's own call site for the full mechanism and
+              why `plan.id` alone is not enough: the #114 recalculate-and-
+              replace flow keeps `id` fixed while re-planning against a fresh
+              forecast, so severity can flip with no remount under a
+              `plan.id`-only key. `${plan.id}-${plan.createdAtMs}` changes on
+              every genuine re-plan, replace included. */}
           {plan && shallow && (
-            <ShallowWarning shallow={shallow} legs={result?.legs ?? null} plan={plan} />
+            <ShallowWarning
+              key={`${plan.id}-${plan.createdAtMs}`}
+              shallow={shallow}
+              legs={result?.legs ?? null}
+              plan={plan}
+            />
           )}
           {/* #612: the complement of the banner above, for a route that did NOT
               relax — same shared component and copy as RouteSummary's own, so

@@ -24,6 +24,23 @@ import { boatById, DEFAULT_BOAT_ID, type BoatDef } from '../data/boats';
 import { defaultBoatSnapshot } from '../types';
 import { PLAN_SCHEMA_VERSION } from '../types';
 
+// PR #763 review Minor 7: see RouteSummary.test.tsx's own copy of this
+// helper for the full rationale (jsdom does not hide closed-<details>
+// content, so `getByText`/`getByRole` alone no longer distinguish VISIBLE
+// from merely PRESENT). Every shallow-warning fixture in this file uses a
+// usedDepthM below the severe boundary, so a fresh `renderPanel()` call
+// always mounts with the Disclosure open.
+function expectShallowDetailOpen(expected: boolean): void {
+  const details = document.querySelector(
+    'details.shallow-warning-disclosure',
+  ) as HTMLDetailsElement | null;
+  expect(
+    details,
+    'expected a <details class="shallow-warning-disclosure"> element in the DOM',
+  ).not.toBeNull();
+  expect(details?.open).toBe(expected);
+}
+
 // #731 review round 2: PlannerPanel now ALSO always mounts a second
 // `role="status"` element (the blur-clamp correction notice, scoped to
 // `.planner-safety-depth .boat-picker-notice` — see that describe block's
@@ -1191,6 +1208,7 @@ describe('PlannerPanel', () => {
       // detail this assertion no longer depends on.
       const banner = screen.getByRole('alert');
       expect(banner).toHaveTextContent(/was not passable/);
+      expectShallowDetailOpen(true);
       // Requested depth.
       expect(banner.textContent).toContain('3.0 m');
       // #452: the effective depth the route was actually computed at — the
@@ -1222,6 +1240,10 @@ describe('PlannerPanel', () => {
 
     it('is absent on a plan with no relaxation', () => {
       renderPanel({ plan: makePlan(), rig: 'genoa' });
+      // PR #763 review Minor 7: ABSENCE check, not a visibility one — see
+      // RouteSummary.test.tsx's twin comment. No ShallowWarning mounts at
+      // all on a non-relaxed plan, so there is no Disclosure open/closed
+      // state for this assertion to distinguish.
       expect(screen.queryByText(/was not passable/)).not.toBeInTheDocument();
     });
 
@@ -1241,6 +1263,7 @@ describe('PlannerPanel', () => {
       renderPanel({ plan: makeShallowPlan(), rig: 'fock' });
       const banner = screen.getByText(/was not passable/);
       expect(banner).toBeInTheDocument();
+      expectShallowDetailOpen(true);
       // No summary-dependent content exists for fock — the warning is the
       // only thing this rig's strip has to show; "View details" needs
       // `summary` too and must stay absent.
@@ -1270,6 +1293,7 @@ describe('PlannerPanel', () => {
     it('reports the right count and first occurrence for non-contiguous flagged legs', () => {
       renderPanel({ plan: makeNonContiguousShallowPlan(), rig: 'genoa' });
       const banner = screen.getByText(/was not passable/);
+      expectShallowDetailOpen(true);
       const expected = en['route.shallow.locator.plural']
         .replace('{count}', '2')
         .replace('{time}', formatTime(PLAN_DEPARTURE_MS, 'en'));
@@ -1287,6 +1311,7 @@ describe('PlannerPanel', () => {
       });
       renderPanel({ plan, rig: 'genoa' });
       const banner = screen.getByText(/was not passable/);
+      expectShallowDetailOpen(true);
       const expected = en['route.shallow.locator'].replace(
         '{time}',
         formatTime(PLAN_DEPARTURE_MS, 'en'),
@@ -1306,6 +1331,7 @@ describe('PlannerPanel', () => {
       };
       renderPanel({ plan, rig: 'genoa' });
       const banner = screen.getByText(/was not passable/);
+      expectShallowDetailOpen(true);
       expect(banner.textContent).not.toContain('starts at');
     });
   });

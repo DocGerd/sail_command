@@ -261,8 +261,31 @@ export const en = {
   // plan's search was cut short".
   'route.comparisonIncomplete':
     'The search ran out of time before comparing both sails, so no faster rig is claimed',
-  'route.staleForecast':
-    'Forecast is more than 12 hours old relative to departure — wind conditions may have changed since it was fetched.',
+  // #748: was a 21-word explanatory sentence; shortened to a label-style
+  // form using the conventional "> Nh" age notation (WMO/DWD forecast-time
+  // shorthand, e.g. DWD's "+180 Stunden" horizon phrasing). #748's own
+  // research established this app has NO model reference/initialisation
+  // time to print (Open-Meteo's standard forecast endpoint exposes only
+  // `generationtime_ms` — API processing time, not a run time) — only
+  // `windGrid.fetchedAtMs`, a CLIENT fetch time, and `STALE_THRESHOLD_MS`
+  // (lib/plan.ts), a 12h BUILD-TIME constant. Printing a computed exact age
+  // or fetch timestamp needs new params at BOTH call sites (App.tsx's Banner
+  // and this key's RouteSummary.tsx use — #748's own constraint: never
+  // change one and leave the other), and App.tsx is outside this fix's file
+  // scope — so this is #748's Option 3 (age-only, no absolute timestamp),
+  // deliberately using the KNOWN threshold rather than fabricating a
+  // per-plan age this string has no data to fill in. A richer Option 1/2
+  // treatment (an honest "fetched HH:MMZ" or a real model run time) is a
+  // follow-up, not this fix.
+  //
+  // PR #763 review Major 3: the FIRST cut of this copy ("Forecast > 12 h
+  // old") was factually wrong at read time — `isStaleForecast`
+  // (lib/plan.ts) tests `departureMs - fetchedAtMs > 12h`, a fetch-to-
+  // DEPARTURE gap, not the forecast's age (fetch 10:00 today, departure
+  // 06:00 tomorrow flags stale while the forecast is 0 h old), and it
+  // dropped the "relative to departure" frame #748's own Constraints
+  // section requires. "at departure" names what the 12 h actually bounds.
+  'route.staleForecast': 'Forecast > 12 h old at departure',
   // #504 fix wave 4: restructured from ONE dense paragraph into three parts
   // inside ONE role="alert" region (ShallowWarning, RouteSummary.tsx: a
   // <div> with .lead/.detail/.caveat children) — leads with the most
@@ -300,6 +323,12 @@ export const en = {
   // `charted`; the ceil rounding is display precision, not a bound claim.
   'route.shallow.exposure':
     '{dist} of this route crosses water charted shallower than your safety depth of {requested} m.',
+  // PR #763 review Blocker 2: the plan's ACTUAL used gate, stated on its own
+  // (never bundled with requested/minGate as route.shallow.detail already
+  // does) so it can render in the Disclosure's always-visible SUMMARY — the
+  // most consequential number in this warning must be visible without
+  // opening anything.
+  'route.shallow.usedDepth': 'Planned at a safety depth of {used} m.',
   // #516 increment 2 (requires #518): whether the exposure above is entirely
   // inside #452's relaxation discs — MEASURED at render time
   // (lib/shallowExposure.ts's shallowConfinedWithinM), never assumed from the

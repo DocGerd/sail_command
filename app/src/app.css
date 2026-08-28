@@ -364,6 +364,27 @@ select {
   color: var(--sc-banner-error-fg);
 }
 
+/* #703: standalone treatment for a `<p role="alert">` that carries NO other
+   class to attach a `[role='alert']` compound override to — RouteSummary's
+   stale-forecast and no-route/unreadable lines, and PlansList's top-level
+   action-error line. A FRESH class rather than a modifier of any existing
+   muted rule (`.planner-guidance`/`.options-help`), so there is no base rule
+   for it to lose to on source order — the `.chip-shallow`/`.chip-shallow-
+   cautious` trap this file has already paid for twice needs two classes in
+   conflict to occur at all. Same --sc-banner-error-* family, border-left +
+   background wash + bold weight as `.planner-guidance[role='alert']` above,
+   so every alert-role paragraph in the app reads as the same hazard tier. */
+.inline-alert {
+  margin: 0;
+  padding: 0.4rem 0.6rem;
+  border-left: 3px solid var(--sc-banner-error-fg);
+  border-radius: 4px;
+  background: var(--sc-banner-error-bg);
+  color: var(--sc-banner-error-fg);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
 /* #708: no min-* override here any more — the global `button { min-height:
    44px; min-width: 44px }` floor (top of this file, "Cockpit-use,
    boat-glove-friendly touch targets") now applies unmodified. The 32px
@@ -2447,6 +2468,61 @@ select {
   font-size: 0.85rem;
 }
 
+/* #747: the mechanism/exposure/locator/remedy DETAIL sentence now renders
+   inside a Disclosure (RouteSummary.tsx), collapsed by default (open when
+   the plan is in the severe/below-draft tier — see that component's own
+   comment for why), so the box shows only its headline by default instead of
+   a five-sentence unconditional wall of prose. `.shallow-warning__caveat`
+   above stays a SIBLING of the Disclosure, never a child of it, per that
+   rule's own "never hidden behind a Disclosure" comment.
+   COMPOUND SELECTOR (`.sc-disclosure.shallow-warning-disclosure`), never a
+   bare `.shallow-warning-disclosure` alone — `.sc-disclosure` (below, in the
+   "Disclosure" section) is a single-class selector too and a same-
+   specificity modifier is a coin flip on source order, exactly the
+   `.chip-shallow`/`.route-layer-controls-disclosure` trap this file has
+   already paid for twice. Strips the primitive's own bordered/padded box
+   (`.shallow-warning` above already supplies the border-left + background
+   wash) back down to just the chevron + summary/body mechanics. */
+.sc-disclosure.shallow-warning-disclosure {
+  border: none;
+  padding: 0;
+}
+
+/* PR #763 review Blocker 2: the summary now holds a multi-sentence
+   paragraph (lead + usedDepthM + exposure), not a short label — the
+   primitive's own `.sc-disclosure-summary` is `display:flex;
+   align-items:center` for a short row (chevron + label), so without this
+   the summary content and the chevron would sit as TWO independent flex
+   items fighting for row width instead of one wrapping paragraph next to
+   the chevron. `align-items: flex-start` keeps the chevron pinned to the
+   first line rather than vertically centred against a now-taller,
+   possibly-multi-line block. `.shallow-warning__summary` is the SINGLE flex
+   item holding both summary spans — `flex: 1 1 auto; min-width: 0` is the
+   same shrink-to-fit pattern `.settings-seamark-size-row .sc-slider` above
+   already uses, letting the paragraph wrap and shrink instead of forcing
+   the row wider than its container. */
+.shallow-warning-disclosure > .sc-disclosure-summary {
+  align-items: flex-start;
+}
+
+.shallow-warning__summary {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The usedDepthM/exposure addition (Blocker 2) reads at normal weight,
+   distinct from the bold `.shallow-warning__lead` beside it — it is still
+   part of the always-visible summary, but the LEAD stays the one emphasised
+   fact, matching `.shallow-warning__detail`'s own normal-weight convention
+   for "what happened" content once it moves out of the lead's spotlight. */
+.shallow-warning__summary-detail {
+  font-weight: 400;
+}
+
+.shallow-warning-disclosure > .sc-disclosure-body {
+  padding: 0;
+}
+
 /* #504: MODIFIER on .shallow-warning above — applied together with the base
    class, never alone, when the mask's own TOLERANCE_M means this plan's
    used depth could have a cautious reading below the boat's draft. A
@@ -3077,11 +3153,39 @@ select {
    decoration; every animation plays once on appearance. */
 
 /* Empty/first-run + disabled-reason line under the primary action. Muted,
-   quiet — guidance, not an error. */
+   quiet — guidance, not an error. Note: `role="alert"` instances of this
+   class (GPX import failure, the disabled-reason line, PlansList's offline
+   recalc line) get the override immediately below, NOT this rule — this one
+   is deliberately unconditional (no `:not([role='alert'])`), since it stays
+   correct for both cases and the override below always wins on specificity. */
 .planner-guidance {
   margin: 0;
   font-size: 0.85rem;
   color: color-mix(in srgb, var(--sc-fg) 65%, transparent);
+}
+
+/* #703: a `role="alert"` string (blocking/safety-relevant) rendered with the
+   SAME muted treatment as a plain FYI hint — no visual urgency distinguished
+   'you cannot proceed' from 'here's a tip'. Reuses the app's existing
+   --sc-banner-error-* token family (already token-complete in both themes,
+   see .banner-error above) rather than inventing a fourth palette, and
+   carries the urgency in THREE non-colour channels too (border-left shape,
+   background wash, bold weight) so colour is never the only signal (WCAG
+   1.4.1) — the same multi-channel shape .shallow-warning/.marginal-depth-
+   notice already use for this exact hazard family elsewhere in this file.
+   ATTRIBUTE-COMPOUND selector (`.planner-guidance[role='alert']`), not a
+   bare modifier class: an attribute selector adds specificity beyond the
+   bare class REGARDLESS of source order, sidestepping the #493/#506
+   single-class-modifier-loses-to-a-later-base-rule trap by construction
+   rather than by careful placement — and needs no markup change at any of
+   the three existing call sites, which already carry `role="alert"`. */
+.planner-guidance[role='alert'] {
+  padding: 0.4rem 0.6rem;
+  border-left: 3px solid var(--sc-banner-error-fg);
+  border-radius: 4px;
+  background: var(--sc-banner-error-bg);
+  color: var(--sc-banner-error-fg);
+  font-weight: 600;
 }
 
 /* GPX import (#3): the import control sits atop the Trip card. Its success and
@@ -3270,6 +3374,19 @@ select {
   margin: 0;
   font-size: 0.8rem;
   color: color-mix(in srgb, var(--sc-fg) 65%, transparent);
+}
+
+/* #703: same override as `.planner-guidance[role='alert']` above (own
+   comment there carries the full rationale) — SettingsPanel's invalid-MMSI
+   line is the one `.options-help` instance that also carries `role="alert"`. */
+.options-help[role='alert'] {
+  padding: 0.4rem 0.6rem;
+  border-left: 3px solid var(--sc-banner-error-fg);
+  border-radius: 4px;
+  background: var(--sc-banner-error-bg);
+  color: var(--sc-banner-error-fg);
+  font-size: 0.85rem;
+  font-weight: 600;
 }
 
 .route-legs-note {
