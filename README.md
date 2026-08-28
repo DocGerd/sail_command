@@ -34,9 +34,13 @@ planning.
 
 ## Screenshots
 
-| Start view | Planned route |
-|---|---|
-| ![Start view: map with curated harbors](docs/screenshots/start-view.png) | ![Planned route with per-leg detail and rig recommendation](docs/screenshots/plan-route.png) |
+**Start view** — the map with curated harbors, ready to plan a passage:
+
+![Start view: map with curated harbors](docs/screenshots/start-view.png)
+
+**Planned route** — per-leg detail with the rig recommendation:
+
+![Planned route with per-leg detail and rig recommendation](docs/screenshots/plan-route.png)
 
 Picking the boat, with each hull's draft, a provenance chip summarising the
 weakest tier across its polar tables (the per-sail tiers are inside the
