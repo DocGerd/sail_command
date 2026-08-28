@@ -366,12 +366,12 @@ export function planRoute(
   // protocol.ts hands over only the keys `init` carried, and the sweep
   // harness and tests construct PlanDeps directly.
   //
-  // #601: protocol.ts's worker-path `polars` object is built via
-  // Object.create(null) (see that file); `app/sweep/sweepArms.ts` and
-  // `app/src/test/fixtures.ts`'s `testPlanDeps` build theirs as an ordinary
-  // `{}` object literal, so `deps.polars` is NOT always null-prototype —
-  // Object.hasOwn below is what makes the guard correct regardless of which
-  // shape a given caller passed.
+  // #601: protocol.ts's worker (production) path builds its per-plan
+  // `polars` object via Object.create(null); every OTHER PlanDeps
+  // constructor in this codebase — test fixtures and the sweep harness —
+  // builds an ordinary `{}` object literal instead, so `deps.polars` is NOT
+  // always null-prototype. Object.hasOwn below is what makes the guard
+  // correct regardless of which shape a given caller passed.
   const polarFor = (sailId: SailId): PolarTable => {
     const key = polarKey(deps.boat.id, sailId);
     // #601: Object.hasOwn, not a `!== undefined` chain lookup. `in` and a
