@@ -206,9 +206,11 @@ export default function CompassControl({ fix, showOwnship }: CompassControlProps
       // replaced coming to rest, describing the OLD camera.
       if (ownEaseDepthRef.current > 0) return;
       // maplibre-gl 6 dropped `Map#isEasing()` (Map no longer extends Camera;
-      // it now HOLDS one — `ui/map.ts:576`/`ui/camera.ts:284` — and the method
-      // lives only on the private `_camera`, which production code must not
-      // reach for). This derives the same "still in flight, don't judge yet"
+      // it now HOLDS one — the `_camera: Camera;` field, `ui/map.ts` ~:594
+      // (re-derived against maplibre-gl@6.5.0, 2026-08-28) / `ui/camera.ts:284`
+      // — and the method lives only on the private `_camera`, which
+      // production code must not reach for). This derives the same "still in
+      // flight, don't judge yet"
       // signal from TWO pieces of state we already own — NEITHER alone is
       // enough, proven by running each in isolation against this file's own
       // pinned tests (#253):
@@ -237,8 +239,9 @@ export default function CompassControl({ fix, showOwnship }: CompassControlProps
       // fires the interrupted/aborted ease's own `eventData` (`camera.ts:
       // 982-1009`) — our own eases never pass any, so an abort's moveend
       // carries no `originalEvent`, and this guard correctly lets it through
-      // to judge/demote — while `handler_manager.ts:707`'s end-of-gesture
-      // bare `moveend` (the one #203 F2 exists for) carries the gesture's
+      // to judge/demote — while `_fireEvents`'s end-of-gesture
+      // bare `moveend` (`handler_manager.ts` ~:696, re-derived against
+      // maplibre-gl@6.5.0, 2026-08-28; the one #203 F2 exists for) carries the gesture's
       // own `originalEvent`, so this guard correctly holds off while our
       // separately-still-running ease has yet to report its own settle.
       // (Degenerate case, corrected #253 review: an end-of-gesture moveend
