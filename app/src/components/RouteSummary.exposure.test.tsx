@@ -249,6 +249,11 @@ describe('#516: ShallowWarning exposure sentence', () => {
       '3.0 nm of this route crosses water charted shallower',
     );
     expect(summaryDetail?.textContent).toContain('safety depth of 3.0 m');
+    // PR #763 review Minor B: keeper for Major A — without this, re-adding
+    // the duplicated exposure block to `.shallow-warning__detail` leaves the
+    // whole focused suite green (MEASURED). Failure mode if this regresses
+    // is a taller box, not a hidden safety figure.
+    expect(detail?.textContent).not.toContain('crosses water charted shallower');
     // The remedy line is paired with it (same gating condition) — always
     // appears alongside the exposure figure, never alone.
     const text = detail?.textContent ?? '';

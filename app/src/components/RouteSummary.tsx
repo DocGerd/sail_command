@@ -317,7 +317,9 @@ export function ShallowWarning({
               summary above (Blocker 2) — the severe case defaults OPEN, so
               both were showing at once, making the box BIGGER than pre-#763
               for the exact case #747 was filed about (measured: EN 589 ->
-              711 chars, +20.7%; DE 690 -> 854, +23.8%). Dropped here; it is
+              711 chars, +20.7%; DE 690 -> 854, +23.8%)
+              (jsdom fixture, mocked 0.3 nm exposure, no locator/remedy).
+              Dropped here; it is
               never lost, only no longer duplicated — `route.shallow.confined`
               is self-contained (its own comment says so) and does not
               reference the exposure sentence's position, so removing it does
