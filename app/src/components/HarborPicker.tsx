@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import type { Harbor } from '../types';
 import { useLang, useT, type Lang } from '../i18n';
 
@@ -14,6 +14,19 @@ export interface HarborPickerProps {
   // committed endpoint (the "Ändern" flow) revert to the collapsed row rather
   // than strand an empty search box while the old selection silently persists.
   onCancel?: () => void;
+  // #737: focus the search input the instant THIS instance mounts. Scoped to
+  // the "Ändern"/"Change" reopen flow specifically, never to every mount —
+  // PlannerPanel is the only caller and passes its own `editingOrigin`/
+  // `editingDestination` state, which transitions to `true` ONLY inside the
+  // Change button's onClick handler (never from a prop diff on `origin`/
+  // `destination` themselves), so this reads `true` precisely when, and only
+  // when, a real user click just reopened the picker over an already-picked
+  // endpoint. On every OTHER mount — cold load, or restoring a saved plan,
+  // both of which leave `editingOrigin`/`editingDestination` at their initial
+  // `false` since neither is driven by props — the caller passes `false` (or
+  // omits it), so no focus is stolen (#695's fix hit exactly this trap on the
+  // CLOSING side: a derived boolean that also flips on unrelated prop churn).
+  autoFocus?: boolean;
 }
 
 // Diacritic-insensitive normalization for harbor-name search. Lowercase
@@ -107,6 +120,7 @@ export default function HarborPicker({
   recentIds,
   onSelect,
   onCancel,
+  autoFocus,
 }: HarborPickerProps) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
@@ -117,6 +131,20 @@ export default function HarborPicker({
   const inputId = `${baseId}-input`;
   const listboxId = `${baseId}-listbox`;
   const optionId = (i: number) => `${baseId}-option-${i}`;
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // #737: mount-only, deliberately not keyed on `autoFocus` in the deps array
+  // — this instance is freshly mounted (never reused) every time the caller's
+  // ternary flips from the collapsed row to this combobox, so "at mount" and
+  // "the caller just opened this" coincide exactly once per open. Re-running
+  // on every `autoFocus` identity change would be a no-op here (the prop
+  // never flips after mount without a remount), but keeping the effect
+  // unambiguously mount-scoped matches the intent in the prop's own doc
+  // comment above.
+  useEffect(() => {
+    if (autoFocus) inputRef.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only, see comment above
+  }, []);
 
   const results = useMemo(
     () => rankHarbors(harbors, query, lang, recentIds),
@@ -201,6 +229,7 @@ export default function HarborPicker({
     <div className="harbor-picker">
       <label htmlFor={inputId}>{t('harborPicker.searchLabel')}</label>
       <input
+        ref={inputRef}
         id={inputId}
         className="harbor-picker-input"
         type="text"
