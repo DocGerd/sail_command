@@ -11,6 +11,7 @@ import changelogRaw from '../../../CHANGELOG.md?raw';
 // changelogFragmentsPlugin (never via a `?raw` glob — see that plugin's own
 // comment for why), exposed as this virtual module's default export.
 import fragmentsRaw from 'virtual:changelog-fragments';
+import Button from './Button';
 import { useT, useLang } from '../i18n';
 import { depthMaskCaveatVars } from '../lib/depthDisclosure';
 import { parseChangelog } from '../lib/changelog';
@@ -198,9 +199,9 @@ export default function AboutDialog({ open, onClose, boat }: AboutDialogProps) {
           </ul>
         </Disclosure>
 
-        <button type="button" ref={closeButtonRef} onClick={onClose}>
+        <Button variant="ghost" ref={closeButtonRef} onClick={onClose}>
           {t('about.close')}
-        </button>
+        </Button>
       </div>
     </div>
   );

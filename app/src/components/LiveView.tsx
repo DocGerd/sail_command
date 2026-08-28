@@ -369,9 +369,9 @@ export default function LiveView({
       {hintVisible && (
         <div role="status" className="live-view-gps-hint">
           <p>{t('live.gpsHint')}</p>
-          <button type="button" onClick={() => setHintVisible(false)}>
+          <Button variant="ghost" onClick={() => setHintVisible(false)}>
             {t('live.gpsHint.dismiss')}
-          </button>
+          </Button>
         </div>
       )}
 
