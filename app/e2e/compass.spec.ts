@@ -797,26 +797,46 @@ test('#208: compass stays tappable and the scale bar never sits under .app-botto
           await page.getByRole('tab', { name: tabName }).click();
 
           // --- compass: real occlusion + real interaction ---
-          const cbox = (await compass.boundingBox())!;
-          // Not pushed off-screen or under other chrome (the issue's own
-          // "don't make it worse" bar): fully inside the viewport.
-          expect(cbox.x).toBeGreaterThanOrEqual(0);
-          expect(cbox.y).toBeGreaterThanOrEqual(0);
-          expect(cbox.x + cbox.width).toBeLessThanOrEqual(viewport.width);
-          expect(cbox.y + cbox.height).toBeLessThanOrEqual(viewport.height);
-
-          // The topmost hit at the compass's own centre must be the button
-          // or one of its own icon parts (needle/ring/ticks) — never the tab
-          // strip or the sheet the #208 bug reports showed instead.
-          const compassCx = cbox.x + cbox.width / 2;
-          const compassCy = cbox.y + cbox.height / 2;
-          const compassOnTop = await topmostIsWithin(page, compassCx, compassCy, '.compass-btn');
-          if (!compassOnTop) {
-            const hitStack = await elementsAt(page, compassCx, compassCy);
-            throw new Error(
-              `compass is not the topmost hit at its centre: ${JSON.stringify(hitStack)}`,
-            );
-          }
+          // #422 (residual of #412): geometry is RE-SAMPLED on every poll
+          // tick below, never frozen before the hit-test that consumes it —
+          // a `boundingBox()` read followed by a hit-test at a coordinate
+          // frozen from that read is exactly the #412 race (a real
+          // interception and a stale-coordinate read are byte-identical), so
+          // the bounds check AND the hit-test now live inside one poll
+          // callback that re-reads `compass.boundingBox()` every tick, the
+          // same pattern already used at this file's #412-fixed sites
+          // (e.g. the `#208: … at every measured narrow/landscape viewport`
+          // tab-strip poll above). Polls the VALUE, never a collapsed
+          // boolean, so a failure names exactly which check failed and with
+          // what numbers.
+          await expect
+            .poll(
+              async () => {
+                const b = (await compass.boundingBox())!;
+                // Not pushed off-screen or under other chrome (the issue's
+                // own "don't make it worse" bar): fully inside the viewport.
+                if (
+                  b.x < 0 ||
+                  b.y < 0 ||
+                  b.x + b.width > viewport.width ||
+                  b.y + b.height > viewport.height
+                ) {
+                  return `out of bounds: box=${JSON.stringify(b)} viewport=${viewport.width}x${viewport.height}`;
+                }
+                // The topmost hit at the compass's own centre must be the
+                // button or one of its own icon parts (needle/ring/ticks) —
+                // never the tab strip or the sheet the #208 bug reports
+                // showed instead.
+                const compassCx = b.x + b.width / 2;
+                const compassCy = b.y + b.height / 2;
+                const onTop = await topmostIsWithin(page, compassCx, compassCy, '.compass-btn');
+                if (onTop) return 'in-bounds & on-top';
+                const hitStack = await elementsAt(page, compassCx, compassCy);
+                return JSON.stringify(hitStack);
+              },
+              { timeout: 10_000 },
+            )
+            .toBe('in-bounds & on-top');
 
           await rotateThenTapCompassHome(page, compass);
 
@@ -857,20 +877,32 @@ test('#208: compass stays tappable and the scale bar never sits under .app-botto
             // proven honest here by also asserting it, not just assumed.
             await expect(bar).toBeHidden();
           } else {
-            const bbox = (await bar.boundingBox())!;
-            expect(bbox.x).toBeGreaterThanOrEqual(0);
-            expect(bbox.y).toBeGreaterThanOrEqual(0);
-            expect(bbox.x + bbox.width).toBeLessThanOrEqual(viewport.width);
-            expect(bbox.y + bbox.height).toBeLessThanOrEqual(viewport.height);
-            const barHit = await elementsAt(
-              page,
-              bbox.x + bbox.width / 2,
-              bbox.y + bbox.height / 2,
-            );
-            expect(
-              barHit.some((e) => e.cls.includes('app-bottom-sheet')),
-              `elements under the scale bar's centre: ${JSON.stringify(barHit)}`,
-            ).toBe(false);
+            // #422 (residual of #412): geometry is RE-SAMPLED on every poll
+            // tick below, never frozen before the hit-test that consumes
+            // it — see the compass block above for the full mechanism and
+            // why a frozen coordinate here is byte-identical, pass-or-fail,
+            // to a real interception.
+            await expect
+              .poll(
+                async () => {
+                  const b = (await bar.boundingBox())!;
+                  if (
+                    b.x < 0 ||
+                    b.y < 0 ||
+                    b.x + b.width > viewport.width ||
+                    b.y + b.height > viewport.height
+                  ) {
+                    return `out of bounds: box=${JSON.stringify(b)} viewport=${viewport.width}x${viewport.height}`;
+                  }
+                  const barHit = await elementsAt(page, b.x + b.width / 2, b.y + b.height / 2);
+                  if (barHit.some((e) => e.cls.includes('app-bottom-sheet'))) {
+                    return `under app-bottom-sheet: ${JSON.stringify(barHit)}`;
+                  }
+                  return 'in-bounds & clear';
+                },
+                { timeout: 10_000 },
+              )
+              .toBe('in-bounds & clear');
           }
         });
       }

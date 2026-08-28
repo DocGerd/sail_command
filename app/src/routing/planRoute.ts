@@ -367,9 +367,19 @@ export function planRoute(
   // harness and tests construct PlanDeps directly.
   const polarFor = (sailId: SailId): PolarTable => {
     const key = polarKey(deps.boat.id, sailId);
-    const table: PolarTable | undefined = deps.polars[key];
-    if (table === undefined) throw new Error(`#54: no polar table for ${key}`);
-    return table;
+    // #601: Object.hasOwn, not a `!== undefined` chain lookup. `in` and a
+    // bare property read both walk the PROTOTYPE CHAIN, so a key that
+    // happened to collide with an Object.prototype member name (toString,
+    // constructor, hasOwnProperty, ...) would silently resolve to an
+    // INHERITED function instead of tripping this fail-closed throw — every
+    // `Object.getOwnPropertyNames(Object.prototype)` member passes a bare
+    // `!== undefined` check. Unreachable today (every real key is
+    // `${boatId}/${sailId}` via polarKey() above, so it always contains a
+    // literal "/", which none of those 12 names do), but the guard is
+    // written to test what it means to test rather than lean on that shape
+    // holding forever.
+    if (!Object.hasOwn(deps.polars, key)) throw new Error(`#54: no polar table for ${key}`);
+    return deps.polars[key];
   };
   const run = (
     sailId: SailId,
