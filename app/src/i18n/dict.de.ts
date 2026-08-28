@@ -710,6 +710,9 @@ export const de = {
   'about.open': 'Über SailCommand',
   'about.title': 'Über SailCommand',
   'about.close': 'Schließen',
+  // #696: siehe die englische Zwillingsdatei für den Grund, warum dies ein
+  // eigener Schlüssel ist statt 'about.close' wiederzuverwenden.
+  'about.closeDialog': 'Dialog schließen',
   'about.version': 'Version {version}',
   'about.changelog.title': 'Was ist neu',
   'about.changelog.langNote': 'Das Änderungsprotokoll wird auf Englisch geführt.',
