@@ -127,6 +127,25 @@ describe('HarborPicker combobox', () => {
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
   });
 
+  // #737: the caller (PlannerPanel) is the one that decides WHEN this is
+  // true — never a HarborPicker-internal default — so the unit-level
+  // contract to pin here is just "the prop drives the DOM", verified both
+  // ways (true focuses, omitted/false does not).
+  it('#737: focuses the input on mount when autoFocus is true', () => {
+    localStorage.setItem('sc-lang', 'en');
+    render(
+      <I18nProvider>
+        <HarborPicker harbors={HARBORS} recentIds={[]} onSelect={vi.fn()} autoFocus />
+      </I18nProvider>,
+    );
+    expect(screen.getByRole('combobox')).toHaveFocus();
+  });
+
+  it('#737: does not focus the input on mount when autoFocus is omitted', () => {
+    renderPicker();
+    expect(screen.getByRole('combobox')).not.toHaveFocus();
+  });
+
   it('opens a listbox of options on focus and closes it on Escape', () => {
     renderPicker();
     const input = screen.getByRole('combobox');

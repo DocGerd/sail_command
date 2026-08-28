@@ -260,7 +260,9 @@ export function makeFakeMap({ styleLoaded = true }: { styleLoaded?: boolean } = 
 // (`node_modules/maplibre-gl/src/ui/camera.ts` — not the minified `dist/`
 // bundle, and re-read fresh for this citation rather than reused from the
 // prior 5.24.0 dist-offset pass, per the CLAUDE.md CITATION HALO lesson).
-// `Map` no longer EXTENDS `Camera` in v6 (it now HOLDS one, `ui/map.ts:576`),
+// `Map` no longer EXTENDS `Camera` in v6 (it now HOLDS one, the `_camera:
+// Camera;` field, `ui/map.ts` ~:594, re-derived against maplibre-gl@6.5.0,
+// 2026-08-28),
 // but `Camera` itself — where all of the mechanics below live — is otherwise
 // unchanged from 5.24 in every particular this fake models:
 //
@@ -414,10 +416,16 @@ export function makeFakeCameraMap(initialBearing = 0) {
     /**
      * HandlerManager aborting an animation because the user grabbed the chart:
      * `this._camera.stop(true)` -> `Camera#_stop(true)`, no interrupting
-     * easeId (`node_modules/maplibre-gl/src/ui/handler_manager.ts:463` when a
-     * handler first becomes active, and again at `:543` in
-     * `_updateMapTransform` before applying the gesture's own deltas —
-     * `camera.ts:1193-1195` for `stop()` itself), and the camera simply stays
+     * easeId. `easeId` itself lives in `ui/camera.ts`, not
+     * `handler_manager.ts` (zero occurrences there) — the `_easeId` field is
+     * at `ui/camera.ts:314` and the `_stop(allowGestures?, easeId?)`
+     * parameter at `ui/camera.ts:1197` (both re-derived against
+     * maplibre-gl@6.5.0, 2026-08-28). The two `this._camera.stop(true)` call
+     * sites this comment is really describing are
+     * `node_modules/maplibre-gl/src/ui/handler_manager.ts` ~:474 (a handler
+     * first becoming active) and ~:554 (inside `_updateMapTransform`, before
+     * applying the gesture's own deltas) — `camera.ts:1193-1195` for
+     * `stop()` itself is still accurate — and the camera simply stays
      * wherever the ease got to.
      */
     stopForGesture: () => afterEase(undefined, false),
