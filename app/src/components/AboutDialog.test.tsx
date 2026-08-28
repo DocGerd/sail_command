@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, waitFor, within } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { I18nProvider } from '../i18n';
 import { de } from '../i18n/dict.de';
@@ -270,7 +270,7 @@ describe('AboutDialog', () => {
     expect(await screen.findByText(de['about.sources.protomaps'])).toBeInTheDocument();
   });
 
-  it('focuses the close button on open, and returns focus to the trigger that opened it on close', async () => {
+  it('focuses the title-close icon button on open (#696: the near-title control, not the bottom Close button), and returns focus to the trigger that opened it on close', async () => {
     vi.stubGlobal('fetch', fetchMock());
     render(
       <I18nProvider>
@@ -283,12 +283,110 @@ describe('AboutDialog', () => {
     expect(trigger).toHaveFocus();
 
     fireEvent.click(trigger);
-    const closeButton = await screen.findByRole('button', { name: de['about.close'] });
-    await waitFor(() => expect(closeButton).toHaveFocus());
+    // #696: two distinctly-named close controls exist now — the icon one
+    // beside the title (de['about.closeDialog']) and the text one at the
+    // bottom (de['about.close']). The INITIAL FOCUS target is the title
+    // one; asserting against the wrong name here would either find zero
+    // matches (icon button not yet rendered under the old name) or pass
+    // vacuously against a button that was never the focus target.
+    const iconCloseButton = await screen.findByRole('button', {
+      name: de['about.closeDialog'],
+    });
+    await waitFor(() => expect(iconCloseButton).toHaveFocus());
 
-    fireEvent.click(closeButton);
+    fireEvent.click(iconCloseButton);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     await waitFor(() => expect(trigger).toHaveFocus());
+  });
+
+  it('also returns focus to the trigger when closed via the bottom Close button (both close controls close AND restore)', async () => {
+    vi.stubGlobal('fetch', fetchMock());
+    render(
+      <I18nProvider>
+        <DialogWithTrigger />
+      </I18nProvider>,
+    );
+
+    const trigger = screen.getByRole('button', { name: 'Open' });
+    trigger.focus();
+    fireEvent.click(trigger);
+    const bottomCloseButton = await screen.findByRole('button', { name: de['about.close'] });
+
+    fireEvent.click(bottomCloseButton);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await waitFor(() => expect(trigger).toHaveFocus());
+  });
+
+  it('#696: Tab from the last focusable element cycles to the first (icon close button), and Shift+Tab from the first cycles to the last', async () => {
+    vi.stubGlobal('fetch', fetchMock());
+    render(
+      <I18nProvider>
+        <AboutDialog boat={TEST_BOAT} open onClose={() => {}} />
+      </I18nProvider>,
+    );
+
+    const dialog = await screen.findByRole('dialog');
+    const iconCloseButton = screen.getByRole('button', { name: de['about.closeDialog'] });
+    const bottomCloseButton = screen.getByRole('button', { name: de['about.close'] });
+
+    // The dialog's LAST focusable element is the bottom Close button (no
+    // links/inputs in this content, so the two Disclosure <summary>s and
+    // the two Close buttons are the only tab stops, in DOM order).
+    bottomCloseButton.focus();
+    expect(bottomCloseButton).toHaveFocus();
+    fireEvent.keyDown(window, { key: 'Tab' });
+    // #696 mutation check: an earlier draft of this trap only compared
+    // `document.activeElement` against the STATIC first/last computed once
+    // per keydown but never called `.focus()` on the wrap target — that
+    // draft leaves `document.activeElement` unchanged (still
+    // bottomCloseButton) while still calling `preventDefault()`, so this
+    // assertion is what catches a trap that "handles" the key without
+    // actually moving focus.
+    expect(iconCloseButton).toHaveFocus();
+
+    // Shift+Tab from the FIRST focusable element (the icon close button,
+    // also the initial-focus target) must wrap to the LAST.
+    iconCloseButton.focus();
+    expect(iconCloseButton).toHaveFocus();
+    fireEvent.keyDown(window, { key: 'Tab', shiftKey: true });
+    expect(bottomCloseButton).toHaveFocus();
+
+    // A plain Tab/Shift+Tab that does NOT land on an edge must be left
+    // alone (no preventDefault, no forced refocus) — i.e. this trap only
+    // intervenes at the boundary, matching real browser tab-cycling
+    // everywhere else in the dialog. Move focus to something in the
+    // middle (a Disclosure summary) and confirm a Tab does not snap it
+    // back to either edge.
+    const changelogSummary = within(dialog).getByText(de['about.changelog.title']);
+    changelogSummary.focus();
+    expect(changelogSummary).toHaveFocus();
+    fireEvent.keyDown(window, { key: 'Tab' });
+    // Real jsdom does not auto-advance focus on a synthetic Tab keydown
+    // (unlike a real browser), so the only thing this can assert is that
+    // OUR handler didn't force it onto an edge it doesn't belong to.
+    expect(changelogSummary).toHaveFocus();
+  });
+
+  it('#696: Tab does not escape the dialog when focus is somehow outside it (defensive wrap)', async () => {
+    vi.stubGlobal('fetch', fetchMock());
+    render(
+      <I18nProvider>
+        <DialogWithTrigger />
+      </I18nProvider>,
+    );
+
+    const trigger = screen.getByRole('button', { name: 'Open' });
+    fireEvent.click(trigger);
+    await screen.findByRole('dialog');
+    const iconCloseButton = screen.getByRole('button', { name: de['about.closeDialog'] });
+
+    // Simulate focus having landed OUTSIDE the dialog (e.g. the trigger,
+    // which is still in the document behind the backdrop) while the
+    // dialog is open, then press Tab.
+    trigger.focus();
+    expect(trigger).toHaveFocus();
+    fireEvent.keyDown(window, { key: 'Tab' });
+    expect(iconCloseButton).toHaveFocus();
   });
 
   it('does not force-fetch the full routing asset bundle — only mask.meta.json', async () => {
