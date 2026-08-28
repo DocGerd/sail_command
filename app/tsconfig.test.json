@@ -123,6 +123,12 @@
   // `@media (prefers-color-scheme: dark)` block and never outside one —
   // same reason and pattern as panelWidth.test.ts/useBannerHeight.test.ts/
   // depthLegendGate.test.ts above.
+  // safetyDepthHelpNbsp.test.ts (#744, PR #764 review): reads
+  // app/src/i18n/dict.en.ts and dict.de.ts via `node:fs` to structurally
+  // guard that `options.safetyDepth.help` keeps its explicit \u00A0 escape
+  // immediately before the unit -- a rendering-based test cannot see a
+  // revert to a plain space because jest-dom's toHaveTextContent
+  // normalises that character away on the RECEIVED side only.
   "include": [
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",
@@ -145,6 +151,7 @@
     "src/**/sweepSailIds.test.ts",
     "src/**/depthLegendGate.test.ts",
     "src/**/app.css.test.ts",
+    "src/**/safetyDepthHelpNbsp.test.ts",
     "sweep/**/*.ts"
   ]
 }

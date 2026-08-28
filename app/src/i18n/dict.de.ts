@@ -15,7 +15,16 @@ export const de = {
   // außerhalb liegender Wert wurde beim Verlassen des Felds stillschweigend
   // auf den nächsten gültigen Wert korrigiert. {min}/{max} kommen aus
   // safetyDepthFieldFor(boat), ist also je nach Boot unterschiedlich.
-  'options.safetyDepth.help': 'Erlaubter Bereich: {min}–{max} m',
+  // #744: \u00A0 (geschuetztes Leerzeichen) vor der Einheit verhindert,
+  // dass "10,0 m" als Waise in einer eigenen Zeile umbricht.
+  'options.safetyDepth.help': 'Erlaubter Bereich: {min}–{max}\u00A0m',
+  // #731: the sibling, generic notice for the blur-clamp ITSELF (not the
+  // disclosure at options.safetyDepth.help above) — shared by all eight
+  // NumberInput sites (safety depth here + SettingsPanel's seven
+  // NumericField instances), so it deliberately carries NO unit: each
+  // field's own label already has one in parentheses ("Sicherheitstiefe
+  // (m)", "Motorfahrtgeschwindigkeit (kn)", …).
+  'numberInput.corrected': 'Auf {value} korrigiert (zulässiger Bereich {min}–{max})',
   // #299: die Sicherheitstiefe erscheint jetzt an ZWEI Stellen — hier als
   // Schnellzugriff und im Boot-Tab (SettingsPanel) als kanonisches Zuhause,
   // eine gemeinsame Quelle (PR #486 review). Die Tiefenkomfort-Spanne und
@@ -248,8 +257,12 @@ export const de = {
   // MsgKey helper (resultVerdictKey in lib/resultSummary.ts).
   'route.comparisonIncomplete':
     'Die Suche wurde durch Zeitüberschreitung abgebrochen, bevor beide Segel verglichen werden konnten — es wird kein schnelleres Rigg angegeben',
-  'route.staleForecast':
-    'Die Wettervorhersage ist mehr als 12 Stunden älter als die Abfahrt — die Windbedingungen können sich seither geändert haben.',
+  // #748: see dict.en.ts for the full rationale (conventional "> Nh" age
+  // shorthand, the model-reference-time blocker, and why this is Option 3).
+  // PR #763 review Major 3: "bei Abfahrt" added — same fix as the English
+  // "at departure", see dict.en.ts's comment for why the bare form was
+  // factually wrong.
+  'route.staleForecast': 'Vorhersage bei Abfahrt > 12 h alt',
   // #53/#452: honest passage-planning-aid copy — see dict.en.ts's comment
   // for why {used} < {requested} always holds here, why the closing
   // sentence deliberately does not imply unflagged water is safe, and why
@@ -298,6 +311,12 @@ export const de = {
   // trägt.
   'route.shallow.exposure':
     '{dist} dieser Route verlaufen durch Wasser, das flacher als die eingestellte Sicherheitstiefe von {requested} m kartiert ist.',
+  // PR #763 review Blocker 2: the plan's ACTUAL used gate, stated on its own
+  // (never bundled with requested/minGate as route.shallow.detail already
+  // does) so it can render in the Disclosure's always-visible SUMMARY — the
+  // most consequential number in this warning must be visible without
+  // opening anything.
+  'route.shallow.usedDepth': 'Geplant mit einer Sicherheitstiefe von {used} m.',
   // #516 Zuwachs 2 (setzt #518 voraus): siehe dict.en.ts's Kommentar für
   // Zweck, Messung statt Annahme, Reihenfolge und Anaphern-Disziplin.
   // "eingestellte Sicherheitstiefe" statt des Entwurfsdokuments "eingestellte

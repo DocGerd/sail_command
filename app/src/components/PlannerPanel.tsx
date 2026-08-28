@@ -18,7 +18,7 @@ import { formatDepthM } from '../lib/depthDisclosure';
 import HarborPicker from './HarborPicker';
 import { commitSetting, safetyDepthFieldFor } from './OptionsPanel';
 import type { BoatDef } from '../data/boats';
-import NumberInput from './NumberInput';
+import NumberInput, { formatBound, useClampCorrection } from './NumberInput';
 import Card from './Card';
 import Field from './Field';
 import Button from './Button';
@@ -168,6 +168,11 @@ export default function PlannerPanel({
   // `draftM + 0.1`). Same derivation the Boat tab's own render of this field
   // uses, so the two surfaces still clamp identically.
   const safetyDepthField = safetyDepthFieldFor(boat);
+  // #731: the silent blur-clamp's visible correction signal — reset whenever
+  // a boat switch moves safetyDepthField's own min/max out from under it. See
+  // useClampCorrection's own doc comment.
+  const { correctedTo: safetyDepthCorrectedTo, reportCommit: reportSafetyDepthCommit } =
+    useClampCorrection(safetyDepthField.min, safetyDepthField.max);
   const { recent, remember } = useRecentHarbors();
   // Per-endpoint "editing" flag: a selected endpoint collapses to a compact row,
   // and "Ändern"/"Change" reopens its combobox without clearing the selection.
@@ -667,8 +672,24 @@ export default function PlannerPanel({
             max={safetyDepthField.max}
             step={safetyDepthField.step}
             aria-describedby="planner-safety-depth-help"
-            onCommit={(n) => commitSetting(settings, 'safetyDepthM', n, onSettingsChange)}
+            onCommit={(n, wasClamped) => {
+              reportSafetyDepthCommit(n, wasClamped);
+              commitSetting(settings, 'safetyDepthM', n, onSettingsChange);
+            }}
           />
+          {/* #731 review round 2: ALWAYS mounted, empty until a correction
+              occurs — see SettingsPanel.tsx's NumericField (identical
+              pattern) and useClampCorrection's own doc comment for the full
+              record of why this replaced the conditionally-mounted shape. */}
+          <p className="boat-picker-notice" role="status">
+            {safetyDepthCorrectedTo !== null
+              ? t('numberInput.corrected', {
+                  value: formatBound(safetyDepthCorrectedTo, lang),
+                  min: formatBound(safetyDepthField.min, lang),
+                  max: formatBound(safetyDepthField.max, lang),
+                })
+              : null}
+          </p>
         </Field>
       </div>
 
@@ -804,8 +825,20 @@ export default function PlannerPanel({
               derived as `plan?.result.shallow ?? null`, so `shallow` truthy
               already implies `plan` non-null at runtime — TS just can't see
               that implication across the two separately-computed variables. */}
+          {/* #747/Blocker 1, narrowed further in PR #763 review round 3 —
+              see RouteSummary.tsx's own call site for the full mechanism and
+              why `plan.id` alone is not enough: the #114 recalculate-and-
+              replace flow keeps `id` fixed while re-planning against a fresh
+              forecast, so severity can flip with no remount under a
+              `plan.id`-only key. `${plan.id}-${plan.createdAtMs}` changes on
+              every genuine re-plan, replace included. */}
           {plan && shallow && (
-            <ShallowWarning shallow={shallow} legs={result?.legs ?? null} plan={plan} />
+            <ShallowWarning
+              key={`${plan.id}-${plan.createdAtMs}`}
+              shallow={shallow}
+              legs={result?.legs ?? null}
+              plan={plan}
+            />
           )}
           {/* #612: the complement of the banner above, for a route that did NOT
               relax — same shared component and copy as RouteSummary's own, so

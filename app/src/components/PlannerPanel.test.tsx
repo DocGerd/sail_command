@@ -24,6 +24,36 @@ import { boatById, DEFAULT_BOAT_ID, type BoatDef } from '../data/boats';
 import { defaultBoatSnapshot } from '../types';
 import { PLAN_SCHEMA_VERSION } from '../types';
 
+// PR #763 review Minor 7: see RouteSummary.test.tsx's own copy of this
+// helper for the full rationale (jsdom does not hide closed-<details>
+// content, so `getByText`/`getByRole` alone no longer distinguish VISIBLE
+// from merely PRESENT). Every shallow-warning fixture in this file uses a
+// usedDepthM below the severe boundary, so a fresh `renderPanel()` call
+// always mounts with the Disclosure open.
+function expectShallowDetailOpen(expected: boolean): void {
+  const details = document.querySelector(
+    'details.shallow-warning-disclosure',
+  ) as HTMLDetailsElement | null;
+  expect(
+    details,
+    'expected a <details class="shallow-warning-disclosure"> element in the DOM',
+  ).not.toBeNull();
+  expect(details?.open).toBe(expected);
+}
+
+// #731 review round 2: PlannerPanel now ALSO always mounts a second
+// `role="status"` element (the blur-clamp correction notice, scoped to
+// `.planner-safety-depth .boat-picker-notice` — see that describe block's
+// own `notice()` helper), so a bare `screen.getByRole('status')` — this
+// file's PRE-EXISTING pattern for the "plan ready"/routing-phase live
+// region, `.planner-status` — now throws on multiple matches. Scope to the
+// specific element instead of the role.
+function plannerStatus(): HTMLElement {
+  const el = document.querySelector('.planner-status');
+  if (!el) throw new Error('expected .planner-status to exist');
+  return el as HTMLElement;
+}
+
 const FLENSBURG: Harbor = {
   id: 'flensburg',
   names: { de: 'Flensburg', da: 'Flensborg', en: 'Flensburg' },
@@ -749,7 +779,7 @@ describe('PlannerPanel', () => {
 
   it('renders a fetching status message during planning.phase "fetching"', () => {
     renderPanel({ planning: { phase: 'fetching' } });
-    expect(screen.getByRole('status')).toHaveTextContent('Fetching wind forecast');
+    expect(plannerStatus()).toHaveTextContent('Fetching wind forecast');
   });
 
   // #340: the readout is a bounded phase indicator ("sail N of 2 (Rig)"),
@@ -757,12 +787,12 @@ describe('PlannerPanel', () => {
   // index/rig-name substitution would fail visibly.
   it('renders the genoa routing phase as "sail 1 of 2 (Genoa)"', () => {
     renderPanel({ planning: { phase: 'routing', sailId: 'genoa', index: 1, total: 2 } });
-    expect(screen.getByRole('status')).toHaveTextContent('Calculating route… sail 1 of 2 (Genoa)');
+    expect(plannerStatus()).toHaveTextContent('Calculating route… sail 1 of 2 (Genoa)');
   });
 
   it('renders the fock routing phase as "sail 2 of 2 (Fock)" — the genoa->fock switch is not a regression', () => {
     renderPanel({ planning: { phase: 'routing', sailId: 'fock', index: 2, total: 2 } });
-    expect(screen.getByRole('status')).toHaveTextContent('Calculating route… sail 2 of 2 (Fock)');
+    expect(plannerStatus()).toHaveTextContent('Calculating route… sail 2 of 2 (Fock)');
   });
 
   it('does NOT render a plan-run error inline (the App banner is the single alert surface)', () => {
@@ -858,8 +888,16 @@ describe('PlannerPanel', () => {
       expect(input).toHaveAttribute('aria-describedby', 'planner-safety-depth-help');
       const help = document.getElementById('planner-safety-depth-help');
       expect(help).not.toBeNull();
+      // #744: toHaveTextContent's default normalizeWhitespace path collapses
+      // the dict's \u00A0 (non-breaking space, before the unit) to a plain
+      // space on the RECEIVED side only — the expected string built from the
+      // dict template is compared verbatim, so it needs the same collapse or
+      // this assertion never matches.
       expect(help).toHaveTextContent(
-        en['options.safetyDepth.help'].replace('{min}', '2.2').replace('{max}', '10.0'),
+        en['options.safetyDepth.help']
+          .replace('{min}', '2.2')
+          .replace('{max}', '10.0')
+          .replace('\u00A0', ' '),
       );
     });
 
@@ -869,8 +907,13 @@ describe('PlannerPanel', () => {
     it('#699: the help text range follows the SELECTED boat', () => {
       renderPanel({ boat: { ...boatById(DEFAULT_BOAT_ID), id: 'deep-46', draftM: 2.3 } });
       const help = document.getElementById('planner-safety-depth-help');
+      // #744: see the sibling test above for why this needs the same
+      // \u00A0-to-space collapse.
       expect(help).toHaveTextContent(
-        en['options.safetyDepth.help'].replace('{min}', '2.4').replace('{max}', '10.0'),
+        en['options.safetyDepth.help']
+          .replace('{min}', '2.4')
+          .replace('{max}', '10.0')
+          .replace('\u00A0', ' '),
       );
     });
 
@@ -943,6 +986,94 @@ describe('PlannerPanel', () => {
       });
     });
 
+    // #731: the silent blur-clamp now reports a visible correction, scoped
+    // to `.planner-safety-depth` throughout — PlannerPanel also renders an
+    // ALWAYS-MOUNTED `.planner-status` `role="status"` live region (the
+    // "plan ready" announcement), so an unscoped role query would throw on
+    // multiple matches.
+    //
+    // MOUNT SHAPE (PR #758 review round 2): the notice is now ALWAYS
+    // mounted (matching BoatPicker's own #563 shape), empty until a
+    // correction — never absent — so `notice()` below always finds the
+    // element and "no notice" is asserted as EMPTY text content, never as
+    // `.toBeNull()`.
+    describe('#731: blur-clamp correction notice', () => {
+      function notice(): HTMLElement {
+        const el = document.querySelector('.planner-safety-depth .boat-picker-notice');
+        if (!el) throw new Error('expected the always-mounted #731 notice element to exist');
+        return el as HTMLElement;
+      }
+
+      // The assertion that distinguishes always-mounted from conditionally-
+      // mounted (PR #758 review round 2): the live region must exist in the
+      // DOM BEFORE any correction has happened, or AT has nothing to
+      // observe a later text mutation on.
+      it('mounts the correction live region BEFORE any correction has occurred', () => {
+        renderPanel();
+        const el = notice();
+        expect(el).toBeInTheDocument();
+        expect(el).toHaveAttribute('role', 'status');
+        expect(el).toHaveTextContent('');
+      });
+
+      it('shows the notice after a real out-of-range commit, unit-less (the label already carries one)', () => {
+        const props = renderPanel();
+        const input = screen.getByLabelText('Safety depth (m)');
+        fireEvent.change(input, { target: { value: '1' } });
+        fireEvent.blur(input);
+        expect(props.onSettingsChange).toHaveBeenCalledWith({
+          ...DEFAULT_SETTINGS,
+          safetyDepthM: 2.2,
+        });
+        expect(notice()).toHaveAttribute('role', 'status');
+        expect(notice()).toHaveTextContent('Corrected to 2.2 (allowed range 2.2–10)');
+      });
+
+      it('shows no notice for an in-range commit', () => {
+        renderPanel();
+        const input = screen.getByLabelText('Safety depth (m)');
+        fireEvent.change(input, { target: { value: '5' } });
+        fireEvent.blur(input);
+        expect(notice()).toHaveTextContent('');
+      });
+
+      it('clears a previous notice once a later commit lands in range', () => {
+        renderPanel();
+        const input = screen.getByLabelText('Safety depth (m)');
+        fireEvent.change(input, { target: { value: '1' } });
+        fireEvent.blur(input);
+        expect(notice()).not.toHaveTextContent('');
+        fireEvent.change(input, { target: { value: '5' } });
+        fireEvent.blur(input);
+        expect(notice()).toHaveTextContent('');
+      });
+
+      // The DoD's own required browser-pass scenario, reproduced as a unit
+      // test: a boat switch that moves safety depth's own bounds
+      // (elan-444-piranja's 1.9 m draft -> 2.0 m floor, vs the Salona 45's
+      // 2.1 m -> 2.2 m) must not leave a stale "corrected to 2.2" notice
+      // standing once the field it was correcting no longer has that floor.
+      it('clears a stale notice when a boat switch moves the field bounds out from under it', () => {
+        localStorage.setItem('sc-lang', 'en');
+        const props = baseProps();
+        const { rerender } = render(
+          <I18nProvider>
+            <PlannerPanel {...props} />
+          </I18nProvider>,
+        );
+        const input = screen.getByLabelText('Safety depth (m)');
+        fireEvent.change(input, { target: { value: '1' } });
+        fireEvent.blur(input);
+        expect(notice()).not.toHaveTextContent('');
+        rerender(
+          <I18nProvider>
+            <PlannerPanel {...props} boat={boatById('elan-444-piranja')} />
+          </I18nProvider>,
+        );
+        expect(notice()).toHaveTextContent('');
+      });
+    });
+
     it('no longer renders the advanced fields/disclosure inline — they moved to the Boat tab', () => {
       localStorage.setItem('sc-lang', 'en');
       const { container } = render(
@@ -1002,7 +1133,7 @@ describe('PlannerPanel', () => {
         </I18nProvider>,
       );
       // In-flight: the region shows the routing message.
-      expect(screen.getByRole('status')).toHaveTextContent('Calculating route');
+      expect(plannerStatus()).toHaveTextContent('Calculating route');
 
       rerender(
         <I18nProvider>
@@ -1011,7 +1142,7 @@ describe('PlannerPanel', () => {
           />
         </I18nProvider>,
       );
-      const status = screen.getByRole('status');
+      const status = plannerStatus();
       // Stable summary swapped into the SAME region (no second live region).
       expect(status).toHaveTextContent('Route calculated');
       expect(status).toHaveTextContent('21.5 nm');
@@ -1038,7 +1169,7 @@ describe('PlannerPanel', () => {
           />
         </I18nProvider>,
       );
-      expect(screen.getByRole('status')).toHaveTextContent('21.5 nm');
+      expect(plannerStatus()).toHaveTextContent('21.5 nm');
 
       // A new plan OBJECT with the SAME id but a different distance (as a via
       // re-plan produces). The announcement must stay frozen at 21.5, proving
@@ -1054,7 +1185,7 @@ describe('PlannerPanel', () => {
           />
         </I18nProvider>,
       );
-      const status = screen.getByRole('status');
+      const status = plannerStatus();
       expect(status).toHaveTextContent('21.5 nm');
       expect(status).not.toHaveTextContent('30.0 nm');
     });
@@ -1063,7 +1194,7 @@ describe('PlannerPanel', () => {
       renderPanel({ planning: { phase: 'idle' }, plan: makePlan(), rig: 'genoa' });
       // Seeded from the mount plan id, so re-entering the tab with an existing
       // result stays quiet — the region is empty, not restating the summary.
-      expect(screen.getByRole('status').textContent).toBe('');
+      expect(plannerStatus().textContent).toBe('');
     });
   });
 
@@ -1090,6 +1221,7 @@ describe('PlannerPanel', () => {
       // detail this assertion no longer depends on.
       const banner = screen.getByRole('alert');
       expect(banner).toHaveTextContent(/was not passable/);
+      expectShallowDetailOpen(true);
       // Requested depth.
       expect(banner.textContent).toContain('3.0 m');
       // #452: the effective depth the route was actually computed at — the
@@ -1121,6 +1253,10 @@ describe('PlannerPanel', () => {
 
     it('is absent on a plan with no relaxation', () => {
       renderPanel({ plan: makePlan(), rig: 'genoa' });
+      // PR #763 review Minor 7: ABSENCE check, not a visibility one — see
+      // RouteSummary.test.tsx's twin comment. No ShallowWarning mounts at
+      // all on a non-relaxed plan, so there is no Disclosure open/closed
+      // state for this assertion to distinguish.
       expect(screen.queryByText(/was not passable/)).not.toBeInTheDocument();
     });
 
@@ -1140,6 +1276,7 @@ describe('PlannerPanel', () => {
       renderPanel({ plan: makeShallowPlan(), rig: 'fock' });
       const banner = screen.getByText(/was not passable/);
       expect(banner).toBeInTheDocument();
+      expectShallowDetailOpen(true);
       // No summary-dependent content exists for fock — the warning is the
       // only thing this rig's strip has to show; "View details" needs
       // `summary` too and must stay absent.
@@ -1169,6 +1306,7 @@ describe('PlannerPanel', () => {
     it('reports the right count and first occurrence for non-contiguous flagged legs', () => {
       renderPanel({ plan: makeNonContiguousShallowPlan(), rig: 'genoa' });
       const banner = screen.getByText(/was not passable/);
+      expectShallowDetailOpen(true);
       const expected = en['route.shallow.locator.plural']
         .replace('{count}', '2')
         .replace('{time}', formatTime(PLAN_DEPARTURE_MS, 'en'));
@@ -1186,6 +1324,7 @@ describe('PlannerPanel', () => {
       });
       renderPanel({ plan, rig: 'genoa' });
       const banner = screen.getByText(/was not passable/);
+      expectShallowDetailOpen(true);
       const expected = en['route.shallow.locator'].replace(
         '{time}',
         formatTime(PLAN_DEPARTURE_MS, 'en'),
@@ -1205,6 +1344,7 @@ describe('PlannerPanel', () => {
       };
       renderPanel({ plan, rig: 'genoa' });
       const banner = screen.getByText(/was not passable/);
+      expectShallowDetailOpen(true);
       expect(banner.textContent).not.toContain('starts at');
     });
   });
@@ -1261,11 +1401,17 @@ describe('PlannerPanel', () => {
     // `Received: ""`.
     it('DOES fold the stale sentence into the panel status region when formDirty && !settingsDirty', () => {
       renderPanel({ planning: { phase: 'idle' }, plan: makePlan(), rig: 'genoa', formDirty: true });
-      expect(screen.getAllByRole('status')).toHaveLength(1);
+      // 2, not 1, since #731: `.planner-status` (this test's subject) plus
+      // the always-mounted `.boat-picker-notice` blur-clamp notice on the
+      // compact row's safety-depth field (empty here — no clamp occurred).
+      // The count still guards against an ACCIDENTAL third/duplicate live
+      // region; it just isn't 1 any more now that #731 added a second,
+      // legitimate one.
+      expect(screen.getAllByRole('status')).toHaveLength(2);
       // No fresh completion announcement fires on this mount (seeded from
       // the mount plan id, per the transition tests above), so the region's
       // entire text is the folded stale sentence.
-      expect(screen.getByRole('status').textContent).toBe(en['planner.result.stale']);
+      expect(plannerStatus().textContent).toBe(en['planner.result.stale']);
       // The Chip (asserted above) stays visible too — both surfaces show it,
       // this is not a replacement. `{ selector: 'span' }` targets the Chip
       // specifically, since the live region just asserted above ALSO
@@ -1291,7 +1437,7 @@ describe('PlannerPanel', () => {
         formDirty: true,
         settings: driftedSettings,
       });
-      expect(screen.getByRole('status').textContent).toBe('');
+      expect(plannerStatus().textContent).toBe('');
       // The Chip still shows — it stays on the broader `formDirty`
       // regardless of `settingsDirty` (see its own comment in the source).
       expect(screen.getByText(en['planner.result.stale'])).toBeInTheDocument();
@@ -1322,7 +1468,7 @@ describe('PlannerPanel', () => {
           />
         </I18nProvider>,
       );
-      const status = screen.getByRole('status');
+      const status = plannerStatus();
       const text = status.textContent ?? '';
       expect(text).toContain('Route calculated');
       expect(text).toContain(en['planner.result.stale']);
@@ -1355,7 +1501,7 @@ describe('PlannerPanel', () => {
           />
         </I18nProvider>,
       );
-      const status = screen.getByRole('status');
+      const status = plannerStatus();
       const text = status.textContent ?? '';
       expect(text).toContain('Route calculated');
       expect(text).not.toContain(en['planner.result.stale']);
@@ -1415,7 +1561,7 @@ describe('PlannerPanel', () => {
       // Placeholder shapes: one chip + four stat blocks (matching the compact card).
       expect(skeletonCard!.querySelectorAll('.sc-skeleton')).toHaveLength(5);
       // The live status region still carries the a11y feedback (not the skeleton).
-      expect(screen.getByRole('status')).toHaveTextContent('Calculating route');
+      expect(plannerStatus()).toHaveTextContent('Calculating route');
     });
 
     it('shows no skeleton once a result is present (real card replaces it)', () => {
