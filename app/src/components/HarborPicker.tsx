@@ -1,4 +1,12 @@
-import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from 'react';
 import type { Harbor } from '../types';
 import { useLang, useT, type Lang } from '../i18n';
 
@@ -141,7 +149,20 @@ export default function HarborPicker({
   // never flips after mount without a remount), but keeping the effect
   // unambiguously mount-scoped matches the intent in the prop's own doc
   // comment above.
-  useEffect(() => {
+  //
+  // useLayoutEffect, not useEffect (PR #754 review Minor): `useEffect` fires
+  // AFTER paint, leaving a real first-paint window with nothing focused. This
+  // is the SAFE case of the ref-ownership rule (see the `App.tsx`
+  // `--sc-panel-w` writer vs. `PanelResizer.tsx`'s sibling-ref measurement
+  // effect in CLAUDE.md's code-conventions section): `inputRef` targets
+  // HarborPicker's OWN returned `<input>` host fiber, not a sibling or a
+  // child component's node, so React's `commitAttachRef` for this component's
+  // own fiber runs before this component's own layout effects — the ref is
+  // always attached by the time this runs. `PanelResizer.tsx`'s case is the
+  // opposite (a SIBLING's ref, ordering-dependent, measured
+  // `panelRef.current === null` under `useLayoutEffect`) and stays on
+  // `useEffect` for that reason.
+  useLayoutEffect(() => {
     if (autoFocus) inputRef.current?.focus();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only, see comment above
   }, []);
