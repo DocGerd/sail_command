@@ -15,7 +15,9 @@ export const de = {
   // außerhalb liegender Wert wurde beim Verlassen des Felds stillschweigend
   // auf den nächsten gültigen Wert korrigiert. {min}/{max} kommen aus
   // safetyDepthFieldFor(boat), ist also je nach Boot unterschiedlich.
-  'options.safetyDepth.help': 'Erlaubter Bereich: {min}–{max} m',
+  // #744: \u00A0 (geschuetztes Leerzeichen) vor der Einheit verhindert,
+  // dass "10,0 m" als Waise in einer eigenen Zeile umbricht.
+  'options.safetyDepth.help': 'Erlaubter Bereich: {min}–{max}\u00A0m',
   // #731: the sibling, generic notice for the blur-clamp ITSELF (not the
   // disclosure at options.safetyDepth.help above) — shared by all eight
   // NumberInput sites (safety depth here + SettingsPanel's seven

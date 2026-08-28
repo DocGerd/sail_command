@@ -17,7 +17,9 @@ export const en = {
   // an out-of-range value was silently corrected to the nearest valid one on
   // blur. {min}/{max} come from safetyDepthFieldFor(boat), so they vary per
   // boat.
-  'options.safetyDepth.help': 'Allowed range: {min}–{max} m',
+  // #744: \u00A0 (non-breaking space) before the unit keeps "10.0 m" from
+  // wrapping onto its own orphan line when the help paragraph wraps.
+  'options.safetyDepth.help': 'Allowed range: {min}–{max}\u00A0m',
   // #731: the sibling, generic notice for the blur-clamp ITSELF (not the
   // disclosure at options.safetyDepth.help above) — shared by all eight
   // NumberInput sites (safety depth here + SettingsPanel's seven
