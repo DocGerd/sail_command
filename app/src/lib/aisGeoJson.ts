@@ -83,8 +83,15 @@ export function aisPopupRows(
     rows.push({ labelKey: 'ais.popup.sog', value: formatKn(props.sog, lang) });
   if (props.cog !== null) rows.push({ labelKey: 'ais.popup.cog', value: formatHeading(props.cog) });
   // floor, not round: a 30 s-old signal is "0 min" ago (matches the pinned
-  // test literals '2 min' @120 s and '0 min' @30 s).
+  // test literals '2 min ago' @120 s and '0 min ago' @30 s).
   const ageMin = Math.max(0, Math.floor((nowMs - props.lastUpdateMs) / 60_000));
-  rows.push({ labelKey: 'ais.popup.age', value: `${ageMin} min` });
+  // #709: the value must carry the "ago"/"vor" itself, built per-language —
+  // AisLayer.tsx always composes `${label}: ${value}`, and German needs the
+  // preposition on the value side of the colon ("Letztes Signal: vor 2 min"),
+  // not stranded on the label side as it was before.
+  rows.push({
+    labelKey: 'ais.popup.age',
+    value: lang === 'de' ? `vor ${ageMin} min` : `${ageMin} min ago`,
+  });
   return rows;
 }

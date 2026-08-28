@@ -141,7 +141,7 @@ export const en = {
   'error.rateLimited': 'Wind forecast service rate limit reached. Wait a moment and try again.',
   'error.windService': 'Wind forecast could not be loaded. Try again in a moment.',
   'error.internal':
-    'Route planning failed unexpectedly. Try again; if it keeps happening, reload the app.',
+    'Route planning failed unexpectedly. A different route or settings are more likely to help than trying again with the same request.',
   // #662: RouteSummary.tsx's fallback for a SAVED plan whose stored no-route
   // reason cannot be trusted (PR #656 / #614 made `reason` fall back to
   // `null` for a value outside the NoRouteReason union). This render site is
@@ -194,12 +194,12 @@ export const en = {
   'error.noRoute.snapDestination':
     'The destination is not navigable — pick a point at least 300 m from land or shallow water.',
   'error.noRoute.snapVia':
-    'A via point is not navigable — pick a point at least 300 m from land or shallow water.',
+    'A waypoint is not navigable — pick a point at least 300 m from land or shallow water.',
   // #432: the search was cut short BEFORE it finished — unlike every other
   // error.noRoute.* string, this deliberately makes no claim about whether a
   // route exists.
   'error.noRoute.searchBudget':
-    'Route planning hit its time limit before finishing — this does not mean no route exists. A nearer destination, fewer via points, or a smaller depth-comfort span will help; so will a faster device.',
+    'Route planning hit its time limit before finishing — this does not mean no route exists. A nearer destination, fewer waypoints, or a smaller depth-comfort span will help; so will a faster device.',
   'error.replanStaleWind':
     "This plan's stored wind forecast no longer covers its departure time. Plan the route again to load a current forecast.",
   'error.replanInit':
@@ -456,7 +456,7 @@ export const en = {
   'route.legend.motor': 'Motor (engine only)',
   'route.legend.maneuver': 'Tack/gybe',
   'route.legend.headingChange': 'Heading change',
-  'route.legend.via': 'Via waypoint',
+  'route.legend.via': 'Waypoint',
   // #651 fix-wave, MAJOR 1: was 'Charted shallower than safety depth' — that
   // labels the sc-route-shallow swatch, which #651 now ALSO paints for
   // MARGINAL legs (RouteLayer.tsx's ROUTE_STACK_BOTTOM_LAYER), and a
