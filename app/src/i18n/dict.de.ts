@@ -16,6 +16,13 @@ export const de = {
   // auf den nächsten gültigen Wert korrigiert. {min}/{max} kommen aus
   // safetyDepthFieldFor(boat), ist also je nach Boot unterschiedlich.
   'options.safetyDepth.help': 'Erlaubter Bereich: {min}–{max} m',
+  // #731: the sibling, generic notice for the blur-clamp ITSELF (not the
+  // disclosure at options.safetyDepth.help above) — shared by all eight
+  // NumberInput sites (safety depth here + SettingsPanel's seven
+  // NumericField instances), so it deliberately carries NO unit: each
+  // field's own label already has one in parentheses ("Sicherheitstiefe
+  // (m)", "Motorfahrtgeschwindigkeit (kn)", …).
+  'numberInput.corrected': 'Auf {value} korrigiert (zulässiger Bereich {min}–{max})',
   // #299: die Sicherheitstiefe erscheint jetzt an ZWEI Stellen — hier als
   // Schnellzugriff und im Boot-Tab (SettingsPanel) als kanonisches Zuhause,
   // eine gemeinsame Quelle (PR #486 review). Die Tiefenkomfort-Spanne und

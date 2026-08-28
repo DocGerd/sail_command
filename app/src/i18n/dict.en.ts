@@ -18,6 +18,13 @@ export const en = {
   // blur. {min}/{max} come from safetyDepthFieldFor(boat), so they vary per
   // boat.
   'options.safetyDepth.help': 'Allowed range: {min}–{max} m',
+  // #731: the sibling, generic notice for the blur-clamp ITSELF (not the
+  // disclosure at options.safetyDepth.help above) — shared by all eight
+  // NumberInput sites (safety depth here + SettingsPanel's seven
+  // NumericField instances), so it deliberately carries NO unit: each
+  // field's own label already has one in parentheses ("Safety depth (m)",
+  // "Motoring speed (kn)", …).
+  'numberInput.corrected': 'Corrected to {value} (allowed range {min}–{max})',
   // #299: safety depth now appears in TWO places — here for quick access
   // and on the Boat tab (SettingsPanel) as its canonical home, one shared
   // source (PR #486 review). The depth comfort margin and the rest of the

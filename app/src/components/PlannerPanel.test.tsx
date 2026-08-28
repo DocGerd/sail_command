@@ -899,6 +899,76 @@ describe('PlannerPanel', () => {
       });
     });
 
+    // #731: the silent blur-clamp now reports a visible correction, scoped
+    // to `.planner-safety-depth` throughout — PlannerPanel also renders an
+    // ALWAYS-MOUNTED `.planner-status` `role="status"` live region (the
+    // "plan ready" announcement), so an unscoped role query would throw on
+    // multiple matches.
+    describe('#731: blur-clamp correction notice', () => {
+      function notice(container: HTMLElement) {
+        return container.querySelector('.planner-safety-depth .boat-picker-notice');
+      }
+
+      it('shows the notice after a real out-of-range commit, unit-less (the label already carries one)', () => {
+        const props = renderPanel();
+        const input = screen.getByLabelText('Safety depth (m)');
+        fireEvent.change(input, { target: { value: '1' } });
+        fireEvent.blur(input);
+        expect(props.onSettingsChange).toHaveBeenCalledWith({
+          ...DEFAULT_SETTINGS,
+          safetyDepthM: 2.2,
+        });
+        const el = notice(document.body);
+        expect(el).not.toBeNull();
+        expect(el).toHaveAttribute('role', 'status');
+        expect(el).toHaveTextContent('Corrected to 2.2 (allowed range 2.2–10)');
+      });
+
+      it('shows no notice for an in-range commit', () => {
+        renderPanel();
+        const input = screen.getByLabelText('Safety depth (m)');
+        fireEvent.change(input, { target: { value: '5' } });
+        fireEvent.blur(input);
+        expect(notice(document.body)).toBeNull();
+      });
+
+      it('clears a previous notice once a later commit lands in range', () => {
+        renderPanel();
+        const input = screen.getByLabelText('Safety depth (m)');
+        fireEvent.change(input, { target: { value: '1' } });
+        fireEvent.blur(input);
+        expect(notice(document.body)).not.toBeNull();
+        fireEvent.change(input, { target: { value: '5' } });
+        fireEvent.blur(input);
+        expect(notice(document.body)).toBeNull();
+      });
+
+      // The DoD's own required browser-pass scenario, reproduced as a unit
+      // test: a boat switch that moves safety depth's own bounds
+      // (elan-444-piranja's 1.9 m draft -> 2.0 m floor, vs the Salona 45's
+      // 2.1 m -> 2.2 m) must not leave a stale "corrected to 2.2" notice
+      // standing once the field it was correcting no longer has that floor.
+      it('clears a stale notice when a boat switch moves the field bounds out from under it', () => {
+        localStorage.setItem('sc-lang', 'en');
+        const props = baseProps();
+        const { rerender } = render(
+          <I18nProvider>
+            <PlannerPanel {...props} />
+          </I18nProvider>,
+        );
+        const input = screen.getByLabelText('Safety depth (m)');
+        fireEvent.change(input, { target: { value: '1' } });
+        fireEvent.blur(input);
+        expect(notice(document.body)).not.toBeNull();
+        rerender(
+          <I18nProvider>
+            <PlannerPanel {...props} boat={boatById('elan-444-piranja')} />
+          </I18nProvider>,
+        );
+        expect(notice(document.body)).toBeNull();
+      });
+    });
+
     it('no longer renders the advanced fields/disclosure inline — they moved to the Boat tab', () => {
       localStorage.setItem('sc-lang', 'en');
       const { container } = render(

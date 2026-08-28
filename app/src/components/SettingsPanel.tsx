@@ -15,7 +15,7 @@ import {
 import { usePersistedNumber } from '../lib/usePersistedNumber';
 import Card from './Card';
 import Field from './Field';
-import NumberInput from './NumberInput';
+import NumberInput, { formatBound, useClampCorrection } from './NumberInput';
 import Slider from './Slider';
 import {
   DEPTH_COMFORT_MARGIN_FIELD,
@@ -89,6 +89,7 @@ interface NumericFieldProps {
  * (#64) per this tab's own design brief. */
 function NumericField({ spec, value, onChange, help }: NumericFieldProps) {
   const t = useT();
+  const [lang] = useLang();
   const id = `settings-${spec.key}`;
   const helpId = `${id}-help`;
   // `exactOptionalPropertyTypes` (tsconfig) means `Field`'s/`NumberInput`'s
@@ -98,6 +99,11 @@ function NumericField({ spec, value, onChange, help }: NumericFieldProps) {
   // all for its help-less fields rather than passing it as `undefined`.
   const fieldExtra = help !== undefined ? { help, helpId } : {};
   const inputExtra = help !== undefined ? { 'aria-describedby': helpId } : {};
+  // #731: the silent blur-clamp's visible correction signal. Keyed on THIS
+  // field's own bounds, so a boat switch that moves `spec.min`/`spec.max`
+  // out from under it (safety depth is the one per-boat-bounded field today)
+  // clears a stale notice — see useClampCorrection's own doc comment.
+  const { correctedTo, reportCommit } = useClampCorrection(spec.min, spec.max);
   return (
     <Field label={t(spec.labelKey)} htmlFor={id} {...fieldExtra}>
       <NumberInput
@@ -107,8 +113,26 @@ function NumericField({ spec, value, onChange, help }: NumericFieldProps) {
         max={spec.max}
         step={spec.step}
         {...inputExtra}
-        onCommit={(n) => commitSetting(value, spec.key, n, onChange)}
+        onCommit={(n, wasClamped) => {
+          reportCommit(n, wasClamped);
+          commitSetting(value, spec.key, n, onChange);
+        }}
       />
+      {/* Mounted only while there's something to say (the `Field` help-
+          paragraph pattern) rather than BoatPicker's always-mounted
+          zero-box-when-empty CSS treatment — a deliberate, documented
+          trade-off (#731's own issue text) that needs no new CSS: reusing
+          `.boat-picker-notice` here is safe precisely BECAUSE this notice is
+          never rendered empty. */}
+      {correctedTo !== null && (
+        <p className="boat-picker-notice" role="status">
+          {t('numberInput.corrected', {
+            value: formatBound(correctedTo, lang),
+            min: formatBound(spec.min, lang),
+            max: formatBound(spec.max, lang),
+          })}
+        </p>
+      )}
     </Field>
   );
 }

@@ -115,6 +115,98 @@ describe('SettingsPanel (#299 Boat tab)', () => {
     expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, safetyDepthM: 2.2 });
   });
 
+  // #731: the silent blur-clamp now reports a visible correction. Scoped
+  // WITHIN the relevant .sc-card section throughout — SettingsPanel also
+  // renders BoatPicker's own always-mounted `role="status"` notice (a
+  // DIFFERENT element, in the Boat picker's own card) and the seamark-size
+  // slider's `<output>` (implicit `role="status"`, in Map display), so an
+  // unscoped getByRole('status') would either match the wrong element or
+  // throw on multiple matches.
+  describe('#731: blur-clamp correction notice', () => {
+    it('shows the notice after a real out-of-range commit, unit-less (the label already carries one)', () => {
+      const onChange = renderPanel();
+      const section = sectionOf('Boat & safety');
+      const input = within(section).getByLabelText('Safety depth (m)');
+      fireEvent.change(input, { target: { value: '1' } });
+      fireEvent.blur(input);
+      expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, safetyDepthM: 2.2 });
+      expect(within(section).getByRole('status')).toHaveTextContent(
+        'Corrected to 2.2 (allowed range 2.2–10)',
+      );
+    });
+
+    it('shows no notice for an in-range commit', () => {
+      renderPanel();
+      const section = sectionOf('Boat & safety');
+      const input = within(section).getByLabelText('Safety depth (m)');
+      fireEvent.change(input, { target: { value: '5' } });
+      fireEvent.blur(input);
+      expect(within(section).queryByRole('status')).not.toBeInTheDocument();
+    });
+
+    it('shows no notice for the empty-field revert (a different, intentionally silent path)', () => {
+      const onChange = renderPanel();
+      const section = sectionOf('Boat & safety');
+      const input = within(section).getByLabelText('Maneuver penalty (s)');
+      fireEvent.change(input, { target: { value: '' } });
+      fireEvent.blur(input);
+      expect(onChange).not.toHaveBeenCalled();
+      expect(within(section).queryByRole('status')).not.toBeInTheDocument();
+    });
+
+    it('clears a previous notice once a later commit on the same field lands in range', () => {
+      renderPanel();
+      const section = sectionOf('Propulsion');
+      const input = within(section).getByLabelText('Motoring speed (kn)');
+      fireEvent.change(input, { target: { value: '25' } });
+      fireEvent.blur(input);
+      expect(within(section).getByRole('status')).toHaveTextContent(
+        'Corrected to 10 (allowed range 1–10)',
+      );
+      fireEvent.change(input, { target: { value: '5' } });
+      fireEvent.blur(input);
+      expect(within(section).queryByRole('status')).not.toBeInTheDocument();
+    });
+
+    // The DoD's own required browser-pass scenario, reproduced here as a
+    // unit test: a boat switch that moves safety depth's own bounds
+    // (elan-444-piranja's 1.9 m draft -> 2.0 m floor, vs the Salona 45's
+    // 2.1 m -> 2.2 m) must not leave a stale "corrected to 2.2" notice
+    // standing once the field it was correcting no longer has that floor.
+    it('clears a stale notice when a boat switch moves the field bounds out from under it', () => {
+      const onChange = vi.fn();
+      localStorage.setItem('sc-lang', 'en');
+      const { rerender } = render(
+        <I18nProvider>
+          <SettingsPanel
+            value={DEFAULT_SETTINGS}
+            onChange={onChange}
+            boatId={DEFAULT_BOAT_ID}
+            onBoatIdChange={vi.fn()}
+          />
+        </I18nProvider>,
+      );
+      const section = sectionOf('Boat & safety');
+      const input = within(section).getByLabelText('Safety depth (m)');
+      fireEvent.change(input, { target: { value: '1' } });
+      fireEvent.blur(input);
+      expect(within(section).getByRole('status')).toHaveTextContent(
+        'Corrected to 2.2 (allowed range 2.2–10)',
+      );
+      rerender(
+        <I18nProvider>
+          <SettingsPanel
+            value={DEFAULT_SETTINGS}
+            onChange={onChange}
+            boatId="elan-444-piranja"
+            onBoatIdChange={vi.fn()}
+          />
+        </I18nProvider>,
+      );
+      expect(within(sectionOf('Boat & safety')).queryByRole('status')).not.toBeInTheDocument();
+    });
+  });
+
   describe('Boat & safety group', () => {
     it('renders the depth comfort margin field with its default value and help paragraph, grouped under Boat & safety', () => {
       renderPanel();
