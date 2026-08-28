@@ -797,8 +797,13 @@ export default function PlannerPanel({
               derived as `plan?.result.shallow ?? null`, so `shallow` truthy
               already implies `plan` non-null at runtime — TS just can't see
               that implication across the two separately-computed variables. */}
+          {/* #747/Blocker 1: `key={plan.id}` is REQUIRED — see
+              RouteSummary.tsx's own call site for the full mechanism
+              (Disclosure.tsx's `useState(defaultOpen)` seeds once and never
+              re-syncs, so a plan transition without this key can leave a
+              newly-severe plan's warning collapsed). */}
           {plan && shallow && (
-            <ShallowWarning shallow={shallow} legs={result?.legs ?? null} plan={plan} />
+            <ShallowWarning key={plan.id} shallow={shallow} legs={result?.legs ?? null} plan={plan} />
           )}
           {/* #612: the complement of the banner above, for a route that did NOT
               relax — same shared component and copy as RouteSummary's own, so

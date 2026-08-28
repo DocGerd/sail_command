@@ -21,6 +21,32 @@ import { boatSnapshot, defaultBoatSnapshot } from '../types';
 import { boatById } from '../data/boats';
 import { PLAN_SCHEMA_VERSION } from '../types';
 
+// PR #763 review Minor 7: `screen.getByText(/was not passable/)` (the
+// route.shallow.detail sentence, inside the #747 Disclosure body) finds the
+// text whether or not the Disclosure is open — jsdom does not hide non-
+// summary <details> content the way a real browser does, so a passing
+// assertion here no longer distinguishes VISIBLE from merely PRESENT in the
+// DOM. This reads the native `.open` IDL property (never `getAttribute`,
+// which cannot tell present from absent for a boolean attribute) on the
+// real `<details class="shallow-warning-disclosure">` element to assert the
+// actual open state the text's reachability depends on. Every fixture in
+// this file that renders the shallow warning uses a usedDepthM below the
+// severe boundary (isSevere = usedDepthM - MASK_TOLERANCE_M < BOAT_DRAFT_M),
+// so `defaultOpen={isSevere}` opens the Disclosure on first mount — a fresh
+// `render()`/`renderSummary()` call seeds correctly without needing the
+// `key={plan.id}` re-sync fix (Blocker 1), which only matters across a
+// plan-to-plan TRANSITION within one mounted component, not a fresh mount.
+function expectShallowDetailOpen(expected: boolean): void {
+  const details = document.querySelector(
+    'details.shallow-warning-disclosure',
+  ) as HTMLDetailsElement | null;
+  expect(
+    details,
+    'expected a <details class="shallow-warning-disclosure"> element in the DOM',
+  ).not.toBeNull();
+  expect(details?.open).toBe(expected);
+}
+
 // #54: the pre-#54 shape exposed `plan.result.genoa`/`.fock`/`.fockReason`
 // etc. as directly-mutable fields; the `sails` list's own entries are now
 // `readonly`, so a test that used to write `plan.result.genoa = X` instead
@@ -787,6 +813,7 @@ describe('shallow-water warning banner (#53/#452)', () => {
   it('renders on BOTH rig tabs — the warning is plan-level, not per rig', () => {
     renderSummary({ plan: makeShallowPlan(), rig: 'fock' });
     expect(screen.getByText(/was not passable/)).toBeInTheDocument();
+    expectShallowDetailOpen(true);
   });
 
   // Review finding (PR #461 Major 2): German is the app's DEFAULT language
@@ -821,6 +848,12 @@ describe('shallow-water warning banner (#53/#452)', () => {
 
   it('is absent on plans without relaxation', () => {
     renderSummary();
+    // PR #763 review Minor 7: this one is an ABSENCE check, not a
+    // visibility one — on a non-relaxed plan the whole ShallowWarning
+    // component never mounts at all (no Disclosure to be open or closed),
+    // so the open/closed distinction the other assertions in this file now
+    // check does not apply here; `queryByText` returning null is already
+    // the strongest possible statement.
     expect(screen.queryByText(/was not passable/)).toBeNull();
   });
 });
@@ -923,6 +956,7 @@ describe('#452 gap 3: per-leg shallow marker + locator sentence', () => {
   it('reports the right count and first occurrence for non-contiguous flagged legs', () => {
     renderSummary({ plan: makeShallowPlan(NON_CONTIGUOUS_SHALLOW_LEGS), rig: 'genoa' });
     const banner = screen.getByText(/was not passable/);
+    expectShallowDetailOpen(true);
     const expected = en['route.shallow.locator.plural']
       .replace('{count}', '2')
       .replace('{time}', formatTime(DEPARTURE_MS, 'en'));
@@ -932,6 +966,7 @@ describe('#452 gap 3: per-leg shallow marker + locator sentence', () => {
   it('uses the singular sentence (no count) when exactly one leg is flagged', () => {
     renderSummary({ plan: makeShallowPlan(SINGLE_SHALLOW_LEGS), rig: 'genoa' });
     const banner = screen.getByText(/was not passable/);
+    expectShallowDetailOpen(true);
     const expected = en['route.shallow.locator'].replace('{time}', formatTime(DEPARTURE_MS, 'en'));
     expect(banner.textContent).toContain(expected);
     // The plural form must not ALSO appear (a mis-picked key would add it).
@@ -950,6 +985,7 @@ describe('#452 gap 3: per-leg shallow marker + locator sentence', () => {
     };
     renderSummary({ plan });
     const banner = screen.getByText(/was not passable/);
+    expectShallowDetailOpen(true);
     expect(banner.textContent).not.toContain('starts at');
   });
 
@@ -958,6 +994,7 @@ describe('#452 gap 3: per-leg shallow marker + locator sentence', () => {
     setSail(plan, 'fock', { result: null, reason: 'unreachable' });
     renderSummary({ plan, rig: 'fock' });
     const banner = screen.getByText(/was not passable/);
+    expectShallowDetailOpen(true);
     expect(banner.textContent).not.toContain('starts at');
   });
 
@@ -1195,6 +1232,51 @@ describe('#493: cautious depth disclosure', () => {
       // `de[...]`.
       expect(lead?.textContent).toContain('kann bis auf 2,0 m sinken');
       expect(lead?.textContent).toContain('unter den Bootstiefgang von 2,1 m');
+    });
+
+    // PR #763 review Blocker 1 / Major 4: Disclosure.tsx's `useState(defaultOpen)`
+    // seeds ONCE at mount and never re-syncs on a later `defaultOpen` prop
+    // change — so a plan swapped into an ALREADY-MOUNTED RouteSummary (a
+    // `rerender`, not a fresh `render`) used to keep whichever open/closed
+    // state the FIRST plan's Disclosure had, regardless of the new plan's own
+    // severity. MEASURED before the fix: mild plan renders closed (correct),
+    // then rerendering with a NEW severe plan id left it closed too
+    // (`open === false` where the fix requires `true`). `key={plan.id}` on
+    // both ShallowWarning call sites forces React to unmount/remount the
+    // component (and so its Disclosure) on every genuine plan change,
+    // reseeding `useState` from the new plan's own `isSevere` — this test
+    // exercises exactly that TRANSITION, not a fresh mount, which is the one
+    // shape a `render()`-only test cannot catch (Blocker 1's own report).
+    it('#763 Blocker 1: re-opens on a plan TRANSITION from mild to severe (not just a fresh mount)', () => {
+      const mildPlan = makeSeverityPlan(BOUNDARY_USED_DEPTH_M);
+      mildPlan.id = 'plan-mild';
+      const { rerender, container } = render(
+        <I18nProvider>
+          <RouteSummary plan={mildPlan} rig="genoa" onRigChange={vi.fn()} />
+        </I18nProvider>,
+      );
+      const mildDetails = container.querySelector(
+        'details.shallow-warning-disclosure',
+      ) as HTMLDetailsElement | null;
+      expect(mildDetails).not.toBeNull();
+      expect(mildDetails?.open).toBe(false);
+
+      const severePlan = makeSeverityPlan(BELOW_BOUNDARY_USED_DEPTH_M);
+      severePlan.id = 'plan-severe'; // a DIFFERENT id — a genuine new plan.
+      rerender(
+        <I18nProvider>
+          <RouteSummary plan={severePlan} rig="genoa" onRigChange={vi.fn()} />
+        </I18nProvider>,
+      );
+      const banner = container.querySelector('.shallow-warning');
+      expect(banner).toHaveClass('shallow-warning--severe');
+      const severeDetails = container.querySelector(
+        'details.shallow-warning-disclosure',
+      ) as HTMLDetailsElement | null;
+      expect(severeDetails).not.toBeNull();
+      // Without `key={plan.id}`, this reads `false` — the mild plan's
+      // closed state surviving the transition (MEASURED).
+      expect(severeDetails?.open).toBe(true);
     });
   });
 });

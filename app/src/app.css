@@ -2488,6 +2488,37 @@ select {
   padding: 0;
 }
 
+/* PR #763 review Blocker 2: the summary now holds a multi-sentence
+   paragraph (lead + usedDepthM + exposure), not a short label — the
+   primitive's own `.sc-disclosure-summary` is `display:flex;
+   align-items:center` for a short row (chevron + label), so without this
+   the summary content and the chevron would sit as TWO independent flex
+   items fighting for row width instead of one wrapping paragraph next to
+   the chevron. `align-items: flex-start` keeps the chevron pinned to the
+   first line rather than vertically centred against a now-taller,
+   possibly-multi-line block. `.shallow-warning__summary` is the SINGLE flex
+   item holding both summary spans — `flex: 1 1 auto; min-width: 0` is the
+   same shrink-to-fit pattern `.settings-seamark-size-row .sc-slider` above
+   already uses, letting the paragraph wrap and shrink instead of forcing
+   the row wider than its container. */
+.shallow-warning-disclosure > .sc-disclosure-summary {
+  align-items: flex-start;
+}
+
+.shallow-warning__summary {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The usedDepthM/exposure addition (Blocker 2) reads at normal weight,
+   distinct from the bold `.shallow-warning__lead` beside it — it is still
+   part of the always-visible summary, but the LEAD stays the one emphasised
+   fact, matching `.shallow-warning__detail`'s own normal-weight convention
+   for "what happened" content once it moves out of the lead's spotlight. */
+.shallow-warning__summary-detail {
+  font-weight: 400;
+}
+
 .shallow-warning-disclosure > .sc-disclosure-body {
   padding: 0;
 }

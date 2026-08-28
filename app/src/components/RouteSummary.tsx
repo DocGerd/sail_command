@@ -224,27 +224,49 @@ export function ShallowWarning({
     cautious: cautiousM,
     draft: formatDepthM(draftM, lang),
   });
+  // #703/#516 increment 1's exposure figure and this plan's own usedDepthM
+  // BOTH need to be visible without interaction (PR #763 review Blocker 2:
+  // usedDepthM is the gate the route was ACTUALLY planned at, and the
+  // exposure distance answers "how much of my route" — inseparable from
+  // "how shallow"). Rendered in a SEPARATE span
+  // (`shallow-warning__summary-detail`), never appended into
+  // `shallow-warning__lead` itself, so the exact-text pins on the lead
+  // elsewhere in this file's test suite stay meaningful.
+  const usedDepthText = t('route.shallow.usedDepth', {
+    used: formatDepthM(shallow.usedDepthM, lang),
+  });
   // #504 wave 4 / #747: ONE role="alert" region (a <div>, not a <p>) holding
-  // a headline lead, a collapsible detail body and an always-visible caveat
-  // — so a screen reader still announces one region while sighted users get
-  // a real visual hierarchy instead of one dense, uniformly-bold paragraph
-  // (pre-#747) or, before that, a five-sentence unconditional wall of prose
-  // that pushed the actual Ergebnis stats below the fold on a phone (#747's
-  // own live DE example).
+  // a headline SUMMARY, a collapsible detail body and an always-visible
+  // caveat — so a screen reader still announces one region while sighted
+  // users get a real visual hierarchy instead of one dense, uniformly-bold
+  // paragraph (pre-#747) or, before that, a five-sentence unconditional wall
+  // of prose that pushed the actual Ergebnis stats below the fold on a
+  // phone (#747's own live DE example).
   //
   // #747 constraint 1 (read before touching this): content inside a closed
   // <details> drops out of the accessibility tree, so whatever is in the
   // SUMMARY is the entire safety signal a screen reader gets without an
-  // explicit expand. `leadText` above already states the #493 cautious-floor
-  // figure and, in the severe case, the below-draft fact — the two things
-  // #747 names as non-negotiable — so nothing new has to be said in the
-  // summary; only the "what happened" mechanism sentence (exposure/
-  // confined/detail/locator/remedy) moves behind the Disclosure.
+  // explicit expand. The summary therefore carries THREE things, never just
+  // the lead: `leadText` (the #493 cautious-floor figure and, in the severe
+  // case, the below-draft fact), `usedDepthText` (Blocker 2 above), and the
+  // exposure sentence when `exposureDist` has resolved to a real, non-zero
+  // measurement. Everything else — confined/detail/locator/remedy, the
+  // "what happened" MECHANISM rather than the hazard itself — stays behind
+  // the Disclosure, since #747's own DoD only requires the hazard, not its
+  // explanation, to survive a collapse.
   //
-  // #747 constraint 2: `defaultOpen={isSevere}` — the below-draft case starts
-  // EXPANDED (the app's most urgent depth copy gets its full explanation
-  // with no extra tap); every other case starts collapsed, since its lead
-  // sentence alone is already the complete actionable fact.
+  // #747 constraint 2: `defaultOpen={isSevere}` — the below-draft case is
+  // meant to start EXPANDED and every other case collapsed. That is true
+  // ONLY on a fresh mount: Disclosure.tsx's `useState(defaultOpen)` seeds
+  // once and never re-syncs on a later `defaultOpen` prop change, so a plan
+  // SWAPPED into an already-mounted RouteSummary/PlannerPanel would keep
+  // whichever open/closed state the PREVIOUS plan's disclosure had,
+  // regardless of the new plan's own severity (PR #763 review Blocker 1,
+  // MEASURED: mild plan -> new severe plan id rendered collapsed). Both call
+  // sites now pass `key={plan.id}` on this component specifically to force a
+  // real remount — and therefore a fresh `useState` seed — on every genuine
+  // plan change; see those call sites' own comments. The claim above is
+  // therefore accurate given that key, not despite it.
   //
   // The CAVEAT stays a SIBLING of the Disclosure, never a child of it: the
   // `.shallow-warning__caveat` CSS rule (app.css) already documents "NEVER
@@ -262,7 +284,32 @@ export function ShallowWarning({
       <Disclosure
         className="shallow-warning-disclosure"
         defaultOpen={isSevere}
-        summary={<span className="shallow-warning__lead">{leadText}</span>}
+        summary={
+          <span className="shallow-warning__summary">
+            <span className="shallow-warning__lead">{leadText}</span>
+            {/* PR #763 review Blocker 2: usedDepthM and the exposure
+                distance stay OUTSIDE the collapsible body too (this is an
+                ADDITION alongside `.shallow-warning__detail`'s own existing
+                mention of both, not a relocation of it) — deliberately kept
+                in its OWN span, never appended into `.shallow-warning__lead`
+                itself, so every exact-text `.toBe()` pin on the lead
+                elsewhere in this file's test suite keeps reading only the
+                lead sentence. */}
+            <span className="shallow-warning__summary-detail">
+              {' '}
+              {usedDepthText}
+              {exposureDist !== null && (
+                <>
+                  {' '}
+                  {t('route.shallow.exposure', {
+                    dist: exposureDist,
+                    requested: formatDepthM(shallow.requestedDepthM, lang),
+                  })}
+                </>
+              )}
+            </span>
+          </span>
+        }
       >
         <p className="shallow-warning__detail">
           {exposureDist !== null && (
@@ -719,9 +766,24 @@ export default function RouteSummary({
           per-rig branch below). Persisted with the plan, so a reloaded plan
           renders it identically. #452: shared with PlannerPanel's compact
           Ergebnis strip via the ShallowWarning component above, so the same
-          plan-level warning is visible without switching to this tab too. */}
+          plan-level warning is visible without switching to this tab too.
+          #747/Blocker 1: `key={plan.id}` is REQUIRED, not decorative —
+          Disclosure.tsx's `useState(defaultOpen)` seeds once at first mount
+          and never re-syncs on a `defaultOpen` prop change, so without this
+          key a plan-to-plan transition (same mounted RouteSummary, a new
+          plan swapped in) keeps whatever open/closed state the FIRST plan's
+          disclosure had — a severe plan replacing a mild one would render
+          collapsed despite `defaultOpen={isSevere}` being true. Keying on
+          `plan.id` forces React to unmount/remount ShallowWarning (and so
+          Disclosure) on every genuine plan change, reseeding `useState` from
+          the new plan's own `isSevere`. */}
       {plan.result.shallow && (
-        <ShallowWarning shallow={plan.result.shallow} legs={result?.legs ?? null} plan={plan} />
+        <ShallowWarning
+          key={plan.id}
+          shallow={plan.result.shallow}
+          legs={result?.legs ?? null}
+          plan={plan}
+        />
       )}
 
       {/* #612: the complement of the banner above — a quiet route-scoped line
