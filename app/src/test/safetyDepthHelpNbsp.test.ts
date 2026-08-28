@@ -86,12 +86,12 @@ describe('#744: options.safetyDepth.help keeps its non-breaking space', () => {
     assertEndsWithNbspEscape(value, 'dict.en.ts');
     // Must be an escape, never a raw invisible byte -- a future hand-edit
     // pasting a real nbsp character back in must red here.
-    expect(value.includes(RAW_NBSP)).toBe(false);
+    expect(value).not.toContain(RAW_NBSP);
   });
 
   it('dict.de.ts spells it as a recognised \\u00A0-family escape, immediately before the unit', () => {
     const value = readHelpValue(DE_PATH, 'dict.de.ts');
     assertEndsWithNbspEscape(value, 'dict.de.ts');
-    expect(value.includes(RAW_NBSP)).toBe(false);
+    expect(value).not.toContain(RAW_NBSP);
   });
 });
