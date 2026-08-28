@@ -118,21 +118,25 @@ function NumericField({ spec, value, onChange, help }: NumericFieldProps) {
           commitSetting(value, spec.key, n, onChange);
         }}
       />
-      {/* Mounted only while there's something to say (the `Field` help-
-          paragraph pattern) rather than BoatPicker's always-mounted
-          zero-box-when-empty CSS treatment — a deliberate, documented
-          trade-off (#731's own issue text) that needs no new CSS: reusing
-          `.boat-picker-notice` here is safe precisely BECAUSE this notice is
-          never rendered empty. */}
-      {correctedTo !== null && (
-        <p className="boat-picker-notice" role="status">
-          {t('numberInput.corrected', {
-            value: formatBound(correctedTo, lang),
-            min: formatBound(spec.min, lang),
-            max: formatBound(spec.max, lang),
-          })}
-        </p>
-      )}
+      {/* #731 review round 2: ALWAYS mounted, empty until a correction
+          occurs — matching BoatPicker's #563 MAJOR 1 shape (a live region
+          must already be in the accessibility tree before its text changes)
+          rather than the conditionally-mounted shape #731's issue text had
+          pre-approved. Reuses `.boat-picker-notice`'s existing `:empty` rule
+          (added for BoatPicker itself), so this needs no new CSS: the
+          `correctedTo !== null ? … : null` ternary renders a truly empty
+          `<p>` (no child nodes at all) when there's nothing to say, which is
+          what makes `:empty` match. See useClampCorrection's own doc
+          comment for the full record of this decision. */}
+      <p className="boat-picker-notice" role="status">
+        {correctedTo !== null
+          ? t('numberInput.corrected', {
+              value: formatBound(correctedTo, lang),
+              min: formatBound(spec.min, lang),
+              max: formatBound(spec.max, lang),
+            })
+          : null}
+      </p>
     </Field>
   );
 }

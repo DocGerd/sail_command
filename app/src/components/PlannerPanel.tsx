@@ -670,18 +670,19 @@ export default function PlannerPanel({
               commitSetting(settings, 'safetyDepthM', n, onSettingsChange);
             }}
           />
-          {/* #731: mounted only while there's something to say — see
-              SettingsPanel.tsx's NumericField for the identical pattern and
-              why `.boat-picker-notice` is safe to reuse here. */}
-          {safetyDepthCorrectedTo !== null && (
-            <p className="boat-picker-notice" role="status">
-              {t('numberInput.corrected', {
-                value: formatBound(safetyDepthCorrectedTo, lang),
-                min: formatBound(safetyDepthField.min, lang),
-                max: formatBound(safetyDepthField.max, lang),
-              })}
-            </p>
-          )}
+          {/* #731 review round 2: ALWAYS mounted, empty until a correction
+              occurs — see SettingsPanel.tsx's NumericField (identical
+              pattern) and useClampCorrection's own doc comment for the full
+              record of why this replaced the conditionally-mounted shape. */}
+          <p className="boat-picker-notice" role="status">
+            {safetyDepthCorrectedTo !== null
+              ? t('numberInput.corrected', {
+                  value: formatBound(safetyDepthCorrectedTo, lang),
+                  min: formatBound(safetyDepthField.min, lang),
+                  max: formatBound(safetyDepthField.max, lang),
+                })
+              : null}
+          </p>
         </Field>
       </div>
 

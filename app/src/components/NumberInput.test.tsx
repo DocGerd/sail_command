@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react';
-import NumberInput, { formatBound, useClampCorrection } from './NumberInput';
+import NumberInput, { formatBound, resolveNumberCommit, useClampCorrection } from './NumberInput';
 
 afterEach(() => {
   cleanup();
@@ -62,6 +62,41 @@ describe('NumberInput (#731: the "was I corrected" onCommit signal)', () => {
     fireEvent.change(input, { target: { value: 'abc' } });
     fireEvent.blur(input);
     expect(onCommit).toHaveBeenCalledWith(5, false);
+  });
+});
+
+// #731 review round 2: Infinity/-Infinity are SPEC'D by the finite guard's
+// own doc comment ("false on every OTHER commit path") but were untested —
+// and cannot be tested through the rendered `<input type="number">` at all.
+// Measured directly against jsdom (matching the WHATWG "rules for parsing
+// floating-point number values" algorithm, which every spec-compliant
+// browser implements): assigning a value whose Number() parse overflows to
+// Infinity — e.g. "1e400" — sanitizes the input's `.value` to `''` BEFORE
+// this component's onChange ever runs, so `draft` can never actually equal
+// such a string when reached through the real widget. A `fireEvent.change`
+// test asserting the Infinity case would be silently VACUOUS: the mutation
+// it exists to catch could never fire, because the empty-string branch
+// would take over regardless of what the finite guard does with Infinity.
+// `resolveNumberCommit` is tested directly instead, bypassing the DOM
+// entirely, so the guard's FULL domain is actually exercised.
+describe('resolveNumberCommit (#731 review round 2: Infinity is reachable only here, not via the DOM)', () => {
+  it('reverts on a positive-Infinity draft, reporting wasClamped=false', () => {
+    expect(resolveNumberCommit('Infinity', 5, 2, 10)).toEqual({ next: 5, wasClamped: false });
+  });
+
+  it('reverts on a negative-Infinity draft, reporting wasClamped=false', () => {
+    expect(resolveNumberCommit('-Infinity', 5, 2, 10)).toEqual({ next: 5, wasClamped: false });
+  });
+
+  // Equivalence check against the DOM-level rows above, so this function is
+  // proven to be the SAME logic `handleBlur` delegates to, not a parallel
+  // implementation that could drift from it.
+  it('matches the DOM-level clamp/revert rows for ordinary inputs', () => {
+    expect(resolveNumberCommit('1', 5, 2, 10)).toEqual({ next: 2, wasClamped: true });
+    expect(resolveNumberCommit('99', 5, 2, 10)).toEqual({ next: 10, wasClamped: true });
+    expect(resolveNumberCommit('7', 5, 2, 10)).toEqual({ next: 7, wasClamped: false });
+    expect(resolveNumberCommit('', 5, 2, 10)).toEqual({ next: 5, wasClamped: false });
+    expect(resolveNumberCommit('abc', 5, 2, 10)).toEqual({ next: 5, wasClamped: false });
   });
 });
 

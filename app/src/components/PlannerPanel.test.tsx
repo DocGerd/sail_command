@@ -24,6 +24,19 @@ import { boatById, DEFAULT_BOAT_ID, type BoatDef } from '../data/boats';
 import { defaultBoatSnapshot } from '../types';
 import { PLAN_SCHEMA_VERSION } from '../types';
 
+// #731 review round 2: PlannerPanel now ALSO always mounts a second
+// `role="status"` element (the blur-clamp correction notice, scoped to
+// `.planner-safety-depth .boat-picker-notice` — see that describe block's
+// own `notice()` helper), so a bare `screen.getByRole('status')` — this
+// file's PRE-EXISTING pattern for the "plan ready"/routing-phase live
+// region, `.planner-status` — now throws on multiple matches. Scope to the
+// specific element instead of the role.
+function plannerStatus(): HTMLElement {
+  const el = document.querySelector('.planner-status');
+  if (!el) throw new Error('expected .planner-status to exist');
+  return el as HTMLElement;
+}
+
 const FLENSBURG: Harbor = {
   id: 'flensburg',
   names: { de: 'Flensburg', da: 'Flensborg', en: 'Flensburg' },
@@ -705,7 +718,7 @@ describe('PlannerPanel', () => {
 
   it('renders a fetching status message during planning.phase "fetching"', () => {
     renderPanel({ planning: { phase: 'fetching' } });
-    expect(screen.getByRole('status')).toHaveTextContent('Fetching wind forecast');
+    expect(plannerStatus()).toHaveTextContent('Fetching wind forecast');
   });
 
   // #340: the readout is a bounded phase indicator ("sail N of 2 (Rig)"),
@@ -713,12 +726,12 @@ describe('PlannerPanel', () => {
   // index/rig-name substitution would fail visibly.
   it('renders the genoa routing phase as "sail 1 of 2 (Genoa)"', () => {
     renderPanel({ planning: { phase: 'routing', sailId: 'genoa', index: 1, total: 2 } });
-    expect(screen.getByRole('status')).toHaveTextContent('Calculating route… sail 1 of 2 (Genoa)');
+    expect(plannerStatus()).toHaveTextContent('Calculating route… sail 1 of 2 (Genoa)');
   });
 
   it('renders the fock routing phase as "sail 2 of 2 (Fock)" — the genoa->fock switch is not a regression', () => {
     renderPanel({ planning: { phase: 'routing', sailId: 'fock', index: 2, total: 2 } });
-    expect(screen.getByRole('status')).toHaveTextContent('Calculating route… sail 2 of 2 (Fock)');
+    expect(plannerStatus()).toHaveTextContent('Calculating route… sail 2 of 2 (Fock)');
   });
 
   it('does NOT render a plan-run error inline (the App banner is the single alert surface)', () => {
@@ -904,10 +917,30 @@ describe('PlannerPanel', () => {
     // ALWAYS-MOUNTED `.planner-status` `role="status"` live region (the
     // "plan ready" announcement), so an unscoped role query would throw on
     // multiple matches.
+    //
+    // MOUNT SHAPE (PR #758 review round 2): the notice is now ALWAYS
+    // mounted (matching BoatPicker's own #563 shape), empty until a
+    // correction — never absent — so `notice()` below always finds the
+    // element and "no notice" is asserted as EMPTY text content, never as
+    // `.toBeNull()`.
     describe('#731: blur-clamp correction notice', () => {
-      function notice(container: HTMLElement) {
-        return container.querySelector('.planner-safety-depth .boat-picker-notice');
+      function notice(): HTMLElement {
+        const el = document.querySelector('.planner-safety-depth .boat-picker-notice');
+        if (!el) throw new Error('expected the always-mounted #731 notice element to exist');
+        return el as HTMLElement;
       }
+
+      // The assertion that distinguishes always-mounted from conditionally-
+      // mounted (PR #758 review round 2): the live region must exist in the
+      // DOM BEFORE any correction has happened, or AT has nothing to
+      // observe a later text mutation on.
+      it('mounts the correction live region BEFORE any correction has occurred', () => {
+        renderPanel();
+        const el = notice();
+        expect(el).toBeInTheDocument();
+        expect(el).toHaveAttribute('role', 'status');
+        expect(el).toHaveTextContent('');
+      });
 
       it('shows the notice after a real out-of-range commit, unit-less (the label already carries one)', () => {
         const props = renderPanel();
@@ -918,10 +951,8 @@ describe('PlannerPanel', () => {
           ...DEFAULT_SETTINGS,
           safetyDepthM: 2.2,
         });
-        const el = notice(document.body);
-        expect(el).not.toBeNull();
-        expect(el).toHaveAttribute('role', 'status');
-        expect(el).toHaveTextContent('Corrected to 2.2 (allowed range 2.2–10)');
+        expect(notice()).toHaveAttribute('role', 'status');
+        expect(notice()).toHaveTextContent('Corrected to 2.2 (allowed range 2.2–10)');
       });
 
       it('shows no notice for an in-range commit', () => {
@@ -929,7 +960,7 @@ describe('PlannerPanel', () => {
         const input = screen.getByLabelText('Safety depth (m)');
         fireEvent.change(input, { target: { value: '5' } });
         fireEvent.blur(input);
-        expect(notice(document.body)).toBeNull();
+        expect(notice()).toHaveTextContent('');
       });
 
       it('clears a previous notice once a later commit lands in range', () => {
@@ -937,10 +968,10 @@ describe('PlannerPanel', () => {
         const input = screen.getByLabelText('Safety depth (m)');
         fireEvent.change(input, { target: { value: '1' } });
         fireEvent.blur(input);
-        expect(notice(document.body)).not.toBeNull();
+        expect(notice()).not.toHaveTextContent('');
         fireEvent.change(input, { target: { value: '5' } });
         fireEvent.blur(input);
-        expect(notice(document.body)).toBeNull();
+        expect(notice()).toHaveTextContent('');
       });
 
       // The DoD's own required browser-pass scenario, reproduced as a unit
@@ -959,13 +990,13 @@ describe('PlannerPanel', () => {
         const input = screen.getByLabelText('Safety depth (m)');
         fireEvent.change(input, { target: { value: '1' } });
         fireEvent.blur(input);
-        expect(notice(document.body)).not.toBeNull();
+        expect(notice()).not.toHaveTextContent('');
         rerender(
           <I18nProvider>
             <PlannerPanel {...props} boat={boatById('elan-444-piranja')} />
           </I18nProvider>,
         );
-        expect(notice(document.body)).toBeNull();
+        expect(notice()).toHaveTextContent('');
       });
     });
 
@@ -1028,7 +1059,7 @@ describe('PlannerPanel', () => {
         </I18nProvider>,
       );
       // In-flight: the region shows the routing message.
-      expect(screen.getByRole('status')).toHaveTextContent('Calculating route');
+      expect(plannerStatus()).toHaveTextContent('Calculating route');
 
       rerender(
         <I18nProvider>
@@ -1037,7 +1068,7 @@ describe('PlannerPanel', () => {
           />
         </I18nProvider>,
       );
-      const status = screen.getByRole('status');
+      const status = plannerStatus();
       // Stable summary swapped into the SAME region (no second live region).
       expect(status).toHaveTextContent('Route calculated');
       expect(status).toHaveTextContent('21.5 nm');
@@ -1064,7 +1095,7 @@ describe('PlannerPanel', () => {
           />
         </I18nProvider>,
       );
-      expect(screen.getByRole('status')).toHaveTextContent('21.5 nm');
+      expect(plannerStatus()).toHaveTextContent('21.5 nm');
 
       // A new plan OBJECT with the SAME id but a different distance (as a via
       // re-plan produces). The announcement must stay frozen at 21.5, proving
@@ -1080,7 +1111,7 @@ describe('PlannerPanel', () => {
           />
         </I18nProvider>,
       );
-      const status = screen.getByRole('status');
+      const status = plannerStatus();
       expect(status).toHaveTextContent('21.5 nm');
       expect(status).not.toHaveTextContent('30.0 nm');
     });
@@ -1089,7 +1120,7 @@ describe('PlannerPanel', () => {
       renderPanel({ planning: { phase: 'idle' }, plan: makePlan(), rig: 'genoa' });
       // Seeded from the mount plan id, so re-entering the tab with an existing
       // result stays quiet — the region is empty, not restating the summary.
-      expect(screen.getByRole('status').textContent).toBe('');
+      expect(plannerStatus().textContent).toBe('');
     });
   });
 
@@ -1287,11 +1318,17 @@ describe('PlannerPanel', () => {
     // `Received: ""`.
     it('DOES fold the stale sentence into the panel status region when formDirty && !settingsDirty', () => {
       renderPanel({ planning: { phase: 'idle' }, plan: makePlan(), rig: 'genoa', formDirty: true });
-      expect(screen.getAllByRole('status')).toHaveLength(1);
+      // 2, not 1, since #731: `.planner-status` (this test's subject) plus
+      // the always-mounted `.boat-picker-notice` blur-clamp notice on the
+      // compact row's safety-depth field (empty here — no clamp occurred).
+      // The count still guards against an ACCIDENTAL third/duplicate live
+      // region; it just isn't 1 any more now that #731 added a second,
+      // legitimate one.
+      expect(screen.getAllByRole('status')).toHaveLength(2);
       // No fresh completion announcement fires on this mount (seeded from
       // the mount plan id, per the transition tests above), so the region's
       // entire text is the folded stale sentence.
-      expect(screen.getByRole('status').textContent).toBe(en['planner.result.stale']);
+      expect(plannerStatus().textContent).toBe(en['planner.result.stale']);
       // The Chip (asserted above) stays visible too — both surfaces show it,
       // this is not a replacement. `{ selector: 'span' }` targets the Chip
       // specifically, since the live region just asserted above ALSO
@@ -1317,7 +1354,7 @@ describe('PlannerPanel', () => {
         formDirty: true,
         settings: driftedSettings,
       });
-      expect(screen.getByRole('status').textContent).toBe('');
+      expect(plannerStatus().textContent).toBe('');
       // The Chip still shows — it stays on the broader `formDirty`
       // regardless of `settingsDirty` (see its own comment in the source).
       expect(screen.getByText(en['planner.result.stale'])).toBeInTheDocument();
@@ -1348,7 +1385,7 @@ describe('PlannerPanel', () => {
           />
         </I18nProvider>,
       );
-      const status = screen.getByRole('status');
+      const status = plannerStatus();
       const text = status.textContent ?? '';
       expect(text).toContain('Route calculated');
       expect(text).toContain(en['planner.result.stale']);
@@ -1381,7 +1418,7 @@ describe('PlannerPanel', () => {
           />
         </I18nProvider>,
       );
-      const status = screen.getByRole('status');
+      const status = plannerStatus();
       const text = status.textContent ?? '';
       expect(text).toContain('Route calculated');
       expect(text).not.toContain(en['planner.result.stale']);
@@ -1441,7 +1478,7 @@ describe('PlannerPanel', () => {
       // Placeholder shapes: one chip + four stat blocks (matching the compact card).
       expect(skeletonCard!.querySelectorAll('.sc-skeleton')).toHaveLength(5);
       // The live status region still carries the a11y feedback (not the skeleton).
-      expect(screen.getByRole('status')).toHaveTextContent('Calculating route');
+      expect(plannerStatus()).toHaveTextContent('Calculating route');
     });
 
     it('shows no skeleton once a result is present (real card replaces it)', () => {
