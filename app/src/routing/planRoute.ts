@@ -357,19 +357,36 @@ export function planRoute(
   const requestedGate = uniformGate(s.safetyDepthM);
 
   const wind = new WindField(windGrid);
-  // #54: `deps.polars` is a plain Record, so a key the caller never supplied
-  // reads as `undefined`. This throw pins the DIAGNOSTIC, not the existence
-  // of a failure — `new Polar(undefined)` throws on `table.rig` either way
-  // (lib/polar.ts) — so what it buys is naming WHICH key is missing, at the
-  // lookup instead of at the `new Polar` construction below. One check for
-  // every path:
+  // #54: a key the caller never supplied is absent from `deps.polars`
+  // (rejected below via Object.hasOwn, #601). This throw pins the
+  // DIAGNOSTIC, not the existence of a failure — `new Polar(undefined)`
+  // throws on `table.rig` either way (lib/polar.ts) — so what it buys is
+  // naming WHICH key is missing, at the lookup instead of at the
+  // `new Polar` construction below. One check for every path:
   // protocol.ts hands over only the keys `init` carried, and the sweep
   // harness and tests construct PlanDeps directly.
+  //
+  // #601: protocol.ts's worker (production) path builds its per-plan
+  // `polars` object via Object.create(null); every OTHER PlanDeps
+  // constructor in this codebase — test fixtures and the sweep harness —
+  // builds an ordinary `{}` object literal instead, so `deps.polars` is NOT
+  // always null-prototype. Object.hasOwn below is what makes the guard
+  // correct regardless of which shape a given caller passed.
   const polarFor = (sailId: SailId): PolarTable => {
     const key = polarKey(deps.boat.id, sailId);
-    const table: PolarTable | undefined = deps.polars[key];
-    if (table === undefined) throw new Error(`#54: no polar table for ${key}`);
-    return table;
+    // #601: Object.hasOwn, not a `!== undefined` chain lookup. `in` and a
+    // bare property read both walk the PROTOTYPE CHAIN, so a key that
+    // happened to collide with an Object.prototype member name (toString,
+    // constructor, hasOwnProperty, ...) would silently resolve to an
+    // INHERITED function instead of tripping this fail-closed throw — every
+    // `Object.getOwnPropertyNames(Object.prototype)` member passes a bare
+    // `!== undefined` check. Unreachable today (every real key is
+    // `${boatId}/${sailId}` via polarKey() above, so it always contains a
+    // literal "/", which none of those 12 names do), but the guard is
+    // written to test what it means to test rather than lean on that shape
+    // holding forever.
+    if (!Object.hasOwn(deps.polars, key)) throw new Error(`#54: no polar table for ${key}`);
+    return deps.polars[key];
   };
   const run = (
     sailId: SailId,
