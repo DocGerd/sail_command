@@ -685,6 +685,13 @@ export const en = {
   'about.open': 'About SailCommand',
   'about.title': 'About SailCommand',
   'about.close': 'Close',
+  // #696: the icon-only close control beside the title. Distinct from
+  // 'about.close' (the bottom text button's label) so the two controls have
+  // different accessible names — both mean "close the dialog", but a
+  // screen-reader user should be able to tell them apart, and giving them
+  // the same name would also make `getByRole('button', { name })` queries
+  // ambiguous.
+  'about.closeDialog': 'Close dialog',
   'about.version': 'Version {version}',
   'about.changelog.title': "What's new",
   'about.changelog.langNote': 'The changelog is maintained in English.',

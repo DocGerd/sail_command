@@ -961,11 +961,16 @@ making design-level decisions; do not silently deviate.
   the two drift independently, never assume one offset). Measured effect:
   spec runtime ~6.5s -> ~2.3s,
   stabilising after three reads (~820ms) — placement had been settled almost
-  immediately all along. Whether any OTHER spec shares this defect is
-  UNCONFIRMED — a grep of `annotations.spec.ts` (the spec `labels.spec.ts`'s
-  gate was originally modelled on) finds no `once('idle')`/fixed-cap race at
-  all, so do not assume it is affected; #376 tracks auditing `app/e2e/**` by
-  MEASUREMENT rather than by pattern-matching.
+  immediately all along. Whether any OTHER spec shares this defect is now
+  SETTLED, not UNCONFIRMED (#618, 2026-08-28): a repo-wide grep for
+  `once('idle'` under `app/e2e/**/*.spec.ts` finds exactly four hits, ALL
+  inside `//` comments describing this now-fixed historical race (two each
+  in `labels.spec.ts` and `seamarks.spec.ts`) — ZERO live
+  `map.once('idle', ...)` synchronisation gates exist anywhere in the suite
+  today. `annotations.spec.ts` specifically was checked directly and does
+  NOT share this defect (`labels.spec.ts`'s own prior claim that it "likely"
+  did was false and has been corrected there). #376 tracked exactly this
+  audit (state confirmed closed 2026-08-28).
 - Dark mode has NO in-app toggle — it is pure `@media (prefers-color-scheme:
   dark)` in `app.css`, so a both-themes verification pass needs Playwright
   `page.emulateMedia({ colorScheme })`, never a UI click.
