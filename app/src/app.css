@@ -2632,7 +2632,12 @@ select {
   display: grid;
   grid-template-columns: 1fr minmax(7rem, 10rem);
   gap: 0.75rem;
-  align-items: end;
+  /* #744: `end` was correct at #64 (2026-07-18, ad1fb51) when BOTH columns
+     ended at the input. #699 (2026-08-26, 01bf94e) added a help paragraph
+     below only the safety-depth column, so aligning both columns' bottoms
+     pushed the departure-date input down to match — a baseline mismatch
+     between the two inputs. `start` aligns both columns' TOPS instead. */
+  align-items: start;
 }
 
 @media (max-width: 380px) {

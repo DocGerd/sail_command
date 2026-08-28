@@ -17,7 +17,9 @@ export const en = {
   // an out-of-range value was silently corrected to the nearest valid one on
   // blur. {min}/{max} come from safetyDepthFieldFor(boat), so they vary per
   // boat.
-  'options.safetyDepth.help': 'Allowed range: {min}–{max} m',
+  // #744: \u00A0 (non-breaking space) before the unit keeps "10.0 m" from
+  // wrapping onto its own orphan line when the help paragraph wraps.
+  'options.safetyDepth.help': 'Allowed range: {min}–{max}\u00A0m',
   // #299: safety depth now appears in TWO places — here for quick access
   // and on the Boat tab (SettingsPanel) as its canonical home, one shared
   // source (PR #486 review). The depth comfort margin and the rest of the

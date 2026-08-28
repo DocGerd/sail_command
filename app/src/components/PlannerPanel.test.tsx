@@ -814,8 +814,16 @@ describe('PlannerPanel', () => {
       expect(input).toHaveAttribute('aria-describedby', 'planner-safety-depth-help');
       const help = document.getElementById('planner-safety-depth-help');
       expect(help).not.toBeNull();
+      // #744: toHaveTextContent's default normalizeWhitespace path collapses
+      // the dict's \u00A0 (non-breaking space, before the unit) to a plain
+      // space on the RECEIVED side only — the expected string built from the
+      // dict template is compared verbatim, so it needs the same collapse or
+      // this assertion never matches.
       expect(help).toHaveTextContent(
-        en['options.safetyDepth.help'].replace('{min}', '2.2').replace('{max}', '10.0'),
+        en['options.safetyDepth.help']
+          .replace('{min}', '2.2')
+          .replace('{max}', '10.0')
+          .replace('\u00A0', ' '),
       );
     });
 
@@ -825,8 +833,13 @@ describe('PlannerPanel', () => {
     it('#699: the help text range follows the SELECTED boat', () => {
       renderPanel({ boat: { ...boatById(DEFAULT_BOAT_ID), id: 'deep-46', draftM: 2.3 } });
       const help = document.getElementById('planner-safety-depth-help');
+      // #744: see the sibling test above for why this needs the same
+      // \u00A0-to-space collapse.
       expect(help).toHaveTextContent(
-        en['options.safetyDepth.help'].replace('{min}', '2.4').replace('{max}', '10.0'),
+        en['options.safetyDepth.help']
+          .replace('{min}', '2.4')
+          .replace('{max}', '10.0')
+          .replace('\u00A0', ' '),
       );
     });
 
