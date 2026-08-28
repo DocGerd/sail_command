@@ -149,9 +149,10 @@ import { startPreview } from './helpers';
 // saw (not just counts — see the swap case above), rather than returning
 // best-effort and letting an unstable state slip through as evidence.
 //
-// annotations.spec.ts's barb-density assertion uses the identical
-// `map.once('idle', ...)` shape and likely has the same defect — NOT fixed
-// here (out of this PR's scope; the coordinator is filing it separately).
+// annotations.spec.ts was checked directly (#618, 2026-08-28): it has ZERO
+// `map.once('idle', ...)` occurrences anywhere in that file and does not
+// share this defect — the earlier "likely has the same defect" claim here
+// was false, refuted by that grep.
 //
 // Two output channels for the settle diagnostic, kept for different
 // readers: a `console.log` line (what reaches a human on an ordinary CI

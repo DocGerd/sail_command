@@ -471,6 +471,11 @@ export default function PlannerPanel({
             <HarborPicker
               harbors={harbors}
               recentIds={recent}
+              // #737: true only when this mount was caused by the Change
+              // button above (see HarborPicker's own `autoFocus` doc comment
+              // for why `editingOrigin` itself, not a derived expression, is
+              // the right signal here).
+              autoFocus={editingOrigin}
               onSelect={(h) => {
                 remember(h.id);
                 setEditingOrigin(false);
@@ -524,6 +529,8 @@ export default function PlannerPanel({
             <HarborPicker
               harbors={harbors}
               recentIds={recent}
+              // #737: see the matching comment on the origin HarborPicker above.
+              autoFocus={editingDestination}
               onSelect={(h) => {
                 remember(h.id);
                 setEditingDestination(false);
