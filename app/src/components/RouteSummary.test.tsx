@@ -584,7 +584,14 @@ describe('RouteSummary', () => {
     expect(caption?.textContent).toBe(en['route.legs.disclosure'].replace('{count}', '3'));
   });
 
-  it('renders the ten legs-table headers in order, including Duration (#379) and Shallow (#452)', () => {
+  it('renders the ten legs-table headers in order, with Shallow (#698) right after Type', () => {
+    // #698: Shallow moved from last-of-ten to immediately after Type
+    // (Kind) — its natural home, since it qualifies the leg exactly as
+    // Type does. Column 10 of 10 sat off the visible edge of the
+    // horizontally-scrolling table with no cue the table scrolled at all,
+    // so the app's only per-leg depth-safety signal was reliably invisible
+    // at narrow widths. This position, not merely presence, is the thing
+    // under test.
     const { container } = renderSummary({ rig: 'genoa' });
     const headers = Array.from(container.querySelectorAll('table.route-legs thead th')).map(
       (th) => th.textContent,
@@ -593,13 +600,13 @@ describe('RouteSummary', () => {
       'Time',
       'Duration',
       'Type',
+      'Shallow',
       'COG',
       'TWA',
       'TWS',
       'Speed',
       'Distance',
       'Maneuver',
-      'Shallow',
     ]);
   });
 
@@ -665,10 +672,10 @@ describe('RouteSummary', () => {
   // #662: `reason: null` alongside `result: null` is the SAVED-plan-only
   // state PR #656 (#614) introduced — a stored no-route reason outside the
   // NoRouteReason union falls back to `null` rather than a bad cast. Before
-  // #662 this rendered the generic, live-planning-flavoured `error.internal`
-  // ("Try again; reload the app"), which is untrue here: this screen is
-  // reading an already-saved record, not running a live plan, so neither
-  // action can do anything. The fix names the one thing that DOES help.
+  // #662 this rendered the generic, live-planning-flavoured `error.internal`,
+  // which is untrue here: this screen is reading an already-saved record,
+  // not running a live plan, so neither a retry nor a reload can do
+  // anything. The fix names the one thing that DOES help.
   it('#662: a saved plan with an untrusted stored no-route reason gets copy that says to re-plan, not "try again"/"reload"', () => {
     const plan = makePlan();
     setSail(plan, 'fock', { result: null, reason: null });
@@ -678,10 +685,11 @@ describe('RouteSummary', () => {
     // The generic live-planning fallback must NOT render for this saved-plan
     // path — that would be the #662 defect reappearing.
     expect(alert.textContent).not.toContain(en['error.internal']);
-    // Its remedy framing specifically: no retry/reload language, unlike
-    // error.internal's own "Try again; if it keeps happening, reload the
-    // app." — a regression back to that generic key would still say "Try
-    // again" and this is what would catch it even if the key name survived.
+    // Its remedy framing specifically: no retry/reload language at all,
+    // unlike this screen's OWN historical bug of rendering error.internal's
+    // retry-oriented framing — a regression back to that generic key would
+    // still differ from this saved-plan copy, which is what would catch it
+    // even if the key name survived.
     expect(alert.textContent).not.toMatch(/try again/i);
     expect(alert.textContent).not.toMatch(/reload the app/i);
     expect(screen.queryByRole('table')).not.toBeInTheDocument();

@@ -11,6 +11,7 @@ import changelogRaw from '../../../CHANGELOG.md?raw';
 // changelogFragmentsPlugin (never via a `?raw` glob — see that plugin's own
 // comment for why), exposed as this virtual module's default export.
 import fragmentsRaw from 'virtual:changelog-fragments';
+import Button from './Button';
 import { useT, useLang } from '../i18n';
 import { depthMaskCaveatVars } from '../lib/depthDisclosure';
 import { parseChangelog } from '../lib/changelog';
@@ -28,6 +29,30 @@ const changelogReleases = withPendingFragments(
   parseChangelog(changelogRaw),
   assembleFragments(fragmentsRaw),
 );
+
+// #696: elements a keyboard user can reach inside the dialog, for the Tab
+// focus trap below. `summary` is listed explicitly — the two `Disclosure`s
+// (`#131`/`#187`) render native `<details><summary>`, and `<summary>` is
+// keyboard-focusable in every real browser despite carrying no `tabindex`,
+// so a selector built only from the usual form-control tags would silently
+// miss it and let Tab escape through the (visually hidden, but still
+// present) app shell behind the disclosure. `:not([disabled])` on the
+// form-control tags mirrors the native rule that a disabled control is
+// never in the tab order; `[tabindex]:not([tabindex="-1"])` covers anything
+// deliberately opted in (or out) via an explicit tabindex.
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  'summary',
+  '[tabindex]:not([tabindex="-1"])',
+].join(', ');
+
+function focusableElements(container: HTMLElement): HTMLElement[] {
+  return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+}
 
 export interface AboutDialogProps {
   open: boolean;
@@ -75,7 +100,16 @@ export default function AboutDialog({ open, onClose, boat }: AboutDialogProps) {
   const t = useT();
   const [lang] = useLang();
   const [maskSources, setMaskSources] = useState<string[] | undefined>(undefined);
+  // #696: the icon close button beside the title is the natural initial-
+  // focus / restore-on-close target — it's the first element a Tab or a
+  // screen reader reaches, so landing here means "you're in a dialog, here's
+  // how out" instead of requiring a full traversal to find the (still
+  // present) bottom Close button first.
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  // #696: the dialog's own root, so the Tab-trap effect below can enumerate
+  // ITS OWN focusable descendants without depending on DOM order elsewhere
+  // in the app shell.
+  const dialogRef = useRef<HTMLDivElement>(null);
   // The element focused right before the dialog opened — restored on close
   // so keyboard/screen-reader users land back where they were (the header's
   // About button in practice, #427: an inline SVG icon, not a glyph),
@@ -96,7 +130,40 @@ export default function AboutDialog({ open, onClose, boat }: AboutDialogProps) {
   useEffect(() => {
     if (!open) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+      // #696: a real focus trap. `aria-modal="true"` above ASSERTS that the
+      // rest of the document is inert to assistive tech, but nothing
+      // previously enforced it for KEYBOARD users — Tab/Shift+Tab could
+      // walk straight through the (visually dimmed, but still live) app
+      // shell behind the backdrop into map/routing controls a sighted mouse
+      // user would never reach while the dialog is "open". Cycling within
+      // the dialog's own focusables closes that gap without touching
+      // App.tsx (out of scope here; the issue's own alternative to marking
+      // the app-shell siblings `inert`).
+      if (e.key !== 'Tab') return;
+      const dialogEl = dialogRef.current;
+      if (!dialogEl) return;
+      const focusables = focusableElements(dialogEl);
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      // Also wraps when focus is somehow OUTSIDE the dialog (e.g. nothing
+      // focused yet) rather than only at the two edges, so the trap can't
+      // be defeated by a focus target the dialog doesn't know about.
+      const outside = !active || !dialogEl.contains(active);
+      if (e.shiftKey) {
+        if (outside || active === first) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else if (outside || active === last) {
+        e.preventDefault();
+        first.focus();
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -121,8 +188,42 @@ export default function AboutDialog({ open, onClose, boat }: AboutDialogProps) {
         aria-labelledby="about-dialog-title"
         className="about-dialog"
         onClick={(e) => e.stopPropagation()}
+        ref={dialogRef}
       >
-        <h2 id="about-dialog-title">{t('about.title')}</h2>
+        <div className="about-dialog-header">
+          <h2 id="about-dialog-title">{t('about.title')}</h2>
+          {/* #696: a close affordance NEAR THE TITLE — previously the only
+              close control was the bottom Close button, reachable only
+              after traversing the whole dialog (title, tagline, version,
+              What's new, disclaimer, caveats, Data sources). On the
+              short-landscape edge viewports (844x390, 740x360) that bottom
+              button can sit below the fold; this one never does. Icon-only
+              (no visible label), so it needs its own aria-label — reuses
+              the inline-SVG-with-app.css-classes pattern #427 established
+              for the header's (i) info icon (currentColor -> --sc-fg,
+              themes automatically in both colour schemes with no new
+              tokens), not that icon's geometry. The bottom Close button is
+              KEPT per the issue's "keep or drop as the maintainer prefers"
+              — removing a working, already-tested control is the riskier
+              default. */}
+          <Button
+            variant="ghost"
+            ref={closeButtonRef}
+            className="about-close-btn"
+            aria-label={t('about.closeDialog')}
+            onClick={onClose}
+          >
+            <svg
+              className="about-close-icon-svg"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <line x1="6" y1="6" x2="18" y2="18" />
+              <line x1="18" y1="6" x2="6" y2="18" />
+            </svg>
+          </Button>
+        </div>
         <p className="about-tagline">{t('app.tagline')}</p>
         {/* #125: build-time version (vite.config.ts `define`) — identifies
             the installed bundle for stale-service-worker triage. Shows the
@@ -198,9 +299,9 @@ export default function AboutDialog({ open, onClose, boat }: AboutDialogProps) {
           </ul>
         </Disclosure>
 
-        <button type="button" ref={closeButtonRef} onClick={onClose}>
+        <Button variant="ghost" onClick={onClose}>
           {t('about.close')}
-        </button>
+        </Button>
       </div>
     </div>
   );

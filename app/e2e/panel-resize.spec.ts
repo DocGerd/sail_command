@@ -133,8 +133,9 @@ test.describe('#355 resizable panel', () => {
       // number", a real reflow proportional to the actual panel growth.
       //
       // #412-shaped defect, fixed here: MapLibre throttles its own
-      // resize+redraw to one call per 50ms (installed maplibre-gl@6.1.0,
-      // `ui/map.ts:3977-3994`, `_setupResizeObserver`'s `throttle(..., 50)`)
+      // resize+redraw to one call per 50ms (`_setupResizeObserver`, `ui/map.ts`
+      // ~:3994-4012, `throttle(..., 50)` call ~:3996 — re-derived against
+      // maplibre-gl@6.5.0, 2026-08-28)
       // — reading the canvas box in the SAME TICK as `mouse.up()` can
       // sample PRE-resize geometry and pass or fail for reasons unrelated
       // to the behaviour under test. Poll until settled instead.
@@ -355,22 +356,26 @@ test.describe('#355 resizable panel', () => {
 
       // Ten headers, in order — the #379 nine-column count this table
       // reached before #355 could be built against it (PR #410) grew to ten
-      // when #452 gap 3 added the trailing "Untiefe" (shallow-marker) column
-      // (PR #483). Position matters here: the new column is LAST in the
-      // rendered DOM (RouteSummary.tsx appends it after Manöver), not just
-      // appended to this list by assertion convenience.
+      // when #452 gap 3 added the "Untiefe" (shallow-marker) column
+      // (PR #483). #698 then moved that column from last-of-ten to
+      // immediately after "Art" (Kind/Type) — its natural home, since it
+      // qualifies the leg exactly as Kind does — because column 10 of 10
+      // sat off the visible edge of this horizontally-scrolling table with
+      // no cue it scrolled at all, so the app's only per-leg depth-safety
+      // signal was reliably invisible at narrow widths. Position matters
+      // here, not just presence — the array below pins that new position.
       const headers = page.locator('.route-legs thead th');
       await expect(headers).toHaveText([
         'Zeit',
         'Dauer',
         'Art',
+        'Untiefe',
         'COG',
         'TWA',
         'TWS',
         'Geschwindigkeit',
         'Distanz',
         'Manöver',
-        'Untiefe',
       ]);
 
       const table = page.locator('.route-legs');

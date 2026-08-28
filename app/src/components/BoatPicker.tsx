@@ -35,6 +35,12 @@ function BoatOption({ boat, selected, onSelect }: BoatOptionProps) {
   const tier = weakestPolarTier(boat);
   const inputId = `boat-option-${boat.id}`;
   const keelId = `${inputId}-keel`;
+  // #701: the provenance note (below) needs its own id too, so the radio's
+  // `aria-describedby` can point at it UNCONDITIONALLY — unlike the keel
+  // caveat, `draftProvenance.note` renders for every boat (see the #566
+  // comment on that paragraph), so it must always be in the description
+  // list, not just when `keelUnverified`.
+  const noteId = `${inputId}-note`;
   // Spec N.2's disclosure fires on `hullVerified === false`, i.e. "this draft
   // was NOT checked against this hull's own papers" — not on the presence of
   // a field. `draftProvenance` is REQUIRED on every BoatDef, so a fleet entry
@@ -44,10 +50,14 @@ function BoatOption({ boat, selected, onSelect }: BoatOptionProps) {
   // nothing wrote, and the paragraph was silently never emitted for exactly
   // the two hulls the spec requires it for.
   const keelUnverified = !boat.draftProvenance.hullVerified;
-  // `exactOptionalPropertyTypes`: the prop must be OMITTED, not passed as
-  // `undefined`, when there is no caveat paragraph to point at — same shape as
-  // SettingsPanel.tsx's own `fieldExtra`/`inputExtra` spreads.
-  const keelDescribedBy = keelUnverified ? { 'aria-describedby': keelId } : {};
+  // #701: `aria-describedby` takes a space-separated id list, so both the
+  // keel caveat (when present) and the provenance note are always included.
+  // Before this fix the note carried no `id` at all and this attribute was
+  // omitted entirely on a hull-verified boat (today only the Salona 45), so
+  // the citation was unreachable to a screen-reader user who arrows onto it.
+  const keelDescribedBy = {
+    'aria-describedby': keelUnverified ? `${keelId} ${noteId}` : noteId,
+  };
   return (
     <div
       className={['boat-option', selected ? 'boat-option-selected' : null]
@@ -64,14 +74,18 @@ function BoatOption({ boat, selected, onSelect }: BoatOptionProps) {
         className="boat-option-radio"
         value={boat.id}
         checked={selected}
-        // Points at the keel caveat below, so the sentence reaches a
-        // screen-reader user who ARROWS onto this boat. Without it the caveat
-        // is only reachable by reading past the control: arrow keys move
-        // between radios and skip everything else in the group, which is
-        // native behaviour no container role changes (PR #563 MINOR 4). It is
-        // the DESCRIPTION, not the name — folding it into the label would make
-        // every radio announce a paragraph, which the keel comment below
-        // rejects for good reason.
+        // Points at the keel caveat (when present) AND the provenance note
+        // below, so both sentences reach a screen-reader user who ARROWS onto
+        // this boat. Without it, either paragraph is only reachable by
+        // reading past the control: arrow keys move between radios and skip
+        // everything else in the group, which is native behaviour no
+        // container role changes (PR #563 MINOR 4). #701: the note id is
+        // ALWAYS included — unlike the keel caveat, the note renders for
+        // every boat, so gating it on `keelUnverified` the way the caveat is
+        // would leave it unreachable on a hull-verified boat (today the
+        // Salona 45 alone). It is the DESCRIPTION, not the name — folding it
+        // into the label would make every radio announce a paragraph, which
+        // the keel comment below rejects for good reason.
         {...keelDescribedBy}
         onChange={onSelect}
       />
@@ -104,7 +118,8 @@ function BoatOption({ boat, selected, onSelect }: BoatOptionProps) {
           about the option, not part of the control's accessible name, and
           folding it in would make every radio announce a paragraph — the
           radio's `aria-describedby` above is what still carries it to a
-          screen reader, as a description rather than a name.
+          screen reader, as a description rather than a name (one id in the
+          space-separated list alongside the note's own, #701).
 
           Absent on a hull-verified boat — today the Salona 45 alone, the app's
           model-level reference boat (spec J OQ-4's carve-out) with no individual
@@ -138,8 +153,16 @@ function BoatOption({ boat, selected, onSelect }: BoatOptionProps) {
           verified English — WCAG 2.1 SC 3.1.2, Language of Parts) — this
           marks the LANGUAGE of the verbatim citation for assistive tech, it
           does not translate or paraphrase it, so it is fully compatible with
-          the #607 ruling above, not a reversal of it. */}
-      <p className="boat-option-draft-note" lang="en">
+          the #607 ruling above, not a reversal of it.
+          #701: `id={noteId}` makes this reachable via the radio's
+          `aria-describedby` (see that attribute's own comment above) — before
+          this fix the element had no id and was referenced by nothing, so a
+          screen-reader user never heard it. `.boat-option-draft-note` in
+          app.css also gets a left border to visually separate this citation
+          from the keel caveat immediately above it (when both render), since
+          the two previously shared identical typography and read as one
+          run-on paragraph. */}
+      <p className="boat-option-draft-note" id={noteId} lang="en">
         {boat.draftProvenance.note}
       </p>
       <Disclosure className="boat-option-polars" summary={t('boat.polarDetail.summary')}>

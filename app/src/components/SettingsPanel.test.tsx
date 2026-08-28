@@ -115,6 +115,117 @@ describe('SettingsPanel (#299 Boat tab)', () => {
     expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, safetyDepthM: 2.2 });
   });
 
+  // #731: the silent blur-clamp now reports a visible correction. EVERY
+  // NumericField (all seven in this panel, not just the ones with a `help`
+  // paragraph) mounts its OWN notice element unconditionally, so a
+  // section-scoped `within(section).getByRole('status')` throws on multiple
+  // matches the moment a section holds more than one NumericField (all four
+  // in "Boat & safety" do) — scope to the SPECIFIC field's own `.sc-field`
+  // container instead, found via the labeled input's `closest()`.
+  //
+  // MOUNT SHAPE (PR #758 review round 2): the notice is now ALWAYS mounted
+  // (matching BoatPicker's own #563 shape), empty until a correction —
+  // never absent — so "no notice" is asserted as EMPTY text content, never
+  // as `queryByRole(...)).not.toBeInTheDocument()` (which would now be
+  // false for every one of these rows, since the element is always there).
+  describe('#731: blur-clamp correction notice', () => {
+    function fieldNoticeFor(labelText: string): HTMLElement {
+      const input = screen.getByLabelText(labelText);
+      const field = input.closest('.sc-field');
+      if (!field) throw new Error(`expected a .sc-field ancestor for "${labelText}"`);
+      return within(field as HTMLElement).getByRole('status');
+    }
+
+    // The assertion that distinguishes always-mounted from conditionally-
+    // mounted (PR #758 review round 2): the live region must exist in the
+    // DOM BEFORE any correction has happened, or AT has nothing to observe
+    // a later text mutation on.
+    it('mounts the correction live region BEFORE any correction has occurred', () => {
+      renderPanel();
+      const el = fieldNoticeFor('Safety depth (m)');
+      expect(el).toBeInTheDocument();
+      expect(el).toHaveTextContent('');
+    });
+
+    it('shows the notice after a real out-of-range commit, unit-less (the label already carries one)', () => {
+      const onChange = renderPanel();
+      const input = screen.getByLabelText('Safety depth (m)');
+      fireEvent.change(input, { target: { value: '1' } });
+      fireEvent.blur(input);
+      expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, safetyDepthM: 2.2 });
+      expect(fieldNoticeFor('Safety depth (m)')).toHaveTextContent(
+        'Corrected to 2.2 (allowed range 2.2–10)',
+      );
+    });
+
+    it('shows no notice for an in-range commit', () => {
+      renderPanel();
+      const input = screen.getByLabelText('Safety depth (m)');
+      fireEvent.change(input, { target: { value: '5' } });
+      fireEvent.blur(input);
+      expect(fieldNoticeFor('Safety depth (m)')).toHaveTextContent('');
+    });
+
+    it('shows no notice for the empty-field revert (a different, intentionally silent path)', () => {
+      const onChange = renderPanel();
+      const input = screen.getByLabelText('Maneuver penalty (s)');
+      fireEvent.change(input, { target: { value: '' } });
+      fireEvent.blur(input);
+      expect(onChange).not.toHaveBeenCalled();
+      expect(fieldNoticeFor('Maneuver penalty (s)')).toHaveTextContent('');
+    });
+
+    it('clears a previous notice once a later commit on the same field lands in range', () => {
+      renderPanel();
+      const input = screen.getByLabelText('Motoring speed (kn)');
+      fireEvent.change(input, { target: { value: '25' } });
+      fireEvent.blur(input);
+      expect(fieldNoticeFor('Motoring speed (kn)')).toHaveTextContent(
+        'Corrected to 10 (allowed range 1–10)',
+      );
+      fireEvent.change(input, { target: { value: '5' } });
+      fireEvent.blur(input);
+      expect(fieldNoticeFor('Motoring speed (kn)')).toHaveTextContent('');
+    });
+
+    // The DoD's own required browser-pass scenario, reproduced here as a
+    // unit test: a boat switch that moves safety depth's own bounds
+    // (elan-444-piranja's 1.9 m draft -> 2.0 m floor, vs the Salona 45's
+    // 2.1 m -> 2.2 m) must not leave a stale "corrected to 2.2" notice
+    // standing once the field it was correcting no longer has that floor.
+    it('clears a stale notice when a boat switch moves the field bounds out from under it', () => {
+      const onChange = vi.fn();
+      localStorage.setItem('sc-lang', 'en');
+      const { rerender } = render(
+        <I18nProvider>
+          <SettingsPanel
+            value={DEFAULT_SETTINGS}
+            onChange={onChange}
+            boatId={DEFAULT_BOAT_ID}
+            onBoatIdChange={vi.fn()}
+          />
+        </I18nProvider>,
+      );
+      const input = screen.getByLabelText('Safety depth (m)');
+      fireEvent.change(input, { target: { value: '1' } });
+      fireEvent.blur(input);
+      expect(fieldNoticeFor('Safety depth (m)')).toHaveTextContent(
+        'Corrected to 2.2 (allowed range 2.2–10)',
+      );
+      rerender(
+        <I18nProvider>
+          <SettingsPanel
+            value={DEFAULT_SETTINGS}
+            onChange={onChange}
+            boatId="elan-444-piranja"
+            onBoatIdChange={vi.fn()}
+          />
+        </I18nProvider>,
+      );
+      expect(fieldNoticeFor('Safety depth (m)')).toHaveTextContent('');
+    });
+  });
+
   describe('Boat & safety group', () => {
     it('renders the depth comfort margin field with its default value and help paragraph, grouped under Boat & safety', () => {
       renderPanel();
