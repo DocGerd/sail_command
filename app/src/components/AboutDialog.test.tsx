@@ -389,6 +389,57 @@ describe('AboutDialog', () => {
     expect(iconCloseButton).toHaveFocus();
   });
 
+  // #780: `focusableElements()` had no visibility filter, so a matching
+  // element present in the DOM but not actually focusable to a user (here:
+  // `display: none` on an ANCESTOR, not the element itself) still became a
+  // Tab-cycle stop. Status per the issue's own DoD step 1: this dialog's
+  // CURRENT content is all statically visible — no live element hits this
+  // today — so the element below is injected specifically to exercise the
+  // filter, not to claim the hazard is presently reachable. jsdom's
+  // fallback path (no `Element.checkVisibility`) is what this test proves:
+  // it can pin `display: none`, including walked up an ancestor — but NOT
+  // a zero-sized box or a control nested inside a collapsed <details>,
+  // which need a real browser's `checkVisibility()` (see AboutDialog.tsx's
+  // own #780 comment for exactly why, measured against jsdom 30.0.1).
+  it('#780: a focusable element hidden via an ANCESTOR display:none is excluded from the Tab cycle', async () => {
+    vi.stubGlobal('fetch', fetchMock());
+    render(
+      <I18nProvider>
+        <AboutDialog boat={TEST_BOAT} open onClose={() => {}} />
+      </I18nProvider>,
+    );
+
+    const dialog = await screen.findByRole('dialog');
+    const iconCloseButton = screen.getByRole('button', { name: de['about.closeDialog'] });
+    const bottomCloseButton = screen.getByRole('button', { name: de['about.close'] });
+
+    // Appended AFTER the real last focusable element, so it would become
+    // the trap's new "last" if the filter didn't exclude it — the button
+    // itself carries no `display` of its own; only its WRAPPER does, which
+    // is what makes this a genuine ancestor-walk case rather than the
+    // trivial "check the element itself" one.
+    const hiddenWrapper = document.createElement('div');
+    hiddenWrapper.style.display = 'none';
+    const hiddenButton = document.createElement('button');
+    hiddenButton.textContent = 'not reachable';
+    hiddenWrapper.append(hiddenButton);
+    dialog.append(hiddenWrapper);
+
+    // Mutation check (this repo's standing requirement): with the filter
+    // REMOVED, `hiddenButton` becomes the real DOM-order "last" focusable
+    // element, so Tab from `bottomCloseButton` (now second-to-last) is
+    // never recognised as "at the last element" at all — jsdom's synthetic
+    // Tab keydown never itself advances focus (see the #696 Tab-cycle test
+    // above), so focus would stay stuck on `bottomCloseButton` instead of
+    // wrapping to `iconCloseButton`, and this assertion reds.
+    bottomCloseButton.focus();
+    expect(bottomCloseButton).toHaveFocus();
+    fireEvent.keyDown(window, { key: 'Tab' });
+    expect(iconCloseButton).toHaveFocus();
+
+    hiddenWrapper.remove();
+  });
+
   it('does not force-fetch the full routing asset bundle — only mask.meta.json', async () => {
     const mock = fetchMock();
     vi.stubGlobal('fetch', mock);
