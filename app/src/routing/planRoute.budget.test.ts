@@ -456,9 +456,26 @@ describe('#54 §E.3: budget exhaustion mid-comparison', () => {
   });
 
   it('CONTROL: every requested sail finishing leaves the comparison complete', () => {
-    // Without this row a hardcoded `comparisonComplete: false` would satisfy
-    // both rows above — the flag would report every plan as partial and no
-    // test would notice.
+    // #548: this comment used to say a hardcoded `comparisonComplete: false`
+    // would satisfy "both rows above" and slip past unnoticed. That was true
+    // when written (35ca30b), when the two it.each rows — which expect
+    // `false` — were the only rows above this one. It is FALSE today: the
+    // "finished and lost" row immediately above (added later, in bcf7640)
+    // already expects `true` and MEASURED to red on its own under a
+    // hardcoded `comparisonComplete: false`, with or without this row
+    // present. This row is not redundant, though — it pins a DIFFERENT
+    // fixture (every sail finishes; nothing fails at all), which the
+    // "finished and lost" row's fixture (one sail fails for a non-budget
+    // reason) does not exercise.
+    //
+    // MEASURED (whole file, 68 tests, at 1288049): `comparisonComplete:
+    // true` reds the two it.each rows only; `false` reds "finished and lost"
+    // AND this row; `sails.every((out) => out.rigResult !== null)` reds
+    // "finished and lost" only; and `sails.some((out) => out.cause !== null &&
+    // out.cause !== 'budget-exhausted')` — any predicate needing a non-budget
+    // FAILURE to be PRESENT — reds THIS ROW AND ONLY THIS ROW (1 failed | 67
+    // passed). That mutant is what makes this row un-deletable, not the
+    // fixture alone.
     const res = planWith(NEVER, openWaterMask());
     expect(res.status).toBe('ok');
     if (res.status !== 'ok') return;

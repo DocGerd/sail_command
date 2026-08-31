@@ -72,11 +72,13 @@ function renderResizer({
   max = 700,
   measuredWidth = 400,
   onCommit = vi.fn(),
+  inert = false,
 }: {
   min?: number;
   max?: number;
   measuredWidth?: number;
   onCommit?: (next: number | null) => void;
+  inert?: boolean;
 } = {}) {
   vi.stubGlobal('ResizeObserver', FakeResizeObserver);
   const panelRef = createRef<HTMLDivElement>();
@@ -92,7 +94,7 @@ function renderResizer({
   (targetRef as { current: HTMLDivElement }).current = targetEl;
   stubMeasuredWidth(panelEl, measuredWidth);
 
-  render(
+  const rendered = render(
     <PanelResizer
       panelRef={panelRef}
       targetRef={targetRef}
@@ -100,9 +102,25 @@ function renderResizer({
       max={max}
       onCommit={onCommit}
       aria-label="Resize panel"
+      inert={inert}
     />,
   );
-  return { onCommit, targetEl };
+  // Re-renders the SAME PanelResizer instance (same refs/min/max/onCommit)
+  // with only `inert` changed — used to assert the open -> close TRANSITION
+  // rather than two independent fresh mounts.
+  const rerenderInert = (next: boolean) =>
+    rendered.rerender(
+      <PanelResizer
+        panelRef={panelRef}
+        targetRef={targetRef}
+        min={min}
+        max={max}
+        onCommit={onCommit}
+        aria-label="Resize panel"
+        inert={next}
+      />,
+    );
+  return { onCommit, targetEl, rerenderInert };
 }
 
 describe('PanelResizer — a11y contract', () => {
@@ -119,6 +137,22 @@ describe('PanelResizer — a11y contract', () => {
   it('is keyboard-focusable (tabIndex 0)', () => {
     renderResizer();
     expect(screen.getByRole('separator')).toHaveAttribute('tabIndex', '0');
+  });
+
+  // #696: the `inert` prop must reach the rendered separator element itself
+  // — App.tsx applies it to every other app-shell sibling directly, but
+  // PanelResizer is the one sibling that has to forward it through its own
+  // named-prop interface (PanelResizerProps has no `...rest` spread). jsdom
+  // 30.0.1 does not implement `inert` BEHAVIOURALLY (confirmed: the IDL
+  // property reads `undefined` and a descendant's `.focus()` still succeeds
+  // under it), so this pins only the attribute's presence/absence — never a
+  // claim that focus is actually blocked here.
+  it('#696: forwards inert to the rendered role="separator" element, present -> absent on toggle', () => {
+    const { rerenderInert } = renderResizer({ inert: true });
+    expect(screen.getByRole('separator')).toHaveAttribute('inert');
+
+    rerenderInert(false);
+    expect(screen.getByRole('separator')).not.toHaveAttribute('inert');
   });
 
   it('ArrowRight commits a step increase from the measured current width', () => {
