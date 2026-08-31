@@ -85,13 +85,16 @@ export class NavMask {
    * bounds arithmetic. `cellOf`'s row/col range check reduces to `lat >=
    * south && lat < north && lon >= west && lon < east` once `north = south
    * + rows*latStep` and `east = west + cols*lonStep` are substituted in —
-   * an identity over the REALS, not over IEEE754 (`latStep` is a rounded
-   * quotient, so `south + rows*latStep === north` is not guaranteed). The
-   * two forms were measured bit-identical for every meta this app loads —
-   * the committed mask.meta.json, TEST_MASK_META and mask.test.ts's
-   * fineGridMeta — over ~2.45M probes walking +/-100_000 ULP at each of the
-   * four edges and +/-2 ULP at every row/col boundary (#517 review,
-   * 2026-08-31). They are NOT interchangeable for an arbitrary meta: over
+   * an identity over the REALS, not over IEEE754: two independent roundings
+   * sit between them (`latStep` is a rounded quotient, and `Math.floor((lat
+   * - south) / latStep)` rounds again), and MEASURED it is the SECOND that
+   * does the work — 473 of 533 observed disagreements occur on an axis
+   * where `south + rows*latStep === north` holds exactly. The two forms
+   * were measured bit-identical for every meta constructed anywhere in this
+   * repo — the committed mask.meta.json, TEST_MASK_META, mask.test.ts's
+   * fineGridMeta and shallowExposure.test.ts's TIE_META — over ~3.25M
+   * probes walking +/-100_000 ULP at each of the four edges and +/-2 ULP at
+   * every row/col boundary (#517 review, 2026-08-31). They are NOT interchangeable for an arbitrary meta: over
    * 2,000 random metas, 533 of 56,000 edge probes disagreed, in both
    * directions. After this refactor only ONE form remains, so that is a
    * note for anyone reintroducing the open-coded test, not a live hazard.
