@@ -96,6 +96,11 @@
   // that character away on its RECEIVED side, so no rendering-based test can
   // see a revert to a plain space (mutation-checked: reverting either dict
   // reds this file while every PlannerPanel test stays green).
+  // mapColors.test.ts (#715): reads app.css via `node:fs` to structurally
+  // guard that its raw map-colour hex literals (which can't consume var() —
+  // a MapLibre paint expression / Canvas 2D strokeStyle) stay in sync with
+  // lib/mapColors.ts's exported constants — same reason and pattern as
+  // panelWidth.test.ts/useBannerHeight.test.ts/chipShallowFill.test.ts above.
   "exclude": [
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",
@@ -118,6 +123,7 @@
     "src/**/sweepSailIds.test.ts",
     "src/**/depthLegendGate.test.ts",
     "src/**/app.css.test.ts",
-    "src/**/safetyDepthHelpNbsp.test.ts"
+    "src/**/safetyDepthHelpNbsp.test.ts",
+    "src/**/mapColors.test.ts"
   ]
 }

@@ -2167,12 +2167,19 @@ select {
   background: #cc79a7;
 }
 
-/* #53: shallow-leg casing (sc-route-shallow), safety-depth warning color. */
+/* #53: shallow-leg casing (sc-route-shallow), safety-depth warning color.
+   #715: this is the one map-colour swatch with a PRE-EXISTING --sc-* token
+   for the same value (--sc-depth-warning-fg, #251) — every sibling swatch
+   above stays a raw literal (a MapLibre paint expression can't consume
+   var(), so their app.css copies were never going to collapse into a
+   token), but this one already had a real token to point at, so pointing
+   it there removes a duplicate without inventing anything. Byte-identical
+   rendering: --sc-depth-warning-fg is #e69f00 in both light and dark. */
 .route-legend-shallow {
   width: 1.25rem;
   height: 7px;
   border-radius: 3px;
-  background: #e69f00;
+  background: var(--sc-depth-warning-fg);
 }
 
 /* #324: the alt-rig map overlay (sc-route-alt-sail/-motor) — dashed AND
@@ -2251,6 +2258,26 @@ select {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+}
+
+/* #762: an unbreakable label (a German compound noun like
+   "Sicherheitstiefe", no space for `normal` white-space wrapping to use)
+   silently OVERFLOWS a narrow .sc-field column instead of wrapping —
+   measured at the 112.8px `.planner-safety-depth` column tablet landscape
+   (1180x820) resolves to (`.planner-compact-row`'s `minmax(7rem, 10rem)`
+   track): scrollWidth 125 vs clientWidth 113. boundingBox() cannot see
+   this (#299's lesson: it returns the border box, never overflow) — the
+   discriminator is scrollWidth > clientWidth. Same fix as
+   `.depth-legend-body p`'s own German-compound-noun overflow-wrap above
+   (this file, "required at this width for the copy's own long German
+   compound nouns, not merely defensive") — `break-word`, not `anywhere`:
+   this is a readable label, not the raw position data
+   `.planner-via-coord` uses `anywhere` for. Scoped to EVERY `.sc-field`
+   label, not just the safety-depth one, since German compound nouns are
+   the general case here and not just this one measured instance; a no-op
+   for any label that already fits. */
+.sc-field label {
+  overflow-wrap: break-word;
 }
 
 .sc-field-help {
