@@ -4,7 +4,7 @@
 // the cached buffer); wind and the safety-depth overlay are layered on by the
 // DepthProfile component, never baked into these samples (the profile stores
 // absolute depth; the safety line is a render-time overlay).
-import type { LatLon, Leg, MaskMeta } from '../types';
+import type { LatLon, Leg } from '../types';
 import type { NavMask } from './mask';
 
 const HOUR_MS = 3_600_000;
@@ -90,17 +90,6 @@ export function profileSamples(legs: Leg[], mask: NavMask, n: number): ProfileSa
   return samples;
 }
 
-// Mirrors lib/headingDepth.ts's private withinMask: the mask is a lat/lon
-// rectangle (MaskMeta west/south/east/north), so testing both endpoints is
-// enough to know the whole segment stays inside coverage. Upper bounds are
-// exclusive, matching NavMask.cellOf's row/col range check. Duplicated
-// (rather than imported/exported from headingDepth.ts) to keep this fix's
-// diff inside routeProfile.ts/mask.ts — headingDepth.ts is a different
-// feature (#251's Live heading-to-steer check) with its own review surface.
-function withinMask(meta: MaskMeta, p: LatLon): boolean {
-  return p.lat >= meta.south && p.lat < meta.north && p.lon >= meta.west && p.lon < meta.east;
-}
-
 /**
  * #505: the depth-profile's headline "min." figure, computed EXHAUSTIVELY
  * over every leg's actual geometry via NavMask.segmentMinDepthInfoM — the
@@ -141,7 +130,7 @@ export function exhaustiveMinDepth(
 ): { depthM: number; capped: boolean } | null {
   let min: { depthM: number; capped: boolean } | null = null;
   for (const leg of legs) {
-    if (!withinMask(mask.meta, leg.start) || !withinMask(mask.meta, leg.end)) return null;
+    if (!mask.inBounds(leg.start) || !mask.inBounds(leg.end)) return null;
     const info = mask.segmentMinDepthInfoM(leg.start, leg.end);
     if (info === null) return null;
     if (min === null || info.depthM < min.depthM) min = info;

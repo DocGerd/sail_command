@@ -71,7 +71,7 @@ import type { LatLon, PlanRequest } from '../types';
  *   toward `null` (re-verified 2026-08-25 against `lib/shallowExposure.ts`:
  *   `waypoints`/`allowanceM` are read ONLY inside `legConfinedWithin`'s
  *   per-cell loop, which can only flip its own `confined` boolean; `null`
- *   comes exclusively from `shallowConfinedWithinM`'s `withinMask` bounds
+ *   comes exclusively from `shallowConfinedWithinM`'s `mask.inBounds`
  *   check on each leg's endpoints and from `legConfinedWithin`'s
  *   `walkLegCells` completion guard, NEITHER of which ever reads
  *   `waypoints` at all, so a shorter waypoint list cannot produce or
