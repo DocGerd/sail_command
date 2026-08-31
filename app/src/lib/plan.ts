@@ -35,17 +35,21 @@ export function isStaleForecast(plan: Plan): boolean {
 // route.staleForecast copy's {hours} placeholder — replaces the old static
 // ">12 h" threshold label. Rounded (not floored), matching format.ts's
 // formatDriftMin — the repo's actual single-unit-discarding formatter.
-// formatDuration/formatLegDuration are NOT the precedent here: they float
+// formatDuration/formatLegDuration are NOT the precedent here: they floor
 // the hours COMPONENT but always print the remainder as minutes, never
 // discarding it the way this helper does.
-// Round, not floor: floor makes a staleness figure read FRESHER than
-// measured (a 12 h 59 m gap would print "12"), the reassuring direction —
-// wrong for a safety-adjacent number, per this repo's stated asymmetry the
-// other way (cautiousDepthLowerBoundM floors precisely so a depth never
-// reads deeper than provable; an age must not read younger than provable).
-// Round, not ceil: ceil would overstate by up to an hour at the boundary (a
-// 12 h 1 ms gap would print "13"), where round keeps the minimum displayed
-// value at 12, matching the strictly-">12 h" trigger.
+// Round, not floor or ceil. Floor's worst case is a full hour read as
+// FRESHER than measured (a 12 h 59 m gap prints "12"), the reassuring
+// direction; ceil never understates but overstates by up to an hour at the
+// boundary (a 12 h 1 ms gap prints "13"). Round bounds the error at 30
+// minutes EITHER way — it does not eliminate the optimistic direction, it
+// halves it, and that trade is the right one here: this string states a
+// MEASUREMENT, where cautiousDepthLowerBoundM states a provable BOUND and
+// may be pessimistic because it is labelled as one. That same helper trims
+// its own pessimism with a 1e-9 epsilon so a value never pays "an extra,
+// unearned decimetre" (lib/mask.ts) — pessimism is bought where it buys
+// safety, not by default. The safety signal here is the warning's
+// PRESENCE; the hour count is context on a >= 12 h quantity.
 export function staleForecastGapHours(plan: Plan): number {
   return Math.round((plan.request.departureMs - plan.windGrid.fetchedAtMs) / 3_600_000);
 }

@@ -680,7 +680,7 @@ describe('RouteSummary', () => {
     const plan = makePlan({ departureMs: FETCHED_AT_MS + 12 * 3_600_000 + 1 });
     renderSummary({ plan });
     // #748: label-style "{hours} h old" form; this fixture's 12h+1ms gap
-    // floors to 12, so this alone doesn't prove the value is dynamic — see
+    // rounds to 12, so this alone doesn't prove the value is dynamic — see
     // the next test for a fixture at a distinctly different hour.
     expect(
       screen.getByText(en['route.staleForecast'].replace('{hours}', '12')),
@@ -688,7 +688,7 @@ describe('RouteSummary', () => {
   });
 
   it('renders the ACTUAL computed gap, not the old hardcoded 12 (#748)', () => {
-    // 26h gap floors to 26, distinct from the pre-#748 static "12" — this
+    // 26h gap rounds to 26, distinct from the pre-#748 static "12" — this
     // fixture cannot pass under the old hardcoded threshold label.
     const plan = makePlan({ departureMs: FETCHED_AT_MS + 26 * 3_600_000 });
     renderSummary({ plan });

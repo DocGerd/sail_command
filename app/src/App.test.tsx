@@ -1781,10 +1781,11 @@ describe('banner surfacing (PR self-review fix wave)', () => {
     // Minor 3 (review): the line above alone derives its expected string
     // from the SAME helper under test, so it cannot catch a wrong helper —
     // mutating staleForecastGapHours to a wrong constant would move both
-    // sides together. This fixture's gap is deterministic (t0Ms/createdAtMs/
-    // departureMs are three Date.now() calls a sub-ms apart, so the gap is
-    // 20 h + a negligible delta, a full hour from any rounding boundary),
-    // so pin it as an independent literal too.
+    // sides together. This fixture's gap is deterministic (fetchedAtMs is
+    // the grid's t0Ms and departureMs is a later Date.now(), the two set
+    // sub-ms apart, so the gap is 20 h + a negligible delta — 30 minutes
+    // from the nearest Math.round boundary at 20.5 h), so pin it as an
+    // independent literal too.
     const stalePlanGapHours = staleForecastGapHours(stalePlan);
     expect(stalePlanGapHours).toBe(20);
     const bannerArea = document.querySelector('.banner-area');
