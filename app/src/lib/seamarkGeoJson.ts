@@ -334,22 +334,34 @@ export function seamarkPopupAnchor<T extends { properties?: unknown; geometry?: 
  *         per-tile sort (`data/bucket/symbol_bucket.ts:552-557`) is a
  *         WORKER-side grouping step feeding this LATER, GLOBAL cross-tile
  *         merge — it is not itself the final placement order.
- *         STATUS: NOT resolved, and no longer documentable as "inherent" —
- *         that framing, and the closing condition it was meant to satisfy,
- *         are both withdrawn here. #200's measured z8/z9 hazard retention
- *         (high but not 100%) is a real number this comment does NOT
- *         explain any more: the cross-tile GLOBAL SORT mechanism verified in
- *         this bullet does not produce a cross-tile leak for EITHER layer's
- *         configuration, and no alternative cause was established in this
- *         pass. #232 item 2 needs either a fresh investigation of the real
- *         cause, or a re-measurement confirming the residual still exists at
- *         all, before it can be closed either way — this comment records
- *         the refutation, not a resolution. (The single-non-tiled-source /
- *         `buffer`/`tolerance` options an earlier revision of this comment
- *         considered and rejected were evaluated against the now-refuted
- *         per-tile-only premise; they have NOT been re-evaluated against the
- *         mechanism verified above, and #232's own body still carries that
- *         option list verbatim if a future investigation needs it.)
+ *         STATUS: RESOLVED (2026-08-31) — the replacement hypothesis from
+ *         #232's 2026-08-25 comment was RE-MEASURED, not merely reasoned
+ *         about, and confirmed: `app/e2e/seamarks.spec.ts`'s "#232 item 2"
+ *         test diffs the hazard layer's SOURCE features (every hazard mark
+ *         MapLibre has loaded, via `querySourceFeatures`, BEFORE collision
+ *         culling) against its RENDERED features (AFTER culling) across the
+ *         whole app data region at z8 and z9 against the real committed
+ *         `app/public/data/seamarks.json` — not a hand-picked sub-box — and
+ *         found **99 culled hazard marks (53 at z8, 46 at z9), 3 of them
+ *         genuinely CROSS-TILE, and ZERO ordering leaks among any of the
+ *         99**: every displacer's `symbol-sort-key` was equal to or LOWER
+ *         (more significant) than the mark it displaced, at every culled
+ *         mark, cross-tile or not. The three cross-tile cases include the
+ *         sharpest possible discriminator — an unlit cardinal (priority 1)
+ *         culled by an isolated-danger mark (priority 0) one tile away, at
+ *         both z8 and z9 — and it resolved in the direction the mechanism
+ *         predicts: the MORE significant mark won. #200's "high but not
+ *         100%" z8/z9 hazard retention figure is fully explained by this:
+ *         it is ORDINARY equal-or-lower-key hazard-vs-hazard collision
+ *         (post-#682, only hazard marks can ever displace another hazard
+ *         mark — the routine layer is placed strictly after), never a
+ *         cross-tile leak. #232 item 2 is CLOSED as a measurement
+ *         mis-attribution: the cross-tile GLOBAL SORT mechanism verified
+ *         above is not merely leak-free in principle, it is leak-free on
+ *         this app's own real, committed data, confirmed empirically. (The
+ *         single-non-tiled-source / `buffer`/`tolerance` options an earlier
+ *         revision of this comment considered and rejected are now moot —
+ *         there is nothing left for them to fix.)
  *   Below z12 the older trade-off still stands: collision-hidden symbols are
  *   absent from queryRenderedFeatures, so culled minor marks are untappable
  *   by design. (There, at most one icon can cover any given point — an
