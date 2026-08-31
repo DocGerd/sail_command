@@ -12,6 +12,7 @@ import { toGpx } from '../lib/gpx';
 import { APPROACH_RADIUS_M } from '../lib/depthGate';
 import { formatDepthM } from '../lib/depthDisclosure';
 import { cautiousDepthLowerBoundM, MASK_TOLERANCE_M } from '../lib/mask';
+import { PORT_COLOR, STARBOARD_COLOR } from '../lib/mapColors';
 import {
   activeRigResult,
   isStaleForecast,
@@ -514,7 +515,9 @@ export interface RouteSummaryProps {
 
 // Okabe-Ito colorblind-safe green/red, echoing the port/starboard nav-light
 // convention. Mirrored in RouteLayer.tsx's line-color paint expression.
-const BOARD_COLOR: Record<Board, string> = { starboard: '#009E73', port: '#D55E00' };
+// #715: sourced from the shared lib/mapColors.ts module rather than a
+// second raw-literal declaration.
+const BOARD_COLOR: Record<Board, string> = { starboard: STARBOARD_COLOR, port: PORT_COLOR };
 
 function pointOfSailKey(twaDeg: number): MsgKey {
   const abs = Math.abs(twaDeg);

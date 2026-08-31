@@ -747,7 +747,7 @@ export const en = {
   // every boat by construction (spec C.3); the two coincide for all three
   // catalogue boats today but a ceiling-rounded draft would separate them.
   'about.caveats.depthMask':
-    'Depth values blend two readings of the same EMODnet bathymetry data: the smoothed reading is used only where it agrees with the more cautious one to within {tolerance} m, so the depth value the app uses is never more than {tolerance} m deeper than the cautious reading — that bounds the source data, not the real seabed. A cell the router plans through at safety depth G has a cautious reading of at least G − {tolerance} m. The default safety depth for the {boat} is {gate} m, set so that floor never falls below its {draft} m draft — but it can be as little as {floor} m where a route falls back to a shallower depth to stay connected, flagged on the resulting route.',
+    'Depth values blend two readings of the same EMODnet bathymetry data: the smoothed reading is used only where it agrees with the more cautious one to within {tolerance} m, so the depth value the app uses is never more than {tolerance} m deeper than the cautious reading — that bounds the source data, not the real seabed. A cell the router plans through at safety depth G has a cautious reading of at least G − {tolerance} m. The default safety depth for the {boat} is {gate} m, set so that this floor never falls below its {draft} m draft — but it can be as little as {floor} m where a route falls back to a shallower depth to stay connected, flagged on the resulting route.',
   'about.dataSize':
     'First load downloads ~44 MB (basemap and route data); later loads are served from cache and work offline.',
   'about.sources.heading': 'Data sources',

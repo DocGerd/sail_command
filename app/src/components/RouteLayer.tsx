@@ -15,6 +15,15 @@ import { installStyleSetup } from '../lib/styleReload';
 import { usePersistedToggle } from '../lib/usePersistedToggle';
 import { useWideLayout } from '../lib/useWideLayout';
 import { registerBarbImages } from '../lib/windBarbs';
+import {
+  DEPTH_WARNING_COLOR,
+  HALO_COLOR,
+  INK_COLOR,
+  MOTOR_COLOR,
+  PORT_COLOR,
+  POSITION_HALO_COLOR,
+  STARBOARD_COLOR,
+} from '../lib/mapColors';
 import { NavMask } from '../lib/mask';
 import { requestedGateM } from '../lib/shallowExposure';
 import { loadRoutingAssets } from '../services/assets';
@@ -139,7 +148,7 @@ function setupLayers(map: MaplibreMap): void {
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
         'line-width': 9,
-        'line-color': '#E69F00',
+        'line-color': DEPTH_WARNING_COLOR,
         'line-opacity': 0.8,
       },
     });
@@ -157,7 +166,7 @@ function setupLayers(map: MaplibreMap): void {
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
         'line-width': 10,
-        'line-color': '#FFD400',
+        'line-color': POSITION_HALO_COLOR,
         'line-opacity': 0.55,
         'line-blur': 1,
       },
@@ -176,7 +185,7 @@ function setupLayers(map: MaplibreMap): void {
         'line-width': 3.5,
         // Okabe-Ito colorblind-safe green/red, echoing the port/starboard
         // nav-light convention. Mirrored in RouteSummary.tsx's board dots.
-        'line-color': ['case', ['==', ['get', 'board'], 'port'], '#D55E00', '#009E73'],
+        'line-color': ['case', ['==', ['get', 'board'], 'port'], PORT_COLOR, STARBOARD_COLOR],
       },
     });
     map.addLayer({
@@ -187,7 +196,7 @@ function setupLayers(map: MaplibreMap): void {
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
         'line-width': 3.5,
-        'line-color': '#5b5b5b',
+        'line-color': MOTOR_COLOR,
         'line-dasharray': [2, 1.5],
       },
     });
@@ -217,8 +226,8 @@ function setupLayers(map: MaplibreMap): void {
         'text-padding': 1,
       },
       paint: {
-        'text-color': '#1a1a1a',
-        'text-halo-color': '#ffffff',
+        'text-color': INK_COLOR,
+        'text-halo-color': HALO_COLOR,
         'text-halo-width': 1.4,
       },
     });
@@ -271,7 +280,7 @@ function setupLayers(map: MaplibreMap): void {
         layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
         paint: {
           'line-width': 3.5,
-          'line-color': ['case', ['==', ['get', 'board'], 'port'], '#D55E00', '#009E73'],
+          'line-color': ['case', ['==', ['get', 'board'], 'port'], PORT_COLOR, STARBOARD_COLOR],
           'line-dasharray': [1, 1.5],
           'line-opacity': 0.45,
         },
@@ -287,7 +296,7 @@ function setupLayers(map: MaplibreMap): void {
         layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
         paint: {
           'line-width': 3.5,
-          'line-color': '#5b5b5b',
+          'line-color': MOTOR_COLOR,
           'line-dasharray': [1, 1.5],
           'line-opacity': 0.45,
         },
@@ -315,9 +324,9 @@ function setupLayers(map: MaplibreMap): void {
       filter: ['==', ['get', 'kind'], 'heading'],
       paint: {
         'circle-radius': 3,
-        'circle-color': '#ffffff',
+        'circle-color': HALO_COLOR,
         'circle-stroke-width': 1.5,
-        'circle-stroke-color': '#1a1a1a',
+        'circle-stroke-color': INK_COLOR,
       },
     });
     map.addLayer({
@@ -327,9 +336,9 @@ function setupLayers(map: MaplibreMap): void {
       filter: ['in', ['get', 'kind'], ['literal', ['tack', 'gybe']]],
       paint: {
         'circle-radius': 9,
-        'circle-color': '#ffffff',
+        'circle-color': HALO_COLOR,
         'circle-stroke-width': 2,
-        'circle-stroke-color': '#1a1a1a',
+        'circle-stroke-color': INK_COLOR,
       },
     });
     map.addLayer({
@@ -343,7 +352,7 @@ function setupLayers(map: MaplibreMap): void {
         'text-allow-overlap': true,
         'text-ignore-placement': true,
       },
-      paint: { 'text-color': '#1a1a1a' },
+      paint: { 'text-color': INK_COLOR },
     });
     // ETA text labels (#35). Two layers so zoom-tiering is by layer minzoom
     // (never a ['zoom'] filter): primary (departure/arrival/maneuvers) from
@@ -400,8 +409,8 @@ function setupLayers(map: MaplibreMap): void {
         'symbol-sort-key': ['get', 'rank'],
       },
       paint: {
-        'text-color': '#1a1a1a',
-        'text-halo-color': '#ffffff',
+        'text-color': INK_COLOR,
+        'text-halo-color': HALO_COLOR,
         'text-halo-width': 1.4,
       },
     });
@@ -423,8 +432,8 @@ function setupLayers(map: MaplibreMap): void {
         'symbol-sort-key': ['get', 'rank'],
       },
       paint: {
-        'text-color': '#1a1a1a',
-        'text-halo-color': '#ffffff',
+        'text-color': INK_COLOR,
+        'text-halo-color': HALO_COLOR,
         'text-halo-width': 1.4,
       },
     });
