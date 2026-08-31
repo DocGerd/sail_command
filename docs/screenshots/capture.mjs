@@ -2,6 +2,9 @@
 //
 // start-view.png: needs network (live app + wind fetch) — the bare default
 //   below (production) is fine for it.
+// boat-selection.png: #716 — the Boat tab is reachable with zero plan/network
+//   setup, so the bare default works for it too; it needs only the same
+//   English-language switch as the other two.
 // plan-route.png: REQUIRES a local server (fix wave, PR #462 review Minor 2
 //   — the bare default is now actively wrong for this half, not just an
 //   alternative). It routes against a docs-only wind fixture
@@ -176,6 +179,33 @@ await page.goto(startUrl.toString(), { waitUntil: 'networkidle' });
 await page.getByRole('button', { name: 'English anzeigen' }).click();
 await page.waitForTimeout(2000); // map tile settle for a static capture is fine here (not a test)
 await page.screenshot({ path: 'docs/screenshots/start-view.png' });
+
+// #716: boat-selection.png — previously a hand capture with no generator,
+// so it drifted stale three times (wrong depth format, German UI, a third
+// boat that never fit the viewport). BOAT_SELECTION_HEIGHT_PX widens the
+// viewport for this one shot only, the same START_VIEW_HEIGHT_PX pattern
+// above: measured live against this exact flow (navigate, switch to
+// English, click the Boat tab, no plan/harbor picked) that
+// `.boat-picker-card`'s bottom edge sits at document y=991.3px — a LAYOUT
+// position, not a viewport-clipped one, so it stays put whether the
+// viewport is 800px or 1400px tall; only how much of it is scrolled into
+// view changes. 1050px covers it with ~59px to spare, enough for all three
+// catalogue boats (name, draft, polar-provenance tier, draft-source note,
+// and — on the two non-hullVerified boats — the assumed-keel disclosure)
+// to render with no internal scroll. Boat-tab-only, for the same reason the
+// 1000px start-view bump above is start-view-only: nothing else needs this
+// much vertical room.
+const BOAT_SELECTION_HEIGHT_PX = 1050;
+await page.setViewportSize({ width: 1280, height: BOAT_SELECTION_HEIGHT_PX });
+await page.getByRole('tab', { name: 'Boat' }).click();
+// Static, no plan/network dependency (unlike plan-route.png below), so a
+// short settle for the tab switch's own render is enough.
+await page.waitForTimeout(500);
+await page.screenshot({ path: 'docs/screenshots/boat-selection.png' });
+// Back to the Plan tab — the flow below expects it as the active tab (it's
+// the default on load, but this capture just navigated away from it).
+await page.getByRole('tab', { name: 'Plan' }).click();
+
 // Back to the shared 800px height for the rest of the flow (plan-route.png).
 await page.setViewportSize({ width: 1280, height: 800 });
 
