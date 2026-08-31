@@ -34,7 +34,7 @@ export function isStaleForecast(plan: Plan): boolean {
 // #748: the actual fetch->departure gap, in whole hours, for the
 // route.staleForecast copy's {hours} placeholder — replaces the old static
 // ">12 h" threshold label. Rounded (not floored), matching format.ts's
-// formatDriftMin — the repo's actual single-unit-discarding formatter.
+// formatDriftMin — a repo's actual single-unit-discarding formatter.
 // formatDuration/formatLegDuration are NOT the precedent here: they floor
 // the hours COMPONENT but always print the remainder as minutes, never
 // discarding it the way this helper does.

@@ -12,7 +12,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage.enabled --coverage.provider=v8",
     "test:sweep-unit": "node --test sweep/canonicalize.test.mjs",
-    "lint": "eslint src e2e",
+    "lint": "eslint src e2e sweep",
     "notices": "node scripts/gen-third-party-notices.mjs",
     "typecheck": "tsc -b --noEmit",
     "pree2e": "node scripts/gen-wind-fixture.mjs && npm run build",

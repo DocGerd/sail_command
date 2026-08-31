@@ -96,6 +96,9 @@
   // that character away on its RECEIVED side, so no rendering-based test can
   // see a revert to a plain space (mutation-checked: reverting either dict
   // reds this file while every PlannerPanel test stays green).
+  // changelogFragmentShape.test.ts (#730) is the same shape once more —
+  // reads the repo-root changelog.d/*.md fragments via `node:fs` to
+  // structurally guard that no fragment body opens with a markdown heading.
   "exclude": [
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",
@@ -118,6 +121,7 @@
     "src/**/sweepSailIds.test.ts",
     "src/**/depthLegendGate.test.ts",
     "src/**/app.css.test.ts",
-    "src/**/safetyDepthHelpNbsp.test.ts"
+    "src/**/safetyDepthHelpNbsp.test.ts",
+    "src/**/changelogFragmentShape.test.ts"
   ]
 }
