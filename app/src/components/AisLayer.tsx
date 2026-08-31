@@ -5,6 +5,7 @@ import { useMapInstance } from './MapView';
 import { useLang, useT } from '../i18n';
 import { ROUTE_STACK_BOTTOM_LAYER } from './RouteLayer';
 import { aisFeatureCollection, aisPopupRows, type AisPopupProps } from '../lib/aisGeoJson';
+import { HALO_COLOR, INK_COLOR, STARBOARD_COLOR } from '../lib/mapColors';
 import { installStyleSetup } from '../lib/styleReload';
 import type { AisTargetSnapshot } from '../lib/aisTargets';
 
@@ -25,7 +26,9 @@ export const AIS_STACK_BOTTOM_LAYER = AIS_VECTOR_LAYER;
 // directly rather than only through the no-canvas-backend component mount.
 export const ARROW_IMAGE = 'sc-ais-arrow';
 export const DOT_IMAGE = 'sc-ais-dot';
-const AIS_COLOR = '#009E73'; // Okabe-Ito green, distinct from BoatMarker's blue
+// #715: sourced from lib/mapColors.ts. Okabe-Ito green, distinct from
+// BoatMarker's blue (BOAT_COLOR).
+const AIS_COLOR = STARBOARD_COLOR;
 
 // #192: LOGICAL_SIZE is the coordinate space the arrow/dot geometry below is
 // expressed in (unchanged, so the arrow's proportions — nose/wings — stay
@@ -62,7 +65,7 @@ export function registerAisImages(map: MaplibreMap): void {
       ctx.fillStyle = AIS_COLOR;
       ctx.fill();
       ctx.lineWidth = 2;
-      ctx.strokeStyle = '#ffffff';
+      ctx.strokeStyle = HALO_COLOR;
       ctx.stroke();
       map.addImage(ARROW_IMAGE, ctx.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE), {
         pixelRatio: PIXEL_RATIO,
@@ -81,7 +84,7 @@ export function registerAisImages(map: MaplibreMap): void {
       ctx.fillStyle = AIS_COLOR;
       ctx.fill();
       ctx.lineWidth = 2;
-      ctx.strokeStyle = '#ffffff';
+      ctx.strokeStyle = HALO_COLOR;
       ctx.stroke();
       map.addImage(DOT_IMAGE, ctx.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE), {
         pixelRatio: PIXEL_RATIO,
@@ -162,8 +165,8 @@ function setupLayers(map: MaplibreMap): void {
         'text-allow-overlap': false,
       },
       paint: {
-        'text-color': '#1a1a1a',
-        'text-halo-color': '#ffffff',
+        'text-color': INK_COLOR,
+        'text-halo-color': HALO_COLOR,
         'text-halo-width': 1.2,
         'text-opacity': ['match', ['get', 'tier'], 'stale', 0.55, 1],
       },

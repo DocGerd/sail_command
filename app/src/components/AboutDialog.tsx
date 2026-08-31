@@ -50,8 +50,63 @@ const FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(', ');
 
+// #780: `FOCUSABLE_SELECTOR` above only tests the TAG/attribute shape — it
+// has no idea whether a match is actually reachable by a keyboard user.
+// This dialog's own content is currently all statically visible (verified:
+// no conditionally-hidden focusable element exists in the JSX below as of
+// this fix — see the DoD status note on the issue), so the trap is LATENT,
+// not observed live; the filter exists so a future conditionally-rendered
+// control inside the dialog doesn't silently acquire the hazard.
+function isFocusableToUser(el: HTMLElement): boolean {
+  if (typeof el.checkVisibility === 'function') {
+    // Real modern browsers (Chromium 105+/Firefox 122+/Safari 17.4+, all
+    // well below this app's floor). `checkVisibility()` UNCONDITIONALLY
+    // covers `display: none`/`display: contents` and
+    // `content-visibility: hidden`, each walked up the ancestor chain —
+    // which is what makes it also correctly exclude a control nested
+    // inside a COLLAPSED <details> (`details:not([open]) > :not(summary)`
+    // is a real UA-stylesheet `display: none` rule, so the ancestor walk
+    // catches it) and anything hidden via the `hidden` attribute (`[hidden]
+    // { display: none }` is likewise a UA default). `visibility: hidden`/
+    // `collapse` is opt-in via `checkVisibilityCSS` (off by default) —
+    // turned on here since the issue names it explicitly. Verified against
+    // MDN (2026-08-31): NEITHER the default NOR any option covers a
+    // zero-SIZED box, so that's checked separately below via
+    // `getClientRects()` — a real layout box in any browser that ships
+    // `checkVisibility()` at all, and the issue's own suggested formula for
+    // exactly this case.
+    return el.checkVisibility({ checkVisibilityCSS: true }) && el.getClientRects().length > 0;
+  }
+  // jsdom (this app's unit-test environment, and the reason this branch
+  // exists at all rather than calling checkVisibility() unconditionally)
+  // computes NO layout whatsoever: `getClientRects()`/
+  // `getBoundingClientRect()` read all-zero for EVERY element here,
+  // including ordinary visible ones (measured against the installed jsdom
+  // 30.0.1) — a size check in this branch would exclude everything, so it
+  // is deliberately NOT used. What jsdom's CSSOM DOES resolve correctly
+  // without layout: `display: none` — but only on the element checked
+  // directly, since `display` is NOT an inherited property (confirmed:
+  // jsdom does not propagate a parent's `display: none` onto a child's own
+  // computed `display`), hence the explicit ancestor walk below — and
+  // `visibility: hidden`, which IS inherited and correctly reflects an
+  // ancestor's value on a single read of the element itself (also
+  // confirmed against jsdom). `[hidden]` is covered for free: jsdom's own
+  // default stylesheet maps it to `display: none`, so the ancestor walk
+  // already catches it. NEITHER a zero-sized box NOR a control nested
+  // inside a collapsed <details> is reachable through this fallback —
+  // jsdom ships no default-stylesheet rule hiding a closed <details>'s
+  // body at all, unlike a real browser. See AboutDialog.test.tsx's #780
+  // tests for exactly what that leaves this suite able to pin.
+  for (let node: HTMLElement | null = el; node; node = node.parentElement) {
+    if (getComputedStyle(node).display === 'none') return false;
+  }
+  return getComputedStyle(el).visibility !== 'hidden';
+}
+
 function focusableElements(container: HTMLElement): HTMLElement[] {
-  return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+  return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+    isFocusableToUser,
+  );
 }
 
 export interface AboutDialogProps {
