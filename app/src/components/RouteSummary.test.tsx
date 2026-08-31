@@ -62,6 +62,12 @@ function expectShallowDetailOpen(expected: boolean): void {
 function userOpen(details: HTMLDetailsElement): void {
   details.open = true;
   fireEvent(details, new Event('toggle'));
+  // Not a check on React's state (the line above sets the property directly,
+  // so this can only fail if THAT stops working) — but it is exactly what keeps
+  // the two #763 rows below from going silently vacuous: MEASURED, with
+  // `details.open = true` deleted they stay 66/66 GREEN even with the key
+  // removed from both call sites.
+  expect(details.open, 'userOpen did not actually open the disclosure').toBe(true);
 }
 
 // #54: the pre-#54 shape exposed `plan.result.genoa`/`.fock`/`.fockReason`
@@ -1371,6 +1377,21 @@ describe('#493: cautious depth disclosure', () => {
       });
       const summaryEl = container.querySelector('.shallow-warning-disclosure > summary');
       expect(summaryEl, 'expected the Disclosure summary element').not.toBeNull();
+      // STRUCTURAL FIRST, deliberately. `usedDepthText` lives INSIDE the span
+      // this asserts on, so a mutation that relocates the span out of the
+      // <summary> also breaks the `usedDepth` assertion below (not the lead
+      // one — that is a different span, which stays put). Ordered
+      // the other way round, that mutation aborts on the `usedDepth` message
+      // and this assertion is never evaluated — its red gets credited to a
+      // different guard (CLAUDE.md's fifth vacuity class), which is exactly
+      // what happened when this row was first written.
+      // the exposure sentence's own span, which must sit INSIDE the <summary>
+      expect(
+        container.querySelector(
+          '.shallow-warning-disclosure > summary .shallow-warning__summary-detail',
+        ),
+        'the exposure/usedDepth span must be inside the <summary>, not the body',
+      ).not.toBeNull();
       // the lead, INCLUDING the below-draft clause on the severe branch
       expect(summaryEl?.textContent).toContain('below this boat');
       // this plan's own used gate
@@ -1379,13 +1400,6 @@ describe('#493: cautious depth disclosure', () => {
           used: BELOW_BOUNDARY_USED_DEPTH_M.toFixed(1),
         }),
       );
-      // the exposure sentence's own span, which must sit INSIDE the <summary>
-      expect(
-        container.querySelector(
-          '.shallow-warning-disclosure > summary .shallow-warning__summary-detail',
-        ),
-        'the exposure/usedDepth span must be inside the <summary>, not the body',
-      ).not.toBeNull();
       // the caveat is a SIBLING of the Disclosure, never inside it
       const caveat = container.querySelector('.shallow-warning__caveat');
       expect(caveat?.textContent).toBe(en['route.shallow.caveat']);
