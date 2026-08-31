@@ -13,69 +13,94 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.15.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.16.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
-## Now — v0.15.0
+## Now — v0.16.0
 
-The `v0.15.0` cut (2026-08-27) closed the
-[`v0.15.0` milestone](https://github.com/DocGerd/sail_command/milestones),
-thirteen issues in total. Seamark map chrome: the third of #200's original
-four map-chrome residuals to be discharged — hazard marks (cardinal and
-isolated-danger buoys) painting under routine marks at z≥12 (item 1 of
-#232's own enumeration) — is fixed by splitting the layer in two, closing
-[#682](https://github.com/DocGerd/sail_command/issues/682) and leaving only
-cross-tile ordering (item 2) open under
-[#232](https://github.com/DocGerd/sail_command/issues/232), rolled to
-`v0.16.0`. Interaction and accessibility hardening made up most of the
-milestone: origin/destination search re-picks and cancels now return
-keyboard focus to the triggering "Change" button instead of dropping it to
-the page body ([#695](https://github.com/DocGerd/sail_command/issues/695));
-the app-shell and rig-comparison tab strips now complete the standard
-keyboard Tabs pattern — arrow-key movement, a single tab in the normal Tab
-order, and panels linked to their tab for screen readers
-([#704](https://github.com/DocGerd/sail_command/issues/704)); keyboard
-focus rings and the app's accent colour now cover the tab strip, the
-map-chrome checkboxes and time slider, the boat radio group, and the
-depth/route legend disclosures, with a hover state added to boat-picker
-rows ([#706](https://github.com/DocGerd/sail_command/issues/706)); the Live
-view GPS tracking toggle now shows a state-dependent label and a
-filled/outline distinction instead of relying on the non-visible
-`aria-pressed` state alone
-([#700](https://github.com/DocGerd/sail_command/issues/700)); the Live view
-heading-to-steer caution now gets the same background wash and left border
-as the route-level shallow-water warning instead of a colour-only text
-change ([#697](https://github.com/DocGerd/sail_command/issues/697)); its
-HTS/COG/SOG/ETA readout drops an unreset `<dl>` margin, uses tabular
-figures so digits don't jitter on every GPS update, and expands "HTS" for
-screen readers
-([#713](https://github.com/DocGerd/sail_command/issues/713)); the
-safety-depth field now shows its allowed range as help text and scrolls a
-resulting clamp notice into view
-([#699](https://github.com/DocGerd/sail_command/issues/699)); banner
-dismiss buttons now meet the app's 44px touch-target floor, the planner
-panel resists rubber-banding the map on overscroll, and a via-point
-coordinate no longer risks overflowing its row on narrow screens
-([#708](https://github.com/DocGerd/sail_command/issues/708)); text, number
-and departure date/time fields now draw the same bordered card box as the
-rest of the planner panel instead of bare native chrome
-([#710](https://github.com/DocGerd/sail_command/issues/710)); and the map
-attribution control's "i" toggle button now inverts to a white disc with a
-dark icon in dark mode instead of always keeping its fixed light-mode
-colours ([#718](https://github.com/DocGerd/sail_command/issues/718)).
+The `v0.16.0` cut (2026-08-31) closed the
+[`v0.16.0` milestone](https://github.com/DocGerd/sail_command/milestones),
+twenty-two issues in total. Seamark map chrome: the last of #200's four
+original map-chrome residuals — cross-tile symbol placement ordering — is
+resolved, though not by a code fix: a re-measurement against the real
+committed seamark data found every culled hazard mark was displaced by
+ordinary hazard-vs-hazard collision, with zero ordering leaks, so the
+residual was never the cross-tile bug the issue hypothesised
+([#232](https://github.com/DocGerd/sail_command/issues/232)). Accessibility
+and focus continuity was the largest single thread: the About dialog
+now traps keyboard focus within itself and offers a close button beside the
+title, with the rest of the app shell marked `inert` while it is open, so a
+screen reader can no longer reach live map or routing controls behind the
+backdrop ([#696](https://github.com/DocGerd/sail_command/issues/696)); the
+boat-tab draft-provenance citation is now reachable to screen readers on
+every boat and visually separated from the keel caveat with a left border
+instead of reading as one run-on paragraph
+([#701](https://github.com/DocGerd/sail_command/issues/701)); the `Button`
+primitive gained ref support, and the About dialog's close button, Live
+view's GPS-hint dismiss, and the Plans list's recalculate/delete row
+actions now render through it instead of bare browser-default buttons
+([#705](https://github.com/DocGerd/sail_command/issues/705));
+`NumberInput`'s clamp-on-blur now shows a visible "corrected to …" notice
+across every affected numeric setting instead of silently rewriting the
+value ([#731](https://github.com/DocGerd/sail_command/issues/731)); and
+reopening the origin or destination picker via "Change" now moves keyboard
+focus into its search box instead of dropping it to the page background
+([#737](https://github.com/DocGerd/sail_command/issues/737)) — the opening
+counterpart to the four picker *exit* paths `v0.15.0` fixed, which dropped
+focus to the page body the same way
+([#695](https://github.com/DocGerd/sail_command/issues/695)). Safety
+prominence: the legs table's Shallow column moved to the first position
+with its two depth chips stacked vertically, so the populated column fits
+within the visible table at phone width in both languages and both rigs,
+plus a CSS-only scroll-shadow cue for when there is more to scroll
+([#698](https://github.com/DocGerd/sail_command/issues/698)); blocking and
+safety-relevant alerts — GPX import errors, the plan-disabled reason,
+plan/recalculation failures, the offline recalculation notice, an invalid
+AIS MMSI, and the stale-forecast and no-route lines — now render with a
+coloured wash, left border and bold weight instead of the same muted grey
+used for plain FYI hints
+([#703](https://github.com/DocGerd/sail_command/issues/703)); and the
+shallow-depth warning now collapses its explanation behind a disclosure,
+expanded by default only when the route's cautious reading falls below the
+boat's own draft, so the depth figure and severity stay visible without
+interaction ([#747](https://github.com/DocGerd/sail_command/issues/747)).
+Copy and i18n: the "waypoint" vs "via point" terminology inconsistency is
+resolved, and the generic routing-error message no longer advises a retry
+the app's own logic says will not help
+([#712](https://github.com/DocGerd/sail_command/issues/712)); the AIS
+popup's "last signal" row no longer reads as a broken German calque, being
+built per-language now rather than from a bare literal
+([#709](https://github.com/DocGerd/sail_command/issues/709)); the
+stale-forecast notice is now a short label naming the actual
+fetch-to-departure gap in whole hours, replacing a full sentence that had
+named the wrong quantity
+([#748](https://github.com/DocGerd/sail_command/issues/748)); and the
+safety-depth compact row's misaligned inputs and its orphan-wrapping unit
+text are fixed
+([#744](https://github.com/DocGerd/sail_command/issues/744)).
 
-The remaining two issues in the milestone carry no user-visible surface and
+The remaining nine issues in the milestone carry no user-visible surface and
 are covered under "Development workflow" below.
 
-## Next — v0.16.0
+## Next — v0.17.0
 
-The [`v0.16.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-holds sixteen issues. Seamark and depth-overlay follow-on continues: the
-last of #200's four original map-chrome residuals to remain open — item 2
-of #232's own enumeration, cross-tile symbol ordering — stays open under
-[#232](https://github.com/DocGerd/sail_command/issues/232); the
-depth-navigability hatch still renders as hard-edged, aliased mask-cell
-squares at close zoom
+The [`v0.17.0` milestone](https://github.com/DocGerd/sail_command/milestones)
+holds fourteen issues. Accessibility and reachability carries over as a
+theme: the About dialog's focus trap puts non-visible elements — hidden,
+zero-sized, or otherwise unreachable — into its Tab cycle
+([#780](https://github.com/DocGerd/sail_command/issues/780)); the legs
+table's horizontal scroll region is not keyboard-operable, a WCAG 2.1.1 gap
+([#774](https://github.com/DocGerd/sail_command/issues/774)); the
+OpenStreetMap attribution control is click-intercepted and fully occluded at
+every narrow viewport once the planner panel is scrolled down to the
+"Route planen" CTA, which makes it a licence-compliance surface under
+ODbL/CC-BY rather than a cosmetic one
+([#771](https://github.com/DocGerd/sail_command/issues/771)); and that same
+CTA is still not sticky on narrow viewports, unmet against the design spec's
+own §3.3 guarantee
+([#702](https://github.com/DocGerd/sail_command/issues/702)). Seamark and
+depth-overlay follow-on continues: the depth-navigability hatch still
+renders as hard-edged, aliased mask-cell squares at close zoom
 ([#648](https://github.com/DocGerd/sail_command/issues/648)), alongside a
 separate maintainer proposal to make the shallow-water hatching
 user-toggleable
@@ -86,37 +111,27 @@ cardinal mark ([#615](https://github.com/DocGerd/sail_command/issues/615)).
 Routing: motor↔sail mode changes cost nothing in the isochrone cost model,
 so a narrow-water plan can churn motor → short sail → motor with no penalty
 at all, distinct from the already-decided #264 heading weave
-([#354](https://github.com/DocGerd/sail_command/issues/354)). Accessibility
-and focus continuity is the largest single thread: the About dialog asserts
-`aria-modal` without trapping focus or offering a close affordance near the
-title ([#696](https://github.com/DocGerd/sail_command/issues/696)); the
-boat-tab provenance citation is unreachable to assistive technology and
-visually merges with the keel caveat
-([#701](https://github.com/DocGerd/sail_command/issues/701)); four
-controls still bypass the `Button` primitive, which cannot currently accept
-a ref ([#705](https://github.com/DocGerd/sail_command/issues/705));
-`NumberInput`'s silent clamp-on-blur needs a visible correction signal
-([#731](https://github.com/DocGerd/sail_command/issues/731)); and
-reopening a `HarborPicker` via "Change" again drops focus to `<body>`
-([#737](https://github.com/DocGerd/sail_command/issues/737)) — the opening
-side of the class `v0.15.0`'s #695 closed for the four exit paths. Safety
-prominence: the legs table hides its own safety column ("Shallow" is last
-of ten, with no cue that the table scrolls)
-([#698](https://github.com/DocGerd/sail_command/issues/698)); blocking and
-safety-relevant text elsewhere renders as muted body copy with no visual
-urgency ([#703](https://github.com/DocGerd/sail_command/issues/703)); and
-the primary "Route planen" CTA is still not sticky on narrow viewports,
-unmet against the design spec's own §3.3 guarantee
-([#702](https://github.com/DocGerd/sail_command/issues/702)). Copy and
-i18n: "waypoint" vs "via point" terminology is inconsistent, and
-`error.internal` advises a retry the app itself says will not help
-([#712](https://github.com/DocGerd/sail_command/issues/712)); the AIS
-popup's age row reads as a broken German calque
-([#709](https://github.com/DocGerd/sail_command/issues/709)); and
-`boat-selection.png`, the one screenshot the docs capture script does not
-emit (`docs/screenshots/capture.mjs` only writes `start-view.png` and
-`plan-route.png`), is produced by no generator at all
-([#716](https://github.com/DocGerd/sail_command/issues/716)).
+([#354](https://github.com/DocGerd/sail_command/issues/354)). Consistency
+and correctness nits: `gpx.ts`'s data-area bounds check and
+`NavMask.inBounds` disagree on whether a point exactly on the northern or
+eastern edge counts as in-area — closed versus half-open, so the permissive
+check runs first and the strict one later
+([#779](https://github.com/DocGerd/sail_command/issues/779)); the English
+depth-mask caveat is missing the determiner its German twin carries, so its
+bare `floor` parses first as a verb
+([#776](https://github.com/DocGerd/sail_command/issues/776)); and a
+`plan.ts` comment calls `formatDriftMin` "the" repo's single-unit-discarding
+formatter when `formatHeading` is a second one
+([#775](https://github.com/DocGerd/sail_command/issues/775)). Product
+shape: a spike into whether the Live view should have a demo mode, and if
+so whether it ships user-facing, UAT-only, or not at all
+([#749](https://github.com/DocGerd/sail_command/issues/749)); `ownMmsi` is
+stored once globally though an MMSI identifies a single vessel, so switching
+boats leaves the AIS ownship filter pointed at the previous one
+([#746](https://github.com/DocGerd/sail_command/issues/746)); and the Boat
+tab conflates boat selection, boat-scoped settings and global app settings
+under one label
+([#742](https://github.com/DocGerd/sail_command/issues/742)).
 
 ## Themes for the next year
 
@@ -202,13 +217,55 @@ revisited, not that it has been lifted.
   behavior can be tested without sailing
   ([#143](https://github.com/DocGerd/sail_command/issues/143)). This is the
   prerequisite for confidently changing anything in the Live view.
-- Remaining map-chrome issues beyond v0.6.0
-  ([#232](https://github.com/DocGerd/sail_command/issues/232)).
 
 ### Development workflow
 
 Not user-visible, but it is where a meaningful share of the effort goes and it
 sets the pace of everything above.
+
+The `v0.16.0` cut fixed nine further items in this area, none with a
+user-visible surface. Two frozen-coordinate hit-tests that PR #419 had
+deliberately left out of its #412 fix wave — flagged rather than asserted
+safe, beside the six it did convert — now re-sample their geometry inside
+the poll like those siblings
+([#422](https://github.com/DocGerd/sail_command/issues/422)).
+`withinMask` existed as three byte-identical private copies — in
+`headingDepth.ts`, `routeProfile.ts` and `shallowExposure.ts` — of a bounds
+convention `NavMask.cellOf` already computes one layer down; all three are
+now lifted onto `NavMask` itself
+([#517](https://github.com/DocGerd/sail_command/issues/517)). Five test
+keepers touched by PR #538 pinned a wording or a literal value rather than
+the property they were named for, so none would have fired when it mattered;
+each now asserts that property itself
+([#548](https://github.com/DocGerd/sail_command/issues/548)). The
+per-plan worker polar map is now built with `Object.create(null)` and read
+with `Object.hasOwn`, so a prototype-chain lookup can no longer return an
+inherited table and skip a fail-closed guard — defence in depth against a
+residual the analysis that correctly dismissed a CodeQL alert as a false
+positive had surfaced, not a live bug
+([#601](https://github.com/DocGerd/sail_command/issues/601)). Two
+independent artifacts each carried a stale claim about the #376 e2e
+idle-gate audit after it had closed — one asserting a sibling spec probably
+shared the fixed race when that spec has never contained the construct at
+all, the other still calling the question unconfirmed — and both are
+corrected ([#618](https://github.com/DocGerd/sail_command/issues/618)).
+`mask.test.ts`'s `onLand` snap test probed a point that is actually water,
+roughly 305 m from the cell centre its own comment named rather than the
+32 m claimed, so its assertions were satisfied before the snap path ran at
+all; it now probes a real land point and asserts that point is un-navigable
+first, so the path under test is actually entered
+([#622](https://github.com/DocGerd/sail_command/issues/622)). Four
+`maplibre-gl` source-comment line-number citations, stale independently of
+PR #671's version bump, are corrected
+([#674](https://github.com/DocGerd/sail_command/issues/674)).
+`boat-selection.png` — the one README screenshot with no generator, so the
+only one whose language, framing and freshness nothing enforced — is now
+emitted by `docs/screenshots/capture.mjs` alongside the other two
+([#716](https://github.com/DocGerd/sail_command/issues/716)). And the README
+screenshot pair, whose differing aspect ratios (1280x1000 against 1280x800)
+left the two-column table visibly misaligned, is now stacked vertically with
+a caption each rather than re-cropped
+([#743](https://github.com/DocGerd/sail_command/issues/743)).
 
 The `v0.15.0` cut fixed two further items in this area, neither with a
 user-visible surface. `pipeline/verify_mask.py`'s five safety-critical bare

@@ -33,7 +33,8 @@ making design-level decisions; do not silently deviate.
   incl. offline reload).
 - `app/src/components/` mixes feature components with a small UI **primitive
   layer** (`Button`, `Card`, `Chip`, `Disclosure`, `Field`, `NumberInput`,
-  `Skeleton`, added in #64) built on the locked `--sc-*` design tokens defined in
+  `Skeleton`, added in #64; `Slider` added later at #353) built on the locked
+  `--sc-*` design tokens defined in
   `app/src/app.css` (see the UI modernization addendum
   `docs/superpowers/specs/2026-07-17-ui-modernization-design.md` §3.2). Reuse the
   primitives and tokens for new UI; don't reinvent buttons/inputs or hardcode
@@ -85,9 +86,11 @@ making design-level decisions; do not silently deviate.
   scans the stylesheet from the `app/src/` top level — so before touching
   `app.css`, enumerate with `grep -rln 'app\.css' app/src
   --include='*.test.ts*'` rather than trusting any list here — but that grep
-  counts FILES CONTAINING THE STRING, not guards: measured 2026-08-28 it
-  returned 11, of which only 7 read the stylesheet via `readFileSync`, three
-  (`BoatPicker`/`ScaleBar`/`Slider.test.tsx`) merely MENTION it in a comment and
+  counts FILES CONTAINING THE STRING, not guards: re-measured 2026-08-31 it
+  returned 12 (11 on 2026-08-28), of which only 7 read the stylesheet via
+  `readFileSync`, four (`BoatPicker`/`ScaleBar`/`Slider.test.tsx`/
+  `RouteSummary.test.tsx`) merely NAME it in prose — three in a comment,
+  `Slider.test.tsx` in an `it()` title — and
   cannot fail on a CSS change, and one (`sailLiteralCallSites.test.ts`) globs
   `?raw` over `.ts`/`.tsx` only, so it is NOT an instance of the vacuous-`?raw`
   trap above. Classify each hit before quoting a number. And
@@ -428,10 +431,17 @@ making design-level decisions; do not silently deviate.
   re-created the empty `role="alert"`; the reviewer measured 8 fall-open members
   plus a control, 9/9, before the table was widened to all 12). Use
   `Object.hasOwn` (ES2022; `tsconfig.app.json` targets es2023, so no polyfill).
-  There was NO in-repo precedent: `Object.hasOwn`'s only occurrence IS that fix,
-  and `usePersistedBoatId.ts`'s `isCatalogueBoatId` is a `BOATS.some(...)` ARRAY
+  There was NO in-repo precedent AT THE TIME: that fix (`migratePlan.ts`) was
+  `Object.hasOwn`'s only occurrence until #601 added a second in
+  `planRoute.ts`'s `polarFor` guard (`89f4880`, 2026-08-28); and
+  `usePersistedBoatId.ts`'s `isCatalogueBoatId` is a `BOATS.some(...)` ARRAY
   scan — a round-1 review comment called it the precedent and it reached this
-  file unchecked. Derive any prototype-name test table from
+  file unchecked. That guard is NOT made redundant by the per-plan polar map
+  `protocol.ts` builds via `Object.create(null)`: per `planRoute.ts`'s own #601
+  comment only the worker path is null-prototype — every other `PlanDeps`
+  constructor (test fixtures, the sweep harness) passes an ordinary `{}` — so
+  `Object.hasOwn` is the half correct for EVERY caller. Never drop it on the
+  grounds that the map is null-prototype somewhere. Derive any prototype-name test table from
   `Object.getOwnPropertyNames(Object.prototype)`, never a hand-written list — a
   hand-written 8 missed `__defineGetter__`/`__defineSetter__`/`__lookupGetter__`/
   `__lookupSetter__`, and a literal array can be stubbed to `[]` leaving the
@@ -904,7 +914,8 @@ making design-level decisions; do not silently deviate.
   "trips first") read the SAME FROZEN BOX the assertion does, so it was blind
   to exactly what it was credited with catching. Treat reachability as
   UNMEASURED unless the construction demonstrably lands inside the window;
-  two residual sites are tracked in #422.
+  the two frozen-geometry sites left by this defect were closed at #422
+  (`89f4880`, 2026-08-28).
 - **`getAttribute()` on a BOOLEAN attribute cannot tell present from absent**
   — it returns `""` when set and `null` when not, and BOTH are JS-falsy, so
   `if (!(await el.getAttribute('open'))) await summary.click()` fires
@@ -938,8 +949,12 @@ making design-level decisions; do not silently deviate.
   polling is not the same as not needing a gate. FIXED in #412 / PR #419:
   every one of those guards now RE-SAMPLES its geometry INSIDE the poll
   callback, so no box survives across a tick; the specs carry `#412` comments
-  at each site saying so. Two residual frozen-geometry sites remain elsewhere
-  in the suite, tracked in #422. The durable rule outlives the fix: polling a
+  at each site saying so. The two residual frozen-geometry sites #422 tracked
+  — both in `compass.spec.ts`'s #208 occlusion sweep — were closed the same
+  way at #422 (`89f4880`, 2026-08-28); they now carry `#422 (residual of
+  #412)` comments saying the geometry is RE-SAMPLED on every poll tick. The
+  suite has not been re-enumerated since, so "no frozen-geometry site
+  remains" is not a claim this file makes. The durable rule outlives the fix: polling a
   state signal is not enough if the coordinate or handle being polled was
   itself sampled before settle.
 - `app/e2e/helpers.ts` exports a named viewport matrix — `STANDARD_VIEWPORTS`
@@ -1216,8 +1231,8 @@ making design-level decisions; do not silently deviate.
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
   count instead of an ordinal. (v0.10.0–v0.11.0 carry no recorded Deploy
-  workflow run IDs or job conclusions for those cuts, and only v0.14.0's date
-  is on record here — don't fabricate any.)
+  workflow run IDs or job conclusions for those cuts, and no date is recorded
+  for any cut before v0.14.0 — don't fabricate any.)
   **NEVER GATE ON THE GAP, and never read "fast tag push" as a protection —
   but the flat "carries ZERO information" phrasing was retired 2026-08-27.**
   The outcome is set by whether `cancel-in-progress` killed the earlier run
@@ -1828,8 +1843,13 @@ making design-level decisions; do not silently deviate.
   `pipeline/data-src` symlinked into a worktree; an enumeration then found
   **12** entries with the same defect, not the 1 that was flagged. The rule now
   sits once at the top of the file. `.github/scripts/check-no-home-paths.sh`
-  cannot catch this class (grep follows the link, the leak is in the blob) —
-  tracked as #479.
+  could not catch this class — `[ -f "$f" ]` FOLLOWS a symlink, so the link's
+  own stored target was never scanned — until #479 (closed, v0.15.0) added
+  `scan_symlink_target`, applied to EVERY tracked symlink and failing CLOSED
+  when a target cannot be read. Pinned by selftest rows 29-33, which cover a
+  live target, a DANGLING target that still leaks, a benign relative target,
+  the allowlisted `/home/user` placeholder, and a regular-file leak plus a
+  symlink-target leak reported together.
 - **A field written by one branch and read by another under a DIFFERENT name
   typechecks and renders nothing.** #565 wrote `draftProvenance` while #563
   read an optional `keelAssumption?: string`; `boats.ts` merged cleanly keeping
@@ -1991,12 +2011,15 @@ making design-level decisions; do not silently deviate.
   private `walkCells` DDA, deliberately, to keep `PlanResult` byte-identical
   so no #282 sweep is owed. A duplicated TRAVERSAL fails as a subtly wrong
   safety NUMBER with no signal at all.
-  Method that worked (#516/PR #523): the consumer reads cells only through
-  `mask.depthInfoM(centre)`, so a facade carrying the real `meta` plus a
+  Method that worked (#516/PR #523): a facade carrying the real `meta` plus a
   recording `depthInfoM` captures the shipped walk's visited-cell sequence,
   while `(mask as unknown as { walkCells }).walkCells` reaches the
   TS-only-private original — then compare SEQUENCES over named shapes plus
-  seeded random segments. Reading the two side by side finds them "similar"
+  seeded random segments. Since #517 that facade ALSO needs an `inBounds`
+  delegating to the real mask, because the consumer now calls it — delegate,
+  never record, so the recorded sequence stays the walk's own and cannot drift
+  from production's bounds convention — or it throws;
+  `shallowExposure.test.ts`'s own `#517:` comment says exactly this. Reading the two side by side finds them "similar"
   and misses a tie-break divergence.
   To prove a REFACTOR of that area perturbed nothing (a different question):
   run ONE harness UNCHANGED in a BASE and a HEAD worktree, recording every walk
@@ -2044,8 +2067,16 @@ making design-level decisions; do not silently deviate.
   eye; identical feature counts at z≥12 (`overlap:'always'`) is the signature
   that isolates collision growth from every other explanation (#191, #192,
   fixed by ranking `symbol-sort-key` per R1001 danger content, #200/#225;
-  four residuals — z≥12 paint-order inversion, cross-tile ordering, unpinned
-  tap wiring, popup anchoring — tracked in #232).
+  the four #232 residuals are ALL discharged and #232 is CLOSED (2026-08-31),
+  but by TWO different routes: z≥12 paint-order inversion, unpinned tap wiring
+  and popup anchoring SHIPPED as fixes, while cross-tile ordering closed as a
+  MEASUREMENT MIS-ATTRIBUTION — `686ad7b` diffed `querySourceFeatures` against
+  `queryRenderedFeatures` over the real committed `seamarks.json` at z8/z9 and
+  found 99 culled hazard marks, 3 cross-tile ROWS (2 distinct pairs, one
+  recurring at both zooms) and ZERO ordering leaks. Cite that from
+  `seamarkGeoJson.ts`'s own STATUS block, never from here: it states explicitly
+  that this does NOT re-derive #200's z8/z9 retention figure, which was
+  measured on a different aperture).
 - **A measurement can move two variables at once and read BACKWARDS** — the
   sharper sibling of "what class of failure can this method not detect": this
   one reports the INVERSE, confidently. A whole-viewport
@@ -2273,9 +2304,15 @@ making design-level decisions; do not silently deviate.
   BY the round-1 fix wave; round 3, whose brief carried an explicit BINDING
   stopping rule ("fix exactly these three, REPORT anything else, do not fix
   it") → zero successors in the release DOCS, but one still landed in a
-  `capture.mjs` comment that ships (a correct 800px-reset decision carrying a
-  refuted reason — `plan-route.png` does NOT fit 800px, ~12 of 21 legs rows
-  render). So the chain was NARROWED, not broken — this bullet's own
+  `capture.mjs` comment (a correct 800px-reset decision carrying a refuted
+  reason — `plan-route.png` does NOT fit 800px, ~12 of 21 legs rows render).
+  It was corrected by `4d61ace` at 11:31 the SAME DAY, ~2 h before the
+  "comment that ships" clause was committed at 13:31 in `2cc9400` — the 13:16
+  commit `9f7d688` still read "ZERO successors in the tracked docs" and named
+  no `capture.mjs` comment at all, so 11:31 + 1h45m = 13:16 was an arithmetic
+  chain onto the wrong event — so "a comment that ships" was never true, a
+  WRONG-FROM-THE-START claim inside the very bullet about successor defects.
+  So the chain was NARROWED, not broken — this bullet's own
   prefer-"narrowed"-to-"closed" rule turned on itself. Treat the stopping rule
   as the difference in the brief worth testing again, NOT as established
   cause: round 3's brief was also narrower in content (three named fixes vs an
@@ -2617,11 +2654,17 @@ making design-level decisions; do not silently deviate.
   attribute a docs-fixture failure to horizon drift without checking the rig
   margin first — a v0.12.1 docs-sweep auditor did exactly that, and the wrong
   cause survived its own adversarial verifier.
-  `capture.mjs` also covers only TWO of README's three images: its two
-  `page.screenshot()` calls emit `start-view.png` and `plan-route.png` and it
-  never opens the Boat tab, so `boat-selection.png` is a HAND capture against
-  a local production build and a recapture that only runs the script ships it
-  stale (verified 2026-08-20).
+  `capture.mjs` covered only TWO of README's three images until #716
+  (`6aea385`, 2026-08-31) — `boat-selection.png` was a HAND capture with no
+  generator and had drifted stale three times over. It now scripts all THREE:
+  the script clicks the Boat tab and takes a third `page.screenshot()`, behind
+  its own viewport bump (`BOAT_SELECTION_HEIGHT_PX = 1050`, sized against
+  `.boat-picker-card`'s measured bottom edge — `capture.mjs`'s own comment
+  carries that figure and the date it was measured; read it THERE rather than
+  from a second copy here, which is exactly the twin that drifted once) that is
+  reset to the shared 800px height straight afterwards. Three different viewport
+  heights in one flow is deliberate — the first is the `newPage` viewport and
+  only the other two are `setViewportSize`; do not collapse them.
   Durable form: a capture
   or verification tool
   hardcoded to the PRODUCTION url can never capture a release candidate, since
@@ -2941,8 +2984,15 @@ making design-level decisions; do not silently deviate.
   `build_mask.py`'s `TOLERANCE_M`, pinned against it by
   `app/src/test/maskTolerance.test.ts` (no compiler spans Python and
   TypeScript). Surfaced in the legs-table cautious chip and in the
-  `ShallowWarning` banner, which is ONE `role="alert"` container with
-  lead/detail/caveat children — the lead carries the floor and, when
+  `ShallowWarning` banner. That banner is ONE `role="alert"` container (a
+  `<div>`, not a `<p>` — that part predates #747), and since #747 (PR #763) it
+  holds a `Disclosure` plus an always-visible caveat SIBLING, never a child of
+  it: the SUMMARY
+  carries the whole hazard — the lead, this plan's `usedDepthM`, and the
+  exposure sentence once `exposureDist` has resolved — while the collapsible
+  body carries only the MECHANISM (confined/detail/locator/remedy), because
+  content inside a closed `<details>` drops out of the accessibility tree.
+  The lead carries the floor and, when
   `usedDepthM - MASK_TOLERANCE_M < plan.request.boat.draftM`, that it falls
   below the draft — the by-value SNAPSHOT, never a `boatById` lookup, since
   that boat may have left the catalogue (`RouteSummary.tsx` :: `isSevere`,
@@ -3200,8 +3250,8 @@ making design-level decisions; do not silently deviate.
 - `NavMask.segmentShallowestBelow` returns `null` for BOTH "no cell below the
   threshold" AND "the walk left the grid / tripped its iteration guard" — it
   cannot distinguish clear water from no coverage. Anything that renders a
-  safety state from it must bound-check both endpoints against the public
-  `mask.meta` rectangle FIRST; only then is a `null` trustworthy as "clear"
+  safety state from it must bound-check both endpoints with `NavMask.inBounds`
+  FIRST; only then is a `null` trustworthy as "clear"
   (#251/#255 — reversing those two steps is a silent false all-clear, and the
   natural-looking implementation is the wrong one).
 - Angles: wind direction is meteorological (coming FROM, degrees true);
