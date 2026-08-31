@@ -211,8 +211,7 @@ oversight waiting to be tidied.
   "Abfahrt und Optionen wählen", a different construction. **This is the
   discoverability defect #742 is about, in the copy rather than in the
   layout** — and it is evidence that renaming the tab is not the only lever.
-  **Filed separately as #804** and being fixed in its own PR, so it is not
-  work this restructure owns.
+  **Filed separately as #804**, so it is not work this restructure owns.
 
 ---
 
