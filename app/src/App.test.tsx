@@ -1060,6 +1060,42 @@ describe('App', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
+  // #696 (remaining scope after PR #759): four of the five app-shell
+  // siblings that must go inert while AboutDialog is open are ALWAYS
+  // mounted, regardless of layout width — the fifth, PanelResizer, only
+  // mounts on the wide layout (isWide is false by default in jsdom, since
+  // window.matchMedia is not globally stubbed — see useWideLayout.ts's own
+  // comment) and gets its own forwarding test in PanelResizer.test.tsx.
+  // Asserted across an open -> close TRANSITION on the SAME rendered
+  // elements, not two fresh mounts — a fresh-mount-only check would pass
+  // even against a `useState`-seeded-once bug (the exact #763 shape this
+  // repo has already shipped once for a sibling seeding hazard).
+  it('#696: app-shell siblings are inert while About is open, and un-inert on close', async () => {
+    const { container } = renderApp();
+    const siblingSelectors = ['.map-area', '.app-header', '.banner-area', '.app-bottom-sheet'];
+
+    const siblings = siblingSelectors.map((selector) => {
+      const el = container.querySelector(selector);
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    for (const el of siblings) {
+      expect(el).not.toHaveAttribute('inert');
+    }
+
+    fireEvent.click(await screen.findByRole('button', { name: de['about.open'] }));
+    await screen.findByRole('dialog');
+    for (const el of siblings) {
+      expect(el).toHaveAttribute('inert');
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: de['about.close'] }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    for (const el of siblings) {
+      expect(el).not.toHaveAttribute('inert');
+    }
+  });
+
   it('#427: About button carries its accessible name via aria-label, not the (now-removed) glyph', async () => {
     renderApp();
     const aboutButton = await screen.findByRole('button', { name: de['about.open'] });
