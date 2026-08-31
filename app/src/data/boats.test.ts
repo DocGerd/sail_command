@@ -47,12 +47,16 @@ describe('boat catalogue', () => {
     expect(b.maneuverPenaltyS).toBe(45);
   });
 
-  // #548: the "solve order is still genoa-then-fock" acceptance clause was
-  // unpinned — reversing BOATS[0].sails left 1830/1832 green (the two reds
-  // were mock artifacts, not this property). DEFAULT_SAIL_IDS is DERIVED
-  // (sailIdsOf(boatById(DEFAULT_BOAT_ID))), so pinning it against a
-  // hand-typed literal — never re-derived from BOATS — reds the moment the
-  // default boat's own sail order changes.
+  // #548: `BOATS[0].sails` itself is ALREADY pinned — sweepSailIds.test.ts's
+  // TWIN row asserts boatById(DEFAULT_BOAT_ID).sails.map((s) => s.id) against
+  // the same hand-written literal and reds on a reversal (MEASURED at
+  // a1beed3: 1 failed | 1 passed). What nothing pinned is DEFAULT_SAIL_IDS's
+  // own DERIVATION. MEASURED: replacing it with
+  // `[...sailIdsOf(boatById(DEFAULT_BOAT_ID))].reverse()` leaves boats.test +
+  // sweepSailIds 19/19 and replan + reroute 84/84 GREEN at a1beed3 (the
+  // backfill guards compare request.sailIds AGAINST DEFAULT_SAIL_IDS, so both
+  // sides move together and neither can falsify the other), and reds this
+  // row, and only this row, at HEAD. Hand-typed, never re-derived from BOATS.
   it('#548: DEFAULT_SAIL_IDS is genoa-then-fock', () => {
     expect(DEFAULT_SAIL_IDS).toEqual(['genoa', 'fock']);
   });

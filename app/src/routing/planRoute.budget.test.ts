@@ -467,6 +467,15 @@ describe('#54 §E.3: budget exhaustion mid-comparison', () => {
     // fixture (every sail finishes; nothing fails at all), which the
     // "finished and lost" row's fixture (one sail fails for a non-budget
     // reason) does not exercise.
+    //
+    // MEASURED (whole file, 68 tests, at this commit): `comparisonComplete:
+    // true` reds the two it.each rows only; `false` reds "finished and lost"
+    // AND this row; `sails.every((out) => out.rigResult !== null)` reds
+    // "finished and lost" only; and `sails.some((out) => out.cause !== null &&
+    // out.cause !== 'budget-exhausted')` — any predicate needing a non-budget
+    // FAILURE to be PRESENT — reds THIS ROW AND ONLY THIS ROW (1 failed | 67
+    // passed). That mutant is what makes this row un-deletable, not the
+    // fixture alone.
     const res = planWith(NEVER, openWaterMask());
     expect(res.status).toBe('ok');
     if (res.status !== 'ok') return;

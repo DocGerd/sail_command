@@ -467,7 +467,12 @@ describe('PlansList recalculate (#114)', () => {
         ['de', de],
         ['en', en],
       ] as const) {
-        expect(dict['plansList.unreadable.newerVersion'], lang).toBe(EXPECTED[lang]);
+        expect(
+          dict['plansList.unreadable.newerVersion'],
+          `${lang}: pinned by CLAIM, not by wording. If you changed this copy deliberately, ` +
+            're-vet it before updating EXPECTED: it may state only what schemaVersion PROVES ' +
+            '(newer build, unreadable here, kept not deleted) and must not promise the record is intact.',
+        ).toBe(EXPECTED[lang]);
       }
     });
 

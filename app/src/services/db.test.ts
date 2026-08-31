@@ -924,6 +924,10 @@ describe('#54 lazy plan migration at the read boundary', () => {
     ]);
   });
 
+  // The two cases get different copy (plansList.unreadable.newerVersion vs
+  // .damaged), so the summary must carry WHICH one it is. Deliberately says
+  // nothing about integrity: the classification rests on schemaVersion alone
+  // and cannot rule out a record that is BOTH newer and corrupt (#548).
   it('distinguishes a newer-version record from a damaged one', async () => {
     await savePlan({ ...legacyRecord('future-1', 3000), schemaVersion: 999 } as unknown as Plan);
     const damaged = legacyRecord('damaged-1', 2000) as unknown as Record<string, unknown>;
