@@ -4,6 +4,7 @@ import type { GeoJSONSource, LngLatLike } from 'maplibre-gl';
 import { useMapInstance } from './MapView';
 import { useT } from '../i18n';
 import { destinationPoint } from '../lib/geo';
+import { BOAT_COLOR, HALO_COLOR } from '../lib/mapColors';
 import { ownshipVectorGeoJson } from '../lib/ownshipVector';
 import { installStyleSetup } from '../lib/styleReload';
 import type { LatLon } from '../types';
@@ -28,7 +29,7 @@ const VECTOR_SOURCE = 'sc-boat-vector';
 const VECTOR_LAYER = 'sc-boat-vector-line';
 const NM_PER_METER = 1 / 1852;
 const CIRCLE_STEPS = 32;
-const BOAT_COLOR = '#0072B2'; // Okabe-Ito blue
+// #715: BOAT_COLOR (Okabe-Ito blue) is now imported from lib/mapColors.ts.
 
 function accuracyCircleGeoJson(center: LatLon, radiusM: number) {
   const radiusNm = radiusM * NM_PER_METER;
@@ -72,7 +73,7 @@ function boatTriangleElement(): HTMLDivElement {
   const polygon = document.createElementNS(SVG_NS, 'polygon');
   polygon.setAttribute('points', '13,1 23,23 13,17 3,23');
   polygon.setAttribute('fill', BOAT_COLOR);
-  polygon.setAttribute('stroke', '#ffffff');
+  polygon.setAttribute('stroke', HALO_COLOR);
   polygon.setAttribute('stroke-width', '1.5');
 
   svg.appendChild(polygon);
