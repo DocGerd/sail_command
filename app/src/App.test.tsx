@@ -503,8 +503,19 @@ function simulateMapClick(
 // 'adding a via point (a draft-only edit) does not clobber a departure the
 // user edited after loading', which waits for the prefilled departure value.)
 // Flushing React's pending passive effects is therefore the only
-// deterministic gate available, and it is a flush rather than a sleep: it
-// drains the work already scheduled, it does not wait a fixed time for it.
+// deterministic gate available without changing what these tests set up,
+// and it is a flush rather than a sleep. Mechanism, so this is
+// re-derivable instead of taken on trust: `act`'s async form resolves
+// through `enqueueTask`, which here is `require('timers').setImmediate` —
+// the same host-task queue the React Scheduler posts its passive-effect
+// flush on (scheduler prefers `setImmediate` whenever it exists). A flush
+// queued at commit time is therefore strictly EARLIER in that FIFO queue
+// and always runs first; `recursivelyFlushAsyncActWork` then drains
+// React's own act queue until it is empty. The guarantee is queue
+// POSITION, never elapsed time, so it does not decay under load. (The
+// inner `await Promise.resolve()` is not what does the work — MEASURED:
+// `act(async () => {})` alone scores identically, while a bare microtask
+// with no `act` leaves the flake unfixed.)
 //
 // This makes the TEST deterministic. It does NOT fix, and must not be read as
 // fixing, the product race it steps around: a user who edits the Plan form
@@ -1689,6 +1700,12 @@ describe('GPX import while a plan is active (#3 self-review: prefill-only)', () 
     fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
     fireEvent.click(await screen.findByRole('button', { name: new RegExp(activePlan.name) }));
     await waitFor(() => expect(screen.getByText(formatNm(88, 'de'))).toBeInTheDocument());
+    // #668/#631 — see the helper; the GPX import below sets origin/destination
+    // via handleImportRoute, and a still-pending plan-form sync effect writing
+    // AFTER that import would silently overwrite the freshly imported draft
+    // with the old plan's values (syncedPlanIdRef.current is reset to null by
+    // handleImportRoute, so a late-firing effect would NOT short-circuit).
+    await flushPlanFormSync();
 
     // Import a GPX (rte with one via) whose endpoints are inside the data-area
     // but DISTINCT from the active plan's — so the assertions prove the IMPORTED
