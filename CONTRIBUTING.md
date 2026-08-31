@@ -36,8 +36,10 @@ to sign.
 **There is deliberately no DCO sign-off and no CLA.** The reasoning, and the
 conditions under which that would be revisited, are recorded in
 [GOVERNANCE.md](GOVERNANCE.md#contribution-licensing--no-dco-or-cla-deliberate).
-Do not add `Signed-off-by:` trailers; no commit in this repository carries one
-and nothing checks for them.
+Do not add `Signed-off-by:` trailers as a human contributor; no *human*
+commit in this repository carries one and nothing checks for them.
+(Dependabot's own commits carry one automatically — see
+[GOVERNANCE.md](GOVERNANCE.md#contribution-licensing--no-dco-or-cla-deliberate).)
 
 ## Development
 
@@ -168,17 +170,17 @@ labels on **pull requests** are applied automatically from changed paths by
 
 **Milestones**
 
-- `v0.15.0` — this cut; its milestone closes when the release PR merges and
+- `v0.16.0` — this cut; its milestone closes when the release PR merges and
   the tag is pushed.
-- `v0.16.0` — the next MINOR release.
-- `v0.17.0` — opened fresh at this cut, per the roll-forward convention
+- `v0.17.0` — the next MINOR release.
+- `v0.18.0` — opened fresh at this cut, per the roll-forward convention
   below.
 - `Backlog` — accepted, not yet scheduled into a release.
 - `Icebox` — deferred / maybe-never; revisit opportunistically.
 
-`v0.4.0` through `v0.14.0` are closed (plus the `v0.5.1`, `v0.12.1`, and
-`v0.13.1` patch milestones) — `v0.15.0` is not yet closed as of this docs
-sweep, even though all 13 of its issues are (see the `v0.15.0` bullet above:
+`v0.4.0` through `v0.15.0` are closed (plus the `v0.5.1`, `v0.12.1`, and
+`v0.13.1` patch milestones) — `v0.16.0` is not yet closed as of this docs
+sweep, even though all 22 of its issues are (see the `v0.16.0` bullet above:
 its milestone closes only at tag push). `gh api
 repos/DocGerd/sail_command/milestones` is the fact, not this sentence.
 The `v0.8.1` patch release (documentation-only) shipped

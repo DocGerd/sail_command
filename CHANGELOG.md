@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-08-31
+
+### Changed
+
+- Moved the legs table's Shallow column to the first position and stacked its two depth chips vertically, so the populated column now fits within the visible table at phone width in both languages and both rigs instead of overflowing behind the horizontal scroll; the table also gained a CSS-only scroll-shadow cue so it is always visible when there is more to scroll (#698).
+- Blocking and safety-relevant alerts (GPX import errors, the plan-disabled reason, plan/recalculation failures, the offline recalculation notice, an invalid AIS MMSI, the stale-forecast and no-route lines) now render with a visually distinct treatment — a coloured wash, left border and bold weight — instead of the same muted grey used for plain FYI hints (#703).
+- The About dialog's close button, Live view's GPS-hint dismiss, and the Plans list's recalculate/delete row actions now render through the app's shared button style — accent focus ring and consistent chrome instead of bare browser-default buttons (#705).
+- Out-of-range numeric settings (safety depth, depth comfort margin, maneuver penalty, performance factor, motor speed, motor threshold, sail preference) now show a visible "corrected to …" notice when a typed value is pulled back inside its allowed range on blur, instead of silently rewriting it (#731).
+- The shallow-depth warning now collapses its explanation behind a disclosure, expanded by default only when the route's cautious reading falls below the boat's own draft — the depth figure and severity always stay visible without interaction (#747).
+- The stale-forecast notice is now a short label showing the actual fetch-to-departure gap in whole hours ("Forecast 14 h old at departure") instead of a full explanatory sentence (#748).
+
+### Fixed
+
+- The About dialog now traps keyboard focus (Tab/Shift+Tab cycle within it instead of escaping into the map behind the backdrop) and adds a close button beside the title, reachable without scrolling past the whole dialog (#696).
+- The rest of the app shell (map, header, banners, resizer, bottom panel) is now marked `inert` while the About dialog is open, so a screen reader's virtual cursor or browse mode can no longer reach live map or routing controls behind the modal (#696).
+- Boat tab: the draft-provenance citation is now reachable by screen readers on every boat (not just ones with an unverified keel) and is visually separated from the keel caveat with a left border, instead of reading as one run-on paragraph (#701).
+- Fixed the AIS popup's "last signal" row reading as broken German ("Letztes Signal vor: 2 min") by building the age value per-language instead of a bare literal — German now reads "Letztes Signal: vor 2 min", English "Last signal: 2 min ago" (#709).
+- Fixed inconsistent waypoint terminology (three keys said "via point"/"Zwischenpunkt" while the rest of the app said "waypoint"/"Wegpunkt") and reworded the generic routing-error message so it no longer advises retrying when the app's own logic says a retry will not help (#712).
+- Reopening the origin or destination picker via "Change" now moves keyboard focus into its search box instead of dropping it to the page background (#737).
+- Fixed the safety-depth compact row misaligning the departure and safety-depth inputs, and the allowed-range help text sometimes wrapping its unit onto its own orphan line (#744).
+
 ## [0.15.0] - 2026-08-27
 
 ### Added
@@ -865,7 +886,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/DocGerd/sail_command/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/DocGerd/sail_command/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/DocGerd/sail_command/compare/v0.13.1...v0.14.0
 [0.13.1]: https://github.com/DocGerd/sail_command/compare/v0.13.0...v0.13.1

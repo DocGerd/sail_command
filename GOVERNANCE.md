@@ -199,12 +199,15 @@ Reasoning:
   for the current count, which grows with every commit). A solo
   maintainer certifying their own authorship to themselves conveys no
   information Apache-2.0 §5 does not already carry.
-- **An unenforced requirement would be a false claim.** No commit in this
-  repository's history carries a `Signed-off-by:` trailer and no CI check
-  verifies one. Documenting a sign-off requirement without wiring up
-  enforcement would put a statement in the repository that the repository
-  itself contradicts — the failure mode this project most wants to avoid in its
-  documentation.
+- **An unenforced requirement would be a false claim.** No *human-authored*
+  commit in this repository's history carries a `Signed-off-by:` trailer, and
+  no CI check verifies one. (Dependabot's own commits do carry one — GitHub's
+  dependency-update tooling appends it automatically to every PR it opens;
+  that is a property of the bot, not evidence of a DCO process here, and it
+  says nothing about human contributions.) Documenting a sign-off requirement
+  without wiring up enforcement would put a statement in the repository that
+  the repository itself contradicts — the failure mode this project most
+  wants to avoid in its documentation.
 
 **When this would be revisited** (any one of these is enough to reopen the
 decision):
