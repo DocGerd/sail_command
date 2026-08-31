@@ -1061,6 +1061,72 @@ describe('App', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
+  // #696 (remaining scope after PR #759): four of the five app-shell
+  // siblings that must go inert while AboutDialog is open are ALWAYS
+  // mounted, regardless of layout width — the fifth, PanelResizer, only
+  // mounts on the wide layout (isWide is false by default in jsdom, since
+  // window.matchMedia is not globally stubbed — see useWideLayout.ts's own
+  // comment). `PanelResizer.test.tsx` pins the COMPONENT's own forwarding
+  // of `inert` to its rendered separator div; that says nothing about
+  // whether App.tsx's call site ever PASSES the prop — the next test below
+  // stubs `window.matchMedia` to mount PanelResizer here and covers exactly
+  // that call site (PR #777 review, Major 1).
+  // Asserted across an open -> close TRANSITION on the SAME rendered
+  // elements, not two fresh mounts — a fresh-mount-only check would pass
+  // even against a `useState`-seeded-once bug (the exact #763 shape this
+  // repo has already shipped once for a sibling seeding hazard).
+  it('#696: app-shell siblings are inert while About is open, and un-inert on close', async () => {
+    const { container } = renderApp();
+    const siblingSelectors = ['.map-area', '.app-header', '.banner-area', '.app-bottom-sheet'];
+
+    const siblings = siblingSelectors.map((selector) => {
+      const el = container.querySelector(selector);
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    for (const el of siblings) {
+      expect(el).not.toHaveAttribute('inert');
+    }
+
+    fireEvent.click(await screen.findByRole('button', { name: de['about.open'] }));
+    await screen.findByRole('dialog');
+    for (const el of siblings) {
+      expect(el).toHaveAttribute('inert');
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: de['about.close'] }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    for (const el of siblings) {
+      expect(el).not.toHaveAttribute('inert');
+    }
+  });
+
+  it('#696: PanelResizer carries inert on the wide layout, and drops it on close', async () => {
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: true,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })) as unknown as typeof window.matchMedia;
+    try {
+      renderApp();
+      const sep = await screen.findByRole('separator');
+      expect(sep).not.toHaveAttribute('inert');
+      fireEvent.click(await screen.findByRole('button', { name: de['about.open'] }));
+      await screen.findByRole('dialog');
+      expect(sep).toHaveAttribute('inert');
+      fireEvent.click(screen.getByRole('button', { name: de['about.close'] }));
+      expect(sep).not.toHaveAttribute('inert');
+    } finally {
+      // @ts-expect-error -- restore the untouched jsdom default
+      delete window.matchMedia;
+    }
+  });
+
   it('#427: About button carries its accessible name via aria-label, not the (now-removed) glyph', async () => {
     renderApp();
     const aboutButton = await screen.findByRole('button', { name: de['about.open'] });
