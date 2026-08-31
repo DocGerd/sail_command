@@ -2539,11 +2539,11 @@ select {
   font-size: 0.85rem;
 }
 
-/* #747: the mechanism/exposure/locator/remedy DETAIL sentence now renders
-   inside a Disclosure (RouteSummary.tsx), collapsed by default (open when
-   the plan is in the severe/below-draft tier — see that component's own
-   comment for why), so the box shows only its headline by default instead of
-   a five-sentence unconditional wall of prose. `.shallow-warning__caveat`
+/* #747: the mechanism/locator/remedy DETAIL sentence now renders inside a
+   Disclosure (RouteSummary.tsx), collapsed by default on every route
+   (#788 — see that component's own comment for why the summary can carry
+   the whole hazard), so the box shows only its headline by default instead
+   of a five-sentence unconditional wall of prose. `.shallow-warning__caveat`
    above stays a SIBLING of the Disclosure, never a child of it, per that
    rule's own "never hidden behind a Disclosure" comment.
    COMPOUND SELECTOR (`.sc-disclosure.shallow-warning-disclosure`), never a
@@ -2788,6 +2788,20 @@ select {
     10px 100%,
     10px 100%;
   background-attachment: local, local, scroll, scroll;
+}
+
+/* #774: `.route-legs` is `tabIndex=0` (RouteSummary.tsx) so a keyboard-only
+   user can reach and arrow-scroll it — WCAG 2.1.1. A new tab stop with no
+   visible focus indicator would trade 2.1.1 for 2.4.7, so it gets one.
+   `outline-offset` is INSET, matching `.app-tabs button:focus-visible`'s own
+   `-2px` and for the same reason: this table is flush inside the disclosure
+   body, where a positive offset would sit on top of neighbouring content.
+   Inset is also the only offset that survives the scroll container itself —
+   the outline is painted on the border box, so it stays put while the
+   content scrolls underneath. */
+.route-legs:focus-visible {
+  outline: 2px solid var(--sc-accent);
+  outline-offset: -2px;
 }
 
 .route-legs th,

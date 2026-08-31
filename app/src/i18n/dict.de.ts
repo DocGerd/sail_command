@@ -423,6 +423,14 @@ export const de = {
   'route.legs.shallowCautious': 'vorsichtig: bis auf {depth} m',
   'route.legs.motorNote': 'Motor = reine Motorfahrt, keine Segelleistung modelliert.',
   'route.legs.disclosure': 'Etappen ({count})',
+  // #774: the DESCRIPTION (aria-describedby), never the name — the table's
+  // accessible NAME stays #707's <caption>, which reuses
+  // `route.legs.disclosure` so name and collapsed summary always agree. An
+  // aria-label here would have silently overridden that caption. Names the
+  // operation, not the element: the name and role ("Etappen (10)", "Tabelle")
+  // are announced first, so this only has to say what a focused scroll
+  // container can DO.
+  'route.legs.scrollHint': 'Horizontal scrollbar; mit den Pfeiltasten links und rechts scrollen.',
   'route.kind.motor': 'Motor',
   'route.board.port': 'Bb',
   'route.board.starboard': 'Stb',

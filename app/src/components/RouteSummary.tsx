@@ -261,21 +261,46 @@ export function ShallowWarning({
   // the Disclosure, since #747's own DoD only requires the hazard, not its
   // explanation, to survive a collapse.
   //
-  // #747 constraint 2: `defaultOpen={isSevere}` — the below-draft case is
-  // meant to start EXPANDED and every other case collapsed. That is true
-  // ONLY on a fresh mount: Disclosure.tsx's `useState(defaultOpen)` seeds
-  // once and never re-syncs on a later `defaultOpen` prop change, so a plan
-  // SWAPPED into an already-mounted RouteSummary/PlannerPanel would keep
-  // whichever open/closed state the PREVIOUS plan's disclosure had,
-  // regardless of the new plan's own severity (PR #763 review Blocker 1,
-  // MEASURED: mild plan -> new severe plan id rendered collapsed). Both call
-  // sites now pass `key={`${plan.id}-${plan.createdAtMs}`}` on this component
-  // specifically to force a real remount — and therefore a fresh `useState`
-  // seed — on every genuine plan change; `plan.id` ALONE is insufficient,
-  // because `usePlanFlow.ts`'s `id: opts.replacePlanId ?? crypto.randomUUID()`
-  // keeps the id fixed across a #114 recalculate-and-replace (see round 3's
-  // own comment below, and those call sites' comments). The claim above is
-  // therefore accurate given that key, not despite it.
+  // #747 constraint 2, SUPERSEDED BY #788: this was `defaultOpen={isSevere}`,
+  // so the below-draft case started EXPANDED. That never discriminated.
+  // Three facts compose, each re-read for #788 rather than taken on trust:
+  // `defaultSafetyDepthM(b) = ceilToDecimetre(b.draftM + MASK_TOLERANCE_M)`
+  // (lib/boatDepth.ts), which for all three catalogue drafts (2.1/2.1/1.9)
+  // makes `gate - MASK_TOLERANCE_M` the draft EXACTLY; a relaxed gate is at
+  // least a decimetre under the requested one (routing/relaxedDepth.ts:124,
+  // `hiDm = Math.ceil(requestedDepthM * 10 - 1e-9) - 1`); and this banner
+  // mounts only on a relaxed route at all (types.ts on `PlanResultOk.shallow`:
+  // "present only when the route required relaxing the depth gate below the
+  // requested safety depth"). So at a default gate `isSevere` is
+  // UNCONDITIONALLY true here, and the collapsed state #747 was filed to
+  // deliver was unreachable unless the user first RAISED the safety depth
+  // above their own boat's default. Maintainer ruling on #788: stop keying
+  // the initial open state on `isSevere`. Hence the constant below.
+  //
+  // Sound as a constant ONLY because the SUMMARY carries the entire hazard
+  // — re-verified against the JSX below, not assumed: `leadText` (which IS
+  // `route.shallow.leadSevere`, the string naming the below-draft fact,
+  // whenever isSevere holds), `usedDepthText`, and the exposure sentence
+  // once `exposureDist` has resolved, with `.shallow-warning__caveat` a
+  // SIBLING of the Disclosure. Only the MECHANISM — confined / detail /
+  // locator / remedy — sits inside the collapsible body. If any of those
+  // four ever moves INTO the body, this constant stops being safe.
+  //
+  // `isSevere` itself is deliberately UNCHANGED: it still selects the
+  // container class and the severe wording. #788 ruled against widening the
+  // threshold or rewording that copy.
+  //
+  // The KEY on this component is a SEPARATE and still-live requirement, not
+  // a consequence of the above (PR #763 review Blocker 1, and round 3's
+  // residual): Disclosure.tsx's `useState(defaultOpen)` seeds once and never
+  // re-syncs, so a disclosure the USER opened on one plan would otherwise
+  // stay open across a swap to another. Both call sites pass
+  // `key={`${plan.id}-${plan.createdAtMs}`}`; `plan.id` ALONE is
+  // insufficient, because `usePlanFlow.ts`'s
+  // `id: opts.replacePlanId ?? crypto.randomUUID()` keeps the id fixed
+  // across a #114 recalculate-and-replace (App.tsx passes
+  // `replacePlanId: recalcPlan.id`) while `createdAtMs` is refreshed on
+  // every write.
   //
   // The CAVEAT stays a SIBLING of the Disclosure, never a child of it: the
   // `.shallow-warning__caveat` CSS rule (app.css) already documents "NEVER
@@ -292,7 +317,7 @@ export function ShallowWarning({
     <div className={containerClassName} role="alert">
       <Disclosure
         className="shallow-warning-disclosure"
-        defaultOpen={isSevere}
+        defaultOpen={false}
         summary={
           <span className="shallow-warning__summary">
             <span className="shallow-warning__lead">{leadText}</span>
@@ -323,7 +348,7 @@ export function ShallowWarning({
         <p className="shallow-warning__detail">
           {/* PR #763 review Major A: the exposure sentence used to render
               HERE TOO, duplicating the copy now in the always-visible
-              summary above (Blocker 2) — the severe case defaults OPEN, so
+              summary above (Blocker 2) — the severe case defaulted OPEN, so
               both were showing at once, making the box BIGGER than pre-#763
               for the exact case #747 was filed about (measured: EN 589 ->
               711 chars, +20.7%; DE 690 -> 854, +23.8%)
@@ -517,6 +542,12 @@ function rigTabId(sailId: SailId): string {
 // below), whose CONTENT swaps with `rig`, not two separate panel elements,
 // mirroring App.tsx's single-tabpanel-for-N-tabs shape.
 const RIG_TABPANEL_ID = 'rig-tabpanel';
+
+// #774: id of the visually-hidden operating hint the legs table points at
+// through `aria-describedby`. A module constant like RIG_TABPANEL_ID above —
+// RouteSummary renders at most once at a time (the Routes tab's own card), so
+// a fixed id cannot collide.
+const LEGS_SCROLL_HINT_ID = 'route-legs-scroll-hint';
 
 function LegKindChip({ leg, rig }: { leg: Leg; rig: SailId }) {
   const t = useT();
@@ -899,7 +930,30 @@ export default function RouteSummary({
               className="route-legs-disclosure"
               summary={t('route.legs.disclosure', { count: result.legs.length })}
             >
-              <table className="route-legs">
+              {/* #774 (WCAG 2.1.1 Keyboard): `.route-legs` IS the scroll
+                container — app.css makes the <table> itself `display: block;
+                overflow-x: auto`, and a scroll container that is neither
+                focusable nor holds a focusable descendant cannot be operated
+                by keyboard at all. `tabIndex={0}` puts it in the tab order,
+                which is what makes the arrow keys scroll it.
+
+                Deliberately NO `role` and NO `aria-label` on this element.
+                The canonical wrapper-div form (`<div role="region" tabindex=0>`
+                around the table) is the cleaner shape in the abstract, but it
+                only works if the WRAPPER owns the overflow — moving the scroll
+                off the table would silently defeat panel-resize.spec.ts's two
+                #355/#698 guards, which both measure scroll geometry on
+                `.route-legs` itself. And putting `role="region"` on the <table>
+                instead would REPLACE its implicit `table` role, destroying the
+                cell-by-cell screen-reader navigation #774 explicitly says is
+                NOT the problem here.
+
+                So the accessible NAME stays #707's <caption> and the operating
+                hint rides on `aria-describedby` instead — an `aria-label` would
+                have won the name computation and silently shadowed that
+                caption, breaking the "table's name and its collapsed-state
+                summary always agree" invariant the caption exists for. */}
+              <table className="route-legs" tabIndex={0} aria-describedby={LEGS_SCROLL_HINT_ID}>
                 {/* #707: visually-hidden accessible name for the table itself —
                   reuses the SAME `route.legs.disclosure` key/params as the
                   Disclosure summary above (no new i18n key), so the table's
@@ -1052,6 +1106,14 @@ export default function RouteSummary({
                   })}
                 </tbody>
               </table>
+              {/* #774: the `aria-describedby` target. Rendered unconditionally
+                beside the table it describes (never gated on a row count, so
+                the reference can never dangle) and visually hidden — the
+                SIGHTED affordance for the same fact is #698's CSS scroll
+                shadow on `.route-legs`. */}
+              <p id={LEGS_SCROLL_HINT_ID} className="sr-only">
+                {t('route.legs.scrollHint')}
+              </p>
               {result.legs.length > 0 && (
                 <p className="route-legs-note">{t('route.legs.motorNote')}</p>
               )}

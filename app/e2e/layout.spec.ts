@@ -1639,6 +1639,181 @@ test('#638: the depth-hatch legend has panel chrome at every STANDARD_VIEWPORTS 
   }
 });
 
+// ---------------------------------------------------------------------------
+// #774 (WCAG 2.1.1 Keyboard): the legs table is a horizontal scroll container
+// (`.route-legs` is `display: block; overflow-x: auto` in app.css) that a
+// keyboard-only user could not reach or operate — it had no `tabIndex`, no
+// role and no focusable descendant. The fix makes the scroll container itself
+// the tab stop.
+//
+// This lives HERE rather than in plan.spec.ts because it is a keyboard/layout
+// contract, and it deliberately does NOT duplicate panel-resize.spec.ts's
+// #355/#698 geometry guards on the same element — those measure whether the
+// table overflows; this measures whether the overflow can be OPERATED.
+//
+// Blind spots stated rather than left implicit:
+//   - It runs in German only (the app default). The one #774 string a user
+//     reads is the `aria-describedby` hint, and BOTH its translations are
+//     pinned in RouteSummary.test.tsx, which is the level at which language
+//     actually varies here — a second full planning run per language would
+//     cost ~60 s to re-assert geometry that cannot depend on the dictionary.
+//   - It asserts nothing about how the focus ring LOOKS. `.route-legs:focus-
+//     visible` exists (app.css) and the tab stop is real; whether a 2px inset
+//     accent ring is discoverable enough is a design judgement no bounding
+//     box can settle.
+const KEYBOARD_SCROLL_VIEWPORTS: Record<string, Viewport> = {
+  desktopHd: STANDARD_VIEWPORTS.desktopHd,
+  phonePortrait: STANDARD_VIEWPORTS.phonePortrait,
+};
+
+for (const [label, viewport] of Object.entries(KEYBOARD_SCROLL_VIEWPORTS)) {
+  test(`#774: the legs scroll region is keyboard-reachable and arrow-scrollable (${label}, ${viewport.width}x${viewport.height})`, async ({
+    page,
+  }) => {
+    const server = await startPreview();
+    try {
+      await page.setViewportSize(viewport);
+      await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
+      await mapReady(page);
+
+      const originSection = page.getByRole('region', { name: 'Start' });
+      await originSection.getByRole('combobox').fill('Langballigau');
+      await expect(originSection.getByRole('option')).toHaveCount(1);
+      await originSection.getByRole('option').first().click();
+
+      const destSection = page.getByRole('region', { name: 'Ziel' });
+      await destSection.getByRole('combobox').fill('Sønderborg');
+      await expect(destSection.getByRole('option')).toHaveCount(1);
+      await destSection.getByRole('option').first().click();
+
+      const planButton = page.getByRole('button', { name: 'Route planen' });
+      await planButton.click();
+      await expect(planButton).toBeEnabled({ timeout: 60_000 });
+
+      await page.getByRole('tab', { name: 'Routen' }).click();
+      const summary = page.locator('.route-legs-disclosure > summary');
+      await summary.click();
+
+      // The <details> open state is read through the `open` IDL PROPERTY, never
+      // `getAttribute('open')` — that returns "" when set and null when not,
+      // and BOTH are falsy (CLAUDE.md, measured in PR #688). Polled as a
+      // DESCRIPTIVE STRING carrying the row count too, so a CI failure names
+      // which half went wrong instead of reporting a bare `false`.
+      const disclosureState = () =>
+        page.evaluate(() => {
+          const d = document.querySelector(
+            'details.route-legs-disclosure',
+          ) as HTMLDetailsElement | null;
+          if (!d) return 'no-disclosure';
+          return `open=${d.open} rows=${d.querySelectorAll('.route-legs tbody tr').length}`;
+        });
+      await expect.poll(disclosureState, { timeout: 60_000 }).toMatch(/^open=true rows=[1-9]/);
+
+      // PRECONDITION, asserted rather than assumed: with no overflow there is
+      // nothing to scroll and every assertion below would pass vacuously.
+      // Re-sampled inside the poll callback (#412/#422) — never a box frozen
+      // before layout settled.
+      const overflowPx = () =>
+        page
+          .locator('table.route-legs')
+          .evaluate((el) => Math.round(el.scrollWidth - el.clientWidth));
+      await expect.poll(overflowPx).toBeGreaterThan(0);
+
+      // The tab stop. Focus the disclosure summary explicitly (a click may or
+      // may not leave focus there across engines) and Tab once: the very next
+      // stop must be the scroll container. That is BOTH halves of the DoD at
+      // once — it is reachable, and nothing else was inserted ahead of it.
+      await summary.focus();
+      await page.keyboard.press('Tab');
+      const activeDescription = () =>
+        page.evaluate(() => {
+          const el = document.activeElement;
+          if (!el) return '(none)';
+          const described = el.getAttribute('aria-describedby');
+          const hint = described ? document.getElementById(described) : null;
+          return `${el.tagName}.${Array.from(el.classList).join('.') || '(no class)'} tabIndex=${
+            (el as HTMLElement).tabIndex
+          } desc=${hint ? JSON.stringify(hint.textContent) : '(none)'}`;
+        });
+      // Names the element, its EXPLICIT tab index, and the description it
+      // announces — so a CI failure says what actually got focus rather than
+      // just "not the table".
+      //
+      // `tabIndex=0` is pinned deliberately, and this is the one place the
+      // guard would otherwise have been weaker than it looks. MEASURED here
+      // 2026-08-31 by deleting `tabIndex={0}` from RouteSummary.tsx: this
+      // bundled Chromium STILL focused the table
+      // (`TABLE.route-legs desc=(none)`), because Chrome ships
+      // keyboard-focusable scrollers — a scroll container with no focusable
+      // descendant is made focusable by the engine. So a focus-only assertion
+      // passes in Chromium whether or not the fix is present, and would have
+      // been a green that proved nothing. Reading the `tabIndex` IDL property
+      // discriminates: it is 0 only when the attribute is really there, and
+      // -1 for a bare <table>.
+      //
+      // NOT PROVEN BY THIS SPEC, stated rather than implied: Playwright runs
+      // Chromium only here, so nothing below is evidence about engines that
+      // do NOT auto-focus scrollers — which is precisely the population the
+      // explicit tab stop exists for. The attribute is what makes the fix
+      // cross-browser; this asserts the attribute, not the other engines.
+      await expect.poll(activeDescription).toMatch(/^TABLE\.route-legs tabIndex=0 desc="[^"]+"$/);
+
+      // The actual WCAG 2.1.1 behaviour: arrow keys move the focused scroll
+      // container. Poll the VALUE (px scrolled), never a collapsed boolean —
+      // a CI failure then carries the distance actually travelled.
+      const scrollLeftPx = () =>
+        page.locator('table.route-legs').evaluate((el) => Math.round(el.scrollLeft));
+      // SAME CAVEAT AS THE tabIndex PIN ABOVE, and it applies to this block too:
+      // Chromium's keyboard-focusable-scrollers feature makes a scroller both
+      // focusable AND arrow-scrollable, so these three assertions are green in
+      // this engine whether or not `tabIndex={0}` is present (MEASURED against
+      // THIS spec and the built app on 2026-08-31, by deleting `tabIndex={0}`
+      // and relaxing the pin above so execution reached here: scrollLeft still
+      // moved to 370 px at desktopHd and 480 px at phonePortrait, Chromium
+      // 151.0.7922.34 via the pinned @playwright/test 1.62.1). They
+      // document the behaviour and would fire if the overflow ever moved off
+      // `.route-legs`; the only assertion in this spec that discriminates the fix
+      // is the `tabIndex=0` IDL pin above.
+      expect(await scrollLeftPx()).toBe(0);
+      for (let i = 0; i < 12; i++) await page.keyboard.press('ArrowRight');
+      await expect.poll(scrollLeftPx).toBeGreaterThan(0);
+
+      // ...and back, so the guard covers the reverse direction too rather than
+      // proving only that SOMETHING moved.
+      for (let i = 0; i < 24; i++) await page.keyboard.press('ArrowLeft');
+      await expect.poll(scrollLeftPx).toBe(0);
+
+      // The new tab stop must not have moved the page itself: wide content
+      // scrolls inside its own container, the body never scrolls horizontally.
+      await expect
+        .poll(() =>
+          page.evaluate(() =>
+            Math.round(document.documentElement.scrollWidth - document.documentElement.clientWidth),
+          ),
+        )
+        .toBeLessThanOrEqual(0);
+
+      // DoD 3: #704's roving-tabindex contract on the rig tabs is undisturbed
+      // — exactly one tab at 0, the rest at -1. Polled as a JSON string so a
+      // failure prints the whole array; an EMPTY array (no tabs rendered at
+      // all) fails this match rather than passing vacuously.
+      await expect
+        .poll(() =>
+          page.evaluate(() =>
+            JSON.stringify(
+              Array.from(document.querySelectorAll('.rig-tabs [role="tab"]')).map((b) =>
+                b.getAttribute('tabindex'),
+              ),
+            ),
+          ),
+        )
+        .toMatch(/^\[("-1",)*"0"(,"-1")*\]$/);
+    } finally {
+      server.kill();
+    }
+  });
+}
+
 // #762 (PR #798 review, Minor 1): the safety-depth field's label has no
 // natural break point in German ("Sicherheitstiefe") and silently
 // OVERFLOWED the narrow `.planner-safety-depth` column at tablet-landscape
