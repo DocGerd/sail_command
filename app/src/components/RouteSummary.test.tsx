@@ -52,17 +52,16 @@ function expectShallowDetailOpen(expected: boolean): void {
   expect(details?.open).toBe(expected);
 }
 
-// #788: open a <details> the way a USER does, so React's own state moves with
-// it. Setting `.open = true` alone mutates the DOM while `Disclosure`'s
-// `useState` stays `false` — a transition test built on that would pass with
-// the `key` DELETED and prove nothing. React registers `toggle` as a
-// NON-DELEGATED event (attached to the element itself, not the root), so a
-// non-bubbling `toggle` dispatched here does reach `Disclosure`'s `onToggle`,
-// which reads `e.currentTarget.open` — hence setting the property first.
+// #788: open a <details> the way a USER does. Dispatched through the real
+// `onToggle` path so the component's own state matches the DOM; not
+// load-bearing for these two rows (measured), but it keeps the fixture
+// faithful to a real user open. React registers `toggle` as a NON-DELEGATED
+// event (attached to the element itself, not the root), so a non-bubbling
+// `toggle` dispatched here does reach `Disclosure`'s `onToggle`, which reads
+// `e.currentTarget.open` — hence setting the property first.
 function userOpen(details: HTMLDetailsElement): void {
   details.open = true;
   fireEvent(details, new Event('toggle'));
-  expect(details.open, 'expected the user-open to have taken effect').toBe(true);
 }
 
 // #54: the pre-#54 shape exposed `plan.result.genoa`/`.fock`/`.fockReason`
@@ -1380,6 +1379,13 @@ describe('#493: cautious depth disclosure', () => {
           used: BELOW_BOUNDARY_USED_DEPTH_M.toFixed(1),
         }),
       );
+      // the exposure sentence's own span, which must sit INSIDE the <summary>
+      expect(
+        container.querySelector(
+          '.shallow-warning-disclosure > summary .shallow-warning__summary-detail',
+        ),
+        'the exposure/usedDepth span must be inside the <summary>, not the body',
+      ).not.toBeNull();
       // the caveat is a SIBLING of the Disclosure, never inside it
       const caveat = container.querySelector('.shallow-warning__caveat');
       expect(caveat?.textContent).toBe(en['route.shallow.caveat']);

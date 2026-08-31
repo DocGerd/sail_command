@@ -191,30 +191,35 @@ selected in §1.
       sits behind a disclosure you open (#747). The closing caveat ("Chart
       data can both understate and overstate real depths …") stays visible
       outside the disclosure either way.
-      At every catalogue boat's DEFAULT safety depth two things follow from
-      arithmetic rather than from a broken control, and BOTH are a PASS:
-      the cautious-floor sentence is the longer, below-draft wording
-      ("Caution: a more cautious reading of the charted depth data could
-      run as low as … m, below this boat's … m draft."), and the disclosure
-      starts EXPANDED. The default gate is exactly draft + 0.9 m and a
-      relaxed route's used depth is at least a decimetre below the gate, so
-      the cautious reading is always below the draft. To see the shorter
-      sentence and the collapsed state, raise the safety depth well above
-      the boat's default (e.g. 3.5 m on a Salona) and re-plan; if the
-      router then relaxes only part-way — to a used depth still at or above
-      the boat's own default gate — it starts collapsed.
+      The disclosure starts COLLAPSED on every route (#788). It used to
+      start expanded whenever the cautious reading fell below the boat's
+      draft, which at a default safety depth is always true — so the
+      COLLAPSED state was unreachable there, and the expanded one told a
+      tester nothing. An EXPANDED disclosure on first render is now a FAIL
+      to file.
+      At every catalogue boat's DEFAULT safety depth the cautious-floor
+      sentence is the longer, below-draft wording ("Caution: a more
+      cautious reading of the charted depth data could run as low as … m,
+      below this boat's … m draft."). That follows from arithmetic rather
+      than from a broken control, and is a PASS: the default gate is
+      exactly draft + 0.9 m and a relaxed route's used depth is at least a
+      decimetre below the gate, so the cautious reading is always below the
+      draft. To see the shorter sentence, raise the safety depth well
+      above the boat's default
+      (e.g. 3.5 m on a Salona) and re-plan; if the router then relaxes only
+      part-way — to a used depth still at or above the boat's own default
+      gate — the shorter wording is what you get.
       NOTE — on PIRANJA, §1's boat pick does NOT leave you at that boat's
       own default. Selecting a boat never lowers a safety depth already set
       (the switch clamps UP only, never down), so picking PIRANJA keeps the
       Salona-derived 3.0 m instead of dropping to the Elan's own 2.8 m gate;
       SPEEDY GO! shares the Salona's 2.1 m draft, so its default IS 3.0 m
       and it is unaffected. At 3.0 m on PIRANJA the router may stop relaxing
-      at a used depth of 2.8 m or deeper, and the shorter sentence with the
-      COLLAPSED disclosure is then the expected result — either form is a
-      PASS there, neither is a failure to file. To reach the longer
-      below-draft wording and the expanded state on PIRANJA, type its own
-      default 2.8 m into the safety depth field on the Boat tab and
-      re-plan.
+      at a used depth of 2.8 m or deeper, and the shorter sentence is then
+      the expected result — either wording is a PASS there, neither is a
+      failure to file. To reach the longer below-draft wording on PIRANJA,
+      type its own default 2.8 m into the safety depth field on the Boat
+      tab and re-plan.
 
 **Result:** Pass / Fail / Partial — notes: ___________________________
 

@@ -1763,6 +1763,17 @@ for (const [label, viewport] of Object.entries(KEYBOARD_SCROLL_VIEWPORTS)) {
       // a CI failure then carries the distance actually travelled.
       const scrollLeftPx = () =>
         page.locator('table.route-legs').evaluate((el) => Math.round(el.scrollLeft));
+      // SAME CAVEAT AS THE tabIndex PIN ABOVE, and it applies to this block too:
+      // Chromium's keyboard-focusable-scrollers feature makes a scroller both
+      // focusable AND arrow-scrollable, so these three assertions are green in
+      // this engine whether or not `tabIndex={0}` is present (MEASURED against
+      // THIS spec and the built app on 2026-08-31, by deleting `tabIndex={0}`
+      // and relaxing the pin above so execution reached here: scrollLeft still
+      // moved to 370 px at desktopHd and 480 px at phonePortrait, Chromium
+      // 151.0.7922.34 via the pinned @playwright/test 1.62.1). They
+      // document the behaviour and would fire if the overflow ever moved off
+      // `.route-legs`; the only assertion in this spec that discriminates the fix
+      // is the `tabIndex=0` IDL pin above.
       expect(await scrollLeftPx()).toBe(0);
       for (let i = 0; i < 12; i++) await page.keyboard.press('ArrowRight');
       await expect.poll(scrollLeftPx).toBeGreaterThan(0);

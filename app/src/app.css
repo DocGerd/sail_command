@@ -2468,11 +2468,11 @@ select {
   font-size: 0.85rem;
 }
 
-/* #747: the mechanism/exposure/locator/remedy DETAIL sentence now renders
-   inside a Disclosure (RouteSummary.tsx), collapsed by default (open when
-   the plan is in the severe/below-draft tier — see that component's own
-   comment for why), so the box shows only its headline by default instead of
-   a five-sentence unconditional wall of prose. `.shallow-warning__caveat`
+/* #747: the mechanism/locator/remedy DETAIL sentence now renders inside a
+   Disclosure (RouteSummary.tsx), collapsed by default on every route
+   (#788 — see that component's own comment for why the summary can carry
+   the whole hazard), so the box shows only its headline by default instead
+   of a five-sentence unconditional wall of prose. `.shallow-warning__caveat`
    above stays a SIBLING of the Disclosure, never a child of it, per that
    rule's own "never hidden behind a Disclosure" comment.
    COMPOUND SELECTOR (`.sc-disclosure.shallow-warning-disclosure`), never a
