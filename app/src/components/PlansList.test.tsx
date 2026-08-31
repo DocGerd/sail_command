@@ -452,8 +452,9 @@ describe('PlansList recalculate (#114)', () => {
     // unversehrt/heil) is unbounded — MEASURED, "Your data is perfectly fine
     // and fully recoverable there" is none of those five words and left the
     // old form green. Assert the CLAIM SHAPE instead: the copy is a
-    // hand-vetted statement of exactly what schemaVersion PROVES (newer
-    // build, unreadable here, kept not deleted) and nothing else. Pin the
+    // hand-vetted statement of exactly what the app can establish
+    // (schemaVersion: newer build, unreadable here; listPlans: kept, not
+    // deleted, per #561) and nothing else. Pin the
     // whole string against an expectation typed out by hand — never
     // re-derived from the dict under test, or the pin is the #50 equivalence
     // tautology — so ANY added clause, an integrity claim or otherwise, reds
@@ -470,8 +471,9 @@ describe('PlansList recalculate (#114)', () => {
         expect(
           dict['plansList.unreadable.newerVersion'],
           `${lang}: pinned by CLAIM, not by wording. If you changed this copy deliberately, ` +
-            're-vet it before updating EXPECTED: it may state only what schemaVersion PROVES ' +
-            '(newer build, unreadable here, kept not deleted) and must not promise the record is intact.',
+            're-vet it before updating EXPECTED: it may state only what the app can establish ' +
+            '(schemaVersion: newer build, unreadable here; listPlans: kept, not deleted, per #561) ' +
+            'and must not promise the record is intact.',
         ).toBe(EXPECTED[lang]);
       }
     });

@@ -56,7 +56,7 @@ describe('boat catalogue', () => {
   // sweepSailIds 19/19 and replan + reroute 84/84 GREEN at a1beed3 (the
   // backfill guards compare request.sailIds AGAINST DEFAULT_SAIL_IDS, so both
   // sides move together and neither can falsify the other), and reds this
-  // row, and only this row, at HEAD. Hand-typed, never re-derived from BOATS.
+  // row, and only this row, at 1288049. Hand-typed, never re-derived from BOATS.
   it('#548: DEFAULT_SAIL_IDS is genoa-then-fock', () => {
     expect(DEFAULT_SAIL_IDS).toEqual(['genoa', 'fock']);
   });

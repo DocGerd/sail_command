@@ -468,7 +468,7 @@ describe('#54 §E.3: budget exhaustion mid-comparison', () => {
     // "finished and lost" row's fixture (one sail fails for a non-budget
     // reason) does not exercise.
     //
-    // MEASURED (whole file, 68 tests, at this commit): `comparisonComplete:
+    // MEASURED (whole file, 68 tests, at 1288049): `comparisonComplete:
     // true` reds the two it.each rows only; `false` reds "finished and lost"
     // AND this row; `sails.every((out) => out.rigResult !== null)` reds
     // "finished and lost" only; and `sails.some((out) => out.cause !== null &&
