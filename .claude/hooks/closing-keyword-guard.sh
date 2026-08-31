@@ -73,9 +73,24 @@
 #     #424's canary residual (a SELFTEST claiming verification it did not
 #     perform) - this hook makes no claim about any commit either way, and
 #     CLAUDE.md's hand-run grep remains the documented backstop regardless
-#     of whether this hook ever ran. `ruff-on-pipeline-edit.sh` below shares
-#     this exact reasoning and the identical call-site shape; read this
-#     paragraph once for both.
+#     of whether this hook ever ran.
+#
+#   `ruff-on-pipeline-edit.sh` is ALSO silent on a missing hook file, but
+#   NOT for this reasoning (PR #797 review round 2, Minor 6: an earlier
+#   version of this paragraph claimed the two hooks share this reasoning,
+#   which was wrong on two counts).
+#
+# MINOR 6 FACT (verified against Claude Code's own hooks documentation and
+# this repo's committed .claude/settings.json, not restated from memory):
+# `permissionDecision` does not apply to PostToolUse hooks at all -
+# PostToolUse fires AFTER the tool has already run and cannot block, so
+# `ask`/`allow`/`deny` have nothing left to gate. Separately,
+# `artifact-guard.sh` has ZERO PostToolUse entries in .claude/settings.json
+# (verified: `jq '.hooks.PostToolUse[] | .hooks[].command'` matches
+# "artifact-guard" 0 times) - it sits only in `PreToolUse` `Edit|Write`
+# and `PreToolUse` `Bash`, so ruff-on-pipeline-edit.sh's `PostToolUse`
+# `Edit|Write` array never contained it. See ruff-on-pipeline-edit.sh's
+# own header for its full call-site paragraph.
 #
 # TRIGGER SHAPE (matches wind-fixture-guard.sh's own `_triggers_commit`
 # byte-for-byte, including the `git -C`/`git -c` compound forms - this guard
@@ -146,10 +161,13 @@
 #      residuals are inherited, not introduced.
 #   2. EDITING an already-created PR's body is a DIFFERENT command entirely,
 #      and this hook only triggers on `gh pr create`. CLAUDE.md's own
-#      "Multiple open PRs" and `gh pr edit` bullets document the repo's
-#      PRESCRIBED path for that edit: `gh api repos/O/R/pulls/N --method
-#      PATCH --input body.json` (the GraphQL bug in `gh pr edit` forces this
-#      route) - MEASURED silent (constructed and run against this hook's
+#      `gh pr edit` bullet (PR #797 review round 2, Minor 9: an earlier
+#      version of this citation also named a "Multiple open PRs" bullet,
+#      which carries no such path - verified against the committed
+#      CLAUDE.md, removed) documents the repo's PRESCRIBED path for that
+#      edit: `gh api repos/O/R/pulls/N --method PATCH --input body.json`
+#      (the GraphQL bug in `gh pr edit` forces this route) - MEASURED
+#      silent (constructed and run against this hook's
 #      production path, PR #797 review response): the command string
 #      contains neither "git commit" nor "gh pr create" as a substring, so
 #      neither trigger fires and no nudge is emitted, even when the JSON
@@ -194,10 +212,21 @@ CLOSING_KEYWORD_RE='(clos(e|es|ed)?|fix(e[sd])?|resolve[sd]?)[[:space:]:(]*#[0-9
 # malformed JSON is a failure mode with NO good outcome: not a decision, not
 # a diagnosable error, just noise the harness cannot parse.
 # jq -> python3 fallback mirrors the fail-open discipline used throughout
-# this file; the LAST-RESORT fallback (neither available) does not attempt
-# ad hoc escaping - it STRIPS every byte JSON cannot represent unescaped
-# rather than risk re-inventing RFC 8259 wrong under exactly the
-# no-tools-available condition that made this necessary. Applies uniformly to
+# this file. MINOR 8 (PR #797 review round 2): the LAST-RESORT fallback
+# (neither available) does NOT "strip every byte JSON cannot represent" -
+# measured against its own code, it touches exactly five bytes: `\` and
+# `"` are DELETED (silently changes the text's MEANING while staying
+# VALID json - worse than it looks, since nothing signals it happened),
+# `\n`/`\t`/`\r` each become a space (lossy, but stays valid). Every
+# OTHER JSON-illegal control byte (SOH 0x01, VT 0x0b, ...) passes through
+# untouched and still breaks the JSON. This is a MINOR, not a defect to
+# harden, because the fallback is UNREACHABLE in production: both hooks
+# require jq OR python3 just to PARSE the incoming tool_input, earlier in
+# the script than this function is ever called, so "neither available"
+# already exits 0 first - verified with a positive control (a PATH of real
+# binaries excluding jq and python3 makes both hooks exit silently; a
+# jq-only and a python3-only PATH each emit valid JSON for a TAB payload).
+# Applies uniformly to
 # ANY text this hook emits (the whole nudge message, not just $MATCH) -
 # consistent with ruff-on-pipeline-edit.sh's sibling helper of the same name
 # and contract (Minor 3's "make them consistent" instruction).

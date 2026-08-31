@@ -28,19 +28,26 @@
 # is nothing here worth an "ask" prompt over).
 #
 # THE `.claude/settings.json` CALL SITE IS DELIBERATELY SILENT ON A MISSING/
-# NON-EXECUTABLE HOOK FILE - NOT `ask`, and this is a considered choice, not
-# an oversight (PR #797 review Minor 4). Full reasoning lives in
-# `closing-keyword-guard.sh`'s header (its "THE `.claude/settings.json` CALL
-# SITE..." paragraph) - read it there rather than duplicating it here, since
-# both hooks share the IDENTICAL call-site shape and the IDENTICAL argument:
-# this hook's array entry sits on the `Edit|Write` matcher (every edit, not a
-# filtered subset), so an `ask` else-branch would prompt on every `.ts`/
-# `.css`/`.json` edit too in a checkout lacking this script, degrading the
-# click-through habit for artifact-guard.sh sharing that same array; a
-# visible "hook missing" advisory would fire on every non-pipeline edit for
-# the same reason a gated version would need `_is_pipeline_py` duplicated
-# into `settings.json`; and the call site already uses the CONJUNCTIVE
-# `[ -f "$H" ] && [ -x "$H" ]` liveness form #274 prescribes.
+# NON-EXECUTABLE HOOK FILE - NOT `ask` (PR #797 review Minor 4; corrected
+# round 2, Minor 6 - the FIRST version of this paragraph borrowed
+# closing-keyword-guard.sh's click-through reasoning and claimed
+# artifact-guard.sh shares this hook's array, both wrong).
+#
+# MINOR 6 FACT (verified against Claude Code's own hooks documentation and
+# this repo's committed .claude/settings.json, not restated from memory):
+# `permissionDecision` does not apply to PostToolUse hooks at all -
+# PostToolUse fires AFTER the tool has already run and cannot block, so
+# `ask`/`allow`/`deny` have nothing left to gate. Separately,
+# `artifact-guard.sh` has ZERO PostToolUse entries in .claude/settings.json
+# (verified: `jq '.hooks.PostToolUse[] | .hooks[].command'` matches
+# "artifact-guard" 0 times) - it sits only in `PreToolUse` `Edit|Write`
+# and `PreToolUse` `Bash`, so THIS hook's `PostToolUse` `Edit|Write`
+# array never contained it.
+#
+# A visible "hook missing" advisory would still fire on every non-pipeline
+# edit for the reason a gated version would need `_is_pipeline_py`
+# duplicated into `settings.json`; and the call site already uses the
+# CONJUNCTIVE `[ -f "$H" ] && [ -x "$H" ]` liveness form #274 prescribes.
 #
 # WHAT IT DOES NOT COVER, stated rather than implied:
 #   1. `pipeline/.venv` may not exist at all - a fresh checkout has none until
@@ -79,8 +86,21 @@ set -uo pipefail
 # "'"` stripping - which handled backslash and double-quote but left every
 # other JSON-illegal control byte (a literal TAB in a ruff diagnostic quoting
 # source text, say) to reach the output raw. jq -> python3 fallback mirrors
-# the fail-open discipline used throughout this file; the LAST-RESORT
-# fallback (neither available) strips rather than mis-escapes.
+# the fail-open discipline used throughout this file. MINOR 8 (PR #797
+# review round 2): the LAST-RESORT fallback (neither available) does NOT
+# "strip every byte JSON cannot represent" - measured against its own code,
+# it touches exactly five bytes: `\` and `"` are DELETED (silently
+# changes the text's MEANING while staying VALID json - worse than it
+# looks, since nothing signals it happened), `\n`/`\t`/`\r` each become
+# a space (lossy, but stays valid). Every OTHER JSON-illegal control byte
+# (SOH 0x01, VT 0x0b, ...) passes through untouched and still breaks the
+# JSON. This is a MINOR, not a defect to harden, because the fallback is
+# UNREACHABLE in production: both hooks require jq OR python3 just to
+# PARSE the incoming tool_input, earlier in the script than this function
+# is ever called, so "neither available" already exits 0 first - verified
+# with a positive control (a PATH of real binaries excluding jq and
+# python3 makes both hooks exit silently; a jq-only and a python3-only
+# PATH each emit valid JSON for a TAB payload).
 _json_string() {
   printf '%s' "$1" | jq -Rs . 2>/dev/null \
     || printf '%s' "$1" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))' 2>/dev/null \
@@ -200,11 +220,16 @@ if [ "${1:-}" = "--selftest" ]; then
   # file - the shape the OLD `[ ! -x "$RUFF" ]` liveness check let through
   # (`-x` alone is TRUE for a directory), invoking `"$RUFF" check "$F"` on a
   # directory and reporting the resulting shell error as "ruff flagged
-  # <clean file>". `-x`/`-f` are UNIX permission bits, not a
-  # filesystem-type test - a real directory typically carries the search
-  # (`x`) bit, which is exactly what makes this row non-vacuous: it
-  # constructs the failure `-x` alone cannot see, the same class #274's
-  # liveness-gate bullet documents for the settings.json call site itself.
+  # <clean file>". Per `test(1)`: `-x` is a PERMISSION-bit test (execute/
+  # search permission) and says nothing about file TYPE - a real directory
+  # typically carries the search (`x`) bit too, so `-x` alone cannot tell a
+  # directory from a regular file (PR #797 review round 2, Minor 7: an
+  # earlier version of this comment called `-f` a permission bit too and
+  # contradicted this file's own later liveness-fix comment, which correctly
+  # calls `-f` the TYPE test - "is a regular file"). That contradiction is
+  # exactly what makes this row non-vacuous: it constructs the failure
+  # `-x` alone cannot see, the same class #274's liveness-gate bullet
+  # documents for the settings.json call site itself.
   _mkproj_dir_at_ruff() {
     local tmp; tmp=$(mktemp -d)
     mkdir -p "$tmp/pipeline/.venv/bin/ruff"
@@ -281,20 +306,24 @@ if [ "${1:-}" = "--selftest" ]; then
   fi
   rm -rf "$proj_tab"
 
-  rm -rf "$proj_no_venv" "$proj_clean" "$proj_flagged" "$proj_toolerror" "$proj_dir_at_ruff"
-
   # The empty-path row above builds `{"tool_input":{"file_path":""}}`, not
   # truly empty stdin - add ONE genuinely empty-stdin row directly, since
   # that is a distinct failure shape (no JSON at all, not JSON with an empty
   # value) and #424's own lesson ("an experiment that never ran emits exactly
   # the output of one that found nothing") applies here too: an untested
-  # empty-stdin path is not evidence that it degrades safely.
+  # empty-stdin path is not evidence that it degrades safely. MUST run
+  # BEFORE "$proj_no_venv" is removed below (PR #797 review round 2, ruled
+  # "fix now": the row previously reused $proj_no_venv AFTER its own
+  # rm -rf - harmless today only because empty stdin exits before
+  # CLAUDE_PROJECT_DIR is ever read, which is fragility, not a defect).
   total=$((total + 1))
   raw_out=$(printf '' | CLAUDE_PROJECT_DIR="$proj_no_venv" "$SELF" 2>&1)
   if [ -n "$raw_out" ]; then
     echo "SELFTEST FAIL [prod]: genuinely empty stdin -> got [$raw_out] want silence"
     fail=1
   fi
+
+  rm -rf "$proj_no_venv" "$proj_clean" "$proj_flagged" "$proj_toolerror" "$proj_dir_at_ruff"
 
   if ! [ "$total" -eq "$EXPECTED_CASES" ] 2>/dev/null; then
     echo "SELFTEST FAILURES: ran $total cases, expected ${EXPECTED_CASES:-<unset/empty>} - a case was skipped or silently dropped"
