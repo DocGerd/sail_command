@@ -268,9 +268,12 @@ export function ShallowWarning({
   // whichever open/closed state the PREVIOUS plan's disclosure had,
   // regardless of the new plan's own severity (PR #763 review Blocker 1,
   // MEASURED: mild plan -> new severe plan id rendered collapsed). Both call
-  // sites now pass `key={plan.id}` on this component specifically to force a
-  // real remount — and therefore a fresh `useState` seed — on every genuine
-  // plan change; see those call sites' own comments. The claim above is
+  // sites now pass `key={`${plan.id}-${plan.createdAtMs}`}` on this component
+  // specifically to force a real remount — and therefore a fresh `useState`
+  // seed — on every genuine plan change; `plan.id` ALONE is insufficient,
+  // because `usePlanFlow.ts`'s `id: opts.replacePlanId ?? crypto.randomUUID()`
+  // keeps the id fixed across a #114 recalculate-and-replace (see round 3's
+  // own comment below, and those call sites' comments). The claim above is
   // therefore accurate given that key, not despite it.
   //
   // The CAVEAT stays a SIBLING of the Disclosure, never a child of it: the
