@@ -684,7 +684,13 @@ describe('IndexedDB persistence', () => {
     expect(retrieved).toEqual(settings);
   });
 
-  it('settings roundtrip preserves the #25 AIS fields (aisApiKey, ownMmsi)', async () => {
+  // #746 RE-SCOPED, deliberately not deleted. This case used to cover
+  // `aisApiKey` AND `ownMmsi`. Only the MMSI left `Settings`; the API key
+  // stays, and deleting the whole case to remove one field would have
+  // silently dropped the surviving field's only roundtrip coverage.
+  // `ownMmsi`'s own persistence is now localStorage, covered by
+  // lib/ownMmsi.test.ts — a different store, so it cannot be asserted here.
+  it('settings roundtrip preserves the #25 AIS API key', async () => {
     const settings: Settings = {
       safetyDepthM: 3.0,
       depthComfortMarginM: 2.0,
@@ -696,15 +702,16 @@ describe('IndexedDB persistence', () => {
       motorEnabled: true,
       showOwnship: false,
       aisApiKey: 'abc123-key',
-      ownMmsi: '002110000',
     };
 
     await saveSettings(settings);
     const retrieved = await loadSettings();
 
     expect(retrieved).toEqual(settings);
-    // Explicitly pin the leading-zero MMSI survives as a string, not a number.
-    expect(retrieved?.ownMmsi).toBe('002110000');
+    // Pin the key survives as its own field, not merely that the record
+    // round-trips — `toEqual` above would still pass if the field were
+    // dropped on BOTH sides by a future shape change.
+    expect(retrieved?.aisApiKey).toBe('abc123-key');
   });
 
   it('loadSettings on fresh DB returns undefined', async () => {

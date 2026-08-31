@@ -1,7 +1,6 @@
 import type { Ref } from 'react';
 import type { Settings } from '../types';
 import { useLang, useT } from '../i18n';
-import { isValidMmsi } from '../lib/mmsi';
 import { formatDepthM } from '../lib/depthDisclosure';
 import {
   SEAMARK_DISPLAY_TIER_ALL,
@@ -155,8 +154,6 @@ export default function SettingsPanel({
   // help text's {min}/{max} interpolation, rather than calling
   // safetyDepthFieldFor(boat) twice for the same render.
   const safetyDepthField = safetyDepthFieldFor(boat);
-  const mmsi = value.ownMmsi ?? '';
-  const mmsiInvalid = mmsi !== '' && !isValidMmsi(mmsi);
 
   // #353 PR2: seamark symbol size + display category are map CHROME, not a
   // domain `Settings` field — same localStorage/usePersistedNumber contract
@@ -289,23 +286,13 @@ export default function SettingsPanel({
             onChange={(e) => onChange({ ...value, aisApiKey: e.target.value })}
           />
         </Field>
-        <Field label={t('options.ais.mmsi.label')} htmlFor="settings-ownMmsi">
-          <input
-            id="settings-ownMmsi"
-            type="text"
-            inputMode="numeric"
-            autoComplete="off"
-            aria-invalid={mmsiInvalid}
-            aria-describedby={mmsiInvalid ? 'settings-ownMmsi-error' : undefined}
-            value={mmsi}
-            onChange={(e) => onChange({ ...value, ownMmsi: e.target.value })}
-          />
-        </Field>
-        {mmsiInvalid && (
-          <p className="options-help" id="settings-ownMmsi-error" role="alert">
-            {t('options.ais.mmsi.invalid')}
-          </p>
-        )}
+        {/* #746: the own-MMSI field is NOT here any more. An MMSI identifies a
+            VESSEL and must follow the boat; the key above identifies an
+            aisstream.io ACCOUNT and must NOT change on a boat switch. The
+            field now renders on the boat surface (BoatPicker.tsx) against one
+            localStorage key per boat — lib/ownMmsi.ts carries the reasoning.
+            Do not reunite them: a shared card invites reading them as two
+            halves of one credential, which is the mistake #746 exists to fix. */}
       </Card>
 
       {/* #353 PR2: seamark symbol size (a continuous slider — precedented by

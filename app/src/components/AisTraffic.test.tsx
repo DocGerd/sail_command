@@ -218,7 +218,10 @@ function renderChip(
 describe('AisStatusChip', () => {
   it('renders the off state with the enable hint', () => {
     renderChip('off');
-    expect(screen.getByText('AIS off — add a key in Options')).toBeInTheDocument();
+    // #804: the string used to say "in Options", a surface with no label
+    // anywhere in the app. It now names the tab and card the AIS key control
+    // really renders in.
+    expect(screen.getByText('AIS off — add a key under Boat › Live & AIS')).toBeInTheDocument();
   });
 
   it('renders the connecting state', () => {

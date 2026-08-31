@@ -1,5 +1,5 @@
-import { test, expect } from '@playwright/test';
-import { startPreview } from './helpers';
+import { test, expect, type Page } from '@playwright/test';
+import { startPreview, STANDARD_VIEWPORTS, EDGE_VIEWPORTS } from './helpers';
 
 // Run the full planning flow at a phone viewport so it exercises the
 // bottom-sheet layout — the primary on-boat mode (CLAUDE.md). Before the #24
@@ -294,6 +294,175 @@ test('re-plan from the Plan view: editing after a completed plan shows the stale
     // Two distinct saved plans now exist — the original stayed, untouched.
     await page.getByRole('tab', { name: 'Routen' }).click();
     await expect(page.locator('.plans-list-row')).toHaveCount(2);
+  } finally {
+    server.kill();
+  }
+});
+
+// #771 — LICENCE COMPLIANCE (ODbL/CC-BY). The map's OpenStreetMap credit must
+// stay reachable at every viewport, INCLUDING once the planner panel has been
+// scrolled down to its "Route planen" CTA, which is exactly where it stopped
+// being reachable.
+//
+// The defect was a stacking context nobody meant to create. `.planner-actions`
+// carried `z-index: 2` in its base rule on the premise that the value is inert
+// while the bar is `position: static` (narrow layout). It is not:
+// `.planner-panel` is `display: flex`, so `.planner-actions` is a FLEX ITEM,
+// and per css-flexbox-1's "Painting Flex Items" rule a flex item's `z-index`
+// other than `auto` creates a stacking context EVEN WHILE `position: static`.
+// That tied `.maplibregl-ctrl-bottom-right`'s own `z-index: 2` and won on DOM
+// order, so the CTA's own `p.planner-guidance` painted over the attribution
+// toggle and swallowed its clicks. app.css's `.planner-actions` rule carries
+// the mechanism and the measurement; the fix scopes `bottom`/`z-index` to the
+// wide-only rule, where `position: sticky` actually applies.
+//
+// Why this guard is shaped the way it is — each point is a failure mode this
+// repo has already paid for (CLAUDE.md's verification lessons):
+//   - `toBeVisible()` CANNOT detect a covered element: it checks a non-empty
+//     box and `visibility`, both of which are true of an element painted
+//     underneath something else. The #33 contract above asserts exactly that
+//     on this very link and passed straight through this defect. So the
+//     subject here is a real topmost hit-test (`document.elementsFromPoint`),
+//     backed by `click({ trial: true })` for the behavioural half.
+//   - Persisted state is cleared FIRST, and the CTA is then asserted PRESENT
+//     before anything is asserted about the attribution. With saved plans or a
+//     non-Planen tab in the profile, `.planner-actions` is absent entirely and
+//     every assertion below would measure an app state in which the defect is
+//     structurally unreachable — a false negative indistinguishable from a
+//     clean pass. A null subject must FAIL this test, never skip it.
+//   - Geometry (and the scroll that produces it) is re-established INSIDE the
+//     poll callback, never captured once before settle: a stale coordinate and
+//     a real interception produce byte-identical failures (#412/#422).
+//   - The probe returns a descriptive STRING naming whatever is actually on
+//     top, not a boolean — a boolean collapses every cause into
+//     `Expected: true / Received: false` plus a timeout.
+//
+// Iterates the shared matrix rather than inlining literals. The wide rows
+// (the entries at or above the 1024px breakpoint — currently
+// desktop4k/desktopHd/tabletLandscape) cannot reproduce this defect — there
+// the panel is its own grid column and `z-index: 2` is still deliberately in
+// force — so they ride along as a negative control: they must stay green in
+// both the fixed and the unfixed state, which is what distinguishes "this
+// guard detects the defect" from "this guard fails at everything".
+//
+// German only, like the rest of this spec. The mechanism is a stacking-context
+// tie resolved by DOM order over `.planner-actions`' box; no string length
+// participates in it, so a language axis would double the runtime without
+// adding discriminating power.
+const ATTRIBUTION_VIEWPORTS = { ...STANDARD_VIEWPORTS, ...EDGE_VIEWPORTS };
+
+type AttributionSubject = 'attribution-toggle' | 'openstreetmap-link';
+
+/**
+ * Scrolls the planner to its CTA and reports what is genuinely topmost over
+ * the requested attribution element, as a descriptive string: the subject's
+ * own name when it wins the hit-test, `covered-by:<tag>.<classes>` when it
+ * does not, and a named diagnostic when the subject or the hit-test itself is
+ * missing. Everything — the scroll, the box, the hit-test — is redone on every
+ * call, so an `expect.poll` over it can never assert against geometry sampled
+ * before the layout settled.
+ */
+async function topmostOverAttribution(page: Page, subject: AttributionSubject): Promise<string> {
+  return page.evaluate((which) => {
+    document.querySelector('.planner-actions')?.scrollIntoView({ block: 'end' });
+    const target =
+      which === 'attribution-toggle'
+        ? document.querySelector('.maplibregl-ctrl-attrib-button')
+        : Array.from(document.querySelectorAll('.maplibregl-ctrl-attrib a')).find((a) =>
+            /openstreetmap/i.test(a.textContent ?? ''),
+          );
+    if (!target) return `missing:${which}`;
+    const box = target.getBoundingClientRect();
+    if (box.width === 0 || box.height === 0) return `zero-box:${which}`;
+    const top = document.elementsFromPoint(box.left + box.width / 2, box.top + box.height / 2)[0];
+    if (!top) return `nothing-hit-tested-over:${which}`;
+    if (top === target || target.contains(top)) return which;
+    const classes =
+      typeof top.className === 'string' && top.className.trim()
+        ? `.${top.className.trim().split(/\s+/).join('.')}`
+        : '';
+    return `covered-by:${top.tagName.toLowerCase()}${classes}`;
+  }, subject);
+}
+
+test('#771: the OpenStreetMap attribution stays clickable at every viewport, with the planner scrolled to its CTA', async ({
+  page,
+}) => {
+  const server = await startPreview();
+  try {
+    await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
+
+    // Clear anything a shared profile may carry (saved plans put the app on a
+    // different tab, which removes the CTA and with it the whole defect).
+    await page.evaluate(async () => {
+      localStorage.clear();
+      const databases = (await indexedDB.databases?.()) ?? [];
+      await Promise.all(
+        databases.map((info) => {
+          const name = info.name;
+          if (name === undefined) return Promise.resolve();
+          return new Promise<void>((resolve) => {
+            const request = indexedDB.deleteDatabase(name);
+            request.onsuccess = request.onerror = request.onblocked = () => resolve();
+          });
+        }),
+      );
+    });
+    await page.reload();
+
+    await page.getByRole('tab', { name: 'Planen' }).click();
+
+    // Compact mode needs the pmtiles source metadata — same generous budget as
+    // the #33 contract above, for the same reason.
+    const attribution = page.locator('details.maplibregl-ctrl-attrib');
+    await expect(attribution).toHaveClass(/maplibregl-compact(\s|$)/, {
+      timeout: 30_000,
+    });
+
+    const toggle = page.locator('.maplibregl-ctrl-attrib-button');
+    const osmLink = attribution.getByRole('link', { name: 'OpenStreetMap' });
+    const planButton = page.getByRole('button', { name: 'Route planen' });
+    const plannerActions = page.locator('.planner-actions');
+
+    for (const [name, viewport] of Object.entries(ATTRIBUTION_VIEWPORTS)) {
+      await page.setViewportSize(viewport);
+
+      // Subject first: if the CTA bar the defect needs is not on screen, this
+      // row proves nothing about the attribution and must fail loudly rather
+      // than pass vacuously.
+      await expect(
+        plannerActions,
+        `${name}: no .planner-actions — the planner is not showing its CTA, so this row cannot test the #771 overlap`,
+      ).toHaveCount(1);
+      await expect(planButton, `${name}: no "Route planen" button inside the CTA bar`).toHaveCount(
+        1,
+      );
+
+      // Collapsed: the toggle is the only way to the notice, so it must win
+      // the hit-test at the point a user taps.
+      await expect
+        .poll(() => topmostOverAttribution(page, 'attribution-toggle'), {
+          timeout: 15_000,
+        })
+        .toBe('attribution-toggle');
+      await toggle.click({ trial: true, timeout: 10_000 });
+
+      // Expanded: the credit LINK itself — the object the ODbL/CC-BY
+      // obligation actually attaches to, and a strictly larger target than the
+      // toggle, so it can be covered while the toggle is not.
+      await toggle.click();
+      await expect(attribution).toHaveClass(/maplibregl-compact-show/);
+      await expect
+        .poll(() => topmostOverAttribution(page, 'openstreetmap-link'), {
+          timeout: 15_000,
+        })
+        .toBe('openstreetmap-link');
+      await osmLink.click({ trial: true, timeout: 10_000 });
+
+      // Back to the load state so the next viewport starts where this one did.
+      await toggle.click();
+      await expect(attribution).not.toHaveClass(/maplibregl-compact-show/);
+    }
   } finally {
     server.kill();
   }
