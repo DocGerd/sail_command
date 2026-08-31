@@ -459,7 +459,7 @@ describe('PlansList recalculate (#114)', () => {
     // re-derived from the dict under test, or the pin is the #50 equivalence
     // tautology — so ANY added clause, an integrity claim or otherwise, reds
     // regardless of its wording.
-    it('#54/#548: neither dictionary claims more than schemaVersion proves for the newer-version record', () => {
+    it('#54/#548: neither dictionary claims more than the app can establish for the newer-version record', () => {
       const EXPECTED: Record<'de' | 'en', string> = {
         en: 'This plan was saved by a newer version of the app. This older version cannot read it. It is kept, not deleted.',
         de: 'Dieser Plan wurde mit einer neueren Version der App gespeichert. Diese ältere Version kann ihn nicht lesen. Er bleibt gespeichert.',
