@@ -134,8 +134,14 @@ question 2 and must not be silently re-decided:
   `performanceFactor`, `motorEnabled` ("user preferences, not boat
   properties", with `performanceFactor` explicitly named "the closest call" and
   still left global); and displacement, omitted rather than stored unused.
-  `app/src/data/boats.ts` carries that list verbatim as a comment above the
-  layering note, exactly as §F.2 instructs.
+  `app/src/data/boats.ts` carries that list, PARAPHRASED, as a comment above
+  the layering note — same three bullets, same membership, condensed wording
+  ("a seaworthiness floor about WATER, not the hull" against the spec's "a
+  seaworthiness floor, a statement about *water* (steerage in a seaway), not
+  about the hull"). Two things follow for a restructure: the membership is
+  what is authoritative and it matches, and the comment sits at MODULE level
+  rather than on `BoatDef` itself, where §F.2's "write this into the type's
+  comment" asks for it.
 - **§F.2's record** makes `motorSpeedKn` and `maneuverPenaltyS` *per-boat
   DEFAULTS* for the corresponding `Settings` fields — "still user-tunable" in
   the spec's own summary table — not per-boat values.
@@ -194,13 +200,19 @@ oversight waiting to be tidied.
   headings are `boat.section.title`, `settings.section.boatSafety`,
   `…propulsion`, `…liveAis`, `…mapDisplay`. `SettingsPanel.tsx`'s own header
   records that `OptionsPanel.tsx`'s default export was "deleted in the #486 fix
-  wave … gone entirely". Three further German strings say "in den Optionen"
-  (the GPX-import prefill hint, `error.noRoute.calmMotorOff`, and the polars
-  caveat); their English counterparts all use a lowercase common-noun
-  "options", so only `ais.status.off` names a nonexistent surface in both
-  languages. **This is the discoverability defect #742 is about, in the copy
-  rather than in the layout** — and it is evidence that renaming the tab is
-  not the only lever.
+  wave … gone entirely". Besides `ais.status.off` itself, the phrase "in den
+  Optionen" appears in `dict.de.ts` on exactly two other keys —
+  `error.noRoute.calmMotorOff` and `about.caveats.polars` (measured
+  2026-08-31 by `grep -n "in den Optionen" app/src/i18n/dict.de.ts`, which
+  returns three hits, the third being `ais.status.off`). Their English
+  counterparts both use a lowercase common-noun "options", so
+  `ais.status.off` is the only string that names a nonexistent surface in
+  both languages. `planner.import.success` is NOT one of them: it reads
+  "Abfahrt und Optionen wählen", a different construction. **This is the
+  discoverability defect #742 is about, in the copy rather than in the
+  layout** — and it is evidence that renaming the tab is not the only lever.
+  **Filed separately as #804** and being fixed in its own PR, so it is not
+  work this restructure owns.
 
 ---
 
@@ -359,9 +371,12 @@ building around it.
   fifth tab inherits the same never-restore-into rule.
 - **The existing deep link.** `App.tsx` :: `handleOpenBoatSettings` switches to
   `'boat'` and then focuses `boatSettingsHeadingRef`, which `SettingsPanel`
-  forwards onto its FIRST `Card`'s `titleRef` with `titleTabIndex={-1}` — the
-  "Boat & safety" heading, reached from `PlannerPanel`'s inline safety-depth
-  field. A split has to decide which tab that jump lands on and retarget the
+  forwards onto the `settings.section.boatSafety` `Card`'s `titleRef` with
+  `titleTabIndex={-1}` — the "Boat & safety" heading, reached from
+  `PlannerPanel`'s inline safety-depth field. That is the SECOND `Card` in the
+  rendered tree, not the first: `BoatPicker` renders its own `Card` (title
+  `boat.section.title`) and is `SettingsPanel`'s first child, as §1.1's table
+  says. A split has to decide which tab that jump lands on and retarget the
   ref; it must keep landing on the safety-depth field's own group, not on the
   boat picker.
 
@@ -576,8 +591,10 @@ should carry, at minimum:
    Vessel identity card title and the reset button, plus the SPLIT of
    `options.ais.help` into a key-only half and an MMSI half — **every key in
    BOTH `dict.de.ts` and `dict.en.ts`**, which `satisfies Record<MsgKey,
-   string>` enforces. Include the `ais.status.off` fix (§1.6) and check whether
-   the three German "in den Optionen" strings should follow.
+   string>` enforces. The `ais.status.off` wording and its "in den Optionen"
+   neighbours are **#804's** scope, not this issue's (§1.6) — coordinate on
+   naming rather than re-deciding it here, since whatever surface name #804
+   lands on is the one this restructure has to keep true.
 4. **The `Card` heading-level change** (§6.3), or an explicit decision to use a
    different grouping device, with the `h1 → h2 → h3` outline stated as the
    acceptance criterion.

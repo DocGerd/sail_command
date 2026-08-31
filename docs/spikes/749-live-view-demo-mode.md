@@ -211,11 +211,40 @@ reload, and survives reinstalling the PWA (IndexedDB, `app/src/services/db.ts`).
 That is strictly worse than a fabricated position on screen, which at least
 disappears when the demo does.
 
-Fixing it is a code change, not a copy change, and neither available shape is
-free: disable the reroute action while the demo feed is live (a behaviour
-difference between the gated build and production, inside `LiveView`), or add a
-provenance field to the persisted `Plan` and render it in `PlansList` (a
-stored-record schema change — §5.3 for how the pre-1.0 ruling applies).
+Fixing it is a code change, not a copy change, and none of the three available
+shapes is free:
+
+1. **Disable the reroute action while the demo feed is live** — a behaviour
+   difference between the gated build and production, inside `LiveView`.
+2. **Add a provenance field to the persisted `Plan` and render it in
+   `PlansList`** — a stored-record schema change; §5.3 for how the pre-1.0
+   ruling applies.
+3. **Inject a substitute writer through the persistence seam that already
+   exists.** `app/src/state/reroute.ts` :: `rerouteFromFix` resolves its writer
+   as `const save = deps.save ?? savePlan`, typed by `ReplanDeps.save?: typeof
+   savePlan` (declared in `app/src/state/replan.ts`) and threaded from
+   `useLiveReroute(ensureClient, deps)`, which forwards `deps.save ? { client,
+   save: deps.save } : { client }`. `App.tsx` calls `useLiveReroute(ensureClient)`
+   with ONE argument, so this seam is unwired in production — structurally the
+   same family as the two GPS seams in §1.1 and `useAisTraffic`'s
+   `deps.createClient` in §1.3, and it satisfies "no path from the demo feed to
+   `savePlan`" directly rather than by a behaviour difference or a schema
+   change.
+
+   It is nevertheless the WORST of the three, because both ways of substituting
+   the writer produce a new dishonesty rather than removing one. A no-op `save`
+   returns normally, so `rerouteFromFix` resolves with the rerouted `Plan` and
+   the UI reports success — while `PlansList` populates from `listPlans()`
+   against IndexedDB, so no row ever appears. A throwing `save` is caught by the
+   `try`/`catch` wrapped around that same `await save(rerouted)` and re-thrown as
+   `ReplanError(ROUTING_FAILURE_MESSAGE_KEY['persist-failed'], …)`, which
+   `useLiveReroute` stores as its error state — and that key's own comment says
+   it is chosen because "the reroute itself SUCCEEDED and only the write
+   failed", which would be false here. Shape 1 is honest at the point of the
+   action; this one is dishonest at the point of the result.
+
+Shapes 1 and 2 are therefore the real candidates. Shape 3 is enumerated so a
+later reader who finds the seam does not mistake it for an overlooked cheap fix.
 
 ### 2.2 "Unmistakable" and "the map still looks like the real thing" are in tension with the UAT byte-identity rule
 
@@ -396,6 +425,23 @@ satisfied — which invalidates the shape rather than costing it a round.
    neither. A capture must not be framed to hide that — the same rule that
    governs the existing docs images, whose freshness-and-representativeness
    history is recorded at #459/#716.
+
+   **This recommendation rests on a tool that can rot silently, and says so.**
+   #428 — open, Backlog, read 2026-08-31 — records that `capture.mjs` "is run
+   by hand, never by CI, and nothing else exercises it — so it has **no failure
+   signal at all**. Its brokenness and its disuse look identical from outside."
+   Its own evidence: the script was authored 2026-07-17 (`f65081d`), PR #64
+   (`852cb8c`) landed the next day and rewrote exactly the components it
+   drives, and it "had been unable to complete against any build containing #64
+   ever since, roughly three weeks, with nobody noticing because nothing runs
+   it."
+
+   That is a different hazard from the image staleness §7.1 already cites
+   #459/#716 for: staleness produces a wrong picture, this produces no picture
+   and no complaint. It lands directly on the deliverable this section
+   recommends, and adding a Live capture widens what a silent break takes down.
+   The follow-up should therefore either close #428 first or state explicitly
+   that it accepts that exposure.
 3. **Keep #143 as the developer harness**, constraint intact (§9).
 
 ### 7.2 Conditional — if a UAT-only interactive demo is wanted anyway
@@ -407,7 +453,11 @@ it the declined variant wearing a different label:
    LiveView-only injection is a defect, not a smaller feature.
 2. **No path from the demo feed to `savePlan`** (§2.1). Either the reroute
    action is inert while the feed is live, or `Plan` carries provenance that
-   `PlansList` renders. Choose one and say which; do not ship neither.
+   `PlansList` renders. Choose one and say which; do not ship neither. §2.1's
+   third shape — injecting a substitute writer through `rerouteFromFix`'s
+   `deps.save` seam — satisfies this precondition literally and is rejected
+   there anyway, because both substitutes make the RESULT lie rather than
+   stopping the write honestly.
 3. **Activation by query parameter only** (§5.1), never `lib/storage.ts`.
    `start_url: '.'` is then the exit guarantee.
 4. **GPS only** (§4). No synthetic AIS, and no synthetic connection status.
@@ -470,9 +520,10 @@ every planning e2e spec and for `capture.mjs`'s docs fixture. Overloading it
 with a second, differently-shaped payload puts a demo feature in the dependency
 path of the whole deterministic-test story. A separate parameter costs nothing.
 
-**R7 — Threading `watchPosition`/`createClient` through `App.tsx` so production
-code carries the injection points. REJECTED.** The seams already exist at the
-two hooks/components (§1.1, §1.3); routing them through `App.tsx` would put
+**R7 — Threading `watchPosition`/`createClient`/`deps.save` through `App.tsx` so
+production code carries the injection points. REJECTED.** The seams already
+exist at the hooks and components that own them (§1.1, §1.3, §2.1 shape 3);
+routing them through `App.tsx` would put
 demo-shaped plumbing into the production module graph in order to serve a
 feature that, per R1, is not shipping to production. If the §7.2 variant is ever
 approved, the gate belongs at ONE fold-exact import site — the `UatBadge` shape
