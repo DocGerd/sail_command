@@ -318,8 +318,10 @@ describe('hatchBandForZoom (#599)', () => {
     // (COUNT of indices, sMax - sMin + 1 — not the span; the bound is tight
     // and observed saturated at exactly `gap`). 12 is the largest gap at
     // which no marginal region of >=100 cells goes unpainted anywhere in the
-    // real mask at the five reachable bands, across eight gates
-    // (2.2/2.5/2.8/3.0/3.5/4.0/5.0/10) — 40 clean combinations. The cap is
+    // real mask at the five bands #599's quantisation made reachable, across
+    // eight gates (2.2/2.5/2.8/3.0/3.5/4.0/5.0/10) — 40 clean combinations.
+    // (#648 later added a sixth, the full-coverage wash; its gap is 0, so it
+    // owes that sweep nothing — see the partition assertion below.) The cap is
     // NOT sufficient alone: blanking is phase-dependent, and before the
     // Math.floor quantisation 15 bands were reachable, 14 of whose
     // combinations blanked a >=100-cell region. The quantisation is what

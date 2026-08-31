@@ -843,10 +843,7 @@ test('navigability hatch (#599/#648): the stripe stays legible at overview zoom,
       expect(highFraction, `z${zoom}: raising the gate must hatch MORE, not less`).toBeGreaterThan(
         lowFraction,
       );
-      // #648 needs the FRACTIONS, not only the frames: the duty cycle is what
-      // separates a striped band from the degraded wash, and it is the one
-      // quantity the run-length instrument below cannot supply at z14+.
-      return { low, high, lowFraction, highFraction };
+      return { low, high };
     };
 
     // ---- overview zoom (z9, the app's own initial ZOOM, MapView.tsx) ----
@@ -864,11 +861,23 @@ test('navigability hatch (#599/#648): the stripe stays legible at overview zoom,
     // ---- harbour-approach zoom (z16): the #648 degradation ----
     //
     // WHAT WAS HERE BEFORE, AND WHY IT IS GONE RATHER THAN INVERTED. This
-    // block used to assert `z16Stripe <= 100`, with a comment calling 100 px
-    // "the accepted limit of the per-cell-raster approach, not a fix". That
-    // threshold was chosen to TOLERATE the 67.8 px squares #648 reports, so
-    // it could never fire on them — its continuing to pass proves nothing
-    // about this change and it is not cited as evidence anywhere below.
+    // block used to assert TWO things, and BOTH were removed — naming only
+    // the first would understate the deletion:
+    //
+    //   (1) `z16Stripe <= 100`, with a comment calling 100 px "the accepted
+    //       limit of the per-cell-raster approach, not a fix". That threshold
+    //       was chosen to TOLERATE the 67.8 px squares #648 reports, so it
+    //       could never fire on them — its continuing to pass would prove
+    //       nothing about this change, and it is cited as evidence nowhere.
+    //   (2) `z16Stripe / z9Stripe < 32`, "stripe growth across z9..z16 must
+    //       stay bounded". Its removal is forced rather than chosen: with no
+    //       z16 stripe there is no ratio to form. What it incidentally caught
+    //       — a stripe blowing up with zoom — is still held at z9 by
+    //       `z9Stripe >= 4`, at z10.9 by the fractional-quantisation stripe
+    //       assertion, and at z13 by the new `c13.fraction < 0.25` control,
+    //       which is a genuine stripe-width bound: continuity for a band
+    //       (p, s) sampled one cell apart is (s - 1) / s, so any s >= 2 at
+    //       z13 reads >= 0.5 and reds it.
     //
     // It is DELETED rather than flipped to `> 100`, because the instrument
     // itself stops applying: hatchRunLengthsPx DISCARDS runs touching either

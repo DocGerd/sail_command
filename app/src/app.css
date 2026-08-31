@@ -1093,18 +1093,27 @@ select {
 
      metresPerScreenPx(z) = 40075016.6856 m * cos(lat) / (512 * 2^z)
      screenPxPerCell(z)   = 46.67 m / metresPerScreenPx(z)
-     stripeCells          = max(1, round(8 / screenPxPerCell(floor(z))))
+     stripeCells          = round(8 / screenPxPerCell(floor(z)))
      gapCells             = min(3 * stripeCells, 12)
+
+   ...and from z14 up, where that round() reaches 0 because one mask cell is
+   already wider than twice the target, no stripe at all: the raster degrades
+   to a full-coverage wash over every marginal cell (#648).
 
    512 because MapLibre's zoom is 512-px-tile based — mapOrientation.test.ts
    derives the same ground resolution independently, and depthColor.ts's own
    block comment carries the browser measurements plus the measured basis
    for the gap cap. Note the floor(z): the zoom is QUANTISED to whole levels,
-   which is what keeps the reachable band set to five and is load-bearing for
-   safety, not rounding tidiness. Consequence for this swatch: the map's real
-   on-screen stripe runs 7.9-16.9 px from z9 to z13 and doubles per zoom level
-   above that, at a 25% duty cycle from z11 up but 40-56% at z10 and below,
-   where the gap cap bites. (An earlier revision said "~8 px ... to ~z13.6";
+   which is what keeps the set of reachable bands small and is load-bearing for
+   safety, not rounding tidiness. The SIZE and MEMBERSHIP of that set are
+   pinned by depthColor.test.ts, so the count is deliberately not restated
+   here — a count duplicated in prose has no keeper, and this block's previous
+   one went stale the moment #648 added a band. Consequence for this swatch:
+   the map's real on-screen stripe runs 7.9-16.9 px from z9 to z13, and from
+   z14 there is no stripe to mirror at all, so no zoom's geometry is a
+   candidate for this icon to copy. Duty is 25% at z11-z13, 40-56% at z10 and
+   below where the gap cap bites, and 100% from z14 where the wash covers
+   every marginal cell. (An earlier revision said "~8 px ... to ~z13.6";
    the stripe is a RANGE, not ~8 px, and 13.6 is none of the three real
    thresholds — 12.332, 12.917, 13.917 — see depthColor.ts.) The 2 px stripe in an 8 px period below is simply a
    legible 25% icon at chrome size — it matches the design's NOMINAL duty,

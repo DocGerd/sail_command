@@ -278,7 +278,8 @@ export const HATCH_RGBA: Rgba = [0, 0, 0, 190];
 //     away, not a corner case. That, rather than a bare "14 of 120", is the
 //     fact that justifies the quantisation below.
 //   * hatchBandForZoom's Math.floor QUANTISATION is what makes the cap
-//     sufficient, by shrinking the reachable band set from 15 to 5. Those 5
+//     sufficient, by shrinking the reachable band set from 15 to 5 as
+//     measured at #599, amended by the #648 note below. Those 5
 //     (27/15, 20/8, 16/4, 8/2, 4/1) are clean in ALL 40 of their gate x band
 //     combinations, re-measured against the quantised selection itself
 //     rather than inherited from the pre-quantisation sweep; largest blank
@@ -483,11 +484,15 @@ export function hatchBandForZoom(zoom: number): HatchBand {
   if (!Number.isFinite(zoom)) return HATCH_FALLBACK_BAND;
   // QUANTISED to whole zoom levels (#599 fix wave). Two reasons, in order of
   // importance. (1) SAFETY, by construction: continuous selection makes 15
-  // distinct bands reachable, 14 of whose gate x band combinations blank a
-  // marginal region of >=100 cells — see the SAFETY note above. Flooring
-  // makes exactly 5 bands reachable, and those 5 are clean in all 40 of
-  // theirs. (2) It cuts rebuild churn from 14 band changes to 4 over a
-  // z9->z22 sweep (MEASURED), all at integer crossings.
+  // distinct STRIPED bands reachable, 14 of whose gate x band combinations
+  // blank a marginal region of >=100 cells, where flooring makes the
+  // reachable set small enough to sweep exhaustively. The SAFETY note above
+  // carries that set's membership and the sweep, and depthColor.test.ts pins
+  // its size — deliberately NOT restated here: this copy of the counts went
+  // stale at #648 while the block comment and DataLayers.tsx were updated,
+  // which is the whole argument against writing a count down twice.
+  // (2) It cuts rebuild churn over a z9->z22 sweep (MEASURED), all at integer
+  // crossings.
   const z = Math.max(HATCH_MIN_BAND_ZOOM, Math.floor(zoom));
   // #648: the stripe count the TARGET asks for, before any clamp. This is
   // the quantity that says whether a per-cell raster can still express the
