@@ -131,7 +131,7 @@
   // normalises that character away on the RECEIVED side only.
   // mapColors.test.ts (#715): reads app.css via `node:fs` to structurally
   // guard that its raw map-colour hex literals stay in sync with
-  // lib/mapColors.ts's exported constants \u2014 same reason and pattern as
+  // lib/mapColors.ts's exported constants — same reason and pattern as
   // panelWidth.test.ts/useBannerHeight.test.ts/chipShallowFill.test.ts above.
   "include": [
     "src/**/realmask.repro.test.ts",

@@ -11,15 +11,23 @@
 // it does not fold them into the --sc-* token system, and introduces zero
 // new colours.
 //
-// app.css deliberately KEEPS its own raw hex literals at the sites this
-// module also covers: a MapLibre paint expression and a Canvas 2D
-// strokeStyle structurally cannot consume var(), so app.css's copies were
-// never going to collapse into these constants directly. That is the
-// documented exception in #715's own "definition of done" — the twin that
-// keeps app.css's literals honest against these constants lives in
-// mapColors.test.ts (the maskTolerance.test.ts / useBannerHeight.test.ts
-// readFileSync pattern: no compiler spans CSS and TypeScript, so a test
-// reading both artifacts is the only thing that can catch drift).
+// app.css cannot IMPORT this module — no compiler spans CSS and
+// TypeScript — so its own sites read these same values through --sc-*
+// custom properties instead: --sc-starboard, --sc-port, --sc-via,
+// --sc-motor, --sc-ink, --sc-halo (#715), the same shape as the
+// pre-existing --sc-depth-warning-fg (#251). mapColors.test.ts is the
+// twin that keeps each token's value honest against these constants (the
+// maskTolerance.test.ts / useBannerHeight.test.ts readFileSync pattern).
+//
+// An earlier revision of this comment said app.css keeps RAW hex literals
+// because "a MapLibre paint expression and a Canvas 2D strokeStyle
+// structurally cannot consume var()" — that was wrong for app.css: every
+// true MapLibre-paint / Canvas-2D-strokeStyle site this module exists for
+// (RouteLayer.tsx, AisLayer.tsx, DataLayers.tsx, windBarbs.ts,
+// BoatMarker.tsx, ViaMarkers.tsx) is TypeScript, not CSS, and those files
+// import this module directly — var() was never a candidate mechanism
+// for them, and app.css's own DOM CSS sites (legend swatches, AIS status
+// text) have no such barrier (corrected after PR #798 review).
 //
 // Case is UPPERCASE throughout, matching how this repo already cites
 // Okabe-Ito hex codes elsewhere (CLAUDE.md, existing code comments). Hex

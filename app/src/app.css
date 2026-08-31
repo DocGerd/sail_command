@@ -26,6 +26,21 @@
   --sc-depth-warning-fg: #e69f00;
   --sc-depth-warning-bg: rgba(230, 159, 0, 0.16);
   --sc-depth-warning-text: #7a5414;
+  /* #715 (PR #798 review): the rest of the map-colour family this section's
+     depth-warning tokens already belonged to — lib/mapColors.ts's
+     STARBOARD/PORT/VIA/MOTOR/INK/HALO_COLOR, mirrored here so app.css's own
+     DOM CSS (legend swatches, AIS status text) points at a token instead of
+     a raw literal, the same way --sc-depth-warning-fg already did (#251).
+     mapColors.test.ts twins every value below against those constants.
+     Deliberately theme-invariant, like --sc-depth-warning-fg above: these
+     are Okabe-Ito/neutral MAP semantics (see the NOTE above --sc-accent),
+     decoupled from theme by design, not UI accent colours. */
+  --sc-starboard: #009e73;
+  --sc-port: #d55e00;
+  --sc-via: #cc79a7;
+  --sc-motor: #5b5b5b;
+  --sc-ink: #1a1a1a;
+  --sc-halo: #ffffff;
   /* Documentary mirror only — nothing consumes this token. icon.svg's bg rect,
      index.html's theme-color, and the manifest theme_color/background_color each
      HARDCODE #10243D and must be hand-synced with this value. */
@@ -54,6 +69,13 @@
     --sc-depth-warning-fg: #e69f00;
     --sc-depth-warning-bg: rgba(230, 159, 0, 0.16);
     --sc-depth-warning-text: #d6a23e;
+    /* Same value in both modes — see the :root comment above these six. */
+    --sc-starboard: #009e73;
+    --sc-port: #d55e00;
+    --sc-via: #cc79a7;
+    --sc-motor: #5b5b5b;
+    --sc-ink: #1a1a1a;
+    --sc-halo: #ffffff;
     /* Same value in both modes; still a documentary mirror — the real #10243D
        lives hardcoded in icon.svg/index.html/manifest, not sourced from here. */
     --sc-brand: #10243d;
@@ -2039,12 +2061,12 @@ select {
 }
 
 .ais-status-live {
-  color: #009e73;
+  color: var(--sc-starboard);
 }
 
 .ais-status-offline,
 .ais-status-keyError {
-  color: #d55e00;
+  color: var(--sc-port);
 }
 
 .route-layer-time-slider {
@@ -2129,16 +2151,16 @@ select {
 }
 
 .route-legend-line-starboard {
-  background: #009e73;
+  background: var(--sc-starboard);
 }
 
 .route-legend-line-port {
-  background: #d55e00;
+  background: var(--sc-port);
 }
 
 .route-legend-line-motor {
   /* Dashed grey, echoing the motor line's line-dasharray. */
-  background: repeating-linear-gradient(to right, #5b5b5b 0 6px, transparent 6px 9px);
+  background: repeating-linear-gradient(to right, var(--sc-motor) 0 6px, transparent 6px 9px);
 }
 
 /* White maneuver circle with the dark stroke used on the map. */
@@ -2146,8 +2168,8 @@ select {
   width: 0.85rem;
   height: 0.85rem;
   border-radius: 50%;
-  background: #ffffff;
-  border: 2px solid #1a1a1a;
+  background: var(--sc-halo);
+  border: 2px solid var(--sc-ink);
 }
 
 /* The subordinate heading-change dot (Task B #37) — same family, smaller. */
@@ -2155,8 +2177,8 @@ select {
   width: 0.45rem;
   height: 0.45rem;
   border-radius: 50%;
-  background: #ffffff;
-  border: 1.5px solid #1a1a1a;
+  background: var(--sc-halo);
+  border: 1.5px solid var(--sc-ink);
 }
 
 /* Via marker (ViaMarkers.tsx). */
@@ -2164,17 +2186,17 @@ select {
   width: 0.85rem;
   height: 0.85rem;
   border-radius: 50%;
-  background: #cc79a7;
+  background: var(--sc-via);
 }
 
 /* #53: shallow-leg casing (sc-route-shallow), safety-depth warning color.
-   #715: this is the one map-colour swatch with a PRE-EXISTING --sc-* token
-   for the same value (--sc-depth-warning-fg, #251) — every sibling swatch
-   above stays a raw literal (a MapLibre paint expression can't consume
-   var(), so their app.css copies were never going to collapse into a
-   token), but this one already had a real token to point at, so pointing
-   it there removes a duplicate without inventing anything. Byte-identical
-   rendering: --sc-depth-warning-fg is #e69f00 in both light and dark. */
+   #715: --sc-depth-warning-fg already existed for this value (#251), so
+   this was the first map-colour swatch pointed at a token instead of a
+   raw literal — every sibling swatch above now does the same
+   (--sc-starboard/--sc-port/--sc-via/--sc-motor/--sc-ink/--sc-halo, added
+   after PR #798 review corrected an earlier claim here that they
+   structurally couldn't be). Byte-identical rendering: --sc-depth-warning-fg
+   is #e69f00 in both light and dark. */
 .route-legend-shallow {
   width: 1.25rem;
   height: 7px;

@@ -14,18 +14,25 @@ import {
   VIA_COLOR,
 } from './mapColors';
 
-// #715: mapColors.ts's own doc comment states the deliberate exception —
-// app.css keeps raw hex literals at every site listed below (a MapLibre
-// paint expression and a Canvas 2D strokeStyle structurally cannot consume
-// var(), so app.css was never going to import this module) — so THIS file
-// is the twin that keeps those literals honest against the shared
-// constants. No compiler spans CSS and TypeScript; this is the only thing
-// that can catch drift (the maskTolerance.test.ts / useBannerHeight.test.ts
-// readFileSync pattern). Every extraction fails CLOSED — an explicit
-// not.toBeNull() BEFORE any value comparison — so a selector that is
-// renamed, reformatted, or removed reds loudly here instead of silently
-// comparing nothing (the same shape as the CSP String.replace incident,
-// #223, this repo has already been bitten by once).
+// #715: app.css cannot IMPORT lib/mapColors.ts (no compiler spans CSS
+// and TypeScript), so its own sites read these values through --sc-*
+// custom properties instead — --sc-starboard, --sc-port, --sc-via,
+// --sc-motor, --sc-ink, --sc-halo, the same shape as the pre-existing
+// --sc-depth-warning-fg (#251). THIS file is the twin that keeps each
+// token's value honest against the shared constants (the
+// maskTolerance.test.ts / useBannerHeight.test.ts readFileSync pattern).
+// Every extraction fails CLOSED — an explicit not.toBeNull() BEFORE any
+// value comparison — so a selector that is renamed, reformatted, or
+// removed reds loudly here instead of silently comparing nothing (the
+// same shape as the CSP String.replace incident, #223, this repo has
+// already been bitten by once).
+//
+// An earlier revision of this comment said app.css keeps RAW hex literals
+// because MapLibre/Canvas "structurally cannot consume var()" — wrong:
+// that barrier applies only to the true MapLibre-paint / Canvas-2D-
+// strokeStyle sites, which are all TypeScript and import mapColors.ts
+// directly, never to app.css's own DOM CSS (corrected after PR #798
+// review).
 
 const APP_CSS_PATH = resolve(dirname(fileURLToPath(import.meta.url)), '../app.css');
 
@@ -51,91 +58,39 @@ function extractHex(css: string, pattern: RegExp, label: string): string {
   return match![1].toLowerCase();
 }
 
-describe('#715: app.css map-colour literals are honest twins of lib/mapColors.ts', () => {
+describe('#715: app.css --sc-* map-colour TOKENS are honest twins of lib/mapColors.ts', () => {
   const css = readAppCss();
 
-  it('.ais-status-live -> STARBOARD_COLOR', () => {
-    const hex = extractHex(
-      css,
-      /\.ais-status-live\s*\{\s*color:\s*(#[0-9a-fA-F]{6});/,
-      '.ais-status-live',
-    );
+  it('--sc-starboard -> STARBOARD_COLOR', () => {
+    const hex = extractHex(css, /--sc-starboard:\s*(#[0-9a-fA-F]{6});/, '--sc-starboard');
     expect(hex).toBe(STARBOARD_COLOR.toLowerCase());
   });
 
-  it('.ais-status-offline, .ais-status-keyError -> PORT_COLOR', () => {
-    const hex = extractHex(
-      css,
-      /\.ais-status-offline,\s*\.ais-status-keyError\s*\{\s*color:\s*(#[0-9a-fA-F]{6});/,
-      '.ais-status-offline, .ais-status-keyError',
-    );
+  it('--sc-port -> PORT_COLOR', () => {
+    const hex = extractHex(css, /--sc-port:\s*(#[0-9a-fA-F]{6});/, '--sc-port');
     expect(hex).toBe(PORT_COLOR.toLowerCase());
   });
 
-  it('.route-legend-line-starboard -> STARBOARD_COLOR', () => {
-    const hex = extractHex(
-      css,
-      /\.route-legend-line-starboard\s*\{\s*background:\s*(#[0-9a-fA-F]{6});/,
-      '.route-legend-line-starboard',
-    );
-    expect(hex).toBe(STARBOARD_COLOR.toLowerCase());
-  });
-
-  it('.route-legend-line-port -> PORT_COLOR', () => {
-    const hex = extractHex(
-      css,
-      /\.route-legend-line-port\s*\{\s*background:\s*(#[0-9a-fA-F]{6});/,
-      '.route-legend-line-port',
-    );
-    expect(hex).toBe(PORT_COLOR.toLowerCase());
-  });
-
-  it('.route-legend-line-motor (dashed gradient) -> MOTOR_COLOR', () => {
-    const hex = extractHex(
-      css,
-      /\.route-legend-line-motor\s*\{[^}]*repeating-linear-gradient\(to right,\s*(#[0-9a-fA-F]{6})/,
-      '.route-legend-line-motor',
-    );
-    expect(hex).toBe(MOTOR_COLOR.toLowerCase());
-  });
-
-  it('.route-legend-maneuver -> HALO_COLOR fill, INK_COLOR stroke', () => {
-    const block = css.match(/\.route-legend-maneuver\s*\{([^}]*)\}/);
-    expect(block, '.route-legend-maneuver rule not found').not.toBeNull();
-    const fill = block![1].match(/background:\s*(#[0-9a-fA-F]{6});/);
-    const stroke = block![1].match(/border:\s*2px solid\s*(#[0-9a-fA-F]{6});/);
-    expect(fill, '.route-legend-maneuver background not found').not.toBeNull();
-    expect(stroke, '.route-legend-maneuver border not found').not.toBeNull();
-    expect(fill![1].toLowerCase()).toBe(HALO_COLOR.toLowerCase());
-    expect(stroke![1].toLowerCase()).toBe(INK_COLOR.toLowerCase());
-  });
-
-  it('.route-legend-heading -> HALO_COLOR fill, INK_COLOR stroke', () => {
-    const block = css.match(/\.route-legend-heading\s*\{([^}]*)\}/);
-    expect(block, '.route-legend-heading rule not found').not.toBeNull();
-    const fill = block![1].match(/background:\s*(#[0-9a-fA-F]{6});/);
-    const stroke = block![1].match(/border:\s*1\.5px solid\s*(#[0-9a-fA-F]{6});/);
-    expect(fill, '.route-legend-heading background not found').not.toBeNull();
-    expect(stroke, '.route-legend-heading border not found').not.toBeNull();
-    expect(fill![1].toLowerCase()).toBe(HALO_COLOR.toLowerCase());
-    expect(stroke![1].toLowerCase()).toBe(INK_COLOR.toLowerCase());
-  });
-
-  it('.route-legend-via -> VIA_COLOR', () => {
-    const hex = extractHex(
-      css,
-      /\.route-legend-via\s*\{[^}]*background:\s*(#[0-9a-fA-F]{6});/,
-      '.route-legend-via',
-    );
+  it('--sc-via -> VIA_COLOR', () => {
+    const hex = extractHex(css, /--sc-via:\s*(#[0-9a-fA-F]{6});/, '--sc-via');
     expect(hex).toBe(VIA_COLOR.toLowerCase());
   });
 
-  // #251/#53: this constant's app.css twin is the --sc-depth-warning-fg
-  // custom property (theme-invariant — same literal in both the light :root
-  // block and the dark-mode override), NOT .route-legend-shallow: that
-  // swatch is the one map-colour site with a pre-existing token to point at
-  // (#715), so it now reads var(--sc-depth-warning-fg) instead of a second
-  // raw literal — asserted below as a non-regression guard.
+  it('--sc-motor -> MOTOR_COLOR', () => {
+    const hex = extractHex(css, /--sc-motor:\s*(#[0-9a-fA-F]{6});/, '--sc-motor');
+    expect(hex).toBe(MOTOR_COLOR.toLowerCase());
+  });
+
+  it('--sc-ink -> INK_COLOR', () => {
+    const hex = extractHex(css, /--sc-ink:\s*(#[0-9a-fA-F]{6});/, '--sc-ink');
+    expect(hex).toBe(INK_COLOR.toLowerCase());
+  });
+
+  it('--sc-halo -> HALO_COLOR', () => {
+    const hex = extractHex(css, /--sc-halo:\s*(#[0-9a-fA-F]{6});/, '--sc-halo');
+    expect(hex).toBe(HALO_COLOR.toLowerCase());
+  });
+
   it('--sc-depth-warning-fg -> DEPTH_WARNING_COLOR', () => {
     const hex = extractHex(
       css,
@@ -144,12 +99,110 @@ describe('#715: app.css map-colour literals are honest twins of lib/mapColors.ts
     );
     expect(hex).toBe(DEPTH_WARNING_COLOR.toLowerCase());
   });
+});
 
-  it('#715 non-regression: .route-legend-shallow reads the token, not a second raw literal', () => {
-    const block = css.match(/\.route-legend-shallow\s*\{([^}]*)\}/);
-    expect(block, '.route-legend-shallow rule not found').not.toBeNull();
-    expect(block![1]).toMatch(/background:\s*var\(--sc-depth-warning-fg\);/);
-    expect(block![1]).not.toMatch(/background:\s*#[0-9a-fA-F]{6};/);
+/**
+ * Asserts a CSS block matches `blockPattern`, that it references
+ * `var(--${token})` at least once, and that NO raw hex literal survives
+ * anywhere inside it (PR #798 review: every app.css map-colour site was
+ * a raw literal before this wave — now none may be, since every one of
+ * them turned out to have no structural barrier to a token). Fails
+ * CLOSED on a missing block, same as extractHex above.
+ */
+function assertUsesToken(css: string, blockPattern: RegExp, token: string, label: string): void {
+  const block = css.match(blockPattern);
+  expect(block, `app.css's ${label} rule not found (renamed, reformatted, or moved)`).not.toBeNull();
+  const body = block![1];
+  expect(body, `${label} does not reference var(--${token})`).toMatch(
+    new RegExp(`var\\(--${token}\\)`),
+  );
+  expect(body, `${label} still contains a raw hex literal instead of only the token`).not.toMatch(
+    /#[0-9a-fA-F]{6}/,
+  );
+}
+
+describe('#715: app.css sites reference the token, never a raw literal (non-regression)', () => {
+  const css = readAppCss();
+
+  it('.ais-status-live -> var(--sc-starboard)', () => {
+    assertUsesToken(css, /\.ais-status-live\s*\{([^}]*)\}/, 'sc-starboard', '.ais-status-live');
+  });
+
+  it('.ais-status-offline, .ais-status-keyError -> var(--sc-port)', () => {
+    assertUsesToken(
+      css,
+      /\.ais-status-offline,\s*\.ais-status-keyError\s*\{([^}]*)\}/,
+      'sc-port',
+      '.ais-status-offline, .ais-status-keyError',
+    );
+  });
+
+  it('.route-legend-line-starboard -> var(--sc-starboard)', () => {
+    assertUsesToken(
+      css,
+      /\.route-legend-line-starboard\s*\{([^}]*)\}/,
+      'sc-starboard',
+      '.route-legend-line-starboard',
+    );
+  });
+
+  it('.route-legend-line-port -> var(--sc-port)', () => {
+    assertUsesToken(
+      css,
+      /\.route-legend-line-port\s*\{([^}]*)\}/,
+      'sc-port',
+      '.route-legend-line-port',
+    );
+  });
+
+  it('.route-legend-line-motor (dashed gradient) -> var(--sc-motor)', () => {
+    // #715 (PR #798 review fix-wave): .route-legend-line-motor appears
+    // TWICE in app.css — once as the third selector in the shared sizing
+    // rule (`.route-legend-line-starboard,\n.route-legend-line-port,\n
+    // .route-legend-line-motor { width... }`) and once as its own rule
+    // carrying the gradient. A bare `/\.route-legend-line-motor\s*\{/`
+    // matches the FIRST (shared, no colour at all) and silently asserts
+    // nothing about the second — anchored here on `repeating-linear-
+    // gradient`, which only the real colour rule contains, so the match
+    // cannot land on the wrong block.
+    const block = css.match(
+      /\.route-legend-line-motor\s*\{([^}]*repeating-linear-gradient[^}]*)\}/,
+    );
+    expect(block, '.route-legend-line-motor (gradient) rule not found').not.toBeNull();
+    const body = block![1];
+    expect(body).toMatch(/var\(--sc-motor\)/);
+    expect(body).not.toMatch(/#[0-9a-fA-F]{6}/);
+  });
+
+  it('.route-legend-maneuver -> var(--sc-halo) fill, var(--sc-ink) stroke', () => {
+    const block = css.match(/\.route-legend-maneuver\s*\{([^}]*)\}/);
+    expect(block, '.route-legend-maneuver rule not found').not.toBeNull();
+    const body = block![1];
+    expect(body).toMatch(/background:\s*var\(--sc-halo\);/);
+    expect(body).toMatch(/border:\s*2px solid\s*var\(--sc-ink\);/);
+    expect(body).not.toMatch(/#[0-9a-fA-F]{6}/);
+  });
+
+  it('.route-legend-heading -> var(--sc-halo) fill, var(--sc-ink) stroke', () => {
+    const block = css.match(/\.route-legend-heading\s*\{([^}]*)\}/);
+    expect(block, '.route-legend-heading rule not found').not.toBeNull();
+    const body = block![1];
+    expect(body).toMatch(/background:\s*var\(--sc-halo\);/);
+    expect(body).toMatch(/border:\s*1\.5px solid\s*var\(--sc-ink\);/);
+    expect(body).not.toMatch(/#[0-9a-fA-F]{6}/);
+  });
+
+  it('.route-legend-via -> var(--sc-via)', () => {
+    assertUsesToken(css, /\.route-legend-via\s*\{([^}]*)\}/, 'sc-via', '.route-legend-via');
+  });
+
+  it('.route-legend-shallow -> var(--sc-depth-warning-fg)', () => {
+    assertUsesToken(
+      css,
+      /\.route-legend-shallow\s*\{([^}]*)\}/,
+      'sc-depth-warning-fg',
+      '.route-legend-shallow',
+    );
   });
 });
 
