@@ -465,25 +465,28 @@ describe('planFormDirty (#301)', () => {
   });
 
   // Mutation check (repo rule: a predicate that only reds in one direction is
-  // half-tested), RE-MEASURED against this file (#571 redesign added the
-  // viaPoints sub-describe above and the standalone viaPointsDiffer describe
-  // elsewhere in this file, both counted below): forcing planFormDirty to
-  // `return true` unconditionally reds exactly the 6 'is NOT dirty' rows in
-  // THIS describe (the matching-form baseline, showOwnship, aisApiKey, the
-  // pre-#243-backfill 'NOT dirty' row, the harborsAvailable=false
-  // 'NOT dirty' row, and the new viaPoints-match-by-content row) — 33/39
-  // still pass (the other 13 — viaPointsDiffer's 6 rows plus
-  // pickedPointsOfPlan's 4 and departureSeedMs's 3 — never call
-  // planFormDirty at all, so this mutation cannot touch them). Forcing it to
-  // `return false` unconditionally reds exactly the 20 'is dirty'/'IS dirty'
-  // rows (departure, origin point, origin harbor id, destination point,
-  // destination harbor id, all 8 routing-relevant settings via it.each, the
-  // pre-#243-backfill 'IS dirty' row, the two remaining harborsAvailable
-  // rows, and the new 4 viaPoints-dirty rows: added/removed/moved/reordered)
-  // — 19/39 still pass. Both directions discriminate on DIFFERENT rows, so
-  // the predicate is not half-tested. (#746 DERIVED, NOT RE-MEASURED: the
-  // counts above are this file's own #571 measurement minus the one deleted
-  // 'is NOT dirty' row — 7→6 red, 40→39 total, and the `return false` half's
-  // own red count is untouched at 20 because no 'is dirty' row was removed.
-  // Re-measure rather than extend this arithmetic if a row is next added.)
+  // half-tested). Forcing `planFormDirty` to `return true` unconditionally
+  // reds every row in THIS describe that asserts a form is NOT dirty; forcing
+  // it to `return false` reds every row that asserts one IS dirty. The two
+  // directions discriminate on DIFFERENT rows, so the predicate is not
+  // half-tested. Those rows are what pin the property; the red/pass COUNTS
+  // that used to sit here had no keeper, which is why they are gone.
+  //
+  // #746: this block carried four such counts and all four were wrong, in
+  // both directions, before and after that change. Measured at f25ba01,
+  // `return true` red 8 rows of the 48 in this file while this comment
+  // claimed 7 red and 33/40 passing. They had been decremented
+  // arithmetically rather than re-measured, so a stale figure survived every
+  // review that touched it. Two traps, both worth re-reading before any
+  // count is written back here:
+  //   - Enumerating rows TITLED 'is NOT dirty' UNDER-COUNTS. The row
+  //     'treats a plan with the viaPoints key absent (hand-edited/corrupted
+  //     record) as having an empty via list, not a crash' asserts exactly
+  //     that and reds under `return true`, but its title does not begin
+  //     'is NOT dirty'. That row is the one the old enumeration missed.
+  //   - A count carries its FILTER. `npm --prefix app run test -- planForm`
+  //     collects the whole FILE, not this describe, so a describe-scoped
+  //     figure and a file-scoped one are not comparable.
+  // If a count is ever needed here again, MEASURE it and state its filter;
+  // never derive one from another count.
 });
