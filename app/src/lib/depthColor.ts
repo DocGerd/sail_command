@@ -247,8 +247,8 @@ export const HATCH_RGBA: Rgba = [0, 0, 0, 190];
 // Measured over the real committed mask (2200x2400) by labelling every
 // 4-connected marginal region and counting those that receive zero painted
 // cells, across EIGHT gates (2.2 / 2.5 / 2.8 / 3.0 / 3.5 / 4.0 / 5.0 / 10 m)
-// x EVERY band this function can select over z0..z22 — 15 of them, because
-// FRACTIONAL zooms are reachable by any pinch/wheel gesture and each
+// x EVERY STRIPED band this function can select over z0..z22 — 15 of them,
+// because FRACTIONAL zooms are reachable by any pinch/wheel gesture and each
 // integer stripe count from 15 down to 1 occurs. 120 combinations:
 //
 //   gap 15 -> blanks a >=100-cell region at gates 2.8, 3.0, 3.5, 4.0 AND

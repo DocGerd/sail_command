@@ -871,13 +871,23 @@ test('navigability hatch (#599/#648): the stripe stays legible at overview zoom,
     //       nothing about this change, and it is cited as evidence nowhere.
     //   (2) `z16Stripe / z9Stripe < 32`, "stripe growth across z9..z16 must
     //       stay bounded". Its removal is forced rather than chosen: with no
-    //       z16 stripe there is no ratio to form. What it incidentally caught
-    //       — a stripe blowing up with zoom — is still held at z9 by
-    //       `z9Stripe >= 4`, at z10.9 by the fractional-quantisation stripe
-    //       assertion, and at z13 by the new `c13.fraction < 0.25` control,
-    //       which is a genuine stripe-width bound: continuity for a band
-    //       (p, s) sampled one cell apart is (s - 1) / s, so any s >= 2 at
-    //       z13 reads >= 0.5 and reds it.
+    //       z16 stripe there is no ratio to form. What holds the BLOW-UP
+    //       direction it was aimed at is depthColor.test.ts's `holds the
+    //       on-screen stripe within 7.9-17 px across z9..z13`, whose
+    //       `expect(Math.max(...widths)).toBeLessThanOrEqual(17)` is a real
+    //       UPPER bound over every striped band, sampled at each band's TOP
+    //       with an explicit `> 16` non-vacuity row proving those tops are
+    //       reached — strictly stronger than the deleted ratio, which only
+    //       ever sampled z9 and z16. Do not delete that bound believing the
+    //       e2e assertions cover it. The z13 `c13.fraction < 0.25` control
+    //       below adds a cell-space bound at the one zoom that still keeps a
+    //       stripe: continuity for a band (p, s) sampled one cell apart is
+    //       (s - 1) / s, so any s >= 2 at z13 reads >= 0.5 and reds it.
+    //       NOT `z9Stripe >= 4`, and NOT the z10.9 `> 12` assertion — both
+    //       are LOWER bounds, covering the WASH-OUT direction (#599's actual
+    //       defect), and quantisation only makes the stripe BIGGER, so
+    //       neither can catch blow-up. An earlier revision of this comment
+    //       named those two as the keepers; that was the wrong direction.
     //
     // It is DELETED rather than flipped to `> 100`, because the instrument
     // itself stops applying: hatchRunLengthsPx DISCARDS runs touching either

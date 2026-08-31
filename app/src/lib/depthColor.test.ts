@@ -325,9 +325,10 @@ describe('hatchBandForZoom (#599)', () => {
     // NOT sufficient alone: blanking is phase-dependent, and before the
     // Math.floor quantisation 15 bands were reachable, 14 of whose
     // combinations blanked a >=100-cell region. The quantisation is what
-    // makes the cap sufficient, by shrinking the reachable set to those 5 —
-    // see depthColor.ts's SAFETY note for which mechanism does which. This
-    // test pins the CAP; the band-set size is pinned by the two tests below.
+    // makes the cap sufficient, by shrinking the reachable set to those 5
+    // striped bands — see depthColor.ts's SAFETY note for which mechanism
+    // does which. This test pins the CAP; the band-set size is pinned by the
+    // two tests below.
     for (let z = 0; z <= 22; z += 0.5) {
       const { periodCells, stripeCells } = hatchBandForZoom(z);
       expect(periodCells - stripeCells).toBeLessThanOrEqual(12);
@@ -347,7 +348,7 @@ describe('hatchBandForZoom (#599)', () => {
   });
 
   it('#599/#648 SAFETY: quantises to whole zoom levels, so only SIX bands are reachable', () => {
-    // THE KEEPER FOR Math.floor. Without it 15 bands are reachable and 14
+    // THE KEEPER FOR Math.floor. Without it 15 STRIPED bands are reachable, 14
     // gate x band combinations blank a marginal region of >=100 cells in the
     // real mask (depthColor.ts's SAFETY note). The safety property here is
     // the SIZE and MEMBERSHIP of this set, not any one band, so a future
