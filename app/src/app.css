@@ -2661,6 +2661,20 @@ select {
   gap: 0.25rem;
 }
 
+/* PR #778 review MINOR 1: `.chip.chip-shallow-cautious`'s own
+   `margin-inline-start: 0.35rem` was authored for the pre-#698 horizontal
+   layout, where it spaced the cautious chip from its sibling on the same
+   line. Inside the vertical `.shallow-cell-stack` it instead reads as a
+   stray 5.6px left indent on the second chip only (measured live at
+   390x844: cautious chip `left` 55.59px vs the marker chip's 50.00px),
+   double-serving with the wrapper's own `gap`. Scoped here rather than
+   removed from `.chip.chip-shallow-cautious` itself, which still needs the
+   margin wherever the two chips are horizontal. Compound selector to match
+   the specificity of the rule it overrides. */
+.shallow-cell-stack .chip.chip-shallow-cautious {
+  margin-inline-start: 0;
+}
+
 .route-totals {
   display: grid;
   grid-template-columns: max-content max-content;
