@@ -165,6 +165,101 @@ describe('parseGpx — validation errors (§6)', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// #779: gpx.ts's pointFrom() must classify a data-area boundary point
+// IDENTICALLY to NavMask.inBounds (mask.ts) — half-open: west/south are
+// INCLUSIVE (a point exactly ON that edge is accepted), east/north are
+// EXCLUSIVE (a point exactly ON that edge is rejected). Before the fix,
+// east/north were CLOSED here (accepted), disagreeing with NavMask.
+//
+// Each of the four edge tests below pins exactly ONE axis at the exact
+// DATA_AREA boundary value, with the other axis and the route's other point
+// held well inside the area — so flipping ONLY that edge's comparison
+// operator in gpx.ts (`>=` <-> `>`, or `<` <-> `<=`) reds exactly that one
+// test and no other (mutation-checked; see the PR report). Do not merge
+// these into one multi-edge test — that would make no single assertion
+// individually load-bearing (repo lesson: "per-edge is what makes each
+// assertion individually load-bearing").
+// ---------------------------------------------------------------------------
+describe('parseGpx — #779 data-area edge inclusion (closed vs half-open)', () => {
+  it('accepts a point exactly ON the west edge (west is INCLUSIVE, matches NavMask)', () => {
+    const xml =
+      GPX_OPEN +
+      `<rte><rtept lat="54.8" lon="${DATA_AREA.west}"/><rtept lat="54.8" lon="9.9"/></rte></gpx>`;
+    const route = parseGpx(xml);
+    expect(route.origin).toEqual({ lat: 54.8, lon: DATA_AREA.west });
+  });
+
+  it('accepts a point exactly ON the south edge (south is INCLUSIVE, matches NavMask)', () => {
+    const xml =
+      GPX_OPEN +
+      `<rte><rtept lat="${DATA_AREA.south}" lon="9.9"/><rtept lat="54.8" lon="9.9"/></rte></gpx>`;
+    const route = parseGpx(xml);
+    expect(route.origin).toEqual({ lat: DATA_AREA.south, lon: 9.9 });
+  });
+
+  it('rejects a point exactly ON the east edge (east is EXCLUSIVE, matches NavMask)', () => {
+    const xml =
+      GPX_OPEN +
+      `<rte><rtept lat="54.8" lon="9.9"/><rtept lat="54.8" lon="${DATA_AREA.east}"/></rte></gpx>`;
+    expect(parseError(xml).reason).toBe('out-of-bounds');
+  });
+
+  it('rejects a point exactly ON the north edge (north is EXCLUSIVE, matches NavMask)', () => {
+    const xml =
+      GPX_OPEN +
+      `<rte><rtept lat="54.8" lon="9.9"/><rtept lat="${DATA_AREA.north}" lon="9.9"/></rte></gpx>`;
+    expect(parseError(xml).reason).toBe('out-of-bounds');
+  });
+
+  // Controls: the fix must not change behaviour for points that are NOT on
+  // an edge — strictly inside every edge (accepted, as always), and strictly
+  // outside each edge by a margin well past the boundary (rejected, as
+  // always — this was already true before the fix for every edge, so these
+  // confirm the fix is edge-exact and did not widen or narrow the rejected
+  // region).
+  it('control: accepts a point strictly inside all four edges', () => {
+    const midLat = (DATA_AREA.south + DATA_AREA.north) / 2;
+    const midLon = (DATA_AREA.west + DATA_AREA.east) / 2;
+    const xml =
+      GPX_OPEN +
+      `<rte><rtept lat="54.8" lon="9.9"/><rtept lat="${midLat}" lon="${midLon}"/></rte></gpx>`;
+    const route = parseGpx(xml);
+    expect(route.destination).toEqual({ lat: midLat, lon: midLon });
+  });
+
+  it('control: rejects a point strictly outside the west edge', () => {
+    const xml =
+      GPX_OPEN +
+      `<rte><rtept lat="54.8" lon="9.9"/><rtept lat="54.8" lon="${DATA_AREA.west - 0.1}"/></rte></gpx>`;
+    expect(parseError(xml).reason).toBe('out-of-bounds');
+  });
+
+  it('control: rejects a point strictly outside the south edge', () => {
+    const xml =
+      GPX_OPEN +
+      `<rte><rtept lat="54.8" lon="9.9"/><rtept lat="${DATA_AREA.south - 0.1}" lon="9.9"/></rte></gpx>`;
+    expect(parseError(xml).reason).toBe('out-of-bounds');
+  });
+
+  it('control: rejects a point strictly outside the east edge', () => {
+    const xml =
+      GPX_OPEN +
+      `<rte><rtept lat="54.8" lon="9.9"/><rtept lat="54.8" lon="${DATA_AREA.east + 0.1}"/></rte></gpx>`;
+    expect(parseError(xml).reason).toBe('out-of-bounds');
+  });
+
+  it('control: rejects a point strictly outside the north edge', () => {
+    // Mirrors the pre-existing "WGS84-valid point outside the mask data-area"
+    // test above (55.9°N), restated here alongside its three siblings so the
+    // four-edge control set is visible in one place.
+    const xml =
+      GPX_OPEN +
+      `<rte><rtept lat="54.8" lon="9.9"/><rtept lat="${DATA_AREA.north + 0.1}" lon="9.9"/></rte></gpx>`;
+    expect(parseError(xml).reason).toBe('out-of-bounds');
+  });
+});
+
 describe('parseGpx — via-count cap (§5)', () => {
   it('drops intermediates beyond MAX_VIA_POINTS with a notice', () => {
     // 12 rtepts: idx 0 = origin, idx 11 = destination, idx 1..10 = 10
