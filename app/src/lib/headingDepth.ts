@@ -2,7 +2,7 @@
 // active waypoint, not a depth-validated course. This module answers whether
 // that bearing crosses water shallower than the plan's safety depth, as a
 // three-valued result so "we could not check" is never mistaken for "clear".
-import type { LatLon, Leg, MaskMeta } from '../types';
+import type { LatLon, Leg } from '../types';
 import type { NavMask } from './mask';
 
 // `state` stays the three-valued vocabulary of spec §2. `caution`
@@ -14,13 +14,6 @@ export type HeadingDepthCheck =
   | { state: 'caution'; hazard: 'shallow'; shallowestM: number }
   | { state: 'caution'; hazard: 'land' }
   | { state: 'unavailable' };
-
-// The mask is a lat/lon rectangle (MaskMeta west/south/east/north), so testing
-// both endpoints is enough to know the whole segment stays inside coverage.
-// Upper bounds are exclusive, matching NavMask.cellOf's row/col range check.
-function withinMask(meta: MaskMeta, p: LatLon): boolean {
-  return p.lat >= meta.south && p.lat < meta.north && p.lon >= meta.west && p.lon < meta.east;
-}
 
 /**
  * Whether the straight line from `p` to the active leg's end crosses water
@@ -41,7 +34,7 @@ export function checkHeadingDepth(
   if (!mask) return { state: 'unavailable' };
   const leg = legs[legIndex];
   if (!leg) return { state: 'unavailable' };
-  if (!withinMask(mask.meta, p) || !withinMask(mask.meta, leg.end)) return { state: 'unavailable' };
+  if (!mask.inBounds(p) || !mask.inBounds(leg.end)) return { state: 'unavailable' };
   const shallowestM = mask.segmentShallowestBelow(p, leg.end, safetyDepthM);
   if (shallowestM === null) return { state: 'clear' };
   // A LAND cell is byte 0, and byte 0 is the ONLY byte NavMask.byteToDepthM

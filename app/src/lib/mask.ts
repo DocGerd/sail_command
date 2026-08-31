@@ -78,6 +78,19 @@ export class NavMask {
     return { row, col };
   }
 
+  /**
+   * #517: whether `p` falls inside this mask's coverage rectangle — the same
+   * lat/lon half-open test `cellOf` already performs to accept/reject a
+   * point, exposed publicly so callers no longer need their own copy of the
+   * bounds arithmetic. Equivalent to `cellOf(p) !== null` by construction:
+   * `cellOf`'s row/col range check is exactly `lat >= south && lat < north
+   * && lon >= west && lon < east` once `north = south + rows*latStep` and
+   * `east = west + cols*lonStep` are substituted in.
+   */
+  inBounds(p: LatLon): boolean {
+    return this.cellOf(p) !== null;
+  }
+
   private depthByte(row: number, col: number): number {
     return this.data[row * this.meta.cols + col];
   }

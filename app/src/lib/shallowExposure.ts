@@ -33,26 +33,12 @@ import type { NavMask } from './mask';
 // shared exported nm<->m constant exists) rather than a new cross-file one.
 const METRES_PER_NM = 1852;
 
-// Mirrors lib/headingDepth.ts's / lib/routeProfile.ts's own private
-// withinMask: the mask is a lat/lon rectangle (MaskMeta west/south/east/
-// north), so testing both endpoints is enough to know the whole segment
-// stays inside coverage. Upper bounds are exclusive, matching
-// NavMask.cellOf's row/col range check. Duplicated rather than imported —
-// this repo's established precedent for this exact helper (routeProfile.ts's
-// own comment: "keep this fix's diff inside [this file] — [the other file]
-// is a different feature with its own review surface").
-function withinMask(meta: MaskMeta, p: LatLon): boolean {
-  return p.lat >= meta.south && p.lat < meta.north && p.lon >= meta.west && p.lon < meta.east;
-}
-
 /**
  * The Amanatides-Woo grid traversal of the a->b segment, shared by
  * shallowFractionOfLeg (#516 increment 1) and legConfinedWithin (#516
  * increment 2) so the two features walk the SAME sequence of cells and can
- * never drift onto two independently-maintained copies of this arithmetic —
- * the same duplication-avoidance reasoning as this file's own withinMask
- * duplication from routeProfile.ts, applied WITHIN this file instead of
- * across two. `visit(row, col, tEntry, tExit)` fires once per traversed
+ * never drift onto two independently-maintained copies of this arithmetic.
+ * `visit(row, col, tEntry, tExit)` fires once per traversed
  * cell, in order; NOT exposed from mask.ts — extending NavMask's private
  * walkCells to yield a per-cell `t` would put new arithmetic in the solver's
  * hottest path (segmentNavigable / segmentShallowestBelow run per candidate
@@ -254,7 +240,7 @@ export function shallowExposureNm(
 ): number | null {
   let totalNm = 0;
   for (const leg of legs) {
-    if (!withinMask(mask.meta, leg.start) || !withinMask(mask.meta, leg.end)) return null;
+    if (!mask.inBounds(leg.start) || !mask.inBounds(leg.end)) return null;
     const fraction = shallowFractionOfLeg(mask, leg.start, leg.end, thresholdM);
     if (fraction === null) return null;
     totalNm += fraction * leg.distanceNm;
@@ -297,7 +283,7 @@ export function shallowConfinedWithinM(
 ): boolean | null {
   let confined = true;
   for (const leg of legs) {
-    if (!withinMask(mask.meta, leg.start) || !withinMask(mask.meta, leg.end)) return null;
+    if (!mask.inBounds(leg.start) || !mask.inBounds(leg.end)) return null;
     const result = legConfinedWithin(
       mask,
       leg.start,
@@ -469,7 +455,7 @@ export function legMinDepthsM(
   mask: NavMask,
 ): ReadonlyArray<{ depthM: number; capped: boolean } | null> {
   return legs.map((leg) => {
-    if (!withinMask(mask.meta, leg.start) || !withinMask(mask.meta, leg.end)) return null;
+    if (!mask.inBounds(leg.start) || !mask.inBounds(leg.end)) return null;
     return mask.segmentMinDepthInfoM(leg.start, leg.end);
   });
 }
