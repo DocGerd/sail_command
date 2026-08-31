@@ -1110,10 +1110,9 @@ select {
    here — a count duplicated in prose has no keeper, and this block's previous
    one went stale the moment #648 added a band. Consequence for this swatch:
    the map's real on-screen stripe runs 7.9-16.9 px from z9 to z13, and from
-   z14 there is no stripe to mirror at all, so no zoom's geometry is a
-   candidate for this icon to copy. Duty is 25% at z11-z13, 40-56% at z10 and
-   below where the gap cap bites, and 100% from z14 where the wash covers
-   every marginal cell. (An earlier revision said "~8 px ... to ~z13.6";
+   z14 there is no stripe to mirror at all. Duty is 25% at z11-z13, 40-56% at
+   z10 and below where the gap cap bites, and 100% from z14 where the wash
+   covers every marginal cell. (An earlier revision said "~8 px ... to ~z13.6";
    the stripe is a RANGE, not ~8 px, and 13.6 is none of the three real
    thresholds — 12.332, 12.917, 13.917 — see depthColor.ts.) The 2 px stripe in an 8 px period below is simply a
    legible 25% icon at chrome size — it matches the design's NOMINAL duty,
