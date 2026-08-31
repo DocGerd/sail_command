@@ -1805,7 +1805,12 @@ if [ "${1:-}" = "--selftest" ]; then
   # bare-unquoted bounding rows were REPLACED in place (double-quoted
   # equivalents that actually exercise the quote-strip) - a content change,
   # not a count change, so they are not part of this +8.
-  EXPECTED_CASES=316
+  # (#424) 316 -> 317, +1: the CANARY row (see its own comment, right after
+  # decide_exempt() below) - one licensing check that $SELF still answers a
+  # known-ask payload correctly, run before any want-allow row so a
+  # silently-dead production path is caught by ONE clear diagnosis instead of
+  # every downstream `decide allow`/`decide_exempt` row passing vacuously.
+  EXPECTED_CASES=317
 
   # (#309 fix-wave m1, moved here by #404 so decide()/decide_exempt() below
   # can use it too - they now drive the production entry point through it
@@ -2030,6 +2035,73 @@ if [ "${1:-}" = "--selftest" ]; then
       fail=1
     fi
   }
+
+  # CANARY (#424, residual of #404/#421): the liveness gate above catches a
+  # $SELF that is missing, non-executable, or a directory; decide()/
+  # decide_exempt() each catch a $SELF that exits NON-ZERO on a given call.
+  # NEITHER catches the shape #421's own implementer measured and reported
+  # honestly rather than papering over: $SELF reachable, executable, exiting
+  # 0 on EVERY call, and printing NOTHING - indistinguishable from a
+  # legitimate empty-stdout allow, because empty stdout at rc=0 IS the
+  # hook's allow signal (see hook_decision() above). Every `decide allow` and
+  # `decide_exempt` row downstream of this point wants exactly that empty
+  # response, so a silently-dead $SELF makes every one of them pass by
+  # accident - the want-allow rows carry ZERO evidence on their own, per
+  # CLAUDE.md's "an experiment that never RAN emits exactly the output of one
+  # that found nothing" and "prove the guard can fail" rules.
+  #
+  # Fix (issue's Option 2, the cheap and contract-preserving one - Option 1,
+  # adding an explicit allow marker to the hook's OWN output contract, was
+  # explicitly declined without an audit of every consumer including Claude
+  # Code's own PreToolUse handling): run ONE row, right here, before any
+  # want-allow row below, that feeds $SELF a payload with a KNOWN non-allow
+  # answer - a bare write to docs/superpowers/specs/, the single most
+  # sensitive PROTECTED_PATHS entry (ASK, never advisory, never suppressible
+  # by any READONLY_VERBS exemption since `cp` is not a read-only verb) - and
+  # requires "ask" back. A pass here LICENSES every "allow" this file reports
+  # afterward as a real decision rather than an artifact of a dead script,
+  # exactly as CLAUDE.md's labels.spec.ts rendered-feature-licenses-the-
+  # absence-assertion pattern licenses a zero-warnings check: an absence
+  # assertion carries no information until the evidence-generating process
+  # is established to have run.
+  #
+  # Deliberately NOT derived from decide()/decide_exempt() (this must be able
+  # to ABORT the whole run on failure, matching the liveness gate's own
+  # style immediately above, rather than merely mark one row red and let ~300
+  # further rows execute against a $SELF already known to be untrustworthy -
+  # the same "one clear diagnosis instead of dozens of misleading lines"
+  # reasoning the liveness gate's own comment gives).
+  #
+  # What this does NOT cover, stated rather than implied: the OTHER measured
+  # silent-allow shape in this repo - a huge payload timing out
+  # settings.json's 5 s call-site cap - is a DIFFERENT failure (a kill, not a
+  # clean rc=0) and is already covered separately by the WAVE 3 "over-bound
+  # payload" / WAVE 4 "bound unit" rows below (`timeout -k 2 5 "$SELF"`,
+  # asserting against rc 124/137 AND against the decision), not by this
+  # canary. This canary tests ordinary-payload liveness only; it cannot
+  # detect a $SELF that answers correctly for a short ask-shaped command but
+  # is broken only on some other specific input shape.
+  #
+  # MUTATION-CHECKED (#424 fix): pointing $SELF at a scratch copy whose
+  # production path is replaced with a bare `exit 0` (reachable, executable,
+  # rc=0, zero bytes of stdout for every call) reds THIS row FIRST, with a
+  # single clear diagnostic, and the script exits 1 before any of the ~300
+  # rows below - including every want-allow row - ever runs. Confirmed
+  # against the UNPATCHED file (this canary absent): the identical mutant
+  # left every `decide allow`/`decide_exempt` row green while every
+  # `decide ask`/`advisory`/`deny` row correctly reds - the exact 0/N-red
+  # signature the issue reported, reproduced fresh rather than assumed.
+  total=$((total + 1))
+  canary_json='{"tool_name":"Bash","tool_input":{"command":"cp /tmp/f docs/superpowers/specs/canary.md"}}'
+  canary_out=$(printf '%s' "$canary_json" | "$SELF" 2>&1); canary_rc=$?
+  if [ "$canary_rc" -ne 0 ]; then
+    echo "SELFTEST FAIL [canary]: \$SELF exited $canary_rc on a known-ask payload, not 0 - a dead or crashing invocation, not a decision. Every allow-expecting row below would be UNLICENSED by this failure. Aborting before running the battery. (out: $canary_out)"
+    exit 1
+  fi
+  if [ "$(hook_decision "$canary_out")" != "ask" ]; then
+    echo "SELFTEST FAIL [canary]: \$SELF answered [$(hook_decision "$canary_out")] for a bare write to docs/superpowers/specs/, which must always ask - want [ask]. The production path may be silently exiting 0 with no output (#424). Every allow-expecting row below (every 'decide allow' and 'decide_exempt' row) would pass VACUOUSLY against this \$SELF and prove nothing. Aborting before running the battery. (out: $canary_out)"
+    exit 1
+  fi
 
   nl=$'\n'
   cr=$'\r'
