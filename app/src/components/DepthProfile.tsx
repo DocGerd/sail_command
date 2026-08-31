@@ -3,6 +3,7 @@ import { useLang, useT } from '../i18n';
 import { activeRigResult } from '../lib/plan';
 import { formatKn, formatTime } from '../lib/format';
 import { formatDepthM } from '../lib/depthDisclosure';
+import { DEPTH_WARNING_COLOR, MOTOR_COLOR } from '../lib/mapColors';
 import { NavMask } from '../lib/mask';
 import { WindField } from '../lib/wind';
 import { barbSegments } from '../lib/windBarbs';
@@ -27,10 +28,12 @@ export interface DepthProfileProps {
 
 // One orange for "shallow / critical" across the raster depth overlay and this
 // chart (depthColor.ts's 2.0 m "around draft" stop). NOT #D55E00 — that hex is
-// the port-tack line color.
-const SAFETY_COLOR = '#E69F00';
-// Same grey as the map's motor line (RouteLayer sc-route-motor) and legend.
-const MOTOR_COLOR = '#5b5b5b';
+// the port-tack line color. #715: sourced from lib/mapColors.ts (kept under
+// this domain-specific local name rather than renaming every call site below
+// to DEPTH_WARNING_COLOR).
+const SAFETY_COLOR = DEPTH_WARNING_COLOR;
+// Same grey as the map's motor line (RouteLayer sc-route-motor) and legend —
+// #715: MOTOR_COLOR is now imported directly from lib/mapColors.ts.
 
 // Fallback SVG box when the container can't be measured (jsdom / pre-layout).
 const FALLBACK_W = 320;

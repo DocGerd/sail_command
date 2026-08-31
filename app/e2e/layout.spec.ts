@@ -1638,3 +1638,65 @@ test('#638: the depth-hatch legend has panel chrome at every STANDARD_VIEWPORTS 
     server.kill();
   }
 });
+
+// #762 (PR #798 review, Minor 1): the safety-depth field's label has no
+// natural break point in German ("Sicherheitstiefe") and silently
+// OVERFLOWED the narrow `.planner-safety-depth` column at tablet-landscape
+// width instead of wrapping — `boundingBox()` cannot see this (#299's
+// lesson: it returns the border box, never overflow), so the assertion has
+// to be `scrollWidth <= clientWidth` on the label itself, exactly as #299's
+// tab-strip guard above does for the same reason. Fixed with
+// `overflow-wrap: break-word` on `.sc-field label` (app.css), mirroring
+// `.depth-legend-body p`'s own German-compound-noun fix in this same file.
+// tabletLandscape (1180x820) is the one STANDARD_VIEWPORTS entry that
+// reaches the narrow ~112.8px `.planner-safety-depth` column
+// (`.planner-compact-row`'s `minmax(7rem, 10rem)` second track) — the issue's
+// own measurement notes 390x844 (phonePortrait) is STILL two-column here and
+// lands in a wider ~160px regime instead, so this guard is scoped to the one
+// viewport that actually reaches the failure, not swept across all of them.
+function probeSafetyDepthLabelOverflow(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const field = document.querySelector('.planner-safety-depth');
+    if (!field) return 'no .planner-safety-depth in the DOM at all';
+    const label = field.querySelector('label');
+    if (!label) return '.planner-safety-depth has no <label>';
+    const el = label as HTMLElement;
+    if (el.scrollWidth > el.clientWidth) {
+      return (
+        `.planner-safety-depth label overflows: scrollWidth ${el.scrollWidth} > ` +
+        `clientWidth ${el.clientWidth} (text: "${el.textContent}")`
+      );
+    }
+    return 'ok';
+  });
+}
+
+test('#762: the safety-depth field label does not overflow its column at tablet landscape, in either language', async ({
+  browser,
+}) => {
+  const server = await startPreview();
+  try {
+    for (const lang of ['de', 'en'] as const) {
+      const context = await browser.newContext();
+      await context.addInitScript((l) => {
+        window.localStorage.setItem('sc-lang', l);
+      }, lang);
+      const page = await context.newPage();
+      try {
+        await page.setViewportSize(STANDARD_VIEWPORTS.tabletLandscape);
+        await page.goto(server.url);
+        await mapReady(page);
+        await expect
+          .poll(() => probeSafetyDepthLabelOverflow(page), {
+            timeout: 10_000,
+            message: `tabletLandscape (${STANDARD_VIEWPORTS.tabletLandscape.width}x${STANDARD_VIEWPORTS.tabletLandscape.height}) / ${lang}`,
+          })
+          .toBe('ok');
+      } finally {
+        await context.close();
+      }
+    }
+  } finally {
+    server.kill();
+  }
+});
