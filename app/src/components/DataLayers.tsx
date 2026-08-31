@@ -102,15 +102,20 @@ const DEPTH_HATCH_LAYER = 'sc-depth-hatch';
 // simultaneous change (zoom while a boat radio is clamping safetyDepthM)
 // costs ONE rebuild, where two independent timers would cost two.
 // (2) The trigger is the BAND, not the zoom, and hatchBandForZoom quantises
-// to whole zoom levels (#599 fix wave), so only FIVE bands are reachable
-// across z9-z22 and a gesture that stays inside one arms no timer at all.
+// to whole zoom levels (#599 fix wave), so only SIX bands are reachable
+// across z9-z22 (FIVE before #648 added the z>=14 full-coverage wash band —
+// depthColor.ts's HATCH_WASH_BAND) and a gesture that stays inside one arms
+// no timer at all.
 // MEASURED, not predicted — an earlier revision of this comment asserted
 // "five distinct values / no timer at all" while selection was still
 // CONTINUOUS, where 15 bands are reachable and it was simply false: eight
 // wheel notches from z9 rebuilt 7-8 times. After quantisation the same eight
 // notches rebuild 1-4 times depending on notch size (2 at a 0.25 notch, 1 at
 // 0.125, 4 at a coarse 0.5). Band changes over a full z9->z22 sweep drop
-// from 14 to 4, all at integer crossings.
+// from 14 to 4, all at integer crossings — 5 since #648, whose extra
+// crossing is z13->z14 and is likewise an integer one. (The notch
+// measurement above was taken from z9 and is untouched by #648, which
+// changes nothing below z14.)
 // `zoomend` (not `zoom`) is the source, so a continuous pinch/wheel
 // gesture is already coalesced by MapLibre before this debounce sees it.
 const DEPTH_HATCH_DEBOUNCE_MS = 300;
@@ -371,7 +376,13 @@ function setupLayers(
             // an ADDITIONAL artifact, independent of the zoom-scaling
             // degradation #599's hatchBandForZoom addresses (depthColor.ts),
             // and neither fixes the other. 'nearest' at least keeps whatever renders
-            // crisp rather than blurred. SCOPE, measured against
+            // crisp rather than blurred. #648 makes this choice load-bearing for
+            // SAFETY as well as legibility: from z14 the raster is a
+            // full-coverage wash (HATCH_WASH_BAND), so 'linear' would no longer
+            // blur stripes but would fade each marginal region's OUTER cells
+            // toward transparent — i.e. render genuinely marginal water lighter
+            // at exactly the boundary a reader is judging. 'nearest' keeps that
+            // edge at the mask's own cell resolution. SCOPE, measured against
             // maplibre-gl@6.3.0: this governs MAGNIFICATION only —
             // webgl/draw/draw_raster.ts:119 binds the MINIFICATION filter
             // as a hardcoded gl.LINEAR_MIPMAP_NEAREST third argument

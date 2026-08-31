@@ -7,6 +7,7 @@ import {
   hatchBandForZoom,
   hatchScreenPxPerCell,
   HATCH_FALLBACK_BAND,
+  HATCH_WASH_BAND,
   HATCH_RGBA,
 } from './depthColor';
 import { TEST_MASK_META } from '../test/fixtures';
@@ -240,14 +241,72 @@ describe('hatchBandForZoom (#599)', () => {
     expect(spread(widths)).toBeLessThan(2.5);
   });
 
-  it('never asks the raster for a sub-cell stripe, and clamps to 1 cell from z13 up', () => {
+  it('never asks the raster for a sub-cell stripe, and clamps to 1 cell at z13 — then degrades (#648)', () => {
     // z13, not the "~z13.6" an earlier revision used: under the shipped
     // Math.floor quantisation the stripe count is round(8 / px(floor(z))),
     // which reaches 1 at floor(z) = 13 exactly. (The three real thresholds
     // in the continuous scheme are z12.332, z12.917 and z13.917 — see
     // depthColor.ts; none of them is 13.6.)
-    for (let z = 13; z <= 22; z += 0.2) {
+    //
+    // #648 SPLIT THIS RANGE. Before it, (4, 1) was held unbroken to z22 and
+    // the single painted cell grew to 67.8 px at z16 / 4338 px at z22 — the
+    // hard-edged squares #648 reports. The clamp now stops where it starts
+    // being a fiction: round(8 / px) reaches 0 at px = 16, i.e. z = 13.917,
+    // so under Math.floor the LAST striped band is z13 and z14 is the first
+    // washed one. Both halves are asserted, and the boundary is asserted as
+    // a boundary — a threshold moved either way reds one of the three.
+    for (let z = 13; z < 14; z += 0.2) {
       expect(hatchBandForZoom(z)).toEqual({ periodCells: 4, stripeCells: 1 });
+    }
+    for (let z = 14; z <= 22; z += 0.2) {
+      expect(hatchBandForZoom(z)).toEqual(HATCH_WASH_BAND);
+    }
+    // The boundary itself, at the tightest reachable pair.
+    expect(hatchBandForZoom(13.999)).toEqual({ periodCells: 4, stripeCells: 1 });
+    expect(hatchBandForZoom(14)).toEqual(HATCH_WASH_BAND);
+  });
+
+  it('#648 SAFETY: degrading at z14 can only ever paint MORE, never less', () => {
+    // THE STRUCTURAL INVARIANT, asserted at the byte level rather than
+    // argued: HATCH_RGBA is unchanged and the marginal criterion is
+    // unchanged, so the only thing #648 moves is WHICH marginal cells this
+    // pass paints. Because the wash band has period 1, its painted set is
+    // {marginal} — a strict SUPERSET of the z13 band's {marginal AND phase}
+    // — so alpha rises pointwise and, black over anything, luminance can
+    // only fall. No marginal cell can render lighter or lose its hatch.
+    //
+    // Non-vacuous by construction: reverting hatchBandForZoom's degradation
+    // makes the two bands IDENTICAL, so the strict-inequality row reds.
+    const COLS = 64;
+    const ROWS = 64;
+    const data = new Uint8Array(ROWS * COLS);
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) data[r * COLS + c] = 1 + (c % 200);
+    for (const gate of [2.2, 3.0, 10]) {
+      const striped = buildNavigabilityHatchImageData(data, ROWS, COLS, gate, hatchBandForZoom(13));
+      const washed = buildNavigabilityHatchImageData(data, ROWS, COLS, gate, hatchBandForZoom(16));
+      let stripedPainted = 0;
+      let washedPainted = 0;
+      for (let i = 0; i < ROWS * COLS; i++) {
+        const a = striped[i * 4 + 3];
+        const b = washed[i * 4 + 3];
+        if (a !== 0) stripedPainted++;
+        if (b !== 0) washedPainted++;
+        // Pointwise monotone: never lighter, and never a different colour.
+        expect(b).toBeGreaterThanOrEqual(a);
+        if (a !== 0) {
+          expect([washed[i * 4], washed[i * 4 + 1], washed[i * 4 + 2], b]).toEqual([
+            striped[i * 4],
+            striped[i * 4 + 1],
+            striped[i * 4 + 2],
+            a,
+          ]);
+        }
+      }
+      expect(stripedPainted, `gate ${gate}: the z13 band must paint something`).toBeGreaterThan(0);
+      expect(
+        washedPainted,
+        `gate ${gate}: z16 must paint strictly MORE cells than z13, not the same band`,
+      ).toBeGreaterThan(stripedPainted);
     }
   });
 
@@ -271,11 +330,21 @@ describe('hatchBandForZoom (#599)', () => {
       const { periodCells, stripeCells } = hatchBandForZoom(z);
       expect(periodCells - stripeCells).toBeLessThanOrEqual(12);
       expect(stripeCells).toBeGreaterThanOrEqual(1);
-      expect(periodCells).toBeGreaterThan(stripeCells); // never a solid fill
+      // #648: a solid fill is now REQUIRED above the degradation threshold
+      // and still FORBIDDEN below it — asserted as an exact partition rather
+      // than relaxed to an unconditional bound, so neither half can drift.
+      // Its gap is 0, which is why the >=100-cell blanking sweep behind the
+      // cap above owes it nothing: no gap, no region can fall inside one.
+      if (z >= 14) {
+        expect(periodCells).toBe(stripeCells);
+        expect(periodCells - stripeCells).toBe(0);
+      } else {
+        expect(periodCells).toBeGreaterThan(stripeCells);
+      }
     }
   });
 
-  it('#599 SAFETY: quantises to whole zoom levels, so only FIVE bands are reachable', () => {
+  it('#599/#648 SAFETY: quantises to whole zoom levels, so only SIX bands are reachable', () => {
     // THE KEEPER FOR Math.floor. Without it 15 bands are reachable and 14
     // gate x band combinations blank a marginal region of >=100 cells in the
     // real mask (depthColor.ts's SAFETY note). The safety property here is
@@ -287,7 +356,11 @@ describe('hatchBandForZoom (#599)', () => {
       const b = hatchBandForZoom(z);
       seen.set(`${b.periodCells}/${b.stripeCells}`, b.periodCells - b.stripeCells);
     }
-    expect([...seen.keys()].sort()).toEqual(['16/4', '20/8', '27/15', '4/1', '8/2']);
+    // '1/1' is #648's degraded wash band (z14 up). The other five are #599's
+    // and are the ones the 8-gate x 5-band blanking sweep covered; the wash
+    // has gap 0 and so cannot blank a region of any size.
+    expect([...seen.keys()].sort()).toEqual(['1/1', '16/4', '20/8', '27/15', '4/1', '8/2']);
+    expect(seen.get('1/1'), 'the wash band must have ZERO gap').toBe(0);
     // A fractional zoom must give the SAME band as the integer below it.
     for (const [z, frac] of [
       [9, 9.9],
