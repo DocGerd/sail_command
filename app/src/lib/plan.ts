@@ -33,10 +33,21 @@ export function isStaleForecast(plan: Plan): boolean {
 
 // #748: the actual fetch->departure gap, in whole hours, for the
 // route.staleForecast copy's {hours} placeholder — replaces the old static
-// ">12 h" threshold label. Floored, matching formatDuration/formatLegDuration
-// (lib/format.ts)'s existing hours-component convention.
+// ">12 h" threshold label. Rounded (not floored), matching format.ts's
+// formatDriftMin — the repo's actual single-unit-discarding formatter.
+// formatDuration/formatLegDuration are NOT the precedent here: they float
+// the hours COMPONENT but always print the remainder as minutes, never
+// discarding it the way this helper does.
+// Round, not floor: floor makes a staleness figure read FRESHER than
+// measured (a 12 h 59 m gap would print "12"), the reassuring direction —
+// wrong for a safety-adjacent number, per this repo's stated asymmetry the
+// other way (cautiousDepthLowerBoundM floors precisely so a depth never
+// reads deeper than provable; an age must not read younger than provable).
+// Round, not ceil: ceil would overstate by up to an hour at the boundary (a
+// 12 h 1 ms gap would print "13"), where round keeps the minimum displayed
+// value at 12, matching the strictly-">12 h" trigger.
 export function staleForecastGapHours(plan: Plan): number {
-  return Math.floor((plan.request.departureMs - plan.windGrid.fetchedAtMs) / 3_600_000);
+  return Math.round((plan.request.departureMs - plan.windGrid.fetchedAtMs) / 3_600_000);
 }
 
 // Unlike recommendedResult() (types.ts), which throws when the *recommended*

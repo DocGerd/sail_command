@@ -1778,11 +1778,20 @@ describe('banner surfacing (PR self-review fix wave)', () => {
     // on this fixture's own plan, not a hardcoded "20") — a raw literal match
     // against de['route.staleForecast'] would break the moment that value
     // carries an unreplaced {hours} placeholder.
+    // Minor 3 (review): the line above alone derives its expected string
+    // from the SAME helper under test, so it cannot catch a wrong helper —
+    // mutating staleForecastGapHours to a wrong constant would move both
+    // sides together. This fixture's gap is deterministic (t0Ms/createdAtMs/
+    // departureMs are three Date.now() calls a sub-ms apart, so the gap is
+    // 20 h + a negligible delta, a full hour from any rounding boundary),
+    // so pin it as an independent literal too.
+    const stalePlanGapHours = staleForecastGapHours(stalePlan);
+    expect(stalePlanGapHours).toBe(20);
     const bannerArea = document.querySelector('.banner-area');
     if (!bannerArea) throw new Error('expected .banner-area to be present');
     expect(
       await within(bannerArea as HTMLElement).findByText(
-        de['route.staleForecast'].replace('{hours}', String(staleForecastGapHours(stalePlan))),
+        de['route.staleForecast'].replace('{hours}', String(stalePlanGapHours)),
       ),
     ).toBeInTheDocument();
   });

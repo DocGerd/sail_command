@@ -258,10 +258,10 @@ export const de = {
   'route.comparisonIncomplete':
     'Die Suche wurde durch Zeitüberschreitung abgebrochen, bevor beide Segel verglichen werden konnten — es wird kein schnelleres Rigg angegeben',
   // #748: completes Option 3 — renders the real fetch->departure gap via
-  // {hours} (lib/plan.ts's staleForecastGapHours, floored to whole hours)
-  // instead of the static "> 12 h" threshold label PR #763 shipped. See
-  // dict.en.ts for the full rationale. "bei Abfahrt" (PR #763 review Major
-  // 3) is unchanged.
+  // {hours} (lib/plan.ts's staleForecastGapHours, rounded to whole hours —
+  // see its own comment for why round, not floor or ceil) instead of the
+  // static "> 12 h" threshold label PR #763 shipped. See dict.en.ts for the
+  // full rationale. "bei Abfahrt" (PR #763 review Major 3) is unchanged.
   'route.staleForecast': 'Vorhersage bei Abfahrt {hours} h alt',
   // #53/#452: honest passage-planning-aid copy — see dict.en.ts's comment
   // for why {used} < {requested} always holds here, why the closing

@@ -69,19 +69,30 @@ describe('isStaleForecast', () => {
 describe('staleForecastGapHours', () => {
   const fetchedAtMs = Date.UTC(2026, 6, 15, 6, 0, 0);
 
-  it('floors a 20 h gap to 20', () => {
+  it('rounds an exact 20 h gap to 20', () => {
     expect(staleForecastGapHours(makePlan(fetchedAtMs + 20 * 3_600_000, fetchedAtMs))).toBe(20);
   });
 
-  it('floors a 26 h gap to 26', () => {
+  it('rounds an exact 26 h gap to 26', () => {
     expect(staleForecastGapHours(makePlan(fetchedAtMs + 26 * 3_600_000, fetchedAtMs))).toBe(26);
   });
 
-  it('floors down rather than rounding at a partial hour', () => {
-    // 20 h 59 min: floors to 20, never rounds up to 21.
+  // Two cases, not one: round always agrees with EITHER floor OR ceil for
+  // any non-tie value (it can never differ from both at once), so a single
+  // partial-hour case cannot discriminate round from both alternatives —
+  // it takes one case on each side of the 30-minute tie.
+  it('rounds down a gap under the half-hour mark (discriminates round from ceil)', () => {
+    // 20 h 20 min: round -> 20 (agrees with floor), ceil would give 21.
     expect(
-      staleForecastGapHours(makePlan(fetchedAtMs + 20 * 3_600_000 + 59 * 60_000, fetchedAtMs)),
+      staleForecastGapHours(makePlan(fetchedAtMs + 20 * 3_600_000 + 20 * 60_000, fetchedAtMs)),
     ).toBe(20);
+  });
+
+  it('rounds up a gap at/over the half-hour mark (discriminates round from floor)', () => {
+    // 20 h 40 min: round -> 21 (agrees with ceil), floor would give 20.
+    expect(
+      staleForecastGapHours(makePlan(fetchedAtMs + 20 * 3_600_000 + 40 * 60_000, fetchedAtMs)),
+    ).toBe(21);
   });
 });
 
