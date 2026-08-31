@@ -387,11 +387,13 @@ describe('planFormDirty (#301)', () => {
     expect(planFormDirty(makePlan(), form, true)).toBe(false);
   });
 
-  it('is NOT dirty when ownMmsi is set', () => {
-    const form = matchingForm();
-    form.settings = { ...form.settings, ownMmsi: '123456789' };
-    expect(planFormDirty(makePlan(), form, true)).toBe(false);
-  });
+  // #746: the 'is NOT dirty when ownMmsi is set' row that sat here is GONE
+  // because its subject is gone — `ownMmsi` left `Settings` for one
+  // localStorage key per boat, so there is no longer a settings field to set.
+  // Not a coverage loss: the claim it pinned was "a Settings field absent
+  // from ROUTING_RELEVANT_SETTINGS_KEYS does not mark a plan stale", and the
+  // showOwnship and aisApiKey rows in this same describe still pin it for the
+  // two excluded fields that remain.
 
   // #243 fix-wave-style backfill: a plan saved before depthComfortMarginM
   // existed has that field simply absent from its stored settings snapshot.
@@ -463,21 +465,28 @@ describe('planFormDirty (#301)', () => {
   });
 
   // Mutation check (repo rule: a predicate that only reds in one direction is
-  // half-tested), RE-MEASURED against this file (#571 redesign added the
-  // viaPoints sub-describe above and the standalone viaPointsDiffer describe
-  // elsewhere in this file, both counted below): forcing planFormDirty to
-  // `return true` unconditionally reds exactly the 7 'is NOT dirty' rows in
-  // THIS describe (the matching-form baseline, showOwnship, aisApiKey,
-  // ownMmsi, the pre-#243-backfill 'NOT dirty' row, the harborsAvailable=false
-  // 'NOT dirty' row, and the new viaPoints-match-by-content row) — 33/40
-  // still pass (the other 13 — viaPointsDiffer's 6 rows plus
-  // pickedPointsOfPlan's 4 and departureSeedMs's 3 — never call
-  // planFormDirty at all, so this mutation cannot touch them). Forcing it to
-  // `return false` unconditionally reds exactly the 20 'is dirty'/'IS dirty'
-  // rows (departure, origin point, origin harbor id, destination point,
-  // destination harbor id, all 8 routing-relevant settings via it.each, the
-  // pre-#243-backfill 'IS dirty' row, the two remaining harborsAvailable
-  // rows, and the new 4 viaPoints-dirty rows: added/removed/moved/reordered)
-  // — 20/40 still pass. Both directions discriminate on DIFFERENT rows, so
-  // the predicate is not half-tested.
+  // half-tested). Forcing `planFormDirty` to `return true` unconditionally
+  // reds every row in THIS describe that asserts a form is NOT dirty; forcing
+  // it to `return false` reds every row that asserts one IS dirty. The two
+  // directions discriminate on DIFFERENT rows, so the predicate is not
+  // half-tested. Those rows are what pin the property; the red/pass COUNTS
+  // that used to sit here had no keeper, which is why they are gone.
+  //
+  // #746: this block carried four such counts and all four were wrong, in
+  // both directions, before and after that change. Measured at f25ba01,
+  // `return true` red 8 rows of the 48 in this file while this comment
+  // claimed 7 red and 33/40 passing. They had been decremented
+  // arithmetically rather than re-measured, so a stale figure survived every
+  // review that touched it. Two traps, both worth re-reading before any
+  // count is written back here:
+  //   - Enumerating rows TITLED 'is NOT dirty' UNDER-COUNTS. The row
+  //     'treats a plan with the viaPoints key absent (hand-edited/corrupted
+  //     record) as having an empty via list, not a crash' asserts exactly
+  //     that and reds under `return true`, but its title does not begin
+  //     'is NOT dirty'. That row is the one the old enumeration missed.
+  //   - A count carries its FILTER. `npm --prefix app run test -- planForm`
+  //     collects the whole FILE, not this describe, so a describe-scoped
+  //     figure and a file-scoped one are not comparable.
+  // If a count is ever needed here again, MEASURE it and state its filter;
+  // never derive one from another count.
 });

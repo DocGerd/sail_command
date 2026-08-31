@@ -5,9 +5,12 @@ import { useLang, useT } from '../i18n';
 import { clampSettingsToBoat } from '../lib/boatSettings';
 import { POLAR_TIER_LABEL_KEY, weakestPolarTier } from '../lib/boatProvenance';
 import { formatDepthM } from '../lib/depthDisclosure';
+import { isValidMmsi } from '../lib/mmsi';
+import { usePersistedOwnMmsi } from '../lib/ownMmsi';
 import Card from './Card';
 import Chip from './Chip';
 import Disclosure from './Disclosure';
+import Field from './Field';
 
 export interface BoatPickerProps {
   boatId: BoatId;
@@ -226,6 +229,13 @@ export default function BoatPicker({
   const [lang] = useLang();
   const [notice, setNotice] = useState<ClampNotice | null>(null);
   const noticeRef = useRef<HTMLParagraphElement>(null);
+  // #746: keyed on the CURRENTLY SELECTED boat, so a switch swaps the field's
+  // value in the same commit that swaps the selection — the hook re-reads
+  // during render rather than in an effect, for the reason its own comment
+  // gives.
+  const [storedMmsi, setOwnMmsi] = usePersistedOwnMmsi(boatId);
+  const mmsi = storedMmsi ?? '';
+  const mmsiInvalid = mmsi !== '' && !isValidMmsi(mmsi);
 
   // #699: a clamping switch scrolls the notice into view — without this, the
   // announcement can render below the Boat card's ~18-20 rows of boat
@@ -321,6 +331,37 @@ export default function BoatPicker({
             })
           : null}
       </p>
+      {/* #746. The own-vessel MMSI, scoped to the SELECTED boat. It sits here
+          rather than in the Live & AIS card because a field that must follow
+          the boat belongs beside the control that changes the boat — and
+          because pairing it with the aisstream.io API key invited reading the
+          two as one credential, when they differ on every axis that matters:
+          the key identifies an ACCOUNT and IS transmitted, the MMSI identifies
+          a VESSEL and never is. Storage is one localStorage key per boat
+          (lib/ownMmsi.ts); it is deliberately NOT a `Settings` field, so it
+          never enters a saved plan's `PlanRequest.settings` snapshot.
+
+          Validation is UNCHANGED from the pre-#746 SettingsPanel control it
+          replaces: every keystroke persists, and `isValidMmsi` (exactly nine
+          digits) drives `aria-invalid` plus a `role="alert"` message. Moving
+          the field must not quietly weaken the one check it had. */}
+      <Field label={t('boat.mmsi.label')} htmlFor="boat-ownMmsi" help={t('boat.mmsi.help')}>
+        <input
+          id="boat-ownMmsi"
+          type="text"
+          inputMode="numeric"
+          autoComplete="off"
+          aria-invalid={mmsiInvalid}
+          aria-describedby={mmsiInvalid ? 'boat-ownMmsi-error' : undefined}
+          value={mmsi}
+          onChange={(e) => setOwnMmsi(e.target.value)}
+        />
+      </Field>
+      {mmsiInvalid && (
+        <p className="options-help" id="boat-ownMmsi-error" role="alert">
+          {t('boat.mmsi.invalid')}
+        </p>
+      )}
     </Card>
   );
 }

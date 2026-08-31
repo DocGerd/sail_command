@@ -56,6 +56,14 @@ export const en = {
   'boat.section.title': 'Boat selection',
   'boat.picker.label': 'Select boat',
   'boat.draft': 'Draft {depth} m',
+  // #746: the own-vessel MMSI, per boat. Kept separate from the AIS API key's
+  // copy (options.ais.help) on purpose — the key is an account credential and
+  // IS transmitted; this identifies a vessel and never is. Each half must keep
+  // the sentence that is true of its own field.
+  'boat.mmsi.label': "This boat's MMSI (optional)",
+  'boat.mmsi.help':
+    'Used only to filter this boat out of the AIS traffic display, so your own vessel is not shown as surrounding traffic. Stored on this device, per boat, and never transmitted.',
+  'boat.mmsi.invalid': 'MMSI must be exactly 9 digits.',
   // Spec G.3 provenance tiers. Deliberately no A/B/C letters in the copy —
   // the letters are spec-internal identifiers and mean nothing to a skipper;
   // the word does.
@@ -195,8 +203,11 @@ export const en = {
     'No route found — the destination cannot be reached without crossing land or too-shallow water.',
   'error.noRoute.beyondHorizon':
     'No route found within the 6-day forecast horizon. Try a later departure or a closer destination.',
+  // #804: "in options" named no surface in this app. The motorEnabled
+  // checkbox renders in SettingsPanel's settings.section.propulsion card, on
+  // the Boat tab (nav.boat) — read off the component, not assumed.
   'error.noRoute.calmMotorOff':
-    'Too little wind to sail and the motor is disabled — enable the motor in options or delay departure.',
+    'Too little wind to sail and the motor is disabled — enable the motor under Boat › Propulsion, or delay departure.',
   'error.noRoute.snapOrigin':
     'The origin is not navigable — pick a point at least 300 m from land or shallow water.',
   'error.noRoute.snapDestination':
@@ -731,8 +742,11 @@ export const en = {
   'about.changelog.title': "What's new",
   'about.changelog.langNote': 'The changelog is maintained in English.',
   'about.caveats.heading': 'Important notes',
+  // #804: "in options" named no surface in this app. PERFORMANCE_FACTOR_FIELD
+  // renders in SettingsPanel's settings.section.boatSafety card, on the Boat
+  // tab (nav.boat) — read off the component, not assumed.
   'about.caveats.polars':
-    'Polars are estimates derived from ORC-style VPP data, tunable via the performance factor in options — not race-calibrated.',
+    'Polars are estimates derived from ORC-style VPP data, tunable via the performance factor under Boat › Boat & safety — not race-calibrated.',
   // #539 / #54 spec C.8 R5 + J OQ-2: every number here is now a placeholder
   // filled from the SELECTED boat (lib/depthDisclosure.ts), because the old
   // literals — 2.1 m draft, 3.0 m default, 1.2 m relaxation floor — were the
@@ -781,11 +795,17 @@ export const en = {
   'ais.disclaimer':
     'AIS coverage comes from volunteer shore stations and is not guaranteed or complete. This overlay is an awareness aid, not collision avoidance and not a navigation device.',
   'options.ais.apiKey.label': 'AIS API key (aisstream.io)',
-  'options.ais.mmsi.label': 'Your MMSI (optional)',
-  'options.ais.mmsi.invalid': 'MMSI must be exactly 9 digits.',
+  // #746: this string used to describe the API key AND the own MMSI together.
+  // The MMSI half moved to boat.mmsi.help with the field itself. The
+  // transmitted/not-transmitted distinction is the sentence that had to
+  // survive intact on BOTH sides, so each half now states it for its own
+  // field: the key IS sent to aisstream.io, the MMSI never is.
   'options.ais.help':
-    'Shows live surrounding vessel traffic in the Live view only (online only). Create a free API key at aisstream.io and paste it here. Your key and MMSI stay on this device; the key is sent only to aisstream.io as part of the subscription, and the MMSI is used only to filter your own vessel out of the display and is never transmitted. An awareness aid, not a navigation device.',
-  'ais.status.off': 'AIS off — add a key in Options',
+    'Shows live surrounding vessel traffic in the Live view only (online only). Create a free API key at aisstream.io and paste it here. Your key stays on this device and is sent only to aisstream.io as part of the subscription. An awareness aid, not a navigation device.',
+  // #804: this named "Options", a surface with no label anywhere in the app.
+  // It now names the tab and the card the AIS key control actually renders in
+  // — nav.boat and settings.section.liveAis, read from this same dictionary.
+  'ais.status.off': 'AIS off — add a key under Boat › Live & AIS',
   'ais.status.connecting': 'AIS connecting…',
   'ais.status.live': 'AIS live · {count} vessels',
   'ais.status.offline': 'AIS offline',
