@@ -130,9 +130,15 @@
   // revert to a plain space because jest-dom's toHaveTextContent
   // normalises that character away on the RECEIVED side only.
   // mapColors.test.ts (#715): reads app.css via `node:fs` to structurally
-  // guard that its raw map-colour hex literals stay in sync with
-  // lib/mapColors.ts's exported constants — same reason and pattern as
-  // panelWidth.test.ts/useBannerHeight.test.ts/chipShallowFill.test.ts above.
+  // guard that its --sc-* map-colour custom properties, and that no site
+  // reverts to a raw literal, stay in sync with lib/mapColors.ts's
+  // exported constants — same reason and pattern as panelWidth.test.ts/
+  // useBannerHeight.test.ts/chipShallowFill.test.ts above.
+  // changelogFragmentShape.test.ts (#730): reads the repo-root
+  // changelog.d/*.md fragments via `node:fs` to structurally guard that
+  // no fragment body opens with a markdown heading (accepted by
+  // buildFragments today and shipped mangled into the About dialog) —
+  // same reason and pattern as safetyDepthHelpNbsp.test.ts above.
   "include": [
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",
@@ -157,6 +163,7 @@
     "src/**/app.css.test.ts",
     "src/**/safetyDepthHelpNbsp.test.ts",
     "src/**/mapColors.test.ts",
+    "src/**/changelogFragmentShape.test.ts",
     "sweep/**/*.ts"
   ]
 }
