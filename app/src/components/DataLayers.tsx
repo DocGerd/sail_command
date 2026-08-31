@@ -11,6 +11,7 @@ import { useSettings } from '../state/AppState';
 import { useLang, useT } from '../i18n';
 import { loadRoutingAssets, type RoutingAssets } from '../services/assets';
 import { harborFeatureCollection } from '../lib/harborGeoJson';
+import { HALO_COLOR, INK_COLOR } from '../lib/mapColors';
 import {
   SEAMARKS_LAYOUT,
   pickSeamarkByPriority,
@@ -413,11 +414,15 @@ function setupLayers(
           // orange shallows). Black is distinct from every depth-ramp stop and,
           // being achromatic, can't collide with any symbol on the map under
           // colour-blindness; the 2 px white stroke keeps it popping over both
-          // plain water and every band of the depth raster.
+          // plain water and every band of the depth raster. #715: the fill is
+          // PURE black (#000000), deliberately NOT lib/mapColors.ts's
+          // INK_COLOR (#1A1A1A, the map's near-black ink) — a different,
+          // separately-chosen value, so it stays a literal here. The stroke
+          // IS the same white used everywhere else, so it is HALO_COLOR.
           'circle-radius': 5.5,
           'circle-color': '#000000',
           'circle-stroke-width': 2,
-          'circle-stroke-color': '#ffffff',
+          'circle-stroke-color': HALO_COLOR,
         },
       },
       beforeId,
@@ -440,8 +445,8 @@ function setupLayers(
           'text-allow-overlap': false,
         },
         paint: {
-          'text-color': '#1a1a1a',
-          'text-halo-color': '#ffffff',
+          'text-color': INK_COLOR,
+          'text-halo-color': HALO_COLOR,
           'text-halo-width': 1.2,
         },
       },
