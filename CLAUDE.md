@@ -1227,6 +1227,7 @@ making design-level decisions; do not silently deviate.
   | v0.13.1 | — | 33 s | `cancelled` (all five jobs) | safe | merge-push `32777433573` → tag `32777486953` deployed cleanly, `smoke-probe` passed |
   | v0.14.0 | 2026-08-25 | 56 s | `cancelled` | safe | merge-push `32876067990` → tag `32876158745` deployed cleanly, `smoke-probe` passed |
   | v0.15.0 | 2026-08-27 | 972 s | `success` (MEASURED before the tag push) | **DID no-op** | merge-push `33062172199` → tag `33063351792`; `smoke-probe` FAILED, prod kept serving `v0.14.0-49-g3ebb554`; fixed by the back-merge |
+  | v0.16.0 | 2026-08-31 | 498 s | `success` (MEASURED before the tag push, and the no-op CALLED IN ADVANCE from it) | **DID no-op** | merge-push `33409992738` → tag `33410773664`; `smoke-probe` FAILED, prod kept serving `v0.15.0-98-g04c4e6d`; fixed by the back-merge |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -1239,16 +1240,27 @@ making design-level decisions; do not silently deviate.
   before its `deploy` job reached terminal `success`. The gap is a WEAK PROXY
   for that, with a real mechanism: a longer gap gives the merge run more time
   to finish, so its `deploy` is likelier to own the SHA. As recorded through
-  the v0.15.0 cut, the two no-ops were the two LARGEST gaps in the table
-  (972 s and 128 s; largest safe row 70 s) — a separation with no overlap,
-  which under no association would arise about 1 time in 28. That is why the
+  the v0.16.0 cut, the THREE no-ops are the three LARGEST gaps in the table
+  (972 s, 498 s and 128 s; largest safe row 70 s) — a separation with no
+  overlap, which under no association would arise about 1 time in 84. Row 9
+  STRENGTHENED the association (it was 1 in 28 at eight rows) rather than
+  breaking it — which is exactly what the standing re-check existed to
+  establish, and it does NOT change the rule. That is why the
   threshold reading is seductive, and it is still the reading to distrust:
   deploy-job DURATION varies independently, no threshold has been measured,
   and the inverse inference the mechanism invites — that a SHORT gap protects
   you — is exactly the wrong conclusion for someone who just tagged 40 s after
   the merge. Gate on the JOB CONCLUSION, which is the fact; the gap licenses
-  nothing in either direction. **Whoever adds row 9 re-checks this paragraph:
-  a third no-op, or a safe row above 128 s, changes what the rows support.**
+  nothing in either direction — and at v0.16.0 that gate was used
+  PREDICTIVELY for the first time: the merge-run's `deploy` job was read as
+  terminal `success` BEFORE the tag was pushed, the no-op was called in
+  advance, and `smoke-probe` then failed exactly as called. No gap threshold
+  could have done that — it would have said only "large, so probably". That
+  is the difference between a proxy and the fact, and it is the reason to
+  keep reading the job even while the gap's correlation keeps improving.
+  **Whoever adds row 10 re-checks this paragraph: the separation now rests on
+  min(no-op) 128 s vs max(safe) 70 s, so a SAFE row at or above 128 s, or a
+  NO-OP at or below 70 s, breaks it and changes what the rows support.**
   What the rows DO rule out
   is the opposite intuition, that a fast tag push races the merge run:
   v0.13.1's 33 s is the smallest gap ever recorded and was SAFE, and
