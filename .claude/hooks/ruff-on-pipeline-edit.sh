@@ -27,6 +27,21 @@
 # #478 bullet: "allow" would bypass the user's own permission rules, and there
 # is nothing here worth an "ask" prompt over).
 #
+# THE `.claude/settings.json` CALL SITE IS DELIBERATELY SILENT ON A MISSING/
+# NON-EXECUTABLE HOOK FILE - NOT `ask`, and this is a considered choice, not
+# an oversight (PR #797 review Minor 4). Full reasoning lives in
+# `closing-keyword-guard.sh`'s header (its "THE `.claude/settings.json` CALL
+# SITE..." paragraph) - read it there rather than duplicating it here, since
+# both hooks share the IDENTICAL call-site shape and the IDENTICAL argument:
+# this hook's array entry sits on the `Edit|Write` matcher (every edit, not a
+# filtered subset), so an `ask` else-branch would prompt on every `.ts`/
+# `.css`/`.json` edit too in a checkout lacking this script, degrading the
+# click-through habit for artifact-guard.sh sharing that same array; a
+# visible "hook missing" advisory would fire on every non-pipeline edit for
+# the same reason a gated version would need `_is_pipeline_py` duplicated
+# into `settings.json`; and the call site already uses the CONJUNCTIVE
+# `[ -f "$H" ] && [ -x "$H" ]` liveness form #274 prescribes.
+#
 # WHAT IT DOES NOT COVER, stated rather than implied:
 #   1. `pipeline/.venv` may not exist at all - a fresh checkout has none until
 #      `python3 -m venv pipeline/.venv && pipeline/.venv/bin/pip install -r
@@ -53,7 +68,26 @@
 #   .claude/hooks/ruff-on-pipeline-edit.sh --selftest
 set -uo pipefail
 
-emit_advisory() { printf '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"%s"}}\n' "$1"; }
+# _json_string TEXT - prints a JSON-quoted, PROPERLY ESCAPED string literal
+# (surrounding quotes included) for arbitrary TEXT. Shared contract with
+# closing-keyword-guard.sh's helper of the same name (PR #797 review Minor 3
+# asked the two be made consistent) - see that file's copy for the full
+# rationale. Here the risk is the same shape: $F (a file path) and $MSG (raw
+# ruff/tool stdout+stderr) are both TEXT this hook does not control the
+# byte content of, and the OLD emit_advisory embedded them into a
+# hand-written printf format string with only ad hoc `tr -d '\\' | tr '"'
+# "'"` stripping - which handled backslash and double-quote but left every
+# other JSON-illegal control byte (a literal TAB in a ruff diagnostic quoting
+# source text, say) to reach the output raw. jq -> python3 fallback mirrors
+# the fail-open discipline used throughout this file; the LAST-RESORT
+# fallback (neither available) strips rather than mis-escapes.
+_json_string() {
+  printf '%s' "$1" | jq -Rs . 2>/dev/null \
+    || printf '%s' "$1" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))' 2>/dev/null \
+    || printf '"%s"' "$(printf '%s' "$1" | tr -d '\\"' | tr '\n\t\r' '   ')"
+}
+
+emit_advisory() { printf '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":%s}}\n' "$(_json_string "$1")"; }
 
 # ---- pure decision logic (no I/O, unit-testable via --selftest) ----
 
@@ -74,7 +108,11 @@ _is_pipeline_py() {
 if [ "${1:-}" = "--selftest" ]; then
   fail=0
   total=0
-  EXPECTED_CASES=13
+  # (PR #797 review) 13 -> 16: +1 Minor 1 (directory at ruff path must land
+  # on "hook inert", never "ruff flagged"), +1 Minor 2 (exit>=2 tool error
+  # must say "ERRORED (not flagged)", never "ruff flagged"), +1 Minor 3
+  # (a literal TAB in ruff's own output must still emit valid JSON).
+  EXPECTED_CASES=16
 
   check_match() { # want(match|skip)  desc  path
     total=$((total + 1))
@@ -137,22 +175,48 @@ if [ "${1:-}" = "--selftest" ]; then
     printf '%s' "$tmp"
   }
 
-  _mkproj_fake_ruff() { # ok(0|1) -> a project dir whose pipeline/.venv/bin/ruff always exits OK or always flags something
+  _mkproj_fake_ruff() { # ok(0|1|2) -> a project dir whose pipeline/.venv/bin/ruff exits OK, flags a violation (1), or errors as a TOOL failure (2)
     local ok="$1" tmp; tmp=$(mktemp -d)
     mkdir -p "$tmp/pipeline/.venv/bin"
     printf 'x = 1\n' > "$tmp/pipeline/scratch.py"
-    if [ "$ok" = 0 ]; then
-      printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/pipeline/.venv/bin/ruff"
-    else
-      printf '#!/usr/bin/env bash\necho "scratch.py:1:80: E501 line too long"\nexit 1\n' > "$tmp/pipeline/.venv/bin/ruff"
-    fi
+    case "$ok" in
+      0) printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/pipeline/.venv/bin/ruff" ;;
+      1) printf '#!/usr/bin/env bash\necho "scratch.py:1:80: E501 line too long"\nexit 1\n' > "$tmp/pipeline/.venv/bin/ruff" ;;
+      2)
+        # Minor 2 (PR #797 review): a MEASURED-shaped tool error, exit >= 2 -
+        # ruff's own real contract for "the tool itself failed", distinct
+        # from exit 1 ("violations found"). Real repro: a bad pyproject.toml
+        # key makes ruff exit 2 with a "ruff failed / Cause: ..." message on
+        # an otherwise-clean file; this fake reproduces the SHAPE without
+        # needing a real ruff binary in the offline suite.
+        printf '#!/usr/bin/env bash\necho "ruff failed"\necho "  Cause: Failed to parse pyproject.toml"\nexit 2\n' > "$tmp/pipeline/.venv/bin/ruff"
+        ;;
+    esac
     chmod +x "$tmp/pipeline/.venv/bin/ruff"
+    printf '%s' "$tmp"
+  }
+
+  # Minor 1 (PR #797 review): a DIRECTORY at the ruff path, not a missing
+  # file - the shape the OLD `[ ! -x "$RUFF" ]` liveness check let through
+  # (`-x` alone is TRUE for a directory), invoking `"$RUFF" check "$F"` on a
+  # directory and reporting the resulting shell error as "ruff flagged
+  # <clean file>". `-x`/`-f` are UNIX permission bits, not a
+  # filesystem-type test - a real directory typically carries the search
+  # (`x`) bit, which is exactly what makes this row non-vacuous: it
+  # constructs the failure `-x` alone cannot see, the same class #274's
+  # liveness-gate bullet documents for the settings.json call site itself.
+  _mkproj_dir_at_ruff() {
+    local tmp; tmp=$(mktemp -d)
+    mkdir -p "$tmp/pipeline/.venv/bin/ruff"
+    printf 'x = 1\n' > "$tmp/pipeline/scratch.py"
     printf '%s' "$tmp"
   }
 
   proj_no_venv=$(_mkproj_no_venv)
   proj_clean=$(_mkproj_fake_ruff 0)
   proj_flagged=$(_mkproj_fake_ruff 1)
+  proj_toolerror=$(_mkproj_fake_ruff 2)
+  proj_dir_at_ruff=$(_mkproj_dir_at_ruff)
 
   _prod_check silent   "non-matching path -> silent, no venv check at all" \
     "$proj_no_venv" "$proj_no_venv/app/src/App.tsx"
@@ -165,7 +229,59 @@ if [ "${1:-}" = "--selftest" ]; then
   _prod_check silent   "empty stdin -> silent" \
     "$proj_no_venv" ""
 
-  rm -rf "$proj_no_venv" "$proj_clean" "$proj_flagged"
+  # Minor 1 pin: MUST land on the "hook inert" message (directory denied at
+  # the SAME liveness gate as a missing file), MUST NOT claim "flagged".
+  total=$((total + 1))
+  dir_out=$(printf '{"tool_input":{"file_path":"%s/pipeline/scratch.py"}}' "$proj_dir_at_ruff" | CLAUDE_PROJECT_DIR="$proj_dir_at_ruff" "$SELF" 2>&1)
+  case "$dir_out" in
+    *'hook inert'*) ;;
+    *) echo "SELFTEST FAIL [Minor 1]: directory at ruff path -> expected the 'hook inert' message, got [$dir_out]"; fail=1 ;;
+  esac
+  case "$dir_out" in
+    *'ruff flagged'*) echo "SELFTEST FAIL [Minor 1]: directory at ruff path -> got a FALSE 'ruff flagged' claim on a clean file: $dir_out"; fail=1 ;;
+  esac
+
+  # Minor 2 pin: an exit->=2 tool error MUST say "ERRORED (not flagged)",
+  # MUST NOT say "ruff flagged" - the wrong diagnosis on the same wrong file.
+  total=$((total + 1))
+  err_out=$(printf '{"tool_input":{"file_path":"%s/pipeline/scratch.py"}}' "$proj_toolerror" | CLAUDE_PROJECT_DIR="$proj_toolerror" "$SELF" 2>&1)
+  case "$err_out" in
+    *'ERRORED (not flagged)'*) ;;
+    *) echo "SELFTEST FAIL [Minor 2]: exit>=2 tool error -> expected 'ERRORED (not flagged)', got [$err_out]"; fail=1 ;;
+  esac
+  case "$err_out" in
+    *'ruff flagged'*) echo "SELFTEST FAIL [Minor 2]: exit>=2 tool error -> got a WRONG 'ruff flagged' diagnosis instead of a tool-error one: $err_out"; fail=1 ;;
+  esac
+
+  # Minor 3 pin, MUTATION-CHECKED: a literal TAB inside ruff's own stdout
+  # (e.g. quoting a source line containing one) used to reach the emitted
+  # JSON unescaped - `jq empty` rejects that. Validates the FULL emitted
+  # line, not a substring grep, per #424's "a check that cannot fail is not
+  # a check" lesson.
+  total=$((total + 1))
+  proj_tab=$(mktemp -d)
+  mkdir -p "$proj_tab/pipeline/.venv/bin"
+  printf 'x = 1\n' > "$proj_tab/pipeline/scratch.py"
+  # A real TAB byte via bash's $'...' ANSI-C quoting, substituted through
+  # printf's own %s (not typed as a literal escape sequence, which would be
+  # doubly-escaped once through the generator printf and again through the
+  # generated script's own echo) - the two %s slots land the tab bytes,
+  # while \n elsewhere in the FORMAT string is printf's own newline escape.
+  _tab=$'\t'
+  printf '#!/usr/bin/env bash\necho "scratch.py:1:1: E501 col%swith%stabs"\nexit 1\n' "$_tab" "$_tab" \
+    > "$proj_tab/pipeline/.venv/bin/ruff"
+  chmod +x "$proj_tab/pipeline/.venv/bin/ruff"
+  tab_out=$(printf '{"tool_input":{"file_path":"%s/pipeline/scratch.py"}}' "$proj_tab" | CLAUDE_PROJECT_DIR="$proj_tab" "$SELF" 2>&1)
+  if [ -z "$tab_out" ]; then
+    echo "SELFTEST FAIL [Minor 3]: TAB in ruff output -> expected an advisory, got silence"
+    fail=1
+  elif ! printf '%s' "$tab_out" | jq empty 2>/dev/null; then
+    echo "SELFTEST FAIL [Minor 3]: TAB in ruff output -> emitted INVALID JSON: $tab_out"
+    fail=1
+  fi
+  rm -rf "$proj_tab"
+
+  rm -rf "$proj_no_venv" "$proj_clean" "$proj_flagged" "$proj_toolerror" "$proj_dir_at_ruff"
 
   # The empty-path row above builds `{"tool_input":{"file_path":""}}`, not
   # truly empty stdin - add ONE genuinely empty-stdin row directly, since
@@ -206,7 +322,17 @@ F=$(printf '%s' "$IN" | jq -r '.tool_response.filePath // .tool_input.file_path 
 _is_pipeline_py "$F" || exit 0
 
 RUFF="${CLAUDE_PROJECT_DIR:-.}/pipeline/.venv/bin/ruff"
-if [ ! -x "$RUFF" ]; then
+# Minor 1 (PR #797 review): CONJUNCTIVE liveness, matching artifact-guard.sh/
+# wind-fixture-guard.sh's own `-f && -x` form (`-f` alone already excludes a
+# directory - it tests "is a regular file" - so `-d` is not needed
+# separately). The OLD `[ ! -x "$RUFF" ]` was non-conjunctive: `-x` alone is
+# TRUE for a directory (the search bit, not "is runnable"), so a directory
+# at $RUFF's path passed the liveness check, `"$RUFF" check "$F"` then failed
+# with a shell "Is a directory" error captured into $CHECK_OUT, and the OLD
+# code below reported that as "ruff flagged <file>" - a false violation
+# claim on a file ruff never actually read. Conjunctive form denies BEFORE
+# invocation, landing on the correct "hook inert" message instead.
+if ! { [ -f "$RUFF" ] && [ -x "$RUFF" ]; }; then
   emit_advisory "ruff hook inert: pipeline/.venv/bin/ruff missing - this pipeline/**/*.py edit was NOT linted. Set up the venv once with: python3 -m venv pipeline/.venv && pipeline/.venv/bin/pip install -r pipeline/requirements.txt (CLAUDE.md's Pipeline bullet)."
   exit 0
 fi
@@ -214,8 +340,24 @@ fi
 CHECK_OUT=$("$RUFF" check "$F" 2>&1); CHECK_RC=$?
 FMT_OUT=$("$RUFF" format --check "$F" 2>&1); FMT_RC=$?
 
-if [ "$CHECK_RC" -ne 0 ] || [ "$FMT_RC" -ne 0 ]; then
-  MSG=$(printf '%s\n%s' "$CHECK_OUT" "$FMT_OUT" | grep -v '^$' | head -8 | tr '\n' ' ' | tr -d '\\' | tr '"' "'")
-  emit_advisory "ruff flagged $(printf '%s' "$F" | tr -d '\\' | tr '"' "'") (pipeline/.venv's ruff is UNPINNED against CI's hash-pinned .github/workflows/python-lint-requirements.txt - a local pass here would be evidence, not proof, and this python-lint.yml ruff job is ADVISORY, not required, so a red ruff can merge silently if ignored): $MSG"
+# Minor 2 (PR #797 review): ruff's own exit-code contract is 0 = clean,
+# 1 = violations found (the ordinary case this hook exists for), >= 2 =
+# the TOOL ITSELF failed (invalid pyproject.toml/ruff.toml, bad CLI usage,
+# an internal crash) - MEASURED: a `[tool.ruff]` TOML block with an unknown
+# key makes `ruff check <file>` exit 2 on a file that is otherwise byte-
+# identical to a clean pass. The OLD code treated ANY non-zero exit as
+# "violations found" and reported a genuinely clean file as "ruff flagged"
+# - the wrong diagnosis for the wrong reason, and reachable in practice
+# precisely because pipeline/.venv's ruff is UNPINNED against CI's version
+# (a config key valid in one ruff release can be unknown in another).
+# Distinguish the two: >= 2 on EITHER invocation is a tool error, reported
+# as a tool error, never as "flagged" - which would misdirect a reader
+# toward fixing code that was never actually linted.
+if [ "$CHECK_RC" -ge 2 ] || [ "$FMT_RC" -ge 2 ]; then
+  MSG=$(printf '%s\n%s' "$CHECK_OUT" "$FMT_OUT" | grep -v '^$' | head -8 | tr '\n' ' ')
+  emit_advisory "ruff ERRORED (not flagged) on $F: $MSG - this is a TOOL error (bad pyproject.toml/ruff.toml, invalid CLI usage, or an internal ruff crash), NOT a code violation - the file may be perfectly clean. pipeline/.venv's ruff is UNPINNED against CI's hash-pinned .github/workflows/python-lint-requirements.txt, so this may not even reproduce under CI's ruff."
+elif [ "$CHECK_RC" -ne 0 ] || [ "$FMT_RC" -ne 0 ]; then
+  MSG=$(printf '%s\n%s' "$CHECK_OUT" "$FMT_OUT" | grep -v '^$' | head -8 | tr '\n' ' ')
+  emit_advisory "ruff flagged $F (pipeline/.venv's ruff is UNPINNED against CI's hash-pinned .github/workflows/python-lint-requirements.txt - a local pass here would be evidence, not proof, and this python-lint.yml ruff job is ADVISORY, not required, so a red ruff can merge silently if ignored): $MSG"
 fi
 exit 0

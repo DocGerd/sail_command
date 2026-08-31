@@ -34,6 +34,49 @@
 # anything it cannot parse or decide - silence costs nothing here, where a
 # nudge's whole value proposition is "cheap to fire, cheap to skip".
 #
+# THE `.claude/settings.json` CALL SITE IS DELIBERATELY SILENT ON A MISSING/
+# NON-EXECUTABLE HOOK FILE - NOT `ask`, and this is a considered choice, not
+# an oversight (PR #797 review Minor 4 asked this be written down so a future
+# reader does not "fix" it back to `ask`). Reasoning, adjudicated in review:
+#   - `ask` is affirmatively WRONG here. This hook is wired on the BARE
+#     `Bash` matcher (every Bash call, not a filtered subset), so an `ask`
+#     else-branch would prompt on EVERY Bash call in any checkout lacking
+#     this script (a worktree cut from a pre-#727 branch, a fresh clone).
+#     CLAUDE.md's own `premerge-verify.sh` bullet records exactly this
+#     failure mode already happening to a DIFFERENT guard in this repo: "a
+#     guard that always asks trains you to click through" - which erodes the
+#     click-through habit for the two REAL blocking guards sharing that same
+#     array (artifact-guard.sh, wind-fixture-guard.sh), not just this one.
+#   - A THIRD option - a visible-but-non-blocking "hook missing" advisory
+#     instead of pure silence - is worse than both. The call site cannot
+#     know whether the command is actually a `git commit`/`gh pr create`
+#     without RUNNING this hook, so a missing-script advisory would fire on
+#     EVERY Bash call, not just the ones this hook cares about. Gating it
+#     on the command shape would mean duplicating `_triggers_commit`/
+#     `_triggers_pr_create` into `settings.json` as inline shell - exactly
+#     the logic-in-JSON duplication #274/#404 moved OUT of this repo's
+#     guards (a second, hand-maintained copy that can drift from the real
+#     one), for a nudge whose cost of silent absence is one missed reminder.
+#   - The liveness rule this repo's #274 bullet prescribes IS satisfied, not
+#     waived: the call site uses the CONJUNCTIVE `[ -f "$H" ] && [ -x "$H" ]`
+#     form (never a bare `-x`, which is true for a directory and would let
+#     `exec`/invocation die 126 emitting nothing) - closing the exact
+#     directory-at-hook-path trap #274 exists to catch. The divergence from
+#     artifact-guard.sh/wind-fixture-guard.sh is ONLY in the else-branch
+#     (silent here vs. `ask` there), and that divergence tracks the
+#     blocking/nudge split correctly, not sloppily - a NUDGE array entry can
+#     use a narrower liveness contract than a BLOCKING one because the cost
+#     of a false-negative (a live hook mistaken for absent) differs by class.
+#   - Residual, ACCEPTED rather than closed: an operator cannot tell "this
+#     hook is silent because nothing matched" from "this hook is silent
+#     because the file is gone". That is a materially SMALLER hazard than
+#     #424's canary residual (a SELFTEST claiming verification it did not
+#     perform) - this hook makes no claim about any commit either way, and
+#     CLAUDE.md's hand-run grep remains the documented backstop regardless
+#     of whether this hook ever ran. `ruff-on-pipeline-edit.sh` below shares
+#     this exact reasoning and the identical call-site shape; read this
+#     paragraph once for both.
+#
 # TRIGGER SHAPE (matches wind-fixture-guard.sh's own `_triggers_commit`
 # byte-for-byte, including the `git -C`/`git -c` compound forms - this guard
 # reuses that proven trigger for `git commit` rather than re-deriving it) plus
@@ -87,14 +130,49 @@
 # over-fire, not a bug.
 #
 # WHAT THIS DOES NOT CATCH, stated rather than implied (matching
-# wind-fixture-guard.sh's own "NOT ATTEMPTED" convention): a message supplied
-# via `git commit -F file.txt` or `gh pr create --body-file file.md` lives in
-# a FILE this hook never reads - only inline `-m`/`--body` text on the
-# command line itself is visible here. A `git commit` with no `-m` at all
-# (opens $EDITOR) is equally invisible. Neither is a regression versus the
-# status quo (the hand-run grep CLAUDE.md documents has the identical blind
-# spot, since it also greps rendered TEXT, not files-yet-to-be-written) - both
-# residuals are inherited, not introduced.
+# wind-fixture-guard.sh's own "NOT ATTEMPTED" convention). Explicitly
+# NON-EXHAUSTIVE - this enumerates what has been CONSTRUCTED AND RUN through
+# the production path (PR #797 review Minor 5), not a claim of completeness;
+# `_triggers_commit`/`_triggers_pr_create` are simple substring matches, and
+# any command shape that avoids their exact substrings evades this hook by
+# construction, whether or not it is named below.
+#   1. A message supplied via `git commit -F file.txt` or `gh pr create
+#      --body-file file.md` lives in a FILE this hook never reads - only
+#      inline `-m`/`--body` text on the command line itself is visible here.
+#      A `git commit` with no `-m` at all (opens $EDITOR) is equally
+#      invisible. Neither is a regression versus the status quo (the
+#      hand-run grep CLAUDE.md documents has the identical blind spot, since
+#      it also greps rendered TEXT, not files-yet-to-be-written) - both
+#      residuals are inherited, not introduced.
+#   2. EDITING an already-created PR's body is a DIFFERENT command entirely,
+#      and this hook only triggers on `gh pr create`. CLAUDE.md's own
+#      "Multiple open PRs" and `gh pr edit` bullets document the repo's
+#      PRESCRIBED path for that edit: `gh api repos/O/R/pulls/N --method
+#      PATCH --input body.json` (the GraphQL bug in `gh pr edit` forces this
+#      route) - MEASURED silent (constructed and run against this hook's
+#      production path, PR #797 review response): the command string
+#      contains neither "git commit" nor "gh pr create" as a substring, so
+#      neither trigger fires and no nudge is emitted, even when the JSON
+#      body being PATCHed in carries a bare `Closes #N`. A residual list
+#      that omits the repo's own documented workflow is worse than no list
+#      at all, which is why this is named explicitly rather than left to
+#      the reader to rediscover. `gh pr edit` itself (blocked by the same
+#      GraphQL bug, so rarely used, but not impossible) shares this gap.
+#   3. More generally, ANY git invocation where a global option other than
+#      the already-handled `-C`/`-c` compound forms sits between the words
+#      "git" and "commit" evades `_triggers_commit`, because that trigger is
+#      an EXACT substring match on "git commit" (one literal space). MEASURED
+#      silent (constructed and run): `git --git-dir=X --work-tree=Y commit
+#      -m "Closes #12"`, `git --work-tree=X commit -m "Closes #12"`, and
+#      `git  commit -m "Closes #12"` (two spaces - the substring "git commit"
+#      with exactly one space is absent). This is the SAME shape as #2, one
+#      level down: a trigger built from a literal substring is inherently a
+#      finite allowlist of invocation forms, not a parse of "is this a git
+#      commit". Inherited from wind-fixture-guard.sh's `_triggers_commit`,
+#      which this file reuses deliberately (see TRIGGER SHAPE above) rather
+#      than re-deriving a parser - PR #233's shell-parser road was tried and
+#      declined for exactly this class of guard, twice, in this repo's
+#      history (see CLAUDE.md's guard-asymmetry bullet).
 #
 # Offline self-test of the pure decision logic PLUS a handful of end-to-end
 # sanity checks through the real production path:
@@ -103,7 +181,33 @@ set -uo pipefail
 
 CLOSING_KEYWORD_RE='(clos(e|es|ed)?|fix(e[sd])?|resolve[sd]?)[[:space:]:(]*#[0-9]+'
 
-emit_nudge() { printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"%s"}}\n' "$1"; }
+# _json_string TEXT - prints a JSON-quoted, PROPERLY ESCAPED string literal
+# (surrounding quotes included) for arbitrary TEXT. Review Minor 3 (PR #797):
+# the OLD emit_nudge embedded $1 into a hand-written printf format string
+# with no escaping at all, and $1 here is built by INTERPOLATING $MATCH -
+# itself a substring the regex extracted verbatim from an attacker/user-
+# controlled Bash command - directly into the message. A literal TAB
+# anywhere in that match (`[[:space:]]` in CLOSING_KEYWORD_RE matches one)
+# survives into the emitted JSON as a RAW, UNESCAPED control byte, which is
+# not legal inside a JSON string per RFC 8259 (control chars U+0000-U+001F
+# MUST be escaped) - `jq empty` rejects it outright. A hook emitting
+# malformed JSON is a failure mode with NO good outcome: not a decision, not
+# a diagnosable error, just noise the harness cannot parse.
+# jq -> python3 fallback mirrors the fail-open discipline used throughout
+# this file; the LAST-RESORT fallback (neither available) does not attempt
+# ad hoc escaping - it STRIPS every byte JSON cannot represent unescaped
+# rather than risk re-inventing RFC 8259 wrong under exactly the
+# no-tools-available condition that made this necessary. Applies uniformly to
+# ANY text this hook emits (the whole nudge message, not just $MATCH) -
+# consistent with ruff-on-pipeline-edit.sh's sibling helper of the same name
+# and contract (Minor 3's "make them consistent" instruction).
+_json_string() {
+  printf '%s' "$1" | jq -Rs . 2>/dev/null \
+    || printf '%s' "$1" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))' 2>/dev/null \
+    || printf '"%s"' "$(printf '%s' "$1" | tr -d '\\"' | tr '\n\t\r' '   ')"
+}
+
+emit_nudge() { printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":%s}}\n' "$(_json_string "$1")"; }
 
 # ---- pure decision logic (no I/O, unit-testable via --selftest) ----
 
@@ -159,7 +263,10 @@ if [ "${1:-}" = "--selftest" ]; then
   # (PR #350 review, Finding 3): a row that silently disappears must not
   # leave this suite reporting SELFTEST OK having run fewer cases than it
   # claims to.
-  EXPECTED_CASES=32
+  # (PR #797 review, Minor 3) 32 -> 33: +1 for the JSON-validity row pinning
+  # a literal TAB inside the matched substring no longer breaks the emitted
+  # JSON (see that row's own comment).
+  EXPECTED_CASES=33
 
   check() { # want(fire|skip)  desc  cmd
     total=$((total + 1))
@@ -271,6 +378,37 @@ Closes #265"'
     'git commit -m "Refs #319"'
   _prod_check silent   "sanity: empty stdin / non-triggering command -> silent" \
     'git status'
+
+  # Minor 3 (PR #797 review), MUTATION-CHECKED: a literal TAB inside the
+  # matched substring (CLOSING_KEYWORD_RE's `[[:space:]]` tail matches one)
+  # used to reach the emitted JSON as a raw, unescaped control byte -
+  # `jq empty` rejects that outright, and a hook emitting malformed JSON is
+  # a failure with no good outcome. Builds the payload via `python3 -c
+  # json.dumps` (falling back to `jq -Rs .`) so the embedded tab is a REAL
+  # byte after jq parses tool_input.command, not an escaped two-character
+  # sequence a naive shell string could not represent - the same technique
+  # used to reproduce this defect against the review's own repro. Validates
+  # the FULL emitted line through `jq empty`, not just a substring grep,
+  # because #424's own lesson applies here too: a check that cannot fail is
+  # not a check.
+  _prod_check_valid_json() { # desc  cmd
+    total=$((total + 1))
+    local desc="$1" cmd="$2" json out
+    json=$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]}}))' "$cmd" 2>/dev/null \
+      || printf '{"tool_input":{"command":%s}}' "$(printf '%s' "$cmd" | jq -Rs .)")
+    out=$(printf '%s' "$json" | "$SELF" 2>&1)
+    if [ -z "$out" ]; then
+      echo "SELFTEST FAIL [prod json]: $desc -> expected an advisory, got silence"
+      fail=1
+      return
+    fi
+    if ! printf '%s' "$out" | jq empty 2>/dev/null; then
+      echo "SELFTEST FAIL [prod json]: $desc -> emitted INVALID JSON: $out"
+      fail=1
+    fi
+  }
+  _prod_check_valid_json "Minor 3: literal TAB in the matched substring must still emit valid JSON" \
+    "$(printf 'git commit -m "Closes\t#12"')"
 
   # Positive assertion, not `-ne` (same reasoning as artifact-guard.sh's own
   # matching comment: `-ne` against an empty/non-numeric RHS fails OPEN).
