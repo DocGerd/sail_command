@@ -148,7 +148,18 @@ export default function PanelResizer({
   }, [panelRef]);
 
   const rafRef = useRef(0);
-  const dragRef = useRef<{ startX: number; startWidth: number; startCssVar: string } | null>(null);
+  const dragRef = useRef<{
+    startX: number;
+    startWidth: number;
+    startCssVar: string;
+    /** #468: captured at pointerdown so an abort (unmount or pointercancel,
+        see `abortDrag` below) can release capture on the SAME element even
+        though `e.currentTarget` from that original event is long gone by
+        then — a plain object reference survives detachment/unmount, unlike
+        a ref that another effect may have already nulled out. */
+    pointerId: number;
+    el: HTMLDivElement;
+  } | null>(null);
   // The keyboard-step base of record, separate from `widthPx` above. `null`
   // until the first commit; falls back to the RO-measured `widthPx` only
   // before that. `handleKeyDown` closes over `widthPx` (React STATE) to
@@ -199,7 +210,13 @@ export default function PanelResizer({
     // exactly, rather than leaving behind whatever `writeLive` wrote for an
     // intermediate (never-committed) pointer position.
     const startCssVar = targetRef.current?.style.getPropertyValue('--sc-panel-w') ?? '';
-    dragRef.current = { startX: e.clientX, startWidth, startCssVar };
+    dragRef.current = {
+      startX: e.clientX,
+      startWidth,
+      startCssVar,
+      pointerId: e.pointerId,
+      el: e.currentTarget,
+    };
     e.preventDefault();
   };
 
@@ -219,6 +236,22 @@ export default function PanelResizer({
     onCommit(clamped);
   };
 
+  // Restores whatever was on `--sc-panel-w` before the current drag touched
+  // it (captured at pointerdown), not a value derived from
+  // `committedRef`/React state — this component doesn't know whether the
+  // TRUE current value is "no override" (a persisted width from a PREVIOUS
+  // session that this component instance never itself committed) or a real
+  // number, so "undo my own uncommitted write" is the only thing it can do
+  // correctly without that knowledge. Shared by the zero-net-drag branch of
+  // `endDrag` below and by `abortDrag` (#468: pointercancel and unmount) —
+  // same revert, three different triggers.
+  const revertLiveWrite = (drag: { startCssVar: string }) => {
+    const target = targetRef.current;
+    if (!target) return;
+    if (drag.startCssVar === '') target.style.removeProperty('--sc-panel-w');
+    else target.style.setProperty('--sc-panel-w', drag.startCssVar);
+  };
+
   const endDrag = (e: PointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current;
     if (!drag) return;
@@ -236,23 +269,79 @@ export default function PanelResizer({
       // may already have called `writeLive` for an intermediate pointer
       // position before the pointer returned to its start x — that write
       // landed on `targetRef.current.style` directly, bypassing React
-      // state, and skipping `commit()` here left it there. Restore exactly
-      // what was on the property before this drag touched it (captured at
-      // pointerdown), not a value derived from `committedRef`/React state —
-      // this component doesn't know whether the TRUE current value is "no
-      // override" (a persisted width from a PREVIOUS session that this
-      // component instance never itself committed) or a real number, so
-      // "undo my own uncommitted write" is the only thing it can do
-      // correctly without that knowledge.
-      const target = targetRef.current;
-      if (target) {
-        if (drag.startCssVar === '') target.style.removeProperty('--sc-panel-w');
-        else target.style.setProperty('--sc-panel-w', drag.startCssVar);
-      }
+      // state, and skipping `commit()` here left it there.
+      revertLiveWrite(drag);
       return;
     }
     commit(drag.startWidth + dx);
   };
+
+  // #468: an interrupted drag must never persist a width — neither via
+  // `onCommit` (never called here) nor as a leftover live CSS write. Used
+  // for two distinct triggers that share the same "abort, don't commit"
+  // contract:
+  //  - `handlePointerCancel` (a REAL `pointercancel`, e.g. the tablet
+  //    rotation the #446 spike measured, a multi-touch conflict, or the
+  //    browser reassigning the gesture to a scroll/zoom). Unlike
+  //    `pointerup`, a `pointercancel` does not represent the user
+  //    deliberately releasing at a chosen position — the spec explicitly
+  //    allows the user agent to fire it well after the pointer stopped
+  //    tracking real input, so `e.clientX` at cancel time cannot be trusted
+  //    as the user's intended endpoint. Reverting is therefore the only
+  //    semantics that cannot silently apply a width the user never chose;
+  //    this is the "commit-vs-revert" decision #468 asks to be made and
+  //    documented, decided in favour of REVERT.
+  //  - the unmount-cleanup effect below, for a drag interrupted by the
+  //    component disappearing entirely (a narrow-layout flip mid-drag,
+  //    HMR, or any other unmount) rather than by a pointer event at all.
+  //    Without this, a `requestAnimationFrame` already scheduled by
+  //    `writeLive` fires AFTER unmount and writes a width to `targetRef`'s
+  //    (persistent, App-shell-level) element that no `onCommit` ever
+  //    ratified — invisible to this component once it's gone, but a real,
+  //    visible stale value left on a DOM node that outlives it.
+  const abortDrag = () => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    dragRef.current = null;
+    cancelAnimationFrame(rafRef.current);
+    // Best-effort: a captured element auto-releases capture once it leaves
+    // the document, so this is belt-and-braces rather than load-bearing —
+    // but it's cheap, makes the intent explicit, and jsdom (which has no
+    // `setPointerCapture`/`releasePointerCapture` at all) is the reason
+    // this stays behind a feature check instead of an unconditional call.
+    if (typeof drag.el.releasePointerCapture === 'function') {
+      try {
+        drag.el.releasePointerCapture(drag.pointerId);
+      } catch {
+        // Already released, or never actually captured — nothing to do.
+      }
+    }
+    revertLiveWrite(drag);
+  };
+
+  const handlePointerCancel = () => abortDrag();
+
+  // #468: unmount cleanup for a drag left in flight. `abortDrag` closes
+  // over `dragRef`/`rafRef`/`targetRef` (stable ref objects) but is a fresh
+  // function identity every render, and this effect's cleanup must fire
+  // ONLY on real unmount, never on an ordinary re-render mid-drag — using
+  // `abortDrag` itself as a `useEffect` dependency would re-run this
+  // effect's cleanup on EVERY render (including ones a live drag's own
+  // `writeLive` -> layout -> ResizeObserver loop can trigger), which would
+  // call `abortDrag()` — and therefore null out `dragRef.current` — while
+  // the drag is still in progress, breaking it outright. Reading the
+  // latest render's closure through a ref (kept current by the first
+  // effect below, which itself has no dependency array so it re-runs after
+  // every render) sidesteps that: the SECOND effect mounts once (`[]`) and
+  // its cleanup, which only fires on true unmount, always calls whatever
+  // `abortDrag` was current as of the last render.
+  const abortDragRef = useRef(abortDrag);
+  useEffect(() => {
+    abortDragRef.current = abortDrag;
+  });
+  useEffect(() => {
+    return () => abortDragRef.current();
+  }, []);
 
   const reset = () => {
     committedRef.current = null;
@@ -300,7 +389,7 @@ export default function PanelResizer({
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={endDrag}
-      onPointerCancel={endDrag}
+      onPointerCancel={handlePointerCancel}
       onKeyDown={handleKeyDown}
       onDoubleClick={reset}
     />
