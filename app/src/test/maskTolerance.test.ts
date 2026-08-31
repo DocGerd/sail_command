@@ -71,13 +71,21 @@ function readToleranceM(): number {
   // assignment). A naive unanchored regex would find one of those decoys
   // (one of them even coincidentally correct-valued) instead of the real
   // assignment.
-  const match = py.match(/^[ \t]*TOLERANCE_M\s*=\s*([\d.]+)[ \t]*$/m);
+  //
+  // #548: MATCHES ALL and asserts exactly one — the same shape as the Python
+  // twin, pipeline/verify_mask.py's read_tolerance_m() (re.findall +
+  // len(found) != 1). A single non-global .match() picks the FIRST hit and
+  // stays silent on a second, real, anchored assignment appended later in the
+  // file, so this REQUIRED check was strictly weaker than its non-required
+  // Python twin. Change this regex and read_tolerance_m()'s together.
+  const matches = [...py.matchAll(/^[ \t]*TOLERANCE_M\s*=\s*([\d.]+)[ \t]*$/gm)];
   expect(
-    match,
-    'TOLERANCE_M assignment not found in pipeline/build_mask.py (renamed, reformatted, or moved) — ' +
-      'update the regex above alongside the pipeline change, and re-verify the about.caveats.depthMask copy',
-  ).not.toBeNull();
-  return Number(match![1]);
+    matches.length,
+    `expected exactly one anchored TOLERANCE_M assignment in pipeline/build_mask.py, found ${matches.length} ` +
+      '(renamed, reformatted, moved, or duplicated) — update this regex and ' +
+      "pipeline/verify_mask.py's read_tolerance_m() together, and re-verify the about.caveats.depthMask copy",
+  ).toBe(1);
+  return Number(matches[0][1]);
 }
 
 // Renders a value the way the disclosure copy does: one decimal place, a
