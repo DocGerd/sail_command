@@ -48,7 +48,7 @@ import AboutDialog from './components/AboutDialog';
 import ReloadPrompt from './components/ReloadPrompt';
 import UatBadge from './components/UatBadge';
 import PanelResizer from './components/PanelResizer';
-import { isStaleForecast } from './lib/plan';
+import { isStaleForecast, staleForecastGapHours } from './lib/plan';
 import { recalcRequest } from './lib/recalc';
 import { planViaPoints } from './lib/planViaPoints';
 import {
@@ -1180,7 +1180,11 @@ function AppShell() {
             {t('banner.mapError')}
           </Banner>
         )}
-        {stale && <Banner kind="warning">{t('route.staleForecast')}</Banner>}
+        {stale && plan && (
+          <Banner kind="warning">
+            {t('route.staleForecast', { hours: staleForecastGapHours(plan) })}
+          </Banner>
+        )}
         {/* #299: a ROUTING-RELEVANT setting has changed since the displayed
             plan was computed — previously ONLY surfaced as a Chip inside
             PlannerPanel's Ergebnis strip (still there, unchanged, and driven
