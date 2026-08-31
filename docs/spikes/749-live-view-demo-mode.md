@@ -52,7 +52,7 @@ Two call sites import it, both aliasing it locally to `realWatchPosition`:
 | Consumer | Injection seam | What `App.tsx` actually passes |
 |---|---|---|
 | `app/src/components/LiveView.tsx` :: `LiveViewProps.watchPosition?: typeof realWatchPosition`, defaulted in the destructuring (`watchPosition = realWatchPosition`) | prop | NOTHING — `App.tsx`'s `<LiveView …>` passes only `panelSlot` and `reroute` |
-| `app/src/state/useOwnshipGps.ts` :: parameter `watchPosition: typeof realWatchPosition = realWatchPosition` | function parameter | NOTHING — `App.tsx` calls `useOwnshipGps(settings.showOwnship)` with one argument |
+| `app/src/state/useOwnshipGps.ts` :: second parameter, `watchPosition: typeof realWatchPosition = realWatchPosition` | function parameter | NOTHING — `App.tsx` calls `useOwnshipGps(settings.showOwnship)` with one argument |
 
 So both seams exist, both default to the real wrapper, and **neither is wired
 to anything in production today**. Their only non-default callers are unit
@@ -157,7 +157,8 @@ sets it to `JSON.stringify(isUat)`. The gate in `app/src/App.tsx` is a
 fold-exact ternary in the `h1` title slot, with its own comment recording the
 measurement: an `{__SC_UAT__ && <UatBadge />}` sibling "minifies to a `!1`
 residue (measured: 3-byte bundle drift)". `app/src/components/UatBadge.dict.ts`
-keeps its two strings out of the main dictionaries for the same reason.
+keeps its one key's de/en pair out of the main dictionaries for the same
+reason, while still holding the `satisfies` parity convention locally.
 
 The constraint that decides §6 is in `UatBadge.tsx`'s own docstring:
 
