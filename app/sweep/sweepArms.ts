@@ -160,10 +160,12 @@ export const T0 = Date.UTC(2026, 6, 15, 6, 0, 0);
  * is not rare: `planRoute.ts`'s relaxation block opens on `mask-blocked`
  * alone, and the five #9 KNOWN_DISCONNECTED harbours (arnis, kappeln,
  * maasholm, dyvig, graasten) enter it too on EVERY Flensburg-origin row that
- * names one — they run `findRelaxedDepthM`'s full probe search and take its
- * `usedDepthM === null` path before falling through to `unreachable`, real
- * if weak coverage (a future scoping bug that made one of them suddenly
- * relax would be caught here). What IS rare is a SUCCESSFUL relaxation: only
+ * names one — they run `findRelaxedGate`'s full probe search and take its
+ * NULL-RESULT path (no candidate gate connects — since #452 the null is the
+ * whole result, never a `usedDepthM` field set to null) before falling
+ * through to `unreachable`, real if weak coverage (a future scoping bug that
+ * made one of them suddenly relax would be caught here). What IS rare is a
+ * SUCCESSFUL relaxation: only
  * 27 of the 528 unique harbour pairs in `harbors.json` (33 choose 2) are
  * mask-connected at a relaxed gate at all, and every one of the 27 involves
  * Marstal — measured via a `cellsConnected` BFS probe over every pair at the
