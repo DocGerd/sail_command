@@ -38,8 +38,8 @@ const METRES_PER_NM = 1852;
  * shallowFractionOfLeg (#516 increment 1) and legConfinedWithin (#516
  * increment 2) so the two features walk the SAME sequence of cells and can
  * never drift onto two independently-maintained copies of this arithmetic.
- * `visit(row, col, tEntry, tExit)` fires once per traversed
- * cell, in order; NOT exposed from mask.ts — extending NavMask's private
+ * `visit(row, col, tEntry, tExit)` fires once per traversed cell, in order;
+ * NOT exposed from mask.ts — extending NavMask's private
  * walkCells to yield a per-cell `t` would put new arithmetic in the solver's
  * hottest path (segmentNavigable / segmentShallowestBelow run per candidate
  * edge, under PLAN_BUDGET_MS). If a future change finds itself editing
