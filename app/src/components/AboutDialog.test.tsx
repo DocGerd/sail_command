@@ -440,6 +440,56 @@ describe('AboutDialog', () => {
     hiddenWrapper.remove();
   });
 
+  // #780 follow-up (PR #796 review Minor): the jsdom fallback's SECOND line
+  // — `return getComputedStyle(el).visibility !== 'hidden'` — had zero test
+  // coverage; a reviewer confirmed replacing it with `return true` left all
+  // 34 tests green. `visibility` IS an inherited CSS property, and
+  // `getComputedStyle` resolves inheritance, so this test deliberately pins
+  // the INHERITED case (matching AboutDialog.tsx's own comment, which
+  // claims exactly that): `visibility: hidden` is set on an ANCESTOR only —
+  // the injected button itself carries no `visibility` of its own — and the
+  // element is still excluded because its RESOLVED computed value inherits
+  // "hidden" from that ancestor. This does NOT exercise (and does not claim
+  // to exercise) the simpler same-element case, i.e. `visibility: hidden`
+  // set directly on the focusable element itself.
+  it("#780: a focusable element hidden via an ANCESTOR's inherited visibility:hidden is excluded from the Tab cycle", async () => {
+    vi.stubGlobal('fetch', fetchMock());
+    render(
+      <I18nProvider>
+        <AboutDialog boat={TEST_BOAT} open onClose={() => {}} />
+      </I18nProvider>,
+    );
+
+    const dialog = await screen.findByRole('dialog');
+    const iconCloseButton = screen.getByRole('button', { name: de['about.closeDialog'] });
+    const bottomCloseButton = screen.getByRole('button', { name: de['about.close'] });
+
+    // Appended AFTER the real last focusable element, same construction as
+    // the display:none case above — only the WRAPPER carries
+    // `visibility: hidden`; the button inherits it rather than setting its
+    // own, which is what makes this a genuine inheritance case.
+    const hiddenWrapper = document.createElement('div');
+    hiddenWrapper.style.visibility = 'hidden';
+    const hiddenButton = document.createElement('button');
+    hiddenButton.textContent = 'not reachable';
+    hiddenWrapper.append(hiddenButton);
+    dialog.append(hiddenWrapper);
+
+    // Mutation check: with the `visibility` line replaced by `return true`,
+    // `hiddenButton` becomes the real DOM-order "last" focusable element, so
+    // Tab from `bottomCloseButton` (now second-to-last) is never recognised
+    // as "at the last element" — jsdom's synthetic Tab keydown never itself
+    // advances focus (see the #696 Tab-cycle test above), so focus would
+    // stay stuck on `bottomCloseButton` instead of wrapping to
+    // `iconCloseButton`, and this assertion reds.
+    bottomCloseButton.focus();
+    expect(bottomCloseButton).toHaveFocus();
+    fireEvent.keyDown(window, { key: 'Tab' });
+    expect(iconCloseButton).toHaveFocus();
+
+    hiddenWrapper.remove();
+  });
+
   it('does not force-fetch the full routing asset bundle — only mask.meta.json', async () => {
     const mock = fetchMock();
     vi.stubGlobal('fetch', mock);
