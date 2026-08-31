@@ -447,14 +447,27 @@ describe('PlansList recalculate (#114)', () => {
     // from schemaVersion alone (services/db.ts) and cannot rule out a record
     // that is BOTH newer and corrupt, so neither language may promise the
     // record is intact — the row's only control deletes it irreversibly.
-    it('#54: neither dictionary promises the newer-version record is undamaged', () => {
+    //
+    // #548: a five-word token blacklist (undamaged/unbeschädigt/intact/
+    // unversehrt/heil) is unbounded — MEASURED, "Your data is perfectly fine
+    // and fully recoverable there" is none of those five words and left the
+    // old form green. Assert the CLAIM SHAPE instead: the copy is a
+    // hand-vetted statement of exactly what schemaVersion PROVES (newer
+    // build, unreadable here, kept not deleted) and nothing else. Pin the
+    // whole string against an expectation typed out by hand — never
+    // re-derived from the dict under test, or the pin is the #50 equivalence
+    // tautology — so ANY added clause, an integrity claim or otherwise, reds
+    // regardless of its wording.
+    it('#54/#548: neither dictionary claims more than schemaVersion proves for the newer-version record', () => {
+      const EXPECTED: Record<'de' | 'en', string> = {
+        en: 'This plan was saved by a newer version of the app. This older version cannot read it. It is kept, not deleted.',
+        de: 'Dieser Plan wurde mit einer neueren Version der App gespeichert. Diese ältere Version kann ihn nicht lesen. Er bleibt gespeichert.',
+      };
       for (const [lang, dict] of [
         ['de', de],
         ['en', en],
       ] as const) {
-        expect(dict['plansList.unreadable.newerVersion'], lang).not.toMatch(
-          /undamaged|unbeschädigt|intact|unversehrt|heil/i,
-        );
+        expect(dict['plansList.unreadable.newerVersion'], lang).toBe(EXPECTED[lang]);
       }
     });
 

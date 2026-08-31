@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { BOATS, boatById, DEFAULT_BOAT_ID, type BoatDef } from './boats';
+import { BOATS, boatById, DEFAULT_BOAT_ID, DEFAULT_SAIL_IDS, type BoatDef } from './boats';
 
 describe('boat catalogue', () => {
   // RETIRED ASSERTION 1 of 3 (#54 spec N.8) — was:
@@ -45,6 +45,16 @@ describe('boat catalogue', () => {
     const b = boatById('salona-45');
     expect(b.motorSpeedKn).toBe(6.5);
     expect(b.maneuverPenaltyS).toBe(45);
+  });
+
+  // #548: the "solve order is still genoa-then-fock" acceptance clause was
+  // unpinned — reversing BOATS[0].sails left 1830/1832 green (the two reds
+  // were mock artifacts, not this property). DEFAULT_SAIL_IDS is DERIVED
+  // (sailIdsOf(boatById(DEFAULT_BOAT_ID))), so pinning it against a
+  // hand-typed literal — never re-derived from BOATS — reds the moment the
+  // default boat's own sail order changes.
+  it('#548: DEFAULT_SAIL_IDS is genoa-then-fock', () => {
+    expect(DEFAULT_SAIL_IDS).toEqual(['genoa', 'fock']);
   });
 
   // PR #563/#565 cross-branch BLOCKER. The picker's spec N.2 keel disclosure

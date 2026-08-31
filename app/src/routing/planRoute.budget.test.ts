@@ -456,9 +456,17 @@ describe('#54 §E.3: budget exhaustion mid-comparison', () => {
   });
 
   it('CONTROL: every requested sail finishing leaves the comparison complete', () => {
-    // Without this row a hardcoded `comparisonComplete: false` would satisfy
-    // both rows above — the flag would report every plan as partial and no
-    // test would notice.
+    // #548: this comment used to say a hardcoded `comparisonComplete: false`
+    // would satisfy "both rows above" and slip past unnoticed. That was true
+    // when written (35ca30b), when the two it.each rows — which expect
+    // `false` — were the only rows above this one. It is FALSE today: the
+    // "finished and lost" row immediately above (added later, in bcf7640)
+    // already expects `true` and MEASURED to red on its own under a
+    // hardcoded `comparisonComplete: false`, with or without this row
+    // present. This row is not redundant, though — it pins a DIFFERENT
+    // fixture (every sail finishes; nothing fails at all), which the
+    // "finished and lost" row's fixture (one sail fails for a non-budget
+    // reason) does not exercise.
     const res = planWith(NEVER, openWaterMask());
     expect(res.status).toBe('ok');
     if (res.status !== 'ok') return;
