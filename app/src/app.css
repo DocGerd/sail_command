@@ -272,9 +272,9 @@ select {
        every narrow viewport while documented here as out-of-tier, and it
        covered the map's ODbL/CC-BY attribution toggle once the panel was
        scrolled to the CTA (#771; the base rule's own comment carries the
-       measurement). A `z-index` on ANY flex or grid item is tiered whether
-       or not it is positioned — classify such an element by this list's
-       principles, exactly like a positioned one.
+       measurement). A `z-index` other than `auto` on ANY flex or grid item
+       is tiered whether or not it is positioned — classify such an element
+       by this list's principles, exactly like a positioned one.
      - `.about-dialog-backdrop` (`z-index: 100`) — a true modal; always above
        everything, including Tier 3, by design.
 

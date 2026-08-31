@@ -337,8 +337,9 @@ test('re-plan from the Plan view: editing after a completed plan shows the stale
 //     top, not a boolean — a boolean collapses every cause into
 //     `Expected: true / Received: false` plus a timeout.
 //
-// Iterates the shared matrix rather than inlining literals. The wide entries
-// (desktop4k/desktopHd/tabletLandscape) cannot reproduce this defect — there
+// Iterates the shared matrix rather than inlining literals. The wide rows
+// (the entries at or above the 1024px breakpoint — currently
+// desktop4k/desktopHd/tabletLandscape) cannot reproduce this defect — there
 // the panel is its own grid column and `z-index: 2` is still deliberately in
 // force — so they ride along as a negative control: they must stay green in
 // both the fixed and the unfixed state, which is what distinguishes "this
