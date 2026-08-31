@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { BOATS, boatById, DEFAULT_BOAT_ID, type BoatDef } from './boats';
+import { BOATS, boatById, DEFAULT_BOAT_ID, DEFAULT_SAIL_IDS, type BoatDef } from './boats';
 
 describe('boat catalogue', () => {
   // RETIRED ASSERTION 1 of 3 (#54 spec N.8) — was:
@@ -45,6 +45,20 @@ describe('boat catalogue', () => {
     const b = boatById('salona-45');
     expect(b.motorSpeedKn).toBe(6.5);
     expect(b.maneuverPenaltyS).toBe(45);
+  });
+
+  // #548: `BOATS[0].sails` itself is ALREADY pinned — sweepSailIds.test.ts's
+  // TWIN row asserts boatById(DEFAULT_BOAT_ID).sails.map((s) => s.id) against
+  // the same hand-written literal and reds on a reversal (MEASURED at
+  // a1beed3: 1 failed | 1 passed). What nothing pinned is DEFAULT_SAIL_IDS's
+  // own DERIVATION. MEASURED: replacing it with
+  // `[...sailIdsOf(boatById(DEFAULT_BOAT_ID))].reverse()` leaves boats.test +
+  // sweepSailIds 19/19 and replan + reroute 84/84 GREEN at a1beed3 (the
+  // backfill guards compare request.sailIds AGAINST DEFAULT_SAIL_IDS, so both
+  // sides move together and neither can falsify the other), and reds this
+  // row, and only this row, at 1288049. Hand-typed, never re-derived from BOATS.
+  it('#548: DEFAULT_SAIL_IDS is genoa-then-fock', () => {
+    expect(DEFAULT_SAIL_IDS).toEqual(['genoa', 'fock']);
   });
 
   // PR #563/#565 cross-branch BLOCKER. The picker's spec N.2 keel disclosure

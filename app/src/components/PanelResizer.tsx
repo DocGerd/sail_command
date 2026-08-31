@@ -36,6 +36,11 @@ export interface PanelResizerProps {
       override). */
   onCommit: (next: number | null) => void;
   'aria-label': string;
+  /** #696: forwarded straight to the rendered `role="separator"` div while
+      AboutDialog is open, alongside the other app-shell siblings — this is
+      the one sibling that is itself keyboard-focusable with live handlers,
+      not inert content, so it needs the same treatment as the rest. */
+  inert?: boolean;
 }
 
 /**
@@ -81,6 +86,7 @@ export default function PanelResizer({
   max,
   onCommit,
   'aria-label': ariaLabel,
+  inert,
 }: PanelResizerProps) {
   // Real rendered width of the panel, kept in sync with a ResizeObserver.
   // Feeds ONLY `aria-valuenow` and the drag-start reference below — never
@@ -289,6 +295,7 @@ export default function PanelResizer({
       aria-valuemin={min}
       aria-valuemax={max}
       aria-label={ariaLabel}
+      inert={inert}
       tabIndex={0}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
