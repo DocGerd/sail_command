@@ -1,7 +1,11 @@
 # Spike #702 — sticky "Route planen" CTA on narrow viewports
 
 - **Issue:** #702
-- **Status:** Open, deferred to v0.16.0, not fixed as of this writing
+- **Status:** Open — milestoned v0.16.0 on 2026-08-26, then moved to
+  v0.17.0 on 2026-08-31 (per the issue's milestone history), not fixed as
+  of this writing. Re-check
+  `gh api repos/DocGerd/sail_command/issues/702` before trusting the
+  milestone number: it decays at every cut this issue stays open.
 - **Attempt count:** THREE rounds recorded (round 1 in PR #735, per the
   2026-08-26 comment's "three measured rounds"; round 2 the narrow-only
   horizontal inset that was reverted; the 2026-08-28 re-triage names any
@@ -223,7 +227,8 @@ because it is the binding scope for any future work on this issue:
 
 ## 8. Status as of this writing
 
-Deferred to v0.16.0. Not scheduled for implementation in the 2026-08-28
+Moved off v0.16.0 to v0.17.0 on 2026-08-31, per the issue's milestone
+history. Not scheduled for implementation in the 2026-08-28
 session: "it needs a design pass first, and it has failed twice on aperture
 rather than on effort." Issue #702 remains open. No PR closes it. This
 document is written specifically so that a future "attempt 4" starts from

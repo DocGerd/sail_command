@@ -30,10 +30,12 @@ results table at the bottom, and note it in the box below the check.
 ## 1. Setup
 
 - [ ] Open the live app in a normal (non-airplane-mode) browser session.
-- [ ] Confirm the wind forecast is current: plan any route and note the
-      "fetched at" implied by the absence of the stale-forecast banner (see
-      §2.5) — if the banner appears immediately for a near-term departure,
-      stop and re-check network/API status before continuing.
+- [ ] Confirm the wind forecast is current: plan any route for a near-term
+      departure (e.g. the next full hour) and confirm the stale-forecast
+      notice (§2.8) does NOT appear — if it does, stop and re-check
+      network/API status before continuing. The app shows no "fetched at"
+      timestamp anywhere; the notice's own hour count (§2.8) is the only
+      fetch-to-departure figure it ever prints.
 - [ ] **Boat selection.** Open the **Boat** tab → "Boat selection" and confirm the
       catalogue offers all three boats — Salona 45, Salona 44 (SPEEDY GO!),
       Elan Impression 444 (PIRANJA) — each showing its draft (2.1 / 2.1 /
@@ -41,8 +43,10 @@ results table at the bottom, and note it in the box below the check.
       entry) and a "Polar data & provenance" disclosure whose tier chip reads
       Certificate or Modelled for the Salona 45 and Estimated for both fleet
       boats. Every boat — the Salona 45 included — also shows a note saying
-      where its stated draft comes from; only the two fleet boats carry the
-      assumed-keel caveat above it. Pick the boat for this run and record it
+      where its stated draft comes from, set off by its own left border;
+      only the two fleet boats carry the assumed-keel caveat above it, and
+      on those two the border is what keeps the two notes from reading as
+      one run-on paragraph (#701). Pick the boat for this run and record it
       in §5.
 - [ ] **At least one fleet boat is exercised.** Run §2 or §3 under SPEEDY GO!
       or PIRANJA, so the suppressed rig comparison in §2.5 is actually
@@ -109,14 +113,22 @@ selected in §1.
 - [ ] **2.6 Motor legs (if any) are gray-dashed and listed.** If sailing
       speed would be too low anywhere on the route, that leg is rendered
       dashed/gray on the map and appears explicitly as a motor leg in the
-      leg list — not silently folded into a sailing leg.
+      leg list (expand the collapsed "Legs (…)" disclosure; the "Type"
+      column names it) — not silently folded into a sailing leg.
 - [ ] **2.7 ETA is plausible.** Average speed over the whole route works out
       to roughly 5–7 kn (sanity check: distance ÷ (ETA − departure); wildly
       outside this range for a normal wind day warrants investigation, not
       an automatic fail — note the wind conditions if it's an outlier).
-- [ ] **2.8 Stale-forecast banner.** Re-plan (or edit) the same route with a
+- [ ] **2.8 Stale-forecast notice.** Re-plan (or edit) the same route with a
       departure time more than 12 hours after the forecast was fetched;
-      confirm the stale-forecast banner/alert appears on the route summary.
+      confirm the stale-forecast notice appears both as a banner at the top
+      of the app and as a coloured, left-bordered line on the route summary
+      (#703). It is a short label naming the real fetch-to-departure gap in
+      whole hours — "Forecast 14 h old at departure" — no longer a full
+      sentence and no longer the static "> 12 h" threshold label, so check
+      the number tracks the departure you chose (#748). It is rounded to
+      whole hours, so a departure only just past the threshold legitimately
+      reads "12 h": that is a PASS, not a stuck label.
 - [ ] **2.9 Depth hazard hatching is expected, not a rendering fault.** With
       the water-depths overlay on (it is on by default), water whose
       cautious, worst-case reading falls below your safety depth is drawn
@@ -135,9 +147,15 @@ selected in §1.
       correct behaviour, not a sign the router ignored your setting. It
       tripped on 61.5 % of non-relaxed plans at shipped defaults in the #455
       measurement. It never appears together with the relaxed-route shallow
-      banner. Route A commonly relaxes at default settings, so expect the
-      banner there and this line more often on route B; its absence is fine
-      either way.
+      banner. If you lower the safety depth below the boat's own default
+      gate (draft + 0.9 m: 3.0 m for either Salona, 2.8 m for the Elan) and
+      re-plan, the same line renders in a stronger, assertive form — it
+      opens with "Caution:" and closes with "— at this setting that reading
+      can fall below this boat's … m draft". Also correct behaviour, and
+      not reachable at default settings.
+      Route A commonly relaxes at default settings, so expect the
+      banner there and the plain (non-"Caution:") marginal-depth line more
+      often on route B; that line's absence is fine either way.
 - [ ] **2.11 Depth profile is pinned to the plan.** Note the profile's
       "Safety depth" line, then change the safety depth on the Boat tab. The
       line must NOT move: the chart reads the depth the open plan was
@@ -145,21 +163,67 @@ selected in §1.
       re-plan.
 - [ ] **2.12 Per-leg cautious marker doesn't require a relaxed route.**
       Independent of whether this route relaxed (§2.10): once the map has
-      finished loading, in the legs table, any leg whose cautious depth
-      reading falls below your safety depth
-      shows a "Shallow …" or "Marginal …" chip alongside a "cautious: as low
-      as … m" sub-chip, and the map's shallow-water highlight (the wide
-      casing under the route line) covers that same leg — both now appear
-      on an ordinary, non-relaxed route too, not only inside a route the
-      relaxation banner already flagged (#651).
+      finished loading, expand the collapsed "Legs (…)" disclosure. Its
+      FIRST column is now "Shallow" — #698 moved it there from last of ten,
+      where it sat off-screen behind the table's horizontal scroll at phone
+      width. Any leg whose cautious depth reading falls below your safety
+      depth shows a "Shallow …" or "Marginal …" chip with a "cautious: as
+      low as … m" sub-chip stacked directly BENEATH it, not beside it —
+      #698 stacks the pair vertically so the populated cell fits inside the
+      table on a phone. The map's shallow-water highlight (the wide casing
+      under the route line) covers that same leg — that highlight and the
+      leg's "Shallow …"/"Marginal …" chip both now appear on an ordinary,
+      non-relaxed route too, not only inside a route the relaxation banner
+      already flagged (#651). Whenever the panel is too
+      narrow for all ten columns — the default width on a laptop — the
+      table still scrolls sideways by design, and a soft shadow at its
+      left/right edge marks that there is more to scroll in that direction.
+      Both the scroll and the shadow disappear once the table fits (a very
+      wide screen, or a panel dragged out); that is the same design, not a
+      different one (#698), and neither state is a rendering fault.
+- [ ] **2.13 Shallow-water warning keeps the hazard, collapses the
+      explanation.** On a route that relaxed (Route A commonly does at
+      default settings — §2.10), the warning shows these WITHOUT any
+      interaction: the cautious-floor sentence, "Planned at a safety depth
+      of … m", and the exposure distance when one is measured. The "what
+      happened" explanation — why the router lowered the gate, where the
+      shallow legs are, and the advice to lower the setting yourself — now
+      sits behind a disclosure you open (#747). The closing caveat ("Chart
+      data can both understate and overstate real depths …") stays visible
+      outside the disclosure either way.
+      At every catalogue boat's DEFAULT safety depth two things follow from
+      arithmetic rather than from a broken control, and BOTH are a PASS:
+      the cautious-floor sentence is the longer, below-draft wording
+      ("Caution: a more cautious reading of the charted depth data could
+      run as low as … m, below this boat's … m draft."), and the disclosure
+      starts EXPANDED. The default gate is exactly draft + 0.9 m and a
+      relaxed route's used depth is at least a decimetre below the gate, so
+      the cautious reading is always below the draft. To see the shorter
+      sentence and the collapsed state, raise the safety depth well above
+      the boat's default (e.g. 3.5 m on a Salona) and re-plan; if the
+      router then relaxes only part-way — to a used depth still at or above
+      the boat's own default gate — it starts collapsed.
+      NOTE — on PIRANJA, §1's boat pick does NOT leave you at that boat's
+      own default. Selecting a boat never lowers a safety depth already set
+      (the switch clamps UP only, never down), so picking PIRANJA keeps the
+      Salona-derived 3.0 m instead of dropping to the Elan's own 2.8 m gate;
+      SPEEDY GO! shares the Salona's 2.1 m draft, so its default IS 3.0 m
+      and it is unaffected. At 3.0 m on PIRANJA the router may stop relaxing
+      at a used depth of 2.8 m or deeper, and the shorter sentence with the
+      COLLAPSED disclosure is then the expected result — either form is a
+      PASS there, neither is a failure to file. To reach the longer
+      below-draft wording and the expanded state on PIRANJA, type its own
+      default 2.8 m into the safety depth field on the Boat tab and
+      re-plan.
 
 **Result:** Pass / Fail / Partial — notes: ___________________________
 
 ## 3. Route B — Flensburg → Sønderborg
 
 Repeat the same route/rig/motor/ETA checks as §2 for Flensburg → Sønderborg.
-Checks 2.9–2.12 (depth hatching, marginal-depth line, depth profile,
-per-leg cautious marker) apply here too, with the same expected outcomes.
+Checks 2.9–2.13 (depth hatching, marginal-depth line, depth profile,
+per-leg cautious marker, shallow-water warning) apply here too, with the
+same expected outcomes.
 
 - [ ] **3.1** Route stays in water.
 - [ ] **3.2** Rounds Broager Land / Kegnæs sanely.
