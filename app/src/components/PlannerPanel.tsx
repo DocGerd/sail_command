@@ -457,7 +457,25 @@ export default function PlannerPanel({
           <h3 className="sc-section-title">{t('planner.origin.label')}</h3>
           {origin && !editingOrigin ? (
             <div className="planner-endpoint-selected">
-              <span className="endpoint-pin" style={{ background: '#009e73' }} aria-hidden="true" />
+              {/* #715: was a hardcoded '#009e73' — the map's Okabe-Ito
+                  starboard-tack/AIS-vessel green, reused here for no
+                  documented reason (no map marker echoes this pin's colour;
+                  searched, found none). It also silently diverged from its
+                  sibling below in TWO ways: a raw literal vs. a design
+                  token, and (since --sc-accent is theme-aware) an
+                  appearance that never changed with the theme vs. one that
+                  does. Resolved toward the destination pin's existing
+                  var(--sc-accent) rather than the reverse: these are
+                  decorative panel swatches, not map chrome, so the UI
+                  accent token — not a semantic map colour with an
+                  established meaning elsewhere (starboard tack, AIS) — is
+                  the correct source, and matching the sibling makes both
+                  pins consistent on BOTH axes at once. */}
+              <span
+                className="endpoint-pin"
+                style={{ background: 'var(--sc-accent)' }}
+                aria-hidden="true"
+              />
               <div className="endpoint-detail">
                 <p className="endpoint-name">{origin.label}</p>
                 {originHarbor?.approachNote && (

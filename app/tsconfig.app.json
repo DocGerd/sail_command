@@ -96,6 +96,11 @@
   // that character away on its RECEIVED side, so no rendering-based test can
   // see a revert to a plain space (mutation-checked: reverting either dict
   // reds this file while every PlannerPanel test stays green).
+  // mapColors.test.ts (#715): reads app.css via `node:fs` to structurally
+  // guard that its --sc-* map-colour custom properties, and that no site
+  // reverts to a raw literal, stay in sync with lib/mapColors.ts's
+  // exported constants — same reason and pattern as panelWidth.test.ts/
+  // useBannerHeight.test.ts/chipShallowFill.test.ts above.
   // changelogFragmentShape.test.ts (#730) is the same shape once more —
   // reads the repo-root changelog.d/*.md fragments via `node:fs` to
   // structurally guard that no fragment body opens with a markdown heading.
@@ -122,6 +127,7 @@
     "src/**/depthLegendGate.test.ts",
     "src/**/app.css.test.ts",
     "src/**/safetyDepthHelpNbsp.test.ts",
+    "src/**/mapColors.test.ts",
     "src/**/changelogFragmentShape.test.ts"
   ]
 }
