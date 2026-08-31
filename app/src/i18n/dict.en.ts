@@ -473,6 +473,9 @@ export const en = {
   'route.legs.shallowCautious': 'cautious: as low as {depth} m',
   'route.legs.motorNote': 'Motor = engine only; no sail contribution modelled.',
   'route.legs.disclosure': 'Legs ({count})',
+  // #774: see dict.de.ts's comment for why this is a DESCRIPTION rather than
+  // the table's accessible name.
+  'route.legs.scrollHint': 'Scrolls horizontally; use the left and right arrow keys.',
   'route.kind.motor': 'Motor',
   'route.board.port': 'Port',
   'route.board.starboard': 'Stbd',
