@@ -466,7 +466,10 @@ describe('RouteLayer alt-rig overlay (#324)', () => {
     const boardColorExpr = ['case', ['==', ['get', 'board'], 'port'], '#D55E00', '#009E73'];
     expect(altSail?.paint?.['line-color']).toEqual(boardColorExpr);
     expect(map.layers.get('sc-route-sail')?.paint?.['line-color']).toEqual(boardColorExpr);
-    expect(altMotor?.paint?.['line-color']).toBe('#5b5b5b');
+    // #715: uppercase, matching lib/mapColors.ts's MOTOR_COLOR — hex letter
+    // case has no rendering effect, and this file's own board-colour pin two
+    // lines above was already uppercase.
+    expect(altMotor?.paint?.['line-color']).toBe('#5B5B5B');
   });
 
   it('anchors below HIGHLIGHT_LAYER with an explicit beforeId, so the recommendation paints on top', () => {

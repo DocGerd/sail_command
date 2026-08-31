@@ -1,4 +1,5 @@
 import type { Map as MaplibreMap } from 'maplibre-gl';
+import { INK_COLOR } from './mapColors';
 
 // Testing: barbSegments() (the WMO geometry) is pure and unit-tested, and
 // windBarbs.test.ts also replays registerBarbImages() through a recording 2d
@@ -13,7 +14,8 @@ const TAIL_Y = IMAGE_SIZE - 4; // station end (near the anchor point)
 const TIP_Y = 4; // barb/feather end
 const FEATHER_SPACING = 6;
 const FEATHER_LENGTH = 9;
-const STROKE = '#1a1a1a';
+// #715: sourced from lib/mapColors.ts (kept under this file's own local name).
+const STROKE = INK_COLOR;
 
 const STEP_KN = 5;
 const MAX_KN = 50;

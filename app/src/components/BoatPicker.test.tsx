@@ -308,3 +308,76 @@ describe('#54 BoatPicker against the shipped catalogue', () => {
     expect(screen.getByRole('status')).toBeEmptyDOMElement();
   });
 });
+
+// #746: the own-vessel MMSI field. The three validation rows are PORTED from
+// SettingsPanel.test.tsx unchanged in substance (invalid / valid / empty) —
+// they moved with the control, they were not dropped. The per-boat rows below
+// are new, and are the reason the control moved at all.
+describe('BoatPicker — per-boat own MMSI (#746)', () => {
+  function renderFor(boatId: (typeof BOATS)[number]['id']) {
+    localStorage.setItem('sc-lang', 'en');
+    render(
+      <I18nProvider>
+        <BoatPicker
+          boatId={boatId}
+          onBoatIdChange={vi.fn()}
+          settings={DEFAULT_SETTINGS}
+          onSettingsChange={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+    return screen.getByLabelText("This boat's MMSI (optional)");
+  }
+
+  const INVALID_MSG = 'MMSI must be exactly 9 digits.';
+
+  it('shows the validation message for a non-empty, non-9-digit value', () => {
+    localStorage.setItem('sc-own-mmsi-salona-45', '123');
+    const field = renderFor('salona-45');
+    expect(screen.getByText(INVALID_MSG)).toBeInTheDocument();
+    expect(field).toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('shows no validation message for a valid 9-digit value', () => {
+    localStorage.setItem('sc-own-mmsi-salona-45', '211234560');
+    const field = renderFor('salona-45');
+    expect(screen.queryByText(INVALID_MSG)).not.toBeInTheDocument();
+    expect(field).toHaveAttribute('aria-invalid', 'false');
+  });
+
+  it('shows no validation message when the field is empty (feature simply off)', () => {
+    const field = renderFor('salona-45');
+    expect(screen.queryByText(INVALID_MSG)).not.toBeInTheDocument();
+    expect(field).toHaveValue('');
+  });
+
+  it('persists a typed MMSI under this boat’s own localStorage key', () => {
+    const field = renderFor('salona-45');
+    fireEvent.change(field, { target: { value: '211234560' } });
+    expect(localStorage.getItem('sc-own-mmsi-salona-45')).toBe('211234560');
+    // Typing into one boat writes nothing for any other boat.
+    expect(localStorage.getItem('sc-own-mmsi-salona-44-speedy-go')).toBeNull();
+  });
+
+  // THE #746 CLAIM, at the UI. Mutation target: collapse ownMmsiStorageKey()
+  // to one boat-independent key and this row reds, together with its
+  // lib/ownMmsi.test.ts sibling and the one below.
+  it('renders boat B’s own MMSI, never boat A’s, and A’s survives the round trip', () => {
+    localStorage.setItem('sc-own-mmsi-salona-45', '211234560');
+    localStorage.setItem('sc-own-mmsi-salona-44-speedy-go', '244110001');
+
+    expect(renderFor('salona-45')).toHaveValue('211234560');
+    cleanup();
+    expect(renderFor('salona-44-speedy-go')).toHaveValue('244110001');
+    cleanup();
+    expect(renderFor('salona-45')).toHaveValue('211234560');
+  });
+
+  it('shows an EMPTY field for a boat with no stored MMSI while another boat has one', () => {
+    // The dangerous direction specifically: a boat never given an MMSI must
+    // not inherit one, because an inherited value suppresses the WRONG vessel
+    // from the AIS display and says nothing about doing so.
+    localStorage.setItem('sc-own-mmsi-salona-45', '211234560');
+    expect(renderFor('salona-44-speedy-go')).toHaveValue('');
+  });
+});

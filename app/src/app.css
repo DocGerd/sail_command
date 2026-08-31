@@ -26,6 +26,21 @@
   --sc-depth-warning-fg: #e69f00;
   --sc-depth-warning-bg: rgba(230, 159, 0, 0.16);
   --sc-depth-warning-text: #7a5414;
+  /* #715 (PR #798 review): the rest of the map-colour family this section's
+     depth-warning tokens already belonged to — lib/mapColors.ts's
+     STARBOARD/PORT/VIA/MOTOR/INK/HALO_COLOR, mirrored here so app.css's own
+     DOM CSS (legend swatches, AIS status text) points at a token instead of
+     a raw literal, the same way --sc-depth-warning-fg already did (#251).
+     mapColors.test.ts twins every value below against those constants.
+     Deliberately theme-invariant, like --sc-depth-warning-fg above: these
+     are Okabe-Ito/neutral MAP semantics (see the NOTE above --sc-accent),
+     decoupled from theme by design, not UI accent colours. */
+  --sc-starboard: #009e73;
+  --sc-port: #d55e00;
+  --sc-via: #cc79a7;
+  --sc-motor: #5b5b5b;
+  --sc-ink: #1a1a1a;
+  --sc-halo: #ffffff;
   /* Documentary mirror only — nothing consumes this token. icon.svg's bg rect,
      index.html's theme-color, and the manifest theme_color/background_color each
      HARDCODE #10243D and must be hand-synced with this value. */
@@ -54,6 +69,13 @@
     --sc-depth-warning-fg: #e69f00;
     --sc-depth-warning-bg: rgba(230, 159, 0, 0.16);
     --sc-depth-warning-text: #d6a23e;
+    /* Same value in both modes — see the :root comment above these six. */
+    --sc-starboard: #009e73;
+    --sc-port: #d55e00;
+    --sc-via: #cc79a7;
+    --sc-motor: #5b5b5b;
+    --sc-ink: #1a1a1a;
+    --sc-halo: #ffffff;
     /* Same value in both modes; still a documentary mirror — the real #10243D
        lives hardcoded in icon.svg/index.html/manifest, not sourced from here. */
     --sc-brand: #10243d;
@@ -1107,18 +1129,26 @@ select {
 
      metresPerScreenPx(z) = 40075016.6856 m * cos(lat) / (512 * 2^z)
      screenPxPerCell(z)   = 46.67 m / metresPerScreenPx(z)
-     stripeCells          = max(1, round(8 / screenPxPerCell(floor(z))))
+     stripeCells          = round(8 / screenPxPerCell(floor(z)))
      gapCells             = min(3 * stripeCells, 12)
+
+   ...and from z14 up, where that round() reaches 0 because one mask cell is
+   already wider than twice the target, no stripe at all: the raster degrades
+   to a full-coverage wash over every marginal cell (#648).
 
    512 because MapLibre's zoom is 512-px-tile based — mapOrientation.test.ts
    derives the same ground resolution independently, and depthColor.ts's own
    block comment carries the browser measurements plus the measured basis
    for the gap cap. Note the floor(z): the zoom is QUANTISED to whole levels,
-   which is what keeps the reachable band set to five and is load-bearing for
-   safety, not rounding tidiness. Consequence for this swatch: the map's real
-   on-screen stripe runs 7.9-16.9 px from z9 to z13 and doubles per zoom level
-   above that, at a 25% duty cycle from z11 up but 40-56% at z10 and below,
-   where the gap cap bites. (An earlier revision said "~8 px ... to ~z13.6";
+   which is what keeps the set of reachable bands small and is load-bearing for
+   safety, not rounding tidiness. The SIZE and MEMBERSHIP of that set are
+   pinned by depthColor.test.ts, so the count is deliberately not restated
+   here — a count duplicated in prose has no keeper, and this block's previous
+   one went stale the moment #648 added a band. Consequence for this swatch:
+   the map's real on-screen stripe runs 7.9-16.9 px from z9 to z13, and from
+   z14 there is no stripe to mirror at all. Duty is 25% at z11-z13, 40-56% at
+   z10 and below where the gap cap bites, and 100% from z14 where the wash
+   covers every marginal cell. (An earlier revision said "~8 px ... to ~z13.6";
    the stripe is a RANGE, not ~8 px, and 13.6 is none of the three real
    thresholds — 12.332, 12.917, 13.917 — see depthColor.ts.) The 2 px stripe in an 8 px period below is simply a
    legible 25% icon at chrome size — it matches the design's NOMINAL duty,
@@ -2053,12 +2083,12 @@ select {
 }
 
 .ais-status-live {
-  color: #009e73;
+  color: var(--sc-starboard);
 }
 
 .ais-status-offline,
 .ais-status-keyError {
-  color: #d55e00;
+  color: var(--sc-port);
 }
 
 .route-layer-time-slider {
@@ -2143,16 +2173,16 @@ select {
 }
 
 .route-legend-line-starboard {
-  background: #009e73;
+  background: var(--sc-starboard);
 }
 
 .route-legend-line-port {
-  background: #d55e00;
+  background: var(--sc-port);
 }
 
 .route-legend-line-motor {
   /* Dashed grey, echoing the motor line's line-dasharray. */
-  background: repeating-linear-gradient(to right, #5b5b5b 0 6px, transparent 6px 9px);
+  background: repeating-linear-gradient(to right, var(--sc-motor) 0 6px, transparent 6px 9px);
 }
 
 /* White maneuver circle with the dark stroke used on the map. */
@@ -2160,8 +2190,8 @@ select {
   width: 0.85rem;
   height: 0.85rem;
   border-radius: 50%;
-  background: #ffffff;
-  border: 2px solid #1a1a1a;
+  background: var(--sc-halo);
+  border: 2px solid var(--sc-ink);
 }
 
 /* The subordinate heading-change dot (Task B #37) — same family, smaller. */
@@ -2169,8 +2199,8 @@ select {
   width: 0.45rem;
   height: 0.45rem;
   border-radius: 50%;
-  background: #ffffff;
-  border: 1.5px solid #1a1a1a;
+  background: var(--sc-halo);
+  border: 1.5px solid var(--sc-ink);
 }
 
 /* Via marker (ViaMarkers.tsx). */
@@ -2178,15 +2208,22 @@ select {
   width: 0.85rem;
   height: 0.85rem;
   border-radius: 50%;
-  background: #cc79a7;
+  background: var(--sc-via);
 }
 
-/* #53: shallow-leg casing (sc-route-shallow), safety-depth warning color. */
+/* #53: shallow-leg casing (sc-route-shallow), safety-depth warning color.
+   #715: --sc-depth-warning-fg already existed for this value (#251), so
+   this was the first map-colour swatch pointed at a token instead of a
+   raw literal — every sibling swatch above now does the same
+   (--sc-starboard/--sc-port/--sc-via/--sc-motor/--sc-ink/--sc-halo, added
+   after PR #798 review corrected an earlier claim here that they
+   structurally couldn't be). Byte-identical rendering: --sc-depth-warning-fg
+   is #e69f00 in both light and dark. */
 .route-legend-shallow {
   width: 1.25rem;
   height: 7px;
   border-radius: 3px;
-  background: #e69f00;
+  background: var(--sc-depth-warning-fg);
 }
 
 /* #324: the alt-rig map overlay (sc-route-alt-sail/-motor) — dashed AND
@@ -2265,6 +2302,26 @@ select {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+}
+
+/* #762: an unbreakable label (a German compound noun like
+   "Sicherheitstiefe", no space for `normal` white-space wrapping to use)
+   silently OVERFLOWS a narrow .sc-field column instead of wrapping —
+   measured at the 112.8px `.planner-safety-depth` column tablet landscape
+   (1180x820) resolves to (`.planner-compact-row`'s `minmax(7rem, 10rem)`
+   track): scrollWidth 125 vs clientWidth 113. boundingBox() cannot see
+   this (#299's lesson: it returns the border box, never overflow) — the
+   discriminator is scrollWidth > clientWidth. Same fix as
+   `.depth-legend-body p`'s own German-compound-noun overflow-wrap above
+   (this file, "required at this width for the copy's own long German
+   compound nouns, not merely defensive") — `break-word`, not `anywhere`:
+   this is a readable label, not the raw position data
+   `.planner-via-coord` uses `anywhere` for. Scoped to EVERY `.sc-field`
+   label, not just the safety-depth one, since German compound nouns are
+   the general case here and not just this one measured instance; a no-op
+   for any label that already fits. */
+.sc-field label {
+  overflow-wrap: break-word;
 }
 
 .sc-field-help {

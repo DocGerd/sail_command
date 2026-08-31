@@ -120,7 +120,30 @@ function renderResizer({
         inert={next}
       />,
     );
-  return { onCommit, targetEl, rerenderInert };
+  return { onCommit, targetEl, rerenderInert, unmount: rendered.unmount };
+}
+
+// jsdom has neither `setPointerCapture` nor `releasePointerCapture` at all
+// (see the file header) — a real `handlePointerDown` call throws without
+// this. `releasePointerCapture` is a `vi.fn()`, not a no-op, so the #468
+// drag-abort tests below can assert PanelResizer actually calls it (the one
+// thing this suite CAN observe about capture release — never that a real
+// browser's capture state changed, which jsdom cannot model).
+function stubPointerCapture(el: HTMLElement) {
+  const releasePointerCapture = vi.fn();
+  (el as unknown as { setPointerCapture: () => void }).setPointerCapture = () => {};
+  (el as unknown as { releasePointerCapture: typeof releasePointerCapture }).releasePointerCapture =
+    releasePointerCapture;
+  return { releasePointerCapture };
+}
+
+// Flushes exactly one real animation frame — used to prove `writeLive`'s
+// rAF-coalesced write to `--sc-panel-w` actually lands (or, after an abort,
+// that a PREVIOUSLY scheduled one does NOT).
+async function flushOneFrame() {
+  await act(async () => {
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  });
 }
 
 describe('PanelResizer — a11y contract', () => {
@@ -214,6 +237,75 @@ describe('PanelResizer — a11y contract', () => {
   it('an unrelated key (e.g. Tab) neither commits nor throws', () => {
     const { onCommit } = renderResizer();
     act(() => fireEvent.keyDown(screen.getByRole('separator'), { key: 'Tab' }));
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+});
+
+// #468: an interrupted drag (pointercancel, or the component unmounting
+// mid-drag) must never persist a width — this suite CAN exercise the real
+// `handlePointerDown`/`handlePointerMove` path (unlike the a11y-contract
+// block above, which drives commits purely through keyboard handlers), once
+// `setPointerCapture`/`releasePointerCapture` are stubbed for jsdom.
+describe('PanelResizer — #468 interrupted-drag cleanup', () => {
+  it('pointercancel reverts the live write and does not commit, even with net movement', async () => {
+    const { onCommit, targetEl } = renderResizer({ min: 320, max: 700, measuredWidth: 400 });
+    const el = screen.getByRole('separator');
+    const { releasePointerCapture } = stubPointerCapture(el);
+
+    act(() => fireEvent.pointerDown(el, { pointerId: 1, clientX: 100, button: 0 }));
+    act(() => fireEvent.pointerMove(el, { pointerId: 1, clientX: 150 })); // dx = 50
+    await flushOneFrame();
+    // Positive control: prove the live write actually landed before the
+    // cancel, so the revert assertion below is undoing something real
+    // rather than trivially matching an already-empty property.
+    expect(targetEl.style.getPropertyValue('--sc-panel-w')).toBe('450px');
+
+    act(() => fireEvent.pointerCancel(el, { pointerId: 1, clientX: 150 }));
+
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(targetEl.style.getPropertyValue('--sc-panel-w')).toBe('');
+    expect(releasePointerCapture).toHaveBeenCalledWith(1);
+  });
+
+  it('pointercancel with a startCssVar restores that value, not empty', async () => {
+    const { onCommit, targetEl } = renderResizer({ min: 320, max: 700, measuredWidth: 400 });
+    targetEl.style.setProperty('--sc-panel-w', '500px'); // a prior committed override
+    const el = screen.getByRole('separator');
+    stubPointerCapture(el);
+
+    act(() => fireEvent.pointerDown(el, { pointerId: 1, clientX: 100, button: 0 }));
+    act(() => fireEvent.pointerMove(el, { pointerId: 1, clientX: 130 }));
+    await flushOneFrame();
+    expect(targetEl.style.getPropertyValue('--sc-panel-w')).toBe('430px');
+
+    act(() => fireEvent.pointerCancel(el, { pointerId: 1, clientX: 130 }));
+
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(targetEl.style.getPropertyValue('--sc-panel-w')).toBe('500px');
+  });
+
+  it('unmounting mid-drag cancels the pending live write instead of letting it land later', async () => {
+    const { onCommit, targetEl, unmount } = renderResizer({
+      min: 320,
+      max: 700,
+      measuredWidth: 400,
+    });
+    const el = screen.getByRole('separator');
+    stubPointerCapture(el);
+
+    act(() => fireEvent.pointerDown(el, { pointerId: 1, clientX: 100, button: 0 }));
+    act(() => fireEvent.pointerMove(el, { pointerId: 1, clientX: 200 })); // schedules a rAF write of 600px, not yet flushed
+    expect(targetEl.style.getPropertyValue('--sc-panel-w')).toBe(''); // rAF hasn't fired yet
+
+    act(() => unmount());
+
+    // Cleanup reverts synchronously, before any frame is flushed.
+    expect(targetEl.style.getPropertyValue('--sc-panel-w')).toBe('');
+    // The stronger assertion: the rAF scheduled by the pointermove above
+    // must have been CANCELLED, not merely raced — flush a frame and
+    // confirm it never lands a stale write on the now-unmounted target.
+    await flushOneFrame();
+    expect(targetEl.style.getPropertyValue('--sc-panel-w')).toBe('');
     expect(onCommit).not.toHaveBeenCalled();
   });
 });

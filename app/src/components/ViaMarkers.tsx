@@ -3,6 +3,7 @@ import { Marker } from 'maplibre-gl';
 import type { LngLatLike } from 'maplibre-gl';
 import { useMapInstance } from './MapView';
 import { useT } from '../i18n';
+import { HALO_COLOR, VIA_COLOR } from '../lib/mapColors';
 import type { LatLon } from '../types';
 
 export interface ViaMarkersProps {
@@ -55,7 +56,9 @@ export interface ViaMarkersProps {
 // (dedupe, stored-wind reuse, in-flight guard, error mapping) lives in
 // state/replan.ts, fully unit-tested there.
 
-const VIA_COLOR = '#CC79A7'; // Okabe-Ito reddish-purple — distinct from BoatMarker's blue and the route's port/starboard green/red
+// #715: VIA_COLOR (Okabe-Ito reddish-purple, distinct from BoatMarker's blue
+// and the route's port/starboard green/red) is now imported from
+// lib/mapColors.ts.
 
 function viaElement(ariaLabel: string): HTMLDivElement {
   const el = document.createElement('div');
@@ -64,7 +67,7 @@ function viaElement(ariaLabel: string): HTMLDivElement {
   el.style.height = '16px';
   el.style.borderRadius = '50%';
   el.style.background = VIA_COLOR;
-  el.style.border = '2px solid #ffffff';
+  el.style.border = `2px solid ${HALO_COLOR}`;
   el.style.boxShadow = '0 0 2px rgba(0,0,0,0.5)';
   // A draggable point on the map, not a native <button> — role/tabIndex
   // make it reachable and identifiable to assistive tech (dragging itself

@@ -623,6 +623,104 @@ async function hatchRunLengthsPx(page: Page, low: Buffer, high: Buffer): Promise
   );
 }
 
+// #648: on-screen width of ONE mask cell at the map's current zoom, measured
+// in the real browser via map.project() rather than derived from production
+// TypeScript — deriving the yardstick from depthColor.ts's own
+// hatchScreenPxPerCell would make needle and haystack the same source (this
+// repo's #388 tautology). The cell's longitude width is read from the SHIPPED
+// mask metadata ((east - west) / cols), fetched same-origin so
+// `connect-src 'self'` permits it, and the lookup FAILS CLOSED: metadata that
+// stops parsing throws here instead of yielding a plausible number.
+async function maskCellScreenPx(page: Page): Promise<number> {
+  return page.evaluate(async () => {
+    const map = (
+      window as unknown as {
+        __scE2eMap: {
+          getCenter(): { lng: number; lat: number };
+          project(p: [number, number]): { x: number; y: number };
+        };
+      }
+    ).__scE2eMap;
+    const res = await fetch(new URL('data/mask.meta.json', location.href).toString());
+    if (!res.ok) throw new Error(`mask metadata: HTTP ${res.status}`);
+    const meta = (await res.json()) as { west: number; east: number; cols: number };
+    if (!(meta.cols > 0) || !(meta.east > meta.west))
+      throw new Error(`mask metadata: unusable bbox ${JSON.stringify(meta)}`);
+    const dLng = (meta.east - meta.west) / meta.cols;
+    const c = map.getCenter();
+    const a = map.project([c.lng, c.lat]);
+    const b = map.project([c.lng + dLng, c.lat]);
+    return Math.abs(b.x - a.x);
+  });
+}
+
+// #648: how often a newly-hatched pixel's neighbour ONE MASK CELL to the
+// right is also newly hatched. Same two-gate differencing as
+// hatchRunLengthsPx above, so basemap and ramp cancel exactly and only hatch
+// is measured.
+//
+// WHY THIS IS THE RIGHT INSTRUMENT, and why its threshold is derived rather
+// than picked. The painted predicate is `(outRow + col) % period < stripe`.
+// Under every striped band reachable at z13 and above, stripe is 1, so for a
+// FIXED row two horizontally ADJACENT cells give consecutive residues and at
+// most one of them can be painted — adjacent-cell continuity is EXACTLY ZERO
+// by the pattern's own algebra, not merely small. Under #648's
+// HATCH_WASH_BAND (period 1) every marginal cell is painted, so continuity is
+// 1 everywhere except at the marginal region's own boundary. A threshold of
+// 0.5 therefore sits between a structural 0 and a data-limited ~1.
+//
+// It is also immune to the two things that defeat the alternatives here: it
+// needs no absolute dark-pixel budget (so a frame whose LOW gate is already
+// heavily hatched cannot swamp it), and it never discards a run for touching
+// a row edge (so a row hatched edge-to-edge, exactly what the wash produces,
+// is measured rather than thrown away).
+async function hatchCellContinuity(
+  page: Page,
+  low: Buffer,
+  high: Buffer,
+  cellPx: number,
+): Promise<{ continuous: number; total: number; fraction: number }> {
+  return page.evaluate(
+    async (args: { a64: string; b64: string; step: number }) => {
+      const decode = async (b64: string) => {
+        const img = new Image();
+        img.src = `data:image/png;base64,${b64}`;
+        await img.decode();
+        const c = new OffscreenCanvas(img.naturalWidth, img.naturalHeight);
+        const g = c.getContext('2d')!;
+        g.drawImage(img, 0, 0);
+        return {
+          d: g.getImageData(0, 0, img.naturalWidth, img.naturalHeight).data,
+          w: img.naturalWidth,
+          h: img.naturalHeight,
+        };
+      };
+      const A = await decode(args.a64);
+      const B = await decode(args.b64);
+      if (A.w !== B.w || A.h !== B.h) throw new Error('frame size changed between gates');
+      const lum = (d: Uint8ClampedArray, i: number) =>
+        0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+      const DROP = 40; // same discriminator as hatchRunLengthsPx — see its comment
+      const newlyHatched = (x: number, y: number) => {
+        const i = (y * A.w + x) * 4;
+        return lum(A.d, i) - lum(B.d, i) > DROP;
+      };
+      const step = Math.max(1, Math.round(args.step));
+      let continuous = 0;
+      let total = 0;
+      for (let y = 0; y < A.h; y++) {
+        for (let x = 0; x + step < A.w; x++) {
+          if (!newlyHatched(x, y)) continue;
+          total++;
+          if (newlyHatched(x + step, y)) continuous++;
+        }
+      }
+      return { continuous, total, fraction: total === 0 ? 0 : continuous / total };
+    },
+    { a64: low.toString('base64'), b64: high.toString('base64'), step: cellPx },
+  );
+}
+
 function percentile(values: number[], p: number): number {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
@@ -648,12 +746,18 @@ function percentile(values: number[], p: number): number {
 // a real pattern rather than of noise.
 //
 // MEASURED expectations (Chromium, map.project() on two points one mask cell
-// apart): 0.5296 screen px per mask cell at z9, 67.7867 at z16.
+// apart): 0.5296 screen px per mask cell at z9, 8.4738 at z13, 67.7867 at z16.
 //   z9  band (27,15): stripe 15 cells -> ~7.9 px   (old fixed pair: ~1.06 px)
-//   z16 band  (4, 1): stripe  1 cell  -> ~67.8 px  (old fixed pair: ~135.6 px)
-// The thresholds below sit between the two in each case, so reverting
-// hatchBandForZoom to the old fixed (8, 2) reds both — verified by running
-// exactly that mutation, not assumed.
+//   z13 band  (4, 1): stripe  1 cell  -> ~8.5 px   (old fixed pair: ~16.9 px)
+// The z9 threshold below sits between the two, so reverting hatchBandForZoom
+// to the old fixed (8, 2) reds it — verified by running exactly that
+// mutation, not assumed.
+//
+// #648 REPLACED the z16 half of this. From z14 up the band degrades to
+// HATCH_WASH_BAND (period 1, stripe 1), so there is no stripe to measure
+// there and no on-screen stripe width to tabulate — the z16 phase now
+// measures the DUTY CYCLE instead, and the reasoning for its threshold lives
+// at that phase rather than here so the derivation sits beside the numbers.
 //
 // LOCATION: the app's own default map centre ([9.9, 54.85], MapView.tsx's
 // CENTER) sits over the fjord's main channel, MEASURED against the real
@@ -667,7 +771,7 @@ function percentile(values: number[], p: number): number {
 // snap point gives 41% of cells marginal at a 2.2 m gate vs 97% at 10 m —
 // a location chosen from MEASUREMENT, not assumed from the harbor's prose
 // alone.
-test('navigability hatch (#599): the on-screen stripe stays legible at overview zoom and does not become a wide band close in', async ({
+test('navigability hatch (#599/#648): the stripe stays legible at overview zoom, and past z13 degrades to a full-coverage wash instead of hard-edged blocks', async ({
   page,
 }) => {
   const server = await startPreview();
@@ -754,22 +858,95 @@ test('navigability hatch (#599): the on-screen stripe stays legible at overview 
       `overview zoom: hatch stripes measured ${z9Stripe}px wide (p90 of ${z9Runs.length} runs) — the pre-#599 fixed band rendered ~1px here and washed out`,
     ).toBeGreaterThanOrEqual(4);
 
-    // ---- harbour-approach zoom (z16) ----
-    // One mask cell is already ~67.8 px here, so the raster cannot draw a
-    // stripe finer than that — the band clamps to 1 cell, HALVING the old
-    // 2-cell (~135.6 px) band. 100 px sits between the two. This is the
-    // accepted limit of the per-cell-raster approach, not a fix: see
-    // depthColor.ts's "WHAT THIS DOES NOT ACHIEVE" note.
+    // ---- harbour-approach zoom (z16): the #648 degradation ----
+    //
+    // WHAT WAS HERE BEFORE, AND WHY IT IS GONE RATHER THAN INVERTED. This
+    // block used to assert TWO things, and BOTH were removed — naming only
+    // the first would understate the deletion:
+    //
+    //   (1) `z16Stripe <= 100`, with a comment calling 100 px "the accepted
+    //       limit of the per-cell-raster approach, not a fix". That threshold
+    //       was chosen to TOLERATE the 67.8 px squares #648 reports, so it
+    //       could never fire on them — its continuing to pass would prove
+    //       nothing about this change, and it is cited as evidence nowhere.
+    //   (2) `z16Stripe / z9Stripe < 32`, "stripe growth across z9..z16 must
+    //       stay bounded". Its removal is forced rather than chosen: with no
+    //       z16 stripe there is no ratio to form. What holds the BLOW-UP
+    //       direction it was aimed at is depthColor.test.ts's `holds the
+    //       on-screen stripe within 7.9-17 px across z9..z13`, whose
+    //       `expect(Math.max(...widths)).toBeLessThanOrEqual(17)` is a real
+    //       UPPER bound over every striped band, sampled at each band's TOP
+    //       with an explicit `> 16` non-vacuity row proving those tops are
+    //       reached — strictly stronger than the deleted ratio, which only
+    //       ever sampled z9 and z16. Do not delete that bound believing the
+    //       e2e assertions cover it. The z13 `c13.fraction < 0.25` control
+    //       below adds a cell-space bound at the one zoom that still keeps a
+    //       stripe: continuity for a band (p, s) sampled one cell apart is
+    //       (s - 1) / s, so any s >= 2 at z13 reads >= 0.5 and reds it.
+    //       NOT `z9Stripe >= 4`, and NOT the z10.9 `> 12` assertion — both
+    //       are LOWER bounds, covering the WASH-OUT direction (#599's actual
+    //       defect), and quantisation only makes the stripe BIGGER, so
+    //       neither can catch blow-up. An earlier revision of this comment
+    //       named those two as the keepers; that was the wrong direction.
+    //
+    // It is DELETED rather than flipped to `> 100`, because the instrument
+    // itself stops applying: hatchRunLengthsPx DISCARDS runs touching either
+    // row edge (they are truncated by the viewport, not by the pattern), and
+    // under a 100%-duty wash a row inside a contiguous marginal area is
+    // hatched edge to edge, so nearly every run is discarded and the p90
+    // collapses toward 0. An inverted `> 100` would therefore be measuring
+    // the discard rule, not the hatch. The z9 and z10.9 phases keep using
+    // that instrument, where stripes still exist and it is still valid.
+    //
+    // THE REPLACEMENT is hatchCellContinuity above — adjacent-cell continuity
+    // within the newly-hatched footprint. Its derivation lives in that
+    // helper's own comment. A plain hatched-FRACTION bound was tried first
+    // and REJECTED on measurement, not on reasoning: `highFraction <= duty +
+    // lowFraction` is a sound ceiling, but at gate 2.2 the LOW frame already
+    // carries wash hatch of its own, so the bound sits ABOVE what the high
+    // frame can reach — measured at z14, highFraction 0.4806 against a 0.5119
+    // ceiling. A sound bound is not automatically a usable threshold.
+    const measureContinuity = async (frames: { low: Buffer; high: Buffer }, label: string) => {
+      const cellPx = await maskCellScreenPx(page);
+      const c = await hatchCellContinuity(page, frames.low, frames.high, cellPx);
+      // NON-VACUITY: continuity over zero samples is 0/0 -> 0, which would
+      // sail through the `< 0.25` control below while proving nothing.
+      expect(
+        c.total,
+        `${label}: too few newly-hatched pixels to measure (cell ${cellPx.toFixed(2)}px) — the differencing found essentially no hatch`,
+      ).toBeGreaterThan(1000);
+      return { ...c, cellPx };
+    };
+
     const z16 = await framesAt(16, 0.15);
-    const z16Runs = await hatchRunLengthsPx(page, z16.low, z16.high);
-    const z16Stripe = percentile(z16Runs, 90);
+    const c16 = await measureContinuity(z16, 'z16');
     expect(
-      z16Stripe,
-      `close zoom: hatch stripes measured ${z16Stripe}px wide (p90 of ${z16Runs.length} runs) — the pre-#599 fixed band rendered ~136px bands here`,
-    ).toBeLessThanOrEqual(100);
-    // Both ends measured, so the ratio is the real thing #599 bounded: a
-    // fixed cell-space band would put ~128x between these two numbers.
-    expect(z16Stripe / z9Stripe, 'stripe growth across z9..z16 must stay bounded').toBeLessThan(32);
+      c16.fraction,
+      `#648: at z16 the hatch must be a full-coverage wash — adjacent-cell continuity measured ${c16.fraction.toFixed(4)} over ${c16.total} samples at a ${c16.cellPx.toFixed(2)}px cell. A stripe=1 band makes this EXACTLY 0 (adjacent cells give consecutive residues, at most one painted); the wash makes it ~1.`,
+    ).toBeGreaterThan(0.5);
+
+    // ---- the degradation BOUNDARY itself (z13 vs z14) ----
+    // Nothing above can see WHERE the degradation starts: z9/z10.9/z16 all
+    // read the same if the threshold moves by a level. z13 and z14 are the
+    // tightest reachable pair and, before #648, selected the IDENTICAL (4, 1)
+    // band — so this pair is what no pre-#648 build can satisfy.
+    //
+    // The z13 half is a CONTROL, not a mutation detector: it passes with and
+    // without #648, and exists to catch degrading TOO EARLY, which would cost
+    // the mid-zoom hatch the readable stripes #599 exists to give it.
+    const z13 = await framesAt(13, 0.05);
+    const c13 = await measureContinuity(z13, 'z13');
+    expect(
+      c13.fraction,
+      `#648 control: z13 must KEEP the striped (4, 1) band — adjacent-cell continuity measured ${c13.fraction.toFixed(4)} over ${c13.total} samples at a ${c13.cellPx.toFixed(2)}px cell; a stripe pattern reads ~0 here, a wash ~1.`,
+    ).toBeLessThan(0.25);
+
+    const z14 = await framesAt(14, 0.05);
+    const c14 = await measureContinuity(z14, 'z14');
+    expect(
+      c14.fraction,
+      `#648: z14 is the FIRST washed band — round(8/px) reaches 0 at px=16, i.e. z=13.917, and Math.floor puts the first integer band at 14. Adjacent-cell continuity measured ${c14.fraction.toFixed(4)} over ${c14.total} samples at a ${c14.cellPx.toFixed(2)}px cell.`,
+    ).toBeGreaterThan(0.5);
 
     // ---- the zoomend REBUILD, isolated ----
     // Neither measurement above can see whether the `zoomend` trigger works:

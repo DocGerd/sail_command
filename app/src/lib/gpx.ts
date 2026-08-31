@@ -148,6 +148,19 @@ function elementsByLocalName(root: Document | Element, name: string): Element[] 
 // out-of-data-area coordinate. `Number` (not parseFloat) is used deliberately:
 // it rejects trailing garbage like "54.8abc" as NaN, where parseFloat would
 // accept it.
+//
+// #779: the data-area edge test is HALF-OPEN, matching `NavMask.inBounds`
+// exactly — west/south are INCLUSIVE (a point ON the edge is accepted), east/
+// north are EXCLUSIVE (a point ON the edge is rejected). `NavMask.inBounds`
+// (mask.ts) reduces to `lat >= south && lat < north && lon >= west && lon <
+// east` (see that method's own #517 comment); this predicate mirrors it edge
+// for edge so a boundary point is classified identically by both. Before this
+// fix the east/north edges were CLOSED here (`lon > east` / `lat > north`,
+// i.e. `lon === east` / `lat === north` were ACCEPTED) while `NavMask`
+// already rejected them — the importer admitted a point every downstream
+// consumer then rejected. Do not "simplify" west/south to match east/north
+// or vice versa; the two pairs are deliberately asymmetric because the mask
+// grid itself is (`cellOf`'s `Math.floor` never reaches `rows`/`cols`).
 function pointFrom(el: Element): LatLon {
   const latAttr = el.getAttribute('lat');
   const lonAttr = el.getAttribute('lon');
@@ -159,9 +172,9 @@ function pointFrom(el: Element): LatLon {
   if (lat < -90 || lat > 90 || lon < -180 || lon > 180) throw new GpxParseError('bad-coord');
   if (
     lon < DATA_AREA.west ||
-    lon > DATA_AREA.east ||
+    lon >= DATA_AREA.east ||
     lat < DATA_AREA.south ||
-    lat > DATA_AREA.north
+    lat >= DATA_AREA.north
   )
     throw new GpxParseError('out-of-bounds');
   return { lat, lon };

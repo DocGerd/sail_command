@@ -179,12 +179,15 @@ export const HATCH_RGBA: Rgba = [0, 0, 0, 190];
 //   11   |   2.12 |     4 |  12 |    16 |  25% | 8.5   (was 4.24)
 //   12   |   4.24 |     2 |   6 |     8 |  25% | 8.5   (was 8.47 — SAME)
 //   13   |   8.47 |     1 |   3 |     4 |  25% | 8.5   (was 16.9)
-//   16   |  67.79 |     1 |   3 |     4 |  25% | 67.8  (was 135.6)
-//   22   | 4338.4 |     1 |   3 |     4 |  25% | 4338  (was 8677)
+//   >=14 |  16.95+|     1 |   0 |     1 | 100% | no stripe at all — #648
 //
 // Read the z12 row twice: the OLD fixed pair was (8, 2), so the shipped
 // constants were already correct — at exactly one zoom. The bug was
 // applying them at the other thirteen.
+//
+// The >=14 row is #648 and has its own block below. Until then it read
+// `1 | 3 | 4 | 25%` unbroken to z22, i.e. one painted cell 67.8 px wide at
+// z16 and 4338 px wide at z22.
 //
 // WHAT THIS DOES NOT ACHIEVE, stated plainly rather than left to be
 // discovered. This is STEPWISE invariance across discrete bands, NOT
@@ -200,10 +203,14 @@ export const HATCH_RGBA: Rgba = [0, 0, 0, 190];
 //     target, so stripe = 1 cell is the finest thing a per-cell raster can
 //     express and the on-screen stripe resumes doubling per zoom level.
 //     It is exactly HALF the old width there (1 cell instead of 2), which
-//     is an improvement, not a fix. Genuinely fixing the close-zoom end
-//     needs screen-space rendering (a fill-pattern layer), which the
-//     maintainer weighed against this and did not choose for #599 — it
-//     needs a mask-cells-to-polygons geometry pass.
+//     is an improvement, not a fix. z13 STILL WORKS EXACTLY THIS WAY and is
+//     byte-identical to #599; #648 changes only z>=14, where it stops
+//     drawing a stripe at all (see the #648 block below) rather than
+//     letting the doubling run to 4338 px at z22. Genuinely rendering a
+//     zoom-INVARIANT hatch still needs screen-space rendering (a
+//     fill-pattern layer), which the maintainer weighed against this and
+//     did not choose for #599 or for #648 — it needs a
+//     mask-cells-to-polygons geometry pass, split out as #792.
 //   * Below z9 the band is frozen, so the stripe shrinks again as the user
 //     zooms further out. The reason is that z9 already shows the whole
 //     dataset, not that the data overflows the screen: the mask bbox is
@@ -240,8 +247,8 @@ export const HATCH_RGBA: Rgba = [0, 0, 0, 190];
 // Measured over the real committed mask (2200x2400) by labelling every
 // 4-connected marginal region and counting those that receive zero painted
 // cells, across EIGHT gates (2.2 / 2.5 / 2.8 / 3.0 / 3.5 / 4.0 / 5.0 / 10 m)
-// x EVERY band this function can select over z0..z22 — 15 of them, because
-// FRACTIONAL zooms are reachable by any pinch/wheel gesture and each
+// x EVERY STRIPED band this function can select over z0..z22 — 15 of them,
+// because FRACTIONAL zooms are reachable by any pinch/wheel gesture and each
 // integer stripe count from 15 down to 1 occurs. 120 combinations:
 //
 //   gap 15 -> blanks a >=100-cell region at gates 2.8, 3.0, 3.5, 4.0 AND
@@ -271,11 +278,17 @@ export const HATCH_RGBA: Rgba = [0, 0, 0, 190];
 //     away, not a corner case. That, rather than a bare "14 of 120", is the
 //     fact that justifies the quantisation below.
 //   * hatchBandForZoom's Math.floor QUANTISATION is what makes the cap
-//     sufficient, by shrinking the reachable band set from 15 to 5. Those 5
+//     sufficient, by shrinking the reachable band set from 15 to 5 as
+//     measured at #599, amended by the #648 note below. Those 5
 //     (27/15, 20/8, 16/4, 8/2, 4/1) are clean in ALL 40 of their gate x band
 //     combinations, re-measured against the quantised selection itself
 //     rather than inherited from the pre-quantisation sweep; largest blank
 //     of any size 68 cells, against the >=100 threshold.
+//     #648 adds a SIXTH reachable band, 1/1, and deliberately owes that
+//     sweep NOTHING: its gap is ZERO, so there is no gap for a region of any
+//     size to fall inside and the blanking question is vacuous rather than
+//     re-opened. The 40 combinations above are also untouched — every zoom
+//     that selects one of the original 5 (z13 and below) is unchanged.
 //
 // So the safety property is a CONSTRUCTION (a small, enumerated, swept band
 // set), not a tuned constant. Removing the floor re-opens 14 failures even
@@ -326,6 +339,70 @@ export const HATCH_RGBA: Rgba = [0, 0, 0, 190];
 // to notice), never FALSE COMFORT (a marginal cell reading as more clear
 // than it is) — the one failure #492 exists to prevent.
 //
+// ---------------------------------------------------------------------------
+// #648: GRACEFUL DEGRADATION PAST THE ZOOM WHERE A "STRIPE" IS A FICTION.
+// ---------------------------------------------------------------------------
+// The stripe count the target ASKS for is round(HATCH_TARGET_STRIPE_PX /
+// screenPxPerCell(z)). Before #648 that sat inside Math.max(1, ...), so past
+// the point where one mask cell is wider than TWICE the target it was the
+// CLAMP, not the design, choosing the geometry — and it kept choosing (4, 1)
+// unbroken to z22. What renders there is not a hatch: at z16 a 67.8 px black
+// square every 271.2 px, at z22 a 4338.6 px one, laid out on a 45deg
+// staircase whose position is pure PHASE ((outRow + col) % 4) and carries no
+// information whatsoever. That is the hard-edged-squares defect reported in
+// #648 against production v0.13.0.
+//
+// THE THRESHOLD IS DERIVED, NOT PICKED. The clamp begins to bind exactly
+// where round(8 / px) reaches 0, i.e. px = 16, i.e. z = 13.917 — the same
+// number the "WHAT THIS DOES NOT ACHIEVE" note above already derived for
+// #599, not a new constant. Under the Math.floor quantisation the first
+// INTEGER band past it is z14 (px 16.9475, raw stripe count 0.4720; z13 is
+// px 8.4738, raw 0.9441, which still rounds to a real 1-cell stripe). So
+// z13 and below are byte-identical to what #599 shipped, and only z>=14
+// changes — "roughly z14" in #648's own words, arrived at from the
+// arithmetic rather than chosen to match it.
+//
+// From z14 up the band is HATCH_WASH_BAND — period 1, stripe 1 — so
+// `(outRow + col) % 1 < 1` holds for EVERY cell and every marginal cell is
+// painted. Three consequences, in the order that matters:
+//
+//   * SAFETY, structurally rather than by measurement, and this is the
+//     load-bearing one. The painted set goes from {marginal AND phase} to
+//     {marginal}: a strict SUPERSET, at the IDENTICAL HATCH_RGBA. Nothing
+//     about which cells are marginal, about HATCH_RGBA, about STOPS or
+//     about the layer's opacity/resampling moves. So per pixel the
+//     composited hatch alpha can only RISE, and since HATCH_RGBA is pure
+//     black the composite is colour * (1 - alpha): every pixel renders at
+//     most as light as it did before, and no marginal cell can lose its
+//     hatch. The "never look more comfortable" property below is therefore
+//     preserved in its strong form — this change can only move cells toward
+//     the more-cautious end. The residual failure mode stays
+//     under-signalling, and is strictly REDUCED: the 3 cells in 4 that the
+//     (4, 1) band left unpainted at z>=14 are now painted.
+//   * The gap-blanking analysis above is VACUOUS here rather than re-opened
+//     — gap 0 admits no region of any size. See the sixth-band note in that
+//     block.
+//   * THE COST, stated as the trade it is. This is #648 option 4, the
+//     maintainer's scoping call; option 1 (a screen-space fill pattern over
+//     vectorized marginal cells, the only thing that fixes rather than
+//     degrades) is split out as #792 and needs its own design pass. At
+//     z>=14 the absolute ramp is no longer read THROUGH gaps over marginal
+//     water: alpha 190 leaves 25.5% of the ramp colour, so hue survives
+//     (black preserves hue) but the depth READING over marginal cells does
+//     not. What gets BETTER is the marginal/clear BOUNDARY: every marginal
+//     cell is now drawn individually instead of one in four, so the rendered
+//     edge follows the mask's own ~46.7 m cell boundary — the same
+//     quantisation buildDepthImageData's ramp layer already shows at these
+//     zooms — instead of an artificial diagonal. A cell-quantised edge is
+//     honest data resolution; the staircase was not.
+//
+// WHY NOT the "translucent wash or outline" #648's option-4 text sketches:
+// both LOWER the alpha over cells painted today (an outline drops interior
+// cells to zero outright), so both make some marginal water render LIGHTER
+// than it does now — false comfort, the one direction #492 exists to
+// prevent. Full coverage at the UNCHANGED HATCH_RGBA is the only shape of
+// option 4 that is monotone-darkening by construction.
+//
 // WHICH CELLS ARE MARGINAL IS UNTOUCHED BY ALL OF THIS. The band decides
 // only which of the already-flagged cells get painted on this pass; the
 // `marginal` LUT below is the safety surface and is gate-keyed only.
@@ -352,6 +429,17 @@ export type HatchBand = {
   readonly stripeCells: number;
 };
 
+/**
+ * #648: the degraded band used from z14 up — the ONE band in
+ * this module with no gap. `(outRow + col) % 1 < 1` is true for every cell,
+ * so buildNavigabilityHatchImageData paints every marginal cell and nothing
+ * else; period === stripe is what expresses "no stripe pattern any more",
+ * deliberately, rather than a second code path in the painter. See the #648
+ * block above for why full coverage at the UNCHANGED HATCH_RGBA is the only
+ * degradation that cannot make marginal water render lighter.
+ */
+export const HATCH_WASH_BAND: HatchBand = { periodCells: 1, stripeCells: 1 };
+
 /** On-screen size of one mask cell at `zoom`. Exported for the band tests. */
 export function hatchScreenPxPerCell(zoom: number): number {
   const metresPerScreenPx =
@@ -364,6 +452,9 @@ export function hatchScreenPxPerCell(zoom: number): number {
  * HATCH_TARGET_STRIPE_PX, subject to the two hard limits the raster
  * imposes: a stripe can never be finer than ONE mask cell, and the gap is
  * capped so no marginal region of >=100 cells can fall entirely inside it.
+ * Once even a ONE-cell stripe is more than twice the target — z14 up, where
+ * the old Math.max(1, ...) clamp was inventing a stripe the design never
+ * asked for — it degrades to HATCH_WASH_BAND instead (#648).
  * See the block comment above for the arithmetic and the measurements.
  */
 export function hatchBandForZoom(zoom: number): HatchBand {
@@ -385,22 +476,34 @@ export function hatchBandForZoom(zoom: number): HatchBand {
   // guard exists to reject.
   //
   // ±Infinity is included for determinism rather than to fix a second silent
-  // failure — measured, they currently land on real bands ((4,1) and (27,15))
-  // by accident of the arithmetic, not by design. HATCH_FALLBACK_BAND is
+  // failure — measured, they land on real bands by accident of the arithmetic
+  // rather than by design (HATCH_WASH_BAND and (27,15) since #648; (4,1) and
+  // (27,15) before it). HATCH_FALLBACK_BAND is
   // declared below, which is safe because this module's own initialisation
   // calls this function with a finite zoom and so never takes this branch.
   if (!Number.isFinite(zoom)) return HATCH_FALLBACK_BAND;
   // QUANTISED to whole zoom levels (#599 fix wave). Two reasons, in order of
   // importance. (1) SAFETY, by construction: continuous selection makes 15
-  // distinct bands reachable, 14 of whose gate x band combinations blank a
-  // marginal region of >=100 cells — see the SAFETY note above. Flooring
-  // makes exactly 5 bands reachable, and those 5 are clean in all 40 of
-  // theirs. (2) It cuts rebuild churn from 14 band changes to 4 over a
-  // z9->z22 sweep (MEASURED), all at integer crossings.
+  // distinct STRIPED bands reachable, 14 of whose gate x band combinations
+  // blank a marginal region of >=100 cells, where flooring makes the
+  // reachable set small enough to sweep exhaustively. The SAFETY note above
+  // carries that set's membership and the sweep, and depthColor.test.ts pins
+  // its size — deliberately NOT restated here: this copy of the counts went
+  // stale at #648 while the block comment and DataLayers.tsx were updated,
+  // which is the whole argument against writing a count down twice.
+  // (2) It cuts rebuild churn over a z9->z22 sweep (MEASURED), all at integer
+  // crossings.
   const z = Math.max(HATCH_MIN_BAND_ZOOM, Math.floor(zoom));
-  const stripeCells = Math.max(1, Math.round(HATCH_TARGET_STRIPE_PX / hatchScreenPxPerCell(z)));
-  const gapCells = Math.min(HATCH_GAP_PER_STRIPE * stripeCells, HATCH_MAX_GAP_CELLS);
-  return { periodCells: stripeCells + gapCells, stripeCells };
+  // #648: the stripe count the TARGET asks for, before any clamp. This is
+  // the quantity that says whether a per-cell raster can still express the
+  // design at all — reaching 0 means one cell is already wider than twice
+  // HATCH_TARGET_STRIPE_PX, so any stripe drawn from here on is the clamp's
+  // invention, not the design's. The pre-#648 code wrapped this in
+  // Math.max(1, ...) and shipped that invention to z22.
+  const targetStripeCells = Math.round(HATCH_TARGET_STRIPE_PX / hatchScreenPxPerCell(z));
+  if (targetStripeCells < 1) return HATCH_WASH_BAND;
+  const gapCells = Math.min(HATCH_GAP_PER_STRIPE * targetStripeCells, HATCH_MAX_GAP_CELLS);
+  return { periodCells: targetStripeCells + gapCells, stripeCells: targetStripeCells };
 }
 
 /** The band used when a caller supplies none — see HATCH_FALLBACK_ZOOM. */
