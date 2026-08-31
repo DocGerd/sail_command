@@ -228,6 +228,14 @@ function shippedWalk(mask: NavMask, a: LatLon, b: LatLon): string[] {
   const seq: string[] = [];
   const recorder = {
     meta,
+    // #517: shallowExposureNm now bound-checks via mask.inBounds() rather
+    // than a free function over `meta` alone — delegate to the real mask's
+    // own method rather than re-deriving the check, so this facade cannot
+    // drift from production's bounds convention. Never recorded: inBounds
+    // does not visit a cell.
+    inBounds(p: LatLon) {
+      return mask.inBounds(p);
+    },
     depthInfoM(p: LatLon) {
       const row = Math.floor((p.lat - meta.south) / latStep);
       const col = Math.floor((p.lon - meta.west) / lonStep);
@@ -267,6 +275,10 @@ function confinedWalk(mask: NavMask, a: LatLon, b: LatLon): string[] {
   const seq: string[] = [];
   const recorder = {
     meta,
+    // #517: see shippedWalk's identical comment above.
+    inBounds(p: LatLon) {
+      return mask.inBounds(p);
+    },
     depthInfoM(p: LatLon) {
       const row = Math.floor((p.lat - meta.south) / latStep);
       const col = Math.floor((p.lon - meta.west) / lonStep);
@@ -745,12 +757,12 @@ describe('legMinDepthsM / isMarginalDepthM (#651)', () => {
     expect(result[1]).toBeNull();
   });
 
-  // #651 fix-wave, Minor 3: a SPY control proving the withinMask bound check
-  // actually runs BEFORE segmentMinDepthInfoM is ever called for an
+  // #651 fix-wave, Minor 3: a SPY control proving the mask.inBounds bound
+  // check actually runs BEFORE segmentMinDepthInfoM is ever called for an
   // out-of-bounds leg — the pre-existing rows above only observe the RESULT
   // (null), which segmentMinDepthInfoM's own walk-incomplete null could also
   // produce on its own, so neither pinned the bound check itself. Control:
-  // deleting the pre-existing withinMask check inside shallowExposureNm
+  // deleting the pre-existing mask.inBounds check inside shallowExposureNm
   // (this file's "an out-of-bounds leg endpoint nulls the WHOLE route" row,
   // above) reds 2 rows on its own — proving THAT check is independently
   // load-bearing, unlike this one before this spy existed.

@@ -48,7 +48,7 @@ import AboutDialog from './components/AboutDialog';
 import ReloadPrompt from './components/ReloadPrompt';
 import UatBadge from './components/UatBadge';
 import PanelResizer from './components/PanelResizer';
-import { isStaleForecast } from './lib/plan';
+import { isStaleForecast, staleForecastGapHours } from './lib/plan';
 import { recalcRequest } from './lib/recalc';
 import { planViaPoints } from './lib/planViaPoints';
 import {
@@ -1009,7 +1009,13 @@ function AppShell() {
           tiers rather than one more z-index bump — lives in ONE place, the
           comment above `.app-header` in app.css; read it there rather than
           here, since duplicating it in two files is how it would drift. */}
-      <div className="map-area">
+      {/* #696: while AboutDialog is open, every OTHER top-level app-shell
+          child (this map area, .app-header, .banner-area, PanelResizer when
+          mounted, .app-bottom-sheet) carries inert={aboutOpen} so a
+          virtual-cursor/browse-mode AT user can no longer reach live map or
+          routing controls behind the modal — the existing Tab-cycling trap
+          (#759) only intercepts the Tab key. */}
+      <div className="map-area" inert={aboutOpen}>
         {/* MapView's label language is baked in at first mount (see
             MapView.tsx's own comment) — a live language switch does not
             re-diff the style/labels. Documented limitation, not a bug:
@@ -1099,7 +1105,7 @@ function AppShell() {
         </MapView>
       </div>
 
-      <header className="app-header">
+      <header className="app-header" inert={aboutOpen}>
         <h1>
           {/* DocGerdSoft brand mark — decorative, the h1 text carries the name.
               Tight viewBox around the two-shape artwork (x 26.96–73.04, y
@@ -1172,7 +1178,7 @@ function AppShell() {
         </div>
       </header>
 
-      <div className="banner-area">
+      <div className="banner-area" inert={aboutOpen}>
         <ReloadPrompt />
         {!online && <Banner kind="warning">{t('banner.offline')}</Banner>}
         {mapError && (
@@ -1180,7 +1186,11 @@ function AppShell() {
             {t('banner.mapError')}
           </Banner>
         )}
-        {stale && <Banner kind="warning">{t('route.staleForecast')}</Banner>}
+        {stale && plan && (
+          <Banner kind="warning">
+            {t('route.staleForecast', { hours: staleForecastGapHours(plan) })}
+          </Banner>
+        )}
         {/* #299: a ROUTING-RELEVANT setting has changed since the displayed
             plan was computed — previously ONLY surfaced as a Chip inside
             PlannerPanel's Ergebnis strip (still there, unchanged, and driven
@@ -1306,10 +1316,11 @@ function AppShell() {
           max={panelMaxPx}
           onCommit={setPanelWidthPx}
           aria-label={t('panel.resizer.label')}
+          inert={aboutOpen}
         />
       )}
 
-      <div className="app-bottom-sheet" ref={panelRef}>
+      <div className="app-bottom-sheet" inert={aboutOpen} ref={panelRef}>
         {/* #704: roving tabIndex (0 on the selected tab, -1 on the rest) plus
             ArrowLeft/ArrowRight/Home/End on the tablist itself
             (handleAppTabsKeyDown) completes the WAI-ARIA Tabs keyboard

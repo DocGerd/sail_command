@@ -92,6 +92,47 @@ describe('NavMask', () => {
   });
 });
 
+describe('#517: NavMask.inBounds', () => {
+  const m = makeMask(() => 200);
+
+  it('is true for a point well inside the rectangle', () => {
+    expect(m.inBounds({ lat: 54.75, lon: 10.2 })).toBe(true);
+  });
+
+  it('is true exactly ON the south/west edges (inclusive lower bounds)', () => {
+    expect(m.inBounds({ lat: TEST_MASK_META.south, lon: 10.2 })).toBe(true);
+    expect(m.inBounds({ lat: 54.75, lon: TEST_MASK_META.west })).toBe(true);
+  });
+
+  it('is false exactly ON the north/east edges (exclusive upper bounds)', () => {
+    // meta.north/east never fall inside any cell — same convention pinned by
+    // "isNavigable at the exact north/east edge is fail-closed" above.
+    expect(m.inBounds({ lat: TEST_MASK_META.north, lon: 10.2 })).toBe(false);
+    expect(m.inBounds({ lat: 54.75, lon: TEST_MASK_META.east })).toBe(false);
+  });
+
+  it('is false just outside each of the four edges', () => {
+    expect(m.inBounds({ lat: TEST_MASK_META.south - 0.001, lon: 10.2 })).toBe(false);
+    expect(m.inBounds({ lat: 54.75, lon: TEST_MASK_META.west - 0.001 })).toBe(false);
+    expect(m.inBounds({ lat: TEST_MASK_META.north + 0.001, lon: 10.2 })).toBe(false);
+    expect(m.inBounds({ lat: 54.75, lon: TEST_MASK_META.east + 0.001 })).toBe(false);
+  });
+
+  it('is true just inside each of the four edges', () => {
+    expect(m.inBounds({ lat: TEST_MASK_META.south + 0.001, lon: 10.2 })).toBe(true);
+    expect(m.inBounds({ lat: 54.75, lon: TEST_MASK_META.west + 0.001 })).toBe(true);
+    expect(m.inBounds({ lat: TEST_MASK_META.north - 0.001, lon: 10.2 })).toBe(true);
+    expect(m.inBounds({ lat: 54.75, lon: TEST_MASK_META.east - 0.001 })).toBe(true);
+  });
+
+  it('agrees with isNavigable/depthM at the exact north/east edge (single bounds check backs all three)', () => {
+    const p = { lat: TEST_MASK_META.north, lon: TEST_MASK_META.east };
+    expect(m.inBounds(p)).toBe(false);
+    expect(m.isNavigable(p, 3.0)).toBe(false);
+    expect(m.depthM(p)).toBe(0);
+  });
+});
+
 describe('NavMask.cellsConnected (#53)', () => {
   // Wall at col 160 (lon ≈ 10.2), except rows 90..99 charted 2.3 m (byte 23).
   const gapMask = () => makeMask((r, c) => (c !== 160 ? 200 : r >= 90 && r <= 99 ? 23 : 0));
