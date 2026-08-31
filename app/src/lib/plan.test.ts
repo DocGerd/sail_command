@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isStaleForecast, activeRigResult } from './plan';
+import { isStaleForecast, staleForecastGapHours, activeRigResult } from './plan';
 import { uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS, type Plan } from '../types';
 import { defaultBoatSnapshot } from '../types';
@@ -63,6 +63,25 @@ describe('isStaleForecast', () => {
 
   it('is false when departure precedes the fetch (non-positive gap)', () => {
     expect(isStaleForecast(makePlan(fetchedAtMs - 1000, fetchedAtMs))).toBe(false);
+  });
+});
+
+describe('staleForecastGapHours', () => {
+  const fetchedAtMs = Date.UTC(2026, 6, 15, 6, 0, 0);
+
+  it('floors a 20 h gap to 20', () => {
+    expect(staleForecastGapHours(makePlan(fetchedAtMs + 20 * 3_600_000, fetchedAtMs))).toBe(20);
+  });
+
+  it('floors a 26 h gap to 26', () => {
+    expect(staleForecastGapHours(makePlan(fetchedAtMs + 26 * 3_600_000, fetchedAtMs))).toBe(26);
+  });
+
+  it('floors down rather than rounding at a partial hour', () => {
+    // 20 h 59 min: floors to 20, never rounds up to 21.
+    expect(
+      staleForecastGapHours(makePlan(fetchedAtMs + 20 * 3_600_000 + 59 * 60_000, fetchedAtMs)),
+    ).toBe(20);
   });
 });
 

@@ -17,6 +17,7 @@ import { __resetDbForTests } from './services/db';
 import * as db from './services/db';
 import { TEST_MASK_META, TEST_POLAR, uniformWindGrid } from './test/fixtures';
 import { formatLatLon, formatNm, toLocalInputValue } from './lib/format';
+import { staleForecastGapHours } from './lib/plan';
 import {
   DEFAULT_SETTINGS,
   type Harbor,
@@ -1773,10 +1774,16 @@ describe('banner surfacing (PR self-review fix wave)', () => {
     // active here — this assertion is specifically about the App-level
     // banner-area surface, not a claim that it's the only place stale
     // forecasts are ever shown.
+    // #748: interpolated against the ACTUAL computed gap (staleForecastGapHours
+    // on this fixture's own plan, not a hardcoded "20") — a raw literal match
+    // against de['route.staleForecast'] would break the moment that value
+    // carries an unreplaced {hours} placeholder.
     const bannerArea = document.querySelector('.banner-area');
     if (!bannerArea) throw new Error('expected .banner-area to be present');
     expect(
-      await within(bannerArea as HTMLElement).findByText(de['route.staleForecast']),
+      await within(bannerArea as HTMLElement).findByText(
+        de['route.staleForecast'].replace('{hours}', String(staleForecastGapHours(stalePlan))),
+      ),
     ).toBeInTheDocument();
   });
 

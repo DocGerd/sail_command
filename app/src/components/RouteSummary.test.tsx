@@ -679,13 +679,27 @@ describe('RouteSummary', () => {
   it('shows a stale-forecast warning when departure is more than 12h after the forecast fetch', () => {
     const plan = makePlan({ departureMs: FETCHED_AT_MS + 12 * 3_600_000 + 1 });
     renderSummary({ plan });
-    // #748: shortened from a full sentence to a label-style "> 12 h old" form.
-    expect(screen.getByText(/12 h old/i)).toBeInTheDocument();
+    // #748: label-style "{hours} h old" form; this fixture's 12h+1ms gap
+    // floors to 12, so this alone doesn't prove the value is dynamic — see
+    // the next test for a fixture at a distinctly different hour.
+    expect(
+      screen.getByText(en['route.staleForecast'].replace('{hours}', '12')),
+    ).toBeInTheDocument();
+  });
+
+  it('renders the ACTUAL computed gap, not the old hardcoded 12 (#748)', () => {
+    // 26h gap floors to 26, distinct from the pre-#748 static "12" — this
+    // fixture cannot pass under the old hardcoded threshold label.
+    const plan = makePlan({ departureMs: FETCHED_AT_MS + 26 * 3_600_000 });
+    renderSummary({ plan });
+    expect(
+      screen.getByText(en['route.staleForecast'].replace('{hours}', '26')),
+    ).toBeInTheDocument();
   });
 
   it('hides the stale-forecast warning when departure is within 12h of the forecast fetch', () => {
     renderSummary();
-    expect(screen.queryByText(/12 h old/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\d+ h old/i)).not.toBeInTheDocument();
   });
 
   it('renders a no-route message instead of stats/legs when the selected rig has no result', () => {
@@ -1295,7 +1309,7 @@ describe('#493: cautious depth disclosure', () => {
     // with no remount under a `plan.id`-only key. This row holds `id` fixed
     // and changes ONLY `createdAtMs` (what a real replace always refreshes),
     // which is exactly the shape `key={plan.id}` alone is blind to.
-    it("#763 review round 3: re-opens on a SAME-id replace (createdAtMs changes, id does not)", () => {
+    it('#763 review round 3: re-opens on a SAME-id replace (createdAtMs changes, id does not)', () => {
       const mildPlan = makeSeverityPlan(BOUNDARY_USED_DEPTH_M);
       mildPlan.id = 'plan-same-id';
       mildPlan.createdAtMs = 1_000;

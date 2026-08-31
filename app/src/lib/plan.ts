@@ -31,6 +31,14 @@ export function isStaleForecast(plan: Plan): boolean {
   return plan.request.departureMs - plan.windGrid.fetchedAtMs > STALE_THRESHOLD_MS;
 }
 
+// #748: the actual fetch->departure gap, in whole hours, for the
+// route.staleForecast copy's {hours} placeholder — replaces the old static
+// ">12 h" threshold label. Floored, matching formatDuration/formatLegDuration
+// (lib/format.ts)'s existing hours-component convention.
+export function staleForecastGapHours(plan: Plan): number {
+  return Math.floor((plan.request.departureMs - plan.windGrid.fetchedAtMs) / 3_600_000);
+}
+
 // Unlike recommendedResult() (types.ts), which throws when the *recommended*
 // sail is missing (an invariant violation), a null result for an arbitrary
 // requested sail is an ordinary display state — the router legitimately
