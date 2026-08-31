@@ -127,13 +127,13 @@ making design-level decisions; do not silently deviate.
   12 — a token grep for added `it(` returns eleven and reads as a
   contradiction, so a test COUNT can never be derived by grepping `it(`). That run's DURATION is DISCARDED — a browser agent ran
   concurrently, the same contention that invalidated an earlier 393 s figure.
-  Two rules distilled from repeated re-measurements of this pair: **counts are
-  load-independent, durations are not** (never quote a duration measured under
-  load, and re-measure BOTH halves rather than infer either from the other; a
-  COUNT also carries its FILTER exactly as a duration carries its suite size —
-  295/295 over 6 files and 682/682 over 23 are one run under two apertures, and
-  relaying one into the other's scope is an error the receiver should refuse,
-  measured 2026-08-31 on PR #768);
+  Three rules distilled from repeated re-measurements of this pair: **counts
+  are load-independent, durations are not** (never quote a duration measured
+  under load, and re-measure BOTH halves rather than infer either from the
+  other); **a COUNT carries its FILTER exactly as a duration carries its suite
+  size** — 295/295 over 6 files and 682/682 over 23 described one TREE under
+  two apertures, and relaying one into the other's scope is an error the
+  receiver should refuse (measured 2026-08-31 on PR #768);
   and a scanning-only or assertion-adding test file is coverage-neutral to
   first order, so **never infer a new percentage from a new count** — the
   percentages above need `test:coverage`, a substantially longer run, and were
@@ -1614,10 +1614,11 @@ making design-level decisions; do not silently deviate.
   across three cases: `748.changed.md` quoted the exact label PR #768 removed
   (collapsed); `698.changed.md` said the column moved "right after Type" while
   PR #778 moves it to index 0, both strings verified present in the BUILT
-  bundle (collapsed); `696.fixed.md` was checked and still true (BOTH kept,
-  and both must be folded). A brief saying "confirm the old fragment is
-  UNTOUCHED" is what PRESERVES a false line — that instruction was the cause of
-  PR #768's Major 1.
+  bundle (collapsed); `696.fixed.md` was checked and still true, so BOTH were
+  kept — a coexisting pair is the CORRECT outcome of that test, not an oversight
+  to tidy, and a cut folds every member. A brief saying "confirm the old
+  fragment is UNTOUCHED" is what PRESERVES a false line — that instruction was
+  the cause of PR #768's Major 1.
   `app/src/lib/changelog.ts`'s `ENTRY_RE` is `/^- (.*)$/` — anchored with NO
   leading whitespace — so folding a multi-entry fragment as an INDENTED
   sub-list silently glues the indented bullet onto the previous entry, dash
@@ -2000,9 +2001,9 @@ making design-level decisions; do not silently deviate.
   To prove a REFACTOR of that area perturbed nothing (a different question):
   run ONE harness UNCHANGED in a BASE and a HEAD worktree, recording every walk
   sequence PLUS the end-to-end returns of every refactored entry point, and
-  compare by sha256 of the whole dump. PR #772: 16 named shapes + 3000 seeded
-  segments + 1200 against the real committed `mask.bin` -> 16,970,670 bytes,
-  identical both sides. **POSITIVE CONTROLS ARE MANDATORY** — three were used,
+  compare by sha256 of the whole dump. PR #772 did this over named shapes,
+  seeded random segments and segments against the real committed `mask.bin`,
+  and the dumps matched. **POSITIVE CONTROLS ARE MANDATORY** — three were used,
   each moving the dump; without them a harness that silently recorded nothing
   yields two identical empty dumps that read as proof. Cheap successor for a
   later comment-only wave: strip comments/strings and hash the code, which
@@ -2230,18 +2231,21 @@ making design-level decisions; do not silently deviate.
   WRONG is reported, never silently improved.
   **THE COST THIS RULE DOES NOT NAME: supplied text is pre-approved, so it is
   the ONE element of a diff nobody re-attacks.** An error inside it survives
-  every later round — PR #768's supplied phrase "THE repo's actual
-  single-unit-discarding formatter" (`formatHeading` is a second) survived
-  rounds 2, 3 AND 4 on a block those rounds were actively editing, and shipped
-  (#775). Do not weaken the rule; ADD a step: brief the FINAL round to re-read
-  supplied text fresh, as text of unknown provenance, INCLUDING text the
-  reviewer wrote itself. Measured 2026-08-31 — three reviewers briefed that way
-  each found a real defect in their own supplied text; the one round without
-  the instruction is the one that shipped. Verify "verbatim" MECHANICALLY (pull
-  the fenced block via the comments API, substring-match it), and verify "two
-  copies agree" by NORMALISED byte comparison — a paraphrase RESEMBLES rather
-  than agrees.
-  Distinct rule, NOT an exception to this one (#599 — it was an orchestrator-
+  rounds that are actively editing the same block — PR #768's supplied phrase
+  "THE repo's actual single-unit-discarding formatter" (`formatHeading` is a
+  second) survived rounds 2 and 3 on exactly that block. Do not weaken the
+  rule; ADD a step: brief the FINAL round to re-read supplied text fresh, as
+  text of unknown provenance, INCLUDING text the reviewer wrote itself. On
+  2026-08-31 FOUR reviewers briefed that way each found a real defect in their
+  own supplied text (#768, #770, #772, #773) — the instruction is cheap and it
+  fires; there is NO control arm here, so do not read a causal claim into it.
+  #768's instance was caught by that round-4 re-read and then FILED (#775)
+  rather than fixed, on an explicit stopping-rule ruling — shipping it was a
+  decision, not an escape. Verify "verbatim" MECHANICALLY (pull the fenced
+  block via the comments API, substring-match it), and verify "two copies
+  agree" by NORMALISED byte comparison — a paraphrase RESEMBLES rather than
+  agrees.
+  Distinct rule, NOT an exception to the adopt-verbatim rule (#599 — it was an orchestrator-
   relayed measurement, not supplied replacement text): before adopting a
   NUMERIC correction, check both sides define the QUANTITY identically. A
   "tighter" bound differed only by count (`sMax-sMin+1`) vs span
@@ -2748,10 +2752,7 @@ making design-level decisions; do not silently deviate.
   content beyond the real viewport when the element sits in a nested
   `overflow-y: auto` scrollport, so `.boat-picker-card` inside `.app-panel`
   emitted a valid PNG with the third boat blank — and the call SUCCEEDED. Use
-  the viewport-resize pattern (`START_VIEW_HEIGHT_PX`) instead. Note also that
-  `npm run lint` is `eslint src e2e` and `tsconfig.app.json` includes only
-  `src`, so NEITHER tool covers `docs/screenshots/*.mjs` — citing them as
-  verification for a change there implies coverage that does not exist (#428).
+  the viewport-resize pattern (`START_VIEW_HEIGHT_PX`) instead.
 - **CORROBORATION CAN BE THE SAME MEASUREMENT TWICE.** An independent scan
   agreeing with a test is evidence only if the two use DIFFERENT models; if
   they share a modelling assumption, agreement measures the assumption. Measured
@@ -2767,7 +2768,7 @@ making design-level decisions; do not silently deviate.
   attribute leaves `.focus()` on a descendant fully successful and the IDL
   property reads `undefined` (reproduced twice, #696). A unit test can pin the
   ATTRIBUTE's presence/absence transition only; focus-blocking needs a real
-  browser, and no e2e covers the About dialog today.
+  browser; as of 2026-08-31 no e2e spec covers the About dialog at all.
 - A FABRICATED citation is worse than a wrong number — it launders the claim
   as verified and stops the next reader from checking, compounding the
   CITATION HALO risk above. Two shipped in one PR this session: a comment
@@ -3578,10 +3579,14 @@ making design-level decisions; do not silently deviate.
   that arrives AS an idle notification, i.e. with no live children, so it never
   wakes. A preemptive warning did NOT prevent it (one agent received the warning
   and stalled anyway). Brief a FILTERED FOREGROUND run instead.
-  RE-MEASURED 2026-08-31: 2 of 6, both warned in their brief. **Do not try to
-  prevent it — expect it and budget ONE nudge per implementer.** Both
-  recoveries were productive rather than merely unblocking: one foreground
-  rerun surfaced 12 real failures a background run would have swallowed
+  A SECOND, INDEPENDENT population, 2026-08-31: 2 of 6 implementers stalled
+  the same way, both carrying that warning. Keep briefing the filtered
+  foreground run — it is what makes the recovery cheap — but **budget for the
+  stall rather than expecting the brief to prevent it**, and escalate on the
+  same ladder as always (nudge first; after a SECOND stall, TAKE the watch).
+  Do not difference the two populations; they are different agents and briefs.
+  The recovery is worth more than it looks: one nudged foreground rerun
+  surfaced 12 real failures the stalled agent would never have READ
   (`shallowExposure.test.ts`'s differential-walk facades are object literals
   cast `as unknown as NavMask` and broke on a refactor).
 - **A worktree agent's completion notification reports its branch as
