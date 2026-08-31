@@ -67,6 +67,7 @@ import { formatLatLon } from './lib/format';
 import { resolveHarborPickTarget } from './lib/harborGeoJson';
 import { boatById, sailIdsOf } from './data/boats';
 import { usePersistedBoatId } from './lib/usePersistedBoatId';
+import { usePersistedOwnMmsi } from './lib/ownMmsi';
 import type { MsgKey } from './i18n/dict.de';
 import type { Tab } from './lib/sessionSnapshot';
 import {
@@ -237,6 +238,12 @@ function AppShell() {
   // derives its minimum from the same selection (#539 item 2).
   const [boatId, setBoatId] = usePersistedBoatId();
   const boat = boatById(boatId);
+  // #746: the AIS own-vessel filter follows the SELECTED boat. Read here (not
+  // from `settings`) because an MMSI identifies a vessel, not the app — see
+  // lib/ownMmsi.ts. This hook and BoatPicker's are two live instances of the
+  // same key, which is what the hook's listener registry exists for: typing an
+  // MMSI on the Boat tab must reach the overlay without a remount.
+  const [ownMmsi] = usePersistedOwnMmsi(boatId);
   const { plan, rig, setRig, activeLegIndex, setPlan } = useActivePlan();
   const [settingsPersistenceError, clearSettingsPersistenceError] = useSettingsPersistenceError();
   const { planning, run, ensureClient } = usePlanFlow();
@@ -1074,7 +1081,7 @@ function AppShell() {
                   subtree for the map context. Fully inert without a key. */}
               <AisTraffic
                 apiKey={settings.aisApiKey}
-                ownMmsi={settings.ownMmsi}
+                ownMmsi={ownMmsi ?? undefined}
                 plan={plan}
                 rig={rig}
                 activeLegIndex={activeLegIndex}

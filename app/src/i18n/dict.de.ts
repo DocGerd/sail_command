@@ -55,6 +55,14 @@ export const de = {
   'boat.section.title': 'Bootsauswahl',
   'boat.picker.label': 'Boot auswählen',
   'boat.draft': 'Tiefgang {depth} m',
+  // #746: die eigene MMSI, pro Boot. Bewusst getrennt vom Text zum
+  // AIS-Schlüssel (options.ais.help) — der Schlüssel ist eine Kontokennung und
+  // WIRD übertragen, die MMSI kennzeichnet ein Schiff und wird es nie. Jede
+  // Hälfte behält den Satz, der für ihr eigenes Feld gilt.
+  'boat.mmsi.label': 'MMSI dieses Boots (optional)',
+  'boat.mmsi.help':
+    'Dient nur dazu, dieses Boot aus der AIS-Verkehrsanzeige herauszufiltern, damit das eigene Schiff nicht als umgebender Verkehr erscheint. Wird pro Boot nur auf diesem Gerät gespeichert und niemals übertragen.',
+  'boat.mmsi.invalid': 'Die MMSI muss aus genau 9 Ziffern bestehen.',
   // Spec G.3: Herkunftsstufen der Polardaten. Bewusst keine Buchstaben
   // (A/B/C) im Text — die Stufenbuchstaben sind Spec-interne Bezeichner und
   // sagen einer Seglerin nichts; das Wort selbst schon.
@@ -200,8 +208,12 @@ export const de = {
     'Keine Route gefunden — das Ziel ist ohne Landkontakt oder zu flaches Wasser nicht erreichbar.',
   'error.noRoute.beyondHorizon':
     'Keine Route innerhalb des 6-Tage-Vorhersagehorizonts gefunden. Spätere Abfahrt oder ein näheres Ziel versuchen.',
+  // #804: „in den Optionen“ benannte keine Oberfläche dieser App. Der
+  // motorEnabled-Schalter steht in SettingsPanel in der Karte
+  // settings.section.propulsion, im Boot-Tab (nav.boat) — am Bauteil
+  // abgelesen, nicht angenommen.
   'error.noRoute.calmMotorOff':
-    'Zu wenig Wind zum Segeln und Motor deaktiviert — Motor in den Optionen aktivieren oder Abfahrt verschieben.',
+    'Zu wenig Wind zum Segeln und Motor deaktiviert — Motor unter Boot › Antrieb aktivieren oder Abfahrt verschieben.',
   'error.noRoute.snapOrigin':
     'Der Startpunkt ist nicht befahrbar — einen Punkt mindestens 300 m von Land oder Flachwasser wählen.',
   'error.noRoute.snapDestination':
@@ -736,8 +748,12 @@ export const de = {
   'about.changelog.title': 'Was ist neu',
   'about.changelog.langNote': 'Das Änderungsprotokoll wird auf Englisch geführt.',
   'about.caveats.heading': 'Wichtige Hinweise',
+  // #804: „in den Optionen“ benannte keine Oberfläche dieser App.
+  // PERFORMANCE_FACTOR_FIELD steht in SettingsPanel in der Karte
+  // settings.section.boatSafety, im Boot-Tab (nav.boat) — am Bauteil
+  // abgelesen, nicht angenommen.
   'about.caveats.polars':
-    'Die Polardaten sind Schätzungen auf Basis ORC-artiger VPP-Daten, einstellbar über den Leistungsfaktor in den Optionen — nicht renngenau kalibriert.',
+    'Die Polardaten sind Schätzungen auf Basis ORC-artiger VPP-Daten, einstellbar über den Leistungsfaktor unter Boot › Boot & Sicherheit — nicht renngenau kalibriert.',
   // #539 / #54 Spec C.8 R5 + J OQ-2: siehe den Kommentar in dict.en.ts —
   // jede Zahl kommt jetzt aus dem AUSGEWÄHLTEN Boot (lib/depthDisclosure.ts).
   // formatDepthM liefert das deutsche Dezimalkomma, damit „2,1 m“ hier nicht
@@ -780,11 +796,18 @@ export const de = {
   'ais.disclaimer':
     'AIS-Abdeckung stammt von freiwilligen Landstationen und ist nicht garantiert oder vollständig. Diese Anzeige ist eine Aufmerksamkeitshilfe, keine Kollisionsverhütung und kein Navigationsgerät.',
   'options.ais.apiKey.label': 'AIS-API-Schlüssel (aisstream.io)',
-  'options.ais.mmsi.label': 'Eigene MMSI (optional)',
-  'options.ais.mmsi.invalid': 'Die MMSI muss aus genau 9 Ziffern bestehen.',
+  // #746: Dieser Text beschrieb früher Schlüssel UND eigene MMSI zusammen. Die
+  // MMSI-Hälfte ist mit dem Feld nach boat.mmsi.help gewandert. Der
+  // Unterschied „wird übertragen / wird nie übertragen“ musste auf BEIDEN
+  // Seiten erhalten bleiben, deshalb nennt ihn jede Hälfte für ihr eigenes
+  // Feld: der Schlüssel wird an aisstream.io gesendet, die MMSI niemals.
   'options.ais.help':
-    'Zeigt Live-Schiffsverkehr aus der Umgebung nur in der Live-Ansicht (nur online). Erstelle einen kostenlosen API-Schlüssel auf aisstream.io und füge ihn hier ein. Schlüssel und MMSI bleiben nur auf diesem Gerät gespeichert; der Schlüssel wird ausschließlich an aisstream.io als Teil des Abonnements gesendet, die MMSI dient nur dazu, das eigene Schiff aus der Anzeige herauszufiltern, und wird niemals übertragen. Aufmerksamkeitshilfe, kein Navigationsgerät.',
-  'ais.status.off': 'AIS aus — Schlüssel in den Optionen eingeben',
+    'Zeigt Live-Schiffsverkehr aus der Umgebung nur in der Live-Ansicht (nur online). Erstelle einen kostenlosen API-Schlüssel auf aisstream.io und füge ihn hier ein. Der Schlüssel bleibt nur auf diesem Gerät gespeichert und wird ausschließlich an aisstream.io als Teil des Abonnements gesendet. Aufmerksamkeitshilfe, kein Navigationsgerät.',
+  // #804: Hier stand „in den Optionen“ — eine Oberfläche, die in der App
+  // nirgends so heißt. Jetzt werden Tab und Karte genannt, in denen das
+  // Schlüsselfeld tatsächlich steht (nav.boat und settings.section.liveAis,
+  // beide aus diesem Wörterbuch).
+  'ais.status.off': 'AIS aus — Schlüssel unter Boot › Live & AIS',
   'ais.status.connecting': 'AIS verbindet…',
   'ais.status.live': 'AIS live · {count} Schiffe',
   'ais.status.offline': 'AIS offline',
