@@ -12,7 +12,12 @@ import { toGpx } from '../lib/gpx';
 import { APPROACH_RADIUS_M } from '../lib/depthGate';
 import { formatDepthM } from '../lib/depthDisclosure';
 import { cautiousDepthLowerBoundM, MASK_TOLERANCE_M } from '../lib/mask';
-import { activeRigResult, isStaleForecast, NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
+import {
+  activeRigResult,
+  isStaleForecast,
+  NO_ROUTE_MESSAGE_KEY,
+  staleForecastGapHours,
+} from '../lib/plan';
 import { planViaPoints } from '../lib/planViaPoints';
 import {
   renderRigVerdict,
@@ -755,7 +760,7 @@ export default function RouteSummary({
           modifier of an existing muted rule). */}
       {stale && (
         <p className="inline-alert" role="alert">
-          {t('route.staleForecast')}
+          {t('route.staleForecast', { hours: staleForecastGapHours(plan) })}
         </p>
       )}
 
