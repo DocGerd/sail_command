@@ -17,7 +17,16 @@ export const en = {
   // an out-of-range value was silently corrected to the nearest valid one on
   // blur. {min}/{max} come from safetyDepthFieldFor(boat), so they vary per
   // boat.
-  'options.safetyDepth.help': 'Allowed range: {min}–{max} m',
+  // #744: \u00A0 (non-breaking space) before the unit keeps "10.0 m" from
+  // wrapping onto its own orphan line when the help paragraph wraps.
+  'options.safetyDepth.help': 'Allowed range: {min}–{max}\u00A0m',
+  // #731: the sibling, generic notice for the blur-clamp ITSELF (not the
+  // disclosure at options.safetyDepth.help above) — shared by all eight
+  // NumberInput sites (safety depth here + SettingsPanel's seven
+  // NumericField instances), so it deliberately carries NO unit: each
+  // field's own label already has one in parentheses ("Safety depth (m)",
+  // "Motoring speed (kn)", …).
+  'numberInput.corrected': 'Corrected to {value} (allowed range {min}–{max})',
   // #299: safety depth now appears in TWO places — here for quick access
   // and on the Boat tab (SettingsPanel) as its canonical home, one shared
   // source (PR #486 review). The depth comfort margin and the rest of the
@@ -140,8 +149,7 @@ export const en = {
   'error.offline': 'Wind forecast service is unreachable. Check your connection and try again.',
   'error.rateLimited': 'Wind forecast service rate limit reached. Wait a moment and try again.',
   'error.windService': 'Wind forecast could not be loaded. Try again in a moment.',
-  'error.internal':
-    'Route planning failed unexpectedly. Try again; if it keeps happening, reload the app.',
+  'error.internal': 'Route planning failed unexpectedly. If it keeps happening, reload the app.',
   // #662: RouteSummary.tsx's fallback for a SAVED plan whose stored no-route
   // reason cannot be trusted (PR #656 / #614 made `reason` fall back to
   // `null` for a value outside the NoRouteReason union). This render site is
@@ -194,12 +202,12 @@ export const en = {
   'error.noRoute.snapDestination':
     'The destination is not navigable — pick a point at least 300 m from land or shallow water.',
   'error.noRoute.snapVia':
-    'A via point is not navigable — pick a point at least 300 m from land or shallow water.',
+    'A waypoint is not navigable — pick a point at least 300 m from land or shallow water.',
   // #432: the search was cut short BEFORE it finished — unlike every other
   // error.noRoute.* string, this deliberately makes no claim about whether a
   // route exists.
   'error.noRoute.searchBudget':
-    'Route planning hit its time limit before finishing — this does not mean no route exists. A nearer destination, fewer via points, or a smaller depth-comfort span will help; so will a faster device.',
+    'Route planning hit its time limit before finishing — this does not mean no route exists. A nearer destination, fewer waypoints, or a smaller depth-comfort span will help; so will a faster device.',
   'error.replanStaleWind':
     "This plan's stored wind forecast no longer covers its departure time. Plan the route again to load a current forecast.",
   'error.replanInit':
@@ -255,8 +263,28 @@ export const en = {
   // plan's search was cut short".
   'route.comparisonIncomplete':
     'The search ran out of time before comparing both sails, so no faster rig is claimed',
-  'route.staleForecast':
-    'Forecast is more than 12 hours old relative to departure — wind conditions may have changed since it was fetched.',
+  // #748: label-style age form. This is Option 3 (age-only, no absolute
+  // timestamp) — #748's own research established this app has NO model
+  // reference/initialisation time to print (Open-Meteo's standard forecast
+  // endpoint exposes only `generationtime_ms`, API processing time, not a
+  // run time), only `windGrid.fetchedAtMs`, a CLIENT fetch time. A richer
+  // Option 1/2 treatment (an honest "fetched HH:MMZ" or a real model run
+  // time) is a follow-up, not this fix. {hours} is the real fetch->departure
+  // gap, rounded to whole hours (lib/plan.ts's staleForecastGapHours — see
+  // its own comment for why round, not floor or ceil) — it replaces the
+  // static "> 12 h" threshold label PR #763 shipped, threaded through as a
+  // t() variable at both App.tsx's Banner and this key's RouteSummary.tsx
+  // use. `isStaleForecast` (lib/plan.ts) still gates display at
+  // STALE_THRESHOLD_MS = 12h; only the copy is dynamic now.
+  //
+  // PR #763 review Major 3: the FIRST cut of this copy ("Forecast > 12 h
+  // old") was factually wrong at read time — `isStaleForecast` tests
+  // `departureMs - fetchedAtMs > 12h`, a fetch-to-DEPARTURE gap, not the
+  // forecast's age (fetch 10:00 today, departure 06:00 tomorrow flags stale
+  // while the forecast is 0 h old), and it dropped the "relative to
+  // departure" frame #748's own Constraints section requires. "at
+  // departure" names the endpoint {hours} is measured to.
+  'route.staleForecast': 'Forecast {hours} h old at departure',
   // #504 fix wave 4: restructured from ONE dense paragraph into three parts
   // inside ONE role="alert" region (ShallowWarning, RouteSummary.tsx: a
   // <div> with .lead/.detail/.caveat children) — leads with the most
@@ -294,6 +322,12 @@ export const en = {
   // `charted`; the ceil rounding is display precision, not a bound claim.
   'route.shallow.exposure':
     '{dist} of this route crosses water charted shallower than your safety depth of {requested} m.',
+  // PR #763 review Blocker 2: the plan's ACTUAL used gate, stated on its own
+  // (never bundled with requested/minGate as route.shallow.detail already
+  // does) so it can render in the Disclosure's always-visible SUMMARY — the
+  // most consequential number in this warning must be visible without
+  // opening anything.
+  'route.shallow.usedDepth': 'Planned at a safety depth of {used} m.',
   // #516 increment 2 (requires #518): whether the exposure above is entirely
   // inside #452's relaxation discs — MEASURED at render time
   // (lib/shallowExposure.ts's shallowConfinedWithinM), never assumed from the
@@ -456,7 +490,7 @@ export const en = {
   'route.legend.motor': 'Motor (engine only)',
   'route.legend.maneuver': 'Tack/gybe',
   'route.legend.headingChange': 'Heading change',
-  'route.legend.via': 'Via waypoint',
+  'route.legend.via': 'Waypoint',
   // #651 fix-wave, MAJOR 1: was 'Charted shallower than safety depth' — that
   // labels the sc-route-shallow swatch, which #651 now ALSO paints for
   // MARGINAL legs (RouteLayer.tsx's ROUTE_STACK_BOTTOM_LAYER), and a
@@ -686,6 +720,13 @@ export const en = {
   'about.open': 'About SailCommand',
   'about.title': 'About SailCommand',
   'about.close': 'Close',
+  // #696: the icon-only close control beside the title. Distinct from
+  // 'about.close' (the bottom text button's label) so the two controls have
+  // different accessible names — both mean "close the dialog", but a
+  // screen-reader user should be able to tell them apart, and giving them
+  // the same name would also make `getByRole('button', { name })` queries
+  // ambiguous.
+  'about.closeDialog': 'Close dialog',
   'about.version': 'Version {version}',
   'about.changelog.title': "What's new",
   'about.changelog.langNote': 'The changelog is maintained in English.',

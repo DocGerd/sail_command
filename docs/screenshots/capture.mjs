@@ -1,9 +1,18 @@
 // docs/screenshots/capture.mjs — README screenshot capture (manual, not CI).
 //
 // start-view.png: needs network (live app + wind fetch) — the bare default
-//   below (production) is fine for it.
+//   below (production) is fine for it OUTSIDE a release cut ONLY. At a cut,
+//   production is still serving the PREVIOUS release, so SC_SCREENSHOT_URL
+//   must point at a candidate BUILD+PREVIEW server for this image too (see
+//   the BUILD+PREVIEW requirement below — it governs all three images, not
+//   just plan-route.png).
+// boat-selection.png: #716 — the Boat tab is reachable with zero plan/network
+//   setup, so the bare default works for it too, subject to the same
+//   release-cut caveat as start-view.png above (a candidate BUILD+PREVIEW
+//   server, not `run dev`); it needs only the same English-language switch
+//   as the other two.
 // plan-route.png: REQUIRES a local server (fix wave, PR #462 review Minor 2
-//   — the bare default is now actively wrong for this half, not just an
+//   — the bare default is now actively wrong for this image, not just an
 //   alternative). It routes against a docs-only wind fixture
 //   (app/public/test-fixtures/wind-docs-plan-route.json) that is gitignored
 //   and must be regenerated locally before every capture (see the #459
@@ -14,8 +23,19 @@
 //   landing on the Minor-1 diagnostic further down rather than a screenshot.
 //   Required sequence for plan-route.png:
 //     node app/scripts/gen-docs-wind-fixture.mjs
-//     npm --prefix app run dev -- --port <port>          # or build+preview
+//     npm --prefix app run build
+//     npm --prefix app run preview -- --port <port> --strictPort
 //     SC_SCREENSHOT_URL='http://localhost:<port>/sail_command/' node docs/screenshots/capture.mjs
+//   BUILD+PREVIEW, NOT `run dev`, and it governs all three images, not just
+//   this one: vite.config.ts's `devOptions.enabled` defaults to false, so a
+//   dev server registers no service worker and the app never shows its
+//   "App & maps available offline" banner — capturing there silently drops a
+//   real PWA affordance from the README heroes, and mixing the two servers
+//   across runs is how the three committed images came to disagree about
+//   that banner (measured 2026-08-31: the 2026-08-27 pair carried it, the
+//   `6aea385` boat shot did not). `--strictPort` so a taken port fails loudly
+//   instead of answering from some other server; avoid 4173, which the e2e
+//   suite pins.
 //
 // Selectors re-verified against app/src/App.tsx, PlannerPanel.tsx,
 // HarborPicker.tsx, RouteSummary.tsx, Disclosure.tsx and app/e2e/plan.spec.ts
@@ -129,8 +149,10 @@ const { chromium } = await import(
 // SC_SCREENSHOT_URL overrides the target for a pre-release recapture — at
 // release-cut time production is, by definition, still serving the PREVIOUS
 // release, so capturing against it would recapture the OLD build rather than
-// the one being released. Defaults to production, which is fine for
-// start-view.png but NOT for plan-route.png — see the header above.
+// the one being released. Defaults to production, which is appropriate only
+// OUTSIDE a release cut, and never for plan-route.png at all (that IMAGE
+// additionally needs the local, gitignored docs wind fixture — see the
+// header above). AT A RELEASE CUT, SET IT FOR ALL THREE IMAGES.
 const APP = process.env.SC_SCREENSHOT_URL ?? 'https://docgerd.github.io/sail_command/';
 const START_HARBOR = 'Flensburg';
 const DEST_HARBOR = 'Sønderborg';
@@ -146,16 +168,23 @@ const WIND_FIXTURE_PATH = 'test-fixtures/wind-docs-plan-route.json';
 const PANEL_WIDTH_PX = 518;
 // #741 fix wave: the Plan tab's unfilled form (empty Origin/Destination, no
 // route yet) is taller than the shared 800px capture viewport now that
-// #710's bordered card-box fields replaced bare native chrome — measured
-// live against this exact flow (navigate, switch to English, before any
-// harbor is picked): `.app-panel` starts at document y=173 and its content
-// runs to y=962, so the Departure field and the Safety-depth input/help
-// text were rendering entirely below the viewport. 1000px covers that with
-// margin. This bump is START-VIEW-ONLY: the page is resized back to the
-// shared 800px height immediately after that one screenshot so
-// plan-route.png is deliberately framed with its legs table scrolled — a
-// long table is meant to be cut off, unlike a form field, which is what
-// made the start-view crop a defect and this one not.
+// #710's bordered card-box fields replaced bare native chrome, so the
+// Departure field and the Safety-depth input/help text were rendering
+// entirely below the viewport. RE-MEASURED 2026-08-31 at the v0.16.0 cut,
+// against this exact flow (build+preview, navigate, switch to English,
+// before any harbor is picked, offline banner present): `.app-panel` starts
+// at document y=173 — unchanged — and its content now runs to y=942, so
+// 1000px covers it with 58px to spare. The superseded y=962 was measured
+// 2026-08-27 against the pre-#744 layout; v0.16.0 moved the BOTTOM end only
+// (#744 flipped `.planner-compact-row` to `align-items: start` and stopped
+// the help text orphaning its unit; #731's always-mounted
+// `.boat-picker-notice` is zero-height while empty). This bump is
+// START-VIEW-ONLY: the viewport is bumped again right after (to
+// BOAT_SELECTION_HEIGHT_PX, for boat-selection.png) before it is reset to
+// the shared 800px height for the rest of the flow, so plan-route.png is
+// deliberately framed with its legs table scrolled — a long table is meant
+// to be cut off, unlike a form field, which is what made the start-view
+// crop a defect and this one not.
 const START_VIEW_HEIGHT_PX = 1000;
 
 const browser = await chromium.launch();
@@ -176,6 +205,36 @@ await page.goto(startUrl.toString(), { waitUntil: 'networkidle' });
 await page.getByRole('button', { name: 'English anzeigen' }).click();
 await page.waitForTimeout(2000); // map tile settle for a static capture is fine here (not a test)
 await page.screenshot({ path: 'docs/screenshots/start-view.png' });
+
+// #716: boat-selection.png — previously a hand capture with no generator,
+// so it drifted stale three times (wrong depth format, German UI, a third
+// boat that never fit the viewport). BOAT_SELECTION_HEIGHT_PX widens the
+// viewport for this one shot only, the same START_VIEW_HEIGHT_PX pattern
+// above. RE-MEASURED 2026-08-31 at the v0.16.0 cut, against this exact flow
+// (build+preview, navigate, switch to English, click the Boat tab, no
+// plan/harbor picked, offline banner present): `.boat-picker-card` runs from
+// document y=185 to y=955.3px — a LAYOUT position, not a viewport-clipped
+// one, so it stays put whether the viewport is 800px or 1400px tall; only
+// how much of it is scrolled into view changes. (The superseded y=991.3 was
+// measured 2026-08-31 at `6aea385`, before this file was run against a
+// build+preview target; that run's chrome is not established.)
+// 1050px covers it with ~95px to spare, enough for all three
+// catalogue boats (name, draft, polar-provenance tier, draft-source note,
+// and — on the two non-hullVerified boats — the assumed-keel disclosure)
+// to render with no internal scroll. Boat-tab-only, for the same reason the
+// 1000px start-view bump above is start-view-only: nothing else needs this
+// much vertical room.
+const BOAT_SELECTION_HEIGHT_PX = 1050;
+await page.setViewportSize({ width: 1280, height: BOAT_SELECTION_HEIGHT_PX });
+await page.getByRole('tab', { name: 'Boat' }).click();
+// Static, no plan/network dependency (unlike plan-route.png below), so a
+// short settle for the tab switch's own render is enough.
+await page.waitForTimeout(500);
+await page.screenshot({ path: 'docs/screenshots/boat-selection.png' });
+// Back to the Plan tab — the flow below expects it as the active tab (it's
+// the default on load, but this capture just navigated away from it).
+await page.getByRole('tab', { name: 'Plan' }).click();
+
 // Back to the shared 800px height for the rest of the flow (plan-route.png).
 await page.setViewportSize({ width: 1280, height: 800 });
 

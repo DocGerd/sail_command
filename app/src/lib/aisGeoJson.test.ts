@@ -89,7 +89,7 @@ describe('aisPopupRows', () => {
       { labelKey: 'ais.popup.shipType', value: '36' },
       { labelKey: 'ais.popup.sog', value: '6.3 kn' },
       { labelKey: 'ais.popup.cog', value: '091°' },
-      { labelKey: 'ais.popup.age', value: '2 min' },
+      { labelKey: 'ais.popup.age', value: '2 min ago' },
     ]);
   });
 
@@ -110,7 +110,29 @@ describe('aisPopupRows', () => {
     expect(rows).toEqual([
       { labelKey: 'ais.popup.name', value: '211234560' },
       { labelKey: 'ais.popup.mmsi', value: '211234560' },
-      { labelKey: 'ais.popup.age', value: '0 min' },
+      { labelKey: 'ais.popup.age', value: '0 min ago' },
     ]);
+  });
+
+  // #709: the German age value must carry 'vor' on the VALUE side of the
+  // popup's `${label}: ${value}` composition (AisLayer.tsx) — the DE label
+  // is bare 'Letztes Signal' precisely so this doesn't strand 'vor' on the
+  // wrong side of the colon, unlike the pre-#709 'Letztes Signal vor: 2 min'.
+  it('builds the German age value with "vor" prefixed, matching the label composition', () => {
+    const rows = aisPopupRows(
+      {
+        mmsi: '211234560',
+        name: 'ALBATROS',
+        shipType: null,
+        sog: null,
+        cog: null,
+        heading: null,
+        lastUpdateMs: 0,
+      },
+      120_000, // 2 minutes later
+      'de',
+    );
+    const ageRow = rows.find((r) => r.labelKey === 'ais.popup.age');
+    expect(ageRow?.value).toBe('vor 2 min');
   });
 });

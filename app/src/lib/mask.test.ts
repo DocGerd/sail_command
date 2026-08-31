@@ -53,7 +53,14 @@ describe('NavMask', () => {
       rows: 2000,
     };
     const m = makeMask((_, c) => (c < 1600 ? 0 : 200), fineGridMeta);
-    const onLand = { lat: 54.75, lon: 10.205 }; // col ~1600 (land), ~32m from col 1600 center
+    // #622: col 1599 is land (c < 1600 in the mask fn above); at lat 54.75
+    // this cell is ~16-32 m west of the col-1600 water boundary, well
+    // inside the 300 m snap radius. The PREVIOUS point here (lon 10.205)
+    // was col 1610 — already water (c >= 1600) — so isNavigable/
+    // snapToNavigable never touched the land-snap path at all: the
+    // assertions passed vacuously before the behaviour under test ran.
+    const onLand = { lat: 54.75, lon: 10.1998 };
+    expect(m.isNavigable(onLand, 3.0)).toBe(false); // land — confirms this point actually needs snapping
     const snapped = m.snapToNavigable(onLand, 3.0);
     expect(snapped).not.toBeNull();
     expect(m.isNavigable(snapped!, 3.0)).toBe(true);
@@ -82,6 +89,47 @@ describe('NavMask', () => {
   it('snapToNavigable centered far outside the bbox returns null', () => {
     const m = makeMask(() => 200);
     expect(m.snapToNavigable({ lat: 60, lon: 20 }, 3.0)).toBeNull();
+  });
+});
+
+describe('#517: NavMask.inBounds', () => {
+  const m = makeMask(() => 200);
+
+  it('is true for a point well inside the rectangle', () => {
+    expect(m.inBounds({ lat: 54.75, lon: 10.2 })).toBe(true);
+  });
+
+  it('is true exactly ON the south/west edges (inclusive lower bounds)', () => {
+    expect(m.inBounds({ lat: TEST_MASK_META.south, lon: 10.2 })).toBe(true);
+    expect(m.inBounds({ lat: 54.75, lon: TEST_MASK_META.west })).toBe(true);
+  });
+
+  it('is false exactly ON the north/east edges (exclusive upper bounds)', () => {
+    // meta.north/east never fall inside any cell — same convention pinned by
+    // "isNavigable at the exact north/east edge is fail-closed" above.
+    expect(m.inBounds({ lat: TEST_MASK_META.north, lon: 10.2 })).toBe(false);
+    expect(m.inBounds({ lat: 54.75, lon: TEST_MASK_META.east })).toBe(false);
+  });
+
+  it('is false just outside each of the four edges', () => {
+    expect(m.inBounds({ lat: TEST_MASK_META.south - 0.001, lon: 10.2 })).toBe(false);
+    expect(m.inBounds({ lat: 54.75, lon: TEST_MASK_META.west - 0.001 })).toBe(false);
+    expect(m.inBounds({ lat: TEST_MASK_META.north + 0.001, lon: 10.2 })).toBe(false);
+    expect(m.inBounds({ lat: 54.75, lon: TEST_MASK_META.east + 0.001 })).toBe(false);
+  });
+
+  it('is true just inside each of the four edges', () => {
+    expect(m.inBounds({ lat: TEST_MASK_META.south + 0.001, lon: 10.2 })).toBe(true);
+    expect(m.inBounds({ lat: 54.75, lon: TEST_MASK_META.west + 0.001 })).toBe(true);
+    expect(m.inBounds({ lat: TEST_MASK_META.north - 0.001, lon: 10.2 })).toBe(true);
+    expect(m.inBounds({ lat: 54.75, lon: TEST_MASK_META.east - 0.001 })).toBe(true);
+  });
+
+  it('agrees with isNavigable/depthM at the exact north/east edge (single bounds check backs all three)', () => {
+    const p = { lat: TEST_MASK_META.north, lon: TEST_MASK_META.east };
+    expect(m.inBounds(p)).toBe(false);
+    expect(m.isNavigable(p, 3.0)).toBe(false);
+    expect(m.depthM(p)).toBe(0);
   });
 });
 

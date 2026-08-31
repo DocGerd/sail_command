@@ -133,8 +133,9 @@ test.describe('#355 resizable panel', () => {
       // number", a real reflow proportional to the actual panel growth.
       //
       // #412-shaped defect, fixed here: MapLibre throttles its own
-      // resize+redraw to one call per 50ms (installed maplibre-gl@6.1.0,
-      // `ui/map.ts:3977-3994`, `_setupResizeObserver`'s `throttle(..., 50)`)
+      // resize+redraw to one call per 50ms (`_setupResizeObserver`, `ui/map.ts`
+      // ~:3994-4012, `throttle(..., 50)` call ~:3996 — re-derived against
+      // maplibre-gl@6.5.0, 2026-08-28)
       // — reading the canvas box in the SAME TICK as `mouse.up()` can
       // sample PRE-resize geometry and pass or fail for reasons unrelated
       // to the behaviour under test. Poll until settled instead.
@@ -355,12 +356,18 @@ test.describe('#355 resizable panel', () => {
 
       // Ten headers, in order — the #379 nine-column count this table
       // reached before #355 could be built against it (PR #410) grew to ten
-      // when #452 gap 3 added the trailing "Untiefe" (shallow-marker) column
-      // (PR #483). Position matters here: the new column is LAST in the
-      // rendered DOM (RouteSummary.tsx appends it after Manöver), not just
-      // appended to this list by assertion convenience.
+      // when #452 gap 3 added the "Untiefe" (shallow-marker) column
+      // (PR #483). #698's decision memo (2026-08-31) moved that column to
+      // FIRST of ten, not merely after "Art" (Kind/Type) as an earlier #698
+      // pass had it — reordering alone could never satisfy the phonePortrait
+      // DoD, since the populated Shallow cell's two chips are wider than the
+      // whole viewport at any position; the memo pairs the reorder with
+      // stacking the chips (`.shallow-cell-stack` in app.css) so the
+      // column's own width is bounded. Position matters here, not just
+      // presence — the array below pins that position.
       const headers = page.locator('.route-legs thead th');
       await expect(headers).toHaveText([
+        'Untiefe',
         'Zeit',
         'Dauer',
         'Art',
@@ -370,7 +377,6 @@ test.describe('#355 resizable panel', () => {
         'Geschwindigkeit',
         'Distanz',
         'Manöver',
-        'Untiefe',
       ]);
 
       const table = page.locator('.route-legs');
@@ -388,19 +394,88 @@ test.describe('#355 resizable panel', () => {
       await expect.poll(overflowPx).toBeGreaterThan(0);
 
       // Drag to max width: now it must fit with no horizontal overflow.
-      // #452 gap 3 (PR #483 fix-wave): re-measured after the tenth column
-      // landed — natural table width is 819px (measured via scrollWidth at
-      // an overflowing, unstretched width) against 1260px available at this
-      // viewport's clamped max panel width (desktopHd, 1920px — panel caps
-      // at 1344px per panelMaxWidthPx(), table's own box nets ~1260px after
-      // Card/Disclosure chrome), a 441px margin — not a knife-edge. The
-      // 0-overflow reading alone can't show this: `.route-legs` is
-      // `width: 100%`, so table-layout:auto STRETCHES columns to fill any
-      // slack, making scrollWidth==clientWidth at every panel width above
-      // the true crossover, not just the exact threshold.
+      // #452 gap 3 (PR #483 fix-wave) measured a natural table width of
+      // 819px against 1260px available at this viewport's clamped max panel
+      // width (desktopHd, 1920px — panel caps at 1344px per
+      // panelMaxWidthPx(), table's own box nets ~1260px after
+      // Card/Disclosure chrome), a 441px margin. #698 (PR #778, commit
+      // d33158c) moved the Shallow column to index 0 and stacked its two
+      // chips; re-measured against that commit, natural table width is
+      // 928px (332px margin), vs 1078px with the stack rule deleted (the
+      // two chips back on one line). Either width leaves a comfortable
+      // margin, not a knife-edge. The 0-overflow reading alone can't show
+      // this: `.route-legs` is `width: 100%`, so table-layout:auto
+      // STRETCHES columns to fill any slack, making scrollWidth==clientWidth
+      // at every panel width above the true crossover, not just the exact
+      // threshold.
       const separator = page.getByRole('separator', { name: 'Panelbreite anpassen' });
       await dragSeparatorBy(page, separator, 8000);
       await expect.poll(overflowPx).toBeLessThanOrEqual(0);
+    } finally {
+      server.kill();
+    }
+  });
+
+  test('#698 (PR #778 review MAJOR 1): the populated Shallow cell stays inside the table at phonePortrait', async ({
+    page,
+  }) => {
+    // The header-order tests above pin the REORDER half of #698's fix
+    // (swapping the `<th>` order back reds them). Nothing previously pinned
+    // the STACK half, and the decision memo is explicit that reordering
+    // ALONE is arithmetically incapable of satisfying the DoD — deleting
+    // `.shallow-cell-stack` from app.css left the unit suite AND the
+    // wide-setting test above both green while DoD condition 1 failed by
+    // -25.1px (de) / -7.0px (en) at 390x844 (measured in review). This test
+    // asserts DoD condition 1 directly against the real reordered table,
+    // reusing this file's own fixture route (Langballigau -> Sønderborg,
+    // wind-sw12) rather than a new one — it produces one populated Shallow
+    // cell (the stacked width, ~181.67px).
+    const server = await startPreview();
+    try {
+      await page.setViewportSize(STANDARD_VIEWPORTS.phonePortrait);
+      await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
+      await mapReady(page);
+
+      const originSection = page.getByRole('region', { name: 'Start' });
+      await originSection.getByRole('combobox').fill('Langballigau');
+      await expect(originSection.getByRole('option')).toHaveCount(1);
+      await originSection.getByRole('option').first().click();
+
+      const destSection = page.getByRole('region', { name: 'Ziel' });
+      await destSection.getByRole('combobox').fill('Sønderborg');
+      await expect(destSection.getByRole('option')).toHaveCount(1);
+      await destSection.getByRole('option').first().click();
+
+      const planButton = page.getByRole('button', { name: 'Route planen' });
+      await planButton.click();
+      await expect(planButton).toBeEnabled({ timeout: 60_000 });
+
+      await page.getByRole('tab', { name: 'Routen' }).click();
+      await page.locator('.route-legs-disclosure > summary').click();
+      await expect(page.locator('.route-legs tbody tr').first()).toBeVisible({
+        timeout: 60_000,
+      });
+
+      // Poll the value, never a collapsed boolean (CLAUDE.md's #243
+      // lesson). `null` on zero populated cells is deliberate and fails
+      // CLOSED: without it this guard would pass VACUOUSLY on any route
+      // with no flagged leg, exactly the vacuity this test exists to
+      // prevent — `expect.poll` never resolves `null` as satisfying
+      // `toBeGreaterThanOrEqual`, so the run times out loudly instead of
+      // reporting a false green.
+      const slack = () =>
+        page.locator('table.route-legs').evaluate((t) => {
+          t.scrollLeft = 0;
+          const cells = Array.from(t.querySelectorAll('tbody tr'))
+            .map((r) => r.querySelector('td'))
+            .filter((td): td is HTMLTableCellElement => !!td?.querySelector('.chip'));
+          if (cells.length === 0) return null;
+          return (
+            t.getBoundingClientRect().right -
+            Math.max(...cells.map((c) => c.getBoundingClientRect().right))
+          );
+        });
+      await expect.poll(slack).toBeGreaterThanOrEqual(0);
     } finally {
       server.kill();
     }

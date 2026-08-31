@@ -34,9 +34,13 @@ planning.
 
 ## Screenshots
 
-| Start view | Planned route |
-|---|---|
-| ![Start view: map with curated harbors](docs/screenshots/start-view.png) | ![Planned route with per-leg detail and rig recommendation](docs/screenshots/plan-route.png) |
+**Start view** — the map with curated harbors, ready to plan a passage:
+
+![Start view: map with curated harbors](docs/screenshots/start-view.png)
+
+**Planned route** — per-leg detail with the rig recommendation:
+
+![Planned route with per-leg detail and rig recommendation](docs/screenshots/plan-route.png)
 
 Picking the boat, with each hull's draft, a provenance chip summarising the
 weakest tier across its polar tables (the per-sail tiers are inside the
@@ -129,8 +133,8 @@ npm --prefix app/ run build                      # production build to app/dist
 ```
 
 `npm run test` runs the full unit/property battery (polar interpolation,
-isochrone routing, mask queries, persistence, UI) — 2160 tests across 146
-files as of `39bbcd6` (2026-08-24).
+isochrone routing, mask queries, persistence, UI) — 2352 tests across 151
+files as of `369ccbb` (2026-08-31).
 `npm run e2e` builds the app and drives it with Playwright, including a
 true offline reload against a killed preview server.
 

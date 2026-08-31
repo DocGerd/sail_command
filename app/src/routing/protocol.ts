@@ -109,7 +109,14 @@ export function createHandler(post: (r: WorkerResponse) => void): (req: WorkerRe
       // fail-closed throw, so the check lives at ONE boundary rather than two
       // (the sweep harness and every test construct PlanDeps directly and
       // must hit the same check).
-      const polars: Record<string, PolarTable> = {};
+      // #601: null-prototype map — this object is never structured-cloned
+      // (it stays worker-local, feeding only PlanDeps.polars below) and
+      // never iterated (no Object.keys/for-in/spread/JSON.stringify
+      // anywhere it flows to; `planRoute.ts`'s polarFor() is its only
+      // reader, via Object.hasOwn + a bracket lookup) — so dropping its
+      // prototype costs nothing and removes the inherited-property surface
+      // outright, defense-in-depth alongside planRoute.ts's own hardening.
+      const polars: Record<string, PolarTable> = Object.create(null);
       for (const key of req.polarKeys) {
         const table: PolarTable | undefined = state.polars[key];
         if (table !== undefined) polars[key] = table;

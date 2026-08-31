@@ -224,7 +224,8 @@ requiring no GPG toolchain):
   A tag that shows the badge reports `"verified": true, "reason": "valid"`.
   Exercised against real release tags, not just the throwaway probe tag the
   fix was originally proven against: `v0.12.0` and `v0.12.1` each returned
-  `verified: true, reason: "valid"` when checked on 2026-08-20.
+  `verified: true, reason: "valid"` when checked on 2026-08-20, and
+  `v0.15.0` returned the same when checked on 2026-08-31.
   The v0.8.0 tag is a documented exception: it was signed under an email
   address not
   registered on the maintainer's GitHub account, so GitHub shows it

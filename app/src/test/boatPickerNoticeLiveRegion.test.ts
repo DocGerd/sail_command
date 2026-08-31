@@ -91,3 +91,38 @@ describe('#54 the clamp announcement stays in the accessibility tree while empty
     expect(cs.background).toContain('--sc-banner-warning-bg');
   });
 });
+
+// #701. `.boat-option-draft-note` (BoatPicker.tsx's provenance-citation
+// paragraph) picked up `padding-left: 0.5rem` alongside a `border-left` so it
+// no longer visually merges with `.boat-option-keel` (the keel caveat
+// immediately above it) into one run-on paragraph — see that rule's own
+// comment in app.css for the full #701 rationale.
+//
+// THIS TEST PINS THE PADDING ONLY, NOT THE BORDER, and not the visual
+// separation as a whole. MEASURED: jsdom's CSS parser rejects a `border-left`
+// SHORTHAND declaration wholesale once it contains an unresolved custom
+// property — every longhand (`border-left-style`/`-width`/`-color`) and even
+// the computed `borderLeft` shorthand text collapse to their CSS-initial
+// values (`16px none rgba(0, 0, 0, 0)`) rather than the declared `2px solid
+// var(--sc-border)`, so no getComputedStyle probe in jsdom can discriminate
+// that half of the rule (a SHARPER limitation than the one
+// chipShallowFill.test.ts documents for `background`, where the shorthand's
+// raw declared TEXT at least survives and only the colour resolution is
+// lost). `padding-left: 0.5rem` involves no `var()` at all and resolves
+// cleanly to `8px` (16px root font-size x 0.5), so it is the one half of the
+// #701 visual change this file can actually verify. A real-browser pass is
+// what confirms the border renders; do not read this test as covering that.
+function renderDraftNote(): HTMLParagraphElement {
+  const el = document.createElement('p');
+  el.className = 'boat-option-draft-note';
+  document.body.appendChild(el);
+  return el;
+}
+
+describe('#701 .boat-option-draft-note gets left padding, separating it from the keel caveat', () => {
+  it('resolves padding-left: 8px (0.5rem) — the border half is untestable in jsdom, see file header', () => {
+    withAppCss();
+    const note = renderDraftNote();
+    expect(getComputedStyle(note).paddingLeft).toBe('8px');
+  });
+});

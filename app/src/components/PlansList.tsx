@@ -194,7 +194,15 @@ export default function PlansList({ online, busy, onRecalculate }: PlansListProp
 
   return (
     <>
-      {error && <p role="alert">{t(error)}</p>}
+      {/* #703: bare `<p role="alert">` carried no visual treatment at all —
+          same shape as RouteSummary's stale-forecast/no-route lines, see
+          `.inline-alert`'s app.css comment for why this is a standalone
+          class rather than a modifier of an existing muted rule. */}
+      {error && (
+        <p className="inline-alert" role="alert">
+          {t(error)}
+        </p>
+      )}
       <ul className="plans-list">
         {plans.map((p) =>
           // #54 spec §I.3: a record the read-time normaliser cannot handle is
@@ -232,8 +240,8 @@ export default function PlansList({ online, busy, onRecalculate }: PlansListProp
                   )}
                 </span>
               </div>
-              <button
-                type="button"
+              <Button
+                variant="ghost"
                 className="plans-list-delete"
                 onClick={() => handleDeleteTap(p.id)}
                 aria-label={
@@ -241,7 +249,7 @@ export default function PlansList({ online, busy, onRecalculate }: PlansListProp
                 }
               >
                 {pendingDeleteId === p.id ? '✓' : '🗑'}
-              </button>
+              </Button>
             </li>
           ) : (
             <li key={p.id} className="plans-list-row">
@@ -258,17 +266,17 @@ export default function PlansList({ online, busy, onRecalculate }: PlansListProp
                 </span>
                 <span className="chip chip-rig">{t(sailLabelKey(p.recommended))}</span>
               </button>
-              <button
-                type="button"
+              <Button
+                variant="ghost"
                 className="plans-list-recalc-toggle"
                 onClick={() => handleRecalcTap(p)}
                 aria-label={t('plansList.recalc')}
                 aria-expanded={recalc?.planId === p.id}
               >
                 ⟳
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="ghost"
                 className="plans-list-delete"
                 onClick={() => handleDeleteTap(p.id)}
                 aria-label={
@@ -276,7 +284,7 @@ export default function PlansList({ online, busy, onRecalculate }: PlansListProp
                 }
               >
                 {pendingDeleteId === p.id ? '✓' : '🗑'}
-              </button>
+              </Button>
               {recalc?.planId === p.id && (
                 <div className="plans-list-recalc" role="group" aria-label={t('plansList.recalc')}>
                   <Field

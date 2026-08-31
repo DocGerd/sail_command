@@ -15,7 +15,7 @@ import {
 import { usePersistedNumber } from '../lib/usePersistedNumber';
 import Card from './Card';
 import Field from './Field';
-import NumberInput from './NumberInput';
+import NumberInput, { formatBound, useClampCorrection } from './NumberInput';
 import Slider from './Slider';
 import {
   DEPTH_COMFORT_MARGIN_FIELD,
@@ -89,6 +89,7 @@ interface NumericFieldProps {
  * (#64) per this tab's own design brief. */
 function NumericField({ spec, value, onChange, help }: NumericFieldProps) {
   const t = useT();
+  const [lang] = useLang();
   const id = `settings-${spec.key}`;
   const helpId = `${id}-help`;
   // `exactOptionalPropertyTypes` (tsconfig) means `Field`'s/`NumberInput`'s
@@ -98,6 +99,11 @@ function NumericField({ spec, value, onChange, help }: NumericFieldProps) {
   // all for its help-less fields rather than passing it as `undefined`.
   const fieldExtra = help !== undefined ? { help, helpId } : {};
   const inputExtra = help !== undefined ? { 'aria-describedby': helpId } : {};
+  // #731: the silent blur-clamp's visible correction signal. Keyed on THIS
+  // field's own bounds, so a boat switch that moves `spec.min`/`spec.max`
+  // out from under it (safety depth is the one per-boat-bounded field today)
+  // clears a stale notice — see useClampCorrection's own doc comment.
+  const { correctedTo, reportCommit } = useClampCorrection(spec.min, spec.max);
   return (
     <Field label={t(spec.labelKey)} htmlFor={id} {...fieldExtra}>
       <NumberInput
@@ -107,8 +113,30 @@ function NumericField({ spec, value, onChange, help }: NumericFieldProps) {
         max={spec.max}
         step={spec.step}
         {...inputExtra}
-        onCommit={(n) => commitSetting(value, spec.key, n, onChange)}
+        onCommit={(n, wasClamped) => {
+          reportCommit(n, wasClamped);
+          commitSetting(value, spec.key, n, onChange);
+        }}
       />
+      {/* #731 review round 2: ALWAYS mounted, empty until a correction
+          occurs — matching BoatPicker's #563 MAJOR 1 shape (a live region
+          must already be in the accessibility tree before its text changes)
+          rather than the conditionally-mounted shape #731's issue text had
+          pre-approved. Reuses `.boat-picker-notice`'s existing `:empty` rule
+          (added for BoatPicker itself), so this needs no new CSS: the
+          `correctedTo !== null ? … : null` ternary renders a truly empty
+          `<p>` (no child nodes at all) when there's nothing to say, which is
+          what makes `:empty` match. See useClampCorrection's own doc
+          comment for the full record of this decision. */}
+      <p className="boat-picker-notice" role="status">
+        {correctedTo !== null
+          ? t('numberInput.corrected', {
+              value: formatBound(correctedTo, lang),
+              min: formatBound(spec.min, lang),
+              max: formatBound(spec.max, lang),
+            })
+          : null}
+      </p>
     </Field>
   );
 }

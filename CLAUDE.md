@@ -33,7 +33,8 @@ making design-level decisions; do not silently deviate.
   incl. offline reload).
 - `app/src/components/` mixes feature components with a small UI **primitive
   layer** (`Button`, `Card`, `Chip`, `Disclosure`, `Field`, `NumberInput`,
-  `Skeleton`, added in #64) built on the locked `--sc-*` design tokens defined in
+  `Skeleton`, added in #64; `Slider` added later at #353) built on the locked
+  `--sc-*` design tokens defined in
   `app/src/app.css` (see the UI modernization addendum
   `docs/superpowers/specs/2026-07-17-ui-modernization-design.md` §3.2). Reuse the
   primitives and tokens for new UI; don't reinvent buttons/inputs or hardcode
@@ -52,6 +53,14 @@ making design-level decisions; do not silently deviate.
   ask-gate hook, and a subagent writing there would slip a spec edit past
   the gate. A spike doc is evidence for a decision, never a spec — promoting
   one to a spec is a main-session act.
+  Design records live in FOUR places and three survive a clone: audited
+  2026-08-28, `docs/superpowers/specs/` 8 files, `docs/spikes/` 12 and
+  `docs/adr/` 2 ADRs plus a README index are all COMMITTED — but
+  `.superpowers/` is GITIGNORED and held the ONLY design document for
+  #243 until it was committed as a spike doc this session. Roughly a third of
+  shipped features have a committed spec; the rest were built from an issue with
+  their reasoning surviving only as CLAUDE.md prose. When an SDD-style workflow
+  writes a design doc, check WHERE it landed.
 - `app/src/test/` is the DENSEST cluster of source-SCANNING guards: most of
   them read a FOREIGN artifact (`readFileSync`, or `import.meta.glob(…,
   {query:'?raw'})` for source scans) and assert against it — **but `?raw` glob
@@ -76,7 +85,15 @@ making design-level decisions; do not silently deviate.
   an `app.css` literal against a TS constant, and `app/src/app.css.test.ts`
   scans the stylesheet from the `app/src/` top level — so before touching
   `app.css`, enumerate with `grep -rln 'app\.css' app/src
-  --include='*.test.ts*'` rather than trusting any list here. And
+  --include='*.test.ts*'` rather than trusting any list here — but that grep
+  counts FILES CONTAINING THE STRING, not guards: re-measured 2026-08-31 it
+  returned 12 (11 on 2026-08-28), of which only 7 read the stylesheet via
+  `readFileSync`, four (`BoatPicker`/`ScaleBar`/`Slider.test.tsx`/
+  `RouteSummary.test.tsx`) merely NAME it in prose — three in a comment,
+  `Slider.test.tsx` in an `it()` title — and
+  cannot fail on a CSS change, and one (`sailLiteralCallSites.test.ts`) globs
+  `?raw` over `.ts`/`.tsx` only, so it is NOT an instance of the vacuous-`?raw`
+  trap above. Classify each hit before quoting a number. And
   `.github/workflows/coverage.yml`'s `timeout-minutes` is NOT guarded at all:
   `timeoutBudgetVsJobCap.test.ts` DECLARES `JOB_CAP_MINUTES = 240` rather than
   reading it (PR #351 removed the read after four fail-opens), so the two are
@@ -113,9 +130,13 @@ making design-level decisions; do not silently deviate.
   12 — a token grep for added `it(` returns eleven and reads as a
   contradiction, so a test COUNT can never be derived by grepping `it(`). That run's DURATION is DISCARDED — a browser agent ran
   concurrently, the same contention that invalidated an earlier 393 s figure.
-  Two rules distilled from repeated re-measurements of this pair: **counts are
-  load-independent, durations are not** (never quote a duration measured under
-  load, and re-measure BOTH halves rather than infer either from the other);
+  Three rules distilled from repeated re-measurements of this pair: **counts
+  are load-independent, durations are not** (never quote a duration measured
+  under load, and re-measure BOTH halves rather than infer either from the
+  other); **a COUNT carries its FILTER exactly as a duration carries its suite
+  size** — 295/295 over 6 files and 682/682 over 23 described one TREE under
+  two apertures, and relaying one into the other's scope is an error the
+  receiver should refuse (measured 2026-08-31 on PR #768);
   and a scanning-only or assertion-adding test file is coverage-neutral to
   first order, so **never infer a new percentage from a new count** — the
   percentages above need `test:coverage`, a substantially longer run, and were
@@ -410,10 +431,17 @@ making design-level decisions; do not silently deviate.
   re-created the empty `role="alert"`; the reviewer measured 8 fall-open members
   plus a control, 9/9, before the table was widened to all 12). Use
   `Object.hasOwn` (ES2022; `tsconfig.app.json` targets es2023, so no polyfill).
-  There was NO in-repo precedent: `Object.hasOwn`'s only occurrence IS that fix,
-  and `usePersistedBoatId.ts`'s `isCatalogueBoatId` is a `BOATS.some(...)` ARRAY
+  There was NO in-repo precedent AT THE TIME: that fix (`migratePlan.ts`) was
+  `Object.hasOwn`'s only occurrence until #601 added a second in
+  `planRoute.ts`'s `polarFor` guard (`89f4880`, 2026-08-28); and
+  `usePersistedBoatId.ts`'s `isCatalogueBoatId` is a `BOATS.some(...)` ARRAY
   scan — a round-1 review comment called it the precedent and it reached this
-  file unchecked. Derive any prototype-name test table from
+  file unchecked. That guard is NOT made redundant by the per-plan polar map
+  `protocol.ts` builds via `Object.create(null)`: per `planRoute.ts`'s own #601
+  comment only the worker path is null-prototype — every other `PlanDeps`
+  constructor (test fixtures, the sweep harness) passes an ordinary `{}` — so
+  `Object.hasOwn` is the half correct for EVERY caller. Never drop it on the
+  grounds that the map is null-prototype somewhere. Derive any prototype-name test table from
   `Object.getOwnPropertyNames(Object.prototype)`, never a hand-written list — a
   hand-written 8 missed `__defineGetter__`/`__defineSetter__`/`__lookupGetter__`/
   `__lookupSetter__`, and a literal array can be stubbed to `[]` leaving the
@@ -467,6 +495,15 @@ making design-level decisions; do not silently deviate.
   which carries that fake's other pinned invariant (`addLayer` drops layers on
   a truthy-but-missing `beforeId`, #163). Re-derived against
   `maplibre-gl@6.5.0`, 2026-08-26.
+- **`useState(defaultOpen)` seeds ONCE, and `key={plan.id}` does NOT close it.**
+  `Disclosure` never re-syncs its seed, so a new SEVERE plan rendered with the
+  severe class and below-draft summary while staying COLLAPSED (measured, PR
+  #763). Keying on `plan.id` still misses the recalculate-and-replace path:
+  `usePlanFlow.ts` uses `id: opts.replacePlanId ?? crypto.randomUUID()` and
+  `App.tsx` passes `replacePlanId: recalcPlan.id` (#114) — same id, no remount —
+  while that path re-plans against a fresh forecast, so severity can flip with
+  the id unchanged. Use ``key={`${plan.id}-${plan.createdAtMs}`}``. A
+  fresh-mount test passes with either bug live; only a TRANSITION test sees them.
 - `Leg` is a discriminated union on `kind`: sail legs carry `board` + `twaDeg`;
   motor legs have `board: null` and NO `twaDeg` property. Narrow on `kind`,
   never cast.
@@ -877,7 +914,8 @@ making design-level decisions; do not silently deviate.
   "trips first") read the SAME FROZEN BOX the assertion does, so it was blind
   to exactly what it was credited with catching. Treat reachability as
   UNMEASURED unless the construction demonstrably lands inside the window;
-  two residual sites are tracked in #422.
+  the two frozen-geometry sites left by this defect were closed at #422
+  (`89f4880`, 2026-08-28).
 - **`getAttribute()` on a BOOLEAN attribute cannot tell present from absent**
   — it returns `""` when set and `null` when not, and BOTH are JS-falsy, so
   `if (!(await el.getAttribute('open'))) await summary.click()` fires
@@ -911,8 +949,12 @@ making design-level decisions; do not silently deviate.
   polling is not the same as not needing a gate. FIXED in #412 / PR #419:
   every one of those guards now RE-SAMPLES its geometry INSIDE the poll
   callback, so no box survives across a tick; the specs carry `#412` comments
-  at each site saying so. Two residual frozen-geometry sites remain elsewhere
-  in the suite, tracked in #422. The durable rule outlives the fix: polling a
+  at each site saying so. The two residual frozen-geometry sites #422 tracked
+  — both in `compass.spec.ts`'s #208 occlusion sweep — were closed the same
+  way at #422 (`89f4880`, 2026-08-28); they now carry `#422 (residual of
+  #412)` comments saying the geometry is RE-SAMPLED on every poll tick. The
+  suite has not been re-enumerated since, so "no frozen-geometry site
+  remains" is not a claim this file makes. The durable rule outlives the fix: polling a
   state signal is not enough if the coordinate or handle being polled was
   itself sampled before settle.
 - `app/e2e/helpers.ts` exports a named viewport matrix — `STANDARD_VIEWPORTS`
@@ -961,11 +1003,16 @@ making design-level decisions; do not silently deviate.
   the two drift independently, never assume one offset). Measured effect:
   spec runtime ~6.5s -> ~2.3s,
   stabilising after three reads (~820ms) — placement had been settled almost
-  immediately all along. Whether any OTHER spec shares this defect is
-  UNCONFIRMED — a grep of `annotations.spec.ts` (the spec `labels.spec.ts`'s
-  gate was originally modelled on) finds no `once('idle')`/fixed-cap race at
-  all, so do not assume it is affected; #376 tracks auditing `app/e2e/**` by
-  MEASUREMENT rather than by pattern-matching.
+  immediately all along. Whether any OTHER spec shares this defect is now
+  SETTLED, not UNCONFIRMED (#618, 2026-08-28): a repo-wide grep for
+  `once('idle'` under `app/e2e/**/*.spec.ts` finds exactly four hits, ALL
+  inside `//` comments describing this now-fixed historical race (two each
+  in `labels.spec.ts` and `seamarks.spec.ts`) — ZERO live
+  `map.once('idle', ...)` synchronisation gates exist anywhere in the suite
+  today. `annotations.spec.ts` specifically was checked directly and does
+  NOT share this defect (`labels.spec.ts`'s own prior claim that it "likely"
+  did was false and has been corrected there). #376 tracked exactly this
+  audit (state confirmed closed 2026-08-28).
 - Dark mode has NO in-app toggle — it is pure `@media (prefers-color-scheme:
   dark)` in `app.css`, so a both-themes verification pass needs Playwright
   `page.emulateMedia({ colorScheme })`, never a UI click.
@@ -1179,27 +1226,36 @@ making design-level decisions; do not silently deviate.
   | v0.13.0 | — | 54 s | `completed`/`cancelled` (all five jobs) | safe | merge-push `32441905475` → tag `32441958743` deployed cleanly, `smoke-probe` passed — the gate read correctly IN ADVANCE here, not just in hindsight |
   | v0.13.1 | — | 33 s | `cancelled` (all five jobs) | safe | merge-push `32777433573` → tag `32777486953` deployed cleanly, `smoke-probe` passed |
   | v0.14.0 | 2026-08-25 | 56 s | `cancelled` | safe | merge-push `32876067990` → tag `32876158745` deployed cleanly, `smoke-probe` passed |
+  | v0.15.0 | 2026-08-27 | 972 s | `success` (MEASURED before the tag push) | **DID no-op** | merge-push `33062172199` → tag `33063351792`; `smoke-probe` FAILED, prod kept serving `v0.14.0-49-g3ebb554`; fixed by the back-merge |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
   count instead of an ordinal. (v0.10.0–v0.11.0 carry no recorded Deploy
-  workflow run IDs or job conclusions for those cuts, and only v0.14.0's date
-  is on record here — don't fabricate any.)
-  **The gap carries ZERO information — never gate on it, and never read
-  "fast tag push" as a protection.** That rests on the MECHANISM, not on the
-  table: the outcome is set by whether `cancel-in-progress` killed the
-  earlier run before its `deploy` job reached terminal `success`, which the
-  gap does not measure. Do NOT cite the table as evidence for it — read the
-  rows honestly and they are entirely CONSISTENT with a gap threshold (the
-  one no-op sits at the LARGEST gap in the table; every safe row is below
-  it), which is exactly the reading to distrust. What the rows DO rule out
+  workflow run IDs or job conclusions for those cuts, and no date is recorded
+  for any cut before v0.14.0 — don't fabricate any.)
+  **NEVER GATE ON THE GAP, and never read "fast tag push" as a protection —
+  but the flat "carries ZERO information" phrasing was retired 2026-08-27.**
+  The outcome is set by whether `cancel-in-progress` killed the earlier run
+  before its `deploy` job reached terminal `success`. The gap is a WEAK PROXY
+  for that, with a real mechanism: a longer gap gives the merge run more time
+  to finish, so its `deploy` is likelier to own the SHA. As recorded through
+  the v0.15.0 cut, the two no-ops were the two LARGEST gaps in the table
+  (972 s and 128 s; largest safe row 70 s) — a separation with no overlap,
+  which under no association would arise about 1 time in 28. That is why the
+  threshold reading is seductive, and it is still the reading to distrust:
+  deploy-job DURATION varies independently, no threshold has been measured,
+  and the inverse inference the mechanism invites — that a SHORT gap protects
+  you — is exactly the wrong conclusion for someone who just tagged 40 s after
+  the merge. Gate on the JOB CONCLUSION, which is the fact; the gap licenses
+  nothing in either direction. **Whoever adds row 9 re-checks this paragraph:
+  a third no-op, or a safe row above 128 s, changes what the rows support.**
+  What the rows DO rule out
   is the opposite intuition, that a fast tag push races the merge run:
   v0.13.1's 33 s is the smallest gap ever recorded and was SAFE, and
   v0.12.1's 43 s likewise. No gap value has yet been observed on both
   outcomes — 54 s appears TWICE (v0.11.0, v0.13.0) and both were safe — so
   the sample cannot separate the two stories, which is weaker than having
-  refuted the gap. That the first FOUR recorded gaps happened to fit the
-  larger-is-worse story was NOT evidence for it either. (An older, UNRELATED
+  refuted the gap. (An older, UNRELATED
   43 s figure was completion→creation and is NOT comparable — differencing the two bases is this file's own "two
   measurements of DIFFERENT subjects cannot be differenced", and two
   same-valued figures on different bases must not be conflated.)
@@ -1566,6 +1622,18 @@ making design-level decisions; do not silently deviate.
   milestone; it was caught at the ship gate by a human, by nothing else.
   Re-`ls changelog.d/` immediately BEFORE pushing the tag, not only at the
   sweep.
+  **A second fragment for an already-fragmented issue needs a DECISION, not a
+  default.** While the earlier fragment is still PENDING, both fold into the
+  SAME release section — so the test is "does the earlier one still state
+  something TRUE after this PR", never "leave it alone". Measured 2026-08-31
+  across three cases: `748.changed.md` quoted the exact label PR #768 removed
+  (collapsed); `698.changed.md` said the column moved "right after Type" while
+  PR #778 moves it to index 0, both strings verified present in the BUILT
+  bundle (collapsed); `696.fixed.md` was checked and still true, so BOTH were
+  kept — a coexisting pair is the CORRECT outcome of that test, not an oversight
+  to tidy, and a cut folds every member. A brief saying "confirm the old
+  fragment is UNTOUCHED" is what PRESERVES a false line — that instruction was
+  the cause of PR #768's Major 1.
   `app/src/lib/changelog.ts`'s `ENTRY_RE` is `/^- (.*)$/` — anchored with NO
   leading whitespace — so folding a multi-entry fragment as an INDENTED
   sub-list silently glues the indented bullet onto the previous entry, dash
@@ -1775,8 +1843,13 @@ making design-level decisions; do not silently deviate.
   `pipeline/data-src` symlinked into a worktree; an enumeration then found
   **12** entries with the same defect, not the 1 that was flagged. The rule now
   sits once at the top of the file. `.github/scripts/check-no-home-paths.sh`
-  cannot catch this class (grep follows the link, the leak is in the blob) —
-  tracked as #479.
+  could not catch this class — `[ -f "$f" ]` FOLLOWS a symlink, so the link's
+  own stored target was never scanned — until #479 (closed, v0.15.0) added
+  `scan_symlink_target`, applied to EVERY tracked symlink and failing CLOSED
+  when a target cannot be read. Pinned by selftest rows 29-33, which cover a
+  live target, a DANGLING target that still leaks, a benign relative target,
+  the allowlisted `/home/user` placeholder, and a regular-file leak plus a
+  symlink-target leak reported together.
 - **A field written by one branch and read by another under a DIFFERENT name
   typechecks and renders nothing.** #565 wrote `draftProvenance` while #563
   read an optional `keelAssumption?: string`; `boats.ts` merged cleanly keeping
@@ -1851,6 +1924,19 @@ making design-level decisions; do not silently deviate.
   false, so it passes with the gate deleted. Ask per TERM, not per guard:
   *which row reds if I delete THIS term alone?* Beware short-circuit order,
   and treat a row's TITLE as a claim to verify rather than read.
+- A FIFTH vacuity class: **the mutation trips a DIFFERENT guard, and its red is
+  credited to the wrong assertion.** Measured on PR #770: replacing an i18n
+  string WHOLESALE was already **3 failed / 21 at BASE** (it drops a retention
+  clause, so #561's existing guards fire); the new pin's contribution was 1
+  row, invisible in that number. The discriminating form leaves the copy INTACT
+  and INSERTS a false claim: BASE 24 passed -> HEAD 1 failed / 23, new row
+  only. **Run every mutation at BASE as well as HEAD** — one already red at
+  BASE proves nothing about the change. Corollary from the same PR: before
+  calling a guard REDUNDANT, find a mutant that reds its neighbour and NOT it.
+  Redundancy is a claim over the whole mutation space; two assertions agreeing
+  on ONE axis are not redundant (a CONTROL test declared redundant on that
+  reasoning was refuted — `some(cause !== null && cause !== 'budget-exhausted')`
+  reds it and nothing else, 1 of 67).
 - **Reviewer-supplied verbatim text can be INVALIDATED by a sibling fix in the
   SAME wave** — the one exception to adopting it byte-for-byte. #518 twice:
   MINOR 5 renamed a shipped i18n string, so MAJOR 4's supplied assertion
@@ -1925,13 +2011,26 @@ making design-level decisions; do not silently deviate.
   private `walkCells` DDA, deliberately, to keep `PlanResult` byte-identical
   so no #282 sweep is owed. A duplicated TRAVERSAL fails as a subtly wrong
   safety NUMBER with no signal at all.
-  Method that worked (#516/PR #523): the consumer reads cells only through
-  `mask.depthInfoM(centre)`, so a facade carrying the real `meta` plus a
+  Method that worked (#516/PR #523): a facade carrying the real `meta` plus a
   recording `depthInfoM` captures the shipped walk's visited-cell sequence,
   while `(mask as unknown as { walkCells }).walkCells` reaches the
   TS-only-private original — then compare SEQUENCES over named shapes plus
-  seeded random segments. Reading the two side by side finds them "similar"
+  seeded random segments. Since #517 that facade ALSO needs an `inBounds`
+  delegating to the real mask, because the consumer now calls it — delegate,
+  never record, so the recorded sequence stays the walk's own and cannot drift
+  from production's bounds convention — or it throws;
+  `shallowExposure.test.ts`'s own `#517:` comment says exactly this. Reading the two side by side finds them "similar"
   and misses a tie-break divergence.
+  To prove a REFACTOR of that area perturbed nothing (a different question):
+  run ONE harness UNCHANGED in a BASE and a HEAD worktree, recording every walk
+  sequence PLUS the end-to-end returns of every refactored entry point, and
+  compare by sha256 of the whole dump. PR #772 did this over named shapes,
+  seeded random segments and segments against the real committed `mask.bin`,
+  and the dumps matched. **POSITIVE CONTROLS ARE MANDATORY** — three were used,
+  each moving the dump; without them a harness that silently recorded nothing
+  yields two identical empty dumps that read as proof. Cheap successor for a
+  later comment-only wave: strip comments/strings and hash the code, which
+  proves "comment-only" AND carries the equivalence forward by construction.
 - **Two measurements of DIFFERENT subjects cannot be differenced — isolate
   by construction.** A before/after banner-height comparison used two
   different route plans (10 vs 5 flagged legs), so 489 px and 432 px were
@@ -1968,8 +2067,16 @@ making design-level decisions; do not silently deviate.
   eye; identical feature counts at z≥12 (`overlap:'always'`) is the signature
   that isolates collision growth from every other explanation (#191, #192,
   fixed by ranking `symbol-sort-key` per R1001 danger content, #200/#225;
-  four residuals — z≥12 paint-order inversion, cross-tile ordering, unpinned
-  tap wiring, popup anchoring — tracked in #232).
+  the four #232 residuals are ALL discharged and #232 is CLOSED (2026-08-31),
+  but by TWO different routes: z≥12 paint-order inversion, unpinned tap wiring
+  and popup anchoring SHIPPED as fixes, while cross-tile ordering closed as a
+  MEASUREMENT MIS-ATTRIBUTION — `686ad7b` diffed `querySourceFeatures` against
+  `queryRenderedFeatures` over the real committed `seamarks.json` at z8/z9 and
+  found 99 culled hazard marks, 3 cross-tile ROWS (2 distinct pairs, one
+  recurring at both zooms) and ZERO ordering leaks. Cite that from
+  `seamarkGeoJson.ts`'s own STATUS block, never from here: it states explicitly
+  that this does NOT re-derive #200's z8/z9 retention figure, which was
+  measured on a different aperture).
 - **A measurement can move two variables at once and read BACKWARDS** — the
   sharper sibling of "what class of failure can this method not detect": this
   one reports the INVERSE, confidently. A whole-viewport
@@ -1988,6 +2095,17 @@ making design-level decisions; do not silently deviate.
   growing, wrapping or clipping — so a border-box read cannot see it. Assert
   `scrollWidth <= clientWidth` on the container (#299;
   `app/e2e/layout.spec.ts`'s own comment carries the full mechanism).
+- **Three more measurement methods that answer the wrong question.**
+  `Element.getClientRects().length` is ALWAYS 1 for a block box and does NOT
+  reveal wrapping (measured in Chromium 2026-08-28: a 10-line-wrapped div and a
+  one-line div both report 1; a `Range` over the same text reports 10 vs 1) —
+  use a Range over the TEXT NODE. jest-dom's `toHaveTextContent` strips U+00A0
+  in BOTH branches (`/\s+/g` normalising, plus an explicit escape in the
+  non-normalising branch; read against jest-dom 7.0.1, 2026-08-28), so NO such
+  assertion can ever pin a non-breaking space — verify one at the BYTE level
+  (`grep -P '\x{00a0}'`). And `JSON.stringify` does not escape U+00A0, so a
+  raw-nbsp failure and a plain-space failure print identical text: the
+  discrimination must live in the assertion, never in what a human reads.
 - A green workflow run proves the RUN was healthy, not that the intended
   VERSION of the workflow executed: `workflow_dispatch --ref X` resolves the
   workflow FILE from X's tip. Verify by inspecting the artifact it produced,
@@ -2032,6 +2150,21 @@ making design-level decisions; do not silently deviate.
   started", so a monitor on it burns its budget and reports a false timeout.
   Find the run by `?branch=` or `check-runs`, THEN monitor
   `actions/runs/<id>/jobs`. Foreground-test any poll query before arming it.
+  SHARPEST INSTANCE (v0.15.0, 2026-08-27): a FAST-FORWARD back-merge puts the
+  PR head ON the tag commit, so one SHA accumulates the merge-push run, the
+  tag run and the PR run. Measured on PR #750 (head `3ebb554` == main tip ==
+  the `v0.15.0` tag commit): `commits/<sha>/check-runs` returned **TWO
+  `smoke-probe` entries — one `failure` (tag run `33063351792`), one `success`
+  (merge-push run `33062172199`)** — plus two each of `deploy`, `build`,
+  `prod-environment`, `uat-environment`. The PR therefore DISPLAYS a red check
+  that belongs to the tag run and says nothing about the back-merge;
+  `mergeable_state` correctly read `unstable` (optional-only red) and the merge
+  was right to proceed. Expect this at every cut where the tag no-ops AND the
+  back-merge FAST-FORWARDS — both conditions are needed; if `develop` has moved
+  past the release commit the back-merge is a real merge commit, its head is
+  not the tag commit, and no SHA is shared. Attribute each check-run by the run
+  id already carried in its own `details_url` — never by check name, and not by
+  `?head_sha=`, which has the measured lag problem noted just above.
 - A test fake that settles eases INSTANTLY makes interruption bugs
   structurally unreachable, not merely unasserted — camera-guard tests need a
   fake modelling `_stop`→`_afterEase`→`_prepareEase` ordering (#155). Same
@@ -2127,7 +2260,23 @@ making design-level decisions; do not silently deviate.
   pre-approved, so copying it byte-for-byte leaves no new claim to be wrong.
   Standing exception, and it must stay open: a supplied sentence believed
   WRONG is reported, never silently improved.
-  Distinct rule, NOT an exception to this one (#599 — it was an orchestrator-
+  **THE COST THIS RULE DOES NOT NAME: supplied text is pre-approved, so it is
+  the ONE element of a diff nobody re-attacks.** An error inside it survives
+  rounds that are actively editing the same block — PR #768's supplied phrase
+  "THE repo's actual single-unit-discarding formatter" (`formatHeading` is a
+  second) survived rounds 2 and 3 on exactly that block. Do not weaken the
+  rule; ADD a step: brief the FINAL round to re-read supplied text fresh, as
+  text of unknown provenance, INCLUDING text the reviewer wrote itself. On
+  2026-08-31 FOUR reviewers briefed that way each found a real defect in their
+  own supplied text (#768, #770, #772, #773) — the instruction is cheap and it
+  fires; there is NO control arm here, so do not read a causal claim into it.
+  #768's instance was caught by that round-4 re-read and then FILED (#775)
+  rather than fixed, on an explicit stopping-rule ruling — shipping it was a
+  decision, not an escape. Verify "verbatim" MECHANICALLY (pull the fenced
+  block via the comments API, substring-match it), and verify "two copies
+  agree" by NORMALISED byte comparison — a paraphrase RESEMBLES rather than
+  agrees.
+  Distinct rule, NOT an exception to the adopt-verbatim rule (#599 — it was an orchestrator-
   relayed measurement, not supplied replacement text): before adopting a
   NUMERIC correction, check both sides define the QUANTITY identically. A
   "tighter" bound differed only by count (`sMax-sMin+1`) vs span
@@ -2149,7 +2298,26 @@ making design-level decisions; do not silently deviate.
   be supported from evidence read in a file during the task, DELETE it rather
   than hedge it; (2) require the do-not-touch list confirmed BY DIFF, not by
   trust; (3) announce a stopping rule and honour it (file the remaining Minors
-  rather than run another unreviewed wave); (4) prefer RETRIEVING the primary
+  rather than run another unreviewed wave) — the first remedy with a
+  MEASUREMENT behind it (2026-08-27, PR #741's #132 sweep): round 1
+  (open-ended brief) → 2 Majors; round 2 (open-ended) → 2 Majors BOTH CREATED
+  BY the round-1 fix wave; round 3, whose brief carried an explicit BINDING
+  stopping rule ("fix exactly these three, REPORT anything else, do not fix
+  it") → zero successors in the release DOCS, but one still landed in a
+  `capture.mjs` comment (a correct 800px-reset decision carrying a refuted
+  reason — `plan-route.png` does NOT fit 800px, ~12 of 21 legs rows render).
+  It was corrected by `4d61ace` at 11:31 the SAME DAY, ~2 h before the
+  "comment that ships" clause was committed at 13:31 in `2cc9400` — the 13:16
+  commit `9f7d688` still read "ZERO successors in the tracked docs" and named
+  no `capture.mjs` comment at all, so 11:31 + 1h45m = 13:16 was an arithmetic
+  chain onto the wrong event — so "a comment that ships" was never true, a
+  WRONG-FROM-THE-START claim inside the very bullet about successor defects.
+  So the chain was NARROWED, not broken — this bullet's own
+  prefer-"narrowed"-to-"closed" rule turned on itself. Treat the stopping rule
+  as the difference in the brief worth testing again, NOT as established
+  cause: round 3's brief was also narrower in content (three named fixes vs an
+  open-ended sweep), so this is one observation per arm with a visible
+  confound; (4) prefer RETRIEVING the primary
   artifact over constructing an argument; (5) make claims PER-SITE — every
   failure was a GENERALISATION or a GROUP NOUN, falsifiable the moment it is
   split into members, though checking a suspect field's ONE call site beat
@@ -2486,11 +2654,17 @@ making design-level decisions; do not silently deviate.
   attribute a docs-fixture failure to horizon drift without checking the rig
   margin first — a v0.12.1 docs-sweep auditor did exactly that, and the wrong
   cause survived its own adversarial verifier.
-  `capture.mjs` also covers only TWO of README's three images: its two
-  `page.screenshot()` calls emit `start-view.png` and `plan-route.png` and it
-  never opens the Boat tab, so `boat-selection.png` is a HAND capture against
-  a local production build and a recapture that only runs the script ships it
-  stale (verified 2026-08-20).
+  `capture.mjs` covered only TWO of README's three images until #716
+  (`6aea385`, 2026-08-31) — `boat-selection.png` was a HAND capture with no
+  generator and had drifted stale three times over. It now scripts all THREE:
+  the script clicks the Boat tab and takes a third `page.screenshot()`, behind
+  its own viewport bump (`BOAT_SELECTION_HEIGHT_PX = 1050`, sized against
+  `.boat-picker-card`'s measured bottom edge — `capture.mjs`'s own comment
+  carries that figure and the date it was measured; read it THERE rather than
+  from a second copy here, which is exactly the twin that drifted once) that is
+  reset to the shared 800px height straight afterwards. Three different viewport
+  heights in one flow is deliberate — the first is the `newPage` viewport and
+  only the other two are `setViewportSize`; do not collapse them.
   Durable form: a capture
   or verification tool
   hardcoded to the PRODUCTION url can never capture a release candidate, since
@@ -2616,6 +2790,28 @@ making design-level decisions; do not silently deviate.
   method not detect?" — here the answer was "anything outside the viewport".
   Same pass also measured the honest narrow-viewport frame: raising the
   height to make a banner fit is not the 390x844 experience a user gets.
+  **Playwright's element `locator.screenshot()` is a second way in** (measured
+  2026-08-31, #716): Chromium's `captureBeyondViewport` does not reliably paint
+  content beyond the real viewport when the element sits in a nested
+  `overflow-y: auto` scrollport, so `.boat-picker-card` inside `.app-panel`
+  emitted a valid PNG with the third boat blank — and the call SUCCEEDED. Use
+  the viewport-resize pattern (`START_VIEW_HEIGHT_PX`) instead.
+- **CORROBORATION CAN BE THE SAME MEASUREMENT TWICE.** An independent scan
+  agreeing with a test is evidence only if the two use DIFFERENT models; if
+  they share a modelling assumption, agreement measures the assumption. Measured
+  on PR #773: a hand scan of `seamarks.json` found exactly the test's 2
+  cross-tile pairs at z8 and 1 at z9, reported as proving the population
+  COMPLETE — then the same reviewer refuted its own corroboration, because that
+  collision-box model UNDER-COUNTS (at x1.25 the count goes 2/1 -> 6/4, and 5 of
+  99 marks have no candidate at all). The 0-leaks result SURVIVED, because its
+  positive control fires independently of the box model. **Prefer "does the
+  detector fire?" over "do two counts agree?"** — the control outlived the
+  concordance that was supposed to support it.
+- **jsdom 30.0.1 does not implement `inert` behaviourally at all** — setting the
+  attribute leaves `.focus()` on a descendant fully successful and the IDL
+  property reads `undefined` (reproduced twice, #696). A unit test can pin the
+  ATTRIBUTE's presence/absence transition only; focus-blocking needs a real
+  browser; as of 2026-08-31 no e2e spec covers the About dialog at all.
 - A FABRICATED citation is worse than a wrong number — it launders the claim
   as verified and stops the next reader from checking, compounding the
   CITATION HALO risk above. Two shipped in one PR this session: a comment
@@ -2788,8 +2984,15 @@ making design-level decisions; do not silently deviate.
   `build_mask.py`'s `TOLERANCE_M`, pinned against it by
   `app/src/test/maskTolerance.test.ts` (no compiler spans Python and
   TypeScript). Surfaced in the legs-table cautious chip and in the
-  `ShallowWarning` banner, which is ONE `role="alert"` container with
-  lead/detail/caveat children — the lead carries the floor and, when
+  `ShallowWarning` banner. That banner is ONE `role="alert"` container (a
+  `<div>`, not a `<p>` — that part predates #747), and since #747 (PR #763) it
+  holds a `Disclosure` plus an always-visible caveat SIBLING, never a child of
+  it: the SUMMARY
+  carries the whole hazard — the lead, this plan's `usedDepthM`, and the
+  exposure sentence once `exposureDist` has resolved — while the collapsible
+  body carries only the MECHANISM (confined/detail/locator/remedy), because
+  content inside a closed `<details>` drops out of the accessibility tree.
+  The lead carries the floor and, when
   `usedDepthM - MASK_TOLERANCE_M < plan.request.boat.draftM`, that it falls
   below the draft — the by-value SNAPSHOT, never a `boatById` lookup, since
   that boat may have left the catalogue (`RouteSummary.tsx` :: `isSevere`,
@@ -3047,8 +3250,8 @@ making design-level decisions; do not silently deviate.
 - `NavMask.segmentShallowestBelow` returns `null` for BOTH "no cell below the
   threshold" AND "the walk left the grid / tripped its iteration guard" — it
   cannot distinguish clear water from no coverage. Anything that renders a
-  safety state from it must bound-check both endpoints against the public
-  `mask.meta` rectangle FIRST; only then is a `null` trustworthy as "clear"
+  safety state from it must bound-check both endpoints with `NavMask.inBounds`
+  FIRST; only then is a `null` trustworthy as "clear"
   (#251/#255 — reversing those two steps is a silent false all-clear, and the
   natural-looking implementation is the wrong one).
 - Angles: wind direction is meteorological (coming FROM, degrees true);
@@ -3328,6 +3531,12 @@ making design-level decisions; do not silently deviate.
   decides which hook is correct.
 - The destructive-git guard pattern-matches `-f` anywhere in a compound command:
   never combine `gh api -f …` with `git push` in one Bash call — split them.
+  MEASURED 2026-08-28, a NEW trigger for the same whole-JSON-as-haystack class:
+  a `git push` was blocked "Force-push blocked" with no `-f`/`--force` anywhere
+  in the command — the agent's own Bash tool `description` field carried the
+  substring ("no -f nearby"). Confirmed by feeding synthetic PreToolUse JSON to
+  the hook: identical command, clean description passes, `-f` in the description
+  denies. Keep `-f` out of the `description` on any `git push` call.
   It lives OUTSIDE this repo (`~/.claude/hooks/guard-destructive-git.sh`,
   global/personal, unversioned, shared across concurrent sessions) — NOT
   covered by #216, which is the notices-regen and nudge hooks; #233
@@ -3420,6 +3629,16 @@ making design-level decisions; do not silently deviate.
   that arrives AS an idle notification, i.e. with no live children, so it never
   wakes. A preemptive warning did NOT prevent it (one agent received the warning
   and stalled anyway). Brief a FILTERED FOREGROUND run instead.
+  A SECOND, INDEPENDENT population, 2026-08-31: 2 of 6 implementers stalled
+  the same way, both carrying that warning. Keep briefing the filtered
+  foreground run — it is what makes the recovery cheap — but **budget for the
+  stall rather than expecting the brief to prevent it**, and escalate on the
+  same ladder as always (nudge first; after a SECOND stall, TAKE the watch).
+  Do not difference the two populations; they are different agents and briefs.
+  The recovery is worth more than it looks: one nudged foreground rerun
+  surfaced 12 real failures the stalled agent would never have READ
+  (`shallowExposure.test.ts`'s differential-walk facades are object literals
+  cast `as unknown as NavMask` and broke on a refactor).
 - **A worktree agent's completion notification reports its branch as
   `worktree-agent-<id>`, not the branch you asked for** (observed 2026-08-24 on
   Claude Code 2.1.241 — a harness property, re-check after an upgrade), so the
@@ -3589,6 +3808,13 @@ making design-level decisions; do not silently deviate.
   `.claude/settings.local.json`; global `~/.claude/` is personal cross-project
   only. Never commit secrets (AIS BYOK stays runtime-supplied). Full convention
   in CONTRIBUTING.md (#185).
+- **The Edit/Write tools JSON-DECODE `\uXXXX` escapes in file content**, so an
+  escape you meant to show AS TEXT lands as the raw character instead. Observed
+  twice on 2026-08-28 — once in a spike doc about non-breaking spaces, and again
+  while writing THIS bullet, which introduced a raw U+00A0 into CLAUDE.md and
+  had to be repaired via Python. Anything that must display an escape sequence
+  literally needs a byte-level check afterwards (`grep -P '\x{00a0}'`) or must
+  be written via Bash/Python, which do not decode.
 - **`.claude/settings.json` PostToolUse hooks fire on every Edit/Write**, and one
   of them REWRITES what you just wrote: `.ts/.tsx/.css/.json` are auto-`prettier
   --write`n, so the file on disk differs from your edit (don't re-Read and

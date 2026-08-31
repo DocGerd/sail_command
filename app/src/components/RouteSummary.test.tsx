@@ -21,6 +21,32 @@ import { boatSnapshot, defaultBoatSnapshot } from '../types';
 import { boatById } from '../data/boats';
 import { PLAN_SCHEMA_VERSION } from '../types';
 
+// PR #763 review Minor 7: `screen.getByText(/was not passable/)` (the
+// route.shallow.detail sentence, inside the #747 Disclosure body) finds the
+// text whether or not the Disclosure is open — jsdom does not hide non-
+// summary <details> content the way a real browser does, so a passing
+// assertion here no longer distinguishes VISIBLE from merely PRESENT in the
+// DOM. This reads the native `.open` IDL property (never `getAttribute`,
+// which cannot tell present from absent for a boolean attribute) on the
+// real `<details class="shallow-warning-disclosure">` element to assert the
+// actual open state the text's reachability depends on. Every fixture in
+// this file that renders the shallow warning uses a usedDepthM below the
+// severe boundary (isSevere = usedDepthM - MASK_TOLERANCE_M < BOAT_DRAFT_M),
+// so `defaultOpen={isSevere}` opens the Disclosure on first mount — a fresh
+// `render()`/`renderSummary()` call seeds correctly without needing the
+// `key={plan.id}` re-sync fix (Blocker 1), which only matters across a
+// plan-to-plan TRANSITION within one mounted component, not a fresh mount.
+function expectShallowDetailOpen(expected: boolean): void {
+  const details = document.querySelector(
+    'details.shallow-warning-disclosure',
+  ) as HTMLDetailsElement | null;
+  expect(
+    details,
+    'expected a <details class="shallow-warning-disclosure"> element in the DOM',
+  ).not.toBeNull();
+  expect(details?.open).toBe(expected);
+}
+
 // #54: the pre-#54 shape exposed `plan.result.genoa`/`.fock`/`.fockReason`
 // etc. as directly-mutable fields; the `sails` list's own entries are now
 // `readonly`, so a test that used to write `plan.result.genoa = X` instead
@@ -584,12 +610,19 @@ describe('RouteSummary', () => {
     expect(caption?.textContent).toBe(en['route.legs.disclosure'].replace('{count}', '3'));
   });
 
-  it('renders the ten legs-table headers in order, including Duration (#379) and Shallow (#452)', () => {
+  it('renders the ten legs-table headers in order, with Shallow (#698) first', () => {
+    // #698 decision memo (2026-08-31): Shallow moved to column 1 of 10.
+    // Position after Type alone (an earlier #698 pass) could never satisfy
+    // the phonePortrait DoD — the populated Shallow cell's two chips are
+    // wider than the viewport at ANY position — so the memo sharpened the
+    // fix to reorder AND stack (see .shallow-cell-stack in app.css). This
+    // position, not merely presence, is the thing under test.
     const { container } = renderSummary({ rig: 'genoa' });
     const headers = Array.from(container.querySelectorAll('table.route-legs thead th')).map(
       (th) => th.textContent,
     );
     expect(headers).toEqual([
+      'Shallow',
       'Time',
       'Duration',
       'Type',
@@ -599,7 +632,6 @@ describe('RouteSummary', () => {
       'Speed',
       'Distance',
       'Maneuver',
-      'Shallow',
     ]);
   });
 
@@ -610,8 +642,9 @@ describe('RouteSummary', () => {
     const { container } = renderSummary({ rig: 'genoa' });
     const rows = container.querySelectorAll('table.route-legs tbody tr');
     expect(rows).toHaveLength(3);
+    // #698: Shallow is now td[0], Time td[1], Duration td[2].
     const durationCell = (rowIndex: number) =>
-      rows[rowIndex]?.querySelectorAll('td')[1]?.textContent;
+      rows[rowIndex]?.querySelectorAll('td')[2]?.textContent;
     // Leg 0: sail, DEPARTURE_MS -> +2h.
     expect(durationCell(0)).toBe('2 h 00 min');
     // Leg 1: motor, +2h -> +4h -- a real duration, not '-'.
@@ -646,12 +679,27 @@ describe('RouteSummary', () => {
   it('shows a stale-forecast warning when departure is more than 12h after the forecast fetch', () => {
     const plan = makePlan({ departureMs: FETCHED_AT_MS + 12 * 3_600_000 + 1 });
     renderSummary({ plan });
-    expect(screen.getByText(/12 hours/i)).toBeInTheDocument();
+    // #748: label-style "{hours} h old" form; this fixture's 12h+1ms gap
+    // rounds to 12, so this alone doesn't prove the value is dynamic — see
+    // the next test for a fixture at a distinctly different hour.
+    expect(
+      screen.getByText(en['route.staleForecast'].replace('{hours}', '12')),
+    ).toBeInTheDocument();
+  });
+
+  it('renders the ACTUAL computed gap, not the old hardcoded 12 (#748)', () => {
+    // 26h gap rounds to 26, distinct from the pre-#748 static "12" — this
+    // fixture cannot pass under the old hardcoded threshold label.
+    const plan = makePlan({ departureMs: FETCHED_AT_MS + 26 * 3_600_000 });
+    renderSummary({ plan });
+    expect(
+      screen.getByText(en['route.staleForecast'].replace('{hours}', '26')),
+    ).toBeInTheDocument();
   });
 
   it('hides the stale-forecast warning when departure is within 12h of the forecast fetch', () => {
     renderSummary();
-    expect(screen.queryByText(/hours old relative to departure/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\d+ h old/i)).not.toBeInTheDocument();
   });
 
   it('renders a no-route message instead of stats/legs when the selected rig has no result', () => {
@@ -665,10 +713,10 @@ describe('RouteSummary', () => {
   // #662: `reason: null` alongside `result: null` is the SAVED-plan-only
   // state PR #656 (#614) introduced — a stored no-route reason outside the
   // NoRouteReason union falls back to `null` rather than a bad cast. Before
-  // #662 this rendered the generic, live-planning-flavoured `error.internal`
-  // ("Try again; reload the app"), which is untrue here: this screen is
-  // reading an already-saved record, not running a live plan, so neither
-  // action can do anything. The fix names the one thing that DOES help.
+  // #662 this rendered the generic, live-planning-flavoured `error.internal`,
+  // which is untrue here: this screen is reading an already-saved record,
+  // not running a live plan, so neither a retry nor a reload can do
+  // anything. The fix names the one thing that DOES help.
   it('#662: a saved plan with an untrusted stored no-route reason gets copy that says to re-plan, not "try again"/"reload"', () => {
     const plan = makePlan();
     setSail(plan, 'fock', { result: null, reason: null });
@@ -678,10 +726,11 @@ describe('RouteSummary', () => {
     // The generic live-planning fallback must NOT render for this saved-plan
     // path — that would be the #662 defect reappearing.
     expect(alert.textContent).not.toContain(en['error.internal']);
-    // Its remedy framing specifically: no retry/reload language, unlike
-    // error.internal's own "Try again; if it keeps happening, reload the
-    // app." — a regression back to that generic key would still say "Try
-    // again" and this is what would catch it even if the key name survived.
+    // Its remedy framing specifically: no retry/reload language at all,
+    // unlike this screen's OWN historical bug of rendering error.internal's
+    // retry-oriented framing — a regression back to that generic key would
+    // still differ from this saved-plan copy, which is what would catch it
+    // even if the key name survived.
     expect(alert.textContent).not.toMatch(/try again/i);
     expect(alert.textContent).not.toMatch(/reload the app/i);
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
@@ -786,6 +835,7 @@ describe('shallow-water warning banner (#53/#452)', () => {
   it('renders on BOTH rig tabs — the warning is plan-level, not per rig', () => {
     renderSummary({ plan: makeShallowPlan(), rig: 'fock' });
     expect(screen.getByText(/was not passable/)).toBeInTheDocument();
+    expectShallowDetailOpen(true);
   });
 
   // Review finding (PR #461 Major 2): German is the app's DEFAULT language
@@ -820,6 +870,12 @@ describe('shallow-water warning banner (#53/#452)', () => {
 
   it('is absent on plans without relaxation', () => {
     renderSummary();
+    // PR #763 review Minor 7: this one is an ABSENCE check, not a
+    // visibility one — on a non-relaxed plan the whole ShallowWarning
+    // component never mounts at all (no Disclosure to be open or closed),
+    // so the open/closed distinction the other assertions in this file now
+    // check does not apply here; `queryByText` returning null is already
+    // the strongest possible statement.
     expect(screen.queryByText(/was not passable/)).toBeNull();
   });
 });
@@ -922,6 +978,7 @@ describe('#452 gap 3: per-leg shallow marker + locator sentence', () => {
   it('reports the right count and first occurrence for non-contiguous flagged legs', () => {
     renderSummary({ plan: makeShallowPlan(NON_CONTIGUOUS_SHALLOW_LEGS), rig: 'genoa' });
     const banner = screen.getByText(/was not passable/);
+    expectShallowDetailOpen(true);
     const expected = en['route.shallow.locator.plural']
       .replace('{count}', '2')
       .replace('{time}', formatTime(DEPARTURE_MS, 'en'));
@@ -931,6 +988,7 @@ describe('#452 gap 3: per-leg shallow marker + locator sentence', () => {
   it('uses the singular sentence (no count) when exactly one leg is flagged', () => {
     renderSummary({ plan: makeShallowPlan(SINGLE_SHALLOW_LEGS), rig: 'genoa' });
     const banner = screen.getByText(/was not passable/);
+    expectShallowDetailOpen(true);
     const expected = en['route.shallow.locator'].replace('{time}', formatTime(DEPARTURE_MS, 'en'));
     expect(banner.textContent).toContain(expected);
     // The plural form must not ALSO appear (a mis-picked key would add it).
@@ -949,6 +1007,7 @@ describe('#452 gap 3: per-leg shallow marker + locator sentence', () => {
     };
     renderSummary({ plan });
     const banner = screen.getByText(/was not passable/);
+    expectShallowDetailOpen(true);
     expect(banner.textContent).not.toContain('starts at');
   });
 
@@ -957,6 +1016,7 @@ describe('#452 gap 3: per-leg shallow marker + locator sentence', () => {
     setSail(plan, 'fock', { result: null, reason: 'unreachable' });
     renderSummary({ plan, rig: 'fock' });
     const banner = screen.getByText(/was not passable/);
+    expectShallowDetailOpen(true);
     expect(banner.textContent).not.toContain('starts at');
   });
 
@@ -1194,6 +1254,95 @@ describe('#493: cautious depth disclosure', () => {
       // `de[...]`.
       expect(lead?.textContent).toContain('kann bis auf 2,0 m sinken');
       expect(lead?.textContent).toContain('unter den Bootstiefgang von 2,1 m');
+    });
+
+    // PR #763 review Blocker 1 / Major 4: Disclosure.tsx's `useState(defaultOpen)`
+    // seeds ONCE at mount and never re-syncs on a later `defaultOpen` prop
+    // change — so a plan swapped into an ALREADY-MOUNTED RouteSummary (a
+    // `rerender`, not a fresh `render`) used to keep whichever open/closed
+    // state the FIRST plan's Disclosure had, regardless of the new plan's own
+    // severity. MEASURED before the fix: mild plan renders closed (correct),
+    // then rerendering with a NEW severe plan id left it closed too
+    // (`open === false` where the fix requires `true`). `key={plan.id}` on
+    // both ShallowWarning call sites forces React to unmount/remount the
+    // component (and so its Disclosure) on every genuine plan change,
+    // reseeding `useState` from the new plan's own `isSevere` — this test
+    // exercises exactly that TRANSITION, not a fresh mount, which is the one
+    // shape a `render()`-only test cannot catch (Blocker 1's own report).
+    it('#763 Blocker 1: re-opens on a plan TRANSITION from mild to severe (not just a fresh mount)', () => {
+      const mildPlan = makeSeverityPlan(BOUNDARY_USED_DEPTH_M);
+      mildPlan.id = 'plan-mild';
+      const { rerender, container } = render(
+        <I18nProvider>
+          <RouteSummary plan={mildPlan} rig="genoa" onRigChange={vi.fn()} />
+        </I18nProvider>,
+      );
+      const mildDetails = container.querySelector(
+        'details.shallow-warning-disclosure',
+      ) as HTMLDetailsElement | null;
+      expect(mildDetails).not.toBeNull();
+      expect(mildDetails?.open).toBe(false);
+
+      const severePlan = makeSeverityPlan(BELOW_BOUNDARY_USED_DEPTH_M);
+      severePlan.id = 'plan-severe'; // a DIFFERENT id — a genuine new plan.
+      rerender(
+        <I18nProvider>
+          <RouteSummary plan={severePlan} rig="genoa" onRigChange={vi.fn()} />
+        </I18nProvider>,
+      );
+      const banner = container.querySelector('.shallow-warning');
+      expect(banner).toHaveClass('shallow-warning--severe');
+      const severeDetails = container.querySelector(
+        'details.shallow-warning-disclosure',
+      ) as HTMLDetailsElement | null;
+      expect(severeDetails).not.toBeNull();
+      // Without `key={plan.id}}`, this reads `false` — the mild plan's
+      // closed state surviving the transition (MEASURED).
+      expect(severeDetails?.open).toBe(true);
+    });
+
+    // PR #763 review round 3, RESIDUAL BLOCKER: the transition test above
+    // changes `plan.id`, so a `key={plan.id}`-only fix already passes it —
+    // it cannot catch the #114 recalculate-and-replace shape, where
+    // `usePlanFlow.ts`'s `replacePlanId` keeps `id` FIXED while re-planning
+    // against a fresh forecast (a new `createdAtMs`), so severity can flip
+    // with no remount under a `plan.id`-only key. This row holds `id` fixed
+    // and changes ONLY `createdAtMs` (what a real replace always refreshes),
+    // which is exactly the shape `key={plan.id}` alone is blind to.
+    it('#763 review round 3: re-opens on a SAME-id replace (createdAtMs changes, id does not)', () => {
+      const mildPlan = makeSeverityPlan(BOUNDARY_USED_DEPTH_M);
+      mildPlan.id = 'plan-same-id';
+      mildPlan.createdAtMs = 1_000;
+      const { rerender, container } = render(
+        <I18nProvider>
+          <RouteSummary plan={mildPlan} rig="genoa" onRigChange={vi.fn()} />
+        </I18nProvider>,
+      );
+      const mildDetails = container.querySelector(
+        'details.shallow-warning-disclosure',
+      ) as HTMLDetailsElement | null;
+      expect(mildDetails).not.toBeNull();
+      expect(mildDetails?.open).toBe(false);
+
+      const severePlan = makeSeverityPlan(BELOW_BOUNDARY_USED_DEPTH_M);
+      severePlan.id = 'plan-same-id'; // SAME id — a #114 replace, not a new plan.
+      severePlan.createdAtMs = 2_000; // every replan/replace refreshes this.
+      rerender(
+        <I18nProvider>
+          <RouteSummary plan={severePlan} rig="genoa" onRigChange={vi.fn()} />
+        </I18nProvider>,
+      );
+      const banner = container.querySelector('.shallow-warning');
+      expect(banner).toHaveClass('shallow-warning--severe');
+      const severeDetails = container.querySelector(
+        'details.shallow-warning-disclosure',
+      ) as HTMLDetailsElement | null;
+      expect(severeDetails).not.toBeNull();
+      // Under a `key={plan.id}`-only fix this reads `false` (MEASURED,
+      // reviewer's mutation) — the id is unchanged, so React reuses the
+      // same ShallowWarning instance and its Disclosure's `useState` stays
+      // seeded from the mild plan.
+      expect(severeDetails?.open).toBe(true);
     });
   });
 });
