@@ -1,9 +1,9 @@
 # Spike #744 — safety-depth field row: orphaned unit wrap and label baseline mismatch
 
 - **Issue:** #744
-- **Fix PR:** #764 (`fix/744-safety-depth-field-row` → `develop`, open/unmerged
-  as of 2026-08-28 — this spike records the DECISION and its measurement, not
-  a shipped outcome)
+- **Fix PR:** #764 (`fix/744-safety-depth-field-row` → `develop`, merged
+  2026-08-28T13:09:49Z, merge commit `f556149`, closing #744 — shipped in
+  v0.16.0)
 - **Date filed:** 2026-08-27
 - **Date measured / decided:** 2026-08-28
 - **Status:** Decision — accepted fix, one residual carried forward
@@ -295,7 +295,7 @@ should not mistake its absence from the fix for an oversight.
 
 ## 8. Status as of this writing
 
-PR #764 (`fix/744-safety-depth-field-row` → `develop`) implements the
-decision in §4 and carries the control table in §5. It is open and unmerged
-as of 2026-08-28. Issue #744 is open. This spike records the decision and
-its evidence; it does not assert the fix has shipped.
+PR #764 (`fix/744-safety-depth-field-row` → `develop`) implemented the
+decision in §4 and carries the control table in §5. It merged
+2026-08-28T13:09:49Z (merge commit `f556149`), closing #744. The fix
+shipped in the v0.16.0 release.
