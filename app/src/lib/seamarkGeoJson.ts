@@ -342,26 +342,45 @@ export function seamarkPopupAnchor<T extends { properties?: unknown; geometry?: 
  *         culling) against its RENDERED features (AFTER culling) across the
  *         whole app data region at z8 and z9 against the real committed
  *         `app/public/data/seamarks.json` — not a hand-picked sub-box — and
- *         found **99 culled hazard marks (53 at z8, 46 at z9), 3 of them
- *         genuinely CROSS-TILE, and ZERO ordering leaks among any of the
- *         99**: every displacer's `symbol-sort-key` was equal to or LOWER
- *         (more significant) than the mark it displaced, at every culled
- *         mark, cross-tile or not. The three cross-tile cases include the
- *         sharpest possible discriminator — an unlit cardinal (priority 1)
- *         culled by an isolated-danger mark (priority 0) one tile away, at
- *         both z8 and z9 — and it resolved in the direction the mechanism
- *         predicts: the MORE significant mark won. #200's "high but not
- *         100%" z8/z9 hazard retention figure is fully explained by this:
- *         it is ORDINARY equal-or-lower-key hazard-vs-hazard collision
- *         (post-#682, only hazard marks can ever displace another hazard
- *         mark — the routine layer is placed strictly after), never a
- *         cross-tile leak. #232 item 2 is CLOSED as a measurement
- *         mis-attribution: the cross-tile GLOBAL SORT mechanism verified
- *         above is not merely leak-free in principle, it is leak-free on
- *         this app's own real, committed data, confirmed empirically. (The
- *         single-non-tiled-source / `buffer`/`tolerance` options an earlier
- *         revision of this comment considered and rejected are now moot —
- *         there is nothing left for them to fix.)
+ *         found **99 culled hazard marks (53 at z8, 46 at z9), 3 cross-tile
+ *         ROWS (2 distinct pairs — one of them recurs at both zooms), and ZERO
+ *         ordering leaks among any of the 99**: every displacer's `symbol-
+ *         sort-key` was equal to or LOWER (more significant) than the mark it
+ *         displaced, at every culled mark, cross-tile or not. The 3 cross-tile
+ *         ROWS (2 distinct pairs — one of them recurs at both zooms) include
+ *         the sharpest possible discriminator — an unlit cardinal (priority 1)
+ *         culled by an isolated-danger mark (priority 0) one tile away, at z8
+ *         (at z9 that mark is not culled at all, so it produces no row there)
+ *         — and it resolved in the direction the mechanism predicts: the MORE
+ *         significant mark won. This does NOT re-derive #200's own z8/z9
+ *         retention figure: #200/PR #225 measured pre-#682, on a viewport-
+ *         scoped aperture that differs between its two zoom rows (1794
+ *         features in view at z8, 911 at z9), where this test measures 125
+ *         unique hazard positions over one fixed rectangle at both zooms (72
+ *         rendered at z8, 79 at z9). What is established here is narrower and
+ *         sufficient for item 2: at z8/z9 on the committed data, EVERY culled
+ *         hazard mark was displaced by an equal-or-better-ranked hazard mark.
+ *         Hazard-vs-hazard is the only collision available in either layer
+ *         arrangement — every hazard rank (0-2) sorts ahead of every routine
+ *         rank (>=3) under the global cross-tile sort verified in (c), so this
+ *         was already true before #682's split, which fixed paint order rather
+ *         than placement. #232 item 2 is CLOSED as a measurement mis-
+ *         attribution: the cross-tile GLOBAL SORT mechanism verified above is
+ *         leak-free over the COMPLETE cross-tile population this dataset
+ *         produces at z8/z9 — all 3 cross-tile hazard collisions that exist
+ *         (independently re-derived from the committed seamarks.json: 2 at z8,
+ *         1 at z9, matching what the test found). Two of the three are equal-
+ *         priority ties that no placement order could turn into a leak, so
+ *         exactly ONE row is order-discriminating; a cross-tile-specific
+ *         regression would surface through that row alone. Non-vacuity of the
+ *         ZERO was established by a positive control: inverting
+ *         SEAMARKS_LAYOUT's symbol-sort-key to ['-', 0, ['get','priority']]
+ *         (leaving the `priority` PROPERTY this test reads untouched, and with
+ *         the rebuilt dist hash asserted to differ) reds the test with 13 of
+ *         100 leaks, 1 of them cross-tile. (The single-non-tiled-source /
+ *         `buffer`/`tolerance` options an earlier revision of this comment
+ *         considered and rejected are now moot — there is nothing left for
+ *         them to fix.)
  *   Below z12 the older trade-off still stands: collision-hidden symbols are
  *   absent from queryRenderedFeatures, so culled minor marks are untappable
  *   by design. (There, at most one icon can cover any given point — an

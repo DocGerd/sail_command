@@ -121,13 +121,16 @@ interface ScTestMap {
   // #232 item 2: geometry was added to the return type (backward-compatible
   // with every existing `.properties`-only consumer above) so the
   // cross-tile measurement at the end of this file can read a rendered
-  // feature's own coordinates, not just its properties.
+  // feature's own coordinates, not just its properties. `layer.id` (#232
+  // review MINOR 10) lets that same measurement tell which of the two
+  // `sc-seamarks*` layers a candidate displacer actually rendered on.
   queryRenderedFeatures(
     geometry: [[number, number], [number, number]],
     options: { layers: string[] },
   ): Array<{
     properties: Record<string, unknown>;
     geometry: { type: string; coordinates: [number, number] };
+    layer: { id: string };
   }>;
   // #232 item 2 only: reads a GeoJSON source's features from whatever tiles
   // MapLibre currently has loaded, BEFORE collision culling — the
@@ -711,11 +714,16 @@ test('#353: seamark size-axis guard — icon-overlap collision culling below z12
 // against its RENDERED features (queryRenderedFeatures on
 // 'sc-seamarks-hazard' — what actually survived culling) to find every
 // CULLED hazard mark directly, rather than inferring culling from
-// geometry. For each culled mark it re-queries 'sc-seamarks-hazard' at
-// that mark's own projected screen pixel (a radius generous enough to
-// cover the icon collision box at either zoom) to find the feature
-// actually occupying that space — the DISPLACER — and compares
-// `symbol-sort-key` (the `priority` property both source and rendered
+// geometry. For each culled mark it re-queries BOTH `sc-seamarks-hazard`
+// AND `sc-seamarks` (#232 review MINOR 10 — probing only the hazard layer
+// would silently misreport a genuine #682 cross-layer regression as "no
+// displacer found") at that mark's own projected screen pixel (a radius
+// generous enough to cover the icon collision box at either zoom) and
+// picks the NEAREST rendered feature as the DISPLACER — a
+// nearest-neighbour HEURISTIC, not a determination (see
+// `nearestDisplacerAt`'s own doc comment for the measured validation of
+// that choice at this radius) — and compares `symbol-sort-key` (the
+// `priority` property both source and rendered
 // features carry, stamped once by seamarkFeatureCollectionWithIcons and
 // never re-derived here, so this test trusts the app's OWN computed value
 // rather than a second, possibly-divergent implementation of
@@ -728,6 +736,14 @@ test('#353: seamark size-axis guard — icon-overlap collision culling below z12
 // underlying question ("did a worse-ranked mark win?") does not depend on
 // tile membership; tile membership is recorded per row for diagnosis only.
 const SEAMARK_REGION = { lonMin: 9.4, lonMax: 11.0, latMin: 54.3, latMax: 55.3 } as const;
+
+// #232 review MAJOR 3: the committed seamarks.json holds 127 hazard
+// features, of which two PAIRS are coincident to 5 decimal places
+// (10.09792,54.48898 and 10.05338,54.51435), so the coordinate de-dup in
+// readHazardSourceFeatures legitimately yields 125 distinct positions —
+// this is the non-vacuity pin for this test's "whole app data region"
+// claim, checked once per zoom below.
+const EXPECTED_HAZARD_POSITIONS = 125;
 
 interface RenderedHazardFeature {
   lng: number;
@@ -743,7 +759,19 @@ interface SourceHazardFeature extends RenderedHazardFeature {
 // Standard XYZ slippy-tile indices (same formula the #232 re-measurement
 // used to scan the committed seamarks.json for candidate cross-tile pairs
 // before this test was written) — used here ONLY to label each row for
-// diagnosis, never to gate the leak assertion itself.
+// diagnosis, never to gate the leak assertion itself. Two PRECONDITIONS
+// make this formula agree with MapLibre's own tile identity (which
+// `Tile.querySourceFeatures` stamps as `.tile = {z,x,y}` on every SOURCE
+// feature, `app/node_modules/maplibre-gl/src/tile/tile.ts`'s
+// `querySourceFeatures(result, params)` method — read against
+// `maplibre-gl@6.5.0`, matched to `app/package-lock.json`'s pin): this
+// app's GeoJSON source tiles at 512px (so `Transform.coveringZoomLevel`
+// returns `Math.floor(zoom)`, matching this formula's `2**z` grid), and
+// both zooms this test uses (8, 9) are integers, so MapLibre never
+// overscales a coarser tile in their place. `.tile` itself is NOT read
+// here because `queryRenderedFeatures` results (the DISPLACER side of
+// every comparison) carry no such stamp — only `querySourceFeatures`
+// does — so one formula usable on both sides is what this function is for.
 function tileXY(lon: number, lat: number, z: number): [number, number] {
   const n = 2 ** z;
   const x = Math.floor(((lon + 180) / 360) * n);
@@ -843,28 +871,86 @@ async function settledHazardRenderedFeatures(
 // away — 30px comfortably covers that at both zooms with margin to spare.
 const DISPLACER_PROBE_RADIUS_PX = 30;
 
-async function hazardDisplacersAt(
-  page: Page,
-  lngLat: [number, number],
-): Promise<RenderedHazardFeature[]> {
+interface DisplacerCandidate extends RenderedHazardFeature {
+  layer: string;
+}
+
+interface DisplacerResult {
+  // #232 review MINOR 5: MapLibre culls a symbol when its collision box
+  // intersects ANY already-placed box, so several rendered marks within
+  // DISPLACER_PROBE_RADIUS_PX can be candidates for "the" displacer. This is
+  // a NEAREST-NEIGHBOUR HEURISTIC, not a determination — it does not attempt
+  // to reconstruct MapLibre's own collision-box geometry, so a more distant
+  // candidate that also genuinely overlaps is never examined. Measured at
+  // this exact radius (#232 review): comparing nearest against worst
+  // (max-priority) among the same candidate set flagged 3 discrepancies at
+  // z8 and 2 at z9; all five were hand-adjudicated and the nearest pick was
+  // correct in every case (e.g. a culled p0 mark sat 0.9px from a rendered
+  // p0 mark, while a p2 cardinal 17.1px away was coincidental proximity, not
+  // the real displacer) — so nearest-neighbour is the validated choice here,
+  // not merely the simpler one.
+  nearest: DisplacerCandidate | null;
+  // #232 review MINOR 10: whether the winning displacer rendered on the
+  // ROUTINE 'sc-seamarks' layer rather than 'sc-seamarks-hazard' — the exact
+  // #682 regression (a routine mark displacing a hazard mark) this layer
+  // split exists to prevent. Both layers are probed so that regression, if
+  // it ever recurs, surfaces as a NAMED product assertion below rather than
+  // as "no displacer found" pointing the reader at the test instead of the
+  // product.
+  fromRoutineLayer: boolean;
+}
+
+async function nearestDisplacerAt(page: Page, lngLat: [number, number]): Promise<DisplacerResult> {
   return page.evaluate(
     ({ lngLat, r }) => {
       const map = (window as unknown as { __scE2eMap: ScTestMap }).__scE2eMap;
       const p = map.project(lngLat);
-      return map
-        .queryRenderedFeatures(
-          [
-            [p.x - r, p.y - r],
-            [p.x + r, p.y + r],
-          ],
-          { layers: ['sc-seamarks-hazard'] },
-        )
-        .map((f) => ({
-          lng: f.geometry.coordinates[0],
-          lat: f.geometry.coordinates[1],
-          priority: Number(f.properties.priority),
-          icon: String(f.properties.icon),
-        }));
+      interface DisplacerCandidateEval {
+        lng: number;
+        lat: number;
+        priority: number;
+        icon: string;
+        layer: string;
+      }
+      function nearestOn(layers: string[]): DisplacerCandidateEval | null {
+        const candidates = map
+          .queryRenderedFeatures(
+            [
+              [p.x - r, p.y - r],
+              [p.x + r, p.y + r],
+            ],
+            { layers },
+          )
+          .map((f) => ({
+            lng: f.geometry.coordinates[0],
+            lat: f.geometry.coordinates[1],
+            priority: Number(f.properties.priority),
+            icon: String(f.properties.icon),
+            layer: f.layer.id,
+          }));
+        if (candidates.length === 0) return null;
+        return candidates.reduce((best, f) => {
+          const d = (f.lng - lngLat[0]) ** 2 + (f.lat - lngLat[1]) ** 2;
+          const bd = (best.lng - lngLat[0]) ** 2 + (best.lat - lngLat[1]) ** 2;
+          return d < bd ? f : best;
+        });
+      }
+      // Primary search is the HAZARD layer alone — per SEAMARKS_LAYOUT item
+      // (b), the hazard layer is placed FIRST every frame, so only another
+      // hazard mark can ever legitimately cull a hazard mark; this is the
+      // search the leak/order assertions below are validated against.
+      const hazardNeighbor = nearestOn(['sc-seamarks-hazard']);
+      if (hazardNeighbor) return { nearest: hazardNeighbor, fromRoutineLayer: false };
+      // #232 review MINOR 10: no hazard-layer neighbour exists at all. Since
+      // ONLY a hazard-layer mark can legitimately cull another, a culled
+      // hazard mark with no hazard neighbour nearby has no legitimate
+      // explanation — check the ROUTINE layer specifically for THIS case. A
+      // routine mark found here is exactly the #682 regression (a routine
+      // mark displacing a hazard mark) this layer split exists to prevent,
+      // surfaced as a NAMED product assertion below rather than folded into
+      // "no displacer found, investigate the methodology".
+      const routineNeighbor = nearestOn(['sc-seamarks']);
+      return { nearest: routineNeighbor, fromRoutineLayer: routineNeighbor !== null };
     },
     { lngLat, r: DISPLACER_PROBE_RADIUS_PX },
   );
@@ -873,18 +959,24 @@ async function hazardDisplacersAt(
 interface CulledHazardRow {
   zoom: number;
   culled: SourceHazardFeature & { tile: [number, number] };
-  displacer: (RenderedHazardFeature & { tile: [number, number] }) | null;
+  displacer: (DisplacerCandidate & { tile: [number, number] }) | null;
   crossTile: boolean | null;
   leak: boolean | null;
+  fromRoutineLayer: boolean;
 }
 
 test('#232 item 2: cross-tile placement ordering — measurement, not a fix', async ({ page }) => {
   const server = await startPreview();
   try {
-    // Big enough that the whole SEAMARK_REGION's map-canvas footprint
-    // (~1165x1263 CSS px at z9, per the #232 re-measurement's own tile-math
-    // scan) fits inside the visible map, even after the wide-layout side
-    // panel takes its share of the viewport width.
+    // #232 review MINOR 9: measured live at this exact viewport (2200x1500)
+    // against z9 — map canvas 1459x1500 CSS px; the region projects to
+    // 1165.1x1263.3 px anchored at nw (147.0, 114.4) -> se (1312.0, 1377.8).
+    // ~147px horizontal / ~114px vertical margin: comfortably big enough that
+    // the whole SEAMARK_REGION's map-canvas footprint fits inside the
+    // visible map even after the wide-layout side panel takes its share of
+    // the viewport width, but NOT so big that a taller header, a wider
+    // default panel, or a `--sc-panel-w` default change couldn't erode it —
+    // see the `unexplained` assertion below for what happens if it ever does.
     await page.setViewportSize({ width: 2200, height: 1500 });
     await page.goto(server.url);
     await mapReady(page);
@@ -911,6 +1003,43 @@ test('#232 item 2: cross-tile placement ordering — measurement, not a fix', as
 
       const rendered = await settledHazardRenderedFeatures(page, SEAMARK_REGION, `z${zoom}`);
       const source = await readHazardSourceFeatures(page);
+
+      // Non-vacuity guard for this test's OWN scope claim: the committed
+      // seamarks.json holds 127 hazard features, of which two PAIRS are
+      // coincident to 5 decimal places (10.09792,54.48898 and
+      // 10.05338,54.51435), so the coordinate de-dup above legitimately
+      // yields 125 distinct positions. If fewer source tiles are renderable
+      // at query time, a mark drops out of BOTH the source and the rendered
+      // set, produces no row, and trips nothing below — a silently shrunken
+      // measurement that still reports "zero leaks".
+      const inRegion = source.filter(
+        (m) =>
+          m.lng >= SEAMARK_REGION.lonMin &&
+          m.lng <= SEAMARK_REGION.lonMax &&
+          m.lat >= SEAMARK_REGION.latMin &&
+          m.lat <= SEAMARK_REGION.latMax,
+      );
+      expect(
+        inRegion.length,
+        `z${zoom}: only ${inRegion.length} of the expected ${EXPECTED_HAZARD_POSITIONS} distinct hazard ` +
+          `positions were loaded across the app data region — this measurement did not cover the region ` +
+          `it claims to, so its "zero leaks" result is not region-wide`,
+      ).toBe(EXPECTED_HAZARD_POSITIONS);
+
+      // #232 review MINOR 7: the settle gate above covers only `rendered`;
+      // `source` is then read once, ungated. Re-read `rendered` immediately
+      // and require it identical, so a tile arriving in the gap between the
+      // two reads is caught rather than silently producing a spurious
+      // "culled" row.
+      const renderedRecheck = (await readHazardRenderedFeaturesInRegion(page, SEAMARK_REGION)).sort(
+        (a, b) => a.lng - b.lng || a.lat - b.lat,
+      );
+      expect(
+        renderedRecheck,
+        `z${zoom}: the rendered hazard set changed between the settle gate and the source read — ` +
+          `a tile likely arrived mid-measurement`,
+      ).toEqual(rendered);
+
       const renderedKeys = new Set(rendered.map((f) => `${f.lng.toFixed(5)},${f.lat.toFixed(5)}`));
 
       for (const mark of source) {
@@ -928,15 +1057,10 @@ test('#232 item 2: cross-tile placement ordering — measurement, not a fix', as
         const key = `${mark.lng.toFixed(5)},${mark.lat.toFixed(5)}`;
         if (renderedKeys.has(key)) continue; // present — nothing culled here
 
-        const displacers = await hazardDisplacersAt(page, [mark.lng, mark.lat]);
-        const displacer =
-          displacers.length === 0
-            ? null
-            : displacers.reduce((best, f) => {
-                const d = (f.lng - mark.lng) ** 2 + (f.lat - mark.lat) ** 2;
-                const bd = (best.lng - mark.lng) ** 2 + (best.lat - mark.lat) ** 2;
-                return d < bd ? f : best;
-              });
+        const { nearest: displacer, fromRoutineLayer } = await nearestDisplacerAt(page, [
+          mark.lng,
+          mark.lat,
+        ]);
 
         const culledTile = tileXY(mark.lng, mark.lat, zoom);
         const displacerTile = displacer ? tileXY(displacer.lng, displacer.lat, zoom) : null;
@@ -949,14 +1073,19 @@ test('#232 item 2: cross-tile placement ordering — measurement, not a fix', as
             ? culledTile[0] !== displacerTile[0] || culledTile[1] !== displacerTile[1]
             : null,
           leak: displacer ? displacer.priority > mark.priority : null,
+          fromRoutineLayer: displacer ? fromRoutineLayer : false,
         });
       }
     }
 
+    // #232 review MINOR 8: the three assertions below already embed the
+    // FAILING rows in their own messages, which is where the detail is
+    // actually needed — an unconditional full-table dump cost ~2000 lines on
+    // every green run of a required-adjacent job for a table nobody reads.
     console.log(
-      `[#232 item 2] culled-hazard-mark measurement across z8/z9, whole app data region ` +
-        `(${JSON.stringify(SEAMARK_REGION)}): ${rows.length} culled hazard mark(s). ` +
-        `Table: ${JSON.stringify(rows, null, 2)}`,
+      `[#232 item 2] culled-hazard-mark measurement across z8/z9, whole app data region: ` +
+        `${rows.length} culled, ${rows.filter((r) => r.crossTile).length} cross-tile, ` +
+        `${rows.filter((r) => r.leak).length} leaks.`,
     );
 
     // The measurement must actually EXERCISE hazard-vs-hazard collision
@@ -969,17 +1098,30 @@ test('#232 item 2: cross-tile placement ordering — measurement, not a fix', as
         'did not exercise hazard-vs-hazard collision culling at all, so it cannot speak to #232 item 2',
     ).toBeGreaterThan(0);
 
-    // Every culled mark must have a displacer this test could actually
-    // find at its own screen pixel — a culled mark with none found would
-    // mean the methodology itself is unsound (e.g. clipped by the region's
-    // own edge, or the probe radius too small) rather than a genuine,
-    // explicable collision-culling case.
+    // Every culled mark must have a displacer this test could actually find
+    // overlapping its own screen pixel. A culled mark with none found would
+    // usually mean CLIPPING (the mark or its displacer fell outside the
+    // MINOR-9-documented viewport margin) rather than an unsound methodology
+    // in general — but either way it is not a genuine, explicable
+    // collision-culling case, so surface it rather than silently drop it.
     const unexplained = rows.filter((r) => r.displacer === null);
     expect(
       unexplained,
-      `${unexplained.length} culled hazard mark(s) had no displacer found at their own screen pixel — ` +
-        `investigate the measurement before trusting the rest of this table: ` +
-        `${JSON.stringify(unexplained, null, 2)}`,
+      `${unexplained.length} culled hazard mark(s) had no overlapping displacer found at their own ` +
+        `screen pixel — most likely viewport clipping (see the setViewportSize comment above); ` +
+        `investigate before trusting the rest of this table: ${JSON.stringify(unexplained, null, 2)}`,
+    ).toEqual([]);
+
+    // #232 review MINOR 10: a genuine cross-layer regression — a ROUTINE
+    // mark displacing a HAZARD mark, the exact #682 defect the layer split
+    // exists to prevent — must be reported as a NAMED product assertion,
+    // never folded into "investigate the measurement" above.
+    const crossLayerDisplacers = rows.filter((r) => r.fromRoutineLayer);
+    expect(
+      crossLayerDisplacers,
+      `${crossLayerDisplacers.length} culled hazard mark(s) were displaced by a mark on the ROUTINE ` +
+        `'sc-seamarks' layer, not 'sc-seamarks-hazard' — the #682 regression this layer split exists ` +
+        `to prevent: ${JSON.stringify(crossLayerDisplacers, null, 2)}`,
     ).toEqual([]);
 
     // The actual #232 item 2 question: is any displacer's priority
