@@ -610,23 +610,22 @@ describe('RouteSummary', () => {
     expect(caption?.textContent).toBe(en['route.legs.disclosure'].replace('{count}', '3'));
   });
 
-  it('renders the ten legs-table headers in order, with Shallow (#698) right after Type', () => {
-    // #698: Shallow moved from last-of-ten to immediately after Type
-    // (Kind) — its natural home, since it qualifies the leg exactly as
-    // Type does. Column 10 of 10 sat off the visible edge of the
-    // horizontally-scrolling table with no cue the table scrolled at all,
-    // so the app's only per-leg depth-safety signal was reliably invisible
-    // at narrow widths. This position, not merely presence, is the thing
-    // under test.
+  it('renders the ten legs-table headers in order, with Shallow (#698) first', () => {
+    // #698 decision memo (2026-08-31): Shallow moved to column 1 of 10.
+    // Position after Type alone (an earlier #698 pass) could never satisfy
+    // the phonePortrait DoD — the populated Shallow cell's two chips are
+    // wider than the viewport at ANY position — so the memo sharpened the
+    // fix to reorder AND stack (see .shallow-cell-stack in app.css). This
+    // position, not merely presence, is the thing under test.
     const { container } = renderSummary({ rig: 'genoa' });
     const headers = Array.from(container.querySelectorAll('table.route-legs thead th')).map(
       (th) => th.textContent,
     );
     expect(headers).toEqual([
+      'Shallow',
       'Time',
       'Duration',
       'Type',
-      'Shallow',
       'COG',
       'TWA',
       'TWS',
@@ -643,8 +642,9 @@ describe('RouteSummary', () => {
     const { container } = renderSummary({ rig: 'genoa' });
     const rows = container.querySelectorAll('table.route-legs tbody tr');
     expect(rows).toHaveLength(3);
+    // #698: Shallow is now td[0], Time td[1], Duration td[2].
     const durationCell = (rowIndex: number) =>
-      rows[rowIndex]?.querySelectorAll('td')[1]?.textContent;
+      rows[rowIndex]?.querySelectorAll('td')[2]?.textContent;
     // Leg 0: sail, DEPARTURE_MS -> +2h.
     expect(durationCell(0)).toBe('2 h 00 min');
     // Leg 1: motor, +2h -> +4h -- a real duration, not '-'.

@@ -2641,6 +2641,40 @@ select {
   color: var(--sc-depth-warning-text);
 }
 
+/* #698 decision memo (2026-08-31): wraps the two ShallowLegMarker chips so
+   the Shallow <td>'s rendered width is `max(chip1, chip2)` instead of their
+   SUM — at phonePortrait (390x844) the two chips on one line measure
+   313-331px, wider than the 306px available inside the legs table, so no
+   column position can fit them; stacked, the wider chip (the cautious
+   lower-bound one) measures 160.1px (DE) / 167.2px (EN), comfortably inside
+   budget. The flex column lives on THIS wrapper, never on the `<td>` it sits
+   inside — `display: flex` on a table cell drops `display: table-cell` and
+   generates anonymous table cells, breaking the table layout the #698
+   scroll-shadow rule above depends on. Single class, no cascade risk: unlike
+   `.chip-shallow`/`.chip-shallow-cautious` above, nothing else in this file
+   declares `.shallow-cell-stack`, so there is no later base rule for a bare
+   selector to lose to. */
+.shallow-cell-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+}
+
+/* PR #778 review MINOR 1: `.chip.chip-shallow-cautious`'s own
+   `margin-inline-start: 0.35rem` was authored for the pre-#698 horizontal
+   layout, where it spaced the cautious chip from its sibling on the same
+   line. Inside the vertical `.shallow-cell-stack` it instead reads as a
+   stray 5.6px left indent on the second chip only (measured live at
+   390x844: cautious chip `left` 55.59px vs the marker chip's 50.00px),
+   double-serving with the wrapper's own `gap`. Scoped here rather than
+   removed from `.chip.chip-shallow-cautious` itself, which still needs the
+   margin wherever the two chips are horizontal. Compound selector to match
+   the specificity of the rule it overrides. */
+.shallow-cell-stack .chip.chip-shallow-cautious {
+  margin-inline-start: 0;
+}
+
 .route-totals {
   display: grid;
   grid-template-columns: max-content max-content;
