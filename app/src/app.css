@@ -2641,6 +2641,26 @@ select {
   color: var(--sc-depth-warning-text);
 }
 
+/* #698 decision memo (2026-08-31): wraps the two ShallowLegMarker chips so
+   the Shallow <td>'s rendered width is `max(chip1, chip2)` instead of their
+   SUM — at phonePortrait (390x844) the two chips on one line measure
+   313-331px, wider than the 306px available inside the legs table, so no
+   column position can fit them; stacked, the wider chip (the cautious
+   lower-bound one) measures 160.1px (DE) / 167.2px (EN), comfortably inside
+   budget. The flex column lives on THIS wrapper, never on the `<td>` it sits
+   inside — `display: flex` on a table cell drops `display: table-cell` and
+   generates anonymous table cells, breaking the table layout the #698
+   scroll-shadow rule above depends on. Single class, no cascade risk: unlike
+   `.chip-shallow`/`.chip-shallow-cautious` above, nothing else in this file
+   declares `.shallow-cell-stack`, so there is no later base rule for a bare
+   selector to lose to. */
+.shallow-cell-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+}
+
 .route-totals {
   display: grid;
   grid-template-columns: max-content max-content;

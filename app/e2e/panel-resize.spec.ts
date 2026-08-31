@@ -357,19 +357,20 @@ test.describe('#355 resizable panel', () => {
       // Ten headers, in order — the #379 nine-column count this table
       // reached before #355 could be built against it (PR #410) grew to ten
       // when #452 gap 3 added the "Untiefe" (shallow-marker) column
-      // (PR #483). #698 then moved that column from last-of-ten to
-      // immediately after "Art" (Kind/Type) — its natural home, since it
-      // qualifies the leg exactly as Kind does — because column 10 of 10
-      // sat off the visible edge of this horizontally-scrolling table with
-      // no cue it scrolled at all, so the app's only per-leg depth-safety
-      // signal was reliably invisible at narrow widths. Position matters
-      // here, not just presence — the array below pins that new position.
+      // (PR #483). #698's decision memo (2026-08-31) moved that column to
+      // FIRST of ten, not merely after "Art" (Kind/Type) as an earlier #698
+      // pass had it — reordering alone could never satisfy the phonePortrait
+      // DoD, since the populated Shallow cell's two chips are wider than the
+      // whole viewport at any position; the memo pairs the reorder with
+      // stacking the chips (`.shallow-cell-stack` in app.css) so the
+      // column's own width is bounded. Position matters here, not just
+      // presence — the array below pins that position.
       const headers = page.locator('.route-legs thead th');
       await expect(headers).toHaveText([
+        'Untiefe',
         'Zeit',
         'Dauer',
         'Art',
-        'Untiefe',
         'COG',
         'TWA',
         'TWS',

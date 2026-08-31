@@ -898,6 +898,23 @@ export default function RouteSummary({
                 </caption>
                 <thead>
                   <tr>
+                    {/* #698: the safety signal moved to column 1 of 10 (was
+                      last, then #698's first pass moved it to immediately
+                      after Kind). Neither ordering alone can satisfy the
+                      DoD: the populated Shallow cell's two chips on one
+                      line are wider than the whole phonePortrait viewport,
+                      so any position still overflows unless the cell's
+                      OWN width is bounded too — see the stacked wrapper on
+                      the matching <td> below, which is what actually closes
+                      the gap. Column 10 of 10 sat off-screen behind the
+                      horizontal scroll this table needs at narrow widths
+                      (phonePortrait and below), with nothing signalling
+                      that more columns existed at all, so the app's only
+                      per-leg depth warning was reliably invisible on the
+                      device most likely to be read on deck. Header and
+                      cell order move together — see the matching <td>
+                      below. */}
+                    <th scope="col">{t('route.legs.shallow')}</th>
                     <th scope="col">{t('route.legs.time')}</th>
                     {/* #379: leg-scale elapsed time (endTimeMs - startTimeMs).
                       Placed next to Time (same dimension, read together) and
@@ -909,17 +926,6 @@ export default function RouteSummary({
                       independent confirmation of one another. */}
                     <th scope="col">{t('route.legs.duration')}</th>
                     <th scope="col">{t('route.legs.kind')}</th>
-                    {/* #698: the safety signal moved from last-of-ten to
-                      immediately after Kind — its natural home, since it
-                      qualifies the leg exactly as Kind does. Column 10 of
-                      10 sat off-screen behind the horizontal scroll this
-                      table needs at narrow widths (phonePortrait and
-                      below), with nothing signalling that more columns
-                      existed at all, so the app's only per-leg depth
-                      warning was reliably invisible on the device most
-                      likely to be read on deck. Header and cell order move
-                      together — see the matching <td> below. */}
-                    <th scope="col">{t('route.legs.shallow')}</th>
                     {/* #379: this column shows headingDeg, which is course over
                       ground despite its field name — no leeway model exists
                       in this app, so a true heading value would be
@@ -942,6 +948,59 @@ export default function RouteSummary({
                     const legInfo = legMinDepths ? legMinDepths[i] : null;
                     return (
                       <tr key={i}>
+                        <td>
+                          {/* #698 decision memo (2026-08-31): the wrapper is
+                            what makes the column's width `max(chip1, chip2)`
+                            instead of their sum — the flex column lives on
+                            THIS div, never on the <td> itself, since
+                            `display: flex` on a table cell drops
+                            `display: table-cell` and generates anonymous
+                            table cells (app.css's `.shallow-cell-stack`
+                            rule). `white-space: normal` alone cannot wrap
+                            the two Chip spans: they are adjacent JSX
+                            siblings with no whitespace text node between
+                            them, and this table's `overflow-x: auto` +
+                            `table-layout: auto` lays out at max-content
+                            width regardless, so nothing applies the width
+                            pressure a wrap would need. */}
+                          <div className="shallow-cell-stack">
+                            {leg.shallow ? (
+                              <ShallowLegMarker minDepthM={leg.shallow.minDepthM} />
+                            ) : (
+                              // #651: the render-time complement — this leg was
+                              // never relaxed (no leg.shallow), but the
+                              // currently loaded mask finds it MARGINAL at the
+                              // plan's own requested gate (isMarginalDepthM,
+                              // #612's own criterion). `legInfo === null`
+                              // (mask not loaded, or THIS leg's own walk was
+                              // inconclusive — legMinDepthsM's own per-leg
+                              // contract) correctly suppresses only THIS row,
+                              // never its siblings.
+                              //
+                              // #651 fix-wave, Minor 5: `marginal` is bounded
+                              // from BELOW too, not just by isMarginalDepthM's
+                              // own `< threshold` above — this walk runs against
+                              // the CURRENTLY LOADED mask, which can differ from
+                              // the one this plan was routed against (#516's own
+                              // residual), so a re-opened plan under a rebuilt
+                              // mask could find `legInfo.depthM` itself below
+                              // `gateM` even though the router never flagged
+                              // this leg. That is GENUINELY shallow by present
+                              // data, not merely marginal, so it falls through
+                              // to the existing "Shallow" wording
+                              // (`marginal={legInfo.depthM >= gateM}`) rather
+                              // than under-stating it as "Marginal" — the
+                              // expensive direction for a depth cue.
+                              legInfo !== null &&
+                              isMarginalDepthM(legInfo, gateM) && (
+                                <ShallowLegMarker
+                                  minDepthM={legInfo.depthM}
+                                  marginal={legInfo.depthM >= gateM}
+                                />
+                              )
+                            )}
+                          </div>
+                        </td>
                         <td>{formatTime(leg.startTimeMs, lang)}</td>
                         {/* endTimeMs/startTimeMs live on LegCommon, so both
                           sail and motor legs render a real duration here —
@@ -950,43 +1009,6 @@ export default function RouteSummary({
                         <td>{formatLegDuration(leg.endTimeMs - leg.startTimeMs)}</td>
                         <td>
                           <LegKindChip leg={leg} rig={rig} />
-                        </td>
-                        <td>
-                          {leg.shallow ? (
-                            <ShallowLegMarker minDepthM={leg.shallow.minDepthM} />
-                          ) : (
-                            // #651: the render-time complement — this leg was
-                            // never relaxed (no leg.shallow), but the
-                            // currently loaded mask finds it MARGINAL at the
-                            // plan's own requested gate (isMarginalDepthM,
-                            // #612's own criterion). `legInfo === null`
-                            // (mask not loaded, or THIS leg's own walk was
-                            // inconclusive — legMinDepthsM's own per-leg
-                            // contract) correctly suppresses only THIS row,
-                            // never its siblings.
-                            //
-                            // #651 fix-wave, Minor 5: `marginal` is bounded
-                            // from BELOW too, not just by isMarginalDepthM's
-                            // own `< threshold` above — this walk runs against
-                            // the CURRENTLY LOADED mask, which can differ from
-                            // the one this plan was routed against (#516's own
-                            // residual), so a re-opened plan under a rebuilt
-                            // mask could find `legInfo.depthM` itself below
-                            // `gateM` even though the router never flagged
-                            // this leg. That is GENUINELY shallow by present
-                            // data, not merely marginal, so it falls through
-                            // to the existing "Shallow" wording
-                            // (`marginal={legInfo.depthM >= gateM}`) rather
-                            // than under-stating it as "Marginal" — the
-                            // expensive direction for a depth cue.
-                            legInfo !== null &&
-                            isMarginalDepthM(legInfo, gateM) && (
-                              <ShallowLegMarker
-                                minDepthM={legInfo.depthM}
-                                marginal={legInfo.depthM >= gateM}
-                              />
-                            )
-                          )}
                         </td>
                         <td>{formatHeading(leg.headingDeg)}</td>
                         <td>
