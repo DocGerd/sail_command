@@ -361,23 +361,32 @@ export function seamarkPopupAnchor<T extends { properties?: unknown; geometry?: 
  *         sufficient for item 2: at z8/z9 on the committed data, EVERY culled
  *         hazard mark was displaced by an equal-or-better-ranked hazard mark.
  *         Hazard-vs-hazard is the only collision available in either layer
- *         arrangement — every hazard rank (0-2) sorts ahead of every routine
+ *         arrangement — every hazard rank (<=2) sorts ahead of every routine
  *         rank (>=3) under the global cross-tile sort verified in (c), so this
  *         was already true before #682's split, which fixed paint order rather
  *         than placement. #232 item 2 is CLOSED as a measurement mis-
  *         attribution: the cross-tile GLOBAL SORT mechanism verified above is
- *         leak-free over the COMPLETE cross-tile population this dataset
- *         produces at z8/z9 — all 3 cross-tile hazard collisions that exist
- *         (independently re-derived from the committed seamarks.json: 2 at z8,
- *         1 at z9, matching what the test found). Two of the three are equal-
- *         priority ties that no placement order could turn into a leak, so
- *         exactly ONE row is order-discriminating; a cross-tile-specific
- *         regression would surface through that row alone. Non-vacuity of the
- *         ZERO was established by a positive control: inverting
- *         SEAMARKS_LAYOUT's symbol-sort-key to ['-', 0, ['get','priority']]
- *         (leaving the `priority` PROPERTY this test reads untouched, and with
- *         the rebuilt dist hash asserted to differ) reds the test with 13 of
- *         100 leaks, 1 of them cross-tile. (The single-non-tiled-source /
+ *         leak-free over every cross-tile displacement this measurement
+ *         produced: 3 rows, 2 at z8 and 1 at z9. An independent scan of the
+ *         committed seamarks.json, modelling each collision box as icon-size *
+ *         SEAMARK_NATURAL_ICON_PX (17.6px at z8, 19.2px at z9 - exact only
+ *         because iconPaddingAt(v,1) === 0 at SEAMARK_SIZE_SCALE 1), finds 2
+ *         candidate cross-tile hazard-pair collisions at z8 and 1 at z9, so no
+ *         cross-tile pair that model admits went unexamined. That is a bound,
+ *         NOT a completeness proof: candidate collisions and attributed
+ *         displacement rows are different populations, and the model is a
+ *         lower bound on the true box - widening it to 1.25x raises the
+ *         candidate count to 6 at z8 and 4 at z9, and 5 of the 99 culled marks
+ *         have no candidate at all under the 1.0x box, which only a larger
+ *         real box explains. Two of the three are equal-priority ties that no
+ *         placement order could turn into a leak, so exactly ONE row is order-
+ *         discriminating; a cross-tile-specific regression would surface
+ *         through that row alone. Non-vacuity of the ZERO was established by a
+ *         positive control: inverting SEAMARKS_LAYOUT's symbol-sort-key to
+ *         ['-', 0, ['get','priority']] (leaving the `priority` PROPERTY this
+ *         test reads untouched, and with the rebuilt dist hash asserted to
+ *         differ) reds the test with 13 of 100 leaks, 1 of them cross-tile.
+ *         (The single-non-tiled-source /
  *         `buffer`/`tolerance` options an earlier revision of this comment
  *         considered and rejected are now moot — there is nothing left for
  *         them to fix.)
