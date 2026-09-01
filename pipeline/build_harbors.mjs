@@ -44,10 +44,15 @@ function readKnownDisconnectedIds() {
   // an UNDOCUMENTED PRECONDITION of THIS regex, and relaxing it alone would
   // silently disarm this guard with nothing to say so. Widening costs
   // nothing: over-extraction (a stray quoted string inside a comment, a
-  // nested-dict value) still fails CLOSED, downstream — either the "which
-  // is not a harbor in harbors-source.json" throw a few lines below, or, if
-  // it somehow named a real id, a mismatch against harbors.json in
-  // app/src/test/harborKnownDisconnected.test.ts's equality guard.
+  // nested-dict value) fails CLOSED at the "which is not a harbor in
+  // harbors-source.json" throw a few lines below — UNLESS the stray key
+  // happens to name a real harbour, in which case this writes a
+  // false-positive knownDisconnected and NOTHING in the `app` job sees it:
+  // the drift guard compares two artifacts derived from this same parse, so
+  // it agrees with itself. Only verify_mask.py's own membership cross-check
+  // catches that, and that job is advisory (MEASURED: a docstring line
+  // reading `"flensburg":` flagged Flensburg, build green, guard 2/2 green,
+  // verify_mask.py exit 1).
   const ids = [...block[1].matchAll(/^\s*"([^"]+)"\s*:/gm)].map((m) => m[1]);
   if (ids.length === 0) {
     throw new Error(

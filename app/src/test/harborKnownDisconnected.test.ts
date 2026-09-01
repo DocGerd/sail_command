@@ -56,9 +56,16 @@ function readKnownDisconnectedIds(): Set<string> {
   // narrow charset on every real harbor id — an UNDOCUMENTED PRECONDITION of
   // the narrow form, so relaxing that check alone would silently disarm both
   // parsers with nothing to say so. Widening costs nothing: over-extraction
-  // still fails CLOSED via the equality assertion below (an extra id in
-  // `wantIds` with nothing matching in `gotIds` is a real mismatch, not a
-  // silent pass) — same conclusion build_harbors.mjs's twin comment reaches.
+  // fails CLOSED at build_harbors.mjs's "which is not a harbor in
+  // harbors-source.json" throw — UNLESS the stray key names a REAL
+  // harbour, in which case build_harbors.mjs writes a false-positive
+  // `knownDisconnected` onto it and THIS equality check cannot see it:
+  // `wantIds` (here, re-parsing verify_mask.py) and `gotIds` (harbors.json,
+  // written by build_harbors.mjs's OWN parse of the SAME verify_mask.py
+  // with a byte-identical regex) both include the extra id and agree. Only
+  // verify_mask.py's own membership cross-check catches that, and that job
+  // is advisory (MEASURED: a docstring line reading `"flensburg":` flagged
+  // Flensburg, build green, THIS guard 2/2 green, verify_mask.py exit 1).
   const out = new Set<string>();
   for (const m of block![1].matchAll(/^\s*"([^"]+)"\s*:/gm)) {
     out.add(m[1]);
