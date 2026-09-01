@@ -366,8 +366,8 @@ export default function RouteSummary({
   // #651: the legs-table cautious chip's render-time complement to the
   // `leg.shallow` case above — see ShallowLegMarker's own `marginal` prop
   // comment for the two cases this covers. `useNavMask()` starts null and
-  // resolves asynchronously (same acquisition path ShallowWarning and
-  // MarginalDepthNotice below already use), so `legMinDepths` is null on
+  // resolves asynchronously (same acquisition path ShallowWarning.tsx and
+  // MarginalDepthNotice already use), so `legMinDepths` is null on
   // first paint — every leg falls back to the pre-existing leg.shallow-only
   // check until the mask loads, never a false "not marginal" claim in the
   // meantime. `result` is a stable reference across re-renders for an
