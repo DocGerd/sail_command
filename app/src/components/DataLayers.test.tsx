@@ -629,11 +629,19 @@ describe('#681 independent hazard-hatch toggle', () => {
 // DataLayers.tsx's own `.depth-legend` checkbox read the SAME
 // `usePersistedToggle` keys, which now cross-instance-syncs (usePersistedToggle's
 // own #681 x #813 comment — the boolean sibling of #353 PR2's mechanism for
-// usePersistedNumber). Production NEVER mounts both surfaces at once
-// (RouteLayer.tsx's own plan gate, already pinned by the '#813 legend
-// consolidation' describe block above) — this block renders both
+// usePersistedNumber). Production is BELIEVED to never mount both surfaces at
+// once: `useActivePlan()` types `plan` as `Plan | null` with no `undefined`,
+// so DataLayers' `plan === null` and RouteLayer's `!plan`
+// (`RouteLayer.tsx:897`) are exact complements. Only HALF of that is pinned
+// by a test — the '#813 legend consolidation' describe block above asserts
+// the DataLayers half (`.depth-legend` present/absent as `plan` changes);
+// the RouteLayer half (`if (!plan) return null`, which is what stops
+// RouteLegend mounting pre-plan) has no test anywhere, since
+// `RouteLegend.test.tsx` renders `<RouteLegend />` directly with no plan
+// gate at all. This block renders both
 // UNCONDITIONALLY, on purpose, to isolate the SYNC wiring from that mounting
-// decision: the composition bug the review caught was that ticking the
+// decision (which is why it does not need the missing pin to be trustworthy):
+// the composition bug the review caught was that ticking the
 // checkbox on ONE surface left DataLayers.tsx's own React state (the one its
 // layer-visibility effect actually reads) stale until a future remount,
 // which a mounting-gate test alone can never see, since it never has both

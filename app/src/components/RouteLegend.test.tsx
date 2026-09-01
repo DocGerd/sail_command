@@ -144,3 +144,37 @@ describe('#813: folded-in #598 depth-hatch legend', () => {
     expect(depthSection!.contains(list)).toBe(false);
   });
 });
+
+// #681 x #813 review Major: RouteLegend.tsx's own hatch checkbox carries the
+// SAME `disabled={!depthVisible}` mirror as DataLayers.tsx's copy (the #384
+// defect class — a control must not offer to change a layer that
+// depthVisible=false already keeps invisible regardless), but nothing
+// exercised it on THIS surface: the two DataLayers.test.tsx cross-surface
+// sync tests assert `checked` and layer visibility, never `.disabled`, and
+// no test here touched the checkbox at all. Reads/writes `sc-depth-visible`
+// directly via localStorage — the same contract `usePersistedToggle` itself
+// uses — rather than needing AppStateProvider/DataLayers, since this
+// component never reads Settings context for that flag.
+describe('#681 x #813: hatch checkbox disabled mirror (RouteLegend surface)', () => {
+  it('disables the hatch checkbox when the base depth-overlay flag is off', () => {
+    localStorage.setItem('sc-depth-visible', '0');
+    const { container } = renderLegend();
+    const details = container.querySelector('details.route-legend') as HTMLDetailsElement;
+    details.open = true;
+    const checkbox = container.querySelector(
+      '.route-legend-depth input[type="checkbox"]',
+    ) as HTMLInputElement;
+    expect(checkbox.disabled).toBe(true);
+  });
+
+  it('enables the hatch checkbox when the base depth-overlay flag is on', () => {
+    localStorage.setItem('sc-depth-visible', '1');
+    const { container } = renderLegend();
+    const details = container.querySelector('details.route-legend') as HTMLDetailsElement;
+    details.open = true;
+    const checkbox = container.querySelector(
+      '.route-legend-depth input[type="checkbox"]',
+    ) as HTMLInputElement;
+    expect(checkbox.disabled).toBe(false);
+  });
+});
