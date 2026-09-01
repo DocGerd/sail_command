@@ -283,6 +283,12 @@ select {
        overlap the map chrome), which is why the declaration is scoped there
        and nowhere else.
 
+       Since #702 the element is ALSO `position: sticky` at NARROW — but with
+       `z-index: auto`, so it paints at step 8 of CSS 2.1 Appendix E's order
+       while every Tier 2 member above sits at step 9. It therefore still
+       ranks below every tier in this list and still belongs outside the
+       ordering.
+
        DO NOT re-add `z-index` to the base rule on the reasoning this entry
        used to carry — that the offset is "inert until the wide layout makes
        it `position: sticky`", so at narrow it is `static` and `z-index`
@@ -2883,14 +2889,18 @@ select {
 
 /* §3.3 sticky primary action — reachable without scrolling past a long panel. */
 .planner-actions {
-  /* In the narrow bottom-sheet the sticky bar would pin over the map's
-     attribution control at the viewport bottom-right and intercept its clicks
-     (#64 Phase 3 regression caught by plan.spec). Sticky is scoped to the wide
-     side-panel below, where the panel is its own column and cannot overlap the
-     map chrome.
+  /* `position: static` is the BASE value and each layout overrides it in its
+     own width-scoped block: the `max-width: 1023.98px` block immediately
+     below makes this sticky with NO `z-index` (#702), and the
+     `min-width: 1024px` block near the end of this file makes it sticky WITH
+     `z-index: 2`. The two are deliberately NOT de-duplicated into one base
+     declaration: `z-index: auto` is the whole point of the narrow one (read
+     its comment), and leaving the wide declarations untouched by #702 is
+     what lets plan.spec.ts's wide rows stay an uncontaminated negative
+     control for the narrow-only change.
 
-     #771: `bottom` and `z-index` live in that wide-only rule too, NOT here.
-     They used to sit in this rule on the premise that both are "inert until
+     #771: `z-index` must never come back to THIS rule. It used to sit here
+     on the premise that both it and `bottom` are "inert until
      position:sticky applies" — true of `bottom` (box offsets do not apply to
      a static box), FALSE of `z-index`. `.planner-panel` is `display: flex`,
      so this element is a FLEX ITEM, and per css-flexbox-1's "Painting Flex
@@ -2905,16 +2915,55 @@ select {
      viewport of `e2e/helpers.ts`'s matrix (every entry below the 1024px
      breakpoint): topmost `p.planner-guidance` and `click({ trial: true })`
      FAILING at every one; with the narrow `z-index`
-     removed the toggle is topmost again and the click lands. Keeping both
-     declarations in the wide-only rule makes the sticky-only scoping
-     STRUCTURAL instead of a comment asserting an inertness that was never
-     true of `z-index`. Guarded by plan.spec.ts's "#771" test. */
+     removed the toggle is topmost again and the click lands. Guarded by
+     plan.spec.ts's "#771" test. */
   position: static;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
   padding: 0.5rem 0;
   background: var(--sc-bg);
+}
+
+/* #702 — the NARROW half of §3.3's sticky CTA. The spec guarantees "'Route
+   planen' stays reachable at the panel bottom (sticky) so it is never below a
+   long scroll", and the narrow bottom sheet was the one layout where that was
+   unmet: measured 2026-09-01 against this build, the EMPTY German planner
+   already overflowed `.app-panel`'s scrollport at every narrow viewport of
+   `e2e/helpers.ts`'s matrix, by 178px (`tabletPortrait`) to 653px
+   (`wrapForcing280`) — so the CTA sat below the fold on arrival, before the
+   user added a single via point.
+
+   NO `z-index` HERE, deliberately — that omission is what makes sticky safe
+   at narrow now, where the reverted earlier attempt (which kept `z-index: 2`
+   in the base rule) was not. With `z-index: auto` this box paints at step 8
+   of CSS 2.1 Appendix E's order (positioned descendants with `z-index: auto`)
+   while `.maplibregl-ctrl-bottom-right`'s own `z-index: 2` puts the map
+   attribution at step 9 of the SAME root stacking context, so the
+   attribution keeps both the paint and the hit test and the ODbL/CC-BY
+   credit stays clickable. Re-adding `z-index` here reproduces #771 — the
+   base rule's comment above carries that mechanism and its measurement.
+
+   `padding-right`, NOT `margin-right` (which is what the reverted attempt
+   used): the bar's `background: var(--sc-bg)` is opaque and must reach the
+   panel's content edge, or the content scrolling underneath the pinned bar
+   shows through the gap a margin would open. 24px is measured, not chosen —
+   `innerWidth - attributionButton.left` is 34.00px (re-verified 2026-09-01
+   at 14 widths from 280 to 3840, deviceScaleFactor 1) and the bar's own
+   content right edge sits at `innerWidth - 12` (`.app-panel`'s 0.75rem
+   padding), so the CTA button overlapped the collapsed toggle by 22px
+   horizontally; 24px clears it with the 2px headroom PR #735 chose.
+
+   MQ3 `max-width: 1023.98px`, never the MQ4 `not (min-width: 1024px)`
+   complement — a Level 3 parser drops an MQ4 block silently, which this file
+   already decided against deliberately (see the banner-clearance rule
+   above, whose comment carries the reasoning and the 0.02px trade). */
+@media (max-width: 1023.98px) {
+  .planner-actions {
+    position: sticky;
+    bottom: 0;
+    padding-right: 24px;
+  }
 }
 
 .planner-status {
@@ -3502,16 +3551,20 @@ select {
     height: 220px; /* more vertical room on the wide two-column layout */
   }
 
-  /* Sticky "Route planen" only on the wide side-panel (§3.3) — its own column,
-     so it cannot overlap the map attribution the way it does in the narrow
-     bottom-sheet. #771 moved `bottom`/`z-index` here from the base rule.
-     `bottom` is meaningful only while `position: sticky` applies; `z-index`
-     is NOT — as a flex item this element's `z-index` creates a stacking
-     context even while `static`, which is why leaving it unscoped bit at
-     narrow (the base rule's comment carries the mechanism and the
-     measurement). Both live here so the three declarations that only make
-     sense together stay together, and so the scoping is structural rather
-     than asserted. */
+  /* The WIDE half of §3.3's sticky "Route planen" (the narrow half is its own
+     `max-width: 1023.98px` block beside the base rule, added by #702).
+     `z-index: 2` is scoped HERE and must stay here: at wide the panel is its
+     own grid column and cannot spatially overlap the map chrome, so the
+     stacking-level tie it creates with `.maplibregl-ctrl-bottom-right` is
+     harmless — at narrow that same tie IS #771, which is why the narrow
+     block omits `z-index` entirely. #771 moved `bottom`/`z-index` here from
+     the base rule; `bottom` is meaningful only while `position: sticky`
+     applies, `z-index` is NOT — as a flex item this element's `z-index`
+     creates a stacking context even while `static` (the base rule's comment
+     carries the mechanism and the measurement). These three declarations are
+     deliberately NOT hoisted or shared with the narrow block: keeping the
+     wide rows untouched by #702 leaves them a genuine negative control for
+     that change in plan.spec.ts. */
   .planner-actions {
     position: sticky;
     bottom: 0;
