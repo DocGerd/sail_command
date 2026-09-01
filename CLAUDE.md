@@ -476,6 +476,22 @@ making design-level decisions; do not silently deviate.
   border instead of 1x1. Complement of the source-order cascade bullet below
   (a single-class modifier losing to a later base rule) — specificity and
   source order are the two halves of the same failure; read both.
+- **`z-index` applies to a FLEX (and grid) ITEM regardless of `position`** —
+  any value other than `auto` makes it tier, even on a `static` box; `auto`
+  tiers neither. Measured in Chromium 2026-08-31 against a block-container
+  negative control. `.planner-actions` was `position: static; z-index: 2`
+  inside a `display: flex` `.planner-panel`, so it DID create a stacking
+  context, tying maplibre's `.maplibregl-ctrl-bottom-right` (also `2`); the
+  tie resolved by DOM order and the panel buried the OpenStreetMap
+  attribution link — an ODbL/CC-BY defect (#771, PR #800). TWO `app.css`
+  comments asserted the opposite ("at narrow it is `static` and `z-index`
+  never applies"), WRONG-FROM-THE-START, which is why the bug read as
+  unreproducible from a static read: the code was right and the prose was
+  wrong. Fix shape worth copying — rather than `z-index: auto` on the base
+  rule, `bottom` AND `z-index` moved into the existing `@media (min-width:
+  1024px)` block beside `position: sticky`, making the narrow/wide scoping
+  STRUCTURAL (box offsets never apply to a static box) instead of a comment
+  that can rot.
 - **Chromium ignores author `border`/`border-radius`/`padding` on
   `appearance: auto` radios** — a forced `!important` 3px border + 8px radius
   computes to `0px none / 0px / 0px`, size unchanged (measured 2026-08-26).
@@ -900,6 +916,25 @@ making design-level decisions; do not silently deviate.
   Playwright bump). The
   record is #643's verification transcript — PR #665's body publishes only the
   Chromium half.
+- **An e2e run can silently measure a FOREIGN build, in two independent ways
+  (#803). A green e2e run is what a merge is gated on, so this can produce a
+  false GREEN, not just a false red.** Layer 1: `startPreview()` returns on ANY
+  HTTP 200 at the hardcoded port 4173 without checking the responder is its own
+  child — a reviewer's guard attached to a server serving the SHARED CHECKOUT's
+  `app/dist` and reported the defect signature against a tree where it was
+  already fixed. Retrying on EADDRINUSE does NOT help: the probe SUCCEEDS
+  because someone else bound the port and answers 200. Layer 2: even on a
+  dedicated port, verified free, `--strictPort`, with `/proc/<pid>/cwd`
+  confirmed, a **stale service worker registered on that origin** served a
+  foreign CACHED build (`getRegistrations()` → 1) — so verifying the server's
+  pid does not close it, and this app registers a SW by design. THREE
+  occurrences in one session (two layer-1, one layer-2) across parallel
+  worktree agents. **Best defence is neither a port check nor a cache clear but
+  a SELF-PROVING assertion** — one that can only pass on the exact tree under
+  test. PR #799's conflict-resolution run passed #774's `tabIndex=0` pin (branch
+  only) AND #762's guard (needs develop's `.sc-field label` CSS) in ONE run, so
+  the served build necessarily contained both sides of the merge. That is immune
+  to both layers; a port check is immune to neither.
 - **Honest offline testing**: Playwright's `setOffline(true)` does NOT block
   service-worker fetches (Playwright #2311) — the offline spec kills the
   preview server instead. Never "simplify" that away.
@@ -1708,6 +1743,19 @@ making design-level decisions; do not silently deviate.
   observations, same non-closing behaviour — still
   evidence, still not a licence: the check costs one API call and a miss
   silently strands a deliberately-deferred issue.
+- **Cross-PR file collisions are invisible to per-PR review — only the
+  orchestrator holds that view, and it is represented in no artifact.** Measured
+  2026-08-31: two implementers were sent to append a new guard to
+  `app/e2e/layout.spec.ts` (one mirroring #299's existing pattern there, the
+  other steered off `plan.spec.ts` because a third PR was editing it). Whichever
+  merged first forced the other into an append/append conflict. A reviewer HAD
+  correctly checked collisions for a different pair and found them disjoint;
+  nobody checked these two, because each reviewer is properly scoped to its own
+  diff. Before dispatching parallel implementers, keep an explicit file→PR map
+  and treat two PRs appending to the same file as a SCHEDULED conflict, not a
+  risk. Sequence merges by FILE SURFACE (disjoint PRs first) rather than by
+  readiness. Cost here was one wave plus one CI cycle, and only that low because
+  the two guards happened to be mechanically combinable.
 - Multiple open PRs: develop in parallel, merge strictly serially — after each
   merge, re-sync the next branch from its base (`git merge origin/develop`, or
   `origin/main` for a hotfix/release PR) and let full CI (~10 min) re-run before
@@ -2018,6 +2066,23 @@ making design-level decisions; do not silently deviate.
   test written to catch its absence can still be the wrong fix.** The
   discriminating experiment was to break the SPLICE while leaving the
   DERIVATION intact: correct form reds 1, suggested form reds 0.
+- **A comment-only wave can PROVE its prior measurement still holds instead of
+  re-running it — but a strip-and-hash proof needs TWO controls or it proves
+  nothing.** Strip comments/strings from both sides and compare digests: cheaper
+  than re-measuring AND stronger, since it is equivalence by construction rather
+  than by sampling. Both failure modes were hit in one session (2026-08-31).
+  (1) NON-VACUITY: a wave built its proof on esbuild-minify hashing; esbuild is
+  not installed under vite 8 and stderr was suppressed, so the hasher emitted the
+  EMPTY STRING for every input — three identical `e3b0c442…` digests (sha256 of
+  nothing) that read as proof. The stripper must REFUSE to emit a verdict unless
+  its output is non-empty AND contains a needle known present in the subject.
+  (2) LENGTH-SENSITIVITY: the positive control must include a ONE-CHARACTER edit
+  that PRESERVES stripped length (a wide `z-index` 2→3) and still moves the
+  digest, ruling out a hash that only notices size. Also match the stripper to
+  the language: a `.ts` stripper must drop only whole-line `//` comments or it
+  mangles `//` inside regex literals; a `//`-based diff-shape checker cannot see
+  inside a CSS block comment at all — replace the instrument rather than relax
+  its rule, which would be calibrating a guard to accept what it should catch.
 - **A duplicated ALGORITHM must be proven equivalent by DIFFERENTIAL
   TESTING, never by reading.** `shallowExposureNm` re-implements `NavMask`'s
   private `walkCells` DDA, deliberately, to keep `PlanResult` byte-identical
@@ -2836,6 +2901,25 @@ making design-level decisions; do not silently deviate.
   and name where it looked, not to fix the one instance flagged — patching
   flagged instances does not converge; enumerate and report the enumeration
   including hits left alone (same methodology as the prose-rots bullet above).
+- **MATCH THE APERTURE TO THE SENTENCE — and the silent half is the dangerous
+  one.** One reviewer produced both directions in one review, an hour apart
+  (2026-08-31). LOUD: its grep for a spec quote returned MISSING only because
+  the pattern did not allow for markdown italics `*snapshot*` — the CHECK was
+  wrong, the claim right, and it nearly filed a false Major. An empty result is
+  loud and invites a second look. SILENT and worse: it wrote "these are exactly
+  the PR's stated exclusions and are all correct to leave", which asserts
+  completeness AND that each named key EXISTS AND that each verdict is right —
+  it had run one of the three, and two cited keys did not exist. Every check it
+  ran passed, because it ran the wrong one; no tooling can flag that, since the
+  tooling answered faithfully. **So the tell is the SENTENCE, not the check:**
+  before writing a claim, count what it asserts against what you ran, then
+  either say the narrower thing you verified or run the wider check. Same class
+  as relaying a COUNT without its filter, one level up — a claim detached from
+  its evidence rather than a figure detached from its set. Corollary: verify by
+  diffing the ARTIFACT, never by comparing two narratives; two accounts agreeing
+  is not corroboration when one was copied from the other (a brief citing a
+  "third column" of a two-column table was echoed back verbatim in the report
+  meant to confirm the fix, and only a byte-diff of the cells caught it).
 - Never promote a subagent's COMPARATIVE ADJECTIVE into a durable claim without
   reading the raw numbers it summarises. #264's agent wrote a uniform field
   "weaves IDENTICALLY"; its own cited output showed 5 turns ≥45° vs 2-3, 26 legs
@@ -3549,6 +3633,13 @@ making design-level decisions; do not silently deviate.
   substring ("no -f nearby"). Confirmed by feeding synthetic PreToolUse JSON to
   the hook: identical command, clean description passes, `-f` in the description
   denies. Keep `-f` out of the `description` on any `git push` call.
+  The repo's OWN notices-nudge shares this mechanism, benignly: writing a file
+  whose BODY contained the words "an `npm ci` was deliberately deferred" fired
+  "npm changed dependencies. Regenerate third-party notices" with nothing
+  installed and `git status` clean (2026-09-01). A nudge fails open, so it costs
+  nothing — but **do NOT reword prose to appease a matcher**: that lets a
+  substring check silently shape the documentation, and the text it blocks is
+  usually the write-up explaining the hazard. Verify the real state instead.
   It lives OUTSIDE this repo (`~/.claude/hooks/guard-destructive-git.sh`,
   global/personal, unversioned, shared across concurrent sessions) — NOT
   covered by #216, which is the notices-regen and nudge hooks; #233
