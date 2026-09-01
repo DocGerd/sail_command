@@ -1576,6 +1576,22 @@ making design-level decisions; do not silently deviate.
 
 ## Release & branching
 
+- **The `release` skill is USER-INVOKED ONLY — the model CANNOT run it.**
+  `.claude/skills/release/SKILL.md` declares `disable-model-invocation: true`
+  and was, when checked on 2026-09-01, the only skill under `.claude/skills/`
+  that does — correspondingly the only one absent from a session's
+  available-skills listing. So a plan or brief saying "invoke the release
+  skill" is UNEXECUTABLE, not merely discouraged: ask the maintainer to type
+  `/release`, and read `SKILL.md` directly for the steps cited elsewhere in
+  this file — §2b, §5a, §5b, §5c and step 6, the back-merge that is also the
+  #398 no-op remedy.
+- **`.claude/commands/release-cycle.md` provides `/release-cycle`** (#816, PR
+  #817, merged 2026-09-01) — a six-phase (0–5) wrapper for a whole cycle:
+  state discovery, approval-gated milestone re-triage, implementing the
+  milestone, the cut, the CLAUDE.md revision, housekeeping. It COMPOSES the
+  skills rather than duplicating them and delegates the cut to `/release`, so
+  it inherits the constraint above. Two human gates: milestone approval before
+  any `gh` mutation, and §2's local-run approval before the release PR.
 - **Branching (gitflow-lite, #73)**: `develop` is the protected DEFAULT branch
   where WIP accumulates — feature PRs target `develop`, never `main`. A RELEASE
   is a PR `develop` → `main` (full CI `app`+`e2e` re-runs under the strict
