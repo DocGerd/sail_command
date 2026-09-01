@@ -791,12 +791,12 @@ making design-level decisions; do not silently deviate.
   z≥12 (`'always'`) a **higher** key paints on top, and
   `queryRenderedFeatures` returns top-to-bottom so the topmost also wins the
   tap. `symbol-z-order: 'viewport-y'` is NOT an escape — it sets
-  `sortFeaturesByKey = false` (`symbol_bucket.ts:391` — line verified
-  re-verified against `maplibre-gl@6.2.0`,
-  re-checked after the #253 v6 upgrade and the 6.1.0, 6.2.0 and 6.3.0 bumps:
-  still `this.sortFeaturesByKey = zOrder !== 'viewport-y' &&
-  !sortKey.isConstant();` at the same line; re-check again after any future
-  maplibre-gl upgrade),
+  `sortFeaturesByKey = false` (`symbol_bucket.ts`, the
+  `this.sortFeaturesByKey = zOrder !== 'viewport-y' && !sortKey.isConstant();`
+  assignment — anchor on that statement, the line number is a hint only. It sat
+  at `:391` from the #253 v6 upgrade through 6.5.0 and moved to `:393` at
+  6.6.0, re-derived 2026-09-01 against the installed 6.6.0 with the statement
+  byte-identical; re-check again after any future maplibre-gl upgrade),
   disabling the placement priority entirely. Within one symbol layer,
   placement and paint order cannot be set independently — that needs a
   second layer (#200, #232).
@@ -1030,12 +1030,15 @@ making design-level decisions; do not silently deviate.
   require three consecutive matches at 400ms, fail CLOSED on budget
   exhaustion with the count history and last three label sets. Three-at-400ms
   is chosen to exceed maplibre's placement throttle: `Placement.stillRecent`
-  (`symbol/placement.ts:1268-1277`, re-derived 2026-08-26 against the
-  then-installed 6.5.0 which matched the lockfile, unmoved since 6.2.0)
-  gates re-runs on
+  (`symbol/placement.ts`, the `stillRecent(now, zoom)` method — anchor on the
+  symbol; it was unmoved at `:1268-1277` from 6.2.0 through 6.5.0 and moved to
+  `:1283-1292` at 6.6.0, re-derived 2026-09-01 against the installed 6.6.0 with
+  the body byte-identical) gates re-runs on
   `commitTime + fadeDuration * durationAdjustment > now` with
-  `fadeDuration: 300` defaulted at `ui/map.ts:540` (6.3.0; `:539` in 6.2.0 —
-  the two drift independently, never assume one offset). Measured effect:
+  `fadeDuration: 300` defaulted at `ui/map.ts:540` (still `:540` at 6.6.0;
+  `:539` in 6.2.0 — the two drift independently, never assume one offset:
+  at the 6.5.0 -> 6.6.0 bump `stillRecent` moved 15 lines while this one did
+  not move at all). Measured effect:
   spec runtime ~6.5s -> ~2.3s,
   stabilising after three reads (~820ms) — placement had been settled almost
   immediately all along. Whether any OTHER spec shares this defect is now
