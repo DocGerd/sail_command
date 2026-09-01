@@ -14,17 +14,32 @@
  *
  * ## Method
  *
- * 1. Walk the import graph from the sweep's two real roots
+ * 1. Walk the import graph from the sweep's two real CODE roots
  *    (`app/sweep/sweepArms.ts`, `app/sweep/vitest.config.ts`) transitively,
  *    following every relative `import`/`export ... from`/dynamic `import()`
  *    specifier. External packages (bare specifiers: 'vitest', 'node:fs', …)
  *    are not walked further — they are not part of the app SOURCE closure.
  *    This produces the closure as DERIVED DATA, not a maintained list.
  *
- * 2. Intersect that closure with the changed files in a diff
- *    (`git diff --name-only <base> [<head>]`).
+ * 2. UNION that walk with three declared PATH PREFIXES (`PATH_PREFIXES`
+ *    below) for inputs that are structurally NOT `import` statements at
+ *    all. A Blocker review (#729) measured that the import walk ALONE is a
+ *    strictly NARROWER, UNSAFE replacement for the prose list it exists to
+ *    retire: it cannot see (a) vitest's real entry points — the nine
+ *    `app/sweep/arm-*.test.ts` files, reached only via `vitest.config.ts`'s
+ *    `include: ['**\/*.test.ts']`, an edge INTO `sweepArms.ts` that a walk
+ *    FROM it can never traverse — or (b) any of `sweepArms.ts`'s runtime
+ *    `readFileSync` reads of shipped data (`mask.bin`, `mask.meta.json`,
+ *    `harbors.json`, `polars/*.json`) or that data's pipeline generators.
+ *    Several of those paths are built from a variable at runtime (e.g.
+ *    `resolve(dataDir, '..', sail.polarAsset)`), so they cannot be
+ *    re-derived by a static scan in general — the three prefixes name the
+ *    directories those reads structurally live under instead.
  *
- * 3. For each hit, default to **OWED** — this is a NUDGE-class tool, and per
+ * 3. Intersect the UNION with the changed files in a diff
+ *    (`git diff --merge-base --name-only <base> [<head>]`).
+ *
+ * 4. For each hit, default to **OWED** — this is a NUDGE-class tool, and per
  *    the repo's guard-asymmetry convention a nudge must fail OPEN (a false
  *    "owed" costs ~31 minutes of unnecessary solver time; a false "not owed"
  *    ships an unverified routing change). The only carve-out from that
@@ -34,19 +49,30 @@
  *
  * ## Failure direction — stated explicitly, per the issue's own request
  *
- * This tool OVER-REPORTS, never under-reports, with exactly one modelled
- * exception (`app/src/data/boats.ts`'s `draftProvenance`/`DraftProvenance`
- * blocks). It does NOT attempt full data-flow/taint analysis of every field
- * reachable from the closure — e.g. it does NOT model whether
+ * This tool is designed to OVER-REPORT, never under-report: every closure
+ * hit is OWED by default, with exactly ONE modelled exception
+ * (`app/src/data/boats.ts`'s `draftProvenance`/`DraftProvenance` blocks —
+ * see `classifyBoatsTs`'s own doc comment for why that specific carve-out
+ * is sound). It does NOT attempt full data-flow/taint analysis of every
+ * field reachable from the closure — e.g. it does NOT model whether
  * `polarProvenance.note` (also present in `boats.ts`, also copied into
  * `BoatSnapshot`) can move a `PlanResult`; CLAUDE.md's own
  * "polarProvenance and draftProvenance have DIFFERENT blast radii" bullet
  * warns explicitly against assuming one field's exemption transfers to the
  * other, so a `polarProvenance`-only edit is deliberately left at the
  * default OWED verdict rather than silently generalising the exception
- * (see `selftest`'s "narrow-scope-check" case). Extending the exception list
- * to a new field needs the same structural proof `classifyBoatsTs` gives for
- * `draftProvenance` — never a guess by analogy.
+ * (see `selftest`'s "narrow-scope-check" case).
+ *
+ * A PRIOR REVISION of this file made the stronger claim "never
+ * under-reports" unconditionally — FALSIFIED in review (#729): the import
+ * walk alone missed the nine `arm-*.test.ts` files and every runtime
+ * data/pipeline input (Method step 2), so a diff confined to those reported
+ * NOT OWED, exit 0. `PATH_PREFIXES` closes that MEASURED gap, but is itself
+ * hand-maintained data (see its own header comment) rather than something
+ * re-derived — so the honest claim is "over-reports against the modelled
+ * universe below", not an unconditional guarantee. Extending EITHER
+ * `PATH_PREFIXES` or the `draftProvenance` exception needs the same
+ * structural proof `classifyBoatsTs` gives, never a guess by analogy.
  *
  * ## Usage
  *
@@ -55,8 +81,20 @@
  *   node closure.mjs diff <base> [<head>]    # real usage: does this diff owe a sweep?
  *   node closure.mjs selftest                # positive/negative controls, see #729
  *
- * `<base>`/`<head>` are anything `git diff` accepts (a ref, a SHA, …).
- * `<head>` omitted means "working tree", matching plain `git diff <base>`.
+ * `<base>`/`<head>` are anything `git diff --merge-base` accepts (a ref, a
+ * SHA, …). `<head>` omitted means "working tree", matching plain
+ * `git diff --merge-base <base>`. `--merge-base` is used throughout (a
+ * Minor review finding, #729) rather than a plain two-dot comparison: a
+ * bare `git diff <base> <head>` is a direct TREE comparison that widens as
+ * `<base>` moves, so passing a moving branch name (`diff origin/develop`,
+ * the first usage line above) would otherwise pull in every file `develop`
+ * changed since this branch's own fork point — inflating the hit list with
+ * files this diff never touched. `--merge-base` diffs against the ancestor
+ * the two refs actually share, independent of how far `<base>` has moved
+ * since. `gitShow`'s "old content" read for the `boats.ts` exception
+ * resolves that SAME merge-base commit explicitly (`git merge-base`), so
+ * the hunks classified and the content read are always relative to one
+ * consistent ancestor.
  *
  * No dependency beyond Node's standard library — this must stay runnable
  * from a bare checkout with no `npm install`.
@@ -97,6 +135,66 @@ const EXTRA_EDGES = {
 };
 
 const RESOLVE_EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts', '.mjs', '.cjs', '.js', '.jsx', '.json'];
+
+// ---------------------------------------------------------------------------
+// PATH PREFIXES — inputs the import walk structurally cannot see, because
+// they are not `import` statements: vitest's own collection glob, and every
+// runtime `readFileSync` in `sweepArms.ts` (several built from a variable,
+// so no static scan can enumerate them — see the file header's Method
+// step 2). Added in response to a Blocker review (#729) that measured the
+// import-walk-only version reporting NOT OWED for a diff editing
+// `arm-marginzero.test.ts` + `canonicalize.mjs`, and for every one of
+// `mask.bin`/`mask.meta.json`/`harbors.json`/`polars/*.json`/
+// `pipeline/build_mask.py`.
+//
+// This is HAND-MAINTAINED DATA — the one piece of knowledge in this tool
+// that is declared rather than derived, same as `EXTRA_EDGES` above. Each
+// entry is pinned individually in `selftest` (see the
+// "path-prefix pin" checks) with a HARDCODED expected path, never derived
+// from this array — CLAUDE.md's "a guard's DATA needs a twin, not just its
+// detection logic" rule (the `SOLVER_LABELS` shape): deriving needle and
+// haystack from the same array would let this array be emptied to `[]`
+// while the guard kept reporting success.
+//
+// Deliberately WHOLE-DIRECTORY, not a narrower list of individual files —
+// the safe direction per this tool's fail-open design: a future arm file,
+// data asset or pipeline generator is covered automatically, at the cost of
+// also reporting OWED for files under these directories with no real
+// bearing on `PlanResult` (e.g. `app/sweep/README.md`,
+// `app/public/data/icons/*`, `pipeline/extract_basemap.sh`). Never narrow
+// these to "just the files sweepArms.ts happens to read today" — that
+// would re-create exactly the too-narrow-list defect this tool exists to
+// replace, one level down.
+const PATH_PREFIXES = [
+  {
+    prefix: 'app/sweep',
+    note:
+      "the harness itself — vitest.config.ts's include: ['**/*.test.ts'] " +
+      'makes every arm-*.test.ts file a REAL entry point (an edge INTO ' +
+      'sweepArms.ts, invisible to a walk FROM it), and canonicalize.mjs / ' +
+      "compare.mjs produce and compare the bytes a sweep run certifies",
+  },
+  {
+    prefix: 'app/public/data',
+    note:
+      'sweepArms.ts reads this directory at runtime via readFileSync ' +
+      '(mask.meta.json ~:336, mask.bin ~:337, polars/*.json ~:348, ' +
+      'harbors.json ~:370) — structurally invisible to a static import scan',
+  },
+  {
+    prefix: 'pipeline',
+    note:
+      'produces every file app/public/data ships (mask.bin via ' +
+      'build_mask.py, polars via build_polars.mjs/estimate_polars.mjs, ' +
+      'harbors.json via extract_harbors, …) — a pipeline change can move ' +
+      'the sweep just as surely as editing the shipped data file directly',
+  },
+];
+
+/** Returns the matching PATH_PREFIXES entry for `rel`, or undefined. */
+function matchesPrefix(rel) {
+  return PATH_PREFIXES.find((p) => rel === p.prefix || rel.startsWith(p.prefix + '/'));
+}
 
 // ---------------------------------------------------------------------------
 // Static import extraction (regex-based — deliberately not a full TS
@@ -194,6 +292,23 @@ function chainFor(visited, rel) {
     cur = info?.parent ?? null;
   }
   return chain;
+}
+
+/**
+ * The single membership predicate every command uses: is `rel` in the
+ * #282 sweep closure at all, and if so, by which mechanism (the import
+ * walk, or a PATH_PREFIXES match)? Returns `null` when neither applies.
+ */
+function closureInfo(visited, rel) {
+  const v = visited.get(rel);
+  if (v && !v.missing) {
+    return { kind: 'import', chain: chainFor(visited, rel) };
+  }
+  const p = matchesPrefix(rel);
+  if (p) {
+    return { kind: 'prefix', prefix: p.prefix, note: p.note };
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -440,8 +555,17 @@ function classifyBoatsTs({ oldContent, newContent, diffText }) {
 // git plumbing
 // ---------------------------------------------------------------------------
 
+// `--merge-base` throughout (Minor, #729): a plain two-dot `git diff <base>
+// <head>` is a direct TREE comparison, so it widens as `<base>` moves —
+// passing a moving branch name pulls in every file the branch changed
+// since this diff's own fork point, not just what this diff touched.
+// `--merge-base` diffs against the ancestor the two refs actually share,
+// which is safe regardless of how far `<base>` has since moved. See the
+// file header's Usage section for the full mechanism.
 function changedFiles(root, base, head) {
-  const args = head ? ['diff', '--name-only', base, head] : ['diff', '--name-only', base];
+  const args = head
+    ? ['diff', '--merge-base', '--name-only', base, head]
+    : ['diff', '--merge-base', '--name-only', base];
   const out = execFileSync('git', args, { cwd: root, encoding: 'utf8' });
   return out
     .split('\n')
@@ -455,9 +579,20 @@ function gitShow(root, ref, relPath) {
 
 function gitDiffU0(root, base, head, relPath) {
   const args = head
-    ? ['diff', '-U0', '--no-color', base, head, '--', relPath]
-    : ['diff', '-U0', '--no-color', base, '--', relPath];
+    ? ['diff', '--merge-base', '-U0', '--no-color', base, head, '--', relPath]
+    : ['diff', '--merge-base', '-U0', '--no-color', base, '--', relPath];
   return execFileSync('git', args, { cwd: root, encoding: 'utf8' });
+}
+
+/**
+ * Resolves the actual merge-base COMMIT of `base` and `head` (or HEAD when
+ * `head` is omitted) — used so `gitShow`'s "old content" read is relative to
+ * the SAME ancestor `changedFiles`/`gitDiffU0`'s `--merge-base` diffed
+ * against, never to `base` itself (which, for a moving branch name, is a
+ * different, later tree than the merge-base the hunks were computed from).
+ */
+function mergeBaseCommit(root, base, head) {
+  return execFileSync('git', ['merge-base', base, head ?? 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
 }
 
 /** `git diff --no-index` exits 1 (not an error) whenever the two files differ. */
@@ -480,12 +615,18 @@ function cmdClosure(root) {
   const visited = computeClosure(root);
   const files = [...visited.keys()].filter((f) => !visited.get(f).missing).sort();
   for (const f of files) console.log(f);
-  console.log(`\n${files.length} files in the #282 sweep closure (roots: ${ROOTS.join(', ')})`);
+  console.log(`\n${files.length} files in the #282 sweep closure via the import walk (roots: ${ROOTS.join(', ')})`);
   const missing = [...visited.entries()].filter(([, v]) => v.missing);
   if (missing.length) {
     console.log(`\n${missing.length} unresolved reference(s) (external package, or genuinely missing):`);
     for (const [rel] of missing) console.log(`  ${rel}`);
   }
+  console.log(
+    `\nPLUS every file under these ${PATH_PREFIXES.length} path prefixes (not enumerated here — ` +
+      `some, e.g. pipeline/data-src, are large gitignored caches; membership is checked live by ` +
+      `'files'/'diff' instead of expanded into a list):`,
+  );
+  for (const p of PATH_PREFIXES) console.log(`  ${p.prefix}/**  — ${p.note}`);
 }
 
 function cmdFiles(root, paths) {
@@ -494,21 +635,23 @@ function cmdFiles(root, paths) {
     process.exit(2);
   }
   const visited = computeClosure(root);
-  let anyIn = false;
   for (const p of paths) {
     const rel = path.relative(root, path.resolve(root, p));
-    const info = visited.get(rel);
-    if (!info || info.missing) {
+    const info = closureInfo(visited, rel);
+    if (!info) {
       console.log(`NOT_IN_CLOSURE  ${rel}`);
       continue;
     }
-    anyIn = true;
-    console.log(`IN_CLOSURE      ${rel}`);
-    for (const step of chainFor(visited, rel)) {
-      console.log(`  via ${step.file}${step.via && step.via !== 'root' ? '  (' + step.via + ')' : ''}`);
+    if (info.kind === 'import') {
+      console.log(`IN_CLOSURE      ${rel}  (import walk)`);
+      for (const step of info.chain) {
+        console.log(`  via ${step.file}${step.via && step.via !== 'root' ? '  (' + step.via + ')' : ''}`);
+      }
+    } else {
+      console.log(`IN_CLOSURE      ${rel}  (path-prefix: ${info.prefix}/)`);
+      console.log(`  reason: ${info.note}`);
     }
   }
-  process.exitCode = anyIn ? 0 : 0; // informational command; exit code carries no verdict
 }
 
 function cmdDiff(root, base, head) {
@@ -518,37 +661,43 @@ function cmdDiff(root, base, head) {
   }
   const visited = computeClosure(root);
   const changed = changedFiles(root, base, head);
-  const hits = changed.filter((f) => visited.has(f) && !visited.get(f).missing);
+  const hits = changed.map((f) => ({ f, info: closureInfo(visited, f) })).filter((x) => x.info !== null);
 
   console.log(`# app/sweep #282 closure check`);
   console.log(`base=${base} head=${head ?? '(working tree)'}`);
-  console.log(`changed files examined: ${changed.length}; closure size: ${visited.size}`);
+  console.log(`changed files examined: ${changed.length}; closure (import walk) size: ${visited.size}`);
   console.log('');
 
   if (hits.length === 0) {
-    console.log('VERDICT: NOT OWED — no changed file is in the #282 sweep import closure');
+    console.log('VERDICT: NOT OWED — no changed file is in the #282 sweep closure (import walk or path prefixes)');
     return;
   }
 
   let anyOwed = false;
-  for (const f of hits) {
+  for (const { f, info } of hits) {
     let verdict;
     if (f === BOATS_TS_PATH) {
-      const oldContent = gitShow(root, base, f);
+      const oldRef = mergeBaseCommit(root, base, head);
+      const oldContent = gitShow(root, oldRef, f);
       const newContent = head ? gitShow(root, head, f) : readFileSync(path.join(root, f), 'utf8');
       const diffText = gitDiffU0(root, base, head, f);
       verdict = classifyBoatsTs({ oldContent, newContent, diffText });
     } else {
       verdict = {
         verdict: 'OWED',
-        reason: 'in the sweep import closure; no field-level exception modelled for this file (default fail-open)',
+        reason:
+          info.kind === 'import'
+            ? 'in the sweep import closure; no field-level exception modelled for this file (default fail-open)'
+            : `in the sweep closure via path-prefix ${info.prefix}/ (${info.note})`,
       };
     }
     if (verdict.verdict === 'OWED') anyOwed = true;
     console.log(`${verdict.verdict}  ${f}`);
     console.log(`  reason: ${verdict.reason}`);
-    for (const step of chainFor(visited, f)) {
-      console.log(`  via ${step.file}${step.via && step.via !== 'root' ? '  (' + step.via + ')' : ''}`);
+    if (info.kind === 'import') {
+      for (const step of info.chain) {
+        console.log(`  via ${step.file}${step.via && step.via !== 'root' ? '  (' + step.via + ')' : ''}`);
+      }
     }
     console.log('');
   }
@@ -607,7 +756,11 @@ function check(name, pass, detail) {
 function runSelftest(root) {
   const results = [];
   const visited = computeClosure(root);
-  const inClosure = (rel) => visited.has(rel) && !visited.get(rel).missing;
+  // Union of the import walk AND the PATH_PREFIXES match — the same
+  // predicate every command uses (`closureInfo`), NOT a re-derivation of
+  // either array, so these checks exercise the real membership test rather
+  // than a copy of it.
+  const inClosure = (rel) => closureInfo(visited, rel) !== null;
 
   results.push(
     check(
@@ -624,6 +777,46 @@ function runSelftest(root) {
       !inClosure('app/src/components/AboutDialog.tsx'),
     ),
   );
+
+  // Major (#729): EXTRA_EDGES had ZERO selftest coverage — deleting it
+  // dropped app/src/test/setup.ts from the closure with selftest still
+  // reporting SELFTEST OK (the SOLVER_LABELS shape: a guard's data needs a
+  // twin, not just its detection logic). This path is HARDCODED here, not
+  // read off EXTRA_EDGES, so stubbing that array to `{}` reds this row and
+  // nothing else — verified manually before push (see PR description).
+  results.push(
+    check(
+      'EXTRA_EDGES pin: app/src/test/setup.ts is IN the closure (via the vitest.config.ts setupFiles runtime edge)',
+      inClosure('app/src/test/setup.ts'),
+    ),
+  );
+
+  // Blocker (#729): the import walk ALONE reported all eight of these
+  // NOT_IN_CLOSURE, so `npm --prefix pipeline run mask` (which changes the
+  // mask.bin/mask.meta.json rows below) and an edit to any arm-*.test.ts or
+  // the harness scripts both reported NOT OWED, exit 0. Each path here is a
+  // LITERAL string, not derived from PATH_PREFIXES, for the same
+  // needle-vs-haystack reason as the EXTRA_EDGES pin above. None of these
+  // eight is reachable via the import walk (verified: nothing in the
+  // walked closure imports a .bin/.json data file or an arm-*.test.ts /
+  // canonicalize.mjs / compare.mjs / .py file — those files import FROM
+  // sweepArms.ts, never the reverse), so a green run here is evidence
+  // specifically about PATH_PREFIXES, not a restatement of the import walk.
+  const blockerInputs = [
+    'app/public/data/mask.bin',
+    'app/public/data/mask.meta.json',
+    'app/public/data/harbors.json',
+    'app/public/data/polars/salona-45-genoa.json',
+    'app/sweep/arm-marginzero.test.ts',
+    'app/sweep/canonicalize.mjs',
+    'app/sweep/compare.mjs',
+    'pipeline/build_mask.py',
+  ];
+  blockerInputs.forEach((rel, i) => {
+    results.push(
+      check(`path-prefix pin (#729 Blocker input ${i + 1}/${blockerInputs.length}): ${rel} is IN the closure`, inClosure(rel)),
+    );
+  });
 
   // Synthetic boats.ts-shaped file pairs, compared with real `git diff
   // --no-index` so the hunks fed into classifyBoatsTs are genuine git
