@@ -2076,8 +2076,7 @@ making design-level decisions; do not silently deviate.
   (2) A SUBSTANTIVE positive control: include a ONE-CHARACTER edit that
   preserves stripped length (a wide `z-index` 2→3) and confirm the digest still
   moves. Not because sha256 could miss it — it cannot — but because it proves
-  the STRIPPER passed that character through rather than eating it, which a
-  bulk add/remove control cannot distinguish from a length change. Also match the stripper to
+  the STRIPPER passed that character through rather than eating it. Also match the stripper to
   the language: a `.ts` stripper must drop only whole-line `//` comments or it
   mangles `//` inside regex literals; a `//`-based diff-shape checker cannot see
   inside a CSS block comment at all — replace the instrument rather than relax
@@ -3802,7 +3801,9 @@ making design-level decisions; do not silently deviate.
   Worktree cleanup ritual: agent runs `find app/node_modules -delete`
   (`rm -rf` is permission-blocked even in the main session; `find -delete` is
   allowed), then the main session runs `git worktree remove` — force-free. Parallel
-  implementers: assign distinct dev ports; retry e2e on EADDRINUSE; the shared
+  implementers: assign distinct dev ports; retry e2e on EADDRINUSE — but note
+  the #803 port-squat case never RAISES one (the probe succeeds because someone
+  else already answers 200), so retrying cannot reach it; the shared
   Playwright MCP browser is contested — verify the URL before every screenshot.
   A poll loop on a known-slow job that keeps reporting "no change" is pure
   overhead — poll for the TRANSITION, not the state.
