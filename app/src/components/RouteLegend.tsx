@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useT } from '../i18n';
+import { usePersistedToggle } from '../lib/usePersistedToggle';
 
 // Collapsible map legend for the route overlay, mounted inside
 // `.route-layer-controls` (only while a plan is active). Default-collapsed —
@@ -88,8 +89,24 @@ function isWideAtMount(): boolean {
 // mirrors sc-route-alt-{sail,motor}'s dashed/reduced-opacity paint — shown
 // unconditionally like the others (e.g. the motor swatch even on an all-sail
 // route), not gated on the toggle's own state.
+//
+// #681 x #813: the folded-in depth section ALSO carries the independent
+// hazard-hatch toggle (`sc-depth-hatch-visible`) plus the base ramp's own
+// flag (`sc-depth-visible`, read here only for the `disabled` mirror) — the
+// SAME two `usePersistedToggle` keys DataLayers.tsx's own `.depth-legend`
+// checkbox uses. That hook now cross-instance-syncs (its own #681 x #813
+// module comment): DataLayers.tsx stays the always-mounted component that
+// actually applies `hatchVisible`/`depthVisible` to the map layer, in EITHER
+// plan state, while this component and DataLayers.tsx's own legend are the
+// two COMPLEMENTARY surfaces that OFFER the control — never both mounted at
+// once, exactly like the legend disclosure itself. Without the sync, ticking
+// this checkbox would write localStorage correctly but DataLayers.tsx's own
+// React state (the one its layer-visibility effect reads) would only catch
+// up on a future remount — the composition bug #681's review caught.
 export default function RouteLegend() {
   const t = useT();
+  const [hatchVisible, setHatchVisible] = usePersistedToggle('sc-depth-hatch-visible', true);
+  const [depthVisible] = usePersistedToggle('sc-depth-visible', true);
   // #813 fix-wave MAJOR 1: see this file's own comment above `isWideAtMount`
   // for the full derivation. Lazy initializer -> read once at mount, never
   // re-read.
@@ -108,6 +125,22 @@ export default function RouteLegend() {
           <span className="depth-legend-swatch" aria-hidden="true" />
           {t('map.depth.legend.hatchLabel')}
         </p>
+        {/* #681 x #813: same control, same keys, same `disabled` mirror as
+            DataLayers.tsx's own copy — see that file's return JSX for the
+            full layout-budget derivation of why the control exists here at
+            all (a third `.data-layer-controls` row was rejected). This is
+            the surface that keeps it reachable once a plan is active, since
+            DataLayers.tsx's own `.depth-legend` is suppressed in that state
+            (#813, `plan === null` gate). */}
+        <label className="depth-legend-row">
+          <input
+            type="checkbox"
+            checked={hatchVisible}
+            disabled={!depthVisible}
+            onChange={(e) => setHatchVisible(e.target.checked)}
+          />
+          {t('map.depth.legend.hatchToggle')}
+        </label>
         <p>{t('map.depth.legend.basis')}</p>
         <p>{t('map.depth.legend.caveat')}</p>
       </div>

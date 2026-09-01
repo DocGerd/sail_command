@@ -761,14 +761,29 @@ select {
    so their tick fill rendered in the browser/OS default accent — a
    different blue from every other accented control in the app — and no
    `:focus-visible` ring at all. `.boat-option-radio` is the only prior
-   `accent-color` use in this file; this reuses the same token. */
+   `accent-color` use in this file; this reuses the same token.
+   #681 added a THIRD member, `.depth-legend-body input[type='checkbox']`
+   (the independent hatch toggle) — it is not a `.data-layer-controls`
+   descendant (DataLayers.tsx's own #681 comment on the return JSX explains
+   why: a third row there costs the legend its reachability budget), so it
+   needs the same accent-color/focus-visible pair spelled out for its own
+   selector rather than inheriting either existing one.
+   #681 x #813 added a FOURTH, `.route-legend-depth input[type='checkbox']`
+   — the SAME control's complementary copy, folded into RouteLegend.tsx once
+   a plan is active (that component's own #681 x #813 comment). Neither of
+   these two new members is a descendant of the other three ancestors, so
+   each needs its own selector in both rules below. */
 .data-layer-controls input[type='checkbox'],
-.route-layer-controls-disclosure input[type='checkbox'] {
+.route-layer-controls-disclosure input[type='checkbox'],
+.depth-legend-body input[type='checkbox'],
+.route-legend-depth input[type='checkbox'] {
   accent-color: var(--sc-accent);
 }
 
 .data-layer-controls input[type='checkbox']:focus-visible,
-.route-layer-controls-disclosure input[type='checkbox']:focus-visible {
+.route-layer-controls-disclosure input[type='checkbox']:focus-visible,
+.depth-legend-body input[type='checkbox']:focus-visible,
+.route-legend-depth input[type='checkbox']:focus-visible {
   outline: 2px solid var(--sc-accent);
   outline-offset: 2px;
 }

@@ -204,7 +204,10 @@ test('depth-hatch legend (#598) is reachable pre-plan, default-collapsed, and ca
 
     // Present with no plan, alongside the depth toggle — same always-mounted
     // cluster, same reason (#598's own maintainer ruling: reachable without
-    // an active plan, since the hatch itself has no other opt-in).
+    // an active plan). #681 gave the hatch its OWN opt-in (a checkbox inside
+    // this legend's body, asserted separately below) — this line is still
+    // about the BASE depth-ramp checkbox's own pre-plan reachability, not
+    // about the hatch specifically, and is unaffected by that addition.
     await expect(page.getByRole('checkbox', { name: 'Wassertiefen' })).toBeVisible();
     await expect(page.locator('.route-layer-controls')).toHaveCount(0);
     // #813: the complementary half of the plan.spec.ts guard — with no plan,
@@ -262,6 +265,121 @@ test('depth-hatch legend (#598) is reachable pre-plan, default-collapsed, and ca
     // occurrence elsewhere on the page (e.g. the no-route error copy).
     await expect(details).not.toContainText('flaches Wasser');
     await expect(details).not.toContainText('Flachwasser');
+  } finally {
+    server.kill();
+  }
+});
+
+// #681: independent hazard-hatch toggle. The whole reason this control lives
+// INSIDE the legend's disclosure body rather than as a third
+// `.data-layer-controls` checkbox row is that a third row measures +51.59px
+// at 375x667 (EDGE_VIEWPORTS.partialPushBand375 — the exact viewport #681's
+// own issue thread measured the hazard against — re-measured against a real
+// DOM injection during review; an earlier +49px figure here was a stale
+// citation) and drops `.depth-legend`'s reachability budget (62.556px ->
+// 10.96px) under LEGEND_COLLAPSED_HEIGHT_PX (44), which hides the WHOLE
+// legend — `#597` caveat included — behind the `hidden` attribute:
+// `display: none`, out of the accessibility tree entirely.
+//
+// This test proves what placing the control HERE instead actually preserves,
+// stated precisely rather than as "the caveat stays reachable": the binary
+// `legendHidden` gate never fires (asserted below via the caveat paragraph
+// staying `toBeVisible()`, i.e. present, non-empty and not inside a closed
+// `<details>`) — it does NOT prove the caveat sits inside the legend body's
+// own scrollport at this viewport. `.depth-legend-body` is a pre-existing
+// 16px-tall scrollport over ~1150-1200px of content at 375x667 (present on
+// `develop` before this PR), and review measured that this addition moves
+// the caveat's own scroll offset by ~52px further from the top (709.8px ->
+// 762.2px) — comparable to the +51.59px the rejected third-row alternative
+// would have cost, just in a RECOVERABLE dimension (a scroll offset) rather
+// than an UNRECOVERABLE one (`display: none`). `toBeVisible()` is the right
+// instrument for the gate claim and the wrong one for an in-viewport claim;
+// this test makes only the gate claim. It also proves the control has a
+// REAL, independent pixel effect (a DOM-only assertion would pass a checkbox
+// wired to nothing).
+test('hazard-hatch toggle (#681) is independent of the base depth toggle, defaults ON, and never hides the #597 caveat at 375x667', async ({
+  page,
+}) => {
+  const server = await startPreview();
+  try {
+    await page.setViewportSize(EDGE_VIEWPORTS.partialPushBand375);
+    await page.goto(server.url);
+    await mapReady(page);
+
+    // Same idiom as the "#598 ... never overlaps the tab strip" test above:
+    // a `preview` build's SW "offline ready" toast, if still up, pushes
+    // `.map-stack-tl` down via `--sc-banner-clear-top` and can land the
+    // COLLAPSED summary's click target behind the bottom sheet's own tab
+    // strip at this exact narrow viewport — a real, previously-measured
+    // defect class, not a flake to paper over with a longer timeout.
+    await page
+      .locator('.reload-prompt .banner-dismiss')
+      .click({ timeout: 5_000 })
+      .catch(() => {});
+
+    const depthToggle = page.getByRole('checkbox', { name: 'Wassertiefen' });
+    await expect(depthToggle).toBeVisible();
+    await expect(depthToggle).toBeChecked();
+
+    // Same reachable-pre-plan, default-collapsed legend as the test above —
+    // open it to reach the new control, which lives in its body.
+    const summary = page.getByText('Legende', { exact: true });
+    await expect(summary).toBeVisible();
+    await summary.click();
+    const hatchToggle = page.getByRole('checkbox', { name: 'Schraffur anzeigen' });
+    await expect(hatchToggle).toBeVisible();
+    // #455's disclosure basis: a fresh profile must see the hatch, the same
+    // fail-open default as the base ramp's own #63 toggle.
+    await expect(hatchToggle).toBeChecked();
+
+    // The #597 caveat paragraph stays present (the `legendHidden` gate never
+    // fires) with the new control also present — see this test's own header
+    // comment for exactly what this assertion does and does not establish
+    // about the caveat's position inside `.depth-legend-body`'s scrollport.
+    await expect(
+      page.getByText(
+        'Unvermessenes und trockenfallendes Wasser trägt ebenfalls keine Schraffur und ist durch nichts gekennzeichnet, sieht also aus wie gewöhnliches Wasser.',
+      ),
+    ).toBeVisible();
+
+    const canvas = page.locator('canvas.maplibregl-canvas');
+    const bothOn = await settledCanvas(page, canvas);
+
+    // Turning the hatch off must be a REAL pixel effect (not a no-op DOM
+    // toggle wired to nothing), and must leave the base ramp checkbox alone.
+    await hatchToggle.uncheck();
+    await expect(hatchToggle).not.toBeChecked();
+    await expect(depthToggle).toBeChecked();
+    await expect
+      .poll(async () => (await canvas.screenshot()).equals(bothOn), {
+        message: 'turning the hatch toggle OFF must change the rendered map',
+        timeout: 30_000,
+      })
+      .toBe(false);
+    const hatchOff = await settledCanvas(page, canvas);
+
+    // Turning the base depth toggle off must ALSO remove the ramp (a second,
+    // separately-observable pixel change), and disables the hatch checkbox
+    // in the DOM — the #384 defect class (PR #384 review): gating only the
+    // LAYER and not the CONTROL leaves a checkbox implying an effect it no
+    // longer has.
+    await depthToggle.uncheck();
+    await expect(hatchToggle).toBeDisabled();
+    await expect
+      .poll(async () => (await canvas.screenshot()).equals(hatchOff), {
+        message: 'turning the base depth toggle OFF must remove the absolute ramp too',
+        timeout: 30_000,
+      })
+      .toBe(false);
+
+    // Restoring the base toggle re-enables the checkbox — the persisted
+    // hatch flag was never touched again while depthVisible was off, so it
+    // comes back UNCHECKED (the composite condition, not just `hatchVisible`
+    // alone: turning depthVisible back on must not silently resurrect a
+    // layer the user explicitly turned off before it was disabled).
+    await depthToggle.check();
+    await expect(hatchToggle).not.toBeDisabled();
+    await expect(hatchToggle).not.toBeChecked();
   } finally {
     server.kill();
   }
@@ -797,10 +915,10 @@ test('navigability hatch (#599/#648): the stripe stays legible at overview zoom,
           window as unknown as {
             __scE2eMap: { jumpTo: (o: { zoom: number; center: [number, number] }) => void };
           }
-        )// wackerballig's own snap point — no animation. mapReady() has
-        // already installed window.__scE2eMap as a side effect.
-        .__scE2eMap
-          .jumpTo({ zoom: z, center: [9.872, 54.7604] });
+        )
+          // wackerballig's own snap point — no animation. mapReady() has
+          // already installed window.__scE2eMap as a side effect.
+          .__scE2eMap.jumpTo({ zoom: z, center: [9.872, 54.7604] });
       }, zoom);
 
     // Two frames per zoom, differing ONLY in safetyDepthM, so the difference
