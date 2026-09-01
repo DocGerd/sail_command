@@ -197,12 +197,11 @@ Blocker this file records above.
 
 ## Testing this skill itself
 
-`closure.mjs selftest` runs **16** checks with no PERSISTENT repo mutation
+`closure.mjs selftest` runs checks with no PERSISTENT repo mutation
 (synthetic boats.ts-shaped file pairs are compared under the OS tmpdir via
 real `git diff --no-index`; the rename check below spins up a REAL,
 throwaway two-commit git repo under the OS tmpdir; nothing is ever written
-into this repo) — count re-derived from the script's own output, not
-hand-maintained here:
+into this repo):
 
 1. `app/src/types.ts` (holds `DEFAULT_SETTINGS`) is in the closure → default
    OWED — the issue's documented too-narrow-list case.
@@ -239,7 +238,7 @@ hand-maintained here:
     from `changedFiles`'s args reds exactly this row and none other.
 
 **Neither `npm --prefix app run typecheck` nor `npm --prefix app run
-lint` cover this file at all** — both tsconfigs and `eslint src e2e sweep`
+lint` cover this file at all** — the tsconfigs and `eslint src e2e sweep`
 are scoped to `app/src`/`app/e2e`/`app/sweep`, and this skill lives under
 the repo-root `.claude/skills/`. A green `app` CI job carries NO signal
 about `closure.mjs`; treat `node --check` (syntax only) plus `selftest`
