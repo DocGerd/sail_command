@@ -18,6 +18,14 @@ const BASE = `http://localhost:${PORT}/sail_command/`;
 const SW_JS_URL = `${BASE}sw.js`;
 const START_TIMEOUT_MS = 30_000;
 const POLL_INTERVAL_MS = 300;
+// #803 MINOR 2 (PR #823 review): bounds EACH individual fetch attempt, not
+// the overall readiness poll (that's START_TIMEOUT_MS). A real vite preview
+// answers in well under a second; 5s is generous against that and short
+// against the 30s outer budget, so a responder that accepts a connection
+// and then never answers fails in ~5s instead of hanging on undici's own
+// ~300s headers timeout (measured pre-fix at 301,364ms / 300,340ms against
+// the two fetches below).
+const FETCH_TIMEOUT_MS = 5_000;
 
 export interface Viewport {
   width: number;
@@ -249,15 +257,14 @@ function assertSwJsMatches(servedSwJs: string, localSwJs: string): void {
  * Spawns `npm run preview -- --port 4173 --strictPort` in app/ and waits
  * until it answers with a 200 SERVING THIS RUN'S OWN BUILD (see the #803
  * block comment above). `START_TIMEOUT_MS` (30s) bounds the OUTER loop —
- * the number of poll iterations — but NOT any single `await fetch(BASE)`
- * call: a responder that accepts the connection and then never answers can
- * hold that one `await` for undici's own headers-timeout ceiling (measured
- * at 301,364 ms against a hanging responder, PR #823 review) before the
- * loop ever re-checks the deadline. This is PRE-EXISTING, not introduced by
- * the #803 identity check, and is left UNBOUNDED here — `AbortSignal` on
- * the fetch would fix it but is a separate change; every other responder
- * shape (a real 200, a mismatched 200, or a 404/500/302 that kills our own
- * `--strictPort` child) resolves in well under a second. `detached: true`
+ * the number of poll iterations. Each individual `fetch` (there are now
+ * two per successful iteration: `BASE`, then `SW_JS_URL`) is ALSO bounded,
+ * via `FETCH_TIMEOUT_MS`'s `AbortSignal.timeout(...)`: without it, a
+ * responder that accepts the connection and then never answers can hold a
+ * single `await` for undici's own headers-timeout ceiling — measured (PR
+ * #823 review) at 301,364 ms on `fetch(BASE)` and 300,340 ms on
+ * `fetch(SW_JS_URL)` once the latter existed — well past `START_TIMEOUT_MS`
+ * and material against `ci.yml`'s 30-minute `e2e` cap. `detached: true`
  * makes the child the leader of its own process group so kill() can take
  * out `npm` *and* the `vite preview` process it launches with one SIGKILL
  * to the negated pid — killing only the `npm` pid can leave `vite preview`
@@ -311,12 +318,12 @@ export async function startPreview(): Promise<PreviewServer> {
     }
     let res: Response | undefined;
     try {
-      // This `await` is UNBOUNDED against a responder that accepts and then
-      // never answers — see this function's own doc comment (pre-existing,
-      // not introduced here).
-      res = await fetch(BASE);
+      // Bounded via AbortSignal.timeout — see this function's own doc
+      // comment. A timeout here lands in this catch (retry-worthy, same as
+      // ECONNREFUSED) rather than hanging the whole poll loop.
+      res = await fetch(BASE, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     } catch {
-      // server not accepting connections yet — keep polling
+      // server not accepting connections yet, or the fetch timed out — keep polling
     }
     if (res?.ok) {
       // #803: deliberately OUTSIDE the try/catch above — a network-level
@@ -331,10 +338,22 @@ export async function startPreview(): Promise<PreviewServer> {
         assertServingThisBuild(servedHtml, localHtml);
         // #803 MAJOR 1: index.html matching alone is blind to src/sw.ts and
         // public/** (see the block comment above extractEntryScriptSrc) —
-        // this second fetch closes that gap. A non-200 or a throw here is
-        // itself evidence of a foreign/broken responder, not a "keep
-        // polling" condition: BASE already answered 200 moments ago.
-        const swRes = await fetch(SW_JS_URL);
+        // this second fetch closes that gap. A non-200, a timeout, or a
+        // throw here is itself evidence of a foreign/broken responder, not
+        // a "keep polling" condition: BASE already answered 200 moments
+        // ago, so this fetch is bounded (FETCH_TIMEOUT_MS) and its failure
+        // reported directly rather than silently retried.
+        let swRes: Response;
+        try {
+          swRes = await fetch(SW_JS_URL, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+        } catch (fetchErr) {
+          throw new Error(
+            `#803: fetching ${SW_JS_URL} (this build's service worker) failed or timed out ` +
+              `after ${FETCH_TIMEOUT_MS}ms — cannot establish build identity: ` +
+              `${(fetchErr as Error).message}`,
+            { cause: fetchErr },
+          );
+        }
         if (!swRes.ok) {
           throw new Error(
             `#803: expected ${SW_JS_URL} (this build's service worker) to respond 200, got ` +

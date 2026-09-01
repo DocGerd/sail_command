@@ -25,12 +25,9 @@ import { startPreview } from './helpers';
 // restored inside ONE test, synchronously before that test resolves).
 
 const PORT = 4173;
-const DIST_INDEX_HTML = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  '..',
-  'dist',
-  'index.html',
-);
+const APP_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const DIST_INDEX_HTML = resolve(APP_DIR, 'dist', 'index.html');
+const DIST_SW_JS = resolve(APP_DIR, 'dist', 'sw.js');
 
 type DecoyHandler = (req: IncomingMessage, res: ServerResponse) => void;
 
@@ -91,11 +88,16 @@ function isPortListening(port: number): Promise<boolean> {
 /** #803 MAJOR 2: process-table half of the same check — a killed listener
  * and a killed PROCESS are different facts. Matches on the exact spawn
  * arguments (`--port 4173 --strictPort`, from `helpers.ts`'s `spawn(...)`
- * call) rather than a bare "vite"/"npm" substring, so it cannot match an
- * unrelated process on this shared machine — and filters `ps`'s own output
- * in JS rather than passing the pattern to `pgrep -f`/`grep -f`, which
- * would self-match its own invocation (CLAUDE.md's documented pgrep
- * gotcha: the pattern string ends up in the matching tool's OWN argv). */
+ * call) AND this worktree's own `APP_DIR` path — matching the arguments
+ * ALONE is measurably NOT worktree-specific: every worktree's `vite
+ * preview` is invoked with the identical arguments (only the binary's
+ * absolute path differs), so an unrelated worktree's leaked preview on
+ * this shared machine satisfied the args-only filter and redded this
+ * test on 5/5 consecutive runs, going green immediately once that
+ * process was killed (PR #823 review). Filters `ps`'s own output in JS
+ * rather than passing the pattern to `pgrep -f`/`grep -f`, which would
+ * self-match its own invocation (CLAUDE.md's documented pgrep gotcha: the
+ * pattern string ends up in the matching tool's OWN argv). */
 function findOwnPreviewProcesses(): string[] {
   let out: string;
   try {
@@ -103,7 +105,9 @@ function findOwnPreviewProcesses(): string[] {
   } catch {
     return [];
   }
-  return out.split('\n').filter((line) => line.includes(`--port ${PORT} --strictPort`));
+  return out
+    .split('\n')
+    .filter((line) => line.includes(`--port ${PORT} --strictPort`) && line.includes(APP_DIR));
 }
 
 test('#803: refuses a foreign server already bound to the preview port, and leaves nothing running', async () => {
@@ -153,6 +157,49 @@ test('#803 MAJOR 1: refuses a server whose index.html matches but whose sw.js do
   await expect.poll(() => findOwnPreviewProcesses().length, { timeout: 5_000 }).toBe(0);
 });
 
+// #803 MAJOR (round 2, PR #823 review): the MIRROR of the test above —
+// `assertServingThisBuild` was found UNPINNED after the MAJOR 1 fix landed.
+// `dist/sw.js`'s workbox precache manifest carries `index.html`'s own MD5
+// revision, so for any COHERENT build the two checks AGREE — meaning the
+// blanket decoy above (identical body on every path) makes
+// `assertSwJsMatches` throw whenever `assertServingThisBuild` would have,
+// masking the FIRST check's deletion entirely (deleting the call, or making
+// its byte-compare always-true, left every test in this file green).
+// Discriminating input, an INCOHERENT responder where the two artifacts do
+// NOT move together (a proxy, a hand-assembled dist): the REAL `sw.js` with
+// a one-byte-wrong `index.html`. The matcher targets `assertServingThisBuild`'s
+// own diagnostic text ("expected entry chunk"), which never appears in
+// `assertSwJsMatches`'s message — a tightened T1 matcher was considered and
+// rejected in favour of this test, per the review: brittle to distinguish
+// two `#803`-prefixed messages, where a dedicated test states the property
+// directly.
+test('#803 MAJOR: refuses a server whose sw.js matches but whose index.html does not', async () => {
+  const indexHtml = readFileSync(DIST_INDEX_HTML, 'utf8');
+  const swJs = readFileSync(DIST_SW_JS, 'utf8');
+  const mutatedIndexHtml = indexHtml.replace(
+    '<title>SailCommand</title>',
+    '<title>SailCommand!</title>',
+  );
+  // Sanity: the mutation actually matched something in the real build.
+  expect(mutatedIndexHtml).not.toBe(indexHtml);
+  const decoy = await startDecoyServer(PORT, (req, res) => {
+    if (req.url?.endsWith('/sw.js')) {
+      res.writeHead(200, { 'content-type': 'application/javascript' });
+      res.end(swJs);
+      return;
+    }
+    res.writeHead(200, { 'content-type': 'text/html' });
+    res.end(mutatedIndexHtml);
+  });
+  try {
+    await expectStartPreviewToReject(/expected entry chunk/);
+  } finally {
+    await stopDecoyServer(decoy);
+  }
+  await expect.poll(() => isPortListening(PORT), { timeout: 5_000 }).toBe(false);
+  await expect.poll(() => findOwnPreviewProcesses().length, { timeout: 5_000 }).toBe(0);
+});
+
 // #803 MINOR 1 (PR #823 review): the hashed-asset shape check inside
 // `extractEntryScriptSrc` and the pre-spawn `extractEntryScriptSrc(localHtml,
 // …)` call in `startPreview()` were both unpinned — deleting either left
@@ -184,7 +231,13 @@ test('#803 MINOR 1: refuses a local dist/index.html whose entry src is not a has
 
 test('#803 MINOR 1: refuses a local dist/index.html with no module script tag at all', async () => {
   const original = readFileSync(DIST_INDEX_HTML, 'utf8');
-  const mutated = original.replace(/<script[^>]*\stype="module"[^>]*>[\s\S]*?<\/script>/, '');
+  // Disable the attribute value rather than stripping the element — same
+  // effect on extractEntryScriptSrc's regex (no `type="module"` left to
+  // match) without a tag-removal shape CodeQL flags as incomplete
+  // multi-character sanitization (js/incomplete-multi-character-sanitization,
+  // alert 22 — this string is never rendered, but the rewrite avoids the
+  // finding rather than justifying a dismissal).
+  const mutated = original.replace('type="module"', 'type="module-DISABLED"');
   expect(mutated).not.toBe(original);
   expect(mutated).not.toContain('type="module"');
   writeFileSync(DIST_INDEX_HTML, mutated, 'utf8');
