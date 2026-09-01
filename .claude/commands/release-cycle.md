@@ -18,7 +18,7 @@ every trap named there has already cost this project a session.
 
 ## Deliverable
 
-One complete release cycle, in five phases, with ONE human gate in phase 1 and ONE in phase 3.
+One complete release cycle, in six phases (0-5), with ONE human gate in phase 1 and ONE in phase 3.
 Do not cross a gate on your own bookkeeping.
 
 ---
@@ -28,7 +28,9 @@ Do not cross a gate on your own bookkeeping.
 Every count, milestone name and issue number below is illustrative only. DISCOVER the real state
 first; this prompt goes stale on the next merge.
 
-Dispatch **2 read-only scouts in parallel** (`sonnet`, medium):
+Dispatch **2 read-only research subagents in parallel** — `general-purpose`, `sonnet`, medium;
+NOT the `scout` agent type, whose definition restricts Bash to `graphify` and forbids git and
+network outright. They read state and report; only the `git fetch` below writes anything (refs).
 
 1. **GitHub state** — open milestones with open/closed counts
    (`gh api repos/DocGerd/sail_command/milestones`); every open issue in each, with its
@@ -52,9 +54,13 @@ Then answer these three questions IN WRITING before doing anything else:
 - **Which milestone is the CURRENT release target?** The lowest-numbered OPEN milestone, PATCH
   milestones (`vX.Y.Z`, Z > 0) included — and note that a milestone showing zero open issues may be
   a cut already in flight rather than an empty one. Which is NEXT?
-- **Is `develop` shippable right now?** `npm --prefix app run typecheck && npm --prefix app run lint
-  && npm --prefix app run test` — `lint`/`test` are npm SCRIPT names, not binaries, so each needs its
-  own `run`. Delegate the run; do not do it inline.
+- **Is `develop` shippable right now?** Read the REQUIRED checks off `origin/develop`'s tip first
+  — `gh api repos/DocGerd/sail_command/commits/$(git rev-parse origin/develop)/check-runs` — and
+  gate on `app` AND `e2e`; a local run cannot see `e2e` at all, and `e2e` is the only functional
+  assurance for `src/sw.ts` and `src/routing/worker.ts`. Then corroborate locally with `npm
+  --prefix app run typecheck && npm --prefix app run lint && npm --prefix app run test` —
+  `lint`/`test` are npm SCRIPT names, not binaries, so each needs its own `run`. Delegate the
+  run; do not do it inline.
 
 ---
 
@@ -82,7 +88,8 @@ State your reading of the reserve rule explicitly in the proposal — it is ambi
 Dispatch a **Workflow** with one agent per milestone bucket (current release, next release,
 Backlog, Icebox) plus one cross-cutting agent. Each returns, per issue: current milestone,
 labels, a one-line statement of what it actually is, whether it is still LIVE (issue titles go
-stale — #452's title was false for two releases and briefing from it produced a false premise),
+stale — #452's title still claims relaxation lowers the gate for the WHOLE route, false since
+v0.12.0 made it per-cell, and briefing from it produced a false premise (#649)),
 and a recommended destination with a reason. Then run an **adversarial verify pass**: every
 "close as done / no longer applies" recommendation gets ≥2 independent refuters, and the default
 verdict is REFUTED. In a recent triage session every close-recommendation put through that pass
@@ -149,14 +156,21 @@ Merge with `/merge-train`: strictly serial, re-sync each branch from `origin/dev
 turn, verify `head.sha` equals what was pushed AND that check-runs exist for that exact SHA
 (#119), gate on `app` + `e2e` only (the sole required checks; `ruff`/`verify`/CodeQL/
 `hook-selftests` are advisory and yield `unstable`, which still merges — so after ANY `pipeline/**`
-change run `./pipeline/.venv/bin/ruff check pipeline/` and `... format --check pipeline/` BY HAND: a
-red `ruff` merges silently and no JS-side gate can see Python). After ANY dependency change,
+change run `./pipeline/.venv/bin/ruff check pipeline/` and `./pipeline/.venv/bin/ruff format --check pipeline/` BY HAND
+(if `pipeline/.venv` does not exist, create it with `python3 -m venv pipeline/.venv &&
+pipeline/.venv/bin/pip install -r pipeline/requirements.txt` — it is gitignored and absent from a
+fresh worktree): a red `ruff` merges silently and no JS-side gate can see Python). After ANY dependency change,
 Dependabot bumps included, run `npm --prefix app run notices` and commit the regenerated
 `app/public/THIRD-PARTY-NOTICES.txt` — the REQUIRED `app` job regenerates it and fails at
 `git diff --exit-code public/THIRD-PARTY-NOTICES.txt`, with `e2e` and CodeQL green beside it.
 Never state a check's state from your own table. A 504 or a detached-HEAD error can still LAND the merge — verify via
 the merge commit's parents, never blind-retry. `gh pr merge` is server-side, so run
-`git merge --ff-only origin/develop` afterwards or keep naming refs explicitly.
+`git merge --ff-only origin/develop` afterwards or keep naming refs explicitly. When the train is
+finished, verify the LAST `deploy.yml` run before Phase 3 — `gh run list --workflow=deploy.yml
+--limit 6 --json headSha,conclusion`, then that run's `smoke-probe` job. A merge train legitimately
+leaves several grey `cancelled` runs; only the final one matters, and a cancelled last run means
+nothing deployed and is indistinguishable from nothing happening. A develop push also evicts
+production's CDN edge Range objects, so a red probe there is a prod fact, not a UAT one.
 
 Do NOT merge on a green-e2e assumption alone: an e2e run can silently measure a FOREIGN build
 (#803) and that yields a false GREEN as readily as a false red. Prefer an assertion that can only
@@ -166,8 +180,10 @@ pass on the tree under test.
 
 ## Phase 3 — Release cut
 
-Invoke the `/release` skill explicitly (it is `disable-model-invocation: true`, so it will not
-self-trigger) and follow it literally. Its structure:
+The `/release` skill is `disable-model-invocation: true` — deliberately, because whatever merges
+to `main` goes live immediately, so its own header calls the runbook "user-only and human-gated
+by design". I therefore CANNOT invoke it. Ask me to type `/release` yourself, and while you wait
+read `.claude/skills/release/SKILL.md` and follow it literally. Its structure:
 
 | Step | What |
 |---|---|
@@ -178,7 +194,7 @@ self-trigger) and follow it literally. Its structure:
 | 4 | **I** merge it |
 | 5 | Sign, verify locally, push the tag |
 | §5a | Assert the ref before tagging — local `main` is routinely stale |
-| §5b | The tag deploy must go GREEN before the back-merge |
+| §5b | The tag deploy must reach `success` before the back-merge — EXCEPT the #398 no-op below, where `smoke-probe` reds and the back-merge IS the remedy |
 | §5c | Verify the GitHub Release object exists and is `Latest` |
 | §5d | Verify GitHub shows the tag as Verified |
 | 6 | Back-merge `main → develop` via a TOPIC branch |
@@ -188,7 +204,8 @@ self-trigger) and follow it literally. Its structure:
 Non-negotiables at the cut:
 
 - **§2b fold** — hand-fold every `changelog.d/` fragment into `## [X.Y.Z] - <date>` as TOP-LEVEL
-  bullets (`ENTRY_RE` is `/^- (.*)$/`, unanchored indentation silently glues entries together),
+  bullets (`ENTRY_RE` is `/^- (.*)$/`, anchored with no leading whitespace, so an INDENTED
+  bullet silently glues onto the previous entry),
   update the comparison links, delete the fragments. Then **re-`ls changelog.d/` immediately
   before pushing the tag** — a fragment whose PR merged after the sweep is silently lost and
   nothing reds. Never create an EMPTY release section (it fails a REQUIRED check and
@@ -197,9 +214,10 @@ Non-negotiables at the cut:
   (`node app/scripts/gen-docs-wind-fixture.mjs`), recapture via `docs/screenshots/capture.mjs`,
   and check the hero shows SAILING, not motoring — freshness is necessary, not sufficient. The
   blank Shallow column in `plan-route.png` was APPROVED by me at the v0.17.0 cut — but that
-  approval was about the CAPTURE, not about the feature: `docs/acceptance.md` §2.12 records that the
-  Shallow column populates on ordinary, non-relaxed routes since #651/#698. So confirm the captured
-  route genuinely has no sub-gate leg before shipping a blank column; do not "fix" it, and do not
+  approval was about the CAPTURE, not about the feature: `docs/acceptance.md` §2.12 records that a leg
+  whose cautious depth reading falls below the safety depth shows its "Shallow …"/"Marginal …" chip
+  on an ordinary, non-relaxed route TOO since #651/#698 — not only inside a relaxed one. So confirm
+  the captured route genuinely has no sub-gate leg before shipping a blank column; do not "fix" it, and do not
   wave it through unverified either.
 - **`Closes #N` does nothing in a release PR** (auto-close fires only on merge to `develop`) —
   close milestone-scoped issues by hand at the cut.
@@ -209,9 +227,10 @@ Non-negotiables at the cut:
   red, and the remedy is the BACK-MERGE (step 6), never a re-run. Gate on the JOB CONCLUSION;
   the merge→tag time gap licenses nothing in either direction. Add a row to CLAUDE.md's #398
   table for this cut — the table is what the "COUNT THE TABLE ROWS" instruction counts.
-- Expect the back-merge PR to display a RED check inherited from the tag run when it
-  fast-forwards onto the tag commit — attribute every check-run by the run id in its own
-  `details_url`, never by name.
+- When the tag run NO-OPPED **and** the back-merge fast-forwards onto the tag commit, expect the
+  back-merge PR to display a RED check inherited from the tag run — both conditions are needed,
+  and if `develop` moved past the release commit no SHA is shared and any red is this PR's own.
+  Attribute every check-run by the run id in its own `details_url`, never by name.
 - Verify prod independently: fetch the live entry chunk and confirm the bare `vX.Y.Z` (no
   `-N-g<sha>` suffix). `/uat/` can NEVER show a bare tag — that is correct, not a bug.
 
@@ -234,8 +253,8 @@ do this (its reflection input would be empty). It declares `allowed-tools: Read,
 
 Also run one **"when does this become false?"** lens over the diff — the currency check
 structurally cannot catch a self-staling fact (an ahead/behind count, a tip SHA, an "as of"
-snapshot), and a CLAUDE.md audit needs its own review: the last one found 30 defects in a 231-line
-audit diff.
+snapshot), and a CLAUDE.md audit needs its own review: one such audit's own 231-line diff was
+measured to contain 30 further defects, 9 of them major.
 
 ---
 
