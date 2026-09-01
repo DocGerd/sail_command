@@ -2962,6 +2962,10 @@ select {
   .planner-actions {
     position: sticky;
     bottom: 0;
+    /* Guarded ONLY by the `sweep('endpoints')` rows of plan.spec.ts's `#702`
+       narrow test — the empty planner has zero CTA/toggle overlap with or
+       without this padding (measured), so the empty and English rows cannot
+       see this declaration at all. */
     padding-right: 24px;
   }
 }

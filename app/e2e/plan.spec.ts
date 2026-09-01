@@ -366,9 +366,11 @@ type AttributionSubject = 'attribution-toggle' | 'openstreetmap-link';
  * before the layout settled.
  *
  * Since #702 that scroll is a measured NO-OP at every row of this test's
- * matrix (scrollTop stayed 0 at all nine narrow rows, 2026-09-01): the bar is
- * sticky at both layouts now, so it is already fully in view and
- * `scrollIntoView` has nothing to do. The call stays because it is what makes
+ * matrix (scrollTop stayed 0 at all twelve rows of `ATTRIBUTION_VIEWPORTS`,
+ * 2026-09-01 — including `tabletLandscape`, which has 120px of overflow; the
+ * three wide rows were already no-ops before #702, where the bar was already
+ * sticky): the bar is sticky at both layouts now, so it is already fully in
+ * view and `scrollIntoView` has nothing to do. The call stays because it is what makes
  * this helper honest about the scrolled state should the bar ever stop
  * fitting, but it means these rows no longer exercise a scrolled panel — and
  * they never sampled the at-rest sticky position either, which sits ~12px
@@ -542,6 +544,15 @@ const WIDE_CTA_VIEWPORTS = Object.entries(ATTRIBUTION_VIEWPORTS).filter(
 // that discriminates, at both ends.
 const CTA_CORNER_INSET_PX = 10;
 
+// The map's attribution carries exactly four credit links: OpenStreetMap,
+// Protomaps, EMODnet Bathymetry, and "Weather data by Open-Meteo.com".
+// MEASURED 2026-09-01: four at every narrow row, in both planner states.
+// Pinned as an exact count, not a non-vacuity floor: attribution reachability
+// is an ODbL/CC-BY obligation, so a credit silently disappearing from the
+// string must red rather than pass. Adding a legitimate fifth credit reds this
+// too — deliberate, and the cheaper direction to be wrong in.
+const EXPECTED_CREDIT_LINKS = 4;
+
 /**
  * Reports whether the CTA is reachable WITHOUT scrolling, as a descriptive
  * string carrying the overflow margin and both rectangles. Fails CLOSED on a
@@ -637,8 +648,9 @@ async function ctaCornerTopmost(page: Page, insetPx: number): Promise<string> {
  * rect per line box while its bounding box spans both lines PLUS the gap
  * between them — and that gap belongs to the parent. MEASURED 2026-09-01 with
  * this control expanded: every anchor with two client rects
- * ("Weather data by Open-Meteo.com" at phonePortrait/tabletPortrait,
- * "EMODnet Bathymetry" additionally at wrapForcing280) hit-tested its
+ * ("Weather data by Open-Meteo.com" at six of the nine narrow rows and
+ * "EMODnet Bathymetry" additionally at deepPortrait320 and wrapForcing280 —
+ * the set is deterministic but NOT monotonic in viewport width) hit-tested its
  * bounding-box centre to `div.maplibregl-ctrl-attrib-inner`, its own parent,
  * while BOTH of its line-box centres hit-tested to the anchor. That is a
  * geometry artefact of centre-probing an inline box, not occlusion, and a
@@ -781,7 +793,7 @@ test('#702: the "Route planen" CTA stays reachable at the panel bottom at every 
             timeout: 15_000,
             message: label,
           })
-          .toMatch(/^all-links topmost n=[1-9]/);
+          .toBe(`all-links topmost n=${EXPECTED_CREDIT_LINKS}`);
         await attribution
           .getByRole('link', { name: 'OpenStreetMap' })
           .click({ trial: true, timeout: 10_000 });
