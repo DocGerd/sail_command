@@ -28,8 +28,9 @@ made complementary rather than folded in a single direction: the
 depth-hatch legend renders only while no route is planned, and once a route
 exists its content (hatch swatch, basis, and the #597 safety caveat, copied
 verbatim) folds into the route legend's own disclosure instead — exactly
-one "Legende" disclosure exists in the DOM at any time, never both, never
-neither ([#813](https://github.com/DocGerd/sail_command/issues/813)). The
+one "Legende" disclosure exists in the DOM at any time — the two never
+render at once
+([#813](https://github.com/DocGerd/sail_command/issues/813)). The
 #492 shallow-water hazard hatch can now be switched off independently of
 the base water-depths overlay, from a checkbox reachable on both of #813's
 complementary legend surfaces via a persisted, default-on flag kept in

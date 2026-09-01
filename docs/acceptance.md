@@ -42,16 +42,20 @@ results table at the bottom, and note it in the box below the check.
       legend is deliberately not rendered at all here — by design, not a
       missing control (in that specific combination, short landscape with no
       route planned, neither this legend nor the plan-active one below
-      exists at all; that is expected, not a "never neither" violation).
+      is shown; that is expected, not a "never neither" violation).
       **If a route is already showing** — this browser restores the last
       session's plan on load (#113), so opening the app is not guaranteed to
-      start with none — reach the no-route state with **Import GPX** (Plan
-      tab) and any valid `.gpx` file, which always clears the active route
-      before seeding a fresh draft, then repeat this check. Once a route
-      IS planned (the normal state for the rest of this runbook, starting
-      with the very next check), this legend disappears and its content
-      moves into "Display options" → "Legend" ("Legende") instead — the two
-      never render at once (#813); see the "Display options" check below.
+      start with none — clear it with **Export GPX** (route summary)
+      followed by **Import GPX** (Plan tab) on the file you just exported:
+      import always clears the active route *when the file parses*, and a
+      file the app exported from a route in this area always does. A GPX
+      from elsewhere is rejected with "A point lies outside the covered
+      area" and the route is **not** cleared. Then repeat this check. Once
+      a route IS planned (the normal state for the rest of this runbook,
+      starting with the very next check), this legend disappears and its
+      content moves into "Display options" → "Legend" ("Legende") instead —
+      the two never render at once (#813); see the "Display options" check
+      below.
 - [ ] Confirm the wind forecast is current: plan any route for a near-term
       departure (e.g. the next full hour) and confirm the stale-forecast
       notice (§2.8) does NOT appear — if it does, stop and re-check
@@ -98,9 +102,12 @@ results table at the bottom, and note it in the box below the check.
       this nested disclosure's OWN resting state before opening it
       yourself: on narrow layouts it now starts OPEN by default (a
       different default from "Display options" itself, above), while on
-      wide layouts it starts closed, unchanged from before #813 — confirm
-      both defaults, and that toggling it by hand still works in either
-      state.
+      wide layouts it starts closed, unchanged from before #813. Confirm
+      the default for **the width you are testing at**, and that toggling
+      it by hand still works. (To see the other default you must resize
+      *and reload* — the default is seeded once when the route overlay
+      mounts, and once you have toggled "Display options" by hand a
+      resize alone will not re-seed it.)
 
 ## 2. Route A — Flensburg → Marstal
 

@@ -75,7 +75,7 @@ installs as a standalone icon and works fully offline after the first visit
   whose cautious, worst-case reading falls below your safety depth; the
   overlay is on by default and can be toggled off, and the hatch can be
   switched off independently of it. A legend explains what the hatch does
-  and does not mark — below the map's layer controls, collapsed by default,
+  and does not mark — below the map's layer controls (collapsed by default)
   before a route is planned, and folded into the route legend once one is.
 - The router fetches hourly wind, then computes the fastest sailable route
   twice — once per foresail of the selected boat — and recommends the faster
