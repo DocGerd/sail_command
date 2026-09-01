@@ -272,15 +272,31 @@ test('depth-hatch legend (#598) is reachable pre-plan, default-collapsed, and ca
 
 // #681: independent hazard-hatch toggle. The whole reason this control lives
 // INSIDE the legend's disclosure body rather than as a third
-// `.data-layer-controls` checkbox row is that a third row measures +49px at
-// 375x667 (EDGE_VIEWPORTS.partialPushBand375 — the exact viewport #681's own
-// issue thread measured the hazard against) and drops `.depth-legend`'s
-// reachability budget under LEGEND_COLLAPSED_HEIGHT_PX, hiding the #597
-// caveat paragraph at exactly this app's primary on-boat viewport. This test
-// is the acceptance criterion for that decision made concrete: the caveat
-// must still be reachable with the new control present, and the control must
-// have a REAL, independent pixel effect (a DOM-only assertion would pass a
-// checkbox wired to nothing).
+// `.data-layer-controls` checkbox row is that a third row measures +51.59px
+// at 375x667 (EDGE_VIEWPORTS.partialPushBand375 — the exact viewport #681's
+// own issue thread measured the hazard against — re-measured against a real
+// DOM injection during review; an earlier +49px figure here was a stale
+// citation) and drops `.depth-legend`'s reachability budget (62.556px ->
+// 10.96px) under LEGEND_COLLAPSED_HEIGHT_PX (44), which hides the WHOLE
+// legend — `#597` caveat included — behind the `hidden` attribute:
+// `display: none`, out of the accessibility tree entirely.
+//
+// This test proves what placing the control HERE instead actually preserves,
+// stated precisely rather than as "the caveat stays reachable": the binary
+// `legendHidden` gate never fires (asserted below via the caveat paragraph
+// staying `toBeVisible()`, i.e. present, non-empty and not inside a closed
+// `<details>`) — it does NOT prove the caveat sits inside the legend body's
+// own scrollport at this viewport. `.depth-legend-body` is a pre-existing
+// 16px-tall scrollport over ~1150-1200px of content at 375x667 (present on
+// `develop` before this PR), and review measured that this addition moves
+// the caveat's own scroll offset by ~52px further from the top (709.8px ->
+// 762.2px) — comparable to the +51.59px the rejected third-row alternative
+// would have cost, just in a RECOVERABLE dimension (a scroll offset) rather
+// than an UNRECOVERABLE one (`display: none`). `toBeVisible()` is the right
+// instrument for the gate claim and the wrong one for an in-viewport claim;
+// this test makes only the gate claim. It also proves the control has a
+// REAL, independent pixel effect (a DOM-only assertion would pass a checkbox
+// wired to nothing).
 test('hazard-hatch toggle (#681) is independent of the base depth toggle, defaults ON, and never hides the #597 caveat at 375x667', async ({
   page,
 }) => {
@@ -316,8 +332,10 @@ test('hazard-hatch toggle (#681) is independent of the base depth toggle, defaul
     // fail-open default as the base ramp's own #63 toggle.
     await expect(hatchToggle).toBeChecked();
 
-    // ACCEPTANCE CRITERION: the #597 caveat is still reachable at this exact
-    // viewport with the new control present.
+    // The #597 caveat paragraph stays present (the `legendHidden` gate never
+    // fires) with the new control also present — see this test's own header
+    // comment for exactly what this assertion does and does not establish
+    // about the caveat's position inside `.depth-legend-body`'s scrollport.
     await expect(
       page.getByText(
         'Unvermessenes und trockenfallendes Wasser trägt ebenfalls keine Schraffur und ist durch nichts gekennzeichnet, sieht also aus wie gewöhnliches Wasser.',

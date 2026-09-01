@@ -553,10 +553,14 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
   // discloses exactly that criterion, so `defaultValue: true` is what keeps a
   // fresh profile seeing today's disclosure. This does NOT get its own row in
   // `.data-layer-controls` (see the return JSX below) — a third checkbox row
-  // there measures +49px at 375x667 and drops the `.depth-legend` reachability
-  // budget under `LEGEND_COLLAPSED_HEIGHT_PX`, hiding the #597 caveat at
-  // exactly the viewport this app is most used on. Rendered instead inside
-  // `.depth-legend-body`, which costs `.data-layer-controls` zero height.
+  // there measures +51.59px at 375x667 (re-measured against a real DOM
+  // injection during review) and drops the `.depth-legend` reachability
+  // budget from 62.556px to 10.96px, under `LEGEND_COLLAPSED_HEIGHT_PX` (44)
+  // — hiding the WHOLE legend, `#597` caveat included, behind `hidden`. What
+  // rendering the toggle inside `.depth-legend-body` instead preserves is
+  // that binary reachability gate, not the caveat's position inside the
+  // legend body's OWN scrollport — see the return JSX below for the full,
+  // precisely-stated derivation.
   const [hatchVisible, setHatchVisible] = usePersistedToggle('sc-depth-hatch-visible', true);
   // #598 review round 3: whether `.depth-legend` has enough room to render
   // reachably at all — computed in the `useLayoutEffect` below (not
