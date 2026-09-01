@@ -18,13 +18,15 @@ shipped.
 
 ## Now — v0.17.0
 
-The `v0.17.0` cut (2026-09-01) closed the
+The `v0.17.0` cut (2026-09-01) completed the
 [`v0.17.0` milestone](https://github.com/DocGerd/sail_command/milestones),
 twenty-four issues in total. Accessibility and reachability ran through most
 of the user-visible work, and two of its items turned out to be one surface
 seen from opposite sides: the primary "Route planen" CTA is now pinned to the
-bottom of the planner on phones and other narrow screens, meeting the design
-spec's own §3.3 guarantee instead of sitting below a long scroll
+bottom of the planner on phones and other narrow screens, meeting the
+UI-modernization addendum's §3.3 guarantee
+(`docs/superpowers/specs/2026-07-17-ui-modernization-design.md`) instead of
+sitting below a long scroll
 ([#702](https://github.com/DocGerd/sail_command/issues/702)), and the map's
 OpenStreetMap attribution link — which the scrolled-down planner had been
 covering and swallowing taps on, making it a licence-compliance surface under
