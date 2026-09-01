@@ -4,16 +4,28 @@
 // offline.spec.ts needs to kill the server mid-test while plan.spec.ts
 // keeps it alive for the whole run.
 import { spawn } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, type Page } from '@playwright/test';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const APP_DIR = resolve(__dirname, '..');
+const DIST_INDEX_HTML = resolve(APP_DIR, 'dist', 'index.html');
+const DIST_SW_JS = resolve(APP_DIR, 'dist', 'sw.js');
 const PORT = 4173;
 const BASE = `http://localhost:${PORT}/sail_command/`;
+const SW_JS_URL = `${BASE}sw.js`;
 const START_TIMEOUT_MS = 30_000;
 const POLL_INTERVAL_MS = 300;
+// #803 MINOR 2 (PR #823 review): bounds EACH individual fetch attempt, not
+// the overall readiness poll (that's START_TIMEOUT_MS). A real vite preview
+// answers in well under a second; 5s is generous against that and short
+// against the 30s outer budget, so a responder that accepts a connection
+// and then never answers fails in ~5s instead of hanging on undici's own
+// ~300s headers timeout (measured pre-fix at 301,364ms / 300,340ms against
+// the two fetches below).
+const FETCH_TIMEOUT_MS = 5_000;
 
 export interface Viewport {
   width: number;
@@ -80,15 +92,193 @@ export interface PreviewServer {
   kill: () => void;
 }
 
+// #803: `startPreview()` used to return as soon as ANY 200 answered
+// `fetch(BASE)`, with no check that the responder was the `vite preview`
+// process THIS call just spawned, or that it was serving THIS run's own
+// `dist/`. A process already bound to port 4173 (a leftover preview server,
+// a parallel worktree's run, a stray `vite preview`) makes our own
+// `--strictPort` child fail to bind — and WHEN THE FOREIGN RESPONDER
+// ANSWERS 200, that bind failure is invisible from here: the foreign
+// process just answers our readiness poll with its OWN content, so we
+// never see EADDRINUSE and "retry on EADDRINUSE" (the old guidance for
+// parallel-worktree contention) cannot reach this hazard at all. This is
+// SCOPED to the 200 case: a foreign responder that answers 404/500/302
+// does NOT hide the bind failure — `child.exitCode !== null` catches our
+// own `--strictPort` child dying, typically within a few hundred ms
+// (measured, PR #823 review) — so the false-green risk below is specific
+// to a foreign server that happens to answer 200 with different content.
+// Because a green e2e run gates merges, this is symmetric: it can
+// produce a false RED (testing a stale/foreign build) or a false GREEN (the
+// foreign build happens to be the already-fixed one while the branch under
+// test is still broken) — nothing downstream can tell the two apart.
+//
+// The fix is a BUILD-IDENTITY check, not a process-identity (pid) check —
+// per the issue, neither a free port nor a pid check closes this, and a pid
+// only proves "a process I spawned exists", never "the bytes coming back
+// over the socket are its bytes" (a pid check also can't help at all
+// against the issue's second, cache-based layer). `assertServingThisBuild`
+// compares the served `index.html` byte-for-byte against the
+// `dist/index.html` THIS run's own `npm run build` (via the `pree2e` hook)
+// just wrote to disk, using the same discovery/verification philosophy
+// `deploy.yml` already uses for its #398 same-SHA-no-op smoke probe
+// (discover the entry chunk from the built `index.html`'s own `<script
+// type="module">` tag, never a hardcoded filename) — ported here as a
+// stronger full-document comparison, since we control both sides (the local
+// file and the fetch) directly rather than needing to name a URL to probe.
+//
+// index.html references exactly TWO hashed assets (the JS entry, the CSS
+// bundle), so byte-matching it establishes identity of the bundled TS/CSS
+// graph and the `git describe` string baked into `__SC_APP_VERSION__` —
+// and NOTHING WIDER (measured, PR #823 review: a substantive `src/sw.ts`
+// edit, and a `public/data/harbors.json` edit, each left `dist/index.html`
+// byte-identical). `assertSwJsMatches` closes that gap by ALSO
+// byte-comparing the served `sw.js` against `dist/sw.js`: workbox's
+// `injectManifest` bakes a precache manifest of MD5 revisions covering
+// every `**/*.{js,css,html,ico,png,svg,json,bin,pbf}` file under `dist/`
+// (`vite.config.ts`'s `globPatterns`) — `src/sw.ts` itself, `data/mask.bin`,
+// every polar, `harbors.json`, `seamarks.json`, the basemap archive, icons
+// and sprites, `index.html` (a second, independent route to the SAME check
+// above), and the hashed JS/CSS chunks — so any change to `sw.ts` or to
+// that glob's contents changes `sw.js`'s own bytes. One extra fetch, and it
+// subsumes the `index.html` check for everything the glob reaches.
+//
+// STILL NOT COVERED by either probe: `vite.config.ts`'s `globIgnores`
+// (`**/test-fixtures/**`, `**/brand/**`, `**/basemap-assets/fonts/**`) are
+// deliberately excluded from the precache manifest, so a difference
+// confined to `dist/test-fixtures/wind-sw12.json` (the exact file every
+// planning spec reads via `?windFixture=`), the social-card image, or a
+// font glyph range would change neither `index.html` nor `sw.js` and would
+// pass this check undetected.
+//
+// This addresses #803's FIRST layer (a foreign server already on the
+// port) for everything the two probes together reach — not the whole of
+// `dist/` unconditionally; see the residual just above. It structurally
+// cannot close the SECOND layer the issue also describes — a stale service
+// worker on a REUSED origin serving a cached build to a real browser
+// PAGE — because this check runs a plain Node `fetch()` with no
+// ServiceWorker in the picture at all; that layer needs a browser-side
+// unregister+cache-clear step wired into the specs that navigate a page,
+// which is out of scope here (see this PR's own description).
+
+/** Extracted for testability and reused by both the local-file and
+ * served-response identity checks; deliberately fails CLOSED (throws)
+ * rather than returning an empty/best-effort value on a shape it doesn't
+ * recognise — an unvalidated match would make the identity check pass
+ * forever with zero signal, the same trap `deploy.yml`'s own #398 comment
+ * warns about for its analogous entry-chunk discovery. */
+function extractEntryScriptSrc(html: string, source: string): string {
+  const tagMatch = /<script[^>]*\stype="module"[^>]*\ssrc="([^"]+)"[^>]*>/.exec(html);
+  if (!tagMatch) {
+    throw new Error(
+      `#803: no <script type="module" src="..."> entry tag found in ${source} — cannot establish build identity`,
+    );
+  }
+  const src = tagMatch[1];
+  // Shape-validate as a hashed built asset (…/assets/<name>-<hash>.js) —
+  // never trust an unvalidated src, which could otherwise be a permanently-
+  // live or malformed URL that makes this check vacuous.
+  if (!/\/assets\/[\w.-]+-[\w-]{6,}\.js$/.test(src)) {
+    throw new Error(
+      `#803: entry script src "${src}" in ${source} doesn't look like a hashed built asset ` +
+        `(expected …/assets/<name>-<hash>.js) — cannot establish build identity`,
+    );
+  }
+  return src;
+}
+
+function readLocalFileOrThrow(path: string): string {
+  try {
+    return readFileSync(path, 'utf8');
+  } catch (err) {
+    throw new Error(
+      `#803: could not read ${path} (${(err as Error).message}) — startPreview() needs a build to ` +
+        `check the preview server's identity against. Run \`npm run build\` first (the \`pree2e\` ` +
+        `hook already does this before Playwright starts).`,
+      { cause: err },
+    );
+  }
+}
+
+function readLocalDistIndexHtml(): string {
+  return readLocalFileOrThrow(DIST_INDEX_HTML);
+}
+
+function readLocalDistSwJs(): string {
+  return readLocalFileOrThrow(DIST_SW_JS);
+}
+
+/** Throws with a diagnostic naming BOTH the observed and expected entry
+ * chunk when the served document doesn't byte-match `localHtml` — see the
+ * block comment above `extractEntryScriptSrc` for what this establishes
+ * (and does not). No-op (returns) on an exact match. */
+function assertServingThisBuild(servedHtml: string, localHtml: string): void {
+  if (servedHtml === localHtml) return;
+  const expected = extractEntryScriptSrc(localHtml, `local ${DIST_INDEX_HTML}`);
+  let observed: string;
+  try {
+    observed = extractEntryScriptSrc(servedHtml, `served ${BASE}`);
+  } catch {
+    observed = `(no recognisable entry tag; first 200 chars: ${JSON.stringify(servedHtml.slice(0, 200))})`;
+  }
+  throw new Error(
+    `#803: the server answering at ${BASE} is not serving this run's own build.\n` +
+      `  expected entry chunk (from ${DIST_INDEX_HTML}): ${expected}\n` +
+      `  observed entry chunk:                            ${observed}\n` +
+      `This usually means a process was already bound to port ${PORT} before this run's own ` +
+      `\`vite preview --strictPort\` could bind it — so EADDRINUSE was never raised, the foreign ` +
+      `responder just answered our readiness poll instead — or a stale dist/ is being served. ` +
+      `Refusing to proceed rather than test the wrong build.`,
+  );
+}
+
+/** #803 MAJOR 1: `index.html` byte-matching alone is blind to `src/sw.ts`
+ * and everything under `public/**` (see the block comment above), because
+ * neither is referenced by a hashed asset URL inside `index.html`. This
+ * closes that gap by byte-comparing the served `sw.js` (workbox's injected
+ * precache manifest — see that block comment for exactly what it covers
+ * and what it still doesn't) against `dist/sw.js`. No-op on an exact
+ * match; throws with lengths (not a diff — `sw.js` is a single minified
+ * bundle with no stable "entry" to name) on a mismatch. */
+function assertSwJsMatches(servedSwJs: string, localSwJs: string): void {
+  if (servedSwJs === localSwJs) return;
+  throw new Error(
+    `#803: the server answering at ${SW_JS_URL} is not serving this run's own build — its ` +
+      `service worker doesn't byte-match ${DIST_SW_JS}.\n` +
+      `  expected length: ${localSwJs.length} bytes\n` +
+      `  observed length: ${servedSwJs.length} bytes\n` +
+      `dist/sw.js carries this build's own workbox precache manifest (index.html, data/mask.bin, ` +
+      `every polar, harbors.json, seamarks.json, the basemap archive, icons and sprites) — a ` +
+      `mismatch here means public/** or src/sw.ts differs even though index.html matched. ` +
+      `Refusing to proceed rather than test the wrong build.`,
+  );
+}
+
 /**
  * Spawns `npm run preview -- --port 4173 --strictPort` in app/ and waits
- * until it answers with a 200, up to 30s. `detached: true` makes the child
- * the leader of its own process group so kill() can take out `npm` *and*
- * the `vite preview` process it launches with one SIGKILL to the negated
- * pid — killing only the `npm` pid can leave `vite preview` (and its bound
- * port) running, which would strand port 4173 for the next spec/run.
+ * until it answers with a 200 SERVING THIS RUN'S OWN BUILD (see the #803
+ * block comment above). `START_TIMEOUT_MS` (30s) bounds the OUTER loop —
+ * the number of poll iterations. Each individual `fetch` (there are now
+ * two per successful iteration: `BASE`, then `SW_JS_URL`) is ALSO bounded,
+ * via `FETCH_TIMEOUT_MS`'s `AbortSignal.timeout(...)`: without it, a
+ * responder that accepts the connection and then never answers can hold a
+ * single `await` for undici's own headers-timeout ceiling — measured (PR
+ * #823 review) at 301,364 ms on `fetch(BASE)` and 300,340 ms on
+ * `fetch(SW_JS_URL)` once the latter existed — well past `START_TIMEOUT_MS`
+ * and material against `ci.yml`'s 30-minute `e2e` cap. `detached: true`
+ * makes the child the leader of its own process group so kill() can take
+ * out `npm` *and* the `vite preview` process it launches with one SIGKILL
+ * to the negated pid — killing only the `npm` pid can leave `vite preview`
+ * (and its bound port) running, which would strand port 4173 for the next
+ * spec/run.
  */
 export async function startPreview(): Promise<PreviewServer> {
+  // Read (and shape-validate) THIS run's own built dist BEFORE spawning
+  // anything, so a missing/malformed build fails fast with a clear cause
+  // rather than racing the poll loop below.
+  const localHtml = readLocalDistIndexHtml();
+  extractEntryScriptSrc(localHtml, `local ${DIST_INDEX_HTML}`);
+  const localSwJs = readLocalDistSwJs();
+
   const child = spawn('npm', ['run', 'preview', '--', '--port', String(PORT), '--strictPort'], {
     cwd: APP_DIR,
     detached: true,
@@ -126,11 +316,57 @@ export async function startPreview(): Promise<PreviewServer> {
         `preview server process exited early (code ${child.exitCode}) before answering at ${BASE}`,
       );
     }
+    let res: Response | undefined;
     try {
-      const res = await fetch(BASE);
-      if (res.ok) return { url: BASE, kill };
+      // Bounded via AbortSignal.timeout — see this function's own doc
+      // comment. A timeout here lands in this catch (retry-worthy, same as
+      // ECONNREFUSED) rather than hanging the whole poll loop.
+      res = await fetch(BASE, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     } catch {
-      // server not accepting connections yet — keep polling
+      // server not accepting connections yet, or the fetch timed out — keep polling
+    }
+    if (res?.ok) {
+      // #803: deliberately OUTSIDE the try/catch above — a network-level
+      // fetch failure is retry-worthy (server not up yet), but an identity
+      // mismatch is not: it means SOMETHING is answering and it is the
+      // wrong thing, so this must fail loudly and immediately rather than
+      // being swallowed into "keep polling until the deadline" (which would
+      // report a misleading generic timeout instead of naming the actual
+      // foreign build).
+      try {
+        const servedHtml = await res.text();
+        assertServingThisBuild(servedHtml, localHtml);
+        // #803 MAJOR 1: index.html matching alone is blind to src/sw.ts and
+        // public/** (see the block comment above extractEntryScriptSrc) —
+        // this second fetch closes that gap. A non-200, a timeout, or a
+        // throw here is itself evidence of a foreign/broken responder, not
+        // a "keep polling" condition: BASE already answered 200 moments
+        // ago, so this fetch is bounded (FETCH_TIMEOUT_MS) and its failure
+        // reported directly rather than silently retried.
+        let swRes: Response;
+        try {
+          swRes = await fetch(SW_JS_URL, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+        } catch (fetchErr) {
+          throw new Error(
+            `#803: fetching ${SW_JS_URL} (this build's service worker) failed or timed out ` +
+              `after ${FETCH_TIMEOUT_MS}ms — cannot establish build identity: ` +
+              `${(fetchErr as Error).message}`,
+            { cause: fetchErr },
+          );
+        }
+        if (!swRes.ok) {
+          throw new Error(
+            `#803: expected ${SW_JS_URL} (this build's service worker) to respond 200, got ` +
+              `${swRes.status} — cannot establish build identity`,
+          );
+        }
+        const servedSwJs = await swRes.text();
+        assertSwJsMatches(servedSwJs, localSwJs);
+      } catch (err) {
+        kill();
+        throw err;
+      }
+      return { url: BASE, kill };
     }
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
   }
