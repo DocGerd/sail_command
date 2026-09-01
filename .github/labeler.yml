@@ -45,6 +45,7 @@
           - 'app/src/state/usePlanFlow*'
           - 'app/src/components/PlannerPanel*'
           - 'app/src/components/RouteSummary*'
+          - 'app/src/components/ShallowWarning*'
           - 'app/src/components/PlansList*'
           - 'app/src/components/OptionsPanel*'
           - 'app/src/components/LiveView*'

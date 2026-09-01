@@ -297,7 +297,7 @@ export const en = {
   // departure" names the endpoint {hours} is measured to.
   'route.staleForecast': 'Forecast {hours} h old at departure',
   // #504 fix wave 4: restructured from ONE dense paragraph into three parts
-  // inside ONE role="alert" region (ShallowWarning, RouteSummary.tsx: a
+  // inside ONE role="alert" region (ShallowWarning, ShallowWarning.tsx: a
   // <div> with .lead/.detail/.caveat children) — leads with the most
   // severe, actionable fact (the cautious floor) instead of emphasising
   // everything equally. Re-sequencing a sentence is NOT automatically safe:
