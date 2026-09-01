@@ -11,6 +11,9 @@ export const en = {
   'harborPicker.searchPlaceholder': 'Search harbor…',
   'harborPicker.resultsLabel': 'Harbors',
   'harborPicker.noResults': 'No harbors match your search.',
+  // #652: see dict.de.ts's comment on this key — same copy, same reasoning.
+  'harborPicker.knownDisconnected':
+    'Not reachable by the router at any depth setting — a limit of the depth data, not a statement about the water.',
   'options.safetyDepth.label': 'Safety depth (m)',
   // #699: the allowed range used to hang only off the field's native
   // min/max attributes, with no visible or screen-reader-accessible text —

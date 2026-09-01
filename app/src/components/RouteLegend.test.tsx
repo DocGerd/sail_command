@@ -7,12 +7,12 @@ import { en } from '../i18n/dict.en';
 afterEach(() => {
   cleanup();
   localStorage.clear();
-  // #813 fix-wave MAJOR 1: RouteLegend now reads useWideLayout(), which
-  // reads `window.matchMedia` — any test that stubs it (below) must not
-  // leak the stub into a later test that relies on jsdom's own
-  // matchMedia-less default (narrow), the same convention
-  // RouteLayer.test.tsx's own afterEach already documents for the identical
-  // hook.
+  // RouteLegend reads `window.matchMedia` directly (its own
+  // `isWideAtMount()`, deliberately not `useWideLayout()` — see that file's
+  // comment for why) — any test that stubs it must not leak the stub into a
+  // later test relying on jsdom's matchMedia-less default (narrow). Same
+  // afterEach convention as RouteLayer.test.tsx, which stubs the same
+  // global for a different reason.
   delete (window as { matchMedia?: unknown }).matchMedia;
 });
 
@@ -45,9 +45,10 @@ function stubMatchMedia(matches: boolean) {
 
 describe('RouteLegend', () => {
   // #813 fix-wave MAJOR 1: jsdom has no `matchMedia` (src/test/setup.ts does
-  // not stub it globally), and lib/useWideLayout.ts's own contract is to
-  // default to the NARROW layout whenever it is absent — so this render
-  // exercises the narrow branch, which is exactly the one Major 1 changed.
+  // not stub it globally), and isWideAtMount()'s own `typeof
+  // window.matchMedia === 'function'` guard is to default to the NARROW
+  // layout whenever it is absent — so this render exercises the narrow
+  // branch, which is exactly the one Major 1 changed.
   // Renamed from "collapsed by default" now that narrow's default is
   // OPEN — see RouteLegend.tsx's own #813 fix-wave comment for why.
   it('renders a details that is OPEN by default on narrow (no matchMedia, #813 fix-wave)', () => {

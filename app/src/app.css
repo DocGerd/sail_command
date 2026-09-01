@@ -3818,6 +3818,20 @@ select {
   font-weight: 600;
 }
 
+/* #652: distinguishes the "router cannot reach this harbor" disclosure from
+   the neutral depth caveat below (.harbor-picker-caveat) — reuses the same
+   --sc-banner-warning-fg token every other warning surface in the app
+   already uses (.banner-warning, .live-view-gps-hint), never a new colour.
+   Unlike the caveat below, this line is NOT ellipsized: truncating a
+   "cannot be routed to" disclosure would defeat the whole point of #652. No
+   separate dark-mode block needed — the token already varies by mode, same
+   as .chip-shallow's own comment on this. */
+.harbor-picker-unreachable {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--sc-banner-warning-fg);
+}
+
 /* Depth caveat: muted, single line, ellipsized (full text shows on the selected
    endpoint row). min-width:0 lets the flex child shrink so ellipsis engages. */
 .harbor-picker-caveat {
