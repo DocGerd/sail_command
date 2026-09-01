@@ -12,8 +12,10 @@ import { expect, type Page } from '@playwright/test';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const APP_DIR = resolve(__dirname, '..');
 const DIST_INDEX_HTML = resolve(APP_DIR, 'dist', 'index.html');
+const DIST_SW_JS = resolve(APP_DIR, 'dist', 'sw.js');
 const PORT = 4173;
 const BASE = `http://localhost:${PORT}/sail_command/`;
+const SW_JS_URL = `${BASE}sw.js`;
 const START_TIMEOUT_MS = 30_000;
 const POLL_INTERVAL_MS = 300;
 
@@ -87,11 +89,17 @@ export interface PreviewServer {
 // process THIS call just spawned, or that it was serving THIS run's own
 // `dist/`. A process already bound to port 4173 (a leftover preview server,
 // a parallel worktree's run, a stray `vite preview`) makes our own
-// `--strictPort` child fail to bind — but that failure is invisible from
-// here: the foreign process just answers our readiness poll with its OWN
-// content, so we never see EADDRINUSE and "retry on EADDRINUSE" (the old
-// guidance for parallel-worktree contention) cannot reach this hazard at
-// all. Because a green e2e run gates merges, this is symmetric: it can
+// `--strictPort` child fail to bind — and WHEN THE FOREIGN RESPONDER
+// ANSWERS 200, that bind failure is invisible from here: the foreign
+// process just answers our readiness poll with its OWN content, so we
+// never see EADDRINUSE and "retry on EADDRINUSE" (the old guidance for
+// parallel-worktree contention) cannot reach this hazard at all. This is
+// SCOPED to the 200 case: a foreign responder that answers 404/500/302
+// does NOT hide the bind failure — `child.exitCode !== null` catches our
+// own `--strictPort` child dying, typically within a few hundred ms
+// (measured, PR #823 review) — so the false-green risk below is specific
+// to a foreign server that happens to answer 200 with different content.
+// Because a green e2e run gates merges, this is symmetric: it can
 // produce a false RED (testing a stale/foreign build) or a false GREEN (the
 // foreign build happens to be the already-fixed one while the branch under
 // test is still broken) — nothing downstream can tell the two apart.
@@ -101,25 +109,46 @@ export interface PreviewServer {
 // only proves "a process I spawned exists", never "the bytes coming back
 // over the socket are its bytes" (a pid check also can't help at all
 // against the issue's second, cache-based layer). `assertServingThisBuild`
-// instead compares the served `index.html` byte-for-byte against the
+// compares the served `index.html` byte-for-byte against the
 // `dist/index.html` THIS run's own `npm run build` (via the `pree2e` hook)
-// just wrote to disk. Every asset reference inside it — the JS entry chunk,
-// the CSS bundle, the manifest link — is a rollup CONTENT hash of this
-// build's own output (see vite.config.ts's `appVersion()`: even the
-// git-describe string baked into `__SC_APP_VERSION__` changes the JS
-// entry's hash whenever it changes), so any code difference at all changes
-// the HTML text. This is the same discovery/verification philosophy
+// just wrote to disk, using the same discovery/verification philosophy
 // `deploy.yml` already uses for its #398 same-SHA-no-op smoke probe
 // (discover the entry chunk from the built `index.html`'s own `<script
 // type="module">` tag, never a hardcoded filename) — ported here as a
 // stronger full-document comparison, since we control both sides (the local
 // file and the fetch) directly rather than needing to name a URL to probe.
 //
-// This addresses #803's FIRST layer (a foreign server already on the port).
-// It structurally cannot close the SECOND layer the issue also describes —
-// a stale service worker on a REUSED origin serving a cached build to a
-// real browser PAGE — because this check runs a plain Node `fetch()` with
-// no ServiceWorker in the picture at all; that layer needs a browser-side
+// index.html references exactly TWO hashed assets (the JS entry, the CSS
+// bundle), so byte-matching it establishes identity of the bundled TS/CSS
+// graph and the `git describe` string baked into `__SC_APP_VERSION__` —
+// and NOTHING WIDER (measured, PR #823 review: a substantive `src/sw.ts`
+// edit, and a `public/data/harbors.json` edit, each left `dist/index.html`
+// byte-identical). `assertSwJsMatches` closes that gap by ALSO
+// byte-comparing the served `sw.js` against `dist/sw.js`: workbox's
+// `injectManifest` bakes a precache manifest of MD5 revisions covering
+// every `**/*.{js,css,html,ico,png,svg,json,bin,pbf}` file under `dist/`
+// (`vite.config.ts`'s `globPatterns`) — `src/sw.ts` itself, `data/mask.bin`,
+// every polar, `harbors.json`, `seamarks.json`, the basemap archive, icons
+// and sprites, `index.html` (a second, independent route to the SAME check
+// above), and the hashed JS/CSS chunks — so any change to `sw.ts` or to
+// that glob's contents changes `sw.js`'s own bytes. One extra fetch, and it
+// subsumes the `index.html` check for everything the glob reaches.
+//
+// STILL NOT COVERED by either probe: `vite.config.ts`'s `globIgnores`
+// (`**/test-fixtures/**`, `**/brand/**`, `**/basemap-assets/fonts/**`) are
+// deliberately excluded from the precache manifest, so a difference
+// confined to `dist/test-fixtures/wind-sw12.json` (the exact file every
+// planning spec reads via `?windFixture=`), the social-card image, or a
+// font glyph range would change neither `index.html` nor `sw.js` and would
+// pass this check undetected.
+//
+// This addresses #803's FIRST layer (a foreign server already on the
+// port) for everything the two probes together reach — not the whole of
+// `dist/` unconditionally; see the residual just above. It structurally
+// cannot close the SECOND layer the issue also describes — a stale service
+// worker on a REUSED origin serving a cached build to a real browser
+// PAGE — because this check runs a plain Node `fetch()` with no
+// ServiceWorker in the picture at all; that layer needs a browser-side
 // unregister+cache-clear step wired into the specs that navigate a page,
 // which is out of scope here (see this PR's own description).
 
@@ -149,23 +178,31 @@ function extractEntryScriptSrc(html: string, source: string): string {
   return src;
 }
 
-function readLocalDistIndexHtml(): string {
+function readLocalFileOrThrow(path: string): string {
   try {
-    return readFileSync(DIST_INDEX_HTML, 'utf8');
+    return readFileSync(path, 'utf8');
   } catch (err) {
     throw new Error(
-      `#803: could not read ${DIST_INDEX_HTML} (${(err as Error).message}) — startPreview() needs ` +
-        `a build to check the preview server's identity against. Run \`npm run build\` first ` +
-        `(the \`pree2e\` hook already does this before Playwright starts).`,
+      `#803: could not read ${path} (${(err as Error).message}) — startPreview() needs a build to ` +
+        `check the preview server's identity against. Run \`npm run build\` first (the \`pree2e\` ` +
+        `hook already does this before Playwright starts).`,
       { cause: err },
     );
   }
 }
 
+function readLocalDistIndexHtml(): string {
+  return readLocalFileOrThrow(DIST_INDEX_HTML);
+}
+
+function readLocalDistSwJs(): string {
+  return readLocalFileOrThrow(DIST_SW_JS);
+}
+
 /** Throws with a diagnostic naming BOTH the observed and expected entry
  * chunk when the served document doesn't byte-match `localHtml` — see the
- * block comment above `extractEntryScriptSrc` for why byte equality is the
- * check and why it's sufficient. No-op (returns) on an exact match. */
+ * block comment above `extractEntryScriptSrc` for what this establishes
+ * (and does not). No-op (returns) on an exact match. */
 function assertServingThisBuild(servedHtml: string, localHtml: string): void {
   if (servedHtml === localHtml) return;
   const expected = extractEntryScriptSrc(localHtml, `local ${DIST_INDEX_HTML}`);
@@ -186,14 +223,46 @@ function assertServingThisBuild(servedHtml: string, localHtml: string): void {
   );
 }
 
+/** #803 MAJOR 1: `index.html` byte-matching alone is blind to `src/sw.ts`
+ * and everything under `public/**` (see the block comment above), because
+ * neither is referenced by a hashed asset URL inside `index.html`. This
+ * closes that gap by byte-comparing the served `sw.js` (workbox's injected
+ * precache manifest — see that block comment for exactly what it covers
+ * and what it still doesn't) against `dist/sw.js`. No-op on an exact
+ * match; throws with lengths (not a diff — `sw.js` is a single minified
+ * bundle with no stable "entry" to name) on a mismatch. */
+function assertSwJsMatches(servedSwJs: string, localSwJs: string): void {
+  if (servedSwJs === localSwJs) return;
+  throw new Error(
+    `#803: the server answering at ${SW_JS_URL} is not serving this run's own build — its ` +
+      `service worker doesn't byte-match ${DIST_SW_JS}.\n` +
+      `  expected length: ${localSwJs.length} bytes\n` +
+      `  observed length: ${servedSwJs.length} bytes\n` +
+      `dist/sw.js carries this build's own workbox precache manifest (index.html, data/mask.bin, ` +
+      `every polar, harbors.json, seamarks.json, the basemap archive, icons and sprites) — a ` +
+      `mismatch here means public/** or src/sw.ts differs even though index.html matched. ` +
+      `Refusing to proceed rather than test the wrong build.`,
+  );
+}
+
 /**
  * Spawns `npm run preview -- --port 4173 --strictPort` in app/ and waits
  * until it answers with a 200 SERVING THIS RUN'S OWN BUILD (see the #803
- * block comment above), up to 30s. `detached: true` makes the child the
- * leader of its own process group so kill() can take out `npm` *and* the
- * `vite preview` process it launches with one SIGKILL to the negated pid —
- * killing only the `npm` pid can leave `vite preview` (and its bound port)
- * running, which would strand port 4173 for the next spec/run.
+ * block comment above). `START_TIMEOUT_MS` (30s) bounds the OUTER loop —
+ * the number of poll iterations — but NOT any single `await fetch(BASE)`
+ * call: a responder that accepts the connection and then never answers can
+ * hold that one `await` for undici's own headers-timeout ceiling (measured
+ * at 301,364 ms against a hanging responder, PR #823 review) before the
+ * loop ever re-checks the deadline. This is PRE-EXISTING, not introduced by
+ * the #803 identity check, and is left UNBOUNDED here — `AbortSignal` on
+ * the fetch would fix it but is a separate change; every other responder
+ * shape (a real 200, a mismatched 200, or a 404/500/302 that kills our own
+ * `--strictPort` child) resolves in well under a second. `detached: true`
+ * makes the child the leader of its own process group so kill() can take
+ * out `npm` *and* the `vite preview` process it launches with one SIGKILL
+ * to the negated pid — killing only the `npm` pid can leave `vite preview`
+ * (and its bound port) running, which would strand port 4173 for the next
+ * spec/run.
  */
 export async function startPreview(): Promise<PreviewServer> {
   // Read (and shape-validate) THIS run's own built dist BEFORE spawning
@@ -201,6 +270,7 @@ export async function startPreview(): Promise<PreviewServer> {
   // rather than racing the poll loop below.
   const localHtml = readLocalDistIndexHtml();
   extractEntryScriptSrc(localHtml, `local ${DIST_INDEX_HTML}`);
+  const localSwJs = readLocalDistSwJs();
 
   const child = spawn('npm', ['run', 'preview', '--', '--port', String(PORT), '--strictPort'], {
     cwd: APP_DIR,
@@ -241,6 +311,9 @@ export async function startPreview(): Promise<PreviewServer> {
     }
     let res: Response | undefined;
     try {
+      // This `await` is UNBOUNDED against a responder that accepts and then
+      // never answers — see this function's own doc comment (pre-existing,
+      // not introduced here).
       res = await fetch(BASE);
     } catch {
       // server not accepting connections yet — keep polling
@@ -250,12 +323,26 @@ export async function startPreview(): Promise<PreviewServer> {
       // fetch failure is retry-worthy (server not up yet), but an identity
       // mismatch is not: it means SOMETHING is answering and it is the
       // wrong thing, so this must fail loudly and immediately rather than
-      // being swallowed into "keep polling until the 30s timeout" (which
-      // would report a misleading generic timeout instead of naming the
-      // actual foreign build).
+      // being swallowed into "keep polling until the deadline" (which would
+      // report a misleading generic timeout instead of naming the actual
+      // foreign build).
       try {
         const servedHtml = await res.text();
         assertServingThisBuild(servedHtml, localHtml);
+        // #803 MAJOR 1: index.html matching alone is blind to src/sw.ts and
+        // public/** (see the block comment above extractEntryScriptSrc) —
+        // this second fetch closes that gap. A non-200 or a throw here is
+        // itself evidence of a foreign/broken responder, not a "keep
+        // polling" condition: BASE already answered 200 moments ago.
+        const swRes = await fetch(SW_JS_URL);
+        if (!swRes.ok) {
+          throw new Error(
+            `#803: expected ${SW_JS_URL} (this build's service worker) to respond 200, got ` +
+              `${swRes.status} — cannot establish build identity`,
+          );
+        }
+        const servedSwJs = await swRes.text();
+        assertSwJsMatches(servedSwJs, localSwJs);
       } catch (err) {
         kill();
         throw err;
