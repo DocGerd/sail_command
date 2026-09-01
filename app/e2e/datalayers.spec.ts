@@ -207,6 +207,13 @@ test('depth-hatch legend (#598) is reachable pre-plan, default-collapsed, and ca
     // an active plan, since the hatch itself has no other opt-in).
     await expect(page.getByRole('checkbox', { name: 'Wassertiefen' })).toBeVisible();
     await expect(page.locator('.route-layer-controls')).toHaveCount(0);
+    // #813: the complementary half of the plan.spec.ts guard — with no plan,
+    // RouteLegend.tsx's own `.route-legend` (which now folds THIS legend's
+    // content in once a plan exists — see that component's own #813
+    // comment) must not exist at all, so `getByText('Legende', {exact:true})`
+    // below stays unambiguous by construction, not merely by accident of
+    // this spec never planning a route.
+    await expect(page.locator('details.route-legend')).toHaveCount(0);
 
     const summary = page.getByText('Legende', { exact: true });
     await expect(summary).toBeVisible();
@@ -790,10 +797,10 @@ test('navigability hatch (#599/#648): the stripe stays legible at overview zoom,
           window as unknown as {
             __scE2eMap: { jumpTo: (o: { zoom: number; center: [number, number] }) => void };
           }
-        )
-          // wackerballig's own snap point — no animation. mapReady() has
-          // already installed window.__scE2eMap as a side effect.
-          .__scE2eMap.jumpTo({ zoom: z, center: [9.872, 54.7604] });
+        )// wackerballig's own snap point — no animation. mapReady() has
+        // already installed window.__scE2eMap as a side effect.
+        .__scE2eMap
+          .jumpTo({ zoom: z, center: [9.872, 54.7604] });
       }, zoom);
 
     // Two frames per zoom, differing ONLY in safetyDepthM, so the difference
