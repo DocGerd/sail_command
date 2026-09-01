@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useT } from '../i18n';
 
 // Collapsible map legend for the route overlay, mounted inside
@@ -25,6 +26,60 @@ import { useT } from '../i18n';
 // DataLayers.tsx) rather than re-authored, so the #597 sentence survives
 // byte-for-byte.
 //
+// #813 fix-wave, MAJOR 1: on a NARROW layout this disclosure sits nested
+// inside RouteLayer.tsx's OWN `#628` outer "Anzeigeoptionen" Disclosure,
+// which defaults CLOSED there (`defaultOpen={isWide}`) — a wrapper
+// `.depth-legend` never had to contend with (it was always a top-level,
+// independent element). Left default-closed itself, that stacked TWO closed
+// `<details>` ancestors above the #597 caveat on narrow where BASE had only
+// ONE — content inside a closed `<details>` drops out of the accessibility
+// tree entirely, so this was a real reachability regression on this app's
+// primary (on-deck, phone) context, exactly what #813's own text says a fix
+// must not cost ("must survive consolidation and stay reachable … fail
+// open, toward being shown").
+//
+// Fix: default this disclosure OPEN on narrow, closed on wide (unchanged
+// from its pre-#813 "cockpit pixels are expensive" default there) — this
+// is the ONLY lever reachable from this file: RouteLayer.tsx mounts
+// `<RouteLegend />` INSIDE its own outer Disclosure's body (not editable in
+// this task's scope), so the outer wrapper's own closed-on-narrow default
+// and its "Anzeigeoptionen" label are unchanged and still cost ONE closed
+// ancestor on narrow — this restores parity with BASE's ancestor COUNT (1),
+// not full independence from any wrapper at all.
+//
+// Computed ONCE at mount via a lazy `useState` initializer, deliberately NOT
+// a live `open={!isWide}` prop recomputed every render: React treats a
+// changing `open` value as CONTROLLED and would force the DOM attribute back
+// on every narrow<->wide crossing, discarding a user's own manual toggle —
+// the mirror image of the `Disclosure` primitive's documented
+// `useState(defaultOpen)` seed-once trap (CLAUDE.md, #628) that never
+// re-syncs at all. A stable value that never changes after mount is what
+// keeps React from touching the DOM attribute again once rendered, letting
+// native `<details>` toggling behave normally afterward.
+//
+// Deliberately NOT `lib/useWideLayout.ts`'s own hook: that hook subscribes
+// to the media query's 'change' event (needed by RouteLayer.tsx's outer
+// Disclosure, which DOES re-seed on a live rotation, #628 review Major 3) —
+// this component only ever needs a ONE-TIME mount-time read, never a live
+// resubscription, so importing the reactive hook here would be pure
+// overhead with a real cost: MEASURED, it collides with
+// RouteLayer.test.tsx's own `setMatchMedia` test helper, whose fake
+// `MediaQueryList` supports exactly ONE registered 'change' listener via a
+// single `let` variable (correct for jsdom/testing, since real
+// `MediaQueryList.addEventListener` supports many) — a second subscriber
+// from this component overwrites RouteLayer's own listener registration,
+// silently breaking its `#628 review wave 4 Minor` rotation test. A raw,
+// listener-free read sidesteps that entirely. The media-query STRING is
+// therefore duplicated as a literal rather than imported (`useWideLayout.ts`
+// does not export `WIDE_LAYOUT_QUERY`) — same accepted precedent as
+// DataLayers.tsx's own `SHORT_LANDSCAPE_QUERY` literal; re-check this string
+// against that module's own query text if either ever changes.
+function isWideAtMount(): boolean {
+  return (
+    typeof window.matchMedia === 'function' && window.matchMedia('(min-width: 1024px)').matches
+  );
+}
+
 // Swatch colors mirror the live paint expressions: sail lines #009E73/#D55E00
 // and the #5b5b5b dashed motor line (RouteLayer.tsx), the white maneuver circle,
 // and the #CC79A7 via marker (ViaMarkers.tsx). The heading-change dot entry
@@ -35,8 +90,12 @@ import { useT } from '../i18n';
 // route), not gated on the toggle's own state.
 export default function RouteLegend() {
   const t = useT();
+  // #813 fix-wave MAJOR 1: see this file's own comment above `isWideAtMount`
+  // for the full derivation. Lazy initializer -> read once at mount, never
+  // re-read.
+  const [defaultOpen] = useState(() => !isWideAtMount());
   return (
-    <details className="route-legend">
+    <details className="route-legend" open={defaultOpen}>
       <summary>{t('route.legend.title')}</summary>
       {/* #813: folded-in #598 depth-hatch legend — a plain wrapper (never
           `.depth-legend-body`, which also carries that file's free-floating

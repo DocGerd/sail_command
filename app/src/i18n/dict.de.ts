@@ -444,10 +444,17 @@ export const de = {
   'route.maneuverLetter.gybe': 'H',
   'route.legend.title': 'Legende',
   // #813: sub-heading introducing the folded-in #598 depth-hatch entries
-  // (RouteLegend.tsx) — deliberately the SAME text as `map.depth.toggle`
-  // ("Wassertiefen"), a separate key so the two can diverge independently
-  // later; both currently name the same underlying feature.
-  'route.legend.depthHeading': 'Wassertiefen',
+  // (RouteLegend.tsx). Fix-wave MINOR 2 (self-review): this used to be
+  // byte-identical to `map.depth.toggle` ("Wassertiefen") — safe today (the
+  // new node is a plain `<p>`, no role, so no `getByRole('checkbox', {name:
+  // 'Wassertiefen'})` site can match it), but #681 (same milestone, PR #828)
+  // adds a hatch toggle in this exact map-chrome area whose natural German
+  // label likely also contains "Wassertiefen" — CLAUDE.md's own
+  // `getByRole`-substring-match lesson. Named for what this sub-heading
+  // actually introduces (the hatch cue specifically, not the depth overlay
+  // as a whole) rather than reusing the toggle's own label, so it cannot
+  // collide with #681's new control.
+  'route.legend.depthHeading': 'Schraffur',
   'route.legend.sailStarboard': 'Segel, Steuerbordbug',
   'route.legend.sailPort': 'Segel, Backbordbug',
   'route.legend.motor': 'Motor (ohne Segelleistung)',

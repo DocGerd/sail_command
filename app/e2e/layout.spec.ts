@@ -900,6 +900,20 @@ test('#598/#813: the folded-in depth-hatch section inside .route-legend does not
         timeout: 5_000,
       })
       .toBeLessThanOrEqual(0);
+
+    // Fix-wave MINOR 1 (self-review): the ORIGINAL `#598` test kept a
+    // residual `.data-layer-controls`-vs-`.route-layer-controls` collision
+    // poll here even though `.depth-legend` was its own actual subject —
+    // "cheap to re-assert" per that test's own comment. This rewrite grows
+    // `.route-layer-controls` (four new paragraphs plus a swatch row), so
+    // the same cheap guard is worth keeping rather than dropping silently —
+    // re-sampled inside the poll callback, same as the deleted version.
+    const dataControls = page.locator('.data-layer-controls');
+    await expect
+      .poll(async () => overlapArea(await box(dataControls), await box(routeControls)), {
+        timeout: 10_000,
+      })
+      .toBe(0);
   } finally {
     server.kill();
   }
