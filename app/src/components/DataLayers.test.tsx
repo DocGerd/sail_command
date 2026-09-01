@@ -633,8 +633,9 @@ describe('#681 independent hazard-hatch toggle', () => {
 // once: `useActivePlan()` types `plan` as `Plan | null` with no `undefined`,
 // so DataLayers' `plan === null` and RouteLayer's `!plan`
 // (`RouteLayer.tsx:897`) are exact complements. Only HALF of that is pinned
-// by a test — the '#813 legend consolidation' describe block above asserts
-// the DataLayers half (`.depth-legend` present/absent as `plan` changes);
+// **directly** by a test — the '#813 legend consolidation' describe block
+// above asserts the DataLayers half (`.depth-legend` present/absent as
+// `plan` changes);
 // the RouteLayer half (`if (!plan) return null`, which is what stops
 // RouteLegend mounting pre-plan) is pinned only indirectly —
 // `App.test.tsx`'s `renders the always-mounted depth toggle (ON by
@@ -644,7 +645,8 @@ describe('#681 independent hazard-hatch toggle', () => {
 // (`RouteLegend.test.tsx` renders `<RouteLegend />` directly, with no plan
 // gate.) This block renders both
 // UNCONDITIONALLY, on purpose, to isolate the SYNC wiring from that mounting
-// decision (which is why it does not need the missing pin to be trustworthy):
+// decision (which is why it does not need that mounting invariant to be
+// pinned at all to be trustworthy):
 // the composition bug the review caught was that ticking the
 // checkbox on ONE surface left DataLayers.tsx's own React state (the one its
 // layer-visibility effect actually reads) stale until a future remount,
