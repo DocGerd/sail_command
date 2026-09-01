@@ -1,5 +1,5 @@
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { I18nProvider } from '../i18n';
 import RouteLegend from './RouteLegend';
 import { en } from '../i18n/dict.en';
@@ -7,6 +7,13 @@ import { en } from '../i18n/dict.en';
 afterEach(() => {
   cleanup();
   localStorage.clear();
+  // #813 fix-wave MAJOR 1: RouteLegend now reads useWideLayout(), which
+  // reads `window.matchMedia` — any test that stubs it (below) must not
+  // leak the stub into a later test that relies on jsdom's own
+  // matchMedia-less default (narrow), the same convention
+  // RouteLayer.test.tsx's own afterEach already documents for the identical
+  // hook.
+  delete (window as { matchMedia?: unknown }).matchMedia;
 });
 
 function renderLegend() {
@@ -18,13 +25,48 @@ function renderLegend() {
   );
 }
 
+// #813 fix-wave MAJOR 1: minimal stand-in for RouteLayer.test.tsx's own
+// `setMatchMedia` helper — this file only needs the INITIAL `matches` read
+// (RouteLegend's own default-open state is computed once at mount via a
+// lazy `useState` initializer, never re-read), so the change-listener
+// plumbing that helper carries for rotation tests is not needed here.
+function stubMatchMedia(matches: boolean) {
+  window.matchMedia = vi.fn().mockReturnValue({
+    matches,
+    media: '(min-width: 1024px)',
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  }) as unknown as typeof window.matchMedia;
+}
+
 describe('RouteLegend', () => {
-  it('renders a details that is collapsed by default', () => {
+  // #813 fix-wave MAJOR 1: jsdom has no `matchMedia` (src/test/setup.ts does
+  // not stub it globally), and lib/useWideLayout.ts's own contract is to
+  // default to the NARROW layout whenever it is absent — so this render
+  // exercises the narrow branch, which is exactly the one Major 1 changed.
+  // Renamed from "collapsed by default" now that narrow's default is
+  // OPEN — see RouteLegend.tsx's own #813 fix-wave comment for why.
+  it('renders a details that is OPEN by default on narrow (no matchMedia, #813 fix-wave)', () => {
     const { container } = renderLegend();
     const details = container.querySelector('details.route-legend');
     expect(details).not.toBeNull();
-    expect((details as HTMLDetailsElement).open).toBe(false);
+    expect((details as HTMLDetailsElement).open).toBe(true);
     expect(screen.getByText('Legend')).toBeInTheDocument();
+  });
+
+  // #813 fix-wave MAJOR 1: the WIDE default is UNCHANGED by this fix — this
+  // file's own header comment has always said "Default-collapsed — cockpit
+  // pixels are expensive", and that stays true on wide (which has room to
+  // spare); only narrow's default moved.
+  it('stays collapsed by default on wide layouts (matchMedia reports wide)', () => {
+    stubMatchMedia(true);
+    const { container } = renderLegend();
+    const details = container.querySelector('details.route-legend');
+    expect((details as HTMLDetailsElement).open).toBe(false);
   });
 
   it('pairs each legend label with its own swatch class in the same row', () => {
@@ -46,7 +88,13 @@ describe('RouteLegend', () => {
     }
   });
 
-  it('expands and collapses when the summary is toggled', () => {
+  it('expands and collapses when the summary is toggled (starting from the wide, closed default)', () => {
+    // #813 fix-wave MAJOR 1: pinned at WIDE so this test's own initial-state
+    // assumption (closed) stays independent of Major 1's narrow-only change
+    // — the toggle MECHANISM this test exists to cover is identical either
+    // way; only the resting state differs, and that is now covered by the
+    // two dedicated tests above.
+    stubMatchMedia(true);
     const { container } = renderLegend();
     const details = container.querySelector('details.route-legend') as HTMLDetailsElement;
     const summary = container.querySelector('summary') as HTMLElement;

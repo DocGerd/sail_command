@@ -500,10 +500,13 @@ export const en = {
   'route.maneuverLetter.gybe': 'G',
   'route.legend.title': 'Legend',
   // #813: sub-heading introducing the folded-in #598 depth-hatch entries
-  // (RouteLegend.tsx) — deliberately the SAME text as `map.depth.toggle`
-  // ("Water depths"), a separate key so the two can diverge independently
-  // later; both currently name the same underlying feature.
-  'route.legend.depthHeading': 'Water depths',
+  // (RouteLegend.tsx). Fix-wave MINOR 2 (self-review): see dict.de.ts's own
+  // comment for the full reasoning — this used to duplicate `map.depth.toggle`
+  // ("Water depths") verbatim, which #681's incoming hatch toggle (same
+  // milestone, PR #828) could plausibly collide with via a
+  // substring-matching `getByRole` locator. Named for the hatch cue
+  // specifically, not the depth overlay as a whole.
+  'route.legend.depthHeading': 'Hatching',
   'route.legend.sailStarboard': 'Sail, starboard tack',
   'route.legend.sailPort': 'Sail, port tack',
   'route.legend.motor': 'Motor (engine only)',
