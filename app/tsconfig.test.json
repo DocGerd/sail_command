@@ -139,6 +139,13 @@
   // no fragment body opens with a markdown heading (accepted by
   // buildFragments today and shipped mangled into the About dialog) —
   // same reason and pattern as safetyDepthHelpNbsp.test.ts above.
+  // shallowWarningExtraction.test.ts (#463): reads RouteSummary.tsx,
+  // ShallowWarning.tsx and PlannerPanel.tsx via `node:fs` to structurally
+  // guard the DIRECTION of the dependency the #463 file split created —
+  // ShallowWarning.tsx must hold the real implementation and never
+  // re-export it from RouteSummary.tsx (the M1 mutant named in that
+  // issue's brief). Same reason and pattern as chipShallowFill.test.ts/
+  // mapColors.test.ts above.
   "include": [
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",
@@ -164,6 +171,7 @@
     "src/**/safetyDepthHelpNbsp.test.ts",
     "src/**/mapColors.test.ts",
     "src/**/changelogFragmentShape.test.ts",
+    "src/**/shallowWarningExtraction.test.ts",
     "sweep/**/*.ts"
   ]
 }

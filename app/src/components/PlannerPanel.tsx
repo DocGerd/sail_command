@@ -24,13 +24,14 @@ import Field from './Field';
 import Button from './Button';
 import Chip from './Chip';
 import Skeleton from './Skeleton';
-// #452: the shallow-water warning is plan-level (RouteSummary's own note
+// #452: the shallow-water warning is plan-level (ShallowWarning's own note
 // explains why) — shared here so the FIRST surface a user sees a result on
 // carries the same warning as the Routes tab, not just a second copy of it.
+import { ShallowWarning } from './ShallowWarning';
 // #612: the non-relaxed complement of that warning, shared for the same
 // reason — see MarginalDepthNotice's own doc comment for why it is a quiet
 // <p> rather than a second banner.
-import { MarginalDepthNotice, ShallowWarning } from './RouteSummary';
+import { MarginalDepthNotice } from './RouteSummary';
 
 export type TapTarget = 'origin' | 'destination' | 'via';
 
