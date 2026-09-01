@@ -49,11 +49,16 @@ node .claude/skills/sweep-closure/closure.mjs selftest
 script; either way it prints the verdict, the reason, and (for an import-walk
 hit) the **import chain** from `app/sweep/sweepArms.ts`/`vitest.config.ts`
 down to the hit, so the answer is auditable rather than asserted. `diff`
-internally uses `git diff --merge-base`, so passing a moving branch name
-(`origin/develop`, the first line above) is safe: it diffs against the
-ancestor the two refs actually share, not a raw two-dot tree comparison that
-would widen as `develop` moves ahead (Minor, #729 — see "Failure direction"
-below for what this does and does not fix).
+internally uses `git diff --merge-base --no-renames`, fixing two separate
+Minors (#729): passing a moving branch name (`origin/develop`, the first
+line above) is safe — it diffs against the ancestor the two refs actually
+share, not a raw two-dot tree comparison that would widen as `develop` moves
+ahead — and a renamed in-closure file (`git mv
+app/sweep/canonicalize.mjs tools-canonicalize.mjs`) is reported as an add +
+a delete rather than collapsed to just the destination, which would
+otherwise drop the in-closure source path from `--name-only`'s output
+entirely (see "Failure direction" below for what each flag does and does
+not fix).
 
 ## Method
 
@@ -88,7 +93,7 @@ below for what this does and does not fix).
    direction" below for how each entry is kept honest.
 
 3. **Intersect the union with the diff.**
-   `git diff --merge-base --name-only <base> [<head>]`.
+   `git diff --merge-base --no-renames --name-only <base> [<head>]`.
 
 4. **Classify each hit.** The default is **OWED** — full stop, whether the
    hit came from the import walk or a `PATH_PREFIXES` match. The one
@@ -117,8 +122,10 @@ built to fail toward the expensive-but-safe side.
 under-reports" — that was FALSIFIED in review (#729, Blocker).** The
 import walk alone missed the nine `arm-*.test.ts` files and every runtime
 data/pipeline input (see Method step 2), so a diff confined to those
-reported NOT OWED, exit 0 — for example editing an arm's target harbour plus
-`canonicalize.mjs`, or a full `npm --prefix pipeline run mask` rebuild. The
+reported NOT OWED, exit 0 — for example changing which arm a file runs
+(each `arm-*.test.ts` is one `runArm('<name>')` call — `arm-marginzero.test.ts`
+carries no harbour of its own) plus `canonicalize.mjs`, or a full
+`npm --prefix pipeline run mask` rebuild. The
 `PATH_PREFIXES` union closes that specific, measured gap (re-verified
 end-to-end against two real historical commits of exactly that shape — see
 `closure.mjs`'s own commit history for the transcript). It is not a proof
@@ -190,10 +197,12 @@ Blocker this file records above.
 
 ## Testing this skill itself
 
-`closure.mjs selftest` runs **15** checks with no repo mutation required
+`closure.mjs selftest` runs **16** checks with no PERSISTENT repo mutation
 (synthetic boats.ts-shaped file pairs are compared under the OS tmpdir via
-real `git diff --no-index`, never written into the repo) — count re-derived
-from the script's own output, not hand-maintained here:
+real `git diff --no-index`; the rename check below spins up a REAL,
+throwaway two-commit git repo under the OS tmpdir; nothing is ever written
+into this repo) — count re-derived from the script's own output, not
+hand-maintained here:
 
 1. `app/src/types.ts` (holds `DEFAULT_SETTINGS`) is in the closure → default
    OWED — the issue's documented too-narrow-list case.
@@ -222,13 +231,24 @@ from the script's own output, not hand-maintained here:
 15. A `polarProvenance.note` edit → OWED — proves the exception was not
     silently generalised to a field CLAUDE.md warns has a different blast
     radius.
+16. A rename (`git mv app/sweep/canonicalize.mjs tools-canonicalize.mjs` in
+    a real, disposable git repo) still lists the in-closure SOURCE path —
+    the second #729 Minor: git's default rename detection would otherwise
+    make `--name-only` print only the destination, silently dropping an
+    in-closure file from the diff. Mutation-checked: removing `--no-renames`
+    from `changedFiles`'s args reds exactly this row and none other.
 
-This script is **not** discovered by `ci.yml`'s `hook-selftests` job — that
-job only scans top-level `*.sh` under `.claude/hooks/` and
-`.github/scripts/` (`-maxdepth 1`), and this lives under `.claude/skills/`.
-Run `selftest` by hand after editing `closure.mjs`, and mutation-check any
-NEW hardcoded pin the same way (stub the array it pins, confirm exactly that
-row reds) before trusting it.
+**Neither `npm --prefix app run typecheck` nor `npm --prefix app run
+lint` cover this file at all** — both tsconfigs and `eslint src e2e sweep`
+are scoped to `app/src`/`app/e2e`/`app/sweep`, and this skill lives under
+the repo-root `.claude/skills/`. A green `app` CI job carries NO signal
+about `closure.mjs`; treat `node --check` (syntax only) plus `selftest`
+(behaviour) as the real gates for this file, and re-run both by hand after
+any edit — this script is also **not** discovered by `ci.yml`'s
+`hook-selftests` job, which only scans top-level `*.sh` under
+`.claude/hooks/` and `.github/scripts/` (`-maxdepth 1`). Mutation-check any
+NEW hardcoded pin the same way (stub the array/behaviour it pins, confirm
+exactly that row reds) before trusting it.
 
 ## Out of scope
 

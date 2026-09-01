@@ -81,26 +81,34 @@
  *   node closure.mjs diff <base> [<head>]    # real usage: does this diff owe a sweep?
  *   node closure.mjs selftest                # positive/negative controls, see #729
  *
- * `<base>`/`<head>` are anything `git diff --merge-base` accepts (a ref, a
- * SHA, …). `<head>` omitted means "working tree", matching plain
- * `git diff --merge-base <base>`. `--merge-base` is used throughout (a
- * Minor review finding, #729) rather than a plain two-dot comparison: a
- * bare `git diff <base> <head>` is a direct TREE comparison that widens as
- * `<base>` moves, so passing a moving branch name (`diff origin/develop`,
- * the first usage line above) would otherwise pull in every file `develop`
- * changed since this branch's own fork point — inflating the hit list with
- * files this diff never touched. `--merge-base` diffs against the ancestor
- * the two refs actually share, independent of how far `<base>` has moved
- * since. `gitShow`'s "old content" read for the `boats.ts` exception
- * resolves that SAME merge-base commit explicitly (`git merge-base`), so
- * the hunks classified and the content read are always relative to one
- * consistent ancestor.
+ * `<base>`/`<head>` are anything `git diff --merge-base --no-renames`
+ * accepts (a ref, a SHA, …). `<head>` omitted means "working tree",
+ * matching plain `git diff --merge-base --no-renames <base>`. Both flags
+ * are used throughout, each fixing a separate #729 Minor:
+ *
+ *   - `--merge-base`: a bare `git diff <base> <head>` is a direct TREE
+ *     comparison that widens as `<base>` moves, so passing a moving branch
+ *     name (`diff origin/develop`, the first usage line above) would
+ *     otherwise pull in every file `develop` changed since this branch's
+ *     own fork point. `--merge-base` diffs against the ancestor the two
+ *     refs actually share, independent of how far `<base>` has since moved.
+ *     `gitShow`'s "old content" read for the `boats.ts` exception resolves
+ *     that SAME merge-base commit explicitly (`git merge-base`), so the
+ *     hunks classified and the content read are always relative to one
+ *     consistent ancestor.
+ *   - `--no-renames`: git's DEFAULT rename detection makes `--name-only`
+ *     print only the DESTINATION of a detected rename, silently dropping
+ *     the source path — `git mv app/sweep/canonicalize.mjs
+ *     tools-canonicalize.mjs` would otherwise report NOT OWED, an
+ *     under-report inside this tool's own modelled universe. `--no-renames`
+ *     makes such a rename appear as an add + a delete, so the in-closure
+ *     source path is never lost.
  *
  * No dependency beyond Node's standard library — this must stay runnable
  * from a bare checkout with no `npm install`.
  */
 
-import { existsSync, readFileSync, statSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -161,10 +169,10 @@ const RESOLVE_EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts', '.mjs', '.cjs', '.js'
 // data asset or pipeline generator is covered automatically, at the cost of
 // also reporting OWED for files under these directories with no real
 // bearing on `PlanResult` (e.g. `app/sweep/README.md`,
-// `app/public/data/icons/*`, `pipeline/extract_basemap.sh`). Never narrow
-// these to "just the files sweepArms.ts happens to read today" — that
-// would re-create exactly the too-narrow-list defect this tool exists to
-// replace, one level down.
+// `app/public/data/basemap.pmtiles.png`, `pipeline/extract_basemap.sh`).
+// Never narrow these to "just the files sweepArms.ts happens to read
+// today" — that would re-create exactly the too-narrow-list defect this
+// tool exists to replace, one level down.
 const PATH_PREFIXES = [
   {
     prefix: 'app/sweep',
@@ -186,7 +194,7 @@ const PATH_PREFIXES = [
     note:
       'produces every file app/public/data ships (mask.bin via ' +
       'build_mask.py, polars via build_polars.mjs/estimate_polars.mjs, ' +
-      'harbors.json via extract_harbors, …) — a pipeline change can move ' +
+      'harbors.json via build_harbors.mjs, …) — a pipeline change can move ' +
       'the sweep just as surely as editing the shipped data file directly',
   },
 ];
@@ -562,10 +570,24 @@ function classifyBoatsTs({ oldContent, newContent, diffText }) {
 // `--merge-base` diffs against the ancestor the two refs actually share,
 // which is safe regardless of how far `<base>` has since moved. See the
 // file header's Usage section for the full mechanism.
+//
+// `--no-renames` throughout too (second Minor, #729): git's DEFAULT rename
+// detection makes `--name-only` print ONLY the destination of a detected
+// rename, dropping the source path entirely from the list — MEASURED in a
+// scratch repo: `git mv app/sweep/canonicalize.mjs tools-canonicalize.mjs`
+// then a plain `--name-only` diff prints just `tools-canonicalize.mjs` (the
+// destination, outside every PATH_PREFIXES entry); with `--no-renames` it
+// prints BOTH `app/sweep/canonicalize.mjs` (the real, in-closure source)
+// AND `tools-canonicalize.mjs`. Without this flag a rename of an in-closure
+// file is an UNDER-report inside the very universe this tool claims to
+// model — the same failure direction as the original Blocker, one level
+// down. `--no-renames` is on every `git diff` call below that feeds a
+// verdict; `gitDiffNoIndex` (selftest's synthetic two-file comparisons,
+// never a tree diff) has no renames to detect and needs no such flag.
 function changedFiles(root, base, head) {
   const args = head
-    ? ['diff', '--merge-base', '--name-only', base, head]
-    : ['diff', '--merge-base', '--name-only', base];
+    ? ['diff', '--merge-base', '--no-renames', '--name-only', base, head]
+    : ['diff', '--merge-base', '--no-renames', '--name-only', base];
   const out = execFileSync('git', args, { cwd: root, encoding: 'utf8' });
   return out
     .split('\n')
@@ -579,8 +601,8 @@ function gitShow(root, ref, relPath) {
 
 function gitDiffU0(root, base, head, relPath) {
   const args = head
-    ? ['diff', '--merge-base', '-U0', '--no-color', base, head, '--', relPath]
-    : ['diff', '--merge-base', '-U0', '--no-color', base, '--', relPath];
+    ? ['diff', '--merge-base', '--no-renames', '-U0', '--no-color', base, head, '--', relPath]
+    : ['diff', '--merge-base', '--no-renames', '-U0', '--no-color', base, '--', relPath];
   return execFileSync('git', args, { cwd: root, encoding: 'utf8' });
 }
 
@@ -867,6 +889,45 @@ function runSelftest(root) {
     );
   } finally {
     rmSync(tmp, { recursive: true, force: true });
+  }
+
+  // Second Minor (#729): a rename of an in-closure file is an UNDER-REPORT
+  // inside this tool's OWN modelled universe unless `--no-renames` is set —
+  // git's default rename detection makes `--name-only` print only the
+  // DESTINATION of a detected rename, silently dropping the (in-closure)
+  // source path. Reproduced with a REAL two-commit git repo (not a
+  // hand-built diff string), so this exercises the actual `changedFiles()`
+  // git invocation rather than a stand-in for it. Mutation-checked:
+  // removing `--no-renames` from `changedFiles`'s args reds exactly this
+  // row (verified before push, see PR description).
+  const renameRepo = mkdtempSync(path.join(tmpdir(), 'sweep-closure-selftest-rename-'));
+  try {
+    const git = (args) => execFileSync('git', args, { cwd: renameRepo, encoding: 'utf8' });
+    git(['init', '-q']);
+    git(['config', 'user.email', 'selftest@example.invalid']);
+    git(['config', 'user.name', 'sweep-closure selftest']);
+    mkdirSync(path.join(renameRepo, 'app', 'sweep'), { recursive: true });
+    writeFileSync(
+      path.join(renameRepo, 'app', 'sweep', 'canonicalize.mjs'),
+      'line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10\n',
+    );
+    git(['add', '-A']);
+    git(['commit', '-q', '-m', 'base']);
+    const renameBase = git(['rev-parse', 'HEAD']).trim();
+    git(['mv', 'app/sweep/canonicalize.mjs', 'tools-canonicalize.mjs']);
+    git(['commit', '-q', '-m', 'rename']);
+    const renameHead = git(['rev-parse', 'HEAD']).trim();
+
+    const changed = changedFiles(renameRepo, renameBase, renameHead);
+    results.push(
+      check(
+        'rename-check: git mv app/sweep/canonicalize.mjs -> tools-canonicalize.mjs still lists the in-closure SOURCE path',
+        changed.includes('app/sweep/canonicalize.mjs'),
+        { changed },
+      ),
+    );
+  } finally {
+    rmSync(renameRepo, { recursive: true, force: true });
   }
 
   let failed = 0;
