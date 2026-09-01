@@ -1,7 +1,11 @@
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { I18nProvider } from '../i18n';
-import HarborPicker, { normalizeHarborSearch, rankHarbors } from './HarborPicker';
+import HarborPicker, {
+  normalizeHarborSearch,
+  rankHarbors,
+  type HarborWithReachability,
+} from './HarborPicker';
 import type { Harbor } from '../types';
 
 // Mirrors real data shapes from app/public/data/harbors.json: a harbor whose
@@ -38,6 +42,22 @@ const FLENSBURG: Harbor = {
 };
 
 const HARBORS = [AEROESKOEBING, AABENRAA, FLENSBURG];
+
+// #652: mirrors the real shipped shape — one of the five #9
+// KNOWN_DISCONNECTED harbors, with BOTH an approachNote (as real "arnis"
+// does) AND knownDisconnected: true, so the disclosure and caveat lines
+// must coexist rather than one crowding out the other.
+const ARNIS: HarborWithReachability = {
+  id: 'arnis',
+  names: { de: 'Arnis', da: 'Arnæs', en: 'Arnis' },
+  country: 'DE',
+  snap: { lat: 54.6254, lon: 9.9316 },
+  approachNote: {
+    de: 'Oberhalb der Kappelner Brücke.',
+    en: 'Above the Kappeln bridge.',
+  },
+  knownDisconnected: true,
+};
 
 // Distinct, caveat-free set for pinning rank ORDER by hand (no locale-collation
 // ambiguity, no caveat text folded into option accessible names).
@@ -191,6 +211,38 @@ describe('HarborPicker combobox', () => {
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'aabenraa' } });
     const option = screen.getByRole('option', { name: /Aabenraa/ });
     expect(within(option).queryByText(/approach/i)).not.toBeInTheDocument();
+  });
+
+  // #652: the picker must disclose a known-disconnected harbor BEFORE a
+  // solve, and must NOT disclose it for an ordinary harbor — both directions
+  // matter (a guard that only checks the positive case can't tell "always
+  // renders the note" from "renders it correctly").
+  it('discloses a known-disconnected harbor in its option row', () => {
+    renderPicker(vi.fn(), [...HARBORS, ARNIS]);
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'arnis' } });
+    const option = screen.getByRole('option', { name: /Arnis/ });
+    expect(
+      within(option).getByText(
+        'Not reachable by the router at any depth setting — a data limit, not open water.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('renders no known-disconnected disclosure for an ordinary harbor', () => {
+    renderPicker();
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'aabenraa' } });
+    const option = screen.getByRole('option', { name: /Aabenraa/ });
+    expect(within(option).queryByText(/not reachable/i)).not.toBeInTheDocument();
+  });
+
+  // Coexists with the depth caveat rather than replacing it (real "arnis"
+  // ships both an approachNote and knownDisconnected: true).
+  it('renders both the disclosure and the depth caveat when a harbor has both', () => {
+    renderPicker(vi.fn(), [...HARBORS, ARNIS]);
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'arnis' } });
+    const option = screen.getByRole('option', { name: /Arnis/ });
+    expect(within(option).getByText(/not reachable/i)).toBeInTheDocument();
+    expect(within(option).getByText('Above the Kappeln bridge.')).toBeInTheDocument();
   });
 
   it('shows harbor name and caveat in German when that is the active language', () => {

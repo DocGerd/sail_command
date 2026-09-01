@@ -406,6 +406,27 @@ for hid, reason in KNOWN_DISCONNECTED.items():
             "the entry claims it is disconnected at every gate and it is not; remove it"
         )
 
+# #652: harbors.json's `knownDisconnected` field (build_harbors.mjs, sourced
+# from this same KNOWN_DISCONNECTED dict) must name EXACTLY these ids - the
+# harbor picker discloses it before a solve, so a stale field would either
+# wrongly warn a harbor that has since become reachable, or worse, stay
+# silent on one that is genuinely still disconnected. build_harbors.mjs
+# parses this dict independently rather than hand-copying it, so this check
+# is what catches the two artifacts drifting apart - e.g. a
+# KNOWN_DISCONNECTED edit whose `npm --prefix pipeline run harbors` re-run
+# was skipped. app/src/test/harborKnownDisconnected.test.ts promotes the
+# same comparison into the REQUIRED `app` Vitest suite (this job is
+# advisory, not required - see CLAUDE.md's "Python gates live OUTSIDE the
+# app toolchain" bullet).
+for h in harbors:
+    flagged = h.get("knownDisconnected", False)
+    should_flag = h["id"] in KNOWN_DISCONNECTED
+    if flagged != should_flag:
+        failures.append(
+            f"harbors.json knownDisconnected={flagged} for {h['id']}, but KNOWN_DISCONNECTED "
+            f"membership is {should_flag} - run `npm --prefix pipeline run harbors` to regenerate"
+        )
+
 for b in CATALOGUE_BOATS:
     gate_m = b["gateM"]
     print(f"\n=== {b['id']}: derived gate {gate_m:.1f} m (draft {b['draftM']:.2f} m + tolerance {TOLERANCE_M} m) ===")
