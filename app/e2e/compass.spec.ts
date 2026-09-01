@@ -1407,9 +1407,26 @@ test('#208 review "Major 3": .route-layer-controls (interactive) stays clear of 
     // A bare `controls.locator('details')` is a strict-mode ambiguity now
     // that there are two — narrow to the legend's own class.
     const legendDetails = controls.locator('details.route-legend');
-    await expect(legendDetails).not.toHaveAttribute('open');
+    // #813 fix-wave (self-review): this pin used to hardcode "starts closed,
+    // click opens it" — VERIFIED not the same premise as the two
+    // layout.spec.ts #813 fixes before reusing their shape (their subject was
+    // an unrelated width-pin / an overflow-check setup step; this one is the
+    // ORIGINAL #628 review Major 3 measurement above — "MEASURED:
+    // `getByText('Legende')` timed out as 'hidden' without [expanding the
+    // outer disclosure]", i.e. the nested legend is REACHABLE and TOGGLES
+    // once its ancestor disclosure is open, never a claim about which state
+    // it starts in). RouteLegend.tsx's own #813 fix-wave comment now defaults
+    // `.route-legend` OPEN at narrow layouts — this viewport (740x360) IS
+    // narrow — so "starts closed" is no longer true here. Read the actual
+    // state and assert the click flips it, in EITHER direction, so the pin
+    // survives either default rather than assuming one.
+    const wasOpen = await legendDetails.evaluate((el) => (el as HTMLDetailsElement).open);
     await legend.click();
-    await expect(legendDetails).toHaveAttribute('open', '');
+    if (wasOpen) {
+      await expect(legendDetails).not.toHaveAttribute('open');
+    } else {
+      await expect(legendDetails).toHaveAttribute('open', '');
+    }
   } finally {
     server.kill();
   }
