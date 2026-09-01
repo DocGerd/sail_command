@@ -9,6 +9,12 @@ export const de = {
   'harborPicker.searchPlaceholder': 'Hafen suchen…',
   'harborPicker.resultsLabel': 'Häfen',
   'harborPicker.noResults': 'Keine Häfen gefunden.',
+  // #652: the five #9 KNOWN_DISCONNECTED harbours (pipeline/verify_mask.py)
+  // are genuinely unreachable at the app's ~46 m mask resolution, at ANY
+  // safety-depth setting — phrased as the ROUTER's limitation, never as a
+  // claim about the real harbor, so this doesn't overstate chart authority.
+  'harborPicker.knownDisconnected':
+    'Vom Routenplaner bei keiner Tiefeneinstellung erreichbar – eine Grenze der Tiefendaten, keine Aussage über das Fahrwasser.',
   'options.safetyDepth.label': 'Sicherheitstiefe (m)',
   // #699: der zulässige Bereich hing bislang nur als natives min/max-Attribut
   // am Feld, ohne sichtbaren oder für Screenreader zugänglichen Text — ein
