@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-09-01
+
+### Added
+
+- The harbor search now flags Arnis, Kappeln, Maasholm, Dyvig, and Gråsten as not reachable by the router at any depth setting, before you plan a route, instead of only after a failed solve (#652).
+- The shallow-water hazard hatch can now be switched off independently of the water-depths overlay, from a checkbox in the map legend, and defaults on (#681).
+
+### Fixed
+
+- Consolidated the map's two separate "Legende"/"Legend" disclosures into one: the depth-hatch legend now folds into the route legend once a route is planned, instead of a second free-floating panel overlapping the chart (#813).
+
 ## [0.17.0] - 2026-09-01
 
 ### Changed
@@ -907,7 +918,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.17.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/DocGerd/sail_command/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/DocGerd/sail_command/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/DocGerd/sail_command/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/DocGerd/sail_command/compare/v0.14.0...v0.15.0

@@ -51,13 +51,31 @@ results table at the bottom, and note it in the box below the check.
 - [ ] **At least one fleet boat is exercised.** Run §2 or §3 under SPEEDY GO!
       or PIRANJA, so the suppressed rig comparison in §2.5 is actually
       reached; a pass made entirely on the Salona 45 never exercises it.
-- [ ] **Depth-hatch legend.** On the map, below the "Water depths" /
-      "Seamarks" toggles and the compass, open the collapsed **Legend**
-      disclosure and confirm it explains the cautious-reading hatch and
-      states that unsurveyed/drying water carries no hatching (#598/#597).
-      In short landscape, and in any narrow layout with too little height
-      left below the compass, the legend is deliberately not rendered at
-      all — by design, not a missing control.
+- [ ] **Known-disconnected harbors flagged in search.** In the harbor
+      search, look up Arnis, Kappeln, Maasholm, Dyvig, or Gråsten — each
+      result shows a note that it is not reachable by the router at any
+      depth setting, before you try planning to it, instead of only after a
+      full solve returns the generic "cannot be reached" message (#652).
+- [ ] **Depth-hatch legend.** The map's cautious-reading-hatch legend lives
+      in exactly one of two places depending on whether a route is
+      currently planned, never both, never neither (#813) — note which
+      state you're in before deciding the check has failed:
+      - **No route planned** (e.g. right after opening the app, before
+        planning anything): below the "Water depths" / "Seamarks" toggles
+        and the compass, open the collapsed **Legend** disclosure. In short
+        landscape, and in any narrow layout with too little height left
+        below the compass, this legend is deliberately not rendered at all
+        here — by design, not a missing control.
+      - **A route is planned** (the normal state through most of this
+        runbook, since the forecast-currency check above already plans
+        one): open **"Display options"** and, inside it, the nested
+        **"Legende"** disclosure — see the "Display options" check below.
+      Wherever it currently lives, confirm the disclosure explains the
+      cautious-reading hatch, states that unsurveyed/drying water carries no
+      hatching (#598/#597), and offers a "Show hatch overlay" / "Schraffur
+      anzeigen" checkbox that switches the hatch off independently of the
+      "Water depths" toggle itself, without touching the depth-colour ramp
+      (#681).
 - [ ] **Cable/pipeline seamarks visible at Standard.** Turn the **Seamarks**
       map overlay on — it is OFF by default, unlike "Water depths" — and
       leave the Seamarks display-tier control at its default "Standard"
@@ -70,7 +88,11 @@ results table at the bottom, and note it in the box below the check.
       "Display options" control instead of always covering part of the
       chart. On a narrow/mobile-width screen it starts collapsed; on a wide
       screen it starts open. Toggling the control shows/hides the whole
-      cluster together (#628).
+      cluster together (#628). Once a route is planned, its own nested
+      "Legende" disclosure also carries the depth-hatch section — the hatch
+      swatch, the basis sentence, the #597 unsurveyed-water caveat, and the
+      "Show hatch overlay" toggle — that lived in the separate pre-plan
+      Legend above before a route existed (#813).
 
 ## 2. Route A — Flensburg → Marstal
 
