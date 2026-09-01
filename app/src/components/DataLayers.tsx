@@ -366,9 +366,11 @@ function setupLayers(
           type: 'raster',
           source: DEPTH_HATCH_SOURCE,
           // Hidden at creation, same convention as DEPTH_LAYER — the
-          // depthVisible sync effect applies the current state before any
-          // paint. No independent toggle: the hatch is a navigability
-          // annotation over the depth overlay, not an opt-in of its own.
+          // depthVisible/hatchVisible sync effect applies the current state
+          // before any paint. #681: the hatch DOES now have its own
+          // independent toggle (hatchVisible, in the depth-legend body
+          // below) — this comment previously said it did not; see that
+          // effect's own #681 comment for the composite condition.
           layout: { visibility: 'none' },
           paint: {
             'raster-fade-duration': 0,
@@ -532,6 +534,18 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
   // #63: default ON, persisted — mirrors RouteLayer's barbs/annotations
   // toggles. An explicit "off" survives reloads; a fresh profile sees depth.
   const [depthVisible, setDepthVisible] = usePersistedToggle('sc-depth-visible', true);
+  // #681: a SECOND, independent persisted toggle for the hazard-hatch overlay
+  // alone — same fail-open-by-default reasoning as depthVisible above, and
+  // load-bearing here specifically: #455 (mask optimism, ~10,746 gate-crossing
+  // cells) was closed on the basis that #492's per-cell hatch already
+  // discloses exactly that criterion, so `defaultValue: true` is what keeps a
+  // fresh profile seeing today's disclosure. This does NOT get its own row in
+  // `.data-layer-controls` (see the return JSX below) — a third checkbox row
+  // there measures +49px at 375x667 and drops the `.depth-legend` reachability
+  // budget under `LEGEND_COLLAPSED_HEIGHT_PX`, hiding the #597 caveat at
+  // exactly the viewport this app is most used on. Rendered instead inside
+  // `.depth-legend-body`, which costs `.data-layer-controls` zero height.
+  const [hatchVisible, setHatchVisible] = usePersistedToggle('sc-depth-hatch-visible', true);
   // #598 review round 3: whether `.depth-legend` has enough room to render
   // reachably at all — computed in the `useLayoutEffect` below (not
   // persisted; this is pure layout, recomputed every time the geometry it
@@ -692,21 +706,29 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
   useEffect(() => {
     if (!map || styleEpoch === 0 || !assets || !map.getLayer(DEPTH_LAYER)) return;
     map.setLayoutProperty(DEPTH_LAYER, 'visibility', depthVisible ? 'visible' : 'none');
-    // #492: no independent toggle for the hazard-hatch layer — it rides the
-    // SAME depthVisible state as the absolute ramp above (this file's
-    // FORBIDDEN-file allowlist for this change excludes the i18n dict a new
-    // checkbox label would need, and conceptually the hatch is an
-    // annotation over the depth overlay, not a separate opt-in). A legend
-    // explaining the symbol itself is a separate gap, tracked as #598.
+    // #681: the hazard-hatch layer now has its OWN persisted toggle
+    // (hatchVisible), but it is still a dependent annotation over the depth
+    // overlay — meaningless, and never drawable, once depthVisible itself is
+    // off. The composite `depthVisible && hatchVisible` is the #384
+    // defect-class fix (PR #384 review): gating only the checkbox's
+    // `disabled` attribute in the return JSX below would leave a layer the
+    // persisted hatchVisible flag already made visible still rendered the
+    // instant depthVisible flips back on, even if the user never touched the
+    // hatch checkbox at all. Both the `disabled` attribute AND this
+    // visibility effect must carry the composite condition.
     // Guarded
     // separately from DEPTH_LAYER's own `!map.getLayer` check above since
     // the hatch layer can legitimately not exist yet (jsdom has no 2D
     // canvas backend at all — see buildHatchCanvas — or a slow style reload
     // window) even once DEPTH_LAYER does.
     if (map.getLayer(DEPTH_HATCH_LAYER)) {
-      map.setLayoutProperty(DEPTH_HATCH_LAYER, 'visibility', depthVisible ? 'visible' : 'none');
+      map.setLayoutProperty(
+        DEPTH_HATCH_LAYER,
+        'visibility',
+        depthVisible && hatchVisible ? 'visible' : 'none',
+      );
     }
-  }, [map, styleEpoch, assets, depthVisible]);
+  }, [map, styleEpoch, assets, depthVisible, hatchVisible]);
 
   // #492/#599: rebuild the hazard-hatch raster whenever safetyDepthM OR the
   // zoom band changes,
@@ -730,13 +752,19 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
     // turning the overlay back ON re-runs this and repaints with whatever
     // safetyDepthM/band changed while it was hidden — the canvas can never
     // be shown stale, which is what makes skipping the hidden rebuilds safe.
-    if (!map || styleEpoch === 0 || !assets || !depthVisible) return;
+    // #681: `hatchVisible` joins the SAME guard/dependency pair for the SAME
+    // reason — the issue's own "fold into the rebuild gate, do not skip
+    // this" requirement. Without it, turning the hatch off via its own
+    // checkbox would still pay the ~30-40ms rebuild cost (DEPTH_HATCH_
+    // DEBOUNCE_MS's own comment) every time safetyDepthM/the zoom band
+    // changes, for a raster the user explicitly chose not to see.
+    if (!map || styleEpoch === 0 || !assets || !depthVisible || !hatchVisible) return;
     const timer = window.setTimeout(() => {
       if (!map.getLayer(DEPTH_HATCH_LAYER)) return;
       rebuildHatchCanvas(map, assets.maskMeta, assets.maskBuffer, safetyDepthM);
     }, DEPTH_HATCH_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
-  }, [map, styleEpoch, assets, safetyDepthM, hatchBandKey, depthVisible]);
+  }, [map, styleEpoch, assets, safetyDepthM, hatchBandKey, depthVisible, hatchVisible]);
 
   // Seamark glyphs (#7) — registered/set once per assets load, independent of
   // the visibility toggle (so the layer is ready to paint the instant the
@@ -1122,6 +1150,40 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
             <span className="depth-legend-swatch" aria-hidden="true" />
             {t('map.depth.legend.hatchLabel')}
           </p>
+          {/* #681: the independent hatch toggle lives HERE, inside the
+              legend's own disclosure body — not as a third `.data-layer-
+              controls` row (deferred v0.18.0 investigation; see #681's own
+              issue thread) and not on `.depth-legend`'s own always-visible
+              summary either. A third `.data-layer-controls` row measures
+              +49px at 375x667 (app.css's own #598 review-follow-up comment
+              on this cluster) and drops the legend's reachability budget
+              (`budgetPx`, the useLayoutEffect above) under
+              LEGEND_COLLAPSED_HEIGHT_PX at exactly the app's primary
+              on-boat viewport — hiding the #597 caveat paragraph below,
+              which is the one thing this control must never do. Placing it
+              HERE instead costs `.data-layer-controls` (and therefore
+              `budgetPx`) exactly zero: this element is a child of
+              `.depth-legend-body`, which the budget calculation never
+              measures at all.
+              Residual, and it fails the SAFE direction: while
+              `legendHidden` is true (the legend itself unreachable) or the
+              `<details>` is simply collapsed, this checkbox is unreachable
+              too — but `hatchVisible` still defaults `true` (#455's
+              disclosure basis), so an unreachable toggle means the hatch
+              stays ON, never that it silently vanishes.
+              `disabled={!depthVisible}` mirrors the composite condition the
+              visibility effect above applies — the #384 defect class: the
+              control must not offer to change a layer that
+              `depthVisible=false` already keeps invisible regardless. */}
+          <label className="depth-legend-row">
+            <input
+              type="checkbox"
+              checked={hatchVisible}
+              disabled={!depthVisible}
+              onChange={(e) => setHatchVisible(e.target.checked)}
+            />
+            {t('map.depth.legend.hatchToggle')}
+          </label>
           <p>{t('map.depth.legend.basis')}</p>
           <p>{t('map.depth.legend.caveat')}</p>
         </div>

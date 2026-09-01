@@ -491,6 +491,13 @@ export const de = {
   // eine vorsichtige Lesart, kein Flachwasser-Indikator).
   'map.depth.legend.title': 'Legende',
   'map.depth.legend.hatchLabel': 'Schraffur: vorsichtige Lesart',
+  // #681: independent an/aus-Schalter für die Schraffur allein (siehe
+  // dict.en.ts für die volle Begründung, warum dies HIER in der
+  // Legende sitzt statt als dritte Zeile in .data-layer-controls). Bewusst
+  // OHNE das Wort "Wassertiefen" — Playwright matcht getByRole(name:)
+  // per Teilstring, und elf bestehende Locator-Stellen spellen genau
+  // diesen String für den separaten Tiefen-Schalter.
+  'map.depth.legend.hatchToggle': 'Schraffur anzeigen',
   // PR #625 self-review Minor 3: the final clause's "sie" (feminine) bound to
   // "die Schraffur"/"die Farbe" — no reading reached the intended referent,
   // "das Wasser" (neuter). Replaced verbatim per the review's suggested fix;

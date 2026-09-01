@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto';
 import { act, fireEvent, render, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import DataLayers, { HARBOR_CIRCLE_LAYER, SEAMARKS_LAYER } from './DataLayers';
 import { makeFakeMap, simulateStyleReload } from '../test/fakeMaplibre';
 import { AppStateProvider, useSettings } from '../state/AppState';
@@ -299,6 +299,9 @@ describe('DataLayers style reload (#153)', () => {
 // locally rather than imported).
 const DEPTH_HATCH_LAYER = 'sc-depth-hatch';
 const DEPTH_HATCH_DEBOUNCE_MS = 300;
+// #681: re-declared locally for the same reason as DEPTH_HATCH_LAYER above —
+// DataLayers.tsx keeps this module-private.
+const DEPTH_LAYER = 'sc-depth';
 
 function SafetyDepthProbe() {
   const [, setSettings] = useSettings();
@@ -364,6 +367,134 @@ describe('#492 navigability hatch wiring', () => {
     try {
       fireEvent.click(getByText('setSafetyDepthProbeButton'));
       unmount();
+      act(() => {
+        vi.advanceTimersByTime(DEPTH_HATCH_DEBOUNCE_MS * 10); // far past the window
+      });
+      expect(getLayerSpy.mock.calls.some(([id]) => id === DEPTH_HATCH_LAYER)).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+// #681: independent hazard-hatch toggle. Every test in this block needs the
+// hatch layer to ACTUALLY exist (unlike the "#492 navigability hatch wiring"
+// debounce tests above, which only assert `getLayer` was CALLED with the
+// hatch id, not that the layer is present) — a `setLayoutProperty` assertion
+// against a layer setupLayers never created records zero calls and passes
+// with the whole toggle deleted (CLAUDE.md's own documented vacuity trap:
+// test/setup.ts stubs `HTMLCanvasElement.prototype.getContext` to `null`
+// globally, so buildDepthCanvas/buildHatchCanvas always bail under the
+// describe blocks above). Restores just enough of the 2D context — the
+// SAME size-discriminated fake `layerOrder.test.tsx` already uses, matched
+// to this FILE's own 4x4 maskMeta fixture — scoped to ONLY this describe
+// block via beforeEach/afterEach, so the vacuous-by-default behavior the
+// rest of this file relies on (e.g. the debounce tests' `getLayer`-call-only
+// assertions) is untouched outside it.
+describe('#681 independent hazard-hatch toggle', () => {
+  const originalGetContext = HTMLCanvasElement.prototype.getContext;
+
+  beforeEach(() => {
+    HTMLCanvasElement.prototype.getContext = vi.fn(function (this: HTMLCanvasElement): unknown {
+      if (this.width !== 4 || this.height !== 4) return null; // e.g. a seamark glyph raster
+      return {
+        createImageData: (w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4) }),
+        putImageData: () => {},
+      };
+    }) as unknown as HTMLCanvasElement['getContext'];
+  });
+
+  afterEach(() => {
+    HTMLCanvasElement.prototype.getContext = originalGetContext;
+  });
+
+  // Mutation: reverting `usePersistedToggle('sc-depth-hatch-visible', true)`
+  // to a `false` default reds BOTH assertions below — the checkbox starts
+  // unchecked and the layer starts hidden.
+  it('defaults ON for a fresh profile, and both layers render', async () => {
+    const map = makeFakeMap();
+    const { getByRole } = await renderAndSettle(map);
+    expect(getByRole('checkbox', { name: 'Schraffur anzeigen' })).toBeChecked();
+    expect(map.layers.get(DEPTH_LAYER)?.layout?.visibility).toBe('visible');
+    expect(map.layers.get(DEPTH_HATCH_LAYER)?.layout?.visibility).toBe('visible');
+  });
+
+  // Mutation: deleting `disabled={!depthVisible}` from the checkbox in
+  // DataLayers.tsx's return JSX reds this test alone — every other test in
+  // this block passes either way, since none of them asserts `.disabled`.
+  it('disables the hatch checkbox while the base depth toggle is off, and re-enables it once depthVisible returns (#384 defect class)', async () => {
+    const map = makeFakeMap();
+    const { getByRole } = await renderAndSettle(map);
+    const depthToggle = getByRole('checkbox', { name: 'Wassertiefen' });
+    const hatchToggle = getByRole('checkbox', { name: 'Schraffur anzeigen' });
+    expect(hatchToggle).not.toBeDisabled();
+    fireEvent.click(depthToggle);
+    expect(depthToggle).not.toBeChecked();
+    expect(hatchToggle).toBeDisabled();
+    fireEvent.click(depthToggle);
+    expect(depthToggle).toBeChecked();
+    expect(hatchToggle).not.toBeDisabled();
+  });
+
+  // Mutation: reverting the depthVisible-sync effect's hatch line back to
+  // `depthVisible ? 'visible' : 'none'` (dropping `&& hatchVisible`) reds
+  // this test — the hatch layer would stay 'visible' after the click.
+  it('unchecking the hatch toggle hides ONLY the hatch layer; the base ramp keeps rendering', async () => {
+    const map = makeFakeMap();
+    const { getByRole } = await renderAndSettle(map);
+    const hatchToggle = getByRole('checkbox', { name: 'Schraffur anzeigen' });
+    fireEvent.click(hatchToggle);
+    expect(hatchToggle).not.toBeChecked();
+    expect(map.layers.get(DEPTH_HATCH_LAYER)?.layout?.visibility).toBe('none');
+    expect(map.layers.get(DEPTH_LAYER)?.layout?.visibility).toBe('visible');
+  });
+
+  // The complementary term of the SAME `depthVisible && hatchVisible`
+  // condition as the previous test — deliberately a SEPARATE test rather
+  // than folded into it, because a mutation dropping EITHER term alone must
+  // be caught by exactly ONE of the pair (CLAUDE.md's "ask per TERM, not per
+  // guard" vacuity rule). Mutation: narrowing the condition to `hatchVisible`
+  // alone (dropping `depthVisible &&`) reds THIS test only — with the hatch
+  // checkbox left checked, the hatch layer would incorrectly stay 'visible'
+  // while depthVisible is off, and would never need to come back once
+  // depthVisible returns (it would already read 'visible'). The previous
+  // test's mutant (dropping `&& hatchVisible`) does NOT touch this one,
+  // because it never unchecks the hatch toggle at all.
+  it('unchecking the base depth toggle hides the hatch layer too, even though the persisted hatch flag stays on', async () => {
+    const map = makeFakeMap();
+    const { getByRole } = await renderAndSettle(map);
+    const depthToggle = getByRole('checkbox', { name: 'Wassertiefen' });
+    const hatchToggle = getByRole('checkbox', { name: 'Schraffur anzeigen' });
+    fireEvent.click(depthToggle);
+    expect(hatchToggle).toBeChecked(); // untouched — the persisted flag itself never flipped
+    expect(map.layers.get(DEPTH_HATCH_LAYER)?.layout?.visibility).toBe('none');
+    expect(map.layers.get(DEPTH_LAYER)?.layout?.visibility).toBe('none');
+    fireEvent.click(depthToggle);
+    expect(map.layers.get(DEPTH_HATCH_LAYER)?.layout?.visibility).toBe('visible');
+  });
+
+  // Mutation: dropping `|| !hatchVisible` from the rebuild effect's early
+  // return (leaving only `!depthVisible`) reds this test — the debounced
+  // timer would still fire and call `getLayer(DEPTH_HATCH_LAYER)` even
+  // though the hatch toggle is off.
+  it('skips the debounced hazard-hatch rebuild while the hatch toggle is off, even though depthVisible stays on', async () => {
+    const map = makeFakeMap();
+    hoisted.map = map;
+    const { getByRole, getByText } = render(
+      <AppStateProvider>
+        <SafetyDepthProbe />
+        <DataLayers onHarborPick={() => {}} />
+      </AppStateProvider>,
+    );
+    await waitFor(() => {
+      expect(map.sources.get(HARBOR_SOURCE)?.setData.mock.calls.length).toBeGreaterThan(0);
+    });
+    fireEvent.click(getByRole('checkbox', { name: 'Schraffur anzeigen' }));
+    const getLayerSpy = vi.spyOn(map, 'getLayer');
+    getLayerSpy.mockClear();
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(getByText('setSafetyDepthProbeButton'));
       act(() => {
         vi.advanceTimersByTime(DEPTH_HATCH_DEBOUNCE_MS * 10); // far past the window
       });
