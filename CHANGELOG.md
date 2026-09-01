@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-09-01
+
+### Changed
+
+- **Breaking:** the own-vessel MMSI is now stored per boat instead of once for the whole app, and moves from the Live & AIS card to the Boat selection card. An MMSI identifies a vessel, so a single shared value filtered the wrong boat out of the AIS traffic display after switching boats. The previously stored global MMSI is not carried over — enter it again for each boat that needs one. The AIS API key is unaffected and stays where it was: it identifies your aisstream.io account, not a vessel (#746).
+
+### Fixed
+
+- Dragging the desktop panel resizer no longer leaves a stale width behind when the drag is interrupted (a browser `pointercancel`, or the resizer unmounting mid-drag) — an interrupted drag now reverts to the width it started from instead of silently persisting one the user never chose (#468).
+- The depth-navigability hatching no longer renders as large hard-edged squares in a diagonal staircase when zoomed in close (roughly z14 and beyond, e.g. a harbour approach). At those zooms one mask cell is already wider than the stripe pattern can express, so the raster now marks every cell whose cautious depth reading falls below the safety depth instead of one cell in four — the marked area is strictly larger and never lighter than before, and its edges follow the depth data's own ~46 m cell grid rather than an artificial diagonal. This is a graceful degradation, not a resolution of the underlying per-cell raster limit: over marked water the absolute depth colours are now largely covered at these zooms, and rendering a truly zoom-invariant hatch still needs the screen-space approach tracked in #792. Zoom levels 13 and below are unchanged (#648).
+- The "Plan route" button now stays pinned to the bottom of the planner on phones and other narrow screens, so it is always in reach instead of sitting below a long scroll. It keeps clear of the map's attribution control, which stays on top and clickable (#702).
+- The origin marker in the trip planner now uses the same accent colour as the destination marker, instead of an unrelated map colour that never matched the destination pin or changed with the app's dark theme (#715).
+- The safety-depth field's German label ("Sicherheitstiefe") no longer overflows its column on the wide-layout side panel (tablet landscape and similar widths) — it now wraps instead of spilling past the field's edge (#762).
+- The map's OpenStreetMap attribution link is clickable again on phones and other narrow screens: scrolling the planner down to the "Plan route" button used to cover the credit control and swallow taps on it (#771).
+- The route legs table scrolls sideways when its ten columns do not fit, and that scroll can now be reached and operated from the keyboard: the table takes a tab stop of its own, announces what it is and that the arrow keys scroll it, and shows a focus ring while it holds keyboard focus (#774).
+- About dialog: fixed a missing word in the English depth-mask safety caveat that made it misparse on first read (#776).
+- GPX import now classifies a point exactly on the data-area's edge the same way the router's own bounds check does: a point sitting exactly on the northern or eastern boundary of the covered area is now rejected at import with "A point lies outside the covered area (Flensburg Fjord / Danish South Sea)." — previously such a point was accepted by the importer even though the router treats that same boundary as outside the routable area (#779).
+- The About dialog's keyboard focus trap now skips elements that are present in the DOM but not actually visible/focusable (e.g. `display: none`), so a future conditionally-rendered control inside the dialog can't silently become an unreachable Tab stop; no currently-shipped dialog content was affected (#780).
+- The shallow-water warning's collapsible explanation now starts closed on every route, instead of opening automatically whenever the cautious depth reading falls below the boat's draft — a condition that is met on every relaxed route at each boat's own default safety depth, so at default settings the explanation always opened. The warning itself is unchanged and no quieter: the cautious depth reading, the safety depth the route was planned at, how much of the route crosses shallow water where that has been measured, the below-draft wording where it applies, and the caveat about the depth data all stay visible without interaction (#788).
+- Messages that told you to change something "in Options" now name a place that exists. The AIS status chip, the no-wind-with-motor-off message and the polar-data caveat all pointed at an "Options" screen the app has never had; they now name the Boat tab and the card the relevant setting is actually in (#804).
+
 ## [0.16.0] - 2026-08-31
 
 ### Changed
@@ -886,7 +907,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.16.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/DocGerd/sail_command/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/DocGerd/sail_command/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/DocGerd/sail_command/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/DocGerd/sail_command/compare/v0.13.1...v0.14.0
