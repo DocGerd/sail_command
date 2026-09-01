@@ -781,154 +781,147 @@ test('#277: .data-layer-controls and .route-layer-controls never intersect at 32
   }
 });
 
-// #598: the same #277 scenario, but with the NEW depth-hatch legend OPENED
-// too — the co-occurrence #277 alone can't see, since it never interacts
-// with either cluster's own collapsible content.
+// #598/#813: RETIRED-AND-REPLACED, not merely edited — read this before
+// touching either half again.
 //
-// #598 review follow-up (touch-target round): `.depth-legend` is now a
-// SIBLING of `.data-layer-controls`, not a descendant (app.css/
-// DataLayers.tsx's own comments carry the full rationale — moved out of the
-// flex flow so it costs `.map-stack-tl` zero measured height, which is what
-// let the touch target go back to a full 44px). That moves WHICH element is
-// this test's actual moving part: `.data-layer-controls` no longer grows at
-// all when the legend opens (the #277 pin already covers its own, unchanged
-// collapsed state), so the overflow/clearance checks below target
-// `.depth-legend`/`.depth-legend-body` — the element that actually changes
-// size and position — not `.data-layer-controls`.
+// #598 ORIGINALLY guarded: opening `.depth-legend` (DataLayers.tsx's
+// free-floating hatch legend) while a plan is active must not silently
+// overflow, nor collide with `.route-layer-controls` on the opposite side of
+// the map. #813 (this consolidation) makes that SCENARIO structurally
+// unreachable: DataLayers.tsx now renders `.depth-legend` ONLY while
+// `useActivePlan()` reports `plan === null` (see that file's own #813
+// comment) — so once a plan exists, as this test requires, `.depth-legend`
+// is never mounted at all. There is nothing left to open, and no element on
+// the map-stack-tl side that could extend far enough right to collide with
+// `.route-layer-controls` any more (proven below by an explicit count-0
+// assertion, not merely assumed from the DataLayers/RouteLegend unit tests).
 //
-// Both assertion SHAPES from the original Major 2 fix are preserved: silent
-// overflow (`boundingBox()` cannot see it at all — CLAUDE.md's own
-// "`boundingBox()` returns the BORDER box and never sees overflow" lesson,
-// #299) via `scrollWidth`/`clientWidth`, and POSITIVE clearance rather than
-// mere non-intersection. What that clearance check actually discriminates
-// changed with the restructure, MEASURED not assumed: `.depth-legend` is
-// `position: absolute` with only `left: 0` set (no `right`), so its
-// shrink-to-fit width is CEILINGED by its containing block
-// (`.map-stack-tl`, itself sized by `.data-layer-controls`'s own ~135px EN
-// width) — live-tested by overriding `.depth-legend-body`'s `max-width` up
-// to 200px at this exact scenario and finding `.depth-legend`'s own right
-// edge pinned at 135.16px regardless, never reaching anywhere near
-// `.route-layer-controls`'s 144px. So an ordinary `max-width` bump on the
-// body (the shape Major 2's ORIGINAL finding was about, on the
-// pre-restructure nested architecture) can no longer reopen this
-// collision — that near-miss is now structurally closed, not merely
-// narrowed. The guard still has teeth against a DIFFERENT mutation: a
-// forced `width` (escaping the shrink-to-fit ceiling instead of bounding
-// within it) reds it with a real 4940px² overlap, confirmed live. Kept as a
-// backstop against that shape and against any future change to
-// `.depth-legend`'s own `left`/positioning, not as a near-miss catcher.
-test('#598: opening the depth-hatch legend does not overflow or collide with .route-layer-controls at 320px (EN)', async ({
+// The RISK #598 was written to catch — a legend's copy silently overflowing
+// its own narrow container — did not disappear with the old element; it
+// MOVED. The #598 depth-hatch copy (hatch swatch, basis paragraph, #597
+// caveat) now renders INSIDE `.route-legend` (RouteLegend.tsx's own #813
+// comment), wrapped in a NEW class, `.route-legend-depth`, with its own
+// `overflow-wrap: break-word` treatment (app.css) — different CSS than the
+// old `.depth-legend-body` it used to share, because `.route-legend` sits in
+// a wider, unconstrained panel rather than DataLayers' 104px/14rem
+// free-floating column. That is a genuinely NEW narrow-width surface, so
+// this test is REPOINTED at it rather than deleted outright, per the
+// prefer-rewrite-over-delete guidance for a moved risk.
+//
+// VIEWPORT AND LANGUAGE, both re-derived by measurement, not assumed from
+// #598's own original 320px/EN choice — the coordinate change alone made
+// the ORIGINAL mutation zero-evidence and the fix needed BOTH axes:
+//   - LANGUAGE: CLAUDE.md's established finding for the retired
+//     `.depth-legend-body` is that the overflow risk in this exact copy is
+//     GERMAN COMPOUND NOUNS ("Farbüberlagerung" etc.) — the English strings
+//     are short enough to wrap at ordinary spaces regardless of
+//     `overflow-wrap`. MEASURED: the mutation below reproduces nothing in
+//     English at any of the viewports tried here.
+//   - VIEWPORT: at 320px, `.route-legend`'s wider (unconstrained-panel)
+//     column resolves to 152px here — MEASURED live, wide enough that even
+//     German's longest word in this copy still fits with ZERO overflow with
+//     `overflow-wrap: break-word` REMOVED, unlike the old 104px
+//     `.depth-legend-body` column this copy used to occupy. So 320px is a
+//     zero-evidence viewport for this specific mutation post-#813, exactly
+//     the same trap the language axis produced. `EDGE_VIEWPORTS.wrapForcing280`
+//     (280x568, named for exactly this purpose — helpers.ts's own comment)
+//     narrows the column to 112px, where the SAME mutation reds with a real
+//     +9px delta on the basis paragraph — MEASURED live before committing to
+//     this shape, not assumed from the narrower number alone.
+//
+// MUTATION-CHECKED (2026-09-01, this session): commenting out
+// `overflow-wrap: break-word` on `.route-legend-depth p` in app.css reds this
+// test's overflow poll with a positive `scrollWidth - clientWidth` delta at
+// `wrapForcing280`/DE; reverted immediately after, app.css unaffected in the
+// shipped diff. So this guard has teeth at the viewport/language pair it
+// actually runs at, not merely a shape that happens to pass.
+test('#598/#813: the folded-in depth-hatch section inside .route-legend does not silently overflow (wrapForcing280, DE)', async ({
   page,
 }) => {
   const server = await startPreview();
   try {
-    await page.setViewportSize({ width: 320, height: 700 });
+    await page.setViewportSize(EDGE_VIEWPORTS.wrapForcing280);
     await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
 
-    await page.getByRole('button', { name: 'English anzeigen' }).click();
-
-    await page.getByRole('tab', { name: 'Plan' }).click();
-    const originSection = page.getByRole('region', { name: 'Origin' });
+    await page.getByRole('tab', { name: 'Planen' }).click();
+    const originSection = page.getByRole('region', { name: 'Start' });
     await originSection.getByRole('combobox').fill('Langballigau');
     const originResults = originSection.getByRole('option');
     await expect(originResults).toHaveCount(1);
     await originResults.first().click();
 
-    const destSection = page.getByRole('region', { name: 'Destination' });
+    const destSection = page.getByRole('region', { name: 'Ziel' });
     await destSection.getByRole('combobox').fill('Sønderborg');
     const destResults = destSection.getByRole('option');
     await expect(destResults).toHaveCount(1);
     await destResults.first().click();
 
-    const planButton = page.getByRole('button', { name: 'Plan route' });
+    const planButton = page.getByRole('button', { name: 'Route planen' });
     await planButton.click();
     await expect(planButton).toBeEnabled({ timeout: 60_000 });
 
     const routeControls = page.locator('.route-layer-controls');
     await expect(routeControls).toBeVisible();
 
-    // `.depth-legend` is uniquely classed and no longer nested inside
-    // `.data-layer-controls`, so this needs no text-based disambiguation
-    // against RouteLegend's own "Legend" summary (unlike the old
-    // `dataControls.getByText('Legend', { exact: true })` form).
+    // #813: the structural half of the "geometry is now unreachable" claim
+    // above, proven here rather than only asserted from the unit suite —
+    // with a plan active, DataLayers.tsx's `.depth-legend` must not exist at
+    // all.
+    await expect(page.locator('.depth-legend')).toHaveCount(0);
+
     // #598 review round 3: dismiss the incidental SW "offline ready" toast
-    // BEFORE opening the legend — same idiom as this file's own #368
-    // tests. Not incidental at THIS viewport any more: with a real banner
-    // up, the round-3 JS reachability gate (DataLayers.tsx) correctly
-    // computes a sub-44px budget at 320px width with a banner present and
-    // HIDES the control outright (MEASURED live: the click below timed out
-    // waiting on an invisible `<summary>` before this dismiss was added).
-    // That is the gate doing its job, not a bug this test exists to catch —
-    // its own purpose is the collision/overflow check once the legend IS
-    // reachable and open, which needs the steady-state (no banner) case.
+    // before touching any collapsible — same idiom as this file's own #368
+    // tests.
     await page
       .locator('.reload-prompt .banner-dismiss')
       .click({ timeout: 5_000 })
       .catch(() => {});
 
-    const depthLegend = page.locator('.depth-legend');
-    await depthLegend.locator('> summary').click();
-    await expect(depthLegend).toHaveJSProperty('open', true);
+    // Expand the #628 outer disclosure (collapsed by default at this narrow
+    // viewport) — same evaluate()-based `.open` IDL-property read as
+    // compass.spec.ts's own guard: `getAttribute('open')` returns the EMPTY
+    // STRING when present, which is FALSY in JS, so `!getAttribute('open')`
+    // cannot distinguish open from closed.
+    const outerDisclosure = routeControls.locator('details.route-layer-controls-disclosure');
+    const isOuterOpen = await outerDisclosure.evaluate((el) => (el as HTMLDetailsElement).open);
+    if (!isOuterOpen) {
+      await outerDisclosure.locator('> summary').click();
+    }
 
-    // Silent-overflow check, now on the element that actually holds the
-    // wrapped copy.
-    const depthLegendBody = page.locator('.depth-legend-body');
+    // Fix-wave MAJOR 1 (self-review): `.route-legend` now defaults OPEN at
+    // narrow viewports (RouteLegend.tsx's own #813 fix-wave comment) — this
+    // viewport (wrapForcing280) IS narrow, so an unconditional click would
+    // TOGGLE IT CLOSED instead of opening it, same `.open` IDL-property
+    // check as the outer disclosure above.
+    const routeLegend = page.locator('details.route-legend');
+    const isRouteLegendOpen = await routeLegend.evaluate((el) => (el as HTMLDetailsElement).open);
+    if (!isRouteLegendOpen) {
+      await routeLegend.locator('> summary').click();
+    }
+    await expect(routeLegend).toHaveJSProperty('open', true);
+
+    // Silent-overflow check on the NEW folded-in depth section — the risk
+    // #598 originally guarded, now at its moved location.
+    const depthSection = page.locator('.route-legend-depth');
     await expect
-      .poll(() => depthLegendBody.evaluate((el) => el.scrollWidth - el.clientWidth), {
+      .poll(() => depthSection.evaluate((el) => el.scrollWidth - el.clientWidth), {
         timeout: 5_000,
       })
       .toBeLessThanOrEqual(0);
 
-    // `.data-layer-controls` itself: unaffected by the legend opening under
-    // the current architecture, but kept as a residual regression guard —
-    // this is exactly the #277 pin's own shape, cheap to re-assert here.
+    // Fix-wave MINOR 1 (self-review): the ORIGINAL `#598` test kept a
+    // residual `.data-layer-controls`-vs-`.route-layer-controls` collision
+    // poll here even though `.depth-legend` was its own actual subject —
+    // "cheap to re-assert" per that test's own comment. This rewrite grows
+    // `.route-layer-controls` (four new paragraphs plus a swatch row), so
+    // the same cheap guard is worth keeping rather than dropping silently —
+    // re-sampled inside the poll callback, same as the deleted version.
     const dataControls = page.locator('.data-layer-controls');
     await expect
       .poll(async () => overlapArea(await box(dataControls), await box(routeControls)), {
         timeout: 10_000,
       })
       .toBe(0);
-
-    // Non-intersection alone does not discriminate a near-miss (the
-    // original Major 2 finding, on the pre-restructure architecture) — keep
-    // requiring POSITIVE clearance, now for `.depth-legend` itself.
-    await expect
-      .poll(async () => overlapArea(await box(depthLegend), await box(routeControls)), {
-        timeout: 10_000,
-      })
-      .toBe(0);
-    await expect
-      .poll(
-        async () => {
-          const d = await box(depthLegend);
-          const r = await box(routeControls);
-          return r.x - (d.x + d.width);
-        },
-        { timeout: 10_000 },
-      )
-      // #638 halved this margin (32px -> 16px) by giving `.depth-legend` 16px
-      // of horizontal chrome padding. MEASURED at that commit: exactly 16.00px
-      // in BOTH languages and viewport-INVARIANT from 280px to 375px, via
-      // `.route-layer-controls`'s `right: 0.5rem` + `max-width: calc(100% -
-      // 9.5rem)` clipping its left edge to `vw - 8 - (vw - 152)` = 144px.
-      // #628 review Minor 5 (SAME-PR-INVALIDATED by the #628 collapsible
-      // cluster, since this test never expands it): `.route-layer-controls`
-      // is now COLLAPSED by default at this narrow viewport, so its natural
-      // width is driven by the much shorter summary row ("Display options")
-      // instead of the "Times & speeds" checkbox label — it no longer
-      // reaches the `max-width` clip threshold at all in this collapsed
-      // state, so the 144px-left-edge math above no longer describes what
-      // this test measures. RE-MEASURED live at this exact site (2026-08-25):
-      // `routeControls.x` is now 179.64px (EN), giving a clearance of
-      // 51.64px — comfortably above the `12` floor below, not because the
-      // floor got looser but because the SUBJECT shrank (the collapsed
-      // cluster is simply narrower). A bare `> 0` would still pass at 1px;
-      // pin the MAGNITUDE regardless, so a future regression here still
-      // names its own number rather than a bare pass/fail. The EXPANDED-
-      // cluster scenario this comment used to describe (both collapsibles
-      // open at a narrow viewport) is now covered separately, by the
-      // `#628` test below.
-      .toBeGreaterThanOrEqual(12);
   } finally {
     server.kill();
   }
@@ -973,7 +966,21 @@ test('#598: opening the depth-hatch legend does not overflow or collide with .ro
 // too, undetected, had this not been re-verified live rather than assumed
 // from the 320px numbers. #277/#598's own (collapsed-state, 320px)
 // assertions cannot, by construction, ever reach the override at all.
-test('#628 review Major 1: the controls cluster and depth-hatch legend can BOTH be expanded at 390px without overflow or collision (DE)', async ({
+//
+// #813 UPDATE: "the controls cluster and depth-hatch legend can BOTH be
+// expanded" is no longer a reachable state — DataLayers.tsx's `.depth-legend`
+// renders ONLY while no plan is active (see that file's own #813 comment),
+// and this test requires a plan. The width-pin/overflow/collision
+// assertions below are UNCHANGED and still fully valid: their SUBJECT is
+// `.route-layer-controls-disclosure`'s own CSS override (border/padding
+// strip), driven by the CHECKBOX ROW LABELS already visible once the outer
+// disclosure alone is open — `.depth-legend` was never part of what these
+// assertions measure (the comment above already says so: "#277/#598's own
+// … assertions cannot, by construction, ever reach the override at all" —
+// same is true in reverse, this test's own measurements never depended on
+// `.depth-legend`). Only the now-impossible "also open `.depth-legend`" step
+// is removed, replaced by an explicit proof that it is absent.
+test('#628 review Major 1: the controls cluster can be expanded at 390px without overflow or collision, and #813 leaves .depth-legend absent (DE)', async ({
   page,
 }) => {
   const server = await startPreview();
@@ -1007,16 +1014,33 @@ test('#628 review Major 1: the controls cluster and depth-hatch legend can BOTH 
     await disclosure.locator('> summary').click();
     await expect(disclosure).toHaveJSProperty('open', true);
 
-    // Dismiss the incidental SW toast before reaching for the depth legend
-    // (same idiom as #598 above — the reachability gate there hides an
-    // invisible control under a live banner).
+    // Dismiss the incidental SW toast — same idiom as #598/#813 above.
     await page
       .locator('.reload-prompt .banner-dismiss')
       .click({ timeout: 5_000 })
       .catch(() => {});
-    const depthLegend = page.locator('.depth-legend');
-    await depthLegend.locator('> summary').click();
-    await expect(depthLegend).toHaveJSProperty('open', true);
+    // #813: DataLayers.tsx's `.depth-legend` must not exist at all with a
+    // plan active — the structural claim the header comment above makes,
+    // proven rather than assumed.
+    await expect(page.locator('.depth-legend')).toHaveCount(0);
+
+    // Fix-wave MAJOR 1 (self-review): `.route-legend` now defaults OPEN at
+    // narrow viewports (RouteLegend.tsx's own #813 fix-wave comment), and
+    // this viewport (390px) IS narrow. MEASURED: left open, its own body
+    // content (the folded depth section plus the 8-item swatch list) pushes
+    // `.route-layer-controls`'s natural width from 233.86px past the
+    // 238px cap regardless of the CSS-override mutation below — the width
+    // pin's whole discriminating power depended on the pre-#813-fix-wave
+    // shape where `.route-legend` stayed closed here, driven only by the
+    // checkbox row labels. Force it CLOSED to preserve that basis; this
+    // test's own subject is the `.route-layer-controls-disclosure` CSS
+    // override, never `.route-legend`'s own open state.
+    const innerLegend = routeControls.locator('details.route-legend');
+    const isInnerOpen = await innerLegend.evaluate((el) => (el as HTMLDetailsElement).open);
+    if (isInnerOpen) {
+      await innerLegend.locator('> summary').click();
+    }
+    await expect(innerLegend).toHaveJSProperty('open', false);
 
     // General safety check, but NOT the Major-2 keeper at this viewport
     // (MEASURED: 0 both with and without the override — see the comment

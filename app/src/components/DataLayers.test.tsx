@@ -1,13 +1,16 @@
 import 'fake-indexeddb/auto';
+import { useEffect } from 'react';
 import { act, fireEvent, render, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import DataLayers, { HARBOR_CIRCLE_LAYER, SEAMARKS_LAYER } from './DataLayers';
 import { makeFakeMap, simulateStyleReload } from '../test/fakeMaplibre';
-import { AppStateProvider, useSettings } from '../state/AppState';
+import { AppStateProvider, useActivePlan, useSettings } from '../state/AppState';
 import { __resetDbForTests } from '../services/db';
 import { de } from '../i18n/dict.de';
 import { en } from '../i18n/dict.en';
 import type { MsgKey } from '../i18n/dict.de';
+import { DEFAULT_SETTINGS, PLAN_SCHEMA_VERSION, defaultBoatSnapshot, type Plan } from '../types';
+import { uniformWindGrid } from '../test/fixtures';
 
 // #153: DataLayers' style-reload re-add against the shared fake map (jsdom
 // has no MapLibre runtime — the BoatMarker.test.tsx approach). The depth
@@ -232,6 +235,122 @@ describe('#598 depth-hatch legend', () => {
       expect(de[k].toLowerCase()).not.toContain('flaches wasser');
       expect(de[k].toLowerCase()).not.toContain('flachwasser');
     }
+  });
+});
+
+// #813: DataLayers.tsx's own `.depth-legend` must be suppressed the instant a
+// plan exists — RouteLegend.tsx's `.route-legend` becomes the sole
+// "Legende"/"Legend" disclosure at that point, folding this exact copy in
+// under its own sub-heading (RouteLegend.test.tsx pins THAT half). Without
+// this suppression the app would show two disclosures sharing one
+// accessible name again, the defect #813 exists to fix.
+const DEPARTURE_MS = Date.UTC(2026, 6, 15, 8, 0, 0);
+const ETA_MS = DEPARTURE_MS + 3_600_000;
+
+function minimalPlan(): Plan {
+  const origin = { lat: 54.79, lon: 9.43 };
+  const destination = { lat: 54.8, lon: 9.9 };
+  const leg = {
+    kind: 'sail' as const,
+    board: 'starboard' as const,
+    twaDeg: 60,
+    maneuverAtStart: null,
+    start: origin,
+    end: destination,
+    startTimeMs: DEPARTURE_MS,
+    endTimeMs: ETA_MS,
+    headingDeg: 90,
+    twsKn: 12,
+    speedKn: 6,
+    distanceNm: 10,
+  };
+  return {
+    id: 'plan-813',
+    name: 'Test plan',
+    createdAtMs: DEPARTURE_MS,
+    schemaVersion: PLAN_SCHEMA_VERSION,
+    request: {
+      origin,
+      destination,
+      viaPoints: [],
+      originHarborId: null,
+      destinationHarborId: null,
+      departureMs: DEPARTURE_MS,
+      settings: DEFAULT_SETTINGS,
+      sailIds: ['genoa'],
+      boat: defaultBoatSnapshot(),
+    },
+    windGrid: uniformWindGrid(12, 225, { t0Ms: DEPARTURE_MS, hours: 6 }),
+    result: {
+      status: 'ok',
+      sails: [
+        {
+          sailId: 'genoa',
+          result: {
+            sailId: 'genoa',
+            legs: [leg],
+            etaMs: ETA_MS,
+            durationMs: 3_600_000,
+            distanceNm: 10,
+            maneuverCount: 0,
+            motorDistanceNm: 0,
+          },
+          reason: null,
+        },
+      ],
+      recommended: 'genoa',
+      comparisonComplete: true,
+      snappedOrigin: origin,
+      snappedDestination: destination,
+    },
+  };
+}
+
+function TestSetPlan({ plan }: { plan: Plan | null }) {
+  const { setPlan } = useActivePlan();
+  useEffect(() => {
+    setPlan(plan);
+  }, [plan, setPlan]);
+  return null;
+}
+
+describe('#813 legend consolidation: DataLayers suppresses .depth-legend once a plan exists', () => {
+  it('renders .depth-legend with no plan, and removes it once a plan is set', () => {
+    const plan = minimalPlan();
+    const { container, rerender } = render(
+      <AppStateProvider>
+        <TestSetPlan plan={null} />
+        <DataLayers onHarborPick={() => {}} />
+      </AppStateProvider>,
+    );
+    expect(container.querySelector('details.depth-legend')).not.toBeNull();
+
+    rerender(
+      <AppStateProvider>
+        <TestSetPlan plan={plan} />
+        <DataLayers onHarborPick={() => {}} />
+      </AppStateProvider>,
+    );
+    expect(container.querySelector('details.depth-legend')).toBeNull();
+  });
+
+  it('brings .depth-legend back once the plan is cleared again — the two are complementary, never both absent', () => {
+    const plan = minimalPlan();
+    const { container, rerender } = render(
+      <AppStateProvider>
+        <TestSetPlan plan={plan} />
+        <DataLayers onHarborPick={() => {}} />
+      </AppStateProvider>,
+    );
+    expect(container.querySelector('details.depth-legend')).toBeNull();
+
+    rerender(
+      <AppStateProvider>
+        <TestSetPlan plan={null} />
+        <DataLayers onHarborPick={() => {}} />
+      </AppStateProvider>,
+    );
+    expect(container.querySelector('details.depth-legend')).not.toBeNull();
   });
 });
 
