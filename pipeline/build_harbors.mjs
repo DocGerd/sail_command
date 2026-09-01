@@ -32,11 +32,29 @@ function readKnownDisconnectedIds() {
         "reformatted) - update this regex and app/src/test/harborKnownDisconnected.test.ts together",
     );
   }
-  const ids = [...block[1].matchAll(/^\s*"([a-z0-9-]+)"\s*:/gm)].map((m) => m[1]);
+  // #652 review MINOR 1: matches ANY quoted key, not `[a-z0-9-]+` — a
+  // narrower charset silently DROPS a real entry whose id contains `_` or
+  // an uppercase letter (measured: adding "sonderborg_old" or "Sonderborg"
+  // to KNOWN_DISCONNECTED parsed the SAME five ids either way, no throw).
+  // Reachability of that gap is nil TODAY only because the id-validation
+  // check below, inside the harbors-source.json row map
+  // (`if (!/^[a-z0-9-]+$/.test(id)) throw ...`), already enforces this same
+  // narrow charset on every harbor id, so a real harbour can never have a
+  // key the narrow form here would drop — but that makes the row-map check
+  // an UNDOCUMENTED PRECONDITION of THIS regex, and relaxing it alone would
+  // silently disarm this guard with nothing to say so. Widening costs
+  // nothing: over-extraction (a stray quoted string inside a comment, a
+  // nested-dict value) still fails CLOSED, downstream — either the "which
+  // is not a harbor in harbors-source.json" throw a few lines below, or, if
+  // it somehow named a real id, a mismatch against harbors.json in
+  // app/src/test/harborKnownDisconnected.test.ts's equality guard.
+  const ids = [...block[1].matchAll(/^\s*"([^"]+)"\s*:/gm)].map((m) => m[1]);
   if (ids.length === 0) {
     throw new Error(
-      'KNOWN_DISCONNECTED matched but zero ids were extracted - the entry regex stopped matching ' +
-        '(single-quoted keys?) - update it alongside the pipeline change',
+      'KNOWN_DISCONNECTED matched but zero ids were extracted - EITHER the entry regex stopped ' +
+        'matching (single-quoted keys?), update it alongside the pipeline change, OR ' +
+        'KNOWN_DISCONNECTED is now legitimately empty (all five #9 harbours reconnected) - in that ' +
+        'case delete this guard and the shipped-ids field it derives, rather than widening the regex',
     );
   }
   return new Set(ids);

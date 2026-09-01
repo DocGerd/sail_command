@@ -223,7 +223,7 @@ describe('HarborPicker combobox', () => {
     const option = screen.getByRole('option', { name: /Arnis/ });
     expect(
       within(option).getByText(
-        'Not reachable by the router at any depth setting — a data limit, not open water.',
+        'Not reachable by the router at any depth setting — a limit of our depth data, not a statement about the water.',
       ),
     ).toBeInTheDocument();
   });

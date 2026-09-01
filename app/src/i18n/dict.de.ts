@@ -14,7 +14,7 @@ export const de = {
   // safety-depth setting — phrased as the ROUTER's limitation, never as a
   // claim about the real harbor, so this doesn't overstate chart authority.
   'harborPicker.knownDisconnected':
-    'Vom Routenplaner bei keiner Tiefeneinstellung erreichbar – eine Datenbeschränkung, kein offenes Wasser.',
+    'Vom Routenplaner bei keiner Tiefeneinstellung erreichbar – eine Grenze unserer Tiefendaten, keine Aussage über das Fahrwasser.',
   'options.safetyDepth.label': 'Sicherheitstiefe (m)',
   // #699: der zulässige Bereich hing bislang nur als natives min/max-Attribut
   // am Feld, ohne sichtbaren oder für Screenreader zugänglichen Text — ein

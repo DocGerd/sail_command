@@ -44,43 +44,94 @@ function readKnownDisconnectedIds(): Set<string> {
       "reformatted) — update this regex, build_harbors.mjs's reader, and " +
       "verifyMaskConnectivity.test.ts's readKnownDisconnected() together",
   ).not.toBeNull();
+  // #652 review MINOR 1: matches ANY quoted key, not `[a-z0-9-]+` — a
+  // narrower charset silently DROPS a real entry whose id contains `_` or
+  // an uppercase letter (measured: adding "sonderborg_old" or "Sonderborg"
+  // to KNOWN_DISCONNECTED parsed the SAME five ids either way, no throw, and
+  // this file's own equality check below still PASSED, because
+  // build_harbors.mjs's reader shared the identical blind spot — two guards
+  // agreeing measured the shared assumption, not the fact). Reachability of
+  // that gap is nil TODAY only because build_harbors.mjs's row-map check
+  // (`if (!/^[a-z0-9-]+$/.test(id)) throw ...`) already enforces this same
+  // narrow charset on every real harbor id — an UNDOCUMENTED PRECONDITION of
+  // the narrow form, so relaxing that check alone would silently disarm both
+  // parsers with nothing to say so. Widening costs nothing: over-extraction
+  // still fails CLOSED via the equality assertion below (an extra id in
+  // `wantIds` with nothing matching in `gotIds` is a real mismatch, not a
+  // silent pass) — same conclusion build_harbors.mjs's twin comment reaches.
   const out = new Set<string>();
-  for (const m of block![1].matchAll(/^\s*"([a-z0-9-]+)"\s*:/gm)) {
+  for (const m of block![1].matchAll(/^\s*"([^"]+)"\s*:/gm)) {
     out.add(m[1]);
   }
-  // Same silent-empty hole as the block-not-found case above: a regex that
-  // matches the block but stops matching individual entries (e.g. the
-  // dict switched to single-quoted keys) would otherwise extract zero ids
-  // and silently disarm this whole guard.
+  // #652 review MINOR 3: this fires on TWO distinct causes, only one of
+  // which is a defect. The regex genuinely breaking (renamed/retyped/
+  // reformatted entries, single-quoted keys) is the failure this guard
+  // exists to catch. But KNOWN_DISCONNECTED emptying to `{}` is the OUTCOME
+  // #9 exists to reach (new bathymetry, a per-feature channel carve, ...) —
+  // and on that day this same regex, still working correctly, ALSO extracts
+  // zero ids. Failing closed here is still the right default (a
+  // legitimately-empty dict and a broken regex are indistinguishable at the
+  // string level, and CLAUDE.md's guard-asymmetry rule puts a BLOCKING guard
+  // on the fail-closed side) — the message just needs to name both causes so
+  // the reader isn't sent hunting a parser bug that isn't there.
   expect(
     out.size,
-    'KNOWN_DISCONNECTED matched but zero ids were extracted — the entry regex stopped matching ' +
-      '(single-quoted keys?) — update it alongside the pipeline change',
+    'KNOWN_DISCONNECTED matched but zero ids were extracted — EITHER the entry regex stopped ' +
+      'matching (single-quoted keys?), update it alongside the pipeline change, OR ' +
+      'KNOWN_DISCONNECTED is now legitimately empty (all five #9 harbours reconnected) — in that ' +
+      'case delete this test file and its build_harbors.mjs twin, rather than widening the regex',
   ).toBeGreaterThan(0);
   return out;
 }
 
-function readShippedKnownDisconnectedIds(): Set<string> {
-  const harbors = JSON.parse(readFileSync(HARBORS_JSON_PATH, 'utf8')) as HarborFixture[];
+function readShippedKnownDisconnectedIds(
+  harbors: readonly HarborFixture[] = JSON.parse(
+    readFileSync(HARBORS_JSON_PATH, 'utf8'),
+  ) as HarborFixture[],
+): Set<string> {
   return new Set(harbors.filter((h) => h.knownDisconnected === true).map((h) => h.id));
 }
 
 describe("#652: harbors.json's knownDisconnected <-> verify_mask.py's KNOWN_DISCONNECTED", () => {
+  // The BLOCKING guard: a silent disagreement between the two artifacts is
+  // the whole hazard this file exists to catch, so this stays fail-closed
+  // and unconditional — never weakened, whatever KNOWN_DISCONNECTED's
+  // CURRENT membership happens to be.
   it('the shipped harbors.json flags EXACTLY the ids verify_mask.py names', () => {
     const wantIds = [...readKnownDisconnectedIds()].sort();
     const gotIds = [...readShippedKnownDisconnectedIds()].sort();
     expect(gotIds).toEqual(wantIds);
   });
 
-  // Positive control (repo lesson: an empty comparison passing silently is
-  // not evidence — CLAUDE.md's "give any probe whose emptiness you intend
-  // to interpret a positive control"): pins the real, currently-known five
-  // so a reader stubbed to return an empty set fails HERE too, not just on
-  // the equality check above (which a coincidentally-also-empty
-  // harbors.json could pass vacuously).
-  it('names the five #9 harbours known to be disconnected today', () => {
-    expect([...readKnownDisconnectedIds()].sort()).toEqual(
-      ['arnis', 'dyvig', 'graasten', 'kappeln', 'maasholm'].sort(),
-    );
+  // #652 review addendum: this test USED TO pin the literal five ids
+  // (arnis/dyvig/graasten/kappeln/maasholm) as a positive control against the
+  // equality check above passing vacuously on two coincidentally-empty sets.
+  // That was WRONG in the same shape CLAUDE.md documents for a leak-detector
+  // reddening on an IMPROVED catalogue (#595/PR #657,
+  // `expect(internalOnly.length).toBeGreaterThan(0)`): KNOWN_DISCONNECTED
+  // SHRINKING is the OUTCOME #9 exists to reach (new bathymetry, a
+  // per-feature carve for the Dyvig channel or the Egernsund bridge, ...),
+  // and a control requiring TODAY's five ids would red this REQUIRED `app`
+  // check the day the dataset gets STRICTLY BETTER. Five disconnected
+  // harbours is a fact about today's bathymetry, not an invariant of the
+  // system.
+  //
+  // Replaced with a MEMBERSHIP-INDEPENDENT non-vacuity proof: a synthetic
+  // fixture, unrelated to any real harbor id, that proves
+  // readShippedKnownDisconnectedIds() can find a flagged entry and correctly
+  // ignores an unflagged one — in BOTH directions, so stubbing the filter to
+  // always-true or always-false both fail this row. This can never redden
+  // because of anything that happens to the real KNOWN_DISCONNECTED dict,
+  // including it going legitimately empty. (readKnownDisconnectedIds()'s own
+  // internal `toBeGreaterThan(0)` check above already rules out the Python
+  // side silently parsing to empty; this is the JSON-reading half, which had
+  // no such check.)
+  it('readShippedKnownDisconnectedIds finds a flagged id and ignores an unflagged one', () => {
+    const fixture: HarborFixture[] = [
+      { id: 'fixture-reachable-implicit' },
+      { id: 'fixture-reachable-explicit', knownDisconnected: false },
+      { id: 'fixture-disconnected', knownDisconnected: true },
+    ];
+    expect([...readShippedKnownDisconnectedIds(fixture)]).toEqual(['fixture-disconnected']);
   });
 });
