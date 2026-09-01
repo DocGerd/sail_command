@@ -150,11 +150,13 @@ making design-level decisions; do not silently deviate.
   `coverage.yml` runs nightly, so a current figure usually already sits in
   Actions: read it off the run WITH its head SHA rather than paying a fresh
   local `test:coverage`. The trailing test/file COUNT is RE-MEASURED, never
-  hand-added or inferred: **2410 tests, 154 files**, all passing (measured
-  2026-09-01 at `311202c`, and corroborated by that nightly's identical
-  2410/154 from a DIFFERENT runner — counts are load-independent, so that is a
-  genuine cross-check rather than the same measurement twice). Its DURATION is
-  DISCARDED: the run was concurrent with a multi-agent workflow. The earlier
+  hand-added or inferred: **2447 tests, 157 files**, all passing (measured
+  2026-09-02 at `a7caaf4`, the v0.18.0 back-merge — NOT at `311202c`, which is
+  the coverage nightly's head above and carried 2410/154). Its DURATION is
+  DISCARDED: the machine was under multi-agent load all session. That earlier
+  2410/154 was itself corroborated by the nightly's identical figure from a
+  DIFFERENT runner — counts are load-independent, so that was a genuine
+  cross-check rather than the same measurement twice. The earlier
   **2160 tests / 146 files** (2026-08-24
   at `39bbcd6`, the v0.13.1 cut) was +24 over v0.13.0 = 12 plain `it(` cases plus
   ONE `it.each(Object.getOwnPropertyNames(Object.prototype))` row expanding to
@@ -197,7 +199,12 @@ making design-level decisions; do not silently deviate.
   that control against the merge-base of the branch it will certify. A moved
   `develop` does not AUTOMATICALLY invalidate it — but that exemption fails
   OPEN, so DEFAULT TO RE-RUNNING and skip only after checking the sweep's
-  actual TRANSITIVE input closure, never a remembered path list. The closure
+  actual TRANSITIVE input closure, never a remembered path list. That closure
+  can now be DERIVED — `.claude/skills/sweep-closure/` (#729) walks it from the
+  sweep's own roots. It over-reports against its modelled universe, and nothing
+  in CI runs its selftest (#836), so treat OWED as authoritative and NOT-OWED as
+  still owing the field trace below. The prose list that follows is a reader's
+  aid, not the source of truth. The closure
   is wider than the obvious paths: besides `app/src/routing/`,
   `app/src/lib/mask.ts`, `app/src/lib/depthGate.ts` (since #452),
   `app/public/data/`, `app/sweep/` and `pipeline/`,
@@ -1324,6 +1331,7 @@ making design-level decisions; do not silently deviate.
   | v0.15.0 | 2026-08-27 | 972 s | `success` (MEASURED before the tag push) | **DID no-op** | merge-push `33062172199` → tag `33063351792`; `smoke-probe` FAILED, prod kept serving `v0.14.0-49-g3ebb554`; fixed by the back-merge |
   | v0.16.0 | 2026-08-31 | 498 s | `success` (MEASURED before the tag push, and the no-op CALLED IN ADVANCE from it) | **DID no-op** | merge-push `33409992738` → tag `33410773664`; `smoke-probe` FAILED, prod kept serving `v0.15.0-98-g04c4e6d`; fixed by the back-merge |
   | v0.17.0 | 2026-09-01 | 58 s | `cancelled` (MEASURED — the job had not been CREATED when the tag was pushed) | safe | merge-push `33502228802` → tag `33502309994` deployed cleanly, `smoke-probe` passed |
+  | v0.18.0 | 2026-09-01 | 109 s | `success` — and BOTH deploy jobs read success, neither run cancelled, unlike every earlier row | **`smoke-probe` FAILED** | merge-push `33561093145` → tag `33561257642` on the same SHA; the tag run's `smoke-probe` 404'd its own entry chunk 10/10 over ~5 min while the merge run's passed. Back-merge `33563513697` then probed green. WHICH mechanism — a same-SHA no-op the back-merge fixed, or propagation later than the 5-min probe window — is NOT distinguishable from the end state: the tag build and the back-merge's prod build are byte-identical, so both yield the same chunk name. Record the measurements, never a cause. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -1354,15 +1362,25 @@ making design-level decisions; do not silently deviate.
   could have done that — it would have said only "large, so probably". That
   is the difference between a proxy and the fact, and it is the reason to
   keep reading the job even while the gap's correlation keeps improving.
+  **The gate's two answers differ in DURABILITY, and reading it early is what
+  cost v0.18.0.** `success` is permanent — a job cannot un-succeed. "Not yet
+  created" is a snapshot of a race still running: at v0.18.0 the merge-run's
+  `deploy` job did not exist when read (the safe signal) and became `success`
+  during the ~2 min spent updating the ref, signing, verifying and pushing.
+  Read the gate IMMEDIATELY before `git push origin <tag>`, never before the
+  sign-and-verify sequence — everything between the read and the push is time
+  the merge run gets to finish in.
   Row 10 (v0.17.0, SAFE at 58 s) sits inside the safe band and below
   min(no-op), so it neither breaks nor strengthens the separation — and the
   gate was used PREDICTIVELY there for the SECOND time: the merge-run's
   `deploy` job was read as NOT YET CREATED (the run was still on `build`), so
   `cancel-in-progress` was called to supersede it in advance, and all five of
   its jobs then read `cancelled`.
-  **Whoever adds row 11 re-checks this paragraph: the separation still rests on
-  min(no-op) 128 s vs max(safe) 70 s, so a SAFE row at or above 128 s, or a
-  NO-OP at or below 70 s, breaks it and changes what the rows support.**
+  **Re-checked when row 11 (v0.18.0) was added: the separation HOLDS but has
+  TIGHTENED to max(safe) 70 s vs min(no-op) 109 s — v0.18.0 no-opped at 109 s,
+  below the previous 128 s minimum. A SAFE row at or above 109 s, or a NO-OP at
+  or below 70 s, breaks it and changes what the rows support. Whoever adds row
+  12 re-checks this sentence again.**
   What the rows DO rule out
   is the opposite intuition, that a fast tag push races the merge run:
   v0.13.1's 33 s is the smallest gap ever recorded and was SAFE, and
@@ -3576,6 +3594,13 @@ making design-level decisions; do not silently deviate.
 - Implementation work goes through the `.claude/agents/` defs: spawn a FRESH
   `sail-implementer` per task (never reuse across tasks); one persistent
   `sail-reviewer` per PR for the fix→re-review loop, retired at merge.
+  For a PROSE-heavy change set add `claim-auditor` (#726) ALONGSIDE
+  `sail-reviewer`, never instead of it — code correctness stays the reviewer's
+  job. Spawn it FRESH per round: a resumed instance carries its own prior clean
+  verdict as a prior. Measured at the v0.18.0 docs sweep — the auditor found
+  dangling anaphors and a claim contradicted inside its own hunk, while the
+  reviewer found an acceptance check UNREACHABLE from inside the runbook;
+  neither could have found the other's.
 - If a session's OWN directives contradict that orchestrate-first mode, NAME the
   conflict in the FIRST response and ask which governs — never silently comply
   with either side. Silently obeying the restriction cost a full docs sweep plus
