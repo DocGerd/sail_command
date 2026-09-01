@@ -1582,8 +1582,9 @@ making design-level decisions; do not silently deviate.
   that does — correspondingly the only one absent from a session's
   available-skills listing. So a plan or brief saying "invoke the release
   skill" is UNEXECUTABLE, not merely discouraged: ask the maintainer to type
-  `/release`, and read `SKILL.md` directly for the §2b/§5a/§5b/§5c steps the
-  bullets below cite.
+  `/release`, and read `SKILL.md` directly for the steps cited elsewhere in
+  this file — §2b, §5a, §5b, §5c and step 6, the back-merge that is also the
+  #398 no-op remedy.
 - **`.claude/commands/release-cycle.md` provides `/release-cycle`** (#816, PR
   #817, merged 2026-09-01) — a six-phase (0–5) wrapper for a whole cycle:
   state discovery, approval-gated milestone re-triage, implementing the
