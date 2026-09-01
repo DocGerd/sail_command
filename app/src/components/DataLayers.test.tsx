@@ -636,9 +636,13 @@ describe('#681 independent hazard-hatch toggle', () => {
 // by a test — the '#813 legend consolidation' describe block above asserts
 // the DataLayers half (`.depth-legend` present/absent as `plan` changes);
 // the RouteLayer half (`if (!plan) return null`, which is what stops
-// RouteLegend mounting pre-plan) has no test anywhere, since
-// `RouteLegend.test.tsx` renders `<RouteLegend />` directly with no plan
-// gate at all. This block renders both
+// RouteLegend mounting pre-plan) is pinned only indirectly —
+// `App.test.tsx`'s `renders the always-mounted depth toggle (ON by
+// default, #63) with no plan active` asserts the plan-gated cluster is
+// absent without a plan, and two `RouteLayer.test.tsx` `#628` tests mount
+// with `plan={null}`; no test names `RouteLegend` itself.
+// (`RouteLegend.test.tsx` renders `<RouteLegend />` directly, with no plan
+// gate.) This block renders both
 // UNCONDITIONALLY, on purpose, to isolate the SYNC wiring from that mounting
 // decision (which is why it does not need the missing pin to be trustworthy):
 // the composition bug the review caught was that ticking the
