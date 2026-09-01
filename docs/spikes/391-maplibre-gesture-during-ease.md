@@ -49,11 +49,21 @@ outside this worktree) carries `version: "6.6.0"` in its own `package.json`,
 and its lockfile's `node_modules/maplibre-gl` block is **byte-identical**
 (same version, same resolved URL, same integrity hash) to this worktree's own
 `app/package-lock.json` entry — confirmed by a direct file diff of both
-blocks, not by assumption. A package version's content is fixed by its
-integrity hash, so reading source from that byte-identical entry is
-equivalent to reading it from an `npm ci` install in this worktree. All
-citations below were re-derived 2026-09-01 against `maplibre-gl@6.6.0` on
-that basis.
+blocks, not by assumption. Byte-identity of the two lockfile entries
+establishes only that both checkouts declare the same package version and
+integrity hash; it does not by itself rule out the donor checkout's installed
+`node_modules/maplibre-gl` carrying a local patch layered on top of an
+otherwise-ordinary `npm ci`. Checked directly, in both checkouts: neither
+`app/` has a `patches/` directory, a `postinstall` or `patch-package` script,
+or a `patchedDependencies` entry in `package.json`, and neither
+`package-lock.json` mentions `patch-package` — ruling out every *tooled*
+patching mechanism available to this repo. What that check cannot rule out is
+an untracked, by-hand edit to the files already on disk in the donor's
+`node_modules`, which leaves no trace in either `package.json` or the
+lockfile; treat that as a named, unclosed residual rather than an established
+zero. All citations below were re-derived 2026-09-01 against
+`maplibre-gl@6.6.0` on that basis, sourced from the donor checkout under that
+qualification.
 
 The issue's own text (filed against `6.1.0`, per its closing paragraph) said
 line numbers "should be re-checked after any maplibre upgrade" — this is that
@@ -148,7 +158,7 @@ stop(allowEndAnimation: boolean): void {
 
 The only guard against firing is `this._updatingCamera`, which is `true`
 **only** while `HandlerManager.handleEvent` (the real user-input dispatch
-path, `handler_manager.ts:408-484`) is on the call stack — it is set `true`
+path, `handler_manager.ts:408-486`) is on the call stack — it is set `true`
 at `:415` and reset `false` at `:477`, bracketing a single DOM-event
 dispatch. The ease's own `_renderFrameCallback` above reaches `Camera.stop()`
 via `_requestRenderFrame`/`_renderTaskQueue` (`ui/map.ts:4221-4224`,
@@ -278,7 +288,7 @@ to any repository outside `DocGerd/sail_command`.
 > `_updatingCamera` is falsy — which it always is on this path, since the
 > completion runs from a `requestAnimationFrame`-driven render-task callback
 > (`map.ts:4221-4224`), never from `HandlerManager.handleEvent`
-> (`handler_manager.ts:408-484`, the only place that sets `_updatingCamera =
+> (`handler_manager.ts:408-486`, the only place that sets `_updatingCamera =
 > true`). For a drag handler built on `DragHandler`
 > (`ui/handler/drag_handler.ts`), `reset()` (`:101-106`) deletes `_lastPoint`,
 > and `dragMove` (`:131-149`) unconditionally returns early once `_lastPoint`
