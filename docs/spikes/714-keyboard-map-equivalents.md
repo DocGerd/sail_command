@@ -26,15 +26,21 @@ reading the named file, not from the issue text or from memory. Citations are
 anchored to symbols/exports, not bare line numbers, per this repo's own
 citation-rot rule.
 
-One explicit exclusion, stated rather than silently assumed: this worktree
-has no `app/node_modules` installed (no `npm ci` was run, since this is a
-docs-only task), so MapLibre's own default keyboard camera controls
-(pan/zoom/rotate on a focused canvas) could not be re-verified against the
-installed `maplibre-gl` source. This document makes **no claim** about
-whether panning/zooming the base map is currently keyboard-reachable, in
-either direction. That question is out of scope for this spike, which is
-about **app-authored** interactions — features SailCommand itself wires to a
-map click or a `Marker` drag, not MapLibre's own default camera bindings.
+One fact recorded rather than left open: MapLibre's `Map` constructor
+defaults `keyboard: true` and `interactive: true`
+(`node_modules/maplibre-gl/src/ui/map.ts`, `keyboard` ~:519, `interactive`
+~:494, giving the canvas `tabindex="0"` ~:4049), and `MapView.tsx`'s own `new
+MaplibreMap({...})` call (~:239) sets neither option, so MapLibre's default
+keyboard camera controls (arrow-key pan, +/- zoom, Shift+Left/Right rotate;
+`ui/handler/keyboard.ts`'s keydown switch) are reachable today once the
+canvas has focus — verified against the installed
+`maplibre-gl@6.6.0` (matching `app/package-lock.json`'s pin) on 2026-09-01,
+via the primary checkout's `app/node_modules` (this worktree's own copy is
+absent, since this is a docs-only task with no `npm ci`). This remains out
+of this document's enumeration scope regardless — the scope statement below
+covers **app-authored** interactions only, features SailCommand itself wires
+to a map click or a `Marker` drag, not MapLibre's own default camera
+bindings.
 
 **Scope statement**, per the issue's own request to scope rather than hedge
 an enumeration: this document enumerates interactions reachable from the
@@ -178,9 +184,9 @@ cost/risk, not on principle:
 - It needs a **new**, persistent on-canvas focus indicator (a crosshair or
   reticle) with no existing analogue anywhere in this codebase's map chrome.
 - It needs new keydown handling scoped to the map container, which has to be
-  reconciled against whatever native MapLibre keyboard camera bindings exist
-  (unverified in this checkout — §0) so that "arrow key" doesn't ambiguously
-  mean both "pan the camera" and "move the crosshair."
+  reconciled against MapLibre's own live keyboard camera bindings (confirmed
+  reachable, §0) so that "arrow key" doesn't ambiguously mean both "pan the
+  camera" and "move the crosshair."
 - It reuses none of the existing primitive layer (`Field`/`NumberInput`/
   `Button`) — it is a bespoke interaction model that would need its own
   design pass, its own e2e coverage strategy (this repo's own rule that "a
@@ -269,11 +275,10 @@ would require either (a) a parallel, invisible, in-DOM proxy element per
 rendered feature, repositioned on every pan/zoom/style-reload frame — a
 duplicate of MapLibre's own placement/collision engine, maintained by hand,
 with no existing precedent anywhere in this codebase — or (b) `Marker`-based
-rendering for seamarks instead of a symbol layer, which this repo's own
-`#191`/`#200`/`#232`/`#682` history shows was deliberately NOT the chosen
-path for exactly this data (`SEAMARKS_LAYER`'s comments describe a whole
-lineage of collision-index and paint-order tuning that only applies to
-symbol layers, not `Marker`s). Either route is a materially larger and more
+rendering for seamarks instead of a symbol layer: this repo's own
+`#191`/`#200`/`#232`/`#682` history shows a substantial, symbol-layer-specific
+investment in collision/z-order tuning that a switch to Marker-based
+rendering would forfeit. Either route is a materially larger and more
 fragile undertaking than Option A for the same user-facing outcome
 ("what is this thing on the map"), and Option A already gives a keyboard
 user the FULL content the popover would have shown, not a degraded subset.
@@ -411,10 +416,9 @@ part of #714's scope; found during this spike's enumeration, §2 row 6)**
   beyond "reuse `Field`/`NumberInput`/`Button`/`Disclosure`, place in the
   cited existing sections" — those are implementation decisions for the
   follow-up issues, not this spike's.
-- Whether MapLibre's own default keyboard camera bindings (pan/zoom/rotate)
-  are currently reachable at all — explicitly unverified in this checkout
-  (§0), and out of this document's scope regardless (app-authored
-  interactions only).
+- Any product decision about MapLibre's own default keyboard camera bindings
+  (pan/zoom/rotate) — confirmed reachable today (§0), but out of this
+  document's scope regardless (app-authored interactions only).
 - Whether Option A's "update coordinates" extension for existing via points
   (§3.1) should ship in the same PR as initial placement, or as a fast
   follow — left to the implementation issue.
