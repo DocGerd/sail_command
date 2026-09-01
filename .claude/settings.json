@@ -52,6 +52,11 @@
             "type": "command",
             "command": "H=\"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/artifact-guard.sh\"; if [ -f \"$H\" ] && [ -x \"$H\" ]; then exec \"$H\"; else echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"ask\",\"permissionDecisionReason\":\"artifact/spec guard hook missing, not a regular file, or not executable - protection is inert; check .claude/hooks/artifact-guard.sh exists and is executable.\"}}'; fi",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "H=\"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/closing-keyword-guard.sh\"; if [ -f \"$H\" ] && [ -x \"$H\" ]; then \"$H\" || true; fi",
+            "timeout": 5
           }
         ]
       }
@@ -79,6 +84,11 @@
             "type": "command",
             "command": "f=$(jq -r '.tool_response.filePath // .tool_input.file_path // empty'); case \"$f\" in *app/package.json|*app/package-lock.json) echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"Dependency manifest changed. Regenerate third-party notices: npm --prefix app run notices - CI fails on any drift in app/public/THIRD-PARTY-NOTICES.txt (ci.yml runs git diff --exit-code). Do it now to avoid a ~10-min CI round-trip.\"}}' ;; esac",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "H=\"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/ruff-on-pipeline-edit.sh\"; if [ -f \"$H\" ] && [ -x \"$H\" ]; then \"$H\" || true; fi",
+            "timeout": 15
           }
         ]
       },

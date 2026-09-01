@@ -28,8 +28,13 @@ import { PLAN_SCHEMA_VERSION } from '../types';
 // helper for the full rationale (jsdom does not hide closed-<details>
 // content, so `getByText`/`getByRole` alone no longer distinguish VISIBLE
 // from merely PRESENT). Every shallow-warning fixture in this file uses a
-// usedDepthM below the severe boundary, so a fresh `renderPanel()` call
-// always mounts with the Disclosure open.
+// usedDepthM below the severe boundary — which USED to mean a fresh
+// `renderPanel()` mounted with the Disclosure open. #788 made `defaultOpen`
+// the constant `false`, so they now mount CLOSED and every call here reads
+// `false`. Only the expectations moved: the body text these rows assert on
+// is still in the DOM (jsdom renders closed-<details> content), and the
+// hazard itself was never in the body — it is in the <summary> and the
+// caveat sibling. RouteSummary.test.tsx's twin of this comment says the same.
 function expectShallowDetailOpen(expected: boolean): void {
   const details = document.querySelector(
     'details.shallow-warning-disclosure',
@@ -1221,7 +1226,7 @@ describe('PlannerPanel', () => {
       // detail this assertion no longer depends on.
       const banner = screen.getByRole('alert');
       expect(banner).toHaveTextContent(/was not passable/);
-      expectShallowDetailOpen(true);
+      expectShallowDetailOpen(false);
       // Requested depth.
       expect(banner.textContent).toContain('3.0 m');
       // #452: the effective depth the route was actually computed at — the
@@ -1276,7 +1281,7 @@ describe('PlannerPanel', () => {
       renderPanel({ plan: makeShallowPlan(), rig: 'fock' });
       const banner = screen.getByText(/was not passable/);
       expect(banner).toBeInTheDocument();
-      expectShallowDetailOpen(true);
+      expectShallowDetailOpen(false);
       // No summary-dependent content exists for fock — the warning is the
       // only thing this rig's strip has to show; "View details" needs
       // `summary` too and must stay absent.
@@ -1306,7 +1311,7 @@ describe('PlannerPanel', () => {
     it('reports the right count and first occurrence for non-contiguous flagged legs', () => {
       renderPanel({ plan: makeNonContiguousShallowPlan(), rig: 'genoa' });
       const banner = screen.getByText(/was not passable/);
-      expectShallowDetailOpen(true);
+      expectShallowDetailOpen(false);
       const expected = en['route.shallow.locator.plural']
         .replace('{count}', '2')
         .replace('{time}', formatTime(PLAN_DEPARTURE_MS, 'en'));
@@ -1324,7 +1329,7 @@ describe('PlannerPanel', () => {
       });
       renderPanel({ plan, rig: 'genoa' });
       const banner = screen.getByText(/was not passable/);
-      expectShallowDetailOpen(true);
+      expectShallowDetailOpen(false);
       const expected = en['route.shallow.locator'].replace(
         '{time}',
         formatTime(PLAN_DEPARTURE_MS, 'en'),
@@ -1344,7 +1349,7 @@ describe('PlannerPanel', () => {
       };
       renderPanel({ plan, rig: 'genoa' });
       const banner = screen.getByText(/was not passable/);
-      expectShallowDetailOpen(true);
+      expectShallowDetailOpen(false);
       expect(banner.textContent).not.toContain('starts at');
     });
   });

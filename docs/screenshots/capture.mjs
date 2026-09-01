@@ -210,21 +210,29 @@ await page.screenshot({ path: 'docs/screenshots/start-view.png' });
 // so it drifted stale three times (wrong depth format, German UI, a third
 // boat that never fit the viewport). BOAT_SELECTION_HEIGHT_PX widens the
 // viewport for this one shot only, the same START_VIEW_HEIGHT_PX pattern
-// above. RE-MEASURED 2026-08-31 at the v0.16.0 cut, against this exact flow
+// above. RE-MEASURED 2026-09-01 at the v0.17.0 cut, against this exact flow
 // (build+preview, navigate, switch to English, click the Boat tab, no
 // plan/harbor picked, offline banner present): `.boat-picker-card` runs from
-// document y=185 to y=955.3px — a LAYOUT position, not a viewport-clipped
+// document y=185 to y=1079.3px — a LAYOUT position, not a viewport-clipped
 // one, so it stays put whether the viewport is 800px or 1400px tall; only
-// how much of it is scrolled into view changes. (The superseded y=991.3 was
-// measured 2026-08-31 at `6aea385`, before this file was run against a
-// build+preview target; that run's chrome is not established.)
-// 1050px covers it with ~95px to spare, enough for all three
+// how much of it is scrolled into view changes. (The superseded y=955.3 was
+// measured 2026-08-31 at the v0.16.0 cut, before #746 moved the own-vessel
+// MMSI field onto this card; that field is the whole 124.0px delta, and it
+// consumed the ~95px of slack the old 1050 carried — measured at 1050, the
+// card overflowed by 29.3px and the MMSI help text was clipped mid-sentence.
+// That is the start-view defect class — a clipped form field — not the
+// deliberate legs-table crop, so the constant moves rather than the framing.
+// The superseded y=991.3 was measured 2026-08-31 at `6aea385`, before this
+// file was run against a build+preview target; that run's chrome is not
+// established.)
+// 1180px covers it with ~101px to spare, enough for all three
 // catalogue boats (name, draft, polar-provenance tier, draft-source note,
 // and — on the two non-hullVerified boats — the assumed-keel disclosure)
-// to render with no internal scroll. Boat-tab-only, for the same reason the
+// plus the #746 MMSI field and its help text, to render with no internal
+// scroll. Boat-tab-only, for the same reason the
 // 1000px start-view bump above is start-view-only: nothing else needs this
 // much vertical room.
-const BOAT_SELECTION_HEIGHT_PX = 1050;
+const BOAT_SELECTION_HEIGHT_PX = 1180;
 await page.setViewportSize({ width: 1280, height: BOAT_SELECTION_HEIGHT_PX });
 await page.getByRole('tab', { name: 'Boat' }).click();
 // Static, no plan/network dependency (unlike plan-route.png below), so a

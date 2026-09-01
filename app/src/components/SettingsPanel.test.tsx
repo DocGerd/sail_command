@@ -348,12 +348,14 @@ describe('SettingsPanel (#299 Boat tab)', () => {
   });
 
   describe('Live & AIS group', () => {
-    it('renders "show my position" UNCHECKED against DEFAULT_SETTINGS and the AIS fields, grouped under Live & AIS', () => {
+    // #746: the MMSI assertion that used to close this row is gone — the field
+    // moved to BoatPicker. What remains is what this card still legitimately
+    // groups; its absence is pinned separately below.
+    it('renders "show my position" UNCHECKED against DEFAULT_SETTINGS and the AIS key, grouped under Live & AIS', () => {
       renderPanel();
       const section = sectionOf('Live & AIS');
       expect(within(section).getByLabelText('Show my position')).not.toBeChecked();
       expect(within(section).getByLabelText('AIS API key (aisstream.io)')).toBeInTheDocument();
-      expect(within(section).getByLabelText('Your MMSI (optional)')).toBeInTheDocument();
     });
 
     it('toggling "show my position" ON calls onChange with showOwnship: true, immediately', () => {
@@ -378,13 +380,33 @@ describe('SettingsPanel (#299 Boat tab)', () => {
     });
 
     // Ported from OptionsPanel.test.tsx (PR #486 review, Minor 4).
-    it('renders the AIS API-key and MMSI fields with the privacy help text', () => {
+    // #746: the MMSI half of this case moved to BoatPicker.test.tsx with the
+    // field. What stays here is the API key's own privacy sentence, which had
+    // to survive the split of `options.ais.help` intact.
+    it('renders the AIS API-key field with the privacy help text', () => {
       renderPanel();
       expect(screen.getByLabelText('AIS API key (aisstream.io)')).toBeInTheDocument();
-      expect(screen.getByLabelText('Your MMSI (optional)')).toBeInTheDocument();
-      expect(screen.getByText(/stay on this device/)).toBeInTheDocument();
+      expect(screen.getByText(/stays on this device/)).toBeInTheDocument();
       expect(screen.getByText(/only to aisstream\.io/)).toBeInTheDocument();
-      expect(screen.getByText(/never transmitted/)).toBeInTheDocument();
+    });
+
+    // #746: the account credential and the vessel identity must not share a
+    // surface — that pairing is what made a global MMSI look correct. Pins the
+    // ABSENCE inside the Live & AIS CARD specifically, not in the panel: this
+    // panel also renders BoatPicker, which is exactly where the MMSI field now
+    // legitimately lives, so a document-wide `queryByLabelText(/MMSI/)` would
+    // fail against the correct implementation (MEASURED — it did).
+    it('no longer renders an MMSI field in the Live & AIS card (#746)', () => {
+      renderPanel();
+      const section = sectionOf('Live & AIS');
+      // Non-vacuity control: the card is genuinely found and genuinely holds
+      // the key field, so what follows is a real absence rather than an empty
+      // container in which every query would come back empty anyway.
+      expect(within(section).getByLabelText('AIS API key (aisstream.io)')).toBeInTheDocument();
+      expect(within(section).queryByLabelText(/MMSI/)).not.toBeInTheDocument();
+      expect(within(section).queryByText('MMSI must be exactly 9 digits.')).not.toBeInTheDocument();
+      // ...and it IS still reachable, from the boat surface in the same panel.
+      expect(screen.getByLabelText("This boat's MMSI (optional)")).toBeInTheDocument();
     });
 
     it('commits the AIS API key on change', () => {
@@ -395,46 +417,9 @@ describe('SettingsPanel (#299 Boat tab)', () => {
       expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, aisApiKey: 'my-key' });
     });
 
-    it('shows the MMSI validation message for a non-empty, non-9-digit value', () => {
-      localStorage.setItem('sc-lang', 'en');
-      render(
-        <I18nProvider>
-          <SettingsPanel
-            value={{ ...DEFAULT_SETTINGS, ownMmsi: '123' }}
-            onChange={vi.fn()}
-            boatId={DEFAULT_BOAT_ID}
-            onBoatIdChange={vi.fn()}
-          />
-        </I18nProvider>,
-      );
-      expect(screen.getByText('MMSI must be exactly 9 digits.')).toBeInTheDocument();
-      expect(screen.getByLabelText('Your MMSI (optional)')).toHaveAttribute('aria-invalid', 'true');
-    });
-
-    it('shows no MMSI validation message for a valid 9-digit value', () => {
-      localStorage.setItem('sc-lang', 'en');
-      render(
-        <I18nProvider>
-          <SettingsPanel
-            value={{ ...DEFAULT_SETTINGS, ownMmsi: '211234560' }}
-            onChange={vi.fn()}
-            boatId={DEFAULT_BOAT_ID}
-            onBoatIdChange={vi.fn()}
-          />
-        </I18nProvider>,
-      );
-      expect(screen.queryByText('MMSI must be exactly 9 digits.')).not.toBeInTheDocument();
-      expect(screen.getByLabelText('Your MMSI (optional)')).toHaveAttribute(
-        'aria-invalid',
-        'false',
-      );
-    });
-
-    // Ported from OptionsPanel.test.tsx (PR #486 review, Minor 4).
-    it('shows no MMSI validation message when the field is empty (feature simply off)', () => {
-      renderPanel();
-      expect(screen.queryByText('MMSI must be exactly 9 digits.')).not.toBeInTheDocument();
-    });
+    // #746: the three MMSI validation cases that used to live here moved to
+    // BoatPicker.test.tsx unchanged in substance — invalid, valid, and empty.
+    // They were not dropped in the move; the control they exercise did.
   });
 
   // #353 PR2: the seamark size slider + display-category radiogroup. Both

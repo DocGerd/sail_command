@@ -11,6 +11,7 @@ import { useSettings } from '../state/AppState';
 import { useLang, useT } from '../i18n';
 import { loadRoutingAssets, type RoutingAssets } from '../services/assets';
 import { harborFeatureCollection } from '../lib/harborGeoJson';
+import { HALO_COLOR, INK_COLOR } from '../lib/mapColors';
 import {
   SEAMARKS_LAYOUT,
   pickSeamarkByPriority,
@@ -102,15 +103,20 @@ const DEPTH_HATCH_LAYER = 'sc-depth-hatch';
 // simultaneous change (zoom while a boat radio is clamping safetyDepthM)
 // costs ONE rebuild, where two independent timers would cost two.
 // (2) The trigger is the BAND, not the zoom, and hatchBandForZoom quantises
-// to whole zoom levels (#599 fix wave), so only FIVE bands are reachable
-// across z9-z22 and a gesture that stays inside one arms no timer at all.
+// to whole zoom levels (#599 fix wave), so only SIX bands are reachable
+// across z9-z22 (FIVE before #648 added the z>=14 full-coverage wash band —
+// depthColor.ts's HATCH_WASH_BAND) and a gesture that stays inside one arms
+// no timer at all.
 // MEASURED, not predicted — an earlier revision of this comment asserted
 // "five distinct values / no timer at all" while selection was still
 // CONTINUOUS, where 15 bands are reachable and it was simply false: eight
 // wheel notches from z9 rebuilt 7-8 times. After quantisation the same eight
 // notches rebuild 1-4 times depending on notch size (2 at a 0.25 notch, 1 at
 // 0.125, 4 at a coarse 0.5). Band changes over a full z9->z22 sweep drop
-// from 14 to 4, all at integer crossings.
+// from 14 to 4, all at integer crossings — 5 since #648, whose extra
+// crossing is z13->z14 and is likewise an integer one. (The notch
+// measurement above was taken from z9 and is untouched by #648, which
+// changes nothing below z14.)
 // `zoomend` (not `zoom`) is the source, so a continuous pinch/wheel
 // gesture is already coalesced by MapLibre before this debounce sees it.
 const DEPTH_HATCH_DEBOUNCE_MS = 300;
@@ -371,7 +377,13 @@ function setupLayers(
             // an ADDITIONAL artifact, independent of the zoom-scaling
             // degradation #599's hatchBandForZoom addresses (depthColor.ts),
             // and neither fixes the other. 'nearest' at least keeps whatever renders
-            // crisp rather than blurred. SCOPE, measured against
+            // crisp rather than blurred. #648 makes this choice load-bearing for
+            // SAFETY as well as legibility: from z14 the raster is a
+            // full-coverage wash (HATCH_WASH_BAND), so 'linear' would no longer
+            // blur stripes but would fade each marginal region's OUTER cells
+            // toward transparent — i.e. render genuinely marginal water lighter
+            // at exactly the boundary a reader is judging. 'nearest' keeps that
+            // edge at the mask's own cell resolution. SCOPE, measured against
             // maplibre-gl@6.3.0: this governs MAGNIFICATION only —
             // webgl/draw/draw_raster.ts:119 binds the MINIFICATION filter
             // as a hardcoded gl.LINEAR_MIPMAP_NEAREST third argument
@@ -402,11 +414,15 @@ function setupLayers(
           // orange shallows). Black is distinct from every depth-ramp stop and,
           // being achromatic, can't collide with any symbol on the map under
           // colour-blindness; the 2 px white stroke keeps it popping over both
-          // plain water and every band of the depth raster.
+          // plain water and every band of the depth raster. #715: the fill is
+          // PURE black (#000000), deliberately NOT lib/mapColors.ts's
+          // INK_COLOR (#1A1A1A, the map's near-black ink) — a different,
+          // separately-chosen value, so it stays a literal here. The stroke
+          // IS the same white used everywhere else, so it is HALO_COLOR.
           'circle-radius': 5.5,
           'circle-color': '#000000',
           'circle-stroke-width': 2,
-          'circle-stroke-color': '#ffffff',
+          'circle-stroke-color': HALO_COLOR,
         },
       },
       beforeId,
@@ -429,8 +445,8 @@ function setupLayers(
           'text-allow-overlap': false,
         },
         paint: {
-          'text-color': '#1a1a1a',
-          'text-halo-color': '#ffffff',
+          'text-color': INK_COLOR,
+          'text-halo-color': HALO_COLOR,
           'text-halo-width': 1.2,
         },
       },

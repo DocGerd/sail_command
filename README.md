@@ -102,10 +102,11 @@ installs as a standalone icon and works fully offline after the first visit
   on the boat marker. From the current GPS fix you can reroute to the plan's
   destination using the plan's stored forecast — fully offline.
 - **AIS traffic** (optional, online-only): paste a personal
-  [aisstream.io](https://aisstream.io/) API key in the options to see
-  surrounding vessels on the Live view — course/heading, names, tap for details
-  — including any within a ±5 nm corridor along the active route. Off by
-  default and fully inert without a key; your own vessel is filtered out by MMSI.
+  [aisstream.io](https://aisstream.io/) API key into the **Live & AIS** card on
+  the Boat tab to see surrounding vessels on the Live view — course/heading,
+  names, tap for details — including any within a ±5 nm corridor along the
+  active route. Off by default and fully inert without a key; your own vessel
+  is filtered out by MMSI.
 
 Planning a new route requires an internet connection (wind forecast fetch);
 everything else — viewing/loading saved plans, the map, live GPS guidance —
