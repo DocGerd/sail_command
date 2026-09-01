@@ -1,13 +1,17 @@
 import 'fake-indexeddb/auto';
+import { useEffect } from 'react';
 import { act, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import DataLayers, { HARBOR_CIRCLE_LAYER, SEAMARKS_LAYER } from './DataLayers';
+import RouteLegend from './RouteLegend';
 import { makeFakeMap, simulateStyleReload } from '../test/fakeMaplibre';
-import { AppStateProvider, useSettings } from '../state/AppState';
+import { AppStateProvider, useActivePlan, useSettings } from '../state/AppState';
 import { __resetDbForTests } from '../services/db';
 import { de } from '../i18n/dict.de';
 import { en } from '../i18n/dict.en';
 import type { MsgKey } from '../i18n/dict.de';
+import { DEFAULT_SETTINGS, PLAN_SCHEMA_VERSION, defaultBoatSnapshot, type Plan } from '../types';
+import { uniformWindGrid } from '../test/fixtures';
 
 // #153: DataLayers' style-reload re-add against the shared fake map (jsdom
 // has no MapLibre runtime — the BoatMarker.test.tsx approach). The depth
@@ -232,6 +236,122 @@ describe('#598 depth-hatch legend', () => {
       expect(de[k].toLowerCase()).not.toContain('flaches wasser');
       expect(de[k].toLowerCase()).not.toContain('flachwasser');
     }
+  });
+});
+
+// #813: DataLayers.tsx's own `.depth-legend` must be suppressed the instant a
+// plan exists — RouteLegend.tsx's `.route-legend` becomes the sole
+// "Legende"/"Legend" disclosure at that point, folding this exact copy in
+// under its own sub-heading (RouteLegend.test.tsx pins THAT half). Without
+// this suppression the app would show two disclosures sharing one
+// accessible name again, the defect #813 exists to fix.
+const DEPARTURE_MS = Date.UTC(2026, 6, 15, 8, 0, 0);
+const ETA_MS = DEPARTURE_MS + 3_600_000;
+
+function minimalPlan(): Plan {
+  const origin = { lat: 54.79, lon: 9.43 };
+  const destination = { lat: 54.8, lon: 9.9 };
+  const leg = {
+    kind: 'sail' as const,
+    board: 'starboard' as const,
+    twaDeg: 60,
+    maneuverAtStart: null,
+    start: origin,
+    end: destination,
+    startTimeMs: DEPARTURE_MS,
+    endTimeMs: ETA_MS,
+    headingDeg: 90,
+    twsKn: 12,
+    speedKn: 6,
+    distanceNm: 10,
+  };
+  return {
+    id: 'plan-813',
+    name: 'Test plan',
+    createdAtMs: DEPARTURE_MS,
+    schemaVersion: PLAN_SCHEMA_VERSION,
+    request: {
+      origin,
+      destination,
+      viaPoints: [],
+      originHarborId: null,
+      destinationHarborId: null,
+      departureMs: DEPARTURE_MS,
+      settings: DEFAULT_SETTINGS,
+      sailIds: ['genoa'],
+      boat: defaultBoatSnapshot(),
+    },
+    windGrid: uniformWindGrid(12, 225, { t0Ms: DEPARTURE_MS, hours: 6 }),
+    result: {
+      status: 'ok',
+      sails: [
+        {
+          sailId: 'genoa',
+          result: {
+            sailId: 'genoa',
+            legs: [leg],
+            etaMs: ETA_MS,
+            durationMs: 3_600_000,
+            distanceNm: 10,
+            maneuverCount: 0,
+            motorDistanceNm: 0,
+          },
+          reason: null,
+        },
+      ],
+      recommended: 'genoa',
+      comparisonComplete: true,
+      snappedOrigin: origin,
+      snappedDestination: destination,
+    },
+  };
+}
+
+function TestSetPlan({ plan }: { plan: Plan | null }) {
+  const { setPlan } = useActivePlan();
+  useEffect(() => {
+    setPlan(plan);
+  }, [plan, setPlan]);
+  return null;
+}
+
+describe('#813 legend consolidation: DataLayers suppresses .depth-legend once a plan exists', () => {
+  it('renders .depth-legend with no plan, and removes it once a plan is set', () => {
+    const plan = minimalPlan();
+    const { container, rerender } = render(
+      <AppStateProvider>
+        <TestSetPlan plan={null} />
+        <DataLayers onHarborPick={() => {}} />
+      </AppStateProvider>,
+    );
+    expect(container.querySelector('details.depth-legend')).not.toBeNull();
+
+    rerender(
+      <AppStateProvider>
+        <TestSetPlan plan={plan} />
+        <DataLayers onHarborPick={() => {}} />
+      </AppStateProvider>,
+    );
+    expect(container.querySelector('details.depth-legend')).toBeNull();
+  });
+
+  it('brings .depth-legend back once the plan is cleared again — the two are complementary, never both absent', () => {
+    const plan = minimalPlan();
+    const { container, rerender } = render(
+      <AppStateProvider>
+        <TestSetPlan plan={plan} />
+        <DataLayers onHarborPick={() => {}} />
+      </AppStateProvider>,
+    );
+    expect(container.querySelector('details.depth-legend')).toBeNull();
+
+    rerender(
+      <AppStateProvider>
+        <TestSetPlan plan={null} />
+        <DataLayers onHarborPick={() => {}} />
+      </AppStateProvider>,
+    );
+    expect(container.querySelector('details.depth-legend')).not.toBeNull();
   });
 });
 
@@ -502,6 +622,100 @@ describe('#681 independent hazard-hatch toggle', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+// #681 x #813 Blocker fix: RouteLegend.tsx's folded-in checkbox and
+// DataLayers.tsx's own `.depth-legend` checkbox read the SAME
+// `usePersistedToggle` keys, which now cross-instance-syncs (usePersistedToggle's
+// own #681 x #813 comment — the boolean sibling of #353 PR2's mechanism for
+// usePersistedNumber). Production NEVER mounts both surfaces at once
+// (RouteLayer.tsx's own plan gate, already pinned by the '#813 legend
+// consolidation' describe block above) — this block renders both
+// UNCONDITIONALLY, on purpose, to isolate the SYNC wiring from that mounting
+// decision: the composition bug the review caught was that ticking the
+// checkbox on ONE surface left DataLayers.tsx's own React state (the one its
+// layer-visibility effect actually reads) stale until a future remount,
+// which a mounting-gate test alone can never see, since it never has both
+// checkboxes live at once to compare.
+describe('#681 x #813: hazard-hatch toggle stays synced across BOTH legend surfaces', () => {
+  const originalGetContext = HTMLCanvasElement.prototype.getContext;
+
+  beforeEach(() => {
+    HTMLCanvasElement.prototype.getContext = vi.fn(function (
+      this: HTMLCanvasElement,
+    ): unknown {
+      if (this.width !== 4 || this.height !== 4) return null; // e.g. a seamark glyph raster
+      return {
+        createImageData: (w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4) }),
+        putImageData: () => {},
+      };
+    }) as unknown as HTMLCanvasElement['getContext'];
+  });
+
+  afterEach(() => {
+    HTMLCanvasElement.prototype.getContext = originalGetContext;
+  });
+
+  // Mutation: reverting usePersistedToggle.ts to its pre-#681 form (no
+  // listenersByKey registry, `set()` only calls its own `setValue`) reds
+  // this test — `dataLayersCheckbox.checked` stays `true` and the layer
+  // stays `'visible'` after clicking the RouteLegend checkbox, because
+  // DataLayers.tsx's OWN hook instance never learns of the change.
+  it('ticking the RouteLegend checkbox updates the map layer that DataLayers itself owns', async () => {
+    const map = makeFakeMap();
+    hoisted.map = map;
+    const { container } = render(
+      <AppStateProvider>
+        <DataLayers onHarborPick={() => {}} />
+        <RouteLegend />
+      </AppStateProvider>,
+    );
+    await waitFor(() => {
+      expect(map.sources.get(HARBOR_SOURCE)?.setData.mock.calls.length).toBeGreaterThan(0);
+    });
+    const routeLegendCheckbox = container.querySelector(
+      '.route-legend-depth input[type="checkbox"]',
+    ) as HTMLInputElement;
+    const dataLayersCheckbox = container.querySelector(
+      '.depth-legend-body input[type="checkbox"]',
+    ) as HTMLInputElement;
+    expect(routeLegendCheckbox.checked).toBe(true);
+    expect(dataLayersCheckbox.checked).toBe(true);
+    expect(map.layers.get(DEPTH_HATCH_LAYER)?.layout?.visibility).toBe('visible');
+
+    fireEvent.click(routeLegendCheckbox);
+
+    expect(dataLayersCheckbox.checked).toBe(false);
+    expect(map.layers.get(DEPTH_HATCH_LAYER)?.layout?.visibility).toBe('none');
+    // The base ramp must stay unaffected — this is still the composite
+    // depthVisible && hatchVisible condition, not a shared flag.
+    expect(map.layers.get(DEPTH_LAYER)?.layout?.visibility).toBe('visible');
+  });
+
+  // Same mutation as above reds this test too — sync is not directional.
+  it("ticking DataLayers' own checkbox updates RouteLegend's checkbox", async () => {
+    const map = makeFakeMap();
+    hoisted.map = map;
+    const { container } = render(
+      <AppStateProvider>
+        <DataLayers onHarborPick={() => {}} />
+        <RouteLegend />
+      </AppStateProvider>,
+    );
+    await waitFor(() => {
+      expect(map.sources.get(HARBOR_SOURCE)?.setData.mock.calls.length).toBeGreaterThan(0);
+    });
+    const routeLegendCheckbox = container.querySelector(
+      '.route-legend-depth input[type="checkbox"]',
+    ) as HTMLInputElement;
+    const dataLayersCheckbox = container.querySelector(
+      '.depth-legend-body input[type="checkbox"]',
+    ) as HTMLInputElement;
+
+    fireEvent.click(dataLayersCheckbox);
+
+    expect(routeLegendCheckbox.checked).toBe(false);
   });
 });
 

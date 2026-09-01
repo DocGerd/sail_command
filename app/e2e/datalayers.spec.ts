@@ -210,6 +210,13 @@ test('depth-hatch legend (#598) is reachable pre-plan, default-collapsed, and ca
     // about the hatch specifically, and is unaffected by that addition.
     await expect(page.getByRole('checkbox', { name: 'Wassertiefen' })).toBeVisible();
     await expect(page.locator('.route-layer-controls')).toHaveCount(0);
+    // #813: the complementary half of the plan.spec.ts guard — with no plan,
+    // RouteLegend.tsx's own `.route-legend` (which now folds THIS legend's
+    // content in once a plan exists — see that component's own #813
+    // comment) must not exist at all, so `getByText('Legende', {exact:true})`
+    // below stays unambiguous by construction, not merely by accident of
+    // this spec never planning a route.
+    await expect(page.locator('details.route-legend')).toHaveCount(0);
 
     const summary = page.getByText('Legende', { exact: true });
     await expect(summary).toBeVisible();

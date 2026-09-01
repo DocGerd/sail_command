@@ -7,7 +7,7 @@ import type {
   MapLayerMouseEvent,
 } from 'maplibre-gl';
 import { useMapInstance } from './MapView';
-import { useSettings } from '../state/AppState';
+import { useSettings, useActivePlan } from '../state/AppState';
 import { useLang, useT } from '../i18n';
 import { loadRoutingAssets, type RoutingAssets } from '../services/assets';
 import { harborFeatureCollection } from '../lib/harborGeoJson';
@@ -531,6 +531,18 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
   // the value reaches the map.
   const [settings] = useSettings();
   const { safetyDepthM } = settings;
+  // #813: whether an active plan exists — the consolidated-legend gate.
+  // RouteLayer.tsx (plan-gated, `if (!plan) return null`) mounts its own
+  // RouteLegend once a plan exists, which now ALSO carries the #598
+  // depth-hatch entries folded in under their own sub-heading (see
+  // RouteLegend.tsx's own #813 comment for the full rationale). So this
+  // component's `.depth-legend` disclosure below must render ONLY while
+  // plan===null — otherwise the app would show TWO "Legende"/"Legend"
+  // disclosures again, the exact defect #813 exists to fix. The two are
+  // COMPLEMENTARY, never both mounted: whichever is absent, the other one
+  // is what carries the #597 safety caveat forward, so it stays reachable
+  // in every state, never both nor neither.
+  const { plan } = useActivePlan();
   // #63: default ON, persisted — mirrors RouteLayer's barbs/annotations
   // toggles. An explicit "off" survives reloads; a fresh profile sees depth.
   const [depthVisible, setDepthVisible] = usePersistedToggle('sc-depth-visible', true);
@@ -1142,52 +1154,93 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
           accessibility tree, unfocusable, all at once. See that effect's
           own comment for the full derivation across all three layout
           modes; app.css's `.depth-legend` comment records why a CSS-only
-          `max-height` clip was tried first and rejected. */}
-      <details className="depth-legend" hidden={legendHidden}>
-        <summary>{t('map.depth.legend.title')}</summary>
-        <div className="depth-legend-body">
-          <p className="depth-legend-row">
-            <span className="depth-legend-swatch" aria-hidden="true" />
-            {t('map.depth.legend.hatchLabel')}
-          </p>
-          {/* #681: the independent hatch toggle lives HERE, inside the
-              legend's own disclosure body — not as a third `.data-layer-
-              controls` row (deferred v0.18.0 investigation; see #681's own
-              issue thread) and not on `.depth-legend`'s own always-visible
-              summary either. A third `.data-layer-controls` row measures
-              +49px at 375x667 (app.css's own #598 review-follow-up comment
-              on this cluster) and drops the legend's reachability budget
-              (`budgetPx`, the useLayoutEffect above) under
-              LEGEND_COLLAPSED_HEIGHT_PX at exactly the app's primary
-              on-boat viewport — hiding the #597 caveat paragraph below,
-              which is the one thing this control must never do. Placing it
-              HERE instead costs `.data-layer-controls` (and therefore
-              `budgetPx`) exactly zero: this element is a child of
-              `.depth-legend-body`, which the budget calculation never
-              measures at all.
-              Residual, and it fails the SAFE direction: while
-              `legendHidden` is true (the legend itself unreachable) or the
-              `<details>` is simply collapsed, this checkbox is unreachable
-              too — but `hatchVisible` still defaults `true` (#455's
-              disclosure basis), so an unreachable toggle means the hatch
-              stays ON, never that it silently vanishes.
-              `disabled={!depthVisible}` mirrors the composite condition the
-              visibility effect above applies — the #384 defect class: the
-              control must not offer to change a layer that
-              `depthVisible=false` already keeps invisible regardless. */}
-          <label className="depth-legend-row">
-            <input
-              type="checkbox"
-              checked={hatchVisible}
-              disabled={!depthVisible}
-              onChange={(e) => setHatchVisible(e.target.checked)}
-            />
-            {t('map.depth.legend.hatchToggle')}
-          </label>
-          <p>{t('map.depth.legend.basis')}</p>
-          <p>{t('map.depth.legend.caveat')}</p>
-        </div>
-      </details>
+          `max-height` clip was tried first and rejected.
+
+          #813: this whole `<details>` is now ADDITIONALLY gated on
+          `plan === null` (the `useActivePlan()` read above) — never
+          rendered at all once a plan is active, because RouteLegend.tsx's
+          own `.route-legend` disclosure takes over as the SOLE
+          "Legende"/"Legend" surface at that point, folding this content in
+          under its own sub-heading. Consolidating this WAY — suppressing
+          the free-floating pill rather than the panel-gated one — is what
+          keeps the #597 caveat reachable with NO plan at all (the state
+          RouteLegend can't cover, since RouteLayer.tsx returns null before
+          ever mounting it): the alternative direction (fold this content
+          INTO RouteLegend and never touch this component) would silently
+          make the caveat unreachable until a route is planned, the exact
+          "two individually-correct fixes silence the complement of two
+          conditions" trap CLAUDE.md's Working-style section warns about.
+
+          #681 x #813: the independent hatch toggle (below, inside the
+          body) rides along with this `plan === null` gate rather than
+          needing one of its own — it is a CHILD of this `<details>`, so it
+          is reachable in exactly the same states this whole disclosure is.
+          The COMPLEMENTARY copy folded into RouteLegend.tsx's
+          `.route-legend-depth` (its own #681 comment) carries an identical
+          checkbox wired to the SAME `usePersistedToggle` keys
+          (`sc-depth-hatch-visible`, `sc-depth-visible`), which is what keeps
+          the control itself reachable once a plan exists — this component
+          stays the always-mounted layer-visibility driver in EITHER
+          state, but is no longer the only place the control is offered. */}
+      {plan === null && (
+        <details className="depth-legend" hidden={legendHidden}>
+          <summary>{t('map.depth.legend.title')}</summary>
+          <div className="depth-legend-body">
+            <p className="depth-legend-row">
+              <span className="depth-legend-swatch" aria-hidden="true" />
+              {t('map.depth.legend.hatchLabel')}
+            </p>
+            {/* #681: the independent hatch toggle lives HERE, inside the
+                legend's own disclosure body — not as a third `.data-layer-
+                controls` row (deferred v0.18.0 investigation; see #681's own
+                issue thread) and not on `.depth-legend`'s own always-visible
+                summary either. A third `.data-layer-controls` row measures
+                +51.59px at 375x667 (re-measured against a real DOM
+                injection, not read off a comment — the earlier +49px figure
+                this comment quoted was itself a stale citation) and drops
+                the legend's reachability budget (`budgetPx`, the
+                useLayoutEffect above) from 62.556px to 10.96px, under
+                LEGEND_COLLAPSED_HEIGHT_PX (44) — hiding the whole legend,
+                `#597` caveat included, behind the `hidden` attribute:
+                `display: none`, out of the accessibility tree entirely.
+                Placing it HERE instead costs `.data-layer-controls` (and
+                therefore `budgetPx`) exactly zero, so that binary
+                reachability gate is unaffected either way (verified
+                byte-identical before/after this change). That is NOT the
+                same claim as "the caveat is easy to reach" — this
+                `.depth-legend-body` scrollport is a pre-existing 16px
+                window over ~1150-1200px of content at this viewport
+                (present on `develop` before this PR), and this addition
+                measurably adds ~52px of scroll depth ABOVE the caveat
+                inside that already-cramped window. What is preserved is
+                the binary `legendHidden` gate, not the caveat's in-
+                scrollport position — a scroll offset is recoverable by the
+                user; a `display: none` legend is not, which is why this
+                placement is still the right call, not because it is free.
+                Residual, and it fails the SAFE direction: while
+                `legendHidden` is true (the legend itself unreachable) or the
+                `<details>` is simply collapsed, this checkbox is unreachable
+                too — but `hatchVisible` still defaults `true` (#455's
+                disclosure basis), so an unreachable toggle means the hatch
+                stays ON, never that it silently vanishes.
+                `disabled={!depthVisible}` mirrors the composite condition the
+                visibility effect above applies — the #384 defect class: the
+                control must not offer to change a layer that
+                `depthVisible=false` already keeps invisible regardless. */}
+            <label className="depth-legend-row">
+              <input
+                type="checkbox"
+                checked={hatchVisible}
+                disabled={!depthVisible}
+                onChange={(e) => setHatchVisible(e.target.checked)}
+              />
+              {t('map.depth.legend.hatchToggle')}
+            </label>
+            <p>{t('map.depth.legend.basis')}</p>
+            <p>{t('map.depth.legend.caveat')}</p>
+          </div>
+        </details>
+      )}
     </>
   );
 }
