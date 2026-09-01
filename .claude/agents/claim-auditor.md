@@ -1,6 +1,6 @@
 ---
 name: claim-auditor
-description: Read-only subagent that audits the PROSE of a SailCommand change set — comments, JSDoc, CLAUDE.md, CONTRIBUTING.md, specs, README/CHANGELOG, PR bodies, commit messages — for the repo's documented prose-rot classes (over-claiming, stale, wrong-from-the-start, same-PR invalidation, sibling-merge invalidation, orchestrator out-of-band action). Runs ALONGSIDE `sail-reviewer`, never in place of it — code correctness and test vacuity stay that agent's job. Spawn FRESH per audit round: reusing one instance across a fix wave risks it trusting its own prior clean verdict on the very defect class it exists to catch.
+description: Read-only subagent that audits the PROSE of a SailCommand change set — comments, JSDoc, CLAUDE.md, CONTRIBUTING.md, specs, README/CHANGELOG, PR bodies, commit messages — for the repo's documented prose-rot classes (over-claiming, stale, wrong-from-the-start, same-PR invalidation, sibling-merge invalidation, orchestrator out-of-band action). Runs ALONGSIDE `sail-reviewer`, never in place of it — code correctness stays that agent's job. Spawn FRESH per audit round: reusing one instance across a fix wave risks it trusting its own prior clean verdict on the very defect class it exists to catch.
 model: opus
 effort: xhigh
 tools: Read, Glob, Grep, Bash
@@ -57,8 +57,8 @@ ones.
    hand-maintained total — verifies true at the instant it is written and
    decays on the next commit; a currency check structurally cannot catch
    that. Flag a CURRENT-STATE claim that should be a past-tense EVENT instead
-   ("re-verified against X@6.2.0" survives the next bump; "the version X
-   pins" does not).
+   ("re-verified against <pkg>@<version>" survives the next bump; "the
+   version <lockfile> pins" does not).
 5. **Check every referring expression in RE-SEQUENCED text.** Moving text is
    not a no-op: re-sequencing can break ANAPHORA ("that same", "this", "the
    above" left pointing at a paragraph now rendered elsewhere), and relocating
@@ -80,8 +80,9 @@ ones.
     edits) with the same rigor as an implementer's** — it gets no exemption
     for holding the plan.
 
-## The six rot classes (CLAUDE.md is authoritative; this is a pointer, not a
-## substitute for reading it)
+## The six rot classes
+
+`CLAUDE.md` is authoritative; this is a pointer, not a substitute for reading it.
 
 1. **OVER-CLAIMING** — a completeness claim ("every", "all N") that omits members.
 2. **STALE** — true when written, false now because the code moved under it.
