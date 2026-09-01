@@ -200,6 +200,15 @@ test('plans a route: harbor search -> rig comparison -> saved under Routen', asy
     // the #35/36/37 RouteLayer rewrite — dropping the mount line would fail here
     // rather than passing silently. German UI, so the summary reads "Legende".
     await expect(page.locator('details.route-legend > summary')).toHaveText('Legende');
+    // #813: DataLayers.tsx's own free-floating `.depth-legend` must be gone
+    // the instant a plan exists — RouteLegend's own `.route-legend` above
+    // (which now ALSO folds in the #598 depth-hatch content, see that
+    // component's own #813 comment; DataLayers.test.tsx and
+    // RouteLegend.test.tsx pin the copy itself unit-side) is the SOLE
+    // "Legende" surface at that point. Before #813 BOTH disclosures existed
+    // simultaneously here, sharing the identical accessible name — this
+    // count is the regression guard against that coming back.
+    await expect(page.locator('details.depth-legend')).toHaveCount(0);
 
     await expect(page.locator('.plans-list-row')).toHaveCount(1);
 

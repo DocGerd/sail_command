@@ -499,6 +499,11 @@ export const en = {
   'route.maneuverLetter.tack': 'T',
   'route.maneuverLetter.gybe': 'G',
   'route.legend.title': 'Legend',
+  // #813: sub-heading introducing the folded-in #598 depth-hatch entries
+  // (RouteLegend.tsx) — deliberately the SAME text as `map.depth.toggle`
+  // ("Water depths"), a separate key so the two can diverge independently
+  // later; both currently name the same underlying feature.
+  'route.legend.depthHeading': 'Water depths',
   'route.legend.sailStarboard': 'Sail, starboard tack',
   'route.legend.sailPort': 'Sail, port tack',
   'route.legend.motor': 'Motor (engine only)',
