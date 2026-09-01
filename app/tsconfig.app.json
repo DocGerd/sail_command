@@ -104,6 +104,10 @@
   // changelogFragmentShape.test.ts (#730) is the same shape once more —
   // reads the repo-root changelog.d/*.md fragments via `node:fs` to
   // structurally guard that no fragment body opens with a markdown heading.
+  // shallowWarningExtraction.test.ts (#463) is the same shape once more —
+  // reads RouteSummary.tsx, ShallowWarning.tsx and PlannerPanel.tsx via
+  // `node:fs` to structurally guard the DIRECTION of the dependency the
+  // #463 file split created.
   "exclude": [
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",
@@ -128,6 +132,7 @@
     "src/**/app.css.test.ts",
     "src/**/safetyDepthHelpNbsp.test.ts",
     "src/**/mapColors.test.ts",
-    "src/**/changelogFragmentShape.test.ts"
+    "src/**/changelogFragmentShape.test.ts",
+    "src/**/shallowWarningExtraction.test.ts"
   ]
 }

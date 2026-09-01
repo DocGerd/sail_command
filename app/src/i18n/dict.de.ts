@@ -288,7 +288,7 @@ export const de = {
   // reduced one instead.
   // #504 Korrekturwelle 4: von EINEM dichten Absatz zu drei Teilen innerhalb
   // EINER role="alert"-Region restrukturiert (ShallowWarning,
-  // RouteSummary.tsx: ein <div> mit .lead/.detail/.caveat-Kindern) — führt
+  // ShallowWarning.tsx: ein <div> mit .lead/.detail/.caveat-Kindern) — führt
   // mit der schwerwiegendsten, handlungsrelevanten Tatsache (der
   // Untergrenze), statt alles gleich stark zu betonen. Sätze umzuordnen ist
   // NICHT automatisch sicher: Korrekturwelle 6 fand, dass leads ursprüngliches

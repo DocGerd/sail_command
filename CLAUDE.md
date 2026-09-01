@@ -3089,7 +3089,7 @@ making design-level decisions; do not silently deviate.
   The lead carries the floor and, when
   `usedDepthM - MASK_TOLERANCE_M < plan.request.boat.draftM`, that it falls
   below the draft — the by-value SNAPSHOT, never a `boatById` lookup, since
-  that boat may have left the catalogue (`RouteSummary.tsx` :: `isSevere`,
+  that boat may have left the catalogue (`ShallowWarning.tsx` :: `isSevere`,
   changed at #539; before it this read `BOAT_DRAFT_M` and rendered the wrong
   number in the app's most severe depth copy). That gate is UNCONDITIONALLY
   TRUE at EVERY boat's own default gate, not just at 3.0 (relaxation searches
