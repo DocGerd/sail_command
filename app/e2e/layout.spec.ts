@@ -888,8 +888,16 @@ test('#598/#813: the folded-in depth-hatch section inside .route-legend does not
       await outerDisclosure.locator('> summary').click();
     }
 
+    // Fix-wave MAJOR 1 (self-review): `.route-legend` now defaults OPEN at
+    // narrow viewports (RouteLegend.tsx's own #813 fix-wave comment) — this
+    // viewport (wrapForcing280) IS narrow, so an unconditional click would
+    // TOGGLE IT CLOSED instead of opening it, same `.open` IDL-property
+    // check as the outer disclosure above.
     const routeLegend = page.locator('details.route-legend');
-    await routeLegend.locator('> summary').click();
+    const isRouteLegendOpen = await routeLegend.evaluate((el) => (el as HTMLDetailsElement).open);
+    if (!isRouteLegendOpen) {
+      await routeLegend.locator('> summary').click();
+    }
     await expect(routeLegend).toHaveJSProperty('open', true);
 
     // Silent-overflow check on the NEW folded-in depth section — the risk
@@ -1015,6 +1023,24 @@ test('#628 review Major 1: the controls cluster can be expanded at 390px without
     // plan active — the structural claim the header comment above makes,
     // proven rather than assumed.
     await expect(page.locator('.depth-legend')).toHaveCount(0);
+
+    // Fix-wave MAJOR 1 (self-review): `.route-legend` now defaults OPEN at
+    // narrow viewports (RouteLegend.tsx's own #813 fix-wave comment), and
+    // this viewport (390px) IS narrow. MEASURED: left open, its own body
+    // content (the folded depth section plus the 8-item swatch list) pushes
+    // `.route-layer-controls`'s natural width from 233.86px past the
+    // 238px cap regardless of the CSS-override mutation below — the width
+    // pin's whole discriminating power depended on the pre-#813-fix-wave
+    // shape where `.route-legend` stayed closed here, driven only by the
+    // checkbox row labels. Force it CLOSED to preserve that basis; this
+    // test's own subject is the `.route-layer-controls-disclosure` CSS
+    // override, never `.route-legend`'s own open state.
+    const innerLegend = routeControls.locator('details.route-legend');
+    const isInnerOpen = await innerLegend.evaluate((el) => (el as HTMLDetailsElement).open);
+    if (isInnerOpen) {
+      await innerLegend.locator('> summary').click();
+    }
+    await expect(innerLegend).toHaveJSProperty('open', false);
 
     // General safety check, but NOT the Major-2 keeper at this viewport
     // (MEASURED: 0 both with and without the override — see the comment
