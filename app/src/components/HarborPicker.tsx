@@ -10,8 +10,21 @@ import {
 import type { Harbor } from '../types';
 import { useLang, useT, type Lang } from '../i18n';
 
+// #652: `knownDisconnected` is a build-generated field (pipeline/
+// build_harbors.mjs, sourced from pipeline/verify_mask.py's
+// KNOWN_DISCONNECTED dict) naming the five #9 harbours genuinely
+// unreachable at the ~46 m mask resolution. This picker is currently the
+// ONLY consumer of that fact, so it is added here as a local intersection
+// rather than widening the shared `Harbor` type in types.ts — every
+// existing caller still passes a plain `Harbor[]` (the field is optional,
+// so that stays structurally assignable) and picks up the disclosure
+// automatically once harbors.json carries it. Promote it onto `Harbor`
+// itself if a second consumer ever needs it (e.g. disabling the endpoint
+// outright once picked) rather than duplicating this alias.
+export type HarborWithReachability = Harbor & { knownDisconnected?: boolean };
+
 export interface HarborPickerProps {
-  harbors: Harbor[];
+  harbors: HarborWithReachability[];
   // Harbor ids most-recently-selected (most-recent-first). Ordered ahead of the
   // alphabetical rest in the empty-query state so round-trip harbors are one tap
   // away. Owned by PlannerPanel's useRecentHarbors.
@@ -172,6 +185,15 @@ export default function HarborPicker({
     [harbors, query, lang, recentIds],
   );
 
+  // #652: looked up by id against the ORIGINAL `harbors` prop, not
+  // `results` — `rankHarbors` is typed `Harbor[] -> Harbor[]`, so
+  // `knownDisconnected` would otherwise be invisible on its return value
+  // even though the same object references still carry it at runtime.
+  const knownDisconnectedIds = useMemo(
+    () => new Set(harbors.filter((h) => h.knownDisconnected === true).map((h) => h.id)),
+    [harbors],
+  );
+
   // Keep the active option visible: with the aria-activedescendant pattern DOM
   // focus stays on the input, so the browser never auto-scrolls the listbox —
   // past the visible rows (and on the ArrowUp→last wrap) the highlight would sit
@@ -285,6 +307,11 @@ export default function HarborPicker({
         >
           {results.map((h, i) => {
             const caveat = h.approachNote?.[lang];
+            // #652: disclosed BEFORE a solve — the whole point of this
+            // issue is that today a user only learns this after spending a
+            // full solve plus the #53 depth-relaxation probe search on a
+            // harbor that cannot route at ANY safety-depth setting.
+            const disconnected = knownDisconnectedIds.has(h.id);
             return (
               <li
                 key={h.id}
@@ -298,6 +325,11 @@ export default function HarborPicker({
                 onClick={() => choose(h)}
               >
                 <span className="harbor-picker-name">{h.names[lang]}</span>
+                {disconnected && (
+                  <span className="harbor-picker-unreachable">
+                    {t('harborPicker.knownDisconnected')}
+                  </span>
+                )}
                 {caveat && <span className="harbor-picker-caveat">{caveat}</span>}
               </li>
             );
