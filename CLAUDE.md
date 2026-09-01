@@ -739,8 +739,12 @@ making design-level decisions; do not silently deviate.
   (`camera.ts:1197-1210` — file byte-identical 6.1.0 through 6.3.0) deletes
   `_easeFrameId` and only THEN invokes `_onEaseEnd` at `:1210` — and
   `_afterEase` (`:982`) is what `_onEaseEnd` RESOLVES TO (one closure hop, not
-  the same binding; always so, not a 6.2.0 change), bound in `_ease`
-  (`:1232`) — so `isEasing()` was already
+  the same binding; always so, not a 6.2.0 change), bound by the
+  `this._onEaseEnd = finish;` statement INSIDE `_ease` — anchor on that
+  statement, not on the method: at 6.6.0 the statement is `:1232` while `_ease`
+  itself is declared at `:1218`, and a reader who takes `:1232` as the method's
+  own line will report a false drift (measured 2026-09-01; one reviewer did
+  exactly that) — so `isEasing()` was already
   false at every
   ease-emitted `moveend` even in v5, which is why the absence of
   `originalEvent` discriminates a camera-internal ease termination from a
@@ -916,25 +920,15 @@ making design-level decisions; do not silently deviate.
   Playwright bump). The
   record is #643's verification transcript — PR #665's body publishes only the
   Chromium half.
-- **An e2e run can silently measure a FOREIGN build, in two independent ways
-  (#803). A green e2e run is what a merge is gated on, so this can produce a
-  false GREEN, not just a false red.** Layer 1: `startPreview()` returns on ANY
-  HTTP 200 at the hardcoded port 4173 without checking the responder is its own
-  child — a reviewer's guard attached to a server serving the SHARED CHECKOUT's
-  `app/dist` and reported the defect signature against a tree where it was
-  already fixed. Retrying on EADDRINUSE does NOT help: the probe SUCCEEDS
-  because someone else bound the port and answers 200. Layer 2: even on a
-  dedicated port, verified free, `--strictPort`, with `/proc/<pid>/cwd`
-  confirmed, a **stale service worker registered on that origin** served a
-  foreign CACHED build (`getRegistrations()` → 1) — so verifying the server's
-  pid does not close it, and this app registers a SW by design. THREE
-  occurrences in one session (two layer-1, one layer-2) across parallel
-  worktree agents. **Best defence is neither a port check nor a cache clear but
-  a SELF-PROVING assertion** — one that can only pass on the exact tree under
-  test. PR #799's conflict-resolution run passed #774's `tabIndex=0` pin (branch
-  only) AND #762's guard (needs develop's `.sc-field label` CSS) in ONE run, so
-  the served build necessarily contained both sides of the merge. That is immune
-  to both layers; a port check is immune to neither.
+- **An e2e run can silently measure a FOREIGN build — and because a green e2e
+  run is what a merge is gated on, that yields a false GREEN as readily as a
+  false red (#803, OPEN as of 2026-09-01; re-read the issue, it has two
+  layers and the forensics live there).** Neither a free port nor a pid check
+  closes it. **Make the assertion SELF-PROVING instead** — one that can only
+  pass on the exact tree under test. Worked example: PR #799's
+  conflict-resolution run passed #774's `tabIndex=0` pin (branch only) AND
+  #762's guard (needs develop's `.sc-field label` CSS) in ONE run, so the
+  served build necessarily contained both sides of the merge.
 - **Honest offline testing**: Playwright's `setOffline(true)` does NOT block
   service-worker fetches (Playwright #2311) — the offline spec kills the
   preview server instead. Never "simplify" that away.
@@ -1035,10 +1029,10 @@ making design-level decisions; do not silently deviate.
   `:1283-1292` at 6.6.0, re-derived 2026-09-01 against the installed 6.6.0 with
   the body byte-identical) gates re-runs on
   `commitTime + fadeDuration * durationAdjustment > now` with
-  `fadeDuration: 300` defaulted at `ui/map.ts:540` (still `:540` at 6.6.0;
-  `:539` in 6.2.0 — the two drift independently, never assume one offset:
-  at the 6.5.0 -> 6.6.0 bump `stillRecent` moved 15 lines while this one did
-  not move at all). Measured effect:
+  `fadeDuration: 300` defaulted at `ui/map.ts:540` (`:540` at both 6.3.0 and
+  6.6.0, unpinned in between; `:539` in 6.2.0 — the two drift independently,
+  never assume one offset: `stillRecent` moved 15 lines somewhere in
+  6.5.0 -> 6.6.0 while this stayed at `:540` across 6.3.0 -> 6.6.0). Measured effect:
   spec runtime ~6.5s -> ~2.3s,
   stabilising after three reads (~820ms) — placement had been settled almost
   immediately all along. Whether any OTHER spec shares this defect is now
@@ -2079,9 +2073,11 @@ making design-level decisions; do not silently deviate.
   EMPTY STRING for every input — three identical `e3b0c442…` digests (sha256 of
   nothing) that read as proof. The stripper must REFUSE to emit a verdict unless
   its output is non-empty AND contains a needle known present in the subject.
-  (2) LENGTH-SENSITIVITY: the positive control must include a ONE-CHARACTER edit
-  that PRESERVES stripped length (a wide `z-index` 2→3) and still moves the
-  digest, ruling out a hash that only notices size. Also match the stripper to
+  (2) A SUBSTANTIVE positive control: include a ONE-CHARACTER edit that
+  preserves stripped length (a wide `z-index` 2→3) and confirm the digest still
+  moves. Not because sha256 could miss it — it cannot — but because it proves
+  the STRIPPER passed that character through rather than eating it, which a
+  bulk add/remove control cannot distinguish from a length change. Also match the stripper to
   the language: a `.ts` stripper must drop only whole-line `//` comments or it
   mangles `//` inside regex literals; a `//`-based diff-shape checker cannot see
   inside a CSS block comment at all — replace the instrument rather than relax
@@ -3636,13 +3632,12 @@ making design-level decisions; do not silently deviate.
   substring ("no -f nearby"). Confirmed by feeding synthetic PreToolUse JSON to
   the hook: identical command, clean description passes, `-f` in the description
   denies. Keep `-f` out of the `description` on any `git push` call.
-  The repo's OWN notices-nudge shares this mechanism, benignly: writing a file
-  whose BODY contained the words "an `npm ci` was deliberately deferred" fired
-  "npm changed dependencies. Regenerate third-party notices" with nothing
-  installed and `git status` clean (2026-09-01). A nudge fails open, so it costs
-  nothing — but **do NOT reword prose to appease a matcher**: that lets a
-  substring check silently shape the documentation, and the text it blocks is
-  usually the write-up explaining the hazard. Verify the real state instead.
+  The repo's own `notices-nudge.sh` over-fires on prose too but through a
+  NARROWER haystack — it extracts `.tool_input.command` only, so a heredoc BODY
+  mentioning `npm ci` fires it while the same words in `description` stay silent
+  (measured 2026-09-01 on three synthetic payloads), and its `Bash` matcher
+  means the Write tool cannot fire it at all — which matters, because "use the
+  Write tool" is this bullet's own remedy for the guard below.
   It lives OUTSIDE this repo (`~/.claude/hooks/guard-destructive-git.sh`,
   global/personal, unversioned, shared across concurrent sessions) — NOT
   covered by #216, which is the notices-regen and nudge hooks; #233
