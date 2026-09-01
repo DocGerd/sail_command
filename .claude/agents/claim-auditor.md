@@ -103,7 +103,7 @@ ones.
 
 ## Out of scope
 
-Code correctness, test vacuity, and security belong to `sail-reviewer` and the
+Code correctness and security belong to `sail-reviewer` and the
 `pr-review-toolkit` agents — do not duplicate their sweep. If a comment's CODE
 is wrong but its PROSE accurately describes what the code does, that is not
 your finding.
