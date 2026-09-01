@@ -1,23 +1,87 @@
 # Spike #702 — sticky "Route planen" CTA on narrow viewports
 
 - **Issue:** #702
-- **Status:** Open — milestoned v0.16.0 on 2026-08-26, then moved to
-  v0.17.0 on 2026-08-31 (per the issue's milestone history), not fixed as
-  of this writing. Re-check
-  `gh api repos/DocGerd/sail_command/issues/702` before trusting the
-  milestone number: it decays at every cut this issue stays open.
-- **Attempt count:** THREE rounds recorded (round 1 in PR #735, per the
+- **Status:** SUPERSEDED as of 2026-09-01 — attempt 4 was implemented and
+  the blocker this document called unsolved had been dissolved in the
+  meantime by PR #800. Everything below §0 is preserved verbatim as the
+  record of attempts 1-3; read §0.1 first for what changed, then treat §4
+  and §7's first bullet as superseded (each carries its own note). Re-check
+  `gh api repos/DocGerd/sail_command/issues/702` before trusting any
+  milestone number quoted below: it decays at every cut.
+- **Attempt count:** THREE rounds recorded here (round 1 in PR #735, per the
   2026-08-26 comment's "three measured rounds"; round 2 the narrow-only
   horizontal inset that was reverted; the 2026-08-28 re-triage names any
-  future work "attempt 4")
-- **Verdict:** No fix is recommended by this document. The ORIGINAL premise
-  the issue was filed on is REFUTED (§1). A partial fix (the narrow-only
-  horizontal inset, §3) was measured, works for one sub-problem, and was
-  correctly reverted for being insufficient against the real blocker (§4).
-  The real blocker — an expanded ~370px attribution panel occluding the CTA
-  — remains unsolved. This document exists because this issue "keeps losing
-  its own history" (orchestrator's framing) and a fresh implementer must not
-  re-derive a false premise from the issue title alone.
+  future work "attempt 4"). Attempt 4 is the fix, recorded in §0.1.
+- **Verdict (as written, attempts 1-3):** No fix is recommended by this
+  document. The ORIGINAL premise the issue was filed on is REFUTED (§1). A
+  partial fix (the narrow-only horizontal inset, §3) was measured, works for
+  one sub-problem, and was correctly reverted for being insufficient against
+  the real blocker (§4). The real blocker — an expanded ~370px attribution
+  panel occluding the CTA — remains unsolved. This document exists because
+  this issue "keeps losing its own history" (orchestrator's framing) and a
+  fresh implementer must not re-derive a false premise from the issue title
+  alone.
+
+---
+
+## 0.1 What changed — PR #800 dissolved the blocker, and attempt 4 shipped
+
+**The blocker in §4 was never about the overlap AREA; it was about who won
+the hit test, and PR #800 (for #771) inverted that.** At the time §4 was
+measured, `.planner-actions` still carried `z-index: 2` in its BASE rule.
+`.planner-panel` is `display: flex`, so per css-flexbox-1's "Painting Flex
+Items" a flex item with a `z-index` other than `auto` creates a stacking
+context EVEN WHILE `position: static` — which is why the bar painted over
+the expanded attribution panel and swallowed clicks on all four credit
+links. PR #800 moved `z-index` into the wide-only rule. With `z-index: auto`
+at narrow the bar paints at step 8 of CSS 2.1 Appendix E's order while
+`.maplibregl-ctrl-bottom-right`'s own `z-index: 2` holds the attribution at
+step 9 of the same root stacking context, so the attribution now wins both
+the paint and the hit test whether or not the bar is sticky.
+
+Attempt 4 therefore consists of one narrow-only rule adding
+`position: sticky; bottom: 0; padding-right: 24px` and **no `z-index`** —
+§2's constraint is met, not worked around.
+
+Measured 2026-09-01 against real builds (Chromium via Playwright,
+deviceScaleFactor 1), at every narrow viewport of `app/e2e/helpers.ts`'s
+matrix:
+
+- **The guarantee was genuinely unmet.** The EMPTY German planner already
+  overflowed `.app-panel`'s scrollport by 178px (`tabletPortrait`) to 653px
+  (`wrapForcing280`), putting the CTA below the fold on arrival — no
+  disclosure to open, no via points to add. (The "Erweitert" disclosure the
+  issue's own scenario named no longer exists in `PlannerPanel.tsx`; #299
+  moved those controls to the Boat tab.)
+- **Every credit link is topmost and clickable at rest**, collapsed and
+  expanded, in both the empty and the endpoints-selected planner. Note what
+  is NOT claimed: the expanded panel still geometrically overlaps the bar.
+  Only the stacking outcome changed, and that is what the licence obligation
+  turns on.
+- **The 34.00px collapsed-toggle offset in §3 reproduces**, re-verified at
+  14 widths from 280 to 3840. The shipped separation is `padding-right`,
+  NOT the `margin-right` §3 measured: a margin would pull the bar's opaque
+  `background: var(--sc-bg)` off the panel's content edge and let content
+  scrolling underneath the pinned bar show through the gap.
+
+**One correction to a premise a future reader would otherwise inherit.**
+`scrollIntoView({ block: 'end' })` — which `plan.spec.ts`'s #771 helper uses
+to reach the CTA — is NOT equivalent to `position: sticky; bottom: 0`. It
+aligns the element's bottom margin edge with the scrollport's PADDING-box
+bottom, whereas a sticky offset resolves against the scroll container's
+CONTENT box, so `.app-panel`'s 0.75rem bottom padding pins the bar 12px
+HIGHER (measured -11.50px to -12.36px across ten narrow rows). The #771 rows
+therefore say nothing about the at-rest sticky position, and the #702 guards
+in `app/e2e/plan.spec.ts` carry that load themselves.
+
+**Accepted costs, stated rather than discovered later.** `padding-right`
+narrows the bar's content box, so at 360px the German onboarding guidance
+wraps to a second line and the bar grows 84px -> 100px (`deepPortrait320`
+and `wrapForcing280` already wrapped before the change). And at
+`shortLandscape740` (740x360) the sheet is ~198px, of which `.app-panel`'s
+scrollport is 152px and the pinned bar 84px in the empty state, 60px with
+endpoints selected. That is the trade §3.3 asks for; sticky is a no-op
+whenever the content fits.
 
 ---
 
@@ -107,6 +171,14 @@ narrow-only 24px margin clears it.
 ---
 
 ## 4. Why it was reverted — the real blocker
+
+> **SUPERSEDED (2026-09-01, see §0.1).** Everything measured in this section
+> was correct when measured. It has since been dissolved — not by a fix to
+> the CTA, but by PR #800 removing `z-index: 2` from `.planner-actions`'
+> base rule, which inverted who wins the hit test over the expanded panel.
+> The overlap AREAS quoted below are not claimed to have changed. Kept
+> verbatim: this section is why the horizontal inset alone was correctly
+> reverted, and that reasoning was sound.
 
 The collapsed-toggle fix does not address the control once a user expands
 it (tapping the attribution toggle reveals the OSM/PMTiles/other credit
@@ -201,6 +273,11 @@ because it is the binding scope for any future work on this issue:
   collapsed-toggle offset and the exact 2.0px-clearance margin value do not
   need to be re-derived by a future attempt — but it must not be reproposed
   as sufficient on its own.
+  **SUPERSEDED (2026-09-01, see §0.1):** it IS sufficient on its own now,
+  and shipped as part of attempt 4 — because the sub-problem it failed
+  against (the expanded panel) was closed separately by PR #800, not
+  because this judgement was wrong. It shipped as `padding-right`, not
+  `margin-right`; §0.1 records why.
 - **Amending spec §3.3 to declare the guarantee unachievable** — considered
   and explicitly REJECTED, twice. The 2026-08-26 comment: "Do not amend
   spec §3.3 on that reasoning. The guarantee is unachieved, not
@@ -227,6 +304,9 @@ because it is the binding scope for any future work on this issue:
 
 ## 8. Status as of this writing
 
+> **SUPERSEDED (2026-09-01, see §0.1): attempt 4 is implemented.** The
+> paragraph below is the state as of 2026-08-31 and is kept as the record.
+
 Moved off v0.16.0 to v0.17.0 on 2026-08-31, per the issue's milestone
 history. Not scheduled for implementation in the 2026-08-28
 session: "it needs a design pass first, and it has failed twice on aperture
@@ -234,3 +314,32 @@ rather than on effort." Issue #702 remains open. No PR closes it. This
 document is written specifically so that a future "attempt 4" starts from
 the state recorded here rather than re-deriving (and possibly
 re-refuting) the same premise from the issue title alone.
+
+## 9. How attempt 4 met §6's definition of done
+
+Each bullet of §6's restated definition of done, and where it is discharged:
+
+- *Assert against the expanded attribution, not the collapsed toggle* — the
+  #702 guard expands the control and walks EVERY `.maplibregl-ctrl-attrib a`,
+  not the OpenStreetMap anchor alone, at every narrow viewport in both
+  planner states.
+- *Use a real `click({trial: true})` or a topmost hit-test* — both: a
+  topmost hit-test per link plus `click({ trial: true })` on the toggle and
+  on the OpenStreetMap anchor.
+- *Re-sample geometry inside the poll callback* — every probe re-reads its
+  boxes on each tick; no `boundingBox()` survives across a tick.
+- *Measure the baseline before reporting any negative result* — the BASE
+  geometry was measured on a real build before a single assertion was
+  written, and it is what refuted the `scrollIntoView`/sticky equivalence
+  recorded in §0.1.
+- *No new `z-index` value* — none is added at any width; the fix works
+  BECAUSE `z-index` stays `auto` at narrow.
+
+One methodological note worth carrying forward, because it nearly filed a
+false licence failure: an inline `<a>` that wraps has one client rect per
+line box while its BOUNDING BOX spans both lines plus the gap between them,
+and that gap belongs to the parent. Centre-probing the bounding box reported
+`covered-by:div.maplibregl-ctrl-attrib-inner` — the link's own parent — for
+every two-line anchor, while both line-box centres hit-tested to the link.
+Hit-test `getClientRects()`, not `getBoundingClientRect()`, on inline
+content.
