@@ -44,7 +44,10 @@ making design-level decisions; do not silently deviate.
   `docs/security-assurance-case.md` — the OpenSSF Silver document set
   (#217–#219, #224). **#224 deliberately DECLINED a DCO and a CLA** (Apache-2.0
   §5 makes inbound = outbound): never add `Signed-off-by` trailers, and nothing
-  checks for them. The #132 release-cut docs sweep covers these four too.
+  checks for them. The #132 release-cut docs sweep covers these four too —
+  #132 is where that ritual was DEFINED and has been CLOSED since 2026-07-27
+  (milestone v0.5.0), so every "#132" in this file is HISTORICAL, never a live
+  tracker item; the sweep is tracked by the release runbook alone.
 - `docs/spikes/` — one decision document per investigated-but-not-built
   spike, named `<issue>-<slug>.md` (#245, #244, #296). Each records a
   RECOMMENDATION plus an explicit considered-and-rejected section, so a
@@ -74,7 +77,18 @@ making design-level decisions; do not silently deviate.
   query shape and only the extension differing. Every stylesheet-reading guard
   in this repo uses `readFileSync` for THAT reason, not for style; a new one
   must too (and needs the tsconfig node-types split those files already
-  carry). Because these guards read foreign artifacts, editing
+  carry). A SECOND global stub makes a whole class of `DataLayers` guard
+  vacuous: `app/src/test/setup.ts` sets
+  `HTMLCanvasElement.prototype.getContext = () => null` for EVERY jsdom test,
+  so `buildDepthCanvas`/`buildHatchCanvas` return null, NEITHER `sc-depth` nor
+  `sc-depth-hatch` is ever added, and the visibility effect early-returns on
+  `!map.getLayer(DEPTH_LAYER)` — a guard asserting on
+  `setLayoutProperty(DEPTH_HATCH_LAYER, …)` in `DataLayers.test.tsx` records
+  ZERO calls and passes with the whole feature deleted (verified 2026-09-01).
+  The usual phrasing ("canvas CONTENT assertions are zero evidence in jsdom")
+  reads as exempting `setLayoutProperty`; it does NOT, because the layers are
+  never created at all. `layerOrder.test.tsx` carries the size-discriminated
+  `getContext` fake such a guard needs. Because these guards read foreign artifacts, editing
   `app/src/data/boats.ts`, `pipeline/{verify_mask.py,build_polars.mjs,
   estimate_polars.mjs,polars-source.json}`, `app/public/data/polars/*.json`,
   `app/sweep/sweepArms.ts` or `app/src/app.css` can red the REQUIRED `app`
@@ -86,14 +100,20 @@ making design-level decisions; do not silently deviate.
   scans the stylesheet from the `app/src/` top level — so before touching
   `app.css`, enumerate with `grep -rln 'app\.css' app/src
   --include='*.test.ts*'` rather than trusting any list here — but that grep
-  counts FILES CONTAINING THE STRING, not guards: re-measured 2026-08-31 it
-  returned 12 (11 on 2026-08-28), of which only 7 read the stylesheet via
-  `readFileSync`, four (`BoatPicker`/`ScaleBar`/`Slider.test.tsx`/
+  counts FILES CONTAINING THE STRING, not guards: re-measured 2026-09-01 it
+  returned 13 (12 on 2026-08-31, 11 on 2026-08-28), of which only 8 read the
+  stylesheet via `readFileSync` (`lib/mapColors.test.ts` joined them at
+  #715/PR #798), four (`BoatPicker`/`ScaleBar`/`Slider.test.tsx`/
   `RouteSummary.test.tsx`) merely NAME it in prose — three in a comment,
   `Slider.test.tsx` in an `it()` title — and
   cannot fail on a CSS change, and one (`sailLiteralCallSites.test.ts`) globs
   `?raw` over `.ts`/`.tsx` only, so it is NOT an instance of the vacuous-`?raw`
-  trap above. Classify each hit before quoting a number. And
+  trap above. Classify each hit before quoting a number — TWO independent
+  expert reviewers classified this same grep on this same tree in ONE session
+  and DISAGREED (8/5 vs 9/4), the wrong one counting
+  `sailLiteralCallSites.test.ts` as a reader against that file's OWN header
+  comment saying it globs precisely BECAUSE it needs no stylesheet; careful
+  readers get this wrong, so it is not a caution about carelessness. And
   `.github/workflows/coverage.yml`'s `timeout-minutes` is NOT guarded at all:
   `timeoutBudgetVsJobCap.test.ts` DECLARES `JOB_CAP_MINUTES = 240` rather than
   reading it (PR #351 removed the read after four fail-opens), so the two are
@@ -102,8 +122,10 @@ making design-level decisions; do not silently deviate.
 - App (run from repo root): `npm --prefix app run typecheck` / `lint` / `test` /
   `build` / `dev`. CI runs lint+typecheck BEFORE tests — vitest alone will not
   catch unused imports or type errors.
-  **CI's `lint` covers `app/e2e/**` — the script is `eslint src e2e`** (PR
-  #508 closed #420 on 2026-08-11; before that it was `eslint src`, and the
+  **CI's `lint` covers `app/e2e/**` AND `app/sweep/**` — the script is
+  `eslint src e2e sweep`** (measured 2026-09-01; `e2e` added by PR #508
+  closing #420 on 2026-08-11, `sweep` by #602 at the v0.17.0 cut, so the #282
+  acceptance harness IS lint-gated now; before that it was `eslint src`, and the
   gap let a real error sit unseen until PR #419's review found it). Those
   specs are the ONLY functional assurance for `src/sw.ts` and
   `src/routing/worker.ts` (both ~0% coverage by design), so a lint gap there
@@ -121,14 +143,23 @@ making design-level decisions; do not silently deviate.
   `setupFiles`) and collects Playwright `.spec.ts` under `app/e2e/` as
   "(0 test)" — cost three failed coverage measurements this session. Always
   use `run`, never `exec`, for anything that depends on `app/`'s config.
-- Statement coverage baseline: 93.92% (4100/4365 statements; branches 88.99%,
-  functions 92.28%, lines 95.52%), measured 2026-08-03 via `npm --prefix app
-  run test:coverage`. The trailing test/file COUNT is RE-MEASURED, never
-  hand-added or inferred: **2160 tests, 146 files**, all passing (2026-08-24
-  at `39bbcd6`, the v0.13.1 cut; +24 over v0.13.0 = 12 plain `it(` cases plus
+- Statement coverage baseline: **94.52%** (branches 90.23%, functions 94%,
+  lines 96.17%), read off the NIGHTLY `Coverage` run `33483775308`
+  (`event=schedule`, head `311202c`, success, 2026-09-01) — attributed to
+  `311202c`, NOT to any later tip, since #809/#810 merged after it.
+  `coverage.yml` runs nightly, so a current figure usually already sits in
+  Actions: read it off the run WITH its head SHA rather than paying a fresh
+  local `test:coverage`. The trailing test/file COUNT is RE-MEASURED, never
+  hand-added or inferred: **2410 tests, 154 files**, all passing (measured
+  2026-09-01 at `311202c`, and corroborated by that nightly's identical
+  2410/154 from a DIFFERENT runner — counts are load-independent, so that is a
+  genuine cross-check rather than the same measurement twice). Its DURATION is
+  DISCARDED: the run was concurrent with a multi-agent workflow. The earlier
+  **2160 tests / 146 files** (2026-08-24
+  at `39bbcd6`, the v0.13.1 cut) was +24 over v0.13.0 = 12 plain `it(` cases plus
   ONE `it.each(Object.getOwnPropertyNames(Object.prototype))` row expanding to
   12 — a token grep for added `it(` returns eleven and reads as a
-  contradiction, so a test COUNT can never be derived by grepping `it(`). That run's DURATION is DISCARDED — a browser agent ran
+  contradiction, so a test COUNT can never be derived by grepping `it(`). That run's DURATION was DISCARDED too — a browser agent ran
   concurrently, the same contention that invalidated an earlier 393 s figure.
   Three rules distilled from repeated re-measurements of this pair: **counts
   are load-independent, durations are not** (never quote a duration measured
@@ -308,7 +339,17 @@ making design-level decisions; do not silently deviate.
   `verify-mask.yml` may use trigger filters precisely because neither is
   required. It fails CLOSED: filter error, empty diff, unreachable base,
   non-PR event, or any unmatched path all run e2e. `.claude/**` is
-  deliberately NOT allowlisted (it holds executable hooks). The allowlist is
+  deliberately NOT allowlisted (it holds executable hooks).
+  **`CHANGELOG.md` and `changelog.d/*` are allowlisted yet are BUILD INPUTS** —
+  `AboutDialog.tsx` `?raw`-imports the changelog and `changelogFragmentsPlugin`
+  bakes the fragments in, so a CHANGELOG-only PR alters the shipped bundle
+  while its `e2e` skips in ~6 s (measured on PR #812). Safe only CONTINGENTLY:
+  `app` always runs in full and `changelog.test.ts` covers the parser, and no
+  e2e spec covers the About dialog. Adding one would break that, so keep
+  About-dialog assurance in `app` (jsdom). General form: a path allowlist
+  encodes an ASSUMPTION about what a path can affect, and a build step that
+  turns a doc into a bundled module silently voids it while the filename still
+  looks safe. The allowlist is
   the `case` arm at `classify-docs-only.sh:389` — THIRTEEN members as of
   2026-08-26, and the count is not checked by anything, so read the arm
   rather than trusting it: `grep -n CODE_OF_CONDUCT.md
@@ -476,6 +517,16 @@ making design-level decisions; do not silently deviate.
   border instead of 1x1. Complement of the source-order cascade bullet below
   (a single-class modifier losing to a later base rule) — specificity and
   source order are the two halves of the same failure; read both.
+- **`position: sticky` resolves its offset against the scrollport's CONTENT
+  box; `scrollIntoView({ block: 'end' })` lands at the PADDING box.** With
+  `.app-panel { padding: 0.75rem }` the two rest positions differ by
+  **−12.00px**, sticky sitting HIGHER — measured 2026-09-01 in a zero-app-code
+  fixture and swept at scrollTop 0/100/300/max, so it is a CSS fact rather than
+  an artefact of this markup (reproduced in-app at all 9 narrow rows). So any
+  "this state is already covered by <existing scroll-based test>" argument
+  across a static→sticky change is FALSE by the scrollport's bottom padding,
+  and fails silently. Prefer a zero-app-code fixture plus a parameter sweep
+  whenever the claim is about CSS semantics rather than about this app.
 - **`z-index` applies to a FLEX (and grid) ITEM regardless of `position`** —
   any value other than `auto` makes it tier, even on a `static` box; `auto`
   tiers neither. Measured in Chromium 2026-08-31 against a block-container
@@ -986,6 +1037,18 @@ making design-level decisions; do not silently deviate.
   remains" is not a claim this file makes. The durable rule outlives the fix: polling a
   state signal is not enough if the coordinate or handle being polled was
   itself sampled before settle.
+- **Playwright's `getByRole` matches `name` by SUBSTRING, case-insensitively,
+  unless `exact: true`** — so a NEW control whose accessible name CONTAINS an
+  existing one's resolves both and reds every locator with a strict-mode
+  violation. Measured 2026-09-01: ELEVEN live sites spell
+  `getByRole('checkbox', { name: 'Wassertiefen' })` (`datalayers.spec.ts` x4,
+  `layout.spec.ts` x6, `compass.spec.ts`) and NONE passes `exact`; most are
+  layout/occlusion guards unrelated to depth, so the failure reads as a
+  spurious regression in a distant file. CONSTRAIN THE NEW LABEL — adding
+  `exact: true` to eleven call sites is the worse fix. Still live and
+  unguarded: #681 (a hatch toggle whose natural German label contains that
+  substring) was deferred to v0.18.0. Same lesson as #7's "one anchor per
+  accessible name", in a new place.
 - `app/e2e/helpers.ts` exports a named viewport matrix — `STANDARD_VIEWPORTS`
   (desktop4k 3840x2160, desktopHd 1920x1080, tabletLandscape 1180x820,
   tabletPortrait 820x1180, phonePortrait 390x844) and `EDGE_VIEWPORTS` (the
@@ -1260,6 +1323,7 @@ making design-level decisions; do not silently deviate.
   | v0.14.0 | 2026-08-25 | 56 s | `cancelled` | safe | merge-push `32876067990` → tag `32876158745` deployed cleanly, `smoke-probe` passed |
   | v0.15.0 | 2026-08-27 | 972 s | `success` (MEASURED before the tag push) | **DID no-op** | merge-push `33062172199` → tag `33063351792`; `smoke-probe` FAILED, prod kept serving `v0.14.0-49-g3ebb554`; fixed by the back-merge |
   | v0.16.0 | 2026-08-31 | 498 s | `success` (MEASURED before the tag push, and the no-op CALLED IN ADVANCE from it) | **DID no-op** | merge-push `33409992738` → tag `33410773664`; `smoke-probe` FAILED, prod kept serving `v0.15.0-98-g04c4e6d`; fixed by the back-merge |
+  | v0.17.0 | 2026-09-01 | 58 s | `cancelled` (MEASURED — the job had not been CREATED when the tag was pushed) | safe | merge-push `33502228802` → tag `33502309994` deployed cleanly, `smoke-probe` passed |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -1290,7 +1354,13 @@ making design-level decisions; do not silently deviate.
   could have done that — it would have said only "large, so probably". That
   is the difference between a proxy and the fact, and it is the reason to
   keep reading the job even while the gap's correlation keeps improving.
-  **Whoever adds row 10 re-checks this paragraph: the separation now rests on
+  Row 10 (v0.17.0, SAFE at 58 s) sits inside the safe band and below
+  min(no-op), so it neither breaks nor strengthens the separation — and the
+  gate was used PREDICTIVELY there for the SECOND time: the merge-run's
+  `deploy` job was read as NOT YET CREATED (the run was still on `build`), so
+  `cancel-in-progress` was called to supersede it in advance, and all five of
+  its jobs then read `cancelled`.
+  **Whoever adds row 11 re-checks this paragraph: the separation still rests on
   min(no-op) 128 s vs max(safe) 70 s, so a SAFE row at or above 128 s, or a
   NO-OP at or below 70 s, breaks it and changes what the rows support.**
   What the rows DO rule out
@@ -1506,6 +1576,22 @@ making design-level decisions; do not silently deviate.
 
 ## Release & branching
 
+- **The `release` skill is USER-INVOKED ONLY — the model CANNOT run it.**
+  `.claude/skills/release/SKILL.md` declares `disable-model-invocation: true`
+  and was, when checked on 2026-09-01, the only skill under `.claude/skills/`
+  that does — correspondingly the only one absent from a session's
+  available-skills listing. So a plan or brief saying "invoke the release
+  skill" is UNEXECUTABLE, not merely discouraged: ask the maintainer to type
+  `/release`, and read `SKILL.md` directly for the steps cited elsewhere in
+  this file — §2b, §5a, §5b, §5c and step 6, the back-merge that is also the
+  #398 no-op remedy.
+- **`.claude/commands/release-cycle.md` provides `/release-cycle`** (#816, PR
+  #817, merged 2026-09-01) — a six-phase (0–5) wrapper for a whole cycle:
+  state discovery, approval-gated milestone re-triage, implementing the
+  milestone, the cut, the CLAUDE.md revision, housekeeping. It COMPOSES the
+  skills rather than duplicating them and delegates the cut to `/release`, so
+  it inherits the constraint above. Two human gates: milestone approval before
+  any `gh` mutation, and §2's local-run approval before the release PR.
 - **Branching (gitflow-lite, #73)**: `develop` is the protected DEFAULT branch
   where WIP accumulates — feature PRs target `develop`, never `main`. A RELEASE
   is a PR `develop` → `main` (full CI `app`+`e2e` re-runs under the strict
@@ -1678,6 +1764,15 @@ making design-level decisions; do not silently deviate.
   to tidy, and a cut folds every member. A brief saying "confirm the old
   fragment is UNTOUCHED" is what PRESERVES a false line — that instruction was
   the cause of PR #768's Major 1.
+  **#730 guards a fragment's LEADING heading; NOTHING guards the trailing
+  `(#NNN).`** — every entry in every released section ends with the issue
+  reference then a period, but 6 of the 13 v0.17.0 fragments deviated (four
+  carried NO issue reference at all, two lacked the period) and nothing redded:
+  the About dialog renders a ref-less entry fine, and `changelog.test.ts` only
+  requires a released section to be NON-EMPTY, never conformant. A released
+  section is FROZEN at the cut, so a missing ref is permanent — normalise all
+  of them AT THE FOLD. The ritual moved authoring earlier and guarded the LOUD
+  failure; the quiet drift merely relocated to whoever folds the section.
   `app/src/lib/changelog.ts`'s `ENTRY_RE` is `/^- (.*)$/` — anchored with NO
   leading whitespace — so folding a multi-entry fragment as an INDENTED
   sub-list silently glues the indented bullet onto the previous entry, dash
@@ -1981,6 +2076,25 @@ making design-level decisions; do not silently deviate.
   false, so it passes with the gate deleted. Ask per TERM, not per guard:
   *which row reds if I delete THIS term alone?* Beware short-circuit order,
   and treat a row's TITLE as a claim to verify rather than read.
+- A SIXTH vacuity class: **the deliverable is STRUCTURAL, so no behavioural
+  guard describes it.** When a refactor's product is a dependency direction or
+  a module boundary, every behavioural guard passes with the fix ABSENT by
+  construction — not changing behaviour is the whole point. Measured on #463:
+  a `ShallowWarning.tsx` containing only
+  `export { ShallowWarning } from './RouteSummary';` is the EXACT NEGATION of
+  the issue (the consumer still depends on the old module, through an
+  indirection that HIDES the backwards edge) yet passes typecheck, lint,
+  build, byte-identical DOM and byte-identical pass counts, touching precisely
+  the planned files. Such a PR is unfalsifiable against its own issue until
+  something asserts the STRUCTURE. Two corollaries. (1) The realistic
+  structural mutant usually needs a COMPATIBILITY SHIM to compile: the naive
+  one (leave the combined import unsplit) fails `tsc` TS2614 and is zero
+  evidence, while re-adding `export { ShallowWarning };` compiles, renders
+  identically, and reds exactly the one assertion — and a compat re-export is
+  what a human really adds to "avoid breaking consumers", so it models the
+  real regression. (2) Expect a SET of mutants, one per assertion: the shell
+  mutant redded 3 of 4 blocks and the shim mutant the 4th, and only their
+  union shows the pin fully load-bearing.
 - A FIFTH vacuity class: **the mutation trips a DIFFERENT guard, and its red is
   credited to the wrong assertion.** Measured on PR #770: replacing an i18n
   string WHOLESALE was already **3 failed / 21 at BASE** (it drops a retention
@@ -2161,6 +2275,33 @@ making design-level decisions; do not silently deviate.
   `map.project()`. The aperture must also not be COUPLED to the axis under
   test: `queryRenderedFeatures` matches the COLLISION box, so the capture
   fringe scales with icon size — pick zooms whose apertures match (#353).
+- **MATCH THE PROBE'S GEOMETRY TO THE DEFECT'S, and anchor it on the element
+  that MOVED.** `plan.spec.ts`'s occlusion helper hit-tests a target's CENTRE;
+  #702's separation fix addresses a 33–48 px² defect at the CTA's far-right
+  CORNER, so a centre probe resolves to the button in BOTH states and deleting
+  the fix reds nothing — an equivalent mutant, and the one edit explicitly
+  ordered would have shipped uncovered. Probe the corner (inset a px or two).
+  The subtler half: assert on the BUTTON's rect, never its container's —
+  padding sits inside the border box, so `.planner-actions` overlaps the
+  attribution toggle by ~22px in both states, and a container-anchored
+  assertion reds on the FIXED tree and then gets "calibrated" away.
+- **A guard can be CIRCULAR — its validity conditional on the very claim it
+  exists to establish.** `plan.spec.ts`'s `topmostOverAttribution` opens with an
+  UNCONDITIONAL `scrollIntoView({ block: 'end' })`, so "re-run these probes at
+  rest, and do not edit the helper" is unsatisfiable and fails SILENTLY: the
+  probe measures a real state, just not the one claimed. Before writing
+  "already covered by <existing test>", read what that test's HELPER does to
+  the page — reusing one can silently change what the EXISTING test covers
+  rather than transfer coverage to the new one.
+- **A WRAPPED inline `<a>` has one client rect PER LINE BOX**, and
+  `getBoundingClientRect()` returns their UNION including the inter-line gap —
+  space the link does not occupy and which belongs to its PARENT. Centre-probing
+  that box returns the parent: a FALSE "blocked" verdict, the direction that
+  sends someone rewriting correct CSS. Hit-test `getClientRects()` and require
+  EVERY rect topmost. Live at 390px: the Open-Meteo credit wraps to 2 rects
+  while the other three attribution links have 1, and this repo asserts their
+  clickability as an ODbL/CC-BY obligation. Same family as the next bullet —
+  the convenient single-rect API answering a different question than the one asked.
 - **`boundingBox()` returns the BORDER box and never sees overflow.** A
   tab-strip fit guard passed while `.app-tabs` overflowed 93px at 280px
   (scrollWidth 373 vs clientWidth 280): `flex: 1` with flex's default
@@ -2225,6 +2366,15 @@ making design-level decisions; do not silently deviate.
   started", so a monitor on it burns its budget and reports a false timeout.
   Find the run by `?branch=` or `check-runs`, THEN monitor
   `actions/runs/<id>/jobs`. Foreground-test any poll query before arming it.
+  THE DUPLICATION FOLLOWS FROM THE FAST-FORWARD ALONE, not from a no-op —
+  measured again at v0.17.0 (2026-09-01, PR #815), where the TAG run SUCCEEDED
+  and the MERGE-push run was the cancelled one, the mirror of the v0.15.0 case
+  below. That one SHA carried **SEVEN** runs (merge-push CI + Deploy, tag
+  Deploy + Release, the PR's own CI, PR CodeQL, Labeler), with
+  `smoke-probe`/`deploy`/`app`/`e2e` each appearing 2–3x at OPPOSITE
+  conclusions; a name-keyed poll returns whichever it meets first. Attribute
+  every check by the run id inside its own `details_url`, gate on the PR's OWN
+  run, and expect the PR to DISPLAY cancelled checks that say nothing about it.
   SHARPEST INSTANCE (v0.15.0, 2026-08-27): a FAST-FORWARD back-merge puts the
   PR head ON the tag commit, so one SHA accumulates the merge-push run, the
   tag run and the PR run. Measured on PR #750 (head `3ebb554` == main tip ==
@@ -2733,10 +2883,13 @@ making design-level decisions; do not silently deviate.
   (`6aea385`, 2026-08-31) — `boat-selection.png` was a HAND capture with no
   generator and had drifted stale three times over. It now scripts all THREE:
   the script clicks the Boat tab and takes a third `page.screenshot()`, behind
-  its own viewport bump (`BOAT_SELECTION_HEIGHT_PX = 1050`, sized against
+  its own viewport bump (`BOAT_SELECTION_HEIGHT_PX`, sized against
   `.boat-picker-card`'s measured bottom edge — `capture.mjs`'s own comment
-  carries that figure and the date it was measured; read it THERE rather than
-  from a second copy here, which is exactly the twin that drifted once) that is
+  carries the figure and the date it was measured; read it THERE, and note the
+  VALUE is deliberately NOT repeated here: it drifted TWICE (#746's MMSI field
+  grew that card 124.0px, clipping its help text at the old height), and a
+  sentence that BOTH points at an authority AND restates its value can only rot
+  at the restated half — so DELETE such a number, never update it) that is
   reset to the shared 800px height straight afterwards. Three different viewport
   heights in one flow is deliberate — the first is the `newPage` viewport and
   only the other two are `setViewportSize`; do not collapse them.

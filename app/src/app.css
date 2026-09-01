@@ -761,14 +761,29 @@ select {
    so their tick fill rendered in the browser/OS default accent — a
    different blue from every other accented control in the app — and no
    `:focus-visible` ring at all. `.boat-option-radio` is the only prior
-   `accent-color` use in this file; this reuses the same token. */
+   `accent-color` use in this file; this reuses the same token.
+   #681 added a THIRD member, `.depth-legend-body input[type='checkbox']`
+   (the independent hatch toggle) — it is not a `.data-layer-controls`
+   descendant (DataLayers.tsx's own #681 comment on the return JSX explains
+   why: a third row there costs the legend its reachability budget), so it
+   needs the same accent-color/focus-visible pair spelled out for its own
+   selector rather than inheriting either existing one.
+   #681 x #813 added a FOURTH, `.route-legend-depth input[type='checkbox']`
+   — the SAME control's complementary copy, folded into RouteLegend.tsx once
+   a plan is active (that component's own #681 x #813 comment). Neither of
+   these two new members is a descendant of the other three ancestors, so
+   each needs its own selector in both rules below. */
 .data-layer-controls input[type='checkbox'],
-.route-layer-controls-disclosure input[type='checkbox'] {
+.route-layer-controls-disclosure input[type='checkbox'],
+.depth-legend-body input[type='checkbox'],
+.route-legend-depth input[type='checkbox'] {
   accent-color: var(--sc-accent);
 }
 
 .data-layer-controls input[type='checkbox']:focus-visible,
-.route-layer-controls-disclosure input[type='checkbox']:focus-visible {
+.route-layer-controls-disclosure input[type='checkbox']:focus-visible,
+.depth-legend-body input[type='checkbox']:focus-visible,
+.route-legend-depth input[type='checkbox']:focus-visible {
   outline: 2px solid var(--sc-accent);
   outline-offset: 2px;
 }
@@ -869,7 +884,18 @@ select {
    104px to 120px, so its rendered width goes 104px -> 120px and its right
    edge at a 320px viewport goes 112px -> 128px, cutting clearance to
    `.route-layer-controls`'s 144px left edge from 32px to 16px — still
-   POSITIVE, and `app/e2e/layout.spec.ts`'s #598 test pins it. */
+   POSITIVE, and `app/e2e/layout.spec.ts`'s #598 test pins it.
+
+   #813 UPDATE: this element is now ADDITIONALLY gated in JS on
+   `plan === null` (DataLayers.tsx's own `useActivePlan()` read, its own
+   #813 comment) — never rendered at all once a plan is active, because
+   RouteLegend.tsx's `.route-legend` disclosure becomes the sole
+   "Legende"/"Legend" surface at that point and folds this content in under
+   its own sub-heading instead (`.route-legend-depth`, below). Every
+   measurement and geometry claim above still describes this element
+   correctly for the state it now actually renders in (no plan) — nothing
+   about its own CSS changed, only the JS condition deciding whether it
+   mounts at all. */
 .depth-legend {
   position: absolute;
   left: 0;
@@ -2147,6 +2173,35 @@ select {
 
 .route-legend[open] > summary::before {
   content: '\25BE';
+}
+
+/* #813: the folded-in #598 depth-hatch legend — RouteLegend.tsx's own #813
+   comment carries the full consolidation rationale. `.route-legend-depth`
+   is DELIBERATELY not `.depth-legend-body` (reused verbatim would also drag
+   in that class's free-floating pill width/height clamps — `max-width:
+   6.5rem`, the whole `max-height: max(0px, calc(...))` formula — both
+   meaningless here, since `.route-legend` sits inside the wide,
+   unconstrained `.route-layer-controls` panel, not an absolutely-positioned
+   map overlay). Only the row/swatch classes (`.depth-legend-row`,
+   `.depth-legend-swatch`) are reused, since those were already
+   ancestor-independent (`.depth-legend-swatch { flex: none; ... }`, no
+   `.depth-legend` prefix) — this is the SAME row shape DataLayers.tsx still
+   renders for its own plan-less copy, so the two stay visually consistent. */
+.route-legend-depth {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0.25rem 0;
+}
+
+.route-legend-depth p {
+  margin: 0;
+  line-height: 1.35;
+  overflow-wrap: break-word;
+}
+
+.route-legend-subheading {
+  font-weight: 600;
 }
 
 .route-legend ul {
@@ -3761,6 +3816,20 @@ select {
 
 .harbor-picker-name {
   font-weight: 600;
+}
+
+/* #652: distinguishes the "router cannot reach this harbor" disclosure from
+   the neutral depth caveat below (.harbor-picker-caveat) — reuses the same
+   --sc-banner-warning-fg token every other warning surface in the app
+   already uses (.banner-warning, .live-view-gps-hint), never a new colour.
+   Unlike the caveat below, this line is NOT ellipsized: truncating a
+   "cannot be routed to" disclosure would defeat the whole point of #652. No
+   separate dark-mode block needed — the token already varies by mode, same
+   as .chip-shallow's own comment on this. */
+.harbor-picker-unreachable {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--sc-banner-warning-fg);
 }
 
 /* Depth caveat: muted, single line, ellipsized (full text shows on the selected

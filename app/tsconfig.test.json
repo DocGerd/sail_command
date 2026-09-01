@@ -146,6 +146,11 @@
   // re-export it from RouteSummary.tsx (the M1 mutant named in that
   // issue's brief). Same reason and pattern as chipShallowFill.test.ts/
   // mapColors.test.ts above.
+  // harborKnownDisconnected.test.ts (#652): reads pipeline/verify_mask.py's
+  // KNOWN_DISCONNECTED dict AND the shipped app/public/data/harbors.json via
+  // `node:fs` to structurally guard that build_harbors.mjs's generated
+  // `knownDisconnected` field agrees with the pipeline's single source of
+  // truth — same reason and pattern as verifyMaskConnectivity.test.ts above.
   "include": [
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",
@@ -172,6 +177,7 @@
     "src/**/mapColors.test.ts",
     "src/**/changelogFragmentShape.test.ts",
     "src/**/shallowWarningExtraction.test.ts",
+    "src/**/harborKnownDisconnected.test.ts",
     "sweep/**/*.ts"
   ]
 }
