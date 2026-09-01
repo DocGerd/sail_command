@@ -75,9 +75,8 @@ installs as a standalone icon and works fully offline after the first visit
   whose cautious, worst-case reading falls below your safety depth; the
   overlay is on by default and can be toggled off, and the hatch can be
   switched off independently of it. A legend explains what the hatch does
-  and does not mark — reachable below the map's layer controls, collapsed
-  by default, before a route is planned, and folded into the route legend
-  once one is.
+  and does not mark — below the map's layer controls, collapsed by default,
+  before a route is planned, and folded into the route legend once one is.
 - The router fetches hourly wind, then computes the fastest sailable route
   twice — once per foresail of the selected boat — and recommends the faster
   (marked ★). Where the two tables cannot honestly be ranked it says so
@@ -235,8 +234,8 @@ data; the code license is covered in the [License](#license) section below.
 - Only 33 curated harbors are included; a handful of shallow/narrow
   approaches (Schlei fairway, Dyvig channel, Gråsten bridge) remain
   disconnected from the routable mask at sub-cell resolution. The harbor
-  search flags these before you plan to one, instead of only after a full
-  solve fails.
+  search flags the harbors behind them before you plan to one, instead of
+  only after a full solve fails.
 - The depth mask can read deeper than the survey supports: a route that
   stays inside your safety depth can still cross water that a more cautious
   reading of the same bathymetry puts below it. The app says how far, per

@@ -20,7 +20,7 @@ shipped.
 
 The `v0.18.0` cut (2026-09-01) completed the
 [`v0.18.0` milestone](https://github.com/DocGerd/sail_command/milestones),
-nine issues in total. Map-chrome consolidation and depth disclosure carried
+ten issues in total. Map-chrome consolidation and depth disclosure carried
 the visible surface. The map's two independent "Legende"/"Legend"
 disclosures — `DataLayers.tsx`'s free-floating depth-hatch legend and
 `RouteLegend.tsx`'s route legend inside "Anzeigeoptionen" — are now one,
@@ -43,7 +43,7 @@ generic "cannot be reached" message; the disclosure is generated from
 guard keeping the shipped harbor list in sync
 ([#652](https://github.com/DocGerd/sail_command/issues/652)).
 
-The remaining six issues in the milestone carry no user-visible surface and
+The remaining seven issues in the milestone carry no user-visible surface and
 are covered under "Development workflow" below.
 
 ## Next — v0.19.0
@@ -163,13 +163,13 @@ revisited, not that it has been lifted.
 Not user-visible, but it is where a meaningful share of the effort goes and it
 sets the pace of everything above.
 
-The `v0.18.0` cut settled six further items in this area, none with a
+The `v0.18.0` cut addressed seven further items in this area, none with a
 user-visible surface. Two are process spikes, recorded here because neither
 changed product code. A bounded-slice investigation into #391 — a
 maplibre-gl defect where a natural ease's own completion disarms an
 in-flight gesture mid-drag, first found and worked around test-side at
-#383/#390 — re-derives the mechanism against the currently pinned
-`maplibre-gl@6.6.0`, drafts a ready-to-file upstream bug report, and rules
+#383/#390 — re-derives the mechanism against `maplibre-gl@6.6.0`, drafts a
+ready-to-file upstream bug report, and rules
 to ACCEPT the defect rather than mitigate it app-side, since every
 considered mitigation sits adjacent to the narrowly load-bearing #203/#227
 camera-mode derivation for a UX inconvenience rather than a safety defect;
@@ -200,17 +200,23 @@ was executed by nothing in the suite — its only importer mocks
 via-point list — and now has real jsdom coverage of its construction
 coordinates, its markers' accessibility contract, and both `snapBack`
 branches ([#470](https://github.com/DocGerd/sail_command/issues/470)). And
-two tooling additions continue the thread `v0.17.0` opened: a
+three tooling additions continue the thread `v0.17.0` opened: a
 `claim-auditor` subagent audits the PROSE of a change set — comments,
-JSDoc, `CLAUDE.md`, specs, PR bodies, commit messages — for this file's own
-documented prose-rot classes, running alongside `sail-reviewer` rather than
-in place of it ([#726](https://github.com/DocGerd/sail_command/issues/726));
-and a `sweep-closure` skill mechanically answers "does this diff owe an
+JSDoc, `CLAUDE.md`, specs, PR bodies, commit messages — for `CLAUDE.md`'s
+own documented prose-rot classes, running alongside `sail-reviewer` rather
+than in place of it ([#726](https://github.com/DocGerd/sail_command/issues/726));
+a `sweep-closure` skill mechanically answers "does this diff owe an
 `app/sweep/` #282 acceptance sweep", from the sweep's real import graph
-unioned with its non-import inputs (data files, pipeline generators),
-replacing the hand-maintained prose path list this file used to carry —
-which its own text warned was unsafe
-([#729](https://github.com/DocGerd/sail_command/issues/729)).
+unioned with its non-import inputs (data files, pipeline generators) — a
+mechanical alternative to the hand-maintained prose path list `CLAUDE.md`
+carries, which its own text warns is unsafe
+([#729](https://github.com/DocGerd/sail_command/issues/729)); and a
+`/release-cycle` command composes the existing release skills into one
+six-phase wrapper for a whole cycle — state discovery, approval-gated
+milestone re-triage, implementing the milestone, the cut, the `CLAUDE.md`
+revision, and housekeeping — with two human gates, milestone approval
+before any `gh` mutation and a local-run approval before the release PR
+([#816](https://github.com/DocGerd/sail_command/issues/816)).
 
 The `v0.17.0` cut settled eleven further items in this area, none with a
 user-visible surface. Two of them are spikes that close as recommendations

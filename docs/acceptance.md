@@ -30,6 +30,28 @@ results table at the bottom, and note it in the box below the check.
 ## 1. Setup
 
 - [ ] Open the live app in a normal (non-airplane-mode) browser session.
+- [ ] **Depth-hatch legend (before a route is planned).** With no route
+      showing yet, below the "Water depths" / "Seamarks" toggles and the
+      compass, open the collapsed **Legend** ("Legende") disclosure and
+      confirm it explains the cautious-reading hatch, states that
+      unsurveyed/drying water carries no hatching (#598/#597), and offers a
+      "Show hatch overlay" / "Schraffur anzeigen" checkbox that switches the
+      hatch off independently of the "Water depths" toggle itself, without
+      touching the depth-colour ramp (#681). In short landscape, and in any
+      narrow layout with too little height left below the compass, this
+      legend is deliberately not rendered at all here — by design, not a
+      missing control (in that specific combination, short landscape with no
+      route planned, neither this legend nor the plan-active one below
+      exists at all; that is expected, not a "never neither" violation).
+      **If a route is already showing** — this browser restores the last
+      session's plan on load (#113), so opening the app is not guaranteed to
+      start with none — reach the no-route state with **Import GPX** (Plan
+      tab) and any valid `.gpx` file, which always clears the active route
+      before seeding a fresh draft, then repeat this check. Once a route
+      IS planned (the normal state for the rest of this runbook, starting
+      with the very next check), this legend disappears and its content
+      moves into "Display options" → "Legend" ("Legende") instead — the two
+      never render at once (#813); see the "Display options" check below.
 - [ ] Confirm the wind forecast is current: plan any route for a near-term
       departure (e.g. the next full hour) and confirm the stale-forecast
       notice (§2.8) does NOT appear — if it does, stop and re-check
@@ -56,26 +78,6 @@ results table at the bottom, and note it in the box below the check.
       result shows a note that it is not reachable by the router at any
       depth setting, before you try planning to it, instead of only after a
       full solve returns the generic "cannot be reached" message (#652).
-- [ ] **Depth-hatch legend.** The map's cautious-reading-hatch legend lives
-      in exactly one of two places depending on whether a route is
-      currently planned, never both, never neither (#813) — note which
-      state you're in before deciding the check has failed:
-      - **No route planned** (e.g. right after opening the app, before
-        planning anything): below the "Water depths" / "Seamarks" toggles
-        and the compass, open the collapsed **Legend** disclosure. In short
-        landscape, and in any narrow layout with too little height left
-        below the compass, this legend is deliberately not rendered at all
-        here — by design, not a missing control.
-      - **A route is planned** (the normal state through most of this
-        runbook, since the forecast-currency check above already plans
-        one): open **"Display options"** and, inside it, the nested
-        **"Legende"** disclosure — see the "Display options" check below.
-      Wherever it currently lives, confirm the disclosure explains the
-      cautious-reading hatch, states that unsurveyed/drying water carries no
-      hatching (#598/#597), and offers a "Show hatch overlay" / "Schraffur
-      anzeigen" checkbox that switches the hatch off independently of the
-      "Water depths" toggle itself, without touching the depth-colour ramp
-      (#681).
 - [ ] **Cable/pipeline seamarks visible at Standard.** Turn the **Seamarks**
       map overlay on — it is OFF by default, unlike "Water depths" — and
       leave the Seamarks display-tier control at its default "Standard"
@@ -89,10 +91,16 @@ results table at the bottom, and note it in the box below the check.
       chart. On a narrow/mobile-width screen it starts collapsed; on a wide
       screen it starts open. Toggling the control shows/hides the whole
       cluster together (#628). Once a route is planned, its own nested
-      "Legende" disclosure also carries the depth-hatch section — the hatch
-      swatch, the basis sentence, the #597 unsurveyed-water caveat, and the
-      "Show hatch overlay" toggle — that lived in the separate pre-plan
-      Legend above before a route existed (#813).
+      "Legend" ("Legende") disclosure also carries the depth-hatch section —
+      the hatch swatch, the basis sentence, the #597 unsurveyed-water
+      caveat, and the "Show hatch overlay" toggle — that lived in the
+      separate pre-plan Legend above before a route existed (#813). Check
+      this nested disclosure's OWN resting state before opening it
+      yourself: on narrow layouts it now starts OPEN by default (a
+      different default from "Display options" itself, above), while on
+      wide layouts it starts closed, unchanged from before #813 — confirm
+      both defaults, and that toggling it by hand still works in either
+      state.
 
 ## 2. Route A — Flensburg → Marstal
 
