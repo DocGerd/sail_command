@@ -11,6 +11,9 @@ export const en = {
   'harborPicker.searchPlaceholder': 'Search harbor…',
   'harborPicker.resultsLabel': 'Harbors',
   'harborPicker.noResults': 'No harbors match your search.',
+  // #652: see dict.de.ts's comment on this key — same copy, same reasoning.
+  'harborPicker.knownDisconnected':
+    'Not reachable by the router at any depth setting — a limit of the depth data, not a statement about the water.',
   'options.safetyDepth.label': 'Safety depth (m)',
   // #699: the allowed range used to hang only off the field's native
   // min/max attributes, with no visible or screen-reader-accessible text —
@@ -499,6 +502,14 @@ export const en = {
   'route.maneuverLetter.tack': 'T',
   'route.maneuverLetter.gybe': 'G',
   'route.legend.title': 'Legend',
+  // #813: sub-heading introducing the folded-in #598 depth-hatch entries
+  // (RouteLegend.tsx). Fix-wave MINOR 2 (self-review): see dict.de.ts's own
+  // comment for the full reasoning — this used to duplicate `map.depth.toggle`
+  // ("Water depths") verbatim, which #681's incoming hatch toggle (same
+  // milestone, PR #828) could plausibly collide with via a
+  // substring-matching `getByRole` locator. Named for the hatch cue
+  // specifically, not the depth overlay as a whole.
+  'route.legend.depthHeading': 'Hatching',
   'route.legend.sailStarboard': 'Sail, starboard tack',
   'route.legend.sailPort': 'Sail, port tack',
   'route.legend.motor': 'Motor (engine only)',

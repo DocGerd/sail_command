@@ -108,6 +108,12 @@
   // reads RouteSummary.tsx, ShallowWarning.tsx and PlannerPanel.tsx via
   // `node:fs` to structurally guard the DIRECTION of the dependency the
   // #463 file split created.
+  // harborKnownDisconnected.test.ts (#652) is the same shape again — reads
+  // pipeline/verify_mask.py's KNOWN_DISCONNECTED dict AND the shipped
+  // app/public/data/harbors.json via `node:fs` to structurally guard that
+  // the generated `knownDisconnected` field agrees with the pipeline's
+  // single source of truth, same reason as verifyMaskConnectivity.test.ts
+  // above.
   "exclude": [
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",
@@ -133,6 +139,7 @@
     "src/**/safetyDepthHelpNbsp.test.ts",
     "src/**/mapColors.test.ts",
     "src/**/changelogFragmentShape.test.ts",
-    "src/**/shallowWarningExtraction.test.ts"
+    "src/**/shallowWarningExtraction.test.ts",
+    "src/**/harborKnownDisconnected.test.ts"
   ]
 }

@@ -44,7 +44,8 @@
   "approachNote": {
    "de": "Oberhalb der Kappelner Brücke (Öffnung erforderlich); schmales markiertes Fahrwasser vor Arnis.",
    "en": "Above the Kappeln bridge (opening required); narrow marked channel off Arnis."
-  }
+  },
+  "knownDisconnected": true
  },
  {
   "id": "aaroesund",
@@ -172,7 +173,8 @@
   "approachNote": {
    "de": "Zufahrt über die Stegsvig durch ein schmales betonntes Fahrwasser (ca. 3,0–3,5 m, ca. 30 m breit, max. 5 kn).",
    "en": "Enter via Stegsvig through a narrow buoyed channel (approx 3.0-3.5 m, ~30 m wide, 5 kn max)."
-  }
+  },
+  "knownDisconnected": true
  },
  {
   "id": "faaborg",
@@ -283,7 +285,8 @@
   "approachNote": {
    "de": "Über die Klappbrücke Egernsund (Öffnung zu festen Zeiten), danach betonntes Fahrwasser mit ca. 2,5 m durch den flachen Nybøl Nor.",
    "en": "Via Egernsund bascule bridge (scheduled openings), then buoyed channel approx 2.5 m across shallow Nybøl Nor."
-  }
+  },
+  "knownDisconnected": true
  },
  {
   "id": "hoeruphav",
@@ -317,7 +320,8 @@
   "approachNote": {
    "de": "Schlei-Fahrwasser auf ca. 5 m unterhalten; die Klappbrücke öffnet zu festen Zeiten für die Weiterfahrt schleiaufwärts.",
    "en": "Schlei fairway maintained approx 5 m; bascule bridge opens at fixed times for passage further up-Schlei."
-  }
+  },
+  "knownDisconnected": true
  },
  {
   "id": "langballigau",
@@ -368,7 +372,8 @@
   "approachNote": {
    "de": "Kurzes betonntes Seitenfahrwasser mit ca. 2,5–3 m; strikt an die Tonnen halten, beiderseits Flachwasser.",
    "en": "Short buoyed side channel approx 2.5-3 m; keep strictly to the buoys, flats on both sides."
-  }
+  },
+  "knownDisconnected": true
  },
  {
   "id": "marstal",
