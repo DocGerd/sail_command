@@ -1,0 +1,307 @@
+diff --git a/app/src/components/OptionsPanel.tsx b/app/src/components/OptionsPanel.tsx
+index 37b2d4c..7848bc5 100644
+--- a/app/src/components/OptionsPanel.tsx
++++ b/app/src/components/OptionsPanel.tsx
+@@ -24,6 +24,7 @@ export type NumericKey =
+   | 'motorThresholdKn'
+   | 'sailPreferenceKn'
+   | 'maneuverPenaltyS'
++  | 'modeChangePenaltyS'
+   | 'performanceFactor';
+ 
+ export interface FieldSpec {
+@@ -131,6 +132,15 @@ export const MANEUVER_PENALTY_FIELD: FieldSpec = {
+   max: 300,
+   step: 1,
+ };
++// #354: same bounds/step as MANEUVER_PENALTY_FIELD — it is the same kind of
++// quantity (seconds charged at a leg boundary), just for a mode change.
++export const MODE_CHANGE_PENALTY_FIELD: FieldSpec = {
++  key: 'modeChangePenaltyS',
++  labelKey: 'options.modeChangePenalty.label',
++  min: 0,
++  max: 300,
++  step: 1,
++};
+ export const PERFORMANCE_FACTOR_FIELD: FieldSpec = {
+   key: 'performanceFactor',
+   labelKey: 'options.performanceFactor.label',
+diff --git a/app/src/components/SettingsPanel.tsx b/app/src/components/SettingsPanel.tsx
+index 89076f2..d02cb84 100644
+--- a/app/src/components/SettingsPanel.tsx
++++ b/app/src/components/SettingsPanel.tsx
+@@ -19,6 +19,7 @@ import Slider from './Slider';
+ import {
+   DEPTH_COMFORT_MARGIN_FIELD,
+   MANEUVER_PENALTY_FIELD,
++  MODE_CHANGE_PENALTY_FIELD,
+   MOTOR_SPEED_FIELD,
+   MOTOR_THRESHOLD_FIELD,
+   PERFORMANCE_FACTOR_FIELD,
+@@ -226,6 +227,7 @@ export default function SettingsPanel({
+           help={t('options.depthComfortMargin.help')}
+         />
+         <NumericField spec={MANEUVER_PENALTY_FIELD} value={value} onChange={onChange} />
++        <NumericField spec={MODE_CHANGE_PENALTY_FIELD} value={value} onChange={onChange} />
+         <NumericField spec={PERFORMANCE_FACTOR_FIELD} value={value} onChange={onChange} />
+       </Card>
+ 
+diff --git a/app/src/i18n/dict.de.ts b/app/src/i18n/dict.de.ts
+index e441447..c21de0f 100644
+--- a/app/src/i18n/dict.de.ts
++++ b/app/src/i18n/dict.de.ts
+@@ -50,6 +50,7 @@ export const de = {
+   'options.sailPreference.help':
+     'Wie viel Fahrt die Planung aufgibt, um weiter zu segeln. Sie segelt weiter, solange die Segelfahrt höchstens um diesen Wert unter der Motorfahrtgeschwindigkeit liegt, und motort sonst — ein höherer Wert bedeutet also mehr Segeln und spätere Ankunft. Auf Motorfahrtgeschwindigkeit minus Motor-Schwellenwert gesetzt, motort die Planung nur noch im Rückfall.',
+   'options.maneuverPenalty.label': 'Wende-/Halsenstrafzeit (s)',
++  'options.modeChangePenalty.label': 'Antriebswechsel-Strafzeit (s)',
+   'options.performanceFactor.label': 'Leistungsfaktor (×)',
+   'options.motorEnabled.label': 'Motor aktiviert',
+   'options.motorEnabled.help':
+diff --git a/app/src/i18n/dict.en.ts b/app/src/i18n/dict.en.ts
+index 99104af..bd71755 100644
+--- a/app/src/i18n/dict.en.ts
++++ b/app/src/i18n/dict.en.ts
+@@ -48,6 +48,7 @@ export const en = {
+   'options.sailPreference.help':
+     'How much boat speed the planner will give up to keep sailing. It keeps sailing while sailing speed is within this many knots of motoring speed, and motors otherwise — so a higher value means more sailing and later arrivals. Raise it to motoring speed minus the motor threshold to motor only as a fallback.',
+   'options.maneuverPenalty.label': 'Maneuver penalty (s)',
++  'options.modeChangePenalty.label': 'Mode change penalty (s)',
+   'options.performanceFactor.label': 'Performance factor (×)',
+   'options.motorEnabled.label': 'Motor enabled',
+   'options.motorEnabled.help':
+diff --git a/app/src/lib/gpx.test.ts b/app/src/lib/gpx.test.ts
+index a35ff67..f4ef99e 100644
+--- a/app/src/lib/gpx.test.ts
++++ b/app/src/lib/gpx.test.ts
+@@ -24,6 +24,7 @@ const plan: Plan = {
+       motorThresholdKn: 2.5,
+       sailPreferenceKn: 2.8,
+       maneuverPenaltyS: 45,
++      modeChangePenaltyS: 45,
+       performanceFactor: 0.9,
+       motorEnabled: true,
+       showOwnship: false,
+diff --git a/app/src/lib/planForm.test.ts b/app/src/lib/planForm.test.ts
+index 652ad49..8e9aba7 100644
+--- a/app/src/lib/planForm.test.ts
++++ b/app/src/lib/planForm.test.ts
+@@ -52,6 +52,7 @@ const ORIGINAL_REQUEST: PlanRequest = {
+     motorThresholdKn: 2.5,
+     sailPreferenceKn: 2.8,
+     maneuverPenaltyS: 45,
++    modeChangePenaltyS: 45,
+     performanceFactor: 0.9,
+     motorEnabled: false,
+     showOwnship: true,
+diff --git a/app/src/lib/planForm.ts b/app/src/lib/planForm.ts
+index 6f63be7..3d85168 100644
+--- a/app/src/lib/planForm.ts
++++ b/app/src/lib/planForm.ts
+@@ -149,6 +149,7 @@ export const ROUTING_RELEVANT_SETTINGS_KEYS = [
+   'motorThresholdKn',
+   'sailPreferenceKn',
+   'maneuverPenaltyS',
++  'modeChangePenaltyS',
+   'performanceFactor',
+   'motorEnabled',
+ ] as const satisfies readonly (keyof Settings)[];
+diff --git a/app/src/lib/recalc.test.ts b/app/src/lib/recalc.test.ts
+index c5dfaef..eb7a049 100644
+--- a/app/src/lib/recalc.test.ts
++++ b/app/src/lib/recalc.test.ts
+@@ -22,6 +22,7 @@ const ORIGINAL_REQUEST: PlanRequest = {
+     motorThresholdKn: 2.5,
+     sailPreferenceKn: 2.8,
+     maneuverPenaltyS: 45,
++    modeChangePenaltyS: 45,
+     performanceFactor: 0.9,
+     motorEnabled: false,
+     showOwnship: true,
+@@ -84,6 +85,7 @@ describe('recalcRequest (#114 seed-from-plan)', () => {
+         motorThresholdKn: 2.5,
+         sailPreferenceKn: 2.8,
+         maneuverPenaltyS: 45,
++        modeChangePenaltyS: 45,
+         performanceFactor: 0.9,
+         motorEnabled: false,
+         showOwnship: true,
+diff --git a/app/src/routing/isochrone.ts b/app/src/routing/isochrone.ts
+index ce3b14f..600dbf5 100644
+--- a/app/src/routing/isochrone.ts
++++ b/app/src/routing/isochrone.ts
+@@ -446,10 +446,25 @@ export function solve(p: SolveParams): SolveResult {
+ 
+         const board = kind === 'sail' ? boardForCandidate(twa, node.board) : null;
+         let maneuver: ManeuverKind | null = null;
++        // #354 candidate A: a propulsion-MODE change (sail->motor or
++        // motor->sail) costs real seconds too — the engine has to be started
++        // or stopped and sail set or handed — so it is priced exactly as a
++        // tack/gybe is: time subtracted from this step's travel budget, inside
++        // the isochrone cost, never as a post-hoc pass over the legs.
++        // Its own constant rather than maneuverPenaltyS because the durations
++        // genuinely differ. The two branches are MUTUALLY EXCLUSIVE by
++        // construction (a maneuver requires both nodes to be 'sail'; a mode
++        // change requires the kinds to differ), so `else if` is exact, not an
++        // approximation. `node.kind === 'start'` is excluded: leaving the
++        // origin is not a mode change.
++        let modeChange = false;
+         let effS = dtS;
+         if (kind === 'sail' && node.kind === 'sail' && node.board && board !== node.board) {
+           maneuver = classifyManeuver(node.twaSigned, twa);
+           effS = Math.max(dtS - settings.maneuverPenaltyS, 0);
++        } else if (node.kind !== 'start' && kind !== node.kind) {
++          modeChange = true;
++          effS = Math.max(dtS - settings.modeChangePenaltyS, 0);
+         }
+         const distNm = (speed * effS) / 3600;
+         if (distNm <= 0) continue;
+@@ -465,6 +480,9 @@ export function solve(p: SolveParams): SolveResult {
+             comfortDepthM,
+           );
+           if (directFactor !== null) {
++            // Derived from effS, so it already carries whichever penalty was
++            // charged above — the maneuver one or the #354 mode-change one.
++            // No separate mode-change term is needed here.
+             const penaltyS = dtS - effS;
+             // TRUE elapsed time for this hop — unaffected by the depth
+             // comfort factor (#243 §D.5: geometry and true time stay honest;
+@@ -526,7 +544,13 @@ export function solve(p: SolveParams): SolveResult {
+           let fitted: number | null = null;
+           for (const div of [2, 4, 8]) {
+             const subDtS = dtS / div;
+-            const subEffS = maneuver ? Math.max(subDtS - settings.maneuverPenaltyS, 0) : subDtS;
++            // #354 candidate A mirror: a mode-changing candidate pays its own
++            // penalty on every substep too, exactly as a maneuvering one does.
++            const subEffS = maneuver
++              ? Math.max(subDtS - settings.maneuverPenaltyS, 0)
++              : modeChange
++                ? Math.max(subDtS - settings.modeChangePenaltyS, 0)
++                : subDtS;
+             const d = (speed * subEffS) / 3600;
+             if (d <= 0) break; // maneuver penalty swallows this and every shorter substep
+             const e = destinationPoint(from, headingDeg, d);
+diff --git a/app/src/services/db.test.ts b/app/src/services/db.test.ts
+index e0971f6..d19b17a 100644
+--- a/app/src/services/db.test.ts
++++ b/app/src/services/db.test.ts
+@@ -50,6 +50,7 @@ describe('IndexedDB persistence', () => {
+           motorThresholdKn: 2.5,
+           sailPreferenceKn: 2.8,
+           maneuverPenaltyS: 45,
++          modeChangePenaltyS: 45,
+           performanceFactor: 0.9,
+           motorEnabled: true,
+           showOwnship: false,
+@@ -149,6 +150,7 @@ describe('IndexedDB persistence', () => {
+           motorThresholdKn: 2.5,
+           sailPreferenceKn: 2.8,
+           maneuverPenaltyS: 45,
++          modeChangePenaltyS: 45,
+           performanceFactor: 0.9,
+           motorEnabled: true,
+           showOwnship: false,
+@@ -251,6 +253,7 @@ describe('IndexedDB persistence', () => {
+           motorThresholdKn: 2.5,
+           sailPreferenceKn: 2.8,
+           maneuverPenaltyS: 45,
++          modeChangePenaltyS: 45,
+           performanceFactor: 0.9,
+           motorEnabled: true,
+           showOwnship: false,
+@@ -303,6 +306,7 @@ describe('IndexedDB persistence', () => {
+           motorThresholdKn: 2.5,
+           sailPreferenceKn: 2.8,
+           maneuverPenaltyS: 45,
++          modeChangePenaltyS: 45,
+           performanceFactor: 0.9,
+           motorEnabled: true,
+           showOwnship: false,
+@@ -398,6 +402,7 @@ describe('IndexedDB persistence', () => {
+           motorThresholdKn: 2.5,
+           sailPreferenceKn: 2.8,
+           maneuverPenaltyS: 45,
++          modeChangePenaltyS: 45,
+           performanceFactor: 0.9,
+           motorEnabled: true,
+           showOwnship: false,
+@@ -476,6 +481,7 @@ describe('IndexedDB persistence', () => {
+           motorThresholdKn: 2.5,
+           sailPreferenceKn: 2.8,
+           maneuverPenaltyS: 45,
++          modeChangePenaltyS: 45,
+           performanceFactor: 0.9,
+           motorEnabled: true,
+           showOwnship: false,
+@@ -528,6 +534,7 @@ describe('IndexedDB persistence', () => {
+           motorThresholdKn: 2.5,
+           sailPreferenceKn: 2.8,
+           maneuverPenaltyS: 45,
++          modeChangePenaltyS: 45,
+           performanceFactor: 0.9,
+           motorEnabled: true,
+           showOwnship: false,
+@@ -617,6 +624,7 @@ describe('IndexedDB persistence', () => {
+           motorThresholdKn: 2.5,
+           sailPreferenceKn: 2.8,
+           maneuverPenaltyS: 45,
++          modeChangePenaltyS: 45,
+           performanceFactor: 0.9,
+           motorEnabled: true,
+           showOwnship: false,
+@@ -670,6 +678,7 @@ describe('IndexedDB persistence', () => {
+       motorThresholdKn: 3.0,
+       sailPreferenceKn: 2.8,
+       maneuverPenaltyS: 50,
++      modeChangePenaltyS: 45,
+       performanceFactor: 0.85,
+       motorEnabled: false,
+       // Non-default (DEFAULT_SETTINGS.showOwnship is false): distinguishes
+@@ -698,6 +707,7 @@ describe('IndexedDB persistence', () => {
+       motorThresholdKn: 2.5,
+       sailPreferenceKn: 2.8,
+       maneuverPenaltyS: 45,
++      modeChangePenaltyS: 45,
+       performanceFactor: 0.9,
+       motorEnabled: true,
+       showOwnship: false,
+@@ -761,6 +771,7 @@ describe('#54 lazy plan migration at the read boundary', () => {
+           motorThresholdKn: 2.5,
+           sailPreferenceKn: 2.8,
+           maneuverPenaltyS: 45,
++          modeChangePenaltyS: 45,
+           performanceFactor: 0.9,
+           motorEnabled: true,
+           showOwnship: false,
+diff --git a/app/src/types.ts b/app/src/types.ts
+index 13318c8..6fb1bdd 100644
+--- a/app/src/types.ts
++++ b/app/src/types.ts
+@@ -44,6 +44,13 @@ export interface Settings {
+   // to motorThresholdKn, taking the byte-identical pre-#254 path.
+   sailPreferenceKn: number; // default 2.8
+   maneuverPenaltyS: number; // default 45
++  // #354: time charged for a propulsion-MODE change (sail->motor or
++  // motor->sail) at a leg boundary, priced inside the isochrone cost exactly
++  // as maneuverPenaltyS prices a tack/gybe. Its own constant because starting
++  // or stopping an engine and setting or handing sail takes a different amount
++  // of time than a tack. Default 45 s — deliberately the existing maneuver
++  // penalty default rather than a tuned value.
++  modeChangePenaltyS: number; // default 45
+   performanceFactor: number; // default 0.9
+   motorEnabled: boolean; // default true
+   // #25 addendum: standalone "show my position" ownship marker, decoupled
+@@ -76,6 +83,7 @@ export const DEFAULT_SETTINGS: Settings = {
+   motorThresholdKn: 2.5,
+   sailPreferenceKn: 2.8,
+   maneuverPenaltyS: 45,
++  modeChangePenaltyS: 45,
+   performanceFactor: 0.9,
+   motorEnabled: true,
+   showOwnship: false,
+diff --git a/changelog.d/354.fixed.md b/changelog.d/354.fixed.md
+new file mode 100644
+--- /dev/null
++++ b/changelog.d/354.fixed.md
+@@ -0,0 +1,1 @@
++- Propulsion mode changes (sail to motor and back) are now priced as time inside the router, via a new user-adjustable "Mode change penalty (s)" setting defaulting to 45 s, so a route no longer switches propulsion for a gain smaller than the switch itself costs (#354).
