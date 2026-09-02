@@ -153,7 +153,8 @@ making design-level decisions; do not silently deviate.
   hand-added or inferred: **2447 tests, 157 files**, all passing (measured
   2026-09-02 at `a7caaf4`, the v0.18.0 back-merge — NOT at `311202c`, which is
   the coverage nightly's head above and carried 2410/154). The `a7caaf4`
-  DURATION is DISCARDED: the machine was under multi-agent load all session. That earlier
+  DURATION is DISCARDED: the machine was under multi-agent load all session.
+  That earlier
   2410/154 was itself corroborated by the nightly's identical figure from a
   DIFFERENT runner — counts are load-independent, so that was a genuine
   cross-check rather than the same measurement twice. The earlier
@@ -207,8 +208,7 @@ making design-level decisions; do not silently deviate.
   accepting one, check whether the changed file is a RUNTIME input the
   import walk cannot see — a new data asset, arm file or pipeline generator
   outside `PATH_PREFIXES`, or a runtime-constructed edge outside
-  `EXTRA_EDGES`. That is the gap #836 leaves open, not a field trace. The
-  prose list that follows is a reader's aid, not the source of truth. The closure
+  `EXTRA_EDGES`. The prose list that follows is a reader's aid, not the source of truth. The closure
   is wider than the obvious paths: besides `app/src/routing/`,
   `app/src/lib/mask.ts`, `app/src/lib/depthGate.ts` (since #452),
   `app/public/data/`, `app/sweep/` and `pipeline/`,
@@ -984,18 +984,22 @@ making design-level decisions; do not silently deviate.
   Chromium half.
 - **An e2e run can silently measure a FOREIGN build — and because a green e2e
   run is what a merge is gated on, that yields a false GREEN as readily as a
-  false red (#803, OPEN as of 2026-09-01; re-read the issue, it has two
-  layers and the forensics live there).** Neither a free port nor a pid check
-  closes it. **Make the assertion SELF-PROVING instead** — one that can only
+  false red (#803, CLOSED 2026-09-01 by PR #823; re-read the issue and
+  `app/e2e/helpers.ts`'s build-identity comment — the forensics live there).**
+  Neither a free port nor a pid check closes it. **Make the assertion SELF-PROVING instead** — one that can only
   pass on the exact tree under test. Worked example: PR #799's
   conflict-resolution run passed #774's `tabIndex=0` pin (branch only) AND
   #762's guard (needs develop's `.sc-field label` CSS) in ONE run, so the
-  served build necessarily contained both sides of the merge. That remedy has
-  a blind spot of its own: `dist/index.html` and its hashed entry chunk are
-  byte-identical across a substantive `app/src/sw.ts` edit and an
-  `app/public/data/**` edit (measured with positive controls), so an
-  entry-chunk assertion cannot prove the tree under test for exactly the
-  service-worker and offline-asset changes where a foreign build matters most.
+  served build necessarily contained both sides of the merge. That remedy's
+  obvious mechanisation — asserting on the ENTRY CHUNK — has a blind spot:
+  `dist/index.html` and its hashed entry chunk are byte-identical across a
+  substantive `app/src/sw.ts` edit and an `app/public/data/**` edit (measured,
+  PR #823 review). That is why `startPreview()`'s `assertSwJsMatches` ALSO
+  byte-compares the served `sw.js` against `dist/sw.js` — workbox's precache
+  manifest reaches everything under `globPatterns`, so both change classes ARE
+  covered. The residual is narrower and tracked at #833: `globIgnores`
+  (`test-fixtures/**`, `brand/**`, `basemap-assets/fonts/**`) is absent from
+  that manifest, so a build differing only there passes both probes.
 - **Honest offline testing**: Playwright's `setOffline(true)` does NOT block
   service-worker fetches (Playwright #2311) — the offline spec kills the
   preview server instead. Never "simplify" that away.
@@ -1371,19 +1375,20 @@ making design-level decisions; do not silently deviate.
   could have done that — it would have said only "large, so probably". That
   is the difference between a proxy and the fact, and it is the reason to
   keep reading the job even while the gap's correlation keeps improving.
-  **The gate's two answers differ in DURABILITY.** `success` is permanent — a
-  job cannot un-succeed. "Not yet created" is a snapshot of a race still
-  running: at v0.18.0 the merge-run's `deploy` job did not exist when read
-  (the safe signal) and read `success` afterwards, during the window covering
-  the ref update, the signing, the local verify and the push. Read the gate IMMEDIATELY before `git push origin <tag>`, never before the
-  sign-and-verify sequence — everything between the read and the push is time
-  the merge run gets to finish in.
   Row 10 (v0.17.0, SAFE at 58 s) sits inside the safe band and below
   min(no-op), so it neither breaks nor strengthens the separation — and the
   gate was used PREDICTIVELY there for the SECOND time: the merge-run's
   `deploy` job was read as NOT YET CREATED (the run was still on `build`), so
   `cancel-in-progress` was called to supersede it in advance, and all five of
   its jobs then read `cancelled`.
+  **The gate's two answers differ in DURABILITY.** `success` is permanent — a
+  job cannot un-succeed. "Not yet created" is a snapshot of a race still
+  running: at v0.18.0 the merge-run's `deploy` job did not exist when read
+  (the safe signal) and read `success` afterwards, during the window covering
+  the ref update, the signing, the local verify and the push. Read the gate
+  IMMEDIATELY before `git push origin <tag>`, never before the sign-and-verify
+  sequence — everything between the read and the push is time the merge run
+  gets to finish in.
   **Re-checked when row 11 (v0.18.0) was added: the separation HOLDS under
   every reading of that row, but the BOUNDARY depends on how row 11 is
   scored, and row 11's own text declines to name its mechanism. Score it as
@@ -1864,8 +1869,10 @@ making design-level decisions; do not silently deviate.
   stacking-context tie claim…`), merged via PR #735 (`d8bcf58`), left #702
   open at merge time (still open, milestone v0.16.0, as of 2026-08-26). Two
   observations, same non-closing behaviour — still
-  evidence, still not a licence: the check costs one API call and a miss
-  silently strands a deliberately-deferred issue.
+  evidence, still not a licence: the check costs one API call, and a miss now
+  cuts BOTH ways — the bracketed form silently strands a deliberately-deferred
+  issue, and, under the `Closes #N` default above, it silently leaves OPEN an
+  issue the PR actually delivered and its author believes closed.
 - **Cross-PR file collisions are invisible to per-PR review — only the
   orchestrator holds that view, and it is represented in no artifact.** Measured
   2026-08-31: two implementers were sent to append a new guard to

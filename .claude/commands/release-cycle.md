@@ -147,7 +147,8 @@ Per task:
   the issue closes on merge, which is what I want. Reserve `Refs #N` for a PR that genuinely
   does NOT close it (partial delivery, or a spike informing a larger issue). The v0.18.0 cut
   used `Refs` universally and left the milestone at 9 open after every PR had merged, which I
-  had to flag; the earlier wording ("never a closing keyword") is what caused that.
+  had to flag; the earlier wording buried its exception in a trailing "unless the PR
+  truly closes the issue", which agents skipped — state the DEFAULT, not the exception.
   Either way, grep both copies before creating the PR:
   `git log origin/develop..HEAD | grep -iE '(clos(e|es|ed)?|fix(e[sd])?|resolve[sd]?)[[:space:]:(]*#[0-9]+'`
   and the same over the body. Post-merge, assert each issue's state in BOTH directions.
@@ -262,7 +263,7 @@ Non-negotiables at the cut:
   before `git push origin <tag>`**, not before the sign-and-verify sequence. The two answers
   differ in durability: `success` is permanent, but *not-yet-created* is a snapshot of a race
   still running. At v0.18.0 it read not-yet-created (the safe signal) and turned `success`
-  during the ~2 min of updating the ref, signing, verifying and pushing — everything between
+  during the window of updating the ref, signing, verifying and pushing — everything between
   the read and the push is time the merge run gets to finish in. Concretely, read the
   conclusion: `gh api repos/DocGerd/sail_command/actions/runs/<id>/jobs --jq '.jobs[]|"\(.name): \(.conclusion)"'`.
   `cancelled`/`null` → the tag run will take; `success` → it will no-op and `smoke-probe` will
@@ -308,8 +309,8 @@ measured to contain 30 further defects, 9 of them major.
 - Close any issue the release shipped that a `Refs`-only PR left open, and verify state via
   `gh api repos/DocGerd/sail_command/issues/N --jq .state`. **File every residual as its own
   tracked issue at REVIEW time, per-PR — not in a post-hoc audit here.** The v0.18.0 cut ran a
-  13-agent disposition audit at this point; it produced 8 real residual issues but should have
-  produced them 9 PRs earlier, and it delayed closing. If a reviewer finds something the PR
+  13-agent disposition audit at this point; it produced a batch of real residual issues that
+  should have been filed per-PR as they were found, and it delayed closing. If a reviewer finds something the PR
   will not fix, that is the moment to file it — then closing is mechanical and this step is a
   formality. A residual left in a merged PR body is a residual nobody will find.
 - `ROADMAP.md`'s `Current release:` line — §2b bumps it; step 6 VERIFIES it landed and bumps only
