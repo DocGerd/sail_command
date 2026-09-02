@@ -235,7 +235,17 @@ data; the code license is covered in the [License](#license) section below.
   approaches (Schlei fairway, Dyvig channel, Gråsten bridge) remain
   disconnected from the routable mask at sub-cell resolution. The harbor
   search flags the harbors behind them before you plan to one, instead of
-  only after a full solve fails.
+  only after a full solve fails; the flag stays on a selected origin or
+  destination, and a plan that fails against one names that same limit in
+  place of the generic no-route message.
+- Seamarks are not a routing input. A route whose active rig passes closer
+  than 300 m to a cardinal or isolated-danger mark is flagged in the results
+  panel with a count of such marks, and nothing more: the router plans past
+  them as the depth mask allows, and the app makes no claim about which side
+  of a mark to pass — check against an official chart
+  ([#615](https://github.com/DocGerd/sail_command/issues/615); using marks
+  when routing stays open as
+  [#495](https://github.com/DocGerd/sail_command/issues/495)).
 - The depth mask can read deeper than the survey supports: a route that
   stays inside your safety depth can still cross water that a more cautious
   reading of the same bathymetry puts below it. The app says how far, per
