@@ -577,7 +577,7 @@ export const de = {
   'seamark.popover.lightPeriodUnit': '{value} s',
   // #830: keyboard-reachable list of the seamarks inside the current map
   // viewport (components/SeamarksInView.tsx). The SUMMARY deliberately says
-  // "Schifffahrtszeichen" (the BSH's own term) rather than "Seezeichen":
+  // "Schifffahrtszeichen" rather than the app's own "Seezeichen":
   // Playwright's getByRole matches names by SUBSTRING, three live e2e specs
   // spell getByRole('checkbox', { name: 'Seezeichen' }) unscoped
   // (datalayers.spec.ts, layout.spec.ts, seamarks.spec.ts), and a summary or

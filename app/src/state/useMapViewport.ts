@@ -30,8 +30,8 @@ export type MapViewport = ViewportBounds;
 /** Exactly what this hook reads off the map — typed as a Pick so a test can
  * hand it a three-method fake instead of a MapLibre instance. `getBounds`
  * only, no `getCenter`: the centre is derived from the bounds below, which
- * also keeps the shared `test/fakeMaplibre.ts` (bounds, no centre) usable
- * by every App-level test that mounts this hook's consumer. */
+ * also keeps `App.test.tsx`'s own inline `FakeMap` (bounds, no centre)
+ * usable where it mounts this hook's consumer. */
 export type ViewportMapLike = Pick<MaplibreMap, 'getBounds' | 'on' | 'off'>;
 
 /**
