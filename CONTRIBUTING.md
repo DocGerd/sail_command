@@ -209,21 +209,6 @@ this order:
    fifth of its issues `type: bug`, rounded up (a nine-issue milestone
    reserves two, not 1.8).
 
-**Accessibility work is ranked by who is locked out.** Work that removes a
-barrier created by a *situational* impairment — glare, gloves, wet or cold
-hands, a moving boat, one-handed operation — is ranked on its merits like
-any other user-facing work; the on-deck persona is the one the design docs
-actually posit (`>=44px` touch targets "for gloved use", locked, UI
-addendum §2). Work whose only beneficiary is a keyboard-only or
-screen-reader-only user ranks one step below an equivalent non-accessibility
-feature (`high` → `medium`, `medium` → `low`). Two exceptions keep the
-higher rank: a correctness defect — a control that announces a state or an
-action it does not have, or a safety disclosure that is wrong or
-unreachable — is ranked as the bug it is; and a fix that supplies a DOM
-alternative to a map-glyph tap target below the locked `>=44px` size is
-situational-impairment work by the first sentence, whatever its issue title
-says.
-
 The reserve is a floor on bug-typed work, not empty headroom held back for
 later: a bug filed mid-cycle is triaged on its merits like any other issue and
 may land in the current cut, the next one, or `Backlog`. That reading was
@@ -242,6 +227,21 @@ written down at the `v0.18.0` cut, and three earlier milestones would miss
 it — `v0.4.0` (1 bug of 9), `v0.7.0` (2 of 16) and `v0.8.0` (0 of 10, an
 all-`chore` cut). Every milestone SHIPPED from `v0.9.0` on clears it; the
 open one is covered by the paragraph above.
+
+**Accessibility work is ranked by who is locked out.** Work that removes a
+barrier created by a *situational* impairment — glare, gloves, wet or cold
+hands, a moving boat, one-handed operation — is ranked on its merits like
+any other user-facing work; of that list, gloved use is the one case the
+design docs posit (`>=44px` touch targets "for gloved use", a hard
+constraint locked under #64 in the UI-modernization addendum, §2). Work
+whose only beneficiary is a keyboard-only or screen-reader-only user ranks
+one step below an equivalent non-accessibility feature (`high` → `medium`,
+`medium` → `low`). Two exceptions keep the higher rank: a correctness
+defect — a control that announces a state or an action it does not have, or
+a safety disclosure that is wrong or unreachable — is ranked as the bug it
+is; and a fix that supplies a DOM alternative to a map-glyph tap target
+below the locked `>=44px` size is situational-impairment work under the
+who-is-locked-out rule, whatever its issue title says.
 
 The same cut refreshes the documentation that describes project state, so it
 cannot drift from the tracker: [`ROADMAP.md`](ROADMAP.md) (milestone contents
