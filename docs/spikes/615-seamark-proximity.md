@@ -270,12 +270,46 @@ nearest hazard-mark distance per route. The driver is a throwaway vitest probe
 in a session scratchpad (not committed); its method is exactly §0's, so it can
 be re-run from this description.
 
-Results: see the implementation PR's body (the scan finished after this
-document's first commit; the figures are recorded there and folded into this
-section in the same PR). What the scan does NOT measure, so its absence is not
-read as a null result: trip rate under real forecasts (one uniform wind field
-only), Marstal-origin or other non-Flensburg origins, and any route that is
-`no-route` at DEFAULT_SETTINGS.
+Results (2026-09-02, against `develop` `84b049a2`; the run's wall time is
+deliberately NOT quoted — it shared a 32-core machine at load ~15 with
+another agent's full sweep, so its duration measures contention, not the
+solver):
+
+- 33 rows: **28 `ok`**, 5 `unreachable` — exactly the five #9
+  KNOWN_DISCONNECTED harbours (arnis, dyvig, graasten, kappeln, maasholm).
+  One `ok` row is the degenerate flensburg -> flensburg (1 leg, 0 marks,
+  nearest mark 1818 m); `marstal` is the only relaxed plan.
+- **At 300 m: 15 of the 28 `ok` routes fire (53.6 %; 15 of 27 excluding the
+  origin-to-origin row).** Count histogram over the recommended rig: 0 x13,
+  1 x4, 2 x3, 3 x6, 4 x1, 10 x1 — the 10 is rudkoebing (Rudkøbing Løb, the
+  narrow dredged channel through the flats; 56 legs). 13 of the 15 firing
+  routes state a count of 1-3.
+- Context: 200 m fires on 12/28 (0 x16, 1 x2, 2 x2, 3 x6, 4 x1, 10 x1); the
+  three routes 300 m adds over 200 m are avernakoe (nearest 287 m),
+  soenderborg (269 m) and faldsled (203 m), all inside the 200-300 m band.
+  500 m fires on 26/28 with a maximum of 12.
+- Nearest hazard mark per route, sorted (m): 5, 16, 21, 25, 27, 37, 45, 45,
+  76, 133, 141, 149, 203, 269, 287, 311, 333, 336, 358, 367, 393, 463 x5,
+  960, 1818 — 14 of the 28 routes have a hazard mark within 287 m. The five
+  identical 463 m readings are routes sharing one approach past one mark.
+- The four-route table reproduces inside the scan: soenderborg 1, marstal 3,
+  bagenkop 3 at 300 m.
+- Per-rig: the two rigs' counts DIFFER on 12 of the 28 routes (e.g. bagenkop
+  genoa 3 / fock 0; svendborg fock 3 / genoa 6), which is why the notice is
+  computed against the ACTIVE rig's legs rather than as a plan-wide figure.
+- Cost of the shipped function per plan: 0.12-1.37 ms (median 0.43 ms) over
+  1-56 legs, measured inline in the same process.
+
+Reading: on this wider aperture 300 m trips the #612 wallpaper bar too
+(53.6 %), as §4.2 predicted for every candidate from 50 m up — the surface is
+demoted accordingly and every firing line carries a magnitude, 13 of 15 of
+them a count of 1-3. The full per-route table is in the implementation PR's
+body.
+
+What the scan does NOT measure, so its absence is not read as a null result:
+trip rate under real forecasts (one uniform wind field only), Marstal-origin
+or other non-Flensburg origins, and any route that is `no-route` at
+DEFAULT_SETTINGS.
 
 ### 4.4 REJECTED thresholds
 
