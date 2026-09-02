@@ -990,8 +990,8 @@ making design-level decisions; do not silently deviate.
   service worker on a REUSED origin serving a cached build to a real browser
   PAGE, is structurally untouched: the check is a plain Node `fetch()` with no
   ServiceWorker in the picture, and closing it needs a browser-side
-  unregister+cache-clear in the specs that navigate (tracked at #832). Re-read the issue and
-  `app/e2e/helpers.ts`'s build-identity comment — the forensics live there).**
+  unregister+cache-clear in the specs that navigate (tracked at #832).
+  Re-read the issue and `app/e2e/helpers.ts`'s build-identity comment — the forensics live there).**
   Neither a free port nor a pid check closes it. **Make the assertion
   SELF-PROVING instead** — one that can only pass on the exact tree under
   test. Worked example: PR #799's
@@ -1002,8 +1002,8 @@ making design-level decisions; do not silently deviate.
   `dist/index.html` and its hashed entry chunk are byte-identical across a
   substantive `app/src/sw.ts` edit and an `app/public/data/**` edit (measured
   on `harbors.json`, PR #823 review). That is why `startPreview()`'s
-  `assertSwJsMatches` ALSO byte-compares the served `sw.js` against `dist/sw.js` — workbox's precache
-  manifest covers every `globPatterns` match that `globIgnores` does not
+  `assertSwJsMatches` ALSO byte-compares the served `sw.js` against
+  `dist/sw.js` — workbox's precache manifest covers every `globPatterns` match that `globIgnores` does not
   exclude (`data/**`, the polars, the basemap archive, the hashed JS/CSS
   chunks), so
   both change classes ARE covered — but NOT the whole of `dist/`
