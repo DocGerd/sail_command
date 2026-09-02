@@ -150,11 +150,14 @@ making design-level decisions; do not silently deviate.
   `coverage.yml` runs nightly, so a current figure usually already sits in
   Actions: read it off the run WITH its head SHA rather than paying a fresh
   local `test:coverage`. The trailing test/file COUNT is RE-MEASURED, never
-  hand-added or inferred: **2410 tests, 154 files**, all passing (measured
-  2026-09-01 at `311202c`, and corroborated by that nightly's identical
-  2410/154 from a DIFFERENT runner — counts are load-independent, so that is a
-  genuine cross-check rather than the same measurement twice). Its DURATION is
-  DISCARDED: the run was concurrent with a multi-agent workflow. The earlier
+  hand-added or inferred: **2447 tests, 157 files**, all passing (measured
+  2026-09-02 at `a7caaf4`, the v0.18.0 back-merge — NOT at `311202c`, which is
+  the coverage nightly's head above and carried 2410/154). The `a7caaf4`
+  DURATION is DISCARDED: the machine was under multi-agent load all session.
+  That earlier
+  2410/154 was itself corroborated by the nightly's identical figure from a
+  DIFFERENT runner — counts are load-independent, so that was a genuine
+  cross-check rather than the same measurement twice. The earlier
   **2160 tests / 146 files** (2026-08-24
   at `39bbcd6`, the v0.13.1 cut) was +24 over v0.13.0 = 12 plain `it(` cases plus
   ONE `it.each(Object.getOwnPropertyNames(Object.prototype))` row expanding to
@@ -197,7 +200,16 @@ making design-level decisions; do not silently deviate.
   that control against the merge-base of the branch it will certify. A moved
   `develop` does not AUTOMATICALLY invalidate it — but that exemption fails
   OPEN, so DEFAULT TO RE-RUNNING and skip only after checking the sweep's
-  actual TRANSITIVE input closure, never a remembered path list. The closure
+  actual TRANSITIVE input closure, never a remembered path list. That closure
+  can now be DERIVED — `.claude/skills/sweep-closure/` (#729) walks it from the
+  sweep's own roots. It over-reports against its modelled universe, and nothing
+  in CI runs its selftest (#836), so treat OWED as authoritative and pay it.
+  A NOT-OWED is only as good as that hand-maintained universe: before
+  accepting one, check whether the changed file is a RUNTIME input the
+  import walk cannot see — a new data asset, arm file or pipeline generator
+  outside `PATH_PREFIXES`, or a runtime-constructed edge outside
+  `EXTRA_EDGES`. The prose list that follows is a reader's aid, not the
+  source of truth. The closure
   is wider than the obvious paths: besides `app/src/routing/`,
   `app/src/lib/mask.ts`, `app/src/lib/depthGate.ts` (since #452),
   `app/public/data/`, `app/sweep/` and `pipeline/`,
@@ -440,6 +452,19 @@ making design-level decisions; do not silently deviate.
   NOT a required check (`protect-main` = `app`+`e2e`), so alerts accumulate
   silently — triage the post-merge push run. Dismissal comments are capped at
   **280 chars**, so a dismissal must point at a linked evidence record (#600).
+- **`code-scanning/alerts` returns Scorecard alerts ALONGSIDE CodeQL's, and
+  they look alike until you read `.tool.name`.** Measured 2026-09-02: both
+  alerts open that day were `tool.name: Scorecard`, each with `rule.severity`
+  `error` and a LITERAL `most_recent_instance.location.path` of "no file
+  associated with this alert" (every CodeQL alert in that day's all-states
+  listing — eleven — carried `warning`/`note` and a real path).
+  `security_severity_level: high` does NOT discriminate — both Scorecard
+  alerts read it, and so did three of those eleven. One was a genuine
+  dependency advisory (`VulnerabilitiesID`, the dev-only `browserslist`,
+  cleared by PR #855); the other was `MaintainedID`, keyed to repository age
+  ("created within the last 90 days"). Triage by TOOL before triaging by
+  severity: a Scorecard "high" is a project-practice score, not a code
+  finding, and no source file will explain it.
 - `ci.yml`'s THIRD job `hook-selftests` (advisory, not required) DISCOVERS every
   TOP-LEVEL `*.sh` in `.claude/hooks/` and `.github/scripts/` (`-maxdepth 1`,
   deliberately non-recursive, so a nested script is a conscious addition and
@@ -971,15 +996,35 @@ making design-level decisions; do not silently deviate.
   Playwright bump). The
   record is #643's verification transcript — PR #665's body publishes only the
   Chromium half.
-- **An e2e run can silently measure a FOREIGN build — and because a green e2e
-  run is what a merge is gated on, that yields a false GREEN as readily as a
-  false red (#803, OPEN as of 2026-09-01; re-read the issue, it has two
-  layers and the forensics live there).** Neither a free port nor a pid check
-  closes it. **Make the assertion SELF-PROVING instead** — one that can only
-  pass on the exact tree under test. Worked example: PR #799's
-  conflict-resolution run passed #774's `tabIndex=0` pin (branch only) AND
-  #762's guard (needs develop's `.sc-field label` CSS) in ONE run, so the
-  served build necessarily contained both sides of the merge.
+- **An e2e run can silently measure a FOREIGN build — and because a green
+  e2e run is what a merge is gated on, that yields a false GREEN as readily
+  as a false red (#803, closed 2026-09-01 by hand; fixed by PR #823 — but
+  that fix reaches only its FIRST layer, a foreign server already on the
+  port. The SECOND, a stale service worker on a REUSED origin serving a
+  cached build to a real browser PAGE, is structurally untouched: the check
+  is a plain Node `fetch()` with no ServiceWorker in the picture, and
+  closing it needs a browser-side unregister+cache-clear in the specs that
+  navigate (tracked at #832). Re-read the issue and `app/e2e/helpers.ts`'s
+  build-identity comment — the forensics live there).** Neither a free port
+  nor a pid check closes it. **Make the assertion SELF-PROVING instead** —
+  one that can only pass on the exact tree under test. Worked example: PR
+  #799's conflict-resolution run passed #774's `tabIndex=0` pin (branch
+  only) AND #762's guard (needs develop's `.sc-field label` CSS) in ONE run,
+  so the served build necessarily contained both sides of the merge. That
+  remedy's obvious mechanisation — asserting on the ENTRY CHUNK — has a
+  blind spot: `dist/index.html` and its hashed entry chunk are
+  byte-identical across a substantive `app/src/sw.ts` edit and an
+  `app/public/data/**` edit (measured on `harbors.json`, PR #823 review).
+  That is why `startPreview()`'s `assertSwJsMatches` ALSO byte-compares the
+  served `sw.js` against `dist/sw.js` — workbox's precache manifest covers
+  every `globPatterns` match that `globIgnores` does not exclude (`data/**`,
+  the polars, the basemap archive, the hashed JS/CSS chunks), so both change
+  classes ARE covered — but NOT the whole of `dist/` unconditionally, and a
+  file escapes for two independent reasons: it sits under an ignored subtree
+  (tracked at #833), or its extension is outside the token list (tracked at
+  #854 — `.txt` is, so `THIRD-PARTY-NOTICES.txt`, whose drift reds the
+  REQUIRED `app` check, passes both probes today). Read both filters off
+  `vite.config.ts`; do not copy either list here.
 - **Honest offline testing**: Playwright's `setOffline(true)` does NOT block
   service-worker fetches (Playwright #2311) — the offline spec kills the
   preview server instead. Never "simplify" that away.
@@ -1324,6 +1369,7 @@ making design-level decisions; do not silently deviate.
   | v0.15.0 | 2026-08-27 | 972 s | `success` (MEASURED before the tag push) | **DID no-op** | merge-push `33062172199` → tag `33063351792`; `smoke-probe` FAILED, prod kept serving `v0.14.0-49-g3ebb554`; fixed by the back-merge |
   | v0.16.0 | 2026-08-31 | 498 s | `success` (MEASURED before the tag push, and the no-op CALLED IN ADVANCE from it) | **DID no-op** | merge-push `33409992738` → tag `33410773664`; `smoke-probe` FAILED, prod kept serving `v0.15.0-98-g04c4e6d`; fixed by the back-merge |
   | v0.17.0 | 2026-09-01 | 58 s | `cancelled` (MEASURED — the job had not been CREATED when the tag was pushed) | safe | merge-push `33502228802` → tag `33502309994` deployed cleanly, `smoke-probe` passed |
+  | v0.18.0 | 2026-09-01 | 109 s | `success` — and BOTH deploy jobs read success, neither run cancelled, unlike every earlier row | **`smoke-probe` FAILED** | merge-push `33561093145` → tag `33561257642` on the same SHA; the tag run's `smoke-probe` 404'd its own entry chunk 10/10 over 4m31s while the merge run's passed. Back-merge `33563513697` then probed green. WHICH mechanism — a same-SHA no-op the back-merge fixed, or propagation later than that probe window — is NOT distinguishable from the end state: the back-merge's prod build produced the SAME entry-chunk name as the tag build (measured), so the end state cannot say which story produced it. Record the measurements, never a cause. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -1360,9 +1406,22 @@ making design-level decisions; do not silently deviate.
   `deploy` job was read as NOT YET CREATED (the run was still on `build`), so
   `cancel-in-progress` was called to supersede it in advance, and all five of
   its jobs then read `cancelled`.
-  **Whoever adds row 11 re-checks this paragraph: the separation still rests on
-  min(no-op) 128 s vs max(safe) 70 s, so a SAFE row at or above 128 s, or a
-  NO-OP at or below 70 s, breaks it and changes what the rows support.**
+  **The gate's answers differ in DURABILITY.** `success` is permanent — a
+  job cannot un-succeed. "Not yet created" is a snapshot of a race still
+  running: at v0.18.0 the merge-run's `deploy` job did not exist when read
+  (the safe signal) and read `success` afterwards, during the window covering
+  the ref update, the signing, the local verify and the push. Read the gate
+  IMMEDIATELY before `git push origin <tag>`, never before the sign-and-verify
+  sequence — everything between the read and the push is time the merge run
+  gets to finish in.
+  **Re-checked when row 11 (v0.18.0) was added: the separation HOLDS under
+  every reading of that row, but the BOUNDARY depends on how row 11 is
+  scored, and row 11's own text declines to name its mechanism. Score it as
+  a no-op and the boundary tightens to max(safe) 70 s vs min(no-op) 109 s;
+  leave it unscored and min(no-op) stays 128 s. Publish the TIGHTER pair,
+  because that is the conservative one: a SAFE row at or above 109 s, or a
+  NO-OP at or below 70 s, breaks the separation and changes what the rows
+  support. Whoever adds row 12 re-checks this sentence again.**
   What the rows DO rule out
   is the opposite intuition, that a fast tag push races the merge run:
   v0.13.1's 33 s is the smallest gap ever recorded and was SAFE, and
@@ -1803,10 +1862,12 @@ making design-level decisions; do not silently deviate.
   hand) — and an early commit surviving a mid-flight descope closes too (#335's
   body and title were both regex-checked clean; commit `c36f865`, written hours
   earlier, ended `Closes #319`). Auto-close fires ONLY on merge into the DEFAULT
-  branch, `develop` — so `Closes #N` in a RELEASE PR does nothing (#132 stayed
-  open after #210 merged); close release-scoped issues by hand at the cut.
+  branch, `develop` — so `Closes #N` is the RIGHT form on a feature PR that
+  delivers its issue, and does nothing in a RELEASE PR (#132 stayed open after
+  #210 merged), where only the stragglers get closed by hand at the cut.
   Keywords are `close/closes/closed`, `fix/fixes/fixed`,
-  `resolve/resolves/resolved`; `Refs #N` is the safe reference form.
+  `resolve/resolves/resolved`; `Refs #N` is the form for a PR that must NOT
+  close its issue — a partial delivery or a spike.
   PRE-MERGE, check BOTH copies — fixing the commit does not fix the body, or
   vice versa, so an agent can truthfully report "changed it to Refs" while the
   other copy still says `Closes` (#279: a stale `Closes #265` survived as the
@@ -1833,8 +1894,10 @@ making design-level decisions; do not silently deviate.
   stacking-context tie claim…`), merged via PR #735 (`d8bcf58`), left #702
   open at merge time (still open, milestone v0.16.0, as of 2026-08-26). Two
   observations, same non-closing behaviour — still
-  evidence, still not a licence: the check costs one API call and a miss
-  silently strands a deliberately-deferred issue.
+  evidence, still not a licence: the check costs one API call, and a miss now
+  cuts BOTH ways — the bracketed form silently strands a deliberately-deferred
+  issue, and, under the `Closes #N` default above, it silently leaves OPEN an
+  issue the PR actually delivered and its author believes closed.
 - **Cross-PR file collisions are invisible to per-PR review — only the
   orchestrator holds that view, and it is represented in no artifact.** Measured
   2026-08-31: two implementers were sent to append a new guard to
@@ -2031,6 +2094,16 @@ making design-level decisions; do not silently deviate.
   guard", plus an explicit pointer to the structural ones. Same move fixed a
   `v0.1.0` claim: "every UNCONDITIONALLY checked field", with the conditional
   one named as the exception.
+- **Verify a UNIVERSAL claim across its whole RANGE, not at the ends instinct
+  picks.** "Every milestone from `v0.9.0` on clears it" was FALSE as written
+  in a draft on PR #853 — quoted and refuted in `cf3d643`'s commit message
+  (2026-09-02), never committed to `CONTRIBUTING.md` in that form. The OPEN
+  `v0.19.0` sat inside that range at 1 bug of 6 at the time, while every
+  milestone SHIPPED in it by then had cleared — so a spot-check at either end,
+  `v0.9.0` or `v0.18.0`, passed while the violator sat interior. Caught by
+  verifying the universal half member by member — the audit round had not —
+  and fixed by SCOPING the sentence to SHIPPED milestones rather than hedging
+  it, per the bullet above.
 - Mutation-check new tests before trusting them: an "equivalence" test
   deriving expectations from the function under test always passes (#50
   reached reviewer approval with three such false-pass holes, caught pre-merge
@@ -2109,7 +2182,7 @@ making design-level decisions; do not silently deviate.
   reasoning was refuted — `some(cause !== null && cause !== 'budget-exhausted')`
   reds it and nothing else, 1 of 67).
 - **Reviewer-supplied verbatim text can be INVALIDATED by a sibling fix in the
-  SAME wave** — the one exception to adopting it byte-for-byte. #518 twice:
+  SAME wave** — an exception to adopting it byte-for-byte. #518 twice:
   MINOR 5 renamed a shipped i18n string, so MAJOR 4's supplied assertion
   searched for a string the app no longer emits (an assertion that can never
   fail — precisely the vacuity MAJOR 4 existed to close), and MAJOR 5 found
@@ -2464,6 +2537,26 @@ making design-level decisions; do not silently deviate.
   result — the two questions are the same question asked at different
   times, but only one of them prevents the fabricated test from ever being
   written.
+- **A verified ANTECEDENT can certify a false CONSEQUENT — enumerate the
+  shipped remedy's PARTS before ruling on what "the remedy" can prove.**
+  Measured 2026-09-02 on PR #852: a mechanism reviewer confirmed, correctly
+  and structurally, that `dist/index.html` does not move for an `sw.ts` or a
+  `public/**` edit (`vite.config.ts`'s `strategies: 'injectManifest'` builds
+  `sw.ts` as its own bundle; `public/**` is copied into `dist/` outside the
+  bundle's module graph) and on that basis passed a clause saying an
+  entry-chunk assertion "cannot prove the tree under test for exactly the
+  service-worker and offline-asset changes where a foreign build matters
+  most". The prose auditor refuted the CONCLUSION from the shipped tree:
+  `app/e2e/helpers.ts`'s `startPreview()` never rested on `index.html` alone —
+  `assertSwJsMatches` byte-compares the served `sw.js`, which `sw.ts` compiles
+  into, and that BUILT file's precache manifest covers the
+  `app/public/data/**` class the clause named — so both change classes ARE
+  covered, and the clause would have steered future sessions AWAY from a probe
+  that works (the corrected text is the #803 bullet under PWA / E2E / deploy).
+  The reviewer's own diagnosis: "I proved the antecedent and never enumerated
+  the shipped remedy's parts." Every step true, the claim false — the "what
+  class of failure can this method not detect?" question, asked of a
+  VERIFICATION rather than of a test.
 - A cross-language invariant (a CSS `var()` fallback that must equal a JS
   constant — no compiler spans CSS and TypeScript) has no automatic keeper;
   the only thing that can catch drift is a test that reads BOTH artifacts
@@ -2507,6 +2600,19 @@ making design-level decisions; do not silently deviate.
   "tighter" bound differed only by count (`sMax-sMin+1`) vs span
   (`sMax-sMin`); complying would have made a safety bound wrong by one. State
   the definition beside any countable bound.
+- **Supplied replacement text goes STALE when the passage it patches moves — a
+  precondition the adopt-verbatim rule above does not state.** Measured
+  2026-09-02 on PR #852: a reviewer's fenced block targeted the #803 bullet as
+  it read at `6fefbea`; by the time it was read that region had been rewritten
+  twice, once by the auditor's correction and once by the same reviewer's own
+  later Major, so adopting it verbatim would have REVERTED both. The reviewer
+  diagnosed it against itself — "supplied text goes stale when the thing it
+  patches moves, and I did not re-issue it against the new base before you
+  asked" — and withdrew the block rather than re-issue it. So: adopt verbatim,
+  but FIRST confirm the anchor text is still present at the head you are
+  editing; if the region has moved, ask the reviewer to RE-ISSUE against the
+  current head rather than adapting the block yourself — adapting is how a
+  third author's error enters.
 - A fix INHERITS its bug's blind spot, and **the CORRECTION is the highest-risk
   moment, not the original** — a replacement arrives sounding authoritative and
   nobody re-attacks it as hard as they attacked the original. Measured
@@ -2569,6 +2675,41 @@ making design-level decisions; do not silently deviate.
   this very class said "five" and the enumeration found ~10, because a number
   reads as an enumeration. And treat a passing selftest table as proof only of
   the shapes it lists.
+- **The successor chain, measured again at full length on a CLAUDE.md PR: PR
+  #852 (the v0.18.0 learnings) took FIVE review rounds, and every fix wave put
+  a defect inside the previous round's fix** — the commit record says so in
+  sequence (`b4f134a` "4 Majors, three inside the first fix wave", `b8aab3c`
+  "the correction to the correction", `69bb529` "a contradiction inside the
+  correction", `cdae541` "the example list contradicted its own rule"). Two
+  remedies to add to the numbered list in the bullet above. QUOTE a source
+  comment that already states the careful version rather than paraphrasing it:
+  `app/e2e/helpers.ts`'s build-identity comment already hedged what its two
+  probes reach as "not the whole of `dist/`" at that PR's base (`a7caaf4`),
+  while the CLAUDE.md #803 bullet carried no such hedge at `e6beb00`,
+  `6fefbea` or `b4f134a` and gained it only at `b8aab3c` — the #854 over-claim
+  was filed against the `b4f134a` text, with the primary artifact right about
+  the hedge all along (`cdae541` records the same comment as loose about the
+  manifest's MEMBERSHIP — never quote it as authority for that). And NIBBLING
+  at a wrap does not converge: `4b0ff81`, whose own subject is "reflow two
+  lines wave 5 ran past the wrap", still left three over-79-column lines in
+  that bullet including a NEW 106-column one, while `a337005` rewrapped the
+  whole bullet in one step and cleared every one. Verify a rewrap
+  word-normalised identical to the prior commit, as `a337005` did, because a
+  reflow that silently drops a word is undetectable by eye.
+- **The successor pattern also runs on REASONING, not only on sentences: a
+  rejection criterion applied correctly in one commit was violated by that
+  commit's own replacement.** PR #853 (`5bbfd8b`, 2026-09-02) rejected an
+  "evaluated at fill time" qualifier on CONTRIBUTING.md's bug-reserve floor on
+  the criterion that it made the SHIPPED `v0.18.0` retroactively
+  non-compliant; the replacement wording, a floor a milestone "should reach
+  its cut with", had the identical defect further back — earlier shipped
+  releases miss it — and was caught only at the next audit round (`cf3d643`:
+  "the replacement had the same defect, further back"). The criterion that had
+  just rejected one wording was not re-run against its replacement. Fixed by
+  stating the floor as forward-looking and naming the exceptions;
+  CONTRIBUTING.md's "The floor is forward-looking" paragraph names them, so do
+  not copy them here. Whenever a criterion has just rejected a draft, run it
+  against the replacement before committing.
 - Documenting a rule fixes nothing already in flight. #412 (the #368-guard
   stale-geometry finding) was filed while `app/e2e/panel-resize.spec.ts` was
   being written in parallel under a brief that predated the finding — the
@@ -3576,6 +3717,13 @@ making design-level decisions; do not silently deviate.
 - Implementation work goes through the `.claude/agents/` defs: spawn a FRESH
   `sail-implementer` per task (never reuse across tasks); one persistent
   `sail-reviewer` per PR for the fix→re-review loop, retired at merge.
+  For a PROSE-heavy change set add `claim-auditor` (#726) ALONGSIDE
+  `sail-reviewer`, never instead of it — code correctness stays the reviewer's
+  job. Spawn it FRESH per round: a resumed instance carries its own prior clean
+  verdict as a prior. Measured at the v0.18.0 docs sweep — the auditor found
+  dangling anaphors and a claim contradicted inside its own hunk, while the
+  reviewer found an acceptance check UNREACHABLE from inside the runbook;
+  neither could have found the other's.
 - If a session's OWN directives contradict that orchestrate-first mode, NAME the
   conflict in the FIRST response and ask which governs — never silently comply
   with either side. Silently obeying the restriction cost a full docs sweep plus
@@ -4102,6 +4250,22 @@ making design-level decisions; do not silently deviate.
   session off `develop` (measured 2026-08-21; nothing lost, tree was clean).
   Check `git rev-parse --abbrev-ref HEAD` after delegating any git task to an
   un-isolated agent, or give it `isolation: worktree`.
+- **That trap runs in REVERSE too: the ORCHESTRATOR can switch the shared
+  checkout out from under its own un-isolated reviewers.** Measured 2026-09-02
+  during PR #852's review: the main session switched the shared checkout to PR
+  #853's branch (`docs/contributing-milestone-policy` at `d6daf19`) while a
+  reviewer was still reading, so `HEAD` and the working tree changed under it,
+  and any briefed command naming `HEAD` or a working-tree path would silently
+  have answered about the OTHER PR — a tree that reads as if the change under
+  review had vanished, which a reviewer could report as a finding in good
+  faith. Brief the explicit head AND base SHAs, never `HEAD` or a working-tree
+  path, and have readers use `git show <sha>:<path>` and
+  `git diff <base>...<head>`. Blob reads are branch-invariant; a TREE-level
+  execution is not — that reviewer re-ran `check-no-home-paths.sh` and the
+  sweep-closure selftest in a throwaway worktree at the pinned SHA precisely
+  because a run landing post-switch would have certified the other branch's
+  `CLAUDE.md`. Send the correction to EVERY live agent, not only the ones you
+  think are affected.
 - **`gh pr merge` is SERVER-SIDE, so your local checkout never moves.** Seven
   PRs merged over ~4 h left the main tree at the pre-milestone commit. Harmless
   while every check names an explicit ref (`origin/develop`,

@@ -1,0 +1,327 @@
+{
+  "route": "R1-primary-churn",
+  "baselinePlanFingerprint": "R1-primary-churn",
+  "perturbation": "sailPreferenceKn + 2.0",
+  "anyDiffered": true,
+  "revertMatches": true,
+  "baseline": [
+    {
+      "route": "R1-primary-churn",
+      "originId": "flensburg",
+      "destId": "soenderborg",
+      "twsKn": 4,
+      "wdirDeg": 62,
+      "sailId": "genoa",
+      "boat": "Salona 45",
+      "settings": "DEFAULT_SETTINGS",
+      "departureIso": "2026-07-15T06:00:00.000Z",
+      "status": "ok",
+      "noRouteReasonLabel": null,
+      "legsPost": 19,
+      "legsPre": 23,
+      "legsPrePostEqualModeChanges": true,
+      "modeChanges": 0,
+      "modeChangesPre": 0,
+      "modeChangesPrePostEqual": true,
+      "modeRuns": "M(19)",
+      "shortSailRuns": 0,
+      "modeChangeJoints": [],
+      "mmJoints": 5,
+      "msmTriples": 0,
+      "reversals45": 5,
+      "signFlips": 6,
+      "motorShareByTimePct": 100,
+      "motorShareByDistPct": 100,
+      "etaMin": 183.6,
+      "chordNavigable": false,
+      "legsFingerprintPrefix16": "1ba60da557b0805a",
+      "legsFingerprintFull": "1ba60da557b0805ab6b144fea0b11e413b7815a8c8cc663291b0edfe03316476",
+      "planFingerprintPrefix16": "e0df798a2bc1762f",
+      "planFingerprintFull": "e0df798a2bc1762f4868470c243f0df96f43c7cf2a9065f3526471cff240965b",
+      "mergeCallConfounded": false
+    },
+    {
+      "route": "R1-primary-churn",
+      "originId": "flensburg",
+      "destId": "soenderborg",
+      "twsKn": 4,
+      "wdirDeg": 62,
+      "sailId": "fock",
+      "boat": "Salona 45",
+      "settings": "DEFAULT_SETTINGS",
+      "departureIso": "2026-07-15T06:00:00.000Z",
+      "status": "ok",
+      "noRouteReasonLabel": null,
+      "legsPost": 19,
+      "legsPre": 22,
+      "legsPrePostEqualModeChanges": true,
+      "modeChanges": 0,
+      "modeChangesPre": 0,
+      "modeChangesPrePostEqual": true,
+      "modeRuns": "M(19)",
+      "shortSailRuns": 0,
+      "modeChangeJoints": [],
+      "mmJoints": 6,
+      "msmTriples": 0,
+      "reversals45": 6,
+      "signFlips": 8,
+      "motorShareByTimePct": 100,
+      "motorShareByDistPct": 100,
+      "etaMin": 183.3,
+      "chordNavigable": false,
+      "legsFingerprintPrefix16": "80c7ba403a1c1490",
+      "legsFingerprintFull": "80c7ba403a1c149006ca86fc23d0cfc18fa263d40ac80b416ca7f80386be41a4",
+      "planFingerprintPrefix16": "e0df798a2bc1762f",
+      "planFingerprintFull": "e0df798a2bc1762f4868470c243f0df96f43c7cf2a9065f3526471cff240965b",
+      "mergeCallConfounded": false
+    }
+  ],
+  "perturbed": [
+    {
+      "route": "R1-primary-churn",
+      "originId": "flensburg",
+      "destId": "soenderborg",
+      "twsKn": 4,
+      "wdirDeg": 62,
+      "sailId": "genoa",
+      "boat": "Salona 45",
+      "settings": "DEFAULT_SETTINGS (perturbed)",
+      "departureIso": "2026-07-15T06:00:00.000Z",
+      "status": "ok",
+      "noRouteReasonLabel": null,
+      "legsPost": 28,
+      "legsPre": 30,
+      "legsPrePostEqualModeChanges": true,
+      "modeChanges": 10,
+      "modeChangesPre": 10,
+      "modeChangesPrePostEqual": true,
+      "modeRuns": "M(1) S(1) M(10) S(2) M(1) S(1) M(1) S(1) M(5) S(1) M(4)",
+      "shortSailRuns": 1,
+      "modeChangeJoints": [
+        {
+          "index": 0,
+          "kindBefore": "motor",
+          "kindAfter": "sail",
+          "absDeltaHeadingDeg": 20
+        },
+        {
+          "index": 1,
+          "kindBefore": "sail",
+          "kindAfter": "motor",
+          "absDeltaHeadingDeg": 20
+        },
+        {
+          "index": 11,
+          "kindBefore": "motor",
+          "kindAfter": "sail",
+          "absDeltaHeadingDeg": 57
+        },
+        {
+          "index": 13,
+          "kindBefore": "sail",
+          "kindAfter": "motor",
+          "absDeltaHeadingDeg": 35.07281635021411
+        },
+        {
+          "index": 14,
+          "kindBefore": "motor",
+          "kindAfter": "sail",
+          "absDeltaHeadingDeg": 50
+        },
+        {
+          "index": 15,
+          "kindBefore": "sail",
+          "kindAfter": "motor",
+          "absDeltaHeadingDeg": 50
+        },
+        {
+          "index": 16,
+          "kindBefore": "motor",
+          "kindAfter": "sail",
+          "absDeltaHeadingDeg": 44.97310448717923
+        },
+        {
+          "index": 17,
+          "kindBefore": "sail",
+          "kindAfter": "motor",
+          "absDeltaHeadingDeg": 44.97310448717923
+        },
+        {
+          "index": 22,
+          "kindBefore": "motor",
+          "kindAfter": "sail",
+          "absDeltaHeadingDeg": 41.7921209405485
+        },
+        {
+          "index": 23,
+          "kindBefore": "sail",
+          "kindAfter": "motor",
+          "absDeltaHeadingDeg": 41.7921209405485
+        }
+      ],
+      "mmJoints": 5,
+      "msmTriples": 4,
+      "reversals45": 8,
+      "signFlips": 18,
+      "motorShareByTimePct": 75.8,
+      "motorShareByDistPct": 83,
+      "etaMin": 207,
+      "chordNavigable": false,
+      "legsFingerprintPrefix16": "d5cd1a6c4e974227",
+      "legsFingerprintFull": "d5cd1a6c4e974227ff772c1937ca2c1925760e540ff1688feb742f25443d6c01",
+      "planFingerprintPrefix16": "ae2fad69cba15225",
+      "planFingerprintFull": "ae2fad69cba15225d15199d9036780ef2c24a766eeed314bde15728e77581c9a",
+      "mergeCallConfounded": false
+    },
+    {
+      "route": "R1-primary-churn",
+      "originId": "flensburg",
+      "destId": "soenderborg",
+      "twsKn": 4,
+      "wdirDeg": 62,
+      "sailId": "fock",
+      "boat": "Salona 45",
+      "settings": "DEFAULT_SETTINGS (perturbed)",
+      "departureIso": "2026-07-15T06:00:00.000Z",
+      "status": "ok",
+      "noRouteReasonLabel": null,
+      "legsPost": 31,
+      "legsPre": 32,
+      "legsPrePostEqualModeChanges": true,
+      "modeChanges": 19,
+      "modeChangesPre": 19,
+      "modeChangesPrePostEqual": true,
+      "modeRuns": "S(1) M(6) S(1) M(1) S(1) M(1) S(1) M(1) S(1) M(4) S(1) M(1) S(1) M(1) S(1) M(2) S(1) M(1) S(1) M(3)",
+      "shortSailRuns": 4,
+      "modeChangeJoints": [
+        {
+          "index": 0,
+          "kindBefore": "sail",
+          "kindAfter": "motor",
+          "absDeltaHeadingDeg": 12.800000000000011
+        },
+        {
+          "index": 6,
+          "kindBefore": "motor",
+          "kindAfter": "sail",
+          "absDeltaHeadingDeg": 40
+        },
+        {
+          "index": 7,
+          "kindBefore": "sail",
+          "kindAfter": "motor",
+          "absDeltaHeadingDeg": 67
+        },
+        {
+          "index": 8,
+          "kindBefore": "motor",
+          "kindAfter": "sail",
+          "absDeltaHeadingDeg": 57
+        },
+        {
+          "index": 9,
+          "kindBefore": "sail",
+          "kindAfter": "motor",
+          "absDeltaHeadingDeg": 50
+        },
+        {
+          "index": 10,
+          "kindBefore": "motor",
+          "kindAfter": "sail",
+          "absDeltaHeadingDeg": 50
+        },
+        {
+          "index": 11,
+          "kindBefore": "sail",
+          "kindAfter": "motor",
+          "absDeltaHeadingDeg": 50
+        },
+        {
+          "index": 12,
+          "kindBefore": "motor",
+          "kindAfter": "sail",
+          "absDeltaHeadingDeg": 50
+        },
+        {
+          "index": 13,
+          "kindBefore": "sail",
+          "kindAfter": "motor",
+          "absDeltaHeadingDeg": 50
+        },
+        {
+          "index": 17,
+          "kindBefore": "motor",
+          "kindAfter": "sail",
+          "absDeltaHeadingDeg": 40
+        },
+        {
+          "index": 18,
+          "kindBefore": "sail",
+          "kindAfter": "motor",
+          "absDeltaHeadingDeg": 40
+        },
+        {
+          "index": 19,
+          "kindBefore": "motor",
+          "kindAfter": "sail",
+          "absDeltaHeadingDeg": 40
+        },
+        {
+          "index": 20,
+          "kindBefore": "sail",
+          "kindAfter": "motor",
+          "absDeltaHeadingDeg": 40
+        },
+        {
+          "index": 21,
+          "kindBefore": "motor",
+          "kindAfter": "sail",
+          "absDeltaHeadingDeg": 48.452760634406616
+        },
+        {
+          "index": 22,
+          "kindBefore": "sail",
+          "kindAfter": "motor",
+          "absDeltaHeadingDeg": 58.547239365593384
+        },
+        {
+          "index": 24,
+          "kindBefore": "motor",
+          "kindAfter": "sail",
+          "absDeltaHeadingDeg": 50
+        },
+        {
+          "index": 25,
+          "kindBefore": "sail",
+          "kindAfter": "motor",
+          "absDeltaHeadingDeg": 50
+        },
+        {
+          "index": 26,
+          "kindBefore": "motor",
+          "kindAfter": "sail",
+          "absDeltaHeadingDeg": 50
+        },
+        {
+          "index": 27,
+          "kindBefore": "sail",
+          "kindAfter": "motor",
+          "absDeltaHeadingDeg": 57
+        }
+      ],
+      "mmJoints": 2,
+      "msmTriples": 9,
+      "reversals45": 15,
+      "signFlips": 17,
+      "motorShareByTimePct": 78,
+      "motorShareByDistPct": 85.3,
+      "etaMin": 210.1,
+      "chordNavigable": false,
+      "legsFingerprintPrefix16": "93ee2d289e5e278d",
+      "legsFingerprintFull": "93ee2d289e5e278dd9b7d898ff25334f6f1846982a55261b7f420e3963c9662f",
+      "planFingerprintPrefix16": "ae2fad69cba15225",
+      "planFingerprintFull": "ae2fad69cba15225d15199d9036780ef2c24a766eeed314bde15728e77581c9a",
+      "mergeCallConfounded": false
+    }
+  ]
+}

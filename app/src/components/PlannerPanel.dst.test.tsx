@@ -62,6 +62,11 @@ function renderPanel(overrides: Overrides = {}) {
     viaPoints: [],
     onRemoveVia: vi.fn(),
     onReorderVia: vi.fn(),
+    // #829: keyboard-reachable coordinate entry — this file doesn't exercise
+    // it, just needs the two new required props satisfied like every other
+    // mock callback here.
+    onAddVia: vi.fn(),
+    onUpdateVia: vi.fn(),
     departureMs: Date.UTC(2026, 6, 20, 9, 0, 0),
     onDepartureChange: vi.fn(),
     settings: DEFAULT_SETTINGS,

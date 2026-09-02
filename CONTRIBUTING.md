@@ -170,15 +170,14 @@ labels on **pull requests** are applied automatically from changed paths by
 
 **Milestones**
 
-- `v0.18.0` — this cut; its milestone closes when the release PR merges and
-  the tag is pushed.
-- `v0.19.0` — the next MINOR release.
-- `v0.20.0` — opens fresh at this cut, per the roll-forward convention
-  below.
+- `v0.20.0` — the milestone now being filled; it closes when the release PR
+  merges and the tag is pushed.
+- `v0.21.0` — the next MINOR release, opened fresh at the `v0.19.0` cut per
+  the roll-forward convention below.
 - `Backlog` — accepted, not yet scheduled into a release.
 - `Icebox` — deferred / maybe-never; revisit opportunistically.
 
-`v0.4.0` through `v0.17.0` are closed (plus the `v0.5.1`, `v0.12.1`, and
+`v0.4.0` through `v0.19.0` are closed (plus the `v0.5.1`, `v0.12.1`, and
 `v0.13.1` patch milestones). Whichever cut is in flight is always the
 exception, and reads the same way every time: its issues are closed while
 its milestone object is not, because that closes only at tag push (first
@@ -197,6 +196,52 @@ Roll milestones forward at each release cut: the shipped milestone closes, the
 opened. A PATCH milestone (`vX.Y.Z`, `Z > 0`) is the exception — it closes at
 its own cut and shifts nothing: the pending `vX.(Y+1).0` stays where it is.
 `Backlog` and `Icebox` persist across releases.
+
+**Filling a release milestone.** The maintainer allocates scope at each cut in
+this order:
+
+1. **Priority first** — `priority: high` before `medium` before `low`.
+2. **Then user-facing work** — `type: feature` and user-visible `type: bug`
+   outrank `type: chore` and `type: docs` at equal priority. A `chore` that
+   unblocks a feature inherits the feature's rank; the promotion is stated
+   explicitly.
+3. **A 20% bug reserve** — a milestone should reach its cut with at least a
+   fifth of its issues `type: bug`, rounded up (a nine-issue milestone
+   reserves two, not 1.8).
+
+The reserve is a floor on bug-typed work, not empty headroom held back for
+later: a bug filed mid-cycle is triaged on its merits like any other issue and
+may land in the current cut, the next one, or `Backlog`. That reading was
+settled on 2026-09-01, at the `v0.18.0` cut — "at least 20% bug-typed" over the
+competing "at least 20% of slots left unfilled"; neither is inferable from the
+milestones themselves, which is why it is written down here.
+
+The floor is the target a cut is planned against, not a property every open
+milestone already satisfies. One still being filled may sit below the floor
+— closing that gap is part of the triage that opens the cut, and a milestone
+that misses it AT the cut is a finding to report, not a reason to restate
+the rule.
+
+The floor is forward-looking and is not applied retroactively: it was first
+written down at the `v0.18.0` cut, and three earlier milestones would miss
+it — `v0.4.0` (1 bug of 9), `v0.7.0` (2 of 16) and `v0.8.0` (0 of 10, an
+all-`chore` cut). Every milestone SHIPPED from `v0.9.0` on clears it; the
+open one is covered by the paragraph above.
+
+**Accessibility work is ranked by who is locked out.** Work that removes a
+barrier created by a *situational* impairment — glare, gloves, wet or cold
+hands, a moving boat, one-handed operation — is ranked on its merits like
+any other user-facing work; of that list, gloved use is the one case the
+design docs posit (`>=44px` touch targets "for gloved use", a hard
+constraint locked under #64 in the UI-modernization addendum, §2). Work
+whose only beneficiary is a keyboard-only or screen-reader-only user ranks
+one step below an equivalent non-accessibility feature (`high` → `medium`,
+`medium` → `low`). Two exceptions keep the higher rank: a correctness
+defect — a control that announces a state or an action it does not have, or
+a safety disclosure that is wrong or unreachable — is ranked as the bug it
+is; and a fix that supplies a DOM alternative to a map-glyph tap target
+below the locked `>=44px` size is situational-impairment work under the
+who-is-locked-out rule, whatever its issue title says.
 
 The same cut refreshes the documentation that describes project state, so it
 cannot drift from the tracker: [`ROADMAP.md`](ROADMAP.md) (milestone contents

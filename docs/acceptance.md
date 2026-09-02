@@ -37,7 +37,13 @@ results table at the bottom, and note it in the box below the check.
       unsurveyed/drying water carries no hatching (#598/#597), and offers a
       "Show hatch overlay" / "Schraffur anzeigen" checkbox that switches the
       hatch off independently of the "Water depths" toggle itself, without
-      touching the depth-colour ramp (#681). In short landscape, and in any
+      touching the depth-colour ramp (#681). Untick that checkbox: the
+      "Cautious-reading hatch" swatch row and the basis sentence leave the
+      legend while the checkbox itself and the unsurveyed-water caveat stay
+      — and the same two rows leave it while the "Water depths" toggle is
+      off, since the hatch is absent from the map in either case; in that
+      state the hatch checkbox is still shown but disabled (#839). Tick
+      both back on before continuing. In short landscape, and in any
       narrow layout with too little height left below the compass, this
       legend is deliberately not rendered at all here — by design, not a
       missing control (in that specific combination, short landscape with no
@@ -82,6 +88,13 @@ results table at the bottom, and note it in the box below the check.
       result shows a note that it is not reachable by the router at any
       depth setting, before you try planning to it, instead of only after a
       full solve returns the generic "cannot be reached" message (#652).
+      Then pick one of them as the destination, with any ordinary harbour
+      (e.g. Flensburg) as the origin: the same note stays on the
+      selected-destination row in the planner (it used to vanish on
+      selection), and pressing "Plan route" against it fails with a banner
+      carrying that same sentence in place of the generic "No route found —
+      the destination cannot be reached …" message (#834). Clear the
+      destination again before continuing.
 - [ ] **Cable/pipeline seamarks visible at Standard.** Turn the **Seamarks**
       map overlay on — it is OFF by default, unlike "Water depths" — and
       leave the Seamarks display-tier control at its default "Standard"
@@ -89,6 +102,19 @@ results table at the bottom, and note it in the box below the check.
       known to carry submarine cable or pipeline marks (e.g. the Flensburg
       Fjord approaches); they render at Standard,
       not only at "All" (#521).
+- [ ] **Seamarks in view, without a pointer.** With the Seamarks overlay
+      still on, open the collapsed "Seamarks in view" / "Schifffahrtszeichen
+      im Kartenausschnitt" disclosure that sits on the Plan tab below the
+      planner: its summary carries the count of marks inside the current
+      map view, the rows are sorted by distance from the map centre, and
+      each row is a button that reads as the mark's own map popover would.
+      Activate one with Enter or Space (or a click) and that mark's popup
+      opens on the map at the mark. Pan the map and the list follows the
+      new view once the map settles. Two designed states are not defects:
+      with the Seamarks overlay OFF the list shows a hint that the seamark
+      layer is hidden instead of any rows, and with more than 50 marks in
+      view only the 50 nearest the centre are listed under a sentence saying
+      so — zoom in to see all of them (#830).
 - [ ] **"Display options" collapses the overlay cluster.** The route-overlay
       toggles, forecast-time slider, and route legend now live behind one
       "Display options" control instead of always covering part of the
@@ -104,7 +130,10 @@ results table at the bottom, and note it in the box below the check.
       different default from "Display options" itself, above), while on
       wide layouts it starts closed, unchanged from before #813. Confirm
       the default for **the width you are testing at**, and that toggling
-      it by hand still works. (To see the other default you must resize
+      it by hand still works. The "Show hatch overlay" toggle behaves here
+      as in the pre-plan legend: unticked, the hatch swatch row and the
+      basis sentence leave this nested legend too, while the toggle and the
+      #597 caveat stay (#839). (To see the other default you must resize
       *and reload* — the default is seeded once when the route overlay
       mounts, and once you have toggled "Display options" by hand a
       resize alone will not re-seed it.)
@@ -257,15 +286,40 @@ selected in §1.
       failure to file. To reach the longer below-draft wording on PIRANJA,
       type its own default 2.8 m into the safety depth field on the Boat
       tab and re-plan.
+- [ ] **2.14 Seamark-proximity line.** If the route summary shows "This
+      route passes closer than 300 m to a cardinal or isolated-danger mark
+      …" — or the plural form naming how many — that is the #615 advisory:
+      a plain line beside the marginal-depth line, never a banner. The
+      router did not use the mark, and the sentence deliberately names no
+      side to pass; both are correct. The line is wind-dependent — the #615
+      spike measured this route firing with three marks and Route B with
+      one, at a single uniform wind field — so a different count, or no line
+      at all on a route the day's wind took elsewhere, is not a defect to
+      file. When it is present, confirm the count is plausible against the
+      cardinal marks the Seamarks overlay shows near the route.
+- [ ] **2.15 Waypoint by typed coordinates.** In the planner's via section,
+      type a latitude and longitude on water inside the covered area into
+      the "Latitude" / "Longitude" fields and press "Add coordinates"
+      ("Koordinaten hinzufügen"): the point appears in the via list and as a
+      marker on the map immediately, but the route line does not move until
+      you press "Plan route" again — a via edit is applied on the next plan,
+      never automatically. Press that point's own "Edit coordinates (point
+      N): …" button: the fields fill with its coordinates, the button reads
+      "Update coordinates", and focus lands in the latitude field; change a
+      value, update, and the marker moves. Coordinates outside the covered
+      area are refused with "The coordinates lie outside the covered area
+      (Flensburg Fjord / Danish South Sea)." and nothing is added. Re-plan
+      through the point and confirm 2.1 still holds, then remove it
+      ("Remove waypoint N") and re-plan before §3 (#829).
 
 **Result:** Pass / Fail / Partial — notes: ___________________________
 
 ## 3. Route B — Flensburg → Sønderborg
 
 Repeat the same route/rig/motor/ETA checks as §2 for Flensburg → Sønderborg.
-Checks 2.9–2.13 (depth hatching, marginal-depth line, depth profile,
-per-leg cautious marker, shallow-water warning) apply here too, with the
-same expected outcomes.
+Checks 2.9–2.14 (depth hatching, marginal-depth line, depth profile,
+per-leg cautious marker, shallow-water warning, seamark-proximity line)
+apply here too, with the same expected outcomes.
 
 - [ ] **3.1** Route stays in water.
 - [ ] **3.2** Rounds Broager Land / Kegnæs sanely.

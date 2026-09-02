@@ -108,6 +108,20 @@ export const en = {
   'planner.via.moveUp': 'Move waypoint {index} up',
   'planner.via.moveDown': 'Move waypoint {index} down',
   'planner.via.marker': 'Waypoint {index}',
+  // #829: keyboard-reachable coordinate entry — a second producer/renderer of
+  // the same LatLon the map tap already produces (spike
+  // docs/spikes/714-keyboard-map-equivalents.md §3.1/§5.1). "coord.edit" is
+  // deliberately worded to avoid containing "Waypoint {index}" as a
+  // substring — CLAUDE.md's getByRole-substring-collision lesson: it would
+  // otherwise also match ViaMarkers.tsx's own "Waypoint {index}" marker
+  // aria-label under a non-exact getByRole locator.
+  'planner.via.coord.latLabel': 'Latitude',
+  'planner.via.coord.lonLabel': 'Longitude',
+  'planner.via.coord.add': 'Add coordinates',
+  'planner.via.coord.update': 'Update coordinates',
+  'planner.via.coord.edit': 'Edit coordinates (point {index}): {coord}',
+  'planner.via.coord.outOfRegion':
+    'The coordinates lie outside the covered area (Flensburg Fjord / Danish South Sea).',
   'planner.departure.label': 'Departure',
   'planner.plan': 'Plan route',
   // §3.5 empty/first-run: friendly guidance near the primary action while no
@@ -442,6 +456,36 @@ export const en = {
     '{dist} of this route crosses water that a more cautious reading of the charted depth data puts below your safety depth of {requested} m.',
   'route.marginal.noticeSevere':
     "Caution: {dist} of this route crosses water that a more cautious reading of the charted depth data puts below your safety depth of {requested} m — at this setting that reading can fall below this boat's {draft} m draft.",
+  // #615: the advisory SEAMARK-PROXIMITY notice — a quiet route-scoped line,
+  // sibling of route.marginal.notice above, for a route whose active-rig legs
+  // pass closer than SEAMARK_PROXIMITY_M (lib/seamarkProximity.ts) to a
+  // cardinal or isolated-danger mark. `{dist}` is interpolated FROM that
+  // constant, never typed here, so copy and threshold cannot drift apart
+  // silently. Singular/`.plural` follows route.shallow.locator(.plural)
+  // above: the singular omits the count ("a … mark" already says one).
+  //
+  // Every clause is load-bearing — do not trim any of them as verbose:
+  // - "closer than {dist} m": an UPPER BOUND, true by construction of the
+  //   trigger. Deliberately NOT the measured minimum, which would assert
+  //   chart-grade positioning that neither the ~46 m mask grid, OSM-sourced
+  //   mark coordinates nor merged isochrone-chord legs support (the same
+  //   instinct as cautiousDepthLowerBoundM flooring rather than rounding).
+  // - the count in .plural: #612's bar — a bare presence notice is
+  //   wallpaper; the line must carry a magnitude.
+  // - "does not use marks when routing": #495's actual finding, stated as a
+  //   fact about SailCommand, not about the sea.
+  // - "makes no claim about which side of one to pass": the issue's hard
+  //   constraint, an explicit refusal rather than an omission. A cardinal
+  //   mark's whole function is to indicate the navigable side of a danger
+  //   (the IALA cardinal semantics seamarkGlyphs.ts already renders), so
+  //   copy phrased as "hazard near your route" would be wrong in the
+  //   safety-relevant direction — hence "mark", never "hazard".
+  // - "check it against an official chart": the same pointer AWAY from the
+  //   app's own authority that route.shallow.caveat above carries.
+  'route.seamarks.proximity':
+    'This route passes closer than {dist} m to a cardinal or isolated-danger mark. SailCommand does not use marks when routing and makes no claim about which side of one to pass — check it against an official chart.',
+  'route.seamarks.proximity.plural':
+    'This route passes closer than {dist} m to {count} cardinal or isolated-danger marks. SailCommand does not use marks when routing and makes no claim about which side of one to pass — check them against an official chart.',
   'route.totals.distance': 'Distance',
   'route.totals.duration': 'Duration',
   'route.totals.eta': 'ETA',
@@ -622,6 +666,20 @@ export const en = {
   // {value} s — same text in both languages, but still routed through the
   // dict (#300) rather than hardcoded, per repo convention.
   'seamark.popover.lightPeriodUnit': '{value} s',
+  // #830: the keyboard-reachable seamarks-in-view list — see dict.de.ts's
+  // own #830 comment for why the German summary avoids the word "Seezeichen".
+  'seamarks.inView.summary': 'Seamarks in view ({count})',
+  'seamarks.inView.summaryPending': 'Seamarks in view',
+  'seamarks.inView.hint':
+    'Sorted by distance from the map centre. Selecting a row shows the mark in a popup on the map.',
+  'seamarks.inView.layerOff':
+    'The seamark layer is hidden. Turn on the "Seamarks" checkbox on the map to list them.',
+  'seamarks.inView.loading': 'Loading seamarks …',
+  'seamarks.inView.empty': 'No seamarks in the current map view.',
+  // {shown} is SEAMARKS_IN_VIEW_MAX (lib/seamarksInView.ts) — the copy never
+  // types the number, so constant and sentence cannot drift apart.
+  'seamarks.inView.truncated':
+    'Only the {shown} seamarks nearest the map centre of the {total} in view are listed — zoom in to see all of them.',
   // Seamark popover VALUES (#300): translated from the OSM tag values
   // actually present in app/public/data/seamarks.json (not the full IALA
   // tagging scheme) — seamarkPopover.coverage.test.ts pins the coverage.

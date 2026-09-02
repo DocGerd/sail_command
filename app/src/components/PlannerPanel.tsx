@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import type { Harbor, LatLon, PickedPoint, Plan, RigResult, SailId, Settings } from '../types';
 import { useLang, useT } from '../i18n';
+// #834: the `harbors` prop is widened from `Harbor[]` to
+// `HarborWithReachability[]` below — the selected-endpoint row must see the
+// same build-generated `knownDisconnected` field the picker's option row
+// already discloses (#652). See that module's own comment for why it lives
+// outside the `app/sweep/` #282 closure rather than on `Harbor` in
+// `types.ts`.
+import type { HarborWithReachability } from '../lib/harborReachability';
 import { FORECAST_DAYS } from '../services/openMeteo';
 import {
   formatDateTime,
@@ -9,7 +16,13 @@ import {
   formatNm,
   toLocalInputValue,
 } from '../lib/format';
-import { GpxParseError, MAX_GPX_FILE_BYTES, parseGpx, type GpxErrorReason } from '../lib/gpx';
+import {
+  DATA_AREA,
+  GpxParseError,
+  MAX_GPX_FILE_BYTES,
+  parseGpx,
+  type GpxErrorReason,
+} from '../lib/gpx';
 import { activeRigResult } from '../lib/plan';
 import { routingSettingsDirty } from '../lib/planForm';
 import { renderRigVerdict, resultSummary, sailLabelKey } from '../lib/resultSummary';
@@ -48,7 +61,7 @@ export type PlannerStatus =
   | { phase: 'error'; message: string };
 
 export interface PlannerPanelProps {
-  harbors: Harbor[];
+  harbors: HarborWithReachability[];
   origin: PickedPoint | null;
   destination: PickedPoint | null;
   onPickOrigin: (p: PickedPoint) => void;
@@ -67,6 +80,13 @@ export interface PlannerPanelProps {
   viaPoints: LatLon[];
   onRemoveVia: (index: number) => void;
   onReorderVia: (index: number, direction: 'up' | 'down') => void;
+  // #829: keyboard-reachable equivalents of the map-tap 'via' path — same
+  // producer shape as App.tsx's handleMapTap 'via' branch
+  // (handleViaPointsChange([...viaPoints, p])), just fed a typed LatLon
+  // instead of a map click. onUpdateVia is the same idea for repositioning
+  // an already-placed point (spike §2 row 2 / §3.1's "extended slightly").
+  onAddVia: (p: LatLon) => void;
+  onUpdateVia: (index: number, p: LatLon) => void;
   departureMs: number;
   onDepartureChange: (ms: number) => void;
   settings: Settings;
@@ -136,6 +156,33 @@ export function harborToPickedPoint(h: Harbor, lang: 'de' | 'en'): PickedPoint {
   return { source: 'harbor', point: h.snap, harborId: h.id, label: h.names[lang] };
 }
 
+// #829: the coordinate-entry row's seed value, before a user has typed or an
+// "edit" trigger has seeded it from an existing via point — the DATA_AREA
+// midpoint, which is inside the region by construction (the half-open
+// interval below is never on an edge for a midpoint of two bounds that
+// differ by 1.6°/1.0°). Module-level so it's computed once, not per render.
+const VIA_COORD_DEFAULT: LatLon = {
+  lat: (DATA_AREA.south + DATA_AREA.north) / 2,
+  lon: (DATA_AREA.west + DATA_AREA.east) / 2,
+};
+
+// #829: identical half-open-interval check to gpx.ts's pointFrom (west/south
+// inclusive, east/north exclusive) — reusing DATA_AREA rather than a second
+// hand-copied bound, per the spike's §3.1 "not a new design decision, it is
+// applying an existing one to a second entry point". gpx.ts itself is out of
+// this task's scope (its own out-of-bounds check stays the only export
+// consumer of DATA_AREA that ALSO throws); this is a second, independent
+// reader of the same constant.
+// eslint-disable-next-line react-refresh/only-export-components
+export function isInViaDataArea(p: LatLon): boolean {
+  return !(
+    p.lon < DATA_AREA.west ||
+    p.lon >= DATA_AREA.east ||
+    p.lat < DATA_AREA.south ||
+    p.lat >= DATA_AREA.north
+  );
+}
+
 export default function PlannerPanel({
   harbors,
   origin,
@@ -147,6 +194,8 @@ export default function PlannerPanel({
   viaPoints,
   onRemoveVia,
   onReorderVia,
+  onAddVia,
+  onUpdateVia,
   departureMs,
   onDepartureChange,
   settings,
@@ -220,6 +269,96 @@ export default function PlannerPanel({
     // Change buttons instead carry a `data-focus-target` unique per endpoint.
     document.querySelector<HTMLButtonElement>(`[data-focus-target="${target}-change"]`)?.focus();
   });
+
+  // #829: keyboard-reachable via-point coordinate entry (spike §3.1/§5.1).
+  // ONE coordinate-entry row serves both "Add a new via point" and "Update
+  // an already-placed one" — the spike's own framing ("the same component,
+  // not a second one") — switching mode via viaCoordMode rather than
+  // rendering a duplicate lat/lon pair per row (which would grow every
+  // .planner-via-row by a 4th 44px control at exactly the narrow widths
+  // #708's own comment already flags as tight with three).
+  const [viaCoordMode, setViaCoordMode] = useState<
+    { kind: 'add' } | { kind: 'update'; index: number }
+  >({ kind: 'add' });
+  const [viaCoordLat, setViaCoordLat] = useState(VIA_COORD_DEFAULT.lat);
+  const [viaCoordLon, setViaCoordLon] = useState(VIA_COORD_DEFAULT.lon);
+  const [viaCoordError, setViaCoordError] = useState(false);
+
+  // #863 review MAJOR: viaCoordMode.index was captured once on entering
+  // update mode and never re-validated against viaPoints — nothing disables
+  // a DIFFERENT row's remove/reorder buttons while this form is open, so a
+  // keyboard user could open update mode on point B, remove or reorder point
+  // A via ITS OWN button, then commit — silently overwriting whatever now
+  // sits at the stale index (or, once the array is shorter than the index,
+  // silently dropping the edit). Fixed the same way NumberInput.tsx's own
+  // prevValue/draft resync derives state from a changed prop during
+  // render: viaPoints is a NEW array reference on every add/
+  // remove/reorder/update (App.tsx's handleViaPointsChange always replaces
+  // it, never mutates in place), so a reference change is exactly the
+  // signal that the index this form is holding may no longer mean what it
+  // meant when the form was opened. A successful commit already resets to
+  // 'add' itself (below) in the SAME synchronous handler that changes the
+  // prop, so by the time this component re-renders with the new prop,
+  // viaCoordMode is already 'add' and this is a no-op then — it only fires
+  // for a change that happened WITHOUT going through this form's own commit.
+  const [prevViaPoints, setPrevViaPoints] = useState(viaPoints);
+  if (viaPoints !== prevViaPoints) {
+    setPrevViaPoints(viaPoints);
+    if (viaCoordMode.kind === 'update') {
+      setViaCoordMode({ kind: 'add' });
+      setViaCoordLat(VIA_COORD_DEFAULT.lat);
+      setViaCoordLon(VIA_COORD_DEFAULT.lon);
+      setViaCoordError(false);
+    }
+  }
+
+  // Same ref-write-then-no-deps-effect shape as pendingFocusRef above (#695:
+  // drive focus from the callback that knows the user acted, never a derived
+  // boolean/prop diff) — here there's only one target element with a stable
+  // id, so no data-focus-target indirection is needed.
+  const pendingViaCoordFocusRef = useRef(false);
+  useEffect(() => {
+    if (!pendingViaCoordFocusRef.current) return;
+    pendingViaCoordFocusRef.current = false;
+    document.getElementById('planner-via-coord-lat')?.focus();
+  });
+
+  // Pressing an already-placed via point's own coordinate button (below)
+  // toggles: a second press on the SAME index leaves update mode and returns
+  // to "Add"; a press on a DIFFERENT index re-seeds the fields for that one.
+  function handleEditViaCoord(index: number): void {
+    setViaCoordMode((current) => {
+      if (current.kind === 'update' && current.index === index) {
+        setViaCoordLat(VIA_COORD_DEFAULT.lat);
+        setViaCoordLon(VIA_COORD_DEFAULT.lon);
+        setViaCoordError(false);
+        return { kind: 'add' };
+      }
+      const v = viaPoints[index];
+      setViaCoordLat(v.lat);
+      setViaCoordLon(v.lon);
+      setViaCoordError(false);
+      pendingViaCoordFocusRef.current = true;
+      return { kind: 'update', index };
+    });
+  }
+
+  function handleCommitViaCoord(): void {
+    const p: LatLon = { lat: viaCoordLat, lon: viaCoordLon };
+    if (!isInViaDataArea(p)) {
+      setViaCoordError(true);
+      return;
+    }
+    setViaCoordError(false);
+    if (viaCoordMode.kind === 'update') {
+      onUpdateVia(viaCoordMode.index, p);
+    } else {
+      onAddVia(p);
+    }
+    setViaCoordMode({ kind: 'add' });
+    setViaCoordLat(VIA_COORD_DEFAULT.lat);
+    setViaCoordLon(VIA_COORD_DEFAULT.lon);
+  }
 
   // GPX import (#3): a hidden file input triggered by the Button primitive.
   // Parsing is pure local file handling (available offline); only the later
@@ -479,6 +618,15 @@ export default function PlannerPanel({
               />
               <div className="endpoint-detail">
                 <p className="endpoint-name">{origin.label}</p>
+                {/* #834: HarborPicker's own option row discloses this via
+                    the identical key/class BEFORE a harbor is picked (#652);
+                    this used to vanish the instant the pick landed here,
+                    right before the moment it mattered most. Reuses the
+                    picker's exact string and styling — never re-authored —
+                    so the two surfaces cannot drift onto different wording. */}
+                {originHarbor?.knownDisconnected === true && (
+                  <p className="harbor-picker-unreachable">{t('harborPicker.knownDisconnected')}</p>
+                )}
                 {originHarbor?.approachNote && (
                   <p className="endpoint-caveat">{originHarbor.approachNote[lang]}</p>
                 )}
@@ -537,6 +685,10 @@ export default function PlannerPanel({
               />
               <div className="endpoint-detail">
                 <p className="endpoint-name">{destination.label}</p>
+                {/* #834: see the matching comment on the origin row above. */}
+                {destinationHarbor?.knownDisconnected === true && (
+                  <p className="harbor-picker-unreachable">{t('harborPicker.knownDisconnected')}</p>
+                )}
                 {destinationHarbor?.approachNote && (
                   <p className="endpoint-caveat">{destinationHarbor.approachNote[lang]}</p>
                 )}
@@ -589,7 +741,24 @@ export default function PlannerPanel({
             <ol className="planner-via-list">
               {viaPoints.map((v, i) => (
                 <li key={i} className="planner-via-row">
-                  <span className="planner-via-coord">{formatLatLon(v)}</span>
+                  {/* #829: was a plain <span> — now a toggle button into the
+                      coordinate-entry row below, so repositioning (spike §2
+                      row 2) reuses the SAME lat/lon fields rather than adding
+                      a duplicate pair per row. aria-label folds the visible
+                      coordinate text into the accessible name (WCAG 2.5.3)
+                      rather than replacing it. */}
+                  <Button
+                    variant="ghost"
+                    className="planner-via-coord"
+                    aria-pressed={viaCoordMode.kind === 'update' && viaCoordMode.index === i}
+                    aria-label={t('planner.via.coord.edit', {
+                      index: i + 1,
+                      coord: formatLatLon(v),
+                    })}
+                    onClick={() => handleEditViaCoord(i)}
+                  >
+                    {formatLatLon(v)}
+                  </Button>
                   <Button
                     variant="ghost"
                     disabled={i === 0}
@@ -620,6 +789,48 @@ export default function PlannerPanel({
           <Button variant="ghost" onClick={() => onRequestMapTap('via')}>
             {t('planner.via.add')}
           </Button>
+
+          {/* #829: keyboard-reachable equivalent of the map-tap 'via' path
+              (docs/spikes/714-keyboard-map-equivalents.md §3.1/§5.1) — a
+              second PRODUCER of the same LatLon the map tap already
+              produces, validated against gpx.ts's existing DATA_AREA
+              half-open check rather than a second hand-copied bound. In
+              "update" mode (entered via a via point's own coordinate button
+              above) the SAME fields reposition that point instead of
+              appending a new one. */}
+          <div className="planner-via-coord-entry">
+            <Field label={t('planner.via.coord.latLabel')} htmlFor="planner-via-coord-lat">
+              <NumberInput
+                id="planner-via-coord-lat"
+                value={viaCoordLat}
+                min={-90}
+                max={90}
+                step={0.001}
+                onCommit={(n) => setViaCoordLat(n)}
+              />
+            </Field>
+            <Field label={t('planner.via.coord.lonLabel')} htmlFor="planner-via-coord-lon">
+              <NumberInput
+                id="planner-via-coord-lon"
+                value={viaCoordLon}
+                min={-180}
+                max={180}
+                step={0.001}
+                onCommit={(n) => setViaCoordLon(n)}
+              />
+            </Field>
+            <Button variant="secondary" onClick={handleCommitViaCoord}>
+              {viaCoordMode.kind === 'update'
+                ? t('planner.via.coord.update')
+                : t('planner.via.coord.add')}
+            </Button>
+            {/* Always mounted, empty until a rejection — same shape as the
+                safety-depth clamp notice above (#731 review round 2's
+                always-mounted-live-region rule). */}
+            <p className="boat-picker-notice" role="status">
+              {viaCoordError ? t('planner.via.coord.outOfRegion') : null}
+            </p>
+          </div>
         </section>
       </Card>
 

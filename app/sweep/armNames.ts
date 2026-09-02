@@ -31,6 +31,17 @@
  * from the first (#452 — `compare.mjs` used to fail closed on ZERO arms but
  * not on FEWER than expected, so a partial run could produce a confident
  * looking verdict over an incomplete arm set).
+ *
+ * #653 ADDS the two `salona44-*` arms below. Both boats share a 2.1 m draft,
+ * so `boatDepth.ts`'s `defaultSafetyDepthM`/`relaxationFloorM` compute the
+ * IDENTICAL gate for either — the two arms deliberately do NOT discriminate
+ * a depth-gate regression on their own (see `sweepArms.ts`'s `Arm.boatId`
+ * comment for the full reasoning); what they exercise is the boat-keyed
+ * POLAR lookup (`polarKey(boat.id, sail.id)`) and the plan/ETA it produces —
+ * a `sweepArms.ts`/`realmask.repro.test.ts` mixup that swapped the OTHER
+ * 2.1 m Salona in would still compute the SAME gate but a WRONG speed (a
+ * draft-different entry such as the 1.9 m `elan-444` would move the gate
+ * too, and so is caught by the gate assertions instead).
  */
 export const ARM_NAMES = [
   'breeze',
@@ -42,4 +53,6 @@ export const ARM_NAMES = [
   'margin-zero',
   'relaxation-dense',
   'margin-extreme',
+  'salona44-breeze',
+  'salona44-relaxation',
 ] as const;

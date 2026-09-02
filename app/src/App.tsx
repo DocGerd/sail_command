@@ -41,6 +41,7 @@ import PlansList, { type RecalcMode } from './components/PlansList';
 import RouteSummary from './components/RouteSummary';
 import DepthProfile from './components/DepthProfile';
 import LiveView from './components/LiveView';
+import SeamarksInView from './components/SeamarksInView';
 import AisTraffic from './components/AisTraffic';
 import { AIS_VESSEL_LAYER } from './components/AisLayer';
 import Banner, { type BannerKind } from './components/Banner';
@@ -68,6 +69,10 @@ import { resolveHarborPickTarget } from './lib/harborGeoJson';
 import { boatById, sailIdsOf } from './data/boats';
 import { usePersistedBoatId } from './lib/usePersistedBoatId';
 import { usePersistedOwnMmsi } from './lib/ownMmsi';
+// #834: same widening PlannerPanel.tsx's own `harbors` prop already carries —
+// see that module's comment for why this lives outside the `app/sweep/`
+// closure rather than on `Harbor` in `types.ts`.
+import type { HarborWithReachability } from './lib/harborReachability';
 import type { MsgKey } from './i18n/dict.de';
 import type { Tab } from './lib/sessionSnapshot';
 import {
@@ -349,11 +354,15 @@ function AppShell() {
   // available as soon as the slot commits; changes only on tab/layout switch,
   // never at the 1 Hz GPS cadence, so it costs no extra per-fix re-render.
   const [liveSlot, setLiveSlot] = useState<HTMLDivElement | null>(null);
+  // #830: the Plan tab's slot for the keyboard-reachable seamarks-in-view
+  // list — same contract as `liveSlot` above (the component mounts inside
+  // MapView's subtree for the map context and portals into the panel).
+  const [seamarksSlot, setSeamarksSlot] = useState<HTMLDivElement | null>(null);
   // MapView reports at most one error per mount (see its own comment) —
   // this just needs to flip a banner on and let the user dismiss it; there's
   // no retry path since the underlying map instance isn't recreated.
   const [mapError, setMapError] = useState(false);
-  const [harbors, setHarbors] = useState<Harbor[]>([]);
+  const [harbors, setHarbors] = useState<HarborWithReachability[]>([]);
   // #301: true once the harbors asset load's Promise SETTLES (success OR
   // permanent failure) — gates the plan-form sync effect below (next to
   // planIdRef) so it doesn't write a plan's origin/destination labels before
@@ -611,6 +620,26 @@ function AppShell() {
       const next = [...viaPoints];
       [next[index], next[swapWith]] = [next[swapWith], next[index]];
       handleViaPointsChange(next);
+    },
+    [viaPoints, handleViaPointsChange],
+  );
+
+  // #829: keyboard-reachable equivalents of handleMapTap's 'via' branch above
+  // — the identical `handleViaPointsChange([...viaPoints, p])` producer, just
+  // fed a typed LatLon from PlannerPanel's coordinate-entry row instead of a
+  // map click (spike docs/spikes/714-keyboard-map-equivalents.md §3.1/§5.1).
+  const handleAddViaByCoord = useCallback(
+    (p: LatLon) => {
+      handleViaPointsChange([...viaPoints, p]);
+    },
+    [viaPoints, handleViaPointsChange],
+  );
+
+  // Repositioning counterpart (spike §2 row 2) — same draft-array replace
+  // shape as handleReorderVia above, indexed instead of swapped.
+  const handleUpdateViaByCoord = useCallback(
+    (index: number, next: LatLon) => {
+      handleViaPointsChange(viaPoints.map((v, i) => (i === index ? next : v)));
     },
     [viaPoints, handleViaPointsChange],
   );
@@ -1002,6 +1031,25 @@ function AppShell() {
   // complement this Banner cannot see.
   const settingsDirty = plan ? routingSettingsDirty(plan, settings) : false;
 
+  // #834: the harbor picker discloses a #652 known-disconnected harbor BEFORE
+  // a solve (`HarborPicker.tsx`'s option row) and, since commit `d173be0`
+  // added this same check to `PlannerPanel.tsx`'s selected-endpoint row, AFTER
+  // a pick too — but a plan run against exactly that harbor still failed with
+  // the generic `error.noRoute.unreachable`, the same string #652 was filed
+  // about. Presentation-only, mirrors `originHarbor`/`destinationHarbor` in
+  // PlannerPanel.tsx: a plain `.find()` over the current `origin`/
+  // `destination` + `harbors` state, re-evaluated every render, so it covers
+  // fresh-mount, pick, and the load-saved-plan/recalc-replace path alike.
+  // Does NOT touch `planErrorBannerKind`/`planErrorRetryMayHelp` — those stay
+  // keyed on the unchanged `planning.messageKey`; only the rendered CHILD
+  // text is substituted below.
+  const originKnownDisconnected =
+    origin?.source === 'harbor' &&
+    harbors.find((h) => h.id === origin.harborId)?.knownDisconnected === true;
+  const destinationKnownDisconnected =
+    destination?.source === 'harbor' &&
+    harbors.find((h) => h.id === destination.harborId)?.knownDisconnected === true;
+
   return (
     <div className="app-shell" ref={shellRef}>
       {/* Base layer: full-viewport map. Header/banners/bottom-sheet below are
@@ -1109,6 +1157,16 @@ function AppShell() {
               occludes this corner (see ScaleBar.tsx's own comment) — no
               layout prop needed. */}
           <ScaleBar />
+          {/* #830: the keyboard-reachable seamarks-in-view list. Mounted
+              HERE, inside MapView's subtree, for the same reason LiveView
+              is (useMapInstance() is MapView's context), and portalled
+              into the Plan tab's `.app-panel-seamarks` slot below — the
+              PANEL, deliberately not `.data-layer-controls`: a third row
+              there hides the depth legend's #597 safety caveat at three
+              narrow viewports (SeamarksInView.tsx's own header carries the
+              measurement). Plan tab only: the slot exists only there, and
+              unmounting with the tab drops its moveend subscription. */}
+          {tab === 'plan' && <SeamarksInView panelSlot={seamarksSlot} />}
         </MapView>
       </div>
 
@@ -1263,7 +1321,10 @@ function AppShell() {
                 : undefined
             }
           >
-            {t(planning.messageKey)}
+            {planning.messageKey === 'error.noRoute.unreachable' &&
+            (originKnownDisconnected || destinationKnownDisconnected)
+              ? t('harborPicker.knownDisconnected')
+              : t(planning.messageKey)}
           </Banner>
         )}
         {tapTarget && (
@@ -1417,33 +1478,42 @@ function AppShell() {
               since only one panel is ever rendered at a time. */}
           <div role="tabpanel" id={APP_TABPANEL_ID} aria-labelledby={appTabId(tab)}>
             {tab === 'plan' && (
-              <PlannerPanel
-                harbors={harbors}
-                origin={origin}
-                destination={destination}
-                onPickOrigin={handlePickOrigin}
-                onPickDestination={handlePickDestination}
-                onImportRoute={handleImportRoute}
-                onRequestMapTap={handleRequestMapTap}
-                viaPoints={viaPoints}
-                onRemoveVia={handleRemoveVia}
-                onReorderVia={handleReorderVia}
-                departureMs={departureMs}
-                onDepartureChange={setDepartureMs}
-                settings={settings}
-                onSettingsChange={setSettings}
-                boat={boat}
-                canPlan={canPlan}
-                planDisabledReason={planDisabledReason}
-                online={online}
-                onPlan={handlePlan}
-                planning={plannerStatus}
-                plan={plan}
-                rig={rig}
-                formDirty={formDirty}
-                onViewDetails={handleViewDetails}
-                onOpenBoatSettings={handleOpenBoatSettings}
-              />
+              <>
+                <PlannerPanel
+                  harbors={harbors}
+                  origin={origin}
+                  destination={destination}
+                  onPickOrigin={handlePickOrigin}
+                  onPickDestination={handlePickDestination}
+                  onImportRoute={handleImportRoute}
+                  onRequestMapTap={handleRequestMapTap}
+                  viaPoints={viaPoints}
+                  onRemoveVia={handleRemoveVia}
+                  onReorderVia={handleReorderVia}
+                  onAddVia={handleAddViaByCoord}
+                  onUpdateVia={handleUpdateViaByCoord}
+                  departureMs={departureMs}
+                  onDepartureChange={setDepartureMs}
+                  settings={settings}
+                  onSettingsChange={setSettings}
+                  boat={boat}
+                  canPlan={canPlan}
+                  planDisabledReason={planDisabledReason}
+                  online={online}
+                  onPlan={handlePlan}
+                  planning={plannerStatus}
+                  plan={plan}
+                  rig={rig}
+                  formDirty={formDirty}
+                  onViewDetails={handleViewDetails}
+                  onOpenBoatSettings={handleOpenBoatSettings}
+                />
+                {/* #830: portal target for SeamarksInView (mounted inside MapView
+                  above). Below the planner form, so the form's own CTA keeps
+                  its position and the list costs panel scroll depth only
+                  (+46px collapsed at 375x667, measured). */}
+                <div className="app-panel-seamarks" ref={setSeamarksSlot} />
+              </>
             )}
             {tab === 'boat' && (
               <SettingsPanel

@@ -1,0 +1,267 @@
+diff --git a/app/src/routing/isochrone.ts b/app/src/routing/isochrone.ts
+index ce3b14f..21dfe88 100644
+--- a/app/src/routing/isochrone.ts
++++ b/app/src/routing/isochrone.ts
+@@ -5,6 +5,7 @@ import type { NavMask } from '../lib/mask';
+ import { gateFloorM, uniformGate, type DepthGate } from '../lib/depthGate';
+ import { destinationPoint, haversineNm, initialBearingDeg, normalizeDeg180 } from '../lib/geo';
+ import { boardForCandidate, classifyManeuver } from './maneuver';
++import type { FairwayField } from '../lib/fairway';
+ 
+ export interface SolveParams {
+   origin: LatLon;
+@@ -56,6 +57,27 @@ export interface SolveParams {
+    * workerClient.ts ships in the plan request.
+    */
+   deadline?: SolveDeadline;
++  /**
++   * #354 candidate F. ABSENT ⇒ byte-identical to a pre-#354 solve — the same
++   * optional-means-unchanged idiom `comfortDepthM`, `gate`, `maxFrontier` and
++   * `deadline` already use here (`p.fairway === undefined` is a single test,
++   * and no cost term is added).
++   *
++   * When present, every candidate edge whose midpoint lies outside every
++   * corridor is charged `settings.maneuverPenaltyS` (default 45 s) of extra
++   * RANKING cost — `Node.costMs` only, never `Node.tMs`, never the geometry,
++   * and never the gate. So the router will trade a corridor departure against
++   * a maneuver on equal terms: holding the fairway is worth exactly one tack,
++   * which is the honest reading of "a fairway cannot be held without tacking".
++   * Depth remains the only hard constraint, so this cannot produce an
++   * unnavigable route, and reported ETAs stay true elapsed time.
++   *
++   * NO PRODUCTION CALLER CONSTRUCTS ONE, and that is the finding rather than
++   * an omission: `app/public/data/seamarks.json` ships 1,794 features, all
++   * `Point`, with no fairway type — see `lib/fairway.ts`'s
++   * `fairwayCorridorsFromGeoJson` doc comment and #244 §1.3/§2.1.
++   */
++  fairway?: FairwayField;
+ }
+ 
+ /**
+@@ -313,6 +335,17 @@ export function solve(p: SolveParams): SolveResult {
+   // runs per candidate edge — millions of times per plan — so a gate object
+   // must never be constructed inside it or any loop body.
+   const gate = p.gate ?? uniformGate(settings.safetyDepthM);
++  // #354 candidate F: resolved ONCE per solve, like `gate`. `fairway` is
++  // undefined for every caller in this repo (no shipped asset carries corridor
++  // geometry), which makes `fairwayPenaltyMs` 0 and every cost expression below
++  // collapse to its pre-#354 form exactly.
++  const fairway = p.fairway;
++  // ONE obvious constant, deliberately not a new tunable: the out-of-corridor
++  // cost IS the existing maneuver penalty (`DEFAULT_SETTINGS.maneuverPenaltyS`,
++  // 45 s). Reusing it states the trade in the solver's own units — leaving the
++  // fairway is priced at exactly one tack — instead of introducing a weight
++  // that would then need sweeping.
++  const fairwayPenaltyMs = fairway ? settings.maneuverPenaltyS * 1000 : 0;
+   // #254: the sail-speed floor. A heading motors when sailing it would be more
+   // than settings.sailPreferenceKn slower than motoring. motorThresholdKn is the
+   // seaworthiness floor underneath, so a small engine can never be handed legs
+@@ -457,13 +490,7 @@ export function solve(p: SolveParams): SolveResult {
+         // Direct-candidate arrival test (exact leg to destination)
+         const isDirect = Math.abs(normalizeDeg180(headingDeg - bearingToDest)) < 0.5;
+         if (isDirect && node.distToDestNm <= distNm) {
+-          const directFactor = edgeFactor(
+-            mask,
+-            from,
+-            destination,
+-            gate,
+-            comfortDepthM,
+-          );
++          const directFactor = edgeFactor(mask, from, destination, gate, comfortDepthM);
+           if (directFactor !== null) {
+             const penaltyS = dtS - effS;
+             // TRUE elapsed time for this hop — unaffected by the depth
+@@ -479,7 +506,11 @@ export function solve(p: SolveParams): SolveResult {
+             const etaMs = node.tMs + durMs;
+             // Only the travel term is divided by the factor — the maneuver
+             // penalty is charged at its real cost on both tMs and costMs.
+-            const candCostMs = node.costMs + penaltyS * 1000 + travelMs / directFactor;
++            // #354: the out-of-corridor term rides on the RANKING clock beside
++            // the depth derate, and like it is absent from `etaMs`/`durMs`.
++            const fairwayMs =
++              fairway && fairway.outsideCorridor(from, destination) ? fairwayPenaltyMs : 0;
++            const candCostMs = node.costMs + penaltyS * 1000 + travelMs / directFactor + fairwayMs;
+             if (etaMs <= horizonMs && (!best || candCostMs < best.costMs)) {
+               const last: Node = {
+                 lat: destination.lat,
+@@ -550,7 +581,12 @@ export function solve(p: SolveParams): SolveResult {
+           lat: end.lat,
+           lon: end.lon,
+           tMs: node.tMs + stepMs,
+-          costMs: node.costMs + stepMs / factor,
++          // #354: same additive out-of-corridor term as the direct-arrival
++          // branch above; 0 whenever `fairway` is absent.
++          costMs:
++            node.costMs +
++            stepMs / factor +
++            (fairway && fairway.outsideCorridor(from, end) ? fairwayPenaltyMs : 0),
+           kind,
+           board,
+           headingDeg,
+@@ -578,13 +614,7 @@ export function solve(p: SolveParams): SolveResult {
+           const durMs = (child.distToDestNm / Math.max(speed, MIN_SAIL_KN)) * 3600 * 1000;
+           const finalEtaMs = child.tMs + durMs;
+           if (finalEtaMs <= horizonMs && (!best || finalEtaMs < best.costMs)) {
+-            const captureFactor = edgeFactor(
+-              mask,
+-              end,
+-              destination,
+-              gate,
+-              comfortDepthM,
+-            );
++            const captureFactor = edgeFactor(mask, end, destination, gate, comfortDepthM);
+             if (captureFactor !== null) {
+               const candCostMs = child.costMs + durMs / captureFactor;
+               if (!best || candCostMs < best.costMs) {
+diff --git a/app/src/routing/planRoute.ts b/app/src/routing/planRoute.ts
+index 467f3d2..ed16d74 100644
+--- a/app/src/routing/planRoute.ts
++++ b/app/src/routing/planRoute.ts
+@@ -16,6 +16,7 @@ import type {
+ import { Polar } from '../lib/polar';
+ import { WindField } from '../lib/wind';
+ import type { NavMask } from '../lib/mask';
++import type { FairwayField } from '../lib/fairway';
+ import { solve, type SolveDeadline, type SolveFailureCause } from './isochrone';
+ import { mergeCollinearLegs } from './postprocess';
+ import { APPROACH_RADIUS_M, uniformGate, type DepthGate } from '../lib/depthGate';
+@@ -38,6 +39,14 @@ export interface PlanDeps {
+    */
+   boat: BoatDef;
+   mask: NavMask;
++  /**
++   * #354 candidate F. ABSENT ⇒ byte-identical to a pre-#354 plan. Passed
++   * straight through to `solve()`; nothing in this file branches on it, so it
++   * can change no gate, no tier and no `NoRouteReason` (#282). No production
++   * caller supplies one — the app ships no asset carrying fairway corridor
++   * geometry (see `lib/fairway.ts`).
++   */
++  fairway?: FairwayField;
+ }
+ 
+ export type RigProgress = (sailId: SailId, info: { tMs: number; frontierSize: number }) => void;
+@@ -418,6 +427,9 @@ export function planRoute(
+         // never pass `{ deadline: undefined }`. The SAME object goes to every
+         // solve of this plan — see the `deadline` parameter's doc comment.
+         ...(deadline !== undefined ? { deadline } : {}),
++        // #354: same exactOptionalPropertyTypes idiom — omit the key entirely
++        // when no fairway field was supplied, which is every caller today.
++        ...(deps.fairway !== undefined ? { fairway: deps.fairway } : {}),
+       });
+       // #282: the solver's own cause, taken verbatim — no label ever exists on
+       // this path. #432's 'budget-exhausted' needs no branch of its own here:
+diff --git a/app/src/lib/fairway.ts b/app/src/lib/fairway.ts
+new file mode 100644
+--- /dev/null
++++ b/app/src/lib/fairway.ts
+@@ -0,0 +1,110 @@
++import type { LatLon } from '../types';
++import { haversineNm, crossTrackNm, alongTrackFraction } from './geo';
++
++/**
++ * #354 candidate F ("fairway-aware") — the MINIMAL routing-input shape.
++ *
++ * A `FairwayField` answers exactly one question for the solver: is this edge
++ * OUTSIDE every corridor the router has been told to hold? Nothing else. The
++ * corridor GEOMETRY and, critically, the corridor WIDTH stay on this side of
++ * the boundary, because #244 measured that no source in this operating area
++ * carries a width at all (`docs/spikes/244-buoyed-fairways.md` §2.1: zero
++ * width/depth/draft tags across all 258 `waterway=fairway` ways). Keeping the
++ * width behind this interface means the solver never invents one; a caller
++ * that has no width also has no field to pass, and the solver is unchanged.
++ *
++ * This is spike §6.1 "Option A — corridor as a cost term", which the spike
++ * calls "structurally the cleanest option" and then rejects on DATA, not
++ * design. It is implemented here so that rejection can be measured rather than
++ * only cited.
++ */
++export interface FairwayField {
++  /**
++   * True when the a→b edge should be charged the out-of-corridor cost.
++   * Implementations must be pure and cheap: this is called once per candidate
++   * edge, inside the solver's innermost expansion loop.
++   */
++  outsideCorridor(a: LatLon, b: LatLon): boolean;
++}
++
++/**
++ * A corridor as the router would have to model one: a centreline plus a
++ * half-width. `halfWidthNm` is the number #244 §2.1/§6.1 says does not exist
++ * in any available source — it is a REQUIRED field here precisely so that it
++ * cannot be defaulted into existence.
++ */
++export interface FairwayCorridor {
++  readonly line: readonly LatLon[];
++  readonly halfWidthNm: number;
++}
++
++/** Perpendicular distance (nm) from p to a polyline, clamped at the ends. */
++function distanceToLineNm(p: LatLon, line: readonly LatLon[]): number {
++  if (line.length === 0) return Number.POSITIVE_INFINITY;
++  if (line.length === 1) return haversineNm(p, line[0]);
++  let best = Number.POSITIVE_INFINITY;
++  for (let i = 0; i + 1 < line.length; i++) {
++    const a = line[i];
++    const b = line[i + 1];
++    const f = alongTrackFraction(p, a, b);
++    const d =
++      f <= 0 ? haversineNm(p, a) : f >= 1 ? haversineNm(p, b) : Math.abs(crossTrackNm(p, a, b));
++    if (d < best) best = d;
++  }
++  return best;
++}
++
++/**
++ * Builds a field from explicit corridors. An EMPTY corridor list yields a
++ * field whose `outsideCorridor` is constantly false — i.e. it charges nothing
++ * anywhere — which is what every caller reading today's shipped assets gets
++ * (see {@link fairwayCorridorsFromGeoJson}).
++ *
++ * Membership is tested at the edge MIDPOINT: one point per candidate edge, the
++ * cheapest test that still asks about the water actually crossed rather than
++ * about the node the search happens to sit on.
++ */
++export function fairwayFieldFrom(corridors: readonly FairwayCorridor[]): FairwayField {
++  return {
++    outsideCorridor(a: LatLon, b: LatLon): boolean {
++      if (corridors.length === 0) return false;
++      const mid: LatLon = { lat: (a.lat + b.lat) / 2, lon: (a.lon + b.lon) / 2 };
++      for (const c of corridors) {
++        if (distanceToLineNm(mid, c.line) <= c.halfWidthNm) return false;
++      }
++      return true;
++    },
++  };
++}
++
++/**
++ * Extracts corridors from a seamark-style GeoJSON FeatureCollection.
++ *
++ * MEASURED AGAINST THE SHIPPED ASSET, 2026-09-02: `app/public/data/seamarks.json`
++ * holds 1,794 features and every one of them is a `Point` (`buoy_lateral` 689,
++ * `buoy_special_purpose` 445, `beacon_special_purpose` 258, …) — there is no
++ * `LineString` of any kind, and no `fairway` type at all.
++ * `pipeline/build_seamarks.mjs` queries `node["seamark:type"]` only, so that is
++ * true by construction, not by chance (#244 §1.3). This function therefore
++ * returns `[]` for the only asset the app actually ships, and no `halfWidthNm`
++ * is ever fabricated because none is ever read.
++ */
++export function fairwayCorridorsFromGeoJson(
++  fc: {
++    features?: readonly {
++      geometry?: { type?: string; coordinates?: unknown };
++      properties?: Record<string, unknown>;
++    }[];
++  },
++  halfWidthNm: number,
++): FairwayCorridor[] {
++  const out: FairwayCorridor[] = [];
++  for (const f of fc.features ?? []) {
++    if (f.geometry?.type !== 'LineString') continue;
++    if (f.properties?.['seamarkType'] !== 'fairway') continue;
++    const coords = f.geometry.coordinates as [number, number][] | undefined;
++    if (!coords || coords.length < 2) continue;
++    out.push({ line: coords.map(([lon, lat]) => ({ lat, lon })), halfWidthNm });
++  }
++  return out;
++}
