@@ -170,8 +170,8 @@ labels on **pull requests** are applied automatically from changed paths by
 
 **Milestones**
 
-- `v0.19.0` — this cut; its milestone closes when the release PR merges and
-  the tag is pushed.
+- `v0.19.0` — the milestone now being filled; it closes when the release PR
+  merges and the tag is pushed.
 - `v0.20.0` — the next MINOR release.
 - `v0.21.0` — opens fresh at this cut, per the roll-forward convention
   below.
@@ -198,13 +198,14 @@ opened. A PATCH milestone (`vX.Y.Z`, `Z > 0`) is the exception — it closes at
 its own cut and shifts nothing: the pending `vX.(Y+1).0` stays where it is.
 `Backlog` and `Icebox` persist across releases.
 
-**Filling a release milestone.** Scope is allocated at each cut in this order:
+**Filling a release milestone.** The maintainer allocates scope at each cut in
+this order:
 
 1. **Priority first** — `priority: high` before `medium` before `low`.
 2. **Then user-facing work** — `type: feature` and user-visible `type: bug`
    outrank `type: chore` and `type: docs` at equal priority. A `chore` that
-   unblocks a feature inherits the feature's rank, and the promotion is stated
-   explicitly rather than left implicit.
+   unblocks a feature inherits the feature's rank; the promotion is stated
+   explicitly.
 3. **A 20% bug reserve** — at least a fifth of the milestone's issues are
    `type: bug`, rounded up (a nine-issue milestone reserves two, not 1.8).
 
