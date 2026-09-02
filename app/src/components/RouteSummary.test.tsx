@@ -20,6 +20,23 @@ import RouteSummary from './RouteSummary';
 import { boatSnapshot, defaultBoatSnapshot } from '../types';
 import { boatById } from '../data/boats';
 import { PLAN_SCHEMA_VERSION } from '../types';
+import { destinationPoint, haversineNm, initialBearingDeg } from '../lib/geo';
+import { SEAMARK_PROXIMITY_M } from '../lib/seamarkProximity';
+import type { SeamarkFeatureCollection } from '../lib/seamarkGeoJson';
+import type { LatLon } from '../types';
+
+// #615: this file is deliberately UNMOCKED for services/assets (see
+// RouteSummary.exposure.test.tsx's header for why a `loadRoutingAssets`
+// mock here would endanger every other case through useNavMask). The
+// seamark-proximity notice's data comes through its OWN hook module, which
+// nothing else in this file consumes, so mocking exactly that module — and
+// defaulting it to `null`, the "assets not resolved" state in which the
+// notice renders nothing — leaves all pre-existing cases byte-identical in
+// behaviour. Only the '#615' describe block below ever sets a return value,
+// and it resets to null after each of its rows (vi.restoreAllMocks does not
+// touch vi.fn mocks in vitest 4, so the reset must be explicit).
+vi.mock('../state/useSeamarks', () => ({ useSeamarks: vi.fn(() => null) }));
+import { useSeamarks } from '../state/useSeamarks';
 
 // PR #763 review Minor 7: `screen.getByText(/was not passable/)` (the
 // route.shallow.detail sentence, inside the #747 Disclosure body) finds the
@@ -1621,5 +1638,198 @@ describe('#539: the shallow banner follows the PLAN’s boat, not a module const
     // Salona's number must not appear on an Elan plan") where the positive
     // pins only encode what the right answer looks like.
     expect(lead?.textContent).not.toContain('2.1 m');
+  });
+});
+
+// #615: the advisory seamark-proximity notice — a bare <p> sibling of
+// MarginalDepthNotice, one tier, never role="alert", no accessible name.
+// Geometry rows live in lib/seamarkProximity.test.ts; these rows pin the
+// MOUNT conditions (the three silent states, per-rig legs, the #114
+// recalculate-and-replace transition) and the shipped copy in both
+// languages. Each row names the mutation it must red on.
+describe('#615: seamark-proximity notice', () => {
+  const M_PER_NM = 1852;
+  // GENOA_LEGS[1] is the motor leg (54.8, 10.0) -> (54.85, 10.52); FOCK's
+  // single chord (54.79, 9.43) -> (54.85, 10.52) runs ~1 km south of its
+  // midpoint, so a mark 100 m abeam of the genoa leg is in range for genoa
+  // and out of range for fock — the per-rig discriminator.
+  const GENOA_MOTOR_LEG = GENOA_LEGS[1]!;
+  const legBearing = initialBearingDeg(GENOA_MOTOR_LEG.start, GENOA_MOTOR_LEG.end);
+  const legMid = destinationPoint(
+    GENOA_MOTOR_LEG.start,
+    legBearing,
+    haversineNm(GENOA_MOTOR_LEG.start, GENOA_MOTOR_LEG.end) / 2,
+  );
+  const abeamOfGenoa = (metres: number): LatLon =>
+    destinationPoint(legMid, legBearing + 90, metres / M_PER_NM);
+
+  function seamarkFc(
+    points: readonly LatLon[],
+    seamarkType = 'buoy_cardinal',
+  ): SeamarkFeatureCollection {
+    return {
+      type: 'FeatureCollection',
+      features: points.map((p) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
+        properties: { seamarkType },
+      })),
+    };
+  }
+
+  const notice = (container: HTMLElement) => container.querySelector('.seamark-proximity-notice');
+
+  afterEach(() => {
+    vi.mocked(useSeamarks).mockReturnValue(null);
+  });
+
+  it('renders the singular line for the active rig with ONE hazard mark in range — EN copy pinned, quiet tier', () => {
+    vi.mocked(useSeamarks).mockReturnValue(seamarkFc([abeamOfGenoa(100)]));
+    const { container } = renderSummary({ rig: 'genoa' });
+    const p = notice(container);
+    expect(p, 'expected a .seamark-proximity-notice <p>').not.toBeNull();
+    expect(p?.tagName).toBe('P');
+    expect(p?.textContent).toBe(interpolate(en['route.seamarks.proximity'], { dist: '300' }));
+    // Literal typed here, never read from the dict or the constant — the
+    // repo's dict-independence requirement for a copy pin (#504 review round
+    // 2). It is ALSO the twin of SEAMARK_PROXIMITY_M: re-ratifying the
+    // threshold must move this literal, the constant and the spike doc
+    // together. Mutation: change the constant alone → red here.
+    expect(p?.textContent).toContain('closer than 300 m');
+    expect(SEAMARK_PROXIMITY_M).toBe(300);
+    // One tier, the lowest: no assertive role, no severity modifier, no
+    // accessible name (a name containing "Seezeichen"/"Seamarks" would
+    // collide with five non-`exact` Playwright locators — design brief §3.4).
+    expect(p).not.toHaveAttribute('role');
+    expect(p).not.toHaveAttribute('aria-label');
+    expect(p?.className).toBe('seamark-proximity-notice');
+  });
+
+  it('renders the plural line with the DISTINCT count when several marks are in range', () => {
+    vi.mocked(useSeamarks).mockReturnValue(
+      seamarkFc([abeamOfGenoa(50), abeamOfGenoa(150), abeamOfGenoa(250)]),
+    );
+    const { container } = renderSummary({ rig: 'genoa' });
+    expect(notice(container)?.textContent).toBe(
+      interpolate(en['route.seamarks.proximity.plural'], { dist: '300', count: '3' }),
+    );
+    expect(notice(container)?.textContent).toContain('to 3 cardinal or isolated-danger marks');
+  });
+
+  it('renders NOTHING while the seamark assets are unresolved (null) — no element and no "0" sentence', () => {
+    // Positive row above proves the evidence-generating process runs; this
+    // absence row is the #251/#255 shape — "not checked" must never read as
+    // "none nearby". Mutation: render the zero-count sentence in the null
+    // branch → red on the second assertion.
+    vi.mocked(useSeamarks).mockReturnValue(null);
+    const { container } = renderSummary({ rig: 'genoa' });
+    expect(notice(container)).toBeNull();
+    expect(container.textContent).not.toMatch(/closer than \d+ m/);
+  });
+
+  it('renders nothing for a rig with NO route (legs null), even with a mark in range of the other rig', () => {
+    // Mutation: drop the `!legs` guard → nearbyHazardMarkCount iterates
+    // null and throws → red.
+    vi.mocked(useSeamarks).mockReturnValue(seamarkFc([abeamOfGenoa(100)]));
+    const plan = makePlan();
+    setSail(plan, 'fock', { result: null, reason: 'unreachable' });
+    const { container } = renderSummary({ plan, rig: 'fock' });
+    expect(notice(container)).toBeNull();
+    expect(container.textContent).not.toMatch(/closer than \d+ m/);
+  });
+
+  it('renders nothing when the check ran and found ZERO marks in range', () => {
+    // 5 km abeam: measured, not merely out of range by construction.
+    // Mutation: `count === 0` → `count < 0` (render on zero) → red.
+    vi.mocked(useSeamarks).mockReturnValue(seamarkFc([abeamOfGenoa(5000)]));
+    const { container } = renderSummary({ rig: 'genoa' });
+    expect(notice(container)).toBeNull();
+    expect(container.textContent).not.toMatch(/closer than \d+ m/);
+  });
+
+  it('counts against the ACTIVE rig’s own legs: in range for genoa, silent for fock', () => {
+    vi.mocked(useSeamarks).mockReturnValue(seamarkFc([abeamOfGenoa(100)]));
+    const genoa = renderSummary({ rig: 'genoa' });
+    expect(notice(genoa.container)).not.toBeNull();
+    cleanup();
+    const fock = renderSummary({ rig: 'fock' });
+    expect(notice(fock.container)).toBeNull();
+  });
+
+  it('German copy: the DE dict string renders under lang "de"', () => {
+    vi.mocked(useSeamarks).mockReturnValue(seamarkFc([abeamOfGenoa(100), abeamOfGenoa(200)]));
+    localStorage.setItem('sc-lang', 'de');
+    const { container } = render(
+      <I18nProvider>
+        <RouteSummary plan={makePlan()} rig="genoa" onRigChange={vi.fn()} />
+      </I18nProvider>,
+    );
+    expect(notice(container)?.textContent).toBe(
+      interpolate(de['route.seamarks.proximity.plural'], { dist: '300', count: '2' }),
+    );
+    expect(notice(container)?.textContent).toContain('näher als 300 m an 2 Kardinal- oder');
+  });
+
+  it('#114 recalculate-and-replace: a SAME-id plan with new legs re-computes (the memo key is not plan.id alone)', () => {
+    vi.mocked(useSeamarks).mockReturnValue(seamarkFc([abeamOfGenoa(100)]));
+    localStorage.setItem('sc-lang', 'en');
+    const before = makePlan();
+    const { container, rerender } = render(
+      <I18nProvider>
+        <RouteSummary plan={before} rig="genoa" onRigChange={vi.fn()} />
+      </I18nProvider>,
+    );
+    expect(notice(container)).not.toBeNull();
+    // usePlanFlow's replace path keeps `id` and refreshes `createdAtMs`; the
+    // re-plan lands legs 0.5° north, well clear of the mark. Mutation: memo
+    // deps `[plan.id]` only → the stale count keeps the line → red.
+    const after: Plan = { ...before, createdAtMs: before.createdAtMs + 1 };
+    setSail(after, 'genoa', {
+      result: {
+        ...GENOA_RESULT,
+        legs: GENOA_LEGS.map((l) => ({
+          ...l,
+          start: { lat: l.start.lat + 0.5, lon: l.start.lon },
+          end: { lat: l.end.lat + 0.5, lon: l.end.lon },
+        })),
+      },
+    });
+    expect(after.id).toBe(before.id);
+    rerender(
+      <I18nProvider>
+        <RouteSummary plan={after} rig="genoa" onRigChange={vi.fn()} />
+      </I18nProvider>,
+    );
+    expect(notice(container)).toBeNull();
+  });
+
+  it('shipped copy, both languages: an upper bound with the refusal clause, no reassurance and no side-of-passage directive', () => {
+    // Asserted against the SHIPPED dict strings directly (the shape
+    // DataLayers.test.tsx's "never calls the hatch shallow water" row uses),
+    // both languages, both forms. The EN reassurance guard is the one three
+    // sibling sites already run; the DE twin is new here — before it, the
+    // German copy was unguarded against exactly this class.
+    const keys = ['route.seamarks.proximity', 'route.seamarks.proximity.plural'] as const;
+    for (const k of keys) {
+      expect(en[k]).toContain('{dist}');
+      expect(de[k]).toContain('{dist}');
+      expect(en[k]).toContain('makes no claim about which side of one to pass');
+      expect(de[k]).toContain(
+        'trifft keine Aussage darüber, auf welcher Seite ein Zeichen zu passieren ist',
+      );
+      expect(en[k]).not.toMatch(/\b(is|are) (safe|clear|verified|guaranteed)\b/i);
+      expect(de[k]).not.toMatch(/\b(ist|sind) (sicher|frei|geprüft|garantiert|unbedenklich)\b/i);
+      // No directive about the sea: never names a side to pass on.
+      expect(en[k]).not.toMatch(/\b(port|starboard|leave .* to)\b/i);
+      expect(de[k]).not.toMatch(/\b(Backbord|Steuerbord)\b/i);
+      // "mark", never "hazard" — a cardinal names the SAFE side of a danger,
+      // so "hazard near your route" would be wrong in the safety direction.
+      expect(en[k]).not.toMatch(/\bhazard/i);
+      expect(de[k]).not.toMatch(/\bGefahr\b/);
+    }
+    expect(en['route.seamarks.proximity.plural']).toContain('{count}');
+    expect(de['route.seamarks.proximity.plural']).toContain('{count}');
+    expect(en['route.seamarks.proximity']).not.toContain('{count}');
+    expect(de['route.seamarks.proximity']).not.toContain('{count}');
   });
 });

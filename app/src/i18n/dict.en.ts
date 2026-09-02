@@ -456,6 +456,36 @@ export const en = {
     '{dist} of this route crosses water that a more cautious reading of the charted depth data puts below your safety depth of {requested} m.',
   'route.marginal.noticeSevere':
     "Caution: {dist} of this route crosses water that a more cautious reading of the charted depth data puts below your safety depth of {requested} m — at this setting that reading can fall below this boat's {draft} m draft.",
+  // #615: the advisory SEAMARK-PROXIMITY notice — a quiet route-scoped line,
+  // sibling of route.marginal.notice above, for a route whose active-rig legs
+  // pass closer than SEAMARK_PROXIMITY_M (lib/seamarkProximity.ts) to a
+  // cardinal or isolated-danger mark. `{dist}` is interpolated FROM that
+  // constant, never typed here, so copy and threshold cannot drift apart
+  // silently. Singular/`.plural` follows route.shallow.locator(.plural)
+  // above: the singular omits the count ("a … mark" already says one).
+  //
+  // Every clause is load-bearing — do not trim any of them as verbose:
+  // - "closer than {dist} m": an UPPER BOUND, true by construction of the
+  //   trigger. Deliberately NOT the measured minimum, which would assert
+  //   chart-grade positioning that neither the ~46 m mask grid, OSM-sourced
+  //   mark coordinates nor merged isochrone-chord legs support (the same
+  //   instinct as cautiousDepthLowerBoundM flooring rather than rounding).
+  // - the count in .plural: #612's bar — a bare presence notice is
+  //   wallpaper; the line must carry a magnitude.
+  // - "does not use marks when routing": #495's actual finding, stated as a
+  //   fact about SailCommand, not about the sea.
+  // - "makes no claim about which side of one to pass": the issue's hard
+  //   constraint, an explicit refusal rather than an omission. A cardinal
+  //   mark's whole function is to indicate the navigable side of a danger
+  //   (the IALA cardinal semantics seamarkGlyphs.ts already renders), so
+  //   copy phrased as "hazard near your route" would be wrong in the
+  //   safety-relevant direction — hence "mark", never "hazard".
+  // - "check it against an official chart": the same pointer AWAY from the
+  //   app's own authority that route.shallow.caveat above carries.
+  'route.seamarks.proximity':
+    'This route passes closer than {dist} m to a cardinal or isolated-danger mark. SailCommand does not use marks when routing and makes no claim about which side of one to pass — check it against an official chart.',
+  'route.seamarks.proximity.plural':
+    'This route passes closer than {dist} m to {count} cardinal or isolated-danger marks. SailCommand does not use marks when routing and makes no claim about which side of one to pass — check them against an official chart.',
   'route.totals.distance': 'Distance',
   'route.totals.duration': 'Duration',
   'route.totals.eta': 'ETA',

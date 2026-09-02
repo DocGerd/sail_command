@@ -2723,6 +2723,30 @@ select {
   color: var(--sc-banner-error-fg);
 }
 
+/* #615: the advisory SEAMARK-PROXIMITY line — a bare <p> sibling of
+   .marginal-depth-notice above, and deliberately the SAME quiet shape (no
+   background wash, a 2px left rule, 0.85rem, normal weight): ONE tier, the
+   lowest, that no measurement can escalate — proximity to a mark has no
+   severity relation the app could measure without a chart it does not have
+   (SeamarkProximityNotice's own doc comment in RouteSummary.tsx; decision
+   record docs/spikes/615-seamark-proximity.md) — so there is no --severe
+   modifier and never a role="alert". COLOUR is the one deliberate
+   difference: it takes --sc-banner-info-fg (the app's advisory family, which
+   carries its own dark variant in the @media block near the top of this
+   file), NOT --sc-depth-warning-*, because that family's own comments make
+   it the DEPTH hazard's identity ("the same hazard reads as the same hazard
+   wherever it appears") and a mark-proximity line is not a depth hazard.
+   A single flat class with no modifier, so the #493/#504/#506 source-order
+   cascade has nothing to silently revert. */
+.seamark-proximity-notice {
+  margin: 0;
+  padding: 0.35rem 0 0.35rem 0.55rem;
+  border-left: 2px solid var(--sc-banner-info-fg);
+  color: var(--sc-banner-info-fg);
+  font-size: 0.85rem;
+  font-weight: 400;
+}
+
 /* #452 gap 3: per-leg shallow marker in the legs table — same
    --sc-depth-warning-* family as .shallow-warning above (#251), so the
    hazard reads consistently between the plan-level banner and the row that
