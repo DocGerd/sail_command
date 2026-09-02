@@ -184,11 +184,19 @@ already read the pre-fix content — so this double-run certifies commit
 `d23d4c0`, not the file content as currently committed. The only
 non-comment code change since `d23d4c0` is `sweepArms.ts`'s `runArm()`
 passing `boatSnapshot(boat)` instead of `defaultBoatSnapshot()` for
-`request.boat` — argued output-inert by construction (`PlanResult` carries
-no `request` field), a claim a single-arm `salona44-breeze` re-run at the
-current HEAD is checking directly: identical sha256 to this section's own
-`77cb11e848e51799` proves it; any difference disproves it. See the PR for
-that re-run's result — not yet landed as of this section being written.
+`request.boat`.
+
+**PROVEN output-inert, not merely argued**: a single-arm `salona44-breeze`
+re-run at commit `3a0072b` (after the `boatSnapshot(boat)` change) —
+`SC_SWEEP_OUT=.../head-breeze`, driver PID 1124098 — produced a
+`salona44-breeze.json` that hashes to `77cb11e848e51799`, byte-identical to
+this section's own run1/run2 prefix for that arm. Only
+`salona44-breeze.timings.json` differs (`640c066a` at `3a0072b` vs
+`52a87c64` in run 2), exactly as expected for a wall-clock field that was
+never claimed to match. This closes the gap the caveat above leaves open:
+the `boatSnapshot(boat)` change is confirmed to move no route, so the
+determinism control this double-run establishes carries forward to the
+file content as currently committed, not only to `d23d4c0`.
 
 ## Why it lives here and not under `src/`
 
