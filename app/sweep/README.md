@@ -1,13 +1,42 @@
 # #282 acceptance sweep
 
-All 33 harbours × 9 settings arms = **297 plans**, against the real committed
-mask and polars, with every `PlanResult` serialised for byte-for-byte
-comparison between two revisions.
+All 33 harbours × 11 settings arms = **363 plans** (9 arms / 297 plans
+through #452; #653 added the two `salona44-*` arms below), against the real
+committed mask and polars, with every `PlanResult` serialised for
+byte-for-byte comparison between two revisions.
 
 Issue #282 makes this a **standing requirement**: the no-route cause is a
 control input, so any change to how `solve()` *classifies* a failure can move
 real routes. Run this before trusting such a change. A change that is only
 meant to be presentational must move nothing.
+
+**#653**: every arm through `margin-extreme` plans exclusively for
+`DEFAULT_BOAT_ID` (`salona-45`) — `sweepArms.ts`'s `runArm()` resolved a
+single hardcoded boat for all nine, so a `boatDepth.ts`/`depthGate.ts`
+regression correct for the Salona 45's gate but wrong for a DIFFERENT
+per-boat gate (a `defaultSafetyDepthM`/`relaxationFloorM` mixup, or a
+boat-keyed polar lookup bug) was invisible to this harness. `runArm()` now
+takes its boat from the new `Arm.boatId` field (defaulting to
+`DEFAULT_BOAT_ID` when absent, so every PRE-#653 arm is UNCHANGED — see that
+field's own doc comment in `sweepArms.ts`), and two new arms exercise it:
+
+- `salona44-breeze` — the Salona 44 "SPEEDY GO!" mirror of `breeze`
+  (Flensburg origin, `DEFAULT_SETTINGS`, no depth relaxation).
+- `salona44-relaxation` — the Salona 44 mirror of `relaxation-dense`
+  (Marstal origin, `DEFAULT_SETTINGS`, #53 relaxation exercised).
+
+**Both Salonas draft 2.1 m** (`app/src/data/boats.ts`), so
+`defaultSafetyDepthM`/`relaxationFloorM` — both pure functions of `b.draftM`
+— compute the IDENTICAL gate for either boat: these two arms do NOT
+discriminate a depth-gate regression by themselves, and their depth outcomes
+(`usedDepthM`, `shallow` flags) are EXPECTED to equal `breeze`'s /
+`relaxation-dense`'s exactly. What they DO discriminate is the boat-keyed
+POLAR lookup (`polarKey(boat.id, sail.id)`) and the plan/ETA it produces — a
+tier-C estimated table genuinely different from the Salona 45's
+certificate/modelled one — end to end through both the ordinary and the
+depth-relaxed solve path, for a boat other than the one all nine prior arms
+exercise. See `app/src/routing/realmask.repro.test.ts`'s `#653` describe
+block for the pinned, boat-sensitive evidence at the individual-plan level.
 
 **#452**: the original six arms (Flensburg origin) can each carry a
 *successful* #53 depth relaxation (a `shallow` block) on only 1 of their 33
@@ -84,6 +113,14 @@ above is determinism evidence only, never safety evidence.
 **"COMPLETE" describes THIS run's nine arms at `00a33ab` — it does NOT
 discharge the per-change BASE double-run.** That control must still be recorded
 against the merge-base of whatever branch it will certify.
+
+## #653 sweep control — two new arms, salona44-breeze/salona44-relaxation
+
+TODO(#653, filled in once the sweep run below completes): two full runs of
+the ELEVEN-arm harness (the nine pre-#653 arms plus `salona44-breeze` and
+`salona44-relaxation`) on this branch's own HEAD, `compare.mjs`'d against
+each other for byte-identity, plus a sha256-prefix cross-check of the nine
+pre-#653 arms against the `00a33ab` table above.
 
 ## Why it lives here and not under `src/`
 
@@ -256,13 +293,17 @@ identity: the arm list and their wind fields, the `{ hours: 3 }` override on
 `harbors.json`'s `flensburg.snap` by default, `marstal.snap` for the three
 #452 relaxation arms — added #452, PR #488: a PRE-#452 baseline's implicit
 "the origin is always flensburg.snap" is no longer true of the file as a
-whole, only of arms that omit `originId`), `T0`, and `serialize()`'s replacer
-and 1-space indent. Change any one of them and previously recorded output is
-no longer comparable. **Add an arm rather than editing one.**
+whole, only of arms that omit `originId`), **each arm's boat** (`Arm.boatId`,
+`DEFAULT_BOAT_ID`/`salona-45` by default, `salona-44-speedy-go` for the two
+#653 arms — same shape as `originId`: a PRE-#653 baseline's implicit "the
+boat is always DEFAULT_BOAT_ID" is no longer true of the file as a whole,
+only of arms that omit `boatId`), `T0`, and `serialize()`'s replacer and
+1-space indent. Change any one of them and previously recorded output is no
+longer comparable. **Add an arm rather than editing one.**
 
 ## Recorded baseline — 2026-08-07, PR #450 (`dbcd519`)
 
-**Covers only the ORIGINAL six arms (198 of the 297 plans this harness now
+**Covers only the ORIGINAL six arms (198 of the 363 plans this harness now
 produces).** No BASE-vs-HEAD baseline has been recorded for the three #452
 arms (`margin-zero`, `relaxation-dense`, `margin-extreme`) — that comparison
 was deliberately deferred to whenever a real depth-relaxation change is
@@ -273,6 +314,15 @@ NOT outstanding: the 2026-08-20 nine-arm double run at `00a33ab` (above)
 covers all three — but per that section's own caveat it does not discharge
 the per-change BASE double-run, which must still be recorded against the
 certifying branch's merge-base.
+
+**Nor for the two #653 `salona44-*` arms** — same deferral, same reason: no
+prior commit ever ran a Salona-44 arm, so there is no BASE side to compare
+against. See "#653 sweep control" further up this file for the substitute
+actually run: a self double-run against the certifying branch's own
+merge-base, plus a sha256-prefix cross-check of the nine PRE-#653 arms
+against the `00a33ab` determinism-control table above — the closest
+available equivalent to a BASE-vs-HEAD comparison when the change under
+certification is "these two arms are new."
 
 | | |
 |---|---|

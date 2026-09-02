@@ -1,15 +1,20 @@
 /**
  * #282 ACCEPTANCE SWEEP — the shared engine.
  *
- * Every harbour in the shipped `harbors.json`, across nine settings arms
- * (33 destinations x 9 = 297 plans), against the REAL committed mask and
- * polars. Every `PlanResult` is serialised deterministically so a BASE run
- * and a HEAD run can be compared byte-for-byte: #282's standing requirement
- * is that a change which is meant to be presentational moves NO route.
+ * Every harbour in the shipped `harbors.json`, across eleven settings arms
+ * (33 destinations x 11 = 363 plans) since #653, against the REAL committed
+ * mask and polars. Every `PlanResult` is serialised deterministically so a
+ * BASE run and a HEAD run can be compared byte-for-byte: #282's standing
+ * requirement is that a change which is meant to be presentational moves NO
+ * route.
  *
- * The origin is Flensburg for the original six arms (#450) and Marstal for
- * the three #452 relaxation arms (`margin-zero`, `relaxation-dense`,
- * `margin-extreme`) — see `Arm.originId`'s own doc comment for why.
+ * The origin is Flensburg for the original six arms (#450), Marstal for the
+ * three #452 relaxation arms (`margin-zero`, `relaxation-dense`,
+ * `margin-extreme`) — see `Arm.originId`'s own doc comment for why — and
+ * Flensburg/Marstal again for the two #653 `salona44-*` arms, which mirror
+ * `breeze`/`relaxation-dense` for a SECOND catalogue boat rather than adding
+ * new origins (see `Arm.boatId`'s own doc comment). All nine PRE-#653 arms
+ * plan for `DEFAULT_BOAT_ID` (`salona-45`) exclusively.
  *
  * DELIBERATELY OUTSIDE `app/src/`. `vite.config.ts`'s `test.include` is
  * `['src/**\/*.test.{ts,tsx}']`, so nothing here is collected by
@@ -35,7 +40,7 @@ import { dirname, resolve } from 'node:path';
 import { NavMask } from '../src/lib/mask';
 import { planRoute } from '../src/routing/planRoute';
 import { uniformWindGrid } from '../src/test/fixtures';
-import { boatById, DEFAULT_BOAT_ID, polarKey } from '../src/data/boats';
+import { boatById, DEFAULT_BOAT_ID, polarKey, type BoatId } from '../src/data/boats';
 import { defaultBoatSnapshot, DEFAULT_SETTINGS } from '../src/types';
 import type { LatLon, MaskMeta, PolarTable, SailId, Settings, WindGrid } from '../src/types';
 import { solverTimeoutMs } from '../src/test/timeouts';
@@ -112,6 +117,25 @@ export interface Arm {
    * wording.
    */
   originId?: string;
+  /**
+   * #653: catalogue boat id, defaulting to `DEFAULT_BOAT_ID` when absent —
+   * SAME pattern as `originId` above, and for the same reason: every
+   * PRE-#653 arm omits this field, so it resolves exactly as before,
+   * byte-identical to every recorded baseline. Only the two `salona44-*`
+   * arms set it.
+   *
+   * Both `salona-45` and `salona-44-speedy-go` carry `draftM: 2.1`
+   * (`app/src/data/boats.ts`), so `boatDepth.ts`'s `defaultSafetyDepthM`/
+   * `relaxationFloorM` — both pure functions of `b.draftM` — compute the
+   * IDENTICAL gate for either boat. This field therefore does NOT
+   * discriminate a depth-gate regression by itself: what it exercises is
+   * `runArm()`'s boat-keyed polar lookup (`polarKey(boat.id, sail.id)`,
+   * below) and the plan/ETA the solver produces from a genuinely different
+   * (tier-C estimated) polar table under the SAME wind and settings — see
+   * `realmask.repro.test.ts`'s `#653` describe block for the measured
+   * discriminating evidence.
+   */
+  boatId?: BoatId;
 }
 
 /** Departure instant. Part of the baseline identity — never "refresh" it. */
@@ -312,6 +336,37 @@ export const ARMS: Record<(typeof ARM_NAMES)[number], Arm> = {
     wind: () => uniformWindGrid(12, 225),
     originId: 'marstal',
   },
+  // #653: the Salona 44 "SPEEDY GO!" mirror of `breeze` — Flensburg origin,
+  // DEFAULT_SETTINGS, the same wind field, no depth relaxation involved (an
+  // ordinary voyage at a safe gate). Discriminates the boat-keyed polar
+  // lookup in isolation from #53 relaxation: any plan-level difference from
+  // `breeze` here is attributable to the polar table alone, not to a
+  // depth-gate interaction. See `Arm.boatId`'s doc comment for why this arm
+  // does NOT exercise a depth-gate difference (both boats draft 2.1 m).
+  'salona44-breeze': {
+    label: 'salona44-breeze',
+    settings: DEFAULT_SETTINGS,
+    wind: () => uniformWindGrid(12, 225),
+    boatId: 'salona-44-speedy-go',
+  },
+  // #653: the Salona 44 mirror of `relaxation-dense` — Marstal origin,
+  // DEFAULT_SETTINGS, the same wind field as the other Marstal-origin arms.
+  // Exercises the #53 relaxation path (`depthGate.ts`/`findRelaxedGate`) for
+  // a SECOND catalogue boat: because `relaxationFloorM`/`defaultSafetyDepthM`
+  // are both pure functions of `b.draftM` and the two Salonas share
+  // `draftM: 2.1`, this arm's depth outcome (usedDepthM, shallow flags) is
+  // EXPECTED to match `relaxation-dense`'s exactly — that equality is itself
+  // evidence the per-boat gate math reads `deps.boat`, not a hardcoded
+  // Salona-45 constant, for a boat other than the one every existing arm
+  // exercises. What DOES differ from `relaxation-dense` is the plan/ETA, via
+  // the boat-keyed polar.
+  'salona44-relaxation': {
+    label: 'salona44-relaxation',
+    settings: DEFAULT_SETTINGS,
+    wind: () => uniformWindGrid(12, 225),
+    originId: 'marstal',
+    boatId: 'salona-44-speedy-go',
+  },
 };
 
 /**
@@ -338,7 +393,11 @@ export function runArm(label: (typeof ARM_NAMES)[number]): void {
   // #54: read straight off the catalogue rather than by literal filename, so
   // the harness needs no edit when a boat is added. The keys are what
   // `PlanDeps.polars` is looked up by.
-  const boat = boatById(DEFAULT_BOAT_ID);
+  // #653: `arm.boatId ?? DEFAULT_BOAT_ID` — SAME fallback shape as
+  // `originId` below. Every pre-#653 arm omits `boatId`, so this resolves to
+  // exactly `boatById(DEFAULT_BOAT_ID)`, byte-identical to every recorded
+  // baseline; only the two `salona44-*` arms set it.
+  const boat = boatById(arm.boatId ?? DEFAULT_BOAT_ID);
   const polars: Record<string, PolarTable> = {};
   for (const sail of boat.sails) {
     polars[polarKey(boat.id, sail.id)] = JSON.parse(

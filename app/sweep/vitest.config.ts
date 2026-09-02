@@ -48,7 +48,11 @@ export default defineConfig({
     // than the sum — but that ~20 min figure is a PARALLEL number, not a
     // fixed constant: it holds on a machine with enough cores to run nine
     // workers concurrently and degrades toward the serial figure on a
-    // smaller one.
+    // smaller one. #653 added two more (`salona44-breeze`,
+    // `salona44-relaxation`, eleven total) — same reasoning applies with
+    // "nine" read as "eleven"; the two new arms mirror the wind fields of
+    // existing arms (`breeze`/`relaxation-dense`), so they add no new
+    // slowest-arm candidate.
     fileParallelism: true,
   },
 });
