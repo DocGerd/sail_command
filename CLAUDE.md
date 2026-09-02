@@ -208,7 +208,8 @@ making design-level decisions; do not silently deviate.
   accepting one, check whether the changed file is a RUNTIME input the
   import walk cannot see — a new data asset, arm file or pipeline generator
   outside `PATH_PREFIXES`, or a runtime-constructed edge outside
-  `EXTRA_EDGES`. The prose list that follows is a reader's aid, not the source of truth. The closure
+  `EXTRA_EDGES`. The prose list that follows is a reader's aid, not the
+  source of truth. The closure
   is wider than the obvious paths: besides `app/src/routing/`,
   `app/src/lib/mask.ts`, `app/src/lib/depthGate.ts` (since #452),
   `app/public/data/`, `app/sweep/` and `pipeline/`,
@@ -986,8 +987,9 @@ making design-level decisions; do not silently deviate.
   run is what a merge is gated on, that yields a false GREEN as readily as a
   false red (#803, CLOSED 2026-09-01 by PR #823; re-read the issue and
   `app/e2e/helpers.ts`'s build-identity comment — the forensics live there).**
-  Neither a free port nor a pid check closes it. **Make the assertion SELF-PROVING instead** — one that can only
-  pass on the exact tree under test. Worked example: PR #799's
+  Neither a free port nor a pid check closes it. **Make the assertion
+  SELF-PROVING instead** — one that can only pass on the exact tree under
+  test. Worked example: PR #799's
   conflict-resolution run passed #774's `tabIndex=0` pin (branch only) AND
   #762's guard (needs develop's `.sc-field label` CSS) in ONE run, so the
   served build necessarily contained both sides of the merge. That remedy's
