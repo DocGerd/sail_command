@@ -131,9 +131,11 @@ against the merge-base of whatever branch it will certify.
 **COMPLETE, 2026-09-02 at `d23d4c0`: two full runs of the ELEVEN-arm harness
 on this branch's own HEAD, 363/363 plans byte-identical, all eleven arm
 files sha-identical.** Per-arm sha256 prefixes, both runs (`compare.mjs`
-output, `app/sweep/README.md`'s own reader independently re-verified every
-one of the nine pre-#653 prefixes below by re-hashing `run2`'s raw arm-file
-bytes with `hashlib.sha256`, not by copying either run's printed line):
+output; the nine pre-#653 prefixes below were independently re-verified by
+this PR's reviewer on 2026-09-02 by re-hashing `run2`'s raw arm-file bytes
+with `compare.mjs`'s own byte-mode algorithm (`sha256(raw)[:16]`), not by
+copying either run's printed line — all eleven arms matched, and run 1 and
+run 2 agreed on all eleven):
 
 `becalmed 8dc119cd9a1fdced`, `breeze 7aa9fb563dd8fea0`,
 `deep-becalmed 7e7ac2e14d5305ae`, `light-motorless 0ded5d87bca1a190`,

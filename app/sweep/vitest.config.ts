@@ -57,9 +57,12 @@ export default defineConfig({
     // `salona44-relaxation` totalled 2547 s of solver time, ahead of
     // `breeze`'s 2240 s (the previous slowest of the original nine) — a new
     // slowest-arm candidate, not the reused one its mirror
-    // (`relaxation-dense`, 2199 s) would have predicted. Re-measure on a
-    // quiet machine before trusting the magnitude; the ORDERING is what is
-    // reported here, not a clean absolute.
+    // (`relaxation-dense`, 2199 s) would have predicted. REPRODUCED in run 2
+    // (2048.7 s vs `breeze` 1845.6 s and `relaxation-dense` 1796.5 s), which
+    // was essentially uncontended — two runs under different load, same arm
+    // on top, so the ORDERING is reproduced rather than merely observed. The
+    // absolute magnitudes are still load-inflated; do not quote them as clean
+    // timings.
     fileParallelism: true,
   },
 });

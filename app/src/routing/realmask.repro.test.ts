@@ -1189,15 +1189,16 @@ describe('#653: Salona 44 real-mask coverage (second catalogue boat)', () => {
     // Pinned literals, recomputed from the actual solver output observed for
     // this PR (2026-09-02) and sanity-checked against: (a) the < 1.5 h bound
     // above, (b) the #20 repro's own ~4 nm distance note, and (c) the Salona
-    // 44's polar being faster than the Salona 45's at TWS 12 kn across the
-    // nine sampled TWA from 35 to 100 deg and EXACTLY EQUAL from 110 deg to
-    // 180 (measured against the shipped salona-44-speedy-go-genoa.json /
-    // salona-45-genoa.json tables; same 9-faster/6-equal split at every one
-    // of the nine TWS rows, both rigs) — so on THIS route, which is not
-    // purely downwind, the Salona 44 plan is expected to be faster. That is
-    // a claim about this route only: `salona44-breeze` in app/sweep/ is
-    // SLOWER than `breeze` on rudkoebing and svendborg, so "faster polar
-    // implies faster plan" does NOT hold arm-wide.
+    // 44's polar being faster than the Salona 45's at TWS 12 kn across every
+    // sampled TWA (measured against the shipped
+    // salona-44-speedy-go-{genoa,fock}.json / salona-45-{genoa,fock}.json
+    // tables: the Salona 44 is STRICTLY faster in all 135 cells of each rig's
+    // table — every one of the 9 TWS rows x 15 TWA — with zero equal and zero
+    // slower entries anywhere) — so the Salona 44 plan is expected to be
+    // faster here. That is still a claim about the POLAR, not a general one
+    // about plans: `salona44-breeze` in app/sweep/ is SLOWER than `breeze` on
+    // rudkoebing and svendborg, so "faster polar implies faster plan" does
+    // NOT hold arm-wide (#866).
     expect(rig44!.distanceNm).toBeCloseTo(SALONA44_GLUECKSBURG_DISTANCE_NM, 6);
     expect(rig44!.durationMs).toBe(SALONA44_GLUECKSBURG_DURATION_MS);
     expect(rig44!.durationMs).toBeLessThan(rig45!.durationMs);
@@ -1273,10 +1274,12 @@ describe('#653: Salona 44 real-mask coverage (second catalogue boat)', () => {
       // Pinned literal, recomputed from the actual solver output observed
       // for this PR (2026-09-02) and sanity-checked against: (a) the
       // 30 nm / 12 h envelope above (same as the Salona 45's own DEFAULT
-      // case), (b) usedDepthM/minGateDepthM matching the Salona 45's case
-      // exactly, and (c) at least one flagged shallow leg on every sail —
-      // all consistent with a route through the SAME Marstal pinch as the
-      // Salona 45's plan, at a genuinely different boat speed.
+      // case), (b) usedDepthM matching the Salona 45's case exactly,
+      // minGateDepthM independently bounded to the same [2.3, 3.0) range
+      // for this boat (not cross-checked between boats), and (c) at least
+      // one flagged shallow leg on every sail — all consistent with a
+      // route through the SAME Marstal pinch as the Salona 45's plan, at a
+      // genuinely different boat speed.
       expect(rig44!.durationMs).toBe(SALONA44_MARSTAL_DURATION_MS);
     },
   );
