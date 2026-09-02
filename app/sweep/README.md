@@ -132,10 +132,10 @@ against the merge-base of whatever branch it will certify.
 on this branch's own HEAD, 363/363 plans byte-identical, all eleven arm
 files sha-identical.** Per-arm sha256 prefixes, both runs (`compare.mjs`
 output; the nine pre-#653 prefixes below were independently re-verified by
-this PR's reviewer on 2026-09-02 by re-hashing `run2`'s raw arm-file bytes
-with `compare.mjs`'s own byte-mode algorithm (`sha256(raw)[:16]`), not by
-copying either run's printed line — all eleven arms matched, and run 1 and
-run 2 agreed on all eleven):
+PR #861's round-2 claim-auditor on 2026-09-02 by re-hashing `run2`'s raw
+arm-file bytes with `compare.mjs`'s own byte-mode algorithm
+(`sha256(raw)[:16]`), not by copying either run's printed line — all eleven
+arms matched, and run 1 and run 2 agreed on all eleven):
 
 `becalmed 8dc119cd9a1fdced`, `breeze 7aa9fb563dd8fea0`,
 `deep-becalmed 7e7ac2e14d5305ae`, `light-motorless 0ded5d87bca1a190`,
@@ -200,12 +200,28 @@ the `boatSnapshot(boat)` change is confirmed to move no route, so the
 determinism control this double-run establishes carries forward to the
 file content as currently committed, not only to `d23d4c0`.
 
+**Re-sync ruling** (PR #861's round-4 reviewer, `8b22bfe` -> `3c94221`, one
+sentence so the next reader need not re-run this sweep to re-derive it):
+that 11-file delta needed no re-sweep because it contains no closure
+member, no solver-path import of any of the 11 files (grepped
+`routing/`/`lib/{mask,depthGate,geo,polar,wind,boatDepth}.ts`/`types.ts`/
+`data/boats.ts`, zero hits), and `types.ts` itself is unchanged — so
+`DEFAULT_SETTINGS`, `app/public/data/` and `pipeline/` stay untouched and
+the double-run above still certifies the branch.
+
 ## Why it lives here and not under `src/`
 
 `app/vite.config.ts`'s `test.include` is `['src/**/*.test.{ts,tsx}']`, so
 nothing in this directory is collected by `npm --prefix app run test` or by CI.
-That is deliberate — the sweep costs ~20 minutes of real solver time. It is run
-on demand, via its own `vitest.config.ts` in this directory.
+That is deliberate — the sweep costs real solver time, on the order of
+half an hour: run 2 of this PR's own double-run (11 arms, `fileParallelism`)
+measured **2184.14 s wall** (driver log), with the slowest single arm alone
+at 2048.7 s (`salona44-relaxation`, summed from its `timings.json`) — the
+`~20 minutes` figure this used to say was written for nine arms and is
+stale even before accounting for load. Both numbers were measured under
+this session's own concurrent multi-agent load, not a quiet machine — see
+"#653 sweep control" above for the full caveat. It is run on demand, via
+its own `vitest.config.ts` in this directory.
 
 That config is necessary, not decoration: vitest 4 has **no `--include` flag**
 (it exits `CACError: Unknown option \`--include\``, measured against

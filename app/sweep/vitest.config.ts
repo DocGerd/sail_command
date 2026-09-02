@@ -59,10 +59,14 @@ export default defineConfig({
     // slowest-arm candidate, not the reused one its mirror
     // (`relaxation-dense`, 2199 s) would have predicted. REPRODUCED in run 2
     // (2048.7 s vs `breeze` 1845.6 s and `relaxation-dense` 1796.5 s), which
-    // was essentially uncontended — two runs under different load, same arm
-    // on top, so the ORDERING is reproduced rather than merely observed. The
-    // absolute magnitudes are still load-inflated; do not quote them as clean
-    // timings.
+    // ran under LIGHTER load than run 1 but not a quiet machine — every arm
+    // WITH REAL SOLVER COST is faster in run 2 (the one exception,
+    // `becalmed`, is the vacuous 33/33-error arm at near-zero cost: 6.5 s ->
+    // 9.2 s is noise, not a load signal) — which is what shows the load
+    // differed rather than went away. Two runs at different load levels,
+    // same arm on top, so the ORDERING is reproduced rather than merely
+    // observed. The absolute magnitudes are still load-inflated; do not
+    // quote them as clean timings.
     fileParallelism: true,
   },
 });
