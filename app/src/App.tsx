@@ -1007,7 +1007,7 @@ function AppShell() {
   const settingsDirty = plan ? routingSettingsDirty(plan, settings) : false;
 
   // #834: the harbor picker discloses a #652 known-disconnected harbor BEFORE
-  // a solve (`HarborPicker.tsx`'s option row) and, since the sibling PR that
+  // a solve (`HarborPicker.tsx`'s option row) and, since commit `d173be0`
   // added this same check to `PlannerPanel.tsx`'s selected-endpoint row, AFTER
   // a pick too — but a plan run against exactly that harbor still failed with
   // the generic `error.noRoute.unreachable`, the same string #652 was filed
