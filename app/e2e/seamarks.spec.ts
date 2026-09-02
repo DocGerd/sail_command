@@ -1,5 +1,11 @@
 import { test, expect, type Page } from '@playwright/test';
-import { startPreview, mapReady } from './helpers';
+import {
+  startPreview,
+  mapReady,
+  EDGE_VIEWPORTS,
+  STANDARD_VIEWPORTS,
+  type Viewport,
+} from './helpers';
 
 // #353 PR1: measurement guard for the seamark size axis. This repo has
 // already been bitten (#191/#192): enlarging map icons CULLS them below the
@@ -1135,6 +1141,230 @@ test('#232 item 2: cross-tile placement ordering — measurement, not a fix', as
       `${leaks.length} of ${rows.length} culled hazard mark(s) were displaced by a WORSE-ranked ` +
         `neighbour — a genuine #232 item 2 ordering leak: ${JSON.stringify(leaks, null, 2)}`,
     ).toEqual([]);
+  } finally {
+    server.kill();
+  }
+});
+// ---------------------------------------------------------------------------
+// #830: the keyboard-reachable "seamarks in view" list (SeamarksInView.tsx),
+// hosted in the Plan PANEL. Two guards.
+//
+// (1) COMPOSITION GUARD — the reason the list is NOT in `.data-layer-controls`
+// as the #714 spike proposed. A third row there is charged against the depth
+// legend's reachability budget (`budgetPx`, DataLayers.tsx's useLayoutEffect),
+// and a 2026-09-02 re-measurement against a real DOM injection found it drops
+// under LEGEND_COLLAPSED_HEIGHT_PX at exactly three viewports — 375x667 and
+// 360x740 with the list COLLAPSED, 390x844 with it EXPANDED — which sets
+// `hidden` on the whole `.depth-legend`, #597 safety caveat included, taking
+// it out of the accessibility tree. The panel placement leaves that budget
+// byte-identical, and this guard is what would catch a future relocation
+// back into map chrome: it asserts, in the NO-PLAN state (the legend is
+// gated on `plan === null`, #813), that the legend is not `hidden` and that
+// the caveat paragraph has a non-zero client rect. `hidden` is read as the
+// IDL property through `evaluate` — `getAttribute` cannot tell present from
+// absent for a boolean attribute (CLAUDE.md) — and re-sampled on every poll
+// tick (#412). Those three viewports are the ones where the chrome placement
+// fails; a guard omitting any of them could not detect the regression. The
+// baseline is the BANNER-FREE page (see the toast dismissal inside the test):
+// with the SW "offline ready" toast still up, the two collapsed rows are
+// hidden on `develop` today, list or no list.
+//
+// (2) KEYBOARD GUARD — reachable and operable without a pointer, and the
+// rows track the viewport by IDENTITY (a same-count swap must be caught,
+// the labels.spec.ts rule), not by count.
+
+const SEAMARKS_IN_VIEW = 'details.seamarks-in-view';
+
+interface LegendGuardRow {
+  label: string;
+  viewport: Viewport;
+  listExpanded: boolean;
+}
+
+const LEGEND_GUARD_ROWS: LegendGuardRow[] = [
+  {
+    label: 'partialPushBand375 (375x667), list collapsed',
+    viewport: EDGE_VIEWPORTS.partialPushBand375,
+    listExpanded: false,
+  },
+  {
+    label: 'narrowPortrait360 (360x740), list collapsed',
+    viewport: EDGE_VIEWPORTS.narrowPortrait360,
+    listExpanded: false,
+  },
+  {
+    label: 'phonePortrait (390x844), list expanded',
+    viewport: STANDARD_VIEWPORTS.phonePortrait,
+    listExpanded: true,
+  },
+];
+
+for (const row of LEGEND_GUARD_ROWS) {
+  test(`#830 composition guard: the depth legend and its #597 caveat stay reachable with the seamarks-in-view list mounted — ${row.label}`, async ({
+    page,
+  }) => {
+    const server = await startPreview();
+    try {
+      await page.setViewportSize(row.viewport);
+      await page.goto(server.url);
+      await mapReady(page);
+
+      // Dismiss the incidental SW "offline ready" toast FIRST — the same
+      // idiom datalayers.spec.ts's #598 legend gate and compass.spec.ts use.
+      // Not incidental here: a rendered `.banner-area` banner enters the
+      // legend budget (`bannerHeightPx` in DataLayers.tsx's useLayoutEffect),
+      // and at 375x667 / 360x740 that toast alone takes the NO-LIST baseline
+      // (62.556 px / 95.41 px, measured 2026-09-02 on a banner-free page)
+      // under LEGEND_COLLAPSED_HEIGHT_PX — MEASURED on this guard's first run:
+      // both collapsed rows read `hidden=true` with the toast up while the
+      // 390x844 row (142.21 px baseline) survived it. The measurement this
+      // guard pins was taken with an empty banner area, so it must assert
+      // against that state, and it requires the area to be empty rather
+      // than trusting one dismiss click (a dismissal proves emptiness at
+      // one instant only, compass.spec.ts's own #368 round-5 lesson).
+      await page
+        .locator('.reload-prompt .banner-dismiss')
+        .click({ timeout: 5_000 })
+        .catch(() => {});
+      await expect(
+        page.locator('.banner-area .banner'),
+        'a banner is still up — the legend budget below would measure the banner, not the #830 list',
+      ).toHaveCount(0);
+
+      // The guard is vacuous unless the control it is about is actually
+      // mounted — pin that first. Plan tab is the default, no plan exists.
+      const list = page.locator(SEAMARKS_IN_VIEW);
+      await expect(list, 'the #830 seamarks-in-view Disclosure must be mounted').toHaveCount(1);
+      if (row.listExpanded) {
+        await list.locator('summary').click();
+        await expect
+          .poll(() => list.evaluate((el) => (el as HTMLDetailsElement).open), {
+            message: 'the seamarks-in-view Disclosure did not open on a summary click',
+          })
+          .toBe(true);
+      } else {
+        expect(
+          await list.evaluate((el) => (el as HTMLDetailsElement).open),
+          'the seamarks-in-view Disclosure must default COLLAPSED',
+        ).toBe(false);
+      }
+
+      const legend = page.locator('details.depth-legend');
+      await expect(legend, 'the no-plan depth legend (#813 gate) must be mounted').toHaveCount(1);
+      await expect
+        .poll(() => legend.evaluate((el) => (el as HTMLElement).hidden), {
+          timeout: 5_000,
+          message:
+            `.depth-legend reads hidden=true at ${row.label} — the legend reachability budget ` +
+            `(DataLayers.tsx budgetPx) fell under LEGEND_COLLAPSED_HEIGHT_PX with the #830 list mounted`,
+        })
+        .toBe(false);
+
+      // Open the legend so its body lays out, then the #597 caveat paragraph
+      // must occupy a real box (a collapsed <details> body has a zero rect).
+      await legend.locator('summary').click();
+      await expect
+        .poll(() => legend.evaluate((el) => (el as HTMLDetailsElement).open), {
+          message: 'the depth legend did not open on a summary click',
+        })
+        .toBe(true);
+      const caveat = legend.getByText(/Fehlende Schraffur ist keine Garantie/);
+      await expect(
+        caveat,
+        'the #597 caveat paragraph must be present in the legend body',
+      ).toHaveCount(1);
+      await expect
+        .poll(
+          () =>
+            caveat.evaluate((el) => {
+              const r = el.getBoundingClientRect();
+              return r.width * r.height;
+            }),
+          {
+            message: `the #597 caveat paragraph has a zero client rect at ${row.label}`,
+          },
+        )
+        .toBeGreaterThan(0);
+    } finally {
+      server.kill();
+    }
+  });
+}
+
+test('#830: seamarks-in-view — keyboard-only identification, and the rows track the viewport by identity', async ({
+  page,
+}) => {
+  const server = await startPreview();
+  try {
+    await page.setViewportSize(STANDARD_VIEWPORTS.desktopHd);
+    await page.goto(server.url);
+    await mapReady(page);
+    await waitForSeamarksLayer(page);
+
+    // #7: the layer is opt-in, and the list mirrors it. This is ALSO the
+    // accessible-name collision check for this PR: `getByRole` matches by
+    // substring, so if the new summary or any row CONTAINED "Seezeichen"
+    // this unscoped locator would resolve two elements and `check()` would
+    // throw a strict-mode violation right here, in the spec that owns it.
+    const seamarksToggle = page.getByRole('checkbox', { name: 'Seezeichen' });
+    await seamarksToggle.check();
+    await expect(seamarksToggle).toBeChecked();
+
+    await jumpToCluster(page, ZOOM_AT_OR_ABOVE_12);
+    const list = page.locator(SEAMARKS_IN_VIEW);
+    const rowKeys = () =>
+      list
+        .locator('button[data-seamark-key]')
+        .evaluateAll((els) => els.map((e) => e.getAttribute('data-seamark-key')));
+    await expect
+      .poll(rowKeys, {
+        timeout: 10_000,
+        message: 'no seamark rows appeared for the cluster view (list empty after the settle gate)',
+      })
+      .not.toEqual([]);
+    const before = await rowKeys();
+
+    // Keyboard only from the summary onward: Enter opens the Disclosure, Tab
+    // lands on the first row (a native <button>), Enter opens that mark's
+    // popup ON THE MAP — the same popup a pointer click on the glyph opens.
+    await list.locator('summary').focus();
+    await page.keyboard.press('Enter');
+    await expect
+      .poll(() => list.evaluate((el) => (el as HTMLDetailsElement).open), {
+        message: 'Enter on the focused summary did not open the Disclosure',
+      })
+      .toBe(true);
+    await page.keyboard.press('Tab');
+    await expect
+      .poll(
+        () => page.evaluate(() => document.activeElement?.getAttribute('data-seamark-key') ?? null),
+        {
+          message: 'Tab from the open summary did not land on the first seamark row',
+        },
+      )
+      .toBe(before[0]);
+    const firstRowText =
+      (await list.locator('button[data-seamark-key]').first().textContent()) ?? '';
+    await page.keyboard.press('Enter');
+    const popover = page.locator('.maplibregl-popup.seamark-popup .seamark-popover');
+    await expect(popover, 'Enter on a row must open the seamark popup on the map').toHaveCount(1);
+    // The popup describes the SAME mark the row leads with (its type).
+    const rowType = firstRowText.split(' · ')[0] ?? '';
+    expect(rowType.length, 'the row must lead with a non-empty type').toBeGreaterThan(0);
+    await expect(popover).toContainText(`Typ: ${rowType}`);
+
+    // Viewport tracking: a zoomed-out view at the same centre lists a
+    // DIFFERENT set (compared by row identity, never by count).
+    await jumpToCluster(page, ZOOM_BELOW_12);
+    await expect
+      .poll(rowKeys, {
+        timeout: 10_000,
+        message:
+          'the row set did not change after the zoom-out — the moveend/settle path is broken',
+      })
+      .not.toEqual(before);
+    const after = await rowKeys();
+    expect(after.length, 'the zoomed-out view must still list marks').toBeGreaterThan(0);
   } finally {
     server.kill();
   }

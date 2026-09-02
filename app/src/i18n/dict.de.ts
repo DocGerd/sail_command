@@ -575,6 +575,29 @@ export const de = {
   // {value} s — same text in both languages, but still routed through the
   // dict (#300) rather than hardcoded, per repo convention.
   'seamark.popover.lightPeriodUnit': '{value} s',
+  // #830: keyboard-reachable list of the seamarks inside the current map
+  // viewport (components/SeamarksInView.tsx). The SUMMARY deliberately says
+  // "Schifffahrtszeichen" rather than the app's own "Seezeichen":
+  // Playwright's getByRole matches names by SUBSTRING, three live e2e specs
+  // spell getByRole('checkbox', { name: 'Seezeichen' }) unscoped
+  // (datalayers.spec.ts, layout.spec.ts, seamarks.spec.ts), and a summary or
+  // row CONTAINING that word would widen those locators into strict-mode
+  // violations in files unrelated to this control (CLAUDE.md's #7
+  // one-anchor rule). Row text is built from seamark.value.* below, none of
+  // which contains it either. The body notes are plain <p> text with no
+  // role, so they may say "Seezeichen" freely.
+  'seamarks.inView.summary': 'Schifffahrtszeichen im Kartenausschnitt ({count})',
+  'seamarks.inView.summaryPending': 'Schifffahrtszeichen im Kartenausschnitt',
+  'seamarks.inView.hint':
+    'Nach Entfernung zur Kartenmitte sortiert. Auswahl zeigt das Zeichen in einem Hinweisfenster auf der Karte.',
+  'seamarks.inView.layerOff':
+    'Die Seezeichen-Ebene ist ausgeblendet. Zum Auflisten das Kontrollkästchen „Seezeichen“ auf der Karte einschalten.',
+  'seamarks.inView.loading': 'Seezeichen werden geladen …',
+  'seamarks.inView.empty': 'Keine Seezeichen im aktuellen Kartenausschnitt.',
+  // {shown} ist SEAMARKS_IN_VIEW_MAX (lib/seamarksInView.ts) — der Text tippt
+  // die Zahl nie selbst, damit Konstante und Satz nicht auseinanderlaufen.
+  'seamarks.inView.truncated':
+    'Nur die {shown} der Kartenmitte nächstgelegenen von {total} Seezeichen werden aufgeführt — hineinzoomen, um alle zu sehen.',
   // Seezeichen-Popover-WERTE (#300): übersetzt aus den in
   // app/public/data/seamarks.json tatsächlich vorkommenden OSM-Tag-Werten
   // (nicht aus dem vollen IALA-Tagging-Schema) — seamarkPopover.coverage.test.ts
