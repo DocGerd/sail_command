@@ -990,7 +990,7 @@ making design-level decisions; do not silently deviate.
   service worker on a REUSED origin serving a cached build to a real browser
   PAGE, is structurally untouched: the check is a plain Node `fetch()` with no
   ServiceWorker in the picture, and closing it needs a browser-side
-  unregister+cache-clear in the specs that navigate. Re-read the issue and
+  unregister+cache-clear in the specs that navigate (tracked at #832). Re-read the issue and
   `app/e2e/helpers.ts`'s build-identity comment — the forensics live there).**
   Neither a free port nor a pid check closes it. **Make the assertion
   SELF-PROVING instead** — one that can only pass on the exact tree under
@@ -1004,7 +1004,8 @@ making design-level decisions; do not silently deviate.
   on `harbors.json`, PR #823 review). That is why `startPreview()`'s
   `assertSwJsMatches` ALSO byte-compares the served `sw.js` against `dist/sw.js` — workbox's precache
   manifest covers every `globPatterns` match that `globIgnores` does not
-  exclude (`sw.ts` itself, `data/**`, the polars, the basemap archive), so
+  exclude (`data/**`, the polars, the basemap archive, the hashed JS/CSS
+  chunks), so
   both change classes ARE covered — but NOT the whole of `dist/`
   unconditionally, and a file
   escapes for two independent reasons: it sits under an ignored subtree
