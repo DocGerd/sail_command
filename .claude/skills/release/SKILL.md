@@ -123,8 +123,11 @@ it cannot drift from the tracker. Do this on a topic branch into `develop`
     f        { print }
   ' CHANGELOG.md | grep -q '[^[:space:]]' && echo "non-empty, OK" || echo "EMPTY — fix before tagging"
   ```
-- **`ROADMAP.md`** — update `Current release:` and promote Now → Next: the
-  shipped milestone's section goes away, the next one becomes "Now". Re-check
+- **`ROADMAP.md`** — update `Current release:` and roll the two headed
+  sections: `## Now — vX.Y.Z` names the release just shipped — the SAME
+  version as `Current release:`, written in past tense — and `## Next`
+  names the milestone now being filled; the previous cut's "Now" section
+  goes away, and its "Next" is rewritten as this cut's "Now". Re-check
   every issue number named there against the tracker; this file was wrong
   within a day of being written. **Bump `Current release:` HERE, in the same
   commit — do not defer it to step 6.** The tag not existing yet is not a
