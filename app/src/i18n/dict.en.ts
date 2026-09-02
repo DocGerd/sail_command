@@ -108,6 +108,20 @@ export const en = {
   'planner.via.moveUp': 'Move waypoint {index} up',
   'planner.via.moveDown': 'Move waypoint {index} down',
   'planner.via.marker': 'Waypoint {index}',
+  // #829: keyboard-reachable coordinate entry — a second producer/renderer of
+  // the same LatLon the map tap already produces (spike
+  // docs/spikes/714-keyboard-map-equivalents.md §3.1/§5.1). "coord.edit" is
+  // deliberately worded to avoid containing "Waypoint {index}" as a
+  // substring — CLAUDE.md's getByRole-substring-collision lesson: it would
+  // otherwise also match ViaMarkers.tsx's own "Waypoint {index}" marker
+  // aria-label under a non-exact getByRole locator.
+  'planner.via.coord.latLabel': 'Latitude',
+  'planner.via.coord.lonLabel': 'Longitude',
+  'planner.via.coord.add': 'Add coordinates',
+  'planner.via.coord.update': 'Update coordinates',
+  'planner.via.coord.edit': 'Edit coordinates (point {index}): {coord}',
+  'planner.via.coord.outOfRegion':
+    'The coordinates lie outside the covered area (Flensburg Fjord / Danish South Sea).',
   'planner.departure.label': 'Departure',
   'planner.plan': 'Plan route',
   // §3.5 empty/first-run: friendly guidance near the primary action while no
