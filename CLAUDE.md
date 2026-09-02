@@ -985,8 +985,8 @@ making design-level decisions; do not silently deviate.
   Chromium half.
 - **An e2e run can silently measure a FOREIGN build — and because a green e2e
   run is what a merge is gated on, that yields a false GREEN as readily as a
-  false red (#803, closed 2026-09-01 by PR #823 — but that fix reaches only
-  its FIRST layer, a foreign server already on the port. The SECOND, a stale
+  false red (#803, closed 2026-09-01 by hand; fixed by PR #823 — but that fix
+  reaches only its FIRST layer, a foreign server already on the port. The SECOND, a stale
   service worker on a REUSED origin serving a cached build to a real browser
   PAGE, is structurally untouched: the check is a plain Node `fetch()` with no
   ServiceWorker in the picture, and closing it needs a browser-side
@@ -1000,12 +1000,13 @@ making design-level decisions; do not silently deviate.
   served build necessarily contained both sides of the merge. That remedy's
   obvious mechanisation — asserting on the ENTRY CHUNK — has a blind spot:
   `dist/index.html` and its hashed entry chunk are byte-identical across a
-  substantive `app/src/sw.ts` edit and an `app/public/data/**` edit (measured,
-  PR #823 review). That is why `startPreview()`'s `assertSwJsMatches` ALSO
-  byte-compares the served `sw.js` against `dist/sw.js` — workbox's precache
-  manifest reaches everything under `globPatterns`, so both change classes ARE
-  covered — but NOT the whole of `dist/` unconditionally. The manifest is
-  `dist/**` filtered by `globPatterns` and THEN minus `globIgnores`, so a file
+  substantive `app/src/sw.ts` edit and an `app/public/data/**` edit (measured
+  on `harbors.json`, PR #823 review). That is why `startPreview()`'s
+  `assertSwJsMatches` ALSO byte-compares the served `sw.js` against `dist/sw.js` — workbox's precache
+  manifest covers every `globPatterns` match that `globIgnores` does not
+  exclude (`sw.ts` itself, `data/**`, the polars, the basemap archive), so
+  both change classes ARE covered — but NOT the whole of `dist/`
+  unconditionally, and a file
   escapes for two independent reasons: it sits under an ignored subtree
   (tracked at #833), or its extension is outside the token list (tracked at
   #854 — `.txt` is, so `THIRD-PARTY-NOTICES.txt`, whose drift reds the
@@ -1392,7 +1393,7 @@ making design-level decisions; do not silently deviate.
   `deploy` job was read as NOT YET CREATED (the run was still on `build`), so
   `cancel-in-progress` was called to supersede it in advance, and all five of
   its jobs then read `cancelled`.
-  **The gate's two answers differ in DURABILITY.** `success` is permanent — a
+  **The gate's answers differ in DURABILITY.** `success` is permanent — a
   job cannot un-succeed. "Not yet created" is a snapshot of a race still
   running: at v0.18.0 the merge-run's `deploy` job did not exist when read
   (the safe signal) and read `success` afterwards, during the window covering
