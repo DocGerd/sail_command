@@ -387,6 +387,24 @@ export const de = {
     '{dist} dieser Route verlaufen durch Wasser, das eine vorsichtigere Lesart der Kartentiefen unter die eingestellte Sicherheitstiefe von {requested} m setzt.',
   'route.marginal.noticeSevere':
     'Achtung: {dist} dieser Route verlaufen durch Wasser, das eine vorsichtigere Lesart der Kartentiefen unter die eingestellte Sicherheitstiefe von {requested} m setzt — bei dieser Einstellung kann diese Lesart unter den Bootstiefgang von {draft} m fallen.',
+  // #615: siehe dict.en.ts's Kommentar für Zweck, Auslöser und warum jede
+  // Klausel tragend ist. {dist} kommt aus SEAMARK_PROXIMITY_M
+  // (lib/seamarkProximity.ts), nie aus dem Wörterbuch. Der Klassenbegriff
+  // "Kardinal- oder Einzelgefahrenzeichen" ist aus den bereits
+  // ausgelieferten seamark.value.type.*-Namen (Kardinaltonne/-bake,
+  // Einzelgefahrentonne/-bake) und dem Klassensuffix aus map.seamarks.toggle
+  // ("Seezeichen") zusammengesetzt — bewusst OHNE externe Quellenangabe:
+  // #300 hat gemessen, dass eine BSH-INT-1-Paarung gegen die heute unter der
+  // gleichen URL ausgelieferte Ausgabe als Erfindung re-verifiziert; eine
+  // Attestierung müsste an eine AUSGABE gepinnt sein, nicht an eine URL.
+  // "das Zeichen / die Zeichen" ist invariant, daher wechselt im Plural nur
+  // "einem" -> "{count}". Keine Anapher ("obige", "diese Warnung"): der Satz
+  // bleibt aus jeder Position heraus richtig (#493/#504). "mit amtlicher
+  // Seekarte prüfen" wörtlich aus route.shallow.caveat oben.
+  'route.seamarks.proximity':
+    'Diese Route verläuft näher als {dist} m an einem Kardinal- oder Einzelgefahrenzeichen. SailCommand bezieht Seezeichen nicht in die Routenberechnung ein und trifft keine Aussage darüber, auf welcher Seite ein Zeichen zu passieren ist — mit amtlicher Seekarte prüfen.',
+  'route.seamarks.proximity.plural':
+    'Diese Route verläuft näher als {dist} m an {count} Kardinal- oder Einzelgefahrenzeichen. SailCommand bezieht Seezeichen nicht in die Routenberechnung ein und trifft keine Aussage darüber, auf welcher Seite ein Zeichen zu passieren ist — mit amtlicher Seekarte prüfen.',
   'route.totals.distance': 'Distanz',
   'route.totals.duration': 'Dauer',
   'route.totals.eta': 'Ankunft',
