@@ -127,10 +127,10 @@ surface, disjoint first. No per-PR reviewer can see this; only you hold that vie
 
 **Git conflicts are the cheap half. Map BEHAVIOURAL composition too**: when two PRs touch one
 component, require the MERGED TREE to be built and tested, because it is a third artifact
-neither PR's CI has ever built. At v0.18.0, #813 made a legend render only while `plan === null`
-and #828 put a control inside it — each diff individually correct and reviewed clean, while the
-merged result left that control unreachable once a plan existed, with the flag persisted in
-IndexedDB and no in-app path back. Merge ORDER can also be a correctness constraint, not just
+neither PR's CI has ever built. At v0.18.0, PR #827 made a legend render only while
+`plan === null` and PR #828 put a control inside it — each diff individually correct and reviewed clean, while the
+merged result left that control unreachable once a plan existed, with the flag persisted
+and no in-app path back. Merge ORDER can also be a correctness constraint, not just
 conflict avoidance: #828 had merged #827's branch into its own history to test the fix, so the
 reverse order would have landed #827's changeset under #828's PR.
 
@@ -167,7 +167,8 @@ Per task:
 - **Once a PR shows the successor pattern, make the next wave DELETION-ONLY** — "adopt supplied
   text verbatim plus deletions, write no new prose". Measured on two PRs at v0.18.0: waves 1 and
   2 each fixed N findings and introduced 2 NEW prose defects; wave 3 under that constraint
-  introduced ZERO. A wave that cannot add prose cannot produce a successor. It only works when
+  introduced ZERO on that wave. A wave that cannot add prose has far less room to produce a
+  successor — though a deletion can still strand an anaphor. It only works when
   the findings are removable — a fix needing explanation still needs a normal wave.
 - **Unresolved review threads are a hard merge blocker** under `protect-main`, and closing one
   has no notification attached, so a fix dispatched is NOT a thread resolved. Check the
@@ -179,9 +180,10 @@ Per task:
   provenance — it is the one part of a diff nobody re-attacks.
 - If a change touches the #282 sweep closure, run `.claude/skills/sweep-closure/` (#729) — it
   derives the closure mechanically instead of from a prose path list. Treat OWED as
-  authoritative; on NOT-OWED still trace the FIELD into `PlanDeps`/`PlanRequest` yourself,
-  because the tool over-reports against its modelled universe and nothing in CI runs its
-  selftest (#836). Either way, never pay ~31 min per arm-set on a guess, and never run a full
+  authoritative and pay it. A NOT-OWED is only as good as the tool's hand-maintained
+  universe — `PATH_PREFIXES` / `EXTRA_EDGES` have no CI check (#836) — so before
+  accepting one, confirm the changed file is not a RUNTIME input the import walk
+  cannot see. Either way, never pay ~31 min per arm-set on a guess, and never run a full
   sweep as a harness background task.
 - Spec edits under `docs/superpowers/specs/` are MAIN-SESSION ONLY (the ask-gate hook must prompt).
 
