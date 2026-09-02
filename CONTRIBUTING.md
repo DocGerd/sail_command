@@ -172,9 +172,8 @@ labels on **pull requests** are applied automatically from changed paths by
 
 - `v0.19.0` — the milestone now being filled; it closes when the release PR
   merges and the tag is pushed.
-- `v0.20.0` — the next MINOR release.
-- `v0.21.0` — opens fresh at this cut, per the roll-forward convention
-  below.
+- `v0.20.0` — the next MINOR release, opened fresh at the `v0.18.0` cut per
+  the roll-forward convention below.
 - `Backlog` — accepted, not yet scheduled into a release.
 - `Icebox` — deferred / maybe-never; revisit opportunistically.
 
@@ -217,10 +216,17 @@ settled on 2026-09-01, at the `v0.18.0` cut — "at least 20% bug-typed" over th
 competing "at least 20% of slots left unfilled"; neither is inferable from the
 milestones themselves, which is why it is written down here.
 
-It is the target a cut is planned against, not a property every open milestone
-already satisfies. One still being filled may sit below the floor — closing
-that gap is part of the triage that opens the cut, and a milestone that misses
-it AT the cut is a finding to report, not a reason to restate the rule.
+The floor is the target a cut is planned against, not a property every open
+milestone already satisfies. One still being filled may sit below the floor
+— closing that gap is part of the triage that opens the cut, and a milestone
+that misses it AT the cut is a finding to report, not a reason to restate
+the rule.
+
+The floor is forward-looking and is not applied retroactively: it was first
+written down at the `v0.18.0` cut, and three earlier milestones would miss
+it — `v0.4.0` (1 bug of 9), `v0.7.0` (2 of 16) and `v0.8.0` (0 of 10, an
+all-`chore` cut). Every milestone SHIPPED from `v0.9.0` on clears it; the
+open one is covered by the paragraph above.
 
 The same cut refreshes the documentation that describes project state, so it
 cannot drift from the tracker: [`ROADMAP.md`](ROADMAP.md) (milestone contents
