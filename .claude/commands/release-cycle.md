@@ -75,8 +75,9 @@ copy and the one to keep current. Restated here only so this command is self-con
 2. **Then favour user-facing work** — `type: feature` and user-visible `type: bug` outrank
    `type: chore` and `type: docs` at equal priority. A `chore` that unblocks a `feature` inherits
    the feature's rank; say so explicitly when you promote one.
-3. **The 20% bug reserve** — at least a fifth of the milestone's issues are `type: bug`,
-   rounded UP (a nine-issue milestone reserves two, not 1.8).
+3. **The 20% bug reserve** — the milestone should REACH ITS CUT with at least a fifth of its
+   issues `type: bug`, rounded UP (a nine-issue milestone reserves two, not 1.8). A milestone
+   still being filled may sit below it; that is a gap to close at this gate, not a rule to bend.
 
 **Do NOT re-ask which reading of the reserve was meant — it was SETTLED at the v0.18.0 cut
 (2026-09-01) as "at least 20% bug-typed", over the competing "at least 20% of slots left

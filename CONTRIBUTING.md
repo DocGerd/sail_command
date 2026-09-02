@@ -206,16 +206,21 @@ this order:
    outrank `type: chore` and `type: docs` at equal priority. A `chore` that
    unblocks a feature inherits the feature's rank; the promotion is stated
    explicitly.
-3. **A 20% bug reserve** — at least a fifth of the milestone's issues are
-   `type: bug`, rounded up (a nine-issue milestone reserves two, not 1.8).
+3. **A 20% bug reserve** — a milestone should reach its cut with at least a
+   fifth of its issues `type: bug`, rounded up (a nine-issue milestone
+   reserves two, not 1.8).
 
-The reserve is a floor on bug-typed work admitted **at planning time**, not
-empty headroom held back for later: a bug filed mid-cycle is triaged on its
-merits like any other issue and may land in the current cut, the next one, or
-`Backlog`. That reading was settled on 2026-09-01, at the `v0.18.0` cut —
-"at least 20% bug-typed" over the competing "at least 20% of slots left
-unfilled". Neither reading is inferable from the milestones themselves, which
-is why it is written down here.
+The reserve is a floor on bug-typed work, not empty headroom held back for
+later: a bug filed mid-cycle is triaged on its merits like any other issue and
+may land in the current cut, the next one, or `Backlog`. That reading was
+settled on 2026-09-01, at the `v0.18.0` cut — "at least 20% bug-typed" over the
+competing "at least 20% of slots left unfilled"; neither is inferable from the
+milestones themselves, which is why it is written down here.
+
+It is the target a cut is planned against, not a property every open milestone
+already satisfies. One still being filled may sit below the floor — closing
+that gap is part of the triage that opens the cut, and a milestone that misses
+it AT the cut is a finding to report, not a reason to restate the rule.
 
 The same cut refreshes the documentation that describes project state, so it
 cannot drift from the tracker: [`ROADMAP.md`](ROADMAP.md) (milestone contents
