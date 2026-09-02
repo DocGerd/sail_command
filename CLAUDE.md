@@ -2098,11 +2098,12 @@ making design-level decisions; do not silently deviate.
   picks.** "Every milestone from `v0.9.0` on clears it" was FALSE as written
   in a draft on PR #853 — quoted and refuted in `cf3d643`'s commit message
   (2026-09-02), never committed to `CONTRIBUTING.md` in that form. The OPEN
-  `v0.19.0` sat inside that range at 1 bug of 6 at the time, so a spot-check
-  at either end, `v0.9.0` or `v0.18.0`, passes. Caught by verifying the
-  universal half member by member — the audit round had not — and fixed by
-  SCOPING the sentence to SHIPPED milestones rather than hedging it, per the
-  bullet above.
+  `v0.19.0` sat inside that range at 1 bug of 6 at the time, while every
+  milestone SHIPPED in it by then had cleared — so a spot-check at either end,
+  `v0.9.0` or `v0.18.0`, passed while the violator sat interior. Caught by
+  verifying the universal half member by member — the audit round had not —
+  and fixed by SCOPING the sentence to SHIPPED milestones rather than hedging
+  it, per the bullet above.
 - Mutation-check new tests before trusting them: an "equivalence" test
   deriving expectations from the function under test always passes (#50
   reached reviewer approval with three such false-pass holes, caught pre-merge
@@ -2548,13 +2549,14 @@ making design-level decisions; do not silently deviate.
   most". The prose auditor refuted the CONCLUSION from the shipped tree:
   `app/e2e/helpers.ts`'s `startPreview()` never rested on `index.html` alone —
   `assertSwJsMatches` byte-compares the served `sw.js`, which `sw.ts` compiles
-  into, and that file's precache manifest covers the `public/**` class — so
-  both change classes ARE covered, and the clause would have steered future
-  sessions AWAY from a probe that works (the corrected text is the #803 bullet
-  under PWA / E2E / deploy). The reviewer's own diagnosis: "I proved the
-  antecedent and never enumerated the shipped remedy's parts." Every step
-  true, the claim false — the "what class of failure can this method not
-  detect?" question, asked of a VERIFICATION rather than of a test.
+  into, and that BUILT file's precache manifest covers the
+  `app/public/data/**` class the clause named — so both change classes ARE
+  covered, and the clause would have steered future sessions AWAY from a probe
+  that works (the corrected text is the #803 bullet under PWA / E2E / deploy).
+  The reviewer's own diagnosis: "I proved the antecedent and never enumerated
+  the shipped remedy's parts." Every step true, the claim false — the "what
+  class of failure can this method not detect?" question, asked of a
+  VERIFICATION rather than of a test.
 - A cross-language invariant (a CSS `var()` fallback that must equal a JS
   constant — no compiler spans CSS and TypeScript) has no automatic keeper;
   the only thing that can catch drift is a test that reads BOTH artifacts
@@ -2675,7 +2677,7 @@ making design-level decisions; do not silently deviate.
   the shapes it lists.
 - **The successor chain, measured again at full length on a CLAUDE.md PR: PR
   #852 (the v0.18.0 learnings) took FIVE review rounds, and every fix wave put
-  a defect inside the previous round's fix** — the commit subjects say so in
+  a defect inside the previous round's fix** — the commit record says so in
   sequence (`b4f134a` "4 Majors, three inside the first fix wave", `b8aab3c`
   "the correction to the correction", `69bb529` "a contradiction inside the
   correction", `cdae541` "the example list contradicted its own rule"). Two
@@ -2685,13 +2687,15 @@ making design-level decisions; do not silently deviate.
   probes reach as "not the whole of `dist/`" at that PR's base (`a7caaf4`),
   while the CLAUDE.md #803 bullet carried no such hedge at `e6beb00`,
   `6fefbea` or `b4f134a` and gained it only at `b8aab3c` — the #854 over-claim
-  was filed against the `b4f134a` text, with the primary artifact right all
-  along. And NIBBLING at a wrap does not converge: `4b0ff81`, whose own
-  subject is "reflow two lines wave 5 ran past the wrap", still left three
-  over-79-column lines in that bullet including a NEW 106-column one, while
-  `a337005` rewrapped the whole bullet in one step and cleared every one.
-  Verify a rewrap word-normalised identical to the prior commit, as `a337005`
-  did, because a reflow that silently drops a word is undetectable by eye.
+  was filed against the `b4f134a` text, with the primary artifact right about
+  the hedge all along (`cdae541` records the same comment as loose about the
+  manifest's MEMBERSHIP — never quote it as authority for that). And NIBBLING
+  at a wrap does not converge: `4b0ff81`, whose own subject is "reflow two
+  lines wave 5 ran past the wrap", still left three over-79-column lines in
+  that bullet including a NEW 106-column one, while `a337005` rewrapped the
+  whole bullet in one step and cleared every one. Verify a rewrap
+  word-normalised identical to the prior commit, as `a337005` did, because a
+  reflow that silently drops a word is undetectable by eye.
 - **The successor pattern also runs on REASONING, not only on sentences: a
   rejection criterion applied correctly in one commit was violated by that
   commit's own replacement.** PR #853 (`5bbfd8b`, 2026-09-02) rejected an
