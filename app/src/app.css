@@ -2500,6 +2500,70 @@ select {
   padding: 0 0 0.75rem;
 }
 
+/* #830: the keyboard-reachable "seamarks in view" list — the Plan panel's DOM
+   equivalent of the map's pointer-only seamark click (DataLayers.tsx). It lives
+   in the PANEL, not in `.map-stack-tl`'s `.data-layer-controls` cluster the #714
+   spike proposed: a third row there measures +51.6px at 375x667 and drops the
+   depth legend's reachability budget (`budgetPx`, DataLayers.tsx's own
+   useLayoutEffect) below LEGEND_COLLAPSED_HEIGHT_PX, hiding the whole legend —
+   #597 caveat included — behind `hidden`. Re-measured 2026-09-02 against a real
+   DOM injection: `.data-layer-controls` hides the legend at 390x844 (expanded),
+   360x740 and 375x667 (collapsed); the panel leaves `budgetPx` byte-identical
+   at all twelve viewports in both arms and costs panel scroll depth alone
+   (+46px collapsed / +153px expanded at 375x667; zero at desktopHd, where the
+   panel does not scroll). seamarks.spec.ts's #830 guard pins exactly those
+   three viewports. The Disclosure itself is the shared `.sc-disclosure`
+   primitive above; only the slot spacing and the row list are styled here. */
+.app-panel-seamarks {
+  margin-top: 0.75rem;
+}
+
+.seamarks-in-view-hint,
+.seamarks-in-view-note {
+  margin: 0.25rem 0 0.5rem;
+  font-size: 0.9rem;
+}
+
+.seamarks-in-view-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+/* One native <button> per row — focusable and Enter/Space-activatable for
+   free, a >=44px touch target via the global `button` rule, full width so the
+   whole row is the target. `font`/`color: inherit` neutralise the UA button
+   styling and the panel's own background keeps the list reading as rows, not
+   as a stack of primary buttons. `min-width: 0` + `overflow-wrap: anywhere`
+   let a long compound row (type · category · colour · light) wrap inside a
+   280px panel instead of widening it — the page body must never scroll
+   horizontally. */
+.seamarks-in-view-row {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: var(--sc-bg);
+  border: 1px solid var(--sc-border);
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+}
+
+.seamarks-in-view-row:focus-visible {
+  outline: 2px solid var(--sc-accent);
+  outline-offset: 2px;
+}
+
+.seamarks-in-view-row-type {
+  font-weight: 600;
+}
+
 /* ---- Panel content shared across tabs ---- */
 
 .planner-panel,

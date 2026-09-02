@@ -41,6 +41,7 @@ import PlansList, { type RecalcMode } from './components/PlansList';
 import RouteSummary from './components/RouteSummary';
 import DepthProfile from './components/DepthProfile';
 import LiveView from './components/LiveView';
+import SeamarksInView from './components/SeamarksInView';
 import AisTraffic from './components/AisTraffic';
 import { AIS_VESSEL_LAYER } from './components/AisLayer';
 import Banner, { type BannerKind } from './components/Banner';
@@ -349,6 +350,10 @@ function AppShell() {
   // available as soon as the slot commits; changes only on tab/layout switch,
   // never at the 1 Hz GPS cadence, so it costs no extra per-fix re-render.
   const [liveSlot, setLiveSlot] = useState<HTMLDivElement | null>(null);
+  // #830: the Plan tab's slot for the keyboard-reachable seamarks-in-view
+  // list — same contract as `liveSlot` above (the component mounts inside
+  // MapView's subtree for the map context and portals into the panel).
+  const [seamarksSlot, setSeamarksSlot] = useState<HTMLDivElement | null>(null);
   // MapView reports at most one error per mount (see its own comment) —
   // this just needs to flip a banner on and let the user dismiss it; there's
   // no retry path since the underlying map instance isn't recreated.
@@ -1109,6 +1114,16 @@ function AppShell() {
               occludes this corner (see ScaleBar.tsx's own comment) — no
               layout prop needed. */}
           <ScaleBar />
+          {/* #830: the keyboard-reachable seamarks-in-view list. Mounted
+              HERE, inside MapView's subtree, for the same reason LiveView
+              is (useMapInstance() is MapView's context), and portalled
+              into the Plan tab's `.app-panel-seamarks` slot below — the
+              PANEL, deliberately not `.data-layer-controls`: a third row
+              there hides the depth legend's #597 safety caveat at three
+              narrow viewports (SeamarksInView.tsx's own header carries the
+              measurement). Plan tab only: the slot exists only there, and
+              unmounting with the tab drops its moveend subscription. */}
+          {tab === 'plan' && <SeamarksInView panelSlot={seamarksSlot} />}
         </MapView>
       </div>
 
@@ -1417,33 +1432,40 @@ function AppShell() {
               since only one panel is ever rendered at a time. */}
           <div role="tabpanel" id={APP_TABPANEL_ID} aria-labelledby={appTabId(tab)}>
             {tab === 'plan' && (
-              <PlannerPanel
-                harbors={harbors}
-                origin={origin}
-                destination={destination}
-                onPickOrigin={handlePickOrigin}
-                onPickDestination={handlePickDestination}
-                onImportRoute={handleImportRoute}
-                onRequestMapTap={handleRequestMapTap}
-                viaPoints={viaPoints}
-                onRemoveVia={handleRemoveVia}
-                onReorderVia={handleReorderVia}
-                departureMs={departureMs}
-                onDepartureChange={setDepartureMs}
-                settings={settings}
-                onSettingsChange={setSettings}
-                boat={boat}
-                canPlan={canPlan}
-                planDisabledReason={planDisabledReason}
-                online={online}
-                onPlan={handlePlan}
-                planning={plannerStatus}
-                plan={plan}
-                rig={rig}
-                formDirty={formDirty}
-                onViewDetails={handleViewDetails}
-                onOpenBoatSettings={handleOpenBoatSettings}
-              />
+              <>
+                <PlannerPanel
+                  harbors={harbors}
+                  origin={origin}
+                  destination={destination}
+                  onPickOrigin={handlePickOrigin}
+                  onPickDestination={handlePickDestination}
+                  onImportRoute={handleImportRoute}
+                  onRequestMapTap={handleRequestMapTap}
+                  viaPoints={viaPoints}
+                  onRemoveVia={handleRemoveVia}
+                  onReorderVia={handleReorderVia}
+                  departureMs={departureMs}
+                  onDepartureChange={setDepartureMs}
+                  settings={settings}
+                  onSettingsChange={setSettings}
+                  boat={boat}
+                  canPlan={canPlan}
+                  planDisabledReason={planDisabledReason}
+                  online={online}
+                  onPlan={handlePlan}
+                  planning={plannerStatus}
+                  plan={plan}
+                  rig={rig}
+                  formDirty={formDirty}
+                  onViewDetails={handleViewDetails}
+                  onOpenBoatSettings={handleOpenBoatSettings}
+                />
+                {/* #830: portal target for SeamarksInView (mounted inside MapView
+                  above). Below the planner form, so the form's own CTA keeps
+                  its position and the list costs panel scroll depth only
+                  (+46px collapsed at 375x667, measured). */}
+                <div className="app-panel-seamarks" ref={setSeamarksSlot} />
+              </>
             )}
             {tab === 'boat' && (
               <SettingsPanel
