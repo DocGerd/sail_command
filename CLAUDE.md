@@ -985,7 +985,12 @@ making design-level decisions; do not silently deviate.
   Chromium half.
 - **An e2e run can silently measure a FOREIGN build — and because a green e2e
   run is what a merge is gated on, that yields a false GREEN as readily as a
-  false red (#803, CLOSED 2026-09-01 by PR #823; re-read the issue and
+  false red (#803, closed 2026-09-01 by PR #823 — but that fix reaches only
+  its FIRST layer, a foreign server already on the port. The SECOND, a stale
+  service worker on a REUSED origin serving a cached build to a real browser
+  PAGE, is structurally untouched: the check is a plain Node `fetch()` with no
+  ServiceWorker in the picture, and closing it needs a browser-side
+  unregister+cache-clear in the specs that navigate. Re-read the issue and
   `app/e2e/helpers.ts`'s build-identity comment — the forensics live there).**
   Neither a free port nor a pid check closes it. **Make the assertion
   SELF-PROVING instead** — one that can only pass on the exact tree under
@@ -999,9 +1004,13 @@ making design-level decisions; do not silently deviate.
   PR #823 review). That is why `startPreview()`'s `assertSwJsMatches` ALSO
   byte-compares the served `sw.js` against `dist/sw.js` — workbox's precache
   manifest reaches everything under `globPatterns`, so both change classes ARE
-  covered. The residual is narrower and tracked at #833: `globIgnores`
-  (`test-fixtures/**`, `brand/**`, `basemap-assets/fonts/**`) is absent from
-  that manifest, so a build differing only there passes both probes.
+  covered — but NOT the whole of `dist/` unconditionally. The manifest is
+  `dist/**` filtered by `globPatterns` and THEN minus `globIgnores`, so a file
+  escapes for two independent reasons: it sits under an ignored subtree
+  (tracked at #833), or its extension is outside the token list (tracked at
+  #854 — `.txt` is, so `THIRD-PARTY-NOTICES.txt`, whose drift reds the
+  REQUIRED `app` check, passes both probes today). Read both filters off
+  `vite.config.ts`; do not copy either list here.
 - **Honest offline testing**: Playwright's `setOffline(true)` does NOT block
   service-worker fetches (Playwright #2311) — the offline spec kills the
   preview server instead. Never "simplify" that away.
