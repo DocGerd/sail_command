@@ -146,12 +146,13 @@ That config is necessary, not decoration: vitest 4 has **no `--include` flag**
 `vitest@4.1.10`), and `--dir` only narrows the scan — neither can widen the
 root config's `include`, which by construction excludes this directory.
 
-Two consequences worth knowing: `npm --prefix app run lint` is `eslint src
-e2e` (`app/package.json`'s `lint` script), which does not name this
-directory — so these files are not linted by CI, unlike `app/e2e/**`, which
-PR #508 added to that script and closed issue #420 (2026-08-11); and they
-are typechecked only because `tsconfig.test.json`'s `include` names
-`sweep/**/*.ts` — they need node builtins, like the other entries there.
+One consequence worth knowing: they are typechecked only because
+`tsconfig.test.json`'s `include` names `sweep/**/*.ts` — they need node
+builtins, like the other entries there. (This directory USED to be excluded
+from `npm --prefix app run lint` too — `app/package.json`'s `lint` script
+was `eslint src e2e` until PR #602 added `sweep` at the v0.17.0 cut, so
+these files ARE linted by CI now, same as `app/e2e/**` since PR #508/#420,
+2026-08-11.)
 
 ## Running it
 
