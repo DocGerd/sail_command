@@ -68,6 +68,10 @@ import { resolveHarborPickTarget } from './lib/harborGeoJson';
 import { boatById, sailIdsOf } from './data/boats';
 import { usePersistedBoatId } from './lib/usePersistedBoatId';
 import { usePersistedOwnMmsi } from './lib/ownMmsi';
+// #834: same widening PlannerPanel.tsx's own `harbors` prop already carries —
+// see that module's comment for why this lives outside the `app/sweep/`
+// closure rather than on `Harbor` in `types.ts`.
+import type { HarborWithReachability } from './lib/harborReachability';
 import type { MsgKey } from './i18n/dict.de';
 import type { Tab } from './lib/sessionSnapshot';
 import {
@@ -353,7 +357,7 @@ function AppShell() {
   // this just needs to flip a banner on and let the user dismiss it; there's
   // no retry path since the underlying map instance isn't recreated.
   const [mapError, setMapError] = useState(false);
-  const [harbors, setHarbors] = useState<Harbor[]>([]);
+  const [harbors, setHarbors] = useState<HarborWithReachability[]>([]);
   // #301: true once the harbors asset load's Promise SETTLES (success OR
   // permanent failure) — gates the plan-form sync effect below (next to
   // planIdRef) so it doesn't write a plan's origin/destination labels before
@@ -1002,6 +1006,25 @@ function AppShell() {
   // complement this Banner cannot see.
   const settingsDirty = plan ? routingSettingsDirty(plan, settings) : false;
 
+  // #834: the harbor picker discloses a #652 known-disconnected harbor BEFORE
+  // a solve (`HarborPicker.tsx`'s option row) and, since the sibling PR that
+  // added this same check to `PlannerPanel.tsx`'s selected-endpoint row, AFTER
+  // a pick too — but a plan run against exactly that harbor still failed with
+  // the generic `error.noRoute.unreachable`, the same string #652 was filed
+  // about. Presentation-only, mirrors `originHarbor`/`destinationHarbor` in
+  // PlannerPanel.tsx: a plain `.find()` over the current `origin`/
+  // `destination` + `harbors` state, re-evaluated every render, so it covers
+  // fresh-mount, pick, and the load-saved-plan/recalc-replace path alike.
+  // Does NOT touch `planErrorBannerKind`/`planErrorRetryMayHelp` — those stay
+  // keyed on the unchanged `planning.messageKey`; only the rendered CHILD
+  // text is substituted below.
+  const originKnownDisconnected =
+    origin?.source === 'harbor' &&
+    harbors.find((h) => h.id === origin.harborId)?.knownDisconnected === true;
+  const destinationKnownDisconnected =
+    destination?.source === 'harbor' &&
+    harbors.find((h) => h.id === destination.harborId)?.knownDisconnected === true;
+
   return (
     <div className="app-shell" ref={shellRef}>
       {/* Base layer: full-viewport map. Header/banners/bottom-sheet below are
@@ -1263,7 +1286,10 @@ function AppShell() {
                 : undefined
             }
           >
-            {t(planning.messageKey)}
+            {planning.messageKey === 'error.noRoute.unreachable' &&
+            (originKnownDisconnected || destinationKnownDisconnected)
+              ? t('harborPicker.knownDisconnected')
+              : t(planning.messageKey)}
           </Banner>
         )}
         {tapTarget && (
