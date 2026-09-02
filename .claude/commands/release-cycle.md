@@ -125,6 +125,15 @@ issue, its file allowlist, its definition of done, and — critically — a **fi
 Two PRs appending to the same file is a SCHEDULED conflict, not a risk; sequence merges by file
 surface, disjoint first. No per-PR reviewer can see this; only you hold that view.
 
+**Git conflicts are the cheap half. Map BEHAVIOURAL composition too**: when two PRs touch one
+component, require the MERGED TREE to be built and tested, because it is a third artifact
+neither PR's CI has ever built. At v0.18.0, PR #827 made a legend render only while
+`plan === null` and PR #828 put a control inside it — each diff individually correct and reviewed clean, while the
+merged result left that control unreachable once a plan existed, with the flag persisted
+and no in-app path back. Merge ORDER can also be a correctness constraint, not just
+conflict avoidance: #828 had merged #827's branch into its own history to test the fix, so the
+reverse order would have landed #827's changeset under #828's PR.
+
 Per task:
 - Spawn a **FRESH `sail-implementer`** (never reuse one across tasks), `isolation: worktree`.
   **PIN THE BASE BRANCH** in the brief (`git fetch` then `git switch -c <branch> origin/develop`)
@@ -134,8 +143,13 @@ Per task:
   (`npm --prefix app run test -- <filter>`). Budget for the stall anyway: nudge once, and after a
   SECOND stall TAKE the watch yourself. CI is the authority.
 - Tell them to **commit, push and open a DRAFT PR at the first push** — work is never local-only.
-- `Refs #N` in commits and PR body, never a closing keyword, unless the PR truly closes the issue;
-  grep both copies before creating the PR:
+- **Use `Closes #N` when the PR delivers its issue** — `develop` IS the default branch, so
+  the issue closes on merge, which is what I want. Reserve `Refs #N` for a PR that genuinely
+  does NOT close it (partial delivery, or a spike informing a larger issue). The v0.18.0 cut
+  used `Refs` universally and left the milestone at 9 open after every PR had merged, which I
+  had to flag; the earlier wording buried its exception in a trailing "unless the PR
+  truly closes the issue", which agents skipped — state the DEFAULT, not the exception.
+  Either way, grep both copies before creating the PR:
   `git log origin/develop..HEAD | grep -iE '(clos(e|es|ed)?|fix(e[sd])?|resolve[sd]?)[[:space:]:(]*#[0-9]+'`
   and the same over the body. Post-merge, assert each issue's state in BOTH directions.
 - Add a `changelog.d/<issue>.<category>.md` fragment for every user-visible change. If an earlier
@@ -144,12 +158,34 @@ Per task:
 - One persistent `sail-reviewer` per PR, reused via `SendMessage` for the fix→re-review loop,
   retired at merge. Add `offline-pwa-reviewer` ONLY if the diff touches a PWA path. Run
   `/pr-selfreview`: one inline thread per finding, fix all, resolve all.
+- **For a prose-heavy diff add `claim-auditor` ALONGSIDE the reviewer, spawned FRESH each round**
+  (never resumed — it would carry its own prior clean verdict as a prior). Give them disjoint
+  scopes: the auditor gets prose, the reviewer keeps code and mechanism. Measured at the v0.18.0
+  docs sweep — the auditor found dangling anaphors and a claim contradicted inside its own hunk;
+  the reviewer found an acceptance check UNREACHABLE from inside the runbook. Neither could have
+  found the other's, and a fresh auditor re-derived 20+ claims its predecessor had passed and
+  found a Major among them.
+- **Once a PR shows the successor pattern, make the next wave DELETION-ONLY** — "adopt supplied
+  text verbatim plus deletions, write no new prose". Measured on two PRs at v0.18.0: waves 1 and
+  2 each fixed N findings and introduced 2 NEW prose defects; wave 3 under that constraint
+  introduced ZERO on that wave. A wave that cannot add prose has far less room to produce a
+  successor — though a deletion can still strand an anaphor. It only works when
+  the findings are removable — a fix needing explanation still needs a normal wave.
+- **Unresolved review threads are a hard merge blocker** under `protect-main`, and closing one
+  has no notification attached, so a fix dispatched is NOT a thread resolved. Check the
+  per-PR unresolved count before every merge attempt; `mergeable_state: blocked` collapses
+  draft / checks-pending / checks-failed / threads-open into one word and will not tell you which.
 - **Brief every reviewer to attack ORCHESTRATOR-authored prose hardest.** At several past cuts the
   MAJORITY of review Majors sat in orchestrator-written text, one of them inside the very bullet
   warning about that class. Brief the FINAL round to re-read reviewer-supplied verbatim text as text of unknown
   provenance — it is the one part of a diff nobody re-attacks.
-- If a change touches the #282 sweep closure, trace the FIELD into `PlanDeps`/`PlanRequest` before
-  paying ~31 min per arm-set; never run a full sweep as a harness background task.
+- If a change touches the #282 sweep closure, run `.claude/skills/sweep-closure/` (#729) — it
+  derives the closure mechanically instead of from a prose path list. Treat OWED as
+  authoritative and pay it. A NOT-OWED is only as good as the tool's hand-maintained
+  universe — `PATH_PREFIXES` / `EXTRA_EDGES` have no CI check (#836) — so before
+  accepting one, confirm the changed file is not a RUNTIME input the import walk
+  cannot see. Either way, never pay ~31 min per arm-set on a guess, and never run a full
+  sweep as a harness background task.
 - Spec edits under `docs/superpowers/specs/` are MAIN-SESSION ONLY (the ask-gate hook must prompt).
 
 Merge with `/merge-train`: strictly serial, re-sync each branch from `origin/develop` before its
@@ -219,9 +255,16 @@ Non-negotiables at the cut:
   on an ordinary, non-relaxed route TOO since #651/#698 — not only inside a relaxed one. So confirm
   the captured route genuinely has no sub-gate leg before shipping a blank column; do not "fix" it, and do not
   wave it through unverified either.
-- **`Closes #N` does nothing in a release PR** (auto-close fires only on merge to `develop`) —
-  close milestone-scoped issues by hand at the cut.
-- **#398 same-SHA no-op** — BEFORE pushing the tag, read the merge-push run's `deploy` JOB
+- **`Closes #N` does nothing in a release PR** (auto-close fires only on merge to `develop`,
+  and a release PR merges to `main`). This is why the closing keyword belongs on the FEATURE
+  PRs in phase 2, where it fires. If phase 2 was done right, nothing is left to close by hand
+  here — close only the stragglers a `Refs`-only PR deliberately left open, and verify each.
+- **#398 same-SHA no-op** — read the merge-push run's `deploy` JOB conclusion **IMMEDIATELY
+  before `git push origin <tag>`**, not before the sign-and-verify sequence. The two answers
+  differ in durability: `success` is permanent, but *not-yet-created* is a snapshot of a race
+  still running. At v0.18.0 it read not-yet-created (the safe signal) and turned `success`
+  during the window of updating the ref, signing, verifying and pushing — everything between
+  the read and the push is time the merge run gets to finish in. Concretely, read the
   conclusion: `gh api repos/DocGerd/sail_command/actions/runs/<id>/jobs --jq '.jobs[]|"\(.name): \(.conclusion)"'`.
   `cancelled`/`null` → the tag run will take; `success` → it will no-op and `smoke-probe` will
   red, and the remedy is the BACK-MERGE (step 6), never a re-run. Gate on the JOB CONCLUSION;
@@ -263,8 +306,13 @@ measured to contain 30 further defects, 9 of them major.
 - **Milestone roll-forward**, per `CONTRIBUTING.md`: the shipped milestone closes, `v0.(N+1).0`'s
   scope becomes the next `v0.N.0`, and a fresh `v0.(N+2).0` is opened. A PATCH milestone closes at
   its own cut and shifts nothing. `Backlog` and `Icebox` persist.
-- Close every issue the release actually shipped; verify state via
-  `gh api repos/DocGerd/sail_command/issues/N --jq .state`.
+- Close any issue the release shipped that a `Refs`-only PR left open, and verify state via
+  `gh api repos/DocGerd/sail_command/issues/N --jq .state`. **File every residual as its own
+  tracked issue at REVIEW time, per-PR — not in a post-hoc audit here.** The v0.18.0 cut ran a
+  13-agent disposition audit at this point; it produced a batch of real residual issues that
+  should have been filed per-PR as they were found, and it delayed closing. If a reviewer finds something the PR
+  will not fix, that is the moment to file it — then closing is mechanical and this step is a
+  formality. A residual left in a merged PR body is a residual nobody will find.
 - `ROADMAP.md`'s `Current release:` line — §2b bumps it; step 6 VERIFIES it landed and bumps only
   as a fallback.
 - Remove finished worktrees via `/worktree-cleanup` (force-free: the agent runs
