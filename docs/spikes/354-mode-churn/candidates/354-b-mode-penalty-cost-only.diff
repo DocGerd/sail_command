@@ -1,0 +1,93 @@
+diff --git a/app/src/routing/isochrone.ts b/app/src/routing/isochrone.ts
+index ce3b14f..80dce77 100644
+--- a/app/src/routing/isochrone.ts
++++ b/app/src/routing/isochrone.ts
+@@ -171,6 +171,16 @@ const PRUNE_LON = 0.003; // ~190 m at 55°N
+ // reflect search capacity rather than actual unreachability; surfacing that
+ // distinction to the caller is deferred (plan-amendment pending).
+ const MAX_FRONTIER = 30_000;
++// #354 candidate B: the price of switching propulsion mode, charged on the
++// RANKING clock only. A tack or gybe costs settings.maneuverPenaltyS today
++// while a sail<->motor transition costs nothing, which is the mechanism #354
++// reports. NOT tuned: the value is exactly the shipped `maneuverPenaltyS`
++// DEFAULT (45 s, app/src/types.ts DEFAULT_SETTINGS), chosen because it is the
++// one penalty magnitude this codebase has already settled on. A module
++// constant rather than a settings field deliberately: a new DEFAULT_SETTINGS
++// field would move every app/sweep arm that does not spread-override it, a
++// much larger blast radius than the routing change under evaluation here.
++const MODE_CHANGE_PENALTY_S = 45;
+ const EXTRA_TWAS = [45, 55, 65, 75, 85, 95, 105, 115, 125, 135, 145, 155, 165, 175];
+ const MOTOR_TWAS = [0, 20, 35];
+ // #243 depth comfort preference: the maximum fraction by which a segment's
+@@ -451,19 +461,25 @@ export function solve(p: SolveParams): SolveResult {
+           maneuver = classifyManeuver(node.twaSigned, twa);
+           effS = Math.max(dtS - settings.maneuverPenaltyS, 0);
+         }
++        // #354 candidate B: a sail<->motor transition is free in the cost
++        // function today. Price it on the RANKING clock ONLY, exactly the
++        // separation #243 established for the depth-comfort factor (see the
++        // Node.costMs doc comment): `effS`, `distNm` and `tMs` are left
++        // untouched above and below, so the reported ETA, every horizon guard
++        // and all leg geometry stay the solver's honest output, and the
++        // documented `costMs >= tMs` invariant is preserved (an additive
++        // penalty only ever inflates cost). 'start' is not a mode change:
++        // there is no established mode to leave at departure, mirroring the
++        // maneuver penalty's own `node.kind === 'sail'` guard above.
++        const modePenaltyMs =
++          node.kind !== 'start' && node.kind !== kind ? MODE_CHANGE_PENALTY_S * 1000 : 0;
+         const distNm = (speed * effS) / 3600;
+         if (distNm <= 0) continue;
+ 
+         // Direct-candidate arrival test (exact leg to destination)
+         const isDirect = Math.abs(normalizeDeg180(headingDeg - bearingToDest)) < 0.5;
+         if (isDirect && node.distToDestNm <= distNm) {
+-          const directFactor = edgeFactor(
+-            mask,
+-            from,
+-            destination,
+-            gate,
+-            comfortDepthM,
+-          );
++          const directFactor = edgeFactor(mask, from, destination, gate, comfortDepthM);
+           if (directFactor !== null) {
+             const penaltyS = dtS - effS;
+             // TRUE elapsed time for this hop — unaffected by the depth
+@@ -479,7 +495,8 @@ export function solve(p: SolveParams): SolveResult {
+             const etaMs = node.tMs + durMs;
+             // Only the travel term is divided by the factor — the maneuver
+             // penalty is charged at its real cost on both tMs and costMs.
+-            const candCostMs = node.costMs + penaltyS * 1000 + travelMs / directFactor;
++            const candCostMs =
++              node.costMs + modePenaltyMs + penaltyS * 1000 + travelMs / directFactor;
+             if (etaMs <= horizonMs && (!best || candCostMs < best.costMs)) {
+               const last: Node = {
+                 lat: destination.lat,
+@@ -550,7 +567,12 @@ export function solve(p: SolveParams): SolveResult {
+           lat: end.lat,
+           lon: end.lon,
+           tMs: node.tMs + stepMs,
+-          costMs: node.costMs + stepMs / factor,
++          // #354 candidate B: the mode-change penalty rides on the child's
++          // ranking clock only; `tMs` above is untouched. The capture-arrival
++          // block below derives its own candCostMs from `child.costMs`, so it
++          // inherits this penalty and must NOT add a second one — that hop
++          // continues the child's own kind and is not itself a mode change.
++          costMs: node.costMs + modePenaltyMs + stepMs / factor,
+           kind,
+           board,
+           headingDeg,
+@@ -578,13 +600,7 @@ export function solve(p: SolveParams): SolveResult {
+           const durMs = (child.distToDestNm / Math.max(speed, MIN_SAIL_KN)) * 3600 * 1000;
+           const finalEtaMs = child.tMs + durMs;
+           if (finalEtaMs <= horizonMs && (!best || finalEtaMs < best.costMs)) {
+-            const captureFactor = edgeFactor(
+-              mask,
+-              end,
+-              destination,
+-              gate,
+-              comfortDepthM,
+-            );
++            const captureFactor = edgeFactor(mask, end, destination, gate, comfortDepthM);
+             if (captureFactor !== null) {
+               const candCostMs = child.costMs + durMs / captureFactor;
+               if (!best || candCostMs < best.costMs) {

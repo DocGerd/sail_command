@@ -1,0 +1,112 @@
+diff --git a/app/src/routing/postprocess.ts b/app/src/routing/postprocess.ts
+index 010e84b..a3917c9 100644
+--- a/app/src/routing/postprocess.ts
++++ b/app/src/routing/postprocess.ts
+@@ -1,4 +1,4 @@
+-import type { Leg } from '../types';
++import { DEFAULT_SETTINGS, type Leg } from '../types';
+ import type { NavMask } from '../lib/mask';
+ import type { DepthGate } from '../lib/depthGate';
+ import type { WindField } from '../lib/wind';
+@@ -64,6 +64,84 @@ function tryMerge(
+   };
+ }
+ 
++/**
++ * #354 candidate D (PROTOTYPE, NOT SHIPPABLE AS-IS): the longest sail RUN that
++ * may be absorbed into the motor span around it, in milliseconds.
++ *
++ * Set to the DEFAULT maneuver penalty (`DEFAULT_SETTINGS.maneuverPenaltyS`,
++ * 45 s) because the brief allowed exactly one constant and named that one. It
++ * is the DEFAULT, not the request's own `maneuverPenaltyS` — postprocess never
++ * receives Settings — so a user who changes the penalty does not change this.
++ * A wart of the prototype, recorded rather than papered over.
++ *
++ * MEASURED 2026-09-02: at this value the pass is UNREACHABLE on all six #354
++ * driver routes x 2 sails — the three sandwiched sail RUNS there last 75 s,
++ * 150 s and 225 s, so none is <= 45 s and all 12 plan fingerprints are
++ * byte-identical to BASE. A separate REACHABILITY ARM at 300_000 (the
++ * driver's own `shortSailRunsCount` definition of "short") fires on exactly
++ * ONE of the twelve plans; see the report for what it does there.
++ */
++const ABSORB_MAX_SAIL_RUN_MS = DEFAULT_SETTINGS.maneuverPenaltyS * 1_000;
++
++/**
++ * #354 candidate D: absorb a SHORT sail run sandwiched between two motor legs
++ * into ONE motor leg spanning the whole sandwich, re-validated at the SAME
++ * per-cell gate the solve used (#452 graft 5).
++ *
++ * THIS VIOLATES A STANDING RULE. CLAUDE.md and the motor spec §8.6 both state
++ * that the only allowed post-processing is merging NEAR-COLLINEAR legs with
++ * re-validation. Crossing the mode boundary changes a leg's KIND, hence what
++ * the plan CLAIMS the skipper should do. It exists here only to be measured;
++ * it must not ship without an explicit maintainer ruling lifting that rule.
++ *
++ * Deliberately NOT folded into `tryMerge`: a sandwich is a TRIPLE and
++ * `tryMerge(a, b)` has no lookahead, so a pairwise motor+sail merge would fire
++ * with no motor following it, converting a sail leg to motor for no reason.
++ * The `a.kind !== b.kind` early return is therefore not the only thing in the
++ * way — the pairwise SHAPE is.
++ *
++ * Timing: the merged leg keeps the sandwich's own start/end timestamps and
++ * derives `speedKn` from them, exactly as `tryMerge` does. Nothing downstream
++ * is re-timed, so `PlanResult.etaMs` (taken from the solver in `planRoute.ts`,
++ * `departureMs = res.etaMs`) still reconciles. The cost is that the merged
++ * MOTOR leg reports a speed that is not the motor speed.
++ */
++function absorbShortSailBetweenMotors(legs: Leg[], mask: NavMask, gate: DepthGate): Leg[] {
++  const out: Leg[] = [];
++  let i = 0;
++  while (i < legs.length) {
++    const a = legs[i];
++    if (a.kind === 'motor' && i + 2 < legs.length && legs[i + 1].kind === 'sail') {
++      let j = i + 1;
++      let runMs = 0;
++      while (j < legs.length && legs[j].kind === 'sail') {
++        runMs += legs[j].endTimeMs - legs[j].startTimeMs;
++        j++;
++      }
++      const c = j < legs.length ? legs[j] : null;
++      if (c !== null && c.kind === 'motor' && runMs <= ABSORB_MAX_SAIL_RUN_MS) {
++        // Full depth re-validation of the merged span, at the same gate.
++        if (mask.segmentClearanceM(a.start, c.end, gate) !== null) {
++          const distanceNm = haversineNm(a.start, c.end);
++          out.push({
++            ...a,
++            end: c.end,
++            endTimeMs: c.endTimeMs,
++            headingDeg: initialBearingDeg(a.start, c.end),
++            distanceNm,
++            speedKn: distanceNm / Math.max((c.endTimeMs - a.startTimeMs) / 3_600_000, 1e-9),
++          });
++          i = j + 1;
++          continue;
++        }
++      }
++    }
++    out.push(a);
++    i++;
++  }
++  return out;
++}
++
+ export function mergeCollinearLegs(
+   legs: Leg[],
+   mask: NavMask,
+@@ -76,7 +154,16 @@ export function mergeCollinearLegs(
+   // paths, which keeps this pass byte-identical to before in those cases.
+   comfortDepthM?: number,
+ ): Leg[] {
++  // #354 candidate D (PROTOTYPE): mode-boundary absorption runs FIRST, so the
++  // motor legs it produces are then eligible for the ordinary near-collinear
++  // merge below. Run to a fixpoint: absorbing one sandwich can create a fresh
++  // motor/sail/motor shape out of two previously separated ones.
+   let out = [...legs];
++  for (;;) {
++    const absorbed = absorbShortSailBetweenMotors(out, mask, gate);
++    if (absorbed.length === out.length) break;
++    out = absorbed;
++  }
+   let changed = true;
+   while (changed) {
+     changed = false;
