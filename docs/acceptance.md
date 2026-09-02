@@ -41,8 +41,9 @@ results table at the bottom, and note it in the box below the check.
       "Cautious-reading hatch" swatch row and the basis sentence leave the
       legend while the checkbox itself and the unsurveyed-water caveat stay
       — and the same two rows leave it while the "Water depths" toggle is
-      off, since the hatch is absent from the map in either case (#839).
-      Tick both back on before continuing. In short landscape, and in any
+      off, since the hatch is absent from the map in either case; in that
+      state the hatch checkbox is still shown but disabled (#839). Tick
+      both back on before continuing. In short landscape, and in any
       narrow layout with too little height left below the compass, this
       legend is deliberately not rendered at all here — by design, not a
       missing control (in that specific combination, short landscape with no
