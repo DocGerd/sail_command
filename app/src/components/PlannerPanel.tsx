@@ -284,6 +284,34 @@ export default function PlannerPanel({
   const [viaCoordLon, setViaCoordLon] = useState(VIA_COORD_DEFAULT.lon);
   const [viaCoordError, setViaCoordError] = useState(false);
 
+  // #863 review MAJOR: viaCoordMode.index was captured once on entering
+  // update mode and never re-validated against viaPoints — nothing disables
+  // a DIFFERENT row's remove/reorder buttons while this form is open, so a
+  // keyboard user could open update mode on point B, remove or reorder point
+  // A via ITS OWN button, then commit — silently overwriting whatever now
+  // sits at the stale index (or, once the array is shorter than the index,
+  // silently dropping the edit). Fixed the same way NumberInput's own
+  // prevValue/draft resync above (this file) derives state from a changed
+  // prop during render: viaPoints is a NEW array reference on every add/
+  // remove/reorder/update (App.tsx's handleViaPointsChange always replaces
+  // it, never mutates in place), so a reference change is exactly the
+  // signal that the index this form is holding may no longer mean what it
+  // meant when the form was opened. A successful commit already resets to
+  // 'add' itself (below) in the SAME synchronous handler that changes the
+  // prop, so by the time this component re-renders with the new prop,
+  // viaCoordMode is already 'add' and this is a no-op then — it only fires
+  // for a change that happened WITHOUT going through this form's own commit.
+  const [prevViaPoints, setPrevViaPoints] = useState(viaPoints);
+  if (viaPoints !== prevViaPoints) {
+    setPrevViaPoints(viaPoints);
+    if (viaCoordMode.kind === 'update') {
+      setViaCoordMode({ kind: 'add' });
+      setViaCoordLat(VIA_COORD_DEFAULT.lat);
+      setViaCoordLon(VIA_COORD_DEFAULT.lon);
+      setViaCoordError(false);
+    }
+  }
+
   // Same ref-write-then-no-deps-effect shape as pendingFocusRef above (#695:
   // drive focus from the callback that knows the user acted, never a derived
   // boolean/prop diff) — here there's only one target element with a stable

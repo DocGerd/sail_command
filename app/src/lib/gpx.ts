@@ -86,7 +86,12 @@ export const MAX_GPX_ELEMENTS = 100_000;
 // area the design spec fixes (openMeteo.ts hardcodes the same corner). Keep in
 // sync with mask.meta.json if the data-area ever changes.
 // Exported so a test can pin it against the committed mask.meta.json (the only
-// enforcement of the "keep in sync" note above) — nothing else imports it.
+// enforcement of the "keep in sync" note above) — and, since #829, so
+// PlannerPanel.tsx's `isInViaDataArea` can reuse the identical half-open
+// check for the keyboard-reachable via-coordinate entry row instead of a
+// second hand-copied bound. That is the only other production consumer as
+// of #829; gpx.parse.test.ts's pin against mask.meta.json remains the only
+// test consumer.
 export const DATA_AREA: Pick<MaskMeta, 'west' | 'south' | 'east' | 'north'> = {
   west: 9.4,
   south: 54.3,

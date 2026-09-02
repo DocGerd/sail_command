@@ -945,11 +945,24 @@ test('#702: the WIDE sticky rule is untouched — negative control', async ({ pa
 // docs/spikes/714-keyboard-map-equivalents.md §3.1/§5.1) — via-point
 // placement was previously reachable ONLY through a MapView canvas click
 // (`onRequestMapTap('via')` resolved by `instance.on('click', handleClick)`),
-// a WCAG 2.1.1 (Keyboard) failure of a core function. This test drives the
-// whole add/reposition/reject flow with `page.keyboard` alone and never
-// clicks the map canvas at all (a MapLibre-rendered feature has no DOM node
-// to click anyway — CLAUDE.md). `.click()` below targets only ordinary form
-// controls (the lat/lon inputs, to focus them before typing), never the map.
+// a WCAG 2.1.1 (Keyboard) failure of a core function.
+//
+// #863 review MAJOR: an earlier revision of this test's own header claimed
+// "purely via page.keyboard" while calling `.click()` on the reposition
+// trigger button — the actual WCAG 2.1.1 deliverable for spike row 2
+// (repositioning). Stating PRECISELY what is keyboard and what is not,
+// rather than repeating that overstatement:
+// - The map canvas is NEVER touched anywhere in this test (a MapLibre-
+//   rendered feature has no DOM node to click anyway — CLAUDE.md).
+// - Every ADD/UPDATE/reposition-trigger BUTTON is activated with
+//   `.press('Enter')` (focuses the element, then dispatches a real Enter
+//   keydown — never a mouse click), including the reposition trigger below.
+// - The lat/lon NumberInputs are focused with `.click()` before typing —
+//   an ordinary way to move focus into a text field, not a map interaction,
+//   and not the control this test exists to prove is keyboard-operable.
+// - The initial tab switch (`Planen`) also uses `.click()` — reaching the
+//   Plan tab is not part of this issue's scope; only the via-point controls
+//   inside it are.
 test('#829: adds, repositions and rejects a via point by typing coordinates — never a map-tap/canvas interaction', async ({
   page,
 }) => {
@@ -978,10 +991,16 @@ test('#829: adds, repositions and rejects a via point by typing coordinates — 
     await expect(items).toHaveCount(1);
     await expect(items.first()).toContainText('54.850°N 10.100°E');
 
-    // Reposition: pressing the placed point's own coordinate button enters
+    // Reposition: activating the placed point's own coordinate button enters
     // "update" mode and moves focus to the latitude field (#695: driven from
     // the click callback, verified here in a real browser, not jsdom).
-    await viaSection.getByRole('button', { name: /Koordinaten bearbeiten \(Punkt 1\)/ }).click();
+    // `.press('Enter')` — same method the Add/Update button uses above —
+    // focuses the element and dispatches a real Enter keydown; this is the
+    // WCAG 2.1.1 deliverable for spike row 2 (repositioning), so it must be
+    // activated by keyboard, never `.click()` (#863 review MAJOR).
+    await viaSection
+      .getByRole('button', { name: /Koordinaten bearbeiten \(Punkt 1\)/ })
+      .press('Enter');
     await expect(latInput).toBeFocused();
     await page.keyboard.press('ControlOrMeta+a');
     await page.keyboard.type('54.9');

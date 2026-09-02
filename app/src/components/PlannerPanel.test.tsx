@@ -1092,6 +1092,103 @@ describe('PlannerPanel', () => {
         expect(latInput()).toHaveValue(54.8);
         expect(lonInput()).toHaveValue(10.2);
       });
+
+      // #863 review round 1 (sail-reviewer MAJOR, PlannerPanel.tsx:325):
+      // viaCoordMode.index was captured once on entering update mode and
+      // never re-validated against viaPoints — a keyboard user could open
+      // update mode on one via point, then remove or reorder a DIFFERENT
+      // row via ITS OWN button (neither is disabled while the coordinate
+      // form is open for another row), then commit, silently overwriting
+      // whatever now sits at the stale index. This needs the #695
+      // stateful-harness pattern (`renderPanel`'s viaPoints prop is
+      // STATIC — onRemoveVia is a bare vi.fn() that never actually changes
+      // it, so the array-reference-changed reset this fix relies on could
+      // never fire against it).
+      it('#863 review: removing a DIFFERENT via point while update mode is open resets to "Add" — never commits with a stale index', () => {
+        localStorage.setItem('sc-lang', 'en');
+        const onUpdateVia = vi.fn();
+        const onAddVia = vi.fn();
+        function Harness() {
+          const [points, setPoints] = useState<LatLon[]>([VIA_A, VIA_B]);
+          return (
+            <PlannerPanel
+              {...baseProps({
+                viaPoints: points,
+                onRemoveVia: (i: number) => setPoints(points.filter((_, idx) => idx !== i)),
+                onAddVia,
+                onUpdateVia,
+              })}
+            />
+          );
+        }
+        render(
+          <I18nProvider>
+            <Harness />
+          </I18nProvider>,
+        );
+
+        // Open update mode on VIA_B (index 1).
+        fireEvent.click(screen.getByRole('button', { name: /Edit coordinates \(point 2\)/ }));
+        expect(screen.getByRole('button', { name: 'Update coordinates' })).toBeInTheDocument();
+
+        // Remove VIA_A (index 0) via ITS OWN remove button — a real state
+        // change (a new viaPoints array), unrelated to the open form.
+        fireEvent.click(screen.getByRole('button', { name: 'Remove waypoint 1' }));
+
+        // The form must have fallen back to "Add" — never left pinned to
+        // the now-stale index 1.
+        expect(screen.getByRole('button', { name: 'Add coordinates' })).toBeInTheDocument();
+
+        // Committing now must never call onUpdateVia with the stale index —
+        // the reset means this is a fresh Add against the current, shorter
+        // array, never an Update.
+        fireEvent.click(screen.getByRole('button', { name: 'Add coordinates' }));
+        expect(onUpdateVia).not.toHaveBeenCalled();
+      });
+
+      // Same hazard via reorder instead of remove: the index number stays
+      // valid but the VALUE it points at changes underneath the open form.
+      it('#863 review: reordering via points while update mode is open resets to "Add" — never commits against the swapped value', () => {
+        localStorage.setItem('sc-lang', 'en');
+        const onUpdateVia = vi.fn();
+        const onAddVia = vi.fn();
+        function Harness() {
+          const [points, setPoints] = useState<LatLon[]>([VIA_A, VIA_B]);
+          return (
+            <PlannerPanel
+              {...baseProps({
+                viaPoints: points,
+                onReorderVia: (i: number, direction: 'up' | 'down') => {
+                  const swapWith = direction === 'up' ? i - 1 : i + 1;
+                  if (swapWith < 0 || swapWith >= points.length) return;
+                  const next = [...points];
+                  [next[i], next[swapWith]] = [next[swapWith], next[i]];
+                  setPoints(next);
+                },
+                onAddVia,
+                onUpdateVia,
+              })}
+            />
+          );
+        }
+        render(
+          <I18nProvider>
+            <Harness />
+          </I18nProvider>,
+        );
+
+        // Open update mode on VIA_B (index 1), seeded with VIA_B's coords.
+        fireEvent.click(screen.getByRole('button', { name: /Edit coordinates \(point 2\)/ }));
+        expect(latInput()).toHaveValue(VIA_B.lat);
+
+        // Swap VIA_A/VIA_B via VIA_A's own "move down" button — index 1 now
+        // holds VIA_A's value, not VIA_B's.
+        fireEvent.click(screen.getByRole('button', { name: 'Move waypoint 1 down' }));
+
+        expect(screen.getByRole('button', { name: 'Add coordinates' })).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Add coordinates' }));
+        expect(onUpdateVia).not.toHaveBeenCalled();
+      });
     });
   });
 
