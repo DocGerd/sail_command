@@ -1900,14 +1900,27 @@ describe('banner surfacing (PR self-review fix wave)', () => {
     await waitFor(() => expect(routingMock.calls.length).toBe(1));
     routingMock.calls[0].resolve({ status: 'error', reason: 'unreachable' });
 
-    expect(await screen.findByText(de['harborPicker.knownDisconnected'])).toBeInTheDocument();
-    expect(screen.queryByText(de['error.noRoute.unreachable'])).not.toBeInTheDocument();
+    // Round-2 review Finding C: an unscoped `screen.findByText` here is
+    // trivially satisfied by PlannerPanel's OWN selected-endpoint-row
+    // disclosure (rendered as soon as ARNIS is picked, independent of the
+    // banner) — that row and the Banner's own `<span class="banner-message">`
+    // can both carry this string. `Banner.tsx` renders
+    // `role={kind === 'info' ? 'status' : 'alert'}`, and this banner's kind is
+    // warning/error, so `role="alert"` is a stable anchor onto the banner
+    // specifically.
+    const alertBanner = await screen.findByRole('alert');
+    expect(within(alertBanner).getByText(de['harborPicker.knownDisconnected'])).toBeInTheDocument();
+    expect(
+      within(alertBanner).queryByText(de['error.noRoute.unreachable']),
+    ).not.toBeInTheDocument();
   });
 
   // Negative control (#652's own rule, restated at #834 too): picking a
   // harbor via the SAME combobox path, but an ORDINARY one, must still show
   // the generic message — proving the substitution is keyed on
   // `knownDisconnected`, not merely on "endpoint came from the harbor picker".
+  // Same `within(alertBanner)` scoping as the positive test above, for the
+  // same reason (Finding C).
   it('#834: the no-route banner keeps the generic message for an ordinary harbor destination', async () => {
     renderApp();
     await screen.findByRole('heading', { name: 'SailCommand' });
@@ -1926,8 +1939,65 @@ describe('banner surfacing (PR self-review fix wave)', () => {
     await waitFor(() => expect(routingMock.calls.length).toBe(1));
     routingMock.calls[0].resolve({ status: 'error', reason: 'unreachable' });
 
-    expect(await screen.findByText(de['error.noRoute.unreachable'])).toBeInTheDocument();
-    expect(screen.queryByText(de['harborPicker.knownDisconnected'])).not.toBeInTheDocument();
+    const alertBanner = await screen.findByRole('alert');
+    expect(within(alertBanner).getByText(de['error.noRoute.unreachable'])).toBeInTheDocument();
+    expect(
+      within(alertBanner).queryByText(de['harborPicker.knownDisconnected']),
+    ).not.toBeInTheDocument();
+  });
+
+  // Round-2 review Finding A: both existing banner tests above exercise the
+  // DESTINATION only — this pins the ORIGIN side of the same substitution.
+  // Adopted verbatim from the reviewer's supplied test.
+  it('#834: the no-route banner names the known limit when the ORIGIN is a known-disconnected harbor', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    const originSection = screen.getByRole('region', { name: de['planner.origin.label'] });
+    fireEvent.change(within(originSection).getByRole('combobox'), {
+      target: { value: ARNIS_TEST.names.de },
+    });
+    fireEvent.click(within(originSection).getByRole('option', { name: /^Arnis/ }));
+
+    const destSection = screen.getByRole('region', { name: de['planner.destination.label'] });
+    fireEvent.click(within(destSection).getByRole('button', { name: de['planner.pickOnMap'] }));
+    simulateMapClick(54.9, 10.5);
+
+    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+    await waitFor(() => expect(routingMock.calls.length).toBe(1));
+    routingMock.calls[0].resolve({ status: 'error', reason: 'unreachable' });
+
+    const alertBanner = await screen.findByRole('alert');
+    expect(within(alertBanner).getByText(de['harborPicker.knownDisconnected'])).toBeInTheDocument();
+  });
+
+  // Round-2 review Finding B: no test exercised "origin/destination IS
+  // known-disconnected, but the failure reason is something else" — the
+  // messageKey === 'error.noRoute.unreachable' exclusion gate had zero
+  // coverage. Adopted verbatim from the reviewer's supplied test.
+  it('#834: a known-disconnected destination does NOT hijack an unrelated no-route reason', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    const originSection = screen.getByRole('region', { name: de['planner.origin.label'] });
+    fireEvent.click(within(originSection).getByRole('button', { name: de['planner.pickOnMap'] }));
+    simulateMapClick(ORIGIN_A.lat, ORIGIN_A.lon);
+
+    const destSection = screen.getByRole('region', { name: de['planner.destination.label'] });
+    fireEvent.change(within(destSection).getByRole('combobox'), {
+      target: { value: ARNIS_TEST.names.de },
+    });
+    fireEvent.click(within(destSection).getByRole('option', { name: /^Arnis/ }));
+
+    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+    await waitFor(() => expect(routingMock.calls.length).toBe(1));
+    routingMock.calls[0].resolve({ status: 'error', reason: 'beyond-horizon' });
+
+    const alertBanner = await screen.findByRole('alert');
+    expect(within(alertBanner).getByText(de['error.noRoute.beyondHorizon'])).toBeInTheDocument();
+    expect(
+      within(alertBanner).queryByText(de['harborPicker.knownDisconnected']),
+    ).not.toBeInTheDocument();
   });
 
   // #299: a solver-affecting settings change (routing-relevant per
