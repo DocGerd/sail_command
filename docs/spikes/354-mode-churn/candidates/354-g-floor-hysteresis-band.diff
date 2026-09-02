@@ -1,0 +1,57 @@
+diff --git a/app/src/routing/isochrone.ts b/app/src/routing/isochrone.ts
+index ce3b14f..5678d05 100644
+--- a/app/src/routing/isochrone.ts
++++ b/app/src/routing/isochrone.ts
+@@ -321,6 +321,28 @@ export function solve(p: SolveParams): SolveResult {
+   const sailFloorKn = settings.motorEnabled
+     ? Math.max(settings.motorThresholdKn, settings.motorSpeedKn - settings.sailPreferenceKn)
+     : settings.motorThresholdKn;
++  // #354 candidate G: half-width of the hysteresis band around sailFloorKn.
++  //
++  // The band is a SPEED and the only constant this candidate is allowed is the
++  // maneuver penalty, which is a TIME (settings.maneuverPenaltyS, default 45 s),
++  // so a conversion is unavoidable and it is the ONE arbitrary modelling choice
++  // here. The conversion used: over a ring step of `dtS` seconds, spending the
++  // maneuver penalty costs `maneuverPenaltyS / dtS` of the step's progress, so
++  // at the motoring reference speed that is worth
++  //   bandKn = motorSpeedKn * maneuverPenaltyS / dtS
++  // knots of average step speed. At shipped defaults (6.5 kn, 45 s) that is
++  // 0.49 kn in the 600 s far field, 0.98 kn at 300 s and 1.95 kn at 150 s.
++  // No new tunable and no new magic number is introduced; the band widens as
++  // the step shortens, which is the direction the derivation gives (a mode flip
++  // inside a short step wastes proportionally more of it).
++  //
++  // With motoring DISABLED the cascade's two remaining arms both produce
++  // `kind: 'sail'` at `speed = sailSpeed`, so the band is unobservable there;
++  // it is switched off explicitly so that path stays byte-identical.
++  const bandKn = (dtS: number): number =>
++    settings.motorEnabled ? (settings.motorSpeedKn * settings.maneuverPenaltyS) / dtS : 0;
++  const sailEnterKn = (dtS: number): number => sailFloorKn + bandKn(dtS);
++  const sailStayKn = (dtS: number): number => Math.max(sailFloorKn - bandKn(dtS), MIN_SAIL_KN);
+ 
+   const start: Node = {
+     lat: p.origin.lat,
+@@ -430,7 +452,22 @@ export function solve(p: SolveParams): SolveResult {
+         const sailSpeed = polar.speedKn(twa, w.speedKn);
+         let kind: LegKind;
+         let speed: number;
+-        if (sailSpeed >= sailFloorKn) {
++        // #354 candidate G: two-sided hysteresis band around the #254 sail
++        // floor. The threshold this candidate reads depends on the PARENT's
++        // mode, which is already in scope as `node.kind` (and already read a
++        // few lines below for the maneuver test): a thread not currently
++        // sailing must clear `sailFloorKn + bandKn` to enter sail, and a
++        // thread already sailing keeps sailing down to `sailFloorKn - bandKn`.
++        // `node.kind === 'start'` has no incumbent mode, so it uses the
++        // (conservative) entry threshold.
++        //
++        // This attacks the CLASSIFIER, not the cost function, so it never
++        // needs two candidates compared by `better()` — the churning
++        // candidate is simply never produced. `pruneKey` already separates
++        // motor and sail incumbents into different cells, so both sides of
++        // the band stay reachable in the same ring.
++        const sailThresholdKn = node.kind === 'sail' ? sailStayKn(dtS) : sailEnterKn(dtS);
++        if (sailSpeed >= sailThresholdKn) {
+           kind = 'sail';
+           speed = sailSpeed;
+         } else if (settings.motorEnabled) {

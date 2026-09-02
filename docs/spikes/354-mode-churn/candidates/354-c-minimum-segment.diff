@@ -1,0 +1,207 @@
+diff --git a/app/src/routing/isochrone.followups.test.ts b/app/src/routing/isochrone.followups.test.ts
+index 7762679..f66a70f 100644
+--- a/app/src/routing/isochrone.followups.test.ts
++++ b/app/src/routing/isochrone.followups.test.ts
+@@ -51,24 +51,24 @@ describe('issue #21 gap 1: visited pruning is clock-aware', () => {
+   // dominance/stamping logic itself is agnostic to which clock it ranks on,
+   // so these numbers are unchanged, only the field name.
+   it('visitedDominates prunes only when the stamp is no later AND no more maneuvers', () => {
+-    const seen: VisitedStamp = { costMs: 1_200_000, maneuvers: 1 };
+-    expect(visitedDominates(seen, { costMs: 1_200_000, maneuvers: 1 })).toBe(true);
+-    expect(visitedDominates(seen, { costMs: 1_500_000, maneuvers: 2 })).toBe(true);
++    const seen: VisitedStamp = { costMs: 1_200_000, maneuvers: 1, runMs: 0 };
++    expect(visitedDominates(seen, { costMs: 1_200_000, maneuvers: 1, runMs: 0 })).toBe(true);
++    expect(visitedDominates(seen, { costMs: 1_500_000, maneuvers: 2, runMs: 0 })).toBe(true);
+     // The desynchronized-clock case the maneuvers-only rule got wrong:
+     // an earlier arrival survives even with more maneuvers.
+-    expect(visitedDominates(seen, { costMs: 450_000, maneuvers: 3 })).toBe(false);
++    expect(visitedDominates(seen, { costMs: 450_000, maneuvers: 3, runMs: 0 })).toBe(false);
+     // Fewer maneuvers survives even when it arrives later.
+-    expect(visitedDominates(seen, { costMs: 1_500_000, maneuvers: 0 })).toBe(false);
++    expect(visitedDominates(seen, { costMs: 1_500_000, maneuvers: 0, runMs: 0 })).toBe(false);
+   });
+ 
+   it('stampVisited keeps componentwise minima and never raises either one', () => {
+     const visited = new Map<string, VisitedStamp>();
+-    stampVisited(visited, 'k', { costMs: 1_200_000, maneuvers: 0 });
+-    expect(visited.get('k')).toEqual({ costMs: 1_200_000, maneuvers: 0 });
+-    stampVisited(visited, 'k', { costMs: 450_000, maneuvers: 2 });
+-    expect(visited.get('k')).toEqual({ costMs: 450_000, maneuvers: 0 });
+-    stampVisited(visited, 'k', { costMs: 2_000_000, maneuvers: 5 });
+-    expect(visited.get('k')).toEqual({ costMs: 450_000, maneuvers: 0 });
++    stampVisited(visited, 'k', { costMs: 1_200_000, maneuvers: 0, runMs: 0 });
++    expect(visited.get('k')).toEqual({ costMs: 1_200_000, maneuvers: 0, runMs: 0 });
++    stampVisited(visited, 'k', { costMs: 450_000, maneuvers: 2, runMs: 0 });
++    expect(visited.get('k')).toEqual({ costMs: 450_000, maneuvers: 0, runMs: 0 });
++    stampVisited(visited, 'k', { costMs: 2_000_000, maneuvers: 5, runMs: 0 });
++    expect(visited.get('k')).toEqual({ costMs: 450_000, maneuvers: 0, runMs: 0 });
+     expect(visited.size).toBe(1);
+   });
+ });
+diff --git a/app/src/routing/isochrone.ts b/app/src/routing/isochrone.ts
+index ce3b14f..a09907a 100644
+--- a/app/src/routing/isochrone.ts
++++ b/app/src/routing/isochrone.ts
+@@ -157,6 +157,12 @@ interface Node {
+   twsKn: number;
+   maneuverAtStart: ManeuverKind | null;
+   maneuvers: number;
++  // #354 candidate C ("minimum sail segment"): TRUE elapsed duration of the
++  // unbroken run of `kind` ending at this node — reset to this edge's own
++  // stepMs whenever the edge's kind differs from the parent's, otherwise
++  // accumulated. Uses tMs-side durations, never costMs: a depth-comfort
++  // derate must not buy or sell a mode commitment. 0 on the start node.
++  modeRunMs: number;
+   distToDestNm: number;
+   parent: Node | null;
+ }
+@@ -196,6 +202,28 @@ const MOTOR_TWAS = [0, 20, 35];
+ // — see realmask.repro.test.ts's pinned threshold test and CHANGELOG.md.
+ const DEPTH_DERATE_MAX = 0.3;
+ 
++/**
++ * #354 candidate C. The minimum TRUE duration a sail run must reach before
++ * the solver is allowed to leave it for the engine — i.e. the solver may
++ * only commit to sailing if it commits for at least this long. Deliberately
++ * NOT a new tuned constant: it is `settings.maneuverPenaltyS` (default 45 s),
++ * the one existing duration in this file already denominated in
++ * "seconds of committing to a sailing decision".
++ *
++ * Runs are compared CLAMPED to this value (`clampRun`), because every run at
++ * or above it is equally unconstrained — clamping is what keeps the extra
++ * domination axis a bounded two-valued-in-practice quantity instead of a
++ * continuous one, and makes the guard provably inert (byte-identical
++ * search) whenever no reachable run can fall below it.
++ */
++function minSailRunMs(settings: Settings): number {
++  return settings.maneuverPenaltyS * 1000;
++}
++
++function clampRun(modeRunMs: number, minRunMs: number): number {
++  return modeRunMs < minRunMs ? modeRunMs : minRunMs;
++}
++
+ /**
+  * #243: the depth-comfort multiplicative factor for the a→b edge, or null
+  * when the edge is blocked outright — exactly `segmentNavigable(a, b, gateM)
+@@ -251,6 +279,10 @@ export interface VisitedStamp {
+   // visitedDominates.
+   costMs: number;
+   maneuvers: number;
++  // #354 candidate C: the CLAMPED mode-run duration (see clampRun). Unlike
++  // the other two axes a LARGER value is better (more freedom to leave the
++  // current mode), so stampVisited keeps its componentwise MAXIMUM.
++  runMs: number;
+ }
+ 
+ /**
+@@ -267,7 +299,14 @@ export interface VisitedStamp {
+  * byte-identical to the pre-#243 tMs-based rule in that case.
+  */
+ export function visitedDominates(seen: VisitedStamp, cand: VisitedStamp): boolean {
+-  return seen.costMs <= cand.costMs && seen.maneuvers <= cand.maneuvers;
++  // #354 candidate C adds a THIRD axis, oriented the opposite way: a stamp
++  // with a SHORTER clamped mode run is more constrained than the candidate
++  // and therefore cannot stand in for it. This strictly WEAKENS domination
++  // (it can only ever refuse a pruning the two-axis rule allowed), so it can
++  // never manufacture a no-route by over-pruning — the price is a larger
++  // frontier. When every reachable run is at or above the minimum the axis
++  // is constant and this is byte-identical to the two-axis rule.
++  return seen.costMs <= cand.costMs && seen.maneuvers <= cand.maneuvers && seen.runMs >= cand.runMs;
+ }
+ 
+ /**
+@@ -283,10 +322,12 @@ export function stampVisited(
+ ): void {
+   const seen = visited.get(key);
+   if (seen === undefined) {
+-    visited.set(key, { costMs: stamp.costMs, maneuvers: stamp.maneuvers });
++    visited.set(key, { costMs: stamp.costMs, maneuvers: stamp.maneuvers, runMs: stamp.runMs });
+   } else {
+     if (stamp.costMs < seen.costMs) seen.costMs = stamp.costMs;
+     if (stamp.maneuvers < seen.maneuvers) seen.maneuvers = stamp.maneuvers;
++    // #354: MAXIMUM on this axis — see VisitedStamp.runMs.
++    if (stamp.runMs > seen.runMs) seen.runMs = stamp.runMs;
+   }
+ }
+ 
+@@ -321,6 +362,8 @@ export function solve(p: SolveParams): SolveResult {
+   const sailFloorKn = settings.motorEnabled
+     ? Math.max(settings.motorThresholdKn, settings.motorSpeedKn - settings.sailPreferenceKn)
+     : settings.motorThresholdKn;
++  // #354 candidate C: resolved once per solve, like `gate` above.
++  const minRunMs = minSailRunMs(settings);
+ 
+   const start: Node = {
+     lat: p.origin.lat,
+@@ -335,6 +378,7 @@ export function solve(p: SolveParams): SolveResult {
+     twsKn: 0,
+     maneuverAtStart: null,
+     maneuvers: 0,
++    modeRunMs: 0,
+     distToDestNm: haversineNm(p.origin, destination),
+     parent: null,
+   };
+@@ -444,6 +488,20 @@ export function solve(p: SolveParams): SolveResult {
+           continue;
+         }
+ 
++        // #354 candidate C, THE WHOLE OF IT: the solver may only commit to
++        // sailing if it commits for at least `minRunMs`, so a sail run that
++        // has not yet reached that duration may not be left for the engine.
++        // Placed here, before the direct-arrival attempt, so the constraint
++        // is uniform across all three ways an edge can be consumed (direct
++        // arrival, ordinary step, endpoint capture). A candidate refused
++        // here counts as NEITHER a blocked nor a calm death — the same
++        // treatment visited/byKey pruning already gets (see the `if (!best)`
++        // comment at the end of solve), so the no-route CAUSE heuristic can
++        // in principle be shifted by this guard on a route it kills.
++        if (kind === 'motor' && node.kind === 'sail' && node.modeRunMs < minRunMs) {
++          continue;
++        }
++
+         const board = kind === 'sail' ? boardForCandidate(twa, node.board) : null;
+         let maneuver: ManeuverKind | null = null;
+         let effS = dtS;
+@@ -494,6 +552,7 @@ export function solve(p: SolveParams): SolveResult {
+                 twsKn: w.speedKn,
+                 maneuverAtStart: maneuver,
+                 maneuvers: node.maneuvers + (maneuver ? 1 : 0),
++                modeRunMs: (node.kind === kind ? node.modeRunMs : 0) + durMs,
+                 distToDestNm: 0,
+                 parent: node,
+               };
+@@ -559,6 +618,8 @@ export function solve(p: SolveParams): SolveResult {
+           twsKn: w.speedKn,
+           maneuverAtStart: maneuver,
+           maneuvers: node.maneuvers + (maneuver ? 1 : 0),
++          // #354: TRUE duration accumulates; a kind flip restarts the run.
++          modeRunMs: (node.kind === kind ? node.modeRunMs : 0) + stepMs,
+           distToDestNm: haversineNm(end, destination),
+           parent: node,
+         };
+@@ -607,7 +668,15 @@ export function solve(p: SolveParams): SolveResult {
+ 
+         const key = pruneKey(child.lat, child.lon, child.kind, child.board);
+         const seen = visited.get(key);
+-        if (seen !== undefined && visitedDominates(seen, child)) continue;
++        if (
++          seen !== undefined &&
++          visitedDominates(seen, {
++            costMs: child.costMs,
++            maneuvers: child.maneuvers,
++            runMs: clampRun(child.modeRunMs, minRunMs),
++          })
++        )
++          continue;
+         const incumbent = byKey.get(key);
+         if (!incumbent || better(child, incumbent)) byKey.set(key, child);
+         produced++;
+@@ -640,6 +709,7 @@ export function solve(p: SolveParams): SolveResult {
+       stampVisited(visited, pruneKey(n.lat, n.lon, n.kind, n.board), {
+         costMs: n.costMs,
+         maneuvers: n.maneuvers,
++        runMs: clampRun(n.modeRunMs, minRunMs),
+       });
+     frontier = next;
+     tMs += dtS * 1000;

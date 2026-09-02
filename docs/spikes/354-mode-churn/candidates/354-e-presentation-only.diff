@@ -1,0 +1,435 @@
+diff --git a/app/src/app.css b/app/src/app.css
+index 83fb504..5e96aa2 100644
+--- a/app/src/app.css
++++ b/app/src/app.css
+@@ -2764,6 +2764,26 @@ select {
+    rule wins regardless of declaration order, which is what actually makes
+    `background: transparent` below cancel `.chip`'s own filled background —
+    an outline reads as filled otherwise. */
++/* #354 (presentation-only): the "brief mode run" chip in the legs table's
++   Type column. COMPOUND selector deliberately — `.chip`'s own base rule is
++   declared LATER in this file, so a bare `.chip-brief-run` would tie on
++   specificity and lose on source order, rendering nothing (the #506/#493
++   cascade, pinned by chipShallowFill.test.ts's structural guard). Neutral
++   outline rather than the amber --sc-depth-warning-* family: this is an
++   ergonomics note, not a safety hazard, and must not read like one. */
++.chip.chip-brief-run {
++  margin-inline-start: 0.35rem;
++  padding: 0.05rem 0.4rem;
++  border: 1px dashed var(--sc-border);
++  background: transparent;
++  font-size: 0.75rem;
++  /* No --sc-muted token exists (see .live-view-hts-note--muted above); this
++     file's muted-text convention is the default foreground at reduced
++     opacity, so reuse it rather than inventing a token. */
++  color: var(--sc-fg);
++  opacity: 0.75;
++}
++
+ .chip.chip-shallow-cautious {
+   margin-inline-start: 0.35rem;
+   padding: 0.05rem 0.4rem;
+diff --git a/app/src/components/RouteSummary.tsx b/app/src/components/RouteSummary.tsx
+index 1ee9eb1..24caf1c 100644
+--- a/app/src/components/RouteSummary.tsx
++++ b/app/src/components/RouteSummary.tsx
+@@ -8,6 +8,7 @@ import {
+   formatNm,
+   formatTime,
+ } from '../lib/format';
++import { briefModeRunFlags, modeChangeCount } from '../lib/briefModeRuns';
+ import { toGpx } from '../lib/gpx';
+ import { formatDepthM } from '../lib/depthDisclosure';
+ import { cautiousDepthLowerBoundM, MASK_TOLERANCE_M } from '../lib/mask';
+@@ -33,6 +34,7 @@ import {
+ } from '../lib/shallowExposure';
+ import { useNavMask } from '../state/useNavMask';
+ import type { MsgKey } from '../i18n/dict.de';
++import { DEFAULT_SETTINGS } from '../types';
+ import type { Board, Leg, NoRouteReason, Plan, SailId } from '../types';
+ import Card from './Card';
+ import Chip from './Chip';
+@@ -383,6 +385,23 @@ export default function RouteSummary({
+     mask && result && result.legs.length > 0 ? legMinDepthsM(result.legs, mask) : null;
+   const gateM = requestedGateM(plan);
+ 
++  // #354 (presentation-only): which legs sit inside a motor<->sail MODE RUN
++  // shorter than one charged tack. Pure read over the already-computed legs
++  // — the router is untouched and `PlanResult` is byte-identical, so no #282
++  // sweep is owed. Threshold is the plan's OWN maneuverPenaltyS (45 s by
++  // default), not a new tuned constant; see lib/briefModeRuns.ts.
++  //
++  // `settings` is REQUIRED on PlanRequest at the type level but can be absent
++  // on a legacy stored record (#551/#624 — RouteSummary.exposure.test.tsx
++  // pins exactly that shape), so read it the same defensive way
++  // requestedGateM does rather than trusting the type.
++  const briefRunThresholdS = Number.isFinite(plan.request.settings?.maneuverPenaltyS)
++    ? (plan.request.settings.maneuverPenaltyS as number)
++    : DEFAULT_SETTINGS.maneuverPenaltyS;
++  const briefRunFlags = result ? briefModeRunFlags(result.legs, briefRunThresholdS) : [];
++  const briefRunCount = briefRunFlags.filter(Boolean).length;
++  const modeChanges = result ? modeChangeCount(result.legs) : 0;
++
+   return (
+     <Card
+       title={t('planner.card.result')}
+@@ -725,6 +744,14 @@ export default function RouteSummary({
+                         <td>{formatLegDuration(leg.endTimeMs - leg.startTimeMs)}</td>
+                         <td>
+                           <LegKindChip leg={leg} rig={rig} />
++                          {/* #354: this leg is inside a mode run shorter than
++                              one charged tack (settings.maneuverPenaltyS).
++                              Text-based, not colour-only (WCAG 1.4.1) — the
++                              chip's own visible content IS the mechanism,
++                              same convention as ShallowLegMarker above. */}
++                          {briefRunFlags[i] === true && (
++                            <Chip className="chip-brief-run">{t('route.legs.briefRun')}</Chip>
++                          )}
+                         </td>
+                         <td>{formatHeading(leg.headingDeg)}</td>
+                         <td>
+@@ -768,6 +795,19 @@ export default function RouteSummary({
+               {result.legs.length > 0 && (
+                 <p className="route-legs-note">{t('route.legs.motorNote')}</p>
+               )}
++              {/* #354: route-scoped summary of the same fact the per-leg
++                  chips carry. Rendered only when there IS churn to disclose,
++                  so an ordinary single-mode plan gains nothing. It states
++                  the limit honestly: this is a disclosure, not a fix — the
++                  router does not know whether a fairway can be tacked. */}
++              {briefRunCount > 0 && (
++                <p className="route-legs-note route-legs-note-brief-run">
++                  {t('route.legs.briefRunNote', {
++                    count: briefRunCount,
++                    changes: modeChanges,
++                  })}
++                </p>
++              )}
+             </Disclosure>
+ 
+             <Button
+diff --git a/app/src/i18n/dict.de.ts b/app/src/i18n/dict.de.ts
+index e441447..b7f87e6 100644
+--- a/app/src/i18n/dict.de.ts
++++ b/app/src/i18n/dict.de.ts
+@@ -428,6 +428,13 @@ export const de = {
+   // "bis auf ... m" benennt dieselbe Gefahr konsistent in beiden Texten.
+   'route.legs.shallowCautious': 'vorsichtig: bis auf {depth} m',
+   'route.legs.motorNote': 'Motor = reine Motorfahrt, keine Segelleistung modelliert.',
++  // #354: Motor/Segel-Wechsel kosten im Kostenmodell nichts (nur eine Wende
++  // kostet maneuverPenaltyS), deshalb kann die Route sehr kurze Abschnitte
++  // enthalten. Diese beiden Texte machen das sichtbar — sie ÄNDERN die Route
++  // nicht.
++  'route.legs.briefRun': 'kurzer Abschnitt',
++  'route.legs.briefRunNote':
++    'Kurze Antriebswechsel: {changes} Wechsel zwischen Motor und Segel, davon {count} Etappen in Abschnitten, die kürzer sind als eine gewertete Wende. In engem Fahrwasser lohnt sich ein so kurzer Segelabschnitt oft nicht — die Routenberechnung kennt die Fahrwasserbreite nicht.',
+   'route.legs.disclosure': 'Etappen ({count})',
+   // #774: the DESCRIPTION (aria-describedby), never the name — the table's
+   // accessible NAME stays #707's <caption>, which reuses
+diff --git a/app/src/i18n/dict.en.ts b/app/src/i18n/dict.en.ts
+index 99104af..09f7095 100644
+--- a/app/src/i18n/dict.en.ts
++++ b/app/src/i18n/dict.en.ts
+@@ -486,6 +486,12 @@ export const en = {
+   // for the same fact; "as low as" names the same hazard consistently.
+   'route.legs.shallowCautious': 'cautious: as low as {depth} m',
+   'route.legs.motorNote': 'Motor = engine only; no sail contribution modelled.',
++  // #354: see dict.de.ts's comment — a motor<->sail change is free in the
++  // cost function (only a tack costs maneuverPenaltyS), so a plan can carry
++  // very short runs. These two strings disclose that; they do not change it.
++  'route.legs.briefRun': 'brief segment',
++  'route.legs.briefRunNote':
++    'Brief propulsion changes: {changes} motor/sail changes, with {count} legs inside runs shorter than one charged tack. In confined water such a short sail segment is often not worth it — the router does not know the fairway width.',
+   'route.legs.disclosure': 'Legs ({count})',
+   // #774: see dict.de.ts's comment for why this is a DESCRIPTION rather than
+   // the table's accessible name.
+diff --git a/app/src/lib/briefModeRuns.ts b/app/src/lib/briefModeRuns.ts
+new file mode 100644
+--- /dev/null
++++ b/app/src/lib/briefModeRuns.ts
+@@ -0,0 +1,67 @@
++import type { Leg } from '../types';
++
++/**
++ * #354 (candidate E, presentation-only): disclose motor <-> sail MODE CHURN
++ * without touching the router.
++ *
++ * The issue's mechanism is real and unpriced — a tack costs
++ * `maneuverPenaltyS` in the cost function, a mode change costs zero
++ * (isochrone.ts's penalty arm is `sail -> sail with a board change` only) —
++ * so a plan can legitimately contain a sail run too short for a skipper to
++ * actually sail. #264's own resolution language says that if the zigzag is to
++ * be addressed at all it is "a presentation question", and the spec's
++ * standing rule is that the ONLY allowed post-processing of legs is merging
++ * near-collinear same-kind legs with re-validation. So this module changes
++ * NOTHING about the plan: it is a pure read over the already-computed legs,
++ * consumed at render time only. `PlanResult` stays byte-identical, so no
++ * #282 sweep is owed (the same presentation-only shape #493/PR #504 used
++ * deliberately for exactly that reason).
++ *
++ * THRESHOLD: deliberately NOT a new tuned constant. The caller passes the
++ * plan's OWN `settings.maneuverPenaltyS` (default 45 s) — the only duration
++ * this app already prices a rig-handling action at. A mode run shorter than
++ * one tack's charged time is the honest reading of "brief". It is a
++ * DISCLOSURE threshold, never a routing input; changing it cannot move a
++ * plan, only what is said about one.
++ *
++ * HONEST LIMIT, stated here rather than in a release note: labelling a brief
++ * sail segment does not make it followable. The reporter's constraint is a
++ * SEAMANSHIP infeasibility (a fairway too narrow to tack), and nothing here
++ * — or anywhere else in the app today — knows channel width. This tells the
++ * skipper where the churn is; it does not remove it.
++ */
++export function briefModeRunFlags(legs: readonly Leg[], thresholdS: number): boolean[] {
++  const flags = new Array<boolean>(legs.length).fill(false);
++  if (legs.length === 0 || !(thresholdS > 0)) return flags;
++
++  // Maximal runs of consecutive legs sharing one `kind`.
++  const runs: { start: number; endExclusive: number }[] = [];
++  let start = 0;
++  for (let i = 1; i <= legs.length; i += 1) {
++    if (i === legs.length || legs[i].kind !== legs[start].kind) {
++      runs.push({ start, endExclusive: i });
++      start = i;
++    }
++  }
++  // A single run is not churn — a wholly-motor or wholly-sail passage has no
++  // mode change to disclose, however short the passage itself is. Flagging it
++  // would turn a short all-motor harbour hop into a "brief segment" warning
++  // about nothing.
++  if (runs.length < 2) return flags;
++
++  const thresholdMs = thresholdS * 1000;
++  for (const run of runs) {
++    const durationMs = legs[run.endExclusive - 1].endTimeMs - legs[run.start].startTimeMs;
++    if (durationMs < thresholdMs) {
++      for (let i = run.start; i < run.endExclusive; i += 1) flags[i] = true;
++    }
++  }
++  return flags;
++}
++
++/** Number of motor <-> sail transitions in a leg list (0 when there is no churn). */
++export function modeChangeCount(legs: readonly Leg[]): number {
++  let n = 0;
++  for (let i = 1; i < legs.length; i += 1) if (legs[i].kind !== legs[i - 1].kind) n += 1;
++  return n;
++}
+diff --git a/app/src/lib/briefModeRuns.test.ts b/app/src/lib/briefModeRuns.test.ts
+new file mode 100644
+--- /dev/null
++++ b/app/src/lib/briefModeRuns.test.ts
+@@ -0,0 +1,79 @@
++import { describe, expect, it } from 'vitest';
++import { briefModeRunFlags, modeChangeCount } from './briefModeRuns';
++import type { Leg } from '../types';
++
++const P = { lat: 54.8, lon: 9.4 };
++
++/**
++ * Minimal Leg builder — only the fields briefModeRunFlags actually reads
++ * (`kind`, `startTimeMs`, `endTimeMs`) carry meaning; the rest satisfy the
++ * discriminated union. Durations are in SECONDS for readability.
++ */
++function leg(kind: 'sail' | 'motor', startS: number, durS: number): Leg {
++  const common = {
++    start: P,
++    end: P,
++    startTimeMs: startS * 1000,
++    endTimeMs: (startS + durS) * 1000,
++    headingDeg: 90,
++    twsKn: 6,
++    speedKn: 5,
++    distanceNm: 0.5,
++  };
++  return kind === 'motor'
++    ? { ...common, kind: 'motor', board: null, maneuverAtStart: null }
++    : { ...common, kind: 'sail', board: 'starboard', twaDeg: 45, maneuverAtStart: null };
++}
++
++describe('#354 briefModeRunFlags', () => {
++  it('flags a sail run sandwiched between motor runs when it is shorter than one charged tack', () => {
++    // motor 300 s | sail 30 s | motor 300 s, threshold 45 s (= default
++    // maneuverPenaltyS). Only the middle run is brief.
++    const legs = [leg('motor', 0, 300), leg('sail', 300, 30), leg('motor', 330, 300)];
++    expect(briefModeRunFlags(legs, 45)).toEqual([false, true, false]);
++  });
++
++  it('flags EVERY leg of a multi-leg brief run, not just the first', () => {
++    // Two consecutive sail legs (a tack inside the run) totalling 40 s.
++    const legs = [
++      leg('motor', 0, 300),
++      leg('sail', 300, 20),
++      leg('sail', 320, 20),
++      leg('motor', 340, 300),
++    ];
++    expect(briefModeRunFlags(legs, 45)).toEqual([false, true, true, false]);
++  });
++
++  it('does NOT flag a run at or above the threshold (boundary is strict)', () => {
++    const legs = [leg('motor', 0, 300), leg('sail', 300, 45), leg('motor', 345, 300)];
++    expect(briefModeRunFlags(legs, 45)).toEqual([false, false, false]);
++    // ...and one second under it does flag — proving the boundary is the
++    // discriminator here, not some unrelated condition.
++    const shorter = [leg('motor', 0, 300), leg('sail', 300, 44), leg('motor', 344, 300)];
++    expect(briefModeRunFlags(shorter, 45)).toEqual([false, true, false]);
++  });
++
++  it('flags a brief MOTOR run too — the disclosure is symmetric, not sail-only', () => {
++    const legs = [leg('sail', 0, 600), leg('motor', 600, 20), leg('sail', 620, 600)];
++    expect(briefModeRunFlags(legs, 45)).toEqual([false, true, false]);
++  });
++
++  it('flags nothing on a single-mode passage, however short (no churn to disclose)', () => {
++    const legs = [leg('motor', 0, 10), leg('motor', 10, 10)];
++    expect(briefModeRunFlags(legs, 45)).toEqual([false, false]);
++  });
++
++  it('flags nothing on an empty leg list or a non-positive threshold', () => {
++    expect(briefModeRunFlags([], 45)).toEqual([]);
++    const legs = [leg('motor', 0, 300), leg('sail', 300, 5), leg('motor', 305, 300)];
++    expect(briefModeRunFlags(legs, 0)).toEqual([false, false, false]);
++  });
++
++  it('counts mode changes, not legs', () => {
++    expect(modeChangeCount([])).toBe(0);
++    expect(modeChangeCount([leg('motor', 0, 300), leg('motor', 300, 300)])).toBe(0);
++    expect(
++      modeChangeCount([leg('motor', 0, 300), leg('sail', 300, 30), leg('motor', 330, 300)]),
++    ).toBe(2);
++  });
++});
+diff --git a/app/src/components/RouteSummary.briefRun.test.tsx b/app/src/components/RouteSummary.briefRun.test.tsx
+new file mode 100644
+--- /dev/null
++++ b/app/src/components/RouteSummary.briefRun.test.tsx
+@@ -0,0 +1,123 @@
++import { render, screen, cleanup } from '@testing-library/react';
++import { describe, it, expect, afterEach } from 'vitest';
++import { I18nProvider } from '../i18n';
++import { uniformWindGrid } from '../test/fixtures';
++import {
++  DEFAULT_SETTINGS,
++  PLAN_SCHEMA_VERSION,
++  defaultBoatSnapshot,
++  type Leg,
++  type Plan,
++  type RigResult,
++} from '../types';
++import RouteSummary from './RouteSummary';
++
++/**
++ * #354 (presentation-only): the legs table's "brief segment" chip and the
++ * route-scoped propulsion-change note. These pin the WIRING — that
++ * briefModeRunFlags' output reaches the DOM — which lib/briefModeRuns.test.ts
++ * cannot see; that file pins the predicate itself.
++ *
++ * jsdom renders closed-<details> content, so the legs Disclosure does not
++ * need opening for these queries (the same caveat RouteSummary.test.tsx's own
++ * header documents).
++ */
++
++const DEPARTURE_MS = Date.UTC(2026, 6, 15, 6, 0, 0);
++const P = { lat: 54.79, lon: 9.43 };
++
++function leg(kind: 'sail' | 'motor', startS: number, durS: number): Leg {
++  const common = {
++    start: P,
++    end: P,
++    startTimeMs: DEPARTURE_MS + startS * 1000,
++    endTimeMs: DEPARTURE_MS + (startS + durS) * 1000,
++    headingDeg: 90,
++    twsKn: 6,
++    speedKn: 5,
++    distanceNm: 0.5,
++  };
++  return kind === 'motor'
++    ? { ...common, kind: 'motor', board: null, maneuverAtStart: null }
++    : { ...common, kind: 'sail', board: 'starboard', twaDeg: 45, maneuverAtStart: null };
++}
++
++function planWithLegs(legs: Leg[]): Plan {
++  const last = legs[legs.length - 1];
++  const rig: RigResult = {
++    sailId: 'genoa',
++    etaMs: last.endTimeMs,
++    durationMs: last.endTimeMs - legs[0].startTimeMs,
++    distanceNm: legs.reduce((n, l) => n + l.distanceNm, 0),
++    maneuverCount: 0,
++    motorDistanceNm: legs.filter((l) => l.kind === 'motor').reduce((n, l) => n + l.distanceNm, 0),
++    legs,
++  };
++  return {
++    id: 'plan-354',
++    name: 'brief-run fixture',
++    createdAtMs: DEPARTURE_MS,
++    schemaVersion: PLAN_SCHEMA_VERSION,
++    request: {
++      origin: P,
++      destination: P,
++      viaPoints: [],
++      originHarborId: 'flensburg',
++      destinationHarborId: 'marstal',
++      departureMs: DEPARTURE_MS,
++      settings: DEFAULT_SETTINGS,
++      sailIds: ['genoa'],
++      boat: defaultBoatSnapshot(),
++    },
++    windGrid: { ...uniformWindGrid(10, 270), fetchedAtMs: DEPARTURE_MS },
++    result: {
++      status: 'ok',
++      sails: [{ sailId: 'genoa', result: rig, reason: null }],
++      recommended: 'genoa',
++      comparisonComplete: true,
++      snappedOrigin: P,
++      snappedDestination: P,
++    },
++  };
++}
++
++function renderPlan(legs: Leg[]): void {
++  localStorage.setItem('sc-lang', 'en');
++  render(
++    <I18nProvider>
++      <RouteSummary plan={planWithLegs(legs)} rig="genoa" onRigChange={() => {}} />
++    </I18nProvider>,
++  );
++}
++
++afterEach(() => {
++  cleanup();
++  localStorage.clear();
++});
++
++describe('#354: brief mode-run disclosure in the legs table', () => {
++  it('marks a short sail run between two motor runs, and only that run', () => {
++    // 30 s of sail between two 5-minute motor runs; DEFAULT_SETTINGS
++    // maneuverPenaltyS is 45 s, so the middle run is brief.
++    renderPlan([leg('motor', 0, 300), leg('sail', 300, 30), leg('motor', 330, 300)]);
++    expect(screen.getAllByText('brief segment')).toHaveLength(1);
++    expect(screen.getByText(/Brief propulsion changes/)).toBeTruthy();
++    expect(screen.getByText(/2 motor\/sail changes/)).toBeTruthy();
++    expect(screen.getByText(/1 legs inside runs shorter than one charged tack/)).toBeTruthy();
++  });
++
++  it('renders NEITHER the chip nor the note when every run clears the threshold', () => {
++    // Same shape, same mode changes — only the middle run's DURATION differs.
++    // That isolation is what makes the row above evidence about the threshold
++    // rather than about "a plan with a sail leg in it".
++    renderPlan([leg('motor', 0, 300), leg('sail', 300, 600), leg('motor', 900, 300)]);
++    expect(screen.queryByText('brief segment')).toBeNull();
++    expect(screen.queryByText(/Brief propulsion changes/)).toBeNull();
++  });
++
++  it('renders nothing on a single-mode passage, however short', () => {
++    renderPlan([leg('motor', 0, 10), leg('motor', 10, 10)]);
++    expect(screen.queryByText('brief segment')).toBeNull();
++    expect(screen.queryByText(/Brief propulsion changes/)).toBeNull();
++  });
++});
+diff --git a/changelog.d/354.changed.md b/changelog.d/354.changed.md
+new file mode 100644
+--- /dev/null
++++ b/changelog.d/354.changed.md
+@@ -0,0 +1,1 @@
++The legs table now marks legs that sit inside a motor/sail run shorter than one charged tack, and the route summary says how many propulsion changes a plan contains — a motor/sail change is free in the routing cost model, so a plan can carry very short segments. The route itself is unchanged: this discloses the churn, it does not remove it, and the router still does not know whether a fairway is wide enough to tack (#354).
