@@ -666,6 +666,20 @@ export const en = {
   // {value} s — same text in both languages, but still routed through the
   // dict (#300) rather than hardcoded, per repo convention.
   'seamark.popover.lightPeriodUnit': '{value} s',
+  // #830: the keyboard-reachable seamarks-in-view list — see dict.de.ts's
+  // own #830 comment for why the German summary avoids the word "Seezeichen".
+  'seamarks.inView.summary': 'Seamarks in view ({count})',
+  'seamarks.inView.summaryPending': 'Seamarks in view',
+  'seamarks.inView.hint':
+    'Sorted by distance from the map centre. Selecting a row shows the mark in a popup on the map.',
+  'seamarks.inView.layerOff':
+    'The seamark layer is hidden. Turn on the "Seamarks" checkbox on the map to list them.',
+  'seamarks.inView.loading': 'Loading seamarks …',
+  'seamarks.inView.empty': 'No seamarks in the current map view.',
+  // {shown} is SEAMARKS_IN_VIEW_MAX (lib/seamarksInView.ts) — the copy never
+  // types the number, so constant and sentence cannot drift apart.
+  'seamarks.inView.truncated':
+    'Only the {shown} seamarks nearest the map centre of the {total} in view are listed — zoom in to see all of them.',
   // Seamark popover VALUES (#300): translated from the OSM tag values
   // actually present in app/public/data/seamarks.json (not the full IALA
   // tagging scheme) — seamarkPopover.coverage.test.ts pins the coverage.
