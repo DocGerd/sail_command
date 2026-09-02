@@ -1164,7 +1164,10 @@ test('#232 item 2: cross-tile placement ordering — measurement, not a fix', as
 // IDL property through `evaluate` — `getAttribute` cannot tell present from
 // absent for a boolean attribute (CLAUDE.md) — and re-sampled on every poll
 // tick (#412). Those three viewports are the ones where the chrome placement
-// fails; a guard omitting any of them could not detect the regression.
+// fails; a guard omitting any of them could not detect the regression. The
+// baseline is the BANNER-FREE page (see the toast dismissal inside the test):
+// with the SW "offline ready" toast still up, the two collapsed rows are
+// hidden on `develop` today, list or no list.
 //
 // (2) KEYBOARD GUARD — reachable and operable without a pointer, and the
 // rows track the viewport by IDENTITY (a same-count swap must be caught,
@@ -1205,6 +1208,28 @@ for (const row of LEGEND_GUARD_ROWS) {
       await page.setViewportSize(row.viewport);
       await page.goto(server.url);
       await mapReady(page);
+
+      // Dismiss the incidental SW "offline ready" toast FIRST — the same
+      // idiom datalayers.spec.ts's #598 legend gate and compass.spec.ts use.
+      // Not incidental here: a rendered `.banner-area` banner enters the
+      // legend budget (`bannerHeightPx` in DataLayers.tsx's useLayoutEffect),
+      // and at 375x667 / 360x740 that toast alone takes the NO-LIST baseline
+      // (62.556 px / 95.41 px, measured 2026-09-02 on a banner-free page)
+      // under LEGEND_COLLAPSED_HEIGHT_PX — MEASURED on this guard's first run:
+      // both collapsed rows read `hidden=true` with the toast up while the
+      // 390x844 row (142.21 px baseline) survived it. The measurement this
+      // guard pins was taken with an empty banner area, so it must assert
+      // against that state, and it requires the area to be empty rather
+      // than trusting one dismiss click (a dismissal proves emptiness at
+      // one instant only, compass.spec.ts's own #368 round-5 lesson).
+      await page
+        .locator('.reload-prompt .banner-dismiss')
+        .click({ timeout: 5_000 })
+        .catch(() => {});
+      await expect(
+        page.locator('.banner-area .banner'),
+        'a banner is still up — the legend budget below would measure the banner, not the #830 list',
+      ).toHaveCount(0);
 
       // The guard is vacuous unless the control it is about is actually
       // mounted — pin that first. Plan tab is the default, no plan exists.
