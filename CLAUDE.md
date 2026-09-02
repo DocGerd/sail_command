@@ -983,32 +983,31 @@ making design-level decisions; do not silently deviate.
   Playwright bump). The
   record is #643's verification transcript — PR #665's body publishes only the
   Chromium half.
-- **An e2e run can silently measure a FOREIGN build — and because a green e2e
-  run is what a merge is gated on, that yields a false GREEN as readily as a
-  false red (#803, closed 2026-09-01 by hand; fixed by PR #823 — but that fix
-  reaches only its FIRST layer, a foreign server already on the port. The SECOND, a stale
-  service worker on a REUSED origin serving a cached build to a real browser
-  PAGE, is structurally untouched: the check is a plain Node `fetch()` with no
-  ServiceWorker in the picture, and closing it needs a browser-side
-  unregister+cache-clear in the specs that navigate (tracked at #832).
-  Re-read the issue and `app/e2e/helpers.ts`'s build-identity comment — the forensics live there).**
-  Neither a free port nor a pid check closes it. **Make the assertion
-  SELF-PROVING instead** — one that can only pass on the exact tree under
-  test. Worked example: PR #799's
-  conflict-resolution run passed #774's `tabIndex=0` pin (branch only) AND
-  #762's guard (needs develop's `.sc-field label` CSS) in ONE run, so the
-  served build necessarily contained both sides of the merge. That remedy's
-  obvious mechanisation — asserting on the ENTRY CHUNK — has a blind spot:
-  `dist/index.html` and its hashed entry chunk are byte-identical across a
-  substantive `app/src/sw.ts` edit and an `app/public/data/**` edit (measured
-  on `harbors.json`, PR #823 review). That is why `startPreview()`'s
-  `assertSwJsMatches` ALSO byte-compares the served `sw.js` against
-  `dist/sw.js` — workbox's precache manifest covers every `globPatterns` match that `globIgnores` does not
-  exclude (`data/**`, the polars, the basemap archive, the hashed JS/CSS
-  chunks), so
-  both change classes ARE covered — but NOT the whole of `dist/`
-  unconditionally, and a file
-  escapes for two independent reasons: it sits under an ignored subtree
+- **An e2e run can silently measure a FOREIGN build — and because a green
+  e2e run is what a merge is gated on, that yields a false GREEN as readily
+  as a false red (#803, closed 2026-09-01 by hand; fixed by PR #823 — but
+  that fix reaches only its FIRST layer, a foreign server already on the
+  port. The SECOND, a stale service worker on a REUSED origin serving a
+  cached build to a real browser PAGE, is structurally untouched: the check
+  is a plain Node `fetch()` with no ServiceWorker in the picture, and
+  closing it needs a browser-side unregister+cache-clear in the specs that
+  navigate (tracked at #832). Re-read the issue and `app/e2e/helpers.ts`'s
+  build-identity comment — the forensics live there).** Neither a free port
+  nor a pid check closes it. **Make the assertion SELF-PROVING instead** —
+  one that can only pass on the exact tree under test. Worked example: PR
+  #799's conflict-resolution run passed #774's `tabIndex=0` pin (branch
+  only) AND #762's guard (needs develop's `.sc-field label` CSS) in ONE run,
+  so the served build necessarily contained both sides of the merge. That
+  remedy's obvious mechanisation — asserting on the ENTRY CHUNK — has a
+  blind spot: `dist/index.html` and its hashed entry chunk are
+  byte-identical across a substantive `app/src/sw.ts` edit and an
+  `app/public/data/**` edit (measured on `harbors.json`, PR #823 review).
+  That is why `startPreview()`'s `assertSwJsMatches` ALSO byte-compares the
+  served `sw.js` against `dist/sw.js` — workbox's precache manifest covers
+  every `globPatterns` match that `globIgnores` does not exclude (`data/**`,
+  the polars, the basemap archive, the hashed JS/CSS chunks), so both change
+  classes ARE covered — but NOT the whole of `dist/` unconditionally, and a
+  file escapes for two independent reasons: it sits under an ignored subtree
   (tracked at #833), or its extension is outside the token list (tracked at
   #854 — `.txt` is, so `THIRD-PARTY-NOTICES.txt`, whose drift reds the
   REQUIRED `app` check, passes both probes today). Read both filters off
