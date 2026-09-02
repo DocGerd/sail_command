@@ -13,10 +13,10 @@
   discharged: at `84b049a2` two of six routes (four of twelve rig rows) carry a
   motor -> sail -> motor sandwich with a 75-225 s sail run, while the #264
   motor-tacking archetype carries zero mode changes on either rig. Every
-  candidate either leaves the worst route's churn intact while costing 2.4-5.0
-  min (A) or makes the reproducing route worse (C), removes churn by deleting the sailing and breaks a documented
-  #254 invariant (G), is inert at the mandated 45 s (D, E), or has no input
-  data (F). B is the only direction worth a second increment, and its result is
+  candidate does one of: leaves the worst route's churn intact while costing
+  2.4-5.0 min (A); makes the reproducing route worse (C); removes churn by
+  deleting the sailing, breaking a documented #254 invariant (G); is inert at
+  the mandated 45 s (D, E); or has no input data (F). B is the only direction worth a second increment, and its result is
   not yet interpretable (§4.2). The open question is a product judgement, not a
   measurement (§5).
 
@@ -609,9 +609,12 @@ reporter's own route is obtained before any of the above.
 
 1. **The reporter's own route.** It was never obtained; the churn evidence is
    two routes of six, both Danish.
-2. **A Flensburg-Fjord reproduction.** Every route here is in Danish waters,
-   and the fleet's home water is unrepresented — a reproduction there could
-   change both the population and the wind cell.
+2. **A Flensburg-Fjord reproduction at the churn-relevant wind band.** The
+   battery already includes three Flensburg-Fjord/German-water routes (R1, R2,
+   R6) and none of them churns, each at a different wind cell (TWS 4-12) than
+   the two that do (TWS 5-5.5, §3.5) — so a fjord reproduction specifically at
+   the churn-relevant TWS 5-5.5 band, not merely "in Danish waters", is the
+   actual open question.
 3. **A gradient forecast.** Every cell here is uniform wind. A real Open-Meteo
    field that churns differently would change the per-triple cost.
 4. **The §6.4 offline count comes back non-zero across several arms.** Then
