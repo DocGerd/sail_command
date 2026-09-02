@@ -399,12 +399,16 @@ export const de = {
   // Attestierung müsste an eine AUSGABE gepinnt sein, nicht an eine URL.
   // "das Zeichen / die Zeichen" ist invariant, daher wechselt im Plural nur
   // "einem" -> "{count}". Keine Anapher ("obige", "diese Warnung"): der Satz
-  // bleibt aus jeder Position heraus richtig (#493/#504). "mit amtlicher
-  // Seekarte prüfen" wörtlich aus route.shallow.caveat oben.
+  // bleibt aus jeder Position heraus richtig (#493/#504).
+  // "mit amtlicher Seekarte prüfen" zeigt WEG von der eigenen Autorität der
+  // App, genau wie route.shallow.caveat oben — dort aber "mit amtlicher
+  // Seekarte und Echolot prüfen": das Echolot ist hier bewusst weggelassen,
+  // weil es zur Zeichen-Nähe nichts beiträgt. Also dieselbe Geste, keine
+  // wörtliche Übernahme.
   'route.seamarks.proximity':
-    'Diese Route verläuft näher als {dist} m an einem Kardinal- oder Einzelgefahrenzeichen. SailCommand bezieht Seezeichen nicht in die Routenberechnung ein und trifft keine Aussage darüber, auf welcher Seite ein Zeichen zu passieren ist — mit amtlicher Seekarte prüfen.',
+    'Diese Route verläuft näher als {dist} m an einem Kardinal- oder Einzelgefahrenzeichen vorbei. SailCommand bezieht Seezeichen nicht in die Routenberechnung ein und trifft keine Aussage darüber, auf welcher Seite ein Zeichen zu passieren ist — mit amtlicher Seekarte prüfen.',
   'route.seamarks.proximity.plural':
-    'Diese Route verläuft näher als {dist} m an {count} Kardinal- oder Einzelgefahrenzeichen. SailCommand bezieht Seezeichen nicht in die Routenberechnung ein und trifft keine Aussage darüber, auf welcher Seite ein Zeichen zu passieren ist — mit amtlicher Seekarte prüfen.',
+    'Diese Route verläuft näher als {dist} m an {count} Kardinal- oder Einzelgefahrenzeichen vorbei. SailCommand bezieht Seezeichen nicht in die Routenberechnung ein und trifft keine Aussage darüber, auf welcher Seite ein Zeichen zu passieren ist — mit amtlicher Seekarte prüfen.',
   'route.totals.distance': 'Distanz',
   'route.totals.duration': 'Dauer',
   'route.totals.eta': 'Ankunft',
