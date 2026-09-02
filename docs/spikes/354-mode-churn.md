@@ -14,7 +14,7 @@
   motor -> sail -> motor sandwich with a 75-225 s sail run, while the #264
   motor-tacking archetype carries zero mode changes on either rig. Every
   candidate either leaves the worst route's churn intact while costing 2.4-5.0
-  min (A, C), removes churn by deleting the sailing and breaks a documented
+  min (A) or makes the reproducing route worse (C), removes churn by deleting the sailing and breaks a documented
   #254 invariant (G), is inert at the mandated 45 s (D, E), or has no input
   data (F). B is the only direction worth a second increment, and its result is
   not yet interpretable (§4.2). The open question is a product judgement, not a
@@ -91,9 +91,10 @@
    penalty-0 inertness control and it moved two all-motor rows it could not
    have charged, so its ETA deltas are a mixture of intended effect and search
    perturbation.
-4. **Never carry 45 s forward as "the obvious constant."** It sits below the
-   solver's own 75 s minimum resolvable mode run (§4.3), which is why three of
-   the seven candidates could not bind at all.
+4. **Never carry 45 s forward as "the obvious constant."** It sits below the 75 s
+   shortest mode run this battery produced (§4.3) — `dtS/8` at the 600 s
+   ring — which is why three of the seven candidates could not bind on these
+   routes.
 5. **Do not let the declined directions return as fresh ideas** — §9 records
    each with the measurement that rejected it.
 
@@ -161,9 +162,9 @@ about `pruneKey` (`:243`) or `visitedDominates` (`:269-271`).
 | 2026-08-25 | Owes a full #282 nine-arm sweep — `isochrone.ts`'s cost function is squarely inside the sweep's transitive input closure, and any accepted fix moves `PlanResult` bytes: REQUIRED BASE double-run control plus a BASE-vs-HEAD comparison, "roughly three arm-sets at ~31 min each". Not fix-ready: no reproducing case had ever been run and none of the four candidate directions had been chosen. "Committing sweep time before the fix direction exists spends the expensive thing first." **First deliverable when picked up: a reproducing case, before any solver edit.** |
 | 2026-08-26 | "XL and highest-risk in this batch — `isochrone.ts` and `postprocess.ts` are both inside `app/sweep`'s documented #282 transitive input closure." |
 | 2026-08-31 | "Sweep owed, traced rather than assumed. `isochrone.ts`'s `effS` feeds `distNm`, which sets leg boundaries and timings, which are `PlanResult` fields. A mode-change cost therefore moves plans by construction." Correction for whoever picks this up: **`app/src/routing/planRoute.reasonDecoupling.test.ts` belongs on this issue's guard list** — a real source-scanning guard a token-scoped grep missed during triage. |
-| **2026-09-02** | **"Spike doc + defer."** #354 to Backlog; no solver change this cycle. This document is the spike. |
+| **2026-09-02** | **"Spike doc + defer."** (given in the maintainer's session, not recorded as an issue comment; this PR is its record) #354 to Backlog; no solver change this cycle. This document is the spike. |
 
-Sweep operational rulings, repeated on the issue twice: never run a full sweep
+Sweep operational rulings, the first two repeated on the issue twice: never run a full sweep
 as a harness background task (one was observed killed at ~58 min); detach with
 `setsid` + `nohup` and report `SC_SWEEP_OUT` **at detach, not on completion**;
 check `compare.mjs`'s A-side outcome distribution before treating byte-identity
@@ -300,9 +301,8 @@ discriminator on its own; R1 is.
 
 ### 3.6 Aperture — what this reproduction can and cannot say
 
-- **Two routes of six, four rows of twelve**, both in Danish waters — **neither
-  in Flensburg Fjord, where the reporter sails.** The reporter's own route was
-  never obtained.
+- **Two routes of six, four rows of twelve**, both in Danish waters. The
+  reporter's own route was never obtained.
 - **Uniform wind only**, one departure instant. Nothing here speaks to a
   forecast with a TWS gradient — the same evidential gap the motor spec §8.2
   records as narrowed, not closed.
@@ -328,13 +328,13 @@ byte-identical on both rigs under **all seven**.
 
 | key | mechanism | files touched | Δ mode changes (route / cell) | Δ ETA min (route / cell / rig) | control route touched? | #264 shape? | other defect | diff |
 |---|---|---|---|---|---|---|---|---|
-| **A** mode penalty, geometric | sibling branch of the tack penalty at `effS`, mirrored at `subEffS`; new `Settings.modeChangePenaltyS` field | `isochrone.ts`, `types.ts`, `SettingsPanel.tsx`, `OptionsPanel.tsx`, both dicts, `planForm` keys, 4 test files, changelog fragment — 11 files, +63/-1 | R3 (5/140): **3->1** both rigs. R4 (5.5/120): **3->3 unchanged** both rigs. R1 (4/62): 0->0 | R3 +0.5 genoa / +1.3 fock; **R4 +5.0 genoa / +2.4 fock**; R1 -0.2 / -2.5; R5 fock -0.1 | NO | **YES**, R4 both rigs | penalty >= 150 s deletes every mode-changing candidate; the field permits 300 | `candidates/354-a-mode-penalty-geometric.diff`, applies to `84b049a2` |
-| **B** mode penalty, cost-only | module constant `MODE_CHANGE_PENALTY_S = 45` added to `costMs` at the direct-arrival and child sites; `effS`/`distNm`/`tMs` untouched | `isochrone.ts` only | R3: **3->1** genoa, **3->2** fock. R4: **3->2** both rigs. R1: 0->0 | R3 **-0.3** genoa / **+1.7** fock; R4 **+2.4** genoa / **+1.6** fock; R1 -1.8 / -1.4; R5 fock -0.1 | NO | **YES**, 3 of 12 rows | no penalty-0 control; R1 moved with no mode change on either side | `candidates/354-b-mode-penalty-cost-only.diff`, applies to `84b049a2` |
-| **G** floor hysteresis band | enter sail at `floor + band`, stay down to `floor - band`, `band = motorSpeedKn * maneuverPenaltyS / dtS` | `isochrone.ts`, +38/-1 | R3: **3->0** both rigs — **by going 100% motor**. R4: **3->3 unchanged** | R3 -1.8 / -1.2; **R4 +0.5 / +0.3**; R1 -4.8 / -3.3; R5 -3.7 / -3.4 | NO | **YES**, R4 fock, isolated by ablation | `motor.test.ts` 2 failed / 21 passed — the #254 margin-disabling escape hatch no longer restores pre-#254 routing | `candidates/354-g-floor-hysteresis-band.diff`, applies to `84b049a2` |
-| **C** minimum sail segment | `Node.modeRunMs`; a motor candidate is refused while the parent's sail run is under 45 s; run length joins `visitedDominates` | `isochrone.ts` +76, `isochrone.followups.test.ts` +22 | R3: **3->5 both rigs (WORSE)**, `msmTriples` 1->2 genoa. R4: unchanged. R5 (4.5/260): **0->1** genoa | R3 +0.1 / +0.9; R5 genoa **+0.9**; R4 0.0 | NO | **YES**, R5 genoa, attributed to the guard by ablation | constraint admittedly unsound (`better()` unchanged) | `candidates/354-c-minimum-segment.diff`, applies to `84b049a2` |
-| **D** postprocess absorption | new pass absorbs a motor-sandwiched sail run under 45 s into one motor leg, with depth re-validation | `postprocess.ts` +80 | **12/12 unchanged at 45 s — zero evidence.** At 300 s: R3 genoa 3->1, everything else unchanged | 0.0 on all rows in both arms | NO (structurally: R6 is 100% sail, no sandwich exists) | no (search never moves) | at 300 s the merged leg reads **5.79 kn** where every other motor leg reads 6.50; foreclosed by the standing post-processing rule | `candidates/354-d-postprocess-absorption.diff`, applies to `84b049a2` |
-| **E** presentation only | flag legs of a mode run shorter than `settings.maneuverPenaltyS` in the legs table | `RouteSummary.tsx`, new `lib/briefModeRuns.ts`, both dicts, `app.css`, 2 new test files, changelog fragment | **12/12 unchanged by construction** | 0.0 | NO | structurally impossible | fires on **0 of 12 rows** at 45 s | `candidates/354-e-presentation-only.diff`, applies to `84b049a2` |
-| **F** fairway-aware | #244 §6.1 "corridor as a cost term", charged on `costMs` when an edge midpoint lies outside every corridor | new `lib/fairway.ts`, `isochrone.ts`, `planRoute.ts` — 2 files +58/-16 plus 1 new | **12/12 unchanged — no input data exists** | 0.0 | NO | not measured; structurally predicted by #244 §6.1 | `seamarks.json` holds 1794 features, all `Point`, zero corridors, by construction | `candidates/354-f-fairway-aware.diff`, applies to `84b049a2` |
+| **A** mode penalty, geometric | sibling branch of the tack penalty at `effS`, mirrored at `subEffS`; new `Settings.modeChangePenaltyS` field | `isochrone.ts` +25/-1, `types.ts` +8, `OptionsPanel.tsx` +10, `SettingsPanel.tsx` +2, `dict.de.ts` +1, `dict.en.ts` +1, `planForm.ts` +1, `gpx.test.ts` +1, `planForm.test.ts` +1, `recalc.test.ts` +2, `db.test.ts` +11, `changelog.d/354.fixed.md` +1 — 12 files, +64/-1 as committed | R3 (5/140): **3->1** both rigs. R4 (5.5/120): **3->3 unchanged** both rigs. R1 (4/62): 0->0 | R3 +0.5 genoa / +1.3 fock; **R4 +5.0 genoa / +2.4 fock**; R1 -0.2 / -2.5; R5 fock -0.1 | NO | **YES**, R4 both rigs | penalty >= 150 s deletes every mode-changing candidate; the field permits 300 | `candidates/354-a-mode-penalty-geometric.diff`, applies to `84b049a2` |
+| **B** mode penalty, cost-only | module constant `MODE_CHANGE_PENALTY_S = 45` added to `costMs` at the direct-arrival and child sites; `effS`/`distNm`/`tMs` untouched | `isochrone.ts` only — +32/-16 as committed, of which two whitespace-only `edgeFactor(...)` re-wraps (§8.3) | R3: **3->1** genoa, **3->2** fock. R4: **3->2** both rigs. R1: 0->0 | R3 **-0.3** genoa / **+1.7** fock; R4 **+2.4** genoa / **+1.6** fock; R1 -1.8 / -1.4; R5 fock -0.1 | NO | **YES**, 3 of 12 rows | no penalty-0 control; R1 moved with no mode change on either side | `candidates/354-b-mode-penalty-cost-only.diff`, applies to `84b049a2` |
+| **G** floor hysteresis band | enter sail at `floor + band`, stay down to `floor - band`, `band = motorSpeedKn * maneuverPenaltyS / dtS` | `isochrone.ts` +38/-1 as committed | R3: **3->0** both rigs — **by going 100% motor**. R4: **3->3 unchanged** | R3 -1.8 / -1.2; **R4 +0.5 / +0.3**; R1 -4.8 / -3.3; R5 -3.7 / -3.4 | NO | **YES**, R4 fock, isolated by ablation | `motor.test.ts` 2 failed / 21 passed — the #254 margin-disabling escape hatch no longer restores pre-#254 routing | `candidates/354-g-floor-hysteresis-band.diff`, applies to `84b049a2` |
+| **C** minimum sail segment | `Node.modeRunMs`; a motor candidate is refused while the parent's sail run is under 45 s; run length joins `visitedDominates` | `isochrone.ts` +73/-3, `isochrone.followups.test.ts` +11/-11 — 2 files, +84/-14 as committed | R3: **3->5 both rigs (WORSE)**, `msmTriples` 1->2 genoa. R4: unchanged. R5 (4.5/260): **0->1** genoa | R3 +0.1 / +0.9; R5 genoa **+0.9**; R4 0.0 | NO | **YES**, R5 genoa, attributed to the guard by ablation | constraint admittedly unsound (`better()` unchanged) | `candidates/354-c-minimum-segment.diff`, applies to `84b049a2` |
+| **D** postprocess absorption | new pass absorbs a motor-sandwiched sail run under 45 s into one motor leg, with depth re-validation | `postprocess.ts` +88/-1 as committed | **12/12 unchanged at 45 s — zero evidence.** At 300 s: R3 genoa 3->1, everything else unchanged | 0.0 on all rows in both arms | NO (structurally: R6 is 100% sail, no sandwich exists) | no (search never moves) | at 300 s the merged leg reads **5.79 kn** where every other motor leg reads 6.50; foreclosed by the standing post-processing rule | `candidates/354-d-postprocess-absorption.diff`, applies to `84b049a2` |
+| **E** presentation only | flag legs of a mode run shorter than `settings.maneuverPenaltyS` in the legs table | `RouteSummary.tsx` +40, `app.css` +20, `dict.de.ts` +7, `dict.en.ts` +6, new `lib/briefModeRuns.ts` +67, new `lib/briefModeRuns.test.ts` +79, new `components/RouteSummary.briefRun.test.tsx` +123, `changelog.d/354.changed.md` +1 — 8 files, +343 as committed | **12/12 unchanged by construction** | 0.0 | NO | structurally impossible | fires on **0 of 12 rows** at 45 s | `candidates/354-e-presentation-only.diff`, applies to `84b049a2` |
+| **F** fairway-aware | #244 §6.1 "corridor as a cost term", charged on `costMs` when an edge midpoint lies outside every corridor | `isochrone.ts` +46/-16, `planRoute.ts` +12, new `lib/fairway.ts` +110 — 3 files, +168/-16 as committed, of which two whitespace-only `edgeFactor(...)` re-wraps (§8.3) | **12/12 unchanged — no input data exists** | 0.0 | NO | not measured; structurally predicted by #244 §6.1 | `seamarks.json` holds 1794 features, all `Point`, zero corridors, by construction | `candidates/354-f-fairway-aware.diff`, applies to `84b049a2` |
 
 Each diff applies to `84b049a2` (§8.3); none of the seven is empty. The BASE
 worktree's own diff was empty by construction (no source edit) and is not
@@ -347,16 +347,19 @@ changes 3 -> 1 on both rigs, at +0.5 min genoa (21.4 -> 21.9) / +1.3 min fock
 (20.8 -> 22.1), bought by motoring through water the boat used to sail (genoa
 motor time 15.15 -> 16.89 min, sail 6.25 -> 5.01 min). **It fails on R4 (TWS
 5.5 / 120)**: mode changes stay at 3 on both rigs *and* ETA rises +5.0 min
-genoa (67.6 -> 72.6) / +2.4 min fock (68.4 -> 70.8). The HEAD mode runs still
-contain the churn — genoa `S(2) M(1) S(2) M(8)`, fock `S(2) M(1) S(1) M(7)`
-with `msmTriples` 1 and `shortSailRuns` 1: a one-leg sail run survives a 45 s
+genoa (67.6 -> 72.6) / +2.4 min fock (68.4 -> 70.8). The HEAD mode runs: genoa
+`S(2) M(1) S(2) M(8)` retains a one-leg motor run between two sail runs, and
+fock `S(2) M(1) S(1) M(7)` retains the motor -> sail -> motor triple itself
+(`msmTriples` 1, `shortSailRuns` 1): a one-leg sail run survives a 45 s
 charge. **The #264 shape is confirmed, not inferred:** on R4 genoa total time
 rose +5.0 min while motor time *fell* 62.60 -> 60.11 min and sail time *rose*
 5.00 -> 12.49 min — +7.5 min of sailing bought -2.5 min of motoring. The
 penalty locks the boat into whichever mode it is already in. User-visible
 side effect: R4's rig recommendation inverts (BASE genoa 67.6 < fock 68.4; HEAD
 fock 70.8 < genoa 72.6, reported "decided" for fock); R3's ETA ordering also
-inverts and lands in the tie band. Net over the 12 rows: 4 slower (+9.2 min
+inverts (BASE fock 20.8 < genoa 21.4; HEAD genoa 21.9 < fock 22.1), moving
+the recommended rig fock -> genoa while the comparison stays `tie` on both
+sides. Net over the 12 rows: 4 slower (+9.2 min
 total), 3 faster (-2.8 min), 5 unchanged. **Its causal control is the
 strongest evidence in the whole set:** with the penalty set to 0, all 12
 fingerprints returned byte-identical to BASE — the implementation is a strict
@@ -387,8 +390,8 @@ R6 is byte-identical. Blast radius is smaller than A's by construction:
 `effS`/`distNm`/`tMs` are untouched, so there is no candidate-deletion hazard,
 reported ETA and geometry stay the solver's honest output, and as a module
 constant it needs no `DEFAULT_SETTINGS` field (which would move every sweep
-arm that does not spread-override it). The `:585` capture-arrival `candCostMs`
-correctly needs **no** edit — it derives from `child.costMs` and editing it
+arm that does not spread-override it). The capture-arrival `candCostMs` (`:589` at
+`84b049a2`) correctly needs **no** edit — it derives from `child.costMs` and editing it
 would double-charge. **Two confounds must be removed before it can be
 recommended.** (i) It has **no penalty-0 inertness control** — A ran one and
 got 12/12; B did not. (ii) **R1 (TWS 4 / 62) is 100% motor with zero mode
@@ -530,8 +533,8 @@ nm) on R3, the plan moves (whole-`PlanResult` fingerprint `58b2473a5832361b`
 -> `51906593ae3bb0f3`, legs 11 -> 9, revert reproduces exactly — an instrument
 check on invented data, licensing no conclusion about F), so the term is live
 and the byte-identity is caused by **the absence of the input**. Measured:
-`app/public/data/seamarks.json` holds **1794 features, geometry type `Point`
-only** (buoy_lateral 689, buoy_special_purpose 445, beacon_special_purpose
+`app/public/data/seamarks.json` holds **1794 features at `84b049a2`, geometry type
+`Point` only** (buoy_lateral 689, buoy_special_purpose 445, beacon_special_purpose
 258, beacon_lateral 139, buoy_cardinal 115, light_minor 107, ...) — zero
 corridors, by construction, since `pipeline/build_seamarks.mjs` queries
 `node["seamark:type"]` only; and `app/src/routing/` contains zero
@@ -550,14 +553,17 @@ populated, licence first. Rejected.
 ### 4.3 The constant — 45 s is not a neutral choice
 
 Every candidate was run at 45 s, the shipped `maneuverPenaltyS` default,
-because it is the one constant this repo already owns. **It sits below the
-solver's own minimum resolvable mode run of 75 s** (`dtS/8` at the 600 s ring,
-the value of every shortest run in §3.3), which is why C, D and E are
-structurally unable to bind. Any re-measurement must state its constant
-relative to that quantum. The meaningful band:
+because it is the one constant this repo already owns. **It sits below the 75 s
+shortest mode run this battery produced** (`dtS/8` at the 600 s ring, the
+value of every shortest run in §3.3), which is why C, D and E could not bind
+on these routes. Any re-measurement must state its constant relative to that
+observed run. The meaningful band:
 
-- **lower bound ~75 s** — below the `dtS/8` quantum at the 600 s ring nothing
-  can be reached;
+- **lower bound ~75 s on these routes** — the shortest run observed in this
+  battery, `dtS/8` at the 600 s ring; the quantum is 75 s only at the 600 s
+  ring, and near the destination it is `150/8 = 18.75 s` (`dtS` at
+  `isochrone.ts:395`, the `[2, 4, 8]` substep divisors at `:527`, both at
+  `84b049a2`);
 - **hard ceiling 150 s for a geometric penalty (A)** — `dtS`'s minimum is
   150 s, so at or above it every mode-changing candidate is *deleted* rather
   than priced (`distNm <= 0` -> `continue`), and the shipped Settings field for
@@ -570,10 +576,8 @@ relative to that quantum. The meaningful band:
 ### 4.4 Refuter verdicts
 
 **None were run.** No adversarial refutation pass was commissioned on any of
-the seven candidate evaluations. Per this repo's own record (0 of 4
-close-recommendations survived adversarial verification at the v0.17.0 cut),
-**any direction ever selected must get two adversarial refuters before
-implementation begins** (§6.3).
+the seven candidate evaluations. **Any direction ever selected must get two
+adversarial refuters before implementation begins** (§6.3).
 
 ---
 
@@ -603,15 +607,17 @@ reporter's own route is obtained before any of the above.
 
 ### 6.1 New evidence about the population
 
-1. **The reporter's own Flensburg-Fjord route.** The churn evidence is two
-   routes of six, both Danish, neither in Flensburg Fjord. A Flensburg-Fjord
-   reproduction could change both the population and the wind cell.
-2. **A gradient forecast.** Every cell here is uniform wind. A real Open-Meteo
+1. **The reporter's own route.** It was never obtained; the churn evidence is
+   two routes of six, both Danish.
+2. **A Flensburg-Fjord reproduction.** Every route here is in Danish waters,
+   and the fleet's home water is unrepresented — a reproduction there could
+   change both the population and the wind cell.
+3. **A gradient forecast.** Every cell here is uniform wind. A real Open-Meteo
    field that churns differently would change the per-triple cost.
-3. **The §6.4 offline count comes back non-zero across several arms.** Then
+4. **The §6.4 offline count comes back non-zero across several arms.** Then
    the churn population is far larger than 4 rows in 6 routes and a fix may be
    worth more than it looks here.
-4. **The 75 s sail runs turn out to be a substep artefact, not a sailing
+5. **The 75 s sail runs turn out to be a substep artefact, not a sailing
    decision.** 75 s is exactly `dtS/8` at the 600 s ring — the mask-fitting
    retry — so the right fix may be in the substep path (never emit a
    sub-quantum mode flip) rather than in the cost function. **This is a fifth
@@ -620,17 +626,17 @@ reporter's own route is obtained before any of the above.
 
 ### 6.2 New evidence about a candidate
 
-5. **B's confounds resolve favourably.** If a penalty-0 inertness control
+6. **B's confounds resolve favourably.** If a penalty-0 inertness control
    gives 12/12 byte-identity *and* the all-motor R1 rows (TWS 4 / 62) stop
    moving, then B's three slower rows are its whole cost and B becomes
    recommendable on the §5 product judgement alone.
-6. **An adversarial refuter kills one of the seven self-reports.** None was
+7. **An adversarial refuter kills one of the seven self-reports.** None was
    attacked (§4.4).
-7. **G's `motor.test.ts` failures are judged as tests to update rather than a
+8. **G's `motor.test.ts` failures are judged as tests to update rather than a
    broken invariant.** That reading requires amending CLAUDE.md and the motor
    spec, both of which state the margin-disabling value restores pre-#254
    routing byte-for-byte — a maintainer call, not an implementer's.
-8. **The §7 `msmTriples` discrepancy resolves against §3.3.** If the target
+9. **The §7 `msmTriples` discrepancy resolves against §3.3.** If the target
    population is defined leg-wise (2) rather than run-wise (4), B's headline
    and its aggregate need re-deriving and A's R4 failure may be a smaller miss
    than it reads.
@@ -683,8 +689,8 @@ and F owe none. Read off `app/sweep/sweepArms.ts` at `84b049a2`:
   `light-motorless`, `becalmed` and `deep-becalmed` set `motorEnabled: false`,
   so the classification cascade can never assign `kind = 'motor'` — zero motor
   legs, zero mode changes, whatever the fix does. Their byte-identity is not
-  evidence. This is a **different** vacuity from the documented depth one:
-  `light-motorless` routes fine and is still blind here.
+  evidence. This vacuity is structural rather than an artefact of failing
+  routes, so it is a **different** vacuity from the documented depth one.
 - **The other six all run `uniformWindGrid(12, 225)`.** At TWS 12 the sail
   floor is crossed only inside the polar's no-go taper (genoa first table row
   TWA 35 at 6.39 kn x 0.9 = 5.75 kn, tapered linearly to 0 at TWA 0, so
@@ -721,7 +727,7 @@ and F owe none. Read off `app/sweep/sweepArms.ts` at `84b049a2`:
 ## 7. Known discrepancies NOT settled from the artefacts
 
 Recorded as discrepancies. This document deliberately picks no number for
-either; whoever re-opens #354 settles them from the committed driver output
+the first two; whoever re-opens #354 settles them from the committed driver output
 and the candidate diffs before scoring anything.
 
 1. **The BASE `msmTriples` population is reported three ways.** Candidate B's
@@ -748,9 +754,9 @@ and the candidate diffs before scoring anything.
    artefacts; the origin of B's figures is unexplained.
 3. **The metre equivalents of the sail runs are not carried here.** The brief
    converts the 75 / 75 / 150 / 225 s runs to distances "at ~4 kn"; the first
-   three reproduce at exactly 4.0 kn and the fourth does not (it needs ~4.24
+   three reproduce at exactly 4.0 kn and the fourth does not (it needs ~4.23
    kn), and the driver records no per-leg speed for those runs, so only the
-   measured durations are stated (§3.3).
+   measured durations are stated (§3.3). Settled by omission, not left open.
 
 ---
 
@@ -792,9 +798,10 @@ warnings, unused `eslint-disable` directives, under CI's `eslint src e2e
 sweep`). Outputs: `run1.json`, `run2.json` (full per-sail and per-plan rows),
 `double-run-control.json` (`{ byteIdentical, mismatches }`),
 `positive-control.json`. All three `it()` blocks took ~31.5 s on a quiet
-machine at `84b049a2` — 24 solves for the double-run plus 3 for the positive
-control. Every number in §3.2 is a transcription of
-`354-mode-churn/base-output/run1.json` (identical to `run2.json`).
+machine at `84b049a2` — 24 sail solves for the double-run control, plus 3 route
+plans (6 sail solves) for the positive control. Every number in §3.2 is a transcription of
+`354-mode-churn/base-output/run1.json` (identical to `run2.json` on every field
+transcribed here; the two differ only in the wall-clock `solveMs` fields).
 
 ### 8.2 Reproducing the BASE table
 
@@ -822,9 +829,11 @@ Each file is the scratch worktree's `git diff` against `84b049a2`, with the
 files that were NEW in that worktree (A's and E's changelog fragments, E's
 `lib/briefModeRuns.ts` and its two tests, F's `lib/fairway.ts`) appended as
 `/dev/null` new-file hunks so that one `git apply` recreates the whole
-candidate. B and F each carry one whitespace-only hunk the repo's prettier
-hook produced (an `edgeFactor(...)` call re-wrapped onto one line); it is not
-part of either candidate. All seven were dry-run with `git apply --check` at
+candidate. B and F each re-wrap two `edgeFactor(...)` calls onto one line (the
+repo's prettier hook). In B one of the two is a standalone whitespace-only
+hunk (`@@ -578`) and the other sits inside the substantive `@@ -451` hunk; in
+F both are standalone whitespace-only hunks. Neither is part of either
+candidate. All seven were dry-run with `git apply --check` at
 `b7bfc0c8` and applied cleanly — none of the touched files changed in the two
 commits between `84b049a2` and `b7bfc0c8`.
 

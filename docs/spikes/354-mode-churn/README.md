@@ -49,19 +49,19 @@ nothing at `b7bfc0c8`), and the copied driver lints with 4 warnings (unused
 before committing anything. Outputs are written even when an assertion fails
 (the `writeFileSync` calls precede the `expect`s). The three `it()` blocks
 took ~31.5 s together on a quiet machine at `84b049a2`: 6 routes x 2 sails x
-2 runs = 24 solves for the double-run control, plus 3 for the positive
-control, all against the real committed mask and polars.
+2 runs = 24 sail solves for the double-run control, plus 3 route plans (6
+sail solves) for the positive control, all against the real committed mask and polars.
 
 ## The candidate diffs
 
 | file | candidate | tracked files touched | notes |
 |---|---|---|---|
 | `354-a-mode-penalty-geometric.diff` | A — geometric mode penalty on `effS`, new `Settings.modeChangePenaltyS` | `isochrone.ts`, `types.ts`, `OptionsPanel.tsx`, `SettingsPanel.tsx`, both dicts, `planForm.ts`, `gpx.test.ts`, `planForm.test.ts`, `recalc.test.ts`, `db.test.ts` | The worktree's untracked `changelog.d/354.fixed.md` is appended as a new-file hunk. A's penalty-0 control arm is the same code with `DEFAULT_SETTINGS.modeChangePenaltyS = 0`; not a separate diff. |
-| `354-b-mode-penalty-cost-only.diff` | B — module constant `MODE_CHANGE_PENALTY_S = 45` on `costMs` only | `isochrone.ts` | Carries two whitespace-only hunks (the `edgeFactor(...)` calls re-wrapped onto one line by the repo's prettier hook); B's report says so, and they are not part of the candidate. |
+| `354-b-mode-penalty-cost-only.diff` | B — module constant `MODE_CHANGE_PENALTY_S = 45` on `costMs` only | `isochrone.ts` | Re-wraps two `edgeFactor(...)` calls onto one line (the repo's prettier hook): one is a standalone whitespace-only hunk (`@@ -578`), the other sits inside the substantive `@@ -451` hunk; B's report says so, and they are not part of the candidate. |
 | `354-c-minimum-segment.diff` | C — `Node.modeRunMs` + a 45 s minimum sail run before a motor candidate is admitted | `isochrone.ts`, `isochrone.followups.test.ts` | C's 900 s arm was a temporary env override, reverted; not a separate diff. |
 | `354-d-postprocess-absorption.diff` | D — post-hoc absorption of a motor-sandwiched sail run under 45 s | `postprocess.ts` | D's 300 s arm is the same code with the threshold constant raised; not a separate diff. |
 | `354-e-presentation-only.diff` | E — legs-table disclosure of mode runs shorter than `settings.maneuverPenaltyS` | `RouteSummary.tsx`, both dicts, `app.css` | The worktree's untracked `lib/briefModeRuns.ts`, `lib/briefModeRuns.test.ts`, `components/RouteSummary.briefRun.test.tsx` and `changelog.d/354.changed.md` are appended as new-file hunks. Its reachability probe is `probes/scratch354e-reach.test.ts`. |
-| `354-f-fairway-aware.diff` | F — #244 §6.1 corridor cost term on `costMs` | `isochrone.ts`, `planRoute.ts` | The worktree's untracked `lib/fairway.ts` is appended as a new-file hunk. Carries one whitespace-only prettier hunk like B. Its non-vacuity control is `probes/scratch354F-control.test.ts`. |
+| `354-f-fairway-aware.diff` | F — #244 §6.1 corridor cost term on `costMs` | `isochrone.ts`, `planRoute.ts` | The worktree's untracked `lib/fairway.ts` is appended as a new-file hunk. Carries two whitespace-only prettier hunks (`@@ -457` and `@@ -578`), both `edgeFactor(...)` calls re-wrapped onto one line. Its non-vacuity control is `probes/scratch354F-control.test.ts`. |
 | `354-g-floor-hysteresis-band.diff` | G — two-sided hysteresis band around `sailFloorKn` | `isochrone.ts` | The enter-only ablation arm was a one-line temporary change (`sailStayKn = sailFloorKn`), reverted; not a separate diff. |
 
 To reproduce a candidate: check out `84b049a2` in a fresh worktree, `git apply`
