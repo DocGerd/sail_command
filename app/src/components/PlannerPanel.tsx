@@ -290,9 +290,9 @@ export default function PlannerPanel({
   // keyboard user could open update mode on point B, remove or reorder point
   // A via ITS OWN button, then commit — silently overwriting whatever now
   // sits at the stale index (or, once the array is shorter than the index,
-  // silently dropping the edit). Fixed the same way NumberInput's own
-  // prevValue/draft resync above (this file) derives state from a changed
-  // prop during render: viaPoints is a NEW array reference on every add/
+  // silently dropping the edit). Fixed the same way NumberInput.tsx's own
+  // prevValue/draft resync derives state from a changed prop during
+  // render: viaPoints is a NEW array reference on every add/
   // remove/reorder/update (App.tsx's handleViaPointsChange always replaces
   // it, never mutates in place), so a reference change is exactly the
   // signal that the index this form is holding may no longer mean what it
