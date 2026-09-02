@@ -217,10 +217,12 @@ That is deliberate — the sweep costs real solver time, on the order of
 half an hour: run 2 of this PR's own double-run (11 arms, `fileParallelism`)
 measured **2184.14 s wall** (driver log), with the slowest single arm alone
 at 2048.7 s (`salona44-relaxation`, summed from its `timings.json`) — the
-`~20 minutes` figure this used to say was written for nine arms and is
-stale even before accounting for load. Both numbers were measured under
-this session's own concurrent multi-agent load, not a quiet machine — see
-"#653 sweep control" above for the full caveat. It is run on demand, via
+`~20 minutes` figure this used to say predates even the nine-arm #452
+expansion — introduced at the original six-arm harness (PR #450, `37b924c`)
+and never touched since — and is stale even before accounting for load.
+Both numbers were measured under this session's own concurrent
+multi-agent load, not a quiet machine — see "#653 sweep control" above for
+the full caveat. It is run on demand, via
 its own `vitest.config.ts` in this directory.
 
 That config is necessary, not decoration: vitest 4 has **no `--include` flag**
