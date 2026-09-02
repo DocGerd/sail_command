@@ -144,6 +144,37 @@ describe('#813: folded-in #598 depth-hatch legend', () => {
     expect(list).not.toBeNull();
     expect(depthSection!.contains(list)).toBe(false);
   });
+
+  // #839: same guard as DataLayers.tsx's own copy of this content (that
+  // file's own #839 comment carries the full rationale) — `hatchLabel`/
+  // `basis` describe the hatch cue specifically and must not be offered on
+  // THIS surface either once the cue is off the map. Reads/writes
+  // `sc-depth-hatch-visible`/`sc-depth-visible` directly via localStorage,
+  // the same contract `usePersistedToggle` itself uses (this component never
+  // reads Settings context for either flag) — same technique the disabled-
+  // mirror describe block below already uses.
+  it('#839: hides the hatch label and basis copy while the hatch toggle is off, but keeps the checkbox and #597 caveat reachable', () => {
+    localStorage.setItem('sc-depth-hatch-visible', '0');
+    const { container, getByText, queryByText, getByRole } = renderLegend();
+    const details = container.querySelector('details.route-legend') as HTMLDetailsElement;
+    details.open = true;
+    expect(queryByText(en['map.depth.legend.hatchLabel'])).toBeNull();
+    expect(queryByText(en['map.depth.legend.basis'])).toBeNull();
+    expect(getByText(en['map.depth.legend.caveat'])).toBeInTheDocument();
+    expect(getByRole('checkbox', { name: en['map.depth.legend.hatchToggle'] })).not.toBeChecked();
+  });
+
+  // Complementary term of the SAME composite (CLAUDE.md's "ask per TERM, not
+  // per guard" vacuity rule) — see DataLayers.test.tsx's own #839 pair for
+  // the full mutation rationale.
+  it('#839: hides the hatch label and basis copy while the base depth toggle is off too, even though the hatch flag stays on', () => {
+    localStorage.setItem('sc-depth-visible', '0');
+    const { container, queryByText } = renderLegend();
+    const details = container.querySelector('details.route-legend') as HTMLDetailsElement;
+    details.open = true;
+    expect(queryByText(en['map.depth.legend.hatchLabel'])).toBeNull();
+    expect(queryByText(en['map.depth.legend.basis'])).toBeNull();
+  });
 });
 
 // #681 x #813 review Major: RouteLegend.tsx's own hatch checkbox carries the
