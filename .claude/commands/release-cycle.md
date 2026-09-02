@@ -90,6 +90,9 @@ and every timing-based wording tested made the already-shipped v0.18.0 retroacti
 non-compliant (its fill batch was four issues, zero bugs). Report a milestone that misses the
 floor as a finding at GATE 1; do not redefine the floor to absorb it.
 
+**Accessibility work is ranked by who is locked out** — situational-impairment fixes rank on
+merit, keyboard- or screen-reader-only work one step below; exceptions in `CONTRIBUTING.md`.
+
 ### The work
 
 Dispatch a **Workflow** with one agent per milestone bucket (current release, next release,
