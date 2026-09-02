@@ -121,10 +121,17 @@ export default function RouteLegend() {
           already ancestor-independent. */}
       <div className="route-legend-depth">
         <p className="route-legend-subheading">{t('route.legend.depthHeading')}</p>
-        <p className="depth-legend-row">
-          <span className="depth-legend-swatch" aria-hidden="true" />
-          {t('map.depth.legend.hatchLabel')}
-        </p>
+        {/* #839: same guard as DataLayers.tsx's own copy of this row (that
+            file's own #839 comment carries the full rationale) — gated on
+            the SAME `depthVisible && hatchVisible` composite the map layer
+            itself uses (the #384 defect-class shape), never `hatchVisible`
+            alone. */}
+        {depthVisible && hatchVisible && (
+          <p className="depth-legend-row">
+            <span className="depth-legend-swatch" aria-hidden="true" />
+            {t('map.depth.legend.hatchLabel')}
+          </p>
+        )}
         {/* #681 x #813: same control, same keys, same `disabled` mirror as
             DataLayers.tsx's own copy — see that file's return JSX for the
             full layout-budget derivation of why the control exists here at
@@ -141,7 +148,10 @@ export default function RouteLegend() {
           />
           {t('map.depth.legend.hatchToggle')}
         </label>
-        <p>{t('map.depth.legend.basis')}</p>
+        {/* #839: same composite guard as the hatchLabel row above — the
+            #597 caveat below stays unconditional (a mask-coverage gap
+            independent of the hatch toggle's own state). */}
+        {depthVisible && hatchVisible && <p>{t('map.depth.legend.basis')}</p>}
         <p>{t('map.depth.legend.caveat')}</p>
       </div>
       <ul>
