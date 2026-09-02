@@ -1,13 +1,54 @@
 # #282 acceptance sweep
 
-All 33 harbours × 9 settings arms = **297 plans**, against the real committed
-mask and polars, with every `PlanResult` serialised for byte-for-byte
-comparison between two revisions.
+All 33 harbours × 11 settings arms = **363 plans** (9 arms / 297 plans
+through #452; #653 added the two `salona44-*` arms below), against the real
+committed mask and polars, with every `PlanResult` serialised for
+byte-for-byte comparison between two revisions.
 
 Issue #282 makes this a **standing requirement**: the no-route cause is a
 control input, so any change to how `solve()` *classifies* a failure can move
 real routes. Run this before trusting such a change. A change that is only
 meant to be presentational must move nothing.
+
+**#653**: every arm through `margin-extreme` plans exclusively for
+`DEFAULT_BOAT_ID` (`salona-45`) — `sweepArms.ts`'s `runArm()` resolved a
+single hardcoded boat for all nine, so a `boatDepth.ts`/`depthGate.ts`
+regression correct for the Salona 45's gate but wrong for a DIFFERENT
+per-boat gate (a `defaultSafetyDepthM`/`relaxationFloorM` mixup, or a
+boat-keyed polar lookup bug) was invisible to this harness. `runArm()` now
+takes its boat from the new `Arm.boatId` field (defaulting to
+`DEFAULT_BOAT_ID` when absent, so every PRE-#653 arm is UNCHANGED — see that
+field's own doc comment in `sweepArms.ts`), and two new arms exercise it:
+
+- `salona44-breeze` — the Salona 44 "SPEEDY GO!" mirror of `breeze`
+  (Flensburg origin, `DEFAULT_SETTINGS`, no depth relaxation on 27 of its 33
+  rows — like `breeze`, the Marstal leg is the one row that does relax, per
+  the #452 paragraph below).
+- `salona44-relaxation` — the Salona 44 mirror of `relaxation-dense`
+  (Marstal origin, `DEFAULT_SETTINGS`, #53 relaxation exercised).
+
+**Both Salonas draft 2.1 m** (`app/src/data/boats.ts`), so
+`defaultSafetyDepthM`/`relaxationFloorM` — both pure functions of `b.draftM`
+— compute the IDENTICAL gate for either boat: these two arms do NOT
+discriminate a depth-gate regression by themselves. `salona44-breeze`'s
+depth outcome (`usedDepthM`, `shallow` flags) matches `breeze`'s exactly on
+every row (verified: zero status-differing rows, Marstal's `usedDepthM`
+identical). `salona44-relaxation`'s `usedDepthM` likewise matches
+`relaxation-dense`'s exactly on every both-ok row — but the OUTCOME SET does
+not: `relaxation-dense` is 27 `ok+shallow` / 5 `unreachable` while
+`salona44-relaxation` is 26 / 6, because `rudkoebing` is `ok+shallow` for the
+Salona 45 and `unreachable` for the Salona 44 at the identical gate. Cause
+not established — tracked as #866, MAX_FRONTIER search-capacity truncation
+is the leading hypothesis, not a finding. What both arms DO discriminate
+(beyond that one open question) is the boat-keyed
+POLAR lookup (`polarKey(boat.id, sail.id)`) and the plan/ETA it produces — a
+tier-C estimated table genuinely different from the Salona 45's
+certificate/modelled one, though not uniformly faster (see #866's own data
+for two rows where the Salona 44 plan is markedly slower) — end to end
+through both the ordinary and the
+depth-relaxed solve path, for a boat other than the one all nine prior arms
+exercise. See `app/src/routing/realmask.repro.test.ts`'s `#653` describe
+block for the pinned, boat-sensitive evidence at the individual-plan level.
 
 **#452**: the original six arms (Flensburg origin) can each carry a
 *successful* #53 depth relaxation (a `shallow` block) on only 1 of their 33
@@ -85,24 +126,117 @@ above is determinism evidence only, never safety evidence.
 discharge the per-change BASE double-run.** That control must still be recorded
 against the merge-base of whatever branch it will certify.
 
+## #653 sweep control — two new arms, salona44-breeze/salona44-relaxation
+
+**COMPLETE, 2026-09-02 at `d23d4c0`: two full runs of the ELEVEN-arm harness
+on this branch's own HEAD, 363/363 plans byte-identical, all eleven arm
+files sha-identical.** Per-arm sha256 prefixes, both runs (`compare.mjs`
+output; the nine pre-#653 prefixes below were independently re-verified by
+PR #861's round-2 claim-auditor on 2026-09-02 by re-hashing `run2`'s raw
+arm-file bytes with `compare.mjs`'s own byte-mode algorithm
+(`sha256(raw)[:16]`), not by copying either run's printed line — all eleven
+arms matched, and run 1 and run 2 agreed on all eleven):
+
+`becalmed 8dc119cd9a1fdced`, `breeze 7aa9fb563dd8fea0`,
+`deep-becalmed 7e7ac2e14d5305ae`, `light-motorless 0ded5d87bca1a190`,
+`margin-extreme ae91bf7128102b15`, `margin-zero fa5e30f17325d4e6`,
+`no-comfort 9fa297c8e55cd0fc`, `relaxation-dense f4907139a4d4ddd6`,
+`salona44-breeze 77cb11e848e51799`, `salona44-relaxation f3c0f61ba277bbe2`,
+`short-horizon 3fb63b775bce2fab`.
+
+**The nine PRE-#653 arms' prefixes above match the `00a33ab` table
+recorded higher up this file, 9/9, exactly** — independently re-derived
+(not assumed from the arm literals being byte-unchanged): every one of
+`becalmed`/`breeze`/`deep-becalmed`/`light-motorless`/`margin-extreme`/
+`margin-zero`/`no-comfort`/`relaxation-dense`/`short-horizon`'s 16-hex
+prefix above starts with its corresponding 8-hex `00a33ab` prefix. This is
+the cross-run form CLAUDE.md calls a STRONGER control than a self
+double-run — the same nine arms reproduce a prior run from a different
+merge-base and day, not merely themselves.
+
+A-side outcome distribution across all 363 plans: `ok` 102, `ok+shallow`
+110, `error/calm-motor-off` 55, `error/unreachable` 65,
+`error/beyond-horizon` 28, `error/snap-failed-destination` 3.
+**`becalmed`/`deep-becalmed` contribute 66 of the 151 error rows (33 each,
+100% error in both — every row in both arms is an error) and remain VACUOUS
+as safety evidence**, per this file's own standing caveat above; the other
+nine arms' error rows carry the real distinguishing signal.
+
+The two new arms' own distributions (independently computed from `run2`'s
+JSON, not copied from either reviewer's prose): `salona44-breeze` — `ok` 27,
+`ok+shallow` 1 (`marstal`), `error/unreachable` 5 (the #9
+KNOWN_DISCONNECTED harbours, matching `breeze`'s own 5); `salona44-relaxation`
+— `ok+shallow` 26, `error/unreachable` 6, `ok` 1 — the one extra
+`unreachable` relative to `relaxation-dense`'s 27/5/1 split is `rudkoebing`,
+tracked as #866 (see the paragraph above).
+
+**Durations DISCARDED as evidence**: both runs executed under this session's
+own multi-agent load (run 1: 2710.17s wall for 11 parallel arms; run 2:
+2184.14s), which is why `vitest.config.ts`'s "no new slowest-arm candidate"
+claim was corrected to a measured-under-load figure rather than a clean one
+— see that file's own comment. Byte-identity, not timing, is this section's
+evidence.
+
+**Both runs executed against the PRE-review-round-1-fix-wave module
+content.** `vitest` imported `sweepArms.ts`/`armNames.ts` for both runs'
+collection phase before either run started its arms (run 1 at
+2026-09-02T09:47:11Z, run 2 at 10:29:40Z); the review-round-1 fixes to those
+files landed on disk at 10:43–10:46Z, after both collection phases had
+already read the pre-fix content — so this double-run certifies commit
+`d23d4c0`, not the file content as currently committed. The only
+non-comment code change since `d23d4c0` is `sweepArms.ts`'s `runArm()`
+passing `boatSnapshot(boat)` instead of `defaultBoatSnapshot()` for
+`request.boat`.
+
+**PROVEN output-inert, not merely argued**: a single-arm `salona44-breeze`
+re-run at commit `3a0072b` (after the `boatSnapshot(boat)` change) —
+`SC_SWEEP_OUT=.../head-breeze`, driver PID 1124098 — produced a
+`salona44-breeze.json` that hashes to `77cb11e848e51799`, byte-identical to
+this section's own run1/run2 prefix for that arm. Only
+`salona44-breeze.timings.json` differs (`640c066a` at `3a0072b` vs
+`52a87c64` in run 2), exactly as expected for a wall-clock field that was
+never claimed to match. This closes the gap the caveat above leaves open:
+the `boatSnapshot(boat)` change is confirmed to move no route, so the
+determinism control this double-run establishes carries forward to the
+file content as currently committed, not only to `d23d4c0`.
+
+**Re-sync ruling** (PR #861's round-4 reviewer, `8b22bfe` -> `3c94221`, one
+sentence so the next reader need not re-run this sweep to re-derive it):
+that 11-file delta needed no re-sweep because it contains no closure
+member, no solver-path import of any of the 11 files (grepped
+`routing/`/`lib/{mask,depthGate,geo,polar,wind,boatDepth}.ts`/`types.ts`/
+`data/boats.ts`, zero hits), and `types.ts` itself is unchanged — so
+`DEFAULT_SETTINGS`, `app/public/data/` and `pipeline/` stay untouched and
+the double-run above still certifies the branch.
+
 ## Why it lives here and not under `src/`
 
 `app/vite.config.ts`'s `test.include` is `['src/**/*.test.{ts,tsx}']`, so
 nothing in this directory is collected by `npm --prefix app run test` or by CI.
-That is deliberate — the sweep costs ~20 minutes of real solver time. It is run
-on demand, via its own `vitest.config.ts` in this directory.
+That is deliberate — the sweep costs real solver time, on the order of
+half an hour: run 2 of this PR's own double-run (11 arms, `fileParallelism`)
+measured **2184.14 s wall** (driver log), with the slowest single arm alone
+at 2048.7 s (`salona44-relaxation`, summed from its `timings.json`) — the
+`~20 minutes` figure this used to say predates even the nine-arm #452
+expansion — introduced at the original six-arm harness (PR #450, `37b924c`)
+and never touched since — and is stale even before accounting for load.
+Both numbers were measured under this session's own concurrent
+multi-agent load, not a quiet machine — see "#653 sweep control" above for
+the full caveat. It is run on demand, via
+its own `vitest.config.ts` in this directory.
 
 That config is necessary, not decoration: vitest 4 has **no `--include` flag**
 (it exits `CACError: Unknown option \`--include\``, measured against
 `vitest@4.1.10`), and `--dir` only narrows the scan — neither can widen the
 root config's `include`, which by construction excludes this directory.
 
-Two consequences worth knowing: `npm --prefix app run lint` is `eslint src
-e2e` (`app/package.json`'s `lint` script), which does not name this
-directory — so these files are not linted by CI, unlike `app/e2e/**`, which
-PR #508 added to that script and closed issue #420 (2026-08-11); and they
-are typechecked only because `tsconfig.test.json`'s `include` names
-`sweep/**/*.ts` — they need node builtins, like the other entries there.
+One consequence worth knowing: they are typechecked only because
+`tsconfig.test.json`'s `include` names `sweep/**/*.ts` — they need node
+builtins, like the other entries there. (This directory USED to be excluded
+from `npm --prefix app run lint` too — `app/package.json`'s `lint` script
+was `eslint src e2e` until PR #602 added `sweep` at the v0.17.0 cut, so
+these files ARE linted by CI now, same as `app/e2e/**` since PR #508/#420,
+2026-08-11.)
 
 ## Running it
 
@@ -256,13 +390,17 @@ identity: the arm list and their wind fields, the `{ hours: 3 }` override on
 `harbors.json`'s `flensburg.snap` by default, `marstal.snap` for the three
 #452 relaxation arms — added #452, PR #488: a PRE-#452 baseline's implicit
 "the origin is always flensburg.snap" is no longer true of the file as a
-whole, only of arms that omit `originId`), `T0`, and `serialize()`'s replacer
-and 1-space indent. Change any one of them and previously recorded output is
-no longer comparable. **Add an arm rather than editing one.**
+whole, only of arms that omit `originId`), **each arm's boat** (`Arm.boatId`,
+`DEFAULT_BOAT_ID`/`salona-45` by default, `salona-44-speedy-go` for the two
+#653 arms — same shape as `originId`: a PRE-#653 baseline's implicit "the
+boat is always DEFAULT_BOAT_ID" is no longer true of the file as a whole,
+only of arms that omit `boatId`), `T0`, and `serialize()`'s replacer and
+1-space indent. Change any one of them and previously recorded output is no
+longer comparable. **Add an arm rather than editing one.**
 
 ## Recorded baseline — 2026-08-07, PR #450 (`dbcd519`)
 
-**Covers only the ORIGINAL six arms (198 of the 297 plans this harness now
+**Covers only the ORIGINAL six arms (198 of the 363 plans this harness now
 produces).** No BASE-vs-HEAD baseline has been recorded for the three #452
 arms (`margin-zero`, `relaxation-dense`, `margin-extreme`) — that comparison
 was deliberately deferred to whenever a real depth-relaxation change is
@@ -273,6 +411,19 @@ NOT outstanding: the 2026-08-20 nine-arm double run at `00a33ab` (above)
 covers all three — but per that section's own caveat it does not discharge
 the per-change BASE double-run, which must still be recorded against the
 certifying branch's merge-base.
+
+**Nor for the two #653 `salona44-*` arms** — same deferral, same reason: no
+prior commit ever ran a Salona-44 arm, so there is no BASE side to compare
+against. See "#653 sweep control" further up this file for the substitute
+recorded instead: a self double-run of the eleven-arm harness on this
+branch's own HEAD (a BASE run cannot produce a Salona-44 arm at all — that
+is exactly why there is no BASE side above), plus a sha256-prefix
+cross-check of the nine PRE-#653 arms against the `00a33ab`
+determinism-control table above — the closest available equivalent to a
+BASE-vs-HEAD comparison when the change under certification is "these two
+arms are new." **COMPLETE** — see "#653 sweep control" above for the
+results (363/363 byte-identical, 9/9 prefix match, plus the pre-fix-wave
+caveat and its single-arm re-run control).
 
 | | |
 |---|---|

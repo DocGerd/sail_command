@@ -48,7 +48,25 @@ export default defineConfig({
     // than the sum — but that ~20 min figure is a PARALLEL number, not a
     // fixed constant: it holds on a machine with enough cores to run nine
     // workers concurrently and degrades toward the serial figure on a
-    // smaller one.
+    // smaller one. #653 added two more (`salona44-breeze`,
+    // `salona44-relaxation`, eleven total) — same reasoning applies with
+    // "nine" read as "eleven". MEASURED, not assumed, and the assumption
+    // ("mirrors an existing wind field, so no new slowest-arm candidate")
+    // was WRONG: under the concurrent load of PR #861's own sweep run 1
+    // (contaminated timing — this machine was not otherwise idle),
+    // `salona44-relaxation` totalled 2547 s of solver time, ahead of
+    // `breeze`'s 2240 s (the previous slowest of the original nine) — a new
+    // slowest-arm candidate, not the reused one its mirror
+    // (`relaxation-dense`, 2199 s) would have predicted. REPRODUCED in run 2
+    // (2048.7 s vs `breeze` 1845.6 s and `relaxation-dense` 1796.5 s), which
+    // ran under LIGHTER load than run 1 but not a quiet machine — every arm
+    // WITH REAL SOLVER COST is faster in run 2 (the one exception,
+    // `becalmed`, is the vacuous 33/33-error arm at near-zero cost: 6.5 s ->
+    // 9.2 s is noise, not a load signal) — which is what shows the load
+    // differed rather than went away. Two runs at different load levels,
+    // same arm on top, so the ORDERING is reproduced rather than merely
+    // observed. The absolute magnitudes are still load-inflated; do not
+    // quote them as clean timings.
     fileParallelism: true,
   },
 });
