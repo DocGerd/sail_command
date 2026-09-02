@@ -66,22 +66,29 @@ Then answer these three questions IN WRITING before doing anything else:
 
 ## Phase 1 — Re-triage, then STOP for approval
 
-### The allocation policy (this is new; the repo does not record it yet)
+### The allocation policy
 
-Fill the current release milestone by:
+Recorded in `CONTRIBUTING.md`'s **Labels & milestones** section — that is the contributor-facing
+copy and the one to keep current. Restated here only so this command is self-contained:
 
 1. **Priority first** — `priority: high` before `medium` before `low`.
 2. **Then favour user-facing work** — `type: feature` and user-visible `type: bug` outrank
    `type: chore` and `type: docs` at equal priority. A `chore` that unblocks a `feature` inherits
    the feature's rank; say so explicitly when you promote one.
-3. **The 20% bug reserve** — at least 20% of the milestone's target size stays available for bug
-   work. Satisfy it EITHER by `type: bug` issues already in the milestone OR by leaving slots
-   unfilled; state which. Round UP (a 9-issue milestone reserves 2, not 1.8). The reserve exists
-   because bugs are DISCOVERED mid-cycle — if you fill it entirely with today's known bugs, say
-   so and say what happens when a new one arrives.
+3. **The 20% bug reserve** — the milestone should REACH ITS CUT with at least a fifth of its
+   issues `type: bug`, rounded UP (a nine-issue milestone reserves two, not 1.8). A milestone
+   still being filled may sit below it; that is a gap to close at this gate, not a rule to bend.
+   The floor is forward-looking — `CONTRIBUTING.md` records which earlier milestones predate it.
 
-State your reading of the reserve rule explicitly in the proposal — it is ambiguous between
-"≥20% of slots are bug-typed" and "≥20% of slots stay empty", and I will confirm which I meant.
+**Do NOT re-ask which reading of the reserve was meant — it was SETTLED at the v0.18.0 cut
+(2026-09-01) as "at least 20% bug-typed", over the competing "at least 20% of slots left
+unfilled".** The denominator is the milestone's ISSUES, not a notional target size, because that
+is the only form a contributor can check against the tracker. A timing qualifier ("evaluated at
+fill time") was drafted and REJECTED: there is no allocation-pass marker in GitHub, so the fill
+boundary has to be constructed by hand, which makes the rule undecidable and self-certifying —
+and every timing-based wording tested made the already-shipped v0.18.0 retroactively
+non-compliant (its fill batch was four issues, zero bugs). Report a milestone that misses the
+floor as a finding at GATE 1; do not redefine the floor to absorb it.
 
 ### The work
 
@@ -325,9 +332,9 @@ measured to contain 30 further defects, 9 of them major.
   required check — alerts accumulate silently. A dismissal comment caps at 280 chars, so point it
   at a linked evidence record.
 - Run `/remember` to write the handoff.
-- **Propose** (do not silently add) a `CONTRIBUTING.md` paragraph recording the milestone
-  allocation policy from Phase 1, if I approved it — right now that rule exists nowhere in the
-  repo, so it will not survive this session.
+- The Phase 1 allocation policy is now recorded in `CONTRIBUTING.md` (added 2026-09-02, recording
+  the reading settled at the `v0.18.0` cut). If a cut CHANGES it, update that section in the same PR — and check the twin in this
+  file's Phase 1, which restates it and has no automatic keeper.
 
 ---
 
