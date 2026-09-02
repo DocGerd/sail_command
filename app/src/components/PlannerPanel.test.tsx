@@ -23,6 +23,7 @@ import PlannerPanel, { nextFullHourMs, type PlannerStatus, type TapTarget } from
 import { boatById, DEFAULT_BOAT_ID, type BoatDef } from '../data/boats';
 import { defaultBoatSnapshot } from '../types';
 import { PLAN_SCHEMA_VERSION } from '../types';
+import type { HarborWithReachability } from '../lib/harborReachability';
 
 // PR #763 review Minor 7: see RouteSummary.test.tsx's own copy of this
 // helper for the full rationale (jsdom does not hide closed-<details>
@@ -74,6 +75,23 @@ const MARSTAL: Harbor = {
 };
 
 const HARBORS = [FLENSBURG, MARSTAL];
+
+// #834: mirrors HarborPicker.test.tsx's ARNIS fixture — the real shipped
+// "arnis" #9 KNOWN_DISCONNECTED harbor, with BOTH an approachNote and
+// knownDisconnected: true, so a test can confirm the two coexist in the
+// selected-endpoint row exactly as they already coexist in the picker's
+// option row.
+const ARNIS: HarborWithReachability = {
+  id: 'arnis',
+  names: { de: 'Arnis', da: 'Arnæs', en: 'Arnis' },
+  country: 'DE',
+  snap: { lat: 54.6254, lon: 9.9316 },
+  approachNote: {
+    de: 'Oberhalb der Kappelner Brücke.',
+    en: 'Above the Kappeln bridge.',
+  },
+  knownDisconnected: true,
+};
 
 const DEPARTURE_MS = Date.UTC(2026, 6, 20, 9, 0, 0);
 const PLAN_DEPARTURE_MS = Date.UTC(2026, 6, 15, 8, 0, 0);
@@ -212,7 +230,7 @@ function setSail(plan: Plan, sailId: SailId, patch: { result?: RigResult | null 
 }
 
 interface Overrides {
-  harbors?: Harbor[];
+  harbors?: HarborWithReachability[];
   origin?: PickedPoint | null;
   destination?: PickedPoint | null;
   onPickOrigin?: (p: PickedPoint) => void;
@@ -626,6 +644,91 @@ describe('PlannerPanel', () => {
     });
     const originSection = screen.getByRole('region', { name: 'Origin' });
     expect(within(originSection).getByText('Narrow entrance.')).toBeInTheDocument();
+  });
+
+  // #834: #652 shipped this disclosure in the picker's OPTION row only —
+  // `PlannerPanel` rendered `approachNote` for a selected endpoint but never
+  // `knownDisconnected`, so the one warning that matters most (this harbor
+  // cannot be routed to at ANY depth setting) vanished at exactly the moment
+  // a user would act on it: right after picking, right before hitting Plan.
+  // Same wording/class as the picker's own disclosure (`harborPicker.
+  // knownDisconnected` / `.harbor-picker-unreachable`) — reused verbatim,
+  // never re-authored, so a mixed-basis regression can't slip in unnoticed.
+  it('#834: keeps the known-disconnected disclosure visible on a selected origin row', () => {
+    renderPanel({
+      harbors: [...HARBORS, ARNIS],
+      origin: { source: 'harbor', point: ARNIS.snap, harborId: ARNIS.id, label: 'Arnis' },
+    });
+    const originSection = screen.getByRole('region', { name: 'Origin' });
+    expect(
+      within(originSection).getByText(
+        'Not reachable by the router at any depth setting — a limit of the depth data, not a statement about the water.',
+      ),
+    ).toBeInTheDocument();
+    // Coexists with the depth caveat, exactly like the picker's option row —
+    // #834 must not have crowded ARNIS's approachNote out to make room.
+    expect(within(originSection).getByText('Above the Kappeln bridge.')).toBeInTheDocument();
+  });
+
+  it('#834: keeps the known-disconnected disclosure visible on a selected destination row', () => {
+    renderPanel({
+      harbors: [...HARBORS, ARNIS],
+      destination: { source: 'harbor', point: ARNIS.snap, harborId: ARNIS.id, label: 'Arnis' },
+    });
+    const destinationSection = screen.getByRole('region', { name: 'Destination' });
+    expect(
+      within(destinationSection).getByText(
+        'Not reachable by the router at any depth setting — a limit of the depth data, not a statement about the water.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  // Negative control (#652's own rule, restated here): a guard that only
+  // checks the positive case can't tell "always renders the note" from
+  // "renders it correctly". FLENSBURG carries no knownDisconnected field.
+  it('#834: renders no known-disconnected disclosure for an ordinary selected origin', () => {
+    renderPanel({
+      origin: {
+        source: 'harbor',
+        point: FLENSBURG.snap,
+        harborId: FLENSBURG.id,
+        label: 'Flensburg',
+      },
+    });
+    const originSection = screen.getByRole('region', { name: 'Origin' });
+    expect(within(originSection).queryByText(/not reachable/i)).not.toBeInTheDocument();
+  });
+
+  // TRANSITION test (per this repo's own `useState(defaultOpen)` /
+  // `key={plan.id}` lesson: "a fresh-mount test passes with either bug live;
+  // only a TRANSITION test sees them"): a fresh mount with `origin` already
+  // set proves the row CAN render the disclosure, but #834's actual defect
+  // was the disclosure disappearing at the moment of SELECTION — reproduced
+  // here via the #695 stateful-harness pattern, which plays the role App.tsx
+  // plays in production (PlannerPanel itself never owns `origin`).
+  it('#834: shows the disclosure immediately after picking a known-disconnected harbor (pick -> selected transition)', () => {
+    localStorage.setItem('sc-lang', 'en');
+    function Harness() {
+      const [origin, setOrigin] = useState<PickedPoint | null>(null);
+      return (
+        <PlannerPanel
+          {...baseProps({ harbors: [...HARBORS, ARNIS], origin, onPickOrigin: setOrigin })}
+        />
+      );
+    }
+    render(
+      <I18nProvider>
+        <Harness />
+      </I18nProvider>,
+    );
+    const originSection = screen.getByRole('region', { name: 'Origin' });
+    fireEvent.change(within(originSection).getByRole('combobox'), { target: { value: 'Arnis' } });
+    fireEvent.click(within(originSection).getByRole('option', { name: /Arnis/ }));
+    expect(
+      within(originSection).getByText(
+        'Not reachable by the router at any depth setting — a limit of the depth data, not a statement about the water.',
+      ),
+    ).toBeInTheDocument();
   });
 
   it('requests map-tap mode for the correct target when its "pick on map" button is clicked', () => {
