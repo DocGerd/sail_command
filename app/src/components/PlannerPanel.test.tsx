@@ -23,6 +23,7 @@ import PlannerPanel, { nextFullHourMs, type PlannerStatus, type TapTarget } from
 import { boatById, DEFAULT_BOAT_ID, type BoatDef } from '../data/boats';
 import { defaultBoatSnapshot } from '../types';
 import { PLAN_SCHEMA_VERSION } from '../types';
+import type { HarborWithReachability } from '../lib/harborReachability';
 
 // PR #763 review Minor 7: see RouteSummary.test.tsx's own copy of this
 // helper for the full rationale (jsdom does not hide closed-<details>
@@ -74,6 +75,23 @@ const MARSTAL: Harbor = {
 };
 
 const HARBORS = [FLENSBURG, MARSTAL];
+
+// #834: mirrors HarborPicker.test.tsx's ARNIS fixture — the real shipped
+// "arnis" #9 KNOWN_DISCONNECTED harbor, with BOTH an approachNote and
+// knownDisconnected: true, so a test can confirm the two coexist in the
+// selected-endpoint row exactly as they already coexist in the picker's
+// option row.
+const ARNIS: HarborWithReachability = {
+  id: 'arnis',
+  names: { de: 'Arnis', da: 'Arnæs', en: 'Arnis' },
+  country: 'DE',
+  snap: { lat: 54.6254, lon: 9.9316 },
+  approachNote: {
+    de: 'Oberhalb der Kappelner Brücke.',
+    en: 'Above the Kappeln bridge.',
+  },
+  knownDisconnected: true,
+};
 
 const DEPARTURE_MS = Date.UTC(2026, 6, 20, 9, 0, 0);
 const PLAN_DEPARTURE_MS = Date.UTC(2026, 6, 15, 8, 0, 0);
@@ -212,7 +230,7 @@ function setSail(plan: Plan, sailId: SailId, patch: { result?: RigResult | null 
 }
 
 interface Overrides {
-  harbors?: Harbor[];
+  harbors?: HarborWithReachability[];
   origin?: PickedPoint | null;
   destination?: PickedPoint | null;
   onPickOrigin?: (p: PickedPoint) => void;
@@ -221,6 +239,8 @@ interface Overrides {
   viaPoints?: LatLon[];
   onRemoveVia?: (index: number) => void;
   onReorderVia?: (index: number, direction: 'up' | 'down') => void;
+  onAddVia?: (p: LatLon) => void;
+  onUpdateVia?: (index: number, p: LatLon) => void;
   onDepartureChange?: (ms: number) => void;
   settings?: Settings;
   onSettingsChange?: (s: typeof DEFAULT_SETTINGS) => void;
@@ -251,6 +271,8 @@ function baseProps(overrides: Overrides = {}) {
     viaPoints: [],
     onRemoveVia: vi.fn(),
     onReorderVia: vi.fn(),
+    onAddVia: vi.fn(),
+    onUpdateVia: vi.fn(),
     departureMs: DEPARTURE_MS,
     onDepartureChange: vi.fn(),
     settings: DEFAULT_SETTINGS,
@@ -628,6 +650,91 @@ describe('PlannerPanel', () => {
     expect(within(originSection).getByText('Narrow entrance.')).toBeInTheDocument();
   });
 
+  // #834: #652 shipped this disclosure in the picker's OPTION row only —
+  // `PlannerPanel` rendered `approachNote` for a selected endpoint but never
+  // `knownDisconnected`, so the one warning that matters most (this harbor
+  // cannot be routed to at ANY depth setting) vanished at exactly the moment
+  // a user would act on it: right after picking, right before hitting Plan.
+  // Same wording/class as the picker's own disclosure (`harborPicker.
+  // knownDisconnected` / `.harbor-picker-unreachable`) — reused verbatim,
+  // never re-authored, so a mixed-basis regression can't slip in unnoticed.
+  it('#834: keeps the known-disconnected disclosure visible on a selected origin row', () => {
+    renderPanel({
+      harbors: [...HARBORS, ARNIS],
+      origin: { source: 'harbor', point: ARNIS.snap, harborId: ARNIS.id, label: 'Arnis' },
+    });
+    const originSection = screen.getByRole('region', { name: 'Origin' });
+    expect(
+      within(originSection).getByText(
+        'Not reachable by the router at any depth setting — a limit of the depth data, not a statement about the water.',
+      ),
+    ).toBeInTheDocument();
+    // Coexists with the depth caveat, exactly like the picker's option row —
+    // #834 must not have crowded ARNIS's approachNote out to make room.
+    expect(within(originSection).getByText('Above the Kappeln bridge.')).toBeInTheDocument();
+  });
+
+  it('#834: keeps the known-disconnected disclosure visible on a selected destination row', () => {
+    renderPanel({
+      harbors: [...HARBORS, ARNIS],
+      destination: { source: 'harbor', point: ARNIS.snap, harborId: ARNIS.id, label: 'Arnis' },
+    });
+    const destinationSection = screen.getByRole('region', { name: 'Destination' });
+    expect(
+      within(destinationSection).getByText(
+        'Not reachable by the router at any depth setting — a limit of the depth data, not a statement about the water.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  // Negative control (#652's own rule, restated here): a guard that only
+  // checks the positive case can't tell "always renders the note" from
+  // "renders it correctly". FLENSBURG carries no knownDisconnected field.
+  it('#834: renders no known-disconnected disclosure for an ordinary selected origin', () => {
+    renderPanel({
+      origin: {
+        source: 'harbor',
+        point: FLENSBURG.snap,
+        harborId: FLENSBURG.id,
+        label: 'Flensburg',
+      },
+    });
+    const originSection = screen.getByRole('region', { name: 'Origin' });
+    expect(within(originSection).queryByText(/not reachable/i)).not.toBeInTheDocument();
+  });
+
+  // TRANSITION test (per this repo's own `useState(defaultOpen)` /
+  // `key={plan.id}` lesson: "a fresh-mount test passes with either bug live;
+  // only a TRANSITION test sees them"): a fresh mount with `origin` already
+  // set proves the row CAN render the disclosure, but #834's actual defect
+  // was the disclosure disappearing at the moment of SELECTION — reproduced
+  // here via the #695 stateful-harness pattern, which plays the role App.tsx
+  // plays in production (PlannerPanel itself never owns `origin`).
+  it('#834: shows the disclosure immediately after picking a known-disconnected harbor (pick -> selected transition)', () => {
+    localStorage.setItem('sc-lang', 'en');
+    function Harness() {
+      const [origin, setOrigin] = useState<PickedPoint | null>(null);
+      return (
+        <PlannerPanel
+          {...baseProps({ harbors: [...HARBORS, ARNIS], origin, onPickOrigin: setOrigin })}
+        />
+      );
+    }
+    render(
+      <I18nProvider>
+        <Harness />
+      </I18nProvider>,
+    );
+    const originSection = screen.getByRole('region', { name: 'Origin' });
+    fireEvent.change(within(originSection).getByRole('combobox'), { target: { value: 'Arnis' } });
+    fireEvent.click(within(originSection).getByRole('option', { name: /Arnis/ }));
+    expect(
+      within(originSection).getByText(
+        'Not reachable by the router at any depth setting — a limit of the depth data, not a statement about the water.',
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('requests map-tap mode for the correct target when its "pick on map" button is clicked', () => {
     const props = renderPanel();
     const originSection = screen.getByRole('region', { name: 'Origin' });
@@ -864,6 +971,224 @@ describe('PlannerPanel', () => {
       renderPanel({ viaPoints: [VIA_A] });
       expect(screen.getByRole('button', { name: 'Add waypoint' })).toBeEnabled();
       expect(screen.getByRole('button', { name: 'Remove waypoint 1' })).toBeEnabled();
+    });
+
+    // #829: keyboard-reachable coordinate entry (spike §3.1/§5.1) — a second
+    // PRODUCER of the same LatLon the map tap already produces, and, in
+    // "update" mode, a second WRITER of an already-placed one. Never drives
+    // onRequestMapTap/handleMapTap at all — a fully independent path.
+    describe('#829 coordinate entry', () => {
+      function latInput(): HTMLElement {
+        return screen.getByLabelText('Latitude');
+      }
+      function lonInput(): HTMLElement {
+        return screen.getByLabelText('Longitude');
+      }
+      function setCoord(lat: string, lon: string): void {
+        fireEvent.change(latInput(), { target: { value: lat } });
+        fireEvent.blur(latInput());
+        fireEvent.change(lonInput(), { target: { value: lon } });
+        fireEvent.blur(lonInput());
+      }
+
+      it('typing a valid lat/lon and pressing "Add coordinates" appends exactly one via point', () => {
+        const props = renderPanel({ viaPoints: [] });
+        setCoord('54.85', '10.1');
+        fireEvent.click(screen.getByRole('button', { name: 'Add coordinates' }));
+        expect(props.onAddVia).toHaveBeenCalledTimes(1);
+        expect(props.onAddVia).toHaveBeenCalledWith({ lat: 54.85, lon: 10.1 });
+        expect(props.onUpdateVia).not.toHaveBeenCalled();
+      });
+
+      // Positive control for the mutation check below: 54.8/10.2 (this
+      // panel's own default seed, DATA_AREA's midpoint) is INSIDE the
+      // region, so a click with no typing at all must still append —
+      // proves the DATA_AREA check isn't accidentally rejecting everything.
+      it('the default seeded coordinate (DATA_AREA midpoint) is accepted unmodified', () => {
+        const props = renderPanel({ viaPoints: [] });
+        fireEvent.click(screen.getByRole('button', { name: 'Add coordinates' }));
+        expect(props.onAddVia).toHaveBeenCalledWith({ lat: 54.8, lon: 10.2 });
+      });
+
+      // #829 DoD: "an out-of-region value is rejected with the new message
+      // and appends nothing." 56°N is north of DATA_AREA's 55.3°N exclusive
+      // bound — chosen (not 90°N) so NumberInput's own -90..90 sanity clamp
+      // never fires first; the DATA_AREA rejection is what this pins.
+      // MUTATION CHECK (non-vacuity, per the DoD): deleting the DATA_AREA
+      // check in PlannerPanel.tsx's isInViaDataArea (e.g. `return true;`)
+      // makes this row red — onAddVia gets called and the message never
+      // renders — while every other row in this describe block stays green.
+      it('rejects an out-of-region coordinate with the outOfRegion message and appends nothing', () => {
+        const props = renderPanel({ viaPoints: [] });
+        setCoord('56', '10.1');
+        fireEvent.click(screen.getByRole('button', { name: 'Add coordinates' }));
+        expect(props.onAddVia).not.toHaveBeenCalled();
+        expect(
+          screen.getByText(
+            'The coordinates lie outside the covered area (Flensburg Fjord / Danish South Sea).',
+          ),
+        ).toBeInTheDocument();
+      });
+
+      it('pressing a placed via point\'s own coordinate button enters "update" mode, seeded with its coordinates', () => {
+        renderPanel({ viaPoints: [VIA_A, VIA_B] });
+        fireEvent.click(screen.getByRole('button', { name: /Edit coordinates \(point 2\)/ }));
+        expect(latInput()).toHaveValue(VIA_B.lat);
+        expect(lonInput()).toHaveValue(VIA_B.lon);
+        expect(screen.getByRole('button', { name: 'Update coordinates' })).toBeInTheDocument();
+      });
+
+      // #695: focus must be driven from the callback that knows the user
+      // acted (the click handler), never a derived boolean — mirrors this
+      // file's own pendingFocusRef pattern for the origin/destination
+      // "Change" buttons.
+      it('moves focus to the latitude field when entering update mode', () => {
+        renderPanel({ viaPoints: [VIA_A, VIA_B] });
+        fireEvent.click(screen.getByRole('button', { name: /Edit coordinates \(point 2\)/ }));
+        expect(latInput()).toHaveFocus();
+      });
+
+      // DoD: "editing row 2's coordinates changes only index 1."
+      it('editing row 2 and pressing "Update coordinates" calls onUpdateVia with index 1 only', () => {
+        const props = renderPanel({ viaPoints: [VIA_A, VIA_B] });
+        fireEvent.click(screen.getByRole('button', { name: /Edit coordinates \(point 2\)/ }));
+        setCoord('54.9', '10');
+        fireEvent.click(screen.getByRole('button', { name: 'Update coordinates' }));
+        expect(props.onUpdateVia).toHaveBeenCalledTimes(1);
+        expect(props.onUpdateVia).toHaveBeenCalledWith(1, { lat: 54.9, lon: 10 });
+        expect(props.onAddVia).not.toHaveBeenCalled();
+      });
+
+      it('an out-of-region value in update mode is rejected and onUpdateVia is never called', () => {
+        const props = renderPanel({ viaPoints: [VIA_A, VIA_B] });
+        fireEvent.click(screen.getByRole('button', { name: /Edit coordinates \(point 1\)/ }));
+        setCoord('54.9', '20');
+        fireEvent.click(screen.getByRole('button', { name: 'Update coordinates' }));
+        expect(props.onUpdateVia).not.toHaveBeenCalled();
+        expect(
+          screen.getByText(
+            'The coordinates lie outside the covered area (Flensburg Fjord / Danish South Sea).',
+          ),
+        ).toBeInTheDocument();
+      });
+
+      it('pressing the same coordinate button twice returns to "Add" mode', () => {
+        renderPanel({ viaPoints: [VIA_A] });
+        const editButton = () =>
+          screen.getByRole('button', { name: /Edit coordinates \(point 1\)/ });
+        fireEvent.click(editButton());
+        expect(screen.getByRole('button', { name: 'Update coordinates' })).toBeInTheDocument();
+        expect(editButton()).toHaveAttribute('aria-pressed', 'true');
+        fireEvent.click(editButton());
+        expect(screen.getByRole('button', { name: 'Add coordinates' })).toBeInTheDocument();
+        expect(editButton()).toHaveAttribute('aria-pressed', 'false');
+      });
+
+      it('a successful add resets the fields back to the DATA_AREA midpoint', () => {
+        const props = renderPanel({ viaPoints: [] });
+        setCoord('54.85', '10.1');
+        fireEvent.click(screen.getByRole('button', { name: 'Add coordinates' }));
+        expect(props.onAddVia).toHaveBeenCalledWith({ lat: 54.85, lon: 10.1 });
+        expect(latInput()).toHaveValue(54.8);
+        expect(lonInput()).toHaveValue(10.2);
+      });
+
+      // #863 review round 1 (sail-reviewer MAJOR, PlannerPanel.tsx:325):
+      // viaCoordMode.index was captured once on entering update mode and
+      // never re-validated against viaPoints — a keyboard user could open
+      // update mode on one via point, then remove or reorder a DIFFERENT
+      // row via ITS OWN button (neither is disabled while the coordinate
+      // form is open for another row), then commit, silently overwriting
+      // whatever now sits at the stale index. This needs the #695
+      // stateful-harness pattern (`renderPanel`'s viaPoints prop is
+      // STATIC — onRemoveVia is a bare vi.fn() that never actually changes
+      // it, so the array-reference-changed reset this fix relies on could
+      // never fire against it).
+      it('#863 review: removing a DIFFERENT via point while update mode is open resets to "Add" — never commits with a stale index', () => {
+        localStorage.setItem('sc-lang', 'en');
+        const onUpdateVia = vi.fn();
+        const onAddVia = vi.fn();
+        function Harness() {
+          const [points, setPoints] = useState<LatLon[]>([VIA_A, VIA_B]);
+          return (
+            <PlannerPanel
+              {...baseProps({
+                viaPoints: points,
+                onRemoveVia: (i: number) => setPoints(points.filter((_, idx) => idx !== i)),
+                onAddVia,
+                onUpdateVia,
+              })}
+            />
+          );
+        }
+        render(
+          <I18nProvider>
+            <Harness />
+          </I18nProvider>,
+        );
+
+        // Open update mode on VIA_B (index 1).
+        fireEvent.click(screen.getByRole('button', { name: /Edit coordinates \(point 2\)/ }));
+        expect(screen.getByRole('button', { name: 'Update coordinates' })).toBeInTheDocument();
+
+        // Remove VIA_A (index 0) via ITS OWN remove button — a real state
+        // change (a new viaPoints array), unrelated to the open form.
+        fireEvent.click(screen.getByRole('button', { name: 'Remove waypoint 1' }));
+
+        // The form must have fallen back to "Add" — never left pinned to
+        // the now-stale index 1.
+        expect(screen.getByRole('button', { name: 'Add coordinates' })).toBeInTheDocument();
+
+        // Committing now must never call onUpdateVia with the stale index —
+        // the reset means this is a fresh Add against the current, shorter
+        // array, never an Update.
+        fireEvent.click(screen.getByRole('button', { name: 'Add coordinates' }));
+        expect(onUpdateVia).not.toHaveBeenCalled();
+      });
+
+      // Same hazard via reorder instead of remove: the index number stays
+      // valid but the VALUE it points at changes underneath the open form.
+      it('#863 review: reordering via points while update mode is open resets to "Add" — never commits against the swapped value', () => {
+        localStorage.setItem('sc-lang', 'en');
+        const onUpdateVia = vi.fn();
+        const onAddVia = vi.fn();
+        function Harness() {
+          const [points, setPoints] = useState<LatLon[]>([VIA_A, VIA_B]);
+          return (
+            <PlannerPanel
+              {...baseProps({
+                viaPoints: points,
+                onReorderVia: (i: number, direction: 'up' | 'down') => {
+                  const swapWith = direction === 'up' ? i - 1 : i + 1;
+                  if (swapWith < 0 || swapWith >= points.length) return;
+                  const next = [...points];
+                  [next[i], next[swapWith]] = [next[swapWith], next[i]];
+                  setPoints(next);
+                },
+                onAddVia,
+                onUpdateVia,
+              })}
+            />
+          );
+        }
+        render(
+          <I18nProvider>
+            <Harness />
+          </I18nProvider>,
+        );
+
+        // Open update mode on VIA_B (index 1), seeded with VIA_B's coords.
+        fireEvent.click(screen.getByRole('button', { name: /Edit coordinates \(point 2\)/ }));
+        expect(latInput()).toHaveValue(VIA_B.lat);
+
+        // Swap VIA_A/VIA_B via VIA_A's own "move down" button — index 1 now
+        // holds VIA_A's value, not VIA_B's.
+        fireEvent.click(screen.getByRole('button', { name: 'Move waypoint 1 down' }));
+
+        expect(screen.getByRole('button', { name: 'Add coordinates' })).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Add coordinates' }));
+        expect(onUpdateVia).not.toHaveBeenCalled();
+      });
     });
   });
 
@@ -1406,13 +1731,15 @@ describe('PlannerPanel', () => {
     // `Received: ""`.
     it('DOES fold the stale sentence into the panel status region when formDirty && !settingsDirty', () => {
       renderPanel({ planning: { phase: 'idle' }, plan: makePlan(), rig: 'genoa', formDirty: true });
-      // 2, not 1, since #731: `.planner-status` (this test's subject) plus
+      // 3, not 1, since #731: `.planner-status` (this test's subject) plus
       // the always-mounted `.boat-picker-notice` blur-clamp notice on the
-      // compact row's safety-depth field (empty here — no clamp occurred).
-      // The count still guards against an ACCIDENTAL third/duplicate live
-      // region; it just isn't 1 any more now that #731 added a second,
-      // legitimate one.
-      expect(screen.getAllByRole('status')).toHaveLength(2);
+      // compact row's safety-depth field (empty here — no clamp occurred);
+      // and #829 added a THIRD, the always-mounted out-of-region rejection
+      // notice on the via coordinate-entry row (also empty here — no
+      // rejection occurred). The count still guards against an ACCIDENTAL
+      // fourth/duplicate live region; it just isn't 2 any more now that #829
+      // added a third, legitimate one.
+      expect(screen.getAllByRole('status')).toHaveLength(3);
       // No fresh completion announcement fires on this mount (seeded from
       // the mount plan id, per the transition tests above), so the region's
       // entire text is the folded stale sentence.

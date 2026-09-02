@@ -3748,13 +3748,51 @@ select {
    already applies, with the same reasoning in its own comment.
    `overflow-wrap: anywhere` (not the nowrap/ellipsis trio) so the full
    coordinate always stays readable rather than being truncated — this is
-   safety-adjacent position data, not a label. */
+   safety-adjacent position data, not a label.
+   #829: this is now a `Button` (`sc-btn sc-btn-ghost planner-via-coord`),
+   not a plain `<span>` — pressing it seeds the coordinate-entry row below
+   for repositioning, so it needed to become keyboard-operable rather than
+   growing the row by a 4th 44px control (which the paragraph above already
+   flags as tight at narrow widths with three). Declared AFTER `.sc-btn`
+   below (source order, same specificity — this repo's cascade convention)
+   so these three overrides win: left-aligned rather than `.sc-btn`'s
+   centered text, normal weight rather than its 600 (the row still reads as
+   position data, not a heavy call to action), and the button's own padding
+   trimmed back to roughly what the plain span had. */
 .planner-via-coord {
   flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
   font-size: 0.85rem;
   font-variant-numeric: tabular-nums;
+  justify-content: flex-start;
+  text-align: left;
+  font-weight: 400;
+  padding: 0.15rem 0.3rem;
+}
+
+/* #829: lat/lon fields + the Add/Update button, same collapsing-grid shape
+   as `.planner-compact-row` above (two columns side by side, one column
+   below `.planner-compact-row`'s own 380px breakpoint) — reused rather than
+   a bespoke layout, since it already solved the identical narrow-viewport
+   problem for a two-field-plus-help row. The status paragraph always spans
+   the full row so a rejection message never gets squeezed into one column. */
+.planner-via-coord-entry {
+  display: grid;
+  grid-template-columns: minmax(6rem, 1fr) minmax(6rem, 1fr) auto;
+  gap: 0.5rem;
+  align-items: start;
+  margin-top: 0.5rem;
+}
+
+.planner-via-coord-entry .boat-picker-notice {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 380px) {
+  .planner-via-coord-entry {
+    grid-template-columns: 1fr;
+  }
 }
 
 .via-markers-spinner-chip {
@@ -3830,6 +3868,19 @@ select {
   font-size: 0.8rem;
   font-weight: 600;
   color: var(--sc-banner-warning-fg);
+}
+
+/* #834 PR #857 review: `.harbor-picker-unreachable` was authored for <span>
+   usage inside the picker's <li> option row (inline, no box margin) — it
+   sets font-size/font-weight/color only, deliberately no margin override.
+   PlannerPanel.tsx's selected-endpoint rows reuse the SAME class on a <p>,
+   which then falls back to the default UA <p> margin (measured ~12.8px
+   top/bottom, about 8x the ~1.6px spacing every sibling in this cluster
+   uses). Scope the override to that context instead of touching the base
+   rule, which would risk the picker's own <li>/<span> layout — matches
+   .endpoint-caveat's own margin so the two read as one consistent stack. */
+.endpoint-detail .harbor-picker-unreachable {
+  margin: 0.1rem 0 0;
 }
 
 /* Depth caveat: muted, single line, ellipsized (full text shows on the selected

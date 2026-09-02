@@ -111,6 +111,20 @@ export const de = {
   'planner.via.moveUp': 'Wegpunkt {index} nach oben verschieben',
   'planner.via.moveDown': 'Wegpunkt {index} nach unten verschieben',
   'planner.via.marker': 'Wegpunkt {index}',
+  // #829: keyboard-reachable coordinate entry — a second producer/renderer of
+  // the same LatLon the map tap already produces (spike
+  // docs/spikes/714-keyboard-map-equivalents.md §3.1/§5.1). "coord.edit" is
+  // deliberately worded to avoid containing "Wegpunkt {index}" as a
+  // substring — CLAUDE.md's getByRole-substring-collision lesson: it would
+  // otherwise also match ViaMarkers.tsx's own "Wegpunkt {index}" marker
+  // aria-label under a non-exact getByRole locator.
+  'planner.via.coord.latLabel': 'Breitengrad',
+  'planner.via.coord.lonLabel': 'Längengrad',
+  'planner.via.coord.add': 'Koordinaten hinzufügen',
+  'planner.via.coord.update': 'Koordinaten aktualisieren',
+  'planner.via.coord.edit': 'Koordinaten bearbeiten (Punkt {index}): {coord}',
+  'planner.via.coord.outOfRegion':
+    'Die Koordinaten liegen außerhalb des abgedeckten Seegebiets (Flensburger Förde / Dänische Südsee).',
   'planner.departure.label': 'Abfahrt',
   'planner.plan': 'Route planen',
   // §3.5 empty/first-run: friendly guidance near the primary action while no

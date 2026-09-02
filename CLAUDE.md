@@ -452,6 +452,19 @@ making design-level decisions; do not silently deviate.
   NOT a required check (`protect-main` = `app`+`e2e`), so alerts accumulate
   silently — triage the post-merge push run. Dismissal comments are capped at
   **280 chars**, so a dismissal must point at a linked evidence record (#600).
+- **`code-scanning/alerts` returns Scorecard alerts ALONGSIDE CodeQL's, and
+  they look alike until you read `.tool.name`.** Measured 2026-09-02: both
+  alerts open that day were `tool.name: Scorecard`, each with `rule.severity`
+  `error` and a LITERAL `most_recent_instance.location.path` of "no file
+  associated with this alert" (every CodeQL alert in that day's all-states
+  listing — eleven — carried `warning`/`note` and a real path).
+  `security_severity_level: high` does NOT discriminate — both Scorecard
+  alerts read it, and so did three of those eleven. One was a genuine
+  dependency advisory (`VulnerabilitiesID`, the dev-only `browserslist`,
+  cleared by PR #855); the other was `MaintainedID`, keyed to repository age
+  ("created within the last 90 days"). Triage by TOOL before triaging by
+  severity: a Scorecard "high" is a project-practice score, not a code
+  finding, and no source file will explain it.
 - `ci.yml`'s THIRD job `hook-selftests` (advisory, not required) DISCOVERS every
   TOP-LEVEL `*.sh` in `.claude/hooks/` and `.github/scripts/` (`-maxdepth 1`,
   deliberately non-recursive, so a nested script is a conscious addition and
@@ -2081,6 +2094,16 @@ making design-level decisions; do not silently deviate.
   guard", plus an explicit pointer to the structural ones. Same move fixed a
   `v0.1.0` claim: "every UNCONDITIONALLY checked field", with the conditional
   one named as the exception.
+- **Verify a UNIVERSAL claim across its whole RANGE, not at the ends instinct
+  picks.** "Every milestone from `v0.9.0` on clears it" was FALSE as written
+  in a draft on PR #853 — quoted and refuted in `cf3d643`'s commit message
+  (2026-09-02), never committed to `CONTRIBUTING.md` in that form. The OPEN
+  `v0.19.0` sat inside that range at 1 bug of 6 at the time, while every
+  milestone SHIPPED in it by then had cleared — so a spot-check at either end,
+  `v0.9.0` or `v0.18.0`, passed while the violator sat interior. Caught by
+  verifying the universal half member by member — the audit round had not —
+  and fixed by SCOPING the sentence to SHIPPED milestones rather than hedging
+  it, per the bullet above.
 - Mutation-check new tests before trusting them: an "equivalence" test
   deriving expectations from the function under test always passes (#50
   reached reviewer approval with three such false-pass holes, caught pre-merge
@@ -2159,7 +2182,7 @@ making design-level decisions; do not silently deviate.
   reasoning was refuted — `some(cause !== null && cause !== 'budget-exhausted')`
   reds it and nothing else, 1 of 67).
 - **Reviewer-supplied verbatim text can be INVALIDATED by a sibling fix in the
-  SAME wave** — the one exception to adopting it byte-for-byte. #518 twice:
+  SAME wave** — an exception to adopting it byte-for-byte. #518 twice:
   MINOR 5 renamed a shipped i18n string, so MAJOR 4's supplied assertion
   searched for a string the app no longer emits (an assertion that can never
   fail — precisely the vacuity MAJOR 4 existed to close), and MAJOR 5 found
@@ -2514,6 +2537,26 @@ making design-level decisions; do not silently deviate.
   result — the two questions are the same question asked at different
   times, but only one of them prevents the fabricated test from ever being
   written.
+- **A verified ANTECEDENT can certify a false CONSEQUENT — enumerate the
+  shipped remedy's PARTS before ruling on what "the remedy" can prove.**
+  Measured 2026-09-02 on PR #852: a mechanism reviewer confirmed, correctly
+  and structurally, that `dist/index.html` does not move for an `sw.ts` or a
+  `public/**` edit (`vite.config.ts`'s `strategies: 'injectManifest'` builds
+  `sw.ts` as its own bundle; `public/**` is copied into `dist/` outside the
+  bundle's module graph) and on that basis passed a clause saying an
+  entry-chunk assertion "cannot prove the tree under test for exactly the
+  service-worker and offline-asset changes where a foreign build matters
+  most". The prose auditor refuted the CONCLUSION from the shipped tree:
+  `app/e2e/helpers.ts`'s `startPreview()` never rested on `index.html` alone —
+  `assertSwJsMatches` byte-compares the served `sw.js`, which `sw.ts` compiles
+  into, and that BUILT file's precache manifest covers the
+  `app/public/data/**` class the clause named — so both change classes ARE
+  covered, and the clause would have steered future sessions AWAY from a probe
+  that works (the corrected text is the #803 bullet under PWA / E2E / deploy).
+  The reviewer's own diagnosis: "I proved the antecedent and never enumerated
+  the shipped remedy's parts." Every step true, the claim false — the "what
+  class of failure can this method not detect?" question, asked of a
+  VERIFICATION rather than of a test.
 - A cross-language invariant (a CSS `var()` fallback that must equal a JS
   constant — no compiler spans CSS and TypeScript) has no automatic keeper;
   the only thing that can catch drift is a test that reads BOTH artifacts
@@ -2557,6 +2600,19 @@ making design-level decisions; do not silently deviate.
   "tighter" bound differed only by count (`sMax-sMin+1`) vs span
   (`sMax-sMin`); complying would have made a safety bound wrong by one. State
   the definition beside any countable bound.
+- **Supplied replacement text goes STALE when the passage it patches moves — a
+  precondition the adopt-verbatim rule above does not state.** Measured
+  2026-09-02 on PR #852: a reviewer's fenced block targeted the #803 bullet as
+  it read at `6fefbea`; by the time it was read that region had been rewritten
+  twice, once by the auditor's correction and once by the same reviewer's own
+  later Major, so adopting it verbatim would have REVERTED both. The reviewer
+  diagnosed it against itself — "supplied text goes stale when the thing it
+  patches moves, and I did not re-issue it against the new base before you
+  asked" — and withdrew the block rather than re-issue it. So: adopt verbatim,
+  but FIRST confirm the anchor text is still present at the head you are
+  editing; if the region has moved, ask the reviewer to RE-ISSUE against the
+  current head rather than adapting the block yourself — adapting is how a
+  third author's error enters.
 - A fix INHERITS its bug's blind spot, and **the CORRECTION is the highest-risk
   moment, not the original** — a replacement arrives sounding authoritative and
   nobody re-attacks it as hard as they attacked the original. Measured
@@ -2619,6 +2675,41 @@ making design-level decisions; do not silently deviate.
   this very class said "five" and the enumeration found ~10, because a number
   reads as an enumeration. And treat a passing selftest table as proof only of
   the shapes it lists.
+- **The successor chain, measured again at full length on a CLAUDE.md PR: PR
+  #852 (the v0.18.0 learnings) took FIVE review rounds, and every fix wave put
+  a defect inside the previous round's fix** — the commit record says so in
+  sequence (`b4f134a` "4 Majors, three inside the first fix wave", `b8aab3c`
+  "the correction to the correction", `69bb529` "a contradiction inside the
+  correction", `cdae541` "the example list contradicted its own rule"). Two
+  remedies to add to the numbered list in the bullet above. QUOTE a source
+  comment that already states the careful version rather than paraphrasing it:
+  `app/e2e/helpers.ts`'s build-identity comment already hedged what its two
+  probes reach as "not the whole of `dist/`" at that PR's base (`a7caaf4`),
+  while the CLAUDE.md #803 bullet carried no such hedge at `e6beb00`,
+  `6fefbea` or `b4f134a` and gained it only at `b8aab3c` — the #854 over-claim
+  was filed against the `b4f134a` text, with the primary artifact right about
+  the hedge all along (`cdae541` records the same comment as loose about the
+  manifest's MEMBERSHIP — never quote it as authority for that). And NIBBLING
+  at a wrap does not converge: `4b0ff81`, whose own subject is "reflow two
+  lines wave 5 ran past the wrap", still left three over-79-column lines in
+  that bullet including a NEW 106-column one, while `a337005` rewrapped the
+  whole bullet in one step and cleared every one. Verify a rewrap
+  word-normalised identical to the prior commit, as `a337005` did, because a
+  reflow that silently drops a word is undetectable by eye.
+- **The successor pattern also runs on REASONING, not only on sentences: a
+  rejection criterion applied correctly in one commit was violated by that
+  commit's own replacement.** PR #853 (`5bbfd8b`, 2026-09-02) rejected an
+  "evaluated at fill time" qualifier on CONTRIBUTING.md's bug-reserve floor on
+  the criterion that it made the SHIPPED `v0.18.0` retroactively
+  non-compliant; the replacement wording, a floor a milestone "should reach
+  its cut with", had the identical defect further back — earlier shipped
+  releases miss it — and was caught only at the next audit round (`cf3d643`:
+  "the replacement had the same defect, further back"). The criterion that had
+  just rejected one wording was not re-run against its replacement. Fixed by
+  stating the floor as forward-looking and naming the exceptions;
+  CONTRIBUTING.md's "The floor is forward-looking" paragraph names them, so do
+  not copy them here. Whenever a criterion has just rejected a draft, run it
+  against the replacement before committing.
 - Documenting a rule fixes nothing already in flight. #412 (the #368-guard
   stale-geometry finding) was filed while `app/e2e/panel-resize.spec.ts` was
   being written in parallel under a brief that predated the finding — the
@@ -4159,6 +4250,22 @@ making design-level decisions; do not silently deviate.
   session off `develop` (measured 2026-08-21; nothing lost, tree was clean).
   Check `git rev-parse --abbrev-ref HEAD` after delegating any git task to an
   un-isolated agent, or give it `isolation: worktree`.
+- **That trap runs in REVERSE too: the ORCHESTRATOR can switch the shared
+  checkout out from under its own un-isolated reviewers.** Measured 2026-09-02
+  during PR #852's review: the main session switched the shared checkout to PR
+  #853's branch (`docs/contributing-milestone-policy` at `d6daf19`) while a
+  reviewer was still reading, so `HEAD` and the working tree changed under it,
+  and any briefed command naming `HEAD` or a working-tree path would silently
+  have answered about the OTHER PR — a tree that reads as if the change under
+  review had vanished, which a reviewer could report as a finding in good
+  faith. Brief the explicit head AND base SHAs, never `HEAD` or a working-tree
+  path, and have readers use `git show <sha>:<path>` and
+  `git diff <base>...<head>`. Blob reads are branch-invariant; a TREE-level
+  execution is not — that reviewer re-ran `check-no-home-paths.sh` and the
+  sweep-closure selftest in a throwaway worktree at the pinned SHA precisely
+  because a run landing post-switch would have certified the other branch's
+  `CLAUDE.md`. Send the correction to EVERY live agent, not only the ones you
+  think are affected.
 - **`gh pr merge` is SERVER-SIDE, so your local checkout never moves.** Seven
   PRs merged over ~4 h left the main tree at the pre-milestone commit. Harmless
   while every check names an explicit ref (`origin/develop`,

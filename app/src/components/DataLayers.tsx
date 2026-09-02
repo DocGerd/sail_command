@@ -1190,10 +1190,22 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
         <details className="depth-legend" hidden={legendHidden}>
           <summary>{t('map.depth.legend.title')}</summary>
           <div className="depth-legend-body">
-            <p className="depth-legend-row">
-              <span className="depth-legend-swatch" aria-hidden="true" />
-              {t('map.depth.legend.hatchLabel')}
-            </p>
+            {/* #839: `hatchLabel` (with its swatch) describes the hatch CUE
+                itself, so it must not be offered once that cue is off the
+                map — #681's own DoD bullet ("The hatch legend is not offered
+                while the hatch is off") that shipped without this guard.
+                Gated on the SAME `depthVisible && hatchVisible` composite the
+                layer-visibility effect above already applies (the #384
+                defect-class shape), never `hatchVisible` alone: the hatch is
+                equally absent from the map when the whole depth overlay is
+                off. The toggle checkbox below stays unconditional so the
+                user can still turn the hatch back on. */}
+            {depthVisible && hatchVisible && (
+              <p className="depth-legend-row">
+                <span className="depth-legend-swatch" aria-hidden="true" />
+                {t('map.depth.legend.hatchLabel')}
+              </p>
+            )}
             {/* #681: the independent hatch toggle lives HERE, inside the
                 legend's own disclosure body — not as a third `.data-layer-
                 controls` row (deferred v0.18.0 investigation; see #681's own
@@ -1240,7 +1252,12 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
               />
               {t('map.depth.legend.hatchToggle')}
             </label>
-            <p>{t('map.depth.legend.basis')}</p>
+            {/* #839: same composite guard as the hatchLabel row above — the
+                "diagonal hatching flags..." sentence describes the hatch cue
+                specifically, unlike the #597 caveat below (a mask-coverage
+                gap that exists independent of the hatch toggle's own
+                state). */}
+            {depthVisible && hatchVisible && <p>{t('map.depth.legend.basis')}</p>}
             <p>{t('map.depth.legend.caveat')}</p>
           </div>
         </details>
