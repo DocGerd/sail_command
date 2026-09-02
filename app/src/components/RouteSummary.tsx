@@ -31,7 +31,9 @@ import {
   requestedGateM,
   roundExposureNm,
 } from '../lib/shallowExposure';
+import { nearbyHazardMarkCount, SEAMARK_PROXIMITY_M } from '../lib/seamarkProximity';
 import { useNavMask } from '../state/useNavMask';
+import { useSeamarks } from '../state/useSeamarks';
 import type { MsgKey } from '../i18n/dict.de';
 import type { Board, Leg, NoRouteReason, Plan, SailId } from '../types';
 import Card from './Card';
@@ -148,6 +150,71 @@ export function MarginalDepthNotice({ plan, legs }: { plan: Plan; legs?: Leg[] |
         // resolve the German decimal-comma question the SAME way, together.
         requested: formatDepthM(gateM, lang),
         draft: formatDepthM(draftM, lang),
+      })}
+    </p>
+  );
+}
+
+/**
+ * #615 (#495 option 2): the advisory SEAMARK-PROXIMITY notice — one quiet
+ * line stating how many DISTINCT cardinal or isolated-danger marks the
+ * active rig's route passes closer than SEAMARK_PROXIMITY_M to. A sibling of
+ * MarginalDepthNotice above and modelled on it byte-for-byte in shape:
+ * PRESENTATION-ONLY (recomputed at render from the plan's own legs and the
+ * already-loaded `assets.seamarks` — lib/seamarkProximity.ts), so
+ * `PlanResult` gains no field, `types.ts` and `routing/**` are untouched and
+ * NO #282 sweep is owed. Decision record: docs/spikes/615-seamark-proximity.md.
+ *
+ * ONE TIER, THE LOWEST — never `role="alert"`, never a `--severe` modifier,
+ * never dismissible. #612 reserved the assertive role for a severity that is
+ * a MEASURED relation (gate vs this boat's draft); proximity to a mark admits
+ * no such measurement — nothing makes a 37 m pass more or less severe than a
+ * 174 m one without a chart the app does not have — and a tier no
+ * measurement can escalate must not be assertive. Dismissal would need
+ * per-plan persisted state, which breaks the presentation-only property
+ * that is the whole reason no sweep is owed.
+ *
+ * NO ACCESSIBLE NAME, deliberately: a bare <p> has no role, so `getByRole`
+ * cannot reach it and it cannot collide with the five non-`exact` Playwright
+ * locators whose name contains "Seezeichen" (design brief §3.4).
+ *
+ * THREE SILENT STATES, each rendering NOTHING — never an empty container and
+ * never a "0 marks" sentence: seamarks unresolved (`useSeamarks` starts null
+ * and resolves asynchronously; a failed load stays null = "not checked"),
+ * no legs for the active rig (a no-route rig), and a check that ran and
+ * found zero. Silence and "none nearby" are different messages: rendering a
+ * zero during the pre-resolve window would be a false all-clear of the
+ * #251/#255 `segmentShallowestBelow` shape. Per the guard-asymmetry rule the
+ * nudge fails OPEN to silence, never to a thrown error and never to
+ * reassurance.
+ *
+ * MEMO KEY. The count depends on exactly two inputs, and both are deps:
+ * `seamarks` (the module-cached collection, one identity per session) and
+ * `legs`, the active rig's own array. `legs` is what makes the #114
+ * recalculate-and-replace path recompute: usePlanFlow.ts reuses `plan.id`
+ * on a replace but every write builds a NEW Plan whose result (and legs
+ * array) came fresh from the worker, and a rig-tab switch hands this
+ * component the other rig's array — so the reference already carries what a
+ * `[plan.id, plan.createdAtMs, rig]` key would encode, without deps the
+ * memo body never reads (which react-hooks/exhaustive-deps would flag as
+ * unnecessary). The transition is pinned by RouteSummary.test.tsx's '#114
+ * recalculate-and-replace' row, which reds under a `[plan.id]`-only key.
+ */
+export function SeamarkProximityNotice({ legs }: { legs?: Leg[] | null }) {
+  const t = useT();
+  const seamarks = useSeamarks();
+  const count = useMemo(() => {
+    if (!seamarks || !legs || legs.length === 0) return 0;
+    return nearbyHazardMarkCount(legs, seamarks, SEAMARK_PROXIMITY_M);
+  }, [seamarks, legs]);
+  if (count === 0) return null;
+  return (
+    <p className="seamark-proximity-notice">
+      {t(count === 1 ? 'route.seamarks.proximity' : 'route.seamarks.proximity.plural', {
+        // `{dist}` comes from the constant, never from the dict, so copy and
+        // threshold cannot drift apart silently (both dicts' own comment).
+        dist: SEAMARK_PROXIMITY_M,
+        count,
       })}
     </p>
   );
@@ -495,6 +562,13 @@ export default function RouteSummary({
           legs, so the two rig tabs can legitimately show different figures (or
           one show none), which is the honest per-rig answer. */}
       <MarginalDepthNotice plan={plan} legs={result?.legs ?? null} />
+
+      {/* #615: the advisory seamark-proximity line, a SIBLING of the two
+          depth surfaces above and, like MarginalDepthNotice, rendered
+          UNCONDITIONALLY — the unresolved / no-legs / zero gate lives inside
+          the component. Per-rig for the same reason: the count is over the
+          ACTIVE rig's own legs, so the two rig tabs can honestly differ. */}
+      <SeamarkProximityNotice legs={result?.legs ?? null} />
 
       {/* #704: the tabpanel half of the rig tablist's ARIA association — a
           plain wrapper div (no class, no CSS) around the existing per-rig

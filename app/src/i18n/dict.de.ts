@@ -111,6 +111,20 @@ export const de = {
   'planner.via.moveUp': 'Wegpunkt {index} nach oben verschieben',
   'planner.via.moveDown': 'Wegpunkt {index} nach unten verschieben',
   'planner.via.marker': 'Wegpunkt {index}',
+  // #829: keyboard-reachable coordinate entry — a second producer/renderer of
+  // the same LatLon the map tap already produces (spike
+  // docs/spikes/714-keyboard-map-equivalents.md §3.1/§5.1). "coord.edit" is
+  // deliberately worded to avoid containing "Wegpunkt {index}" as a
+  // substring — CLAUDE.md's getByRole-substring-collision lesson: it would
+  // otherwise also match ViaMarkers.tsx's own "Wegpunkt {index}" marker
+  // aria-label under a non-exact getByRole locator.
+  'planner.via.coord.latLabel': 'Breitengrad',
+  'planner.via.coord.lonLabel': 'Längengrad',
+  'planner.via.coord.add': 'Koordinaten hinzufügen',
+  'planner.via.coord.update': 'Koordinaten aktualisieren',
+  'planner.via.coord.edit': 'Koordinaten bearbeiten (Punkt {index}): {coord}',
+  'planner.via.coord.outOfRegion':
+    'Die Koordinaten liegen außerhalb des abgedeckten Seegebiets (Flensburger Förde / Dänische Südsee).',
   'planner.departure.label': 'Abfahrt',
   'planner.plan': 'Route planen',
   // §3.5 empty/first-run: friendly guidance near the primary action while no
@@ -387,6 +401,28 @@ export const de = {
     '{dist} dieser Route verlaufen durch Wasser, das eine vorsichtigere Lesart der Kartentiefen unter die eingestellte Sicherheitstiefe von {requested} m setzt.',
   'route.marginal.noticeSevere':
     'Achtung: {dist} dieser Route verlaufen durch Wasser, das eine vorsichtigere Lesart der Kartentiefen unter die eingestellte Sicherheitstiefe von {requested} m setzt — bei dieser Einstellung kann diese Lesart unter den Bootstiefgang von {draft} m fallen.',
+  // #615: siehe dict.en.ts's Kommentar für Zweck, Auslöser und warum jede
+  // Klausel tragend ist. {dist} kommt aus SEAMARK_PROXIMITY_M
+  // (lib/seamarkProximity.ts), nie aus dem Wörterbuch. Der Klassenbegriff
+  // "Kardinal- oder Einzelgefahrenzeichen" ist aus den bereits
+  // ausgelieferten seamark.value.type.*-Namen (Kardinaltonne/-bake,
+  // Einzelgefahrentonne/-bake) und dem Klassensuffix aus map.seamarks.toggle
+  // ("Seezeichen") zusammengesetzt — bewusst OHNE externe Quellenangabe:
+  // #300 hat gemessen, dass eine BSH-INT-1-Paarung gegen die heute unter der
+  // gleichen URL ausgelieferte Ausgabe als Erfindung re-verifiziert; eine
+  // Attestierung müsste an eine AUSGABE gepinnt sein, nicht an eine URL.
+  // "das Zeichen / die Zeichen" ist invariant, daher wechselt im Plural nur
+  // "einem" -> "{count}". Keine Anapher ("obige", "diese Warnung"): der Satz
+  // bleibt aus jeder Position heraus richtig (#493/#504).
+  // "mit amtlicher Seekarte prüfen" zeigt WEG von der eigenen Autorität der
+  // App, genau wie route.shallow.caveat oben — dort aber "mit amtlicher
+  // Seekarte und Echolot prüfen": das Echolot ist hier bewusst weggelassen,
+  // weil es zur Zeichen-Nähe nichts beiträgt. Also dieselbe Geste, keine
+  // wörtliche Übernahme.
+  'route.seamarks.proximity':
+    'Diese Route verläuft näher als {dist} m an einem Kardinal- oder Einzelgefahrenzeichen vorbei. SailCommand bezieht Seezeichen nicht in die Routenberechnung ein und trifft keine Aussage darüber, auf welcher Seite ein Zeichen zu passieren ist — mit amtlicher Seekarte prüfen.',
+  'route.seamarks.proximity.plural':
+    'Diese Route verläuft näher als {dist} m an {count} Kardinal- oder Einzelgefahrenzeichen vorbei. SailCommand bezieht Seezeichen nicht in die Routenberechnung ein und trifft keine Aussage darüber, auf welcher Seite ein Zeichen zu passieren ist — mit amtlicher Seekarte prüfen.',
   'route.totals.distance': 'Distanz',
   'route.totals.duration': 'Dauer',
   'route.totals.eta': 'Ankunft',

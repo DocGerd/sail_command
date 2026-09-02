@@ -9,19 +9,22 @@ import {
 } from 'react';
 import type { Harbor } from '../types';
 import { useLang, useT, type Lang } from '../i18n';
+import type { HarborWithReachability } from '../lib/harborReachability';
 
 // #652: `knownDisconnected` is a build-generated field (pipeline/
 // build_harbors.mjs, sourced from pipeline/verify_mask.py's
 // KNOWN_DISCONNECTED dict) naming the five #9 harbours genuinely
-// unreachable at the ~46 m mask resolution. This picker is currently the
-// ONLY consumer of that fact, so it is added here as a local intersection
-// rather than widening the shared `Harbor` type in types.ts — every
-// existing caller still passes a plain `Harbor[]` (the field is optional,
-// so that stays structurally assignable) and picks up the disclosure
-// automatically once harbors.json carries it. Promote it onto `Harbor`
-// itself if a second consumer ever needs it (e.g. disabling the endpoint
-// outright once picked) rather than duplicating this alias.
-export type HarborWithReachability = Harbor & { knownDisconnected?: boolean };
+// unreachable at the ~46 m mask resolution. It used to live here as a local
+// intersection (every existing caller still passes a plain `Harbor[]` — the
+// field is optional, so that stays structurally assignable) rather than
+// widening the shared `Harbor` type in types.ts. #834 promoted the alias
+// itself to `lib/harborReachability.ts` — a NON-closure module, unlike
+// types.ts — once PlannerPanel's selected-endpoint row became the second
+// consumer this comment always said to expect; that module's own comment
+// carries the full reasoning. Re-exported here so this file's existing
+// `import { type HarborWithReachability } from './HarborPicker'` callers
+// (HarborPicker.test.tsx) keep working unchanged.
+export type { HarborWithReachability } from '../lib/harborReachability';
 
 export interface HarborPickerProps {
   harbors: HarborWithReachability[];
