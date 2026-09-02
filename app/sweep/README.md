@@ -21,19 +21,31 @@ takes its boat from the new `Arm.boatId` field (defaulting to
 field's own doc comment in `sweepArms.ts`), and two new arms exercise it:
 
 - `salona44-breeze` — the Salona 44 "SPEEDY GO!" mirror of `breeze`
-  (Flensburg origin, `DEFAULT_SETTINGS`, no depth relaxation).
+  (Flensburg origin, `DEFAULT_SETTINGS`, no depth relaxation on 27 of its 33
+  rows — like `breeze`, the Marstal leg is the one row that does relax, per
+  the #452 paragraph below).
 - `salona44-relaxation` — the Salona 44 mirror of `relaxation-dense`
   (Marstal origin, `DEFAULT_SETTINGS`, #53 relaxation exercised).
 
 **Both Salonas draft 2.1 m** (`app/src/data/boats.ts`), so
 `defaultSafetyDepthM`/`relaxationFloorM` — both pure functions of `b.draftM`
 — compute the IDENTICAL gate for either boat: these two arms do NOT
-discriminate a depth-gate regression by themselves, and their depth outcomes
-(`usedDepthM`, `shallow` flags) are EXPECTED to equal `breeze`'s /
-`relaxation-dense`'s exactly. What they DO discriminate is the boat-keyed
+discriminate a depth-gate regression by themselves. `salona44-breeze`'s
+depth outcome (`usedDepthM`, `shallow` flags) matches `breeze`'s exactly on
+every row (verified: zero status-differing rows, Marstal's `usedDepthM`
+identical). `salona44-relaxation`'s `usedDepthM` likewise matches
+`relaxation-dense`'s exactly on every both-ok row — but the OUTCOME SET does
+not: `relaxation-dense` is 27 `ok+shallow` / 5 `unreachable` while
+`salona44-relaxation` is 26 / 6, because `rudkoebing` is `ok+shallow` for the
+Salona 45 and `unreachable` for the Salona 44 at the identical gate. Cause
+not established — tracked as #866, MAX_FRONTIER search-capacity truncation
+is the leading hypothesis, not a finding. What both arms DO discriminate
+(beyond that one open question) is the boat-keyed
 POLAR lookup (`polarKey(boat.id, sail.id)`) and the plan/ETA it produces — a
 tier-C estimated table genuinely different from the Salona 45's
-certificate/modelled one — end to end through both the ordinary and the
+certificate/modelled one, though not uniformly faster (see #866's own data
+for two rows where the Salona 44 plan is markedly slower) — end to end
+through both the ordinary and the
 depth-relaxed solve path, for a boat other than the one all nine prior arms
 exercise. See `app/src/routing/realmask.repro.test.ts`'s `#653` describe
 block for the pinned, boat-sensitive evidence at the individual-plan level.
@@ -318,11 +330,14 @@ certifying branch's merge-base.
 **Nor for the two #653 `salona44-*` arms** — same deferral, same reason: no
 prior commit ever ran a Salona-44 arm, so there is no BASE side to compare
 against. See "#653 sweep control" further up this file for the substitute
-actually run: a self double-run against the certifying branch's own
-merge-base, plus a sha256-prefix cross-check of the nine PRE-#653 arms
-against the `00a33ab` determinism-control table above — the closest
-available equivalent to a BASE-vs-HEAD comparison when the change under
-certification is "these two arms are new."
+being run instead: a self double-run of the eleven-arm harness on this
+branch's own HEAD (a BASE run cannot produce a Salona-44 arm at all — that
+is exactly why there is no BASE side above), plus a sha256-prefix
+cross-check of the nine PRE-#653 arms against the `00a33ab`
+determinism-control table above — the closest available equivalent to a
+BASE-vs-HEAD comparison when the change under certification is "these two
+arms are new." **Still pending at time of writing** — see the TODO in
+"#653 sweep control" above, not yet filled in.
 
 | | |
 |---|---|

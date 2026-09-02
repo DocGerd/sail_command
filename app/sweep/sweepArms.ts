@@ -41,7 +41,7 @@ import { NavMask } from '../src/lib/mask';
 import { planRoute } from '../src/routing/planRoute';
 import { uniformWindGrid } from '../src/test/fixtures';
 import { boatById, DEFAULT_BOAT_ID, polarKey, type BoatId } from '../src/data/boats';
-import { defaultBoatSnapshot, DEFAULT_SETTINGS } from '../src/types';
+import { boatSnapshot, DEFAULT_SETTINGS } from '../src/types';
 import type { LatLon, MaskMeta, PolarTable, SailId, Settings, WindGrid } from '../src/types';
 import { solverTimeoutMs } from '../src/test/timeouts';
 import { ARM_NAMES } from './armNames';
@@ -337,8 +337,9 @@ export const ARMS: Record<(typeof ARM_NAMES)[number], Arm> = {
     originId: 'marstal',
   },
   // #653: the Salona 44 "SPEEDY GO!" mirror of `breeze` — Flensburg origin,
-  // DEFAULT_SETTINGS, the same wind field, no depth relaxation involved (an
-  // ordinary voyage at a safe gate). Discriminates the boat-keyed polar
+  // DEFAULT_SETTINGS, the same wind field, and no depth relaxation on 27 of
+  // its 33 rows (like `breeze`, the Marstal leg is the one row that does
+  // relax — README.md's #452 paragraph). Discriminates the boat-keyed polar
   // lookup in isolation from #53 relaxation: any plan-level difference from
   // `breeze` here is attributable to the polar table alone, not to a
   // depth-gate interaction. See `Arm.boatId`'s doc comment for why this arm
@@ -355,11 +356,21 @@ export const ARMS: Record<(typeof ARM_NAMES)[number], Arm> = {
   // a SECOND catalogue boat: because `relaxationFloorM`/`defaultSafetyDepthM`
   // are both pure functions of `b.draftM` and the two Salonas share
   // `draftM: 2.1`, this arm's depth outcome (usedDepthM, shallow flags) is
-  // EXPECTED to match `relaxation-dense`'s exactly — that equality is itself
+  // EXPECTED to match `relaxation-dense`'s `usedDepthM` exactly — that
+  // equality is itself
   // evidence the per-boat gate math reads `deps.boat`, not a hardcoded
   // Salona-45 constant, for a boat other than the one every existing arm
   // exercises. What DOES differ from `relaxation-dense` is the plan/ETA, via
   // the boat-keyed polar.
+  //
+  // MEASURED 2026-09-02 (first run of this arm, PR #861): `usedDepthM`
+  // matches `relaxation-dense` on every both-ok row, but the OUTCOME SET
+  // does not — `relaxation-dense` is 27 ok+shallow / 5 unreachable while
+  // this arm is 26 / 6, because `rudkoebing` is ok+shallow (usedDepthM 2.3)
+  // for the Salona 45 and `unreachable` here at the SAME gate. Cause not
+  // established; MAX_FRONTIER search-capacity truncation is the leading
+  // hypothesis, not a finding. Do not read that row's divergence as a
+  // regression without re-measuring it. Tracked as #866.
   'salona44-relaxation': {
     label: 'salona44-relaxation',
     settings: DEFAULT_SETTINGS,
@@ -462,7 +473,14 @@ export function runArm(label: (typeof ARM_NAMES)[number]): void {
             // #54 Task 11: required by PlanRequest. The solver takes its boat
             // from PlanDeps.boat, never from the request, so this field does
             // not reach the search and the recorded baseline is unaffected.
-            boat: defaultBoatSnapshot(),
+            // #653 review Minor 6: `boatSnapshot(boat)`, not
+            // `defaultBoatSnapshot()` — this must agree with the `boat`
+            // resolved above (which is arm-keyed since #653), or a
+            // `salona44-*` arm would carry a Salona-45 request.boat beside a
+            // Salona-44 deps.boat. Output-inert either way (confirmed:
+            // `PlanResult` carries no `request` field), so this changes no
+            // recorded baseline byte.
+            boat: boatSnapshot(boat),
           },
           windGrid,
           { polars, boat, mask },

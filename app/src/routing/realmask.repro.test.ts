@@ -24,7 +24,7 @@ import type {
   Settings,
 } from '../types';
 import { solverTimeoutMs, SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
-import { defaultBoatSnapshot } from '../types';
+import { boatSnapshot, defaultBoatSnapshot } from '../types';
 
 // #54: the pre-#54 shape had a direct `res.genoa`/`res.fock` field per sail;
 // this test file leaned on that shape heavily (11 planRoute() calls). Rather
@@ -1146,7 +1146,14 @@ describe('#653: Salona 44 real-mask coverage (second catalogue boat)', () => {
       departureMs: T0,
       settings: DEFAULT_SETTINGS,
       sailIds: ['genoa', 'fock'] as SailId[],
-      boat: defaultBoatSnapshot(),
+      // #653 review Minor 6: `request.boat` must agree with the `deps.boat`
+      // it is actually paired with in EACH call below — planRoute reads only
+      // `deps.boat` (never `req.boat`), so this is presentationally inert
+      // today, but constructing a request/deps boat mismatch is exactly the
+      // shape `workerClient.boatId.test.ts` exists to forbid at a multi-boat
+      // catalogue. The res45 companion call below overrides this back to the
+      // Salona 45 for its own call.
+      boat: boatSnapshot(boatById('salona-44-speedy-go')),
     };
     const wind = uniformWindGrid(12, 270);
 
@@ -1170,7 +1177,7 @@ describe('#653: Salona 44 real-mask coverage (second catalogue boat)', () => {
     // and this route is not depth-limited for either. Plan the identical
     // request/wind against SALONA_DEPS and require the two plans' chosen-rig
     // duration to differ.
-    const res45 = planRoute(request, wind, SALONA_DEPS);
+    const res45 = planRoute({ ...request, boat: defaultBoatSnapshot() }, wind, SALONA_DEPS);
     expect(res45.status).toBe('ok');
     if (res45.status !== 'ok') return;
     const rig44 = sailResult(res44, res44.recommended);
@@ -1182,10 +1189,15 @@ describe('#653: Salona 44 real-mask coverage (second catalogue boat)', () => {
     // Pinned literals, recomputed from the actual solver output observed for
     // this PR (2026-09-02) and sanity-checked against: (a) the < 1.5 h bound
     // above, (b) the #20 repro's own ~4 nm distance note, and (c) the Salona
-    // 44's polar being measurably faster than the Salona 45's at TWS 12 kn
-    // across every sampled TWA (verified directly against the shipped
-    // salona-44-speedy-go-genoa.json/salona-45-genoa.json tables) — so the
-    // Salona 44 plan is expected to be FASTER, never slower, on this route.
+    // 44's polar being faster than the Salona 45's at TWS 12 kn across the
+    // nine sampled TWA from 35 to 100 deg and EXACTLY EQUAL from 110 deg to
+    // 180 (measured against the shipped salona-44-speedy-go-genoa.json /
+    // salona-45-genoa.json tables; same 9-faster/6-equal split at every one
+    // of the nine TWS rows, both rigs) — so on THIS route, which is not
+    // purely downwind, the Salona 44 plan is expected to be faster. That is
+    // a claim about this route only: `salona44-breeze` in app/sweep/ is
+    // SLOWER than `breeze` on rudkoebing and svendborg, so "faster polar
+    // implies faster plan" does NOT hold arm-wide.
     expect(rig44!.distanceNm).toBeCloseTo(SALONA44_GLUECKSBURG_DISTANCE_NM, 6);
     expect(rig44!.durationMs).toBe(SALONA44_GLUECKSBURG_DURATION_MS);
     expect(rig44!.durationMs).toBeLessThan(rig45!.durationMs);
@@ -1210,7 +1222,10 @@ describe('#653: Salona 44 real-mask coverage (second catalogue boat)', () => {
         departureMs: T0,
         settings: DEFAULT_SETTINGS,
         sailIds: ['genoa', 'fock'] as SailId[],
-        boat: defaultBoatSnapshot(),
+        // #653 review Minor 6: see the Gluecksburg case above for why this
+        // must agree with SALONA44_DEPS's boat, and why the res45 companion
+        // call below overrides it back.
+        boat: boatSnapshot(boatById('salona-44-speedy-go')),
       };
       const wind = uniformWindGrid(12, 270);
 
@@ -1245,7 +1260,7 @@ describe('#653: Salona 44 real-mask coverage (second catalogue boat)', () => {
       // BOAT-SENSITIVE, not merely depth-gate-sensitive — the gate math
       // alone (checked above) cannot discriminate a boat-keyed POLAR mixup,
       // since it is identical for both boats on this route.
-      const res45 = planRoute(request, wind, SALONA_DEPS);
+      const res45 = planRoute({ ...request, boat: defaultBoatSnapshot() }, wind, SALONA_DEPS);
       expect(res45.status).toBe('ok');
       if (res45.status !== 'ok') return;
       expect(res45.shallow!.usedDepthM).toBeCloseTo(res44.shallow!.usedDepthM, 6);

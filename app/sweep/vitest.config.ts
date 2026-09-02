@@ -50,9 +50,16 @@ export default defineConfig({
     // workers concurrently and degrades toward the serial figure on a
     // smaller one. #653 added two more (`salona44-breeze`,
     // `salona44-relaxation`, eleven total) — same reasoning applies with
-    // "nine" read as "eleven"; the two new arms mirror the wind fields of
-    // existing arms (`breeze`/`relaxation-dense`), so they add no new
-    // slowest-arm candidate.
+    // "nine" read as "eleven". MEASURED, not assumed, and the assumption
+    // ("mirrors an existing wind field, so no new slowest-arm candidate")
+    // was WRONG: under the concurrent load of PR #861's own sweep run 1
+    // (contaminated timing — this machine was not otherwise idle),
+    // `salona44-relaxation` totalled 2547 s of solver time, ahead of
+    // `breeze`'s 2240 s (the previous slowest of the original nine) — a new
+    // slowest-arm candidate, not the reused one its mirror
+    // (`relaxation-dense`, 2199 s) would have predicted. Re-measure on a
+    // quiet machine before trusting the magnitude; the ORDERING is what is
+    // reported here, not a clean absolute.
     fileParallelism: true,
   },
 });
