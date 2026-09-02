@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import type { Harbor, LatLon, PickedPoint, Plan, RigResult, SailId, Settings } from '../types';
 import { useLang, useT } from '../i18n';
+// #834: the `harbors` prop is widened from `Harbor[]` to
+// `HarborWithReachability[]` below — the selected-endpoint row must see the
+// same build-generated `knownDisconnected` field the picker's option row
+// already discloses (#652). See that module's own comment for why it lives
+// outside the `app/sweep/` #282 closure rather than on `Harbor` in
+// `types.ts`.
+import type { HarborWithReachability } from '../lib/harborReachability';
 import { FORECAST_DAYS } from '../services/openMeteo';
 import {
   formatDateTime,
@@ -48,7 +55,7 @@ export type PlannerStatus =
   | { phase: 'error'; message: string };
 
 export interface PlannerPanelProps {
-  harbors: Harbor[];
+  harbors: HarborWithReachability[];
   origin: PickedPoint | null;
   destination: PickedPoint | null;
   onPickOrigin: (p: PickedPoint) => void;
@@ -479,6 +486,15 @@ export default function PlannerPanel({
               />
               <div className="endpoint-detail">
                 <p className="endpoint-name">{origin.label}</p>
+                {/* #834: HarborPicker's own option row discloses this via
+                    the identical key/class BEFORE a harbor is picked (#652);
+                    this used to vanish the instant the pick landed here,
+                    right before the moment it mattered most. Reuses the
+                    picker's exact string and styling — never re-authored —
+                    so the two surfaces cannot drift onto different wording. */}
+                {originHarbor?.knownDisconnected === true && (
+                  <p className="harbor-picker-unreachable">{t('harborPicker.knownDisconnected')}</p>
+                )}
                 {originHarbor?.approachNote && (
                   <p className="endpoint-caveat">{originHarbor.approachNote[lang]}</p>
                 )}
@@ -537,6 +553,10 @@ export default function PlannerPanel({
               />
               <div className="endpoint-detail">
                 <p className="endpoint-name">{destination.label}</p>
+                {/* #834: see the matching comment on the origin row above. */}
+                {destinationHarbor?.knownDisconnected === true && (
+                  <p className="harbor-picker-unreachable">{t('harborPicker.knownDisconnected')}</p>
+                )}
                 {destinationHarbor?.approachNote && (
                   <p className="endpoint-caveat">{destinationHarbor.approachNote[lang]}</p>
                 )}

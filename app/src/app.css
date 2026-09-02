@@ -3832,6 +3832,19 @@ select {
   color: var(--sc-banner-warning-fg);
 }
 
+/* #834 PR #857 review: `.harbor-picker-unreachable` was authored for <span>
+   usage inside the picker's <li> option row (inline, no box margin) — it
+   sets font-size/font-weight/color only, deliberately no margin override.
+   PlannerPanel.tsx's selected-endpoint rows reuse the SAME class on a <p>,
+   which then falls back to the default UA <p> margin (measured ~12.8px
+   top/bottom, about 8x the ~1.6px spacing every sibling in this cluster
+   uses). Scope the override to that context instead of touching the base
+   rule, which would risk the picker's own <li>/<span> layout — matches
+   .endpoint-caveat's own margin so the two read as one consistent stack. */
+.endpoint-detail .harbor-picker-unreachable {
+  margin: 0.1rem 0 0;
+}
+
 /* Depth caveat: muted, single line, ellipsized (full text shows on the selected
    endpoint row). min-width:0 lets the flex child shrink so ellipsis engages. */
 .harbor-picker-caveat {
