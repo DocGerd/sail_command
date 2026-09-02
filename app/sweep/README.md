@@ -128,11 +128,67 @@ against the merge-base of whatever branch it will certify.
 
 ## #653 sweep control — two new arms, salona44-breeze/salona44-relaxation
 
-TODO(#653, filled in once the sweep run below completes): two full runs of
-the ELEVEN-arm harness (the nine pre-#653 arms plus `salona44-breeze` and
-`salona44-relaxation`) on this branch's own HEAD, `compare.mjs`'d against
-each other for byte-identity, plus a sha256-prefix cross-check of the nine
-pre-#653 arms against the `00a33ab` table above.
+**COMPLETE, 2026-09-02 at `d23d4c0`: two full runs of the ELEVEN-arm harness
+on this branch's own HEAD, 363/363 plans byte-identical, all eleven arm
+files sha-identical.** Per-arm sha256 prefixes, both runs (`compare.mjs`
+output, `app/sweep/README.md`'s own reader independently re-verified every
+one of the nine pre-#653 prefixes below by re-hashing `run2`'s raw arm-file
+bytes with `hashlib.sha256`, not by copying either run's printed line):
+
+`becalmed 8dc119cd9a1fdced`, `breeze 7aa9fb563dd8fea0`,
+`deep-becalmed 7e7ac2e14d5305ae`, `light-motorless 0ded5d87bca1a190`,
+`margin-extreme ae91bf7128102b15`, `margin-zero fa5e30f17325d4e6`,
+`no-comfort 9fa297c8e55cd0fc`, `relaxation-dense f4907139a4d4ddd6`,
+`salona44-breeze 77cb11e848e51799`, `salona44-relaxation f3c0f61ba277bbe2`,
+`short-horizon 3fb63b775bce2fab`.
+
+**The nine PRE-#653 arms' prefixes above match the `00a33ab` table
+recorded higher up this file, 9/9, exactly** — independently re-derived
+(not assumed from the arm literals being byte-unchanged): every one of
+`becalmed`/`breeze`/`deep-becalmed`/`light-motorless`/`margin-extreme`/
+`margin-zero`/`no-comfort`/`relaxation-dense`/`short-horizon`'s 16-hex
+prefix above starts with its corresponding 8-hex `00a33ab` prefix. This is
+the cross-run form CLAUDE.md calls a STRONGER control than a self
+double-run — the same nine arms reproduce a prior run from a different
+merge-base and day, not merely themselves.
+
+A-side outcome distribution across all 363 plans: `ok` 102, `ok+shallow`
+110, `error/calm-motor-off` 55, `error/unreachable` 65,
+`error/beyond-horizon` 28, `error/snap-failed-destination` 3.
+**`becalmed`/`deep-becalmed` contribute 66 of the 151 error rows (33 each,
+100% error in both — every row in both arms is an error) and remain VACUOUS
+as safety evidence**, per this file's own standing caveat above; the other
+nine arms' error rows carry the real distinguishing signal.
+
+The two new arms' own distributions (independently computed from `run2`'s
+JSON, not copied from either reviewer's prose): `salona44-breeze` — `ok` 27,
+`ok+shallow` 1 (`marstal`), `error/unreachable` 5 (the #9
+KNOWN_DISCONNECTED harbours, matching `breeze`'s own 5); `salona44-relaxation`
+— `ok+shallow` 26, `error/unreachable` 6, `ok` 1 — the one extra
+`unreachable` relative to `relaxation-dense`'s 27/5/1 split is `rudkoebing`,
+tracked as #866 (see the paragraph above).
+
+**Durations DISCARDED as evidence**: both runs executed under this session's
+own multi-agent load (run 1: 2710.17s wall for 11 parallel arms; run 2:
+2184.14s), which is why `vitest.config.ts`'s "no new slowest-arm candidate"
+claim was corrected to a measured-under-load figure rather than a clean one
+— see that file's own comment. Byte-identity, not timing, is this section's
+evidence.
+
+**Both runs executed against the PRE-review-round-1-fix-wave module
+content.** `vitest` imported `sweepArms.ts`/`armNames.ts` for both runs'
+collection phase before either run started its arms (run 1 at
+2026-09-02T09:47:11Z, run 2 at 10:29:40Z); the review-round-1 fixes to those
+files landed on disk at 10:43–10:46Z, after both collection phases had
+already read the pre-fix content — so this double-run certifies commit
+`d23d4c0`, not the file content as currently committed. The only
+non-comment code change since `d23d4c0` is `sweepArms.ts`'s `runArm()`
+passing `boatSnapshot(boat)` instead of `defaultBoatSnapshot()` for
+`request.boat` — argued output-inert by construction (`PlanResult` carries
+no `request` field), a claim a single-arm `salona44-breeze` re-run at the
+current HEAD is checking directly: identical sha256 to this section's own
+`77cb11e848e51799` proves it; any difference disproves it. See the PR for
+that re-run's result — not yet landed as of this section being written.
 
 ## Why it lives here and not under `src/`
 
@@ -331,14 +387,15 @@ certifying branch's merge-base.
 **Nor for the two #653 `salona44-*` arms** — same deferral, same reason: no
 prior commit ever ran a Salona-44 arm, so there is no BASE side to compare
 against. See "#653 sweep control" further up this file for the substitute
-being run instead: a self double-run of the eleven-arm harness on this
+recorded instead: a self double-run of the eleven-arm harness on this
 branch's own HEAD (a BASE run cannot produce a Salona-44 arm at all — that
 is exactly why there is no BASE side above), plus a sha256-prefix
 cross-check of the nine PRE-#653 arms against the `00a33ab`
 determinism-control table above — the closest available equivalent to a
 BASE-vs-HEAD comparison when the change under certification is "these two
-arms are new." **Still pending at time of writing** — see the TODO in
-"#653 sweep control" above, not yet filled in.
+arms are new." **COMPLETE** — see "#653 sweep control" above for the
+results (363/363 byte-identical, 9/9 prefix match, plus the pre-fix-wave
+caveat and its single-arm re-run control).
 
 | | |
 |---|---|
