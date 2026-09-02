@@ -11,13 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- The results panel now shows an advisory line when the active rig's route passes closer than 300 m to a cardinal or isolated-danger mark, stating how many such marks are within that distance — SailCommand does not use marks when routing and makes no claim about which side of one to pass; check against an official chart (#615).
+- The results panel now shows an advisory line when the active rig's route passes closer than 300 m to a cardinal or isolated-danger mark, naming how many when there is more than one — SailCommand does not use marks when routing and makes no claim about which side of one to pass; check against an official chart (#615).
 - Via points can now be added and repositioned by typing latitude/longitude coordinates in the planner panel, not just by tapping the map — a keyboard-only way to place and edit waypoints (#829).
-- The Plan tab now carries a collapsed "Schifffahrtszeichen im Kartenausschnitt" list of the seamarks inside the current map view — each row is a keyboard-focusable button that reads as the map popover would and, when activated, opens that popover on the map at the mark — so seamark identification no longer needs a pointer click on a map symbol (#830).
+- The Plan tab now carries a collapsed "Seamarks in view" / "Schifffahrtszeichen im Kartenausschnitt" list of the seamarks inside the current map view — each row is a keyboard-focusable button that reads as the map popover would and, when activated, opens that popover on the map at the mark — so seamark identification no longer needs a pointer click on a map symbol (#830).
 
 ### Fixed
 
-- The known-disconnected harbour disclosure no longer disappears after you select the harbour, and a failed plan against one now names that same limit instead of the generic "no route found" message (#834).
+- The known-disconnected harbour disclosure no longer disappears after you select the harbour, and a plan that fails as unreachable against one now names that same limit instead of the generic "the destination cannot be reached" message (#834).
 - The depth-hatch legend no longer describes the hatch cue while the hatch overlay itself is off, on both the pre-plan and route-legend surfaces (#839).
 
 ## [0.18.0] - 2026-09-01

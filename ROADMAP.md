@@ -35,16 +35,17 @@ mark's own popup on the map — sourced from the shipped seamark data and the
 map's bounds, mirroring the map's own seamark layer toggle and display tier
 ([#830](https://github.com/DocGerd/sail_command/issues/830)). The results
 panel gained an advisory line when the active rig's route passes closer than
-300 m to a cardinal or isolated-danger mark, stating how many; it is
-presentation only — the router still does not use marks, and the copy says
-so and refuses to name a side to pass
+300 m to a cardinal or isolated-danger mark, naming how many when there is
+more than one; it is presentation only — the router still does not use
+marks, and the copy says so and refuses to name a side to pass
 ([#615](https://github.com/DocGerd/sail_command/issues/615); the routing-input
 half of that finding stays open as
 [#495](https://github.com/DocGerd/sail_command/issues/495)). Two fixes
 closed gaps left by `v0.18.0`'s own features: the #652 known-disconnected
 disclosure now stays on a selected origin or destination instead of
-vanishing at the moment it matters, and a failed plan against such a harbour
-names that same limit in place of the generic no-route message
+vanishing at the moment it matters, and a plan that fails as unreachable
+against such a harbour names that same limit in place of the generic "the
+destination cannot be reached" message
 ([#834](https://github.com/DocGerd/sail_command/issues/834)); and the
 depth-hatch legend no longer describes the hatch while the hatch is switched
 off, on both of #813's complementary legend surfaces
@@ -56,41 +57,17 @@ covered under "Development workflow" below.
 ## Next — v0.20.0
 
 The [`v0.20.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-holds fifteen issues. The largest group is waypoint handling on the map: a
-buoy or other seamark as a route waypoint
-([#845](https://github.com/DocGerd/sail_command/issues/845)), renameable
-waypoints instead of bare coordinates
-([#846](https://github.com/DocGerd/sail_command/issues/846)), persisted
-named user waypoints selectable directly on the map
-([#848](https://github.com/DocGerd/sail_command/issues/848)), and a reliable
-way to cancel a waypoint being created
-([#844](https://github.com/DocGerd/sail_command/issues/844)). The third
-gap #714's spike found — a keyboard equivalent for identifying an AIS
-vessel — carries over from `v0.19.0`'s original scope
-([#831](https://github.com/DocGerd/sail_command/issues/831)). Two routing
-features are scheduled: comparing a few candidate
-departure times, ranked by passage time and how little motoring each needs
-([#356](https://github.com/DocGerd/sail_command/issues/356)), and a
-mainsail-reef suggestion per leg
-([#325](https://github.com/DocGerd/sail_command/issues/325)). The rest is
-tooling and documentation hygiene: three residuals of the #803 e2e
-build-identity check — a stale service worker on a reused origin can still
-serve a foreign cached build
-([#832](https://github.com/DocGerd/sail_command/issues/832)), and the probes
-are blind to the `globIgnores` subtrees
-([#833](https://github.com/DocGerd/sail_command/issues/833)) and to
-extensions outside `globPatterns`
-([#854](https://github.com/DocGerd/sail_command/issues/854)); nothing couples
-the shipped `knownDisconnected` key to its TypeScript field
-([#835](https://github.com/DocGerd/sail_command/issues/835)); a `ViaMarkers`
-test header stating a measured falsehood
-([#838](https://github.com/DocGerd/sail_command/issues/838)); and three
-stale-prose corrections — a `DataLayers` comment
-([#842](https://github.com/DocGerd/sail_command/issues/842)), a
-`dict.en.ts` line-number citation
-([#805](https://github.com/DocGerd/sail_command/issues/805)) and three
-`CLAUDE.md` wording defects
-([#865](https://github.com/DocGerd/sail_command/issues/865)).
+is the one now being filled, and it was still growing while this file was
+written — so the milestone page is the list, and no count or enumeration of
+its contents is kept here. Its opening scope centres on waypoint handling on
+the map (a buoy or other seamark as a route waypoint, renameable and
+persisted named user waypoints, a reliable way to cancel a waypoint being
+created); the third gap #714's spike found — a keyboard equivalent for
+identifying an AIS vessel, carried over from `v0.19.0`'s original scope
+([#831](https://github.com/DocGerd/sail_command/issues/831)); two routing
+features (comparing a few candidate departure times, a per-leg mainsail-reef
+suggestion); and tooling and prose hygiene, among it the residuals of the
+#803 e2e build-identity check.
 
 ## Themes for the next year
 
@@ -187,18 +164,23 @@ user-visible surface, plus a spike whose issue then left the milestone
 rather than closing. Both real-mask regression harnesses —
 `app/sweep/` and `realmask.repro.test.ts` — planned exclusively for the
 Salona 45, so a per-boat depth-gate or boat-keyed polar-lookup regression on
-any other catalogue boat was invisible to both; the sweep now carries two
-Salona 44 arms (eleven arms × 33 harbours = 363 plans, the nine pre-existing
-arms byte-unchanged) and the real-mask file two Salona 44 cases, each with a
-same-request Salona 45 companion plan whose duration must differ
+any other catalogue boat was invisible to both; the sweep gained two
+Salona 44 arms at this cut (`app/sweep/armNames.ts` is the current arm list;
+the nine pre-existing arms are byte-unchanged) and the real-mask file two
+Salona 44 cases, each with a same-request Salona 45 companion plan whose
+duration must differ
 ([#653](https://github.com/DocGerd/sail_command/issues/653)). And the
 motor↔sail mode-churn question — a mode change costs the isochrone cost
 model nothing, so a narrow-water plan can churn motor → short sail → motor
 unpenalised — was investigated as a spike rather than fixed: seven candidate
 solver changes were each measured with one committed driver over six
-real-mask routes on both rigs, none removes the churn on the worst route
-without paying a cost the maintainer had already rejected for headings under
-#264, and the recommendation is to defer; #354 itself moved from this
+real-mask routes on both rigs; none of the seven is recommended at the one
+constant this repo owns — each either leaves the worst route's churn intact
+at a 2.4–5.0 min cost, makes the reproducing route worse, removes the churn
+only by deleting the sailing (breaking a documented #254 invariant), is
+inert at the mandated 45 s, or has no input data — while candidate B is the
+one direction worth a second increment and its result is not yet
+interpretable, so the recommendation is to defer; #354 itself moved from this
 milestone to `Backlog` on 2026-09-02 under that "spike doc + defer" ruling,
 so it stays open
 ([#354](https://github.com/DocGerd/sail_command/issues/354),
@@ -529,7 +511,8 @@ The `v0.11.0` cut fixed three items in
 this area: the no-route `reason` control-input coupling, previously only
 narrowed by PR #411, now fully decoupled behind a committed `app/sweep/`
 acceptance harness — 198 plans across six arms and 33 harbours at that
-cut, since grown to 363 plans across eleven arms, with a required BASE
+cut, since grown to eleven arms (`app/sweep/README.md` carries the current
+count), with a required BASE
 double-run control — so a future classification change has
 something real to compare against
 ([#282](https://github.com/DocGerd/sail_command/issues/282)); a spike into
