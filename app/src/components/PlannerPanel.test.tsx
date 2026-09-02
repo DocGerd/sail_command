@@ -239,6 +239,8 @@ interface Overrides {
   viaPoints?: LatLon[];
   onRemoveVia?: (index: number) => void;
   onReorderVia?: (index: number, direction: 'up' | 'down') => void;
+  onAddVia?: (p: LatLon) => void;
+  onUpdateVia?: (index: number, p: LatLon) => void;
   onDepartureChange?: (ms: number) => void;
   settings?: Settings;
   onSettingsChange?: (s: typeof DEFAULT_SETTINGS) => void;
@@ -269,6 +271,8 @@ function baseProps(overrides: Overrides = {}) {
     viaPoints: [],
     onRemoveVia: vi.fn(),
     onReorderVia: vi.fn(),
+    onAddVia: vi.fn(),
+    onUpdateVia: vi.fn(),
     departureMs: DEPARTURE_MS,
     onDepartureChange: vi.fn(),
     settings: DEFAULT_SETTINGS,
@@ -968,6 +972,127 @@ describe('PlannerPanel', () => {
       expect(screen.getByRole('button', { name: 'Add waypoint' })).toBeEnabled();
       expect(screen.getByRole('button', { name: 'Remove waypoint 1' })).toBeEnabled();
     });
+
+    // #829: keyboard-reachable coordinate entry (spike §3.1/§5.1) — a second
+    // PRODUCER of the same LatLon the map tap already produces, and, in
+    // "update" mode, a second WRITER of an already-placed one. Never drives
+    // onRequestMapTap/handleMapTap at all — a fully independent path.
+    describe('#829 coordinate entry', () => {
+      function latInput(): HTMLElement {
+        return screen.getByLabelText('Latitude');
+      }
+      function lonInput(): HTMLElement {
+        return screen.getByLabelText('Longitude');
+      }
+      function setCoord(lat: string, lon: string): void {
+        fireEvent.change(latInput(), { target: { value: lat } });
+        fireEvent.blur(latInput());
+        fireEvent.change(lonInput(), { target: { value: lon } });
+        fireEvent.blur(lonInput());
+      }
+
+      it('typing a valid lat/lon and pressing "Add coordinates" appends exactly one via point', () => {
+        const props = renderPanel({ viaPoints: [] });
+        setCoord('54.85', '10.1');
+        fireEvent.click(screen.getByRole('button', { name: 'Add coordinates' }));
+        expect(props.onAddVia).toHaveBeenCalledTimes(1);
+        expect(props.onAddVia).toHaveBeenCalledWith({ lat: 54.85, lon: 10.1 });
+        expect(props.onUpdateVia).not.toHaveBeenCalled();
+      });
+
+      // Positive control for the mutation check below: 54.8/10.2 (this
+      // panel's own default seed, DATA_AREA's midpoint) is INSIDE the
+      // region, so a click with no typing at all must still append —
+      // proves the DATA_AREA check isn't accidentally rejecting everything.
+      it('the default seeded coordinate (DATA_AREA midpoint) is accepted unmodified', () => {
+        const props = renderPanel({ viaPoints: [] });
+        fireEvent.click(screen.getByRole('button', { name: 'Add coordinates' }));
+        expect(props.onAddVia).toHaveBeenCalledWith({ lat: 54.8, lon: 10.2 });
+      });
+
+      // #829 DoD: "an out-of-region value is rejected with the new message
+      // and appends nothing." 56°N is north of DATA_AREA's 55.3°N exclusive
+      // bound — chosen (not 90°N) so NumberInput's own -90..90 sanity clamp
+      // never fires first; the DATA_AREA rejection is what this pins.
+      // MUTATION CHECK (non-vacuity, per the DoD): deleting the DATA_AREA
+      // check in PlannerPanel.tsx's isInViaDataArea (e.g. `return true;`)
+      // makes this row red — onAddVia gets called and the message never
+      // renders — while every other row in this describe block stays green.
+      it('rejects an out-of-region coordinate with the outOfRegion message and appends nothing', () => {
+        const props = renderPanel({ viaPoints: [] });
+        setCoord('56', '10.1');
+        fireEvent.click(screen.getByRole('button', { name: 'Add coordinates' }));
+        expect(props.onAddVia).not.toHaveBeenCalled();
+        expect(
+          screen.getByText(
+            'The coordinates lie outside the covered area (Flensburg Fjord / Danish South Sea).',
+          ),
+        ).toBeInTheDocument();
+      });
+
+      it('pressing a placed via point\'s own coordinate button enters "update" mode, seeded with its coordinates', () => {
+        renderPanel({ viaPoints: [VIA_A, VIA_B] });
+        fireEvent.click(screen.getByRole('button', { name: /Edit coordinates \(point 2\)/ }));
+        expect(latInput()).toHaveValue(VIA_B.lat);
+        expect(lonInput()).toHaveValue(VIA_B.lon);
+        expect(screen.getByRole('button', { name: 'Update coordinates' })).toBeInTheDocument();
+      });
+
+      // #695: focus must be driven from the callback that knows the user
+      // acted (the click handler), never a derived boolean — mirrors this
+      // file's own pendingFocusRef pattern for the origin/destination
+      // "Change" buttons.
+      it('moves focus to the latitude field when entering update mode', () => {
+        renderPanel({ viaPoints: [VIA_A, VIA_B] });
+        fireEvent.click(screen.getByRole('button', { name: /Edit coordinates \(point 2\)/ }));
+        expect(latInput()).toHaveFocus();
+      });
+
+      // DoD: "editing row 2's coordinates changes only index 1."
+      it('editing row 2 and pressing "Update coordinates" calls onUpdateVia with index 1 only', () => {
+        const props = renderPanel({ viaPoints: [VIA_A, VIA_B] });
+        fireEvent.click(screen.getByRole('button', { name: /Edit coordinates \(point 2\)/ }));
+        setCoord('54.9', '10');
+        fireEvent.click(screen.getByRole('button', { name: 'Update coordinates' }));
+        expect(props.onUpdateVia).toHaveBeenCalledTimes(1);
+        expect(props.onUpdateVia).toHaveBeenCalledWith(1, { lat: 54.9, lon: 10 });
+        expect(props.onAddVia).not.toHaveBeenCalled();
+      });
+
+      it('an out-of-region value in update mode is rejected and onUpdateVia is never called', () => {
+        const props = renderPanel({ viaPoints: [VIA_A, VIA_B] });
+        fireEvent.click(screen.getByRole('button', { name: /Edit coordinates \(point 1\)/ }));
+        setCoord('54.9', '20');
+        fireEvent.click(screen.getByRole('button', { name: 'Update coordinates' }));
+        expect(props.onUpdateVia).not.toHaveBeenCalled();
+        expect(
+          screen.getByText(
+            'The coordinates lie outside the covered area (Flensburg Fjord / Danish South Sea).',
+          ),
+        ).toBeInTheDocument();
+      });
+
+      it('pressing the same coordinate button twice returns to "Add" mode', () => {
+        renderPanel({ viaPoints: [VIA_A] });
+        const editButton = () =>
+          screen.getByRole('button', { name: /Edit coordinates \(point 1\)/ });
+        fireEvent.click(editButton());
+        expect(screen.getByRole('button', { name: 'Update coordinates' })).toBeInTheDocument();
+        expect(editButton()).toHaveAttribute('aria-pressed', 'true');
+        fireEvent.click(editButton());
+        expect(screen.getByRole('button', { name: 'Add coordinates' })).toBeInTheDocument();
+        expect(editButton()).toHaveAttribute('aria-pressed', 'false');
+      });
+
+      it('a successful add resets the fields back to the DATA_AREA midpoint', () => {
+        const props = renderPanel({ viaPoints: [] });
+        setCoord('54.85', '10.1');
+        fireEvent.click(screen.getByRole('button', { name: 'Add coordinates' }));
+        expect(props.onAddVia).toHaveBeenCalledWith({ lat: 54.85, lon: 10.1 });
+        expect(latInput()).toHaveValue(54.8);
+        expect(lonInput()).toHaveValue(10.2);
+      });
+    });
   });
 
   // §3.3 / #299: safety depth stays inline in the compact row; the rest of
@@ -1509,13 +1634,15 @@ describe('PlannerPanel', () => {
     // `Received: ""`.
     it('DOES fold the stale sentence into the panel status region when formDirty && !settingsDirty', () => {
       renderPanel({ planning: { phase: 'idle' }, plan: makePlan(), rig: 'genoa', formDirty: true });
-      // 2, not 1, since #731: `.planner-status` (this test's subject) plus
+      // 3, not 1, since #731: `.planner-status` (this test's subject) plus
       // the always-mounted `.boat-picker-notice` blur-clamp notice on the
-      // compact row's safety-depth field (empty here — no clamp occurred).
-      // The count still guards against an ACCIDENTAL third/duplicate live
-      // region; it just isn't 1 any more now that #731 added a second,
-      // legitimate one.
-      expect(screen.getAllByRole('status')).toHaveLength(2);
+      // compact row's safety-depth field (empty here — no clamp occurred);
+      // and #829 added a THIRD, the always-mounted out-of-region rejection
+      // notice on the via coordinate-entry row (also empty here — no
+      // rejection occurred). The count still guards against an ACCIDENTAL
+      // fourth/duplicate live region; it just isn't 2 any more now that #829
+      // added a third, legitimate one.
+      expect(screen.getAllByRole('status')).toHaveLength(3);
       // No fresh completion announcement fires on this mount (seeded from
       // the mount plan id, per the transition tests above), so the region's
       // entire text is the folded stale sentence.

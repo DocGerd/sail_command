@@ -619,6 +619,26 @@ function AppShell() {
     [viaPoints, handleViaPointsChange],
   );
 
+  // #829: keyboard-reachable equivalents of handleMapTap's 'via' branch above
+  // — the identical `handleViaPointsChange([...viaPoints, p])` producer, just
+  // fed a typed LatLon from PlannerPanel's coordinate-entry row instead of a
+  // map click (spike docs/spikes/714-keyboard-map-equivalents.md §3.1/§5.1).
+  const handleAddViaByCoord = useCallback(
+    (p: LatLon) => {
+      handleViaPointsChange([...viaPoints, p]);
+    },
+    [viaPoints, handleViaPointsChange],
+  );
+
+  // Repositioning counterpart (spike §2 row 2) — same draft-array replace
+  // shape as handleReorderVia above, indexed instead of swapped.
+  const handleUpdateViaByCoord = useCallback(
+    (index: number, next: LatLon) => {
+      handleViaPointsChange(viaPoints.map((v, i) => (i === index ? next : v)));
+    },
+    [viaPoints, handleViaPointsChange],
+  );
+
   // ViaMarkers' dragend handler. Markers are now rendered FROM the draft
   // (RouteLayer.tsx's `draftViaPoints` prop, review fix — markers used to be
   // positioned from the committed `plan.request.viaPoints`, which required a
@@ -1454,6 +1474,8 @@ function AppShell() {
                 viaPoints={viaPoints}
                 onRemoveVia={handleRemoveVia}
                 onReorderVia={handleReorderVia}
+                onAddVia={handleAddViaByCoord}
+                onUpdateVia={handleUpdateViaByCoord}
                 departureMs={departureMs}
                 onDepartureChange={setDepartureMs}
                 settings={settings}

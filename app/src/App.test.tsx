@@ -1359,6 +1359,79 @@ describe('App', () => {
   });
 });
 
+// #829: App.tsx's own wiring for the keyboard-reachable coordinate-entry row
+// (docs/spikes/714-keyboard-map-equivalents.md §3.1/§5.1) — handleAddViaByCoord
+// and handleUpdateViaByCoord, both routed through the SAME handleViaPointsChange
+// that handleMapTap's 'via' branch already uses. Drives the real PlannerPanel
+// (never a mock), so this is the "App row" mutation check: deleting either
+// onAddVia/onUpdateVia prop wiring in App.tsx's <PlannerPanel> JSX, or
+// either handler's body, reds the corresponding test below — PlannerPanel's
+// own unit tests can't see this wiring at all (they mock the callback).
+describe('#829: keyboard-reachable via-point coordinate entry (App wiring)', () => {
+  it('typing lat/lon and pressing "Koordinaten hinzufügen" adds exactly one via point — never arms tap-to-pick', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
+    const latInput = within(viaSection).getByLabelText(de['planner.via.coord.latLabel']);
+    const lonInput = within(viaSection).getByLabelText(de['planner.via.coord.lonLabel']);
+    fireEvent.change(latInput, { target: { value: '54.85' } });
+    fireEvent.blur(latInput);
+    fireEvent.change(lonInput, { target: { value: '10.1' } });
+    fireEvent.blur(lonInput);
+    fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.coord.add'] }));
+
+    const items = within(viaSection).getAllByRole('listitem');
+    expect(items).toHaveLength(1);
+    expect(items[0]).toHaveTextContent('54.850°N 10.100°E');
+    // A wholly separate producer from the map-tap path — never arms it.
+    expect(
+      screen.queryByText(de['banner.tapPick'].replace('{target}', de['planner.via.label'])),
+    ).not.toBeInTheDocument();
+  });
+
+  it('editing a placed via point\'s coordinates and pressing "Koordinaten aktualisieren" repositions only that point', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
+    const latInput = within(viaSection).getByLabelText(de['planner.via.coord.latLabel']);
+    const lonInput = within(viaSection).getByLabelText(de['planner.via.coord.lonLabel']);
+
+    // Place two via points via the coordinate row first.
+    fireEvent.change(latInput, { target: { value: '54.85' } });
+    fireEvent.blur(latInput);
+    fireEvent.change(lonInput, { target: { value: '10.1' } });
+    fireEvent.blur(lonInput);
+    fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.coord.add'] }));
+
+    fireEvent.change(latInput, { target: { value: '54.9' } });
+    fireEvent.blur(latInput);
+    fireEvent.change(lonInput, { target: { value: '10.2' } });
+    fireEvent.blur(lonInput);
+    fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.coord.add'] }));
+
+    expect(within(viaSection).getAllByRole('listitem')).toHaveLength(2);
+
+    // Enter update mode on the FIRST placed point and reposition it.
+    fireEvent.click(
+      within(viaSection).getByRole('button', { name: /Koordinaten bearbeiten \(Punkt 1\)/ }),
+    );
+    fireEvent.change(latInput, { target: { value: '54.6' } });
+    fireEvent.blur(latInput);
+    fireEvent.change(lonInput, { target: { value: '9.9' } });
+    fireEvent.blur(lonInput);
+    fireEvent.click(
+      within(viaSection).getByRole('button', { name: de['planner.via.coord.update'] }),
+    );
+
+    const items = within(viaSection).getAllByRole('listitem');
+    expect(items).toHaveLength(2); // still exactly two — no point appended or dropped
+    expect(items[0]).toHaveTextContent('54.600°N 9.900°E'); // index 0 moved
+    expect(items[1]).toHaveTextContent('54.900°N 10.200°E'); // index 1 untouched
+  });
+});
+
 // #571 redesign (maintainer ruling: a via edit "is kind of a new route and
 // hence should only calculate once clicked on calculate" — no auto-replan on
 // add/remove/reorder). Replaces the pre-redesign "via-replan clobber guard

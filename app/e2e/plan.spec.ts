@@ -940,3 +940,75 @@ test('#702: the WIDE sticky rule is untouched — negative control', async ({ pa
     server.kill();
   }
 });
+
+// #829: keyboard-reachable via-point coordinate entry (spike
+// docs/spikes/714-keyboard-map-equivalents.md §3.1/§5.1) — via-point
+// placement was previously reachable ONLY through a MapView canvas click
+// (`onRequestMapTap('via')` resolved by `instance.on('click', handleClick)`),
+// a WCAG 2.1.1 (Keyboard) failure of a core function. This test drives the
+// whole add/reposition/reject flow with `page.keyboard` alone and never
+// clicks the map canvas at all (a MapLibre-rendered feature has no DOM node
+// to click anyway — CLAUDE.md). `.click()` below targets only ordinary form
+// controls (the lat/lon inputs, to focus them before typing), never the map.
+test('#829: adds, repositions and rejects a via point by typing coordinates — never a map-tap/canvas interaction', async ({
+  page,
+}) => {
+  const server = await startPreview();
+  try {
+    await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
+    await page.getByRole('tab', { name: 'Planen' }).click();
+
+    const viaSection = page.getByRole('region', { name: 'Wegpunkte' });
+    const latInput = viaSection.getByLabel('Breitengrad');
+    const lonInput = viaSection.getByLabel('Längengrad');
+    const items = viaSection.getByRole('listitem');
+
+    // Add: type a valid coordinate pair and activate "Koordinaten
+    // hinzufügen" purely via the keyboard (Locator.press focuses the
+    // element and dispatches a real Enter keydown — never a mouse click on
+    // the button, and nothing here ever touches the map).
+    await latInput.click();
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.type('54.85');
+    await lonInput.click();
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.type('10.1');
+    await viaSection.getByRole('button', { name: 'Koordinaten hinzufügen' }).press('Enter');
+
+    await expect(items).toHaveCount(1);
+    await expect(items.first()).toContainText('54.850°N 10.100°E');
+
+    // Reposition: pressing the placed point's own coordinate button enters
+    // "update" mode and moves focus to the latitude field (#695: driven from
+    // the click callback, verified here in a real browser, not jsdom).
+    await viaSection.getByRole('button', { name: /Koordinaten bearbeiten \(Punkt 1\)/ }).click();
+    await expect(latInput).toBeFocused();
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.type('54.9');
+    await lonInput.click();
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.type('10');
+    await viaSection.getByRole('button', { name: 'Koordinaten aktualisieren' }).press('Enter');
+
+    // Still exactly one point — repositioned, never appended.
+    await expect(items).toHaveCount(1);
+    await expect(items.first()).toContainText('54.900°N 10.000°E');
+
+    // Reject: a value north of DATA_AREA's 55.3°N bound is refused, with the
+    // new message shown, and the placed point is left untouched.
+    await latInput.click();
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.type('60');
+    await viaSection.getByRole('button', { name: 'Koordinaten hinzufügen' }).press('Enter');
+
+    await expect(
+      page.getByText(
+        'Die Koordinaten liegen außerhalb des abgedeckten Seegebiets (Flensburger Förde / Dänische Südsee).',
+      ),
+    ).toBeVisible();
+    await expect(items).toHaveCount(1);
+    await expect(items.first()).toContainText('54.900°N 10.000°E');
+  } finally {
+    server.kill();
+  }
+});

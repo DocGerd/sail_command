@@ -173,6 +173,10 @@ async function renderPanelWithPlan() {
         viaPoints={[]}
         onRemoveVia={vi.fn()}
         onReorderVia={vi.fn()}
+        // #829: keyboard-reachable coordinate entry — not exercised here,
+        // just satisfying the two new required props.
+        onAddVia={vi.fn()}
+        onUpdateVia={vi.fn()}
         departureMs={DEPARTURE_MS}
         onDepartureChange={vi.fn()}
         settings={DEFAULT_SETTINGS}
