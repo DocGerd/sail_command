@@ -237,6 +237,44 @@ describe('#598 depth-hatch legend', () => {
       expect(de[k].toLowerCase()).not.toContain('flachwasser');
     }
   });
+
+  // #839: `hatchLabel` (with its swatch) and `basis` describe the HATCH CUE
+  // specifically — they must not be offered once that cue is off the map,
+  // which is #681's own DoD bullet ("The hatch legend is not offered while
+  // the hatch is off") that PR #828 shipped without (issue #839). Gated on
+  // the SAME `depthVisible && hatchVisible` composite the layer-visibility
+  // effect above already applies (the #384 defect-class shape), never
+  // `hatchVisible` alone — the hatch is equally absent from the map when the
+  // whole depth overlay is off. The toggle checkbox and the #597 caveat
+  // (a mask-coverage gap independent of the hatch toggle's own state) stay
+  // reachable either way, so the user can still turn the hatch back on.
+  // Mutation: deleting the guard entirely reds this test; narrowing it to
+  // `hatchVisible` alone leaves THIS test green (hatchVisible is false here)
+  // but reds the composite's complementary-term test below.
+  it('#839: hides the hatch label and basis copy while the hatch toggle is off, but keeps the checkbox and #597 caveat reachable', () => {
+    localStorage.setItem('sc-depth-hatch-visible', '0');
+    const { container, getByText, queryByText, getByRole } = renderDataLayers();
+    const details = container.querySelector('details.depth-legend') as HTMLDetailsElement;
+    details.open = true;
+    expect(queryByText(de['map.depth.legend.hatchLabel'])).toBeNull();
+    expect(queryByText(de['map.depth.legend.basis'])).toBeNull();
+    expect(getByText(de['map.depth.legend.caveat'])).toBeInTheDocument();
+    expect(getByRole('checkbox', { name: de['map.depth.legend.hatchToggle'] })).not.toBeChecked();
+  });
+
+  // Complementary term of the SAME composite (CLAUDE.md's "ask per TERM, not
+  // per guard" vacuity rule): a mutation narrowing the guard to `hatchVisible`
+  // alone leaves this case red, because the hatch is equally invisible on the
+  // map when the base depth overlay is off — even though the persisted hatch
+  // flag itself is still `true` here.
+  it('#839: hides the hatch label and basis copy while the base depth toggle is off too, even though the hatch flag stays on', () => {
+    localStorage.setItem('sc-depth-visible', '0');
+    const { container, queryByText } = renderDataLayers();
+    const details = container.querySelector('details.depth-legend') as HTMLDetailsElement;
+    details.open = true;
+    expect(queryByText(de['map.depth.legend.hatchLabel'])).toBeNull();
+    expect(queryByText(de['map.depth.legend.basis'])).toBeNull();
+  });
 });
 
 // #813: DataLayers.tsx's own `.depth-legend` must be suppressed the instant a
@@ -656,9 +694,7 @@ describe('#681 x #813: hazard-hatch toggle stays synced across BOTH legend surfa
   const originalGetContext = HTMLCanvasElement.prototype.getContext;
 
   beforeEach(() => {
-    HTMLCanvasElement.prototype.getContext = vi.fn(function (
-      this: HTMLCanvasElement,
-    ): unknown {
+    HTMLCanvasElement.prototype.getContext = vi.fn(function (this: HTMLCanvasElement): unknown {
       if (this.width !== 4 || this.height !== 4) return null; // e.g. a seamark glyph raster
       return {
         createImageData: (w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4) }),

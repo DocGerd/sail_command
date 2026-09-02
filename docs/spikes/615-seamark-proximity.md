@@ -290,7 +290,8 @@ solver):
   500 m fires on 26/28 with a maximum of 12.
 - Nearest hazard mark per route, sorted (m): 5, 16, 21, 25, 27, 37, 45, 45,
   76, 133, 141, 149, 203, 269, 287, 311, 333, 336, 358, 367, 393, 463 x5,
-  960, 1818 — 14 of the 28 routes have a hazard mark within 287 m. The five
+  960, 1818 — 15 of the 28 routes have a hazard mark within 300 m, which is
+  the firing count above restated from the other side. The five
   identical 463 m readings are routes sharing one approach past one mark.
 - The four-route table reproduces inside the scan: soenderborg 1, marstal 3,
   bagenkop 3 at 300 m.
@@ -364,10 +365,10 @@ which side of one to pass — check it against an official chart." (plural:
 "... to {count} cardinal or isolated-danger marks ... check them ...")
 
 DE: "Diese Route verläuft näher als {dist} m an einem Kardinal- oder
-Einzelgefahrenzeichen. SailCommand bezieht Seezeichen nicht in die
+Einzelgefahrenzeichen vorbei. SailCommand bezieht Seezeichen nicht in die
 Routenberechnung ein und trifft keine Aussage darüber, auf welcher Seite ein
 Zeichen zu passieren ist — mit amtlicher Seekarte prüfen." (plural: "... an
-{count} Kardinal- oder Einzelgefahrenzeichen ...")
+{count} Kardinal- oder Einzelgefahrenzeichen vorbei ...")
 
 `{dist}` is interpolated FROM `SEAMARK_PROXIMITY_M`, never typed into the
 dict, so copy and threshold cannot drift apart silently. Singular/`.plural`
