@@ -291,6 +291,18 @@ Non-negotiables at the cut:
 
 ## Phase 4 — Revise CLAUDE.md (MAIN SESSION ONLY)
 
+**Step 0 — RETIRE, before ADD.** A bullet is retired ONLY when the failure it
+prevents is now pinned by a STRUCTURAL guard, and it shrinks to ONE LINE
+naming that guard. For each candidate, verify the guard exists AT HEAD by
+reading the file yourself — never from memory or a prior audit. A guard pins
+a SHAPE: the one-line replacement must not claim wider than the guard
+actually covers. Per-bullet edits only; after each, grep the WHOLE file for
+references to it BY NAME and BY POSITION ("above", "below", "see X") — a
+renamed heading or anchor falsifies text in no hunk of your diff.
+
+**Byte-delta report (advisory, no gate).** Print `CLAUDE.md`'s byte count at
+the previous release tag vs now, for the maintainer.
+
 Run the `/revise-claude-md` COMMAND — the session transcript is its input, so a subagent CANNOT
 do this (its reflection input would be empty). It declares `allowed-tools: Read, Edit, Glob` —
 **no Bash** — so:
