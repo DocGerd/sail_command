@@ -47,8 +47,9 @@ certificate/modelled one, though not uniformly faster (see #866's own data
 for two rows where the Salona 44 plan is markedly slower) — end to end
 through both the ordinary and the
 depth-relaxed solve path, for a boat other than the one all nine prior arms
-exercise. See `app/src/routing/realmask.repro.test.ts`'s `#653` describe
-block for the pinned, boat-sensitive evidence at the individual-plan level.
+exercise. See `app/src/routing/realmask.repro.salona44.test.ts`'s `#653`
+describe block for the pinned, boat-sensitive evidence at the
+individual-plan level.
 
 **#452**: the original six arms (Flensburg origin) can each carry a
 *successful* #53 depth relaxation (a `shallow` block) on only 1 of their 33

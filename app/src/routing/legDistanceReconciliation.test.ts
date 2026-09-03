@@ -124,7 +124,7 @@ const polarFock = JSON.parse(
 // #54: PlanDeps now carries polars keyed `${boatId}/${sailId}` plus the boat.
 const DEPS = testPlanDeps(mask, { genoa: polarGenoa, fock: polarFock });
 
-// Real harbor snap coordinates, matching realmask.repro.test.ts.
+// Real harbor snap coordinates, matching routing/realmaskFixtures.ts.
 const FLENSBURG: LatLon = { lat: 54.798, lon: 9.4335 };
 const SOENDERBORG: LatLon = { lat: 54.9046, lon: 9.7833 };
 const T0 = Date.UTC(2026, 6, 15, 6, 0, 0);

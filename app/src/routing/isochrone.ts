@@ -193,7 +193,8 @@ const MOTOR_TWAS = [0, 20, 35];
 // margin 1.0 m, present at >= 1.5 m). Safety-inert: every leg is still
 // gate-validated, and 3.0 m is exactly what this same passage's OTHER rig
 // already touches today. Not eliminated by any tested parameter combination
-// — see realmask.repro.test.ts's pinned threshold test and CHANGELOG.md.
+// — see realmask.repro.depthComfort.test.ts's pinned threshold test
+// (Aeroeskoebing -> Drejoe) and CHANGELOG.md.
 const DEPTH_DERATE_MAX = 0.3;
 
 /**
@@ -457,13 +458,7 @@ export function solve(p: SolveParams): SolveResult {
         // Direct-candidate arrival test (exact leg to destination)
         const isDirect = Math.abs(normalizeDeg180(headingDeg - bearingToDest)) < 0.5;
         if (isDirect && node.distToDestNm <= distNm) {
-          const directFactor = edgeFactor(
-            mask,
-            from,
-            destination,
-            gate,
-            comfortDepthM,
-          );
+          const directFactor = edgeFactor(mask, from, destination, gate, comfortDepthM);
           if (directFactor !== null) {
             const penaltyS = dtS - effS;
             // TRUE elapsed time for this hop — unaffected by the depth
@@ -578,13 +573,7 @@ export function solve(p: SolveParams): SolveResult {
           const durMs = (child.distToDestNm / Math.max(speed, MIN_SAIL_KN)) * 3600 * 1000;
           const finalEtaMs = child.tMs + durMs;
           if (finalEtaMs <= horizonMs && (!best || finalEtaMs < best.costMs)) {
-            const captureFactor = edgeFactor(
-              mask,
-              end,
-              destination,
-              gate,
-              comfortDepthM,
-            );
+            const captureFactor = edgeFactor(mask, end, destination, gate, comfortDepthM);
             if (captureFactor !== null) {
               const candCostMs = child.costMs + durMs / captureFactor;
               if (!best || candCostMs < best.costMs) {

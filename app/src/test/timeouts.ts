@@ -38,10 +38,11 @@
 //
 // Read via `globalThis` rather than the ambient `process` global: this
 // module is imported both by test files typechecked under
-// tsconfig.app.json (no "node" in `types`) and by realmask.repro.test.ts,
-// which is ALSO reachable through tsconfig.test.json's node-types allowlist
-// — the same source file therefore gets type-checked twice, under two
-// different `types` arrays. A bare `process.env` read would need an
+// tsconfig.app.json (no "node" in `types`) and by the
+// realmask.repro.*.test.ts files (routing/realmaskFixtures.ts and its five
+// siblings, #878), which are ALSO reachable through tsconfig.test.json's
+// node-types allowlist — this source file therefore gets type-checked
+// twice, under two different `types` arrays. A bare `process.env` read would need an
 // `@ts-expect-error` to satisfy the first config and would trip "unused
 // directive" under the second (process is validly typed there). Vitest's
 // runtime always has a real Node `process` regardless of the `environment:
