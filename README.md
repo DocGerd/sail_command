@@ -107,8 +107,9 @@ installs as a standalone icon and works fully offline after the first visit
 - **AIS traffic** (optional, online-only): paste a personal
   [aisstream.io](https://aisstream.io/) API key into the **Live & AIS** card on
   the Boat tab to see surrounding vessels on the Live view — course/heading,
-  names, tap for details — including any within a ±5 nm corridor along the
-  active route. Off by default and fully inert without a key; your own vessel
+  names, tap for details, or the keyboard-reachable "AIS vessels in view"
+  list in the Live tab's panel — including any within a ±5 nm corridor along
+  the active route. Off by default and fully inert without a key; your own vessel
   is filtered out by MMSI.
 
 Planning a new route requires an internet connection (wind forecast fetch);
@@ -255,6 +256,14 @@ data; the code license is covered in the [License](#license) section below.
   hatching is not a guarantee the water is clear
   ([#455](https://github.com/DocGerd/sail_command/issues/455),
   [#597](https://github.com/DocGerd/sail_command/issues/597)).
+- The per-leg mainsail reef suggestion is advisory seamanship guidance, not
+  a routing input. It is computed at display time from each leg's apparent
+  wind speed, so the route itself is unchanged — every leg's boat speed still
+  assumes a full main. Its thresholds are generic for this fleet's size class
+  rather than derived from any boat's polar, and it reads the forecast's mean
+  wind only: gusts are not accounted for, which biases it toward
+  under-reefing
+  ([#325](https://github.com/DocGerd/sail_command/issues/325)).
 - Two of the three boats — the Salona 44 *SPEEDY GO!* and the Elan Impression
   444 *PIRANJA* — carry **estimated** polar tables scaled from the Salona 45's
   certificate rather than measured data, and their drafts are the model's

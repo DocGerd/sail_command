@@ -22,11 +22,12 @@ The `v0.20.0` cut (2026-09-03) completed the
 [`v0.20.0` milestone](https://github.com/DocGerd/sail_command/milestones),
 eighteen issues in total — but only two of them changed anything a user can
 see, and the milestone's opening scope is not what it shipped. The two
-user-visible additions both came from earlier spikes: an "AIS vessels in
+user-visible additions came from different places — one from an earlier
+spike, the other from its issue's own option analysis: an "AIS vessels in
 view" / "AIS-Schiffe in Sicht" list on the Live tab, each nearby vessel a
 keyboard-focusable button opening the same identification popup a map click
-opens — the third and last of the map-only interactions #714's
-keyboard-equivalents spike found, after the two that shipped in `v0.19.0`
+opens — the third and last of the keyboard-equivalent gaps #714's spike
+proposed closing, after the two that shipped in `v0.19.0`
 ([#831](https://github.com/DocGerd/sail_command/issues/831)); and an
 advisory per-leg mainsail reef suggestion in the results table, computed
 from apparent wind speed and shown alongside each sail leg, explicitly a
@@ -37,7 +38,7 @@ The other sixteen were tooling, CI cost and prose accuracy. The largest
 strand cut what continuous integration spends: the `app` job now skips its
 expensive steps on a docs-only change and on a push whose tree a previous
 run already tested, CodeQL gained a concurrency group so superseded pushes
-stop racing, its Python analysis no longer runs on every pull request, the
+stop racing, CodeQL no longer runs at all on a docs-only pull request, the
 nightly coverage run skips an unchanged tree, and every previously uncapped
 job gained a `timeout-minutes`
 ([#875](https://github.com/DocGerd/sail_command/issues/875),
@@ -51,9 +52,14 @@ previously measure a build other than the one under test
 ([#833](https://github.com/DocGerd/sail_command/issues/833),
 [#854](https://github.com/DocGerd/sail_command/issues/854)); its remaining
 sibling, a stale service worker on a reused origin, stays open as
-[#832](https://github.com/DocGerd/sail_command/issues/832). The rest
+[#832](https://github.com/DocGerd/sail_command/issues/832). Most of the rest
 corrected comments and documentation that stated measurements the code no
-longer supported.
+longer supported; the remainder added a coupling guard
+([#835](https://github.com/DocGerd/sail_command/issues/835)), split the `app`
+job's one serialized test file
+([#878](https://github.com/DocGerd/sail_command/issues/878)), and cleared a
+build-time dependency advisory
+([#888](https://github.com/DocGerd/sail_command/issues/888)).
 
 Most of the milestone's opening scope did not ship and moved to `v0.21.0`
 rather than being dropped — see "Next" below.
@@ -68,8 +74,8 @@ unshipped scope, carried forward intact: waypoint handling on the map (a
 buoy or other seamark as a route waypoint, renameable waypoints in place of
 raw coordinates, persisted named user waypoints, a reliable way to cancel a
 waypoint being created), and comparing a few candidate departure times
-ranked by passage. Alongside those sit the two end-to-end and layout
-residuals `v0.20.0` left open.
+ranked by passage. Alongside those sit the end-to-end and layout residuals
+`v0.20.0` left open.
 
 ## Themes for the next year
 

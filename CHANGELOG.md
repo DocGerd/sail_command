@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- The Live tab now carries an "AIS vessels in view" list next to the AIS status chip — each nearby vessel is a keyboard-focusable button that reads its name and details and, when activated, opens the same identification popup a map click opens — so AIS vessel identification no longer needs a pointer click on a map symbol (#831).
+- The Live tab's panel now carries an "AIS vessels in view" list — each nearby vessel is a keyboard-focusable button that reads its name and details and, when activated, opens the same identification popup a map click opens — so AIS vessel identification no longer needs a pointer click on a map symbol (#831).
 - Each sail leg in the results table now carries an advisory mainsail reef suggestion (Full main/1st/2nd/3rd reef), computed from apparent wind speed — it is a presentational heuristic shown alongside the route, not part of the time optimisation (#325).
 
 ## [0.19.0] - 2026-09-02

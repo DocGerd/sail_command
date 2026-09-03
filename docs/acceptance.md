@@ -138,6 +138,19 @@ results table at the bottom, and note it in the box below the check.
       mounts, and once you have toggled "Display options" by hand a
       resize alone will not re-seed it.)
 
+- [ ] **AIS vessels in view, without a pointer.** Requires a personal
+      aisstream.io key (Boat tab → "Live & AIS") and an internet
+      connection; without a key the app is inert by design and this check
+      is not applicable. On the Live tab, the panel carries an "AIS vessels
+      in view" / "AIS-Schiffe in Sicht" list — in the PANEL column, not
+      beside the AIS status chip, which is separate map chrome. Its summary
+      carries the count of vessels inside the current map view, and each
+      row is a button that reads the vessel's name and details. Activate
+      one with Enter or Space (or a click) and the same identification
+      popup a map-symbol click opens appears. With no vessels in view the
+      list shows a note saying so rather than any rows — that is a designed
+      state, not a defect (#831).
+
 ## 2. Route A — Flensburg → Marstal
 
 Plan a route from a Flensburg-area harbor to Marstal with a departure time
@@ -247,6 +260,20 @@ selected in §1.
       Both the scroll and the shadow disappear once the table fits (a very
       wide screen, or a panel dragged out); that is the same design, not a
       different one (#698), and neither state is a rendering fault.
+- [ ] **2.12b Per-leg reef suggestion sits inside the Type cell.** In the
+      same expanded "Legs (…)" table, every SAIL leg's "Type" cell carries a
+      SECOND chip after the rig/board chip, reading "Full main" / "1st reef"
+      / "2nd reef" / "3rd reef" (DE: "Volles Groß" / "1. Reff" / …). It is a
+      sibling chip in the existing cell, NOT a new column — the table still
+      has ten columns and the "Type" column still names the rig and board.
+      MOTOR legs carry no reef chip at all; that is deliberate, not a
+      missing value. The band should change along the route as the wind
+      does, so a route with a wind gradient shows more than one value.
+      Expect the suggestion to be advisory only: it is computed from
+      apparent wind at display time and the route itself is unchanged, so
+      it never alters the ETA, the distance, or which rig is starred. The
+      caveat text under the table says the thresholds are seamanship
+      guidance and that gusts are not accounted for (#325).
 - [ ] **2.13 Shallow-water warning keeps the hazard, collapses the
       explanation.** On a route that relaxed (Route A commonly does at
       default settings — §2.10), the warning shows these WITHOUT any

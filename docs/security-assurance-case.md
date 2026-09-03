@@ -114,7 +114,7 @@ key) and exfiltrate to any origin.
 
 **Countered by:** exact lockfiles, weekly grouped Dependabot updates across five
 update configurations spanning three package ecosystems (npm, pip,
-github-actions) plus Dependabot security updates, CodeQL's broadest built-in suite (`security-and-quality`, [#534](https://github.com/DocGerd/sail_command/issues/534)) on every push to `main`/`develop`, every pull request targeting them, and weekly on a schedule (a `pull_request` analysis is diff-scoped, so only the unscoped `push`/`schedule` scans exercise the suite repo-wide), GitHub secret scanning with push protection, a committed third-party
+github-actions) plus Dependabot security updates, CodeQL's broadest built-in suite (`security-and-quality`, [#534](https://github.com/DocGerd/sail_command/issues/534)) on every push to `main`/`develop`, every pull request that changes anything other than documentation, and weekly on a schedule (a `pull_request` analysis is diff-scoped, so only the unscoped `push`/`schedule` scans exercise the suite repo-wide), GitHub secret scanning with push protection, a committed third-party
 notices inventory whose drift fails CI, and human review of every dependency
 bump (nothing merges automatically).
 **Residual risk: reduced, not eliminated.** A `<meta http-equiv>`
@@ -233,7 +233,7 @@ taken over.
 **Countered by:** pull-request-only merges with required `app` + `e2e` checks
 under a strict up-to-date policy, mandatory review-thread resolution, no force
 pushes and no branch deletion on `main` or `develop`, CodeQL on every pull
-request, a per-PR review pass, and a human walkthrough of the built app before
+request that changes anything other than documentation, a per-PR review pass, and a human walkthrough of the built app before
 any release reaches production.
 **Residual risk: structural.** With one maintainer there is no second-human
 approval — GitHub does not count self-approval, so requiring it would deadlock
