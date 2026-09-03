@@ -609,8 +609,7 @@ export const en = {
   // this comment used to say "rendered inside .data-layer-controls", which
   // was stale from the moment that move shipped; corrected here rather than
   // left for a reviewer who is looking at DataLayers.tsx, not this file, to
-  // never notice. Reachable without a plan either way, since the hatch has
-  // no OTHER opt-in surface. Covers the HATCH SYMBOL only, never the
+  // never notice. Covers the HATCH SYMBOL only, never the
   // absolute depth-ramp colours (out of scope per the maintainer ruling on
   // #598). Deliberately says "cautious reading", never "shallow water" — the
   // hatch is a cautious-reading indicator, not a shallow-water one, and can
@@ -646,13 +645,16 @@ export const en = {
   //
   // PR #625 self-review Major 1: the first version of sentence 1 said this
   // water "looks the same as dry land" — false, and false in the DANGEROUS
-  // direction. depthColor.ts:82 returns fully transparent for byte 0 and the
-  // hatch LUT loop (depthColor.ts:243) starts at b=1, so the app paints
-  // NOTHING over byte 0 either way — what a user actually sees there is the
-  // basemap alone, i.e. ORDINARY BLUE WATER (OSM land polygons don't cover
-  // unsurveyed water or drying flats), not anything land-coloured. The old
-  // wording handed the user an inverted detection heuristic ("scan for
-  // land-like patches"); #597's own issue text states the correct direction.
+  // direction. depthColor.ts's `byte === LAND` early return (in
+  // `depthByteToRgba`) returns fully transparent for byte 0, and
+  // `buildNavigabilityHatchImageData`'s `marginal[]` LUT loop starts at
+  // b=1 (byte 0 stays 0/false), so the app paints NOTHING over byte 0
+  // either way — what a user actually sees there is the basemap alone,
+  // i.e. ORDINARY BLUE WATER (OSM land polygons don't cover unsurveyed
+  // water or drying flats), not anything land-coloured. The old wording
+  // handed the user an inverted detection heuristic ("scan for land-like
+  // patches"); #597's own issue text states the correct direction. (#805:
+  // anchored on symbol names, not line numbers.)
   'map.depth.legend.caveat':
     'Unsurveyed and drying water carries no hatching either, and nothing else marks it, so it looks like ordinary water. Absence of hatching is not a guarantee the water is clear — it may simply be a place with no data.',
   // Seamarks / aids-to-navigation overlay (#7) — default OFF, opt-in.

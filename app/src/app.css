@@ -788,8 +788,8 @@ select {
   outline-offset: 2px;
 }
 
-/* #598: collapsible legend for the #492 navigability hatch. Reachable with
-   NO plan (the hatch itself has no other opt-in), default-collapsed. Bare
+/* #598: collapsible legend for the #492 navigability hatch,
+   default-collapsed. Bare
    `<details>`, mirroring `.route-legend`'s own convention rather than the
    bordered `.sc-disclosure` primitive (sized for panel content, not this
    compact chrome pill) — same chevron-swap affordance, reused below.

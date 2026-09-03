@@ -67,8 +67,9 @@ import { ShallowWarning } from './ShallowWarning';
  * SEVERITY, and why it is not flattened into ShallowWarning's. A non-relaxed
  * crosser's CHARTED depth bottoms out AT the requested gate; a relaxed route
  * genuinely goes below it, and at DEFAULT settings below the hull (relaxation
- * searches [relaxationFloorM(boat), requestedDepthM) — realmask.repro pins
- * Flensburg->Marstal at usedDepthM ~2.3 under a 2.1 m hull, and
+ * searches [relaxationFloorM(boat), requestedDepthM) —
+ * routing/realmask.repro.issue20.test.ts pins Flensburg->Marstal at
+ * usedDepthM ~2.3 under a 2.1 m hull, and
  * `about.caveats.depthMask` discloses exactly that). Two different risk
  * classes, so they get two different presentations. The one thing that DOES
  * escalate here is the same per-plan condition ShallowWarning uses,
