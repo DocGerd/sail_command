@@ -29,11 +29,9 @@ function sailReason(res: PlanResultOk, sailId: SailId) {
   return res.sails.find((s) => s.sailId === sailId)?.reason ?? null;
 }
 
-// Solver-heavy file: a 2026-07-15 CI run measured the isochrone solver
-// ~30-44x slower than local (tests at ~1s locally took 30-44s in that CI
-// run) — a solver-specific figure, distinct from CLAUDE.md's later
-// whole-suite ~2.1x/~2.5x CI-vs-local ratios (see timeouts.ts). Fast test
-// files keep vitest's 5s default so hang detection stays meaningful there.
+// Solver-heavy file: on 2026-07-15 this file ran 32.6-42.8 s in CI across five
+// runs (max in run 29411103146); locally it is a small fraction of that. Fast
+// test files keep vitest's 5s default so hang detection stays meaningful there.
 vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
 
 /** Fock fixture: uniformly 12% slower than TEST_POLAR (genoa must win). */

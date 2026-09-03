@@ -10,11 +10,10 @@ import { relaxationFloorM } from '../lib/boatDepth';
 import { solverTimeoutMs, SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
 import { defaultBoatSnapshot } from '../types';
 
-// Solver-heavy file: a 2026-07-15 CI run measured the isochrone solver
-// ~30-44x slower than local (tests at ~1s locally took 30-44s in that CI
-// run) — a solver-specific figure, distinct from CLAUDE.md's later
-// whole-suite ~2.1x/~2.5x CI-vs-local ratios (see timeouts.ts). Fast test
-// files keep vitest's 5s default so hang detection stays meaningful there.
+// Solver-heavy file: CI runners execute the isochrone solver materially slower
+// than dev machines — see test/timeouts.ts for the shared budget and its
+// derivation. Fast test files keep vitest's 5s default so hang detection stays
+// meaningful there.
 vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
 
 const FOCK: PolarTable = {
