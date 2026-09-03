@@ -176,6 +176,19 @@ describe('aisTargetsInView', () => {
     expect(result.total).toBe(1);
   });
 
+  // #831 review Priority 4, gap 1: an off-by-one on any bound's `<=`/`>=`
+  // (e.g. `<=` -> `<`) is invisible to well-outside points like the test
+  // above — only a target sitting EXACTLY ON the bound discriminates.
+  // Verified: mutating `t.position.lat <= viewport.north` to `<` fails only
+  // the `onNorthBoundary` row below; `justOutsideNorth` already failed with
+  // either operator, so it alone would not have caught the mutant.
+  it('includes a target exactly ON the north bound, excludes one just past it', () => {
+    const onNorthBoundary = target({ mmsi: 'on-bound', position: { lat: 54.9, lon: 9.7 } });
+    const justOutsideNorth = target({ mmsi: 'past-bound', position: { lat: 54.900001, lon: 9.7 } });
+    const result = aisTargetsInView([onNorthBoundary, justOutsideNorth], VIEWPORT);
+    expect(result.targets.map((t) => t.mmsi)).toEqual(['on-bound']);
+  });
+
   it('orders targets nearest-to-centre first', () => {
     const far = target({ mmsi: 'far', position: { lat: 54.35, lon: 9.45 } });
     const near = target({ mmsi: 'near', position: { lat: 54.61, lon: 9.71 } });

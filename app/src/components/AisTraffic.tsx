@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import type { Map as MaplibreMap } from 'maplibre-gl';
 import { useMapInstance } from './MapView';
 import { useLang, useT } from '../i18n';
@@ -64,38 +65,44 @@ export function AisStatusChip({
 // #831: AIS vessel identification is pointer-only in AisLayer.tsx — a rendered
 // symbol-layer glyph has no DOM node, so a click on a vessel triangle has no
 // keyboard equivalent (WCAG 2.1.1, same defect class as #830's seamarks-in-
-// view list, which this mirrors per the #714 spike's own recommendation to
-// reuse whatever pattern that list settles on rather than invent a second
-// one). Population is the SAME `targets` array AisLayer already renders
-// (never a second data source), filtered to the map's current viewport
-// bounds via lib/aisGeoJson.ts's aisTargetsInView — so the list matches
-// exactly what a mouse user can see and click, nearest-to-centre first,
-// capped at AIS_IN_VIEW_MAX. Each row is a native <button> (focusable and
-// Enter/Space-activatable for free) that opens the SAME themed popup a
-// pointer click does (AisLayer.tsx's exported openAisPopup — one renderer of
-// aisPopupRows(), never two), so a sighted keyboard user also learns WHERE
-// the vessel is. Deliberately renders in every AIS status (off/connecting/
-// offline/keyError/live) rather than hiding itself when AIS isn't
-// configured — AisStatusChip above already does the same (always visible),
-// and the "no vessels in view" body text is equally true whether the cause
-// is "no key" or "connected but nothing nearby"; a sighted keyboard-only
-// user can already read the WHY from that chip without needing focus on it.
+// view list). This FOLLOWS #830's `SeamarksInView.tsx` precedent directly,
+// including its placement: rendered here (inside MapView's subtree, for the
+// map/viewport context) but portalled into a Plan/Live-panel slot
+// (`panelSlot`, App.tsx's `.app-panel-ais`) rather than floated over the map.
+// #830 itself tried the map-chrome route first and MEASURED it breaking the
+// depth legend's reachability budget at three viewports — the panel was the
+// considered, measured alternative, not a default. An earlier revision of
+// this component instead floated an absolutely-positioned div over the map
+// with an admittedly unmeasured offset and no app.css rules at all (zero
+// `.ais-in-view*` hits, no `max-height`/`overflow-y` bound on the expanded
+// up-to-AIS_IN_VIEW_MAX-row list, raw `<ol>/<li>` markup) — flagged in review
+// as allowlist-shaped (App.tsx/app.css were out of scope at the time), and
+// replaced by this version once the allowlist was widened. Moving into the
+// PANEL removes the map-covering failure mode structurally (the panel is its
+// own scroll container, exactly like #830's list, which ships with no
+// per-list height bound either) rather than needing a new bound to defend
+// against it.
 //
-// PLACEMENT: this file's own AIS status chip (`.ais-status`) is the one
-// Live-tab-specific slot in the map chrome tier system (app.css's Tier-2
-// list) already reserved for exactly this feature — `App.tsx` and `app.css`
-// are both OUT of this task's file scope, so rather than invent a new
-// floating box that would need coordinating against that documented z-index/
-// collision history (CLAUDE.md's #208/#368 lineage), this renders as an
-// independent absolutely-positioned sibling stacked directly below that
-// chip's row, at the SAME z-index tier (2) and the SAME horizontal
-// centering, using inline styles only (no new app.css rule). The vertical
-// offset below the chip is a judgement call, not a measured constant (the
-// same "maintainer judgement call" shape as panelWidth.ts's
-// PANEL_MAP_RESERVE_PX) — a follow-up with app.css in scope may want to fold
-// this into the tier system's own comment properly.
-const AIS_IN_VIEW_TOP_OFFSET = 'calc(3.5rem + 2.75rem)';
-
+// Population is the SAME `targets` array AisLayer already renders (never a
+// second data source), filtered to the map's current viewport bounds via
+// lib/aisGeoJson.ts's aisTargetsInView — matching what a mouse user can see
+// and click, nearest-to-centre first, capped at AIS_IN_VIEW_MAX. NOT modelled
+// (documented, not silently omitted — mirrors seamarksInView.ts's own
+// caveat): MapLibre's icon-overlap collision culling, so a vessel the map
+// culled at a crowded zoom can still be listed here — the safe direction (a
+// keyboard user gets a superset, never a subset, of what's on screen), never
+// a false claim of exact parity.
+//
+// Each row is a native <button> (focusable and Enter/Space-activatable for
+// free) that opens the SAME themed popup a pointer click does (AisLayer.tsx's
+// exported openAisPopup — one renderer of aisPopupRows(), never two), so a
+// sighted keyboard user also learns WHERE the vessel is. Deliberately renders
+// in every AIS status (off/connecting/offline/keyError/live) rather than
+// hiding itself when AIS isn't configured — AisStatusChip above already does
+// the same (always visible), and the "no vessels in view" body text is
+// equally true whether the cause is "no key" or "connected but nothing
+// nearby"; a sighted keyboard-only user can already read the WHY from that
+// chip without needing focus on it.
 function popupPropsOf(target: AisTargetSnapshot): AisPopupProps {
   return {
     mmsi: target.mmsi,
@@ -108,13 +115,15 @@ function popupPropsOf(target: AisTargetSnapshot): AisPopupProps {
   };
 }
 
-export function AisVesselsInView({
-  map,
-  targets,
-}: {
+export interface AisVesselsInViewProps {
   map: MaplibreMap | null;
   targets: AisTargetSnapshot[];
-}) {
+  /** App.tsx's `.app-panel-ais` portal target, or null while unmounted
+   * (matches SeamarksInView's `panelSlot` contract). */
+  panelSlot: HTMLDivElement | null;
+}
+
+export function AisVesselsInView({ map, targets, panelSlot }: AisVesselsInViewProps) {
   const t = useT();
   const [lang] = useLang();
   const viewport = useMapViewport(map);
@@ -199,21 +208,13 @@ export function AisVesselsInView({
     );
   }
 
-  return (
-    <div
-      className="ais-in-view"
-      style={{
-        position: 'absolute',
-        top: AIS_IN_VIEW_TOP_OFFSET,
-        left: '50%',
-        transform: 'translateX(-50%)',
-        zIndex: 2,
-        pointerEvents: 'auto',
-        background: 'var(--sc-bg)',
-      }}
-    >
-      <Disclosure summary={summary}>{body}</Disclosure>
-    </div>
+  if (!panelSlot) return null;
+
+  return createPortal(
+    <Disclosure className="ais-in-view" summary={summary}>
+      {body}
+    </Disclosure>,
+    panelSlot,
   );
 }
 
@@ -231,12 +232,16 @@ export default function AisTraffic({
   plan,
   rig,
   activeLegIndex,
+  panelSlot,
 }: {
   apiKey: string | undefined;
   ownMmsi: string | undefined;
   plan: Plan | null;
   rig: SailId | null;
   activeLegIndex: number | null;
+  /** #831: App.tsx's `.app-panel-ais` portal target — see AisVesselsInView's
+   * own contract comment above. */
+  panelSlot: HTMLDivElement | null;
 }) {
   const map = useMapInstance();
   const online = useOnline();
@@ -331,7 +336,7 @@ export default function AisTraffic({
         routeActive={routeActive}
         routeCount={routeCount}
       />
-      <AisVesselsInView map={map} targets={targets} />
+      <AisVesselsInView map={map} targets={targets} panelSlot={panelSlot} />
     </>
   );
 }

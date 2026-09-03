@@ -103,9 +103,14 @@ export function aisPopupRows(
 // mirroring lib/seamarksInView.ts's #830 shape. Unlike seamarks (which needs
 // its own viewport query against a region-wide catalogue), the population
 // here is simply the ALREADY-SUBSCRIBED `targets` array AisTraffic passes to
-// AisLayer — filtered to the map's current bounds so the list matches what a
-// mouse user can actually SEE and click on AIS_VESSEL_LAYER, never the wider
+// AisLayer — filtered to the map's current bounds, nearest-to-centre first,
+// so the list matches the VIEWPORT a mouse user sees, never the wider
 // corridor-subscribed set useAisTraffic tracks for the socket subscription.
+// What this does NOT mirror, same caveat as seamarksInView.ts's own: MapLibre's
+// icon-overlap COLLISION CULLING — a vessel the map culled for lack of screen
+// room at a crowded zoom is still listed here. That is the safe direction (a
+// keyboard user gets a SUPERSET of what the mouse user sees, never a subset),
+// not exact parity with AIS_VESSEL_LAYER's actually-painted glyphs.
 export interface AisViewportBounds {
   west: number;
   south: number;
