@@ -27,7 +27,7 @@ spike, the other from its issue's own option analysis: an "AIS vessels in
 view" / "AIS-Schiffe in Sicht" list on the Live tab, each nearby vessel a
 keyboard-focusable button opening the same identification popup a map click
 opens — the third and last of the keyboard-equivalent gaps #714's spike
-proposed closing, after the two that shipped in `v0.19.0`
+found, after the two that shipped in `v0.19.0`
 ([#831](https://github.com/DocGerd/sail_command/issues/831)); and an
 advisory per-leg mainsail reef suggestion in the results table, computed
 from apparent wind speed and shown alongside each sail leg, explicitly a
@@ -38,9 +38,9 @@ The other sixteen were tooling, CI cost and prose accuracy. The largest
 strand cut what continuous integration spends: the `app` job now skips its
 expensive steps on a docs-only change and on a push whose tree a previous
 run already tested, CodeQL gained a concurrency group so a superseded
-pull-request head stops being analysed to completion, CodeQL's pull-request analysis is skipped for changes confined
-to `docs/**` prose and the root documentation files its `paths:` filter
-names — a changelog-only change still triggers it, deliberately — the
+pull-request head stops being analysed to completion, CodeQL's pull-request analysis now runs only where its
+`paths:` filter admits the changed paths, so a documentation-only pull
+request skips it while a changelog-only one still triggers it, the
 nightly coverage run skips an unchanged tree, and every previously uncapped
 job gained a `timeout-minutes`
 ([#875](https://github.com/DocGerd/sail_command/issues/875),
@@ -212,12 +212,12 @@ maintainer to file at their discretion
 ([#391](https://github.com/DocGerd/sail_command/issues/391),
 `docs/spikes/391-maplibre-gesture-during-ease.md`). A design spike into the
 map's pointer-only interactions with no keyboard equivalent recommended the
-coordinate-entry and seamarks-in-view designs that shipped in `v0.19.0`
-(see "Now" above), and surfaced a third gap — AIS vessel identification —
+coordinate-entry and seamarks-in-view designs that shipped in `v0.19.0`,
+and surfaced a third gap — AIS vessel identification —
 found while scoping the issue rather than already in it; all three
 recommendations were filed as issues rather than implemented in the spike,
 per the issue's own definition of done (a spike, not an epic), and the
-third now sits in `v0.20.0` (see "Next" above)
+third shipped in `v0.20.0`
 ([#714](https://github.com/DocGerd/sail_command/issues/714),
 `docs/spikes/714-keyboard-map-equivalents.md`). Guard integrity:
 `app/e2e/helpers.ts`'s `startPreview()` used to accept any 200 answering its

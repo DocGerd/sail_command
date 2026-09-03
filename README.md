@@ -107,9 +107,9 @@ installs as a standalone icon and works fully offline after the first visit
 - **AIS traffic** (optional, online-only): paste a personal
   [aisstream.io](https://aisstream.io/) API key into the **Live & AIS** card on
   the Boat tab to see surrounding vessels on the Live view — course/heading,
-  names, tap for details, or the keyboard-reachable "AIS vessels in view"
-  list in the Live tab's panel — including any within a ±5 nm corridor along
-  the active route. Off by default and fully inert without a key; your own vessel
+  names, tap for details — including any within a ±5 nm corridor along the
+  active route. The Live tab's panel also carries a keyboard-reachable "AIS
+  vessels in view" list covering the vessels in the current map view. Off by default and fully inert without a key; your own vessel
   is filtered out by MMSI.
 
 Planning a new route requires an internet connection (wind forecast fetch);

@@ -144,7 +144,7 @@ automatically.
 4. **Required checks must pass**: `app` (leaked-home-path guard → lint →
    typecheck → sweep canonicalization guard → unit/property tests → build →
    third-party-notices drift guard) and `e2e` (Playwright, including a
-   true offline reload). Both gate the steps from `setup-node` onward behind
+   true offline reload). Both gate their expensive steps, beginning at `setup-node`, behind
    a docs-only classifier
    ([#327](https://github.com/DocGerd/sail_command/issues/327) for `e2e`,
    [#875](https://github.com/DocGerd/sail_command/issues/875) for `app`) and
