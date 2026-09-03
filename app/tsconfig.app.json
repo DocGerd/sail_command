@@ -115,7 +115,8 @@
   // single source of truth, same reason as verifyMaskConnectivity.test.ts
   // above.
   "exclude": [
-    "src/**/realmask.repro.test.ts",
+    "src/**/realmask.repro*.test.ts",
+    "src/**/realmaskFixtures.ts",
     "src/**/gpx.parse.test.ts",
     "src/**/seamarkPopover.coverage.test.ts",
     "src/**/changelogFragmentsFs.ts",

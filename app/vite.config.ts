@@ -369,8 +369,19 @@ function appVersion(command: 'build' | 'serve'): string {
 // shows the same small-file/disproportionately-slow-run mismatch that
 // motivates invariants.property.test.ts's entry, keeping the array sorted
 // slowest-first by wall-clock time.
+// #878: realmask.repro.test.ts (the single file the paragraph above
+// measures) was split into five sibling files, one per top-level describe,
+// so vitest can parallelise the real-mask suite across cores instead of one
+// file monopolizing the run. Each sibling still carries at least one
+// real-mask solve under `solverTimeoutMs(600_000)`, so all five are listed
+// here to keep them starting early — the per-file byte sizes and durations
+// above describe the PRE-SPLIT file and were not re-measured post-split.
 const SLOW_TEST_FILES_FIRST = [
-  'src/routing/realmask.repro.test.ts',
+  'src/routing/realmask.repro.issue20.test.ts',
+  'src/routing/realmask.repro.depthComfort.test.ts',
+  'src/routing/realmask.repro.relaxationFloor.test.ts',
+  'src/routing/realmask.repro.salona44.test.ts',
+  'src/routing/realmask.repro.mirrorCase.test.ts',
   'src/routing/invariants.property.test.ts',
 ];
 

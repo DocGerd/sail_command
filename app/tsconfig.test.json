@@ -152,7 +152,8 @@
   // `knownDisconnected` field agrees with the pipeline's single source of
   // truth — same reason and pattern as verifyMaskConnectivity.test.ts above.
   "include": [
-    "src/**/realmask.repro.test.ts",
+    "src/**/realmask.repro*.test.ts",
+    "src/**/realmaskFixtures.ts",
     "src/**/gpx.parse.test.ts",
     "src/**/seamarkPopover.coverage.test.ts",
     "src/**/changelogFragmentsFs.ts",
