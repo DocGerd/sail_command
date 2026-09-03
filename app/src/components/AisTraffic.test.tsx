@@ -1,13 +1,14 @@
 import { act, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { I18nProvider } from '../i18n';
-import AisTraffic, { AisStatusChip } from './AisTraffic';
+import AisTraffic, { AisStatusChip, AisVesselsInView } from './AisTraffic';
 import type { AisStatus } from '../state/useAisTraffic';
 import type { AisSocketHandlers } from '../services/aisStream';
 import { uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS, type Leg, type Plan, type RigResult } from '../types';
 import { defaultBoatSnapshot } from '../types';
 import { PLAN_SCHEMA_VERSION } from '../types';
+import type { AisTargetSnapshot } from '../lib/aisTargets';
 
 // ---- #158 integration rig ----------------------------------------------------
 // The corridor-resubscription tests run the REAL component wiring (settle gate,
@@ -33,8 +34,19 @@ vi.mock('../services/aisStream', async (importOriginal) => {
 const mapHoist = vi.hoisted(() => ({ map: null as unknown }));
 vi.mock('./MapView', () => ({ useMapInstance: () => mapHoist.map }));
 // AisLayer needs a MapLibre runtime jsdom does not have; its rendering is
-// covered elsewhere — here it is inert.
-vi.mock('./AisLayer', () => ({ default: () => null }));
+// covered elsewhere — here it is inert. openAisPopup is stubbed to a
+// call-recording fake (#831) so AisVesselsInView's activation path can be
+// asserted without a real MapLibre Popup.
+const aisLayerHoist = vi.hoisted(() => ({
+  openAisPopupCalls: [] as unknown[][],
+}));
+vi.mock('./AisLayer', () => ({
+  default: () => null,
+  openAisPopup: (...args: unknown[]) => {
+    aisLayerHoist.openAisPopupCalls.push(args);
+    return { remove: () => {} };
+  },
+}));
 
 // Tiny fixed viewport in the region's SW corner: padded 20 % it stays lon-
 // disjoint from every corridor box (corridor lonMin ≈ 9.857), so the merged
@@ -378,5 +390,102 @@ describe('AisTraffic corridor resubscription (#158)', () => {
     expect(ais.sockets[0].sent).toHaveLength(2); // immediate — zero timers ran
     expect(boxesOf(ais.sockets[0].sent[1])).toHaveLength(3);
     expect(ais.sockets).toHaveLength(1);
+  });
+});
+
+// #831: AIS vessel identification was pointer-only (a symbol-layer glyph
+// click in AisLayer.tsx) — a MapLibre-rendered feature has NO DOM node, so
+// it cannot be reached from the keyboard (WCAG 2.1.1). This suite pins the
+// fix: RED at BASE (AisVesselsInView does not exist there — the import
+// itself fails to compile), GREEN at HEAD. `mapHoist.map`'s fixed bounds
+// (west 9.4 / south 54.3 / east 9.42 / north 54.32, from makeAisFakeMap
+// above) double as the AIS-in-view viewport here.
+describe('AisVesselsInView (#831 keyboard-reachable AIS list)', () => {
+  function target(overrides: Partial<AisTargetSnapshot>): AisTargetSnapshot {
+    return {
+      mmsi: '211234560',
+      position: { lat: 54.31, lon: 9.41 }, // inside makeAisFakeMap's bounds
+      lastUpdateMs: 0,
+      tier: 'fresh',
+      ...overrides,
+    };
+  }
+
+  beforeEach(() => {
+    mapHoist.map = makeAisFakeMap();
+    aisLayerHoist.openAisPopupCalls.length = 0;
+    // localStorage persists across tests in this file; an earlier
+    // renderChip('…', { lang: 'de' }) run would otherwise leak German into
+    // this suite's English assertions.
+    localStorage.setItem('sc-lang', 'en');
+  });
+
+  function renderList(targets: AisTargetSnapshot[]) {
+    return render(
+      <I18nProvider>
+        <AisVesselsInView map={mapHoist.map as never} targets={targets} />
+      </I18nProvider>,
+    );
+  }
+
+  it('exposes each in-view vessel as a real, keyboard-focusable <button> — the structural fix WCAG 2.1.1 asks for', () => {
+    const { container } = renderList([
+      target({ mmsi: '211111111', name: 'ALBATROS' }),
+      target({ mmsi: '211222222', name: 'SEAGULL' }),
+    ]);
+    const buttons = Array.from(container.querySelectorAll('button'));
+    // A native <button> is a real DOM node: it sits in the default tab
+    // order and is Enter/Space-activatable by the browser with zero extra
+    // JS — unlike the MapLibre canvas glyph AisLayer.tsx renders, which has
+    // no DOM node at all and so can never receive keyboard focus.
+    expect(buttons.map((b) => b.textContent)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('ALBATROS'),
+        expect.stringContaining('SEAGULL'),
+      ]),
+    );
+  });
+
+  it('activating a row opens the SAME themed popup a pointer click opens (openAisPopup), anchored at the vessel', () => {
+    const { container } = renderList([
+      target({ mmsi: '211333333', name: 'KESTREL', position: { lat: 54.31, lon: 9.41 } }),
+    ]);
+    const button = container.querySelector('button')!;
+    button.click();
+    expect(aisLayerHoist.openAisPopupCalls).toHaveLength(1);
+    const [, lngLat, props] = aisLayerHoist.openAisPopupCalls[0] as [
+      unknown,
+      { lng: number; lat: number },
+      { mmsi: string; name: string },
+    ];
+    expect(lngLat).toEqual({ lng: 9.41, lat: 54.31 });
+    expect(props.mmsi).toBe('211333333');
+    expect(props.name).toBe('KESTREL');
+  });
+
+  it('excludes a vessel outside the current viewport bounds — matching what a mouse user can actually see', () => {
+    const { container } = renderList([
+      target({ mmsi: 'in', name: 'INVIEW', position: { lat: 54.31, lon: 9.41 } }),
+      target({ mmsi: 'out', name: 'FARAWAY', position: { lat: 60, lon: 20 } }),
+    ]);
+    const text = Array.from(container.querySelectorAll('button'))
+      .map((b) => b.textContent)
+      .join(' ');
+    expect(text).toContain('INVIEW');
+    expect(text).not.toContain('FARAWAY');
+  });
+
+  it('shows an empty-state message with zero vessels in view, never a crash', () => {
+    const { container } = renderList([]);
+    expect(container.querySelectorAll('button')).toHaveLength(0);
+    expect(container.textContent).toContain('No AIS vessels currently in view.');
+  });
+
+  it('stays inert-consistent: an empty targets array (the BYOK no-key state) never renders a row', () => {
+    // AisTraffic passes `targets` straight from useAisTraffic, which is []
+    // whenever there is no API key (AIS_BYOK invariant) — this list must
+    // degrade to the same empty state, never throw on an absent key.
+    const { container } = renderList([]);
+    expect(container.querySelectorAll('button')).toHaveLength(0);
   });
 });

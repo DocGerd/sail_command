@@ -1,5 +1,6 @@
 import { PROJECTION_VECTOR_MINUTES, projectionLine } from './projectionVector';
 import { formatHeading, formatKn, type Lang } from './format';
+import { haversineNm } from './geo';
 import type { AisTargetSnapshot } from './aisTargets';
 import type { MsgKey } from '../i18n/dict.de';
 
@@ -94,4 +95,70 @@ export function aisPopupRows(
     value: lang === 'de' ? `vor ${ageMin} min` : `${ageMin} min ago`,
   });
   return rows;
+}
+
+// #831: the viewport filter behind the keyboard-reachable "AIS vessels in
+// view" list (AisTraffic.tsx's AisVesselsInView) — a keyboard user's DOM
+// equivalent of AisLayer.tsx's pointer-only vessel click (WCAG 2.1.1),
+// mirroring lib/seamarksInView.ts's #830 shape. Unlike seamarks (which needs
+// its own viewport query against a region-wide catalogue), the population
+// here is simply the ALREADY-SUBSCRIBED `targets` array AisTraffic passes to
+// AisLayer — filtered to the map's current bounds so the list matches what a
+// mouse user can actually SEE and click on AIS_VESSEL_LAYER, never the wider
+// corridor-subscribed set useAisTraffic tracks for the socket subscription.
+export interface AisViewportBounds {
+  west: number;
+  south: number;
+  east: number;
+  north: number;
+  centerLon: number;
+  centerLat: number;
+}
+
+export interface AisTargetsInViewResult {
+  /** At most `max` targets, nearest to the map centre first. */
+  targets: AisTargetSnapshot[];
+  /** Every target in view, before the cap — what the summary count states. */
+  total: number;
+}
+
+// The row cap — a maintainer JUDGEMENT CALL in the same sense
+// seamarksInView.ts's SEAMARKS_IN_VIEW_MAX is: AIS traffic in one fjord is
+// normally small (the AisStatusChip's own count confirms this at a glance),
+// but a busy strait could still exceed a usable keyboard-list length.
+export const AIS_IN_VIEW_MAX = 50;
+
+// MapLibre's bounds can span more than the whole world at very low zoom
+// (`east - west >= 360`) or wrap across the antimeridian (`west > east`);
+// mirrors seamarksInView.ts's identical handling.
+function lonInRange(lon: number, west: number, east: number): boolean {
+  if (east - west >= 360) return true;
+  if (west <= east) return lon >= west && lon <= east;
+  return lon >= west || lon <= east;
+}
+
+/**
+ * The subset of `targets` whose position falls inside `viewport`, nearest to
+ * the map centre first, capped at `max` with `total` counting the whole
+ * in-view set (before the cap).
+ */
+export function aisTargetsInView(
+  targets: AisTargetSnapshot[],
+  viewport: AisViewportBounds,
+  max: number = AIS_IN_VIEW_MAX,
+): AisTargetsInViewResult {
+  const centre = { lat: viewport.centerLat, lon: viewport.centerLon };
+  const inView = targets
+    .filter(
+      (t) =>
+        t.position.lat >= viewport.south &&
+        t.position.lat <= viewport.north &&
+        lonInRange(t.position.lon, viewport.west, viewport.east),
+    )
+    .map((t) => ({ target: t, distanceNm: haversineNm(centre, t.position) }));
+  // Array.prototype.sort is stable (ES2019): equidistant targets keep their
+  // input order rather than an arbitrary one.
+  inView.sort((a, b) => a.distanceNm - b.distanceNm);
+  const sorted = inView.map((e) => e.target);
+  return { targets: sorted.slice(0, max), total: sorted.length };
 }

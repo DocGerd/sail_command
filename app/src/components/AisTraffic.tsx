@@ -1,19 +1,24 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import type { Map as MaplibreMap } from 'maplibre-gl';
 import { useMapInstance } from './MapView';
-import { useT } from '../i18n';
+import { useLang, useT } from '../i18n';
 import { useOnline } from '../state/AppState';
 import { useAisTraffic, useSettledValue, type AisStatus } from '../state/useAisTraffic';
-import AisLayer from './AisLayer';
+import { useMapViewport } from '../state/useMapViewport';
+import AisLayer, { openAisPopup } from './AisLayer';
 import Chip from './Chip';
+import Disclosure from './Disclosure';
 import { padBoundingBox, viewportEscapedBbox, type AisBoundingBox } from '../services/aisStream';
 import {
   AIS_CORRIDOR_HALF_WIDTH_NM,
   mergeOverlappingBoxes,
   routeCorridorBoxes,
 } from '../lib/routeCorridor';
+import { aisPopupRows, aisTargetsInView, type AisPopupProps } from '../lib/aisGeoJson';
 import { activeRigResult } from '../lib/plan';
 import type { Plan, SailId } from '../types';
 import type { MsgKey } from '../i18n/dict.de';
+import type { AisTargetSnapshot } from '../lib/aisTargets';
 
 const AIS_BBOX_PAD = 0.2; // subscribe to the viewport padded 20% each side
 const AIS_RESUBSCRIBE_DEBOUNCE_MS = 2000;
@@ -52,6 +57,162 @@ export function AisStatusChip({
   return (
     <div className="ais-status" role="status">
       <Chip className={`ais-status-chip ais-status-${status}`}>{text}</Chip>
+    </div>
+  );
+}
+
+// #831: AIS vessel identification is pointer-only in AisLayer.tsx — a rendered
+// symbol-layer glyph has no DOM node, so a click on a vessel triangle has no
+// keyboard equivalent (WCAG 2.1.1, same defect class as #830's seamarks-in-
+// view list, which this mirrors per the #714 spike's own recommendation to
+// reuse whatever pattern that list settles on rather than invent a second
+// one). Population is the SAME `targets` array AisLayer already renders
+// (never a second data source), filtered to the map's current viewport
+// bounds via lib/aisGeoJson.ts's aisTargetsInView — so the list matches
+// exactly what a mouse user can see and click, nearest-to-centre first,
+// capped at AIS_IN_VIEW_MAX. Each row is a native <button> (focusable and
+// Enter/Space-activatable for free) that opens the SAME themed popup a
+// pointer click does (AisLayer.tsx's exported openAisPopup — one renderer of
+// aisPopupRows(), never two), so a sighted keyboard user also learns WHERE
+// the vessel is. Deliberately renders in every AIS status (off/connecting/
+// offline/keyError/live) rather than hiding itself when AIS isn't
+// configured — AisStatusChip above already does the same (always visible),
+// and the "no vessels in view" body text is equally true whether the cause
+// is "no key" or "connected but nothing nearby"; a sighted keyboard-only
+// user can already read the WHY from that chip without needing focus on it.
+//
+// PLACEMENT: this file's own AIS status chip (`.ais-status`) is the one
+// Live-tab-specific slot in the map chrome tier system (app.css's Tier-2
+// list) already reserved for exactly this feature — `App.tsx` and `app.css`
+// are both OUT of this task's file scope, so rather than invent a new
+// floating box that would need coordinating against that documented z-index/
+// collision history (CLAUDE.md's #208/#368 lineage), this renders as an
+// independent absolutely-positioned sibling stacked directly below that
+// chip's row, at the SAME z-index tier (2) and the SAME horizontal
+// centering, using inline styles only (no new app.css rule). The vertical
+// offset below the chip is a judgement call, not a measured constant (the
+// same "maintainer judgement call" shape as panelWidth.ts's
+// PANEL_MAP_RESERVE_PX) — a follow-up with app.css in scope may want to fold
+// this into the tier system's own comment properly.
+const AIS_IN_VIEW_TOP_OFFSET = 'calc(3.5rem + 2.75rem)';
+
+function popupPropsOf(target: AisTargetSnapshot): AisPopupProps {
+  return {
+    mmsi: target.mmsi,
+    name: target.name ?? '',
+    shipType: target.shipType ?? null,
+    sog: target.sogKn ?? null,
+    cog: target.cogDeg ?? null,
+    heading: target.headingDeg ?? null,
+    lastUpdateMs: target.lastUpdateMs,
+  };
+}
+
+export function AisVesselsInView({
+  map,
+  targets,
+}: {
+  map: MaplibreMap | null;
+  targets: AisTargetSnapshot[];
+}) {
+  const t = useT();
+  const [lang] = useLang();
+  const viewport = useMapViewport(map);
+
+  // One popup at a time from this list (a map click may add its own; that is
+  // AisLayer's popup, not tracked here), removed on unmount so a tab switch
+  // does not strand a popover on the map.
+  const popupRef = useRef<ReturnType<typeof openAisPopup> | null>(null);
+  useEffect(
+    () => () => {
+      popupRef.current?.remove();
+      popupRef.current = null;
+    },
+    [],
+  );
+
+  const result = useMemo(
+    () => (viewport ? aisTargetsInView(targets, viewport) : null),
+    [targets, viewport],
+  );
+
+  const showOnMap = (target: AisTargetSnapshot) => {
+    if (!map) return;
+    popupRef.current?.remove();
+    popupRef.current = openAisPopup(
+      map,
+      { lng: target.position.lon, lat: target.position.lat },
+      popupPropsOf(target),
+      t,
+      lang,
+    );
+  };
+
+  const summary = t('ais.inView.summary', { count: result?.total ?? 0 });
+
+  let body: ReactNode;
+  if (!result) {
+    body = <p className="ais-in-view-note">{t('ais.inView.loading')}</p>;
+  } else if (result.total === 0) {
+    body = <p className="ais-in-view-note">{t('ais.inView.empty')}</p>;
+  } else {
+    body = (
+      <>
+        <p className="ais-in-view-hint">{t('ais.inView.hint')}</p>
+        <ol className="ais-in-view-list">
+          {result.targets.map((target) => {
+            const props = popupPropsOf(target);
+            // aisPopupRows always leads with the name row; the rest are
+            // optional (ship type/SOG/COG when known) plus a trailing age
+            // row this list DROPS (never shown as a row here) — computing a
+            // live age needs Date.now(), an impure call this eslint config
+            // forbids in a render body, and the age is already available in
+            // full on activation: openAisPopup() computes it fresh at click
+            // time. `target.lastUpdateMs` as `nowMs` is a pure placeholder
+            // (ageMin would read 0) purely to keep aisPopupRows a pure call.
+            const [primaryRow, ...rest] = aisPopupRows(props, target.lastUpdateMs, lang);
+            const detailRows = rest.filter((row) => row.labelKey !== 'ais.popup.age');
+            return (
+              <li key={target.mmsi}>
+                <button type="button" className="ais-in-view-row" onClick={() => showOnMap(target)}>
+                  <span className="ais-in-view-row-name">{primaryRow.value}</span>
+                  {detailRows.map((row) => (
+                    <span key={row.labelKey} className="ais-in-view-row-detail">
+                      {' · '}
+                      {t(row.labelKey)}: {row.value}
+                    </span>
+                  ))}
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+        {result.total > result.targets.length && (
+          <p className="ais-in-view-note">
+            {t('ais.inView.truncated', {
+              shown: result.targets.length,
+              total: result.total,
+            })}
+          </p>
+        )}
+      </>
+    );
+  }
+
+  return (
+    <div
+      className="ais-in-view"
+      style={{
+        position: 'absolute',
+        top: AIS_IN_VIEW_TOP_OFFSET,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        zIndex: 2,
+        pointerEvents: 'auto',
+        background: 'var(--sc-bg)',
+      }}
+    >
+      <Disclosure summary={summary}>{body}</Disclosure>
     </div>
   );
 }
@@ -170,6 +331,7 @@ export default function AisTraffic({
         routeActive={routeActive}
         routeCount={routeCount}
       />
+      <AisVesselsInView map={map} targets={targets} />
     </>
   );
 }

@@ -903,6 +903,19 @@ export const en = {
   'ais.status.offline': 'AIS offline',
   'ais.status.keyError': 'AIS: check your API key',
   'ais.status.liveRoute': 'AIS live · {count} vessels ({routeCount} along route)',
+  // #831: the keyboard-reachable list of the AIS vessels in view (WCAG
+  // 2.1.1) — mirrors seamarks.inView.* (#830). Rendered regardless of AIS
+  // status; the status chip above already explains why the list may be
+  // empty.
+  'ais.inView.summary': 'AIS vessels in view ({count})',
+  'ais.inView.hint':
+    'Sorted by distance from the map centre. Selecting a row shows the vessel in a popup on the map.',
+  'ais.inView.loading': 'Waiting for the map view …',
+  'ais.inView.empty': 'No AIS vessels currently in view.',
+  // {shown} is AIS_IN_VIEW_MAX (lib/aisGeoJson.ts) — the copy never types
+  // the number, so constant and sentence cannot drift apart.
+  'ais.inView.truncated':
+    'Only the {shown} vessels nearest the map centre of the {total} in view are listed — zoom in to see all of them.',
   // #155: north-arrow / track-up compass (see dict.de for the label rationale).
   'map.compass.northUp': 'Map orientation: north up. Activate course-up',
   'map.compass.northUp.noTrack':
