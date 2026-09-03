@@ -32,6 +32,13 @@ import {
   roundExposureNm,
 } from '../lib/shallowExposure';
 import { nearbyHazardMarkCount, SEAMARK_PROXIMITY_M } from '../lib/seamarkProximity';
+import {
+  reefSuggestionForLeg,
+  REEF1_AWS_KN,
+  REEF2_AWS_KN,
+  REEF3_AWS_KN,
+  type ReefBand,
+} from '../lib/reefSuggestion';
 import { useNavMask } from '../state/useNavMask';
 import { useSeamarks } from '../state/useSeamarks';
 import type { MsgKey } from '../i18n/dict.de';
@@ -284,6 +291,32 @@ function LegKindChip({ leg, rig }: { leg: Leg; rig: SailId }) {
       {t(sailLabelKey(rig))} · {t(boardKey)} {t(pointOfSailKey(leg.twaDeg))}
     </span>
   );
+}
+
+const REEF_LABEL_KEY: Record<ReefBand, MsgKey> = {
+  full: 'route.reef.full',
+  reef1: 'route.reef.reef1',
+  reef2: 'route.reef.reef2',
+  reef3: 'route.reef.reef3',
+};
+
+// #325: per-leg mainsail reef suggestion, rendered as a SIBLING chip inside
+// the SAME Kind <td> as LegKindChip above — deliberately never a new table
+// column, so the #707/#698 header-order pins below and the mirrored e2e
+// header-text array (app/e2e/panel-resize.spec.ts, outside this PR's file
+// allowlist) stay untouched. Presentation-only: `reefSuggestionForLeg`
+// derives everything from fields `Leg` already carries, so `PlanResult`
+// stays byte-identical (see that module's own header comment for the full
+// #282 no-sweep argument). Renders NOTHING on a motor leg
+// (`reefSuggestionForLeg` returns `null`) — the Kind chip already reads
+// "Motor" for that row, and the issue's own DoD accepts "no suggestion" as
+// one of the two licensed motor-leg treatments; a second, redundant
+// annotation would add no information.
+function ReefChip({ leg }: { leg: Leg }) {
+  const t = useT();
+  const suggestion = reefSuggestionForLeg(leg);
+  if (suggestion === null) return null;
+  return <span className="chip chip-reef">{t(REEF_LABEL_KEY[suggestion.band])}</span>;
 }
 
 // #452 gap 3: per-leg shallow marker for the legs table — the table already
@@ -800,6 +833,7 @@ export default function RouteSummary({
                         <td>{formatLegDuration(leg.endTimeMs - leg.startTimeMs)}</td>
                         <td>
                           <LegKindChip leg={leg} rig={rig} />
+                          <ReefChip leg={leg} />
                         </td>
                         <td>{formatHeading(leg.headingDeg)}</td>
                         <td>
@@ -842,6 +876,22 @@ export default function RouteSummary({
               </p>
               {result.legs.length > 0 && (
                 <p className="route-legs-note">{t('route.legs.motorNote')}</p>
+              )}
+              {/* #325: the reef suggestion is advisory seamanship guidance,
+                computed AFTER routing from apparent wind speed — it is NOT
+                part of the time optimisation (the boat speed every leg used
+                still assumes full main) and the router has no reefed polar
+                to check it against. Stated plainly here, with the actual
+                thresholds, per the issue's own "documented where a user can
+                find them" requirement — never only in a code comment. */}
+              {result.legs.some((l) => l.kind === 'sail') && (
+                <p className="route-legs-note">
+                  {t('route.legs.reefNote', {
+                    first: String(REEF1_AWS_KN),
+                    second: String(REEF2_AWS_KN),
+                    third: String(REEF3_AWS_KN),
+                  })}
+                </p>
               )}
             </Disclosure>
 

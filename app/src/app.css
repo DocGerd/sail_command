@@ -3234,6 +3234,26 @@ select {
   color: var(--sc-depth-warning-text);
 }
 
+/* #325 review MAJOR 4: the reef-suggestion chip renders as a horizontal
+   sibling of LegKindChip's own chip inside the SAME Kind <td> (no wrapper
+   `<td>`, unlike `.shallow-cell-stack` above), and JSX drops the whitespace
+   TEXT NODE between two adjacent elements, so with no rule at all the two
+   pills butted together with no gap: `"Genoa · Stbd Reach1st reef"`. Same
+   precedent and same value as `.chip.chip-shallow-cautious` above
+   (0.35rem, authored for exactly this horizontal-sibling case) — spacing
+   only, no colour/size override, since a reef suggestion is advisory
+   guidance, not a hazard, and should not visually compete with the Kind
+   chip next to it. COMPOUND selector for the same reason as
+   `.chip.chip-polar-tier-*` above: this rule sits BELOW `.chip`'s own base
+   rule (`:2964`), so it would win either way — the compound form is belt
+   and braces, and it also keeps it out of `chipShallowFill.test.ts`'s
+   structural guard (whose regex covers ANY bare `.chip-<word>` selector,
+   not only `.chip-shallow*`) rather than relying on the ordering staying
+   put. */
+.chip.chip-reef {
+  margin-inline-start: 0.35rem;
+}
+
 .boat-picker {
   display: flex;
   flex-direction: column;

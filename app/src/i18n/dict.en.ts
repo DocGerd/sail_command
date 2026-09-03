@@ -530,6 +530,17 @@ export const en = {
   // for the same fact; "as low as" names the same hazard consistently.
   'route.legs.shallowCautious': 'cautious: as low as {depth} m',
   'route.legs.motorNote': 'Motor = engine only; no sail contribution modelled.',
+  // #325: advisory-only per the issue's own DoD — the boat speed every leg
+  // used still assumes full main, so this suggestion never fed the time
+  // optimisation. {first}/{second}/{third} are REEF1_AWS_KN/REEF2_AWS_KN/
+  // REEF3_AWS_KN (reefSuggestion.ts) interpolated, not hardcoded, so the two
+  // can never drift apart. The trailing sentence is review MAJOR 3: the
+  // apparent wind used here is the forecast MEAN, never the gust — a gust
+  // can flip a full band, always toward under-reefing, and this line is the
+  // one place the disclosure lives (deliberately not implemented: see
+  // reefSuggestion.ts's own GUSTS comment).
+  'route.legs.reefNote':
+    'Reef suggestion is advisory seamanship guidance based on apparent wind speed (below {first} kn: full main; {first}-{second} kn: 1st reef; {second}-{third} kn: 2nd reef; {third}+ kn: 3rd reef) — not part of the route optimisation. Computed from the forecast mean wind; it does not account for gusts.',
   'route.legs.disclosure': 'Legs ({count})',
   // #774: see dict.de.ts's comment for why this is a DESCRIPTION rather than
   // the table's accessible name.
@@ -541,6 +552,11 @@ export const en = {
   'route.pointOfSail.reach': 'Reach',
   'route.pointOfSail.broadReach': 'Broad reach',
   'route.pointOfSail.run': 'Run',
+  // #325: mainsail reef suggestion chip labels.
+  'route.reef.full': 'Full main',
+  'route.reef.reef1': '1st reef',
+  'route.reef.reef2': '2nd reef',
+  'route.reef.reef3': '3rd reef',
   'route.maneuver.tack': 'Tack',
   'route.maneuver.gybe': 'Gybe',
   'route.maneuverLetter.tack': 'T',
