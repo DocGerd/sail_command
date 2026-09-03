@@ -151,8 +151,8 @@ it cannot drift from the tracker. Do this on a topic branch into `develop`
   SAME commit, and re-run the open-Dependabot-alert query the §A06 row names
   rather than carrying its parenthesised figure forward.** Every prior sweep
   bumped that header (`git log -L 3,4:docs/security-assurance-case.md`), and
-  the v0.20.0 cut edited the document TWICE while leaving it self-dated to the
-  previous release — caught only by an audit round, not by any check. A
+  the v0.20.0 cut edited the document in three successive audit rounds while
+  leaving it self-dated to the previous release — caught only by an audit round, not by any check. A
   self-dated header on the artifact that IS the OpenSSF `assurance_case`
   evidence is worse than a stale sentence elsewhere: it asserts its own
   currency.

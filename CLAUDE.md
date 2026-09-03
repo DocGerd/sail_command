@@ -313,8 +313,13 @@ making design-level decisions; do not silently deviate.
   real-mask — and it DISAGREED with `vite.config.ts`'s own "~680 s
   combined" comment on `SLOW_TEST_FILES_FIRST`, which was the closer of the
   two; when two artifacts state one fact, re-measure rather than pick.
-  That list IS in slowest-first order (`vite.config.ts:373-374`: real-mask,
-  then the property suite) — a previous "now inverted" note here was wrong.
+  **That list was rewritten by #878 and its ORDER claim is retired**: the
+  array now holds FIVE entries with `invariants.property.test.ts` FIRST and
+  four `realmask.repro.*` siblings after it, and `vite.config.ts`'s own #878
+  comment explicitly REFUSES to rank them ("this does NOT claim it is slower
+  than `issue20` … Do not tighten this into a claim it doesn't make"). Read
+  the array and that comment; do not restate an ordering here, in either
+  direction — this sentence has now been wrong in both.
   Use focused filters while iterating (`npm --prefix app run test --
   <filter>`); give the full run a generous timeout. Solver-heavy test files import `SOLVER_TEST_TIMEOUT_MS`
   (file-level `vi.setConfig`) or call `solverTimeoutMs(baseMs)` (a larger
@@ -397,11 +402,14 @@ making design-level decisions; do not silently deviate.
   encodes an ASSUMPTION about what a path can affect, and a build step that
   turns a doc into a bundled module silently voids it while the filename still
   looks safe. The allowlist is
-  the `case` arm at `classify-docs-only.sh:389` — THIRTEEN members as of
-  2026-08-26, and the count is not checked by anything, so read the arm
-  rather than trusting it: `grep -n CODE_OF_CONDUCT.md
-  .github/scripts/classify-docs-only.sh` prints the whole arm on one line and
-  is robust to line drift. A whole #132 release docs sweep skips e2e
+  the `case` arm `grep -n CODE_OF_CONDUCT.md
+  .github/scripts/classify-docs-only.sh` prints on one line — robust to line
+  drift, which is why the grep is given instead of a line number. **#875 SPLIT
+  that allowlist**, so there are now TWO arms: the shared one the grep finds,
+  plus a separate `CHANGELOG.md|changelog.d/*` arm above it where `run_e2e`
+  and `run_app` deliberately diverge (changelog paths are build inputs, so
+  `app` must still run). No member count is stated here on purpose — nothing
+  checks one, and the previous count went stale the moment #875 landed. A whole #132 release docs sweep skips e2e
   (measured on PR #677). Never copy the member list into this file again.
   **`app` GAINED a docs-only gate at v0.20.0 (#875), so the "no gate at all"
   state this paragraph used to describe is HISTORY — the measurement below is
@@ -1434,8 +1442,8 @@ making design-level decisions; do not silently deviate.
   | v0.17.0 | 2026-09-01 | 58 s | `cancelled` (MEASURED — the job had not been CREATED when the tag was pushed) | safe | merge-push `33502228802` → tag `33502309994` deployed cleanly, `smoke-probe` passed |
   | v0.18.0 | 2026-09-01 | 109 s | `success` — and BOTH deploy jobs read success, neither run cancelled, unlike every earlier row | **`smoke-probe` FAILED** | merge-push `33561093145` → tag `33561257642` on the same SHA; the tag run's `smoke-probe` 404'd its own entry chunk 10/10 over 4m31s while the merge run's passed. Back-merge `33563513697` then probed green. WHICH mechanism — a same-SHA no-op the back-merge fixed, or propagation later than that probe window — is NOT distinguishable from the end state: the back-merge's prod build produced the SAME entry-chunk name as the tag build (measured), so the end state cannot say which story produced it. Record the measurements, never a cause. |
   | v0.19.0 | 2026-09-02 | 83 s | read as `in_progress`/`null` in the same Bash call that pushed the tag (transcript-only; recorded by the v0.19.0 cut's own session and NOT re-read here — the session applying this row did not run that gate — what IS independently established is that the job ran 20:36:48Z→20:37:10Z, so any read in that 22 s window returned `in_progress`); conclusion `cancelled` at 20:37:10Z, its Pages object `6231355284` reaching `error` at the same second | **`smoke-probe` FAILED** | merge-push `33680204038` → tag `33680338582` on `786c32f1`. The tag run's `deploy` job AND its Pages object `6231383135` BOTH reached `success` (20:38:34Z / 20:38:35Z), yet its own entry chunk `assets/index-Culp-AWd.js` returned 404 on all ten probe attempts, 20:38:53Z → 20:43:23Z, the job failing 20:43:25Z (read off the `smoke-probe` job log, which prints `PROD_ENTRY: /sail_command/assets/index-Culp-AWd.js`; the uat half was never reached, prod being probed first). Back-merge `33683275499` then probed green. Per the v0.19.0 learnings file and NOT re-verified here: prod was serving the MERGE run's chunk `index-BmIaq_PY.js` at 20:44:12Z — one fact row 11 lacked, the served artifact positively IDENTIFIED. It still names NO mechanism: a no-op against an `error`-state deployment object, and an edge-cached `index.html` plus negative-cached 404s, both produce this end state. Record the measurements, never a cause. |
-
   | v0.20.0 | 2026-09-03 | 1735 s | `success` (MEASURED in the same Bash call that pushed the tag, and the failure CALLED IN ADVANCE from it) | **`smoke-probe` FAILED** | merge-push `33774574960` (created 15:46:00Z, `deploy: success`) → tag `33777477268` (created 16:14:55Z) on `286b280`. The tag run's `build` and `deploy` BOTH succeeded and only `smoke-probe` failed. Back-merge `33780148708` then probed green, and prod was positively identified as serving the clean tag afterwards: the live entry chunk `assets/index-CIpQmfDd.js` contains ``about.version`,{version:`v0.20.0`}`` with ZERO suffixed `vX.Y.Z-N-g<sha>` matches anywhere in it. Unlike rows 11 and 12 the PREDICTOR here was the durable answer — terminal `success`, which cannot un-succeed — not a volatile `in_progress`. That still names no MECHANISM: a same-SHA no-op and a propagation lag produce this end state alike, and this row does not distinguish them. Record the measurements, never a cause. |
+
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
   count instead of an ordinal. (v0.10.0–v0.11.0 carry no recorded Deploy
