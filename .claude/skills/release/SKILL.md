@@ -147,6 +147,15 @@ it cannot drift from the tracker. Do this on a topic branch into `develop`
   each cut; confirm roles and release mechanics still match reality.
 - **`docs/security-assurance-case.md`** — the OpenSSF Silver assurance
   document; re-check it still describes the shipped security posture (#168).
+  **Bump its `**Status:** current as of <date> … (`vX.Y.Z` cut)` header in the
+  SAME commit, and re-run the open-Dependabot-alert query the §A06 row names
+  rather than carrying its parenthesised figure forward.** Every prior sweep
+  bumped that header (`git log -L 3,4:docs/security-assurance-case.md`), and
+  the v0.20.0 cut edited the document TWICE while leaving it self-dated to the
+  previous release — caught only by an audit round, not by any check. A
+  self-dated header on the artifact that IS the OpenSSF `assurance_case`
+  evidence is worse than a stale sentence elsewhere: it asserts its own
+  currency.
 - **`CONTRIBUTING.md`** — the milestone list names the *next* release; roll it.
 - **`SECURITY.md`** — added to this list at the v0.12.0 cut (2026-08-19), where
   it was found to be a FOURTH site of the decaying release-tag enumeration that

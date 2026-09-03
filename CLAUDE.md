@@ -149,7 +149,11 @@ making design-level decisions; do not silently deviate.
   `311202c`, NOT to any later tip, since #809/#810 merged after it.
   `coverage.yml` runs nightly, so a current figure usually already sits in
   Actions: read it off the run WITH its head SHA rather than paying a fresh
-  local `test:coverage`. The trailing test/file COUNT is RE-MEASURED, never
+  local `test:coverage`. **Since #879 (v0.20.0) that nightly SKIPS an
+  unchanged tree** (`.github/scripts/coverage-skip-gate.sh`, a fail-open gate
+  that walks back to the last real measurement), so a nightly run existing is
+  no longer evidence a fresh figure was produced — check the run's own
+  `test:coverage` step conclusion, not just the run's. The trailing test/file COUNT is RE-MEASURED, never
   hand-added or inferred: **2447 tests, 157 files**, all passing (measured
   2026-09-02 at `a7caaf4`, the v0.18.0 back-merge — NOT at `311202c`, which is
   the coverage nightly's head above and carried 2410/154). The `a7caaf4`
@@ -293,11 +297,18 @@ making design-level decisions; do not silently deviate.
   byte-stable through almost anything.
 - Full test suite: **499.9 s** (~8.3 min) on a quiet machine — measured
   2026-08-19 at `04384c2`, 2032 tests / 143 files. Wall time is set almost
-  entirely by ONE file: `routing/realmask.repro.test.ts` alone takes
+  entirely by ONE file: `routing/realmask.repro.test.ts` took
   **477.4 s** (17 cases against the real committed mask/polars), with the
   seeded fast-check property suite second at **239.6 s**; everything else
   runs concurrently underneath them, which is why the total barely exceeds
-  the slowest file. The former "~4 min (a ~200 s property suite + a ~40 s
+  the slowest file. **PAST TENSE since v0.20.0: #878 SPLIT that file into
+  five `routing/realmask.repro.*.test.ts` siblings plus a shared
+  `app/src/test/realmaskFixtures.ts`, precisely so the one serialized file
+  stops setting the total.** The 499.9 s figure was measured BEFORE that
+  split and has not been re-measured since, so treat it as an upper bound of
+  historical interest, not a current duration. `app/vite.config.ts`'s own
+  #878 paragraph carries the new file list and the sequencer ordering — read
+  it there rather than restating either here. The former "~4 min (a ~200 s property suite + a ~40 s
   real-mask file)" was stale by ~2x on the total and by more than 10x on
   real-mask — and it DISAGREED with `vite.config.ts`'s own "~680 s
   combined" comment on `SLOW_TEST_FILES_FIRST`, which was the closer of the
@@ -392,18 +403,34 @@ making design-level decisions; do not silently deviate.
   .github/scripts/classify-docs-only.sh` prints the whole arm on one line and
   is robust to line drift. A whole #132 release docs sweep skips e2e
   (measured on PR #677). Never copy the member list into this file again.
-  **The `app` job has NO docs-only gate at all.** That is the SAFETY property
-  the changelog allowlist above leans on, and simultaneously an unpaid COST.
+  **`app` GAINED a docs-only gate at v0.20.0 (#875), so the "no gate at all"
+  state this paragraph used to describe is HISTORY — the measurement below is
+  the evidence FOR that gate, not a description of current behaviour.**
   Measured on PR #874 (2026-09-02, two PNGs under `docs/screenshots/` and
   nothing else): `e2e` reported success in 9 s (16:20:35Z → 16:20:44Z) with
   its expensive steps skipped, while `app` ran 16:20:35Z → 16:46:26Z — 1551 s,
   which is the exact TOP of the `app` range #877 records (median 1181 s, n=70,
   range 749-1551), so that PR is the conservative end of the evidence and not
-  the typical case. Tracked at #875 (milestone v0.20.0), which also records why
-  `app`'s allowlist must be a STRICT SUBSET of `e2e`'s rather than a reuse of
-  the same arm — `CHANGELOG.md` and `changelog.d/*` are build inputs, as the
-  paragraph above says — and that the `No leaked home paths (#474)` step must
-  stay ungated. Read the cost figures off #877, never off this sentence.
+  the typical case. #875's shipped gate keeps `app`'s allowlist a STRICT
+  SUBSET of `e2e`'s rather than reusing the same arm — `CHANGELOG.md` and
+  `changelog.d/*` are build inputs, as the paragraph above says — and leaves
+  the `No leaked home paths (#474)` step ungated; #877 added a SECOND and
+  DIFFERENT condition, an unchanged-tree skip-retest check, which is not the
+  docs-only classifier and must not be described as one. Read the cost
+  figures off #877, never off this sentence.
+  **Two senses of "docs-only" now coexist in this repo and a sentence must
+  say which it means.** `classify-docs-only.sh`'s arm treats `docs/*`
+  WHOLESALE, while `codeql.yml`'s `paths:` excludes `docs/**` and then
+  RE-INCLUDES `docs/**/*.{ts,tsx,js,jsx,mjs,py}` — four tracked files match
+  (`docs/screenshots/capture.mjs` and three `docs/spikes/354-mode-churn/**`
+  specs), so a #132 sweep touching `capture.mjs` is "docs-only" to the
+  classifier while CodeQL runs on it. The converse edge is just as live:
+  `CHANGELOG.md` and `changelog.d/**` are deliberately absent from codeql's
+  exclusions, so a changelog-only PR TRIGGERS CodeQL — verified empirically
+  at the v0.20.0 sweep, where a docs-only branch carried `Analyze
+  (javascript-typescript)` and `Analyze (python)` from an `event=pull_request`
+  run. Prefer "prose-only" or "whose changed paths its `paths:` filter admits"
+  over a bare "docs-only" whenever the sentence is about CodeQL.
   The globs are ONE star: in a bash `case`, `*` matches `/`, so nested paths
   do match (selftest case 10 pins it). Measured on a real
   `CLAUDE.md`-only PR (#343): `e2e` reported success in 6 s with
@@ -1408,6 +1435,7 @@ making design-level decisions; do not silently deviate.
   | v0.18.0 | 2026-09-01 | 109 s | `success` — and BOTH deploy jobs read success, neither run cancelled, unlike every earlier row | **`smoke-probe` FAILED** | merge-push `33561093145` → tag `33561257642` on the same SHA; the tag run's `smoke-probe` 404'd its own entry chunk 10/10 over 4m31s while the merge run's passed. Back-merge `33563513697` then probed green. WHICH mechanism — a same-SHA no-op the back-merge fixed, or propagation later than that probe window — is NOT distinguishable from the end state: the back-merge's prod build produced the SAME entry-chunk name as the tag build (measured), so the end state cannot say which story produced it. Record the measurements, never a cause. |
   | v0.19.0 | 2026-09-02 | 83 s | read as `in_progress`/`null` in the same Bash call that pushed the tag (transcript-only; recorded by the v0.19.0 cut's own session and NOT re-read here — the session applying this row did not run that gate — what IS independently established is that the job ran 20:36:48Z→20:37:10Z, so any read in that 22 s window returned `in_progress`); conclusion `cancelled` at 20:37:10Z, its Pages object `6231355284` reaching `error` at the same second | **`smoke-probe` FAILED** | merge-push `33680204038` → tag `33680338582` on `786c32f1`. The tag run's `deploy` job AND its Pages object `6231383135` BOTH reached `success` (20:38:34Z / 20:38:35Z), yet its own entry chunk `assets/index-Culp-AWd.js` returned 404 on all ten probe attempts, 20:38:53Z → 20:43:23Z, the job failing 20:43:25Z (read off the `smoke-probe` job log, which prints `PROD_ENTRY: /sail_command/assets/index-Culp-AWd.js`; the uat half was never reached, prod being probed first). Back-merge `33683275499` then probed green. Per the v0.19.0 learnings file and NOT re-verified here: prod was serving the MERGE run's chunk `index-BmIaq_PY.js` at 20:44:12Z — one fact row 11 lacked, the served artifact positively IDENTIFIED. It still names NO mechanism: a no-op against an `error`-state deployment object, and an edge-cached `index.html` plus negative-cached 404s, both produce this end state. Record the measurements, never a cause. |
 
+  | v0.20.0 | 2026-09-03 | 1735 s | `success` (MEASURED in the same Bash call that pushed the tag, and the failure CALLED IN ADVANCE from it) | **`smoke-probe` FAILED** | merge-push `33774574960` (created 15:46:00Z, `deploy: success`) → tag `33777477268` (created 16:14:55Z) on `286b280`. The tag run's `build` and `deploy` BOTH succeeded and only `smoke-probe` failed. Back-merge `33780148708` then probed green, and prod was positively identified as serving the clean tag afterwards: the live entry chunk `assets/index-CIpQmfDd.js` contains ``about.version`,{version:`v0.20.0`}`` with ZERO suffixed `vX.Y.Z-N-g<sha>` matches anywhere in it. Unlike rows 11 and 12 the PREDICTOR here was the durable answer — terminal `success`, which cannot un-succeed — not a volatile `in_progress`. That still names no MECHANISM: a same-SHA no-op and a propagation lag produce this end state alike, and this row does not distinguish them. Record the measurements, never a cause. |
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
   count instead of an ordinal. (v0.10.0–v0.11.0 carry no recorded Deploy
@@ -1464,17 +1492,22 @@ making design-level decisions; do not silently deviate.
   cannot help against the `in_progress` reading below, where the volatility
   is inside the read itself. v0.19.0 followed it exactly and still got a
   non-answer.
-  **Re-checked when row 12 (v0.19.0) was added: the separation HOLDS, and the
-  boundary TIGHTENS again — max(safe) 70 s against min(failed) 83 s, a 13 s
-  band, the narrowest recorded and down from the 70/109 pair row 11
-  published. 83 s is now the smallest gap ever to fail. Publish the TIGHTER
-  pair, because that is the conservative one: a SAFE row at or above 83 s, or
-  a FAILED row at or below 70 s, breaks the separation and changes what the
-  rows support. Note the vocabulary rows 11 and 12 force: both are scored
-  FAILED — the probe went red — without being scored NO-OP, because neither
-  names its mechanism, so the axis is now safe-vs-FAILED, which is the wider
-  and therefore safer reading. Whoever adds row 13 re-checks this sentence
-  again.**
+  **Re-checked when row 13 (v0.20.0) was added: the separation HOLDS and the
+  boundary is UNCHANGED — max(safe) 70 s against min(failed) 83 s, a 13 s
+  band, still the narrowest recorded. Row 13's 1735 s is the LARGEST gap ever
+  recorded and sits far above min(failed), so it strengthens the association
+  without moving the boundary: the six FAILED rows are now exactly the six
+  largest gaps, which under no association arises about 1 time in 1716 at
+  thirteen rows, from 1 in 792 at twelve. That improvement changes NOTHING
+  about the rule — a correlation this strong is precisely what makes the
+  threshold reading tempting, and the gap still licenses nothing in either
+  direction. Publish the TIGHTER pair, because that is the conservative one:
+  a SAFE row at or above 83 s, or a FAILED row at or below 70 s, breaks the
+  separation and changes what the rows support. Note the vocabulary rows 11,
+  12 and 13 force: all three are scored FAILED — the probe went red — without
+  being scored NO-OP, because none names its mechanism, so the axis is
+  safe-vs-FAILED, which is the wider and therefore safer reading. Whoever
+  adds row 14 re-checks this sentence again.**
   What the rows DO rule out
   is the opposite intuition, that a fast tag push races the merge run:
   v0.13.1's 33 s is the smallest gap ever recorded and was SAFE, and
@@ -2002,6 +2035,22 @@ making design-level decisions; do not silently deviate.
   its merge (the strict up-to-date policy applies on `develop` too).
   `gh api repos/…/pulls/N/update-branch --method PUT` performs that re-sync
   server-side — no local checkout of the branch needed.
+  **The re-sync is GitHub's requirement, not a habit** —
+  `strict_required_status_checks_policy: true` on the `protect-main` ruleset
+  (read it off `gh api repos/…/rulesets/<id>`), so `app`/`e2e` must have run on
+  a commit CONTAINING `develop`'s tip. Conflicts are irrelevant to it; a
+  branch with no conflict at all is still blocked while stale. That is what
+  makes a queue of N reviewed PRs cost N full `app` cycles (~20 min each), and
+  it is also the guard that catches a change green on its own base and red
+  merged. To cut that cost, BATCH file-surface-disjoint PRs into one
+  integration branch and open a single PR: their `Closes #N` commit trailers
+  still fire on merge to `develop`, and the batch build IS the merged-tree
+  build the strict policy exists to obtain. **Do NOT then close the originals
+  by hand** — measured 2026-09-03 on #912 (batching #901 and #904): once their
+  commits are ancestors of `develop`, GitHub marks both PRs `merged: true`,
+  not merely closed, so their review records survive as merged PRs and
+  `gh pr close` refuses with "already merged". Verify by reading `.merged`
+  back rather than assuming either outcome.
 
 ## Verification lessons (hard-won)
 
@@ -2068,12 +2117,13 @@ making design-level decisions; do not silently deviate.
 - Synthetic-mask tests missed a product-blocking solver bug that the FIRST
   real-data browser run found in minutes (#20: step length vs. real channel
   width). UI tasks should end with a real-browser pass (dev server +
-  Playwright); routing changes must keep `app/src/routing/realmask.repro.test.ts`
-  green (it uses the real committed mask/polars).
+  Playwright); routing changes must keep `app/src/routing/realmask.repro.*.test.ts`
+  green — five files since #878, all against the real committed mask/polars.
 - Flensburg→Marstal fails the RAW 3.0 m gate but ROUTES ANYWAY at DEFAULT
   settings — `planRoute()` returns `status: 'ok'` with shallow warnings at
-  `requestedDepthM 3.0` / `usedDepthM ≈ 2.3`, as `realmask.repro.test.ts`'s own
-  DEFAULT_SETTINGS case asserts. The mechanism is #53's relaxation tier, which
+  `requestedDepthM 3.0` / `usedDepthM ≈ 2.3`, as the `realmask.repro.*`
+  DEFAULT_SETTINGS case asserts (that file was split at #878 — grep the five
+  siblings rather than trusting a filename here). The mechanism is #53's relaxation tier, which
   fires on `depthRelaxationMayHelp(cause)` (defined and called in
   `planRoute.ts`, ~:254 / ~:687) whenever the failure cause is
   mask-unreachability — **independent of `depthComfortMarginM`**, which is
@@ -3089,8 +3139,22 @@ making design-level decisions; do not silently deviate.
   INVALIDATION (a statement reporting a derived measurement whose inputs live in
   a DIFFERENT HUNK of the same diff — invisible to CI, which executes no prose,
   and to hunk-by-hunk review, where each hunk is individually correct and only
-  the pair is wrong). **A sweep cannot see a class it is itself an instance
-  of**: the sweep ordered for staleness produced two fresh same-PR instances
+  the pair is wrong). **A HEADING RENAME is the same-PR class in its nastiest
+  form, because the invalidated text is in NO hunk at all.** Measured at the
+  v0.20.0 sweep: renaming `## Now — v0.19.0` to `## Now — v0.20.0` and
+  rewriting the section silently falsified two cross-references elsewhere in
+  the SAME file — `(see "Now" above)` on a design that "Now" no longer
+  describes, and `the third now sits in v0.20.0 (see "Next" above)` where the
+  issue had SHIPPED and "Next" had become v0.21.0. Two full audit rounds read
+  the diff and missed both, correctly: neither line is in it. A third round
+  reading the WHOLE FILE found them, and a fourth found a third instance
+  (`#832` grouped into `v0.20.0` while open in `v0.21.0`). What caught that
+  last one is the remedy below doing its job: the same file's own Now section
+  already said #832 "stays open", so the document CONTRADICTED ITSELF and the
+  disagreement was the signal. After any rename of a heading or an anchor,
+  grep the whole file for references BY NAME and BY POSITION ("above",
+  "below", "see X") — the diff cannot show you these. **A sweep cannot see a
+  class it is itself an instance of**: the sweep ordered for staleness produced two fresh same-PR instances
   (the CHANGELOG moved to 51 while its code-comment twin stayed at ~45). So the
   remedy is NOT "sweep harder" — it is TWIN SEARCH (state each fact in two
   artifacts — test↔source, comment↔CHANGELOG, comment↔PR body — and check they
@@ -3463,7 +3527,7 @@ making design-level decisions; do not silently deviate.
   conservative depth `>= G - T` — at the 3.0 m default that is exactly
   `BOAT_DRAFT_M`. **That is the MASK at the REQUESTED gate, not what the app
   serves**: #53 relaxation lowers the EFFECTIVE gate and fires at DEFAULT
-  settings — `realmask.repro.test.ts` pins Flensburg→Marstal at
+  settings — the `realmask.repro.*` suite pins Flensburg→Marstal at
   `requestedDepthM 3.0` / `usedDepthM ~2.3` (reproduced in a live browser
   2026-08-10), so the real floor there is **1.4 m under a 2.1 m hull**. Same
   shape as the "routes only at <= 2.3 m" defect: true of the GATE, misleading
