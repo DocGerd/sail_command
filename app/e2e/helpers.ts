@@ -161,21 +161,35 @@ export interface PreviewServer {
 // diffing it against every file actually present under `dist/`. Whatever
 // escapes — for either reason, and automatically for any FUTURE filter
 // change too, since nothing here re-derives `globPatterns`/`globIgnores` —
-// is grouped by directory and ONE representative per group is byte-compared
-// against the served copy. Grouping by directory (not fetching every
-// escaping file) is a deliberate cost bound: this file has 60+
-// `startPreview()` call sites across the suite, and the escaping set is
-// dominated by ~770 font glyph-range `.pbf` files (three font-family
-// directories) that would turn one cheap check into tens of thousands of
-// extra requests. Because `THIRD-PARTY-NOTICES.txt`, `sprites/LICENSE.txt`,
-// `brand/social-card.png` and `test-fixtures/wind-sw12.json` each sit ALONE
-// in their own directory (verified against a real build, 2026-09), the
-// one-per-directory sample always includes exactly them.
+// is grouped by directory; `pickResidualRepresentatives` fully checks every
+// file in a group at or under `FULL_CHECK_MAX_FILES_PER_DIR` (8) and falls
+// back to a single lexicographically-first representative only above that
+// (see that function's own comment for why a BARE one-per-directory scheme
+// was insufficient — a review-caught SELECTION blind spot, not merely a
+// coverage one). Fully checking small groups rather than fetching every
+// escaping file everywhere is still a deliberate cost bound: this file has
+// 60+ `startPreview()` call sites across the suite, and the escaping set
+// today is dominated by ~770 font glyph-range `.pbf` files split across only
+// three font-family directories (each far over the threshold) that would
+// turn one cheap check into tens of thousands of extra requests if fully
+// checked everywhere. `THIRD-PARTY-NOTICES.txt`, `sprites/LICENSE.txt`,
+// `brand/social-card.png`, `basemap-assets/fonts/OFL.txt` and
+// `test-fixtures/wind-sw12.json` each sit in a directory whose escaping
+// count is at or under the threshold (verified against a real build,
+// 2026-09-03), so all of them are checked — including when
+// `test-fixtures/wind-docs-plan-route.json` (the docs-recapture fixture,
+// gitignored, present only on a dev machine that has run
+// `gen-docs-wind-fixture.mjs`) sits alongside `wind-sw12.json` in the same
+// directory; under the OLD one-per-directory scheme whichever of the two
+// sorted first would have silently become the SOLE representative,
+// regardless of which one a mutation actually touched.
 //
-// NAMED RESIDUAL, do not over-claim it away: within a directory holding
-// MORE than one escaping file (only the three font-family directories do,
-// today), a difference confined to a NON-representative sibling is not
-// caught — this is a bounded sample, not an exhaustive scan of `dist/`.
+// NAMED RESIDUAL, do not over-claim it away: within a directory whose
+// escaping count EXCEEDS the threshold (only the three font-family
+// directories do, today — each has hundreds of files, so raising the
+// threshold to reach them is not viable per the cost bound above), a
+// difference confined to a NON-representative sibling is not caught — this
+// is a bounded sample there, not an exhaustive scan of the whole of `dist/`.
 //
 // This addresses #803's FIRST layer (a foreign server already on the
 // port) for everything the two probes together reach — not the whole of
@@ -287,10 +301,22 @@ function assertSwJsMatches(servedSwJs: string, localSwJs: string): void {
  * `[{"revision"` token, then its closing `]`) rather than by the call's own
  * name, which minification renames every build. Fails CLOSED (throws) on a
  * shape it doesn't recognise, matching `extractEntryScriptSrc`'s precedent
- * above: silently returning an empty set here would make EVERY dist/ file
- * look like it "escapes" the manifest, which is the opposite of safe — it
- * would make `assertResidualDistFilesMatch` below fetch the ~800-file whole
- * of `dist/` instead of the handful of files that genuinely escape. */
+ * above: an empty or wrongly-prefixed set here would make EVERY dist/ file
+ * look like it "escapes" the manifest — including files genuinely covered by
+ * it, whose coverage would then be silently DROPPED, not merely widened —
+ * so this must not be allowed to pass silently regardless of how expensive
+ * the resulting over-check would or wouldn't be (that cost question is
+ * `pickResidualRepresentatives`'s concern, below, not this function's: this
+ * function's job is only to get the SET right, never to reason about what a
+ * wrong set would cost downstream — review MINOR 2 is precisely a prior
+ * version of this comment doing that instead, with a specific fetch count
+ * that was correct for a since-changed implementation of that other function
+ * and would have gone stale again at the next change to it). The
+ * `!urls.has('index.html')` check below (review MINOR 1) is what actually
+ * catches a wrongly-prefixed manifest (e.g. a `modifyURLPrefix` workbox
+ * option this project doesn't use today) before it can reach that other
+ * function at all — a missing marker, unlike a missing array, would
+ * otherwise parse fine and degrade silently. */
 function parsePrecacheManifestUrls(swJs: string, source: string): Set<string> {
   const start = swJs.indexOf('[{"revision"');
   if (start === -1) {
@@ -313,7 +339,7 @@ function parsePrecacheManifestUrls(swJs: string, source: string): Set<string> {
       { cause: err },
     );
   }
-  return new Set(
+  const urls = new Set(
     entries.map((entry, i) => {
       if (typeof entry.url !== 'string') {
         throw new Error(
@@ -324,6 +350,26 @@ function parsePrecacheManifestUrls(swJs: string, source: string): Set<string> {
       return entry.url;
     }),
   );
+  // Review MINOR 1: `index.html` is ALWAYS precached (workbox's own
+  // `globPatterns` includes `html`, and this app ships exactly one), so its
+  // absence means the parsed URLs carry a prefix or shape this diff doesn't
+  // recognise — e.g. a `modifyURLPrefix`/`dontCacheBustURLsMatching`-shaped
+  // rewrite. Left unguarded, that would silently treat every real dist/ file
+  // as escaping (none of them would match either, not just the ones this PR
+  // cares about) — `pickResidualRepresentatives`'s per-directory-group fallback
+  // bounds the REPRESENTATIVE count even then (one per directory, not one per
+  // file), but the files it would fully-check under the group's small-count
+  // branch include multi-megabyte assets never meant to be fetched here (the
+  // basemap archive alone is ~27 MB) — 60+ call sites x that would be
+  // materially expensive, so this must fail LOUD rather than silently widen.
+  if (!urls.has('index.html')) {
+    throw new Error(
+      `#833/#854: workbox's precache manifest in ${source} does not list "index.html" — the ` +
+        `parsed URLs likely carry an unexpected prefix this structural diff cannot see. ` +
+        `Refusing to guess which dist/ files it covers.`,
+    );
+  }
+  return urls;
 }
 
 /** Every file under `dist/`, as POSIX-style paths relative to `dist/` itself
@@ -343,28 +389,68 @@ function walkDistFiles(dir: string, relBase: string): string[] {
   return out;
 }
 
-/** #833/#854: picks one representative dist-relative path per directory
- * among files NOT covered by workbox's precache manifest — see the block
- * comment above `assertSwJsMatches` for the cost-bound rationale (this file
- * has 60+ `startPreview()` call sites, and the escaping set today is
- * dominated by ~770 font glyph-range files that share only three
- * directories). Deterministic (lexicographically first per group) so a
- * failure is reproducible across runs. */
+// #833/#854 review MAJOR: a bare one-representative-per-directory scheme has
+// a SELECTION blind spot, not just a coverage gap — the picked file is
+// whichever sorts lexicographically first, so a SECOND escaping file dropped
+// into an already-represented directory can silently take over as "the"
+// representative while the file that motivated the check goes unchecked.
+// Measured concretely: on a dev machine with `gen-docs-wind-fixture.mjs` run
+// (CLAUDE.md requires this before every README recapture), `test-fixtures/`
+// holds BOTH `wind-docs-plan-route.json` and `wind-sw12.json` — the former
+// sorts first, so it silently became the sole representative and a mutation
+// confined to `wind-sw12.json` (the file #833 itself names as "the sharpest
+// case") passed undetected on that machine, even though the identical
+// mutation was caught on a CI-shaped tree with no docs fixture present. Root
+// cause is the same for a BARE directory too: `dirname('THIRD-PARTY-
+// NOTICES.txt') === '.'`, so a future root-level file (`.nojekyll`,
+// `404.html`) would shadow it the same way (no dotfiles sit at dist/ root
+// today, so this is latent, not live).
+const FULL_CHECK_MAX_FILES_PER_DIR = 8;
+
+/** #833/#854: for each directory holding files NOT covered by workbox's
+ * precache manifest, fully checks EVERY escaping file in that directory when
+ * there are `FULL_CHECK_MAX_FILES_PER_DIR` or fewer of them, and falls back
+ * to ONE lexicographically-first representative only once a directory's
+ * escaping count exceeds that — see the block comment above for why a bare
+ * one-per-directory scheme is unsound (a selection blind spot, not merely an
+ * exhaustiveness one) and the block comment above `assertSwJsMatches` for
+ * the cost-bound rationale this fallback still honours (this file has 60+
+ * `startPreview()` call sites, and the escaping set today is dominated by
+ * ~770 font glyph-range files split across only three-plus directories, so
+ * fully checking those specifically would be tens of thousands of extra
+ * requests across the suite). At `FULL_CHECK_MAX_FILES_PER_DIR = 8` a build
+ * with the docs wind fixture present checks 9 files total (measured against
+ * a real build, 2026-09-03) — up from 8 without it — because BOTH
+ * `test-fixtures/` files now sit under the threshold and are checked
+ * together, closing the selection blind spot above. Deterministic (paths
+ * sorted within and across groups) so a failure is reproducible. */
 function pickResidualRepresentatives(distFiles: string[], manifestUrls: Set<string>): string[] {
   const escaping = distFiles.filter(
     (f) => !manifestUrls.has(f) && f !== 'index.html' && f !== 'sw.js',
   );
-  const byDir = new Map<string, string>();
-  for (const f of [...escaping].sort()) {
+  const byDir = new Map<string, string[]>();
+  for (const f of escaping) {
     const dir = dirname(f);
-    if (!byDir.has(dir)) byDir.set(dir, f);
+    const group = byDir.get(dir);
+    if (group) group.push(f);
+    else byDir.set(dir, [f]);
   }
-  return [...byDir.values()].sort();
+  const picked: string[] = [];
+  for (const group of byDir.values()) {
+    group.sort();
+    if (group.length <= FULL_CHECK_MAX_FILES_PER_DIR) {
+      picked.push(...group);
+    } else {
+      picked.push(group[0]);
+    }
+  }
+  return picked.sort();
 }
 
-/** #833/#854: byte-compares each of `relPaths` (already narrowed to one
- * representative per escaping directory by `pickResidualRepresentatives`)
- * against its served copy. Read as a Buffer, not text — several of these
+/** #833/#854: byte-compares each of `relPaths` (already narrowed by
+ * `pickResidualRepresentatives` to every escaping file in a small directory,
+ * or one representative in a large one) against its served copy. Read as a
+ * Buffer, not text — several of these
  * (`.png`, `.pbf`) are binary, and a `utf8` round-trip is not guaranteed to
  * preserve byte equality for them. No-op if `relPaths` is empty (a build
  * with nothing outside the manifest — nothing to check). Throws immediately
