@@ -67,6 +67,13 @@ jobs:
       github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
       || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-latest
+    # #882: no cap before now (360-min default). Measured 2026-09-03 via the
+    # Actions API against the 30 most recent `deploy.yml` runs (including
+    # main-mode double-build runs, e.g. the v0.18.0/v0.19.0 tag pushes): max
+    # 69s (n=30, all success) — a "cheap insurance" job per #882's own
+    # bucket, sized at 10-15 min rather than a tight multiple of that
+    # sub-minute median.
+    timeout-minutes: 15
     permissions:
       contents: read
       # actions: read — the byte-stability step (#117b) looks up the last
@@ -716,6 +723,12 @@ jobs:
     # here would pollute the uat history with main SHAs for content that
     # didn't change.
     if: github.ref == 'refs/heads/develop'
+    # #882: no cap before now (360-min default). Measured 2026-09-03 via the
+    # Actions API against the 30 most recent runs: max 4s (n=30) — this job
+    # is a single bookkeeping `echo`, a "cheap insurance" job per #882's own
+    # bucket, sized at 10-15 min rather than a tight multiple of a
+    # few-second median.
+    timeout-minutes: 10
     environment: { name: uat, url: "https://docgerd.github.io/sail_command/uat/" }
     steps:
       - run: echo "UAT deployed to https://docgerd.github.io/sail_command/uat/"
@@ -737,6 +750,12 @@ jobs:
     if: >-
       github.ref == 'refs/heads/main'
       || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+    # #882: no cap before now (360-min default). Measured 2026-09-03 via the
+    # Actions API against the 30 most recent runs: max 3s (n=30) — this job
+    # is a single bookkeeping `echo`, a "cheap insurance" job per #882's own
+    # bucket, sized at 10-15 min rather than a tight multiple of a
+    # few-second median.
+    timeout-minutes: 10
     environment: { name: prod, url: "https://docgerd.github.io/sail_command/" }
     steps:
       - run: echo "Production deployed to https://docgerd.github.io/sail_command/"
@@ -752,6 +771,30 @@ jobs:
     # rationale.
     needs: [build, deploy]
     runs-on: ubuntu-latest
+    # #882: no cap before now (360-min default). This job is bounded at
+    # roughly 20 min BY CONSTRUCTION: two probe families below (the CDN
+    # Range probe and the #398 entry-chunk probe), each probing prod THEN
+    # uat sequentially, each retrying up to 10 times with a 30s sleep
+    # between attempts on failure — worst case ~2*5min + 2*5min = ~20 min.
+    # Measured 2026-09-03 via the Actions API against the 30 most recent
+    # runs, the observed max is 288s (n=30, including one `failure`
+    # conclusion), far under that worst case.
+    #
+    # 25 min was considered and REJECTED (review round 1, #892): it clears
+    # only ~1.25x over this job's own ~20-min constructional bound, below
+    # this repo's usual ~1.7x floor (the multiple `ci.yml`'s `e2e` cap
+    # clears over ITS outlier, per that job's own #605 comment) — "matches
+    # `deploy`'s cap" describes a coincidence, not a justification, since
+    # that cap was derived from a DIFFERENT two-attempt worst case (the
+    # `actions/deploy-pages` retry, #415) with no relation to this job's
+    # construction. Also: none of the `curl` calls below sets
+    # `--max-time`/`--connect-timeout`, so a single stalled TCP connection
+    # could in principle block one attempt far longer than the ~1-2s the
+    # ~20-min arithmetic assumes — an unbounded tail the constructional
+    # estimate does not cover, unlike a truly deterministic sleep loop.
+    # 35 min clears ~1.75x over the constructional bound (in line with this
+    # repo's floor) while leaving real room for that curl-hang tail.
+    timeout-minutes: 35
     steps:
       - name: Probe basemap archives through the live CDN
         env:

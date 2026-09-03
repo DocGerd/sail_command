@@ -20,12 +20,13 @@ import { usePersistedToggle } from '../lib/usePersistedToggle';
 // #813 comment), and its content moves HERE instead. The complementary half
 // matters: with NO plan, THIS component never even mounts (RouteLayer.tsx
 // returns null before reaching this file's own mount line), so
-// DataLayers.tsx's `.depth-legend` is what keeps the #597 safety caveat
-// reachable in that state — exactly one "Legende" disclosure exists at any
-// time, never both, never neither. The depth-section copy below is reused
-// VERBATIM from the `map.depth.legend.*` keys (unchanged, still also used by
-// DataLayers.tsx) rather than re-authored, so the #597 sentence survives
-// byte-for-byte.
+// DataLayers.tsx's `.depth-legend` is what carries the #597 safety caveat
+// forward WHEN IT RENDERS, subject to that component's own `legendHidden`
+// gate (DataLayers.tsx's own #842 comment) — exactly one "Legende"
+// disclosure exists at any time, never both. The depth-section copy below
+// is reused VERBATIM from the `map.depth.legend.*` keys (unchanged, still
+// also used by DataLayers.tsx) rather than re-authored, so the #597
+// sentence survives byte-for-byte.
 //
 // #813 fix-wave, MAJOR 1: on a NARROW layout this disclosure sits nested
 // inside RouteLayer.tsx's OWN `#628` outer "Anzeigeoptionen" Disclosure,
