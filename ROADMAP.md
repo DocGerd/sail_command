@@ -39,7 +39,7 @@ strand cut what continuous integration spends: the `app` job now skips its
 expensive steps on a docs-only change and on a push whose tree a previous
 run already tested, CodeQL gained a concurrency group so a superseded
 pull-request head stops being analysed to completion, CodeQL's pull-request analysis now runs only where its
-`paths:` filter admits the changed paths, so a documentation-only pull
+`paths:` filter admits the changed paths, so a prose-only documentation pull
 request skips it while a changelog-only one still triggers it, the
 nightly coverage run skips an unchanged tree, and every previously uncapped
 job gained a `timeout-minutes`
@@ -228,8 +228,8 @@ either a false red or a false green with nothing downstream able to tell
 the two apart; it now byte-compares the served `index.html` and `sw.js`
 against this run's own build and fails closed on any mismatch, though a
 foreign build differing only in the subtrees the service worker's precache
-manifest excludes is a named residual, since tracked as #833 alongside two
-sibling residuals (#832, #854) in `v0.20.0`
+manifest excludes is a named residual, since tracked as #833; it and #854
+shipped in `v0.20.0`, while the sibling residual #832 stays open
 ([#803](https://github.com/DocGerd/sail_command/issues/803)). `ViaMarkers`
 was executed by nothing in the suite — its only importer mocks
 `maplibre-gl`'s `Marker` as a no-op and every reaching test passed an empty
