@@ -655,8 +655,7 @@ export const en = {
   // water or drying flats), not anything land-coloured. The old wording
   // handed the user an inverted detection heuristic ("scan for land-like
   // patches"); #597's own issue text states the correct direction. (#805:
-  // anchored on symbol names, not line numbers, after this citation drifted
-  // twice.)
+  // anchored on symbol names, not line numbers.)
   'map.depth.legend.caveat':
     'Unsurveyed and drying water carries no hatching either, and nothing else marks it, so it looks like ordinary water. Absence of hatching is not a guarantee the water is clear — it may simply be a place with no data.',
   // Seamarks / aids-to-navigation overlay (#7) — default OFF, opt-in.

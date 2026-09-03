@@ -1172,12 +1172,13 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
           "Legende"/"Legend" surface at that point, folding this content in
           under its own sub-heading. Consolidating this WAY — suppressing
           the free-floating pill rather than the panel-gated one — is what
-          keeps the #597 caveat reachable with NO plan at all (the state
-          RouteLegend can't cover, since RouteLayer.tsx returns null before
-          ever mounting it): the alternative direction (fold this content
-          INTO RouteLegend and never touch this component) would silently
-          make the caveat unreachable until a route is planned, the exact
-          "two individually-correct fixes silence the complement of two
+          keeps the #597 caveat's disclosure mounted with NO plan at all,
+          subject to this component's own `legendHidden` gate above (the
+          state RouteLegend can't cover, since RouteLayer.tsx returns null
+          before ever mounting it): the alternative direction (fold this
+          content INTO RouteLegend and never touch this component) would
+          silently make the caveat unreachable until a route is planned,
+          the exact "two individually-correct fixes silence the complement of two
           conditions" trap CLAUDE.md's Working-style section warns about.
 
           #681 x #813: the independent hatch toggle (below, inside the
