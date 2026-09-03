@@ -530,6 +530,17 @@ export const en = {
   // for the same fact; "as low as" names the same hazard consistently.
   'route.legs.shallowCautious': 'cautious: as low as {depth} m',
   'route.legs.motorNote': 'Motor = engine only; no sail contribution modelled.',
+  // #325: advisory-only per the issue's own DoD — the boat speed every leg
+  // used still assumes full main, so this suggestion never fed the time
+  // optimisation. {first}/{second}/{third} are REEF1_AWS_KN/REEF2_AWS_KN/
+  // REEF3_AWS_KN (reefSuggestion.ts) interpolated, not hardcoded, so the two
+  // can never drift apart. The trailing sentence is review MAJOR 3: the
+  // apparent wind used here is the forecast MEAN, never the gust — a gust
+  // can flip a full band, always toward under-reefing, and this line is the
+  // one place the disclosure lives (deliberately not implemented: see
+  // reefSuggestion.ts's own GUSTS comment).
+  'route.legs.reefNote':
+    'Reef suggestion is advisory seamanship guidance based on apparent wind speed (below {first} kn: full main; {first}-{second} kn: 1st reef; {second}-{third} kn: 2nd reef; {third}+ kn: 3rd reef) — not part of the route optimisation. Computed from the forecast mean wind; it does not account for gusts.',
   'route.legs.disclosure': 'Legs ({count})',
   // #774: see dict.de.ts's comment for why this is a DESCRIPTION rather than
   // the table's accessible name.
@@ -541,6 +552,11 @@ export const en = {
   'route.pointOfSail.reach': 'Reach',
   'route.pointOfSail.broadReach': 'Broad reach',
   'route.pointOfSail.run': 'Run',
+  // #325: mainsail reef suggestion chip labels.
+  'route.reef.full': 'Full main',
+  'route.reef.reef1': '1st reef',
+  'route.reef.reef2': '2nd reef',
+  'route.reef.reef3': '3rd reef',
   'route.maneuver.tack': 'Tack',
   'route.maneuver.gybe': 'Gybe',
   'route.maneuverLetter.tack': 'T',
@@ -609,8 +625,7 @@ export const en = {
   // this comment used to say "rendered inside .data-layer-controls", which
   // was stale from the moment that move shipped; corrected here rather than
   // left for a reviewer who is looking at DataLayers.tsx, not this file, to
-  // never notice. Reachable without a plan either way, since the hatch has
-  // no OTHER opt-in surface. Covers the HATCH SYMBOL only, never the
+  // never notice. Covers the HATCH SYMBOL only, never the
   // absolute depth-ramp colours (out of scope per the maintainer ruling on
   // #598). Deliberately says "cautious reading", never "shallow water" — the
   // hatch is a cautious-reading indicator, not a shallow-water one, and can
@@ -646,13 +661,16 @@ export const en = {
   //
   // PR #625 self-review Major 1: the first version of sentence 1 said this
   // water "looks the same as dry land" — false, and false in the DANGEROUS
-  // direction. depthColor.ts:82 returns fully transparent for byte 0 and the
-  // hatch LUT loop (depthColor.ts:243) starts at b=1, so the app paints
-  // NOTHING over byte 0 either way — what a user actually sees there is the
-  // basemap alone, i.e. ORDINARY BLUE WATER (OSM land polygons don't cover
-  // unsurveyed water or drying flats), not anything land-coloured. The old
-  // wording handed the user an inverted detection heuristic ("scan for
-  // land-like patches"); #597's own issue text states the correct direction.
+  // direction. depthColor.ts's `byte === LAND` early return (in
+  // `depthByteToRgba`) returns fully transparent for byte 0, and
+  // `buildNavigabilityHatchImageData`'s `marginal[]` LUT loop starts at
+  // b=1 (byte 0 stays 0/false), so the app paints NOTHING over byte 0
+  // either way — what a user actually sees there is the basemap alone,
+  // i.e. ORDINARY BLUE WATER (OSM land polygons don't cover unsurveyed
+  // water or drying flats), not anything land-coloured. The old wording
+  // handed the user an inverted detection heuristic ("scan for land-like
+  // patches"); #597's own issue text states the correct direction. (#805:
+  // anchored on symbol names, not line numbers.)
   'map.depth.legend.caveat':
     'Unsurveyed and drying water carries no hatching either, and nothing else marks it, so it looks like ordinary water. Absence of hatching is not a guarantee the water is clear — it may simply be a place with no data.',
   // Seamarks / aids-to-navigation overlay (#7) — default OFF, opt-in.
@@ -903,6 +921,19 @@ export const en = {
   'ais.status.offline': 'AIS offline',
   'ais.status.keyError': 'AIS: check your API key',
   'ais.status.liveRoute': 'AIS live · {count} vessels ({routeCount} along route)',
+  // #831: the keyboard-reachable list of the AIS vessels in view (WCAG
+  // 2.1.1) — mirrors seamarks.inView.* (#830). Rendered regardless of AIS
+  // status; the status chip above already explains why the list may be
+  // empty.
+  'ais.inView.summary': 'AIS vessels in view ({count})',
+  'ais.inView.hint':
+    'Sorted by distance from the map centre. Selecting a row shows the vessel in a popup on the map.',
+  'ais.inView.loading': 'Waiting for the map view …',
+  'ais.inView.empty': 'No AIS vessels currently in view.',
+  // {shown} is AIS_IN_VIEW_MAX (lib/aisGeoJson.ts) — the copy never types
+  // the number, so constant and sentence cannot drift apart.
+  'ais.inView.truncated':
+    'Only the {shown} vessels nearest the map centre of the {total} in view are listed — zoom in to see all of them.',
   // #155: north-arrow / track-up compass (see dict.de for the label rationale).
   'map.compass.northUp': 'Map orientation: north up. Activate course-up',
   'map.compass.northUp.noTrack':

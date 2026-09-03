@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-09-03
+
+### Added
+
+- The Live tab's panel now carries an "AIS vessels in view" list — each nearby vessel is a keyboard-focusable button that reads its name and details and, when activated, opens the same identification popup a map click opens — so AIS vessel identification no longer needs a pointer click on a map symbol (#831).
+- Each sail leg in the results table now carries an advisory mainsail reef suggestion (Full main/1st/2nd/3rd reef), computed from apparent wind speed — it is a presentational heuristic shown alongside the route, not part of the time optimisation (#325).
+
 ## [0.19.0] - 2026-09-02
 
 ### Added
@@ -931,7 +938,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.19.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.20.0...HEAD
+[0.20.0]: https://github.com/DocGerd/sail_command/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/DocGerd/sail_command/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/DocGerd/sail_command/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/DocGerd/sail_command/compare/v0.16.0...v0.17.0

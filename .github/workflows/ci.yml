@@ -6,15 +6,63 @@ on:
 permissions:
   contents: read
 concurrency:
-  # Cancel superseded runs on PRs only; pushes to main always run to completion.
+  # Cancel superseded runs on PRs only - `cancel-in-progress` here governs
+  # only an already-RUNNING run, never a merely QUEUED one, so "pushes to
+  # main/develop always run to completion" is an OVER-CLAIM (the same one
+  # #900's review corrected in codeql.yml's twin comment). On the default
+  # `queue: single` (this workflow sets no `queue:` property), GitHub caps
+  # PENDING runs at one per group: "By default, any existing `pending` job
+  # or workflow in the same concurrency group will be canceled and the new
+  # queued job or workflow will take its place." (docs.github.com,
+  # "workflow-syntax" reference, #concurrency section, fetched and matched
+  # as an exact substring 2026-09-03 - the sentence renders there but was
+  # not locatable in any github/docs@main source file, so cite the rendered
+  # page rather than a file path that does not exist). So two pushes to the
+  # SAME branch queued close together (this group is `ci-${{ github.ref }}`,
+  # branch-specific for push events) can drop the earlier-queued one before
+  # it ever starts, even though push events never set
+  # `cancel-in-progress: true`. See CLAUDE.md's own `ci.yml`'s concurrency
+  # group bullet for the measured same-ref queuing/wedge behavior this
+  # composes with.
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   app:
     runs-on: ubuntu-latest
+    # #882: this job had NO cap (GitHub's 360-minute default) until now. Sized
+    # generously rather than tightly: re-measured 2026-09-03 via the Actions
+    # API against the 30 most recent `ci.yml` runs, `app`'s max is 1557s
+    # (25.95 min, n=29 completed) — consistent with #882's own 1551s figure
+    # from a day earlier. #878 (same milestone, in flight) is SPLITTING
+    # `routing/realmask.repro.test.ts`, the one file that dominates this
+    # job's wall clock (CLAUDE.md's "Full test suite" bullet), which will
+    # change this duration — so this cap is deliberately NOT tuned tight
+    # against today's measurement (that would risk a false red the moment
+    # #878 lands, or before it if a slow runner is hit). 45 min is close to
+    # #882's own recommendation and leaves ~1.7x headroom over the measured
+    # max; revisit once #878 has landed and the new duration is measured.
+    timeout-minutes: 45
     defaults: { run: { working-directory: app } }
+    # #875/#877: this job's two classify steps below need `checks: read` and
+    # `actions: read` to read check-run/workflow-run state (the #877
+    # skip-retest classifier) - the workflow-level `permissions: contents:
+    # read` alone would leave those two unset (an explicit `permissions:`
+    # block zeroes every unlisted scope), so this job declares its own,
+    # REPLACING rather than adding to the workflow-level block.
+    permissions:
+      contents: read
+      checks: read
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Full history (#875/#877): the classify step below diffs a PR's
+          # base against its head (needs both commits reachable), and the
+          # #877 retest classifier walks a push commit's SECOND PARENT and
+          # compares tree objects - a default depth-1 clone would make both
+          # unreachable. Mirrors `e2e`'s own checkout, which already needed
+          # this for the #327 classify step.
+          fetch-depth: 0
       # Privacy guard (#474): fails the build if any tracked file leaks a
       # contributor's absolute home-directory path. Placed FIRST, before
       # `setup-node`/`npm ci`, since it needs neither (git + bash only) and
@@ -35,11 +83,52 @@ jobs:
       - name: No leaked home paths (#474)
         working-directory: ${{ github.workspace }}
         run: bash .github/scripts/check-no-home-paths.sh
+      # #875: docs-only vs. code classifier, same script `e2e` uses (#327),
+      # but this step reads its OWN `run_app` output rather than `run_e2e` -
+      # `run_app` is a STRICT SUBSET of `run_e2e`'s skip set (CHANGELOG.md
+      # and changelog.d/* are excluded: they are build inputs baked into the
+      # bundle at build time, and `app` running in full is exactly what
+      # makes `e2e` skipping on them safe - see the script's own header and
+      # CLAUDE.md's `ci.yml`'s `e2e` job bullet). The job still always runs
+      # and always reports (`app` is a REQUIRED check) - only the expensive
+      # steps below are `if:`-gated.
+      - name: Classify change (docs-only vs. code) for app (#875)
+        id: classify
+        working-directory: ${{ github.workspace }}
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash -e .github/scripts/classify-docs-only.sh
+      # #877: skip the expensive steps below when this push's TREE is
+      # byte-identical to an already-tested PR head (a `develop`/`main` push
+      # after a strict-up-to-date-policy merge always is - see the script's
+      # own header for the full mechanism and the recursion guard). Applies
+      # to `push` events only; every `pull_request` run gets `retest=true`
+      # (run) immediately and is unaffected.
+      - name: Classify skip-retest for app (#877)
+        id: retest
+        working-directory: ${{ github.workspace }}
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_SHA: ${{ github.sha }}
+          CHECK_NAME: app
+          GH_TOKEN: ${{ github.token }}
+        run: bash -e .github/scripts/classify-retest.sh
+      # The four `if:` gates below (and the two more on npm run notices/the
+      # notices diff check) default to RUN unless BOTH classify steps
+      # explicitly say `false` - matching #327's `!= 'false'` polarity on
+      # both terms, so an absent/empty/errored output from EITHER step fails
+      # this REQUIRED check's gate CLOSED, i.e. still runs the step.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: steps.classify.outputs.run_app != 'false' && steps.retest.outputs.retest != 'false'
         with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
       - run: npm ci
+        if: steps.classify.outputs.run_app != 'false' && steps.retest.outputs.retest != 'false'
       - run: npm run lint
+        if: steps.classify.outputs.run_app != 'false' && steps.retest.outputs.retest != 'false'
       - run: npm run typecheck
+        if: steps.classify.outputs.run_app != 'false' && steps.retest.outputs.retest != 'false'
       # #537: app/sweep/canonicalize.test.mjs guards a Critical defect (the
       # #54 rename-vs-solve-order coupling) but is never collected by vitest
       # (app/sweep/ is deliberately excluded from vite.config.ts's `include`
@@ -51,13 +140,18 @@ jobs:
       # (19 tests) against the full suite's ~500s, so a regression here
       # surfaces in seconds rather than ~8 minutes into the job.
       - run: npm run test:sweep-unit
+        if: steps.classify.outputs.run_app != 'false' && steps.retest.outputs.retest != 'false'
       - run: npm run test
+        if: steps.classify.outputs.run_app != 'false' && steps.retest.outputs.retest != 'false'
       - run: npm run build
+        if: steps.classify.outputs.run_app != 'false' && steps.retest.outputs.retest != 'false'
       # Drift guard: a dependency bump that forgets to regenerate the
       # committed third-party notices fails CI. Pathspec is relative to the
       # job's working-directory (app/).
       - run: npm run notices
+        if: steps.classify.outputs.run_app != 'false' && steps.retest.outputs.retest != 'false'
       - run: git diff --exit-code public/THIRD-PARTY-NOTICES.txt
+        if: steps.classify.outputs.run_app != 'false' && steps.retest.outputs.retest != 'false'
   # Deliberately no `needs: app` edge. The e2e job is self-contained: its
   # `pree2e` hook rebuilds the app from scratch, so no artifact flows from the
   # `app` job. Running the two jobs concurrently rather than gated saves ~120s
@@ -98,6 +192,13 @@ jobs:
     # CLAUDE.md) - nothing here auto-retries.
     timeout-minutes: 30
     defaults: { run: { working-directory: app } }
+    # #877: the skip-retest classify step below needs `checks: read` and
+    # `actions: read` (see the identical job-level permissions comment on
+    # `app`, above).
+    permissions:
+      contents: read
+      checks: read
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -145,22 +246,37 @@ jobs:
         # script's own `--selftest` (which drives itself via `bash -e "$SELF"`)
         # an honest model of production instead of a stricter one.
         run: bash -e .github/scripts/classify-docs-only.sh
+      # #877: same skip-retest classifier the `app` job runs, with
+      # CHECK_NAME=e2e - see that job's identical step for the full
+      # mechanism. `push` events only; every `pull_request` run is
+      # unaffected (`retest=true` immediately).
+      - name: Classify skip-retest for e2e (#877)
+        id: retest
+        working-directory: ${{ github.workspace }}
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_SHA: ${{ github.sha }}
+          CHECK_NAME: e2e
+          GH_TOKEN: ${{ github.token }}
+        run: bash -e .github/scripts/classify-retest.sh
       # The four `if:` gates below default to RUN on anything OTHER than the
       # literal string 'false' — not `== 'true'` (PR #350 review, Finding 1).
-      # An absent or empty `run_e2e` output (classify step aborted before
-      # writing it, `GITHUB_OUTPUT` unwritable, any future classifier bug)
-      # must fail this REQUIRED check's gate CLOSED, i.e. still run e2e; an
-      # equality-on-'true' gate does the opposite — it skips on anything that
-      # isn't exactly 'true', which includes "wrote nothing at all".
+      # An absent or empty `run_e2e`/`retest` output (a classify step
+      # aborted before writing it, `GITHUB_OUTPUT` unwritable, any future
+      # classifier bug) must fail this REQUIRED check's gate CLOSED, i.e.
+      # still run e2e; an equality-on-'true' gate does the opposite — it
+      # skips on anything that isn't exactly 'true', which includes "wrote
+      # nothing at all". Both conditions must allow RUN for a step to be
+      # skipped (#877 is additive to #327, never a replacement for it).
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        if: steps.classify.outputs.run_e2e != 'false'
+        if: steps.classify.outputs.run_e2e != 'false' && steps.retest.outputs.retest != 'false'
         with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
       - run: npm ci
-        if: steps.classify.outputs.run_e2e != 'false'
+        if: steps.classify.outputs.run_e2e != 'false' && steps.retest.outputs.retest != 'false'
       - run: npx playwright install --with-deps chromium
-        if: steps.classify.outputs.run_e2e != 'false'
+        if: steps.classify.outputs.run_e2e != 'false' && steps.retest.outputs.retest != 'false'
       - run: npm run e2e
-        if: steps.classify.outputs.run_e2e != 'false'
+        if: steps.classify.outputs.run_e2e != 'false' && steps.retest.outputs.retest != 'false'
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()
         with:
@@ -180,6 +296,11 @@ jobs:
   # silently misses the next hook added, the same enumerate-don't-patch
   # principle applied elsewhere in this repo to prose.
   hook-selftests:
+    # #882: no cap before now (360-min default). Measured 2026-09-03 via the
+    # Actions API against the 30 most recent runs: max 22s (n=30, all
+    # success) — a "cheap insurance" job per #882's own bucket, sized at
+    # 10-15 min rather than a tight multiple of a sub-minute median.
+    timeout-minutes: 10
     # DO NOT add `defaults: { run: { working-directory: ... } }` to this job
     # (PR #350 review, pre-existing-but-now-relevant finding). This job has
     # no `defaults`, so its steps run at the checkout root — repo-root

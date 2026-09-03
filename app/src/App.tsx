@@ -358,6 +358,10 @@ function AppShell() {
   // list — same contract as `liveSlot` above (the component mounts inside
   // MapView's subtree for the map context and portals into the panel).
   const [seamarksSlot, setSeamarksSlot] = useState<HTMLDivElement | null>(null);
+  // #831: the Live tab's slot for the keyboard-reachable AIS-vessels-in-view
+  // list — same contract, and deliberately unconditional (both narrow and
+  // wide), mirroring `seamarksSlot` rather than `liveSlot`'s isWide gate.
+  const [aisInViewSlot, setAisInViewSlot] = useState<HTMLDivElement | null>(null);
   // MapView reports at most one error per mount (see its own comment) —
   // this just needs to flip a banner on and let the user dismiss it; there's
   // no retry path since the underlying map instance isn't recreated.
@@ -1133,6 +1137,7 @@ function AppShell() {
                 plan={plan}
                 rig={rig}
                 activeLegIndex={activeLegIndex}
+                panelSlot={aisInViewSlot}
               />
               <LiveView
                 panelSlot={isWide ? liveSlot : null}
@@ -1602,7 +1607,19 @@ function AppShell() {
               its readout into this slot so the panel column isn't empty (#31);
               on narrow the slot isn't rendered and the readout stays a
               bottom-docked card above the tab strip. */}
-            {tab === 'live' && isWide && <div className="app-panel-live" ref={setLiveSlot} />}
+            {tab === 'live' && (
+              <>
+                {isWide && <div className="app-panel-live" ref={setLiveSlot} />}
+                {/* #831: portal target for AisVesselsInView (mounted inside
+                  MapView above), the #830-precedent keyboard-reachable AIS
+                  list — deliberately UNCONDITIONAL (both narrow and wide),
+                  unlike `.app-panel-live` above: on narrow this is the panel
+                  body's only content for the Live tab, since LiveView's own
+                  narrow readout renders as a separate bottom-docked card
+                  outside this container. */}
+                <div className="app-panel-ais" ref={setAisInViewSlot} />
+              </>
+            )}
           </div>
         </main>
       </div>

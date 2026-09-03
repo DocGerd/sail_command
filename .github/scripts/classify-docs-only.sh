@@ -1,5 +1,18 @@
 #!/usr/bin/env bash
-# Docs-only vs. code classifier for ci.yml's `e2e` job (#327, PR #330).
+# Docs-only vs. code classifier for ci.yml's `e2e` job (#327, PR #330) AND
+# `app` job (#875). Emits TWO outputs from ONE diff walk: `run_e2e` (the
+# original #327 decision) and `run_app` (#875's narrower one).
+#
+# #875: `run_app` must be a STRICT SUBSET of `run_e2e`'s skip set - CHANGELOG.md
+# and changelog.d/* are BUILD INPUTS (AboutDialog.tsx `?raw`-imports the
+# changelog and `changelogFragmentsPlugin` bakes fragments into the bundle at
+# build time), so a changelog-only PR must still run `app` in full even though
+# `e2e` may skip on it (that skip is itself only safe CONTINGENTLY - see
+# CLAUDE.md's `ci.yml`'s `e2e` job bullet). The relationship "app = e2e minus
+# {CHANGELOG.md, changelog.d/*}" is expressed ONCE below, inside the single
+# `case` arm that classifies each changed path - never as a second
+# hand-maintained allowlist. Do not copy this member list anywhere else
+# either; CLAUDE.md's own rule about this arm applies equally to both outputs.
 #
 # Extracted from an inline `run:` block in `.github/workflows/ci.yml` (#334) so
 # it carries committed test coverage: it is a BLOCKING guard on a REQUIRED
@@ -84,10 +97,22 @@ if [ "${1:-}" = "--selftest" ]; then
     git add -A >/dev/null 2>&1; git commit -qm "$1" >/dev/null 2>&1; git rev-parse HEAD
   }
 
-  # run <label> <expected run_e2e> <event> <base> <head>
+  # run <label> <expected run_e2e> <event> <base> <head> [expected run_app]
+  #     [reason_app substring]
+  # The 6th arg defaults to the 2nd (run_e2e's expectation) when omitted,
+  # since run_app agrees with run_e2e for every path EXCEPT the two build-input
+  # exceptions (CHANGELOG.md, changelog.d/*) - see #875's own comment at the
+  # production `case` arm. Call sites only need the 6th arg where the two
+  # diverge; every other site is silently correct via the default, which is
+  # what keeps this from becoming a second hand-maintained expectation list.
+  # The 7th arg, when given, asserts the reason_app VALUE contains that
+  # substring - asserting the parsed value, never the surrounding sentence
+  # (this repo's own documented prose-vs-value vacuity class), which is what
+  # lets case 11d below actually discriminate the reason-quality fix rather
+  # than merely re-checking the boolean the earlier cases already cover.
   run() {
-    local label="$1" expect="$2" ev="$3" b="$4" h="$5"
-    local out sum log rc got reason
+    local label="$1" expect_e2e="$2" ev="$3" b="$4" h="$5" expect_app="${6:-$2}" expect_reason_app_substr="${7:-}"
+    local out sum log rc got_e2e got_app reason got_reason_app reason_ok
     out="$(mktemp)"; sum="$(mktemp)"; log="$(mktemp)"
     set +e
     EVENT_NAME="$ev" BASE_SHA="$b" HEAD_SHA="$h" \
@@ -95,14 +120,48 @@ if [ "${1:-}" = "--selftest" ]; then
       bash -e "$SELF" >"$log" 2>&1
     rc=$?
     set -e
-    got="$(grep -o 'run_e2e=[a-z]*' "$out" 2>/dev/null | tail -1 | cut -d= -f2)"
-    [ -z "$got" ] && got="<none:step-exit-$rc>"
-    reason="$(grep -o 'reason=.*' "$log" | tail -1)"
-    if [ "$got" = "$expect" ]; then
-      printf '  OK   %-58s -> %-8s (%s)\n' "$label" "$got" "${reason:-step failed rc=$rc}"
+    # `|| true` on EACH pipeline below is REQUIRED, not decorative: under
+    # this file's own `set -euo pipefail`, a plain `var=$(A | B | C)`
+    # assignment DOES abort the script on a nonzero pipeline exit status
+    # (unlike the production path's `if ! x=$(...)` guards, this is a bare
+    # simple command, not an `if` condition, so it is NOT exempt from
+    # errexit). When the child crashed before printing the matching line,
+    # `grep -o` exits 1 and `pipefail` propagates that as the whole
+    # pipeline's status, which would abort this SELFTEST HARNESS before the
+    # `<none:step-exit-$rc>` fallback two lines down could ever run -
+    # measured directly (2026-09-03): injecting `exit 3` into the
+    # production path prints only the header line then rc=1 with ZERO case
+    # rows and no `SELFTEST OK`, silently swallowing every case rather than
+    # reporting the crash per-row.
+    got_e2e="$(grep -o 'run_e2e=[a-z]*' "$out" 2>/dev/null | tail -1 | cut -d= -f2 || true)"
+    got_app="$(grep -o 'run_app=[a-z]*' "$out" 2>/dev/null | tail -1 | cut -d= -f2 || true)"
+    [ -z "$got_e2e" ] && got_e2e="<none:step-exit-$rc>"
+    [ -z "$got_app" ] && got_app="<none:step-exit-$rc>"
+    reason="$(grep -o 'reason_app=.*' "$log" | tail -1 || true)"
+    # Belt-and-braces fallback: production always prints `reason_app=`
+    # immediately after `reason_e2e=` on the adjacent line, so this only
+    # matters if the child crashed BETWEEN those two `echo`s specifically -
+    # narrow, but a real gap this file's own crash-diagnostic contract
+    # should still cover rather than silently miss.
+    [ -z "$reason" ] && reason="$(grep -o 'reason_e2e=.*' "$log" | tail -1 || true)"
+    # The reason_app VALUE alone (prefix stripped), for the optional
+    # substring assertion - kept separate from the DISPLAY `reason` above,
+    # which may fall back to reason_e2e's text and would make a substring
+    # check meaningless on that fallback path.
+    got_reason_app="$(grep -o 'reason_app=.*' "$log" | tail -1 | cut -d= -f2- || true)"
+    reason_ok=true
+    if [ -n "$expect_reason_app_substr" ]; then
+      case "$got_reason_app" in
+        *"$expect_reason_app_substr"*) ;;
+        *) reason_ok=false ;;
+      esac
+    fi
+    if [ "$got_e2e" = "$expect_e2e" ] && [ "$got_app" = "$expect_app" ] && [ "$reason_ok" = "true" ]; then
+      printf '  OK   %-58s -> e2e=%-8s app=%-8s (%s)\n' "$label" "$got_e2e" "$got_app" "${reason:-step failed rc=$rc}"
       PASS=$((PASS + 1))
     else
-      printf '  XX   %-58s -> %-8s expected %s  (%s)\n' "$label" "$got" "$expect" "${reason:-step failed rc=$rc}"
+      printf '  XX   %-58s -> e2e=%-8s app=%-8s expected e2e=%s app=%s reason_app~=%s  (%s)\n' \
+        "$label" "$got_e2e" "$got_app" "$expect_e2e" "$expect_app" "${expect_reason_app_substr:-<any>}" "${reason:-step failed rc=$rc}"
       FAIL=$((FAIL + 1))
     fi
     rm -f "$out" "$sum" "$log"
@@ -113,7 +172,7 @@ if [ "${1:-}" = "--selftest" ]; then
   # filename-creation step) cannot leave the suite reporting `SELFTEST OK`
   # having run fewer cases than it claims to (PR #350 review, Finding 3 -
   # constructed mutations M2/M3/M4 all left `FAIL=0` with a shrunken PASS).
-  EXPECTED_CASES=34
+  EXPECTED_CASES=37
 
   echo "=== classify-docs-only.sh: ${EXPECTED_CASES} adversarial cases (bash -e, GH default shell) ==="
 
@@ -191,9 +250,44 @@ if [ "${1:-}" = "--selftest" ]; then
   run "10 docs/a/b/c.md nested (should SKIP)" false pull_request "$B" "$H"
 
   # ---------- 11 changelog.d ----------
+  # #875: changelog.d/* and CHANGELOG.md are BUILD INPUTS (AboutDialog.tsx
+  # ?raw-imports them and changelogFragmentsPlugin bakes fragments into the
+  # bundle) - e2e may still skip on them (that's how #812 measured it,
+  # ~contingent on app always running in full), but app must NOT: run_app
+  # must stay true even though run_e2e goes false. This is the ONE place the
+  # two allowlists diverge, expressed via the 6th `run()` arg rather than a
+  # second case arm.
   r=$(mkrepo); cd "$r"; B=$(git rev-parse HEAD)
   mkdir -p changelog.d; echo x > changelog.d/1.md; H=$(commit_with cd)
-  run "11 changelog.d/1.md (SKIP by design)" false pull_request "$B" "$H"
+  run "11 changelog.d/1.md (e2e SKIP, app RUN - build input)" false pull_request "$B" "$H" true
+
+  # ---------- 11b CHANGELOG.md alone (same build-input exception, different
+  # path) ----------
+  r=$(mkrepo); cd "$r"; B=$(git rev-parse HEAD)
+  echo x >> CHANGELOG.md; H=$(commit_with clog)
+  run "11b CHANGELOG.md alone (e2e SKIP, app RUN - build input)" false pull_request "$B" "$H" true
+
+  # ---------- 11c docs/* + CHANGELOG.md (mixed docs+build-input: e2e still
+  # SKIPS since both paths are on ITS allowlist; app RUNS because one of them
+  # isn't on app's narrower one) - proves the "app = e2e minus changelog"
+  # subset property on a MIXED diff, not just a changelog-only one ----------
+  r=$(mkrepo); cd "$r"; B=$(git rev-parse HEAD)
+  echo x >> docs/seed.md; echo x >> CHANGELOG.md; H=$(commit_with mixed3)
+  run "11c docs/seed.md + CHANGELOG.md (e2e SKIP, app RUN)" false pull_request "$B" "$H" true
+
+  # ---------- 11d changelog path BEFORE a genuine non-docs path - reason_app
+  # must name the non-docs path, not the build-input one, once a stronger
+  # reason exists (the ordering under-reporting this file's own #875 comment
+  # used to leave silent). `git diff --name-only` lists paths in TREE order
+  # (alphabetical), not staging order, and `CHANGELOG.md` sorts before
+  # `app/src/seed.ts` there regardless of how the two are staged - which is
+  # exactly the ordering this case needs to exercise. ----------
+  r=$(mkrepo); cd "$r"; B=$(git rev-parse HEAD)
+  echo x >> CHANGELOG.md
+  echo x >> app/src/seed.ts
+  H=$(commit_with ordertest)
+  run "11d CHANGELOG.md then app/src/seed.ts (reason_app must name the code path)" \
+    true pull_request "$B" "$H" true "app/src/seed.ts"
 
   # ---------- 12 weird filenames ----------
   r=$(mkrepo); cd "$r"; B=$(git rev-parse HEAD)
@@ -339,7 +433,9 @@ if [ -n "${GITHUB_ACTIONS:-}" ] && [ "$GITHUB_OUTPUT" = /dev/null ]; then
 fi
 
 run_e2e=true
-reason="not a pull_request event"
+run_app=true
+reason_e2e="not a pull_request event"
+reason_app="not a pull_request event"
 
 if [ "${EVENT_NAME}" = "pull_request" ]; then
   base_sha="${BASE_SHA}"
@@ -369,13 +465,40 @@ if [ "${EVENT_NAME}" = "pull_request" ]; then
     if changed="$(git -c core.quotePath=false diff --no-renames --name-only "${base_sha}" "${head_sha}")"; then
       if [ -z "${changed}" ]; then
         run_e2e=true
-        reason="empty changed-file list"
+        run_app=true
+        reason_e2e="empty changed-file list"
+        reason_app="empty changed-file list"
       else
         run_e2e=false
-        reason="all changed paths matched the docs allowlist"
+        run_app=false
+        reason_e2e="all changed paths matched the docs allowlist"
+        reason_app="all changed paths matched the app-safe docs allowlist"
+        # Tracks whether reason_app currently names an ACTUAL non-docs path
+        # (the strongest, most actionable reason) rather than merely a
+        # build-input docs path - without this, a changelog path appearing
+        # BEFORE a genuine code path in the diff would leave reason_app
+        # stuck at "build-input docs path" even though the real reason `app`
+        # must run is the later code file, since run_app is already true by
+        # then and the `*)` arm's plain "only if not already true" guard
+        # (same shape as reason_e2e's, which needs no such flag because only
+        # ONE arm ever sets it) would never get a chance to correct it.
+        reason_app_is_nondocs=false
         while IFS= read -r f; do
           [ -z "$f" ] && continue
           case "$f" in
+            # #875: CHANGELOG.md and changelog.d/* are BUILD INPUTS (see this
+            # file's header) - safe for e2e to skip (contingently: `app`
+            # always runs in full and covers the changelog parser), but NOT
+            # safe for `app` to skip, since `app` running in full is exactly
+            # what makes the e2e skip safe. This is the ONLY branch where
+            # run_e2e and run_app diverge; every other allowlist member below
+            # is safe for both.
+            CHANGELOG.md|changelog.d/*)
+              if [ "${run_app}" != "true" ]; then
+                run_app=true
+                reason_app="build-input docs path (not app-safe): ${f}"
+              fi
+              ;;
             # NOTE: `docs/*` also matches non-Markdown files under docs/
             # (e.g. docs/screenshots/capture.mjs) - accepted because docs/ is
             # assumed to stay non-executable (nothing under it is referenced
@@ -386,15 +509,22 @@ if [ "${EVENT_NAME}" = "pull_request" ]; then
             # Deliberately NOT `.claude/**` - it holds executable hooks
             # (`.claude/settings.json`, `.claude/hooks/`), so it is code,
             # never docs. Do not add it here.
-            CHANGELOG.md|README.md|ROADMAP.md|GOVERNANCE.md|CONTRIBUTING.md|SECURITY.md|CODE_OF_CONDUCT.md|CLAUDE.md|LICENSE|docs/*|.github/ISSUE_TEMPLATE/*|.github/PULL_REQUEST_TEMPLATE.md|changelog.d/*)
+            README.md|ROADMAP.md|GOVERNANCE.md|CONTRIBUTING.md|SECURITY.md|CODE_OF_CONDUCT.md|CLAUDE.md|LICENSE|docs/*|.github/ISSUE_TEMPLATE/*|.github/PULL_REQUEST_TEMPLATE.md)
               ;;
             *)
               # Record only the FIRST path that forces a run - do not
               # overwrite once already true (an unlisted path is code, never
-              # docs, per #327's definition of done).
+              # docs, per #327's definition of done). Tracked per-output: a
+              # path that is app-unsafe (changelog) must not suppress the
+              # e2e reason, and vice versa.
               if [ "${run_e2e}" != "true" ]; then
                 run_e2e=true
-                reason="non-docs path: ${f}"
+                reason_e2e="non-docs path: ${f}"
+              fi
+              if [ "${run_app}" != "true" ] || [ "${reason_app_is_nondocs}" != "true" ]; then
+                run_app=true
+                reason_app="non-docs path: ${f}"
+                reason_app_is_nondocs=true
               fi
               ;;
           esac
@@ -403,11 +533,15 @@ if [ "${EVENT_NAME}" = "pull_request" ]; then
     else
       diff_status=$?
       run_e2e=true
-      reason="git diff failed (exit ${diff_status})"
+      run_app=true
+      reason_e2e="git diff failed (exit ${diff_status})"
+      reason_app="git diff failed (exit ${diff_status})"
     fi
   else
     run_e2e=true
-    reason="base or head commit unreachable (shallow clone / merge-queue / force-push)"
+    run_app=true
+    reason_e2e="base or head commit unreachable (shallow clone / merge-queue / force-push)"
+    reason_app="base or head commit unreachable (shallow clone / merge-queue / force-push)"
   fi
 fi
 
@@ -418,11 +552,16 @@ fi
 # boolean-only assertion twice already).
 echo "changed paths:"
 printf '%s\n' "${changed:-<none>}"
-echo "run_e2e=${run_e2e} reason=${reason}"
+echo "run_e2e=${run_e2e} reason_e2e=${reason_e2e}"
+echo "run_app=${run_app} reason_app=${reason_app}"
 
 echo "run_e2e=${run_e2e}" >> "$GITHUB_OUTPUT"
+echo "run_app=${run_app}" >> "$GITHUB_OUTPUT"
 {
   echo "### e2e classification"
   echo "- run_e2e: **${run_e2e}**"
-  echo "- reason: ${reason}"
+  echo "- reason: ${reason_e2e}"
+  echo "### app classification (#875)"
+  echo "- run_app: **${run_app}**"
+  echo "- reason: ${reason_app}"
 } >> "$GITHUB_STEP_SUMMARY"

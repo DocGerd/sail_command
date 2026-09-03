@@ -54,11 +54,16 @@ See [README → Development](README.md#development). Quick reference:
   unused imports or type errors.
 - The full unit/property suite was measured at 499.9 s (~8.3 min) on a
   quiet machine on 2026-08-19, when the suite held 2032 tests across 143
-  files. Wall time
-  is set almost entirely by one file under `app/src/` —
-  `routing/realmask.repro.test.ts` (477.4 s) — with the seeded fast-check
-  property suite second (239.6 s); everything else runs concurrently
-  underneath them, so the total barely exceeds the slowest file.
+  files. At that measurement, wall time was set almost entirely by ONE
+  file under `app/src/` — `routing/realmask.repro.test.ts` (477.4 s) —
+  with the seeded fast-check property suite second (239.6 s); everything
+  else ran concurrently underneath them, so the total barely exceeded the
+  slowest file. That single file was SPLIT (#878) into five sibling files
+  (`routing/realmask.repro.*.test.ts`, plus a shared
+  `test/realmaskFixtures.ts` helper) specifically so vitest could
+  parallelise it across cores instead of one file setting the wall clock —
+  the 477.4 s figure above describes the PRE-SPLIT state and was not
+  re-measured after it.
   CI is slower than dev machines, but not by one flat multiplier, and the
   ratio is not stable as the suite grows — re-measure rather than
   extrapolate. Measured 2026-08-19 on `develop` (CI run 32217579848), the
@@ -170,14 +175,14 @@ labels on **pull requests** are applied automatically from changed paths by
 
 **Milestones**
 
-- `v0.20.0` — the milestone now being filled; it closes when the release PR
+- `v0.21.0` — the milestone now being filled; it closes when the release PR
   merges and the tag is pushed.
-- `v0.21.0` — the next MINOR release, opened fresh at the `v0.19.0` cut per
+- `v0.22.0` — the next MINOR release, opened fresh at the `v0.20.0` cut per
   the roll-forward convention below.
 - `Backlog` — accepted, not yet scheduled into a release.
 - `Icebox` — deferred / maybe-never; revisit opportunistically.
 
-`v0.4.0` through `v0.19.0` are closed (plus the `v0.5.1`, `v0.12.1`, and
+`v0.4.0` through `v0.20.0` are closed (plus the `v0.5.1`, `v0.12.1`, and
 `v0.13.1` patch milestones). Whichever cut is in flight is always the
 exception, and reads the same way every time: its issues are closed while
 its milestone object is not, because that closes only at tag push (first

@@ -4,14 +4,127 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+    # #881: PR-scoped narrowing ONLY - this key lives under pull_request:,
+    # never under push:/schedule:, so every push to main/develop and the
+    # Monday cron still get an unscoped, repo-wide analysis regardless of
+    # what changed. A pull_request run is diff-scoped already (codeql-action
+    # builds a pr-diff-range extension pack), so skipping it here loses
+    # nothing the next develop push doesn't re-provide.
+    #
+    # Uses `paths:` (NOT `paths-ignore:`) DELIBERATELY. GitHub's own docs
+    # (github/docs, triggering-a-workflow-paths1.md) route the
+    # include-plus-exclude case to `paths` explicitly, twice: "If you want
+    # to both include and exclude path patterns for a single event, use the
+    # `paths` filter prefixed with the `!` character" - and the sequential
+    # override rule ("a matching negative pattern after a positive match
+    # will exclude the path; a matching positive pattern after a negative
+    # match will include the path again") is documented for `paths`, not
+    # for `paths-ignore`. Whether `paths-ignore` honours `!` at all is
+    # UNESTABLISHED either way (path-filter evaluation is server-side, not
+    # in actions/runner). A silent no-op here is the expensive failure
+    # direction - CodeQL is not a required check (protect-main requires
+    # only app+e2e), so a `docs/**` swallowing real source would fail OPEN
+    # with nothing to red. `paths` avoids the ambiguity entirely: `'**'` is
+    # the required non-negated base pattern (must stay quoted, or YAML
+    # reads it as an alias), narrowed by `!` excludes, then widened back by
+    # plain positive re-includes for the real source living under docs/.
+    #
+    # `.claude/**` is deliberately ABSENT from this list, matching ci.yml's
+    # own docs-only classifier precedent (it holds executable content, so
+    # it is code, never docs) - and concretely,
+    # `.claude/skills/sweep-closure/closure.mjs` is real javascript source
+    # CodeQL's javascript-typescript extractor picks up regardless of the
+    # `.claude` path prefix, and that closure walker's own selftest is not
+    # run anywhere in CI (#836), so PR-time CodeQL is not redundant there.
+    #
+    # docs/** holds real source too: docs/screenshots/capture.mjs and the
+    # docs/spikes/354-mode-churn/**/*.test.ts and probes/*.test.ts scratch
+    # files are genuine javascript-typescript source, re-included below as
+    # explicit positive patterns after the `!docs/**` exclusion. Arbitrary
+    # `.json` is deliberately NOT re-included: CodeQL's javascript-typescript
+    # extractor does not index arbitrary JSON despite JSON being part of the
+    # extractor's file-type enum - AutoBuild.java's setupFilters() excludes
+    # `-**/*.*` by default and re-includes only HTML/JS/YAML/TypeScript plus
+    # an eight-pattern JSON ALLOWLIST (package.json, *tsconfig*.json,
+    # manifest.json, .eslintrc*, xs-app.json, *.view.json, .xsaccess,
+    # codeql-javascript-*.json - verified 2026-09-03 against
+    # github/codeql:javascript/extractor/src/com/semmle/js/extractor/
+    # AutoBuild.java). The four docs/spikes/354-mode-churn/base-output/*.json
+    # sweep-dump files match none of those basenames, so a `docs/**/*.json`
+    # re-include would run both matrix legs while indexing nothing - the
+    # opposite of what this narrowing exists for. If a real
+    # package.json/tsconfig.json is ever added under docs/, add that EXACT
+    # basename here rather than a blanket `*.json`.
+    #
+    # CHANGELOG.md/changelog.d/** are left OUT of this exclusion list (so
+    # they keep matching `'**'` and triggering the workflow) - NOT because
+    # CodeQL's javascript-typescript/python extractors read `.md` content
+    # (they do not: `.md` is not an extracted file type for either leg, and
+    # build-mode: none means neither leg ever executes the app's Vite
+    # build, so the "baked into the shipped bundle" reasoning that governs
+    # e2e's SEPARATE docs-only classifier - see CLAUDE.md's e2e
+    # docs-only-skip bullet - does not apply to CodeQL at all) - but simply
+    # because there is no reason to add a further exclusion for a path
+    # CodeQL never inspects either way.
+    #
+    # Fails closed: any changed path not matched by a negation below still
+    # runs both matrix legs.
+    paths:
+      - '**'
+      - '!docs/**'
+      - '!README.md'
+      - '!SECURITY.md'
+      - '!GOVERNANCE.md'
+      - '!ROADMAP.md'
+      - '!CODE_OF_CONDUCT.md'
+      - '!CONTRIBUTING.md'
+      - '!CLAUDE.md'
+      - '!LICENSE'
+      - 'docs/**/*.ts'
+      - 'docs/**/*.tsx'
+      - 'docs/**/*.js'
+      - 'docs/**/*.jsx'
+      - 'docs/**/*.mjs'
+      - 'docs/**/*.py'
   schedule:
     - cron: '23 4 * * 1' # weekly, Monday 04:23 UTC
 permissions:
   contents: read
+# #880: mirrors ci.yml's group/cancel-in-progress shape (same ref key, same
+# event_name condition) so the two workflows cannot drift apart in intent.
+# cancel-in-progress fires ONLY for pull_request events, so a RUNNING
+# push/schedule analysis is never pre-empted mid-run by a later push or
+# schedule trigger. That is narrower than "push/schedule analyses always
+# run to completion uncancelled", though: GitHub's concurrency groups allow
+# only ONE run PENDING (queued, not yet started) per group regardless of
+# cancel-in-progress - if a develop push and the weekly schedule (which
+# also runs against the default branch, so it shares this same
+# codeql-refs/heads/develop group) both end up queued while an earlier run
+# in that group is still executing, only the LATER-queued one survives and
+# the other is cancelled before it ever starts. That is new behaviour this
+# key introduces (codeql.yml previously had no concurrency block at all),
+# not a defect: at most one push/schedule analysis is lost to a same-ref
+# collision, and the next push or the following Monday's schedule
+# re-covers the same ground. The PR-scoped cancellation this key exists
+# for - superseding a dead PR head instead of analysing it to completion -
+# is unaffected either way. The group key includes github.ref so one PR's
+# push never collides with a different PR's in-flight analysis.
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
+    # #882: no cap before now (360-min default). Measured 2026-09-03 via the
+    # Actions API against the 30 most recent runs of EACH matrix leg:
+    # javascript-typescript max 108s, python max 60s (n=30 each, all
+    # success) — this key applies uniformly to both legs (see the `queries:`
+    # comment below on why that is deliberate, not a matrix accident). Sized
+    # well above the sub-minute measured max to leave headroom for the
+    # `security-and-quality` query-pack widening (#534) growing further on a
+    # future codeql-action/query-pack bump this repo does not control.
+    timeout-minutes: 20
     permissions:
       contents: read
       security-events: write

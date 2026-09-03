@@ -144,8 +144,16 @@ automatically.
 4. **Required checks must pass**: `app` (leaked-home-path guard → lint →
    typecheck → sweep canonicalization guard → unit/property tests → build →
    third-party-notices drift guard) and `e2e` (Playwright, including a
-   true offline reload). Both are required by the `protect-main` ruleset under a
-   strict up-to-date policy, on `develop` as well as `main`.
+   true offline reload). Both gate their expensive steps, beginning at `setup-node`, behind
+   a docs-only classifier
+   ([#327](https://github.com/DocGerd/sail_command/issues/327) for `e2e`,
+   [#875](https://github.com/DocGerd/sail_command/issues/875) for `app`) and
+   a separate unchanged-tree check
+   ([#877](https://github.com/DocGerd/sail_command/issues/877)), and always
+   report regardless, so a required check can pass having run no test on a
+   documentation-only change. Both are
+   required by the `protect-main` ruleset under a strict up-to-date policy,
+   on `develop` as well as `main`.
 5. **Review threads must be resolved.** The ruleset blocks merge while any
    thread is open. Approving reviews are *not* required — with a single human
    maintainer, GitHub's ban on self-approval would deadlock every merge. The

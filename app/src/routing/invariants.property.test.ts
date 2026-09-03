@@ -10,9 +10,10 @@ import { relaxationFloorM } from '../lib/boatDepth';
 import { solverTimeoutMs, SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
 import { defaultBoatSnapshot } from '../types';
 
-// Solver-heavy file: CI runners execute the isochrone solver ~6-10x slower than
-// dev machines (2026-07-15 CI run: tests at ~1s locally took 30-44s). Fast test
-// files keep vitest's 5s default so hang detection stays meaningful there.
+// Solver-heavy file: CI runners execute the isochrone solver materially slower
+// than dev machines — see test/timeouts.ts for the shared budget and the
+// coverage multiplier's derivation. Fast test files keep vitest's 5s default
+// so hang detection stays meaningful there.
 vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
 
 const FOCK: PolarTable = {
@@ -151,8 +152,8 @@ describe('router invariants', () => {
           // waypoint disc. This battery does not check that locality — the
           // shoal ring is drawn inside the origin's own disc by construction,
           // so an assertion here would be a theorem of the fixture, not a test
-          // of the gate. `realmask.repro.test.ts`'s margin-0 case is what
-          // covers it. So the block below restores the DEPTH half of what
+          // of the gate. `realmask.repro.issue20.test.ts`'s margin-0 case is
+          // what covers it. So the block below restores the DEPTH half of what
           // invariant 1 gives up, not the space half.
           const solvedGateM = r.shallow ? r.shallow.usedDepthM : DEFAULT_SETTINGS.safetyDepthM;
           for (const rig of [genoa, fock]) {
