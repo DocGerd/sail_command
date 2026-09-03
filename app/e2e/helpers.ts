@@ -356,12 +356,11 @@ function parsePrecacheManifestUrls(swJs: string, source: string): Set<string> {
   // recognise — e.g. a `modifyURLPrefix`/`dontCacheBustURLsMatching`-shaped
   // rewrite. Left unguarded, that would silently treat every real dist/ file
   // as escaping (none of them would match either, not just the ones this PR
-  // cares about) — `pickResidualRepresentatives`'s per-directory-group fallback
-  // bounds the REPRESENTATIVE count even then (one per directory, not one per
-  // file), but the files it would fully-check under the group's small-count
-  // branch include multi-megabyte assets never meant to be fetched here (the
-  // basemap archive alone is ~27 MB) — 60+ call sites x that would be
-  // materially expensive, so this must fail LOUD rather than silently widen.
+  // cares about) — `pickResidualRepresentatives`'s threshold does NOT bound this: with nothing
+  // matching, most directories fall UNDER the threshold and are checked one per
+  // FILE, so the degraded set includes multi-megabyte assets never meant to be
+  // fetched here (the basemap archive alone is ~27 MB) — 60+ call sites x that
+  // would be materially expensive, so this must fail LOUD rather than silently widen.
   if (!urls.has('index.html')) {
     throw new Error(
       `#833/#854: workbox's precache manifest in ${source} does not list "index.html" — the ` +
