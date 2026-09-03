@@ -15,8 +15,10 @@ import { haversineNm } from '../lib/geo';
 import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
 import { defaultBoatSnapshot } from '../types';
 
-// Solver-heavy file: CI runners execute the isochrone solver ~6-10x slower than
-// dev machines (2026-07-15 CI run: tests at ~1s locally took 30-44s). Fast test
+// Solver-heavy file: a 2026-07-15 CI run measured the isochrone solver
+// ~30-44x slower than local (tests at ~1s locally took 30-44s in that CI
+// run) — a solver-specific figure, distinct from CLAUDE.md's later
+// whole-suite ~2.1x/~2.5x CI-vs-local ratios (see timeouts.ts). Fast test
 // files keep vitest's 5s default so hang detection stays meaningful there.
 vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
 

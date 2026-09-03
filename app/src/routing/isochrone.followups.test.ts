@@ -10,8 +10,11 @@ import { uniformGate } from '../lib/depthGate';
 import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
 
 // Regression tests for issue #21 — three follow-up gaps from the #20 review.
-// Solver-heavy file: CI runners execute the isochrone solver ~6-10x slower
-// than dev machines; keep the generous file-level timeout.
+// Solver-heavy file: a 2026-07-15 CI run measured the isochrone solver
+// ~30-44x slower than local (tests at ~1s locally took 30-44s in that CI
+// run) — a solver-specific figure, distinct from CLAUDE.md's later
+// whole-suite ~2.1x/~2.5x CI-vs-local ratios (see timeouts.ts). Keep the
+// generous file-level timeout.
 vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
 
 // Fine synthetic mask: 0.00078125° cells (≈50 m lon × 87 m lat at 54.75°N),
