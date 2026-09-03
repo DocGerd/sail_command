@@ -762,6 +762,55 @@ describe('RouteSummary', () => {
     expect(screen.queryByText(/Motor = engine only/)).not.toBeInTheDocument();
   });
 
+  // #325: reef suggestion chip, hand-computed from GENOA_LEGS' OWN
+  // twsKn/twaDeg/speedKn via the sailing-triangle law of cosines (never
+  // recomputed from reefSuggestion.ts, per the DoD's "pin literal expected
+  // values, not derived from the implementation" rule):
+  //   leg 0 (sail): TWS=10, TWA=92, BS=7
+  //     -> awsSq = 100+49+2*10*7*cos(92deg) ~= 144.114 -> AWS ~= 12.0048 kn
+  //     -> >= REEF1_AWS_KN(12) -> '1st reef'.
+  //   leg 2 (sail): TWS=10, TWA=-80, BS=6
+  //     -> awsSq = 100+36+2*10*6*cos(-80deg) ~= 156.837 -> AWS ~= 12.5235 kn
+  //     -> '1st reef'.
+  //   leg 1 (motor): no suggestion at all — the issue's own "no suggestion"
+  //     option for a leg with no `twaDeg` to feed the formula.
+  it('#325: renders a reef-suggestion chip on each sail leg, computed from its own wind/speed', () => {
+    const { container } = renderSummary({ rig: 'genoa' });
+    const rows = container.querySelectorAll('table.route-legs tbody tr');
+    expect(rows).toHaveLength(3);
+    const kindCell = (rowIndex: number) => rows[rowIndex]?.querySelectorAll('td')[3];
+    expect(kindCell(0)?.querySelectorAll('.chip')).toHaveLength(2);
+    expect(kindCell(0)?.textContent).toContain('1st reef');
+    expect(kindCell(2)?.querySelectorAll('.chip')).toHaveLength(2);
+    expect(kindCell(2)?.textContent).toContain('1st reef');
+  });
+
+  it('#325: renders NO reef-suggestion chip on a motor leg (Kind cell carries only the Motor chip)', () => {
+    const { container } = renderSummary({ rig: 'genoa' });
+    const rows = container.querySelectorAll('table.route-legs tbody tr');
+    const motorKindCell = rows[1]?.querySelectorAll('td')[3];
+    expect(motorKindCell?.querySelectorAll('.chip')).toHaveLength(1);
+    expect(motorKindCell?.textContent).toBe('Motor');
+  });
+
+  it('#325: renders the reef-suggestion footnote, naming the actual thresholds, when the rig has a sail leg', () => {
+    renderSummary({ rig: 'genoa' });
+    const note = screen.getByText(/Reef suggestion is advisory seamanship guidance/);
+    expect(note.textContent).toContain('12 kn');
+    expect(note.textContent).toContain('18 kn');
+    expect(note.textContent).toContain('24 kn');
+    expect(note.textContent).toContain('not part of the route optimisation');
+  });
+
+  it('#325: omits the reef-suggestion footnote when the rig result has no legs', () => {
+    const plan = makePlan();
+    setSail(plan, 'genoa', { result: { ...GENOA_RESULT, legs: [] } });
+    renderSummary({ plan, rig: 'genoa' });
+    expect(
+      screen.queryByText(/Reef suggestion is advisory seamanship guidance/),
+    ).not.toBeInTheDocument();
+  });
+
   it('shows a stale-forecast warning when departure is more than 12h after the forecast fetch', () => {
     const plan = makePlan({ departureMs: FETCHED_AT_MS + 12 * 3_600_000 + 1 });
     renderSummary({ plan });
