@@ -31,13 +31,19 @@
 //
 // BOAT-SPECIFIC CONFIDENCE. Only the Salona 45 is `hullVerified`, with
 // certificate-anchored polars; the other two catalogue boats are tier-C
-// polar estimates. The thresholds below are NOT derived from any boat's
+// polar estimates. The THRESHOLDS themselves are NOT derived from any boat's
 // polar at all — they are generic seamanship guidance for a monohull in this
-// fleet's size class (all three boats are 44-45 ft cruising yachts), so a
-// boat's polar tier has no bearing on this suggestion's confidence one way or
-// the other. That is why the same threshold set and the same caveat apply
-// identically to all three boats, unlike the two-rig ★ comparison (which IS
-// suppressed for tier-C boats because it depends on the polar itself, #54).
+// fleet's size class (all three boats are 44-45 ft cruising yachts), which is
+// why the same threshold set and the same caveat apply identically to all
+// three boats, unlike the two-rig ★ comparison (which IS suppressed for
+// tier-C boats because it depends on the polar itself, #54). But the AWS
+// ESTIMATE fed into those thresholds is NOT polar-independent: it consumes
+// `leg.speedKn`, which the router derived from the boat's own polar. A 1 kn
+// polar error moves AWS by roughly 0.86 kn at a typical TWA/TWS (measured),
+// ~14% of a 6 kn band — enough to flip a boundary case. So confidence in the
+// SUGGESTED BAND does inherit the boat's polar tier, even though the
+// THRESHOLDS that band it do not; do not conflate the two when reasoning
+// about accuracy.
 //
 // THRESHOLDS. `REEF1_AWS_KN`/`REEF2_AWS_KN`/`REEF3_AWS_KN` are a deliberately
 // conservative, generic rule of thumb for a cruising monohull of this size —
@@ -48,6 +54,26 @@
 // replace them in one place; the values and the advisory-only status are also
 // surfaced in the UI itself (RouteSummary's `route.legs.reefNote`), not only
 // here, per the issue's "documented where a user can find them" requirement.
+//
+// GUSTS. This module computes AWS from the forecast's MEAN wind speed
+// (`leg.twsKn`) only — `WindGrid.gustKn` exists but nothing here reads it.
+// Real seamanship reefs for the gust, not the mean, and a gust factor can
+// flip a full band (e.g. TWS 11/TWA 60/BS 6: mean AWS ~14.9 kn = 1st reef,
+// but a 1.35x gust factor puts AWS at ~18.6 kn = 2nd reef) — always toward
+// UNDER-reefing, the dangerous direction. `route.legs.reefNote` (both dicts)
+// states this explicitly; this is a disclosed limitation, not an oversight,
+// and deliberately NOT implemented here (a materially larger change, akin to
+// option (a) in the issue).
+//
+// MERGED LEGS. `routing/postprocess.ts`'s `tryMerge` collapses near-collinear
+// legs, keeping the FIRST leg's `twaDeg`/`twsKn` while recomputing `headingDeg`
+// (up to `MAX_MERGE_DEG`, cascading) and replacing `speedKn` with a made-good
+// average. So on a merged leg the stored TWA no longer exactly matches the
+// stored heading, and BS is not the polar speed at that TWA — the AWS
+// computed here is correspondingly approximate (on the order of 1 kn for a
+// 10° drift), the same order of magnitude as the polar-confidence caveat
+// above. Pre-existing to this module (the legs table already displays the
+// same approximate TWA), not a new hazard it introduces.
 import type { Leg } from '../types';
 
 export type ReefBand = 'full' | 'reef1' | 'reef2' | 'reef3';

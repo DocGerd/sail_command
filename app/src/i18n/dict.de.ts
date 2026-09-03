@@ -466,9 +466,9 @@ export const de = {
   'route.legs.motorNote': 'Motor = reine Motorfahrt, keine Segelleistung modelliert.',
   // #325: siehe dict.en.ts's Kommentar — dieselbe Begründung, dieselbe
   // Interpolation ({first}/{second}/{third} = REEF1_AWS_KN/REEF2_AWS_KN/
-  // REEF3_AWS_KN, reefSuggestion.ts).
+  // REEF3_AWS_KN, reefSuggestion.ts). Letzter Satz = review MAJOR 3 (Böen).
   'route.legs.reefNote':
-    'Der Reff-Vorschlag ist eine unverbindliche seemännische Faustregel auf Basis der scheinbaren Windgeschwindigkeit (unter {first} kn: volles Groß; {first}-{second} kn: 1. Reff; {second}-{third} kn: 2. Reff; ab {third} kn: 3. Reff) – nicht Teil der Routenoptimierung.',
+    'Der Reff-Vorschlag ist eine unverbindliche seemännische Faustregel auf Basis der scheinbaren Windgeschwindigkeit (unter {first} kn: volles Groß; {first}-{second} kn: 1. Reff; {second}-{third} kn: 2. Reff; ab {third} kn: 3. Reff) – nicht Teil der Routenoptimierung. Berechnet aus der mittleren Windvorhersage; Böen werden nicht berücksichtigt.',
   'route.legs.disclosure': 'Etappen ({count})',
   // #774: the DESCRIPTION (aria-describedby), never the name — the table's
   // accessible NAME stays #707's <caption>, which reuses

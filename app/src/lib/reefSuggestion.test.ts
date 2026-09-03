@@ -68,9 +68,15 @@ describe('apparentWindKn — hand-derived from the sailing-triangle law of cosin
     expect(apparentWindKn(10, 90, 6)).toBeCloseTo(11.6619037897, 9);
   });
 
-  it('is symmetric in the sign of TWA (cos is even)', () => {
-    expect(apparentWindKn(12, 45, 5)).toBe(apparentWindKn(12, -45, 5));
-  });
+  // Review MINOR 5: a "symmetric in TWA's sign" row here was deleted —
+  // cos(x) === cos(-x) is a mathematical theorem given the formula above,
+  // not a property any reachable code change could violate (the PR #410
+  // vacuity class in CLAUDE.md's Verification-lessons). MEASURED: deleting
+  // `Math.abs(leg.twaDeg)` from `reefSuggestionForLeg` left it 124/124
+  // green, because dropping the call changes nothing when cos is already
+  // even. The claim survives instead as an OBSERVED property of
+  // `reefSuggestionForLeg` below ("is unaffected by which board the leg is
+  // on"), which is honest about being descriptive rather than a guard.
 });
 
 describe('reefBandForApparentWindKn — band boundaries pinned by hand, not derived', () => {

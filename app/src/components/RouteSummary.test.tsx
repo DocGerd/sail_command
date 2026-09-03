@@ -762,28 +762,105 @@ describe('RouteSummary', () => {
     expect(screen.queryByText(/Motor = engine only/)).not.toBeInTheDocument();
   });
 
-  // #325: reef suggestion chip, hand-computed from GENOA_LEGS' OWN
-  // twsKn/twaDeg/speedKn via the sailing-triangle law of cosines (never
-  // recomputed from reefSuggestion.ts, per the DoD's "pin literal expected
-  // values, not derived from the implementation" rule):
-  //   leg 0 (sail): TWS=10, TWA=92, BS=7
-  //     -> awsSq = 100+49+2*10*7*cos(92deg) ~= 144.114 -> AWS ~= 12.0048 kn
-  //     -> >= REEF1_AWS_KN(12) -> '1st reef'.
-  //   leg 2 (sail): TWS=10, TWA=-80, BS=6
-  //     -> awsSq = 100+36+2*10*6*cos(-80deg) ~= 156.837 -> AWS ~= 12.5235 kn
-  //     -> '1st reef'.
-  //   leg 1 (motor): no suggestion at all — the issue's own "no suggestion"
-  //     option for a leg with no `twaDeg` to feed the formula.
-  it('#325: renders a reef-suggestion chip on each sail leg, computed from its own wind/speed', () => {
+  // #325: reef suggestion chip is PRESENT on every sail leg, with exactly
+  // two chips in the Kind cell (Kind + reef). Deliberately does NOT pin the
+  // specific band text here any more (review MINOR 8: GENOA_LEGS' leg 0
+  // computes AWS 12.0048 against the 12.0 REEF1_AWS_KN threshold — a
+  // 0.005 kn margin on a fixture shared by ~100 other tests) — the band-map
+  // correctness this used to (incompletely) cover is now the purpose-built
+  // it.each below, off any boundary.
+  it('#325: renders a reef-suggestion chip on each sail leg (presence only — band correctness is the it.each below)', () => {
     const { container } = renderSummary({ rig: 'genoa' });
     const rows = container.querySelectorAll('table.route-legs tbody tr');
     expect(rows).toHaveLength(3);
     const kindCell = (rowIndex: number) => rows[rowIndex]?.querySelectorAll('td')[3];
     expect(kindCell(0)?.querySelectorAll('.chip')).toHaveLength(2);
-    expect(kindCell(0)?.textContent).toContain('1st reef');
+    expect(kindCell(0)?.querySelector('.chip-reef')?.textContent).not.toBe('');
     expect(kindCell(2)?.querySelectorAll('.chip')).toHaveLength(2);
-    expect(kindCell(2)?.textContent).toContain('1st reef');
+    expect(kindCell(2)?.querySelector('.chip-reef')?.textContent).not.toBe('');
   });
+
+  // #325 review MAJOR 1: `REEF_LABEL_KEY` (RouteSummary.tsx) maps all FOUR
+  // bands to distinct i18n keys, but every existing fixture (GENOA_LEGS)
+  // puts both its sail legs in 'reef1' — MEASURED: mutating
+  // `reef2: 'route.reef.reef3'` and `reef3: 'route.reef.full'` left
+  // 124/124 GREEN. Four purpose-built legs, one comfortably inside each
+  // band, TWA=0 so AWS = TWS + BS exactly (no floating-point or boundary
+  // risk, unlike the fixture above): full TWS=4/BS=3 -> AWS=7 (< 12);
+  // reef1 TWS=9/BS=6 -> AWS=15 (band midpoint); reef2 TWS=13/BS=8 -> AWS=21
+  // (band midpoint); reef3 TWS=20/BS=10 -> AWS=30 (comfortably >= 24).
+  const REEF_BAND_CASES: Array<[twsKn: number, speedKn: number, label: string]> = [
+    [4, 3, 'Full main'],
+    [9, 6, '1st reef'],
+    [13, 8, '2nd reef'],
+    [20, 10, '3rd reef'],
+  ];
+  const ALL_REEF_LABELS = ['Full main', '1st reef', '2nd reef', '3rd reef'];
+
+  function makeReefBandLeg(twsKn: number, speedKn: number): Leg {
+    return {
+      kind: 'sail',
+      board: 'starboard',
+      start: { lat: 54.79, lon: 9.43 },
+      end: { lat: 54.8, lon: 10.0 },
+      startTimeMs: DEPARTURE_MS,
+      endTimeMs: DEPARTURE_MS + 3_600_000,
+      headingDeg: 90,
+      twaDeg: 0,
+      twsKn,
+      speedKn,
+      distanceNm: 5,
+      maneuverAtStart: null,
+    };
+  }
+
+  it.each(REEF_BAND_CASES)(
+    '#325 review MAJOR 1: AWS band TWS=%d/BS=%d renders %s, not a neighbouring band',
+    (twsKn, speedKn, expectedLabel) => {
+      const plan = makePlan();
+      setSail(plan, 'genoa', {
+        result: { ...GENOA_RESULT, legs: [makeReefBandLeg(twsKn, speedKn)] },
+      });
+      const { container } = renderSummary({ plan, rig: 'genoa' });
+      const kindCell = container
+        .querySelector('table.route-legs tbody tr')
+        ?.querySelectorAll('td')[3];
+      expect(kindCell?.querySelector('.chip-reef')?.textContent).toBe(expectedLabel);
+      for (const other of ALL_REEF_LABELS) {
+        if (other !== expectedLabel) expect(kindCell?.textContent).not.toContain(other);
+      }
+    },
+  );
+
+  // #325 review MINOR 6: same four bands, rendered in GERMAN — MEASURED:
+  // replacing dict.de.ts's 'route.reef.reef1': '1. Reff' with the English
+  // '1st reef' left 124/124 GREEN, since no test rendered the German
+  // labels at all. Rendered directly (not via `renderSummary`, which
+  // hardcodes 'en' — same pattern as the #774 German scroll-hint test
+  // above).
+  const GERMAN_REEF_LABELS = ['Volles Groß', '1. Reff', '2. Reff', '3. Reff'];
+  it.each(REEF_BAND_CASES.map(([tws, speed], i) => [tws, speed, GERMAN_REEF_LABELS[i]] as const))(
+    '#325 review MINOR 6: AWS band TWS=%d/BS=%d renders %s (German)',
+    (twsKn, speedKn, expectedLabel) => {
+      localStorage.setItem('sc-lang', 'de');
+      const plan = makePlan();
+      setSail(plan, 'genoa', {
+        result: { ...GENOA_RESULT, legs: [makeReefBandLeg(twsKn, speedKn)] },
+      });
+      const { container } = render(
+        <I18nProvider>
+          <RouteSummary plan={plan} rig="genoa" onRigChange={vi.fn()} />
+        </I18nProvider>,
+      );
+      const kindCell = container
+        .querySelector('table.route-legs tbody tr')
+        ?.querySelectorAll('td')[3];
+      expect(kindCell?.querySelector('.chip-reef')?.textContent).toBe(expectedLabel);
+      for (const other of GERMAN_REEF_LABELS) {
+        if (other !== expectedLabel) expect(kindCell?.textContent).not.toContain(other);
+      }
+    },
+  );
 
   it('#325: renders NO reef-suggestion chip on a motor leg (Kind cell carries only the Motor chip)', () => {
     const { container } = renderSummary({ rig: 'genoa' });
@@ -800,6 +877,9 @@ describe('RouteSummary', () => {
     expect(note.textContent).toContain('18 kn');
     expect(note.textContent).toContain('24 kn');
     expect(note.textContent).toContain('not part of the route optimisation');
+    // #325 review MAJOR 3: mean-wind-only, no gust accounting — disclosed
+    // here, per the reviewer's "one clause in the footnote" request.
+    expect(note.textContent).toContain('does not account for gusts');
   });
 
   it('#325: omits the reef-suggestion footnote when the rig result has no legs', () => {
