@@ -175,14 +175,14 @@ labels on **pull requests** are applied automatically from changed paths by
 
 **Milestones**
 
-- `v0.20.0` — the milestone now being filled; it closes when the release PR
+- `v0.21.0` — the milestone now being filled; it closes when the release PR
   merges and the tag is pushed.
-- `v0.21.0` — the next MINOR release, opened fresh at the `v0.19.0` cut per
+- `v0.22.0` — the next MINOR release, opened fresh at the `v0.20.0` cut per
   the roll-forward convention below.
 - `Backlog` — accepted, not yet scheduled into a release.
 - `Icebox` — deferred / maybe-never; revisit opportunistically.
 
-`v0.4.0` through `v0.19.0` are closed (plus the `v0.5.1`, `v0.12.1`, and
+`v0.4.0` through `v0.20.0` are closed (plus the `v0.5.1`, `v0.12.1`, and
 `v0.13.1` patch milestones). Whichever cut is in flight is always the
 exception, and reads the same way every time: its issues are closed while
 its milestone object is not, because that closes only at tag push (first
