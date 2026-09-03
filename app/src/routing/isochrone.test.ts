@@ -8,9 +8,10 @@ import { haversineNm } from '../lib/geo';
 import { uniformGate } from '../lib/depthGate';
 import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
 
-// Solver-heavy file: on 2026-07-15 this file ran 32.1-44.2 s in CI across five
-// runs (max in run 29411103146); locally it is a small fraction of that. Fast
-// test files keep vitest's 5s default so hang detection stays meaningful there.
+// Solver-heavy file: CI runners execute the isochrone solver materially slower
+// than dev machines — see test/timeouts.ts for the shared budget and the
+// coverage multiplier's derivation. Fast test files keep vitest's 5s default
+// so hang detection stays meaningful there.
 vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
 
 const A = { lat: 54.75, lon: 10.0 };

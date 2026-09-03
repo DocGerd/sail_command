@@ -8,9 +8,9 @@ import { haversineNm } from '../lib/geo';
 import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
 
 // Solver-heavy file: CI runners execute the isochrone solver materially slower
-// than dev machines — see test/timeouts.ts for the shared budget and its
-// derivation. Fast test files keep vitest's 5s default so hang detection stays
-// meaningful there.
+// than dev machines — see test/timeouts.ts for the shared budget and the
+// coverage multiplier's derivation. Fast test files keep vitest's 5s default
+// so hang detection stays meaningful there.
 vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
 
 const A = { lat: 54.75, lon: 10.0 };
