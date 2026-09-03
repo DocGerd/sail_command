@@ -4,13 +4,14 @@
 // offline.spec.ts needs to kill the server mid-test while plan.spec.ts
 // keeps it alive for the whole run.
 import { spawn } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, type Page } from '@playwright/test';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const APP_DIR = resolve(__dirname, '..');
+const DIST_DIR = resolve(APP_DIR, 'dist');
 const DIST_INDEX_HTML = resolve(APP_DIR, 'dist', 'index.html');
 const DIST_SW_JS = resolve(APP_DIR, 'dist', 'sw.js');
 const PORT = 4173;
@@ -142,13 +143,39 @@ export interface PreviewServer {
 // that glob's contents changes `sw.js`'s own bytes. One extra fetch, and it
 // subsumes the `index.html` check for everything the glob reaches.
 //
-// STILL NOT COVERED by either probe: `vite.config.ts`'s `globIgnores`
-// (`**/test-fixtures/**`, `**/brand/**`, `**/basemap-assets/fonts/**`) are
-// deliberately excluded from the precache manifest, so a difference
-// confined to `dist/test-fixtures/wind-sw12.json` (the exact file every
-// planning spec reads via `?windFixture=`), the social-card image, or a
-// font glyph range would change neither `index.html` nor `sw.js` and would
-// pass this check undetected.
+// #833/#854: a file can ESCAPE workbox's precache manifest for two
+// independent reasons — it sits under a `vite.config.ts` `globIgnores`
+// subtree (`**/test-fixtures/**`, `**/brand/**`, `**/basemap-assets/fonts/**`,
+// #833), or its extension is outside `globPatterns`' token list (`.txt` today
+// — `THIRD-PARTY-NOTICES.txt`, `basemap-assets/sprites/LICENSE.txt`, #854).
+// Either way a difference confined to such a file changes neither
+// `index.html` nor `sw.js`, so the two checks above pass it undetected —
+// `dist/test-fixtures/wind-sw12.json` (the exact file every planning spec
+// reads via `?windFixture=`) is the sharpest case named in #833.
+//
+// `assertResidualDistFilesMatch` below closes most of that gap WITHOUT
+// copying either filter list (this repo has a standing rule against
+// duplicating such member lists, per #854's own text): it derives the
+// escaping set STRUCTURALLY, by parsing the precache manifest workbox bakes
+// into `sw.js` itself (already byte-verified against `dist/sw.js` above) and
+// diffing it against every file actually present under `dist/`. Whatever
+// escapes — for either reason, and automatically for any FUTURE filter
+// change too, since nothing here re-derives `globPatterns`/`globIgnores` —
+// is grouped by directory and ONE representative per group is byte-compared
+// against the served copy. Grouping by directory (not fetching every
+// escaping file) is a deliberate cost bound: this file has 60+
+// `startPreview()` call sites across the suite, and the escaping set is
+// dominated by ~770 font glyph-range `.pbf` files (three font-family
+// directories) that would turn one cheap check into tens of thousands of
+// extra requests. Because `THIRD-PARTY-NOTICES.txt`, `sprites/LICENSE.txt`,
+// `brand/social-card.png` and `test-fixtures/wind-sw12.json` each sit ALONE
+// in their own directory (verified against a real build, 2026-09), the
+// one-per-directory sample always includes exactly them.
+//
+// NAMED RESIDUAL, do not over-claim it away: within a directory holding
+// MORE than one escaping file (only the three font-family directories do,
+// today), a difference confined to a NON-representative sibling is not
+// caught — this is a bounded sample, not an exhaustive scan of `dist/`.
 //
 // This addresses #803's FIRST layer (a foreign server already on the
 // port) for everything the two probes together reach — not the whole of
@@ -253,6 +280,142 @@ function assertSwJsMatches(servedSwJs: string, localSwJs: string): void {
   );
 }
 
+/** #833/#854: extracts the set of dist-relative URLs workbox's
+ * `injectManifest` baked into `sw.js` as the sole argument to its (minified,
+ * renamed) `precacheAndRoute` call — e.g. `W([{"revision":"...","url":
+ * "index.html"}, ...])`. Located STRUCTURALLY (the array's opening
+ * `[{"revision"` token, then its closing `]`) rather than by the call's own
+ * name, which minification renames every build. Fails CLOSED (throws) on a
+ * shape it doesn't recognise, matching `extractEntryScriptSrc`'s precedent
+ * above: silently returning an empty set here would make EVERY dist/ file
+ * look like it "escapes" the manifest, which is the opposite of safe — it
+ * would make `assertResidualDistFilesMatch` below fetch the ~800-file whole
+ * of `dist/` instead of the handful of files that genuinely escape. */
+function parsePrecacheManifestUrls(swJs: string, source: string): Set<string> {
+  const start = swJs.indexOf('[{"revision"');
+  if (start === -1) {
+    throw new Error(
+      `#833/#854: could not find workbox's precache manifest array in ${source} — cannot ` +
+        `determine which dist/ files it covers.`,
+    );
+  }
+  const end = swJs.indexOf(']', start);
+  if (end === -1) {
+    throw new Error(`#833/#854: precache manifest array in ${source} has no closing ']'.`);
+  }
+  let entries: Array<{ url?: unknown }>;
+  try {
+    entries = JSON.parse(swJs.slice(start, end + 1)) as Array<{ url?: unknown }>;
+  } catch (err) {
+    throw new Error(
+      `#833/#854: precache manifest array in ${source} did not parse as JSON: ` +
+        `${(err as Error).message}`,
+      { cause: err },
+    );
+  }
+  return new Set(
+    entries.map((entry, i) => {
+      if (typeof entry.url !== 'string') {
+        throw new Error(
+          `#833/#854: precache manifest entry ${i} in ${source} has no string "url" — cannot ` +
+            `determine which dist/ files it covers.`,
+        );
+      }
+      return entry.url;
+    }),
+  );
+}
+
+/** Every file under `dist/`, as POSIX-style paths relative to `dist/` itself
+ * (`data/mask.bin`, `test-fixtures/wind-sw12.json`, ...). Used only to diff
+ * against `parsePrecacheManifestUrls`'s result — see the block comment above
+ * `assertSwJsMatches` for why. */
+function walkDistFiles(dir: string, relBase: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const rel = relBase ? `${relBase}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) {
+      out.push(...walkDistFiles(resolve(dir, entry.name), rel));
+    } else {
+      out.push(rel);
+    }
+  }
+  return out;
+}
+
+/** #833/#854: picks one representative dist-relative path per directory
+ * among files NOT covered by workbox's precache manifest — see the block
+ * comment above `assertSwJsMatches` for the cost-bound rationale (this file
+ * has 60+ `startPreview()` call sites, and the escaping set today is
+ * dominated by ~770 font glyph-range files that share only three
+ * directories). Deterministic (lexicographically first per group) so a
+ * failure is reproducible across runs. */
+function pickResidualRepresentatives(distFiles: string[], manifestUrls: Set<string>): string[] {
+  const escaping = distFiles.filter(
+    (f) => !manifestUrls.has(f) && f !== 'index.html' && f !== 'sw.js',
+  );
+  const byDir = new Map<string, string>();
+  for (const f of [...escaping].sort()) {
+    const dir = dirname(f);
+    if (!byDir.has(dir)) byDir.set(dir, f);
+  }
+  return [...byDir.values()].sort();
+}
+
+/** #833/#854: byte-compares each of `relPaths` (already narrowed to one
+ * representative per escaping directory by `pickResidualRepresentatives`)
+ * against its served copy. Read as a Buffer, not text — several of these
+ * (`.png`, `.pbf`) are binary, and a `utf8` round-trip is not guaranteed to
+ * preserve byte equality for them. No-op if `relPaths` is empty (a build
+ * with nothing outside the manifest — nothing to check). Throws immediately
+ * on the FIRST mismatch or fetch failure, matching `assertSwJsMatches`'s
+ * fail-fast style: a real foreign build failing to serve a `.pbf` byte-for-
+ * byte is exactly the condition this whole check exists to catch. */
+async function assertResidualDistFilesMatch(relPaths: string[]): Promise<void> {
+  for (const relPath of relPaths) {
+    const localPath = resolve(DIST_DIR, relPath);
+    let localBuf: Buffer;
+    try {
+      localBuf = readFileSync(localPath);
+    } catch (err) {
+      throw new Error(
+        `#833/#854: could not read ${localPath} (${(err as Error).message}) while checking a ` +
+          `dist/ file outside workbox's precache manifest.`,
+        { cause: err },
+      );
+    }
+    const url = BASE + relPath.split('/').map(encodeURIComponent).join('/');
+    let res: Response;
+    try {
+      res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    } catch (fetchErr) {
+      throw new Error(
+        `#833/#854: fetching ${url} (a dist/ file outside the precache manifest) failed or ` +
+          `timed out after ${FETCH_TIMEOUT_MS}ms — cannot establish build identity for it: ` +
+          `${(fetchErr as Error).message}`,
+        { cause: fetchErr },
+      );
+    }
+    if (!res.ok) {
+      throw new Error(
+        `#833/#854: expected ${url} to respond 200, got ${res.status} — cannot establish build ` +
+          `identity for it.`,
+      );
+    }
+    const servedBuf = Buffer.from(await res.arrayBuffer());
+    if (!localBuf.equals(servedBuf)) {
+      throw new Error(
+        `#833/#854: the server answering at ${url} is not serving this run's own build — this ` +
+          `file sits outside workbox's precache manifest (a globIgnores subtree or an off-` +
+          `globPatterns extension), so index.html and sw.js matching did not catch the drift.\n` +
+          `  expected length: ${localBuf.length} bytes (${localPath})\n` +
+          `  observed length: ${servedBuf.length} bytes\n` +
+          `Refusing to proceed rather than test the wrong build.`,
+      );
+    }
+  }
+}
+
 /**
  * Spawns `npm run preview -- --port 4173 --strictPort` in app/ and waits
  * until it answers with a 200 SERVING THIS RUN'S OWN BUILD (see the #803
@@ -278,6 +441,14 @@ export async function startPreview(): Promise<PreviewServer> {
   const localHtml = readLocalDistIndexHtml();
   extractEntryScriptSrc(localHtml, `local ${DIST_INDEX_HTML}`);
   const localSwJs = readLocalDistSwJs();
+  // #833/#854: computed from the LOCAL build only, once, up front — see the
+  // block comment above `assertSwJsMatches` for what this closes and its
+  // named residual. Depends only on `localSwJs` (not the served copy), so
+  // it's safe to compute before the server has even answered once.
+  const residualRepresentatives = pickResidualRepresentatives(
+    walkDistFiles(DIST_DIR, ''),
+    parsePrecacheManifestUrls(localSwJs, `local ${DIST_SW_JS}`),
+  );
 
   const child = spawn('npm', ['run', 'preview', '--', '--port', String(PORT), '--strictPort'], {
     cwd: APP_DIR,
@@ -362,6 +533,10 @@ export async function startPreview(): Promise<PreviewServer> {
         }
         const servedSwJs = await swRes.text();
         assertSwJsMatches(servedSwJs, localSwJs);
+        // #833/#854: closes (most of) the gap named in the block comment
+        // above — see `pickResidualRepresentatives`'s own comment for the
+        // named residual this does NOT close.
+        await assertResidualDistFilesMatch(residualRepresentatives);
       } catch (err) {
         kill();
         throw err;
