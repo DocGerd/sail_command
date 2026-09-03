@@ -775,8 +775,15 @@ describe('RouteSummary', () => {
     expect(rows).toHaveLength(3);
     const kindCell = (rowIndex: number) => rows[rowIndex]?.querySelectorAll('td')[3];
     expect(kindCell(0)?.querySelectorAll('.chip')).toHaveLength(2);
+    // F1 (PR #910 re-review): `.not.toBe('')` alone passes VACUOUSLY when
+    // the element is absent (`undefined !== ''`) — harmless here because the
+    // paired `toHaveLength(2)` above already catches absence, but it read as
+    // a guard and wasn't one. `.not.toBeNull()` first makes presence its own
+    // assertion; only then does the text-content check mean what it says.
+    expect(kindCell(0)?.querySelector('.chip-reef')).not.toBeNull();
     expect(kindCell(0)?.querySelector('.chip-reef')?.textContent).not.toBe('');
     expect(kindCell(2)?.querySelectorAll('.chip')).toHaveLength(2);
+    expect(kindCell(2)?.querySelector('.chip-reef')).not.toBeNull();
     expect(kindCell(2)?.querySelector('.chip-reef')?.textContent).not.toBe('');
   });
 
@@ -880,6 +887,29 @@ describe('RouteSummary', () => {
     // #325 review MAJOR 3: mean-wind-only, no gust accounting — disclosed
     // here, per the reviewer's "one clause in the footnote" request.
     expect(note.textContent).toContain('does not account for gusts');
+  });
+
+  // F2 (PR #910 re-review): the German gust clause was unguarded — MEASURED
+  // by the reviewer, deleting it leaves 131/131 green where the EN twin
+  // reds 1. Rendered directly (not via `renderSummary`, which hardcodes
+  // 'en') — same pattern as the #774 German scroll-hint test above.
+  it('#325: renders the German reef-suggestion footnote, including the gust clause', () => {
+    localStorage.setItem('sc-lang', 'de');
+    const { container } = render(
+      <I18nProvider>
+        <RouteSummary plan={makePlan()} rig="genoa" onRigChange={vi.fn()} />
+      </I18nProvider>,
+    );
+    const note = Array.from(container.querySelectorAll('.route-legs-note')).find((el) =>
+      el.textContent?.includes('Reff-Vorschlag'),
+    );
+    expect(
+      note,
+      'expected a .route-legs-note containing the German reef footnote',
+    ).not.toBeUndefined();
+    expect(note?.textContent).toContain('12 kn');
+    expect(note?.textContent).toContain('nicht Teil der Routenoptimierung');
+    expect(note?.textContent).toContain('Böen werden nicht berücksichtigt');
   });
 
   it('#325: omits the reef-suggestion footnote when the rig result has no legs', () => {

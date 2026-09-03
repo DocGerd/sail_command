@@ -3186,14 +3186,13 @@ select {
    (0.35rem, authored for exactly this horizontal-sibling case) — spacing
    only, no colour/size override, since a reef suggestion is advisory
    guidance, not a hazard, and should not visually compete with the Kind
-   chip next to it. COMPOUND selector for the same reason as every other
-   `.chip.chip-*` rule in this file: `.chip`'s own base rule sits BELOW all
-   its modifiers, so a bare `.chip-reef` selector would tie on specificity
-   and lose to `.chip` on source order — `chipShallowFill.test.ts`'s
-   structural guard (its regex covers ANY bare `.chip-<word>` selector, not
-   only `.chip-shallow*`) would have caught a bare form here too, but the
-   compound selector is the repo's convention regardless, not a workaround
-   for that guard's aperture. */
+   chip next to it. COMPOUND selector for the same reason as
+   `.chip.chip-polar-tier-*` above: this rule sits BELOW `.chip`'s own base
+   rule (`:2964`), so it would win either way — the compound form is belt
+   and braces, and it also keeps it out of `chipShallowFill.test.ts`'s
+   structural guard (whose regex covers ANY bare `.chip-<word>` selector,
+   not only `.chip-shallow*`) rather than relying on the ordering staying
+   put. */
 .chip.chip-reef {
   margin-inline-start: 0.35rem;
 }

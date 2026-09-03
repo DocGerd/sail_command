@@ -39,8 +39,9 @@
 // tier-C boats because it depends on the polar itself, #54). But the AWS
 // ESTIMATE fed into those thresholds is NOT polar-independent: it consumes
 // `leg.speedKn`, which the router derived from the boat's own polar. A 1 kn
-// polar error moves AWS by roughly 0.86 kn at a typical TWA/TWS (measured),
-// ~14% of a 6 kn band — enough to flip a boundary case. So confidence in the
+// polar error moves AWS by up to ~0.86 kn upwind (measured across TWA at
+// TWS 15: +0.86/+0.48/-0.14 depending on point of sail) — up to ~14% of a
+// 6 kn band, enough to flip a boundary case at the worst-case TWA. So confidence in the
 // SUGGESTED BAND does inherit the boat's polar tier, even though the
 // THRESHOLDS that band it do not; do not conflate the two when reasoning
 // about accuracy.

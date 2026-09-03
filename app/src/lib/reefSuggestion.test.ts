@@ -121,6 +121,11 @@ describe('reefSuggestionForLeg', () => {
     expect(s?.awsKn).toBeCloseTo(7.8102496759, 9);
   });
 
+  // F4 (PR #910 re-review): descriptive, not a guard — same cos-evenness
+  // theorem as the deleted "symmetric in TWA's sign" row above (see that
+  // row's own comment), so no reachable code change can red this either.
+  // Kept because it documents the observed behaviour at the leg level, not
+  // because it discriminates anything.
   it('is unaffected by which board the leg is on (sign of TWA does not change the band)', () => {
     const starboard = reefSuggestionForLeg(sailLeg(15, 60, 5));
     const port = reefSuggestionForLeg(sailLeg(15, -60, 5));
