@@ -191,10 +191,19 @@ making design-level decisions; do not silently deviate.
   jsdom-mocked service-worker test — that would be the #50 equivalence-test
   tautology (statements execute without modeling real CacheStorage/Range/CDN
   semantics, the bug class that actually bit in #96 and #118).
-- `app/sweep/` (#450) is the committed #282 acceptance harness — **NINE arms x
-  33 harbours** since #488 (six original Flensburg-origin, plus three
-  Marstal-origin ones added because the original six could not discriminate a
-  depth-relaxation change at all), a README carrying the full rebuild spec,
+- `app/sweep/` (#450) is the committed #282 acceptance harness — one arm-set is
+  EVERY name in `app/sweep/armNames.ts` x 33 harbours. Do NOT restate that
+  count here: it has gone stale twice already (SIX until #452, NINE until
+  #653), and `armNames.ts` plus `app/sweep/README.md`'s opening line decay on
+  the same schedule as the thing they describe. Composition as of 2026-09-03 at
+  `bca2561`: six original Flensburg-origin arms; three Marstal-origin
+  relaxation arms (#452, PR #488) added because the original six could not
+  discriminate a depth-relaxation change at all; and two `salona44-*` arms
+  (#653) that reuse both origins and exercise the boat-keyed POLAR lookup
+  rather than adding an origin — `sweepArms.ts`'s `Arm.boatId` comment says why
+  they deliberately do NOT discriminate a depth-gate regression (both Salonas
+  share a 2.1 m draft, so `boatDepth.ts` computes the identical gate). A README
+  carrying the full rebuild spec,
   and a REQUIRED BASE double-run control (two BASE runs must be byte-identical
   to each other before any BASE-vs-HEAD comparison means anything). Record
   that control against the merge-base of the branch it will certify. A moved
@@ -254,8 +263,23 @@ making design-level decisions; do not silently deviate.
   **`becalmed` and `deep-becalmed` remain VACUOUS as safety evidence** —
   ZERO routes (33/33 errors each), so their byte-identity would survive any
   mask change including a catastrophic one; never count them as evidence.
-  For a DEPTH-RELAXATION change the discriminating arms are the three new
-  ones (`margin-zero`, `relaxation-dense`, `margin-extreme`), each carrying
+  **VACUITY IS LEVER-RELATIVE — an arm is never vacuous as a property of
+  itself, only with respect to a LEVER.** That pair is the vacuous set for a
+  DEPTH lever. For a sail/motor MODE lever the set is a different THREE:
+  `light-motorless`, `becalmed` and `deep-becalmed`, the arms carrying
+  `motorEnabled: false` — re-measured 2026-09-03 at `bca2561`, exactly three
+  arm ENTRIES in `sweepArms.ts` set it (a fourth grep hit is that file's own
+  doc comment, so count entries, not matches). Both statements are true and
+  correctly scoped, and `docs/spikes/354-mode-churn.md` carries both. A reader
+  who carries the depth pair into a mode question under-counts by one — which
+  happened in review on PR #867, pushed back on precisely because "the repo
+  record names `becalmed` and `deep-becalmed` as the vacuous pair", i.e. this
+  mis-transfer occurring in real time. Name the LEVER whenever you call an arm
+  vacuous.
+  For a DEPTH-RELAXATION change the discriminating arms are the three
+  #452 Marstal-origin ones (`margin-zero`, `relaxation-dense`,
+  `margin-extreme`) — "the three new ones" was true until #653 added two
+  NEWER arms, so name them by issue, not by recency — each carrying
   **27 of 33** plans with a `shallow` block against **2 of 198** across the
   original six — measured, and the reason the old sweep was green through
   its own blast radius. `margin-extreme` is NOT the tier-4 arm despite its
@@ -368,6 +392,18 @@ making design-level decisions; do not silently deviate.
   .github/scripts/classify-docs-only.sh` prints the whole arm on one line and
   is robust to line drift. A whole #132 release docs sweep skips e2e
   (measured on PR #677). Never copy the member list into this file again.
+  **The `app` job has NO docs-only gate at all.** That is the SAFETY property
+  the changelog allowlist above leans on, and simultaneously an unpaid COST.
+  Measured on PR #874 (2026-09-02, two PNGs under `docs/screenshots/` and
+  nothing else): `e2e` reported success in 9 s (16:20:35Z → 16:20:44Z) with
+  its expensive steps skipped, while `app` ran 16:20:35Z → 16:46:26Z — 1551 s,
+  which is the exact TOP of the `app` range #877 records (median 1181 s, n=70,
+  range 749-1551), so that PR is the conservative end of the evidence and not
+  the typical case. Tracked at #875 (milestone v0.20.0), which also records why
+  `app`'s allowlist must be a STRICT SUBSET of `e2e`'s rather than a reuse of
+  the same arm — `CHANGELOG.md` and `changelog.d/*` are build inputs, as the
+  paragraph above says — and that the `No leaked home paths (#474)` step must
+  stay ungated. Read the cost figures off #877, never off this sentence.
   The globs are ONE star: in a bash `case`, `*` matches `/`, so nested paths
   do match (selftest case 10 pins it). Measured on a real
   `CLAUDE.md`-only PR (#343): `e2e` reported success in 6 s with
@@ -1370,6 +1406,7 @@ making design-level decisions; do not silently deviate.
   | v0.16.0 | 2026-08-31 | 498 s | `success` (MEASURED before the tag push, and the no-op CALLED IN ADVANCE from it) | **DID no-op** | merge-push `33409992738` → tag `33410773664`; `smoke-probe` FAILED, prod kept serving `v0.15.0-98-g04c4e6d`; fixed by the back-merge |
   | v0.17.0 | 2026-09-01 | 58 s | `cancelled` (MEASURED — the job had not been CREATED when the tag was pushed) | safe | merge-push `33502228802` → tag `33502309994` deployed cleanly, `smoke-probe` passed |
   | v0.18.0 | 2026-09-01 | 109 s | `success` — and BOTH deploy jobs read success, neither run cancelled, unlike every earlier row | **`smoke-probe` FAILED** | merge-push `33561093145` → tag `33561257642` on the same SHA; the tag run's `smoke-probe` 404'd its own entry chunk 10/10 over 4m31s while the merge run's passed. Back-merge `33563513697` then probed green. WHICH mechanism — a same-SHA no-op the back-merge fixed, or propagation later than that probe window — is NOT distinguishable from the end state: the back-merge's prod build produced the SAME entry-chunk name as the tag build (measured), so the end state cannot say which story produced it. Record the measurements, never a cause. |
+  | v0.19.0 | 2026-09-02 | 83 s | read as `in_progress`/`null` in the same Bash call that pushed the tag (transcript-only; recorded by the v0.19.0 cut's own session and NOT re-read here — the session applying this row did not run that gate — what IS independently established is that the job ran 20:36:48Z→20:37:10Z, so any read in that 22 s window returned `in_progress`); conclusion `cancelled` at 20:37:10Z, its Pages object `6231355284` reaching `error` at the same second | **`smoke-probe` FAILED** | merge-push `33680204038` → tag `33680338582` on `786c32f1`. The tag run's `deploy` job AND its Pages object `6231383135` BOTH reached `success` (20:38:34Z / 20:38:35Z), yet its own entry chunk `assets/index-Culp-AWd.js` returned 404 on all ten probe attempts, 20:38:53Z → 20:43:23Z, the job failing 20:43:25Z (read off the `smoke-probe` job log, which prints `PROD_ENTRY: /sail_command/assets/index-Culp-AWd.js`; the uat half was never reached, prod being probed first). Back-merge `33683275499` then probed green. Per the v0.19.0 learnings file and NOT re-verified here: prod was serving the MERGE run's chunk `index-BmIaq_PY.js` at 20:44:12Z — one fact row 11 lacked, the served artifact positively IDENTIFIED. It still names NO mechanism: a no-op against an `error`-state deployment object, and an edge-cached `index.html` plus negative-cached 404s, both produce this end state. Record the measurements, never a cause. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -1378,8 +1415,16 @@ making design-level decisions; do not silently deviate.
   for any cut before v0.14.0 — don't fabricate any.)
   **NEVER GATE ON THE GAP, and never read "fast tag push" as a protection —
   but the flat "carries ZERO information" phrasing was retired 2026-08-27.**
-  The outcome is set by whether `cancel-in-progress` killed the earlier run
-  before its `deploy` job reached terminal `success`. The gap is a WEAK PROXY
+  Through v0.17.0 every row whose merge `deploy` read `cancelled` probed
+  GREEN, and row 12 is the FIRST that did not — so a `cancelled` reading no
+  longer licenses skipping the probe. What that gate observes is narrow and
+  purely negative: `cancelled` means the merge run left NO `success`-state
+  deployment of this SHA behind. It does not tell you whether the tag run's
+  own bytes will be SERVED, and the tag run's `deploy` job and Pages object
+  BOTH reading `success` cannot tell you either — that is the signature of a
+  clean deploy and of a same-SHA no-op alike (v0.9.0: the tag run's Pages
+  deployment "reported `success` … and changed nothing"). Only the
+  entry-chunk probe separates them. The gap is a WEAK PROXY
   for that, with a real mechanism: a longer gap gives the merge run more time
   to finish, so its `deploy` is likelier to own the SHA. As recorded through
   the v0.16.0 cut, the THREE no-ops are the three LARGEST gaps in the table
@@ -1413,15 +1458,21 @@ making design-level decisions; do not silently deviate.
   the ref update, the signing, the local verify and the push. Read the gate
   IMMEDIATELY before `git push origin <tag>`, never before the sign-and-verify
   sequence — everything between the read and the push is time the merge run
-  gets to finish in.
-  **Re-checked when row 11 (v0.18.0) was added: the separation HOLDS under
-  every reading of that row, but the BOUNDARY depends on how row 11 is
-  scored, and row 11's own text declines to name its mechanism. Score it as
-  a no-op and the boundary tightens to max(safe) 70 s vs min(no-op) 109 s;
-  leave it unscored and min(no-op) stays 128 s. Publish the TIGHTER pair,
-  because that is the conservative one: a SAFE row at or above 109 s, or a
-  NO-OP at or below 70 s, breaks the separation and changes what the rows
-  support. Whoever adds row 12 re-checks this sentence again.**
+  gets to finish in. That timing rule is NECESSARY and not SUFFICIENT: it
+  cannot help against the `in_progress` reading below, where the volatility
+  is inside the read itself. v0.19.0 followed it exactly and still got a
+  non-answer.
+  **Re-checked when row 12 (v0.19.0) was added: the separation HOLDS, and the
+  boundary TIGHTENS again — max(safe) 70 s against min(failed) 83 s, a 13 s
+  band, the narrowest recorded and down from the 70/109 pair row 11
+  published. 83 s is now the smallest gap ever to fail. Publish the TIGHTER
+  pair, because that is the conservative one: a SAFE row at or above 83 s, or
+  a FAILED row at or below 70 s, breaks the separation and changes what the
+  rows support. Note the vocabulary rows 11 and 12 force: both are scored
+  FAILED — the probe went red — without being scored NO-OP, because neither
+  names its mechanism, so the axis is now safe-vs-FAILED, which is the wider
+  and therefore safer reading. Whoever adds row 13 re-checks this sentence
+  again.**
   What the rows DO rule out
   is the opposite intuition, that a fast tag push races the merge run:
   v0.13.1's 33 s is the smallest gap ever recorded and was SAFE, and
@@ -1437,10 +1488,40 @@ making design-level decisions; do not silently deviate.
   for that SHA WAS created and reached `error`, and the tag run's SECOND object
   still TOOK — so a reader who checks the deployments API, finds an earlier
   object and concludes they are in the no-op case would be wrong.
+  **The converse reading fails too, and the sharpest way to see it is that
+  v0.12.0 and v0.19.0 have IDENTICAL post-hoc gate state and OPPOSITE
+  outcomes.** Both: merge `deploy` `cancelled`, merge Pages object `error`,
+  tag run's own object `success`. v0.12.0's tag deployment TOOK; v0.19.0's
+  `smoke-probe` failed 10/10 (measured 2026-09-03 from run `33680338582`'s
+  job log and objects `6231355284`/`6231383135`). Two identical gate readings,
+  two different outcomes — so the gate CANNOT separate those cases and no
+  reading of it substitutes for the probe. Attach no mechanism to either row.
   `gh api repos/OWNER/REPO/actions/runs/<merge-run-id>/jobs --jq
-  '.jobs[]|"\(.name): \(.conclusion)"'` — `cancelled`/`null` (MEASURED at
-  v0.12.0: the merge run's `deploy` job read `cancelled`) means the tag run will
-  take, `success` means it will no-op. Note the deployment OBJECT that run
+  '.jobs[]|"\(.name): \(.status)/\(.conclusion)"'` — read the STATUS beside
+  the conclusion, and confirm a `deploy` line is LISTED AT ALL, because this
+  jq prints NOTHING for a job that does not yet exist. There are FOUR answers,
+  two terminal and two not. Terminal `success`: the merge run already deployed
+  this SHA and the tag run will no-op. Terminal `cancelled` (MEASURED at
+  v0.12.0): the merge run left no `success`-state deployment of this SHA —
+  necessary for the tag run's own deployment to take, and NOT sufficient for
+  its bytes to be served (row 12). The two NON-terminal answers are the trap.
+  No `deploy` line at all is v0.17.0's "not yet created", covered by the
+  durability paragraph above. **`in_progress`/`null` is a FOURTH answer that
+  paragraph does not cover, and it is not a safe one — it is the job still
+  running, a coin in the air.** MEASURED at the v0.19.0 cut (2026-09-02): the
+  gate was read inside the same Bash call that pushed the tag and returned
+  `deploy: in_progress/null` for merge run `33680204038`, whose `deploy` ran
+  20:36:48Z → 20:37:10Z. v0.18.0's rule to read the gate immediately before
+  `git push origin <tag>` was followed EXACTLY and did not help, because the
+  volatility is INSIDE the read, not in the interval after it.
+  **The remedy for `in_progress` is OPEN, not decided.** The obvious candidate
+  — treat it as "not an answer", wait for a terminal state and decide then,
+  since terminal `success` at least yields the KNOWN no-op with the known
+  back-merge remedy where `in_progress` yields neither — was NOT tried at this
+  cut and is UNTESTED. It also trades a fast tag push for a slower one, which
+  no row measures. Do not read this paragraph as prescribing it: it names
+  `in_progress` as an unanswered question, not as a solved one.
+  Note the deployment OBJECT that run
   created sat at `error` — a deployment-status value, which `.jobs[].conclusion`
   can never emit; do not mix the two vocabularies. Confirm afterwards with the
   ENTRY-CHUNK probe, never with the basemap Range probe: that archive is
@@ -2097,10 +2178,14 @@ making design-level decisions; do not silently deviate.
 - **Verify a UNIVERSAL claim across its whole RANGE, not at the ends instinct
   picks.** "Every milestone from `v0.9.0` on clears it" was FALSE as written
   in a draft on PR #853 — quoted and refuted in `cf3d643`'s commit message
-  (2026-09-02), never committed to `CONTRIBUTING.md` in that form. The OPEN
+  the OPEN
   `v0.19.0` sat inside that range at 1 bug of 6 at the time, while every
-  milestone SHIPPED in it by then had cleared — so a spot-check at either end,
-  `v0.9.0` or `v0.18.0`, passed while the violator sat interior. Caught by
+  milestone SHIPPED in it by then had cleared — so a spot-check at the ends
+  instinct picks, `v0.9.0` or the latest SHIPPED `v0.18.0`, passed while the
+  violator sat PAST that upper end. The range's true upper end was the open
+  `v0.20.0` (created 2026-09-01T22:41:55Z, before `cf3d643`), which the
+  sentence never named — and that is the actual failure: the "ends" were the
+  ends of the range as IMAGINED, not as written. Caught by
   verifying the universal half member by member — the audit round had not —
   and fixed by SCOPING the sentence to SHIPPED milestones rather than hedging
   it, per the bullet above.
@@ -2395,6 +2480,27 @@ making design-level decisions; do not silently deviate.
   (`grep -P '\x{00a0}'`). And `JSON.stringify` does not escape U+00A0, so a
   raw-nbsp failure and a plain-space failure print identical text: the
   discrimination must live in the assertion, never in what a human reads.
+- **An out-of-range read in a comparison script does not throw — it buckets as
+  EQUAL, so a transposed index turns "I found no difference" into a positive
+  finding.** Measured 2026-09-02 (PR #861). Each shipped polar table's
+  `speeds` is `[twaIndex][twsIndex]` — fifteen rows of nine, matching the
+  file's own `twa` (15) and `tws` (9) arrays, verified per file for all six
+  tables under `app/public/data/polars/` (re-verified 2026-09-03 at
+  `bca2561`). A reviewer's comparison script indexed it
+  `[twsIndex][twaIndex]`; every `twaIndex >= 9` then read past the end of a
+  nine-element row and yielded `undefined`, and since both `undefined > x` and
+  `undefined < x` are false, ALL of those fell into the script's `else` branch
+  and were counted EQUAL. The script also walked only ONE row (TWA index 4)
+  across the nine TWS, so the nine cells it did read were the wrong cells too.
+  Its result was adopted verbatim into `e32dbea` before a round-2 auditor
+  reproduced the indexing bug and the reviewer retracted at round 3
+  (`6632ed0e`). Re-derived here with a shape assertion FIRST: across both rigs
+  the Salona 44 and Salona 45 differ in 270 of 270 cells, ZERO equal.
+  **Assert `speeds.length === twa.length && speeds[0].length === tws.length`
+  before comparing anything** — the shape against the file's OWN axis labels,
+  never against your memory of them. And the retracted figure was a single
+  mis-walked row's read/unread split, never a whole-grid count: quoting it as
+  one would be this file's own "a COUNT carries its FILTER" error.
 - A green workflow run proves the RUN was healthy, not that the intended
   VERSION of the workflow executed: `workflow_dispatch --ref X` resolves the
   workflow FILE from X's tip. Verify by inspecting the artifact it produced,
@@ -2549,10 +2655,14 @@ making design-level decisions; do not silently deviate.
   most". The prose auditor refuted the CONCLUSION from the shipped tree:
   `app/e2e/helpers.ts`'s `startPreview()` never rested on `index.html` alone —
   `assertSwJsMatches` byte-compares the served `sw.js`, which `sw.ts` compiles
-  into, and that BUILT file's precache manifest covers the
-  `app/public/data/**` class the clause named — so both change classes ARE
-  covered, and the clause would have steered future sessions AWAY from a probe
-  that works (the corrected text is the #803 bullet under PWA / E2E / deploy).
+  into, and that BUILT file's precache manifest covers `app/public/data/**`,
+  the measured member of the offline-asset class the clause named — so the
+  service-worker class and that member ARE covered, and the clause would have
+  steered future sessions AWAY from a probe that works (the corrected text is
+  the #803 bullet under PWA / E2E / deploy, which also carries what the two
+  probes do NOT reach — an ignored subtree, #833, and an extension outside the
+  token list, #854 — so "the offline-asset class" as a whole is wider than
+  what was measured).
   The reviewer's own diagnosis: "I proved the antecedent and never enumerated
   the shipped remedy's parts." Every step true, the claim false — the "what
   class of failure can this method not detect?" question, asked of a
@@ -2594,6 +2704,33 @@ making design-level decisions; do not silently deviate.
   block via the comments API, substring-match it), and verify "two copies
   agree" by NORMALISED byte comparison — a paraphrase RESEMBLES rather than
   agrees.
+  **Re-measured across the v0.19.0 cycle (2026-09-02): FOUR defects, each
+  inside text supplied for verbatim adoption, and one of them inside the fix
+  for another.** (1) PR #861 round 1 supplied a polar-table split derived from
+  a transposed index — see the out-of-range-reads-as-EQUAL bullet under
+  Verification lessons; adopted verbatim in `e32dbea`, retracted at round 3,
+  re-fixed in `6632ed0e`. (2) PR #867 round 1 supplied "every route here is in
+  Danish waters, and the fleet's home water is unrepresented"; adopted
+  verbatim, then refuted from `harbors.json`'s own `country` field (three of
+  the six battery routes originate at Flensburg) AND by the same document two
+  sentences later, which calls one of them "the confined inner-fjord beat";
+  fixed in `5f217d8`. (3) PR #861 round 2 supplied "run 2's timings are
+  essentially uncontended", self-contradicted three lines below in the same
+  comment and by the README in the same diff — and the REVIEWER flagged it
+  against itself, the second witness this bullet asked for. (4) Round 4's
+  drop-in, written to fix (3), asserted "every arm is faster in run 2", false
+  for `becalmed` (6.5 s → 9.2 s).
+  **(4) is the SUCCESS case this bullet lacked**: the implementer applied the
+  supplied text byte-for-byte EXCEPT that one clause, which it scoped to arms
+  with real solver cost, and SAID SO — the standing exception working as
+  designed rather than as a loophole. Fixed in `05f5e66`; it never shipped.
+  **No RATE is claimed and none should be.** Over the downloaded review-comment
+  corpus for all thirteen PRs of that cycle, prose recording verbatim adoption
+  or byte-diffing appears on five PRs (#857, #858, #861, #867, #876) — those
+  are regex MATCHES, not distinct adopted blocks (one adoption typically yields
+  several: "adopted", "verbatim", "byte-diffed"), so the denominator was never
+  measured. What the corpus supports is CONCENTRATION, not frequency: #861 and
+  #867 carry that prose in bulk and are exactly the two that produced defects.
   Distinct rule, NOT an exception to the adopt-verbatim rule (#599 — it was an orchestrator-
   relayed measurement, not supplied replacement text): before adopting a
   NUMERIC correction, check both sides define the QUANTITY identically. A
@@ -2675,6 +2812,25 @@ making design-level decisions; do not silently deviate.
   this very class said "five" and the enumeration found ~10, because a number
   reads as an enumeration. And treat a passing selftest table as proof only of
   the shapes it lists.
+- **A reviewer's incidental EXPLANATION for a correct finding launders itself
+  through the brief into the artifact, while only the FINDING is ever
+  verified.** Measured 2026-09-02 on PR #861: a round-1 reviewer correctly
+  found `app/sweep/README.md`'s `~20 minutes` estimate stale and unmeasured,
+  and explained it with a cause — "written for nine arms". The orchestrator
+  relayed that cause into its fix brief verbatim; the implementer wrote it
+  into the artifact. A later audit ran `git log -p --follow` and found it
+  WRONG-FROM-THE-START: the sentence entered ONCE, at `37b924c` (2026-08-07,
+  PR #450), whose own commit message reads "Six arm names cannot satisfy
+  #282's standing requirement" and whose tree carries exactly six
+  `arm-*.test.ts` files (`git ls-tree -r --name-only 37b924c app/sweep/`,
+  re-verified 2026-09-03). Fixed in `b0ad17d`. THREE hops and no hop believes
+  it is making a claim of its own: the reviewer is explaining, the
+  orchestrator is relaying, the implementer is complying — so no one's own
+  verification step covers it. Verify a finding's CAUSE separately from the
+  finding, or relay the finding WITHOUT the cause. The bullet above already
+  names the shape where a correction invents a DERIVATION the source denies;
+  this is its INHERITED twin, and inheritance is the harder one to notice,
+  because the derivation arrives already attributed to someone else.
 - **The successor chain, measured again at full length on a CLAUDE.md PR: PR
   #852 (the v0.18.0 learnings) took FIVE review rounds, and every fix wave put
   a defect inside the previous round's fix** — the commit record says so in
@@ -4149,6 +4305,24 @@ making design-level decisions; do not silently deviate.
   compliance. Tell agents to report a contradiction with evidence rather than
   implement around it — and verify the pushback yourself against the issue text
   before accepting it, since the brief's author is usually the one who is wrong.
+  A worked SUCCESS instance from the v0.19.0 cut (2026-09-02). The §2b sweep
+  brief instructed "Promote Now → Next: v0.19.0's section goes away, v0.20.0
+  becomes 'Now'". The three preceding shipped tags all contradict it — `git
+  show v0.16.0:ROADMAP.md`, `v0.17.0` and `v0.18.0` each pair `Current
+  release: **vX.Y.Z**` with `## Now — vX.Y.Z` and `## Next — vX.Y+1.0`
+  (re-verified 2026-09-03; `v0.19.0:ROADMAP.md` now carries the same shape).
+  Two rules follow. **When a brief prescribes a DOCUMENT'S SHAPE, the previous
+  releases' tags are the cheap authority** — one `git show <tag>:<file>` beats
+  any argument about what the convention is. And **a brief that faithfully
+  RELAYS a runbook inherits the runbook's errors**: this wording was
+  `.claude/skills/release/SKILL.md` §2b's own, not the orchestrator's
+  invention, so a confirmed pushback must be fixed IN THE RUNBOOK, not only in
+  the artifact — otherwise the next cut's brief reintroduces it verbatim. It
+  was: the implementer shipped the established shape and reported the
+  deviation under an explicit "Deviations from the brief" heading, the
+  orchestrator verified it against the three tags, and SKILL.md itself was
+  corrected in `33f0f8f`. That is the loop working, and it is why this bullet
+  asks for the pushback rather than merely tolerating it.
 - Every self-review here posts as `COMMENTED`, not `APPROVED` — GitHub rejects
   approving your own PR and the `gh` token owns them all. That is expected, not
   a bypass: `protect-main` requires `app` + `e2e` and RESOLVED THREADS, never a
