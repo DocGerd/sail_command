@@ -2741,8 +2741,8 @@ making design-level decisions; do not silently deviate.
   adoption typically yields several: "adopted", "verbatim", "byte-diffed"), so
   the denominator was never measured and no rate follows. Nor does
   CONCENTRATION: an earlier draft of this bullet claimed #861 and #867 were
-  "exactly the two that produced defects"; #858, which that draft did not
-  name, produced the over-claim whose residual is #865(a).
+  "exactly the two that produced defects"; #858 produced the over-claim whose
+  residual is #865(a).
   Distinct rule, NOT an exception to the adopt-verbatim rule (#599 — it was an orchestrator-
   relayed measurement, not supplied replacement text): before adopting a
   NUMERIC correction, check both sides define the QUANTITY identically. A
