@@ -17,8 +17,10 @@ import { startPreview } from './helpers';
 // Fix waypoints (hand-picked against the committed mask, snap-verified at the
 // default 3.0 m safety depth):
 // - FIX_ORIGIN: Langballigau's own harbor snap (harbors.json).
-// - FIX_FJORD_MOUTH: the outer-fjord open-water anchor realmask.repro.test.ts
-//   documents as navigable — mid-route between the two harbors. (The naive
+// - FIX_FJORD_MOUTH: the outer-fjord open-water anchor
+//   `app/src/test/realmaskFixtures.ts`'s `FJORD_MOUTH`/`OPEN_BALTIC`
+//   constants document as navigable — mid-route between the two harbors.
+//   (The naive
 //   geometric midpoint of the pair is LAND — Broager peninsula — which is
 //   exactly why the reroute has a real route to find from here.)
 // - FIX_OFF_SOENDERBORG: on Sønderborg Bay's final approach track, chosen

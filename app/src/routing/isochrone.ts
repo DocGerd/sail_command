@@ -193,7 +193,8 @@ const MOTOR_TWAS = [0, 20, 35];
 // margin 1.0 m, present at >= 1.5 m). Safety-inert: every leg is still
 // gate-validated, and 3.0 m is exactly what this same passage's OTHER rig
 // already touches today. Not eliminated by any tested parameter combination
-// — see realmask.repro.test.ts's pinned threshold test and CHANGELOG.md.
+// — see realmask.repro.depthComfort.test.ts's pinned threshold test
+// (Aeroeskoebing -> Drejoe) and CHANGELOG.md.
 const DEPTH_DERATE_MAX = 0.3;
 
 /**

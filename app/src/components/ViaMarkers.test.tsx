@@ -5,18 +5,30 @@ import { de } from '../i18n/dict.de';
 import { makeFakeMap } from '../test/fakeMaplibre';
 import type { LatLon } from '../types';
 
-// #470: ViaMarkers was executed by nothing in the suite — RouteLayer.test.tsx
-// loads it (its only importer), but that file's own `maplibre-gl` mock is a
-// no-op `Marker` that records nothing, and every RouteLayer test that reaches
-// it passes an EMPTY `draftViaPoints`, so no marker was ever constructed
-// under any existing test run. This file exercises exactly the three things
-// #470 named as still unasserted after the #571 redesign made ViaMarkers
-// reachable via the integration path: construction coordinates, the marker
-// element's accessibility contract, and both `snapBack` branches (dragend
-// rejected, dragend rejected-promise) — plus the null-map render phase
-// (ViaMarkers renders before `MapView`'s Map instance exists; `useMapInstance()`
-// returns null until then, mirroring the RouteLayer null-render-phase lesson
-// in CLAUDE.md: a component that skips work on a null dependency needs a test
+// #470/#838: `RouteLayer.tsx:30` is ViaMarkers' only production importer, so
+// besides this file the only vitest files that RENDER it are
+// `RouteLayer.test.tsx` (directly) and `App.test.tsx` (through the real
+// App -> RouteLayer tree). `RouteLayer.test.tsx` mocks `maplibre-gl` with a
+// no-op `Marker` that records nothing, and when this was written every
+// render helper there passed an EMPTY `draftViaPoints` — so THAT file
+// constructed zero markers.
+// But `App.test.tsx` DOES exercise ViaMarkers, through the real
+// App -> RouteLayer -> ViaMarkers tree with its own recording `FakeMarker`
+// (see that file's header note above its `FakeMarker` class): it renders a
+// plan with a via point and drives real construct/drag/remove sequences.
+// Measured (#838): with this file removed, mutating ViaMarkers.tsx's rebuild
+// effect to construct zero markers reds App.test.tsx (`expected [] to have a
+// length of 1 but got +0`). App.test.tsx's `FakeMarker` only became a
+// RECORDING fake at the #571 redesign (`4c07500`, 2026-08-19); before that
+// it was a no-op, and #470 was filed 2026-08-09 — so nothing ASSERTED
+// marker construction when #470 was written, and something does now. What
+// THIS file adds is per-unit assertions the integration path does not make:
+// construction coordinates, the marker element's
+// accessibility contract, both `snapBack` branches (dragend rejected,
+// dragend rejected-promise) — plus the null-map render phase (ViaMarkers
+// renders before `MapView`'s Map instance exists; `useMapInstance()` returns
+// null until then, mirroring the RouteLayer null-render-phase lesson in
+// CLAUDE.md: a component that skips work on a null dependency needs a test
 // that renders it in THAT phase and then transitions, not just steady state).
 
 // Recording `Marker` fake (BoatMarker.test.tsx's pattern, `test/fakeMaplibre.ts`'s
@@ -214,50 +226,69 @@ describe('ViaMarkers dragend / snapBack branches (#470)', () => {
     });
   }
 
-  it('reports the dragged-to position via onDragEnd with lat/lon correctly mapped from lat/lng, and does not snap back once accepted', async () => {
+  // #838: TWO via points, and every assertion below drags the SECOND
+  // marker (index 1). With a single via point (the shape these three rows
+  // used before #838), `p === viaPoints[0]` and `index === 0` hold for
+  // EVERY marker, so a per-marker closure/index bug — `snapBack` closing
+  // over `viaPoints[0]` instead of its own `p`, or `onDragEnd` called with
+  // a hardcoded `0` instead of `index` — cannot be distinguished from
+  // correct code: both produce the exact same (0, point-0-coords) result.
+  // Measured (#838 investigation): reproducing either bug against the old
+  // single-point rows left all three GREEN. Dragging index 1 here means a
+  // hardcoded-0 or wrong-closure bug reports/snaps to marker 0's identity
+  // instead of marker 1's OWN — which these rows can see because the two
+  // points are distinct.
+  const twoViaPoints: LatLon[] = [
+    { lat: 54.5, lon: 10.0 },
+    { lat: 54.7, lon: 10.2 },
+  ];
+
+  it('reports the dragged-to position for the SECOND marker via onDragEnd with its own index (1), and does not snap back once accepted', async () => {
     hoisted.map = makeFakeMap();
-    const viaPoints: LatLon[] = [{ lat: 54.5, lon: 10.0 }];
     const onDragEnd = vi.fn().mockResolvedValue(true);
-    render(<ViaMarkers viaPoints={viaPoints} replanning={false} onDragEnd={onDragEnd} />);
-    const marker = createdMarkers[0]!;
+    render(<ViaMarkers viaPoints={twoViaPoints} replanning={false} onDragEnd={onDragEnd} />);
+    const [first, second] = createdMarkers as [RecordedMarker, RecordedMarker];
     // lat !== lng here so a `{ lat: lngLat.lng, lon: lngLat.lat }` transposition
     // bug would be caught, not silently matched.
-    marker.draggedTo = { lat: 54.55, lng: 10.05 };
+    second.draggedTo = { lat: 54.75, lng: 10.25 };
 
-    await fireDragendAndFlush(marker);
+    await fireDragendAndFlush(second);
 
-    expect(onDragEnd).toHaveBeenCalledWith(0, { lat: 54.55, lon: 10.05 });
+    expect(onDragEnd).toHaveBeenCalledWith(1, { lat: 54.75, lon: 10.25 });
     // Only the original construction call — accepted means no snapBack.
-    expect(marker.setLngLatCalls).toHaveLength(1);
+    expect(second.setLngLatCalls).toHaveLength(1);
+    // The FIRST marker was never touched — a shared-closure bug that
+    // resolves everything against index 0 would instead move this one.
+    expect(first.setLngLatCalls).toHaveLength(1);
   });
 
-  it('snaps back to the ORIGINAL construction position when onDragEnd resolves false (rejected)', async () => {
+  it("snaps the SECOND marker back to ITS OWN original position (never the first marker's) when onDragEnd resolves false (rejected)", async () => {
     hoisted.map = makeFakeMap();
-    const viaPoints: LatLon[] = [{ lat: 54.5, lon: 10.0 }];
     const onDragEnd = vi.fn().mockResolvedValue(false);
-    render(<ViaMarkers viaPoints={viaPoints} replanning={false} onDragEnd={onDragEnd} />);
-    const marker = createdMarkers[0]!;
-    marker.draggedTo = { lat: 54.55, lng: 10.05 };
+    render(<ViaMarkers viaPoints={twoViaPoints} replanning={false} onDragEnd={onDragEnd} />);
+    const [first, second] = createdMarkers as [RecordedMarker, RecordedMarker];
+    second.draggedTo = { lat: 54.75, lng: 10.25 };
 
-    await fireDragendAndFlush(marker);
+    await fireDragendAndFlush(second);
 
-    expect(marker.setLngLatCalls).toHaveLength(2);
-    // The snap-back target is the point's ORIGINAL [lon, lat], never the
-    // dragged-to position.
-    expect(marker.setLngLatCalls[1]).toEqual([10.0, 54.5]);
+    expect(second.setLngLatCalls).toHaveLength(2);
+    // The snap-back target is marker 1's OWN original [lon, lat] — never
+    // marker 0's, which a closure sharing `viaPoints[0]` would produce.
+    expect(second.setLngLatCalls[1]).toEqual([10.2, 54.7]);
+    expect(first.setLngLatCalls).toHaveLength(1);
   });
 
-  it('snaps back to the ORIGINAL construction position when onDragEnd rejects (defense-in-depth catch)', async () => {
+  it("snaps the SECOND marker back to ITS OWN original position (never the first marker's) when onDragEnd rejects (defense-in-depth catch)", async () => {
     hoisted.map = makeFakeMap();
-    const viaPoints: LatLon[] = [{ lat: 54.5, lon: 10.0 }];
     const onDragEnd = vi.fn().mockRejectedValue(new Error('boom'));
-    render(<ViaMarkers viaPoints={viaPoints} replanning={false} onDragEnd={onDragEnd} />);
-    const marker = createdMarkers[0]!;
-    marker.draggedTo = { lat: 54.55, lng: 10.05 };
+    render(<ViaMarkers viaPoints={twoViaPoints} replanning={false} onDragEnd={onDragEnd} />);
+    const [first, second] = createdMarkers as [RecordedMarker, RecordedMarker];
+    second.draggedTo = { lat: 54.75, lng: 10.25 };
 
-    await fireDragendAndFlush(marker);
+    await fireDragendAndFlush(second);
 
-    expect(marker.setLngLatCalls).toHaveLength(2);
-    expect(marker.setLngLatCalls[1]).toEqual([10.0, 54.5]);
+    expect(second.setLngLatCalls).toHaveLength(2);
+    expect(second.setLngLatCalls[1]).toEqual([10.2, 54.7]);
+    expect(first.setLngLatCalls).toHaveLength(1);
   });
 });

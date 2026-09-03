@@ -337,45 +337,74 @@ function appVersion(command: 'build' | 'serve'): string {
 // half by size and starts late, becoming the tail of the whole test step
 // even though other workers are free the entire time (measured:
 // https://github.com/DocGerd/sail_command/issues/214).
-// realmask.repro.test.ts is a DIFFERENT case, not a second instance of the
-// same problem: at 42,532 B it is the 7th LARGEST of the 144 files
-// (App.test.tsx is the largest), so BaseSequencer's own
-// size-descending default would already start it near the front — not the
-// back — with no help from this array. Every figure in this paragraph is a
-// snapshot that decays as test files are added or grow; re-derive rather than
-// trust them (`git ls-tree -r -l HEAD -- app/src`). Measured 2026-08-19 at
-// 9068444. It is pinned here anyway because
-// "near the front" still means SIX files sort ahead of it by size alone,
-// each occupying a worker slot before realmask's own 477.4s (the suite's
-// single longest run) gets to start; pinning it to array position 1
-// guarantees the very first wave rather than the 7th, which is the
-// remaining head-start this array can buy once the small-file mismatch
-// below is fixed. Its start order also must not depend on incidental
-// byte-size correlation surviving a future edit to the file — not because
-// it shares invariants.property.test.ts's small-file mismatch.
-// Pinning both to the FRONT lets their CPU run concurrently with
-// everything else's instead of serially after it. Order here is the
+// realmask.repro.test.ts WAS (past tense — see the #878 paragraph below,
+// which supersedes this one) a DIFFERENT case, not a second instance of the
+// same problem: at 42,532 B it WAS the 7th LARGEST of the 144 files
+// (App.test.tsx was the largest), so BaseSequencer's own
+// size-descending default would already have started it near the front —
+// not the back — with no help from this array. Every figure in the rest of
+// this paragraph is a 2026-08-19 snapshot of that now-deleted single file
+// (`git ls-tree -r -l HEAD -- app/src` cannot reproduce it — the file is
+// gone, not merely stale), kept only as the historical reason it was pinned
+// here at all. It was pinned here anyway because
+// "near the front" still meant SIX files sorted ahead of it by size alone,
+// each occupying a worker slot before its own 477.4s (the suite's
+// single longest run, at that measurement) got to start; pinning it to
+// array position 1 guaranteed the very first wave rather than the 7th,
+// which was the remaining head-start this array could buy once the
+// small-file mismatch below is fixed. Its start order also had to not
+// depend on incidental byte-size correlation surviving a future edit to
+// the file — not because it shared invariants.property.test.ts's
+// small-file mismatch.
+// Pinning both to the FRONT let their CPU run concurrently with
+// everything else's instead of serially after it. Order here was the
 // desired START order (slowest wall-clock time first) — #581:
-// realmask.repro.test.ts (477.4s) is listed before
+// realmask.repro.test.ts (477.4s) was listed before
 // invariants.property.test.ts (239.6s), matching the 2026-08-19 measurement
 // at `04384c2` (CLAUDE.md's "Full test suite" entry) rather than the order
 // they were originally added in. Their summed per-file duration — call it
-// combined CPU time, i.e. what the two would cost run back-to-back on one
-// core — is 477.4 + 239.6 = 717.0s; that sum is DERIVED, never itself
-// measured as one figure, and it is necessarily MORE than the 499.9s
+// combined CPU time, i.e. what the two would have cost run back-to-back on
+// one core — was 477.4 + 239.6 = 717.0s; that sum was DERIVED, never itself
+// measured as one figure, and it was necessarily MORE than the 499.9s
 // measured WALL-CLOCK time for the full suite at the same commit, because
-// these two files run concurrently with each other and with everything
-// else rather than serially. Add a file to this list if a future addition
-// shows the same small-file/disproportionately-slow-run mismatch that
-// motivates invariants.property.test.ts's entry, keeping the array sorted
-// slowest-first by wall-clock time.
+// the two files ran concurrently with each other and with everything
+// else rather than serially.
+// #878: realmask.repro.test.ts (the single file the paragraph above
+// measures — a PAST fact, not a current one) was split into five sibling
+// files (`routing/realmask.repro.*.test.ts`), one per top-level describe,
+// plus a shared `test/realmaskFixtures.ts` helper, so vitest can
+// parallelise the real-mask suite across cores instead of one file
+// monopolizing the run.
+//
+// Measured WITHIN ONE RUN (all six candidate files in a single
+// `vitest run realmask invariants.property`, same machine/load — these
+// figures are NOT comparable to the 2026-08-19 baseline above, only to each
+// other): invariants.property 306.4s, issue20 278.3s, salona44 196.2s,
+// relaxationFloor 169.7s, depthComfort 113.4s, mirrorCase 1.3s.
+//
+// `mirrorCase` is EXCLUDED from this array: at ~90x below its nearest
+// neighbour it is small AND fast — the exact inverse of the admission
+// criterion this array exists for (a file that is small but SLOW, so
+// BaseSequencer's size-descending default schedules it last). Pinning it to
+// the front would spend a first-wave worker slot on nothing.
+//
+// The other four `realmask.repro.*` siblings are ordered by that
+// measurement (issue20 > salona44 > relaxationFloor > depthComfort).
+// `invariants.property.test.ts` is kept FIRST on its OWN #214 justification
+// (independent of this PR's realmask measurements) — this does NOT claim it
+// is slower than `issue20`: a ~10% gap under shared load establishes
+// nothing, and no measurement here licenses reordering it relative to the
+// realmask files. Do not tighten this into a claim it doesn't make.
 const SLOW_TEST_FILES_FIRST = [
-  'src/routing/realmask.repro.test.ts',
   'src/routing/invariants.property.test.ts',
+  'src/routing/realmask.repro.issue20.test.ts',
+  'src/routing/realmask.repro.salona44.test.ts',
+  'src/routing/realmask.repro.relaxationFloor.test.ts',
+  'src/routing/realmask.repro.depthComfort.test.ts',
 ];
 
 // Extends BaseSequencer rather than reimplementing it: only `sort` changes
-// (the two known-slow files move to the front, everything else keeps
+// (the files listed above move to the front, everything else keeps
 // BaseSequencer's default order); `shard` is inherited untouched so sharded
 // runs still work.
 class SlowFileFirstSequencer extends BaseSequencer {
