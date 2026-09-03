@@ -609,8 +609,7 @@ export const en = {
   // this comment used to say "rendered inside .data-layer-controls", which
   // was stale from the moment that move shipped; corrected here rather than
   // left for a reviewer who is looking at DataLayers.tsx, not this file, to
-  // never notice. Reachable without a plan either way, since the hatch has
-  // no OTHER opt-in surface. Covers the HATCH SYMBOL only, never the
+  // never notice. Covers the HATCH SYMBOL only, never the
   // absolute depth-ramp colours (out of scope per the maintainer ruling on
   // #598). Deliberately says "cautious reading", never "shallow water" — the
   // hatch is a cautious-reading indicator, not a shallow-water one, and can
