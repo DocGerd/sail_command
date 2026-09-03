@@ -143,53 +143,26 @@ making design-level decisions; do not silently deviate.
   `setupFiles`) and collects Playwright `.spec.ts` under `app/e2e/` as
   "(0 test)" — cost three failed coverage measurements this session. Always
   use `run`, never `exec`, for anything that depends on `app/`'s config.
-- Statement coverage baseline: **94.52%** (branches 90.23%, functions 94%,
-  lines 96.17%), read off the NIGHTLY `Coverage` run `33483775308`
-  (`event=schedule`, head `311202c`, success, 2026-09-01) — attributed to
-  `311202c`, NOT to any later tip, since #809/#810 merged after it.
-  `coverage.yml` runs nightly, so a current figure usually already sits in
-  Actions: read it off the run WITH its head SHA rather than paying a fresh
-  local `test:coverage`. **Since #879 (v0.20.0) that nightly SKIPS an
-  unchanged tree** (`.github/scripts/coverage-skip-gate.sh`, a fail-open gate
-  that walks back to the last real measurement), so a nightly run existing is
-  no longer evidence a fresh figure was produced — check the run's own
-  `test:coverage` step conclusion, not just the run's. The trailing test/file COUNT is RE-MEASURED, never
-  hand-added or inferred: **2447 tests, 157 files**, all passing (measured
-  2026-09-02 at `a7caaf4`, the v0.18.0 back-merge — NOT at `311202c`, which is
-  the coverage nightly's head above and carried 2410/154). The `a7caaf4`
-  DURATION is DISCARDED: the machine was under multi-agent load all session.
-  That earlier
-  2410/154 was itself corroborated by the nightly's identical figure from a
-  DIFFERENT runner — counts are load-independent, so that was a genuine
-  cross-check rather than the same measurement twice. The earlier
-  **2160 tests / 146 files** (2026-08-24
-  at `39bbcd6`, the v0.13.1 cut) was +24 over v0.13.0 = 12 plain `it(` cases plus
-  ONE `it.each(Object.getOwnPropertyNames(Object.prototype))` row expanding to
-  12 — a token grep for added `it(` returns eleven and reads as a
-  contradiction, so a test COUNT can never be derived by grepping `it(`). That run's DURATION was DISCARDED too — a browser agent ran
-  concurrently, the same contention that invalidated an earlier 393 s figure.
-  Three rules distilled from repeated re-measurements of this pair: **counts
-  are load-independent, durations are not** (never quote a duration measured
-  under load, and re-measure BOTH halves rather than infer either from the
-  other); **a COUNT carries its FILTER exactly as a duration carries its suite
-  size** — 295/295 over 6 files and 682/682 over 23 described one TREE under
-  two apertures, and relaying one into the other's scope is an error the
-  receiver should refuse (measured 2026-08-31 on PR #768);
-  and a scanning-only or assertion-adding test file is coverage-neutral to
-  first order, so **never infer a new percentage from a new count** — the
-  percentages above need `test:coverage`, a substantially longer run, and were
-  NOT re-measured at that cut. Meets the OpenSSF
-  `test_statement_coverage80` criterion (≥80%) — it had simply never been
-  measured before. `vite.config.ts`'s `coverage` block carries
-  `thresholds.statements: 80` (#335) and `.github/workflows/coverage.yml`
-  (#342) now evaluates it — but only NIGHTLY (`schedule` +
-  `workflow_dispatch`), never per-PR: `app`'s required CI job still runs
-  plain `test` (a bare `vitest run`, no coverage). `src/sw.ts` and
-  `src/routing/worker.ts` STAY IN coverage scope at ~0% BY DESIGN (jsdom has
-  no real ServiceWorker or dedicated-Worker execution model; decided 2026-08-03
-  on #319 rather than excluded, since together they are only ~0.57% of
-  statements and excluding would raise, not preserve, the published figure)
-  — their functional assurance instead comes from `app/e2e/offline.spec.ts`,
+- Statement coverage baseline and trailing test/file count: read both off the
+  LATEST nightly `Coverage` run's own head SHA and its `test:coverage` step
+  conclusion — never hand-add, infer, or carry a prior run's figure forward.
+  `.github/scripts/coverage-skip-gate.sh` can skip an unchanged tree, so a
+  nightly run existing is not by itself evidence a fresh figure was produced;
+  check the step conclusion, not just the run. Three rules for quoting any
+  count/duration pair here: **counts are load-independent, durations are
+  not** (never quote a duration measured under load, and re-measure both
+  halves rather than infer either from the other); **a count carries its
+  FILTER exactly as a duration carries its suite size** (relaying one into
+  the other's scope is an error the receiver should refuse); and a
+  scanning-only or assertion-adding test file is coverage-neutral to first
+  order, so **never infer a new percentage from a new count**. Meets the
+  OpenSSF `test_statement_coverage80` criterion (≥80%) via
+  `vite.config.ts`'s `coverage.thresholds.statements: 80`, evaluated only
+  NIGHTLY (`coverage.yml`, `schedule` + `workflow_dispatch`), never per-PR —
+  `app`'s required CI job runs plain `test`, no coverage. `src/sw.ts` and
+  `src/routing/worker.ts` stay in coverage scope at ~0% BY DESIGN (jsdom has
+  no real ServiceWorker or dedicated-Worker execution model, #319) — their
+  functional assurance instead comes from `app/e2e/offline.spec.ts`,
   `csp.spec.ts`, `basemap-fallback.spec.ts`, `plan.spec.ts`, `live.spec.ts`
   and `deploy.yml`'s post-deploy CDN smoke probe; do not "fix" the 0% with a
   jsdom-mocked service-worker test — that would be the #50 equivalence-test
@@ -199,15 +172,9 @@ making design-level decisions; do not silently deviate.
   EVERY name in `app/sweep/armNames.ts` x 33 harbours. Do NOT restate that
   count here: it has gone stale twice already (SIX until #452, NINE until
   #653), and `armNames.ts` plus `app/sweep/README.md`'s opening line decay on
-  the same schedule as the thing they describe. Composition as of 2026-09-03 at
-  `bca2561`: six original Flensburg-origin arms; three Marstal-origin
-  relaxation arms (#452, PR #488) added because the original six could not
-  discriminate a depth-relaxation change at all; and two `salona44-*` arms
-  (#653) that reuse both origins and exercise the boat-keyed POLAR lookup
-  rather than adding an origin — `sweepArms.ts`'s `Arm.boatId` comment says why
-  they deliberately do NOT discriminate a depth-gate regression (both Salonas
-  share a 2.1 m draft, so `boatDepth.ts` computes the identical gate). A README
-  carrying the full rebuild spec,
+  the same schedule as the thing they describe. Read current composition
+  from `armNames.ts` and `app/sweep/README.md` directly, never restate a
+  count here. That README carries the full rebuild spec,
   and a REQUIRED BASE double-run control (two BASE runs must be byte-identical
   to each other before any BASE-vs-HEAD comparison means anything). Record
   that control against the merge-base of the branch it will certify. A moved
@@ -295,31 +262,11 @@ making design-level decisions; do not silently deviate.
   failures across four causes. CHECK THE DISTRIBUTION before treating 297/297
   byte-identical as evidence; a baseline dominated by error rows is
   byte-stable through almost anything.
-- Full test suite: **499.9 s** (~8.3 min) on a quiet machine — measured
-  2026-08-19 at `04384c2`, 2032 tests / 143 files. Wall time is set almost
-  entirely by ONE file: `routing/realmask.repro.test.ts` took
-  **477.4 s** (17 cases against the real committed mask/polars), with the
-  seeded fast-check property suite second at **239.6 s**; everything else
-  runs concurrently underneath them, which is why the total barely exceeds
-  the slowest file. **PAST TENSE since v0.20.0: #878 SPLIT that file into
-  five `routing/realmask.repro.*.test.ts` siblings plus a shared
-  `app/src/test/realmaskFixtures.ts`, precisely so the one serialized file
-  stops setting the total.** The 499.9 s figure was measured BEFORE that
-  split and has not been re-measured since, so treat it as an upper bound of
-  historical interest, not a current duration. `app/vite.config.ts`'s own
-  #878 paragraph carries the new file list and the sequencer ordering — read
-  it there rather than restating either here. The former "~4 min (a ~200 s property suite + a ~40 s
-  real-mask file)" was stale by ~2x on the total and by more than 10x on
-  real-mask — and it DISAGREED with `vite.config.ts`'s own "~680 s
-  combined" comment on `SLOW_TEST_FILES_FIRST`, which was the closer of the
-  two; when two artifacts state one fact, re-measure rather than pick.
-  **That list was rewritten by #878 and its ORDER claim is retired**: the
-  array now holds FIVE entries with `invariants.property.test.ts` FIRST and
-  four `realmask.repro.*` siblings after it, and `vite.config.ts`'s own #878
-  comment explicitly REFUSES to rank them ("this does NOT claim it is slower
-  than `issue20` … Do not tighten this into a claim it doesn't make"). Read
-  the array and that comment; do not restate an ordering here, in either
-  direction — this sentence has now been wrong in both.
+- Full test suite timing, file list and sequencer ordering: read them off
+  `app/vite.config.ts`'s own #878 comment, never restate a duration, count,
+  or ordering here — a stale figure has already been quoted here twice and
+  disagreed with a fresher source both times; when two artifacts state one
+  fact, re-measure rather than pick.
   Use focused filters while iterating (`npm --prefix app run test --
   <filter>`); give the full run a generous timeout. Solver-heavy test files import `SOLVER_TEST_TIMEOUT_MS`
   (file-level `vi.setConfig`) or call `solverTimeoutMs(baseMs)` (a larger
@@ -340,30 +287,22 @@ making design-level decisions; do not silently deviate.
   killed by a too-tight budget, and because solver-heavy tests are
   documented to pay MORE than the suite-average coverage penalty; full
   derivation in `timeouts.ts`'s `COVERAGE_MULTIPLIER` comment).
-  **CI is slower than dev machines, but not by a flat multiplier** — measured
-  2026-08-03 (#341, PR #335 work): `npm run test` local 249.8 s vs CI
-  ~515–535 s (~2.1×) — **both halves of that pair measured against a 1206-test
-  suite.** The CI half re-measured 2026-08-18 at 1161 s against **1872 tests**
-  (#556), so that 2.25× is mostly suite GROWTH, not a slower runner: never
-  difference two durations measured at different suite sizes. Quote a ratio
-  only from two halves measured at the SAME count, and carry the count with
-  each figure; `npm run test:coverage` local ~983–1029 s vs CI 2558 s
-  (~2.5×). Coverage instrumentation is a SEPARATE multiplier from runner
-  speed — solver-heavy tests pay a bigger coverage penalty than component
-  tests, so no single ratio predicts both. A job's `timeout-minutes` and a
-  per-test `vi.setConfig` timeout are DIFFERENT failure surfaces: raising the
-  former cannot rescue the latter (cost three red CI runs to learn). Operative
-  rule unchanged — never add a per-test timeout tighter than the file-level
-  config, and never size a CI timeout from a local measurement's margin; that
-  holds at 2× as firmly as at a bigger multiplier. That rule is now
-  structurally enforced, not just documented: `timeoutGuard.test.ts` fails
-  loudly if `app/src/**/*.test.{ts,tsx}` hardcodes a `testTimeout`/`timeout`
-  literal (keyed OR bare-positional form) instead of importing it from
+  **CI is slower than dev machines, but not by a flat multiplier, and a
+  ratio decays with the suite** — quote one only from two halves measured at
+  the SAME test count, with the count stated alongside each figure; never
+  difference two durations measured at different suite sizes. Coverage
+  instrumentation is a SEPARATE multiplier from runner speed — solver-heavy
+  tests pay a bigger coverage penalty than component tests, so no single
+  ratio predicts both. A job's `timeout-minutes` and a per-test
+  `vi.setConfig` timeout are DIFFERENT failure surfaces: raising the former
+  cannot rescue the latter. Operative rule: never add a per-test timeout
+  tighter than the file-level config, and never size a CI timeout from a
+  local measurement's margin. Structurally enforced by
+  `app/src/test/timeoutGuard.test.ts`, which fails loudly if
+  `app/src/**/*.test.{ts,tsx}` hardcodes a `testTimeout`/`timeout` literal
+  (keyed OR bare-positional form) instead of importing it from
   `app/src/test/timeouts.ts` — Playwright specs under `app/e2e/**` and
-  `playwright.config.ts` are a NAMED residual, out of scope by glob (coverage
-  never runs e2e, and Playwright's own `timeout: 120_000` is an unrelated
-  budget); an `it.each(...)(...)` positional timeout is a separate, latent
-  (not live) residual documented in the guard's own header comment.
+  `playwright.config.ts` are a NAMED residual, out of scope by glob.
 - vitest's `BaseSequencer` sorts by file SIZE descending when there is no
   cache — and CI never has one (`npm ci` wipes `node_modules`).
   `invariants.property.test.ts` is ~4380 bytes but ~463 s, so the
@@ -513,13 +452,13 @@ making design-level decisions; do not silently deviate.
   logs: `Computing PR diff ranges…`, and `--extension-packs=codeql-action/pr-diff-range`
   on both matrix legs), so the adopting PR's zero-new-alerts result is guaranteed
   and carries no information. The full inventory comes only from a `push` to
-  `develop` or the Monday 04:23 UTC schedule. The widening is large: **+114
-  javascript-typescript and +129 python** queries, re-derived by counting
-  `runs[0].tool.extensions[].rules` in the SARIF of the two unscoped `push`
-  analyses straddling the change (`23cb995` default vs `a39b3cf` widened, CodeQL
-  CLI 2.26.3 both sides). Quote the DELTAS, not absolutes — the absolute counts
-  drift on any `codeql-action`/query-pack bump with nothing here to catch it, and
-  `codeql.yml`'s own comment says to re-derive rather than trust them. CodeQL is
+  `develop` or the Monday 04:23 UTC schedule. The widening vs the default
+  suite is measurable by counting `runs[0].tool.extensions[].rules` in the
+  SARIF of two unscoped `push` analyses straddling the change — quote the
+  DELTA, not an absolute count, and re-derive rather than trust a cited
+  figure (the absolute counts drift on any `codeql-action`/query-pack bump
+  with nothing here to catch it; `codeql.yml`'s own comment says the same).
+  CodeQL is
   NOT a required check (`protect-main` = `app`+`e2e`), so alerts accumulate
   silently — triage the post-merge push run. Dismissal comments are capped at
   **280 chars**, so a dismissal must point at a linked evidence record (#600).
@@ -552,13 +491,11 @@ making design-level decisions; do not silently deviate.
   `erasableSyntaxOnly` forbids enums and constructor parameter properties.
 - `String.replace` with a STRING pattern (not a regex/global) silently
   returns the input UNCHANGED when the pattern is absent — no throw, no
-  warning. Measured (#223): reformatting `<meta charset="UTF-8" />` to
-  `<meta charset="utf-8">` made `vite build` exit 0 with ZERO CSP metas in
-  `dist`. `cspMeta()` (`app/vite.config.ts`) now throws if its marker is
-  missing; `subPathMeta()` gained the same fail-closed guard (#318, CLOSED
-  2026-08-04 — neither is unguarded now; re-read before citing either).
-  Per the guard-asymmetry rule below: an absent security control is the
-  expensive failure direction, so the check must fail closed.
+  warning. `cspMeta()` and `subPathMeta()` (`app/vite.config.ts`, #223/#318)
+  now both throw if their marker is missing, pinned by
+  `app/src/test/subPathMeta.test.ts`. Per the guard-asymmetry rule below: an
+  absent security control is the expensive failure direction, so the check
+  must fail closed.
 - **`in` walks the PROTOTYPE CHAIN — never use it as a membership test against
   an object literal used as a lookup table for STORED/untrusted input.** EVERY
   `Object.getOwnPropertyNames(Object.prototype)` member passes it (12 of them on
@@ -785,39 +722,15 @@ making design-level decisions; do not silently deviate.
   Level 3 parser drops the WHOLE BLOCK silently either way, "reason enough
   on its own" — not merely a residual of the now-gone `:has()` pairing.
 - **A single-class MODIFIER loses to its base rule when the base is declared
-  LATER** — specificity ties, source order decides. `app/src/app.css`'s
-  `.chip` base sits BELOW its modifiers, so switching a hand-rolled span to
-  the `Chip` primitive silently reverted the modifier: `.chip-shallow-cautious`
-  rendered FILLED at full size until raised to the compound
-  `.chip.chip-shallow-cautious` (#493/PR #504 — MEASURED in a real browser,
-  background `color-mix(…)` → `rgba(0,0,0,0)`, 12.8px → 12px, padding
-  1.6px/8px → 0.8px/6.4px). The markup, the tokens and the rule each look
-  correct in isolation and only the RESOLVED style shows it, so verify with
+  LATER** — specificity ties, source order decides. Verify with
   `getComputedStyle` (real browser or jsdom against the real `app.css`),
-  never by reading the CSS. **jsdom caveat: its `backgroundColor` reads
+  never by reading the CSS — **jsdom caveat: `backgroundColor` reads
   `rgba(0,0,0,0)` in BOTH the broken and fixed states** (it parses neither
   `color-mix()` nor `var()`) — only the `background` SHORTHAND discriminates.
-  The same cascade kept `.chip-shallow`'s amber hazard fill from ever
-  rendering until PR #509 raised it to the compound `.chip.chip-shallow`
-  (#506, closed 2026-08-11) — the same narrow route #504 took, again in
-  preference to REORDERING `.chip` above its modifiers, which would have
-  repaired every BROKEN modifier at once (only those declared above the
-  base rule) but changed an existing surface. #509 also added
-  `app/src/test/chipShallowFill.test.ts`, a structural scan for any other
-  bare single-class `.chip-*` modifier sitting above `.chip`'s base rule, so
-  a new `.chip-*` instance now fails loudly instead of silently not
-  rendering. That guard is `.chip-*`-ONLY — the general rule above still has
-  no keeper for other primitives. None is broken today, but for DIFFERENT
-  reasons, so do not generalise from one: `.sc-card` and `.sc-field` declare
-  their base ABOVE their modifiers, whereas `.sc-btn` is ALSO named in a
-  later GROUPED rule inside `@media (prefers-reduced-motion: reduce)`
-  (`.sc-btn, .banner-action, .sc-disclosure-summary::before`, ~:2315) that
-  sits below `.sc-btn-primary`/`-secondary`/`-ghost` and wins on source
-  order — media queries add no specificity. It is harmless only because it
-  sets `transition` alone, which no `.sc-btn-*` modifier touches. So a
-  `.chip-*`-style guard generalised to `.sc-btn` would report all three
-  modifiers broken today. Note the grouped form is why an anchored
-  `^\.sc-btn\s*\{` grep misses it: that line ends in a comma, not a brace.
+  `app/src/test/chipShallowFill.test.ts` structurally guards this for
+  `.chip-*` modifiers ONLY (#506/#493) — it would NOT catch the same bug on
+  `.sc-btn`, whose modifiers currently escape it only because the one rule
+  they share sets `transition` alone; do not generalise the guard's coverage.
 - **#355 resizable desktop left panel** (`PanelResizer.tsx`, `lib/panelWidth.ts`,
   `lib/usePersistedNumber.ts`): `role="separator"` WAI-ARIA "Window Splitter"
   primitive, wide-layout only (`isWide` mount-gates it — narrow must not gain
@@ -836,13 +749,12 @@ making design-level decisions; do not silently deviate.
   value clamps to the CALLER's current `min`/`max` on every read, but the raw
   stored number is left untouched by a bounds change ALONE — only an explicit
   drag/keyboard-step/reset commit persists a new value, so one narrow-viewport
-  visit cannot silently erase a wide-screen preference. `panelWidth.test.ts` is
-  the CSS/JS drift guard (this repo's `useBannerHeight.test.ts` pattern): it
-  `readFileSync`s `app.css`, regexes out the `320px` literal, and asserts it
-  equals `PANEL_MIN_WIDTH_PX`.
+  visit cannot silently erase a wide-screen preference. `panelWidth.test.ts`
+  is the CSS/JS drift guard (this repo's `useBannerHeight.test.ts` pattern),
+  pinning `app.css`'s `320px` literal against `PANEL_MIN_WIDTH_PX`.
 - `maxPitch: 0` is set at Map CONSTRUCTION in `MapView.tsx`, not via a later
-  `setMaxPitch`/`setPitch` — and pinned by
-  `MapView.mount.test.tsx`'s `'#207: constructs with pitch locked flat'`.
+  `setMaxPitch`/`setPitch`, pinned by `MapView.mount.test.tsx`'s
+  `'#207: constructs with pitch locked flat'`.
   The old "a style reload could undo it" reason is HALF right, and the half
   that is wrong is the one that names `setMaxPitch` (read against 6.2.0):
   `setMaxPitch` DOES survive — `_maxPitch` is written only by it, the
@@ -1449,137 +1361,40 @@ making design-level decisions; do not silently deviate.
   count instead of an ordinal. (v0.10.0–v0.11.0 carry no recorded Deploy
   workflow run IDs or job conclusions for those cuts, and no date is recorded
   for any cut before v0.14.0 — don't fabricate any.)
-  **NEVER GATE ON THE GAP, and never read "fast tag push" as a protection —
-  but the flat "carries ZERO information" phrasing was retired 2026-08-27.**
-  Through v0.17.0 every row whose merge `deploy` CONCLUDED `cancelled` probed
-  GREEN, and row 12 is the FIRST that did not — its gate READING was
-  `in_progress`, not `cancelled`, so that equivalence is post-hoc — and a
-  terminal `cancelled` reading no longer licenses skipping the probe. What
-  that gate observes is narrow and purely negative: `cancelled` means the
-  merge run left NO `success`-state
-  deployment of this SHA behind. It does not tell you whether the tag run's
-  own bytes will be SERVED, and the tag run's `deploy` job and Pages object
-  BOTH reading `success` cannot tell you either — that is the signature of a
-  clean deploy and of a same-SHA no-op alike (v0.9.0: the tag run's Pages
-  deployment "reported `success` … and changed nothing"). Only the
-  entry-chunk probe separates them. The gap is a WEAK PROXY
-  for that, with a real mechanism: a longer gap gives the merge run more time
-  to finish, so its `deploy` is likelier to own the SHA. As recorded through
-  the v0.16.0 cut, the THREE no-ops are the three LARGEST gaps in the table
-  (972 s, 498 s and 128 s; largest safe row 70 s) — a separation with no
-  overlap, which under no association would arise about 1 time in 84. Row 9
-  STRENGTHENED the association (it was 1 in 28 at eight rows) rather than
-  breaking it — which is exactly what the standing re-check existed to
-  establish, and it does NOT change the rule. That is why the
-  threshold reading is seductive, and it is still the reading to distrust:
-  deploy-job DURATION varies independently, no threshold has been measured,
-  and the inverse inference the mechanism invites — that a SHORT gap protects
-  you — is exactly the wrong conclusion for someone who just tagged 40 s after
-  the merge. Gate on the JOB CONCLUSION, which is the fact; the gap licenses
-  nothing in either direction — and at v0.16.0 that gate was used
-  PREDICTIVELY for the first time: the merge-run's `deploy` job was read as
-  terminal `success` BEFORE the tag was pushed, the no-op was called in
-  advance, and `smoke-probe` then failed exactly as called. No gap threshold
-  could have done that — it would have said only "large, so probably". That
-  is the difference between a proxy and the fact, and it is the reason to
-  keep reading the job even while the gap's correlation keeps improving.
-  Row 10 (v0.17.0, SAFE at 58 s) sits inside the safe band and below
-  min(no-op), so it neither breaks nor strengthens the separation — and the
-  gate was used PREDICTIVELY there for the SECOND time: the merge-run's
-  `deploy` job was read as NOT YET CREATED (the run was still on `build`), so
-  `cancel-in-progress` was called to supersede it in advance, and all five of
-  its jobs then read `cancelled`.
+  **NEVER GATE ON THE GAP, and never read a "fast tag push" as protection —
+  gate on the merge-run's `deploy` JOB CONCLUSION instead.** Terminal
+  `cancelled` means the merge run left NO `success`-state deployment of this
+  SHA behind — necessary for the tag run's own deployment to take, but NOT
+  sufficient for its bytes to be SERVED (v0.12.0's tag deployment took on
+  exactly this reading; only the entry-chunk probe proves it either way).
+  Terminal `success` is the ONLY answer that licenses skipping the probe
+  outright: the merge run already deployed this SHA and the tag run will
+  no-op, so proceed straight to the back-merge (step 6) rather than
+  re-running the tag deploy. Every other reading (`queued`/`null`,
+  `in_progress`/`null`, no `deploy` line at all, terminal `failure`) is a
+  non-answer — the job is still a coin in the air.
   **The gate's answers differ in DURABILITY.** `success` is permanent — a
   job cannot un-succeed. "Not yet created" is a snapshot of a race still
-  running: at v0.18.0 the merge-run's `deploy` job did not exist when read
-  (the safe signal) and read `success` afterwards, during the window covering
-  the ref update, the signing, the local verify and the push. Read the gate
-  IMMEDIATELY before `git push origin <tag>`, never before the sign-and-verify
-  sequence — everything between the read and the push is time the merge run
-  gets to finish in. That timing rule is NECESSARY and not SUFFICIENT: it
-  cannot help against the `in_progress` reading below, where the volatility
-  is inside the read itself. v0.19.0 followed it exactly and still got a
-  non-answer.
-  **Re-checked when row 13 (v0.20.0) was added: the separation HOLDS and the
-  boundary is UNCHANGED — max(safe) 70 s against min(failed) 83 s, a 13 s
-  band, still the narrowest recorded. Row 13's 1735 s is the LARGEST gap ever
-  recorded and sits far above min(failed), so it strengthens the association
-  without moving the boundary: the six FAILED rows are now exactly the six
-  largest gaps, which under no association arises about 1 time in 1716 at
-  thirteen rows, from 1 in 792 at twelve. That improvement changes NOTHING
-  about the rule — a correlation this strong is precisely what makes the
-  threshold reading tempting, and the gap still licenses nothing in either
-  direction. Publish the TIGHTER pair, because that is the conservative one:
-  a SAFE row at or above 83 s, or a FAILED row at or below 70 s, breaks the
-  separation and changes what the rows support. Note the vocabulary rows 11,
-  12 and 13 force: all three are scored FAILED — the probe went red — without
-  being scored NO-OP, because none names its mechanism, so the axis is
-  safe-vs-FAILED, which is the wider and therefore safer reading. Whoever
-  adds row 14 re-checks this sentence again.**
-  What the rows DO rule out
-  is the opposite intuition, that a fast tag push races the merge run:
-  v0.13.1's 33 s is the smallest gap ever recorded and was SAFE, and
-  v0.12.1's 43 s likewise. No gap value has yet been observed on both
-  outcomes — 54 s appears TWICE (v0.11.0, v0.13.0) and both were safe — so
-  the sample cannot separate the two stories, which is weaker than having
-  refuted the gap. (An older, UNRELATED
-  43 s figure was completion→creation and is NOT comparable — differencing the two bases is this file's own "two
-  measurements of DIFFERENT subjects cannot be differenced", and two
-  same-valued figures on different bases must not be conflated.)
-  **Gate on the earlier run's `deploy` JOB conclusion, and the test is TERMINAL
-  `success`, not deployment-object existence.** At v0.12.0 a Pages deployment
-  for that SHA WAS created and reached `error`, and the tag run's SECOND object
-  still TOOK — so a reader who checks the deployments API, finds an earlier
-  object and concludes they are in the no-op case would be wrong.
-  **The converse reading fails too, and the sharpest way to see it is that
-  v0.12.0 and v0.19.0 have IDENTICAL post-hoc gate state and OPPOSITE
-  outcomes.** Both: merge `deploy` `cancelled`, merge Pages object `error`,
-  tag run's own object `success`. v0.12.0's tag deployment TOOK; v0.19.0's
-  `smoke-probe` failed 10/10 (measured 2026-09-03 from run `33680338582`'s
-  job log and objects `6231355284`/`6231383135`). Two identical post-hoc
-  gate states, two different outcomes — so the gate CANNOT separate those
-  cases and no
-  reading of it substitutes for the probe. Attach no mechanism to either row.
-  `gh api repos/OWNER/REPO/actions/runs/<merge-run-id>/jobs --jq
-  '.jobs[]|"\(.name): \(.status)/\(.conclusion)"'` — read the STATUS beside
-  the conclusion, and confirm a `deploy` line is LISTED AT ALL, because this
-  jq prints NOTHING for a job that does not yet exist. Exactly ONE answer
-  licenses skipping the probe, and it is terminal `success`: the merge run
-  already deployed this SHA and the tag run will no-op. Terminal `cancelled`
-  (MEASURED at v0.12.0) means the merge run left no `success`-state
-  deployment of this SHA — necessary for the tag run's own deployment to
-  take, and NOT sufficient for its bytes to be served (row 12). **EVERY other
-  answer is a non-answer**: no `deploy` line at all (v0.17.0's "not yet
-  created", covered by the durability paragraph above), `queued`/`null`,
-  `in_progress`/`null`, and terminal `failure` (#415/#418) — the job is
-  still a coin in the air, or it never deployed at all. Do not count them
-  here; the set grows. MEASURED at the v0.19.0 cut (2026-09-02): the gate
-  was read inside the same Bash call that pushed the tag and returned
-  `deploy: in_progress/null` for merge run `33680204038`, whose `deploy` ran
-  20:36:48Z → 20:37:10Z. v0.18.0's rule to read the gate immediately before
-  `git push origin <tag>` was followed EXACTLY and did not help, because the
-  volatility is INSIDE the read, not in the interval after it.
-  **The remedy for `in_progress` is OPEN, not decided.** The obvious candidate
-  — treat it as "not an answer", wait for a terminal state and decide then,
-  since terminal `success` at least yields the KNOWN no-op with the known
-  back-merge remedy where `in_progress` yields neither — was NOT tried at this
-  cut and is UNTESTED. It also trades a fast tag push for a slower one, which
-  no row measures. Do not read this paragraph as prescribing it: it names
-  `in_progress` as an unanswered question, not as a solved one.
-  Note the deployment OBJECT that run
-  created sat at `error` — a deployment-status value, which `.jobs[].conclusion`
-  can never emit; do not mix the two vocabularies. Confirm afterwards with the
-  ENTRY-CHUNK probe, never with the basemap Range probe: that archive is
-  byte-identical across both builds, so it passes straight through a no-op (one
-  v0.10.0 run showed both verdicts at once — a red entry-chunk probe beside a
-  green Range probe).
-  A SECOND, independent prod check, cheap from the main session and answering
-  a DIFFERENT question: fetch the live entry chunk and grep it for a
-  `git describe` suffix. `smoke-probe` proves THIS RUN'S DEPLOYMENT took (a
-  no-op 404s a never-deployed chunk name); an absent
-  `v0\.1[0-9]\.[0-9]+-[0-9]+-g[0-9a-f]+` match proves THIS RUN'S BUILD saw the
-  tag. Neither subsumes the other — at v0.10.0 the build was right and only
-  the deployment no-opped. Measured clean at v0.13.1 on `index-NcFacjS3.js`.
+  running, so read the gate IMMEDIATELY before `git push origin <tag>`, not
+  before the sign-and-verify sequence. That timing rule is NECESSARY, not
+  SUFFICIENT: it cannot rescue an `in_progress` reading, where the
+  volatility is INSIDE the read itself (measured at the v0.19.0 cut, the tag
+  pushed mid-read). **The remedy for `in_progress` is OPEN, not decided** —
+  the obvious candidate, treat it as "not an answer" and wait for a terminal
+  state, was NOT tried and is UNTESTED; it also trades a fast tag push for a
+  slower one, which no row measures.
+  **v0.12.0 and v0.19.0 had IDENTICAL post-hoc gate state (merge `deploy`
+  cancelled, merge Pages object `error`, tag run's own object `success`) and
+  OPPOSITE outcomes** — v0.12.0's tag deployment took; v0.19.0's
+  `smoke-probe` failed 10/10. The gate CANNOT separate those cases; no
+  reading of it substitutes for the probe.
+  Confirm with the ENTRY-CHUNK probe, never the basemap Range probe: that
+  archive is byte-identical across both builds and passes straight through a
+  no-op. A second, independent prod check answering a DIFFERENT question:
+  fetch the live entry chunk and grep it for a `git describe` suffix —
+  `smoke-probe` proves THIS RUN'S DEPLOYMENT took, an absent suffix match
+  proves THIS RUN'S BUILD saw the tag; neither subsumes the other (at
+  v0.10.0 the build was right and only the deployment no-opped).
 - **UAT can NEVER show a bare tag — correct, not a bug.** The release tag sits
   on the develop→main MERGE commit, a DESCENDANT of develop's tip, and `git
   describe` walks BACKWARDS — so `/uat/` reads `vX.Y.Z-N-g<sha>` (measured at
@@ -1810,25 +1625,13 @@ making design-level decisions; do not silently deviate.
   step 5b (`.claude/skills/release/SKILL.md`, the MECHANICAL control) must
   pass before the back-merge: the tag-triggered run reached `success` AND prod's
   About dialog shows the clean tag.
-- **The Release-object gap (#175)**: Passing step 5b is not the whole cut:
-  a git tag and a GitHub Release are different objects, and pushing
-  the tag alone does not create one. The v0.6.0 cut (2026-07-31) followed this
-  runbook exactly — tag pushed, deploy `success`, About dialog showing the
-  clean `v0.6.0`, production verified serving it, every signal green — and
-  still shipped with no Release object; none of those signals is evidence a
-  Release exists, and it surfaced only when the maintainer noticed it missing
-  from the GitHub project page. `.github/workflows/release.yml`
-  (#175, shipped v0.7.0) now closes that gap automatically: the tag push ALSO
-  triggers `release.yml`, which extracts the matching `## [X.Y.Z]`
-  `CHANGELOG.md` section and creates the Release. Because a `push` on a tag
-  resolves the workflow FILE from the tag's own commit (same rule as the
-  `workflow_dispatch --ref` trap below), `release.yml` must already be on
-  `main` BEFORE the tag is pushed — true here only because it merged via the
-  release PR itself. Runbook step 5c is now VERIFY, not create: confirm the
-  Release exists and `gh release list` shows the
-  tag marked `Latest` — `--latest` is load-bearing on creation, since without
-  it the previous version keeps the badge, a silent wrong state rather than
-  an error.
+- **The Release-object gap (#175)**: a git tag and a GitHub Release are
+  different objects, and pushing the tag alone does not create one (v0.6.0
+  shipped with every deploy signal green and no Release object). Closed by
+  `.github/workflows/release.yml`, which the tag push also triggers —
+  extracts the matching `## [X.Y.Z]` `CHANGELOG.md` section and creates the
+  Release with `--latest --verify-tag`. Runbook step 5c is now VERIFY, not
+  create: confirm `gh release list` shows the tag marked `Latest`.
 - **Deploy-collision timing, back-merge and hotfix flow** — this is WHY step
   5b must pass BEFORE the back-merge: `cancel-in-progress` cancel-supersedes
   and tag runs share the `pages` group (mechanism in the "Deploy —
@@ -2195,30 +1998,15 @@ making design-level decisions; do not silently deviate.
   was itself vacuous (both its example strings occur zero times in that file's
   history), which is how convincing the shape is.
 - **`.gitignore` entries with a TRAILING SLASH match directories only**, so a
-  SYMLINK at that path is not ignored — and a committed symlink stores its
-  TARGET STRING as blob content, which is how an absolute home path reaches a
-  public repo without appearing in any source file. Found via
-  `pipeline/data-src` symlinked into a worktree; an enumeration then found
-  **12** entries with the same defect, not the 1 that was flagged. The rule now
-  sits once at the top of the file. `.github/scripts/check-no-home-paths.sh`
-  could not catch this class — `[ -f "$f" ]` FOLLOWS a symlink, so the link's
-  own stored target was never scanned — until #479 (closed, v0.15.0) added
-  `scan_symlink_target`, applied to EVERY tracked symlink and failing CLOSED
-  when a target cannot be read. Pinned by selftest rows 29-33, which cover a
-  live target, a DANGLING target that still leaks, a benign relative target,
-  the allowlisted `/home/user` placeholder, and a regular-file leak plus a
-  symlink-target leak reported together.
+  symlink at that path is not ignored and its stored target string can leak an
+  absolute home path — guarded by `.github/scripts/check-no-home-paths.sh`'s
+  `scan_symlink_target()` (fails closed on an unreadable target), pinned by
+  its own selftest rows 29-33.
 - **A field written by one branch and read by another under a DIFFERENT name
-  typechecks and renders nothing.** #565 wrote `draftProvenance` while #563
-  read an optional `keelAssumption?: string`; `boats.ts` merged cleanly keeping
-  BOTH, so the §N.2 keel disclosure would have rendered for NO boat — where 2
-  of the 3 shipped boats need it (`hullVerified` false). CAUGHT IN REVIEW
-  2026-08-18 and never shipped: `draftProvenance` is REQUIRED on `BoatDef`
-  (`app/src/data/boats.ts`), pinned by `boats.test.ts`'s `@ts-expect-error`
-  row, and `keelAssumption` now survives only in explanatory comments. Neither
-  branch's tests could see it — one asserts the catalogue has the field, the
-  other renders its own fixture. **The hazard needs OPTIONALITY: make such a
-  field required, so a missing one is a compile error.**
+  typechecks and renders nothing — the hazard needs OPTIONALITY closed: make
+  such a field required, so a missing one is a compile error.** `boats.ts`'s
+  `draftProvenance` is required on `BoatDef`, pinned by
+  `app/src/data/boats.test.ts`'s `@ts-expect-error` row.
 - **A fix verified AT ITS OWN SITE says nothing about siblings.** #538 removed
   `getPlan`'s destructive write-back and proved BY RUN that `getPlan` no longer
   writes — while `replanWithVias` and the recalc-replace still reach `savePlan`
@@ -2340,16 +2128,10 @@ making design-level decisions; do not silently deviate.
   consumers by CLAIM SHAPE (every quotation in any wording, both old noun
   choices, the i18n key) — a token list reached 5 test literals and both dicts
   and still missed the fragment.
-- Guards fail open on QUOTE STYLE too. Measured on PR #411:
-  `planRoute.reasonDecoupling.test.ts`'s structural guard, which detects a
-  gate re-coupling to a solver-derived label, matched only SINGLE-quoted
-  string literals — a re-coupling written with backticks
-  (``NO_ROUTE_LABEL_OF_CAUSE[cause] === `unreachable` ``) left it **10/10
-  GREEN** and passed both lint and typecheck (prettier normalises `"…"` to
-  `'…'` but leaves a template literal alone). Any source-scanning guard must
-  match `'`, `"` AND backtick. Fixed with a `labelLiteral()` regex over all
-  three quote forms, pinned by a row that reds when narrowed back to
-  single-quote-only.
+- Guards fail open on QUOTE STYLE too — any source-scanning guard must match
+  `'`, `"` AND backtick (prettier normalises `"…"` to `'…'` but leaves a
+  template literal alone). PR #411's `planRoute.reasonDecoupling.test.ts`
+  fixed this with a `labelLiteral()` regex over all three quote forms.
 - A guard's DATA needs a twin too, not just its detection logic. Same guard,
   same PR: `SOLVER_LABELS`, the array every failing loop iterates, had NO
   twin — stubbing it to `[]` left the whole guard **12/12 GREEN**, silently
@@ -2731,19 +2513,11 @@ making design-level decisions; do not silently deviate.
   class of failure can this method not detect?" question, asked of a
   VERIFICATION rather than of a test.
 - A cross-language invariant (a CSS `var()` fallback that must equal a JS
-  constant — no compiler spans CSS and TypeScript) has no automatic keeper;
-  the only thing that can catch drift is a test that reads BOTH artifacts
-  and compares them — `useBannerHeight.test.ts` reads `app.css` via
-  `node:fs`, regexes out the `var(--sc-banner-height, <N>px)` fallback, and
-  asserts it equals `BANNER_HEIGHT_UNMEASURABLE_FALLBACK_PX` (#368). It
-  fails CLOSED, not merely equal: an explicit `expect(match,
-  '...').not.toBeNull()` runs BEFORE the value comparison, so a regex that
-  silently stops matching (the CSS rule renamed, reformatted, or removed)
-  fails loudly instead of quietly passing — the same shape as the
-  STRING-pattern `String.replace` bullet above (a silent no-op that shipped
-  a build with zero CSP metas, #223). Mutation-checked both ways: reverting
-  the CSS literal to `0px` fails with `Expected: 176, Received: 0`; deleting
-  the fallback entirely trips the `not.toBeNull()` guard first.
+  constant — no compiler spans CSS and TypeScript) needs a test that reads
+  BOTH artifacts and compares them, failing closed (not merely unequal) if
+  the pattern stops matching — see `app/src/lib/useBannerHeight.test.ts`
+  (#368), which pins `app.css`'s `--sc-banner-height` fallback against
+  `BANNER_HEIGHT_UNMEASURABLE_FALLBACK_PX`.
 - **When a reviewer supplies EXACT replacement text, adopt it VERBATIM.**
   On 2026-08-13 successor defects repeatedly came from prose an implementer
   wrote itself while trying to be thorough — comment-only waves included.
@@ -3464,28 +3238,12 @@ making design-level decisions; do not silently deviate.
   claim STRENGTH against the evidence, not just claim correctness — and
   prefer "narrowed" to "closed" unless the measurement really covers the
   whole space.
-- **#383 was never a flake — it was a real MapLibre defect, and it is FIXED
-  (PR #390).** `compass.spec.ts`'s `rotateThenTapCompassHome` helper reds
-  with `Expected: "free" / Received: "north-up"` whenever its right-drag
-  begins inside the PREVIOUS iteration's still-running tap-home ease: that
-  ease's natural completion calls a BARE `this.stop()` (no `allowGestures`)
-  → `_stopHandlers()` → `reset()` on EVERY handler, disarming `mouseRotate`
-  mid-gesture, so the ten following `mousemove`s produce a bearing delta of
-  exactly zero (MEASURED: max |bearing| = 0 across the whole gesture). The
-  camera genuinely never moved, which is why raising the timeout could never
-  help and why the mode "never flips" — CompassControl is not involved. The
-  fix ADDED an at-rest settle gate to the helper (a state signal, not a
-  sleep); PRODUCT CODE IS UNTOUCHED, so **the underlying MapLibre defect is
-  still live for real users on any `easeTo`/`flyTo`/`fitBounds` — tracked as
-  #391 (Backlog), and fixing it means patching maplibre.** Pinned 128/128
-  plus a reviewer's independent 16/16. The maplibre line numbers for the
-  whole `stop`→`_stopHandlers`→`reset` chain live in that helper's own
-  closing-gate comment, which names the version they were read against — go
-  there rather than re-citing them here. #253's lesson is VINDICATED, not
-  contradicted: the fix is a gate ADDED, never a readiness wait weakened,
-  and calling this "a known flake" for two sessions is exactly the
-  write-off that rule exists to prevent — a lone red test contradicting a
-  green suite deserves MORE weight than the suite.
+- **#383 was never a flake — it was a real MapLibre defect** (fixed test-side
+  in PR #390; the underlying maplibre defect itself is still live, tracked as
+  #391 above). Pinned by `app/e2e/compass.spec.ts`'s `rotateThenTapCompassHome`
+  helper, whose closing-gate comment carries the mechanism and the maplibre
+  line numbers. Lesson: a lone red test contradicting a green suite deserves
+  MORE weight than the suite, not a flake write-off.
 - **Five green signals can share one blind spot (#398** — mechanism, the
   entry-chunk probe and the CDN query-string normalization are under PWA/deploy;
   do not restate them here**).** At the v0.9.0 cut the run conclusion, the Pages
@@ -3695,25 +3453,12 @@ making design-level decisions; do not silently deviate.
   result is null: `!altResult` alone is not enough, since `result` can be
   null while the complement's `altResult` stays truthy, which would draw the
   ONLY real route as the dashed "other rig" track.
-- **Planner progress is phase-based, not a percentage** (#340): the old
-  readout divided simulated route TIME by the unrelated 6-day/144h forecast
-  HORIZON — capped around 5% by construction and reset to 0% at every
-  genoa→fock rig switch and every #53 depth-relaxation retry. Replaced with
-  a phase readout ("sail N of 2 (Sail)", i18n key
-  `planner.status.routingSail`, rendered in `PlannerPanel.tsx`'s `statusText`)
-  derived from the plan request's OWN sail list — `PlanRequest.sailIds` in
-  `types.ts`, IN SOLVE ORDER — which #54 made the single source of truth by
-  DELETING the old `RIG_ORDER` module constant (it survives only in comments
-  recording that deletion; do not grep for it expecting a live symbol).
-  `runAll` in `planRoute.ts` evaluates `req.sailIds.map((sailId) => run(sailId,
-  …))` — a plain SYNCHRONOUS map, no interleaving — which is what makes the
-  numbering honest: each sail's solve (and every progress message it reports)
-  fully completes before the next one starts. The coupling is enforced by
-  `planRoute.test.ts`'s '#340/#54: solve order matches request.sailIds' guard
-  test, which solves with `sailIds: ['fock', 'genoa']` and asserts the
-  first-seen progress order equals that REVERSED list — non-vacuous by
-  construction, since under the deleted module constant it would report
-  `['genoa', 'fock']` whatever the request said.
+- **Planner progress is phase-based, not a percentage** (#340): a phase
+  readout ("sail N of 2 (Sail)") derived from `PlanRequest.sailIds`, IN SOLVE
+  ORDER, is the single source of truth (`types.ts`) — never a hardcoded rig
+  order. Coupling enforced by `planRoute.test.ts`'s
+  `'#340/#54: solve order matches request.sailIds'` guard, non-vacuous by
+  construction.
 - **Motor legs are first-class**: planned where sailing speed falls below the
   SAIL-SPEED FLOOR `max(motorThresholdKn, motorSpeedKn - sailPreferenceKn)`
   (defaults 2.5 / 6.5 / 2.8 → floor 3.7 kn), run at motor speed, always flagged
@@ -4044,92 +3789,19 @@ making design-level decisions; do not silently deviate.
   otherwise downgrade a spec write. Guarantee holds for the LITERAL spelling
   only; obscured spellings (glob, `//`, quote-splitting, brace expansion) fall
   to the pre-existing silent-allow class, unchanged by that PR.
-- **A read-only EXEMPTION must be CONJUNCTIVE, and its allowlist rests on a
-  named precondition** (#388, PR #387). `.claude/hooks/artifact-guard.sh`
-  used to `ask` on any Bash command merely NAMING a protected path,
-  read-only ones included — a deliberate over-fire the maintainer then
-  overruled ("too restrictive, i had to approve several stat calls"). It now
-  suppresses only when the command's FIRST WORD exactly
-  matches a small no-write-capability verb set, AND the whole command
-  contains none of `> < | & ; \` $ \ ( ) { } ! #` / newline / CR, AND it
-  contains none of a write-capable TOKEN list matched as substrings anywhere
-  — plus, for `grep` and `sed` ONLY, a FOURTH verb-scoped check (below).
-  A first-word- or prefix-only exemption fails OPEN and is still wrong. Read
-  the three arrays off the hook itself (`WRITE_CAPABLE_CHARS`,
-  `WRITE_CAPABLE_TOKENS`, `READONLY_VERBS`) rather than from any second copy
-  — including this one; the token list in particular is deliberately
-  SUBSUMPTION-PRUNED, so `-execdir`, `-okdir` and `"bash -c"` are absent by
-  design (each is a strict superstring of an entry that IS there —
-  `"bash -c"` is `ba` + `"sh -c"` — so a separate entry could never be the
-  reason a command matches, and adding one back makes its own selftest row
-  unfalsifiable: deleting `"bash -c"` reds 0 rows, MEASURED).
-  **NAMED PRECONDITION:
-  no allowlisted verb may be a shell FUNCTION or ALIAS in the guarded
-  shell** — which is why membership alone is not always enough. `find` is
-  excluded outright for `-delete`/`-exec`, and `file` because `file -C -m X`
-  WRITES `X.mgc` (measured — it merely looked read-only).
-  **`grep` and `sed` are NOT excluded — `grep` was RE-ADMITTED to
-  `READONLY_VERBS` and `sed` admitted there for the FIRST time (#530,
-  `96c4a0b`, plus later hardening commits; measured off the array at each
-  commit — `213f8cd` held `grep` alone, `e3ea820` held NEITHER, `96c4a0b`
-  holds both), each gated by its own
-  verb-scoped disqualifier** — `grep_readonly_ok` / `sed_readonly_ok`,
-  dispatched from the membership loop (`artifact-guard.sh`, `case "$verb" in`)
-  and evaluated LAST, after the char/newline/token checks, which is what makes
-  a string-level decision sufficient for them. They screen the exact hazards
-  that had previously justified exclusion: for `grep`, that it is a FUNCTION
-  shimming to ugrep in Claude Code's Bash (so `--filter`/`--pager`/
-  `--save-config` can write or exec); for `sed`, that the `w` command writes
-  with NO flag at all (`sed -n '1,5w /tmp/out' file`), so screening only `-i`
-  would not be enough — and a `sed -n` range read is exactly the
-  innocent-looking shape that motivates admitting it. A verb whose
-  disqualifier says no falls through to the same answer as an unrecognised
-  verb: fire. Every other entry still qualifies on membership alone.
-  Before adding a verb, run `type <verb>` **in the real Bash tool**:
-  measuring inside `bash script.sh` does not inherit non-exported functions,
-  so the shim vanishes and every verb reports a reassuring `file`.
-- **Four loosenings of that guard were MEASURED and REJECTED — do not
-  re-propose them** (2026-08-06, three-lens audit; full record in #404/#405).
-  Narrowing the Bash-arm path `docs/superpowers/` → `docs/superpowers/specs/`
-  is the seductive one and the worst: it makes `mv docs/superpowers
-  /tmp/stash` a SILENT ALLOW (it moves `specs/` too), reds 13 of the guard's
-  own selftest rows (re-measured 2026-08-06 against a scratch copy — an
-  earlier auditor's 11 does not reproduce). Method, so this can be re-run
-  rather than re-argued: `docs/superpowers/specs` is ALREADY a separate
-  `PROTECTED_PATHS` entry alongside the bare `docs/superpowers` ancestor, so
-  the two edits a mutation could try — deleting the ancestor entry outright,
-  or "narrowing" it by replacing it with `docs/superpowers/specs` — collapse
-  to the same array and the same byte-identical script; both were run
-  independently in `/tmp` and both gave 13, never 11. It is also
-  SUBSUMPTION-INVERTED — `docs/superpowers/specs`
-  is a strict superstring of `docs/superpowers`, so the parent subsumes the
-  child and removing the parent deletes the entry doing all the work. Adding
-  `cd` to `READONLY_VERBS` and segmenting on `;`/`&&`/newline were
-  RE-MEASURED 2026-08-09 over **28,923** distinct real commands (superseding
-  the earlier 165-command figure): the verdicts stand, the magnitudes were
-  wrong. `cd` removes ZERO of 1,115 asks; `;`-only and newline-only ZERO;
-  `&&`-only **2**. 89.5% of asks begin with a verb no allowlist widening can
-  reach (`cd` 286, `grep` 162, `git` 128, `python3` 65, `sed` 59), so this
-  whole class of fix has a small ceiling by construction. **SUPERSEDED IN
-  PART by #530 (2026-08-14), and only in part — the measurement stands, its
-  sweeping conclusion does not**: #530 admitted `grep` and `sed`, i.e.
-  162 + 59 = 221 of those 1,115 asks (19.8% of the ask population), each
-  behind a verb-scoped disqualifier rather than on membership alone.
-  `cd`, `git` and `python3` remain unreachable by any widening.
-  `artifact-guard.sh` has carried this correction in its own comment since
-  #530; this file did not, until 2026-08-26 — a twin that disagreed silently
-  for twelve days. Segmentation is
-  additionally UNSAFE: it runs before the char check, so a 343 KB heredoc
-  timed the hook out against `settings.json`'s 5 s cap into a SILENT ALLOW —
-  a killed guard and a satisfied one emit the same nothing. The general trap, worth more than the specific verdicts: **a
-  control that looks broader than its stated justification usually has a
-  SECOND justification you have not found** — here the parent-path entry is
-  not justified by the spec-edit rule at all, but by containment against
-  commands that destroy `specs/` WITHOUT NAMING IT (#309's M4 fix). Look for
-  the second reason before narrowing anything. The `plans/` gap that bullet
-  used to name is CLOSED — #405/#421/#309 all shipped and the Edit/Write arm
-  now has four cases (`specs/` ask, `plans/` ask, a `docs/superpowers/*`
-  catch-all ask, and the `icon.svg` allow).
+- **A read-only Bash exemption must be CONJUNCTIVE, never first-word-only**
+  (#388/#530) — `.claude/hooks/artifact-guard.sh`'s `READONLY_VERBS` /
+  `WRITE_CAPABLE_CHARS` / `WRITE_CAPABLE_TOKENS` arrays plus the per-verb
+  `grep_readonly_ok`/`sed_readonly_ok` disqualifiers, pinned by the hook's
+  own selftest rows run in CI's ADVISORY `hook-selftests` job (not a required
+  check — `protect-main` requires `app`+`e2e` only). Loosenings MEASURED and
+  REJECTED, do not re-propose (#404/#405): narrowing the Bash-arm protected
+  path to `docs/superpowers/specs/` (silently allows moving the whole
+  `docs/superpowers` tree — reds 13 selftest rows); adding `cd` to
+  `READONLY_VERBS` (removes 0 of 1,115 real asks); and segmenting on
+  `;`/`&&`/newline (removes at most 2 of 1,115, and running before the char
+  check makes it independently UNSAFE — an oversized heredoc times the hook
+  out into a silent allow).
 - A NEW concrete guard-asymmetry instance (#368, PR #382 review): a value the
   FIRST PAINT depends on must be written in `useLayoutEffect`, not
   `useEffect` — `useEffect` fires AFTER paint, leaving a real window on a
