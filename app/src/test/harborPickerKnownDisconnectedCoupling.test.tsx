@@ -31,10 +31,23 @@ import type { Harbor } from '../types';
 // literal) and handed to HarborPicker via a `Harbor[]` cast to
 // `HarborWithReachability[]` -- exactly how production data flows in
 // (App.tsx/PlannerPanel never construct a typed object literal for a
-// harbor; they parse JSON and trust the runtime shape) -- so a renamed read
-// site sees the SAME literal `knownDisconnected` key the build script
-// actually emits, with no type-level shortcut (an object-literal excess-
-// property check) to hide the mismatch behind.
+// harbor; they parse JSON and trust the runtime shape).
+//
+// BOTH coupling tests below read the flag through `hasKnownDisconnectedFlag`
+// -- a runtime cast to `Record<string, unknown>` reading the literal string
+// key, never a typed `h.knownDisconnected` property access -- deliberately,
+// so that if `HarborWithReachability`'s field is ever renamed (the #835
+// demonstrating mutation, applied consistently by an IDE "Rename Symbol"
+// across every TYPED reference in the tree), a typed access in THIS file
+// would silently be renamed right along with it and stop catching anything.
+// Measured in PR #895 review: a typed `real.filter((h) => h.knownDisconnected
+// === true)` here is itself a typed reference an IDE rename carries along,
+// so it goes GREEN after such a rename (0 matches, early-return, ordinary
+// pass) even though the shipped harbors.json never changed -- exactly the
+// #835 bug reproduced INSIDE the guard meant to catch it. The string-keyed
+// cast has no typed reference for a rename to find, so it keeps reading the
+// literal 'knownDisconnected' key regardless of what the TYPE currently
+// calls the field.
 //
 // Two tests, deliberately split by what each does NOT depend on:
 //   1. is ROBUST to today's real disconnected-harbor count (even zero) --
@@ -44,8 +57,10 @@ import type { Harbor } from '../types';
 //      snap/country/approachNote, not hand-typed) via the literal JSON key,
 //      independent of that harbor's ACTUAL flag in the shipped file.
 //   2. additionally exercises whichever harbors the shipped file itself
-//      flags TODAY, skipping (not failing, not vacuously passing) if that
-//      set is ever legitimately empty.
+//      flags TODAY (read via the same string-keyed cast, so it stays
+//      independently load-bearing rather than merely visible-when-it-gives-
+//      up), skipping (not failing, not vacuously passing) if that set is
+//      ever legitimately empty.
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const HARBORS_JSON_PATH = resolve(REPO, 'app', 'public', 'data', 'harbors.json');
@@ -82,6 +97,18 @@ function withKnownDisconnectedFlag(h: Harbor, flagged: boolean): HarborWithReach
   return clone as unknown as HarborWithReachability;
 }
 
+// The read-side counterpart of withKnownDisconnectedFlag above: reads the
+// SAME literal string key via a runtime cast, never a typed property
+// access on HarborWithReachability. This is what makes Test 2 below
+// independently load-bearing against an IDE "Rename Symbol" mutation
+// (PR #895 review Major) -- a typed `h.knownDisconnected` reference in
+// THIS test file would be renamed right along with the type it reads,
+// and would then report zero flagged harbors (an ordinary, silent pass)
+// on a mutation that never touched the shipped JSON at all.
+function hasKnownDisconnectedFlag(h: unknown): boolean {
+  return (h as Record<string, unknown>)['knownDisconnected'] === true;
+}
+
 function renderWithHarbors(harbors: HarborWithReachability[]) {
   localStorage.setItem('sc-lang', 'en');
   render(
@@ -114,8 +141,15 @@ describe('#835: HarborPicker read path is coupled to the shipped knownDisconnect
   });
 
   it('renders the disclosure for whichever harbors the shipped file itself currently flags', () => {
-    const real = readShippedHarbors() as HarborWithReachability[];
-    const flagged = real.filter((h) => h.knownDisconnected === true);
+    const real = readShippedHarbors();
+    // Read via the string-keyed cast (hasKnownDisconnectedFlag), NOT a
+    // typed `h.knownDisconnected` property access -- see this file's
+    // header. A typed access here would be carried along by the same
+    // IDE rename that renames the type, production, and read site
+    // together, and would then silently report zero flagged harbors
+    // (an ordinary pass, not a failure) on the exact mutation this test
+    // exists to catch.
+    const flagged = (real as HarborWithReachability[]).filter((h) => hasKnownDisconnectedFlag(h));
     if (flagged.length === 0) {
       // Legitimate all-clear state (every #9 KNOWN_DISCONNECTED harbor has
       // reconnected) -- see this file's header and
@@ -124,7 +158,7 @@ describe('#835: HarborPicker read path is coupled to the shipped knownDisconnect
       // coupling unconditionally.
       return;
     }
-    renderWithHarbors(real);
+    renderWithHarbors(real as HarborWithReachability[]);
     fireEvent.change(screen.getByRole('combobox'), { target: { value: flagged[0].names.en } });
     const option = screen.getByRole('option', { name: new RegExp(flagged[0].names.en) });
     expect(within(option).getByText(/not reachable/i)).toBeInTheDocument();
