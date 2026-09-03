@@ -51,6 +51,15 @@ concurrency:
 jobs:
   coverage:
     runs-on: ubuntu-latest
+    # #882: the JOB had no cap (360-min default) — only the `test:coverage`
+    # STEP below carries one (240 min). A wedge in checkout/setup/npm-ci/the
+    # Codecov upload, outside that step, was previously unbounded. This must
+    # stay strictly greater than the step cap plus margin for those other
+    # steps: measured 2026-09-03 via the Actions API, the JOB's own max is
+    # 6116s (~101.9 min, n=29) — well under the step cap already, so this is
+    # sized off the step cap (240) plus headroom for the surrounding steps,
+    # not off today's measurement.
+    timeout-minutes: 260
     defaults: { run: { working-directory: app } }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

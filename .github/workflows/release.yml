@@ -23,6 +23,15 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # #882: no cap before now (360-min default). Measured 2026-09-03 via the
+    # Actions API against the 16 most recent runs (this workflow fires only
+    # on a release tag, so far fewer runs exist than the others): max 139s
+    # (n=16, all success) — a "cheap insurance" job, sized at 10-15 min
+    # rather than a tight multiple of that sub-3-minute median; 15 (not 10)
+    # for the couple of `gh` API round-trips this job makes (release lookup
+    # + creation) against a run population an order of magnitude smaller
+    # than the other workflows measured for #882.
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
