@@ -25,6 +25,11 @@ permissions:
 jobs:
   ruff:
     runs-on: ubuntu-latest
+    # #882: no cap before now (360-min default). Measured 2026-09-03 via the
+    # Actions API against the 30 most recent runs: max 21s (n=30, all
+    # success) — a "cheap insurance" job per #882's own bucket, sized at
+    # 10-15 min rather than a tight multiple of that sub-minute median.
+    timeout-minutes: 10
     defaults: { run: { working-directory: pipeline } }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

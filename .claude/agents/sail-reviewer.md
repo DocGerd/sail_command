@@ -34,7 +34,8 @@ orchestrator, not prose for the end user.
    parity in BOTH dicts, buffer-transfer rules, explicit vitest imports, no
    per-test timeouts tighter than file config.
 4. **Tests** — new behavior covered; solver-heavy files keep their generous
-   timeouts; `realmask.repro.test.ts` untouched-and-green for routing changes.
+   timeouts; the `realmask.repro.*.test.ts` files (five sibling files under
+   `app/src/routing/`, #878) untouched-and-green for routing changes.
 5. **Offline invariant** — nothing new silently assumes connectivity except
    planning itself.
 

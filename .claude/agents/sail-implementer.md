@@ -49,8 +49,10 @@ not count as done:
 2. `npm --prefix app run lint`
 3. Focused tests: `npm --prefix app run test -- <filter>` (full suite ~4 min;
    use filters while iterating).
-4. Routing changes: `realmask.repro.test.ts` must stay green (real committed
-   mask/polars).
+4. Routing changes: the `realmask.repro.*.test.ts` files (five sibling
+   files under `app/src/routing/`, #878) must stay green — real committed
+   mask/polars. `npm --prefix app run test -- realmask.repro` filters to
+   all five.
 5. UI tasks end with a REAL browser pass (dev server + Playwright) — synthetic
    fixtures have missed product-blocking bugs before.
 

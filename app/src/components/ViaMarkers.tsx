@@ -51,8 +51,9 @@ export interface ViaMarkersProps {
   onDragEnd: (index: number, next: LatLon) => Promise<boolean>;
 }
 
-// jsdom-untestable (map child, mirrors BoatMarker.tsx/RouteLayer.tsx — jsdom
-// has no MapLibre/WebGL runtime). Deliberately thin: all decision logic
+// Real-map rendering is not unit-tested (jsdom has no MapLibre/WebGL
+// runtime); the component's own logic is covered by ViaMarkers.test.tsx.
+// Deliberately thin: all decision logic
 // (dedupe, stored-wind reuse, in-flight guard, error mapping) lives in
 // state/replan.ts, fully unit-tested there.
 
