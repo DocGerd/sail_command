@@ -39,10 +39,22 @@ on:
     #
     # docs/** holds real source too: docs/screenshots/capture.mjs and the
     # docs/spikes/354-mode-churn/**/*.test.ts and probes/*.test.ts scratch
-    # files are genuine javascript-typescript source, and the four
-    # docs/spikes/354-mode-churn/base-output/*.json files are extracted by
-    # CodeQL's JS-family extractor too - all are re-included below as
-    # explicit positive patterns after the `!docs/**` exclusion.
+    # files are genuine javascript-typescript source, re-included below as
+    # explicit positive patterns after the `!docs/**` exclusion. Arbitrary
+    # `.json` is deliberately NOT re-included: CodeQL's javascript-typescript
+    # extractor does not index arbitrary JSON despite JSON being part of the
+    # extractor's file-type enum - AutoBuild.java's setupFilters() excludes
+    # `-**/*.*` by default and re-includes only HTML/JS/YAML/TypeScript plus
+    # an eight-pattern JSON ALLOWLIST (package.json, *tsconfig*.json,
+    # manifest.json, .eslintrc*, xs-app.json, *.view.json, .xsaccess,
+    # codeql-javascript-*.json - verified 2026-09-03 against
+    # github/codeql:javascript/extractor/src/com/semmle/js/extractor/
+    # AutoBuild.java). The four docs/spikes/354-mode-churn/base-output/*.json
+    # sweep-dump files match none of those basenames, so a `docs/**/*.json`
+    # re-include would run both matrix legs while indexing nothing - the
+    # opposite of what this narrowing exists for. If a real
+    # package.json/tsconfig.json is ever added under docs/, add that EXACT
+    # basename here rather than a blanket `*.json`.
     #
     # CHANGELOG.md/changelog.d/** are left OUT of this exclusion list (so
     # they keep matching `'**'` and triggering the workflow) - NOT because
@@ -74,7 +86,6 @@ on:
       - 'docs/**/*.jsx'
       - 'docs/**/*.mjs'
       - 'docs/**/*.py'
-      - 'docs/**/*.json'
   schedule:
     - cron: '23 4 * * 1' # weekly, Monday 04:23 UTC
 permissions:
