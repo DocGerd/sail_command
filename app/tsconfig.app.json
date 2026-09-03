@@ -45,7 +45,9 @@
   // shape once more — reads app/src/app.css via `node:fs` to structurally
   // guard its CSS fallback stays in sync with the hook's own JS constant.
   // legDistanceReconciliation.test.ts (#379) is the same shape again — reads
-  // the real shipped mask/polars via `node:fs`, same as realmask.repro.test.ts.
+  // the real shipped mask/polars via `node:fs`, same as the
+  // realmask.repro.*.test.ts files and their shared realmaskFixtures.ts
+  // helper (#878).
   // panelWidth.test.ts (#355) is the same shape once more — reads
   // app/src/app.css via `node:fs` to structurally guard the `320px` grid
   // literal stays in sync with PANEL_MIN_WIDTH_PX, same pattern as
@@ -120,7 +122,8 @@
   // `.test.ts` guards above), which is why it needs tsconfig.test.json's
   // node+DOM+jsx program rather than a third split.
   "exclude": [
-    "src/**/realmask.repro.test.ts",
+    "src/**/realmask.repro*.test.ts",
+    "src/**/realmaskFixtures.ts",
     "src/**/gpx.parse.test.ts",
     "src/**/seamarkPopover.coverage.test.ts",
     "src/**/changelogFragmentsFs.ts",

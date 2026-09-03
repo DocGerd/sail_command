@@ -132,7 +132,7 @@ export interface Arm {
    * `runArm()`'s boat-keyed polar lookup (`polarKey(boat.id, sail.id)`,
    * below) and the plan/ETA the solver produces from a genuinely different
    * (tier-C estimated) polar table under the SAME wind and settings — see
-   * `realmask.repro.test.ts`'s `#653` describe block for the measured
+   * `realmask.repro.salona44.test.ts`'s `#653` describe block for the measured
    * discriminating evidence.
    */
   boatId?: BoatId;
