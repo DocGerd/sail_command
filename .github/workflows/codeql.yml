@@ -4,10 +4,56 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+    # #881: PR-scoped narrowing ONLY - this key lives under pull_request:,
+    # never under push:/schedule:, so every push to main/develop and the
+    # Monday cron still get an unscoped, repo-wide analysis regardless of
+    # what changed. A pull_request run is diff-scoped already (codeql-action
+    # builds a pr-diff-range extension pack), so skipping it here loses
+    # nothing the next develop push doesn't re-provide. Deliberately NOT a
+    # bare `docs/**`: docs/screenshots/capture.mjs and the real
+    # docs/spikes/354-mode-churn/**/*.test.ts scratch probes are genuine
+    # javascript-typescript source living under docs/, so the trailing
+    # `!docs/**/*.<ext>` negations below re-include them (order matters in
+    # a paths-ignore list: a later pattern overrides an earlier one).
+    # CHANGELOG.md and changelog.d/** are deliberately EXCLUDED from this
+    # list, not merely omitted - they are build inputs baked into the
+    # shipped JS bundle (AboutDialog.tsx ?raw-imports the changelog; see
+    # this repo's CLAUDE.md e2e docs-only-skip bullet) and so remain live
+    # code paths for the javascript-typescript leg even though the paths
+    # end in .md. Fails closed: any changed path not matched below still
+    # runs both matrix legs.
+    paths-ignore:
+      - 'docs/**'
+      - '!docs/**/*.ts'
+      - '!docs/**/*.tsx'
+      - '!docs/**/*.js'
+      - '!docs/**/*.jsx'
+      - '!docs/**/*.mjs'
+      - '!docs/**/*.py'
+      - '.claude/**'
+      - 'README.md'
+      - 'SECURITY.md'
+      - 'GOVERNANCE.md'
+      - 'ROADMAP.md'
+      - 'CODE_OF_CONDUCT.md'
+      - 'CONTRIBUTING.md'
+      - 'CLAUDE.md'
+      - 'LICENSE'
   schedule:
     - cron: '23 4 * * 1' # weekly, Monday 04:23 UTC
 permissions:
   contents: read
+# #880: mirrors ci.yml's group/cancel-in-progress shape exactly (same ref
+# key, same event_name condition) so the two workflows cannot drift apart
+# in intent. cancel-in-progress fires ONLY for pull_request events - a push
+# to main/develop and the Monday schedule are the only unscoped, repo-wide
+# analyses (a pull_request run is diff-scoped, see the paths-ignore comment
+# above), so they must run to completion uncancelled or the Security tab's
+# inventory goes stale. The group key includes github.ref so one PR's push
+# never cancels a different PR's in-flight analysis.
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
