@@ -146,15 +146,22 @@ making design-level decisions; do not silently deviate.
 - Statement coverage baseline and trailing test/file count: read both off the
   LATEST nightly `Coverage` run's own head SHA and its `test:coverage` step
   conclusion — never hand-add, infer, or carry a prior run's figure forward.
+  The earlier **2160 tests / 146 files** (2026-08-24
+  at `39bbcd6`, the v0.13.1 cut) was +24 over v0.13.0 = 12 plain `it(` cases plus
+  ONE `it.each(Object.getOwnPropertyNames(Object.prototype))` row expanding to
+  12 — a token grep for added `it(` returns eleven and reads as a
+  contradiction, so a test COUNT can never be derived by grepping `it(`).
   `.github/scripts/coverage-skip-gate.sh` can skip an unchanged tree, so a
   nightly run existing is not by itself evidence a fresh figure was produced;
   check the step conclusion, not just the run. Three rules for quoting any
   count/duration pair here: **counts are load-independent, durations are
   not** (never quote a duration measured under load, and re-measure both
-  halves rather than infer either from the other); **a count carries its
-  FILTER exactly as a duration carries its suite size** (relaying one into
-  the other's scope is an error the receiver should refuse); and a
-  scanning-only or assertion-adding test file is coverage-neutral to first
+  halves rather than infer either from the other); **a COUNT carries its
+  FILTER exactly as a duration carries its suite
+  size** — 295/295 over 6 files and 682/682 over 23 described one TREE under
+  two apertures, and relaying one into the other's scope is an error the
+  receiver should refuse (measured 2026-08-31 on PR #768);
+  and a scanning-only or assertion-adding test file is coverage-neutral to first
   order, so **never infer a new percentage from a new count**. Meets the
   OpenSSF `test_statement_coverage80` criterion (≥80%) via
   `vite.config.ts`'s `coverage.thresholds.statements: 80`, evaluated only
@@ -492,9 +499,11 @@ making design-level decisions; do not silently deviate.
 - `String.replace` with a STRING pattern (not a regex/global) silently
   returns the input UNCHANGED when the pattern is absent — no throw, no
   warning. `cspMeta()` and `subPathMeta()` (`app/vite.config.ts`, #223/#318)
-  now both throw if their marker is missing, pinned by
-  `app/src/test/subPathMeta.test.ts`. Per the guard-asymmetry rule below: an
-  absent security control is the expensive failure direction, so the check
+  now both throw if their marker is missing, but only `subPathMeta()` is
+  test-pinned (`app/src/test/subPathMeta.test.ts`) — `cspMeta()`'s fail-closed
+  behaviour is NOT test-pinned, verified only empirically. Per the
+  guard-asymmetry rule below: an absent security control is the expensive
+  failure direction, so the check
   must fail closed.
 - **`in` walks the PROTOTYPE CHAIN — never use it as a membership test against
   an object literal used as a lookup table for STORED/untrusted input.** EVERY
@@ -722,15 +731,39 @@ making design-level decisions; do not silently deviate.
   Level 3 parser drops the WHOLE BLOCK silently either way, "reason enough
   on its own" — not merely a residual of the now-gone `:has()` pairing.
 - **A single-class MODIFIER loses to its base rule when the base is declared
-  LATER** — specificity ties, source order decides. Verify with
+  LATER** — specificity ties, source order decides. `app/src/app.css`'s
+  `.chip` base sits BELOW its modifiers, so switching a hand-rolled span to
+  the `Chip` primitive silently reverted the modifier: `.chip-shallow-cautious`
+  rendered FILLED at full size until raised to the compound
+  `.chip.chip-shallow-cautious` (#493/PR #504 — MEASURED in a real browser,
+  background `color-mix(…)` → `rgba(0,0,0,0)`, 12.8px → 12px, padding
+  1.6px/8px → 0.8px/6.4px). The markup, the tokens and the rule each look
+  correct in isolation and only the RESOLVED style shows it, so verify with
   `getComputedStyle` (real browser or jsdom against the real `app.css`),
-  never by reading the CSS — **jsdom caveat: `backgroundColor` reads
+  never by reading the CSS. **jsdom caveat: its `backgroundColor` reads
   `rgba(0,0,0,0)` in BOTH the broken and fixed states** (it parses neither
   `color-mix()` nor `var()`) — only the `background` SHORTHAND discriminates.
-  `app/src/test/chipShallowFill.test.ts` structurally guards this for
-  `.chip-*` modifiers ONLY (#506/#493) — it would NOT catch the same bug on
-  `.sc-btn`, whose modifiers currently escape it only because the one rule
-  they share sets `transition` alone; do not generalise the guard's coverage.
+  The same cascade kept `.chip-shallow`'s amber hazard fill from ever
+  rendering until PR #509 raised it to the compound `.chip.chip-shallow`
+  (#506, closed 2026-08-11) — the same narrow route #504 took, again in
+  preference to REORDERING `.chip` above its modifiers, which would have
+  repaired every BROKEN modifier at once (only those declared above the
+  base rule) but changed an existing surface. #509 also added
+  `app/src/test/chipShallowFill.test.ts`, a structural scan for any other
+  bare single-class `.chip-*` modifier sitting above `.chip`'s base rule, so
+  a new `.chip-*` instance now fails loudly instead of silently not
+  rendering. That guard is `.chip-*`-ONLY — the general rule above still has
+  no keeper for other primitives. None is broken today, but for DIFFERENT
+  reasons, so do not generalise from one: `.sc-card` and `.sc-field` declare
+  their base ABOVE their modifiers, whereas `.sc-btn` is ALSO named in a
+  later GROUPED rule inside `@media (prefers-reduced-motion: reduce)`
+  (`.sc-btn, .banner-action, .sc-disclosure-summary::before`, ~:2315) that
+  sits below `.sc-btn-primary`/`-secondary`/`-ghost` and wins on source
+  order — media queries add no specificity. It is harmless only because it
+  sets `transition` alone, which no `.sc-btn-*` modifier touches. So a
+  `.chip-*`-style guard generalised to `.sc-btn` would report all three
+  modifiers broken today. Note the grouped form is why an anchored
+  `^\.sc-btn\s*\{` grep misses it: that line ends in a comma, not a brace.
 - **#355 resizable desktop left panel** (`PanelResizer.tsx`, `lib/panelWidth.ts`,
   `lib/usePersistedNumber.ts`): `role="separator"` WAI-ARIA "Window Splitter"
   primitive, wide-layout only (`isWide` mount-gates it — narrow must not gain
@@ -1630,7 +1663,11 @@ making design-level decisions; do not silently deviate.
   shipped with every deploy signal green and no Release object). Closed by
   `.github/workflows/release.yml`, which the tag push also triggers —
   extracts the matching `## [X.Y.Z]` `CHANGELOG.md` section and creates the
-  Release with `--latest --verify-tag`. Runbook step 5c is now VERIFY, not
+  Release with `--latest --verify-tag`. Because a `push` on a tag resolves
+  the workflow FILE from the tag's own commit (same rule as the
+  `workflow_dispatch --ref` trap below), `release.yml` must already be on
+  `main` BEFORE the tag is pushed — true here only because it merged via the
+  release PR itself. Runbook step 5c is now VERIFY, not
   create: confirm `gh release list` shows the tag marked `Latest`.
 - **Deploy-collision timing, back-merge and hotfix flow** — this is WHY step
   5b must pass BEFORE the back-merge: `cancel-in-progress` cancel-supersedes
