@@ -1419,8 +1419,8 @@ making design-level decisions; do not silently deviate.
   GREEN, and row 12 is the FIRST that did not — its gate READING was
   `in_progress`, not `cancelled`, so that equivalence is post-hoc — and a
   terminal `cancelled` reading no longer licenses skipping the probe. What
-  that gate observes is narrow and
-  purely negative: `cancelled` means the merge run left NO `success`-state
+  that gate observes is narrow and purely negative: `cancelled` means the
+  merge run left NO `success`-state
   deployment of this SHA behind. It does not tell you whether the tag run's
   own bytes will be SERVED, and the tag run's `deploy` job and Pages object
   BOTH reading `success` cannot tell you either — that is the signature of a
@@ -1496,8 +1496,8 @@ making design-level decisions; do not silently deviate.
   tag run's own object `success`. v0.12.0's tag deployment TOOK; v0.19.0's
   `smoke-probe` failed 10/10 (measured 2026-09-03 from run `33680338582`'s
   job log and objects `6231355284`/`6231383135`). Two identical post-hoc
-  gate states,
-  two different outcomes — so the gate CANNOT separate those cases and no
+  gate states, two different outcomes — so the gate CANNOT separate those
+  cases and no
   reading of it substitutes for the probe. Attach no mechanism to either row.
   `gh api repos/OWNER/REPO/actions/runs/<merge-run-id>/jobs --jq
   '.jobs[]|"\(.name): \(.status)/\(.conclusion)"'` — read the STATUS beside
@@ -1510,11 +1510,10 @@ making design-level decisions; do not silently deviate.
   take, and NOT sufficient for its bytes to be served (row 12). **EVERY other
   answer is a non-answer**: no `deploy` line at all (v0.17.0's "not yet
   created", covered by the durability paragraph above), `queued`/`null`,
-  `in_progress`/`null`, and terminal `failure` (#415/#418, run
-  `32049360413`) — the job is still a coin in the air, or it never deployed
-  at all. Do not count them here; the set grows.
-  MEASURED at the v0.19.0 cut (2026-09-02): the
-  gate was read inside the same Bash call that pushed the tag and returned
+  `in_progress`/`null`, and terminal `failure` (#415/#418) — the job is
+  still a coin in the air, or it never deployed at all. Do not count them
+  here; the set grows. MEASURED at the v0.19.0 cut (2026-09-02): the gate
+  was read inside the same Bash call that pushed the tag and returned
   `deploy: in_progress/null` for merge run `33680204038`, whose `deploy` ran
   20:36:48Z → 20:37:10Z. v0.18.0's rule to read the gate immediately before
   `git push origin <tag>` was followed EXACTLY and did not help, because the
@@ -2498,8 +2497,9 @@ making design-level decisions; do not silently deviate.
   and were counted EQUAL. The script also walked only ONE row (TWA index 4)
   across the nine TWS, so the nine cells it did read were the wrong cells too.
   Its result was adopted verbatim into `e32dbea` before a round-2 auditor
-  reproduced the indexing bug and the reviewer retracted at round 3
-  (`6632ed0e`). Re-derived here with a shape assertion FIRST: across both rigs
+  refuted the result and the reviewer diagnosed the transposed index and
+  retracted at round 3 (`6632ed0e`). Re-derived here with a shape assertion
+  FIRST: across both rigs
   the Salona 44 and Salona 45 differ in 270 of 270 cells, ZERO equal.
   **Assert `speeds.length === twa.length && speeds[0].length === tws.length`
   before comparing anything** — the shape against the file's OWN axis labels,
@@ -2740,10 +2740,9 @@ making design-level decisions; do not silently deviate.
   makes it seven. Those are regex MATCHES, not distinct adopted blocks (one
   adoption typically yields several: "adopted", "verbatim", "byte-diffed"), so
   the denominator was never measured and no rate follows. Nor does
-  CONCENTRATION: an earlier draft of this bullet claimed the two
-  highest-scoring PRs were "exactly the two that produced defects", and that
-  was refuted by the very PR the claim shipped in — #858 scored between them
-  and produced the over-claim whose residual is #865(a).
+  CONCENTRATION: an earlier draft of this bullet claimed #861 and #867 were
+  "exactly the two that produced defects"; #858, which that draft did not
+  name, produced the over-claim whose residual is #865(a).
   Distinct rule, NOT an exception to the adopt-verbatim rule (#599 — it was an orchestrator-
   relayed measurement, not supplied replacement text): before adopting a
   NUMERIC correction, check both sides define the QUANTITY identically. A
