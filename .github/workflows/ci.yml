@@ -6,7 +6,20 @@ on:
 permissions:
   contents: read
 concurrency:
-  # Cancel superseded runs on PRs only; pushes to main always run to completion.
+  # Cancel superseded runs on PRs only - `cancel-in-progress` here governs
+  # only an already-RUNNING run, never a merely QUEUED one, so "pushes to
+  # main/develop always run to completion" is an OVER-CLAIM (the same one
+  # #900's review corrected in codeql.yml's twin comment): GitHub's
+  # concurrency semantics allow at most ONE `pending` run per group
+  # regardless of `cancel-in-progress` - "When a new job or workflow run is
+  # queued, any existing pending job or workflow run in the same group is
+  # canceled and replaced" (github/docs, using-concurrency.md, quoted
+  # verbatim, not paraphrased). So two pushes to the SAME branch queued
+  # close together (this group is `ci-${{ github.ref }}`, branch-specific
+  # for push events) can drop the earlier-queued one before it ever starts,
+  # even though push events never set `cancel-in-progress: true`. See
+  # CLAUDE.md's own `ci.yml`'s concurrency group bullet for the measured
+  # same-ref queuing/wedge behavior this composes with.
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:

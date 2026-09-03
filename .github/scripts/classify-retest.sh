@@ -125,9 +125,23 @@ if [ "${1:-}" = "--selftest" ]; then
     GITHUB_OUTPUT="$out" GITHUB_STEP_SUMMARY="$sum" bash -e "$SELF" >"$log" 2>&1
     rc=$?
     set -e
-    got="$(grep -o 'retest=[a-z]*' "$out" 2>/dev/null | tail -1 | cut -d= -f2)"
+    # `|| true` at the end of EACH pipeline below is REQUIRED, not
+    # decorative: under this file's own `set -euo pipefail`, a plain
+    # `var=$(A | B | C)` assignment DOES abort the script on a nonzero
+    # pipeline exit status (this is a simple command, not an `if`
+    # condition, so it is not exempt from errexit the way the production
+    # path's `if ! x=$(...)` guards are). When the child wrote nothing
+    # matching (e.g. it crashed before printing `retest=...`), `grep -o`
+    # exits 1 and `pipefail` propagates that as the pipeline's status,
+    # which would abort THIS SELFTEST HARNESS before the very
+    # `<none:step-exit-$rc>` fallback two lines down could ever run -
+    # measured directly (2026-09-03): injecting `exit 3` into the
+    # production path prints only the header line then rc=1 with ZERO
+    # case rows and no `SELFTEST OK`, silently swallowing every case
+    # instead of reporting the crash per-row.
+    got="$(grep -o 'retest=[a-z]*' "$out" 2>/dev/null | tail -1 | cut -d= -f2 || true)"
     [ -z "$got" ] && got="<none:step-exit-$rc>"
-    reason="$(grep -o 'reason=.*' "$log" | tail -1)"
+    reason="$(grep -o 'reason=.*' "$log" | tail -1 || true)"
     printf '%s|%s\n' "$got" "${reason:-step failed rc=$rc}"
     rm -f "$out" "$sum" "$log"
   }
@@ -233,7 +247,10 @@ if [ "${1:-}" = "--selftest" ]; then
   # plumbing so the mismatch path is directly testable.
   MERGE=$(commit_tree "${BASE}^{tree}" "$BASE" "$FEAT")
   EVENT_NAME=push HEAD_SHA="$MERGE"
-  export EVENT_NAME HEAD_SHA
+  RETEST_STUB_CHECKRUNS_TSV=$'success\thttps://github.com/o/r/actions/runs/1111/job/2222'
+  RETEST_STUB_APP_RUN_ID=1111
+  RETEST_STUB_APP_RUN_EVENT=pull_request
+  export EVENT_NAME HEAD_SHA RETEST_STUB_CHECKRUNS_TSV RETEST_STUB_APP_RUN_ID RETEST_STUB_APP_RUN_EVENT
   check "7  push, 2-parent merge, tree MISMATCHES 2nd parent" true
 
   # A shared "tree MATCHES 2nd parent" fixture for cases 8-13: the merge
@@ -272,7 +289,9 @@ if [ "${1:-}" = "--selftest" ]; then
   read -r REPODIR MERGE <<< "$(mk_matching_merge)"; cd "$REPODIR"
   EVENT_NAME=push HEAD_SHA="$MERGE"
   RETEST_STUB_CHECKRUNS_TSV=$'skipped\thttps://github.com/o/r/actions/runs/1111/job/2222'
-  export EVENT_NAME HEAD_SHA RETEST_STUB_CHECKRUNS_TSV
+  RETEST_STUB_APP_RUN_ID=1111
+  RETEST_STUB_APP_RUN_EVENT=pull_request
+  export EVENT_NAME HEAD_SHA RETEST_STUB_CHECKRUNS_TSV RETEST_STUB_APP_RUN_ID RETEST_STUB_APP_RUN_EVENT
   check "10 tree match, check-run conclusion=skipped (forced-skip probe)" true
 
   # ---------- 11 tree match, success but run event != pull_request (recursion guard) ----------
@@ -321,6 +340,26 @@ if [ "${1:-}" = "--selftest" ]; then
 fi
 
 # ---- production path ----
+# Hard timeout around every `gh api` call: this step runs BEFORE every
+# expensive step in the job, so an unbounded hang here burns the whole
+# job's `timeout-minutes` cap for zero work done (measured: an unbounded
+# `gh api` call against an unreachable/slow endpoint hangs indefinitely
+# with no output). `timeout 30 gh ...` does NOT work for this: `timeout`
+# execs its argument via its OWN PATH lookup, with no knowledge of bash
+# functions, so it silently bypasses this script's own `--selftest` stub
+# (an exported bash function, `export -f gh`) and hits the REAL `gh`
+# binary/network instead - measured directly: it did, producing a live
+# 404 against GitHub's actual API from inside what was meant to be an
+# offline selftest. Routing through `bash -c` instead works under BOTH
+# the stub and the real binary: a freshly spawned bash process re-imports
+# any exported function from its `BASH_FUNC_<name>%%` environment variable
+# on startup, so `gh` resolves to the stub there exactly as it would in
+# the calling shell, while `timeout` itself only ever execs `bash`, never
+# `gh` directly.
+run_gh() {
+  timeout 30 bash -c 'gh "$@"' _ "$@"
+}
+
 EVENT_NAME="${EVENT_NAME:-}"
 HEAD_SHA="${HEAD_SHA:-}"
 CHECK_NAME="${CHECK_NAME:-}"
@@ -367,15 +406,44 @@ if [ "${EVENT_NAME}" = "push" ]; then
         reason="not a 2-parent merge commit (found ${#parent_arr[@]} parents)"
       else
         p2="${parent_arr[1]}"
+        # `git cat-file -e "${p2}^{commit}"` below is checked FIRST, ahead of
+        # resolving either tree - fail-fast with the specific "second parent
+        # unreachable" diagnostic, before attempting an operation on an object
+        # already known absent. This overlaps by construction with the
+        # `--verify -q` tree checks two lines down (a p2 with no commit object
+        # cannot have a resolvable tree either), so on a fully-absent p2 this
+        # check is what fires, and the tree checks below never see it - kept
+        # anyway for the friendlier message and to fail before spending the
+        # two additional `git rev-parse` calls.
         if ! git cat-file -e "${p2}^{commit}" 2>/dev/null; then
           retest=true
           reason="second parent ${p2} unreachable (shallow clone?)"
         else
-          head_tree="$(git rev-parse "${HEAD_SHA}^{tree}" 2>/dev/null || true)"
-          p2_tree="$(git rev-parse "${p2}^{tree}" 2>/dev/null || true)"
-          if [ -z "${head_tree}" ] || [ -z "${p2_tree}" ]; then
+          # `--verify -q` is REQUIRED here, not `git rev-parse "<rev>" ||
+          # true` - measured directly (2026-09-03): plain `git rev-parse
+          # <unresolvable-rev>` does NOT fail with empty stdout the way a
+          # `2>/dev/null`-suppressed error suggests. On a bad revision it
+          # prints the LITERAL ARGUMENT STRING to STDOUT (not stderr) with
+          # exit 128 - e.g. `git rev-parse 0000...42^{tree}` outputs
+          # `0000...42^{tree}` verbatim. The `[ -z "${p2_tree}" ]` check this
+          # comment used to rely on therefore NEVER FIRES: the "variable"
+          # would hold that non-empty garbage string, not emptiness, so the
+          # dead-empty-string branch below could never trigger, and the
+          # ONLY reason this failed closed at all was the coincidence that the
+          # garbage string can never equal a real tree hash, landing on
+          # "tree differs" - a MISLEADING reason for a resolution failure,
+          # not the intended one. `git rev-parse --verify -q` is the form
+          # documented to behave correctly: it prints NOTHING and exits
+          # non-zero on an unresolvable revision (measured: empty stdout,
+          # rc=1), and the resolved hash on success - the same
+          # `String.replace`/`sed`-no-match-echoes-input trap this repo
+          # already documents elsewhere, in a THIRD tool.
+          if ! head_tree="$(git rev-parse --verify -q "${HEAD_SHA}^{tree}" 2>/dev/null)"; then
             retest=true
-            reason="could not resolve a tree object"
+            reason="could not resolve HEAD tree object for ${HEAD_SHA}"
+          elif ! p2_tree="$(git rev-parse --verify -q "${p2}^{tree}" 2>/dev/null)"; then
+            retest=true
+            reason="could not resolve second-parent tree object for ${p2}"
           elif [ "${head_tree}" != "${p2_tree}" ]; then
             retest=true
             reason="tree differs from second parent ${p2}"
@@ -388,13 +456,37 @@ if [ "${EVENT_NAME}" = "push" ]; then
             # header).
             retest=true
             reason="no qualifying ${CHECK_NAME} check-run found on ${p2}"
-            if checkruns="$(gh api "repos/${REPO}/commits/${p2}/check-runs" --jq ".check_runs[] | select(.name==\"${CHECK_NAME}\") | [.conclusion, .details_url] | @tsv" 2>/dev/null)"; then
+            # `--paginate`: the default `gh api` page size is 30 - a commit
+            # carrying more check-runs than that (this repo has measured a
+            # release SHA with seven runs' worth of same-named check-runs)
+            # could hide the qualifying entry on a later page. Overflow with
+            # no pagination fails CLOSED (a hidden qualifying entry just
+            # means no match -> retest=true), so this only ever costs
+            # savings, never safety - but paginate anyway rather than rely
+            # on that margin.
+            if checkruns="$(run_gh api "repos/${REPO}/commits/${p2}/check-runs" --paginate --jq ".check_runs[] | select(.name==\"${CHECK_NAME}\") | [.conclusion, .details_url] | @tsv" 2>/dev/null)"; then
               while IFS=$'\t' read -r concl url; do
                 [ -z "${concl:-}" ] && continue
                 [ "${concl}" != "success" ] && continue
                 rid="$(printf '%s' "$url" | sed -E 's#.*/actions/runs/([0-9]+)/job/.*#\1#')"
-                [ -z "$rid" ] && continue
-                if ev="$(gh api "repos/${REPO}/actions/runs/${rid}" --jq '.event' 2>/dev/null)"; then
+                # `sed`'s `s///` returns the input UNCHANGED when the pattern
+                # does not match (the same `String.replace`-with-an-absent-
+                # pattern trap this repo documents elsewhere) - a
+                # `details_url` in an unexpected shape leaves `rid` holding
+                # the WHOLE URL, not empty, so `[ -z "$rid" ]` alone can never
+                # fire. Measured: with `details_url=
+                # https://example.com/opaque/details`, `rid` becomes that
+                # entire string and the next call becomes `gh api
+                # repos/.../actions/runs/https://example.com/opaque/details`
+                # - which the real `gh`/`curl` reject (`unsupported protocol
+                # scheme`), so this stays fail-closed today, but only because
+                # of what the NEXT call happens to reject, not because of
+                # this guard. Require the extracted value to be PURELY
+                # digits so the guard actually does what its name implies.
+                case "$rid" in
+                  '' | *[!0-9]*) continue ;;
+                esac
+                if ev="$(run_gh api "repos/${REPO}/actions/runs/${rid}" --jq '.event' 2>/dev/null)"; then
                   if [ "$ev" = "pull_request" ]; then
                     retest=false
                     reason="tree matches already-tested PR head ${p2}; ${CHECK_NAME} run ${rid} (pull_request, success)"
