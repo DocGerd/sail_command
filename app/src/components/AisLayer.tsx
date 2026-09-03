@@ -1,6 +1,11 @@
 import { useEffect, useRef } from 'react';
 import { Popup } from 'maplibre-gl';
-import type { GeoJSONSource, Map as MaplibreMap, MapLayerMouseEvent } from 'maplibre-gl';
+import type {
+  GeoJSONSource,
+  LngLatLike,
+  Map as MaplibreMap,
+  MapLayerMouseEvent,
+} from 'maplibre-gl';
 import { useMapInstance } from './MapView';
 import { useLang, useT } from '../i18n';
 import { ROUTE_STACK_BOTTOM_LAYER } from './RouteLayer';
@@ -8,6 +13,8 @@ import { aisFeatureCollection, aisPopupRows, type AisPopupProps } from '../lib/a
 import { HALO_COLOR, INK_COLOR, STARBOARD_COLOR } from '../lib/mapColors';
 import { installStyleSetup } from '../lib/styleReload';
 import type { AisTargetSnapshot } from '../lib/aisTargets';
+import type { Lang } from '../i18n';
+import type { MsgKey } from '../i18n/dict.de';
 
 export const AIS_SOURCE = 'sc-ais';
 export const AIS_VECTOR_LAYER = 'sc-ais-vectors';
@@ -175,6 +182,39 @@ function setupLayers(map: MaplibreMap): void {
   );
 }
 
+// #831: extracted so a SECOND, DOM-based trigger (the keyboard-reachable
+// AisVesselsInView list in AisTraffic.tsx) can open the exact same themed
+// popup a pointer click on the symbol-layer glyph opens — one renderer of
+// aisPopupRows(), never two. `lngLat` is typed as the general LngLatLike so
+// a caller with only a target's lat/lon (no MapLayerMouseEvent) can pass a
+// plain {lng, lat} object.
+// eslint-disable-next-line react-refresh/only-export-components
+export function openAisPopup(
+  map: MaplibreMap,
+  lngLat: LngLatLike,
+  props: AisPopupProps,
+  t: (key: MsgKey, vars?: Record<string, string | number>) => string,
+  lang: Lang,
+): Popup {
+  const container = document.createElement('div');
+  container.className = 'ais-popover';
+  for (const row of aisPopupRows(props, Date.now(), lang)) {
+    const line = document.createElement('div');
+    const label = document.createElement('strong');
+    label.textContent = `${t(row.labelKey)}: `;
+    line.append(label, document.createTextNode(row.value));
+    container.append(line);
+  }
+  const disclaimer = document.createElement('p');
+  disclaimer.className = 'ais-popover-disclaimer';
+  disclaimer.textContent = t('ais.disclaimer');
+  container.append(disclaimer);
+  return new Popup({ closeButton: true, maxWidth: '240px', className: 'ais-popup' })
+    .setLngLat(lngLat)
+    .setDOMContent(container)
+    .addTo(map);
+}
+
 export default function AisLayer({ targets }: { targets: AisTargetSnapshot[] }) {
   const map = useMapInstance();
   const t = useT();
@@ -232,7 +272,11 @@ export default function AisLayer({ targets }: { targets: AisTargetSnapshot[] }) 
   }, [map, targets]);
 
   // Tap a vessel -> themed popup (seamark pattern): built via DOM APIs, one
-  // popup at a time, dismissed by a tap elsewhere (MapLibre default).
+  // popup at a time, dismissed by a tap elsewhere (MapLibre default). The
+  // build+open logic itself is the exported openAisPopup() below (#831) so
+  // the keyboard-reachable vessel list (AisTraffic.tsx's AisVesselsInView)
+  // opens the IDENTICAL popup a pointer click does, rather than a second
+  // hand-rolled renderer of the same aisPopupRows() data.
   useEffect(() => {
     if (!map) return;
     const handleClick = (e: MapLayerMouseEvent) => {
@@ -247,23 +291,7 @@ export default function AisLayer({ targets }: { targets: AisTargetSnapshot[] }) 
         heading: typeof p.heading === 'number' ? p.heading : null,
         lastUpdateMs: typeof p.lastUpdateMs === 'number' ? p.lastUpdateMs : Date.now(),
       };
-      const container = document.createElement('div');
-      container.className = 'ais-popover';
-      for (const row of aisPopupRows(props, Date.now(), langRef.current)) {
-        const line = document.createElement('div');
-        const label = document.createElement('strong');
-        label.textContent = `${tRef.current(row.labelKey)}: `;
-        line.append(label, document.createTextNode(row.value));
-        container.append(line);
-      }
-      const disclaimer = document.createElement('p');
-      disclaimer.className = 'ais-popover-disclaimer';
-      disclaimer.textContent = tRef.current('ais.disclaimer');
-      container.append(disclaimer);
-      new Popup({ closeButton: true, maxWidth: '240px', className: 'ais-popup' })
-        .setLngLat(e.lngLat)
-        .setDOMContent(container)
-        .addTo(map);
+      openAisPopup(map, e.lngLat, props, tRef.current, langRef.current);
     };
     const enter = () => {
       map.getCanvas().style.cursor = 'pointer';

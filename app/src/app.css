@@ -2564,6 +2564,63 @@ select {
   font-weight: 600;
 }
 
+/* #831: the keyboard-reachable "AIS vessels in view" list — the Live tab's
+   DOM equivalent of the map's pointer-only AIS vessel click (AisLayer.tsx).
+   FOLLOWS #830's `.app-panel-seamarks`/`.seamarks-in-view-*` shape directly
+   (same primitive, same row pattern) rather than the floating-over-the-map
+   design an earlier revision of this feature shipped when App.tsx/app.css
+   were out of that task's file scope — that version had zero rules here at
+   all. Living in the PANEL removes the "up to AIS_IN_VIEW_MAX rows covering
+   the map" failure mode structurally: the panel is its own scroll container
+   (`.app-panel`'s own `overflow-y`), exactly as `.seamarks-in-view-list`
+   above ships with no per-list max-height of its own either. `.app-panel-ais`
+   gets no `margin-top` unlike `.app-panel-seamarks`: on the Live tab it is
+   the panel body's ONLY content (no planner form above it to separate from,
+   see App.tsx's own comment at the `.app-panel-ais` render site). */
+.ais-in-view-hint,
+.ais-in-view-note {
+  margin: 0.25rem 0 0.5rem;
+  font-size: 0.9rem;
+}
+
+.ais-in-view-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+/* One native <button> per row — see .seamarks-in-view-row's own comment for
+   why: focusable and Enter/Space-activatable for free, a >=44px touch target
+   via the global `button` rule, full width so the whole row is the target,
+   `min-width: 0` + `overflow-wrap: anywhere` so a long compound row (name ·
+   MMSI · ship type · SOG · COG) wraps inside the panel instead of widening
+   it — the page body must never scroll horizontally. */
+.ais-in-view-row {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: var(--sc-bg);
+  border: 1px solid var(--sc-border);
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+}
+
+.ais-in-view-row:focus-visible {
+  outline: 2px solid var(--sc-accent);
+  outline-offset: 2px;
+}
+
+.ais-in-view-row-name {
+  font-weight: 600;
+}
+
 /* ---- Panel content shared across tabs ---- */
 
 .planner-panel,

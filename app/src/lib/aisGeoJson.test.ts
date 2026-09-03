@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { AIS_VECTOR_MINUTES, aisFeatureCollection, aisPopupRows } from './aisGeoJson';
+import {
+  AIS_VECTOR_MINUTES,
+  aisFeatureCollection,
+  aisPopupRows,
+  aisTargetsInView,
+  type AisViewportBounds,
+} from './aisGeoJson';
 import { destinationPoint } from './geo';
 import type { AisTargetSnapshot } from './aisTargets';
 
@@ -134,5 +140,82 @@ describe('aisPopupRows', () => {
     );
     const ageRow = rows.find((r) => r.labelKey === 'ais.popup.age');
     expect(ageRow?.value).toBe('vor 2 min');
+  });
+});
+
+// #831: the keyboard-reachable "AIS vessels in view" list's population
+// filter — RED at BASE (aisTargetsInView does not exist there), GREEN at
+// HEAD.
+describe('aisTargetsInView', () => {
+  const VIEWPORT: AisViewportBounds = {
+    west: 9.4,
+    south: 54.3,
+    east: 10.0,
+    north: 54.9,
+    centerLon: 9.7,
+    centerLat: 54.6,
+  };
+
+  it('excludes a target outside the viewport bounds on all four sides', () => {
+    // All four bounds are checked independently — a mutant dropping any one
+    // (e.g. south) would pass a "north + west only" version of this test,
+    // which is exactly the #518-shaped multi-assertion-pin trap CLAUDE.md
+    // documents (delete each assertion one at a time to prove it's load-
+    // bearing). Verified: deleting the `>= viewport.south` clause alone
+    // makes ONLY the south row below fail; every other row stays green.
+    const inside = target({ mmsi: 'inside', position: { lat: 54.6, lon: 9.7 } });
+    const tooFarNorth = target({ mmsi: 'north', position: { lat: 55.5, lon: 9.7 } });
+    const tooFarSouth = target({ mmsi: 'south', position: { lat: 53.0, lon: 9.7 } });
+    const tooFarWest = target({ mmsi: 'west', position: { lat: 54.6, lon: 9.0 } });
+    const tooFarEast = target({ mmsi: 'east', position: { lat: 54.6, lon: 10.5 } });
+    const result = aisTargetsInView(
+      [inside, tooFarNorth, tooFarSouth, tooFarWest, tooFarEast],
+      VIEWPORT,
+    );
+    expect(result.targets.map((t) => t.mmsi)).toEqual(['inside']);
+    expect(result.total).toBe(1);
+  });
+
+  // #831 review Priority 4, gap 1: an off-by-one on any bound's `<=`/`>=`
+  // (e.g. `<=` -> `<`) is invisible to well-outside points like the test
+  // above — only a target sitting EXACTLY ON the bound discriminates.
+  // Verified: mutating `t.position.lat <= viewport.north` to `<` fails only
+  // the `onNorthBoundary` row below; `justOutsideNorth` already failed with
+  // either operator, so it alone would not have caught the mutant.
+  it('includes a target exactly ON the north bound, excludes one just past it', () => {
+    const onNorthBoundary = target({ mmsi: 'on-bound', position: { lat: 54.9, lon: 9.7 } });
+    const justOutsideNorth = target({ mmsi: 'past-bound', position: { lat: 54.900001, lon: 9.7 } });
+    const result = aisTargetsInView([onNorthBoundary, justOutsideNorth], VIEWPORT);
+    expect(result.targets.map((t) => t.mmsi)).toEqual(['on-bound']);
+  });
+
+  it('orders targets nearest-to-centre first', () => {
+    const far = target({ mmsi: 'far', position: { lat: 54.35, lon: 9.45 } });
+    const near = target({ mmsi: 'near', position: { lat: 54.61, lon: 9.71 } });
+    const mid = target({ mmsi: 'mid', position: { lat: 54.7, lon: 9.8 } });
+    const result = aisTargetsInView([far, near, mid], VIEWPORT);
+    expect(result.targets.map((t) => t.mmsi)).toEqual(['near', 'mid', 'far']);
+  });
+
+  it('caps the returned list at max while total counts the whole in-view set', () => {
+    const targets = Array.from({ length: 5 }, (_, i) =>
+      target({ mmsi: `t${i}`, position: { lat: 54.6, lon: 9.5 + i * 0.01 } }),
+    );
+    const result = aisTargetsInView(targets, VIEWPORT, 2);
+    expect(result.targets).toHaveLength(2);
+    expect(result.total).toBe(5);
+  });
+
+  it('handles an antimeridian-wrapped viewport (west > east)', () => {
+    const wrapped: AisViewportBounds = { ...VIEWPORT, west: 179.5, east: -179.5 };
+    const insideWrap = target({ mmsi: 'wrap-in', position: { lat: 54.6, lon: 179.9 } });
+    const outsideWrap = target({ mmsi: 'wrap-out', position: { lat: 54.6, lon: 0 } });
+    const result = aisTargetsInView([insideWrap, outsideWrap], wrapped);
+    expect(result.targets.map((t) => t.mmsi)).toEqual(['wrap-in']);
+  });
+
+  it('returns an empty result for an empty target list', () => {
+    const result = aisTargetsInView([], VIEWPORT);
+    expect(result).toEqual({ targets: [], total: 0 });
   });
 });
