@@ -18,6 +18,15 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    # #882: no cap before now (360-min default). This job is ADVISORY (not
+    # required — `protect-main` requires `app`+`e2e` only) and `paths:`-gated
+    # on `pipeline/**`/`app/public/data/**`, so it runs on a subset of
+    # pushes/PRs, not every one. Measured 2026-09-03 via the Actions API
+    # against the 30 most recent runs anyway (the `paths:` gate did not make
+    # 30 runs hard to find): max 31s (n=30, all success) — a "cheap
+    # insurance" job per #882's own bucket, sized at 10-15 min rather than a
+    # tight multiple of that sub-minute median.
+    timeout-minutes: 10
     defaults: { run: { working-directory: pipeline } }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

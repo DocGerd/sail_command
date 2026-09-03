@@ -12,6 +12,19 @@ concurrency:
 jobs:
   app:
     runs-on: ubuntu-latest
+    # #882: this job had NO cap (GitHub's 360-minute default) until now. Sized
+    # generously rather than tightly: re-measured 2026-09-03 via the Actions
+    # API against the 30 most recent `ci.yml` runs, `app`'s max is 1557s
+    # (25.95 min, n=29 completed) — consistent with #882's own 1551s figure
+    # from a day earlier. #878 (same milestone, in flight) is SPLITTING
+    # `routing/realmask.repro.test.ts`, the one file that dominates this
+    # job's wall clock (CLAUDE.md's "Full test suite" bullet), which will
+    # change this duration — so this cap is deliberately NOT tuned tight
+    # against today's measurement (that would risk a false red the moment
+    # #878 lands, or before it if a slow runner is hit). 45 min is close to
+    # #882's own recommendation and leaves ~1.7x headroom over the measured
+    # max; revisit once #878 has landed and the new duration is measured.
+    timeout-minutes: 45
     defaults: { run: { working-directory: app } }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -180,6 +193,11 @@ jobs:
   # silently misses the next hook added, the same enumerate-don't-patch
   # principle applied elsewhere in this repo to prose.
   hook-selftests:
+    # #882: no cap before now (360-min default). Measured 2026-09-03 via the
+    # Actions API against the 30 most recent runs: max 22s (n=30, all
+    # success) — a "cheap insurance" job per #882's own bucket, sized at
+    # 10-15 min rather than a tight multiple of a sub-minute median.
+    timeout-minutes: 10
     # DO NOT add `defaults: { run: { working-directory: ... } }` to this job
     # (PR #350 review, pre-existing-but-now-relevant finding). This job has
     # no `defaults`, so its steps run at the checkout root — repo-root

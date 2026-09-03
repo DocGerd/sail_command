@@ -151,6 +151,11 @@
   // `node:fs` to structurally guard that build_harbors.mjs's generated
   // `knownDisconnected` field agrees with the pipeline's single source of
   // truth — same reason and pattern as verifyMaskConnectivity.test.ts above.
+  // harborPickerKnownDisconnectedCoupling.test.tsx (#835): reads the shipped
+  // app/public/data/harbors.json via `node:fs` AND renders HarborPicker
+  // against it, structurally coupling the JSON key build_harbors.mjs writes
+  // to the TS field HarborPicker.tsx's render path actually reads — see
+  // that file's own header for the #835 demonstrating mutation this closes.
   "include": [
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",
@@ -178,6 +183,7 @@
     "src/**/changelogFragmentShape.test.ts",
     "src/**/shallowWarningExtraction.test.ts",
     "src/**/harborKnownDisconnected.test.ts",
+    "src/**/harborPickerKnownDisconnectedCoupling.test.tsx",
     "sweep/**/*.ts"
   ]
 }
