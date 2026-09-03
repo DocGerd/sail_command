@@ -18,7 +18,7 @@ import { startPreview } from './helpers';
 // default 3.0 m safety depth):
 // - FIX_ORIGIN: Langballigau's own harbor snap (harbors.json).
 // - FIX_FJORD_MOUTH: the outer-fjord open-water anchor
-//   `app/src/routing/realmaskFixtures.ts`'s `FJORD_MOUTH`/`OPEN_BALTIC`
+//   `app/src/test/realmaskFixtures.ts`'s `FJORD_MOUTH`/`OPEN_BALTIC`
 //   constants document as navigable — mid-route between the two harbors.
 //   (The naive
 //   geometric midpoint of the pair is LAND — Broager peninsula — which is

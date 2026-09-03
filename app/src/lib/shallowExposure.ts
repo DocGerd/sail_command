@@ -210,7 +210,7 @@ function legConfinedWithin(
  * How far along `legs` the router's own mask charts water below
  * `thresholdM` — pass `shallow.requestedDepthM` as the threshold to match
  * exactly what #53's flagShallowLegs flags a leg for. Cell-exact, NOT a
- * whole-leg metric: this repo's own routing/realmaskFixtures.ts::exposureNm
+ * whole-leg metric: this repo's own test/realmaskFixtures.ts::exposureNm
  * doc comment records that charging a whole leg whenever ANY cell is shallow
  * over-states exposure by a measured 3-4x and is not comparable across
  * routes with different leg counts — never regress to that shape. This is

@@ -458,7 +458,13 @@ export function solve(p: SolveParams): SolveResult {
         // Direct-candidate arrival test (exact leg to destination)
         const isDirect = Math.abs(normalizeDeg180(headingDeg - bearingToDest)) < 0.5;
         if (isDirect && node.distToDestNm <= distNm) {
-          const directFactor = edgeFactor(mask, from, destination, gate, comfortDepthM);
+          const directFactor = edgeFactor(
+            mask,
+            from,
+            destination,
+            gate,
+            comfortDepthM,
+          );
           if (directFactor !== null) {
             const penaltyS = dtS - effS;
             // TRUE elapsed time for this hop — unaffected by the depth
@@ -573,7 +579,13 @@ export function solve(p: SolveParams): SolveResult {
           const durMs = (child.distToDestNm / Math.max(speed, MIN_SAIL_KN)) * 3600 * 1000;
           const finalEtaMs = child.tMs + durMs;
           if (finalEtaMs <= horizonMs && (!best || finalEtaMs < best.costMs)) {
-            const captureFactor = edgeFactor(mask, end, destination, gate, comfortDepthM);
+            const captureFactor = edgeFactor(
+              mask,
+              end,
+              destination,
+              gate,
+              comfortDepthM,
+            );
             if (captureFactor !== null) {
               const candCostMs = child.costMs + durMs / captureFactor;
               if (!best || candCostMs < best.costMs) {

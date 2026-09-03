@@ -5,13 +5,13 @@ import { uniformGate } from '../lib/depthGate';
 import { DEFAULT_SETTINGS, defaultBoatSnapshot } from '../types';
 import type { Settings } from '../types';
 import { solverTimeoutMs, SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
-import { mask, SALONA_DEPS, FLENSBURG, MARSTAL, T0 } from './realmaskFixtures';
+import { mask, SALONA_DEPS, FLENSBURG, MARSTAL, T0 } from '../test/realmaskFixtures';
 
 // #878: split out of the former realmask.repro.test.ts (~1286 lines, five
 // top-level describe blocks) so vitest can parallelise the real-mask suite
 // across files/cores — one monopolizing file previously set the whole `app`
 // job's wall clock while other cores idled. Pure relocation of this
-// describe block; shared setup lives in ./realmaskFixtures.ts. These run
+// describe block; shared setup lives in ../test/realmaskFixtures.ts. These run
 // against the real shipped mask and polars, unlike the synthetic masks used
 // everywhere else in the suite.
 vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });

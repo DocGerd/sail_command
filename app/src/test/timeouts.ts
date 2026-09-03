@@ -39,7 +39,7 @@
 // Read via `globalThis` rather than the ambient `process` global: this
 // module is imported both by test files typechecked under
 // tsconfig.app.json (no "node" in `types`) and by the
-// realmask.repro.*.test.ts files (routing/realmaskFixtures.ts and its five
+// realmask.repro.*.test.ts files (test/realmaskFixtures.ts and its five
 // siblings, #878), which are ALSO reachable through tsconfig.test.json's
 // node-types allowlist — this source file therefore gets type-checked
 // twice, under two different `types` arrays. A bare `process.env` read would need an

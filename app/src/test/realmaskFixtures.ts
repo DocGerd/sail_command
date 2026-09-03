@@ -5,8 +5,8 @@ import { dirname, resolve } from 'node:path';
 import { NavMask } from '../lib/mask';
 import { Polar } from '../lib/polar';
 import { WindField } from '../lib/wind';
-import { solve } from './isochrone';
-import { uniformWindGrid } from '../test/fixtures';
+import { solve } from '../routing/isochrone';
+import { uniformWindGrid } from './fixtures';
 import { uniformGate } from '../lib/depthGate';
 import { boatById, DEFAULT_BOAT_ID, polarKey } from '../data/boats';
 import type {

@@ -60,7 +60,7 @@ See [README → Development](README.md#development). Quick reference:
   else ran concurrently underneath them, so the total barely exceeded the
   slowest file. That single file was SPLIT (#878) into five sibling files
   (`routing/realmask.repro.*.test.ts`, plus a shared
-  `routing/realmaskFixtures.ts` helper) specifically so vitest could
+  `test/realmaskFixtures.ts` helper) specifically so vitest could
   parallelise it across cores instead of one file setting the wall clock —
   the 477.4 s figure above describes the PRE-SPLIT state and was not
   re-measured after it.

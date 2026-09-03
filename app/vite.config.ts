@@ -372,26 +372,39 @@ function appVersion(command: 'build' | 'serve'): string {
 // #878: realmask.repro.test.ts (the single file the paragraph above
 // measures — a PAST fact, not a current one) was split into five sibling
 // files (`routing/realmask.repro.*.test.ts`), one per top-level describe,
-// plus a shared `routing/realmaskFixtures.ts` helper, so vitest can
+// plus a shared `test/realmaskFixtures.ts` helper, so vitest can
 // parallelise the real-mask suite across cores instead of one file
-// monopolizing the run. Each sibling still carries at least one real-mask
-// solve under `solverTimeoutMs(600_000)`, so all five are listed below to
-// keep them starting early — none of the per-file byte sizes or durations
-// above have been re-measured post-split; add a file to this list if a
-// future addition shows the same small-file/disproportionately-slow-run
-// mismatch that motivates invariants.property.test.ts's entry, keeping the
-// array sorted slowest-first by wall-clock time.
+// monopolizing the run.
+//
+// Measured WITHIN ONE RUN (all six candidate files in a single
+// `vitest run realmask invariants.property`, same machine/load — these
+// figures are NOT comparable to the 2026-08-19 baseline above, only to each
+// other): invariants.property 306.4s, issue20 278.3s, salona44 196.2s,
+// relaxationFloor 169.7s, depthComfort 113.4s, mirrorCase 1.3s.
+//
+// `mirrorCase` is EXCLUDED from this array: at ~90x below its nearest
+// neighbour it is small AND fast — the exact inverse of the admission
+// criterion this array exists for (a file that is small but SLOW, so
+// BaseSequencer's size-descending default schedules it last). Pinning it to
+// the front would spend a first-wave worker slot on nothing.
+//
+// The other four `realmask.repro.*` siblings are ordered by that
+// measurement (issue20 > salona44 > relaxationFloor > depthComfort).
+// `invariants.property.test.ts` is kept FIRST on its OWN #214 justification
+// (independent of this PR's realmask measurements) — this does NOT claim it
+// is slower than `issue20`: a ~10% gap under shared load establishes
+// nothing, and no measurement here licenses reordering it relative to the
+// realmask files. Do not tighten this into a claim it doesn't make.
 const SLOW_TEST_FILES_FIRST = [
-  'src/routing/realmask.repro.issue20.test.ts',
-  'src/routing/realmask.repro.depthComfort.test.ts',
-  'src/routing/realmask.repro.relaxationFloor.test.ts',
-  'src/routing/realmask.repro.salona44.test.ts',
-  'src/routing/realmask.repro.mirrorCase.test.ts',
   'src/routing/invariants.property.test.ts',
+  'src/routing/realmask.repro.issue20.test.ts',
+  'src/routing/realmask.repro.salona44.test.ts',
+  'src/routing/realmask.repro.relaxationFloor.test.ts',
+  'src/routing/realmask.repro.depthComfort.test.ts',
 ];
 
 // Extends BaseSequencer rather than reimplementing it: only `sort` changes
-// (the two known-slow files move to the front, everything else keeps
+// (the files listed above move to the front, everything else keeps
 // BaseSequencer's default order); `shard` is inherited untouched so sharded
 // runs still work.
 class SlowFileFirstSequencer extends BaseSequencer {
