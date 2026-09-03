@@ -33,13 +33,17 @@ import type { Harbor } from '../types';
 // (App.tsx/PlannerPanel never construct a typed object literal for a
 // harbor; they parse JSON and trust the runtime shape).
 //
-// BOTH coupling tests below read the flag through `hasKnownDisconnectedFlag`
-// -- a runtime cast to `Record<string, unknown>` reading the literal string
-// key, never a typed `h.knownDisconnected` property access -- deliberately,
-// so that if `HarborWithReachability`'s field is ever renamed (the #835
+// Test 2 below reads the flag through `hasKnownDisconnectedFlag` -- a
+// runtime cast to `Record<string, unknown>` reading the literal string key,
+// never a typed `h.knownDisconnected` property access -- deliberately, so
+// that if `HarborWithReachability`'s field is ever renamed (the #835
 // demonstrating mutation, applied consistently by an IDE "Rename Symbol"
 // across every TYPED reference in the tree), a typed access in THIS file
 // would silently be renamed right along with it and stop catching anything.
+// Test 1 above never needs this helper: it never reads the flag back at
+// all, only WRITES it via the same string-keyed `withKnownDisconnectedFlag`
+// and then asserts on rendered DOM text, so it has no typed reference for
+// a rename to carry away in the first place.
 // Measured in PR #895 review: a typed `real.filter((h) => h.knownDisconnected
 // === true)` here is itself a typed reference an IDE rename carries along,
 // so it goes GREEN after such a rename (0 matches, early-return, ordinary
