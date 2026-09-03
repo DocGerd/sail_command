@@ -1415,9 +1415,11 @@ making design-level decisions; do not silently deviate.
   for any cut before v0.14.0 — don't fabricate any.)
   **NEVER GATE ON THE GAP, and never read "fast tag push" as a protection —
   but the flat "carries ZERO information" phrasing was retired 2026-08-27.**
-  Through v0.17.0 every row whose merge `deploy` read `cancelled` probed
-  GREEN, and row 12 is the FIRST that did not — so a `cancelled` reading no
-  longer licenses skipping the probe. What that gate observes is narrow and
+  Through v0.17.0 every row whose merge `deploy` CONCLUDED `cancelled` probed
+  GREEN, and row 12 is the FIRST that did not — its gate READING was
+  `in_progress`, not `cancelled`, so that equivalence is post-hoc — and a
+  terminal `cancelled` reading no longer licenses skipping the probe. What
+  that gate observes is narrow and
   purely negative: `cancelled` means the merge run left NO `success`-state
   deployment of this SHA behind. It does not tell you whether the tag run's
   own bytes will be SERVED, and the tag run's `deploy` job and Pages object
@@ -1493,22 +1495,25 @@ making design-level decisions; do not silently deviate.
   outcomes.** Both: merge `deploy` `cancelled`, merge Pages object `error`,
   tag run's own object `success`. v0.12.0's tag deployment TOOK; v0.19.0's
   `smoke-probe` failed 10/10 (measured 2026-09-03 from run `33680338582`'s
-  job log and objects `6231355284`/`6231383135`). Two identical gate readings,
+  job log and objects `6231355284`/`6231383135`). Two identical post-hoc
+  gate states,
   two different outcomes — so the gate CANNOT separate those cases and no
   reading of it substitutes for the probe. Attach no mechanism to either row.
   `gh api repos/OWNER/REPO/actions/runs/<merge-run-id>/jobs --jq
   '.jobs[]|"\(.name): \(.status)/\(.conclusion)"'` — read the STATUS beside
   the conclusion, and confirm a `deploy` line is LISTED AT ALL, because this
-  jq prints NOTHING for a job that does not yet exist. There are FOUR answers,
-  two terminal and two not. Terminal `success`: the merge run already deployed
-  this SHA and the tag run will no-op. Terminal `cancelled` (MEASURED at
-  v0.12.0): the merge run left no `success`-state deployment of this SHA —
-  necessary for the tag run's own deployment to take, and NOT sufficient for
-  its bytes to be served (row 12). The two NON-terminal answers are the trap.
-  No `deploy` line at all is v0.17.0's "not yet created", covered by the
-  durability paragraph above. **`in_progress`/`null` is a FOURTH answer that
-  paragraph does not cover, and it is not a safe one — it is the job still
-  running, a coin in the air.** MEASURED at the v0.19.0 cut (2026-09-02): the
+  jq prints NOTHING for a job that does not yet exist. Exactly ONE answer
+  licenses skipping the probe, and it is terminal `success`: the merge run
+  already deployed this SHA and the tag run will no-op. Terminal `cancelled`
+  (MEASURED at v0.12.0) means the merge run left no `success`-state
+  deployment of this SHA — necessary for the tag run's own deployment to
+  take, and NOT sufficient for its bytes to be served (row 12). **EVERY other
+  answer is a non-answer**: no `deploy` line at all (v0.17.0's "not yet
+  created", covered by the durability paragraph above), `queued`/`null`,
+  `in_progress`/`null`, and terminal `failure` (#415/#418, run
+  `32049360413`) — the job is still a coin in the air, or it never deployed
+  at all. Do not count them here; the set grows.
+  MEASURED at the v0.19.0 cut (2026-09-02): the
   gate was read inside the same Bash call that pushed the tag and returned
   `deploy: in_progress/null` for merge run `33680204038`, whose `deploy` ran
   20:36:48Z → 20:37:10Z. v0.18.0's rule to read the gate immediately before
@@ -2178,7 +2183,7 @@ making design-level decisions; do not silently deviate.
 - **Verify a UNIVERSAL claim across its whole RANGE, not at the ends instinct
   picks.** "Every milestone from `v0.9.0` on clears it" was FALSE as written
   in a draft on PR #853 — quoted and refuted in `cf3d643`'s commit message
-  the OPEN
+  (2026-09-02), never committed to `CONTRIBUTING.md` in that form. The OPEN
   `v0.19.0` sat inside that range at 1 bug of 6 at the time, while every
   milestone SHIPPED in it by then had cleared — so a spot-check at the ends
   instinct picks, `v0.9.0` or the latest SHIPPED `v0.18.0`, passed while the
@@ -2704,7 +2709,7 @@ making design-level decisions; do not silently deviate.
   block via the comments API, substring-match it), and verify "two copies
   agree" by NORMALISED byte comparison — a paraphrase RESEMBLES rather than
   agrees.
-  **Re-measured across the v0.19.0 cycle (2026-09-02): FOUR defects, each
+  **Re-measured across the v0.19.0 cycle (2026-09-02): FIVE defects, each
   inside text supplied for verbatim adoption, and one of them inside the fix
   for another.** (1) PR #861 round 1 supplied a polar-table split derived from
   a transposed index — see the out-of-range-reads-as-EQUAL bullet under
@@ -2726,11 +2731,19 @@ making design-level decisions; do not silently deviate.
   designed rather than as a loophole. Fixed in `05f5e66`; it never shipped.
   **No RATE is claimed and none should be.** Over the downloaded review-comment
   corpus for all thirteen PRs of that cycle, prose recording verbatim adoption
-  or byte-diffing appears on five PRs (#857, #858, #861, #867, #876) — those
-  are regex MATCHES, not distinct adopted blocks (one adoption typically yields
-  several: "adopted", "verbatim", "byte-diffed"), so the denominator was never
-  measured. What the corpus supports is CONCENTRATION, not frequency: #861 and
-  #867 carry that prose in bulk and are exactly the two that produced defects.
+  or byte-diffing appears on SIX of the thirteen PRs #853-#876 (#857, #858,
+  #861, #862, #867, #876), counted with one regex —
+  `adopted[^.]{0,40}(verbatim|byte-for-byte)|verbatim adoption|byte-diff`,
+  case-insensitive, over each PR's reviews, review comments and issue
+  comments. State the cycle boundary with any such count: including #852,
+  whose CONTENT is the v0.18.0 learnings though it merged inside this window,
+  makes it seven. Those are regex MATCHES, not distinct adopted blocks (one
+  adoption typically yields several: "adopted", "verbatim", "byte-diffed"), so
+  the denominator was never measured and no rate follows. Nor does
+  CONCENTRATION: an earlier draft of this bullet claimed the two
+  highest-scoring PRs were "exactly the two that produced defects", and that
+  was refuted by the very PR the claim shipped in — #858 scored between them
+  and produced the over-claim whose residual is #865(a).
   Distinct rule, NOT an exception to the adopt-verbatim rule (#599 — it was an orchestrator-
   relayed measurement, not supplied replacement text): before adopting a
   NUMERIC correction, check both sides define the QUANTITY identically. A
