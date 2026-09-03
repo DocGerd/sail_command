@@ -18,6 +18,11 @@ permissions:
 jobs:
   label:
     runs-on: ubuntu-latest
+    # #882: no cap before now (360-min default). Measured 2026-09-03 via the
+    # Actions API against the 30 most recent runs: max 11s (n=29, all
+    # success) — a "cheap insurance" job per #882's own bucket, sized at
+    # 10-15 min rather than a tight multiple of that sub-minute median.
+    timeout-minutes: 10
     permissions:
       contents: read
       pull-requests: write
