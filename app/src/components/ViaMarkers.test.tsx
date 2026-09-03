@@ -5,19 +5,25 @@ import { de } from '../i18n/dict.de';
 import { makeFakeMap } from '../test/fakeMaplibre';
 import type { LatLon } from '../types';
 
-// #470/#838: `RouteLayer.test.tsx` loads ViaMarkers (its only importer other
-// than App.tsx's own tree) with a `maplibre-gl` mock that is a no-op
-// `Marker` recording nothing, and every RouteLayer test that reaches it
-// passes an EMPTY `draftViaPoints` — so THAT file constructs zero markers.
+// #470/#838: `RouteLayer.tsx:30` is ViaMarkers' only production importer, so
+// besides this file the only vitest files that RENDER it are
+// `RouteLayer.test.tsx` (directly) and `App.test.tsx` (through the real
+// App -> RouteLayer tree). `RouteLayer.test.tsx` mocks `maplibre-gl` with a
+// no-op `Marker` that records nothing, and when this was written every
+// render helper there passed an EMPTY `draftViaPoints` — so THAT file
+// constructed zero markers.
 // But `App.test.tsx` DOES exercise ViaMarkers, through the real
 // App -> RouteLayer -> ViaMarkers tree with its own recording `FakeMarker`
 // (see that file's header note above its `FakeMarker` class): it renders a
 // plan with a via point and drives real construct/drag/remove sequences.
 // Measured (#838): with this file removed, mutating ViaMarkers.tsx's rebuild
 // effect to construct zero markers reds App.test.tsx (`expected [] to have a
-// length of 1 but got +0`). So marker CONSTRUCTION was never unasserted
-// suite-wide — what THIS file adds is per-unit assertions the integration
-// path does not make: construction coordinates, the marker element's
+// length of 1 but got +0`). App.test.tsx's `FakeMarker` only became a
+// RECORDING fake at the #571 redesign (`4c07500`, 2026-08-19); before that
+// it was a no-op, and #470 was filed 2026-08-09 — so nothing ASSERTED
+// marker construction when #470 was written, and something does now. What
+// THIS file adds is per-unit assertions the integration path does not make:
+// construction coordinates, the marker element's
 // accessibility contract, both `snapBack` branches (dragend rejected,
 // dragend rejected-promise) — plus the null-map render phase (ViaMarkers
 // renders before `MapView`'s Map instance exists; `useMapInstance()` returns
