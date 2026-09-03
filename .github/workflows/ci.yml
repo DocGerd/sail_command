@@ -9,17 +9,21 @@ concurrency:
   # Cancel superseded runs on PRs only - `cancel-in-progress` here governs
   # only an already-RUNNING run, never a merely QUEUED one, so "pushes to
   # main/develop always run to completion" is an OVER-CLAIM (the same one
-  # #900's review corrected in codeql.yml's twin comment): GitHub's
-  # concurrency semantics allow at most ONE `pending` run per group
-  # regardless of `cancel-in-progress` - "When a new job or workflow run is
-  # queued, any existing pending job or workflow run in the same group is
-  # canceled and replaced" (github/docs, using-concurrency.md, quoted
-  # verbatim, not paraphrased). So two pushes to the SAME branch queued
-  # close together (this group is `ci-${{ github.ref }}`, branch-specific
-  # for push events) can drop the earlier-queued one before it ever starts,
-  # even though push events never set `cancel-in-progress: true`. See
-  # CLAUDE.md's own `ci.yml`'s concurrency group bullet for the measured
-  # same-ref queuing/wedge behavior this composes with.
+  # #900's review corrected in codeql.yml's twin comment). On the default
+  # `queue: single` (this workflow sets no `queue:` property), GitHub caps
+  # PENDING runs at one per group: "By default, any existing `pending` job
+  # or workflow in the same concurrency group will be canceled and the new
+  # queued job or workflow will take its place." (docs.github.com,
+  # "workflow-syntax" reference, #concurrency section, fetched and matched
+  # as an exact substring 2026-09-03 - the sentence renders there but was
+  # not locatable in any github/docs@main source file, so cite the rendered
+  # page rather than a file path that does not exist). So two pushes to the
+  # SAME branch queued close together (this group is `ci-${{ github.ref }}`,
+  # branch-specific for push events) can drop the earlier-queued one before
+  # it ever starts, even though push events never set
+  # `cancel-in-progress: true`. See CLAUDE.md's own `ci.yml`'s concurrency
+  # group bullet for the measured same-ref queuing/wedge behavior this
+  # composes with.
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:

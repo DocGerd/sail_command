@@ -356,8 +356,14 @@ fi
 # on startup, so `gh` resolves to the stub there exactly as it would in
 # the calling shell, while `timeout` itself only ever execs `bash`, never
 # `gh` directly.
+# `-k 5`: CLAUDE.md's own rule is "always timeout -k <grace> <n>" - bare
+# `timeout` sends SIGTERM only, and a child that ignores it or immediately
+# re-stops wins that race; `-k 5` follows up with SIGKILL 5s later if the
+# process is still alive. This is a hardening nit, not a live hole: the
+# job's own `timeout-minutes` (45/30) bounds the damage either way, and
+# `gh` has no documented habit of ignoring SIGTERM.
 run_gh() {
-  timeout 30 bash -c 'gh "$@"' _ "$@"
+  timeout -k 5 30 bash -c 'gh "$@"' _ "$@"
 }
 
 EVENT_NAME="${EVENT_NAME:-}"
