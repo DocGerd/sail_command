@@ -12,6 +12,15 @@ jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
+    # #882: no cap before now (360-min default). Measured 2026-09-03 via the
+    # Actions API against the 30 most recent runs of EACH matrix leg:
+    # javascript-typescript max 108s, python max 60s (n=30 each, all
+    # success) — this key applies uniformly to both legs (see the `queries:`
+    # comment below on why that is deliberate, not a matrix accident). Sized
+    # well above the sub-minute measured max to leave headroom for the
+    # `security-and-quality` query-pack widening (#534) growing further on a
+    # future codeql-action/query-pack bump this repo does not control.
+    timeout-minutes: 20
     permissions:
       contents: read
       security-events: write

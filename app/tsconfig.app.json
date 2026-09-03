@@ -116,6 +116,11 @@
   // the generated `knownDisconnected` field agrees with the pipeline's
   // single source of truth, same reason as verifyMaskConnectivity.test.ts
   // above.
+  // harborPickerKnownDisconnectedCoupling.test.tsx (#835) is the same shape
+  // once more — reads the shipped app/public/data/harbors.json via
+  // `node:fs`, but ALSO renders HarborPicker against it (unlike the plain
+  // `.test.ts` guards above), which is why it needs tsconfig.test.json's
+  // node+DOM+jsx program rather than a third split.
   "exclude": [
     "src/**/realmask.repro*.test.ts",
     "src/**/realmaskFixtures.ts",
@@ -143,6 +148,7 @@
     "src/**/mapColors.test.ts",
     "src/**/changelogFragmentShape.test.ts",
     "src/**/shallowWarningExtraction.test.ts",
-    "src/**/harborKnownDisconnected.test.ts"
+    "src/**/harborKnownDisconnected.test.ts",
+    "src/**/harborPickerKnownDisconnectedCoupling.test.tsx"
   ]
 }

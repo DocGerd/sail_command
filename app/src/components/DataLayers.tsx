@@ -540,8 +540,13 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
   // plan===null — otherwise the app would show TWO "Legende"/"Legend"
   // disclosures again, the exact defect #813 exists to fix. The two are
   // COMPLEMENTARY, never both mounted: whichever is absent, the other one
-  // is what carries the #597 safety caveat forward, so it stays reachable
-  // in every state, never both nor neither.
+  // is what carries the #597 safety caveat forward WHEN IT RENDERS. That
+  // is narrower than "reachable in every state" (#842): this component's
+  // OWN `.depth-legend` is additionally gated by the `legendHidden` state
+  // set in the measurement effect below, which hides it — `hidden`, out of
+  // the accessibility tree — in short landscape and in a narrow column too
+  // cramped for `LEGEND_COLLAPSED_HEIGHT_PX`. In those states, with
+  // plan===null, neither legend carries the caveat at all.
   const { plan } = useActivePlan();
   // #63: default ON, persisted — mirrors RouteLayer's barbs/annotations
   // toggles. An explicit "off" survives reloads; a fresh profile sees depth.
@@ -1167,13 +1172,14 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
           "Legende"/"Legend" surface at that point, folding this content in
           under its own sub-heading. Consolidating this WAY — suppressing
           the free-floating pill rather than the panel-gated one — is what
-          keeps the #597 caveat reachable with NO plan at all (the state
-          RouteLegend can't cover, since RouteLayer.tsx returns null before
-          ever mounting it): the alternative direction (fold this content
-          INTO RouteLegend and never touch this component) would silently
-          make the caveat unreachable until a route is planned, the exact
-          "two individually-correct fixes silence the complement of two
-          conditions" trap CLAUDE.md's Working-style section warns about.
+          keeps the #597 caveat's disclosure mounted with NO plan at all
+          (the state RouteLegend can't cover, since RouteLayer.tsx returns
+          null before ever mounting it): the alternative direction (fold
+          this content INTO RouteLegend and never touch this component)
+          would silently make the caveat unreachable until a route is
+          planned, the exact "two individually-correct fixes silence the
+          complement of two conditions" trap CLAUDE.md's Working-style
+          section warns about.
 
           #681 x #813: the independent hatch toggle (below, inside the
           body) rides along with this `plan === null` gate rather than
