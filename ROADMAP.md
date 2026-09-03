@@ -37,8 +37,10 @@ presentational heuristic rather than an input to the time optimisation
 The other sixteen were tooling, CI cost and prose accuracy. The largest
 strand cut what continuous integration spends: the `app` job now skips its
 expensive steps on a docs-only change and on a push whose tree a previous
-run already tested, CodeQL gained a concurrency group so superseded pushes
-stop racing, CodeQL no longer runs at all on a docs-only pull request, the
+run already tested, CodeQL gained a concurrency group so a superseded
+pull-request head stops being analysed to completion, CodeQL's pull-request analysis is skipped for changes confined
+to `docs/**` prose and the root documentation files its `paths:` filter
+names — a changelog-only change still triggers it, deliberately — the
 nightly coverage run skips an unchanged tree, and every previously uncapped
 job gained a `timeout-minutes`
 ([#875](https://github.com/DocGerd/sail_command/issues/875),
