@@ -42,6 +42,13 @@ on:
   workflow_dispatch: {}
 permissions:
   contents: read
+  # #879: the skip-gate step queries this workflow's own run history
+  # (`gh api .../actions/workflows/coverage.yml/runs`) to find the last
+  # successful run on `develop`. That lookup needs `actions: read` - without
+  # it the call 403s, which the gate script treats as an API error and fails
+  # open (runs in full), so a missing scope here is safe but silently
+  # defeats the whole point of #879 rather than erroring loudly.
+  actions: read
 concurrency:
   # No `pull_request` trigger exists on this workflow (see `on:` above), so
   # nothing here is ever superseded — same-ref reruns queue rather than
@@ -63,10 +70,34 @@ jobs:
     defaults: { run: { working-directory: app } }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # #879: 7 of 29 sampled nights re-measured a byte-identical `develop`
+      # tree at ~4125s mean job duration - ~8h of runner time over 29 days.
+      # This step decides whether the expensive steps below run at all; the
+      # JOB itself always runs and reports (never gated at the workflow
+      # `on:`/job level), matching ci.yml's `e2e` docs-only-classify shape.
+      # POLARITY: the safe default is RUN, never skip - see
+      # `.github/scripts/coverage-skip-gate.sh`'s own header for the full
+      # decision table and why every ambiguous input resolves to run=true.
+      # `working-directory: app` (this job's `defaults` above) is harmless
+      # here - the script takes no repo-relative paths, only `gh api` calls -
+      # so it is NOT overridden the way `ci.yml`'s `hook-selftests` job must
+      # override its own working-directory for a cwd-sensitive hook.
+      - name: Decide whether tonight's run is needed (#879)
+        id: gate
+        working-directory: ${{ github.workspace }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          CURRENT_SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+        run: bash .github/scripts/coverage-skip-gate.sh
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: steps.gate.outputs.run_coverage != 'false'
         with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
       - run: npm ci
+        if: steps.gate.outputs.run_coverage != 'false'
       - run: npm run test:coverage
+        if: steps.gate.outputs.run_coverage != 'false'
         # DERIVATION (PR #351 review N1 — this cap was raised 120 -> 240
         # after `app/src/test/timeouts.ts`'s coverage multiplier was raised
         # 4 -> 8, which made the OLD 120-minute cap collide with the
@@ -134,6 +165,12 @@ jobs:
       # ever starts failing chronically, fix or remove it — do not flip this
       # to `false`.
       - name: Upload coverage to Codecov
+        # #879: skipping must not upload a stale report over a fresh badge -
+        # same gate as `npm ci`/`test:coverage` above. When skipped there is
+        # no `app/coverage/lcov.info` from THIS run anyway (the step above
+        # didn't run), so gating here is belt-and-braces against uploading a
+        # leftover file from actions/cache or a prior job attempt.
+        if: steps.gate.outputs.run_coverage != 'false'
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           files: app/coverage/lcov.info
