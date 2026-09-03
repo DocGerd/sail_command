@@ -915,6 +915,19 @@ export const de = {
   'ais.status.offline': 'AIS offline',
   'ais.status.keyError': 'AIS: API-Schlüssel prüfen',
   'ais.status.liveRoute': 'AIS live · {count} Schiffe ({routeCount} entlang Route)',
+  // #831: die tastaturerreichbare Liste der sichtbaren AIS-Schiffe (WCAG
+  // 2.1.1) — spiegelt seamarks.inView.* (#830). Erscheint unabhängig vom
+  // AIS-Status; die Statuszeile oben erklärt bereits, warum die Liste leer
+  // sein könnte.
+  'ais.inView.summary': 'AIS-Schiffe in Sicht ({count})',
+  'ais.inView.hint':
+    'Nach Entfernung zur Kartenmitte sortiert. Auswahl zeigt das Schiff in einem Hinweisfenster auf der Karte.',
+  'ais.inView.loading': 'Warte auf die Kartenansicht …',
+  'ais.inView.empty': 'Aktuell keine AIS-Schiffe im Kartenausschnitt.',
+  // {shown} ist AIS_IN_VIEW_MAX (lib/aisGeoJson.ts) — der Text tippt die Zahl
+  // nie selbst, damit Konstante und Satz nicht auseinanderlaufen.
+  'ais.inView.truncated':
+    'Nur die {shown} der Kartenmitte nächstgelegenen von {total} Schiffen werden aufgeführt — hineinzoomen, um alle zu sehen.',
   // #155: north-arrow / track-up compass. One label per state, carrying both
   // the current orientation AND the action a tap performs (no aria-pressed:
   // a tri-state cycle is not a binary toggle). Degrees never appear here.

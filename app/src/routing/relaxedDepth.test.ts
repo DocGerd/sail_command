@@ -169,7 +169,8 @@ function sourceOf(suffix: string): string {
  * SHAPE only. A drift that keeps `Math.ceil(... - 1e-9)` while changing the
  * surrounding arithmetic passes every row here — this is a drift pin between
  * the two spellings, not a correctness pin on either. The behavioural pin for
- * the callee is realmask.repro.test.ts's (a2) row; every floor in THIS file is
+ * the callee is realmask.repro.relaxationFloor.test.ts's (a2) row; every
+ * floor in THIS file is
  * already decimetre-quantised and so cannot see ceil-vs-round at all.
  *
  * SCOPE of the no-Math.round rule, because the over-broad reading would

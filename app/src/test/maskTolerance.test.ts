@@ -138,8 +138,8 @@ describe('#455: pipeline/build_mask.py TOLERANCE_M / disclosure cross-artifact g
     // is unreachable —
     // independent of SAFETY_DEPTH_FIELD's 2.2 m UI clamp (OptionsPanel.tsx),
     // which bounds only what a user can TYPE — and it fires at DEFAULT
-    // settings with no user input at all (realmask.repro.test.ts pins
-    // usedDepthM ~= 2.3 for Flensburg->Marstal at DEFAULT_SETTINGS). So the
+    // settings with no user input at all (realmask.repro.issue20.test.ts
+    // pins usedDepthM ~= 2.3 for Flensburg->Marstal at DEFAULT_SETTINGS). So the
     // worst-case floor a user can actually hit without touching any setting
     // is BOAT_DRAFT_M - TOLERANCE_M, NOT SAFETY_DEPTH_FIELD.min - TOLERANCE_M
     // (the earlier, WRONG version of this test and of the disclosure copy).

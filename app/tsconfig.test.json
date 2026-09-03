@@ -51,13 +51,14 @@
   // source of truth (a CSS `var()` fallback can't import a JS constant).
   // legDistanceReconciliation.test.ts (#379): reads the real shipped
   // mask/polars via `node:fs` to reconcile per-leg distance against the
-  // plan total on a real solve, same reason as realmask.repro.test.ts.
+  // plan total on a real solve, same reason as the realmask.repro.*.test.ts
+  // files and their shared realmaskFixtures.ts helper (#878).
   // panelWidth.test.ts (#355): reads app/src/app.css via `node:fs` to
   // structurally guard the `320px` grid-template-columns literal stays in
   // sync with PANEL_MIN_WIDTH_PX, same reason as useBannerHeight.test.ts.
   // sweep/** (#282, PR #450): the acceptance-sweep harness — reads the real
-  // shipped mask/polars/harbors via `node:fs`, same reason as
-  // realmask.repro.test.ts. It sits OUTSIDE `src/` on purpose, so
+  // shipped mask/polars/harbors via `node:fs`, same reason as the
+  // realmask.repro.*.test.ts files (#878). It sits OUTSIDE `src/` on purpose, so
   // vite.config.ts's `test.include` (`src/**/*.test.{ts,tsx}`) never collects
   // its ~20 min of solver time into `npm run test` or CI; it is listed here
   // only so `tsc -b` still typechecks it, because an unchecked harness rots
@@ -157,7 +158,8 @@
   // to the TS field HarborPicker.tsx's render path actually reads — see
   // that file's own header for the #835 demonstrating mutation this closes.
   "include": [
-    "src/**/realmask.repro.test.ts",
+    "src/**/realmask.repro*.test.ts",
+    "src/**/realmaskFixtures.ts",
     "src/**/gpx.parse.test.ts",
     "src/**/seamarkPopover.coverage.test.ts",
     "src/**/changelogFragmentsFs.ts",
