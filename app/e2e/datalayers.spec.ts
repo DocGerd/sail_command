@@ -516,6 +516,197 @@ test('depth-hatch legend (#598) is either reachable or properly unreachable, nev
   }
 });
 
+/** True (returns 'ok') iff, for EVERY non-empty client rect of `locator`'s
+ * element, the TOPMOST element at that rect's own centre point is the
+ * element itself or one of its descendants — never `getBoundingClientRect()`
+ * alone, whose UNION of multiple line boxes can include inter-line space
+ * that belongs to a WRAPPED element's PARENT, not the element (the
+ * documented `plan.spec.ts`/CLAUDE.md trap). `<summary>` is block-level and
+ * normally has exactly one rect, but this checks every rect regardless so
+ * the helper is correct even if that ever changes. Re-queries the live DOM
+ * on every call — call it FRESH inside a poll callback, never cache its
+ * result across ticks. Returns a STRING (not a boolean) naming what actually
+ * covers the point on failure, so a CI failure shows the value, not just a
+ * timeout (#252's poll-the-value-not-a-boolean rule). */
+async function everyRectTopmost(locator: Locator): Promise<string> {
+  return locator.evaluate((el) => {
+    const rects = Array.from(el.getClientRects()).filter((r) => r.width > 0 && r.height > 0);
+    if (rects.length === 0) return 'no non-empty client rects';
+    for (const r of rects) {
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      const top = document.elementFromPoint(cx, cy);
+      if (top === null || !(top === el || el.contains(top))) {
+        const desc =
+          top === null
+            ? 'nothing (out of viewport?)'
+            : `${top.tagName}${top instanceof HTMLElement && top.className ? `.${top.className}` : ''}`;
+        return `covered at (${cx.toFixed(1)}, ${cy.toFixed(1)}) by ${desc}`;
+      }
+    }
+    return 'ok';
+  });
+}
+
+// #871: the SW-ready toast (ReloadPrompt.tsx's `.reload-prompt`, both its
+// offlineReady and needRefresh states) is transient, self-dismissable SW
+// chrome — before this fix it entered DataLayers.tsx's `bannerHeightPx`
+// term exactly like a persistent banner, so on a FIRST COLD LOAD at a
+// narrow viewport, with ZERO user interaction, the toast ALONE could push
+// the depth-legend reachability budget under LEGEND_COLLAPSED_HEIGHT_PX
+// (44) and hide the WHOLE `details.depth-legend` — the #597 safety caveat
+// included — out of the accessibility tree. Measured pre-fix at 375x667
+// (`EDGE_VIEWPORTS.partialPushBand375`): `{bannerCount:1, legendCount:1,
+// hidden:true}` with the toast up, vs `budgetPx` 62.556 once dismissed —
+// the toast alone crossed the gate. `DataLayers.tsx` is untouched by #830
+// (`git diff` against that PR's base shows zero changes to the file), so
+// this is independent of the seamarks-in-view list #830's own guard above
+// isolates.
+//
+// Deliberately does NOT dismiss the toast — the opposite of the #830
+// composition guard above, which dismisses it FIRST specifically to
+// isolate its own list variable. This test's whole point is the
+// toast-still-showing state, so it pins that the toast is actually up
+// before asserting anything (a guard is vacuous unless the state it is
+// about is reproduced).
+//
+// `pointerReachable: false` on `partialPushBand375` is a KNOWN, MAINTAINER-
+// ACCEPTED residual, not an oversight: the fix (app.css's `#871` rule)
+// moves `.reload-prompt` to `bottom: 55vh` so it no longer pushes
+// `.map-stack-tl` down — this closes the `hidden=true` defect at EVERY
+// viewport, and clears the #368 depth-checkbox invariant everywhere too —
+// but `.map-stack-tl`'s own max-height ceiling and the toast's new top edge
+// differ by a CONSTANT ~52px at every viewport height (the two `vh` terms
+// cancel; see app.css's own comment on this rule for the arithmetic), so
+// whatever part of the cluster happens to reach into that band at a given
+// viewport is still pointer-blocked while the toast shows. At
+// `partialPushBand375` specifically, that's the collapsed summary itself.
+// Filed as a separate follow-up (see this PR's body) rather than attempted
+// a fifth time here — three placements (JS-gate-only, top-anchored,
+// bottom-anchored) all hit this same constant, and a proper fix needs a
+// RUNTIME-measured anchor (ScaleBar.tsx precedent), not another static
+// guess. KEYBOARD reachability survives regardless (asserted below via
+// `.focus()` + a real `Enter` keypress, never `.click()`), because
+// `<summary>`'s native activation does not consult pointer hit-testing —
+// which is exactly why this residual is accepted rather than blocking.
+const TOAST_LEGEND_ROWS = [
+  {
+    label: 'partialPushBand375 (375x667)',
+    viewport: EDGE_VIEWPORTS.partialPushBand375,
+    pointerReachable: false,
+  },
+  {
+    label: 'narrowPortrait360 (360x740)',
+    viewport: EDGE_VIEWPORTS.narrowPortrait360,
+    pointerReachable: true,
+  },
+] as const;
+
+for (const row of TOAST_LEGEND_ROWS) {
+  test(`depth legend (#598) and its #597 caveat stay reachable with the SW-ready toast still showing — ${row.label} (#871)`, async ({
+    page,
+  }) => {
+    const server = await startPreview();
+    try {
+      await page.setViewportSize(row.viewport);
+      await page.goto(server.url);
+      await mapReady(page);
+
+      await expect(
+        page.locator('.reload-prompt'),
+        'the SW-ready toast must be showing for this guard to mean anything',
+      ).toHaveCount(1);
+
+      const legend = page.locator('details.depth-legend');
+      await expect(legend, 'the no-plan depth legend (#813 gate) must be mounted').toHaveCount(1);
+      // #412: poll and re-evaluate `hidden` on every tick — do not sample
+      // it once outside the poll callback. This is the AXIS #871 reports on
+      // and it must hold at EVERY row, including the pointer-blocked one.
+      await expect
+        .poll(() => legend.evaluate((el) => (el as HTMLElement).hidden), {
+          timeout: 5_000,
+          message:
+            `.depth-legend reads hidden=true at ${row.label} with the SW-ready toast still ` +
+            `showing — the legend reachability budget (DataLayers.tsx's bannerHeightPx) counted ` +
+            `the transient toast as persistent content (#871)`,
+        })
+        .toBe(false);
+
+      const summary = legend.locator('summary');
+      const caveat = legend.getByText(/Fehlende Schraffur ist keine Garantie/);
+
+      if (row.pointerReachable) {
+        // `hidden=false` alone is not "reachable" — an element can be
+        // rendered, not hidden, and still be COVERED by something painted
+        // on top (`toBeVisible()`'s exact blind spot, CLAUDE.md's own
+        // documented trap). Confirm the summary is genuinely the topmost
+        // hit BEFORE clicking it, so a regression fails fast with the
+        // covering element named in the message rather than as an
+        // inscrutable 2-minute Playwright actionability timeout.
+        await expect
+          .poll(() => everyRectTopmost(summary), {
+            timeout: 5_000,
+            message: `${row.label}: .depth-legend summary is not the topmost hit with the SW-ready toast still showing (#871)`,
+          })
+          .toBe('ok');
+
+        // Open the legend so its body lays out, then the #597 caveat
+        // paragraph must occupy a real box (a collapsed <details> body has
+        // a zero rect) — same idiom as seamarks.spec.ts's #830 composition
+        // guard above.
+        await summary.click();
+      } else {
+        // Accepted residual row (see this block's own header comment): the
+        // toast's fixed overlap band covers the summary here, so a real
+        // POINTER click is not the right bar — confirm that explicitly
+        // (rather than silently skipping it) so a future fix that closes
+        // the residual is discovered by this assertion FAILING, not by
+        // this row quietly asserting nothing.
+        await expect
+          .poll(() => everyRectTopmost(summary), {
+            timeout: 5_000,
+            message: `${row.label}: expected the summary to still be pointer-blocked (the accepted #871 residual) — if this now reads 'ok', the residual is closed and this row's branch should flip to pointerReachable: true`,
+          })
+          .not.toBe('ok');
+
+        // KEYBOARD reachability must survive regardless: focus + a real
+        // `Enter` keypress (never `.click()`, which routes through pointer
+        // hit-testing and would hit the toast instead) — `<summary>`'s
+        // native activation does not consult `elementFromPoint`.
+        await summary.focus();
+        await expect
+          .poll(() => summary.evaluate((el) => document.activeElement === el), {
+            message: `${row.label}: .depth-legend summary refused keyboard focus under the toast`,
+          })
+          .toBe(true);
+        await page.keyboard.press('Enter');
+      }
+
+      await expect
+        .poll(() => legend.evaluate((el) => (el as HTMLDetailsElement).open), {
+          message: `the depth legend did not open on a ${row.pointerReachable ? 'summary click' : 'keyboard Enter'}`,
+        })
+        .toBe(true);
+      await expect(
+        caveat,
+        'the #597 caveat paragraph must be present in the legend body',
+      ).toHaveCount(1);
+      await expect
+        .poll(
+          () =>
+            caveat.evaluate((el) => {
+              const r = el.getBoundingClientRect();
+              return r.width * r.height;
+            }),
+          { message: `the #597 caveat paragraph has a zero client rect at ${row.label}` },
+        )
+        .toBeGreaterThan(0);
+    } finally {
+      server.kill();
+    }
+  });
+}
+
 // #598 review follow-up (touch-target round): a SEPARATE defect from the
 // one this whole round set out to fix, found by measuring rather than
 // assuming the fix was complete. `.depth-legend` deliberately sets no
@@ -915,10 +1106,8 @@ test('navigability hatch (#599/#648): the stripe stays legible at overview zoom,
           window as unknown as {
             __scE2eMap: { jumpTo: (o: { zoom: number; center: [number, number] }) => void };
           }
-        )
-          // wackerballig's own snap point — no animation. mapReady() has
-          // already installed window.__scE2eMap as a side effect.
-          .__scE2eMap.jumpTo({ zoom: z, center: [9.872, 54.7604] });
+        ).__scE2eMap // already installed window.__scE2eMap as a side effect. // wackerballig's own snap point — no animation. mapReady() has
+          .jumpTo({ zoom: z, center: [9.872, 54.7604] });
       }, zoom);
 
     // Two frames per zoom, differing ONLY in safetyDepthM, so the difference

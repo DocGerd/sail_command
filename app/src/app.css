@@ -1468,6 +1468,15 @@ select {
    — never a case this rule has to special-case, and never a push that can
    under-shoot the banner's real bottom edge.
 
+   #871 EXCEPTION, narrow only: `.reload-prompt` (ReloadPrompt.tsx's
+   offlineReady/needRefresh toasts) is pulled OUT of `.banner-area`'s flow
+   below by its own rule, specifically so it is NOT "however tall
+   `.banner-area` measured today" for the purposes of THIS push — it is the
+   one `.banner-area` child this rule now does special-case, and the
+   DERIVATION above no longer covers it. Read that rule's own comment for
+   why (a transient, self-dismissable toast forcing this same collision on
+   the SAFETY-relevant depth-legend caveat, not on ordinary map chrome).
+
    NO CEILING, DELIBERATELY: an earlier version of this rule clamped `top` to
    a viewport-derived ceiling to protect `.compass-control` from reaching
    Tier 3's tab strip (the #208 round-1/R2-1 failure mode) — but ANY value
@@ -1541,6 +1550,90 @@ select {
     --sc-banner-clear-top: calc(3.5rem + var(--sc-banner-height, 176px));
     top: var(--sc-banner-clear-top);
     max-height: calc(100dvh - var(--sc-banner-clear-top) - 55vh - 0.5rem);
+  }
+
+  /* #871: the SW-ready/update toast alone (44px `.banner-dismiss`
+     touch-target floor + 16px `.banner` padding = 60px, MEASURED) was
+     enough to push `.map-stack-tl` far enough down that the collapsed
+     `details.depth-legend` summary landed on top of the bottom sheet's own
+     tab strip at 375x667 — a real ~2265px² hit-test collision, not merely a
+     budget the JS gate in DataLayers.tsx computed too conservatively. That
+     JS gate cannot fix this alone (its own #871 comment explains why: it
+     only decides hidden/shown, never WHERE the cluster renders — the push
+     above is what does that, and it read the toast's real height
+     unconditionally).
+
+     TWO EARLIER ATTEMPTS at this rule are recorded here, deliberately, so a
+     future reader does not re-derive and re-reject them: (1) excluding
+     `.reload-prompt` from the JS gate's OWN height sum alone, leaving this
+     push unchanged, left the push still counting the toast — the summary's
+     PREDICTED budget and `.map-stack-tl`'s REAL pushed position disagreed,
+     and the summary landed on the tab strip exactly as described above. (2)
+     pulling `.reload-prompt` out of `.banner-area`'s flow and re-anchoring
+     it at `top: var(--sc-banner-height, ...)` (stacking it below any real
+     banner, same idea as this rule, different target) fixed that, but
+     MEASURED (real `document.elementFromPoint` hit-tests, not
+     `.focus()` — programmatic focus bypasses hit-testing and proves
+     nothing about pointer reachability) put the toast's fixed ~52px
+     overlap band exactly on `.data-layer-controls` (the depth/seamark
+     checkboxes) instead of the tab strip, because `App.tsx` renders
+     `<div className="map-stack-tl"><DataLayers/><CompassControl/></div>`
+     — checkboxes FIRST, so they start at `.map-stack-tl`'s own top edge,
+     precisely where that band lands. `layout.spec.ts`'s `#368` suite (the
+     ORIGINAL "no banner may intercept the depth checkbox" fix) caught it:
+     2 of 11 cases red, and a THIRD check (against the single-toast case
+     that suite doesn't cover) showed the checkbox covered on every cold
+     load, not only when a second banner also happened to be up. Both
+     attempts traded one TOP-band reachability problem for another, because
+     the top band is genuinely contested — banners, map chrome and the
+     legend all want it, and at 375x667 there is not enough of it to go
+     around. The 44px legend touch-target floor is a locked gloved-use
+     requirement (WCAG 2.5.8) and cannot absorb the difference.
+
+     THIS rule instead moves `.reload-prompt` to the BOTTOM of the viewport,
+     where nothing else this app renders is contesting the space:
+     `.app-bottom-sheet` is `bottom: 0; max-height: 55vh` (base rule,
+     above in this file), so `bottom: 55vh` sits the toast flush against
+     that sheet's own worst-case top edge — never lower, because the sheet
+     can only ever be AT OR SHORTER than its own `max-height`, and never
+     higher by more than the toast's own height, because nothing else is
+     anchored there. `position: fixed`, not `absolute`: `.banner-area`
+     (the containing block an `absolute` child would resolve against) has
+     no reliable height of its own to measure `bottom` against — `fixed`
+     resolves against the VIEWPORT directly, which is what `bottom: 55vh`
+     actually means here. `.app-shell` (this file's own base rule) sets
+     neither `transform` nor any other property that would trap a `fixed`
+     descendant into a different containing block, and it already fills
+     `100dvh` at the document origin, so a viewport-relative `fixed`
+     position lands exactly where an `.app-shell`-relative one would.
+     `.reload-prompt` remains a STACKING-CONTEXT descendant of `.banner-area`
+     regardless of its `position` value (stacking context membership is a
+     DOM-tree property, not a containing-block one), so it keeps painting
+     at `.banner-area`'s own Tier-3 shell-chrome level — no explicit
+     `z-index` needed here, and none should be added (CLAUDE.md's own
+     "never invent a value between tiers" rule).
+
+     `bottom: 55vh`, not `55dvh`: matches `.app-bottom-sheet`'s OWN unit
+     exactly (its base rule above uses plain `vh`) — a `dvh`/`vh` mismatch
+     between the toast and the sheet it must clear would reopen a gap or an
+     overlap on exactly the mobile browsers (dynamic URL-bar chrome) this
+     distinction exists for. `.map-stack-tl`'s own `max-height` formula
+     above ALSO uses `55vh` for the identical reason (NAMED COUPLING between
+     all three: `.app-bottom-sheet`'s `max-height`, `.map-stack-tl`'s
+     `max-height` subtraction term, and this `bottom` offset — change one,
+     re-check the other two).
+
+     Narrow-only, same reasoning as the push rule above: at wide layout
+     `.app-bottom-sheet` is not a bottom sheet at all (a left column via
+     `grid-area`, this file's own wide-layout block), so a `bottom: 55vh`
+     anchor would be meaningless there and must not apply — this rule
+     stays inside the SAME `max-width: 1023.98px` block as the push rule
+     for that reason, not merely for locality. */
+  .banner-area .reload-prompt {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 55vh;
   }
 }
 

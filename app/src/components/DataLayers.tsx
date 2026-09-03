@@ -1067,6 +1067,22 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
       // comment above `bannerEl`'s declaration), never the generous 176px
       // constant, which is for a DIFFERENT failure mode (no measurement
       // possible at all) that does not apply here.
+      // #871: `bannerEl`'s own rendered height is now trustworthy even with
+      // the transient SW-ready/update `.reload-prompt` toast showing — that
+      // element is pulled out of `.banner-area`'s flex flow by a narrow-
+      // layout `app.css` rule (see its own #871 comment, right beside the
+      // `.route-layer-controls, .map-stack-tl` push rule this budget
+      // mirrors), so it no longer contributes to this box's measured
+      // content height at all. Fixed there, not here: an earlier version of
+      // this fix special-cased `.reload-prompt` OUT of the sum on this side
+      // only, which left `.map-stack-tl`'s REAL CSS-driven position (still
+      // pushed down by the toast's full height via `--sc-banner-height`,
+      // unaffected by a JS-only change here) inconsistent with what this
+      // budget predicted — MEASURED: the collapsed summary and the tab
+      // strip's own button genuinely overlapped by ~2265px² at 375x667, a
+      // real hit-test collision, not a test artifact. Read directly rather
+      // than through `--sc-banner-height` for the cross-observer-ordering
+      // reason the comment above `bannerEl`'s declaration already gives.
       const bannerHeightPx = bannerEl ? bannerEl.getBoundingClientRect().height : 0;
       const bannerClearTopPx = 56 + bannerHeightPx; // 3.5rem + banner
       const budgetPx =
