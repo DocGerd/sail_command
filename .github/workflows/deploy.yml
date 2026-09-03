@@ -772,16 +772,29 @@ jobs:
     needs: [build, deploy]
     runs-on: ubuntu-latest
     # #882: no cap before now (360-min default). This job is bounded at
-    # roughly 20 min BY CONSTRUCTION, not by a loose measurement: two probe
-    # families below (the CDN Range probe and the #398 entry-chunk probe),
-    # each probing prod THEN uat sequentially, each retrying up to 10 times
-    # with a 30s sleep between attempts on failure — worst case ~2*5min +
-    # 2*5min = ~20 min. Measured 2026-09-03 via the Actions API against the
-    # 30 most recent runs, the observed max is 288s (n=30, including one
-    # `failure` conclusion), far under that worst case. 25 min matches
-    # `deploy`'s own cap (also derived from a two-attempt worst case) rather
-    # than a tight multiple of the measured median.
-    timeout-minutes: 25
+    # roughly 20 min BY CONSTRUCTION: two probe families below (the CDN
+    # Range probe and the #398 entry-chunk probe), each probing prod THEN
+    # uat sequentially, each retrying up to 10 times with a 30s sleep
+    # between attempts on failure — worst case ~2*5min + 2*5min = ~20 min.
+    # Measured 2026-09-03 via the Actions API against the 30 most recent
+    # runs, the observed max is 288s (n=30, including one `failure`
+    # conclusion), far under that worst case.
+    #
+    # 25 min was considered and REJECTED (review round 1, #892): it clears
+    # only ~1.25x over this job's own ~20-min constructional bound, below
+    # this repo's usual ~1.7x floor (the multiple `ci.yml`'s `e2e` cap
+    # clears over ITS outlier, per that job's own #605 comment) — "matches
+    # `deploy`'s cap" describes a coincidence, not a justification, since
+    # that cap was derived from a DIFFERENT two-attempt worst case (the
+    # `actions/deploy-pages` retry, #415) with no relation to this job's
+    # construction. Also: none of the `curl` calls below sets
+    # `--max-time`/`--connect-timeout`, so a single stalled TCP connection
+    # could in principle block one attempt far longer than the ~1-2s the
+    # ~20-min arithmetic assumes — an unbounded tail the constructional
+    # estimate does not cover, unlike a truly deterministic sleep loop.
+    # 35 min clears ~1.75x over the constructional bound (in line with this
+    # repo's floor) while leaving real room for that curl-hang tail.
+    timeout-minutes: 35
     steps:
       - name: Probe basemap archives through the live CDN
         env:
