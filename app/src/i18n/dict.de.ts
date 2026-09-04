@@ -993,5 +993,16 @@ export const de = {
   'departureScan.card.rank.fastest': 'Am schnellsten',
   'departureScan.card.rank.nth': '#{rank}',
   'departureScan.card.wind': 'Bft {force} · {heading}',
+  // #937 (part c): per-candidate confirm action — re-solves the picked
+  // window with the plan's real two rigs (never the scan's genoa-only
+  // shortcut) and replaces the active plan.
+  'departureScan.confirm.action': 'Diese Abfahrt übernehmen',
+  'departureScan.confirm.confirming': 'Vollständige Berechnung mit beiden Riggs läuft …',
+  'departureScan.confirm.done': 'Plan übernommen.',
+  // §2.2's "worth surfacing rather than silently accepting" residual: the
+  // full two-rig solve favoured a different rig than the genoa the scan
+  // ranked this window by.
+  'departureScan.confirm.done.disagreement':
+    'Plan übernommen — die vollständige Berechnung empfiehlt hier {rig}, nicht die Genua, mit der dieses Fenster eingestuft wurde.',
 } as const;
 export type MsgKey = keyof typeof de;
