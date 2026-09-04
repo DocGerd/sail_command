@@ -41,10 +41,11 @@ function candidateRow(
   const label = formatDateTime(candidate.departureMs, lang);
   const { outcome } = candidate;
   if (outcome.kind === 'ok') {
-    // §2.2: genoa-only by design — recommendedResult() is safe here because
-    // a genoa-only request always resolves `recommended` to 'genoa' when it
-    // produced a route (PlanResultOk guarantees the recommended sail's
-    // result is non-null).
+    // §2.2: genoa-only by design (useDepartureScan.ts's GENOA_SCAN_SAIL_IDS)
+    // — recommendedResult() is safe here because a genoa-only request always
+    // resolves `recommended` to the scanned genoa sail when it produced a
+    // route (PlanResultOk guarantees the recommended sail's result is
+    // non-null).
     const rig = recommendedResult(outcome.result);
     const { motorPct } = motorSplit(rig);
     return {

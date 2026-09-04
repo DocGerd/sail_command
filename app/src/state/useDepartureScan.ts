@@ -6,6 +6,7 @@ import {
   ROUTING_FAILURE_MESSAGE_KEY,
   type ReplanClient,
 } from './replan';
+import { GENOA_SAIL_ID } from '../data/boats';
 import type { MsgKey } from '../i18n/dict.de';
 import type { NoRouteReason, PlanRequest, PlanResultOk, SailId, WindGrid } from '../types';
 
@@ -21,10 +22,15 @@ import type { NoRouteReason, PlanRequest, PlanResultOk, SailId, WindGrid } from 
 // adjacent positions lower down. Zero decided flips to fock cleared
 // RIG_TIE_BAND_MS across 23 hour-probes. The aperture was narrow: two
 // routes, synthetic wind, no via points, the Salona 45 polar pair only — see
-// the spec's §2.2 for the full table. If this is ever changed to scan fock,
-// or "whichever rig the boat prefers", or generalised in any way, THAT
-// MEASUREMENT MUST BE RE-RUN FIRST. Do not generalise this constant quietly.
-const GENOA_SCAN_SAIL_IDS: readonly SailId[] = ['genoa'];
+// the spec's §2.2 for the full table. If this is ever changed to scan the
+// fock sail, or "whichever rig the boat prefers", or generalised in any
+// way, THAT MEASUREMENT MUST BE RE-RUN FIRST. Do not generalise this
+// constant quietly. `GENOA_SAIL_ID` is imported from data/boats.ts (its own
+// comment there explains why the id lives there rather than as a bare
+// literal here) — this array wraps it as `readonly SailId[]` purely because
+// that is the shape `PlanRequest.sailIds` and `client.plan()` expect; it
+// selects nothing on its own.
+const GENOA_SCAN_SAIL_IDS: readonly SailId[] = [GENOA_SAIL_ID];
 
 export type DepartureCandidateOutcome =
   | { kind: 'ok'; result: PlanResultOk }
