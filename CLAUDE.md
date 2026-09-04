@@ -1953,13 +1953,10 @@ making design-level decisions; do not silently deviate.
   not merely closed, so their review records survive as merged PRs and
   `gh pr close` refuses with "already merged". Verify by reading `.merged`
   back rather than assuming either outcome.
-  It SCALES: at the v0.22.0 cut SIX file-disjoint PRs
-  (#953/#954/#955/#956/#958/#959) went onto one integration branch as PR #962
-  -- 21 commits, 27 files, ONE CI cycle instead of six. Assembling it is also
-  what CAUGHT a regression the six individually-green PRs did not: #959's own
-  `e2e` redded on a `getByRole` substring collision while typecheck, lint and
-  all 2666 vitest tests were green on the merged tree. Vitest cannot see a
-  Playwright locator collision.
+  Batching SCALES: at the v0.22.0 cut SIX file-disjoint PRs (#953/#954/#955/
+  #956/#958/#959 -- #957 is an issue, not a PR) went onto one integration
+  branch as PR #962, and merged as 21 commits over 27 files in ONE CI cycle
+  instead of six.
 
 ## Verification lessons (hard-won)
 
