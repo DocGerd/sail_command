@@ -8,19 +8,55 @@ import {
 } from '../types';
 import { migratePlan } from './migratePlan';
 
+// #848: a user-authored, named, reusable place (spec §2.3 —
+// docs/superpowers/specs/2026-09-04-named-waypoints-design.md). Persisted as
+// a plain record, deliberately NOT `ViaPoint` — `name` is required here
+// (there is no marker-index fallback the way an unnamed via point has one),
+// and it carries its own `id`/`createdAtMs` for the store's keyPath and
+// listing order, neither of which `ViaPoint` has any use for.
+export interface SavedWaypoint {
+  id: string;
+  name: string;
+  lat: number;
+  lon: number;
+  createdAtMs: number;
+}
+
 interface SailDB extends DBSchema {
   plans: { key: string; value: Plan; indexes: { 'by-createdAt': number } };
   settings: { key: 'user'; value: Settings };
+  waypoints: { key: string; value: SavedWaypoint; indexes: { 'by-createdAt': number } };
 }
+
+// #848 spec §2.3 — THE BLOCKER this design exists to prevent: IndexedDB runs
+// `upgrade()` only when the requested version EXCEEDS the version already
+// stored in the browser. Every existing install is already at version 1, so
+// adding the new store inside that same version-1 body would create it for
+// FRESH installs only — for every existing user the handler never runs, the
+// store never exists, and saving a waypoint fails at runtime. Bumping to
+// version 2 and gating each block on `oldVersion` makes the upgrade
+// genuinely additive: an existing v1 database gains ONLY the `waypoints`
+// store (the `oldVersion < 1` block is skipped, so `plans`/`settings` are
+// never re-created), while a fresh install still gets all three stores in
+// one pass. See db.test.ts's "#848: v1 -> v2 migration" for the mutation
+// check this comment promises — it opens a v1 database FIRST, closes it,
+// then reopens through `db()`, which a fresh-database-only test cannot see.
+const DB_VERSION = 2;
 
 let dbPromise: Promise<IDBPDatabase<SailDB>> | null = null;
 
 function db(): Promise<IDBPDatabase<SailDB>> {
-  dbPromise ??= openDB<SailDB>('sailcommand', 1, {
-    upgrade(d) {
-      const plans = d.createObjectStore('plans', { keyPath: 'id' });
-      plans.createIndex('by-createdAt', 'createdAtMs');
-      d.createObjectStore('settings');
+  dbPromise ??= openDB<SailDB>('sailcommand', DB_VERSION, {
+    upgrade(d, oldVersion) {
+      if (oldVersion < 1) {
+        const plans = d.createObjectStore('plans', { keyPath: 'id' });
+        plans.createIndex('by-createdAt', 'createdAtMs');
+        d.createObjectStore('settings');
+      }
+      if (oldVersion < 2) {
+        const waypoints = d.createObjectStore('waypoints', { keyPath: 'id' });
+        waypoints.createIndex('by-createdAt', 'createdAtMs');
+      }
     },
   });
   return dbPromise;
@@ -351,4 +387,26 @@ export async function loadSettings(): Promise<Settings | undefined> {
 
 export async function saveSettings(s: Settings): Promise<void> {
   await (await db()).put('settings', s, 'user');
+}
+
+// #848: the `waypoints` store — see SavedWaypoint's own comment for the
+// shape and the DB_VERSION comment above for the migration this depends on.
+// Every record is written by this app's own SavedWaypoints picker with a
+// `crypto.randomUUID()` id, so — unlike `plans`, which must also tolerate a
+// foreign/imported/damaged record (#551, #54 spec §I.3) — there is no
+// non-string-key or unreadable-row case to defend against here; a plain
+// `getAll`/`put`/`delete` is the whole contract.
+export async function saveWaypoint(w: SavedWaypoint): Promise<void> {
+  await (await db()).put('waypoints', w);
+}
+
+export async function listWaypoints(): Promise<SavedWaypoint[]> {
+  // Newest first, matching listPlans' ordering — the by-createdAt index
+  // returns ascending, so reverse it.
+  const all = await (await db()).getAllFromIndex('waypoints', 'by-createdAt');
+  return all.reverse();
+}
+
+export async function deleteWaypoint(id: string): Promise<void> {
+  await (await db()).delete('waypoints', id);
 }

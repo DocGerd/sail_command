@@ -67,6 +67,7 @@ function renderPanel(overrides: Overrides = {}) {
     // mock callback here.
     onAddVia: vi.fn(),
     onUpdateVia: vi.fn(),
+    onSelectSavedWaypoint: vi.fn(),
     departureMs: Date.UTC(2026, 6, 20, 9, 0, 0),
     onDepartureChange: vi.fn(),
     settings: DEFAULT_SETTINGS,

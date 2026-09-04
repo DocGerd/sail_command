@@ -789,6 +789,21 @@ export const en = {
   'plansList.recalc.offline':
     'Recalculation requires a connection — it fetches a fresh wind forecast.',
   'plansList.recalcName': '{name} (recalculated)',
+  // #848: the saved-waypoint picker (SavedWaypoints.tsx, panel-only —
+  // design spec §2.7, no map layer in this release). Distinct from
+  // `planner.via.label` ("Waypoints", the current draft via list) so the
+  // two never share an accessible name under a non-exact getByRole locator.
+  'waypoints.label': 'Saved waypoints',
+  'waypoints.empty': 'No saved waypoints yet.',
+  // §2.3: device-local persistence must be DISCLOSED, not discovered —
+  // #848's own body's requirement, following the about.caveats.* wording
+  // convention for a limitation the user must see before relying on it.
+  'waypoints.deviceLocal':
+    'Saved waypoints stay on this device and browser only — they are not backed up, do not sync between devices, and are lost if site data is cleared.',
+  'waypoints.saveFromVia': 'Save {label} as a waypoint',
+  'waypoints.delete': 'Delete waypoint',
+  'waypoints.confirmDelete': 'Confirm delete',
+  'waypoints.actionError': 'Action failed. Please try again.',
   // #700: state-dependent action labels for the GPS tracking toggle — was a
   // single neutral 'Live view' that read as a section label, not an action,
   // and gave no SIGHTED indication of on/off state (only aria-pressed did).

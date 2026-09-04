@@ -177,6 +177,7 @@ async function renderPanelWithPlan() {
         // just satisfying the two new required props.
         onAddVia={vi.fn()}
         onUpdateVia={vi.fn()}
+        onSelectSavedWaypoint={vi.fn()}
         departureMs={DEPARTURE_MS}
         onDepartureChange={vi.fn()}
         settings={DEFAULT_SETTINGS}

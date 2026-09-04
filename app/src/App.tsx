@@ -669,7 +669,11 @@ function AppShell() {
   // yet chosen) there is no chain to project onto, so this appends instead,
   // per §2.6's explicit empty-case rule (which, with an empty via list,
   // agrees with the insertion rule anyway).
-  const handleAddViaFromSeamark = useCallback(
+  // Shared by handleAddViaFromSeamark (below) and #848's
+  // handleSelectSavedWaypoint — both hand this the same shape (a flattened
+  // {lat, lon, name?} waypoint from a different origin, seamark vs. the
+  // saved-waypoints store) and both want the identical §2.6 placement rule.
+  const insertViaNearestOrAppend = useCallback(
     (waypoint: ViaPoint) => {
       if (origin && destination) {
         const idx = nearestViaInsertIndex(waypoint, origin.point, destination.point, viaPoints);
@@ -681,6 +685,21 @@ function AppShell() {
       }
     },
     [origin, destination, viaPoints, handleViaPointsChange],
+  );
+
+  const handleAddViaFromSeamark = useCallback(
+    (waypoint: ViaPoint) => insertViaNearestOrAppend(waypoint),
+    [insertViaNearestOrAppend],
+  );
+
+  // #848: a saved waypoint selected from SavedWaypoints (via PlannerPanel's
+  // onSelectSavedWaypoint) — the SAME nearest-point-on-the-draft-chain
+  // placement §2.6 already specifies for a seamark-sourced waypoint, and for
+  // the identical reason: "route via that place" names a point the skipper
+  // will pass, not a detour appended after the destination.
+  const handleSelectSavedWaypoint = useCallback(
+    (waypoint: ViaPoint) => insertViaNearestOrAppend(waypoint),
+    [insertViaNearestOrAppend],
   );
 
   // ViaMarkers' dragend handler. Markers are now rendered FROM the draft
@@ -1534,6 +1553,7 @@ function AppShell() {
                   onReorderVia={handleReorderVia}
                   onAddVia={handleAddViaByCoord}
                   onUpdateVia={handleUpdateViaByCoord}
+                  onSelectSavedWaypoint={handleSelectSavedWaypoint}
                   departureMs={departureMs}
                   onDepartureChange={setDepartureMs}
                   settings={settings}
