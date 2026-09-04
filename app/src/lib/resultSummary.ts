@@ -244,8 +244,22 @@ export function averageSpeedKn(distanceNm: number, durationMs: number): number {
   return hours > 0 ? distanceNm / hours : 0;
 }
 
-export function resultSummary(plan: Plan, result: RigResult, lang: Lang): ResultSummary {
-  const avgSpeedKn = averageSpeedKn(result.distanceNm, result.durationMs);
+// #356a: extracted out of resultSummary() below so a consumer that has a
+// bare RigResult but no full Plan (the departure-time comparison scan's
+// per-candidate cards, DepartureCompare.tsx — a candidate is never saved as
+// a Plan) can reuse the exact same sail/motor split rather than
+// reimplementing the rounding rule. resultSummary() now calls this too, so
+// the two can never drift.
+export interface MotorSplit {
+  sailNm: number;
+  motorNm: number;
+  sailFraction: number; // 0..1, of total distance
+  motorFraction: number; // 0..1
+  sailPct: number; // integer percent, sailPct + motorPct === 100 when distance > 0
+  motorPct: number;
+}
+
+export function motorSplit(result: Pick<RigResult, 'distanceNm' | 'motorDistanceNm'>): MotorSplit {
   const motorNm = result.motorDistanceNm;
   const sailNm = Math.max(0, result.distanceNm - motorNm);
   const total = result.distanceNm;
@@ -255,6 +269,12 @@ export function resultSummary(plan: Plan, result: RigResult, lang: Lang): Result
   // sum to 100 (a proportional two-segment bar must not show 99/2 etc.).
   const motorPct = total > 0 ? Math.round(motorFraction * 100) : 0;
   const sailPct = total > 0 ? 100 - motorPct : 0;
+  return { sailNm, motorNm, sailFraction, motorFraction, sailPct, motorPct };
+}
+
+export function resultSummary(plan: Plan, result: RigResult, lang: Lang): ResultSummary {
+  const avgSpeedKn = averageSpeedKn(result.distanceNm, result.durationMs);
+  const split = motorSplit(result);
   const rigRecommendation = rigRecommendationOf(plan.result);
 
   return {
@@ -264,11 +284,6 @@ export function resultSummary(plan: Plan, result: RigResult, lang: Lang): Result
     avgSpeedKn,
     avgSpeedText: formatKn(avgSpeedKn, lang),
     rigRecommendation,
-    sailNm,
-    motorNm,
-    sailFraction,
-    motorFraction,
-    sailPct,
-    motorPct,
+    ...split,
   };
 }

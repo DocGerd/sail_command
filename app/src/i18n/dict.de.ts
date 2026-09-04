@@ -951,5 +951,28 @@ export const de = {
   'map.scale.unit.cbl.other': 'Kabellängen',
   'map.scale.unit.m.one': 'Meter',
   'map.scale.unit.m.other': 'Meter',
+  // #356 part (a): departure-time comparison — an explicit, bounded,
+  // cancellable scan over a few departure windows around the active plan's
+  // own departure time, rendered as a plain list (design spec §2.4/§3, only
+  // part (a) — no ranked cards yet, that is #936). "Genua" is named
+  // explicitly per the copy's own honesty rule (§2.2's measured, not
+  // arbitrary, rig choice) rather than left implicit.
+  'departureScan.title': 'Abfahrtszeiten vergleichen',
+  'departureScan.help':
+    'Sucht mehrere Abfahrtszeiten für diese Route ab (jeweils nur mit der Genua berechnet) und listet sie nach Ankunft und Motoranteil auf.',
+  'departureScan.count.label': 'Anzahl Fenster',
+  'departureScan.step.label': 'Schrittweite',
+  'departureScan.step.option': '{hours} Std.',
+  'departureScan.action': 'Vergleich starten',
+  'departureScan.cancel': 'Abbrechen',
+  // #340 pattern: a phase readout naming the current window and the total,
+  // never a percentage — same reasoning as planner.status.routingSail.
+  'departureScan.status.scanning': 'Fenster {index} von {total} wird berechnet …',
+  // §4 residual: cancel finishes the current window's solve and skips the
+  // rest — this names that honestly rather than implying every window was
+  // scanned.
+  'departureScan.status.cancelled': 'Abgebrochen — {count} Fenster berechnet.',
+  'departureScan.candidate.ok':
+    'Ankunft {eta} · Dauer {duration} · {distance} · {motorPct} % Motor',
 } as const;
 export type MsgKey = keyof typeof de;
