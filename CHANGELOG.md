@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Compare departure times: an explicit, cancellable scan of a few genoa-only windows around a plan's departure time, shown as a plain list with arrival, duration, distance and motor share per window (#356).
 - Pick a cardinal, lateral or isolated-danger seamark on the map (or from the keyboard-reachable "seamarks in view" list) and add it as a named route waypoint, inserted at its nearest point along the current route (#845).
-- Waypoints can now be given a name — the planner panel and the map marker show it instead of raw coordinates or an indexed "Waypoint N" label once one is set (#846).
+- Waypoints can now be given a name — the planner panel shows it instead of raw coordinates or an indexed "Waypoint N" label once one is set, and the map marker uses it as its accessible name for screen readers. The marker carries no visible label yet (#947), so named waypoints still look alike on the chart (#846).
 - Named waypoints can now be saved on-device and reused across plans — save any current route waypoint from the new "Saved waypoints" panel, then add a saved one back into the route at its nearest point along the current chain (#848).
 
 ### Fixed
