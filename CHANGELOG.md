@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-09-04
+
+### Added
+
+- Compare departure times: an explicit, cancellable scan of a few genoa-only windows around a plan's departure time, shown as a plain list with arrival, duration, distance and motor share per window (#356).
+- Pick a cardinal, lateral or isolated-danger seamark on the map (or from the keyboard-reachable "seamarks in view" list) and add it as a named route waypoint, inserted at its nearest point along the current route (#845).
+- Waypoints can now be given a name — the planner panel and the map marker show it instead of raw coordinates or an indexed "Waypoint N" label once one is set (#846).
+- Named waypoints can now be saved on-device and reused across plans — save any current route waypoint from the new "Saved waypoints" panel, then add a saved one back into the route at its nearest point along the current chain (#848).
+
+### Fixed
+
+- Fixed the AIS status chip wrapping to a third line and deepening its overlap with the map controls at narrow viewports in English (#807).
+- The e2e preview server's build-identity check now also runs inside the browser page itself, unregistering any pre-existing service worker and clearing its caches before the first real navigation of every navigating spec, closing the last way a stale or foreign cached build could reach a test undetected (#832).
+- The service-worker "ready offline" toast no longer hides the collapsed depth-legend safety caveat at narrow viewports by itself (#871).
+
 ## [0.20.0] - 2026-09-03
 
 ### Added
@@ -938,7 +953,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.20.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.21.0...HEAD
+[0.21.0]: https://github.com/DocGerd/sail_command/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/DocGerd/sail_command/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/DocGerd/sail_command/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/DocGerd/sail_command/compare/v0.17.0...v0.18.0

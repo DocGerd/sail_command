@@ -13,71 +13,87 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.20.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.21.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
-## Now — v0.20.0
+## Now — v0.21.0
 
-The `v0.20.0` cut (2026-09-03) completed the
-[`v0.20.0` milestone](https://github.com/DocGerd/sail_command/milestones),
-eighteen issues in total — but only two of them changed anything a user can
-see, and the milestone's opening scope is not what it shipped. The two
-user-visible additions came from different places — one from an earlier
-spike, the other from its issue's own option analysis: an "AIS vessels in
-view" / "AIS-Schiffe in Sicht" list on the Live tab, each nearby vessel a
-keyboard-focusable button opening the same identification popup a map click
-opens — the third and last of the keyboard-equivalent gaps #714's spike
-found, after the two that shipped in `v0.19.0`
-([#831](https://github.com/DocGerd/sail_command/issues/831)); and an
-advisory per-leg mainsail reef suggestion in the results table, computed
-from apparent wind speed and shown alongside each sail leg, explicitly a
-presentational heuristic rather than an input to the time optimisation
-([#325](https://github.com/DocGerd/sail_command/issues/325)).
+The `v0.21.0` cut (2026-09-04) completed the
+[`v0.21.0` milestone](https://github.com/DocGerd/sail_command/milestones),
+eight issues in total, plus part (a) of a ninth that stays open for its
+remaining two parts — see "Next" below.
 
-The other sixteen were tooling, CI cost and prose accuracy. The largest
-strand cut what continuous integration spends: the `app` job now skips its
-expensive steps on a docs-only change and on a push whose tree a previous
-run already tested, CodeQL gained a concurrency group so a superseded
-pull-request head stops being analysed to completion, CodeQL's pull-request analysis now runs only where its
-`paths:` filter admits the changed paths, so a prose-only documentation pull
-request skips it while a changelog-only one still triggers it, the
-nightly coverage run skips an unchanged tree, and every previously uncapped
-job gained a `timeout-minutes`
-([#875](https://github.com/DocGerd/sail_command/issues/875),
-[#877](https://github.com/DocGerd/sail_command/issues/877),
-[#879](https://github.com/DocGerd/sail_command/issues/879),
-[#880](https://github.com/DocGerd/sail_command/issues/880),
-[#881](https://github.com/DocGerd/sail_command/issues/881),
-[#882](https://github.com/DocGerd/sail_command/issues/882)). A second
-strand hardened the end-to-end suite's build-identity check, which could
-previously measure a build other than the one under test
-([#833](https://github.com/DocGerd/sail_command/issues/833),
-[#854](https://github.com/DocGerd/sail_command/issues/854)); its remaining
-sibling, a stale service worker on a reused origin, stays open as
-[#832](https://github.com/DocGerd/sail_command/issues/832). Most of the rest
-corrected comments and documentation that stated measurements the code no
-longer supported; the remainder added a coupling guard
-([#835](https://github.com/DocGerd/sail_command/issues/835)), split the `app`
-job's one serialized test file
-([#878](https://github.com/DocGerd/sail_command/issues/878)), and cleared a
-build-time dependency advisory
-([#888](https://github.com/DocGerd/sail_command/issues/888)).
+Six are user-visible. Waypoints on the map can now be given a name — the
+planner panel and the map marker show it instead of raw coordinates or an
+indexed "Waypoint N" label once one is set
+([#846](https://github.com/DocGerd/sail_command/issues/846)). A cardinal,
+lateral or isolated-danger seamark — picked on the map or from the
+keyboard-reachable "seamarks in view" list — can now be added as a named
+route waypoint, inserted at its nearest point along the current route; the
+same work also closed a duplicate seamark-popup DOM builder this exposed in
+`DataLayers.tsx`
+([#845](https://github.com/DocGerd/sail_command/issues/845),
+[#872](https://github.com/DocGerd/sail_command/issues/872)). Named
+waypoints can now be saved on-device and reused across plans, from a new
+"Saved waypoints" panel
+([#848](https://github.com/DocGerd/sail_command/issues/848)). And departure
+times can now be compared: an explicit, cancellable scan of a few
+genoa-only windows around a plan's departure time, shown as a plain list
+with arrival, duration, distance and motor share per window — part (a) of
+the approved
+`docs/superpowers/specs/2026-09-04-departure-comparison-design.md`
+([#356](https://github.com/DocGerd/sail_command/issues/356)). Two further
+fixes are also user-visible: the AIS status chip no longer wraps to a third
+line and deepens its overlap with the map controls at narrow viewports in
+English
+([#807](https://github.com/DocGerd/sail_command/issues/807)), and the
+service-worker "ready offline" toast no longer hides the collapsed
+depth-legend safety caveat at narrow viewports by itself
+([#871](https://github.com/DocGerd/sail_command/issues/871)).
 
-Most of the milestone's opening scope did not ship and moved to `v0.21.0`
-rather than being dropped — see "Next" below.
+The other three had no user-visible surface. The e2e preview server's
+build-identity check now also runs inside the browser page itself,
+unregistering any pre-existing service worker and clearing its caches
+before the first real navigation of every navigating spec — closing the
+last way a stale or foreign cached build could reach a test undetected
+([#832](https://github.com/DocGerd/sail_command/issues/832)). A Salona 44
+Marstal→Rudkøbing routing gap — `unreachable` for that boat while the
+Salona 45 routes `ok+shallow` at the identical 2.3 m gate — is accepted and
+documented rather than fixed: the cause is narrowed, not closed (frontiers
+are identical through ring 4 and diverge at ring 5, coincident with the
+Salona 44 being roughly 2% faster at every TWA, the #20/#21
+step-length-vs-channel-width mechanism; `MAX_FRONTIER` truncation is
+refuted), and the blast radius is `rudkoebing` only — `svendborg` is
+plausible by the same mechanism but was not measured
+([#866](https://github.com/DocGerd/sail_command/issues/866)). And a
+Flensburg→Marstal Salona 44 shallow-crossing report closed as answered: the
+measurement refutes the complaint that opened it — sub-gate exposure is
+0.326 nm, 1.18x the provable minimum-necessary floor, all of it within the
+last 0.82 nm of the Marstal approach, where the bathymetry itself forces
+it — and the route is already disclosed, not a silent hazard, at default
+settings; its four live residuals do not close with it and are tracked
+separately in `Backlog`
+([#649](https://github.com/DocGerd/sail_command/issues/649),
+[#929](https://github.com/DocGerd/sail_command/issues/929),
+[#930](https://github.com/DocGerd/sail_command/issues/930),
+[#931](https://github.com/DocGerd/sail_command/issues/931),
+[#932](https://github.com/DocGerd/sail_command/issues/932)).
 
-## Next — v0.21.0
+## Next — v0.22.0
 
-The [`v0.21.0` milestone](https://github.com/DocGerd/sail_command/milestones)
+The [`v0.22.0` milestone](https://github.com/DocGerd/sail_command/milestones)
 is the one now being filled, and it will keep growing after this file is
 written — so the milestone page is the list, and no count or enumeration of
-its contents is kept here. Its opening scope is largely `v0.20.0`'s
-unshipped scope, carried forward intact: waypoint handling on the map (a
-buoy or other seamark as a route waypoint, renameable waypoints in place of
-raw coordinates, persisted named user waypoints, a reliable way to cancel a
-waypoint being created), and comparing a few candidate departure times
-ranked by passage. Alongside those sit the end-to-end and layout residuals
-`v0.20.0` left open.
+its contents is kept here. Its opening scope is the two remaining parts of
+the departure-comparison design, deferred from `v0.21.0` by maintainer
+ruling that scoped that release to part (a) only: a ranked-card UI showing
+wind character and honest no-route/beyond-horizon results per window
+([#936](https://github.com/DocGerd/sail_command/issues/936)), and a
+two-rig confirm solve for the window the user picks, so the plan actually
+sailed carries the app's real rig recommendation
+([#937](https://github.com/DocGerd/sail_command/issues/937)). Alongside
+those sits a carried-forward waypoint-creation cancellation gap
+([#844](https://github.com/DocGerd/sail_command/issues/844)).
 
 ## Themes for the next year
 
@@ -169,6 +185,38 @@ revisited, not that it has been lifted.
 Not user-visible, but it is where a meaningful share of the effort goes and it
 sets the pace of everything above.
 
+The `v0.20.0` cut addressed sixteen items in this area, out of eighteen
+issues total that milestone closed. The largest strand cut what continuous
+integration spends: the `app` job gained a skip for its expensive steps on
+a docs-only change and on a push whose tree a previous run already tested,
+CodeQL gained a concurrency group so a superseded pull-request head stops
+being analysed to completion, CodeQL's pull-request analysis now runs only
+where its `paths:` filter admits the changed paths, so a prose-only
+documentation pull request skips it while a changelog-only one still
+triggers it, the nightly coverage run skips an unchanged tree, and every
+previously uncapped job gained a `timeout-minutes`
+([#875](https://github.com/DocGerd/sail_command/issues/875),
+[#877](https://github.com/DocGerd/sail_command/issues/877),
+[#879](https://github.com/DocGerd/sail_command/issues/879),
+[#880](https://github.com/DocGerd/sail_command/issues/880),
+[#881](https://github.com/DocGerd/sail_command/issues/881),
+[#882](https://github.com/DocGerd/sail_command/issues/882)). A second
+strand hardened the end-to-end suite's build-identity check, which could
+previously measure a build other than the one under test
+([#833](https://github.com/DocGerd/sail_command/issues/833),
+[#854](https://github.com/DocGerd/sail_command/issues/854)); its remaining
+sibling, a stale service worker on a reused origin, closed the following
+cut by additionally running the same check inside the browser page itself,
+before the first real navigation of every navigating spec
+([#832](https://github.com/DocGerd/sail_command/issues/832)). Most of the
+rest corrected comments and documentation that stated measurements the code
+no longer supported; the remainder added a coupling guard
+([#835](https://github.com/DocGerd/sail_command/issues/835)), split the
+`app` job's one serialized test file
+([#878](https://github.com/DocGerd/sail_command/issues/878)), and cleared a
+build-time dependency advisory
+([#888](https://github.com/DocGerd/sail_command/issues/888)).
+
 The `v0.19.0` cut addressed one further item in this area, with no
 user-visible surface, plus a spike whose issue then left the milestone
 rather than closing. Both real-mask regression harnesses —
@@ -229,7 +277,9 @@ the two apart; it now byte-compares the served `index.html` and `sw.js`
 against this run's own build and fails closed on any mismatch, though a
 foreign build differing only in the subtrees the service worker's precache
 manifest excludes is a named residual, since tracked as #833; it and #854
-shipped in `v0.20.0`, while the sibling residual #832 stays open
+shipped in `v0.20.0`, and the sibling residual #832 — a stale service
+worker on a reused origin serving a cached build to a real browser page —
+closed in `v0.21.0`, running the same check inside the browser page itself
 ([#803](https://github.com/DocGerd/sail_command/issues/803)). `ViaMarkers`
 was executed by nothing in the suite — its only importer mocks
 `maplibre-gl`'s `Marker` as a no-op and every reaching test passed an empty
