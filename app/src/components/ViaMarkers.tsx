@@ -4,7 +4,7 @@ import type { LngLatLike } from 'maplibre-gl';
 import { useMapInstance } from './MapView';
 import { useT } from '../i18n';
 import { HALO_COLOR, VIA_COLOR } from '../lib/mapColors';
-import type { LatLon } from '../types';
+import type { LatLon, ViaPoint } from '../types';
 
 export interface ViaMarkersProps {
   // #571 redesign (review fix): source of truth for marker POSITIONS is
@@ -30,7 +30,11 @@ export interface ViaMarkersProps {
   // longer find it). Threading the draft through, as this version does,
   // fixes both: the rebuild now reflects the actual edit instead of
   // reverting it.
-  viaPoints: LatLon[];
+  // #846: widened LatLon[] -> ViaPoint[] so a named waypoint's `name`
+  // reaches the marker's accessible name below. Free at every call site:
+  // LatLon[] still satisfies ViaPoint[] (name is optional), so App.tsx's
+  // own draftViaPoints state (still typed LatLon[]) needs no change.
+  viaPoints: ViaPoint[];
   // #571 redesign: PROP NAME kept as `replanning` — RouteLayer.tsx passes it
   // straight through under that exact key and is unrelated to/unchanged by
   // this task. Its MEANING has moved: no auto-replan exists any more (the
@@ -98,7 +102,10 @@ export default function ViaMarkers({ viaPoints, replanning, onDragEnd }: ViaMark
     if (!map) return;
     markersRef.current.forEach((m) => m.remove());
     markersRef.current = viaPoints.map((p, index) => {
-      const ariaLabel = t('planner.via.marker', { index: index + 1 });
+      // #846: a named waypoint uses its name as the accessible name; an
+      // unnamed one falls back to the existing indexed label — the DoD's
+      // exact fallback contract, reused here rather than a new key.
+      const ariaLabel = p.name ?? t('planner.via.marker', { index: index + 1 });
       const marker = new Marker({ element: viaElement(ariaLabel), draggable: true }).setLngLat([
         p.lon,
         p.lat,

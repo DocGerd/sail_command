@@ -120,6 +120,7 @@ export const de = {
   // aria-label under a non-exact getByRole locator.
   'planner.via.coord.latLabel': 'Breitengrad',
   'planner.via.coord.lonLabel': 'Längengrad',
+  'planner.via.coord.nameLabel': 'Name',
   'planner.via.coord.add': 'Koordinaten hinzufügen',
   'planner.via.coord.update': 'Koordinaten aktualisieren',
   'planner.via.coord.edit': 'Koordinaten bearbeiten (Punkt {index}): {coord}',

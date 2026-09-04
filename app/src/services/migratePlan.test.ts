@@ -839,3 +839,68 @@ describe('#654 migratePlan: an absent/malformed viaPoints key (hand-edited or co
     expect(migratePlan(raw)).toBeNull();
   });
 });
+
+// #846 (named-waypoints design spec §2.1): normaliseViaPoints REBUILDS each
+// via point from an explicit allowlist rather than passing fields through —
+// so widening it by one key (`name`) is a REQUIRED edit, not a free
+// consequence of `name` being optional on the type. Without that edit, a
+// saved named waypoint has its name silently stripped on the very next
+// `getPlan()` load, with no error and no failing test. This is the REQUIRED
+// round-trip test the spec calls out by name.
+describe('#846 migratePlan: a via point name survives the load path', () => {
+  it('a named via point keeps its name after normalisation (save -> load round trip)', () => {
+    const raw = legacyPlan();
+    (raw.request as Record<string, unknown>).viaPoints = [
+      { lat: 54.83, lon: 9.9, name: 'Kalkgrund' },
+    ];
+    const migrated = migratePlan(raw);
+    expect(migrated).not.toBeNull();
+    expect(migrated!.request.viaPoints).toEqual([{ lat: 54.83, lon: 9.9, name: 'Kalkgrund' }]);
+  });
+
+  // A mixed list — some named, some not — must not force a name onto the
+  // unnamed points, and must not drop the named ones.
+  it('preserves a mix of named and unnamed via points', () => {
+    const raw = legacyPlan();
+    (raw.request as Record<string, unknown>).viaPoints = [
+      { lat: 54.83, lon: 9.9, name: 'Kalkgrund' },
+      { lat: 54.9, lon: 10.2 },
+    ];
+    const migrated = migratePlan(raw);
+    expect(migrated!.request.viaPoints).toEqual([
+      { lat: 54.83, lon: 9.9, name: 'Kalkgrund' },
+      { lat: 54.9, lon: 10.2 },
+    ]);
+  });
+
+  // Fails OPEN on a malformed name (§2.1: "a malformed name must not be
+  // allowed to reject an otherwise-valid plan") — deliberately the OPPOSITE
+  // admission policy from a malformed lat/lon, which fails CLOSED (whole
+  // record refused, per the #654 describe block above). A non-string name
+  // is simply dropped; the point survives as unnamed.
+  it('drops a non-string name rather than refusing the record', () => {
+    const raw = legacyPlan();
+    (raw.request as Record<string, unknown>).viaPoints = [{ lat: 54.83, lon: 9.9, name: 42 }];
+    const migrated = migratePlan(raw);
+    expect(migrated).not.toBeNull();
+    expect(migrated!.request.viaPoints).toEqual([{ lat: 54.83, lon: 9.9 }]);
+  });
+
+  // A whitespace-only name degrades to "no name", the same state a cleared
+  // rename input leaves — never a technically-present but invisible name.
+  it('drops a whitespace-only name rather than storing an invisible one', () => {
+    const raw = legacyPlan();
+    (raw.request as Record<string, unknown>).viaPoints = [{ lat: 54.83, lon: 9.9, name: '   ' }];
+    const migrated = migratePlan(raw);
+    expect(migrated!.request.viaPoints).toEqual([{ lat: 54.83, lon: 9.9 }]);
+  });
+
+  it('a leading/trailing-whitespace name is trimmed on load', () => {
+    const raw = legacyPlan();
+    (raw.request as Record<string, unknown>).viaPoints = [
+      { lat: 54.83, lon: 9.9, name: '  Kalkgrund  ' },
+    ];
+    const migrated = migratePlan(raw);
+    expect(migrated!.request.viaPoints).toEqual([{ lat: 54.83, lon: 9.9, name: 'Kalkgrund' }]);
+  });
+});
