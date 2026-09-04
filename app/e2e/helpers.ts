@@ -197,9 +197,97 @@ export interface PreviewServer {
 // cannot close the SECOND layer the issue also describes — a stale service
 // worker on a REUSED origin serving a cached build to a real browser
 // PAGE — because this check runs a plain Node `fetch()` with no
-// ServiceWorker in the picture at all; that layer needs a browser-side
-// unregister+cache-clear step wired into the specs that navigate a page,
-// which is out of scope here (see this PR's own description).
+// ServiceWorker in the picture at all; #832 closes THAT layer separately,
+// below (`assertCleanServiceWorkerState`), by running inside the browser
+// PAGE itself rather than in Node.
+
+// #832 (#803's second, browser-side layer): the Node-side checks above
+// establish that the SERVER is honest — but a page that navigates to it can
+// still be served a FOREIGN cached build if a service worker already
+// controls this exact origin from a PRIOR run (a stale build, or a foreign
+// one), because a controlling SW's fetch handler can answer a navigation
+// request from its own cache before the request ever reaches the network —
+// invisible to a plain Node `fetch()`, which has no ServiceWorker in the
+// picture at all. `startPreview()` calls this once its Node-side identity
+// checks have already succeeded, for every caller that hands it a `page` —
+// see `startPreview()`'s own doc comment for exactly which call sites do and
+// do not (a handful of specs create their OWN page(s) via
+// `browser.newContext()`/`context.newPage()` AFTER `startPreview()` has
+// already returned, so the shared path structurally cannot reach those
+// pages; they are a named residual, not silently dropped coverage).
+//
+// Self-proving, not best-effort: after unregistering every registration and
+// deleting every named cache for this origin, it RE-QUERIES both and throws
+// unless both come back empty — so a browser API that silently no-ops (a
+// permissions quirk, an unexpected async ordering) fails the run loudly
+// instead of reporting a false "clean" state with zero evidence behind it.
+// `page.goto(BASE)` is deliberately unconditional and happens FIRST: it is
+// what gives `navigator.serviceWorker`/`caches` a same-origin execution
+// context to run in at all (both are scoped per-origin) — the very
+// navigation a stale controlling worker could intercept, which is exactly
+// why clearing its registration here (even if THIS load was served stale)
+// is what protects the spec's OWN subsequent navigation from also being
+// served stale.
+export interface ServiceWorkerCleanupResult {
+  /** How many registrations/caches existed on this origin BEFORE this call cleared them. */
+  unregisteredCount: number;
+  deletedCacheCount: number;
+  /** MUST both be 0 on return — see the throw below. Exposed (rather than
+   * folded into a void return) so a caller demonstrating this guard's teeth
+   * can assert on the SAME atomic in-page query this function used to reach
+   * its own throw/no-throw decision, instead of re-querying separately —
+   * a separate later `page.evaluate()` races a real app's OWN legitimate
+   * SW re-registration and glyph warm-up (CLAUDE.md's #28 bullet) once this
+   * function's internal `page.goto(BASE)` has reloaded it, which is
+   * expected app behaviour, not a defect in this guard. */
+  remainingRegs: number;
+  remainingCaches: number;
+}
+
+export async function assertCleanServiceWorkerState(
+  page: Page,
+): Promise<ServiceWorkerCleanupResult> {
+  // Navigate to `SW_JS_URL`, NOT `BASE` — a real measured race, not a
+  // theoretical one (reproduced on `offline.spec.ts`'s very first, otherwise
+  // ordinary run: `page.goto(BASE)` loads this run's OWN honest app shell,
+  // whose bootstrap legitimately self-registers ITS OWN service worker
+  // (CLAUDE.md's #28 glyph-cache bullet) — and that registration can land
+  // BETWEEN this function's own `regsBefore`/`regsAfter` queries, so a
+  // perfectly healthy page with NO stale/foreign worker at all throws here
+  // with "0 registration(s)... started from 0" moments before "1... still
+  // present"). `SW_JS_URL` is a plain `.js` response, not an HTML document —
+  // Chromium renders it as inert source text with no `<script>` tag to
+  // execute, so no app bootstrap runs on this page and nothing can
+  // self-register while we clear. `navigator.serviceWorker`/`caches` are
+  // scoped to the ORIGIN, not the path, so a registration/cache left by a
+  // PRIOR (stale/foreign) page load on this exact origin is still fully
+  // visible and clearable from here.
+  await page.goto(SW_JS_URL);
+  const result = await page.evaluate(async () => {
+    const regsBefore = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(regsBefore.map((r) => r.unregister()));
+    const cacheNamesBefore = await caches.keys();
+    await Promise.all(cacheNamesBefore.map((n) => caches.delete(n)));
+    const regsAfter = await navigator.serviceWorker.getRegistrations();
+    const cacheNamesAfter = await caches.keys();
+    return {
+      unregisteredCount: regsBefore.length,
+      deletedCacheCount: cacheNamesBefore.length,
+      remainingRegs: regsAfter.length,
+      remainingCaches: cacheNamesAfter.length,
+    };
+  });
+  if (result.remainingRegs !== 0 || result.remainingCaches !== 0) {
+    throw new Error(
+      `#832: failed to clear this origin's service-worker state before the first real ` +
+        `navigation at ${BASE} — ${result.remainingRegs} registration(s) and ` +
+        `${result.remainingCaches} cache(s) still present after unregister()/delete() (started ` +
+        `from ${result.unregisteredCount} registration(s), ${result.deletedCacheCount} cache(s)). ` +
+        `Refusing to proceed against a possibly-foreign cached build.`,
+    );
+  }
+  return result;
+}
 
 /** Extracted for testability and reused by both the local-file and
  * served-response identity checks; deliberately fails CLOSED (throws)
@@ -518,8 +606,22 @@ async function assertResidualDistFilesMatch(relPaths: string[]): Promise<void> {
  * to the negated pid — killing only the `npm` pid can leave `vite preview`
  * (and its bound port) running, which would strand port 4173 for the next
  * spec/run.
+ *
+ * `page` (#832, optional): when supplied, once the Node-side identity checks
+ * above have succeeded, this also runs `assertCleanServiceWorkerState(page)`
+ * — closing #803's second, browser-side layer for that page BEFORE the
+ * caller's own first real navigation. Pass the test's own `page` fixture
+ * wherever it is already in scope at the call site (the common case). Omit
+ * it only where no `page` exists yet at this call site (a handful of specs
+ * create their own page(s) via `browser.newContext()`/`context.newPage()`
+ * AFTER calling this) — those callers must invoke
+ * `assertCleanServiceWorkerState` themselves once their page exists; see
+ * that function's own doc comment. `startPreviewIdentity.spec.ts`'s
+ * Node-only identity tests also omit it deliberately: they assert on
+ * `startPreview()`'s OWN resolve/reject behaviour and have no `page` in
+ * scope at all.
  */
-export async function startPreview(): Promise<PreviewServer> {
+export async function startPreview(page?: Page): Promise<PreviewServer> {
   // Read (and shape-validate) THIS run's own built dist BEFORE spawning
   // anything, so a missing/malformed build fails fast with a clear cause
   // rather than racing the poll loop below.
@@ -622,6 +724,13 @@ export async function startPreview(): Promise<PreviewServer> {
         // above — see `pickResidualRepresentatives`'s own comment for the
         // named residual this does NOT close.
         await assertResidualDistFilesMatch(residualRepresentatives);
+        // #832: closes #803's second, browser-side layer for `page` — see
+        // `assertCleanServiceWorkerState`'s own doc comment above and
+        // `startPreview()`'s own doc comment for exactly which callers this
+        // reaches.
+        if (page) {
+          await assertCleanServiceWorkerState(page);
+        }
       } catch (err) {
         kill();
         throw err;

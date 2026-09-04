@@ -67,7 +67,7 @@ const needleDeg = (page: Page) =>
 test('compass: north-up cold start, hand rotation drops to free, tap brings the chart home', async ({
   page,
 }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     await page.goto(server.url);
     const compass = page.locator('.compass-btn');
@@ -337,7 +337,7 @@ test('#230: a pan flick inside MapLibre’s default bearingSnap window keeps tra
   page,
   context,
 }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     // MapLibre's end-of-gesture branch is gated on `!browser.prefersReducedMotion`
     // (handler_manager.ts): a reduce preference would take the OTHER branch and
@@ -514,7 +514,7 @@ test('#230: a pan flick inside MapLibre’s default bearingSnap window keeps tra
 test('scale bar: labels the rendered viewport, never swallows a map tap, and clears the Live readout', async ({
   page,
 }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     await page.goto(server.url);
     const bar = page.locator('.scale-bar');
@@ -760,7 +760,7 @@ async function rotateThenTapCompassHome(page: Page, compass: ReturnType<Page['lo
 test('#208: compass stays tappable and the scale bar never sits under .app-bottom-sheet, at every measured narrow/landscape viewport', async ({
   page,
 }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     await page.goto(server.url);
     await mapReady(page);
@@ -916,7 +916,7 @@ test('#208: compass stays tappable and the scale bar never sits under .app-botto
 test('#208 review "Major 2" / #368: the offline banner and .map-stack-tl no longer share screen space', async ({
   page,
 }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     await page.goto(server.url);
     await mapReady(page);
@@ -1100,7 +1100,7 @@ test('#208 review "Major 2" / #368: the offline banner and .map-stack-tl no long
 test('#368 fix-wave: partial-push band (375x667) — checkbox clears the banner, scale bar honestly suppresses', async ({
   page,
 }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     await page.goto(server.url);
     await mapReady(page);
@@ -1216,7 +1216,7 @@ test('#368 fix-wave: partial-push band (375x667) — checkbox clears the banner,
 test('#208 review "Minor 7": the scale bar does not cover the expanded attribution (no z-index on .scale-bar)', async ({
   page,
 }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     await page.goto(server.url);
     await mapReady(page);
@@ -1263,7 +1263,7 @@ test('#208 review "Minor 7": the scale bar does not cover the expanded attributi
 test('#208 review "Major 3": .route-layer-controls (interactive) stays clear of .app-bottom-sheet with a real plan loaded', async ({
   page,
 }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     // Deterministic wind (E3 escape hatch, mirrors plan.spec.ts) — the wind
     // grid itself is irrelevant here, only that a real plan/route exists so

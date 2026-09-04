@@ -14,7 +14,7 @@ test('true offline reload: precached app shell renders and a saved plan reloads 
   page,
   context,
 }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
 

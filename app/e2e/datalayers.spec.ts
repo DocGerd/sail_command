@@ -130,7 +130,7 @@ async function hatchedFraction(page: Page, shot: Buffer): Promise<number> {
 test('depth toggle is available pre-plan, defaults ON (#63), flips the rendered map, and an explicit off persists across reload', async ({
   page,
 }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     await page.goto(server.url);
 
@@ -198,7 +198,7 @@ test('depth toggle is available pre-plan, defaults ON (#63), flips the rendered 
 test('depth-hatch legend (#598) is reachable pre-plan, default-collapsed, and carries the #597 caveat once opened', async ({
   page,
 }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     await page.goto(server.url);
 
@@ -300,7 +300,7 @@ test('depth-hatch legend (#598) is reachable pre-plan, default-collapsed, and ca
 test('hazard-hatch toggle (#681) is independent of the base depth toggle, defaults ON, and never hides the #597 caveat at 375x667', async ({
   page,
 }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     await page.setViewportSize(EDGE_VIEWPORTS.partialPushBand375);
     await page.goto(server.url);
@@ -538,7 +538,7 @@ test('depth-hatch legend (#598) is either reachable or properly unreachable, nev
 test('depth-hatch legend (#598), once opened, never overlaps the tab strip at the narrowest tested viewport', async ({
   page,
 }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto(server.url);
@@ -614,7 +614,7 @@ test('depth-hatch legend (#598), once opened, never overlaps the tab strip at th
 test('navigability hatch (#492) reacts to safetyDepthM only while the depth overlay is visible', async ({
   page,
 }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     await page.goto(server.url);
 
@@ -899,7 +899,7 @@ function percentile(values: number[], p: number): number {
 test('navigability hatch (#599/#648): the stripe stays legible at overview zoom, and past z13 degrades to a full-coverage wash instead of hard-edged blocks', async ({
   page,
 }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     await page.goto(server.url);
     const depthToggle = page.getByRole('checkbox', { name: 'Wassertiefen' });
@@ -1253,7 +1253,7 @@ async function settledOrderedHazardFlags(page: Page, label: string): Promise<boo
 test('#682: hazard seamarks (cardinal/isolated-danger) paint above routine ones at z>=12, by ORDER not count', async ({
   page,
 }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     await page.goto(server.url);
     await mapReady(page);
