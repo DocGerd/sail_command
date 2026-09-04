@@ -4116,11 +4116,10 @@ select {
    (ViaMarkers.tsx's `viaElement`) — a sighted user could not previously tell
    waypoints apart. `position: absolute` against the root resolves correctly
    without the root itself needing `position: relative` — MapLibre keeps
-   that root `position: absolute` via its own `.maplibregl-marker` class,
-   and its imperative `transform` on the root already establishes a
-   containing block for this label (see ViaMarkers.tsx's own comment for
-   why an inline `position: relative` on the root was tried and reverted).
-   This label must never grow the root's own explicitly-sized (16x16) box,
+   that root `position: absolute` via its own `.maplibregl-marker` class
+   (see ViaMarkers.tsx's own comment for why an inline `position: relative`
+   on the root was tried and reverted). This label must never grow the
+   root's own explicitly-sized (16x16) box,
    which MapLibre centers with a percentage-based `translate(-50%,-50%)`
    resolved against that box. `pointer-events: none` keeps the label out of
    the dot's own click/drag/touch target; several waypoints close together

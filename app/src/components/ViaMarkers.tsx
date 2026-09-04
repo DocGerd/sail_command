@@ -92,11 +92,7 @@ function viaElement(ariaLabel: string): HTMLDivElement {
   // `.maplibregl-marker` class already keeps the root `position: absolute`,
   // and an inline override of that (tried during review, PR #954) put the
   // root back into normal document flow, offsetting every via marker beyond
-  // the first by the stacked height of the ones before it. The label still
-  // resolves correctly against the root because MapLibre's own imperative
-  // `transform` on this element (its `translate(-50%,-50%)` center anchor,
-  // `ui/marker.ts`) already establishes a CSS containing block for an
-  // absolutely-positioned child — no `position: relative` is needed.
+  // the first by the stacked height of the ones before it.
   // `pointer-events: none` (app.css) keeps the label out of the marker's
   // own click/drag/touch target.
   const labelEl = document.createElement('span');
