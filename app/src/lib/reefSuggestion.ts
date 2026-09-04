@@ -121,6 +121,64 @@ export function reefBandForApparentWindKn(awsKn: number): ReefBand {
   return 'reef3';
 }
 
+// #946: BAND-CHANGE HYSTERESIS. The advisory band could flip leg to leg on a
+// wind change too small to matter, because `reefBandForApparentWindKn` bands
+// a single AWS value against a bare threshold with no memory of what was
+// already shown — any crossing, however marginal, flips it. This is a
+// PRESENTATION damping fix (Lever A of #946): it changes what is DISPLAYED,
+// never what the router priced or picked (see this file's own top-of-file
+// #325 argument for why that stays true — nothing here touches `Leg` or
+// `PlanResult`). Lever B — pricing a reef change in the solver via a reef
+// axis on the polars — is a materially larger, explicitly deferred change
+// (issue comment, 2026-09-04) and is NOT this fix.
+//
+// MARGIN DERIVATION (CLAUDE.md: quote the method, not the result). This
+// file's own BOAT-SPECIFIC CONFIDENCE comment above already measures a
+// worst-case ~0.86 kn AWS swing from a 1 kn polar-speed error alone (TWA
+// giving the worst case at TWS 15 upwind) — i.e. the AWS this module
+// computes from `leg.speedKn` already carries about that much uncertainty
+// from polar tier alone, before merged-leg TWA drift (~1 kn, see MERGED LEGS
+// above) or ordinary forecast noise are even considered. A band flip smaller
+// than the estimate's own already-documented error is display noise, not
+// new information, so the hysteresis margin is set to that same figure
+// (rounded up to one decimal). This is a JUDGEMENT CALL about which existing
+// error bound to reuse, not a fresh measurement of its own — same status as
+// `panelWidth.ts`'s `PANEL_MAP_RESERVE_PX` comment: it borrows a number this
+// file already measured elsewhere rather than inventing one, but the choice
+// to reuse exactly that bound (not e.g. double it) is judgement, stated so a
+// maintainer can revise it deliberately rather than rediscover it.
+// This 0.86 kn source figure is itself tier-C-worst-case (BOAT-SPECIFIC
+// CONFIDENCE above), so applying it uniformly over-widens the dead zone for
+// the hullVerified Salona 45 — conservative (less responsive display), never
+// a wrong band, but not precise for that boat.
+export const REEF_HYSTERESIS_MARGIN_KN = 0.9;
+
+const REEF_BAND_ORDER: readonly ReefBand[] = ['full', 'reef1', 'reef2', 'reef3'];
+const REEF_BAND_THRESHOLDS: readonly number[] = [REEF1_AWS_KN, REEF2_AWS_KN, REEF3_AWS_KN];
+
+/**
+ * Schmitt-trigger band selection: starts from the band already being shown
+ * (`previousBand`) and only moves away from it once `awsKn` clears the
+ * relevant threshold by `marginKn` in that direction — so a value sitting in
+ * the `[threshold - margin, threshold + margin)` dead zone around any
+ * boundary keeps showing whatever was already shown. A genuine, sustained
+ * change (one that clears the widened threshold) still moves the band —
+ * including past more than one boundary in a single step, e.g. a sudden
+ * squall jumping straight from full main to 2nd reef — so this damps
+ * marginal noise without ever refusing a real change (#946 DoD: "a fix that
+ * just freezes the band is worse than the churn").
+ */
+function reefBandWithHysteresis(awsKn: number, previousBand: ReefBand, marginKn: number): ReefBand {
+  let idx = REEF_BAND_ORDER.indexOf(previousBand);
+  while (idx < REEF_BAND_THRESHOLDS.length && awsKn >= REEF_BAND_THRESHOLDS[idx]! + marginKn) {
+    idx += 1;
+  }
+  while (idx > 0 && awsKn < REEF_BAND_THRESHOLDS[idx - 1]! - marginKn) {
+    idx -= 1;
+  }
+  return REEF_BAND_ORDER[idx]!;
+}
+
 /**
  * The per-leg reef suggestion, or `null` on a motor leg. Motor legs carry
  * `board: null` and no `twaDeg` (`Leg` is a discriminated union on `kind` —
@@ -129,9 +187,47 @@ export function reefBandForApparentWindKn(awsKn: number): ReefBand {
  * issue's other licensed option, an explicit "n/a", is not used here because
  * the leg's own Kind chip already reads "Motor" — a second, redundant
  * annotation would not add information).
+ *
+ * `previousBand` is the band already being SHOWN for this route immediately
+ * before this leg (`null` for the first sail leg of a route, or when no
+ * hysteresis context is available). Omitting it — the original, one-argument
+ * call this module has always supported — reproduces the pre-#946 straight
+ * banding exactly, unchanged, so an existing call site compiles and behaves
+ * identically without adopting hysteresis. `reefSuggestionsForLegs` below is
+ * the production entry point that threads `previousBand` across a route.
  */
-export function reefSuggestionForLeg(leg: Leg): ReefSuggestion | null {
+export function reefSuggestionForLeg(
+  leg: Leg,
+  previousBand: ReefBand | null = null,
+): ReefSuggestion | null {
   if (leg.kind !== 'sail') return null;
   const awsKn = apparentWindKn(leg.twsKn, Math.abs(leg.twaDeg), leg.speedKn);
-  return { band: reefBandForApparentWindKn(awsKn), awsKn };
+  const band =
+    previousBand === null
+      ? reefBandForApparentWindKn(awsKn)
+      : reefBandWithHysteresis(awsKn, previousBand, REEF_HYSTERESIS_MARGIN_KN);
+  return { band, awsKn };
+}
+
+/**
+ * Hysteresis-adjusted reef suggestions for an ORDERED sequence of legs (a
+ * whole route) — the production entry point for #946's damping fix. Folds
+ * `reefSuggestionForLeg` over the legs in order, threading each sail leg's
+ * DISPLAYED band into the next sail leg's hysteresis decision.
+ *
+ * Motor legs render `null` (unchanged from `reefSuggestionForLeg`) and
+ * deliberately do NOT reset the carried band: the boat's sail configuration
+ * doesn't change just because one leg happens to motor, so the next sail
+ * leg's hysteresis still measures against whatever reef was last actually
+ * shown, not against a blank slate.
+ */
+export function reefSuggestionsForLegs(legs: readonly Leg[]): ReadonlyArray<ReefSuggestion | null> {
+  const out: Array<ReefSuggestion | null> = [];
+  let previousBand: ReefBand | null = null;
+  for (const leg of legs) {
+    const suggestion = reefSuggestionForLeg(leg, previousBand);
+    out.push(suggestion);
+    if (suggestion !== null) previousBand = suggestion.band;
+  }
+  return out;
 }
