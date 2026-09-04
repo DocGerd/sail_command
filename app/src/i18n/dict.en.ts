@@ -986,4 +986,8 @@ export const en = {
   'departureScan.status.cancelled': 'Cancelled — {count} windows scanned.',
   'departureScan.candidate.ok':
     'Arrival {eta} · duration {duration} · {distance} · {motorPct}% motor',
+  // #936 (part b): see dict.de.ts's matching comment.
+  'departureScan.card.rank.fastest': 'Fastest',
+  'departureScan.card.rank.nth': '#{rank}',
+  'departureScan.card.wind': 'Bft {force} · {heading}',
 } satisfies Record<MsgKey, string>;

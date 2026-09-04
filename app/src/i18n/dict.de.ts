@@ -968,10 +968,9 @@ export const de = {
   'map.scale.unit.m.other': 'Meter',
   // #356 part (a): departure-time comparison — an explicit, bounded,
   // cancellable scan over a few departure windows around the active plan's
-  // own departure time, rendered as a plain list (design spec §2.4/§3, only
-  // part (a) — no ranked cards yet, that is #936). "Genua" is named
-  // explicitly per the copy's own honesty rule (§2.2's measured, not
-  // arbitrary, rig choice) rather than left implicit.
+  // own departure time (design spec §2.4/§3). "Genua" is named explicitly
+  // per the copy's own honesty rule (§2.2's measured, not arbitrary, rig
+  // choice) rather than left implicit.
   'departureScan.title': 'Abfahrtszeiten vergleichen',
   'departureScan.help':
     'Sucht mehrere Abfahrtszeiten für diese Route ab (jeweils nur mit der Genua berechnet) und listet sie nach Ankunft und Motoranteil auf.',
@@ -989,5 +988,10 @@ export const de = {
   'departureScan.status.cancelled': 'Abgebrochen — {count} Fenster berechnet.',
   'departureScan.candidate.ok':
     'Ankunft {eta} · Dauer {duration} · {distance} · {motorPct} % Motor',
+  // #936 (part b): ranked-card badges. "Bft" (Beaufort) is the standard
+  // German nautical abbreviation too, so it is not translated.
+  'departureScan.card.rank.fastest': 'Am schnellsten',
+  'departureScan.card.rank.nth': '#{rank}',
+  'departureScan.card.wind': 'Bft {force} · {heading}',
 } as const;
 export type MsgKey = keyof typeof de;
