@@ -685,6 +685,9 @@ export const en = {
   // {value} s — same text in both languages, but still routed through the
   // dict (#300) rather than hardcoded, per repo convention.
   'seamark.popover.lightPeriodUnit': '{value} s',
+  // #845: the seamark popover's "add as waypoint" action, rendered only for
+  // the curated cardinal/lateral/isolated-danger subset (design spec §2.5).
+  'seamark.popover.addWaypoint': 'Add as waypoint',
   // #830: the keyboard-reachable seamarks-in-view list — see dict.de.ts's
   // own #830 comment for why the German summary avoids the word "Seezeichen".
   'seamarks.inView.summary': 'Seamarks in view ({count})',

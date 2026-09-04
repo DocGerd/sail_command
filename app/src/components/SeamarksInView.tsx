@@ -12,6 +12,7 @@ import { usePersistedNumber } from '../lib/usePersistedNumber';
 import { usePersistedToggle } from '../lib/usePersistedToggle';
 import { useMapViewport } from '../state/useMapViewport';
 import { useSeamarks } from '../state/useSeamarks';
+import type { ViaPoint } from '../types';
 
 // #830: the keyboard-reachable "seamarks in view" list — WCAG 2.1.1's
 // equivalent for DataLayers.tsx's pointer-only seamark click. A rendered
@@ -56,9 +57,16 @@ export interface SeamarksInViewProps {
   /** The Plan panel's `.app-panel-seamarks` element, or null when that tab is
    * not showing — LiveView's `panelSlot` contract. */
   panelSlot: HTMLDivElement | null;
+  // #845: "add as waypoint" from the popup this row's activation opens —
+  // §3.1 of the design spec deliberately reaches this component too, since
+  // a MapLibre glyph has no DOM node and this list is a keyboard user's
+  // only route to the action. OPTIONAL for the same reason as
+  // DataLayers.tsx's own `onAddWaypoint` — many existing
+  // `<SeamarksInView panelSlot={...} />` test call sites need no change.
+  onAddWaypoint?: (waypoint: ViaPoint) => void;
 }
 
-export default function SeamarksInView({ panelSlot }: SeamarksInViewProps) {
+export default function SeamarksInView({ panelSlot, onAddWaypoint }: SeamarksInViewProps) {
   const map = useMapInstance();
   const t = useT();
   const seamarks = useSeamarks();
@@ -103,7 +111,9 @@ export default function SeamarksInView({ panelSlot }: SeamarksInViewProps) {
       className: 'seamark-popup',
     })
       .setLngLat([mark.lon, mark.lat])
-      .setDOMContent(buildSeamarkPopoverContent(mark.props, t))
+      .setDOMContent(
+        buildSeamarkPopoverContent(mark.props, t, { lat: mark.lat, lon: mark.lon }, onAddWaypoint),
+      )
       .addTo(map);
   };
 
