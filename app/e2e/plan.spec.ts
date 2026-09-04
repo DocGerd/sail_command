@@ -28,7 +28,7 @@ test.use({ viewport: { width: 375, height: 667 } });
 // intentionally different, so results are selected structurally (the first
 // listbox option) rather than by matching display text.
 test('plans a route: harbor search -> rig comparison -> saved under Routen', async ({ page }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
 
@@ -250,7 +250,7 @@ test('plans a route: harbor search -> rig comparison -> saved under Routen', asy
 test('re-plan from the Plan view: editing after a completed plan shows the stale chip, and re-running adds a second saved plan', async ({
   page,
 }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
     await page.getByRole('tab', { name: 'Planen' }).click();
@@ -412,7 +412,7 @@ async function topmostOverAttribution(page: Page, subject: AttributionSubject): 
 test('#771: the OpenStreetMap attribution stays clickable at every viewport, with the planner scrolled to its CTA', async ({
   page,
 }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
 
@@ -729,7 +729,7 @@ async function clearPersistedProfile(page: Page): Promise<void> {
 test('#702: the "Route planen" CTA stays reachable at the panel bottom at every narrow viewport, empty and with endpoints selected', async ({
   page,
 }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
     await clearPersistedProfile(page);
@@ -850,7 +850,7 @@ test('#702: the "Route planen" CTA stays reachable at the panel bottom at every 
 test('#702: the sticky CTA also clears the attribution in ENGLISH, where the guidance wraps differently', async ({
   page,
 }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
     await clearPersistedProfile(page);
@@ -903,7 +903,7 @@ test('#702: the sticky CTA also clears the attribution in ENGLISH, where the gui
 });
 
 test('#702: the WIDE sticky rule is untouched — negative control', async ({ page }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
     await clearPersistedProfile(page);
@@ -966,7 +966,7 @@ test('#702: the WIDE sticky rule is untouched — negative control', async ({ pa
 test('#829: adds, repositions and rejects a via point by typing coordinates — never a map-tap/canvas interaction', async ({
   page,
 }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
     await page.getByRole('tab', { name: 'Planen' }).click();

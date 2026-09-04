@@ -106,7 +106,7 @@ async function settleAnnotationsAt(
 test('map annotations: barb density, annotations toggle, no wind re-fetch (#35 #36 #37)', async ({
   page,
 }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   // (j)#1: barbs/profile wind come only from plan.windGrid — never a re-fetch.
   const openMeteoRequests: string[] = [];
   page.on('request', (req) => {
@@ -292,7 +292,7 @@ test('map annotations: barb density, annotations toggle, no wind re-fetch (#35 #
 test('map annotations: ETA/speed labels stay visible across zoom, sized for legibility (#378)', async ({
   page,
 }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
     await page.getByRole('tab', { name: 'Planen' }).click();

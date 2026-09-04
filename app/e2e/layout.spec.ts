@@ -106,7 +106,7 @@ async function settledHitDescription(page: Page, locator: Locator): Promise<stri
 }
 
 test('responsive layout: side panel on wide screens, bottom sheet on narrow', async ({ page }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     const panel = page.locator('.app-bottom-sheet');
     const mapArea = page.locator('.map-area');
@@ -299,7 +299,7 @@ for (const [label, viewport] of Object.entries(SINGLE_BANNER_VIEWPORTS)) {
   test(`#368: offline banner no longer intercepts the depth checkbox (${label}, ${viewport.width}x${viewport.height})`, async ({
     page,
   }) => {
-    const server = await startPreview();
+    const server = await startPreview(page);
     try {
       await page.setViewportSize(viewport);
       await page.goto(server.url);
@@ -391,7 +391,7 @@ for (const [label, viewport] of Object.entries(SINGLE_BANNER_VIEWPORTS)) {
 test('#368: two stacked banners at 320x568 (previously measured broken) no longer intercept the depth checkbox', async ({
   page,
 }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     await page.setViewportSize(EDGE_VIEWPORTS.deepPortrait320);
     await page.goto(server.url);
@@ -445,7 +445,7 @@ test('#368: two stacked banners at 320x568 (previously measured broken) no longe
 test('#368: three simultaneous banners at 390x844 do not intercept the depth checkbox', async ({
   page,
 }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     await page.setViewportSize(STANDARD_VIEWPORTS.phonePortrait);
     await page.goto(server.url);
@@ -504,7 +504,7 @@ test('#368: three simultaneous banners at 390x844 do not intercept the depth che
 test('#368: a banner that wraps to two lines (280px width) does not intercept the depth checkbox', async ({
   page,
 }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     await page.setViewportSize(EDGE_VIEWPORTS.wrapForcing280);
     await page.goto(server.url);
@@ -597,7 +597,7 @@ for (const [label, viewport] of Object.entries(FOUR_TAB_VIEWPORTS)) {
   test(`#299: the four-tab strip fits without horizontal overflow (${label}, ${viewport.width}x${viewport.height})`, async ({
     page,
   }) => {
-    const server = await startPreview();
+    const server = await startPreview(page);
     try {
       await page.setViewportSize(viewport);
       await page.goto(server.url);
@@ -652,7 +652,7 @@ for (const [label, viewport] of Object.entries(FOUR_TAB_VIEWPORTS)) {
 test('#299: the stale-route banner (a Boat-tab settings change) does not intercept the depth checkbox at 320x568', async ({
   page,
 }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     await page.setViewportSize(EDGE_VIEWPORTS.deepPortrait320);
     await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
@@ -732,7 +732,7 @@ test('#299: the stale-route banner (a Boat-tab settings change) does not interce
 test('#277: .data-layer-controls and .route-layer-controls never intersect at 320px with a plan loaded (EN, #205 regression pin)', async ({
   page,
 }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     await page.setViewportSize({ width: 320, height: 700 });
     await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
@@ -838,7 +838,7 @@ test('#277: .data-layer-controls and .route-layer-controls never intersect at 32
 test('#598/#813: the folded-in depth-hatch section inside .route-legend does not silently overflow (wrapForcing280, DE)', async ({
   page,
 }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     await page.setViewportSize(EDGE_VIEWPORTS.wrapForcing280);
     await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
@@ -983,7 +983,7 @@ test('#598/#813: the folded-in depth-hatch section inside .route-legend does not
 test('#628 review Major 1: the controls cluster can be expanded at 390px without overflow or collision, and #813 leaves .depth-legend absent (DE)', async ({
   page,
 }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     await page.setViewportSize({ width: 390, height: 700 });
     await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
@@ -1109,7 +1109,7 @@ for (const [label, viewport] of Object.entries(NARROW_COLLAPSE_VIEWPORTS)) {
   test(`#628: the map-overlay controls cluster starts collapsed and recovers map area on narrow layouts (${label}, ${viewport.width}x${viewport.height})`, async ({
     page,
   }) => {
-    const server = await startPreview();
+    const server = await startPreview(page);
     try {
       await page.setViewportSize(viewport);
       await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
@@ -1178,7 +1178,7 @@ for (const [label, viewport] of Object.entries(WIDE_OPEN_VIEWPORTS)) {
   test(`#628: the map-overlay controls cluster starts OPEN on wide (side-panel) layouts (${label}, ${viewport.width}x${viewport.height})`, async ({
     page,
   }) => {
-    const server = await startPreview();
+    const server = await startPreview(page);
     try {
       await page.setViewportSize(viewport);
       await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
@@ -1224,7 +1224,7 @@ for (const [label, viewport] of Object.entries(WIDE_OPEN_VIEWPORTS)) {
 test('#628 review Major 3: rotating from a wide to a narrow layout auto-collapses the cluster with NO user interaction', async ({
   page,
 }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     await page.setViewportSize(STANDARD_VIEWPORTS.tabletLandscape); // wide -> auto-open
     await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
@@ -1289,7 +1289,7 @@ for (const [label, viewport] of Object.entries(SHORT_LANDSCAPE_VIEWPORTS)) {
   test(`#231: ScaleBar is not suppressed and .map-stack-tl stays reachable on short landscape (${label}, ${viewport.width}x${viewport.height})`, async ({
     page,
   }) => {
-    const server = await startPreview();
+    const server = await startPreview(page);
     try {
       await page.setViewportSize(viewport);
       await page.goto(server.url);
@@ -1426,7 +1426,7 @@ for (const [label, viewport] of Object.entries(SHORT_LANDSCAPE_VIEWPORTS)) {
   test(`#441: ScaleBar survives one banner line on short landscape (${label}, ${viewport.width}x${viewport.height})`, async ({
     page,
   }) => {
-    const server = await startPreview();
+    const server = await startPreview(page);
     try {
       await page.setViewportSize(viewport);
       await page.goto(server.url);
@@ -1694,7 +1694,7 @@ for (const [label, viewport] of Object.entries(KEYBOARD_SCROLL_VIEWPORTS)) {
   test(`#774: the legs scroll region is keyboard-reachable and arrow-scrollable (${label}, ${viewport.width}x${viewport.height})`, async ({
     page,
   }) => {
-    const server = await startPreview();
+    const server = await startPreview(page);
     try {
       await page.setViewportSize(viewport);
       await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);

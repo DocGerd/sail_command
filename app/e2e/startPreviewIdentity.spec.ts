@@ -5,7 +5,7 @@ import { connect } from 'node:net';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { startPreview } from './helpers';
+import { startPreview, assertCleanServiceWorkerState } from './helpers';
 
 // #803: startPreview() used to return as soon as ANY 200 answered its
 // readiness poll on port 4173, with no check that the responder was its own
@@ -254,6 +254,59 @@ test('#803: still starts normally against its own build with no foreign server',
     expect(server.url).toBe(`http://localhost:${PORT}/sail_command/`);
     const res = await fetch(server.url);
     expect(res.ok).toBe(true);
+  } finally {
+    server.kill();
+  }
+});
+
+// #832: this is the "demonstrate the guard has teeth" experiment, kept as a
+// permanent regression pin rather than a one-off manual check — it
+// constructs the EXACT failure `assertCleanServiceWorkerState` defends
+// against (a registration + a cache already present on this origin, as a
+// stale/foreign build would leave behind) and shows the guard actually
+// clearing both, not merely reporting success. A version of this guard that
+// silently no-oped (e.g. `getRegistrations()` returning early, or a
+// swallowed `unregister()` rejection) would either THROW (asserted via
+// `resolves` below — an unhandled rejection reds the test) or, if it also
+// stopped throwing, would return non-zero `remainingRegs`/`remainingCaches`
+// — asserted directly against the function's OWN atomic in-page query,
+// never via a SEPARATE later `page.evaluate()`: this app's real bootstrap
+// legitimately re-registers its own honest service worker and starts glyph
+// warm-up (CLAUDE.md's #28 bullet) moments after `assertCleanServiceWorkerState`'s
+// own internal `page.goto(BASE)` reloads it, so a later independent check
+// would race that expected app behaviour rather than test this guard.
+test('#832: assertCleanServiceWorkerState clears a pre-existing registration and cache before the first real navigation', async ({
+  page,
+}) => {
+  const server = await startPreview();
+  try {
+    await page.goto(server.url);
+    // Register this build's own sw.js (any registration on this origin
+    // demonstrates the guard — it doesn't need to be a FOREIGN build's
+    // worker to prove the clear step works) plus a synthetic cache entry,
+    // and confirm the browser genuinely holds both before testing the clear
+    // — a positive control, per CLAUDE.md's "give any probe whose emptiness
+    // you intend to interpret a positive control" rule.
+    const before = await page.evaluate(async () => {
+      await navigator.serviceWorker.register('sw.js');
+      await navigator.serviceWorker.ready;
+      const cache = await caches.open('sc-e2e-832-probe');
+      await cache.put('/probe', new Response('probe'));
+      return {
+        regs: (await navigator.serviceWorker.getRegistrations()).length,
+        caches: (await caches.keys()).length,
+      };
+    });
+    expect(before.regs).toBeGreaterThan(0);
+    expect(before.caches).toBeGreaterThan(0);
+
+    // The guard under test — asserts on its OWN return, the exact counts
+    // it used to decide whether to throw.
+    const result = await assertCleanServiceWorkerState(page);
+    expect(result.unregisteredCount).toBeGreaterThan(0);
+    expect(result.deletedCacheCount).toBeGreaterThan(0);
+    expect(result.remainingRegs).toBe(0);
+    expect(result.remainingCaches).toBe(0);
   } finally {
     server.kill();
   }
