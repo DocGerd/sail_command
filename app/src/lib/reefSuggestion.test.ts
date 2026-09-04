@@ -175,6 +175,17 @@ describe('reefSuggestionForLeg — hysteresis (previousBand argument, #946)', ()
     expect(reefSuggestionForLeg(awsLeg(17.0), 'reef2')).toEqual({ band: 'reef1', awsKn: 17.0 });
   });
 
+  it('the exact down-crossing boundary (threshold - margin) stays in the dead zone', () => {
+    // Mirrors the up-side boundary test above (18.9, which DOES move): the
+    // dead zone is documented as the half-open interval
+    // [threshold - margin, threshold + margin), closed at this low end, so
+    // AWS exactly AT 17.1 (18 - 0.9) must still stay at reef2, not drop —
+    // only a strictly smaller value clears it. Without this exact-boundary
+    // case, a `<` -> `<=` mutation on that comparison is invisible: 17.0
+    // above clears the boundary under EITHER operator.
+    expect(reefSuggestionForLeg(awsLeg(17.1), 'reef2')).toEqual({ band: 'reef2', awsKn: 17.1 });
+  });
+
   it('a genuine, sustained jump moves the band across MULTIPLE boundaries in one step', () => {
     // From 'full', a squall taking AWS to 25 kn clears both the reef1->reef2
     // and reef2->reef3 widened thresholds in a single leg — hysteresis must

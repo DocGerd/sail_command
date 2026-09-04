@@ -147,6 +147,10 @@ export function reefBandForApparentWindKn(awsKn: number): ReefBand {
 // file already measured elsewhere rather than inventing one, but the choice
 // to reuse exactly that bound (not e.g. double it) is judgement, stated so a
 // maintainer can revise it deliberately rather than rediscover it.
+// This 0.86 kn source figure is itself tier-C-worst-case (BOAT-SPECIFIC
+// CONFIDENCE above), so applying it uniformly over-widens the dead zone for
+// the hullVerified Salona 45 — conservative (less responsive display), never
+// a wrong band, but not precise for that boat.
 export const REEF_HYSTERESIS_MARGIN_KN = 0.9;
 
 const REEF_BAND_ORDER: readonly ReefBand[] = ['full', 'reef1', 'reef2', 'reef3'];
