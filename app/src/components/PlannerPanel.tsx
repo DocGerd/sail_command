@@ -46,6 +46,12 @@ import Field from './Field';
 import Button from './Button';
 import Chip from './Chip';
 import Skeleton from './Skeleton';
+import Disclosure from './Disclosure';
+// #848: the saved-waypoint picker — panel-only per design spec §2.7. This
+// import + the one render call below is the "minimal entry point" the task
+// scoped for this file; the store access, list state and save/delete
+// actions all live in the component itself.
+import SavedWaypoints from './SavedWaypoints';
 // #452: the shallow-water warning is plan-level (ShallowWarning's own note
 // explains why) — shared here so the FIRST surface a user sees a result on
 // carries the same warning as the Routes tab, not just a second copy of it.
@@ -107,6 +113,10 @@ export interface PlannerPanelProps {
   // requires plus more), so App.tsx needs no edit; only the runtime object
   // literal built below actually carries `.name` through.
   onUpdateVia: (index: number, p: ViaPoint) => void;
+  // #848: a saved waypoint picked from SavedWaypoints — wired at App.tsx to
+  // the same nearest-point-on-the-draft-chain insertion #845's
+  // "add seamark as waypoint" action already uses (design spec §2.6).
+  onSelectSavedWaypoint: (w: ViaPoint) => void;
   departureMs: number;
   onDepartureChange: (ms: number) => void;
   settings: Settings;
@@ -216,6 +226,7 @@ export default function PlannerPanel({
   onReorderVia,
   onAddVia,
   onUpdateVia,
+  onSelectSavedWaypoint,
   departureMs,
   onDepartureChange,
   settings,
@@ -896,6 +907,14 @@ export default function PlannerPanel({
           </div>
         </section>
       </Card>
+
+      {/* #848: panel-only saved-waypoint picker (design spec §2.7 — no map
+          layer this release, see #924). Collapsed by default, same as the
+          About dialog's changelog/sources Disclosures, so it doesn't push
+          the departure/plan controls further down on a first visit. */}
+      <Disclosure summary={t('waypoints.label')} className="planner-waypoints">
+        <SavedWaypoints viaPoints={viaPoints} onSelect={onSelectSavedWaypoint} />
+      </Disclosure>
 
       {/* §3.3: the two most-changed inputs — departure + safety depth — stay
           visible in this compact row. #299: the rest of what used to sit

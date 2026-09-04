@@ -797,6 +797,17 @@ export const de = {
   'plansList.recalc.offline':
     'Neuberechnung nur online möglich — es wird eine frische Windvorhersage geladen.',
   'plansList.recalcName': '{name} (neu berechnet)',
+  // #848: siehe dict.en.ts für den Kontext (SavedWaypoints.tsx, nur im
+  // Panel — Designspezifikation §2.7, in dieser Version noch keine
+  // Kartenebene).
+  'waypoints.label': 'Gespeicherte Wegpunkte',
+  'waypoints.empty': 'Noch keine gespeicherten Wegpunkte.',
+  'waypoints.deviceLocal':
+    'Gespeicherte Wegpunkte bleiben nur auf diesem Gerät und in diesem Browser — sie werden nicht gesichert, nicht zwischen Geräten synchronisiert und gehen verloren, wenn Website-Daten gelöscht werden.',
+  'waypoints.saveFromVia': '{label} als Wegpunkt speichern',
+  'waypoints.delete': 'Wegpunkt löschen',
+  'waypoints.confirmDelete': 'Löschen bestätigen',
+  'waypoints.actionError': 'Aktion fehlgeschlagen. Bitte erneut versuchen.',
   'live.toggle': 'Live-Ansicht starten',
   'live.toggle.stop': 'Live-Ansicht beenden',
   'live.noPlan': 'Route laden oder planen, um die Live-Führung zu nutzen.',

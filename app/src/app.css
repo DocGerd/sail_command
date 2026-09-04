@@ -3983,6 +3983,57 @@ select {
   gap: 0.5rem;
 }
 
+/* #848 review fix (Major): SavedWaypoints.tsx shipped with none of its
+   classes in app.css — both <ul>s rendered a visible disc bullet, and
+   `.waypoints-load`'s two <span> children (name/coord) ran together with no
+   separator since a plain <button> gives spans no layout at all. Same
+   list-reset + flex-column shape as `.plans-list`/`.plans-list-row`/
+   `.plans-list-load` above; declared AFTER `.sc-btn`/`.sc-btn-ghost` (this
+   file's source-order cascade convention) so a future `.waypoints-*`
+   modifier here never loses to a later base rule. */
+.waypoints-save-from-via-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.waypoints-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.waypoints-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--sc-border);
+  padding: 0.4rem 0;
+}
+
+.waypoints-load {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  background: transparent;
+  border: none;
+  text-align: left;
+}
+
+.waypoints-name {
+  font-weight: 600;
+}
+
+.waypoints-coord {
+  font-size: 0.8rem;
+  opacity: 0.75;
+}
+
 .planner-via-list {
   list-style: none;
   margin: 0;
