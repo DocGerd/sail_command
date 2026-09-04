@@ -3,9 +3,11 @@ import {
   apparentWindKn,
   reefBandForApparentWindKn,
   reefSuggestionForLeg,
+  reefSuggestionsForLegs,
   REEF1_AWS_KN,
   REEF2_AWS_KN,
   REEF3_AWS_KN,
+  REEF_HYSTERESIS_MARGIN_KN,
 } from './reefSuggestion';
 import type { Leg } from '../types';
 
@@ -130,5 +132,96 @@ describe('reefSuggestionForLeg', () => {
     const starboard = reefSuggestionForLeg(sailLeg(15, 60, 5));
     const port = reefSuggestionForLeg(sailLeg(15, -60, 5));
     expect(starboard).toEqual(port);
+  });
+});
+
+// #946: band-change hysteresis. Every fixture below uses TWA=0, BS=0 so
+// `apparentWindKn` reduces to AWS = TWS exactly (awsSq = twsKn^2 + 0 + 0),
+// giving exact control over the AWS fed to the banding logic without a
+// second hand-derivation of the sailing triangle.
+function awsLeg(awsKn: number): Leg {
+  return sailLeg(awsKn, 0, 0);
+}
+
+describe('reefSuggestionForLeg — hysteresis (previousBand argument, #946)', () => {
+  it('sanity: the margin is well inside the 6 kn gap between adjacent thresholds', () => {
+    expect(REEF_HYSTERESIS_MARGIN_KN).toBeLessThan((REEF2_AWS_KN - REEF1_AWS_KN) / 2);
+    expect(REEF_HYSTERESIS_MARGIN_KN).toBeLessThan((REEF3_AWS_KN - REEF2_AWS_KN) / 2);
+  });
+
+  it('omitting previousBand reproduces pre-#946 straight banding exactly (backward compat)', () => {
+    // AWS=18.5 sits inside what would be the reef1->reef2 dead zone if
+    // hysteresis applied — straight banding must NOT apply a dead zone.
+    expect(reefSuggestionForLeg(awsLeg(18.5))).toEqual({ band: 'reef2', awsKn: 18.5 });
+  });
+
+  it('a marginal crossing (within the margin) does NOT move the band up', () => {
+    // REEF2_AWS_KN=18, margin=0.9 -> needs >=18.9 to move reef1 -> reef2.
+    // 18.5 is a real crossing of the bare threshold but inside the dead zone.
+    expect(reefSuggestionForLeg(awsLeg(18.5), 'reef1')).toEqual({ band: 'reef1', awsKn: 18.5 });
+  });
+
+  it('a marginal drop (within the margin) does NOT move the band down', () => {
+    // Needs <17.1 (18-0.9) to drop reef2 -> reef1; 17.2 is inside the dead zone.
+    expect(reefSuggestionForLeg(awsLeg(17.2), 'reef2')).toEqual({ band: 'reef2', awsKn: 17.2 });
+  });
+
+  it('clearing the margin DOES move the band up', () => {
+    expect(reefSuggestionForLeg(awsLeg(18.9), 'reef1')).toEqual({ band: 'reef2', awsKn: 18.9 });
+  });
+
+  it('clearing the margin DOES move the band down', () => {
+    // Needs strictly <17.1 (18-0.9); 17.0 clears it.
+    expect(reefSuggestionForLeg(awsLeg(17.0), 'reef2')).toEqual({ band: 'reef1', awsKn: 17.0 });
+  });
+
+  it('a genuine, sustained jump moves the band across MULTIPLE boundaries in one step', () => {
+    // From 'full', a squall taking AWS to 25 kn clears both the reef1->reef2
+    // and reef2->reef3 widened thresholds in a single leg — hysteresis must
+    // never refuse a real change (#946 DoD: freezing the band is worse than
+    // the churn it replaces).
+    expect(reefSuggestionForLeg(awsLeg(25), 'full')).toEqual({ band: 'reef3', awsKn: 25 });
+  });
+});
+
+describe('reefSuggestionsForLegs — route-level hysteresis (#946)', () => {
+  it('MUTATION CHECK: suppresses the exact oscillation that flips under plain per-leg banding', () => {
+    // "Before": each leg banded independently (today's production shape,
+    // reefBandForApparentWindKn) genuinely flips back and forth on this
+    // sequence — this is the churn #946 reports.
+    const awsSequence = [17.5, 18.5, 17.4, 18.6];
+    const before = awsSequence.map((aws) => reefBandForApparentWindKn(aws));
+    expect(before).toEqual(['reef1', 'reef2', 'reef1', 'reef2']); // BEFORE: flips 3 times
+
+    // "After": the same sequence through the route-level hysteresis stays on
+    // the band the first leg picked — none of these values ever clears the
+    // 0.9 kn margin around the 18 kn boundary.
+    const legs = awsSequence.map(awsLeg);
+    const after = reefSuggestionsForLegs(legs).map((s) => s?.band);
+    expect(after).toEqual(['reef1', 'reef1', 'reef1', 'reef1']); // AFTER: stable
+  });
+
+  it('a genuine sustained change still propagates through the route (does not freeze)', () => {
+    // A real trend — AWS climbing well past the dead zone on the SECOND leg —
+    // must still be shown, proving the fix damps noise without disabling
+    // real reef changes. First leg AWS=17 has no previousBand (start of
+    // route) so it bands raw: 12<=17<18 -> 'reef1' (REEF1_AWS_KN pinned
+    // above); the second leg's 25 kn then clears the dead zone twice over.
+    const legs = [17, 25].map(awsLeg);
+    const bands = reefSuggestionsForLegs(legs).map((s) => s?.band);
+    expect(bands).toEqual(['reef1', 'reef3']);
+  });
+
+  it('motor legs render null and do NOT reset the carried hysteresis state', () => {
+    const legs = [awsLeg(17), motorLeg(), awsLeg(18.5)];
+    const suggestions = reefSuggestionsForLegs(legs);
+    expect(suggestions[0]?.band).toBe('reef1');
+    expect(suggestions[1]).toBeNull();
+    // POSITIVE CONTROL: if a motor leg incorrectly reset the carried band to
+    // null, this same 18.5 kn leg would be banded RAW (18.5 >= REEF2_AWS_KN)
+    // and read 'reef2' instead — confirming this assertion actually
+    // discriminates carry-through from reset, not just restating the input.
+    expect(reefBandForApparentWindKn(18.5)).toBe('reef2');
+    expect(suggestions[2]?.band).toBe('reef1');
   });
 });
