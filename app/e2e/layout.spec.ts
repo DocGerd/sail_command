@@ -171,7 +171,7 @@ test('responsive layout: side panel on wide screens, bottom sheet on narrow', as
     const bannerBox = await box(tapPickBanner);
     expect(bannerBox.x).toBeGreaterThanOrEqual(widePanel.x - 2);
     expect(bannerBox.x + bannerBox.width).toBeLessThanOrEqual(widePanel.x + widePanel.width + 2);
-    await page.getByRole('button', { name: 'Abbrechen' }).click();
+    await page.getByRole('button', { name: 'Abbrechen', exact: true }).click();
     await expect(tapPickBanner).not.toBeVisible();
 
     // Form controls are capped, not stretched across the ~1/3 panel — the
