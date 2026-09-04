@@ -4112,6 +4112,32 @@ select {
   font-size: 0.8rem;
 }
 
+/* #947: visible sibling of the via marker dot's own aria-label
+   (ViaMarkers.tsx's `viaElement`) — a sighted user could not previously tell
+   waypoints apart. `position: absolute` against the dot's `position:
+   relative`, explicitly-sized (16x16) root keeps this label out of that
+   root's own box, which is load-bearing: MapLibre centers the marker with a
+   percentage-based `translate(-50%,-50%)` resolved against that box, so the
+   label must never grow it. `pointer-events: none` keeps the label out of
+   the dot's own click/drag/touch target; several waypoints close together
+   can still overlap labels (not solved here, no worse than before). */
+.sc-via-marker-label {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 0.2rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 0.2rem;
+  background: color-mix(in srgb, var(--sc-bg) 82%, transparent);
+  color: var(--sc-fg);
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 /* Harbor combobox (#64 phase 2): a role="combobox" input over a popup
    role="listbox". The div stacks label/input/popup; the input stretches to the
    column (capped to 22rem on the wide panel by the .app-panel input rule). */
