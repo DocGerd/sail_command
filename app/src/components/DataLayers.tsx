@@ -15,6 +15,7 @@ import { HALO_COLOR, INK_COLOR } from '../lib/mapColors';
 import {
   SEAMARKS_LAYOUT,
   pickSeamarkByPriority,
+  pointCoordinates,
   seamarkFeatureCollectionWithIcons,
   seamarkHazardFilter,
   seamarkPopupAnchor,
@@ -911,18 +912,18 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
       // #845: the mark's OWN coordinates for the waypoint action — distinct
       // from seamarkPopupAnchor's tap-follow anchor below, which is a UI
       // nicety for where the popup ATTACHES, not the position a waypoint
-      // should be created at. Falls back to the tap point only if the
-      // feature's geometry is somehow not a Point (defensive; sc-seamarks
-      // is Point-only) — and then the add-waypoint action is withheld
-      // rather than risk creating a waypoint at the wrong spot.
-      const geom = picked?.geometry as { type?: unknown; coordinates?: unknown } | undefined;
-      const markPoint: LatLon | null =
-        geom?.type === 'Point' &&
-        Array.isArray(geom.coordinates) &&
-        typeof geom.coordinates[0] === 'number' &&
-        typeof geom.coordinates[1] === 'number'
-          ? { lon: geom.coordinates[0], lat: geom.coordinates[1] }
-          : null;
+      // should be created at. Reuses seamarkGeoJson.ts's own
+      // pointCoordinates() (exported for this, #845 review Minor 1) rather
+      // than a second inline parser of the same geometry — this file is
+      // otherwise the one #845/#872 de-duplicates the popup DOM build in.
+      // Falls back to the tap point only if the feature's geometry is
+      // somehow not a Point (defensive; sc-seamarks is Point-only) — and
+      // then the add-waypoint action is withheld rather than risk creating
+      // a waypoint at the wrong spot.
+      const markLngLat = pointCoordinates(picked);
+      const markPoint: LatLon | null = markLngLat
+        ? { lon: markLngLat[0], lat: markLngLat[1] }
+        : null;
       const container = buildSeamarkPopoverContent(
         props,
         t,
