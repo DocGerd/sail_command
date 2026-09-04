@@ -1,6 +1,6 @@
 # Departure-time comparison — design
 
-Status: **PROPOSED — awaiting maintainer approval.** Nothing here is settled.
+Status: **approved** (maintainer, 2026-09-04)
 Covers: #356
 Milestone: v0.21.0
 
@@ -134,9 +134,12 @@ PR — spec edits under `docs/superpowers/specs/` are gated main-session-only.
 
 | # | Scope | Independently shippable? |
 |---|---|---|
-| a | Scan orchestration + cancel; genoa-only; a button and a plain list | **Yes** — this is the honest minimum |
-| b | Ranked-card UI: wind character, no-route / beyond-horizon presentation | Yes, on top of (a) |
-| c | Two-rig confirm solve for the window the user picks | Yes, on top of (a) |
+| a | Scan orchestration + cancel; genoa-only; a button and a plain list | **Yes** — this is the honest minimum. **v0.21.0.** |
+| b | Ranked-card UI: wind character, no-route / beyond-horizon presentation | Yes, on top of (a). Deferred to **v0.22.0 as #936.** |
+| c | Two-rig confirm solve for the window the user picks | Yes, on top of (a). Deferred to **v0.22.0 as #937.** |
+
+**v0.21.0 ships (a) only** — maintainer ruling, 2026-09-04. (b) and (c) are filed as
+#936 and #937 against v0.22.0.
 
 **(a) is the one to land first**, and it is a real product on its own. #356's
 own survey makes that argument: OpenCPN has no native sweep at all — the user
@@ -170,3 +173,8 @@ owing three arm-sets of sweep (~90 min).
   than the measured figures, which came from routes that solved `ok` first try.
   N x 23.5 s is a floor, not an estimate.
 - **The confidence-decay question** (§2.5).
+- **Ranking correctly and recommending correctly are different claims.** §2.2's
+  measurement establishes that a genoa-only scan picks the right WINDOW; it says
+  nothing about which rig is faster ON that window once chosen. #937 closes that
+  gap, and is also where a persistent disagreement would signal that §2.2's
+  aperture was too narrow.
