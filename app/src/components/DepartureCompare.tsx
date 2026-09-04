@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useLang, useT } from '../i18n';
 import type { MsgKey } from '../i18n/dict.de';
 import type { LatLon, Plan, PlanResultOk, SailId } from '../types';
@@ -207,7 +207,7 @@ export default function DepartureCompare({
 }: DepartureCompareProps) {
   const t = useT();
   const [lang] = useLang();
-  const { state, scan, cancel } = useDepartureScan(ensureClient);
+  const { state, scan, cancel, reset: resetScan } = useDepartureScan(ensureClient);
   const { state: confirmState, confirm } = useDepartureConfirm(ensureClient);
   const [count, setCount] = useState(DEFAULT_COUNT);
   const [stepHours, setStepHours] = useState<number>(DEFAULT_STEP_HOURS);
@@ -231,6 +231,29 @@ export default function DepartureCompare({
   // plan's own STORED grid only, never re-fetched.
   const windField = useMemo(() => (plan ? new WindField(plan.windGrid) : null), [plan]);
 
+  // #960 review Major 1: the identity a confirm() continuation must still
+  // match at resolution time — kept in sync after every render, so it always
+  // names the CURRENTLY active plan, not the one a pending confirm() was
+  // called against.
+  const activePlanIdentityRef = useRef<string | null>(null);
+  useEffect(() => {
+    activePlanIdentityRef.current = plan ? `${plan.id}-${plan.createdAtMs}` : null;
+  });
+
+  const mountedRef = useRef(true);
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+    },
+    [],
+  );
+
+  // A different plan.id means a different route — candidates computed
+  // against the prior one no longer describe it.
+  useEffect(() => {
+    resetScan();
+  }, [plan?.id, resetScan]);
+
   if (!plan || !windField) return null;
 
   const handleScan = () => {
@@ -247,8 +270,12 @@ export default function DepartureCompare({
   // this re-solves with `plan.request.sailIds` unchanged (useDepartureConfirm.ts).
   const handleConfirm = (departureMs: number) => {
     setConfirmed(null);
+    const identity = `${plan.id}-${plan.createdAtMs}`;
     void confirm(plan, departureMs).then((updated) => {
-      if (!updated) return;
+      // #960 review Major 1: discard a resolution that arrives after unmount
+      // (tab switched away) or after the active plan has moved on (a
+      // different confirm, recalc, or reroute already superseded it).
+      if (!mountedRef.current || activePlanIdentityRef.current !== identity || !updated) return;
       const rec = rigRecommendationOf(updated.result);
       setConfirmed({
         departureMs,

@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, cleanup, waitFor, within } from '@testing-library/react';
+import { act, render, screen, fireEvent, cleanup, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { I18nProvider } from '../i18n';
 import { uniformWindGrid } from '../test/fixtures';
@@ -74,7 +74,12 @@ function makePlan(windSpeedKn = 12): Plan {
   };
 }
 
-function stubHook(overrides: Partial<DepartureScanState> = {}, scan = vi.fn(), cancel = vi.fn()) {
+function stubHook(
+  overrides: Partial<DepartureScanState> = {},
+  scan = vi.fn(),
+  cancel = vi.fn(),
+  reset = vi.fn(),
+) {
   const state: DepartureScanState = {
     scanning: false,
     index: 0,
@@ -84,8 +89,8 @@ function stubHook(overrides: Partial<DepartureScanState> = {}, scan = vi.fn(), c
     cancelled: false,
     ...overrides,
   };
-  vi.mocked(useDepartureScan).mockReturnValue({ state, scan, cancel, reset: vi.fn() });
-  return { scan, cancel };
+  vi.mocked(useDepartureScan).mockReturnValue({ state, scan, cancel, reset });
+  return { scan, cancel, reset };
 }
 
 // #937: default idle state for every test that does not itself exercise the
@@ -409,6 +414,88 @@ describe('DepartureCompare', () => {
 
       const alert = screen.getByRole('alert');
       expect(alert).toHaveTextContent('Die Routenberechnung hat das Zeitlimit überschritten');
+    });
+
+    // #960 review Major 1(a). Mutation: dropping `!mountedRef.current` from
+    // handleConfirm's guard turns this red — onConfirmed IS called after
+    // unmount.
+    it('#960 review Major 1: unmounting before a confirm resolves discards the result — onConfirmed never fires', async () => {
+      const plan = makePlan();
+      const candidateMs = DEPARTURE_MS;
+      stubHook({
+        candidates: [{ departureMs: candidateMs, outcome: { kind: 'ok', result: OK_RESULT } }],
+      });
+      let resolveConfirm!: (p: Plan | null) => void;
+      const confirmPromise = new Promise<Plan | null>((res) => {
+        resolveConfirm = res;
+      });
+      stubConfirmHook({}, vi.fn().mockReturnValue(confirmPromise));
+      const onConfirmed = vi.fn();
+      const { unmount } = renderCompare(plan, onConfirmed);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Diese Abfahrt übernehmen' }));
+      unmount();
+
+      const updated: Plan = {
+        ...plan,
+        createdAtMs: plan.createdAtMs + 1,
+        result: twoRigResult('genoa'),
+      };
+      await act(async () => {
+        resolveConfirm(updated);
+        await confirmPromise;
+      });
+
+      expect(onConfirmed).not.toHaveBeenCalled();
+    });
+
+    // #960 review Major 1(b). Mutation: dropping the
+    // `activePlanIdentityRef.current !== identity` half of the guard turns
+    // this red — onConfirmed IS called with a result computed against a plan
+    // that is no longer active. Also asserts the scan reset the reviewer
+    // asked for (a different plan.id must not leave a stale card behind).
+    it('#960 review Major 1: a plan superseded while a confirm is in flight discards the stale result and resets the scan', async () => {
+      const plan = makePlan();
+      const candidateMs = DEPARTURE_MS;
+      const { reset } = stubHook({
+        candidates: [{ departureMs: candidateMs, outcome: { kind: 'ok', result: OK_RESULT } }],
+      });
+      let resolveConfirm!: (p: Plan | null) => void;
+      const confirmPromise = new Promise<Plan | null>((res) => {
+        resolveConfirm = res;
+      });
+      stubConfirmHook({}, vi.fn().mockReturnValue(confirmPromise));
+      const onConfirmed = vi.fn();
+      const { rerender } = renderCompare(plan, onConfirmed);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Diese Abfahrt übernehmen' }));
+      reset.mockClear();
+
+      // A DIFFERENT route becomes active while the confirm is still solving
+      // — the same shape as an unrelated recalc/reroute superseding it.
+      const otherPlan: Plan = { ...plan, id: 'plan-2' };
+      rerender(
+        <I18nProvider>
+          <DepartureCompare
+            plan={otherPlan}
+            ensureClient={() => Promise.resolve(null)}
+            onConfirmed={onConfirmed}
+          />
+        </I18nProvider>,
+      );
+      await waitFor(() => expect(reset).toHaveBeenCalledTimes(1));
+
+      const stale: Plan = {
+        ...plan,
+        createdAtMs: plan.createdAtMs + 1,
+        result: twoRigResult('genoa'),
+      };
+      await act(async () => {
+        resolveConfirm(stale);
+        await confirmPromise;
+      });
+
+      expect(onConfirmed).not.toHaveBeenCalled();
     });
   });
 });
