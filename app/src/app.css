@@ -1553,9 +1553,10 @@ select {
    #871's repro (a fresh narrow-viewport load with nothing else on screen).
    `top` is written by ReloadPrompt.tsx's own `useToastAnchor` effect
    (`--sc-toast-top`), a LIVE measurement of whichever of
-   `.map-stack-tl`/`.depth-legend > summary`/`.route-layer-controls`
-   currently reaches furthest down — the same `getBoundingClientRect()`
-   idiom ScaleBar.tsx already uses for `.map-stack-tl` clearance (CLAUDE.md's
+   `.map-stack-tl`/`.depth-legend > summary` currently reaches furthest
+   down (`.route-layer-controls` is cleared separately, horizontally — see
+   `right`, below) — the same `getBoundingClientRect()` idiom ScaleBar.tsx
+   already uses for `.map-stack-tl` clearance (CLAUDE.md's
    ScaleBar/useBannerHeight bullet). #909 (four failed placements, retained
    on branch `fix/toast-hides-depth-caveat`) derives why every STATIC
    placement (a fixed `top`/`bottom` value) has SOME victim viewport:
@@ -1564,8 +1565,20 @@ select {
    banner height, so a fixed toast position and that bound's line
    inevitably cross somewhere. Never revert this to a fixed `top`/`bottom`
    without re-reading #909's derivation first.
-   `left`/`right: 0` restate `.banner-area`'s own span, since this element
-   no longer inherits it by being a normal flex child of that box.
+   `left: 0` restates `.banner-area`'s own left edge, since this element no
+   longer inherits it by being a normal flex child of that box. `right` is
+   `var(--sc-toast-right, 0px)`, NOT a bare `0` — ReloadPrompt.tsx's effect
+   narrows it to clear `.route-layer-controls` HORIZONTALLY whenever that
+   cluster exists (plan loaded); see that effect's own comment for why
+   (a 44px accessible dismiss button floors this toast's height at ~60px
+   regardless of message length, and at `#208 "Major 3"`'s own repro sizes
+   — 844x390/740x360 — no VERTICAL position clears both
+   `.route-layer-controls` and `.app-bottom-sheet` at once, so this axis is
+   cleared horizontally instead; `.route-layer-controls` sits top-RIGHT,
+   `.map-stack-tl` top-LEFT, #324's own note, so the two clearance
+   strategies target different clusters and do not conflict). The `0px`
+   fallback keeps the toast full-width when no plan is loaded, matching its
+   pre-#871 visual span.
    `position: fixed`, NOT `absolute`: `getBoundingClientRect()` (what
    ReloadPrompt.tsx's effect reads off `.map-stack-tl` et al.) already
    returns VIEWPORT-relative coordinates, matching `fixed`'s own reference
@@ -1590,7 +1603,7 @@ select {
     position: fixed;
     top: var(--sc-toast-top, 3rem);
     left: 0;
-    right: 0;
+    right: var(--sc-toast-right, 0px);
   }
 }
 

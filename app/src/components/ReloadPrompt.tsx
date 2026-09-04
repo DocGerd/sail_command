@@ -32,8 +32,9 @@ import { useT } from '../i18n';
 // left them DISAGREEING, which is what drove the legend into the tab strip
 // — see #909's "placement 1" writeup). This effect then positions the
 // toast LIVE, below whichever of `.map-stack-tl` / `.depth-legend >
-// summary` / `.route-layer-controls` currently reaches furthest down — the
-// same runtime-measured idiom `ScaleBar.tsx`'s `apply()` already uses for
+// summary` currently reaches furthest down (`.route-layer-controls` is
+// handled SEPARATELY, horizontally — see below) — the same runtime-
+// measured idiom `ScaleBar.tsx`'s `apply()` already uses for
 // `.map-stack-tl` clearance (CLAUDE.md's own ScaleBar/useBannerHeight
 // bullet), rather than a fixed viewport fraction, because only a LIVE
 // measurement can track which cluster is tallest across every viewport AND
@@ -43,6 +44,26 @@ import { useT } from '../i18n';
 // wrapped-text body (`app.css`'s own comment: "deliberately sets no
 // overflow so it can extend past .map-stack-tl's own computed height
 // unclipped") can never push this toast off-screen.
+//
+// `.route-layer-controls` is excluded from the VERTICAL target set and
+// instead cleared HORIZONTALLY (`--sc-toast-right`, narrowing the toast's
+// own right edge to sit left of it) whenever it exists — MEASURED
+// (844x390/740x360, plan loaded — `#208 "Major 3"`'s own repro sizes) that
+// a 44px accessible-touch-target dismiss button (#708) makes this toast's
+// OWN minimum height ~60px regardless of message length (the button, not
+// text wrapping, sets the flex row's height — a 220px-wide single-line
+// message measures the SAME 60px total as a wrapped two-line one), and at
+// those two viewports the vertical gap between `.route-layer-controls`'
+// bottom and `.app-bottom-sheet`'s top is narrower than that — 59.5px and
+// 46px respectively — so NO vertical position clears both, matching #909's
+// own structural finding one level deeper. Since `.route-layer-controls`
+// sits at the TOP-RIGHT and `.map-stack-tl` at the TOP-LEFT (CLAUDE.md's
+// own #324 note: "top-LEFT of the map, so it can never collide with
+// RouteLayer's plan-gated cluster at the top-right"), separating this
+// toast from `.route-layer-controls` HORIZONTALLY removes the 2-D overlap
+// outright, at every viewport wide enough to still fit the message text —
+// unlike the vertical-only anchor, this needs no squeeze fallback for the
+// `.route-layer-controls` axis at all.
 function useToastAnchor(active: boolean): void {
   useLayoutEffect(() => {
     if (!active) return;
@@ -61,18 +82,18 @@ function useToastAnchor(active: boolean): void {
     // anchor alone reproduces the shape of #909's finding one level lower:
     // this toast can itself become the fifth victim of the same squeeze it
     // was built to route around. `belowMinY` (must clear
-    // `.map-stack-tl`/`.depth-legend > summary`/`.route-layer-controls`) and
-    // `aboveMaxY` (must clear `.app-bottom-sheet`, using the toast's OWN
-    // live height) are two INDEPENDENT bounds on `top`; `Math.min` picks
-    // `belowMinY` whenever both are satisfiable (the ordinary case) and
-    // falls back to `aboveMaxY` when they conflict (a genuine squeeze) —
-    // deliberately siding with keeping the ALWAYS-OPERABLE tab strip clear
-    // (Tier 3, "always operable" in app.css's own tier philosophy) over the
+    // `.map-stack-tl`/`.depth-legend > summary`) and `aboveMaxY` (must
+    // clear `.app-bottom-sheet`, using the toast's OWN live height) are two
+    // INDEPENDENT bounds on `top`; `Math.min` picks `belowMinY` whenever
+    // both are satisfiable (the ordinary case) and falls back to
+    // `aboveMaxY` when they conflict (a genuine squeeze) — deliberately
+    // siding with keeping the ALWAYS-OPERABLE tab strip clear (Tier 3,
+    // "always operable" in app.css's own tier philosophy) over the
     // map-surface cluster (Tier 2), rather than the other way round. In the
     // squeeze case this toast MAY still partially overlap the lower part of
     // `.map-stack-tl`'s content — a residual, not eliminated — see the
     // #871 PR's own e2e guard for how that residual is measured and pinned.
-    const TARGETS = ['.map-stack-tl', '.depth-legend > summary', '.route-layer-controls'];
+    const VERTICAL_TARGETS = ['.map-stack-tl', '.depth-legend > summary'];
 
     const recompute = () => {
       // Wide layout: app.css's `.reload-prompt` narrow-only override never
@@ -80,7 +101,7 @@ function useToastAnchor(active: boolean): void {
       // the value written here is simply unused — skip the work.
       if (window.matchMedia('(min-width: 1024px)').matches) return;
       let belowMinY = 0;
-      for (const selector of TARGETS) {
+      for (const selector of VERTICAL_TARGETS) {
         const el = document.querySelector<HTMLElement>(selector);
         if (el) belowMinY = Math.max(belowMinY, el.getBoundingClientRect().bottom);
       }
@@ -100,6 +121,15 @@ function useToastAnchor(active: boolean): void {
       // toast above where it always used to start.
       const top = Math.max(48, Math.min(belowMinY, aboveMaxY));
       document.documentElement.style.setProperty('--sc-toast-top', `${top}px`);
+
+      // Horizontal clearance of `.route-layer-controls` (see the effect's
+      // own comment above) — only when it exists (plan loaded); otherwise
+      // the toast spans full width, matching app.css's `right: 0` default.
+      const routeControlsEl = document.querySelector<HTMLElement>('.route-layer-controls');
+      const rightPx = routeControlsEl
+        ? Math.max(0, window.innerWidth - routeControlsEl.getBoundingClientRect().left + GAP_PX)
+        : 0;
+      document.documentElement.style.setProperty('--sc-toast-right', `${rightPx}px`);
     };
 
     let ro: ResizeObserver | null = null;
@@ -112,11 +142,17 @@ function useToastAnchor(active: boolean): void {
     // here too for the SAME uniform rewire — observing `.reload-prompt`
     // itself is what lets `recompute` pick up the toast's OWN height
     // changing (e.g. `needRefresh` <-> `offlineReady`, or a wrapped vs.
-    // single-line message at a narrower width).
+    // single-line message at a narrower width). `.route-layer-controls` is
+    // observed too, for the horizontal calc above.
     const rewire = () => {
       ro?.disconnect();
       ro = new ResizeObserver(recompute);
-      for (const selector of [...TARGETS, '.reload-prompt', '.app-bottom-sheet']) {
+      for (const selector of [
+        ...VERTICAL_TARGETS,
+        '.route-layer-controls',
+        '.reload-prompt',
+        '.app-bottom-sheet',
+      ]) {
         const el = document.querySelector<HTMLElement>(selector);
         if (el) ro.observe(el);
       }

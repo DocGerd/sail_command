@@ -1924,6 +1924,33 @@ test('#762: the safety-depth field label does not overflow its column at tablet 
 // hit-testing — this guard reads the `hidden` IDL property directly instead
 // (the exact mechanism `DataLayers.tsx` sets), which is what actually
 // controls accessibility-tree membership.
+// `DataLayers.tsx`'s reachability gate recomputes on a `ResizeObserver`
+// callback (async, one or more frames after `.banner-area`'s box changes) —
+// a single read taken right after the toast becomes DOM-visible can win
+// the race and read the PRE-recompute value, exactly the "frozen geometry"
+// class CLAUDE.md's E2E-determinism rule warns about, just in the opposite
+// direction from the usual case (a too-EARLY read here, not a stale one).
+// Poll until three consecutive reads agree, mirroring `labels.spec.ts`'s
+// own settle pattern for a MapLibre placement throttle — a different
+// producer, the same "async recompute after a resize" shape.
+async function settledLegendHidden(page: Page, legend: Locator): Promise<boolean> {
+  let last: boolean | null = null;
+  let streak = 0;
+  for (let i = 0; i < 30; i += 1) {
+    const current = await legend.evaluate((el) => (el as HTMLDetailsElement).hidden);
+    if (current === last) {
+      streak += 1;
+      if (streak >= 3) return current;
+    } else {
+      streak = 1;
+      last = current;
+    }
+    await page.waitForTimeout(100);
+  }
+  if (last === null) throw new Error('settledLegendHidden: never read a value');
+  return last;
+}
+
 test('#871: the SW toast alone never hides the depth legend, across the shared viewport matrix (no plan)', async ({
   browser,
 }) => {
@@ -1939,11 +1966,11 @@ test('#871: the SW toast alone never hides the depth legend, across the shared v
 
         const legend = page.locator('details.depth-legend');
         await page.locator('.reload-prompt').waitFor({ state: 'visible', timeout: 15_000 });
-        const hiddenWithToast = await legend.evaluate((el) => (el as HTMLDetailsElement).hidden);
+        const hiddenWithToast = await settledLegendHidden(page, legend);
 
         await page.locator('.reload-prompt .banner-dismiss').click({ timeout: 5_000 });
         await expect(page.locator('.banner-area .banner')).toHaveCount(0);
-        const hiddenWithoutToast = await legend.evaluate((el) => (el as HTMLDetailsElement).hidden);
+        const hiddenWithoutToast = await settledLegendHidden(page, legend);
 
         // The load-bearing claim: the toast ALONE must never flip `hidden`
         // from reachable (false, no banner at all) to removed-from-the-
@@ -2030,6 +2057,18 @@ test('#871: the SW toast does not intercept .route-layer-controls with a plan lo
         // geometry to the defect's" rule). Asserts OCCLUDER IDENTITY, not a
         // bare negative — per the #871 brief, a residual here must name
         // WHICH element intercepted, never collapse to `.not.toBe('ok')`.
+        //
+        // No known residual here, at ANY viewport in this matrix — unlike
+        // the vertical `--sc-toast-top` anchor (which DOES have one, see
+        // `useToastAnchor`'s own comment in ReloadPrompt.tsx), the toast's
+        // `--sc-toast-right` clears `.route-layer-controls` HORIZONTALLY
+        // whenever it exists, which removes the 2-D overlap outright rather
+        // than trading it off against something else. Confirmed empirically
+        // at shortLandscape844 (844x390) and shortLandscape740 (740x360) —
+        // #909's own "fourth victim" repro sizes, and the two rows that DID
+        // fail here before the horizontal clearance was added — via
+        // `compass.spec.ts`'s pre-existing `#208 "Major 3"` guard, which
+        // checks the identical cluster/viewport combination independently.
         await expect
           .poll(
             async () => {
