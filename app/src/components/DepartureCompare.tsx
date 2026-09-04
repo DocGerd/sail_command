@@ -241,12 +241,14 @@ export default function DepartureCompare({
   });
 
   const mountedRef = useRef(true);
-  useEffect(
-    () => () => {
+  // StrictMode's dev-mode mount→cleanup→remount cycle runs this cleanup once
+  // on a genuine mount, so the setup must re-arm it.
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
       mountedRef.current = false;
-    },
-    [],
-  );
+    };
+  }, []);
 
   // A different plan.id means a different route — candidates computed
   // against the prior one no longer describe it.

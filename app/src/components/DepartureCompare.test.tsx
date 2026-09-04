@@ -1,3 +1,4 @@
+import { StrictMode } from 'react';
 import { act, render, screen, fireEvent, cleanup, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { I18nProvider } from '../i18n';
@@ -496,6 +497,40 @@ describe('DepartureCompare', () => {
       });
 
       expect(onConfirmed).not.toHaveBeenCalled();
+    });
+
+    // #960 review Blocker: main.tsx wraps the app in <StrictMode>, whose
+    // dev-mode mount→cleanup→remount cycle runs the mountedRef effect's
+    // cleanup once on a genuine mount. Mutation: removing the effect's
+    // `mountedRef.current = true` setup line turns this red — the confirm
+    // resolves but onConfirmed is never called (mountedRef stuck false).
+    it('#960 review Blocker: a confirm still resolves under <StrictMode>', async () => {
+      const plan = makePlan();
+      const candidateMs = DEPARTURE_MS;
+      stubHook({
+        candidates: [{ departureMs: candidateMs, outcome: { kind: 'ok', result: OK_RESULT } }],
+      });
+      const updated: Plan = {
+        ...plan,
+        createdAtMs: plan.createdAtMs + 1,
+        result: twoRigResult('genoa'),
+      };
+      stubConfirmHook({}, vi.fn().mockResolvedValue(updated));
+      const onConfirmed = vi.fn();
+      render(
+        <StrictMode>
+          <I18nProvider>
+            <DepartureCompare
+              plan={plan}
+              ensureClient={() => Promise.resolve(null)}
+              onConfirmed={onConfirmed}
+            />
+          </I18nProvider>
+        </StrictMode>,
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Diese Abfahrt übernehmen' }));
+      await waitFor(() => expect(onConfirmed).toHaveBeenCalledWith(updated));
     });
   });
 });
