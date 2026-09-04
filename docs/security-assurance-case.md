@@ -1,7 +1,7 @@
 # SailCommand security assurance case
 
-**Status:** current as of 2026-09-03, describing `develop` at the time of
-writing (`v0.20.0` cut). Reviewed at each release cut.
+**Status:** current as of 2026-09-04, describing `develop` at the time of
+writing (`v0.21.0` cut). Reviewed at each release cut.
 **Audience:** users deciding whether to trust the app, and reviewers assessing
 the project (this document is the artifact for the OpenSSF Best Practices
 `assurance_case` criterion).
@@ -75,7 +75,9 @@ it was computed from.
 
 Local state: IndexedDB database `sailcommand` (object store `plans` including
 each plan's wind grid; object store `settings` holding the single user settings
-record, which is where a pasted AIS key lives) and a small amount of
+record, which is where a pasted AIS key lives; object store `waypoints`
+holding user-named saved waypoints — an id, name, and lat/lon) and a small
+amount of
 `localStorage` (session snapshot, UI toggles, and the selected boat id — which
 determines the draft and hence the derived safety depth gate, so it is
 validated against the catalogue on every read) behind wrappers that tolerate
@@ -90,7 +92,7 @@ tracking of any kind.
 | **TB2** | App ↔ user-supplied GPX file | Inbound: arbitrary attacker-controlled XML the user chose to open | Size cap, element-count cap, XML-only parse, allowlist coordinate validation ([§5.1](#51-input-validation-tb2-tb3-tb4)) |
 | **TB3** | App ↔ Open-Meteo (N2) | Outbound: fixed grid. Inbound: untrusted JSON | HTTPS; shape/length validation before any value is used |
 | **TB4** | App ↔ aisstream.io (N3) | Outbound: user's key + bounding boxes. Inbound: untrusted JSON frames | WSS; per-field type validation; feature entirely inert without a key |
-| **TB5** | App ↔ browser storage | Read/write of plans and settings | Same-origin storage; no cross-origin access; corrupt records isolated per row |
+| **TB5** | App ↔ browser storage | Read/write of plans, settings, and saved waypoints | Same-origin storage; no cross-origin access; corrupt records isolated per row |
 | **TB6** | Build-time pipeline ↔ committed assets | Pipeline output becomes data the app trusts | Assets are committed and reviewed in pull requests; harbour connectivity is asserted **for every catalogue boat at that boat's derived gate** inside the required `app` suite (`app/src/test/verifyMaskConnectivity.test.ts`, [#550](https://github.com/DocGerd/sail_command/issues/550)), backed by the fuller advisory `verify_mask.py` gate in `verify-mask.yml`; pipeline never runs at app runtime |
 | **TB7** | Source repository ↔ shipped bytes | CI builds and deploys what is on the branch | Protected branches, required checks, reproducible-build proof, SHA-pinned actions ([§5.4](#54-build-and-delivery-integrity-tb7-tb8)) |
 | **TB8** | GitHub Pages CDN ↔ client | The CDN serves the deployed artifact over TLS | Browser TLS verification; post-deploy smoke probe; **the CDN is trusted** — see [§7](#7-known-gaps-and-accepted-risk) |
@@ -110,7 +112,7 @@ Adversaries considered, in rough order of realism for a static client-only PWA.
 
 *The most realistic serious threat.* A malicious npm package version reaches the
 bundle and runs with full app privileges: it could read IndexedDB (plans, AIS
-key) and exfiltrate to any origin.
+key, saved waypoints) and exfiltrate to any origin.
 
 **Countered by:** exact lockfiles, weekly grouped Dependabot updates across five
 update configurations spanning three package ecosystems (npm, pip,
@@ -360,7 +362,7 @@ place to occur, not that it was judged unlikely.
 | **A03 Injection** (CWE-79 XSS, CWE-89 SQLi, CWE-611 XXE) | Countered | No SQL and no server-side interpreter. XSS: no `innerHTML` / `dangerouslySetInnerHTML` / `eval` / `new Function` anywhere; React escapes by default. XXE: `DOMParser` with `application/xml` does not resolve external entities. CodeQL's `js/xss-through-dom` alert on that parse is a **documented false positive** — its DOM-XSS sink model is mime-insensitive, while an `application/xml` parse is inert and the parser extracts only numeric coordinates and enumerated notices |
 | **A04 Insecure design** | Countered | This document is the design argument; see [§5](#5-secure-design-argument). Threats were considered against the architecture, and the largest control is architectural: no backend, no accounts, no central data |
 | **A05 Security misconfiguration** | Countered | Minimal workflow permissions, SHA-pinned actions, protected branches, secret scanning with push protection, no debug endpoints, static hosting. GitHub Pages cannot set response headers, so the app injects a `<meta http-equiv="Content-Security-Policy">` at build time (`cspMeta()` in `app/vite.config.ts`) with `default-src 'self'`, a `connect-src` allowlist of `'self'` plus Open-Meteo and aisstream.io, `worker-src 'self'` (no `blob:` — it would defeat `script-src 'self'`), `img-src` widened to `data:`/`blob:` where maplibre-gl 6 demonstrably needs it, and no `'unsafe-inline'`/`'unsafe-eval'`, plus the static `<meta name="referrer" content="strict-origin-when-cross-origin">` already present in `app/index.html` ([#223](https://github.com/DocGerd/sail_command/issues/223)). The meta form cannot express `frame-ancestors` or `report-uri` — accepted, static host with no framing threat model and no collector |
-| **A06 Vulnerable and outdated components** (CWE-1104) | Countered | Lockfiles for every ecosystem; Dependabot across five update configurations spanning three package ecosystems (npm ×2, pip ×2, github-actions) weekly plus security updates; no open Dependabot alerts — the live state is the fact rather than this sentence: `gh api repos/DocGerd/sail_command/dependabot/alerts --jq '[.[]\|select(.state=="open")]\|length'` (0 at the `v0.20.0` cut); a committed third-party notices inventory whose drift fails CI; no vendored or forked convenience copies |
+| **A06 Vulnerable and outdated components** (CWE-1104) | Countered | Lockfiles for every ecosystem; Dependabot across five update configurations spanning three package ecosystems (npm ×2, pip ×2, github-actions) weekly plus security updates; no open Dependabot alerts — the live state is the fact rather than this sentence: `gh api repos/DocGerd/sail_command/dependabot/alerts --jq '[.[]\|select(.state=="open")]\|length'` (0 at the `v0.21.0` cut); a committed third-party notices inventory whose drift fails CI; no vendored or forked convenience copies |
 | **A07 Identification and authentication failures** | N/A by architecture | There is no authentication. No accounts, no passwords, no sessions, no password reset, nothing to brute-force |
 | **A08 Software and data integrity failures** (CWE-502) | **Partially countered** | Reproducible double-build with byte-drift gating, SHA-pinned actions, protected branches, post-deploy smoke probe, and — from `v0.8.0` — SSH-signed release tags verifiable via `git tag -v` ([#322](https://github.com/DocGerd/sail_command/issues/322)); the signing key is registered and the `git tag -v` verification path is proven end to end for every signed tag including `v0.8.0`, so a user willing to run that command can confirm a tag traces to the maintainer. GitHub's Verified badge — the no-local-config channel — is a documented exception for the `v0.8.0` tag itself (signed under an email not registered on the maintainer's GitHub account; see `v0.8.1`'s CHANGELOG entry) and does show correctly for **every** tag from `v0.8.1` onward, each reporting `verified: true, reason: "valid"` — re-derivable with `gh api repos/DocGerd/sail_command/git/tags/$(git rev-parse refs/tags/vX.Y.Z) --jq .verification` rather than trusted from a list here. No untrusted deserialization: IndexedDB uses structured clone of the app's own records, and a corrupt record is isolated to its own row rather than blanking the list. **Still partial**: signing covers the tagged commit's authorship, not the deployed artifact bytes GitHub Pages serves, and `v0.1.0`–`v0.7.0` remain permanently unsigned |
 | **A09 Logging and monitoring failures** | Accepted, documented | There is deliberately no telemetry — a privacy choice that means client-side attacks cannot be observed centrally. Repository-side monitoring exists (CodeQL, Dependabot, Scorecard, deploy smoke probe). For a client-only app with no user data on any server, the privacy benefit is judged to outweigh the lost visibility |
