@@ -89,6 +89,11 @@
             "type": "command",
             "command": "H=\"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/ruff-on-pipeline-edit.sh\"; if [ -f \"$H\" ] && [ -x \"$H\" ]; then \"$H\" || true; fi",
             "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "if ! command -v jq >/dev/null 2>&1; then printf '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"CLAUDE.md size advisory inert: jq is missing.\"}}\\n'; exit 0; fi; f=$(jq -r '.tool_response.filePath // .tool_input.file_path // empty'); r=\"${CLAUDE_PROJECT_DIR:-}\"; if [ -n \"$r\" ] && [ \"$f\" = \"$r/CLAUDE.md\" ]; then if ! n=$(wc -c < \"$f\" 2>/dev/null) || case \"$n\" in \"\"|*[!0-9]*) true ;; *) false ;; esac; then printf '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"CLAUDE.md size advisory could not read the file to check it against the 330000 byte soft budget. It grew every release cycle from v0.13.0 to v0.20.0 (+14.1 KB/cycle mean) with 1 byte ever deleted outright. Before adding more, run the RETIRE step in .claude/commands/release-cycle.md Phase 4: a bullet whose failure is now pinned by a structural guard (test, hook selftest row, CI step, type constraint) shrinks to one line naming that guard - verify the guard exists at HEAD by reading the file.\"}}\\n'; elif [ \"$n\" -gt 330000 ]; then printf '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"CLAUDE.md is now %s bytes (soft budget 330000). It grew every release cycle from v0.13.0 to v0.20.0 (+14.1 KB/cycle mean) with 1 byte ever deleted outright. Before adding more, run the RETIRE step in .claude/commands/release-cycle.md Phase 4: a bullet whose failure is now pinned by a structural guard (test, hook selftest row, CI step, type constraint) shrinks to one line naming that guard - verify the guard exists at HEAD by reading the file.\"}}\\n' \"$n\"; fi; fi",
+            "timeout": 5
           }
         ]
       },

@@ -58,7 +58,7 @@ function blockedHostname(blockedURI: string): string | null {
 test('CSP: real Open-Meteo fetch is allowed, an arbitrary third-party origin is not', async ({
   page,
 }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     // Installed before navigation so it captures every securitypolicyviolation
     // event for the whole page lifetime, not just ones after some later

@@ -117,6 +117,7 @@ export const en = {
   // aria-label under a non-exact getByRole locator.
   'planner.via.coord.latLabel': 'Latitude',
   'planner.via.coord.lonLabel': 'Longitude',
+  'planner.via.coord.nameLabel': 'Name',
   'planner.via.coord.add': 'Add coordinates',
   'planner.via.coord.update': 'Update coordinates',
   'planner.via.coord.edit': 'Edit coordinates (point {index}): {coord}',
@@ -684,6 +685,9 @@ export const en = {
   // {value} s — same text in both languages, but still routed through the
   // dict (#300) rather than hardcoded, per repo convention.
   'seamark.popover.lightPeriodUnit': '{value} s',
+  // #845: the seamark popover's "add as waypoint" action, rendered only for
+  // the curated cardinal/lateral/isolated-danger subset (design spec §2.5).
+  'seamark.popover.addWaypoint': 'Add as waypoint',
   // #830: the keyboard-reachable seamarks-in-view list — see dict.de.ts's
   // own #830 comment for why the German summary avoids the word "Seezeichen".
   'seamarks.inView.summary': 'Seamarks in view ({count})',
@@ -785,6 +789,21 @@ export const en = {
   'plansList.recalc.offline':
     'Recalculation requires a connection — it fetches a fresh wind forecast.',
   'plansList.recalcName': '{name} (recalculated)',
+  // #848: the saved-waypoint picker (SavedWaypoints.tsx, panel-only —
+  // design spec §2.7, no map layer in this release). Distinct from
+  // `planner.via.label` ("Waypoints", the current draft via list) so the
+  // two never share an accessible name under a non-exact getByRole locator.
+  'waypoints.label': 'Saved waypoints',
+  'waypoints.empty': 'No saved waypoints yet.',
+  // §2.3: device-local persistence must be DISCLOSED, not discovered —
+  // #848's own body's requirement, following the about.caveats.* wording
+  // convention for a limitation the user must see before relying on it.
+  'waypoints.deviceLocal':
+    'Saved waypoints stay on this device and browser only — they are not backed up, do not sync between devices, and are lost if site data is cleared.',
+  'waypoints.saveFromVia': 'Save {label} as a waypoint',
+  'waypoints.delete': 'Delete waypoint',
+  'waypoints.confirmDelete': 'Confirm delete',
+  'waypoints.actionError': 'Action failed. Please try again.',
   // #700: state-dependent action labels for the GPS tracking toggle — was a
   // single neutral 'Live view' that read as a section label, not an action,
   // and gave no SIGHTED indication of on/off state (only aria-pressed did).
@@ -954,4 +973,17 @@ export const en = {
   'map.scale.unit.cbl.other': 'cables',
   'map.scale.unit.m.one': 'metre',
   'map.scale.unit.m.other': 'metres',
+  // #356 part (a): see dict.de.ts's matching comment.
+  'departureScan.title': 'Compare departure times',
+  'departureScan.help':
+    'Scans several departure times for this route (each computed on the genoa alone) and lists them by arrival and motor share.',
+  'departureScan.count.label': 'Number of windows',
+  'departureScan.step.label': 'Step',
+  'departureScan.step.option': '{hours} h',
+  'departureScan.action': 'Start comparison',
+  'departureScan.cancel': 'Cancel',
+  'departureScan.status.scanning': 'Scanning window {index} of {total} …',
+  'departureScan.status.cancelled': 'Cancelled — {count} windows scanned.',
+  'departureScan.candidate.ok':
+    'Arrival {eta} · duration {duration} · {distance} · {motorPct}% motor',
 } satisfies Record<MsgKey, string>;

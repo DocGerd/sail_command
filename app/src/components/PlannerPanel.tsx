@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
-import type { Harbor, LatLon, PickedPoint, Plan, RigResult, SailId, Settings } from '../types';
+import type {
+  Harbor,
+  LatLon,
+  PickedPoint,
+  Plan,
+  RigResult,
+  SailId,
+  Settings,
+  ViaPoint,
+} from '../types';
 import { useLang, useT } from '../i18n';
 // #834: the `harbors` prop is widened from `Harbor[]` to
 // `HarborWithReachability[]` below — the selected-endpoint row must see the
@@ -37,6 +46,12 @@ import Field from './Field';
 import Button from './Button';
 import Chip from './Chip';
 import Skeleton from './Skeleton';
+import Disclosure from './Disclosure';
+// #848: the saved-waypoint picker — panel-only per design spec §2.7. This
+// import + the one render call below is the "minimal entry point" the task
+// scoped for this file; the store access, list state and save/delete
+// actions all live in the component itself.
+import SavedWaypoints from './SavedWaypoints';
 // #452: the shallow-water warning is plan-level (ShallowWarning's own note
 // explains why) — shared here so the FIRST surface a user sees a result on
 // carries the same warning as the Routes tab, not just a second copy of it.
@@ -77,7 +92,11 @@ export interface PlannerPanelProps {
   // maintainer's #571 ruling); it only takes effect on the next explicit
   // Plan-route press. Reorder is up/down buttons, not drag-and-drop (v1
   // scope).
-  viaPoints: LatLon[];
+  // #846: widened LatLon[] -> ViaPoint[] so a saved `name` renders here
+  // instead of formatLatLon(v). Free at App.tsx's call site: its own
+  // draftViaPoints state stays typed LatLon[] (name is optional, so a
+  // LatLon literal already satisfies ViaPoint).
+  viaPoints: ViaPoint[];
   onRemoveVia: (index: number) => void;
   onReorderVia: (index: number, direction: 'up' | 'down') => void;
   // #829: keyboard-reachable equivalents of the map-tap 'via' path — same
@@ -86,7 +105,18 @@ export interface PlannerPanelProps {
   // instead of a map click. onUpdateVia is the same idea for repositioning
   // an already-placed point (spike §2 row 2 / §3.1's "extended slightly").
   onAddVia: (p: LatLon) => void;
-  onUpdateVia: (index: number, p: LatLon) => void;
+  // #846: widened LatLon -> ViaPoint so a rename (this panel calling
+  // onUpdateVia(index, { ...v, name })) reaches App.tsx's draft-replace
+  // handler. That handler's own param stays typed LatLon — by
+  // contravariance a `(p: LatLon) => void` still satisfies this wider
+  // `(p: ViaPoint) => void` signature (ViaPoint has every field LatLon
+  // requires plus more), so App.tsx needs no edit; only the runtime object
+  // literal built below actually carries `.name` through.
+  onUpdateVia: (index: number, p: ViaPoint) => void;
+  // #848: a saved waypoint picked from SavedWaypoints — wired at App.tsx to
+  // the same nearest-point-on-the-draft-chain insertion #845's
+  // "add seamark as waypoint" action already uses (design spec §2.6).
+  onSelectSavedWaypoint: (w: ViaPoint) => void;
   departureMs: number;
   onDepartureChange: (ms: number) => void;
   settings: Settings;
@@ -196,6 +226,7 @@ export default function PlannerPanel({
   onReorderVia,
   onAddVia,
   onUpdateVia,
+  onSelectSavedWaypoint,
   departureMs,
   onDepartureChange,
   settings,
@@ -282,6 +313,14 @@ export default function PlannerPanel({
   >({ kind: 'add' });
   const [viaCoordLat, setViaCoordLat] = useState(VIA_COORD_DEFAULT.lat);
   const [viaCoordLon, setViaCoordLon] = useState(VIA_COORD_DEFAULT.lon);
+  // #846: the SAME shared entry form carries an optional name — 'add' mode
+  // lets a new waypoint be named up front, 'update' mode re-seeds it from
+  // the point being repositioned so a rename and a reposition share one
+  // commit. Kept in this form rather than a per-row control precisely
+  // because a per-row control was rejected above (#708's tight-at-narrow-
+  // widths comment) for the lat/lon pair — the same argument applies to a
+  // name field.
+  const [viaCoordName, setViaCoordName] = useState('');
   const [viaCoordError, setViaCoordError] = useState(false);
 
   // #863 review MAJOR: viaCoordMode.index was captured once on entering
@@ -308,6 +347,7 @@ export default function PlannerPanel({
       setViaCoordMode({ kind: 'add' });
       setViaCoordLat(VIA_COORD_DEFAULT.lat);
       setViaCoordLon(VIA_COORD_DEFAULT.lon);
+      setViaCoordName('');
       setViaCoordError(false);
     }
   }
@@ -331,12 +371,14 @@ export default function PlannerPanel({
       if (current.kind === 'update' && current.index === index) {
         setViaCoordLat(VIA_COORD_DEFAULT.lat);
         setViaCoordLon(VIA_COORD_DEFAULT.lon);
+        setViaCoordName('');
         setViaCoordError(false);
         return { kind: 'add' };
       }
       const v = viaPoints[index];
       setViaCoordLat(v.lat);
       setViaCoordLon(v.lon);
+      setViaCoordName(v.name ?? '');
       setViaCoordError(false);
       pendingViaCoordFocusRef.current = true;
       return { kind: 'update', index };
@@ -344,7 +386,20 @@ export default function PlannerPanel({
   }
 
   function handleCommitViaCoord(): void {
-    const p: LatLon = { lat: viaCoordLat, lon: viaCoordLon };
+    // #846: the name field is committed alongside lat/lon here — in
+    // 'update' mode it was seeded from the point being repositioned (see
+    // handleEditViaCoord above), so leaving it untouched preserves the
+    // existing name and clearing it removes the name, both explicit user
+    // actions rather than a silent side effect of repositioning. Trimmed;
+    // an empty/whitespace-only value means "no name", matching
+    // migratePlan.ts's normaliseViaPoints on the load path.
+    // exactOptionalPropertyTypes forbids `name: undefined`, so the field is
+    // only ever added when non-empty.
+    const trimmedName = viaCoordName.trim();
+    const p: ViaPoint =
+      trimmedName.length > 0
+        ? { lat: viaCoordLat, lon: viaCoordLon, name: trimmedName }
+        : { lat: viaCoordLat, lon: viaCoordLon };
     if (!isInViaDataArea(p)) {
       setViaCoordError(true);
       return;
@@ -358,6 +413,7 @@ export default function PlannerPanel({
     setViaCoordMode({ kind: 'add' });
     setViaCoordLat(VIA_COORD_DEFAULT.lat);
     setViaCoordLon(VIA_COORD_DEFAULT.lon);
+    setViaCoordName('');
   }
 
   // GPX import (#3): a hidden file input triggered by the Button primitive.
@@ -757,7 +813,13 @@ export default function PlannerPanel({
                     })}
                     onClick={() => handleEditViaCoord(i)}
                   >
-                    {formatLatLon(v)}
+                    {/* #846: DoD — a named waypoint shows its name instead
+                        of formatLatLon(v); an unnamed one keeps the
+                        coordinate text. The button's own aria-label above
+                        still names the coordinates unconditionally, since
+                        its accessible-name job is "identify the reposition
+                        action", not restate the visible label. */}
+                    {v.name ?? formatLatLon(v)}
                   </Button>
                   <Button
                     variant="ghost"
@@ -819,6 +881,18 @@ export default function PlannerPanel({
                 onCommit={(n) => setViaCoordLon(n)}
               />
             </Field>
+            {/* #846: shared name field — optional at "add", pre-seeded with
+                the existing name at "update" (see handleEditViaCoord).
+                Blank commits as "no name" (falls back to the indexed
+                planner.via.marker label, per the DoD). */}
+            <Field label={t('planner.via.coord.nameLabel')} htmlFor="planner-via-coord-name">
+              <input
+                id="planner-via-coord-name"
+                type="text"
+                value={viaCoordName}
+                onChange={(e) => setViaCoordName(e.target.value)}
+              />
+            </Field>
             <Button variant="secondary" onClick={handleCommitViaCoord}>
               {viaCoordMode.kind === 'update'
                 ? t('planner.via.coord.update')
@@ -833,6 +907,14 @@ export default function PlannerPanel({
           </div>
         </section>
       </Card>
+
+      {/* #848: panel-only saved-waypoint picker (design spec §2.7 — no map
+          layer this release, see #924). Collapsed by default, same as the
+          About dialog's changelog/sources Disclosures, so it doesn't push
+          the departure/plan controls further down on a first visit. */}
+      <Disclosure summary={t('waypoints.label')} className="planner-waypoints">
+        <SavedWaypoints viaPoints={viaPoints} onSelect={onSelectSavedWaypoint} />
+      </Disclosure>
 
       {/* §3.3: the two most-changed inputs — departure + safety depth — stay
           visible in this compact row. #299: the rest of what used to sit

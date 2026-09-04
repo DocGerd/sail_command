@@ -297,6 +297,47 @@ describe('SeamarksInView (#830)', () => {
     // MUTATION (row onClick dropped): `popups.created` stays empty — reds.
   });
 
+  // #845 review Minor 2: the keyboard list is the ONLY route to "add as
+  // waypoint" for a keyboard user (design spec §3.1 — a MapLibre glyph has
+  // no DOM node), so its wiring needs its own test, not just coverage of
+  // buildSeamarkPopoverContent in isolation (seamarkPopupDom.test.ts) or of
+  // App.tsx's handler (App.test.tsx). Guards the RENDERING (the button is
+  // really in the DOM this component produced) and the WIRING (activating
+  // it calls the REAL onAddWaypoint prop with the right value) — not just
+  // that a callback exists, per #940's lesson.
+  it('activating a row for an eligible mark renders "add as waypoint" in the real popup DOM, and clicking it reports the flattened waypoint (#845)', () => {
+    const onAddWaypoint = vi.fn();
+    render(<SeamarksInView panelSlot={slot} onAddWaypoint={onAddWaypoint} />);
+    const cardinal = rowButtons().find((b) => b.dataset.seamarkKey === '0')!;
+    fireEvent.click(cardinal);
+
+    const container = popups.created[0]!.container!;
+    const addButton = container.querySelector<HTMLButtonElement>(
+      'button.seamark-popover-add-waypoint',
+    );
+    expect(addButton).not.toBeNull();
+    expect(addButton!.textContent).toBe('Als Wegpunkt hinzufügen');
+    expect(onAddWaypoint).not.toHaveBeenCalled();
+
+    fireEvent.click(addButton!);
+    expect(onAddWaypoint).toHaveBeenCalledExactlyOnceWith({
+      lat: 54.85,
+      lon: 10.12,
+      name: 'Kardinaltonne',
+    });
+    // MUTATION (onAddWaypoint prop dropped from the buildSeamarkPopoverContent
+    // call in showOnMap): addButton is null — reds at the first assertion.
+  });
+
+  it('omitting onAddWaypoint renders NO "add as waypoint" button, even for an eligible mark', () => {
+    render(<SeamarksInView panelSlot={slot} />);
+    const cardinal = rowButtons().find((b) => b.dataset.seamarkKey === '0')!;
+    fireEvent.click(cardinal);
+    expect(
+      popups.created[0]!.container!.querySelector('button.seamark-popover-add-waypoint'),
+    ).toBeNull();
+  });
+
   it('caps the rows at SEAMARKS_IN_VIEW_MAX nearest marks and says how many are in view in total', () => {
     const many = fc(
       Array.from({ length: SEAMARKS_IN_VIEW_MAX + 10 }, (_, i) =>

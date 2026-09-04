@@ -37,6 +37,12 @@ import PlannerPanel, {
   type TapTarget,
 } from './components/PlannerPanel';
 import SettingsPanel from './components/SettingsPanel';
+// #356 part (a): rendered as its own sibling of PlannerPanel below (see the
+// #830 seamarks-portal-target precedent for the same "new feature, own
+// component, no new PlannerPanel props" shape) — deliberately kept OUT of
+// PlannerPanel.tsx, which PR #940/#846's waypoint-chain train is editing
+// concurrently.
+import DepartureCompare from './components/DepartureCompare';
 import PlansList, { type RecalcMode } from './components/PlansList';
 import RouteSummary from './components/RouteSummary';
 import DepthProfile from './components/DepthProfile';
@@ -67,6 +73,7 @@ import { PANEL_MIN_WIDTH_PX, panelMaxWidthPx } from './lib/panelWidth';
 import { formatLatLon } from './lib/format';
 import { resolveHarborPickTarget } from './lib/harborGeoJson';
 import { boatById, sailIdsOf } from './data/boats';
+import { nearestViaInsertIndex } from './lib/viaInsertion';
 import { usePersistedBoatId } from './lib/usePersistedBoatId';
 import { usePersistedOwnMmsi } from './lib/ownMmsi';
 // #834: same widening PlannerPanel.tsx's own `harbors` prop already carries —
@@ -82,6 +89,7 @@ import {
   type LatLon,
   type PickedPoint,
   type Plan,
+  type ViaPoint,
 } from './types';
 
 // The harbor-marker and seamark-glyph layers (DataLayers) each own any click
@@ -648,6 +656,52 @@ function AppShell() {
     [viaPoints, handleViaPointsChange],
   );
 
+  // #845: "add as waypoint" from the seamark popover (DataLayers.tsx and,
+  // via the keyboard-reachable list, SeamarksInView.tsx — see the design
+  // spec §3.1). `waypoint` arrives already flattened to a plain
+  // `{lat, lon, name}` record (§2.4 — no link back to seamarks.json is ever
+  // kept, so a pipeline rebuild that moves or removes the mark cannot
+  // silently change a saved route).
+  //
+  // §2.6: inserted at the NEAREST POINT along the origin -> viaPoints ->
+  // destination chain, not appended — "route via that buoy" names a point
+  // the skipper will pass. With no route context (origin or destination not
+  // yet chosen) there is no chain to project onto, so this appends instead,
+  // per §2.6's explicit empty-case rule (which, with an empty via list,
+  // agrees with the insertion rule anyway).
+  // Shared by handleAddViaFromSeamark (below) and #848's
+  // handleSelectSavedWaypoint — both hand this the same shape (a flattened
+  // {lat, lon, name?} waypoint from a different origin, seamark vs. the
+  // saved-waypoints store) and both want the identical §2.6 placement rule.
+  const insertViaNearestOrAppend = useCallback(
+    (waypoint: ViaPoint) => {
+      if (origin && destination) {
+        const idx = nearestViaInsertIndex(waypoint, origin.point, destination.point, viaPoints);
+        const next = [...viaPoints];
+        next.splice(idx, 0, waypoint);
+        handleViaPointsChange(next);
+      } else {
+        handleViaPointsChange([...viaPoints, waypoint]);
+      }
+    },
+    [origin, destination, viaPoints, handleViaPointsChange],
+  );
+
+  const handleAddViaFromSeamark = useCallback(
+    (waypoint: ViaPoint) => insertViaNearestOrAppend(waypoint),
+    [insertViaNearestOrAppend],
+  );
+
+  // #848: a saved waypoint selected from SavedWaypoints (via PlannerPanel's
+  // onSelectSavedWaypoint) — the SAME nearest-point-on-the-draft-chain
+  // placement §2.6 already specifies for a seamark-sourced waypoint, and for
+  // the identical reason: "route via that place" names a point the skipper
+  // will pass, not a detour appended after the destination.
+  const handleSelectSavedWaypoint = useCallback(
+    (waypoint: ViaPoint) => insertViaNearestOrAppend(waypoint),
+    [insertViaNearestOrAppend],
+  );
+
   // ViaMarkers' dragend handler. Markers are now rendered FROM the draft
   // (RouteLayer.tsx's `draftViaPoints` prop, review fix — markers used to be
   // positioned from the committed `plan.request.viaPoints`, which required a
@@ -1095,7 +1149,7 @@ function AppShell() {
               Always-mounted, plan-independent (#38/#39) — must NOT live in
               RouteLayer, which renders null until a plan exists. */}
           <div className="map-stack-tl">
-            <DataLayers onHarborPick={handleHarborPick} />
+            <DataLayers onHarborPick={handleHarborPick} onAddWaypoint={handleAddViaFromSeamark} />
             {/* Track-up is available on every tab whenever showOwnship is on
                 (#155 decision 2) — the map is shared chrome, so its
                 orientation must not flip on a tab switch. */}
@@ -1171,7 +1225,9 @@ function AppShell() {
               narrow viewports (SeamarksInView.tsx's own header carries the
               measurement). Plan tab only: the slot exists only there, and
               unmounting with the tab drops its moveend subscription. */}
-          {tab === 'plan' && <SeamarksInView panelSlot={seamarksSlot} />}
+          {tab === 'plan' && (
+            <SeamarksInView panelSlot={seamarksSlot} onAddWaypoint={handleAddViaFromSeamark} />
+          )}
         </MapView>
       </div>
 
@@ -1497,6 +1553,7 @@ function AppShell() {
                   onReorderVia={handleReorderVia}
                   onAddVia={handleAddViaByCoord}
                   onUpdateVia={handleUpdateViaByCoord}
+                  onSelectSavedWaypoint={handleSelectSavedWaypoint}
                   departureMs={departureMs}
                   onDepartureChange={setDepartureMs}
                   settings={settings}
@@ -1513,6 +1570,11 @@ function AppShell() {
                   onViewDetails={handleViewDetails}
                   onOpenBoatSettings={handleOpenBoatSettings}
                 />
+                {/* #356 part (a): "Compare departure times" — its own card
+                    below the main planner form, gated internally on `plan`
+                    (renders nothing before a first plan exists). Reuses the
+                    same shared worker singleton via `ensureClient`. */}
+                <DepartureCompare plan={plan} ensureClient={ensureClient} />
                 {/* #830: portal target for SeamarksInView (mounted inside MapView
                   above). Below the planner form, so the form's own CTA keeps
                   its position and the list costs panel scroll depth only

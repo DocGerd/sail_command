@@ -120,6 +120,7 @@ export const de = {
   // aria-label under a non-exact getByRole locator.
   'planner.via.coord.latLabel': 'Breitengrad',
   'planner.via.coord.lonLabel': 'Längengrad',
+  'planner.via.coord.nameLabel': 'Name',
   'planner.via.coord.add': 'Koordinaten hinzufügen',
   'planner.via.coord.update': 'Koordinaten aktualisieren',
   'planner.via.coord.edit': 'Koordinaten bearbeiten (Punkt {index}): {coord}',
@@ -585,6 +586,9 @@ export const de = {
   // {value} s — same text in both languages, but still routed through the
   // dict (#300) rather than hardcoded, per repo convention.
   'seamark.popover.lightPeriodUnit': '{value} s',
+  // #845: the seamark popover's "add as waypoint" action, rendered only for
+  // the curated cardinal/lateral/isolated-danger subset (design spec §2.5).
+  'seamark.popover.addWaypoint': 'Als Wegpunkt hinzufügen',
   // #830: keyboard-reachable list of the seamarks inside the current map
   // viewport (components/SeamarksInView.tsx). The SUMMARY deliberately says
   // "Schifffahrtszeichen" rather than the app's own "Seezeichen":
@@ -793,6 +797,17 @@ export const de = {
   'plansList.recalc.offline':
     'Neuberechnung nur online möglich — es wird eine frische Windvorhersage geladen.',
   'plansList.recalcName': '{name} (neu berechnet)',
+  // #848: siehe dict.en.ts für den Kontext (SavedWaypoints.tsx, nur im
+  // Panel — Designspezifikation §2.7, in dieser Version noch keine
+  // Kartenebene).
+  'waypoints.label': 'Gespeicherte Wegpunkte',
+  'waypoints.empty': 'Noch keine gespeicherten Wegpunkte.',
+  'waypoints.deviceLocal':
+    'Gespeicherte Wegpunkte bleiben nur auf diesem Gerät und in diesem Browser — sie werden nicht gesichert, nicht zwischen Geräten synchronisiert und gehen verloren, wenn Website-Daten gelöscht werden.',
+  'waypoints.saveFromVia': '{label} als Wegpunkt speichern',
+  'waypoints.delete': 'Wegpunkt löschen',
+  'waypoints.confirmDelete': 'Löschen bestätigen',
+  'waypoints.actionError': 'Aktion fehlgeschlagen. Bitte erneut versuchen.',
   'live.toggle': 'Live-Ansicht starten',
   'live.toggle.stop': 'Live-Ansicht beenden',
   'live.noPlan': 'Route laden oder planen, um die Live-Führung zu nutzen.',
@@ -951,5 +966,28 @@ export const de = {
   'map.scale.unit.cbl.other': 'Kabellängen',
   'map.scale.unit.m.one': 'Meter',
   'map.scale.unit.m.other': 'Meter',
+  // #356 part (a): departure-time comparison — an explicit, bounded,
+  // cancellable scan over a few departure windows around the active plan's
+  // own departure time, rendered as a plain list (design spec §2.4/§3, only
+  // part (a) — no ranked cards yet, that is #936). "Genua" is named
+  // explicitly per the copy's own honesty rule (§2.2's measured, not
+  // arbitrary, rig choice) rather than left implicit.
+  'departureScan.title': 'Abfahrtszeiten vergleichen',
+  'departureScan.help':
+    'Sucht mehrere Abfahrtszeiten für diese Route ab (jeweils nur mit der Genua berechnet) und listet sie nach Ankunft und Motoranteil auf.',
+  'departureScan.count.label': 'Anzahl Fenster',
+  'departureScan.step.label': 'Schrittweite',
+  'departureScan.step.option': '{hours} Std.',
+  'departureScan.action': 'Vergleich starten',
+  'departureScan.cancel': 'Abbrechen',
+  // #340 pattern: a phase readout naming the current window and the total,
+  // never a percentage — same reasoning as planner.status.routingSail.
+  'departureScan.status.scanning': 'Fenster {index} von {total} wird berechnet …',
+  // §4 residual: cancel finishes the current window's solve and skips the
+  // rest — this names that honestly rather than implying every window was
+  // scanned.
+  'departureScan.status.cancelled': 'Abgebrochen — {count} Fenster berechnet.',
+  'departureScan.candidate.ok':
+    'Ankunft {eta} · Dauer {duration} · {distance} · {motorPct} % Motor',
 } as const;
 export type MsgKey = keyof typeof de;

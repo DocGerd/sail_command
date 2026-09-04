@@ -15,6 +15,7 @@ import { HALO_COLOR, INK_COLOR } from '../lib/mapColors';
 import {
   SEAMARKS_LAYOUT,
   pickSeamarkByPriority,
+  pointCoordinates,
   seamarkFeatureCollectionWithIcons,
   seamarkHazardFilter,
   seamarkPopupAnchor,
@@ -29,7 +30,7 @@ import {
   seamarkImageIds,
   toSeamarkDisplayTier,
 } from '../lib/seamarkGlyphs';
-import { resolveSeamarkPopoverValue, seamarkPopoverRows } from '../lib/seamarkPopover';
+import { buildSeamarkPopoverContent } from '../lib/seamarkPopupDom';
 import {
   buildDepthImageData,
   buildNavigabilityHatchImageData,
@@ -42,7 +43,7 @@ import { usePersistedNumber } from '../lib/usePersistedNumber';
 import { LEGEND_COLLAPSED_HEIGHT_PX } from '../lib/depthLegendGate';
 import { ROUTE_STACK_BOTTOM_LAYER } from './RouteLayer';
 import { AIS_STACK_BOTTOM_LAYER } from './AisLayer';
-import type { Harbor, MaskMeta, SeamarkProperties } from '../types';
+import type { Harbor, LatLon, MaskMeta, SeamarkProperties, ViaPoint } from '../types';
 
 // Always-mounted host for the plan-independent map data layers (#38 harbor
 // markers, #39 depth overlay). Deliberately a SIBLING of RouteLayer, not part
@@ -58,6 +59,12 @@ export interface DataLayersProps {
   // A click on a harbor marker, resolved to the curated harbor. App.tsx turns
   // it into the same PickedPoint shape the PlannerPanel search picker builds.
   onHarborPick: (harbor: Harbor) => void;
+  // #845: "add as waypoint" from the seamark popover — App.tsx's own via
+  // insertion handler. OPTIONAL so the many existing
+  // `<DataLayers onHarborPick={...} />` test call sites need no change;
+  // the real app always passes it. Omitting it simply omits the button
+  // (buildSeamarkPopoverContent's own onAddWaypoint is optional too).
+  onAddWaypoint?: (waypoint: ViaPoint) => void;
 }
 
 const DEPTH_SOURCE = 'sc-depth';
@@ -515,7 +522,7 @@ function setupLayers(
   }
 }
 
-export default function DataLayers({ onHarborPick }: DataLayersProps) {
+export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersProps) {
   const map = useMapInstance();
   const [lang] = useLang();
   const t = useT();
@@ -879,6 +886,17 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
   // invoking this handler once, so pickSeamarkByPriority below still sees
   // candidates from whichever layer the tap actually hit, same as before
   // the split.
+  //
+  // #845: content now built by buildSeamarkPopoverContent (seamarkPopupDom.ts)
+  // — this file was previously OUTSIDE that lifted helper's twin (#830's own
+  // comment recorded it as a pending follow-up), so this call is what closes
+  // #872's twin-drift risk. onAddWaypoint lives in a ref, same pattern as
+  // onHarborPickRef below, so a new callback identity from App.tsx doesn't
+  // re-register the map listeners.
+  const onAddWaypointRef = useRef(onAddWaypoint);
+  useEffect(() => {
+    onAddWaypointRef.current = onAddWaypoint;
+  });
   useEffect(() => {
     if (!map || styleEpoch === 0 || !assets) return;
     const handleClick = (e: MapLayerMouseEvent) => {
@@ -891,21 +909,27 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
       const picked = pickSeamarkByPriority(e.features);
       const props = picked?.properties as SeamarkProperties | undefined;
       if (!props) return;
-      const container = document.createElement('div');
-      container.className = 'seamark-popover';
-      for (const row of seamarkPopoverRows(props)) {
-        const line = document.createElement('div');
-        const label = document.createElement('strong');
-        label.textContent = `${t(row.labelKey)}: `;
-        // resolveSeamarkPopoverValue is the join/translate logic under direct
-        // unit test with a stub t (#300 F4) — this call is a thin DOM wrapper.
-        line.append(label, document.createTextNode(resolveSeamarkPopoverValue(row, t)));
-        container.append(line);
-      }
-      const disclaimer = document.createElement('p');
-      disclaimer.className = 'seamark-popover-disclaimer';
-      disclaimer.textContent = t('app.disclaimer');
-      container.append(disclaimer);
+      // #845: the mark's OWN coordinates for the waypoint action — distinct
+      // from seamarkPopupAnchor's tap-follow anchor below, which is a UI
+      // nicety for where the popup ATTACHES, not the position a waypoint
+      // should be created at. Reuses seamarkGeoJson.ts's own
+      // pointCoordinates() (exported for this, #845 review Minor 1) rather
+      // than a second inline parser of the same geometry — this file is
+      // otherwise the one #845/#872 de-duplicates the popup DOM build in.
+      // Falls back to the tap point only if the feature's geometry is
+      // somehow not a Point (defensive; sc-seamarks is Point-only) — and
+      // then the add-waypoint action is withheld rather than risk creating
+      // a waypoint at the wrong spot.
+      const markLngLat = pointCoordinates(picked);
+      const markPoint: LatLon | null = markLngLat
+        ? { lon: markLngLat[0], lat: markLngLat[1] }
+        : null;
+      const container = buildSeamarkPopoverContent(
+        props,
+        t,
+        markPoint ?? { lon: e.lngLat.lng, lat: e.lngLat.lat },
+        markPoint ? onAddWaypointRef.current : undefined,
+      );
       // #232 item 4: anchor at the picked feature's own coordinates only when
       // the priority pick differs from the topmost (overlap-mismatch) feature
       // — the ordinary, non-overlapping case keeps the tap-point anchor

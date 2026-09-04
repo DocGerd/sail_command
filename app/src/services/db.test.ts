@@ -8,7 +8,11 @@ import {
   deletePlan,
   saveSettings,
   loadSettings,
+  saveWaypoint,
+  listWaypoints,
+  deleteWaypoint,
   __resetDbForTests,
+  type SavedWaypoint,
 } from './db';
 import type { Plan, Settings, WindGrid } from '../types';
 import { defaultBoatSnapshot } from '../types';
@@ -806,7 +810,12 @@ describe('#54 lazy plan migration at the read boundary', () => {
   // so nothing routed through them can tell a written-back record from a
   // freshly-migrated one.
   async function rawStored(id: string): Promise<Record<string, unknown> | undefined> {
-    const conn = await openDB('sailcommand', 1);
+    // #848: no version pinned — this helper only reads the `plans` store as
+    // it actually sits, and hardcoding version 1 here throws a VersionError
+    // the moment db.ts's own DB_VERSION moves past it (as #848's migration
+    // did, 1 -> 2). Omitting the version opens at whatever version the
+    // database is already at, with no upgrade handler and no upgrade fired.
+    const conn = await openDB('sailcommand');
     try {
       return (await conn.get('plans', id)) as Record<string, unknown> | undefined;
     } finally {
@@ -1089,5 +1098,183 @@ describe('#54 lazy plan migration at the read boundary', () => {
         createdAtMs: 1000,
       },
     ]);
+  });
+});
+
+// #848 design spec §2.3 — THE BLOCKER this design exists to prevent:
+// IndexedDB's `upgrade()` handler runs only when the requested version
+// EXCEEDS the version already stored in the browser. Every existing install
+// is already at version 1, so a naive "add the store inside the same
+// version-1 body" change would create the `waypoints` store for FRESH
+// installs only — an existing user's browser would never run the handler
+// again, and saving a waypoint would fail at runtime. A test that only ever
+// opens a fresh (version-2) database cannot see this defect at all: it has
+// to open a REAL version-1 database first, close it, and only THEN reopen
+// through this module's own `db()` to exercise the `oldVersion` branching.
+describe('#848: v1 -> v2 migration adds the waypoints store additively', () => {
+  beforeEach(async () => {
+    await __resetDbForTests();
+  });
+
+  it('an existing v1 database (plans + settings, no waypoints store) upgrades cleanly through db(), and pre-existing data survives untouched', async () => {
+    // Simulate an existing install already at version 1 — this app's real
+    // pre-#848 schema (services/db.ts's own DB_VERSION comment), built here
+    // from raw `openDB` rather than through this module, so it is
+    // independent of whatever DB_VERSION the module under test declares.
+    const v1 = await openDB('sailcommand', 1, {
+      upgrade(d) {
+        const plans = d.createObjectStore('plans', { keyPath: 'id' });
+        plans.createIndex('by-createdAt', 'createdAtMs');
+        d.createObjectStore('settings');
+      },
+    });
+    expect(v1.objectStoreNames.contains('waypoints')).toBe(false);
+
+    const preExistingSettings: Settings = {
+      safetyDepthM: 3.0,
+      depthComfortMarginM: 2.0,
+      motorSpeedKn: 6.5,
+      motorThresholdKn: 2.5,
+      sailPreferenceKn: 2.8,
+      maneuverPenaltyS: 45,
+      performanceFactor: 0.9,
+      motorEnabled: true,
+      showOwnship: false,
+    };
+    await v1.put('settings', preExistingSettings, 'user');
+    // Close BEFORE any of this module's own db() calls — IndexedDB blocks a
+    // version-upgrading open while an older-version connection is still
+    // live, so a live v1 handle here would make the upgrade below hang
+    // rather than exercise it.
+    v1.close();
+
+    // This module's own db() (services/db.ts) now reopens at its real
+    // DB_VERSION. If it were still 1, or if it recreated `plans`/`settings`
+    // unconditionally instead of gating on `oldVersion`, this call — or the
+    // pre-existing-settings assertion below — would fail.
+    const w: SavedWaypoint = {
+      id: 'wp-migration-1',
+      name: 'Ankerplatz',
+      lat: 54.79,
+      lon: 9.91,
+      createdAtMs: 1000,
+    };
+    await saveWaypoint(w);
+    const list = await listWaypoints();
+    expect(list).toEqual([w]);
+
+    // The oldVersion<1 block must have been SKIPPED (not merely idempotent)
+    // — a re-run of `d.createObjectStore('settings')` on an upgrade where
+    // the store already exists throws, so getting here at all already rules
+    // that branch out; this asserts the pre-existing DATA also survived.
+    const settingsAfter = await loadSettings();
+    expect(settingsAfter).toEqual(preExistingSettings);
+  });
+});
+
+describe('#848: saved-waypoint persistence (services/db.ts)', () => {
+  beforeEach(async () => {
+    await __resetDbForTests();
+  });
+
+  it('save -> list -> delete roundtrip', async () => {
+    const a: SavedWaypoint = {
+      id: 'wp-a',
+      name: 'Home pier',
+      lat: 54.8,
+      lon: 9.9,
+      createdAtMs: 1000,
+    };
+    const b: SavedWaypoint = {
+      id: 'wp-b',
+      name: 'Kalkgrund',
+      lat: 54.85,
+      lon: 10.0,
+      createdAtMs: 2000,
+    };
+    await saveWaypoint(a);
+    await saveWaypoint(b);
+
+    // Newest first, matching listPlans' ordering.
+    expect(await listWaypoints()).toEqual([b, a]);
+
+    await deleteWaypoint('wp-a');
+    expect(await listWaypoints()).toEqual([b]);
+  });
+
+  it('savePlan and saveWaypoint do not collide — separate stores', async () => {
+    const plan: Plan = {
+      id: 'shared-id',
+      name: 'A Plan',
+      createdAtMs: 1,
+      schemaVersion: PLAN_SCHEMA_VERSION,
+      request: {
+        origin: { lat: 54.3, lon: 9.4 },
+        destination: { lat: 55.0, lon: 10.0 },
+        viaPoints: [],
+        originHarborId: null,
+        destinationHarborId: null,
+        departureMs: 1,
+        settings: {
+          safetyDepthM: 3.0,
+          depthComfortMarginM: 2.0,
+          motorSpeedKn: 6.5,
+          motorThresholdKn: 2.5,
+          sailPreferenceKn: 2.8,
+          maneuverPenaltyS: 45,
+          performanceFactor: 0.9,
+          motorEnabled: true,
+          showOwnship: false,
+        },
+        sailIds: ['genoa'],
+        boat: defaultBoatSnapshot(),
+      },
+      windGrid: {
+        lats: [],
+        lons: [],
+        timesMs: [],
+        speedKn: new Float32Array(),
+        dirFromDeg: new Float32Array(),
+        gustKn: new Float32Array(),
+        fetchedAtMs: 1,
+        model: 'open-meteo',
+      },
+      result: {
+        status: 'ok',
+        sails: [
+          {
+            sailId: 'genoa',
+            result: {
+              sailId: 'genoa',
+              legs: [],
+              etaMs: 2,
+              durationMs: 1,
+              distanceNm: 1,
+              maneuverCount: 0,
+              motorDistanceNm: 0,
+            },
+            reason: null,
+          },
+        ],
+        recommended: 'genoa',
+        comparisonComplete: true,
+        snappedOrigin: { lat: 54.3, lon: 9.4 },
+        snappedDestination: { lat: 55.0, lon: 10.0 },
+      },
+    };
+    const waypoint: SavedWaypoint = {
+      id: 'shared-id',
+      name: 'A Waypoint',
+      lat: 1,
+      lon: 2,
+      createdAtMs: 1,
+    };
+    await savePlan(plan);
+    await saveWaypoint(waypoint);
+
+    const loadedPlan = await getPlan('shared-id');
+    expect(loadedPlan?.name).toBe('A Plan');
+    const loadedWaypoints = await listWaypoints();
+    expect(loadedWaypoints).toEqual([waypoint]);
   });
 });

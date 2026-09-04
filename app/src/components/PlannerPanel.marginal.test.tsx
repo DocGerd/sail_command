@@ -13,6 +13,16 @@
 // component MOUNTS. RouteSummary.exposure.test.tsx proves the notice renders;
 // this file proves PlannerPanel's own call site reaches it — the two call
 // sites are what could drift, and a shared-component test cannot see that.
+//
+// #848 review fix (Minor): PlannerPanel now unconditionally mounts
+// SavedWaypoints, which reads the real 'waypoints' IndexedDB store on
+// mount. jsdom has no IndexedDB implementation at all, so without this the
+// store read rejects and every test here silently console.errors. A global
+// setup.ts registration was tried first and reverted — `sweep-closure`'s
+// `closure.mjs diff` flips to OWED the moment setup.ts changes at all,
+// because `app/sweep/vitest.config.ts` loads it as a setupFile; a per-file
+// import here keeps the sweep verdict untouched.
+import 'fake-indexeddb/auto';
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { I18nProvider } from '../i18n';
@@ -177,6 +187,7 @@ async function renderPanelWithPlan() {
         // just satisfying the two new required props.
         onAddVia={vi.fn()}
         onUpdateVia={vi.fn()}
+        onSelectSavedWaypoint={vi.fn()}
         departureMs={DEPARTURE_MS}
         onDepartureChange={vi.fn()}
         settings={DEFAULT_SETTINGS}

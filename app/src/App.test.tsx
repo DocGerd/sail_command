@@ -60,12 +60,24 @@ const mapTestHooks = vi.hoisted(() => ({
   // without a real map, to drive the project-gate map-error banner.
   errorHandler: null as ((e: { error: unknown }) => void) | null,
   // LAYER-scoped click handlers (`map.on('click', layerId, cb)` — DataLayers'
-  // harbor markers), keyed by layer id. Kept apart from clickHandler above:
-  // the 3-arg registration must never clobber MapView's generic 2-arg one.
+  // harbor markers AND, since #845, its seamark-popover click handler, which
+  // additionally reads `e.lngLat` and a feature's `geometry`), keyed by layer
+  // id. Kept apart from clickHandler above: the 3-arg registration must
+  // never clobber MapView's generic 2-arg one.
   layerClickHandlers: {} as Record<
     string,
-    (e: { features?: { properties?: Record<string, unknown> }[] }) => void
+    (e: {
+      features?: {
+        properties?: Record<string, unknown>;
+        geometry?: { type: string; coordinates: [number, number] };
+      }[];
+      lngLat?: { lat: number; lng: number };
+    }) => void
   >,
+  // #845: the DOM content most recently handed to a Popup's setDOMContent —
+  // lets a test reach into the seamark popover (the add-waypoint button in
+  // particular) without a real MapLibre Popup/DOM overlay.
+  lastPopupContent: null as HTMLElement | null,
   // Harbor features MapView's gate should report at a given click point,
   // keyed by "x,y" — i.e. where a marker is rendered. Lets a test place a
   // marker under a specific tap so the generic-tap gate (queryRenderedFeatures)
@@ -374,14 +386,16 @@ vi.mock('maplibre-gl', () => {
     }
   }
   // #7: DataLayers opens a seamark info popover via `new Popup()` on a
-  // sc-seamarks click — no test here drives that click path (covered by the
-  // real-browser verify pass), but the stub keeps the module import itself
-  // from throwing if that ever changes.
+  // sc-seamarks click. #845's integration test drives that click path (the
+  // add-waypoint button specifically) via mapTestHooks.lastPopupContent;
+  // most tests still don't exercise it (covered by the real-browser verify
+  // pass), and the stub keeps the module import itself from throwing.
   class FakePopup {
     setLngLat() {
       return this;
     }
-    setDOMContent() {
+    setDOMContent(el: HTMLElement) {
+      mapTestHooks.lastPopupContent = el;
       return this;
     }
     addTo() {
@@ -602,6 +616,7 @@ beforeEach(async () => {
   for (const key of Object.keys(mapTestHooks.harborHitFeatures))
     delete mapTestHooks.harborHitFeatures[key];
   for (const key of Object.keys(mapTestHooks.sourceSetData)) delete mapTestHooks.sourceSetData[key];
+  mapTestHooks.lastPopupContent = null;
   depthProfileProps.last = null;
 });
 
@@ -1429,6 +1444,86 @@ describe('#829: keyboard-reachable via-point coordinate entry (App wiring)', () 
     expect(items).toHaveLength(2); // still exactly two — no point appended or dropped
     expect(items[0]).toHaveTextContent('54.600°N 9.900°E'); // index 0 moved
     expect(items[1]).toHaveTextContent('54.900°N 10.200°E'); // index 1 untouched
+  });
+});
+
+// #845: "add as waypoint" from the seamark popover, driven end to end through
+// the REAL DataLayers component (never mocked) via the sc-seamarks
+// layer-scoped click handler mapTestHooks.layerClickHandlers exposes, and
+// the REAL PlannerPanel via list. This is the "App row" mutation check for
+// App.tsx's handleAddViaFromSeamark: deleting either its name-propagation or
+// its nearestViaInsertIndex call reds one of the two tests below — neither
+// seamarkPopupDom.test.ts nor viaInsertion.test.ts can see App.tsx's own
+// wiring of the two together.
+async function simulateSeamarkClick(feature: {
+  properties: Record<string, unknown>;
+  geometry: { type: string; coordinates: [number, number] };
+}) {
+  await waitFor(() => expect(mapTestHooks.layerClickHandlers['sc-seamarks']).toBeTruthy());
+  act(() => {
+    mapTestHooks.layerClickHandlers['sc-seamarks']?.({
+      features: [feature],
+      lngLat: { lat: feature.geometry.coordinates[1], lng: feature.geometry.coordinates[0] },
+    });
+  });
+}
+
+const CARDINAL_NEAR_ORIGIN = {
+  properties: { seamarkType: 'buoy_cardinal', category: 'north' },
+  geometry: { type: 'Point', coordinates: [9.5, 54.8] as [number, number] }, // near ORIGIN_A
+};
+
+describe('#845: seamark "add as waypoint" (App wiring)', () => {
+  it("a picked seamark's translated name reaches the via list — not its coordinates", async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    pickOriginAndDestination();
+
+    await simulateSeamarkClick(CARDINAL_NEAR_ORIGIN);
+    const addButton = within(mapTestHooks.lastPopupContent!).getByRole('button', {
+      name: de['seamark.popover.addWaypoint'],
+    });
+    fireEvent.click(addButton);
+
+    const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
+    const items = within(viaSection).getAllByRole('listitem');
+    expect(items).toHaveLength(1);
+    // The buoy's translated TYPE label ("Kardinaltonne"), never a raw
+    // formatLatLon coordinate string (which every OTHER via-add path renders
+    // for an unnamed point — see the #829 tests above).
+    expect(items[0]).toHaveTextContent(de['seamark.value.type.buoy_cardinal']);
+    expect(items[0]).not.toHaveTextContent('54.800°N 9.500°E');
+  });
+
+  it('inserts at the NEAREST point along the route, not appended after an existing via point (§2.6)', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    pickOriginAndDestination(); // ORIGIN_A {54.79, 9.43} -> DEST_A {54.85, 10.35}
+
+    // Place one via point hugging the DESTINATION end via the #829
+    // coordinate-entry row.
+    const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
+    const latInput = within(viaSection).getByLabelText(de['planner.via.coord.latLabel']);
+    const lonInput = within(viaSection).getByLabelText(de['planner.via.coord.lonLabel']);
+    fireEvent.change(latInput, { target: { value: '54.84' } });
+    fireEvent.blur(latInput);
+    fireEvent.change(lonInput, { target: { value: '10.3' } });
+    fireEvent.blur(lonInput);
+    fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.coord.add'] }));
+    expect(within(viaSection).getAllByRole('listitem')).toHaveLength(1);
+
+    // Now add a cardinal buoy hugging the ORIGIN end — nearest to the
+    // origin->via1 segment, so it must land BEFORE via1, not after it.
+    await simulateSeamarkClick(CARDINAL_NEAR_ORIGIN);
+    const addButton = within(mapTestHooks.lastPopupContent!).getByRole('button', {
+      name: de['seamark.popover.addWaypoint'],
+    });
+    fireEvent.click(addButton);
+
+    const items = within(viaSection).getAllByRole('listitem');
+    expect(items).toHaveLength(2);
+    expect(items[0]).toHaveTextContent(de['seamark.value.type.buoy_cardinal']); // inserted FIRST
+    expect(items[1]).toHaveTextContent('54.840°N 10.300°E'); // the pre-existing via, unmoved in content
   });
 });
 

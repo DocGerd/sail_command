@@ -1,3 +1,4 @@
+import { classifySeamark } from './seamarkGlyphs';
 import type { MsgKey } from '../i18n/dict.de';
 import type { SeamarkProperties } from '../types';
 
@@ -184,4 +185,35 @@ export function seamarkPopoverRows(props: SeamarkProperties): SeamarkPopoverRow[
     });
   }
   return rows;
+}
+
+// #845: the curated subset design spec §2.5 admits as route waypoints —
+// cardinals, laterals and isolated-danger marks only. Special-purpose marks
+// and minor/major lights are excluded deliberately: they are numerous and
+// make poor waypoints, and offering them would cost collision-list noise for
+// no navigational value (spec's own wording). Reuses classifySeamark's
+// existing family classification (seamarkGlyphs.ts) rather than
+// re-enumerating seamark:type suffixes here, so this stays correct if that
+// classification ever widens.
+const WAYPOINT_ELIGIBLE_FAMILIES = new Set(['cardinal', 'lateral', 'isolatedDanger']);
+
+export function isWaypointEligibleSeamark(props: SeamarkProperties): boolean {
+  return WAYPOINT_ELIGIBLE_FAMILIES.has(classifySeamark(props.seamarkType));
+}
+
+/**
+ * The name a seamark-sourced waypoint is pre-filled with (design spec §2.4:
+ * "the name is pre-filled from the seamark's identity"). There is no OSM
+ * `name`/`ref` tag in the shipped seamarks.json (the pipeline never extracts
+ * one), so "identity" here is the mark's translated TYPE label — the same
+ * text seamarkPopoverRows()'s first row renders (e.g. "Cardinal buoy" /
+ * "Kardinaltonne"). Deliberately NOT composed with the category (e.g.
+ * "North") — that would need a second, per-language word-order decision
+ * (dict.de.ts orders adjective-then-noun the same as English for these two
+ * tokens, but nothing pins that this stays true for every category), and the
+ * type alone is already reachable, renamable text via #846's rename UI.
+ */
+export function seamarkWaypointName(props: SeamarkProperties, t: SeamarkPopoverTranslate): string {
+  const [typeRow] = seamarkPopoverRows(props);
+  return typeRow ? resolveSeamarkPopoverValue(typeRow, t) : '';
 }

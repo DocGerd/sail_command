@@ -1,11 +1,17 @@
+// #848: SavedWaypoints (mounted unconditionally by this panel now) reads
+// the real 'waypoints' IndexedDB store on mount — needed for the wiring
+// describe block at the bottom of this file. Placed first per every other
+// file in this repo that touches services/db.ts.
+import 'fake-indexeddb/auto';
 import { render, screen, fireEvent, within, cleanup, waitFor } from '@testing-library/react';
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { useState } from 'react';
 import { I18nProvider } from '../i18n';
 import { en } from '../i18n/dict.en';
 import { formatTime, toLocalInputValue } from '../lib/format';
 import { MAX_GPX_FILE_BYTES } from '../lib/gpx';
 import { FORECAST_DAYS } from '../services/openMeteo';
+import { saveWaypoint, __resetDbForTests } from '../services/db';
 import { uniformWindGrid } from '../test/fixtures';
 import {
   DEFAULT_SETTINGS,
@@ -273,6 +279,10 @@ function baseProps(overrides: Overrides = {}) {
     onReorderVia: vi.fn(),
     onAddVia: vi.fn(),
     onUpdateVia: vi.fn(),
+    // #848: this file doesn't exercise the saved-waypoint picker directly —
+    // SavedWaypoints.test.tsx does — just needs the required callback prop
+    // satisfied like every other mock here.
+    onSelectSavedWaypoint: vi.fn(),
     departureMs: DEPARTURE_MS,
     onDepartureChange: vi.fn(),
     settings: DEFAULT_SETTINGS,
@@ -937,6 +947,22 @@ describe('PlannerPanel', () => {
       const items = within(viaSection).getAllByRole('listitem');
       expect(items).toHaveLength(2);
       expect(items[0]).toHaveTextContent('54.800°N 9.900°E');
+      expect(items[1]).toHaveTextContent('54.820°N 9.950°E');
+    });
+
+    // #846 review Major: neither branch of `{v.name ?? formatLatLon(v)}`
+    // (PlannerPanel.tsx) had coverage — reverting that fallback to a bare
+    // `{formatLatLon(v)}` left this file 102/102 green. Both branches in
+    // ONE test: a named via point shows its name and NOT the coordinate
+    // string; an unnamed sibling still shows the coordinate string.
+    it("shows a named via point's name instead of its coordinates, and an unnamed one still shows the coordinate label", () => {
+      const NAMED = { lat: 54.8, lon: 9.9, name: 'Kalkgrund' };
+      renderPanel({ viaPoints: [NAMED, VIA_B] });
+      const viaSection = screen.getByRole('region', { name: 'Waypoints' });
+      const items = within(viaSection).getAllByRole('listitem');
+      expect(items).toHaveLength(2);
+      expect(items[0]).toHaveTextContent('Kalkgrund');
+      expect(items[0]).not.toHaveTextContent('54.800°N 9.900°E');
       expect(items[1]).toHaveTextContent('54.820°N 9.950°E');
     });
 
@@ -2015,5 +2041,44 @@ describe('GPX import — file-size DoS guard (#3 hardening)', () => {
 
     expect(await screen.findByText(en['planner.import.error.tooLarge'])).toBeInTheDocument();
     expect(textSpy).not.toHaveBeenCalled();
+  });
+});
+
+// #848: this describe block exists specifically to apply #940's lesson —
+// SavedWaypoints.test.tsx pins the picker's own behaviour, but renders it
+// directly and would stay green even if PlannerPanel never mounted it at
+// all. These tests render PlannerPanel ITSELF and would fail if the
+// `<Disclosure>`/`<SavedWaypoints>` render call were reverted.
+describe('#848: saved-waypoint picker wiring inside PlannerPanel', () => {
+  beforeEach(async () => {
+    await __resetDbForTests();
+  });
+
+  it('mounts the saved-waypoint picker as part of the panel', async () => {
+    renderPanel();
+    // The Disclosure summary is always in the DOM regardless of open/closed
+    // state (CLAUDE.md's `<details>` accessibility-tree note is about the
+    // COLLAPSED BODY, not the summary itself).
+    expect(screen.getByText('Saved waypoints')).toBeInTheDocument();
+  });
+
+  it('selecting a saved waypoint calls onSelectSavedWaypoint with a plain ViaPoint', async () => {
+    await saveWaypoint({
+      id: 'wp-1',
+      name: 'Kalkgrund',
+      lat: 54.85,
+      lon: 10.0,
+      createdAtMs: 1000,
+    });
+    const props = renderPanel();
+
+    const row = await screen.findByRole('button', { name: /Kalkgrund/ });
+    fireEvent.click(row);
+
+    expect(props.onSelectSavedWaypoint).toHaveBeenCalledWith({
+      lat: 54.85,
+      lon: 10.0,
+      name: 'Kalkgrund',
+    });
   });
 });
