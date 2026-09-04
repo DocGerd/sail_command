@@ -191,6 +191,19 @@ making design-level decisions; do not silently deviate.
   can now be DERIVED — `.claude/skills/sweep-closure/` (#729) walks it from the
   sweep's own roots. It over-reports against its modelled universe, and nothing
   in CI runs its selftest (#836), so treat OWED as authoritative and pay it.
+  **The walk runs OUTWARD from `ROOTS`** (`app/sweep/sweepArms.ts` and
+  `app/sweep/vitest.config.ts`): a file is IN the closure when the sweep
+  REACHES it, so what a file itself imports is irrelevant — a new module that
+  imports a closure member has NOT thereby joined the closure. An orchestrator
+  brief asserting the opposite was corrected by review on 2026-09-04; the
+  direction is easy to invert and sounds right either way.
+  Its `EXTRA_EDGES` maps `vitest.config.ts` → `app/src/test/setup.ts`, because
+  the `setupFiles` path is built by `path.resolve()` at runtime and no static
+  import scan can see it. Consequence worth knowing BEFORE reaching for the
+  tidier fix: registering a global test shim in `setup.ts` flips a verdict to
+  OWED (~90 min), where the same shim imported in the two test files that need
+  it costs nothing. Measured 2026-09-04 — the global form was tried, flipped
+  the verdict, and was reverted.
   A NOT-OWED is only as good as that hand-maintained universe: before
   accepting one, check whether the changed file is a RUNTIME input the
   import walk cannot see — a new data asset, arm file or pipeline generator
@@ -1389,6 +1402,8 @@ making design-level decisions; do not silently deviate.
   | v0.19.0 | 2026-09-02 | 83 s | read as `in_progress`/`null` in the same Bash call that pushed the tag (transcript-only; recorded by the v0.19.0 cut's own session and NOT re-read here — the session applying this row did not run that gate — what IS independently established is that the job ran 20:36:48Z→20:37:10Z, so any read in that 22 s window returned `in_progress`); conclusion `cancelled` at 20:37:10Z, its Pages object `6231355284` reaching `error` at the same second | **`smoke-probe` FAILED** | merge-push `33680204038` → tag `33680338582` on `786c32f1`. The tag run's `deploy` job AND its Pages object `6231383135` BOTH reached `success` (20:38:34Z / 20:38:35Z), yet its own entry chunk `assets/index-Culp-AWd.js` returned 404 on all ten probe attempts, 20:38:53Z → 20:43:23Z, the job failing 20:43:25Z (read off the `smoke-probe` job log, which prints `PROD_ENTRY: /sail_command/assets/index-Culp-AWd.js`; the uat half was never reached, prod being probed first). Back-merge `33683275499` then probed green. Per the v0.19.0 learnings file and NOT re-verified here: prod was serving the MERGE run's chunk `index-BmIaq_PY.js` at 20:44:12Z — one fact row 11 lacked, the served artifact positively IDENTIFIED. It still names NO mechanism: a no-op against an `error`-state deployment object, and an edge-cached `index.html` plus negative-cached 404s, both produce this end state. Record the measurements, never a cause. |
   | v0.20.0 | 2026-09-03 | 1735 s | `success` (MEASURED in the same Bash call that pushed the tag, and the failure CALLED IN ADVANCE from it) | **`smoke-probe` FAILED** | merge-push `33774574960` (created 15:46:00Z, `deploy: success`) → tag `33777477268` (created 16:14:55Z) on `286b280`. The tag run's `build` and `deploy` BOTH succeeded and only `smoke-probe` failed. Back-merge `33780148708` then probed green, and prod was positively identified as serving the clean tag afterwards: the live entry chunk `assets/index-CIpQmfDd.js` contains ``about.version`,{version:`v0.20.0`}`` with ZERO suffixed `vX.Y.Z-N-g<sha>` matches anywhere in it. Unlike rows 11 and 12 the PREDICTOR here was the durable answer — terminal `success`, which cannot un-succeed — not a volatile `in_progress`. That still names no MECHANISM: a same-SHA no-op and a propagation lag produce this end state alike, and this row does not distinguish them. Record the measurements, never a cause. |
 
+  | v0.21.0 | 2026-09-04 | 113 s | `success` (MEASURED immediately before the tag push, and the failure CALLED IN ADVANCE from it) | **`smoke-probe` FAILED** | merge-push `33879362519` (`deploy: success`) → tag `33879536590` on `dfc80ed`. The tag run's `build` and `deploy` both succeeded; only `smoke-probe` failed, and by the #398 signature specifically — its own prod entry chunk `assets/index-UPcmWly8.js` returned **404 on all 10 attempts over ~4m42s** while the basemap Range probes PASSED for both prod and uat, which is what rules out a CDN regression. The back-merge (`33882094279`, on the different SHA `d30507a3`) then probed green and republished **that same chunk name** — so the tag run's BUILD was correct all along and only its DEPLOYMENT no-opped, the one fact rows 11 and 12 could not establish. Prod afterwards served ``about.version`,{version:`v0.21.0`}`` with ZERO suffixed matches. Predictor was the durable `success`, as at v0.20.0. Still names no MECHANISM. |
+
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
   count instead of an ordinal. (v0.10.0–v0.11.0 carry no recorded Deploy
@@ -1902,6 +1917,14 @@ making design-level decisions; do not silently deviate.
 
 ## Verification lessons (hard-won)
 
+- **Playwright MCP misreports a STALE or malformed `browser_click` target as a
+  CSS-parse error** — `Unexpected token "" while parsing css selector ""`, never
+  "stale ref" or "not found". Two agents debugged the selector before realising
+  the snapshot had moved (2026-09-04); re-snapshot first. Related and separate:
+  `:has-text` is Playwright LOCATOR syntax, so inside a page-context
+  `document.querySelector` it throws `DOMException: Unknown pseudo-class
+  :has-text` (measured with a control — a plain selector on the same document
+  resolves).
 - A MapLibre-rendered map feature has NO DOM node, so an MCP `browser_click`
   or locator aimed at one fails with a CSS-selector parse error rather than
   clicking (measured 2026-08-19 verifying #492's depth hatching). Verify
@@ -2932,6 +2955,21 @@ making design-level decisions; do not silently deviate.
   stayed a SILENT ALLOW (five more shapes too). Ask BOTH "can this assertion
   fail?" and "what else in this defect's class does it not see?" — only a
   SIBLING-SHAPE ENUMERATION answers the second.
+- **vitest's DEFAULT reporter suppresses console output from PASSING tests**, so
+  a console-spy check run on a green suite is a FALSE NEGATIVE. Measured
+  2026-09-04 with a control: a passing test logging a unique marker printed it
+  **0** times under the default reporter and **1** under `--reporter=verbose`.
+  An agent's own first "no console errors" check this session was wrong for
+  exactly this reason, and it caught itself only on a second pass.
+- **A guard can cover the A11Y surface while the VISUAL surface is the gap.**
+  #846's `ViaMarkers` guard asserted the marker's `aria-label` and
+  mutation-checked correctly (reverting `p.name ??` reds it) — but
+  `ViaMarkers.tsx` sets ONLY `aria-label`: no text content, no `title`. A
+  screen-reader user heard the name; a sighted user saw an unlabelled dot.
+  Every gate passed. Found by maintainer UAT (#947, 2026-09-04), and it had
+  already turned a CHANGELOG entry into an over-claim — corrected hours before
+  that section froze at the tag. The repo's "guard the rendering, not the data"
+  rule lands one level deeper here: ask WHICH rendering surface the guard reads.
 - **A guard with an APERTURE needs something testing the aperture itself.**
   #524's placeholder-parity guard extracted `/\{([a-zA-Z]+)\}/g` while `t()`'s
   `vars` accepts a broader `Record`, so tokens outside that aperture were
@@ -3873,6 +3911,20 @@ making design-level decisions; do not silently deviate.
   values" is necessary but NOT sufficient — whether the effect's OWN component
   owns the ref (safe) or reads a sibling's (unsafe, ordering-dependent)
   decides which hook is correct.
+- **`git checkout -- <path>` is DENIED; `git restore <path>` is allowed and does
+  the same job.** Only the VERB is blocked — the restore itself (typically the
+  `pree2e`-dirtied wind fixture) is routine churn this file already calls
+  expected. FOUR agents hit the denial and found `git restore` independently in
+  one session (2026-09-04), so the rediscovery cost is real and repeated.
+  **NOT the destructive-git guard** — that hook contains zero `checkout` logic
+  (it matches `push --force`/`-f`, `reset --hard`, `clean -f`). The denial is a
+  declarative `deny` entry in the PERSONAL global `~/.claude/settings.json`
+  (`Bash(git checkout *)` and two narrower siblings), so it is a permission
+  match rather than a hook, it is unversioned and per-machine, and a
+  contributor's checkout has none of it. Recorded because the first draft of
+  this bullet named the hook: the BEHAVIOUR was right and the ATTRIBUTION would
+  have sent the next reader to the wrong file — the CITATION HALO class this
+  file warns about, caught in review of the very PR that added it.
 - The destructive-git guard pattern-matches `-f` anywhere in a compound command:
   never combine `gh api -f …` with `git push` in one Bash call — split them.
   MEASURED 2026-08-28, a NEW trigger for the same whole-JSON-as-haystack class:
@@ -4027,6 +4079,21 @@ making design-level decisions; do not silently deviate.
   PR head is not enough — the merged tree is a THIRD artifact neither parent
   tested. This is the SIBLING-MERGE invalidation bullet (Verification lessons)
   meeting this one; read them together.
+- **A constraint in a BRIEF is a fact about a MOMENT, not about a file —
+  re-derive the collision map at every dispatch.** "Avoid `app.css`" was correct
+  when written (PR #934 owned it) and STALE by the time #848 was briefed,
+  because #934 had merged in between. The implementer complied faithfully and
+  shipped a picker with ZERO CSS — disc bullets, name and coordinate running
+  together — which passed typecheck, lint and 238 tests, because none of those
+  observe styling. Caught only by a reviewer reading RESOLVED style in a browser
+  (2026-09-04). The implementer could not have known: from inside its worktree
+  the constraint is just an instruction, and the PR that motivated it is
+  invisible.
+- Re-measured 2026-09-04 (v0.21.0 cycle): **THREE** distinct agents stalled on a
+  backgrounded run that was not running, each recovered by one nudge. A FOURTH
+  was frozen ~9 h by SESSION SUSPENSION — the same appearance, a DIFFERENT
+  mechanism, and its work was intact. Do not merge the two counts, and do not
+  read a long-silent agent as necessarily stalled.
 - Agent stall patterns (session 7, 6/6 recoveries): an implementer that stops
   "waiting on an armed watcher/monitor" while its notification shows NO live
   background children is asleep forever — nudge it to check the result in the
@@ -4192,6 +4259,10 @@ making design-level decisions; do not silently deviate.
   `npm --prefix app run typecheck` and BLOCKS on exit 2 — including on
   PRE-EXISTING errors elsewhere in the tree, which is a confusing way to
   discover someone else's broken branch.
+- **`gh api` rejects `--repo`/`-R`** — `unknown flag: --repo`, unlike `gh pr`
+  and `gh issue`, which both take it. The repo belongs in the endpoint path.
+  Measured 2026-09-04 with a control: the same call minus the flag returned the
+  value. Four agents wrote it out of habit from the `gh pr` form.
 - **`gh api --jq` does NOT accept `--arg`** (fails `accepts 1 arg(s), received
   4`). Pipe instead: `gh api URL | jq -r --arg p "$p" '…'`. Caught only by
   foreground-testing a poll body before arming a Monitor — armed as written it

@@ -180,6 +180,10 @@ async function renderPanelWithPlan() {
         onPickDestination={vi.fn()}
         onImportRoute={vi.fn()}
         onRequestMapTap={vi.fn()}
+        // #844: this file doesn't exercise the in-place cancel toggle, just
+        // satisfying the two new required props.
+        tapTarget={null}
+        onCancelTapPick={vi.fn()}
         viaPoints={[]}
         onRemoveVia={vi.fn()}
         onReorderVia={vi.fn()}

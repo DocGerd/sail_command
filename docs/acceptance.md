@@ -272,7 +272,13 @@ selected in §1.
       MOTOR legs carry no reef chip at all; that is deliberate, not a
       missing value. The band may change along the route as the wind
       does; a single band across the whole route is not a defect when the
-      wind is steady.
+      wind is steady. A band change is now damped leg to leg (#946): a
+      marginal apparent-wind crossing that would flip the band and flip
+      right back does not change what is shown, while a genuine, sustained
+      shift still moves it, including across more than one band in a
+      single step. This is display-only — it changes what the chip says,
+      never the route: the ETA, distance, and rig verdict are unaffected,
+      and the router still does not price a reef change as a manoeuvre.
       Expect the suggestion to be advisory only: it is computed from
       apparent wind at display time and the route itself is unchanged, so
       it never alters the ETA, the distance, or which rig is starred. The

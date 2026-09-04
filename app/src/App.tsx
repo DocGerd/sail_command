@@ -1548,6 +1548,8 @@ function AppShell() {
                   onPickDestination={handlePickDestination}
                   onImportRoute={handleImportRoute}
                   onRequestMapTap={handleRequestMapTap}
+                  tapTarget={tapTarget}
+                  onCancelTapPick={handleCancelTapPick}
                   viaPoints={viaPoints}
                   onRemoveVia={handleRemoveVia}
                   onReorderVia={handleReorderVia}
@@ -1573,8 +1575,13 @@ function AppShell() {
                 {/* #356 part (a): "Compare departure times" — its own card
                     below the main planner form, gated internally on `plan`
                     (renders nothing before a first plan exists). Reuses the
-                    same shared worker singleton via `ensureClient`. */}
-                <DepartureCompare plan={plan} ensureClient={ensureClient} />
+                    same shared worker singleton via `ensureClient`.
+                    #937 (part c): `onConfirmed` is `setPlan` itself — a
+                    confirmed window's two-rig solve becomes the active plan
+                    unconditionally on success, the same precedent
+                    handleLiveReroute follows for its own `setPlan(rerouted)`
+                    call above. */}
+                <DepartureCompare plan={plan} ensureClient={ensureClient} onConfirmed={setPlan} />
                 {/* #830: portal target for SeamarksInView (mounted inside MapView
                   above). Below the planner form, so the form's own CTA keeps
                   its position and the list costs panel scroll depth only

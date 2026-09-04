@@ -921,6 +921,50 @@ describe('RouteSummary', () => {
     ).not.toBeInTheDocument();
   });
 
+  // #946: THIS is the test that actually pins the wiring, not just the
+  // library. `reefSuggestion.test.ts`'s own hysteresis tests call
+  // `reefSuggestionsForLegs` directly and would all stay green even if
+  // RouteSummary.tsx's ReefChip call site had never been updated to use it
+  // — exactly the #463 structural-vacuity class this repo documents (a real
+  // deliverable, every behavioural guard green, the fix effectively absent
+  // from what a user sees). This renders the identical [17.5, 18.5, 17.4,
+  // 18.6] AWS sequence reefSuggestion.test.ts's "MUTATION CHECK" test uses
+  // (TWA=0/BS=0 via `makeReefBandLeg(twsKn, 0)`, so AWS = TWS exactly) and
+  // asserts on what actually reaches the DOM.
+  it('#946: a marginal AWS oscillation across consecutive legs renders the SAME band on every row (churn suppressed)', () => {
+    const plan = makePlan();
+    const legs = [17.5, 18.5, 17.4, 18.6].map((twsKn) => makeReefBandLeg(twsKn, 0));
+    setSail(plan, 'genoa', { result: { ...GENOA_RESULT, legs } });
+    const { container } = renderSummary({ plan, rig: 'genoa' });
+    const rows = container.querySelectorAll('table.route-legs tbody tr');
+    expect(rows).toHaveLength(4);
+    const bandOf = (rowIndex: number) =>
+      rows[rowIndex]?.querySelectorAll('td')[3]?.querySelector('.chip-reef')?.textContent;
+    // Unwired (ReefChip calling `reefSuggestionForLeg(leg)` per-row, no
+    // route context), this exact sequence renders
+    // ['1st reef','2nd reef','1st reef','2nd reef'] — each leg banded in
+    // isolation flips independently of its neighbours. See the mutation
+    // check below, which reproduces that shape directly.
+    expect([bandOf(0), bandOf(1), bandOf(2), bandOf(3)]).toEqual([
+      '1st reef',
+      '1st reef',
+      '1st reef',
+      '1st reef',
+    ]);
+  });
+
+  it('#946: a genuine sustained wind change still moves the rendered band (does not freeze)', () => {
+    const plan = makePlan();
+    const legs = [17, 25].map((twsKn) => makeReefBandLeg(twsKn, 0));
+    setSail(plan, 'genoa', { result: { ...GENOA_RESULT, legs } });
+    const { container } = renderSummary({ plan, rig: 'genoa' });
+    const rows = container.querySelectorAll('table.route-legs tbody tr');
+    const bandOf = (rowIndex: number) =>
+      rows[rowIndex]?.querySelectorAll('td')[3]?.querySelector('.chip-reef')?.textContent;
+    expect(bandOf(0)).toBe('1st reef');
+    expect(bandOf(1)).toBe('3rd reef');
+  });
+
   it('shows a stale-forecast warning when departure is more than 12h after the forecast fetch', () => {
     const plan = makePlan({ departureMs: FETCHED_AT_MS + 12 * 3_600_000 + 1 });
     renderSummary({ plan });

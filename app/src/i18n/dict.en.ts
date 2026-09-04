@@ -101,9 +101,14 @@ export const en = {
   'planner.origin.label': 'Origin',
   'planner.destination.label': 'Destination',
   'planner.pickOnMap': 'Pick on map',
+  // #844: see dict.de.ts's matching comment — the same button, toggled to
+  // this once its own target is armed.
+  'planner.pickOnMap.cancel': 'Cancel picking on map',
   'planner.change': 'Change',
   'planner.via.label': 'Waypoints',
   'planner.via.add': 'Add waypoint',
+  // #844: see dict.de.ts's matching comment.
+  'planner.via.add.cancel': 'Cancel adding waypoint',
   'planner.via.remove': 'Remove waypoint {index}',
   'planner.via.moveUp': 'Move waypoint {index} up',
   'planner.via.moveDown': 'Move waypoint {index} down',
@@ -986,4 +991,14 @@ export const en = {
   'departureScan.status.cancelled': 'Cancelled — {count} windows scanned.',
   'departureScan.candidate.ok':
     'Arrival {eta} · duration {duration} · {distance} · {motorPct}% motor',
+  // #936 (part b): see dict.de.ts's matching comment.
+  'departureScan.card.rank.fastest': 'Fastest',
+  'departureScan.card.rank.nth': '#{rank}',
+  'departureScan.card.wind': 'Bft {force} · {heading}',
+  // #937 (part c): see dict.de.ts's matching comment.
+  'departureScan.confirm.action': 'Use this departure',
+  'departureScan.confirm.confirming': 'Running the full two-rig solve …',
+  'departureScan.confirm.done': 'Plan updated.',
+  'departureScan.confirm.done.disagreement':
+    'Plan updated — the full solve favours {rig} here, not the genoa this window was ranked by.',
 } satisfies Record<MsgKey, string>;

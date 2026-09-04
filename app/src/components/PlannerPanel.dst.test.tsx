@@ -49,6 +49,8 @@ interface Overrides {
   onPickOrigin?: (p: PickedPoint) => void;
   onPickDestination?: (p: PickedPoint) => void;
   onRequestMapTap?: (target: TapTarget) => void;
+  tapTarget?: TapTarget | null;
+  onCancelTapPick?: () => void;
   onDepartureChange?: (ms: number) => void;
   onSettingsChange?: (s: typeof DEFAULT_SETTINGS) => void;
   canPlan?: boolean;
@@ -68,6 +70,10 @@ function renderPanel(overrides: Overrides = {}) {
     onPickDestination: vi.fn(),
     onImportRoute: vi.fn(),
     onRequestMapTap: vi.fn(),
+    // #844: this file doesn't exercise the in-place cancel toggle, just
+    // needs the two new required props satisfied like every other mock here.
+    tapTarget: null as TapTarget | null,
+    onCancelTapPick: vi.fn(),
     viaPoints: [],
     onRemoveVia: vi.fn(),
     onReorderVia: vi.fn(),

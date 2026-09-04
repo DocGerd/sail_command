@@ -104,9 +104,22 @@ export const de = {
   'planner.origin.label': 'Start',
   'planner.destination.label': 'Ziel',
   'planner.pickOnMap': 'Auf Karte wählen',
+  // #844: the SAME "Auf Karte wählen"/"Pick on map" button toggles into
+  // this once ITS OWN target is armed — an in-place cancel affordance right
+  // where the user just pressed (the top-of-panel Banner + Escape path
+  // still works unchanged; this duplicates it rather than replacing it).
+  // Deliberately its OWN string, not 'banner.tapPick.cancel' reused
+  // verbatim — that plain "Abbrechen"/"Cancel" collides (identical
+  // accessible name) with the banner's own dismiss button once armed, and
+  // WCAG 2.5.3 requires the accessible name to contain the visible text, so
+  // a distinct, self-describing string is required either way.
+  'planner.pickOnMap.cancel': 'Auf Karte wählen abbrechen',
   'planner.change': 'Ändern',
   'planner.via.label': 'Wegpunkte',
   'planner.via.add': 'Wegpunkt hinzufügen',
+  // #844: see the matching comment on planner.pickOnMap.cancel above — the
+  // via section's own in-place cancel toggle.
+  'planner.via.add.cancel': 'Wegpunkt hinzufügen abbrechen',
   'planner.via.remove': 'Wegpunkt {index} entfernen',
   'planner.via.moveUp': 'Wegpunkt {index} nach oben verschieben',
   'planner.via.moveDown': 'Wegpunkt {index} nach unten verschieben',
@@ -968,10 +981,9 @@ export const de = {
   'map.scale.unit.m.other': 'Meter',
   // #356 part (a): departure-time comparison — an explicit, bounded,
   // cancellable scan over a few departure windows around the active plan's
-  // own departure time, rendered as a plain list (design spec §2.4/§3, only
-  // part (a) — no ranked cards yet, that is #936). "Genua" is named
-  // explicitly per the copy's own honesty rule (§2.2's measured, not
-  // arbitrary, rig choice) rather than left implicit.
+  // own departure time (design spec §2.4/§3). "Genua" is named explicitly
+  // per the copy's own honesty rule (§2.2's measured, not arbitrary, rig
+  // choice) rather than left implicit.
   'departureScan.title': 'Abfahrtszeiten vergleichen',
   'departureScan.help':
     'Sucht mehrere Abfahrtszeiten für diese Route ab (jeweils nur mit der Genua berechnet) und listet sie nach Ankunft und Motoranteil auf.',
@@ -989,5 +1001,21 @@ export const de = {
   'departureScan.status.cancelled': 'Abgebrochen — {count} Fenster berechnet.',
   'departureScan.candidate.ok':
     'Ankunft {eta} · Dauer {duration} · {distance} · {motorPct} % Motor',
+  // #936 (part b): ranked-card badges. "Bft" (Beaufort) is the standard
+  // German nautical abbreviation too, so it is not translated.
+  'departureScan.card.rank.fastest': 'Am schnellsten',
+  'departureScan.card.rank.nth': '#{rank}',
+  'departureScan.card.wind': 'Bft {force} · {heading}',
+  // #937 (part c): per-candidate confirm action — re-solves the picked
+  // window with the plan's real two rigs (never the scan's genoa-only
+  // shortcut) and replaces the active plan.
+  'departureScan.confirm.action': 'Diese Abfahrt übernehmen',
+  'departureScan.confirm.confirming': 'Vollständige Berechnung mit beiden Riggs läuft …',
+  'departureScan.confirm.done': 'Plan übernommen.',
+  // §2.2's "worth surfacing rather than silently accepting" residual: the
+  // full two-rig solve favoured a different rig than the genoa the scan
+  // ranked this window by.
+  'departureScan.confirm.done.disagreement':
+    'Plan übernommen — die vollständige Berechnung empfiehlt hier {rig}, nicht die Genua, mit der dieses Fenster eingestuft wurde.',
 } as const;
 export type MsgKey = keyof typeof de;

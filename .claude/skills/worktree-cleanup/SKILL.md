@@ -38,7 +38,7 @@ if the creator is gone.
 
    ```bash
    git status --short -- app/public/test-fixtures/wind-sw12.json
-   git checkout -- app/public/test-fixtures/wind-sw12.json   # if it shows dirty
+   git restore -- app/public/test-fixtures/wind-sw12.json    # if it shows dirty
    ```
 
 3. **Confirm the tree is clean** before leaving it:
@@ -84,4 +84,6 @@ if the creator is gone.
 |---|---|---|
 | `git worktree remove` refuses without `--force` | untracked `app/node_modules` | step 1 |
 | same, dirty `wind-sw12.json` diff | `pree2e` hook regenerated it | step 2 |
+| `git checkout -- <path>` is DENIED by the permission system | a `deny` entry in the personal global `~/.claude/settings.json` — NOT the destructive-git hook, which has no `checkout` logic | use `git restore -- <path>`; step 2 |
+| untracked throwaway files survive `git restore` | `restore` only touches TRACKED files | `find <dir> -name '<pattern>' -delete`, never `rm -rf` |
 | "not a git repository" on an absolute path | cwd is elsewhere (persists across Bash calls) | step 4 |
