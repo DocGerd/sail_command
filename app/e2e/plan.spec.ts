@@ -88,7 +88,7 @@ test('plans a route: harbor search -> rig comparison -> saved under Routen', asy
       .click();
     const tapPickBanner = page.getByText('Auf Karte tippen für Wegpunkte.');
     await expect(tapPickBanner).toBeVisible();
-    await page.getByRole('button', { name: 'Abbrechen' }).click();
+    await page.getByRole('button', { name: 'Abbrechen', exact: true }).click();
     await expect(tapPickBanner).not.toBeVisible();
 
     // #33 contract, part 3 — no interception, belt-and-suspenders: part 1's
