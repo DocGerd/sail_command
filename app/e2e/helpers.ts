@@ -221,13 +221,11 @@ export interface PreviewServer {
 // unless both come back empty — so a browser API that silently no-ops (a
 // permissions quirk, an unexpected async ordering) fails the run loudly
 // instead of reporting a false "clean" state with zero evidence behind it.
-// `page.goto(BASE)` is deliberately unconditional and happens FIRST: it is
-// what gives `navigator.serviceWorker`/`caches` a same-origin execution
-// context to run in at all (both are scoped per-origin) — the very
-// navigation a stale controlling worker could intercept, which is exactly
-// why clearing its registration here (even if THIS load was served stale)
-// is what protects the spec's OWN subsequent navigation from also being
-// served stale.
+// The navigation that gives `navigator.serviceWorker`/`caches` a same-origin
+// execution context to run in (both are scoped per-origin) is deliberately
+// unconditional and happens FIRST — see this function's own body for exactly
+// which URL it targets and why (not `BASE`: a real, measured race with the
+// app's own bootstrap).
 export interface ServiceWorkerCleanupResult {
   /** How many registrations/caches existed on this origin BEFORE this call cleared them. */
   unregisteredCount: number;
@@ -235,11 +233,13 @@ export interface ServiceWorkerCleanupResult {
   /** MUST both be 0 on return — see the throw below. Exposed (rather than
    * folded into a void return) so a caller demonstrating this guard's teeth
    * can assert on the SAME atomic in-page query this function used to reach
-   * its own throw/no-throw decision, instead of re-querying separately —
-   * a separate later `page.evaluate()` races a real app's OWN legitimate
-   * SW re-registration and glyph warm-up (CLAUDE.md's #28 bullet) once this
-   * function's internal `page.goto(BASE)` has reloaded it, which is
-   * expected app behaviour, not a defect in this guard. */
+   * its own throw/no-throw decision, instead of re-querying separately — a
+   * separate later `page.evaluate()` on a page that has since navigated to
+   * the real app can race its OWN legitimate SW re-registration and glyph
+   * warm-up (CLAUDE.md's #28 bullet); this function's own internal
+   * navigation is deliberately NOT to the real app (see its body) precisely
+   * to avoid that race for its OWN check, but a caller's separate later read
+   * is not protected by that. */
   remainingRegs: number;
   remainingCaches: number;
 }
@@ -279,8 +279,8 @@ export async function assertCleanServiceWorkerState(
   });
   if (result.remainingRegs !== 0 || result.remainingCaches !== 0) {
     throw new Error(
-      `#832: failed to clear this origin's service-worker state before the first real ` +
-        `navigation at ${BASE} — ${result.remainingRegs} registration(s) and ` +
+      `#832: failed to clear this origin's service-worker state before the caller's first ` +
+        `real navigation to ${BASE} — ${result.remainingRegs} registration(s) and ` +
         `${result.remainingCaches} cache(s) still present after unregister()/delete() (started ` +
         `from ${result.unregisteredCount} registration(s), ${result.deletedCacheCount} cache(s)). ` +
         `Refusing to proceed against a possibly-foreign cached build.`,
