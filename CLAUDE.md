@@ -1054,6 +1054,28 @@ making design-level decisions; do not silently deviate.
   #854 — `.txt` is, so `THIRD-PARTY-NOTICES.txt`, whose drift reds the
   REQUIRED `app` check, passes both probes today). Read both filters off
   `vite.config.ts`; do not copy either list here.
+- **A dev-only StrictMode defect is invisible to `e2e` UNCONDITIONALLY and to
+  most of `app`.** `app/src/main.tsx` wraps the app in `<StrictMode>`, but
+  `app/e2e` runs a PRODUCTION build (`pree2e` is `vite build`, `startPreview`
+  is `vite preview`), where React's dev-only mount -> cleanup -> remount
+  double-invoke is inert; and under vitest only a test that explicitly wraps
+  its own `render()` in it exercises it at all -- read the current set with
+  `grep -rn StrictMode app/src --include='*.test.tsx'` rather than trusting a
+  count here, which decays the moment a third test opts in (it was TWO on
+  2026-09-04: `MapView.mount.test.tsx` since #119/2026-07-23, and
+  `DepartureCompare.test.tsx` since #960). So a defect in that band passes
+  BOTH required checks and shows up only in `npm run dev`, which is this
+  repo's own standard manual-verification workflow. Measured 2026-09-04: a
+  `mountedRef` set `false` in a `useEffect` cleanup with no matching
+  `= true` in the SETUP latched false from the first render even though the
+  component never unmounted, so EVERY departure-confirm silently no-opped in
+  dev -- the two-rig solve ran and even persisted to IndexedDB, then the guard
+  discarded the result before `onConfirmed` fired. No console error; the only
+  symptom was "nothing happens". **Any ref flag written in a cleanup must also
+  be initialised in the setup**, with a one-line comment naming StrictMode (a
+  bare `= true` reads as redundant and is exactly the line a later tidy-up
+  deletes), and the guard for it must render under `<StrictMode>` -- a test
+  without that wrapper passes with the whole class live.
 - **Honest offline testing**: Playwright's `setOffline(true)` does NOT block
   service-worker fetches (Playwright #2311) — the offline spec kills the
   preview server instead. Never "simplify" that away.
@@ -1123,6 +1145,22 @@ making design-level decisions; do not silently deviate.
   unguarded: #681 (a hatch toggle whose natural German label contains that
   substring) was deferred to v0.18.0. Same lesson as #7's "one anchor per
   accessible name", in a new place.
+  **The remedy is COUNT-DEPENDENT.** At #844/PR #959 the collision was TWO
+  sites and the new label was good German satisfying WCAG 2.5.3 (the
+  accessible name contains the visible text), so `exact: true` at those two
+  call sites was correct -- "constrain the label" is the call at eleven, not
+  at two. **RTL is the OPPOSITE default, which is why a green unit suite
+  proves nothing here**: `@testing-library/dom` 10.4.1's `queryAllByRole`
+  never destructures `exact` and calls `matches()` unconditionally, so
+  `getByRole`'s name is ALWAYS exact there -- no `exact` option exists to
+  loosen it. The same label was safe across 223 unit tests and fatal in two
+  e2e specs (versions checked against the lockfile: `@playwright/test`
+  1.62.1). German also ADDS a collision direction English lacks:
+  `planner.via.add.cancel` APPENDS ("Wegpunkt hinzufügen abbrechen"), making
+  the plain label a PREFIX of the cancel label, where English PREPENDS
+  ("Cancel adding waypoint") and has no prefix relation -- so a reviewer
+  checking only the English strings clears a locator the German run reds.
+  Enumerate in BOTH languages.
 - `app/e2e/helpers.ts` exports a named viewport matrix — `STANDARD_VIEWPORTS`
   (desktop4k 3840x2160, desktopHd 1920x1080, tabletLandscape 1180x820,
   tabletPortrait 820x1180, phonePortrait 390x844) and `EDGE_VIEWPORTS` (the
@@ -1403,6 +1441,7 @@ making design-level decisions; do not silently deviate.
   | v0.20.0 | 2026-09-03 | 1735 s | `success` (MEASURED in the same Bash call that pushed the tag, and the failure CALLED IN ADVANCE from it) | **`smoke-probe` FAILED** | merge-push `33774574960` (created 15:46:00Z, `deploy: success`) → tag `33777477268` (created 16:14:55Z) on `286b280`. The tag run's `build` and `deploy` BOTH succeeded and only `smoke-probe` failed. Back-merge `33780148708` then probed green, and prod was positively identified as serving the clean tag afterwards: the live entry chunk `assets/index-CIpQmfDd.js` contains ``about.version`,{version:`v0.20.0`}`` with ZERO suffixed `vX.Y.Z-N-g<sha>` matches anywhere in it. Unlike rows 11 and 12 the PREDICTOR here was the durable answer — terminal `success`, which cannot un-succeed — not a volatile `in_progress`. That still names no MECHANISM: a same-SHA no-op and a propagation lag produce this end state alike, and this row does not distinguish them. Record the measurements, never a cause. |
 
   | v0.21.0 | 2026-09-04 | 113 s | `success` (MEASURED immediately before the tag push, and the failure CALLED IN ADVANCE from it) | **`smoke-probe` FAILED** | merge-push `33879362519` (`deploy: success`) → tag `33879536590` on `dfc80ed`. The tag run's `build` and `deploy` both succeeded; only `smoke-probe` failed, and by the #398 signature specifically — its own prod entry chunk `assets/index-UPcmWly8.js` returned **404 on all 10 attempts over ~4m42s** while the basemap Range probes PASSED for both prod and uat, which is what rules out a CDN regression. The back-merge (`33882094279`, on the different SHA `d30507a3`) then probed green and republished **that same chunk name** — so the tag run's BUILD was correct all along and only its DEPLOYMENT no-opped, the one fact rows 11 and 12 could not establish. Prod afterwards served ``about.version`,{version:`v0.21.0`}`` with ZERO suffixed matches. Predictor was the durable `success`, as at v0.20.0. Still names no MECHANISM. |
+  | v0.22.0 | 2026-09-04 | 172 s | `success` (MEASURED immediately before the tag push, and the failure CALLED IN ADVANCE from it) | **`smoke-probe` FAILED** | merge-push `33916366319` -> tag `33916603758` on `3dd7bce`. The tag run's `build` and `deploy` both succeeded; only `smoke-probe` failed, and by the #398 signature specifically -- its own prod entry chunk `assets/index-Cxxioy59.js` returned **404 on all 10 attempts** (20:32:26Z -> 20:36:56Z) while the basemap Range probes PASSED for prod AND uat on attempt 1, which is what rules out a CDN regression. The back-merge (`33919057557`, on the different SHA `11cda98`) then probed green and republished **that same chunk name** -- so the tag run's BUILD was correct all along and only its DEPLOYMENT no-opped. Prod afterwards served ``about.version`,{version:`v0.22.0`}`` with ZERO suffixed matches. Predictor was the durable `success`, as at v0.20.0 and v0.21.0. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -1914,6 +1953,10 @@ making design-level decisions; do not silently deviate.
   not merely closed, so their review records survive as merged PRs and
   `gh pr close` refuses with "already merged". Verify by reading `.merged`
   back rather than assuming either outcome.
+  Batching SCALES: at the v0.22.0 cut SIX file-disjoint PRs (#953/#954/#955/
+  #956/#958/#959 -- #957 is an issue, not a PR) went onto one integration
+  branch as PR #962, and merged as 21 commits over 27 files in ONE CI cycle
+  instead of six.
 
 ## Verification lessons (hard-won)
 
