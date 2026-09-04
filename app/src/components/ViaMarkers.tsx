@@ -68,10 +68,6 @@ export interface ViaMarkersProps {
 function viaElement(ariaLabel: string): HTMLDivElement {
   const el = document.createElement('div');
   el.className = 'sc-via-marker';
-  // #947: `relative` so the visible label span below can be positioned
-  // `absolute` against THIS box, without changing it — see that span's own
-  // comment for why the box staying fixed matters for MapLibre's anchor.
-  el.style.position = 'relative';
   el.style.width = '16px';
   el.style.height = '16px';
   el.style.borderRadius = '50%';
@@ -91,12 +87,18 @@ function viaElement(ariaLabel: string): HTMLDivElement {
   // the map. Render the SAME text visibly, `aria-hidden` so assistive tech
   // does not announce it a second time alongside the root's own aria-label
   // (the two must say the same thing, so neither can drift from the other).
-  // `position: absolute` on a child never changes an explicitly-sized
-  // (16x16 above) parent's own box, so MapLibre's percentage-based center
-  // anchor (`translate(-50%,-50%)`, `anchor.ts`, resolved against the ROOT
-  // element's box) is unaffected — the dot stays exactly on the waypoint's
-  // coordinate regardless of label length. `pointer-events: none` (app.css)
-  // keeps the label out of the marker's own click/drag/touch target.
+  // The label span below is `position: absolute` (app.css) — deliberately
+  // WITHOUT setting `position: relative` on this root: MapLibre's own
+  // `.maplibregl-marker` class already keeps the root `position: absolute`,
+  // and an inline override of that (tried during review, PR #954) put the
+  // root back into normal document flow, offsetting every via marker beyond
+  // the first by the stacked height of the ones before it. The label still
+  // resolves correctly against the root because MapLibre's own imperative
+  // `transform` on this element (its `translate(-50%,-50%)` center anchor,
+  // `ui/marker.ts`) already establishes a CSS containing block for an
+  // absolutely-positioned child — no `position: relative` is needed.
+  // `pointer-events: none` (app.css) keeps the label out of the marker's
+  // own click/drag/touch target.
   const labelEl = document.createElement('span');
   labelEl.className = 'sc-via-marker-label';
   labelEl.textContent = ariaLabel;

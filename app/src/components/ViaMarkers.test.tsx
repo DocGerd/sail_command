@@ -196,13 +196,14 @@ describe('ViaMarkers marker accessibility contract (#470)', () => {
   });
 });
 
-// #947: the accessibility-contract block above asserts `aria-label` only —
-// that guard passed correctly while the VISUAL surface (a sighted user
-// could not tell waypoints apart) was the actual gap, per CLAUDE.md's "guard
-// the rendering surface, not the data" lesson (#846's ViaMarkers precedent).
-// These assertions read `element.textContent`, a different surface than
-// `getAttribute('aria-label')`, so they fail against the pre-#947 element
-// (no visible text at all) and pass once the label span is appended.
+// #947: the accessibility-contract block above asserts `aria-label` only.
+// These assertions read `element.textContent` instead, a different DOM
+// content-tree surface — they prove the label node and its text exist in
+// the tree, marked `aria-hidden`. jsdom computes no layout or paint at all
+// (CLAUDE.md), so `textContent` is still NOT the visual/paint surface: it
+// cannot see a misplaced marker, a clipped label, or invisible text from a
+// broken `color-mix()`. Real visual correctness (including marker
+// position) needs a real-browser pass (this repo's `verify` skill).
 describe('ViaMarkers visible label (#947)', () => {
   it('renders the aria-label text visibly on the marker element, hidden from assistive tech', () => {
     hoisted.map = makeFakeMap();
