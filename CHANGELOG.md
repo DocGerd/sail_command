@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-09-04
+
+### Added
+
+- Departure-time comparison now shows each candidate window as its own ranked card, with a wind-character badge (Beaufort force and direction) and a rank badge for routable windows — a window that could not be routed states its own reason (beyond forecast horizon, unreachable, etc.) instead of a generic message (#936).
+- Departure-time comparison cards now carry a confirm action: picking a window runs the real two-rig solve for it and replaces the active plan, so the plan you actually sail carries the app's real rig recommendation rather than the comparison's genoa-only ranking — a case where the full solve favours the other rig is surfaced honestly instead of silently accepted (#937).
+
+### Fixed
+
+- The button used to pick an origin, destination, or waypoint on the map now turns into a Cancel button right where you pressed it once armed, alongside the existing top-of-panel banner and Escape, which still work exactly as before (#844).
+- Seamark map glyphs are now tappable within a target that meets the gloved-use touch-target floor at harbor-approach zooms, up from an 18-26px target that made precise on-water taps difficult (#860).
+- Damped the per-leg reef suggestion so it no longer flips between bands on a marginal wind change from leg to leg; a genuine, sustained wind change still moves it (#946).
+- Via waypoint markers on the map now show the waypoint's name (or its indexed fallback) as a visible label, not just as a screen-reader-only accessible name — waypoints close together were previously indistinguishable dots to a sighted user (#947).
+
 ## [0.21.0] - 2026-09-04
 
 ### Added
@@ -953,7 +967,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.21.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.22.0...HEAD
+[0.22.0]: https://github.com/DocGerd/sail_command/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/DocGerd/sail_command/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/DocGerd/sail_command/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/DocGerd/sail_command/compare/v0.18.0...v0.19.0
