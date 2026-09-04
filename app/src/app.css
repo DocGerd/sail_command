@@ -1544,6 +1544,69 @@ select {
   }
 }
 
+/* #871: `.reload-prompt` (ReloadPrompt.tsx's SW-ready/update toast) is
+   pulled OUT of `.banner-area`'s flow here — its transient height must
+   never count toward `--sc-banner-height`/`--sc-banner-clear-top` above, or
+   it squeezes `.map-stack-tl`/`.route-layer-controls` (and, transitively,
+   `.depth-legend`'s reachability gate, DataLayers.tsx's own `budgetPx`)
+   purely because a one-shot/dismissable toast happened to be up — exactly
+   #871's repro (a fresh narrow-viewport load with nothing else on screen).
+   `top` is written by ReloadPrompt.tsx's own `useToastAnchor` effect
+   (`--sc-toast-top`), a LIVE measurement of whichever of
+   `.map-stack-tl`/`.depth-legend > summary` currently reaches furthest
+   down (`.route-layer-controls` is cleared separately, horizontally — see
+   `right`, below) — the same `getBoundingClientRect()` idiom ScaleBar.tsx
+   already uses for `.map-stack-tl` clearance (CLAUDE.md's
+   ScaleBar/useBannerHeight bullet). #909 (four failed placements, retained
+   on branch `fix/toast-hides-depth-caveat`) derives why every STATIC
+   placement (a fixed `top`/`bottom` value) has SOME victim viewport:
+   `.map-stack-tl`'s own low bound (`100dvh - 55vh - 0.5rem`, the base rule
+   above) is a CONSTANT distance from the viewport bottom regardless of
+   banner height, so a fixed toast position and that bound's line
+   inevitably cross somewhere. Never revert this to a fixed `top`/`bottom`
+   without re-reading #909's derivation first.
+   `left: 0` restates `.banner-area`'s own left edge, since this element no
+   longer inherits it by being a normal flex child of that box. `right` is
+   `var(--sc-toast-right, 0px)`, NOT a bare `0` — ReloadPrompt.tsx's effect
+   narrows it to clear `.route-layer-controls` HORIZONTALLY whenever that
+   cluster exists (plan loaded); see that effect's own comment for why
+   (a 44px accessible dismiss button floors this toast's height at ~60px
+   regardless of message length, and at `#208 "Major 3"`'s own repro sizes
+   — 844x390/740x360 — no VERTICAL position clears both
+   `.route-layer-controls` and `.app-bottom-sheet` at once, so this axis is
+   cleared horizontally instead; `.route-layer-controls` sits top-RIGHT,
+   `.map-stack-tl` top-LEFT, #324's own note, so the two clearance
+   strategies target different clusters and do not conflict). The `0px`
+   fallback keeps the toast full-width when no plan is loaded, matching its
+   pre-#871 visual span.
+   `position: fixed`, NOT `absolute`: `getBoundingClientRect()` (what
+   ReloadPrompt.tsx's effect reads off `.map-stack-tl` et al.) already
+   returns VIEWPORT-relative coordinates, matching `fixed`'s own reference
+   frame directly — `absolute` would resolve against `.banner-area`'s own
+   box (itself offset `3rem` from the viewport) and silently double that
+   offset into the computed `top`. Safe here specifically because neither
+   `.banner-area` nor any of its ancestors up to `<body>` sets a
+   `transform`/`filter`/`perspective`/`contain` property, none of which
+   establishes a containing block for a `position: fixed` descendant
+   (`.app-header`'s `backdrop-filter` is a SIBLING of `.banner-area`, not an
+   ancestor, and does not apply here) — re-check this reasoning if either
+   file ever gains one of those properties. Scoped to the SAME
+   `max-width: 1023.98px` breakpoint as the block above, and for the SAME
+   MQ3-vs-MQ4 parser reason (this file's own comment on that block) — never
+   `@media not (min-width: 1024px)`. At `>=1024px` this rule never applies
+   and the toast stays exactly where it always has, in `.banner-area`'s
+   ordinary flex flow — #871 never reproduces at wide layout (DataLayers.tsx's
+   own effect early-returns `hidden: false` unconditionally there), so
+   nothing here needs to touch that case. */
+@media (max-width: 1023.98px) {
+  .reload-prompt {
+    position: fixed;
+    top: var(--sc-toast-top, 3rem);
+    left: 0;
+    right: var(--sc-toast-right, 0px);
+  }
+}
+
 /* #231: on a SHORT LANDSCAPE narrow viewport (a landscape phone), the base
    COLUMN layout above — DataLayers' two toggle rows stacked, then the
    compass below them — was measured (#231's own issue text, PR #228 review)
