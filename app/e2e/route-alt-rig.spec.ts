@@ -79,7 +79,7 @@ test.describe('alt-rig map overlay (#324)', () => {
   test('shows both rigs simultaneously when toggled, visually distinct, with no extra solver run or wind fetch', async ({
     page,
   }) => {
-    const server = await startPreview();
+    const server = await startPreview(page);
     const openMeteoRequests: string[] = [];
     page.on('request', (req) => {
       if (req.url().includes('open-meteo')) openMeteoRequests.push(req.url());
@@ -175,7 +175,7 @@ test.describe('alt-rig map overlay (#324)', () => {
     page,
   }) => {
     await page.emulateMedia({ colorScheme: 'dark' });
-    const server = await startPreview();
+    const server = await startPreview(page);
     try {
       const altToggle = await planAndGetAltToggle(page, server.url);
       await expect(altToggle).toBeEnabled();
@@ -222,7 +222,7 @@ test.describe('alt-rig map overlay (#324)', () => {
     page,
   }) => {
     await page.setViewportSize(STANDARD_VIEWPORTS.phonePortrait);
-    const server = await startPreview();
+    const server = await startPreview(page);
     try {
       const altToggle = await planAndGetAltToggle(page, server.url);
       await altToggle.scrollIntoViewIfNeeded();
