@@ -15,6 +15,22 @@ export interface LatLon {
   lon: number;
 }
 
+// #846: a via point is a LatLon that MAY carry a user-assigned name ("off
+// Holnis", "Kalkgrund"). Deliberately an optional field on a superset
+// interface, never a required one and never a restructured viaPoints
+// container — either would turn this into a breaking change (design spec
+// §2.1). Optional means every existing call site typed at the plain LatLon
+// shape keeps compiling unchanged (a LatLon literal satisfies ViaPoint,
+// since a missing optional property is fine structurally), so widening
+// PlanRequest.viaPoints below to ViaPoint[] costs nothing at any producer
+// that never mentions `name`. The solver (planRoute.ts) still reads only
+// .lat/.lon off each via point, so this is presentation-only — see §2.2 of
+// the design spec for why that keeps PlanResult byte-identical and no
+// app/sweep/ run owed.
+export interface ViaPoint extends LatLon {
+  name?: string;
+}
+
 export type Board = 'port' | 'starboard';
 export type LegKind = 'sail' | 'motor';
 export type ManeuverKind = 'tack' | 'gybe';
@@ -248,7 +264,7 @@ export function defaultBoatSnapshot(): BoatSnapshot {
 export interface PlanRequest {
   origin: LatLon;
   destination: LatLon;
-  viaPoints: LatLon[]; // visited in order, origin -> viaPoints[0] -> ... -> destination
+  viaPoints: ViaPoint[]; // visited in order, origin -> viaPoints[0] -> ... -> destination
   originHarborId: string | null;
   destinationHarborId: string | null;
   departureMs: number;
