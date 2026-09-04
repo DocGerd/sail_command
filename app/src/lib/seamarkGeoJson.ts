@@ -400,12 +400,23 @@ export function seamarkPopupAnchor<T extends { properties?: unknown; geometry?: 
  *   absent from queryRenderedFeatures, so culled minor marks are untappable
  *   by design. (There, at most one icon can cover any given point — an
  *   overlapping pair would have collided — so (a) is a no-op.)
- * - `icon-size` tapers from the pre-#144 constant 0.85 (kept at z13) down
- *   to 0.55 at z8 so survivors overprint less at medium zoom (same
- *   interpolate pattern as AisLayer's vessel icons). #353 PR1: every stop is
- *   now `base * SEAMARK_SIZE_SCALE` (seamarkGlyphs.ts) rather than a bare
- *   literal — at the default scale of 1 this is byte-for-byte the same
- *   values (`x * 1 === x` exactly for every IEEE-754 double, no rounding).
+ * - `icon-size` tapers from 0.55 at z8 up through 0.7 at z11 so survivors
+ *   overprint less at medium zoom (same interpolate pattern as AisLayer's
+ *   vessel icons), then — #860 — climbs steeply from z12 to 1.4 at z13,
+ *   replacing the pre-#860 flat top stop of 0.85 (pre-#144's original
+ *   constant). `interpolate` clamps outside its domain, so that flat 0.85
+ *   was also the PERMANENT ceiling for every zoom past 13 — a measured
+ *   18-26px on-screen glyph, below the locked >=44px gloved-use touch-target
+ *   floor (CLAUDE.md's a11y-ranking ruling on #860). See
+ *   BASE_ICON_SIZE_STOPS' own doc comment for why the new z12/z13 stops
+ *   reach 44.8px while leaving every zoom below 12 byte-for-byte unchanged
+ *   — that boundary matters because it is exactly where `icon-overlap`
+ *   above flips to 'always', the one zoom band where growing icon-size
+ *   cannot cull anything (the #191/#192 regression this table is built not
+ *   to repeat). #353 PR1: every stop is still `base * SEAMARK_SIZE_SCALE`
+ *   (seamarkGlyphs.ts) rather than a bare literal — at the default scale of
+ *   1 this is byte-for-byte the same values (`x * 1 === x` exactly for
+ *   every IEEE-754 double, no rounding).
  * - `icon-padding` is 0 at every zoom stop (MapLibre default is 2px/side):
  *   the collision box fed to the below-z12 culling above is the icon box
  *   PLUS this padding, and #191's raster resize (24->32 logical px natural
@@ -433,7 +444,13 @@ export function seamarkPopupAnchor<T extends { properties?: unknown; geometry?: 
  *   `icon-padding` entry declares no `minimum` either, so the validator will
  *   not reject a negative value — a scale > 1 genuinely shrinks the
  *   collision box below the bare icon box, not merely clawing back part of
- *   the growth the way the old flat `icon-padding: 0` did. But this is an
+ *   the growth the way the old flat `icon-padding: 0` did. #860's bigger top
+ *   stop scales that magnitude with it — at the size-slider ceiling
+ *   (`SEAMARK_SIZE_MAX = 1.5`), `iconPaddingAt(topStop, 1.5)` moved from
+ *   -6.8 (pre-#860 top stop 0.85) to -11.2 (1.4 now), a ~65% widening
+ *   proportional to the icon-size ratio — not a NEW reachability of this
+ *   already-unspecified-behaviour class, since it was already negative at
+ *   scale > 1 before #860. But this is an
  *   ABSENCE in the spec, not a documented guarantee — unspecified behaviour
  *   this formula depends on. If a future MapLibre release adds a floor
  *   (in `Padding.parse`, in `getIconPadding`, or in the spec entry), the
@@ -452,16 +469,42 @@ export function seamarkPopupAnchor<T extends { properties?: unknown; geometry?: 
  */
 
 /**
- * Base icon-size zoom stops at SEAMARK_SIZE_SCALE = 1 (today's exact
- * values, #144/#191) — the single table every size-axis expression below is
- * derived from, so there is exactly one place encoding "how big at each
- * zoom" and one place (seamarkGlyphs.ts's SEAMARK_SIZE_SCALE) encoding "how
- * big overall".
+ * Base icon-size zoom stops at SEAMARK_SIZE_SCALE = 1 — the single table
+ * every size-axis expression below is derived from, so there is exactly one
+ * place encoding "how big at each zoom" and one place (seamarkGlyphs.ts's
+ * SEAMARK_SIZE_SCALE) encoding "how big overall".
+ *
+ * #860: the pre-#860 table was three stops — (8,0.55)/(11,0.7)/(13,0.85) —
+ * topping out at 27.2px (0.85 * SEAMARK_NATURAL_ICON_PX, 32) FOREVER past
+ * z13, since `interpolate` clamps outside its domain: no amount of further
+ * zooming ever grew the tap target past that, measurably an 18-26px glyph
+ * against the locked >=44px gloved-use touch-target floor. The two new
+ * stops below close that gap without touching the z8/z11 stops at all:
+ * (12, 0.775) is the EXACT value the OLD (11,0.7)-(13,0.85) line already
+ * gave at z=12 — `0.7 + (0.85-0.7)*(12-11)/(13-11) = 0.775` — so it
+ * re-anchors the SAME line rather than starting a new one, which makes the
+ * [11,12] sub-segment BYTE-IDENTICAL to before (interpolate is per-segment
+ * linear, so two points taken FROM the old line reproduce it exactly, not
+ * merely approximately). Only the LAST segment, (12,0.775) -> (13,1.4), is
+ * new: 1.4 * SEAMARK_NATURAL_ICON_PX (32) = 44.8px, clearing 44px with
+ * margin for float rounding.
+ *
+ * That new segment is deliberately confined to z >= 12: `seamarksLayout`'s
+ * `icon-overlap` step is 'always' for the WHOLE [12, 13] domain (the #36
+ * popup-safety valve), so growing icon-size there cannot cull anything —
+ * culling is only possible where `icon-overlap` is 'never', i.e. z < 12,
+ * which this table leaves untouched down to the individual stop values, not
+ * merely "close enough". See `seamarksLayout`'s own doc comment above for
+ * the full "growing a z<12 collision box culls marks" mechanism (#191/#192)
+ * this table exists to avoid re-triggering, and
+ * `seamarkGeoJson.test.ts`'s "#860" tests for the mutation-checked pin (the
+ * [8,12) segment fails closed against ANY change to the new top stop).
  */
 const BASE_ICON_SIZE_STOPS = [
   [8, 0.55],
   [11, 0.7],
-  [13, 0.85],
+  [12, 0.775],
+  [13, 1.4],
 ] as const;
 
 /**
@@ -500,6 +543,14 @@ function iconPaddingAt(baseIconSize: number, scale: number): number {
  * every existing consumer (DataLayers.tsx) is unaffected.
  */
 export function seamarksLayout(scale: number): NonNullable<SymbolLayerSpecification['layout']> {
+  // #860: built by iterating BASE_ICON_SIZE_STOPS instead of four hardcoded
+  // `BASE_ICON_SIZE_STOPS[i]` pairs (the pre-#860 shape, sized for exactly
+  // three stops) — a stop count change no longer needs a matching edit here.
+  const iconSizeStops = BASE_ICON_SIZE_STOPS.flatMap(([zoom, base]) => [zoom, base * scale]);
+  const iconPaddingStops = BASE_ICON_SIZE_STOPS.flatMap(([zoom, base]) => [
+    zoom,
+    iconPaddingAt(base, scale),
+  ]);
   return {
     // Precomputed per feature (seamarkFeatureCollectionWithIcons) —
     // seamarkType/category alone can't distinguish e.g. a red from a
@@ -507,28 +558,8 @@ export function seamarksLayout(scale: number): NonNullable<SymbolLayerSpecificat
     'icon-image': ['get', 'icon'],
     'icon-overlap': ['step', ['zoom'], 'never', 12, 'always'],
     'symbol-sort-key': ['get', 'priority'],
-    'icon-size': [
-      'interpolate',
-      ['linear'],
-      ['zoom'],
-      BASE_ICON_SIZE_STOPS[0][0],
-      BASE_ICON_SIZE_STOPS[0][1] * scale,
-      BASE_ICON_SIZE_STOPS[1][0],
-      BASE_ICON_SIZE_STOPS[1][1] * scale,
-      BASE_ICON_SIZE_STOPS[2][0],
-      BASE_ICON_SIZE_STOPS[2][1] * scale,
-    ],
-    'icon-padding': [
-      'interpolate',
-      ['linear'],
-      ['zoom'],
-      BASE_ICON_SIZE_STOPS[0][0],
-      iconPaddingAt(BASE_ICON_SIZE_STOPS[0][1], scale),
-      BASE_ICON_SIZE_STOPS[1][0],
-      iconPaddingAt(BASE_ICON_SIZE_STOPS[1][1], scale),
-      BASE_ICON_SIZE_STOPS[2][0],
-      iconPaddingAt(BASE_ICON_SIZE_STOPS[2][1], scale),
-    ],
+    'icon-size': ['interpolate', ['linear'], ['zoom'], ...iconSizeStops],
+    'icon-padding': ['interpolate', ['linear'], ['zoom'], ...iconPaddingStops],
   };
 }
 

@@ -91,8 +91,14 @@ function useToastAnchor(active: boolean): void {
     // "always operable" in app.css's own tier philosophy) over the
     // map-surface cluster (Tier 2), rather than the other way round. In the
     // squeeze case this toast MAY still partially overlap the lower part of
-    // `.map-stack-tl`'s content — a residual, not eliminated — see the
-    // #871 PR's own e2e guard for how that residual is measured and pinned.
+    // `.map-stack-tl`'s content — a residual, not eliminated. MEASURED
+    // (#909, real Chromium, 2026-09-04) at `deepPortrait320` (320x568) and
+    // `wrapForcing280` (280x568), no plan: the depth checkbox stays fully
+    // clear (0px² overlap), but the compass button's bottom ~34 of its
+    // 44px height is covered (~1495px² overlap) and a real
+    // `locator.click({trial:true})` at its own centre point TIMES OUT — a
+    // genuine interactive block, not just visual overlap. Pinned by
+    // `layout.spec.ts`'s own `#909` guard (`hitState`).
     const VERTICAL_TARGETS = ['.map-stack-tl', '.depth-legend > summary'];
 
     const recompute = () => {

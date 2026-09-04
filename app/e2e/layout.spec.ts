@@ -171,7 +171,7 @@ test('responsive layout: side panel on wide screens, bottom sheet on narrow', as
     const bannerBox = await box(tapPickBanner);
     expect(bannerBox.x).toBeGreaterThanOrEqual(widePanel.x - 2);
     expect(bannerBox.x + bannerBox.width).toBeLessThanOrEqual(widePanel.x + widePanel.width + 2);
-    await page.getByRole('button', { name: 'Abbrechen' }).click();
+    await page.getByRole('button', { name: 'Abbrechen', exact: true }).click();
     await expect(tapPickBanner).not.toBeVisible();
 
     // Form controls are capped, not stretched across the ~1/3 panel — the
@@ -2089,9 +2089,10 @@ test("#871: the SW toast does not intercept .route-layer-controls with a plan lo
         // WHICH element intercepted, never collapse to `.not.toBe('ok')`.
         //
         // No known residual here, at ANY viewport in this matrix — unlike
-        // the vertical `--sc-toast-top` anchor (which DOES have one, see
-        // `useToastAnchor`'s own comment in ReloadPrompt.tsx), the toast's
-        // `--sc-toast-right` clears `.route-layer-controls` HORIZONTALLY
+        // the vertical `--sc-toast-top` anchor, which DOES have one (the
+        // compass button, MEASURED and pinned by this file's own `#909`
+        // guard below, not this one). The toast's `--sc-toast-right`
+        // clears `.route-layer-controls` HORIZONTALLY
         // whenever it exists, which removes the 2-D overlap outright rather
         // than trading it off against something else. Confirmed empirically
         // at shortLandscape844 (844x390) and shortLandscape740 (740x360) —
@@ -2123,6 +2124,129 @@ test("#871: the SW toast does not intercept .route-layer-controls with a plan lo
             },
           )
           .toBe("clear");
+      } finally {
+        await context.close();
+      }
+    }
+  } finally {
+    server.kill();
+  }
+});
+
+// #909 (#871's own "residual, not eliminated" line, ReloadPrompt.tsx's
+// `useToastAnchor` comment): the guard above covers `.route-layer-controls`
+// (cleared HORIZONTALLY, a DIFFERENT cluster, top-RIGHT, plan-gated) — it
+// says nothing about `.map-stack-tl` (top-LEFT, no plan required) or its two
+// interactive members, the compass button and the depth-ramp checkbox
+// ("Wassertiefen"). `compass.spec.ts` and `datalayers.spec.ts` both DISMISS
+// `.reload-prompt` (`.reload-prompt .banner-dismiss`) before every hit-test
+// they run, so the toast-up scenario for THESE two controls was excluded
+// from coverage by construction — until now.
+//
+// MEASURED live (real Chromium, standalone `vite preview`, 2026-09-04, no
+// plan) at BOTH viewports below — the two `EDGE_VIEWPORTS` members #909's
+// own table already names as compass-blocked, `deepPortrait320` (320x568)
+// and `wrapForcing280` (280x568): with the toast up, the depth checkbox
+// stays fully CLEAR — box `{x:20,y:67,w:13,h:40}` sits entirely above the
+// toast's own top edge (`y≈187.6`), 0px² overlap, and a genuine
+// `locator.click({trial:true})` succeeds. The compass button's BOTTOM ~34
+// of its 44px height is covered instead — box
+// `{x:8,y:177.6,w:44,h:44}` vs. toast box `{x:0,y:187.6,w:<viewport>,h:60}`,
+// overlap 44×33.98≈1495px² — and a real `locator.click({trial:true})` at
+// the button's own default (centre) point TIMES OUT: a genuine interactive
+// block, not just a passive visual overlap. Identical at both viewports
+// (only viewport WIDTH differs between them; this occlusion is purely
+// vertical, since the compass sits well inside both toast widths) — this
+// guard still runs both, matching #909's own multi-viewport method and this
+// file's own #412 rule (no viewport-narrowed guard here either).
+//
+// Mutation-checked (2026-09-04): disabling `useToastAnchor`'s live
+// measurement (forcing the CSS `var(--sc-toast-top, 3rem)` fallback) FLIPS
+// which control is hit — compass becomes fully CLEAR (0px² overlap) while
+// the depth checkbox becomes FULLY blocked (520px², its whole box) — so
+// this guard reds on EITHER assertion below if the live anchor regresses,
+// not just one; a static top value cannot satisfy both at once (#909's own
+// finding, one level lower).
+//
+// Asserts OCCLUDER IDENTITY, never a bare negative or boolean predicate
+// (CLAUDE.md's own rule, and this file's `#871` guard above): `hitState`
+// reports 'clear' when the hit lands inside the target's own subtree,
+// `blocked by toast: ...` naming the actual occluding element when it
+// lands inside `.reload-prompt`'s subtree (tolerant of which exact child —
+// `.banner`/`.banner-message` — the point happens to land on, since that
+// sub-element boundary is a copy-length/flex-layout detail, not the thing
+// under test), and `blocked by UNEXPECTED occluder: ...` for anything else
+// — so a regression that swaps in some other blocker entirely (e.g. a
+// future `.app-tabs` collision, #909's own "fifth victim" shape) is named
+// rather than silently misread as "clear".
+function hitState(target: Locator, toastSelector: string): Promise<string> {
+  return target.evaluate((el, sel) => {
+    const box = el.getBoundingClientRect();
+    const x = box.left + box.width / 2;
+    const y = box.top + box.height / 2;
+    const top = document.elementFromPoint(x, y);
+    const describe = (e: Element) =>
+      `${e.tagName}.${Array.from(e.classList).join(".") || "(no class)"}`;
+    if (!top) return "(none)";
+    if (el === top || el.contains(top)) return "clear";
+    const toast = document.querySelector(sel);
+    if (toast && (toast === top || toast.contains(top))) {
+      return `blocked by toast: ${describe(top)}`;
+    }
+    return `blocked by UNEXPECTED occluder: ${describe(top)}`;
+  }, toastSelector);
+}
+
+test("#909: with the SW toast up, .map-stack-tl's depth checkbox stays clear and its compass stays known-blocked", async ({
+  browser,
+}) => {
+  const server = await startPreview();
+  try {
+    const viewports: Record<string, Viewport> = {
+      deepPortrait320: EDGE_VIEWPORTS.deepPortrait320,
+      wrapForcing280: EDGE_VIEWPORTS.wrapForcing280,
+    };
+    for (const [label, viewport] of Object.entries(viewports)) {
+      const context = await browser.newContext({ viewport });
+      const page = await context.newPage();
+      try {
+        // #832: fresh context/page created AFTER startPreview() returned —
+        // same reason as the `#871` guards above (a stale/foreign SW
+        // registration on this origin is exactly the hazard under test:
+        // the toast is one-shot per registration).
+        await assertCleanServiceWorkerState(page);
+        await page.goto(server.url);
+        await mapReady(page);
+        await page
+          .locator(".reload-prompt")
+          .waitFor({ state: "visible", timeout: 15_000 });
+
+        const compass = page.locator(".compass-btn");
+        const depthCheckbox = page.getByRole("checkbox", {
+          name: "Wassertiefen",
+        });
+        const msg = `${label} (${viewport.width}x${viewport.height})`;
+
+        // Geometry is RE-READ inside `hitState` on every poll tick (never
+        // frozen from a single pre-settle read) — this file's own #412 rule.
+        await expect
+          .poll(() => hitState(depthCheckbox, ".reload-prompt"), {
+            timeout: 10_000,
+            message: `${msg}: depth checkbox`,
+          })
+          .toBe("clear");
+
+        // KNOWN residual — pinned, not silently accepted. A future change
+        // that makes this WORSE (the checkbox above also stops being
+        // 'clear') or BETTER (this stops matching) must touch this
+        // assertion deliberately, never slip past a guard that only ever
+        // checked "not visible".
+        await expect
+          .poll(() => hitState(compass, ".reload-prompt"), {
+            timeout: 10_000,
+            message: `${msg}: compass`,
+          })
+          .toMatch(/^blocked by toast: /);
       } finally {
         await context.close();
       }

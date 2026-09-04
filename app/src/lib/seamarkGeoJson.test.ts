@@ -13,6 +13,7 @@ import {
   SEAMARK_DISPLAY_TIER_ALL,
   SEAMARK_DISPLAY_TIER_BASE,
   SEAMARK_DISPLAY_TIER_STANDARD,
+  SEAMARK_NATURAL_ICON_PX,
   seamarkImageId,
 } from './seamarkGlyphs';
 
@@ -199,7 +200,13 @@ describe('SEAMARKS_LAYOUT (#144 priority-culled, zoom-sized seamark icons)', () 
     expect(SEAMARKS_LAYOUT['icon-overlap']).toEqual(['step', ['zoom'], 'never', 12, 'always']);
   });
 
-  it('tapers icon size 0.55@z8 -> 0.7@z11 -> 0.85@z13 (pre-#144 constant 0.85 kept as the top stop)', () => {
+  // #860: the top stop moved from 0.85@z13 (pre-#860, 27.2px forever past
+  // z13 — an 18-26px tap target) to 1.4@z13 (44.8px). The new (12,0.775)
+  // anchor is not a fresh design choice — it's the value the OLD
+  // (11,0.7)-(13,0.85) line already gave at z=12, re-used so the [8,12)
+  // prefix is provably byte-identical to before (see BASE_ICON_SIZE_STOPS'
+  // own doc comment for the derivation).
+  it('tapers icon size 0.55@z8 -> 0.7@z11 -> 0.775@z12 -> 1.4@z13 (#860: only the z12/z13 stops changed)', () => {
     expect(SEAMARKS_LAYOUT['icon-size']).toEqual([
       'interpolate',
       ['linear'],
@@ -208,8 +215,10 @@ describe('SEAMARKS_LAYOUT (#144 priority-culled, zoom-sized seamark icons)', () 
       0.55,
       11,
       0.7,
+      12,
+      0.775,
       13,
-      0.85,
+      1.4,
     ]);
   });
 
@@ -236,6 +245,8 @@ describe('SEAMARKS_LAYOUT (#144 priority-culled, zoom-sized seamark icons)', () 
       0,
       11,
       0,
+      12,
+      0,
       13,
       0,
     ]);
@@ -255,7 +266,8 @@ describe('SEAMARKS_LAYOUT (#144 priority-culled, zoom-sized seamark icons)', () 
     // guard against that rewrite — just not a guard against any actual
     // rendering defect.
     const padding = SEAMARKS_LAYOUT['icon-padding'] as readonly unknown[];
-    for (const stopValue of [padding[4], padding[6], padding[8]]) {
+    // #860: four stops now (8/11/12/13), so four value indices — 4, 6, 8, 10.
+    for (const stopValue of [padding[4], padding[6], padding[8], padding[10]]) {
       expect(Object.is(stopValue, -0), `expected +0, got ${String(stopValue)}`).toBe(false);
     }
   });
@@ -277,14 +289,15 @@ describe('SEAMARKS_LAYOUT (#144 priority-culled, zoom-sized seamark icons)', () 
 // formula's actual floating-point output agree bit-for-bit with no rounding
 // ambiguity either could hide behind (verified via a throwaway `node -e`
 // during review, not asserted from memory):
-//   icon-size:    base * 2            -> 0.55*2=1.1, 0.7*2=1.4, 0.85*2=1.7
+//   icon-size:    base * 2            -> 0.55*2=1.1, 0.7*2=1.4, 0.775*2=1.55,
+//                 1.4*2=2.8
 //   icon-padding: (1-2)*base*32/2 = -16*base -> -16*0.55=-8.8,
-//                 -16*0.7=-11.2, -16*0.85=-13.6
+//                 -16*0.7=-11.2, -16*0.775=-12.4, -16*1.4=-22.4
 // This test file NEVER calls iconPaddingAt/seamarksLayout to derive its own
 // expectations — only to produce the ACTUAL value under test — so it cannot
 // pass by the #50 equivalence-test tautology.
 describe('seamarksLayout(scale) at a non-default scale (#484 F1) — pinned against HAND-DERIVED values, not the production formula', () => {
-  it('scales icon-size to 1.1 / 1.4 / 1.7 at scale=2', () => {
+  it('scales icon-size to 1.1 / 1.4 / 1.55 / 2.8 at scale=2 (#860: fourth stop added)', () => {
     expect(seamarksLayout(2)['icon-size']).toEqual([
       'interpolate',
       ['linear'],
@@ -293,12 +306,14 @@ describe('seamarksLayout(scale) at a non-default scale (#484 F1) — pinned agai
       1.1,
       11,
       1.4,
+      12,
+      1.55,
       13,
-      1.7,
+      2.8,
     ]);
   });
 
-  it('compensates icon-padding to -8.8 / -11.2 / -13.6 at scale=2', () => {
+  it('compensates icon-padding to -8.8 / -11.2 / -12.4 / -22.4 at scale=2 (#860: fourth stop added)', () => {
     expect(seamarksLayout(2)['icon-padding']).toEqual([
       'interpolate',
       ['linear'],
@@ -307,8 +322,10 @@ describe('seamarksLayout(scale) at a non-default scale (#484 F1) — pinned agai
       -8.8,
       11,
       -11.2,
+      12,
+      -12.4,
       13,
-      -13.6,
+      -22.4,
     ]);
   });
 
@@ -324,11 +341,39 @@ describe('seamarksLayout(scale) at a non-default scale (#484 F1) — pinned agai
   // could be retuned without this guard's intent changing).
   it('#484 F3: the compensation actually goes NEGATIVE at scale > 1 — a future MapLibre padding floor must red this', () => {
     const padding = seamarksLayout(2)['icon-padding'] as readonly unknown[];
-    const stops = [padding[4], padding[6], padding[8]];
+    // #860: four stops now (8/11/12/13) — value indices 4, 6, 8, 10.
+    const stops = [padding[4], padding[6], padding[8], padding[10]];
     for (const stopValue of stops) {
       expect(typeof stopValue).toBe('number');
       expect(stopValue as number).toBeLessThan(0);
     }
+  });
+});
+
+// #860: seamark glyphs were tappable only inside an 18-26px target (the
+// pre-#860 icon-size taper topped out at 0.85@z13, clamped there forever —
+// `interpolate` clamps outside its domain), below the locked >=44px
+// gloved-use touch-target floor CLAUDE.md's a11y-ranking ruling applies to
+// this issue. These tests pin the CONSEQUENCE of the BASE_ICON_SIZE_STOPS
+// change (its own doc comment in seamarkGeoJson.ts carries the derivation)
+// as two SEPARATE, independently mutation-checkable claims: the floor is
+// actually met, AND the z<12 prefix — the only zoom band where
+// `icon-overlap` is 'never' and a bigger collision box could cull a mark
+// (#191/#192) — is untouched.
+describe('#860: seamark tap-target floor (>=44px gloved-use)', () => {
+  it('the top icon-size stop displays at >=44 CSS px at the default SEAMARK_SIZE_SCALE=1', () => {
+    const iconSize = SEAMARKS_LAYOUT['icon-size'] as readonly unknown[];
+    const topStopValue = iconSize[iconSize.length - 1] as number;
+    // Hand-derived (32 = SEAMARK_NATURAL_ICON_PX, imported, not re-declared
+    // here — CLAUDE.md's twin-search rule) rather than calling any
+    // production formula, so this can't pass by the #50 equivalence-test
+    // tautology.
+    expect(topStopValue * SEAMARK_NATURAL_ICON_PX).toBeGreaterThanOrEqual(44);
+  });
+
+  it('leaves the z8-z11 icon-size prefix byte-identical to the pre-#860 layout — culling risk is confined to z<12', () => {
+    const iconSize = SEAMARKS_LAYOUT['icon-size'] as readonly unknown[];
+    expect(iconSize.slice(0, 7)).toEqual(['interpolate', ['linear'], ['zoom'], 8, 0.55, 11, 0.7]);
   });
 });
 
