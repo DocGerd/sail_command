@@ -37,6 +37,12 @@ import PlannerPanel, {
   type TapTarget,
 } from './components/PlannerPanel';
 import SettingsPanel from './components/SettingsPanel';
+// #356 part (a): rendered as its own sibling of PlannerPanel below (see the
+// #830 seamarks-portal-target precedent for the same "new feature, own
+// component, no new PlannerPanel props" shape) — deliberately kept OUT of
+// PlannerPanel.tsx, which PR #940/#846's waypoint-chain train is editing
+// concurrently.
+import DepartureCompare from './components/DepartureCompare';
 import PlansList, { type RecalcMode } from './components/PlansList';
 import RouteSummary from './components/RouteSummary';
 import DepthProfile from './components/DepthProfile';
@@ -1544,6 +1550,11 @@ function AppShell() {
                   onViewDetails={handleViewDetails}
                   onOpenBoatSettings={handleOpenBoatSettings}
                 />
+                {/* #356 part (a): "Compare departure times" — its own card
+                    below the main planner form, gated internally on `plan`
+                    (renders nothing before a first plan exists). Reuses the
+                    same shared worker singleton via `ensureClient`. */}
+                <DepartureCompare plan={plan} ensureClient={ensureClient} />
                 {/* #830: portal target for SeamarksInView (mounted inside MapView
                   above). Below the planner form, so the form's own CTA keeps
                   its position and the list costs panel scroll depth only
