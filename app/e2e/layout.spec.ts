@@ -3,6 +3,7 @@ import {
   startPreview,
   mapReady,
   bannerHeightVar,
+  assertCleanServiceWorkerState,
   STANDARD_VIEWPORTS,
   EDGE_VIEWPORTS,
   type Viewport,
@@ -1900,6 +1901,237 @@ test('#762: the safety-depth field label does not overflow its column at tablet 
   }
 });
 
+// #871: the SW-ready/update toast (`.reload-prompt`, ReloadPrompt.tsx) is
+// TRANSIENT chrome — but before this fix, its height counted toward the SAME
+// `.banner-area` measurement `DataLayers.tsx`'s depth-legend reachability
+// gate and this file's own narrow-layout banner-clearance rule both derive
+// from, so the toast ALONE (no other banner, zero user action) could push
+// the collapsed-legend budget under `LEGEND_COLLAPSED_HEIGHT_PX` and set
+// `hidden` on the whole `<details class="depth-legend">` — #597's safety
+// caveat included — taking it out of the accessibility tree entirely on a
+// routine cold load. #909 (four failed static-placement attempts, retained
+// on branch `fix/toast-hides-depth-caveat`) is why this guard exercises the
+// FULL shared viewport matrix rather than one repro viewport: no fixed
+// `top`/`bottom` value clears every viewport, so a narrower guard could pass
+// while a regression reopens the defect at a viewport it does not cover.
+//
+// TWO measurement traps this guard is built to avoid (both cost real #908/
+// #909 attempts, per that issue's own writeup): (1) the toast is ONE-SHOT
+// per service-worker registration, so a `page`/context REUSED across rows
+// shows it only on the first row and every later row would silently read as
+// "passing" with nothing under test — hence a fresh `browser.newContext()`
+// per row, never the shared per-test `page` fixture. (2) `.focus()`/
+// `document.activeElement` proves only keyboard reachability, never pointer
+// hit-testing — this guard reads the `hidden` IDL property directly instead
+// (the exact mechanism `DataLayers.tsx` sets), which is what actually
+// controls accessibility-tree membership.
+// `DataLayers.tsx`'s reachability gate recomputes on a `ResizeObserver`
+// callback (async, one or more frames after `.banner-area`'s box changes) —
+// a single read taken right after the toast becomes DOM-visible can win
+// the race and read the PRE-recompute value, exactly the "frozen geometry"
+// class CLAUDE.md's E2E-determinism rule warns about, just in the opposite
+// direction from the usual case (a too-EARLY read here, not a stale one).
+// Poll until three consecutive reads agree, mirroring `labels.spec.ts`'s
+// own settle pattern for a MapLibre placement throttle — a different
+// producer, the same "async recompute after a resize" shape.
+async function settledLegendHidden(
+  page: Page,
+  legend: Locator,
+): Promise<boolean> {
+  let last: boolean | null = null;
+  let streak = 0;
+  for (let i = 0; i < 30; i += 1) {
+    const current = await legend.evaluate(
+      (el) => (el as HTMLDetailsElement).hidden,
+    );
+    if (current === last) {
+      streak += 1;
+      if (streak >= 3) return current;
+    } else {
+      streak = 1;
+      last = current;
+    }
+    await page.waitForTimeout(100);
+  }
+  if (last === null) throw new Error("settledLegendHidden: never read a value");
+  return last;
+}
+
+test("#871: the SW toast alone never hides the depth legend, across the shared viewport matrix (no plan)", async ({
+  browser,
+}) => {
+  const server = await startPreview();
+  try {
+    const viewports: Record<string, Viewport> = {
+      ...STANDARD_VIEWPORTS,
+      ...EDGE_VIEWPORTS,
+    };
+    for (const [label, viewport] of Object.entries(viewports)) {
+      const context = await browser.newContext({ viewport });
+      const page = await context.newPage();
+      try {
+        // #832: this test creates its OWN page via browser.newContext()/
+        // context.newPage() AFTER startPreview() has already returned, so
+        // the shared path inside startPreview(page) never reaches it —
+        // required here specifically, per helpers.ts's own doc comment,
+        // because the surface under test is EXACTLY a stale-SW hazard: the
+        // toast is one-shot per service-worker registration, so a foreign
+        // or stale registration on this origin is the one thing that could
+        // make a fresh-context sweep report a false OK.
+        await assertCleanServiceWorkerState(page);
+        await page.goto(server.url);
+        await mapReady(page);
+
+        const legend = page.locator("details.depth-legend");
+        await page
+          .locator(".reload-prompt")
+          .waitFor({ state: "visible", timeout: 15_000 });
+        const hiddenWithToast = await settledLegendHidden(page, legend);
+
+        await page
+          .locator(".reload-prompt .banner-dismiss")
+          .click({ timeout: 5_000 });
+        await expect(page.locator(".banner-area .banner")).toHaveCount(0);
+        const hiddenWithoutToast = await settledLegendHidden(page, legend);
+
+        // The load-bearing claim: the toast ALONE must never flip `hidden`
+        // from reachable (false, no banner at all) to removed-from-the-
+        // accessibility-tree (true) — #871's own repro. A viewport that is
+        // ALREADY hidden with no banner (the unrelated short-landscape/
+        // short-viewport gate, #598) stays out of scope for this assertion
+        // either way — this only forbids the toast being what FLIPS it.
+        expect(
+          hiddenWithToast === true && hiddenWithoutToast === false,
+          `${label} (${viewport.width}x${viewport.height}): hidden flipped true only because the toast was ` +
+            `up (withToast=${hiddenWithToast}, withoutToast=${hiddenWithoutToast})`,
+        ).toBe(false);
+      } finally {
+        await context.close();
+      }
+    }
+  } finally {
+    server.kill();
+  }
+});
+
+// #871 residual guard (#909's "fourth victim"): with a PLAN loaded,
+// `.depth-legend` itself is unmounted (#813 — folded into `.route-legend`
+// instead), so the no-plan guard above is structurally blind to this whole
+// state — #909's own writeup found the fourth victim, `.route-layer-controls`
+// at 740x360, only because a REVIEW happened to cover that one size; the
+// issue's own eight-viewport table never included a plan-loaded row at all.
+// Excludes STANDARD_VIEWPORTS' desktop4k/desktopHd/tabletLandscape: at
+// >=1024px `.banner-area` becomes a `position: static` grid item (this
+// file's own SINGLE_BANNER_VIEWPORTS comment) and cannot overlap map chrome
+// by construction. `tabletPortrait` sits on the narrow side of that
+// breakpoint and is included.
+test("#871: the SW toast does not intercept .route-layer-controls with a plan loaded", async ({
+  browser,
+}) => {
+  const server = await startPreview();
+  try {
+    const viewports: Record<string, Viewport> = {
+      tabletPortrait: STANDARD_VIEWPORTS.tabletPortrait,
+      phonePortrait: STANDARD_VIEWPORTS.phonePortrait,
+      ...EDGE_VIEWPORTS,
+    };
+    for (const [label, viewport] of Object.entries(viewports)) {
+      const context = await browser.newContext({ viewport });
+      const page = await context.newPage();
+      try {
+        // #832: see the twin comment in the no-plan guard above — this
+        // test creates its own page after startPreview() returned, so it
+        // is not reached by that function's own `page` parameter.
+        await assertCleanServiceWorkerState(page);
+        await page.goto(
+          `${server.url}?windFixture=test-fixtures/wind-sw12.json`,
+        );
+        await mapReady(page);
+        await page
+          .locator(".reload-prompt")
+          .waitFor({ state: "visible", timeout: 15_000 });
+
+        await page.getByRole("tab", { name: "Planen" }).click();
+        const originSection = page.getByRole("region", { name: "Start" });
+        await originSection.getByRole("combobox").fill("Langballigau");
+        await expect(originSection.getByRole("option")).toHaveCount(1);
+        await originSection.getByRole("option").first().click();
+
+        const destSection = page.getByRole("region", { name: "Ziel" });
+        await destSection.getByRole("combobox").fill("Sønderborg");
+        await expect(destSection.getByRole("option")).toHaveCount(1);
+        await destSection.getByRole("option").first().click();
+
+        const planButton = page.getByRole("button", { name: "Route planen" });
+        await planButton.click();
+        await expect(planButton).toBeEnabled({ timeout: 60_000 });
+
+        const controls = page.locator(".route-layer-controls");
+        await expect(controls).toBeVisible();
+
+        // The toast is dismissable and one-shot; if it self-cleared before
+        // planning finished (slow CI, or a rare early SW timing), there is
+        // nothing left to probe for this row — that is a pass by vacuity,
+        // not a claim this row was exercised, so it is logged rather than
+        // silently treated the same as a genuine clear result.
+        if (!(await page.locator(".reload-prompt").isVisible())) {
+          console.log(
+            `${label}: SW toast already dismissed before planning finished — row not exercised`,
+          );
+          continue;
+        }
+
+        // #909's own finding: the toast's overlap band can land on any PART
+        // of a cluster depending on viewport — sample the top/middle/bottom
+        // of the box, not just its centre (CLAUDE.md's "match the probe's
+        // geometry to the defect's" rule). Asserts OCCLUDER IDENTITY, not a
+        // bare negative — per the #871 brief, a residual here must name
+        // WHICH element intercepted, never collapse to `.not.toBe('ok')`.
+        //
+        // No known residual here, at ANY viewport in this matrix — unlike
+        // the vertical `--sc-toast-top` anchor (which DOES have one, see
+        // `useToastAnchor`'s own comment in ReloadPrompt.tsx), the toast's
+        // `--sc-toast-right` clears `.route-layer-controls` HORIZONTALLY
+        // whenever it exists, which removes the 2-D overlap outright rather
+        // than trading it off against something else. Confirmed empirically
+        // at shortLandscape844 (844x390) and shortLandscape740 (740x360) —
+        // #909's own "fourth victim" repro sizes, and the two rows that DID
+        // fail here before the horizontal clearance was added — via
+        // `compass.spec.ts`'s pre-existing `#208 "Major 3"` guard, which
+        // checks the identical cluster/viewport combination independently.
+        await expect
+          .poll(
+            async () => {
+              const b = await controls.boundingBox();
+              if (!b) return "no box";
+              const ys = [b.y + 4, b.y + b.height / 2, b.y + b.height - 4];
+              for (const y of ys) {
+                const hit = await elementDescriptionAt(
+                  page,
+                  b.x + b.width / 2,
+                  y,
+                );
+                if (hit.includes("reload-prompt")) {
+                  return `blocked by toast at (${Math.round(b.x + b.width / 2)},${Math.round(y)}): ${hit}`;
+                }
+              }
+              return "clear";
+            },
+            {
+              timeout: 10_000,
+              message: `${label} (${viewport.width}x${viewport.height})`,
+            },
+          )
+          .toBe("clear");
+      } finally {
+        await context.close();
+      }
+    }
+  } finally {
+    server.kill();
+  }
+});
+
 // #807: `.ais-status` (the AIS connection chip, Live tab only, Tier 2 — see
 // the tier-order comment above .app-header) had NO `max-width`, so PR #806's
 // longer `ais.status.off` EN string (43 chars, up from 30) wrapped to a
@@ -1933,24 +2165,34 @@ const AIS_CHIP_MIN_RENDERED_HEIGHT_PX = 15;
 
 function probeAisChipGeometry(
   page: Page,
-): Promise<{ height: number; left: number; right: number; viewportWidth: number } | null> {
+): Promise<{
+  height: number;
+  left: number;
+  right: number;
+  viewportWidth: number;
+} | null> {
   return page.evaluate(() => {
-    const el = document.querySelector('.ais-status');
+    const el = document.querySelector(".ais-status");
     if (!el) return null;
     const r = el.getBoundingClientRect();
-    return { height: r.height, left: r.left, right: r.right, viewportWidth: window.innerWidth };
+    return {
+      height: r.height,
+      left: r.left,
+      right: r.right,
+      viewportWidth: window.innerWidth,
+    };
   });
 }
 
-test('#807: the AIS status chip never wraps past two lines at 280/320px, in either language, and never crosses the viewport edge', async ({
+test("#807: the AIS status chip never wraps past two lines at 280/320px, in either language, and never crosses the viewport edge", async ({
   browser,
 }) => {
   const server = await startPreview();
   try {
-    for (const lang of ['de', 'en'] as const) {
+    for (const lang of ["de", "en"] as const) {
       const context = await browser.newContext();
       await context.addInitScript((l) => {
-        window.localStorage.setItem('sc-lang', l);
+        window.localStorage.setItem("sc-lang", l);
       }, lang);
       const page = await context.newPage();
       try {
@@ -1958,18 +2200,23 @@ test('#807: the AIS status chip never wraps past two lines at 280/320px, in eith
           await page.setViewportSize(vp);
           await page.goto(server.url);
           await mapReady(page);
-          await page.getByRole('tab', { name: 'Live' }).click();
+          await page.getByRole("tab", { name: "Live" }).click();
           const label = `${name} (${vp.width}x${vp.height}) / ${lang}`;
 
           await expect
-            .poll(async () => (await probeAisChipGeometry(page))?.height ?? -1, {
-              message: `${label}: .ais-status height (px) must exceed a one-line render`,
-            })
+            .poll(
+              async () => (await probeAisChipGeometry(page))?.height ?? -1,
+              {
+                message: `${label}: .ais-status height (px) must exceed a one-line render`,
+              },
+            )
             .toBeGreaterThan(AIS_CHIP_MIN_RENDERED_HEIGHT_PX);
 
           await expect
             .poll(
-              async () => (await probeAisChipGeometry(page))?.height ?? Number.POSITIVE_INFINITY,
+              async () =>
+                (await probeAisChipGeometry(page))?.height ??
+                Number.POSITIVE_INFINITY,
               {
                 message: `${label}: .ais-status height (px) must not exceed a two-line render`,
               },
@@ -1981,9 +2228,13 @@ test('#807: the AIS status chip never wraps past two lines at 280/320px, in eith
               async () => {
                 const g = await probeAisChipGeometry(page);
                 if (!g) return Number.POSITIVE_INFINITY;
-                return Math.max(0, -g.left) + Math.max(0, g.right - g.viewportWidth);
+                return (
+                  Math.max(0, -g.left) + Math.max(0, g.right - g.viewportWidth)
+                );
               },
-              { message: `${label}: .ais-status overflow beyond the viewport edge (px)` },
+              {
+                message: `${label}: .ais-status overflow beyond the viewport edge (px)`,
+              },
             )
             .toBe(0);
         }
