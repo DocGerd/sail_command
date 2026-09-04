@@ -196,6 +196,42 @@ describe('ViaMarkers marker accessibility contract (#470)', () => {
   });
 });
 
+// #947: the accessibility-contract block above asserts `aria-label` only.
+// These assertions read `element.textContent` instead, a different DOM
+// content-tree surface — they prove the label node and its text exist in
+// the tree, marked `aria-hidden`. jsdom computes no layout or paint at all
+// (CLAUDE.md), so `textContent` is still NOT the visual/paint surface: it
+// cannot see a misplaced marker, a clipped label, or invisible text from a
+// broken `color-mix()`. Real visual correctness (including marker
+// position) needs a real-browser pass (this repo's `verify` skill).
+describe('ViaMarkers visible label (#947)', () => {
+  it('renders the aria-label text visibly on the marker element, hidden from assistive tech', () => {
+    hoisted.map = makeFakeMap();
+    const viaPoints: LatLon[] = [{ lat: 54.5, lon: 10.0 }];
+    render(<ViaMarkers viaPoints={viaPoints} replanning={false} onDragEnd={noopDragEnd} />);
+
+    const [marker] = createdMarkers as [RecordedMarker];
+    const expectedLabel = de['planner.via.marker'].replace('{index}', '1');
+    expect(marker.element.textContent).toBe(expectedLabel);
+    const labelEl = marker.element.querySelector('.sc-via-marker-label');
+    expect(labelEl).not.toBeNull();
+    expect(labelEl?.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it("shows a named via point's name visibly, not the indexed fallback, matching its aria-label", () => {
+    hoisted.map = makeFakeMap();
+    const viaPoints: (LatLon & { name?: string })[] = [
+      { lat: 54.5, lon: 10.0, name: 'Kalkgrund' },
+      { lat: 54.6, lon: 10.1 },
+    ];
+    render(<ViaMarkers viaPoints={viaPoints} replanning={false} onDragEnd={noopDragEnd} />);
+
+    const [named, unnamed] = createdMarkers as [RecordedMarker, RecordedMarker];
+    expect(named.element.textContent).toBe('Kalkgrund');
+    expect(unnamed.element.textContent).toBe(de['planner.via.marker'].replace('{index}', '2'));
+  });
+});
+
 describe('ViaMarkers rebuild on a draft change (#470)', () => {
   it('tears down every existing marker and rebuilds from the new via list', () => {
     hoisted.map = makeFakeMap();

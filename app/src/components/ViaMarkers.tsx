@@ -80,6 +80,27 @@ function viaElement(ariaLabel: string): HTMLDivElement {
   el.setAttribute('role', 'button');
   el.tabIndex = 0;
   el.setAttribute('aria-label', ariaLabel);
+
+  // #947: previously this element carried ONLY the aria-label above — a
+  // screen-reader user heard the waypoint's name, but a sighted user saw an
+  // unlabelled dot, and several waypoints were mutually indistinguishable on
+  // the map. Render the SAME text visibly, `aria-hidden` so assistive tech
+  // does not announce it a second time alongside the root's own aria-label
+  // (the two must say the same thing, so neither can drift from the other).
+  // The label span below is `position: absolute` (app.css) — deliberately
+  // WITHOUT setting `position: relative` on this root: MapLibre's own
+  // `.maplibregl-marker` class already keeps the root `position: absolute`,
+  // and an inline override of that (tried during review, PR #954) put the
+  // root back into normal document flow, offsetting every via marker beyond
+  // the first by the stacked height of the ones before it.
+  // `pointer-events: none` (app.css) keeps the label out of the marker's
+  // own click/drag/touch target.
+  const labelEl = document.createElement('span');
+  labelEl.className = 'sc-via-marker-label';
+  labelEl.textContent = ariaLabel;
+  labelEl.setAttribute('aria-hidden', 'true');
+  el.appendChild(labelEl);
+
   return el;
 }
 
