@@ -86,6 +86,17 @@ export interface PlannerPanelProps {
   // it — origin+destination as tap-source PickedPoints, vias as raw LatLon.
   onImportRoute: (origin: PickedPoint, destination: PickedPoint, viaPoints: LatLon[]) => void;
   onRequestMapTap: (target: TapTarget) => void; // parent arms MapView tap mode
+  // #844: the parent's OWN armed-target state, mirrored back down so each
+  // origin/destination/via section can turn ITS OWN "pick on map"/"Add
+  // waypoint" button into an in-place Cancel once it is the one armed — the
+  // affordance a user just pressed is where their eye and hand already are,
+  // which the existing top-of-panel Banner (still rendered, unchanged) is
+  // not (measured 269-1008px away across the viewport matrix, #844). This
+  // DUPLICATES the cancel action rather than moving it, deliberately: the
+  // banner + Escape path keeps working for anyone who has already learned
+  // it. null when nothing is armed.
+  tapTarget: TapTarget | null;
+  onCancelTapPick: () => void;
   // #571 redesign: via-waypoint editing. Source of truth is the caller's own
   // DRAFT via list (App.tsx's `draftViaPoints`) — unconditionally, whether
   // or not a plan is active. A via edit never replans in place any more (the
@@ -221,6 +232,8 @@ export default function PlannerPanel({
   onPickDestination,
   onImportRoute,
   onRequestMapTap,
+  tapTarget,
+  onCancelTapPick,
   viaPoints,
   onRemoveVia,
   onReorderVia,
@@ -719,14 +732,32 @@ export default function PlannerPanel({
               }}
             />
           )}
+          {/* #844: in place of a floating/relocated affordance (which would
+              need weighing against app.css's map-chrome z-index tiers —
+              this button lives in plain panel document flow, untiered, so
+              no such decision is needed), the SAME button that arms tap
+              mode toggles into the cancel action once IT is the one armed.
+              aria-pressed marks the toggle state for assistive tech. A
+              DEDICATED string (planner.pickOnMap.cancel), not the top
+              banner's own 'banner.tapPick.cancel' reused verbatim: that
+              plain "Cancel" would collide (identical accessible name) with
+              the banner's own dismiss button once armed, and WCAG 2.5.3
+              wants the accessible name to contain the visible text anyway,
+              so a self-describing string is the correct fix, not a
+              collision workaround. */}
           <Button
             variant="secondary"
+            aria-pressed={tapTarget === 'origin'}
             onClick={() => {
+              if (tapTarget === 'origin') {
+                onCancelTapPick();
+                return;
+              }
               setEditingOrigin(false);
               onRequestMapTap('origin');
             }}
           >
-            {t('planner.pickOnMap')}
+            {tapTarget === 'origin' ? t('planner.pickOnMap.cancel') : t('planner.pickOnMap')}
           </Button>
         </section>
 
@@ -775,14 +806,21 @@ export default function PlannerPanel({
               }}
             />
           )}
+          {/* #844: see the matching comment on the origin "pick on map"
+              button above — same in-place toggle, same reasoning. */}
           <Button
             variant="secondary"
+            aria-pressed={tapTarget === 'destination'}
             onClick={() => {
+              if (tapTarget === 'destination') {
+                onCancelTapPick();
+                return;
+              }
               setEditingDestination(false);
               onRequestMapTap('destination');
             }}
           >
-            {t('planner.pickOnMap')}
+            {tapTarget === 'destination' ? t('planner.pickOnMap.cancel') : t('planner.pickOnMap')}
           </Button>
         </section>
 
@@ -848,8 +886,14 @@ export default function PlannerPanel({
               ))}
             </ol>
           )}
-          <Button variant="ghost" onClick={() => onRequestMapTap('via')}>
-            {t('planner.via.add')}
+          {/* #844: see the matching comment on the origin "pick on map"
+              button above — same in-place toggle, same reasoning. */}
+          <Button
+            variant="ghost"
+            aria-pressed={tapTarget === 'via'}
+            onClick={() => (tapTarget === 'via' ? onCancelTapPick() : onRequestMapTap('via'))}
+          >
+            {tapTarget === 'via' ? t('planner.via.add.cancel') : t('planner.via.add')}
           </Button>
 
           {/* #829: keyboard-reachable equivalent of the map-tap 'via' path

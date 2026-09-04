@@ -1371,6 +1371,50 @@ describe('App', () => {
       ).not.toBeInTheDocument();
       expect(await screen.findByText(tapPickMessage(de['planner.via.label']))).toBeInTheDocument();
     });
+
+    // #844: proves the REAL App wiring (tapTarget + handleCancelTapPick
+    // passed down to PlannerPanel) — PlannerPanel.test.tsx's own toggle
+    // tests mock onCancelTapPick and can't see this wiring at all, the same
+    // "App row" split the #829 wiring tests below use. Disarming through the
+    // section's own in-place button must clear the SAME tapTarget state the
+    // banner reads, not a second independent flag — so the banner
+    // disappearing here is the discriminating assertion, not the button's
+    // own text.
+    it("#844: the armed section's own in-place cancel button disarms tap-to-pick (not just the top banner)", async () => {
+      renderApp();
+      await screen.findByRole('heading', { name: 'SailCommand' });
+
+      const originSection = armOrigin();
+      const message = tapPickMessage(de['planner.origin.label']);
+      expect(await screen.findByText(message)).toBeInTheDocument();
+
+      fireEvent.click(
+        within(originSection).getByRole('button', { name: de['planner.pickOnMap.cancel'] }),
+      );
+      expect(screen.queryByText(message)).not.toBeInTheDocument();
+      // The button itself reverts too — proving it re-reads the SAME
+      // disarmed tapTarget state rather than latching into cancelled forever.
+      expect(
+        within(originSection).getByRole('button', { name: de['planner.pickOnMap'] }),
+      ).toBeInTheDocument();
+    });
+
+    it("#844: the via section's own in-place cancel button disarms tap-to-pick too", async () => {
+      renderApp();
+      await screen.findByRole('heading', { name: 'SailCommand' });
+
+      const viaSection = armVia();
+      const message = tapPickMessage(de['planner.via.label']);
+      expect(await screen.findByText(message)).toBeInTheDocument();
+
+      fireEvent.click(
+        within(viaSection).getByRole('button', { name: de['planner.via.add.cancel'] }),
+      );
+      expect(screen.queryByText(message)).not.toBeInTheDocument();
+      expect(
+        within(viaSection).getByRole('button', { name: de['planner.via.add'] }),
+      ).toBeInTheDocument();
+    });
   });
 });
 

@@ -104,9 +104,22 @@ export const de = {
   'planner.origin.label': 'Start',
   'planner.destination.label': 'Ziel',
   'planner.pickOnMap': 'Auf Karte wählen',
+  // #844: the SAME "Auf Karte wählen"/"Pick on map" button toggles into
+  // this once ITS OWN target is armed — an in-place cancel affordance right
+  // where the user just pressed (the top-of-panel Banner + Escape path
+  // still works unchanged; this duplicates it rather than replacing it).
+  // Deliberately its OWN string, not 'banner.tapPick.cancel' reused
+  // verbatim — that plain "Abbrechen"/"Cancel" collides (identical
+  // accessible name) with the banner's own dismiss button once armed, and
+  // WCAG 2.5.3 requires the accessible name to contain the visible text, so
+  // a distinct, self-describing string is required either way.
+  'planner.pickOnMap.cancel': 'Auf Karte wählen abbrechen',
   'planner.change': 'Ändern',
   'planner.via.label': 'Wegpunkte',
   'planner.via.add': 'Wegpunkt hinzufügen',
+  // #844: see the matching comment on planner.pickOnMap.cancel above — the
+  // via section's own in-place cancel toggle.
+  'planner.via.add.cancel': 'Wegpunkt hinzufügen abbrechen',
   'planner.via.remove': 'Wegpunkt {index} entfernen',
   'planner.via.moveUp': 'Wegpunkt {index} nach oben verschieben',
   'planner.via.moveDown': 'Wegpunkt {index} nach unten verschieben',
