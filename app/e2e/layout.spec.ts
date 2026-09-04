@@ -3,6 +3,7 @@ import {
   startPreview,
   mapReady,
   bannerHeightVar,
+  assertCleanServiceWorkerState,
   STANDARD_VIEWPORTS,
   EDGE_VIEWPORTS,
   type Viewport,
@@ -1961,6 +1962,15 @@ test('#871: the SW toast alone never hides the depth legend, across the shared v
       const context = await browser.newContext({ viewport });
       const page = await context.newPage();
       try {
+        // #832: this test creates its OWN page via browser.newContext()/
+        // context.newPage() AFTER startPreview() has already returned, so
+        // the shared path inside startPreview(page) never reaches it —
+        // required here specifically, per helpers.ts's own doc comment,
+        // because the surface under test is EXACTLY a stale-SW hazard: the
+        // toast is one-shot per service-worker registration, so a foreign
+        // or stale registration on this origin is the one thing that could
+        // make a fresh-context sweep report a false OK.
+        await assertCleanServiceWorkerState(page);
         await page.goto(server.url);
         await mapReady(page);
 
@@ -2017,6 +2027,10 @@ test('#871: the SW toast does not intercept .route-layer-controls with a plan lo
       const context = await browser.newContext({ viewport });
       const page = await context.newPage();
       try {
+        // #832: see the twin comment in the no-plan guard above — this
+        // test creates its own page after startPreview() returned, so it
+        // is not reached by that function's own `page` parameter.
+        await assertCleanServiceWorkerState(page);
         await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
         await mapReady(page);
         await page.locator('.reload-prompt').waitFor({ state: 'visible', timeout: 15_000 });
