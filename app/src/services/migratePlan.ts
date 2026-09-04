@@ -4,13 +4,13 @@ import {
   boatSnapshot,
   PLAN_SCHEMA_VERSION,
   type BoatSnapshot,
-  type LatLon,
   type Plan,
   type PlanRequest,
   type PlanResultOk,
   type RigResult,
   type SailId,
   type SailResult,
+  type ViaPoint,
   type WindGrid,
 } from '../types';
 
@@ -95,14 +95,32 @@ function isRecord(x: unknown): x is Record<string, unknown> {
  * default"). THIS is the reachable case for a real user: any value stored
  * via `structuredClone`/IndexedDB can in principle be corrupted by browser
  * storage damage or hand-editing, same as any other field in this file.
+ *
+ * #846: widened to carry an optional `name` across the load. This is the
+ * ONE edit the design spec's §2.1 calls out by name — `viaPoints` used to be
+ * rebuilt from an explicit lat/lon-only allowlist, which would otherwise
+ * silently strip a saved waypoint's name on every load with no error and no
+ * failing test (nothing asserted on a field that didn't exist yet). `name`
+ * is validated as OPTIONAL and independently of the lat/lon admission gate:
+ * a present-but-malformed `name` (wrong type, or a whitespace-only string)
+ * is simply DROPPED, never rejects the record — per ADR-0002/§2.1, only the
+ * lat/lon shape is a fail-CLOSED admission concern here. Trimmed so a
+ * whitespace-only stored value degrades to "no name" (the same state a
+ * cleared rename input would leave), never a technically-present but
+ * invisible name.
  */
-function normaliseViaPoints(x: unknown): LatLon[] | null {
+function normaliseViaPoints(x: unknown): ViaPoint[] | null {
   if (x === undefined) return [];
   if (!Array.isArray(x)) return null;
-  const out: LatLon[] = [];
+  const out: ViaPoint[] = [];
   for (const p of x) {
     if (!isRecord(p) || !Number.isFinite(p.lat) || !Number.isFinite(p.lon)) return null;
-    out.push({ lat: p.lat as number, lon: p.lon as number });
+    const point: ViaPoint = { lat: p.lat as number, lon: p.lon as number };
+    if (typeof p.name === 'string') {
+      const trimmed = p.name.trim();
+      if (trimmed.length > 0) point.name = trimmed;
+    }
+    out.push(point);
   }
   return out;
 }

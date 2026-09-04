@@ -117,6 +117,7 @@ export const en = {
   // aria-label under a non-exact getByRole locator.
   'planner.via.coord.latLabel': 'Latitude',
   'planner.via.coord.lonLabel': 'Longitude',
+  'planner.via.coord.nameLabel': 'Name',
   'planner.via.coord.add': 'Add coordinates',
   'planner.via.coord.update': 'Update coordinates',
   'planner.via.coord.edit': 'Edit coordinates (point {index}): {coord}',

@@ -1,4 +1,4 @@
-import type { LatLon, PlanRequest } from '../types';
+import type { PlanRequest, ViaPoint } from '../types';
 
 /**
  * #654: the single read accessor for `PlanRequest.viaPoints`.
@@ -101,7 +101,16 @@ import type { LatLon, PlanRequest } from '../types';
  * *this* accessor has already bypassed it, and a component has no way to
  * refuse a record, only to render one. Degrading to an empty via list is
  * the only non-throwing option at this layer.
+ *
+ * #846: return type widened LatLon[] -> ViaPoint[] deliberately, as its own
+ * explicit checklist item (design spec §3) — TypeScript array covariance
+ * means a LatLon[]-typed return here would still compile against a caller
+ * expecting ViaPoint[] (a LatLon literal structurally satisfies ViaPoint,
+ * since `name` is optional), so a forgotten widening here produces NO
+ * compiler error, only a `.name` that silently never reaches the UI through
+ * this accessor's callers. There is no compiler backstop for this one;
+ * only reading this comment is.
  */
-export function planViaPoints(request: Pick<PlanRequest, 'viaPoints'>): LatLon[] {
+export function planViaPoints(request: Pick<PlanRequest, 'viaPoints'>): ViaPoint[] {
   return Array.isArray(request.viaPoints) ? request.viaPoints : [];
 }

@@ -1899,3 +1899,99 @@ test('#762: the safety-depth field label does not overflow its column at tablet 
     server.kill();
   }
 });
+
+// #807: `.ais-status` (the AIS connection chip, Live tab only, Tier 2 — see
+// the tier-order comment above .app-header) had NO `max-width`, so PR #806's
+// longer `ais.status.off` EN string (43 chars, up from 30) wrapped to a
+// THIRD line at <=320px — deepening its already-documented #208 "R2-2"/
+// "R3-2" same-tier collision with `.map-stack-tl`/`.route-layer-controls`.
+// Fixed in app.css with `width: max-content` + a `max-width` cap (that
+// rule's own #807 comment carries the mechanism and why the cap value is
+// safe at wide viewports too). This is NEW coverage, not a strengthened
+// existing guard — `grep -rn 'ais-status|aisStatus' app/e2e/*.spec.ts`
+// returned nothing before this test (see the PR's own report).
+//
+// Geometry is RE-SAMPLED inside each poll callback (never captured once and
+// asserted against a frozen value — the #412/#422 stale-geometry class this
+// repo has already paid for twice), and every assertion is on a NUMERIC
+// VALUE, never a collapsed boolean, so a CI failure reports the actual
+// received height/overflow rather than an inscrutable timeout.
+const AIS_CHIP_VIEWPORTS = {
+  wrapForcing280: EDGE_VIEWPORTS.wrapForcing280,
+  deepPortrait320: EDGE_VIEWPORTS.deepPortrait320,
+} as const;
+
+// Measured live (#807 PR report, real Chromium): a genuinely two-line chip
+// renders ~34.6px tall at both 280/320px in both languages; the pre-fix
+// THREE-line wrap measured ~48.2px (issue #807's own table). 42px sits
+// strictly between the two — the two-vs-three-line discriminator, not an
+// arbitrary round number. 15px sits strictly below the one-line height
+// (~19.6px) so a hidden/missing chip (height 0, or -1 from a failed probe)
+// cannot silently satisfy the upper bound alone.
+const AIS_CHIP_MAX_TWO_LINE_HEIGHT_PX = 42;
+const AIS_CHIP_MIN_RENDERED_HEIGHT_PX = 15;
+
+function probeAisChipGeometry(
+  page: Page,
+): Promise<{ height: number; left: number; right: number; viewportWidth: number } | null> {
+  return page.evaluate(() => {
+    const el = document.querySelector('.ais-status');
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { height: r.height, left: r.left, right: r.right, viewportWidth: window.innerWidth };
+  });
+}
+
+test('#807: the AIS status chip never wraps past two lines at 280/320px, in either language, and never crosses the viewport edge', async ({
+  browser,
+}) => {
+  const server = await startPreview();
+  try {
+    for (const lang of ['de', 'en'] as const) {
+      const context = await browser.newContext();
+      await context.addInitScript((l) => {
+        window.localStorage.setItem('sc-lang', l);
+      }, lang);
+      const page = await context.newPage();
+      try {
+        for (const [name, vp] of Object.entries(AIS_CHIP_VIEWPORTS)) {
+          await page.setViewportSize(vp);
+          await page.goto(server.url);
+          await mapReady(page);
+          await page.getByRole('tab', { name: 'Live' }).click();
+          const label = `${name} (${vp.width}x${vp.height}) / ${lang}`;
+
+          await expect
+            .poll(async () => (await probeAisChipGeometry(page))?.height ?? -1, {
+              message: `${label}: .ais-status height (px) must exceed a one-line render`,
+            })
+            .toBeGreaterThan(AIS_CHIP_MIN_RENDERED_HEIGHT_PX);
+
+          await expect
+            .poll(
+              async () => (await probeAisChipGeometry(page))?.height ?? Number.POSITIVE_INFINITY,
+              {
+                message: `${label}: .ais-status height (px) must not exceed a two-line render`,
+              },
+            )
+            .toBeLessThan(AIS_CHIP_MAX_TWO_LINE_HEIGHT_PX);
+
+          await expect
+            .poll(
+              async () => {
+                const g = await probeAisChipGeometry(page);
+                if (!g) return Number.POSITIVE_INFINITY;
+                return Math.max(0, -g.left) + Math.max(0, g.right - g.viewportWidth);
+              },
+              { message: `${label}: .ais-status overflow beyond the viewport edge (px)` },
+            )
+            .toBe(0);
+        }
+      } finally {
+        await context.close();
+      }
+    }
+  } finally {
+    server.kill();
+  }
+});

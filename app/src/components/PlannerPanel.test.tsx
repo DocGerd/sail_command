@@ -940,6 +940,22 @@ describe('PlannerPanel', () => {
       expect(items[1]).toHaveTextContent('54.820°N 9.950°E');
     });
 
+    // #846 review Major: neither branch of `{v.name ?? formatLatLon(v)}`
+    // (PlannerPanel.tsx) had coverage — reverting that fallback to a bare
+    // `{formatLatLon(v)}` left this file 102/102 green. Both branches in
+    // ONE test: a named via point shows its name and NOT the coordinate
+    // string; an unnamed sibling still shows the coordinate string.
+    it("shows a named via point's name instead of its coordinates, and an unnamed one still shows the coordinate label", () => {
+      const NAMED = { lat: 54.8, lon: 9.9, name: 'Kalkgrund' };
+      renderPanel({ viaPoints: [NAMED, VIA_B] });
+      const viaSection = screen.getByRole('region', { name: 'Waypoints' });
+      const items = within(viaSection).getAllByRole('listitem');
+      expect(items).toHaveLength(2);
+      expect(items[0]).toHaveTextContent('Kalkgrund');
+      expect(items[0]).not.toHaveTextContent('54.800°N 9.900°E');
+      expect(items[1]).toHaveTextContent('54.820°N 9.950°E');
+    });
+
     it("removing a chip calls onRemoveVia with that chip's index", () => {
       const props = renderPanel({ viaPoints: [VIA_A, VIA_B] });
       fireEvent.click(screen.getByRole('button', { name: 'Remove waypoint 2' }));
