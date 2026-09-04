@@ -328,7 +328,7 @@ async function settledPlacedLabels(page: Page): Promise<SettledPlacedLabels> {
 test('map labels: a place label is placed and uses the real (non-fallback) glyph pipeline (#320)', async ({
   page,
 }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   // Installed before navigation so it captures every glyph-fallback warning
   // for the whole page lifetime, not just after some later manual trigger —
   // same rationale as csp.spec.ts's securitypolicyviolation listener.

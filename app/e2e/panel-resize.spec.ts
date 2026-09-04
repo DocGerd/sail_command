@@ -88,7 +88,7 @@ async function panelCssVar(page: Page): Promise<string> {
 
 test.describe('#355 resizable panel', () => {
   test('drag resizes and persists across reload; keyboard steps too', async ({ page }) => {
-    const server = await startPreview();
+    const server = await startPreview(page);
     try {
       await page.setViewportSize(STANDARD_VIEWPORTS.desktopHd);
       await page.goto(server.url);
@@ -225,7 +225,7 @@ test.describe('#355 resizable panel', () => {
   test('an extreme drag clamps to the min/max bounds rather than overshooting', async ({
     page,
   }) => {
-    const server = await startPreview();
+    const server = await startPreview(page);
     try {
       await page.setViewportSize(STANDARD_VIEWPORTS.desktopHd);
       await page.goto(server.url);
@@ -280,7 +280,7 @@ test.describe('#355 resizable panel', () => {
   // persisted — silently converting the responsive `1fr` default into a
   // fixed width that stops reflowing with the window.
   test('a net-zero-movement drag does not pin the panel to a fixed width', async ({ page }) => {
-    const server = await startPreview();
+    const server = await startPreview(page);
     try {
       await page.setViewportSize(STANDARD_VIEWPORTS.desktopHd);
       await page.goto(server.url);
@@ -325,7 +325,7 @@ test.describe('#355 resizable panel', () => {
   test('the ten-column legs table fits at a wide setting, and does not at the default width', async ({
     page,
   }) => {
-    const server = await startPreview();
+    const server = await startPreview(page);
     try {
       await page.setViewportSize(STANDARD_VIEWPORTS.desktopHd);
       await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
@@ -430,7 +430,7 @@ test.describe('#355 resizable panel', () => {
     // reusing this file's own fixture route (Langballigau -> Sønderborg,
     // wind-sw12) rather than a new one — it produces one populated Shallow
     // cell (the stacked width, ~181.67px).
-    const server = await startPreview();
+    const server = await startPreview(page);
     try {
       await page.setViewportSize(STANDARD_VIEWPORTS.phonePortrait);
       await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
@@ -490,7 +490,7 @@ test.describe('#355 resizable panel', () => {
     test(`narrow layout (${label}, ${viewport.width}x${viewport.height}) has no resize affordance`, async ({
       page,
     }) => {
-      const server = await startPreview();
+      const server = await startPreview(page);
       try {
         await page.setViewportSize(viewport);
         await page.goto(server.url);

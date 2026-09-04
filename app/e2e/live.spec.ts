@@ -63,7 +63,7 @@ test('live view: emulated GPS drives readout, reroute-from-here, and leg advance
   // vitest unit suite specifically; no equivalent Playwright/e2e ratio has
   // been measured).
   test.setTimeout(360_000);
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
 
