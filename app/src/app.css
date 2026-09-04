@@ -2100,6 +2100,32 @@ select {
    it was invisible unconditionally) — not fixed here, per the same
    same-tier-collision-needs-a-layout-fix reasoning above, deliberately
    deferred rather than chased under time pressure. */
+/* #807: with no width/max-width, an absolutely-positioned box whose only
+   offset is `left` (never `right`) shrink-to-fits against an AVAILABLE
+   width of (containing block − left) per CSS2.1 §10.3.7 — at `left: 50%`
+   that is exactly 50% of the container, not the text's own preferred
+   width. PR #806 lengthened `ais.status.off` (EN) past what fits on two
+   lines inside that 50% cap at <=320px, wrapping to a THIRD line and
+   deepening the pre-existing #208 "R2-2"/"R3-2" overlap with Tier-2
+   neighbours documented in the comment above. `width: max-content` opts
+   out of shrink-to-fit sizing entirely so the box follows its own content
+   width (short strings like "AIS offline" stay compact and centered);
+   `max-width` then caps that so a long string wraps onto (at most) two
+   lines instead of growing past the narrow viewport `translateX(-50%)`
+   centers it in. `19rem` sits ABOVE the widest RENDERED `ais.status.*`
+   string across both dicts (measured ~294px, `ais.status.off`) so wide
+   viewports keep rendering one line exactly as before this fix — the cap
+   only bites once `88vw` drops below that, i.e. at <=333px, which is
+   where the wrap is actually wanted. That was established by enumerating
+   every `ais.status.*` key with realistic count/routeCount substitution,
+   not by checking one string: `ais.status.liveRoute` has the longest RAW
+   template (its `{count}`/`{routeCount}` placeholders unexpanded) but
+   renders SHORTER than `off` once real digits replace those placeholders
+   — a width constant justified against a single string, with a longer
+   sibling never checked, is exactly how #807 itself was created (PR #806
+   lengthened `ais.status.off`). Verified in a real Chromium pass at
+   280/320/360/1920px in both languages — see the PR's own report for the
+   measured heights. */
 .ais-status {
   position: absolute;
   top: 3.5rem;
@@ -2107,6 +2133,8 @@ select {
   transform: translateX(-50%);
   z-index: 2;
   pointer-events: none;
+  width: max-content;
+  max-width: min(88vw, 19rem);
 }
 
 .ais-status-chip {

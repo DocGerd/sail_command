@@ -655,6 +655,24 @@ export function solve(p: SolveParams): SolveResult {
   if (!best) {
     // Heuristic: nodes pruned by visited/byKey count as neither death; adequate in real geometry, may misclassify contrived single-cell pockets,
     // plus a handful of consumed-without-registering paths (a blocked direct-arrival attempt; a zero-effective-speed candidate after a maneuver penalty).
+    //
+    // #866: 'mask-blocked' here cannot distinguish "genuinely unreachable"
+    // from "solver gave up" — both collapse to the same cause. Investigated
+    // for Marstal->Rudkoebing at the Salona 44 (salona44-relaxation sweep
+    // arm, mask-blocked) vs. the Salona 45 (relaxation-dense, ok+shallow) at
+    // the identical 2.3 m gate: cellsConnected (boat-independent) confirms
+    // the destination IS mask-connected at that gate, so this was a real
+    // "gave up" case, not a real "unreachable" one. MAX_FRONTIER truncation
+    // was ruled out (cappedRingCount 0 in every run, peak frontier far below
+    // the cap). The two boats' frontiers evolved identically through several
+    // rings and then diverged; the only differing input was boat SPEED (S44
+    // ~2% faster at every TWA at that TWS), so its longer per-ring step
+    // overshot a gap the slower boat's step landed inside — a knife-edge
+    // instance of the #20/#21 step-length-vs-real-channel-width mechanism,
+    // not independently confirmed by a speed-swap experiment (narrowed, not
+    // closed). Accepted as a known limit, not fixed — see #866's
+    // investigation comment for the full measurement and the disposition
+    // ruling.
     return {
       status: 'no-route',
       cause:

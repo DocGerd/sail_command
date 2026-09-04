@@ -34,4 +34,26 @@ describe('planViaPoints (#654)', () => {
     const viaPoints: PlanRequest['viaPoints'] = [];
     expect(planViaPoints({ viaPoints })).toBe(viaPoints);
   });
+
+  // #846 review Minor: the LatLon[] -> ViaPoint[] widening of this
+  // function's return type has NO runtime effect on its own — the function
+  // body (`Array.isArray(...) ? request.viaPoints : []`) is byte-identical
+  // either way, so a plain runtime assertion that `.name` survives a call
+  // CANNOT discriminate the return-type revert this test exists to guard
+  // (reverting it changes zero bytes of compiled JS). The load-bearing half
+  // is the TYPE-LEVEL access below: `result[0].name` only type-checks
+  // because the declared return type is ViaPoint[]. Reverting the return
+  // type annotation to LatLon[] makes this line TS2339 ("Property 'name'
+  // does not exist on type 'LatLon'"), caught by `npm run typecheck`
+  // (tsc -b) — this file sits inside tsconfig.app.json's plain `src`
+  // include (not one of its node:fs-only exclusions), so that check runs on
+  // ordinary `npm run typecheck`, no separate `vitest --typecheck` needed.
+  it('#846: the return type carries `name` — type-level backstop for the LatLon[] -> ViaPoint[] widening (no runtime effect exists to assert on)', () => {
+    const request: Pick<PlanRequest, 'viaPoints'> = {
+      viaPoints: [{ lat: 54.83, lon: 9.9, name: 'Kalkgrund' }],
+    };
+    const result = planViaPoints(request);
+    const name: string | undefined = result[0].name;
+    expect(name).toBe('Kalkgrund');
+  });
 });
