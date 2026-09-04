@@ -47,7 +47,10 @@ function okResult(durationMs: number): PlanResultOk {
 
 const OK_RESULT = okResult(3_600_000);
 
-function makePlan(): Plan {
+// windSpeedKn default (12) -> real WindField.sample() exercised, Beaufort
+// force 4 ('11 <= 16' bucket), heading '000°'. Parameterized so the #936
+// review Minor's boundary test can request exactly 1 kn.
+function makePlan(windSpeedKn = 12): Plan {
   return {
     id: 'plan-1',
     name: 'Test plan',
@@ -64,9 +67,7 @@ function makePlan(): Plan {
       sailIds: ['genoa', 'fock'],
       boat: defaultBoatSnapshot(),
     },
-    // Uniform 12 kn from 000° — real windGrid, so a real WindField.sample()
-    // is exercised: Beaufort force 4 ('11 <= 16' bucket) and heading '000°'.
-    windGrid: uniformWindGrid(12, 0, { t0Ms: DEPARTURE_MS - 3_600_000, hours: 96 }),
+    windGrid: uniformWindGrid(windSpeedKn, 0, { t0Ms: DEPARTURE_MS - 3_600_000, hours: 96 }),
     result: OK_RESULT,
   };
 }
@@ -213,6 +214,16 @@ describe('DepartureCompare', () => {
     // merely slower rather than not achieved at all.
     expect(within(items[2]!).queryByText('Am schnellsten')).not.toBeInTheDocument();
     expect(within(items[2]!).queryByText(/^#\d+$/)).not.toBeInTheDocument();
+  });
+
+  it('#936 review Minor: exactly 1 kn is Beaufort force 1, not force 0 (the 1-3 kn band is closed on the left)', () => {
+    stubHook({
+      candidates: [{ departureMs: DEPARTURE_MS, outcome: { kind: 'ok', result: OK_RESULT } }],
+    });
+    renderCompare(makePlan(1));
+    const items = screen.getAllByRole('listitem');
+    expect(items[0]).toHaveTextContent('Bft 1 · 000°');
+    expect(items[0]?.textContent).not.toMatch(/Bft 0/);
   });
 
   it('shows a cancelled-notice chip after a scan stops early via cancel()', () => {

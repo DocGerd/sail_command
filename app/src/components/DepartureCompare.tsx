@@ -21,7 +21,7 @@ const DEFAULT_COUNT = 6;
 const DEFAULT_STEP_HOURS = 3;
 
 // #936: standard Beaufort-scale upper bounds in knots (WMO/Met Office knots
-// table — 0: 0-1, 1: 1-3, 2: 4-6, 3: 7-10, 4: 11-16, 5: 17-21, 6: 22-27,
+// table — 0: <1, 1: 1-3, 2: 4-6, 3: 7-10, 4: 11-16, 5: 17-21, 6: 22-27,
 // 7: 28-33, 8: 34-40, 9: 41-47, 10: 48-55, 11: 56-63, 12: 64+). This is a
 // real, universal maritime convention, not an invented category scale — the
 // number it summarizes always comes from a real windGrid sample.
@@ -31,7 +31,11 @@ const BEAUFORT_UPPER_BOUNDS_KN = [1, 3, 6, 10, 16, 21, 27, 33, 40, 47, 55, 63] a
 
 function beaufortForce(speedKn: number): number {
   for (let force = 0; force < BEAUFORT_UPPER_BOUNDS_KN.length; force++) {
-    if (speedKn <= BEAUFORT_UPPER_BOUNDS_KN[force]) return force;
+    const bound = BEAUFORT_UPPER_BOUNDS_KN[force];
+    // Force 0's band is 0 kn up to but NOT including 1 kn — the force-1 band
+    // (1-3 kn) is closed on the left, so 1.0 kn exactly is force 1, not 0.
+    // Every other boundary in this table is closed on both ends.
+    if (force === 0 ? speedKn < bound : speedKn <= bound) return force;
   }
   return BEAUFORT_UPPER_BOUNDS_KN.length;
 }
@@ -162,19 +166,19 @@ function candidateCard(
  * threading new props through an already-large, concurrently-edited
  * component.
  *
- * #936 (this file, part b): each candidate is now its own `Card` ("ranked
- * card" — an ordered list, `<ol>`, since rank IS list order for 'ok'
- * candidates), carrying a rank badge (fastest / #n, by ascending duration —
- * 'ok' candidates only), a wind-character badge (Beaufort force + heading,
- * sampled at the origin at that candidate's own departure time, present for
- * EVERY outcome kind), and — for an unroutable candidate — its own typed
- * cause rather than a generic "no route" sentence. Known trade-off: `Card`
- * hardcodes an `<h2>` title with no level prop, so nesting one per candidate
- * inside this component's own outer `Card` produces a flat sequence of `<h2>`
- * elements rather than a `<h2>` -> `<h3>` hierarchy; `Card.tsx` is outside
- * this PR's file scope, so this is accepted rather than worked around with a
- * bespoke bordered `<div>` (which would mean inventing new CSS — the one
- * thing this PR was briefed not to do).
+ * #936 (this file, part b): each candidate is now its own ranked card in an
+ * `<ol>` — the DOM order is chronological (`state.candidates`, by
+ * `departureMs`), NOT rank order; `<ol>` numbers that chronological
+ * position, and the rank badge (fastest / #n, by ascending duration — 'ok'
+ * candidates only) is a separately-computed, independent signal shown as
+ * badge content. rankCandidates()'s own test deliberately lists the slower
+ * of two 'ok' candidates FIRST and asserts its `#2` badge resolves
+ * correctly in that position, precisely to pin that DOM order and rank are
+ * not the same thing. Every candidate also carries a wind-character badge
+ * (Beaufort force + heading, sampled at the origin at that candidate's own
+ * departure time, present for EVERY outcome kind), and an unroutable
+ * candidate carries its own typed cause rather than a generic "no route"
+ * sentence.
  *
  * (c) (two-rig confirm solve for the picked window, #937) is explicitly NOT
  * built here — this PR adds no click target for picking a window; #937 will
@@ -273,14 +277,17 @@ export default function DepartureCompare({ plan, ensureClient }: DepartureCompar
             );
             return (
               <li key={candidate.departureMs}>
-                <Card title={card.title}>
+                {/* #936 review Major 2: plain .sc-card/.sc-card-title, not
+                    Card — avoids a second <h2> per candidate. */}
+                <div className="sc-card">
+                  <p className="sc-card-title">{card.title}</p>
                   <div className="departure-compare-badges">
                     {card.badges.map((badge) => (
                       <Chip key={badge}>{badge}</Chip>
                     ))}
                   </div>
                   <p className="sc-field-help">{card.detail}</p>
-                </Card>
+                </div>
               </li>
             );
           })}
