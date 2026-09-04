@@ -172,6 +172,28 @@ describe('ViaMarkers marker accessibility contract (#470)', () => {
       de['planner.via.marker'].replace('{index}', '2'),
     );
   });
+
+  // #846 review Major: `p.name ??` had no coverage — reverting it to drop
+  // the fallback entirely left this file 9/9 green. Both branches in ONE
+  // test: a named via point's marker gets the name as its accessible name;
+  // an unnamed sibling still falls back to the indexed `planner.via.marker`
+  // label.
+  it("uses a named via point's name as the marker's aria-label, and an unnamed one still falls back to the indexed label", () => {
+    hoisted.map = makeFakeMap();
+    const viaPoints: (LatLon & { name?: string })[] = [
+      { lat: 54.5, lon: 10.0, name: 'Kalkgrund' },
+      { lat: 54.6, lon: 10.1 },
+    ];
+    render(<ViaMarkers viaPoints={viaPoints} replanning={false} onDragEnd={noopDragEnd} />);
+
+    expect(createdMarkers).toHaveLength(2);
+    const [named, unnamed] = createdMarkers as [RecordedMarker, RecordedMarker];
+
+    expect(named.element.getAttribute('aria-label')).toBe('Kalkgrund');
+    expect(unnamed.element.getAttribute('aria-label')).toBe(
+      de['planner.via.marker'].replace('{index}', '2'),
+    );
+  });
 });
 
 describe('ViaMarkers rebuild on a draft change (#470)', () => {

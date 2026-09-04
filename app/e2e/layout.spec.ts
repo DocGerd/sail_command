@@ -1934,11 +1934,16 @@ test('#762: the safety-depth field label does not overflow its column at tablet 
 // Poll until three consecutive reads agree, mirroring `labels.spec.ts`'s
 // own settle pattern for a MapLibre placement throttle — a different
 // producer, the same "async recompute after a resize" shape.
-async function settledLegendHidden(page: Page, legend: Locator): Promise<boolean> {
+async function settledLegendHidden(
+  page: Page,
+  legend: Locator,
+): Promise<boolean> {
   let last: boolean | null = null;
   let streak = 0;
   for (let i = 0; i < 30; i += 1) {
-    const current = await legend.evaluate((el) => (el as HTMLDetailsElement).hidden);
+    const current = await legend.evaluate(
+      (el) => (el as HTMLDetailsElement).hidden,
+    );
     if (current === last) {
       streak += 1;
       if (streak >= 3) return current;
@@ -1948,16 +1953,19 @@ async function settledLegendHidden(page: Page, legend: Locator): Promise<boolean
     }
     await page.waitForTimeout(100);
   }
-  if (last === null) throw new Error('settledLegendHidden: never read a value');
+  if (last === null) throw new Error("settledLegendHidden: never read a value");
   return last;
 }
 
-test('#871: the SW toast alone never hides the depth legend, across the shared viewport matrix (no plan)', async ({
+test("#871: the SW toast alone never hides the depth legend, across the shared viewport matrix (no plan)", async ({
   browser,
 }) => {
   const server = await startPreview();
   try {
-    const viewports: Record<string, Viewport> = { ...STANDARD_VIEWPORTS, ...EDGE_VIEWPORTS };
+    const viewports: Record<string, Viewport> = {
+      ...STANDARD_VIEWPORTS,
+      ...EDGE_VIEWPORTS,
+    };
     for (const [label, viewport] of Object.entries(viewports)) {
       const context = await browser.newContext({ viewport });
       const page = await context.newPage();
@@ -1974,12 +1982,16 @@ test('#871: the SW toast alone never hides the depth legend, across the shared v
         await page.goto(server.url);
         await mapReady(page);
 
-        const legend = page.locator('details.depth-legend');
-        await page.locator('.reload-prompt').waitFor({ state: 'visible', timeout: 15_000 });
+        const legend = page.locator("details.depth-legend");
+        await page
+          .locator(".reload-prompt")
+          .waitFor({ state: "visible", timeout: 15_000 });
         const hiddenWithToast = await settledLegendHidden(page, legend);
 
-        await page.locator('.reload-prompt .banner-dismiss').click({ timeout: 5_000 });
-        await expect(page.locator('.banner-area .banner')).toHaveCount(0);
+        await page
+          .locator(".reload-prompt .banner-dismiss")
+          .click({ timeout: 5_000 });
+        await expect(page.locator(".banner-area .banner")).toHaveCount(0);
         const hiddenWithoutToast = await settledLegendHidden(page, legend);
 
         // The load-bearing claim: the toast ALONE must never flip `hidden`
@@ -2013,7 +2025,7 @@ test('#871: the SW toast alone never hides the depth legend, across the shared v
 // file's own SINGLE_BANNER_VIEWPORTS comment) and cannot overlap map chrome
 // by construction. `tabletPortrait` sits on the narrow side of that
 // breakpoint and is included.
-test('#871: the SW toast does not intercept .route-layer-controls with a plan loaded', async ({
+test("#871: the SW toast does not intercept .route-layer-controls with a plan loaded", async ({
   browser,
 }) => {
   const server = await startPreview();
@@ -2031,26 +2043,30 @@ test('#871: the SW toast does not intercept .route-layer-controls with a plan lo
         // test creates its own page after startPreview() returned, so it
         // is not reached by that function's own `page` parameter.
         await assertCleanServiceWorkerState(page);
-        await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
+        await page.goto(
+          `${server.url}?windFixture=test-fixtures/wind-sw12.json`,
+        );
         await mapReady(page);
-        await page.locator('.reload-prompt').waitFor({ state: 'visible', timeout: 15_000 });
+        await page
+          .locator(".reload-prompt")
+          .waitFor({ state: "visible", timeout: 15_000 });
 
-        await page.getByRole('tab', { name: 'Planen' }).click();
-        const originSection = page.getByRole('region', { name: 'Start' });
-        await originSection.getByRole('combobox').fill('Langballigau');
-        await expect(originSection.getByRole('option')).toHaveCount(1);
-        await originSection.getByRole('option').first().click();
+        await page.getByRole("tab", { name: "Planen" }).click();
+        const originSection = page.getByRole("region", { name: "Start" });
+        await originSection.getByRole("combobox").fill("Langballigau");
+        await expect(originSection.getByRole("option")).toHaveCount(1);
+        await originSection.getByRole("option").first().click();
 
-        const destSection = page.getByRole('region', { name: 'Ziel' });
-        await destSection.getByRole('combobox').fill('Sønderborg');
-        await expect(destSection.getByRole('option')).toHaveCount(1);
-        await destSection.getByRole('option').first().click();
+        const destSection = page.getByRole("region", { name: "Ziel" });
+        await destSection.getByRole("combobox").fill("Sønderborg");
+        await expect(destSection.getByRole("option")).toHaveCount(1);
+        await destSection.getByRole("option").first().click();
 
-        const planButton = page.getByRole('button', { name: 'Route planen' });
+        const planButton = page.getByRole("button", { name: "Route planen" });
         await planButton.click();
         await expect(planButton).toBeEnabled({ timeout: 60_000 });
 
-        const controls = page.locator('.route-layer-controls');
+        const controls = page.locator(".route-layer-controls");
         await expect(controls).toBeVisible();
 
         // The toast is dismissable and one-shot; if it self-cleared before
@@ -2058,7 +2074,7 @@ test('#871: the SW toast does not intercept .route-layer-controls with a plan lo
         // nothing left to probe for this row — that is a pass by vacuity,
         // not a claim this row was exercised, so it is logged rather than
         // silently treated the same as a genuine clear result.
-        if (!(await page.locator('.reload-prompt').isVisible())) {
+        if (!(await page.locator(".reload-prompt").isVisible())) {
           console.log(
             `${label}: SW toast already dismissed before planning finished — row not exercised`,
           );
@@ -2087,19 +2103,141 @@ test('#871: the SW toast does not intercept .route-layer-controls with a plan lo
           .poll(
             async () => {
               const b = await controls.boundingBox();
-              if (!b) return 'no box';
+              if (!b) return "no box";
               const ys = [b.y + 4, b.y + b.height / 2, b.y + b.height - 4];
               for (const y of ys) {
-                const hit = await elementDescriptionAt(page, b.x + b.width / 2, y);
-                if (hit.includes('reload-prompt')) {
+                const hit = await elementDescriptionAt(
+                  page,
+                  b.x + b.width / 2,
+                  y,
+                );
+                if (hit.includes("reload-prompt")) {
                   return `blocked by toast at (${Math.round(b.x + b.width / 2)},${Math.round(y)}): ${hit}`;
                 }
               }
-              return 'clear';
+              return "clear";
             },
-            { timeout: 10_000, message: `${label} (${viewport.width}x${viewport.height})` },
+            {
+              timeout: 10_000,
+              message: `${label} (${viewport.width}x${viewport.height})`,
+            },
           )
-          .toBe('clear');
+          .toBe("clear");
+      } finally {
+        await context.close();
+      }
+    }
+  } finally {
+    server.kill();
+  }
+});
+
+// #807: `.ais-status` (the AIS connection chip, Live tab only, Tier 2 — see
+// the tier-order comment above .app-header) had NO `max-width`, so PR #806's
+// longer `ais.status.off` EN string (43 chars, up from 30) wrapped to a
+// THIRD line at <=320px — deepening its already-documented #208 "R2-2"/
+// "R3-2" same-tier collision with `.map-stack-tl`/`.route-layer-controls`.
+// Fixed in app.css with `width: max-content` + a `max-width` cap (that
+// rule's own #807 comment carries the mechanism and why the cap value is
+// safe at wide viewports too). This is NEW coverage, not a strengthened
+// existing guard — `grep -rn 'ais-status|aisStatus' app/e2e/*.spec.ts`
+// returned nothing before this test (see the PR's own report).
+//
+// Geometry is RE-SAMPLED inside each poll callback (never captured once and
+// asserted against a frozen value — the #412/#422 stale-geometry class this
+// repo has already paid for twice), and every assertion is on a NUMERIC
+// VALUE, never a collapsed boolean, so a CI failure reports the actual
+// received height/overflow rather than an inscrutable timeout.
+const AIS_CHIP_VIEWPORTS = {
+  wrapForcing280: EDGE_VIEWPORTS.wrapForcing280,
+  deepPortrait320: EDGE_VIEWPORTS.deepPortrait320,
+} as const;
+
+// Measured live (#807 PR report, real Chromium): a genuinely two-line chip
+// renders ~34.6px tall at both 280/320px in both languages; the pre-fix
+// THREE-line wrap measured ~48.2px (issue #807's own table). 42px sits
+// strictly between the two — the two-vs-three-line discriminator, not an
+// arbitrary round number. 15px sits strictly below the one-line height
+// (~19.6px) so a hidden/missing chip (height 0, or -1 from a failed probe)
+// cannot silently satisfy the upper bound alone.
+const AIS_CHIP_MAX_TWO_LINE_HEIGHT_PX = 42;
+const AIS_CHIP_MIN_RENDERED_HEIGHT_PX = 15;
+
+function probeAisChipGeometry(
+  page: Page,
+): Promise<{
+  height: number;
+  left: number;
+  right: number;
+  viewportWidth: number;
+} | null> {
+  return page.evaluate(() => {
+    const el = document.querySelector(".ais-status");
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return {
+      height: r.height,
+      left: r.left,
+      right: r.right,
+      viewportWidth: window.innerWidth,
+    };
+  });
+}
+
+test("#807: the AIS status chip never wraps past two lines at 280/320px, in either language, and never crosses the viewport edge", async ({
+  browser,
+}) => {
+  const server = await startPreview();
+  try {
+    for (const lang of ["de", "en"] as const) {
+      const context = await browser.newContext();
+      await context.addInitScript((l) => {
+        window.localStorage.setItem("sc-lang", l);
+      }, lang);
+      const page = await context.newPage();
+      try {
+        for (const [name, vp] of Object.entries(AIS_CHIP_VIEWPORTS)) {
+          await page.setViewportSize(vp);
+          await page.goto(server.url);
+          await mapReady(page);
+          await page.getByRole("tab", { name: "Live" }).click();
+          const label = `${name} (${vp.width}x${vp.height}) / ${lang}`;
+
+          await expect
+            .poll(
+              async () => (await probeAisChipGeometry(page))?.height ?? -1,
+              {
+                message: `${label}: .ais-status height (px) must exceed a one-line render`,
+              },
+            )
+            .toBeGreaterThan(AIS_CHIP_MIN_RENDERED_HEIGHT_PX);
+
+          await expect
+            .poll(
+              async () =>
+                (await probeAisChipGeometry(page))?.height ??
+                Number.POSITIVE_INFINITY,
+              {
+                message: `${label}: .ais-status height (px) must not exceed a two-line render`,
+              },
+            )
+            .toBeLessThan(AIS_CHIP_MAX_TWO_LINE_HEIGHT_PX);
+
+          await expect
+            .poll(
+              async () => {
+                const g = await probeAisChipGeometry(page);
+                if (!g) return Number.POSITIVE_INFINITY;
+                return (
+                  Math.max(0, -g.left) + Math.max(0, g.right - g.viewportWidth)
+                );
+              },
+              {
+                message: `${label}: .ais-status overflow beyond the viewport edge (px)`,
+              },
+            )
+            .toBe(0);
+        }
       } finally {
         await context.close();
       }
