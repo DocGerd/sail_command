@@ -314,7 +314,7 @@ async function settledSeamarkIconIds(page: Page, label: string): Promise<Settled
 test('#353: seamark size-axis guard — icon-overlap collision culling below z12 vs. none at/above z12, at both display categories', async ({
   page,
 }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     await page.goto(server.url);
     await mapReady(page);
@@ -972,7 +972,7 @@ interface CulledHazardRow {
 }
 
 test('#232 item 2: cross-tile placement ordering — measurement, not a fix', async ({ page }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     // #232 review MINOR 9: measured live at this exact viewport (2200x1500)
     // against z9 — map canvas 1459x1500 CSS px; the region projects to
@@ -1203,7 +1203,7 @@ for (const row of LEGEND_GUARD_ROWS) {
   test(`#830 composition guard: the depth legend and its #597 caveat stay reachable with the seamarks-in-view list mounted — ${row.label}`, async ({
     page,
   }) => {
-    const server = await startPreview();
+    const server = await startPreview(page);
     try {
       await page.setViewportSize(row.viewport);
       await page.goto(server.url);
@@ -1294,7 +1294,7 @@ for (const row of LEGEND_GUARD_ROWS) {
 test('#830: seamarks-in-view — keyboard-only identification, and the rows track the viewport by identity', async ({
   page,
 }) => {
-  const server = await startPreview();
+  const server = await startPreview(page);
   try {
     await page.setViewportSize(STANDARD_VIEWPORTS.desktopHd);
     await page.goto(server.url);

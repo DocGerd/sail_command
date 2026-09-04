@@ -367,10 +367,20 @@ export const ARMS: Record<(typeof ARM_NAMES)[number], Arm> = {
   // matches `relaxation-dense` on every both-ok row, but the OUTCOME SET
   // does not — `relaxation-dense` is 27 ok+shallow / 5 unreachable while
   // this arm is 26 / 6, because `rudkoebing` is ok+shallow (usedDepthM 2.3)
-  // for the Salona 45 and `unreachable` here at the SAME gate. Cause not
-  // established; MAX_FRONTIER search-capacity truncation is the leading
-  // hypothesis, not a finding. Do not read that row's divergence as a
-  // regression without re-measuring it. Tracked as #866.
+  // for the Salona 45 and `unreachable` here at the SAME gate. #866
+  // investigated and REFUTED MAX_FRONTIER search-capacity truncation
+  // (cappedRingCount was 0 in every run, peak frontier well below the cap);
+  // `cellsConnected` confirms Rudkoebing IS mask-connected at that gate, so
+  // this is a knife-edge instance of the #20/#21 step-length-vs-real-
+  // channel-width mechanism (the S44 is ~2% faster at every TWA at that TWS,
+  // so its longer per-ring step overshoots a gap the S45's step lands
+  // inside) — not independently confirmed by a speed-swap experiment
+  // (narrowed, not closed). ACCEPTED as a known limit per #866's maintainer
+  // ruling: S44/S45 OUTCOME-SET PARITY IS NOT AN EXPECTATION of this arm
+  // pair — only `usedDepthM` parity on shared-outcome rows is (see above). A
+  // future divergence on a DIFFERENT row than `rudkoebing` is not by itself
+  // evidence of a regression; re-measure the mechanism (ring diagnostics,
+  // `cellsConnected`) before treating one as a bug.
   'salona44-relaxation': {
     label: 'salona44-relaxation',
     settings: DEFAULT_SETTINGS,
