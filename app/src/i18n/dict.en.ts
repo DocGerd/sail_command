@@ -955,4 +955,17 @@ export const en = {
   'map.scale.unit.cbl.other': 'cables',
   'map.scale.unit.m.one': 'metre',
   'map.scale.unit.m.other': 'metres',
+  // #356 part (a): see dict.de.ts's matching comment.
+  'departureScan.title': 'Compare departure times',
+  'departureScan.help':
+    'Scans several departure times for this route (each computed on the genoa alone) and lists them by arrival and motor share.',
+  'departureScan.count.label': 'Number of windows',
+  'departureScan.step.label': 'Step',
+  'departureScan.step.option': '{hours} h',
+  'departureScan.action': 'Start comparison',
+  'departureScan.cancel': 'Cancel',
+  'departureScan.status.scanning': 'Scanning window {index} of {total} …',
+  'departureScan.status.cancelled': 'Cancelled — {count} windows scanned.',
+  'departureScan.candidate.ok':
+    'Arrival {eta} · duration {duration} · {distance} · {motorPct}% motor',
 } satisfies Record<MsgKey, string>;

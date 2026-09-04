@@ -406,3 +406,21 @@ export function sailIdsOf(boat: BoatDef): readonly SailId[] {
 // boatById(DEFAULT_BOAT_ID).sails name the same set"; that equivalence is gone
 // and the DEFAULT_BOAT_ID lookup is now load-bearing rather than incidental.
 export const DEFAULT_SAIL_IDS: readonly SailId[] = sailIdsOf(boatById(DEFAULT_BOAT_ID));
+
+// #356a (departure-time comparison, design spec §2.2): the specific sail
+// every catalogue boat's genoa-type sail is filed under. Routed through this
+// module — not written as a bare literal at the useDepartureScan.ts call
+// site — per app/src/test/sailLiteralCallSites.test.ts's #54 guard, which
+// flags a NEW bare sail-id literal outside this file and services/
+// migratePlan.ts.
+//
+// Deliberately a plain literal, NOT `BOATS[0].sails[0].id` or any other
+// POSITIONAL derivation: §2.2's scan is pinned to the genoa SAIL TYPE by
+// measurement (genoa-only ranking is byte-identical to true two-rig-best;
+// fock-only is NOT), never to "whichever sail happens to sit first" — a
+// catalogue reorder that left the id spellings unchanged must not silently
+// repoint this at a different sail. The type system is still the derivation:
+// `SailId` is `(typeof BOATS)[number]['sails'][number]['id']`, so this
+// assignment is a COMPILE ERROR the moment no catalogue boat carries a sail
+// id 'genoa' any more — checked by VALUE, immune to array reordering.
+export const GENOA_SAIL_ID: SailId = 'genoa';
