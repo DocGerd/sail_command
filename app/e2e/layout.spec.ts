@@ -1899,3 +1899,159 @@ test('#762: the safety-depth field label does not overflow its column at tablet 
     server.kill();
   }
 });
+
+// #871: the SW-ready/update toast (`.reload-prompt`, ReloadPrompt.tsx) is
+// TRANSIENT chrome — but before this fix, its height counted toward the SAME
+// `.banner-area` measurement `DataLayers.tsx`'s depth-legend reachability
+// gate and this file's own narrow-layout banner-clearance rule both derive
+// from, so the toast ALONE (no other banner, zero user action) could push
+// the collapsed-legend budget under `LEGEND_COLLAPSED_HEIGHT_PX` and set
+// `hidden` on the whole `<details class="depth-legend">` — #597's safety
+// caveat included — taking it out of the accessibility tree entirely on a
+// routine cold load. #909 (four failed static-placement attempts, retained
+// on branch `fix/toast-hides-depth-caveat`) is why this guard exercises the
+// FULL shared viewport matrix rather than one repro viewport: no fixed
+// `top`/`bottom` value clears every viewport, so a narrower guard could pass
+// while a regression reopens the defect at a viewport it does not cover.
+//
+// TWO measurement traps this guard is built to avoid (both cost real #908/
+// #909 attempts, per that issue's own writeup): (1) the toast is ONE-SHOT
+// per service-worker registration, so a `page`/context REUSED across rows
+// shows it only on the first row and every later row would silently read as
+// "passing" with nothing under test — hence a fresh `browser.newContext()`
+// per row, never the shared per-test `page` fixture. (2) `.focus()`/
+// `document.activeElement` proves only keyboard reachability, never pointer
+// hit-testing — this guard reads the `hidden` IDL property directly instead
+// (the exact mechanism `DataLayers.tsx` sets), which is what actually
+// controls accessibility-tree membership.
+test('#871: the SW toast alone never hides the depth legend, across the shared viewport matrix (no plan)', async ({
+  browser,
+}) => {
+  const server = await startPreview();
+  try {
+    const viewports: Record<string, Viewport> = { ...STANDARD_VIEWPORTS, ...EDGE_VIEWPORTS };
+    for (const [label, viewport] of Object.entries(viewports)) {
+      const context = await browser.newContext({ viewport });
+      const page = await context.newPage();
+      try {
+        await page.goto(server.url);
+        await mapReady(page);
+
+        const legend = page.locator('details.depth-legend');
+        await page.locator('.reload-prompt').waitFor({ state: 'visible', timeout: 15_000 });
+        const hiddenWithToast = await legend.evaluate((el) => (el as HTMLDetailsElement).hidden);
+
+        await page.locator('.reload-prompt .banner-dismiss').click({ timeout: 5_000 });
+        await expect(page.locator('.banner-area .banner')).toHaveCount(0);
+        const hiddenWithoutToast = await legend.evaluate((el) => (el as HTMLDetailsElement).hidden);
+
+        // The load-bearing claim: the toast ALONE must never flip `hidden`
+        // from reachable (false, no banner at all) to removed-from-the-
+        // accessibility-tree (true) — #871's own repro. A viewport that is
+        // ALREADY hidden with no banner (the unrelated short-landscape/
+        // short-viewport gate, #598) stays out of scope for this assertion
+        // either way — this only forbids the toast being what FLIPS it.
+        expect(
+          hiddenWithToast === true && hiddenWithoutToast === false,
+          `${label} (${viewport.width}x${viewport.height}): hidden flipped true only because the toast was ` +
+            `up (withToast=${hiddenWithToast}, withoutToast=${hiddenWithoutToast})`,
+        ).toBe(false);
+      } finally {
+        await context.close();
+      }
+    }
+  } finally {
+    server.kill();
+  }
+});
+
+// #871 residual guard (#909's "fourth victim"): with a PLAN loaded,
+// `.depth-legend` itself is unmounted (#813 — folded into `.route-legend`
+// instead), so the no-plan guard above is structurally blind to this whole
+// state — #909's own writeup found the fourth victim, `.route-layer-controls`
+// at 740x360, only because a REVIEW happened to cover that one size; the
+// issue's own eight-viewport table never included a plan-loaded row at all.
+// Excludes STANDARD_VIEWPORTS' desktop4k/desktopHd/tabletLandscape: at
+// >=1024px `.banner-area` becomes a `position: static` grid item (this
+// file's own SINGLE_BANNER_VIEWPORTS comment) and cannot overlap map chrome
+// by construction. `tabletPortrait` sits on the narrow side of that
+// breakpoint and is included.
+test('#871: the SW toast does not intercept .route-layer-controls with a plan loaded', async ({
+  browser,
+}) => {
+  const server = await startPreview();
+  try {
+    const viewports: Record<string, Viewport> = {
+      tabletPortrait: STANDARD_VIEWPORTS.tabletPortrait,
+      phonePortrait: STANDARD_VIEWPORTS.phonePortrait,
+      ...EDGE_VIEWPORTS,
+    };
+    for (const [label, viewport] of Object.entries(viewports)) {
+      const context = await browser.newContext({ viewport });
+      const page = await context.newPage();
+      try {
+        await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
+        await mapReady(page);
+        await page.locator('.reload-prompt').waitFor({ state: 'visible', timeout: 15_000 });
+
+        await page.getByRole('tab', { name: 'Planen' }).click();
+        const originSection = page.getByRole('region', { name: 'Start' });
+        await originSection.getByRole('combobox').fill('Langballigau');
+        await expect(originSection.getByRole('option')).toHaveCount(1);
+        await originSection.getByRole('option').first().click();
+
+        const destSection = page.getByRole('region', { name: 'Ziel' });
+        await destSection.getByRole('combobox').fill('Sønderborg');
+        await expect(destSection.getByRole('option')).toHaveCount(1);
+        await destSection.getByRole('option').first().click();
+
+        const planButton = page.getByRole('button', { name: 'Route planen' });
+        await planButton.click();
+        await expect(planButton).toBeEnabled({ timeout: 60_000 });
+
+        const controls = page.locator('.route-layer-controls');
+        await expect(controls).toBeVisible();
+
+        // The toast is dismissable and one-shot; if it self-cleared before
+        // planning finished (slow CI, or a rare early SW timing), there is
+        // nothing left to probe for this row — that is a pass by vacuity,
+        // not a claim this row was exercised, so it is logged rather than
+        // silently treated the same as a genuine clear result.
+        if (!(await page.locator('.reload-prompt').isVisible())) {
+          console.log(
+            `${label}: SW toast already dismissed before planning finished — row not exercised`,
+          );
+          continue;
+        }
+
+        // #909's own finding: the toast's overlap band can land on any PART
+        // of a cluster depending on viewport — sample the top/middle/bottom
+        // of the box, not just its centre (CLAUDE.md's "match the probe's
+        // geometry to the defect's" rule). Asserts OCCLUDER IDENTITY, not a
+        // bare negative — per the #871 brief, a residual here must name
+        // WHICH element intercepted, never collapse to `.not.toBe('ok')`.
+        await expect
+          .poll(
+            async () => {
+              const b = await controls.boundingBox();
+              if (!b) return 'no box';
+              const ys = [b.y + 4, b.y + b.height / 2, b.y + b.height - 4];
+              for (const y of ys) {
+                const hit = await elementDescriptionAt(page, b.x + b.width / 2, y);
+                if (hit.includes('reload-prompt')) {
+                  return `blocked by toast at (${Math.round(b.x + b.width / 2)},${Math.round(y)}): ${hit}`;
+                }
+              }
+              return 'clear';
+            },
+            { timeout: 10_000, message: `${label} (${viewport.width}x${viewport.height})` },
+          )
+          .toBe('clear');
+      } finally {
+        await context.close();
+      }
+    }
+  } finally {
+    server.kill();
+  }
+});
