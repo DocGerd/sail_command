@@ -371,14 +371,6 @@ describe('#860: seamark tap-target floor (>=44px gloved-use)', () => {
     expect(topStopValue * SEAMARK_NATURAL_ICON_PX).toBeGreaterThanOrEqual(44);
   });
 
-  // Mutation check (evidence for the PR description, not a duplicate of the
-  // assertion above): the pre-#860 top stop was 0.85, which the SAME
-  // formula puts at 27.2px — well under the floor. Run against a checkout
-  // of the pre-#860 code, the test above fails with exactly this shape.
-  it('documents the pre-#860 regime the assertion above must fail against: 0.85 * 32 = 27.2px, under the floor', () => {
-    expect(0.85 * SEAMARK_NATURAL_ICON_PX).toBeLessThan(44);
-  });
-
   it('leaves the z8-z11 icon-size prefix byte-identical to the pre-#860 layout — culling risk is confined to z<12', () => {
     const iconSize = SEAMARKS_LAYOUT['icon-size'] as readonly unknown[];
     expect(iconSize.slice(0, 7)).toEqual(['interpolate', ['linear'], ['zoom'], 8, 0.55, 11, 0.7]);

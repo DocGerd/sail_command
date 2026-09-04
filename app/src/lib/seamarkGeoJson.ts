@@ -444,7 +444,13 @@ export function seamarkPopupAnchor<T extends { properties?: unknown; geometry?: 
  *   `icon-padding` entry declares no `minimum` either, so the validator will
  *   not reject a negative value — a scale > 1 genuinely shrinks the
  *   collision box below the bare icon box, not merely clawing back part of
- *   the growth the way the old flat `icon-padding: 0` did. But this is an
+ *   the growth the way the old flat `icon-padding: 0` did. #860's bigger top
+ *   stop scales that magnitude with it — at the size-slider ceiling
+ *   (`SEAMARK_SIZE_MAX = 1.5`), `iconPaddingAt(topStop, 1.5)` moved from
+ *   -6.8 (pre-#860 top stop 0.85) to -11.2 (1.4 now), a ~65% widening
+ *   proportional to the icon-size ratio — not a NEW reachability of this
+ *   already-unspecified-behaviour class, since it was already negative at
+ *   scale > 1 before #860. But this is an
  *   ABSENCE in the spec, not a documented guarantee — unspecified behaviour
  *   this formula depends on. If a future MapLibre release adds a floor
  *   (in `Padding.parse`, in `getIconPadding`, or in the spec entry), the
