@@ -55,7 +55,8 @@ The other three had no user-visible surface. The e2e preview server's
 build-identity check now also runs inside the browser page itself,
 unregistering any pre-existing service worker and clearing its caches
 before the first real navigation of every navigating spec — closing the
-last way a stale or foreign cached build could reach a test undetected
+browser-side service-worker layer, where a stale registration on a reused
+origin could previously serve a foreign cached build to a test undetected
 ([#832](https://github.com/DocGerd/sail_command/issues/832)). A Salona 44
 Marstal→Rudkøbing routing gap — `unreachable` for that boat while the
 Salona 45 routes `ok+shallow` at the identical 2.3 m gate — is accepted and
@@ -66,15 +67,15 @@ step-length-vs-channel-width mechanism; `MAX_FRONTIER` truncation is
 refuted), and the blast radius is `rudkoebing` only — `svendborg` is
 plausible by the same mechanism but was not measured
 ([#866](https://github.com/DocGerd/sail_command/issues/866)). And a
-Flensburg→Marstal Salona 44 shallow-crossing report closed as answered: the
-measurement refutes the complaint that opened it — sub-gate exposure is
-0.326 nm, 1.18x the provable minimum-necessary floor, all of it within the
-last 0.82 nm of the Marstal approach, where the bathymetry itself forces
-it — and the route is already disclosed, not a silent hazard, at default
-settings; its four live residuals do not close with it and are tracked
-separately in `Backlog`
-([#649](https://github.com/DocGerd/sail_command/issues/649),
-[#929](https://github.com/DocGerd/sail_command/issues/929),
+Flensburg→Marstal Salona 44 shallow-crossing report
+([#649](https://github.com/DocGerd/sail_command/issues/649)) closed as
+answered: the measurement refutes the complaint that opened it — sub-gate
+exposure is 0.326 nm, 1.18x the provable minimum-necessary floor, all of it
+within the last 0.82 nm of the Marstal approach, where the bathymetry
+itself forces it — and the route is already disclosed, not a silent
+hazard, at default settings; its four live residuals do not close with it
+and are tracked separately in `Backlog`
+([#929](https://github.com/DocGerd/sail_command/issues/929),
 [#930](https://github.com/DocGerd/sail_command/issues/930),
 [#931](https://github.com/DocGerd/sail_command/issues/931),
 [#932](https://github.com/DocGerd/sail_command/issues/932)).

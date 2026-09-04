@@ -75,7 +75,9 @@ it was computed from.
 
 Local state: IndexedDB database `sailcommand` (object store `plans` including
 each plan's wind grid; object store `settings` holding the single user settings
-record, which is where a pasted AIS key lives) and a small amount of
+record, which is where a pasted AIS key lives; object store `waypoints`
+holding user-named saved waypoints — an id, name, and lat/lon) and a small
+amount of
 `localStorage` (session snapshot, UI toggles, and the selected boat id — which
 determines the draft and hence the derived safety depth gate, so it is
 validated against the catalogue on every read) behind wrappers that tolerate
@@ -90,7 +92,7 @@ tracking of any kind.
 | **TB2** | App ↔ user-supplied GPX file | Inbound: arbitrary attacker-controlled XML the user chose to open | Size cap, element-count cap, XML-only parse, allowlist coordinate validation ([§5.1](#51-input-validation-tb2-tb3-tb4)) |
 | **TB3** | App ↔ Open-Meteo (N2) | Outbound: fixed grid. Inbound: untrusted JSON | HTTPS; shape/length validation before any value is used |
 | **TB4** | App ↔ aisstream.io (N3) | Outbound: user's key + bounding boxes. Inbound: untrusted JSON frames | WSS; per-field type validation; feature entirely inert without a key |
-| **TB5** | App ↔ browser storage | Read/write of plans and settings | Same-origin storage; no cross-origin access; corrupt records isolated per row |
+| **TB5** | App ↔ browser storage | Read/write of plans, settings, and saved waypoints | Same-origin storage; no cross-origin access; corrupt records isolated per row |
 | **TB6** | Build-time pipeline ↔ committed assets | Pipeline output becomes data the app trusts | Assets are committed and reviewed in pull requests; harbour connectivity is asserted **for every catalogue boat at that boat's derived gate** inside the required `app` suite (`app/src/test/verifyMaskConnectivity.test.ts`, [#550](https://github.com/DocGerd/sail_command/issues/550)), backed by the fuller advisory `verify_mask.py` gate in `verify-mask.yml`; pipeline never runs at app runtime |
 | **TB7** | Source repository ↔ shipped bytes | CI builds and deploys what is on the branch | Protected branches, required checks, reproducible-build proof, SHA-pinned actions ([§5.4](#54-build-and-delivery-integrity-tb7-tb8)) |
 | **TB8** | GitHub Pages CDN ↔ client | The CDN serves the deployed artifact over TLS | Browser TLS verification; post-deploy smoke probe; **the CDN is trusted** — see [§7](#7-known-gaps-and-accepted-risk) |
@@ -110,7 +112,7 @@ Adversaries considered, in rough order of realism for a static client-only PWA.
 
 *The most realistic serious threat.* A malicious npm package version reaches the
 bundle and runs with full app privileges: it could read IndexedDB (plans, AIS
-key) and exfiltrate to any origin.
+key, saved waypoints) and exfiltrate to any origin.
 
 **Countered by:** exact lockfiles, weekly grouped Dependabot updates across five
 update configurations spanning three package ecosystems (npm, pip,

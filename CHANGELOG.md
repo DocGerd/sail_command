@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Fixed the AIS status chip wrapping to a third line and deepening its overlap with the map controls at narrow viewports in English (#807).
-- The e2e preview server's build-identity check now also runs inside the browser page itself, unregistering any pre-existing service worker and clearing its caches before the first real navigation of every navigating spec, closing the last way a stale or foreign cached build could reach a test undetected (#832).
+- The e2e preview server's build-identity check now also runs inside the browser page itself, unregistering any pre-existing service worker and clearing its caches before the first real navigation of every navigating spec, closing the browser-side service-worker layer, where a stale registration on a reused origin could previously serve a foreign cached build to a test undetected (#832).
 - The service-worker "ready offline" toast no longer hides the collapsed depth-legend safety caveat at narrow viewports by itself (#871).
 
 ## [0.20.0] - 2026-09-03
