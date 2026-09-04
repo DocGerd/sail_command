@@ -1,6 +1,15 @@
 // @ts-expect-error process is not typed in browser context
 process.env.TZ = 'Europe/Berlin';
 
+// #848 review fix (Minor): PlannerPanel now unconditionally mounts
+// SavedWaypoints, which reads the real 'waypoints' IndexedDB store on
+// mount. jsdom has no IndexedDB implementation at all, so without this the
+// store read rejects and every test here silently console.errors. A global
+// setup.ts registration was tried first and reverted — `sweep-closure`'s
+// `closure.mjs diff` flips to OWED the moment setup.ts changes at all,
+// because `app/sweep/vitest.config.ts` loads it as a setupFile; a per-file
+// import here keeps the sweep verdict untouched.
+import 'fake-indexeddb/auto';
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { I18nProvider } from '../i18n';

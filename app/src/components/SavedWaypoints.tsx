@@ -114,8 +114,11 @@ export default function SavedWaypoints({ viaPoints, onSelect }: SavedWaypointsPr
       {/* #848's own body requires device-local persistence be DISCLOSED, not
           discovered — follows the about.caveats.* pattern (no in-app sync,
           no backend; see CLAUDE.md's Open-Meteo/AIS bullets for the same
-          "no backend" product position). */}
-      <p className="waypoints-caveat">{t('waypoints.deviceLocal')}</p>
+          "no backend" product position). Reuses `.planner-guidance` — the
+          app's existing muted-hint class (PlannerPanel's onboarding/
+          disabled-reason line) — rather than a new unstyled class, since
+          this is exactly that shape: a quiet FYI, not an error. */}
+      <p className="planner-guidance">{t('waypoints.deviceLocal')}</p>
       {viaPoints.length > 0 && (
         <div className="waypoints-save-from-via">
           <ul className="waypoints-save-from-via-list">
