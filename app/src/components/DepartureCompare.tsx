@@ -1,14 +1,16 @@
-import { useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useLang, useT } from '../i18n';
 import type { MsgKey } from '../i18n/dict.de';
-import type { LatLon, Plan, PlanResultOk } from '../types';
+import type { LatLon, Plan, PlanResultOk, SailId } from '../types';
 import type { ReplanClient } from '../state/replan';
 import { NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
-import { motorSplit } from '../lib/resultSummary';
+import { motorSplit, rigRecommendationOf, sailLabelKey } from '../lib/resultSummary';
 import { recommendedResult } from '../types';
 import { formatDateTime, formatDuration, formatHeading, formatNm } from '../lib/format';
 import { WindField } from '../lib/wind';
+import { GENOA_SAIL_ID } from '../data/boats';
 import { useDepartureScan, type DepartureCandidate } from '../state/useDepartureScan';
+import { useDepartureConfirm } from '../state/useDepartureConfirm';
 import Card from './Card';
 import Field from './Field';
 import Button from './Button';
@@ -50,6 +52,11 @@ export interface DepartureCompareProps {
   // already take, so this shares the one lazily-created worker singleton
   // rather than standing up a second one.
   ensureClient: () => Promise<ReplanClient | null>;
+  // #937: called with the updated Plan once a two-rig confirm solve
+  // succeeds — the ACTIVE plan is replaced (App.tsx passes its own
+  // `setPlan`), same "the result you asked for becomes active
+  // unconditionally on success" precedent handleLiveReroute follows.
+  onConfirmed: (plan: Plan) => void;
 }
 
 type TFn = (key: MsgKey, vars?: Record<string, string | number>) => string;
@@ -180,16 +187,42 @@ function candidateCard(
  * candidate carries its own typed cause rather than a generic "no route"
  * sentence.
  *
- * (c) (two-rig confirm solve for the picked window, #937) is explicitly NOT
- * built here — this PR adds no click target for picking a window; #937 will
- * add the confirm action on top of the card shape below.
+ * (c) (two-rig confirm solve for the picked window, #937): each 'ok'
+ * candidate's card gets a confirm action (useDepartureConfirm.ts) that
+ * re-solves that exact window with the plan's own two rigs and replaces the
+ * active plan on success. §2.2's genoa-only scan ranks windows; this is what
+ * makes the plan the user actually sails carry the app's real, two-rig
+ * recommendation. An 'ok' candidate whose confirmed two-rig result recommends
+ * a DIFFERENT rig than the genoa the scan ranked it by is surfaced honestly
+ * (the issue's own "worth surfacing rather than silently accepting" —
+ * disagreement is evidence §2.2's measured aperture may be too narrow, not
+ * something to hide), and a plan whose comparison is not 'decided' (tie,
+ * moot, or a tier-C boat's not-compared) is never claimed as a disagreement
+ * either way — no rig is named unless the router itself named one.
  */
-export default function DepartureCompare({ plan, ensureClient }: DepartureCompareProps) {
+export default function DepartureCompare({
+  plan,
+  ensureClient,
+  onConfirmed,
+}: DepartureCompareProps) {
   const t = useT();
   const [lang] = useLang();
-  const { state, scan, cancel } = useDepartureScan(ensureClient);
+  const { state, scan, cancel, reset: resetScan } = useDepartureScan(ensureClient);
+  const { state: confirmState, confirm } = useDepartureConfirm(ensureClient);
   const [count, setCount] = useState(DEFAULT_COUNT);
   const [stepHours, setStepHours] = useState<number>(DEFAULT_STEP_HOURS);
+  // Set once a confirm() resolves successfully, keyed by that candidate's
+  // departureMs — independent of confirmState (which only ever remembers the
+  // MOST RECENT confirm attempt) because a stale success notice must not
+  // linger once the user starts a later confirm elsewhere.
+  const [confirmed, setConfirmed] = useState<{
+    departureMs: number;
+    // Set only when the confirmed two-rig result 'decided' a DIFFERENT rig
+    // than the genoa the scan ranked this window by — never for 'tie'/
+    // 'moot'/'not-compared' (nothing to disagree WITH there; claiming a rig
+    // in that case would be the same unearned ★ the brief warns against).
+    disagreeingRig: SailId | null;
+  } | null>(null);
   const countId = useId();
   const stepId = useId();
   // Constructed unconditionally (before the `!plan` early return below) so
@@ -198,9 +231,35 @@ export default function DepartureCompare({ plan, ensureClient }: DepartureCompar
   // plan's own STORED grid only, never re-fetched.
   const windField = useMemo(() => (plan ? new WindField(plan.windGrid) : null), [plan]);
 
+  // #960 review Major 1: the identity a confirm() continuation must still
+  // match at resolution time — kept in sync after every render, so it always
+  // names the CURRENTLY active plan, not the one a pending confirm() was
+  // called against.
+  const activePlanIdentityRef = useRef<string | null>(null);
+  useEffect(() => {
+    activePlanIdentityRef.current = plan ? `${plan.id}-${plan.createdAtMs}` : null;
+  });
+
+  const mountedRef = useRef(true);
+  // StrictMode's dev-mode mount→cleanup→remount cycle runs this cleanup once
+  // on a genuine mount, so the setup must re-arm it.
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  // A different plan.id means a different route — candidates computed
+  // against the prior one no longer describe it.
+  useEffect(() => {
+    resetScan();
+  }, [plan?.id, resetScan]);
+
   if (!plan || !windField) return null;
 
   const handleScan = () => {
+    setConfirmed(null);
     void scan({
       base: { ...plan.request },
       windGrid: plan.windGrid,
@@ -208,6 +267,31 @@ export default function DepartureCompare({ plan, ensureClient }: DepartureCompar
       count,
     });
   };
+
+  // #937: never generalises the scan's own genoa-only rig choice (§2.2) —
+  // this re-solves with `plan.request.sailIds` unchanged (useDepartureConfirm.ts).
+  const handleConfirm = (departureMs: number) => {
+    setConfirmed(null);
+    const identity = `${plan.id}-${plan.createdAtMs}`;
+    void confirm(plan, departureMs).then((updated) => {
+      // #960 review Major 1: discard a resolution that arrives after unmount
+      // (tab switched away) or after the active plan has moved on (a
+      // different confirm, recalc, or reroute already superseded it).
+      if (!mountedRef.current || activePlanIdentityRef.current !== identity || !updated) return;
+      const rec = rigRecommendationOf(updated.result);
+      setConfirmed({
+        departureMs,
+        disagreeingRig: rec.kind === 'decided' && rec.rig !== GENOA_SAIL_ID ? rec.rig : null,
+      });
+      onConfirmed(updated);
+    });
+  };
+
+  // A confirm and a scan share one worker singleton (ensureClient) — running
+  // both at once risks one's failure disposing the client out from under the
+  // other (disposeAfterFailure/failAll, state/replan.ts). Simplest safe rule:
+  // neither may start while the other is in flight.
+  const busy = state.scanning || confirmState.confirming;
 
   const ranks = rankCandidates(state.candidates);
 
@@ -245,7 +329,7 @@ export default function DepartureCompare({ plan, ensureClient }: DepartureCompar
               ))}
             </select>
           </Field>
-          <Button variant="secondary" onClick={handleScan}>
+          <Button variant="secondary" onClick={handleScan} disabled={confirmState.confirming}>
             {t('departureScan.action')}
           </Button>
         </div>
@@ -287,6 +371,35 @@ export default function DepartureCompare({ plan, ensureClient }: DepartureCompar
                     ))}
                   </div>
                   <p className="sc-field-help">{card.detail}</p>
+                  {/* #937: confirm action, 'ok' candidates only — nothing to
+                      confirm for a no-route/failed window. */}
+                  {candidate.outcome.kind === 'ok' &&
+                    (confirmState.confirming &&
+                    confirmState.departureMs === candidate.departureMs ? (
+                      <p role="status">{t('departureScan.confirm.confirming')}</p>
+                    ) : (
+                      <Button
+                        variant="primary"
+                        onClick={() => handleConfirm(candidate.departureMs)}
+                        disabled={busy}
+                      >
+                        {t('departureScan.confirm.action')}
+                      </Button>
+                    ))}
+                  {confirmState.error && confirmState.departureMs === candidate.departureMs && (
+                    <p className="inline-alert" role="alert">
+                      {t(confirmState.error)}
+                    </p>
+                  )}
+                  {confirmed?.departureMs === candidate.departureMs && (
+                    <p role="status">
+                      {confirmed.disagreeingRig
+                        ? t('departureScan.confirm.done.disagreement', {
+                            rig: t(sailLabelKey(confirmed.disagreeingRig)),
+                          })
+                        : t('departureScan.confirm.done')}
+                    </p>
+                  )}
                 </div>
               </li>
             );

@@ -1,5 +1,6 @@
-import { render, screen, fireEvent, cleanup, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { StrictMode } from 'react';
+import { act, render, screen, fireEvent, cleanup, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { I18nProvider } from '../i18n';
 import { uniformWindGrid } from '../test/fixtures';
 import {
@@ -12,8 +13,10 @@ import {
 } from '../types';
 import DepartureCompare from './DepartureCompare';
 import { useDepartureScan, type DepartureScanState } from '../state/useDepartureScan';
+import { useDepartureConfirm, type DepartureConfirmState } from '../state/useDepartureConfirm';
 
 vi.mock('../state/useDepartureScan', () => ({ useDepartureScan: vi.fn() }));
+vi.mock('../state/useDepartureConfirm', () => ({ useDepartureConfirm: vi.fn() }));
 
 const ORIGIN: LatLon = { lat: 54.75, lon: 10.0 };
 const DESTINATION: LatLon = { lat: 54.75, lon: 10.4 };
@@ -72,7 +75,12 @@ function makePlan(windSpeedKn = 12): Plan {
   };
 }
 
-function stubHook(overrides: Partial<DepartureScanState> = {}, scan = vi.fn(), cancel = vi.fn()) {
+function stubHook(
+  overrides: Partial<DepartureScanState> = {},
+  scan = vi.fn(),
+  cancel = vi.fn(),
+  reset = vi.fn(),
+) {
   const state: DepartureScanState = {
     scanning: false,
     index: 0,
@@ -82,17 +90,43 @@ function stubHook(overrides: Partial<DepartureScanState> = {}, scan = vi.fn(), c
     cancelled: false,
     ...overrides,
   };
-  vi.mocked(useDepartureScan).mockReturnValue({ state, scan, cancel, reset: vi.fn() });
-  return { scan, cancel };
+  vi.mocked(useDepartureScan).mockReturnValue({ state, scan, cancel, reset });
+  return { scan, cancel, reset };
 }
 
-function renderCompare(plan: Plan | null) {
+// #937: default idle state for every test that does not itself exercise the
+// confirm action — set in beforeEach so the 8 pre-#937 tests above need no
+// changes (they never touch the confirm hook at all), while a test that
+// DOES exercise it overrides via a second stubConfirmHook() call.
+function stubConfirmHook(
+  overrides: Partial<DepartureConfirmState> = {},
+  confirm = vi.fn().mockResolvedValue(null),
+) {
+  const state: DepartureConfirmState = {
+    confirming: false,
+    departureMs: null,
+    error: null,
+    ...overrides,
+  };
+  vi.mocked(useDepartureConfirm).mockReturnValue({ state, confirm, clearError: vi.fn() });
+  return { confirm };
+}
+
+function renderCompare(plan: Plan | null, onConfirmed = vi.fn()) {
   return render(
     <I18nProvider>
-      <DepartureCompare plan={plan} ensureClient={() => Promise.resolve(null)} />
+      <DepartureCompare
+        plan={plan}
+        ensureClient={() => Promise.resolve(null)}
+        onConfirmed={onConfirmed}
+      />
     </I18nProvider>,
   );
 }
+
+beforeEach(() => {
+  stubConfirmHook();
+});
 
 afterEach(() => {
   cleanup();
@@ -233,5 +267,270 @@ describe('DepartureCompare', () => {
     });
     renderCompare(makePlan());
     expect(screen.getByText(/Abgebrochen/)).toBeInTheDocument();
+  });
+
+  describe('#937 confirm action', () => {
+    // A two-rig result — unlike OK_RESULT above (the SCAN's own genoa-only
+    // shape) — is what the real confirm solve returns.
+    function twoRigResult(recommended: 'genoa' | 'fock'): PlanResultOk {
+      return {
+        status: 'ok',
+        sails: [
+          {
+            sailId: 'genoa',
+            result: {
+              sailId: 'genoa',
+              legs: [],
+              etaMs: DEPARTURE_MS + 3_600_000,
+              durationMs: 3_600_000,
+              distanceNm: 10,
+              maneuverCount: 0,
+              motorDistanceNm: 0,
+            },
+            reason: null,
+          },
+          {
+            sailId: 'fock',
+            result: {
+              sailId: 'fock',
+              legs: [],
+              etaMs: DEPARTURE_MS + 3_500_000,
+              durationMs: 3_500_000,
+              distanceNm: 10,
+              maneuverCount: 0,
+              motorDistanceNm: 0,
+            },
+            reason: null,
+          },
+        ],
+        recommended,
+        comparisonComplete: true,
+        rigRecommendation: { kind: 'decided', rig: recommended },
+        snappedOrigin: ORIGIN,
+        snappedDestination: DESTINATION,
+      };
+    }
+
+    it('renders a confirm button only on ok candidates, never on no-route/failed ones', () => {
+      stubHook({
+        candidates: [
+          { departureMs: DEPARTURE_MS, outcome: { kind: 'ok', result: OK_RESULT } },
+          {
+            departureMs: DEPARTURE_MS + 3_600_000,
+            outcome: { kind: 'no-route', reason: 'beyond-horizon' },
+          },
+        ],
+      });
+      renderCompare(makePlan());
+      expect(screen.getAllByRole('button', { name: 'Diese Abfahrt übernehmen' })).toHaveLength(1);
+    });
+
+    it('clicking confirm calls confirm() with the plan and that exact candidate departureMs', () => {
+      const plan = makePlan();
+      const candidateMs = DEPARTURE_MS + 3_600_000;
+      stubHook({
+        candidates: [{ departureMs: candidateMs, outcome: { kind: 'ok', result: OK_RESULT } }],
+      });
+      const { confirm } = stubConfirmHook();
+      renderCompare(plan);
+      fireEvent.click(screen.getByRole('button', { name: 'Diese Abfahrt übernehmen' }));
+      expect(confirm).toHaveBeenCalledTimes(1);
+      expect(confirm).toHaveBeenCalledWith(plan, candidateMs);
+    });
+
+    it('while confirming THAT candidate: shows a status readout instead of its button; a SIBLING ok candidate keeps its button, disabled', () => {
+      const candidateMs = DEPARTURE_MS;
+      const siblingMs = DEPARTURE_MS + 3_600_000;
+      stubHook({
+        candidates: [
+          { departureMs: candidateMs, outcome: { kind: 'ok', result: OK_RESULT } },
+          { departureMs: siblingMs, outcome: { kind: 'ok', result: OK_RESULT } },
+        ],
+      });
+      stubConfirmHook({ confirming: true, departureMs: candidateMs });
+      renderCompare(makePlan());
+
+      expect(
+        screen.getByText('Vollständige Berechnung mit beiden Riggs läuft …'),
+      ).toBeInTheDocument();
+      const siblingButton = screen.getByRole('button', { name: 'Diese Abfahrt übernehmen' });
+      expect(siblingButton).toBeDisabled();
+    });
+
+    it('a successful confirm calls onConfirmed and shows a plain success notice when the comparison agrees with genoa', async () => {
+      const plan = makePlan();
+      const candidateMs = DEPARTURE_MS;
+      stubHook({
+        candidates: [{ departureMs: candidateMs, outcome: { kind: 'ok', result: OK_RESULT } }],
+      });
+      const updated: Plan = {
+        ...plan,
+        createdAtMs: plan.createdAtMs + 1,
+        result: twoRigResult('genoa'),
+      };
+      const { confirm } = stubConfirmHook({}, vi.fn().mockResolvedValue(updated));
+      const onConfirmed = vi.fn();
+      renderCompare(plan, onConfirmed);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Diese Abfahrt übernehmen' }));
+      await waitFor(() => expect(onConfirmed).toHaveBeenCalledWith(updated));
+      expect(confirm).toHaveBeenCalledWith(plan, candidateMs);
+      expect(screen.getByText('Plan übernommen.')).toBeInTheDocument();
+      // Honest: agreeing with the scan's own genoa ranking names no rig.
+      expect(screen.queryByText(/empfiehlt/)).not.toBeInTheDocument();
+    });
+
+    // Mutation, verified by hand (not committed): deleting the
+    // `rec.rig !== GENOA_SAIL_ID` half of DepartureCompare.tsx's
+    // disagreeingRig computation (leaving only `rec.kind === 'decided'`)
+    // turns this GREEN into a false disagreement notice even for a
+    // genoa-agreeing confirm — this test's `queryByText(/empfiehlt/)` above
+    // would then fail (BEFORE the fix: fails, finds the disagreement text
+    // where none is expected; AFTER: passes).
+    it('§2.2 "worth surfacing" residual: a confirmed result that decides a DIFFERENT rig than genoa is surfaced honestly, naming the rig', async () => {
+      const plan = makePlan();
+      const candidateMs = DEPARTURE_MS;
+      stubHook({
+        candidates: [{ departureMs: candidateMs, outcome: { kind: 'ok', result: OK_RESULT } }],
+      });
+      const updated: Plan = {
+        ...plan,
+        createdAtMs: plan.createdAtMs + 1,
+        result: twoRigResult('fock'),
+      };
+      stubConfirmHook({}, vi.fn().mockResolvedValue(updated));
+      renderCompare(plan);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Diese Abfahrt übernehmen' }));
+      expect(await screen.findByText(/empfiehlt hier Fock/)).toBeInTheDocument();
+    });
+
+    it('a confirm error renders as an inline alert scoped to that candidate', () => {
+      const candidateMs = DEPARTURE_MS;
+      stubHook({
+        candidates: [{ departureMs: candidateMs, outcome: { kind: 'ok', result: OK_RESULT } }],
+      });
+      stubConfirmHook({ departureMs: candidateMs, error: 'error.routingTimeout' });
+      renderCompare(makePlan());
+
+      const alert = screen.getByRole('alert');
+      expect(alert).toHaveTextContent('Die Routenberechnung hat das Zeitlimit überschritten');
+    });
+
+    // #960 review Major 1(a). Mutation: dropping `!mountedRef.current` from
+    // handleConfirm's guard turns this red — onConfirmed IS called after
+    // unmount.
+    it('#960 review Major 1: unmounting before a confirm resolves discards the result — onConfirmed never fires', async () => {
+      const plan = makePlan();
+      const candidateMs = DEPARTURE_MS;
+      stubHook({
+        candidates: [{ departureMs: candidateMs, outcome: { kind: 'ok', result: OK_RESULT } }],
+      });
+      let resolveConfirm!: (p: Plan | null) => void;
+      const confirmPromise = new Promise<Plan | null>((res) => {
+        resolveConfirm = res;
+      });
+      stubConfirmHook({}, vi.fn().mockReturnValue(confirmPromise));
+      const onConfirmed = vi.fn();
+      const { unmount } = renderCompare(plan, onConfirmed);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Diese Abfahrt übernehmen' }));
+      unmount();
+
+      const updated: Plan = {
+        ...plan,
+        createdAtMs: plan.createdAtMs + 1,
+        result: twoRigResult('genoa'),
+      };
+      await act(async () => {
+        resolveConfirm(updated);
+        await confirmPromise;
+      });
+
+      expect(onConfirmed).not.toHaveBeenCalled();
+    });
+
+    // #960 review Major 1(b). Mutation: dropping the
+    // `activePlanIdentityRef.current !== identity` half of the guard turns
+    // this red — onConfirmed IS called with a result computed against a plan
+    // that is no longer active. Also asserts the scan reset the reviewer
+    // asked for (a different plan.id must not leave a stale card behind).
+    it('#960 review Major 1: a plan superseded while a confirm is in flight discards the stale result and resets the scan', async () => {
+      const plan = makePlan();
+      const candidateMs = DEPARTURE_MS;
+      const { reset } = stubHook({
+        candidates: [{ departureMs: candidateMs, outcome: { kind: 'ok', result: OK_RESULT } }],
+      });
+      let resolveConfirm!: (p: Plan | null) => void;
+      const confirmPromise = new Promise<Plan | null>((res) => {
+        resolveConfirm = res;
+      });
+      stubConfirmHook({}, vi.fn().mockReturnValue(confirmPromise));
+      const onConfirmed = vi.fn();
+      const { rerender } = renderCompare(plan, onConfirmed);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Diese Abfahrt übernehmen' }));
+      reset.mockClear();
+
+      // A DIFFERENT route becomes active while the confirm is still solving
+      // — the same shape as an unrelated recalc/reroute superseding it.
+      const otherPlan: Plan = { ...plan, id: 'plan-2' };
+      rerender(
+        <I18nProvider>
+          <DepartureCompare
+            plan={otherPlan}
+            ensureClient={() => Promise.resolve(null)}
+            onConfirmed={onConfirmed}
+          />
+        </I18nProvider>,
+      );
+      await waitFor(() => expect(reset).toHaveBeenCalledTimes(1));
+
+      const stale: Plan = {
+        ...plan,
+        createdAtMs: plan.createdAtMs + 1,
+        result: twoRigResult('genoa'),
+      };
+      await act(async () => {
+        resolveConfirm(stale);
+        await confirmPromise;
+      });
+
+      expect(onConfirmed).not.toHaveBeenCalled();
+    });
+
+    // #960 review Blocker: main.tsx wraps the app in <StrictMode>, whose
+    // dev-mode mount→cleanup→remount cycle runs the mountedRef effect's
+    // cleanup once on a genuine mount. Mutation: removing the effect's
+    // `mountedRef.current = true` setup line turns this red — the confirm
+    // resolves but onConfirmed is never called (mountedRef stuck false).
+    it('#960 review Blocker: a confirm still resolves under <StrictMode>', async () => {
+      const plan = makePlan();
+      const candidateMs = DEPARTURE_MS;
+      stubHook({
+        candidates: [{ departureMs: candidateMs, outcome: { kind: 'ok', result: OK_RESULT } }],
+      });
+      const updated: Plan = {
+        ...plan,
+        createdAtMs: plan.createdAtMs + 1,
+        result: twoRigResult('genoa'),
+      };
+      stubConfirmHook({}, vi.fn().mockResolvedValue(updated));
+      const onConfirmed = vi.fn();
+      render(
+        <StrictMode>
+          <I18nProvider>
+            <DepartureCompare
+              plan={plan}
+              ensureClient={() => Promise.resolve(null)}
+              onConfirmed={onConfirmed}
+            />
+          </I18nProvider>
+        </StrictMode>,
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Diese Abfahrt übernehmen' }));
+      await waitFor(() => expect(onConfirmed).toHaveBeenCalledWith(updated));
+    });
   });
 });
