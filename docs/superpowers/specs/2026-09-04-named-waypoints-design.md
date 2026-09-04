@@ -17,10 +17,15 @@ reproduced yet. Do not fold a fix for it into these three.
 `PlanRequest.viaPoints` is a bare `LatLon[]` (`app/src/types.ts`, `LatLon =
 {lat, lon}`). There is no name field anywhere in the chain.
 
-- **Sole sanctioned read accessor** is `planViaPoints(request)`
-  (`app/src/lib/planViaPoints.ts`, #654 hardening) — it fails open to `[]`, and
-  its own comment states it is the only sanctioned direct read of
-  `request.viaPoints` in `app/src`.
+- **`planViaPoints(request)`** (`app/src/lib/planViaPoints.ts`, #654 hardening)
+  is the defensive accessor for reads off a **loaded `Plan`** — it fails open to
+  `[]`. Its own comment scopes the claim precisely: *"every direct read of
+  `plan.request.viaPoints` in app/src goes through this function instead of the
+  bare property"*. It is **not** the only reader of a `PlanRequest`'s
+  `viaPoints` — `planRoute.ts:338`, `migratePlan.ts:521` and
+  `usePlanFlow.ts:231` each read the property directly, all legitimately, since
+  none of them is loading a stored plan. Do not generalise the accessor's
+  guarantee past loaded plans.
 - **The solver reads only coordinates.** `planRoute.ts`'s waypoint assembly
   snaps each via point to navigable water and builds
   `[origin, ...viaPoints, destination]`, touching `.lat`/`.lon` and nothing
@@ -39,14 +44,37 @@ reproduced yet. Do not fold a fix for it into these three.
 
 ### 2.1 `name` is an optional field, and this is not a breaking change
 
-Add `name?: string` alongside `lat`/`lon`. `migratePlan.ts`'s
-`normaliseViaPoints` backfills a missing `name` as `undefined` with no
-special-casing, so stored records written before this change parse unchanged.
+Add `name?: string` alongside `lat`/`lon`. Reading an OLD record is free: a
+stored via point with no `name` yields `undefined`, and nothing breaks.
 
-This deliberately avoids the pre-1.0 breaking-change route. The 2026-08-24
-maintainer ruling is that there is no IndexedDB migration machinery before 1.0
-and the right move is to declare a breaking change rather than build one — that
-ruling is not reached here, because an optional field needs neither.
+**But writing a NEW one is not free, and this is a required code change, not a
+free-by-construction property.** `normaliseViaPoints` (`migratePlan.ts:99-108`)
+does not pass fields through — it REBUILDS each via point from an explicit
+allowlist:
+
+```ts
+out.push({ lat: p.lat as number, lon: p.lon as number });
+```
+
+Every `getPlan()` load runs through it. So without an explicit edit copying
+`p.name` across, **a saved named waypoint has its name silently stripped on the
+very next load** — data loss with no error, no warning and no failing test,
+since no existing test asserts on a field that does not yet exist.
+
+`#846` MUST edit `normaliseViaPoints`, and MUST add a round-trip test that
+saves a named via point, reloads it through `migratePlan`, and asserts the name
+survived. Do not treat the optional-field property as covering this.
+
+Note the deliberate asymmetry `planViaPoints.ts` documents: `normaliseViaPoints`
+fails CLOSED (refuses the whole record) on a present-but-malformed `viaPoints`,
+while the accessor fails OPEN. A malformed `name` must not be allowed to reject
+an otherwise-valid plan — validate it as optional, never as required.
+
+This still avoids the pre-1.0 breaking-change route. The 2026-08-24 ruling
+(ADR-0002) waives migration MACHINERY when it would otherwise be needed; it is
+not reached here, because an optional field needs none. That ADR also states
+explicitly that it *"does NOT waive defensive reads"* — so the allowlist stays
+an allowlist, widened by one key rather than replaced by a spread.
 
 **Do not make `name` required, and do not restructure `viaPoints` away from an
 array of coordinate records.** Either would turn a free change into a breaking
@@ -65,9 +93,16 @@ byte-identical and nothing is owed — **provided `name` is a field the solver
 never reads.** This is the same presentation-only shape as #493/PR #504, which
 kept `PlanResult` byte-identical for exactly this reason.
 
+A second, independent reason the verdict holds, found in review and stronger
+than the first: **`app/sweep/sweepArms.ts` passes `viaPoints: []` for every
+arm.** The sweep never populates a via point at all, so it is structurally blind
+to via-point changes regardless of what `planRoute.ts` reads. Either argument
+alone suffices; they fail independently.
+
 The condition is the whole verdict. If an implementation finds itself passing
 `name` into `planRoute.ts`, the verdict lapses and a BASE-vs-HEAD comparison is
-owed at roughly 31 min per arm-set, ×2 for the required BASE double-run control.
+owed: **three arm-sets at roughly 31 min each, so ~90 min** — two BASE runs for
+the required double-run control, plus one HEAD run to compare against it.
 
 **Each of these three PRs must re-run `closure.mjs diff` against its own real
 diff** rather than inheriting this verdict. A wrong NOT-OWED ships an unmeasured
@@ -80,10 +115,38 @@ That is the wrong category for `localStorage` — `usePersistedToggle` and
 `usePersistedNumber` exist for UI preferences (a toggle, a number), and
 `lib/storage.ts`'s safe wrappers are scoped to that job.
 
-Create a new `waypoints` object store with keyPath `id` in `services/db.ts`'s
-existing `upgrade` handler. Creating a store is additive: it needs no migration
-of the existing `plans` or `settings` stores. Follow the shape already
-established by `savePlan`/`getPlan`/`listPlans`.
+Create a new `waypoints` object store with keyPath `id`, following the shape
+already established by `savePlan`/`getPlan`/`listPlans`.
+
+**The DB version MUST be bumped, and this is the single most likely way for
+#848 to ship broken.** `services/db.ts:19` opens the database as:
+
+```ts
+openDB<SailDB>('sailcommand', 1, { upgrade(d) { … } })
+```
+
+IndexedDB runs `upgrade()` **only when the requested version exceeds the
+version already stored in the browser**. Every existing install is already at
+version 1. So adding `d.createObjectStore('waypoints', …)` inside that same
+version-1 body creates the store **for fresh installs only** — for every
+existing user the handler never runs, the store never exists, and saving a
+waypoint fails at runtime.
+
+The failure mode is the nasty one: it works perfectly for the developer, whose
+profile is usually fresh or easily cleared, and fails for exactly the users who
+have been using the app. It is also invisible to `fake-indexeddb` unit tests
+unless a test deliberately opens at the OLD version first and then reopens.
+
+Required:
+1. Bump the version to `2`.
+2. Gate the new store on `oldVersion` so an existing DB gains only the new
+   store and the `plans`/`settings` creation does not re-run.
+3. Add a test that opens the DB at version 1 with the old schema, closes it,
+   reopens through `db()`, and asserts the `waypoints` store now exists. A test
+   that only ever opens a fresh DB cannot see this defect.
+
+With the version bumped and `oldVersion` gated, the change is genuinely
+additive — no migration of records in `plans` or `settings` is needed.
 
 ### 2.4 A seamark-sourced waypoint is flattened at pick time
 
@@ -117,6 +180,13 @@ This requires a nearest-point-on-polyline computation against the current route.
 `App.tsx` already carries reorder and drag handlers, so manual correction
 remains available when the computed position is not what the user meant.
 
+**With no route planned yet, append.** There is no polyline to project onto, so
+"nearest point along the route" is undefined — and this is a reachable state,
+not an edge case: a user may well pick marks before planning. Appending is
+correct there, because with an empty via list the two rules agree anyway.
+Specify it explicitly rather than leaving it to the implementer, or the natural
+reading of §2.6 is a crash or a silent no-op on the empty case.
+
 ### 2.7 #848 ships panel-only; the map layer is a separate issue
 
 Saved waypoints live in a panel list, and selecting one loads it into the
@@ -139,13 +209,27 @@ parallel implementers would be a scheduled conflict, not a risk.
 
 | # | Issue | Adds | Principal files |
 |---|---|---|---|
-| 1 | #846 | the `name` field and rename UI | `types.ts`, `PlannerPanel.tsx`, `ViaMarkers.tsx`, `migratePlan.ts`, both i18n dicts |
+| 1 | #846 | the `name` field and rename UI | `types.ts`, `PlannerPanel.tsx`, `ViaMarkers.tsx`, `migratePlan.ts`, **`lib/planViaPoints.ts`**, both i18n dicts |
 | 2 | #845 | seamark → waypoint action | `DataLayers.tsx`, `lib/seamarkPopupDom.ts`, `lib/seamarkPopover.ts` |
 | 3 | #848 | persistence + panel picker | `services/db.ts`, new picker component, both i18n dicts |
 
 #846 is first because #845 needs the name field: a seamark-sourced waypoint has
 a natural name already, and pre-filling it is the point of the feature. #848 is
 last because it persists what the first two define.
+
+**`lib/planViaPoints.ts` is in #846's list for a reason that fails silently.**
+It returns `LatLon[]`, and TypeScript array covariance means widening the
+element type to carry `name` compiles **either way** — forgetting it produces no
+error, just names that never reach the UI through the accessor path. There is no
+compiler backstop here, so it must be an explicit checklist item.
+
+**`dedupeViaPoints` (`state/replan.ts`) is name-blind.** It compares
+coordinates only, and `usePlanFlow.ts:231` runs it on submit. So two waypoints
+at the same position with different names collapse to one, and the user sees
+only a count — never which name was dropped. #846 must decide whether that
+stays acceptable (defensible: they ARE the same point) or whether the surfaced
+message should name what it discarded. Either way, decide it deliberately
+rather than inheriting it.
 
 ### 3.1 #845 also closes #872
 
@@ -160,6 +244,15 @@ shared function and adds the action there once.
 
 `seamarkPopoverRows()` stays DOM-free — its own comment says so. The action
 belongs in the DOM-construction layer, not in row building.
+
+**This deliberately reaches `SeamarksInView.tsx` too, and that is intended.**
+`buildSeamarkPopoverContent` has no callback parameter today, so adding the
+action gives it one — and `SeamarksInView.tsx`'s keyboard-reachable list is its
+only current caller. The action therefore appears in the keyboard list as well
+as the map popover. That is the correct outcome, not a side effect: a
+MapLibre-rendered glyph has no DOM node, so the keyboard list is the *only*
+route to this feature for a keyboard user, and shipping the action on the map
+alone would make it pointer-only.
 
 ## 4. i18n
 
@@ -176,7 +269,7 @@ discovered.
 
 ## 5. Open residuals
 
-- **#844** is unreproduced and deliberately out of scope (§0).
+- **#844** is unreproduced and deliberately out of scope (stated in the preamble above §1).
 - **The map layer for #848** (§2.7) is tracked as #924.
 - **GPX** does not round-trip names in either direction (§1). This design does
   not change that. If a name should survive export/import, that is a separate
