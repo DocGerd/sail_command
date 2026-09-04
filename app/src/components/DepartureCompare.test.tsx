@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { I18nProvider } from '../i18n';
 import { uniformWindGrid } from '../test/fixtures';
@@ -19,31 +19,38 @@ const ORIGIN: LatLon = { lat: 54.75, lon: 10.0 };
 const DESTINATION: LatLon = { lat: 54.75, lon: 10.4 };
 const DEPARTURE_MS = Date.UTC(2026, 6, 15, 8, 0, 0);
 
-const OK_RESULT: PlanResultOk = {
-  status: 'ok',
-  sails: [
-    {
-      sailId: 'genoa',
-      result: {
+function okResult(durationMs: number): PlanResultOk {
+  return {
+    status: 'ok',
+    sails: [
+      {
         sailId: 'genoa',
-        legs: [],
-        etaMs: DEPARTURE_MS + 3_600_000,
-        durationMs: 3_600_000,
-        distanceNm: 10,
-        maneuverCount: 0,
-        motorDistanceNm: 0,
+        result: {
+          sailId: 'genoa',
+          legs: [],
+          etaMs: DEPARTURE_MS + durationMs,
+          durationMs,
+          distanceNm: 10,
+          maneuverCount: 0,
+          motorDistanceNm: 0,
+        },
+        reason: null,
       },
-      reason: null,
-    },
-    { sailId: 'fock', result: null, reason: 'calm-motor-off' },
-  ],
-  recommended: 'genoa',
-  comparisonComplete: true,
-  snappedOrigin: ORIGIN,
-  snappedDestination: DESTINATION,
-};
+      { sailId: 'fock', result: null, reason: 'calm-motor-off' },
+    ],
+    recommended: 'genoa',
+    comparisonComplete: true,
+    snappedOrigin: ORIGIN,
+    snappedDestination: DESTINATION,
+  };
+}
 
-function makePlan(): Plan {
+const OK_RESULT = okResult(3_600_000);
+
+// windSpeedKn default (12) -> real WindField.sample() exercised, Beaufort
+// force 4 ('11 <= 16' bucket), heading '000°'. Parameterized so the #936
+// review Minor's boundary test can request exactly 1 kn.
+function makePlan(windSpeedKn = 12): Plan {
   return {
     id: 'plan-1',
     name: 'Test plan',
@@ -60,7 +67,7 @@ function makePlan(): Plan {
       sailIds: ['genoa', 'fock'],
       boat: defaultBoatSnapshot(),
     },
-    windGrid: uniformWindGrid(12, 0, { t0Ms: DEPARTURE_MS - 3_600_000, hours: 96 }),
+    windGrid: uniformWindGrid(windSpeedKn, 0, { t0Ms: DEPARTURE_MS - 3_600_000, hours: 96 }),
     result: OK_RESULT,
   };
 }
@@ -128,7 +135,7 @@ describe('DepartureCompare', () => {
     expect(cancel).toHaveBeenCalledTimes(1);
   });
 
-  it('renders a plain list row per candidate, honestly labelling ok/no-route/failed outcomes', () => {
+  it('renders one ranked card per candidate, each carrying a wind-character badge', () => {
     stubHook({
       candidates: [
         { departureMs: DEPARTURE_MS, outcome: { kind: 'ok', result: OK_RESULT } },
@@ -145,9 +152,78 @@ describe('DepartureCompare', () => {
     renderCompare(makePlan());
     const items = screen.getAllByRole('listitem');
     expect(items).toHaveLength(3);
+    // Real windGrid sample (12 kn from 000°) -> Beaufort force 4, heading
+    // 000° — every card carries it, ok or not, since it does not depend on
+    // routing having succeeded.
+    for (const item of items) {
+      expect(item).toHaveTextContent('Bft 4 · 000°');
+    }
     expect(items[0]).toHaveTextContent('% Motor');
     expect(items[1]?.textContent).toMatch(/Vorhersagehorizont/);
     expect(items[2]?.textContent).toMatch(/nicht mehr verfügbar/);
+  });
+
+  it('mutation: reverting a distinct no-route reason to a shared string would fail this — beyond-horizon and unreachable read differently', () => {
+    stubHook({
+      candidates: [
+        {
+          departureMs: DEPARTURE_MS,
+          outcome: { kind: 'no-route', reason: 'beyond-horizon' },
+        },
+        {
+          departureMs: DEPARTURE_MS + 3_600_000,
+          outcome: { kind: 'no-route', reason: 'unreachable' },
+        },
+      ],
+    });
+    renderCompare(makePlan());
+    const items = screen.getAllByRole('listitem');
+    expect(items).toHaveLength(2);
+    // Both before AND after this assertion: the two reasons must render
+    // different text. A collapse to one generic "no route" string (the
+    // shape this test guards against) would make both items identical and
+    // this assertion would fail.
+    expect(items[0]?.textContent).not.toEqual(items[1]?.textContent);
+    expect(items[0]?.textContent).toMatch(/Vorhersagehorizont/);
+    expect(items[1]?.textContent).not.toMatch(/Vorhersagehorizont/);
+  });
+
+  it('ranks ok candidates by ascending duration (fastest first badge), never ranks an unroutable one', () => {
+    stubHook({
+      candidates: [
+        // Slower of the two ok candidates, listed FIRST (chronological, not
+        // by rank) — the rank badge must reorder logically without
+        // reordering the DOM.
+        { departureMs: DEPARTURE_MS, outcome: { kind: 'ok', result: okResult(7_200_000) } },
+        {
+          departureMs: DEPARTURE_MS + 3_600_000,
+          outcome: { kind: 'ok', result: okResult(3_600_000) },
+        },
+        {
+          departureMs: DEPARTURE_MS + 7_200_000,
+          outcome: { kind: 'no-route', reason: 'unreachable' },
+        },
+      ],
+    });
+    renderCompare(makePlan());
+    const items = screen.getAllByRole('listitem');
+    expect(within(items[0]!).getByText('#2')).toBeInTheDocument();
+    expect(within(items[1]!).getByText('Am schnellsten')).toBeInTheDocument();
+    // The unroutable candidate must carry neither "Am schnellsten" nor any
+    // "#n" badge — a rank number next to a failure would misrepresent it as
+    // merely slower rather than not achieved at all.
+    expect(within(items[2]!).queryByText('Am schnellsten')).not.toBeInTheDocument();
+    expect(within(items[2]!).queryByText(/^#\d+$/)).not.toBeInTheDocument();
+  });
+
+  it('#936 review Minor: exactly 1 kn is Beaufort force 1, not force 0 (the 1-3 kn band is closed on the left)', () => {
+    stubHook({
+      candidates: [{ departureMs: DEPARTURE_MS, outcome: { kind: 'ok', result: OK_RESULT } }],
+    });
+    renderCompare(makePlan(1));
+    const items = screen.getAllByRole('listitem');
+    expect(items[0]).toHaveTextContent('Bft 1 · 000°');
+    expect(items[0]?.textContent).not.toMatch(/Bft 0/);
   });
 
   it('shows a cancelled-notice chip after a scan stops early via cancel()', () => {

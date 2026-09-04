@@ -33,11 +33,12 @@ import {
 } from '../lib/shallowExposure';
 import { nearbyHazardMarkCount, SEAMARK_PROXIMITY_M } from '../lib/seamarkProximity';
 import {
-  reefSuggestionForLeg,
+  reefSuggestionsForLegs,
   REEF1_AWS_KN,
   REEF2_AWS_KN,
   REEF3_AWS_KN,
   type ReefBand,
+  type ReefSuggestion,
 } from '../lib/reefSuggestion';
 import { useNavMask } from '../state/useNavMask';
 import { useSeamarks } from '../state/useSeamarks';
@@ -304,17 +305,23 @@ const REEF_LABEL_KEY: Record<ReefBand, MsgKey> = {
 // the SAME Kind <td> as LegKindChip above — deliberately never a new table
 // column, so the #707/#698 header-order pins below and the mirrored e2e
 // header-text array (app/e2e/panel-resize.spec.ts, outside this PR's file
-// allowlist) stay untouched. Presentation-only: `reefSuggestionForLeg`
-// derives everything from fields `Leg` already carries, so `PlanResult`
-// stays byte-identical (see that module's own header comment for the full
-// #282 no-sweep argument). Renders NOTHING on a motor leg
-// (`reefSuggestionForLeg` returns `null`) — the Kind chip already reads
-// "Motor" for that row, and the issue's own DoD accepts "no suggestion" as
-// one of the two licensed motor-leg treatments; a second, redundant
-// annotation would add no information.
-function ReefChip({ leg }: { leg: Leg }) {
+// allowlist) stay untouched. Presentation-only: the suggestion this chip
+// renders derives everything from fields `Leg` already carries, so
+// `PlanResult` stays byte-identical (see reefSuggestion.ts's own header
+// comment for the full #282 no-sweep argument). Renders NOTHING on a motor
+// leg (`suggestion === null`) — the Kind chip already reads "Motor" for
+// that row, and the issue's own DoD accepts "no suggestion" as one of the
+// two licensed motor-leg treatments; a second, redundant annotation would
+// add no information.
+//
+// #946: takes the ALREADY-COMPUTED suggestion as a prop rather than a `Leg`
+// and deriving it itself — the parent computes `reefSuggestionsForLegs`
+// ONCE for the whole ordered route (see that call site's own comment) so
+// consecutive legs' hysteresis state threads correctly; a chip that called
+// `reefSuggestionForLeg` per-row here would band each leg in isolation
+// again and silently undo the damping.
+function ReefChip({ suggestion }: { suggestion: ReefSuggestion | null }) {
   const t = useT();
-  const suggestion = reefSuggestionForLeg(leg);
   if (suggestion === null) return null;
   return <span className="chip chip-reef">{t(REEF_LABEL_KEY[suggestion.band])}</span>;
 }
@@ -483,6 +490,15 @@ export default function RouteSummary({
   const legMinDepths =
     mask && result && result.legs.length > 0 ? legMinDepthsM(result.legs, mask) : null;
   const gateM = requestedGateM(plan);
+  // #946: computed ONCE for the whole ordered route, never per-leg inside
+  // the render — `reefSuggestionsForLegs` threads each sail leg's DISPLAYED
+  // band into the next leg's hysteresis decision (a Schmitt-trigger dead
+  // zone around each threshold, see reefSuggestion.ts's own #946 comment),
+  // so calling it per-row would reset that thread every render and undo the
+  // damping it exists to provide. `null` (no plan / no result) reproduces
+  // the same "nothing rendered" state `ReefChip` already handled before
+  // this wiring — see that component's own comment.
+  const reefSuggestions = result ? reefSuggestionsForLegs(result.legs) : null;
 
   return (
     <Card
@@ -833,7 +849,7 @@ export default function RouteSummary({
                         <td>{formatLegDuration(leg.endTimeMs - leg.startTimeMs)}</td>
                         <td>
                           <LegKindChip leg={leg} rig={rig} />
-                          <ReefChip leg={leg} />
+                          <ReefChip suggestion={reefSuggestions ? reefSuggestions[i] : null} />
                         </td>
                         <td>{formatHeading(leg.headingDeg)}</td>
                         <td>

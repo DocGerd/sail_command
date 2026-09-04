@@ -1548,6 +1548,8 @@ function AppShell() {
                   onPickDestination={handlePickDestination}
                   onImportRoute={handleImportRoute}
                   onRequestMapTap={handleRequestMapTap}
+                  tapTarget={tapTarget}
+                  onCancelTapPick={handleCancelTapPick}
                   viaPoints={viaPoints}
                   onRemoveVia={handleRemoveVia}
                   onReorderVia={handleReorderVia}

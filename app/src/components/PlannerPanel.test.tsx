@@ -242,6 +242,8 @@ interface Overrides {
   onPickOrigin?: (p: PickedPoint) => void;
   onPickDestination?: (p: PickedPoint) => void;
   onRequestMapTap?: (target: TapTarget) => void;
+  tapTarget?: TapTarget | null;
+  onCancelTapPick?: () => void;
   viaPoints?: LatLon[];
   onRemoveVia?: (index: number) => void;
   onReorderVia?: (index: number, direction: 'up' | 'down') => void;
@@ -274,6 +276,10 @@ function baseProps(overrides: Overrides = {}) {
     onPickDestination: vi.fn(),
     onImportRoute: vi.fn(),
     onRequestMapTap: vi.fn(),
+    // #844: null (nothing armed) by default, like every other real caller
+    // sees before a "pick on map"/"Add waypoint" press.
+    tapTarget: null as TapTarget | null,
+    onCancelTapPick: vi.fn(),
     viaPoints: [],
     onRemoveVia: vi.fn(),
     onReorderVia: vi.fn(),
@@ -756,6 +762,30 @@ describe('PlannerPanel', () => {
     expect(props.onRequestMapTap).toHaveBeenCalledWith('destination');
   });
 
+  // #844: discoverability fix — the button the user just pressed toggles in
+  // place into a cancel action once ITS OWN target is armed, rather than
+  // leaving the only affordance in the top-of-panel Banner far away.
+  // Destination is a negative control: armed for origin, destination's own
+  // button must stay an ordinary arm button (only one target is ever armed
+  // at a time).
+  it('#844: once its own target is armed, the "pick on map" button toggles in place into a cancel action', () => {
+    const props = renderPanel({ tapTarget: 'origin' });
+    const originSection = screen.getByRole('region', { name: 'Origin' });
+    const originButton = within(originSection).getByRole('button', {
+      name: 'Cancel picking on map',
+    });
+    expect(originButton).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(originButton);
+    expect(props.onCancelTapPick).toHaveBeenCalledTimes(1);
+    expect(props.onRequestMapTap).not.toHaveBeenCalled();
+
+    const destinationSection = screen.getByRole('region', { name: 'Destination' });
+    const destButton = within(destinationSection).getByRole('button', { name: 'Pick on map' });
+    expect(destButton).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(destButton);
+    expect(props.onRequestMapTap).toHaveBeenCalledWith('destination');
+  });
+
   it('picking a harbor from the origin search calls onPickOrigin with a PickedPoint, not onPickDestination', () => {
     const props = renderPanel();
     const originSection = screen.getByRole('region', { name: 'Origin' });
@@ -939,6 +969,16 @@ describe('PlannerPanel', () => {
       const props = renderPanel();
       fireEvent.click(screen.getByRole('button', { name: 'Add waypoint' }));
       expect(props.onRequestMapTap).toHaveBeenCalledWith('via');
+    });
+
+    // #844: see the matching origin/destination test above.
+    it('#844: once armed for "via", the "Add waypoint" button toggles in place into a cancel action', () => {
+      const props = renderPanel({ tapTarget: 'via' });
+      const viaButton = screen.getByRole('button', { name: 'Cancel adding waypoint' });
+      expect(viaButton).toHaveAttribute('aria-pressed', 'true');
+      fireEvent.click(viaButton);
+      expect(props.onCancelTapPick).toHaveBeenCalledTimes(1);
+      expect(props.onRequestMapTap).not.toHaveBeenCalled();
     });
 
     it('renders one chip per via point, formatted as a coordinate label', () => {
