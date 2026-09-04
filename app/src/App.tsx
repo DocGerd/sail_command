@@ -73,6 +73,7 @@ import { PANEL_MIN_WIDTH_PX, panelMaxWidthPx } from './lib/panelWidth';
 import { formatLatLon } from './lib/format';
 import { resolveHarborPickTarget } from './lib/harborGeoJson';
 import { boatById, sailIdsOf } from './data/boats';
+import { nearestViaInsertIndex } from './lib/viaInsertion';
 import { usePersistedBoatId } from './lib/usePersistedBoatId';
 import { usePersistedOwnMmsi } from './lib/ownMmsi';
 // #834: same widening PlannerPanel.tsx's own `harbors` prop already carries —
@@ -88,6 +89,7 @@ import {
   type LatLon,
   type PickedPoint,
   type Plan,
+  type ViaPoint,
 } from './types';
 
 // The harbor-marker and seamark-glyph layers (DataLayers) each own any click
@@ -654,6 +656,33 @@ function AppShell() {
     [viaPoints, handleViaPointsChange],
   );
 
+  // #845: "add as waypoint" from the seamark popover (DataLayers.tsx and,
+  // via the keyboard-reachable list, SeamarksInView.tsx — see the design
+  // spec §3.1). `waypoint` arrives already flattened to a plain
+  // `{lat, lon, name}` record (§2.4 — no link back to seamarks.json is ever
+  // kept, so a pipeline rebuild that moves or removes the mark cannot
+  // silently change a saved route).
+  //
+  // §2.6: inserted at the NEAREST POINT along the origin -> viaPoints ->
+  // destination chain, not appended — "route via that buoy" names a point
+  // the skipper will pass. With no route context (origin or destination not
+  // yet chosen) there is no chain to project onto, so this appends instead,
+  // per §2.6's explicit empty-case rule (which, with an empty via list,
+  // agrees with the insertion rule anyway).
+  const handleAddViaFromSeamark = useCallback(
+    (waypoint: ViaPoint) => {
+      if (origin && destination) {
+        const idx = nearestViaInsertIndex(waypoint, origin.point, destination.point, viaPoints);
+        const next = [...viaPoints];
+        next.splice(idx, 0, waypoint);
+        handleViaPointsChange(next);
+      } else {
+        handleViaPointsChange([...viaPoints, waypoint]);
+      }
+    },
+    [origin, destination, viaPoints, handleViaPointsChange],
+  );
+
   // ViaMarkers' dragend handler. Markers are now rendered FROM the draft
   // (RouteLayer.tsx's `draftViaPoints` prop, review fix — markers used to be
   // positioned from the committed `plan.request.viaPoints`, which required a
@@ -1101,7 +1130,7 @@ function AppShell() {
               Always-mounted, plan-independent (#38/#39) — must NOT live in
               RouteLayer, which renders null until a plan exists. */}
           <div className="map-stack-tl">
-            <DataLayers onHarborPick={handleHarborPick} />
+            <DataLayers onHarborPick={handleHarborPick} onAddWaypoint={handleAddViaFromSeamark} />
             {/* Track-up is available on every tab whenever showOwnship is on
                 (#155 decision 2) — the map is shared chrome, so its
                 orientation must not flip on a tab switch. */}
@@ -1177,7 +1206,9 @@ function AppShell() {
               narrow viewports (SeamarksInView.tsx's own header carries the
               measurement). Plan tab only: the slot exists only there, and
               unmounting with the tab drops its moveend subscription. */}
-          {tab === 'plan' && <SeamarksInView panelSlot={seamarksSlot} />}
+          {tab === 'plan' && (
+            <SeamarksInView panelSlot={seamarksSlot} onAddWaypoint={handleAddViaFromSeamark} />
+          )}
         </MapView>
       </div>
 

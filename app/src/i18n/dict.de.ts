@@ -586,6 +586,9 @@ export const de = {
   // {value} s — same text in both languages, but still routed through the
   // dict (#300) rather than hardcoded, per repo convention.
   'seamark.popover.lightPeriodUnit': '{value} s',
+  // #845: the seamark popover's "add as waypoint" action, rendered only for
+  // the curated cardinal/lateral/isolated-danger subset (design spec §2.5).
+  'seamark.popover.addWaypoint': 'Als Wegpunkt hinzufügen',
   // #830: keyboard-reachable list of the seamarks inside the current map
   // viewport (components/SeamarksInView.tsx). The SUMMARY deliberately says
   // "Schifffahrtszeichen" rather than the app's own "Seezeichen":

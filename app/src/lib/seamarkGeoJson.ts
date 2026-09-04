@@ -180,8 +180,14 @@ export function pickSeamarkByPriority<T extends { properties?: unknown }>(
  * from the tap point (`e.lngLat`) that produced the click. Returns null for
  * anything that isn't a Point (defensive: `sc-seamarks` is Point-only, but
  * this stays generic like `pickSeamarkByPriority` above rather than assuming).
+ *
+ * Exported (#845 review Minor 1): DataLayers.tsx's seamark click handler
+ * needs the SAME extraction for the "add as waypoint" action's coordinates
+ * (a picked mark's own position, not the popup's tap-follow anchor below) —
+ * reusing this rather than reimplementing it avoids shipping a second parser
+ * of the same geometry inside the very PR that closes #872's twin-drift risk.
  */
-function pointCoordinates(f: { geometry?: unknown } | undefined): [number, number] | null {
+export function pointCoordinates(f: { geometry?: unknown } | undefined): [number, number] | null {
   const g = f?.geometry as { type?: unknown; coordinates?: unknown } | undefined;
   if (!g || g.type !== 'Point') return null;
   const c = g.coordinates;

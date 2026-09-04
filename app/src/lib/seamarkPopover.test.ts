@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { MsgKey } from '../i18n/dict.de';
 import {
+  isWaypointEligibleSeamark,
   resolveSeamarkPopoverValue,
   seamarkPopoverRows,
+  seamarkWaypointName,
   type SeamarkPopoverRow,
   type SeamarkPopoverTranslate,
 } from './seamarkPopover';
@@ -187,5 +189,54 @@ describe('resolveSeamarkPopoverValue', () => {
       value: [{ key: 'seamark.popover.lightPeriodUnit', vars: { value: '9' } }],
     };
     expect(resolveSeamarkPopoverValue(row, t)).toBe('9 s');
+  });
+});
+
+// #845: the curated waypoint-eligible subset (design spec §2.5).
+describe('isWaypointEligibleSeamark (#845)', () => {
+  it.each([
+    'buoy_cardinal',
+    'beacon_cardinal',
+    'buoy_lateral',
+    'beacon_lateral',
+    'buoy_isolated_danger',
+    'beacon_isolated_danger',
+  ])('admits %s', (seamarkType) => {
+    expect(isWaypointEligibleSeamark({ seamarkType })).toBe(true);
+  });
+
+  it.each([
+    'buoy_special_purpose',
+    'beacon_special_purpose',
+    'light_major',
+    'light_minor',
+    'buoy_safe_water',
+  ])('excludes %s', (seamarkType) => {
+    expect(isWaypointEligibleSeamark({ seamarkType })).toBe(false);
+  });
+
+  it('excludes an unrecognised seamarkType (classifySeamark falls back to "unknown")', () => {
+    expect(isWaypointEligibleSeamark({ seamarkType: 'something_never_seen' })).toBe(false);
+  });
+});
+
+// #845: the pre-filled waypoint name — the mark's translated TYPE label,
+// never the category and never a raw tag value.
+describe('seamarkWaypointName (#845)', () => {
+  it('returns the resolved TYPE row text, not a coordinate or category', () => {
+    const t = stubT({
+      'seamark.value.type.buoy_cardinal': 'Kardinaltonne',
+      'seamark.value.category.north': 'Nord',
+    });
+    expect(seamarkWaypointName({ seamarkType: 'buoy_cardinal', category: 'north' }, t)).toBe(
+      'Kardinaltonne',
+    );
+  });
+
+  it('falls back to the humanized raw type for an unrecognised seamarkType, never throwing', () => {
+    const t = stubT({});
+    expect(seamarkWaypointName({ seamarkType: 'buoy_unknown_thing' }, t)).toBe(
+      'buoy unknown thing',
+    );
   });
 });
