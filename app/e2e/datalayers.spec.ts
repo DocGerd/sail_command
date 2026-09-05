@@ -1,5 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
-import { startPreview, mapReady, EDGE_VIEWPORTS } from './helpers';
+import { startPreview, mapReady, EDGE_VIEWPORTS, assertCleanServiceWorkerState } from './helpers';
 
 // #38/#39 always-mounted map data layers. What this asserts (and why it's
 // not theater): the depth toggle must exist BEFORE any plan (the whole point
@@ -430,6 +430,12 @@ test('depth-hatch legend (#598) is either reachable or properly unreachable, nev
       }, lang);
       const page = await context.newPage();
       try {
+        // #928: this test creates its OWN page via browser.newContext()/
+        // context.newPage() AFTER startPreview() has already returned, so
+        // the shared path inside startPreview(page) never reaches it —
+        // called here for symmetry/defence-in-depth (reachability tracked
+        // at #975, not asserted here).
+        await assertCleanServiceWorkerState(page);
         for (const [name, vp] of Object.entries(EDGE_VIEWPORTS)) {
           await page.setViewportSize(vp);
           await page.goto(server.url);
