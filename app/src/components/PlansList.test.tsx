@@ -360,6 +360,61 @@ describe('PlansList recalculate (#114)', () => {
     expect(mode).toBe('replace');
   });
 
+  // #961: PlannerPanel's own role="status" announcement is unmounted while
+  // this tab is showing (App.tsx renders the Plan/Routes tabs as mutually
+  // exclusive branches), so a recalculate-and-replace never reached a
+  // screen reader before this fix. onRecalculate here does what App.tsx's
+  // real handleRecalculate/usePlanFlow's run() does on SUCCESS — persists
+  // the plan under the SAME id with a newer createdAtMs and a real result —
+  // which is the ONLY thing this component trusts as proof of success (its
+  // own comment: the promise resolves on a run-level FAILURE too).
+  it('#961: announces the recalculated result on this tab, since PlannerPanel is unmounted here', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW_MS);
+    await savePlan(
+      makePlan({ id: 'p1', createdAtMs: 1000, departureMs: FUTURE_DEPARTURE_MS, name: 'Solo' }),
+    );
+    const newEtaMs = new Date(2026, 0, 16, 14, 0).getTime();
+    const onRecalculate = vi.fn<PlansListProps['onRecalculate']>(async (recalcPlan) => {
+      await savePlan({
+        ...recalcPlan,
+        createdAtMs: recalcPlan.createdAtMs + 1,
+        result: {
+          ...recalcPlan.result,
+          sails: recalcPlan.result.sails.map((s) =>
+            s.sailId === recalcPlan.result.recommended && s.result
+              ? {
+                  ...s,
+                  result: {
+                    ...s.result,
+                    etaMs: newEtaMs,
+                    durationMs: 19_800_000,
+                    distanceNm: 42.7,
+                  },
+                }
+              : s,
+          ),
+        },
+      });
+    });
+    renderList({ onRecalculate });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Recalculate' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Replace original' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm replace' }));
+
+    // Typed out by hand (this file's own #54/#548 pinning convention) —
+    // en-GB, hourCycle h23 renders DD/MM/YYYY, HH:MM (pinned in
+    // format.test.ts); 19_800_000 ms = 5 h 30 min; 42.7 formats as "42.7 nm".
+    // The role="status" node is present (empty) from first render, so a
+    // find-then-assert would resolve before the async announcement lands —
+    // wait for the CONTENT itself, not merely the node's presence.
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'Route recalculated — arrival 16/01/2026, 14:00, duration 5 h 30 min, 42.7 nm.',
+      ),
+    );
+  });
+
   it('offline: the recalc actions are disabled with the i18n message and never run', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(NOW_MS);
     await savePlan(makePlan({ id: 'p1', createdAtMs: 1000, departureMs: FUTURE_DEPARTURE_MS }));
