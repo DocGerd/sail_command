@@ -432,9 +432,9 @@ test('depth-hatch legend (#598) is either reachable or properly unreachable, nev
       try {
         // #928: this test creates its OWN page via browser.newContext()/
         // context.newPage() AFTER startPreview() has already returned, so
-        // the shared path inside startPreview(page) never reaches it — a
-        // stale/foreign service-worker registration on this origin could
-        // otherwise serve a foreign cached build to the navigations below.
+        // the shared path inside startPreview(page) never reaches it —
+        // called here for symmetry/defence-in-depth (reachability tracked
+        // at #975, not asserted here).
         await assertCleanServiceWorkerState(page);
         for (const [name, vp] of Object.entries(EDGE_VIEWPORTS)) {
           await page.setViewportSize(vp);

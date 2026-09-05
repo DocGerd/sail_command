@@ -270,11 +270,12 @@ test('#803: still starts normally against its own build with no foreign server',
 // `resolves` below — an unhandled rejection reds the test) or, if it also
 // stopped throwing, would return non-zero `remainingRegs`/`remainingCaches`
 // — asserted directly against the function's OWN atomic in-page query,
-// never via a SEPARATE later `page.evaluate()`: this app's real bootstrap
-// legitimately re-registers its own honest service worker and starts glyph
-// warm-up (CLAUDE.md's #28 bullet) moments after `assertCleanServiceWorkerState`'s
-// own internal `page.goto(SW_JS_URL)` reloads it, so a later independent check
-// would race that expected app behaviour rather than test this guard.
+// never via a SEPARATE later `page.evaluate()`: this function's own internal
+// navigation is deliberately NOT to the real app (see its body), so it does
+// not race the bootstrap for its OWN check — but a caller that navigates to
+// the app right after it is not protected by that, and a later independent
+// read would race this app's legitimate SW re-registration and glyph warm-up
+// (CLAUDE.md's #28 bullet) rather than test this guard.
 test('#832: assertCleanServiceWorkerState clears a pre-existing registration and cache before the first real navigation', async ({
   page,
 }) => {

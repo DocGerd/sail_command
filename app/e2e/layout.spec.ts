@@ -1978,11 +1978,8 @@ test('#871: the SW toast alone never hides the depth legend, across the shared v
         // #832: this test creates its OWN page via browser.newContext()/
         // context.newPage() AFTER startPreview() has already returned, so
         // the shared path inside startPreview(page) never reaches it —
-        // required here specifically, per helpers.ts's own doc comment,
-        // because the surface under test is EXACTLY a stale-SW hazard: the
-        // toast is one-shot per service-worker registration, so a foreign
-        // or stale registration on this origin is the one thing that could
-        // make a fresh-context sweep report a false OK.
+        // called here for symmetry/defence-in-depth (reachability tracked
+        // at #975, not asserted here).
         await assertCleanServiceWorkerState(page);
         await page.goto(server.url);
         await mapReady(page);
@@ -2204,9 +2201,8 @@ test("#909: with the SW toast up, .map-stack-tl's depth checkbox stays clear and
       const page = await context.newPage();
       try {
         // #832: fresh context/page created AFTER startPreview() returned —
-        // same reason as the `#871` guards above (a stale/foreign SW
-        // registration on this origin is exactly the hazard under test:
-        // the toast is one-shot per registration).
+        // called here for symmetry/defence-in-depth, same as the `#871`
+        // guards above (reachability tracked at #975, not asserted here).
         await assertCleanServiceWorkerState(page);
         await page.goto(server.url);
         await mapReady(page);
