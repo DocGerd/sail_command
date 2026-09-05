@@ -236,12 +236,15 @@ function AppShell() {
   const t = useT();
   const [lang, setLang] = useLang();
   const online = useOnline();
-  // #368: keeps `--sc-banner-height` (app.css's narrow-layout banner-
-  // clearance rule) in sync with `.banner-area`'s REAL rendered height —
-  // called here purely for that side effect (the hook writes the CSS custom
-  // property itself; see its own comment). The return value is unused at
-  // this call site; ScaleBar.tsx makes its own separate call to know when to
-  // re-measure `.map-stack-tl`'s position.
+  // #368: keeps `--sc-banner-height` in sync with `.banner-area`'s REAL
+  // rendered height — called here purely for that side effect (the hook
+  // writes the CSS custom property itself; see its own comment). The return
+  // value is unused at this call site; ScaleBar.tsx makes its own separate
+  // call to know when to re-measure `.map-stack-tl`'s position.
+  // #909 RETIRED the narrow banner-clearance rule this used to feed: banners
+  // occupy their own grid row now, so nothing has to be pushed clear of
+  // them. The property is still read — by app.css's short-landscape sheet
+  // cap (#441) — so this call stays.
   useBannerHeight();
   const [settings, setSettings] = useSettings();
   // #54: the selected boat. localStorage (usePersistedBoatId), validated
@@ -1110,10 +1113,12 @@ function AppShell() {
 
   return (
     <div className="app-shell" ref={shellRef}>
-      {/* Base layer: full-viewport map. Header/banners/bottom-sheet below are
-          positioned overlays painted on top of it (later in DOM order, same
-          stacking context), each occupying only its own natural height, so
-          untouched screen area still reaches the map for tap-to-pick. That
+      {/* The map. At WIDE it is the right-hand grid column; since #909 it is
+          the bottom grid ROW at narrow too, below the header and banner rows
+          — so `.app-header`/`.banner-area` are no longer overlays at any
+          width, and DOM order here is placement-independent (both layouts
+          place by `grid-area`). `.app-bottom-sheet` IS still an overlay at
+          narrow, painted on top of this row. That
           DOM-order-only assumption is NOT sufficient across this whole set:
           #208 found `.app-bottom-sheet` and the tab strip inside it each
           able to bury (or be buried by) the map's own chrome depending on
