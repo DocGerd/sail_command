@@ -133,16 +133,18 @@ test('plans a route: harbor search -> rig comparison -> saved under Routen', asy
     // ~13.6 s against the 60 s `RIG_TIE_BAND_MS` (planRoute.ts) and pinned a
     // tie. #455's mask correction flipped that to a 108.84 s gap (1.81x the
     // band) and #278's 2026-08-20 comment records DECIDED as the then-current
-    // outcome — but ~147 routing commits landed after that measurement with
-    // no re-check, which is exactly why #278 stayed open even after that
-    // finding: an if/else that tolerates either branch can never notice a
-    // margin eroding back toward the band. RE-VERIFIED 2026-09-05 against
-    // this worktree's build: the chip reads "Schneller: Fock" (decided) on
-    // this exact route/fixture. No exact gap was remeasured this session —
-    // only the branch taken — so state the outcome, not a stale-looking
-    // second decimal figure.
+    // outcome — an if/else that tolerates either branch can never notice a
+    // margin eroding back toward the band, which is exactly why #278 stayed
+    // open even after that finding.
     //
-    // Mutation-proof for the assertion below (see PR description): with
+    // MEASURED 2026-09-05 at e0dac1a, real mask/polars, uniform 12 kn/225°,
+    // DEFAULT_SETTINGS: genoa/fock gap 108.84 s = 1.81x the 60 s band, fock
+    // faster. Unchanged to the second decimal from the #455-era measurement.
+    // If a future reader sees this assertion red, that headroom is what
+    // eroded — the remedy is a wider-margin route/fixture (#278), never a
+    // wider band.
+    //
+    // Mutation-proof for the assertion below (see PR #988): with
     // `RIG_TIE_BAND_MS` temporarily inflated to force a tie on this same
     // route, the OLD if/else version of this block stayed green (it has an
     // else arm for exactly that case); this version fails loudly with the
