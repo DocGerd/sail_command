@@ -163,12 +163,43 @@ name outlives its source mark.
 Consequence: the persisted store needs **no provenance field**, and there is no
 "seamark has vanished" path to define.
 
-### 2.5 Eligible seamark categories are a curated subset
+### 2.5 Any seamark is eligible — the curated subset is SUPERSEDED (#966)
 
-Cardinals, laterals and isolated-danger marks only — the marks a skipper
-actually routes past, and what #845's own text suggests. Special-purpose marks
-and minor lights are excluded: they are numerous and make poor waypoints, and
-offering them costs collision-list noise for no navigational value.
+**Amended 2026-09-05 by maintainer decision on #966.** Any seamark the user can
+see and tap is addable as a route waypoint. If it is on the chart and you can
+reach it, you can route past it.
+
+The original rule read: *"Cardinals, laterals and isolated-danger marks only —
+the marks a skipper actually routes past, and what #845's own text suggests.
+Special-purpose marks and minor lights are excluded: they are numerous and make
+poor waypoints, and offering them costs collision-list noise for no
+navigational value."* It is retained here verbatim because the amendment turns
+on why it was wrong, not merely on what replaced it.
+
+**What refuted it.** A UAT pass of `v0.22.0` found a mark at the bend where the
+Flensburg Fjord turns south that functions as a lateral on the water but is
+tagged `beacon_special_purpose`, so the allowlist withheld the button. The
+exclusion's stated justification — "no navigational value" — was an assumption
+about what a skipper uses, and the person sailing this water reports otherwise.
+**A mark's usefulness as a WAYPOINT is not the same property as its S-57
+category**, and the original rule conflated them.
+
+**Why no narrower fix exists.** Investigation of the shipped data at that bend
+(~54.83 N, 9.43 E) found four genuine `beacon_lateral` marks alongside two
+black `beacon_special_purpose` with white triangle topmarks ~300 m away; none of
+the special-purpose marks carries a red/green colour or a port/starboard
+category, and a live Overpass re-query of the same bbox returned zero
+semicolon- or dual-tagged `seamark:type` values. The lateral function known
+from the water is simply absent from OSM's tags, so no tag-based heuristic
+could have recovered it. Widening the allowlist by category would have been
+guesswork; dropping it is the only rule the data supports.
+
+**Accepted cost**, and it is the original rule's own argument: more marks become
+addable, so the collision-list noise the exclusion was written to avoid is now
+accepted deliberately rather than avoided by construction. If that noise proves
+a real problem in use, the remedy is a presentation change, not a return to a
+category allowlist — the allowlist's premise has been refuted, and re-adopting
+it would re-adopt the conflation above.
 
 ### 2.6 A seamark is inserted at its nearest point along the route
 
