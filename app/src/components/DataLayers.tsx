@@ -42,6 +42,10 @@ import { usePersistedToggle } from '../lib/usePersistedToggle';
 import { usePersistedNumber } from '../lib/usePersistedNumber';
 import { LEGEND_COLLAPSED_HEIGHT_PX } from '../lib/depthLegendGate';
 
+import { ROUTE_STACK_BOTTOM_LAYER } from './RouteLayer';
+import { AIS_STACK_BOTTOM_LAYER } from './AisLayer';
+import type { Harbor, LatLon, MaskMeta, SeamarkProperties, ViaPoint } from '../types';
+
 /**
  * `.map-stack-tl`'s own inset from the top of the narrow map grid row — the
  * TS twin of `app.css`'s `--sc-map-chrome-top` (`0.5rem`), which that
@@ -56,9 +60,6 @@ import { LEGEND_COLLAPSED_HEIGHT_PX } from '../lib/depthLegendGate';
  * the same corner. `app.css`'s #909 comment carries the margin table.
  */
 export const MAP_CHROME_TOP_PX = 8;
-import { ROUTE_STACK_BOTTOM_LAYER } from './RouteLayer';
-import { AIS_STACK_BOTTOM_LAYER } from './AisLayer';
-import type { Harbor, LatLon, MaskMeta, SeamarkProperties, ViaPoint } from '../types';
 
 // Always-mounted host for the plan-independent map data layers (#38 harbor
 // markers, #39 depth overlay). Deliberately a SIBLING of RouteLayer, not part
@@ -1141,13 +1142,18 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
       // `- var(--sc-toast-height, 0px)`. No compiler spans CSS and
       // TypeScript — `app/src/test/toastCompensationTwin.test.ts` pins them.
       const mapRowPx = mapAreaEl ? mapAreaEl.getBoundingClientRect().height : window.innerHeight;
-      // `.reload-prompt` mounts and unmounts over this effect's lifetime, so
-      // it is re-queried per callback rather than captured once. Its own
-      // mount/unmount always changes `.banner-area`'s height (it is an
-      // ordinary flex child of it again since #909), which is observed
-      // below — so no separate observer is needed to notice it.
-      const toastEl = document.querySelector<HTMLElement>('.reload-prompt');
-      const toastHeightPx = toastEl ? toastEl.getBoundingClientRect().height : 0;
+      // ONE producer for this height. `ReloadPrompt.tsx`'s own
+      // `ResizeObserver` publishes `--sc-toast-height` on `:root`, and the
+      // `app.css` rule this arithmetic is twinned to spends THAT value — so
+      // read it back rather than measuring `.reload-prompt` a second time,
+      // or the grant (CSS) and the claim (TS) become two independent
+      // measurements of one height that can disagree transiently. Same
+      // technique as the regime read below. The property is REMOVED on the
+      // toast's cleanup, so with no toast this is 0.
+      const toastHeightPx =
+        parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue('--sc-toast-height'),
+        ) || 0;
       // REGIME SIGNAL, deliberately NOT a restated media query. `app.css`'s
       // #909 block publishes `--sc-map-grid-rows: 1` on `.map-area`, and
       // that block's own query is the single place the condition is

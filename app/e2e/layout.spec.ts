@@ -2159,8 +2159,10 @@ test('#871: the SW toast does not intercept .route-layer-controls with a plan lo
 // covered, with a real `click({trial:true})` timing out. #909 shipped the
 // fix (`app.css`'s narrow header/banner grid rows: the toast rejoins
 // `.banner-area`'s flow and `.banner-area` stops overlaying the map at all),
-// so the assertion is now the POSITIVE form. Do not read the flip as a
-// relaxation — it is strictly stronger, and it is paired with a real
+// so the assertion is now the POSITIVE form. It pins the OUTCOME at the two
+// issue viewports; the `.reload-prompt { position: static }` override
+// specifically is pinned by the S3 arm below, which is the only guard that
+// reds when it is removed. It is paired with a real
 // `click({ trial: true })`, which `hitState` alone cannot substitute for:
 // a topmost hit-test at one point and an actual actionability check fail on
 // different things.
@@ -2243,8 +2245,8 @@ test("#909: with the SW toast up, .map-stack-tl's depth checkbox AND its compass
           })
           .toBe('clear');
 
-        // The #909 fix itself. Geometry is RE-READ inside `hitState` on
-        // every poll tick, same as the checkbox above.
+        // Geometry is RE-READ inside `hitState` on every poll tick, same as
+        // the checkbox above.
         await expect
           .poll(() => hitState(compass, '.reload-prompt'), {
             timeout: 10_000,
@@ -2295,8 +2297,8 @@ test("#909: with the SW toast up, .map-stack-tl's depth checkbox AND its compass
 // (S2, plan loaded, is covered for `.route-layer-controls` by the `#871`
 // residual guard above, which plans a real route at this same matrix. It is
 // deliberately not duplicated here: this guard's subject is `.map-stack-tl`,
-// which is plan-INDEPENDENT, and `.depth-legend` UNMOUNTS once a plan exists
-// (#813) — so a plan-loaded row would assert on an absent element.)
+// which is plan-INDEPENDENT, so a plan changes nothing this guard measures;
+// the legend additionally UNMOUNTS once a plan exists (#813).)
 //
 // The offline banner is driven by `context.setOffline(true)`, which the app
 // observes via `useOnline`'s `offline` event — NOT by Playwright's route

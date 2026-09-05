@@ -159,14 +159,15 @@ describe('#909: --sc-map-chrome-top has a TypeScript twin', () => {
 
 describe('#909 (d1): the short-landscape exclusion is scoped in ONE place', () => {
   it('the grid-row block uses MQ3 complement syntax, never MQ4 `not`', () => {
-    // De Morgan: NOT (max-height <= 500 AND landscape) == (>= 501px) OR
-    // (portrait). The comma IS Level 3's logical OR. An MQ4 `not (...)` form
+    // De Morgan: NOT (max-height <= 500 AND landscape) == (> 500px) OR
+    // (portrait), spelled `min-height: 500.01px` because media-query lengths
+    // are fractional. The comma IS Level 3's logical OR. An MQ4 `not (...)` form
     // would be dropped ENTIRELY and SILENTLY by a Level 3 parser — no console
     // error, nothing for CI to see — taking the whole #909 layout with it, so
     // this is pinned rather than left to review.
     expect(
       FLAT_CSS.includes(
-        '@media (max-width: 1023.98px) and (min-height: 501px), ' +
+        '@media (max-width: 1023.98px) and (min-height: 500.01px), ' +
           '(max-width: 1023.98px) and (orientation: portrait) {',
       ),
       'app.css no longer scopes the #909 grid-row block with the MQ3 complement pair. If this was ' +

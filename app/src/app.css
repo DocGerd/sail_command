@@ -144,7 +144,11 @@ select {
   padding: 0 0.6rem;
 }
 
-/* ---- App shell: full-viewport map with overlaid header/banners/sheet ---- */
+/* ---- App shell: full-viewport map with overlaid header/banners/sheet ----
+   Overlaid at wide, and at SHORT LANDSCAPE narrow. At every OTHER narrow
+   viewport #909's block at the END of this file gives the header and the
+   banner stack their own grid ROWS instead, so the map no longer sits
+   underneath them. ---- */
 
 .app-shell {
   position: relative;
@@ -1207,9 +1211,12 @@ select {
   );
 }
 
-/* NAMED COUPLING: `top: 3.5rem` clears the narrow-layout .app-header, which
-   overlays the map — the wide media query below drops it to 0.75rem because
-   at >=1024px the header lives in the panel column instead. Mirrored exactly
+/* NAMED COUPLING: `top: 3.5rem` clears the narrow-layout .app-header where
+   it overlays the map — SHORT LANDSCAPE only since #909, whose block at the
+   END of this file gives the header its own grid row (and this cluster a
+   `0.5rem` top) at every other narrow viewport. The wide media query below
+   drops it to 0.75rem because at >=1024px the header lives in the panel
+   column instead. Mirrored exactly
    by .map-stack-tl's own top (they share the map's top row).
    #208 round-1 "Major 3": this is the mirror image of .map-stack-tl and had
    the IDENTICAL bug — no z-index, so `.app-bottom-sheet` could grow tall
@@ -1374,7 +1381,8 @@ select {
    collide when a plan is active — the toggles stay terse (dict) to share the
    map-top row with it even at phone widths.
    NAMED COUPLING: `top` mirrors .route-layer-controls above (3.5rem to clear
-   the narrow-layout .app-header, 0.75rem on wide) and `left: 0.5rem` mirrors
+   the narrow-layout .app-header where it overlays the map — short landscape
+   only since #909; 0.75rem on wide) and `left: 0.5rem` mirrors
    its `right: 0.5rem`. The 1024px breakpoint that switches them is the SAME
    value as lib/useWideLayout.ts's WIDE_LAYOUT_QUERY AND the #368
    `@media (max-width: 1023.98px)` banner-clearance rule below (its own
@@ -1421,9 +1429,9 @@ select {
   pointer-events: auto;
 }
 
-/* #368: on narrow layouts `.banner-area` is a full-width Tier-3 overlay
-   sitting directly above these Tier-2 clusters' shared `top: 3.5rem` — with
-   any banner shown, it overlaps that 56px top edge. The tier order does NOT
+/* #368: on SHORT LANDSCAPE narrow layouts `.banner-area` is a full-width
+   Tier-3 overlay sitting directly above these Tier-2 clusters' shared
+   `top: 3.5rem` — with any banner shown, it overlaps that 56px top edge. The tier order does NOT
    fix this: Tier 3 correctly wins BOTH the paint and the hit test there, so
    the banner intercepts taps meant for the toggles underneath it (measured:
    `elementFromPoint` over the depth checkbox resolved to
@@ -1534,7 +1542,15 @@ select {
    lands on as a layout width. This is a THIRD place sharing the 1024px
    constant alongside `.map-stack-tl`'s own NAMED COUPLING note and
    `lib/useWideLayout.ts`'s `WIDE_LAYOUT_QUERY` — change all three
-   together. */
+   together.
+
+   #909: this rule still MATCHES every narrow viewport, but its `top` and
+   `max-height` are overridden by the grid-row block at the END of this file
+   everywhere except SHORT LANDSCAPE (`max-height: 500px and orientation:
+   landscape`), so the push described above now takes effect only there.
+   `--sc-banner-clear-top` itself is still declared at every narrow width;
+   the rules that read it to any effect are #441's short-landscape ones
+   below. */
 @media (max-width: 1023.98px) {
   .route-layer-controls,
   .map-stack-tl {
@@ -1545,9 +1561,16 @@ select {
 }
 
 /* #871: `.reload-prompt` (ReloadPrompt.tsx's SW-ready/update toast) is
-   pulled OUT of `.banner-area`'s flow here — its transient height must
-   never count toward `--sc-banner-height`/`--sc-banner-clear-top` above, or
-   it squeezes `.map-stack-tl`/`.route-layer-controls` (and, transitively,
+   pulled OUT of `.banner-area`'s flow here. SCOPE, since #909: this rule
+   matches every narrow viewport but is overridden back to `position: static`
+   by the grid-row block at the END of this file everywhere except SHORT
+   LANDSCAPE (`max-height: 500px and orientation: landscape`), so it GOVERNS
+   only there — and only there must the toast's transient height never count
+   toward `--sc-banner-height`/`--sc-banner-clear-top` above. In the #909
+   regime it counts again, and that block hands it straight back by trimming
+   the sheet by exactly the same amount. Where this rule does govern, letting
+   the toast count would squeeze
+   `.map-stack-tl`/`.route-layer-controls` (and, transitively,
    `.depth-legend`'s reachability gate, DataLayers.tsx's own `budgetPx`)
    purely because a one-shot/dismissable toast happened to be up — exactly
    #871's repro (a fresh narrow-viewport load with nothing else on screen).
@@ -1597,7 +1620,9 @@ select {
    and the toast stays exactly where it always has, in `.banner-area`'s
    ordinary flex flow — #871 never reproduces at wide layout (DataLayers.tsx's
    own effect early-returns `hidden: false` unconditionally there), so
-   nothing here needs to touch that case. */
+   nothing here needs to touch that case. Since #909 the toast is back in
+   that same ordinary flex flow at every narrow viewport too, except SHORT
+   LANDSCAPE — see the SCOPE note at the top of this comment. */
 @media (max-width: 1023.98px) {
   .reload-prompt {
     position: fixed;
@@ -4412,8 +4437,7 @@ select {
    full-width bottom sheet. 1024px is chosen so landscape tablets get the side
    panel while portrait tablets/phones keep the bottom sheet.
 
-   The overlay elements (header/banner/sheet/map-area) are all absolutely
-   positioned in the base layout; here they become ordinary grid items placed
+   Here the header/banner/sheet/map-area become ordinary grid items placed
    via grid-template-areas. The map column spans all three rows, so it keeps
    full height regardless of how tall the header/banner rows are.
 
@@ -4660,9 +4684,12 @@ select {
    a Level 3 parser drops the ENTIRE block silently, with no console error
    and nothing for CI to see, which on WebKit is a real iOS Safari band. The
    comma below is Level 3's own logical OR, and De Morgan turns the negation
-   into it: NOT (max-height <= 500 AND landscape) == (height >= 501px) OR
+   into it: NOT (max-height <= 500 AND landscape) == (height > 500px) OR
    (portrait). Each arm is an independent query, so a parser that chokes on
-   one drops only that arm. Same reason the `max-width: 1023.98px` hairline
+   one drops only that arm. Media-query lengths are fractional, so the first
+   arm is spelled `min-height: 500.01px`, not `501px` — the same 0.01px
+   hairline convention as the `1023.98px` width above, rather than a 1px band
+   (reachable under zoom / fractional DPR) admitted by neither arm. Same reason the `max-width: 1023.98px` hairline
    above is spelled that way rather than as an MQ4 complement — do not
    "tidy" either into `@media not (...)`.
 
@@ -4671,7 +4698,7 @@ select {
    published HERE, inside the one block that defines the regime, so there is
    exactly one source of truth and no media query is restated in TypeScript
    (which no compiler would keep in sync). */
-@media (max-width: 1023.98px) and (min-height: 501px),
+@media (max-width: 1023.98px) and (min-height: 500.01px),
   (max-width: 1023.98px) and (orientation: portrait) {
   .app-shell {
     display: grid;

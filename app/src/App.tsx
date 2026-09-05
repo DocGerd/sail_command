@@ -245,8 +245,9 @@ function AppShell() {
   // pushed clear of them there — but that layout is deliberately scoped OUT
   // of short landscape (`max-height: 500px and orientation: landscape`),
   // which keeps the pre-#909 overlay AND its banner-clearance rule. So this
-  // property now feeds TWO live readers, not one: that retained clearance
-  // rule, and app.css's short-landscape sheet cap (#441). This call stays.
+  // property now feeds several live readers, all of them now
+  // short-landscape-scoped: the retained clearance rule and app.css's
+  // short-landscape sheet cap (#441). This call stays.
   useBannerHeight();
   const [settings, setSettings] = useSettings();
   // #54: the selected boat. localStorage (usePersistedBoatId), validated
