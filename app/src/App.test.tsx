@@ -435,15 +435,37 @@ const RELABEL_HARBOR: Harbor = {
 // and PlannerPanel.test.tsx's own ARNIS fixtures — used to prove the no-route
 // banner names the known limit rather than the byte-unchanged generic
 // error.noRoute.unreachable string once a plan against it fails.
-const ARNIS_TEST: HarborWithReachability = {
+//
+// #899: ARNIS_TEST is deliberately typed as a plain `Harbor`, WITHOUT a
+// `knownDisconnected` property, and the flag is attached below via
+// withKnownDisconnectedFlag's runtime cast instead of a typed object-literal
+// property. harborPickerKnownDisconnectedCoupling.test.tsx's own header
+// documents why: an IDE "Rename Symbol" on HarborWithReachability's field
+// renames every TYPED reference consistently — the type declaration, App.tsx's
+// own `.knownDisconnected` read sites (originKnownDisconnected/
+// destinationKnownDisconnected below), AND a typed
+// `knownDisconnected: true` literal on a HarborWithReachability-typed const —
+// so a fixture built the old way stays green through exactly the mutation
+// #899 exists to catch (App.tsx's read site renamed right along with the
+// fixture, both landing on the SAME new name). A `Record<string, unknown>`
+// cast setting the literal STRING key 'knownDisconnected' is not a typed
+// reference an IDE rename tool can find, so after such a rename this fixture
+// still emits the OLD key while a renamed App.tsx read site looks for the
+// NEW one — reproducing #835's silent miss for this component.
+function withKnownDisconnectedFlag(h: Harbor): HarborWithReachability {
+  const clone: Record<string, unknown> = { ...h };
+  clone['knownDisconnected'] = true;
+  return clone as unknown as HarborWithReachability;
+}
+
+const ARNIS_TEST: Harbor = {
   id: 'arnis-test',
   names: { de: 'Arnis', da: 'Arnæs', en: 'Arnis' },
   country: 'DE',
   snap: { lat: 54.6254, lon: 9.9316 },
-  knownDisconnected: true,
 };
 
-const HARBORS: Harbor[] = [FLENSBURG, RELABEL_HARBOR, ARNIS_TEST];
+const HARBORS: Harbor[] = [FLENSBURG, RELABEL_HARBOR, withKnownDisconnectedFlag(ARNIS_TEST)];
 
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), { status: 200 });
