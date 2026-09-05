@@ -72,3 +72,22 @@ review, and running anyway is wasted work.
 - On re-review: go through each prior finding by number, state
   resolved/unresolved with evidence, then check the fix commits introduced no
   new PWA regression.
+
+## Report discipline
+
+Cap your message back to the orchestrator at ~25 lines: verdict, findings
+list, evidence pointers.
+
+- Keep FAILING command output VERBATIM and inline — never paraphrase a
+  failure, a paraphrase discards the diagnostic (this repo lost a `-0` root
+  cause exactly that way, #203). Reduce PASSING evidence to a counted verdict
+  (`typecheck ok`, `offline.spec.ts 12/12 passed`), never to a comparative
+  adjective.
+- If your findings or evidence would blow the 25-line cap, write it to a
+  scratchpad file and return the PATH, not the contents.
+- Write that scratchpad file with a Bash heredoc
+  (`cat > /path/to/file <<'EOF' ... EOF`), never the `Write` tool — `Write` is
+  blocked for subagent report files in this harness. If you find yourself
+  about to paste a full table into your message instead of a path after being
+  asked for a summary, that is the signature of hitting this block, not a
+  reason to abandon the summary — write the file via Bash and return its path.

@@ -38,6 +38,36 @@ orchestrator, not prose for the end user.
    `app/src/routing/`, #878) untouched-and-green for routing changes.
 5. **Offline invariant** — nothing new silently assumes connectivity except
    planning itself.
+6. **Test vacuity** — no agent definition owned this before #837; it is now
+   yours. A green test is not evidence until you have asked whether it CAN go
+   red. For every new or changed assertion, ask (classes sourced from
+   CLAUDE.md's Verification lessons — cite the class when you file a finding):
+   - **Can this assertion fail at all?** An assertion that is a THEOREM given
+     the surrounding code (true of any input the code could produce) reds for
+     nothing you do to it — e.g. a sign check `total >= sum(parts)` that
+     holds by the triangle inequality regardless of the bug (#410).
+   - **Does the mutation REACH the code path under test?** A mutation landing
+     in a comment, in dead code, or one that fails to typecheck/build so the
+     tested artifact never changed, is ZERO evidence, not weak evidence
+     (#455; the three non-execution shapes: comment, non-compile, no-match).
+   - **Is a SIBLING TERM short-circuiting ahead of the one you're checking?**
+     Deleting one condition from a compound guard can leave every test green
+     because another term already made the predicate false first — check
+     per-term, not per-guard (#518 MAJOR 4).
+   - **Does the mutation already red at BASE, before this change?** If so it
+     proves nothing about what changed here — run every mutation at BASE as
+     well as HEAD (#770).
+   - **Is the guard's own DATA pinned, not just its detection logic?** A list,
+     array, or table the guard iterates can be stubbed to `[]` or truncated
+     and leave the guard green while it silently checks nothing — the data
+     needs its own pin, independent of the code deriving it (the
+     `SOLVER_LABELS` finding, and the #388 "matches prose, not the value"
+     variant).
+   - **What does the guard do when the problem is FIXED?** A guard that fails
+     CLOSED on the fixed state is backwards for a nudge-class guard — check
+     both directions, not just "does it fire on the bug".
+   Do not accept an implementer's stated mutation result — re-run it yourself
+   when a finding depends on it, same as any other verification claim.
 
 ## Evidence rules
 
@@ -56,3 +86,24 @@ orchestrator, not prose for the end user.
   resolved/unresolved with evidence; then check the fix commits introduced
   nothing new.
 - Accumulated Minors you waved through: list them, so the phase gate can triage.
+
+## Report discipline
+
+Cap the message you send back at ~25 lines: verdict, findings list, evidence
+pointers. Post the full review to the PR first (per your workflow above) —
+the PR is the durable artifact, your message to the orchestrator is a pointer
+to it, not a duplicate.
+
+- Keep FAILING command output VERBATIM and inline when you quote it — never
+  paraphrase a failure, a paraphrase discards the diagnostic (this repo lost
+  a `-0` root cause exactly that way, #203). Reduce PASSING evidence to a
+  counted verdict (`typecheck ok`, `312/312 passed`), never to a comparative
+  adjective.
+- If a findings table or evidence dump would blow the 25-line cap, write it to
+  a scratchpad file and return the PATH, not the contents.
+- Write that scratchpad file with a Bash heredoc
+  (`cat > /path/to/file <<'EOF' ... EOF`), never the `Write` tool — `Write` is
+  blocked for subagent report files in this harness. If you find yourself
+  about to paste a full table into your message after being asked for a
+  summary, that is the signature of hitting this block, not a reason to give
+  up on the summary — write the file via Bash instead and return its path.

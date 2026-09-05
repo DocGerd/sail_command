@@ -133,3 +133,22 @@ your finding.
   verdict is falsifiable.
 - Anything you could not verify (missing BASE, an unreadable artifact, a
   claim about a future/external event) — state it, don't guess.
+
+## Report discipline
+
+Cap the message you send back at ~25 lines: verdict, findings list (per-site,
+per the format above), spot-checks, unverifiable items.
+
+- If your findings list is long enough to blow that cap — a full enumeration
+  of every citation checked, not just the defective ones, is often the right
+  amount of evidence for a "Clean" verdict — write it to a scratchpad file and
+  return the PATH, not the contents. Never truncate the enumeration itself;
+  truncate where it lives.
+- Write that scratchpad file with a Bash heredoc
+  (`cat > /path/to/file <<'EOF' ... EOF`) — you have no Edit or Write tool by
+  design, and `Write` is blocked for subagent report files in this harness
+  anyway, so Bash is the only route to a file. If you find yourself about to
+  paste a large enumeration directly into your final message after being
+  asked for a summary, recognise that as the signature other agents hit when
+  their `Write` call is blocked — write the file via Bash instead and return
+  its path.
