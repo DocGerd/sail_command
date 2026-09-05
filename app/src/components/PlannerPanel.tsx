@@ -562,8 +562,9 @@ export default function PlannerPanel({
   // than a key. The two are NOT equivalent across an unmount: a `key` differs
   // at the NEXT render whenever the plan changed, regardless of whether the
   // component was mounted at the time; a mount-seeded ref only fires if the
-  // component was mounted WHEN the plan changed, and re-seeds silently (no
-  // announcement) on every later mount.
+  // component was mounted WHEN the plan changed: a later mount re-seeds
+  // from whatever plan is present at the time, so a replacement that landed
+  // while this panel was unmounted is never announced.
   //
   // usePlanFlow.ts's run() (#114's `replacePlanId: recalcPlan.id`) and
   // useDepartureConfirm.ts's confirm() (#937) both preserve `plan.id` while
@@ -607,9 +608,10 @@ export default function PlannerPanel({
   // #961/#937: `DepartureCompare`'s own `departureScan.confirm.done` status
   // ("Plan updated.") fires alongside this one on a confirm-solve — both are
   // mounted inside App.tsx's `tab === 'plan'` block simultaneously. The two
-  // carry DIFFERENT content (which window was taken vs. the resulting
-  // ETA/duration/distance), so this is a deliberate PAIR, not the same-
-  // sentence double announcement PR #486 removed.
+  // carry DIFFERENT content (that the replacement was applied — plus, on
+  // the disagreement variant, which rig the full solve favours — vs. the
+  // resulting ETA/duration/distance), so this is a deliberate PAIR, not the
+  // same-sentence double announcement PR #486 removed.
   let statusText = '';
   if (planning.phase === 'fetching') statusText = t('planner.status.fetching');
   else if (planning.phase === 'routing')
