@@ -233,12 +233,16 @@ export default function PlansList({ online, busy, onRecalculate }: PlansListProp
             // from `beforeIds` — a weaker claim than 'replace's own-createdAtMs
             // proof, satisfied by any plan minted by ANY surface during the
             // run (e.g. a concurrent Live reroute, App.tsx's
-            // handleLiveReroute). Not reachable today — usePlanFlow's
-            // `phaseRef.current !== 'idle' && !== 'error'` guard admits only
-            // one run at a time — so this is a false-SUCCESS residual, not a
-            // live bug; the `recalcName` match below tightens it to the exact
-            // name a 'new' recalculate stamps (App.tsx's handleRecalculate),
-            // narrowing but not fully closing that gap.
+            // handleLiveReroute). Not reachable today — App.tsx's `runBusy`
+            // composite (`:1013`, `planning.phase` OR
+            // `liveReroute.state.rerouting`) is passed as `busy` to both
+            // `LiveView` and this component, so neither surface can start
+            // while the other is running. Note that is a UI-level disable in
+            // another file, not a guard inside this chain — this is a
+            // false-SUCCESS residual, not a live bug; the `recalcName` match
+            // below tightens it to the exact name a 'new' recalculate stamps
+            // (App.tsx's handleRecalculate), narrowing but not fully closing
+            // that gap.
             void (
               mode === 'replace'
                 ? getPlan(planId).then((p) => (p && p.createdAtMs !== beforeCreatedAtMs ? p : null))

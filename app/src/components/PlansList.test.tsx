@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-library/react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { AppStateProvider, useActivePlan } from '../state/AppState';
 import { I18nProvider } from '../i18n';
@@ -420,14 +420,30 @@ describe('PlansList recalculate (#114)', () => {
   // This is the discriminating negative control: onRecalculate persists
   // NOTHING, the exact shape usePlanFlow's run() produces on every
   // RUN-LEVEL FAILURE (errors surface via its own phase/banner instead), so
-  // a correct implementation must announce nothing. Settle is proven by the
-  // editor closing (this file's own idiom, e.g. the departure-seed test
-  // above), not by a fixed wait.
+  // a correct implementation must announce nothing.
+  //
+  // #961 re-review (round 2): gating settle on "the editor closed"
+  // MEASURED 6/10 detection under the Major-1 mutation, not 10/10 —
+  // closeRecalc()/refresh() run UPSTREAM of the announcement chain
+  // (the `void (getPlan(...) | listPlans(...)).then(setRecalcAnnouncement)`
+  // kicked off inside the SAME .then()), so the editor can disappear one or
+  // several ticks before that chain's own getPlan has resolved, and the
+  // assertion then reads "empty because it hasn't run yet" rather than
+  // "empty because the code correctly stayed silent" ~40% of the time. Gate
+  // on the chain's OWN last hop instead (the reviewer's supplied lighter
+  // alternative to a MutationObserver record-don't-sample rewrite): the
+  // `replace`-mode branch calls `getPlan` exactly twice — the initial fetch
+  // and the success-check — regardless of success or failure, so waiting for
+  // that count is downstream of the assertion's subject rather than upstream
+  // of it. `db.getPlan` is spied because PlansList.tsx imports it directly by
+  // name; this file's own "a failed load" test above already relies on that
+  // spy reaching the same import.
   it('#961: does NOT announce when onRecalculate settles without persisting anything (run-level failure)', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(NOW_MS);
     await savePlan(
       makePlan({ id: 'p1', createdAtMs: 1000, departureMs: FUTURE_DEPARTURE_MS, name: 'Solo' }),
     );
+    const getPlanSpy = vi.spyOn(db, 'getPlan');
     const onRecalculate = vi.fn<PlansListProps['onRecalculate']>(async () => {
       // Mirrors run()'s error paths: transitions its own phase/banner and
       // returns WITHOUT calling save() — nothing new on record.
@@ -438,7 +454,8 @@ describe('PlansList recalculate (#114)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Replace original' }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm replace' }));
 
-    await waitFor(() => expect(screen.queryByLabelText('Departure')).not.toBeInTheDocument());
+    await waitFor(() => expect(getPlanSpy).toHaveBeenCalledTimes(2));
+    await act(async () => {});
     expect(screen.getByRole('status')).toHaveTextContent('');
   });
 
