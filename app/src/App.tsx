@@ -241,10 +241,12 @@ function AppShell() {
   // writes the CSS custom property itself; see its own comment). The return
   // value is unused at this call site; ScaleBar.tsx makes its own separate
   // call to know when to re-measure `.map-stack-tl`'s position.
-  // #909 RETIRED the narrow banner-clearance rule this used to feed: banners
-  // occupy their own grid row now, so nothing has to be pushed clear of
-  // them. The property is still read — by app.css's short-landscape sheet
-  // cap (#441) — so this call stays.
+  // #909 gave banners their own grid ROW at narrow, so nothing has to be
+  // pushed clear of them there — but that layout is deliberately scoped OUT
+  // of short landscape (`max-height: 500px and orientation: landscape`),
+  // which keeps the pre-#909 overlay AND its banner-clearance rule. So this
+  // property now feeds TWO live readers, not one: that retained clearance
+  // rule, and app.css's short-landscape sheet cap (#441). This call stays.
   useBannerHeight();
   const [settings, setSettings] = useSettings();
   // #54: the selected boat. localStorage (usePersistedBoatId), validated
@@ -1115,9 +1117,12 @@ function AppShell() {
     <div className="app-shell" ref={shellRef}>
       {/* The map. At WIDE it is the right-hand grid column; since #909 it is
           the bottom grid ROW at narrow too, below the header and banner rows
-          — so `.app-header`/`.banner-area` are no longer overlays at any
-          width, and DOM order here is placement-independent (both layouts
-          place by `grid-area`). `.app-bottom-sheet` IS still an overlay at
+          — EXCEPT at short landscape (`max-height: 500px and orientation:
+          landscape`), which app.css scopes out of that layout and where
+          `.app-header`/`.banner-area` are STILL overlays exactly as before
+          #909. In both grid layouts DOM order here is placement-independent
+          (they place by `grid-area`); in the short-landscape overlay it is
+          the pre-#909 arrangement, unchanged. `.app-bottom-sheet` IS still an overlay at
           narrow, painted on top of this row. That
           DOM-order-only assumption is NOT sufficient across this whole set:
           #208 found `.app-bottom-sheet` and the tab strip inside it each

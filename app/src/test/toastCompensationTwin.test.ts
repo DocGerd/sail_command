@@ -111,8 +111,13 @@ describe('#909: the compensated sheet cap is one value in four places', () => {
   });
 
   it('site 4: DataLayers adds the toast height back into budgetPx', () => {
+    // #909 (d1): `budgetPx` is a TERNARY since short landscape was scoped
+    // out of the grid-row layout and kept on the pre-#909 budget. Only the
+    // grid-row ARM carries the compensation, so this pins that arm
+    // specifically — matching the pre-ternary shape would silently pass on
+    // the short-landscape arm, which must NOT add the toast back.
     const m = DATA_LAYERS_SRC.match(
-      /const budgetPx =\s*mapRowPx\s*-\s*MAP_CHROME_TOP_PX\s*-\s*\(window\.innerHeight \* 0\.55 - toastHeightPx\)/,
+      /const budgetPx = gridRows\s*\?\s*mapRowPx\s*-\s*MAP_CHROME_TOP_PX\s*-\s*\(window\.innerHeight \* 0\.55 - toastHeightPx\)/,
     );
     expect(
       m,
@@ -149,5 +154,48 @@ describe('#909: --sc-map-chrome-top has a TypeScript twin', () => {
       "the narrow cluster's `top` no longer reads `var(--sc-map-chrome-top)`, so changing that one " +
         'token would move the inset without moving the budget that accounts for it',
     ).not.toBeNull();
+  });
+});
+
+describe('#909 (d1): the short-landscape exclusion is scoped in ONE place', () => {
+  it('the grid-row block uses MQ3 complement syntax, never MQ4 `not`', () => {
+    // De Morgan: NOT (max-height <= 500 AND landscape) == (>= 501px) OR
+    // (portrait). The comma IS Level 3's logical OR. An MQ4 `not (...)` form
+    // would be dropped ENTIRELY and SILENTLY by a Level 3 parser — no console
+    // error, nothing for CI to see — taking the whole #909 layout with it, so
+    // this is pinned rather than left to review.
+    expect(
+      FLAT_CSS.includes(
+        '@media (max-width: 1023.98px) and (min-height: 501px), ' +
+          '(max-width: 1023.98px) and (orientation: portrait) {',
+      ),
+      'app.css no longer scopes the #909 grid-row block with the MQ3 complement pair. If this was ' +
+        'rewritten as `@media not (...)`, a Level 3 parser drops the whole block silently',
+    ).toBe(true);
+
+    expect(
+      /@media[^{]*\bnot\s*\(/.test(FLAT_CSS),
+      'app.css now contains MQ4 `@media not (...)` boolean syntax, which a Level 3 parser treats as a ' +
+        'syntax error and drops the ENTIRE block for, with nothing observable in CI',
+    ).toBe(false);
+  });
+
+  it('the regime signal is published in CSS and read in TypeScript', () => {
+    // The ONE cross-language coupling the (d1) scoping introduces. CSS is the
+    // single source of truth for the condition; TS must not restate the media
+    // query, so it reads this property instead — which only works while both
+    // halves spell the same name.
+    expect(
+      FLAT_CSS.includes('--sc-map-grid-rows: 1;'),
+      "app.css's #909 block no longer publishes `--sc-map-grid-rows`, so `DataLayers.tsx` can no " +
+        'longer tell which layout regime is active and silently falls back to the pre-#909 budget ' +
+        'at EVERY narrow viewport',
+    ).toBe(true);
+
+    expect(
+      DATA_LAYERS_SRC.includes("getPropertyValue('--sc-map-grid-rows')"),
+      '`DataLayers.tsx` no longer reads `--sc-map-grid-rows`. If this was replaced by a `matchMedia` ' +
+        'call, the short-landscape media query now exists in TWO artifacts no compiler spans',
+    ).toBe(true);
   });
 });

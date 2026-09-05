@@ -197,9 +197,11 @@ test('responsive layout: side panel on wide screens, bottom sheet on narrow', as
     expect(narrowPanel.width).toBeGreaterThan(375 * 0.9);
     expect(narrowPanel.y).toBeGreaterThan(100);
     expect(narrowPanel.y + narrowPanel.height).toBeGreaterThan(667 * 0.9);
-    // #909: the map is no longer the full-viewport base layer at narrow — it
-    // is the LAST row of a header/banner/map grid, so it starts below the
-    // header and any banners. The old `height > 667*0.95` assertion pinned a
+    // #909: at THIS viewport (375x667 — narrow, and outside the
+    // short-landscape class that app.css scopes the grid layout out of) the
+    // map is no longer the full-viewport base layer — it is the LAST row of
+    // a header/banner/map grid, so it starts below the header and any
+    // banners. At short landscape it is still the full-viewport base layer. The old `height > 667*0.95` assertion pinned a
     // ratio that only held while the map ran full-bleed; asserting the
     // STRUCTURE instead is both stricter and stable under any header/banner
     // height. MEASURED 2026-09-05 at this exact viewport on a real preview

@@ -1148,13 +1148,36 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
       // below — so no separate observer is needed to notice it.
       const toastEl = document.querySelector<HTMLElement>('.reload-prompt');
       const toastHeightPx = toastEl ? toastEl.getBoundingClientRect().height : 0;
-      const budgetPx =
-        mapRowPx -
-        MAP_CHROME_TOP_PX -
-        (window.innerHeight * 0.55 - toastHeightPx) -
-        8 - // 0.5rem, the gap this cluster leaves above the sheet
-        el.getBoundingClientRect().height -
-        60; // gap + compass + gap, matching `.depth-legend`'s own `top`
+      // REGIME SIGNAL, deliberately NOT a restated media query. `app.css`'s
+      // #909 block publishes `--sc-map-grid-rows: 1` on `.map-area`, and
+      // that block's own query is the single place the condition is
+      // written down. Short landscape (`max-height: 500px` +
+      // `orientation: landscape`) is excluded from it and keeps the
+      // pre-#909 overlay layout byte-for-byte — see that block's comment
+      // for the 740x360 measurement behind the exclusion — so it must keep
+      // the pre-#909 BUDGET too: there the header and banner still FLOAT
+      // over a full-viewport `.map-area`, so `mapRowPx` is the whole
+      // viewport and their height has to be subtracted by hand exactly as
+      // it always was. Calling `matchMedia` here instead would duplicate
+      // that query in TypeScript, and no compiler spans CSS and TS — a
+      // second copy is exactly the twin this repo keeps paying for.
+      const gridRows =
+        mapAreaEl !== null &&
+        getComputedStyle(mapAreaEl).getPropertyValue('--sc-map-grid-rows').trim() === '1';
+      const bannerHeightPx = bannerEl ? bannerEl.getBoundingClientRect().height : 0;
+      const budgetPx = gridRows
+        ? mapRowPx -
+          MAP_CHROME_TOP_PX -
+          (window.innerHeight * 0.55 - toastHeightPx) -
+          8 - // 0.5rem, the gap this cluster leaves above the sheet
+          el.getBoundingClientRect().height -
+          60 // gap + compass + gap, matching `.depth-legend`'s own `top`
+        : window.innerHeight -
+          (56 + bannerHeightPx) - // 3.5rem + banner: the pre-#909 clearance push
+          window.innerHeight * 0.55 -
+          8 - // 0.5rem
+          el.getBoundingClientRect().height -
+          60;
       // #641: TWINNED to `app.css`'s `.depth-legend > summary { min-height:
       // 44px }` — the legend's whole COLLAPSED box, since #638's chrome
       // padding on `.depth-legend` is horizontal-only by design. No compiler
