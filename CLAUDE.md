@@ -324,10 +324,14 @@ making design-level decisions; do not silently deviate.
   `app/src/test/timeouts.ts` — Playwright specs under `app/e2e/**` and
   `playwright.config.ts` are a NAMED residual, out of scope by glob.
 - vitest's `BaseSequencer` sorts by file SIZE descending when there is no
-  cache — and CI never has one (`npm ci` wipes `node_modules`).
-  `invariants.property.test.ts` is ~4380 bytes but ~463 s, so the
-  smallest-but-slowest file was scheduled LAST and idled ~109 s waiting for
-  faster workers to finish. Fixed with a custom `sequence.sequencer` in
+  cache — and CI never has one (`npm ci` wipes `node_modules`). That hurt
+  `invariants.property.test.ts`, which was small on disk relative to its
+  run time: vitest's size-descending default therefore scheduled it too
+  late, and other workers idled while it finished alone — the file's
+  size and duration figures live in `app/vite.config.ts`'s #214/#878
+  comment (see the "Full test suite timing" bullet above), not restated
+  here per that bullet's own rule (duration), and to avoid a second copy
+  that can drift (size). Fixed with a custom `sequence.sequencer` in
   `app/vite.config.ts` that schedules known-slow files first (#214).
   #214 also REMOVED `needs: app` from `ci.yml`'s `e2e` job: the two now run
   concurrently (~120 s saved per run, which compounds under the strict
