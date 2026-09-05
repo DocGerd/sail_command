@@ -284,21 +284,31 @@ describe('registerAisImages (#192 canvas/pixelRatio/scale registration contract)
 // pre-#957 icon-size taper topped out at 0.9@z12, clamped there forever —
 // `interpolate` clamps outside its domain), below the locked >=44px
 // gloved-use touch-target floor (CLAUDE.md's a11y-ranking ruling on #860,
-// which fixed the identical shape for seamark glyphs). These tests pin the
-// CONSEQUENCE of aisVesselLayout()'s new top stop (AisLayer.tsx's own doc
-// comment above it carries the derivation) as separate, independently
-// mutation-checkable claims: the floor is actually met, the z8-z12 prefix is
-// untouched, AND — unlike seamarks, which rely on a safe icon-overlap:'always'
-// zoom band — the collision FOOTPRINT (icon-size*natural + 2*padding) that AIS
-// inserts into the shared collision index does not grow, so this change cannot
-// newly cull a lower-priority layer (#378's shape).
-describe('#957: AIS vessel tap-target floor (>=44px gloved-use) and collision-footprint invariant', () => {
+// which fixed the identical shape for seamark glyphs).
+//
+// Round 1 of this fix tried to grow icon-size while compensating with a
+// negative icon-padding to hold the collision footprint constant — REFUTED
+// in review, on two independent grounds confirmed against the installed
+// maplibre-gl@6.6.0 source (see aisVesselLayout()'s own doc comment for the
+// citations): queryRenderedFeatures resolves symbols via the collision
+// footprint itself (so "hold the footprint constant" cancels the fix), and
+// icon-size/icon-padding are evaluated at DIFFERENT zooms internally
+// (bucket.zoom+1 vs bucket.zoom), so the "constant footprint" arithmetic was
+// never valid in the first place. The shipped fix instead leaves icon-padding
+// untouched (so the tap target genuinely grows) and sets
+// icon-ignore-placement: true (the #378 precedent) so the bigger box can
+// never cull another layer's symbol.
+describe('#957: AIS vessel tap-target floor (>=44px gloved-use), no padding compensation, ignore-placement', () => {
   it('the top icon-size stop displays at >=44 CSS px', () => {
     const iconSize = aisVesselLayout()['icon-size'] as readonly unknown[];
     const topStopValue = iconSize[iconSize.length - 1] as number;
     // Hand-derived (AIS_NATURAL_ICON_PX, imported, not re-declared here —
     // CLAUDE.md's twin-search rule) rather than calling any production
     // formula, so this can't pass by the #50 equivalence-test tautology.
+    // This is a conservative UNDER-estimate of the real tap target: MapLibre's
+    // actual collision box also adds the (untouched) default icon-padding
+    // (2px/side) on top of this, and evaluates icon-size at bucket.zoom+1,
+    // which only makes the real box bigger, never smaller, than this figure.
     expect(topStopValue * AIS_NATURAL_ICON_PX).toBeGreaterThanOrEqual(44);
   });
 
@@ -307,49 +317,18 @@ describe('#957: AIS vessel tap-target floor (>=44px gloved-use) and collision-fo
     expect(iconSize.slice(0, 7)).toEqual(['interpolate', ['linear'], ['zoom'], 8, 0.5, 12, 0.9]);
   });
 
-  it('leaves icon-padding at the MapLibre default (2px/side) at and below z12', () => {
-    const padding = aisVesselLayout()['icon-padding'] as readonly unknown[];
-    // Domain starts at 12 (index 3/4 after ['interpolate',['linear'],['zoom']]).
-    expect(padding.slice(0, 5)).toEqual(['interpolate', ['linear'], ['zoom'], 12, 2]);
+  // #957 round 1's Blocker: `icon-padding` must NOT be set at all — any
+  // compensating value (the refuted round-1 approach) shrinks the real
+  // collision-index tap target right back down, defeating the fix.
+  it('never sets icon-padding — no compensation that could shrink the real tap target', () => {
+    expect(Object.hasOwn(aisVesselLayout(), 'icon-padding')).toBe(false);
   });
 
-  // The collision-footprint invariant this fix relies on: icon-size and
-  // icon-padding are each linear in zoom, and matching footprint
-  // (iconPx + 2*paddingPx) at the z12 AND z13 endpoints holds it constant
-  // across the whole segment between them (two linear functions agreeing at
-  // two points agree everywhere between). Computed from the ACTUAL returned
-  // arrays, not re-derived from memory, so a change to either the icon-size
-  // top stop or the padding compensation that breaks the balance reds this.
-  it('holds the collision footprint constant between z12 and z13 (the #191 lever, applied at the zoom axis)', () => {
-    const layout = aisVesselLayout();
-    const iconSize = layout['icon-size'] as readonly unknown[];
-    const padding = layout['icon-padding'] as readonly unknown[];
-    // iconSize: ['interpolate',['linear'],['zoom'], z0,v0, z1,v1, z2,v2, ...]
-    const sizeAt = (zoom: number): number => {
-      const idx = iconSize.indexOf(zoom);
-      return iconSize[idx + 1] as number;
-    };
-    const paddingAt = (zoom: number): number => {
-      const idx = padding.indexOf(zoom);
-      return padding[idx + 1] as number;
-    };
-    const footprintAt = (zoom: number): number =>
-      sizeAt(zoom) * AIS_NATURAL_ICON_PX + 2 * paddingAt(zoom);
-    expect(footprintAt(13)).toBeCloseTo(footprintAt(12), 10);
-    // And that footprint is the PRE-#957 z12 footprint (default 2px padding,
-    // never explicitly touched below z12) — not just internally consistent.
-    expect(footprintAt(12)).toBeCloseTo(0.9 * AIS_NATURAL_ICON_PX + 2 * 2, 10);
+  it('sets icon-ignore-placement so the bigger box cannot cull another layer (#378 precedent)', () => {
+    expect(aisVesselLayout()['icon-ignore-placement']).toBe(true);
   });
 
-  it('#957 mutation check: without the padding compensation the footprint would grow', () => {
-    // Documents why the compensation is load-bearing rather than decorative:
-    // the RAW icon-size growth alone (no padding change) increases the
-    // collision footprint by exactly the icon-size delta * natural px.
-    const layout = aisVesselLayout();
-    const iconSize = layout['icon-size'] as readonly unknown[];
-    const sizeAt12 = iconSize[iconSize.indexOf(12) + 1] as number;
-    const sizeAt13 = iconSize[iconSize.indexOf(13) + 1] as number;
-    const uncompensatedGrowthPx = (sizeAt13 - sizeAt12) * AIS_NATURAL_ICON_PX;
-    expect(uncompensatedGrowthPx).toBeGreaterThan(0);
+  it('keeps icon-allow-overlap so AIS itself is never culled (unchanged since before #957)', () => {
+    expect(aisVesselLayout()['icon-allow-overlap']).toBe(true);
   });
 });

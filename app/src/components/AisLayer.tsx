@@ -115,40 +115,70 @@ export const AIS_NATURAL_ICON_PX = CANVAS_SIZE / PIXEL_RATIO;
  * locked >=44px gloved-use touch-target floor (CLAUDE.md's a11y-ranking
  * ruling on #860, which fixed the identical shape for seamark glyphs).
  *
- * AIS vessels differ from seamarks in the mechanism that makes growth safe.
- * Seamarks confine their #860 growth to z>=12, the zoom band where
- * `icon-overlap` flips to 'always' (immune to being CULLED there). AIS
- * vessels are `icon-allow-overlap: true` UNCONDITIONALLY — every zoom, not
- * zoom-gated — so AIS glyphs were never at risk of being culled themselves.
- * But growing `icon-size` still grows AIS's own COLLISION BOX
- * (`icon-ignore-placement` is unset), and AIS sits ABOVE DataLayers' whole
- * harbor/seamark stack in placement priority (#160: DataLayers inserts
- * below the AIS stack, and placement runs top-to-bottom), so a bigger AIS
- * box could newly cull a lower-priority label near a vessel — the #378
- * shape: `icon-allow-overlap` without `icon-ignore-placement` still blocks
- * OTHERS.
+ * REJECTED APPROACH (PR #974 round 1, refuted in review): grow `icon-size`
+ * to a new z13 stop (1.4) and compensate with a NEGATIVE `icon-padding` so
+ * the collision footprint stays at the pre-#957 value. This does not work,
+ * for two independent reasons confirmed against the installed
+ * `maplibre-gl@6.6.0` source (`app/package-lock.json`-pinned):
  *
- * The fix therefore does not rely on a safe zoom band: it adds ONE new stop
- * at z13 (1.4, matching seamarks' own #860 choice: 1.4 * 32 = 44.8px,
- * clearing 44px with margin for float rounding) paired with an
- * `icon-padding` compensation (the #191 lever — "the lever for enlarging a
- * tap target without changing the collision footprint") solved so the
- * collision footprint (iconPx + 2*paddingPx) is the pre-#957 z12 value
- * (28.8 + 2*2 = 32.8px) at BOTH z12 and z13. Because icon-size and
- * icon-padding are each linear in zoom between those two points, matching
- * footprint at the endpoints holds it CONSTANT across the whole [12,13]
- * segment — two linear functions agreeing at two points agree everywhere
- * between them — and both clamp flat past z13, so the invariant holds
- * forever above it too. z8-z12 stay BYTE-IDENTICAL to before: no new stop,
- * and icon-padding's domain starts at 12 so it flat-extrapolates to the
- * MapLibre default (2px/side) below it.
+ * 1. `queryRenderedFeatures` resolves a symbol via the COLLISION INDEX, not
+ *    the rendered icon quad — `collision_index.ts`'s `queryRenderedSymbols`
+ *    doc comment says so directly ("we use the CollisionIndex to look up
+ *    the symbol part of queryRenderedFeatures"), and it queries
+ *    `this.grid.query(...).concat(this.ignoredGrid.query(...))`. So the
+ *    collision footprint IS the tap target — compensating it back down to
+ *    the pre-#957 size cancels the fix outright; the icon LOOKS bigger but
+ *    taps exactly as before.
+ * 2. Even ignoring (1), the padding math assumed `icon-size` and
+ *    `icon-padding` are evaluated at the SAME zoom. They are not:
+ *    `symbol_layout.ts:98` evaluates `icon-size` at `bucket.zoom + 1`
+ *    (deliberately, to keep anchor/collision geometry stable across a
+ *    tile's whole zoom range — the same call also does this for
+ *    `text-size`, per that file's own comment), while `getIconPadding`
+ *    (`symbol_style_layer.ts`, called from `symbol_layout.ts:316`)
+ *    evaluates `icon-padding` off the layer's already-recalculated
+ *    `layout` — `bucket.zoom`, no `+1`. A one-zoom-level mismatch between
+ *    the two terms of the footprint sum meant the "constant footprint"
+ *    invariant was false by construction; measured in review at 49px on
+ *    z12/z12.5 tiles instead of the intended 32.8px.
+ *
+ * FIX (this version): keep growing `icon-size` (same z13 stop, 1.4 * 32 =
+ * 44.8px, matching seamarks' own #860 choice), but do NOT touch
+ * `icon-padding` at all — leave it at the MapLibre default (2px/side), so
+ * the tap target genuinely grows with the icon. To close the #378-shape
+ * hazard this still raises (AIS's own collision box growing, and AIS
+ * sitting ABOVE DataLayers' whole harbor/seamark stack in placement
+ * priority per #160, so it is placed BEFORE them and could newly cull a
+ * lower-priority label near a vessel), set `icon-ignore-placement: true`.
+ * `collision_index.ts`'s `insertCollisionBox` files a feature into
+ * `this.ignoredGrid` rather than `this.grid` when `ignorePlacement` is
+ * true, and the SELF-placement hitTest (`placeCollisionBox`, ~:173) and
+ * every OTHER feature's collision check both read `this.grid` ONLY, never
+ * `this.ignoredGrid` — so an ignored-placement box can never block another
+ * symbol's placement, while `queryRenderedSymbols`'s
+ * `grid.concat(ignoredGrid)` still returns it for taps. This is the SAME
+ * fix #378 already applied to `sc-wind-barbs` for the identical
+ * icon-allow-overlap-without-icon-ignore-placement shape (RouteLayer.tsx).
+ * AIS already had `icon-allow-overlap: true` (immune to being culled
+ * itself); this adds the missing "don't block others" half.
+ *
+ * z8-z12 stay BYTE-IDENTICAL to before: `icon-size`'s table is unchanged
+ * through z12, and `icon-padding` is no longer touched at any zoom.
+ *
+ * PRODUCT TRADE-OFF, flagged for maintainer sign-off rather than decided
+ * here: `icon-ignore-placement: true` means AIS vessels no longer cull
+ * ANY other layer's symbol near them — a seamark or harbor label that
+ * would previously have been hidden by a nearby vessel's collision box now
+ * stays visible (arguably a safety improvement: a temporarily-adjacent icon
+ * beats a permanently-culled mark). It does NOT change AIS-vs-AIS overlap
+ * behaviour, which was already unconditional via `icon-allow-overlap: true`
+ * before this PR. Paint order (which layer draws on top) is independent of
+ * collision and unaffected either way — AIS already paints above the
+ * harbor/seamark stack.
  */
 const AIS_VESSEL_ICON_SIZE: NonNullable<
   NonNullable<SymbolLayerSpecification['layout']>['icon-size']
 > = ['interpolate', ['linear'], ['zoom'], 8, 0.5, 12, 0.9, 13, 1.4];
-const AIS_VESSEL_ICON_PADDING: NonNullable<
-  NonNullable<SymbolLayerSpecification['layout']>['icon-padding']
-> = ['interpolate', ['linear'], ['zoom'], 12, 2, 13, -6];
 
 // Exported so #957's tap-target floor and z8-z12 byte-identity can be pinned
 // directly against the returned layout, without a live map.
@@ -165,8 +195,11 @@ export function aisVesselLayout(): NonNullable<SymbolLayerSpecification['layout'
     'icon-rotate': ['get', 'rotation'],
     'icon-rotation-alignment': 'map',
     'icon-size': AIS_VESSEL_ICON_SIZE,
-    'icon-padding': AIS_VESSEL_ICON_PADDING,
     'icon-allow-overlap': true,
+    // #957: do NOT block other layers' symbols from being placed near a
+    // vessel — see the doc comment above for the mechanism and the #378
+    // precedent this mirrors.
+    'icon-ignore-placement': true,
   };
 }
 
