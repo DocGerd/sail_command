@@ -2,11 +2,13 @@ import { render } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import AisLayer, {
   AIS_LABEL_LAYER,
+  AIS_NATURAL_ICON_PX,
   AIS_SOURCE,
   AIS_VECTOR_LAYER,
   AIS_VESSEL_LAYER,
   ARROW_IMAGE,
   DOT_IMAGE,
+  aisVesselLayout,
   registerAisImages,
 } from './AisLayer';
 import { makeFakeMap, simulateStyleReload } from '../test/fakeMaplibre';
@@ -275,5 +277,68 @@ describe('registerAisImages (#192 canvas/pixelRatio/scale registration contract)
 
     expect(addImage).toHaveBeenCalledTimes(1);
     expect(addImage.mock.calls[0][0]).toBe(DOT_IMAGE);
+  });
+});
+
+// #957: AIS vessel glyphs were tappable only inside a 16-28.8px target (the
+// pre-#957 icon-size taper topped out at 0.9@z12, clamped there forever —
+// `interpolate` clamps outside its domain), below the locked >=44px
+// gloved-use touch-target floor (CLAUDE.md's a11y-ranking ruling on #860,
+// which fixed the identical shape for seamark glyphs).
+//
+// Round 1 of this fix tried to grow icon-size while compensating with a
+// negative icon-padding to hold the collision footprint constant — REFUTED
+// in review, on two independent grounds confirmed against the installed
+// maplibre-gl@6.6.0 source (see aisVesselLayout()'s own doc comment for the
+// citations): queryRenderedFeatures resolves symbols via the collision
+// footprint itself (so "hold the footprint constant" cancels the fix), and
+// icon-size/icon-padding are evaluated at DIFFERENT zooms internally
+// (bucket.zoom+1 vs bucket.zoom), so the "constant footprint" arithmetic was
+// never valid in the first place. The shipped fix instead leaves icon-padding
+// untouched (so the tap target genuinely grows) and sets
+// icon-ignore-placement: true (the #378 precedent) so the bigger box can
+// never cull another layer's symbol.
+describe('#957: AIS vessel tap-target floor (>=44px gloved-use), no padding compensation, ignore-placement', () => {
+  // Pins the RENDERED glyph size only — jsdom has no real collision index
+  // (canvas getContext is globally stubbed to null, per src/test/setup.ts),
+  // so no in-repo unit test can assert the actual TAPPABLE extent; that
+  // needs a real MapLibre GL JS runtime, which is what this PR's own
+  // real-browser harness provided (documented in the aisVesselLayout() doc
+  // comment and the PR's commit message: 49px measured at z12/12.5/13/14,
+  // real maplibre-gl@6.6.0, both self-tap-target growth and non-culling of
+  // a lower-priority neighbour). Do not read a pass here as evidence the
+  // tap-target floor is met on its own — see that real-browser measurement
+  // for the tappable claim.
+  it('the top icon-size stop RENDERS at >=44 CSS px (rendered glyph only, not the tap target)', () => {
+    const iconSize = aisVesselLayout()['icon-size'] as readonly unknown[];
+    const topStopValue = iconSize[iconSize.length - 1] as number;
+    // Hand-derived (AIS_NATURAL_ICON_PX, imported, not re-declared here —
+    // CLAUDE.md's twin-search rule) rather than calling any production
+    // formula, so this can't pass by the #50 equivalence-test tautology.
+    // This is a conservative UNDER-estimate of the real tap target: MapLibre's
+    // actual collision box also adds the (untouched) default icon-padding
+    // (2px/side) on top of this, and evaluates icon-size at bucket.zoom+1,
+    // which only makes the real box bigger, never smaller, than this figure.
+    expect(topStopValue * AIS_NATURAL_ICON_PX).toBeGreaterThanOrEqual(44);
+  });
+
+  it('leaves the z8-z12 icon-size prefix byte-identical to the pre-#957 layout', () => {
+    const iconSize = aisVesselLayout()['icon-size'] as readonly unknown[];
+    expect(iconSize.slice(0, 7)).toEqual(['interpolate', ['linear'], ['zoom'], 8, 0.5, 12, 0.9]);
+  });
+
+  // #957 round 1's Blocker: `icon-padding` must NOT be set at all — any
+  // compensating value (the refuted round-1 approach) shrinks the real
+  // collision-index tap target right back down, defeating the fix.
+  it('never sets icon-padding — no compensation that could shrink the real tap target', () => {
+    expect(Object.hasOwn(aisVesselLayout(), 'icon-padding')).toBe(false);
+  });
+
+  it('sets icon-ignore-placement so the bigger box cannot cull another layer (#378 precedent)', () => {
+    expect(aisVesselLayout()['icon-ignore-placement']).toBe(true);
+  });
+
+  it('keeps icon-allow-overlap so AIS itself is never culled (unchanged since before #957)', () => {
+    expect(aisVesselLayout()['icon-allow-overlap']).toBe(true);
   });
 });

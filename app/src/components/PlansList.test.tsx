@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-library/react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { AppStateProvider, useActivePlan } from '../state/AppState';
 import { I18nProvider } from '../i18n';
@@ -358,6 +358,155 @@ describe('PlansList recalculate (#114)', () => {
     expect(plan.id).toBe('p1');
     expect(departureMs).toBe(FUTURE_DEPARTURE_MS);
     expect(mode).toBe('replace');
+  });
+
+  // #961: PlannerPanel's own role="status" announcement is unmounted while
+  // this tab is showing (App.tsx renders the Plan/Routes tabs as mutually
+  // exclusive branches), so a recalculate-and-replace never reached a
+  // screen reader before this fix. onRecalculate here does what App.tsx's
+  // real handleRecalculate/usePlanFlow's run() does on SUCCESS — persists
+  // the plan under the SAME id with a newer createdAtMs and a real result —
+  // which is the ONLY thing this component trusts as proof of success (its
+  // own comment: the promise resolves on a run-level FAILURE too).
+  it('#961: announces the recalculated result on this tab, since PlannerPanel is unmounted here', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW_MS);
+    await savePlan(
+      makePlan({ id: 'p1', createdAtMs: 1000, departureMs: FUTURE_DEPARTURE_MS, name: 'Solo' }),
+    );
+    const newEtaMs = new Date(2026, 0, 16, 14, 0).getTime();
+    const onRecalculate = vi.fn<PlansListProps['onRecalculate']>(async (recalcPlan) => {
+      await savePlan({
+        ...recalcPlan,
+        createdAtMs: recalcPlan.createdAtMs + 1,
+        result: {
+          ...recalcPlan.result,
+          sails: recalcPlan.result.sails.map((s) =>
+            s.sailId === recalcPlan.result.recommended && s.result
+              ? {
+                  ...s,
+                  result: {
+                    ...s.result,
+                    etaMs: newEtaMs,
+                    durationMs: 19_800_000,
+                    distanceNm: 42.7,
+                  },
+                }
+              : s,
+          ),
+        },
+      });
+    });
+    renderList({ onRecalculate });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Recalculate' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Replace original' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm replace' }));
+
+    // Typed out by hand (this file's own #54/#548 pinning convention) —
+    // en-GB, hourCycle h23 renders DD/MM/YYYY, HH:MM (pinned in
+    // format.test.ts); 19_800_000 ms = 5 h 30 min; 42.7 formats as "42.7 nm".
+    // The role="status" node is present (empty) from first render, so a
+    // find-then-assert would resolve before the async announcement lands —
+    // wait for the CONTENT itself, not merely the node's presence.
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'Route recalculated — arrival 16/01/2026, 14:00, duration 5 h 30 min, 42.7 nm.',
+      ),
+    );
+  });
+
+  // #961 review, Major 1: the row above pins the STRING but never proves the
+  // TRIGGER — deleting the createdAtMs success proof left it 25/25 green.
+  // This is the discriminating negative control: onRecalculate persists
+  // NOTHING, the exact shape usePlanFlow's run() produces on every
+  // RUN-LEVEL FAILURE (errors surface via its own phase/banner instead), so
+  // a correct implementation must announce nothing.
+  //
+  // #961 re-review (round 2): gating settle on "the editor closed"
+  // MEASURED 6/10 detection under the Major-1 mutation, not 10/10 —
+  // closeRecalc()/refresh() run UPSTREAM of the announcement chain
+  // (the `void (getPlan(...) | listPlans(...)).then(setRecalcAnnouncement)`
+  // kicked off inside the SAME .then()), so the editor can disappear one or
+  // several ticks before that chain's own getPlan has resolved, and the
+  // assertion then reads "empty because it hasn't run yet" rather than
+  // "empty because the code correctly stayed silent" ~40% of the time. Gate
+  // on the chain's OWN last hop instead (the reviewer's supplied lighter
+  // alternative to a MutationObserver record-don't-sample rewrite): the
+  // `replace`-mode branch calls `getPlan` exactly twice — the initial fetch
+  // and the success-check — regardless of success or failure, so waiting for
+  // that count is downstream of the assertion's subject rather than upstream
+  // of it. `db.getPlan` is spied because PlansList.tsx imports it directly by
+  // name; this file's own "a failed load" test above already relies on that
+  // spy reaching the same import.
+  it('#961: does NOT announce when onRecalculate settles without persisting anything (run-level failure)', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW_MS);
+    await savePlan(
+      makePlan({ id: 'p1', createdAtMs: 1000, departureMs: FUTURE_DEPARTURE_MS, name: 'Solo' }),
+    );
+    const getPlanSpy = vi.spyOn(db, 'getPlan');
+    const onRecalculate = vi.fn<PlansListProps['onRecalculate']>(async () => {
+      // Mirrors run()'s error paths: transitions its own phase/banner and
+      // returns WITHOUT calling save() — nothing new on record.
+    });
+    renderList({ onRecalculate });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Recalculate' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Replace original' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm replace' }));
+
+    await waitFor(() => expect(getPlanSpy).toHaveBeenCalledTimes(2));
+    await act(async () => {});
+    expect(screen.getByRole('status')).toHaveTextContent('');
+  });
+
+  // #961 review, Major 2: the entire 'new'-mode announcement branch (the
+  // beforeIds snapshot, the kind==='ok' narrowing, the createdAtMs sort, the
+  // second getPlan round-trip) was uncovered — stubbing it to `return null;`
+  // left the suite 25/25 green because only 'replace' was exercised.
+  it('#961: announces the recalculated result for a "new" (save-as-new) recalculate too', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW_MS);
+    await savePlan(
+      makePlan({ id: 'p1', createdAtMs: 1000, departureMs: FUTURE_DEPARTURE_MS, name: 'Solo' }),
+    );
+    const newEtaMs = new Date(2026, 0, 17, 9, 0).getTime();
+    const onRecalculate = vi.fn<PlansListProps['onRecalculate']>(async (recalcPlan) => {
+      // Mirrors App.tsx's handleRecalculate + usePlanFlow's run() for mode
+      // 'new': a FRESH id, and the exact name App.tsx's own
+      // `t('plansList.recalcName', { name })` stamps.
+      await savePlan({
+        ...recalcPlan,
+        id: 'p2',
+        name: `${recalcPlan.name} (recalculated)`,
+        createdAtMs: recalcPlan.createdAtMs + 1,
+        result: {
+          ...recalcPlan.result,
+          sails: recalcPlan.result.sails.map((s) =>
+            s.sailId === recalcPlan.result.recommended && s.result
+              ? {
+                  ...s,
+                  result: {
+                    ...s.result,
+                    etaMs: newEtaMs,
+                    durationMs: 7_200_000,
+                    distanceNm: 18.3,
+                  },
+                }
+              : s,
+          ),
+        },
+      });
+    });
+    renderList({ onRecalculate });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Recalculate' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Recalculate as new plan' }));
+
+    // 7_200_000 ms = 2 h 00 min; 18.3 formats as "18.3 nm".
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'Route recalculated — arrival 17/01/2026, 09:00, duration 2 h 00 min, 18.3 nm.',
+      ),
+    );
   });
 
   it('offline: the recalc actions are disabled with the i18n message and never run', async () => {
