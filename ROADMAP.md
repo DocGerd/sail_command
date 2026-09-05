@@ -20,9 +20,9 @@ shipped.
 
 The `v0.23.0` cut (2026-09-05) completed the
 [`v0.23.0` milestone](https://github.com/DocGerd/sail_command/milestones),
-eleven issues in total — five of them user-visible; the other six were
-test-coverage, agent-tooling, and documentation fixes with no user-facing
-change.
+eleven issues in total — four of them user-visible (five changelog
+entries; #961 contributed two); the other seven were test-coverage,
+agent-tooling, and documentation fixes with no user-facing change.
 
 Any seamark visible and tappable on the map can now be added as a route
 waypoint — the earlier restriction to cardinal, lateral, and
