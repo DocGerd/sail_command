@@ -112,9 +112,10 @@ your finding.
 
 - Verify every claim by reading the artifact it cites — a plausible-sounding
   claim is not evidence for itself.
-- Bash is for READ-ONLY inspection only (`git diff`, `git log`, `git show`,
-  `grep`, `gh api` reads). You have no Edit or Write tool and must never
-  commit, push, or alter git or GitHub state.
+- Bash is for READ-ONLY inspection (`git diff`, `git log`, `git show`,
+  `grep`, `gh api` reads), with ONE exception: writing your own report to a
+  scratchpad path, per "Report discipline" below. You have no Edit or Write
+  tool and must never commit, push, or alter git or GitHub state.
 - Use `git -C <repo> <cmd>` only if your cwd differs from the repo root;
   otherwise bare `git`.
 - A "found nothing" result is unfalsifiable from outside unless you show your
@@ -139,6 +140,11 @@ your finding.
 Cap the message you send back at ~25 lines: verdict, findings list (per-site,
 per the format above), spot-checks, unverifiable items.
 
+- Keep the QUOTED claim text and the artifact line you refuted it against
+  VERBATIM and inline — never paraphrase either. A paraphrase discards the
+  evidence; this repo lost a `-0` root cause exactly that way (#203).
+- Reduce a clean spot-check to a counted verdict (`4 of 4 citations verified`),
+  never to a comparative adjective ("looks accurate", "broadly fine").
 - If your findings list is long enough to blow that cap — a full enumeration
   of every citation checked, not just the defective ones, is often the right
   amount of evidence for a "Clean" verdict — write it to a scratchpad file and
@@ -146,9 +152,8 @@ per the format above), spot-checks, unverifiable items.
   truncate where it lives.
 - Write that scratchpad file with a Bash heredoc
   (`cat > /path/to/file <<'EOF' ... EOF`) — you have no Edit or Write tool by
-  design, and `Write` is blocked for subagent report files in this harness
-  anyway, so Bash is the only route to a file. If you find yourself about to
-  paste a large enumeration directly into your final message after being
-  asked for a summary, recognise that as the signature other agents hit when
-  their `Write` call is blocked — write the file via Bash instead and return
-  its path.
+  design, so Bash is the only route to a file. Observed 2026-09-05 (#969):
+  two of five subagents briefed to write a scratchpad report did not write it
+  and pasted their tables inline, while a third wrote the same file via Bash;
+  whether the tool errored or the agent obeyed a prompt instruction was not
+  established, and this is a harness property — re-check after an upgrade.

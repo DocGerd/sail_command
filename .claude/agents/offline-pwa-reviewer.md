@@ -86,8 +86,12 @@ list, evidence pointers.
 - If your findings or evidence would blow the 25-line cap, write it to a
   scratchpad file and return the PATH, not the contents.
 - Write that scratchpad file with a Bash heredoc
-  (`cat > /path/to/file <<'EOF' ... EOF`), never the `Write` tool — `Write` is
-  blocked for subagent report files in this harness. If you find yourself
-  about to paste a full table into your message instead of a path after being
-  asked for a summary, that is the signature of hitting this block, not a
-  reason to abandon the summary — write the file via Bash and return its path.
+  (`cat > /path/to/file <<'EOF' ... EOF`) rather than the `Write` tool.
+  Observed 2026-09-05 (#969): two of five subagents briefed to write a
+  scratchpad report did not write it and pasted their tables inline, while a
+  third wrote the same file via Bash. Whether the tool errored or the agent
+  obeyed a prompt instruction was not established, and this is a harness
+  property — re-check after an upgrade. If you were briefed to return a
+  summary and find yourself about to paste a large table instead, try the
+  Bash heredoc before concluding you cannot write the file, and say in your
+  report which route you took.

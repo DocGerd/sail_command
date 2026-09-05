@@ -42,7 +42,8 @@ Your final message is a report to the orchestrator, not prose for the end user.
 
 ## Verification (evidence, not assertions)
 
-Run and PASTE summarized output for each — a claim without command output does
+Run each and report the outcome per "Report discipline" below - failures
+verbatim, passes as a counted verdict. A claim without command evidence does
 not count as done:
 
 1. `npm --prefix app run typecheck`
@@ -56,22 +57,31 @@ not count as done:
 5. UI tasks end with a REAL browser pass (dev server + Playwright) — synthetic
    fixtures have missed product-blocking bugs before.
 6. Guard any NEW test you add against vacuity before reporting it as coverage.
-   For every assertion, break the thing it guards and confirm the test goes
-   RED, then restore — a test that cannot fail proves nothing (#837). At
-   minimum check: can this assertion fail at all; does the mutation actually
-   REACH the code path (a mutation in a comment, or one that fails to compile,
-   is ZERO evidence — CLAUDE.md's Verification lessons, #455); is the
-   assertion a THEOREM true of the code regardless of the bug (#410); does a
-   sibling condition short-circuit ahead of it so the row passes for the wrong
-   reason (#518 MAJOR 4); and does the mutation already red at BASE, before
-   your change (#770) — if so it proves nothing about what you added. State
-   the mutation and its result in your report; if it can't reach the code
-   path, say so as zero evidence rather than claiming coverage.
+   For every assertion, break it with a change the PRODUCTION CODE could
+   actually make — not an artificial constant edit — and confirm the test goes
+   RED, then restore (#837). A red under a mutation the codebase cannot
+   produce proves nothing: #410's sign assertion redded on demand and was
+   still a theorem given the code. At minimum check: can this assertion fail
+   at all; does the mutation actually REACH the code path (three
+   non-execution shapes: the mutation lands in a comment; it fails to compile
+   so the tested artifact never changed; or the probe cannot MATCH — all ZERO
+   evidence, not weak evidence, CLAUDE.md's Verification lessons, #455) —
+   give any probe whose EMPTINESS you intend to interpret a POSITIVE CONTROL,
+   a needle known to be present; is the assertion a THEOREM true of the code
+   regardless of the bug (#410); does a sibling condition short-circuit ahead
+   of it so the row passes for the wrong reason (#518 MAJOR 4); and does the
+   mutation already red at BASE, before your change (#770) — if so it proves
+   nothing about what you added. State the mutation and its result in your
+   report; if it can't reach the code path, say so as zero evidence rather
+   than claiming coverage.
 
 ## Report discipline
 
-Return at most **25 lines**: what changed (file list, one-line purpose each),
-the verification evidence above, deviations/concerns (or explicitly "none").
+Return ~25 lines: what changed (file list, one-line purpose each), the
+verification evidence above, deviations/concerns (or explicitly "none"). If
+the required items alone exceed that — several files, six verification items,
+a mutation result per new assertion — keep the failures inline and move the
+rest to the scratchpad file below.
 
 - Keep FAILING command output VERBATIM and inline — never paraphrase a
   failure. A paraphrase discards the diagnostic; this repo lost a `-0` root
@@ -83,9 +93,12 @@ the verification evidence above, deviations/concerns (or explicitly "none").
 - Anything longer than the 25-line cap (a full test list, a large diff)
   goes to a scratchpad file; return its PATH, not its contents.
 - Write that scratchpad file with a Bash heredoc
-  (`cat > /path/to/file <<'EOF' ... EOF`), never the `Write` tool — `Write` is
-  blocked for subagent report files in this harness. If you were briefed to
-  return a short summary and find yourself about to paste a large table
-  directly into your final message instead, that is the signature of hitting
-  this block, not a reason to abandon the summary format — write the file via
-  Bash and return the path.
+  (`cat > /path/to/file <<'EOF' ... EOF`) rather than the `Write` tool.
+  Observed 2026-09-05 (#969): two of five subagents briefed to write a
+  scratchpad report did not write it and pasted their tables inline, while a
+  third wrote the same file via Bash. Whether the tool errored or the agent
+  obeyed a prompt instruction was not established, and this is a harness
+  property — re-check after an upgrade. If you were briefed to return a
+  summary and find yourself about to paste a large table instead, try the
+  Bash heredoc before concluding you cannot write the file, and say in your
+  report which route you took.

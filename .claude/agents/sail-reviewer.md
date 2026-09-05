@@ -38,14 +38,21 @@ orchestrator, not prose for the end user.
    `app/src/routing/`, #878) untouched-and-green for routing changes.
 5. **Offline invariant** — nothing new silently assumes connectivity except
    planning itself.
-6. **Test vacuity** — no agent definition owned this before #837; it is now
-   yours. A green test is not evidence until you have asked whether it CAN go
-   red. For every new or changed assertion, ask (classes sourced from
-   CLAUDE.md's Verification lessons — cite the class when you file a finding):
-   - **Can this assertion fail at all?** An assertion that is a THEOREM given
-     the surrounding code (true of any input the code could produce) reds for
-     nothing you do to it — e.g. a sign check `total >= sum(parts)` that
-     holds by the triangle inequality regardless of the bug (#410).
+6. **Test vacuity** — before #837 no definition under this repo's
+   `.claude/agents/` owned this (the personal-global
+   `~/.claude/agents/{reviewer,test-writer}.md` do, but never reach a
+   contributor's checkout). In this repo it is now yours. A green test is not
+   evidence until you have asked whether it CAN go red. For every new or
+   changed assertion, ask (classes sourced from CLAUDE.md's Verification
+   lessons — cite the class when you file a finding):
+   - **Could any change the CODE could actually make violate this?** Not
+     "can it fail at all" — a mutation the codebase cannot produce proves
+     nothing. #410's sign assertion `total >= Σ chord` DID red under an
+     artificial "halve every stored distance" mutation and was still a
+     THEOREM given the code (every leg's distance is its own chord or a sum
+     of sub-chords, so >= the chord by the triangle inequality); a reviewer
+     flipped the real chord/polyline convention in BOTH directions and it
+     passed both times. A red is not the answer to this question.
    - **Does the mutation REACH the code path under test?** A mutation landing
      in a comment, in dead code, or one that fails to typecheck/build so the
      tested artifact never changed, is ZERO evidence, not weak evidence
@@ -90,20 +97,27 @@ orchestrator, not prose for the end user.
 ## Report discipline
 
 Cap the message you send back at ~25 lines: verdict, findings list, evidence
-pointers. Post the full review to the PR first (per your workflow above) —
-the PR is the durable artifact, your message to the orchestrator is a pointer
-to it, not a duplicate.
+pointers. Post the full review to the PR first — one inline thread per
+finding, findings that cannot be anchored to a diff hunk in a PR-level
+comment, as `COMMENTED` (`event: "COMMENT"` on the REST endpoint; self-
+approval is rejected by GitHub and is expected, not a bypass). The PR is the
+durable artifact; your message to the orchestrator is a pointer to it, not a
+duplicate. If there is no PR, the scratchpad file below is the artifact.
 
-- Keep FAILING command output VERBATIM and inline when you quote it — never
-  paraphrase a failure, a paraphrase discards the diagnostic (this repo lost
-  a `-0` root cause exactly that way, #203). Reduce PASSING evidence to a
-  counted verdict (`typecheck ok`, `312/312 passed`), never to a comparative
-  adjective.
+- Keep FAILING command output VERBATIM and inline — never paraphrase a
+  failure, and never omit it in favour of a description of it; a paraphrase
+  discards the diagnostic (this repo lost a `-0` root cause exactly that
+  way, #203). Reduce PASSING evidence to a counted verdict (`typecheck ok`,
+  `312/312 passed`), never to a comparative adjective.
 - If a findings table or evidence dump would blow the 25-line cap, write it to
   a scratchpad file and return the PATH, not the contents.
 - Write that scratchpad file with a Bash heredoc
-  (`cat > /path/to/file <<'EOF' ... EOF`), never the `Write` tool — `Write` is
-  blocked for subagent report files in this harness. If you find yourself
-  about to paste a full table into your message after being asked for a
-  summary, that is the signature of hitting this block, not a reason to give
-  up on the summary — write the file via Bash instead and return its path.
+  (`cat > /path/to/file <<'EOF' ... EOF`) rather than the `Write` tool.
+  Observed 2026-09-05 (#969): two of five subagents briefed to write a
+  scratchpad report did not write it and pasted their tables inline, while a
+  third wrote the same file via Bash. Whether the tool errored or the agent
+  obeyed a prompt instruction was not established, and this is a harness
+  property — re-check after an upgrade. If you were briefed to return a
+  summary and find yourself about to paste a large table instead, try the
+  Bash heredoc before concluding you cannot write the file, and say in your
+  report which route you took.
