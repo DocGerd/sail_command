@@ -13,75 +13,51 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.22.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.23.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
-## Now — v0.22.0
+## Now — v0.23.0
 
-The `v0.22.0` cut (2026-09-04) completed the
-[`v0.22.0` milestone](https://github.com/DocGerd/sail_command/milestones),
-six issues in total, all of them user-visible.
+The `v0.23.0` cut (2026-09-05) completed the
+[`v0.23.0` milestone](https://github.com/DocGerd/sail_command/milestones),
+eleven issues in total — five of them user-visible; the other six were
+test-coverage, agent-tooling, and documentation fixes with no user-facing
+change.
 
-Departure-time comparison — shipped in `v0.21.0` as an explicit,
-cancellable scan shown as a plain list (part (a) of the design) — gained
-its remaining two parts, both deferred from that release by maintainer
-ruling. Each candidate window is now its own ranked card, carrying a
-wind-character badge (Beaufort force and direction) and a rank badge for
-routable windows; a window that could not be routed states its own reason
-(beyond forecast horizon, unreachable, etc.) instead of a generic message
-([#936](https://github.com/DocGerd/sail_command/issues/936)). And picking a
-card now runs the real two-rig solve for that window and replaces the
-active plan, so the plan actually sailed carries the app's real rig
-recommendation rather than the comparison's genoa-only ranking — a case
-where the full solve favours the other rig is surfaced honestly instead of
-silently accepted ([#937](https://github.com/DocGerd/sail_command/issues/937)).
+Any seamark visible and tappable on the map can now be added as a route
+waypoint — the earlier restriction to cardinal, lateral, and
+isolated-danger marks is lifted
+([#966](https://github.com/DocGerd/sail_command/issues/966)).
 
-Four further fixes are also user-visible. The button used to pick an
-origin, destination or waypoint on the map now turns into a Cancel button
-right where it was pressed, once armed, alongside the existing
-top-of-panel banner and Escape, which still work exactly as before —
-closing the waypoint-creation cancellation gap carried forward from
-`v0.21.0`'s "Next"
-([#844](https://github.com/DocGerd/sail_command/issues/844)). Seamark map
-glyphs are now tappable within a target that meets the locked ≥44px
-gloved-use touch-target floor at harbor-approach zooms, up from an 18-26px
-target that made precise on-water taps difficult
-([#860](https://github.com/DocGerd/sail_command/issues/860)). The per-leg
-reef suggestion no longer flips between bands on a marginal wind change
-from leg to leg — a genuine, sustained wind change still moves it — but
-this closes only the cheap, presentational lever of that issue: the
-router still does not price a reef change as a manoeuvre, so the display
-is more realistic without the route itself yet avoiding unnecessary reef
-changes
-([#946](https://github.com/DocGerd/sail_command/issues/946)). And via
-waypoint markers on the map now show the waypoint's name (or its indexed
-fallback) as a visible label, not just as a screen-reader-only accessible
-name — waypoints close together were previously indistinguishable dots to
-a sighted user ([#947](https://github.com/DocGerd/sail_command/issues/947)).
+The narrow-viewport toast/compass squeeze left open at the end of
+`v0.22.0`'s "Now" is now closed: the app header and notification banners
+occupy their own rows above the map instead of floating over it, so no
+banner can intercept a tap meant for the map controls beneath it. Short
+landscape phone screens keep the previous layout, where that change would
+have left the route planner too little room
+([#909](https://github.com/DocGerd/sail_command/issues/909)).
 
-One further item shipped without closing its issue. `v0.21.0`'s #871 fix
-admitted a residual toast/compass squeeze but left it unverified; a guard
-now measures and pins it instead: at two narrow-tall viewports (320x568
-and 280x568), the compass button's bottom ~34 of its 44px height sits
-under the SW-ready toast and a real click at its own centre point times
-out, a genuine interactive block — while the depth checkbox on the same
-row stays fully clear. The overlap itself is unfixed, not merely
-undiscovered: every purely static placement tried so far relocates the
-same constant band onto a different part of the map-stack cluster rather
-than removing it, so [#909](https://github.com/DocGerd/sail_command/issues/909)
-stays open — see "Next" below.
+AIS vessel glyphs are now tappable within a target that meets the locked
+≥44px gloved-use touch-target floor at harbor-approach zooms, up from a
+16-28.8px target that made precise on-water taps difficult
+([#957](https://github.com/DocGerd/sail_command/issues/957)).
 
-## Next — v0.23.0
+Two accessibility fixes to the planner's screen-reader announcements: the
+result announcement now re-fires when a departure window is confirmed and
+the plan is replaced in place, instead of staying silent on an unchanged
+plan id, and the saved-plans list now announces a recalculate-and-replace
+result from the Routes tab itself, where the planner's own live region is
+unmounted ([#961](https://github.com/DocGerd/sail_command/issues/961)).
 
-The [`v0.23.0` milestone](https://github.com/DocGerd/sail_command/milestones)
+## Next — v0.24.0
+
+The [`v0.24.0` milestone](https://github.com/DocGerd/sail_command/milestones)
 is the one now being filled, and it will keep growing after this file is
 written — so the milestone page is the list, and no count or enumeration of
-its contents is kept here. Its opening scope, so far, is the toast/compass
-squeeze residual described above: a real interactive block on the compass
-control at two narrow-tall viewports, now measured and guarded but not
-placed, because every static placement tried relocates the same
-constant-size band onto a different part of the map-stack cluster instead
-of removing it ([#909](https://github.com/DocGerd/sail_command/issues/909)).
+its contents is kept here. Its opening scope, so far, is one issue: saved
+waypoints as a selectable map symbol layer, a follow-up to `v0.21.0`'s
+saved-waypoints panel
+([#924](https://github.com/DocGerd/sail_command/issues/924)).
 
 ## Themes for the next year
 
