@@ -552,20 +552,31 @@ export default function PlannerPanel({
   // live region, ONCE per completed plan. We freeze the RESULT that completed
   // (not the rendered string) and re-derive the sentence from the CURRENT
   // language each render — so a language switch re-announces in the new
-  // language, while a via-edit (same plan.id, new result) leaves the frozen
-  // result untouched. Seeded from the plan present at mount so re-entering the
-  // tab with an existing result does NOT re-announce; a genuinely new plan (new
-  // id) does. Via-edits preserve plan.id (App.tsx); slider/map re-renders don't
-  // touch `plan` at all.
-  const lastAnnouncedIdRef = useRef<string | null>(plan?.id ?? null);
+  // language. Seeded from the plan present at mount so re-entering the tab
+  // with an existing result does NOT re-announce; a genuinely new plan (new
+  // id) does. Slider/map re-renders don't touch `plan` at all.
+  //
+  // #961: the gate key is `${plan.id}-${plan.createdAtMs}`, not `plan.id`
+  // alone — mirrors ShallowWarning's `key` (this file's own #452/#747 comment
+  // below). A `plan.id`-only gate never re-fires on a same-id replacement:
+  // usePlanFlow.ts's run() (#114's `replacePlanId: recalcPlan.id`, the
+  // recalculate-and-replace flow) and useDepartureConfirm.ts's confirm()
+  // (#937) both preserve `plan.id` while stamping a fresh `createdAtMs`, so
+  // the ETA/duration/distance sentence went silently stale on either path.
+  // `replanWithVias` (state/replan.ts) is the one path that keeps BOTH `id`
+  // and `createdAtMs` fixed, but #571 removed its only App.tsx call site —
+  // it is exercised by tests only today, so widening the gate cannot make a
+  // live via-edit chatty.
+  const planAnnounceKey = plan ? `${plan.id}-${plan.createdAtMs}` : null;
+  const lastAnnouncedIdRef = useRef<string | null>(planAnnounceKey);
   const [announcedResult, setAnnouncedResult] = useState<RigResult | null>(null);
   useEffect(() => {
     if (planning.phase !== 'idle' || !plan) return;
     const res = rig ? activeRigResult(plan, rig) : null;
-    if (!res || plan.id === lastAnnouncedIdRef.current) return;
-    lastAnnouncedIdRef.current = plan.id;
+    if (!res || planAnnounceKey === lastAnnouncedIdRef.current) return;
+    lastAnnouncedIdRef.current = planAnnounceKey;
     setAnnouncedResult(res);
-  }, [planning.phase, plan, rig]);
+  }, [planning.phase, plan, rig, planAnnounceKey]);
 
   const announcement = announcedResult
     ? t('planner.result.announce', {
