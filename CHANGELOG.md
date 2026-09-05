@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-09-05
+
+### Added
+
+- Any seamark you can see and tap on the map is now addable as a route waypoint — the earlier restriction to cardinal, lateral, and isolated-danger marks is lifted (#966).
+
+### Fixed
+
+- The service-worker update toast no longer covers the map's compass button on narrow screens: the app header and notification banners now occupy their own rows above the map instead of floating over it, so no banner can intercept a tap meant for the map controls beneath it. Short landscape phone screens keep the previous layout, where that change would have left the route planner too little room (#909).
+- AIS vessel glyphs are now tappable within a target that meets the gloved-use touch-target floor at harbor-approach zooms, up from a 16-28.8px target that made precise on-water taps difficult (#957).
+- The planner's screen-reader result announcement now re-fires when a departure window is confirmed and the plan is replaced in place, instead of staying silent on an unchanged plan id (#961).
+- The saved-plans list now announces a recalculate-and-replace result to a screen reader from the Routes tab itself, where the planner's own live region is unmounted (#961).
+
 ## [0.22.0] - 2026-09-04
 
 ### Added
@@ -967,7 +980,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.22.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.23.0...HEAD
+[0.23.0]: https://github.com/DocGerd/sail_command/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/DocGerd/sail_command/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/DocGerd/sail_command/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/DocGerd/sail_command/compare/v0.19.0...v0.20.0
