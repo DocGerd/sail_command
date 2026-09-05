@@ -42,7 +42,7 @@ Your final message is a report to the orchestrator, not prose for the end user.
 
 ## Verification (evidence, not assertions)
 
-Run each and report the outcome per "Report discipline" below - failures
+Run each and report the outcome per "Report discipline" below — failures
 verbatim, passes as a counted verdict. A claim without command evidence does
 not count as done:
 
@@ -61,8 +61,9 @@ not count as done:
    actually make — not an artificial constant edit — and confirm the test goes
    RED, then restore (#837). A red under a mutation the codebase cannot
    produce proves nothing: #410's sign assertion redded on demand and was
-   still a theorem given the code. At minimum check: can this assertion fail
-   at all; does the mutation actually REACH the code path (three
+   still a theorem given the code. At minimum check: could any change the
+   code could actually make violate this (a red alone does not answer it);
+   does the mutation actually REACH the code path (three
    non-execution shapes: the mutation lands in a comment; it fails to compile
    so the tested artifact never changed; or the probe cannot MATCH — all ZERO
    evidence, not weak evidence, CLAUDE.md's Verification lessons, #455) —

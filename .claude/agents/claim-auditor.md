@@ -156,4 +156,6 @@ per the format above), spot-checks, unverifiable items.
   two of five subagents briefed to write a scratchpad report did not write it
   and pasted their tables inline, while a third wrote the same file via Bash;
   whether the tool errored or the agent obeyed a prompt instruction was not
-  established, and this is a harness property — re-check after an upgrade.
+  established, and this is a harness property — re-check after an upgrade. A
+  full table pasted after being briefed for a summary is that same signature,
+  not disobedience.

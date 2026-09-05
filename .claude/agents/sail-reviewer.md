@@ -57,6 +57,8 @@ orchestrator, not prose for the end user.
      in a comment, in dead code, or one that fails to typecheck/build so the
      tested artifact never changed, is ZERO evidence, not weak evidence
      (#455; the three non-execution shapes: comment, non-compile, no-match).
+     Give any probe whose EMPTINESS you intend to interpret a POSITIVE
+     CONTROL — a needle known to be present.
    - **Is a SIBLING TERM short-circuiting ahead of the one you're checking?**
      Deleting one condition from a compound guard can leave every test green
      because another term already made the predicate false first — check
