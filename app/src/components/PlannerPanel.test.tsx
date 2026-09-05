@@ -84,7 +84,7 @@ const HARBORS = [FLENSBURG, MARSTAL];
 
 // #834: mirrors HarborPicker.test.tsx's ARNIS fixture — the real shipped
 // "arnis" #9 KNOWN_DISCONNECTED harbor, with BOTH an approachNote and
-// knownDisconnected: true, so a test can confirm the two coexist in the
+// (via withKnownDisconnectedFlag below) knownDisconnected: true, so a test can confirm the two coexist in the
 // selected-endpoint row exactly as they already coexist in the picker's
 // option row.
 //

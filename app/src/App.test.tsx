@@ -442,8 +442,8 @@ const RELABEL_HARBOR: Harbor = {
 // property. harborPickerKnownDisconnectedCoupling.test.tsx's own header
 // documents why: an IDE "Rename Symbol" on HarborWithReachability's field
 // renames every TYPED reference consistently — the type declaration, App.tsx's
-// own `.knownDisconnected` read sites (originKnownDisconnected/
-// destinationKnownDisconnected below), AND a typed
+// own `.knownDisconnected` read sites (App.tsx's originKnownDisconnected/
+// destinationKnownDisconnected), AND a typed
 // `knownDisconnected: true` literal on a HarborWithReachability-typed const —
 // so a fixture built the old way stays green through exactly the mutation
 // #899 exists to catch (App.tsx's read site renamed right along with the
@@ -2038,7 +2038,7 @@ describe('banner surfacing (PR self-review fix wave)', () => {
   // which used to show the byte-unchanged generic error.noRoute.unreachable
   // even when the destination was one of the five #9 KNOWN_DISCONNECTED
   // harbors — the exact string the issue is about. Positive case: a plan
-  // against ARNIS_TEST (knownDisconnected: true) failing 'unreachable' must
+  // against the known-disconnected ARNIS_TEST copy in HARBORS (see withKnownDisconnectedFlag) failing 'unreachable' must
   // show the SAME disclosure the picker already uses, not the generic string.
   it('#834: the no-route banner names the known limit when the destination is a known-disconnected harbor', async () => {
     renderApp();
