@@ -415,6 +415,83 @@ describe('PlansList recalculate (#114)', () => {
     );
   });
 
+  // #961 review, Major 1: the row above pins the STRING but never proves the
+  // TRIGGER — deleting the createdAtMs success proof left it 25/25 green.
+  // This is the discriminating negative control: onRecalculate persists
+  // NOTHING, the exact shape usePlanFlow's run() produces on every
+  // RUN-LEVEL FAILURE (errors surface via its own phase/banner instead), so
+  // a correct implementation must announce nothing. Settle is proven by the
+  // editor closing (this file's own idiom, e.g. the departure-seed test
+  // above), not by a fixed wait.
+  it('#961: does NOT announce when onRecalculate settles without persisting anything (run-level failure)', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW_MS);
+    await savePlan(
+      makePlan({ id: 'p1', createdAtMs: 1000, departureMs: FUTURE_DEPARTURE_MS, name: 'Solo' }),
+    );
+    const onRecalculate = vi.fn<PlansListProps['onRecalculate']>(async () => {
+      // Mirrors run()'s error paths: transitions its own phase/banner and
+      // returns WITHOUT calling save() — nothing new on record.
+    });
+    renderList({ onRecalculate });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Recalculate' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Replace original' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm replace' }));
+
+    await waitFor(() => expect(screen.queryByLabelText('Departure')).not.toBeInTheDocument());
+    expect(screen.getByRole('status')).toHaveTextContent('');
+  });
+
+  // #961 review, Major 2: the entire 'new'-mode announcement branch (the
+  // beforeIds snapshot, the kind==='ok' narrowing, the createdAtMs sort, the
+  // second getPlan round-trip) was uncovered — stubbing it to `return null;`
+  // left the suite 25/25 green because only 'replace' was exercised.
+  it('#961: announces the recalculated result for a "new" (save-as-new) recalculate too', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW_MS);
+    await savePlan(
+      makePlan({ id: 'p1', createdAtMs: 1000, departureMs: FUTURE_DEPARTURE_MS, name: 'Solo' }),
+    );
+    const newEtaMs = new Date(2026, 0, 17, 9, 0).getTime();
+    const onRecalculate = vi.fn<PlansListProps['onRecalculate']>(async (recalcPlan) => {
+      // Mirrors App.tsx's handleRecalculate + usePlanFlow's run() for mode
+      // 'new': a FRESH id, and the exact name App.tsx's own
+      // `t('plansList.recalcName', { name })` stamps.
+      await savePlan({
+        ...recalcPlan,
+        id: 'p2',
+        name: `${recalcPlan.name} (recalculated)`,
+        createdAtMs: recalcPlan.createdAtMs + 1,
+        result: {
+          ...recalcPlan.result,
+          sails: recalcPlan.result.sails.map((s) =>
+            s.sailId === recalcPlan.result.recommended && s.result
+              ? {
+                  ...s,
+                  result: {
+                    ...s.result,
+                    etaMs: newEtaMs,
+                    durationMs: 7_200_000,
+                    distanceNm: 18.3,
+                  },
+                }
+              : s,
+          ),
+        },
+      });
+    });
+    renderList({ onRecalculate });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Recalculate' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Recalculate as new plan' }));
+
+    // 7_200_000 ms = 2 h 00 min; 18.3 formats as "18.3 nm".
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'Route recalculated — arrival 17/01/2026, 09:00, duration 2 h 00 min, 18.3 nm.',
+      ),
+    );
+  });
+
   it('offline: the recalc actions are disabled with the i18n message and never run', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(NOW_MS);
     await savePlan(makePlan({ id: 'p1', createdAtMs: 1000, departureMs: FUTURE_DEPARTURE_MS }));

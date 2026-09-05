@@ -165,6 +165,26 @@ export default function PlansList({ online, busy, onRecalculate }: PlansListProp
   // needs its OWN announcement instead. One role="status" surface here,
   // sr-only (no in-flight phase text to show visibly, unlike PlannerPanel's),
   // text swapped rather than a second region added.
+  //
+  // RESIDUAL, not fixed here (review, Minor 5): a tab switch away from
+  // Routes mid-run unmounts this component before the async chain below
+  // settles — no unmount guard on it — so a completing run announces
+  // NOWHERE (PlannerPanel remounts and re-seeds its ref silently from the
+  // already-replaced plan, exactly as #977's own comment describes for the
+  // symmetric case). Out of scope for THIS fix: #961's own issue text names
+  // exactly two reachable paths (ordinary recalculate-and-replace while
+  // staying on this tab, and #937's confirm-solve flow, fixed by #977) —
+  // both are covered once this PR and #977 both land. A user switching tabs
+  // mid-recalculate is a third, distinct failure class (an unmount race, not
+  // a render-branch/id-keying gap) and is not one of #961's named paths.
+  //
+  // RESIDUAL, not fixed here (review, Minor 4): recalculating the SAME plan
+  // twice at the same departure against an unchanged cached forecast yields
+  // a byte-identical announcement sentence — React's `Object.is` bail-out on
+  // an unchanged string skips the re-render, so the live region's text node
+  // is never mutated and nothing is announced the second time.
+  // PlannerPanel's own region (`planner.result.announce`) has the identical
+  // limitation, so this is not a regression introduced here.
   const [recalcAnnouncement, setRecalcAnnouncement] = useState('');
 
   const handleRecalcRun = useCallback(
@@ -209,13 +229,24 @@ export default function PlansList({ online, busy, onRecalculate }: PlansListProp
             // `${plan.id}-${plan.createdAtMs}` composite-identity idiom
             // (CLAUDE.md's #747 Disclosure-keying rule) rather than trusting
             // a plain id.
+            // Review (Minor 3): the 'new' branch below accepts ANY id absent
+            // from `beforeIds` — a weaker claim than 'replace's own-createdAtMs
+            // proof, satisfied by any plan minted by ANY surface during the
+            // run (e.g. a concurrent Live reroute, App.tsx's
+            // handleLiveReroute). Not reachable today — usePlanFlow's
+            // `phaseRef.current !== 'idle' && !== 'error'` guard admits only
+            // one run at a time — so this is a false-SUCCESS residual, not a
+            // live bug; the `recalcName` match below tightens it to the exact
+            // name a 'new' recalculate stamps (App.tsx's handleRecalculate),
+            // narrowing but not fully closing that gap.
             void (
               mode === 'replace'
                 ? getPlan(planId).then((p) => (p && p.createdAtMs !== beforeCreatedAtMs ? p : null))
                 : listPlans().then((rows) => {
+                    const expectedName = t('plansList.recalcName', { name: plan.name });
                     const fresh = rows.filter(
                       (r): r is Extract<PlanSummary, { kind: 'ok' }> =>
-                        r.kind === 'ok' && !beforeIds.has(r.id),
+                        r.kind === 'ok' && !beforeIds.has(r.id) && r.name === expectedName,
                     );
                     if (fresh.length === 0) return null;
                     fresh.sort((a, b) => b.createdAtMs - a.createdAtMs);
