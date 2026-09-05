@@ -1446,6 +1446,7 @@ making design-level decisions; do not silently deviate.
 
   | v0.21.0 | 2026-09-04 | 113 s | `success` (MEASURED immediately before the tag push, and the failure CALLED IN ADVANCE from it) | **`smoke-probe` FAILED** | merge-push `33879362519` (`deploy: success`) → tag `33879536590` on `dfc80ed`. The tag run's `build` and `deploy` both succeeded; only `smoke-probe` failed, and by the #398 signature specifically — its own prod entry chunk `assets/index-UPcmWly8.js` returned **404 on all 10 attempts over ~4m42s** while the basemap Range probes PASSED for both prod and uat, which is what rules out a CDN regression. The back-merge (`33882094279`, on the different SHA `d30507a3`) then probed green and republished **that same chunk name** — so the tag run's BUILD was correct all along and only its DEPLOYMENT no-opped, the one fact rows 11 and 12 could not establish. Prod afterwards served ``about.version`,{version:`v0.21.0`}`` with ZERO suffixed matches. Predictor was the durable `success`, as at v0.20.0. Still names no MECHANISM. |
   | v0.22.0 | 2026-09-04 | 172 s | `success` (MEASURED immediately before the tag push, and the failure CALLED IN ADVANCE from it) | **`smoke-probe` FAILED** | merge-push `33916366319` -> tag `33916603758` on `3dd7bce`. The tag run's `build` and `deploy` both succeeded; only `smoke-probe` failed, and by the #398 signature specifically -- its own prod entry chunk `assets/index-Cxxioy59.js` returned **404 on all 10 attempts** (20:32:26Z -> 20:36:56Z) while the basemap Range probes PASSED for prod AND uat on attempt 1, which is what rules out a CDN regression. The back-merge (`33919057557`, on the different SHA `11cda98`) then probed green and republished **that same chunk name** -- so the tag run's BUILD was correct all along and only its DEPLOYMENT no-opped. Prod afterwards served ``about.version`,{version:`v0.22.0`}`` with ZERO suffixed matches. Predictor was the durable `success`, as at v0.20.0 and v0.21.0. |
+  | v0.23.0 | 2026-09-05 | 92 s | read as **`in_progress`/`null`** immediately before the tag push -- the reading this file calls a NON-ANSWER and whose remedy it records as OPEN | **`smoke-probe` FAILED** | merge-push `33990376950` (created 20:31:41Z) -> tag `33990452597` (created 20:33:13Z) on `0ab001d`. The tag run's `build` AND `deploy` both succeeded; only `smoke-probe` failed, by the #398 signature -- its own prod entry chunk `assets/index-DxZuTLvK.js` returned **404 on all 10 attempts** (20:34:49Z -> 20:39:19Z) while BOTH basemap Range probes passed on attempt 1 for prod and uat, ruling out a CDN regression. Back-merge `33992089618` (different SHA `0afd321`) then probed green and republished **that same chunk name**, which then returned 200 -- so the tag run's BUILD was correct and only its DEPLOYMENT no-opped. Prod afterwards served `v0.23.0` with ZERO suffixed matches. **What is NEW here is about the GATE.** The merge run's `deploy` job ran 20:32:48Z -> **20:32:57Z `success`**, i.e. it was already terminal **16 s BEFORE the tag run was even created** at 20:33:13Z. So the orchestrator's stated reason for pushing on an `in_progress` reading -- that a fast tag push might let the tag run cancel-supersede the merge run -- was UNAVAILABLE at that moment and the push could not have outrun it. `in_progress` was a snapshot of a job about to succeed 9 s later; the volatility is inside the read, exactly as this file says. The remedy for that reading stays OPEN and UNTESTED -- but record that the cancel-supersede escape is only reachable while the merge `deploy` job is genuinely still running, which a gate read cannot tell you from one that is 9 s from done. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -1878,6 +1879,20 @@ making design-level decisions; do not silently deviate.
   one honest "no user-visible changes" bullet only if that review turns up
   genuinely nothing. Config/tooling/docs-only PRs still add no fragment at
   all (unchanged from the original #131 rule).
+  **A release summary's "user-visible" count is NOT derivable from the
+  `type:` label, and the label-derived answer looks like a caught regression.**
+  Measured at the v0.23.0 cut: the sweep wrote "eleven issues - five
+  user-visible, the other six" when the true split is FOUR and SEVEN, and
+  `5 + 6 = 11` is arithmetically self-consistent so no numeric check fires.
+  Two reviewers found it independently. The discriminator is the CHANGELOG
+  itself - count the `- ` entries and their trailing `(#NNN).` refs, then count
+  DISTINCT issues, since one issue can contribute two entries (#961 did).
+  Re-deriving from `type: bug`/`type: feature` instead returns FIVE, because
+  #928 is `type: bug` yet an e2e test-coverage bug with no user surface - so a
+  later auditor who "checks" this line by label will re-open a CORRECT sentence
+  and re-introduce the defect. The changelog is the right instrument because it
+  is the artifact that ENCODES user-visibility: an issue has an entry exactly
+  when someone judged a user would notice.
 - **Closing keywords have NO negation awareness, and GitHub documents TWO
   firing locations: the PR BODY and EVERY commit message in the merged range**
   (keep the PR TITLE clean too — it costs nothing, and this repo has never
