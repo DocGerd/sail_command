@@ -5,6 +5,7 @@ import type {
   LngLatLike,
   Map as MaplibreMap,
   MapLayerMouseEvent,
+  SymbolLayerSpecification,
 } from 'maplibre-gl';
 import { useMapInstance } from './MapView';
 import { useLang, useT } from '../i18n';
@@ -100,6 +101,75 @@ export function registerAisImages(map: MaplibreMap): void {
   }
 }
 
+// #957: natural render footprint at icon-size 1 (CSS px). Same equivalence
+// the #192 comment above already establishes for LOGICAL_SIZE
+// (CANVAS_SIZE / PIXEL_RATIO); named separately here because this is a
+// size-AXIS constant (mirrors seamarkGlyphs.ts's SEAMARK_NATURAL_ICON_PX),
+// not a canvas-drawing coordinate.
+export const AIS_NATURAL_ICON_PX = CANVAS_SIZE / PIXEL_RATIO;
+
+/**
+ * #957: pre-#957 `icon-size` was `['interpolate', ['linear'], ['zoom'], 8,
+ * 0.5, 12, 0.9]` — CLAMPED at 0.9 forever past z12 (`interpolate` clamps
+ * outside its domain), a measured 16-28.8px displayed glyph against the
+ * locked >=44px gloved-use touch-target floor (CLAUDE.md's a11y-ranking
+ * ruling on #860, which fixed the identical shape for seamark glyphs).
+ *
+ * AIS vessels differ from seamarks in the mechanism that makes growth safe.
+ * Seamarks confine their #860 growth to z>=12, the zoom band where
+ * `icon-overlap` flips to 'always' (immune to being CULLED there). AIS
+ * vessels are `icon-allow-overlap: true` UNCONDITIONALLY — every zoom, not
+ * zoom-gated — so AIS glyphs were never at risk of being culled themselves.
+ * But growing `icon-size` still grows AIS's own COLLISION BOX
+ * (`icon-ignore-placement` is unset), and AIS sits ABOVE DataLayers' whole
+ * harbor/seamark stack in placement priority (#160: DataLayers inserts
+ * below the AIS stack, and placement runs top-to-bottom), so a bigger AIS
+ * box could newly cull a lower-priority label near a vessel — the #378
+ * shape: `icon-allow-overlap` without `icon-ignore-placement` still blocks
+ * OTHERS.
+ *
+ * The fix therefore does not rely on a safe zoom band: it adds ONE new stop
+ * at z13 (1.4, matching seamarks' own #860 choice: 1.4 * 32 = 44.8px,
+ * clearing 44px with margin for float rounding) paired with an
+ * `icon-padding` compensation (the #191 lever — "the lever for enlarging a
+ * tap target without changing the collision footprint") solved so the
+ * collision footprint (iconPx + 2*paddingPx) is the pre-#957 z12 value
+ * (28.8 + 2*2 = 32.8px) at BOTH z12 and z13. Because icon-size and
+ * icon-padding are each linear in zoom between those two points, matching
+ * footprint at the endpoints holds it CONSTANT across the whole [12,13]
+ * segment — two linear functions agreeing at two points agree everywhere
+ * between them — and both clamp flat past z13, so the invariant holds
+ * forever above it too. z8-z12 stay BYTE-IDENTICAL to before: no new stop,
+ * and icon-padding's domain starts at 12 so it flat-extrapolates to the
+ * MapLibre default (2px/side) below it.
+ */
+const AIS_VESSEL_ICON_SIZE: NonNullable<
+  NonNullable<SymbolLayerSpecification['layout']>['icon-size']
+> = ['interpolate', ['linear'], ['zoom'], 8, 0.5, 12, 0.9, 13, 1.4];
+const AIS_VESSEL_ICON_PADDING: NonNullable<
+  NonNullable<SymbolLayerSpecification['layout']>['icon-padding']
+> = ['interpolate', ['linear'], ['zoom'], 12, 2, 13, -6];
+
+// Exported so #957's tap-target floor and z8-z12 byte-identity can be pinned
+// directly against the returned layout, without a live map.
+// eslint-disable-next-line react-refresh/only-export-components
+export function aisVesselLayout(): NonNullable<SymbolLayerSpecification['layout']> {
+  return {
+    'icon-image': [
+      'step',
+      ['zoom'],
+      DOT_IMAGE,
+      9,
+      ['case', ['get', 'hasCourse'], ARROW_IMAGE, DOT_IMAGE],
+    ],
+    'icon-rotate': ['get', 'rotation'],
+    'icon-rotation-alignment': 'map',
+    'icon-size': AIS_VESSEL_ICON_SIZE,
+    'icon-padding': AIS_VESSEL_ICON_PADDING,
+    'icon-allow-overlap': true,
+  };
+}
+
 function setupLayers(map: MaplibreMap): void {
   // Anchor below the route stack (resolved at add time) so AIS renders BELOW
   // the route stack and the ownship marker (a DOM Marker, always on top) but
@@ -137,19 +207,7 @@ function setupLayers(map: MaplibreMap): void {
       type: 'symbol',
       source: AIS_SOURCE,
       filter: ['==', ['get', 'kind'], 'vessel'],
-      layout: {
-        'icon-image': [
-          'step',
-          ['zoom'],
-          DOT_IMAGE,
-          9,
-          ['case', ['get', 'hasCourse'], ARROW_IMAGE, DOT_IMAGE],
-        ],
-        'icon-rotate': ['get', 'rotation'],
-        'icon-rotation-alignment': 'map',
-        'icon-size': ['interpolate', ['linear'], ['zoom'], 8, 0.5, 12, 0.9],
-        'icon-allow-overlap': true,
-      },
+      layout: aisVesselLayout(),
       paint: { 'icon-opacity': ['match', ['get', 'tier'], 'stale', 0.5, 1] },
     },
     beforeId,

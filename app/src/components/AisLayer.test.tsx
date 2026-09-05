@@ -2,11 +2,13 @@ import { render } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import AisLayer, {
   AIS_LABEL_LAYER,
+  AIS_NATURAL_ICON_PX,
   AIS_SOURCE,
   AIS_VECTOR_LAYER,
   AIS_VESSEL_LAYER,
   ARROW_IMAGE,
   DOT_IMAGE,
+  aisVesselLayout,
   registerAisImages,
 } from './AisLayer';
 import { makeFakeMap, simulateStyleReload } from '../test/fakeMaplibre';
@@ -275,5 +277,79 @@ describe('registerAisImages (#192 canvas/pixelRatio/scale registration contract)
 
     expect(addImage).toHaveBeenCalledTimes(1);
     expect(addImage.mock.calls[0][0]).toBe(DOT_IMAGE);
+  });
+});
+
+// #957: AIS vessel glyphs were tappable only inside a 16-28.8px target (the
+// pre-#957 icon-size taper topped out at 0.9@z12, clamped there forever —
+// `interpolate` clamps outside its domain), below the locked >=44px
+// gloved-use touch-target floor (CLAUDE.md's a11y-ranking ruling on #860,
+// which fixed the identical shape for seamark glyphs). These tests pin the
+// CONSEQUENCE of aisVesselLayout()'s new top stop (AisLayer.tsx's own doc
+// comment above it carries the derivation) as separate, independently
+// mutation-checkable claims: the floor is actually met, the z8-z12 prefix is
+// untouched, AND — unlike seamarks, which rely on a safe icon-overlap:'always'
+// zoom band — the collision FOOTPRINT (icon-size*natural + 2*padding) that AIS
+// inserts into the shared collision index does not grow, so this change cannot
+// newly cull a lower-priority layer (#378's shape).
+describe('#957: AIS vessel tap-target floor (>=44px gloved-use) and collision-footprint invariant', () => {
+  it('the top icon-size stop displays at >=44 CSS px', () => {
+    const iconSize = aisVesselLayout()['icon-size'] as readonly unknown[];
+    const topStopValue = iconSize[iconSize.length - 1] as number;
+    // Hand-derived (AIS_NATURAL_ICON_PX, imported, not re-declared here —
+    // CLAUDE.md's twin-search rule) rather than calling any production
+    // formula, so this can't pass by the #50 equivalence-test tautology.
+    expect(topStopValue * AIS_NATURAL_ICON_PX).toBeGreaterThanOrEqual(44);
+  });
+
+  it('leaves the z8-z12 icon-size prefix byte-identical to the pre-#957 layout', () => {
+    const iconSize = aisVesselLayout()['icon-size'] as readonly unknown[];
+    expect(iconSize.slice(0, 7)).toEqual(['interpolate', ['linear'], ['zoom'], 8, 0.5, 12, 0.9]);
+  });
+
+  it('leaves icon-padding at the MapLibre default (2px/side) at and below z12', () => {
+    const padding = aisVesselLayout()['icon-padding'] as readonly unknown[];
+    // Domain starts at 12 (index 3/4 after ['interpolate',['linear'],['zoom']]).
+    expect(padding.slice(0, 5)).toEqual(['interpolate', ['linear'], ['zoom'], 12, 2]);
+  });
+
+  // The collision-footprint invariant this fix relies on: icon-size and
+  // icon-padding are each linear in zoom, and matching footprint
+  // (iconPx + 2*paddingPx) at the z12 AND z13 endpoints holds it constant
+  // across the whole segment between them (two linear functions agreeing at
+  // two points agree everywhere between). Computed from the ACTUAL returned
+  // arrays, not re-derived from memory, so a change to either the icon-size
+  // top stop or the padding compensation that breaks the balance reds this.
+  it('holds the collision footprint constant between z12 and z13 (the #191 lever, applied at the zoom axis)', () => {
+    const layout = aisVesselLayout();
+    const iconSize = layout['icon-size'] as readonly unknown[];
+    const padding = layout['icon-padding'] as readonly unknown[];
+    // iconSize: ['interpolate',['linear'],['zoom'], z0,v0, z1,v1, z2,v2, ...]
+    const sizeAt = (zoom: number): number => {
+      const idx = iconSize.indexOf(zoom);
+      return iconSize[idx + 1] as number;
+    };
+    const paddingAt = (zoom: number): number => {
+      const idx = padding.indexOf(zoom);
+      return padding[idx + 1] as number;
+    };
+    const footprintAt = (zoom: number): number =>
+      sizeAt(zoom) * AIS_NATURAL_ICON_PX + 2 * paddingAt(zoom);
+    expect(footprintAt(13)).toBeCloseTo(footprintAt(12), 10);
+    // And that footprint is the PRE-#957 z12 footprint (default 2px padding,
+    // never explicitly touched below z12) — not just internally consistent.
+    expect(footprintAt(12)).toBeCloseTo(0.9 * AIS_NATURAL_ICON_PX + 2 * 2, 10);
+  });
+
+  it('#957 mutation check: without the padding compensation the footprint would grow', () => {
+    // Documents why the compensation is load-bearing rather than decorative:
+    // the RAW icon-size growth alone (no padding change) increases the
+    // collision footprint by exactly the icon-size delta * natural px.
+    const layout = aisVesselLayout();
+    const iconSize = layout['icon-size'] as readonly unknown[];
+    const sizeAt12 = iconSize[iconSize.indexOf(12) + 1] as number;
+    const sizeAt13 = iconSize[iconSize.indexOf(13) + 1] as number;
+    const uncompensatedGrowthPx = (sizeAt13 - sizeAt12) * AIS_NATURAL_ICON_PX;
+    expect(uncompensatedGrowthPx).toBeGreaterThan(0);
   });
 });
