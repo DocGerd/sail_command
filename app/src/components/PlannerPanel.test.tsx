@@ -181,6 +181,11 @@ const NON_CONTIGUOUS_SHALLOW_LEGS: Leg[] = [
 function makePlan(
   over: {
     id?: string;
+    // #961: overridable so a test can construct a same-id, different-
+    // createdAtMs replacement (#114's recalculate-and-replace, #937's
+    // departure confirm-solve) without the two calls otherwise colliding on
+    // this constant.
+    createdAtMs?: number;
     distanceNm?: number;
     rigRecommendation?: RigRecommendation;
     // #540: defaults to true (every pre-existing test's assumption); pass
@@ -192,7 +197,7 @@ function makePlan(
   return {
     id: over.id ?? 'plan-1',
     name: 'Flensburg to Marstal',
-    createdAtMs: PLAN_DEPARTURE_MS,
+    createdAtMs: over.createdAtMs ?? PLAN_DEPARTURE_MS,
     schemaVersion: PLAN_SCHEMA_VERSION,
     request: {
       origin: { lat: 54.79, lon: 9.43 },
@@ -1584,6 +1589,53 @@ describe('PlannerPanel', () => {
       const status = plannerStatus();
       expect(status).toHaveTextContent('21.5 nm');
       expect(status).not.toHaveTextContent('30.0 nm');
+    });
+
+    // #961: a same-id replacement with a DIFFERENT createdAtMs is exactly
+    // what usePlanFlow.ts's run() (#114 recalculate-and-replace,
+    // `replacePlanId: recalcPlan.id`) and useDepartureConfirm.ts's confirm()
+    // (#937) both produce — a genuine content change under an unchanged
+    // `plan.id`. A `plan.id`-only gate (the pre-#961 shape) cannot see this
+    // transition; only a test that RE-RENDERS from an already-announced
+    // plan into this replacement can distinguish the two gates, per this
+    // file's own "does NOT re-announce" test above pinning the SAME-id-
+    // AND-SAME-createdAtMs case.
+    it('DOES re-announce on a same-id, different-createdAtMs plan replacement (#961)', () => {
+      localStorage.setItem('sc-lang', 'en');
+      const { rerender } = render(
+        <I18nProvider>
+          <PlannerPanel
+            {...baseProps({
+              planning: { phase: 'routing', sailId: 'genoa', index: 1, total: 2 },
+              plan: null,
+              rig: null,
+            })}
+          />
+        </I18nProvider>,
+      );
+      rerender(
+        <I18nProvider>
+          <PlannerPanel
+            {...baseProps({ planning: { phase: 'idle' }, plan: makePlan(), rig: 'genoa' })}
+          />
+        </I18nProvider>,
+      );
+      expect(plannerStatus()).toHaveTextContent('21.5 nm');
+
+      // Same id, a LATER createdAtMs and a different distance — exactly the
+      // #114/#937 replacement shape.
+      rerender(
+        <I18nProvider>
+          <PlannerPanel
+            {...baseProps({
+              planning: { phase: 'idle' },
+              plan: makePlan({ id: 'plan-1', createdAtMs: PLAN_DEPARTURE_MS + 1, distanceNm: 30 }),
+              rig: 'genoa',
+            })}
+          />
+        </I18nProvider>,
+      );
+      expect(plannerStatus()).toHaveTextContent('30.0 nm');
     });
 
     it('does NOT announce on mount when a plan is already present (only on a genuine completion)', () => {
