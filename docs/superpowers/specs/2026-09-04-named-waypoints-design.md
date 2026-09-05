@@ -2,7 +2,7 @@
 
 Status: **approved** (maintainer, 2026-09-04)
 Covers: #846 (rename), #845 (seamark as waypoint), #848 (persist named waypoints)
-Amended by: #966 (§2.5 superseded — any seamark is eligible)
+Amended by: #966 (§2.5 superseded — any seamark is eligible; milestone v0.23.0)
 Milestone: v0.21.0
 
 Written because #848's own body argues these three are "probably one design, not
@@ -189,7 +189,7 @@ category**, and the original rule conflated them.
 `app/public/data/seamarks.json` at that bend (~54.83 N, 9.43 E): exactly four
 `beacon_lateral` marks, all starboard/green, and two BLACK
 `beacon_special_purpose`, both carrying only `{seamarkType, colour: 'black'}`.
-The adjective is load-bearing and is not a description — **five**
+The adjective is restrictive, not merely descriptive — **five**
 `beacon_special_purpose` marks sit within 900 m (two black, one white lattice at
 652 m, a stake at 806 m, another white lattice at 868 m), so dropping it makes
 the sentence a false census. No radius rescues the shorter form either: the
@@ -198,14 +198,15 @@ laterals sit 546–619 m out, so any radius admitting all four also admits the
 
 Distances, by haversine (the method matters — an equirectangular pass gives
 figures ~1 m different, and an earlier draft mixed the two): the two black marks
-lie **641–679 m** and **681–718 m** from the laterals respectively. Do not
-collapse those into one range attributed to "the nearest" — that was a 4×2
-pair-set range mis-attributed to a single mark, and it is how the previous
-draft went wrong. The lateral function
-the maintainer knows from the water is not expressed in either mark's tags, so
-no tag-based heuristic over this data could recover it: widening the allowlist
-by category would have been guesswork, and dropping it is the rule the data
-supports.
+lie **641–679 m** and **681–718 m** from the laterals — one range per mark,
+each spanning that mark's distances to the four laterals. Do not collapse those
+into one range attributed to "the nearest" — that was a 4×2 pair-set range
+mis-attributed to a single mark, and it is how an earlier draft went wrong.
+
+The lateral function the maintainer knows from the water is not expressed in
+either mark's tags, so no tag-based heuristic over this data could recover it:
+widening the allowlist by category would have been guesswork, and dropping it is
+the rule the data supports.
 
 Three caveats, stated because an earlier draft of this paragraph asserted each
 of them wrongly and a reviewer measured all three:
