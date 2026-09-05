@@ -36,28 +36,73 @@ Your final message is a report to the orchestrator, not prose for the end user.
   the file-level config. CI is slower than dev machines, but not by one flat
   multiplier: measured 2026-08-03 (#341) for the vitest unit suite, `npm run
   test` ran 249.8 s local vs ~515–535 s on CI (~2.1×), and `npm run
-  test:coverage` ran ~983–1029 s local vs 2558 s on CI (~2.5×) — coverage
+  test:coverage` ran ~983–1029 s local vs 2558 s on CI (~2.5×, a LOWER BOUND —
+  that CI run was itself killed by a too-tight budget) — coverage
   instrumentation is a separate multiplier from runner speed, not part of a
   single ratio, and neither figure is a Playwright/e2e measurement.
 
 ## Verification (evidence, not assertions)
 
-Run and PASTE summarized output for each — a claim without command output does
+Run each and report the outcome per "Report discipline" below — failures
+verbatim, passes as a counted verdict. A claim without command evidence does
 not count as done:
 
 1. `npm --prefix app run typecheck`
 2. `npm --prefix app run lint`
-3. Focused tests: `npm --prefix app run test -- <filter>` (full suite ~4 min;
-   use filters while iterating).
+3. Focused tests: `npm --prefix app run test -- <filter>` — use filters while
+   iterating; for the full suite's own duration read `app/vite.config.ts`'s
+   #878 comment rather than any figure quoted here.
 4. Routing changes: the `realmask.repro.*.test.ts` files (five sibling
    files under `app/src/routing/`, #878) must stay green — real committed
    mask/polars. `npm --prefix app run test -- realmask.repro` filters to
    all five.
 5. UI tasks end with a REAL browser pass (dev server + Playwright) — synthetic
    fixtures have missed product-blocking bugs before.
+6. Guard any NEW test you add against vacuity before reporting it as coverage.
+   For every assertion, break it with a change the PRODUCTION CODE could
+   actually make — not an artificial constant edit — and confirm the test goes
+   RED, then restore (#837). A red under a mutation the codebase cannot
+   produce proves nothing: #410's sign assertion redded on demand and was
+   still a theorem given the code. At minimum check: could any change the
+   code could actually make violate this (a red alone does not answer it);
+   does the mutation actually REACH the code path (three
+   non-execution shapes: the mutation lands in a comment; it fails to compile
+   so the tested artifact never changed; or the probe cannot MATCH — all ZERO
+   evidence, not weak evidence (CLAUDE.md's Verification lessons; PR #690/#688) —
+   give any probe whose EMPTINESS you intend to interpret a POSITIVE CONTROL,
+   a needle known to be present; is the assertion a THEOREM true of the code
+   regardless of the bug (#410); does a sibling condition short-circuit ahead
+   of it so the row passes for the wrong reason (#518 MAJOR 4); and does the
+   mutation already red at BASE, before your change (#770) — if so it proves
+   nothing about what you added. State the mutation and its result in your
+   report; if it can't reach the code path, say so as zero evidence rather
+   than claiming coverage.
 
-## Report format
+## Report discipline
 
-- What changed: file list with one-line purpose each.
-- Verification evidence: the command outputs from above, summarized.
-- Deviations, concerns, or spec conflicts (or explicitly "none").
+Return ~25 lines: what changed (file list, one-line purpose each), the
+verification evidence above, deviations/concerns (or explicitly "none"). If
+the required items alone exceed that — several files, six verification items,
+a mutation result per new assertion — keep the failures inline and move the
+rest to the scratchpad file below.
+
+- Keep FAILING command output VERBATIM and inline — never paraphrase a
+  failure. A paraphrase discards the diagnostic; this repo lost a `-0` root
+  cause exactly that way (#203) because a summary dropped the `Received: -0`
+  line. This exception is for failures ONLY.
+- Reduce PASSING evidence to a counted verdict (`typecheck ok`, `12 files /
+  84 tests passed`) — never to a comparative adjective ("looks good", "all
+  fine").
+- Anything longer than the 25-line cap (a full test list, a large diff)
+  goes to a scratchpad file; return its PATH, not its contents.
+- Write that scratchpad file with a Bash heredoc
+  (`cat > /path/to/file <<'EOF' ... EOF`) rather than the `Write` tool.
+  Observed 2026-09-05 (#969): two of five subagents briefed to write a
+  scratchpad report did not write it and pasted their tables inline, while a
+  third wrote the same file via Bash. Whether the tool errored or the agent
+  obeyed the harness-injected `Do NOT Write report/summary/... files`
+  instruction #969 quotes was not established — either way a harness
+  property; re-check after an upgrade. If you were briefed to return a
+  summary and find yourself about to paste a large table instead, try the
+  Bash heredoc before concluding you cannot write the file, and say in your
+  report which route you took.
