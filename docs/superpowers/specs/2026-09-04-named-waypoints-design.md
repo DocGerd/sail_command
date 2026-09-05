@@ -184,15 +184,34 @@ about what a skipper uses, and the person sailing this water reports otherwise.
 **A mark's usefulness as a WAYPOINT is not the same property as its S-57
 category**, and the original rule conflated them.
 
-**Why no narrower fix exists.** Investigation of the shipped data at that bend
-(~54.83 N, 9.43 E) found four genuine `beacon_lateral` marks alongside two
-black `beacon_special_purpose` with white triangle topmarks ~300 m away; none of
-the special-purpose marks carries a red/green colour or a port/starboard
-category, and a live Overpass re-query of the same bbox returned zero
-semicolon- or dual-tagged `seamark:type` values. The lateral function known
-from the water is simply absent from OSM's tags, so no tag-based heuristic
-could have recovered it. Widening the allowlist by category would have been
-guesswork; dropping it is the only rule the data supports.
+**Why no narrower fix exists.** Verified against the shipped
+`app/public/data/seamarks.json` at that bend (~54.83 N, 9.43 E): exactly four
+`beacon_lateral` marks, all starboard/green, and two `beacon_special_purpose`,
+both carrying only `{seamarkType, colour: 'black'}`. The nearest of those
+special-purpose marks lies **642–719 m** from the laterals. The lateral function
+the maintainer knows from the water is not expressed in either mark's tags, so
+no tag-based heuristic over this data could recover it: widening the allowlist
+by category would have been guesswork, and dropping it is the rule the data
+supports.
+
+Three caveats, stated because an earlier draft of this paragraph asserted each
+of them wrongly and a reviewer measured all three:
+
+- **Topmarks are not in the shipped extract at all.** `seamarks.json` has no
+  topmark property — its key union is `category`, `colour`, `lightCharacter`,
+  `lightColour`, `lightPeriod`, `seamarkType`, `shape`. Any topmark claim about
+  these marks is unsupported by the artifact this repo actually ships.
+- **The colour claim holds only at this bend, not repo-wide.** Scoped to these
+  two marks it is true. Across the whole extract, 11 of 703 special-purpose
+  marks carry a red or green colour — including one `buoy_special_purpose`
+  with `colour: red` 803 m from here. The argument above is unaffected, since it
+  turns on these two marks; the unscoped form was simply false.
+- **The Overpass re-query is NOT reproducible from this document.** It was cited
+  without its bbox, date or query text, and the shipped extract cannot stand in
+  for it — `pipeline/build_seamarks.mjs` collapses each mark through
+  `primaryType()` before writing, so a semicolon- or dual-tagged `seamark:type`
+  could not survive into `seamarks.json` whether or not one existed upstream.
+  Treat that claim as unverified; it is not load-bearing for the decision.
 
 **Accepted cost**, and it is the original rule's own argument: more marks become
 addable, so the collision-list noise the exclusion was written to avoid is now
