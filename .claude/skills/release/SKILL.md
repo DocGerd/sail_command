@@ -179,6 +179,22 @@ it cannot drift from the tracker. Do this on a topic branch into `develop`
   only its own milestone and shifts nothing else — the pending `vX.(Y+1).0`
   stays where it is.
 
+  🛑 **CLOSE THE SHIPPED MILESTONE AFTER THE TAG PUSH, NOT HERE.** This bullet
+  sits inside §2b only because the roll-forward is planned here; the closing
+  ACTION belongs after step 5. Measured across the three preceding cuts
+  (`milestones/<n>.closed_at` against `git for-each-ref --format='%(taggerdate:iso-strict)'`
+  — the tag's OWN date, NOT `git log -1 --format=%cI <tag>`, which returns the
+  tagged COMMIT's date and reads up to half an hour early): v0.20.0 +30.4 min,
+  v0.21.0 +57.6 min, v0.22.0 +32.4 min — every one closed AFTER its tag.
+  `CONTRIBUTING.md`'s "Labels & milestones" says the same, and describes the
+  mid-cut state as the milestone reading OPEN with zero open issues.
+  Closing it during the sweep instead makes that CONTRIBUTING passage FALSE
+  for the very cut in flight, and lets the sweep extend its own closed-milestone
+  range by one release too far. Measured at the v0.23.0 cut: the orchestrator
+  closed it before the sweep to avoid forward-dated prose, a reviewer caught the
+  contradiction, and the milestone was REOPENED and re-closed after the tag.
+  Opening the fresh `v0.(N+2).0` early is harmless; only the CLOSE is ordered.
+
 ⚠️ **`Closes #N` in a release PR does NOT close the issue.** GitHub auto-closes
 only on merge into the DEFAULT branch, which here is `develop`, not `main`
 (#132 stayed open after #210 merged for v0.5.0). Close release-scoped issues
