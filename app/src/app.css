@@ -144,7 +144,12 @@ select {
   padding: 0 0.6rem;
 }
 
-/* ---- App shell: full-viewport map with overlaid header/banners/sheet ---- */
+/* ---- App shell: full-viewport map with overlaid header/banners/sheet ----
+   That overlaid arrangement is the BASE layout, and it is now reached only
+   at SHORT LANDSCAPE narrow (`max-height: 500px and orientation:
+   landscape`): at `>=1024px` the side-panel layout (#24, near the end of
+   this file) places the header and banner as grid items instead, and #909's
+   block after it does the same at every other narrow viewport. ---- */
 
 .app-shell {
   position: relative;
@@ -1207,9 +1212,12 @@ select {
   );
 }
 
-/* NAMED COUPLING: `top: 3.5rem` clears the narrow-layout .app-header, which
-   overlays the map — the wide media query below drops it to 0.75rem because
-   at >=1024px the header lives in the panel column instead. Mirrored exactly
+/* NAMED COUPLING: `top: 3.5rem` clears the narrow-layout .app-header where
+   it overlays the map — SHORT LANDSCAPE only since #909, whose block at the
+   END of this file gives the header its own grid row (and this cluster a
+   `0.5rem` top) at every other narrow viewport. The wide media query below
+   drops it to 0.75rem because at >=1024px the header lives in the panel
+   column instead. Mirrored exactly
    by .map-stack-tl's own top (they share the map's top row).
    #208 round-1 "Major 3": this is the mirror image of .map-stack-tl and had
    the IDENTICAL bug — no z-index, so `.app-bottom-sheet` could grow tall
@@ -1374,7 +1382,8 @@ select {
    collide when a plan is active — the toggles stay terse (dict) to share the
    map-top row with it even at phone widths.
    NAMED COUPLING: `top` mirrors .route-layer-controls above (3.5rem to clear
-   the narrow-layout .app-header, 0.75rem on wide) and `left: 0.5rem` mirrors
+   the narrow-layout .app-header where it overlays the map — short landscape
+   only since #909; 0.75rem on wide) and `left: 0.5rem` mirrors
    its `right: 0.5rem`. The 1024px breakpoint that switches them is the SAME
    value as lib/useWideLayout.ts's WIDE_LAYOUT_QUERY AND the #368
    `@media (max-width: 1023.98px)` banner-clearance rule below (its own
@@ -1421,9 +1430,9 @@ select {
   pointer-events: auto;
 }
 
-/* #368: on narrow layouts `.banner-area` is a full-width Tier-3 overlay
-   sitting directly above these Tier-2 clusters' shared `top: 3.5rem` — with
-   any banner shown, it overlaps that 56px top edge. The tier order does NOT
+/* #368: on SHORT LANDSCAPE narrow layouts `.banner-area` is a full-width
+   Tier-3 overlay sitting directly above these Tier-2 clusters' shared
+   `top: 3.5rem` — with any banner shown, it overlaps that 56px top edge. The tier order does NOT
    fix this: Tier 3 correctly wins BOTH the paint and the hit test there, so
    the banner intercepts taps meant for the toggles underneath it (measured:
    `elementFromPoint` over the depth checkbox resolved to
@@ -1534,7 +1543,12 @@ select {
    lands on as a layout width. This is a THIRD place sharing the 1024px
    constant alongside `.map-stack-tl`'s own NAMED COUPLING note and
    `lib/useWideLayout.ts`'s `WIDE_LAYOUT_QUERY` — change all three
-   together. */
+   together.
+
+   #909: this rule still MATCHES every narrow viewport, but its `top` and
+   `max-height` are overridden by the grid-row block at the END of this file
+   everywhere except SHORT LANDSCAPE (`max-height: 500px and orientation:
+   landscape`), so the push described above now takes effect only there. */
 @media (max-width: 1023.98px) {
   .route-layer-controls,
   .map-stack-tl {
@@ -1545,9 +1559,16 @@ select {
 }
 
 /* #871: `.reload-prompt` (ReloadPrompt.tsx's SW-ready/update toast) is
-   pulled OUT of `.banner-area`'s flow here — its transient height must
-   never count toward `--sc-banner-height`/`--sc-banner-clear-top` above, or
-   it squeezes `.map-stack-tl`/`.route-layer-controls` (and, transitively,
+   pulled OUT of `.banner-area`'s flow here. SCOPE, since #909: this rule
+   matches every narrow viewport but is overridden back to `position: static`
+   by the grid-row block at the END of this file everywhere except SHORT
+   LANDSCAPE (`max-height: 500px and orientation: landscape`), so it GOVERNS
+   only there — and only there must the toast's transient height never count
+   toward `--sc-banner-height`/`--sc-banner-clear-top` above. In the #909
+   regime it counts again, and that block hands it straight back by trimming
+   the sheet by exactly the same amount. Where this rule does govern, letting
+   the toast count would squeeze
+   `.map-stack-tl`/`.route-layer-controls` (and, transitively,
    `.depth-legend`'s reachability gate, DataLayers.tsx's own `budgetPx`)
    purely because a one-shot/dismissable toast happened to be up — exactly
    #871's repro (a fresh narrow-viewport load with nothing else on screen).
@@ -1597,7 +1618,9 @@ select {
    and the toast stays exactly where it always has, in `.banner-area`'s
    ordinary flex flow — #871 never reproduces at wide layout (DataLayers.tsx's
    own effect early-returns `hidden: false` unconditionally there), so
-   nothing here needs to touch that case. */
+   nothing here needs to touch that case. Since #909 the toast is back in
+   that same ordinary flex flow at every narrow viewport too, except SHORT
+   LANDSCAPE — see the SCOPE note at the top of this comment. */
 @media (max-width: 1023.98px) {
   .reload-prompt {
     position: fixed;
@@ -4412,8 +4435,7 @@ select {
    full-width bottom sheet. 1024px is chosen so landscape tablets get the side
    panel while portrait tablets/phones keep the bottom sheet.
 
-   The overlay elements (header/banner/sheet/map-area) are all absolutely
-   positioned in the base layout; here they become ordinary grid items placed
+   Here the header/banner/sheet/map-area become ordinary grid items placed
    via grid-template-areas. The map column spans all three rows, so it keeps
    full height regardless of how tall the header/banner rows are.
 
@@ -4605,5 +4627,175 @@ select {
     position: static;
     inset: auto;
     width: auto;
+  }
+}
+/* ==== #909: the SW toast gets its own grid row (option (d), scoped by (d1)) ====
+   PROBLEM: `.app-header` and `.banner-area` are absolutely positioned and
+   FLOAT OVER the map, so at narrow widths any banner — the service-worker
+   "update available"/"offline ready" toast in particular — lands on top of
+   `.map-stack-tl`'s compass and depth toggles and intercepts their taps.
+   #871 fixed one instance of that by pinning the toast somewhere else
+   (`.reload-prompt { position: fixed }` above, driven by `useToastAnchor`);
+   #909 is the same defect resurfacing at a viewport that pin does not reach.
+   The maintainer chose, and reaffirmed, the STRUCTURAL fix: give the header
+   and the banner stack their own grid ROWS so the map can no longer sit
+   underneath them. Accepted cost, stated up front: the narrow map
+   permanently loses ~61px of header plus every banner's height, and the
+   MapLibre canvas resizes on each banner appear/dismiss.
+
+   ============ WHY THIS BLOCK IS SCOPED, AND WHAT IT IS SCOPED OUT OF =======
+   SHORT LANDSCAPE (`max-height: 500px and orientation: landscape` — 740x360,
+   844x390, 932x430) is DELIBERATELY EXCLUDED and keeps the pre-#909 layout
+   byte-for-byte. This is not a stylistic exception; it is a measured one.
+
+   The sheet-cap compensation below is UNIFORM by design — it always hands
+   the toast's height back by trimming `.app-bottom-sheet` — and short
+   landscape is the one class with no height to give. MEASURED at 740x360:
+   the sheet goes 198px -> 138px, the planner panel no longer fits, and
+   `.planner-actions` (#702's already-documented sticky-CTA interceptor)
+   becomes topmost over the harbour picker's own listbox, so
+   `layout.spec.ts`'s `#871 … .route-layer-controls with a plan loaded`
+   stops resolving its click entirely (BASE ~37.9s -> >900s, a real hang, and
+   the option's box is stable across 8 consecutive rAFs, so it is occlusion
+   and not a settle race). Both alternatives were measured and REFUSED:
+     - dropping the trim at short landscape leaves the map row 239px, which
+       puts ScaleBar's suppression floor at 33px against a 52px ceiling, so
+       the bar is SUPPRESSED and #231/#441 red instead;
+     - re-deriving the cap off the map row instead of the viewport is the
+       principled frame here, but changes the sheet at EVERY narrow viewport.
+   #909's own blocked viewports are `deepPortrait320` and `wrapForcing280` —
+   both PORTRAIT — so excluding short landscape narrows the MECHANISM's
+   reach without narrowing the OUTCOME: #909 is still fixed in full.
+   Standing cost of that choice, stated so nobody has to rediscover it: there
+   are now TWO structurally different narrow layouts, and any future change
+   to narrow map chrome has to be reasoned about in both.
+
+   The exclusion is STRUCTURAL, not comment-guarded: short landscape is
+   simply never matched by the query below, so every pre-#909 rule above
+   stays in force there untouched — nothing here has to be correctly
+   "restored" for that class, which is why the two halves can be proven
+   independently. Same move as `.planner-actions`' narrow/wide split, where
+   the scoping was put in the query rather than in a comment that can rot.
+
+   MQ3 SYNTAX, DELIBERATELY. The condition wanted is "narrow AND NOT (short
+   AND landscape)". Written with Level 4's `not` it would be one clause — and
+   a Level 3 parser drops the ENTIRE block silently, with no console error
+   and nothing for CI to see, which on WebKit is a real iOS Safari band. The
+   comma below is Level 3's own logical OR, and De Morgan turns the negation
+   into it: NOT (max-height <= 500 AND landscape) == (height > 500px) OR
+   (portrait). Each arm is an independent query, so a parser that chokes on
+   one drops only that arm. Media-query lengths are fractional, so the first
+   arm is spelled `min-height: 500.01px`, not `501px` — the same hairline
+   convention the `1023.98px` width above already uses (its own gap is
+   0.02px), rather than a 1px band (reachable under zoom / fractional DPR)
+   admitted by neither arm. Same reason the `max-width: 1023.98px` hairline
+   above is spelled that way rather than as an MQ4 complement — do not
+   "tidy" either into `@media not (...)`.
+
+   NAMED COUPLING: `--sc-map-grid-rows` below is the regime signal
+   `DataLayers.tsx` reads to decide which budget formula applies. It is
+   published HERE, inside the one block that defines the regime, so there is
+   exactly one source of truth and no media query is restated in TypeScript
+   (which no compiler would keep in sync). */
+@media (max-width: 1023.98px) and (min-height: 500.01px),
+  (max-width: 1023.98px) and (orientation: portrait) {
+  .app-shell {
+    display: grid;
+    grid-template-rows: auto auto 1fr;
+    grid-template-areas:
+      'header'
+      'banner'
+      'map';
+  }
+
+  /* `position: static` is what takes these out of the overlay and into the
+     grid. Their `z-index: 3` (Tier 3, shell chrome) is KEPT and still
+     applies: a z-index other than `auto` tiers a GRID ITEM regardless of
+     `position` — measured in Chromium against a block-container control,
+     and the same fact `.planner-actions` was mis-commented about in #771.
+     The header also drops its translucency here: floating over the map it
+     needed `color-mix(...)` + `backdrop-filter`, but in its own row nothing
+     shows through it, so the blur is pure cost. */
+  .app-header {
+    position: static;
+    grid-area: header;
+    background: var(--sc-bg);
+    backdrop-filter: none;
+  }
+
+  .banner-area {
+    position: static;
+    grid-area: banner;
+  }
+
+  /* `min-height: 0` is LOAD-BEARING, not defensive. `1fr` is
+     `minmax(auto, 1fr)`, and MapLibre writes a px inline `height` on its
+     canvas sized FROM this container, so the automatic minimum becomes
+     self-referential and the row latches to the canvas's last height.
+     MEASURED at 375x667: with the toast up this row is 546px; dismissing it
+     returns 606px (+60, the toast's own height) and the canvas follows.
+     Without this line the row cannot shrink back. */
+  .map-area {
+    position: relative;
+    inset: auto;
+    grid-area: map;
+    min-height: 0;
+    --sc-map-grid-rows: 1;
+  }
+
+  /* #871's pin is UNDONE here, not deleted: with `.banner-area` now a real
+     grid row, the toast rejoins its ordinary flex flow and needs no anchor
+     at all. The rule above still governs short landscape, where the
+     pre-#909 overlay layout — and therefore that pin — is still in force. */
+  .reload-prompt {
+    position: static;
+    top: auto;
+    left: auto;
+    right: auto;
+  }
+
+  /* The toast's height now comes OUT of the map row, which is #871's own
+     squeeze in a new frame, so it is handed straight back by trimming the
+     sheet by exactly that much. `--sc-toast-height` is the toast's REAL
+     rendered height, published by a `ResizeObserver` in `ReloadPrompt.tsx`
+     and REMOVED on cleanup, so with no toast this is a plain `55vh`.
+     NAMED COUPLING: one of FOUR sites encoding this compensated cap — see
+     `app/src/test/toastCompensationTwin.test.ts`, which pins all four
+     against each other because no compiler spans CSS and TypeScript. */
+  .app-bottom-sheet {
+    max-height: calc(55vh - var(--sc-toast-height, 0px));
+  }
+
+  /* `100%` is now the MAP GRID ROW rather than the viewport, so the header
+     and banner terms the pre-#909 rule had to subtract are already gone
+     from it — which is the whole point of the row structure. What remains
+     is this cluster's own top inset and the gap it leaves above the sheet.
+     `--sc-map-chrome-top` is a token rather than a literal because
+     `DataLayers.tsx` needs the same number (`MAP_CHROME_TOP_PX`). */
+  .route-layer-controls,
+  .map-stack-tl {
+    --sc-map-chrome-top: 0.5rem;
+    top: var(--sc-map-chrome-top);
+    max-height: calc(
+      100% - (55vh - var(--sc-toast-height, 0px)) - var(--sc-map-chrome-top) - 0.5rem
+    );
+  }
+
+  /* Restates the cluster bound above in the ONE frame this element can
+     express: a percentage cannot resolve here, because this element's
+     containing block is the auto-height `<details class="depth-legend">`,
+     so the row height arrives as `--sc-map-row-h` — published by the SAME
+     `DataLayers.tsx` effect that already publishes
+     `--sc-depth-controls-height`. The two `0.5rem` terms are the cluster's
+     own `top` and the gap above the sheet, spelled out. */
+  .depth-legend-body {
+    max-height: max(
+      0px,
+      calc(
+        var(--sc-map-row-h, 100dvh) - var(--sc-map-chrome-top, 0.5rem) -
+          (55vh - var(--sc-toast-height, 0px)) - 0.5rem - var(--sc-depth-controls-height, 130px) -
+          60px - 44px - 0.15rem
+      )
+    );
   }
 }
