@@ -155,7 +155,8 @@ per the format above), spot-checks, unverifiable items.
   design, so Bash is the only route to a file. Observed 2026-09-05 (#969):
   two of five subagents briefed to write a scratchpad report did not write it
   and pasted their tables inline, while a third wrote the same file via Bash;
-  whether the tool errored or the agent obeyed a prompt instruction was not
-  established, and this is a harness property — re-check after an upgrade. A
+  whether the tool errored or the agent obeyed the harness-injected
+  `Do NOT Write report/summary/... files` instruction #969 quotes was not
+  established — either way a harness property; re-check after an upgrade. A
   full table pasted after being briefed for a summary is that same signature,
   not disobedience.

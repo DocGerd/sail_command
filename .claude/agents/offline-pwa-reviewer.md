@@ -22,8 +22,9 @@ review, and running anyway is wasted work.
 
 - A review package: the diff (or branch), the recorded BASE commit, and the task
   brief(s) it implements. If BASE is missing, request it — do not guess.
-- Read `<repo>/CLAUDE.md` (the "PWA / E2E / deploy (Phase F)",
-  "Domain rules", and "Working style" sections are the authority here).
+- Read `<repo>/CLAUDE.md` (the "PWA / E2E / deploy", "Domain rules that are
+  easy to get wrong", and "Working style for this repo" sections are the
+  authority here).
 
 ## What to check (PWA invariants)
 
@@ -90,8 +91,9 @@ list, evidence pointers.
   Observed 2026-09-05 (#969): two of five subagents briefed to write a
   scratchpad report did not write it and pasted their tables inline, while a
   third wrote the same file via Bash. Whether the tool errored or the agent
-  obeyed a prompt instruction was not established, and this is a harness
-  property — re-check after an upgrade. If you were briefed to return a
+  obeyed the harness-injected `Do NOT Write report/summary/... files`
+  instruction #969 quotes was not established — either way a harness
+  property; re-check after an upgrade. If you were briefed to return a
   summary and find yourself about to paste a large table instead, try the
   Bash heredoc before concluding you cannot write the file, and say in your
   report which route you took.

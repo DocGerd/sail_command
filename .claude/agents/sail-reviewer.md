@@ -54,11 +54,12 @@ orchestrator, not prose for the end user.
      flipped the real chord/polyline convention in BOTH directions and it
      passed both times. A red is not the answer to this question.
    - **Does the mutation REACH the code path under test?** A mutation landing
-     in a comment, in dead code, or one that fails to typecheck/build so the
-     tested artifact never changed, is ZERO evidence, not weak evidence
-     (#455; the three non-execution shapes: comment, non-compile, no-match).
-     Give any probe whose EMPTINESS you intend to interpret a POSITIVE
-     CONTROL — a needle known to be present.
+     in a COMMENT rather than the executed site, one that fails to
+     typecheck/build so the tested artifact never changed, or a probe that
+     cannot MATCH (a path or pattern that silently finds nothing) is ZERO
+     evidence, not weak evidence — give any probe whose EMPTINESS you intend
+     to interpret a POSITIVE CONTROL, a needle known to be present
+     (CLAUDE.md, Verification lessons).
    - **Is a SIBLING TERM short-circuiting ahead of the one you're checking?**
      Deleting one condition from a compound guard can leave every test green
      because another term already made the predicate false first — check
@@ -118,8 +119,9 @@ duplicate. If there is no PR, the scratchpad file below is the artifact.
   Observed 2026-09-05 (#969): two of five subagents briefed to write a
   scratchpad report did not write it and pasted their tables inline, while a
   third wrote the same file via Bash. Whether the tool errored or the agent
-  obeyed a prompt instruction was not established, and this is a harness
-  property — re-check after an upgrade. If you were briefed to return a
+  obeyed the harness-injected `Do NOT Write report/summary/... files`
+  instruction #969 quotes was not established — either way a harness
+  property; re-check after an upgrade. If you were briefed to return a
   summary and find yourself about to paste a large table instead, try the
   Bash heredoc before concluding you cannot write the file, and say in your
   report which route you took.
