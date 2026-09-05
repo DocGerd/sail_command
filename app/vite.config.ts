@@ -360,9 +360,8 @@ function appVersion(command: 'build' | 'serve'): string {
 // everything else's instead of serially after it. Order here was the
 // desired START order (slowest wall-clock time first) — #581:
 // realmask.repro.test.ts (477.4s) was listed before
-// invariants.property.test.ts (239.6s), matching the 2026-08-19 measurement
-// at `04384c2` (CLAUDE.md's "Full test suite" entry) rather than the order
-// they were originally added in. Their summed per-file duration — call it
+// invariants.property.test.ts (239.6s) (measured 2026-08-19 at `04384c2`)
+// rather than the order they were originally added in. Their summed per-file duration — call it
 // combined CPU time, i.e. what the two would have cost run back-to-back on
 // one core — was 477.4 + 239.6 = 717.0s; that sum was DERIVED, never itself
 // measured as one figure, and it was necessarily MORE than the 499.9s

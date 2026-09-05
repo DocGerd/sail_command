@@ -56,10 +56,7 @@ See [README → Development](README.md#development). Quick reference:
   quiet machine on 2026-08-19, when the suite held 2032 tests across 143
   files. At that measurement, wall time was set almost entirely by ONE
   file under `app/src/` — `routing/realmask.repro.test.ts` (477.4 s) —
-  with the seeded fast-check property suite
-  (`app/src/routing/invariants.property.test.ts`) second; its duration at
-  that measurement is `app/vite.config.ts`'s #214/#878 comment's to state,
-  not restated here to avoid a second copy that can drift. Everything
+  with the seeded fast-check property suite second (239.6 s); everything
   else ran concurrently underneath them, so the total barely exceeded the
   slowest file. That single file was SPLIT (#878) into five sibling files
   (`routing/realmask.repro.*.test.ts`, plus a shared
