@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { MsgKey } from '../i18n/dict.de';
 import {
-  isWaypointEligibleSeamark,
   resolveSeamarkPopoverValue,
   seamarkPopoverRows,
   seamarkWaypointName,
@@ -192,33 +191,16 @@ describe('resolveSeamarkPopoverValue', () => {
   });
 });
 
-// #845: the curated waypoint-eligible subset (design spec §2.5).
-describe('isWaypointEligibleSeamark (#845)', () => {
-  it.each([
-    'buoy_cardinal',
-    'beacon_cardinal',
-    'buoy_lateral',
-    'beacon_lateral',
-    'buoy_isolated_danger',
-    'beacon_isolated_danger',
-  ])('admits %s', (seamarkType) => {
-    expect(isWaypointEligibleSeamark({ seamarkType })).toBe(true);
-  });
-
-  it.each([
-    'buoy_special_purpose',
-    'beacon_special_purpose',
-    'light_major',
-    'light_minor',
-    'buoy_safe_water',
-  ])('excludes %s', (seamarkType) => {
-    expect(isWaypointEligibleSeamark({ seamarkType })).toBe(false);
-  });
-
-  it('excludes an unrecognised seamarkType (classifySeamark falls back to "unknown")', () => {
-    expect(isWaypointEligibleSeamark({ seamarkType: 'something_never_seen' })).toBe(false);
-  });
-});
+// #845 introduced `isWaypointEligibleSeamark`, a curated-family allowlist
+// (design spec §2.5), pinned here. #966 SUPERSEDED that allowlist by
+// maintainer decision — any seamark the user can see and tap is now
+// addable as a waypoint — so the function and its `WAYPOINT_ELIGIBLE_FAMILIES`
+// constant were deleted rather than widened to a constant `true`: the
+// eligibility check itself is gone, `seamarkPopupDom.ts`'s
+// `buildSeamarkPopoverContent` now gates the "add as waypoint" button on
+// `onAddWaypoint` alone, and the new universal rule (every seamarkType,
+// including an unrecognised one) is pinned in `seamarkPopupDom.test.ts`'s
+// `add-as-waypoint action` describe block instead.
 
 // #845: the pre-filled waypoint name — the mark's translated TYPE label,
 // never the category and never a raw tag value.

@@ -3,6 +3,7 @@
 Status: **approved** (maintainer, 2026-09-04)
 Covers: #846 (rename), #845 (seamark as waypoint), #848 (persist named waypoints)
 Milestone: v0.21.0
+Amended by: #966 (§2.5 superseded — any seamark is eligible; milestone v0.23.0)
 
 Written because #848's own body argues these three are "probably one design, not
 three". They share one data model, one UI surface and one identity question, and
@@ -163,12 +164,80 @@ name outlives its source mark.
 Consequence: the persisted store needs **no provenance field**, and there is no
 "seamark has vanished" path to define.
 
-### 2.5 Eligible seamark categories are a curated subset
+### 2.5 Any seamark is eligible — the curated subset is SUPERSEDED (#966)
 
-Cardinals, laterals and isolated-danger marks only — the marks a skipper
-actually routes past, and what #845's own text suggests. Special-purpose marks
-and minor lights are excluded: they are numerous and make poor waypoints, and
-offering them costs collision-list noise for no navigational value.
+**Amended 2026-09-05 by maintainer decision on #966.** Any seamark the user can
+see and tap is addable as a route waypoint. If it is on the chart and you can
+reach it, you can route past it.
+
+The original rule read: *"Cardinals, laterals and isolated-danger marks only —
+the marks a skipper actually routes past, and what #845's own text suggests.
+Special-purpose marks and minor lights are excluded: they are numerous and make
+poor waypoints, and offering them costs collision-list noise for no
+navigational value."* It is retained here verbatim because the amendment turns
+on why it was wrong, not merely on what replaced it.
+
+**What refuted it.** A UAT pass of `v0.22.0` found a mark at the bend where the
+Flensburg Fjord turns south that functions as a lateral on the water but is
+tagged `beacon_special_purpose`, so the allowlist withheld the button. The
+exclusion's stated justification — "no navigational value" — was an assumption
+about what a skipper uses, and the person sailing this water reports otherwise.
+**A mark's usefulness as a WAYPOINT is not the same property as its S-57
+category**, and the original rule conflated them.
+
+**Why no narrower fix exists.** Verified against the shipped
+`app/public/data/seamarks.json` at that bend (~54.83 N, 9.43 E): exactly four
+`beacon_lateral` marks, all starboard/green, and two BLACK
+`beacon_special_purpose`, both carrying only `{seamarkType, colour: 'black'}`.
+The adjective is restrictive, not merely descriptive — **five**
+`beacon_special_purpose` marks sit within 900 m (two black, one white lattice at
+652 m, a stake at 806 m, another white lattice at 868 m), so dropping it makes
+the sentence a false census. No radius rescues the shorter form either: the
+laterals sit 546–619 m out, so any radius admitting all four also admits the
+652 m mark.
+
+Distances, by haversine (the method matters — an equirectangular pass gives
+figures ~1 m different, and an earlier draft mixed the two): the two black marks
+lie **641–679 m** and **681–718 m** from the laterals — one range per mark,
+each spanning that mark's distances to the four laterals. Do not collapse those
+into one range attributed to "the nearest" — that was a 4×2 pair-set range
+mis-attributed to a single mark, and it is how an earlier draft went wrong.
+
+The lateral function the maintainer knows from the water is not expressed in
+either black mark's tags, so no tag-based heuristic over this data could
+recover it: widening the allowlist by category would have been guesswork, and
+dropping it is the rule the data supports.
+
+Three caveats, stated because an earlier draft of this paragraph asserted each
+of them wrongly and a reviewer measured all three:
+
+- **Topmarks are not in the shipped extract at all.** `seamarks.json` has no
+  topmark property — its key union is `category`, `colour`, `lightCharacter`,
+  `lightColour`, `lightPeriod`, `seamarkType`, `shape`. Any topmark claim about
+  these marks is unsupported by the artifact this repo actually ships.
+- **The colour claim holds only at this bend, not repo-wide.** The retracted
+  form read *"none of the special-purpose marks carries a red/green colour or a
+  port/starboard category"*. Scoped to the two black marks it is true. Across
+  the whole extract, 11 of 703 special-purpose marks carry a red or green colour
+  (9 green beacons, 1 red beacon, 1 red buoy) — including one
+  `buoy_special_purpose` with `colour: red` 807 m from here, again by haversine.
+  The argument above is unaffected, since it turns on these two marks; the
+  unscoped form was simply false.
+- **The Overpass re-query is NOT reproducible from this document.** The
+  retracted form read *"a live Overpass re-query of the same bbox returned zero
+  semicolon- or dual-tagged `seamark:type` values"*. It was cited
+  without its bbox, date or query text, and the shipped extract cannot stand in
+  for it — `pipeline/build_seamarks.mjs` collapses each mark through
+  `primaryType()` before writing, so a semicolon- or dual-tagged `seamark:type`
+  could not survive into `seamarks.json` whether or not one existed upstream.
+  Treat that claim as unverified; it is not load-bearing for the decision.
+
+**Accepted cost**, and it is the original rule's own argument: more marks become
+addable, so the collision-list noise the exclusion was written to avoid is now
+accepted deliberately rather than avoided by construction. If that noise proves
+a real problem in use, the remedy is a presentation change, not a return to a
+category allowlist — the allowlist's premise has been refuted, and re-adopting
+it would re-adopt the conflation above.
 
 ### 2.6 A seamark is inserted at its nearest point along the route
 

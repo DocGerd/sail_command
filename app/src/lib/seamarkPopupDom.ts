@@ -1,5 +1,4 @@
 import {
-  isWaypointEligibleSeamark,
   resolveSeamarkPopoverValue,
   seamarkPopoverRows,
   seamarkWaypointName,
@@ -23,13 +22,13 @@ import type { LatLon, SeamarkProperties, ViaPoint } from '../types';
 //
 // #845: `point` is the mark's own coordinates (never the tap point a map
 // click may have anchored the popup at — see seamarkPopupAnchor's own
-// comment) and `onAddWaypoint`, when given AND the mark is in the curated
-// #2.5 subset (isWaypointEligibleSeamark), renders an "add as waypoint"
+// comment) and `onAddWaypoint`, when given, renders an "add as waypoint"
 // button that hands the caller a flattened `{lat, lon, name}` record
-// (design spec §2.4 — no provenance link kept). Reusing the existing
-// `sc-btn`/`sc-btn-secondary` primitive classes here (this is plain DOM, not
-// React, so the Button component itself can't be used) keeps this in the
-// app's design system without touching app.css.
+// (design spec §2.5, amended #966: any seamark the user can see and tap is
+// eligible — the earlier curated-family allowlist is superseded). Reusing
+// the existing `sc-btn`/`sc-btn-secondary` primitive classes here (this is
+// plain DOM, not React, so the Button component itself can't be used) keeps
+// this in the app's design system without touching app.css.
 export function buildSeamarkPopoverContent(
   props: SeamarkProperties,
   t: SeamarkPopoverTranslate,
@@ -51,7 +50,7 @@ export function buildSeamarkPopoverContent(
   disclaimer.className = 'seamark-popover-disclaimer';
   disclaimer.textContent = t('app.disclaimer');
   container.append(disclaimer);
-  if (onAddWaypoint && isWaypointEligibleSeamark(props)) {
+  if (onAddWaypoint) {
     const addButton = document.createElement('button');
     addButton.type = 'button';
     addButton.className = 'sc-btn sc-btn-secondary seamark-popover-add-waypoint';

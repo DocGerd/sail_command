@@ -1,4 +1,3 @@
-import { classifySeamark } from './seamarkGlyphs';
 import type { MsgKey } from '../i18n/dict.de';
 import type { SeamarkProperties } from '../types';
 
@@ -185,20 +184,6 @@ export function seamarkPopoverRows(props: SeamarkProperties): SeamarkPopoverRow[
     });
   }
   return rows;
-}
-
-// #845: the curated subset design spec §2.5 admits as route waypoints —
-// cardinals, laterals and isolated-danger marks only. Special-purpose marks
-// and minor/major lights are excluded deliberately: they are numerous and
-// make poor waypoints, and offering them would cost collision-list noise for
-// no navigational value (spec's own wording). Reuses classifySeamark's
-// existing family classification (seamarkGlyphs.ts) rather than
-// re-enumerating seamark:type suffixes here, so this stays correct if that
-// classification ever widens.
-const WAYPOINT_ELIGIBLE_FAMILIES = new Set(['cardinal', 'lateral', 'isolatedDanger']);
-
-export function isWaypointEligibleSeamark(props: SeamarkProperties): boolean {
-  return WAYPOINT_ELIGIBLE_FAMILIES.has(classifySeamark(props.seamarkType));
 }
 
 /**
