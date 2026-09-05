@@ -3,12 +3,13 @@ import { deletePlan, getPlan, listPlans, type PlanSummary } from '../services/db
 import { useActivePlan } from '../state/AppState';
 import { useT, useLang } from '../i18n';
 import type { MsgKey } from '../i18n/dict.de';
-import { formatDateTime, toLocalInputValue } from '../lib/format';
+import { formatDateTime, formatDuration, formatNm, toLocalInputValue } from '../lib/format';
 import { FORECAST_DAYS } from '../services/openMeteo';
 import { nextFullHourMs } from './PlannerPanel';
 import Button from './Button';
 import Field from './Field';
 import type { Plan } from '../types';
+import { activeRigResult } from '../lib/plan';
 import { sailLabelKey } from '../lib/resultSummary';
 
 // #114: the two ways a completed recalculation can be persisted — as a NEW
@@ -153,6 +154,39 @@ export default function PlansList({ online, busy, onRecalculate }: PlansListProp
     [recalc, closeRecalc],
   );
 
+  // #961: PlannerPanel's own `role="status"` result announcement never fires
+  // for a recalculate started from HERE. App.tsx renders the Plan and Routes
+  // tabs as mutually exclusive branches (`{tab === 'plan' && <PlannerPanel
+  // .../>}` vs `{tab === 'routes' && ... <PlansList .../>}`), so
+  // PlannerPanel is UNMOUNTED — and its live-region node gone — while this
+  // component is the one showing. #961's issue text named PlannerPanel's
+  // `plan.id`-only ref gate as the defect, but no re-keying of that gate can
+  // reach a path where the component itself is not mounted; this panel
+  // needs its OWN announcement instead. One role="status" surface here,
+  // sr-only (no in-flight phase text to show visibly, unlike PlannerPanel's),
+  // text swapped rather than a second region added.
+  //
+  // RESIDUAL, not fixed here (review, Minor 5): a tab switch away from
+  // Routes mid-run unmounts this component before the async chain below
+  // settles — no unmount guard on it — so a completing run announces
+  // NOWHERE (PlannerPanel remounts and re-seeds its ref silently from the
+  // already-replaced plan, exactly as #977's own comment describes for the
+  // symmetric case). Out of scope for THIS fix: #961's own issue text names
+  // exactly two reachable paths (ordinary recalculate-and-replace while
+  // staying on this tab, and #937's confirm-solve flow, fixed by #977) —
+  // both are covered once this PR and #977 both land. A user switching tabs
+  // mid-recalculate is a third, distinct failure class (an unmount race, not
+  // a render-branch/id-keying gap) and is not one of #961's named paths.
+  //
+  // RESIDUAL, not fixed here (review, Minor 4): recalculating the SAME plan
+  // twice at the same departure against an unchanged cached forecast yields
+  // a byte-identical announcement sentence — React's `Object.is` bail-out on
+  // an unchanged string skips the re-render, so the live region's text node
+  // is never mutated and nothing is announced the second time.
+  // PlannerPanel's own region (`planner.result.announce`) has the identical
+  // limitation, so this is not a regression introduced here.
+  const [recalcAnnouncement, setRecalcAnnouncement] = useState('');
+
   const handleRecalcRun = useCallback(
     (mode: RecalcMode) => {
       if (!recalc) return;
@@ -164,6 +198,13 @@ export default function PlansList({ online, busy, onRecalculate }: PlansListProp
       }
       const { planId, departureMs } = recalc;
       setError(null);
+      // Snapshot the ids already on record BEFORE the run — what makes a
+      // 'new'-mode success identifiable afterwards (a fresh id with no
+      // earlier entry). `onRecalculate`'s own promise resolves on BOTH
+      // success and a run-level failure (errors surface through
+      // usePlanFlow's own phase/banner instead, per this file's own #114
+      // comment below), so the promise settling is never proof of success.
+      const beforeIds = new Set(plans.map((p) => p.id));
       void getPlan(planId)
         .then((plan) => {
           if (!plan) {
@@ -172,12 +213,61 @@ export default function PlansList({ online, busy, onRecalculate }: PlansListProp
             closeRecalc();
             return;
           }
+          const beforeCreatedAtMs = plan.createdAtMs;
           return onRecalculate(plan, departureMs, mode).then(() => {
             // The run settled (success OR run-level error — run() reports
             // those through its own planning phase/banner): close the editor
             // and re-list, so a new/replaced plan shows up immediately.
             closeRecalc();
             refresh();
+            // Re-derive success from PERSISTED state, never from the
+            // resolved promise above: usePlanFlow's run() writes the new
+            // plan via services/db's savePlan (awaited) and returns early on
+            // every failure path before doing so, so a 'replace' plan whose
+            // createdAtMs actually moved, or a wholly new id, is proof the
+            // run produced a real result — mirrors this repo's own
+            // `${plan.id}-${plan.createdAtMs}` composite-identity idiom
+            // (CLAUDE.md's #747 Disclosure-keying rule) rather than trusting
+            // a plain id.
+            // Review (Minor 3): the 'new' branch below accepts ANY id absent
+            // from `beforeIds` — a weaker claim than 'replace's own-createdAtMs
+            // proof, satisfied by any plan minted by ANY surface during the
+            // run (e.g. a concurrent Live reroute, App.tsx's
+            // handleLiveReroute). Not reachable today — App.tsx's `runBusy`
+            // composite (`:1013`, `planning.phase` OR
+            // `liveReroute.state.rerouting`) is passed as `busy` to both
+            // `LiveView` and this component, so neither surface can start
+            // while the other is running. Note that is a UI-level disable in
+            // another file, not a guard inside this chain — this is a
+            // false-SUCCESS residual, not a live bug; the `recalcName` match
+            // below tightens it to the exact name a 'new' recalculate stamps
+            // (App.tsx's handleRecalculate), narrowing but not fully closing
+            // that gap.
+            void (
+              mode === 'replace'
+                ? getPlan(planId).then((p) => (p && p.createdAtMs !== beforeCreatedAtMs ? p : null))
+                : listPlans().then((rows) => {
+                    const expectedName = t('plansList.recalcName', { name: plan.name });
+                    const fresh = rows.filter(
+                      (r): r is Extract<PlanSummary, { kind: 'ok' }> =>
+                        r.kind === 'ok' && !beforeIds.has(r.id) && r.name === expectedName,
+                    );
+                    if (fresh.length === 0) return null;
+                    fresh.sort((a, b) => b.createdAtMs - a.createdAtMs);
+                    return getPlan(fresh[0].id);
+                  })
+            ).then((result) => {
+              if (!result) return;
+              const res = activeRigResult(result, result.result.recommended);
+              if (!res) return;
+              setRecalcAnnouncement(
+                t('plansList.recalcAnnounce', {
+                  arrival: formatDateTime(res.etaMs, lang),
+                  duration: formatDuration(res.durationMs),
+                  distance: formatNm(res.distanceNm, lang),
+                }),
+              );
+            });
           });
         })
         .catch((err) => {
@@ -185,7 +275,7 @@ export default function PlansList({ online, busy, onRecalculate }: PlansListProp
           setError('plansList.actionError');
         });
     },
-    [recalc, pendingReplace, onRecalculate, refresh, closeRecalc],
+    [recalc, pendingReplace, onRecalculate, refresh, closeRecalc, plans, t, lang],
   );
 
   if (plans.length === 0) {
@@ -203,6 +293,13 @@ export default function PlansList({ online, busy, onRecalculate }: PlansListProp
           {t(error)}
         </p>
       )}
+      {/* #961: the recalculate-and-replace result announcement — see
+          recalcAnnouncement's own comment above handleRecalcRun. sr-only:
+          this panel has no visible in-flight status text to swap it with,
+          unlike PlannerPanel's own persistent live region. */}
+      <p className="sr-only" role="status" aria-atomic="true">
+        {recalcAnnouncement}
+      </p>
       <ul className="plans-list">
         {plans.map((p) =>
           // #54 spec §I.3: a record the read-time normaliser cannot handle is

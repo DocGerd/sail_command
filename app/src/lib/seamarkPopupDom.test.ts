@@ -36,7 +36,7 @@ describe('buildSeamarkPopoverContent (#830)', () => {
     const disclaimer = el.querySelector(':scope > p.seamark-popover-disclaimer');
     expect(disclaimer?.textContent).toBe('app.disclaimer');
     // No onAddWaypoint was passed, so the disclaimer stays the last child —
-    // no button rendered even though buoy_cardinal is eligible (#845).
+    // no button rendered regardless of seamarkType (#966).
     expect(el.lastElementChild).toBe(disclaimer);
   });
 
@@ -46,9 +46,10 @@ describe('buildSeamarkPopoverContent (#830)', () => {
     expect(el.querySelector('p.seamark-popover-disclaimer')).not.toBeNull();
   });
 
-  // #845: the "add as waypoint" action.
-  describe('add-as-waypoint action (#845)', () => {
-    it('renders a button AFTER the disclaimer for an eligible mark when onAddWaypoint is given', () => {
+  // #845: the "add as waypoint" action. #966 dropped its curated-family
+  // eligibility gate — see the it.each below.
+  describe('add-as-waypoint action (#845, #966)', () => {
+    it('renders a button AFTER the disclaimer when onAddWaypoint is given', () => {
       const onAddWaypoint = vi.fn();
       const el = buildSeamarkPopoverContent(
         { seamarkType: 'buoy_cardinal', category: 'north' },
@@ -81,14 +82,14 @@ describe('buildSeamarkPopoverContent (#830)', () => {
       expect(onAddWaypoint).toHaveBeenCalledExactlyOnceWith(expected);
     });
 
-    it.each(['buoy_special_purpose', 'light_major', 'buoy_safe_water'])(
-      'renders NO button for an ineligible seamarkType %s, even with onAddWaypoint given',
-      (seamarkType) => {
-        const el = buildSeamarkPopoverContent({ seamarkType }, t, POINT, vi.fn());
-        expect(el.querySelector('button.seamark-popover-add-waypoint')).toBeNull();
-      },
-    );
-
+    // #966: the curated-family allowlist (#845) is superseded by maintainer
+    // decision — any seamark the user can see and tap is addable as a
+    // waypoint. `beacon_special_purpose` is the exact mark class the UAT
+    // report was about (a mark that functions as a lateral on the water but
+    // carries no lateral tag, so the old allowlist withheld the button), and
+    // `something_never_seen` pins an unrecognised seamarkType — neither the
+    // old nor the new rule can special-case a type it has never seen, and
+    // `seamarkPopoverRows` still emits a (humanized) type row for it.
     it.each([
       'buoy_cardinal',
       'beacon_cardinal',
@@ -96,7 +97,13 @@ describe('buildSeamarkPopoverContent (#830)', () => {
       'beacon_lateral',
       'buoy_isolated_danger',
       'beacon_isolated_danger',
-    ])('renders a button for the curated-eligible seamarkType %s', (seamarkType) => {
+      'buoy_special_purpose',
+      'beacon_special_purpose',
+      'light_major',
+      'light_minor',
+      'buoy_safe_water',
+      'something_never_seen',
+    ])('renders a button for %s (#966: every seamarkType is now eligible)', (seamarkType) => {
       const el = buildSeamarkPopoverContent({ seamarkType }, t, POINT, vi.fn());
       expect(el.querySelector('button.seamark-popover-add-waypoint')).not.toBeNull();
     });

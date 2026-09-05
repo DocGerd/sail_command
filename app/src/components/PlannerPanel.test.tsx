@@ -84,10 +84,34 @@ const HARBORS = [FLENSBURG, MARSTAL];
 
 // #834: mirrors HarborPicker.test.tsx's ARNIS fixture — the real shipped
 // "arnis" #9 KNOWN_DISCONNECTED harbor, with BOTH an approachNote and
-// knownDisconnected: true, so a test can confirm the two coexist in the
+// (via withKnownDisconnectedFlag below) knownDisconnected: true, so a test can confirm the two coexist in the
 // selected-endpoint row exactly as they already coexist in the picker's
 // option row.
-const ARNIS: HarborWithReachability = {
+//
+// #899: ARNIS is deliberately typed as a plain `Harbor`, WITHOUT a
+// `knownDisconnected` property, and the flag is attached below via
+// withKnownDisconnectedFlag's runtime cast instead of a typed object-literal
+// property. harborPickerKnownDisconnectedCoupling.test.tsx's own header
+// documents why: an IDE "Rename Symbol" on HarborWithReachability's field
+// renames every TYPED reference consistently — the type declaration,
+// PlannerPanel.tsx's own `.knownDisconnected` read sites
+// (originHarbor?.knownDisconnected / destinationHarbor?.knownDisconnected),
+// AND a typed `knownDisconnected: true` literal on a
+// HarborWithReachability-typed const — so a fixture built the old way stays
+// green through exactly the mutation #899 exists to catch (PlannerPanel.tsx's
+// read site renamed right along with the fixture, both landing on the SAME
+// new name). A `Record<string, unknown>` cast setting the literal STRING key
+// 'knownDisconnected' is not a typed reference an IDE rename tool can find,
+// so after such a rename this fixture still emits the OLD key while a
+// renamed PlannerPanel.tsx read site looks for the NEW one — reproducing
+// #835's silent miss for this component.
+function withKnownDisconnectedFlag(h: Harbor): HarborWithReachability {
+  const clone: Record<string, unknown> = { ...h };
+  clone['knownDisconnected'] = true;
+  return clone as unknown as HarborWithReachability;
+}
+
+const ARNIS: Harbor = {
   id: 'arnis',
   names: { de: 'Arnis', da: 'Arnæs', en: 'Arnis' },
   country: 'DE',
@@ -96,7 +120,6 @@ const ARNIS: HarborWithReachability = {
     de: 'Oberhalb der Kappelner Brücke.',
     en: 'Above the Kappeln bridge.',
   },
-  knownDisconnected: true,
 };
 
 const DEPARTURE_MS = Date.UTC(2026, 6, 20, 9, 0, 0);
@@ -181,6 +204,11 @@ const NON_CONTIGUOUS_SHALLOW_LEGS: Leg[] = [
 function makePlan(
   over: {
     id?: string;
+    // #961: overridable so a test can construct a same-id, different-
+    // createdAtMs replacement (#114's recalculate-and-replace, #937's
+    // departure confirm-solve) without the two calls otherwise colliding on
+    // this constant.
+    createdAtMs?: number;
     distanceNm?: number;
     rigRecommendation?: RigRecommendation;
     // #540: defaults to true (every pre-existing test's assumption); pass
@@ -192,7 +220,7 @@ function makePlan(
   return {
     id: over.id ?? 'plan-1',
     name: 'Flensburg to Marstal',
-    createdAtMs: PLAN_DEPARTURE_MS,
+    createdAtMs: over.createdAtMs ?? PLAN_DEPARTURE_MS,
     schemaVersion: PLAN_SCHEMA_VERSION,
     request: {
       origin: { lat: 54.79, lon: 9.43 },
@@ -676,7 +704,7 @@ describe('PlannerPanel', () => {
   // never re-authored, so a mixed-basis regression can't slip in unnoticed.
   it('#834: keeps the known-disconnected disclosure visible on a selected origin row', () => {
     renderPanel({
-      harbors: [...HARBORS, ARNIS],
+      harbors: [...HARBORS, withKnownDisconnectedFlag(ARNIS)],
       origin: { source: 'harbor', point: ARNIS.snap, harborId: ARNIS.id, label: 'Arnis' },
     });
     const originSection = screen.getByRole('region', { name: 'Origin' });
@@ -692,7 +720,7 @@ describe('PlannerPanel', () => {
 
   it('#834: keeps the known-disconnected disclosure visible on a selected destination row', () => {
     renderPanel({
-      harbors: [...HARBORS, ARNIS],
+      harbors: [...HARBORS, withKnownDisconnectedFlag(ARNIS)],
       destination: { source: 'harbor', point: ARNIS.snap, harborId: ARNIS.id, label: 'Arnis' },
     });
     const destinationSection = screen.getByRole('region', { name: 'Destination' });
@@ -732,7 +760,11 @@ describe('PlannerPanel', () => {
       const [origin, setOrigin] = useState<PickedPoint | null>(null);
       return (
         <PlannerPanel
-          {...baseProps({ harbors: [...HARBORS, ARNIS], origin, onPickOrigin: setOrigin })}
+          {...baseProps({
+            harbors: [...HARBORS, withKnownDisconnectedFlag(ARNIS)],
+            origin,
+            onPickOrigin: setOrigin,
+          })}
         />
       );
     }
@@ -1584,6 +1616,53 @@ describe('PlannerPanel', () => {
       const status = plannerStatus();
       expect(status).toHaveTextContent('21.5 nm');
       expect(status).not.toHaveTextContent('30.0 nm');
+    });
+
+    // #961: a same-id replacement with a DIFFERENT createdAtMs is exactly
+    // what usePlanFlow.ts's run() (#114 recalculate-and-replace,
+    // `replacePlanId: recalcPlan.id`) and useDepartureConfirm.ts's confirm()
+    // (#937) both produce — a genuine content change under an unchanged
+    // `plan.id`. A `plan.id`-only gate (the pre-#961 shape) cannot see this
+    // transition; only a test that RE-RENDERS from an already-announced
+    // plan into this replacement can distinguish the two gates, per this
+    // file's own "does NOT re-announce" test above pinning the SAME-id-
+    // AND-SAME-createdAtMs case.
+    it('DOES re-announce on a same-id, different-createdAtMs plan replacement (#961)', () => {
+      localStorage.setItem('sc-lang', 'en');
+      const { rerender } = render(
+        <I18nProvider>
+          <PlannerPanel
+            {...baseProps({
+              planning: { phase: 'routing', sailId: 'genoa', index: 1, total: 2 },
+              plan: null,
+              rig: null,
+            })}
+          />
+        </I18nProvider>,
+      );
+      rerender(
+        <I18nProvider>
+          <PlannerPanel
+            {...baseProps({ planning: { phase: 'idle' }, plan: makePlan(), rig: 'genoa' })}
+          />
+        </I18nProvider>,
+      );
+      expect(plannerStatus()).toHaveTextContent('21.5 nm');
+
+      // Same id, a LATER createdAtMs and a different distance — exactly the
+      // #114/#937 replacement shape.
+      rerender(
+        <I18nProvider>
+          <PlannerPanel
+            {...baseProps({
+              planning: { phase: 'idle' },
+              plan: makePlan({ id: 'plan-1', createdAtMs: PLAN_DEPARTURE_MS + 1, distanceNm: 30 }),
+              rig: 'genoa',
+            })}
+          />
+        </I18nProvider>,
+      );
+      expect(plannerStatus()).toHaveTextContent('30.0 nm');
     });
 
     it('does NOT announce on mount when a plan is already present (only on a genuine completion)', () => {

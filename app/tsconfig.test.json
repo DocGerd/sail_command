@@ -169,6 +169,7 @@
     "src/**/useBannerHeight.test.ts",
     "src/**/legDistanceReconciliation.test.ts",
     "src/**/panelWidth.test.ts",
+    "src/**/toastCompensationTwin.test.ts",
     "src/**/maskTolerance.test.ts",
     "src/**/chipShallowFill.test.ts",
     "src/**/chipPolarTierFill.test.ts",
