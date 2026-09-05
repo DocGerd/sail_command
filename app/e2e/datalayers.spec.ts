@@ -921,9 +921,10 @@ test('navigability hatch (#599/#648): the stripe stays legible at overview zoom,
           window as unknown as {
             __scE2eMap: { jumpTo: (o: { zoom: number; center: [number, number] }) => void };
           }
-        )// already installed window.__scE2eMap as a side effect. // wackerballig's own snap point — no animation. mapReady() has
-        .__scE2eMap
-          .jumpTo({ zoom: z, center: [9.872, 54.7604] });
+        )
+          // wackerballig's own snap point — no animation. mapReady() has
+          // already installed window.__scE2eMap as a side effect.
+          .__scE2eMap.jumpTo({ zoom: z, center: [9.872, 54.7604] });
       }, zoom);
 
     // Two frames per zoom, differing ONLY in safetyDepthM, so the difference

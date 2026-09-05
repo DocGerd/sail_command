@@ -273,7 +273,7 @@ test('#803: still starts normally against its own build with no foreign server',
 // never via a SEPARATE later `page.evaluate()`: this app's real bootstrap
 // legitimately re-registers its own honest service worker and starts glyph
 // warm-up (CLAUDE.md's #28 bullet) moments after `assertCleanServiceWorkerState`'s
-// own internal `page.goto(BASE)` reloads it, so a later independent check
+// own internal `page.goto(SW_JS_URL)` reloads it, so a later independent check
 // would race that expected app behaviour rather than test this guard.
 test('#832: assertCleanServiceWorkerState clears a pre-existing registration and cache before the first real navigation', async ({
   page,
