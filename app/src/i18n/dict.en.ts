@@ -794,6 +794,15 @@ export const en = {
   'plansList.recalc.offline':
     'Recalculation requires a connection — it fetches a fresh wind forecast.',
   'plansList.recalcName': '{name} (recalculated)',
+  // #961: this panel's OWN result announcement — PlannerPanel's persistent
+  // live region is unmounted while the Routes tab (this panel) is showing
+  // (App.tsx renders the two tabs as mutually exclusive branches), so a
+  // recalculate-and-replace started from here has no other announcement
+  // surface. Same three fields, same wording pattern, as
+  // 'planner.result.announce' — deliberately not shared verbatim: the two
+  // keys serve different mount points and must stay independently editable.
+  'plansList.recalcAnnounce':
+    'Route recalculated — arrival {arrival}, duration {duration}, {distance}.',
   // #848: the saved-waypoint picker (SavedWaypoints.tsx, panel-only —
   // design spec §2.7, no map layer in this release). Distinct from
   // `planner.via.label` ("Waypoints", the current draft via list) so the

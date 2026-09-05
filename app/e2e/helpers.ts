@@ -214,7 +214,8 @@ export interface PreviewServer {
 // do not (a handful of specs create their OWN page(s) via
 // `browser.newContext()`/`context.newPage()` AFTER `startPreview()` has
 // already returned, so the shared path structurally cannot reach those
-// pages; they are a named residual, not silently dropped coverage).
+// pages — #928 threaded an explicit call to each of them instead, at the
+// point their own page exists; none is silently uncovered).
 //
 // Self-proving, not best-effort: after unregistering every registration and
 // deleting every named cache for this origin, it RE-QUERIES both and throws

@@ -1644,6 +1644,11 @@ test('#638: the depth-hatch legend has panel chrome at every STANDARD_VIEWPORTS 
       }, lang);
       const page = await context.newPage();
       try {
+        // #928: this test creates its OWN page via browser.newContext()/
+        // context.newPage() AFTER startPreview() has already returned, so
+        // the shared path inside startPreview(page) never reaches it — see
+        // the `#871` guards below for the same reasoning.
+        await assertCleanServiceWorkerState(page);
         await page.setViewportSize(STANDARD_VIEWPORTS.desktopHd);
         await page.goto(server.url);
         await mapReady(page);
@@ -1913,6 +1918,11 @@ test('#762: the safety-depth field label does not overflow its column at tablet 
       }, lang);
       const page = await context.newPage();
       try {
+        // #928: this test creates its OWN page via browser.newContext()/
+        // context.newPage() AFTER startPreview() has already returned, so
+        // the shared path inside startPreview(page) never reaches it — see
+        // the `#871` guards below for the same reasoning.
+        await assertCleanServiceWorkerState(page);
         await page.setViewportSize(STANDARD_VIEWPORTS.tabletLandscape);
         await page.goto(server.url);
         await mapReady(page);
@@ -1998,11 +2008,8 @@ test('#871: the SW toast alone never hides the depth legend, across the shared v
         // #832: this test creates its OWN page via browser.newContext()/
         // context.newPage() AFTER startPreview() has already returned, so
         // the shared path inside startPreview(page) never reaches it —
-        // required here specifically, per helpers.ts's own doc comment,
-        // because the surface under test is EXACTLY a stale-SW hazard: the
-        // toast is one-shot per service-worker registration, so a foreign
-        // or stale registration on this origin is the one thing that could
-        // make a fresh-context sweep report a false OK.
+        // called here for symmetry/defence-in-depth (reachability tracked
+        // at #975, not asserted here).
         await assertCleanServiceWorkerState(page);
         await page.goto(server.url);
         await mapReady(page);
@@ -2222,9 +2229,8 @@ test("#909: with the SW toast up, .map-stack-tl's depth checkbox AND its compass
       const page = await context.newPage();
       try {
         // #832: fresh context/page created AFTER startPreview() returned —
-        // same reason as the `#871` guards above (a stale/foreign SW
-        // registration on this origin is exactly the hazard under test:
-        // the toast is one-shot per registration).
+        // called here for symmetry/defence-in-depth, same as the `#871`
+        // guards above (reachability tracked at #975, not asserted here).
         await assertCleanServiceWorkerState(page);
         await page.goto(server.url);
         await mapReady(page);
@@ -2467,6 +2473,11 @@ test('#807: the AIS status chip never wraps past two lines at 280/320px, in eith
       }, lang);
       const page = await context.newPage();
       try {
+        // #928: this test creates its OWN page via browser.newContext()/
+        // context.newPage() AFTER startPreview() has already returned, so
+        // the shared path inside startPreview(page) never reaches it — see
+        // the `#871` guards above for the same reasoning.
+        await assertCleanServiceWorkerState(page);
         for (const [name, vp] of Object.entries(AIS_CHIP_VIEWPORTS)) {
           await page.setViewportSize(vp);
           await page.goto(server.url);
