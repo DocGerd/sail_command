@@ -145,10 +145,11 @@ select {
 }
 
 /* ---- App shell: full-viewport map with overlaid header/banners/sheet ----
-   Overlaid at wide, and at SHORT LANDSCAPE narrow. At every OTHER narrow
-   viewport #909's block at the END of this file gives the header and the
-   banner stack their own grid ROWS instead, so the map no longer sits
-   underneath them. ---- */
+   That overlaid arrangement is the BASE layout, and it is now reached only
+   at SHORT LANDSCAPE narrow (`max-height: 500px and orientation:
+   landscape`): at `>=1024px` the side-panel layout (#24, near the end of
+   this file) places the header and banner as grid items instead, and #909's
+   block after it does the same at every other narrow viewport. ---- */
 
 .app-shell {
   position: relative;
@@ -1547,10 +1548,7 @@ select {
    #909: this rule still MATCHES every narrow viewport, but its `top` and
    `max-height` are overridden by the grid-row block at the END of this file
    everywhere except SHORT LANDSCAPE (`max-height: 500px and orientation:
-   landscape`), so the push described above now takes effect only there.
-   `--sc-banner-clear-top` itself is still declared at every narrow width;
-   the rules that read it to any effect are #441's short-landscape ones
-   below. */
+   landscape`), so the push described above now takes effect only there. */
 @media (max-width: 1023.98px) {
   .route-layer-controls,
   .map-stack-tl {
@@ -4687,9 +4685,10 @@ select {
    into it: NOT (max-height <= 500 AND landscape) == (height > 500px) OR
    (portrait). Each arm is an independent query, so a parser that chokes on
    one drops only that arm. Media-query lengths are fractional, so the first
-   arm is spelled `min-height: 500.01px`, not `501px` — the same 0.01px
-   hairline convention as the `1023.98px` width above, rather than a 1px band
-   (reachable under zoom / fractional DPR) admitted by neither arm. Same reason the `max-width: 1023.98px` hairline
+   arm is spelled `min-height: 500.01px`, not `501px` — the same hairline
+   convention the `1023.98px` width above already uses (its own gap is
+   0.02px), rather than a 1px band (reachable under zoom / fractional DPR)
+   admitted by neither arm. Same reason the `max-width: 1023.98px` hairline
    above is spelled that way rather than as an MQ4 complement — do not
    "tidy" either into `@media not (...)`.
 
