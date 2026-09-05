@@ -552,20 +552,45 @@ export default function PlannerPanel({
   // live region, ONCE per completed plan. We freeze the RESULT that completed
   // (not the rendered string) and re-derive the sentence from the CURRENT
   // language each render — so a language switch re-announces in the new
-  // language, while a via-edit (same plan.id, new result) leaves the frozen
-  // result untouched. Seeded from the plan present at mount so re-entering the
-  // tab with an existing result does NOT re-announce; a genuinely new plan (new
-  // id) does. Via-edits preserve plan.id (App.tsx); slider/map re-renders don't
-  // touch `plan` at all.
-  const lastAnnouncedIdRef = useRef<string | null>(plan?.id ?? null);
+  // language. Seeded from the plan present at mount so re-entering the tab
+  // with an existing result does NOT re-announce; a genuinely new plan (new
+  // id) does. Slider/map re-renders don't touch `plan` at all.
+  //
+  // #961: the gate key is `${plan.id}-${plan.createdAtMs}`, not `plan.id`
+  // alone — the same composite identity as ShallowWarning's `key` (this
+  // file's own #452/#747 comment below), applied to a REF COMPARISON rather
+  // than a key. The two are NOT equivalent across an unmount: a `key` differs
+  // at the NEXT render whenever the plan changed, regardless of whether the
+  // component was mounted at the time; a mount-seeded ref only fires if the
+  // component was mounted WHEN the plan changed, and re-seeds silently (no
+  // announcement) on every later mount.
+  //
+  // usePlanFlow.ts's run() (#114's `replacePlanId: recalcPlan.id`) and
+  // useDepartureConfirm.ts's confirm() (#937) both preserve `plan.id` while
+  // stamping a fresh `createdAtMs` on every completed plan. Only #937's path
+  // is UNCONDITIONALLY fixed by this: `DepartureCompare` renders inside the
+  // same `tab === 'plan'` block as this panel (App.tsx), so the component
+  // stays mounted across the replacement. #114's recalculate-and-replace
+  // fires from `PlansList`, which lives inside the mutually-exclusive
+  // `tab === 'routes'` block — this panel is unmounted while it runs, and
+  // returning to the Plan tab re-seeds this ref from the already-replaced
+  // plan, so the ordinary recalculate-then-switch-back flow stays silent.
+  // Fixed only in the narrow case where the user stays on the Plan tab while
+  // a recalculate started elsewhere completes. `replanWithVias`
+  // (state/replan.ts) is the one path that keeps BOTH `id` and `createdAtMs`
+  // fixed, but #571 removed its only App.tsx call site — it is exercised by
+  // tests only today, so widening the gate cannot make a live via-edit
+  // chatty.
+  const planAnnounceKey = plan ? `${plan.id}-${plan.createdAtMs}` : null;
+  const lastAnnouncedKeyRef = useRef<string | null>(planAnnounceKey);
   const [announcedResult, setAnnouncedResult] = useState<RigResult | null>(null);
   useEffect(() => {
     if (planning.phase !== 'idle' || !plan) return;
     const res = rig ? activeRigResult(plan, rig) : null;
-    if (!res || plan.id === lastAnnouncedIdRef.current) return;
-    lastAnnouncedIdRef.current = plan.id;
+    if (!res || planAnnounceKey === lastAnnouncedKeyRef.current) return;
+    lastAnnouncedKeyRef.current = planAnnounceKey;
     setAnnouncedResult(res);
-  }, [planning.phase, plan, rig]);
+  }, [planning.phase, plan, rig, planAnnounceKey]);
 
   const announcement = announcedResult
     ? t('planner.result.announce', {
@@ -577,7 +602,14 @@ export default function PlannerPanel({
 
   // Single derived text for the ONE persistent live region: in-flight phase
   // messages while planning, then the completion summary once idle. Never a
-  // second aria-live region.
+  // second aria-live region WITHIN this component.
+  //
+  // #961/#937: `DepartureCompare`'s own `departureScan.confirm.done` status
+  // ("Plan updated.") fires alongside this one on a confirm-solve — both are
+  // mounted inside App.tsx's `tab === 'plan'` block simultaneously. The two
+  // carry DIFFERENT content (which window was taken vs. the resulting
+  // ETA/duration/distance), so this is a deliberate PAIR, not the same-
+  // sentence double announcement PR #486 removed.
   let statusText = '';
   if (planning.phase === 'fetching') statusText = t('planner.status.fetching');
   else if (planning.phase === 'routing')
