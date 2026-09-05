@@ -299,7 +299,17 @@ describe('registerAisImages (#192 canvas/pixelRatio/scale registration contract)
 // icon-ignore-placement: true (the #378 precedent) so the bigger box can
 // never cull another layer's symbol.
 describe('#957: AIS vessel tap-target floor (>=44px gloved-use), no padding compensation, ignore-placement', () => {
-  it('the top icon-size stop displays at >=44 CSS px', () => {
+  // Pins the RENDERED glyph size only — jsdom has no real collision index
+  // (canvas getContext is globally stubbed to null, per src/test/setup.ts),
+  // so no in-repo unit test can assert the actual TAPPABLE extent; that
+  // needs a real MapLibre GL JS runtime, which is what this PR's own
+  // real-browser harness provided (documented in the aisVesselLayout() doc
+  // comment and the PR's commit message: 49px measured at z12/12.5/13/14,
+  // real maplibre-gl@6.6.0, both self-tap-target growth and non-culling of
+  // a lower-priority neighbour). Do not read a pass here as evidence the
+  // tap-target floor is met on its own — see that real-browser measurement
+  // for the tappable claim.
+  it('the top icon-size stop RENDERS at >=44 CSS px (rendered glyph only, not the tap target)', () => {
     const iconSize = aisVesselLayout()['icon-size'] as readonly unknown[];
     const topStopValue = iconSize[iconSize.length - 1] as number;
     // Hand-derived (AIS_NATURAL_ICON_PX, imported, not re-declared here —

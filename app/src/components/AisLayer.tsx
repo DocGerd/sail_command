@@ -162,8 +162,14 @@ export const AIS_NATURAL_ICON_PX = CANVAS_SIZE / PIXEL_RATIO;
  * AIS already had `icon-allow-overlap: true` (immune to being culled
  * itself); this adds the missing "don't block others" half.
  *
- * z8-z12 stay BYTE-IDENTICAL to before: `icon-size`'s table is unchanged
- * through z12, and `icon-padding` is no longer touched at any zoom.
+ * z8-z11 stay BYTE-IDENTICAL to before, and the `icon-size` TABLE is
+ * unchanged through z12 with `icon-padding` untouched at every zoom. The
+ * z12 BEHAVIOUR does change, as reason 2 above implies: a z12 bucket
+ * builds its collision box from `size(13) = 1.4`, so the tap target there
+ * grows 32.8px -> 48.8px one zoom before the icon visibly grows. That is
+ * harmless and wanted — `icon-ignore-placement` means the bigger box
+ * blocks nothing — but it is not byte-identity, so do not cite this
+ * paragraph as evidence that z12 is untouched.
  *
  * PRODUCT TRADE-OFF, flagged for maintainer sign-off rather than decided
  * here: `icon-ignore-placement: true` means AIS vessels no longer cull
