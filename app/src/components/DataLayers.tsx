@@ -41,9 +41,25 @@ import { installStyleSetup } from '../lib/styleReload';
 import { usePersistedToggle } from '../lib/usePersistedToggle';
 import { usePersistedNumber } from '../lib/usePersistedNumber';
 import { LEGEND_COLLAPSED_HEIGHT_PX } from '../lib/depthLegendGate';
+
 import { ROUTE_STACK_BOTTOM_LAYER } from './RouteLayer';
 import { AIS_STACK_BOTTOM_LAYER } from './AisLayer';
 import type { Harbor, LatLon, MaskMeta, SeamarkProperties, ViaPoint } from '../types';
+
+/**
+ * `.map-stack-tl`'s own inset from the top of the narrow map grid row — the
+ * TS twin of `app.css`'s `--sc-map-chrome-top` (`0.5rem`), which that
+ * cluster uses for BOTH its `top` and the matching term in its `max-height`.
+ *
+ * Exported so `app/src/test/toastCompensationTwin.test.ts` can read the
+ * stylesheet and pin the two together; no compiler spans CSS and TypeScript.
+ *
+ * It is also the one-token lever for #909's measured `-13.00px` legend-budget
+ * cost: dropping this to `0` returns 8px of that budget at every narrow
+ * viewport, at the cost of the inset `left: 0.5rem` already establishes for
+ * the same corner. `app.css`'s #909 comment carries the margin table.
+ */
+export const MAP_CHROME_TOP_PX = 8;
 
 // Always-mounted host for the plan-independent map data layers (#38 harbor
 // markers, #39 depth overlay). Deliberately a SIBLING of RouteLayer, not part
@@ -1057,11 +1073,30 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
     // cross-observer ordering entirely — same technique this effect
     // already uses for `.data-layer-controls`'s own height, above.
     const bannerEl = document.querySelector<HTMLElement>('.banner-area');
+    // #909: the narrow shell is a grid whose MAP ROW — `.map-area` — is the
+    // frame every bound below is expressed in. Measured directly rather than
+    // reconstructed as `innerHeight - header - banner`: that reconstruction
+    // is exactly what this effect used to do (`56 + bannerHeight`, a
+    // hardcoded 3.5rem), and it was wrong by 13px because `.app-header`
+    // renders 61px, not the 3rem the constant assumed (MEASURED 2026-09-05
+    // on a real preview build, all 12 STANDARD+EDGE viewports).
+    const mapAreaEl = document.querySelector<HTMLElement>('.map-area');
     const recompute = () => {
       document.documentElement.style.setProperty(
         '--sc-depth-controls-height',
         `${el.getBoundingClientRect().height}px`,
       );
+      // Published for `app.css`'s `.depth-legend-body` max-height, which
+      // needs this same map-row frame and cannot get it from a percentage:
+      // its containing block is the auto-height `<details class=
+      // "depth-legend">`, so a `%` height does not resolve there at all.
+      // `.map-stack-tl` itself uses a plain `100%` and needs no property.
+      if (mapAreaEl) {
+        document.documentElement.style.setProperty(
+          '--sc-map-row-h',
+          `${mapAreaEl.getBoundingClientRect().height}px`,
+        );
+      }
       // Wide layout: no sheet-overlay ceiling exists at all (app.css's own
       // wide-layout comment on `.depth-legend-body`) — always reachable.
       if (window.matchMedia('(min-width: 1024px)').matches) {
@@ -1082,29 +1117,73 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
         return;
       }
       // Narrow column layout: mirrors `.map-stack-tl`'s own proven-safe
-      // ceiling (`calc(100dvh - var(--sc-banner-clear-top) - 55vh -
-      // 0.5rem)`, app.css) minus everything `.depth-legend` itself sits
-      // below within that budget (the compass's own 60px offset, above,
-      // plus the 44px touch target this checks room FOR) — the identical
-      // arithmetic app.css's rejected CSS draft used, just able to branch
-      // on layout mode and produce a boolean instead of an unenforceable
-      // clip. `bannerEl` may not be mounted yet (defensive only —
-      // `.banner-area` renders unconditionally, App.tsx) or may genuinely
-      // be 0px tall (no banner showing); either way `0` is the CORRECT
-      // real measurement, not a fallback standing in for one — this reads
-      // `.banner-area`'s own live geometry directly (see this effect's own
-      // comment above `bannerEl`'s declaration), never the generous 176px
-      // constant, which is for a DIFFERENT failure mode (no measurement
-      // possible at all) that does not apply here.
+      // ceiling (`calc(100% - (55vh - var(--sc-toast-height, 0px)) -
+      // var(--sc-map-chrome-top) - 0.5rem)`, app.css) minus everything
+      // `.depth-legend` itself sits below within that budget (the compass's
+      // own 60px offset, above, plus the 44px touch target this checks room
+      // FOR) — the identical arithmetic app.css's rejected CSS draft used,
+      // just able to branch on layout mode and produce a boolean instead of
+      // an unenforceable clip.
+      //
+      // #909 re-derived the FRAME, not the shape: `100%` there is the map
+      // grid row, so this reads `.map-area`'s live height rather than
+      // subtracting a hardcoded header+banner push from `innerHeight`. The
+      // toast is no longer excluded from `.banner-area` — it shrinks the
+      // map row like any other banner — and `app.css` compensates by
+      // trimming the sheet's own cap by exactly the toast's height, so that
+      // term must be ADDED BACK here or this budget disagrees with the CSS
+      // that grants it. `mapAreaEl` may not be mounted yet (defensive only —
+      // `.map-area` renders unconditionally, App.tsx); `innerHeight` is the
+      // pre-#909 frame and the least-wrong stand-in for a missing one.
+      //
+      // NAMED COUPLING: `MAP_CHROME_TOP_PX` and the `- 8` gap below are the
+      // TS twins of app.css's `--sc-map-chrome-top` and the `- 0.5rem` in
+      // that same `max-height`, and the toast term is the twin of its
+      // `- var(--sc-toast-height, 0px)`. No compiler spans CSS and
+      // TypeScript — `app/src/test/toastCompensationTwin.test.ts` pins them.
+      const mapRowPx = mapAreaEl ? mapAreaEl.getBoundingClientRect().height : window.innerHeight;
+      // ONE producer for this height. `ReloadPrompt.tsx`'s own
+      // `ResizeObserver` publishes `--sc-toast-height` on `:root`, and the
+      // `app.css` rule this arithmetic is twinned to spends THAT value — so
+      // read it back rather than measuring `.reload-prompt` a second time,
+      // or the grant (CSS) and the claim (TS) become two independent
+      // measurements of one height that can disagree transiently. Same
+      // technique as the regime read below. The property is REMOVED on the
+      // toast's cleanup, so with no toast this is 0.
+      const toastHeightPx =
+        parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue('--sc-toast-height'),
+        ) || 0;
+      // REGIME SIGNAL, deliberately NOT a restated media query. `app.css`'s
+      // #909 block publishes `--sc-map-grid-rows: 1` on `.map-area`, and
+      // that block's own query is the single place the condition is
+      // written down. Short landscape (`max-height: 500px` +
+      // `orientation: landscape`) is excluded from it and keeps the
+      // pre-#909 overlay layout byte-for-byte — see that block's comment
+      // for the 740x360 measurement behind the exclusion — so it must keep
+      // the pre-#909 BUDGET too: there the header and banner still FLOAT
+      // over a full-viewport `.map-area`, so `mapRowPx` is the whole
+      // viewport and their height has to be subtracted by hand exactly as
+      // it always was. Calling `matchMedia` here instead would duplicate
+      // that query in TypeScript, and no compiler spans CSS and TS — a
+      // second copy is exactly the twin this repo keeps paying for.
+      const gridRows =
+        mapAreaEl !== null &&
+        getComputedStyle(mapAreaEl).getPropertyValue('--sc-map-grid-rows').trim() === '1';
       const bannerHeightPx = bannerEl ? bannerEl.getBoundingClientRect().height : 0;
-      const bannerClearTopPx = 56 + bannerHeightPx; // 3.5rem + banner
-      const budgetPx =
-        window.innerHeight -
-        bannerClearTopPx -
-        window.innerHeight * 0.55 -
-        8 - // 0.5rem
-        el.getBoundingClientRect().height -
-        60; // gap + compass + gap, matching `.depth-legend`'s own `top`
+      const budgetPx = gridRows
+        ? mapRowPx -
+          MAP_CHROME_TOP_PX -
+          (window.innerHeight * 0.55 - toastHeightPx) -
+          8 - // 0.5rem, the gap this cluster leaves above the sheet
+          el.getBoundingClientRect().height -
+          60 // gap + compass + gap, matching `.depth-legend`'s own `top`
+        : window.innerHeight -
+          (56 + bannerHeightPx) - // 3.5rem + banner: the pre-#909 clearance push
+          window.innerHeight * 0.55 -
+          8 - // 0.5rem
+          el.getBoundingClientRect().height -
+          60;
       // #641: TWINNED to `app.css`'s `.depth-legend > summary { min-height:
       // 44px }` — the legend's whole COLLAPSED box, since #638's chrome
       // padding on `.depth-legend` is horizontal-only by design. No compiler
@@ -1122,6 +1201,13 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
     // already queried above, before `recompute`'s own closure, so both this
     // observation and the read inside `recompute` share the SAME node.
     if (bannerEl) ro.observe(bannerEl);
+    // #909: the map row is the budget's own frame, and it shrinks whenever
+    // `.banner-area` grows. Observing it as well as `.banner-area` is
+    // deliberate redundancy on the SAFE side — the two are coupled through
+    // the grid, and a callback ordering where one has settled and the other
+    // has not is exactly the stale-read class this effect's `bannerEl`
+    // comment above already documents.
+    if (mapAreaEl) ro.observe(mapAreaEl);
     // A pure viewport resize/rotation (no `.data-layer-controls` or
     // `.banner-area` size change) also moves the budget — `window.innerHeight`
     // and the media queries above both depend on it directly.
