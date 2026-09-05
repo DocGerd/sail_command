@@ -2,8 +2,8 @@
 
 Status: **approved** (maintainer, 2026-09-04)
 Covers: #846 (rename), #845 (seamark as waypoint), #848 (persist named waypoints)
-Amended by: #966 (§2.5 superseded — any seamark is eligible; milestone v0.23.0)
 Milestone: v0.21.0
+Amended by: #966 (§2.5 superseded — any seamark is eligible; milestone v0.23.0)
 
 Written because #848's own body argues these three are "probably one design, not
 three". They share one data model, one UI surface and one identity question, and
@@ -204,9 +204,9 @@ into one range attributed to "the nearest" — that was a 4×2 pair-set range
 mis-attributed to a single mark, and it is how an earlier draft went wrong.
 
 The lateral function the maintainer knows from the water is not expressed in
-either mark's tags, so no tag-based heuristic over this data could recover it:
-widening the allowlist by category would have been guesswork, and dropping it is
-the rule the data supports.
+either black mark's tags, so no tag-based heuristic over this data could
+recover it: widening the allowlist by category would have been guesswork, and
+dropping it is the rule the data supports.
 
 Three caveats, stated because an earlier draft of this paragraph asserted each
 of them wrongly and a reviewer measured all three:
