@@ -1,4 +1,4 @@
-import { useLayoutEffect } from 'react';
+import { useLayoutEffect, useRef, type RefObject } from 'react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { useT } from '../i18n';
 
@@ -64,6 +64,58 @@ import { useT } from '../i18n';
 // outright, at every viewport wide enough to still fit the message text —
 // unlike the vertical-only anchor, this needs no squeeze fallback for the
 // `.route-layer-controls` axis at all.
+/* #909: publishes this toast's REAL rendered height as `--sc-toast-height`.
+
+   Distinct from `useToastAnchor` below, and both ship deliberately, because
+   #909's grid-row layout is scoped OUT of short landscape
+   (`max-height: 500px and orientation: landscape` — see `app.css`'s #909
+   block for the 740x360 measurement behind that exclusion):
+
+     - short landscape keeps the pre-#909 overlay layout, where the toast is
+       `position: fixed` and `useToastAnchor` is what places it clear of the
+       map chrome. Unchanged, hence untouched.
+     - everywhere else narrow, `.banner-area` is a real grid row, the toast
+       is an ordinary flex child of it again, and its height comes out of the
+       map row — so `app.css` hands that height back by trimming
+       `.app-bottom-sheet`'s cap by exactly this value. The anchor's
+       `--sc-toast-top`/`--sc-toast-right` are still written there but the
+       #909 block overrides `position` to `static`, so they are inert.
+
+   `useLayoutEffect`, not `useEffect`: this value is read by CSS that affects
+   FIRST PAINT, and `useEffect` fires after paint, leaving a real window in
+   which `var(--sc-toast-height, 0px)` resolves to its fallback and the sheet
+   renders one frame too tall. Safe here because the ref is this component's
+   OWN returned host element, not a sibling's (the `PanelResizer.tsx`
+   distinction). The property is REMOVED on cleanup, so with no toast the cap
+   is a plain `55vh` rather than a stale trimmed one. */
+function useToastHeight(
+  needRefresh: boolean,
+  offlineReady: boolean,
+): RefObject<HTMLDivElement | null> {
+  const toastRef = useRef<HTMLDivElement | null>(null);
+  const active = needRefresh || offlineReady;
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    const clear = () => root.style.removeProperty('--sc-toast-height');
+    const el = active ? toastRef.current : null;
+    if (!el || typeof ResizeObserver !== 'function') {
+      clear();
+      return clear;
+    }
+    const publish = () => {
+      root.style.setProperty('--sc-toast-height', `${el.getBoundingClientRect().height}px`);
+    };
+    const ro = new ResizeObserver(publish);
+    ro.observe(el);
+    publish();
+    return () => {
+      ro.disconnect();
+      clear();
+    };
+  }, [active, needRefresh, offlineReady]);
+  return toastRef;
+}
+
 function useToastAnchor(active: boolean): void {
   useLayoutEffect(() => {
     if (!active) return;
@@ -221,10 +273,11 @@ export default function ReloadPrompt() {
   // Called every render regardless of which branch below fires (Rules of
   // Hooks) — the effect inside no-ops unless a toast is actually showing.
   useToastAnchor(needRefresh || offlineReady);
+  const toastRef = useToastHeight(needRefresh, offlineReady);
 
   if (needRefresh) {
     return (
-      <div role="alert" className="banner banner-info reload-prompt">
+      <div role="alert" className="banner banner-info reload-prompt" ref={toastRef}>
         <span className="banner-message">{t('pwa.updateAvailable')}</span>
         <button
           type="button"
@@ -260,7 +313,7 @@ export default function ReloadPrompt() {
 
   if (offlineReady) {
     return (
-      <div role="status" className="banner banner-info reload-prompt">
+      <div role="status" className="banner banner-info reload-prompt" ref={toastRef}>
         <span className="banner-message">{t('pwa.offlineReady')}</span>
         <button
           type="button"
