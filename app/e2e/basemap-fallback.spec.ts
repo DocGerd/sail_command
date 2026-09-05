@@ -1,5 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
-import { startPreview } from './helpers';
+import { startPreview, assertCleanServiceWorkerState } from './helpers';
 
 // #118: GitHub Pages/Fastly gzip-compresses application/octet-stream and
 // answers Range requests with 206 slices OF THE COMPRESSED stream — the
@@ -18,6 +18,20 @@ import { startPreview } from './helpers';
 // passing full-body GETs through to the real server. Without that simulation
 // the fallback path would never fire in any environment while the CDN
 // behaves — this spec is what keeps it from rotting.
+//
+// #928: both tests below create their own page via `browser.newContext()`/
+// `context.newPage()` AFTER calling `startPreview()` with no `page` argument,
+// so the shared `assertCleanServiceWorkerState(page)` path never runs here —
+// each calls it explicitly below, once its own page exists, matching every
+// other own-page site in this suite. `serviceWorkers: 'block'` makes
+// `navigator.serviceWorker.register()` resolve to `undefined` —
+// `getRegistrations()` stays empty and `controller` stays `null` after it —
+// so no worker can ever register or control a page in these contexts.
+// `navigator.serviceWorker` and `caches` themselves remain present once the
+// page has navigated (they read `undefined` only on the pre-navigation
+// `about:blank`, an opaque-origin effect, not a property of this option), so
+// the call below does not throw — it navigates to `sw.js` and reports 0/0.
+// Measured 2026-09-05 against the installed `playwright-core@1.62.1`.
 
 const GERMAN_MAP_ERROR_BANNER =
   'Kartendaten konnten nicht geladen werden — Anzeige evtl. unvollständig.';
@@ -49,6 +63,7 @@ test('forced CDN corruption (#118 signature): preflight fails, exactly one full-
   const context = await browser.newContext({ serviceWorkers: 'block' });
   try {
     const page = await context.newPage();
+    await assertCleanServiceWorkerState(page);
     const canvas = page.locator('canvas.maplibregl-canvas');
 
     // ---- Phase 1: deterministic NO-TILES baseline. ----------------------
@@ -140,6 +155,7 @@ test('honest origin: preflight passes, ranged fast path stays, no full-body arch
   const context = await browser.newContext({ serviceWorkers: 'block' });
   try {
     const page = await context.newPage();
+    await assertCleanServiceWorkerState(page);
 
     const ranged206Responses: string[] = [];
     const fullBodyRequests: string[] = [];

@@ -1614,6 +1614,11 @@ test('#638: the depth-hatch legend has panel chrome at every STANDARD_VIEWPORTS 
       }, lang);
       const page = await context.newPage();
       try {
+        // #928: this test creates its OWN page via browser.newContext()/
+        // context.newPage() AFTER startPreview() has already returned, so
+        // the shared path inside startPreview(page) never reaches it — see
+        // the `#871` guards below for the same reasoning.
+        await assertCleanServiceWorkerState(page);
         await page.setViewportSize(STANDARD_VIEWPORTS.desktopHd);
         await page.goto(server.url);
         await mapReady(page);
@@ -1883,6 +1888,11 @@ test('#762: the safety-depth field label does not overflow its column at tablet 
       }, lang);
       const page = await context.newPage();
       try {
+        // #928: this test creates its OWN page via browser.newContext()/
+        // context.newPage() AFTER startPreview() has already returned, so
+        // the shared path inside startPreview(page) never reaches it — see
+        // the `#871` guards below for the same reasoning.
+        await assertCleanServiceWorkerState(page);
         await page.setViewportSize(STANDARD_VIEWPORTS.tabletLandscape);
         await page.goto(server.url);
         await mapReady(page);
@@ -1934,16 +1944,11 @@ test('#762: the safety-depth field label does not overflow its column at tablet 
 // Poll until three consecutive reads agree, mirroring `labels.spec.ts`'s
 // own settle pattern for a MapLibre placement throttle — a different
 // producer, the same "async recompute after a resize" shape.
-async function settledLegendHidden(
-  page: Page,
-  legend: Locator,
-): Promise<boolean> {
+async function settledLegendHidden(page: Page, legend: Locator): Promise<boolean> {
   let last: boolean | null = null;
   let streak = 0;
   for (let i = 0; i < 30; i += 1) {
-    const current = await legend.evaluate(
-      (el) => (el as HTMLDetailsElement).hidden,
-    );
+    const current = await legend.evaluate((el) => (el as HTMLDetailsElement).hidden);
     if (current === last) {
       streak += 1;
       if (streak >= 3) return current;
@@ -1953,11 +1958,11 @@ async function settledLegendHidden(
     }
     await page.waitForTimeout(100);
   }
-  if (last === null) throw new Error("settledLegendHidden: never read a value");
+  if (last === null) throw new Error('settledLegendHidden: never read a value');
   return last;
 }
 
-test("#871: the SW toast alone never hides the depth legend, across the shared viewport matrix (no plan)", async ({
+test('#871: the SW toast alone never hides the depth legend, across the shared viewport matrix (no plan)', async ({
   browser,
 }) => {
   const server = await startPreview();
@@ -1973,25 +1978,18 @@ test("#871: the SW toast alone never hides the depth legend, across the shared v
         // #832: this test creates its OWN page via browser.newContext()/
         // context.newPage() AFTER startPreview() has already returned, so
         // the shared path inside startPreview(page) never reaches it —
-        // required here specifically, per helpers.ts's own doc comment,
-        // because the surface under test is EXACTLY a stale-SW hazard: the
-        // toast is one-shot per service-worker registration, so a foreign
-        // or stale registration on this origin is the one thing that could
-        // make a fresh-context sweep report a false OK.
+        // called here for symmetry/defence-in-depth (reachability tracked
+        // at #975, not asserted here).
         await assertCleanServiceWorkerState(page);
         await page.goto(server.url);
         await mapReady(page);
 
-        const legend = page.locator("details.depth-legend");
-        await page
-          .locator(".reload-prompt")
-          .waitFor({ state: "visible", timeout: 15_000 });
+        const legend = page.locator('details.depth-legend');
+        await page.locator('.reload-prompt').waitFor({ state: 'visible', timeout: 15_000 });
         const hiddenWithToast = await settledLegendHidden(page, legend);
 
-        await page
-          .locator(".reload-prompt .banner-dismiss")
-          .click({ timeout: 5_000 });
-        await expect(page.locator(".banner-area .banner")).toHaveCount(0);
+        await page.locator('.reload-prompt .banner-dismiss').click({ timeout: 5_000 });
+        await expect(page.locator('.banner-area .banner')).toHaveCount(0);
         const hiddenWithoutToast = await settledLegendHidden(page, legend);
 
         // The load-bearing claim: the toast ALONE must never flip `hidden`
@@ -2025,7 +2023,7 @@ test("#871: the SW toast alone never hides the depth legend, across the shared v
 // file's own SINGLE_BANNER_VIEWPORTS comment) and cannot overlap map chrome
 // by construction. `tabletPortrait` sits on the narrow side of that
 // breakpoint and is included.
-test("#871: the SW toast does not intercept .route-layer-controls with a plan loaded", async ({
+test('#871: the SW toast does not intercept .route-layer-controls with a plan loaded', async ({
   browser,
 }) => {
   const server = await startPreview();
@@ -2043,30 +2041,26 @@ test("#871: the SW toast does not intercept .route-layer-controls with a plan lo
         // test creates its own page after startPreview() returned, so it
         // is not reached by that function's own `page` parameter.
         await assertCleanServiceWorkerState(page);
-        await page.goto(
-          `${server.url}?windFixture=test-fixtures/wind-sw12.json`,
-        );
+        await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
         await mapReady(page);
-        await page
-          .locator(".reload-prompt")
-          .waitFor({ state: "visible", timeout: 15_000 });
+        await page.locator('.reload-prompt').waitFor({ state: 'visible', timeout: 15_000 });
 
-        await page.getByRole("tab", { name: "Planen" }).click();
-        const originSection = page.getByRole("region", { name: "Start" });
-        await originSection.getByRole("combobox").fill("Langballigau");
-        await expect(originSection.getByRole("option")).toHaveCount(1);
-        await originSection.getByRole("option").first().click();
+        await page.getByRole('tab', { name: 'Planen' }).click();
+        const originSection = page.getByRole('region', { name: 'Start' });
+        await originSection.getByRole('combobox').fill('Langballigau');
+        await expect(originSection.getByRole('option')).toHaveCount(1);
+        await originSection.getByRole('option').first().click();
 
-        const destSection = page.getByRole("region", { name: "Ziel" });
-        await destSection.getByRole("combobox").fill("Sønderborg");
-        await expect(destSection.getByRole("option")).toHaveCount(1);
-        await destSection.getByRole("option").first().click();
+        const destSection = page.getByRole('region', { name: 'Ziel' });
+        await destSection.getByRole('combobox').fill('Sønderborg');
+        await expect(destSection.getByRole('option')).toHaveCount(1);
+        await destSection.getByRole('option').first().click();
 
-        const planButton = page.getByRole("button", { name: "Route planen" });
+        const planButton = page.getByRole('button', { name: 'Route planen' });
         await planButton.click();
         await expect(planButton).toBeEnabled({ timeout: 60_000 });
 
-        const controls = page.locator(".route-layer-controls");
+        const controls = page.locator('.route-layer-controls');
         await expect(controls).toBeVisible();
 
         // The toast is dismissable and one-shot; if it self-cleared before
@@ -2074,7 +2068,7 @@ test("#871: the SW toast does not intercept .route-layer-controls with a plan lo
         // nothing left to probe for this row — that is a pass by vacuity,
         // not a claim this row was exercised, so it is logged rather than
         // silently treated the same as a genuine clear result.
-        if (!(await page.locator(".reload-prompt").isVisible())) {
+        if (!(await page.locator('.reload-prompt').isVisible())) {
           console.log(
             `${label}: SW toast already dismissed before planning finished — row not exercised`,
           );
@@ -2104,26 +2098,22 @@ test("#871: the SW toast does not intercept .route-layer-controls with a plan lo
           .poll(
             async () => {
               const b = await controls.boundingBox();
-              if (!b) return "no box";
+              if (!b) return 'no box';
               const ys = [b.y + 4, b.y + b.height / 2, b.y + b.height - 4];
               for (const y of ys) {
-                const hit = await elementDescriptionAt(
-                  page,
-                  b.x + b.width / 2,
-                  y,
-                );
-                if (hit.includes("reload-prompt")) {
+                const hit = await elementDescriptionAt(page, b.x + b.width / 2, y);
+                if (hit.includes('reload-prompt')) {
                   return `blocked by toast at (${Math.round(b.x + b.width / 2)},${Math.round(y)}): ${hit}`;
                 }
               }
-              return "clear";
+              return 'clear';
             },
             {
               timeout: 10_000,
               message: `${label} (${viewport.width}x${viewport.height})`,
             },
           )
-          .toBe("clear");
+          .toBe('clear');
       } finally {
         await context.close();
       }
@@ -2186,9 +2176,9 @@ function hitState(target: Locator, toastSelector: string): Promise<string> {
     const y = box.top + box.height / 2;
     const top = document.elementFromPoint(x, y);
     const describe = (e: Element) =>
-      `${e.tagName}.${Array.from(e.classList).join(".") || "(no class)"}`;
-    if (!top) return "(none)";
-    if (el === top || el.contains(top)) return "clear";
+      `${e.tagName}.${Array.from(e.classList).join('.') || '(no class)'}`;
+    if (!top) return '(none)';
+    if (el === top || el.contains(top)) return 'clear';
     const toast = document.querySelector(sel);
     if (toast && (toast === top || toast.contains(top))) {
       return `blocked by toast: ${describe(top)}`;
@@ -2211,30 +2201,27 @@ test("#909: with the SW toast up, .map-stack-tl's depth checkbox stays clear and
       const page = await context.newPage();
       try {
         // #832: fresh context/page created AFTER startPreview() returned —
-        // same reason as the `#871` guards above (a stale/foreign SW
-        // registration on this origin is exactly the hazard under test:
-        // the toast is one-shot per registration).
+        // called here for symmetry/defence-in-depth, same as the `#871`
+        // guards above (reachability tracked at #975, not asserted here).
         await assertCleanServiceWorkerState(page);
         await page.goto(server.url);
         await mapReady(page);
-        await page
-          .locator(".reload-prompt")
-          .waitFor({ state: "visible", timeout: 15_000 });
+        await page.locator('.reload-prompt').waitFor({ state: 'visible', timeout: 15_000 });
 
-        const compass = page.locator(".compass-btn");
-        const depthCheckbox = page.getByRole("checkbox", {
-          name: "Wassertiefen",
+        const compass = page.locator('.compass-btn');
+        const depthCheckbox = page.getByRole('checkbox', {
+          name: 'Wassertiefen',
         });
         const msg = `${label} (${viewport.width}x${viewport.height})`;
 
         // Geometry is RE-READ inside `hitState` on every poll tick (never
         // frozen from a single pre-settle read) — this file's own #412 rule.
         await expect
-          .poll(() => hitState(depthCheckbox, ".reload-prompt"), {
+          .poll(() => hitState(depthCheckbox, '.reload-prompt'), {
             timeout: 10_000,
             message: `${msg}: depth checkbox`,
           })
-          .toBe("clear");
+          .toBe('clear');
 
         // KNOWN residual — pinned, not silently accepted. A future change
         // that makes this WORSE (the checkbox above also stops being
@@ -2242,7 +2229,7 @@ test("#909: with the SW toast up, .map-stack-tl's depth checkbox stays clear and
         // assertion deliberately, never slip past a guard that only ever
         // checked "not visible".
         await expect
-          .poll(() => hitState(compass, ".reload-prompt"), {
+          .poll(() => hitState(compass, '.reload-prompt'), {
             timeout: 10_000,
             message: `${msg}: compass`,
           })
@@ -2287,16 +2274,14 @@ const AIS_CHIP_VIEWPORTS = {
 const AIS_CHIP_MAX_TWO_LINE_HEIGHT_PX = 42;
 const AIS_CHIP_MIN_RENDERED_HEIGHT_PX = 15;
 
-function probeAisChipGeometry(
-  page: Page,
-): Promise<{
+function probeAisChipGeometry(page: Page): Promise<{
   height: number;
   left: number;
   right: number;
   viewportWidth: number;
 } | null> {
   return page.evaluate(() => {
-    const el = document.querySelector(".ais-status");
+    const el = document.querySelector('.ais-status');
     if (!el) return null;
     const r = el.getBoundingClientRect();
     return {
@@ -2308,39 +2293,39 @@ function probeAisChipGeometry(
   });
 }
 
-test("#807: the AIS status chip never wraps past two lines at 280/320px, in either language, and never crosses the viewport edge", async ({
+test('#807: the AIS status chip never wraps past two lines at 280/320px, in either language, and never crosses the viewport edge', async ({
   browser,
 }) => {
   const server = await startPreview();
   try {
-    for (const lang of ["de", "en"] as const) {
+    for (const lang of ['de', 'en'] as const) {
       const context = await browser.newContext();
       await context.addInitScript((l) => {
-        window.localStorage.setItem("sc-lang", l);
+        window.localStorage.setItem('sc-lang', l);
       }, lang);
       const page = await context.newPage();
       try {
+        // #928: this test creates its OWN page via browser.newContext()/
+        // context.newPage() AFTER startPreview() has already returned, so
+        // the shared path inside startPreview(page) never reaches it — see
+        // the `#871` guards above for the same reasoning.
+        await assertCleanServiceWorkerState(page);
         for (const [name, vp] of Object.entries(AIS_CHIP_VIEWPORTS)) {
           await page.setViewportSize(vp);
           await page.goto(server.url);
           await mapReady(page);
-          await page.getByRole("tab", { name: "Live" }).click();
+          await page.getByRole('tab', { name: 'Live' }).click();
           const label = `${name} (${vp.width}x${vp.height}) / ${lang}`;
 
           await expect
-            .poll(
-              async () => (await probeAisChipGeometry(page))?.height ?? -1,
-              {
-                message: `${label}: .ais-status height (px) must exceed a one-line render`,
-              },
-            )
+            .poll(async () => (await probeAisChipGeometry(page))?.height ?? -1, {
+              message: `${label}: .ais-status height (px) must exceed a one-line render`,
+            })
             .toBeGreaterThan(AIS_CHIP_MIN_RENDERED_HEIGHT_PX);
 
           await expect
             .poll(
-              async () =>
-                (await probeAisChipGeometry(page))?.height ??
-                Number.POSITIVE_INFINITY,
+              async () => (await probeAisChipGeometry(page))?.height ?? Number.POSITIVE_INFINITY,
               {
                 message: `${label}: .ais-status height (px) must not exceed a two-line render`,
               },
@@ -2352,9 +2337,7 @@ test("#807: the AIS status chip never wraps past two lines at 280/320px, in eith
               async () => {
                 const g = await probeAisChipGeometry(page);
                 if (!g) return Number.POSITIVE_INFINITY;
-                return (
-                  Math.max(0, -g.left) + Math.max(0, g.right - g.viewportWidth)
-                );
+                return Math.max(0, -g.left) + Math.max(0, g.right - g.viewportWidth);
               },
               {
                 message: `${label}: .ais-status overflow beyond the viewport edge (px)`,

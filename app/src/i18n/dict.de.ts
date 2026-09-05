@@ -810,6 +810,9 @@ export const de = {
   'plansList.recalc.offline':
     'Neuberechnung nur online möglich — es wird eine frische Windvorhersage geladen.',
   'plansList.recalcName': '{name} (neu berechnet)',
+  // #961: siehe die englische Fassung in dict.en.ts für die Begründung.
+  'plansList.recalcAnnounce':
+    'Route neu berechnet — Ankunft {arrival}, Dauer {duration}, {distance}.',
   // #848: siehe dict.en.ts für den Kontext (SavedWaypoints.tsx, nur im
   // Panel — Designspezifikation §2.7, in dieser Version noch keine
   // Kartenebene).
