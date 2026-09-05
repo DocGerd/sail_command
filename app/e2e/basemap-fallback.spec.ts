@@ -18,6 +18,20 @@ import { startPreview } from './helpers';
 // passing full-body GETs through to the real server. Without that simulation
 // the fallback path would never fire in any environment while the CDN
 // behaves — this spec is what keeps it from rotting.
+//
+// #928: both tests below create their own page via `browser.newContext()`/
+// `context.newPage()` AFTER calling `startPreview()` with no `page` argument,
+// so the shared `assertCleanServiceWorkerState(page)` path never runs here —
+// DELIBERATELY, not merely uncovered. `serviceWorkers: 'block'` makes
+// `navigator.serviceWorker` `undefined` in the resulting page (verified
+// 2026-09-05 with a throwaway probe script against the installed
+// `playwright-core@1.62.1`: `typeof navigator.serviceWorker` reads
+// `'undefined'` in a context constructed with this exact option), so no
+// service worker can ever register in these contexts and there is no stale
+// registration for `assertCleanServiceWorkerState` to find or clear — calling
+// it here would itself throw (`navigator.serviceWorker.getRegistrations()`
+// on `undefined`). This is the #928 issue's own "open question" about these
+// two sites, resolved: they are exempt by construction, not a residual.
 
 const GERMAN_MAP_ERROR_BANNER =
   'Kartendaten konnten nicht geladen werden — Anzeige evtl. unvollständig.';
