@@ -121,56 +121,55 @@ test('plans a route: harbor search -> rig comparison -> saved under Routen', asy
     // whatever the router decides, they have to agree. That is the invariant
     // this end-to-end path exists to check.
     //
-    // #455 REPLACED A SNAPSHOT WITH THAT INVARIANT. This assertion used to
-    // pin the TIE specifically: #259/#275 measured this demo route
-    // (Langballigau -> Sønderborg, uniform 12 kn / 225° fixture wind) at a
-    // genoa/fock gap of ~13.6 s against the 60 s `RIG_TIE_BAND_MS`
-    // (planRoute.ts) and asserted no ★ on either tab. But a 13.6 s margin
-    // inside a 60 s band was always one perturbation away from flipping —
-    // and #455's mask correction flipped it. MEASURED on this exact route
-    // and wind, DEFAULT_SETTINGS:
-    //     pre-#455 mask:  gap  13.57 s -> tie      (0.28% of an 81.1 min passage)
-    //     corrected mask: gap 108.84 s -> decided  (2.17% of an 83.6 min passage)
-    // Fock genuinely wins now, and not marginally: 108.8 s is 1.81x the band,
-    // both rigs are all-sail, and both got slower under the corrected mask —
-    // genoa by 149 s and fock by only 27 s, which is what opened the gap.
-    // Those figures are MASK-DERIVED and will legitimately move again on any
-    // regeneration; check the DIRECTION before concluding anything from a
-    // change here.
+    // #455 REPLACED A SNAPSHOT WITH THAT INVARIANT, and #278 (this block)
+    // NARROWED it again: an agreement check alone tolerates EITHER outcome,
+    // so it never actually exercises the `decided` (★) path end-to-end — a
+    // silent flip back to `tie` would pass green with zero signal, which is
+    // the exact defect #278 names. `decided` is therefore now REQUIRED, not
+    // merely checked for self-consistency when present.
     //
-    // So the verdict is no longer pinned — the AGREEMENT is. A tie must show
-    // no ★ and the tie sentence; a decision must show exactly one ★, on the
-    // tab of the rig the chip names. The regression the old comment feared —
-    // "a silent single-rig badge" — still fails loudly, because a ★ appearing
-    // beside the tie sentence satisfies neither branch.
+    // History: #259/#275 measured this demo route (Langballigau ->
+    // Sønderborg, uniform 12 kn / 225° fixture wind) at a genoa/fock gap of
+    // ~13.6 s against the 60 s `RIG_TIE_BAND_MS` (planRoute.ts) and pinned a
+    // tie. #455's mask correction flipped that to a 108.84 s gap (1.81x the
+    // band) and #278's 2026-08-20 comment records DECIDED as the then-current
+    // outcome — but ~147 routing commits landed after that measurement with
+    // no re-check, which is exactly why #278 stayed open even after that
+    // finding: an if/else that tolerates either branch can never notice a
+    // margin eroding back toward the band. RE-VERIFIED 2026-09-05 against
+    // this worktree's build: the chip reads "Schneller: Fock" (decided) on
+    // this exact route/fixture. No exact gap was remeasured this session —
+    // only the branch taken — so state the outcome, not a stale-looking
+    // second decimal figure.
+    //
+    // Mutation-proof for the assertion below (see PR description): with
+    // `RIG_TIE_BAND_MS` temporarily inflated to force a tie on this same
+    // route, the OLD if/else version of this block stayed green (it has an
+    // else arm for exactly that case); this version fails loudly with the
+    // chip text in the message.
     const fasterRigChip = page.locator('.route-summary .chip-faster-rig');
     await expect(fasterRigChip).toBeVisible();
     const chipText = ((await fasterRigChip.textContent()) ?? '').trim();
     const stars = rigTabs.getByLabel('Empfohlen');
     const decided = /^Schneller: (Genua|Fock)$/.exec(chipText);
-    if (decided) {
-      const winner = decided[1];
-      await expect(
-        stars,
-        `chip reads "${chipText}", so exactly one rig tab must carry the Empfohlen badge`,
-      ).toHaveCount(1);
-      await expect(
-        (winner === 'Genua' ? genoaTab : fockTab).getByLabel('Empfohlen'),
-        `chip names ${winner}, so the Empfohlen badge must sit on the ${winner} tab`,
-      ).toHaveCount(1);
-    } else {
-      expect(
-        [
-          'Genua und Fock liegen für diese Passage praktisch gleichauf',
-          'Riggwahl spielt hier keine Rolle — die Passage läuft durchgehend unter Motor',
-        ],
-        `chip must read the tie or moot sentence when no rig is recommended, got "${chipText}"`,
-      ).toContain(chipText);
-      await expect(
-        stars,
-        `chip reads "${chipText}", so neither rig tab may carry the Empfohlen badge`,
-      ).toHaveCount(0);
+    if (!decided) {
+      throw new Error(
+        `#278: expected a DECIDED rig recommendation (one rig's ★, "Schneller: Genua|Fock") ` +
+          `so this spec keeps exercising that end-to-end path — instead the chip read ` +
+          `"${chipText}". If the demo route/fixture genuinely ties now, this spec needs a ` +
+          `route or wind fixture with a wider genoa/fock margin, per #278's suggested approach ` +
+          `— do not widen RIG_TIE_BAND_MS or pick a margin near the band edge to make this pass.`,
+      );
     }
+    const winner = decided[1];
+    await expect(
+      stars,
+      `chip reads "${chipText}", so exactly one rig tab must carry the Empfohlen badge`,
+    ).toHaveCount(1);
+    await expect(
+      (winner === 'Genua' ? genoaTab : fockTab).getByLabel('Empfohlen'),
+      `chip names ${winner}, so the Empfohlen badge must sit on the ${winner} tab`,
+    ).toHaveCount(1);
 
     // Both rigs must have actually found a route (an ETA, not a no-route
     // alert) — a broad reach in 12 kn should always be sailable for either
