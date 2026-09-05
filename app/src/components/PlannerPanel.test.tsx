@@ -84,10 +84,34 @@ const HARBORS = [FLENSBURG, MARSTAL];
 
 // #834: mirrors HarborPicker.test.tsx's ARNIS fixture — the real shipped
 // "arnis" #9 KNOWN_DISCONNECTED harbor, with BOTH an approachNote and
-// knownDisconnected: true, so a test can confirm the two coexist in the
+// (via withKnownDisconnectedFlag below) knownDisconnected: true, so a test can confirm the two coexist in the
 // selected-endpoint row exactly as they already coexist in the picker's
 // option row.
-const ARNIS: HarborWithReachability = {
+//
+// #899: ARNIS is deliberately typed as a plain `Harbor`, WITHOUT a
+// `knownDisconnected` property, and the flag is attached below via
+// withKnownDisconnectedFlag's runtime cast instead of a typed object-literal
+// property. harborPickerKnownDisconnectedCoupling.test.tsx's own header
+// documents why: an IDE "Rename Symbol" on HarborWithReachability's field
+// renames every TYPED reference consistently — the type declaration,
+// PlannerPanel.tsx's own `.knownDisconnected` read sites
+// (originHarbor?.knownDisconnected / destinationHarbor?.knownDisconnected),
+// AND a typed `knownDisconnected: true` literal on a
+// HarborWithReachability-typed const — so a fixture built the old way stays
+// green through exactly the mutation #899 exists to catch (PlannerPanel.tsx's
+// read site renamed right along with the fixture, both landing on the SAME
+// new name). A `Record<string, unknown>` cast setting the literal STRING key
+// 'knownDisconnected' is not a typed reference an IDE rename tool can find,
+// so after such a rename this fixture still emits the OLD key while a
+// renamed PlannerPanel.tsx read site looks for the NEW one — reproducing
+// #835's silent miss for this component.
+function withKnownDisconnectedFlag(h: Harbor): HarborWithReachability {
+  const clone: Record<string, unknown> = { ...h };
+  clone['knownDisconnected'] = true;
+  return clone as unknown as HarborWithReachability;
+}
+
+const ARNIS: Harbor = {
   id: 'arnis',
   names: { de: 'Arnis', da: 'Arnæs', en: 'Arnis' },
   country: 'DE',
@@ -96,7 +120,6 @@ const ARNIS: HarborWithReachability = {
     de: 'Oberhalb der Kappelner Brücke.',
     en: 'Above the Kappeln bridge.',
   },
-  knownDisconnected: true,
 };
 
 const DEPARTURE_MS = Date.UTC(2026, 6, 20, 9, 0, 0);
@@ -681,7 +704,7 @@ describe('PlannerPanel', () => {
   // never re-authored, so a mixed-basis regression can't slip in unnoticed.
   it('#834: keeps the known-disconnected disclosure visible on a selected origin row', () => {
     renderPanel({
-      harbors: [...HARBORS, ARNIS],
+      harbors: [...HARBORS, withKnownDisconnectedFlag(ARNIS)],
       origin: { source: 'harbor', point: ARNIS.snap, harborId: ARNIS.id, label: 'Arnis' },
     });
     const originSection = screen.getByRole('region', { name: 'Origin' });
@@ -697,7 +720,7 @@ describe('PlannerPanel', () => {
 
   it('#834: keeps the known-disconnected disclosure visible on a selected destination row', () => {
     renderPanel({
-      harbors: [...HARBORS, ARNIS],
+      harbors: [...HARBORS, withKnownDisconnectedFlag(ARNIS)],
       destination: { source: 'harbor', point: ARNIS.snap, harborId: ARNIS.id, label: 'Arnis' },
     });
     const destinationSection = screen.getByRole('region', { name: 'Destination' });
@@ -737,7 +760,11 @@ describe('PlannerPanel', () => {
       const [origin, setOrigin] = useState<PickedPoint | null>(null);
       return (
         <PlannerPanel
-          {...baseProps({ harbors: [...HARBORS, ARNIS], origin, onPickOrigin: setOrigin })}
+          {...baseProps({
+            harbors: [...HARBORS, withKnownDisconnectedFlag(ARNIS)],
+            origin,
+            onPickOrigin: setOrigin,
+          })}
         />
       );
     }
