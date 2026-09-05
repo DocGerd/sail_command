@@ -332,7 +332,10 @@ function appVersion(command: 'build' | 'serve'): string {
 // BaseSequencer.sort falls back to ordering files by size, descending. That
 // hurts a file that is SMALL but SLOW: invariants.property.test.ts is
 // 5,164 B — ranked 88th LARGEST of 144 test files (re-measured after this
-// branch's own resync onto `origin/develop`, PR #588 review round 2) — so
+// branch's own resync onto `origin/develop`, PR #588 review round 2; NOT
+// re-measured since and now STALE — the file is larger and ranks higher,
+// so this paragraph's "back half" reasoning describes #214's tree, not
+// today's — tracked at #980) — so
 // it sorts well into the back
 // half by size and starts late, becoming the tail of the whole test step
 // even though other workers are free the entire time (measured:
@@ -361,7 +364,8 @@ function appVersion(command: 'build' | 'serve'): string {
 // desired START order (slowest wall-clock time first) — #581:
 // realmask.repro.test.ts (477.4s) was listed before
 // invariants.property.test.ts (239.6s) (measured 2026-08-19 at `04384c2`)
-// rather than the order they were originally added in. Their summed per-file duration — call it
+// rather than the order they were originally added in. Their summed
+// per-file duration — call it
 // combined CPU time, i.e. what the two would have cost run back-to-back on
 // one core — was 477.4 + 239.6 = 717.0s; that sum was DERIVED, never itself
 // measured as one figure, and it was necessarily MORE than the 499.9s
