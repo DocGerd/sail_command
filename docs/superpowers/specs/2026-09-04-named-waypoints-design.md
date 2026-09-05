@@ -2,6 +2,7 @@
 
 Status: **approved** (maintainer, 2026-09-04)
 Covers: #846 (rename), #845 (seamark as waypoint), #848 (persist named waypoints)
+Amended by: #966 (§2.5 superseded — any seamark is eligible)
 Milestone: v0.21.0
 
 Written because #848's own body argues these three are "probably one design, not
@@ -186,9 +187,21 @@ category**, and the original rule conflated them.
 
 **Why no narrower fix exists.** Verified against the shipped
 `app/public/data/seamarks.json` at that bend (~54.83 N, 9.43 E): exactly four
-`beacon_lateral` marks, all starboard/green, and two `beacon_special_purpose`,
-both carrying only `{seamarkType, colour: 'black'}`. The nearest of those
-special-purpose marks lies **642–719 m** from the laterals. The lateral function
+`beacon_lateral` marks, all starboard/green, and two BLACK
+`beacon_special_purpose`, both carrying only `{seamarkType, colour: 'black'}`.
+The adjective is load-bearing and is not a description — **five**
+`beacon_special_purpose` marks sit within 900 m (two black, one white lattice at
+652 m, a stake at 806 m, another white lattice at 868 m), so dropping it makes
+the sentence a false census. No radius rescues the shorter form either: the
+laterals sit 546–619 m out, so any radius admitting all four also admits the
+652 m mark.
+
+Distances, by haversine (the method matters — an equirectangular pass gives
+figures ~1 m different, and an earlier draft mixed the two): the two black marks
+lie **641–679 m** and **681–718 m** from the laterals respectively. Do not
+collapse those into one range attributed to "the nearest" — that was a 4×2
+pair-set range mis-attributed to a single mark, and it is how the previous
+draft went wrong. The lateral function
 the maintainer knows from the water is not expressed in either mark's tags, so
 no tag-based heuristic over this data could recover it: widening the allowlist
 by category would have been guesswork, and dropping it is the rule the data
@@ -201,12 +214,17 @@ of them wrongly and a reviewer measured all three:
   topmark property — its key union is `category`, `colour`, `lightCharacter`,
   `lightColour`, `lightPeriod`, `seamarkType`, `shape`. Any topmark claim about
   these marks is unsupported by the artifact this repo actually ships.
-- **The colour claim holds only at this bend, not repo-wide.** Scoped to these
-  two marks it is true. Across the whole extract, 11 of 703 special-purpose
-  marks carry a red or green colour — including one `buoy_special_purpose`
-  with `colour: red` 803 m from here. The argument above is unaffected, since it
-  turns on these two marks; the unscoped form was simply false.
-- **The Overpass re-query is NOT reproducible from this document.** It was cited
+- **The colour claim holds only at this bend, not repo-wide.** The retracted
+  form read *"none of the special-purpose marks carries a red/green colour or a
+  port/starboard category"*. Scoped to the two black marks it is true. Across
+  the whole extract, 11 of 703 special-purpose marks carry a red or green colour
+  (9 green beacons, 1 red beacon, 1 red buoy) — including one
+  `buoy_special_purpose` with `colour: red` 807 m from here, again by haversine.
+  The argument above is unaffected, since it turns on these two marks; the
+  unscoped form was simply false.
+- **The Overpass re-query is NOT reproducible from this document.** The
+  retracted form read *"a live Overpass re-query of the same bbox returned zero
+  semicolon- or dual-tagged `seamark:type` values"*. It was cited
   without its bbox, date or query text, and the shipped extract cannot stand in
   for it — `pipeline/build_seamarks.mjs` collapses each mark through
   `primaryType()` before writing, so a semicolon- or dual-tagged `seamark:type`
