@@ -343,11 +343,11 @@ making design-level decisions; do not silently deviate.
   planning estimate, not a measurement. Runs captured while building #327's
   PR #330 (`ci.yml`'s docs-only-skip classify step) measured `npm run e2e`
   itself at ~3–4 min (run 30805813518: 10:30:24Z→10:33:40Z, ~3m16s; run
-  30805575220: 10:26:31Z→~10:30:26Z). Use this measured range for e2e-alone
-  planning — superseded; do NOT plan against them. The #605 bullet under
-  PWA/E2E/deploy re-measured a WIDER range across 8 real runs and is what
-  `ci.yml`'s cap was sized from; read the figure there rather than restating
-  it here. The older ~10 min figure may still describe a full CI *cycle*
+  30805575220: 10:26:31Z→~10:30:26Z). Those two runs stand as past events,
+  but that range is SUPERSEDED for planning — the #605 bullet under
+  PWA/E2E/deploy re-measured a wider one, and that is what `ci.yml`'s cap was
+  sized from; read the figure there rather than restating it here. The older
+  ~10 min figure may still describe a full CI *cycle*
   including queueing/startup, not the job's own duration.
 - `ci.yml`'s `e2e` job gates its four expensive steps (`setup-node`, `npm ci`,
   `playwright install`, `npm run e2e`) behind a docs-only classify step (#327,
@@ -892,8 +892,13 @@ making design-level decisions; do not silently deviate.
   is swallowed whole, because the ease's own completion calls a bare
   `this.stop()` (no `allowGestures`) → `_stopHandlers()` → `reset()` on every
   handler, disarming the gesture mid-drag (#391 — closed 2026-09-01 as
-  completed, milestone v0.18.0; symptom, measurement and the workaround in the
-  #383 bullet under Verification lessons).
+  ACCEPTED, NOT fixed: `docs/spikes/391-maplibre-gesture-during-ease.md` §4
+  decides accept-no-mitigation because any app-side fix re-opens the
+  #203/#227 two-term camera guard, and the drafted upstream report is
+  deliberately unfiled. The defect is LIVE for users — that spike's §4.3 says
+  so, and says explicitly that it does not supersede this entry; symptom,
+  measurement and the e2e-side workaround in the #383 bullet under
+  Verification lessons).
 - `fitBounds` must pass `bearing: map.getBearing()` explicitly —
   `cameraForBounds` defaults bearing to 0, so every new `plan.id` (including a
   Live reroute under way) silently un-rotates the chart and kills track-up
@@ -1042,9 +1047,10 @@ making design-level decisions; do not silently deviate.
   is a plain Node `fetch()` with no ServiceWorker in the picture, and
   closing it needed a browser-side unregister+cache-clear in the specs that
   navigate — shipped at #832 (closed 2026-09-04, milestone v0.21.0) as
-  `assertCleanServiceWorkerState` in `app/e2e/helpers.ts`. Re-read the issue and `app/e2e/helpers.ts`'s
-  build-identity comment — the forensics live there).** Neither a free port
-  nor a pid check closes it. **Make the assertion SELF-PROVING instead** —
+  `assertCleanServiceWorkerState` in `app/e2e/helpers.ts`. Re-read the issue
+  and that file's build-identity comment — the forensics live there).**
+  Neither a free port nor a pid check closes the port-squat case. **Make the
+  assertion SELF-PROVING instead** —
   one that can only pass on the exact tree under test. Worked example: PR
   #799's conflict-resolution run passed #774's `tabIndex=0` pin (branch
   only) AND #762's guard (needs develop's `.sc-field label` CSS) in ONE run,
@@ -1059,10 +1065,15 @@ making design-level decisions; do not silently deviate.
   the polars, the basemap archive, the hashed JS/CSS chunks), so both change
   classes ARE covered — but NOT the whole of `dist/` unconditionally, and a
   file escaped for two independent reasons: it sat under an ignored subtree
-  (#833), or its extension was outside the token list (#854 — `.txt` is, so
+  (#833), or its extension is outside the token list (#854 — `.txt` is, so
   `THIRD-PARTY-NOTICES.txt`, whose drift reds the REQUIRED `app` check,
-  passed both probes). BOTH closed 2026-09-03, milestone v0.20.0, by PR #894,
-  which added a structural precache-manifest diff guard. Read both filters off
+  escaped both probes). BOTH closed 2026-09-03, milestone v0.20.0, by PR
+  #894's precache-manifest diff guard — but that guard SAMPLES: past a
+  per-directory cap it checks one lexicographic representative instead of
+  every file, so escape is NARROWED, not closed. Read the cap and the
+  reasoning off `app/e2e/helpers.ts`'s own comment above
+  `pickResidualRepresentatives`, never a figure restated here. Read both
+  filters off
   `vite.config.ts`; do not copy either list here.
 - **A dev-only StrictMode defect is invisible to `e2e` UNCONDITIONALLY and to
   most of `app`.** `app/src/main.tsx` wraps the app in `<StrictMode>`, but
@@ -2633,9 +2644,10 @@ making design-level decisions; do not silently deviate.
   service-worker class and that member ARE covered, and the clause would have
   steered future sessions AWAY from a probe that works (the corrected text is
   the #803 bullet under PWA / E2E / deploy, which also carries what the two
-  probes do NOT reach — an ignored subtree, #833, and an extension outside the
-  token list, #854 — so "the offline-asset class" as a whole is wider than
-  what was measured).
+  probes do NOT reach — PR #894 closed #833 and #854, so that residual is now
+  the SAMPLING one: past a per-directory cap the manifest guard checks one
+  representative per directory, so "the offline-asset class" as a whole is
+  still wider than what was measured).
   The reviewer's own diagnosis: "I proved the antecedent and never enumerated
   the shipped remedy's parts." Every step true, the claim false — the "what
   class of failure can this method not detect?" question, asked of a
@@ -3382,8 +3394,9 @@ making design-level decisions; do not silently deviate.
   prefer "narrowed" to "closed" unless the measurement really covers the
   whole space.
 - **#383 was never a flake — it was a real MapLibre defect** (fixed test-side
-  in PR #390; the upstream maplibre behaviour was tracked separately as #391,
-  closed 2026-09-01 as completed, milestone v0.18.0). Pinned by `app/e2e/compass.spec.ts`'s `rotateThenTapCompassHome`
+  in PR #390; the underlying maplibre defect itself is still live — #391
+  closed 2026-09-01 as ACCEPTED, NOT fixed, v0.18.0). Pinned by
+  `app/e2e/compass.spec.ts`'s `rotateThenTapCompassHome`
   helper, whose closing-gate comment carries the mechanism and the maplibre
   line numbers. Lesson: a lone red test contradicting a green suite deserves
   MORE weight than the suite, not a flake write-off.
@@ -3895,8 +3908,10 @@ making design-level decisions; do not silently deviate.
   '.[].name'` before using a label name — but do NOT re-plan the cleanup as
   outstanding. Separately, there is no `area:` member for user-facing copy,
   i18n or UI component structure; several open issues carry none for that
-  reason, and forcing a wrong one is worse than leaving it bare — #610 tracks
-  the gap and is the count, never this sentence.
+  reason, and forcing a wrong one is worse than leaving it bare. #610 records
+  the gap, but its body freezes a five-issue table whose members have ALL
+  since closed — derive the count from a live label query, never from that
+  frozen table and never from this sentence.
 - Design a guard around its ASYMMETRY: a BLOCKING guard should fail closed, a
   NUDGE should fail open. #233's command segmenter exits 0 while emitting
   confidently-wrong segments, so its fail-closed path covers none of its
@@ -3981,15 +3996,18 @@ making design-level decisions; do not silently deviate.
   owns the ref (safe) or reads a sibling's (unsafe, ordering-dependent)
   decides which hook is correct.
 - **`git checkout -- <path>` is DENIED; `git restore <path>` is allowed and does
-  the same job.** Only the VERB is blocked — the restore itself (typically the
-  `pree2e`-dirtied wind fixture) is routine churn this file already calls
-  expected. FOUR agents hit the denial and found `git restore` independently in
+  the same job.** Only two PATH-FORMS are blocked, not the bare verb — the
+  restore itself (typically the `pree2e`-dirtied wind fixture) is routine
+  churn this file already calls expected. FOUR agents hit the denial and found
+  `git restore` independently in
   one session (2026-09-04), so the rediscovery cost is real and repeated.
   **NOT the destructive-git guard** — that hook contains zero `checkout` logic
   (it matches `push --force`/`-f`, `reset --hard`, `clean -f`). The denial is a
   declarative `deny` PAIR in the PERSONAL global `~/.claude/settings.json`
-  (`Bash(git checkout -- *)` and `Bash(git checkout .)`, which override the
-  broader `Bash(git checkout *)` that sits in `allow`), so it is a permission
+  (`Bash(git checkout -- *)` and `Bash(git checkout .)`; deny is evaluated
+  before allow, so they beat the `Bash(git checkout *)` that sits in `allow`
+  — evaluation ORDER, not specificity, so a narrower `allow` entry cannot
+  re-enable them), so it is a permission
   match rather than a hook, it is unversioned and per-machine, and a
   contributor's checkout has none of it. Recorded because the first draft of
   this bullet named the hook: the BEHAVIOUR was right and the ATTRIBUTION would
