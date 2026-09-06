@@ -56,9 +56,9 @@ making design-level decisions; do not silently deviate.
   ask-gate hook, and a subagent writing there would slip a spec edit past
   the gate. A spike doc is evidence for a decision, never a spec — promoting
   one to a spec is a main-session act.
-  Design records live in FOUR places and three survive a clone: audited
-  2026-08-28, `docs/superpowers/specs/` 8 files, `docs/spikes/` 12 and
-  `docs/adr/` 2 ADRs plus a README index are all COMMITTED — but
+  Design records live in FOUR places and three survive a clone:
+  `docs/superpowers/specs/`, `docs/spikes/` and `docs/adr/` (ADRs plus a
+  README index) are all COMMITTED — but
   `.superpowers/` is GITIGNORED and held the ONLY design document for
   #243 until it was committed as a spike doc this session. Roughly a third of
   shipped features have a committed spec; the rest were built from an issue with
@@ -344,7 +344,10 @@ making design-level decisions; do not silently deviate.
   PR #330 (`ci.yml`'s docs-only-skip classify step) measured `npm run e2e`
   itself at ~3–4 min (run 30805813518: 10:30:24Z→10:33:40Z, ~3m16s; run
   30805575220: 10:26:31Z→~10:30:26Z). Use this measured range for e2e-alone
-  planning; the older ~10 min figure may still describe a full CI *cycle*
+  planning — superseded; do NOT plan against them. The #605 bullet under
+  PWA/E2E/deploy re-measured a WIDER range across 8 real runs and is what
+  `ci.yml`'s cap was sized from; read the figure there rather than restating
+  it here. The older ~10 min figure may still describe a full CI *cycle*
   including queueing/startup, not the job's own duration.
 - `ci.yml`'s `e2e` job gates its four expensive steps (`setup-node`, `npm ci`,
   `playwright install`, `npm run e2e`) behind a docs-only classify step (#327,
@@ -888,8 +891,8 @@ making design-level decisions; do not silently deviate.
   users: a gesture BEGUN while any `easeTo`/`flyTo`/`fitBounds` is in flight
   is swallowed whole, because the ease's own completion calls a bare
   `this.stop()` (no `allowGestures`) → `_stopHandlers()` → `reset()` on every
-  handler, disarming the gesture mid-drag (#391, Backlog — fixing it means
-  patching maplibre; symptom, measurement and the e2e-side workaround in the
+  handler, disarming the gesture mid-drag (#391 — closed 2026-09-01 as
+  completed, milestone v0.18.0; symptom, measurement and the workaround in the
   #383 bullet under Verification lessons).
 - `fitBounds` must pass `bearing: map.getBearing()` explicitly —
   `cameraForBounds` defaults bearing to 0, so every new `plan.id` (including a
@@ -986,7 +989,8 @@ making design-level decisions; do not silently deviate.
   Single-spec runs work: `npm --prefix app run e2e -- plan.spec.ts` — validate a
   failing spec locally before burning a ~10 min CI cycle (pree2e still rebuilds;
   restore the wind fixture afterwards).
-- **`ci.yml`'s `e2e` job caps at `timeout-minutes: 30`** (`ci.yml:99`, #605) —
+- **`ci.yml`'s `e2e` job caps at `timeout-minutes: 30`** (the
+  `timeout-minutes` key under `ci.yml`'s `e2e:` job, #605) —
   derived from 8 re-measured real runs spanning **5m53s–14m33s**, not the stale
   3–4 min this file used to quote; a wedge now reds in 30 min instead of 360.
   An older **16m43s** outlier sits outside that window and sets the real margin
@@ -1034,10 +1038,11 @@ making design-level decisions; do not silently deviate.
   as a false red (#803, closed 2026-09-01 by hand; fixed by PR #823 — but
   that fix reaches only its FIRST layer, a foreign server already on the
   port. The SECOND, a stale service worker on a REUSED origin serving a
-  cached build to a real browser PAGE, is structurally untouched: the check
+  cached build to a real browser PAGE, was NOT closed by that fix: the check
   is a plain Node `fetch()` with no ServiceWorker in the picture, and
-  closing it needs a browser-side unregister+cache-clear in the specs that
-  navigate (tracked at #832). Re-read the issue and `app/e2e/helpers.ts`'s
+  closing it needed a browser-side unregister+cache-clear in the specs that
+  navigate — shipped at #832 (closed 2026-09-04, milestone v0.21.0) as
+  `assertCleanServiceWorkerState` in `app/e2e/helpers.ts`. Re-read the issue and `app/e2e/helpers.ts`'s
   build-identity comment — the forensics live there).** Neither a free port
   nor a pid check closes it. **Make the assertion SELF-PROVING instead** —
   one that can only pass on the exact tree under test. Worked example: PR
@@ -1053,10 +1058,11 @@ making design-level decisions; do not silently deviate.
   every `globPatterns` match that `globIgnores` does not exclude (`data/**`,
   the polars, the basemap archive, the hashed JS/CSS chunks), so both change
   classes ARE covered — but NOT the whole of `dist/` unconditionally, and a
-  file escapes for two independent reasons: it sits under an ignored subtree
-  (tracked at #833), or its extension is outside the token list (tracked at
-  #854 — `.txt` is, so `THIRD-PARTY-NOTICES.txt`, whose drift reds the
-  REQUIRED `app` check, passes both probes today). Read both filters off
+  file escaped for two independent reasons: it sat under an ignored subtree
+  (#833), or its extension was outside the token list (#854 — `.txt` is, so
+  `THIRD-PARTY-NOTICES.txt`, whose drift reds the REQUIRED `app` check,
+  passed both probes). BOTH closed 2026-09-03, milestone v0.20.0, by PR #894,
+  which added a structural precache-manifest diff guard. Read both filters off
   `vite.config.ts`; do not copy either list here.
 - **A dev-only StrictMode defect is invisible to `e2e` UNCONDITIONALLY and to
   most of `app`.** `app/src/main.tsx` wraps the app in `<StrictMode>`, but
@@ -3376,8 +3382,8 @@ making design-level decisions; do not silently deviate.
   prefer "narrowed" to "closed" unless the measurement really covers the
   whole space.
 - **#383 was never a flake — it was a real MapLibre defect** (fixed test-side
-  in PR #390; the underlying maplibre defect itself is still live, tracked as
-  #391 above). Pinned by `app/e2e/compass.spec.ts`'s `rotateThenTapCompassHome`
+  in PR #390; the upstream maplibre behaviour was tracked separately as #391,
+  closed 2026-09-01 as completed, milestone v0.18.0). Pinned by `app/e2e/compass.spec.ts`'s `rotateThenTapCompassHome`
   helper, whose closing-gate comment carries the mechanism and the maplibre
   line numbers. Lesson: a lone red test contradicting a green suite deserves
   MORE weight than the suite, not a flake write-off.
@@ -3888,8 +3894,9 @@ making design-level decisions; do not silently deviate.
   `gh label list --repo DocGerd/sail_command --limit 60 --json name --jq
   '.[].name'` before using a label name — but do NOT re-plan the cleanup as
   outstanding. Separately, there is no `area:` member for user-facing copy,
-  i18n or UI component structure; five open issues carry none for that
-  reason, and forcing a wrong one is worse than leaving it bare (#610).
+  i18n or UI component structure; several open issues carry none for that
+  reason, and forcing a wrong one is worse than leaving it bare — #610 tracks
+  the gap and is the count, never this sentence.
 - Design a guard around its ASYMMETRY: a BLOCKING guard should fail closed, a
   NUDGE should fail open. #233's command segmenter exits 0 while emitting
   confidently-wrong segments, so its fail-closed path covers none of its
@@ -3980,8 +3987,9 @@ making design-level decisions; do not silently deviate.
   one session (2026-09-04), so the rediscovery cost is real and repeated.
   **NOT the destructive-git guard** — that hook contains zero `checkout` logic
   (it matches `push --force`/`-f`, `reset --hard`, `clean -f`). The denial is a
-  declarative `deny` entry in the PERSONAL global `~/.claude/settings.json`
-  (`Bash(git checkout *)` and two narrower siblings), so it is a permission
+  declarative `deny` PAIR in the PERSONAL global `~/.claude/settings.json`
+  (`Bash(git checkout -- *)` and `Bash(git checkout .)`, which override the
+  broader `Bash(git checkout *)` that sits in `allow`), so it is a permission
   match rather than a hook, it is unversioned and per-machine, and a
   contributor's checkout has none of it. Recorded because the first draft of
   this bullet named the hook: the BEHAVIOUR was right and the ATTRIBUTION would
