@@ -893,12 +893,15 @@ making design-level decisions; do not silently deviate.
   `this.stop()` (no `allowGestures`) → `_stopHandlers()` → `reset()` on every
   handler, disarming the gesture mid-drag (#391 — closed 2026-09-01 as
   ACCEPTED, NOT fixed: `docs/spikes/391-maplibre-gesture-during-ease.md` §4
-  decides accept-no-mitigation because any app-side fix re-opens the
-  #203/#227 two-term camera guard, and the drafted upstream report is
-  deliberately unfiled. The defect is LIVE for users — that spike's §4.3 says
-  so, and says explicitly that it does not supersede this entry; symptom,
-  measurement and the e2e-side workaround in the #383 bullet under
-  Verification lessons).
+  decides accept-no-mitigation on two grounds — every mitigation shape THAT
+  SPIKE CONSIDERED (§5) "risks disturbing the exact ordering" the #203/#227
+  two-term camera guard relies on, and §4.2 rates the defect itself
+  low-severity — self-correcting, corrupting no state and applying no wrong
+  route. Its §3 upstream report was drafted and NOT submitted, filing left to
+  the maintainer. Neither ground is a claim that a fix is impossible. The
+  defect is LIVE for users — that spike's §4.3 says so, and says explicitly
+  that it does not supersede this entry; symptom, measurement and the e2e-side
+  workaround in the #383 bullet under Verification lessons).
 - `fitBounds` must pass `bearing: map.getBearing()` explicitly —
   `cameraForBounds` defaults bearing to 0, so every new `plan.id` (including a
   Live reroute under way) silently un-rotates the chart and kills track-up
@@ -1064,13 +1067,14 @@ making design-level decisions; do not silently deviate.
   every `globPatterns` match that `globIgnores` does not exclude (`data/**`,
   the polars, the basemap archive, the hashed JS/CSS chunks), so both change
   classes ARE covered — but NOT the whole of `dist/` unconditionally, and a
-  file escaped for two independent reasons: it sat under an ignored subtree
+  file escapes for two independent reasons: it sits under an ignored subtree
   (#833), or its extension is outside the token list (#854 — `.txt` is, so
   `THIRD-PARTY-NOTICES.txt`, whose drift reds the REQUIRED `app` check,
-  escaped both probes). BOTH closed 2026-09-03, milestone v0.20.0, by PR
-  #894's precache-manifest diff guard — but that guard SAMPLES: past a
-  per-directory cap it checks one lexicographic representative instead of
-  every file, so escape is NARROWED, not closed. Read the cap and the
+  escapes both probes). Both were closed 2026-09-03, milestone v0.20.0, by PR
+  #894 — which does NOT change what those two probes reach: it adds a THIRD
+  check over exactly that escaping set, and that one SAMPLES, checking one
+  lexicographic representative per directory past a cap instead of every
+  file. So escape is NARROWED, not closed. Read the cap and the
   reasoning off `app/e2e/helpers.ts`'s own comment above
   `pickResidualRepresentatives`, never a figure restated here. Read both
   filters off
@@ -2644,10 +2648,9 @@ making design-level decisions; do not silently deviate.
   service-worker class and that member ARE covered, and the clause would have
   steered future sessions AWAY from a probe that works (the corrected text is
   the #803 bullet under PWA / E2E / deploy, which also carries what the two
-  probes do NOT reach — PR #894 closed #833 and #854, so that residual is now
-  the SAMPLING one: past a per-directory cap the manifest guard checks one
-  representative per directory, so "the offline-asset class" as a whole is
-  still wider than what was measured).
+  probes do NOT reach — PR #894 closed #833 and #854 by adding a THIRD,
+  SAMPLING check over exactly that escaping set, so "the offline-asset class"
+  as a whole is still wider than what was measured).
   The reviewer's own diagnosis: "I proved the antecedent and never enumerated
   the shipped remedy's parts." Every step true, the claim false — the "what
   class of failure can this method not detect?" question, asked of a
@@ -3998,16 +4001,17 @@ making design-level decisions; do not silently deviate.
 - **`git checkout -- <path>` is DENIED; `git restore <path>` is allowed and does
   the same job.** Only two PATH-FORMS are blocked, not the bare verb — the
   restore itself (typically the `pree2e`-dirtied wind fixture) is routine
-  churn this file already calls expected. FOUR agents hit the denial and found
-  `git restore` independently in
-  one session (2026-09-04), so the rediscovery cost is real and repeated.
+  churn this file already calls expected. FOUR agents hit the denial and
+  found `git restore` independently in one session (2026-09-04), so the
+  rediscovery cost is real and repeated.
   **NOT the destructive-git guard** — that hook contains zero `checkout` logic
   (it matches `push --force`/`-f`, `reset --hard`, `clean -f`). The denial is a
   declarative `deny` PAIR in the PERSONAL global `~/.claude/settings.json`
-  (`Bash(git checkout -- *)` and `Bash(git checkout .)`; deny is evaluated
-  before allow, so they beat the `Bash(git checkout *)` that sits in `allow`
-  — evaluation ORDER, not specificity, so a narrower `allow` entry cannot
-  re-enable them), so it is a permission
+  (`Bash(git checkout -- *)` and `Bash(git checkout .)`; `Bash(git checkout
+  *)` sits in `allow` and the deny pair wins. Those ENTRIES are what was
+  read — the precedence rule that makes deny win is established by no
+  artifact here, so do not reason from a specificity or an ordering model),
+  so it is a permission
   match rather than a hook, it is unversioned and per-machine, and a
   contributor's checkout has none of it. Recorded because the first draft of
   this bullet named the hook: the BEHAVIOUR was right and the ATTRIBUTION would
