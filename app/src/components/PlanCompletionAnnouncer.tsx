@@ -38,7 +38,7 @@ export interface PlanCompletionAnnouncerProps {
 //
 // This component does NOT decide whether a `plan`/`rig` change is a
 // "genuine completion" worth announcing at all — only App.tsx knows that:
-// its own `pendingCompletionAnnounceRef` comment documents which callbacks
+// its own `prevPlanningPhaseRef` comment documents which callbacks
 // (handlePlan, handleRecalculate, DepartureCompare's confirm-solve) arm it,
 // and why PlansList's plain "Load" and session restore (both of which write
 // the same shared `plan` state directly, bypassing App.tsx entirely) never
@@ -56,6 +56,13 @@ export default function PlanCompletionAnnouncer({
   const t = useT();
   const [lang] = useLang();
   const lastAnnouncedKeyRef = useRef<string | null>(null);
+  // RESIDUAL, not fixed here (review, Minor 4): recalculating the SAME plan
+  // twice at the same departure against an unchanged cached forecast yields
+  // a byte-identical announcement sentence — React's `Object.is` bail-out on
+  // an unchanged string skips the re-render, so the live region's text node
+  // is never mutated and nothing is announced the second time.
+  // PlannerPanel's own region (`planner.result.announce`) has the identical
+  // limitation, so this is not a regression introduced here.
   const [announcedResult, setAnnouncedResult] = useState<RigResult | null>(null);
 
   useEffect(() => {

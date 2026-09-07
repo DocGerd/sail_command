@@ -554,7 +554,7 @@ export default function PlannerPanel({
   // announcement had the identical `tab === 'routes'`-only gap). It is now
   // owned by App.tsx's single, tab-independent `PlanCompletionAnnouncer`
   // (mounted unconditionally, regardless of `tab`) — see that component's
-  // own header and App.tsx's `announceCompletion`/`pendingCompletionAnnounceRef`
+  // own header and App.tsx's `announceCompletion`/`prevPlanningPhaseRef`
   // comments for the replacement mechanism, including how it still covers
   // #937's confirm-solve pairing with DepartureCompare's own
   // `departureScan.confirm.done` status. This panel keeps its OTHER live

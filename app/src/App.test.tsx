@@ -1,4 +1,5 @@
 import 'fake-indexeddb/auto';
+import { StrictMode } from 'react';
 import { act, render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import App, {
@@ -3750,6 +3751,73 @@ describe('#983: recalculate completion announced regardless of active tab', () =
     // line and this app-level region's sibling status nodes elsewhere in
     // the tree all coexist) and must NOT also carry this text — its own
     // (removed) #961 region used to.
+    const withAnnouncement = screen
+      .getAllByRole('status')
+      .filter((el) => el.textContent?.includes(announcePrefix));
+    expect(withAnnouncement).toHaveLength(1);
+  });
+
+  // PR #1012 review, Minor D: the reviewer wrote and validated (out-of-tree)
+  // a Load-path spot-check and a StrictMode-wrapped transition, but neither
+  // exists as retrievable byte-for-byte text anywhere in the PR's review
+  // threads, review body, issue comments or commit comments (confirmed by
+  // enumerating all four — the only comments on this PR — via the GitHub
+  // API: none contains a fenced code block). So these two tests below are
+  // AUTHORED HERE to close the same two gaps the review named, not adopted
+  // verbatim from anything — see the session report for why "adopt
+  // verbatim" could not be honoured as instructed.
+
+  // Closes the gap the reviewer's out-of-tree spot-check covered: a plain
+  // Load never touches `usePlanFlow`'s `planning.phase` (handleLoad calls
+  // useActivePlan().setPlan() directly), so the App-level `wasBusy` watcher
+  // must never fire for it.
+  it('#983: a plain Load from PlansList does NOT announce (the wasBusy guard)', async () => {
+    await db.savePlan(savedPlan('p1', 21));
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+    fireEvent.click(await screen.findByRole('button', { name: /Solo/ }));
+
+    await waitFor(() => expect(screen.getByText(formatNm(21, 'de'))).toBeInTheDocument());
+    // Flush any pending effect-driven state update before asserting
+    // emptiness — `waitFor` above returns the instant its OWN condition is
+    // met, which can be before a (possibly spurious) announcement effect
+    // has had a chance to commit. An unflushed assertion here would be
+    // exactly the timing-vacuity class CLAUDE.md warns about: it passed
+    // even with the `wasBusy` guard term deleted during this test's own
+    // mutation check, for this reason, before this flush was added.
+    await act(async () => {});
+    expect(announceRegion()).toHaveTextContent('');
+  });
+
+  // Closes the gap the reviewer's out-of-tree StrictMode spot-check covered:
+  // `PlanCompletionAnnouncer.test.tsx` StrictMode-tests only that
+  // component's OWN effect — the genuinely NEW piece this PR adds,
+  // App.tsx's `prevPlanningPhaseRef` busy->idle watcher, had no
+  // StrictMode-wrapped test anywhere in the shipped diff. A StrictMode
+  // double-invocation of that watcher's effect on mount must not fire a
+  // spurious announcement (no plan exists yet, so `wasBusy` is false both
+  // times), and a later GENUINE completion must still announce exactly
+  // once.
+  it('#983 StrictMode: the App-level busy->idle watcher survives a StrictMode double-effect-invocation', async () => {
+    await db.savePlan(savedPlan('p1', 21));
+    render(
+      <StrictMode>
+        <I18nProvider>
+          <App />
+        </I18nProvider>
+      </StrictMode>,
+    );
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    await startRecalculateAndReplace();
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.live'] }));
+    routingMock.calls[0].resolve(okPlanResult(55));
+
+    await waitFor(() => expect(announceRegion()).toHaveTextContent(announcePrefix));
+    expect(announceRegion()).toHaveTextContent(formatNm(55, 'de'));
+    // Exactly once, not doubled by the StrictMode remount.
     const withAnnouncement = screen
       .getAllByRole('status')
       .filter((el) => el.textContent?.includes(announcePrefix));
