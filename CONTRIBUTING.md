@@ -144,9 +144,37 @@ prefixes are the mechanism.
   `priority: medium` (planned, not urgent) · `priority: low` (nice-to-have /
   icebox).
 - `area:` — where the work lives: `area: routing` · `area: map` · `area: pwa`
-  · `area: pipeline` · `area: deploy` · `area: ais` · `area: tooling`.
+  · `area: pipeline` · `area: deploy` · `area: ais` · `area: tooling` ·
+  `area: docs`.
 - `status:` — `status: needs-triage` (not yet assessed; default on new bugs) ·
   `status: blocked` (waiting on an external decision or dependency).
+
+`area: docs` covers issues about documentation **prose** — words that
+explain or specify something, never code that runs — such as `README.md`,
+`CONTRIBUTING.md`, `GOVERNANCE.md`, `ROADMAP.md`, `CODE_OF_CONDUCT.md`,
+`SECURITY.md`, and the prose files under `docs/` (specs, spikes, ADRs, the
+acceptance checklist). It is a content rule, not a directory rule: a
+SCRIPT under `docs/` is not `area: docs` merely for living there —
+`docs/screenshots/capture.mjs` sits under `docs/` and is still `area:
+tooling`, because #428 is about that script's *behaviour*, not about
+anything a doc says. `area: tooling` keeps its own repo-config/automation/CI
+scope unchanged. A doc file already mapped to another area also keeps that
+area (e.g. `pipeline/README.md` stays `area: pipeline`, per
+`.github/labeler.yml`'s existing path map); `area: docs` is for prose that
+isn't already someone else's territory.
+
+**`area:` is deliberately partial, and for one class that is a decision, not
+a gap** ([#610](https://github.com/DocGerd/sail_command/issues/610)):
+user-facing copy, i18n, and UI component structure/layout have no `area:`
+member, and none is being added for them. Such an issue carries `type:` and
+`priority:` only — do not force it onto `area: map` / `area: pwa` / `area:
+routing` merely because the touched component happens to live under one of
+those paths. `.github/labeler.yml`'s own comment already makes the same call
+for PR paths (UI primitives, `App.tsx`, i18n dict files, and other
+cross-cutting files are deliberately left unlabeled there); this is that
+same judgement applied to issues. A hygiene sweep checking
+`type:`+`priority:`+`area:` completeness must treat this class as
+correctly bare, never as missing metadata.
 
 **Label spelling is the spaced form — always a colon and a space, e.g.
 `type: bug`, never `type:bug`.** The taxonomy previously drifted: eight
@@ -175,14 +203,14 @@ labels on **pull requests** are applied automatically from changed paths by
 
 **Milestones**
 
-- `v0.25.0` — the milestone now being filled; it closes when the release PR
+- `v0.26.0` — the milestone now being filled; it closes when the release PR
   merges and the tag is pushed.
-- `v0.26.0` — the next MINOR release, opened fresh at the `v0.24.0` cut per
+- `v0.27.0` — the next MINOR release, opened fresh at the `v0.25.0` cut per
   the roll-forward convention below.
 - `Backlog` — accepted, not yet scheduled into a release.
 - `Icebox` — deferred / maybe-never; revisit opportunistically.
 
-`v0.4.0` through `v0.23.0` are closed (plus the `v0.5.1`, `v0.12.1`, and
+`v0.4.0` through `v0.24.0` are closed (plus the `v0.5.1`, `v0.12.1`, and
 `v0.13.1` patch milestones). Whichever cut is in flight is always the
 exception, and reads the same way every time: its issues are closed while
 its milestone object is not, because that closes only at tag push (first

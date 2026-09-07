@@ -1110,8 +1110,10 @@ describe('PlannerPanel', () => {
 
       // #829 DoD: "an out-of-region value is rejected with the new message
       // and appends nothing." 56°N is north of DATA_AREA's 55.3°N exclusive
-      // bound — chosen (not 90°N) so NumberInput's own -90..90 sanity clamp
-      // never fires first; the DATA_AREA rejection is what this pins.
+      // bound — chosen (not 90°N) so resolveHemisphereCoordCommit's own
+      // -90..90 sanity clamp (#886 residual 1's replacement for the
+      // NumberInput clamp this field used before) never fires first; the
+      // DATA_AREA rejection is what this pins.
       // MUTATION CHECK (non-vacuity, per the DoD): deleting the DATA_AREA
       // check in PlannerPanel.tsx's isInViaDataArea (e.g. `return true;`)
       // makes this row red — onAddVia gets called and the message never
@@ -1131,8 +1133,8 @@ describe('PlannerPanel', () => {
       it('pressing a placed via point\'s own coordinate button enters "update" mode, seeded with its coordinates', () => {
         renderPanel({ viaPoints: [VIA_A, VIA_B] });
         fireEvent.click(screen.getByRole('button', { name: /Edit coordinates \(point 2\)/ }));
-        expect(latInput()).toHaveValue(VIA_B.lat);
-        expect(lonInput()).toHaveValue(VIA_B.lon);
+        expect(latInput()).toHaveValue(String(VIA_B.lat));
+        expect(lonInput()).toHaveValue(String(VIA_B.lon));
         expect(screen.getByRole('button', { name: 'Update coordinates' })).toBeInTheDocument();
       });
 
@@ -1187,8 +1189,8 @@ describe('PlannerPanel', () => {
         setCoord('54.85', '10.1');
         fireEvent.click(screen.getByRole('button', { name: 'Add coordinates' }));
         expect(props.onAddVia).toHaveBeenCalledWith({ lat: 54.85, lon: 10.1 });
-        expect(latInput()).toHaveValue(54.8);
-        expect(lonInput()).toHaveValue(10.2);
+        expect(latInput()).toHaveValue('54.8');
+        expect(lonInput()).toHaveValue('10.2');
       });
 
       // #863 review round 1 (sail-reviewer MAJOR, PlannerPanel.tsx:325):
@@ -1277,7 +1279,7 @@ describe('PlannerPanel', () => {
 
         // Open update mode on VIA_B (index 1), seeded with VIA_B's coords.
         fireEvent.click(screen.getByRole('button', { name: /Edit coordinates \(point 2\)/ }));
-        expect(latInput()).toHaveValue(VIA_B.lat);
+        expect(latInput()).toHaveValue(String(VIA_B.lat));
 
         // Swap VIA_A/VIA_B via VIA_A's own "move down" button — index 1 now
         // holds VIA_A's value, not VIA_B's.
@@ -1358,11 +1360,191 @@ describe('PlannerPanel', () => {
           // Fields reset to the DATA_AREA midpoint seed, same as a
           // successful commit or the same-index toggle-off (#829's own
           // reset behaviour) — not left holding the discarded edit.
-          expect(latInput()).toHaveValue(54.8);
-          expect(lonInput()).toHaveValue(10.2);
+          expect(latInput()).toHaveValue('54.8');
+          expect(lonInput()).toHaveValue('10.2');
 
           expect(props.onAddVia).not.toHaveBeenCalled();
           expect(props.onUpdateVia).not.toHaveBeenCalled();
+        });
+      });
+
+      // #886 residual 1: charts and almanacs write the hemisphere letter;
+      // this pins the FIELD accepting it, on top of format.test.ts's
+      // parser-level pins — the field is a plain <input type="text"> now
+      // (not NumberInput), so `fireEvent.change` here reaches the real
+      // onChange path a browser would, unlike a type="number" input where
+      // jsdom's own sanitizer would strip the letter before onChange ever
+      // fired (the exact defect this residual closes).
+      describe('#886 residual 1: hemisphere letter entry', () => {
+        // A negative-hemisphere (S/W) result on THIS app's real coordinates
+        // is necessarily far outside DATA_AREA (Flensburg Fjord / Danish
+        // South Sea, all N/E), so it can't also be asserted via a
+        // successful Add — that would conflate this residual with the
+        // #829 DATA_AREA check. Asserted on the FIELD's own committed value
+        // instead, which is what "accepts and applies the sign" means
+        // independent of whether the app's region check then admits it.
+        it('accepts a trailing hemisphere letter and commits the correctly-signed value', () => {
+          renderPanel({ viaPoints: [] });
+          setCoord('54.85S', '10.1W');
+          expect(latInput()).toHaveValue('-54.85');
+          expect(lonInput()).toHaveValue('-10.1');
+        });
+
+        it('accepts the positive-hemisphere letter too, matching plain unsigned entry', () => {
+          const props = renderPanel({ viaPoints: [] });
+          setCoord('54.85N', '10.1E');
+          fireEvent.click(screen.getByRole('button', { name: 'Add coordinates' }));
+          expect(props.onAddVia).toHaveBeenCalledWith({ lat: 54.85, lon: 10.1 });
+        });
+
+        // DoD: "a rejected input must produce a visible correction, never a
+        // silent revert." MUTATION CHECK (non-vacuity): reverting
+        // resolveHemisphereCoordCommit to the old NumberInput-style silent
+        // revert (`return { next: lastCommitted, correction: null }` for the
+        // invalid branch) reds this row — the message never renders — while
+        // leaving the field's REVERTED VALUE (asserted in the next test)
+        // unchanged, so that other test alone would NOT have caught it.
+        it('shows a visible correction, not a silent revert, for unparseable input', () => {
+          renderPanel({ viaPoints: [] });
+          fireEvent.change(latInput(), { target: { value: 'garbage' } });
+          fireEvent.blur(latInput());
+          expect(
+            screen.getByText("Couldn't read that as a coordinate — kept 54.8"),
+          ).toBeInTheDocument();
+        });
+
+        it('reverts the field to the last committed value on unparseable input, and Add uses the reverted value', () => {
+          const props = renderPanel({ viaPoints: [] });
+          fireEvent.change(latInput(), { target: { value: 'garbage' } });
+          fireEvent.blur(latInput());
+          expect(latInput()).toHaveValue('54.8');
+          fireEvent.click(screen.getByRole('button', { name: 'Add coordinates' }));
+          expect(props.onAddVia).toHaveBeenCalledWith({ lat: 54.8, lon: 10.2 });
+        });
+
+        // The sign+letter conflict is deliberately rejected (format.test.ts
+        // pins the parser decision) — this pins the FIELD showing the same
+        // visible correction for it, not a different/silent path.
+        it('shows the same visible correction for a sign+letter conflict', () => {
+          renderPanel({ viaPoints: [] });
+          fireEvent.change(latInput(), { target: { value: '-54.8N' } });
+          fireEvent.blur(latInput());
+          expect(
+            screen.getByText("Couldn't read that as a coordinate — kept 54.8"),
+          ).toBeInTheDocument();
+        });
+
+        // REVIEW FIX WAVE (MAJOR): an EMPTIED field is a distinct user
+        // intent from unparseable garbage — clearing the field is
+        // deliberate, typing "nope" is a mistake — and must revert
+        // SILENTLY, exactly like NumberInput's own empty-field path,
+        // never showing the invalid-entry notice.
+        // MUTATION CHECK (non-vacuity): reverting
+        // resolveHemisphereCoordCommit's `draft.trim() === ''` early
+        // return (see format.ts) reds this row — the notice appears where
+        // this test asserts its ABSENCE — while leaving the sibling
+        // "shows a visible correction ... for unparseable input" test
+        // above green, since that mutation only changes the EMPTY case.
+        it('reverts silently (no notice) when the field is cleared, unlike unparseable input', () => {
+          renderPanel({ viaPoints: [] });
+          fireEvent.change(latInput(), { target: { value: '' } });
+          fireEvent.blur(latInput());
+          expect(latInput()).toHaveValue('54.8');
+          expect(
+            screen.queryByText("Couldn't read that as a coordinate — kept 54.8"),
+          ).not.toBeInTheDocument();
+        });
+
+        // REVIEW FIX WAVE (MINOR): the notice must quote the value the
+        // field itself shows, never a re-rounded one — a real risk here
+        // specifically because via-coordinates, unlike the step-quantized
+        // safety-depth field this notice shape was copied from, are NOT
+        // quantized. Commits a genuinely full-precision value first (valid,
+        // in range, so it becomes `lastCommitted` with no correction of its
+        // own), then triggers the invalid-entry revert and asserts the
+        // notice names that EXACT full-precision string.
+        // MUTATION CHECK (non-vacuity): reverting the notice's `value:
+        // viaCoordLatDraft` back to `value: formatBound(viaCoordLat, lang)`
+        // reds this row with `Received: "Couldn't read that as a
+        // coordinate — kept 54.85"` (formatBound's 2-decimal round) while
+        // the sibling "kept 54.8" tests above and below stay green, since
+        // 54.8 rounds to itself either way — this row is the one that can
+        // tell the two forms apart.
+        it('quotes the field’s own full-precision value in the notice, not a rounded one', () => {
+          renderPanel({ viaPoints: [] });
+          fireEvent.change(latInput(), { target: { value: '54.8523471' } });
+          fireEvent.blur(latInput());
+          expect(latInput()).toHaveValue('54.8523471');
+          fireEvent.change(latInput(), { target: { value: 'garbage' } });
+          fireEvent.blur(latInput());
+          expect(
+            screen.getByText("Couldn't read that as a coordinate — kept 54.8523471"),
+          ).toBeInTheDocument();
+        });
+
+        // An out-of-range value is a DIFFERENT event from an unparseable
+        // one (clamped, not reverted) and reuses numberInput.corrected —
+        // asserted here so the two visible messages are pinned as distinct.
+        it('shows the numberInput.corrected clamp message, not the invalid-entry one, for an out-of-range value', () => {
+          renderPanel({ viaPoints: [] });
+          fireEvent.change(latInput(), { target: { value: '95' } });
+          fireEvent.blur(latInput());
+          expect(screen.getByText('Corrected to 90 (allowed range -90–90)')).toBeInTheDocument();
+          expect(
+            screen.queryByText("Couldn't read that as a coordinate — kept 54.8"),
+          ).not.toBeInTheDocument();
+        });
+
+        // A stale correction notice must not survive a reset it has nothing
+        // to do with — entering update mode on a placed via point re-seeds
+        // BOTH fields, and the notice describing the now-abandoned invalid
+        // entry would otherwise keep showing next to a value it no longer
+        // describes.
+        it('clears a standing correction notice when switching into update mode', () => {
+          renderPanel({ viaPoints: [VIA_A] });
+          fireEvent.change(latInput(), { target: { value: 'garbage' } });
+          fireEvent.blur(latInput());
+          expect(
+            screen.getByText("Couldn't read that as a coordinate — kept 54.8"),
+          ).toBeInTheDocument();
+          fireEvent.click(screen.getByRole('button', { name: /Edit coordinates \(point 1\)/ }));
+          expect(
+            screen.queryByText("Couldn't read that as a coordinate — kept 54.8"),
+          ).not.toBeInTheDocument();
+        });
+      });
+
+      // #886 residual 2: the field group's ACCESSIBLE NAME, not just its
+      // visible heading. Asserted via getByRole('group', { name }) —
+      // RTL resolves an ARIA group's accessible name through
+      // aria-labelledby, so this can only pass if the association is real,
+      // not merely a visually-adjacent <p>.
+      describe('#886 residual 2: coordinate field group naming', () => {
+        // MUTATION CHECK (non-vacuity): removing role="group" or
+        // aria-labelledby from planner-via-coord-entry's wrapping <div>
+        // makes getByRole('group', { name: 'New waypoint' }) throw
+        // "Unable to find role=group" — there is no fallback path that
+        // could pass by accident.
+        it('names the group "New waypoint" in add mode', () => {
+          renderPanel({ viaPoints: [] });
+          expect(screen.getByRole('group', { name: 'New waypoint' })).toBeInTheDocument();
+        });
+
+        it('renames the group to "Editing waypoint N" in update mode', () => {
+          renderPanel({ viaPoints: [VIA_A, VIA_B] });
+          fireEvent.click(screen.getByRole('button', { name: /Edit coordinates \(point 2\)/ }));
+          expect(screen.getByRole('group', { name: 'Editing waypoint 2' })).toBeInTheDocument();
+          expect(screen.queryByRole('group', { name: 'New waypoint' })).not.toBeInTheDocument();
+        });
+
+        // The lat/lon fields (and their own labels) must live INSIDE the
+        // named group — otherwise the association exists in the tree but
+        // not around the controls it's meant to describe.
+        it('the lat/lon fields are inside the named group', () => {
+          renderPanel({ viaPoints: [] });
+          const group = screen.getByRole('group', { name: 'New waypoint' });
+          expect(within(group).getByLabelText('Latitude')).toBeInTheDocument();
+          expect(within(group).getByLabelText('Longitude')).toBeInTheDocument();
         });
       });
     });
@@ -1873,15 +2055,18 @@ describe('PlannerPanel', () => {
     // `Received: ""`.
     it('DOES fold the stale sentence into the panel status region when formDirty && !settingsDirty', () => {
       renderPanel({ planning: { phase: 'idle' }, plan: makePlan(), rig: 'genoa', formDirty: true });
-      // 3, not 1, since #731: `.planner-status` (this test's subject) plus
+      // 5, not 1, since #731: `.planner-status` (this test's subject) plus
       // the always-mounted `.boat-picker-notice` blur-clamp notice on the
       // compact row's safety-depth field (empty here — no clamp occurred);
-      // and #829 added a THIRD, the always-mounted out-of-region rejection
+      // #829 added a THIRD, the always-mounted out-of-region rejection
       // notice on the via coordinate-entry row (also empty here — no
-      // rejection occurred). The count still guards against an ACCIDENTAL
-      // fourth/duplicate live region; it just isn't 2 any more now that #829
-      // added a third, legitimate one.
-      expect(screen.getAllByRole('status')).toHaveLength(3);
+      // rejection occurred); and #886 residual 1 added a FOURTH and FIFTH,
+      // the always-mounted lat/lon parse/clamp correction notices on that
+      // same row (both empty here too — no invalid/out-of-range entry
+      // occurred). The count still guards against an ACCIDENTAL sixth/
+      // duplicate live region; it just isn't 3 any more now that #886 added
+      // two more legitimate ones.
+      expect(screen.getAllByRole('status')).toHaveLength(5);
       // No fresh completion announcement fires on this mount (seeded from
       // the mount plan id, per the transition tests above), so the region's
       // entire text is the folded stale sentence.

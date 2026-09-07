@@ -77,6 +77,12 @@ installs as a standalone icon and works fully offline after the first visit
   switched off independently of it. A legend explains what the hatch does
   and does not mark — below the map's layer controls (collapsed by default)
   before a route is planned, and folded into the route legend once one is.
+- **Waypoints**: route through a specific point in between by arming **Add
+  waypoint** and then tapping the map, tapping a seamark or a saved
+  waypoint, or typing coordinates directly — cancel arming any time with the
+  same toggle. Reorder a waypoint, reposition it by dragging its marker or
+  re-entering its coordinates, or remove it; a waypoint can only mark a stop
+  along the route, never the departure or destination.
 - The router fetches hourly wind, then computes the fastest sailable route
   twice — once per foresail of the selected boat — and recommends the faster
   (marked ★). Where the two tables cannot honestly be ranked it says so
@@ -125,63 +131,6 @@ for a total eventual download of ~45 MB. Subsequent visits are served from
 the cache and work with no network at all; an update prompt appears when a
 new version is available in the background, applied on demand rather than
 mid-passage.
-
-## Development
-
-```
-npm --prefix app/ install
-npm --prefix app/ run dev                        # local dev server
-npm --prefix app/ run test                       # unit + property tests
-npm --prefix app/ exec playwright install chromium  # one-time E2E browser install
-npm --prefix app/ run e2e                        # Playwright E2E (plan flow, offline reload)
-npm --prefix app/ run build                      # production build to app/dist
-```
-
-`npm run test` runs the full unit/property battery (polar interpolation,
-isochrone routing, mask queries, persistence, UI).
-`npm run e2e` builds the app and drives it with Playwright, including a
-true offline reload against a killed preview server.
-
-Timeout policy: solver-heavy test files set generous file-level timeouts
-(imported from `app/src/test/timeouts.ts` — `SOLVER_TEST_TIMEOUT_MS`, and the
-seeded property suite's 900 s). CI is slower than dev machines, but not by
-one flat multiplier:
-measured 2026-08-03 (#341) for the vitest unit suite, `npm run test` ran
-249.8 s local vs ~515–535 s on CI (~2.1×), and `npm run test:coverage` ran
-~983–1029 s local vs 2558 s on CI (~2.5×) — coverage instrumentation is a
-separate multiplier from runner speed, not part of a single ratio, and
-neither figure is a Playwright/e2e measurement. Don't add tighter per-test
-timeouts regardless of the exact ratio.
-
-## Architecture
-
-```mermaid
-flowchart LR
-  subgraph pipeline ["Build time — pipeline/ (run on demand, never at app runtime)"]
-    EMOD["EMODnet bathymetry (DTM 2024)"] --> MASK["build_mask.py → mask.bin (packed ~46 m cells, quantized depth)"]
-    OSMLP["OSM land polygons"] --> MASK
-    ORC["ORC cert Salona 45"] --> POLARS["build_polars.mjs + estimate_polars.mjs → polars/*-{genoa,fock}.json (3 boats)"]
-    SBD["sail area / displacement (sailboatdata) — fleet boats"] --> POLARS
-    CUR["curated harbor list"] --> HARB["build_harbors.mjs → harbors.json"]
-    PROTO["Protomaps extract"] --> PMT["basemap.pmtiles.png"]
-  end
-  MASK & POLARS & HARB & PMT --> ASSETS["committed static assets — app/public/data/"]
-  subgraph app ["Runtime — app/ (PWA, no backend)"]
-    ASSETS --> UI["React + MapLibre GL UI"]
-    OM["Open-Meteo hourly wind (browser-direct)"] --> UI
-    UI -->|"plan request + wind grid"| WORKER["isochrone router (Web Worker), tack/gybe time penalty, dual-rig"]
-    WORKER -->|"Plan (legs, wind grid)"| UI
-    UI <--> IDB[("IndexedDB — saved plans incl. their wind grids")]
-    SW["service worker — ~33 MB precache + runtime font cache"] -.-> UI
-  end
-```
-
-## Data pipeline
-
-The static assets under `app/public/data/` (land/depth mask, polar tables,
-harbor list) and the regional basemap are produced by build-time scripts in
-`pipeline/`, not at app runtime. See [`pipeline/README.md`](pipeline/README.md)
-for setup and regeneration instructions.
 
 ## Data sources & attribution
 
@@ -292,6 +241,63 @@ data; the code license is covered in the [License](#license) section below.
 
 Currents/tides, wave data, multi-day passages beyond the forecast horizon,
 route sharing/collaboration, official ENC chart data.
+
+## Development
+
+```
+npm --prefix app/ install
+npm --prefix app/ run dev                        # local dev server
+npm --prefix app/ run test                       # unit + property tests
+npm --prefix app/ exec playwright install chromium  # one-time E2E browser install
+npm --prefix app/ run e2e                        # Playwright E2E (plan flow, offline reload)
+npm --prefix app/ run build                      # production build to app/dist
+```
+
+`npm run test` runs the full unit/property battery (polar interpolation,
+isochrone routing, mask queries, persistence, UI).
+`npm run e2e` builds the app and drives it with Playwright, including a
+true offline reload against a killed preview server.
+
+Timeout policy: solver-heavy test files set generous file-level timeouts
+(imported from `app/src/test/timeouts.ts` — `SOLVER_TEST_TIMEOUT_MS`, and the
+seeded property suite's 900 s). CI is slower than dev machines, but not by
+one flat multiplier:
+measured 2026-08-03 (#341) for the vitest unit suite, `npm run test` ran
+249.8 s local vs ~515–535 s on CI (~2.1×), and `npm run test:coverage` ran
+~983–1029 s local vs 2558 s on CI (~2.5×) — coverage instrumentation is a
+separate multiplier from runner speed, not part of a single ratio, and
+neither figure is a Playwright/e2e measurement. Don't add tighter per-test
+timeouts regardless of the exact ratio.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  subgraph pipeline ["Build time — pipeline/ (run on demand, never at app runtime)"]
+    EMOD["EMODnet bathymetry (DTM 2024)"] --> MASK["build_mask.py → mask.bin (packed ~46 m cells, quantized depth)"]
+    OSMLP["OSM land polygons"] --> MASK
+    ORC["ORC cert Salona 45"] --> POLARS["build_polars.mjs + estimate_polars.mjs → polars/*-{genoa,fock}.json (3 boats)"]
+    SBD["sail area / displacement (sailboatdata) — fleet boats"] --> POLARS
+    CUR["curated harbor list"] --> HARB["build_harbors.mjs → harbors.json"]
+    PROTO["Protomaps extract"] --> PMT["basemap.pmtiles.png"]
+  end
+  MASK & POLARS & HARB & PMT --> ASSETS["committed static assets — app/public/data/"]
+  subgraph app ["Runtime — app/ (PWA, no backend)"]
+    ASSETS --> UI["React + MapLibre GL UI"]
+    OM["Open-Meteo hourly wind (browser-direct)"] --> UI
+    UI -->|"plan request + wind grid"| WORKER["isochrone router (Web Worker), tack/gybe time penalty, dual-rig"]
+    WORKER -->|"Plan (legs, wind grid)"| UI
+    UI <--> IDB[("IndexedDB — saved plans incl. their wind grids")]
+    SW["service worker — ~33 MB precache + runtime font cache"] -.-> UI
+  end
+```
+
+## Data pipeline
+
+The static assets under `app/public/data/` (land/depth mask, polar tables,
+harbor list) and the regional basemap are produced by build-time scripts in
+`pipeline/`, not at app runtime. See [`pipeline/README.md`](pipeline/README.md)
+for setup and regeneration instructions.
 
 ## Project documents
 

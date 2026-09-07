@@ -4250,6 +4250,27 @@ select {
   pointer-events: none;
 }
 
+/* #1020: visible sibling of the origin/destination marker's own aria-label
+   (EndpointMarkers.tsx's `endpointElement`) — same reasoning and the same
+   "no `position: relative` on the root" constraint as `.sc-via-marker-label`
+   directly above; read that rule's own comment for the full mechanism. */
+.sc-endpoint-marker-label {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 0.2rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 0.2rem;
+  background: color-mix(in srgb, var(--sc-bg) 82%, transparent);
+  color: var(--sc-fg);
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 /* Harbor combobox (#64 phase 2): a role="combobox" input over a popup
    role="listbox". The div stacks label/input/popup; the input stretches to the
    column (capped to 22rem on the wide panel by the .app-panel input rule). */

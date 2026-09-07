@@ -7,11 +7,17 @@
 #
 # TWO ARMS, dispatched on tool_name (#309):
 #   - Edit|Write  -> `deny` on a generated artifact, `ask` on docs/superpowers/
-#                    (UNCHANGED by every later revision, including the 2026-08-09
-#                    advisory split below, which touches the Bash arm only).
-#   - Bash        -> path-presence match on the command string. Three outcomes:
-#                    provably read-only -> emit NOTHING; a docs/superpowers
-#                    path -> blocking `ask`; any other protected path -> a
+#                    specs/ and every other docs/superpowers/ path EXCEPT
+#                    docs/superpowers/plans/, which gets a non-blocking
+#                    ADVISORY instead (#1021, 2026-09-07 maintainer ruling —
+#                    the one thing the 2026-08-09 advisory split below did
+#                    NOT touch, since that split was Bash-arm-only; #1021
+#                    widens the same carve-out to this arm).
+#   - Bash        -> path-presence match on the command string. Four outcomes:
+#                    provably read-only -> emit NOTHING; docs/superpowers/specs,
+#                    or a docs/superpowers write NOT confined to plans/ ->
+#                    blocking `ask`; a docs/superpowers write CONFINED to
+#                    plans/ (#1021), or any OTHER protected path -> a
 #                    NON-BLOCKING `additionalContext` ADVISORY carrying no
 #                    permissionDecision at all. See "TWO OUTCOMES FOR A
 #                    NON-EXEMPT HIT" in DESIGN below for the ruling, the
@@ -519,18 +525,31 @@
 #     selftest pins an upper bound so it cannot grow back unnoticed. That is
 #     the trade this split makes: context cost, paid continuously, in exchange
 #     for not interrupting the maintainer.
-#       * `docs/superpowers/specs` and its ancestor `docs/superpowers`
-#         (SPEC_GATED_PATHS below) KEEP the blocking `ask`, unchanged. This is
-#         load-bearing, not stylistic: CLAUDE.md makes a spec edit a
-#         MAIN-SESSION act, and this prompt is the mechanism that stops a
-#         subagent slipping one past the maintainer. Nothing regenerates a
-#         user-approved decision.
+#       * `docs/superpowers/specs` and its ancestor `docs/superpowers` KEEP
+#         the blocking `ask` — EXCEPT `docs/superpowers/plans/` (#1021
+#         maintainer ruling, 2026-09-07): a write CONFINED to the plans/
+#         subtree now gets the same non-blocking advisory as the build-output
+#         paths below, because plans/ is a working-doc tree agents legitimately
+#         churn mid-task, not a user-approved decision like specs/. The specs
+#         ask itself is unchanged and load-bearing, not stylistic: CLAUDE.md
+#         makes a spec edit a MAIN-SESSION act, and this prompt is the
+#         mechanism that stops a subagent slipping one past the maintainer.
+#         Nothing regenerates a user-approved decision — and this is exactly
+#         why plans/ is different: nothing there is a standing decision either.
+#         "CONFINED" has a precise meaning, spelled out at
+#         bash_hits_spec_gated_path()'s own comment: a command mixing a plans/
+#         mention with ANY other docs/superpowers mention (specs/, the bare
+#         ancestor, a future third subdirectory) still ASKS — the carve-out
+#         never widens past the one named subdirectory.
 #       * every OTHER protected path (app/public/{data,icons,brand},
 #         app/public/THIRD-PARTY-NOTICES.txt, .pmtiles) emits a NON-BLOCKING
 #         ADVISORY instead. These are committed BUILD OUTPUTS: the cost of a
 #         missed write is an artifact that has drifted from its generator and
 #         that `npm --prefix pipeline run ...` / `npm --prefix app run notices`
-#         regenerates — recoverable, unlike a silently rewritten spec.
+#         regenerates — recoverable, unlike a silently rewritten spec. Plans/
+#         is advisory for a DIFFERENT reason (it is a working doc, not
+#         generated output) — its advisory text says so and does NOT cite a
+#         regenerator; see bash_plans_advisory() below.
 #     THE ADVISORY SHAPE, three points each load-bearing:
 #       1. `{"hookSpecificOutput":{"hookEventName":"PreToolUse",
 #          "additionalContext":"..."}}`, exit 0. `additionalContext` is the
@@ -762,6 +781,26 @@
 #      be re-argued against the soundness paragraph in DESIGN, never made by
 #      adding a verb that "looks read-only" (`file` looked read-only and
 #      writes; see there).
+#   8. An ESCAPED or SPLIT spelling of the literal two-character sequence
+#      ".." — e.g. `$'\x2e\x2e'` or a `.` / `.` pair rejoined by a construct
+#      this arm does not resolve — still ADVISES rather than asks on a
+#      docs/superpowers/plans/ carve-out command (#1021/PR #1035 review,
+#      BLOCKER 2's `bash_hits_spec_gated_path()` ".." guard only matches the
+#      literal two dots; it fires BEFORE the plans/ strip and forces `ask`
+#      whenever they and "docs/superpowers" both appear as literal
+#      substrings). NARROWED, NOT CLOSED by that guard: `$'\x2e\x2e'` is
+#      already unreachable in practice because `$` sits in
+#      WRITE_CAPABLE_CHARS and disqualifies the read-only exemption on its
+#      own (though that disqualification only matters for a command that
+#      would otherwise have been exempt — it does not by itself force the
+#      ".." guard to fire), but a genuinely bare split spelling that
+#      resolves to ".." without ever containing the literal two-character
+#      run — a future shell-level rewrite this file's substring-matching
+#      design cannot see, by the same reasoning as items 2-4 above — would
+#      still fall through the ".." guard exactly as it falls through every
+#      other literal-substring check in this arm. Recorded so the residual
+#      is documented rather than believed absent, per the maintainer's
+#      explicit instruction on this review round.
 set -uo pipefail
 
 # Single source of truth for the Bash path-presence arm (see DESIGN above).
@@ -801,10 +840,49 @@ bash_hits_protected_path() {
 # than trusting it, and asserts the complement is non-empty too (a
 # SPEC_GATED_PATHS that swallowed every protected path would turn the whole
 # split back into the blanket ask it replaced, with no row noticing).
+#
+# #1021 (2026-09-07 maintainer ruling) NARROWS what the bare "docs/superpowers"
+# entry below actually gates, WITHOUT removing it from this array: issue
+# #1021 proposed dropping it outright and was measured, in a scratch copy, to
+# break tree-level coverage (a bare `mv docs/superpowers /tmp/stash` fell
+# through to a plain PROTECTED_PATHS advisory instead of the blocking ask a
+# tree-level op on the whole spec/plan tree must keep) - see
+# bash_hits_spec_gated_path()'s own comment for the fix that WAS shipped
+# instead. This array still lists the two entries the 2026-08-09 split always
+# has; the narrowing lives entirely in the matching FUNCTION below, which is
+# why the containment/complement selftest checks against this array are
+# UNCHANGED by #1021.
 SPEC_GATED_PATHS=(
   "docs/superpowers/specs"
   "docs/superpowers"
 )
+
+# #1021: the one docs/superpowers subdirectory this function deliberately
+# does NOT spec-gate, even though it sits under the bare "docs/superpowers"
+# ancestor entry above. Not a PROTECTED_PATHS entry in its own right (it has
+# no generator to cite - see bash_plans_advisory(), not bash_advisory() -
+# and adding it there would need a regen_hint arm that cannot exist for a
+# hand-authored working doc).
+#
+# TRAILING SLASH IS LOAD-BEARING (PR #1035 review, BLOCKER 1). Without it,
+# stripping this literal substring out of a command also eats the PREFIX of
+# any sibling whose name merely STARTS WITH "plans" -
+# "docs/superpowers/plans-archive/x.md" or "docs/superpowers/plans_old/y.md"
+# strip down to something with no "docs/superpowers" left, escaping the
+# carve-out onto a directory it was never meant to cover. MEASURED: a
+# mutation truncating this constant to "docs/superpowers/p" reproduces the
+# defect and reds ZERO selftest rows on the pre-fix battery - a narrower,
+# more dangerous mutation than the "replace the whole ancestor" one the
+# battery below DOES catch, and exactly why a passing mutation battery only
+# proves an assertion CAN fail, never that it covers the hazard (CLAUDE.md).
+# With the trailing slash, "plans/" can only match an actual path SEGMENT
+# boundary, so "plans-archive/", "plans_old/" and a bare, no-trailing-slash
+# "docs/superpowers/plans" (e.g. `mv docs/superpowers/plans /tmp/other`, or
+# `rm -rf docs/superpowers/plans`) all keep asking - the fail-CLOSED
+# direction this being a BLOCKING guard requires when the predicate is at
+# all uncertain (a bare directory move/delete is exactly the tree-level
+# shape #1021's own DoD says must never fall to advisory).
+SPEC_GATED_PLANS_PATH="docs/superpowers/plans/"
 
 # Pure function: does $1 contain a SPEC-GATED path? Same substring rule as
 # bash_hits_protected_path, deliberately a SEPARATE pass rather than a
@@ -813,14 +891,86 @@ SPEC_GATED_PATHS=(
 # returns `app/public/data` there and would downgrade a spec edit to an
 # advisory. Checking the spec set independently makes the spec `ask` win
 # whenever a spec path appears ANYWHERE in the command.
+#
+# #1021 CARVE-OUT: "docs/superpowers/specs" (case 1 below) always spec-gates,
+# unconditionally - specs/ never loses its ask. The bare ancestor
+# "docs/superpowers" (case 3, after the ".." guard below) spec-gates too,
+# UNLESS every occurrence of it in $cmd is inside a docs/superpowers/plans/
+# substring - checked by stripping every literal SPEC_GATED_PLANS_PATH
+# occurrence out of $cmd first and testing whether "docs/superpowers" still
+# appears in what is LEFT. This is the "specs-OR-(ancestor-but-not-plans)"
+# shape the issue asked for, expressed without any shell-syntax awareness
+# (this whole file's DESIGN constraint):
+#   - a command whose ONLY docs/superpowers mention is a plans/ path
+#     ("cp /tmp/f docs/superpowers/plans/x.md") strips to nothing containing
+#     "docs/superpowers" -> NOT spec-gated -> the Bash arm's advisory branch
+#     (bash_plans_advisory(), not the generic bash_advisory()).
+#   - a bare tree-level op ("mv docs/superpowers /tmp/stash") has nothing to
+#     strip -> still contains "docs/superpowers" -> spec-gated -> ask,
+#     unchanged from before #1021. Same for any OTHER subdirectory
+#     ("docs/superpowers/other/x.md") and for a command that mixes a plans/
+#     mention with a specs/ or bare-ancestor mention in the SAME string - the
+#     strip only removes the plans/ occurrences, so the other mention survives
+#     and the command still asks. The carve-out cannot be widened by mixing
+#     it with anything else in one command.
+#
+# CASE 2, THE ".." GUARD (PR #1035 review, BLOCKER 2), runs BEFORE the strip
+# and is why case 3's comment above says "after the .. guard": a literal
+# substring strip has no path-normalisation, so
+# "docs/superpowers/plans/../specs/foo.md" strips its "docs/superpowers/plans/"
+# occurrence and leaves "../specs/foo.md" - which no longer contains
+# "docs/superpowers" at all, so the carve-out would silently swallow a write
+# to the SPECS tree (or, via `mv docs/superpowers/plans/.. /tmp/stash`, a
+# tree-level move of the WHOLE docs/superpowers/ directory - the exact
+# shape case 3's tree-level bullet says must never fall to advisory).
+# MEASURED red on both shapes before this guard existed; both went straight
+# back to `ask` once it was added, alongside the unchanged plans-confined
+# carve-out for every non-traversal command. This guard does not try to
+# resolve the traversal (that would need real path parsing, against this
+# file's own DESIGN constraint) - it fails CLOSED instead: ANY command
+# mentioning docs/superpowers AT ALL while also containing ".." anywhere
+# asks, no matter where the ".." sits relative to the docs/superpowers
+# substring. Deliberately over-broad, per the guard-asymmetry principle
+# (CLAUDE.md): a BLOCKING guard's uncertain case must resolve to `ask`,
+# never to advisory. KNOWN RESIDUAL, not closed by this guard: an escaped
+# or split spelling of ".." (`$'\x2e\x2e'`, `.\./`, or any other construct
+# the WRITE_CAPABLE_CHARS disqualification for `$`/`\` does not already
+# reject on its own) still advises rather than asks - recorded in this
+# file's "KNOWN SILENT-ALLOW PATHS" comment (DESIGN section) so the gap is
+# documented rather than believed absent.
 bash_hits_spec_gated_path() {
-  local cmd="$1" p
-  for p in "${SPEC_GATED_PATHS[@]}"; do
-    case "$cmd" in
-      *"$p"*) printf '%s' "$p"; return 0 ;;
-    esac
-  done
+  local cmd="$1" stripped
+  case "$cmd" in
+    *"docs/superpowers/specs"*) printf '%s' "docs/superpowers/specs"; return 0 ;;
+  esac
+  case "$cmd" in
+    *"docs/superpowers"*)
+      case "$cmd" in
+        *".."*) printf '%s' "docs/superpowers"; return 0 ;;
+      esac
+      ;;
+  esac
+  stripped="${cmd//$SPEC_GATED_PLANS_PATH/}"
+  case "$stripped" in
+    *"docs/superpowers"*) printf '%s' "docs/superpowers"; return 0 ;;
+  esac
   return 1
+}
+
+# Pure function: is $1's ONLY docs/superpowers mention confined to
+# docs/superpowers/plans/ (the #1021 carve-out above)? Equivalent to "this
+# command hits the protected ancestor, but bash_hits_spec_gated_path() says
+# NOT spec-gated" - spelled out as its own predicate so the production call
+# site (and the selftest) can name the plans case directly instead of
+# re-deriving it from two other functions' return values.
+bash_hits_plans_confined() {
+  local cmd="$1"
+  case "$cmd" in
+    *"$SPEC_GATED_PLANS_PATH"*) ;;
+    *) return 1 ;;
+  esac
+  bash_hits_spec_gated_path "$cmd" >/dev/null && return 1
+  return 0
 }
 
 # --- read-only exemption (#309 follow-up; see DESIGN above for the full
@@ -1667,6 +1817,24 @@ bash_advisory() {
   echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"artifact-guard ADVISORY (no prompt, nothing to approve): this command names '"$p"', which is committed BUILD OUTPUT, not hand-editable source. Regenerate with: '"$(regen_hint "$p")"'. Reading it is fine; WRITING it is not - change the generator or its input, re-run, and commit the output, because a hand edit drifts from its generator and the next regeneration silently reverts it. This guard matches the path STRING only, never shell syntax, so it cannot tell your read from a write - that judgement is yours."}}'
 }
 
+# bash_plans_advisory - emits the NON-BLOCKING advisory for a command whose
+# ONLY docs/superpowers mention is confined to docs/superpowers/plans/ (#1021
+# maintainer ruling; bash_hits_plans_confined() decides when this fires,
+# never this function itself). Deliberately its OWN emitter rather than a
+# call to bash_advisory("docs/superpowers/plans") - that path is not a
+# PROTECTED_PATHS entry and has no regen_hint arm (plans/ is a hand-authored
+# working doc, not generated pipeline output), so routing it through
+# bash_advisory would fall to regen_hint's generic default and tell the
+# reader to "see pipeline/README.md", which is actively wrong for a plan
+# doc. Kept as its own one-line emitter for the same mutation-check reason
+# bash_advisory is: replacing this body with `:` must red a selftest row.
+#
+# JSON-safety: no interpolated values, only static ASCII text - nothing here
+# needs escaping.
+bash_plans_advisory() {
+  echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"artifact-guard ADVISORY (no prompt, nothing to approve): this command names docs/superpowers/plans/, which tracks implementation plans (#405) and no longer blocks unattended runs (#1021, 2026-09-07 maintainer ruling). docs/superpowers/specs/ remains the blocking ask - CLAUDE.md treats it as the user-approved source of truth; plans/ is working-doc territory agents legitimately churn mid-task, so it has no generator to cite and this is not a build-output advisory. This guard matches the path STRING only, never shell syntax, so it cannot tell your read from a write - that judgement is yours. A command mixing this path with docs/superpowers/specs/ or any other docs/superpowers/ path still asks."}}'
+}
+
 readonly_verbs_sentence() {
   local out="" v
   for v in "${READONLY_VERBS[@]}"; do
@@ -1810,7 +1978,40 @@ if [ "${1:-}" = "--selftest" ]; then
   # known-ask payload correctly, run before any want-allow row so a
   # silently-dead production path is caught by ONE clear diagnosis instead of
   # every downstream `decide allow`/`decide_exempt` row passing vacuously.
-  EXPECTED_CASES=317
+  # (#1021) 317 -> 321, +4: the plans carve-out block. ONE row pinning the
+  # new behaviour itself (plans-confined write ADVISES); TWO "too-wide"
+  # guard rows (plans+specs mixed still ASKS; a different docs/superpowers
+  # subdirectory still ASKS) so the carve-out cannot silently grow past the
+  # one named subdirectory; and ONE content check (manual block, one `total`
+  # increment covering three assertions) proving the plans advisory is its
+  # own emitter rather than a fall-through to the generic build-output
+  # default. The Edit|Write-arm counterpart (the plans wrapper_check row)
+  # changed its WANT from `ask` to `advisory` in place - per the NOTE above
+  # about the 43 pre-existing rows that flipped ask -> advisory at the
+  # 2026-08-09 split, a row changing its expectation does not change the
+  # count, so that edit is NOT part of this +4.
+  # (PR #1035 review, BLOCKERS 1 and 2) 321 -> 327, +6: the +4 block above
+  # left the carve-out too WIDE in two ways a mutation battery built from
+  # ITS OWN mental model could not see (CLAUDE.md: "a self-test written from
+  # the same mental model as the guard can never find the gap") - a
+  # plans-PREFIXED sibling directory escaped via SPEC_GATED_PLANS_PATH's
+  # missing trailing slash (BLOCKER 1), and a literal ".." traversal segment
+  # escaped via the strip's lack of path normalisation (BLOCKER 2, on BOTH
+  # arms). FOUR Bash-arm `decide ask` rows (two plans-prefixed siblings for
+  # Blocker 1; a ".." traversal into specs/ and a tree-level
+  # "docs/superpowers/plans/.." move for Blocker 2) plus TWO Edit|Write-arm
+  # `wrapper_check` rows (the plans-prefixed-sibling control, which was
+  # ALREADY correct on this arm because its `case` patterns carry a literal
+  # trailing slash - kept as a row anyway so narrowing that pattern in
+  # future reds here too; and the ".." traversal row, which DOES need the
+  # new guard arm above the specs/plans/catch-all arms on this side). The
+  # pre-existing "TOO-WIDE GUARD: other docs/superpowers subdir" row's own
+  # comment was CORRECTED in the same pass (MAJOR 1): it had claimed a
+  # truncated SPEC_GATED_PLANS_PATH mutation would red it, which is false -
+  # that mutation reds ZERO rows in the pre-#1035-fix-wave battery, which is
+  # exactly Blocker 1's shape and exactly why a passing mutation battery
+  # only proves an assertion CAN fail, never that it covers the hazard.
+  EXPECTED_CASES=327
 
   # (#309 fix-wave m1, moved here by #404 so decide()/decide_exempt() below
   # can use it too - they now drive the production entry point through it
@@ -2851,6 +3052,91 @@ if [ "${1:-}" = "--selftest" ]; then
   # with a classification of `$p` reds exactly this row.
   decide ask "SPLIT MIXED: spec path + build-output path in one command ASKS" "cp docs/superpowers/specs/foo.md app/public/data/x"
 
+  # ======================================================================
+  # #1021 PLANS CARVE-OUT (2026-09-07 maintainer ruling). The block above
+  # pins that docs/superpowers/specs/ and the bare ancestor both still ASK;
+  # these rows pin the ONE narrowing #1021 makes: a write CONFINED to
+  # docs/superpowers/plans/ now ADVISES instead, while every other shape in
+  # the block above - the spec write, the tree-level ancestor mv, the mixed
+  # spec+build-output command - is UNCHANGED. Four rows, each isolating one
+  # way the carve-out could be either too narrow (still asking on plans/) or
+  # too wide (swallowing specs/, the bare ancestor, or a sibling
+  # subdirectory it was never meant to cover).
+  decide advisory "PLANS #1021: plans-confined write ADVISES, does not ask" "cp /tmp/f docs/superpowers/plans/foo.md"
+  # TOO WIDE, direction 1: mixing a plans/ mention with a specs/ mention in
+  # ONE command must still ask - the carve-out strips only the plans/
+  # occurrence, so the specs/ occurrence survives the strip and wins, same
+  # "spec wins whenever a spec path appears ANYWHERE" rule as the MIXED row
+  # above. Mutation-checked: broadening the strip target from
+  # SPEC_GATED_PLANS_PATH to the bare "docs/superpowers" ancestor reds this
+  # row (and the tree-level-ancestor row above it).
+  decide ask "PLANS+SPECS MIXED #1021: specs wins, still ASKS" "cp docs/superpowers/plans/x.md docs/superpowers/specs/y.md"
+  # TOO WIDE, direction 2: a write under a DIFFERENT, UNRELATED
+  # docs/superpowers subdirectory (real "specs"/"plans" today, but this
+  # probes the general case - #421's catch-all reasoning) must still ask.
+  # CORRECTED (PR #1035 review, MAJOR 1): an earlier revision of this
+  # comment claimed a truncated SPEC_GATED_PLANS_PATH mutation
+  # ("docs/superpowers/p") would red THIS row - false, and refuted by
+  # running it: "docs/superpowers/other/foo.md" contains no "docs/superpowers/p"
+  # substring at all ("other" does not start with "p"), so the row passes
+  # unchanged under that mutation and proves nothing about it. That
+  # truncation is BLOCKER 1's exact shape (a sibling directory whose name
+  # merely STARTS WITH "plans" escapes the carve-out) and is what the
+  # trailing slash on SPEC_GATED_PLANS_PATH now closes structurally, not
+  # what this row tests - the two rows immediately below are the ones that
+  # actually exercise it, by naming siblings that share the "plans" PREFIX
+  # rather than an unrelated name.
+  decide ask "PLANS #1021 TOO-WIDE GUARD: unrelated docs/superpowers subdir still ASKS" "cp /tmp/f docs/superpowers/other/foo.md"
+  # BLOCKER 1 (PR #1035 review): a sibling directory whose name STARTS WITH
+  # "plans" but is not the plans/ directory itself. Without the trailing
+  # slash on SPEC_GATED_PLANS_PATH, stripping "docs/superpowers/plans" out
+  # of "docs/superpowers/plans-archive/x.md" also eats the "plans" prefix of
+  # "plans-archive", leaving nothing containing "docs/superpowers" and
+  # silently downgrading to advisory. MEASURED before the trailing-slash fix
+  # (PR reviewer's own reproduction against this PR's HEAD); both rows below
+  # must ASK.
+  decide ask "PLANS #1021 BLOCKER 1: plans-PREFIXED sibling 'plans-archive' still ASKS" "cp /tmp/f docs/superpowers/plans-archive/x.md"
+  decide ask "PLANS #1021 BLOCKER 1: plans-PREFIXED sibling 'plans_old' still ASKS" "cp /tmp/f docs/superpowers/plans_old/secret.md"
+  # BLOCKER 2 (PR #1035 review): a literal ".." traversal segment. The strip
+  # is pure substring removal with no path normalisation, so
+  # "docs/superpowers/plans/../specs/foo.md" has its "docs/superpowers/plans/"
+  # occurrence stripped, leaving "../specs/foo.md" - no "docs/superpowers"
+  # substring survives, so without the ".." guard this silently downgrades a
+  # write to the SPECS tree (the user-approved source of truth) to advisory.
+  # `cat evil > ...` disqualifies the read-only exemption via the `>`
+  # WRITE_CAPABLE_CHARS entry, so this genuinely reaches the spec-gate logic
+  # rather than being suppressed earlier.
+  decide ask "PLANS #1021 BLOCKER 2: '..' traversal into specs/ still ASKS" "cat evil > docs/superpowers/plans/../specs/foo.md"
+  # BLOCKER 2, tree-level variant: "docs/superpowers/plans/.." IS
+  # "docs/superpowers" after normalisation - a full tree-level move of the
+  # WHOLE docs/superpowers/ directory, the exact shape the very first SPLIT
+  # row above (the plain `mv docs/superpowers /tmp/stash`) exists to keep
+  # asking. Without the ".." guard the literal-substring strip removes
+  # "docs/superpowers/plans/" from "docs/superpowers/plans/.." leaving only
+  # "..", which contains no "docs/superpowers" at all.
+  decide ask "PLANS #1021 BLOCKER 2: 'mv docs/superpowers/plans/..' tree-level move still ASKS" "mv docs/superpowers/plans/.. /tmp/stash"
+  # CONTENT: the plans advisory must be its OWN emitter, not a fall-through
+  # to the generic build-output bash_advisory()/regen_hint() default - a
+  # hand-authored plan doc has no generator to cite, and "see
+  # pipeline/README.md - no generator recorded for this path" would be
+  # actively wrong here. Also asserts the emitted advisory carries no
+  # permissionDecision at all (same "omitted entirely, never allow" contract
+  # as every other advisory - DESIGN above). Checked against the real
+  # wrapper output directly, not just the coarse category the row above
+  # asserts.
+  total=$((total + 1))
+  plans_adv=$(printf '{"tool_name":"Bash","tool_input":{"command":"cp /tmp/f docs/superpowers/plans/probe.md"}}' | "$SELF" 2>&1)
+  case "$plans_adv" in
+    *"docs/superpowers/plans"*) ;;
+    *) echo "SELFTEST FAIL [plans advisory content]: does not name docs/superpowers/plans (out: $plans_adv)"; fail=1 ;;
+  esac
+  case "$plans_adv" in
+    *"no generator recorded"*) echo "SELFTEST FAIL [plans advisory content]: fell through to the generic build-output default, which is wrong for a hand-authored plan doc (out: $plans_adv)"; fail=1 ;;
+  esac
+  case "$plans_adv" in
+    *'"permissionDecision"'*) echo "SELFTEST FAIL [plans advisory content]: carries a permissionDecision - must be advisory-only, omitted entirely (out: $plans_adv)"; fail=1 ;;
+  esac
+
   # PER-PATH ADVISORY TWIN (PR #478 review, Minor 3). One case per NON-spec
   # protected path, each asserting three things about the real emitted
   # advisory: it NAMES the matched path, it does NOT fall through regen_hint's
@@ -3003,10 +3289,33 @@ if [ "${1:-}" = "--selftest" ]; then
   # unchanged now that this script serves a second matcher.
   wrapper_check deny  "Generated artifact"      "Edit deny arm unaffected"            '{"tool_name":"Edit","tool_input":{"file_path":"app/public/data/mask.bin"}}'
   wrapper_check ask   "source of truth"         "Edit specs arm unaffected"           '{"tool_name":"Edit","tool_input":{"file_path":"docs/superpowers/specs/foo.md"}}'
-  # (#405) mutation-checkable: deleting the new plans/ arm (or narrowing its
-  # pattern) reds this row - drives the REAL production wrapper, not a bare
-  # pattern match on the case statement in isolation.
-  wrapper_check ask   "tracks implementation plans" "Edit plans arm (#405: was a silent allow)" '{"tool_name":"Edit","tool_input":{"file_path":"docs/superpowers/plans/foo.md"}}'
+  # (#405, downgraded to advisory by #1021) mutation-checkable: deleting the
+  # plans/ arm (or narrowing its pattern) reds this row - drives the REAL
+  # production wrapper, not a bare pattern match on the case statement in
+  # isolation. WANT changed from `ask` to `advisory` at #1021 (2026-09-07
+  # maintainer ruling) - reverting that one word is exactly the mutation
+  # the PR's own check runs at BASE vs HEAD.
+  wrapper_check advisory "tracks implementation plans" "Edit plans arm (#1021: advisory, was ask at #405)" '{"tool_name":"Edit","tool_input":{"file_path":"docs/superpowers/plans/foo.md"}}'
+  # PR #1035 review, BLOCKER 1 (Edit|Write-arm control): a plans-PREFIXED
+  # sibling directory. The Edit arm's `case` patterns already carry a
+  # literal trailing slash ("*docs/superpowers/plans/*"), so this shape was
+  # NEVER broken on this arm - unlike the Bash arm, which needed the
+  # SPEC_GATED_PLANS_PATH trailing-slash fix. Kept as an explicit row so a
+  # future edit narrowing that pattern (e.g. to "*docs/superpowers/plans*",
+  # dropping the slash) reds here instead of silently reopening the Bash
+  # arm's exact defect on this arm too.
+  wrapper_check ask   "guarded as a whole" "Edit plans-prefixed sibling still ASKS (Blocker 1 control, unaffected on this arm)" '{"tool_name":"Edit","tool_input":{"file_path":"docs/superpowers/plans-archive/x.md"}}'
+  # PR #1035 review, BLOCKER 2 (Edit|Write-arm half): the identical ".."
+  # traversal defect as the Bash arm's - the literal `case` pattern
+  # "*docs/superpowers/plans/*" matches
+  # "docs/superpowers/plans/../specs/foo.md" (the substring is present,
+  # traversal or not), which would otherwise fall into the plans/ arm's
+  # advisory even though the real target is the SPECS tree. The new ".."
+  # guard arm above the specs/plans/catch-all arms is what catches this;
+  # mutation-checkable by deleting that new arm (or narrowing its pattern) -
+  # doing so reds this row, since the file_path would then fall through to
+  # the plans/ arm and advise instead.
+  wrapper_check ask   "traversal segment" "Edit '..' traversal into specs still ASKS (#1035 BLOCKER 2)" '{"tool_name":"Edit","tool_input":{"file_path":"docs/superpowers/plans/../specs/foo.md"}}'
   # (#421 review, Major 1) mutation-checkable: pins the catch-all arm, which
   # is what actually matches the Bash arm's ANCESTOR coverage - a file under
   # docs/superpowers/ that is in NEITHER named child (specs/, plans/) was
@@ -3187,10 +3496,20 @@ if [ "$tn" = "Bash" ]; then
     if sp=$(bash_hits_spec_gated_path "$cmd"); then
       p=$sp
     else
-      bash_advisory "$p"
+      # #1021: a docs/superpowers hit that is NOT spec-gated is either the
+      # plans/ carve-out (checked explicitly, since $p here is whichever
+      # PROTECTED_PATHS entry matched FIRST by array order, not necessarily
+      # "docs/superpowers" - see bash_hits_protected_path's own ordering
+      # note) or an ordinary build-output path; each gets its own advisory
+      # text, never the other's.
+      if bash_hits_plans_confined "$cmd"; then
+        bash_plans_advisory
+      else
+        bash_advisory "$p"
+      fi
       exit 0
     fi
-    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Bash command mentions spec path '"$p"' (docs/superpowers/ is the user-approved source-of-truth spec/plan tree, matched here together with its ancestor; CLAUDE.md makes changing it a MAIN-SESSION act, which is what this prompt enforces). This is the ONLY protected family that still prompts - the committed build outputs (app/public/{data,icons,brand}/, THIRD-PARTY-NOTICES.txt, .pmtiles) now get a non-blocking advisory instead, since a drifted artifact can be regenerated and a rewritten spec cannot. This guard checks whether the path STRING appears anywhere in the Bash command; it does NOT parse shell syntax to work out whether the command is really a write. The one exception is a command PROVEN read-only - a single simple command whose first word is a no-write verb ('"$(readonly_verbs_sentence)"') with no pipe, separator, substitution, expansion or escape anywhere in it, and no redirect other than the inert ones (the fd-dups and the /dev/null discards, which write no file and are stripped before that check) - which is suppressed silently. Two of those verbs, grep and sed, do have a write surface and so carry an ADDITIONAL per-verb condition (#530): grep must name none of the ugrep options the Claude Code shim intercepts, and sed must use only -n/-E/-r-class read-only flags with a single bare p/d/q/=/n/N script command under at most one address. The exemption also applies only up to a length limit, so that a very large input cannot stall this hook past its time budget and have the resulting silence read as approval. This command is not that, so it asks: it uses a verb outside that set, fails one of those two per-verb conditions, contains a write-capable construct, or is longer than that limit. Confirm intent before proceeding."}}'
+    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Bash command mentions spec path '"$p"' (docs/superpowers/ is the user-approved source-of-truth spec/plan tree, matched here together with its ancestor; CLAUDE.md makes changing it a MAIN-SESSION act, which is what this prompt enforces). This is the ONLY protected family that still prompts, docs/superpowers/plans/ excepted (#1021 - a plans-confined write advises instead, same as the build outputs below) - the committed build outputs (app/public/{data,icons,brand}/, THIRD-PARTY-NOTICES.txt, .pmtiles) now get a non-blocking advisory instead, since a drifted artifact can be regenerated and a rewritten spec cannot. This guard checks whether the path STRING appears anywhere in the Bash command; it does NOT parse shell syntax to work out whether the command is really a write. The one exception is a command PROVEN read-only - a single simple command whose first word is a no-write verb ('"$(readonly_verbs_sentence)"') with no pipe, separator, substitution, expansion or escape anywhere in it, and no redirect other than the inert ones (the fd-dups and the /dev/null discards, which write no file and are stripped before that check) - which is suppressed silently. Two of those verbs, grep and sed, do have a write surface and so carry an ADDITIONAL per-verb condition (#530): grep must name none of the ugrep options the Claude Code shim intercepts, and sed must use only -n/-E/-r-class read-only flags with a single bare p/d/q/=/n/N script command under at most one address. The exemption also applies only up to a length limit, so that a very large input cannot stall this hook past its time budget and have the resulting silence read as approval. This command is not that, so it asks: it uses a verb outside that set, fails one of those two per-verb conditions, contains a write-capable construct, or is longer than that limit. Confirm intent before proceeding."}}'
   fi
   exit 0
 fi
@@ -3214,6 +3533,24 @@ case "$f" in
   *.bin|*.pmtiles|*.pmtiles.png|*app/public/data/*|*app/public/icons/*|*app/public/brand/*|*app/public/THIRD-PARTY-NOTICES.txt)
     echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Generated artifact: app/public/{data,icons,brand}/ are committed pipeline outputs (regenerate via npm --prefix pipeline run polars|harbors|seamarks|mask|icons) and app/public/THIRD-PARTY-NOTICES.txt is a generated dependency manifest (regenerate via npm --prefix app run notices) - never hand-edit, always regenerate. Exception: app/public/icons/icon.svg is a hand-authored source, not covered by this deny."}}'
     ;;
+  *docs/superpowers*..*|*..*docs/superpowers*)
+    # PR #1035 review, BLOCKER 2 (Edit|Write-arm half): a `..` traversal can
+    # relocate what the plans/ arm's LITERAL pattern below actually matches -
+    # "docs/superpowers/plans/../specs/foo.md" contains the literal substring
+    # "docs/superpowers/plans/" and would otherwise fall into that arm's
+    # advisory, even though the real target (after normalisation) is the
+    # SPECS tree. This `case` has no path-normalisation (this file's own
+    # DESIGN constraint), so it fails CLOSED instead: ANY file_path
+    # mentioning docs/superpowers at all, in either order relative to a
+    # ".." anywhere in the string, asks - checked BEFORE the specs/plans/
+    # catch-all arms below, so it wins on a match. Deliberately over-broad
+    # per the guard-asymmetry principle (CLAUDE.md): a blocking guard's
+    # uncertain case must resolve to ask, never to the plans/ advisory.
+    # Mirrors the Bash arm's identical ".." guard in
+    # bash_hits_spec_gated_path() - see that function's own comment for the
+    # KNOWN RESIDUAL (escaped/split ".." spellings) neither guard closes.
+    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"This path names docs/superpowers/ alongside a \"..\" traversal segment - this guard matches the path STRING only and cannot normalise it, so it cannot tell whether the traversal escapes into docs/superpowers/specs/ or elsewhere in the tree. Confirm the user wants this change before editing."}}'
+    ;;
   *docs/superpowers/specs/*)
     echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"docs/superpowers/specs/ is the user-approved source of truth - CLAUDE.md forbids silently deviating from it. Confirm the user wants the spec itself changed before editing."}}'
     ;;
@@ -3222,15 +3559,24 @@ case "$f" in
     # under docs/superpowers/plans/ fell through to the unguarded default
     # (silent allow) even though the Bash arm's PROTECTED_PATHS ancestor
     # entry ("docs/superpowers") already covers a Bash-mediated write to the
-    # same file. Adds a tailored ask arm, same decision as docs/superpowers/
-    # specs/ above - the Bash arm and its docs/superpowers PROTECTED_PATHS
-    # entries are unchanged. CORRECTED (#421 review, Major 1): an earlier
-    # revision of this comment said this arm "WIDENS this arm to match [the
-    # Bash arm]" - that overstated it. Two named children (specs/, plans/)
-    # still do not match an ANCESTOR entry's coverage of everything under
-    # it, present and future; the catch-all arm right below this one is what
-    # actually closes that gap, this arm alone does not.
-    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"docs/superpowers/plans/ tracks implementation plans and is guarded the same way as docs/superpowers/specs/ (#405). Confirm the user wants a plan doc changed before editing."}}'
+    # same file. #405 added a tailored ASK arm here, same decision as
+    # docs/superpowers/specs/ above.
+    #
+    # #1021 (2026-09-07 maintainer ruling) DOWNGRADES that ask to a
+    # non-blocking ADVISORY - plans/ writes were blocking unattended runs
+    # for no safety reason: plans/ is a working-doc tree agents legitimately
+    # churn mid-task, unlike docs/superpowers/specs/, which stays the
+    # blocking ask right above because CLAUDE.md treats it as the
+    # user-approved source of truth. This is the Edit|Write-arm HALF of the
+    # #1021 fix - the Bash arm gets the matching carve-out via
+    # bash_hits_plans_confined()/bash_plans_advisory() (see there); #405's
+    # own history is the reason both arms had to move together here: adding
+    # ONLY one of them would leave an Edit on a plans file asking while a
+    # Bash-mediated write to the identical file merely advises, the exact
+    # kind of two-arms-disagree gap #405 existed to close in the other
+    # direction. The catch-all arm right below this one, and the specs/ arm
+    # above it, are UNCHANGED - only this one NAMED child moves.
+    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"artifact-guard ADVISORY (no prompt, nothing to approve): this command writes to docs/superpowers/plans/, which tracks implementation plans (#405) and no longer blocks unattended runs (#1021, 2026-09-07 maintainer ruling). docs/superpowers/specs/ remains the blocking ask - CLAUDE.md treats it as the user-approved source of truth; plans/ is working-doc territory agents legitimately churn during a task."}}'
     ;;
   *docs/superpowers/*)
     # #421 review, Major 1: docs/superpowers/specs/ and .../plans/ above are

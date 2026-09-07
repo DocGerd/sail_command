@@ -156,6 +156,9 @@ export const de = {
   'planner.via.coord.edit': 'Koordinaten bearbeiten (Punkt {index}): {coord}',
   'planner.via.coord.outOfRegion':
     'Die Koordinaten liegen außerhalb des abgedeckten Seegebiets (Flensburger Förde / Dänische Südsee).',
+  // #886 residual 1: see dict.en.ts's matching comment.
+  'planner.via.coord.invalidEntry':
+    'Eingabe konnte nicht als Koordinate gelesen werden – {value} beibehalten',
   'planner.departure.label': 'Abfahrt',
   'planner.plan': 'Route planen',
   // §3.5 empty/first-run: friendly guidance near the primary action while no
@@ -607,6 +610,12 @@ export const de = {
     'Unvermessenes und trockenfallendes Wasser trägt ebenfalls keine Schraffur und ist durch nichts gekennzeichnet, sieht also aus wie gewöhnliches Wasser. Fehlende Schraffur ist keine Garantie, dass das Wasser unbedenklich ist — es kann sich schlicht um eine Stelle ohne Daten handeln.',
   // Seezeichen-Overlay (#7) — standardmäßig AUS, Opt-in.
   'map.seamarks.toggle': 'Seezeichen',
+  // #1020: accessible name for the map-picked origin/destination markers
+  // (EndpointMarkers.tsx) — {target} is 'planner.origin.label'/
+  // 'planner.destination.label' ("Start"/"Ziel"), {label} the endpoint's
+  // own already-localized label (a harbor name or formatted lat/lon).
+  // Language-neutral punctuation, same shape as 'map.scale.aria' below.
+  'map.endpoint.ariaLabel': '{target}: {label}',
   'seamark.popover.type': 'Typ',
   'seamark.popover.category': 'Kategorie',
   'seamark.popover.colour': 'Farbe',
