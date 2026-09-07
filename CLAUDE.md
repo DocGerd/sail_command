@@ -3123,6 +3123,27 @@ making design-level decisions; do not silently deviate.
   stayed a SILENT ALLOW (five more shapes too). Ask BOTH "can this assertion
   fail?" and "what else in this defect's class does it not see?" — only a
   SIBLING-SHAPE ENUMERATION answers the second.
+- **When a plan or brief NAMES a guard as the detector for a hazard, that
+  PAIRING is a claim and needs its own mutation** — delete the thing, confirm
+  the named guard reds. Measured 2026-09-05 (#989): #909's planning named
+  `app/e2e/layout.spec.ts`'s `#871: … toast alone never hides the depth legend`
+  as THE detector for a wrong sheet-cap compensation, and deleting that
+  compensation entirely left it at `1 passed`. The structural reason, not a
+  tuning one: `budgetPx` DERIVES the sheet height from `innerHeight * 0.55 -
+  toastHeightPx` instead of measuring `.app-bottom-sheet`, so a CSS-only cap
+  change cannot move the value the assertion reads AT ANY MAGNITUDE — guard and
+  guarded are computed from different sources and only one of them is the
+  shipped CSS. What DID red on that mutation is worth knowing, because it is
+  not the guard anyone would name: two CSS-INTERNAL checks — a site regex plus
+  an exactly-three-occurrences count comparing the three CSS declarations
+  against EACH OTHER — while the cross-language CSS-vs-TS pins in the same file
+  are separate tests that do not fire for it at all. Scope such a finding to
+  the NAMED artifact, never to the suite: `compass.spec.ts` carries two
+  sheet-overlap guards that battery never ran. It generalises because a named
+  pairing arrives ALREADY ATTRIBUTED, so nobody re-derives it — the same
+  laundering shape this file records elsewhere for a reviewer's incidental
+  explanation. An unverified pairing is worse than none: it stops anyone
+  looking for a real one.
 - **vitest's DEFAULT reporter suppresses console output from PASSING tests**, so
   a console-spy check run on a green suite is a FALSE NEGATIVE. Measured
   2026-09-04 with a control: a passing test logging a unique marker printed it
