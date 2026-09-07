@@ -124,6 +124,12 @@ interface ScTestMap {
   jumpTo(options: { center: [number, number]; zoom: number }): unknown;
   getLayer(id: string): unknown;
   project(lngLat: [number, number]): { x: number; y: number };
+  // #999: shifts rendered content by exactly the given SCREEN-space pixel
+  // vector at the CURRENT zoom (a pure camera pan, `duration: 0` for an
+  // immediate jump with no easing) — used to move an already-open popup's
+  // anchor under `.route-layer-controls` deterministically, rather than
+  // relying on a real seamark happening to render there at some viewport.
+  panBy(offset: [number, number], options?: { duration?: number }): unknown;
   // #232 item 2: geometry was added to the return type (backward-compatible
   // with every existing `.properties`-only consumer above) so the
   // cross-tile measurement at the end of this file can read a rendered
@@ -1365,6 +1371,242 @@ test('#830: seamarks-in-view — keyboard-only identification, and the rows trac
       .not.toEqual(before);
     const after = await rowKeys();
     expect(after.length, 'the zoomed-out view must still list marks').toBeGreaterThan(0);
+  } finally {
+    server.kill();
+  }
+});
+
+// #999: `.route-layer-controls` (Tier 2, `z-index: 2`, app.css's map-chrome
+// tier comment above `.app-header`) occluded an open popup's close button —
+// MapLibre's own `.maplibregl-popup` ships with NO z-index at all, so it
+// painted at CSS 2.1 Appendix E step 8 (positioned, z-index:auto) while
+// `.route-layer-controls` sits at step 9 (positioned, z-index set): a step-9
+// element ALWAYS wins that pairing regardless of DOM order, so the button
+// was there in the accessibility tree and in the DOM, but not reachable by a
+// real click. Reported at a mid-size viewport (1280x720); this spec pins the
+// closest named entry in `STANDARD_VIEWPORTS` — `tabletLandscape`
+// (1180x820) — rather than an inline literal (CLAUDE.md's viewport-matrix
+// rule), which is also wide-layout (>=1024px, `lib/useWideLayout.ts`) like
+// the reported case.
+//
+// A real seamark cluster is NOT guaranteed to render under
+// `.route-layer-controls` (top-right, `top: 3.5rem; right: 0.5rem`) at any
+// one viewport, so this forces the collision deterministically: open the
+// REAL popup via the #830 keyboard flow (the same popup a pointer tap on a
+// glyph opens), then `map.panBy()` — a pure screen-space camera translation
+// at fixed zoom — to move its anchor (and therefore the whole popup, which
+// tracks it) under the controls cluster. The pan vector is computed once
+// from two real `getBoundingClientRect()` reads and applied in one
+// `duration: 0` call — no iterative nudging.
+//
+// `panBy([dx, dy])` shifts rendered CONTENT by `(-dx, -dy)`, the OPPOSITE
+// sign a naive reading of `camera.ts`'s `panBy`/`panTo`/`easeTo` chain
+// suggests (tracing the `offset` negations by hand gives the wrong sign,
+// which is what a first draft of this comment claimed) — MEASURED with a
+// throwaway probe against maplibre-gl 6.6.0 (the version
+// `app/package-lock.json` pins): `panBy([100, 0], { duration: 0 })` moved a
+// pinned point's `map.project()` x from 389.5 to 289.5. So the vector below
+// is `before - target`, not `target - before`.
+//
+// Two independent measurements, not one boolean: `closeButtonOcclusion`
+// samples a 3x3 grid inside the close button's own rect via
+// `document.elementsFromPoint` (never the container's rect — CLAUDE.md's
+// "assert on the BUTTON's rect, never its container's") and reports an
+// OCCLUDED AREA in px², not a pass/fail — this is what DISTINGUISHES a
+// forced geometric overlap (which is identical before and after the fix,
+// since panBy moved real pixels) from an actual stacking-order occlusion
+// (which is exactly what the fix changes). Separately, a real
+// `click({ trial: true })` proves an actual pointer event would reach the
+// button — the Playwright-native form of the same claim.
+//
+// BLIND SPOT this method does NOT detect: it hit-tests screen POINTS, so a
+// button occluded on only a FRACTION of its rect (a partial edge overlap,
+// rather than the all-or-nothing case this cluster's `position:absolute`
+// panel produces) would report a smaller, non-zero px² rather than the full
+// close-button area — the test still catches it (any occludedPx2 > 0 fails
+// the assertion), but the reported number would then be a lower bound
+// against a coarser sample, not the exact occluded area.
+async function closeButtonOcclusion(page: Page): Promise<{
+  occludedPx2: number;
+  totalPx2: number;
+  sampledPoints: number;
+  occludedPoints: number;
+  coveredBy: string | null;
+}> {
+  return page.evaluate(() => {
+    const btn = document.querySelector(
+      '.maplibregl-popup.seamark-popup .maplibregl-popup-close-button',
+    );
+    if (!btn) {
+      return {
+        occludedPx2: -1,
+        totalPx2: 0,
+        sampledPoints: 0,
+        occludedPoints: 0,
+        coveredBy: 'missing:close-button',
+      };
+    }
+    const rects = Array.from(btn.getClientRects()).filter((r) => r.width > 0 && r.height > 0);
+    if (rects.length === 0) {
+      return {
+        occludedPx2: -1,
+        totalPx2: 0,
+        sampledPoints: 0,
+        occludedPoints: 0,
+        coveredBy: 'zero-box',
+      };
+    }
+    const rect = rects[0]!;
+    const totalPx2 = rect.width * rect.height;
+    const inset = Math.min(2, rect.width / 4, rect.height / 4);
+    const xs = [rect.left + inset, rect.left + rect.width / 2, rect.right - inset];
+    const ys = [rect.top + inset, rect.top + rect.height / 2, rect.bottom - inset];
+    let occludedPoints = 0;
+    let sampledPoints = 0;
+    let coveredBy: string | null = null;
+    for (const y of ys) {
+      for (const x of xs) {
+        sampledPoints++;
+        const top = document.elementsFromPoint(x, y)[0];
+        if (!top) continue;
+        if (top === btn || btn.contains(top)) continue;
+        occludedPoints++;
+        if (!coveredBy) {
+          const classes =
+            typeof top.className === 'string' && top.className.trim()
+              ? `.${top.className.trim().split(/\s+/).join('.')}`
+              : '';
+          coveredBy = `${top.tagName.toLowerCase()}${classes}`;
+        }
+      }
+    }
+    const occludedPx2 = sampledPoints > 0 ? totalPx2 * (occludedPoints / sampledPoints) : -1;
+    return { occludedPx2, totalPx2, sampledPoints, occludedPoints, coveredBy };
+  });
+}
+
+test('#999: an open popup close button must not be occluded by .route-layer-controls', async ({
+  page,
+}) => {
+  const server = await startPreview(page);
+  try {
+    await page.setViewportSize(STANDARD_VIEWPORTS.tabletLandscape);
+    await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
+    await mapReady(page);
+    await waitForSeamarksLayer(page);
+
+    const seamarksToggle = page.getByRole('checkbox', { name: 'Seezeichen' });
+    await seamarksToggle.check();
+    await expect(seamarksToggle).toBeChecked();
+
+    // A plan is required for `.route-layer-controls` to render at all —
+    // `RouteLayer.tsx` returns null until `plan` exists (CLAUDE.md), and
+    // it is mounted unconditionally inside `<MapView>`, independent of
+    // which app tab is active.
+    await page.getByRole('tab', { name: 'Planen' }).click();
+    const originSection = page.getByRole('region', { name: 'Start' });
+    await originSection.getByRole('combobox').fill('Langballigau');
+    await expect(originSection.getByRole('option')).toHaveCount(1);
+    await originSection.getByRole('option').first().click();
+    const destSection = page.getByRole('region', { name: 'Ziel' });
+    await destSection.getByRole('combobox').fill('Sønderborg');
+    await expect(destSection.getByRole('option')).toHaveCount(1);
+    await destSection.getByRole('option').first().click();
+    const planButton = page.getByRole('button', { name: 'Route planen' });
+    await planButton.click();
+    await expect(planButton).toBeEnabled({ timeout: 60_000 });
+
+    const controls = page.locator('.route-layer-controls');
+    await expect(controls).toBeVisible();
+
+    // Open the REAL seamark popup via the #830 keyboard flow.
+    await jumpToCluster(page, ZOOM_AT_OR_ABOVE_12);
+    const list = page.locator(SEAMARKS_IN_VIEW);
+    await expect
+      .poll(
+        () =>
+          list
+            .locator('button[data-seamark-key]')
+            .evaluateAll((els) => els.map((e) => e.getAttribute('data-seamark-key'))),
+        {
+          timeout: 10_000,
+          message: 'no seamark rows appeared for the cluster view',
+        },
+      )
+      .not.toEqual([]);
+    await list.locator('summary').focus();
+    await page.keyboard.press('Enter');
+    await expect
+      .poll(() => list.evaluate((el) => (el as HTMLDetailsElement).open), {
+        message: 'Enter on the focused summary did not open the Disclosure',
+      })
+      .toBe(true);
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Enter');
+    const popup = page.locator('.maplibregl-popup.seamark-popup');
+    await expect(popup, 'Enter on a row must open the seamark popup on the map').toHaveCount(1);
+    const closeButton = popup.locator('.maplibregl-popup-close-button');
+    await expect(closeButton).toHaveCount(1);
+
+    // Force the popup under `.route-layer-controls` — real seamark placement
+    // at this one viewport/zoom is not something this guard should depend
+    // on. Target a point comfortably inside the controls cluster (20px in
+    // from its top-left corner), not merely touching its edge.
+    const target = await controls.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const inset = Math.min(20, r.width / 3, r.height / 3);
+      return { x: r.left + inset, y: r.top + inset };
+    });
+    const before = await closeButton.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    });
+    // MEASURED (not derived from reading the source, which gave the
+    // opposite sign): `map.panBy([dx, dy])` moves rendered CONTENT by
+    // `(-dx, -dy)` — a fixed screen point's world feature shifts LEFT when
+    // `dx` is positive. Confirmed with a throwaway probe: panBy([100, 0])
+    // moved a pinned point's projected x from 389.5 to 289.5. So the pan
+    // vector needed to move a point FROM `before` TO `target` is
+    // `before - target`, not `target - before`.
+    const delta = { dx: before.x - target.x, dy: before.y - target.y };
+    await page.evaluate((d) => {
+      (window as unknown as { __scE2eMap: ScTestMap }).__scE2eMap.panBy([d.dx, d.dy], {
+        duration: 0,
+      });
+    }, delta);
+
+    // Re-sample geometry INSIDE the poll (#412/#422) — a box frozen before
+    // the pan's render commit would produce a byte-identical signature to a
+    // real settle. Poll the VALUE (distance to target), not a boolean.
+    await expect
+      .poll(
+        () =>
+          closeButton.evaluate((el, t: { x: number; y: number }) => {
+            const r = el.getBoundingClientRect();
+            return Math.hypot(r.left + r.width / 2 - t.x, r.top + r.height / 2 - t.y);
+          }, target),
+        {
+          message: `close button did not settle near the forced target (${target.x.toFixed(1)}, ${target.y.toFixed(1)})`,
+        },
+      )
+      .toBeLessThan(3);
+
+    // The actual regression guard: a real occlusion measurement, in px²,
+    // never a boolean.
+    await expect
+      .poll(() => closeButtonOcclusion(page), {
+        message: 'close button occlusion did not settle',
+      })
+      .toEqual(
+        expect.objectContaining({
+          occludedPx2: 0,
+        }),
+      );
+
+    // Belt-and-suspenders: a real trial click must succeed (CLAUDE.md: "For
+    // an occlusion claim use a real click({trial: true}) or a topmost
+    // hit-test" — this spec does both).
+    await closeButton.click({ trial: true, timeout: 5_000 });
   } finally {
     server.kill();
   }
