@@ -443,7 +443,7 @@ real-Chromium re-measurement reproduced the #681 figures: a third row there
 costs +51.60 px at 375x667 (the comment there says 51.59) and drops the
 depth legend's reachability budget from 62.556 px to 10.962 px — under
 `LEGEND_COLLAPSED_HEIGHT_PX` (44) — hiding the whole `.depth-legend`,
-§0's #597 safety caveat included, at three viewports with no plan: 375x667
+#597 safety caveat included, at three viewports with no plan: 375x667
 collapsed (10.96 px), 360x740 collapsed (43.81 px), and 390x844 expanded
 (−1.39 px), two of those three at REST (collapsed, no interaction needed to
 reach the hidden state). Placing the list in the Plan panel instead leaves
