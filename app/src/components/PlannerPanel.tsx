@@ -1,14 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
-import type {
-  Harbor,
-  LatLon,
-  PickedPoint,
-  Plan,
-  RigResult,
-  SailId,
-  Settings,
-  ViaPoint,
-} from '../types';
+import type { Harbor, LatLon, PickedPoint, Plan, SailId, Settings, ViaPoint } from '../types';
 import { useLang, useT } from '../i18n';
 // #834: the `harbors` prop is widened from `Harbor[]` to
 // `HarborWithReachability[]` below — the selected-endpoint row must see the
@@ -18,13 +9,7 @@ import { useLang, useT } from '../i18n';
 // `types.ts`.
 import type { HarborWithReachability } from '../lib/harborReachability';
 import { FORECAST_DAYS } from '../services/openMeteo';
-import {
-  formatDateTime,
-  formatDuration,
-  formatLatLon,
-  formatNm,
-  toLocalInputValue,
-} from '../lib/format';
+import { formatLatLon, toLocalInputValue } from '../lib/format';
 import {
   DATA_AREA,
   GpxParseError,
@@ -562,70 +547,20 @@ export default function PlannerPanel({
   // exactly what this live region needs.
   const settingsDirty = plan ? routingSettingsDirty(plan, settings) : false;
 
-  // #64 §3.4 (Option B) a11y: announce the terminal result in the persistent
-  // live region, ONCE per completed plan. We freeze the RESULT that completed
-  // (not the rendered string) and re-derive the sentence from the CURRENT
-  // language each render — so a language switch re-announces in the new
-  // language. Seeded from the plan present at mount so re-entering the tab
-  // with an existing result does NOT re-announce; a genuinely new plan (new
-  // id) does. Slider/map re-renders don't touch `plan` at all.
-  //
-  // #961: the gate key is `${plan.id}-${plan.createdAtMs}`, not `plan.id`
-  // alone — the same composite identity as ShallowWarning's `key` (this
-  // file's own #452/#747 comment below), applied to a REF COMPARISON rather
-  // than a key. The two are NOT equivalent across an unmount: a `key` differs
-  // at the NEXT render whenever the plan changed, regardless of whether the
-  // component was mounted at the time; a mount-seeded ref only fires if the
-  // component was mounted WHEN the plan changed: a later mount re-seeds
-  // from whatever plan is present at the time, so a replacement that landed
-  // while this panel was unmounted is never announced.
-  //
-  // usePlanFlow.ts's run() (#114's `replacePlanId: recalcPlan.id`) and
-  // useDepartureConfirm.ts's confirm() (#937) both preserve `plan.id` while
-  // stamping a fresh `createdAtMs` on every completed plan. Only #937's path
-  // is UNCONDITIONALLY fixed by this: `DepartureCompare` renders inside the
-  // same `tab === 'plan'` block as this panel (App.tsx), so the component
-  // stays mounted across the replacement. #114's recalculate-and-replace
-  // fires from `PlansList`, which lives inside the mutually-exclusive
-  // `tab === 'routes'` block — this panel is unmounted while it runs, and
-  // returning to the Plan tab re-seeds this ref from the already-replaced
-  // plan, so the ordinary recalculate-then-switch-back flow stays silent.
-  // Fixed only in the narrow case where the user stays on the Plan tab while
-  // a recalculate started elsewhere completes. `replanWithVias`
-  // (state/replan.ts) is the one path that keeps BOTH `id` and `createdAtMs`
-  // fixed, but #571 removed its only App.tsx call site — it is exercised by
-  // tests only today, so widening the gate cannot make a live via-edit
-  // chatty.
-  const planAnnounceKey = plan ? `${plan.id}-${plan.createdAtMs}` : null;
-  const lastAnnouncedKeyRef = useRef<string | null>(planAnnounceKey);
-  const [announcedResult, setAnnouncedResult] = useState<RigResult | null>(null);
-  useEffect(() => {
-    if (planning.phase !== 'idle' || !plan) return;
-    const res = rig ? activeRigResult(plan, rig) : null;
-    if (!res || planAnnounceKey === lastAnnouncedKeyRef.current) return;
-    lastAnnouncedKeyRef.current = planAnnounceKey;
-    setAnnouncedResult(res);
-  }, [planning.phase, plan, rig, planAnnounceKey]);
-
-  const announcement = announcedResult
-    ? t('planner.result.announce', {
-        arrival: formatDateTime(announcedResult.etaMs, lang),
-        duration: formatDuration(announcedResult.durationMs),
-        distance: formatNm(announcedResult.distanceNm, lang),
-      })
-    : '';
-
-  // Single derived text for the ONE persistent live region: in-flight phase
-  // messages while planning, then the completion summary once idle. Never a
-  // second aria-live region WITHIN this component.
-  //
-  // #961/#937: `DepartureCompare`'s own `departureScan.confirm.done` status
-  // ("Plan updated.") fires alongside this one on a confirm-solve — both are
-  // mounted inside App.tsx's `tab === 'plan'` block simultaneously. The two
-  // carry DIFFERENT content (that the replacement was applied — plus, on
-  // the disagreement variant, which rig the full solve favours — vs. the
-  // resulting ETA/duration/distance), so this is a deliberate PAIR, not the
-  // same-sentence double announcement PR #486 removed.
+  // #983: the completion announcement ("Route calculated — arrival …")
+  // used to live HERE, gated on this component being mounted (`tab ===
+  // 'plan'`) — which meant a recalculate completing while the user was on
+  // the Live or Boat tab was announced NOWHERE (PlansList's own #961
+  // announcement had the identical `tab === 'routes'`-only gap). It is now
+  // owned by App.tsx's single, tab-independent `PlanCompletionAnnouncer`
+  // (mounted unconditionally, regardless of `tab`) — see that component's
+  // own header and App.tsx's `announceCompletion`/`prevPlanningPhaseRef`
+  // comments for the replacement mechanism, including how it still covers
+  // #937's confirm-solve pairing with DepartureCompare's own
+  // `departureScan.confirm.done` status. This panel keeps its OTHER live
+  // content — the in-flight fetching/routing/probing phase text below, and
+  // the `formDirty`-stale fold — both tab-local concerns the app-level
+  // region does not attempt to replace.
   let statusText = '';
   if (planning.phase === 'fetching') statusText = t('planner.status.fetching');
   else if (planning.phase === 'routing')
@@ -662,8 +597,7 @@ export default function PlannerPanel({
     // unconditionally — it's a static DOM insertion outside a live region,
     // never itself announced, so showing it regardless of `settingsDirty`
     // does not reintroduce any duplicate announcement.
-    const staleSuffix = formDirty && !settingsDirty && summary ? t('planner.result.stale') : '';
-    statusText = [announcement, staleSuffix].filter(Boolean).join(' ');
+    statusText = formDirty && !settingsDirty && summary ? t('planner.result.stale') : '';
   }
   // §3.4 (fix wave): the idle completion announcement is screen-reader-only —
   // the visible surface is the prominent Ergebnis card, so a visible sentence
