@@ -117,12 +117,13 @@ making design-level decisions; do not silently deviate.
   `.github/workflows/coverage.yml` carries TWO `timeout-minutes` settings at
   different levels: a STEP-level `240` on the `test:coverage` step, and (since
   #882) a JOB-level `260` set strictly higher so the job outlives that step's
-  cap plus margin. Only the STEP value is NOT guarded at all:
-  `timeoutBudgetVsJobCap.test.ts` DECLARES `JOB_CAP_MINUTES = 240` rather than
-  reading it (PR #351 removed the read after four fail-opens), so the two are
-  kept in sync by a twin comment only and #359 tracks restoring a real read.
-  The JOB-level `260` has no such coupling either, and was never claimed to —
-  #359's fix would need to cover both once done.
+  cap plus margin. NEITHER is guarded, and the STEP value is the one
+  `timeoutBudgetVsJobCap.test.ts` means: it DECLARES `JOB_CAP_MINUTES = 240`
+  rather than reading it (PR #351 removed the read after four fail-opens), so
+  the two are kept in sync by a twin comment only, and #359 tracks restoring a
+  real read. The JOB-level `260` never had such a coupling either — #359's
+  Option A already covers both, by addressed lookup rather than a
+  whole-file scan.
 ## Commands
 - App (run from repo root): `npm --prefix app run typecheck` / `lint` / `test` /
   `build` / `dev`. CI runs lint+typecheck BEFORE tests — vitest alone will not
@@ -150,10 +151,8 @@ making design-level decisions; do not silently deviate.
   use `run`, never `exec`, for anything that depends on `app/`'s config.
 - Statement coverage baseline and trailing test/file count: read both off the
   LATEST nightly `Coverage` run's own head SHA and the conclusion of its step
-  running `npm run test:coverage` (the step has no `name:` field, so the API/UI
-  auto-generates it as `Run npm run test:coverage`, not the literal
-  `test:coverage`) — never hand-add, infer, or carry a prior run's figure
-  forward.
+  running `npm run test:coverage` — never hand-add, infer, or carry a prior
+  run's figure forward.
   The earlier **2160 tests / 146 files** (2026-08-24
   at `39bbcd6`, the v0.13.1 cut) was +24 over v0.13.0 = 12 plain `it(` cases plus
   ONE `it.each(Object.getOwnPropertyNames(Object.prototype))` row expanding to
@@ -1074,18 +1073,15 @@ making design-level decisions; do not silently deviate.
   closing it needed a browser-side unregister+cache-clear in the specs that
   navigate — #832 (closed 2026-09-04, milestone v0.21.0) WROTE
   `assertCleanServiceWorkerState` in `app/e2e/helpers.ts` to close it. #975
-  then established, and PR #1032 (merged 2026-09-07) corrected this file to
-  say, that this suite's per-test browser-context isolation (a fresh context
-  per test, no `_reuseContext`/persistent context/shared page — verified
-  against `playwright@1.62.1`) means there is NEVER a live SW registration or
-  cache for that function to find at any real call site: it is currently
-  INERT outside `startPreviewIdentity.spec.ts`'s own self-test, which
-  manufactures the hazard synthetically. It is kept anyway as a forward
-  invariant that becomes load-bearing only if this suite's isolation changes
-  (context reuse, a persistent context, or a shared page/context across
-  `test()` blocks) — do not read its presence as evidence any spec today is
-  protected from a stale-SW build substitution. Re-read `app/e2e/helpers.ts`'s
-  own doc comment above that function for the full forensics).**
+  established (2026-09-07) that this suite's per-test browser-context
+  isolation means there is NEVER a live SW registration or cache for that
+  function to find at any real call site: it was INERT outside
+  `startPreviewIdentity.spec.ts`'s own self-test, which manufactures the
+  hazard synthetically. It is kept anyway as a forward invariant that
+  becomes load-bearing only if this suite's isolation changes — do not read
+  its presence as evidence any spec today is protected from a stale-SW
+  build substitution. Re-read `app/e2e/helpers.ts`'s own doc comment above
+  that function for the full forensics).**
   Neither a free port nor a pid check closes the port-squat case. **Make the
   assertion SELF-PROVING instead** —
   one that can only pass on the exact tree under test. Worked example: PR
@@ -3974,9 +3970,7 @@ making design-level decisions; do not silently deviate.
   issue. Taxonomy documented in CONTRIBUTING.md (#167/#168); its label
   section is the authoritative copy of the `area:` member list, including the
   deliberate bare-`area:` residual for user-facing copy / i18n / UI-structure
-  issues (#610, closed) — do NOT restate the member list here: it grew by one
-  member (#1039 added `area: docs`) the same session this bullet's own prior
-  member list went stale.
+  issues (#610, closed) — do NOT restate the member list here.
   The taxonomy DRIFTED into space/no-space
   duplicates (found at the v0.9.0 cut) and was CLEANED UP 2026-08-19 (#401):
   every no-space-labelled issue was re-tagged onto the spaced form and all
