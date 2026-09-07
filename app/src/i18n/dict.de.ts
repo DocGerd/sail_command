@@ -99,6 +99,33 @@ export const de = {
   'settings.seamarkCategory.all': 'Alle',
   'settings.seamarkCategory.help':
     'Kardinal-, Lateral- und Mitte-Fahrwasser-Zeichen, Einzelgefahrenzeichen sowie Leuchttürme werden immer angezeigt, auch bei „Basis“. „Standard“ (Voreinstellung) zeigt alles, einschließlich Unterwasserkabeln und Pipelines. „Alle“ zeigt derzeit dasselbe wie „Standard“.',
+  // #849 part (a): lokaler Import/Export für Routen, Einstellungen und
+  // gespeicherte Wegpunkte — sitzt am Ende des Boot-Tabs, da er alle drei
+  // Datenarten betrifft statt nur diesem Tab. Ergänzt (löscht nicht) die
+  // "waypoints.deviceLocal"-Warnung: das ist der Weg, ein Backup zu haben.
+  'settings.section.backup': 'Sicherung',
+  'settings.backup.description':
+    'Der Export erstellt eine einzelne Datei mit allem unten Genannten: gespeicherten Routen, Einstellungen und gespeicherten Wegpunkten — nützlich als Backup oder zum Umzug auf ein neues Gerät. Der Import fügt die Routen und Wegpunkte der Datei hinzu, ohne etwas Vorhandenes zu löschen; enthält die Datei Einstellungen, ersetzen diese deine aktuellen Einstellungen.',
+  'settings.backup.export': 'Exportieren',
+  'settings.backup.import': 'Importieren',
+  'settings.backup.import.success': '{plans} Route(n) und {waypoints} Wegpunkt(e) importiert.',
+  'settings.backup.import.settingsApplied': 'Einstellungen aus der Datei wurden übernommen.',
+  'settings.backup.import.skippedPlans':
+    '{count} Route(n) in der Datei konnten nicht gelesen werden und wurden übersprungen.',
+  'settings.backup.import.skippedWaypoints':
+    '{count} Wegpunkt(e) in der Datei konnten nicht gelesen werden und wurden übersprungen.',
+  'settings.backup.import.error.notJson': 'Das ist keine gültige SailCommand-Exportdatei.',
+  'settings.backup.import.error.notEnvelope': 'Das ist keine gültige SailCommand-Exportdatei.',
+  'settings.backup.import.error.unsupportedVersion':
+    'Diese Datei wurde mit einer neueren Version von SailCommand exportiert und kann von dieser Version nicht gelesen werden.',
+  'settings.backup.import.error.failed': 'Die Datei konnte nicht gelesen werden.',
+  'settings.backup.export.error.failed': 'Die Exportdatei konnte nicht erstellt werden.',
+  // #1068 review Minor: plans/waypoints now write independently, so a
+  // partial write failure needs its own, separate notice.
+  'settings.backup.import.plansWriteFailed':
+    '{count} eingelesene Route(n) konnten nicht auf diesem Gerät gespeichert werden.',
+  'settings.backup.import.waypointsWriteFailed':
+    '{count} eingelesene Wegpunkt(e) konnten nicht auf diesem Gerät gespeichert werden.',
   'planner.card.trip': 'Reise',
   'planner.card.result': 'Ergebnis',
   'planner.origin.label': 'Start',

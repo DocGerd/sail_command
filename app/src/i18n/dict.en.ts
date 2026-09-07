@@ -96,6 +96,33 @@ export const en = {
   'settings.seamarkCategory.all': 'All',
   'settings.seamarkCategory.help':
     'Cardinal, lateral, safe-water and isolated-danger marks, and major lights, are always shown, even at "Base". "Standard" (the default) shows everything, including submarine cable and pipeline markers. "All" currently shows the same as "Standard".',
+  // #849 part (a): local import/export for routes, settings and saved
+  // waypoints — sits at the end of the Boat tab since it covers all three
+  // data kinds, not just this tab. Complements (does not replace) the
+  // 'waypoints.deviceLocal' caveat: this is the way to have a backup.
+  'settings.section.backup': 'Backup',
+  'settings.backup.description':
+    "Export creates a single file with everything below: saved routes, settings and saved waypoints — useful as a backup or to move to a new device. Importing adds the file's routes and waypoints without deleting anything you already have; if the file includes settings, those replace your current settings.",
+  'settings.backup.export': 'Export',
+  'settings.backup.import': 'Import',
+  'settings.backup.import.success': '{plans} route(s) and {waypoints} waypoint(s) imported.',
+  'settings.backup.import.settingsApplied': 'Settings from the file were applied.',
+  'settings.backup.import.skippedPlans':
+    '{count} route(s) in the file could not be read and were skipped.',
+  'settings.backup.import.skippedWaypoints':
+    '{count} waypoint(s) in the file could not be read and were skipped.',
+  'settings.backup.import.error.notJson': 'This is not a valid SailCommand export file.',
+  'settings.backup.import.error.notEnvelope': 'This is not a valid SailCommand export file.',
+  'settings.backup.import.error.unsupportedVersion':
+    'This file was exported from a newer version of SailCommand and cannot be read by this version.',
+  'settings.backup.import.error.failed': 'The file could not be read.',
+  'settings.backup.export.error.failed': 'The export file could not be created.',
+  // #1068 review Minor: plans/waypoints now write independently, so a
+  // partial write failure needs its own, separate notice.
+  'settings.backup.import.plansWriteFailed':
+    '{count} parsed route(s) could not be saved to this device.',
+  'settings.backup.import.waypointsWriteFailed':
+    '{count} parsed waypoint(s) could not be saved to this device.',
   'planner.card.trip': 'Trip',
   'planner.card.result': 'Result',
   'planner.origin.label': 'Origin',
