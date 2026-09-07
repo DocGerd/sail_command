@@ -500,16 +500,36 @@ orchestrator's job per the brief.
    charted shallow water flagged on this route" statement for the specific,
    narrower case §8 corrects this review's own earlier claim down to:
    non-relaxed plans where NEITHER `ShallowWarning` nor `MarginalDepthNotice`
-   fires (zero mask-derived exposure). This must be a THIRD, mutually
-   exclusive state gated on the same two conditions those two already use
-   (`relaxed`/`exposureDist`) being both false/null — never a fourth message
-   rendered alongside either existing one, and never a change to when
-   `ShallowWarning` or `MarginalDepthNotice` themselves mount, which would
-   break the #612 "provably never both shown and never both hidden"
-   property CLAUDE.md records for that pair. Presentation-only, no
-   `PlanResult`/sweep-baseline change. Highest priority: this is the
-   safety-hierarchy gap named in §8, already documented as open in
-   CLAUDE.md's #455/#612 history.
+   fires. This must be a THIRD, mutually exclusive state alongside those
+   two — never a fourth message rendered beside either, and never a change
+   to when `ShallowWarning` or `MarginalDepthNotice` themselves mount, which
+   would break the #612 "provably never both shown and never both hidden"
+   property CLAUDE.md records for that pair.
+
+   **The gate for this new state must NOT be "`exposureDist === null`."**
+   Read from `RouteSummary.tsx` and `lib/shallowExposure.ts` directly:
+   `exposureDist` is null for FOUR distinct reasons, and only one of them
+   means the route is actually clean — `!mask` (the mask is still loading,
+   true on every cold plan), `!legs`/empty legs, `marginalExposureNm`
+   itself returning null (`shallowExposureNm`'s `!mask.inBounds(...)` /
+   walk-failure paths, `lib/shallowExposure.ts:243/245`), and a genuine
+   measured `nm <= 0`. Only the last of those four is "looked and found
+   nothing"; the first three are "do not know yet." Gating the affirmative
+   on bare nullness would render "no charted shallow water flagged on this
+   route" while the mask is still loading or after a walk failure — a false
+   all-clear from the app's OWN loading path, on every cold plan, and
+   exactly the hazard CLAUDE.md already names under #251/#255: *"`null` for
+   BOTH 'no cell below the threshold' AND 'the walk left the grid'…
+   reversing those two steps is a silent false all-clear, and the
+   natural-looking implementation is the wrong one."* The new state must
+   render ONLY on a disambiguated, genuine `nm <= 0`; every other
+   null-producing condition (mask loading, no legs, walk/out-of-bounds
+   failure) must render NOTHING, or a neutral "checking…" state — never the
+   affirmative. Absence of evidence is not evidence of absence; "we do not
+   know yet" and "we looked and found nothing" must not collapse into one
+   UI state. Presentation-only, no `PlanResult`/sweep-baseline change.
+   Highest priority: this is the safety-hierarchy gap named in §8, already
+   documented as open in CLAUDE.md's #455/#612 history.
 3. **Collapse the always-expanded waypoint coordinate-entry form on the
    Trip card behind the same `Disclosure` pattern used elsewhere in this
    panel**, and surface the `app.disclaimer` + offline-capability lines as
