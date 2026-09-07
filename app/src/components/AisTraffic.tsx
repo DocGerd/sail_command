@@ -298,9 +298,15 @@ export default function AisTraffic({
   // render — setPlan batches plan + activeLegIndex→null, and holding the OLD
   // plan's index against the NEW plan's legs would slice a mis-placed
   // corridor for up to 2 s. `route` itself is that reset key now (#554):
-  // App.tsx re-derives it from [plan, rig], so its reference changes on
-  // exactly the same plan/rig identity changes the old `[plan, rig] as const`
-  // tuple did — one fewer memo here, same reset behavior.
+  // App.tsx re-derives it from [plan, rig], so its reference changes on the
+  // same plan/rig identity changes the old `[plan, rig] as const` tuple did
+  // whenever either resolved RigResult is non-null — the one divergence (a
+  // rig switch between two RigResults that are both null, where `route`
+  // stays null→null and never bypasses) is inert, since `activeLegIndex` is
+  // itself null throughout that window (`LiveView.tsx` derives it from the
+  // same `activeRigResult` call) and `corridorBoxes` below short-circuits on
+  // `!route` before `settledLegIndex` is ever read — one fewer memo here,
+  // equivalent reset behavior.
   const settledLegIndex = useSettledValue(activeLegIndex, AIS_CORRIDOR_LEG_SETTLE_MS, route);
 
   // #146 route corridor: recomputes only on [route, settledLegIndex] — both
