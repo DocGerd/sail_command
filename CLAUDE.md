@@ -220,13 +220,6 @@ making design-level decisions; do not silently deviate.
   is wider than the obvious paths: besides `app/src/routing/`,
   `app/src/lib/mask.ts`, `app/src/lib/depthGate.ts` (since #452),
   `app/public/data/`, `app/sweep/` and `pipeline/`,
-  — and note `services/assets.ts`'s `loadRoutingAssets()` fetches
-  `mask.meta.json`, `mask.bin`, the polars, `harbors.json` AND `seamarks.json`
-  in ONE `Promise.all`, so ANY of them failing leaves `harbors` permanently
-  `[]`: a path-exclusion table treating one as independently excludable is
-  wrong even when nothing reads it directly (measured at #1033, where
-  `seamarks.json` was excluded on a false rationale and the fix also caught
-  `mask.meta.json`) —
   `app/src/data/boats.ts` and `app/src/lib/boatDepth.ts` (both since #538 —
   `sweepArms.ts:38` imports `boatById`/`DEFAULT_BOAT_ID`/`polarKey`;
   `types.ts:1` and `planRoute.ts:24` import `boatDepth`),
@@ -545,7 +538,17 @@ making design-level decisions; do not silently deviate.
   fires**, so a field that must accept a letter cannot use it at all — #886's
   via-coordinate fields became `type="text"` + `inputMode="decimal"` with their
   own draft/blur state for exactly that reason. Distinct from
-  `NumberInput.tsx`'s WHATWG comment, about DMS being structurally unenterable.
+  `NumberInput.tsx`'s WHATWG comment, which is about `Infinity`/non-finite
+  parsing, not about letters.
+- **A path allowlist must be derived from the DEPENDENCY GRAPH, not per-file.**
+  `services/assets.ts`'s `loadRoutingAssets()` fetches `mask.meta.json`,
+  `mask.bin`, the polars, `harbors.json` AND `seamarks.json` in ONE
+  `Promise.all`, and `App.tsx`'s own comment records that a rejection leaves
+  `harbors` permanently `[]`. So a filter or exclusion table can be wrong about
+  an asset nothing reads directly: measured at #1033, where `seamarks.json` was
+  excluded because `capture.mjs` never touches it — true, and irrelevant, since
+  breaking it breaks the harbour combobox the script clicks. The same pass then
+  caught `mask.meta.json` under the identical coupling.
 - **`in` walks the PROTOTYPE CHAIN — never use it as a membership test against
   an object literal used as a lookup table for STORED/untrusted input.** EVERY
   `Object.getOwnPropertyNames(Object.prototype)` member passes it (12 of them on
@@ -2042,10 +2045,10 @@ making design-level decisions; do not silently deviate.
   integration branch and open a single PR: their `Closes #N` COMMIT TRAILERS
   still fire on merge to `develop` — but a keyword living only in a member
   PR's BODY does NOT, because a body fires auto-close solely for the PR that
-  is itself merged. Measured at both v0.25.0 waves: 9 of 10 and 3 of 4
-  keywords were body-only, so each batch would have closed ONE issue and
-  silently left the rest open. RESTATE EVERY `Closes #N` IN THE INTEGRATION
-  PR's BODY, and grep the two locations separately. General form: batching
+  is itself merged. Measured at both v0.25.0 waves: 9 of 10 and 3 of 5
+  keyword instances were body-only, so each batch would have closed only the
+  commit-borne ones and silently left the rest open. RESTATE EVERY `Closes #N`
+  IN THE INTEGRATION PR's BODY, and grep the two locations separately. General form: batching
   changes WHICH ARTIFACT FIRES THE AUTOMATION, so any per-PR property held in
   PR metadata rather than in commits does not survive it.
   The batch build IS the merged-tree
@@ -3264,9 +3267,9 @@ making design-level decisions; do not silently deviate.
   of a boolean `getByText('★')`. #428 CLOSED at v0.25.0: `.github/workflows/
   docs-screenshots.yml`'s `capture` job now runs the script, but it is ADVISORY
   (`protect-main` requires `app`+`e2e` only, so a red merges silently) and
-  exit-code-only — it catches a crash or timeout, never a capture that
-  COMPLETES and shows the wrong state, which is what #64 and the v0.10.0
-  fixture actually were.
+  exit-code-only — it catches a crash or timeout (which is what #64's stale
+  selectors caused, so that one WOULD be caught now), never a capture that
+  COMPLETES and shows the wrong state, which is what the v0.10.0 fixture was.
   That fixture decays TWO independent ways, and horizon is the one that
   MISLEADS: a ROUTING change invalidates it while it is perfectly fresh.
   #577 (closed v0.12.1) — #54's multi-boat work collapsed the genoa/fock
@@ -3878,12 +3881,13 @@ making design-level decisions; do not silently deviate.
   FIRST; only then is a `null` trustworthy as "clear"
   (#251/#255 — reversing those two steps is a silent false all-clear, and the
   natural-looking implementation is the wrong one).
-  SECOND INSTANCE, same family: `lib/shallowExposure.ts` returns `null` for
-  FOUR causes — `!mask` (still loading, true on every cold plan), empty legs,
-  a walk/out-of-bounds failure (`:243`/`:245`), and a genuine zero. Only the
-  last means clean, so gating an affirmative "no shallow water" on bare
-  nullness is a false all-clear during ordinary loading (#1022's spike,
-  slice 2).
+  SECOND INSTANCE, same family, and it spans TWO files: `RouteSummary.tsx`'s
+  exposure memo is `null` for `!mask` (still loading, true on every cold plan)
+  or empty legs, while `shallowExposureNm` returns `null` on a walk/
+  out-of-bounds failure — and a genuine zero is the NUMBER `0`, which only the
+  caller's `nm <= 0` treats as clean. So gating an affirmative "no shallow
+  water" on bare nullness is a false all-clear during ordinary loading
+  (#1022's spike, slice 2 — read BOTH files, not one).
 - Angles: wind direction is meteorological (coming FROM, degrees true);
   polars are TWA × TWS → boat speed in knots. Positions are WGS84.
   Distances in nautical miles, speeds in knots.
