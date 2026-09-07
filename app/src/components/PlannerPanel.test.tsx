@@ -1093,6 +1093,63 @@ describe('PlannerPanel', () => {
         expect(within(viaSection).getAllByRole('listitem')).toHaveLength(2);
       });
 
+      // #938 review MAJOR: arming "clear all" and then removing a DIFFERENT
+      // point via its own per-row button (a real, unrelated mutation of the
+      // draft — not the drain this feature itself performs) must disarm the
+      // confirm. The reviewer's own live repro: arm on 3 points, remove ONE
+      // via its own row button, and the confirm stayed armed against the
+      // now-2-item list the user never actually confirmed clearing. Needs
+      // the #695/#863 stateful-harness pattern (see above): a bare vi.fn()
+      // onRemoveVia never actually shrinks `viaPoints`, so the reference
+      // change this disarm relies on could never be exercised against it.
+      it('#938 review: removing a via point via its own row button disarms an armed "clear all" confirm', () => {
+        localStorage.setItem('sc-lang', 'en');
+        const THIRD = { lat: 54.9, lon: 10.1 };
+        function Harness() {
+          const [points, setPoints] = useState<LatLon[]>([VIA_A, VIA_B, THIRD]);
+          return (
+            <PlannerPanel
+              {...baseProps({
+                viaPoints: points,
+                onRemoveVia: (i: number) => setPoints(points.filter((_, idx) => idx !== i)),
+              })}
+            />
+          );
+        }
+        render(
+          <I18nProvider>
+            <Harness />
+          </I18nProvider>,
+        );
+
+        // Arm the confirm.
+        fireEvent.click(screen.getByRole('button', { name: 'Clear all waypoints' }));
+        expect(
+          screen.getByRole('button', { name: 'Confirm clearing all waypoints' }),
+        ).toBeInTheDocument();
+
+        // Remove ONE point via its OWN row button — unrelated to "clear all".
+        fireEvent.click(screen.getByRole('button', { name: 'Remove waypoint 1' }));
+
+        // The list shrank but is NOT empty (2 of 3 remain) — the control
+        // must have fallen back to the un-armed label, never stayed
+        // "confirming" against a list the user never looked at.
+        const viaSection = screen.getByRole('region', { name: 'Waypoints' });
+        expect(within(viaSection).getAllByRole('listitem')).toHaveLength(2);
+        expect(screen.getByRole('button', { name: 'Clear all waypoints' })).toBeInTheDocument();
+        expect(
+          screen.queryByRole('button', { name: 'Confirm clearing all waypoints' }),
+        ).not.toBeInTheDocument();
+
+        // A SECOND tap must re-arm (not immediately clear) — proving the
+        // control fell back to "un-armed", not merely lost its label text.
+        fireEvent.click(screen.getByRole('button', { name: 'Clear all waypoints' }));
+        expect(
+          screen.getByRole('button', { name: 'Confirm clearing all waypoints' }),
+        ).toBeInTheDocument();
+        expect(within(viaSection).getAllByRole('listitem')).toHaveLength(2);
+      });
+
       // Needs the #695/#863 stateful-harness pattern (see above, near
       // "#863 review"): a bare vi.fn() onRemoveVia never actually shrinks
       // `viaPoints`, so the drain this feature relies on (every removal
