@@ -13,43 +13,45 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.25.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.26.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
-## Now — v0.25.0
+## Now — v0.26.0
 
-The `v0.25.0` cut (2026-09-07) completed the
-[`v0.25.0` milestone](https://github.com/DocGerd/sail_command/milestones),
-twenty issues in total. Two changelog entries shipped, covering two
-distinct issues: the waypoint coordinate-entry work
-([#886](https://github.com/DocGerd/sail_command/issues/886)) `v0.24.0` had
-left with two of its three parts delivered, now closed; and a map-marker
-fix ([#1020](https://github.com/DocGerd/sail_command/issues/1020)). The
-milestone's remaining eighteen issues were doc-accuracy, test-coverage,
-agent-tooling and CLAUDE.md/README-size fixes with no user-facing change
-([#1029](https://github.com/DocGerd/sail_command/issues/1029),
-[#1025](https://github.com/DocGerd/sail_command/issues/1025),
-[#610](https://github.com/DocGerd/sail_command/issues/610),
-[#428](https://github.com/DocGerd/sail_command/issues/428), among others).
+The `v0.26.0` cut (2026-09-07) completed the
+[`v0.26.0` milestone](https://github.com/DocGerd/sail_command/milestones),
+eleven issues in total. Three changelog entries shipped, covering three
+distinct issues. Two of the milestone's issues remain open and roll forward
+to `v0.27.0`: a routing course-correction question
+([#847](https://github.com/DocGerd/sail_command/issues/847)), whose
+investigating PR deliberately used `Refs` rather than `Closes` because its
+measurement covers only one route under uniform wind; and advancing the
+OpenSSF Best Practices badge to Silver tier
+([#667](https://github.com/DocGerd/sail_command/issues/667)), which needs a
+maintainer form submission. The milestone's remaining six issues were
+docs-accuracy, test-coverage and agent-tooling fixes with no user-facing
+change ([#1059](https://github.com/DocGerd/sail_command/issues/1059),
+[#1057](https://github.com/DocGerd/sail_command/issues/1057),
+[#989](https://github.com/DocGerd/sail_command/issues/989),
+[#911](https://github.com/DocGerd/sail_command/issues/911),
+[#896](https://github.com/DocGerd/sail_command/issues/896),
+[#836](https://github.com/DocGerd/sail_command/issues/836)).
 
-Via-waypoint coordinate entry now accepts a trailing hemisphere letter (e.g.
-"54.8S", "10.1W"), matching how charts and almanacs write coordinates, and
-rejecting an unreadable entry shows a visible message instead of silently
-reverting; the coordinate entry group is also announced by name ("New
-waypoint" / "Editing waypoint N") to screen readers
-([#886](https://github.com/DocGerd/sail_command/issues/886)). Parsing typed
-degrees-and-minutes and degrees-minutes-seconds coordinates remains a
-separate, disjoint ask, tracked as
-[#1005](https://github.com/DocGerd/sail_command/issues/1005) and not yet
-scheduled into a release.
+Plans, settings and saved waypoints can now be exported to and imported from
+a versioned local file
+([#849](https://github.com/DocGerd/sail_command/issues/849)).
 
-Origin and destination now render a visible, distinguishable marker on the
-map, whether picked by tapping, searching a harbor, or importing a GPX
-route ([#1020](https://github.com/DocGerd/sail_command/issues/1020)).
+A "Clear all waypoints" control abandons a whole draft of via points in one
+action, with a confirm tap before anything is removed
+([#938](https://github.com/DocGerd/sail_command/issues/938)).
 
-## Next — v0.26.0
+The "waypoints too close to a neighbor — skipped" notice now names which
+waypoint was dropped when it has a name, instead of only counting drops
+([#939](https://github.com/DocGerd/sail_command/issues/939)).
 
-The [`v0.26.0` milestone](https://github.com/DocGerd/sail_command/milestones)
+## Next — v0.27.0
+
+The [`v0.27.0` milestone](https://github.com/DocGerd/sail_command/milestones)
 is the one now being filled. As of this cut it holds no issues yet — triage
 into it has not started — so the milestone page is the only authoritative
 view; check it directly rather than this file.

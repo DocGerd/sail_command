@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-09-07
+
+### Added
+
+- Export and import plans, settings and saved waypoints as a versioned local file (#849).
+- Added a "Clear all waypoints" control to abandon a whole draft of via points in one action, with a confirm tap before anything is removed (#938).
+
+### Fixed
+
+- The "waypoints too close to a neighbor — skipped" notice now names which waypoint was dropped when it has a name, instead of only counting drops (#939).
+
 ## [0.25.0] - 2026-09-07
 
 ### Added
@@ -1006,7 +1017,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.25.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.26.0...HEAD
+[0.26.0]: https://github.com/DocGerd/sail_command/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/DocGerd/sail_command/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/DocGerd/sail_command/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/DocGerd/sail_command/compare/v0.22.0...v0.23.0
