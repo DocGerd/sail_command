@@ -425,3 +425,43 @@ part of #714's scope; found during this spike's enumeration, §2 row 6)**
 - A visual/interaction design for the seamark list beyond its primitive and
   tier placement (exact row layout, whether a row offers a "show on map"
   jump action) — a reasonable enhancement, not required by #714's DoD.
+
+---
+
+## 10. Addendum — two measured departures in what #830 shipped
+
+Issue #830 (implementing §5.2 above) shipped as PR #869
+(`SeamarksInView.tsx`/`seamarksInView.ts`), and its body records two
+deliberate departures from this section's recommendation, each measured
+rather than reasoned. This section records them here per that PR's own
+"a follow-up addendum there is the orchestrator's" note; the recommendation
+in §4.1/§5.2 above is left as written — it is the record of what was
+proposed and why, not what shipped.
+
+**1. Placement.** §4.1 recommends `.data-layer-controls`. A 2026-09-02
+real-Chromium re-measurement reproduced the #681 figures: a third row there
+costs +51.60 px at 375x667 (the comment there says 51.59) and drops the
+depth legend's reachability budget from 62.556 px to 10.962 px — under
+`LEGEND_COLLAPSED_HEIGHT_PX` (44) — hiding the whole `.depth-legend`,
+§0's #597 safety caveat included, at three viewports with no plan: 375x667
+collapsed (10.96 px), 360x740 collapsed (43.81 px), and 390x844 expanded
+(−1.39 px), two of those three at REST (collapsed, no interaction needed to
+reach the hidden state). Placing the list in the Plan panel instead leaves
+`budgetPx` byte-identical at all twelve viewports in both arms; its cost is
+panel scroll depth only — +46 px collapsed / +153 px expanded at 375x667,
+zero at desktopHd, where the panel does not scroll.
+
+**2. Data source.** §4.1/§5.2 recommend a `moveend`-gated
+`queryRenderedFeatures` query. PR #869 instead bounds-filters the full
+`useSeamarks()` collection (a fetch-once singleton) geographically, applying
+the same cumulative display-tier cut the map layers use, deliberately NOT
+mirroring MapLibre's below-z12 collision culling — the list is a superset of
+what a mouse user can click, the safe direction, never a subset — capped
+nearest-first at 50 with a truncation note. `queryRenderedFeatures` is wrong
+for a second, independent reason this spike did not anticipate: the seamark
+layers are hidden by default, so it would return zero features on a default
+install regardless of viewport.
+
+Neither departure changes §5.4's "what is deliberately not touched" list —
+`types.ts`/`PlanRequest`/`PlanResult` and `app/sweep/`'s transitive closure
+are unaffected either way.

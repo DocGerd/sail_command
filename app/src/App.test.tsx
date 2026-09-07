@@ -1647,12 +1647,14 @@ describe('via edits are draft-only and never auto-replan (#571 redesign)', () =>
 
   // App.tsx's `viaDraftStale` — the MAP-side counterpart of the panel's own
   // Chip/live-region fold (both driven by `formDirty`, which now includes
-  // the via list too). ViaMarkers.tsx's own header notes it is otherwise
-  // jsdom-untestable (no real MapLibre/WebGL runtime) — but the CHIP itself
-  // is a plain React return value, not an imperative Marker, so it renders
-  // through the shared fake map exactly like any other component here and
-  // is directly assertable. Queried by class rather than role="status",
-  // since the panel's own persistent live region also carries that role.
+  // the via list too). ViaMarkers.tsx's own header says real-map rendering
+  // there is not unit-tested (jsdom has no MapLibre/WebGL runtime) — but the
+  // CHIP itself is a plain React return value, not an imperative Marker, so
+  // it renders through the shared fake map exactly like any other component
+  // here and is directly assertable, which is why THIS test — not
+  // ViaMarkers.test.tsx — is what covers it. Queried by class rather than
+  // role="status", since the panel's own persistent live region also
+  // carries that role.
   it('the map-side staleness chip (ViaMarkers) appears once a via edit diverges from the committed plan, and disappears once it matches again', async () => {
     renderApp();
     await screen.findByRole('heading', { name: 'SailCommand' });
@@ -2122,7 +2124,7 @@ describe('banner surfacing (PR self-review fix wave)', () => {
 
     const destSection = screen.getByRole('region', { name: de['planner.destination.label'] });
     fireEvent.click(within(destSection).getByRole('button', { name: de['planner.pickOnMap'] }));
-    simulateMapClick(54.9, 10.5);
+    simulateMapClick(DEST_A.lat, DEST_A.lon);
 
     fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
     await waitFor(() => expect(routingMock.calls.length).toBe(1));

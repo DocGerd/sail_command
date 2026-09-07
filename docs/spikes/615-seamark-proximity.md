@@ -290,8 +290,12 @@ solver):
   500 m fires on 26/28 with a maximum of 12.
 - Nearest hazard mark per route, sorted (m): 5, 16, 21, 25, 27, 37, 45, 45,
   76, 133, 141, 149, 203, 269, 287, 311, 333, 336, 358, 367, 393, 463 x5,
-  960, 1818 — 15 of the 28 routes have a hazard mark within 300 m, which is
-  the firing count above restated from the other side. The five
+  960, 1818 — 15 of the 28 routes have a hazard mark closer than 300 m,
+  which is the firing count above restated from the other side (the sorted
+  list runs 287 then 311, so nothing sits exactly at 300 m and the inclusive
+  and strict readings coincide here — but `nearbyHazardMarkCount()` implements
+  a strict `<`, the same bound the shipped copy uses, so "closer than" is the
+  reading this repeats, not "within"). The five
   identical 463 m readings are routes sharing one approach past one mark.
 - The four-route table reproduces inside the scan: soenderborg 1, marstal 3,
   bagenkop 3 at 300 m.

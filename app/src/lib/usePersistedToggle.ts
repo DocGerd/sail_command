@@ -15,9 +15,9 @@ import { safeGetItem, safeSetItem } from './storage';
 // module comment there for the full rationale, ported here because #681's
 // composition fix hit the IDENTICAL requirement one level down: the hazard-
 // hatch toggle is now offered from TWO complementary surfaces
-// (DataLayers.tsx's own `.depth-legend`, reachable while `plan === null`,
-// and RouteLegend.tsx's folded-in `.route-legend-depth`, reachable once a
-// plan exists) for the SAME two keys (`sc-depth-hatch-visible` and
+// (DataLayers.tsx's own `.depth-legend`, and RouteLegend.tsx's folded-in
+// `.route-legend-depth`, reachable once a plan exists) for the SAME two
+// keys (`sc-depth-hatch-visible` and
 // `sc-depth-visible`, the latter needed for the `disabled` mirror), while
 // DataLayers.tsx itself stays mounted and driving the map layer in BOTH
 // states. Without this, checking the box in RouteLegend would write
