@@ -113,6 +113,11 @@ export const en = {
   'planner.via.moveUp': 'Move waypoint {index} up',
   'planner.via.moveDown': 'Move waypoint {index} down',
   'planner.via.marker': 'Waypoint {index}',
+  // #938: see dict.de.ts's matching comment — draft-only, two-tap confirm,
+  // worded to avoid a getByRole substring collision with the sibling
+  // add/remove buttons in the same scoped via-list region.
+  'planner.via.clearAll': 'Clear all waypoints',
+  'planner.via.clearAll.confirm': 'Confirm clearing all waypoints',
   // #829: keyboard-reachable coordinate entry — a second producer/renderer of
   // the same LatLon the map tap already produces (spike
   // docs/spikes/714-keyboard-map-equivalents.md §3.1/§5.1). "coord.edit" is

@@ -124,6 +124,15 @@ export const de = {
   'planner.via.moveUp': 'Wegpunkt {index} nach oben verschieben',
   'planner.via.moveDown': 'Wegpunkt {index} nach unten verschieben',
   'planner.via.marker': 'Wegpunkt {index}',
+  // #938: abandon the whole draft in one action — draft-only, never the
+  // persisted 'waypoints' store. Two-tap confirm (planner.via.clearAll ->
+  // planner.via.clearAll.confirm), same convention as
+  // plansList.confirmDelete/waypoints.confirmDelete. Deliberately worded to
+  // avoid containing 'Wegpunkt hinzufügen'/'Wegpunkt {index} entfernen' as a
+  // substring — same getByRole-collision lesson as the coord.edit comment
+  // below, since both live buttons sit in the same scoped via-list region.
+  'planner.via.clearAll': 'Alle Wegpunkte löschen',
+  'planner.via.clearAll.confirm': 'Löschen aller Wegpunkte bestätigen',
   // #829: keyboard-reachable coordinate entry — a second producer/renderer of
   // the same LatLon the map tap already produces (spike
   // docs/spikes/714-keyboard-map-equivalents.md §3.1/§5.1). "coord.edit" is
