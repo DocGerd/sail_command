@@ -75,13 +75,15 @@ export interface EndpointMarkersProps {
 // by itself answer whether it can bury the OpenStreetMap attribution link
 // — an ODbL/CC-BY obligation this repo has already shipped a defect
 // against once (#771/PR #800). It cannot: `.maplibregl-marker` is
-// `position:absolute; z-index:auto` (CSS 2.1 stacking step 6), while
+// `position:absolute; z-index:auto` (CSS 2.1 Appendix E step 8, positioned
+// with z-index:auto — verified against maplibre-gl 6.6.0), while
 // `.maplibregl-ctrl-bottom-right`, which contains the attribution, carries
-// an explicit `z-index:2` (step 7) — so the attribution control always
-// paints above a coincident marker regardless of DOM order. This is the
-// same mechanism `app.css`'s own #208 comment already documents for
-// `.route-layer-controls` vs `.maplibregl-ctrl-*`, and it is the situation
-// `ViaMarkers` and `BoatMarker` are already in today.
+// an explicit `z-index:2` (step 9, positioned with z-index set) — so the
+// attribution control always paints above a coincident marker regardless
+// of DOM order. This is the same mechanism `app.css`'s own #208 comment
+// already documents for `.route-layer-controls` vs `.maplibregl-ctrl-*`,
+// and it is the situation `ViaMarkers` and `BoatMarker` are already in
+// today.
 //
 // Real-map rendering is not unit-tested (jsdom has no MapLibre/WebGL
 // runtime, mirrors ViaMarkers.tsx/BoatMarker.tsx) — verified in a real
