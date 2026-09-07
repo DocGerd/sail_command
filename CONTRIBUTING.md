@@ -153,8 +153,8 @@ prefixes are the mechanism.
 pass over the then-open features considered adding a separate `tier:` label
 axis and concluded against it: `priority:` was not failing from a lack of
 expressiveness, it was failing from disuse — at that pass, zero open issues
-carried `priority: high`. The tests, so a contributor can apply the label
-without asking:
+carried `priority: high`. Here are the tests, so a contributor can apply
+the label without asking:
 
 - `priority: high` — a typical passage in this region cannot be planned
   correctly, or at all, without it.
@@ -172,11 +172,9 @@ the tracker (`gh issue list --label "priority: high"`) rather than a count
 here, which decays at the next triage.
 
 `priority:` is a coarse bucket, not a ranking — it cannot express that one
-`high` issue should be worked before another. The feature-level order a
-release is filled in lives in [`ROADMAP.md`](ROADMAP.md)'s Now/Next
-sections, because a document can hold a sequence and a label can only hold
-a bucket; don't add a second label axis to reach for what ROADMAP.md
-already provides.
+`high` issue should be worked before another, and a second label axis would
+not supply one either. That order lives on the milestone page / issue
+tracker, per [`ROADMAP.md`](ROADMAP.md)'s own opening section.
 
 `area: docs` covers issues about documentation **prose** — words that
 explain or specify something, never code that runs — such as `README.md`,
