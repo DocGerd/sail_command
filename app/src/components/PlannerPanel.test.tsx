@@ -1287,6 +1287,84 @@ describe('PlannerPanel', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Add coordinates' }));
         expect(onUpdateVia).not.toHaveBeenCalled();
       });
+
+      // #886 sub-ask 2: hemisphere indication. Asserted on the VISIBLE text
+      // content (getByText), not only the aria-describedby wiring — the
+      // CLAUDE.md #846 lesson that a guard covering only the a11y surface
+      // can leave the visual one unlabelled entirely.
+      describe('#886: hemisphere indication', () => {
+        it('shows N/E for the default (positive) seeded coordinate', () => {
+          renderPanel({ viaPoints: [] });
+          expect(screen.getByText('Hemisphere: N')).toBeInTheDocument();
+          expect(screen.getByText('Hemisphere: E')).toBeInTheDocument();
+        });
+
+        // MUTATION CHECK (reported in the task's own summary, not only
+        // here): reverting viaCoordLatHemisphere/viaCoordLonHemisphere to
+        // an unconditional 'N'/'E' — the change the production code could
+        // actually make — reds this row (S/W never render) and passes the
+        // row above unchanged (N/E still render for the default), so this
+        // row is the one carrying the sign-flip coverage.
+        it('switches to S/W once a negative lat/lon is committed', () => {
+          renderPanel({ viaPoints: [] });
+          setCoord('-1', '-1');
+          expect(screen.getByText('Hemisphere: S')).toBeInTheDocument();
+          expect(screen.getByText('Hemisphere: W')).toBeInTheDocument();
+          expect(screen.queryByText('Hemisphere: N')).not.toBeInTheDocument();
+          expect(screen.queryByText('Hemisphere: E')).not.toBeInTheDocument();
+        });
+
+        it("treats zero as N/E, matching lib/format.ts's formatLatLon convention", () => {
+          renderPanel({ viaPoints: [] });
+          setCoord('0', '0');
+          expect(screen.getByText('Hemisphere: N')).toBeInTheDocument();
+          expect(screen.getByText('Hemisphere: E')).toBeInTheDocument();
+        });
+      });
+
+      // #886 sub-ask 3: add-vs-edit clarity. The mode text and Cancel
+      // button are asserted the same way — visible text/role, not just
+      // that SOME state changed.
+      describe('#886: add-vs-edit clarity', () => {
+        it('names "New waypoint" in add mode and offers no cancel-editing control', () => {
+          renderPanel({ viaPoints: [] });
+          expect(screen.getByText('New waypoint')).toBeInTheDocument();
+          expect(screen.queryByRole('button', { name: 'Cancel editing' })).not.toBeInTheDocument();
+        });
+
+        it('names "Editing waypoint N" and offers an explicit Cancel editing control in update mode', () => {
+          renderPanel({ viaPoints: [VIA_A, VIA_B] });
+          fireEvent.click(screen.getByRole('button', { name: /Edit coordinates \(point 2\)/ }));
+          expect(screen.getByText('Editing waypoint 2')).toBeInTheDocument();
+          expect(screen.queryByText('New waypoint')).not.toBeInTheDocument();
+          expect(screen.getByRole('button', { name: 'Cancel editing' })).toBeInTheDocument();
+        });
+
+        // MUTATION CHECK (reported in the task's own summary): deleting the
+        // `viaCoordMode.kind === 'update' &&` guard around the Cancel
+        // button renders it unconditionally, so this row (asserting its
+        // ABSENCE in add mode, in the previous test) reds — a change the
+        // production code could actually make (the guard is exactly what a
+        // careless edit could drop), reaching the JSX it guards.
+        it('pressing "Cancel editing" returns to add mode, resets the fields, and calls neither onAddVia nor onUpdateVia', () => {
+          const props = renderPanel({ viaPoints: [VIA_A, VIA_B] });
+          fireEvent.click(screen.getByRole('button', { name: /Edit coordinates \(point 2\)/ }));
+          setCoord('54.6', '9.9');
+          fireEvent.click(screen.getByRole('button', { name: 'Cancel editing' }));
+
+          expect(screen.getByText('New waypoint')).toBeInTheDocument();
+          expect(screen.getByRole('button', { name: 'Add coordinates' })).toBeInTheDocument();
+          expect(screen.queryByRole('button', { name: 'Cancel editing' })).not.toBeInTheDocument();
+          // Fields reset to the DATA_AREA midpoint seed, same as a
+          // successful commit or the same-index toggle-off (#829's own
+          // reset behaviour) — not left holding the discarded edit.
+          expect(latInput()).toHaveValue(54.8);
+          expect(lonInput()).toHaveValue(10.2);
+
+          expect(props.onAddVia).not.toHaveBeenCalled();
+          expect(props.onUpdateVia).not.toHaveBeenCalled();
+        });
+      });
     });
   });
 

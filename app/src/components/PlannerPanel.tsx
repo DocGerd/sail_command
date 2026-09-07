@@ -398,6 +398,20 @@ export default function PlannerPanel({
     });
   }
 
+  // #886: an explicit way out of update mode, reachable from INSIDE the
+  // coordinate-entry group the user is already looking at — previously the
+  // only exit was pressing the SAME via row's own coordinate button a
+  // second time (handleEditViaCoord's toggle-off branch above), which is a
+  // control elsewhere in the list, not part of this form. Resets exactly
+  // like that toggle-off branch.
+  function handleCancelViaCoordEdit(): void {
+    setViaCoordMode({ kind: 'add' });
+    setViaCoordLat(VIA_COORD_DEFAULT.lat);
+    setViaCoordLon(VIA_COORD_DEFAULT.lon);
+    setViaCoordName('');
+    setViaCoordError(false);
+  }
+
   function handleCommitViaCoord(): void {
     // #846: the name field is committed alongside lat/lon here — in
     // 'update' mode it was seeded from the point being repositioned (see
@@ -668,6 +682,16 @@ export default function PlannerPanel({
   // `error.offline` disabled reason is the more actionable message there.
   const showOnboarding = online && !plan && (!origin || !destination);
 
+  // #886: N/S/E/W hemisphere letters for the via coordinate-entry fields,
+  // mirroring lib/format.ts's formatLatLon convention (zero treated as
+  // N/E — the row above already renders that same function's output, e.g.
+  // "54.789°N 9.433°E", so a divergent convention here would show two
+  // different letters for the same physical coordinate). format.ts isn't in
+  // this task's file allowlist, so the one-line sign check is duplicated
+  // rather than exported/reused.
+  const viaCoordLatHemisphere = viaCoordLat < 0 ? 'S' : 'N';
+  const viaCoordLonHemisphere = viaCoordLon < 0 ? 'W' : 'E';
+
   return (
     <div className="planner-panel">
       <Card title={t('planner.card.trip')} className="planner-trip">
@@ -937,25 +961,56 @@ export default function PlannerPanel({
               half-open check rather than a second hand-copied bound. In
               "update" mode (entered via a via point's own coordinate button
               above) the SAME fields reposition that point instead of
-              appending a new one. */}
+              appending a new one.
+              #886: the two number fields and their labels used to be
+              byte-identical in both modes, so a user who had scrolled or
+              returned from the map could not tell whether pressing the
+              submit button would create a new waypoint or overwrite an
+              existing one — the plain-text line below names the target
+              ("Neuer Wegpunkt" vs "Wegpunkt N bearbeiten", the issue's own
+              suggested wording) and update mode gets an explicit Cancel
+              button, reachable from inside this group rather than only via
+              the placed point's own toggle button elsewhere in the list. */}
+          <p className="sc-section-title">
+            {viaCoordMode.kind === 'update'
+              ? t('planner.via.coord.modeUpdate', { index: viaCoordMode.index + 1 })
+              : t('planner.via.coord.modeAdd')}
+          </p>
           <div className="planner-via-coord-entry">
-            <Field label={t('planner.via.coord.latLabel')} htmlFor="planner-via-coord-lat">
+            {/* #886: the visible hemisphere hint below each field is what
+                makes an unmarked negative number readable as "south"/"west"
+                — the sign was previously implicit, with nothing on screen
+                saying so. N/S/E/W (not localised to "O" for Ost) matches
+                lib/format.ts's formatLatLon convention used one row up. */}
+            <Field
+              label={t('planner.via.coord.latLabel')}
+              htmlFor="planner-via-coord-lat"
+              help={t('planner.via.coord.hemisphereHint', { hemi: viaCoordLatHemisphere })}
+              helpId="planner-via-coord-lat-hemi"
+            >
               <NumberInput
                 id="planner-via-coord-lat"
                 value={viaCoordLat}
                 min={-90}
                 max={90}
                 step={0.001}
+                aria-describedby="planner-via-coord-lat-hemi"
                 onCommit={(n) => setViaCoordLat(n)}
               />
             </Field>
-            <Field label={t('planner.via.coord.lonLabel')} htmlFor="planner-via-coord-lon">
+            <Field
+              label={t('planner.via.coord.lonLabel')}
+              htmlFor="planner-via-coord-lon"
+              help={t('planner.via.coord.hemisphereHint', { hemi: viaCoordLonHemisphere })}
+              helpId="planner-via-coord-lon-hemi"
+            >
               <NumberInput
                 id="planner-via-coord-lon"
                 value={viaCoordLon}
                 min={-180}
                 max={180}
                 step={0.001}
+                aria-describedby="planner-via-coord-lon-hemi"
                 onCommit={(n) => setViaCoordLon(n)}
               />
             </Field>
@@ -976,6 +1031,11 @@ export default function PlannerPanel({
                 ? t('planner.via.coord.update')
                 : t('planner.via.coord.add')}
             </Button>
+            {viaCoordMode.kind === 'update' && (
+              <Button variant="ghost" onClick={handleCancelViaCoordEdit}>
+                {t('planner.via.coord.cancelEdit')}
+              </Button>
+            )}
             {/* Always mounted, empty until a rejection — same shape as the
                 safety-depth clamp notice above (#731 review round 2's
                 always-mounted-live-region rule). */}
