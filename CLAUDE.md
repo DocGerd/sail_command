@@ -1073,7 +1073,8 @@ making design-level decisions; do not silently deviate.
   closing it needed a browser-side unregister+cache-clear in the specs that
   navigate — #832 (closed 2026-09-04, milestone v0.21.0) WROTE
   `assertCleanServiceWorkerState` in `app/e2e/helpers.ts` to close it. #975
-  established (2026-09-07) that this suite's per-test browser-context
+  established (measured 2026-09-05, re-verified at its close 2026-09-07)
+  that this suite's per-test browser-context
   isolation means there is NEVER a live SW registration or cache for that
   function to find at any real call site: it was INERT outside
   `startPreviewIdentity.spec.ts`'s own self-test, which manufactures the
