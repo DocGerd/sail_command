@@ -9,7 +9,7 @@ import { useLang, useT } from '../i18n';
 // `types.ts`.
 import type { HarborWithReachability } from '../lib/harborReachability';
 import { FORECAST_DAYS } from '../services/openMeteo';
-import { formatLatLon, toLocalInputValue } from '../lib/format';
+import { formatLatLon, resolveHemisphereCoordCommit, toLocalInputValue } from '../lib/format';
 import {
   DATA_AREA,
   GpxParseError,
@@ -321,6 +321,76 @@ export default function PlannerPanel({
   const [viaCoordName, setViaCoordName] = useState('');
   const [viaCoordError, setViaCoordError] = useState(false);
 
+  // #886 residual 1: a free-text draft per field (rather than reusing
+  // NumberInput, whose `type="number"` sanitizes a trailing hemisphere
+  // letter to the empty string before onChange ever sees it — the exact
+  // mechanism the issue's own investigation names), plus a correction
+  // notice for what resolveHemisphereCoordCommit reports below.
+  //
+  // Deliberately NOT the NumberInput/useClampCorrection prevValue-diff
+  // pattern (derive-state-from-prop, resyncing whenever `value !==
+  // prevValue`): that pattern breaks here specifically because a CLAMP
+  // changes `viaCoordLat` itself, so the render right after this field's
+  // OWN blur handler would see `viaCoordLat !== prevViaCoordLat`, treat it
+  // as an EXTERNAL change, and immediately null out the very correction
+  // notice the blur handler had just set in the same batch — a
+  // self-clobber, not a bug in the pattern for its ORIGINAL use
+  // (useClampCorrection resets on BOUNDS, which never change here, not on
+  // value). So the draft+notice pair is instead reset EXPLICITLY at every
+  // site that sets viaCoordLat/viaCoordLon for a reason other than this
+  // field's own commit — the exact same sites viaCoordError is already
+  // reset at, via the setViaCoordFields helper below — never via a
+  // generic watcher.
+  const [viaCoordLatDraft, setViaCoordLatDraft] = useState(String(viaCoordLat));
+  const [viaCoordLatCorrection, setViaCoordLatCorrection] = useState<'invalid' | 'clamped' | null>(
+    null,
+  );
+  const [viaCoordLonDraft, setViaCoordLonDraft] = useState(String(viaCoordLon));
+  const [viaCoordLonCorrection, setViaCoordLonCorrection] = useState<'invalid' | 'clamped' | null>(
+    null,
+  );
+
+  // Sets the committed lat/lon AND re-syncs both fields' own drafts and
+  // clears any standing correction notice, in one call — used at every
+  // reset/seed site below (mode switch, cancel, successful commit, the
+  // #863 stale-index reset) so none of them can forget the draft/notice
+  // half and leave a stale notice describing a value that's no longer
+  // shown.
+  function setViaCoordFields(lat: number, lon: number): void {
+    setViaCoordLat(lat);
+    setViaCoordLon(lon);
+    setViaCoordLatDraft(String(lat));
+    setViaCoordLatCorrection(null);
+    setViaCoordLonDraft(String(lon));
+    setViaCoordLonCorrection(null);
+  }
+
+  function handleViaCoordLatBlur(): void {
+    const { next, correction } = resolveHemisphereCoordCommit(
+      viaCoordLatDraft,
+      viaCoordLat,
+      -90,
+      90,
+      'lat',
+    );
+    setViaCoordLatDraft(String(next));
+    setViaCoordLatCorrection(correction);
+    setViaCoordLat(next);
+  }
+
+  function handleViaCoordLonBlur(): void {
+    const { next, correction } = resolveHemisphereCoordCommit(
+      viaCoordLonDraft,
+      viaCoordLon,
+      -180,
+      180,
+      'lon',
+    );
+    setViaCoordLonDraft(String(next));
+    setViaCoordLonCorrection(correction);
+    setViaCoordLon(next);
+  }
+
   // #863 review MAJOR: viaCoordMode.index was captured once on entering
   // update mode and never re-validated against viaPoints — nothing disables
   // a DIFFERENT row's remove/reorder buttons while this form is open, so a
@@ -343,8 +413,7 @@ export default function PlannerPanel({
     setPrevViaPoints(viaPoints);
     if (viaCoordMode.kind === 'update') {
       setViaCoordMode({ kind: 'add' });
-      setViaCoordLat(VIA_COORD_DEFAULT.lat);
-      setViaCoordLon(VIA_COORD_DEFAULT.lon);
+      setViaCoordFields(VIA_COORD_DEFAULT.lat, VIA_COORD_DEFAULT.lon);
       setViaCoordName('');
       setViaCoordError(false);
     }
@@ -367,15 +436,13 @@ export default function PlannerPanel({
   function handleEditViaCoord(index: number): void {
     setViaCoordMode((current) => {
       if (current.kind === 'update' && current.index === index) {
-        setViaCoordLat(VIA_COORD_DEFAULT.lat);
-        setViaCoordLon(VIA_COORD_DEFAULT.lon);
+        setViaCoordFields(VIA_COORD_DEFAULT.lat, VIA_COORD_DEFAULT.lon);
         setViaCoordName('');
         setViaCoordError(false);
         return { kind: 'add' };
       }
       const v = viaPoints[index];
-      setViaCoordLat(v.lat);
-      setViaCoordLon(v.lon);
+      setViaCoordFields(v.lat, v.lon);
       setViaCoordName(v.name ?? '');
       setViaCoordError(false);
       pendingViaCoordFocusRef.current = true;
@@ -391,8 +458,7 @@ export default function PlannerPanel({
   // like that toggle-off branch.
   function handleCancelViaCoordEdit(): void {
     setViaCoordMode({ kind: 'add' });
-    setViaCoordLat(VIA_COORD_DEFAULT.lat);
-    setViaCoordLon(VIA_COORD_DEFAULT.lon);
+    setViaCoordFields(VIA_COORD_DEFAULT.lat, VIA_COORD_DEFAULT.lon);
     setViaCoordName('');
     setViaCoordError(false);
   }
@@ -423,8 +489,7 @@ export default function PlannerPanel({
       onAddVia(p);
     }
     setViaCoordMode({ kind: 'add' });
-    setViaCoordLat(VIA_COORD_DEFAULT.lat);
-    setViaCoordLon(VIA_COORD_DEFAULT.lon);
+    setViaCoordFields(VIA_COORD_DEFAULT.lat, VIA_COORD_DEFAULT.lon);
     setViaCoordName('');
   }
 
@@ -905,49 +970,121 @@ export default function PlannerPanel({
               suggested wording) and update mode gets an explicit Cancel
               button, reachable from inside this group rather than only via
               the placed point's own toggle button elsewhere in the list. */}
-          <p className="sc-section-title">
+          {/* #886 residual 2: this <p> is now the group's ACCESSIBLE NAME
+              (via aria-labelledby below), not just its visible heading —
+              previously it was a plain sibling paragraph, so a screen-reader
+              user tabbing into the lat field heard "Latitude, Hemisphere: N"
+              and never which waypoint was about to be overwritten. The
+              VISIBLE surface (this text rendering on screen) is unchanged;
+              only the programmatic association is new. */}
+          <p className="sc-section-title" id="planner-via-coord-mode-label">
             {viaCoordMode.kind === 'update'
               ? t('planner.via.coord.modeUpdate', { index: viaCoordMode.index + 1 })
               : t('planner.via.coord.modeAdd')}
           </p>
-          <div className="planner-via-coord-entry">
+          <div
+            className="planner-via-coord-entry"
+            role="group"
+            aria-labelledby="planner-via-coord-mode-label"
+          >
             {/* #886: the visible hemisphere hint below each field is what
                 makes an unmarked negative number readable as "south"/"west"
                 — the sign was previously implicit, with nothing on screen
                 saying so. N/S/E/W (not localised to "O" for Ost) matches
-                lib/format.ts's formatLatLon convention used one row up. */}
+                lib/format.ts's formatLatLon convention used one row up.
+                #886 residual 1: plain <input type="text"> now, not
+                NumberInput — a spec-compliant type="number" sanitizes a
+                trailing hemisphere letter to the empty string BEFORE
+                onChange ever sees it (measured against jsdom's own
+                sanitizer, same mechanism NumberInput.tsx's own
+                resolveNumberCommit doc comment describes for "1e400"), so
+                accepting "54.8N" needs a text field with its own
+                parse-on-blur — resolveHemisphereCoordCommit
+                (lib/format.ts), the hemisphere-aware sibling of
+                NumberInput's resolveNumberCommit. */}
             <Field
               label={t('planner.via.coord.latLabel')}
               htmlFor="planner-via-coord-lat"
               help={t('planner.via.coord.hemisphereHint', { hemi: viaCoordLatHemisphere })}
               helpId="planner-via-coord-lat-hemi"
             >
-              <NumberInput
+              <input
                 id="planner-via-coord-lat"
-                value={viaCoordLat}
-                min={-90}
-                max={90}
-                step={0.001}
+                type="text"
+                inputMode="decimal"
+                value={viaCoordLatDraft}
                 aria-describedby="planner-via-coord-lat-hemi"
-                onCommit={(n) => setViaCoordLat(n)}
+                onChange={(e) => setViaCoordLatDraft(e.target.value)}
+                onBlur={handleViaCoordLatBlur}
               />
             </Field>
+            {/* #886 residual 1: always mounted, empty until a rejection —
+                same shape as the safety-depth clamp notice elsewhere in this
+                file (#731 review round 2's always-mounted-live-region rule)
+                and the SAME rule that shape exists for: an AT user must have
+                something in the tree to observe the mutation on, not a node
+                that only appears once there's something to say. Two
+                DISTINCT messages, not one generic "corrected" string — an
+                out-of-range value that clamped cleanly is a different event
+                from input this parser couldn't read at all, and #886's own
+                DoD names the second case explicitly ("a rejected input must
+                produce a visible correction, never a silent revert").
+                REVIEW FIX WAVE (MINOR): the quoted `value` is
+                `viaCoordLatDraft` — the field's OWN post-commit string,
+                already `String(next)` from handleViaCoordLatBlur — never
+                `formatBound(viaCoordLat, lang)`. `formatBound` rounds to at
+                most 2 decimals for a step-quantized field like safety depth,
+                where the field's displayed value and a 2-decimal round
+                always agree; via-coordinates are NOT quantized, so
+                `formatBound` could round a genuinely full-precision
+                committed value (e.g. from a longer typed decimal) to a
+                shorter one than what the input actually shows, and the
+                notice would then quote a number the field itself does not
+                display. `min`/`max` below stay `formatBound`-formatted —
+                those are the fixed -90/90 constants, never user-typed, so
+                there is nothing for them to disagree with. */}
+            <p className="boat-picker-notice" role="status">
+              {viaCoordLatCorrection === 'invalid'
+                ? t('planner.via.coord.invalidEntry', { value: viaCoordLatDraft })
+                : viaCoordLatCorrection === 'clamped'
+                  ? t('numberInput.corrected', {
+                      value: viaCoordLatDraft,
+                      min: formatBound(-90, lang),
+                      max: formatBound(90, lang),
+                    })
+                  : null}
+            </p>
             <Field
               label={t('planner.via.coord.lonLabel')}
               htmlFor="planner-via-coord-lon"
               help={t('planner.via.coord.hemisphereHint', { hemi: viaCoordLonHemisphere })}
               helpId="planner-via-coord-lon-hemi"
             >
-              <NumberInput
+              <input
                 id="planner-via-coord-lon"
-                value={viaCoordLon}
-                min={-180}
-                max={180}
-                step={0.001}
+                type="text"
+                inputMode="decimal"
+                value={viaCoordLonDraft}
                 aria-describedby="planner-via-coord-lon-hemi"
-                onCommit={(n) => setViaCoordLon(n)}
+                onChange={(e) => setViaCoordLonDraft(e.target.value)}
+                onBlur={handleViaCoordLonBlur}
               />
             </Field>
+            {/* #886 residual 1: see the matching lat notice above — same
+                REVIEW FIX WAVE (MINOR) reasoning for quoting
+                `viaCoordLonDraft` rather than `formatBound(viaCoordLon,
+                lang)`. */}
+            <p className="boat-picker-notice" role="status">
+              {viaCoordLonCorrection === 'invalid'
+                ? t('planner.via.coord.invalidEntry', { value: viaCoordLonDraft })
+                : viaCoordLonCorrection === 'clamped'
+                  ? t('numberInput.corrected', {
+                      value: viaCoordLonDraft,
+                      min: formatBound(-180, lang),
+                      max: formatBound(180, lang),
+                    })
+                  : null}
+            </p>
             {/* #846: shared name field — optional at "add", pre-seeded with
                 the existing name at "update" (see handleEditViaCoord).
                 Blank commits as "no name" (falls back to the indexed
