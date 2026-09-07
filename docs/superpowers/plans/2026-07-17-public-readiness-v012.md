@@ -1,5 +1,21 @@
 # Public Readiness v0.1.2 Implementation Plan
 
+> **PRESERVED RECORD — read this note before anything below it.** This plan
+> is COMPLETE: every issue it closes (#10, #12, #13, #14, #16) has shipped.
+> It is kept here verbatim as a historical record, not as an active
+> instruction set — do not dispatch an agent to "execute" it. It states, in
+> three places (the Global Constraints list and Task 1's own bullets), a
+> **fabricated** "CI runners are 6–10× slower than dev machines" figure —
+> CLAUDE.md records that no such measurement exists, and gives the real,
+> narrower position (CI is slower but not by a flat multiplier, and the
+> ratio decays with the suite; coverage instrumentation is a separate
+> multiplier from runner speed). Do not treat any operative-sounding
+> instruction below ("never tighten timeouts", "CI runners are 6–10×
+> slower") as current guidance — CLAUDE.md's own Commands section is the
+> live source for CI timing and timeout policy. Left uncorrected here
+> (2026-09-07, #979) precisely because this is a completed plan, a record
+> of what was believed at the time it was written, not a living document.
+>
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Close the public-readiness batch (#10, #12, #13, #14, #16) on the already-public repo: community health files + README gaps, CodeQL, Dependabot, CI hardening + Scorecard, and the umbrella close-out.

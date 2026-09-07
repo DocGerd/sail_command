@@ -1,7 +1,24 @@
 name: Scorecard
 on:
+  # #883: scorecard is NOT a required check (protect-main requires app+e2e
+  # only, verified against ruleset 19043136 2026-09-07), so scoping this
+  # push trigger is safe here in a way it never would be on app/e2e — a
+  # skipped run simply does not report. Paths cover every pinned-dependency
+  # artifact Pinned-Dependencies/Dangerous-Workflow/Token-Permissions read
+  # (enumerated 2026-09-07: app/package-lock.json, pipeline/package-lock.json
+  # via '**/package-lock.json'; pipeline/requirements.txt explicitly;
+  # .github/workflows/python-lint-requirements.txt and
+  # .github/workflows/verify-mask-requirements.txt via '.github/**') plus
+  # '.github/**' generally for any workflow-file change. Commit-activity-based
+  # checks (Maintained, Vulnerabilities, Code-Review, CI-Tests) are still
+  # re-evaluated by the weekly schedule below, so scoping this trigger loses
+  # nothing durable from them.
   push:
     branches: [develop]
+    paths:
+      - '.github/**'
+      - '**/package-lock.json'
+      - 'pipeline/requirements.txt'
   schedule:
     - cron: '30 3 * * 1' # weekly, Monday 03:30 UTC
   branch_protection_rule:
