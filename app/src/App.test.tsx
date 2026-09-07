@@ -3635,3 +3635,124 @@ describe('#572: a new plan is solved with the SELECTED boat', () => {
     expect(routingMock.calls[1].request.viaPoints).toEqual([VIA_A]);
   });
 });
+
+// #983: a recalculate-and-replace (#114) completing while the user has
+// switched to the Live or Boat tab used to be announced NOWHERE —
+// PlannerPanel's own completion region only ever existed under
+// `tab === 'plan'` and PlansList's own (#961) only under `tab === 'routes'`.
+// Both are now REMOVED; App.tsx owns ONE `PlanCompletionAnnouncer`, mounted
+// unconditionally regardless of `tab` (see PlanCompletionAnnouncer.tsx's own
+// header and App.tsx's `announceCompletion`/`prevPlanningPhaseRef` comments
+// for the mechanism). These are real end-to-end App-tree tests — the
+// scenario needs App.tsx's actual `handleRecalculate`/`run()` wiring, which
+// no `PlansList`-only render can reach.
+describe('#983: recalculate completion announced regardless of active tab', () => {
+  function savedPlan(id: string, distanceNm: number): Plan {
+    const now = Date.now();
+    return {
+      id,
+      name: 'Solo',
+      createdAtMs: now - 60_000,
+      schemaVersion: PLAN_SCHEMA_VERSION,
+      request: {
+        origin: { lat: 54.79, lon: 9.43 },
+        destination: { lat: 54.85, lon: 10.35 },
+        viaPoints: [],
+        originHarborId: null,
+        destinationHarborId: null,
+        departureMs: now + 3_600_000,
+        settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
+      },
+      windGrid: uniformWindGrid(10, 250, { t0Ms: now - 3_600_000, hours: 48 }),
+      result: okPlanResult(distanceNm),
+    };
+  }
+
+  // The static prefix of the DE `planner.result.announce` template, derived
+  // from the dict itself rather than hand-typed — robust to a wording edit,
+  // and this repo's dict already carries key-parity + placeholder guards
+  // elsewhere, so this split is a safe, load-bearing anchor.
+  const announcePrefix = de['planner.result.announce'].split('{arrival}')[0];
+
+  function announceRegion(): HTMLElement {
+    const el = document.querySelector('.plan-completion-announce');
+    if (!el) throw new Error('expected .plan-completion-announce to exist');
+    return el as HTMLElement;
+  }
+
+  async function startRecalculateAndReplace(): Promise<void> {
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+    fireEvent.click(await screen.findByRole('button', { name: de['plansList.recalc'] }));
+    fireEvent.click(screen.getByRole('button', { name: de['plansList.recalc.replace'] }));
+    fireEvent.click(screen.getByRole('button', { name: de['plansList.recalc.confirmReplace'] }));
+    await waitFor(() => expect(routingMock.calls.length).toBe(1));
+  }
+
+  it('#983 TRANSITION: announced when the recalculate completes on the Live tab (same plan.id, different createdAtMs)', async () => {
+    await db.savePlan(savedPlan('p1', 21));
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    await startRecalculateAndReplace();
+
+    // Switch away BEFORE the run settles — the whole point of #983. Neither
+    // PlannerPanel nor PlansList is mounted on the Live tab, so if the
+    // announcement still lived on either of their own (now-removed) regions
+    // this would prove silent.
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.live'] }));
+    expect(screen.getByRole('tab', { name: de['nav.live'] })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+
+    routingMock.calls[0].resolve(okPlanResult(55));
+
+    await waitFor(() => expect(announceRegion()).toHaveTextContent(announcePrefix));
+    expect(announceRegion()).toHaveTextContent(formatNm(55, 'de'));
+    // The announcement did not itself force a tab switch.
+    expect(screen.getByRole('tab', { name: de['nav.live'] })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+  });
+
+  it('#983 TRANSITION: announced when the recalculate completes on the Boat tab', async () => {
+    await db.savePlan(savedPlan('p1', 21));
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    await startRecalculateAndReplace();
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.boat'] }));
+
+    routingMock.calls[0].resolve(okPlanResult(63));
+
+    await waitFor(() => expect(announceRegion()).toHaveTextContent(announcePrefix));
+    expect(announceRegion()).toHaveTextContent(formatNm(63, 'de'));
+  });
+
+  // Proves the "REPLACE, not COEXIST" decision: staying on the Routes tab
+  // throughout must still announce EXACTLY ONCE — the app-level region only,
+  // never doubled by a stray survivor of PlannerPanel's or PlansList's own
+  // (removed) completion regions.
+  it('#983: announces exactly once (no double-announcement) when staying on the Routes tab', async () => {
+    await db.savePlan(savedPlan('p1', 21));
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    await startRecalculateAndReplace();
+    routingMock.calls[0].resolve(okPlanResult(77));
+
+    await waitFor(() => expect(announceRegion()).toHaveTextContent(announcePrefix));
+    // Only ONE role="status" region in the whole tree carries the sentence.
+    // PlansList IS mounted here (Routes tab, its own `role="alert"` error
+    // line and this app-level region's sibling status nodes elsewhere in
+    // the tree all coexist) and must NOT also carry this text — its own
+    // (removed) #961 region used to.
+    const withAnnouncement = screen
+      .getAllByRole('status')
+      .filter((el) => el.textContent?.includes(announcePrefix));
+    expect(withAnnouncement).toHaveLength(1);
+  });
+});

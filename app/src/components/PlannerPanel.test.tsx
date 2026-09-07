@@ -1625,7 +1625,26 @@ describe('PlannerPanel', () => {
       expect(props.onViewDetails).toHaveBeenCalledTimes(1);
     });
 
-    it('swaps the status live region to the completion summary on the routing->idle transition', () => {
+    // #983: the completion sentence ("Route calculated — arrival …") that
+    // used to swap into THIS region on the routing->idle transition is
+    // REMOVED — it moved to App.tsx's tab-independent
+    // `PlanCompletionAnnouncer` (see App.tsx's `announceCompletion` comment
+    // and that component's own header for the mechanism and why: this
+    // region is unmounted whenever `tab !== 'plan'`, which is exactly what
+    // left a recalculate completing on the Live/Boat tab announced nowhere,
+    // #983). The four tests that used to live here (swap-on-transition,
+    // does-NOT-re-announce-on-same-id, DOES-re-announce-on-different-
+    // createdAtMs, does-NOT-announce-on-mount) all pinned that removed
+    // mechanism directly; their equivalents now live in
+    // `PlanCompletionAnnouncer.test.tsx` (the dedup/format logic) and
+    // `App.test.tsx`'s #983 describe block (the end-to-end transition,
+    // including the specific case none of PlannerPanel's own tests could
+    // ever reach — completing while mounted on a DIFFERENT tab). This
+    // panel's in-flight progress text (routing/fetching/probing) is
+    // untouched and already covered above; confirm here only that the idle
+    // region carries NO completion text any more, so a future regression
+    // that reintroduces the fold here is caught.
+    it('#983: the idle status region carries no completion sentence any more (moved to App-level)', () => {
       localStorage.setItem('sc-lang', 'en');
       const { rerender } = render(
         <I18nProvider>
@@ -1638,7 +1657,6 @@ describe('PlannerPanel', () => {
           />
         </I18nProvider>,
       );
-      // In-flight: the region shows the routing message.
       expect(plannerStatus()).toHaveTextContent('Calculating route');
 
       rerender(
@@ -1648,106 +1666,7 @@ describe('PlannerPanel', () => {
           />
         </I18nProvider>,
       );
-      const status = plannerStatus();
-      // Stable summary swapped into the SAME region (no second live region).
-      expect(status).toHaveTextContent('Route calculated');
-      expect(status).toHaveTextContent('21.5 nm');
-      expect(status).toHaveTextContent('5 h 00 min');
-    });
-
-    it('does NOT re-announce on a same-id plan update (via-edit/slider re-render freezes the summary)', () => {
-      localStorage.setItem('sc-lang', 'en');
-      const { rerender } = render(
-        <I18nProvider>
-          <PlannerPanel
-            {...baseProps({
-              planning: { phase: 'routing', sailId: 'genoa', index: 1, total: 2 },
-              plan: null,
-              rig: null,
-            })}
-          />
-        </I18nProvider>,
-      );
-      rerender(
-        <I18nProvider>
-          <PlannerPanel
-            {...baseProps({ planning: { phase: 'idle' }, plan: makePlan(), rig: 'genoa' })}
-          />
-        </I18nProvider>,
-      );
-      expect(plannerStatus()).toHaveTextContent('21.5 nm');
-
-      // A new plan OBJECT with the SAME id but a different distance (as a via
-      // re-plan produces). The announcement must stay frozen at 21.5, proving
-      // it did not re-derive/re-fire on a same-id update.
-      rerender(
-        <I18nProvider>
-          <PlannerPanel
-            {...baseProps({
-              planning: { phase: 'idle' },
-              plan: makePlan({ id: 'plan-1', distanceNm: 30 }),
-              rig: 'genoa',
-            })}
-          />
-        </I18nProvider>,
-      );
-      const status = plannerStatus();
-      expect(status).toHaveTextContent('21.5 nm');
-      expect(status).not.toHaveTextContent('30.0 nm');
-    });
-
-    // #961: a same-id replacement with a DIFFERENT createdAtMs is exactly
-    // what usePlanFlow.ts's run() (#114 recalculate-and-replace,
-    // `replacePlanId: recalcPlan.id`) and useDepartureConfirm.ts's confirm()
-    // (#937) both produce — a genuine content change under an unchanged
-    // `plan.id`. A `plan.id`-only gate (the pre-#961 shape) cannot see this
-    // transition; only a test that RE-RENDERS from an already-announced
-    // plan into this replacement can distinguish the two gates, per this
-    // file's own "does NOT re-announce" test above pinning the SAME-id-
-    // AND-SAME-createdAtMs case.
-    it('DOES re-announce on a same-id, different-createdAtMs plan replacement (#961)', () => {
-      localStorage.setItem('sc-lang', 'en');
-      const { rerender } = render(
-        <I18nProvider>
-          <PlannerPanel
-            {...baseProps({
-              planning: { phase: 'routing', sailId: 'genoa', index: 1, total: 2 },
-              plan: null,
-              rig: null,
-            })}
-          />
-        </I18nProvider>,
-      );
-      rerender(
-        <I18nProvider>
-          <PlannerPanel
-            {...baseProps({ planning: { phase: 'idle' }, plan: makePlan(), rig: 'genoa' })}
-          />
-        </I18nProvider>,
-      );
-      expect(plannerStatus()).toHaveTextContent('21.5 nm');
-
-      // Same id, a LATER createdAtMs and a different distance — exactly the
-      // #114/#937 replacement shape.
-      rerender(
-        <I18nProvider>
-          <PlannerPanel
-            {...baseProps({
-              planning: { phase: 'idle' },
-              plan: makePlan({ id: 'plan-1', createdAtMs: PLAN_DEPARTURE_MS + 1, distanceNm: 30 }),
-              rig: 'genoa',
-            })}
-          />
-        </I18nProvider>,
-      );
-      expect(plannerStatus()).toHaveTextContent('30.0 nm');
-    });
-
-    it('does NOT announce on mount when a plan is already present (only on a genuine completion)', () => {
-      renderPanel({ planning: { phase: 'idle' }, plan: makePlan(), rig: 'genoa' });
-      // Seeded from the mount plan id, so re-entering the tab with an existing
-      // result stays quiet — the region is empty, not restating the summary.
-      expect(plannerStatus().textContent).toBe('');
+      expect(plannerStatus()).toHaveTextContent('');
     });
   });
 
@@ -1998,69 +1917,14 @@ describe('PlannerPanel', () => {
       expect(screen.getByText(en['planner.result.stale'])).toBeInTheDocument();
     });
 
-    it('a genuine completion announcement folds the stale suffix on when formDirty && !settingsDirty', () => {
-      localStorage.setItem('sc-lang', 'en');
-      const { rerender } = render(
-        <I18nProvider>
-          <PlannerPanel
-            {...baseProps({
-              planning: { phase: 'routing', sailId: 'genoa', index: 1, total: 2 },
-              plan: null,
-              rig: null,
-            })}
-          />
-        </I18nProvider>,
-      );
-      rerender(
-        <I18nProvider>
-          <PlannerPanel
-            {...baseProps({
-              planning: { phase: 'idle' },
-              plan: makePlan(),
-              rig: 'genoa',
-              formDirty: true,
-            })}
-          />
-        </I18nProvider>,
-      );
-      const status = plannerStatus();
-      const text = status.textContent ?? '';
-      expect(text).toContain('Route calculated');
-      expect(text).toContain(en['planner.result.stale']);
-    });
-
-    it('a genuine completion announcement does NOT fold the stale suffix on when settingsDirty is true', () => {
-      localStorage.setItem('sc-lang', 'en');
-      const driftedSettings: Settings = { ...DEFAULT_SETTINGS, maneuverPenaltyS: 999 };
-      const { rerender } = render(
-        <I18nProvider>
-          <PlannerPanel
-            {...baseProps({
-              planning: { phase: 'routing', sailId: 'genoa', index: 1, total: 2 },
-              plan: null,
-              rig: null,
-            })}
-          />
-        </I18nProvider>,
-      );
-      rerender(
-        <I18nProvider>
-          <PlannerPanel
-            {...baseProps({
-              planning: { phase: 'idle' },
-              plan: makePlan(),
-              rig: 'genoa',
-              formDirty: true,
-              settings: driftedSettings,
-            })}
-          />
-        </I18nProvider>,
-      );
-      const status = plannerStatus();
-      const text = status.textContent ?? '';
-      expect(text).toContain('Route calculated');
-      expect(text).not.toContain(en['planner.result.stale']);
-    });
+    // #983: the two "genuine completion announcement … folds/does NOT fold
+    // the stale suffix" tests that used to live here proved the stale fold
+    // survived being COMBINED with this region's own completion sentence —
+    // moot now that the completion sentence is a separate App-level region
+    // entirely (see the #983 comment above the removed
+    // "swaps the status live region…" test). The "DOES fold…"/"does NOT
+    // fold…" tests immediately above already cover the fold itself in
+    // isolation.
   });
 
   // §3.5: empty/first-run onboarding + loading skeleton.
