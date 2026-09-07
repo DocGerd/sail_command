@@ -77,6 +77,12 @@ installs as a standalone icon and works fully offline after the first visit
   switched off independently of it. A legend explains what the hatch does
   and does not mark — below the map's layer controls (collapsed by default)
   before a route is planned, and folded into the route legend once one is.
+- **Waypoints**: route through a specific point in between by arming **Add
+  waypoint** and then tapping the map, tapping a seamark or a saved
+  waypoint, or typing coordinates directly — cancel arming any time with the
+  same toggle. Reorder a waypoint, reposition it by dragging its marker or
+  re-entering its coordinates, or remove it; a waypoint can only mark a stop
+  along the route, never the departure or destination.
 - The router fetches hourly wind, then computes the fastest sailable route
   twice — once per foresail of the selected boat — and recommends the faster
   (marked ★). Where the two tables cannot honestly be ranked it says so

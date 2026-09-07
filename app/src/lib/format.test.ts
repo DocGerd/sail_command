@@ -47,6 +47,8 @@ import {
   formatDriftMin,
   formatLatLon,
   formatSliderTime,
+  parseHemisphereCoord,
+  resolveHemisphereCoordCommit,
 } from './format';
 
 describe('formatNm', () => {
@@ -288,6 +290,146 @@ describe('formatLatLon', () => {
 
   it('rounds to three decimals', () => {
     expect(formatLatLon({ lat: 54.78949, lon: 9.43349 })).toBe('54.789°N 9.433°E');
+  });
+});
+
+// #886 residual 1: charts and almanacs write the hemisphere letter; this
+// pins the parser accepting it back, and its axis-mismatch/sign-conflict
+// rejections.
+describe('parseHemisphereCoord', () => {
+  it('parses a bare signed decimal with no letter (unchanged prior behaviour)', () => {
+    expect(parseHemisphereCoord('54.8', 'lat')).toBe(54.8);
+    expect(parseHemisphereCoord('-54.8', 'lat')).toBe(-54.8);
+  });
+
+  it('applies a positive hemisphere letter as-is', () => {
+    expect(parseHemisphereCoord('54.8N', 'lat')).toBe(54.8);
+    expect(parseHemisphereCoord('10.1E', 'lon')).toBe(10.1);
+  });
+
+  // MUTATION CHECK (non-vacuity): this is the row a broken sign-flip
+  // (e.g. `letter === 'S' || letter === 'W' ? magnitude : -magnitude`,
+  // the exact negation of the correct line) would red — the row above
+  // (positive letters) stays green either way, since flipping "do nothing"
+  // into "negate" only changes S/W.
+  it('negates the magnitude for a negative hemisphere letter', () => {
+    expect(parseHemisphereCoord('54.8S', 'lat')).toBe(-54.8);
+    expect(parseHemisphereCoord('10.1W', 'lon')).toBe(-10.1);
+  });
+
+  it('is case-insensitive on the letter', () => {
+    expect(parseHemisphereCoord('54.8s', 'lat')).toBe(-54.8);
+  });
+
+  it('tolerates a degree sign and/or whitespace before the letter', () => {
+    expect(parseHemisphereCoord('54.8° N', 'lat')).toBe(54.8);
+    expect(parseHemisphereCoord('54.8°S', 'lat')).toBe(-54.8);
+  });
+
+  it('treats zero as positive regardless of axis (matches formatLatLon)', () => {
+    expect(parseHemisphereCoord('0N', 'lat')).toBe(0);
+    expect(parseHemisphereCoord('0', 'lat')).toBe(0);
+  });
+
+  // The axis-mismatch guard: E/W on a latitude field, N/S on a longitude
+  // field, are BOTH rejected — neither axis accepts the other's letters.
+  it('rejects a letter that belongs to the OTHER axis', () => {
+    expect(parseHemisphereCoord('54.8E', 'lat')).toBeNull();
+    expect(parseHemisphereCoord('54.8W', 'lat')).toBeNull();
+    expect(parseHemisphereCoord('10.1N', 'lon')).toBeNull();
+    expect(parseHemisphereCoord('10.1S', 'lon')).toBeNull();
+  });
+
+  it('rejects a letter outside N/S/E/W entirely', () => {
+    expect(parseHemisphereCoord('54.8Q', 'lat')).toBeNull();
+  });
+
+  // Deliberate rejection: an explicit '-' sign combined with a hemisphere
+  // letter is self-contradictory ("-54.8N" — which one wins?), so this
+  // parser refuses rather than silently pick a convention.
+  it('rejects a sign+letter conflict rather than guessing', () => {
+    expect(parseHemisphereCoord('-54.8N', 'lat')).toBeNull();
+    expect(parseHemisphereCoord('-10.1E', 'lon')).toBeNull();
+  });
+
+  it('rejects garbage and empty input', () => {
+    expect(parseHemisphereCoord('', 'lat')).toBeNull();
+    expect(parseHemisphereCoord('   ', 'lat')).toBeNull();
+    expect(parseHemisphereCoord('abc', 'lat')).toBeNull();
+    expect(parseHemisphereCoord('54.8NN', 'lat')).toBeNull();
+  });
+});
+
+describe('resolveHemisphereCoordCommit', () => {
+  it('commits a valid in-range value with no correction', () => {
+    expect(resolveHemisphereCoordCommit('54.8N', 10, -90, 90, 'lat')).toEqual({
+      next: 54.8,
+      correction: null,
+    });
+  });
+
+  it('clamps an out-of-range value and reports "clamped"', () => {
+    expect(resolveHemisphereCoordCommit('95', 10, -90, 90, 'lat')).toEqual({
+      next: 90,
+      correction: 'clamped',
+    });
+  });
+
+  // A hemisphere letter can push an in-range MAGNITUDE out of range once
+  // the sign is applied — e.g. entering the southern letter for a value
+  // whose magnitude alone would have been fine.
+  it('clamps a value that only goes out of range AFTER the hemisphere sign is applied', () => {
+    expect(resolveHemisphereCoordCommit('95S', 10, -90, 90, 'lat')).toEqual({
+      next: -90,
+      correction: 'clamped',
+    });
+  });
+
+  // MUTATION CHECK (non-vacuity): reverts to lastCommitted, not 0 or the
+  // unparsed string coerced to a number — a mutant returning
+  // `{ next: 0, correction: 'invalid' }` would red this row (0 !== 10)
+  // while every other row here is silent about what "reverted" resolves
+  // to.
+  it('reverts to lastCommitted and reports "invalid" for unparseable input', () => {
+    expect(resolveHemisphereCoordCommit('garbage', 10, -90, 90, 'lat')).toEqual({
+      next: 10,
+      correction: 'invalid',
+    });
+  });
+
+  it('reverts and reports "invalid" for an axis-mismatched letter', () => {
+    expect(resolveHemisphereCoordCommit('54.8E', 10, -90, 90, 'lat')).toEqual({
+      next: 10,
+      correction: 'invalid',
+    });
+  });
+
+  // REVIEW FIX WAVE (MAJOR): an EMPTIED field is a distinct user intent from
+  // unparseable garbage — clearing a field is deliberate, typing `nope` is a
+  // mistake — and must revert SILENTLY (correction: null), never report
+  // 'invalid'. `parseHemisphereCoord` itself returns `null` for both empty
+  // and garbage (asserted in that describe block above), so this pair pins
+  // that the DISTINCTION is made one layer up, in this function, not in the
+  // parser.
+  // MUTATION CHECK (non-vacuity): removing the `draft.trim() === ''` early
+  // return above (so an empty draft falls through to
+  // `parseHemisphereCoord`, which also returns null for '') makes this row
+  // red with `Received: {"next": 10, "correction": "invalid"}` while the
+  // "reverts to lastCommitted and reports 'invalid' for unparseable input"
+  // row above stays green — the mutation is isolated to exactly the empty
+  // case, not to unparseable input in general.
+  it('reverts SILENTLY (no correction) when the draft is empty', () => {
+    expect(resolveHemisphereCoordCommit('', 10, -90, 90, 'lat')).toEqual({
+      next: 10,
+      correction: null,
+    });
+  });
+
+  it('reverts SILENTLY (no correction) when the draft is only whitespace', () => {
+    expect(resolveHemisphereCoordCommit('   ', 10, -90, 90, 'lat')).toEqual({
+      next: 10,
+      correction: null,
+    });
   });
 });
 
