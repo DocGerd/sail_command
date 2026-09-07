@@ -339,8 +339,8 @@ selected in §1.
       "Longitude" fields reads "New waypoint" ("Neuer Wegpunkt") and each
       field's own hint line beneath it reads "Hemisphere: N" /
       "Hemisphere: E" for the seeded default coordinate. Type a latitude
-      and longitude on water inside the covered area, tab out (or press
-      Enter) to commit each one, and confirm the hemisphere hint updates —
+      and longitude on water inside the covered area, tab out
+      to commit each one, and confirm the hemisphere hint updates —
       to "Hemisphere: S" / "Hemisphere: W" for a negative value, back to
       N/E for zero or positive. This hint is DISPLAY-ONLY: typing a
       hemisphere letter into the field itself (e.g. "54.8N") is rejected
