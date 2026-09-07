@@ -117,11 +117,15 @@ DISJOINT locations**:
 
 Neither span matches #264's own archetype (large ≥45° swings alternating
 motorable/sail-locked arcs with zero mode change) — the origin span changes
-MODE, and the destination span's heading deltas (19.1°, 10.7°, 16.6°) are
-smaller than #264's ≥45° signature, though larger than the "slight" the
-issue's prose suggests (that prose gives no degree figure — the harness's
-own `findWeaveSpans` detector, described below, brackets it at 1-45° to
-stay strictly narrower than #264's regime while still being non-trivial).
+MODE, and the destination span's two INTERNAL heading deltas (274.3°→285.0°
+= 10.7°, 285.0°→268.4° = 16.6°) are smaller than #264's ≥45° signature,
+though larger than the "slight" the issue's prose suggests (that prose gives
+no degree figure — the harness's own `findWeaveSpans` detector, described
+below, brackets it at 1-45° to stay strictly narrower than #264's regime
+while still being non-trivial). A three-leg span has only two internal
+transitions; the 19.1° step from the preceding (excluded) leg's 293.4°
+heading into the span is the entry into it, not a transition within it, and
+is not counted here.
 
 ## 4. Measurement: does the destination-end weave cost ETA?
 
