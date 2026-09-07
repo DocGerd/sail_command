@@ -220,6 +220,13 @@ making design-level decisions; do not silently deviate.
   is wider than the obvious paths: besides `app/src/routing/`,
   `app/src/lib/mask.ts`, `app/src/lib/depthGate.ts` (since #452),
   `app/public/data/`, `app/sweep/` and `pipeline/`,
+  — and note `services/assets.ts`'s `loadRoutingAssets()` fetches
+  `mask.meta.json`, `mask.bin`, the polars, `harbors.json` AND `seamarks.json`
+  in ONE `Promise.all`, so ANY of them failing leaves `harbors` permanently
+  `[]`: a path-exclusion table treating one as independently excludable is
+  wrong even when nothing reads it directly (measured at #1033, where
+  `seamarks.json` was excluded on a false rationale and the fix also caught
+  `mask.meta.json`) —
   `app/src/data/boats.ts` and `app/src/lib/boatDepth.ts` (both since #538 —
   `sweepArms.ts:38` imports `boatById`/`DEFAULT_BOAT_ID`/`polarKey`;
   `types.ts:1` and `planRoute.ts:24` import `boatDepth`),
@@ -534,6 +541,11 @@ making design-level decisions; do not silently deviate.
   guard-asymmetry rule below: an absent security control is the expensive
   failure direction, so the check
   must fail closed.
+- **`<input type="number">` sanitises non-numeric keystrokes BEFORE `onChange`
+  fires**, so a field that must accept a letter cannot use it at all — #886's
+  via-coordinate fields became `type="text"` + `inputMode="decimal"` with their
+  own draft/blur state for exactly that reason. Distinct from
+  `NumberInput.tsx`'s WHATWG comment, about DMS being structurally unenterable.
 - **`in` walks the PROTOTYPE CHAIN — never use it as a membership test against
   an object literal used as a lookup table for STORED/untrusted input.** EVERY
   `Object.getOwnPropertyNames(Object.prototype)` member passes it (12 of them on
@@ -2027,8 +2039,16 @@ making design-level decisions; do not silently deviate.
   makes a queue of N reviewed PRs cost N full `app` cycles (~20 min each), and
   it is also the guard that catches a change green on its own base and red
   merged. To cut that cost, BATCH file-surface-disjoint PRs into one
-  integration branch and open a single PR: their `Closes #N` commit trailers
-  still fire on merge to `develop`, and the batch build IS the merged-tree
+  integration branch and open a single PR: their `Closes #N` COMMIT TRAILERS
+  still fire on merge to `develop` — but a keyword living only in a member
+  PR's BODY does NOT, because a body fires auto-close solely for the PR that
+  is itself merged. Measured at both v0.25.0 waves: 9 of 10 and 3 of 4
+  keywords were body-only, so each batch would have closed ONE issue and
+  silently left the rest open. RESTATE EVERY `Closes #N` IN THE INTEGRATION
+  PR's BODY, and grep the two locations separately. General form: batching
+  changes WHICH ARTIFACT FIRES THE AUTOMATION, so any per-PR property held in
+  PR metadata rather than in commits does not survive it.
+  The batch build IS the merged-tree
   build the strict policy exists to obtain. **Do NOT then close the originals
   by hand** — measured 2026-09-03 on #912 (batching #901 and #904): once their
   commits are ancestors of `develop`, GitHub marks both PRs `merged: true`,
@@ -3241,8 +3261,12 @@ making design-level decisions; do not silently deviate.
   weeks — two separate causes, don't merge them. Three stale selectors were
   fixed at the cut; the ★ wait itself was fixed separately at #459 (`27518d5`,
   2026-08-09) — `capture.mjs` now polls the rig-comparison chip's TEXT instead
-  of a boolean `getByText('★')`. #428 stays open for its BROADER concern only:
-  nothing exercises this script, so it can rot as silently as #64 made it.
+  of a boolean `getByText('★')`. #428 CLOSED at v0.25.0: `.github/workflows/
+  docs-screenshots.yml`'s `capture` job now runs the script, but it is ADVISORY
+  (`protect-main` requires `app`+`e2e` only, so a red merges silently) and
+  exit-code-only — it catches a crash or timeout, never a capture that
+  COMPLETES and shows the wrong state, which is what #64 and the v0.10.0
+  fixture actually were.
   That fixture decays TWO independent ways, and horizon is the one that
   MISLEADS: a ROUTING change invalidates it while it is perfectly fresh.
   #577 (closed v0.12.1) — #54's multi-boat work collapsed the genoa/fock
@@ -3854,6 +3878,12 @@ making design-level decisions; do not silently deviate.
   FIRST; only then is a `null` trustworthy as "clear"
   (#251/#255 — reversing those two steps is a silent false all-clear, and the
   natural-looking implementation is the wrong one).
+  SECOND INSTANCE, same family: `lib/shallowExposure.ts` returns `null` for
+  FOUR causes — `!mask` (still loading, true on every cold plan), empty legs,
+  a walk/out-of-bounds failure (`:243`/`:245`), and a genuine zero. Only the
+  last means clean, so gating an affirmative "no shallow water" on bare
+  nullness is a false all-clear during ordinary loading (#1022's spike,
+  slice 2).
 - Angles: wind direction is meteorological (coming FROM, degrees true);
   polars are TWA × TWS → boat speed in knots. Positions are WGS84.
   Distances in nautical miles, speeds in knots.
@@ -4012,8 +4042,11 @@ making design-level decisions; do not silently deviate.
   `--selftest`. It fails CLOSED where the old inline form emitted nothing:
   empty/malformed/absent stdin, a missing or failing `jq`, and an unavailable
   or non-repo `git` (verified across 15 constructed failure inputs).
-- **The Bash arm ADVISES now; only `docs/superpowers*` still ASKS** (#478,
-  2026-08-09). `app/public/{data,icons,brand}`, `THIRD-PARTY-NOTICES.txt` and
+- **The Bash arm ADVISES now** (#478, 2026-08-09); since #1021 (v0.25.0) only
+  `docs/superpowers/specs/`, a plans+specs-mixed command, and a tree-level or
+  `..`-traversing write still ASK — a write confined to
+  `docs/superpowers/plans/` advises, on BOTH the Bash and Edit/Write arms.
+  `app/public/{data,icons,brand}`, `THIRD-PARTY-NOTICES.txt` and
   `.pmtiles` emit a non-blocking `additionalContext` advisory naming the
   matched path and the generator that rebuilds it. It deliberately OMITS
   `permissionDecision`: `"allow"` would BYPASS the user's own permission rules
