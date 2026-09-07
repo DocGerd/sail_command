@@ -156,6 +156,9 @@ export const de = {
   'planner.via.coord.edit': 'Koordinaten bearbeiten (Punkt {index}): {coord}',
   'planner.via.coord.outOfRegion':
     'Die Koordinaten liegen außerhalb des abgedeckten Seegebiets (Flensburger Förde / Dänische Südsee).',
+  // #886 residual 1: see dict.en.ts's matching comment.
+  'planner.via.coord.invalidEntry':
+    'Eingabe konnte nicht als Koordinate gelesen werden – {value} beibehalten',
   'planner.departure.label': 'Abfahrt',
   'planner.plan': 'Route planen',
   // §3.5 empty/first-run: friendly guidance near the primary action while no

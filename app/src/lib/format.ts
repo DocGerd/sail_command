@@ -98,6 +98,100 @@ export function formatLatLon(p: LatLon): string {
   return `${Math.abs(p.lat).toFixed(3)}°${ns} ${Math.abs(p.lon).toFixed(3)}°${ew}`;
 }
 
+/** Which axis a coordinate text entry belongs to — `'lat'` accepts an N/S
+ * suffix, `'lon'` an E/W one. Named after the field it parses, not a
+ * compass direction, so a call site reads as "this is the latitude field"
+ * rather than "this accepts north/south". */
+export type CoordAxis = 'lat' | 'lon';
+
+const HEMISPHERE_LETTERS: Record<CoordAxis, readonly ['positive' | 'negative', string][]> = {
+  lat: [
+    ['positive', 'N'],
+    ['negative', 'S'],
+  ],
+  lon: [
+    ['positive', 'E'],
+    ['negative', 'W'],
+  ],
+};
+
+/**
+ * #886 residual 1: parses a decimal-degree lat/lon TEXT entry that may carry
+ * a trailing hemisphere letter (N/S for `axis: 'lat'`, E/W for `axis:
+ * 'lon'`) — the convention `formatLatLon` above already RENDERS
+ * ("54.789°N"), but which no input in this app previously accepted. Charts
+ * and almanacs write the hemisphere letter; a captain transcribing one back
+ * needs to type it in, not just read it.
+ *
+ * Returns `null` for anything that isn't EITHER a bare signed decimal OR a
+ * decimal with a hemisphere suffix valid for the given axis — the caller
+ * treats `null` as a rejection to surface visibly, never a silent revert
+ * (see `resolveHemisphereCoordCommit` below).
+ *
+ * Deliberately rejects a hemisphere letter paired with an explicit '-' sign
+ * ("-54.8N") rather than guessing which one wins — that pairing is
+ * self-contradictory, and picking a resolution silently would be a second,
+ * hidden convention nobody asked for.
+ */
+export function parseHemisphereCoord(draft: string, axis: CoordAxis): number | null {
+  const trimmed = draft.trim();
+  if (trimmed === '') return null;
+  const m = /^(-?\d+(?:\.\d+)?)\s*°?\s*([A-Za-z])?$/.exec(trimmed);
+  if (!m) return null;
+  const numPart = m[1] as string;
+  const letterRaw = m[2];
+  const magnitude = Number(numPart);
+  if (!Number.isFinite(magnitude)) return null;
+  if (letterRaw === undefined) return magnitude;
+  if (numPart.startsWith('-')) return null;
+  const letter = letterRaw.toUpperCase();
+  const match = HEMISPHERE_LETTERS[axis].find(([, l]) => l === letter);
+  if (!match) return null;
+  return match[0] === 'negative' ? -magnitude : magnitude;
+}
+
+/** Outcome of resolving a coordinate text draft into a committed value —
+ * mirrors NumberInput.tsx's `resolveNumberCommit` shape (`next` plus a
+ * correction signal) but with a THIRD possibility that function has no room
+ * for: the draft didn't parse as a coordinate at all (as opposed to parsing
+ * fine and landing out of [min, max]). Both must be shown to the user per
+ * #886's own DoD ("a rejected input must produce a visible correction,
+ * never a silent revert") — `null` collapses them into one boolean-shaped
+ * story NumberInput's `wasClamped` deliberately does NOT tell for the
+ * invalid case (its own comment calls that a silent revert, by design, for
+ * a plain numeric field with no letter to misspell). */
+export type HemisphereCoordCorrection = 'invalid' | 'clamped' | null;
+
+export interface HemisphereCoordCommit {
+  next: number;
+  correction: HemisphereCoordCorrection;
+}
+
+/**
+ * Pure parse-then-clamp resolution for a via-coordinate text field's blur
+ * commit — the hemisphere-aware counterpart of NumberInput's
+ * `resolveNumberCommit`. Unparseable input (including a hemisphere letter
+ * that doesn't match `axis`, or the sign+letter conflict
+ * `parseHemisphereCoord` rejects) reverts to `lastCommitted` exactly like
+ * that function's NaN path, but reports `'invalid'` instead of silently
+ * saying nothing — that visible correction is the whole point of #886's
+ * residual 1.
+ */
+export function resolveHemisphereCoordCommit(
+  draft: string,
+  lastCommitted: number,
+  min: number,
+  max: number,
+  axis: CoordAxis,
+): HemisphereCoordCommit {
+  const parsed = parseHemisphereCoord(draft, axis);
+  if (parsed === null) {
+    return { next: lastCommitted, correction: 'invalid' };
+  }
+  const clamped = Math.min(max, Math.max(min, parsed));
+  return { next: clamped, correction: clamped === parsed ? null : 'clamped' };
+}
+
 export function formatDuration(ms: number): string {
   const totalMinutes = Math.round(ms / 60_000);
   const hours = Math.floor(totalMinutes / 60);
