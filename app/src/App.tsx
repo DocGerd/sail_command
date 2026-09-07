@@ -258,10 +258,19 @@ function appTabId(tab: Tab): string {
 // this check exists to prevent) falls back to the SAME indexed
 // `planner.via.marker` label ViaMarkers.tsx already shows for an unnamed
 // marker, so "which point" always matches what the panel/map displays.
-// Not reachable through PlannerPanel's rename UI, which already trims —
-// but IS reachable via a seamark or saved-waypoint name (SeamarksInView.tsx/
-// SavedWaypointsLayer.tsx's `onPick`/`onAddWaypoint`), neither of which is
-// verified trimmed at its source. `named` is true iff at least one dropped
+// As of 2026-09-07, every producer of a via-point `name` checked forecloses
+// a whitespace-only value: PlannerPanel's rename UI trims (viaCoordName
+// above); a seamark-sourced name comes from `seamarkWaypointName()`
+// (lib/seamarkPopover.ts), which the pipeline never populates from an OSM
+// `name`/`ref` tag — it is always a translated TYPE label or `''`; and a
+// saved-waypoint's name is either that same seamark/rename-UI value or
+// SavedWaypoints.tsx's own `formatLatLon` coordinate fallback (never
+// whitespace) — db.ts's own comment records there is no
+// foreign/hand-edited-record case to defend for that store. GPX import
+// (lib/gpx.ts's `parseGpx`) never attaches a `.name` at all. So `.trim()`
+// defends a FUTURE producer, not a live one today — kept for the same
+// forward-looking reason the reference-equality comment below names its own
+// producers. `named` is true iff at least one dropped
 // point had a usable name — App.tsx's render picks the plain generic-count
 // banner copy when it's false (unchanged wording, no behaviour change for
 // the all-unnamed case) and the name-listing copy when it's true.
@@ -296,7 +305,7 @@ export function droppedViaLabels(
     .map(({ via, index }) => {
       if (via.name && via.name.trim().length > 0) {
         named = true;
-        return lang === 'de' ? `„${via.name}“` : `"${via.name}"`;
+        return lang === 'de' ? `„${via.name.trim()}“` : `"${via.name.trim()}"`;
       }
       return t('planner.via.marker', { index: index + 1 });
     });
