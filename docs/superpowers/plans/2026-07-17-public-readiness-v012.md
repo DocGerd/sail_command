@@ -4,7 +4,7 @@
 > is COMPLETE: every issue it closes (#10, #12, #13, #14, #16) has shipped.
 > It is kept here verbatim as a historical record, not as an active
 > instruction set — do not dispatch an agent to "execute" it. It states, in
-> three places (the Global Constraints list and Task 1's own bullets), a
+> three places, a
 > **fabricated** "CI runners are 6–10× slower than dev machines" figure —
 > CLAUDE.md records that no such measurement exists, and gives the real,
 > narrower position (CI is slower but not by a flat multiplier, and the

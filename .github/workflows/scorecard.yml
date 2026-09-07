@@ -10,9 +10,8 @@ on:
   # .github/workflows/python-lint-requirements.txt and
   # .github/workflows/verify-mask-requirements.txt via '.github/**') plus
   # '.github/**' generally for any workflow-file change. Commit-activity-based
-  # checks (Maintained, Vulnerabilities, Code-Review, CI-Tests) are still
-  # re-evaluated by the weekly schedule below, so scoping this trigger loses
-  # nothing durable from them.
+  # checks are still re-evaluated by the weekly schedule below, so scoping
+  # this trigger loses nothing durable from them.
   push:
     branches: [develop]
     paths:
