@@ -224,6 +224,24 @@ select {
        the whole `.app-bottom-sheet` — the sheet's PANEL CONTENT stays
        untiered (Tier 0) precisely so it keeps losing to map chrome, which
        is the #208 NEW-1 fix this whole tier system exists to preserve.
+     - `.maplibregl-popup` — MapLibre's own library class for a seamark/AIS
+       info popup (`.seamark-popup`/`.ais-popup`, #7/#25), themed but not
+       tiered until #999. The library ships this element with `position:
+       absolute` and NO z-index at all — unlike its own `.maplibregl-ctrl-*`
+       corners, which get `z-index: 2` (maplibre-gl 6.6.0,
+       `src/css/maplibre-gl.css`, checked against the version
+       `app/package-lock.json` pins) — so at the library's own default it
+       paints at CSS 2.1 Appendix E step 8 (positioned, z-index:auto) while
+       every Tier 2 member below sits at step 9 (positioned, z-index set):
+       a Tier 2 element ALWAYS wins that pairing regardless of DOM order,
+       which is what buried the close button behind `.route-layer-controls`
+       (#999). A user-opened popup is the same "must always be reachable"
+       case as the rest of this tier — the whole point of opening one is to
+       read it and then dismiss it — so it is declared HERE, not given a
+       bespoke value between tiers. The `z-index: 3` rule itself sits with
+       the other popup-chrome overrides, beside `.seamark-popup`/
+       `.ais-popup`'s dark-mode fix, not beside `.app-header` — see that
+       rule's own comment for why.
 
    Tier 2 — MAP CHROME (z-index: 2). Controls that live ON the map and must
    survive the sheet growing under them, but must never cost the user shell
@@ -2019,6 +2037,26 @@ select {
   border: 2px solid var(--sc-fg);
   border-top: none;
   box-sizing: content-box;
+}
+
+/* #999: MapLibre's own `.maplibregl-popup` ships with `position: absolute`
+   and NO z-index (unlike its `.maplibregl-ctrl-*` corners, which get
+   `z-index: 2` — maplibre-gl 6.6.0, `src/css/maplibre-gl.css`, matching the
+   version `app/package-lock.json` pins). Left at the library default it
+   paints at CSS 2.1 Appendix E step 8 (positioned, z-index:auto), which
+   ALWAYS loses to a Tier-2 sibling's step 9 (positioned, z-index set)
+   regardless of DOM order — `.route-layer-controls` (`z-index: 2`)
+   therefore buried the popup's own close button at mid-size viewports,
+   making it unclickable rather than merely occluded-looking. Declared as a
+   Tier 3 member of the map-chrome z-index list above `.app-header` (#208):
+   a user-opened popup's content and close affordance must always be
+   reachable, the same "always operable" case as the rest of that tier.
+   Targets the library's own base class (not `.seamark-popup`/`.ais-popup`
+   individually) so every current AND future Popup instance is covered —
+   same rationale as the `.maplibregl-ctrl-attrib` dark-mode override below,
+   which also themes a library global rather than a per-feature className. */
+.maplibregl-popup {
+  z-index: 3;
 }
 
 /* Seamark info popover (#7) — content of a MapLibre Popup's setDOMContent,
