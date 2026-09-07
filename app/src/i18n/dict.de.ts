@@ -939,6 +939,14 @@ export const de = {
   // internally), not from a via-replan — the wording itself is unchanged.
   'banner.viaTooClose': 'Wegpunkt zu nah am Nachbarn — übersprungen',
   'banner.viaTooClose.plural': '{count} Wegpunkte zu nah an Nachbarn — übersprungen',
+  // #939: siehe dict.en.ts — verwendet statt der beiden generischen
+  // Schlüssel oben, sobald mindestens einer der übersprungenen Wegpunkte
+  // einen nicht-leeren `name` trägt. `{names}` wird in App.tsx aus einer
+  // kommagetrennten Liste gebaut: ein benannter Punkt zeigt seinen Namen in
+  // „…“, ein unbenannter fällt auf dieselbe indizierte
+  // `planner.via.marker`-Beschriftung zurück, die ViaMarkers.tsx verwendet.
+  'banner.viaTooClose.named': '{names} zu nah an einem Nachbarn — übersprungen',
+  'banner.viaTooClose.named.plural': '{count} Wegpunkte zu nah an Nachbarn — übersprungen: {names}',
   'pwa.updateAvailable': 'Update verfügbar',
   'pwa.reload': 'Neu laden',
   'pwa.offlineReady': 'App & Karten offline verfügbar',

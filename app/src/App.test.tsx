@@ -2326,6 +2326,71 @@ describe('banner surfacing (PR self-review fix wave)', () => {
     routingMock.calls[0].resolve(okPlanResult(66));
   });
 
+  // #939: when at least one of the dropped vias carries a non-empty `name`,
+  // the banner must NAME it instead of only counting drops — mixing a named
+  // and an unnamed drop in ONE press exercises both the quoted-name path AND
+  // the unnamed fallback (the same indexed `planner.via.marker` label
+  // ViaMarkers.tsx shows) in a single assertion.
+  it('a named too-close waypoint is named in the drop banner, alongside an unnamed sibling (#939)', async () => {
+    const nearOrigin1 = {
+      lat: ORIGIN_A.lat + 0.0001,
+      lon: ORIGIN_A.lon + 0.0001,
+      name: 'North Cardinal',
+    };
+    const nearOrigin2 = { lat: ORIGIN_A.lat + 0.0002, lon: ORIGIN_A.lon + 0.0002 };
+    const preseeded: Plan = {
+      id: 'named-drop-plan',
+      name: 'Named Drop Plan',
+      createdAtMs: Date.now() - 60_000,
+      schemaVersion: PLAN_SCHEMA_VERSION,
+      request: {
+        origin: ORIGIN_A,
+        destination: DEST_A,
+        viaPoints: [nearOrigin1, nearOrigin2],
+        originHarborId: null,
+        destinationHarborId: null,
+        departureMs: Date.now() + 3_600_000,
+        settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
+      },
+      windGrid: uniformWindGrid(10, 250, { t0Ms: Date.now() - 3_600_000, hours: 48 }),
+      result: okPlanResult(66),
+    };
+    await db.savePlan(preseeded);
+
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(preseeded.name) }));
+    await waitFor(() => expect(screen.getByText(formatNm(66, 'de'))).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+    const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
+    await waitFor(() => expect(within(viaSection).getAllByRole('listitem')).toHaveLength(2));
+
+    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+    // Named via at index 0 renders quoted; unnamed via at index 1 falls back
+    // to the SAME "Wegpunkt {index}" label planner.via.marker gives it
+    // elsewhere (1-based, so index 1 -> "Wegpunkt 2").
+    const expectedNames = `„North Cardinal“, ${de['planner.via.marker'].replace('{index}', '2')}`;
+    expect(
+      await screen.findByText(
+        de['banner.viaTooClose.named.plural']
+          .replace('{count}', '2')
+          .replace('{names}', expectedNames),
+      ),
+    ).toBeInTheDocument();
+    // Neither the all-unnamed generic banner nor its singular sibling shows.
+    expect(
+      screen.queryByText(de['banner.viaTooClose.plural'].replace('{count}', '2')),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(de['banner.viaTooClose'])).not.toBeInTheDocument();
+
+    await waitFor(() => expect(routingMock.calls.length).toBe(1));
+    routingMock.calls[0].resolve(okPlanResult(66));
+  });
+
   it('offline and settings-persistence-error banners stack simultaneously, without one hiding the other', async () => {
     renderApp();
     const safetyDepthInput = await screen.findByLabelText(de['options.safetyDepth.label']);
