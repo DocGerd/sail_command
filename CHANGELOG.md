@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-09-07
+
+### Added
+
+- Saved waypoints now appear on the chart as their own map layer — a hollow via-coloured ring, labelled with the waypoint name where there is room for it, drawn above the depth shading and below every harbour, seamark, AIS and route marker. While the Add waypoint pick is armed, tapping one inserts that waypoint by name instead of the raw tapped coordinate (#924).
+
+### Changed
+
+- The waypoint coordinate-entry fields now show the hemisphere (N/S/E/W) for the current latitude and longitude, and the entry group names its target ("New waypoint" vs. "Editing waypoint N") with an explicit way to cancel out of edit mode (#886).
+
+### Fixed
+
+- A recalculate now announces its completion to screen readers no matter which tab you're on — a single app-level region replaces two per-tab ones that only worked on the Plan and Routes tabs, so Live and Boat were previously silent (#983).
+- Fixed the app header overlapping the map's top-left toggle cluster and any visible banner at short-landscape viewports (#985).
+- Fixed the Live tab's AIS connection chip jumping ~121px down the map at most narrow viewports, landing on top of the map controls below it (#991).
+- Fixed a MapLibre info popup's close button being unreachable behind the map's own toggle/legend cluster at mid-size viewports (#999).
 ## [0.23.0] - 2026-09-05
 
 ### Added
@@ -980,7 +996,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.23.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.24.0...HEAD
+[0.24.0]: https://github.com/DocGerd/sail_command/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/DocGerd/sail_command/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/DocGerd/sail_command/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/DocGerd/sail_command/compare/v0.20.0...v0.21.0
