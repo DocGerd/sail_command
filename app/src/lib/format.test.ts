@@ -403,6 +403,34 @@ describe('resolveHemisphereCoordCommit', () => {
       correction: 'invalid',
     });
   });
+
+  // REVIEW FIX WAVE (MAJOR): an EMPTIED field is a distinct user intent from
+  // unparseable garbage — clearing a field is deliberate, typing `nope` is a
+  // mistake — and must revert SILENTLY (correction: null), never report
+  // 'invalid'. `parseHemisphereCoord` itself returns `null` for both empty
+  // and garbage (asserted in that describe block above), so this pair pins
+  // that the DISTINCTION is made one layer up, in this function, not in the
+  // parser.
+  // MUTATION CHECK (non-vacuity): removing the `draft.trim() === ''` early
+  // return above (so an empty draft falls through to
+  // `parseHemisphereCoord`, which also returns null for '') makes this row
+  // red with `Received: {"next": 10, "correction": "invalid"}` while the
+  // "reverts to lastCommitted and reports 'invalid' for unparseable input"
+  // row above stays green — the mutation is isolated to exactly the empty
+  // case, not to unparseable input in general.
+  it('reverts SILENTLY (no correction) when the draft is empty', () => {
+    expect(resolveHemisphereCoordCommit('', 10, -90, 90, 'lat')).toEqual({
+      next: 10,
+      correction: null,
+    });
+  });
+
+  it('reverts SILENTLY (no correction) when the draft is only whitespace', () => {
+    expect(resolveHemisphereCoordCommit('   ', 10, -90, 90, 'lat')).toEqual({
+      next: 10,
+      correction: null,
+    });
+  });
 });
 
 describe('formatSliderTime', () => {

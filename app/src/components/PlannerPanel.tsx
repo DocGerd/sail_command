@@ -1028,13 +1028,27 @@ export default function PlannerPanel({
                 out-of-range value that clamped cleanly is a different event
                 from input this parser couldn't read at all, and #886's own
                 DoD names the second case explicitly ("a rejected input must
-                produce a visible correction, never a silent revert"). */}
+                produce a visible correction, never a silent revert").
+                REVIEW FIX WAVE (MINOR): the quoted `value` is
+                `viaCoordLatDraft` — the field's OWN post-commit string,
+                already `String(next)` from handleViaCoordLatBlur — never
+                `formatBound(viaCoordLat, lang)`. `formatBound` rounds to at
+                most 2 decimals for a step-quantized field like safety depth,
+                where the field's displayed value and a 2-decimal round
+                always agree; via-coordinates are NOT quantized, so
+                `formatBound` could round a genuinely full-precision
+                committed value (e.g. from a longer typed decimal) to a
+                shorter one than what the input actually shows, and the
+                notice would then quote a number the field itself does not
+                display. `min`/`max` below stay `formatBound`-formatted —
+                those are the fixed -90/90 constants, never user-typed, so
+                there is nothing for them to disagree with. */}
             <p className="boat-picker-notice" role="status">
               {viaCoordLatCorrection === 'invalid'
-                ? t('planner.via.coord.invalidEntry', { value: formatBound(viaCoordLat, lang) })
+                ? t('planner.via.coord.invalidEntry', { value: viaCoordLatDraft })
                 : viaCoordLatCorrection === 'clamped'
                   ? t('numberInput.corrected', {
-                      value: formatBound(viaCoordLat, lang),
+                      value: viaCoordLatDraft,
                       min: formatBound(-90, lang),
                       max: formatBound(90, lang),
                     })
@@ -1056,13 +1070,16 @@ export default function PlannerPanel({
                 onBlur={handleViaCoordLonBlur}
               />
             </Field>
-            {/* #886 residual 1: see the matching lat notice above. */}
+            {/* #886 residual 1: see the matching lat notice above — same
+                REVIEW FIX WAVE (MINOR) reasoning for quoting
+                `viaCoordLonDraft` rather than `formatBound(viaCoordLon,
+                lang)`. */}
             <p className="boat-picker-notice" role="status">
               {viaCoordLonCorrection === 'invalid'
-                ? t('planner.via.coord.invalidEntry', { value: formatBound(viaCoordLon, lang) })
+                ? t('planner.via.coord.invalidEntry', { value: viaCoordLonDraft })
                 : viaCoordLonCorrection === 'clamped'
                   ? t('numberInput.corrected', {
-                      value: formatBound(viaCoordLon, lang),
+                      value: viaCoordLonDraft,
                       min: formatBound(-180, lang),
                       max: formatBound(180, lang),
                     })

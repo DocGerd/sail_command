@@ -1434,6 +1434,54 @@ describe('PlannerPanel', () => {
           ).toBeInTheDocument();
         });
 
+        // REVIEW FIX WAVE (MAJOR): an EMPTIED field is a distinct user
+        // intent from unparseable garbage — clearing the field is
+        // deliberate, typing "nope" is a mistake — and must revert
+        // SILENTLY, exactly like NumberInput's own empty-field path,
+        // never showing the invalid-entry notice.
+        // MUTATION CHECK (non-vacuity): reverting
+        // resolveHemisphereCoordCommit's `draft.trim() === ''` early
+        // return (see format.ts) reds this row — the notice appears where
+        // this test asserts its ABSENCE — while leaving the sibling
+        // "shows a visible correction ... for unparseable input" test
+        // above green, since that mutation only changes the EMPTY case.
+        it('reverts silently (no notice) when the field is cleared, unlike unparseable input', () => {
+          renderPanel({ viaPoints: [] });
+          fireEvent.change(latInput(), { target: { value: '' } });
+          fireEvent.blur(latInput());
+          expect(latInput()).toHaveValue('54.8');
+          expect(
+            screen.queryByText("Couldn't read that as a coordinate — kept 54.8"),
+          ).not.toBeInTheDocument();
+        });
+
+        // REVIEW FIX WAVE (MINOR): the notice must quote the value the
+        // field itself shows, never a re-rounded one — a real risk here
+        // specifically because via-coordinates, unlike the step-quantized
+        // safety-depth field this notice shape was copied from, are NOT
+        // quantized. Commits a genuinely full-precision value first (valid,
+        // in range, so it becomes `lastCommitted` with no correction of its
+        // own), then triggers the invalid-entry revert and asserts the
+        // notice names that EXACT full-precision string.
+        // MUTATION CHECK (non-vacuity): reverting the notice's `value:
+        // viaCoordLatDraft` back to `value: formatBound(viaCoordLat, lang)`
+        // reds this row with `Received: "Couldn't read that as a
+        // coordinate — kept 54.85"` (formatBound's 2-decimal round) while
+        // the sibling "kept 54.8" tests above and below stay green, since
+        // 54.8 rounds to itself either way — this row is the one that can
+        // tell the two forms apart.
+        it('quotes the field’s own full-precision value in the notice, not a rounded one', () => {
+          renderPanel({ viaPoints: [] });
+          fireEvent.change(latInput(), { target: { value: '54.8523471' } });
+          fireEvent.blur(latInput());
+          expect(latInput()).toHaveValue('54.8523471');
+          fireEvent.change(latInput(), { target: { value: 'garbage' } });
+          fireEvent.blur(latInput());
+          expect(
+            screen.getByText("Couldn't read that as a coordinate — kept 54.8523471"),
+          ).toBeInTheDocument();
+        });
+
         // An out-of-range value is a DIFFERENT event from an unparseable
         // one (clamped, not reverted) and reuses numberInput.corrected —
         // asserted here so the two visible messages are pinned as distinct.

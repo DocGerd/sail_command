@@ -176,6 +176,20 @@ export interface HemisphereCoordCommit {
  * that function's NaN path, but reports `'invalid'` instead of silently
  * saying nothing — that visible correction is the whole point of #886's
  * residual 1.
+ *
+ * REVIEW FIX WAVE (MAJOR): an EMPTIED field is a distinct user intent from
+ * unparseable garbage and must NOT report `'invalid'` — clearing a field is
+ * deliberate, typing `nope` is a mistake, and #886's whole point is to make
+ * the mistake loud, not the deliberate action. `parseHemisphereCoord` itself
+ * returns `null` for both (its contract is "can this be read as a
+ * coordinate", and empty genuinely can't), so the empty check is done HERE,
+ * before that parse is even attempted — mirroring NumberInput's own
+ * `resolveNumberCommit`, whose comment already treats `draft.trim() === ''`
+ * as its own branch ahead of `Number(draft)`, for exactly this reason
+ * (that function then collapses BOTH outcomes to the same silent revert,
+ * since a plain numeric field has no letter to misspell — this one cannot
+ * make that collapse, hence the two branches below staying separate all
+ * the way to the return).
  */
 export function resolveHemisphereCoordCommit(
   draft: string,
@@ -184,6 +198,9 @@ export function resolveHemisphereCoordCommit(
   max: number,
   axis: CoordAxis,
 ): HemisphereCoordCommit {
+  if (draft.trim() === '') {
+    return { next: lastCommitted, correction: null };
+  }
   const parsed = parseHemisphereCoord(draft, axis);
   if (parsed === null) {
     return { next: lastCommitted, correction: 'invalid' };
