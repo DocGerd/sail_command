@@ -161,34 +161,68 @@ export interface PreviewServer {
 // diffing it against every file actually present under `dist/`. Whatever
 // escapes — for either reason, and automatically for any FUTURE filter
 // change too, since nothing here re-derives `globPatterns`/`globIgnores` —
-// is byte-compared against its served copy, EXHAUSTIVELY (#896: this used to
-// sample one lexicographically-first representative per directory above an
-// 8-file cap — `FULL_CHECK_MAX_FILES_PER_DIR` — which left a difference
-// confined to a NON-representative sibling in the three ~770-`.pbf`
-// font-family directories undetected; see git history at `d2cb7ac`/this
-// file's own pre-#896 revisions for that shape if it needs reviving).
-// Fetching the whole escaping set on EVERY `startPreview()` call would
-// reproduce the exact cost problem sampling existed to avoid — this file has
-// 60+ call sites, and the escaping set today is dominated by ~770 font
-// glyph-range `.pbf` files across only three font-family directories, so a
-// full pass would be tens of thousands of extra requests spread across the
-// suite. #896's fix instead bounds the NETWORK half of the check to run
-// ONCE per process rather than once per call — memoized in
-// `residualVerification` below — because `dist/` is a fixed on-disk build
-// for the whole e2e run (rebuilt once by `pree2e` before Playwright starts,
-// never mid-run), so the LOCAL side of the comparison is invariant across
-// every call in a process. See `verifyResidualDistFilesOnce`'s own comment
-// for the caching contract (success is cached forever; failure is NOT, so a
-// corrupted first server cannot condemn a later, honest one) and for the
-// residual this narrowing leaves.
+// is grouped by directory; `pickResidualRepresentatives` fully checks every
+// file in a group at or under `FULL_CHECK_MAX_FILES_PER_DIR` (8) and falls
+// back to a single lexicographically-first representative only above that
+// (see that function's own comment for why a BARE one-per-directory scheme
+// was insufficient — a review-caught SELECTION blind spot, not merely a
+// coverage one). Fully checking small groups rather than fetching every
+// escaping file everywhere is still a deliberate cost bound: this file has
+// 60+ `startPreview()` call sites across the suite, and the escaping set
+// today is dominated by ~770 font glyph-range `.pbf` files split across only
+// three font-family directories (each far over the threshold) that would
+// turn one cheap check into tens of thousands of extra requests if fully
+// checked everywhere. This whole sampled check runs, unweakened, on EVERY
+// `startPreview()` call — that guarantee is load-bearing and #896 below does
+// not touch it.
+//
+// #896 ADDS a SECOND, exhaustive pass on top, precisely for the sampled
+// check's own named residual (a difference confined to a non-representative
+// sibling in one of the three ~770-file font-family directories) — but
+// paying that pass's network cost on every call would reproduce the exact
+// blowup the sampling above exists to avoid, so `verifyResidualDistFilesOnce`
+// (below `assertResidualDistFilesMatch`) runs it ONCE per process, memoized,
+// rather than once per call: `dist/` is a fixed on-disk build for the whole
+// e2e run (rebuilt once by `pree2e` before Playwright starts, never
+// mid-run), so the LOCAL side of that comparison is invariant across every
+// call in a process. GOVERNING CONSTRAINT, and the reason the two checks
+// are ADDITIVE rather than one replacing the other: HEAD must never be
+// WEAKER than the sampled check alone was on ANY call — #896's first
+// implementation violated this by making the exhaustive pass the ONLY
+// check and memoizing it, so a SECOND `startPreview()` call in the same
+// worker process (a decoy squatting the port after an honest first call)
+// skipped residual verification entirely, including the very
+// representative file the sampled check had always caught. Reviewer-caught
+// and fixed the same day; keeping BOTH `assertResidualDistFilesMatch(
+// residualRepresentatives)` (every call) and
+// `verifyResidualDistFilesOnce(residualFiles)` (once per process) is what
+// restores the "never weaker than the sampled check" guarantee while still
+// buying #896's wider one-time coverage. See `verifyResidualDistFilesOnce`'s
+// own comment for the caching contract (success is cached forever; failure
+// is NOT, so a corrupted first server cannot condemn a later, honest one)
+// and for the residual THIS pairing still leaves (narrower than #896's
+// original gap, not zero).
+//
+// NAMED RESIDUAL, do not over-claim it away: within a directory whose
+// escaping count EXCEEDS the threshold (only the three font-family
+// directories do, today), a difference confined to a NON-representative
+// sibling is caught on a worker process's FIRST successful verification (by
+// the exhaustive pass) but NOT re-verified over the network on any LATER
+// call in that process (the memoized success short-circuits it) — so a
+// foreign/corrupted server appearing ONLY from a later call onward, whose
+// index.html/sw.js/sampled-representative all still match this build, could
+// still slip a non-representative residual file past this check. That is a
+// narrower window than the sampled check alone ever closed (it never closed
+// it at all, on any call) and a narrower one than #896's own issue text
+// accepts as the cost of not re-fetching per call.
 //
 // This addresses #803's FIRST layer (a foreign server already on the
-// port) for everything the two probes together reach, and — since #896 —
-// for the WHOLE of `dist/` on each worker process's FIRST successful
-// `startPreview()` call. It structurally
-// cannot close the SECOND layer the issue also describes — a stale service
-// worker on a REUSED origin serving a cached build to a real browser
-// PAGE — because this check runs a plain Node `fetch()` with no
+// port): the sampled check alone, unconditionally, for the representative
+// file in every escaping directory on EVERY call; the exhaustive pass, for
+// the WHOLE of `dist/`, on each worker process's FIRST successful call. It
+// structurally cannot close the SECOND layer the issue also describes — a
+// stale service worker on a REUSED origin serving a cached build to a real
+// browser PAGE — because this check runs a plain Node `fetch()` with no
 // ServiceWorker in the picture at all; #832 (below,
 // `assertCleanServiceWorkerState`) was written to defend against THAT
 // layer, by running inside the browser PAGE itself rather than in Node —
@@ -423,7 +457,7 @@ function assertSwJsMatches(servedSwJs: string, localSwJs: string): void {
  * it, whose coverage would then be silently DROPPED, not merely widened —
  * so this must not be allowed to pass silently regardless of how expensive
  * the resulting over-check would or wouldn't be (that cost question is
- * `verifyResidualDistFilesOnce`'s concern, below, not this function's: this
+ * `pickResidualRepresentatives`'s concern, below, not this function's: this
  * function's job is only to get the SET right, never to reason about what a
  * wrong set would cost downstream — review MINOR 2 is precisely a prior
  * version of this comment doing that instead, with a specific fetch count
@@ -473,13 +507,15 @@ function parsePrecacheManifestUrls(swJs: string, source: string): Set<string> {
   // recognise — e.g. a `modifyURLPrefix`/`dontCacheBustURLsMatching`-shaped
   // rewrite. Left unguarded, that would silently treat every real dist/ file
   // as escaping (none of them would match either, not just the ones this PR
-  // cares about) — and since #896 removed per-directory sampling in favour
-  // of an EXHAUSTIVE residual check, the degraded set would include
+  // cares about) — `pickResidualRepresentatives`'s threshold does NOT bound
+  // this: with nothing matching, most directories fall UNDER the threshold
+  // and are checked one per FILE, so the degraded set includes
   // multi-megabyte assets never meant to be fetched here (the basemap
-  // archive alone is ~27 MB), fetched over the network on the FIRST
-  // `startPreview()` call of every worker process (see
-  // `verifyResidualDistFilesOnce`) — so this must fail LOUD rather than
-  // silently widen.
+  // archive alone is ~27 MB) — 60+ call sites x that would be materially
+  // expensive on EVERY call, and `verifyResidualDistFilesOnce`'s once-per-
+  // process exhaustive pass would ALSO try to fetch the same degraded set
+  // in full at least once — so this must fail LOUD rather than silently
+  // widen either check.
   if (!urls.has('index.html')) {
     throw new Error(
       `#833/#854: workbox's precache manifest in ${source} does not list "index.html" — the ` +
@@ -507,44 +543,92 @@ function walkDistFiles(dir: string, relBase: string): string[] {
   return out;
 }
 
-// #833/#854 review MAJOR (historical — SUPERSEDED by #896, kept for the
-// reasoning): a bare one-representative-per-directory scheme has a
-// SELECTION blind spot, not just a coverage gap — a SECOND escaping file
-// dropped into an already-represented directory could silently take over as
-// "the" representative while the file that motivated the check went
-// unchecked (measured concretely: `test-fixtures/` holding both the
-// gitignored docs wind fixture and `wind-sw12.json`, the file #833 itself
-// names as "the sharpest case"). #896 removes the sampling entirely rather
-// than widening the per-directory cap that used to bound it (see
-// `computeEscapingDistFiles`/`verifyResidualDistFilesOnce` below), so this
-// blind spot no longer exists — every escaping file is checked, not a
-// representative subset of any size.
+// #833/#854 review MAJOR: a bare one-representative-per-directory scheme has
+// a SELECTION blind spot, not just a coverage gap — the picked file is
+// whichever sorts lexicographically first, so a SECOND escaping file dropped
+// into an already-represented directory can silently take over as "the"
+// representative while the file that motivated the check goes unchecked.
+// Measured concretely: on a dev machine with `gen-docs-wind-fixture.mjs` run
+// (CLAUDE.md requires this before every README recapture), `test-fixtures/`
+// holds BOTH `wind-docs-plan-route.json` and `wind-sw12.json` — the former
+// sorts first, so it silently became the sole representative and a mutation
+// confined to `wind-sw12.json` (the file #833 itself names as "the sharpest
+// case") passed undetected on that machine, even though the identical
+// mutation was caught on a CI-shaped tree with no docs fixture present. Root
+// cause is the same for a BARE directory too: `dirname('THIRD-PARTY-
+// NOTICES.txt') === '.'`, so a future root-level file (`.nojekyll`,
+// `404.html`) would shadow it the same way (no dotfiles sit at dist/ root
+// today, so this is latent, not live).
+const FULL_CHECK_MAX_FILES_PER_DIR = 8;
 
-/** #833/#854/#896: every `distFiles` entry NOT covered by workbox's precache
- * manifest (`manifestUrls`) and not `index.html`/`sw.js` (both already
- * byte-verified above by their own dedicated checks) — sorted so a mismatch
- * is reproducible across runs. Every returned path is checked by
- * `verifyResidualDistFilesOnce`, below — see that function's own comment for
- * how the network cost of checking all of them, rather than a sampled
- * subset, is bounded per PROCESS instead of per file. */
+/** #833/#854: for each directory holding files NOT covered by workbox's
+ * precache manifest, fully checks EVERY escaping file in that directory when
+ * there are `FULL_CHECK_MAX_FILES_PER_DIR` or fewer of them, and falls back
+ * to ONE lexicographically-first representative only once a directory's
+ * escaping count exceeds that — see the block comment above for why a bare
+ * one-per-directory scheme is unsound (a selection blind spot, not merely an
+ * exhaustiveness one) and the block comment above `assertSwJsMatches` for
+ * the cost-bound rationale this fallback still honours (this file has 60+
+ * `startPreview()` call sites, and the escaping set today is dominated by
+ * ~770 font glyph-range files split across only three-plus directories, so
+ * fully checking those specifically would be tens of thousands of extra
+ * requests across the suite). At `FULL_CHECK_MAX_FILES_PER_DIR = 8` a build
+ * with the docs wind fixture present checks 9 files total (measured against
+ * a real build, 2026-09-03) — up from 8 without it — because BOTH
+ * `test-fixtures/` files now sit under the threshold and are checked
+ * together, closing the selection blind spot above. Deterministic (paths
+ * sorted within and across groups) so a failure is reproducible. RUNS ON
+ * EVERY `startPreview()` call, unweakened by #896 below — see the block
+ * comment above `assertSwJsMatches` for why that guarantee is load-bearing. */
+function pickResidualRepresentatives(distFiles: string[], manifestUrls: Set<string>): string[] {
+  const escaping = distFiles.filter(
+    (f) => !manifestUrls.has(f) && f !== 'index.html' && f !== 'sw.js',
+  );
+  const byDir = new Map<string, string[]>();
+  for (const f of escaping) {
+    const dir = dirname(f);
+    const group = byDir.get(dir);
+    if (group) group.push(f);
+    else byDir.set(dir, [f]);
+  }
+  const picked: string[] = [];
+  for (const group of byDir.values()) {
+    group.sort();
+    if (group.length <= FULL_CHECK_MAX_FILES_PER_DIR) {
+      picked.push(...group);
+    } else {
+      picked.push(group[0]);
+    }
+  }
+  return picked.sort();
+}
+
+/** #896: the FULL escaping set (no sampling, no per-directory cap) — every
+ * `distFiles` entry not covered by workbox's precache manifest and not
+ * `index.html`/`sw.js` (both already byte-verified above by their own
+ * dedicated checks). Fed to `verifyResidualDistFilesOnce` below, NEVER
+ * directly to `assertResidualDistFilesMatch` — see that function's own
+ * comment for why the network cost of checking all of them is paid once per
+ * PROCESS, not once per call. This is ADDITIONAL to, not a replacement for,
+ * `pickResidualRepresentatives`'s per-call sampled check just above; see the
+ * block comment above `assertSwJsMatches` for why both are needed. */
 function computeEscapingDistFiles(distFiles: string[], manifestUrls: Set<string>): string[] {
   return distFiles
     .filter((f) => !manifestUrls.has(f) && f !== 'index.html' && f !== 'sw.js')
     .sort();
 }
 
-/** #833/#854: byte-compares each of `relPaths` against its served copy.
- * Read as a Buffer, not text — several of these
+/** #833/#854: byte-compares each of `relPaths` against its served copy —
+ * called with `pickResidualRepresentatives`'s sampled subset on EVERY
+ * `startPreview()` call, and (via `verifyResidualDistFilesOnce`) with
+ * `computeEscapingDistFiles`'s full set once per process. Read as a Buffer,
+ * not text — several of these
  * (`.png`, `.pbf`) are binary, and a `utf8` round-trip is not guaranteed to
  * preserve byte equality for them. No-op if `relPaths` is empty (a build
  * with nothing outside the manifest — nothing to check). Throws immediately
  * on the FIRST mismatch or fetch failure, matching `assertSwJsMatches`'s
  * fail-fast style: a real foreign build failing to serve a `.pbf` byte-for-
- * byte is exactly the condition this whole check exists to catch. Callers
- * pass the FULL escaping set (see `computeEscapingDistFiles`) — this
- * function itself has no sampling logic of its own, and `startPreview()`
- * only ever invokes it through `verifyResidualDistFilesOnce`'s
- * once-per-process memoization, never directly. */
+ * byte is exactly the condition this whole check exists to catch. */
 async function assertResidualDistFilesMatch(relPaths: string[]): Promise<void> {
   for (const relPath of relPaths) {
     const localPath = resolve(DIST_DIR, relPath);
@@ -590,36 +674,55 @@ async function assertResidualDistFilesMatch(relPaths: string[]): Promise<void> {
   }
 }
 
-// #896: `assertResidualDistFilesMatch` above is EXHAUSTIVE — it checks every
-// file `computeEscapingDistFiles` returns, not a sampled subset — but paying
-// its network cost on EVERY `startPreview()` call would reproduce the exact
-// problem the old per-directory sampling existed to avoid: this file has
-// 60+ call sites, and the escaping set today is dominated by ~770 font
+// #896: `assertResidualDistFilesMatch`, fed `computeEscapingDistFiles`'s
+// FULL set (not `pickResidualRepresentatives`'s sampled subset above) via
+// this function, checks EVERY escaping file at least once per process — but
+// paying its network cost on EVERY `startPreview()` call would reproduce the
+// exact problem the per-directory sampling above exists to avoid: this file
+// has 60+ call sites, and the escaping set today is dominated by ~770 font
 // glyph-range `.pbf` files across only three font-family directories, so a
 // full pass on every call would be tens of thousands of extra requests
-// spread across the suite. So the network half of the check runs ONCE per
+// spread across the suite. So the network half of THIS check runs ONCE per
 // process — memoized here — rather than once per call: `dist/` is a fixed
 // on-disk build for the whole e2e run (rebuilt once by `pree2e` before
 // Playwright starts, never mid-run), so the LOCAL side of the comparison
 // (what `computeEscapingDistFiles` returns, and the bytes `readFileSync`
-// reads for each of them) is invariant across every call in this process —
-// re-fetching the SAME served bytes from a later call's own freshly-spawned
-// server cannot discover anything the first call's exhaustive pass didn't
-// already establish about this build, unless that later server is ITSELF
-// foreign/corrupted in a way that leaves `index.html` and `sw.js`
-// byte-identical to this build while some OTHER file differs — narrower
-// than #803's own scenario (a foreign server already on the port BEFORE
-// this run's build exists to compare against), which fails the cheap
-// index.html/sw.js checks on every call regardless of this memoization.
+// reads for each of them) is invariant across every call in this process.
+//
+// `playwright.config.ts` hardcodes `workers: 1` today with no CI override,
+// which is what makes "once per process" mean "once for the whole e2e run"
+// rather than once per worker of several — if `workers` is ever raised,
+// BOTH the exhaustive fetch's cost (paid again per worker) and the residual
+// gap below (one per worker instead of one for the whole run) multiply
+// accordingly; re-derive this comment's cost/coverage claims if that changes.
+//
+// GOVERNING CONSTRAINT — see the block comment above `assertSwJsMatches`
+// for the full account: this memoized pass must never be the ONLY residual
+// check, because re-fetching the same served bytes from a LATER call's own
+// freshly-spawned server cannot discover anything the first call's
+// exhaustive pass didn't already establish about THIS build — so a foreign/
+// corrupted server appearing only from a later call onward would slip past
+// it entirely. `startPreview()` therefore ALSO runs
+// `pickResidualRepresentatives`'s sampled check, unconditionally, on every
+// call — that call is what still catches a later foreign server for the
+// representative file in every escaping directory (including #803's own
+// scenario, a foreign server already on the port BEFORE this run's build
+// exists to compare against, which fails the cheap index.html/sw.js checks
+// on every call regardless of this memoization). What THIS memoized pass
+// adds on top, and what a later call's foreign server could still evade, is
+// narrower still: a difference confined to a NON-representative sibling in
+// one of the three >8-file font-family directories, on a server appearing
+// only after this process's first successful verification.
 //
 // SUCCESS is cached forever: once one server in this process has proven the
 // whole escaping set matches, every later `startPreview()` call resolves
-// immediately with no network I/O. FAILURE is NOT cached: it clears
-// `residualVerification` so the caller that threw fails loudly (per this
-// file's fail-closed convention) while a LATER call — a genuinely fresh
-// server spawn — gets its own attempt, rather than one corrupted or
-// slow-to-settle first server permanently condemning every honest one that
-// follows it in the same worker process.
+// immediately with no network I/O for THIS check (the sampled check above
+// still runs its own network I/O every time, unaffected by this cache).
+// FAILURE is NOT cached: it clears `residualVerification` so the caller
+// that threw fails loudly (per this file's fail-closed convention) while a
+// LATER call — a genuinely fresh server spawn — gets its own attempt,
+// rather than one corrupted or slow-to-settle first server permanently
+// condemning every honest one that follows it in the same worker process.
 let residualVerification: Promise<void> | null = null;
 
 async function verifyResidualDistFilesOnce(relPaths: string[]): Promise<void> {
@@ -682,14 +785,19 @@ export async function startPreview(page?: Page): Promise<PreviewServer> {
   // #833/#854: computed from the LOCAL build only, once, up front — see the
   // block comment above `assertSwJsMatches` for what this closes and its
   // named residual. Depends only on `localSwJs` (not the served copy), so
-  // it's safe to compute before the server has even answered once. #896:
-  // this is the FULL escaping set, not a sampled subset — cheap to compute
-  // (local filesystem only); the expensive part (fetching each one's served
-  // copy) is memoized per-process in `verifyResidualDistFilesOnce`, below.
-  const residualFiles = computeEscapingDistFiles(
-    walkDistFiles(DIST_DIR, ''),
-    parsePrecacheManifestUrls(localSwJs, `local ${DIST_SW_JS}`),
-  );
+  // it's safe to compute before the server has even answered once.
+  //
+  // TWO sets, deliberately: `residualRepresentatives` (sampled, checked
+  // EVERY call — see `pickResidualRepresentatives`'s own comment) and
+  // `residualFiles` (the FULL set, since #896 — checked once per process via
+  // `verifyResidualDistFilesOnce`, see that function's own comment for why
+  // BOTH are needed rather than either alone). Both are cheap to compute
+  // here (local filesystem only, no network); the expensive part is the
+  // fetch each is used for below.
+  const distFiles = walkDistFiles(DIST_DIR, '');
+  const manifestUrls = parsePrecacheManifestUrls(localSwJs, `local ${DIST_SW_JS}`);
+  const residualRepresentatives = pickResidualRepresentatives(distFiles, manifestUrls);
+  const residualFiles = computeEscapingDistFiles(distFiles, manifestUrls);
 
   const child = spawn('npm', ['run', 'preview', '--', '--port', String(PORT), '--strictPort'], {
     cwd: APP_DIR,
@@ -774,9 +882,15 @@ export async function startPreview(page?: Page): Promise<PreviewServer> {
         }
         const servedSwJs = await swRes.text();
         assertSwJsMatches(servedSwJs, localSwJs);
-        // #833/#854/#896: closes (most of) the gap named in the block
-        // comment above — see `verifyResidualDistFilesOnce`'s own comment
-        // for the named residual this does NOT close.
+        // #833/#854: closes most of the gap named in the block comment
+        // above — runs UNCONDITIONALLY on every call (see
+        // `pickResidualRepresentatives`'s own comment for the named
+        // residual this alone does not close).
+        await assertResidualDistFilesMatch(residualRepresentatives);
+        // #896: widens the check above to the FULL escaping set — see
+        // `verifyResidualDistFilesOnce`'s own comment for why this half
+        // runs only once per process, and for the (narrower) residual that
+        // leaves even with the check above also running every call.
         await verifyResidualDistFilesOnce(residualFiles);
         // #832: closes #803's second, browser-side layer for `page` — see
         // `assertCleanServiceWorkerState`'s own doc comment above and
