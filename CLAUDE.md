@@ -2048,9 +2048,10 @@ making design-level decisions; do not silently deviate.
   is itself merged. Measured at both v0.25.0 waves: 9 of 10 and 3 of 5
   keyword instances were body-only, so each batch would have closed only the
   commit-borne ones and silently left the rest open. RESTATE EVERY `Closes #N`
-  IN THE INTEGRATION PR's BODY, and grep the two locations separately. General form: batching
-  changes WHICH ARTIFACT FIRES THE AUTOMATION, so any per-PR property held in
-  PR metadata rather than in commits does not survive it.
+  IN THE INTEGRATION PR's BODY, and grep the two locations separately.
+  General form: batching changes WHICH ARTIFACT FIRES THE AUTOMATION, so any
+  per-PR property held in PR metadata rather than in commits does not
+  survive it.
   The batch build IS the merged-tree
   build the strict policy exists to obtain. **Do NOT then close the originals
   by hand** — measured 2026-09-03 on #912 (batching #901 and #904): once their
