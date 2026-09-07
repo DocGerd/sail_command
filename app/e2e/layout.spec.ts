@@ -411,6 +411,132 @@ for (const [label, viewport] of Object.entries(SINGLE_BANNER_VIEWPORTS)) {
   });
 }
 
+// #991: `.ais-status` (the Live-tab AIS connection chip) was never added to
+// PR #986's #909 grid reset, so at every OTHER narrow viewport — i.e. every
+// EDGE_VIEWPORTS/STANDARD_VIEWPORTS entry that is BOTH narrow (<1024px) AND
+// not short-landscape — its own base rule's `top: 3.5rem` kept adding on
+// top of a `.map-area` grid row that #909 already offsets below the header
+// and banner rows, stacking the two offsets (header 61px + banner 60px =
+// +121px, MEASURED BASE-vs-HEAD against #986's parent `92302f6`).
+// `.map-stack-tl` shares the exact same containing block (MapView's own
+// `position: relative` wrapper) and was already correctly reset by #909's
+// own grid rule to `top: var(--sc-map-chrome-top)` (0.5rem) — so, since the
+// #991 fix gives `.ais-status` that SAME literal, the two elements' viewport-
+// relative top offsets must be numerically EQUAL at every viewport in this
+// set. `tabletPortrait` (820px, narrow per `lib/useWideLayout.ts`'s 1024px
+// breakpoint) is included alongside the EDGE_VIEWPORTS narrow-portrait set —
+// together these are the 6 narrow non-short-landscape viewports #991's own
+// measurement covered.
+const AIS_STATUS_NARROW_VIEWPORTS: Record<string, Viewport> = {
+  phonePortrait: STANDARD_VIEWPORTS.phonePortrait,
+  tabletPortrait: STANDARD_VIEWPORTS.tabletPortrait,
+  narrowPortrait360: EDGE_VIEWPORTS.narrowPortrait360,
+  deepPortrait320: EDGE_VIEWPORTS.deepPortrait320,
+  partialPushBand375: EDGE_VIEWPORTS.partialPushBand375,
+  wrapForcing280: EDGE_VIEWPORTS.wrapForcing280,
+};
+for (const [label, viewport] of Object.entries(AIS_STATUS_NARROW_VIEWPORTS)) {
+  test(`#991: .ais-status sits at the same top offset as .map-stack-tl (${label}, ${viewport.width}x${viewport.height})`, async ({
+    page,
+  }) => {
+    const server = await startPreview(page);
+    try {
+      await page.setViewportSize(viewport);
+      await page.goto(server.url);
+      await mapReady(page);
+      await page.getByRole('tab', { name: 'Live' }).click();
+
+      const aisStatus = page.locator('.ais-status');
+      const mapStack = page.locator('.map-stack-tl');
+
+      // #412: RE-SAMPLE both boxes on every poll tick.
+      await expect
+        .poll(
+          async () => {
+            const [a, m] = await Promise.all([box(aisStatus), box(mapStack)]);
+            return Math.abs(a.y - m.y);
+          },
+          {
+            timeout: 10_000,
+            message: '.ais-status top offset vs .map-stack-tl top offset (px, should be 0)',
+          },
+        )
+        .toBe(0);
+    } finally {
+      server.kill();
+    }
+  });
+}
+
+// #985: PR #986's #909 grid deliberately keeps SHORT LANDSCAPE on the
+// pre-#909 overlay layout (app.css's own comment above the grid's `@media`
+// block), so `.app-header` (Tier 3, absolutely positioned, `top: 0`) can
+// still visually overlap the two Tier-2 clusters that share its corner —
+// `.map-stack-tl` (always mounted, plan-independent) and, whenever a real
+// banner renders, `.banner-area` itself — at exactly this narrow band of
+// viewports. Distinct from the `#368`/`SINGLE_BANNER_VIEWPORTS` loop above:
+// that one asserts `.banner-area` (Tier 3) does not bury `.map-stack-tl`
+// (Tier 2); this one asserts `.app-header` (also Tier 3, but a DIFFERENT
+// element, positioned independently) does not bury either of them. A
+// dismissed SW "offline ready" toast is `position: fixed`, pulled out of
+// `.banner-area`'s flow (app.css's #871 comment) — it cannot stand in for
+// the genuinely-rendered `.banner-area` banner this test forces via
+// `context.setOffline(true)`, the same idiom `SINGLE_BANNER_VIEWPORTS`
+// above uses.
+const APP_HEADER_SHORT_LANDSCAPE_VIEWPORTS: Record<string, Viewport> = {
+  shortLandscape844: EDGE_VIEWPORTS.shortLandscape844,
+  shortLandscape740: EDGE_VIEWPORTS.shortLandscape740,
+  shortLandscape932: EDGE_VIEWPORTS.shortLandscape932,
+};
+for (const [label, viewport] of Object.entries(APP_HEADER_SHORT_LANDSCAPE_VIEWPORTS)) {
+  test(`#985: .app-header does not overlap .map-stack-tl or a rendered banner (${label}, ${viewport.width}x${viewport.height})`, async ({
+    page,
+  }) => {
+    const server = await startPreview(page);
+    try {
+      await page.setViewportSize(viewport);
+      await page.goto(server.url);
+      await mapReady(page);
+
+      const header = page.locator('.app-header');
+      const mapStack = page.locator('.map-stack-tl');
+
+      // #412: geometry is RE-SAMPLED on every poll tick, never frozen from a
+      // single read taken before layout has settled.
+      await expect
+        .poll(async () => overlapArea(await box(header), await box(mapStack)), {
+          timeout: 10_000,
+        })
+        .toBe(0);
+
+      // Best-effort dismiss of the incidental SW toast so the offline banner
+      // below is genuinely the single `.banner-area` banner this probe means
+      // to force, matching `SINGLE_BANNER_VIEWPORTS`'s own idiom above.
+      await page
+        .locator('.reload-prompt .banner-dismiss')
+        .click({ timeout: 5_000 })
+        .catch(() => {});
+      await page.context().setOffline(true);
+      await expect(
+        page.locator('.banner-message', { hasText: 'Planung deaktiviert' }),
+      ).toBeVisible();
+
+      const banner = page.locator('.banner-area');
+      await expect
+        .poll(async () => overlapArea(await box(header), await box(banner)), {
+          timeout: 10_000,
+        })
+        .toBe(0);
+    } finally {
+      await page
+        .context()
+        .setOffline(false)
+        .catch(() => {});
+      server.kill();
+    }
+  });
+}
+
 // #368 residual: two STACKED banners (the SW's one-shot "offline ready"
 // toast plus the offline warning — both dismissible/self-clearing, neither
 // forced) at 320x568, the exact configuration measured broken under the old

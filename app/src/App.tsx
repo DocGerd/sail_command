@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -26,6 +27,9 @@ import DataLayers, {
   SEAMARKS_HAZARD_LAYER,
   SEAMARKS_LAYER,
 } from './components/DataLayers';
+import SavedWaypointsLayer, {
+  SAVED_WAYPOINT_LAYER,
+} from './components/SavedWaypointsLayer';
 import CompassControl from './components/CompassControl';
 import ScaleBar from './components/ScaleBar';
 import RouteLayer from './components/RouteLayer';
@@ -43,6 +47,7 @@ import SettingsPanel from './components/SettingsPanel';
 // PlannerPanel.tsx, which PR #940/#846's waypoint-chain train is editing
 // concurrently.
 import DepartureCompare from './components/DepartureCompare';
+import PlanCompletionAnnouncer from './components/PlanCompletionAnnouncer';
 import PlansList, { type RecalcMode } from './components/PlansList';
 import RouteSummary from './components/RouteSummary';
 import DepthProfile from './components/DepthProfile';
@@ -55,7 +60,7 @@ import AboutDialog from './components/AboutDialog';
 import ReloadPrompt from './components/ReloadPrompt';
 import UatBadge from './components/UatBadge';
 import PanelResizer from './components/PanelResizer';
-import { isStaleForecast, staleForecastGapHours } from './lib/plan';
+import { activeRigResult, isStaleForecast, staleForecastGapHours } from './lib/plan';
 import { recalcRequest } from './lib/recalc';
 import { planViaPoints } from './lib/planViaPoints';
 import {
@@ -89,6 +94,8 @@ import {
   type LatLon,
   type PickedPoint,
   type Plan,
+  type RigResult,
+  type SailId,
   type ViaPoint,
 } from './types';
 
@@ -264,6 +271,13 @@ function AppShell() {
   // MMSI on the Boat tab must reach the overlay without a remount.
   const [ownMmsi] = usePersistedOwnMmsi(boatId);
   const { plan, rig, setRig, activeLegIndex, setPlan } = useActivePlan();
+  // #554: resolve the active rig's route ONCE here — AisTraffic takes the
+  // already-resolved corridor route rather than re-deriving it from plan+rig
+  // itself (that reach into PlanResult's shape is what #538 had to touch this
+  // #25 component for). Reference-stable across renders where plan/rig are
+  // unchanged, which is what lets AisTraffic use it directly as its #158
+  // settle-gate reset key with no separate [plan, rig] tuple.
+  const aisRoute = useMemo(() => (plan && rig ? activeRigResult(plan, rig) : null), [plan, rig]);
   const [settingsPersistenceError, clearSettingsPersistenceError] = useSettingsPersistenceError();
   const { planning, run, ensureClient } = usePlanFlow();
   // #115: manual "reroute from here" (Live view). Shares the same singleton
@@ -278,6 +292,69 @@ function AppShell() {
     hintVisible: ownshipHintVisible,
     dismissHint: dismissOwnshipHint,
   } = useOwnshipGps(settings.showOwnship);
+
+  // #983: the app-level plan-completion announcement (PlanCompletionAnnouncer,
+  // mounted unconditionally below, regardless of `tab`) — see that
+  // component's own header for what it replaces and why. TWO distinct
+  // mechanisms feed `completionAnnouncement`, matching the two ways a
+  // genuinely NEW plan becomes active in this app:
+  //
+  //   1. handlePlan and handleRecalculate below both drive usePlanFlow's
+  //      `run()`, the ONLY thing in this app that ever moves
+  //      `planning.phase` away from 'idle'. The effect just below watches
+  //      for exactly a busy->idle transition (`wasBusy` derived from the
+  //      PREVIOUS phase, cached in `prevPlanningPhaseRef` and compared
+  //      against the CURRENT phase — never idle->idle, which is what a
+  //      plain PlansList "Load" or a session restore produces, since
+  //      NEITHER ever touches `planning.phase` at all: both write the
+  //      shared `plan`/`rig` state directly via useActivePlan().setPlan(),
+  //      bypassing usePlanFlow — and this effect — entirely). A busy->error
+  //      transition (a failed run) is excluded by the `phase === 'idle'`
+  //      half of the guard, so a failed recalculate announces nothing here
+  //      (its failure is still announced, tab-independently, by the
+  //      existing `planning.phase === 'error'` Banner in banner-area below
+  //      — unchanged, and the single alert surface for plan errors already).
+  //   2. handleDepartureConfirmed (#937's confirm-solve, wired below as
+  //      DepartureCompare's `onConfirmed` instead of passing `setPlan`
+  //      straight through) calls `announceCompletion` directly with the
+  //      completed plan — no effect needed, since confirm-solve never
+  //      touches usePlanFlow.ts's `planning.phase` at all
+  //      (useDepartureConfirm.ts is an entirely separate hook), so the
+  //      phase-transition watch alone would silently miss it — exactly the
+  //      #937/#961 "deliberate pair" PlannerPanel's superseded generic
+  //      key-watch used to cover (see DepartureCompare's own
+  //      `departureScan.confirm.done` region, still unchanged: the two
+  //      carry different content and were always meant to fire together).
+  //
+  // The `wasBusy && phase === 'idle' && plan !== null && rig !== null`
+  // guard is written as ONE combined condition (never a chain of early
+  // returns) — required to keep the setState call out of
+  // eslint's react-hooks/set-state-in-effect: that rule recognizes a ref
+  // caching the PREVIOUS value of an already-tracked dependency, compared
+  // against its CURRENT value, as the ordinary "notify on change" idiom
+  // (LiveView.tsx's `probedRef`/`holdKey` guard is the same shape) — but an
+  // EXTRA early-return guard beyond that single comparison (verified
+  // empirically against the installed plugin: splitting the null checks
+  // into their own `if (!plan || !rig) return;` line reproduces the error)
+  // makes it flag the call as an unrecognized conditional side effect.
+  const [completionAnnouncement, setCompletionAnnouncement] = useState<{
+    result: RigResult;
+    key: string;
+  } | null>(null);
+  const announceCompletion = useCallback((p: Plan, r: SailId) => {
+    const res = activeRigResult(p, r);
+    if (!res) return;
+    setCompletionAnnouncement({ result: res, key: `${p.id}-${p.createdAtMs}` });
+  }, []);
+  const prevPlanningPhaseRef = useRef(planning.phase);
+  useEffect(() => {
+    const prevPhase = prevPlanningPhaseRef.current;
+    prevPlanningPhaseRef.current = planning.phase;
+    const wasBusy = prevPhase !== 'idle' && prevPhase !== 'error';
+    if (wasBusy && planning.phase === 'idle' && plan !== null && rig !== null) {
+      announceCompletion(plan, rig);
+    }
+  }, [planning.phase, plan, rig, announceCompletion]);
 
   const [tab, setTab] = useState<Tab>('plan');
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -708,6 +785,37 @@ function AppShell() {
     [insertViaNearestOrAppend],
   );
 
+  // #924: the SAME handler, reached by tapping the saved-waypoint ring on
+  // the map instead of the panel row. Identical insertion by construction —
+  // that is what makes SavedWaypoints.tsx's button the keyboard equivalent
+  // of the map tap rather than merely a similar affordance. The extra step
+  // is the disarm, which the panel path does not need and handleMapTap's own
+  // 'via' branch performs by returning null from its updater.
+  const handleSavedWaypointMapPick = useCallback(
+    (waypoint: ViaPoint) => {
+      handleSelectSavedWaypoint(waypoint);
+      setTapTarget(null);
+    },
+    [handleSelectSavedWaypoint],
+  );
+
+  // #924: which layers MapView's generic tap handler must yield to. The
+  // saved-waypoint ring joins that set ONLY while the via pick is armed —
+  // the one arming SavedWaypointsLayer acts on, and the one
+  // resolveHarborPickTarget explicitly declines. Adding it unconditionally
+  // would turn every saved waypoint into a dead zone for the origin and
+  // destination picks: the generic tap would bail on the hit while no
+  // handler claimed it. Scoped this way, an origin-armed tap on a saved
+  // waypoint still falls through to the raw-coordinate pick it would have
+  // been anywhere else on the water.
+  const interactiveLayerIds = useMemo(
+    () =>
+      tapTarget === 'via'
+        ? [...INTERACTIVE_MAP_LAYER_IDS, SAVED_WAYPOINT_LAYER]
+        : INTERACTIVE_MAP_LAYER_IDS,
+    [tapTarget],
+  );
+
   // ViaMarkers' dragend handler. Markers are now rendered FROM the draft
   // (RouteLayer.tsx's `draftViaPoints` prop, review fix — markers used to be
   // positioned from the committed `plan.request.viaPoints`, which required a
@@ -986,6 +1094,21 @@ function AppShell() {
     [run, t],
   );
 
+  // #983: DepartureCompare's own onConfirmed callback — see
+  // `announceCompletion`'s own comment above for why the confirm-solve path
+  // needs this direct call rather than the phase-transition effect (it
+  // never touches usePlanFlow's `planning.phase` at all). Deliberately NOT
+  // `setPlan` passed straight through any more (the pre-#983 wiring) —
+  // announcing must happen with the SAME plan object `setPlan` receives, so
+  // the two can never observe different data.
+  const handleDepartureConfirmed = useCallback(
+    (p: Plan) => {
+      setPlan(p);
+      announceCompletion(p, p.result.recommended);
+    },
+    [setPlan, announceCompletion],
+  );
+
   // #115: reroute the ACTIVE plan from the current GPS fix (LiveView passes
   // the fix point). The result is a NEW plan (fresh id, derived name) — the
   // original stays untouched — and it becomes active unconditionally on
@@ -1150,7 +1273,7 @@ function AppShell() {
           tapActive={tapTarget !== null}
           onTap={handleMapTap}
           onMapError={handleMapError}
-          interactiveLayerIds={INTERACTIVE_MAP_LAYER_IDS}
+          interactiveLayerIds={interactiveLayerIds}
         >
           {/* #155: the top-left map-overlay stack. DataLayers' toggles and the
               compass are static flex children of one absolutely-positioned
@@ -1166,6 +1289,15 @@ function AppShell() {
                 orientation must not flip on a tab switch. */}
             <CompassControl fix={ownshipFix} showOwnship={settings.showOwnship} />
           </div>
+          {/* #924: saved named waypoints as a map layer. Always mounted like
+              DataLayers above — it is plan-independent, and it anchors itself
+              on DataLayers' harbour layer rather than on the route stack, so
+              it must not live inside RouteLayer (which renders null until a
+              plan exists). */}
+          <SavedWaypointsLayer
+            armed={tapTarget === 'via'}
+            onPick={handleSavedWaypointMapPick}
+          />
           <RouteLayer
             plan={plan}
             rig={rig}
@@ -1199,8 +1331,7 @@ function AppShell() {
               <AisTraffic
                 apiKey={settings.aisApiKey}
                 ownMmsi={ownMmsi ?? undefined}
-                plan={plan}
-                rig={rig}
+                route={aisRoute}
                 activeLegIndex={activeLegIndex}
                 panelSlot={aisInViewSlot}
               />
@@ -1587,12 +1718,20 @@ function AppShell() {
                     below the main planner form, gated internally on `plan`
                     (renders nothing before a first plan exists). Reuses the
                     same shared worker singleton via `ensureClient`.
-                    #937 (part c): `onConfirmed` is `setPlan` itself — a
-                    confirmed window's two-rig solve becomes the active plan
-                    unconditionally on success, the same precedent
-                    handleLiveReroute follows for its own `setPlan(rerouted)`
-                    call above. */}
-                <DepartureCompare plan={plan} ensureClient={ensureClient} onConfirmed={setPlan} />
+                    #937 (part c): a confirmed window's two-rig solve becomes
+                    the active plan unconditionally on success, the same
+                    precedent handleLiveReroute follows for its own
+                    `setPlan(rerouted)` call above. `onConfirmed` was
+                    `setPlan` itself pre-#983; it is now
+                    `handleDepartureConfirmed` (setPlan PLUS the app-level
+                    completion announcement — see that callback's own
+                    comment for why the confirm-solve path can't reach the
+                    #983 announcer any other way). */}
+                <DepartureCompare
+                  plan={plan}
+                  ensureClient={ensureClient}
+                  onConfirmed={handleDepartureConfirmed}
+                />
                 {/* #830: portal target for SeamarksInView (mounted inside MapView
                   above). Below the planner form, so the form's own CTA keeps
                   its position and the list costs panel scroll depth only
@@ -1704,6 +1843,17 @@ function AppShell() {
         </main>
       </div>
 
+      {/* #983: deliberately OUTSIDE every `inert={aboutOpen}` subtree above
+          (map-area/app-header/banner-area/PanelResizer/app-bottom-sheet) —
+          unlike those, this carries no focusable content for `inert`'s Tab-
+          trap rationale (#696) to apply to, and `inert` removes its subtree
+          from the accessibility tree, which would silence exactly the
+          announcement this component exists to make: a recalculate started
+          before the About dialog opened can still complete while it's open. */}
+      <PlanCompletionAnnouncer
+        result={completionAnnouncement?.result ?? null}
+        resultKey={completionAnnouncement?.key ?? null}
+      />
       <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} boat={boat} />
     </div>
   );

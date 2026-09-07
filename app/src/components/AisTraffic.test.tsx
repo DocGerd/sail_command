@@ -9,6 +9,7 @@ import { DEFAULT_SETTINGS, type Leg, type Plan, type RigResult } from '../types'
 import { defaultBoatSnapshot } from '../types';
 import { PLAN_SCHEMA_VERSION } from '../types';
 import type { AisTargetSnapshot } from '../lib/aisTargets';
+import { activeRigResult } from '../lib/plan';
 
 // ---- #158 integration rig ----------------------------------------------------
 // The corridor-resubscription tests run the REAL component wiring (settle gate,
@@ -184,6 +185,13 @@ const PLAN_C: Plan = {
   },
 };
 
+// #554: AisTraffic no longer takes plan+rig — it takes the already-resolved
+// corridor route, the same shape App.tsx now passes it (App.tsx's own memo is
+// `plan && rig ? activeRigResult(plan, rig) : null`). Reproducing that same
+// resolution here, rather than hand-picking a RigResult per call site, is
+// what keeps this helper an honest stand-in for the real caller: a rig with
+// no result for the given plan (e.g. PLAN's `fock`, which is `null`) must
+// still resolve to `route: null`, exactly as it would in the app.
 function traffic(
   activeLegIndex: number | null,
   plan: Plan = PLAN,
@@ -194,8 +202,7 @@ function traffic(
       <AisTraffic
         apiKey="KEY"
         ownMmsi={undefined}
-        plan={plan}
-        rig={rig}
+        route={activeRigResult(plan, rig)}
         activeLegIndex={activeLegIndex}
         panelSlot={null}
       />
@@ -391,6 +398,41 @@ describe('AisTraffic corridor resubscription (#158)', () => {
     expect(ais.sockets[0].sent).toHaveLength(2); // immediate — zero timers ran
     expect(boxesOf(ais.sockets[0].sent[1])).toHaveLength(3);
     expect(ais.sockets).toHaveLength(1);
+  });
+});
+
+// #554: AisTraffic used to take `plan: Plan | null` + `rig: SailId | null`
+// and re-derive the corridor route itself via `activeRigResult(plan, rig)` —
+// reaching into PlanResult's shape purely to recover something the caller
+// (App.tsx) already had. The refactor is a pure prop-shape change with no
+// behavioral surface of its own (every test above still passes with the fix
+// absent by construction — that's the point), so nothing but a STRUCTURAL
+// assertion can tell a real removal from a compatibility shim that keeps
+// `plan`/`rig` around "just in case". This is that assertion.
+describe('AisTraffic prop shape (#554: takes route, not plan+rig)', () => {
+  it('rejects a plan/rig pair passed alongside route — the caller must resolve the corridor itself', () => {
+    // COMPILE-TIME ONLY, checked by `tsc -b`, not by vitest running this
+    // test: the `@ts-expect-error` directive itself fails the build
+    // (TS2578 "Unused '@ts-expect-error' directive") if AisTraffic's props
+    // type ever admits `plan`/`rig` again — e.g. a compatibility shim that
+    // adds them back OPTIONALLY alongside the required `route`, to "avoid
+    // breaking a caller" without actually deleting the re-derivation. That
+    // shim is the realistic mutant here (per #463's own precedent: a human
+    // really adds a shim like this), not a hypothetical. No runtime
+    // assertion can see an extra prop TypeScript silently accepts.
+    const el = (
+      <AisTraffic
+        apiKey={undefined}
+        ownMmsi={undefined}
+        route={null}
+        // @ts-expect-error AisTraffic's props must not admit `plan`/`rig` — pass `route` alone
+        plan={PLAN}
+        rig="genoa"
+        activeLegIndex={null}
+        panelSlot={null}
+      />
+    );
+    expect(el).toBeTruthy();
   });
 });
 

@@ -5,7 +5,8 @@ import { de } from '../i18n/dict.de';
 import { makeFakeMap } from '../test/fakeMaplibre';
 import type { LatLon } from '../types';
 
-// #470/#838: `RouteLayer.tsx:30` is ViaMarkers' only production importer, so
+// #470/#838: RouteLayer.tsx's `import ViaMarkers from './ViaMarkers'`
+// (~:30) is ViaMarkers' only production importer, so
 // besides this file the only vitest files that RENDER it are
 // `RouteLayer.test.tsx` (directly) and `App.test.tsx` (through the real
 // App -> RouteLayer tree). `RouteLayer.test.tsx` mocks `maplibre-gl` with a
@@ -291,8 +292,8 @@ describe('ViaMarkers dragend / snapBack branches (#470)', () => {
   // over `viaPoints[0]` instead of its own `p`, or `onDragEnd` called with
   // a hardcoded `0` instead of `index` — cannot be distinguished from
   // correct code: both produce the exact same (0, point-0-coords) result.
-  // Measured (#838 investigation): reproducing either bug against the old
-  // single-point rows left all three GREEN. Dragging index 1 here means a
+  // Measured (PR #893's mutation battery): reproducing either bug against
+  // the old single-point rows left all three GREEN. Dragging index 1 here means a
   // hardcoded-0 or wrong-closure bug reports/snaps to marker 0's identity
   // instead of marker 1's OWN — which these rows can see because the two
   // points are distinct.
