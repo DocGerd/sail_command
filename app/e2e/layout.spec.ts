@@ -2336,6 +2336,13 @@ test('#871: the SW toast does not intercept .route-layer-controls with a plan lo
 // long compound word and rebuilding — this test reds `RIGHT EDGE AT ~5xx,
 // VIEWPORT 280` at both assertions, confirming the mutation reaches this
 // exact code path; reverted before commit.
+//
+// WHAT THIS GUARD CANNOT SEE: it catches the long-UNBREAKABLE-word vector
+// only. A longer but still-breakable rewording wraps to MORE LINES, stays
+// inside the viewport, and PASSES this guard — while degrading legibility
+// further, which is the property #942 actually asked about. This test is
+// an overflow guard, not a legibility guard; do not read a green result
+// here as "the message is legible."
 test('#942: the SW toast never grows wider than the viewport at wrapForcing280 with a plan loaded', async ({
   browser,
 }) => {
