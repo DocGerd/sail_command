@@ -88,8 +88,9 @@ import { startPreview, mapReady } from './helpers';
 //    for every other family. MEASURED by moving both layers to the top of
 //    the style at runtime, everything else unchanged: `sc-seamarks` falls
 //    from 6 to 4 at z11.5 — two navigation marks silently deleted, the
-//    #191/#192 signature — while our own labels rise 3 to 6. That red was
-//    then OBSERVED rather than inferred: the mutant was BUILT (the
+//    #191/#192 signature — while our own labels rise 3 to 6. This test's
+//    red on that regression was then OBSERVED rather than inferred: the
+//    mutant was BUILT (the
 //    `beforeId` argument dropped from both `addLayer` calls, so real
 //    MapLibre appends them topmost), `dist` confirmed replaced, and this
 //    test run against it — 1 failed at z11.5, reporting `sc-seamarks` 4
