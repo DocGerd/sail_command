@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -55,7 +56,7 @@ import AboutDialog from './components/AboutDialog';
 import ReloadPrompt from './components/ReloadPrompt';
 import UatBadge from './components/UatBadge';
 import PanelResizer from './components/PanelResizer';
-import { isStaleForecast, staleForecastGapHours } from './lib/plan';
+import { activeRigResult, isStaleForecast, staleForecastGapHours } from './lib/plan';
 import { recalcRequest } from './lib/recalc';
 import { planViaPoints } from './lib/planViaPoints';
 import {
@@ -264,6 +265,13 @@ function AppShell() {
   // MMSI on the Boat tab must reach the overlay without a remount.
   const [ownMmsi] = usePersistedOwnMmsi(boatId);
   const { plan, rig, setRig, activeLegIndex, setPlan } = useActivePlan();
+  // #554: resolve the active rig's route ONCE here — AisTraffic takes the
+  // already-resolved corridor route rather than re-deriving it from plan+rig
+  // itself (that reach into PlanResult's shape is what #538 had to touch this
+  // #25 component for). Reference-stable across renders where plan/rig are
+  // unchanged, which is what lets AisTraffic use it directly as its #158
+  // settle-gate reset key with no separate [plan, rig] tuple.
+  const aisRoute = useMemo(() => (plan && rig ? activeRigResult(plan, rig) : null), [plan, rig]);
   const [settingsPersistenceError, clearSettingsPersistenceError] = useSettingsPersistenceError();
   const { planning, run, ensureClient } = usePlanFlow();
   // #115: manual "reroute from here" (Live view). Shares the same singleton
@@ -1199,8 +1207,7 @@ function AppShell() {
               <AisTraffic
                 apiKey={settings.aisApiKey}
                 ownMmsi={ownMmsi ?? undefined}
-                plan={plan}
-                rig={rig}
+                route={aisRoute}
                 activeLegIndex={activeLegIndex}
                 panelSlot={aisInViewSlot}
               />
