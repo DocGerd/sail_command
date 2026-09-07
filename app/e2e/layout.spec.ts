@@ -2279,6 +2279,144 @@ test('#871: the SW toast does not intercept .route-layer-controls with a plan lo
   }
 });
 
+// #942 (deferred residual of #871/#934, filed at #934's own review time):
+// #934's guard immediately above proves nothing is HIDDEN or UNCLICKABLE at
+// `wrapForcing280` (280px, the narrowest EDGE_VIEWPORTS member) with a plan
+// loaded, but it never asks whether the toast's MESSAGE stays legible in
+// that squeeze — a ~120px-wide column (measured) holding a 44px accessible
+// dismiss button leaves very little room for text.
+//
+// DECISION: accept "legible but cramped" rather than reshape the toast
+// further. Measured live at this exact viewport (Chromium, 2026-09): the
+// shipped `pwa.offlineReady` message ("App & Karten offline verfügbar", one
+// button) renders at 204px and the `pwa.updateAvailable` + reload-button
+// pair (`needRefresh`, two buttons — not independently reachable in this
+// e2e suite; see the `needRefresh`/`ReloadPrompt.test.tsx` comment earlier
+// in this file) squeezes the message column to ~113px, wrapping "Update" /
+// "verfügbar" onto two short lines with ZERO clipping or overflow — a
+// screenshot at that exact geometry confirms it renders fully readable.
+// 280px sits far below the maintainer's 2026-09-07 design floor (>=820 CSS
+// px is the required band; anything <=390px, this viewport included, is
+// nice-to-have and ranks below a defect reproducible at 820), so a fix
+// widening the column further was not pursued.
+//
+// CORRECTING THE ISSUE'S OWN CAUSAL FRAMING, measured rather than assumed:
+// the squeeze here is NOT produced by #934's `.route-layer-controls`
+// horizontal-clearance mechanism (`--sc-toast-right`) at all.
+// `wrapForcing280` is 280x568 — tall enough to fall inside the #909
+// static-grid media query's `(min-height: 500.01px)` arm, where
+// `.reload-prompt` is reset to `position: static` (app.css, the block
+// beside `.app-bottom-sheet`'s `--sc-toast-height` trim) and `right` never
+// applies; `.route-layer-controls` lives in the MAP grid row, a sibling of
+// the BANNER row this toast occupies, so it cannot narrow this row at all.
+// MEASURED: the message's rendered width is IDENTICAL (204px) with and
+// without a plan loaded at this viewport — the plan-loaded precondition
+// this test still exercises (for fidelity to the reported scenario) makes
+// no difference to the geometry. So #942's suggested option 3 ("narrow the
+// horizontal-clearance trigger") would not touch this case; it is a
+// narrow-viewport-alone squeeze.
+//
+// THE GUARD: `.banner-message` (grep app.css — only a comment mentions it,
+// no rule) carries no width/overflow/white-space rule, so it is an ordinary
+// flex item with the default `min-width: auto`, which resolves to the width
+// of its LONGEST UNBREAKABLE WORD (flexbox's min-content floor for text).
+// For both shipped strings that floor sits comfortably inside the
+// available column and the toast never exceeds the viewport — but this is
+// NOT a theorem of the markup: MEASURED with a synthetic 56-character
+// single-word string swapped in for the message, `.reload-prompt` itself
+// grew to 518-585px wide at this 280px viewport (both the one- and
+// two-button layouts), and the dismiss button was pushed to x~462-529 —
+// off-screen, not merely cramped. That is the real regression class this
+// guard defends against: not the route-layer-controls clearance, but a
+// FUTURE pwa.* i18n string (a rewording, a longer translation) introducing
+// one long unbreakable word that widens the whole toast past the viewport,
+// exactly the kind of edit a content change could make and typecheck/lint
+// would never catch (i18n strings are plain data). Mutation-checked by
+// temporarily lengthening `dict.de.ts`'s `pwa.offlineReady` value with a
+// long compound word and rebuilding — this test reds `RIGHT EDGE AT ~5xx,
+// VIEWPORT 280` at both assertions, confirming the mutation reaches this
+// exact code path; reverted before commit.
+test('#942: the SW toast never grows wider than the viewport at wrapForcing280 with a plan loaded', async ({
+  browser,
+}) => {
+  const server = await startPreview();
+  try {
+    const page = await browser.newPage({ viewport: EDGE_VIEWPORTS.wrapForcing280 });
+    await assertCleanServiceWorkerState(page);
+    await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
+    await mapReady(page);
+    await page.locator('.reload-prompt').waitFor({ state: 'visible', timeout: 15_000 });
+
+    await page.getByRole('tab', { name: 'Planen' }).click();
+    const originSection = page.getByRole('region', { name: 'Start' });
+    await originSection.getByRole('combobox').fill('Langballigau');
+    await expect(originSection.getByRole('option')).toHaveCount(1);
+    await originSection.getByRole('option').first().click();
+
+    const destSection = page.getByRole('region', { name: 'Ziel' });
+    await destSection.getByRole('combobox').fill('Sønderborg');
+    await expect(destSection.getByRole('option')).toHaveCount(1);
+    await destSection.getByRole('option').first().click();
+
+    const planButton = page.getByRole('button', { name: 'Route planen' });
+    await planButton.click();
+    await expect(planButton).toBeEnabled({ timeout: 60_000 });
+
+    // The toast is dismissable and one-shot; if it self-cleared before
+    // planning finished, there is nothing left to probe for this row — a
+    // pass by vacuity, not a claim it was exercised (same idiom as the
+    // #871 occlusion guard immediately above).
+    if (!(await page.locator('.reload-prompt').isVisible())) {
+      console.log(
+        'wrapForcing280: SW toast already dismissed before planning finished — row not exercised',
+      );
+      return;
+    }
+
+    const toast = page.locator('.reload-prompt');
+    const dismiss = toast.locator('.banner-dismiss');
+    const viewport = page.viewportSize();
+    if (!viewport) throw new Error('no viewport size');
+
+    await expect
+      .poll(
+        async () => {
+          const box = await toast.boundingBox();
+          if (!box) return 'no box';
+          return box.x + box.width <= viewport.width + 0.5
+            ? 'clear'
+            : `right edge at ${box.x + box.width}, viewport ${viewport.width}`;
+        },
+        {
+          message: 'wrapForcing280: SW toast must not grow wider than the viewport',
+        },
+      )
+      .toBe('clear');
+
+    // The dismiss button is the toast's rightmost child — the sharpest
+    // witness that the toast's OWN box, not just its message span, stayed
+    // inside the viewport (a wide message widens the whole flex row, not
+    // only itself).
+    await expect
+      .poll(
+        async () => {
+          const box = await dismiss.boundingBox();
+          if (!box) return 'no box';
+          return box.x + box.width <= viewport.width + 0.5
+            ? 'clear'
+            : `right edge at ${box.x + box.width}, viewport ${viewport.width}`;
+        },
+        {
+          message:
+            'wrapForcing280: SW toast dismiss button must stay reachable within the viewport',
+        },
+      )
+      .toBe('clear');
+  } finally {
+    server.kill();
+  }
+});
+
 // #909: `.map-stack-tl` (top-LEFT, no plan required) and its two interactive
 // members — the compass button and the depth-ramp checkbox ("Wassertiefen")
 // — must be reachable while the SW toast is up. `compass.spec.ts` and
