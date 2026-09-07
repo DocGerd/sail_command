@@ -144,9 +144,37 @@ prefixes are the mechanism.
   `priority: medium` (planned, not urgent) · `priority: low` (nice-to-have /
   icebox).
 - `area:` — where the work lives: `area: routing` · `area: map` · `area: pwa`
-  · `area: pipeline` · `area: deploy` · `area: ais` · `area: tooling`.
+  · `area: pipeline` · `area: deploy` · `area: ais` · `area: tooling` ·
+  `area: docs`.
 - `status:` — `status: needs-triage` (not yet assessed; default on new bugs) ·
   `status: blocked` (waiting on an external decision or dependency).
+
+`area: docs` covers issues about documentation **prose** — words that
+explain or specify something, never code that runs — such as `README.md`,
+`CONTRIBUTING.md`, `GOVERNANCE.md`, `ROADMAP.md`, `CODE_OF_CONDUCT.md`,
+`SECURITY.md`, and the prose files under `docs/` (specs, spikes, ADRs, the
+acceptance checklist). It is a content rule, not a directory rule: a
+SCRIPT under `docs/` is not `area: docs` merely for living there —
+`docs/screenshots/capture.mjs` sits under `docs/` and is still `area:
+tooling`, because #428 is about that script's *behaviour*, not about
+anything a doc says. `area: tooling` keeps its own repo-config/automation/CI
+scope unchanged. A doc file already mapped to another area also keeps that
+area (e.g. `pipeline/README.md` stays `area: pipeline`, per
+`.github/labeler.yml`'s existing path map); `area: docs` is for prose that
+isn't already someone else's territory.
+
+**`area:` is deliberately partial, and for one class that is a decision, not
+a gap** ([#610](https://github.com/DocGerd/sail_command/issues/610)):
+user-facing copy, i18n, and UI component structure/layout have no `area:`
+member, and none is being added for them. Such an issue carries `type:` and
+`priority:` only — do not force it onto `area: map` / `area: pwa` / `area:
+routing` merely because the touched component happens to live under one of
+those paths. `.github/labeler.yml`'s own comment already makes the same call
+for PR paths (UI primitives, `App.tsx`, i18n dict files, and other
+cross-cutting files are deliberately left unlabeled there); this is that
+same judgement applied to issues. A hygiene sweep checking
+`type:`+`priority:`+`area:` completeness must treat this class as
+correctly bare, never as missing metadata.
 
 **Label spelling is the spaced form — always a colon and a space, e.g.
 `type: bug`, never `type:bug`.** The taxonomy previously drifted: eight

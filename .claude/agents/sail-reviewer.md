@@ -59,7 +59,7 @@ orchestrator, not prose for the end user.
      cannot MATCH (a path or pattern that silently finds nothing) is ZERO
      evidence, not weak evidence — give any probe whose EMPTINESS you intend
      to interpret a POSITIVE CONTROL, a needle known to be present
-     (CLAUDE.md, Verification lessons).
+     (CLAUDE.md's Verification lessons; PR #690/#688).
    - **Is a SIBLING TERM short-circuiting ahead of the one you're checking?**
      Deleting one condition from a compound guard can leave every test green
      because another term already made the predicate false first — check

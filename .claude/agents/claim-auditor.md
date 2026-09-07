@@ -157,6 +157,7 @@ per the format above), spot-checks, unverifiable items.
   and pasted their tables inline, while a third wrote the same file via Bash;
   whether the tool errored or the agent obeyed the harness-injected
   `Do NOT Write report/summary/... files` instruction #969 quotes was not
-  established — either way a harness property; re-check after an upgrade. A
-  full table pasted after being briefed for a summary is that same signature,
-  not disobedience.
+  established — either way a harness property; re-check after an upgrade.
+  If you were briefed to return a summary and find yourself about to paste a
+  large table instead, try the Bash heredoc before concluding you cannot
+  write the file, and say in your report which route you took.
