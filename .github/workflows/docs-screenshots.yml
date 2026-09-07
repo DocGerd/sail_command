@@ -27,15 +27,106 @@ name: Docs screenshots
 # ever committed or retained (only a FAILING run uploads the images, for
 # triage — see the last step).
 on:
+  # #1033 review MINOR 1: paths RE-DERIVED from what capture.mjs actually
+  # depends on at runtime, not patched one hit at a time (this repo's own
+  # "enumerate, don't patch" lesson, CLAUDE.md). Table of every category
+  # considered, INCLUDING what was deliberately left out, so a later reader
+  # can check for a second hole rather than trust a bare list:
+  #   INCLUDED —
+  #     app/src/**                       selectors (getByRole names, tab
+  #                                       labels, class names incl. app.css,
+  #                                       which lives directly under this
+  #                                       tree) and the i18n dicts they read.
+  #     app/public/data/harbors.json     START_HARBOR/DEST_HARBOR are
+  #                                       hardcoded DISPLAY NAMES
+  #                                       ('Flensburg'/'Sønderborg') matched
+  #                                       via getByRole('option') — a rename
+  #                                       or removal makes that locator
+  #                                       resolve to zero results and throw.
+  #     app/public/data/polars/**        decides which rig is faster; #577
+  #                                       already collapsed this exact pair's
+  #                                       margin under RIG_TIE_BAND_MS and
+  #                                       silently turned the ★ into a tie —
+  #                                       capture.mjs's own
+  #                                       chipText.startsWith('Faster:')
+  #                                       check exists BECAUSE of that
+  #                                       history.
+  #     app/public/data/mask.bin         decides whether the hardcoded route
+  #                                       is navigable at all; same failure
+  #                                       shape as polars (a no-route plan
+  #                                       never mounts RouteSummary, so
+  #                                       .chip-faster-rig never attaches)
+  #                                       even though no historical break is
+  #                                       on record for this file yet.
+  #     app/scripts/gen-docs-wind-fixture.mjs  generates the ONLY wind input
+  #                                       the script's route decision reads.
+  #     docs/screenshots/capture.mjs     the script itself.
+  #     app/package.json,
+  #     app/package-lock.json            dependency version bumps (React,
+  #                                       MapLibre) that can change rendered
+  #                                       markup/ARIA the script's selectors
+  #                                       depend on.
+  #     app/vite.config.ts               a base-path change here would move
+  #                                       the built app off the URL this
+  #                                       workflow hardcodes
+  #                                       (http://localhost:4180/sail_command/)
+  #                                       WITHOUT breaking the build itself —
+  #                                       a risk unique to this job, since
+  #                                       `app`'s own required build check
+  #                                       never starts a preview server.
+  #     .github/workflows/docs-screenshots.yml  this file.
+  #   DELIBERATELY EXCLUDED —
+  #     app/public/data/basemap.pmtiles.png,
+  #     app/public/icons/**, app/public/brand/**   no assertion in the
+  #                                       script depends on map-tile/icon
+  #                                       rendering; per this PR's own
+  #                                       disclosed blind spot, a broken
+  #                                       basemap degrades the CAPTURED
+  #                                       IMAGE, never the exit code, so it
+  #                                       cannot make this specific check
+  #                                       fail either way.
+  #     app/tsconfig*.json, eslint/prettier config   a change here that
+  #                                       actually breaks the build already
+  #                                       reds the REQUIRED `app` job (which
+  #                                       runs `npm run build` unconditionally,
+  #                                       no path gate) before this advisory
+  #                                       job would ever need to catch it.
+  #     app/index.html                   not read by any of the script's
+  #                                       selectors; a mount-point-breaking
+  #                                       change here would already fail
+  #                                       app/e2e's own specs.
+  #     docs/screenshots/*.png           OUTPUTS the script overwrites every
+  #                                       run, never an input to its behaviour.
+  #     README.md, CHANGELOG.md,
+  #     changelog.d/**                   not read by capture.mjs's flow at
+  #                                       runtime (the changelog-fragment
+  #                                       build plugin only feeds the About
+  #                                       dialog, which this script never
+  #                                       opens).
+  #     pipeline/**                      capture.mjs never runs the
+  #                                       pipeline; it only reads the
+  #                                       COMMITTED build outputs already
+  #                                       listed above. A pipeline-only
+  #                                       change with no corresponding
+  #                                       commit under app/public/data/**
+  #                                       cannot affect a build this job
+  #                                       produces from that same committed
+  #                                       tree.
+  #     app/public/data/seamarks.json    not touched by this flow (no
+  #                                       seamark popover interaction in the
+  #                                       script).
   push:
     branches: [main, develop]
     paths: &docs-screenshot-paths
       - 'app/src/**'
+      - 'app/public/data/harbors.json'
+      - 'app/public/data/polars/**'
+      - 'app/public/data/mask.bin'
       - 'app/scripts/gen-docs-wind-fixture.mjs'
       - 'docs/screenshots/capture.mjs'
-      - 'app/public/data/polars/**'
       - 'app/package.json'
       - 'app/package-lock.json'
+      - 'app/vite.config.ts'
       - '.github/workflows/docs-screenshots.yml'
   pull_request:
     paths: *docs-screenshot-paths
@@ -83,6 +174,16 @@ jobs:
       - name: Build app
         working-directory: app
         run: npm run build
+      # #1033 review MINOR 2: this is a plain "poll until 200" readiness
+      # check, the same shape CLAUDE.md's #803 finding calls insufficient in
+      # app/e2e — there, a FOREIGN server already squatting the port answers
+      # 200 and the probe measures the wrong build. That risk does not apply
+      # here: a `runs-on: ubuntu-latest` job executes on a FRESH,
+      # single-job VM — nothing else has ever bound to it, so port 4180 has
+      # no prior occupant to squat it. Do not "harden" this to
+      # `assertSwJsMatches`-style build-identity checking; that is real
+      # engineering effort for a property this environment already
+      # guarantees structurally.
       - name: Start preview server
         working-directory: app
         run: |
