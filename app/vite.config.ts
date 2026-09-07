@@ -330,16 +330,24 @@ function appVersion(command: 'build' | 'serve'): string {
 // #214: with no cache (every CI run — `npm ci` wipes node_modules, so
 // vitest's own results cache never survives to the next run), vitest's
 // BaseSequencer.sort falls back to ordering files by size, descending. That
-// hurts a file that is SMALL but SLOW: invariants.property.test.ts is
-// 5,164 B — ranked 88th LARGEST of 144 test files (re-measured after this
-// branch's own resync onto `origin/develop`, PR #588 review round 2; NOT
-// re-measured since and now STALE — the file is larger and ranks higher,
-// so this paragraph's "back half" reasoning describes #214's tree, not
-// today's — tracked at #980) — so
-// it sorts well into the back
-// half by size and starts late, becoming the tail of the whole test step
-// even though other workers are free the entire time (measured:
-// https://github.com/DocGerd/sail_command/issues/214).
+// ORIGINALLY hurt a file that was SMALL but SLOW: invariants.property.test.ts
+// measured 5,164 B — ranked 88th LARGEST of 144 test files (measured after
+// this branch's own resync onto `origin/develop`, PR #588 review round 2) —
+// so it sorted well into the back half by size and started late, becoming
+// the tail of the whole test step even though other workers were free the
+// entire time (measured: https://github.com/DocGerd/sail_command/issues/214).
+// #980: re-measured 2026-09-07 (`wc -c
+// app/src/routing/invariants.property.test.ts` -> 13017; `find app/src -name
+// '*.test.ts' -o -name '*.test.tsx' | xargs wc -c | sort -rn` -> rank 57th
+// of 175 test files under app/src) — the file has grown and now sorts into
+// the FRONT third by size, not the back half, so the small-but-slow mismatch
+// this array exists to fix no longer describes it at its current size.
+// Whether BaseSequencer's own size-descending default would now start it
+// early enough on its own is UNMEASURED (this array still runs, so no
+// no-array baseline exists to compare against). The pin stays anyway,
+// independent of that original justification: the WITHIN-ONE-RUN
+// measurement below clocks it at 306.4s, still among the slower files in
+// this array, so keeping it pinned costs nothing and loses nothing.
 // realmask.repro.test.ts WAS (past tense — see the #878 paragraph below,
 // which supersedes this one) a DIFFERENT case, not a second instance of the
 // same problem: at 42,532 B it WAS the 7th LARGEST of the 144 files
