@@ -30,9 +30,10 @@
   as the missing confirmation; and (2) **the app's visual weight is spent in
   the wrong place** — a first-time, boat-less, plan-less user gets full
   hazard-hatch density and six live form controls on the very first screen,
-  while the one safety disclosure this app has (`ShallowWarning`) mounts only
-  on relaxed routes and, even then, competes with a chip and a stale-notice
-  for the same "top of card" space as a collapsed disclosure. Neither of
+  while `ShallowWarning` — the more severe of this app's two per-route depth
+  disclosures — mounts only on relaxed routes and, even then, competes with
+  a chip and a stale-notice for the same "top of card" space as a collapsed
+  disclosure. Neither of
   these is a new discovery — #1020 already names (1) for one of its four
   paths, and CLAUDE.md's own #455/#612 entries already document (2)'s
   gating condition as an accepted-but-unclosed gap — but walking the journey
@@ -231,7 +232,8 @@ but cannot be *typed* — the field is a bare `<input type="number">`, which
 the WHATWG spec makes structurally incapable of accepting `N`/`S`/`E`/`W`
 characters at all; and (2) the lat/lon/name trio is linked only by
 `aria-describedby` on each field individually, with no `fieldset`/
-`aria-labelledby` naming the group as "Adding" vs "Editing waypoint N" — so
+`aria-labelledby` naming the group as "New waypoint" vs "Editing waypoint
+N" (`planner.via.coord.modeAdd`/`.modeUpdate`) — so
 a screen-reader user tabbing in hears the hemisphere but never which
 waypoint is about to be overwritten. Both are #886's own residual 1 and 2,
 rescoped 2026-09-07, with acceptance criteria already correctly scoped. This
@@ -304,22 +306,46 @@ lead sentence visible), and only below all three of those does the
 ETA/Duration/Distance/Speed stat grid appear — in plain, uncoloured,
 unbordered text.
 
-That hierarchy is right when the banner fires. **The problem is where it
-doesn't fire.** `RouteSummary.tsx` mounts `ShallowWarning` only when
-`plan.result.shallow` is set, which — confirmed by grep against
-`planRoute.ts:713`'s unchanged `if (relaxed !== null)` gate — is true only
-for RELAXED routes. This is exactly the gap CLAUDE.md's own Domain Rules
-section already documents under #455/#612: *"the banner, the cautious chip
-and the exposure sentence… render for NO ordinary route, while ~10,746
-gate-crossing cells produce no per-route signal… #612 did NOT close this."*
-This review does not discover that gap — it's already recorded — but
-walking the actual results panel shows precisely WHY it matters at the
-journey level: for the large majority of plans (non-relaxed, ordinary
-routes), there is no positive statement anywhere in this card that answers
-"is this route fine?" The absence of a red banner is currently the only
-signal a "yes" gets, and per this repo's own "guard the rendering, not the
-data" lesson, silence is never a safe substitute for an affirmative "no
-charted shallow water flagged on this route" statement.
+That hierarchy is right when the banner fires. `RouteSummary.tsx` mounts
+`ShallowWarning` only when `plan.result.shallow` is set, which — confirmed
+by grep against `planRoute.ts:713`'s unchanged `if (relaxed !== null)`
+gate — is true only for RELAXED routes. That much is exactly the gap
+CLAUDE.md's own Domain Rules section documents under #455/#612: *"the
+banner, the cautious chip and the exposure sentence… render for NO ordinary
+route, while ~10,746 gate-crossing cells produce no per-route signal…
+#612 did NOT close this."* This review's first draft quoted that sentence
+and stopped there — which was its own version of the mistake it goes on to
+name: the CLAUDE.md bullet's very next clause names the mechanism that
+DOES close part of the gap for the majority of cases, and quoting only up
+to "did NOT close this" reproduced the omission rather than reporting it.
+
+**The correction, read from `RouteSummary.tsx:97` directly, not from
+memory:** for a non-relaxed route, `RouteSummary` also renders
+`MarginalDepthNotice` whenever the mask-derived exposure past the safety
+gate is greater than zero (`exposureDist !== null`) — the #612 fix, gated
+(per its own comment) as the EXACT COMPLEMENT of `ShallowWarning`'s
+condition, "provably never both shown and never both hidden." Its own
+JSDoc carries a measured trip rate on non-relaxed plans: **61.5% on shipped
+defaults (`breeze`, 16/26), 82.1% pooled (55/67)**. So for the MAJORITY of
+ordinary, non-relaxed plans, this card already renders a real, quiet,
+per-route depth signal — this review's original claim that "the absence of
+a red banner is currently the only signal" was empirically backwards for
+that majority, and naming only `ShallowWarning` here understated what #612
+shipped.
+
+**What survives, correctly scoped:** `MarginalDepthNotice` is a caution,
+never a reassurance — it fires only when there IS exposure to report and
+renders nothing (not an empty container, not a "0.0 nm" sentence) when
+exposure is exactly zero, by explicit design ("a zero renders NOTHING at
+all… which would be a notice about the absence of the thing it is a notice
+about"). So the real, narrower gap is this: for the MINORITY of plans with
+genuinely zero shallow exposure, there is still no positive "no charted
+shallow water flagged on this route" statement anywhere in the card — a
+user answers "is this route fine?" only by checking that NEITHER
+disclosure fired, never by reading an affirmative one. Per this repo's own
+"guard the rendering, not the data" lesson, that residual absence-as-signal
+is still real; it is just the minority case, not the majority one this
+review first described.
 
 Three further hierarchy problems, all smaller, all real:
 
@@ -410,9 +436,10 @@ fabricating a claim it can't support if it tried.
 review's findings, though #297 remains open on its own separate merits.
 The disorientation this journey walk actually found (§4's "what's
 selected?", §8's "is this safe?") is a MARKER-LANGUAGE and HIERARCHY
-problem, not a "where am I on the chart" problem — #297's own filing already
-raises this exact caution ("challenge whether this is the right
-instrument") for a different symptom (losing context when zoomed in), and
+problem, not #297's own stated problem ("I lose track of where I am when
+zoomed in") — #297's own filing already raises this exact caution
+("challenge whether this is the right instrument") for that different
+symptom, and
 this review's findings don't add a second reason to build it. A mini-map
 would introduce a fourth surface (after panel text, the main map, and the
 results card) that would ALSO need to agree with the shared endpoint-marker
@@ -423,16 +450,20 @@ should be re-measured on its own terms at that point, not folded into this
 recommendation now.
 
 **Widening the raw `ShallowWarning` mount condition to fire on false
-positives "just to be safe."** Rejected as imprecise. The fix recommended
-in §8/1 is not "show the banner more often" — it's "render an explicit
-signal (positive OR negative) on every route, using the SAME
-`cautiousDepthLowerBoundM` bound this app already computes and already
-uses for the legs-table cautious chip." No new depth computation, no new
+positives "just to be safe," or folding `MarginalDepthNotice` into it.**
+Rejected as imprecise. The fix recommended in slice 2 is not "show the
+banner more often" or "merge the two disclosures" — it's "add the one
+affirmative state this card is still missing, for the narrower minority of
+non-relaxed plans where NEITHER existing disclosure fires," leaving both
+existing mount conditions untouched. No new depth computation, no new
 `PlanResult` field, and critically no `app/sweep/` baseline change — this
-keeps the #493/#612 "presentation-only" property intact. A blanket
-"always show the banner" would either desensitise it (if it always fires)
-or require a new severity threshold invented for this review alone, neither
-of which is warranted when the data to do it precisely already exists.
+keeps the #493/#612 "presentation-only" property intact, and preserves the
+#612 exact-complement relationship between `ShallowWarning` and
+`MarginalDepthNotice` rather than adding a third message that would compete
+with them. A blanket "always show the banner" would either desensitise it
+(if it always fires) or require a new severity threshold invented for this
+review alone, neither of which is warranted when the data to do it
+precisely already exists.
 
 **A first-run interactive tour/wizard.** Considered for §1 and rejected as
 disproportionate. The issue itself asks for reachable honesty ("does the
@@ -465,12 +496,20 @@ orchestrator's job per the brief.
    narrower "map-tap only" framing — see §13 below for exactly what this
    implies for that in-flight PR. Highest priority: it's a correctness gap
    in the core planning loop, not a polish item.
-2. **Render an explicit depth-safety statement (positive or negative) on
-   EVERY successful plan**, derived from `cautiousDepthLowerBoundM` and the
-   existing per-leg cautious-chip data, not gated to `relaxed !== null`.
-   Presentation-only, no `PlanResult`/sweep-baseline change. Highest
-   priority: this is the safety-hierarchy gap named in §8, already
-   documented as open in CLAUDE.md's #455/#612 history.
+2. **Add the one AFFIRMATIVE state this card is missing** — a positive "no
+   charted shallow water flagged on this route" statement for the specific,
+   narrower case §8 corrects this review's own earlier claim down to:
+   non-relaxed plans where NEITHER `ShallowWarning` nor `MarginalDepthNotice`
+   fires (zero mask-derived exposure). This must be a THIRD, mutually
+   exclusive state gated on the same two conditions those two already use
+   (`relaxed`/`exposureDist`) being both false/null — never a fourth message
+   rendered alongside either existing one, and never a change to when
+   `ShallowWarning` or `MarginalDepthNotice` themselves mount, which would
+   break the #612 "provably never both shown and never both hidden"
+   property CLAUDE.md records for that pair. Presentation-only, no
+   `PlanResult`/sweep-baseline change. Highest priority: this is the
+   safety-hierarchy gap named in §8, already documented as open in
+   CLAUDE.md's #455/#612 history.
 3. **Collapse the always-expanded waypoint coordinate-entry form on the
    Trip card behind the same `Disclosure` pattern used elsewhere in this
    panel**, and surface the `app.disclaimer` + offline-capability lines as
@@ -496,9 +535,11 @@ orchestrator's job per the brief.
    slice 1, since a shared marker component changes what "remove all" needs
    to clean up on the map.
 10. **Name-aware via-point dedupe (#939)** — this review's independent read
-    of §5's waypoint model agrees with #939's own recorded design decision
-    ("a name is a stronger, user-assigned identity signal than
-    coordinate-only proximity") without adding anything new to it.
+    of §5's waypoint model agrees with the premise #939 itself records,
+    verbatim: *"a name is a stronger, user-assigned identity signal."*
+    #939 has not decided among its own three listed options; this finding
+    supports its option 3 (skip dedup when the two points carry different
+    non-empty names) without deciding that for #939.
 
 Not a slice: **#886's own residuals (hemisphere-letter entry, coordinate-
 group a11y naming)** are already correctly scoped by that issue and are not
@@ -524,7 +565,8 @@ this journey walk found two things worth relaying to whoever implements it:
 - **The new marker needs to be visually distinguishable from a maneuver
   marker, not just from a via-point marker.** §4's screenshot
   (`03-gybe-marker.jpg`) is a real, reproduced case of a gybe-letter marker
-  landing exactly on the origin point — #1020's text names via-points as
+  sitting close enough to the origin point to read, at a glance, as
+  plausibly the missing endpoint marker — #1020's text names via-points as
   the marker style to differentiate from; maneuver markers are a second,
   independently-confirmed collision risk worth adding to that same design
   decision before implementation, not after.
