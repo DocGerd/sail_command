@@ -3133,13 +3133,17 @@ making design-level decisions; do not silently deviate.
   toastHeightPx` instead of measuring `.app-bottom-sheet`, so a CSS-only cap
   change cannot move the value the assertion reads AT ANY MAGNITUDE — guard and
   guarded are computed from different sources and only one of them is the
-  shipped CSS. The real keeper was the `readFileSync` twin pinning that CSS
-  literal against its TS constant. Scope such a finding to the NAMED artifact,
-  never to the suite: `compass.spec.ts` carries two sheet-overlap guards that
-  battery never ran. It generalises because a named pairing arrives ALREADY
-  ATTRIBUTED, so nobody re-derives it — the laundering shape this file records
-  for a reviewer's incidental explanation, one artifact earlier. An unverified
-  pairing is worse than none: it stops anyone looking for a real one.
+  shipped CSS. What DID red on that mutation is worth knowing, because it is
+  not the guard anyone would name: two CSS-INTERNAL checks — a site regex plus
+  an exactly-three-occurrences count comparing the three CSS declarations
+  against EACH OTHER — while the cross-language CSS-vs-TS pins in the same file
+  are separate tests that do not fire for it at all. Scope such a finding to
+  the NAMED artifact, never to the suite: `compass.spec.ts` carries two
+  sheet-overlap guards that battery never ran. It generalises because a named
+  pairing arrives ALREADY ATTRIBUTED, so nobody re-derives it — the same
+  laundering shape this file records elsewhere for a reviewer's incidental
+  explanation. An unverified pairing is worse than none: it stops anyone
+  looking for a real one.
 - **vitest's DEFAULT reporter suppresses console output from PASSING tests**, so
   a console-spy check run on a green suite is a FALSE NEGATIVE. Measured
   2026-09-04 with a control: a passing test logging a unique marker printed it
