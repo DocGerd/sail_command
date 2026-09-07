@@ -2172,11 +2172,8 @@ making design-level decisions; do not silently deviate.
   be present. The first write-up of that very finding shipped a "control" that
   was itself vacuous (both its example strings occur zero times in that file's
   history), which is how convincing the shape is.
-- **`.gitignore` entries with a TRAILING SLASH match directories only**, so a
-  symlink at that path is not ignored and its stored target string can leak an
-  absolute home path — guarded by `.github/scripts/check-no-home-paths.sh`'s
-  `scan_symlink_target()` (fails closed on an unreadable target), pinned by
-  its own selftest rows 29-33.
+- A `.gitignore` trailing-slash symlink-target home-path leak is pinned by
+  `.github/scripts/check-no-home-paths.sh`'s `scan_symlink_target()`.
 - **A field written by one branch and read by another under a DIFFERENT name
   typechecks and renders nothing — the hazard needs OPTIONALITY closed: make
   such a field required, so a missing one is a compile error.** `boats.ts`'s
