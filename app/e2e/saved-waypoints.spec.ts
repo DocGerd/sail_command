@@ -551,8 +551,8 @@ test('#924: a via-armed tap on a saved waypoint inserts it BY NAME; a disarmed t
     // THE ORIGIN ARM. App.tsx puts SAVED_WAYPOINT_LAYER into MapView's
     // `interactiveLayerIds` only while the VIA pick is armed, so an
     // origin-armed tap on a ring must fall through to the generic
-    // raw-coordinate pick — the promise App.tsx's own comment makes ("no
-    // dead zone is created for the other two armings"). Arming
+    // raw-coordinate pick — the promise App.tsx's own comment makes (no
+    // dead zone is created for the other two armings). Arming
     // `interactiveLayerIds` on the wrong target instead makes MapView bail
     // on the ring hit: origin never moves and the pick stays armed. Nothing
     // in the via arm above can see that, because there the bail and the
