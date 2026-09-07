@@ -173,8 +173,7 @@ here, which decays at the next triage.
 
 `priority:` is a coarse bucket, not a ranking — it cannot express that one
 `high` issue should be worked before another, and a second label axis would
-not supply one either. That order lives on the milestone page / issue
-tracker, per [`ROADMAP.md`](ROADMAP.md)'s own opening section.
+not supply one either.
 
 `area: docs` covers issues about documentation **prose** — words that
 explain or specify something, never code that runs — such as `README.md`,
