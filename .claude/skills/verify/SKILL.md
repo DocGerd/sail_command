@@ -34,6 +34,25 @@ port across two successive walkthroughs also reuses that origin's service-
 worker registration scope (origin = protocol + host + port); prefer a fresh
 port per pre-release walkthrough, and run the preflight below regardless.
 
+## Deterministic wind (no live Open-Meteo)
+
+If this pass needs a reproducible wind field instead of live Open-Meteo,
+regenerate it **before** building — for the production-bundle pass, Vite
+copies `app/public/` into `dist/` at build time, so a build run first bakes
+in whatever `wind-sw12.json` is already on disk. The committed fixture is
+stale by construction (its regenerated timestamp diff is never committed —
+see Cleanup below), so a production-bundle build performed before this step
+serves an expired forecast and every plan through `?windFixture=` then fails
+"beyond the 6-day horizon" — which reads as a routing regression, not a
+fixture-age artifact. This ordering only matters for the production-bundle
+pass; `vite dev` serves `app/public/` straight off disk on every request, so
+there is nothing to bake in.
+
+1. `node app/scripts/gen-wind-fixture.mjs` — regenerates
+   `app/public/test-fixtures/wind-sw12.json` with fresh timestamps (stale
+   timestamps trigger the staleForecast alert and you verify the wrong state).
+2. Append `?windFixture=test-fixtures/wind-sw12.json` to the URL.
+
 ## #240: clean PWA state + build-identity assertion (production bundle only)
 
 A local production preview can show "Update verfügbar" / render stale
@@ -73,13 +92,21 @@ run (#240) reproduced exactly this failure by rebuilding in place under a
 live server. If a rebuild happens mid-walkthrough, treat every screenshot
 captured before re-running the preflight as unverified.
 
+Rebuilding mid-walkthrough is not forbidden outright — it is exactly the
+right response if you discover the wind fixture went stale AFTER you already
+built (regenerate it with "Deterministic wind" above, rebuild, then repeat
+from step 3). The requirement is only that you re-run steps 3-5 afterward
+and discard anything captured before that point.
+
 1. Capture the expected commit label right before building (same repo state
    the build will embed):
    ```bash
    EXPECTED_VERSION=$(git describe --tags --always)
    echo "$EXPECTED_VERSION"
    ```
-2. Build and record the entry-chunk hash actually on disk:
+2. Build and record the entry-chunk hash actually on disk (if this pass
+   needs the deterministic wind fixture from "Deterministic wind" above,
+   regenerate it now — before this build, not after):
    ```bash
    npm --prefix app run build
    EXPECTED_CHUNK=$(grep -o 'assets/index-[^"]*\.js' app/dist/index.html)
@@ -178,13 +205,6 @@ light mode twice while every response claimed dark. Two rules follow:
   for a dark capture, `false` for a light one. Do not proceed to the
   screenshot on a mismatch; re-issue the `emulate` call with both parameters
   set.
-
-## Deterministic wind (no live Open-Meteo)
-
-1. `node app/scripts/gen-wind-fixture.mjs` — regenerates
-   `app/public/test-fixtures/wind-sw12.json` with fresh timestamps (stale
-   timestamps trigger the staleForecast alert and you verify the wrong state).
-2. Append `?windFixture=test-fixtures/wind-sw12.json` to the URL.
 
 ## Drive the flow (Playwright MCP, mirrors plan.spec.ts)
 
