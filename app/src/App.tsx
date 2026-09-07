@@ -27,13 +27,12 @@ import DataLayers, {
   SEAMARKS_HAZARD_LAYER,
   SEAMARKS_LAYER,
 } from './components/DataLayers';
-import SavedWaypointsLayer, {
-  SAVED_WAYPOINT_LAYER,
-} from './components/SavedWaypointsLayer';
+import SavedWaypointsLayer, { SAVED_WAYPOINT_LAYER } from './components/SavedWaypointsLayer';
 import CompassControl from './components/CompassControl';
 import ScaleBar from './components/ScaleBar';
 import RouteLayer from './components/RouteLayer';
 import OwnshipMarker from './components/OwnshipMarker';
+import EndpointMarkers from './components/EndpointMarkers';
 import PlannerPanel, {
   harborToPickedPoint,
   nextFullHourMs,
@@ -1294,10 +1293,15 @@ function AppShell() {
               on DataLayers' harbour layer rather than on the route stack, so
               it must not live inside RouteLayer (which renders null until a
               plan exists). */}
-          <SavedWaypointsLayer
-            armed={tapTarget === 'via'}
-            onPick={handleSavedWaypointMapPick}
-          />
+          <SavedWaypointsLayer armed={tapTarget === 'via'} onPick={handleSavedWaypointMapPick} />
+          {/* #1020: origin/destination markers — always mounted, like
+              DataLayers/SavedWaypointsLayer above, since `origin`/
+              `destination` are draft-planner state that exists (and is
+              user-visible in PlannerPanel's `.endpoint-name`) whether or
+              not a plan has been run yet. A DOM `Marker` (EndpointMarkers.tsx's
+              own header explains why), so it does not need a beforeId/tier
+              placement relative to RouteLayer's style layers below. */}
+          <EndpointMarkers origin={origin} destination={destination} />
           <RouteLayer
             plan={plan}
             rig={rig}

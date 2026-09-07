@@ -82,3 +82,23 @@ export const POSITION_HALO_COLOR = '#FFD400';
  * orange.
  */
 export const DEPTH_WARNING_COLOR = '#E69F00';
+
+/**
+ * Map-picked/harbor-picked/GPX-imported origin marker (EndpointMarkers.tsx,
+ * #1020) — inline-styled like VIA_COLOR/BOAT_COLOR, no --sc-* twin needed
+ * since app.css never references it. Okabe-Ito sky blue — unused elsewhere
+ * in this module, and visually distinct from VIA_COLOR (reddish-purple),
+ * BOAT_COLOR (blue), the hardcoded black harbour-dot fill in
+ * DataLayers.tsx, and RouteLayer.tsx's white/black-stroke manoeuvre
+ * circles.
+ */
+export const ORIGIN_COLOR = '#56B4E9';
+
+/**
+ * The destination counterpart of ORIGIN_COLOR (#1020) — same module, same
+ * reasoning. Okabe-Ito yellow, also unused elsewhere in this module.
+ * Distinct from ORIGIN_COLOR in both hue and the marker's SHAPE
+ * (EndpointMarkers.tsx renders origin as a circle, destination as a
+ * rounded square) — never rely on colour alone to tell the two apart.
+ */
+export const DESTINATION_COLOR = '#F0E442';
