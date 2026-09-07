@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-09-07
+
+### Added
+
+- Via-waypoint coordinate entry now accepts a trailing hemisphere letter (e.g. "54.8S", "10.1W"), matching how charts and almanacs write coordinates, and rejecting an unreadable entry shows a visible message instead of silently reverting; the coordinate entry group is also announced by name ("New waypoint" / "Editing waypoint N") to screen readers (#886).
+
+### Fixed
+
+- Origin and destination now render a visible, distinguishable marker on the map, whether picked by tapping, searching a harbor, or importing a GPX route (#1020).
+
 ## [0.24.0] - 2026-09-07
 
 ### Added
@@ -996,7 +1006,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.24.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.25.0...HEAD
+[0.25.0]: https://github.com/DocGerd/sail_command/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/DocGerd/sail_command/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/DocGerd/sail_command/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/DocGerd/sail_command/compare/v0.21.0...v0.22.0

@@ -342,10 +342,14 @@ selected in §1.
       and longitude on water inside the covered area, tab out
       to commit each one, and confirm the hemisphere hint updates —
       to "Hemisphere: S" / "Hemisphere: W" for a negative value, back to
-      N/E for zero or positive. This hint is DISPLAY-ONLY: typing a
-      hemisphere letter into the field itself (e.g. "54.8N") is rejected
-      and the field silently reverts to its last committed value — a
-      known, tracked residual, not a defect to file (#886). Press "Add
+      N/E for zero or positive. Type a trailing hemisphere letter into the
+      field itself (e.g. "54.8N") and tab out: confirm it now COMMITS to
+      the matching signed value (the hint stays "Hemisphere: N") rather
+      than being sanitized away. Then type a sign+letter conflict
+      ("-54.8N") or unreadable text ("nope") and tab out: confirm each is
+      REJECTED with a visible message ("Couldn't read that as a
+      coordinate — kept …") and the field reverts to its last committed
+      value — never a silent revert (#886). Press "Add
       coordinates" ("Koordinaten hinzufügen"): the point appears in the
       via list and as a marker on the map immediately, but the route line
       does not move until you press "Plan route" again — a via edit is
