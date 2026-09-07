@@ -114,10 +114,16 @@ making design-level decisions; do not silently deviate.
   `sailLiteralCallSites.test.ts` as a reader against that file's OWN header
   comment saying it globs precisely BECAUSE it needs no stylesheet; careful
   readers get this wrong, so it is not a caution about carelessness. And
-  `.github/workflows/coverage.yml`'s `timeout-minutes` is NOT guarded at all:
-  `timeoutBudgetVsJobCap.test.ts` DECLARES `JOB_CAP_MINUTES = 240` rather than
-  reading it (PR #351 removed the read after four fail-opens), so the two are
-  kept in sync by a twin comment only and #359 tracks restoring a real read.
+  `.github/workflows/coverage.yml` carries TWO `timeout-minutes` settings at
+  different levels: a STEP-level `240` on the `test:coverage` step, and (since
+  #882) a JOB-level `260` set strictly higher so the job outlives that step's
+  cap plus margin. NEITHER is guarded, and the STEP value is the one
+  `timeoutBudgetVsJobCap.test.ts` means: it DECLARES `JOB_CAP_MINUTES = 240`
+  rather than reading it (PR #351 removed the read after four fail-opens), so
+  the two are kept in sync by a twin comment only, and #359 tracks restoring a
+  real read. The JOB-level `260` never had such a coupling either — #359's
+  Option A already covers both, by addressed lookup rather than a
+  whole-file scan.
 ## Commands
 - App (run from repo root): `npm --prefix app run typecheck` / `lint` / `test` /
   `build` / `dev`. CI runs lint+typecheck BEFORE tests — vitest alone will not
@@ -144,8 +150,9 @@ making design-level decisions; do not silently deviate.
   "(0 test)" — cost three failed coverage measurements this session. Always
   use `run`, never `exec`, for anything that depends on `app/`'s config.
 - Statement coverage baseline and trailing test/file count: read both off the
-  LATEST nightly `Coverage` run's own head SHA and its `test:coverage` step
-  conclusion — never hand-add, infer, or carry a prior run's figure forward.
+  LATEST nightly `Coverage` run's own head SHA and the conclusion of its step
+  running `npm run test:coverage` — never hand-add, infer, or carry a prior
+  run's figure forward.
   The earlier **2160 tests / 146 files** (2026-08-24
   at `39bbcd6`, the v0.13.1 cut) was +24 over v0.13.0 = 12 plain `it(` cases plus
   ONE `it.each(Object.getOwnPropertyNames(Object.prototype))` row expanding to
@@ -360,7 +367,10 @@ making design-level decisions; do not silently deviate.
   `AboutDialog.tsx` `?raw`-imports the changelog and `changelogFragmentsPlugin`
   bakes the fragments in, so a CHANGELOG-only PR alters the shipped bundle
   while its `e2e` skips in ~6 s (measured on PR #812). Safe only CONTINGENTLY:
-  `app` always runs in full and `changelog.test.ts` covers the parser, and no
+  `app` still runs in full for a CHANGELOG-only PR SPECIFICALLY (kept true by
+  the `run_app` carve-out below — since #875, `app` skips its expensive steps
+  on an ordinary docs-only PR too, so this is not a claim that `app` always
+  runs in full) and `changelog.test.ts` covers the parser, and no
   e2e spec covers the About dialog. Adding one would break that, so keep
   About-dialog assurance in `app` (jsdom). General form: a path allowlist
   encodes an ASSUMPTION about what a path can affect, and a build step that
@@ -412,7 +422,8 @@ making design-level decisions; do not silently deviate.
   classifier locally rather than guessing: `EVENT_NAME=pull_request
   BASE_SHA=$b HEAD_SHA=$h GITHUB_OUTPUT=$(mktemp) GITHUB_STEP_SUMMARY=$(mktemp)
   bash -e .github/scripts/classify-docs-only.sh` — it prints the changed
-  paths and the deciding one (`reason=non-docs path: …`). **Fetch the PR head
+  paths and the deciding one (`reason_e2e=non-docs path: …`, or
+  `reason_app=…` when diagnosing why `app` ran in full). **Fetch the PR head
   first** (`git fetch origin refs/pull/N/head:refs/remotes/origin/prN`): a
   server-side `update-branch` merge commit is not in your clone, and the
   script correctly fail-closes to `run_e2e=true` with "base or head commit
@@ -523,6 +534,21 @@ making design-level decisions; do not silently deviate.
   guard-asymmetry rule below: an absent security control is the expensive
   failure direction, so the check
   must fail closed.
+- **`<input type="number">` sanitises non-numeric keystrokes BEFORE `onChange`
+  fires**, so a field that must accept a letter cannot use it at all — #886's
+  via-coordinate fields became `type="text"` + `inputMode="decimal"` with their
+  own draft/blur state for exactly that reason. Distinct from
+  `NumberInput.tsx`'s WHATWG comment, which is about `Infinity`/non-finite
+  parsing, not about letters.
+- **A path allowlist must be derived from the DEPENDENCY GRAPH, not per-file.**
+  `services/assets.ts`'s `loadRoutingAssets()` fetches `mask.meta.json`,
+  `mask.bin`, the polars, `harbors.json` AND `seamarks.json` in ONE
+  `Promise.all`, and `App.tsx`'s own comment records that a rejection leaves
+  `harbors` permanently `[]`. So a filter or exclusion table can be wrong about
+  an asset nothing reads directly: measured at #1033, where `seamarks.json` was
+  excluded because `capture.mjs` never touches it — true, and irrelevant, since
+  breaking it breaks the harbour combobox the script clicks. The same pass then
+  caught `mask.meta.json` under the identical coupling.
 - **`in` walks the PROTOTYPE CHAIN — never use it as a membership test against
   an object literal used as a lookup table for STORED/untrusted input.** EVERY
   `Object.getOwnPropertyNames(Object.prototype)` member passes it (12 of them on
@@ -1060,9 +1086,18 @@ making design-level decisions; do not silently deviate.
   cached build to a real browser PAGE, was NOT closed by that fix: the check
   is a plain Node `fetch()` with no ServiceWorker in the picture, and
   closing it needed a browser-side unregister+cache-clear in the specs that
-  navigate — shipped at #832 (closed 2026-09-04, milestone v0.21.0) as
-  `assertCleanServiceWorkerState` in `app/e2e/helpers.ts`. Re-read the issue
-  and that file's build-identity comment — the forensics live there).**
+  navigate — #832 (closed 2026-09-04, milestone v0.21.0) WROTE
+  `assertCleanServiceWorkerState` in `app/e2e/helpers.ts` to close it. #975
+  established (measured 2026-09-05, re-verified at its close 2026-09-07)
+  that this suite's per-test browser-context
+  isolation means there is NEVER a live SW registration or cache for that
+  function to find at any real call site: it was INERT outside
+  `startPreviewIdentity.spec.ts`'s own self-test, which manufactures the
+  hazard synthetically. It is kept anyway as a forward invariant that
+  becomes load-bearing only if this suite's isolation changes — do not read
+  its presence as evidence any spec today is protected from a stale-SW
+  build substitution. Re-read `app/e2e/helpers.ts`'s own doc comment above
+  that function for the full forensics).**
   Neither a free port nor a pid check closes the port-squat case. **Make the
   assertion SELF-PROVING instead** —
   one that can only pass on the exact tree under test. Worked example: PR
@@ -1490,6 +1525,7 @@ making design-level decisions; do not silently deviate.
   | v0.22.0 | 2026-09-04 | 172 s | `success` (MEASURED immediately before the tag push, and the failure CALLED IN ADVANCE from it) | **`smoke-probe` FAILED** | merge-push `33916366319` -> tag `33916603758` on `3dd7bce`. The tag run's `build` and `deploy` both succeeded; only `smoke-probe` failed, and by the #398 signature specifically -- its own prod entry chunk `assets/index-Cxxioy59.js` returned **404 on all 10 attempts** (20:32:26Z -> 20:36:56Z) while the basemap Range probes PASSED for prod AND uat on attempt 1, which is what rules out a CDN regression. The back-merge (`33919057557`, on the different SHA `11cda98`) then probed green and republished **that same chunk name** -- so the tag run's BUILD was correct all along and only its DEPLOYMENT no-opped. Prod afterwards served ``about.version`,{version:`v0.22.0`}`` with ZERO suffixed matches. Predictor was the durable `success`, as at v0.20.0 and v0.21.0. |
   | v0.23.0 | 2026-09-05 | 92 s | read as **`in_progress`/`null`** immediately before the tag push -- the reading this file calls a NON-ANSWER and whose remedy it records as OPEN | **`smoke-probe` FAILED** | merge-push `33990376950` (created 20:31:41Z) -> tag `33990452597` (created 20:33:13Z) on `0ab001d`. The tag run's `build` AND `deploy` both succeeded; only `smoke-probe` failed, by the #398 signature -- its own prod entry chunk `assets/index-DxZuTLvK.js` returned **404 on all 10 attempts** (20:34:49Z -> 20:39:19Z) while BOTH basemap Range probes passed on attempt 1 for prod and uat, ruling out a CDN regression. Back-merge `33992089618` (different SHA `0afd321`) then probed green and republished **that same chunk name**, which then returned 200 -- so the tag run's BUILD was correct and only its DEPLOYMENT no-opped. Prod afterwards served `v0.23.0` with ZERO suffixed matches. **What is NEW here is about the GATE.** The merge run's `deploy` job ran 20:32:48Z -> **20:32:57Z `success`**, i.e. it was already terminal **16 s BEFORE the tag run was even created** at 20:33:13Z. So the orchestrator's stated reason for pushing on an `in_progress` reading -- that a fast tag push might let the tag run cancel-supersede the merge run -- was UNAVAILABLE at that moment and the push could not have outrun it. `in_progress` was a snapshot of a job about to succeed 9 s later; the volatility is inside the read, exactly as this file says. The remedy for that reading stays OPEN and UNTESTED -- but record that the cancel-supersede escape is only reachable while the merge `deploy` job is genuinely still running, which a gate read cannot tell you from one that is 9 s from done. |
   | v0.24.0 | 2026-09-07 | 163 s | `success` (MEASURED immediately before the tag push, and the failure CALLED IN ADVANCE from it) | **`smoke-probe` FAILED** | merge-push `34112529526` (created 10:38:47Z) -> tag `34112760062` (created 10:41:30Z) on `ad679ab`. The tag run's `build` AND `deploy` both succeeded; only `smoke-probe` failed, by the #398 signature -- its own prod entry chunk `assets/index-89U9nb6w.js` returned **404 on all 10 attempts** (10:42:47Z -> 10:47:18Z, ~4m31s) while BOTH basemap Range probes passed on attempt 1 for prod and uat, ruling out a CDN regression. Prod meanwhile served the merge-push run's `assets/index-DEa7vxDb.js` at ``about.version`,{version:`v0.23.0-44-gad679ab`}`` -- read off the live bundle DURING the window, so the superseded artifact is positively identified here rather than inferred afterwards. Back-merge `34114832995` (different SHA `305f8ca`) then probed green and republished **that same chunk name**, which then returned 200 -- so the tag run's BUILD was correct and only its DEPLOYMENT no-opped. Prod afterwards served ``about.version`,{version:`v0.24.0`}`` with ZERO suffixed matches. Predictor was the durable `success`, as at v0.20.0-v0.22.0. **What this row adds is a SECOND observation of v0.23.0's gate finding, from the OPPOSITE reading.** The merge-push `deploy` job ran 10:40:13Z -> **10:40:21Z `success`**, terminal **69 s BEFORE the tag run was created** at 10:41:30Z. v0.23.0 reached that conclusion from an `in_progress` non-answer; this cut reaches it from a durable `success`, so the two agree from different readings -- the cancel-supersede escape is only reachable while the merge `deploy` job is genuinely still running, and at neither cut was it available. Still names no MECHANISM. |
+  | v0.25.0 | 2026-09-07 | 75 s | read as **NO `deploy` LINE AT ALL** immediately before the tag push -- one of the non-answers this file lists, and the reading v0.17.0 also recorded | **SAFE -- the tag deployment TOOK** | merge-push `34147054110` (created 17:18:28Z) -> tag `34147141140` (created 17:19:43Z) on `c18f36c`. EVERY job of the merge run ended `cancelled`, and its `deploy` job (`101821520593`) carries `started_at` == `completed_at` == **17:19:46Z** and `steps: 0`, against the TAG run's `deploy` job's `steps: 6` -- that control is what makes the zero discriminating rather than an artifact of how a cancelled job reports. The `github-pages` deployments list for that SHA returns exactly ONE object, `6313385348`, created 17:21:06Z with `ref: v0.25.0`. The tag run's `build`, `deploy` and `smoke-probe` all succeeded; `smoke-probe` ran 17:21:21Z -> 17:21:59Z and its own prod entry chunk `assets/index-BzFCR6-d.js` returned **200 on attempt 1**, as did the uat chunk `assets/index-DNg0wRjc.js` and both basemap Range probes -- every `attempt 10/10` string in that job log is the SCRIPT SOURCE echoed into the group header, not a failed attempt, so read the `attempt N: OK` lines and never grep the bare word. Production afterwards served `assets/index-BzFCR6-d.js` at ``about.version`,{version:`v0.25.0`}`` with ZERO suffixed matches, so no back-merge remedy was owed -- unlike every row from v0.18.0 through v0.24.0, each of which read `smoke-probe` FAILED. **This row WIDENS the v0.23.0/v0.24.0 criterion rather than instantiating it.** Those rows say the cancel-supersede escape is reachable only while the merge `deploy` job is GENUINELY STILL RUNNING; here it had not STARTED when the tag run was created, which is not that state by the letter, and the tag deployment took regardless. Read the operative condition as the WEAKER one -- the merge `deploy` job has not reached terminal `success` -- and treat those two rows' "still running" phrasing as narrower than the evidence now supports. Still names no MECHANISM, and per this table's own rule the gap gates nothing. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -2007,8 +2043,17 @@ making design-level decisions; do not silently deviate.
   makes a queue of N reviewed PRs cost N full `app` cycles (~20 min each), and
   it is also the guard that catches a change green on its own base and red
   merged. To cut that cost, BATCH file-surface-disjoint PRs into one
-  integration branch and open a single PR: their `Closes #N` commit trailers
-  still fire on merge to `develop`, and the batch build IS the merged-tree
+  integration branch and open a single PR: their `Closes #N` COMMIT TRAILERS
+  still fire on merge to `develop` — but a keyword living only in a member
+  PR's BODY does NOT, because a body fires auto-close solely for the PR that
+  is itself merged. Measured at both v0.25.0 waves: 9 of 10 and 3 of 5
+  keyword instances were body-only, so each batch would have closed only the
+  commit-borne ones and silently left the rest open. RESTATE EVERY `Closes #N`
+  IN THE INTEGRATION PR's BODY, and grep the two locations separately.
+  General form: batching changes WHICH ARTIFACT FIRES THE AUTOMATION, so any
+  per-PR property held in PR metadata rather than in commits does not
+  survive it.
+  The batch build IS the merged-tree
   build the strict policy exists to obtain. **Do NOT then close the originals
   by hand** — measured 2026-09-03 on #912 (batching #901 and #904): once their
   commits are ancestors of `develop`, GitHub marks both PRs `merged: true`,
@@ -2172,7 +2217,7 @@ making design-level decisions; do not silently deviate.
   be present. The first write-up of that very finding shipped a "control" that
   was itself vacuous (both its example strings occur zero times in that file's
   history), which is how convincing the shape is.
-- A `.gitignore` trailing-slash symlink-target home-path leak is pinned by
+- A tracked symlink whose target string leaks a home path is pinned by
   `.github/scripts/check-no-home-paths.sh`'s `scan_symlink_target()`.
 - **A field written by one branch and read by another under a DIFFERENT name
   typechecks and renders nothing — the hazard needs OPTIONALITY closed: make
@@ -3221,8 +3266,12 @@ making design-level decisions; do not silently deviate.
   weeks — two separate causes, don't merge them. Three stale selectors were
   fixed at the cut; the ★ wait itself was fixed separately at #459 (`27518d5`,
   2026-08-09) — `capture.mjs` now polls the rig-comparison chip's TEXT instead
-  of a boolean `getByText('★')`. #428 stays open for its BROADER concern only:
-  nothing exercises this script, so it can rot as silently as #64 made it.
+  of a boolean `getByText('★')`. #428 CLOSED at v0.25.0: `.github/workflows/
+  docs-screenshots.yml`'s `capture` job now runs the script, but it is ADVISORY
+  (`protect-main` requires `app`+`e2e` only, so a red merges silently) and
+  exit-code-only — it catches a crash or timeout (which is what #64's stale
+  selectors caused, so that one WOULD be caught now), never a capture that
+  COMPLETES and shows the wrong state, which is what the v0.10.0 fixture was.
   That fixture decays TWO independent ways, and horizon is the one that
   MISLEADS: a ROUTING change invalidates it while it is perfectly fresh.
   #577 (closed v0.12.1) — #54's multi-boat work collapsed the genoa/fock
@@ -3834,6 +3883,13 @@ making design-level decisions; do not silently deviate.
   FIRST; only then is a `null` trustworthy as "clear"
   (#251/#255 — reversing those two steps is a silent false all-clear, and the
   natural-looking implementation is the wrong one).
+  SECOND INSTANCE, same family, and it spans TWO files: `RouteSummary.tsx`'s
+  exposure memo is `null` for `!mask` (still loading, true on every cold plan)
+  or empty legs, while `shallowExposureNm` returns `null` on a walk/
+  out-of-bounds failure — and a genuine zero is the NUMBER `0`, which only the
+  caller's `nm <= 0` treats as clean. So gating an affirmative "no shallow
+  water" on bare nullness is a false all-clear during ordinary loading
+  (#1022's spike, slice 2 — read BOTH files, not one).
 - Angles: wind direction is meteorological (coming FROM, degrees true);
   polars are TWA × TWS → boat speed in knots. Positions are WGS84.
   Distances in nautical miles, speeds in knots.
@@ -3946,10 +4002,13 @@ making design-level decisions; do not silently deviate.
   spawn it (#181). When invoked it runs ALONGSIDE `sail-reviewer`, never in
   place of it.
 - Issues carry a label taxonomy — `type:` (bug/feature/chore/docs) + `priority:`
-  (high/medium/low) + `area:` (routing/map/pwa/pipeline/deploy/ais/tooling) +
-  optional `status:` — and a milestone (`v0.4.0`/`v0.5.0`/`Backlog`/`Icebox`);
-  apply type+area+priority to every new issue. Taxonomy documented in
-  CONTRIBUTING.md (#167/#168). The taxonomy DRIFTED into space/no-space
+  (high/medium/low) + `area:` + optional `status:` — and a milestone
+  (`v0.4.0`/`v0.5.0`/`Backlog`/`Icebox`); apply type+area+priority to every new
+  issue. Taxonomy documented in CONTRIBUTING.md (#167/#168); its label
+  section is the authoritative copy of the `area:` member list, including the
+  deliberate bare-`area:` residual for user-facing copy / i18n / UI-structure
+  issues (#610, closed) — do NOT restate the member list here.
+  The taxonomy DRIFTED into space/no-space
   duplicates (found at the v0.9.0 cut) and was CLEANED UP 2026-08-19 (#401):
   every no-space-labelled issue was re-tagged onto the spaced form and all
   eight no-space label objects deleted. `gh issue create` still fails with
@@ -3957,12 +4016,7 @@ making design-level decisions; do not silently deviate.
   prevents recurrence via a future `gh label create`, so keep verifying with
   `gh label list --repo DocGerd/sail_command --limit 60 --json name --jq
   '.[].name'` before using a label name — but do NOT re-plan the cleanup as
-  outstanding. Separately, there is no `area:` member for user-facing copy,
-  i18n or UI component structure; several open issues carry none for that
-  reason, and forcing a wrong one is worse than leaving it bare. #610 records
-  the gap, but its body freezes a five-issue table whose members have ALL
-  since closed — derive the count from a live label query, never from that
-  frozen table and never from this sentence.
+  outstanding.
 - **MAINTAINER RULING 2026-09-07 — the assignee field means IN PROGRESS.**
   Assign an issue to `DocGerd` when work STARTS on it (`gh issue edit <n>
   --add-assignee DocGerd`); a filed, triaged or queued issue stays UNASSIGNED,
@@ -3994,8 +4048,11 @@ making design-level decisions; do not silently deviate.
   `--selftest`. It fails CLOSED where the old inline form emitted nothing:
   empty/malformed/absent stdin, a missing or failing `jq`, and an unavailable
   or non-repo `git` (verified across 15 constructed failure inputs).
-- **The Bash arm ADVISES now; only `docs/superpowers*` still ASKS** (#478,
-  2026-08-09). `app/public/{data,icons,brand}`, `THIRD-PARTY-NOTICES.txt` and
+- **The Bash arm ADVISES now** (#478, 2026-08-09); since #1021 (v0.25.0) only
+  `docs/superpowers/specs/`, a plans+specs-mixed command, and a tree-level or
+  `..`-traversing write still ASK — a write confined to
+  `docs/superpowers/plans/` advises, on BOTH the Bash and Edit/Write arms.
+  `app/public/{data,icons,brand}`, `THIRD-PARTY-NOTICES.txt` and
   `.pmtiles` emit a non-blocking `additionalContext` advisory naming the
   matched path and the generator that rebuilds it. It deliberately OMITS
   `permissionDecision`: `"allow"` would BYPASS the user's own permission rules

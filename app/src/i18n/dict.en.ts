@@ -141,6 +141,14 @@ export const en = {
   'planner.via.coord.edit': 'Edit coordinates (point {index}): {coord}',
   'planner.via.coord.outOfRegion':
     'The coordinates lie outside the covered area (Flensburg Fjord / Danish South Sea).',
+  // #886 residual 1: shown when a via-coordinate text entry doesn't parse
+  // at all (garbage, a hemisphere letter on the wrong axis, or a sign+letter
+  // conflict like "-54.8N") — the field silently reverts to its last
+  // committed value, and this is what makes that revert VISIBLE rather than
+  // silent. Distinct from `numberInput.corrected` below, which this same
+  // field also reuses for the "parsed fine but was out of [-90,90]/[-180,180]"
+  // case — a clamp and a rejection are different events for the user.
+  'planner.via.coord.invalidEntry': "Couldn't read that as a coordinate — kept {value}",
   'planner.departure.label': 'Departure',
   'planner.plan': 'Plan route',
   // §3.5 empty/first-run: friendly guidance near the primary action while no
