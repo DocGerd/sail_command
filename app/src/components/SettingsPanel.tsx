@@ -1,7 +1,16 @@
-import type { Ref } from 'react';
-import type { Settings } from '../types';
+import { useRef, useState, type ChangeEvent, type Ref } from 'react';
+import type { Plan, Settings } from '../types';
 import { useLang, useT } from '../i18n';
+import type { MsgKey } from '../i18n/dict.de';
 import { formatDepthM } from '../lib/depthDisclosure';
+import {
+  buildExportEnvelope,
+  exportEnvelopeToJson,
+  exportFileName,
+  parseExportFile,
+  ImportParseError,
+} from '../lib/planExport';
+import { notifySavedWaypointsChanged } from '../lib/useSavedWaypoints';
 import {
   SEAMARK_DISPLAY_TIER_ALL,
   SEAMARK_DISPLAY_TIER_BASE,
@@ -12,6 +21,8 @@ import {
   toSeamarkDisplayTier,
 } from '../lib/seamarkGlyphs';
 import { usePersistedNumber } from '../lib/usePersistedNumber';
+import { getPlan, listPlans, listWaypoints, savePlan, saveWaypoint } from '../services/db';
+import Button from './Button';
 import Card from './Card';
 import Field from './Field';
 import NumberInput, { formatBound, useClampCorrection } from './NumberInput';
@@ -154,6 +165,93 @@ export default function SettingsPanel({
   // help text's {min}/{max} interpolation, rather than calling
   // safetyDepthFieldFor(boat) twice for the same render.
   const safetyDepthField = safetyDepthFieldFor(boat);
+
+  // #849 part (a): local import/export. ALWAYS-MOUNTED status paragraphs
+  // (never a conditionally-rendered <p>), matching NumericField's own
+  // correction notice above and its documented reasoning: a live region
+  // must already be in the accessibility tree before its text changes, and
+  // an empty child renders as :empty for the shared `.boat-picker-notice`
+  // CSS rule, so no new stylesheet rule is needed here.
+  const importInputRef = useRef<HTMLInputElement>(null);
+  const [backupError, setBackupError] = useState<string | null>(null);
+  const [backupNotice, setBackupNotice] = useState<string | null>(null);
+
+  const handleExport = async () => {
+    setBackupError(null);
+    setBackupNotice(null);
+    try {
+      const summaries = await listPlans();
+      // Only readable ('ok') summaries have a real Plan behind them —
+      // services/db.ts's own unreadable-row placeholder carries no plan
+      // this serializer could encode, so it is silently excluded rather
+      // than attempted and failed.
+      const plans = (
+        await Promise.all(summaries.filter((s) => s.kind === 'ok').map((s) => getPlan(s.id)))
+      ).filter((p): p is Plan => p !== undefined);
+      const waypoints = await listWaypoints();
+      const envelope = buildExportEnvelope(plans, value, waypoints);
+      const blob = new Blob([exportEnvelopeToJson(envelope)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = exportFileName(Date.now());
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('SettingsPanel: export failed', err);
+      setBackupError(t('settings.backup.export.error.failed'));
+    }
+  };
+
+  const handleImportFile = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // reset so re-selecting the same file re-fires change
+    if (!file) return;
+    setBackupError(null);
+    setBackupNotice(null);
+    try {
+      const result = parseExportFile(await file.text());
+      // Every write is an UPSERT (put, keyed by id) — re-importing the same
+      // file twice is idempotent, and a plan/waypoint id colliding with one
+      // already on this device overwrites it rather than duplicating it.
+      await Promise.all(result.plans.map((p) => savePlan(p)));
+      await Promise.all(result.waypoints.map((w) => saveWaypoint(w)));
+      // Only announced when something actually changed — mirrors
+      // useSavedWaypoints.ts's own "safe to call with no subscribers" note,
+      // but there is no reason to fire it on a zero-waypoint import.
+      if (result.waypoints.length > 0) notifySavedWaypointsChanged();
+      // Settings REPLACE the current record (there is only one), unlike
+      // plans/waypoints which only ever ADD — the description text says so.
+      if (result.settings !== null) onChange(result.settings);
+
+      const notices = [
+        t('settings.backup.import.success', {
+          plans: result.plans.length,
+          waypoints: result.waypoints.length,
+        }),
+      ];
+      if (result.settings !== null) notices.push(t('settings.backup.import.settingsApplied'));
+      if (result.invalidPlanCount > 0)
+        notices.push(t('settings.backup.import.skippedPlans', { count: result.invalidPlanCount }));
+      if (result.invalidWaypointCount > 0)
+        notices.push(
+          t('settings.backup.import.skippedWaypoints', { count: result.invalidWaypointCount }),
+        );
+      setBackupNotice(notices.join(' '));
+    } catch (err) {
+      if (err instanceof ImportParseError) {
+        const key: Record<ImportParseError['reason'], MsgKey> = {
+          'not-json': 'settings.backup.import.error.notJson',
+          'not-envelope': 'settings.backup.import.error.notEnvelope',
+          'unsupported-version': 'settings.backup.import.error.unsupportedVersion',
+        };
+        setBackupError(t(key[err.reason]));
+      } else {
+        console.error('SettingsPanel: import failed', err);
+        setBackupError(t('settings.backup.import.error.failed'));
+      }
+    }
+  };
 
   // #353 PR2: seamark symbol size + display category are map CHROME, not a
   // domain `Settings` field — same localStorage/usePersistedNumber contract
@@ -378,6 +476,36 @@ export default function SettingsPanel({
             {t('settings.seamarkCategory.help')}
           </p>
         </div>
+      </Card>
+
+      {/* #849 part (a): local import/export of routes, settings and saved
+          waypoints — a versioned local file, not the cloud-sync half of
+          #849 (out of scope for this cut, per the issue's own sequencing).
+          Sits last: it spans all three data kinds above, not one card's
+          own fields. */}
+      <Card title={t('settings.section.backup')}>
+        <p className="options-help">{t('settings.backup.description')}</p>
+        <div className="options-field">
+          <Button variant="secondary" onClick={() => void handleExport()}>
+            {t('settings.backup.export')}
+          </Button>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept="application/json,.json"
+            className="sr-only"
+            onChange={(e) => void handleImportFile(e)}
+          />
+          <Button variant="secondary" onClick={() => importInputRef.current?.click()}>
+            {t('settings.backup.import')}
+          </Button>
+        </div>
+        <p className="boat-picker-notice" role="alert">
+          {backupError}
+        </p>
+        <p className="boat-picker-notice" role="status">
+          {backupNotice}
+        </p>
       </Card>
     </div>
   );

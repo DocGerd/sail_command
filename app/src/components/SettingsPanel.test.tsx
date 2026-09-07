@@ -1,12 +1,25 @@
-import { render, screen, fireEvent, within } from '@testing-library/react';
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import 'fake-indexeddb/auto';
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { I18nProvider } from '../i18n';
 import SettingsPanel from './SettingsPanel';
 import { DEFAULT_BOAT_ID } from '../data/boats';
-import { DEFAULT_SETTINGS } from '../types';
+import { __resetDbForTests, listPlans, listWaypoints, type SavedWaypoint } from '../services/db';
+import { buildExportEnvelope, exportEnvelopeToJson } from '../lib/planExport';
+import {
+  DEFAULT_SETTINGS,
+  defaultBoatSnapshot,
+  PLAN_SCHEMA_VERSION,
+  type Plan,
+  type Settings,
+} from '../types';
 
 afterEach(() => {
   localStorage.clear();
+});
+
+beforeEach(async () => {
+  await __resetDbForTests();
 });
 
 const renderPanel = (onChange = vi.fn()) => {
@@ -572,5 +585,162 @@ describe('SettingsPanel (#299 Boat tab)', () => {
       expect(help).not.toBeNull();
       expect(help).toHaveTextContent(/always shown, even at "Base"/);
     });
+  });
+});
+
+// #849 part (a): local import/export. Builds fixtures with the SAME
+// serializer under test (buildExportEnvelope/exportEnvelopeToJson) rather
+// than a hand-typed JSON literal, so this exercises the real component
+// wiring around planExport.ts's already mutation-checked round-trip
+// (planExport.test.ts), not a second, divergent reimplementation of it.
+function makeTestPlan(id: string): Plan {
+  return {
+    id,
+    name: 'Flensburg → Marstal',
+    createdAtMs: 1700000000000,
+    schemaVersion: PLAN_SCHEMA_VERSION,
+    request: {
+      origin: { lat: 54.3, lon: 9.4 },
+      destination: { lat: 55.0, lon: 10.0 },
+      viaPoints: [],
+      originHarborId: null,
+      destinationHarborId: null,
+      departureMs: 1700000000000,
+      settings: DEFAULT_SETTINGS,
+      sailIds: ['genoa', 'fock'],
+      boat: defaultBoatSnapshot(),
+    },
+    windGrid: {
+      lats: [54.0, 55.0],
+      lons: [9.0, 10.0],
+      timesMs: [1000, 2000],
+      speedKn: new Float32Array([5.1, 6.2, 7.3, 8.4]),
+      dirFromDeg: new Float32Array([90, 95, 100, 105]),
+      gustKn: new Float32Array([7.1, 8.2, 9.3, 10.4]),
+      fetchedAtMs: 1700000000000,
+      model: 'open-meteo',
+    },
+    result: {
+      status: 'ok',
+      sails: [
+        {
+          sailId: 'genoa',
+          result: {
+            sailId: 'genoa',
+            legs: [],
+            etaMs: 1700003600000,
+            durationMs: 3600000,
+            distanceNm: 42.5,
+            maneuverCount: 2,
+            motorDistanceNm: 0,
+          },
+          reason: null,
+        },
+        { sailId: 'fock', result: null, reason: null },
+      ],
+      recommended: 'genoa',
+      comparisonComplete: true,
+      snappedOrigin: { lat: 54.3, lon: 9.4 },
+      snappedDestination: { lat: 55.0, lon: 10.0 },
+    },
+  };
+}
+
+const TEST_WAYPOINT: SavedWaypoint = {
+  id: 'wp-849',
+  name: 'off Holnis',
+  lat: 54.83,
+  lon: 9.87,
+  createdAtMs: 1700000000000,
+};
+
+const IMPORTED_SETTINGS: Settings = { ...DEFAULT_SETTINGS, safetyDepthM: 3.5 };
+
+function getFileInput(): HTMLInputElement {
+  const input = document.querySelector('input[type="file"]');
+  if (!(input instanceof HTMLInputElement)) throw new Error('backup file input not found');
+  return input;
+}
+
+describe('SettingsPanel (#849 local import/export)', () => {
+  it('renders the Backup card with export and import controls', () => {
+    renderPanel();
+    expect(screen.getByRole('heading', { name: 'Backup' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Export' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Import' })).toBeInTheDocument();
+  });
+
+  it('export writes a JSON blob download containing the live settings', async () => {
+    // Same pattern as RouteSummary.test.tsx's GPX-export test: reassign the
+    // static methods directly (rather than vi.stubGlobal, which would
+    // replace the URL constructor itself) and restore them in `finally`.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- signature must accept a Blob for the tuple-typed assertion below
+    const createObjectURL = vi.fn((_blob: Blob) => 'blob:mock');
+    const revokeObjectURL = vi.fn();
+    const originalCreate = URL.createObjectURL;
+    const originalRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = createObjectURL;
+    URL.revokeObjectURL = revokeObjectURL;
+    // jsdom does not implement navigation — stub the click the component
+    // fires on its synthetic <a download> so the test doesn't warn/throw.
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+    try {
+      renderPanel();
+      // handleExport is async (it reads plans/waypoints from IndexedDB
+      // before building the blob) but the onClick handler fires it without
+      // awaiting — fireEvent.click cannot observe that work, so wait for it.
+      fireEvent.click(screen.getByRole('button', { name: 'Export' }));
+      await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(1));
+
+      const blob = createObjectURL.mock.calls[0][0] as Blob;
+      expect(blob.type).toBe('application/json');
+    } finally {
+      clickSpy.mockRestore();
+      URL.createObjectURL = originalCreate;
+      URL.revokeObjectURL = originalRevoke;
+    }
+  });
+
+  it('import writes plans and waypoints to IndexedDB, applies settings, and reports a success notice', async () => {
+    const plan = makeTestPlan('imported-1');
+    const envelope = buildExportEnvelope([plan], IMPORTED_SETTINGS, [TEST_WAYPOINT]);
+    const json = exportEnvelopeToJson(envelope);
+    const onChange = renderPanel();
+
+    const file = new File([json], 'sailcommand-export.json', { type: 'application/json' });
+    await act(async () => {
+      fireEvent.change(getFileInput(), { target: { files: [file] } });
+    });
+
+    // The success paragraph joins several sentences into ONE text node
+    // (see SettingsPanel.tsx's handleImportFile), so a substring matcher is
+    // needed rather than an exact-text lookup.
+    const notice = await screen.findByText((content) =>
+      content.startsWith('1 route(s) and 1 waypoint(s) imported.'),
+    );
+    expect(notice).toHaveTextContent('Settings from the file were applied.');
+    expect(onChange).toHaveBeenCalledWith(IMPORTED_SETTINGS);
+
+    const plans = await listPlans();
+    expect(plans.some((p) => p.kind === 'ok' && p.id === 'imported-1')).toBe(true);
+    const waypoints = await listWaypoints();
+    expect(waypoints).toEqual([TEST_WAYPOINT]);
+  });
+
+  it('reports a clear error, and touches no storage, for a file that is not a SailCommand export', async () => {
+    renderPanel();
+    const file = new File(['not json at all {{{'], 'garbage.json', {
+      type: 'application/json',
+    });
+    await act(async () => {
+      fireEvent.change(getFileInput(), { target: { files: [file] } });
+    });
+
+    expect(
+      await screen.findByText('This is not a valid SailCommand export file.'),
+    ).toBeInTheDocument();
+    expect(await listPlans()).toHaveLength(0);
+    expect(await listWaypoints()).toHaveLength(0);
   });
 });
