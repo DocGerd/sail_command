@@ -56,10 +56,14 @@ export interface ViaMarkersProps {
 }
 
 // Real-map rendering is not unit-tested (jsdom has no MapLibre/WebGL
-// runtime); the component's own logic is covered by ViaMarkers.test.tsx.
-// Deliberately thin: all decision logic
-// (dedupe, stored-wind reuse, in-flight guard, error mapping) lives in
-// state/replan.ts, fully unit-tested there.
+// runtime); the component's marker-construction/drag logic is covered by
+// ViaMarkers.test.tsx, while the staleness chip below (its only JSX return)
+// is covered by App.test.tsx's integration test, since ViaMarkers.test.tsx
+// itself never renders it (every call there passes `replanning={false}`).
+// Deliberately thin: all decision logic (dedupe, stored-wind reuse, error
+// mapping) lives in state/replan.ts, fully unit-tested there — #571
+// redesign removed the in-flight guard this component used to gate on (see
+// the `replanning` prop's own comment above).
 
 // #715: VIA_COLOR (Okabe-Ito reddish-purple, distinct from BoatMarker's blue
 // and the route's port/starboard green/red) is now imported from
