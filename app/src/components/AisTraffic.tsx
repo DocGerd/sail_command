@@ -16,8 +16,7 @@ import {
   routeCorridorBoxes,
 } from '../lib/routeCorridor';
 import { aisPopupRows, aisTargetsInView, type AisPopupProps } from '../lib/aisGeoJson';
-import { activeRigResult } from '../lib/plan';
-import type { Plan, SailId } from '../types';
+import type { RigResult } from '../types';
 import type { MsgKey } from '../i18n/dict.de';
 import type { AisTargetSnapshot } from '../lib/aisTargets';
 
@@ -225,19 +224,29 @@ export function AisVesselsInView({ map, targets, panelSlot }: AisVesselsInViewPr
  * when the view leaves the padded box) and the online/visibility gates, then
  * delegates the socket lifecycle to useAisTraffic. Renders the vessel layers
  * (AisLayer) plus a status-chip overlay on the map.
+ *
+ * #554: takes the CALLER's already-resolved corridor route rather than a
+ * `plan`+`rig` pair — this component's only use of that pair was to re-derive
+ * one RigResult via `activeRigResult(plan, rig)`, which reached into
+ * PlanResult's internal shape purely to recover something App.tsx already
+ * has. App.tsx now resolves it once (memoized on [plan, rig]) and passes the
+ * result down directly.
  */
 export default function AisTraffic({
   apiKey,
   ownMmsi,
-  plan,
-  rig,
+  route,
   activeLegIndex,
   panelSlot,
 }: {
   apiKey: string | undefined;
   ownMmsi: string | undefined;
-  plan: Plan | null;
-  rig: SailId | null;
+  /** The active rig's resolved route, or null while no route is on screen for
+   * the currently active rig. Reference-stable across renders where the
+   * underlying plan/rig identity is unchanged (App.tsx memoizes it), which is
+   * what lets it double as the #158 settle-gate reset key below with no
+   * separate [plan, rig] tuple. */
+  route: RigResult | null;
   activeLegIndex: number | null;
   /** #831: App.tsx's `.app-panel-ais` portal target — see AisVesselsInView's
    * own contract comment above. */
@@ -288,23 +297,19 @@ export default function AisTraffic({
   // fix jitter (#162 review): it resets the gate to the raw index in the same
   // render — setPlan batches plan + activeLegIndex→null, and holding the OLD
   // plan's index against the NEW plan's legs would slice a mis-placed
-  // corridor for up to 2 s.
-  const corridorEpoch = useMemo(() => [plan, rig] as const, [plan, rig]);
-  const settledLegIndex = useSettledValue(
-    activeLegIndex,
-    AIS_CORRIDOR_LEG_SETTLE_MS,
-    corridorEpoch,
-  );
+  // corridor for up to 2 s. `route` itself is that reset key now (#554):
+  // App.tsx re-derives it from [plan, rig], so its reference changes on
+  // exactly the same plan/rig identity changes the old `[plan, rig] as const`
+  // tuple did — one fewer memo here, same reset behavior.
+  const settledLegIndex = useSettledValue(activeLegIndex, AIS_CORRIDOR_LEG_SETTLE_MS, route);
 
-  // #146 route corridor: recomputes only on [plan, rig, settledLegIndex] — all
-  // three are stable references / change at leg-transition cadence (#158),
-  // never per GPS fix.
+  // #146 route corridor: recomputes only on [route, settledLegIndex] — both
+  // are stable references / change at leg-transition cadence (#158), never
+  // per GPS fix.
   const corridorBoxes = useMemo<AisBoundingBox[]>(() => {
-    if (!plan || !rig) return [];
-    const rr = activeRigResult(plan, rig);
-    if (!rr) return [];
-    return routeCorridorBoxes(rr.legs, settledLegIndex, AIS_CORRIDOR_HALF_WIDTH_NM);
-  }, [plan, rig, settledLegIndex]);
+    if (!route) return [];
+    return routeCorridorBoxes(route.legs, settledLegIndex, AIS_CORRIDOR_HALF_WIDTH_NM);
+  }, [route, settledLegIndex]);
 
   // Subscription union (corridor ∪ padded viewport), memoized so an unchanged
   // corridor + viewport keeps list identity and the hook's subscription effect
@@ -316,7 +321,7 @@ export default function AisTraffic({
   );
 
   // A real route exists for the active rig (#146 OQ2) — gates the chip split.
-  const routeActive = plan !== null && rig !== null && activeRigResult(plan, rig) !== null;
+  const routeActive = route !== null;
 
   const { status, targets, targetCount, routeCount } = useAisTraffic({
     apiKey,
