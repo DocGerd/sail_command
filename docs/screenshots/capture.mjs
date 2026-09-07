@@ -178,14 +178,25 @@ const PANEL_WIDTH_PX = 518;
 // 2026-08-27 against the pre-#744 layout; v0.16.0 moved the BOTTOM end only
 // (#744 flipped `.planner-compact-row` to `align-items: start` and stopped
 // the help text orphaning its unit; #731's always-mounted
-// `.boat-picker-notice` is zero-height while empty). This bump is
-// START-VIEW-ONLY: the viewport is bumped again right after (to
+// `.boat-picker-notice` is zero-height while empty). BUMPED AGAIN 1000 ->
+// 1060 at the v0.24.0 cut (2026-09-07): #886 added a hemisphere line under
+// each of the latitude and longitude fields plus a "New waypoint" group
+// label, growing the Trip card enough to push the Saved-waypoints
+// disclosure through the old fold — its heading rendered sliced through
+// mid-glyph, the same clipped-form-element defect #741 fixed and the one
+// this comment's last sentence distinguishes from a scrolled table.
+// Verified on the ARTIFACT rather than by a DOM read (this flow's own state
+// persists across reloads, so a browser session cannot cheaply be returned
+// to it): at 1060 the Saved-waypoints card is complete and the Departure /
+// Safety-depth labels are legible, with their inputs covered by the sticky
+// `.planner-actions` bar exactly as a real user sees at that height. This
+// bump is START-VIEW-ONLY: the viewport is bumped again right after (to
 // BOAT_SELECTION_HEIGHT_PX, for boat-selection.png) before it is reset to
 // the shared 800px height for the rest of the flow, so plan-route.png is
 // deliberately framed with its legs table scrolled — a long table is meant
 // to be cut off, unlike a form field, which is what made the start-view
 // crop a defect and this one not.
-const START_VIEW_HEIGHT_PX = 1000;
+const START_VIEW_HEIGHT_PX = 1060;
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1280, height: START_VIEW_HEIGHT_PX } });

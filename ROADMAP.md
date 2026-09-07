@@ -13,51 +13,60 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.23.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.24.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
-## Now — v0.23.0
+## Now — v0.24.0
 
-The `v0.23.0` cut (2026-09-05) completed the
-[`v0.23.0` milestone](https://github.com/DocGerd/sail_command/milestones),
-eleven issues in total — four of them user-visible (five changelog
-entries; #961 contributed two); the other seven were test-coverage,
-agent-tooling, and documentation fixes with no user-facing change.
+The `v0.24.0` cut (2026-09-07) completed the
+[`v0.24.0` milestone](https://github.com/DocGerd/sail_command/milestones),
+seventeen issues in total. Six changelog entries shipped, covering six
+distinct issues — five of them from this milestone; the sixth
+([#886](https://github.com/DocGerd/sail_command/issues/886)) delivered two
+of its three parts and stays open in `v0.25.0`. The milestone's remaining
+twelve issues were prose-accuracy, test-coverage, agent-tooling and
+documentation fixes with no user-facing change.
 
-Any seamark visible and tappable on the map can now be added as a route
-waypoint — the earlier restriction to cardinal, lateral, and
-isolated-danger marks is lifted
-([#966](https://github.com/DocGerd/sail_command/issues/966)).
+Saved waypoints now appear on the chart as their own map layer — a hollow
+via-coloured ring, labelled with the waypoint name where there is room for
+it, drawn above the depth shading and below every harbour, seamark, AIS and
+route marker. While the Add waypoint pick is armed, tapping one inserts that
+waypoint by name instead of the raw tapped coordinate
+([#924](https://github.com/DocGerd/sail_command/issues/924)).
 
-The narrow-viewport toast/compass squeeze left open at the end of
-`v0.22.0`'s "Now" is now closed: the app header and notification banners
-occupy their own rows above the map instead of floating over it, so no
-banner can intercept a tap meant for the map controls beneath it. Short
-landscape phone screens keep the previous layout, where that change would
-have left the route planner too little room
-([#909](https://github.com/DocGerd/sail_command/issues/909)).
+The waypoint coordinate-entry fields now show the hemisphere (N/S/E/W) for
+the current latitude and longitude, and the entry group names its target
+("New waypoint" vs. "Editing waypoint N") with an explicit way to cancel out
+of edit mode. Parsing typed degrees-and-minutes coordinates is the part of
+that issue still outstanding, tracked as
+[#1005](https://github.com/DocGerd/sail_command/issues/1005)
+([#886](https://github.com/DocGerd/sail_command/issues/886)).
 
-AIS vessel glyphs are now tappable within a target that meets the locked
-≥44px gloved-use touch-target floor at harbor-approach zooms, up from a
-16-28.8px target that made precise on-water taps difficult
-([#957](https://github.com/DocGerd/sail_command/issues/957)).
+A recalculate now announces its completion to screen readers no matter which
+tab you are on — a single app-level region replaces two per-tab ones that
+only worked on the Plan and Routes tabs, so Live and Boat were previously
+silent ([#983](https://github.com/DocGerd/sail_command/issues/983)).
 
-Two accessibility fixes to the planner's screen-reader announcements: the
-result announcement now re-fires when a departure window is confirmed and
-the plan is replaced in place, instead of staying silent on an unchanged
-plan id, and the saved-plans list now announces a recalculate-and-replace
-result from the Routes tab itself, where the planner's own live region is
-unmounted ([#961](https://github.com/DocGerd/sail_command/issues/961)).
+Three narrow-viewport layout regressions introduced by `v0.23.0`'s own
+header/banner rework are fixed: the app header no longer overlaps the map's
+top-left toggle cluster at short-landscape sizes
+([#985](https://github.com/DocGerd/sail_command/issues/985)), the Live tab's
+AIS connection chip no longer jumps down the map onto the controls below it
+([#991](https://github.com/DocGerd/sail_command/issues/991)), and a MapLibre
+info popup's close button is no longer unreachable behind the map's own
+toggle/legend cluster at mid-size viewports
+([#999](https://github.com/DocGerd/sail_command/issues/999)).
 
-## Next — v0.24.0
+## Next — v0.25.0
 
-The [`v0.24.0` milestone](https://github.com/DocGerd/sail_command/milestones)
+The [`v0.25.0` milestone](https://github.com/DocGerd/sail_command/milestones)
 is the one now being filled, and it will keep growing after this file is
 written — so the milestone page is the list, and no count or enumeration of
-its contents is kept here. Its opening scope, so far, is one issue: saved
-waypoints as a selectable map symbol layer, a follow-up to `v0.21.0`'s
-saved-waypoints panel
-([#924](https://github.com/DocGerd/sail_command/issues/924)).
+its contents is kept here. Its opening scope is the remainder of the
+waypoint coordinate-entry work: parsing typed degrees-and-minutes and
+degrees-minutes-seconds input
+([#886](https://github.com/DocGerd/sail_command/issues/886),
+[#1005](https://github.com/DocGerd/sail_command/issues/1005)).
 
 ## Themes for the next year
 
