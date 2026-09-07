@@ -261,10 +261,24 @@ test('#803: still starts normally against its own build with no foreign server',
 
 // #832: this is the "demonstrate the guard has teeth" experiment, kept as a
 // permanent regression pin rather than a one-off manual check — it
-// constructs the EXACT failure `assertCleanServiceWorkerState` defends
-// against (a registration + a cache already present on this origin, as a
-// stale/foreign build would leave behind) and shows the guard actually
-// clearing both, not merely reporting success. A version of this guard that
+// constructs the EXACT failure `assertCleanServiceWorkerState` was written
+// to defend against (a registration + a cache already present on this
+// origin, as a stale/foreign build would leave behind) and shows the guard
+// actually clearing both, not merely reporting success.
+//
+// #975: this construction is synthetic, and deliberately so — it registers
+// and caches WITHIN this one test's own page/context immediately before
+// calling the guard, because that is the only way to make the guard find
+// anything at all. No other spec in this suite can produce this state for
+// the guard to find: every real call site hands it a `page` from a
+// freshly-created BrowserContext, and Chromium partitions SW/CacheStorage
+// per context — independently re-verified against `playwright@1.62.1` with
+// a real HTTP-origin probe (`helpers.ts`'s block comment above
+// `assertCleanServiceWorkerState` has the full account). So this test
+// proves the CLEARING MECHANISM works,
+// not that any other spec in this suite is protected by it — read it as a
+// unit test for the function, not as evidence of a closed hazard.
+// A version of this guard that
 // silently no-oped (e.g. `getRegistrations()` returning early, or a
 // swallowed `unregister()` rejection) would either THROW (asserted via
 // `resolves` below — an unhandled rejection reds the test) or, if it also
