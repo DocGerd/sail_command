@@ -87,9 +87,11 @@
 #1025's body is right that `CLAUDE.md` is a floor paid per session, per subagent, and per
 compaction. But it frames the split as if removing "the maintainer's own machine" content pays that
 cost down. §4 and §9 below show that specific content is **small** — the three examples the issue
-names, plus an exhaustive grep for the same signature phrases elsewhere in the file, total ~53 lines
-/ ~6.2 KB of 4,608 lines / 341,196 bytes. Executing the obvious reading of #1025 would save under
-2%. The two mechanisms that actually move the needle are already filed and already understood
+names, plus a grep for the same six signature phrases elsewhere in the file (§4.10), total 83 lines
+/ 6,164 B of 4,608 lines / 341,196 bytes — under 2% by the byte measure, which is the one the 1.8%
+headline and the conclusion below rest on; the line count is reported alongside it but carries none
+of the conclusion. The two mechanisms that actually move the needle are already filed and already
+understood
 (#1029: retirement, exhausted at one candidate over three passes; #1044: explanatory restatement,
 the still-active lever). This document's job is the criterion, not a size result — and the honest
 size result is that the criterion, applied narrowly and correctly, is not where the bytes are.
@@ -266,12 +268,27 @@ or none" — a real execution of #471 would need per-audience scoping (`app/`, `
 something release-event-scoped that a directory-`paths:` glob cannot express), which is more than
 this cycle's brief permits and more than #471's own body proposed.
 
-### 4.10 Exhaustiveness of the grep
-Beyond the three named examples, an exhaustive grep for the same signature phrases ("lives OUTSIDE
-this repo", "personal global", "unversioned and per-machine", "it's their global config", "personal
+### 4.10 What the grep in §9's sizing actually covered
+Beyond the three named examples, a grep for exactly six signature phrases ("lives OUTSIDE this
+repo", "personal global", "unversioned and per-machine", "it's their global config", "personal
 tooling", "contributor's checkout has none of it") over the current `CLAUDE.md` returns **zero**
-additional hits outside §4.1-4.3's three bullets. This is an enumeration, not a sample — reported so
-a later reader does not have to re-run it to trust the §9 sizing.
+additional hits outside §4.1-4.3's three bullets — exhaustive over those six phrases, not over the
+concept. A broader pass (`~/.claude`, "own machine", "settings.local.json") finds one further hit,
+the "Claude Code config placement" bullet (`CLAUDE.md:4407`) — which states the existing
+`.claude/settings.local.json`/`~/.claude/` convention itself (already the correct home per this
+document's own criterion) rather than describing a further non-reproducible artifact, so it does not
+change the §9 sizing. Stated this narrowly because "exhaustive" without a stated aperture is exactly
+the over-claim this file's own Verification-lessons section warns against.
+
+### 4.11 A gap in Part 1's phrasing, not in the criterion
+The "assignee means IN PROGRESS" ruling and the label-taxonomy bullet (`Working style`) describe
+**shared GitHub repository state** — issue/PR fields on `github.com`, not a file. Part 1 as written
+names concrete artifact types (hook / skill / agent-def / workflow / CI config / source / domain
+data) and none of them is "a repo's own issue tracker fields", so the test does not cleanly cover
+this case by its literal wording. In practice it still resolves correctly — any contributor with
+push access sees and can act on the same assignee/label state, so it stays as project documentation
+— but that is Part 1 answering the right question despite an incomplete enumeration, not proof the
+enumeration is complete. Recorded as a real hard case rather than folded into the criterion's wording.
 
 ---
 
@@ -295,9 +312,12 @@ Reconfirms the `nested-claudemd-lazy-but-not-compaction-safe` memory record, now
 #1025's body flagged this as unverified ("does the harness merge it? verify — do not assume"). It
 does. Evidence, in order:
 - `strings` over the installed Claude Code binary (2.1.263) shows `CLAUDE.local.md` as a first-class
-  memory **scope** (`case "Local": return Ke(t,"CLAUDE.local.md")`), loaded through the **same**
-  function (`Q0`) as the root "Project" scope — a structurally different code path from the nested,
-  lazy-trigger mechanism in §5.1 (`nestedMemoryAttachmentTriggers`).
+  memory **scope**, resolved by the same enclosing function as the root "Project" scope —
+  `case"Local":return Ke(t,"CLAUDE.local.md");case"Project":return Ke(t,"CLAUDE.md")` in one `switch`
+  — a structurally different code path from the nested, lazy-trigger mechanism in §5.1
+  (`nestedMemoryAttachmentTriggers`). (The enclosing function's own minified name is not cited here —
+  it is a decaying anchor that changes at the next build; the quoted `switch` body is the stable
+  citation.)
 - Empirically: a project-root `CLAUDE.local.md` with a marker string was present in a fresh session's
   context from turn 1 (alongside `CLAUDE.md`, before any tool call), and — unlike the nested case —
   the marker was **still present** after the same forced-compaction procedure, with no re-read.
@@ -336,8 +356,8 @@ Part 1 test agrees without qualification: **tracked, codebase, not personal**. #
 reasoning ("if the split moves `#368` material out of the tracked file, consolidating it first is
 wasted work") was really a bet on **#471's** answer, not #1025's — and #471 is now answered: nothing
 in §4.5's shape (hard-prohibition-adjacent, subtree-scoped) should move to a nested file, and the
-`#368` material reads the same way (it includes at least one explicit hard prohibition — "no fixed
-`waitForTimeout`" — that the file's own compression write-up already named as unsafe to relocate).
+`#368` material reads the same way — it includes at least one explicit hard prohibition
+(`CLAUDE.md:1164`, "no fixed `waitForTimeout` as a synchronization wait").
 **#417 can proceed on `CLAUDE.md` as it stands, whenever picked up; it is not blocked by anything
 this document decided**, and should be read as unblocked by this document rather than "still waiting
 on #1025".
@@ -350,7 +370,7 @@ Three levers on one number, and this document's job was to characterise the smal
 |---|---|---|
 | #1029 — retirement (pin to a structural guard) | Bullets whose failure is now caught by a test/hook/CI step | **Nearly exhausted**: 3 passes over 4,593 lines found 1 retirable bullet, 26 rejected as partial-coverage traps |
 | #1044 — restatement (say it once, point at the rest) | Explanatory paraphrase of a fact the file already states elsewhere or points at as authoritative | **Still active**: one correction wave alone added +1,491 B, roughly half restatement |
-| #1025 — tracked vs. personal (this document) | Content whose underlying artifact is not in this repo at all | **Small**: ~6.2 KB / 341,196 B ≈ 1.8% (§4.10 is exhaustive over the current file) |
+| #1025 — tracked vs. personal (this document) | Content whose underlying artifact is not in this repo at all | **Small**: 6,164 B / 341,196 B ≈ 1.8% (§4.10: exhaustive over six signature phrases, one further benign hit found on a broader pass) |
 
 None of the three is a substitute for the others, and none should be sold as "the" fix for file size.
 #1025 is worth doing for a **governance** reason stated correctly in the issue body (a contributor
@@ -360,8 +380,9 @@ should never be pointed at an artifact they cannot reproduce) — not a size rea
 
 ## 9. Sizing for the follow-up (D3)
 
-- **Move now-identified (§4.1-4.3):** 3 bullets, 63 lines total (3,939-3,956 + 4,075-4,093 +
-  4,094-4,139 by current line numbers — re-derive at execution time, these will drift), 6,164 bytes.
+- **Move now-identified (§4.1-4.3):** 3 bullets, 83 lines total (3,939-3,956 = 18, 4,075-4,093 = 19,
+  4,094-4,139 = 46, by current line numbers — re-derive at execution time, these will drift),
+  6,164 bytes.
   Destination: global `~/.claude/CLAUDE.md` for §4.1/§4.2 (reach: every agent, any repo), a new
   gitignored `CLAUDE.local.md` for whatever residual of §4.3 is not already duplicated there once
   §4.4's retirement is done first.
