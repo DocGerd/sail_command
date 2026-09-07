@@ -34,12 +34,9 @@ Your final message is a report to the orchestrator, not prose for the end user.
   transferred, always as a `.slice(0)` copy.
 - Tests import vitest APIs explicitly. Never add a per-test timeout tighter than
   the file-level config. CI is slower than dev machines, but not by one flat
-  multiplier: measured 2026-08-03 (#341) for the vitest unit suite, `npm run
-  test` ran 249.8 s local vs ~515–535 s on CI (~2.1×), and `npm run
-  test:coverage` ran ~983–1029 s local vs 2558 s on CI (~2.5×, a LOWER BOUND —
-  that CI run was itself killed by a too-tight budget) — coverage
-  instrumentation is a separate multiplier from runner speed, not part of a
-  single ratio, and neither figure is a Playwright/e2e measurement.
+  multiplier, and coverage instrumentation is a separate multiplier from
+  runner speed, not part of a single ratio — read the current figures off
+  `app/vite.config.ts`'s #878 comment rather than any figure quoted here.
 
 ## Verification (evidence, not assertions)
 
