@@ -114,10 +114,16 @@ making design-level decisions; do not silently deviate.
   `sailLiteralCallSites.test.ts` as a reader against that file's OWN header
   comment saying it globs precisely BECAUSE it needs no stylesheet; careful
   readers get this wrong, so it is not a caution about carelessness. And
-  `.github/workflows/coverage.yml`'s `timeout-minutes` is NOT guarded at all:
-  `timeoutBudgetVsJobCap.test.ts` DECLARES `JOB_CAP_MINUTES = 240` rather than
-  reading it (PR #351 removed the read after four fail-opens), so the two are
-  kept in sync by a twin comment only and #359 tracks restoring a real read.
+  `.github/workflows/coverage.yml` carries TWO `timeout-minutes` settings at
+  different levels: a STEP-level `240` on the `test:coverage` step, and (since
+  #882) a JOB-level `260` set strictly higher so the job outlives that step's
+  cap plus margin. NEITHER is guarded, and the STEP value is the one
+  `timeoutBudgetVsJobCap.test.ts` means: it DECLARES `JOB_CAP_MINUTES = 240`
+  rather than reading it (PR #351 removed the read after four fail-opens), so
+  the two are kept in sync by a twin comment only, and #359 tracks restoring a
+  real read. The JOB-level `260` never had such a coupling either — #359's
+  Option A already covers both, by addressed lookup rather than a
+  whole-file scan.
 ## Commands
 - App (run from repo root): `npm --prefix app run typecheck` / `lint` / `test` /
   `build` / `dev`. CI runs lint+typecheck BEFORE tests — vitest alone will not
@@ -144,8 +150,9 @@ making design-level decisions; do not silently deviate.
   "(0 test)" — cost three failed coverage measurements this session. Always
   use `run`, never `exec`, for anything that depends on `app/`'s config.
 - Statement coverage baseline and trailing test/file count: read both off the
-  LATEST nightly `Coverage` run's own head SHA and its `test:coverage` step
-  conclusion — never hand-add, infer, or carry a prior run's figure forward.
+  LATEST nightly `Coverage` run's own head SHA and the conclusion of its step
+  running `npm run test:coverage` — never hand-add, infer, or carry a prior
+  run's figure forward.
   The earlier **2160 tests / 146 files** (2026-08-24
   at `39bbcd6`, the v0.13.1 cut) was +24 over v0.13.0 = 12 plain `it(` cases plus
   ONE `it.each(Object.getOwnPropertyNames(Object.prototype))` row expanding to
@@ -360,7 +367,10 @@ making design-level decisions; do not silently deviate.
   `AboutDialog.tsx` `?raw`-imports the changelog and `changelogFragmentsPlugin`
   bakes the fragments in, so a CHANGELOG-only PR alters the shipped bundle
   while its `e2e` skips in ~6 s (measured on PR #812). Safe only CONTINGENTLY:
-  `app` always runs in full and `changelog.test.ts` covers the parser, and no
+  `app` still runs in full for a CHANGELOG-only PR SPECIFICALLY (kept true by
+  the `run_app` carve-out below — since #875, `app` skips its expensive steps
+  on an ordinary docs-only PR too, so this is not a claim that `app` always
+  runs in full) and `changelog.test.ts` covers the parser, and no
   e2e spec covers the About dialog. Adding one would break that, so keep
   About-dialog assurance in `app` (jsdom). General form: a path allowlist
   encodes an ASSUMPTION about what a path can affect, and a build step that
@@ -412,7 +422,8 @@ making design-level decisions; do not silently deviate.
   classifier locally rather than guessing: `EVENT_NAME=pull_request
   BASE_SHA=$b HEAD_SHA=$h GITHUB_OUTPUT=$(mktemp) GITHUB_STEP_SUMMARY=$(mktemp)
   bash -e .github/scripts/classify-docs-only.sh` — it prints the changed
-  paths and the deciding one (`reason=non-docs path: …`). **Fetch the PR head
+  paths and the deciding one (`reason_e2e=non-docs path: …`, or
+  `reason_app=…` when diagnosing why `app` ran in full). **Fetch the PR head
   first** (`git fetch origin refs/pull/N/head:refs/remotes/origin/prN`): a
   server-side `update-branch` merge commit is not in your clone, and the
   script correctly fail-closes to `run_e2e=true` with "base or head commit
@@ -1060,9 +1071,18 @@ making design-level decisions; do not silently deviate.
   cached build to a real browser PAGE, was NOT closed by that fix: the check
   is a plain Node `fetch()` with no ServiceWorker in the picture, and
   closing it needed a browser-side unregister+cache-clear in the specs that
-  navigate — shipped at #832 (closed 2026-09-04, milestone v0.21.0) as
-  `assertCleanServiceWorkerState` in `app/e2e/helpers.ts`. Re-read the issue
-  and that file's build-identity comment — the forensics live there).**
+  navigate — #832 (closed 2026-09-04, milestone v0.21.0) WROTE
+  `assertCleanServiceWorkerState` in `app/e2e/helpers.ts` to close it. #975
+  established (measured 2026-09-05, re-verified at its close 2026-09-07)
+  that this suite's per-test browser-context
+  isolation means there is NEVER a live SW registration or cache for that
+  function to find at any real call site: it was INERT outside
+  `startPreviewIdentity.spec.ts`'s own self-test, which manufactures the
+  hazard synthetically. It is kept anyway as a forward invariant that
+  becomes load-bearing only if this suite's isolation changes — do not read
+  its presence as evidence any spec today is protected from a stale-SW
+  build substitution. Re-read `app/e2e/helpers.ts`'s own doc comment above
+  that function for the full forensics).**
   Neither a free port nor a pid check closes the port-squat case. **Make the
   assertion SELF-PROVING instead** —
   one that can only pass on the exact tree under test. Worked example: PR
@@ -2172,7 +2192,7 @@ making design-level decisions; do not silently deviate.
   be present. The first write-up of that very finding shipped a "control" that
   was itself vacuous (both its example strings occur zero times in that file's
   history), which is how convincing the shape is.
-- A `.gitignore` trailing-slash symlink-target home-path leak is pinned by
+- A tracked symlink whose target string leaks a home path is pinned by
   `.github/scripts/check-no-home-paths.sh`'s `scan_symlink_target()`.
 - **A field written by one branch and read by another under a DIFFERENT name
   typechecks and renders nothing — the hazard needs OPTIONALITY closed: make
@@ -3946,10 +3966,13 @@ making design-level decisions; do not silently deviate.
   spawn it (#181). When invoked it runs ALONGSIDE `sail-reviewer`, never in
   place of it.
 - Issues carry a label taxonomy — `type:` (bug/feature/chore/docs) + `priority:`
-  (high/medium/low) + `area:` (routing/map/pwa/pipeline/deploy/ais/tooling) +
-  optional `status:` — and a milestone (`v0.4.0`/`v0.5.0`/`Backlog`/`Icebox`);
-  apply type+area+priority to every new issue. Taxonomy documented in
-  CONTRIBUTING.md (#167/#168). The taxonomy DRIFTED into space/no-space
+  (high/medium/low) + `area:` + optional `status:` — and a milestone
+  (`v0.4.0`/`v0.5.0`/`Backlog`/`Icebox`); apply type+area+priority to every new
+  issue. Taxonomy documented in CONTRIBUTING.md (#167/#168); its label
+  section is the authoritative copy of the `area:` member list, including the
+  deliberate bare-`area:` residual for user-facing copy / i18n / UI-structure
+  issues (#610, closed) — do NOT restate the member list here.
+  The taxonomy DRIFTED into space/no-space
   duplicates (found at the v0.9.0 cut) and was CLEANED UP 2026-08-19 (#401):
   every no-space-labelled issue was re-tagged onto the spaced form and all
   eight no-space label objects deleted. `gh issue create` still fails with
@@ -3957,12 +3980,7 @@ making design-level decisions; do not silently deviate.
   prevents recurrence via a future `gh label create`, so keep verifying with
   `gh label list --repo DocGerd/sail_command --limit 60 --json name --jq
   '.[].name'` before using a label name — but do NOT re-plan the cleanup as
-  outstanding. Separately, there is no `area:` member for user-facing copy,
-  i18n or UI component structure; several open issues carry none for that
-  reason, and forcing a wrong one is worse than leaving it bare. #610 records
-  the gap, but its body freezes a five-issue table whose members have ALL
-  since closed — derive the count from a live label query, never from that
-  frozen table and never from this sentence.
+  outstanding.
 - **MAINTAINER RULING 2026-09-07 — the assignee field means IN PROGRESS.**
   Assign an issue to `DocGerd` when work STARTS on it (`gh issue edit <n>
   --add-assignee DocGerd`); a filed, triaged or queued issue stays UNASSIGNED,
