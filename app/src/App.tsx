@@ -7,7 +7,7 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
-import { useLang, useT } from './i18n';
+import { useLang, useT, type Lang } from './i18n';
 import {
   AppStateProvider,
   useActivePlan,
@@ -236,6 +236,80 @@ const APP_TABPANEL_ID = 'app-panel-content';
 
 function appTabId(tab: Tab): string {
   return `app-tab-${tab}`;
+}
+
+// #939: dedupeViaPoints (state/replan.ts) compares via points by COORDINATE
+// ONLY and its `LatLon[]`-typed `kept` survivors are, at runtime, the SAME
+// object references as the input array (`kept.push(via)` pushes the input
+// element itself, never a clone) — so a reference-equality diff against the
+// original list recovers exactly which via points were discarded, with NO
+// change to dedupeViaPoints's signature or algorithm. Used ONLY for
+// disclosure (handlePlan below already runs the identical dedupeViaPoints
+// call for its `droppedCount` pre-check; this is a second, presentation-only
+// pass over the same inputs, just as that existing pre-check already
+// duplicates run()'s own internal dedupe).
+//
+// A dropped point WITH a non-empty, non-whitespace-only `name` renders that
+// name, quoted in the active language's own convention (dict.de.ts uses
+// „…“ elsewhere; dict.en.ts uses "…"). A dropped point with NO usable name
+// (absent, an empty string, OR whitespace-only — `.trim().length > 0` is what
+// makes all three the same case; a bare `.length > 0` would let a
+// whitespace-only name through and render as the exact blank-looking gap
+// this check exists to prevent) falls back to the SAME indexed
+// `planner.via.marker` label ViaMarkers.tsx already shows for an unnamed
+// marker, so "which point" always matches what the panel/map displays.
+// As of 2026-09-07, every producer of a via-point `name` checked forecloses
+// a whitespace-only value: PlannerPanel's rename UI trims (viaCoordName
+// above); a seamark-sourced name comes from `seamarkWaypointName()`
+// (lib/seamarkPopover.ts), which the pipeline never populates from an OSM
+// `name`/`ref` tag — it is always a translated TYPE label or `''`; and a
+// saved-waypoint's name is either that same seamark/rename-UI value or
+// SavedWaypoints.tsx's own `formatLatLon` coordinate fallback (never
+// whitespace) — db.ts's own comment records there is no
+// foreign/hand-edited-record case to defend for that store. GPX import
+// (lib/gpx.ts's `parseGpx`) never attaches a `.name` at all. So `.trim()`
+// defends a FUTURE producer, not a live one today — kept for the same
+// forward-looking reason the reference-equality comment below names its own
+// producers. `named` is true iff at least one dropped
+// point had a usable name — App.tsx's render picks the plain generic-count
+// banner copy when it's false (unchanged wording, no behaviour change for
+// the all-unnamed case) and the name-listing copy when it's true.
+// eslint-disable-next-line react-refresh/only-export-components
+export function droppedViaLabels(
+  origin: LatLon,
+  viaPoints: ViaPoint[],
+  destination: LatLon,
+  lang: Lang,
+  t: (key: MsgKey, vars?: Record<string, string | number>) => string,
+): { count: number; named: boolean; labels: string } {
+  // #939 MINOR 2: this diff assumes every via point in `viaPoints` is a
+  // DISTINCT object reference — `keptSet.has(via)` is a reference-equality
+  // lookup against dedupeViaPoints' own `kept` survivors (see this
+  // function's header comment for why that identity is preserved), so if
+  // the SAME via object appeared twice in `viaPoints`, both occurrences
+  // would read as "kept" (or both as "dropped") together: a genuinely
+  // dropped point could go unnamed because its duplicate-reference sibling
+  // survived, or vice versa. Checked against all FOUR of today's via-point
+  // producers (App.tsx's `handleAddViaByCoord`/`insertViaNearestOrAppend`/
+  // `handleUpdateViaByCoord`, and `lib/planViaPoints.ts`'s `planViaPoints`)
+  // and none constructs a duplicate reference within one array, so this is
+  // not live today — but it is unenforced and untested, and it is the
+  // mechanism the whole feature rests on. A future via-point producer must
+  // keep each entry its own object.
+  const { kept } = dedupeViaPoints(origin, viaPoints, destination);
+  const keptSet = new Set<LatLon>(kept);
+  let named = false;
+  const labels = viaPoints
+    .map((via, index) => ({ via, index }))
+    .filter(({ via }) => !keptSet.has(via))
+    .map(({ via, index }) => {
+      if (via.name && via.name.trim().length > 0) {
+        named = true;
+        return lang === 'de' ? `„${via.name.trim()}“` : `"${via.name.trim()}"`;
+      }
+      return t('planner.via.marker', { index: index + 1 });
+    });
+  return { count: labels.length, named, labels: labels.join(', ') };
 }
 
 function AppShell() {
@@ -499,13 +573,19 @@ function AppShell() {
   // fold (via `formDirty`) is the equivalent disclosure there.
   const [draftViaPoints, setDraftViaPoints] = useState<LatLon[]>([]);
   const viaPoints = draftViaPoints;
-  // MAJOR 4 (review, #571 redesign): count of vias the LAST Plan-route press
-  // dropped as coincident with a neighbor (dedupeViaPoints, ~60 m threshold)
-  // — set in handlePlan below, drives the banner near the other via-editing
-  // banners. Recomputed (never accumulated) on every press, including a
-  // press that drops nothing (resets to 0) — same one-shot-per-attempt
-  // semantics the pre-#571 viaReplan.state.droppedCount had.
-  const [droppedViaCount, setDroppedViaCount] = useState(0);
+  // MAJOR 4 (review, #571 redesign): the LAST Plan-route press's dropped-via
+  // disclosure (dedupeViaPoints, ~60 m threshold) — set in handlePlan below,
+  // drives the banner near the other via-editing banners. Recomputed (never
+  // accumulated) on every press, including a press that drops nothing
+  // (resets to `count: 0`) — same one-shot-per-attempt semantics the
+  // pre-#571 viaReplan.state.droppedCount had. #939 widened this from a bare
+  // count to `droppedViaLabels`'s full result, so the banner can name WHICH
+  // point(s) were dropped, not just how many.
+  const [droppedVia, setDroppedVia] = useState<{ count: number; named: boolean; labels: string }>({
+    count: 0,
+    named: false,
+    labels: '',
+  });
   // null = tap-to-pick disarmed; 'origin'/'destination'/'via' = MapView.tapActive
   // is armed for that target. Disarmed by: a tap resolving (handleMapTap),
   // a harbor-search pick filling the armed field (handlePickOrigin/
@@ -1036,7 +1116,7 @@ function AppShell() {
     // to compute what's about to be dropped (run() still performs its own
     // dedupe as the actual, authoritative enforcement; this is presentation
     // only and duplicating the check costs nothing since it's O(vias)).
-    setDroppedViaCount(dedupeViaPoints(origin.point, viaPoints, destination.point).droppedCount);
+    setDroppedVia(droppedViaLabels(origin.point, viaPoints, destination.point, lang, t));
     void run(
       {
         origin: origin.point,
@@ -1075,7 +1155,7 @@ function AppShell() {
       },
       `${origin.label} → ${destination.label}`,
     );
-  }, [origin, destination, departureMs, settings, run, viaPoints, boat]);
+  }, [origin, destination, departureMs, settings, run, viaPoints, boat, lang, t]);
 
   // #114: recalculate a saved plan with a FRESH forecast — seeds run() from
   // the plan's own stored request (origin/destination/vias/settings) with the
@@ -1561,20 +1641,32 @@ function AppShell() {
           </Banner>
         )}
         {/* MAJOR 4 (review, #571 redesign): the last Plan-route press silently
-            dropped a too-close via — see droppedViaCount's own comment above
+            dropped a too-close via — see droppedVia's own comment above
             handlePlan. Reuses the SAME banner.viaTooClose/.plural copy the
             pre-#571 viaReplan-driven banner used (never deleted — see
             dict.de.ts's/dict.en.ts's own note on those two keys), just
-            triggered from handlePlan's own pre-check instead of a replan. */}
-        {droppedViaCount > 0 && (
+            triggered from handlePlan's own pre-check instead of a replan.
+            #939: when at least one dropped point had a name, switches to the
+            `.named`/`.named.plural` pair instead, which names the point(s)
+            (droppedVia.labels) rather than only counting them — see
+            droppedViaLabels' own comment for what an unnamed point renders
+            as in that list. */}
+        {droppedVia.count > 0 && (
           <Banner
             kind="info"
-            onDismiss={() => setDroppedViaCount(0)}
+            onDismiss={() => setDroppedVia({ count: 0, named: false, labels: '' })}
             dismissLabel={t('banner.dismiss')}
           >
-            {t(droppedViaCount === 1 ? 'banner.viaTooClose' : 'banner.viaTooClose.plural', {
-              count: droppedViaCount,
-            })}
+            {droppedVia.named
+              ? t(
+                  droppedVia.count === 1
+                    ? 'banner.viaTooClose.named'
+                    : 'banner.viaTooClose.named.plural',
+                  { count: droppedVia.count, names: droppedVia.labels },
+                )
+              : t(droppedVia.count === 1 ? 'banner.viaTooClose' : 'banner.viaTooClose.plural', {
+                  count: droppedVia.count,
+                })}
           </Banner>
         )}
       </div>
