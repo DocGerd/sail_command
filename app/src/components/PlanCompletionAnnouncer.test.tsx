@@ -1,3 +1,16 @@
+// #983 TZ pin: this file hand-derives expected wall-clock strings (e.g.
+// "15/07/2026, 15:00") for a fixed UTC instant, so the assertion is only
+// deterministic if formatDateTime's ambient Date/Intl timezone is fixed to
+// Europe/Berlin regardless of the host/CI machine's own TZ — CI runs UTC,
+// a dev sandbox runs CEST (UTC+2), and the two disagree by exactly that
+// offset (reproduced: `TZ=UTC npm --prefix app run test -- PlanCompletionAnnouncer`
+// failed by exactly 2h before this pin was added). Same convention as
+// `app/src/lib/format.test.ts`, which documents why any top-level position
+// in this file is safe (module evaluation completes before any `it()` body
+// runs) and why the pin must never move inside a test body.
+// @ts-expect-error process is not typed in browser context
+process.env.TZ = 'Europe/Berlin';
+
 import { StrictMode } from 'react';
 import { render, cleanup } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
