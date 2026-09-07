@@ -134,6 +134,23 @@ export const de = {
   'planner.via.coord.latLabel': 'Breitengrad',
   'planner.via.coord.lonLabel': 'Längengrad',
   'planner.via.coord.nameLabel': 'Name',
+  // #886: N/S/E/W — deliberately NOT localised to "O" for Ost, so the
+  // letter matches lib/format.ts's formatLatLon output the via-list row
+  // above already shows for the same coordinate (e.g. "9.433°E"); showing
+  // "O" here and "E" there for the same point would read as two different
+  // conventions rather than one.
+  'planner.via.coord.hemisphereHint': 'Hemisphäre: {hemi}',
+  // #886: add-vs-edit clarity — the issue's own suggested wording.
+  'planner.via.coord.modeAdd': 'Neuer Wegpunkt',
+  'planner.via.coord.modeUpdate': 'Wegpunkt {index} bearbeiten',
+  // #886: explicit way out of update mode. Deliberately NOT a bare
+  // "Abbrechen" reused verbatim — that plain word already exists elsewhere
+  // in this dict (plansList.recalc.cancel, banner.tapPick.cancel,
+  // departureScan.cancel) as its own full accessible name, and every
+  // existing getByRole query for it already passes exact:true for that
+  // reason; this string is a substring superset ("...abbrechen"), not an
+  // exact match, so it does not collide with those queries.
+  'planner.via.coord.cancelEdit': 'Bearbeitung abbrechen',
   'planner.via.coord.add': 'Koordinaten hinzufügen',
   'planner.via.coord.update': 'Koordinaten aktualisieren',
   'planner.via.coord.edit': 'Koordinaten bearbeiten (Punkt {index}): {coord}',
@@ -810,9 +827,6 @@ export const de = {
   'plansList.recalc.offline':
     'Neuberechnung nur online möglich — es wird eine frische Windvorhersage geladen.',
   'plansList.recalcName': '{name} (neu berechnet)',
-  // #961: siehe die englische Fassung in dict.en.ts für die Begründung.
-  'plansList.recalcAnnounce':
-    'Route neu berechnet — Ankunft {arrival}, Dauer {duration}, {distance}.',
   // #848: siehe dict.en.ts für den Kontext (SavedWaypoints.tsx, nur im
   // Panel — Designspezifikation §2.7, in dieser Version noch keine
   // Kartenebene).

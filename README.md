@@ -138,8 +138,7 @@ npm --prefix app/ run build                      # production build to app/dist
 ```
 
 `npm run test` runs the full unit/property battery (polar interpolation,
-isochrone routing, mask queries, persistence, UI) — 2352 tests across 151
-files as of `369ccbb` (2026-08-31).
+isochrone routing, mask queries, persistence, UI).
 `npm run e2e` builds the app and drives it with Playwright, including a
 true offline reload against a killed preview server.
 
