@@ -691,7 +691,7 @@ jobs:
       # just the mechanism.
       - id: deployment
         continue-on-error: true
-        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
       # Keep a rescued run VISIBLE rather than letting the retry silently
       # mask how often the upstream defect fires — a mitigation that hides
       # its own trigger rate is a defect in this repo's terms.
@@ -710,7 +710,7 @@ jobs:
         run: sleep 60
       - id: deployment-retry
         if: steps.deployment.outcome == 'failure'
-        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
   uat-environment:
     needs: deploy
     runs-on: ubuntu-latest
