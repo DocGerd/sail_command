@@ -5,6 +5,7 @@ import { I18nProvider } from '../i18n';
 import SettingsPanel from './SettingsPanel';
 import { DEFAULT_BOAT_ID } from '../data/boats';
 import { __resetDbForTests, listPlans, listWaypoints, type SavedWaypoint } from '../services/db';
+import * as db from '../services/db';
 import { buildExportEnvelope, exportEnvelopeToJson } from '../lib/planExport';
 import {
   DEFAULT_SETTINGS,
@@ -610,13 +611,17 @@ function makeTestPlan(id: string): Plan {
       sailIds: ['genoa', 'fock'],
       boat: defaultBoatSnapshot(),
     },
+    // #1068 review MAJOR: sized to satisfy WindField's dimension invariant
+    // exactly (1 lat * 1 lon * 2 times = 2) — see planExport.test.ts's
+    // matching comment for why this matters now that decodeWindGrid
+    // enforces it.
     windGrid: {
-      lats: [54.0, 55.0],
-      lons: [9.0, 10.0],
+      lats: [54.0],
+      lons: [9.0],
       timesMs: [1000, 2000],
-      speedKn: new Float32Array([5.1, 6.2, 7.3, 8.4]),
-      dirFromDeg: new Float32Array([90, 95, 100, 105]),
-      gustKn: new Float32Array([7.1, 8.2, 9.3, 10.4]),
+      speedKn: new Float32Array([5.1, 6.2]),
+      dirFromDeg: new Float32Array([90, 95]),
+      gustKn: new Float32Array([7.1, 8.2]),
       fetchedAtMs: 1700000000000,
       model: 'open-meteo',
     },
@@ -742,5 +747,71 @@ describe('SettingsPanel (#849 local import/export)', () => {
     ).toBeInTheDocument();
     expect(await listPlans()).toHaveLength(0);
     expect(await listWaypoints()).toHaveLength(0);
+  });
+
+  // #1068 review MINOR 1: an out-of-range imported settings value must be
+  // CLAMPED to the same FieldSpec bounds manual entry enforces, not applied
+  // verbatim and not used to reject the whole file.
+  it('clamps out-of-range imported settings to the same bounds manual entry enforces', async () => {
+    const outOfRange: Settings = {
+      ...DEFAULT_SETTINGS,
+      performanceFactor: -50, // PERFORMANCE_FACTOR_FIELD: 0.5-1.1
+      motorSpeedKn: 999, // MOTOR_SPEED_FIELD: 1-10
+      safetyDepthM: 0.1, // below any boat's minimum (default boat: 2.2)
+    };
+    const envelope = buildExportEnvelope([], outOfRange, []);
+    const onChange = renderPanel();
+
+    const file = new File([exportEnvelopeToJson(envelope)], 'settings.json', {
+      type: 'application/json',
+    });
+    await act(async () => {
+      fireEvent.change(getFileInput(), { target: { files: [file] } });
+    });
+
+    await screen.findByText((content) => content.startsWith('0 route(s) and 0 waypoint(s)'));
+    expect(onChange).toHaveBeenCalledTimes(1);
+    const applied = onChange.mock.calls[0][0] as Settings;
+    expect(applied.performanceFactor).toBe(0.5); // -50 is below the min, clamps UP to min
+    expect(applied.motorSpeedKn).toBe(10);
+    expect(applied.safetyDepthM).toBe(2.2);
+    // A field that WAS in range must not be touched by clamping.
+    expect(applied.maneuverPenaltyS).toBe(outOfRange.maneuverPenaltyS);
+  });
+
+  // #1068 review MINOR 2: plans and waypoints must be written INDEPENDENTLY —
+  // a failing plan write must neither block nor be masked by an unrelated,
+  // otherwise-healthy waypoint import, and the partial failure must be
+  // legible to the user (not silently swallowed).
+  it('a failing plan write does not block an unrelated waypoint import, and is reported', async () => {
+    const planA = makeTestPlan('plan-a');
+    const planB = makeTestPlan('plan-b');
+    const envelope = buildExportEnvelope([planA, planB], null, [TEST_WAYPOINT]);
+    // Rejects only the FIRST savePlan call (plan-a, in map order); plan-b's
+    // call falls through to the real fake-indexeddb implementation.
+    vi.spyOn(db, 'savePlan').mockRejectedValueOnce(new Error('quota exceeded'));
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    renderPanel();
+    const file = new File([exportEnvelopeToJson(envelope)], 'x.json', {
+      type: 'application/json',
+    });
+    await act(async () => {
+      fireEvent.change(getFileInput(), { target: { files: [file] } });
+    });
+
+    const notice = await screen.findByText((content) =>
+      content.startsWith('1 route(s) and 1 waypoint(s) imported.'),
+    );
+    // The waypoint import SUCCEEDED (and is reported as such) despite the
+    // plan write failing — this is the independence the fix is about.
+    expect(notice).toHaveTextContent('1 parsed route(s) could not be saved to this device.');
+
+    const plans = await listPlans();
+    expect(plans.filter((p) => p.kind === 'ok').map((p) => p.id)).toEqual(['plan-b']);
+    const waypoints = await listWaypoints();
+    expect(waypoints).toEqual([TEST_WAYPOINT]);
+
+    consoleErrorSpy.mockRestore();
   });
 });

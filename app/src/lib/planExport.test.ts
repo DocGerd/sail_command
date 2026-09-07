@@ -39,16 +39,23 @@ function makeTestPlan(id = 'test-plan-1'): Plan {
       sailIds: ['genoa', 'fock'],
       boat: defaultBoatSnapshot(),
     },
+    // #1068 review MAJOR: sized to satisfy `lib/wind.ts`'s `WindField`
+    // dimension invariant EXACTLY —
+    // `speedKn.length === timesMs.length * lats.length * lons.length`
+    // (here 3 * 1 * 1 = 3) — this fixture's own previous shape (9-element
+    // arrays against a 3x3x3=27 grid) never actually satisfied that
+    // invariant, which `decodeWindGrid` now enforces and this test relies on
+    // NOT reddening.
     windGrid: {
-      lats: [54.0, 54.5, 55.0],
-      lons: [9.0, 9.5, 10.0],
+      lats: [54.0],
+      lons: [9.0],
       timesMs: [1000, 2000, 3000],
       // Deliberately three DIFFERENT value sets so a field-swap mutation
       // (e.g. gustKn <-> dirFromDeg) is observable rather than accidentally
       // symmetric.
-      speedKn: new Float32Array([5.1, 6.2, 7.3, 8.4, 9.5, 10.6, 11.7, 12.8, 13.9]),
-      dirFromDeg: new Float32Array([90, 95, 100, 105, 110, 115, 120, 125, 130]),
-      gustKn: new Float32Array([7.1, 8.2, 9.3, 10.4, 11.5, 12.6, 13.7, 14.8, 15.9]),
+      speedKn: new Float32Array([5.1, 6.2, 7.3]),
+      dirFromDeg: new Float32Array([90, 95, 100]),
+      gustKn: new Float32Array([7.1, 8.2, 9.3]),
       fetchedAtMs: 1626340800000,
       model: 'open-meteo',
     },
@@ -220,6 +227,79 @@ describe('parseExportFile: per-item corruption is isolated, not fatal', () => {
     expect(result.invalidPlanCount).toBe(1);
     expect(result.plans).toHaveLength(1);
     expect(result.plans[0].id).toBe('good-2');
+  });
+
+  // #1068 review MAJOR, reproduced exactly as the reviewer constructed it:
+  // truncate ONLY `lats`, leaving the base64-encoded speedKn/dirFromDeg/
+  // gustKn at their ORIGINAL (now too-long) length. Before the fix this
+  // plan was accepted (invalidPlanCount stayed 0) and would have been
+  // persisted, crashing the first `new WindField(...)` call downstream —
+  // see decodeWindGrid's own comment for the full mechanism.
+  it('skips a plan whose windGrid lats is truncated relative to its wind arrays (#1068 Major)', () => {
+    const good = buildExportEnvelope([makeTestPlan('good-3')], null, []).plans[0];
+    const truncated = {
+      ...good,
+      windGrid: { ...good.windGrid, lats: good.windGrid.lats.slice(0, 0) },
+    };
+    const envelope = {
+      schemaVersion: EXPORT_SCHEMA_VERSION,
+      exportedAtMs: Date.now(),
+      plans: [good, truncated],
+      settings: null,
+      waypoints: [],
+    };
+    const result = parseExportFile(JSON.stringify(envelope));
+    expect(result.invalidPlanCount).toBe(1);
+    expect(result.plans).toHaveLength(1);
+    expect(result.plans[0].id).toBe('good-3');
+  });
+
+  // A NON-empty but still WRONG-length lats — the dimension check must fire
+  // on a mismatch in either direction, not only on the empty-array case
+  // above (which the isNumberArray-vacuity fix below could otherwise be
+  // mistaken for covering on its own).
+  it('skips a plan whose windGrid lats has the wrong (non-zero) length for its wind arrays', () => {
+    const good = buildExportEnvelope([makeTestPlan('good-4')], null, []).plans[0];
+    const wrongLength = {
+      ...good,
+      windGrid: { ...good.windGrid, lats: [54.0, 54.1] }, // 2 lats, but timesMs still 3 -> expected 6, arrays stay length 3
+    };
+    const envelope = {
+      schemaVersion: EXPORT_SCHEMA_VERSION,
+      exportedAtMs: Date.now(),
+      plans: [good, wrongLength],
+      settings: null,
+      waypoints: [],
+    };
+    const result = parseExportFile(JSON.stringify(envelope));
+    expect(result.invalidPlanCount).toBe(1);
+    expect(result.plans).toHaveLength(1);
+    expect(result.plans[0].id).toBe('good-4');
+  });
+
+  // `[].every(...)` is vacuously true (the CLAUDE.md-documented `[]`-defeats-
+  // truthiness class) — an empty `timesMs` must not slip past isNumberArray
+  // and then produce `expected = 0`, which a same-length-0 wind array could
+  // satisfy trivially. Chosen to differ from the truncated-lats case above:
+  // here EVERY axis-derived length agrees (0), so only the explicit
+  // non-empty check — not the dimension-mismatch check — can catch it.
+  it('skips a plan whose windGrid has an empty timesMs axis', () => {
+    const good = buildExportEnvelope([makeTestPlan('good-5')], null, []).plans[0];
+    const emptyAxis = {
+      ...good,
+      windGrid: { ...good.windGrid, timesMs: [], speedKn: '', dirFromDeg: '', gustKn: '' },
+    };
+    const envelope = {
+      schemaVersion: EXPORT_SCHEMA_VERSION,
+      exportedAtMs: Date.now(),
+      plans: [good, emptyAxis],
+      settings: null,
+      waypoints: [],
+    };
+    const result = parseExportFile(JSON.stringify(envelope));
+    expect(result.invalidPlanCount).toBe(1);
+    expect(result.plans).toHaveLength(1);
+    expect(result.plans[0].id).toBe('good-5');
   });
 
   it('skips a waypoint missing a required field and counts it, keeping the others', () => {

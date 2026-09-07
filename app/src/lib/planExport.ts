@@ -47,8 +47,17 @@ function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null && !Array.isArray(x);
 }
 
+// `[].every(...)` is VACUOUSLY TRUE (CLAUDE.md's documented `[]`-defeats-
+// truthiness class) — an empty `lats`/`lons`/`timesMs` axis would otherwise
+// pass this check silently, so `nonEmpty` guards it as a SEPARATE, explicit
+// step rather than folding a length check into the predicate (which would
+// re-hide the same failure mode one call site later).
 function isNumberArray(x: unknown): x is number[] {
   return Array.isArray(x) && x.every((v) => typeof v === 'number');
+}
+
+function nonEmpty(x: number[]): boolean {
+  return x.length > 0;
 }
 
 // base64-encodes a Float32Array's raw bytes. Chunked `String.fromCharCode`
@@ -108,21 +117,54 @@ function encodeWindGrid(grid: WindGrid): ExportedWindGrid {
 // base64 — an imported file is untrusted input, and one damaged plan must
 // not abort the whole import (mirrors services/db.ts's own "one corrupt
 // record must not blank the list" philosophy for listPlans).
+//
+// MAJOR (review round 1, both reviewers independently): this function must
+// enforce the EXACT dimension invariant `lib/wind.ts`'s `WindField`
+// constructor enforces by THROWING —
+// `speedKn.length === timesMs.length * lats.length * lons.length` (ditto
+// dirFromDeg/gustKn) — before this file's own trust boundary, not after.
+// `migratePlan`'s windGrid pass-through is deliberately UNVALIDATED, and
+// correctly so: it trusts a structured-clone-native IndexedDB record this
+// app itself wrote. That trust does NOT transfer here — an import feeds
+// this function a windGrid reconstructed from arbitrary JSON, so a
+// dimension mismatch (e.g. a truncated `lats` left beside an un-truncated
+// `speedKn`) must be caught HERE, as a decode failure (null, counted by
+// the caller), rather than surviving into a persisted plan that later
+// crashes `new WindField(...)` uncaught inside a `useMemo`
+// (`DepthProfile.tsx`, `DepartureCompare.tsx`, `lib/routeGeoJson.ts`) —
+// `app/src` has no ErrorBoundary, so that takes the whole React root down,
+// not just the one plan.
 function decodeWindGrid(raw: unknown): WindGrid | null {
   if (!isRecord(raw)) return null;
   const { lats, lons, timesMs, speedKn, dirFromDeg, gustKn, fetchedAtMs, model } = raw;
   if (!isNumberArray(lats) || !isNumberArray(lons) || !isNumberArray(timesMs)) return null;
+  // `[]`-defeats-`.every()`: an empty axis passes isNumberArray vacuously.
+  if (!nonEmpty(lats) || !nonEmpty(lons) || !nonEmpty(timesMs)) return null;
   if (typeof speedKn !== 'string' || typeof dirFromDeg !== 'string' || typeof gustKn !== 'string')
     return null;
   if (typeof fetchedAtMs !== 'number' || typeof model !== 'string') return null;
   try {
+    const decodedSpeedKn = base64ToFloat32(speedKn);
+    const decodedDirFromDeg = base64ToFloat32(dirFromDeg);
+    const decodedGustKn = base64ToFloat32(gustKn);
+    // The exact check WindField's own constructor performs (wind.ts) —
+    // duplicated deliberately rather than imported, so this decoder can
+    // reject a bad grid BEFORE it is ever handed to WindField, at the
+    // point where rejection means "skip this plan" rather than "crash".
+    const expected = timesMs.length * lats.length * lons.length;
+    if (
+      decodedSpeedKn.length !== expected ||
+      decodedDirFromDeg.length !== expected ||
+      decodedGustKn.length !== expected
+    )
+      return null;
     return {
       lats,
       lons,
       timesMs,
-      speedKn: base64ToFloat32(speedKn),
-      dirFromDeg: base64ToFloat32(dirFromDeg),
-      gustKn: base64ToFloat32(gustKn),
+      speedKn: decodedSpeedKn,
+      dirFromDeg: decodedDirFromDeg,
+      gustKn: decodedGustKn,
       fetchedAtMs,
       model,
     };

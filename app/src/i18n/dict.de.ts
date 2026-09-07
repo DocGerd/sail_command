@@ -120,6 +120,12 @@ export const de = {
     'Diese Datei wurde mit einer neueren Version von SailCommand exportiert und kann von dieser Version nicht gelesen werden.',
   'settings.backup.import.error.failed': 'Die Datei konnte nicht gelesen werden.',
   'settings.backup.export.error.failed': 'Die Exportdatei konnte nicht erstellt werden.',
+  // #1068 review Minor: plans/waypoints now write independently, so a
+  // partial write failure needs its own, separate notice.
+  'settings.backup.import.plansWriteFailed':
+    '{count} eingelesene Route(n) konnten nicht auf diesem Gerät gespeichert werden.',
+  'settings.backup.import.waypointsWriteFailed':
+    '{count} eingelesene Wegpunkt(e) konnten nicht auf diesem Gerät gespeichert werden.',
   'planner.card.trip': 'Reise',
   'planner.card.result': 'Ergebnis',
   'planner.origin.label': 'Start',

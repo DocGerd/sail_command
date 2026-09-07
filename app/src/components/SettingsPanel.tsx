@@ -9,6 +9,7 @@ import {
   exportFileName,
   parseExportFile,
   ImportParseError,
+  type ImportResult,
 } from '../lib/planExport';
 import { notifySavedWaypointsChanged } from '../lib/useSavedWaypoints';
 import {
@@ -151,6 +152,38 @@ function NumericField({ spec, value, onChange, help }: NumericFieldProps) {
   );
 }
 
+function clampToFieldSpec(v: number, spec: FieldSpec): number {
+  return Math.min(spec.max, Math.max(spec.min, v));
+}
+
+// #1068 review MINOR — a decision, not a default: an imported settings
+// object passes planExport.ts's `isSettingsLike` on TYPE and FINITENESS
+// alone (it has no `boat` in scope to derive a per-boat safety-depth
+// bound from, so it cannot enforce range), which lets an out-of-range
+// value (e.g. `performanceFactor: -50`) reach `onChange` unclamped and
+// then get snapshotted byte-for-byte into every future `PlanRequest`.
+// CHOSEN: clamp, not reject the whole file — an out-of-range NUMBER is not
+// evidence the rest of the file (or even the rest of this settings object)
+// is corrupt, and clamping is exactly what manual entry already does via
+// `NumberInput`/`commitSetting` for the same fields, so an imported value
+// gets the identical treatment a typed one would. Bounds are the SAME
+// `FieldSpec` objects this panel's own numeric fields render against
+// (including `safetyDepthField`, which is per-BOAT — computed from the
+// currently selected boat, not a hand-picked universal minimum), so the
+// two can never drift apart.
+function clampSettingsToBounds(s: Settings, safetyDepthField: FieldSpec): Settings {
+  return {
+    ...s,
+    safetyDepthM: clampToFieldSpec(s.safetyDepthM, safetyDepthField),
+    depthComfortMarginM: clampToFieldSpec(s.depthComfortMarginM, DEPTH_COMFORT_MARGIN_FIELD),
+    motorSpeedKn: clampToFieldSpec(s.motorSpeedKn, MOTOR_SPEED_FIELD),
+    motorThresholdKn: clampToFieldSpec(s.motorThresholdKn, MOTOR_THRESHOLD_FIELD),
+    sailPreferenceKn: clampToFieldSpec(s.sailPreferenceKn, SAIL_PREFERENCE_FIELD),
+    maneuverPenaltyS: clampToFieldSpec(s.maneuverPenaltyS, MANEUVER_PENALTY_FIELD),
+    performanceFactor: clampToFieldSpec(s.performanceFactor, PERFORMANCE_FACTOR_FIELD),
+  };
+}
+
 export default function SettingsPanel({
   value,
   onChange,
@@ -209,35 +242,10 @@ export default function SettingsPanel({
     if (!file) return;
     setBackupError(null);
     setBackupNotice(null);
-    try {
-      const result = parseExportFile(await file.text());
-      // Every write is an UPSERT (put, keyed by id) — re-importing the same
-      // file twice is idempotent, and a plan/waypoint id colliding with one
-      // already on this device overwrites it rather than duplicating it.
-      await Promise.all(result.plans.map((p) => savePlan(p)));
-      await Promise.all(result.waypoints.map((w) => saveWaypoint(w)));
-      // Only announced when something actually changed — mirrors
-      // useSavedWaypoints.ts's own "safe to call with no subscribers" note,
-      // but there is no reason to fire it on a zero-waypoint import.
-      if (result.waypoints.length > 0) notifySavedWaypointsChanged();
-      // Settings REPLACE the current record (there is only one), unlike
-      // plans/waypoints which only ever ADD — the description text says so.
-      if (result.settings !== null) onChange(result.settings);
 
-      const notices = [
-        t('settings.backup.import.success', {
-          plans: result.plans.length,
-          waypoints: result.waypoints.length,
-        }),
-      ];
-      if (result.settings !== null) notices.push(t('settings.backup.import.settingsApplied'));
-      if (result.invalidPlanCount > 0)
-        notices.push(t('settings.backup.import.skippedPlans', { count: result.invalidPlanCount }));
-      if (result.invalidWaypointCount > 0)
-        notices.push(
-          t('settings.backup.import.skippedWaypoints', { count: result.invalidWaypointCount }),
-        );
-      setBackupNotice(notices.join(' '));
+    let result: ImportResult;
+    try {
+      result = parseExportFile(await file.text());
     } catch (err) {
       if (err instanceof ImportParseError) {
         const key: Record<ImportParseError['reason'], MsgKey> = {
@@ -250,7 +258,65 @@ export default function SettingsPanel({
         console.error('SettingsPanel: import failed', err);
         setBackupError(t('settings.backup.import.error.failed'));
       }
+      return;
     }
+
+    // #1068 review MINOR — plans and waypoints are written INDEPENDENTLY,
+    // each category's writes running CONCURRENTLY via its own
+    // `Promise.allSettled` (previously: one `Promise.all` per category,
+    // plans awaited fully before waypoints even started, both inside one
+    // try/catch — so one failing plan write left the plans store
+    // half-populated AND blocked an otherwise-unrelated waypoint import
+    // entirely, and the user saw only a generic failure). A write is an
+    // UPSERT (put, keyed by id), so a partial retry is never destructive —
+    // re-importing the same file again re-attempts exactly the rows that
+    // did not land, without duplicating the ones that did.
+    const [planOutcomes, waypointOutcomes] = await Promise.all([
+      Promise.allSettled(result.plans.map((p) => savePlan(p))),
+      Promise.allSettled(result.waypoints.map((w) => saveWaypoint(w))),
+    ]);
+    const plansSaved = planOutcomes.filter((r) => r.status === 'fulfilled').length;
+    const plansFailedToSave = planOutcomes.length - plansSaved;
+    const waypointsSaved = waypointOutcomes.filter((r) => r.status === 'fulfilled').length;
+    const waypointsFailedToSave = waypointOutcomes.length - waypointsSaved;
+    for (const outcome of planOutcomes)
+      if (outcome.status === 'rejected')
+        console.error('SettingsPanel: plan import write failed', outcome.reason);
+    for (const outcome of waypointOutcomes)
+      if (outcome.status === 'rejected')
+        console.error('SettingsPanel: waypoint import write failed', outcome.reason);
+
+    // Only announced when something actually changed — mirrors
+    // useSavedWaypoints.ts's own "safe to call with no subscribers" note,
+    // but there is no reason to fire it on a zero-waypoint import.
+    if (waypointsSaved > 0) notifySavedWaypointsChanged();
+    // Settings REPLACE the current record (there is only one), unlike
+    // plans/waypoints which only ever ADD — the description text says so.
+    // Clamped to the SAME FieldSpec bounds manual entry enforces (#1068
+    // review MINOR — see clampSettingsToBounds's own comment for why
+    // clamping, not rejection, was chosen).
+    if (result.settings !== null)
+      onChange(clampSettingsToBounds(result.settings, safetyDepthField));
+
+    const notices = [
+      // Reports what was actually SAVED, not merely parsed — the two can
+      // now differ (a write failure) where they could not before.
+      t('settings.backup.import.success', { plans: plansSaved, waypoints: waypointsSaved }),
+    ];
+    if (result.settings !== null) notices.push(t('settings.backup.import.settingsApplied'));
+    if (result.invalidPlanCount > 0)
+      notices.push(t('settings.backup.import.skippedPlans', { count: result.invalidPlanCount }));
+    if (result.invalidWaypointCount > 0)
+      notices.push(
+        t('settings.backup.import.skippedWaypoints', { count: result.invalidWaypointCount }),
+      );
+    if (plansFailedToSave > 0)
+      notices.push(t('settings.backup.import.plansWriteFailed', { count: plansFailedToSave }));
+    if (waypointsFailedToSave > 0)
+      notices.push(
+        t('settings.backup.import.waypointsWriteFailed', { count: waypointsFailedToSave }),
+      );
+    setBackupNotice(notices.join(' '));
   };
 
   // #353 PR2: seamark symbol size + display category are map CHROME, not a
