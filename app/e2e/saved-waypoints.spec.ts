@@ -16,11 +16,13 @@ import { startPreview, mapReady } from './helpers';
 // rather than the whole argument (SavedWaypointsLayer.tsx's own header
 // carries the full version): the marker is a CIRCLE layer, which takes no
 // part in MapLibre's symbol collision index at all, and the one symbol layer
-// — the name label — sets `text-ignore-placement: true`, so no box of its
-// enters that index either. Every other family's placement is therefore
-// unchanged BY CONSTRUCTION. This spec exists because "by construction" is
-// an argument about code, and #378's defect was equally invisible in the
-// code that caused it.
+// — the name label — enters that index (`text-ignore-placement: false`, so
+// its labels de-conflict with EACH OTHER) but cannot evict anyone, because
+// these are the LOWEST symbol layers in the style and MapLibre places
+// TOP-TO-BOTTOM: every other family is placed BEFORE them. Every other
+// family's placement is therefore unchanged BY CONSTRUCTION. This spec
+// exists because "by construction" is an argument about code, and #378's
+// defect was equally invisible in the code that caused it.
 //
 // METHOD, and each choice's reason:
 //
@@ -68,22 +70,28 @@ import { startPreview, mapReady } from './helpers';
 // otherwise read as wider than it is, and the first item was MEASURED here,
 // not reasoned about:
 //
-// 1. It cannot detect `text-ignore-placement` being flipped to `false` ON
-//    ITS OWN. That mutation was run: every count above is byte-identical and
-//    both tests still pass. The reason is the OTHER half of the design —
-//    MapLibre places TOP-TO-BOTTOM (`PauseablePlacement` starts at
-//    `order.length - 1` and walks down), so these layers, sitting BELOW
-//    every harbour and seamark layer, are placed LAST and can only lose a
-//    collision, never win one. The stack position is therefore a SECOND,
-//    INDEPENDENT protection, not a cosmetic choice.
-// 2. It DOES detect the realistic composite regression — someone raises the
-//    layer above the marker stack and forgets the knob. Dropping the
-//    `beforeId` (so both layers append topmost, and are placed FIRST) with
-//    `text-ignore-placement: false` culls `sc-seamarks` from 6 to 4 at
-//    z11.5 — two navigation marks silently deleted, the #191/#192 signature
-//    — and reds this test. So the guard has teeth against the failure that
-//    can actually reach production, and the two mutations together show
-//    which of the two protections each half of the design provides.
+// 1. It cannot detect `text-ignore-placement` being flipped to `true` — the
+//    value that would stop the layer's own labels de-conflicting and let
+//    several waypoints saved in one anchorage overprint. MEASURED in this
+//    box with the knob flipped at runtime: with seamarks ON (this spec's
+//    own state) every count above is byte-identical, waypoint labels
+//    included (3 at z11.5, 6 at z13, both values), because the seamark
+//    boxes already cull our labels before they can collide with each other.
+//    The discriminating configuration is the app's DEFAULT one, seamarks
+//    OFF: there the flip takes our labels from 6 to 9 of 9 rings at z11.5 —
+//    all nine placed on top of one another — while `sc-harbor-labels` 1 and
+//    `sc-harbor-points` 1 do not move either way. So this spec's arm cannot
+//    see the label-legibility half of that knob at all; the unit pin in
+//    SavedWaypointsLayer.test.tsx is what holds the value.
+// 2. It DOES detect the stack regression, and since the knob no longer
+//    suppresses our own boxes the stack position is now the SOLE protection
+//    for every other family. MEASURED by moving both layers to the top of
+//    the style at runtime, everything else unchanged: `sc-seamarks` falls
+//    from 6 to 4 at z11.5 — two navigation marks silently deleted, the
+//    #191/#192 signature — while our own labels rise 3 to 6, and the with/
+//    without comparison this test makes reds on it. At z13 the same move
+//    leaves 42 and 42, which is the expected `icon-overlap: 'always'`
+//    reading and the reason the z11.5 arm is the one carrying this.
 // 3. `sc-harbor-labels` renders 0 in this box in BOTH arms at BOTH zooms, so
 //    it contributes nothing here despite being the family whose culling
 //    regime (`text-allow-overlap: false`) most resembles #378's victims. The
@@ -457,7 +465,7 @@ async function waypointIdsAtPoint(page: Page, point: { x: number; y: number }): 
   );
 }
 
-test('#924: a via-armed tap on a saved waypoint inserts it BY NAME, and a disarmed tap at the same pixel inserts nothing', async ({
+test('#924: a via-armed tap on a saved waypoint inserts it BY NAME; a disarmed tap inserts nothing and an origin-armed tap falls through to the raw coordinate', async ({
   page,
 }) => {
   const server = await startPreview(page);
@@ -524,15 +532,6 @@ test('#924: a via-armed tap on a saved waypoint inserts it BY NAME, and a disarm
       viaSection.getByText(target.name),
       'the via row does not show the saved waypoint name — a raw-coordinate tap would also add a row',
     ).toHaveCount(1);
-    // EXACTLY ONE row - a cheap defence in depth against a double insert
-    // (the named pick AND a raw coordinate), NOT a proven guard on the yield.
-    // Stated from measurement rather than reasoning: the obvious mutation for
-    // that link - App.tsx arming `interactiveLayerIds` on 'origin' instead of
-    // 'via', so SAVED_WAYPOINT_LAYER is absent from the list exactly when the
-    // via pick is armed - was built and run against this test and it PASSED,
-    // both assertions included. So the `interactiveLayerIds` link of the
-    // chain is UNMEASURED here; read a green run as evidence about the
-    // layer's own click path, not about that gate.
     await expect(
       viaSection.locator('.planner-via-row'),
       'more than one via row - something inserted a second point for this tap',
@@ -540,6 +539,39 @@ test('#924: a via-armed tap on a saved waypoint inserts it BY NAME, and a disarm
     // And the pick disarms itself, like every other one-shot map pick.
     await expect(tapPickBanner).not.toBeVisible();
     await expect(armButton).toHaveAttribute('aria-pressed', 'false');
+
+    // THE ORIGIN ARM. App.tsx puts SAVED_WAYPOINT_LAYER into MapView's
+    // `interactiveLayerIds` only while the VIA pick is armed, so an
+    // origin-armed tap on a ring must fall through to the generic
+    // raw-coordinate pick — the promise App.tsx's own comment makes ("no
+    // dead zone is created for the other two armings"). Arming
+    // `interactiveLayerIds` on the wrong target instead makes MapView bail
+    // on the ring hit: origin never moves and the pick stays armed. Nothing
+    // in the via arm above can see that, because there the bail and the
+    // delegated pick produce the same visible result.
+    const startSection = page.getByRole('region', { name: 'Start' });
+    // `exact` again: 'Auf Karte wählen abbrechen' contains the plain label.
+    const originArmButton = startSection.getByRole('button', {
+      name: 'Auf Karte wählen',
+      exact: true,
+    });
+    await expect(startSection.locator('.endpoint-name')).toHaveCount(0);
+    await originArmButton.click();
+
+    point = await pagePointOf(page, [target.lon, target.lat]);
+    await expect
+      .poll(() => waypointIdsAtPoint(page, point), {
+        timeout: 30_000,
+        message: `after arming origin, no sc-saved-waypoints feature at the projected pixel for ${target.id}`,
+      })
+      .toContain(target.id);
+    await page.mouse.click(point.x, point.y);
+
+    await expect(
+      startSection.locator('.endpoint-name'),
+      'origin did not move — the tap was swallowed instead of falling through to the raw-coordinate pick',
+    ).toHaveText(/\d+\.\d{3}°N \d+\.\d{3}°E/);
+    await expect(originArmButton).toHaveAttribute('aria-pressed', 'false');
   } finally {
     server.kill();
   }

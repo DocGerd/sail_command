@@ -205,35 +205,30 @@ function setupLayers(map: MaplibreMap): void {
         'text-offset': [0, 0.8],
         // THE COLLISION POLICY, and the whole of this feature's collision
         // budget (the ring layer above takes no part in the index at all).
-        // The two knobs are independent and are set to OPPOSITE values on
-        // purpose — #378's defect was a layer that had one without the
-        // other:
-        //   text-allow-overlap: false  -> I yield. A waypoint label that
+        // BOTH knobs are false, which is two separate statements:
+        //   text-allow-overlap: false -> I yield. A waypoint label that
         //     collides with anything already placed is culled.
-        //   text-ignore-placement: true -> I block nobody. No box of mine
-        //     enters the shared collision index, so no harbour label,
-        //     seamark glyph, ETA/speed annotation or AIS label can be culled
-        //     by the mere existence of this layer.
-        // Together they make the layer strictly non-invasive: every other
-        // family's placement is unchanged BY CONSTRUCTION, not merely by
-        // measurement. TWO INDEPENDENT protections deliver that, and it
-        // matters which one any given measurement is reading: this knob, and
-        // the stack position (these layers sit BELOW every harbour and
-        // seamark layer, and MapLibre places TOP-TO-BOTTOM, so they are
-        // placed LAST and can only lose a collision). app/e2e/
-        // saved-waypoints.spec.ts confirms the OUTCOME on both sides of the
-        // z12 icon-overlap threshold, but its header's items 1-2 record that
-        // it cannot ATTRIBUTE that outcome to this knob: flipping
-        // text-ignore-placement alone leaves every measured count
-        // byte-identical, because the stack position already suffices. What
-        // the spec does catch is the composite regression — raised topmost
-        // AND the knob wrong. Note the same non-invasiveness means the layer
-        // cannot be detected by its effect on others, which is why that spec
-        // asserts a positive control (THIS layer returns features inside the
-        // measured box) before reading any other family's count — otherwise
-        // "unchanged" is the answer an empty layer would also give.
+        //   text-ignore-placement: false -> my boxes DO enter the shared
+        //     collision index, so my labels de-conflict with EACH OTHER.
+        //     `true` here would route every box to collision_index.ts's
+        //     `ignoredGrid`, which placement never queries, and several
+        //     waypoints saved in one anchorage would then all place and
+        //     overprint into an unreadable stack (measured in review at
+        //     z11.5: nine labels inside an 82.4 x 143.1 px span at ~110 px
+        //     per string).
+        // Entering the index does NOT put any other family at risk, and the
+        // reason is the stack position rather than the knob: MapLibre places
+        // TOP-TO-BOTTOM (`pauseable_placement.ts` starts at
+        // `order.length - 1` and walks down) and these are the LOWEST symbol
+        // layers in the style, so every harbour, seamark, AIS and route
+        // symbol is placed BEFORE them and none can be evicted by a box of
+        // theirs. app/e2e/saved-waypoints.spec.ts measures that outcome on
+        // both sides of the z12 icon-overlap threshold; it asserts a
+        // positive control (THIS layer returns features inside the measured
+        // box) first, because "unchanged" is otherwise the answer an empty
+        // layer would also give.
         'text-allow-overlap': false,
-        'text-ignore-placement': true,
+        'text-ignore-placement': false,
       },
       paint: {
         // Ink on a white halo, like every other label on this map: the ring

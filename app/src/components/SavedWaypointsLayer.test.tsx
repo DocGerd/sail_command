@@ -144,19 +144,22 @@ describe('SavedWaypointsLayer (#924)', () => {
     });
   });
 
-  it('pins the collision policy: the label yields to everything and blocks nothing', async () => {
+  it('pins the collision policy: the label yields, and de-conflicts with its own kind', async () => {
     renderLayer();
     act(() => {
       addAnchor(map);
       map.fire('styledata');
     });
     const layout = map.getLayer(SAVED_WAYPOINT_LABEL_LAYER)?.layout ?? {};
-    // The two knobs are independent and MUST differ — #378 shipped a layer
-    // with allow-overlap set and ignore-placement unset, which silently
-    // culled the ETA/speed text layers underneath. ignore-placement:true is
-    // what makes every other family's placement unchanged by construction.
+    // BOTH knobs false. allow-overlap false is the yield; ignore-placement
+    // false is what makes the layer's own labels de-conflict with EACH
+    // OTHER — `true` routes every box to collision_index.ts's `ignoredGrid`,
+    // which placement never queries, so several waypoints saved in one
+    // anchorage all place and overprint. Entering the index costs no other
+    // family anything because these are the lowest symbol layers and
+    // placement runs top-to-bottom, so everyone else is placed first.
     expect(layout['text-allow-overlap']).toBe(false);
-    expect(layout['text-ignore-placement']).toBe(true);
+    expect(layout['text-ignore-placement']).toBe(false);
     // A symbol layer with a text-field and no text-font falls back SILENTLY
     // to a fontstack this app does not ship (#288/#320).
     expect(layout['text-font']).toEqual(['Noto Sans Regular']);
