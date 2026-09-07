@@ -3,12 +3,14 @@ import { StrictMode } from 'react';
 import { act, render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import App, {
+  droppedViaLabels,
   INTERACTIVE_MAP_LAYER_IDS,
   planErrorBannerKind,
   planErrorGroup,
   planErrorRetryMayHelp,
   toPlannerStatus,
 } from './App';
+import type { MsgKey } from './i18n/dict.de';
 import * as DataLayersModule from './components/DataLayers';
 import { I18nProvider } from './i18n';
 import { de } from './i18n/dict.de';
@@ -3887,5 +3889,59 @@ describe('#983: recalculate completion announced regardless of active tab', () =
       .getAllByRole('status')
       .filter((el) => el.textContent?.includes(announcePrefix));
     expect(withAnnouncement).toHaveLength(1);
+  });
+});
+
+// #939: droppedViaLabels (App.tsx) unit tests — direct calls, not through the
+// full renderApp() harness. A through-the-UI test with a plan LOADED from
+// IndexedDB is the WRONG level for the whitespace-name case specifically:
+// services/migratePlan.ts's normaliseViaPoints already trims a stored
+// `name` and drops a whitespace-only one to `undefined` at LOAD time (its
+// own header comment says so), so a via point seeded via db.savePlan() and
+// reloaded through PlansList never reaches droppedViaLabels with a
+// whitespace-only name in the first place — that route would be zero
+// evidence for the MINOR 1 fix regardless of whether the fix is present.
+// The live path a whitespace-only name CAN reach (a seamark or saved
+// waypoint's name, per droppedViaLabels' own header comment) writes
+// straight into the in-memory draft with no normalisation step, so testing
+// the function directly is the level that actually reaches the code path.
+describe('#939: droppedViaLabels (App.tsx)', () => {
+  // Mirrors i18n/index.tsx's useT() `{key}` substitution exactly, so
+  // `t('planner.via.marker', { index: 2 })` behaves identically to the real
+  // hook's output.
+  const t = (key: MsgKey, vars?: Record<string, string | number>): string => {
+    let msg: string = de[key];
+    for (const [k, v] of Object.entries(vars ?? {})) msg = msg.replaceAll(`{${k}}`, String(v));
+    return msg;
+  };
+
+  it('a whitespace-only via name falls back to the indexed marker label, same as an absent name (#939 MINOR 1)', () => {
+    const nearOrigin = { lat: ORIGIN_A.lat + 0.0001, lon: ORIGIN_A.lon + 0.0001, name: '   ' };
+    const result = droppedViaLabels(ORIGIN_A, [nearOrigin], DEST_A, 'de', t);
+    expect(result.count).toBe(1);
+    // A whitespace-only name must NOT count as "named" — it must fall back
+    // to the SAME indexed marker label an absent name gets.
+    expect(result.named).toBe(false);
+    expect(result.labels).toBe(t('planner.via.marker', { index: 1 }));
+  });
+
+  it('an absent via name gives the identical result, as a control', () => {
+    const nearOrigin = { lat: ORIGIN_A.lat + 0.0001, lon: ORIGIN_A.lon + 0.0001 };
+    const result = droppedViaLabels(ORIGIN_A, [nearOrigin], DEST_A, 'de', t);
+    expect(result.count).toBe(1);
+    expect(result.named).toBe(false);
+    expect(result.labels).toBe(t('planner.via.marker', { index: 1 }));
+  });
+
+  it('a real, non-blank name still counts as named (control against a fix that always falls back)', () => {
+    const nearOrigin = {
+      lat: ORIGIN_A.lat + 0.0001,
+      lon: ORIGIN_A.lon + 0.0001,
+      name: 'North Cardinal',
+    };
+    const result = droppedViaLabels(ORIGIN_A, [nearOrigin], DEST_A, 'de', t);
+    expect(result.count).toBe(1);
+    expect(result.named).toBe(true);
+    expect(result.labels).toBe('„North Cardinal“');
   });
 });

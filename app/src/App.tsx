@@ -249,23 +249,44 @@ function appTabId(tab: Tab): string {
 // pass over the same inputs, just as that existing pre-check already
 // duplicates run()'s own internal dedupe).
 //
-// A dropped point WITH a non-empty `name` renders that name, quoted in the
-// active language's own convention (dict.de.ts uses „…“ elsewhere; dict.en.ts
-// uses "…"). A dropped point with NO name (absent, or an empty string — the
-// two are deliberately NOT the same: an empty `name` must not render as a
-// blank gap) falls back to the SAME indexed `planner.via.marker` label
-// ViaMarkers.tsx already shows for an unnamed marker, so "which point" always
-// matches what the panel/map displays. `named` is true iff at least one
-// dropped point had a usable name — App.tsx's render picks the plain
-// generic-count banner copy when it's false (unchanged wording, no behaviour
-// change for the all-unnamed case) and the name-listing copy when it's true.
-function droppedViaLabels(
+// A dropped point WITH a non-empty, non-whitespace-only `name` renders that
+// name, quoted in the active language's own convention (dict.de.ts uses
+// „…“ elsewhere; dict.en.ts uses "…"). A dropped point with NO usable name
+// (absent, an empty string, OR whitespace-only — `.trim().length > 0` is what
+// makes all three the same case; a bare `.length > 0` would let a
+// whitespace-only name through and render as the exact blank-looking gap
+// this check exists to prevent) falls back to the SAME indexed
+// `planner.via.marker` label ViaMarkers.tsx already shows for an unnamed
+// marker, so "which point" always matches what the panel/map displays.
+// Not reachable through PlannerPanel's rename UI, which already trims —
+// but IS reachable via a seamark or saved-waypoint name (SeamarksInView.tsx/
+// SavedWaypointsLayer.tsx's `onPick`/`onAddWaypoint`), neither of which is
+// verified trimmed at its source. `named` is true iff at least one dropped
+// point had a usable name — App.tsx's render picks the plain generic-count
+// banner copy when it's false (unchanged wording, no behaviour change for
+// the all-unnamed case) and the name-listing copy when it's true.
+// eslint-disable-next-line react-refresh/only-export-components
+export function droppedViaLabels(
   origin: LatLon,
   viaPoints: ViaPoint[],
   destination: LatLon,
   lang: Lang,
   t: (key: MsgKey, vars?: Record<string, string | number>) => string,
 ): { count: number; named: boolean; labels: string } {
+  // #939 MINOR 2: this diff assumes every via point in `viaPoints` is a
+  // DISTINCT object reference — `keptSet.has(via)` is a reference-equality
+  // lookup against dedupeViaPoints' own `kept` survivors (see this
+  // function's header comment for why that identity is preserved), so if
+  // the SAME via object appeared twice in `viaPoints`, both occurrences
+  // would read as "kept" (or both as "dropped") together: a genuinely
+  // dropped point could go unnamed because its duplicate-reference sibling
+  // survived, or vice versa. Checked against all FOUR of today's via-point
+  // producers (App.tsx's `handleAddViaByCoord`/`insertViaNearestOrAppend`/
+  // `handleUpdateViaByCoord`, and `lib/planViaPoints.ts`'s `planViaPoints`)
+  // and none constructs a duplicate reference within one array, so this is
+  // not live today — but it is unenforced and untested, and it is the
+  // mechanism the whole feature rests on. A future via-point producer must
+  // keep each entry its own object.
   const { kept } = dedupeViaPoints(origin, viaPoints, destination);
   const keptSet = new Set<LatLon>(kept);
   let named = false;
@@ -273,7 +294,7 @@ function droppedViaLabels(
     .map((via, index) => ({ via, index }))
     .filter(({ via }) => !keptSet.has(via))
     .map(({ via, index }) => {
-      if (via.name && via.name.length > 0) {
+      if (via.name && via.name.trim().length > 0) {
         named = true;
         return lang === 'de' ? `„${via.name}“` : `"${via.name}"`;
       }
