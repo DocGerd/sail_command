@@ -948,6 +948,17 @@ export const en = {
   // internally), not from a via-replan — the wording itself is unchanged.
   'banner.viaTooClose': 'Waypoint too close to a neighbor — skipped',
   'banner.viaTooClose.plural': '{count} waypoints too close to a neighbor — skipped',
+  // #939: used instead of the two generic keys above whenever at least one
+  // of the dropped waypoints carries a non-empty `name` (App.tsx's
+  // handlePlan pre-check builds `{names}` — a comma-joined list, one label
+  // per dropped point: a named point renders its quoted name, an unnamed
+  // one falls back to the same indexed `planner.via.marker` label
+  // ViaMarkers.tsx uses, so "which point" always matches what the panel/map
+  // shows). `.named` is reached only when the single dropped point IS
+  // named (count===1 here implies namedCount>0), so `{names}` is always a
+  // quoted name in that form, never an index label.
+  'banner.viaTooClose.named': '{names} too close to a neighbor — skipped',
+  'banner.viaTooClose.named.plural': '{count} waypoints too close to a neighbor — skipped: {names}',
   'pwa.updateAvailable': 'Update available',
   'pwa.reload': 'Reload',
   'pwa.offlineReady': 'App & maps available offline',
