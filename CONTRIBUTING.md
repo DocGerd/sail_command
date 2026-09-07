@@ -140,14 +140,40 @@ prefixes are the mechanism.
 
 - `type:` — exactly one per issue: `type: bug` · `type: feature` ·
   `type: chore` · `type: docs`.
-- `priority:` — `priority: high` (do next; blocks a release or agents) ·
-  `priority: medium` (planned, not urgent) · `priority: low` (nice-to-have /
-  icebox).
+- `priority:` — `priority: high` · `priority: medium` · `priority: low`,
+  applied by the three tests below.
 - `area:` — where the work lives: `area: routing` · `area: map` · `area: pwa`
   · `area: pipeline` · `area: deploy` · `area: ais` · `area: tooling` ·
   `area: docs`.
 - `status:` — `status: needs-triage` (not yet assessed; default on new bugs) ·
   `status: blocked` (waiting on an external decision or dependency).
+
+**`priority:` is applied by three tests, not by feel**
+([#1059](https://github.com/DocGerd/sail_command/issues/1059)). A ranking
+pass over the then-open features considered adding a separate `tier:` label
+axis and concluded against it: `priority:` was not failing from a lack of
+expressiveness, it was failing from disuse — at that pass, zero open issues
+carried `priority: high`. Here are the tests, so a contributor can apply
+the label without asking:
+
+- `priority: high` — a typical passage in this region cannot be planned
+  correctly, or at all, without it.
+- `priority: medium` — it changes a decision the skipper makes on a real
+  passage, or removes a manual step they must otherwise perform every time.
+- `priority: low` — polish, tooling, speculative, or already answered by
+  shipped code.
+
+Applied on 2026-09-07, exactly two of the then-open features passed the high
+test —
+[#295](https://github.com/DocGerd/sail_command/issues/295) and
+[#849](https://github.com/DocGerd/sail_command/issues/849) — and both were
+set to `priority: high` that day. Read the label's current membership off
+the tracker (`gh issue list --label "priority: high"`) rather than a count
+here, which decays at the next triage.
+
+`priority:` is a coarse bucket, not a ranking — it cannot express that one
+`high` issue should be worked before another, and a second label axis would
+not supply one either.
 
 `area: docs` covers issues about documentation **prose** — words that
 explain or specify something, never code that runs — such as `README.md`,
