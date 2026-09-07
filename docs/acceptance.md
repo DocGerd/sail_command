@@ -335,19 +335,61 @@ selected in §1.
       file. When it is present, confirm the count is plausible against the
       cardinal marks the Seamarks overlay shows near the route.
 - [ ] **2.15 Waypoint by typed coordinates.** In the planner's via section,
-      type a latitude and longitude on water inside the covered area into
-      the "Latitude" / "Longitude" fields and press "Add coordinates"
-      ("Koordinaten hinzufügen"): the point appears in the via list and as a
-      marker on the map immediately, but the route line does not move until
-      you press "Plan route" again — a via edit is applied on the next plan,
-      never automatically. Press that point's own "Edit coordinates (point
-      N): …" button: the fields fill with its coordinates, the button reads
-      "Update coordinates", and focus lands in the latitude field; change a
-      value, update, and the marker moves. Coordinates outside the covered
-      area are refused with "The coordinates lie outside the covered area
-      (Flensburg Fjord / Danish South Sea)." and nothing is added. Re-plan
-      through the point and confirm 2.1 still holds, then remove it
-      ("Remove waypoint N") and re-plan before §3 (#829).
+      before typing anything, confirm the label above the "Latitude" /
+      "Longitude" fields reads "New waypoint" ("Neuer Wegpunkt") and each
+      field's own hint line beneath it reads "Hemisphere: N" /
+      "Hemisphere: E" for the seeded default coordinate. Type a latitude
+      and longitude on water inside the covered area, tab out (or press
+      Enter) to commit each one, and confirm the hemisphere hint updates —
+      to "Hemisphere: S" / "Hemisphere: W" for a negative value, back to
+      N/E for zero or positive. This hint is DISPLAY-ONLY: typing a
+      hemisphere letter into the field itself (e.g. "54.8N") is rejected
+      and the field silently reverts to its last committed value — a
+      known, tracked residual, not a defect to file (#886). Press "Add
+      coordinates" ("Koordinaten hinzufügen"): the point appears in the
+      via list and as a marker on the map immediately, but the route line
+      does not move until you press "Plan route" again — a via edit is
+      applied on the next plan, never automatically. Press that point's
+      own "Edit coordinates (point N): …" button: the fields fill with its
+      coordinates, the button reads "Update coordinates", the label above
+      the fields switches to "Editing waypoint N" ("Wegpunkt N
+      bearbeiten"), a "Cancel editing" ("Bearbeitung abbrechen") button
+      appears beside "Update coordinates", and focus lands in the latitude
+      field. Press "Cancel editing": the label returns to "New waypoint"
+      and the point is unchanged (#886). Re-open the edit, change a value,
+      press "Update coordinates", and confirm the marker moves. Coordinates
+      outside the covered area are refused with "The coordinates lie
+      outside the covered area (Flensburg Fjord / Danish South Sea)." and
+      nothing is added. Re-plan through the point and confirm 2.1 still
+      holds, then remove it ("Remove waypoint N") and re-plan before §3
+      (#829).
+- [ ] **2.16 Saved waypoints on the map.** Still on the point added in
+      §2.15 (re-add one if you already removed it), open the "Saved
+      waypoints" ("Gespeicherte Wegpunkte") disclosure lower in the via
+      section and press "Save … as a waypoint" for it: the point now
+      appears in the list below, with its name (or its formatted
+      coordinate if it has none) and its lat/lon. Press "Add waypoint"
+      ("Wegpunkt hinzufügen") to arm the via map-pick (the button reads
+      "Cancel adding waypoint" while armed) and confirm a new marker
+      appears on the map at the saved waypoint's position: a hollow ring
+      in the via marker's colour, distinct from the harbour circle's
+      filled black disc with a white ring. Zoom to about z11 or closer and
+      confirm the ring gains a name label (below z11 the ring alone is
+      expected — that is a deliberate minimum, not a defect). Tap the
+      ring: it inserts by NAME into the via list (a new list entry
+      showing the saved name, not a raw coordinate) and the pick disarms
+      itself. Arm "Add waypoint" again and tap open water away from the
+      ring: that inserts a raw coordinate as before, confirming the ring
+      is an addition and not a change to the plain-water pick. Zoom or
+      pan so the ring sits on top of a harbour marker or (with the
+      Seamarks overlay on) a seamark glyph and tap it again while armed:
+      the tap still inserts the saved waypoint by name — a seamark
+      underneath may also open its own info popover at the same tap,
+      which is expected and not a conflict. Remove every via point this
+      check added (each has its own "Remove waypoint N" button), and
+      delete the saved waypoint from the "Saved waypoints" list (its own
+      delete button, tap once to arm and again to confirm)
+      before §3 (#924).
 
 **Result:** Pass / Fail / Partial — notes: ___________________________
 
