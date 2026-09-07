@@ -197,9 +197,12 @@ export interface PreviewServer {
 // cannot close the SECOND layer the issue also describes — a stale service
 // worker on a REUSED origin serving a cached build to a real browser
 // PAGE — because this check runs a plain Node `fetch()` with no
-// ServiceWorker in the picture at all; #832 closes THAT layer separately,
-// below (`assertCleanServiceWorkerState`), by running inside the browser
-// PAGE itself rather than in Node.
+// ServiceWorker in the picture at all; #832 (below,
+// `assertCleanServiceWorkerState`) was written to defend against THAT
+// layer, by running inside the browser PAGE itself rather than in Node —
+// but see that function's own doc comment for what #975 established about
+// whether it actually reaches a live instance of the layer anywhere in
+// this suite today.
 
 // #832 (#803's second, browser-side layer): the Node-side checks above
 // establish that the SERVER is honest — but a page that navigates to it can
@@ -216,6 +219,36 @@ export interface PreviewServer {
 // already returned, so the shared path structurally cannot reach those
 // pages — #928 threaded an explicit call to each of them instead, at the
 // point their own page exists; none is silently uncovered).
+//
+// #975: that threat model — a PRIOR run's SW/cache state still present on
+// this origin when a page reaches this function — describes cross-context
+// (or cross-test) state survival, and this suite does not have any. Every
+// call site above hands this function a `page` from a BrowserContext
+// created fresh for that one test: `playwright.config.ts` sets no
+// `_reuseContext`, no `launchPersistentContext`, and no `storageState`
+// (grepped: zero hits), and `node_modules/playwright/lib/index.js`'s
+// `context` fixture creates a brand-new context via `_contextFactory()`
+// and `close()`s it at test end UNLESS `_reuseContext` is set — so it
+// always takes that branch here. No spec in this suite reuses a `page` or
+// `context` across more than one `test()` block either (grepped for
+// `beforeAll`/`describe.serial`: zero hits) — every `browser.newContext()`
+// call site above is likewise a fresh context created immediately before
+// its one use. Chromium partitions ServiceWorker registrations and
+// CacheStorage per BrowserContext (measured in #975's issue body: a
+// registration created in context A is invisible from a fresh
+// `browser.newContext()` both while A is open and after A closes), so
+// under this configuration there is NEVER a live registration or cache
+// entry on this origin for this function to find and clear at any of its
+// real call sites — its only non-vacuous execution is
+// `startPreviewIdentity.spec.ts`'s own self-test, which manufactures the
+// registration+cache pair synthetically WITHIN one page/context to prove
+// the clearing mechanism itself works, not to exercise a real hazard this
+// suite can produce. This function is kept anyway as a cheap forward
+// invariant: it becomes load-bearing the moment this suite's isolation
+// changes (context reuse, a persistent context, or a page/context shared
+// across `test()` blocks) — do not read its presence as evidence any of
+// today's specs are protected from a stale-SW build substitution; none of
+// them can construct the state it would need to catch.
 //
 // Self-proving, not best-effort: after unregistering every registration and
 // deleting every named cache for this origin, it RE-QUERIES both and throws
@@ -610,14 +643,18 @@ async function assertResidualDistFilesMatch(relPaths: string[]): Promise<void> {
  *
  * `page` (#832, optional): when supplied, once the Node-side identity checks
  * above have succeeded, this also runs `assertCleanServiceWorkerState(page)`
- * — closing #803's second, browser-side layer for that page BEFORE the
- * caller's own first real navigation. Pass the test's own `page` fixture
- * wherever it is already in scope at the call site (the common case). Omit
- * it only where no `page` exists yet at this call site (a handful of specs
- * create their own page(s) via `browser.newContext()`/`context.newPage()`
- * AFTER calling this) — those callers must invoke
- * `assertCleanServiceWorkerState` themselves once their page exists; see
- * that function's own doc comment. `startPreviewIdentity.spec.ts`'s
+ * for that page BEFORE the caller's own first real navigation — written to
+ * close #803's second, browser-side layer, though #975 established that
+ * under this suite's actual configuration it never finds anything to clear
+ * at any real call site (see that function's own doc comment for why: every
+ * `page` reaching it comes from a freshly-created BrowserContext, and
+ * Chromium partitions SW/CacheStorage state per context). Pass the test's
+ * own `page` fixture wherever it is already in scope at the call site (the
+ * common case). Omit it only where no `page` exists yet at this call site (a
+ * handful of specs create their own page(s) via
+ * `browser.newContext()`/`context.newPage()` AFTER calling this) — those
+ * callers must invoke `assertCleanServiceWorkerState` themselves once their
+ * page exists; see that function's own doc comment. `startPreviewIdentity.spec.ts`'s
  * Node-only identity tests also omit it deliberately: they assert on
  * `startPreview()`'s OWN resolve/reject behaviour and have no `page` in
  * scope at all.
