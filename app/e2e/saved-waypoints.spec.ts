@@ -88,8 +88,12 @@ import { startPreview, mapReady } from './helpers';
 //    for every other family. MEASURED by moving both layers to the top of
 //    the style at runtime, everything else unchanged: `sc-seamarks` falls
 //    from 6 to 4 at z11.5 — two navigation marks silently deleted, the
-//    #191/#192 signature — while our own labels rise 3 to 6, and the with/
-//    without comparison this test makes reds on it. At z13 the same move
+//    #191/#192 signature — while our own labels rise 3 to 6. That red was
+//    then OBSERVED rather than inferred: the mutant was BUILT (the
+//    `beforeId` argument dropped from both `addLayer` calls, so real
+//    MapLibre appends them topmost), `dist` confirmed replaced, and this
+//    test run against it — 1 failed at z11.5, reporting `sc-seamarks` 4
+//    with the layer against 6 without. At z13 the same move
 //    leaves 42 and 42, which is the expected `icon-overlap: 'always'`
 //    reading and the reason the z11.5 arm is the one carrying this.
 // 3. `sc-harbor-labels` renders 0 in this box in BOTH arms at BOTH zooms, so
@@ -430,7 +434,10 @@ test('#924: the saved-waypoint layers sit above the depth overlays and below eve
  * canvas is NOT at the page origin in the wide layout (panel | resizer |
  * map), so `map.project()`'s container-relative point needs the canvas box
  * added. Re-sampled at every call — never cached across a camera change. */
-async function pagePointOf(page: Page, lngLat: [number, number]): Promise<{ x: number; y: number }> {
+async function pagePointOf(
+  page: Page,
+  lngLat: [number, number],
+): Promise<{ x: number; y: number }> {
   const box = await page.locator('.maplibregl-canvas').boundingBox();
   if (!box) throw new Error('the map canvas has no bounding box');
   const local = await page.evaluate(
