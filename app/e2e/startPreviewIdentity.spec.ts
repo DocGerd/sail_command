@@ -272,8 +272,10 @@ test('#803: still starts normally against its own build with no foreign server',
 // anything at all. No other spec in this suite can produce this state for
 // the guard to find: every real call site hands it a `page` from a
 // freshly-created BrowserContext, and Chromium partitions SW/CacheStorage
-// per context (`helpers.ts`'s block comment above `assertCleanServiceWorkerState`
-// has the full account). So this test proves the CLEARING MECHANISM works,
+// per context — independently re-verified against `playwright@1.62.1` with
+// a real HTTP-origin probe (`helpers.ts`'s block comment above
+// `assertCleanServiceWorkerState` has the full account). So this test
+// proves the CLEARING MECHANISM works,
 // not that any other spec in this suite is protected by it — read it as a
 // unit test for the function, not as evidence of a closed hazard.
 // A version of this guard that

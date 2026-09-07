@@ -227,16 +227,19 @@ export interface PreviewServer {
 // created fresh for that one test: `playwright.config.ts` sets no
 // `_reuseContext`, no `launchPersistentContext`, and no `storageState`
 // (grepped: zero hits), and `node_modules/playwright/lib/index.js`'s
-// `context` fixture creates a brand-new context via `_contextFactory()`
+// `context` fixture — read and verified against `playwright@1.62.1`,
+// lockfile-matched — creates a brand-new context via `_contextFactory()`
 // and `close()`s it at test end UNLESS `_reuseContext` is set — so it
-// always takes that branch here. No spec in this suite reuses a `page` or
-// `context` across more than one `test()` block either (grepped for
-// `beforeAll`/`describe.serial`: zero hits) — every `browser.newContext()`
-// call site above is likewise a fresh context created immediately before
-// its one use. Chromium partitions ServiceWorker registrations and
-// CacheStorage per BrowserContext (measured in #975's issue body: a
-// registration created in context A is invisible from a fresh
-// `browser.newContext()` both while A is open and after A closes), so
+// always takes that branch here. No
+// spec in this suite reuses a `page` or `context` across more than one
+// `test()` block either (grepped for `beforeAll`/`describe.serial`: zero
+// hits) — every `browser.newContext()` call site above is likewise a fresh
+// context created immediately before its one use. Chromium partitions
+// ServiceWorker registrations and CacheStorage per BrowserContext —
+// measured in #975's issue body, and INDEPENDENTLY RE-VERIFIED against
+// `playwright@1.62.1` in this PR's own review with a real HTTP-origin
+// probe (registering a SW and a cache in context A, then confirming 0
+// registrations and 0 caches visible from fresh contexts B and C) — so
 // under this configuration there is NEVER a live registration or cache
 // entry on this origin for this function to find and clear at any of its
 // real call sites — its only non-vacuous execution is
@@ -648,7 +651,9 @@ async function assertResidualDistFilesMatch(relPaths: string[]): Promise<void> {
  * under this suite's actual configuration it never finds anything to clear
  * at any real call site (see that function's own doc comment for why: every
  * `page` reaching it comes from a freshly-created BrowserContext, and
- * Chromium partitions SW/CacheStorage state per context). Pass the test's
+ * Chromium partitions SW/CacheStorage state per context — independently
+ * re-verified against `playwright@1.62.1` with a real HTTP-origin probe;
+ * see that function's own comment for the full account). Pass the test's
  * own `page` fixture wherever it is already in scope at the call site (the
  * common case). Omit it only where no `page` exists yet at this call site (a
  * handful of specs create their own page(s) via
