@@ -694,6 +694,12 @@ export const en = {
     'Unsurveyed and drying water carries no hatching either, and nothing else marks it, so it looks like ordinary water. Absence of hatching is not a guarantee the water is clear — it may simply be a place with no data.',
   // Seamarks / aids-to-navigation overlay (#7) — default OFF, opt-in.
   'map.seamarks.toggle': 'Seamarks',
+  // #1020: accessible name for the map-picked origin/destination markers
+  // (EndpointMarkers.tsx) — {target} is 'planner.origin.label'/
+  // 'planner.destination.label' ("Origin"/"Destination"), {label} the
+  // endpoint's own already-localized label (a harbor name or formatted
+  // lat/lon). See dict.de.ts for the full rationale.
+  'map.endpoint.ariaLabel': '{target}: {label}',
   'seamark.popover.type': 'Type',
   'seamark.popover.category': 'Category',
   'seamark.popover.colour': 'Colour',

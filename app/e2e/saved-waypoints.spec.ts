@@ -584,3 +584,92 @@ test('#924: a via-armed tap on a saved waypoint inserts it BY NAME; a disarmed t
     server.kill();
   }
 });
+
+// #1016: the #924 test above measures the tap chain with NO active plan.
+// App.tsx's `interactiveLayerIds` memo (which decides whether
+// SAVED_WAYPOINT_LAYER joins MapView's raw-tap-yield gate) is keyed on
+// `tapTarget` alone, not on plan state — but that had never been exercised
+// with a plan actually running, and #1020's new EndpointMarkers component
+// changes what else is mounted on the map while a plan is active (two more
+// DOM markers), so this is the free, cheap check to run rather than assume.
+// Plan-active is confirmed the same way #838's null-render-phase lesson
+// asks for: by the ROUTE layer actually existing on the map
+// (RouteLayer.tsx's `ROUTE_STACK_BOTTOM_LAYER = 'sc-route-shallow'` —
+// RouteLayer renders null and adds no layers at all until `plan` is
+// non-null), not by inference from the Plan button re-enabling (which also
+// re-enables on a FAILED plan).
+test('#1016: a via-armed tap on a saved waypoint still inserts it BY NAME once a plan is active', async ({
+  page,
+}) => {
+  const server = await startPreview(page);
+  try {
+    await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
+    await mapReady(page);
+    const seeded = await seedWaypoints(page);
+    expect(seeded, 'seeded waypoints did not land in the sailcommand store').toBeGreaterThanOrEqual(
+      SEED_WAYPOINTS.length,
+    );
+    await page.reload();
+    await mapReady(page);
+    await waitForLayer(page, 'sc-saved-waypoints');
+
+    await page.getByRole('tab', { name: 'Planen' }).click();
+
+    // Both harbours sit far from CLUSTER_CENTER (~9.65-9.78°E, ~54.82-54.90°N
+    // vs. 10.515°E/54.855°N) so planning this route cannot itself add or
+    // remove anything in the measured box below.
+    const originSection = page.getByRole('region', { name: 'Start' });
+    await originSection.getByRole('combobox').fill('Langballigau');
+    await expect(originSection.getByRole('option')).toHaveCount(1);
+    await originSection.getByRole('option').first().click();
+    await expect(originSection.locator('.endpoint-name')).toHaveText('Langballigau');
+
+    const destSection = page.getByRole('region', { name: 'Ziel' });
+    await destSection.getByRole('combobox').fill('Sønderborg');
+    await expect(destSection.getByRole('option')).toHaveCount(1);
+    await destSection.getByRole('option').first().click();
+    await expect(destSection.locator('.endpoint-name')).toHaveText('Sonderburg');
+
+    const planButton = page.getByRole('button', { name: 'Route planen' });
+    await planButton.click();
+    await expect(planButton).toBeEnabled({ timeout: 60_000 });
+    // The positive confirmation that a PLAN (not merely an idle button) is
+    // now active — see this test's header comment for why the button
+    // re-enabling alone is not sufficient.
+    await waitForLayer(page, 'sc-route-shallow');
+
+    await jumpToCluster(page, ZOOM_AT_OR_ABOVE_12);
+    const target = SEED_WAYPOINTS[4];
+    const viaSection = page.getByRole('region', { name: 'Wegpunkte' });
+    const armButton = viaSection.getByRole('button', {
+      name: 'Wegpunkt hinzufügen',
+      exact: true,
+    });
+    const tapPickBanner = page.getByText('Auf Karte tippen für Wegpunkte.');
+
+    await armButton.click();
+    await expect(tapPickBanner).toBeVisible();
+
+    const point = await pagePointOf(page, [target.lon, target.lat]);
+    await expect
+      .poll(() => waypointIdsAtPoint(page, point), {
+        timeout: 30_000,
+        message: `with a plan active, no sc-saved-waypoints feature at the projected pixel for ${target.id}`,
+      })
+      .toContain(target.id);
+    await page.mouse.click(point.x, point.y);
+
+    // THE discriminator, same as #924: the row carries the SAVED NAME, not
+    // formatted coordinates — a raw-coordinate tap (the shape a broken gate
+    // would fall through to) would add a row too, just an unnamed one.
+    await expect(
+      viaSection.getByText(target.name),
+      'the via row does not show the saved waypoint name — the tap fell through to a raw-coordinate pick',
+    ).toHaveCount(1);
+    await expect(viaSection.locator('.planner-via-row')).toHaveCount(1);
+    await expect(tapPickBanner).not.toBeVisible();
+    await expect(armButton).toHaveAttribute('aria-pressed', 'false');
+  } finally {
+    server.kill();
+  }
+});
