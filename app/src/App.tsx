@@ -27,6 +27,9 @@ import DataLayers, {
   SEAMARKS_HAZARD_LAYER,
   SEAMARKS_LAYER,
 } from './components/DataLayers';
+import SavedWaypointsLayer, {
+  SAVED_WAYPOINT_LAYER,
+} from './components/SavedWaypointsLayer';
 import CompassControl from './components/CompassControl';
 import ScaleBar from './components/ScaleBar';
 import RouteLayer from './components/RouteLayer';
@@ -782,6 +785,37 @@ function AppShell() {
     [insertViaNearestOrAppend],
   );
 
+  // #924: the SAME handler, reached by tapping the saved-waypoint ring on
+  // the map instead of the panel row. Identical insertion by construction —
+  // that is what makes SavedWaypoints.tsx's button the keyboard equivalent
+  // of the map tap rather than merely a similar affordance. The extra step
+  // is the disarm, which the panel path does not need and handleMapTap's own
+  // 'via' branch performs by returning null from its updater.
+  const handleSavedWaypointMapPick = useCallback(
+    (waypoint: ViaPoint) => {
+      handleSelectSavedWaypoint(waypoint);
+      setTapTarget(null);
+    },
+    [handleSelectSavedWaypoint],
+  );
+
+  // #924: which layers MapView's generic tap handler must yield to. The
+  // saved-waypoint ring joins that set ONLY while the via pick is armed —
+  // the one arming SavedWaypointsLayer acts on, and the one
+  // resolveHarborPickTarget explicitly declines. Adding it unconditionally
+  // would turn every saved waypoint into a dead zone for the origin and
+  // destination picks: the generic tap would bail on the hit while no
+  // handler claimed it. Scoped this way, an origin-armed tap on a saved
+  // waypoint still falls through to the raw-coordinate pick it would have
+  // been anywhere else on the water.
+  const interactiveLayerIds = useMemo(
+    () =>
+      tapTarget === 'via'
+        ? [...INTERACTIVE_MAP_LAYER_IDS, SAVED_WAYPOINT_LAYER]
+        : INTERACTIVE_MAP_LAYER_IDS,
+    [tapTarget],
+  );
+
   // ViaMarkers' dragend handler. Markers are now rendered FROM the draft
   // (RouteLayer.tsx's `draftViaPoints` prop, review fix — markers used to be
   // positioned from the committed `plan.request.viaPoints`, which required a
@@ -1239,7 +1273,7 @@ function AppShell() {
           tapActive={tapTarget !== null}
           onTap={handleMapTap}
           onMapError={handleMapError}
-          interactiveLayerIds={INTERACTIVE_MAP_LAYER_IDS}
+          interactiveLayerIds={interactiveLayerIds}
         >
           {/* #155: the top-left map-overlay stack. DataLayers' toggles and the
               compass are static flex children of one absolutely-positioned
@@ -1255,6 +1289,15 @@ function AppShell() {
                 orientation must not flip on a tab switch. */}
             <CompassControl fix={ownshipFix} showOwnship={settings.showOwnship} />
           </div>
+          {/* #924: saved named waypoints as a map layer. Always mounted like
+              DataLayers above — it is plan-independent, and it anchors itself
+              on DataLayers' harbour layer rather than on the route stack, so
+              it must not live inside RouteLayer (which renders null until a
+              plan exists). */}
+          <SavedWaypointsLayer
+            armed={tapTarget === 'via'}
+            onPick={handleSavedWaypointMapPick}
+          />
           <RouteLayer
             plan={plan}
             rig={rig}

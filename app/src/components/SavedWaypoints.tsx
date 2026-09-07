@@ -3,6 +3,7 @@ import { deleteWaypoint, listWaypoints, saveWaypoint, type SavedWaypoint } from 
 import { useT } from '../i18n';
 import type { MsgKey } from '../i18n/dict.de';
 import { formatLatLon } from '../lib/format';
+import { notifySavedWaypointsChanged } from '../lib/useSavedWaypoints';
 import type { ViaPoint } from '../types';
 import Button from './Button';
 
@@ -43,7 +44,17 @@ export default function SavedWaypoints({ viaPoints, onSelect }: SavedWaypointsPr
 
   const refresh = useCallback(() => {
     void listWaypoints()
-      .then(setItems)
+      .then((next) => {
+        setItems(next);
+        // #924: this picker is the ONLY writer of the `waypoints` store, so
+        // it is also the only place that can tell the map layer the store
+        // moved. Announced after the re-read has landed, so a subscriber
+        // that re-reads synchronously sees the same list this component just
+        // rendered. No loop: this component subscribes to nothing, and the
+        // map layer's only action (inserting into the route draft) never
+        // writes here.
+        notifySavedWaypointsChanged();
+      })
       .catch((err: unknown) => {
         console.error(err);
         setError('waypoints.actionError');
