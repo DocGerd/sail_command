@@ -149,16 +149,19 @@ prefixes are the mechanism.
 - `status:` — `status: needs-triage` (not yet assessed; default on new bugs) ·
   `status: blocked` (waiting on an external decision or dependency).
 
-`area: docs` covers issues whose scope is documentation **content** —
-`README.md`, `CONTRIBUTING.md`, `GOVERNANCE.md`, `ROADMAP.md`,
-`CODE_OF_CONDUCT.md`, `SECURITY.md`, and everything under `docs/` (specs,
-spikes, ADRs, the acceptance checklist) — as distinct from `area: tooling`'s
-repo-config/automation/CI scope. Choose by asking "is this about what a doc
-*says*, or about a script/workflow/hook's *behaviour*?" — the former is
-`area: docs`, the latter `area: tooling`. A doc file already mapped to
-another area keeps that area instead (e.g. `pipeline/README.md` stays
-`area: pipeline`, per `.github/labeler.yml`'s existing path map); `area:
-docs` is for documentation that isn't already someone else's territory.
+`area: docs` covers issues about documentation **prose** — words that
+explain or specify something, never code that runs — such as `README.md`,
+`CONTRIBUTING.md`, `GOVERNANCE.md`, `ROADMAP.md`, `CODE_OF_CONDUCT.md`,
+`SECURITY.md`, and the prose files under `docs/` (specs, spikes, ADRs, the
+acceptance checklist). It is a content rule, not a directory rule: a
+SCRIPT under `docs/` is not `area: docs` merely for living there —
+`docs/screenshots/capture.mjs` sits under `docs/` and is still `area:
+tooling`, because #428 is about that script's *behaviour*, not about
+anything a doc says. `area: tooling` keeps its own repo-config/automation/CI
+scope unchanged. A doc file already mapped to another area also keeps that
+area (e.g. `pipeline/README.md` stays `area: pipeline`, per
+`.github/labeler.yml`'s existing path map); `area: docs` is for prose that
+isn't already someone else's territory.
 
 **`area:` is deliberately partial, and for one class that is a decision, not
 a gap** ([#610](https://github.com/DocGerd/sail_command/issues/610)):
