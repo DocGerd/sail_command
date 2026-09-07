@@ -36,7 +36,8 @@ Your final message is a report to the orchestrator, not prose for the end user.
   the file-level config. CI is slower than dev machines, but not by one flat
   multiplier, and coverage instrumentation is a separate multiplier from
   runner speed, not part of a single ratio — read the current figures off
-  `app/vite.config.ts`'s #878 comment rather than any figure quoted here.
+  `app/src/test/timeouts.ts`'s `COVERAGE_MULTIPLIER` comment rather than any
+  figure quoted here.
 
 ## Verification (evidence, not assertions)
 
