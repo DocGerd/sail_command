@@ -216,12 +216,21 @@ function setupLayers(map: MaplibreMap): void {
         //     by the mere existence of this layer.
         // Together they make the layer strictly non-invasive: every other
         // family's placement is unchanged BY CONSTRUCTION, not merely by
-        // measurement — the claim app/e2e/saved-waypoints.spec.ts then
-        // confirms empirically on both sides of the z12 icon-overlap
-        // threshold. Note the same property means the layer cannot be
-        // detected by its effect on others, which is why that spec asserts a
-        // positive control (THIS layer returns features inside the measured
-        // box) before reading any other family's count — otherwise
+        // measurement. TWO INDEPENDENT protections deliver that, and it
+        // matters which one any given measurement is reading: this knob, and
+        // the stack position (these layers sit BELOW every harbour and
+        // seamark layer, and MapLibre places TOP-TO-BOTTOM, so they are
+        // placed LAST and can only lose a collision). app/e2e/
+        // saved-waypoints.spec.ts confirms the OUTCOME on both sides of the
+        // z12 icon-overlap threshold, but its header's items 1-2 record that
+        // it cannot ATTRIBUTE that outcome to this knob: flipping
+        // text-ignore-placement alone leaves every measured count
+        // byte-identical, because the stack position already suffices. What
+        // the spec does catch is the composite regression — raised topmost
+        // AND the knob wrong. Note the same non-invasiveness means the layer
+        // cannot be detected by its effect on others, which is why that spec
+        // asserts a positive control (THIS layer returns features inside the
+        // measured box) before reading any other family's count — otherwise
         // "unchanged" is the answer an empty layer would also give.
         'text-allow-overlap': false,
         'text-ignore-placement': true,

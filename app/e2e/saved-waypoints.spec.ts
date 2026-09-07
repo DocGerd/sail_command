@@ -394,3 +394,153 @@ test('#924: the saved-waypoint layers sit above the depth overlays and below eve
     server.kill();
   }
 });
+
+// The tap chain, exercised END TO END IN A REAL BROWSER.
+//
+// Why this test exists at all, given the unit suite already fires a fake
+// layer event: the chain has FIVE links and no other check crosses more than
+// one of them — App.tsx's conditional `interactiveLayerIds` (which decides
+// whether MapView's generic tap handler yields this click), MapView's own
+// bail-on-hit gate, MapLibre's delegated click delivery to a layer that
+// exists only in a real style, resolving the feature id back through the
+// IndexedDB-backed list, and the insert-plus-disarm in App.tsx. PR #688
+// shipped DEAD CODE under exactly this shape: a fully green suite whose
+// fixture supplied a state production never reaches. `plan.spec.ts`'s own
+// via smoke check stops at the arming banner and says so, judging a
+// canvas-coordinate tap too fragile — that is true of a tap aimed by eye,
+// but not of one aimed by `map.project()` at a camera this test set itself,
+// which is deterministic.
+//
+// The DISCRIMINATOR is the NAME. A raw-coordinate tap at the same pixel adds
+// a via row too — it just renders as formatted coordinates
+// (`v.name ?? formatLatLon(v)` in PlannerPanel's via row). Asserting the
+// seeded name is what separates "snapped to the saved waypoint" from "the
+// generic map tap fired", so a row count would pass with the whole feature
+// removed.
+
+/** Page-space pixel centre of a seeded waypoint at the live camera. The map
+ * canvas is NOT at the page origin in the wide layout (panel | resizer |
+ * map), so `map.project()`'s container-relative point needs the canvas box
+ * added. Re-sampled at every call — never cached across a camera change. */
+async function pagePointOf(page: Page, lngLat: [number, number]): Promise<{ x: number; y: number }> {
+  const box = await page.locator('.maplibregl-canvas').boundingBox();
+  if (!box) throw new Error('the map canvas has no bounding box');
+  const local = await page.evaluate(
+    (ll) => (window as unknown as { __scE2eMap: ScTestMap }).__scE2eMap.project(ll),
+    lngLat,
+  );
+  return { x: box.x + local.x, y: box.y + local.y };
+}
+
+/** Ids of `sc-saved-waypoints` features rendered under a page point. Used as
+ * the aiming gate before the click: it proves the pixel the mouse is about
+ * to hit really carries the intended feature, so a miss fails as a named
+ * aiming failure rather than as a silent "nothing was inserted". */
+async function waypointIdsAtPoint(page: Page, point: { x: number; y: number }): Promise<string[]> {
+  const box = await page.locator('.maplibregl-canvas').boundingBox();
+  if (!box) throw new Error('the map canvas has no bounding box');
+  return page.evaluate(
+    ({ x, y }) => {
+      const map = (window as unknown as { __scE2eMap: ScTestMap }).__scE2eMap;
+      if (!map.getLayer('sc-saved-waypoints')) return [];
+      return map
+        .queryRenderedFeatures(
+          [
+            [x - 2, y - 2],
+            [x + 2, y + 2],
+          ],
+          { layers: ['sc-saved-waypoints'] },
+        )
+        .map((f) => String(f.properties.id));
+    },
+    { x: point.x - box.x, y: point.y - box.y },
+  );
+}
+
+test('#924: a via-armed tap on a saved waypoint inserts it BY NAME, and a disarmed tap at the same pixel inserts nothing', async ({
+  page,
+}) => {
+  const server = await startPreview(page);
+  try {
+    await page.goto(server.url);
+    await mapReady(page);
+    const seeded = await seedWaypoints(page);
+    expect(seeded, 'seeded waypoints did not land in the sailcommand store').toBeGreaterThanOrEqual(
+      SEED_WAYPOINTS.length,
+    );
+    await page.reload();
+    await mapReady(page);
+    await waitForLayer(page, 'sc-saved-waypoints');
+    // Seamarks are deliberately left OFF here (their default, #7): this test
+    // is about the tap chain, and a seamark popover opening on the same tap
+    // is a separate, documented and harmless interaction.
+    await jumpToCluster(page, ZOOM_AT_OR_ABOVE_12);
+
+    // SEED_WAYPOINTS[4] sits exactly on CLUSTER_CENTER, so it lands at the
+    // container centre — clear of every map-chrome cluster.
+    const target = SEED_WAYPOINTS[4];
+    const viaSection = page.getByRole('region', { name: 'Wegpunkte' });
+    const armButton = viaSection.getByRole('button', {
+      name: 'Wegpunkt hinzufügen',
+      exact: true,
+    });
+    // `exact` is load-bearing in GERMAN specifically: 'Wegpunkt hinzufügen
+    // abbrechen' (the armed label) CONTAINS the disarmed one, and
+    // Playwright's getByRole matches by substring by default.
+    const tapPickBanner = page.getByText('Auf Karte tippen für Wegpunkte.');
+
+    // Aim, and prove the aim, before touching the mouse.
+    let point = await pagePointOf(page, [target.lon, target.lat]);
+    await expect
+      .poll(() => waypointIdsAtPoint(page, point), {
+        timeout: 30_000,
+        message: `no sc-saved-waypoints feature rendered at the projected pixel for ${target.id}`,
+      })
+      .toContain(target.id);
+
+    // NEGATIVE ARM FIRST, at the identical pixel: disarmed, this layer must
+    // do nothing at all. Without it, a passing positive arm cannot tell an
+    // armed-gated pick from a layer that fires on every tap.
+    await page.mouse.click(point.x, point.y);
+    await expect(viaSection.getByText(target.name)).toHaveCount(0);
+    await expect(viaSection.locator('.planner-via-row')).toHaveCount(0);
+
+    await armButton.click();
+    await expect(tapPickBanner).toBeVisible();
+
+    // Re-project rather than reusing the point above: arming renders the
+    // map-tap banner, which can move the canvas box in the narrow layout.
+    point = await pagePointOf(page, [target.lon, target.lat]);
+    await expect
+      .poll(() => waypointIdsAtPoint(page, point), {
+        timeout: 30_000,
+        message: `after arming, no sc-saved-waypoints feature at the projected pixel for ${target.id}`,
+      })
+      .toContain(target.id);
+    await page.mouse.click(point.x, point.y);
+
+    // THE discriminator: the row carries the SAVED NAME, not coordinates.
+    await expect(
+      viaSection.getByText(target.name),
+      'the via row does not show the saved waypoint name — a raw-coordinate tap would also add a row',
+    ).toHaveCount(1);
+    // EXACTLY ONE row - a cheap defence in depth against a double insert
+    // (the named pick AND a raw coordinate), NOT a proven guard on the yield.
+    // Stated from measurement rather than reasoning: the obvious mutation for
+    // that link - App.tsx arming `interactiveLayerIds` on 'origin' instead of
+    // 'via', so SAVED_WAYPOINT_LAYER is absent from the list exactly when the
+    // via pick is armed - was built and run against this test and it PASSED,
+    // both assertions included. So the `interactiveLayerIds` link of the
+    // chain is UNMEASURED here; read a green run as evidence about the
+    // layer's own click path, not about that gate.
+    await expect(
+      viaSection.locator('.planner-via-row'),
+      'more than one via row - something inserted a second point for this tap',
+    ).toHaveCount(1);
+    // And the pick disarms itself, like every other one-shot map pick.
+    await expect(tapPickBanner).not.toBeVisible();
+    await expect(armButton).toHaveAttribute('aria-pressed', 'false');
+  } finally {
+    server.kill();
+  }
+});
