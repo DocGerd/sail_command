@@ -1,0 +1,129 @@
+name: Docs screenshots
+
+# #428: docs/screenshots/capture.mjs had NO failure signal at all — it is run
+# by hand, never by CI, so its brokenness and its disuse look identical from
+# outside. It broke one day after it was authored (#64, 852cb8c) and stayed
+# broken for three weeks before anyone noticed, because nothing ever ran it.
+#
+# This is issue #428's option 2 ("run the script in CI against the built
+# preview on a schedule, discarding the images and asserting only that it
+# completes"), chosen over option 1 (rely on app/e2e/plan.spec.ts as a proxy
+# — rejected: that spec never plans the SAME route/fixture pair this script
+# does, never opens the legs Disclosure the same way, and never switches to
+# English, so a selector this script alone uses could still drift silently)
+# and option 3 (delete the script and derive images from an e2e artifact —
+# rejected: capture.mjs deliberately routes against a non-uniform, hand-tuned
+# docs-only wind fixture chosen for a decisive, sail-dominant recommendation
+# — see the script's own #459/#577 header — which is a documentation
+# requirement, not a test requirement, and forcing it through app/e2e would
+# either destabilize the e2e wind fixture or duplicate this one there).
+#
+# DELIBERATELY NOT REQUIRED: `protect-main` requires `app`+`e2e` only (see
+# CLAUDE.md's Python-gates bullet for the general shape of this tradeoff) —
+# a red here does not block a merge, so it is a job someone has to look at,
+# not a gate. Discards its screenshots by construction: this job's checkout
+# is thrown away when the runner is torn down, and the workflow never adds
+# an upload-artifact step for a PASSING run, so nothing produced here is
+# ever committed or retained (only a FAILING run uploads the images, for
+# triage — see the last step).
+on:
+  push:
+    branches: [main, develop]
+    paths: &docs-screenshot-paths
+      - 'app/src/**'
+      - 'app/scripts/gen-docs-wind-fixture.mjs'
+      - 'docs/screenshots/capture.mjs'
+      - 'app/public/data/polars/**'
+      - 'app/package.json'
+      - 'app/package-lock.json'
+      - '.github/workflows/docs-screenshots.yml'
+  pull_request:
+    paths: *docs-screenshot-paths
+  schedule:
+    # Weekly backstop independent of any push, over the UNRESTRICTED tree
+    # (no `paths:` on this trigger) — the push/pull_request paths above are
+    # a hypothesis about what can break capture.mjs, and this repo's own
+    # "prose rots" / "enumerate, don't patch" lesson (CLAUDE.md) applies
+    # here too: capture.mjs shares selectors with app/src UI components it
+    # never imports (getByRole names, tab labels, the legs Disclosure
+    # locator), so a change anywhere — even one this path list doesn't
+    # anticipate — can silently break it, exactly how #64 broke it one day
+    # after the script was authored. Time chosen to avoid colliding with
+    # codeql.yml's Monday 04:23 UTC schedule (CLAUDE.md).
+    - cron: '17 5 * * 1'
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: docs-screenshots-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    # Generous headroom over a local run (build ~1s, preview start ~2s,
+    # capture ~3-5s observed locally) — CI is slower and this job installs
+    # Chromium from scratch every run (no npx playwright cache here).
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
+      - name: Install app dependencies
+        working-directory: app
+        run: npm ci
+      - name: Install Chromium (Playwright)
+        working-directory: app
+        run: npx playwright install --with-deps chromium
+      # Documented reproduction sequence from capture.mjs's own header
+      # comment, run verbatim rather than reinvented — see that file for why
+      # each step is required (build+preview, never `dev`; the docs-only
+      # wind fixture, never the e2e one).
+      - name: Regenerate docs-only wind fixture (gitignored, never committed)
+        run: node app/scripts/gen-docs-wind-fixture.mjs
+      - name: Build app
+        working-directory: app
+        run: npm run build
+      - name: Start preview server
+        working-directory: app
+        run: |
+          set -e
+          nohup npm run preview -- --port 4180 --strictPort > /tmp/preview.log 2>&1 &
+          echo $! > /tmp/preview.pid
+          for i in $(seq 1 30); do
+            if curl -fsS -o /dev/null "http://localhost:4180/sail_command/"; then
+              echo "preview server up after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::preview server never came up within 30s"
+          cat /tmp/preview.log
+          exit 1
+      # THE ACTUAL SIGNAL (#428): capture.mjs throws (and so exits non-zero)
+      # on anything it cannot complete — a selector that fails to match
+      # within its own timeout, a plan that never decides (the #428/#459
+      # rig-comparison chip poll), a 404'd wind fixture. A `run:` step's
+      # non-zero exit fails this job automatically; no extra assertion is
+      # needed beyond letting the script run and NOT swallowing its exit
+      # code. Screenshots this writes (docs/screenshots/*.png) are NEVER
+      # committed — this checkout is discarded when the runner tears down.
+      - name: Run docs screenshot capture (#428)
+        env:
+          SC_SCREENSHOT_URL: http://localhost:4180/sail_command/
+        run: node docs/screenshots/capture.mjs
+      - name: Stop preview server
+        if: always()
+        run: |
+          if [ -f /tmp/preview.pid ]; then
+            kill "$(cat /tmp/preview.pid)" 2>/dev/null || true
+          fi
+      # Debug aid only, never evidence of correctness (#428's own PR body
+      # names this check's blind spot: a blank or wrong-state image still
+      # exits 0). Kept short-lived and off on success so nothing from this
+      # job is retained beyond triage.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: docs-screenshots-debug
+          path: docs/screenshots/*.png
+          retention-days: 3
