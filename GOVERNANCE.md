@@ -254,18 +254,123 @@ current maintainer. **Existing installations keep working offline indefinitely**
 — an abandoned SailCommand degrades to a static app with an ageing wind source,
 not to an outage.
 
-### OpenSSF `access_continuity` is NOT met
+### OpenSSF `access_continuity`: credential escrow and assigned legal rights
 
-The OpenSSF Best Practices Silver criterion `access_continuity` requires that
-the project be able to create and close issues, accept proposed changes, and
-release software within a week of losing any one individual. **This project does
-not meet that criterion today**, and this section does not close it. Meeting it
-requires granting a second trusted person standing rights (or configuring
-GitHub's account-successor mechanism) — a real-world decision by the maintainer,
-not a documentation change.
+The OpenSSF Best Practices Silver criterion `access_continuity` is a level-1
+**MUST** with `na_allowed: false` (verified 2026-09-08 by joining the live
+project JSON against `criteria/criteria.yml` from
+`coreinfrastructure/best-practices-badge`; it is the ONLY level-0/1 MUST
+without an N/A escape that this project does not currently satisfy). Read
+verbatim from that project's `config/locales/en.yml`, 2026-09-08:
 
-What follows is the prerequisite groundwork: the inventory a successor would
-need. It is deliberately not written as if it were the answer.
+> The project MUST be able to continue with minimal interruption if any one
+> person dies, is incapacitated, or is otherwise unable or unwilling to
+> continue support of the project. In particular, the project MUST be able to
+> create and close issues, accept proposed changes, and release versions of
+> software, within a week of confirmation of the loss of support from any one
+> individual. This MAY be done by ensuring someone else has any necessary
+> keys, passwords, and legal rights to continue the project. Individuals who
+> run a FLOSS project MAY do this by providing keys in a lockbox and a will
+> providing any needed legal rights (e.g., for DNS names).
+
+The maintainer has decided the SHAPE of the arrangement that will satisfy
+this: **credential escrow plus assigned legal rights** — the exact route the
+criterion itself names as sufficient ("providing keys in a lockbox and a
+will"), and deliberately not a live second person with standing, day-to-day
+repository rights.
+
+<!-- TODO(#1080): confirm before merge — has the arrangement described below
+     actually been put in place, or does this section still describe an
+     INTENDED arrangement? This repo has a documented defect class (prose
+     written for a post-action state before the action happens) — do not let
+     this section read as "done" until it is. -->
+
+**What is escrowed:**
+
+- GitHub account credentials for `DocGerd` (password and MFA/recovery
+  material) <!-- TODO(#1080): confirm exactly what is escrowed and where —
+  e.g. a password manager vault, a physical lockbox, an attorney's file -->.
+  Repository admin, GitHub Pages settings, the `github-pages` environment
+  deployment policy, and release-tag write access (four rows of the table
+  below) are all reachable through this one login, so escrowing it covers
+  them without a separate line item per capability.
+- The OpenSSF Best Practices badge-editor seat on
+  [Project 13749](https://www.bestpractices.dev/projects/13749)
+  <!-- TODO(#1080): confirm whether this needs its own escrowed credential,
+  or is reachable via "sign in with GitHub" on the DocGerd account -->.
+- <!-- TODO(#1080): confirm whether the SSH release-signing key
+  (`~/.ssh/id_ed25519`, fingerprint in the table below) is escrowed directly
+  as private key material, or whether the successor is expected to register
+  a NEW signing key once they have GitHub account access. -->
+
+**Who holds the escrow, and where:**
+<!-- TODO(#1080): name the escrow holder/mechanism (an attorney, a notarized
+document, a specific named trusted person, a digital dead-man's-switch/escrow
+service) and where the credentials physically or digitally live. -->
+
+**Release trigger:**
+<!-- TODO(#1080): state the concrete condition(s) that release the escrowed
+credentials to the successor. -->
+The criterion names three triggers — death, incapacitation, or "otherwise
+unable or unwilling to continue" — and they are not equally easy to satisfy
+from one release condition. A trigger keyed only to a death certificate
+(mirroring GitHub's own successor mechanism, corrected below) would not cover
+incapacitation or a maintainer who is simply unreachable without being
+provably dead — and any route that depends on someone eventually noticing an
+absence and then gathering formal proof is not obviously fast enough to meet
+the criterion's "within a week" clause. A release trigger broader than "death
+proven" — for example a defined period of maintainer inactivity, checked
+independently of cause — is what would let this arrangement cover the
+criterion's full scope rather than only its narrowest reading.
+<!-- TODO(#1080): confirm the actual release trigger covers this. -->
+
+**Legal rights:**
+<!-- TODO(#1080): confirm the legal instrument (a will, a durable power of
+attorney, or similar) and that it authorizes use of the escrowed credentials
+on incapacity or unavailability, not only on death — an ordinary will
+typically takes effect only at death. -->
+
+### GitHub's built-in successor mechanism does not substitute for this
+
+An earlier version of this section named GitHub's account-successor feature
+as an alternative to a second trusted person, phrased so it read as an
+option requiring no second person at all. That was wrong on two independent
+grounds, read directly from GitHub's own documentation on 2026-09-08:
+
+1. **It still requires a second person, who must accept.** "The person you
+   invite to be your successor must have a GitHub account", and the
+   invitation "will be listed as 'Pending' until they agree to become your
+   successor" (GitHub Docs, *Maintaining ownership continuity of your
+   personal account's repositories*). It is not a unilateral setting the
+   maintainer alone can complete.
+2. **Even configured, it is neither fast nor complete on the trigger this
+   criterion cares about.** A successor can act only "after presenting a
+   death certificate then waiting for 7 days, or presenting an obituary then
+   waiting for 21 days" (GitHub Docs, *Personal repository access and
+   collaboration* § "About successors") — and reaching that point requires
+   petitioning GitHub through its Support portal, which may in turn ask for
+   "a copy of your photo identification, copy of the death certificate, and
+   documentation confirming you are authorized to act" (GitHub Docs, *GitHub
+   Deceased User Policy*), a process for which GitHub documents no committed
+   turnaround time. What a successor can then do is also narrow: "Archive
+   your public repositories. Transfer your public repositories to their own
+   user owned account. Transfer your public repositories to an organization"
+   — public repositories only, with nothing about Pages settings, the
+   `github-pages` environment deployment policy, or the bestpractices.dev
+   editor seat.
+
+So even configured, GitHub's successor mechanism does not by itself satisfy
+"release versions of software... within a week" (the 7-day minimum wait
+starts only once a death certificate is obtained and presented, before any
+Support-side processing time), has no documented trigger for incapacity or
+mere unavailability at all, and has no route to the two capabilities a
+release actually needs beyond the repository itself. It can still be
+configured as a low-cost second line of defense — nothing here argues for
+removing it — but it is not the arrangement this criterion is answered by.
+
+What follows is the successor inventory: what the escrow above needs to
+cover, whether by direct credential or by the GitHub-account login that
+reaches it.
 
 ### What a successor would need
 
