@@ -358,6 +358,122 @@ describe('parseHemisphereCoord', () => {
     expect(parseHemisphereCoord('abc', 'lat')).toBeNull();
     expect(parseHemisphereCoord('54.8NN', 'lat')).toBeNull();
   });
+
+  // #1005: decimal-comma degrees, alongside the existing decimal-point form.
+  // Hand-derived: '54,8' names the same magnitude as '54.8' (tested above),
+  // just with the German locale's decimal separator instead of the point.
+  describe('decimal comma as the decimal separator', () => {
+    it('accepts a bare comma-decimal degree value', () => {
+      expect(parseHemisphereCoord('54,8', 'lat')).toBeCloseTo(54.8, 9);
+      expect(parseHemisphereCoord('-54,8', 'lat')).toBeCloseTo(-54.8, 9);
+    });
+
+    it('accepts a comma-decimal degree value with a hemisphere letter', () => {
+      expect(parseHemisphereCoord('54,8S', 'lat')).toBeCloseTo(-54.8, 9);
+      expect(parseHemisphereCoord('10,1E', 'lon')).toBeCloseTo(10.1, 9);
+    });
+  });
+
+  // #1005: degrees + decimal minutes ("54° 48.74'") and degrees + minutes +
+  // seconds ("54° 48' 44.4\""), the forms a marine GPS or almanac actually
+  // displays. Every expected value below is HAND-DERIVED from the DM/DMS
+  // definition (degrees + minutes/60 + seconds/3600), not copied from the
+  // implementation's own output:
+  //   54° 48.74'        = 54 + 48.74/60        = 54 + 0.81233333... = 54.81233333...
+  //   54° 48' 44"        = 54 + 48/60 + 44/3600  = 54.8 + 0.01222222... = 54.81222222...
+  //   54° 48' 44.4" N    = 54 + 48/60 + 44.4/3600 = 54.8 + 0.01233333... = 54.81233333...
+  // (44.4" is exactly 0.74' expressed in seconds — 0.74 * 60 = 44.4 — so the
+  // DM and DMS forms of the SAME angle land on the same value; that
+  // agreement is itself part of what a mutated seconds/minutes term would
+  // break, per the mutation check below.)
+  describe('degrees + minutes, and degrees + minutes + seconds', () => {
+    it('parses degrees + decimal minutes with no symbols', () => {
+      expect(parseHemisphereCoord('54 48.74', 'lat')).toBeCloseTo(54.812333333, 8);
+    });
+
+    it('parses degrees + decimal minutes with degree/minute marks', () => {
+      expect(parseHemisphereCoord("54° 48.74'", 'lat')).toBeCloseTo(54.812333333, 8);
+    });
+
+    it('parses degrees + decimal minutes with a trailing hemisphere letter', () => {
+      expect(parseHemisphereCoord("54 48.74' N", 'lat')).toBeCloseTo(54.812333333, 8);
+      expect(parseHemisphereCoord("54 48.74' S", 'lat')).toBeCloseTo(-54.812333333, 8);
+    });
+
+    it('parses degrees + minutes + whole seconds with no symbols', () => {
+      expect(parseHemisphereCoord('54 48 44', 'lat')).toBeCloseTo(54.812222222, 8);
+    });
+
+    it('parses degrees + minutes + whole seconds with degree/minute/second marks', () => {
+      expect(parseHemisphereCoord('54° 48\' 44"', 'lat')).toBeCloseTo(54.812222222, 8);
+    });
+
+    it('parses degrees + minutes + decimal seconds with a trailing hemisphere letter', () => {
+      expect(parseHemisphereCoord('54° 48\' 44.4" N', 'lat')).toBeCloseTo(54.812333333, 8);
+    });
+
+    it('accepts a comma as the decimal separator inside minutes', () => {
+      expect(parseHemisphereCoord("54° 48,74'", 'lat')).toBeCloseTo(54.812333333, 8);
+    });
+
+    it('accepts degrees + decimal minutes for the longitude axis', () => {
+      // 9 + 25.5/60 = 9 + 0.425 = 9.425 exactly.
+      expect(parseHemisphereCoord('9 25.5', 'lon')).toBeCloseTo(9.425, 9);
+      expect(parseHemisphereCoord("9° 25.5' E", 'lon')).toBeCloseTo(9.425, 9);
+    });
+
+    it('rejects a DM hemisphere letter that belongs to the OTHER axis', () => {
+      expect(parseHemisphereCoord("54 48.74' E", 'lat')).toBeNull();
+      expect(parseHemisphereCoord("10 25.5' N", 'lon')).toBeNull();
+    });
+  });
+
+  // #1005 safety-critical negative cases: a widened parser must still reject
+  // garbage rather than silently returning a wrong number. Each row below
+  // is a distinct way the DM/DMS shape can be malformed or out of range.
+  describe('DM/DMS range and shape rejections', () => {
+    // MUTATION CHECK (non-vacuity): removing the `minInt >= 60` guard makes
+    // this row return a (wrong) number instead of null — see the report for
+    // the measured red/green transition.
+    it('rejects minutes >= 60', () => {
+      expect(parseHemisphereCoord('54 61.5', 'lat')).toBeNull();
+      expect(parseHemisphereCoord('54 60.0', 'lat')).toBeNull();
+    });
+
+    // MUTATION CHECK (non-vacuity): removing the `secondsValue >= 60` guard
+    // makes this row return a (wrong) number instead of null.
+    it('rejects seconds >= 60', () => {
+      expect(parseHemisphereCoord('54 48 75', 'lat')).toBeNull();
+      expect(parseHemisphereCoord('54 48 60', 'lat')).toBeNull();
+    });
+
+    it('rejects non-numeric garbage', () => {
+      expect(parseHemisphereCoord('abc', 'lat')).toBeNull();
+    });
+
+    it('rejects a second decimal point that makes the shape ambiguous', () => {
+      expect(parseHemisphereCoord('54 48.74.5', 'lat')).toBeNull();
+    });
+
+    it('rejects empty input', () => {
+      expect(parseHemisphereCoord('', 'lat')).toBeNull();
+    });
+
+    it('rejects a lone hemisphere letter with no numeric part', () => {
+      expect(parseHemisphereCoord('N', 'lat')).toBeNull();
+    });
+
+    // MUTATION CHECK (non-vacuity): removing the
+    // `minFrac !== undefined && secInt !== undefined` conflict guard makes
+    // this row return a (wrong) number instead of null — decimal minutes
+    // AND a separate seconds field is a self-contradictory shape (are the
+    // decimal minutes already inclusive of the seconds, or not?), so it is
+    // rejected rather than guessed at, the same policy this file already
+    // applies to a sign+letter conflict.
+    it('rejects decimal minutes combined with a separate seconds field', () => {
+      expect(parseHemisphereCoord('54 48.5 44', 'lat')).toBeNull();
+    });
+  });
 });
 
 describe('resolveHemisphereCoordCommit', () => {

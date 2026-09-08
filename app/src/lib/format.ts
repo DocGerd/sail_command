@@ -116,38 +116,107 @@ const HEMISPHERE_LETTERS: Record<CoordAxis, readonly ['positive' | 'negative', s
 };
 
 /**
- * #886 residual 1: parses a decimal-degree lat/lon TEXT entry that may carry
- * a trailing hemisphere letter (N/S for `axis: 'lat'`, E/W for `axis:
- * 'lon'`) — the convention `formatLatLon` above already RENDERS
- * ("54.789°N"), but which no input in this app previously accepted. Charts
- * and almanacs write the hemisphere letter; a captain transcribing one back
- * needs to type it in, not just read it.
- *
- * Returns `null` for anything that isn't EITHER a bare signed decimal OR a
- * decimal with a hemisphere suffix valid for the given axis — the caller
- * treats `null` as a rejection to surface visibly, never a silent revert
- * (see `resolveHemisphereCoordCommit` below).
+ * Shared sign/hemisphere-letter resolution for both coordinate forms below.
+ * `magnitude` is always non-negative (the DEGREES/minutes/seconds arithmetic
+ * that produced it never returns a signed value). `isExplicitlyNegative`
+ * records whether the ORIGINAL text carried a leading '-' — kept separate
+ * from `magnitude`'s sign so a `-0`-shaped input still resolves correctly.
  *
  * Deliberately rejects a hemisphere letter paired with an explicit '-' sign
  * ("-54.8N") rather than guessing which one wins — that pairing is
  * self-contradictory, and picking a resolution silently would be a second,
  * hidden convention nobody asked for.
  */
-export function parseHemisphereCoord(draft: string, axis: CoordAxis): number | null {
-  const trimmed = draft.trim();
-  if (trimmed === '') return null;
-  const m = /^(-?\d+(?:\.\d+)?)\s*°?\s*([A-Za-z])?$/.exec(trimmed);
-  if (!m) return null;
-  const numPart = m[1] as string;
-  const letterRaw = m[2];
-  const magnitude = Number(numPart);
-  if (!Number.isFinite(magnitude)) return null;
-  if (letterRaw === undefined) return magnitude;
-  if (numPart.startsWith('-')) return null;
+function applyHemisphereSign(
+  magnitude: number,
+  isExplicitlyNegative: boolean,
+  letterRaw: string | undefined,
+  axis: CoordAxis,
+): number | null {
+  if (letterRaw === undefined) return isExplicitlyNegative ? -magnitude : magnitude;
+  if (isExplicitlyNegative) return null;
   const letter = letterRaw.toUpperCase();
   const match = HEMISPHERE_LETTERS[axis].find(([, l]) => l === letter);
   if (!match) return null;
   return match[0] === 'negative' ? -magnitude : magnitude;
+}
+
+// #886 residual 1's original bare-decimal form, e.g. "54.8", "54.8N",
+// "54.8° S". Comma is accepted alongside the point as the decimal separator
+// (#1005) — the de locale writes the decimal comma, and since lat/lon are
+// two SEPARATE text inputs a comma can never be misread as a field
+// separator the way it could in one combined field.
+const DECIMAL_DEGREES_RE = /^(-?\d+(?:[.,]\d+)?)\s*°?\s*([A-Za-z])?$/;
+
+// #1005: degrees + minutes, optionally + seconds — the forms a marine GPS
+// or almanac actually displays ("54° 48.74'", "54° 48' 44.4\" N") rather
+// than the decimal degrees a captain would otherwise have to convert to by
+// hand. Degrees carries an optional sign (mirrors the decimal form above);
+// minutes and seconds are always unsigned — a DM/DMS entry conventionally
+// carries its sign in the hemisphere letter alone, never a leading '-' on
+// the whole group. Each of minutes/seconds may carry ITS OWN decimal
+// fraction (comma or point), but not both at once — "54 48.5 44" is
+// ambiguous (decimal minutes, or whole minutes plus a seconds field?) and
+// is rejected below rather than guessed.
+const DM_DMS_RE =
+  /^(-?\d+)\s*°?\s*(\d{1,2})(?:[.,](\d+))?\s*'?\s*(?:(\d{1,2})(?:[.,](\d+))?\s*"?\s*)?([A-Za-z])?$/;
+
+/**
+ * #886 residual 1 (extended by #1005): parses a lat/lon TEXT entry that may
+ * carry a trailing hemisphere letter (N/S for `axis: 'lat'`, E/W for `axis:
+ * 'lon'`) — the convention `formatLatLon` above already RENDERS
+ * ("54.789°N"), but which no input in this app previously accepted. Charts
+ * and almanacs write the hemisphere letter; a captain transcribing one back
+ * needs to type it in, not just read it.
+ *
+ * Accepts THREE input shapes, tried in order: plain decimal degrees
+ * (`DECIMAL_DEGREES_RE`); degrees + decimal minutes ("54° 48.74'"); and
+ * degrees + minutes + seconds ("54° 48' 44.4\""). Each accepts either '.'
+ * or ',' as the decimal separator (#1005).
+ *
+ * Returns `null` for anything that doesn't match one of those shapes, or
+ * that matches but fails a range check (minutes/seconds >= 60) — the
+ * caller treats `null` as a rejection to surface visibly, never a silent
+ * revert (see `resolveHemisphereCoordCommit` below).
+ */
+export function parseHemisphereCoord(draft: string, axis: CoordAxis): number | null {
+  const trimmed = draft.trim();
+  if (trimmed === '') return null;
+
+  const decimalMatch = DECIMAL_DEGREES_RE.exec(trimmed);
+  if (decimalMatch) {
+    const numPart = (decimalMatch[1] as string).replace(',', '.');
+    const letterRaw = decimalMatch[2];
+    const magnitude = Number(numPart.replace('-', ''));
+    if (!Number.isFinite(magnitude)) return null;
+    return applyHemisphereSign(magnitude, numPart.startsWith('-'), letterRaw, axis);
+  }
+
+  const dmsMatch = DM_DMS_RE.exec(trimmed);
+  if (dmsMatch) {
+    const degPart = dmsMatch[1] as string;
+    const minInt = Number(dmsMatch[2]);
+    const minFrac = dmsMatch[3];
+    const secInt = dmsMatch[4];
+    const secFrac = dmsMatch[5];
+    const letterRaw = dmsMatch[6];
+
+    if (minFrac !== undefined && secInt !== undefined) return null;
+    if (minInt >= 60) return null;
+
+    let totalMinutes = minFrac !== undefined ? Number(`${minInt}.${minFrac}`) : minInt;
+    if (secInt !== undefined) {
+      const secondsValue = secFrac !== undefined ? Number(`${secInt}.${secFrac}`) : Number(secInt);
+      if (secondsValue >= 60) return null;
+      totalMinutes += secondsValue / 60;
+    }
+
+    const degreesMagnitude = Number(degPart.replace('-', ''));
+    const magnitude = degreesMagnitude + totalMinutes / 60;
+    return applyHemisphereSign(magnitude, degPart.startsWith('-'), letterRaw, axis);
+  }
+
+  return null;
 }
 
 /** Outcome of resolving a coordinate text draft into a committed value —
