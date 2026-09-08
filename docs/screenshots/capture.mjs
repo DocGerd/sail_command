@@ -196,7 +196,13 @@ const PANEL_WIDTH_PX = 518;
 // deliberately framed with its legs table scrolled — a long table is meant
 // to be cut off, unlike a form field, which is what made the start-view
 // crop a defect and this one not.
-const START_VIEW_HEIGHT_PX = 1060;
+// RE-MEASURED 2026-09-08 at the v0.27.0 cut: #1005's via-coordinate changes
+// grew the Trip card again, pushing the Departure/Safety-depth labels to
+// document y=1056-1075 — 15px below the old 1060px fold, rendering sliced
+// mid-glyph. The sticky `.planner-actions` bar's resting top tracks
+// `height - 96`, so it must clear y=1075 to stop covering the labels too;
+// minimum is 1171. BUMPED 1060 -> 1200 (29px clearance).
+const START_VIEW_HEIGHT_PX = 1200;
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1280, height: START_VIEW_HEIGHT_PX } });
