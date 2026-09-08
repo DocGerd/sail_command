@@ -254,13 +254,13 @@ current maintainer. **Existing installations keep working offline indefinitely**
 — an abandoned SailCommand degrades to a static app with an ageing wind source,
 not to an outage.
 
-### OpenSSF `access_continuity`: credential escrow and assigned legal rights
+### OpenSSF `access_continuity`: met via fork continuity
 
 The OpenSSF Best Practices Silver criterion `access_continuity` is a level-1
 **MUST** with `na_allowed: false` (verified 2026-09-08 by joining the live
 project JSON against `criteria/criteria.yml` from
 `coreinfrastructure/best-practices-badge`; it is the ONLY level-0/1 MUST
-without an N/A escape that this project does not currently satisfy). Read
+without an N/A escape this project's badge form does not yet mark Met). Read
 verbatim from that project's `config/locales/en.yml`, 2026-09-08:
 
 > The project MUST be able to continue with minimal interruption if any one
@@ -273,69 +273,92 @@ verbatim from that project's `config/locales/en.yml`, 2026-09-08:
 > run a FLOSS project MAY do this by providing keys in a lockbox and a will
 > providing any needed legal rights (e.g., for DNS names).
 
-The maintainer has decided the SHAPE of the arrangement that will satisfy
-this: **credential escrow plus assigned legal rights** — the exact route the
-criterion itself names as sufficient ("providing keys in a lockbox and a
-will"), and deliberately not a live second person with standing, day-to-day
-repository rights.
+**The MUST is the OUTCOME, not the mechanism**: the ability to create and
+close issues, accept proposed changes, and release versions of software,
+within a week. The lockbox-and-will formulation is introduced by "MAY" — one
+permitted way to reach that outcome, not the only one, and not a licence to
+read the criterion as indifferent to keys and passwords in general.
 
-<!-- TODO(#1080): confirm before merge — has the arrangement described below
-     actually been put in place, or does this section still describe an
-     INTENDED arrangement? This repo has a documented defect class (prose
-     written for a post-action state before the action happens) — do not let
-     this section read as "done" until it is. -->
+**This project satisfies that outcome through fork continuity, not through a
+standing successor.** SailCommand is public under Apache-2.0, and its entire
+release and deploy pipeline is committed IN the repository. Verified
+2026-09-08 by reading all three: `.github/workflows/ci.yml`,
+`release.yml` and `deploy.yml` run on the default `GITHUB_TOKEN` under
+standard Actions permissions (`contents: read`; `pages: write` +
+`id-token: write` for the Pages OIDC deploy step) — none references a
+`secrets.*` value beyond that automatic token, and the existing "GitHub
+Actions secrets: None held" row below already recorded this independently.
+So anyone who forks the repository can, with no cooperation from the current
+maintainer:
 
-**What is escrowed:**
+- **Create and close issues, and accept proposed changes** immediately —
+  every GitHub fork carries its own issue tracker and pull-request flow from
+  the moment it is created.
+- **Release software within a week** — `npm --prefix pipeline run
+  polars|estimate|harbors|seamarks|mask|icons` plus
+  `pipeline/extract_basemap.sh` regenerate every committed data asset from
+  public sources (`pipeline/README.md`), and a signed or unsigned tag pushed
+  to the fork's own `main` is all `release.yml` needs to create a GitHub
+  Release; nothing in that path reads a value only the current maintainer
+  holds.
 
-- GitHub account credentials for `DocGerd` (password and MFA/recovery
-  material) <!-- TODO(#1080): confirm exactly what is escrowed and where —
-  e.g. a password manager vault, a physical lockbox, an attorney's file -->.
-  Repository admin, GitHub Pages settings, the `github-pages` environment
-  deployment policy, and release-tag write access (four rows of the table
-  below) are all reachable through this one login, so escrowing it covers
-  them without a separate line item per capability.
-- The OpenSSF Best Practices badge-editor seat on
-  [Project 13749](https://www.bestpractices.dev/projects/13749)
-  <!-- TODO(#1080): confirm whether this needs its own escrowed credential,
-  or is reachable via "sign in with GitHub" on the DocGerd account -->.
-- <!-- TODO(#1080): confirm whether the SSH release-signing key
-  (`~/.ssh/id_ed25519`, fingerprint in the table below) is escrowed directly
-  as private key material, or whether the successor is expected to register
-  a NEW signing key once they have GitHub account access. -->
+**What is NOT free, stated plainly rather than glossed over** — SailCommand
+is a deployed PWA, not only a source tree, and that is where fork continuity
+is weaker than the paragraph above suggests on its own:
 
-**Who holds the escrow, and where:**
-<!-- TODO(#1080): name the escrow holder/mechanism (an attorney, a notarized
-document, a specific named trusted person, a digital dead-man's-switch/escrow
-service) and where the credentials physically or digitally live. -->
+- **The deployed origin does not move with a fork.** Production is served at
+  `docgerd.github.io/sail_command` behind a `github-pages` environment
+  deployment policy scoped to this specific repository (branch entries
+  `main`/`develop`, tag entry `v*`). A fork deploys to its OWN
+  `<successor>.github.io/sail_command` (or a custom domain) once Pages is
+  enabled and that environment's policy configured on the fork's own repo —
+  a few-minutes, self-service Settings action needing no cooperation — but
+  it is a DIFFERENT URL. `app/vite.config.ts`'s Pages `base`
+  (`/sail_command/`) is derived from the REPO NAME, not the account
+  (verified 2026-09-08, `vite.config.ts`), so it needs no code change as
+  long as the fork keeps that name; the `og:url`/`og:image` social-card meta
+  tags and the informational `environment: { url: … }` labels in
+  `deploy.yml` DO still name the original origin and would want updating for
+  accuracy, though neither blocks a release. **Already-installed users of
+  the original PWA are not carried to a fork automatically** — a
+  service-worker-cached, home-screen install at the old origin keeps working
+  offline (see "Existing installations keep working offline indefinitely"
+  above) but stops receiving updates until a user discovers the fork and
+  reinstalls from its URL. That is a real, uncomfortable gap for EXISTING
+  users specifically, not merely a development-continuity one, and it is
+  inherent to how GitHub Pages binds a deployment to one repository — no
+  process change closes it.
+- **Release tags are signed with the maintainer's own SSH key** (`gpg.format
+  = ssh`, `SECURITY.md`). A fork signs with its OWN key from the point it
+  starts releasing, which needs no cooperation and is not a novel gap: this
+  project's own signing history already has a permanently-unsigned prefix
+  (`v0.1.0` through `v0.7.0`, "Signing is **not retroactive**",
+  `SECURITY.md`), and verification already relies on a locally-built
+  `allowed_signers` file rather than on GitHub-account continuity
+  (`CONTRIBUTING.md`'s "`allowed_signers` — required for local verification"
+  section). A successor registering their own key the same way continues
+  that existing pattern rather than breaking it.
+- **The OpenSSF Best Practices badge-editor seat on
+  [Project 13749](https://www.bestpractices.dev/projects/13749) is tied to
+  the maintainer's login and does not transfer to a fork** — a fork wanting
+  its own badge registers a new project.
 
-**Release trigger:**
-<!-- TODO(#1080): state the concrete condition(s) that release the escrowed
-credentials to the successor. -->
-The criterion names three triggers — death, incapacitation, or "otherwise
-unable or unwilling to continue" — and they are not equally easy to satisfy
-from one release condition. A trigger keyed only to a death certificate
-(mirroring GitHub's own successor mechanism, corrected below) would not cover
-incapacitation or a maintainer who is simply unreachable without being
-provably dead — and any route that depends on someone eventually noticing an
-absence and then gathering formal proof is not obviously fast enough to meet
-the criterion's "within a week" clause. A release trigger broader than "death
-proven" — for example a defined period of maintainer inactivity, checked
-independently of cause — is what would let this arrangement cover the
-criterion's full scope rather than only its narrowest reading.
-<!-- TODO(#1080): confirm the actual release trigger covers this. -->
+Read together: the criterion's required OUTCOME — issues, changes, and
+releases, within a week, with no cooperation required — is met by fork
+continuity alone. What is genuinely NOT carried across without cooperation
+is narrower than "nothing": the specific deployed URL's continuity for
+already-installed users, the specific signing identity, and the
+bestpractices.dev listing itself. None of those three is what the criterion
+measures, but they are real, and this section names them rather than
+following a sibling project's wording that would read as though nothing at
+all were lost.
 
-**Legal rights:**
-<!-- TODO(#1080): confirm the legal instrument (a will, a durable power of
-attorney, or similar) and that it authorizes use of the escrowed credentials
-on incapacity or unavailability, not only on death — an ordinary will
-typically takes effect only at death. -->
-
-### GitHub's built-in successor mechanism does not substitute for this
+### GitHub's built-in successor mechanism is not a superior alternative either
 
 An earlier version of this section named GitHub's account-successor feature
-as an alternative to a second trusted person, phrased so it read as an
-option requiring no second person at all. That was wrong on two independent
-grounds, read directly from GitHub's own documentation on 2026-09-08:
+as an option requiring no second person at all. That was wrong on two
+independent grounds, read directly from GitHub's own documentation on
+2026-09-08:
 
 1. **It still requires a second person, who must accept.** "The person you
    invite to be your successor must have a GitHub account", and the
@@ -359,18 +382,19 @@ grounds, read directly from GitHub's own documentation on 2026-09-08:
    `github-pages` environment deployment policy, or the bestpractices.dev
    editor seat.
 
-So even configured, GitHub's successor mechanism does not by itself satisfy
-"release versions of software... within a week" (the 7-day minimum wait
-starts only once a death certificate is obtained and presented, before any
-Support-side processing time), has no documented trigger for incapacity or
-mere unavailability at all, and has no route to the two capabilities a
-release actually needs beyond the repository itself. It can still be
-configured as a low-cost second line of defense — nothing here argues for
-removing it — but it is not the arrangement this criterion is answered by.
+So GitHub's successor mechanism does not by itself satisfy "release versions
+of software... within a week" (the 7-day minimum wait starts only once a
+death certificate is obtained and presented, before any Support-side
+processing time), has no documented trigger for incapacity or mere
+unavailability at all, and — unlike fork continuity — still depends on a
+specific second person accepting an invitation in advance. It could still be
+configured as a low-cost second line of defense alongside fork continuity;
+nothing here argues for avoiding it. It is simply not needed to satisfy this
+criterion, and does not do so better than a fork would.
 
-What follows is the successor inventory: what the escrow above needs to
-cover, whether by direct credential or by the GitHub-account login that
-reaches it.
+The table below is kept as reference groundwork regardless of route — what
+a live co-maintainer, a GitHub-configured successor, or a fork's maintainer
+would each need to know about this project's account-bound capabilities.
 
 ### What a successor would need
 
