@@ -66,8 +66,8 @@ it cannot drift from the tracker. Do this on a topic branch into `develop`
   known when this heading is first written, so treat the date here as the
   operator's DECLARATION of the intended UTC tag day, not a verified fact —
   **step 3's own checklist item re-checks it against the actual clock before
-  step 4 merges this PR, while the heading is still amendable by an ordinary
-  push to it; that re-check is what validates the declaration.** For each
+  step 4 merges this PR, while the heading is still amendable; that re-check
+  is what validates the declaration.** For each
   fragment file, read its category from the filename
   (`<number>.<category>.md`, optionally `<number>-<n>.<category>.md` to
   disambiguate a second fragment about the same issue/PR —
