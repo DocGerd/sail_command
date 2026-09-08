@@ -100,10 +100,11 @@ making design-level decisions; do not silently deviate.
   scans the stylesheet from the `app/src/` top level — so before touching
   `app.css`, enumerate with `grep -rln 'app\.css' app/src
   --include='*.test.ts*'` rather than trusting any list here — but that grep
-  counts FILES CONTAINING THE STRING, not guards: re-measured 2026-09-01 it
-  returned 13 (12 on 2026-08-31, 11 on 2026-08-28), of which only 8 read the
-  stylesheet via `readFileSync` (`lib/mapColors.test.ts` joined them at
-  #715/PR #798), four (`BoatPicker`/`ScaleBar`/`Slider.test.tsx`/
+  counts FILES CONTAINING THE STRING, not guards: re-measured 2026-09-08 it
+  returned 14 (13 on 2026-09-01, 12 on 2026-08-31, 11 on 2026-08-28), of
+  which 9 read the stylesheet via `readFileSync` (`lib/mapColors.test.ts`
+  joined them at #715/PR #798), four
+  (`BoatPicker`/`ScaleBar`/`Slider.test.tsx`/
   `RouteSummary.test.tsx`) merely NAME it in prose — three in a comment,
   `Slider.test.tsx` in an `it()` title — and
   cannot fail on a CSS change, and one (`sailLiteralCallSites.test.ts`) globs
@@ -113,7 +114,10 @@ making design-level decisions; do not silently deviate.
   and DISAGREED (8/5 vs 9/4), the wrong one counting
   `sailLiteralCallSites.test.ts` as a reader against that file's OWN header
   comment saying it globs precisely BECAUSE it needs no stylesheet; careful
-  readers get this wrong, so it is not a caution about carelessness. And
+  readers get this wrong, so it is not a caution about carelessness. The
+  2026-09-08 re-measure moved READERS 8 -> 9 and the TOTAL 13 -> 14, both
+  accounted for by one file: `test/toastCompensationTwin.test.ts`, added
+  2026-09-05 and itself a `readFileSync` reader. And
   `.github/workflows/coverage.yml` carries TWO `timeout-minutes` settings at
   different levels: a STEP-level `240` on the `test:coverage` step, and (since
   #882) a JOB-level `260` set strictly higher so the job outlives that step's
@@ -1537,6 +1541,7 @@ making design-level decisions; do not silently deviate.
   | v0.24.0 | 2026-09-07 | 163 s | `success` (MEASURED immediately before the tag push, and the failure CALLED IN ADVANCE from it) | **`smoke-probe` FAILED** | merge-push `34112529526` (created 10:38:47Z) -> tag `34112760062` (created 10:41:30Z) on `ad679ab`. The tag run's `build` AND `deploy` both succeeded; only `smoke-probe` failed, by the #398 signature -- its own prod entry chunk `assets/index-89U9nb6w.js` returned **404 on all 10 attempts** (10:42:47Z -> 10:47:18Z, ~4m31s) while BOTH basemap Range probes passed on attempt 1 for prod and uat, ruling out a CDN regression. Prod meanwhile served the merge-push run's `assets/index-DEa7vxDb.js` at ``about.version`,{version:`v0.23.0-44-gad679ab`}`` -- read off the live bundle DURING the window, so the superseded artifact is positively identified here rather than inferred afterwards. Back-merge `34114832995` (different SHA `305f8ca`) then probed green and republished **that same chunk name**, which then returned 200 -- so the tag run's BUILD was correct and only its DEPLOYMENT no-opped. Prod afterwards served ``about.version`,{version:`v0.24.0`}`` with ZERO suffixed matches. Predictor was the durable `success`, as at v0.20.0-v0.22.0. **What this row adds is a SECOND observation of v0.23.0's gate finding, from the OPPOSITE reading.** The merge-push `deploy` job ran 10:40:13Z -> **10:40:21Z `success`**, terminal **69 s BEFORE the tag run was created** at 10:41:30Z. v0.23.0 reached that conclusion from an `in_progress` non-answer; this cut reaches it from a durable `success`, so the two agree from different readings -- the cancel-supersede escape is only reachable while the merge `deploy` job is genuinely still running, and at neither cut was it available. Still names no MECHANISM. |
   | v0.25.0 | 2026-09-07 | 75 s | read as **NO `deploy` LINE AT ALL** immediately before the tag push -- one of the non-answers this file lists, and the reading v0.17.0 also recorded | **SAFE -- the tag deployment TOOK** | merge-push `34147054110` (created 17:18:28Z) -> tag `34147141140` (created 17:19:43Z) on `c18f36c`. EVERY job of the merge run ended `cancelled`, and its `deploy` job (`101821520593`) carries `started_at` == `completed_at` == **17:19:46Z** and `steps: 0`, against the TAG run's `deploy` job's `steps: 6` -- that control is what makes the zero discriminating rather than an artifact of how a cancelled job reports. The `github-pages` deployments list for that SHA returns exactly ONE object, `6313385348`, created 17:21:06Z with `ref: v0.25.0`. The tag run's `build`, `deploy` and `smoke-probe` all succeeded; `smoke-probe` ran 17:21:21Z -> 17:21:59Z and its own prod entry chunk `assets/index-BzFCR6-d.js` returned **200 on attempt 1**, as did the uat chunk `assets/index-DNg0wRjc.js` and both basemap Range probes -- every `attempt 10/10` string in that job log is the SCRIPT SOURCE echoed into the group header, not a failed attempt, so read the `attempt N: OK` lines and never grep the bare word. Production afterwards served `assets/index-BzFCR6-d.js` at ``about.version`,{version:`v0.25.0`}`` with ZERO suffixed matches, so no back-merge remedy was owed -- unlike every row from v0.18.0 through v0.24.0, each of which read `smoke-probe` FAILED. **This row WIDENS the v0.23.0/v0.24.0 criterion rather than instantiating it.** Those rows say the cancel-supersede escape is reachable only while the merge `deploy` job is GENUINELY STILL RUNNING; here it had not STARTED when the tag run was created, which is not that state by the letter, and the tag deployment took regardless. Read the operative condition as the WEAKER one -- the merge `deploy` job has not reached terminal `success` -- and treat those two rows' "still running" phrasing as narrower than the evidence now supports. Still names no MECHANISM, and per this table's own rule the gap gates nothing. |
   | v0.26.0 | 2026-09-08 | 74 s | read as **NO `deploy` JOB CREATED YET** (only `build`) immediately before the tag push -- the same non-answer v0.17.0 and v0.25.0 recorded; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `34194830060` (created 06:28:44Z) -> tag `34194916855` (created 06:29:58Z) on `2d8b3df`. The merge run's `deploy` job NEVER RAN -- it was cancel-superseded by the tag run and the run ended `cancelled`, so no `success`-state deployment of that SHA preceded the tag run. The tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**, and its own prod entry chunk `assets/index-C-AG8CEf.js` returned 200. Production afterwards served that same chunk at ``about.version`,{version:`v0.26.0`}`` with ZERO suffixed matches, so no back-merge remedy was owed -- unlike every row from v0.18.0 through v0.24.0, each of which read `smoke-probe` FAILED. Release object `isLatest: true`; tag object `90ed636` reported `verified: true, reason: "valid"`. **This row REPEATS v0.25.0's WIDENED reading specifically** -- the merge `deploy` job not yet STARTED when the tag run was created, which is weaker than the "genuinely still running" wording v0.23.0/v0.24.0 used -- so that widening now rests on two observations rather than one. It is NOT the first safe outcome in this table (the terminal-`cancelled` shape was safe at v0.12.0, v0.12.1, v0.13.0, v0.13.1, v0.14.0 and v0.17.0); what is new is the repetition of the not-yet-started reading. Two observations are still not a mechanism: this row names NONE, and per this table's own rule the gap gates nothing.  |
+  | v0.27.0 | 2026-09-08 | 58 s | read as **NO `deploy` JOB CREATED YET** (only `build`) immediately before the tag push -- the same non-answer v0.17.0, v0.25.0 and v0.26.0 recorded; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `34226445185` (created 12:30:17Z) -> tag `34226540901` (created 12:31:15Z) on `ecf08ff`. EVERY job of the merge run ended `cancelled`, and its `deploy` job carries **`steps: 0`** against that SAME run's `build` job's `steps: 23` -- v0.25.0's control in a DIFFERENT shape -- within-run job-vs-job here, cross-run same-job there -- and the reason either discriminates: a job that never started and one interrupted after running both report `cancelled`, and they mean OPPOSITE things for whether a `success`-state deployment of that SHA already exists. The `github-pages` deployments list for that SHA returns exactly ONE object, `6327652761`, `ref: v0.27.0`. The tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production afterwards served `assets/index-B3638HqI.js` at ``about.version`,{version:`v0.27.0`}`` with ZERO suffixed matches, so no back-merge remedy was owed. Release object `isLatest: true`; tag object `b669e29` reported `verified: true, reason: "valid"`. **THIRD consecutive not-yet-started reading**, after v0.25.0 and v0.26.0, so the WIDENED criterion those rows established -- the merge `deploy` job has not reached terminal `success` -- now rests on three observations rather than two. Three is still not a mechanism: this row names NONE, and per this table's own rule the gap gates nothing. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -4541,6 +4546,19 @@ making design-level decisions; do not silently deviate.
   because a run landing post-switch would have certified the other branch's
   `CLAUDE.md`. Send the correction to EVERY live agent, not only the ones you
   think are affected.
+- **Claude Code's OWN Agent tool refuses a worktree-isolated agent's git
+  command that leaves its worktree -- this is the HARNESS, not a hook.** Two
+  shapes, measured 2026-09-08 against Claude Code 2.1.263 (a harness-version
+  property -- re-check after an upgrade): a command that `cd`s to the shared
+  checkout before running git is refused with "a worktree-isolated agent's
+  git operations must target its own worktree", and a COMPOUND git command is
+  refused as "too complex to verify that it stays inside the worktree". Both
+  strings were found verbatim in that session's transcripts, 12 times. `grep
+  -rl "isolated in the worktree" ~/.claude/ .claude/` returns NOTHING, so
+  there is no local hook to edit and the destructive-git guard is the wrong
+  file to go looking in -- an easy misattribution, since that guard is
+  separately documented here as over-firing on prose. Remedy: brief worktree
+  agents to use plain, SEPARATE git commands inside their own worktree.
 - **`gh pr merge` is SERVER-SIDE, so your local checkout never moves.** Seven
   PRs merged over ~4 h left the main tree at the pre-milestone commit. Harmless
   while every check names an explicit ref (`origin/develop`,
