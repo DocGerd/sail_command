@@ -239,11 +239,15 @@ project's entire history — Patrick Kuhn, under two identities — plus
 repository admin, the ability to accept a pull request, the ability to cut a
 release, and control of the GitHub Pages deployment.
 
-**If that person became unavailable, the project would stop.** Nobody else could
-merge a fix, publish a release, or deploy. This is stated plainly because a
-governance document that implies otherwise would be worse than none: any
-prospective user should factor a bus factor of 1 into their decision to depend
-on this project.
+**If that person became unavailable, nobody else could merge a fix into THIS
+repository, publish a release from it, or deploy to its GitHub Pages
+origin.** This is stated plainly because a governance document that implies
+otherwise would be worse than none: any prospective user should factor a bus
+factor of 1 into their decision to depend on this specific repository and its
+currently-deployed origin. It is also exactly why a fork is this project's
+continuity path — see "OpenSSF `access_continuity`: met via fork continuity"
+below for what a fork can do without any cooperation from this repository at
+all.
 
 The mitigating facts are real but limited: the project is Apache-2.0 licensed,
 the entire build is reproducible from the repository (CI even proves the
@@ -424,10 +428,14 @@ The single-maintainer model is a consequence of there being one maintainer, not
 a preference for exclusivity. A contributor with a sustained track record of
 merged changes may be invited to become a second maintainer; that would be
 announced in this file and in `CHANGELOG.md`, and would immediately trigger
-revisiting three things recorded elsewhere as single-maintainer trade-offs: the
+revisiting two things recorded elsewhere as single-maintainer trade-offs: the
 approving-review requirement and Scorecard disposition in
 [`SECURITY.md`](SECURITY.md#openssf-scorecard-posture-branch-protection-code-review),
-the DCO decision above, and `access_continuity`.
+and the DCO decision above. `access_continuity` needs no such revisiting: it
+is already met via fork continuity (see "Continuity and succession" above), a
+route that requires no second maintainer at all. A second maintainer would
+only add a faster, standing route alongside that fork-continuity one — there
+is no open gap on this criterion left for one to close.
 
 ## Changing this document
 
