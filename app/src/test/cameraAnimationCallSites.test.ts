@@ -45,7 +45,10 @@ const sourceFiles = import.meta.glob<string>(
   { query: '?raw', import: 'default', eager: true },
 );
 
-// v6's camera.ts: easeTo/flyTo/rotateTo/resetNorth/fitBounds are genuinely
+// v6's camera.ts: every line number below was re-derived against the
+// installed maplibre-gl@6.7.0 (2026-09-08) and is unchanged between the v6
+// baseline this comment was originally written against and 6.7.0.
+// easeTo/flyTo/rotateTo/resetNorth/fitBounds are genuinely
 // animated; fitScreenCoordinates (:613) is too and, like rotateTo, takes an
 // explicit bearing. jumpTo (:637) and setBearing (:489, which just calls
 // jumpTo) are instant rather than eased, but still change the camera and

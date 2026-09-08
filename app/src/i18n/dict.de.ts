@@ -99,6 +99,12 @@ export const de = {
   'settings.seamarkCategory.all': 'Alle',
   'settings.seamarkCategory.help':
     'Kardinal-, Lateral- und Mitte-Fahrwasser-Zeichen, Einzelgefahrenzeichen sowie Leuchttürme werden immer angezeigt, auch bei „Basis“. „Standard“ (Voreinstellung) zeigt alles, einschließlich Unterwasserkabeln und Pipelines. „Alle“ zeigt derzeit dasselbe wie „Standard“.',
+  // #686: wird statt des obigen Schlüssels angezeigt, solange das
+  // „Alle“-Optionsfeld ausgeblendet ist (derzeit keine Kategorie dorthin
+  // eingeordnet) — lässt die Erwähnung von „Alle“ ganz weg, statt eine
+  // nicht sichtbare Option zu beschreiben.
+  'settings.seamarkCategory.helpNoAll':
+    'Kardinal-, Lateral- und Mitte-Fahrwasser-Zeichen, Einzelgefahrenzeichen sowie Leuchttürme werden immer angezeigt, auch bei „Basis“. „Standard“ (Voreinstellung) zeigt alles, einschließlich Unterwasserkabeln und Pipelines.',
   // #849 part (a): lokaler Import/Export für Routen, Einstellungen und
   // gespeicherte Wegpunkte — sitzt am Ende des Boot-Tabs, da er alle drei
   // Datenarten betrifft statt nur diesem Tab. Ergänzt (löscht nicht) die

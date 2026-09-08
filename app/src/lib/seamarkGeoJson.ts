@@ -291,7 +291,8 @@ export function seamarkPopupAnchor<T extends { properties?: unknown; geometry?: 
  *         array: `PauseablePlacement`'s `_currentPlacementIndex` is
  *         initialised to `order.length - 1` (the TOPMOST layer) and
  *         decrements from there (`style/pauseable_placement.ts:80,101-102,124`,
- *         re-derived against `maplibre-gl` **6.5.0**, matched to
+ *         re-derived against `maplibre-gl` **6.7.0** (unmoved since 6.5.0),
+ *         matched to
  *         `app/package-lock.json`'s pin via `npm ci` before reading, not a
  *         possibly-stale `node_modules` — #392's documented trap). So a
  *         layer added LATER — which DataLayers.tsx's own `setupLayers`
@@ -317,27 +318,31 @@ export function seamarkPopupAnchor<T extends { properties?: unknown; geometry?: 
  *     (c) Cross-tile ordering (#232 item 2) — the issue's ORIGINAL hypothesis
  *         here ("the sort only orders within one tile, so a low-priority
  *         mark in an earlier tile can beat a high-priority one in a later
- *         tile, and no ranking fixes it") is REFUTED by source, read against
- *         `maplibre-gl` **6.5.0** (`app/node_modules/maplibre-gl`, matched
+ *         tile, and no ranking fixes it") is REFUTED by source, re-derived against
+ *         `maplibre-gl` **6.7.0** (`app/node_modules/maplibre-gl`, matched
  *         to `app/package-lock.json`'s pin via `npm ci` before reading, not
  *         a possibly-stale `node_modules` — #392's documented trap). Both
  *         `sc-seamarks` and (since #682) `sc-seamarks-hazard` set a
  *         non-constant `symbol-sort-key` and never set `symbol-z-order` —
  *         exactly the condition `LayerPlacement`'s
  *         `_sortAcrossTiles` flag tests (`style/pauseable_placement.ts:
- *         20-21`, the SAME predicate as `sortFeaturesByKey` above). When
- *         that flag is true, `continuePlacement` (`:29-58`) first collects
+ *         20-21`, unmoved since 6.5.0, the SAME predicate as
+ *         `sortFeaturesByKey` above). When
+ *         that flag is true, `continuePlacement` (`:29-58`, unmoved) first collects
  *         ONE `BucketPart` per tile-local `sortKeyRange` from EVERY
- *         renderable tile of the source (`:33-41`; `getBucketParts`,
- *         `symbol/placement.ts:245,303-307` — `sortKeyRanges` are the
+ *         renderable tile of the source (`:33-41`, unmoved; `getBucketParts`,
+ *         `symbol/placement.ts:245,303-307`, unmoved — `sortKeyRanges` are the
  *         WORKER-side per-tile grouping that `SymbolBucket.populate()`'s OWN
- *         per-tile sort (`data/bucket/symbol_bucket.ts:552-557`) feeds via
- *         `addToSortKeyRanges` (`:891-902`)), collects them all into ONE
- *         array, THEN sorts that whole array by `sortKey` GLOBALLY (`:43-46`)
- *         BEFORE placing any part of it (`:48-56`). So a hazard mark in a
+ *         per-tile sort (`data/bucket/symbol_bucket.ts:575-580`, was
+ *         `:552-557` at 6.5.0) feeds via
+ *         `addToSortKeyRanges` (`:916-927`, was `:891-902`)), collects them
+ *         all into ONE
+ *         array, THEN sorts that whole array by `sortKey` GLOBALLY (`:43-46`,
+ *         unmoved)
+ *         BEFORE placing any part of it (`:48-56`, unmoved). So a hazard mark in a
  *         later-processed tile IS placed — and therefore collision-wins —
  *         before a routine mark in an earlier tile: `SymbolBucket.populate()`'s
- *         per-tile sort (`data/bucket/symbol_bucket.ts:552-557`) is a
+ *         per-tile sort (`data/bucket/symbol_bucket.ts:575-580`) is a
  *         WORKER-side grouping step feeding this LATER, GLOBAL cross-tile
  *         merge — it is not itself the final placement order.
  *         STATUS: RESOLVED (2026-08-31) — the replacement hypothesis from
@@ -432,8 +437,9 @@ export function seamarkPopupAnchor<T extends { properties?: unknown; geometry?: 
  *   BASE_ICON_SIZE_STOPS table `icon-size` uses plus SEAMARK_SIZE_SCALE, so
  *   a future non-1 scale keeps the collision footprint (displayed icon size
  *   + 2*padding — MapLibre applies padding per side, see
- *   `collision_feature.ts:71-74`'s `x1 -= padding[3]; x2 += padding[1]` etc.,
- *   read against `maplibre-gl@6.1.0` — confirmed via `npm ci` against
+ *   `collision_feature.ts:71-74`'s `x1 -= padding[3]; x2 += padding[1]` etc.
+ *   (unmoved),
+ *   re-derived against `maplibre-gl@6.7.0` — confirmed via `npm ci` against
  *   `app/package-lock.json`'s pin, not just grepped from a possibly-stale
  *   `node_modules`, #392's documented trap) from growing in lockstep with a
  *   bigger on-screen icon — the #191/#192 lesson this parameterization

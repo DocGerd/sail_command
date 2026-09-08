@@ -331,6 +331,35 @@ describe('parseHemisphereCoord', () => {
     expect(parseHemisphereCoord('0', 'lat')).toBe(0);
   });
 
+  // #1086: `applyHemisphereSign` negates via `-magnitude` on BOTH the
+  // negative-hemisphere-letter branch and the explicit-leading-minus branch —
+  // over a zero magnitude that yields `-0`, and `Object.is(-0, 0)` is
+  // `false` (Playwright's `toBe` uses `Object.is`, same as vitest's own
+  // `toBe`), so a future assertion written the natural way would fail
+  // silently on exactly this input. `.toBe(0)` above only ever exercises the
+  // POSITIVE-zero spellings ('0N', a bare '0'); these rows are the
+  // NEGATIVE-zero spellings the row above cannot reach: a negative letter
+  // (S/W) and an explicit leading '-', each over a zero magnitude, plus the
+  // same explicit-minus branch reached through the DM/DMS regex instead of
+  // the decimal one. `.toBe(0)` (Object.is) is the load-bearing assertion
+  // here — `toEqual`/`===` cannot tell `-0` from `0` and would pass on the
+  // unfixed code too.
+  //
+  // MUTATION CHECK: reverting the `+ 0` normalisation in `applyHemisphereSign`
+  // (both return sites) reds every row below with `Received: -0`.
+  it('normalises -0 to +0 for a negative hemisphere letter over a zero magnitude', () => {
+    expect(parseHemisphereCoord('0S', 'lat')).toBe(0);
+    expect(parseHemisphereCoord('0W', 'lon')).toBe(0);
+  });
+
+  it('normalises -0 to +0 for an explicit leading minus over a zero magnitude', () => {
+    expect(parseHemisphereCoord('-0', 'lat')).toBe(0);
+    // Same branch (`isExplicitlyNegative` with no hemisphere letter), reached
+    // via the DM/DMS regex ("degrees + minutes") instead of the plain
+    // decimal one — a different input shape hitting the identical code path.
+    expect(parseHemisphereCoord('-0 0', 'lat')).toBe(0);
+  });
+
   // The axis-mismatch guard: E/W on a latitude field, N/S on a longitude
   // field, are BOTH rejected — neither axis accepts the other's letters.
   it('rejects a letter that belongs to the OTHER axis', () => {

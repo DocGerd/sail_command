@@ -133,12 +133,17 @@ function applyHemisphereSign(
   letterRaw: string | undefined,
   axis: CoordAxis,
 ): number | null {
-  if (letterRaw === undefined) return isExplicitlyNegative ? -magnitude : magnitude;
+  // #1086: `-magnitude` on a zero `magnitude` yields `-0` — Object.is(-0, 0)
+  // is false (and Playwright's toBe uses Object.is), so a naive `-magnitude`
+  // here would let a signed-zero input silently break a strict equality
+  // check downstream. `+ 0` normalises `-0` to `+0` and is a no-op on every
+  // other double (same fix shape as #203's camera-bearing normalisation).
+  if (letterRaw === undefined) return (isExplicitlyNegative ? -magnitude : magnitude) + 0;
   if (isExplicitlyNegative) return null;
   const letter = letterRaw.toUpperCase();
   const match = HEMISPHERE_LETTERS[axis].find(([, l]) => l === letter);
   if (!match) return null;
-  return match[0] === 'negative' ? -magnitude : magnitude;
+  return (match[0] === 'negative' ? -magnitude : magnitude) + 0;
 }
 
 /**

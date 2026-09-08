@@ -20,9 +20,10 @@ import { vi } from 'vitest';
 //
 // #682: real MapLibre also accepts an ARRAY of layer ids as the delegated
 // form's second argument (`Map#on<T>(type, layerIds: string[], listener)`,
-// `node_modules/maplibre-gl/dist/maplibre-gl.d.ts:13727`, re-derived against
-// the installed 6.5.0, matched to `app/package-lock.json`'s pin — #392's
-// documented trap) — DataLayers.tsx's seamark click/hover handlers now use
+// `node_modules/maplibre-gl/dist/maplibre-gl.d.ts:13943` (was :13727 at
+// 6.5.0 — anchor on the overload signature, not the number), re-derived
+// against the installed 6.7.0, matched to `app/package-lock.json`'s pin —
+// #392's documented trap) — DataLayers.tsx's seamark click/hover handlers now use
 // it to cover both `sc-seamarks*` layers with one registration.
 //
 // A delegated (layer-scoped) registration is stored as ONE group covering
@@ -260,9 +261,12 @@ export function makeFakeMap({ styleLoaded = true }: { styleLoaded?: boolean } = 
 // (`node_modules/maplibre-gl/src/ui/camera.ts` — not the minified `dist/`
 // bundle, and re-read fresh for this citation rather than reused from the
 // prior 5.24.0 dist-offset pass, per the CLAUDE.md CITATION HALO lesson).
+// Re-derived against maplibre-gl@6.7.0 (2026-09-08): every line number
+// below this comment landed on the same line as previously cited here, so
+// none was re-numbered.
 // `Map` no longer EXTENDS `Camera` in v6 (it now HOLDS one, the `_camera:
-// Camera;` field, `ui/map.ts` ~:594, re-derived against maplibre-gl@6.5.0,
-// 2026-08-28),
+// Camera;` field, `ui/map.ts` :595 (was ~:594 at 6.5.0 — `map.ts` itself
+// gained one line above the class declaration)),
 // but `Camera` itself — where all of the mechanics below live — is otherwise
 // unchanged from 5.24 in every particular this fake models:
 //
@@ -305,7 +309,10 @@ export function makeFakeMap({ styleLoaded = true }: { styleLoaded?: boolean } = 
 //   - `rotating` is tracked per ease rather than as MapLibre's sticky
 //     `_rotating` flag.
 //   - The end-of-gesture `bearingSnap` branch
-//     (`node_modules/maplibre-gl/src/ui/handler_manager.ts:694-712`,
+//     (`node_modules/maplibre-gl/src/ui/handler_manager.ts:757-776` at
+//     6.7.0 (was `:694-712`; `_fireEvents` itself is still declared at
+//     :696, unmoved — a terrain-movement block was inserted INSIDE the
+//     function body ahead of this branch, pushing it down),
 //     `_fireEvents`; unchanged in v6 other than the line numbers) is NOT
 //     modelled. KEEP THIS WARNING: it is exactly why no test in this file can
 //     prove anything about that branch, and it is what forced #230's fix to
@@ -420,10 +427,10 @@ export function makeFakeCameraMap(initialBearing = 0) {
      * `handler_manager.ts` (zero occurrences there) — the `_easeId` field is
      * at `ui/camera.ts:314` and the `_stop(allowGestures?, easeId?)`
      * parameter at `ui/camera.ts:1197` (both re-derived against
-     * maplibre-gl@6.5.0, 2026-08-28). The two `this._camera.stop(true)` call
+     * maplibre-gl@6.7.0 — unmoved since 6.5.0). The two `this._camera.stop(true)` call
      * sites this comment is really describing are
-     * `node_modules/maplibre-gl/src/ui/handler_manager.ts` ~:474 (a handler
-     * first becoming active) and ~:554 (inside `_updateMapTransform`, before
+     * `node_modules/maplibre-gl/src/ui/handler_manager.ts:474` (unmoved; a handler
+     * first becoming active) and `:554` (unmoved; inside `_updateMapTransform`, before
      * applying the gesture's own deltas) — `camera.ts:1193-1195` for
      * `stop()` itself is still accurate — and the camera simply stays
      * wherever the ease got to.

@@ -32,11 +32,13 @@
   // changelog-fragment reader (real directory scan, symlink/directory
   // rejection, read-with-fallback) plus its unit tests, which construct real
   // temp directories/symlinks — same reason as the two above.
-  // timeoutBudgetVsJobCap.test.ts (#342) is DELIBERATELY NOT here — PR #351's
-  // orchestrator decision (round 5) removed its `coverage.yml` file read
-  // entirely in favor of a declared TypeScript constant (see that file's own
-  // header comment), so it no longer needs node builtins and lives back
-  // under the ordinary browser-safe tsconfig.app.json program.
+  // timeoutBudgetVsJobCap.test.ts (#342/#359/#357) is HERE AGAIN as of #359:
+  // PR #351's round-5 decision (moving it OUT to tsconfig.app.json) removed
+  // its `coverage.yml` file read in favor of a declared TypeScript constant;
+  // #359 restored a real `node:fs` + `yaml` parse of coverage.yml (addressed
+  // lookups, never a regex scan — see that file's own header comment for why
+  // regex-scraping was rejected the first time), so it needs node builtins
+  // again — same reason as every other file in this list.
   // subPathMeta.test.ts (#318 fix-wave) imports vite.config.ts, which is only
   // typed cleanly with node globals available — same reason as
   // changelogFragmentsFs.test.ts above; see tsconfig.app.json's exclude
@@ -187,6 +189,7 @@
     "src/**/shallowWarningExtraction.test.ts",
     "src/**/harborKnownDisconnected.test.ts",
     "src/**/harborPickerKnownDisconnectedCoupling.test.tsx",
+    "src/**/timeoutBudgetVsJobCap.test.ts",
     "sweep/**/*.ts"
   ]
 }
