@@ -780,7 +780,7 @@ making design-level decisions; do not silently deviate.
   hairline — do not "tidy" it to the MQ4 complement. When swapping a syntax,
   check the support floors of the features that must work TOGETHER, not
   each in isolation.
-  **Update (PR #382, #368): the `:has()` half of that combination is GONE**
+  **Update (PR #382): the `:has()` half of that combination is GONE**
   — the rule's own `.app-shell:has(.banner-area .banner)` gate was removed
   once a real `ResizeObserver` measurement made it redundant (a genuine 0px
   reading collapses `top`/`max-height` back to their base values on its own,
@@ -1203,7 +1203,7 @@ making design-level decisions; do not silently deviate.
   on state signals with `expect.poll`; settle canvas baselines via two
   consecutive byte-equal screenshots before byte-comparing frames against them.
   **The rule governs an assertion's INPUTS, not only its predicate.**
-  The `#368` banner-clearance guards in `app/e2e/layout.spec.ts` (a
+  The banner-clearance guards in `app/e2e/layout.spec.ts` (a
   parametrized viewport sweep plus three named fix-wave tests) and the
   SIBLING guard in `app/e2e/compass.spec.ts` each USED TO capture
   `depthToggle`'s `boundingBox()` ONCE and then assert against a coordinate
@@ -2777,8 +2777,8 @@ making design-level decisions; do not silently deviate.
 - A cross-language invariant (a CSS `var()` fallback that must equal a JS
   constant — no compiler spans CSS and TypeScript) needs a test that reads
   BOTH artifacts and compares them, failing closed (not merely unequal) if
-  the pattern stops matching — see `app/src/lib/useBannerHeight.test.ts`
-  (#368), which pins `app.css`'s `--sc-banner-height` fallback against
+  the pattern stops matching — see `app/src/lib/useBannerHeight.test.ts`,
+  which pins `app.css`'s `--sc-banner-height` fallback against
   `BANNER_HEIGHT_UNMEASURABLE_FALLBACK_PX`.
 - **When a reviewer supplies EXACT replacement text, adopt it VERBATIM.**
   On 2026-08-13 successor defects repeatedly came from prose an implementer
@@ -2972,8 +2972,8 @@ making design-level decisions; do not silently deviate.
   CONTRIBUTING.md's "The floor is forward-looking" paragraph names them, so do
   not copy them here. Whenever a criterion has just rejected a draft, run it
   against the replacement before committing.
-- Documenting a rule fixes nothing already in flight. #412 (the #368-guard
-  stale-geometry finding) was filed while `app/e2e/panel-resize.spec.ts` was
+- Documenting a rule fixes nothing already in flight. #412 (the
+  banner-clearance-guard stale-geometry finding) was filed while `app/e2e/panel-resize.spec.ts` was
   being written in parallel under a brief that predated the finding — the
   new spec acquired the identical single-`boundingBox()`-then-assert defect
   the just-filed issue was about, because a CLAUDE.md/issue update doesn't
