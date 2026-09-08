@@ -16,9 +16,10 @@ import { startPreview } from './helpers';
 // FIRST and is DISPROVEN by direct measurement, not by reasoning about it.
 // maplibre-gl's glyph manager
 // (node_modules/maplibre-gl/src/render/glyph_manager.ts,
-// `_downloadAndCacheRangePromise`, maplibre-gl 6.1.0 as installed — re-check
+// `_downloadAndCacheRangePromise`, re-derived against maplibre-gl@6.7.0 as
+// installed — re-check
 // this comment if maplibre-gl is upgraded, same caveat this repo already
-// carries for symbol_bucket.ts:391) catches EVERY glyph-range download
+// carries for symbol_bucket.ts:395) catches EVERY glyph-range download
 // failure internally and falls back to drawing the codepoint locally with
 // TinySDF (`_drawGlyph`) — unconditionally, not gated by any style/map
 // option. The symbol still gets PLACED either way, so
@@ -74,9 +75,10 @@ import { startPreview } from './helpers';
 //      renders 100% from local fallback. This needs no maplibre upgrade to
 //      trigger and no network failure — `glyphManager.setURL()` is fed from
 //      the style's `glyphs` field at TWO call sites in style.ts: the full
-//      style-load path (`_load`, style.ts:488) and the style-DIFF/update
-//      path (`setGlyphs`, style.ts:1933, invoked from `setState`'s diff
-//      operations; both numbers re-derived against maplibre-gl@6.5.0 —
+//      style-load path (`_load`, style.ts:473, was :488 at 6.5.0) and the
+//      style-DIFF/update
+//      path (`setGlyphs`, style.ts:1973, was :1933, invoked from `setState`'s diff
+//      operations; both numbers re-derived against maplibre-gl@6.7.0 —
 //      anchor on the symbol names, the line numbers are only hints) — the
 //      second is exactly the path this repo's own
 //      `lib/styleReload.ts` machinery exercises on every `styledata`
@@ -223,12 +225,14 @@ async function mapReady(page: Page): Promise<void> {
 // Widened past maplibre-gl's placement throttle window (PR #375 review,
 // round 5 — the original 250ms/two-match design was measured sound on
 // stability but not proven to span a real placement recompute). Verified
-// against the INSTALLED maplibre-gl 6.1.0 source, not inferred:
-// `node_modules/maplibre-gl/src/symbol/placement.ts:1268-1277`'s
+// against the INSTALLED maplibre-gl 6.7.0 source, not inferred (re-derived,
+// was maplibre-gl 6.1.0 when first written):
+// `node_modules/maplibre-gl/src/symbol/placement.ts:1283-1292` (was
+// `:1268-1277` at 6.1.0)'s
 // `stillRecent(now, zoom)` returns
 // `this.commitTime + this.fadeDuration * durationAdjustment > now` — i.e.
 // while "recent", no fresh full placement recompute happens.
-// `node_modules/maplibre-gl/src/ui/map.ts:539` sets the `Map` constructor's
+// `node_modules/maplibre-gl/src/ui/map.ts:541` (was `:539`) sets the `Map` constructor's
 // default `fadeDuration: 300` (ms). A 250ms poll interval could therefore
 // land two "matching" reads entirely inside one such quiescent window,
 // without ever spanning an actual recompute — passing not because placement

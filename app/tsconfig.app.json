@@ -121,6 +121,13 @@
   // `node:fs`, but ALSO renders HarborPicker against it (unlike the plain
   // `.test.ts` guards above), which is why it needs tsconfig.test.json's
   // node+DOM+jsx program rather than a third split.
+  // timeoutBudgetVsJobCap.test.ts (#359/#357) MOVED BACK HERE — it briefly
+  // lived on the browser-safe program (see tsconfig.test.json's comment on
+  // it) between PR #351 (which removed its coverage.yml file read) and #359
+  // (which restored it as a real `node:fs` + `yaml` parse, addressed lookups
+  // only, never a regex scan). Same reason as every other entry above: any
+  // `node:fs` import pulls Node's ambient globals into the WHOLE program,
+  // not just the importing file.
   "exclude": [
     "src/**/realmask.repro*.test.ts",
     "src/**/realmaskFixtures.ts",
@@ -150,6 +157,7 @@
     "src/**/changelogFragmentShape.test.ts",
     "src/**/shallowWarningExtraction.test.ts",
     "src/**/harborKnownDisconnected.test.ts",
-    "src/**/harborPickerKnownDisconnectedCoupling.test.tsx"
+    "src/**/harborPickerKnownDisconnectedCoupling.test.tsx",
+    "src/**/timeoutBudgetVsJobCap.test.ts"
   ]
 }

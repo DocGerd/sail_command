@@ -337,6 +337,69 @@ describe('RouteLayer fit-to-route (#155)', () => {
   });
 });
 
+// #297: user-invoked "fit route to view" — the issue's own recommended
+// alternative to a permanent overview mini-map (closing with "an action, not
+// a widget" was the issue's own stated acceptable outcome; the maintainer
+// scheduled this action as the user-visible deliverable instead). It reuses
+// the SAME fitBounds call the auto-fit effect above makes (RouteLayer.tsx's
+// `fitToLegs` helper) — the bounds/bearing math itself is already pinned by
+// the "RouteLayer fit-to-route (#155)" describe block above, so this suite
+// only needs to pin the BUTTON's own wiring: it fires the shared helper, it
+// goes honestly disabled when there is nothing to fit, and it does not exist
+// at all before RouteLayer's own null-render phase.
+describe('RouteLayer fit-to-view button (#297)', () => {
+  it('fits the route again, at the current bearing, when clicked', () => {
+    const map = makeFakeMap();
+    map.setBearing(135);
+    renderRouteLayer(map, null);
+    // The mount-time auto-fit effect (#155, pinned above) already called
+    // fitBounds once — clear that call so this test asserts on the CLICK
+    // alone, not on "fitBounds was called at some point since mount".
+    map.fitBounds.mockClear();
+    const button = screen.getByRole('button', { name: 'Route einpassen' });
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    expect(map.fitBounds).toHaveBeenCalledTimes(1);
+    expect(map.fitBounds.mock.calls[0][1]).toMatchObject({ bearing: 135 });
+  });
+
+  // PR #384 review's fixture, reused: genoa (the rig displayed as PRIMARY
+  // here) has no route of its own even though fock — the complement — does.
+  // "make the disabled state honest" (issue #297): the button must not
+  // silently no-op on click, and it must not merely be styled as unavailable
+  // while still being clickable.
+  it('is disabled, and does nothing on click, when the displayed rig has no route to fit', () => {
+    const map = makeFakeMap();
+    renderRouteLayerWithPlan(map, makeOtherRigOnlyPlan(), 'genoa');
+    const button = screen.getByRole('button', { name: 'Route einpassen' });
+    expect(button).toBeDisabled();
+    map.fitBounds.mockClear();
+    fireEvent.click(button);
+    expect(map.fitBounds).not.toHaveBeenCalled();
+  });
+
+  // RouteLayer renders `null` until a plan exists (`if (!plan) return null`)
+  // — production code that has shipped dead behind this exact null-render
+  // phase before (see this file's own header comment on why `renderRouteLayer`
+  // starting WITH a plan already present cannot see that class of bug). This
+  // test starts in the null phase and TRANSITIONS into the live one, rather
+  // than mounting with a plan from the first render.
+  it('does not exist before a plan exists, and appears once one is supplied', () => {
+    const map = makeFakeMap();
+    hoisted.map = map;
+    const props = {
+      activeLegIndex: null,
+      draftViaPoints: [],
+      viaReplanning: false,
+      onViaDragEnd: async () => true,
+    };
+    const { rerender } = render(<RouteLayer plan={null} rig={null} {...props} />);
+    expect(screen.queryByRole('button', { name: 'Route einpassen' })).toBeNull();
+    rerender(<RouteLayer plan={makePlan()} rig="genoa" {...props} />);
+    expect(screen.getByRole('button', { name: 'Route einpassen' })).toBeEnabled();
+  });
+});
+
 // #324: "show both foresail routes" — a map-only overlay of the rig NOT
 // currently displayed as the primary route, default OFF, distinguished by
 // dash pattern + reduced opacity rather than a new colour (colour already

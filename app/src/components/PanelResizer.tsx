@@ -74,10 +74,10 @@ export interface PanelResizerProps {
  * but that watches the PANEL, never MapLibre's own container, so it cannot
  * double the map's resize handling.) MapView.tsx's own comment records that
  * MapLibre already backs `trackResize` with a `ResizeObserver` on its
- * container (confirmed still true against the installed maplibre-gl@6.1.0:
- * `ui/map.ts`'s `_setupResizeObserver`, which additionally throttles its own
- * resize+redraw to one call per 50ms) — a drag is that same container-resize
- * event stream at a higher rate, not a new code path.
+ * container (re-derived against the installed maplibre-gl@6.7.0:
+ * `ui/map.ts`'s `_setupResizeObserver` (~:4043), which additionally throttles
+ * its own resize+redraw to one call per 50ms) — a drag is that same
+ * container-resize event stream at a higher rate, not a new code path.
  */
 export default function PanelResizer({
   panelRef,

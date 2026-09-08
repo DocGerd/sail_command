@@ -13,40 +13,53 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.27.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.28.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
-## Now — v0.27.0
+## Now — v0.28.0
 
-The `v0.27.0` cut (2026-09-08) completed the
-[`v0.27.0` milestone](https://github.com/DocGerd/sail_command/milestones),
-five issues in total. Two changelog entries shipped, covering two distinct
-issues. The milestone's other three issues had no user-facing changelog
-entry: a routing course-correction investigation
-([#847](https://github.com/DocGerd/sail_command/issues/847)), and two
-release-runbook fixes to the `/release` skill's docs-sweep step
-([#1081](https://github.com/DocGerd/sail_command/issues/1081),
-[#1082](https://github.com/DocGerd/sail_command/issues/1082)).
+The `v0.28.0` cut (2026-09-08) completed the
+[`v0.28.0` milestone](https://github.com/DocGerd/sail_command/milestones),
+ten issues in total. Two changelog entries shipped, covering two distinct
+issues. The milestone's other eight issues had no user-facing changelog
+entry, all landing in one batch integration
+([#1101](https://github.com/DocGerd/sail_command/pull/1101)): a `-0`/`===`
+gap in `format.ts`'s `parseHemisphereCoord` was closed with the #203 `+ 0`
+precedent ([#1086](https://github.com/DocGerd/sail_command/issues/1086));
+`docs/screenshots/capture.mjs` gained a fail-closed guard against a grown
+panel silently re-cropping a hero image
+([#1088](https://github.com/DocGerd/sail_command/issues/1088));
+`timeoutBudgetVsJobCap.test.ts` regained a real YAML-parsed, addressed
+job-cap coupling and gained a suite-wall-time assertion, not just the
+heaviest per-test budget
+([#359](https://github.com/DocGerd/sail_command/issues/359),
+[#357](https://github.com/DocGerd/sail_command/issues/357)); the
+maplibre-gl 6.7.0 version-pinned source citations in `CLAUDE.md` and
+`app/src`/`app/e2e` were re-derived, and `CLAUDE.md`'s `#368` references
+were consolidated
+([#1058](https://github.com/DocGerd/sail_command/issues/1058),
+[#417](https://github.com/DocGerd/sail_command/issues/417)); and the OpenSSF
+Best Practices Silver criterion `access_continuity` was reassessed against
+what it actually requires — `GOVERNANCE.md` now argues it is met via fork
+continuity rather than needing a standing second maintainer
+([#1080](https://github.com/DocGerd/sail_command/issues/1080),
+[#667](https://github.com/DocGerd/sail_command/issues/667)).
 
-Waypoint latitude/longitude fields now accept degrees-minutes and
-degrees-minutes-seconds entry, plus a decimal comma as well as a decimal
-point
-([#1005](https://github.com/DocGerd/sail_command/issues/1005)).
+A "Fit route to view" button in the route controls panel recenters and
+zooms the map to the current route
+([#297](https://github.com/DocGerd/sail_command/issues/297)).
 
-Importing a settings backup now discloses when an out-of-range value had to
-be adjusted to fit, naming which fields changed, instead of silently
-applying a clamped value while reporting plain success
-([#1071](https://github.com/DocGerd/sail_command/issues/1071)).
+The map display settings' "All" seamark option is now hidden when it has
+no effect on the current chart data, instead of offering a choice that
+renders identically to "Standard"
+([#686](https://github.com/DocGerd/sail_command/issues/686)).
 
-## Next — v0.28.0
+## Next — v0.29.0
 
-The [`v0.28.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-is the one now being filled. As of this cut it holds three issues —
-[#1080](https://github.com/DocGerd/sail_command/issues/1080),
-[#1058](https://github.com/DocGerd/sail_command/issues/1058) and
-[#667](https://github.com/DocGerd/sail_command/issues/667) — and further
-triage has not started; the milestone page is the only authoritative view,
-check it directly rather than this file.
+The [`v0.29.0` milestone](https://github.com/DocGerd/sail_command/milestones)
+is the one now being filled. As of this cut it holds no issues yet; the
+milestone page is the only authoritative view, check it directly rather than
+this file.
 
 ## Themes for the next year
 
@@ -56,7 +69,10 @@ commitment either.
 ### Supply-chain and project-hygiene hardening
 
 The project holds the [OpenSSF Best Practices](https://www.bestpractices.dev/projects/13749)
-*passing* badge and is working toward *Silver*. A 2026-07 audit produced a
+*silver* badge, reached on 2026-09-08 when `access_continuity` — the last
+level-1 MUST outstanding — was marked Met. The badge image in `README.md` is
+served live by bestpractices.dev, so it is the current level by construction;
+this sentence is not. A 2026-07 audit produced a
 concrete, bounded set of gaps, most of which are documents or config rather than
 product work. Done: governance, roles, Code of Conduct, this roadmap, a
 security assurance case
@@ -92,9 +108,18 @@ not that badge.) Remaining:
 - Tracking the remaining self-resolving OpenSSF Scorecard findings
   ([#72](https://github.com/DocGerd/sail_command/issues/72)).
 
-One Silver criterion — `access_continuity` — cannot be closed by any change in
-this repository. It requires a second person with standing release rights. See
-[`GOVERNANCE.md`](GOVERNANCE.md#continuity-and-succession).
+The Silver criterion `access_continuity` was previously described here as
+unclosable by any change in this repository, requiring a second person with
+standing release rights. That framing is retired: the criterion's required
+OUTCOME — the ability to create and close issues, accept proposed changes,
+and release software within a week, with no cooperation from the current
+maintainer — is met through fork continuity instead, since the project's
+entire release and deploy pipeline is committed in the repository and runs on
+the default `GITHUB_TOKEN`. See
+[`GOVERNANCE.md`](GOVERNANCE.md#continuity-and-succession) for the full
+argument and the residual gaps it names (the deployed origin, the
+release-signing identity, and the OpenSSF badge-editor seat itself do not
+transfer to a fork automatically).
 
 ### Routing depth
 
@@ -638,11 +663,7 @@ previously rewrote `package-lock.json` silently without tripping it
 coverage-aware test timeouts and wiring the coverage measurement into CI are
 covered under "Supply-chain" above, not repeated here
 ([#342](https://github.com/DocGerd/sail_command/issues/342),
-[#319](https://github.com/DocGerd/sail_command/issues/319)) — the two
-follow-ups it left open never got triaged into v0.9.0 or v0.10.0 either,
-and remain open, untriaged, in `Backlog`
-([#357](https://github.com/DocGerd/sail_command/issues/357),
-[#359](https://github.com/DocGerd/sail_command/issues/359)). A
+[#319](https://github.com/DocGerd/sail_command/issues/319)). A
 worktree-cleanup skill, deduplicating the graphify guidance to a single home,
 and tag → GitHub Release automation from `CHANGELOG.md` shipped in v0.7.0
 ([#179](https://github.com/DocGerd/sail_command/issues/179),
