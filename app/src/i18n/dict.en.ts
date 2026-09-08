@@ -671,6 +671,7 @@ export const en = {
   // controls cluster (annotation/barb/alt-rig toggles, forecast slider,
   // legend) — collapsible so it stops obstructing the chart on mobile.
   'route.controls.summary': 'Display options',
+  'route.fitToView': 'Fit route to view',
   'route.motorLetter': 'M',
   // Depth profile (#45)
   'profile.title': 'Depth profile',

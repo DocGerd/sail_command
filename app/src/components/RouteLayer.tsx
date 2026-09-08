@@ -30,7 +30,8 @@ import { loadRoutingAssets } from '../services/assets';
 import ViaMarkers from './ViaMarkers';
 import RouteLegend from './RouteLegend';
 import Disclosure from './Disclosure';
-import type { LatLon, Plan, SailId } from '../types';
+import Button from './Button';
+import type { LatLon, Leg, Plan, SailId } from '../types';
 
 export interface RouteLayerProps {
   plan: Plan | null;
@@ -488,6 +489,31 @@ function setupLayers(map: MaplibreMap): void {
   }
 }
 
+// #297: fits the map to a set of legs, preserving the current bearing.
+// SHARED by the auto-fit-on-plan-change effect below AND the manual "fit
+// route to view" button — the ONLY two callers of RouteLayer's fitBounds, so
+// cameraAnimationCallSites.test.ts's #253 allowlist still finds exactly ONE
+// textual `.fitBounds(` call site in this file (it scans SOURCE TEXT, not
+// call graph — two literal call sites would need a second entry in that
+// test's expected array). No-ops on an empty leg list (a plan whose active
+// rig failed to solve) rather than calling fitBounds with an empty/invalid
+// bounds object.
+function fitToLegs(map: MaplibreMap, legs: Leg[]) {
+  if (legs.length === 0) return;
+  const bounds = new LngLatBounds();
+  for (const leg of legs) {
+    bounds.extend([leg.start.lon, leg.start.lat]);
+    bounds.extend([leg.end.lon, leg.end.lat]);
+  }
+  // #155: `bearing` MUST be passed explicitly. cameraForBounds computes
+  // `options?.bearing || 0`, and _fitInternal merges the caller's options on
+  // top of that camera — so omitting it does not mean "keep the current
+  // bearing", it means "rotate to north". See the call site below for the
+  // full rationale (unchanged from the pre-#297 auto-fit effect this was
+  // extracted from).
+  map.fitBounds(bounds, { padding: 48, duration: 0, bearing: map.getBearing() });
+}
+
 export default function RouteLayer({
   plan,
   rig,
@@ -764,26 +790,33 @@ export default function RouteLayer({
 
   // Fit the map to the active route when the plan changes — not on every rig
   // switch (both rigs cover roughly the same area) or barb-slider tick.
+  // Bounds construction + the #155 bearing-preservation rationale now live in
+  // the shared `fitToLegs` helper above (#297).
   useEffect(() => {
-    if (!map || !result || result.legs.length === 0) return;
-    const bounds = new LngLatBounds();
-    for (const leg of result.legs) {
-      bounds.extend([leg.start.lon, leg.start.lat]);
-      bounds.extend([leg.end.lon, leg.end.lat]);
-    }
-    // #155: `bearing` MUST be passed explicitly. cameraForBounds computes
-    // `options?.bearing || 0`, and _fitInternal merges the caller's options on
-    // top of that camera — so omitting it does not mean "keep the current
-    // bearing", it means "rotate to north". Before the compass existed the
-    // bearing was always 0 and that was invisible; now every new plan.id
-    // (first plan, recalc, replanWithVias, and above all a Live-tab
-    // rerouteFromFix under way) would silently un-rotate the chart and knock
-    // track-up out of follow — exactly the "a boat head-to-wind must not spin
-    // the chart" case the hold-last-bearing decision exists for. Passing the
-    // live bearing is also what MapLibre's own fitBounds docstring recommends.
-    map.fitBounds(bounds, { padding: 48, duration: 0, bearing: map.getBearing() });
+    if (!map || !result) return;
+    fitToLegs(map, result.legs);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fit on plan identity, not the (recreated) result object
   }, [map, plan?.id]);
+
+  // #297: user-invoked "fit route to view" action — the issue's own
+  // recommended alternative to a permanent overview mini-map (see the issue
+  // body: "a zoom-to-fit … action answers in one tap and zero permanent
+  // pixels" and "if the conclusion is 'an action, not a widget', closing
+  // this issue with that finding is a perfectly good outcome" — the
+  // maintainer scheduled it as a user-visible deliverable, so this ships the
+  // action rather than closing with no change). Reuses the exact same
+  // `fitToLegs` call the auto-fit effect above makes, so a user can always
+  // get back to "the whole route" after panning/zooming away from it.
+  // Disabled (never hidden independently — the whole `.route-layer-controls`
+  // cluster already renders nothing until `plan` exists, see the `if
+  // (!plan) return null` guard below) whenever the CURRENTLY DISPLAYED rig
+  // has no route to fit — either no result at all (the active rig's own
+  // solve failed) or, defensively, an empty leg list.
+  const canFitRoute = result !== null && result.legs.length > 0;
+  const handleFitToView = () => {
+    if (!map || !result) return;
+    fitToLegs(map, result.legs);
+  };
 
   // Forecast hours spanning departure->ETA — the slider's snap points.
   const hourOptions = useMemo(() => {
@@ -914,6 +947,20 @@ export default function RouteLayer({
         defaultOpen={isWide}
         summary={t('route.controls.summary')}
       >
+        {/* #297: user-invoked "fit route to view" — see this component's own
+            #297 comment above (near `fitToLegs`/`handleFitToView`) for why
+            this ships as an action rather than a permanent overview widget.
+            Placed FIRST and inside the (narrow-collapsed-by-default)
+            Disclosure body rather than beside ViaMarkers above it: this
+            cluster's shrink-to-fit width has almost no headroom before it
+            clips against `.data-layer-controls` on the opposite corner (see
+            `.route-layer-controls`'s own `9.5rem` derivation in app.css) — a
+            row inside the collapsed body costs zero width at the narrow
+            baseline where that margin is tightest, unlike a row rendered
+            unconditionally alongside ViaMarkers. */}
+        <Button type="button" variant="secondary" disabled={!canFitRoute} onClick={handleFitToView}>
+          {t('route.fitToView')}
+        </Button>
         <label>
           <input
             type="checkbox"
