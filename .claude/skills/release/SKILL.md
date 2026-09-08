@@ -51,7 +51,23 @@ it cannot drift from the tracker. Do this on a topic branch into `develop`
 (or as the last commit before the release PR), never as a `main`-side fixup:
 
 - **`CHANGELOG.md`** — fold the pending `changelog.d/*.md` fragments (#189)
-  into a new `## [X.Y.Z] - <date>` section (today's date, ISO). For each
+  into a new `## [X.Y.Z] - <date>` section, ISO format, dated to the UTC
+  calendar day the release TAG is intended to be pushed on — NOT the day the
+  sweep is written, and NOT any local-timezone reading of "today" (name UTC
+  explicitly, e.g. `date -u +%Y-%m-%d`). A late-evening cut routinely
+  straddles UTC midnight between the sweep commit and the tag push, so
+  "today" read at sweep time, or read in local time, can land one calendar
+  day before the tag's own UTC date. Measured at the v0.26.0 cut (#1082):
+  `CHANGELOG.md` was folded with heading `## [0.26.0] - 2026-09-07` while tag
+  `v0.26.0`'s taggerdate is `2026-09-08T06:29:35Z` — the sweep ran
+  2026-09-07T22:21Z, 1h39m before UTC midnight, and the tag landed after it.
+  This section is FROZEN at the cut (never edit a released heading
+  retroactively), so a wrong date here is permanent and ships to every user
+  through `AboutDialog.tsx`'s `ChangelogView`. If the exact push time is
+  still uncertain when the sweep is written, use the UTC date the cut is
+  PLANNED for, and re-check it against the actual UTC clock (`date -u
+  +%Y-%m-%d`) immediately before running `git tag` — if they disagree, this
+  heading needs correcting before the tag is pushed, not after. For each
   fragment file, read its category from the filename
   (`<number>.<category>.md`, optionally `<number>-<n>.<category>.md` to
   disambiguate a second fragment about the same issue/PR —
@@ -179,6 +195,21 @@ it cannot drift from the tracker. Do this on a topic branch into `develop`
   only its own milestone and shifts nothing else — the pending `vX.(Y+1).0`
   stays where it is.
 
+  🛑 **THE FRESH `v0.(N+2).0` MUST EXIST BEFORE THE SWEEP PR IS OPENED.**
+  This is a REQUIREMENT, not merely permitted early: the sweep's own
+  `CONTRIBUTING.md` edit routinely asserts that milestone already exists
+  (e.g. "opened fresh at the vX.Y.Z cut per…"), and a milestone created
+  after the sweep PR's own commit makes that assertion false the moment it
+  is written — the same "prose written for a post-action state" hazard
+  CLAUDE.md's Verification lessons document. Measured at the v0.26.0 cut
+  (#1081): PR #1075
+  ("docs: v0.26.0 release sweep (#132 ritual)") was created
+  2026-09-07T22:21:10Z; milestone `v0.28.0` was created 57 s later,
+  2026-09-07T22:22:07Z — the sweep commit's own diff asserted the
+  milestone's existence 57 s before it existed. Create `v0.(N+2).0` FIRST,
+  confirm it with `gh api repos/DocGerd/sail_command/milestones` (title
+  present), then open the sweep PR.
+
   🛑 **CLOSE THE SHIPPED MILESTONE AFTER THE TAG PUSH, NOT HERE.** This bullet
   sits inside §2b only because the roll-forward is planned here; the closing
   ACTION belongs after step 5. Measured across the three preceding cuts
@@ -193,7 +224,10 @@ it cannot drift from the tracker. Do this on a topic branch into `develop`
   range by one release too far. Measured at the v0.23.0 cut: the orchestrator
   closed it before the sweep to avoid forward-dated prose, a reviewer caught the
   contradiction, and the milestone was REOPENED and re-closed after the tag.
-  Opening the fresh `v0.(N+2).0` early is harmless; only the CLOSE is ordered.
+  Only the CLOSE is ordered after the tag push — the OPEN of the fresh
+  `v0.(N+2).0` is ordered the OTHER way, BEFORE the sweep PR (see the 🛑
+  above): the two orderings run in opposite directions relative to the sweep
+  PR and neither is "early is harmless".
 
 ⚠️ **`Closes #N` in a release PR does NOT close the issue.** GitHub auto-closes
 only on merge into the DEFAULT branch, which here is `develop`, not `main`
