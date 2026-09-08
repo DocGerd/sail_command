@@ -97,6 +97,7 @@ jobs:
       - run: npm ci
         if: steps.gate.outputs.run_coverage != 'false'
       - run: npm run test:coverage
+        id: test-coverage
         if: steps.gate.outputs.run_coverage != 'false'
         # DERIVATION (PR #351 review N1 — this cap was raised 120 -> 240
         # after `app/src/test/timeouts.ts`'s coverage multiplier was raised

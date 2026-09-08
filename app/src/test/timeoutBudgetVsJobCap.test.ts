@@ -44,26 +44,44 @@ import { COVERAGE_MULTIPLIER_WHEN_ENABLED } from './timeouts';
 //
 // #359 restores VERIFIED coupling with a REAL YAML PARSE using ADDRESSED
 // LOOKUPS (`jobs.coverage['timeout-minutes']`, and the specific
-// `npm run test:coverage` step's own `timeout-minutes`, found by an EXACT
-// match on its `run:` text within that one job's step list) rather than a
-// whole-file regex scan. This closes every one of the five historical
-// fail-opens BY CONSTRUCTION: a real YAML tokenizer never treats a comment,
-// a quote, or a scalar block's string CONTENTS as a candidate key, and
-// addressing `jobs.coverage` specifically (never scanning the whole file)
-// eliminates the job/step-scoping gap outright. Per #359's own "trap to
-// avoid" note, the step should ideally be addressed by a stable `id:`/
-// `name:` anchor rather than by matching `run:` text — but this PR's brief
-// forbids editing `coverage.yml` (guarding it, not changing it), and that
-// step currently carries neither. EXACT-match-with-uniqueness (below) is
-// the best available substitute: it still fails closed on ambiguity (zero
-// or more-than-one match), which is the property the "trap" note actually
-// cares about — a decoy step elsewhere in `coverage.yml` cannot silently
-// win, because it isn't in `jobs.coverage` at all, and a second identically-
-// worded step in the SAME job would trip the uniqueness check rather than
-// picking one silently. It is narrower protection than a stable anchor
-// would give (a step renamed to keep the same `run:` text but move to a
-// different semantic role would not be caught), which is why this is a
-// documented residual, not a claim of full closure.
+// `test:coverage` step's own `timeout-minutes`, found by its stable
+// `id: test-coverage`) rather than a whole-file regex scan. This closes
+// every one of the five historical fail-opens BY CONSTRUCTION: a real YAML
+// tokenizer never treats a comment, a quote, or a scalar block's string
+// CONTENTS as a candidate key, and addressing `jobs.coverage` specifically
+// (never scanning the whole file) eliminates the job/step-scoping gap
+// outright.
+//
+// UPDATE (round 2, orchestrator-authorised): #359's issue explicitly warned
+// against addressing the step by matching its `run:` text — "never by
+// substring-matching run: text… relocate the scoping gap from 'which job'
+// to 'which step', not fix it" — and this file's first cut did exactly
+// that (exact-match-on-run-text, justified as the best available option
+// because the task brief forbade editing `coverage.yml`). The orchestrator
+// reviewed that brief and judged it wrong: #359's own text is right, so
+// `coverage.yml`'s `test:coverage` step now carries a stable `id:
+// test-coverage` (added deliberately, ONLY that key — no other line in
+// coverage.yml touched by that edit) and this guard addresses it by that
+// id instead. An `id:` is inert to GitHub Actions unless referenced by an
+// expression (`steps.<id>.…`); confirmed, not merely asserted, three ways:
+// (1) the workflow YAML still parses as a valid mapping after the edit —
+// `git diff .github/workflows/coverage.yml` shows exactly one added line;
+// (2) `grep -rn 'steps\.test-coverage' .github/` across every workflow file
+// in this repo returns ZERO hits, so no existing expression suddenly
+// starts resolving something new; (3) `grep -rln 'test-coverage'
+// .github/workflows/*.yml` shows the string appears in NO OTHER workflow,
+// so there is no cross-file id collision either. GitHub's own documented
+// semantics for `steps[*].id` are that it exists solely to be referenced
+// from `steps.<id>.outputs`/`.outcome`/`.conclusion` in later expressions —
+// it does not participate in `if:`, scheduling, concurrency or the `run:`
+// command itself, so adding one with nothing referencing it cannot alter
+// what the step does or when it runs.
+//
+// Addressing by id closes the residual the run-text form left OPEN: a step
+// renamed to keep an identical `run:` line but change semantic role would
+// have slipped past the old exact-match check; it cannot slip past an id
+// lookup, because renaming/removing the id is the only way to break it, and
+// either failure mode still fails CLOSED (see `stepCapMinutes` below).
 //
 // #357 replaces the NECESSARY-only comparison (heaviest single test alone)
 // with the SUFFICIENT one `coverage.yml`'s own derivation comment states:
@@ -102,13 +120,13 @@ const COVERAGE_WORKFLOW_PATH = resolve(
 );
 
 const COVERAGE_JOB_ID = 'coverage';
-const COVERAGE_STEP_RUN = 'npm run test:coverage';
+const COVERAGE_STEP_ID = 'test-coverage';
 
 // Loose structural types for exactly the fields this guard reads — not a
 // general GitHub Actions workflow type. Fields are `unknown` until narrowed
 // so a malformed/renamed workflow fails the guard's own checks rather than
 // producing a wrong number silently.
-type WorkflowStep = { readonly run?: unknown; readonly 'timeout-minutes'?: unknown };
+type WorkflowStep = { readonly id?: unknown; readonly 'timeout-minutes'?: unknown };
 type WorkflowJob = { readonly 'timeout-minutes'?: unknown; readonly steps?: unknown };
 type WorkflowFile = { readonly jobs?: Record<string, unknown> };
 
@@ -149,32 +167,31 @@ function jobCapMinutes(workflow: WorkflowFile): number {
 }
 
 /**
- * Addressed lookup of the `npm run test:coverage` step's OWN `timeout-minutes`
- * (the STEP-level cap) — found by an EXACT match on that step's `run:` text
- * within `jobs.coverage.steps` specifically (never a whole-file scan), and
- * requiring EXACTLY ONE match so an ambiguous or missing step fails closed
- * rather than picking "the first match" (#359's documented instance-4 defect,
- * relocated from "which job" to "which step" is exactly what this refuses to
- * do silently).
+ * Addressed lookup of the `test:coverage` step's OWN `timeout-minutes` (the
+ * STEP-level cap) — found by its stable `id: test-coverage` within
+ * `jobs.coverage.steps` specifically (never a whole-file scan). Requires
+ * EXACTLY ONE step carrying that id so a missing or duplicated id fails
+ * closed rather than picking "the first match" (#359's documented
+ * instance-4 defect) — GitHub Actions itself treats a duplicate step id as
+ * invalid, so `!== 1` here is a belt-and-braces check, not the primary
+ * defence; the primary defence is that the id is a stable, deliberately
+ * added anchor rather than incidental text a routine edit could shift.
  */
 function stepCapMinutes(workflow: WorkflowFile): number {
   const job = coverageJob(workflow);
   const steps = Array.isArray(job.steps) ? (job.steps as WorkflowStep[]) : [];
-  const matches = steps.filter(
-    (step) => typeof step.run === 'string' && step.run.trim() === COVERAGE_STEP_RUN,
-  );
+  const matches = steps.filter((step) => step.id === COVERAGE_STEP_ID);
   if (matches.length !== 1) {
     throw new Error(
-      `Expected exactly one step under jobs.${COVERAGE_JOB_ID} with run: '${COVERAGE_STEP_RUN}' ` +
-        `(found ${matches.length}). Fail closed: an exact-run-text match that isn't unique is ` +
-        `ambiguous, and picking "the first match" is exactly the #359 instance-4 fail-open this ` +
-        `guard exists to avoid — the step may have been renamed, removed, or duplicated.`,
+      `Expected exactly one step under jobs.${COVERAGE_JOB_ID} with id: ${COVERAGE_STEP_ID} ` +
+        `(found ${matches.length}). Fail closed: the step's stable id anchor may have been ` +
+        `renamed, removed, or duplicated — never silently guess which step governs.`,
     );
   }
   const value = matches[0]!['timeout-minutes'];
   if (typeof value !== 'number') {
     throw new Error(
-      `The '${COVERAGE_STEP_RUN}' step has no numeric timeout-minutes in coverage.yml (got ` +
+      `The '${COVERAGE_STEP_ID}' step has no numeric timeout-minutes in coverage.yml (got ` +
         `${JSON.stringify(value)}). Fail closed rather than silently skip the step-level cap.`,
     );
   }
@@ -262,7 +279,7 @@ describe('#342/#359/#357 structural guard: coverage.yml job cap vs. timeouts.ts 
         `The heaviest per-test budget under coverage (${largestBaseMs}ms base x ` +
           `${COVERAGE_MULTIPLIER_WHEN_ENABLED}x = ${worstCaseMs}ms = ${worstCaseMs / 60_000} min) ` +
           `is not strictly less than the BINDING cap read from coverage.yml (min of ` +
-          `jobs.${COVERAGE_JOB_ID}['timeout-minutes'] and the '${COVERAGE_STEP_RUN}' step's own ` +
+          `jobs.${COVERAGE_JOB_ID}['timeout-minutes'] and the '${COVERAGE_STEP_ID}' step's own ` +
           `timeout-minutes = ${capMinutes} min = ${capMs}ms). A per-test timer can never fire ` +
           `before a job/step cap it is equal to or larger than, which collapses the two failure ` +
           `surfaces #342 exists to keep separate. Raise coverage.yml's timeout-minutes rather than ` +
