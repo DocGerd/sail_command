@@ -769,7 +769,9 @@ describe('SettingsPanel (#849 local import/export)', () => {
       fireEvent.change(getFileInput(), { target: { files: [file] } });
     });
 
-    await screen.findByText((content) => content.startsWith('0 route(s) and 0 waypoint(s)'));
+    const notice = await screen.findByText((content) =>
+      content.startsWith('0 route(s) and 0 waypoint(s)'),
+    );
     expect(onChange).toHaveBeenCalledTimes(1);
     const applied = onChange.mock.calls[0][0] as Settings;
     expect(applied.performanceFactor).toBe(0.5); // -50 is below the min, clamps UP to min
@@ -777,6 +779,34 @@ describe('SettingsPanel (#849 local import/export)', () => {
     expect(applied.safetyDepthM).toBe(2.2);
     // A field that WAS in range must not be touched by clamping.
     expect(applied.maneuverPenaltyS).toBe(outOfRange.maneuverPenaltyS);
+    // #1071: the clamp must not be silent — the notice must name every
+    // field it actually moved (order follows clampedFieldLabels: the
+    // boat-derived safety depth field first, then the fixed FieldSpec list).
+    expect(notice).toHaveTextContent(
+      'Some settings from the file were out of range and were adjusted: ' +
+        'Safety depth (m), Motoring speed (kn), Performance factor (×).',
+    );
+  });
+
+  // #1071: the mirror of the test above — when nothing needed clamping, the
+  // disclosure must NOT fire. An unconditional notice would be exactly as
+  // misleading as the silent one #1071 replaces.
+  it('does not report a clamp notice when the imported settings need no clamping', async () => {
+    const envelope = buildExportEnvelope([], IMPORTED_SETTINGS, []);
+    renderPanel();
+
+    const file = new File([exportEnvelopeToJson(envelope)], 'settings.json', {
+      type: 'application/json',
+    });
+    await act(async () => {
+      fireEvent.change(getFileInput(), { target: { files: [file] } });
+    });
+
+    const notice = await screen.findByText((content) =>
+      content.startsWith('0 route(s) and 0 waypoint(s)'),
+    );
+    expect(notice).toHaveTextContent('Settings from the file were applied.');
+    expect(notice).not.toHaveTextContent('were out of range');
   });
 
   // #1068 review MINOR 2: plans and waypoints must be written INDEPENDENTLY —
