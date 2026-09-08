@@ -210,6 +210,91 @@ const PANEL_WIDTH_PX = 518;
 // trailing padding past the last summary, not a manufactured dead band.
 const START_VIEW_HEIGHT_PX = 1385;
 
+// #1088: the viewport-height constants above have been mis-measured THREE
+// times (#741; #716's BOAT_SELECTION_HEIGHT_PX going stale at #746; the
+// v0.24.0 #886 hemisphere-line growth) because nothing checked whether the
+// content actually fit the viewport the constant set — the capture always
+// ran to completion and produced a silently-cropped PNG. This guards the
+// PROPERTY (does the content this capture means to show actually fit its
+// viewport?), not any one constant's value, so it fires at ANY magnitude of
+// future growth without ever needing recalibration itself — unlike the
+// height constants beside it, which do.
+//
+// Two capture shapes need two different properties, and conflating them is
+// a real trap (found by running this guard against develop before trusting
+// it): start-view.png's Plan tab means EVERY element in `.app-panel` to be
+// visible (see the #1005 comment above — "confirmed LAST (nothing
+// follows)"), so the right check is the whole scrollport fitting
+// (scrollHeight <= clientHeight). boat-selection.png's Boat tab does NOT —
+// `.settings-panel` stacks FIVE further `sc-card` settings sections below
+// `.boat-picker-card` (measured: 447/494/332/316/262px, none of them the
+// screenshot's subject), so asserting the whole panel fits would fail on
+// every correct build; the right check there is that the ONE element this
+// capture is actually about (`.boat-picker-card`) has its bottom edge
+// within the viewport, leaving the unrelated cards below free to sit off
+// the bottom of the frame exactly as the shipped capture already does.
+// Passing an `elementSelector` selects the second mode; omitting it (as
+// start-view.png does) selects the first.
+//
+// Deliberately NOT applied to plan-route.png's capture: that flow scrolls
+// `.app-panel` back to the top (see the code below) but leaves a long legs
+// table free to run past the shared 800px viewport ON PURPOSE — a scrolled
+// table is the intended framing there, not a defect (see this file's own
+// #741 comment above), so asserting fit on it would be asserting against
+// the deliberate design rather than the accidental-clipping class #1088 is
+// about.
+async function assertFitsViewport(page, label, elementSelector) {
+  const measured = await page.evaluate((selector) => {
+    if (selector) {
+      const el = document.querySelector(selector);
+      if (!el) return { missingSelector: selector };
+      const rect = el.getBoundingClientRect();
+      return { mode: 'element', bottom: rect.bottom, viewportHeight: window.innerHeight };
+    }
+    const panel = document.querySelector('.app-panel');
+    if (!panel) return { missingSelector: '.app-panel' };
+    return { mode: 'panel', scrollHeight: panel.scrollHeight, clientHeight: panel.clientHeight };
+  }, elementSelector ?? null);
+
+  if (measured.missingSelector) {
+    throw new Error(
+      `${label}: ${measured.missingSelector} not found in the DOM — has the ` +
+        "capture flow's own selector drifted (compare against App.tsx's #707 " +
+        '<main> landmark)?',
+    );
+  }
+
+  // A 1px tolerance absorbs subpixel/scrollbar rounding without masking a
+  // real clip — a genuine content overflow from a grown panel measures in
+  // the tens of pixels (#746: 124.0px; #886: enough to push a heading
+  // through the fold), never a fraction of one.
+  if (measured.mode === 'element') {
+    const shortfallPx = measured.bottom - measured.viewportHeight;
+    if (shortfallPx > 1) {
+      throw new Error(
+        `${label}: ${elementSelector}'s bottom edge (${measured.bottom}px) ` +
+          `exceeds the viewport height (${measured.viewportHeight}px) by ` +
+          `${shortfallPx}px, which a static screenshot would silently crop. ` +
+          'Bump the viewport-height constant this capture uses and re-measure ' +
+          "(see this constant's own comment above for the current figure).",
+      );
+    }
+    return;
+  }
+
+  const shortfallPx = measured.scrollHeight - measured.clientHeight;
+  if (shortfallPx > 1) {
+    throw new Error(
+      `${label}: .app-panel content does not fit its viewport — ` +
+        `scrollHeight ${measured.scrollHeight}px exceeds clientHeight ` +
+        `${measured.clientHeight}px by ${shortfallPx}px, which a static ` +
+        'screenshot would silently crop. Bump the viewport-height constant ' +
+        "this capture uses and re-measure (see this constant's own comment " +
+        'above for the current figure).',
+    );
+  }
+}
+
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1280, height: START_VIEW_HEIGHT_PX } });
 await page.addInitScript((px) => {
@@ -227,6 +312,7 @@ await page.goto(startUrl.toString(), { waitUntil: 'networkidle' });
 // (dict.de.ts 'nav.langToggle'), so match on that instead of the "EN" text.
 await page.getByRole('button', { name: 'English anzeigen' }).click();
 await page.waitForTimeout(2000); // map tile settle for a static capture is fine here (not a test)
+await assertFitsViewport(page, 'start-view.png');
 await page.screenshot({ path: 'docs/screenshots/start-view.png' });
 
 // #716: boat-selection.png — previously a hand capture with no generator,
@@ -261,6 +347,7 @@ await page.getByRole('tab', { name: 'Boat' }).click();
 // Static, no plan/network dependency (unlike plan-route.png below), so a
 // short settle for the tab switch's own render is enough.
 await page.waitForTimeout(500);
+await assertFitsViewport(page, 'boat-selection.png', '.boat-picker-card');
 await page.screenshot({ path: 'docs/screenshots/boat-selection.png' });
 // Back to the Plan tab — the flow below expects it as the active tab (it's
 // the default on load, but this capture just navigated away from it).

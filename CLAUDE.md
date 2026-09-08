@@ -653,15 +653,15 @@ making design-level decisions; do not silently deviate.
   (`app.css`'s own comment and PR #735 both decided this deliberately).
   A correct exclusion carried a refuted reason for a full review round.
 - `Map#_removeDelegatedListener` (`app/node_modules/maplibre-gl/src/ui/map.ts`,
-  ~:2139) matches only on an **EXACT** layer-set
+  :2148) matches only on an **EXACT** layer-set
   (`layers.length === layerIds.length && layers.every(includes)`) — a narrower
   or wider `layerIds` on removal silently no-ops. `once()` on a multi-layer
-  delegate (~:2394) removes the WHOLE registration on the first event from ANY
+  delegate (:2404) removes the WHOLE registration on the first event from ANY
   covered layer, not per-layer. `test/fakeMaplibre.ts` models both; keep it
   that way — see also the `installStyleSetup`/`fakeMaplibre.ts` bullet below,
   which carries that fake's other pinned invariant (`addLayer` drops layers on
   a truthy-but-missing `beforeId`, #163). Re-derived against
-  `maplibre-gl@6.5.0`, 2026-08-26.
+  `maplibre-gl@6.7.0`, 2026-09-08 (was `~:2139`/`~:2394` at 6.5.0).
 - **`useState(defaultOpen)` seeds ONCE, and `key={plan.id}` does NOT close it.**
   `Disclosure` never re-syncs its seed, so a new SEVERE plan rendered with the
   severe class and below-draft summary while staying COLLAPSED (measured, PR
@@ -694,7 +694,7 @@ making design-level decisions; do not silently deviate.
 - MapLibre chrome ships hardcoded light-mode colour with no dark variant — the
   Popup (`background:#fff`) and the compact attribution control
   (`.maplibregl-ctrl-attrib.maplibregl-compact`: `background-color:#fff;
-  color:#000`, read against `maplibre-gl@6.5.0`, fixed in #711). Any new Popup
+  color:#000`, re-derived against `maplibre-gl@6.7.0`, fixed in #711). Any new Popup
   needs a `className` plus `--sc-*` app.css overrides —
   `.maplibregl-popup-content` and BOTH popup-tip borders with `--sc-bg` (see
   `.seamark-popup`, #7). A CONTROL may have NO className hook at all —
@@ -780,7 +780,7 @@ making design-level decisions; do not silently deviate.
   hairline — do not "tidy" it to the MQ4 complement. When swapping a syntax,
   check the support floors of the features that must work TOGETHER, not
   each in isolation.
-  **Update (PR #382, #368): the `:has()` half of that combination is GONE**
+  **Update (PR #382): the `:has()` half of that combination is GONE**
   — the rule's own `.app-shell:has(.banner-area .banner)` gate was removed
   once a real `ResizeObserver` measurement made it redundant (a genuine 0px
   reading collapses `top`/`max-height` back to their base values on its own,
@@ -869,8 +869,9 @@ making design-level decisions; do not silently deviate.
   caused) discriminates a hand rotation from a foreign settle — guarded
   against a settle delivered from inside our OWN `easeTo`. **Post-maplibre-gl-6
   (#253): `map.isEasing()` is GONE from `Map`** — v6's `Map extends Evented`,
-  not `Camera` (`node_modules/maplibre-gl/src/ui/map.ts:590` vs
-  `ui/camera.ts:284`, both re-derived against `maplibre-gl@6.3.0`; they are
+  not `Camera` (`node_modules/maplibre-gl/src/ui/map.ts:591` (was `:590` at
+  6.3.0) vs
+  `ui/camera.ts:284`, unmoved; re-derived against `maplibre-gl@6.7.0`; they are
   siblings), and the method survives only on the
   `_camera` field (no TS `private` modifier — convention, not enforced;
   always so, not a 6.2.0 change). `CompassControl.tsx`'s `onMoveEnd` guard is now a
@@ -886,12 +887,16 @@ making design-level decisions; do not silently deviate.
   is true for EVERY handler `moveend` whether or not an ease is live; it is
   only IN CONJUNCTION WITH term 1 that the pair reproduces what `isEasing()`
   gave us on the reachable paths. What makes that conjunction sound: `_stop`
-  (`camera.ts:1197-1210` — file byte-identical 6.1.0 through 6.3.0) deletes
+  (`camera.ts:1197-1210` — this line number unmoved 6.1.0 through 6.7.0, the
+  furthest re-derivation to date; not a hash-verified byte-identity claim,
+  merely every checked citation in this range landing on the same lines)
+  deletes
   `_easeFrameId` and only THEN invokes `_onEaseEnd` at `:1210` — and
   `_afterEase` (`:982`) is what `_onEaseEnd` RESOLVES TO (one closure hop, not
   the same binding; always so, not a 6.2.0 change), bound by the
   `this._onEaseEnd = finish;` statement INSIDE `_ease` — anchor on that
-  statement, not on the method: at 6.6.0 the statement is `:1232` while `_ease`
+  statement, not on the method: from 6.6.0 through 6.7.0 the statement is
+  `:1232` while `_ease`
   itself is declared at `:1218`, and a reader who takes `:1232` as the method's
   own line will report a false drift (measured 2026-09-01; one reviewer did
   exactly that) — so `isEasing()` was already
@@ -956,9 +961,11 @@ making design-level decisions; do not silently deviate.
   `sortFeaturesByKey = false` (`symbol_bucket.ts`, the
   `this.sortFeaturesByKey = zOrder !== 'viewport-y' && !sortKey.isConstant();`
   assignment — anchor on that statement, the line number is a hint only. It sat
-  at `:391` from the #253 v6 upgrade through 6.5.0 and moved to `:393` at
-  6.6.0, re-derived 2026-09-01 against the installed 6.6.0 with the statement
-  byte-identical; re-check again after any future maplibre-gl upgrade),
+  at `:391` from the #253 v6 upgrade through 6.5.0, moved to `:393` at
+  6.6.0, and to `:395` at 6.7.0 (re-derived 2026-09-08 against the installed
+  6.7.0 with the statement byte-identical, in
+  `data/bucket/symbol_bucket.ts`, a path the file also carries at 6.7.0);
+  re-check again after any future maplibre-gl upgrade),
   disabling the placement priority entirely. Within one symbol layer,
   placement and paint order cannot be set independently — that needs a
   second layer (#200, #232).
@@ -970,7 +977,8 @@ making design-level decisions; do not silently deviate.
   shared collision index as well as paint order — which is why splitting one
   symbol layer in two (#682) fixes z>=12 paint order AND preserves z<12
   placement priority with no cross-layer `symbol-sort-key` coordination.
-  Re-derived against `maplibre-gl@6.5.0`, 2026-08-26.
+  Re-derived against `maplibre-gl@6.7.0`, 2026-09-08 — `_currentPlacementIndex`
+  init at `:80`, decrements at `:124`, unmoved since 6.5.0.
 - `icon-allow-overlap` and `icon-ignore-placement` sound like the same knob
   and are not: `allow-overlap` ("place me even if I collide") governs
   whether *I* get culled by the collision index; `ignore-placement` ("do not
@@ -997,10 +1005,11 @@ making design-level decisions; do not silently deviate.
   SECOND consequence, and the one the "governs whether I block OTHERS"
   framing hides: an ignore-placement layer's labels do not de-conflict
   against EACH OTHER either, so `text-allow-overlap: false` has nothing left
-  to test against. Re-derived against `maplibre-gl@6.6.0` (matched the
-  lockfile): `collision_index.ts`'s `const grid = ignorePlacement ?
-  this.ignoredGrid : this.grid;` (~:429/:436) routes the box to `ignoredGrid`,
-  whose ONLY query is in the `queryRenderedSymbols` path (~:388) —
+  to test against. Re-derived against `maplibre-gl@6.7.0` (matched the
+  lockfile, unmoved since 6.6.0): `collision_index.ts`'s `const grid = ignorePlacement ?
+  this.ignoredGrid : this.grid;` (:429/:436) routes the box to `ignoredGrid`,
+  whose ONLY query is in the `queryRenderedSymbols` path (:373-426, the
+  `.concat(this.ignoredGrid.query(...))` read at :388) —
   `symbol/placement.ts` never references it. Measured at #1006 with
   `text-ignore-placement: true` on `sc-saved-waypoint-labels`: 9 labels placed
   inside an 82.4x143.1px span at ~110px per string, three per row fully
@@ -1194,7 +1203,7 @@ making design-level decisions; do not silently deviate.
   on state signals with `expect.poll`; settle canvas baselines via two
   consecutive byte-equal screenshots before byte-comparing frames against them.
   **The rule governs an assertion's INPUTS, not only its predicate.**
-  The `#368` banner-clearance guards in `app/e2e/layout.spec.ts` (a
+  The banner-clearance guards in `app/e2e/layout.spec.ts` (a
   parametrized viewport sweep plus three named fix-wave tests) and the
   SIBLING guard in `app/e2e/compass.spec.ts` each USED TO capture
   `depthToggle`'s `boundingBox()` ONCE and then assert against a coordinate
@@ -1295,14 +1304,19 @@ making design-level decisions; do not silently deviate.
   exhaustion with the count history and last three label sets. Three-at-400ms
   is chosen to exceed maplibre's placement throttle: `Placement.stillRecent`
   (`symbol/placement.ts`, the `stillRecent(now, zoom)` method — anchor on the
-  symbol; it was unmoved at `:1268-1277` from 6.2.0 through 6.5.0 and moved to
-  `:1283-1292` at 6.6.0, re-derived 2026-09-01 against the installed 6.6.0 with
+  symbol; it was unmoved at `:1268-1277` from 6.2.0 through 6.5.0, moved to
+  `:1283-1292` at 6.6.0, and stayed at `:1283-1292` at 6.7.0 (re-derived
+  2026-09-08 against the installed 6.7.0 with
   the body byte-identical) gates re-runs on
   `commitTime + fadeDuration * durationAdjustment > now` with
-  `fadeDuration: 300` defaulted at `ui/map.ts:540` (`:540` at both 6.3.0 and
+  `fadeDuration: 300` defaulted at `ui/map.ts:541` at 6.7.0 (`:540` at both
+  6.3.0 and
   6.6.0, unpinned in between; `:539` in 6.2.0 — the two drift independently,
   never assume one offset: `stillRecent` moved 15 lines somewhere in
-  6.5.0 -> 6.6.0 while this stayed at `:540` across 6.3.0 -> 6.6.0). Measured effect:
+  6.5.0 -> 6.6.0 while this held `:540` across 6.3.0 -> 6.6.0, then at 6.7.0
+  `fadeDuration` moved ONE line (`:540` -> `:541`) while `stillRecent` did
+  NOT move at all — the two numbers keep drifting independently, exactly the
+  point). Measured effect:
   spec runtime ~6.5s -> ~2.3s,
   stabilising after three reads (~820ms) — placement had been settled almost
   immediately all along. Whether any OTHER spec shares this defect is now
@@ -1741,10 +1755,14 @@ making design-level decisions; do not silently deviate.
   under the policy. `img-src` keeps `data:`/`blob:` legitimately (maplibre's
   `arrayBufferToImage` and the PMTiles raster path use `createObjectURL`).
 - Glyph `.pbf` fetches are gated by `connect-src`, not `font-src` — MapLibre
-  loads them via `getArrayBuffer`/`fetch`
-  (`node_modules/maplibre-gl/src/style/load_glyph_range.ts:21`, unmoved
-  through 6.5.0 — re-derived 2026-08-26 against the then-installed 6.5.0,
-  which matched the lockfile); `font-src`
+  loads them via `getArrayBuffer`/`fetch`. **The dedicated
+  `style/load_glyph_range.ts` file this bullet used to cite is GONE as of
+  some maplibre-gl release between 6.5.0 and 6.7.0** — re-derived 2026-09-08
+  against the installed 6.7.0 (matched to the lockfile): the fetch now lives
+  INLINE in `render/glyph_manager.ts`'s private `_loadGlyphRange(fontstack,
+  range)` method (declared `:226`), whose `getArrayBuffer(request, new
+  AbortController())` call sits at `:235`. Symbol-anchor on
+  `_loadGlyphRange`, not on a file that no longer exists. `font-src`
   governs `@font-face` only, which this app doesn't use for map labels.
   Label RENDERING is asserted since #320/PR #375 — `app/e2e/labels.spec.ts`,
   written up in full under Verification lessons; #320 is closed.
@@ -2759,8 +2777,8 @@ making design-level decisions; do not silently deviate.
 - A cross-language invariant (a CSS `var()` fallback that must equal a JS
   constant — no compiler spans CSS and TypeScript) needs a test that reads
   BOTH artifacts and compares them, failing closed (not merely unequal) if
-  the pattern stops matching — see `app/src/lib/useBannerHeight.test.ts`
-  (#368), which pins `app.css`'s `--sc-banner-height` fallback against
+  the pattern stops matching — see `app/src/lib/useBannerHeight.test.ts`,
+  which pins `app.css`'s `--sc-banner-height` fallback against
   `BANNER_HEIGHT_UNMEASURABLE_FALLBACK_PX`.
 - **When a reviewer supplies EXACT replacement text, adopt it VERBATIM.**
   On 2026-08-13 successor defects repeatedly came from prose an implementer
@@ -2954,8 +2972,8 @@ making design-level decisions; do not silently deviate.
   CONTRIBUTING.md's "The floor is forward-looking" paragraph names them, so do
   not copy them here. Whenever a criterion has just rejected a draft, run it
   against the replacement before committing.
-- Documenting a rule fixes nothing already in flight. #412 (the #368-guard
-  stale-geometry finding) was filed while `app/e2e/panel-resize.spec.ts` was
+- Documenting a rule fixes nothing already in flight. #412 (the
+  banner-clearance-guard stale-geometry finding) was filed while `app/e2e/panel-resize.spec.ts` was
   being written in parallel under a brief that predated the finding — the
   new spec acquired the identical single-`boundingBox()`-then-assert defect
   the just-filed issue was about, because a CLAUDE.md/issue update doesn't
@@ -2976,23 +2994,37 @@ making design-level decisions; do not silently deviate.
 - MapLibre glyph loading has NO observable failure signal by design:
   `GlyphManager._downloadAndCacheRangePromise`
   (`app/node_modules/maplibre-gl/src/render/glyph_manager.ts`; every line
-  number in this bullet re-derived against `maplibre-gl@6.3.0`, all unmoved)
+  number in this bullet RE-DERIVED against `maplibre-gl@6.7.0`, 2026-09-08 —
+  **the file was substantially RESTRUCTURED between 6.3.0 and 6.7.0** to add
+  `font-faces`/grapheme-cluster support, so every number below moved and the
+  method now DELEGATES its fetch to a separate `_loadGlyphRange` helper;
+  anchor on the method NAMES, not on any offset carried forward from 6.3.0)
   catches EVERY
   glyph-range fetch failure and falls back unconditionally to a
   locally-drawn TinySDF glyph — the symbol is still placed, so
   `queryRenderedFeatures` returns identical counts and names whether glyphs
   are real or 100% broken, and `map.on('error')` never fires because nothing
-  re-throws. The only signal is a `console.warn` matching `"Unable to load
-  glyph range"` at `glyph_manager.ts:144`. Separately,
-  `_getAndCacheGlyphsPromise` (`:104-108` — the range covers the `return` at
-  :107 that IS the silent path, so do not "tighten" it to :104-106) takes a
+  re-throws. `_downloadAndCacheRangePromise` is now declared at `:196` and
+  delegates the actual fetch to `_loadGlyphRange` (declared `:226`, its
+  `getArrayBuffer(request, new AbortController())` call at `:235`); its
+  `catch` block (`:215-220`) calls `_warnOnMissingGlyphRange` (`:218`, now a
+  SEPARATE named method declared at `:247`). The only signal is a
+  `console.warn` matching `"Unable to load
+  glyph range"` — the literal `warnOnce(...)` call now sits at
+  `glyph_manager.ts:251` (was `:144` at 6.3.0). Separately,
+  `_getAndCacheGlyphsPromise` (now declared `:155`; the COMPLETELY silent
+  local-font path — no fetch, no warning — is the `if (!this.url ||
+  this._charUsesLocalIdeographFontFamily(codePoint))` block at `:182-185`,
+  was `:104-108` at 6.3.0) takes a
   COMPLETELY silent
   local-font path — no fetch, no warning — whenever the style's `glyphs` URL
   is falsy, and `glyphManager.setURL()` is fed from the style's `glyphs`
-  field at two sites in `style.ts` — `_load` (`~:491` at 6.3.0, `~:488` at
-  6.5.0), which is what a `map.setStyle()` reaches and therefore what
-  `styleReload.ts`'s `styledata` re-add exercises, and `setGlyphs` (`~:1953` /
-  `~:1933`), the style-DIFF path. Anchor on the METHOD NAMES: an earlier
+  field at two sites in `style.ts` — `_load` (declared `:473` at 6.7.0, was
+  `~:491` at 6.3.0 / `~:488` at 6.5.0; its `setURL` call is at `:494`),
+  which is what a `map.setStyle()` reaches and therefore what
+  `styleReload.ts`'s `styledata` re-add exercises, and `setGlyphs` (declared
+  `:1973`, was `~:1953` / `~:1933`; its `setURL` call is at `:1984`), the
+  style-DIFF path. Anchor on the METHOD NAMES: an earlier
   revision here called `_load` "the style-DIFF path", which named the wrong
   method for the right site. `glyphs` is
   documented OPTIONAL in the maplibre style spec, so nothing upstream flags

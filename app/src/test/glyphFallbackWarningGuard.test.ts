@@ -9,13 +9,16 @@ import { describe, expect, it } from 'vitest';
 // manager emits via `warnOnce()` when a glyph-range download fails and it
 // silently falls back to a locally-drawn TinySDF glyph
 // (node_modules/maplibre-gl/src/render/glyph_manager.ts,
-// `_warnOnMissingGlyphRange`, maplibre-gl 6.1.0 as installed). That file's
+// `_warnOnMissingGlyphRange`, re-derived against maplibre-gl@6.7.0 as
+// installed — the string is unchanged, though the whole file was
+// restructured between 6.1.0 and 6.7.0 to add font-faces/cluster support).
+// That file's
 // own header comment already documents the residual this guard closes: a
 // future maplibre-gl upgrade could reword or relocate this message, and
 // Signal (B) would then fail OPEN — silently stop catching the exact
 // regression #320 exists to catch, while reporting green. This is the same
 // class of undefended library-internals dependency CLAUDE.md documents for
-// `symbol_bucket.ts:391` (a pinned line number/behavior re-verified after
+// `symbol_bucket.ts:395` (a pinned line number/behavior re-verified after
 // every maplibre-gl upgrade rather than structurally guarded) — CLAUDE.md
 // itself does not say whether that one needs a guard; PR #375's own review
 // separately offered one for THIS dependency as a nice-to-have. Here it's

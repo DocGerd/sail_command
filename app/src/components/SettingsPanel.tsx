@@ -13,6 +13,7 @@ import {
 } from '../lib/planExport';
 import { notifySavedWaypointsChanged } from '../lib/useSavedWaypoints';
 import {
+  SEAMARK_ALL_TIER_HAS_CATEGORIES,
   SEAMARK_DISPLAY_TIER_ALL,
   SEAMARK_DISPLAY_TIER_BASE,
   SEAMARK_DISPLAY_TIER_STANDARD,
@@ -414,6 +415,25 @@ export default function SettingsPanel({
     Infinity,
   );
   const seamarkDisplayTier = toSeamarkDisplayTier(seamarkDisplayTierStored);
+  // #686: the ALL tier was a no-op for today's shipped data (#521 moved its
+  // only two categories, cable/pipeline, to STANDARD) — a radio offering a
+  // choice with no effect. Its presence is now DERIVED from
+  // `SEAMARK_ALL_TIER_HAS_CATEGORIES` rather than hardcoded, so a future
+  // category routed to ALL makes the radio reappear on its own.
+  //
+  // When the radio is hidden, a PREVIOUSLY-stored ALL preference (from
+  // before this fix, or a hand-edited localStorage value) must not leave
+  // the radiogroup with nothing checked — visually fall back to Standard,
+  // which is what ALL already renders identically to while the Set is
+  // empty (seamarkGlyphs.ts's `specialPurposeDisplayTier`). This is a
+  // RENDERING fallback only: the underlying stored value and
+  // `seamarkDisplayTier` above (what DataLayers.tsx feeds the map filter)
+  // are untouched, so a later category addition honours the original ALL
+  // choice again without the user having to re-select it.
+  const seamarkDisplayTierForRadios =
+    !SEAMARK_ALL_TIER_HAS_CATEGORIES && seamarkDisplayTier === SEAMARK_DISPLAY_TIER_ALL
+      ? SEAMARK_DISPLAY_TIER_STANDARD
+      : seamarkDisplayTier;
   // #513 F6: computed ONCE and reused for both the visible `<output>` text
   // and the Slider's `aria-valuetext` — the two must never drift apart, or
   // the sighted and screen-reader experiences would disagree with each other.
@@ -539,7 +559,9 @@ export default function SettingsPanel({
           text — see seamarkGlyphs.ts's `seamarkDisplayTier` doc comment for
           the exact mapping, corrected in review at #513 F1/F2). Grouped
           separately from Boat & safety/Propulsion/Live & AIS: this is map
-          CHROME, not a boat characteristic or a routing input. */}
+          CHROME, not a boat characteristic or a routing input.
+          #686: the ALL radio itself is conditionally rendered — see
+          `SEAMARK_ALL_TIER_HAS_CATEGORIES` in seamarkGlyphs.ts. */}
       <Card title={t('settings.section.mapDisplay')}>
         <Field
           label={t('settings.seamarkSize.label')}
@@ -586,7 +608,7 @@ export default function SettingsPanel({
               <input
                 type="radio"
                 name="settings-seamarkCategory"
-                checked={seamarkDisplayTier === SEAMARK_DISPLAY_TIER_BASE}
+                checked={seamarkDisplayTierForRadios === SEAMARK_DISPLAY_TIER_BASE}
                 onChange={() => setSeamarkDisplayTier(SEAMARK_DISPLAY_TIER_BASE)}
               />
               {t('settings.seamarkCategory.base')}
@@ -595,23 +617,31 @@ export default function SettingsPanel({
               <input
                 type="radio"
                 name="settings-seamarkCategory"
-                checked={seamarkDisplayTier === SEAMARK_DISPLAY_TIER_STANDARD}
+                checked={seamarkDisplayTierForRadios === SEAMARK_DISPLAY_TIER_STANDARD}
                 onChange={() => setSeamarkDisplayTier(SEAMARK_DISPLAY_TIER_STANDARD)}
               />
               {t('settings.seamarkCategory.standard')}
             </label>
-            <label>
-              <input
-                type="radio"
-                name="settings-seamarkCategory"
-                checked={seamarkDisplayTier === SEAMARK_DISPLAY_TIER_ALL}
-                onChange={() => setSeamarkDisplayTier(SEAMARK_DISPLAY_TIER_ALL)}
-              />
-              {t('settings.seamarkCategory.all')}
-            </label>
+            {/* #686: rendered only while ALL carries at least one category —
+                see SEAMARK_ALL_TIER_HAS_CATEGORIES's own doc comment. */}
+            {SEAMARK_ALL_TIER_HAS_CATEGORIES && (
+              <label>
+                <input
+                  type="radio"
+                  name="settings-seamarkCategory"
+                  checked={seamarkDisplayTier === SEAMARK_DISPLAY_TIER_ALL}
+                  onChange={() => setSeamarkDisplayTier(SEAMARK_DISPLAY_TIER_ALL)}
+                />
+                {t('settings.seamarkCategory.all')}
+              </label>
+            )}
           </div>
           <p className="options-help" id="settings-seamarkCategory-help">
-            {t('settings.seamarkCategory.help')}
+            {t(
+              SEAMARK_ALL_TIER_HAS_CATEGORIES
+                ? 'settings.seamarkCategory.help'
+                : 'settings.seamarkCategory.helpNoAll',
+            )}
           </p>
         </div>
       </Card>
