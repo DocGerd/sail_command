@@ -426,6 +426,17 @@ describe('parseHemisphereCoord', () => {
       expect(parseHemisphereCoord("54 48.74' E", 'lat')).toBeNull();
       expect(parseHemisphereCoord("10 25.5' N", 'lon')).toBeNull();
     });
+
+    // Real marine GPS units and almanacs (and a paste from a PDF) commonly
+    // render the typographically correct PRIME (U+2032 ′) and DOUBLE PRIME
+    // (U+2033 ″) rather than the ASCII apostrophe/quote — accepted as
+    // equivalent. Expected values are the SAME as the ASCII-mark rows above
+    // (same angle, different mark), which is itself part of the check: this
+    // isn't a new numeric path, only a wider set of separator characters.
+    it('accepts the Unicode PRIME/DOUBLE PRIME minute/second marks', () => {
+      expect(parseHemisphereCoord('54° 48′ 44″', 'lat')).toBeCloseTo(54.812222222, 8);
+      expect(parseHemisphereCoord('54° 48′ 44.4″ N', 'lat')).toBeCloseTo(54.812333333, 8);
+    });
   });
 
   // #1005 safety-critical negative cases: a widened parser must still reject
@@ -472,6 +483,41 @@ describe('parseHemisphereCoord', () => {
     // applies to a sign+letter conflict.
     it('rejects decimal minutes combined with a separate seconds field', () => {
       expect(parseHemisphereCoord('54 48.5 44', 'lat')).toBeNull();
+    });
+
+    // MAJOR fix-wave 1: a degrees string long enough overflows `Number()`
+    // to `Infinity` rather than throwing, and `degreesMagnitude +
+    // totalMinutes / 60` inherits that `Infinity`. Unguarded, this is the
+    // hazard class the whole parser exists to avoid: NOT rejected input,
+    // but a plausible-looking (though impossible) coordinate that
+    // `resolveHemisphereCoordCommit` would then CLAMP to the axis boundary
+    // and report 'clamped' -- "valid, just out of range" -- when it was
+    // actually unparseable garbage. `finiteMagnitudeOrNull` closes this on
+    // the FINAL combined magnitude, so it protects the sum regardless of
+    // which term would have overflowed it.
+    //
+    // MUTATION CHECK (non-vacuity): removing the `finiteMagnitudeOrNull`
+    // guard on the DM/DMS branch turns the degrees-overflow row's result
+    // from `null` into `Infinity` -- see the report for the measured
+    // red/green transition, confirmed at BASE (the guard did not exist
+    // there either, so this exact input already returned `Infinity` on
+    // the pre-fix-wave tree) as well as at HEAD.
+    it('rejects a degrees-position overflow (returns null, not Infinity)', () => {
+      expect(parseHemisphereCoord(`${'9'.repeat(400)} 48.74`, 'lat')).toBeNull();
+    });
+
+    // The minutes and seconds CAPTURE GROUPS in `DM_DMS_RE` are limited to
+    // 1-2 digits each (`\d{1,2}`), so `Number()` on either can never exceed
+    // 99 and therefore can never overflow to `Infinity` -- an "overflowing"
+    // minutes or seconds string is rejected because the REGEX doesn't match
+    // at all, not because of `finiteMagnitudeOrNull`. Pinned anyway as
+    // defense-in-depth (the whole input must still come back `null`, for
+    // whichever reason), and to record explicitly that these two positions
+    // are NOT a second way to reach the finiteness guard -- degrees is the
+    // only reachable overflow vector in this parser today.
+    it('rejects an overflowing minutes or seconds position (regex-length-capped, not the finiteness guard)', () => {
+      expect(parseHemisphereCoord(`54 ${'9'.repeat(400)}.74`, 'lat')).toBeNull();
+      expect(parseHemisphereCoord(`54 48 ${'9'.repeat(400)}`, 'lat')).toBeNull();
     });
   });
 });
@@ -545,6 +591,21 @@ describe('resolveHemisphereCoordCommit', () => {
     expect(resolveHemisphereCoordCommit('   ', 10, -90, 90, 'lat')).toEqual({
       next: 10,
       correction: null,
+    });
+  });
+
+  // MAJOR fix-wave 1: this is the USER-VISIBLE half of the DM/DMS overflow
+  // guard, and the part that actually matters. Before the fix,
+  // `parseHemisphereCoord` returned `Infinity` for this input, and this
+  // function's `Math.min(max, Math.max(min, parsed))` clamp turned that
+  // into `{ next: 90, correction: 'clamped' }` -- "your entry was a valid
+  // coordinate, just out of range" -- for what was actually unparseable
+  // garbage. Pinned here, not only on the parser, because 'clamped' vs
+  // 'invalid' is the message a captain actually sees.
+  it('reports "invalid", not "clamped", for a DM/DMS degrees-position overflow', () => {
+    expect(resolveHemisphereCoordCommit(`${'9'.repeat(400)} 48.74`, 10, -90, 90, 'lat')).toEqual({
+      next: 10,
+      correction: 'invalid',
     });
   });
 });

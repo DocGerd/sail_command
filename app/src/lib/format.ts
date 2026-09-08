@@ -141,6 +141,23 @@ function applyHemisphereSign(
   return match[0] === 'negative' ? -magnitude : magnitude;
 }
 
+/**
+ * Shared guard between BOTH coordinate forms below: a degrees string long
+ * enough overflows `Number()` to `Infinity` rather than throwing (and the
+ * DM/DMS form's `degreesMagnitude + totalMinutes / 60` sum inherits that
+ * `Infinity` the same way). An unguarded `Infinity`/`NaN` here is the whole
+ * hazard class this parser exists to avoid: it is not rejected input, and
+ * `resolveHemisphereCoordCommit`'s clamp then reports it as `'clamped'` —
+ * "valid coordinate, just out of range" — at the axis boundary (90°N,
+ * 180°E), when it was actually unparseable garbage. One shared check here,
+ * called from both branches, is deliberate: a duplicated inline check is a
+ * second copy that can drift, which is exactly how this branch went
+ * unguarded while its sibling was not.
+ */
+function finiteMagnitudeOrNull(magnitude: number): number | null {
+  return Number.isFinite(magnitude) ? magnitude : null;
+}
+
 // #886 residual 1's original bare-decimal form, e.g. "54.8", "54.8N",
 // "54.8° S". Comma is accepted alongside the point as the decimal separator
 // (#1005) — the de locale writes the decimal comma, and since lat/lon are
@@ -158,8 +175,18 @@ const DECIMAL_DEGREES_RE = /^(-?\d+(?:[.,]\d+)?)\s*°?\s*([A-Za-z])?$/;
 // fraction (comma or point), but not both at once — "54 48.5 44" is
 // ambiguous (decimal minutes, or whole minutes plus a seconds field?) and
 // is rejected below rather than guessed.
+//
+// Minute/second marks accept BOTH the ASCII apostrophe/quote (`'`/`"`) AND
+// the typographically correct PRIME/DOUBLE PRIME (U+2032 ′ / U+2033 ″) that
+// a marine GPS, an almanac, or a paste from a PDF commonly render literally
+// — these are SEPARATOR/UNIT characters only, so widening them can only let
+// a correct input through that was previously rejected; it cannot turn
+// garbage into a wrong number (that direction is reserved for the NUMERIC
+// character class, which stays ASCII digits only). A no-break space
+// (U+00A0) between components needs no separate accommodation: ECMAScript's
+// `\s` already matches it.
 const DM_DMS_RE =
-  /^(-?\d+)\s*°?\s*(\d{1,2})(?:[.,](\d+))?\s*'?\s*(?:(\d{1,2})(?:[.,](\d+))?\s*"?\s*)?([A-Za-z])?$/;
+  /^(-?\d+)\s*°?\s*(\d{1,2})(?:[.,](\d+))?\s*['′]?\s*(?:(\d{1,2})(?:[.,](\d+))?\s*["″]?\s*)?([A-Za-z])?$/;
 
 /**
  * #886 residual 1 (extended by #1005): parses a lat/lon TEXT entry that may
@@ -187,8 +214,8 @@ export function parseHemisphereCoord(draft: string, axis: CoordAxis): number | n
   if (decimalMatch) {
     const numPart = (decimalMatch[1] as string).replace(',', '.');
     const letterRaw = decimalMatch[2];
-    const magnitude = Number(numPart.replace('-', ''));
-    if (!Number.isFinite(magnitude)) return null;
+    const magnitude = finiteMagnitudeOrNull(Number(numPart.replace('-', '')));
+    if (magnitude === null) return null;
     return applyHemisphereSign(magnitude, numPart.startsWith('-'), letterRaw, axis);
   }
 
@@ -212,7 +239,8 @@ export function parseHemisphereCoord(draft: string, axis: CoordAxis): number | n
     }
 
     const degreesMagnitude = Number(degPart.replace('-', ''));
-    const magnitude = degreesMagnitude + totalMinutes / 60;
+    const magnitude = finiteMagnitudeOrNull(degreesMagnitude + totalMinutes / 60);
+    if (magnitude === null) return null;
     return applyHemisphereSign(magnitude, degPart.startsWith('-'), letterRaw, axis);
   }
 
