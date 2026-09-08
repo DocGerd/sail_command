@@ -20,22 +20,23 @@ shipped.
 
 The `v0.26.0` cut (2026-09-07) completed the
 [`v0.26.0` milestone](https://github.com/DocGerd/sail_command/milestones),
-eleven issues in total. Three changelog entries shipped, covering three
-distinct issues. Two of the milestone's issues remain open and roll forward
-to `v0.27.0`: a routing course-correction question
+nine issues in total. Three changelog entries shipped, covering three
+distinct issues. The milestone's other six issues were docs-accuracy,
+test-coverage and agent-tooling fixes with no user-facing change
+([#1059](https://github.com/DocGerd/sail_command/issues/1059),
+[#1057](https://github.com/DocGerd/sail_command/issues/1057),
+[#989](https://github.com/DocGerd/sail_command/issues/989),
+[#911](https://github.com/DocGerd/sail_command/issues/911),
+[#896](https://github.com/DocGerd/sail_command/issues/896),
+[#836](https://github.com/DocGerd/sail_command/issues/836)). Two issues
+originally triaged into this cut were moved to `v0.27.0` instead of shipping
+here: a routing course-correction question
 ([#847](https://github.com/DocGerd/sail_command/issues/847)), whose
 investigating PR deliberately used `Refs` rather than `Closes` because its
 measurement covers only one route under uniform wind; and advancing the
 OpenSSF Best Practices badge to Silver tier
 ([#667](https://github.com/DocGerd/sail_command/issues/667)), which needs a
-maintainer form submission. The milestone's remaining six issues were
-docs-accuracy, test-coverage and agent-tooling fixes with no user-facing
-change ([#1059](https://github.com/DocGerd/sail_command/issues/1059),
-[#1057](https://github.com/DocGerd/sail_command/issues/1057),
-[#989](https://github.com/DocGerd/sail_command/issues/989),
-[#911](https://github.com/DocGerd/sail_command/issues/911),
-[#896](https://github.com/DocGerd/sail_command/issues/896),
-[#836](https://github.com/DocGerd/sail_command/issues/836)).
+maintainer form submission.
 
 Plans, settings and saved waypoints can now be exported to and imported from
 a versioned local file
@@ -52,9 +53,12 @@ waypoint was dropped when it has a name, instead of only counting drops
 ## Next — v0.27.0
 
 The [`v0.27.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-is the one now being filled. As of this cut it holds no issues yet — triage
-into it has not started — so the milestone page is the only authoritative
-view; check it directly rather than this file.
+is the one now being filled. As of this cut it holds the two issues carried
+forward from `v0.26.0` —
+[#847](https://github.com/DocGerd/sail_command/issues/847) and
+[#667](https://github.com/DocGerd/sail_command/issues/667) — and further
+triage has not started; the milestone page is the only authoritative view,
+check it directly rather than this file.
 
 ## Themes for the next year
 
