@@ -289,8 +289,9 @@ describe('registerAisImages (#192 canvas/pixelRatio/scale registration contract)
 // Round 1 of this fix tried to grow icon-size while compensating with a
 // negative icon-padding to hold the collision footprint constant — REFUTED
 // in review, on two independent grounds confirmed against the installed
-// maplibre-gl@6.6.0 source (see aisVesselLayout()'s own doc comment for the
-// citations): queryRenderedFeatures resolves symbols via the collision
+// maplibre-gl@6.6.0 source at the time, re-derived unmoved against 6.7.0
+// (see aisVesselLayout()'s own doc comment for the citations):
+// queryRenderedFeatures resolves symbols via the collision
 // footprint itself (so "hold the footprint constant" cancels the fix), and
 // icon-size/icon-padding are evaluated at DIFFERENT zooms internally
 // (bucket.zoom+1 vs bucket.zoom), so the "constant footprint" arithmetic was

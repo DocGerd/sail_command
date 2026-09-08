@@ -89,8 +89,10 @@ import {
 // confound, but does not make the two regimes' CANDIDATE sets perfectly
 // identical on its own (#484 F2): `queryRenderedFeatures` matches a
 // symbol's COLLISION BOX against the query geometry, not its anchor point
-// (`CollisionIndex.queryRenderedSymbols`, `collision_index.ts:369-409`,
-// `maplibre-gl@6.1.0` — confirmed via `npm ci` against
+// (`CollisionIndex.queryRenderedSymbols`, `collision_index.ts:368-426` (was
+// `:369-409` at 6.1.0 — the function grew, doc comment + body now spans
+// more lines; declaration itself is at :373),
+// re-derived against `maplibre-gl@6.7.0` — confirmed via `npm ci` against
 // `app/package-lock.json`'s pin), so the effective capture region is the
 // geographic box expanded by the icon's half-extent on every side — a FIXED
 // PIXEL amount against a box whose pixel size changes ~8x between z10 and
@@ -259,13 +261,14 @@ async function readSortedSeamarkIconIdsInClusterBox(page: Page): Promise<string[
 }
 
 // Same cadence/threshold as labels.spec.ts's settle gate, and for the same
-// measured reason: `Placement.stillRecent` (symbol/placement.ts:1268-1277)
+// measured reason: `Placement.stillRecent` (symbol/placement.ts:1283-1292,
+// was :1268-1277 at 6.1.0)
 // suppresses a fresh placement recompute while `commitTime + fadeDuration *
 // durationAdjustment > now`, and `ui/map.ts`'s `Map` constructor defaults
-// `fadeDuration` to 300ms (`:539`) — a 400ms interval exceeds that window,
+// `fadeDuration` to 300ms (`:541`, was `:539`) — a 400ms interval exceeds that window,
 // and three consecutive matches (not two) guard against two reads landing
 // inside one quiescent window without ever spanning an actual recompute.
-// Read against `maplibre-gl@6.1.0` — confirmed via `npm ci` against
+// Re-derived against `maplibre-gl@6.7.0` — confirmed via `npm ci` against
 // `app/package-lock.json`'s pin, not merely grepped from a possibly-stale
 // `node_modules` (#484 F5: an earlier revision of this comment said "same
 // installed version" without having actually run `npm ci` first, which is
@@ -775,8 +778,9 @@ interface SourceHazardFeature extends RenderedHazardFeature {
 // make this formula agree with MapLibre's own tile identity (which
 // `Tile.querySourceFeatures` stamps as `.tile = {z,x,y}` on every SOURCE
 // feature, `app/node_modules/maplibre-gl/src/tile/tile.ts`'s
-// `querySourceFeatures(result, params)` method — read against
-// `maplibre-gl@6.5.0`, matched to `app/package-lock.json`'s pin): this
+// `querySourceFeatures(result, params)` method (declared :418, `.tile`
+// stamp at :443) — re-derived against
+// `maplibre-gl@6.7.0`, matched to `app/package-lock.json`'s pin): this
 // app's GeoJSON source tiles at 512px (so `Transform.coveringZoomLevel`
 // returns `Math.floor(zoom)`, matching this formula's `2**z` grid), and
 // both zooms this test uses (8, 9) are integers, so MapLibre never
