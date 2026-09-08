@@ -267,7 +267,7 @@ function buildHatchCanvas(
 // MapLibre's CanvasSource only re-uploads its GL texture on a dimension
 // change or while `_playing` is true
 // (node_modules/maplibre-gl/src/source/canvas_source.ts's prepare()/play()/
-// pause(), re-derived against maplibre-gl@6.3.0 — app/package-lock.json's
+// pause(), re-derived against maplibre-gl@6.7.0 — app/package-lock.json's
 // pinned version as of this change): play() sets `_playing = true` and
 // triggers a repaint; pause() re-uploads the texture (prepare()) THEN clears
 // `_playing`. Calling both back-to-back therefore forces exactly one
@@ -408,11 +408,12 @@ function setupLayers(
             // blur stripes but would fade each marginal region's OUTER cells
             // toward transparent — i.e. render genuinely marginal water lighter
             // at exactly the boundary a reader is judging. 'nearest' keeps that
-            // edge at the mask's own cell resolution. SCOPE, measured against
-            // maplibre-gl@6.3.0: this governs MAGNIFICATION only —
-            // webgl/draw/draw_raster.ts:119 binds the MINIFICATION filter
+            // edge at the mask's own cell resolution. SCOPE, re-derived against
+            // maplibre-gl@6.7.0: this governs MAGNIFICATION only —
+            // webgl/draw/draw_raster.ts:121 (was :119 at 6.3.0) binds the
+            // MINIFICATION filter
             // as a hardcoded gl.LINEAR_MIPMAP_NEAREST third argument
-            // (webgl/texture.ts:161-162), independent of this property, so
+            // (webgl/texture.ts:161-162, unmoved), independent of this property, so
             // at overview zoom (where the raster is minified) it has no
             // effect at all. The style spec says the same: "texture
             // magnification filter".
@@ -894,9 +895,12 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
   // owns its own popup rather than calling back into App/PlannerPanel state.
   // #682: registered on BOTH sc-seamarks* layer ids via maplibre-gl's array
   // form of the delegated `on(type, layerIds, fn)` overload
-  // (`node_modules/maplibre-gl/dist/maplibre-gl.d.ts:13727`, re-derived
-  // against the installed 6.5.0, matched to `app/package-lock.json`'s pin —
-  // #392's documented trap) — MapLibre's own delegate implementation
+  // (`node_modules/maplibre-gl/dist/maplibre-gl.d.ts:13943`, re-derived
+  // against the installed 6.7.0, matched to `app/package-lock.json`'s pin —
+  // #392's documented trap; this line drifted from :13727 at 6.5.0, so
+  // anchor on the overload's SIGNATURE — `on<T extends keyof
+  // MapLayerEventType>(type: T, layerIds: string[], listener: ...)` — not
+  // the number) — MapLibre's own delegate implementation
   // (`ui/map.ts`'s `_createDelegatedListener`) queries EVERY given layer at
   // the tap point and merges the results into ONE `e.features` array before
   // invoking this handler once, so pickSeamarkByPriority below still sees

@@ -118,8 +118,9 @@ export const AIS_NATURAL_ICON_PX = CANVAS_SIZE / PIXEL_RATIO;
  * REJECTED APPROACH (PR #974 round 1, refuted in review): grow `icon-size`
  * to a new z13 stop (1.4) and compensate with a NEGATIVE `icon-padding` so
  * the collision footprint stays at the pre-#957 value. This does not work,
- * for two independent reasons confirmed against the installed
- * `maplibre-gl@6.6.0` source (`app/package-lock.json`-pinned):
+ * for two independent reasons, confirmed against the installed
+ * `maplibre-gl@6.6.0` source at the time and re-derived unmoved against
+ * `6.7.0` (`app/package-lock.json`-pinned):
  *
  * 1. `queryRenderedFeatures` resolves a symbol via the COLLISION INDEX, not
  *    the rendered icon quad — `collision_index.ts`'s `queryRenderedSymbols`

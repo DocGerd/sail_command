@@ -6,7 +6,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 // #711: MapLibre's own AttributionControl chrome hardcodes
 // `.maplibregl-ctrl-attrib.maplibregl-compact{background-color:#fff;
 // color:#000}` and `.maplibregl-ctrl-attrib a{color:rgba(0,0,0,.75)}` with
-// no dark variant (read against maplibre-gl 6.5.0,
+// no dark variant (re-derived against maplibre-gl 6.7.0,
 // node_modules/maplibre-gl/dist/maplibre-gl.css) — the same defect class
 // CLAUDE.md documents for .seamark-popup/.ais-popup. The colour pair sits
 // on `.maplibregl-compact` itself, NOT on `.maplibregl-compact-show`

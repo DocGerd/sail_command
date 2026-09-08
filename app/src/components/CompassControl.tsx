@@ -206,8 +206,8 @@ export default function CompassControl({ fix, showOwnship }: CompassControlProps
       // replaced coming to rest, describing the OLD camera.
       if (ownEaseDepthRef.current > 0) return;
       // maplibre-gl 6 dropped `Map#isEasing()` (Map no longer extends Camera;
-      // it now HOLDS one — the `_camera: Camera;` field, `ui/map.ts` ~:594
-      // (re-derived against maplibre-gl@6.5.0, 2026-08-28) / `ui/camera.ts:284`
+      // it now HOLDS one — the `_camera: Camera;` field, `ui/map.ts` :595
+      // (re-derived against maplibre-gl@6.7.0) / `ui/camera.ts:284`
       // — and the method lives only on the private `_camera`, which
       // production code must not reach for). This derives the same "still in
       // flight, don't judge yet"
@@ -237,24 +237,32 @@ export default function CompassControl({ fix, showOwnship }: CompassControlProps
       // Together they separate the two cases MapLibre itself does NOT mark
       // differently at the API surface: `_afterEase(eventData, easeId)`
       // fires the interrupted/aborted ease's own `eventData` (`camera.ts:
-      // 982-1009`) — our own eases never pass any, so an abort's moveend
+      // 982-1009`, re-derived against maplibre-gl@6.7.0 — unmoved since
+      // 6.5.0) — our own eases never pass any, so an abort's moveend
       // carries no `originalEvent`, and this guard correctly lets it through
       // to judge/demote — while `_fireEvents`'s end-of-gesture
-      // bare `moveend` (`handler_manager.ts` ~:696, re-derived against
-      // maplibre-gl@6.5.0, 2026-08-28; the one #203 F2 exists for) carries the gesture's
+      // bare `moveend` (`handler_manager.ts` :696, re-derived against
+      // maplibre-gl@6.7.0 — unmoved since 6.5.0; the one #203 F2 exists for)
+      // carries the gesture's
       // own `originalEvent`, so this guard correctly holds off while our
       // separately-still-running ease has yet to report its own settle.
       // (Degenerate case, corrected #253 review: an end-of-gesture moveend
       // with NO `originalEvent` is NOT reachable in 6.0.0 the way an earlier
       // draft of this comment claimed. "No handler deactivated" does not
-      // reach `:707` at all — `finishedMoving` there is derived from
+      // reach `finishedMoving` (`:746` at 6.7.0, was `:707` at 6.0.0 —
+      // `handler_manager.ts` grew a terrain-movement block ahead of it) at
+      // all — `finishedMoving` there is derived from
       // `!stillMoving` after the `isActive()` check a few lines above (not
       // from an empty `deactivatedHandlers`), so a genuinely undefined
       // `originalEndEvent` needs `deactivatedHandlers[handlerName]` itself to
-      // be falsy on a `renderFrame` pass (`:406`, whose synthetic event has
+      // be falsy on a `renderFrame` pass (`:416` at 6.7.0, was `:406` —
+      // `const inputEvent = e.type === 'renderFrame' ? undefined : e as
+      // UIEvent;`, whose synthetic event has
       // no `originalEvent` to record), falling back to a STORED `originalEvent`
-      // (`:486`) that is itself `undefined`. That fallback is unreachable in
-      // 6.0.0: `scroll_zoom.ts:266` is the only handler implementing
+      // (`mergeHandlerResult`, declared `:488` at 6.7.0, was `:486`; the
+      // assignment itself is at `:497`) that is itself `undefined`. That
+      // fallback is unreachable in
+      // 6.0.0: `scroll_zoom.ts:266` (unmoved) is the only handler implementing
       // `renderFrame()`, and its returned `originalEvent` is always
       // `this._lastWheelEvent` — never `undefined` while it is active. And
       // even if it did occur, it would NOT be "the SAME accepted narrowing"

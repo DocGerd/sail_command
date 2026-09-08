@@ -421,7 +421,7 @@ describe('CompassControl', () => {
     it('does not demote on a handler settle fired while its own ease still runs', () => {
       // HandlerManager fires a bare `moveend` at the end of a gesture
       // (`_fireEvents`, node_modules/maplibre-gl/src/ui/handler_manager.ts
-      // ~:696, re-derived against maplibre-gl@6.5.0, 2026-08-28)
+      // :696, re-derived against maplibre-gl@6.7.0 — unmoved since 6.5.0)
       // non-inertial branch. When
       // the gesture ended near north, our rotateend snap has already started
       // an ease toward 0 by then, so the camera is legitimately mid-flight and

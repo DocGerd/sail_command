@@ -12,7 +12,7 @@ import { startPreview, mapReady, STANDARD_VIEWPORTS, EDGE_VIEWPORTS } from './he
 //     and "the map renders correctly during a drag" has no Playwright
 //     observable in this suite at all — see the PR description for the
 //     source-level argument (MapLibre's own container ResizeObserver,
-//     confirmed still present in the installed maplibre-gl@6.1.0, plus the
+//     re-derived still present in the installed maplibre-gl@6.7.0, plus the
 //     static grep-checkable guarantee that this change adds no second
 //     resize path). Demanding a mid-drag assertion here would reproduce the
 //     #368 shape: a test "proving" a window this suite cannot observe,
@@ -134,8 +134,9 @@ test.describe('#355 resizable panel', () => {
       //
       // #412-shaped defect, fixed here: MapLibre throttles its own
       // resize+redraw to one call per 50ms (`_setupResizeObserver`, `ui/map.ts`
-      // ~:3994-4012, `throttle(..., 50)` call ~:3996 — re-derived against
-      // maplibre-gl@6.5.0, 2026-08-28)
+      // :4043-4060 (was ~:3994-4012 at 6.5.0), `throttle(..., 50)` call :4045
+      // (was ~:3996) — re-derived against
+      // maplibre-gl@6.7.0)
       // — reading the canvas box in the SAME TICK as `mouse.up()` can
       // sample PRE-resize geometry and pass or fail for reasons unrelated
       // to the behaviour under test. Poll until settled instead.

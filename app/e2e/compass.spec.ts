@@ -246,9 +246,10 @@ function armCameraRest(page: Page) {
 // the PRIVATE field, not a public API call.
 //
 // maplibre-gl 6 removed `Map#isEasing()`: `Map` no longer extends `Camera`, it
-// now HOLDS one (the `_camera: Camera;` field, `ui/map.ts` ~:594, re-derived
-// against maplibre-gl@6.5.0, 2026-08-28), and `isEasing()` lives only on
-// that `Camera` (`ui/camera.ts:1189-1191`). CompassControl.tsx's production
+// now HOLDS one (the `_camera: Camera;` field, `ui/map.ts` :595 (was ~:594
+// at 6.5.0), re-derived
+// against maplibre-gl@6.7.0), and `isEasing()` lives only on
+// that `Camera` (`ui/camera.ts:1189-1191`, unmoved). CompassControl.tsx's production
 // guard was rewritten to avoid this private field entirely (#253) — this e2e
 // harness is the ONE deliberate exception, and the asymmetry is intentional:
 // this is test-only instrumentation that needs the camera's true animation
@@ -726,11 +727,12 @@ async function rotateThenTapCompassHome(page: Page, compass: ReturnType<Page['lo
   //   MapLibre arms `mouseRotate` on the `mousedown` (measured: `_lastPoint`
   //   set, `_moveStateManager._eventButton = 2`). One frame later the ease
   //   reaches t=1 and `_renderFrameCallback` calls a BARE `this.stop()`
-  //   (`camera.ts:1246`) — no `allowGestures` — which runs `_stopHandlers()`
-  //   (`camera.ts:1213` -> `map.ts:771`, where `Map` supplies it to `Camera`
+  //   (`camera.ts:1246`, unmoved) — no `allowGestures` — which runs `_stopHandlers()`
+  //   (`camera.ts:1213`, unmoved -> `map.ts:773` (was `:771` at 6.5.0), where `Map` supplies it to `Camera`
   //   as a constructor callback) -> `HandlerManager.stop(false)`, which calls
-  //   `reset()` on EVERY handler (`handler_manager.ts:342-349`; its
-  //   `_updatingCamera` early return at `:344` does not apply on a rAF,
+  //   `reset()` on EVERY handler (`handler_manager.ts:353-363` (was
+  //   `:342-349` at 6.5.0 — the method body itself grew); its
+  //   `_updatingCamera` early return at `:355` (was `:344`) does not apply on a rAF,
   //   which is why it fires here). `mouseRotate` is disarmed back to
   //   `_lastPoint = undefined` mid-gesture, so all ten subsequent
   //   `mousemove`s with `buttons: 2` produce a bearing delta of exactly
@@ -741,10 +743,12 @@ async function rotateThenTapCompassHome(page: Page, compass: ReturnType<Page['lo
   //   wait (raising the assertion timeout cannot help a bearing that is
   //   never going to change).
   //
-  // Every maplibre line number in this block was read off the PINNED install
-  // (`app/node_modules/maplibre-gl`, **6.1.0** — `app/package.json` carries
-  // `^6.1.0`), and the version is named because these DO move between
-  // releases: at 6.0.0 the `map.ts` site sits ~13 lines earlier, which is
+  // Every maplibre line number in this block was RE-DERIVED against the
+  // PINNED install (`app/node_modules/maplibre-gl`, **6.7.0** —
+  // `app/package.json` carries `^6.7.0`, 2026-09-08), and the version is
+  // named because these DO move between
+  // releases: at 6.0.0 the `map.ts` site sat ~13 lines earlier than 6.1.0's,
+  // which is
   // exactly the kind of near-miss that reads as a verified citation. Re-read
   // them, and re-state the version, after any maplibre-gl upgrade.
   //
