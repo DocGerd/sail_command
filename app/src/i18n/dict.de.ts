@@ -604,6 +604,7 @@ export const de = {
   // controls cluster (annotation/barb/alt-rig toggles, forecast slider,
   // legend) — collapsible so it stops obstructing the chart on mobile.
   'route.controls.summary': 'Anzeigeoptionen',
+  'route.fitToView': 'Route einpassen',
   'route.motorLetter': 'M',
   // Depth profile (#45)
   'profile.title': 'Tiefenprofil',
