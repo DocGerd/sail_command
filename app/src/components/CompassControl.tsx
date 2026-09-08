@@ -255,7 +255,7 @@ export default function CompassControl({ fix, showOwnship }: CompassControlProps
       // `!stillMoving` after the `isActive()` check a few lines above (not
       // from an empty `deactivatedHandlers`), so a genuinely undefined
       // `originalEndEvent` needs `deactivatedHandlers[handlerName]` itself to
-      // be falsy on a `renderFrame` pass (`:416` at 6.7.0, was `:406` —
+      // be falsy on a `renderFrame` pass (`:417` at 6.7.0, was `:406` —
       // `const inputEvent = e.type === 'renderFrame' ? undefined : e as
       // UIEvent;`, whose synthetic event has
       // no `originalEvent` to record), falling back to a STORED `originalEvent`

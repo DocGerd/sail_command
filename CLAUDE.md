@@ -1009,7 +1009,7 @@ making design-level decisions; do not silently deviate.
   lockfile, unmoved since 6.6.0): `collision_index.ts`'s `const grid = ignorePlacement ?
   this.ignoredGrid : this.grid;` (:429/:436) routes the box to `ignoredGrid`,
   whose ONLY query is in the `queryRenderedSymbols` path (:373-426, the
-  `.concat(this.ignoredGrid.query(...))` read at :387) —
+  `.concat(this.ignoredGrid.query(...))` read at :388) —
   `symbol/placement.ts` never references it. Measured at #1006 with
   `text-ignore-placement: true` on `sc-saved-waypoint-labels`: 9 labels placed
   inside an 82.4x143.1px span at ~110px per string, three per row fully
