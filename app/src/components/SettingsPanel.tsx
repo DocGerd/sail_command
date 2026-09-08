@@ -171,7 +171,13 @@ function clampToFieldSpec(v: number, spec: FieldSpec): number {
 // (including `safetyDepthField`, which is per-BOAT — computed from the
 // currently selected boat, not a hand-picked universal minimum), so the
 // two can never drift apart.
-function clampSettingsToBounds(s: Settings, safetyDepthField: FieldSpec): Settings {
+// #1084 review MINOR 1: exported ONLY so SettingsPanel.test.tsx's structural
+// twin test can derive the fields this function actually clamps from its
+// OWN observed behaviour, independent of CLAMPED_FIELD_SPECS's declaration
+// below — see that test's own comment for why the two must never be derived
+// from one another.
+// eslint-disable-next-line react-refresh/only-export-components
+export function clampSettingsToBounds(s: Settings, safetyDepthField: FieldSpec): Settings {
   return {
     ...s,
     safetyDepthM: clampToFieldSpec(s.safetyDepthM, safetyDepthField),
@@ -182,6 +188,59 @@ function clampSettingsToBounds(s: Settings, safetyDepthField: FieldSpec): Settin
     maneuverPenaltyS: clampToFieldSpec(s.maneuverPenaltyS, MANEUVER_PENALTY_FIELD),
     performanceFactor: clampToFieldSpec(s.performanceFactor, PERFORMANCE_FACTOR_FIELD),
   };
+}
+
+// #1071: `clampSettingsToBounds` above silently rewrites any of the seven
+// fields that fell outside their FieldSpec bounds, and the import handler
+// used to announce 'settings.backup.import.settingsApplied' regardless of
+// whether that happened — so a hand-edited backup with e.g.
+// `safetyDepthM: 2.0` on a deep-hull boat became 2.4 while the app reported
+// plain success. The four SIBLING partial-outcome notices on this same
+// import path (skippedPlans/skippedWaypoints/plansWriteFailed/
+// waypointsWriteFailed) each disclose their own deviation; the clamp was the
+// one silent exception. This walks BEFORE/AFTER pairs per field (the same
+// `FieldSpec[]` the panel's own numeric fields render against — see
+// `clampSettingsToBounds`'s own comment on why that shared source can never
+// drift) and returns the translated label of every field whose value the
+// clamp actually changed, so the caller can tell "nothing moved" from
+// "something moved" and name what.
+//
+// #1084 review MINOR 1: exported ONLY so the structural twin test in
+// SettingsPanel.test.tsx can assert this array's key set against the keys
+// `clampSettingsToBounds` actually clamps (observed behaviourally, not read
+// from this declaration) — the SOLVER_LABELS shape CLAUDE.md records: a
+// guard whose detection logic is pinned while its DATA is not lets a
+// dropped/added entry silently under- or over-report while still reporting
+// success.
+// eslint-disable-next-line react-refresh/only-export-components
+export const CLAMPED_FIELD_SPECS: ReadonlyArray<{ key: keyof Settings; spec: FieldSpec }> = [
+  { key: 'depthComfortMarginM', spec: DEPTH_COMFORT_MARGIN_FIELD },
+  { key: 'motorSpeedKn', spec: MOTOR_SPEED_FIELD },
+  { key: 'motorThresholdKn', spec: MOTOR_THRESHOLD_FIELD },
+  { key: 'sailPreferenceKn', spec: SAIL_PREFERENCE_FIELD },
+  { key: 'maneuverPenaltyS', spec: MANEUVER_PENALTY_FIELD },
+  { key: 'performanceFactor', spec: PERFORMANCE_FACTOR_FIELD },
+];
+
+function clampedFieldLabels(
+  original: Settings,
+  clamped: Settings,
+  safetyDepthField: FieldSpec,
+  t: (key: MsgKey) => string,
+): string[] {
+  const labels: string[] = [];
+  // #1084 review MINOR 2: `Object.is`, not `!==` — `-0 !== 0` is false, so a
+  // hand-edited backup's `-0` on a min-0 field (`JSON.parse('-0')` is valid)
+  // clamping to `+0` would otherwise go undetected. `isSettingsLike`
+  // (planExport.ts) rejects non-finite values before this runs, so NaN never
+  // reaches here and `Object.is` behaves identically to `!==` for every
+  // other value pair — this cannot introduce a spurious "changed" report.
+  if (!Object.is(original.safetyDepthM, clamped.safetyDepthM))
+    labels.push(t(safetyDepthField.labelKey));
+  for (const { key, spec } of CLAMPED_FIELD_SPECS) {
+    if (!Object.is(original[key], clamped[key])) labels.push(t(spec.labelKey));
+  }
+  return labels;
 }
 
 export default function SettingsPanel({
@@ -294,9 +353,15 @@ export default function SettingsPanel({
     // plans/waypoints which only ever ADD — the description text says so.
     // Clamped to the SAME FieldSpec bounds manual entry enforces (#1068
     // review MINOR — see clampSettingsToBounds's own comment for why
-    // clamping, not rejection, was chosen).
-    if (result.settings !== null)
-      onChange(clampSettingsToBounds(result.settings, safetyDepthField));
+    // clamping, not rejection, was chosen). #1071: computed once so the
+    // clamped result can be compared against the parsed one for the
+    // disclosure notice below, rather than re-clamping or re-deriving it.
+    let clampedFields: string[] = [];
+    if (result.settings !== null) {
+      const clamped = clampSettingsToBounds(result.settings, safetyDepthField);
+      clampedFields = clampedFieldLabels(result.settings, clamped, safetyDepthField, t);
+      onChange(clamped);
+    }
 
     const notices = [
       // Reports what was actually SAVED, not merely parsed — the two can
@@ -304,6 +369,13 @@ export default function SettingsPanel({
       t('settings.backup.import.success', { plans: plansSaved, waypoints: waypointsSaved }),
     ];
     if (result.settings !== null) notices.push(t('settings.backup.import.settingsApplied'));
+    // #1071: fires only when the clamp actually moved at least one field —
+    // the mirror defect (an unconditional notice) would be just as wrong as
+    // the silent one this replaces.
+    if (clampedFields.length > 0)
+      notices.push(
+        t('settings.backup.import.settingsClamped', { fields: clampedFields.join(', ') }),
+      );
     if (result.invalidPlanCount > 0)
       notices.push(t('settings.backup.import.skippedPlans', { count: result.invalidPlanCount }));
     if (result.invalidWaypointCount > 0)
