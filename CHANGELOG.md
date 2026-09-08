@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-09-08
+
+### Added
+
+- A "Fit route to view" button in the route controls panel recenters and zooms the map to the current route (#297).
+
+### Changed
+
+- The map display settings' "All" seamark option is now hidden when it has no effect on the current chart data, instead of offering a choice that renders identically to "Standard" (#686).
+
 ## [0.27.0] - 2026-09-08
 
 ### Added
@@ -1027,7 +1037,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.27.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.28.0...HEAD
+[0.28.0]: https://github.com/DocGerd/sail_command/compare/v0.27.0...v0.28.0
 [0.27.0]: https://github.com/DocGerd/sail_command/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/DocGerd/sail_command/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/DocGerd/sail_command/compare/v0.24.0...v0.25.0
