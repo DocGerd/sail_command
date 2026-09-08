@@ -69,7 +69,10 @@ commitment either.
 ### Supply-chain and project-hygiene hardening
 
 The project holds the [OpenSSF Best Practices](https://www.bestpractices.dev/projects/13749)
-*passing* badge and is working toward *Silver*. A 2026-07 audit produced a
+*silver* badge, reached on 2026-09-08 when `access_continuity` — the last
+level-1 MUST outstanding — was marked Met. The badge image in `README.md` is
+served live by bestpractices.dev, so it is the current level by construction;
+this sentence is not. A 2026-07 audit produced a
 concrete, bounded set of gaps, most of which are documents or config rather than
 product work. Done: governance, roles, Code of Conduct, this roadmap, a
 security assurance case

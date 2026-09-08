@@ -263,8 +263,11 @@ not to an outage.
 The OpenSSF Best Practices Silver criterion `access_continuity` is a level-1
 **MUST** with `na_allowed: false` (verified 2026-09-08 by joining the live
 project JSON against `criteria/criteria.yml` from
-`coreinfrastructure/best-practices-badge`; it is the ONLY level-0/1 MUST
-without an N/A escape this project's badge form does not yet mark Met). Read
+`coreinfrastructure/best-practices-badge`; it was, when this section was
+written, the ONLY level-0/1 MUST without an N/A escape this project's badge
+form had not yet marked Met. The form was updated with the reasoning below on
+2026-09-08; `access_continuity` now reads Met and the badge reads *silver*,
+read from the live project JSON that day). Read
 verbatim from that project's `config/locales/en.yml`, 2026-09-08:
 
 > The project MUST be able to continue with minimal interruption if any one
