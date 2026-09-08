@@ -11,7 +11,7 @@ import { en } from '../i18n/dict.en';
 import { formatTime, toLocalInputValue } from '../lib/format';
 import { MAX_GPX_FILE_BYTES } from '../lib/gpx';
 import { FORECAST_DAYS } from '../services/openMeteo';
-import { saveWaypoint, __resetDbForTests } from '../services/db';
+import { saveWaypoint, listWaypoints, __resetDbForTests } from '../services/db';
 import { uniformWindGrid } from '../test/fixtures';
 import {
   DEFAULT_SETTINGS,
@@ -1069,6 +1069,164 @@ describe('PlannerPanel', () => {
       renderPanel({ viaPoints: [VIA_A] });
       expect(screen.getByRole('button', { name: 'Add waypoint' })).toBeEnabled();
       expect(screen.getByRole('button', { name: 'Remove waypoint 1' })).toBeEnabled();
+    });
+
+    // #938: abandon the whole draft via list in one action, scoped to the
+    // draft only — never the persisted 'waypoints' IndexedDB store
+    // (PlannerPanel.tsx has no import of services/db.ts at all).
+    describe('#938 clear all', () => {
+      it('renders no control when the draft is empty', () => {
+        renderPanel({ viaPoints: [] });
+        expect(
+          screen.queryByRole('button', { name: 'Clear all waypoints' }),
+        ).not.toBeInTheDocument();
+      });
+
+      it('a single tap arms a confirm and removes nothing yet', () => {
+        const props = renderPanel({ viaPoints: [VIA_A, VIA_B] });
+        fireEvent.click(screen.getByRole('button', { name: 'Clear all waypoints' }));
+        expect(
+          screen.getByRole('button', { name: 'Confirm clearing all waypoints' }),
+        ).toBeInTheDocument();
+        expect(props.onRemoveVia).not.toHaveBeenCalled();
+        const viaSection = screen.getByRole('region', { name: 'Waypoints' });
+        expect(within(viaSection).getAllByRole('listitem')).toHaveLength(2);
+      });
+
+      // #938 review MAJOR: arming "clear all" and then removing a DIFFERENT
+      // point via its own per-row button (a real, unrelated mutation of the
+      // draft — not the drain this feature itself performs) must disarm the
+      // confirm. The reviewer's own live repro: arm on 3 points, remove ONE
+      // via its own row button, and the confirm stayed armed against the
+      // now-2-item list the user never actually confirmed clearing. Needs
+      // the #695/#863 stateful-harness pattern (see above): a bare vi.fn()
+      // onRemoveVia never actually shrinks `viaPoints`, so the reference
+      // change this disarm relies on could never be exercised against it.
+      it('#938 review: removing a via point via its own row button disarms an armed "clear all" confirm', () => {
+        localStorage.setItem('sc-lang', 'en');
+        const THIRD = { lat: 54.9, lon: 10.1 };
+        function Harness() {
+          const [points, setPoints] = useState<LatLon[]>([VIA_A, VIA_B, THIRD]);
+          return (
+            <PlannerPanel
+              {...baseProps({
+                viaPoints: points,
+                onRemoveVia: (i: number) => setPoints(points.filter((_, idx) => idx !== i)),
+              })}
+            />
+          );
+        }
+        render(
+          <I18nProvider>
+            <Harness />
+          </I18nProvider>,
+        );
+
+        // Arm the confirm.
+        fireEvent.click(screen.getByRole('button', { name: 'Clear all waypoints' }));
+        expect(
+          screen.getByRole('button', { name: 'Confirm clearing all waypoints' }),
+        ).toBeInTheDocument();
+
+        // Remove ONE point via its OWN row button — unrelated to "clear all".
+        fireEvent.click(screen.getByRole('button', { name: 'Remove waypoint 1' }));
+
+        // The list shrank but is NOT empty (2 of 3 remain) — the control
+        // must have fallen back to the un-armed label, never stayed
+        // "confirming" against a list the user never looked at.
+        const viaSection = screen.getByRole('region', { name: 'Waypoints' });
+        expect(within(viaSection).getAllByRole('listitem')).toHaveLength(2);
+        expect(screen.getByRole('button', { name: 'Clear all waypoints' })).toBeInTheDocument();
+        expect(
+          screen.queryByRole('button', { name: 'Confirm clearing all waypoints' }),
+        ).not.toBeInTheDocument();
+
+        // A SECOND tap must re-arm (not immediately clear) — proving the
+        // control fell back to "un-armed", not merely lost its label text.
+        fireEvent.click(screen.getByRole('button', { name: 'Clear all waypoints' }));
+        expect(
+          screen.getByRole('button', { name: 'Confirm clearing all waypoints' }),
+        ).toBeInTheDocument();
+        expect(within(viaSection).getAllByRole('listitem')).toHaveLength(2);
+      });
+
+      // Needs the #695/#863 stateful-harness pattern (see above, near
+      // "#863 review"): a bare vi.fn() onRemoveVia never actually shrinks
+      // `viaPoints`, so the drain this feature relies on (every removal
+      // must see a FRESH, shorter array before removing the next front
+      // element) could never be exercised against it.
+      it('confirming drains every via point, one at a time, front to back, in a single action', () => {
+        localStorage.setItem('sc-lang', 'en');
+        function Harness() {
+          const [points, setPoints] = useState<LatLon[]>([VIA_A, VIA_B, { lat: 54.9, lon: 10.1 }]);
+          return (
+            <PlannerPanel
+              {...baseProps({
+                viaPoints: points,
+                onRemoveVia: (i: number) => setPoints(points.filter((_, idx) => idx !== i)),
+              })}
+            />
+          );
+        }
+        render(
+          <I18nProvider>
+            <Harness />
+          </I18nProvider>,
+        );
+
+        fireEvent.click(screen.getByRole('button', { name: 'Clear all waypoints' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm clearing all waypoints' }));
+
+        const viaSection = screen.getByRole('region', { name: 'Waypoints' });
+        expect(within(viaSection).queryByRole('list')).not.toBeInTheDocument();
+        expect(
+          screen.queryByRole('button', { name: 'Clear all waypoints' }),
+        ).not.toBeInTheDocument();
+      });
+
+      it('never touches the persisted waypoints store', async () => {
+        localStorage.setItem('sc-lang', 'en');
+        await __resetDbForTests();
+        await saveWaypoint({
+          id: 'wp-938',
+          name: 'Kalkgrund',
+          lat: 54.85,
+          lon: 10.0,
+          createdAtMs: 1000,
+        });
+
+        function Harness() {
+          const [points, setPoints] = useState<LatLon[]>([VIA_A, VIA_B]);
+          return (
+            <PlannerPanel
+              {...baseProps({
+                viaPoints: points,
+                onRemoveVia: (i: number) => setPoints(points.filter((_, idx) => idx !== i)),
+              })}
+            />
+          );
+        }
+        render(
+          <I18nProvider>
+            <Harness />
+          </I18nProvider>,
+        );
+
+        // Let the saved-waypoint picker's own mount-time listWaypoints()
+        // settle before acting, so the read below observes a stable store.
+        await screen.findByText('Kalkgrund');
+
+        fireEvent.click(screen.getByRole('button', { name: 'Clear all waypoints' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm clearing all waypoints' }));
+
+        const viaSection = screen.getByRole('region', { name: 'Waypoints' });
+        expect(within(viaSection).queryByRole('list')).not.toBeInTheDocument();
+
+        const stored = await listWaypoints();
+        expect(stored).toEqual([
+          { id: 'wp-938', name: 'Kalkgrund', lat: 54.85, lon: 10.0, createdAtMs: 1000 },
+        ]);
+      });
     });
 
     // #829: keyboard-reachable coordinate entry (spike §3.1/§5.1) — a second

@@ -96,6 +96,33 @@ export const en = {
   'settings.seamarkCategory.all': 'All',
   'settings.seamarkCategory.help':
     'Cardinal, lateral, safe-water and isolated-danger marks, and major lights, are always shown, even at "Base". "Standard" (the default) shows everything, including submarine cable and pipeline markers. "All" currently shows the same as "Standard".',
+  // #849 part (a): local import/export for routes, settings and saved
+  // waypoints — sits at the end of the Boat tab since it covers all three
+  // data kinds, not just this tab. Complements (does not replace) the
+  // 'waypoints.deviceLocal' caveat: this is the way to have a backup.
+  'settings.section.backup': 'Backup',
+  'settings.backup.description':
+    "Export creates a single file with everything below: saved routes, settings and saved waypoints — useful as a backup or to move to a new device. Importing adds the file's routes and waypoints without deleting anything you already have; if the file includes settings, those replace your current settings.",
+  'settings.backup.export': 'Export',
+  'settings.backup.import': 'Import',
+  'settings.backup.import.success': '{plans} route(s) and {waypoints} waypoint(s) imported.',
+  'settings.backup.import.settingsApplied': 'Settings from the file were applied.',
+  'settings.backup.import.skippedPlans':
+    '{count} route(s) in the file could not be read and were skipped.',
+  'settings.backup.import.skippedWaypoints':
+    '{count} waypoint(s) in the file could not be read and were skipped.',
+  'settings.backup.import.error.notJson': 'This is not a valid SailCommand export file.',
+  'settings.backup.import.error.notEnvelope': 'This is not a valid SailCommand export file.',
+  'settings.backup.import.error.unsupportedVersion':
+    'This file was exported from a newer version of SailCommand and cannot be read by this version.',
+  'settings.backup.import.error.failed': 'The file could not be read.',
+  'settings.backup.export.error.failed': 'The export file could not be created.',
+  // #1068 review Minor: plans/waypoints now write independently, so a
+  // partial write failure needs its own, separate notice.
+  'settings.backup.import.plansWriteFailed':
+    '{count} parsed route(s) could not be saved to this device.',
+  'settings.backup.import.waypointsWriteFailed':
+    '{count} parsed waypoint(s) could not be saved to this device.',
   'planner.card.trip': 'Trip',
   'planner.card.result': 'Result',
   'planner.origin.label': 'Origin',
@@ -113,6 +140,11 @@ export const en = {
   'planner.via.moveUp': 'Move waypoint {index} up',
   'planner.via.moveDown': 'Move waypoint {index} down',
   'planner.via.marker': 'Waypoint {index}',
+  // #938: see dict.de.ts's matching comment — draft-only, two-tap confirm,
+  // worded to avoid a getByRole substring collision with the sibling
+  // add/remove buttons in the same scoped via-list region.
+  'planner.via.clearAll': 'Clear all waypoints',
+  'planner.via.clearAll.confirm': 'Confirm clearing all waypoints',
   // #829: keyboard-reachable coordinate entry — a second producer/renderer of
   // the same LatLon the map tap already produces (spike
   // docs/spikes/714-keyboard-map-equivalents.md §3.1/§5.1). "coord.edit" is
@@ -943,6 +975,17 @@ export const en = {
   // internally), not from a via-replan — the wording itself is unchanged.
   'banner.viaTooClose': 'Waypoint too close to a neighbor — skipped',
   'banner.viaTooClose.plural': '{count} waypoints too close to a neighbor — skipped',
+  // #939: used instead of the two generic keys above whenever at least one
+  // of the dropped waypoints carries a non-empty `name` (App.tsx's
+  // handlePlan pre-check builds `{names}` — a comma-joined list, one label
+  // per dropped point: a named point renders its quoted name, an unnamed
+  // one falls back to the same indexed `planner.via.marker` label
+  // ViaMarkers.tsx uses, so "which point" always matches what the panel/map
+  // shows). `.named` is reached only when the single dropped point IS
+  // named (count===1 here implies namedCount>0), so `{names}` is always a
+  // quoted name in that form, never an index label.
+  'banner.viaTooClose.named': '{names} too close to a neighbor — skipped',
+  'banner.viaTooClose.named.plural': '{count} waypoints too close to a neighbor — skipped: {names}',
   'pwa.updateAvailable': 'Update available',
   'pwa.reload': 'Reload',
   'pwa.offlineReady': 'App & maps available offline',

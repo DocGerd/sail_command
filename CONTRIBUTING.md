@@ -140,14 +140,40 @@ prefixes are the mechanism.
 
 - `type:` — exactly one per issue: `type: bug` · `type: feature` ·
   `type: chore` · `type: docs`.
-- `priority:` — `priority: high` (do next; blocks a release or agents) ·
-  `priority: medium` (planned, not urgent) · `priority: low` (nice-to-have /
-  icebox).
+- `priority:` — `priority: high` · `priority: medium` · `priority: low`,
+  applied by the three tests below.
 - `area:` — where the work lives: `area: routing` · `area: map` · `area: pwa`
   · `area: pipeline` · `area: deploy` · `area: ais` · `area: tooling` ·
   `area: docs`.
 - `status:` — `status: needs-triage` (not yet assessed; default on new bugs) ·
   `status: blocked` (waiting on an external decision or dependency).
+
+**`priority:` is applied by three tests, not by feel**
+([#1059](https://github.com/DocGerd/sail_command/issues/1059)). A ranking
+pass over the then-open features considered adding a separate `tier:` label
+axis and concluded against it: `priority:` was not failing from a lack of
+expressiveness, it was failing from disuse — at that pass, zero open issues
+carried `priority: high`. Here are the tests, so a contributor can apply
+the label without asking:
+
+- `priority: high` — a typical passage in this region cannot be planned
+  correctly, or at all, without it.
+- `priority: medium` — it changes a decision the skipper makes on a real
+  passage, or removes a manual step they must otherwise perform every time.
+- `priority: low` — polish, tooling, speculative, or already answered by
+  shipped code.
+
+Applied on 2026-09-07, exactly two of the then-open features passed the high
+test —
+[#295](https://github.com/DocGerd/sail_command/issues/295) and
+[#849](https://github.com/DocGerd/sail_command/issues/849) — and both were
+set to `priority: high` that day. Read the label's current membership off
+the tracker (`gh issue list --label "priority: high"`) rather than a count
+here, which decays at the next triage.
+
+`priority:` is a coarse bucket, not a ranking — it cannot express that one
+`high` issue should be worked before another, and a second label axis would
+not supply one either.
 
 `area: docs` covers issues about documentation **prose** — words that
 explain or specify something, never code that runs — such as `README.md`,
@@ -203,14 +229,14 @@ labels on **pull requests** are applied automatically from changed paths by
 
 **Milestones**
 
-- `v0.26.0` — the milestone now being filled; it closes when the release PR
+- `v0.27.0` — the milestone now being filled; it closes when the release PR
   merges and the tag is pushed.
-- `v0.27.0` — the next MINOR release, opened fresh at the `v0.25.0` cut per
+- `v0.28.0` — the next MINOR release, opened fresh at the `v0.26.0` cut per
   the roll-forward convention below.
 - `Backlog` — accepted, not yet scheduled into a release.
 - `Icebox` — deferred / maybe-never; revisit opportunistically.
 
-`v0.4.0` through `v0.24.0` are closed (plus the `v0.5.1`, `v0.12.1`, and
+`v0.4.0` through `v0.25.0` are closed (plus the `v0.5.1`, `v0.12.1`, and
 `v0.13.1` patch milestones). Whichever cut is in flight is always the
 exception, and reads the same way every time: its issues are closed while
 its milestone object is not, because that closes only at tag push (first

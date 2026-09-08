@@ -99,6 +99,33 @@ export const de = {
   'settings.seamarkCategory.all': 'Alle',
   'settings.seamarkCategory.help':
     'Kardinal-, Lateral- und Mitte-Fahrwasser-Zeichen, Einzelgefahrenzeichen sowie Leuchttürme werden immer angezeigt, auch bei „Basis“. „Standard“ (Voreinstellung) zeigt alles, einschließlich Unterwasserkabeln und Pipelines. „Alle“ zeigt derzeit dasselbe wie „Standard“.',
+  // #849 part (a): lokaler Import/Export für Routen, Einstellungen und
+  // gespeicherte Wegpunkte — sitzt am Ende des Boot-Tabs, da er alle drei
+  // Datenarten betrifft statt nur diesem Tab. Ergänzt (löscht nicht) die
+  // "waypoints.deviceLocal"-Warnung: das ist der Weg, ein Backup zu haben.
+  'settings.section.backup': 'Sicherung',
+  'settings.backup.description':
+    'Der Export erstellt eine einzelne Datei mit allem unten Genannten: gespeicherten Routen, Einstellungen und gespeicherten Wegpunkten — nützlich als Backup oder zum Umzug auf ein neues Gerät. Der Import fügt die Routen und Wegpunkte der Datei hinzu, ohne etwas Vorhandenes zu löschen; enthält die Datei Einstellungen, ersetzen diese deine aktuellen Einstellungen.',
+  'settings.backup.export': 'Exportieren',
+  'settings.backup.import': 'Importieren',
+  'settings.backup.import.success': '{plans} Route(n) und {waypoints} Wegpunkt(e) importiert.',
+  'settings.backup.import.settingsApplied': 'Einstellungen aus der Datei wurden übernommen.',
+  'settings.backup.import.skippedPlans':
+    '{count} Route(n) in der Datei konnten nicht gelesen werden und wurden übersprungen.',
+  'settings.backup.import.skippedWaypoints':
+    '{count} Wegpunkt(e) in der Datei konnten nicht gelesen werden und wurden übersprungen.',
+  'settings.backup.import.error.notJson': 'Das ist keine gültige SailCommand-Exportdatei.',
+  'settings.backup.import.error.notEnvelope': 'Das ist keine gültige SailCommand-Exportdatei.',
+  'settings.backup.import.error.unsupportedVersion':
+    'Diese Datei wurde mit einer neueren Version von SailCommand exportiert und kann von dieser Version nicht gelesen werden.',
+  'settings.backup.import.error.failed': 'Die Datei konnte nicht gelesen werden.',
+  'settings.backup.export.error.failed': 'Die Exportdatei konnte nicht erstellt werden.',
+  // #1068 review Minor: plans/waypoints now write independently, so a
+  // partial write failure needs its own, separate notice.
+  'settings.backup.import.plansWriteFailed':
+    '{count} eingelesene Route(n) konnten nicht auf diesem Gerät gespeichert werden.',
+  'settings.backup.import.waypointsWriteFailed':
+    '{count} eingelesene Wegpunkt(e) konnten nicht auf diesem Gerät gespeichert werden.',
   'planner.card.trip': 'Reise',
   'planner.card.result': 'Ergebnis',
   'planner.origin.label': 'Start',
@@ -124,6 +151,15 @@ export const de = {
   'planner.via.moveUp': 'Wegpunkt {index} nach oben verschieben',
   'planner.via.moveDown': 'Wegpunkt {index} nach unten verschieben',
   'planner.via.marker': 'Wegpunkt {index}',
+  // #938: abandon the whole draft in one action — draft-only, never the
+  // persisted 'waypoints' store. Two-tap confirm (planner.via.clearAll ->
+  // planner.via.clearAll.confirm), same convention as
+  // plansList.confirmDelete/waypoints.confirmDelete. Deliberately worded to
+  // avoid containing 'Wegpunkt hinzufügen'/'Wegpunkt {index} entfernen' as a
+  // substring — same getByRole-collision lesson as the coord.edit comment
+  // below, since both live buttons sit in the same scoped via-list region.
+  'planner.via.clearAll': 'Alle Wegpunkte löschen',
+  'planner.via.clearAll.confirm': 'Löschen aller Wegpunkte bestätigen',
   // #829: keyboard-reachable coordinate entry — a second producer/renderer of
   // the same LatLon the map tap already produces (spike
   // docs/spikes/714-keyboard-map-equivalents.md §3.1/§5.1). "coord.edit" is
@@ -939,6 +975,14 @@ export const de = {
   // internally), not from a via-replan — the wording itself is unchanged.
   'banner.viaTooClose': 'Wegpunkt zu nah am Nachbarn — übersprungen',
   'banner.viaTooClose.plural': '{count} Wegpunkte zu nah an Nachbarn — übersprungen',
+  // #939: siehe dict.en.ts — verwendet statt der beiden generischen
+  // Schlüssel oben, sobald mindestens einer der übersprungenen Wegpunkte
+  // einen nicht-leeren `name` trägt. `{names}` wird in App.tsx aus einer
+  // kommagetrennten Liste gebaut: ein benannter Punkt zeigt seinen Namen in
+  // „…“, ein unbenannter fällt auf dieselbe indizierte
+  // `planner.via.marker`-Beschriftung zurück, die ViaMarkers.tsx verwendet.
+  'banner.viaTooClose.named': '{names} zu nah an einem Nachbarn — übersprungen',
+  'banner.viaTooClose.named.plural': '{count} Wegpunkte zu nah an Nachbarn — übersprungen: {names}',
   'pwa.updateAvailable': 'Update verfügbar',
   'pwa.reload': 'Neu laden',
   'pwa.offlineReady': 'App & Karten offline verfügbar',

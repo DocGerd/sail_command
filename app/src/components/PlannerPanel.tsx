@@ -391,6 +391,33 @@ export default function PlannerPanel({
     setViaCoordLon(next);
   }
 
+  // #938: abandon the WHOLE draft via list in one action — scoped to the
+  // draft only, never the persisted `waypoints` IndexedDB store (this
+  // component has no import of services/db.ts at all; SavedWaypoints below
+  // owns that store exclusively and is never touched by this handler).
+  //
+  // `onRemoveVia` removes exactly ONE index per call and its bound closure
+  // (App.tsx's handleRemoveVia) reads the parent's OWN `viaPoints`, captured
+  // at the time THAT closure was created — it does not advance between
+  // synchronous calls inside one event handler. So calling it N times in a
+  // single click would compute every removal against the SAME starting
+  // array (`setDraftViaPoints` is a plain, non-functional set), and only the
+  // LAST literal value in that batch would take effect — i.e. only the via
+  // point named in the last call would actually be removed. Draining
+  // instead: arm `clearingVia`, then let a [clearingVia, viaPoints]-keyed
+  // effect remove the new front element every time a FRESH (post-removal)
+  // via list arrives as a prop, one commit at a time, until none remain.
+  // That drain depends on `onRemoveVia` staying SYNCHRONOUS and always
+  // shrinking `viaPoints` by exactly one — true today (App.tsx's
+  // handleRemoveVia is a plain, synchronous setState) and undefended: a
+  // future async or validating onRemoveVia (e.g. one that can reject a
+  // removal) would stall this effect forever with the Clear-all button
+  // permanently disabled (`clearingVia` never clearing). Two-tap confirm
+  // mirrors PlansList.tsx/SavedWaypoints.tsx's existing pendingDeleteId
+  // convention for a destructive, non-undoable action.
+  const [pendingClearVia, setPendingClearVia] = useState(false);
+  const [clearingVia, setClearingVia] = useState(false);
+
   // #863 review MAJOR: viaCoordMode.index was captured once on entering
   // update mode and never re-validated against viaPoints — nothing disables
   // a DIFFERENT row's remove/reorder buttons while this form is open, so a
@@ -417,6 +444,49 @@ export default function PlannerPanel({
       setViaCoordName('');
       setViaCoordError(false);
     }
+    // #938 review MAJOR: disarm the "clear all" confirm on ANY via-list
+    // reference change, not only on reaching empty. `onRemoveVia`/
+    // `onReorderVia`/`onAddVia`/`onUpdateVia` ALL replace `viaPoints` with a
+    // fresh array (same App.tsx guarantee the comment above this `if`
+    // already relies on), so this identical check catches a per-row remove
+    // that shrinks the list but leaves it non-empty — exactly what the
+    // reviewer reproduced live: arm "clear all" on 3 points, remove ONE via
+    // its own row button, and the confirm stayed armed, reading "confirm"
+    // against a list the user never actually confirmed clearing. An
+    // ADDITION disarms too, deliberately: the set a second tap would clear
+    // no longer matches the set the user looked at when they armed the
+    // confirm, in either direction, so the same rule applies without a
+    // special case. If `clearingVia`'s own drain caused this change,
+    // `pendingClearVia` is already false here (cleared the moment the drain
+    // was armed, in handleClearAllViaTap below), so this is a no-op then.
+    if (pendingClearVia) setPendingClearVia(false);
+  }
+
+  // Once the list is empty there is nothing left to drain — self-terminating
+  // (only fires while `clearingVia` is still true, so clearing it stops the
+  // condition from re-triggering), and separate from the disarm check above
+  // because `clearingVia`'s own life cycle (armed on confirm, cleared on
+  // completion) is a different concern from `pendingClearVia`'s.
+  if (viaPoints.length === 0 && clearingVia) setClearingVia(false);
+
+  // The drain itself stays an effect: it calls the PARENT's onRemoveVia,
+  // an external side effect on another component's state, which is exactly
+  // what an effect (not a render-time derivation) is for. One call per
+  // commit — every fresh (post-removal) `viaPoints` this effect sees
+  // removes the new front element, until the render-time check above
+  // disarms `clearingVia` at length 0.
+  useEffect(() => {
+    if (!clearingVia || viaPoints.length === 0) return;
+    onRemoveVia(0);
+  }, [clearingVia, viaPoints, onRemoveVia]);
+
+  function handleClearAllViaTap(): void {
+    if (!pendingClearVia) {
+      setPendingClearVia(true);
+      return;
+    }
+    setPendingClearVia(false);
+    setClearingVia(true);
   }
 
   // Same ref-write-then-no-deps-effect shape as pendingFocusRef above (#695:
@@ -907,6 +977,14 @@ export default function PlannerPanel({
                       coord: formatLatLon(v),
                     })}
                     onClick={() => handleEditViaCoord(i)}
+                    // #938 review MINOR: consistent with the Clear-all
+                    // button's own `disabled={clearingVia}` below — the
+                    // drain still converges without this (each of its own
+                    // onRemoveVia(0) calls always sees a fresh array), but a
+                    // per-row action mid-drain is an inconsistent lockout
+                    // otherwise, letting a user edit/reorder/remove a point
+                    // that is about to disappear anyway.
+                    disabled={clearingVia}
                   >
                     {/* #846: DoD — a named waypoint shows its name instead
                         of formatLatLon(v); an unnamed one keeps the
@@ -918,7 +996,7 @@ export default function PlannerPanel({
                   </Button>
                   <Button
                     variant="ghost"
-                    disabled={i === 0}
+                    disabled={i === 0 || clearingVia}
                     onClick={() => onReorderVia(i, 'up')}
                     aria-label={t('planner.via.moveUp', { index: i + 1 })}
                   >
@@ -926,7 +1004,7 @@ export default function PlannerPanel({
                   </Button>
                   <Button
                     variant="ghost"
-                    disabled={i === viaPoints.length - 1}
+                    disabled={i === viaPoints.length - 1 || clearingVia}
                     onClick={() => onReorderVia(i, 'down')}
                     aria-label={t('planner.via.moveDown', { index: i + 1 })}
                   >
@@ -934,6 +1012,7 @@ export default function PlannerPanel({
                   </Button>
                   <Button
                     variant="ghost"
+                    disabled={clearingVia}
                     onClick={() => onRemoveVia(i)}
                     aria-label={t('planner.via.remove', { index: i + 1 })}
                   >
@@ -942,6 +1021,16 @@ export default function PlannerPanel({
                 </li>
               ))}
             </ol>
+          )}
+          {/* #938: abandon the whole draft in one action — only rendered
+              while there is something to clear, and disabled mid-drain so a
+              second tap can't re-arm the confirm state while the effect
+              above is still removing points. Two-tap confirm, same
+              convention as PlansList.tsx/SavedWaypoints.tsx's delete rows. */}
+          {viaPoints.length > 0 && (
+            <Button variant="ghost" onClick={handleClearAllViaTap} disabled={clearingVia}>
+              {pendingClearVia ? t('planner.via.clearAll.confirm') : t('planner.via.clearAll')}
+            </Button>
           )}
           {/* #844: see the matching comment on the origin "pick on map"
               button above — same in-place toggle, same reasoning. */}
