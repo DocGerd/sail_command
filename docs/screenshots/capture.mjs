@@ -196,13 +196,19 @@ const PANEL_WIDTH_PX = 518;
 // deliberately framed with its legs table scrolled — a long table is meant
 // to be cut off, unlike a form field, which is what made the start-view
 // crop a defect and this one not.
-// RE-MEASURED 2026-09-08 at the v0.27.0 cut: #1005's via-coordinate changes
-// grew the Trip card again, pushing the Departure/Safety-depth labels to
-// document y=1056-1075 — 15px below the old 1060px fold, rendering sliced
-// mid-glyph. The sticky `.planner-actions` bar's resting top tracks
-// `height - 96`, so it must clear y=1075 to stop covering the labels too;
-// minimum is 1171. BUMPED 1060 -> 1200 (29px clearance).
-const START_VIEW_HEIGHT_PX = 1200;
+// RE-MEASURED 2026-09-08 at the v0.27.0 cut: #1005 grew the Trip card,
+// clipping Departure/Safety-depth (y=1056-1075) at the old 1060px fold.
+// The 1060->1200 bump (tried first) fixed that but landed MID-GAP before
+// the next element, slicing `.planner-boat-settings-link` "More boat
+// settings…" (y=1169-1213) at y=1200 instead. Re-measured EVERY element
+// below y=1000 at this flow's natural, unstretched layout: Saved-waypoints
+// summary 998-1044, Departure/Safety-depth row 1056-1157, the boat-settings
+// link 1169-1213, `.planner-actions` (Plan route + hint) 1225-1309, and
+// Seamarks-in-view summary 1321-1367 — confirmed LAST (nothing follows;
+// panel `scrollHeight === clientHeight` first holds at 1379). BUMPED
+// 1200 -> 1385: past every element with margin, landing in the panel's own
+// trailing padding past the last summary, not a manufactured dead band.
+const START_VIEW_HEIGHT_PX = 1385;
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1280, height: START_VIEW_HEIGHT_PX } });
