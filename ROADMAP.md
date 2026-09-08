@@ -660,11 +660,7 @@ previously rewrote `package-lock.json` silently without tripping it
 coverage-aware test timeouts and wiring the coverage measurement into CI are
 covered under "Supply-chain" above, not repeated here
 ([#342](https://github.com/DocGerd/sail_command/issues/342),
-[#319](https://github.com/DocGerd/sail_command/issues/319)) — the two
-follow-ups it left open never got triaged into v0.9.0 or v0.10.0 either,
-and remain open, untriaged, in `Backlog`
-([#357](https://github.com/DocGerd/sail_command/issues/357),
-[#359](https://github.com/DocGerd/sail_command/issues/359)). A
+[#319](https://github.com/DocGerd/sail_command/issues/319)). A
 worktree-cleanup skill, deduplicating the graphify guidance to a single home,
 and tag → GitHub Release automation from `CHANGELOG.md` shipped in v0.7.0
 ([#179](https://github.com/DocGerd/sail_command/issues/179),
