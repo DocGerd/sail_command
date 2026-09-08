@@ -42,6 +42,13 @@ making design-level decisions; do not silently deviate.
 - Root docs beyond README/CHANGELOG/SECURITY: `GOVERNANCE.md` (roles,
   decisions, release duties), `ROADMAP.md`, `CODE_OF_CONDUCT.md`, and
   `docs/security-assurance-case.md` — the OpenSSF Silver document set
+  (**tiers: level 0 = `passing`, level 1 = `silver`, level 2 = `gold`.**
+  Silver is level ONE, not level two — reading it as level 2 mispredicts what
+  a badge-form change will do, which happened 2026-09-08. The project reached
+  `silver` that day when `access_continuity` was marked Met; `bus_factor`
+  stays Unmet, a SHOULD at silver and a MUST only at gold. Badge attainment
+  gets NO CHANGELOG entry — #217/#218/#219/#224/#168 all shipped without
+  one — and README's badge is a live image needing no edit)
   (#217–#219, #224). **#224 deliberately DECLINED a DCO and a CLA** (Apache-2.0
   §5 makes inbound = outbound): never add `Signed-off-by` trailers, and nothing
   checks for them. The #132 release-cut docs sweep covers these four too —
@@ -1556,6 +1563,7 @@ making design-level decisions; do not silently deviate.
   | v0.25.0 | 2026-09-07 | 75 s | read as **NO `deploy` LINE AT ALL** immediately before the tag push -- one of the non-answers this file lists, and the reading v0.17.0 also recorded | **SAFE -- the tag deployment TOOK** | merge-push `34147054110` (created 17:18:28Z) -> tag `34147141140` (created 17:19:43Z) on `c18f36c`. EVERY job of the merge run ended `cancelled`, and its `deploy` job (`101821520593`) carries `started_at` == `completed_at` == **17:19:46Z** and `steps: 0`, against the TAG run's `deploy` job's `steps: 6` -- that control is what makes the zero discriminating rather than an artifact of how a cancelled job reports. The `github-pages` deployments list for that SHA returns exactly ONE object, `6313385348`, created 17:21:06Z with `ref: v0.25.0`. The tag run's `build`, `deploy` and `smoke-probe` all succeeded; `smoke-probe` ran 17:21:21Z -> 17:21:59Z and its own prod entry chunk `assets/index-BzFCR6-d.js` returned **200 on attempt 1**, as did the uat chunk `assets/index-DNg0wRjc.js` and both basemap Range probes -- every `attempt 10/10` string in that job log is the SCRIPT SOURCE echoed into the group header, not a failed attempt, so read the `attempt N: OK` lines and never grep the bare word. Production afterwards served `assets/index-BzFCR6-d.js` at ``about.version`,{version:`v0.25.0`}`` with ZERO suffixed matches, so no back-merge remedy was owed -- unlike every row from v0.18.0 through v0.24.0, each of which read `smoke-probe` FAILED. **This row WIDENS the v0.23.0/v0.24.0 criterion rather than instantiating it.** Those rows say the cancel-supersede escape is reachable only while the merge `deploy` job is GENUINELY STILL RUNNING; here it had not STARTED when the tag run was created, which is not that state by the letter, and the tag deployment took regardless. Read the operative condition as the WEAKER one -- the merge `deploy` job has not reached terminal `success` -- and treat those two rows' "still running" phrasing as narrower than the evidence now supports. Still names no MECHANISM, and per this table's own rule the gap gates nothing. |
   | v0.26.0 | 2026-09-08 | 74 s | read as **NO `deploy` JOB CREATED YET** (only `build`) immediately before the tag push -- the same non-answer v0.17.0 and v0.25.0 recorded; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `34194830060` (created 06:28:44Z) -> tag `34194916855` (created 06:29:58Z) on `2d8b3df`. The merge run's `deploy` job NEVER RAN -- it was cancel-superseded by the tag run and the run ended `cancelled`, so no `success`-state deployment of that SHA preceded the tag run. The tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**, and its own prod entry chunk `assets/index-C-AG8CEf.js` returned 200. Production afterwards served that same chunk at ``about.version`,{version:`v0.26.0`}`` with ZERO suffixed matches, so no back-merge remedy was owed -- unlike every row from v0.18.0 through v0.24.0, each of which read `smoke-probe` FAILED. Release object `isLatest: true`; tag object `90ed636` reported `verified: true, reason: "valid"`. **This row REPEATS v0.25.0's WIDENED reading specifically** -- the merge `deploy` job not yet STARTED when the tag run was created, which is weaker than the "genuinely still running" wording v0.23.0/v0.24.0 used -- so that widening now rests on two observations rather than one. It is NOT the first safe outcome in this table (the terminal-`cancelled` shape was safe at v0.12.0, v0.12.1, v0.13.0, v0.13.1, v0.14.0 and v0.17.0); what is new is the repetition of the not-yet-started reading. Two observations are still not a mechanism: this row names NONE, and per this table's own rule the gap gates nothing.  |
   | v0.27.0 | 2026-09-08 | 58 s | read as **NO `deploy` JOB CREATED YET** (only `build`) immediately before the tag push -- the same non-answer v0.17.0, v0.25.0 and v0.26.0 recorded; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `34226445185` (created 12:30:17Z) -> tag `34226540901` (created 12:31:15Z) on `ecf08ff`. EVERY job of the merge run ended `cancelled`, and its `deploy` job carries **`steps: 0`** against that SAME run's `build` job's `steps: 23` -- v0.25.0's control in a DIFFERENT shape -- within-run job-vs-job here, cross-run same-job there -- and the reason either discriminates: a job that never started and one interrupted after running both report `cancelled`, and they mean OPPOSITE things for whether a `success`-state deployment of that SHA already exists. The `github-pages` deployments list for that SHA returns exactly ONE object, `6327652761`, `ref: v0.27.0`. The tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production afterwards served `assets/index-B3638HqI.js` at ``about.version`,{version:`v0.27.0`}`` with ZERO suffixed matches, so no back-merge remedy was owed. Release object `isLatest: true`; tag object `b669e29` reported `verified: true, reason: "valid"`. **THIRD consecutive not-yet-started reading**, after v0.25.0 and v0.26.0, so the WIDENED criterion those rows established -- the merge `deploy` job has not reached terminal `success` -- now rests on three observations rather than two. Three is still not a mechanism: this row names NONE, and per this table's own rule the gap gates nothing. |
+  | v0.28.0 | 2026-09-08 | 112 s | `success` (MEASURED immediately before the tag push, and the failure CALLED IN ADVANCE from it) | **`smoke-probe` FAILED** | merge-push `34282950799` (created 21:52:27Z) -> tag `34283116096` (created 21:54:19Z) on `905d1a3`. The tag run's `build` AND `deploy` both succeeded; only `smoke-probe` failed, by the #398 signature -- its own prod entry chunk `assets/index-C5NE_lFC.js` 404'd. Back-merge `34285495537` (different SHA `59a8123`) then probed green and republished **that same chunk name**, which production then served at ``about.version`,{version:`v0.28.0`}`` with ZERO suffixed matches -- so the tag run's BUILD was correct and only its DEPLOYMENT no-opped. Release object `isLatest: true`; tag object reported `verified: true, reason: "valid"`. **ENDS the three-cut run of not-yet-started readings** (v0.25.0-v0.27.0); first terminal `success` since v0.24.0, and it behaved exactly as this table says a `success` reading behaves. **Sharpens the v0.23.0/v0.24.0 gate finding with the tightest margin yet:** the merge `deploy` job ran 21:53:37Z -> **21:53:45Z `success`**, terminal **34 s BEFORE the tag run was created** -- so the cancel-supersede escape was again unavailable, now on three observations reached from both readings. Still names no MECHANISM. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -3364,14 +3372,13 @@ making design-level decisions; do not silently deviate.
   reset to the shared 800px height straight afterwards. Three different viewport
   heights in one flow is deliberate — the first is the `newPage` viewport and
   only the other two are `setViewportSize`; do not collapse them.
-  The drift is NOT confined to that one constant: at the v0.24.0 cut #886's two
-  hemisphere lines plus a group label grew the Trip card enough to push the
-  Saved-waypoints heading through `START_VIEW_HEIGHT_PX`'s fold, slicing it
-  mid-glyph — the clipped-form-element defect #741 fixed, recurring on a
-  different constant. Expect ANY feature that grows a panel to re-crop a docs
-  hero silently, and verify the fix ON THE ARTIFACT: this flow's own state
-  persists across reloads, so a browser session cannot cheaply be returned to
-  the captured state for a DOM read.
+  Hero CLIPPING is now pinned by a GUARD, not by this prose: #1088's
+  `assertFitsViewport()` (`capture.mjs:246`, called at both hero sites)
+  THROWS the exact pixel shortfall instead of emitting a clipped PNG —
+  verified fail-closed at HEAD, both branches throw. Raising a constant to
+  silence a throw is the wrong fix. First exercised at the v0.28.0 cut and
+  passed. What the guard does NOT cover stays human judgement: whether the
+  capture REPRESENTS the product (sail-dominant, not motoring).
   Durable form: a capture
   or verification tool
   hardcoded to the PRODUCTION url can never capture a release candidate, since
@@ -4429,6 +4436,12 @@ making design-level decisions; do not silently deviate.
   the WRAPPER pid, not the driver** — it exits immediately, so a
   `[ -d /proc/$PID ]` liveness check reports DEAD while the driver runs fine.
   Have the driver print its own `$$` into its log and read the pid back.
+  **The same self-match turns DESTRUCTIVE with `pkill -f '<pat>'`: it matches
+  the invoking shell and kills it**, and the Bash tool then returns a bare
+  exit 144 with no output, which reads as the command failing rather than as
+  you having shot yourself (measured TWICE, 2026-09-08, killing a `vite
+  preview`). Kill a server by its LISTENING PORT instead: `PID=$(ss -lptn
+  'sport = :<port>' | grep -o 'pid=[0-9]*' | head -1 | cut -d= -f2)`.
 - BRIEFS ARE WRONG SOMETIMES — say so in the brief, and reward the pushback.
   In one session an implementer refused to build the shell parser its brief
   asked for (#235 is the false-POSITIVE direction, unreachable by globs, and
@@ -4557,6 +4570,12 @@ making design-level decisions; do not silently deviate.
   resolved to `develop`, its grep for the PR's content came back EMPTY, and
   that empty would have read as a FINDING. Always
   `git fetch origin <branch>:refs/remotes/origin/<name>` and name the ref.
+  **But a ref fetched under a CUSTOM `<name>` is DELETED by the next `git
+  fetch --prune`**, since no remote branch carries that name — a later `git
+  merge origin/<name>` then fails `not something we can merge`, which reads
+  as a bad branch rather than a pruned alias (measured 2026-09-08, mid-cut).
+  Either keep the alias equal to the real branch name, or merge the real
+  `origin/<branch>` ref.
 - **An un-isolated agent can leave the SHARED CHECKOUT on ITS branch.** A
   git-plumbing agent ran `git switch -c` in the repo root, silently moving the
   session off `develop` (measured 2026-08-21; nothing lost, tree was clean).
