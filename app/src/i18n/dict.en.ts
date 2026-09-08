@@ -123,6 +123,12 @@ export const en = {
     '{count} parsed route(s) could not be saved to this device.',
   'settings.backup.import.waypointsWriteFailed':
     '{count} parsed waypoint(s) could not be saved to this device.',
+  // #1071: fires only when clampSettingsToBounds actually moved a value —
+  // the sibling 'settingsApplied' notice above used to be the only one,
+  // even when a hand-edited or older-app backup carried an out-of-range
+  // number that got silently rewritten to fit.
+  'settings.backup.import.settingsClamped':
+    'Some settings from the file were out of range and were adjusted: {fields}.',
   'planner.card.trip': 'Trip',
   'planner.card.result': 'Result',
   'planner.origin.label': 'Origin',
