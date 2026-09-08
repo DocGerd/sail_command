@@ -96,6 +96,11 @@ export const en = {
   'settings.seamarkCategory.all': 'All',
   'settings.seamarkCategory.help':
     'Cardinal, lateral, safe-water and isolated-danger marks, and major lights, are always shown, even at "Base". "Standard" (the default) shows everything, including submarine cable and pipeline markers. "All" currently shows the same as "Standard".',
+  // #686: shown instead of the key above whenever the ALL tier's radio is
+  // hidden (no category currently routes to it) — drops the "All" mention
+  // entirely rather than describing a control that isn't on screen.
+  'settings.seamarkCategory.helpNoAll':
+    'Cardinal, lateral, safe-water and isolated-danger marks, and major lights, are always shown, even at "Base". "Standard" (the default) shows everything, including submarine cable and pipeline markers.',
   // #849 part (a): local import/export for routes, settings and saved
   // waypoints — sits at the end of the Boat tab since it covers all three
   // data kinds, not just this tab. Complements (does not replace) the

@@ -451,7 +451,33 @@ describe('SettingsPanel (#299 Boat tab)', () => {
       expect(within(section).getByText('100%')).toBeInTheDocument();
       expect(within(section).getByRole('radio', { name: 'Base' })).not.toBeChecked();
       expect(within(section).getByRole('radio', { name: 'Standard' })).toBeChecked();
-      expect(within(section).getByRole('radio', { name: 'All' })).not.toBeChecked();
+    });
+
+    // #686: SPECIAL_PURPOSE_ALL_CATEGORIES is empty for today's shipped data
+    // (#521 moved its only two categories, cable/pipeline, to STANDARD), so
+    // the ALL radio would offer a choice with no effect — it must not
+    // render at all rather than sit there as dead UI. See the mocked
+    // "#686: All radio reappears" describe block below for the positive
+    // control (the radio DOES render once a category is routed to ALL) —
+    // an absence assertion alone cannot show the derivation is wired up,
+    // only that it reads false at the Set's CURRENT (empty) size.
+    it('does not render the All radio while SPECIAL_PURPOSE_ALL_CATEGORIES is empty (#686)', () => {
+      renderPanel();
+      const section = sectionOf('Map display');
+      expect(within(section).queryByRole('radio', { name: 'All' })).not.toBeInTheDocument();
+    });
+
+    // #686: the help paragraph must not describe a control that isn't on
+    // screen — while the All radio is hidden it drops the "All" sentence
+    // entirely rather than the stale "All currently shows the same as
+    // Standard" text (which would itself be describing a hidden control).
+    it('uses the two-tier help text (no "All" mention) while the All radio is hidden (#686)', () => {
+      renderPanel();
+      const radiogroup = screen.getByRole('radiogroup', { name: 'Displayed seamarks' });
+      const describedBy = radiogroup.getAttribute('aria-describedby');
+      const help = document.getElementById(describedBy!);
+      expect(help).toHaveTextContent(/shows everything, including submarine cable and pipeline/);
+      expect(help).not.toHaveTextContent(/"All"/);
     });
 
     it('a stored size override renders as the persisted value/percent, not the default', () => {
@@ -485,14 +511,6 @@ describe('SettingsPanel (#299 Boat tab)', () => {
       expect(localStorage.getItem('sc-seamark-display-tier')).toBe('0');
       expect(screen.getByRole('radio', { name: 'Base' })).toBeChecked();
       expect(screen.getByRole('radio', { name: 'Standard' })).not.toBeChecked();
-      expect(screen.getByRole('radio', { name: 'All' })).not.toBeChecked();
-    });
-
-    it('selecting All persists tier 2', () => {
-      renderPanel();
-      fireEvent.click(screen.getByRole('radio', { name: 'All' }));
-      expect(localStorage.getItem('sc-seamark-display-tier')).toBe('2');
-      expect(screen.getByRole('radio', { name: 'All' })).toBeChecked();
     });
 
     // #513 R4: the REAL pipeline (usePersistedNumber -> toSeamarkDisplayTier),
@@ -505,11 +523,29 @@ describe('SettingsPanel (#299 Boat tab)', () => {
     // unit test that passed while the integrated behaviour did the opposite.
     // This seeds the SAME corrupt value the unit test uses, through
     // localStorage (the real transport), and checks the rendered radio.
-    it('a corrupt negative stored value (a hand-edited "-1") renders as All, never Base — the pipeline, not just the pure function', () => {
+    //
+    // #686: the ALL radio is hidden for today's data, so a corrupt value
+    // that resolves to ALL must render as the VISIBLE tier it is
+    // behaviourally identical to (Standard) rather than leave the
+    // radiogroup with nothing checked — see `seamarkDisplayTierForRadios`
+    // in SettingsPanel.tsx. This is a RENDERING fallback only: the stored
+    // value and what DataLayers.tsx feeds the map filter are still ALL,
+    // asserted separately below.
+    it('a corrupt negative stored value (a hand-edited "-1") renders as Standard, never Base — the pipeline, not just the pure function', () => {
       localStorage.setItem('sc-seamark-display-tier', '-1');
       renderPanel();
-      expect(screen.getByRole('radio', { name: 'All' })).toBeChecked();
+      expect(screen.getByRole('radio', { name: 'Standard' })).toBeChecked();
       expect(screen.getByRole('radio', { name: 'Base' })).not.toBeChecked();
+      expect(screen.queryByRole('radio', { name: 'All' })).not.toBeInTheDocument();
+    });
+
+    it('a corrupt negative stored value still persists as-is (ALL), unaffected by the radio-only display fallback (#686)', () => {
+      localStorage.setItem('sc-seamark-display-tier', '-1');
+      renderPanel();
+      // The radio group shows Standard (above), but the underlying stored
+      // value — what DataLayers.tsx reads for the actual map filter — must
+      // be untouched by that display-only fallback.
+      expect(localStorage.getItem('sc-seamark-display-tier')).toBe('-1');
     });
 
     // #513 F3: the old text claimed "larger symbols never hide other
@@ -587,6 +623,73 @@ describe('SettingsPanel (#299 Boat tab)', () => {
       expect(help).not.toBeNull();
       expect(help).toHaveTextContent(/always shown, even at "Base"/);
     });
+  });
+});
+
+// #686: the POSITIVE CONTROL for the absence assertions above. Hiding the
+// All radio while SPECIAL_PURPOSE_ALL_CATEGORIES is empty is trivially true
+// today (the Set already IS empty) — that alone proves nothing about
+// whether the DERIVATION is wired up correctly, only that it currently
+// reads false. `SPECIAL_PURPOSE_ALL_CATEGORIES` itself is private to
+// seamarkGlyphs.ts and this task's file allowlist excludes that module's
+// own test file, so the mutation this describe block applies is at the
+// derived, exported boundary (`SEAMARK_ALL_TIER_HAS_CATEGORIES`) rather
+// than the private Set — module-mocked to `true` (modelling "a category
+// has been routed to ALL") to prove the radio and its help text really
+// respond to that flag, rather than being hardcoded absent.
+//
+// Each test resets the module registry and re-imports SettingsPanel (and
+// `../i18n`, so the freshly-loaded component's `useT()` reads from the SAME
+// LangCtx instance the test's own <I18nProvider> provides — resetModules
+// clears the whole graph, so reusing the file's top-level, already-cached
+// I18nProvider here would bind two DIFFERENT Context objects and silently
+// fall back to the context's default 'de' regardless of the language set).
+// The top-level static `SettingsPanel`/`I18nProvider` imports used by every
+// other test in this file are unaffected: those bindings were already
+// resolved when the file loaded, before any test body runs.
+describe('#686: All radio reappears once a category is routed to ALL', () => {
+  afterEach(() => {
+    vi.doUnmock('../lib/seamarkGlyphs');
+    vi.resetModules();
+  });
+
+  async function renderPanelWithAllTierVisible(onChange = vi.fn()) {
+    vi.resetModules();
+    vi.doMock('../lib/seamarkGlyphs', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('../lib/seamarkGlyphs')>();
+      return { ...actual, SEAMARK_ALL_TIER_HAS_CATEGORIES: true };
+    });
+    const { I18nProvider: FreshI18nProvider } = await import('../i18n');
+    const { default: FreshSettingsPanel } = await import('./SettingsPanel');
+    localStorage.setItem('sc-lang', 'en');
+    render(
+      <FreshI18nProvider>
+        <FreshSettingsPanel
+          value={DEFAULT_SETTINGS}
+          onChange={onChange}
+          boatId={DEFAULT_BOAT_ID}
+          onBoatIdChange={vi.fn()}
+        />
+      </FreshI18nProvider>,
+    );
+    return onChange;
+  }
+
+  it('renders the All radio, selectable, once SEAMARK_ALL_TIER_HAS_CATEGORIES is true', async () => {
+    await renderPanelWithAllTierVisible();
+    const radio = screen.getByRole('radio', { name: 'All' });
+    expect(radio).not.toBeChecked();
+    fireEvent.click(radio);
+    expect(localStorage.getItem('sc-seamark-display-tier')).toBe('2');
+    expect(screen.getByRole('radio', { name: 'All' })).toBeChecked();
+  });
+
+  it('uses the three-tier help text (mentioning "All") once the radio is visible', async () => {
+    await renderPanelWithAllTierVisible();
+    const radiogroup = screen.getByRole('radiogroup', { name: 'Displayed seamarks' });
+    const describedBy = radiogroup.getAttribute('aria-describedby');
+    const help = document.getElementById(describedBy!);
+    expect(help).toHaveTextContent(/"All" currently shows the same as "Standard"/);
   });
 });
 
