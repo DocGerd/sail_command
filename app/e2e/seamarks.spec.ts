@@ -57,13 +57,24 @@ import {
 // "All" renders identically to "Standard". So the Standard-category PIN
 // VALUES below are no longer smaller than PR1's own committed baseline at
 // the identical cluster/zoom pair; they are now IDENTICAL to it (measured,
-// not assumed) — this test still re-measures the "category=All" case
-// afterwards, which now proves both that selection reproduces PR1's
-// original, unfiltered counts byte-for-byte AND that it is
-// indistinguishable from "Standard" (the BASE-vs-HEAD control this PR owes
-// per CLAUDE.md's #191/#192 rule, now one level indirect: HEAD's "All"
-// selection must equal BASE's only selection — and, since #521, HEAD's
-// "Standard" selection too).
+// not assumed).
+//
+// #686 (2026-09-08): this test USED TO also re-measure a "category=All"
+// case afterwards, proving that selection reproduced PR1's original,
+// unfiltered counts byte-for-byte AND was indistinguishable from
+// "Standard" — the BASE-vs-HEAD control CLAUDE.md's #191/#192 rule asks
+// for. That step is GONE: the settings "All" radio is now hidden whenever
+// `SEAMARK_ALL_TIER_HAS_CATEGORIES` is false (today's shipped data), so
+// there is no UI path left to drive `selectedTier` to ALL. The control is
+// not lost for the DISPLAY-TIER lever specifically — see the removed
+// block's own replacement comment further down, which shows the deleted
+// re-measurement's two pinned arrays were ALREADY byte-identical to the
+// Standard-tier ones pinned below, i.e. selecting "All" was ALREADY a
+// no-op relative to "Standard" before this fix removed the radio. The
+// residual gap (no live check that the category-filter MECHANISM itself,
+// as opposed to the STANDARD tier's specific admitted set, composes
+// correctly with the collision guard) reopens the day a category is
+// routed to ALL again.
 //
 // Two zoom regimes are measured because they behave OPPOSITELY
 // (SEAMARKS_LAYOUT's own `icon-overlap` is `['step', ['zoom'], 'never', 12,
@@ -366,17 +377,15 @@ test('#353: seamark size-axis guard — icon-overlap collision culling below z12
     // resolve to STANDARD instead of ALL (`SPECIAL_PURPOSE_ALL_CATEGORIES`
     // in seamarkGlyphs.ts is now empty), so these two sets are NO LONGER
     // smaller than PR1's own baseline at the identical cluster/zoom pair —
-    // they are IDENTICAL to it, and to the category=All pins measured
-    // later in this same test. Before #521 (under #513 F1/F2's
-    // now-superseded carve-out) this box's Standard set was missing 1 of 1
-    // `seamark-special-black` at z11.5 and 2 of 4 at z13 — measured, not
-    // inferred from the icon id (`seamark-special-*` is colour-keyed, not
-    // category-keyed). #521 restores both, verified below (in this same
-    // run) against the console-logged `high`/`low` reads before the
-    // assertions were updated, and re-verified structurally by the
-    // category=All re-measurement further down, which now doubles as
-    // proof that "Standard" and "All" render identically in this box, not
-    // just that "All" reproduces PR1's original counts.
+    // they are IDENTICAL to it (and, before #686 removed the ability to
+    // measure it, were confirmed identical to the category=All pins too —
+    // see the #686 comment further down for that history). Before #521
+    // (under #513 F1/F2's now-superseded carve-out) this box's Standard set
+    // was missing 1 of 1 `seamark-special-black` at z11.5 and 2 of 4 at z13
+    // — measured, not inferred from the icon id (`seamark-special-*` is
+    // colour-keyed, not category-keyed). #521 restores both, verified below
+    // (in this same run) against the console-logged `high`/`low` reads
+    // before the assertions were updated.
     //
     // #484 F6: pinned as the FULL SORTED ID ARRAY, not `.length` — the
     // settle gate above already refuses to call a read "stable" on a
@@ -468,119 +477,79 @@ test('#353: seamark size-axis guard — icon-overlap collision culling below z12
         `pair is not exercising collision culling at all`,
     ).toBeLessThan(high.iconIds.length);
 
-    // #353 PR2's own BASE-vs-HEAD regression control (CLAUDE.md's #191/#192
-    // rule): selecting "Alle" (All — SEAMARK_DISPLAY_TIER_ALL) via the new
-    // Boat-tab control must reproduce PR1's original, unfiltered baseline at
-    // this exact cluster/zoom pair BYTE-FOR-BYTE — proving the display-
-    // category filter and the pre-existing size-axis/collision guard compose
-    // correctly rather than one silently masking a regression in the other.
+    // #686 (fix wave, 2026-09-08): this test USED TO click the settings
+    // "Alle"/All radio here and re-measure both zooms under category=All,
+    // asserting them equal to PR1's original unfiltered baseline — #353
+    // PR2's own BASE-vs-HEAD regression control (CLAUDE.md's #191/#192
+    // rule), proving the display-category filter composed correctly with
+    // the pre-existing size-axis/collision guard. That radio no longer
+    // renders: #686 hides it whenever `SEAMARK_ALL_TIER_HAS_CATEGORIES` is
+    // false, which it is for today's shipped data (`e2e` job 102142541401,
+    // run 34250247824, timed out on `page.getByRole('radio', { name: 'Alle'
+    // }).click()` when this test still tried).
+    //
+    // THIS IS NOT A COVERAGE LOSS, for the DISPLAY-TIER lever specifically:
+    // the category=All measurement this block used to take was ALREADY
+    // vacuous with respect to that lever, structurally and independently of
+    // #686. `seamarkGlyphs.ts`'s `DISPLAY_TIER_OF_FAMILY` assigns every
+    // non-specialPurpose family BASE or STANDARD only (never ALL), and
+    // `specialPurposeDisplayTier` assigns ALL only when a feature's category
+    // is in `SPECIAL_PURPOSE_ALL_CATEGORIES` — empty since the #521 ruling
+    // moved its only two members (cable, pipeline) to STANDARD. So NO
+    // feature shipped today can ever be stamped `displayTier ===
+    // SEAMARK_DISPLAY_TIER_ALL` (2); the highest tier any feature carries is
+    // STANDARD (1). `seamarkGeoJson.ts`'s `seamarkRoutineFilter`/
+    // `seamarkHazardFilter` both cut on `['<=', ['get', 'displayTier'],
+    // selectedTier]`, so selecting ALL (2) admits every feature STANDARD (1)
+    // already admits, plus nothing STANDARD doesn't — the two selections
+    // are IDENTICAL sets for the real data. This is not merely inferred:
+    // the deleted block's own two pinned arrays (`lowAll.iconIds`/
+    // `highAll.iconIds`) were BYTE-IDENTICAL to `low.iconIds`/`high.iconIds`
+    // above, at the same cluster/zoom pair, confirming it empirically
+    // before this edit. So `low`/`high` (measured above, at the default
+    // Standard tier, which is what the app now shows unconditionally at
+    // this control) already equal what a category=All re-measurement would
+    // give — reused directly below rather than re-measured.
+    //
+    // What this DOES lose: end-to-end evidence that the CATEGORY FILTER
+    // MECHANISM ITSELF composes correctly with the collision guard, since
+    // there is currently no way to drive `selectedTier` to a value that
+    // differs from STANDARD's admitted set via this control. That gap is
+    // real but is a SEPARATE lever (routing a category to ALL) from the one
+    // this fix wave addresses — it reopens automatically, with zero new
+    // test-writing, the day `SPECIAL_PURPOSE_ALL_CATEGORIES` gains a member
+    // and `SEAMARK_ALL_TIER_HAS_CATEGORIES` flips true (the radio reappears
+    // and a future PR should re-add a category=All measurement here against
+    // THAT category's real effect, not against PR1's now-superseded
+    // baseline). Per CLAUDE.md's "vacuity is lever-relative" rule: this
+    // finding is scoped to the DISPLAY-TIER lever specifically and is not a
+    // claim about the size-axis/collision guard below, which is unaffected
+    // and still runs at full strength.
+
     // The Boat tab is reachable from anywhere (it only swaps the bottom-
     // sheet content — MapView stays mounted and keeps its current camera),
-    // so no re-navigation back to the map view is needed afterwards.
+    // so no re-navigation back to the map view is needed afterwards. It is
+    // where the seamark size slider lives (#353 PR2's Map display card,
+    // SettingsPanel.tsx) — the category radiogroup used to live right next
+    // to it, which is the only reason this test visited this tab at all
+    // before #686 (see the removed-block comment above).
     await page.getByRole('tab', { name: 'Boot' }).click();
-    await page.getByRole('radio', { name: 'Alle' }).click();
-    await expect(page.getByRole('radio', { name: 'Alle' })).toBeChecked();
-
-    await jumpToCluster(page, ZOOM_BELOW_12);
-    const lowAll = await settledSeamarkIconIds(page, `z${ZOOM_BELOW_12} (<12) category=All`);
-    console.log(
-      `[#353 seamarks.spec.ts] z${ZOOM_BELOW_12} category=All settled after ${lowAll.reads} reads ` +
-        `(${lowAll.elapsedMs}ms), ${lowAll.iconIds.length} features in the cluster box: ${JSON.stringify(lowAll.iconIds)}`,
-    );
-    await jumpToCluster(page, ZOOM_AT_OR_ABOVE_12);
-    const highAll = await settledSeamarkIconIds(
-      page,
-      `z${ZOOM_AT_OR_ABOVE_12} (>=12) category=All`,
-    );
-    console.log(
-      `[#353 seamarks.spec.ts] z${ZOOM_AT_OR_ABOVE_12} category=All settled after ${highAll.reads} reads ` +
-        `(${highAll.elapsedMs}ms), ${highAll.iconIds.length} features in the cluster box: ${JSON.stringify(highAll.iconIds)}`,
-    );
-
-    // Exactly PR1's own committed pins (`git log` on this file before #353
-    // PR2) — reproduced here rather than only in history, so a future
-    // regression in EITHER the category filter or the underlying
-    // size/collision mechanism reds this test directly instead of requiring
-    // a diff against a past commit.
-    expect(
-      lowAll.iconIds,
-      `z${ZOOM_BELOW_12} (<12, collision culling live, category=All) id set drifted from PR1's original pin`,
-    ).toEqual([
-      'seamark-cardinal-north',
-      'seamark-cardinal-south',
-      'seamark-lateral-pillar-green-starboard',
-      'seamark-lateral-spar-black-port',
-      'seamark-lateral-spar-black-port',
-      'seamark-lateral-spar-red-port',
-      'seamark-special-black',
-      'seamark-special-default',
-    ]);
-    expect(
-      highAll.iconIds,
-      `z${ZOOM_AT_OR_ABOVE_12} (>=12, no culling, category=All) id set drifted from PR1's original pin`,
-    ).toEqual([
-      'seamark-cardinal-north',
-      'seamark-cardinal-south',
-      'seamark-lateral-pillar-green-starboard',
-      'seamark-lateral-spar-black-port',
-      'seamark-lateral-spar-black-port',
-      'seamark-lateral-spar-black-port',
-      'seamark-lateral-spar-black-port',
-      'seamark-lateral-spar-black-port',
-      'seamark-lateral-spar-black-port',
-      'seamark-lateral-spar-black-port',
-      'seamark-lateral-spar-black-port',
-      'seamark-lateral-spar-black-port',
-      'seamark-lateral-spar-black-port',
-      'seamark-lateral-spar-black-port',
-      'seamark-lateral-spar-black-port',
-      'seamark-lateral-spar-black-port',
-      'seamark-lateral-spar-black-port',
-      'seamark-lateral-spar-black-port',
-      'seamark-lateral-spar-black-port',
-      'seamark-lateral-spar-black-port',
-      'seamark-lateral-spar-black-port',
-      'seamark-lateral-spar-green-starboard',
-      'seamark-lateral-spar-green-starboard',
-      'seamark-lateral-spar-green-starboard',
-      'seamark-lateral-spar-green-starboard',
-      'seamark-lateral-spar-green-starboard',
-      'seamark-lateral-spar-red-port',
-      'seamark-lateral-spar-red-port',
-      'seamark-lateral-spar-red-port',
-      'seamark-lateral-spar-red-port',
-      'seamark-lateral-spar-red-port',
-      'seamark-lateral-spar-red-port',
-      'seamark-lateral-spar-red-port',
-      'seamark-lateral-spar-red-port',
-      'seamark-lateral-spar-red-port',
-      'seamark-light-minor',
-      'seamark-special-black',
-      'seamark-special-black',
-      'seamark-special-black',
-      'seamark-special-black',
-      'seamark-special-default',
-      'seamark-special-default',
-      'seamark-special-default',
-      'seamark-special-default',
-    ]);
-    expect(
-      lowAll.iconIds.length,
-      `expected z${ZOOM_BELOW_12} to cull at least one mark relative to z${ZOOM_AT_OR_ABOVE_12}'s ` +
-        `uncollided ${highAll.iconIds.length} in the same box at category=All too`,
-    ).toBeLessThan(highAll.iconIds.length);
 
     // #513 F5/R1: the SIZE axis — the PR's headline feature — had no
     // end-to-end evidence at any scale but the default (1). Both ends of
     // the 0.5-1.5 range are exercised here via the REAL slider control
     // (native Home/End keys — a focused `<input type="range">`'s standard
-    // browser behaviour, jumping to its `min`/`max`), still at
-    // category=All from the block above so the size axis is isolated from
-    // the category filter (a category-caused count change would otherwise
-    // be indistinguishable from a size-caused one).
+    // browser behaviour, jumping to its `min`/`max`). Still at the
+    // Standard tier throughout — #686 removed this test's ability to
+    // switch to All (see above), but per that same comment Standard's
+    // admitted set is already identical to what All would admit, so
+    // reusing `low`/`high` (measured earlier in this test) as the baseline
+    // isolates the size axis from the category filter exactly as before —
+    // a category-caused count change would otherwise be indistinguishable
+    // from a size-caused one.
     //
     // z>=12 (`icon-overlap:'always'`, nothing culled): the set must equal
-    // `highAll.iconIds` EXACTLY at both 0.5 and 1.5. Any drift here is the
+    // `high.iconIds` EXACTLY at both 0.5 and 1.5. Any drift here is the
     // #191/#192 signature (something moved besides the size) — and it is
     // the STRUCTURALLY sound half: `iconPaddingAt`'s compensation is built
     // so `displayed + 2*padding` has no `scale` term (derivation in
@@ -593,7 +562,7 @@ test('#353: seamark size-axis guard — icon-overlap collision culling below z12
     // query box"; that argument is REFUTED by this file's own measured
     // output (#513 R1): scale=1.5, where a widened fringe would have to
     // show if the argument were true, is BYTE-IDENTICAL to the scale=1
-    // baseline (`lowAll.iconIds`), while scale=0.5 — the shrinking
+    // baseline (`low.iconIds`), while scale=0.5 — the shrinking
     // direction — is the one that differs, which the "wider fringe"
     // mechanism cannot explain at all. The scale=0.5 difference is a
     // same-COUNT SWAP (`seamark-lateral-pillar-green-starboard` culled,
@@ -624,13 +593,13 @@ test('#353: seamark size-axis guard — icon-overlap collision culling below z12
     expect(
       highMax.iconIds,
       `z${ZOOM_AT_OR_ABOVE_12} (>=12, scale=1.5) drifted from the scale=1 baseline — the #191/#192 signature`,
-    ).toEqual(highAll.iconIds);
-    // Measured identical to the scale=1 baseline (`lowAll.iconIds`) — the
+    ).toEqual(high.iconIds);
+    // Measured identical to the scale=1 baseline (`low.iconIds`) — the
     // strongest guard available, and it passes today.
     expect(
       lowMax.iconIds,
       `z${ZOOM_BELOW_12} (<12, scale=1.5) drifted from the scale=1 baseline — expected byte-identical`,
-    ).toEqual(lowAll.iconIds);
+    ).toEqual(low.iconIds);
 
     await sizeSlider.focus();
     await page.keyboard.press('Home'); // jumps to min = 0.5
@@ -651,10 +620,10 @@ test('#353: seamark size-axis guard — icon-overlap collision culling below z12
     expect(
       highMin.iconIds,
       `z${ZOOM_AT_OR_ABOVE_12} (>=12, scale=0.5) drifted from the scale=1 baseline — the #191/#192 signature`,
-    ).toEqual(highAll.iconIds);
+    ).toEqual(high.iconIds);
     // #513 R1: a same-COUNT SWAP relative to the scale=1 baseline, measured
     // and pinned rather than argued away (see the block comment above) —
-    // `seamark-lateral-pillar-green-starboard` (present in `lowAll.iconIds`)
+    // `seamark-lateral-pillar-green-starboard` (present in `low.iconIds`)
     // is culled at scale=0.5, and a SECOND `seamark-lateral-spar-red-port`
     // is placed instead of the one it displaces. Cause undetermined; the
     // collision box is scale-invariant by construction (see above), so

@@ -401,6 +401,25 @@ export const DEFAULT_SEAMARK_DISPLAY_TIER: SeamarkDisplayTier = SEAMARK_DISPLAY_
  * ALL, without needing to re-plumb this function. */
 const SPECIAL_PURPOSE_ALL_CATEGORIES = new Set<string>();
 
+/**
+ * #686: whether the ALL tier currently carries any category at all — the
+ * settings ALL radio must not offer a choice with no effect, so its
+ * PRESENCE is derived from this Set rather than hardcoded as always-shown.
+ * Derived from `SPECIAL_PURPOSE_ALL_CATEGORIES.size`, not restated as a
+ * separate boolean literal, so it can never drift from the Set it describes
+ * — a future category routed to ALL flips this automatically, with nothing
+ * to remember to update at the call site.
+ *
+ * TRAP (named in #686's own issue text): a guard for this constant is
+ * vacuous today merely by construction, since the Set IS empty right now —
+ * a test asserting `SEAMARK_ALL_TIER_HAS_CATEGORIES === false` passes
+ * whether or not the DERIVATION (`.size > 0`) is even wired up correctly.
+ * The non-vacuous half needs a POSITIVE control: prove the value flips when
+ * the Set gains a member, not just that it reads false at the Set's current
+ * (empty) size.
+ */
+export const SEAMARK_ALL_TIER_HAS_CATEGORIES = SPECIAL_PURPOSE_ALL_CATEGORIES.size > 0;
+
 /** The `specialPurpose` family is now a UNIFORM display tier (#521,
  * reversing #513 F1/F2's cable/pipeline carve-out to ALL) — the whole
  * family, `cable`/`pipeline` included, stays STANDARD as point AtoN
