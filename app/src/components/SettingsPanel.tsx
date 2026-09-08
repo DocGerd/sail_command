@@ -171,7 +171,13 @@ function clampToFieldSpec(v: number, spec: FieldSpec): number {
 // (including `safetyDepthField`, which is per-BOAT — computed from the
 // currently selected boat, not a hand-picked universal minimum), so the
 // two can never drift apart.
-function clampSettingsToBounds(s: Settings, safetyDepthField: FieldSpec): Settings {
+// #1084 review MINOR 1: exported ONLY so SettingsPanel.test.tsx's structural
+// twin test can derive the fields this function actually clamps from its
+// OWN observed behaviour, independent of CLAMPED_FIELD_SPECS's declaration
+// below — see that test's own comment for why the two must never be derived
+// from one another.
+// eslint-disable-next-line react-refresh/only-export-components
+export function clampSettingsToBounds(s: Settings, safetyDepthField: FieldSpec): Settings {
   return {
     ...s,
     safetyDepthM: clampToFieldSpec(s.safetyDepthM, safetyDepthField),
@@ -198,7 +204,16 @@ function clampSettingsToBounds(s: Settings, safetyDepthField: FieldSpec): Settin
 // drift) and returns the translated label of every field whose value the
 // clamp actually changed, so the caller can tell "nothing moved" from
 // "something moved" and name what.
-const CLAMPED_FIELD_SPECS: ReadonlyArray<{ key: keyof Settings; spec: FieldSpec }> = [
+//
+// #1084 review MINOR 1: exported ONLY so the structural twin test in
+// SettingsPanel.test.tsx can assert this array's key set against the keys
+// `clampSettingsToBounds` actually clamps (observed behaviourally, not read
+// from this declaration) — the SOLVER_LABELS shape CLAUDE.md records: a
+// guard whose detection logic is pinned while its DATA is not lets a
+// dropped/added entry silently under- or over-report while still reporting
+// success.
+// eslint-disable-next-line react-refresh/only-export-components
+export const CLAMPED_FIELD_SPECS: ReadonlyArray<{ key: keyof Settings; spec: FieldSpec }> = [
   { key: 'depthComfortMarginM', spec: DEPTH_COMFORT_MARGIN_FIELD },
   { key: 'motorSpeedKn', spec: MOTOR_SPEED_FIELD },
   { key: 'motorThresholdKn', spec: MOTOR_THRESHOLD_FIELD },
@@ -214,9 +229,16 @@ function clampedFieldLabels(
   t: (key: MsgKey) => string,
 ): string[] {
   const labels: string[] = [];
-  if (original.safetyDepthM !== clamped.safetyDepthM) labels.push(t(safetyDepthField.labelKey));
+  // #1084 review MINOR 2: `Object.is`, not `!==` — `-0 !== 0` is false, so a
+  // hand-edited backup's `-0` on a min-0 field (`JSON.parse('-0')` is valid)
+  // clamping to `+0` would otherwise go undetected. `isSettingsLike`
+  // (planExport.ts) rejects non-finite values before this runs, so NaN never
+  // reaches here and `Object.is` behaves identically to `!==` for every
+  // other value pair — this cannot introduce a spurious "changed" report.
+  if (!Object.is(original.safetyDepthM, clamped.safetyDepthM))
+    labels.push(t(safetyDepthField.labelKey));
   for (const { key, spec } of CLAMPED_FIELD_SPECS) {
-    if (original[key] !== clamped[key]) labels.push(t(spec.labelKey));
+    if (!Object.is(original[key], clamped[key])) labels.push(t(spec.labelKey));
   }
   return labels;
 }

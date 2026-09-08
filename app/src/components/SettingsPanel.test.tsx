@@ -2,8 +2,9 @@ import 'fake-indexeddb/auto';
 import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { I18nProvider } from '../i18n';
-import SettingsPanel from './SettingsPanel';
-import { DEFAULT_BOAT_ID } from '../data/boats';
+import SettingsPanel, { clampSettingsToBounds, CLAMPED_FIELD_SPECS } from './SettingsPanel';
+import { safetyDepthFieldFor } from './OptionsPanel';
+import { DEFAULT_BOAT_ID, boatById } from '../data/boats';
 import { __resetDbForTests, listPlans, listWaypoints, type SavedWaypoint } from '../services/db';
 import * as db from '../services/db';
 import { buildExportEnvelope, exportEnvelopeToJson } from '../lib/planExport';
@@ -807,6 +808,143 @@ describe('SettingsPanel (#849 local import/export)', () => {
     );
     expect(notice).toHaveTextContent('Settings from the file were applied.');
     expect(notice).not.toHaveTextContent('were out of range');
+  });
+
+  // #1084 review MINOR 1: nothing previously tied CLAMPED_FIELD_SPECS's
+  // membership to the fields clampSettingsToBounds actually clamps; the two
+  // matched by inspection only, so a future field added to one and not the
+  // other would regress silently (the notice under-reporting a real clamp —
+  // #1071's original defect, re-entering through a side door). This is the
+  // SOLVER_LABELS shape CLAUDE.md records: a guard's DATA needs a twin, not
+  // just its detection logic.
+  //
+  // The two sides here are genuinely INDEPENDENT sources, unlike the MAJOR
+  // test below (which must hand-write its expected labels rather than read
+  // them from CLAMPED_FIELD_SPECS, or a swapped row would drift with it):
+  // `observedClampedKeys` comes from clampSettingsToBounds's OWN behaviour —
+  // feed it a settings object that violates every bound and see which keys
+  // actually moved — while `declaredKeys` comes from CLAMPED_FIELD_SPECS's
+  // declaration. Deriving one from the other here would defeat the point;
+  // deriving them independently is what makes this a real structural check.
+  it('#1084: CLAMPED_FIELD_SPECS covers exactly the fields clampSettingsToBounds clamps (excluding the boat-derived safetyDepthM, handled separately)', () => {
+    const violatingEveryBound: Settings = {
+      ...DEFAULT_SETTINGS,
+      safetyDepthM: -1,
+      depthComfortMarginM: -1,
+      motorSpeedKn: -1,
+      motorThresholdKn: -1,
+      sailPreferenceKn: -1,
+      maneuverPenaltyS: -1,
+      performanceFactor: -1,
+    };
+    const boat = boatById(DEFAULT_BOAT_ID);
+    const clamped = clampSettingsToBounds(violatingEveryBound, safetyDepthFieldFor(boat));
+    const observedClampedKeys = new Set(
+      (Object.keys(violatingEveryBound) as (keyof Settings)[]).filter(
+        (k) => violatingEveryBound[k] !== clamped[k],
+      ),
+    );
+    // safetyDepthM is intentionally OUTSIDE CLAMPED_FIELD_SPECS — it is
+    // clamped separately, against the boat-derived `safetyDepthField`, not a
+    // fixed FieldSpec — so it is excluded from this comparison by design,
+    // not because the twin test is blind to it (clampedFieldLabels checks it
+    // via its own dedicated `if` above the CLAMPED_FIELD_SPECS loop).
+    observedClampedKeys.delete('safetyDepthM');
+    const declaredKeys = new Set(CLAMPED_FIELD_SPECS.map((s) => s.key));
+    expect(observedClampedKeys).toEqual(declaredKeys);
+  });
+
+  // #1084 review MAJOR: the test above only ever moved THREE of the seven
+  // clamped fields (performanceFactor, motorSpeedKn, safetyDepthM), so
+  // clampSettingsToBounds's other three — motorThresholdKn, sailPreferenceKn,
+  // depthComfortMarginM — had never been exercised as CHANGED by any test.
+  // The reviewer mutation-proved the gap: swapping the
+  // MOTOR_THRESHOLD_FIELD/SAIL_PREFERENCE_FIELD rows in production's
+  // CLAMPED_FIELD_SPECS left the whole suite green, which would have shipped
+  // a disclosure naming the WRONG field ("your motor threshold moved" when
+  // it was really the sail preference, or vice versa) with zero test signal.
+  //
+  // This table is written OUT BY HAND, independent of production's
+  // CLAMPED_FIELD_SPECS — it must NOT import or otherwise derive from that
+  // array. Deriving the expected label from the same table under test would
+  // make the two rows drift TOGETHER: swap MOTOR_THRESHOLD_FIELD and
+  // SAIL_PREFERENCE_FIELD in production and this test's own expectation
+  // would swap with it, staying green through the exact defect it exists to
+  // catch. Every out-of-range value is chosen to fall outside ONLY that
+  // field's own bounds (see OptionsPanel.tsx's FieldSpec constants) while
+  // every other field stays at its DEFAULT_SETTINGS value, which is in range
+  // for every field — so the notice this produces must name EXACTLY one field.
+  const EXPECTED_CLAMP_LABELS: ReadonlyArray<{
+    field: keyof Settings;
+    outOfRangeValue: number;
+    expectedLabel: string;
+  }> = [
+    { field: 'safetyDepthM', outOfRangeValue: 0.1, expectedLabel: 'Safety depth (m)' },
+    {
+      field: 'depthComfortMarginM',
+      outOfRangeValue: -1,
+      expectedLabel: 'Depth comfort margin (m)',
+    },
+    { field: 'motorSpeedKn', outOfRangeValue: 999, expectedLabel: 'Motoring speed (kn)' },
+    { field: 'motorThresholdKn', outOfRangeValue: 999, expectedLabel: 'Motor threshold (kn)' },
+    { field: 'sailPreferenceKn', outOfRangeValue: 999, expectedLabel: 'Sail preference (kn)' },
+    { field: 'maneuverPenaltyS', outOfRangeValue: -1, expectedLabel: 'Maneuver penalty (s)' },
+    { field: 'performanceFactor', outOfRangeValue: -50, expectedLabel: 'Performance factor (×)' },
+  ];
+
+  it.each(EXPECTED_CLAMP_LABELS)(
+    '#1084: names $field ("$expectedLabel") and only $field when it alone is out of range',
+    async ({ field, outOfRangeValue, expectedLabel }) => {
+      const outOfRange: Settings = { ...DEFAULT_SETTINGS, [field]: outOfRangeValue };
+      const envelope = buildExportEnvelope([], outOfRange, []);
+      renderPanel();
+
+      const file = new File([exportEnvelopeToJson(envelope)], 'settings.json', {
+        type: 'application/json',
+      });
+      await act(async () => {
+        fireEvent.change(getFileInput(), { target: { files: [file] } });
+      });
+
+      const notice = await screen.findByText((content) =>
+        content.startsWith('0 route(s) and 0 waypoint(s)'),
+      );
+      expect(notice).toHaveTextContent(
+        `Some settings from the file were out of range and were adjusted: ${expectedLabel}.`,
+      );
+    },
+  );
+
+  // #1084 review MINOR 2: `-0 !== 0` is `false`, so a hand-edited backup's
+  // `-0` on a min-0 field (`JSON.parse('-0')` is valid JSON) clamping to `+0`
+  // used to go undetected. `JSON.stringify` itself NORMALISES `-0` to the
+  // text "0" and so cannot produce this input — the raw JSON text below is
+  // edited by hand, after stringifying, to inject the literal `-0` a real
+  // hand-edited file could contain.
+  it('#1084: detects a -0 -> +0 clamp that a plain `!==` comparison would miss', async () => {
+    const zeroed: Settings = { ...DEFAULT_SETTINGS, depthComfortMarginM: 0 };
+    const envelope = buildExportEnvelope([], zeroed, []);
+    const json = exportEnvelopeToJson(envelope).replace(
+      '"depthComfortMarginM":0',
+      '"depthComfortMarginM":-0',
+    );
+    // Guard the string-surgery itself: if the replace ever fails to match
+    // (a field-ordering or serializer change), fail loudly here rather than
+    // silently sending the untouched +0 JSON and reading a false pass below.
+    expect(json).toContain('"depthComfortMarginM":-0');
+    renderPanel();
+
+    const file = new File([json], 'settings.json', { type: 'application/json' });
+    await act(async () => {
+      fireEvent.change(getFileInput(), { target: { files: [file] } });
+    });
+
+    const notice = await screen.findByText((content) =>
+      content.startsWith('0 route(s) and 0 waypoint(s)'),
+    );
+    expect(notice).toHaveTextContent(
+      'Some settings from the file were out of range and were adjusted: Depth comfort margin (m).',
+    );
   });
 
   // #1068 review MINOR 2: plans and waypoints must be written INDEPENDENTLY —
