@@ -377,7 +377,8 @@ independent grounds, read directly from GitHub's own documentation on
    Deceased User Policy*), a process for which GitHub documents no committed
    turnaround time. What a successor can then do is also narrow: "Archive
    your public repositories. Transfer your public repositories to their own
-   user owned account. Transfer your public repositories to an organization"
+   user owned account. Transfer your public repositories to an organization
+   where they can create repositories."
    — public repositories only, with nothing about Pages settings, the
    `github-pages` environment deployment policy, or the bestpractices.dev
    editor seat.
