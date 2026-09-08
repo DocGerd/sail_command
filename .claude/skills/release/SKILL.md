@@ -212,7 +212,9 @@ it cannot drift from the tracker. Do this on a topic branch into `develop`
   milestone's existence 57 s before it existed. Create `v0.(N+2).0` FIRST,
   confirm it with `gh api repos/DocGerd/sail_command/milestones --jq
   '.[] | select(.title=="v0.(N+2).0")'` (substituting the real version;
-  non-empty output confirms it exists), then open the sweep PR.
+  non-empty output confirms it exists), then open the sweep PR. Empty output
+  means it does NOT exist — this check exits 0 either way, so read stdout,
+  not `$?`.
 
   🛑 **CLOSE THE SHIPPED MILESTONE AFTER THE TAG PUSH, NOT HERE.** This bullet
   sits inside §2b only because the roll-forward is planned here; the closing
@@ -242,7 +244,7 @@ manually at the cut, or reference them from a develop-side PR instead.
 
 | # | Step | Detail |
 |---|---|---|
-| 3 | Open the RELEASE PR `develop` → `main` | Full CI (`app` + `e2e`) re-runs under the strict up-to-date policy of the `protect-main` ruleset. Merges as a **merge commit** — never squash/rebase. 🛑 **Before step 4 merges this PR, re-verify §2b's `CHANGELOG.md` heading date against the actual UTC clock** (`date -u +%Y-%m-%d`) — if they disagree, push a fix commit to this same PR now, while the heading is still on `develop` and amendable; once merged onto `main` at step 4 the heading is frozen for good, and a date that turns out wrong anyway is a correction for the NEXT release's sweep, never a same-day hotfix. |
+| 3 | Open the RELEASE PR `develop` → `main` | Full CI (`app` + `e2e`) re-runs under the strict up-to-date policy of the `protect-main` ruleset. Merges as a **merge commit** — never squash/rebase. 🛑 **Before step 4 merges this PR, re-verify §2b's `CHANGELOG.md` heading date against the actual UTC clock** (`date -u +%Y-%m-%d`) — if they disagree, correct it BEFORE merging — `develop` is PR-only under `protect-main`, so that means a small PR into `develop`, after which this PR re-syncs. Once step 4 merges it onto `main` the heading is frozen (see §2b). |
 | 4 | USER merges | Merges to `main` are classifier-gated — **the user runs `gh pr merge`, not the assistant.** Wait for green required checks (`app` + `e2e`) first. `gh pr checks --json` is unsupported here — poll `gh api repos/OWNER/REPO/commits/SHA/check-runs` instead. |
 | 5 | Tag, **verify the signature**, then push | After merge (which already triggered `deploy.yml` on the push to `main`), tag `main` with a **signed** semver tag (e.g. `v0.8.0`), run `git tag -v` and confirm it prints `Good "git" signature for <identity>` BEFORE pushing (a failure here means STOP, do not push), then push it. **Assert the ref first, and use the fail-closed `\|\|`-chained commands — see 5a.** That tag push triggers a SECOND deploy run — the one that bakes the clean `vX.Y.Z`, since `git describe` could not see the tag during the merge run (#197) — **and** a `release.yml` run that cuts the GitHub Release object automatically (#175, see 5c). |
 | 5b | 🛑 **WAIT for the tag deploy, then verify** | **Do not push or merge anything to `develop` until this passes** — see the cancellation hazard below. |
