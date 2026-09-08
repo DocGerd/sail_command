@@ -13,49 +13,37 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.26.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.27.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
-## Now — v0.26.0
+## Now — v0.27.0
 
-The `v0.26.0` cut (2026-09-07) completed the
-[`v0.26.0` milestone](https://github.com/DocGerd/sail_command/milestones),
-nine issues in total. Three changelog entries shipped, covering three
-distinct issues. The milestone's other six issues were docs-accuracy,
-test-coverage and agent-tooling fixes with no user-facing change
-([#1059](https://github.com/DocGerd/sail_command/issues/1059),
-[#1057](https://github.com/DocGerd/sail_command/issues/1057),
-[#989](https://github.com/DocGerd/sail_command/issues/989),
-[#911](https://github.com/DocGerd/sail_command/issues/911),
-[#896](https://github.com/DocGerd/sail_command/issues/896),
-[#836](https://github.com/DocGerd/sail_command/issues/836)). Two issues
-originally triaged into this cut were moved to `v0.27.0` instead of shipping
-here: a routing course-correction question
-([#847](https://github.com/DocGerd/sail_command/issues/847)), whose
-investigating PR deliberately used `Refs` rather than `Closes` because its
-measurement covers only one route under uniform wind; and advancing the
-OpenSSF Best Practices badge to Silver tier
-([#667](https://github.com/DocGerd/sail_command/issues/667)), which needs a
-maintainer form submission.
+The `v0.27.0` cut (2026-09-08) completed the
+[`v0.27.0` milestone](https://github.com/DocGerd/sail_command/milestones),
+five issues in total. Two changelog entries shipped, covering two distinct
+issues. The milestone's other three issues had no user-facing changelog
+entry: a routing course-correction investigation
+([#847](https://github.com/DocGerd/sail_command/issues/847)), and two
+release-runbook fixes to the `/release` skill's docs-sweep step
+([#1081](https://github.com/DocGerd/sail_command/issues/1081),
+[#1082](https://github.com/DocGerd/sail_command/issues/1082)).
 
-Plans, settings and saved waypoints can now be exported to and imported from
-a versioned local file
-([#849](https://github.com/DocGerd/sail_command/issues/849)).
+Waypoint latitude/longitude fields now accept degrees-minutes and
+degrees-minutes-seconds entry, plus a decimal comma as well as a decimal
+point
+([#1005](https://github.com/DocGerd/sail_command/issues/1005)).
 
-A "Clear all waypoints" control abandons a whole draft of via points in one
-action, with a confirm tap before anything is removed
-([#938](https://github.com/DocGerd/sail_command/issues/938)).
+Importing a settings backup now discloses when an out-of-range value had to
+be adjusted to fit, naming which fields changed, instead of silently
+applying a clamped value while reporting plain success
+([#1071](https://github.com/DocGerd/sail_command/issues/1071)).
 
-The "waypoints too close to a neighbor — skipped" notice now names which
-waypoint was dropped when it has a name, instead of only counting drops
-([#939](https://github.com/DocGerd/sail_command/issues/939)).
+## Next — v0.28.0
 
-## Next — v0.27.0
-
-The [`v0.27.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-is the one now being filled. As of this cut it holds the two issues carried
-forward from `v0.26.0` —
-[#847](https://github.com/DocGerd/sail_command/issues/847) and
+The [`v0.28.0` milestone](https://github.com/DocGerd/sail_command/milestones)
+is the one now being filled. As of this cut it holds three issues —
+[#1080](https://github.com/DocGerd/sail_command/issues/1080),
+[#1058](https://github.com/DocGerd/sail_command/issues/1058) and
 [#667](https://github.com/DocGerd/sail_command/issues/667) — and further
 triage has not started; the milestone page is the only authoritative view,
 check it directly rather than this file.

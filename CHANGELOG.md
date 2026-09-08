@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-09-08
+
+### Added
+
+- Waypoint latitude/longitude fields now accept degrees-minutes and degrees-minutes-seconds entry (e.g. 54° 48.74' or 54° 48' 44.4" N), plus a decimal comma as well as a decimal point (#1005).
+
+### Fixed
+
+- Importing a settings backup now discloses when an out-of-range value had to be adjusted to fit, naming which fields changed, instead of silently applying a clamped value while reporting plain success (#1071).
+
 ## [0.26.0] - 2026-09-07
 
 ### Added
@@ -1017,7 +1027,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.26.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.27.0...HEAD
+[0.27.0]: https://github.com/DocGerd/sail_command/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/DocGerd/sail_command/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/DocGerd/sail_command/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/DocGerd/sail_command/compare/v0.23.0...v0.24.0

@@ -51,7 +51,23 @@ it cannot drift from the tracker. Do this on a topic branch into `develop`
 (or as the last commit before the release PR), never as a `main`-side fixup:
 
 - **`CHANGELOG.md`** — fold the pending `changelog.d/*.md` fragments (#189)
-  into a new `## [X.Y.Z] - <date>` section (today's date, ISO). For each
+  into a new `## [X.Y.Z] - <date>` section, ISO format, dated to the UTC
+  calendar day the release TAG is intended to be pushed on — NOT the day the
+  sweep is written, and NOT any local-timezone reading of "today" (name UTC
+  explicitly, e.g. `date -u +%Y-%m-%d`). A late-evening cut CAN straddle UTC
+  midnight between the sweep commit and the tag push — measured once, at the
+  v0.26.0 cut (#1082), and nothing prevents it recurring: `CHANGELOG.md` was
+  folded with heading `## [0.26.0] - 2026-09-07` while tag `v0.26.0`'s
+  taggerdate is `2026-09-08T06:29:35Z` — the sweep ran 2026-09-07T22:21Z,
+  1h39m before UTC midnight, and the tag landed after it. This section is
+  FROZEN at the cut (never edit a released heading retroactively), so a
+  wrong date here is permanent and ships to every user through
+  `AboutDialog.tsx`'s `ChangelogView`. The exact tag-push time is rarely
+  known when this heading is first written, so treat the date here as the
+  operator's DECLARATION of the intended UTC tag day, not a verified fact —
+  **step 3's own checklist item re-checks it against the actual clock before
+  step 4 merges this PR, while the heading is still amendable; that re-check
+  is what validates the declaration.** For each
   fragment file, read its category from the filename
   (`<number>.<category>.md`, optionally `<number>-<n>.<category>.md` to
   disambiguate a second fragment about the same issue/PR —
@@ -179,6 +195,27 @@ it cannot drift from the tracker. Do this on a topic branch into `develop`
   only its own milestone and shifts nothing else — the pending `vX.(Y+1).0`
   stays where it is.
 
+  🛑 **THE FRESH `v0.(N+2).0` MUST EXIST BEFORE THE SWEEP PR IS OPENED —
+  MINOR/MAJOR CUTS ONLY.** A PATCH release (`vX.Y.Z`, `Z > 0`) opens no
+  fresh milestone at all, per the exception immediately above; this
+  requirement does not apply to it. For a MINOR/MAJOR cut, this is a
+  REQUIREMENT, not merely permitted early: the sweep's own
+  `CONTRIBUTING.md` edit routinely asserts that milestone already exists
+  (e.g. "opened fresh at the vX.Y.Z cut per…"), and a milestone created
+  after the sweep PR's own commit makes that assertion false the moment it
+  is written — the same "prose written for a post-action state" hazard
+  CLAUDE.md's Verification lessons document. Measured at the v0.26.0 cut
+  (#1081): PR #1075
+  ("docs: v0.26.0 release sweep (#132 ritual)") was created
+  2026-09-07T22:21:10Z; milestone `v0.28.0` was created 57 s later,
+  2026-09-07T22:22:07Z — the sweep commit's own diff asserted the
+  milestone's existence 57 s before it existed. Create `v0.(N+2).0` FIRST,
+  confirm it with `gh api repos/DocGerd/sail_command/milestones --jq
+  '.[] | select(.title=="v0.(N+2).0")'` (substituting the real version;
+  non-empty output confirms it exists), then open the sweep PR. Empty output
+  means it does NOT exist — this check exits 0 either way, so read stdout,
+  not `$?`.
+
   🛑 **CLOSE THE SHIPPED MILESTONE AFTER THE TAG PUSH, NOT HERE.** This bullet
   sits inside §2b only because the roll-forward is planned here; the closing
   ACTION belongs after step 5. Measured across the three preceding cuts
@@ -193,7 +230,10 @@ it cannot drift from the tracker. Do this on a topic branch into `develop`
   range by one release too far. Measured at the v0.23.0 cut: the orchestrator
   closed it before the sweep to avoid forward-dated prose, a reviewer caught the
   contradiction, and the milestone was REOPENED and re-closed after the tag.
-  Opening the fresh `v0.(N+2).0` early is harmless; only the CLOSE is ordered.
+  Only the CLOSE is ordered after the tag push — the OPEN of the fresh
+  `v0.(N+2).0` is ordered the OTHER way, BEFORE the sweep PR (see the 🛑
+  above): the two orderings run in opposite directions relative to the sweep
+  PR and neither is "early is harmless".
 
 ⚠️ **`Closes #N` in a release PR does NOT close the issue.** GitHub auto-closes
 only on merge into the DEFAULT branch, which here is `develop`, not `main`
@@ -204,7 +244,7 @@ manually at the cut, or reference them from a develop-side PR instead.
 
 | # | Step | Detail |
 |---|---|---|
-| 3 | Open the RELEASE PR `develop` → `main` | Full CI (`app` + `e2e`) re-runs under the strict up-to-date policy of the `protect-main` ruleset. Merges as a **merge commit** — never squash/rebase. |
+| 3 | Open the RELEASE PR `develop` → `main` | Full CI (`app` + `e2e`) re-runs under the strict up-to-date policy of the `protect-main` ruleset. Merges as a **merge commit** — never squash/rebase. 🛑 **Before step 4 merges this PR, re-verify §2b's `CHANGELOG.md` heading date against the actual UTC clock** (`date -u +%Y-%m-%d`) — if they disagree, correct it BEFORE merging — `develop` is PR-only under `protect-main`, so that means a small PR into `develop`, after which this PR re-syncs. Once step 4 merges it onto `main` the heading is frozen (see §2b). |
 | 4 | USER merges | Merges to `main` are classifier-gated — **the user runs `gh pr merge`, not the assistant.** Wait for green required checks (`app` + `e2e`) first. `gh pr checks --json` is unsupported here — poll `gh api repos/OWNER/REPO/commits/SHA/check-runs` instead. |
 | 5 | Tag, **verify the signature**, then push | After merge (which already triggered `deploy.yml` on the push to `main`), tag `main` with a **signed** semver tag (e.g. `v0.8.0`), run `git tag -v` and confirm it prints `Good "git" signature for <identity>` BEFORE pushing (a failure here means STOP, do not push), then push it. **Assert the ref first, and use the fail-closed `\|\|`-chained commands — see 5a.** That tag push triggers a SECOND deploy run — the one that bakes the clean `vX.Y.Z`, since `git describe` could not see the tag during the merge run (#197) — **and** a `release.yml` run that cuts the GitHub Release object automatically (#175, see 5c). |
 | 5b | 🛑 **WAIT for the tag deploy, then verify** | **Do not push or merge anything to `develop` until this passes** — see the cancellation hazard below. |

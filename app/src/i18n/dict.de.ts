@@ -126,6 +126,9 @@ export const de = {
     '{count} eingelesene Route(n) konnten nicht auf diesem Gerät gespeichert werden.',
   'settings.backup.import.waypointsWriteFailed':
     '{count} eingelesene Wegpunkt(e) konnten nicht auf diesem Gerät gespeichert werden.',
+  // #1071: siehe dict.en.ts's passenden Kommentar.
+  'settings.backup.import.settingsClamped':
+    'Einige Einstellungen aus der Datei lagen außerhalb des gültigen Bereichs und wurden angepasst: {fields}.',
   'planner.card.trip': 'Reise',
   'planner.card.result': 'Ergebnis',
   'planner.origin.label': 'Start',
