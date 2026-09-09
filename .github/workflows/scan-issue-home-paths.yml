@@ -1,0 +1,46 @@
+name: Scan issue/PR/comment bodies for home paths
+
+# ADVISORY, not a required check (#675). `check-no-home-paths.sh` (#474) is
+# wired into the REQUIRED `app` job and blocks a merge, but it can only see
+# TRACKED FILE content via `git ls-files` — an issue body, a PR body, an
+# issue/PR conversation comment, or a PR review comment is never a git
+# object, so that control has no reach there at all. GitHub also has no
+# equivalent pre-creation gate for issue/PR/comment content, so nothing here
+# can EVER be a blocking pre-merge check (#675's own "Possible directions"
+# section says this explicitly) — a leak is publicly visible the instant it
+# is posted, long before this scheduled sweep runs. This workflow exists to
+# shorten the "nobody noticed" window to "until the next scheduled run", not
+# to prevent publication.
+#
+# A red run here is the alert: it costs a maintainer five minutes to read the
+# job log's TYPE:NUMBER:URL:CLASS:MATCH rows and redact by hand via the
+# GitHub UI/API — see .github/scripts/scan-issue-home-paths.sh's own header
+# for the fail-open contract (exit 1 = found something, exit 2 = could not
+# verify, NEVER silently folded into exit 0).
+on:
+  schedule:
+    # An arbitrary off-peak time, deliberately not aligned with another
+    # workflow's schedule (CodeQL's is Monday 04:23 UTC) so a shared-runner
+    # queue delay on one does not compound onto the other.
+    - cron: '52 5 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+concurrency:
+  group: scan-issue-home-paths
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Scan issue/PR/comment bodies for leaked home paths (#675)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: .github/scripts/scan-issue-home-paths.sh
