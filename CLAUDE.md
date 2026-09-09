@@ -1739,6 +1739,27 @@ making design-level decisions; do not silently deviate.
   -f name=<name> -f type=branch|tag`) or the deploy job is rejected with "not
   allowed to deploy" — AFTER the build job has already run, so the run reds
   late, not fast.
+- **#267 finding: the three-environment list cannot be reduced to two, and no
+  protection rule can be added anywhere without either removing the only real
+  gate or gating nothing.** Measured 2026-09-09: `gh api
+  repos/DocGerd/sail_command/environments/<name>` read `github-pages` ->
+  `branch_policy`, `prod` -> `[]`, `uat` -> `[]` — byte-identical to the
+  issue's own 2026-07-30 snapshot, so nothing drifted in the six intervening
+  weeks. `github-pages` is the ONLY one of the three that gates anything (its
+  branch/tag deployment policy is documented in the "github-pages
+  ENVIRONMENT deployment policy" bullet above and in `deploy.yml`'s own
+  `:578` comment) — deleting it removes the sole real gate, and renaming it
+  is the same platform trap the #127 spike already established. Adding a
+  wait timer or a required reviewer to it would break the UNATTENDED
+  `v[0-9]*` release-tag path (#197): that push must deploy with nobody
+  clicking anything. `prod` (`deploy.yml:735-759`) and `uat`
+  (`deploy.yml:714-732`) are bookkeeping-only entries recorded so the
+  Deployments UI shows which target a run published to (#106/#127/#197, also
+  documented in the "Deploy — concurrency and environments" bullet) — a
+  protection rule on either would gate NOTHING while reading as a release
+  gate, worse than no rule at all because it would misinform a future
+  maintainer. No YAML or environment setting was changed to reach this
+  finding.
 - UAT-only UI (#107): gate on the `__SC_UAT__` Vite `define` (set by
   `SC_DEPLOY_ENV=uat`) with a fold-exact ternary — a JSX `&&` gate leaves a
   minified residue in the prod bundle — and keep its strings in a
