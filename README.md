@@ -193,9 +193,10 @@ data; the code license is covered in the [License](#license) section below.
   panel — with a count when there is more than one — and nothing more: the
   router plans past them as the depth mask allows, and the app makes no claim about which side
   of a mark to pass — check against an official chart
-  ([#615](https://github.com/DocGerd/sail_command/issues/615); using marks
-  when routing stays open as
-  [#495](https://github.com/DocGerd/sail_command/issues/495)).
+  ([#615](https://github.com/DocGerd/sail_command/issues/615)). Using marks
+  as a genuine routing input was considered and explicitly declined at this
+  scope ([#495](https://github.com/DocGerd/sail_command/issues/495),
+  closed) — it would need a fresh issue to reopen.
 - The depth mask can read deeper than the survey supports: a route that
   stays inside your safety depth can still cross water that a more cautious
   reading of the same bathymetry puts below it. The app says how far, per
