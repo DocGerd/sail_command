@@ -128,7 +128,12 @@
   // only, never a regex scan). Same reason as every other entry above: any
   // `node:fs` import pulls Node's ambient globals into the WHOLE program,
   // not just the importing file.
+  // startPreviewSwAssertCallSites.test.ts (#976) is the same shape once
+  // more — reads app/e2e/*.spec.ts via `node:fs`/`node:path`/`node:url` to
+  // structurally guard that every own-page `startPreview()` call site
+  // invokes `assertCleanServiceWorkerState` in the same test body.
   "exclude": [
+    "src/**/startPreviewSwAssertCallSites.test.ts",
     "src/**/realmask.repro*.test.ts",
     "src/**/realmaskFixtures.ts",
     "src/**/gpx.parse.test.ts",

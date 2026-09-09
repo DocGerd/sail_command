@@ -73,7 +73,14 @@ const EMPTY = { type: 'FeatureCollection' as const, features: [] };
  * Deferring costs nothing, because `installStyleSetup` re-runs this setup on
  * every 'styledata' and DataLayers' own `addLayer` calls fire that event —
  * so the layers appear as soon as the anchor does, and the same mechanism
- * re-creates them after a mid-session `map.setStyle()` (#153). Before that
+ * re-creates them after a mid-session `map.setStyle()` (#153). What the
+ * deferral actually waits on is wider than "a style mutation": DataLayers'
+ * own setup returns early while its `assets` state is still null
+ * (`loadRoutingAssets()` hasn't resolved), so `HARBOR_CIRCLE_LAYER` does not
+ * exist until that network round trip completes — the real wait here is on
+ * a FETCH, not merely on the style being parsed. The degradation this
+ * implies is accepted: harbours are equally absent from the map during that
+ * same window, so there is nothing worse to sit under. Before that
  * moment the component is in a genuine null phase: no source, no layers, no
  * click target. Failing that way round is the safe direction — the shared
  * fake map and real MapLibre both DROP a layer whose beforeId names a
@@ -306,13 +313,34 @@ export default function SavedWaypointsLayer({ armed, onPick }: SavedWaypointsLay
       if (!w) return;
       onPickRef.current({ lat: w.lat, lon: w.lon, name: w.name });
     };
+    // #1015 round 2: OWNERSHIP, not a re-check of the CURRENT arming state.
+    // App.tsx's handleSavedWaypointMapPick (this layer's own onPick) calls
+    // setTapTarget(null) INSIDE the click handler registered just below, so
+    // the common click-to-pick-a-via-point path disarms while the pointer
+    // is still over the marker. No further mouseenter/mouseleave fires
+    // until the pointer physically moves — so when handleLeave eventually
+    // runs, armedRef.current has already flipped false, and a guard reading
+    // it AT LEAVE TIME (the round-1 shape) no-ops, leaving the pointer
+    // cursor stuck indefinitely. Track whether THIS handler is the one that
+    // set the cursor instead: handleEnter sets it, handleLeave clears it
+    // unconditionally whenever it did, regardless of arming at leave time.
+    let cursorOwnedByThisLayer = false;
     const handleEnter = () => {
       // Only while armed — a pointer cursor over a marker that does nothing
       // when clicked is worse than no affordance at all.
-      if (armedRef.current) map.getCanvas().style.cursor = 'pointer';
+      if (armedRef.current) {
+        map.getCanvas().style.cursor = 'pointer';
+        cursorOwnedByThisLayer = true;
+      }
     };
     const handleLeave = () => {
-      map.getCanvas().style.cursor = '';
+      // Still guards the DataLayers overlap case: if this layer never set
+      // the cursor (disarmed for the whole hover), it must not clear a
+      // cursor the harbour handler's own enter/leave pair owns.
+      if (cursorOwnedByThisLayer) {
+        map.getCanvas().style.cursor = '';
+        cursorOwnedByThisLayer = false;
+      }
     };
     map.on('click', SAVED_WAYPOINT_LAYER, handleClick);
     map.on('mouseenter', SAVED_WAYPOINT_LAYER, handleEnter);

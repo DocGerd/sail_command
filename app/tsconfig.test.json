@@ -159,7 +159,16 @@
   // against it, structurally coupling the JSON key build_harbors.mjs writes
   // to the TS field HarborPicker.tsx's render path actually reads — see
   // that file's own header for the #835 demonstrating mutation this closes.
+  // startPreviewSwAssertCallSites.test.ts (#976): reads app/e2e/*.spec.ts
+  // (a directory OUTSIDE `src/`, via `readdirSync`/`readFileSync`, never an
+  // `import.meta.glob(..., {query:'?raw'})`) to structurally guard that
+  // every own-page `startPreview()` call site — a bare call with no `page`
+  // argument, per `helpers.ts`'s own doc comment above `startPreview` —
+  // also invokes `assertCleanServiceWorkerState` in the same test body.
+  // Same `node:fs`-reads-a-real-artifact-outside-`src/` pattern as
+  // sweepSailIds.test.ts above.
   "include": [
+    "src/**/startPreviewSwAssertCallSites.test.ts",
     "src/**/realmask.repro*.test.ts",
     "src/**/realmaskFixtures.ts",
     "src/**/gpx.parse.test.ts",
