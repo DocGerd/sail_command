@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-09-09
+
+### Added
+
+- On desktop, drag the plotted route line with a mouse to insert a new waypoint at the point where you release it (#850).
+
 ## [0.30.0] - 2026-09-09
 
 ### Changed
@@ -1054,7 +1060,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.30.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.31.0...HEAD
+[0.31.0]: https://github.com/DocGerd/sail_command/compare/v0.30.0...v0.31.0
 [0.30.0]: https://github.com/DocGerd/sail_command/compare/v0.29.0...v0.30.0
 [0.29.0]: https://github.com/DocGerd/sail_command/compare/v0.28.0...v0.29.0
 [0.28.0]: https://github.com/DocGerd/sail_command/compare/v0.27.0...v0.28.0

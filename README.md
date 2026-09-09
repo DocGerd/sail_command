@@ -82,7 +82,9 @@ installs as a standalone icon and works fully offline after the first visit
   waypoint, or typing coordinates directly — cancel arming any time with the
   same toggle. Reorder a waypoint, reposition it by dragging its marker or
   re-entering its coordinates, or remove it; a waypoint can only mark a stop
-  along the route, never the departure or destination.
+  along the route, never the departure or destination. On desktop, hovering
+  the plotted route line reveals a grab handle: drag it with a mouse to insert
+  a new waypoint at the point where you release it.
 - The router fetches hourly wind, then computes the fastest sailable route
   twice — once per foresail of the selected boat — and recommends the faster
   (marked ★). Where the two tables cannot honestly be ranked it says so
@@ -222,6 +224,14 @@ data; the code license is covered in the [License](#license) section below.
   Deeper-drafted fleet boats are not in the catalogue yet: they can no longer
   reach every harbor, and the picker does not yet grey unreachable harbors out
   per boat.
+- Inserting a waypoint by dragging the plotted route line is desktop/mouse
+  only. The grab handle is revealed by hovering the line, so touch has no
+  hover phase in which to reach it
+  ([#1170](https://github.com/DocGerd/sail_command/issues/1170)), and the
+  gesture has no keyboard equivalent
+  ([#1171](https://github.com/DocGerd/sail_command/issues/1171)). The other
+  ways of adding a waypoint — arming **Add waypoint** and tapping the map, or
+  typing coordinates — are unaffected.
 - Map labels (place names) are set once at load time in the UI's active
   language; they don't switch live when you toggle German/English mid-session.
 - The router does not yet account for currents, tides, or sea state (waves)
