@@ -64,7 +64,7 @@ group rather than as dozens of individual rows, because publishing every
 | `pipeline/extract_basemap.sh` | `BBOX` shell variable | `"9.4,54.3,11.0,55.3"` | Must move — but see §6, this is the one #296 already said should NOT just widen |
 | `app/src/lib/gpx.ts` | `DATA_AREA` | `{ west: 9.4, south: 54.3, east: 11.0, north: 55.3 }`, hand-copied from `mask.meta.json` per the file's own comment | Must move; two production consumers (`parseGpx`'s GPX-import rejection, and `PlannerPanel.tsx`'s `isInViaDataArea` since #829) both inherit the new bound automatically once the constant moves |
 | `app/src/services/openMeteo.ts` | `LATS`, `LONS` | `Array.from({length:11},...)` from 54.3 step 0.1; `Array.from({length:17},...)` from 9.4 step 0.1 → 187 points | Must grow to 14×22 = 308 points (§3) for a route into the new area to sample real wind there rather than the clamped edge |
-| `app/src/components/MapView.tsx` | `MAX_BOUNDS` | `[[8.9, 54.05], [11.5, 55.55]]` | **#295's own body says the camera is "already wider than the data" — true for the east edge (11.5 == the proposed east) but FALSE for the north edge: 55.55 < the proposed 55.6.** The camera would need to widen too, or Kolding/Middelfart's approach becomes visible on the basemap but un-pannable to at full zoom |
+| `app/src/components/MapView.tsx` | `MAX_BOUNDS` | `[[8.9, 54.05], [11.5, 55.55]]` | **55.55 < the proposed 55.6.** The camera would need to widen too, or Kolding/Middelfart's approach becomes visible on the basemap but un-pannable to at full zoom |
 | `app/public/data/mask.meta.json` | `west/south/east/north/cols/rows` | Mirrors `build_mask.py`'s constants exactly (verified: `{west:9.4,south:54.3,east:11.0,north:55.3,cols:2200,rows:2400}`) | Auto-follows once `build_mask.py` is edited and the pipeline is re-run — not a site to hand-edit. Only one §1.3 twin actually reads this file off disk (`gpx.parse.test.ts`'s drift guard); the other §1.3 twins hardcode matching literals independently, without reading it |
 | `app/src/lib/depthColor.ts` | `MASK_CELL_M = 46.67` (comment: `1.6 deg / 2200 cols at ~54.8N`) | A hardcoded cell-size approximation used for hatch-stripe sizing | Falsified outright by branch (a) (§2.1, cell size becomes ~60 m); left approximately true by branch (b) (§2.2) |
 | `app/src/lib/depthColor.ts` | `HATCH_BAND_LAT_DEG = 54.8` (comment: `region centre; cos varies <1% over 54.3-55.3`) | A fixed-latitude cos approximation for the same hatch rendering | Measured here: at the CURRENT bounds the true max deviation of `cos(lat)` from `cos(54.8°)` across 54.3–55.3°N is **1.24%**, already over the comment's own "<1%" claim — a pre-existing, unrelated staleness, not something #295 introduces. At the proposed 54.3–55.6°N range (still centred on 54.8, i.e. not recentred), the deviation from 54.8 grows to **1.99%** at the new north edge. Low-severity: `depthColor.ts`'s own hatch-rendering invariant (pure-black RGBA, monotonically non-increasing alpha with depth) means this constant can only ever make the hatch cue MORE conservative, never produce false comfort, so a stale center latitude is a cosmetic banding-width error, not a safety one |
@@ -148,12 +148,17 @@ in lockstep, but the mechanism differs per site:
   needs to change for #295 to be correct (they are self-consistent test
   doubles, not assertions about the real covered area), but a reviewer
   extending either file for #295-related tests should know they exist.
+- `app/src/lib/depthColor.test.ts` — independently hardcodes `46.67` and
+  `54.8` (own comment: "Independent re-derivation of screenPxPerCell,
+  deliberately NOT importing hatchScreenPxPerCell"). Reds the REQUIRED `app`
+  job under branch (a); invisible to the four-literal grep.
 
 ### 1.4 Shape D — incidental in-domain coordinates (left alone)
 
-The following 26 files were read individually and checked against the same
-grep filter — this is the set this spike actually classified, not a claim
-that it is the grep's entire residual:
+The following 26 files were read individually, from a `git grep -l` for the
+four literals `54.3`/`55.3`/`9.4`/`11.0` over tracked files, excluding
+`pipeline/data-src/` and `package-lock.json` — this is the set this spike
+actually classified, not a claim that it is the grep's entire residual:
 `app/src/App.test.tsx`, `app/src/components/AboutDialog.test.tsx`,
 `app/src/components/AisTraffic.test.tsx`, `app/src/components/CompassControl.test.tsx`,
 `app/src/components/DataLayers.test.tsx`, `app/src/components/DepthProfile.test.tsx`,
@@ -180,16 +185,18 @@ test does not flip under #295.
 
 #295's table cites four sites and one stale line number
 (`build_harbors.mjs:11`; the constant sits at `:69` at this commit — anchor
-on the symbol, not the number). Its claim that "the app's camera bounds are
-already wider than the data" is **half true**: true on the east edge
-(11.5 == 11.5, exact match), false on the north edge (55.55 < the proposed
-55.6, a real gap this spike found and #295 did not). #1163's own retriage
-adds five more sites; this spike's enumeration finds more still —
-`MapView.tsx`'s `MAX_BOUNDS`, `depthColor.ts`'s two constants,
-`vite.config.ts`'s precache cap, the `openMeteo.test.ts`/`seamarks.spec.ts`
-twins, and the documentation sites in §1.2 are all additions beyond what
-either issue names. The count is not stable across retriages; what is
-stable is the CLAIM-SHAPE method used to find it.
+on the symbol, not the number). #295's step 5 already asks to re-check
+`MAX_BOUNDS`; what it does not notice is that its own numbers already decide
+the answer. Its "already wider than the data" is true of today's data.
+Against the proposed box the north edge is short (55.55 < 55.6) and the east
+edge lands exactly on it (11.5 == 11.5), leaving zero margin where there is
+0.5 deg today. #1163's own retriage adds five more sites; this spike's
+enumeration finds more still — `MapView.tsx`'s `MAX_BOUNDS`,
+`depthColor.ts`'s two constants, `vite.config.ts`'s precache cap, the
+`openMeteo.test.ts`/`seamarks.spec.ts` twins, and the documentation sites in
+§1.2 are all additions beyond what either issue names. The count is not
+stable across retriages; what is stable is the CLAIM-SHAPE method used to
+find it.
 
 ---
 
@@ -238,24 +245,24 @@ current one (1.6/2200 = 0.00072727°) — a 0.017% difference. So even branch
 (b) does **not** guarantee byte-identical cell values for the pre-existing
 54.3–55.3°N/9.4–11.0°E region; it approximately preserves resolution, not
 exactly. Two ways to close that gap: let `EAST` float very slightly (to
-`9.4 + 2888×0.00072727 ≈ 11.50036°E`, a ~24 m overshoot past the requested
+`9.4 + 2888×0.00072727 ≈ 11.50036°E`, a ~23.2 m overshoot past the requested
 11.5, to make `COLS` exact) or accept the drift and re-verify. Either way,
 per §2.3 below, a full `verify_mask.py` run against the rebuilt mask is
 required regardless — this is not a shortcut around that.
 
 ### 2.3 Which branch #245 forbids
 
-#1163's own body reads #245 as having "measured that moving this
-resolution disconnects `aabenraa` and `augustenborg`." **That is not quite
-what #245 measured, and the direction matters.** #245 measured making cells *finer* (23 m, 12 m) and found the
-mechanism is that a smaller cell stops "borrowing" depth from neighbouring
-deeper water during resampling, so a knife-edge harbour's blended depth
-drops by a decimetre or two — `aabenraa` sits exactly on `3.0 ≥ 3.0`.
-Branch (a) here moves the OPPOSITE direction — cells get *coarser* (46 m →
-~60 m), which by #245's own mechanism should, if anything, let a coarse
-cell borrow MORE from its neighbours, not less. **#245 did not measure
-coarsening; the disconnection risk for branch (a) is a prediction from the
-stated mechanism, not a finding.** What #245 states unconditionally,
+#1163's own body reads #245 as having "measured that moving this resolution
+disconnects `aabenraa` and `augustenborg`." **That is not quite what #245
+measured, and the direction matters.** #245 measured making cells *finer*
+(23 m, 12 m) and found the mechanism is that a smaller cell stops
+"borrowing" depth from neighbouring deeper water during resampling, so a
+knife-edge harbour's blended depth drops by a decimetre or two — `aabenraa`
+sits exactly on `3.0 ≥ 3.0`. Branch (a) here moves the OPPOSITE direction —
+cells get *coarser* (46 m → ~60 m), which by #245's own mechanism should, if
+anything, let a coarse cell borrow MORE from its neighbours, not less.
+**#245 did not measure coarsening; the disconnection risk for branch (a) is
+a prediction from the stated mechanism, not a finding.** What #245 states,
 though, is the general rule that decides both branches regardless of
 direction: `TOLERANCE_M` and `CONNECTIVITY_EXCEPTIONS_M` are
 "resolution-coupled constants, not properties of the water," derived by
@@ -301,9 +308,9 @@ tracked fix.
 
 #295's own body says vector-tile volume "tracks coastline and settlement
 density, not area," and explicitly declines to extrapolate — this spike
-agrees and does not produce a number either; doing so would need running
-`extract_basemap.sh`/`build_seamarks.mjs` against the new bbox, which is out
-of scope (no pipeline command was run). One measurable consequence of NOT
+agrees; doing so would need running
+`extract_basemap.sh`/`build_seamarks.mjs` against the new bbox, which is
+out of scope (no pipeline command was run). One measurable consequence of NOT
 knowing the number, though: `app/vite.config.ts`'s
 `maximumFileSizeToCacheInBytes = 40 * 1024 * 1024` (41,943,040 B) is a
 **per-file** Workbox precache cap. The current basemap archive is
@@ -344,12 +351,9 @@ lattice value. No throw, no `NaN`, no signal.
 
 ### 3.2 Is this reachable in production today?
 
-`WindField.sample(p, tMs)` is `bracket()`'s only caller. Grepping every
-non-test `.sample(` call (`git grep -n '\.sample(' -- app/src`, plus a
-second pass for a destructured/bound form, which found none) shows that
-every non-test call site takes a position that is either a solver-accepted
-frontier node or an endpoint of an already-solved route's leg, with a
-single exception:
+`WindField.sample(p, tMs)` is `bracket()`'s only caller, and has exactly
+five production call sites (found by grepping every non-test `WindField(`
+construction and `.sample(` call):
 
 - `app/src/routing/planRoute.ts` (via `isochrone.ts`'s `wind.sample(from,
   node.tMs)`) — `from` is a frontier node the isochrone search has already
@@ -366,14 +370,14 @@ single exception:
   ...)`) — `b` is a leg of `res.legs`, the solver's own already-solved
   output, so `b.start` is the same kind of mask-constrained point as the
   other three.
-- `app/src/components/DepartureCompare.tsx` — the exception. Samples at
-  `plan.request.origin` (checked directly: `candidateCard(candidate, rank,
-  windField, plan.request.origin, lang, t)`), the RAW requested origin, not
+- `app/src/components/DepartureCompare.tsx` — samples at `plan.request.origin`
+  (checked directly: `candidateCard(candidate, rank, windField,
+  plan.request.origin, lang, t)`), the RAW requested origin, not
   `plan.snappedOrigin`.
 
-Four of the five are inert by construction — every position they feed
-`bracket()` already passed a mask bounds/navigability check. The exception
-is where the clamp is genuinely reachable, narrowly: `NavMask.snapToNavigable`
+The first four are inert by construction — every position they feed
+`bracket()` already passed a mask bounds/navigability check. The fifth is
+where the clamp is genuinely reachable, narrowly: `NavMask.snapToNavigable`
 searches up to `maxRadiusM = 300` m from the requested point, so a plan can
 succeed with a requested origin up to ~300 m outside the mask's grid
 boundary (≈0.0027° latitude, ≈0.0047° longitude at this latitude) if a
@@ -525,16 +529,15 @@ method: 5,280,000 × 1.7, still far below the basemap)." Read precisely,
 this splits #295 into two pieces with two different answers:
 
 - **Mask, harbours, seamarks growth (branches in §2.2 / #295's steps 1–4):**
-  consistent with #296's ruling at #295's proposed 1.7x growth — the exact
-  growth #296 itself costed at §9 item 2. Not blocked on #1164.
+  consistent with #296's ruling. Not blocked on #1164.
 - **Basemap growth (`extract_basemap.sh`'s `BBOX`):** the OPPOSITE of what
   #296 already decided. Widening the single `extract_basemap.sh` bbox and
   rebuilding one bigger monolithic `basemap.pmtiles.png` is exactly the
   design #296 rejected in favour of a core-archive-plus-region-archives
-  split — a split that is unimplemented (#1164, open at `035d662`
-  (2026-09-09), "the basemap half is not started"). Doing the monolith-widening now would
-  be throwaway work the moment #1164 ships, and risks the precache-cap
-  failure mode in §2.5 in the meantime.
+  split — a split that is unimplemented (#1164, open as of 2026-09-09, "the
+  basemap half is not started"). Doing the monolith-widening now would be
+  throwaway work the moment #1164 ships, and risks the precache-cap failure
+  mode in §2.5 in the meantime.
 
 **Recommendation: #295 is NOT uniformly blocked on #1164.** The mask,
 harbours and seamarks pipeline changes can proceed once the §1
@@ -559,12 +562,12 @@ scope, not this spike's, and not something to duplicate ad hoc inside #295.
 2. **Choose branch (b) — preserve resolution, grow the grid — over branch
    (a).** It is the branch that does not reopen #245 §2.2's `TOLERANCE_M` /
    `CONNECTIVITY_EXCEPTIONS_M` re-derivation for the entire existing grid
-   (§2.3), at the cost of making the already-
-   tracked, already-unfixed `cellsConnected()` memory allocation 1.71× worse
-   (§2.4). Pair it with implementing #245's own recommendation #3 (size the
-   BFS queue to the frontier, not `rows*cols`) as a prerequisite or
-   companion PR, rather than accepting branch (a)'s untested resolution
-   change to dodge a cost that already has a designed fix sitting unbuilt.
+   (§2.3), at the cost of making the already-tracked, already-unfixed
+   `cellsConnected()` memory allocation 1.71× worse (§2.4). Pair it with
+   implementing #245's own recommendation #3 (size the BFS queue to the
+   frontier, not `rows*cols`) as a prerequisite or companion PR, rather than
+   accepting branch (a)'s untested resolution change to dodge a cost that
+   already has a designed fix sitting unbuilt.
 3. **Sequence the basemap growth behind #1164, not behind the rest of
    #295** (§6). Mask/harbours/seamarks are not blocked on it.
 4. **Ship the two independent wind-lattice safety improvements from §3.3
@@ -578,9 +581,7 @@ scope, not this spike's, and not something to duplicate ad hoc inside #295.
    `maximumFileSizeToCacheInBytes` (§2.5) — do not extrapolate from the
    mask's area ratio.
 6. **Widen `MapView.tsx`'s `MAX_BOUNDS` north edge** (55.55 → at least 55.6,
-   with margin) as part of the same change — it is currently the one
-   dimension where the camera is NOT already ahead of the data, contradicting
-   #295's own "already wider" claim.
+   with margin) as part of the same change.
 7. **Include the Great Belt's western approach (Nyborg/Middelfart/Korsør) in
    scope** (§5) as a side effect of the Kolding/Middelfart bbox, and leave
    full eastward Great Belt extension as a separately-measured, still-open
@@ -590,7 +591,7 @@ scope, not this spike's, and not something to duplicate ad hoc inside #295.
 9. **Re-run `verify_mask.py` against the rebuilt mask before considering any
    implementation done**, per §2.3 — required either way, and specifically
    watch for the `TOLERANCE_M`/`CONNECTIVITY_EXCEPTIONS_M` re-derivation
-   #245 already flagged as owed by any bbox/resolution change.
+   #245 already flagged as owed by any resolution change.
 10. **Promote §1.2's design-spec staleness to an explicit follow-up**: a real
     #295 implementation needs a spec amendment (main-session act), not just
     a pipeline re-run — the design spec currently states the old area as
