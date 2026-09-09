@@ -24,18 +24,44 @@ import { PLAN_SCHEMA_VERSION } from '../types';
 // with the CURRENT plan data, persisted visibility toggles, language-
 // dependent labels, and the active-leg highlight filter.
 
+// #850: extended from a pure no-op into a RECORDING fake (ViaMarkers.
+// test.tsx's own pattern) — `on()` now stores its handler by event type,
+// `setLngLat`/`getLngLat` round-trip a real coordinate, and every
+// constructed instance is pushed to `hoisted.createdMarkers` so a test can
+// find the #850 drag-handle ghost by its `element.className` alongside
+// whatever real ViaMarkers markers the same render also constructs (both
+// classes share this one mocked `Marker`). Every EXISTING test in this file
+// only ever chained these calls and never asserted on an instance, so this
+// widening changes nothing they check.
 vi.mock('maplibre-gl', () => ({
   Marker: class {
-    setLngLat() {
+    element: HTMLElement | undefined;
+    draggable: boolean;
+    lngLat: [number, number] = [0, 0];
+    removed = false;
+    handlers = new Map<string, () => void>();
+    constructor(opts?: { element?: HTMLElement; draggable?: boolean }) {
+      this.element = opts?.element;
+      this.draggable = Boolean(opts?.draggable);
+      hoisted.createdMarkers.push(this as unknown as RecordedRouteLayerMarker);
+    }
+    setLngLat(coords: [number, number]) {
+      this.lngLat = coords;
       return this;
+    }
+    getLngLat() {
+      return { lng: this.lngLat[0], lat: this.lngLat[1] };
     }
     addTo() {
       return this;
     }
-    on() {
+    on(type: string, handler: () => void) {
+      this.handlers.set(type, handler);
       return this;
     }
-    remove() {}
+    remove() {
+      this.removed = true;
+    }
   },
   LngLatBounds: class {
     extend() {
@@ -56,7 +82,20 @@ vi.mock('maplibre-gl', () => ({
   },
 }));
 
-const hoisted = vi.hoisted(() => ({ map: null as unknown }));
+interface RecordedRouteLayerMarker {
+  element: HTMLElement | undefined;
+  draggable: boolean;
+  lngLat: [number, number];
+  removed: boolean;
+  handlers: Map<string, () => void>;
+  setLngLat(coords: [number, number]): RecordedRouteLayerMarker;
+  getLngLat(): { lng: number; lat: number };
+}
+
+const hoisted = vi.hoisted(() => ({
+  map: null as unknown,
+  createdMarkers: [] as RecordedRouteLayerMarker[],
+}));
 vi.mock('./MapView', () => ({ useMapInstance: () => hoisted.map }));
 
 // Mask fetch stays pending forever: RouteLayer treats a missing mask as
@@ -214,6 +253,7 @@ function renderRouteLayer(map: ReturnType<typeof makeFakeMap>, activeLegIndex: n
       draftViaPoints={[]}
       viaReplanning={false}
       onViaDragEnd={async () => true}
+      onRouteLineInsert={() => {}}
     />,
   );
 }
@@ -232,6 +272,7 @@ function renderRouteLayerWithPlan(
       draftViaPoints={plan.request.viaPoints}
       viaReplanning={false}
       onViaDragEnd={async () => true}
+      onRouteLineInsert={() => {}}
     />,
   );
 }
@@ -249,6 +290,7 @@ function sourceData(map: ReturnType<typeof makeFakeMap>, id: string): GeoJSON.Fe
 
 beforeEach(() => {
   localStorage.clear();
+  hoisted.createdMarkers.length = 0;
 });
 
 describe('RouteLayer setup', () => {
@@ -392,6 +434,7 @@ describe('RouteLayer fit-to-view button (#297)', () => {
       draftViaPoints: [],
       viaReplanning: false,
       onViaDragEnd: async () => true,
+      onRouteLineInsert: () => {},
     };
     const { rerender } = render(<RouteLayer plan={null} rig={null} {...props} />);
     expect(screen.queryByRole('button', { name: 'Route einpassen' })).toBeNull();
@@ -614,6 +657,7 @@ describe('RouteLayer style reload (#153)', () => {
         draftViaPoints={[]}
         viaReplanning={false}
         onViaDragEnd={async () => true}
+        onRouteLineInsert={() => {}}
       />,
     );
     act(() => {
@@ -711,6 +755,7 @@ describe('RouteLayer wind-barb slider aria-valuetext (#292, #373 fix-wave)', () 
           draftViaPoints={[]}
           viaReplanning={false}
           onViaDragEnd={async () => true}
+          onRouteLineInsert={() => {}}
         />
       </I18nProvider>,
     );
@@ -804,6 +849,7 @@ describe('RouteLayer collapsible controls cluster (#628)', () => {
         draftViaPoints={[]}
         viaReplanning
         onViaDragEnd={async () => true}
+        onRouteLineInsert={() => {}}
       />,
     );
     const chip = container.querySelector('.via-markers-spinner-chip');
@@ -888,6 +934,7 @@ describe('RouteLayer collapsible controls cluster (#628)', () => {
         draftViaPoints={[]}
         viaReplanning={false}
         onViaDragEnd={async () => true}
+        onRouteLineInsert={() => {}}
       />,
     );
     expect(container.querySelector('.route-layer-controls')).toBeNull();
@@ -900,6 +947,7 @@ describe('RouteLayer collapsible controls cluster (#628)', () => {
         draftViaPoints={[]}
         viaReplanning={false}
         onViaDragEnd={async () => true}
+        onRouteLineInsert={() => {}}
       />,
     );
     const details = () =>
@@ -940,6 +988,7 @@ describe('RouteLayer collapsible controls cluster (#628)', () => {
         draftViaPoints={[]}
         viaReplanning={false}
         onViaDragEnd={async () => true}
+        onRouteLineInsert={() => {}}
       />,
     );
     const details = () =>
@@ -960,6 +1009,7 @@ describe('RouteLayer collapsible controls cluster (#628)', () => {
         draftViaPoints={[]}
         viaReplanning={false}
         onViaDragEnd={async () => true}
+        onRouteLineInsert={() => {}}
       />,
     );
     expect(container.querySelector('.route-layer-controls')).toBeNull();
@@ -972,6 +1022,7 @@ describe('RouteLayer collapsible controls cluster (#628)', () => {
         draftViaPoints={[]}
         viaReplanning={false}
         onViaDragEnd={async () => true}
+        onRouteLineInsert={() => {}}
       />,
     );
     expect(details()?.open).toBe(true);
@@ -1057,5 +1108,130 @@ describe('RouteLayer #651: sc-route-shallow casing for a MARGINAL (non-relaxed) 
       sourceData(map2, 'sc-route').features[0].properties?.shallow,
       'control: a marginal mask must flag the same leg',
     ).toBe(true);
+  });
+});
+
+// #850: drag-the-route-line-to-insert-a-waypoint. The gesture itself
+// (hover-reveal a grab handle over the rendered route line, then drag it
+// like any other via marker) reuses the SAME mocked `Marker` ViaMarkers'
+// own dragging already exercises — see the widened fake's own header
+// comment above. `LEG` runs (54.75, 10.0) -> (54.75, 10.4); the shared
+// fake's `project()` is `x=(lon-9.4)*500, y=(55.3-lat)*500`, so the leg's
+// two endpoints project to px (300,275) and (500,275) — a horizontal
+// segment at y=275, midpoint px (400,275) = lngLat (10.2, 54.75).
+function mousemoveHandler(map: ReturnType<typeof makeFakeMap>): (e: unknown) => void {
+  const call = map.on.mock.calls.find((c) => c[0] === 'mousemove');
+  if (!call) throw new Error('test bug: no mousemove listener registered');
+  return call[1] as (e: unknown) => void;
+}
+
+function ghostMarker(): RecordedRouteLayerMarker | undefined {
+  return hoisted.createdMarkers.find((m) => m.element?.className === 'sc-route-drag-handle');
+}
+
+describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
+  it('reveals a draggable ghost handle at the nearest point on the route when hovering within tolerance, and removes it once the cursor moves away', () => {
+    const map = makeFakeMap();
+    hoisted.map = map;
+    render(
+      <RouteLayer
+        plan={makePlan()}
+        rig="genoa"
+        activeLegIndex={null}
+        draftViaPoints={[]}
+        viaReplanning={false}
+        onViaDragEnd={async () => true}
+        onRouteLineInsert={() => {}}
+      />,
+    );
+    const onMouseMove = mousemoveHandler(map);
+
+    // Midpoint of the leg, well inside the 12px tolerance.
+    onMouseMove({ point: { x: 400, y: 275 } });
+    const ghost = ghostMarker();
+    expect(ghost).toBeDefined();
+    expect(ghost!.draggable).toBe(true);
+    expect(ghost!.lngLat[0]).toBeCloseTo(10.2, 5);
+    expect(ghost!.lngLat[1]).toBeCloseTo(54.75, 5);
+    expect(ghost!.removed).toBe(false);
+
+    // Far from the leg (>12px in every direction) — the handle must vanish.
+    onMouseMove({ point: { x: 0, y: 1000 } });
+    expect(ghost!.removed).toBe(true);
+  });
+
+  it('does not reveal a handle just outside the hover tolerance', () => {
+    const map = makeFakeMap();
+    hoisted.map = map;
+    render(
+      <RouteLayer
+        plan={makePlan()}
+        rig="genoa"
+        activeLegIndex={null}
+        draftViaPoints={[]}
+        viaReplanning={false}
+        onViaDragEnd={async () => true}
+        onRouteLineInsert={() => {}}
+      />,
+    );
+    const onMouseMove = mousemoveHandler(map);
+    // 20px above the leg's y=275 line — outside the 12px tolerance.
+    onMouseMove({ point: { x: 400, y: 255 } });
+    expect(ghostMarker()).toBeUndefined();
+  });
+
+  it("calls onRouteLineInsert with the drag's release point on dragend, and only after a real drag (dragstart fired) — not on a bare hover", () => {
+    const map = makeFakeMap();
+    hoisted.map = map;
+    const onRouteLineInsert = vi.fn();
+    render(
+      <RouteLayer
+        plan={makePlan()}
+        rig="genoa"
+        activeLegIndex={null}
+        draftViaPoints={[]}
+        viaReplanning={false}
+        onViaDragEnd={async () => true}
+        onRouteLineInsert={onRouteLineInsert}
+      />,
+    );
+    const onMouseMove = mousemoveHandler(map);
+    onMouseMove({ point: { x: 400, y: 275 } });
+    const ghost = ghostMarker();
+    expect(ghost).toBeDefined();
+
+    // A bare hover creates the handle but must not itself insert anything.
+    expect(onRouteLineInsert).not.toHaveBeenCalled();
+
+    // Simulate a real drag: dragstart fires, the marker's own drag
+    // machinery moves it (setLngLat, as MapLibre's real Marker._onMove
+    // does), then dragend fires with the released position.
+    ghost!.handlers.get('dragstart')?.();
+    ghost!.setLngLat([10.3, 54.76]);
+    ghost!.handlers.get('dragend')?.();
+
+    expect(onRouteLineInsert).toHaveBeenCalledTimes(1);
+    expect(onRouteLineInsert).toHaveBeenCalledWith({ lat: 54.76, lon: 10.3 });
+    // The ghost is transient — it must be removed once the drop is applied,
+    // not left stranded as a stray marker.
+    expect(ghost!.removed).toBe(true);
+  });
+
+  it('never registers the hover listener at all while no plan is active', () => {
+    const map = makeFakeMap();
+    hoisted.map = map;
+    render(
+      <RouteLayer
+        plan={null}
+        rig={null}
+        activeLegIndex={null}
+        draftViaPoints={[]}
+        viaReplanning={false}
+        onViaDragEnd={async () => true}
+        onRouteLineInsert={() => {}}
+      />,
+    );
+    const call = map.on.mock.calls.find((c) => c[0] === 'mousemove');
+    expect(call).toBeUndefined();
   });
 });
