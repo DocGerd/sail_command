@@ -88,22 +88,20 @@ import { startPreview, mapReady } from './helpers';
 // `water_label_lakes`, `roads_shields`, `roads_labels_major`, `pois`,
 // `places_subplace`, `places_region`, `places_locality`,
 // `places_country`). A z11.5 control ran alongside z12.5 at every harbor,
-// as before.
-//
-// A z11.5 control ran alongside z12.5 at every harbor, as before. Result:
-// z11.5 was BYTE-IDENTICAL across all 33 harbors between the shipped `[13,
-// 1.4]` table and a reverted pre-#860 `[13, 0.85]` table (0/33 diffs) —
-// ruling out settle-race noise, exactly as for the harbor-label finding. At
-// z12.5, 8 of 33 harbors showed a basemap symbol-layer count difference
-// between the two arms: `aabenraa`, `aaroesund`, `arnis`, `faaborg`,
-// `gelting-mole`, `graasten`, `kappeln`, `svendborg` — touching the
-// `places_locality`, `places_subplace`, `roads_labels_major` and
-// `roads_shields` layers. A same-arm double-run at HEAD (the shipped table,
-// run twice) was byte-identical across the full 33x2-zoom sweep, licensing
-// the single-shot mutation arm as signal rather than settle noise — the same
-// double-run-then-compare control CLAUDE.md's `app/sweep/` bullet prescribes
-// for a mask/data mutation, reused here for a style mutation. 7 of the 8
-// follow the SAME monotonic signature as the harbor-label finding (the
+// as before. Result: z11.5 was BYTE-IDENTICAL across all 33 harbors between
+// the shipped `[13, 1.4]` table and a reverted pre-#860 `[13, 0.85]` table
+// (0/33 diffs) — ruling out settle-race noise, exactly as for the
+// harbor-label finding. At z12.5, 8 of 33 harbors showed a basemap
+// symbol-layer count difference between the two arms: `aabenraa`,
+// `aaroesund`, `arnis`, `faaborg`, `gelting-mole`, `graasten`, `kappeln`,
+// `svendborg` — touching the `places_locality`, `places_subplace`,
+// `roads_labels_major` and `roads_shields` layers. A same-arm double-run at
+// HEAD (the shipped table, run twice) was byte-identical across the full
+// 33x2-zoom sweep, licensing the single-shot mutation arm as signal rather
+// than settle noise — the same double-run-then-compare control CLAUDE.md's
+// `app/sweep/` bullet prescribes for a mask/data mutation, reused here for
+// a style mutation. 7 of the 8 follow the SAME monotonic signature as the
+// harbor-label finding (the
 // reverted, smaller-footprint arm has a strict SUPERSET of the shipped arm's
 // features at that harbor — never fewer, matching "a smaller collision box
 // cannot newly block a label a larger one did not"). ONE, `faaborg`, shows a
@@ -254,6 +252,10 @@ test('#981: seamark z12-bucket collision growth blocks 6 named harbor labels at 
 // `roads_labels_major` flip are excluded here because they are not a clean
 // "0 at head, >=1 reverted" boolean and would need a differently-shaped
 // assertion; see the header for why.
+//
+// `gelting-mole`/`graasten`/`faaborg` are therefore UNCOVERED by this
+// forward guard, not overlooked — tracked in #1142, which records this
+// exact exclusion.
 const BASEMAP_VICTIM_PAIRS: Array<{ harborId: string; layer: string }> = [
   { harborId: 'aabenraa', layer: 'places_locality' },
   { harborId: 'aabenraa', layer: 'roads_labels_major' },
