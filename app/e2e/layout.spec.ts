@@ -2792,3 +2792,106 @@ test('#807: the AIS status chip never wraps past two lines at 280/320px, in eith
     server.kill();
   }
 });
+
+// #1014: the #231 loop above pins a BINARY outcome ("is ScaleBar suppressed
+// right now") and cannot see the margin SHRINKING until it actually crosses
+// zero. #985/PR #1011's header-height fix did exactly that: it moved
+// `.map-stack-tl`'s short-landscape `top` +13px without touching
+// ScaleBar.tsx or this file, shrinking the margin at all three of these
+// viewports by 13px each — and the #231 loop passed unchanged straight
+// through it, because none of these three flipped to suppressed. This loop
+// closes that blind spot by reconstructing ScaleBar.tsx's own internal
+// margin from OBSERVABLE geometry and asserting it stays above a floor well
+// short of zero, so a future shrink of this size reds HERE before it ever
+// reaches the #231 binary check.
+//
+// The reconstruction: ScaleBar.tsx's `apply()` sets
+// `bottomPx = Math.min(floor, Math.max(0, ceiling))`, and in the
+// NOT-suppressed regime `floor <= ceiling` always holds (`suppressed` is set
+// exactly when `floor > ceiling`) — so `Math.min` always resolves to `floor`
+// there, never `ceiling`. That means the rendered gap between `.scale-bar`'s
+// top edge and `.map-stack-tl`'s bottom edge equals, by construction,
+// `(ceiling - floor) + SCALE_LIFT_GAP_PX` — i.e. `margin + GAP`, where
+// `margin` is exactly the quantity ScaleBar.tsx compares against zero to
+// decide suppression. Solving for it: `margin = observedGapPx - GAP`. (The
+// issue's own text uses the OPPOSITE sign, `floor - ceiling` — its "-3px at
+// shortLandscape740" and this loop's "+3px" name the same 3px of headroom.)
+//
+// Verified against a REAL BUILD (`npm run e2e`, never `vite dev` — see the
+// #441 comment above for why that distinction is load-bearing here) before
+// choosing the floor below: ~2.6px / ~15.6px / ~33.6px at
+// shortLandscape740/844/932 respectively, matching #1014's own reported
+// ~3 / ~16 / ~34px closely enough to attribute the small residual to
+// measurement method (dev vs. build, per that same #441 comment's own
+// caution), not to a real discrepancy.
+//
+// `SCALE_LIFT_GAP_PX_MIRROR` is a LOCAL COPY of `mapOrientation.ts`'s
+// exported `SCALE_LIFT_GAP_PX` (8) rather than an import: no e2e spec in
+// this repo imports from `../src` (checked with a repo-wide grep before
+// writing this loop), and this is a stable, rarely-touched UI spacing
+// constant — a real change to it would need re-tuning this floor by hand
+// anyway, never a silent drift this loop could miss.
+const SCALE_LIFT_GAP_PX_MIRROR = 8;
+
+// A SMALL, deliberately conservative floor, not a pin of today's measured
+// margin: at #1014's tightest viewport (shortLandscape740) the margin is
+// ~2.6px today, so this reds well before the #231 binary suppression check
+// above would — that gap between the two IS the early warning this loop
+// exists to buy. Raising it to sit closer to today's number would make the
+// test flake on ordinary dev/build/font-rendering variance (~0.4px measured
+// above) rather than on a real regression.
+const SCALE_BAR_MARGIN_FLOOR_PX = 1;
+
+for (const [label, viewport] of Object.entries(SHORT_LANDSCAPE_VIEWPORTS)) {
+  test(`#1014: ScaleBar suppression margin keeps headroom before flip (${label}, ${viewport.width}x${viewport.height})`, async ({
+    page,
+  }) => {
+    const server = await startPreview(page);
+    try {
+      await page.setViewportSize(viewport);
+      await page.goto(server.url);
+      await mapReady(page);
+
+      // Same best-effort dismiss as the #231 loop above — a no-op if the
+      // toast never appears.
+      await page
+        .locator('.reload-prompt .banner-dismiss')
+        .click({ timeout: 5_000 })
+        .catch(() => {});
+
+      const scaleBar = page.locator('.scale-bar');
+      const mapStack = page.locator('.map-stack-tl');
+
+      // #412: re-derive BOTH boxes and the suppression class on every poll
+      // tick — never a coordinate frozen from a single read taken before
+      // layout has settled. This computation is doubly sensitive to that
+      // defect, being a SUBTRACTION of two live measurements.
+      await expect
+        .poll(
+          async () => {
+            const barBox = await scaleBar.boundingBox();
+            const stackBox = await mapStack.boundingBox();
+            const suppressedClass = (await scaleBar.getAttribute('class')) ?? '';
+            if (!barBox || !stackBox || suppressedClass.includes('scale-bar-suppressed')) {
+              // Suppressed (or mid-transition, no box yet): the margin has
+              // already reached its actual floor of exactly 0 or below.
+              // Report a real, sub-floor number rather than NaN/undefined so
+              // a genuine regression polls to a value with diagnostic
+              // content instead of just timing out (CLAUDE.md's "does the
+              // message name the actual value?" rule).
+              return Number.NEGATIVE_INFINITY;
+            }
+            const observedGapPx = barBox.y - (stackBox.y + stackBox.height);
+            return observedGapPx - SCALE_LIFT_GAP_PX_MIRROR;
+          },
+          {
+            timeout: 10_000,
+            message: `${label}: ScaleBar suppression margin (px), floor ${SCALE_BAR_MARGIN_FLOOR_PX}`,
+          },
+        )
+        .toBeGreaterThanOrEqual(SCALE_BAR_MARGIN_FLOOR_PX);
+    } finally {
+      server.kill();
+    }
+  });
+}
