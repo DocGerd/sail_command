@@ -81,7 +81,10 @@ copy and the one to keep current. Restated here only so this command is self-con
    The floor is forward-looking — `CONTRIBUTING.md` records which earlier milestones predate it.
    It is also bounded by SUPPLY — it applies only while enough `type: bug` issues exist to fill
    it, and a cut takes every available one and calls the floor met; it never caps how much
-   non-bug work the milestone may carry.
+   non-bug work the milestone may carry. "Available" excludes a bug whose own investigation
+   recommends staying deferred (settled at the `v0.30.0` cut, 2026-09-09, using #354 — see
+   `CONTRIBUTING.md`) — such a bug is not counted toward the supply the floor is measured
+   against.
 
 **Do NOT re-ask which reading of the reserve was meant — it was SETTLED at the v0.18.0 cut
 (2026-09-01) as "at least 20% bug-typed", over the competing "at least 20% of slots left
