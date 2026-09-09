@@ -140,17 +140,29 @@ const processEnv = (globalThis as { process?: { env?: Record<string, string | un
 //        file) fits under the 7200s coverage budget (900_000 * 8) with
 //        >=2.76x margin. For every OTHER file that imports
 //        `SOLVER_TEST_TIMEOUT_MS` and does NOT override it (so each of its
-//        tests individually faces the bare 120s/960s budget), the same two
-//        CI runs' per-file totals were checked: the largest were
-//        `planRoute.notCompared.test.ts` (9 tests, 124.7s plain / 428.9s
-//        coverage) and `viaPoints.test.ts` (5 tests, 92.8s plain / 273.6s
-//        coverage) — both well inside the 120s/960s per-TEST ceiling even
-//        under the worst-case assumption that one test in the file accounts
-//        for the whole total. The 120s base comfortably covers the measured
+//        tests individually faces the bare 120s/960s budget), the same CI
+//        runs' per-file totals were checked (the three plain and two
+//        coverage runs cited above): the largest were
+//        `planRoute.notCompared.test.ts` (9 tests, up to 130.4s plain /
+//        428.9s coverage) and `isochrone.test.ts` (18 tests, up to 102.5s
+//        plain / 374.4s coverage) — `viaPoints.test.ts`, cited here in an
+//        earlier revision of this comment, is actually SMALLER than both
+//        (up to 92.8s / 282.3s) and was the wrong pair member. A file TOTAL
+//        is not itself a per-test bound — it can exceed one test's budget
+//        while every test in the file stays under it, and
+//        `planRoute.notCompared.test.ts`'s own 130.4s plain total does
+//        exceed the bare 120s per-test figure — so the real evidence is
+//        that every one of these CI runs completed with conclusion
+//        `success` and no vitest per-test timeout failure, which is what
+//        actually proves no individual test in either file breached its
+//        120s/960s budget. The 120s base comfortably covers the measured
 //        real CI slowdown; no change to it is needed.
 //        Sweep-closure note: this file is IN the #282 closure via
-//        `app/sweep/sweepArms.ts:38`'s `solverTimeoutMs` import, so
-//        `closure.mjs diff` reports OWED for this change. Overridden per
+//        `app/sweep/sweepArms.ts`'s own
+//        `import { solverTimeoutMs } from '../src/test/timeouts';`
+//        statement (currently line 46 — anchor on the statement, not the
+//        number, which moves on the next edit above it), so `closure.mjs
+//        diff` reports OWED for this change. Overridden per
 //        the dispatching brief (comment-only, additive derivation text; the
 //        two exported symbols `COVERAGE_MULTIPLIER_WHEN_ENABLED` and
 //        `solverTimeoutMs` — the only things `sweepArms.ts` can reach — are
