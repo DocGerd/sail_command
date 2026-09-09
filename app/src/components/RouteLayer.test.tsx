@@ -1196,12 +1196,36 @@ describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
       />,
     );
     const onMouseMove = mousemoveHandler(map);
-    // 20px above the leg's y=275 line — outside the 12px tolerance.
-    onMouseMove({ point: { x: 400, y: 255 } });
+    // 13px above the leg's y=275 line — 1px past the 12px tolerance, a real
+    // boundary probe rather than one comfortably outside it.
+    onMouseMove({ point: { x: 400, y: 262 } });
     expect(ghostMarker()).toBeUndefined();
   });
 
-  it("calls onRouteLineInsert with the drag's release point on dragend, and only after a real drag (dragstart fired) — not on a bare hover", () => {
+  it('#850 round-2 BLOCKER: suppresses the ghost when the cursor is over an existing via marker', () => {
+    const map = makeFakeMap();
+    hoisted.map = map;
+    render(
+      <RouteLayer
+        plan={makePlan()}
+        rig="genoa"
+        activeLegIndex={null}
+        draftViaPoints={[{ lat: 54.75, lon: 10.2 }]}
+        viaReplanning={false}
+        onViaDragEnd={async () => true}
+        onRouteLineInsert={() => {}}
+      />,
+    );
+    const onMouseMove = mousemoveHandler(map);
+    // The sibling test above (with NO via points) proves this exact pixel
+    // — (400, 275), the leg's midpoint — reveals a ghost. A via point sits
+    // exactly on that leg vertex here, and the ghost must not appear over
+    // it (round-2 BLOCKER: it used to, stealing the real marker's drag).
+    onMouseMove({ point: { x: 400, y: 275 } });
+    expect(ghostMarker()).toBeUndefined();
+  });
+
+  it("calls onRouteLineInsert with the drag's release point on dragend, and not on a bare hover", () => {
     const map = makeFakeMap();
     hoisted.map = map;
     const onRouteLineInsert = vi.fn();

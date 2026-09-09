@@ -46,7 +46,11 @@ async function planRoute(page: Page, serverUrl: string): Promise<void> {
   // The plan-change auto-fit (RouteLayer.tsx's #297 `fitToLegs`, both call
   // sites) passes `duration: 0` — an instant camera jump, never an eased
   // one — so by the time the button re-enables (run() has fully settled)
-  // there is no in-flight ease for a later drag to collide with (#391).
+  // no camera animation is in flight. Not because of #391: a real MapLibre
+  // `Marker` drag rides its own map-level Evented listeners, never the
+  // HandlerManager an ease's completion resets (see RouteLayer.tsx's own
+  // comment above the drag effect) — this drag would be structurally safe
+  // from #391 even mid-ease.
   await expect(planButton).toBeEnabled({ timeout: 60_000 });
 }
 
@@ -145,6 +149,64 @@ test('dragging the route line inserts a waypoint at the release point', async ({
     // panel's own stale-result chip (PlannerPanel.tsx), so the bare text
     // locator is a Playwright strict-mode violation (three matches).
     await expect(page.locator('.via-markers-spinner-chip')).toBeVisible();
+  } finally {
+    server.kill();
+  }
+});
+
+test('#850 round-2 BLOCKER: dragging an existing via marker moves it, never inserts a duplicate', async ({
+  page,
+}) => {
+  const server = await startPreview(page);
+  try {
+    await planRoute(page, server.url);
+    await mapReady(page);
+
+    const midLngLat = await firstLegMidpoint(page);
+    const grabPoint = await pagePointOf(page, midLngLat);
+    await page.mouse.move(grabPoint.x, grabPoint.y);
+    const ghost = page.locator('.sc-route-drag-handle');
+    await expect(ghost).toBeVisible({ timeout: 10_000 });
+    await page.mouse.down();
+    const dropPoint = { x: grabPoint.x + 60, y: grabPoint.y + 40 };
+    await page.mouse.move(dropPoint.x, dropPoint.y, { steps: 12 });
+    await page.mouse.up();
+    const via = page.getByRole('button', { name: 'Wegpunkt 1', exact: true });
+    await expect(via).toHaveCount(1, { timeout: 10_000 });
+
+    // Replan so the route actually passes through the new via point (the
+    // #391/duration-0 argument above only covers THIS re-fit; the drag
+    // below rides its own map-level listeners regardless).
+    const planButton = page.getByRole('button', { name: 'Route planen' });
+    await planButton.click();
+    await expect(planButton).toBeEnabled({ timeout: 60_000 });
+    await expect(via).toHaveCount(1);
+
+    // The BLOCKER this test pins: the ghost handle used to stack directly
+    // over the real via marker (a via point sits exactly on a leg vertex,
+    // so `nearestPointOnRoute`'s own hit is identical to the marker's own
+    // coordinate) and steal its drag — dragging what looked like the
+    // existing marker instead fired `onRouteLineInsert` and produced a
+    // SECOND, duplicate marker ("Wegpunkt 2") rather than moving the first.
+    const viaBox = await via.boundingBox();
+    if (!viaBox) throw new Error('the via marker has no bounding box');
+    const viaCentre = { x: viaBox.x + viaBox.width / 2, y: viaBox.y + viaBox.height / 2 };
+
+    // Hovering the real marker must NOT reveal the route-drag ghost at all
+    // (the fix suppresses it before the route-line hit-test ever runs) —
+    // checked explicitly, not just inferred from the drag's outcome below.
+    await page.mouse.move(viaCentre.x, viaCentre.y);
+    await expect(ghost).toHaveCount(0);
+
+    await page.mouse.down();
+    await page.mouse.move(viaCentre.x + 50, viaCentre.y - 30, { steps: 12 });
+    await page.mouse.up();
+
+    // Exactly one via marker survives, whatever its index — a duplicate
+    // would show up as a SECOND "Wegpunkt N" button, not a renamed first.
+    await expect(page.getByRole('button', { name: /^Wegpunkt \d+$/ })).toHaveCount(1, {
+      timeout: 10_000,
+    });
   } finally {
     server.kill();
   }

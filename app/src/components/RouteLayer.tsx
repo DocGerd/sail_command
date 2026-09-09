@@ -532,6 +532,19 @@ function fitToLegs(map: MaplibreMap, legs: Leg[]) {
 // slop, not a tappable control.
 const ROUTE_DRAG_HOVER_TOLERANCE_PX = 12;
 
+// #850 round-2 BLOCKER: a via point sits exactly ON a leg vertex, so
+// `nearestPointOnRoute`'s returned point there is IDENTICAL to that via
+// point's own coordinate — the ghost handle would otherwise stack directly
+// over `ViaMarkers.tsx`'s own 16px `.sc-via-marker` dot and steal its drag
+// (dragging what looks like an existing waypoint instead inserted a
+// DUPLICATE one, since the ghost's own `dragend` always calls
+// `onRouteLineInsert`). Suppress the ghost within the real marker's own
+// half-width of any DRAFT via point (`ViaMarkers.tsx`'s `viaElement()` is
+// 16px wide), checked in `onMouseMove` BEFORE the route-line hit-test below —
+// not by resizing this file's own ring, which does not touch where the OTHER
+// element renders.
+const VIA_MARKER_HALF_WIDTH_PX = 8;
+
 // #850: pixel-space projection of a screen point onto the nearest point of
 // segment [a,b]. Returns the clamped interpolation fraction `t` (0 at `a`,
 // 1 at `b`) and the pixel distance from `p` to that projected point.
@@ -585,12 +598,16 @@ function closestPointOnSegmentPx(
 // fraction, and Mercator's y is not linear in latitude, so the interpolated
 // point can miss the true point on the rendered line by more than `lon`'s
 // interpolation does (which IS exact — Mercator's x is linear in longitude).
-// Measured at 54.7°N: ~0.14 m off-line error at a 0.02 degree (~1.2 nm) leg
-// span, ~13.75 m at 0.20 degree (~12 nm) — sub-pixel at today's isochrone
-// leg lengths, so this stays a note rather than a fix here; it would only
-// become visible if leg-merging ever produced a much longer leg, and the
-// failure mode is silent (the handle sits beside the line it claims to be
-// on, never in the wrong place by a visible amount today).
+// Measured at 54.7°N: ~0.1373 m off-line error at a 0.02 degree (~1.2 nm) leg
+// span, ~13.75 m at 0.20 degree (~12 nm). That 0.1373 m is NOT uniformly
+// sub-pixel: using `lib/mapOrientation.test.ts`'s own `metresPerPixel()`
+// formula, it is 0.80 px at zoom 18, but already 1.59 px at zoom 19 and
+// 12.73 px at `MAP_MAX_ZOOM` 22 (`lib/mapOrientation.ts`) — larger than
+// `ROUTE_DRAG_HOVER_TOLERANCE_PX` itself. So this stays a note rather than a
+// fix here at TODAY's shorter leg span and lower zooms, not on a
+// pixel-space guarantee at every zoom; the failure becomes visibly off-line,
+// not silent, once either a leg grows (leg-merging) or the user zooms in
+// past ~z18-19.
 function nearestPointOnRoute(
   map: MaplibreMap,
   legs: readonly Leg[],
@@ -1080,33 +1097,48 @@ export default function RouteLayer({
   // `insertViaNearestOrAppend`) — an unnavigable drop is deferred to the
   // next Plan-route press's own warnings, not rejected here.
   //
-  // #391 (accepted, unfixed upstream): a drag begun while a fitBounds/easeTo
-  // is animating is silently swallowed. This is the SAME risk
-  // `ViaMarkers.tsx`'s existing via-point dragging already carries (both
-  // ride the identical map-level mousedown/mousemove/mouseup machinery),
-  // not a new one this feature introduces. The mechanism that actually
-  // makes it safe (`ViaMarkers.tsx`'s drag too): a real `Marker`'s drag
-  // rides its OWN map-level `mousemove`/`mouseup` listeners
-  // (`marker.ts`'s `_addDragHandler`/`_onMove`/`_onUp`), never MapLibre's
-  // `HandlerManager` — and it is `_stopHandlers()` an ease's completion
-  // calls, so a live drag is structurally untouched by that call
-  // regardless of whether the ease itself is `duration: 0` or genuinely
-  // animating (`CompassControl.tsx`'s `easeTo` is a reachable non-zero-
-  // duration one while the route line is hoverable, so #391's risk here is
+  // #391 does NOT reach this gesture (re-derived against the installed
+  // maplibre-gl 6.7.0, matching the lockfile): `map.ts` wires
+  // `stopHandlers: () => this._handlers?.stop(false)`, and
+  // `handler_manager.ts`'s `stop()` resets registered HANDLERS only.
+  // `marker.ts`'s `_addDragHandler` registers `_onMove`/`_onUp` via
+  // `this._map.on(...)` — Evented LISTENERS, never Handlers — the identical
+  // mechanism `ViaMarkers.tsx`'s existing via-point dragging already relies
+  // on for the same reason. So an ease's completion calling
+  // `_stopHandlers()` cannot touch a live `Marker` drag, regardless of
+  // whether the ease itself is `duration: 0` or genuinely animating
+  // (`CompassControl.tsx`'s `easeTo` is non-zero-duration UNLESS reduced
+  // motion is active — `reducedMotionRef.current ? 0 : durationMs` — and is
+  // reachable while the route line is hoverable, so this absence of risk is
   // not confined to this file's own `duration: 0` `fitToLegs` calls).
   //
-  // A DIFFERENT teardown is reachable and NOT covered by that argument:
-  // this whole effect's cleanup (below) also fires whenever `result`'s
-  // identity changes — `result` is `activeRigResult(plan, rig)` above, so
-  // EITHER a new plan (a Live-mode reroute) OR just switching the
-  // RouteSummary rig tab (same plan, different `rig`) changes it — and
-  // that cleanup's `removeGhost()` calls the ghost `Marker`'s own
-  // `remove()`, which unregisters ITS `mousemove`/`mouseup` listeners.
-  // Mid-drag, that silently drops an in-progress drag (no `dragend`, no
-  // insert) rather than completing or rejecting it. Accepted, not fixed
-  // here — same rarity class as #391 itself.
+  // A DIFFERENT teardown is reachable, unrelated to #391: this whole
+  // effect's cleanup (below) also fires whenever `result`'s identity
+  // changes — `result` is `activeRigResult(plan, rig)` above, so EITHER a
+  // new plan (a Live-mode reroute) OR just switching the RouteSummary rig
+  // tab (same plan, different `rig`) changes it — and that cleanup's
+  // `removeGhost()` calls the ghost `Marker`'s own `remove()`, which
+  // unregisters ITS `mousemove`/`mouseup` listeners. Only the Live-mode
+  // reroute is reachable MID-DRAG: a held mouse button cannot also click
+  // the RouteSummary rig tab, so that second trigger can only land between
+  // drags, never during one. Mid-drag, a Live reroute silently drops an
+  // in-progress drag (no `dragend`, no insert) rather than completing or
+  // rejecting it. Accepted, not fixed here — same rarity class as #391
+  // itself.
   useEffect(() => {
-    if (!map || !result || result.legs.length === 0) return;
+    // #850 round-2 Minor B: the `legs.length === 0` term this guard used to
+    // carry (BEFORE `!result`) was dead weight — mutation-checked by
+    // removing it alone and re-running RouteLayer.test.tsx: 0 of 42 tests
+    // red. `nearestPointOnRoute` below already returns `null`
+    // unconditionally for an empty `legs` array (its own `best` stays
+    // `null` through a zero-iteration loop), and every `onMouseMove` path
+    // that reads a `null` hit just calls `removeGhost()` and returns — so
+    // an empty-legs `result` produces the IDENTICAL observable behaviour
+    // (no ghost, ever) whether or not this effect even registers its
+    // listener. Simplified rather than pinned with a new test, per this
+    // repo's rule against a compound guard whose terms aren't separately
+    // load-bearing.
+    if (!map || !result) return;
     const legs = result.legs;
     let ghost: Marker | null = null;
     let dragging = false;
@@ -1118,8 +1150,22 @@ export default function RouteLayer({
       }
     };
 
+    // #850 round-2 BLOCKER: suppress the ghost whenever the cursor is over
+    // an existing via marker — checked BEFORE the route-line hit-test below,
+    // so a via point sitting exactly on a leg vertex never grows a ghost on
+    // top of the real marker.
+    const isOverViaMarker = (cursorPx: { x: number; y: number }): boolean =>
+      draftViaPoints.some((via) => {
+        const p = map.project([via.lon, via.lat]);
+        return Math.hypot(cursorPx.x - p.x, cursorPx.y - p.y) <= VIA_MARKER_HALF_WIDTH_PX;
+      });
+
     const onMouseMove = (e: MapMouseEvent) => {
       if (dragging) return;
+      if (isOverViaMarker({ x: e.point.x, y: e.point.y })) {
+        removeGhost();
+        return;
+      }
       const hit = nearestPointOnRoute(map, legs, { x: e.point.x, y: e.point.y });
       if (hit === null || hit.distPx > ROUTE_DRAG_HOVER_TOLERANCE_PX) {
         removeGhost();
@@ -1133,10 +1179,15 @@ export default function RouteLayer({
         // `addTo()` BEFORE the first `setLngLat()` (as this used to)
         // therefore positions the ghost from an unset/garbage lngLat,
         // placing the DOM element far from the cursor with no error
-        // anywhere — a jsdom-mocked `Marker` can't catch this, since the
-        // fake never modelled `_update`'s projection at all. `setLngLat`
-        // MUST run before `addTo`, exactly like ViaMarkers.tsx's own
-        // `viaElement` construction chain.
+        // anywhere. The ORIGINAL narrow test fake could not catch this — it
+        // never modelled `_update`'s projection at all — which is why this
+        // shipped undetected until the e2e spec caught it; the WIDENED fake
+        // this same PR ships (`RouteLayer.test.tsx`'s `addToLngLat`, which
+        // snapshots `lngLat` INSIDE the fake's own `addTo()`) now pins the
+        // ordering directly. `setLngLat` MUST run before `addTo`, exactly
+        // like ViaMarkers.tsx's own marker-construction chain
+        // (`new Marker({...}).setLngLat([...])` — not `viaElement()` itself,
+        // which only builds the DOM element).
         const marker = new Marker({ element: routeDragHandleElement(), draggable: true }).setLngLat(
           [hit.point.lon, hit.point.lat],
         );
@@ -1181,7 +1232,7 @@ export default function RouteLayer({
       map.off('mousemove', onMouseMove);
       removeGhost();
     };
-  }, [map, result, onRouteLineInsert]);
+  }, [map, result, onRouteLineInsert, draftViaPoints]);
 
   if (!plan) return null;
 

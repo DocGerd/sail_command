@@ -878,8 +878,7 @@ function AppShell() {
   // reuse ViaMarkers.tsx's existing snapBack pattern. This does not do
   // that; it follows the seamark/saved-waypoint precedent instead. That is
   // a DEVIATION from what the issue names, not something the issue
-  // licenses, and it is recorded as a deviation (PR body) for the
-  // maintainer to rule on rather than resolved here.
+  // licenses — recorded as such in the PR body's Deviations section.
   const handleRouteLineInsert = useCallback(
     (point: LatLon) => insertViaNearestOrAppend(point),
     [insertViaNearestOrAppend],
