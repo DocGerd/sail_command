@@ -142,38 +142,35 @@ const processEnv = (globalThis as { process?: { env?: Record<string, string | un
 //        `SOLVER_TEST_TIMEOUT_MS` and does NOT override it (so each of its
 //        tests individually faces the bare 120s/960s budget), the same CI
 //        runs' per-file totals were checked (the three plain and two
-//        coverage runs cited above): the largest were
-//        `planRoute.notCompared.test.ts` (9 tests, up to 130.4s plain /
-//        428.9s coverage) and `isochrone.test.ts` (18 tests, up to 102.5s
-//        plain / 374.4s coverage) — `viaPoints.test.ts`, cited here in an
-//        earlier revision of this comment, is actually SMALLER than both
-//        (up to 92.8s / 282.3s) and was the wrong pair member. A file TOTAL
-//        is not itself a per-test bound — it can exceed one test's budget
-//        while every test in the file stays under it, and
-//        `planRoute.notCompared.test.ts`'s own 130.4s plain total does
-//        exceed the bare 120s per-test figure — so the real evidence is
-//        that every one of these CI runs completed with conclusion
-//        `success` and no vitest per-test timeout failure, which is what
-//        actually proves no individual test in either file breached its
-//        120s/960s budget. The 120s base comfortably covers the measured
-//        real CI slowdown; no change to it is needed.
+//        coverage runs cited above): the largest is
+//        `planRoute.notCompared.test.ts` (9 tests; plain 105.4-130.4s
+//        across the three runs, coverage 427.3-428.9s across the two), next
+//        `isochrone.test.ts` (18 tests; plain 94.7-102.5s, coverage
+//        327.4-374.4s) — `viaPoints.test.ts` (up to 92.8s / 282.3s) is
+//        smaller than both. The tightest single reading,
+//        `planRoute.notCompared.test.ts`'s own 130.4s plain figure, EXCEEDS
+//        the bare 120s per-test figure — a file TOTAL is not itself a
+//        per-test bound, since it can exceed one test's budget while every
+//        individual test stays under it, and the real evidence is that
+//        every one of these CI runs completed with conclusion `success` and
+//        no vitest per-test timeout failure, which is what actually proves
+//        no individual test breached its 120s/960s budget. The 120s base
+//        comfortably covers the measured real CI slowdown; no change to it
+//        is needed.
 //        Sweep-closure note: this file is IN the #282 closure via
 //        `app/sweep/sweepArms.ts`'s own
 //        `import { solverTimeoutMs } from '../src/test/timeouts';`
 //        statement (currently line 46 — anchor on the statement, not the
 //        number, which moves on the next edit above it), so `closure.mjs
-//        diff` reports OWED for this change. Overridden per
-//        the dispatching brief (comment-only, additive derivation text; the
-//        two exported symbols `COVERAGE_MULTIPLIER_WHEN_ENABLED` and
-//        `solverTimeoutMs` — the only things `sweepArms.ts` can reach — are
-//        byte-identical before and after) rather than paying the sweep, the
-//        same shape #941 documented for a structurally-unreachable OWED.
+//        diff` reports OWED for this change. The sweep was run against
+//        this diff: [SWEEP RESULT PENDING — to be recorded here once the
+//        run completes].
 //
 //   => 8 (roughly 2x the measured 4.9x lower-bound floor, absorbing both the
 //      "measured on a killed run" gap in point 3 and the "solver tests pay
-//      more than average" gap in point 4; point 6's independently-measured
-//      ~2x solver-specific PLAIN ratio is well under this margin too, so it
-//      does not argue for raising 8 either).
+//      more than average" gap in point 4. Point 6 measures a DIFFERENT
+//      axis — CI-vs-local, validating the 120s base — and is silent on
+//      whether 8 itself has slack).
 //
 //   IMPORTANT COUPLING (PR #351 review N1): raising this multiplier is NOT
 //   free with respect to `.github/workflows/coverage.yml`'s job-level
