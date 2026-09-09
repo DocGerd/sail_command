@@ -127,20 +127,26 @@ vi.mock('../services/assets', () => ({
 // setupLayers adds the absolute ramp, then the hazard-hatch overlay, BEFORE
 // the harbor/seamark layers that follow, all sharing the same beforeId
 // anchor (insertion order = bottom-to-top for same-anchor additions).
-// #682: 'sc-seamarks-hazard' is added LAST among this component's own
-// layers, so it sits directly above 'sc-seamarks' (still below the AIS
-// stack via the shared anchor) — pinning this position here is the "layer
-// order pinned by an explicit test, not by setup timing" requirement from
-// #682's own definition of done, exercised across every setup-timing
-// interleaving AND the #153 style-reload re-add path this file already
-// covers for the rest of the stack.
+// #1126 (2026-09-09): 'sc-harbor-labels' is now added LAST among this
+// component's own layers — AFTER 'sc-seamarks'/'sc-seamarks-hazard', not
+// before them as pre-#1126 — a pure insertion-order change (no
+// layout/paint property moved) that makes 'sc-harbor-labels' win the
+// shared MapLibre collision index over seamarks instead of losing to them
+// (CLAUDE.md's "Placement runs TOP-TO-BOTTOM, so a later-added layer is
+// placed FIRST" rule). See DataLayers.tsx's own #1126 comment for the full
+// mechanism. 'sc-seamarks-hazard' is still added directly above
+// 'sc-seamarks' (#682, unchanged by #1126) — pinning this position here is
+// the "layer order pinned by an explicit test, not by setup timing"
+// requirement from #682's own definition of done, exercised across every
+// setup-timing interleaving AND the #153 style-reload re-add path this
+// file already covers for the rest of the stack.
 const OVERLAYS_BELOW_AIS = [
   'sc-depth',
   'sc-depth-hatch',
   'sc-harbor-points',
-  'sc-harbor-labels',
   'sc-seamarks',
   'sc-seamarks-hazard',
+  'sc-harbor-labels',
   'sc-ais-vectors',
   'sc-ais-vessels',
   'sc-ais-labels',

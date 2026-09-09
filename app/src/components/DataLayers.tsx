@@ -424,7 +424,39 @@ function setupLayers(
       );
     }
   }
-  if (!map.getSource(HARBOR_SOURCE)) {
+  // #1126: `harborSourceMissing` is captured BEFORE either guarded block
+  // runs, and the HARBOR_LABEL_LAYER addLayer call is deferred to AFTER the
+  // seamark layers (below) while staying gated on this SAME condition as
+  // before — so the layer's CREATION-time guard is unchanged (it still adds
+  // exactly when the harbor source doesn't already exist), only its
+  // INSERTION ORDER moves. MapLibre stacks same-beforeId additions in
+  // insertion order (a later addLayer(layer, beforeId) call lands ABOVE an
+  // earlier one — see the #492 addLayer comment on DEPTH_HATCH_LAYER above),
+  // and CLAUDE.md's own "Placement runs TOP-TO-BOTTOM" rule
+  // (`PauseablePlacement`'s `_currentPlacementIndex = order.length - 1`,
+  // walked down to 0) means the layer added LAST is placed FIRST and wins
+  // the shared MapLibre collision index. Before this change SEAMARKS_LAYER/
+  // SEAMARKS_HAZARD_LAYER were added AFTER HARBOR_LABEL_LAYER, so seamarks
+  // won every z12-bucket collision the #860 icon-size growth created
+  // (#981/#1126: measured to suppress `sc-harbor-labels` at 6 of 33 harbors
+  // at screen zoom [12,13)). Moving the harbor-label addLayer call to LAST
+  // among this function's layers reverses that priority — HARBOR_LABEL_LAYER
+  // now wins the collision index over seamarks, and it also now PAINTS on
+  // top of them (same insertion-order mechanism), which is the correct
+  // direction for a place-name label vs. a chart symbol. This is a PURE
+  // layer-order change: no layout/paint property on HARBOR_LABEL_LAYER,
+  // SEAMARKS_LAYER or SEAMARKS_HAZARD_LAYER moves, so seamarks' own
+  // below-z12 SELF-de-confliction (icon-overlap/symbol-sort-key, unrelated
+  // to insertion order between DIFFERENT layers) is untouched — see
+  // seamarksLayout's own doc comment. It does NOT reach the #981 basemap
+  // (protomaps) victim class: those layers are added even earlier, at Map
+  // construction in MapView.tsx's buildStyle(), so they stay below BOTH
+  // seamarks and harbor labels regardless of this function's internal
+  // ordering — `seamarkGeoJson.ts`'s BASE_ICON_SIZE_STOPS comment and
+  // `seamark-collision-icon-size-981.spec.ts`'s BASEMAP_VICTIM_PAIRS guard
+  // record that class as a still-open residual.
+  const harborSourceMissing = !map.getSource(HARBOR_SOURCE);
+  if (harborSourceMissing) {
     map.addSource(HARBOR_SOURCE, {
       type: 'geojson',
       data: { type: 'FeatureCollection', features: [] }, // populated by the lang-following data effect
@@ -449,31 +481,6 @@ function setupLayers(
           'circle-color': '#000000',
           'circle-stroke-width': 2,
           'circle-stroke-color': HALO_COLOR,
-        },
-      },
-      beforeId,
-    );
-    map.addLayer(
-      {
-        id: HARBOR_LABEL_LAYER,
-        type: 'symbol',
-        source: HARBOR_SOURCE,
-        layout: {
-          'text-field': ['get', 'name'],
-          // Explicit stack: it must exist under basemap-assets/fonts/ —
-          // MapLibre's implicit default stack does not.
-          'text-font': ['Noto Sans Regular'],
-          'text-size': 11,
-          'text-anchor': 'top',
-          'text-offset': [0, 0.8],
-          // Collision-culled (unlike the maneuver letters): 33 labels around
-          // a small map would otherwise pile up at low zoom.
-          'text-allow-overlap': false,
-        },
-        paint: {
-          'text-color': INK_COLOR,
-          'text-halo-color': HALO_COLOR,
-          'text-halo-width': 1.2,
         },
       },
       beforeId,
@@ -532,6 +539,38 @@ function setupLayers(
           // assets-gated effect that first sets these filters also
           // populates it.
           visibility: 'none',
+        },
+      },
+      beforeId,
+    );
+  }
+  // #1126: deferred from the HARBOR_SOURCE block above — see this
+  // function's own #1126 comment there for why. Gated on the SAME
+  // `harborSourceMissing` condition captured before either guarded block
+  // ran, so this still adds exactly once per source lifetime (including
+  // across a #153 style reload, when both sources are torn down together).
+  if (harborSourceMissing) {
+    map.addLayer(
+      {
+        id: HARBOR_LABEL_LAYER,
+        type: 'symbol',
+        source: HARBOR_SOURCE,
+        layout: {
+          'text-field': ['get', 'name'],
+          // Explicit stack: it must exist under basemap-assets/fonts/ —
+          // MapLibre's implicit default stack does not.
+          'text-font': ['Noto Sans Regular'],
+          'text-size': 11,
+          'text-anchor': 'top',
+          'text-offset': [0, 0.8],
+          // Collision-culled (unlike the maneuver letters): 33 labels around
+          // a small map would otherwise pile up at low zoom.
+          'text-allow-overlap': false,
+        },
+        paint: {
+          'text-color': INK_COLOR,
+          'text-halo-color': HALO_COLOR,
+          'text-halo-width': 1.2,
         },
       },
       beforeId,

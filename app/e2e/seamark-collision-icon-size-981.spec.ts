@@ -23,11 +23,17 @@ import { startPreview, mapReady } from './helpers';
 // ['step',['zoom'],'never',12,'always']`, they are never SELF-culled by this
 // growth at z>=12 — but `icon-ignore-placement` is NOT set on the seamark
 // layers, so the inflated collision box still occupies space in the shared
-// MapLibre collision grid and can newly block OTHER, lower-placement-
-// priority symbol layers' labels (placement runs top-to-bottom, so a
-// later-added layer is placed FIRST — `pauseable_placement.ts`; seamarks are
-// added after `sc-harbor-labels` in DataLayers.tsx's `setupLayers()`, so
-// seamarks are placed first and can block harbor labels, never the reverse).
+// MapLibre collision grid and CAN block OTHER, lower-placement-priority
+// symbol layers' labels (placement runs top-to-bottom, so a later-added
+// layer is placed FIRST — `pauseable_placement.ts`). PRE-#1126, seamarks
+// were added after `sc-harbor-labels` in DataLayers.tsx's `setupLayers()`,
+// so seamarks were placed first and blocked harbor labels. #1126 (2026-09-09)
+// reordered that function so `sc-harbor-labels` is now added LAST among its
+// own layers — a pure insertion-order change, no layout/paint property
+// touched — so `sc-harbor-labels` now wins the collision index over
+// seamarks instead of losing to them. See `DataLayers.tsx`'s own #1126
+// comment and `seamarkGeoJson.ts`'s `BASE_ICON_SIZE_STOPS` comment for the
+// full mechanism and the two rejected alternative levers.
 //
 // MEASURED 2026-09-09 (mutation A/B, `maplibre-gl@6.7.0`): a fixed-box,
 // settle-gated (400ms poll, 3 consecutive stable reads — the same cadence
@@ -45,24 +51,27 @@ import { startPreview, mapReady } from './helpers';
 // impossible — a SMALLER collision box cannot newly block a label a LARGER
 // one did not — and would indicate an unrelated settle race).
 //
-// VERDICT: the z12 bucket.zoom+1 collision-footprint quirk is NOT harmless
-// as the issue's original "likely harmless" read suggested — it measurably
-// suppresses `sc-harbor-labels` at a subset of harbors, for one zoom band
-// (screen zoom [12,13) only; the label reappears once the covering tile
-// bucket becomes z13, whose own bucket.zoom+1 evaluation lands on a stop
-// past the table's end and clamps to the same 1.4). This is reported as a
-// FOUND, ACCEPTED cross-layer side effect of #860 (a real defect per the
-// #981 brief, which explicitly says report rather than fix), not a
-// self-cull (self-culling is correctly prevented by `icon-overlap:
-// 'always'` at z>=12, and that mechanism is NOT what is being measured
-// here). This spec is comments-only in scope terms — it adds no change to
-// `seamarkGeoJson.ts` layout/paint properties — and PINS the currently
-// measured behaviour (6 named harbors blocked at z12.5) as a forward
-// regression guard: growing the z12-bucket collision footprint further (or
-// shrinking it back toward pre-#860) will move this set, and this test
-// makes that movement OBSERVABLE rather than silent, matching this repo's
-// #191/#192 precedent for measuring icon-size collision growth via
-// `queryRenderedFeatures` rather than by eye.
+// VERDICT (as of #981, pre-fix): the z12 bucket.zoom+1 collision-footprint
+// quirk was NOT harmless as the issue's original "likely harmless" read
+// suggested — it measurably suppressed `sc-harbor-labels` at a subset of
+// harbors, for one zoom band (screen zoom [12,13) only; the label reappears
+// once the covering tile bucket becomes z13, whose own bucket.zoom+1
+// evaluation lands on a stop past the table's end and clamps to the same
+// 1.4), not a self-cull (self-culling is correctly prevented by
+// `icon-overlap: 'always'` at z>=12, and that mechanism is NOT what is
+// being measured here).
+//
+// FIXED by #1126 (2026-09-09): `DataLayers.tsx`'s `setupLayers()` now adds
+// `sc-harbor-labels` LAST among its own layers, reversing the collision
+// priority — see the mechanism paragraph above and `seamarkGeoJson.ts`'s
+// `BASE_ICON_SIZE_STOPS` comment. The first test below is INVERTED
+// accordingly: it now asserts the 6 named harbors' `sc-harbor-labels` are
+// VISIBLE (not blocked) at z12.5, pinning the fix as a forward regression
+// guard — reverting the reorder, or growing the z12-bucket collision
+// footprint further without re-widening the priority margin, moves this set
+// back, and this test makes that movement OBSERVABLE rather than silent,
+// matching this repo's #191/#192 precedent for measuring icon-size
+// collision growth via `queryRenderedFeatures` rather than by eye.
 //
 // MEASURED 2026-09-09, second class (`maplibre-gl@6.7.0`): basemap
 // (protomaps) symbol layers ARE a second, REAL victim class of the same
@@ -122,19 +131,27 @@ import { startPreview, mapReady } from './helpers';
 // assertion SHAPE (present->absent, not absent->present) — both are real
 // measured evidence but are not asserted as a boolean-presence forward
 // guard here, to keep the pin unambiguous and mutation-checkable the same
-// way `BLOCKED_AT_HEAD` above is.
+// way `VISIBLE_AT_HEAD` above is.
 //
 // VERDICT: the basemap symbol-layer victim class named as UNMEASURED in the
 // #981 issue is REAL and MEASURED, not merely theoretical — it is broader
 // than the harbor-label class (8 harbors vs 6, four distinct basemap layers
 // vs one app layer) and touches a DIFFERENT set of harbors (only
-// `gelting-mole` overlaps the harbor-label `BLOCKED_AT_HEAD` set), which is
-// expected: basemap point features (town centres, POIs) sit at different
-// coordinates than this app's own harbor-snap points. #1126 should treat
-// this as widening its lever choice's scope, not as a separate follow-up —
-// any fix scoped to `sc-harbor-labels` alone (e.g. reordering just that one
-// layer, or `icon-ignore-placement` narrowly aimed at the seamark/
-// harbor-label pair) leaves this broader basemap class untouched.
+// `gelting-mole` overlapped the harbor-label class), which is expected:
+// basemap point features (town centres, POIs) sit at different coordinates
+// than this app's own harbor-snap points.
+//
+// #1126 (2026-09-09) FIXED the harbor-label class alone, by reordering
+// `sc-harbor-labels` to be added last in `DataLayers.tsx`'s `setupLayers()`
+// — see the mechanism paragraph above. This basemap class is EXPLICITLY
+// NOT closed by that fix and remains untouched: protomaps' own symbol
+// layers are added even earlier, at Map construction (`MapView.tsx`'s
+// `buildStyle()`), so they sit below BOTH seamarks and `sc-harbor-labels`
+// regardless of `DataLayers.tsx`'s internal insertion order — a reorder
+// confined to that one component's own layers cannot reach a layer added
+// before that component ever mounts. This class stays an open residual;
+// the `BASEMAP_VICTIM_PAIRS` test below is unchanged and still asserts it
+// blocked at z12.5.
 
 interface ScTestMap {
   jumpTo(options: { center: [number, number]; zoom: number }): unknown;
@@ -158,12 +175,13 @@ const harbors: Harbor[] = JSON.parse(
 );
 
 // The 6 of 33 committed harbors whose sc-harbor-labels visibility at z12.5
-// is currently BLOCKED by seamarks' inflated z12-bucket collision box
-// (measured 2026-09-09, see header). Every other harbor is either blocked
-// in both the current and the pre-#860 table (label-dense area, unrelated
-// to #860) or visible in both (no seamark contention there) and carries no
+// was BLOCKED by seamarks' inflated z12-bucket collision box pre-#1126
+// (measured 2026-09-09, see header) and is now VISIBLE post-#1126's
+// layer-order fix. Every other harbor is either blocked in both the
+// current and the pre-#860 table (label-dense area, unrelated to #860) or
+// visible in both (no seamark contention there) and carries no
 // #860-attributable signal either way.
-const BLOCKED_AT_HEAD = [
+const VISIBLE_AT_HEAD = [
   'aaroesund',
   'drejoe',
   'gelting-mole',
@@ -213,9 +231,7 @@ async function settledLabelPresent(page: Page, h: Harbor): Promise<boolean> {
   );
 }
 
-test('#981: seamark z12-bucket collision growth blocks 6 named harbor labels at z12.5', async ({
-  page,
-}) => {
+test('#1126: layer-order fix restores 6 named harbor labels at z12.5', async ({ page }) => {
   test.setTimeout(120_000);
   const server = await startPreview(page);
   try {
@@ -225,7 +241,7 @@ test('#981: seamark z12-bucket collision growth blocks 6 named harbor labels at 
     await expect(seamarksToggle).toBeVisible();
     await seamarksToggle.check();
 
-    for (const id of BLOCKED_AT_HEAD) {
+    for (const id of VISIBLE_AT_HEAD) {
       const h = harbors.find((x) => x.id === id);
       expect(h, `harbor ${id} missing from harbors.json`).toBeTruthy();
       if (!h) continue;
@@ -237,8 +253,8 @@ test('#981: seamark z12-bucket collision growth blocks 6 named harbor labels at 
       const present = await settledLabelPresent(page, h);
       expect(
         present,
-        `${id}: expected sc-harbor-labels BLOCKED at z${PROBE_ZOOM} (#981/#860)`,
-      ).toBe(false);
+        `${id}: expected sc-harbor-labels VISIBLE at z${PROBE_ZOOM} (#1126 fix for #981/#860)`,
+      ).toBe(true);
     }
   } finally {
     await server.kill();
