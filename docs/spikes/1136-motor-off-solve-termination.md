@@ -268,9 +268,10 @@ between sources rather than silently harmonised; the code is the authority and
 was read directly.
 
 **The conclusion is unaffected** for the reason in §1.2: the accounting
-identity holds exactly on all 188 rings, and `directAccepted` /
-`captureAccepted` are 0 on every one. All three extra channels read zero on
-the measured rings, so `accepted == dominatedDrops` on the dying rings is a
+identity holds exactly on all 188 LOGGED rings — that aperture, and why it does
+not weaken the conclusion, is stated in §1.2 — and `directAccepted` /
+`captureAccepted` are 0 on every one of them. All three extra channels read
+zero on the measured rings, so `accepted == dominatedDrops` on the dying rings is a
 complete account of where the children went.
 
 ### 2.2 The designer's "pure ADD" was not additive — a second swap
