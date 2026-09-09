@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-09-09
+
+### Fixed
+
+- Hovering away from a saved waypoint marker no longer clears the pointer cursor a harbour marker underneath it was showing, on the rare tap where the two overlap (#1015).
+- Clicking a saved waypoint to add it as a via point no longer leaves the map cursor stuck as a pointer until some later interaction happens to reset it (#1015).
+
 ## [0.28.0] - 2026-09-08
 
 ### Added
@@ -1037,7 +1044,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.28.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.29.0...HEAD
+[0.29.0]: https://github.com/DocGerd/sail_command/compare/v0.28.0...v0.29.0
 [0.28.0]: https://github.com/DocGerd/sail_command/compare/v0.27.0...v0.28.0
 [0.27.0]: https://github.com/DocGerd/sail_command/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/DocGerd/sail_command/compare/v0.25.0...v0.26.0
