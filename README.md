@@ -186,8 +186,8 @@ data; the code license is covered in the [License](#license) section below.
   search flags the harbors behind them before you plan to one, instead of
   only after a full solve fails; the flag stays on a selected origin or
   destination, and a plan that fails as unreachable against one names that
-  same limit in place of the generic "the destination cannot be reached"
-  message.
+  same limit in place of the generic "the search could not find a way to
+  the destination" message.
 - Seamarks are not a routing input. A route whose active rig passes closer
   than 300 m to a cardinal or isolated-danger mark is flagged in the results
   panel — with a count when there is more than one — and nothing more: the

@@ -303,8 +303,13 @@ export const de = {
     'Die Route wurde berechnet, konnte aber nicht gespeichert werden. Erneut versuchen oder freien Speicherplatz auf diesem Gerät prüfen.',
   'error.windUnknown':
     'Windvorhersage konnte aufgrund eines unerwarteten Fehlers nicht geladen werden. Bitte in Kürze erneut versuchen.',
+  // #265/#866: siehe die englische Fassung — 'mask-blocked' kann ein
+  // wirklich unerreichbares Ziel nicht von einer Suche unterscheiden, die
+  // vorzeitig aufgegeben hat, daher darf dieser Text keins von beidem
+  // behaupten. Zu unterscheiden von error.noRoute.searchBudget (eigene
+  // Ursache 'budget-exhausted', ein späteres, anderes Zeitlimit).
   'error.noRoute.unreachable':
-    'Keine Route gefunden — das Ziel ist ohne Landkontakt oder zu flaches Wasser nicht erreichbar.',
+    'Keine Route gefunden — die Suche hat keinen Weg zum Ziel gefunden, ohne Land oder zu flaches Wasser zu queren. Das beweist nicht, dass es keine Route gibt; die Suche hat möglicherweise zu früh aufgegeben.',
   'error.noRoute.beyondHorizon':
     'Keine Route innerhalb des 6-Tage-Vorhersagehorizonts gefunden. Spätere Abfahrt oder ein näheres Ziel versuchen.',
   // #804: „in den Optionen“ benannte keine Oberfläche dieser App. Der
