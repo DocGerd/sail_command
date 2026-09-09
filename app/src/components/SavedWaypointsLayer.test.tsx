@@ -270,6 +270,42 @@ describe('SavedWaypointsLayer (#924)', () => {
     expect(map.getCanvas().style.cursor).toBe('');
   });
 
+  it('#1015 (round 2): a click that disarms while the pointer stays on the marker still clears the cursor on leave', async () => {
+    // The TRANSITION the round-1 fix missed: App.tsx's onPick
+    // (`handleSavedWaypointMapPick`) calls `setTapTarget(null)` INSIDE the
+    // click handler this layer fires, so the common click-to-pick path
+    // disarms while the pointer is still over the marker. No further
+    // mouseenter/mouseleave fires until the pointer physically moves, and
+    // by the time it does, `armed` has already flipped to false — a guard
+    // that re-checks arming AT LEAVE TIME (rather than tracking that THIS
+    // handler owns the cursor it set) no-ops and leaves the pointer cursor
+    // stuck. A fresh-mount test cannot see this: it needs the ENTER (armed)
+    // -> DISARM -> LEAVE sequence, with no mouseenter/mouseleave in between
+    // the disarm and the leave.
+    await saveWaypoint(waypoint('w1', 54.8, 9.9, 'Ankerplatz'));
+    const { rerender } = renderLayer({ armed: true });
+    act(() => {
+      addAnchor(map);
+      map.fire('styledata');
+    });
+    await waitFor(() => expect(map.getSource(SAVED_WAYPOINT_SOURCE)?.setData).toHaveBeenCalled());
+
+    act(() => {
+      map.fireLayerEvent('mouseenter', SAVED_WAYPOINT_LAYER, {});
+    });
+    expect(map.getCanvas().style.cursor).toBe('pointer');
+
+    // Models the click's own onPick disarming — the prop transition
+    // App.tsx's tapTarget state change produces — with NO intervening
+    // mouseleave/mouseenter, because the pointer has not moved.
+    rerender(<SavedWaypointsLayer armed={false} onPick={vi.fn()} />);
+
+    act(() => {
+      map.fireLayerEvent('mouseleave', SAVED_WAYPOINT_LAYER, {});
+    });
+    expect(map.getCanvas().style.cursor).toBe('');
+  });
+
   it('ignores a click whose feature id is not in the current list', async () => {
     await saveWaypoint(waypoint('w1', 54.8, 9.9, 'Ankerplatz'));
     const { onPick } = renderLayer({ armed: true });
