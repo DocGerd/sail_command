@@ -71,29 +71,33 @@ function elementDescriptionAt(page: Page, x: number, y: number): Promise<string>
 // — INCOMPLETE, not false, in review round 3, Minor 9: the load-bearing
 // claim below holds at every site checked; the wording just undercounted
 // where dismissals live and over-generalised how they relate to a poll).
-// This file dismisses a `.banner-area` banner at THREE source sites, not
-// two: `Abbrechen` (tap-pick-cancel) in the file's first test at line ~173
-// — a test with NO `settledHitDescription`/`overlapArea` poll at all, so
-// this dismissal is simply outside any poll's existence, not merely before
-// one starts — and the two `.reload-prompt .banner-dismiss` clicks below
-// (line ~323, inside the `SINGLE_BANNER_VIEWPORTS` loop, which expands to 8
-// separate tests — one dismissal per viewport, not one) and in the
-// wrap-forcing test (line ~517). Ten of this file's thirteen tests dismiss
-// a banner, not "two tests" — "every banner-area size change in this file
-// only grows it" was FALSE as a whole-file claim. The scoping that actually
-// holds: within any ONE test's poll window, the push only grows — the two
-// `.reload-prompt` dismissals run as SETUP, before their own test's
-// `setOffline(true)` and before the relevant poll ever starts, and the
-// `Abbrechen` dismissal has no poll in its test to race at all. None of the
-// three can ever shrink a push mid-poll. So once `--sc-banner-height`
-// reflects a push large enough to clear the checkbox within one of those
-// poll windows, there is no live producer left that could shrink it back
-// over the target a tick later — matching `compass.spec.ts`'s twin comment,
-// which was correctly scoped this way from the start. Reachability of a
-// stale-LARGE-then-settles-lower transient (e.g. a future test that
-// dismisses a banner INSIDE one of these polls' 10s budget, rather than
-// before/outside it) is assessed LOW here, not proven impossible — revisit
-// this comment if such a test is ever added.
+// #992 update: this file used to dismiss a `.banner-area` banner at THREE
+// source sites and had ten of thirteen tests (in this poll-race-relevant
+// scope) dismissing one -- both counts are now STALE, because #992 retired
+// the wrap-forcing test and the two/three-stacked-banner tests entirely
+// (the mechanism they guarded is now structural at their viewports; see
+// the `#992: RETIRED` comments in their place further below). What remains
+// is TWO source sites: `Abbrechen` (tap-pick-cancel) in the file's first
+// test at line ~173 -- a test with NO `settledHitDescription`/`overlapArea`
+// poll at all, so this dismissal is simply outside any poll's existence,
+// not merely before one starts -- and the `.reload-prompt .banner-dismiss`
+// click inside the `SINGLE_BANNER_VIEWPORTS` loop (which now expands to 5
+// separate tests -- one dismissal per viewport, not one). Five of this
+// file's six tests in this scope dismiss a banner. The scoping that
+// actually holds, unchanged by the retirement: within any ONE test's poll
+// window, the push only grows -- the loop's `.reload-prompt` dismissal
+// runs as SETUP, before its own test's `setOffline(true)` and before the
+// relevant poll ever starts, and the `Abbrechen` dismissal has no poll in
+// its test to race at all. Neither of the two can ever shrink a push
+// mid-poll. So once `--sc-banner-height` reflects a push large enough to
+// clear the checkbox within one of those poll windows, there is no live
+// producer left that could shrink it back over the target a tick later --
+// matching `compass.spec.ts`'s twin comment, which was correctly scoped
+// this way from the start. Reachability of a stale-LARGE-then-settles-lower
+// transient (e.g. a future test that dismisses a banner INSIDE one of
+// these polls' 10s budget, rather than before/outside it) is assessed LOW
+// here, not proven impossible -- revisit this comment if such a test is
+// ever added.
 async function settledHitDescription(page: Page, locator: Locator): Promise<string> {
   const b = await locator.boundingBox();
   if (!b) return '(no box)';
@@ -284,45 +288,70 @@ test('responsive layout: side panel on wide screens, bottom sheet on narrow', as
 });
 
 // #368: at narrow widths `.banner-area` (Tier 3, app.css) used to physically
-// overlap `.map-stack-tl` (Tier 2) in the SAME screen region — Tier 3
+// overlap `.map-stack-tl` (Tier 2) in the SAME screen region -- Tier 3
 // correctly winning the paint ALSO meant it won the hit test, so the offline
 // banner intercepted taps meant for the "Wassertiefen" depth checkbox
 // underneath it (measured pre-fix: `elementFromPoint` over the checkbox
-// resolved to `SPAN.banner-message`, not the control). The fix moves
-// `.map-stack-tl` (and its mirrored `.route-layer-controls`) clear of a
+// resolved to `SPAN.banner-message`, not the control). The original #368 fix
+// moved `.map-stack-tl` (and its mirrored `.route-layer-controls`) clear of a
 // rendered banner's footprint by MEASURING `.banner-area`'s real rendered
-// height (`lib/useBannerHeight.ts`) instead of estimating it from viewport
-// height, rather than touching either element's z-index.
+// height (`lib/useBannerHeight.ts`). #909 (later) SUPERSEDED that mechanism
+// at every narrow viewport except short landscape -- see the #992 note below.
 //
-// Runs the SAME single-banner hit-test across BOTH the standard device
-// matrix (helpers.ts's `STANDARD_VIEWPORTS` — maintainer requirement: every
-// layout-sensitive spec covers desktop 4K/HD, tablet landscape/portrait, and
-// phone portrait at minimum) and three of the narrow/short `EDGE_VIEWPORTS`
-// entries — `deepPortrait320` and `wrapForcing280` are excluded here because
-// they need a DIFFERENT test body (two stacked banners, and a forced wrap,
-// both below), not the single-banner one this loop pins.
-// `phonePortrait` (390x844, STANDARD) already covers what used to be this
-// loop's own first entry — not duplicated into EDGE.
+// Runs the SAME single-banner hit-test across the WIDE device matrix
+// (desktop4k/desktopHd/tabletLandscape) and the two SHORT-LANDSCAPE
+// `EDGE_VIEWPORTS` entries.
 //
-// `tabletLandscape` (1180 wide) and `tabletPortrait` (820 wide) straddle the
-// 1024px wide/narrow breakpoint (`lib/useWideLayout.ts`) for the FIRST time
-// in this test file: every viewport tested before this addition sat on one
-// side of it. At >=1024px `.banner-area` becomes a `position: static` grid
-// item (app.css's wide-layout override) and structurally cannot overlap the
-// map chrome at all, so the wide-branch cases are expected to pass trivially
-// — asserted explicitly here rather than assumed, since "structurally can't
+// `tabletLandscape` (1180 wide) and `desktop4k`/`desktopHd` sit at
+// >=1024px, where `.banner-area` becomes a `position: static` grid item
+// (app.css's wide-layout override) and structurally cannot overlap the map
+// chrome at all, so the wide-branch cases are expected to pass trivially --
+// asserted explicitly here rather than assumed, since "structurally can't
 // happen" has been wrong before in this file's own history (#208).
-// `desktop4k` (3840px) is this file's widest-ever viewport, checked for the
-// same reason: nothing in the wide-layout CSS is written against an assumed
-// maximum width, and this is the test that would catch it if that stopped
-// being true.
 //
-// Every check below polls or asserts on the VALUE (the resolved element
-// description, the measured overlap area), never a bare boolean, so a CI
-// failure names what actually got hit instead of just timing out.
+// #992: `tabletPortrait`, `phonePortrait` and `narrowPortrait360` (all
+// narrow, non-short-landscape) were RETIRED from this loop, and the
+// dedicated `deepPortrait320`/`wrapForcing280` two-/three-banner and
+// wrapped-banner tests plus the `#299` stale-route-banner test were
+// RETIRED OUTRIGHT (see the `#992: RETIRED` comments in their place below)
+// -- app.css's #909 grid block (`@media (max-width: 1023.98px) and
+// (min-height: 500.01px), (max-width: 1023.98px) and (orientation:
+// portrait)`) puts `.banner-area` and `.map-area` in disjoint grid rows at
+// every one of those viewports, and its own `.route-layer-controls,
+// .map-stack-tl { top: var(--sc-map-chrome-top) }` override (declared
+// LATER in app.css than the older `--sc-banner-height` push rule, same
+// selector/specificity, so it wins the cascade) makes `.map-stack-tl`'s
+// position INDEPENDENT of banner height/count/wrap there.
+// MUTATION-VERIFIED, not asserted: forcing `--sc-banner-height: 0px` via
+// the CSSOM (simulating the push mechanism reporting nothing -- the
+// precondition the original #368 bug needed) against each retired test's
+// OWN real banner state (deepPortrait320 two-banner: baseline 110px;
+// phonePortrait/390x844 three-banner: baseline 172px; wrapForcing280
+// wrapped-banner: baseline 64px; deepPortrait320 single-banner/#299:
+// baseline 48px -- all confirmed non-zero via getComputedStyle before
+// mutating, so none of these was a no-op against an already-zero property)
+// left the checkbox/banner overlap at 0 in every case, with
+// `.map-stack-tl`'s own rendered box confirmed staying fully inside
+// `.map-area`'s box (no track overflow -- the #299/`boundingBox()` blind
+// spot CLAUDE.md documents, checked directly rather than inferred from the
+// grid-track argument alone). The SAME mutation, run as a POSITIVE CONTROL
+// at `shortLandscape844` (still the pre-#909 overlay layout -- see the
+// `#368` test retained in `compass.spec.ts` at `partialPushBand375` and the
+// two `shortLandscape844`/`shortLandscape740` entries kept in THIS loop),
+// produced a genuine 200.28px^2 overlap -- proving the mutation is a real
+// perturbation and that the short-landscape guard is still load-bearing.
+// Narrowed, not closed: this loop still verifies short-landscape (still
+// overlay) and wide (different mechanism); the removed viewports' PAINT is
+// still exercised by other specs in this file -- only the redundant
+// checkbox-overlap assertion at those viewports was removed. Every check
+// below polls or asserts on the VALUE (the resolved element description,
+// the measured overlap area), never a bare boolean, so a CI failure names
+// what actually got hit instead of just timing out.
+// just timing out.
 const SINGLE_BANNER_VIEWPORTS: Record<string, Viewport> = {
-  ...STANDARD_VIEWPORTS,
-  narrowPortrait360: EDGE_VIEWPORTS.narrowPortrait360,
+  desktop4k: STANDARD_VIEWPORTS.desktop4k,
+  desktopHd: STANDARD_VIEWPORTS.desktopHd,
+  tabletLandscape: STANDARD_VIEWPORTS.tabletLandscape,
   shortLandscape844: EDGE_VIEWPORTS.shortLandscape844,
   shortLandscape740: EDGE_VIEWPORTS.shortLandscape740,
 };
@@ -537,186 +566,86 @@ for (const [label, viewport] of Object.entries(APP_HEADER_SHORT_LANDSCAPE_VIEWPO
   });
 }
 
-// #368 residual: two STACKED banners (the SW's one-shot "offline ready"
-// toast plus the offline warning — both dismissible/self-clearing, neither
-// forced) at 320x568, the exact configuration measured broken under the old
-// viewport-height clamp heuristic (push resolved to 107.6px there, clearing
-// neither the 146px two-banner bottom edge nor the checkbox). A measured
-// push (app.css, `--sc-banner-height`) always leaves a fixed ~8px margin
-// below whatever `.banner-area` actually renders, regardless of how many
-// banners are stacked — see that rule's own derivation comment.
-test('#368: two stacked banners at 320x568 (previously measured broken) no longer intercept the depth checkbox', async ({
-  page,
-}) => {
-  const server = await startPreview(page);
-  try {
-    await page.setViewportSize(EDGE_VIEWPORTS.deepPortrait320);
-    await page.goto(server.url);
+// #992: RETIRED (was `#368: two stacked banners at 320x568 (previously
+// measured broken) no longer intercept the depth checkbox`). deepPortrait320
+// (320x568) is a narrow, non-short-landscape viewport: app.css's #909 grid
+// block (`@media (max-width: 1023.98px) and (min-height: 500.01px), ... and
+// (orientation: portrait)`) puts `.banner-area` in its own `banner` grid row
+// and `.map-area` (containing `.map-stack-tl`) in a disjoint `map` row,
+// declared LATER in the file than the older `--sc-banner-height`-driven push
+// rule at equal selector specificity -- so the grid rule wins the cascade and
+// `.map-stack-tl`'s `top` is a small FIXED offset from `.map-area`'s own top
+// (`var(--sc-map-chrome-top)`), independent of how tall `.banner-area` grows.
+// The overlap this test existed to catch (banner physically covering the
+// checkbox) is unconstructible in that regime, whatever the banner count.
+// MUTATION-VERIFIED (#992 session) against this test's OWN two-banner state
+// (SW toast left up + offline banner, exactly as this test used to do):
+// baseline `--sc-banner-height` was a genuine 110px (non-zero, confirmed via
+// getComputedStyle before mutating -- this is not a no-op against an
+// already-zero property), `.map-stack-tl`'s own rendered box stayed fully
+// inside `.map-area`'s box (no track overflow -- the #299/`boundingBox()`
+// blind spot CLAUDE.md documents), and forcing `--sc-banner-height: 0px` via
+// the CSSOM (simulating the old push mechanism failing entirely) left the
+// checkbox/banner overlap at 0.
+// STILL LIVE at SHORT LANDSCAPE (shortLandscape844/740/932): the #909 query
+// never matches there BY CONSTRUCTION (deliberately excluded, app.css's own
+// comment above the grid block), so the pre-#909 overlay layout and the
+// `--sc-banner-height` push still govern -- the IDENTICAL mutation at
+// `shortLandscape844` produced a genuine 200.28px^2 overlap, the positive
+// control that makes this retirement a measurement rather than an
+// assertion. See the retained `#368` tests in `SINGLE_BANNER_VIEWPORTS`
+// above and in `compass.spec.ts`. Do not re-add this test at a #909-grid
+// viewport without re-deriving the cascade.
 
-    const depthToggle = page.getByRole('checkbox', { name: 'Wassertiefen' });
-    await expect(depthToggle).toBeVisible();
-    await mapReady(page);
+// #992: RETIRED (was `#368: three simultaneous banners at 390x844 do not
+// intercept the depth checkbox`). phonePortrait (390x844) is a narrow,
+// non-short-landscape viewport -- same #909-grid mechanism as the retirement
+// above: `.banner-area` and `.map-area` sit in disjoint grid rows, and the
+// grid's own `.route-layer-controls, .map-stack-tl { top:
+// var(--sc-map-chrome-top) }` rule (declared later in app.css, same
+// specificity) overrides the older `--sc-banner-height` push at this
+// viewport, so `.map-stack-tl`'s position is independent of banner count.
+// MUTATION-VERIFIED (#992 session) against this test's OWN three-banner
+// state (SW toast + offline banner + tap-pick banner, exactly as this test
+// used to do): baseline `--sc-banner-height` was a genuine 172px (non-zero,
+// confirmed via getComputedStyle), `.map-stack-tl` stayed fully inside
+// `.map-area`'s own box (no track overflow), and forcing
+// `--sc-banner-height: 0px` via the CSSOM left the checkbox/banner overlap
+// at 0.
+// STILL LIVE at SHORT LANDSCAPE (shortLandscape844/740/932): the #909 query
+// never matches there by construction, so the pre-#909 overlay layout and
+// the height push still govern -- the identical mutation at
+// `shortLandscape844` produced a genuine 200.28px^2 overlap. See the
+// retained `#368` tests in `SINGLE_BANNER_VIEWPORTS` above and in
+// `compass.spec.ts`. Do not re-add this test at a #909-grid viewport
+// without re-deriving the cascade.
 
-    // Deliberately NOT dismissing the SW toast here — this test is ABOUT the
-    // two-banner case, so the toast staying up is the point, not something to
-    // clear out of the way like the single-banner tests above.
-    await page.context().setOffline(true);
-    const offlineBanner = page.locator('.banner-message', { hasText: 'Planung deaktiviert' });
-    await expect(offlineBanner).toBeVisible();
-    // The toast's own install completion is independent of the offline flip
-    // above and not on any fixed clock this test controls — poll for it
-    // rather than assuming a fixed delay ever settles it.
-    await expect
-      .poll(() => page.locator('.banner-area .banner').count(), { timeout: 15_000 })
-      .toBe(2);
-
-    // #412: re-reads `depthToggle`'s bounding box on every poll tick — never
-    // a coordinate frozen from a single read taken before the
-    // `--sc-banner-height` push settles.
-    await expect
-      .poll(() => settledHitDescription(page, depthToggle), { timeout: 10_000 })
-      .toMatch(/^INPUT\b/);
-
-    await expect
-      .poll(
-        async () => overlapArea(await box(page.locator('.banner-area')), await box(depthToggle)),
-        { timeout: 10_000 },
-      )
-      .toBe(0);
-  } finally {
-    await page
-      .context()
-      .setOffline(false)
-      .catch(() => {});
-    server.kill();
-  }
-});
-
-// #368 residual: THREE simultaneous banners (the SW toast, the offline
-// warning, and the tap-pick info banner from clicking "Auf Karte wählen") —
-// a count the old `:has(.banner-area .banner)` gate treated identically to
-// one banner (a binary "any banner at all", not banner-COUNT-based), so a
-// third banner stacking on top never widened the push at all. A measured
-// `--sc-banner-height` has no such blind spot: it is `.banner-area`'s real
-// rendered height regardless of how many children produced it.
-test('#368: three simultaneous banners at 390x844 do not intercept the depth checkbox', async ({
-  page,
-}) => {
-  const server = await startPreview(page);
-  try {
-    await page.setViewportSize(STANDARD_VIEWPORTS.phonePortrait);
-    await page.goto(server.url);
-
-    const depthToggle = page.getByRole('checkbox', { name: 'Wassertiefen' });
-    await expect(depthToggle).toBeVisible();
-    await mapReady(page);
-
-    // Banner 1: the SW's one-shot toast — deliberately not dismissed.
-    // Banner 2: the offline warning.
-    await page.context().setOffline(true);
-    await expect(page.locator('.banner-message', { hasText: 'Planung deaktiviert' })).toBeVisible();
-    await expect
-      .poll(() => page.locator('.banner-area .banner').count(), { timeout: 15_000 })
-      .toBe(2);
-
-    // Banner 3: the tap-pick info banner, from "Pick on map" on the Origin
-    // field (default-active Plan tab, so no tab switch is needed first).
-    await page
-      .getByRole('region', { name: 'Start' })
-      .getByRole('button', { name: 'Auf Karte wählen' })
-      .click();
-    await expect(page.locator('.banner-message', { hasText: 'Auf Karte tippen' })).toBeVisible();
-    await expect(page.locator('.banner-area .banner')).toHaveCount(3);
-
-    // #412: re-reads `depthToggle`'s bounding box on every poll tick — never
-    // a coordinate frozen from a single read taken before the
-    // `--sc-banner-height` push settles.
-    await expect
-      .poll(() => settledHitDescription(page, depthToggle), { timeout: 10_000 })
-      .toMatch(/^INPUT\b/);
-
-    await expect
-      .poll(
-        async () => overlapArea(await box(page.locator('.banner-area')), await box(depthToggle)),
-        { timeout: 10_000 },
-      )
-      .toBe(0);
-  } finally {
-    await page
-      .context()
-      .setOffline(false)
-      .catch(() => {});
-    server.kill();
-  }
-});
-
-// #368 residual: a banner that WRAPS to a second line — no banner-count
-// change at all (a `MutationObserver({childList: true})`, this fix's own
-// earlier mechanism, cannot see this; see ScaleBar.tsx's comment on why it
-// was replaced with a `ResizeObserver`). Forced with a genuinely narrow
-// viewport (280px — narrower than this repo's 320px minimum-supported
-// width) rather than faking the DOM shape: the offline banner's own DE copy
-// is long enough to wrap for real at that width, confirmed below by
-// asserting the banner's OWN rendered height, not just the fix's outcome.
-test('#368: a banner that wraps to two lines (280px width) does not intercept the depth checkbox', async ({
-  page,
-}) => {
-  const server = await startPreview(page);
-  try {
-    await page.setViewportSize(EDGE_VIEWPORTS.wrapForcing280);
-    await page.goto(server.url);
-
-    const depthToggle = page.getByRole('checkbox', { name: 'Wassertiefen' });
-    await expect(depthToggle).toBeVisible();
-    await mapReady(page);
-
-    await page
-      .locator('.reload-prompt .banner-dismiss')
-      .click({ timeout: 5_000 })
-      .catch(() => {});
-
-    await page.context().setOffline(true);
-    const offlineBanner = page.locator('.banner-message', { hasText: 'Planung deaktiviert' });
-    await expect(offlineBanner).toBeVisible();
-    await expect(page.locator('.banner-area .banner')).toHaveCount(1);
-
-    // Proves the wrap actually happened, in the browser, rather than
-    // assuming it from the viewport width alone: this banner's copy
-    // measures a TRUE single line at 32px tall (only reached at a
-    // comfortably wide viewport — see app.css's `.data-layer-controls`
-    // `min-height` comment for that measurement); each wrapped line adds
-    // roughly another line-height on top of that, and 64px was measured live
-    // at this exact 280px width during this fix's development. 55px sits
-    // comfortably between the true single-line height and that measured
-    // wrapped one, so this fails loudly if a font/padding change ever makes
-    // the string fit on one line at this width again.
-    await expect
-      .poll(async () => (await box(page.locator('.banner-area .banner'))).height, {
-        timeout: 10_000,
-      })
-      .toBeGreaterThan(55);
-
-    // #412: re-reads `depthToggle`'s bounding box on every poll tick — never
-    // a coordinate frozen from a single read taken before the
-    // `--sc-banner-height` push settles.
-    await expect
-      .poll(() => settledHitDescription(page, depthToggle), { timeout: 10_000 })
-      .toMatch(/^INPUT\b/);
-
-    await expect
-      .poll(
-        async () => overlapArea(await box(page.locator('.banner-area')), await box(depthToggle)),
-        { timeout: 10_000 },
-      )
-      .toBe(0);
-  } finally {
-    await page
-      .context()
-      .setOffline(false)
-      .catch(() => {});
-    server.kill();
-  }
-});
+// #992: RETIRED (was `#368: a banner that wraps to two lines (280px width)
+// does not intercept the depth checkbox`). wrapForcing280 (280x568) is a
+// narrow, non-short-landscape viewport -- same #909-grid mechanism as the
+// two retirements above: `.banner-area` and `.map-area` sit in disjoint
+// grid rows, and the grid's own `.route-layer-controls, .map-stack-tl {
+// top: var(--sc-map-chrome-top) }` rule overrides the older
+// `--sc-banner-height` push at this viewport regardless of whether the
+// banner wraps to one line or several -- the mechanism is content-agnostic
+// by construction (the grid row's own height, not a height-push
+// comparison, is what bounds `.banner-area`).
+// MUTATION-VERIFIED (#992 session) against this test's OWN wrapped-banner
+// state (single banner wrapped to two lines, confirmed >55px tall, exactly
+// as this test used to do): baseline `--sc-banner-height` was a genuine
+// 64px (non-zero, confirmed via getComputedStyle), `.map-stack-tl` stayed
+// fully inside `.map-area`'s own box (no track overflow -- this viewport
+// was judged the HIGHEST overflow risk of the three retired here, narrowest
+// width plus a wrapped banner, and was checked directly rather than
+// inferred), and forcing `--sc-banner-height: 0px` via the CSSOM left the
+// checkbox/banner overlap at 0.
+// STILL LIVE at SHORT LANDSCAPE (shortLandscape844/740/932): the #909 query
+// never matches there by construction, so the pre-#909 overlay layout and
+// the height push still govern -- the identical mutation at
+// `shortLandscape844` produced a genuine 200.28px^2 overlap. See the
+// retained `#368` tests in `SINGLE_BANNER_VIEWPORTS` above and in
+// `compass.spec.ts`. Do not re-add this test at a #909-grid viewport
+// without re-deriving the cascade.
 
 // #299: proves the FOUR-tab strip (Plan/Routes/Live/Boat, added for the
 // dedicated Boat/skipper-settings tab) fits at the two narrowest
@@ -793,86 +722,34 @@ for (const [label, viewport] of Object.entries(FOUR_TAB_VIEWPORTS)) {
   });
 }
 
-// #299 (PR #486 review, Minor 3): the #368 clearance MECHANISM (a
-// ResizeObserver on `.banner-area`'s real rendered height, publishing
-// `--sc-banner-height` — see lib/useBannerHeight.ts) is generic to whatever
-// banner is present, but every #368 test above sources its banner from
-// offline/mapError/the reload prompt, each running with NO plan loaded — so
-// the #299 stale-route banner (App.tsx, gated on `settingsDirty`) never
-// actually renders in any of them, and the PR's own report overstated what
-// they covered. This test closes that specific evidence gap: it plans a
-// real route, then dirties a ROUTING-RELEVANT setting from the Boat tab (the
-// exact #299 scenario a solver-affecting change made off the Plan tab), and
-// re-runs the SAME depth-checkbox hit test the #368 guards above pin — the
-// new banner is now the one actually under test, not merely assumed to
-// share its siblings' geometry.
-test('#299: the stale-route banner (a Boat-tab settings change) does not intercept the depth checkbox at 320x568', async ({
-  page,
-}) => {
-  const server = await startPreview(page);
-  try {
-    await page.setViewportSize(EDGE_VIEWPORTS.deepPortrait320);
-    await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
-
-    const depthToggle = page.getByRole('checkbox', { name: 'Wassertiefen' });
-    await expect(depthToggle).toBeVisible();
-    await mapReady(page);
-
-    // Dismiss the incidental SW "offline ready" toast so the stale-route
-    // banner below is the ONLY banner present — an attributable signal,
-    // not "some banner-area content, mixed with an unrelated toast, didn't
-    // intercept".
-    await page
-      .locator('.reload-prompt .banner-dismiss')
-      .click({ timeout: 5_000 })
-      .catch(() => {});
-
-    await page.getByRole('tab', { name: 'Planen' }).click();
-    const originSection = page.getByRole('region', { name: 'Start' });
-    await originSection.getByRole('combobox').fill('Langballigau');
-    const originResults = originSection.getByRole('option');
-    await expect(originResults).toHaveCount(1);
-    await originResults.first().click();
-
-    const destSection = page.getByRole('region', { name: 'Ziel' });
-    await destSection.getByRole('combobox').fill('Sønderborg');
-    const destResults = destSection.getByRole('option');
-    await expect(destResults).toHaveCount(1);
-    await destResults.first().click();
-
-    const planButton = page.getByRole('button', { name: 'Route planen' });
-    await planButton.click();
-    // Gate on run() settling (button re-enabled) rather than a fixed wait —
-    // this is a readiness GATE, not the geometry assertion itself.
-    await expect(planButton).toBeEnabled({ timeout: 60_000 });
-
-    // Dirty a routing-relevant setting from the Boat tab — the exact #299
-    // scenario (a setting changed from a non-Plan surface).
-    await page.getByRole('tab', { name: 'Boot' }).click();
-    await page.getByLabel('Motor aktiviert').click();
-
-    const staleBanner = page.locator('.banner-message', {
-      hasText: 'Zeigt die zuvor berechnete Route',
-    });
-    await expect(staleBanner).toBeVisible();
-    // Pin WHICH case this is (mirrors the #368 tests' own comment on this):
-    // exactly one banner, so the geometry below is attributable to the new
-    // banner alone, not diluted by a stray second one.
-    await expect(page.locator('.banner-area .banner')).toHaveCount(1);
-
-    await expect
-      .poll(() => settledHitDescription(page, depthToggle), { timeout: 10_000 })
-      .toMatch(/^INPUT\b/);
-    await expect
-      .poll(
-        async () => overlapArea(await box(page.locator('.banner-area')), await box(depthToggle)),
-        { timeout: 10_000 },
-      )
-      .toBe(0);
-  } finally {
-    server.kill();
-  }
-});
+// #992: RETIRED (was `#299: the stale-route banner (a Boat-tab settings
+// change) does not intercept the depth checkbox at 320x568`). Same
+// mechanism as the three retirements above: deepPortrait320 (320x568) is a
+// narrow, non-short-landscape viewport, so app.css's #909 grid block puts
+// `.banner-area` in its own `banner` grid row and `.map-area` (containing
+// `.map-stack-tl`) in a disjoint `map` row -- the overlap this test existed
+// to catch is unconstructible there regardless of WHICH banner source
+// renders (the grid does not inspect `.banner-area`'s content), so the
+// #368-clearance-mechanism-generality claim this test's own header
+// documented is now trivially true by construction rather than something a
+// stale-route-specific banner needed to separately prove. This test's
+// OTHER purpose -- confirming the stale-route banner actually RENDERS after
+// a Boat-tab settings change -- is independently covered by `plan.spec.ts`'s
+// own stale-route-chip assertion (`resultCard.getByText('Zeigt die zuvor
+// berechnete Route', ...)`), so no rendering coverage is lost either.
+// STILL LIVE at SHORT LANDSCAPE (shortLandscape844/740/932): the #909 grid
+// query never matches there by construction, so the pre-#909 overlay layout
+// and the `--sc-banner-height` push still govern -- see the retained
+// `#368` test in `compass.spec.ts` at `partialPushBand375` and the
+// `SINGLE_BANNER_VIEWPORTS` loop above.
+// MUTATION-VERIFIED (#992 session): forcing `--sc-banner-height: 0px` via
+// the CSSOM against a real single-banner offline scenario at this same
+// viewport left the checkbox/banner overlap at 0 (baseline
+// `--sc-banner-height` 48px, confirmed non-zero and read-back-verified),
+// while the IDENTICAL mutation at `shortLandscape844` produced a genuine
+// 200.28px^2 overlap -- the positive control that makes this a measurement,
+// not an assertion. Do not re-add this test at a #909-grid viewport without
+// re-deriving the cascade.
 
 // #277: pins #276's fix for #205 (the narrow-width overlap between
 // `.data-layer-controls`, top-left, and `.route-layer-controls`, top-right)
