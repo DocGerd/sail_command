@@ -952,6 +952,12 @@ making design-level decisions; do not silently deviate.
   defect is LIVE for users — that spike's §4.3 says so, and says explicitly
   that it does not supersede this entry; symptom, measurement and the e2e-side
   workaround in the #383 bullet under Verification lessons).
+- **MapLibre's `fitBounds`/camera math is NOT bit-deterministic across two calls with
+  identical inputs** — ~1e-14 divergence in lng/lat/zoom from float accumulation order inside
+  the library, not a real positional difference (measured 2026-09-09 writing
+  `app/e2e/fit-route.spec.ts`). ROUND before comparing; never assert exact camera equality,
+  even on a nominally deterministic map call. Note `Object.is(-0, 0)` is `false` and
+  Playwright's `toBe` uses it, so normalise with `+ 0` as well.
 - `fitBounds` must pass `bearing: map.getBearing()` explicitly —
   `cameraForBounds` defaults bearing to 0, so every new `plan.id` (including a
   Live reroute under way) silently un-rotates the chart and kills track-up
@@ -4205,6 +4211,12 @@ making design-level decisions; do not silently deviate.
   churn this file already calls expected. FOUR agents hit the denial and
   found `git restore` independently in one session (2026-09-04), so the
   rediscovery cost is real and repeated.
+  **But `git restore <path>` reverts to the last COMMIT, not to "the state before my
+  mutation" — so during mutation-testing it SILENTLY WIPES a still-uncommitted intended fix
+  living in that same file.** Measured 2026-09-09 on PR #1096; the agent caught it from
+  `git status`/`git diff` and switched every later mutation-revert to a targeted `sed`/`python3`
+  edit. Use those when mutating against uncommitted work; `git restore` is only safe when the
+  file's committed state IS the state you want back.
   **NOT the destructive-git guard** — that hook contains zero `checkout` logic
   (it matches `push --force`/`-f`, `reset --hard`, `clean -f`). The denial is a
   declarative `deny` PAIR in the PERSONAL global `~/.claude/settings.json`
@@ -4627,6 +4639,11 @@ making design-level decisions; do not silently deviate.
   file to go looking in -- an easy misattribution, since that guard is
   separately documented here as over-firing on prose. Remedy: brief worktree
   agents to use plain, SEPARATE git commands inside their own worktree.
+  **It also refuses a SINGLE, non-compound command containing a HEREDOC** —
+  `git commit -m "$(cat <<'EOF' … )"` with no `cd` and no multi-repo shape at all, and a
+  plain heredoc write to a path outside the worktree. Broader than the compound-command
+  trigger above; hit independently by two worktree agents on 2026-09-09. Remedy: write the
+  message with the `Write` tool, then a single plain `git commit -F <file>`.
 - **`gh pr merge` is SERVER-SIDE, so your local checkout never moves.** Seven
   PRs merged over ~4 h left the main tree at the pre-milestone commit. Harmless
   while every check names an explicit ref (`origin/develop`,
