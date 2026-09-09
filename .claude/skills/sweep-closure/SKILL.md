@@ -96,24 +96,38 @@ not fix).
    `git diff --merge-base --no-renames --name-only <base> [<head>]`.
 
 4. **Classify each hit.** The default is **OWED** — full stop, whether the
-   hit came from the import walk or a `PATH_PREFIXES` match. The one
-   exception is `app/src/data/boats.ts`'s `draftProvenance` field: a hunk
-   confined entirely to an `interface DraftProvenance { … }` or
-   `draftProvenance: { … }` span is **NOT OWED**, because that is
-   structurally provable from the type system on disk today, not merely
-   assumed (see `classifyBoatsTs`'s doc comment in `closure.mjs`):
-   `BoatSnapshot` (the only shape a boat is denormalised into inside a stored
-   `Plan`) doesn't declare that field, and `PlanResultOk`/`PlanResultError`
-   carry no boat/request field **at all** — the sweep's serialised
-   `PlanResult` never contains a boat snapshot in the first place, so nothing
-   confined to that field can move a single compared byte.
+   hit came from the import walk or a `PATH_PREFIXES` match.
+   `app/src/data/boats.ts` carries TWO carve-outs from that default, both
+   inside `classifyBoatsTs`:
+   - The `draftProvenance` field: a hunk confined entirely to an
+     `interface DraftProvenance { … }` or `draftProvenance: { … }` span is
+     **NOT OWED**, because that is structurally provable from the type
+     system on disk today, not merely assumed (see `classifyBoatsTs`'s doc
+     comment in `closure.mjs`): `BoatSnapshot` (the only shape a boat is
+     denormalised into inside a stored `Plan`) doesn't declare that field,
+     and `PlanResultOk`/`PlanResultError` carry no boat/request field **at
+     all** — the sweep's serialised `PlanResult` never contains a boat
+     snapshot in the first place, so nothing confined to that field can move
+     a single compared byte.
+   - **(#944) Additive exports.** A hunk that is a PURE INSERTION (nothing
+     existing removed or modified) and whose added lines form one or more
+     complete new top-level `const`/`type`/`interface` declarations, none of
+     whose EXPORTED name is imported by anything in the sweep's own
+     closure, is **NOT OWED** — checked at export granularity via the same
+     import graph the closure walk already builds
+     (`collectClosureImportersOf` in `closure.mjs`), not a pre-declared
+     field span. This is what closes the false positive #941 hit when
+     `boats.ts` gained an additive `export const GENOA_SAIL_ID` that only a
+     UI hook (outside the closure) imports.
 
 ## Failure direction — stated explicitly, as this repo's guard-asymmetry
 convention requires for a NUDGE-class tool
 
 **This tool is designed to over-report, not under-report, against the
 UNIVERSE described in "Method" above (the import walk UNIONED with
-`PATH_PREFIXES`) — with exactly one modelled exception.** A false "owed"
+`PATH_PREFIXES`) — with exactly TWO modelled exceptions, both scoped to
+`app/src/data/boats.ts` (the `draftProvenance` field span and the #944
+additive-export reachability check).** A false "owed"
 costs ~31 minutes of unnecessary solver time; a false "not owed" ships an
 unverified routing change — those costs are not symmetric, so the tool is
 built to fail toward the expensive-but-safe side.
@@ -170,6 +184,21 @@ Concretely:
   keeps reporting success). `selftest` pins each entry individually with a
   HARDCODED expected path (never derived from either array) for exactly this
   reason — see "Testing this skill itself" below.
+- **(#944) The additive-export check's own residuals — deliberately
+  unmodelled, all fail OPEN to OWED rather than silently passing**: a
+  closure member reaching the new export through a shape
+  `collectClosureImportersOf`'s regex-based clause scan cannot parse (a
+  dynamic `import()` with a COMPUTED specifier, `require(...)`); a
+  getter/accessor property (no such shape exists in `boats.ts` today — its
+  `as const satisfies` literal data has none); and the reachability scan
+  reads the WORKING TREE / `<head>` content of every closure member as it
+  stands TODAY, never a reconstruction of the tree after the diff lands —
+  which is the correct thing to read (a diff that also adds a NEW import of
+  the same name in the same commit is caught OWED, since that import is
+  already present in the content being scanned). The check is also scoped
+  to `const`/`type`/`interface` declarations ONLY — a `function`/`class`/
+  `enum` addition is NOT modelled and reports OWED unconditionally, the
+  default fail-open behaviour, never a false NOT_OWED.
 
 If you need to extend the exception list (a new field, a new file), do it by
 adding a new, independently-provable `classify*` function with its own
@@ -236,6 +265,67 @@ into this repo):
     make `--name-only` print only the destination, silently dropping an
     in-closure file from the diff. Mutation-checked: removing `--no-renames`
     from `changedFiles`'s args reds exactly this row and none other.
+
+**#944 additive-export checks (rows 17–28).** Each builds a THROWAWAY closure
+repo under the OS tmpdir (no git — `computeClosure` is pure fs) at exactly
+the relative paths `ROOTS`/`BOATS_TS_PATH` expect, so `classifyBoatsTs`
+exercises its real `collectClosureImportersOf` reachability scan against a
+real `visited` map, not a stand-in:
+
+17. A: an unreferenced additive `export const` → NOT OWED — the #941 false
+    positive this issue exists to fix, reproduced synthetically.
+18. B: the same export, but a closure root NAMES it in an import list → OWED
+    — mutation-checked (disabling name-match reachability reds B, B2 and E
+    together; the row exists specifically to prove A isn't vacuously green).
+19. B2: the same export, reachable only through a RE-EXPORT BARREL a closure
+    member imports for a side effect, never named directly by the root →
+    OWED — the issue's own "re-export and barrel files" residual.
+20. C: a pure top-level ADDITION that is not a `const`/`type`/`interface`
+    declaration at all (a bare call statement) → OWED — "additive is not
+    the same as inert". Mutation-checked: disabling the shape rejection
+    (treating an unrecognised statement as `{ok:true, decls:[]}`) reds
+    exactly this row.
+21. C2: an additive `const` whose OWN initializer calls `BOATS.push(...)` →
+    OWED — the initializer purity check. Mutation-checked: stubbing
+    `isPureInitializer` to always return `true` reds exactly this row.
+22. D: a pure insertion landing INSIDE the `BOATS` array literal (a new
+    array element, not a new top-level statement) → OWED — the issue's own
+    "appending to BOATS itself" example. NOT mutation-clean on its own: its
+    inserted object-literal fragment also fails the SHAPE check
+    independently, so disabling only the depth guard leaves this row green.
+23. D2: mutation-check for the DEPTH GUARD specifically — a syntactically
+    valid, pure, UNREFERENCED `const` inserted at depth 2 (a sibling of
+    `draftM`, outside both existing `findSafeBlocks` spans so the
+    PRE-EXISTING draftProvenance mechanism cannot also catch it) → OWED.
+    An earlier construction landed inside the `DraftProvenance` interface
+    body instead and was silently caught by that pre-existing span before
+    reaching the additive-export path at all — this placement avoids that
+    confound. Mutation-checked: disabling `bracketDepthAt` (hardcoding
+    depth 0) reds exactly this row and none other.
+24. E: a closure root imports `boats.ts` via `import * as ns` (wildcard) →
+    OWED regardless of the new export's name, alongside an UNRELATED named
+    import of the same file so the positive control (row 27/28's guard)
+    stays satisfied either way. Mutation-checked: disabling wildcard
+    detection alone (leaving name-matching intact) reds exactly this row.
+25. F: a `draftProvenance`-note edit (existing exception) plus an
+    unreferenced additive export, in the SAME diff → NOT OWED — the two
+    mechanisms compose.
+26. F2: the same pairing, but the second hunk is an ordinary UNSAFE edit
+    (`draftM`) instead → OWED — one unsafe hunk still forces the whole file
+    OWED; the additive-export exception cannot launder an unrelated hunk
+    riding along in the same diff.
+27. G1: a module-PRIVATE additive `const` (no `export`) in a closure where
+    NOTHING imports `boats.ts` at all (zero importers) → NOT OWED — an
+    unexported name is never checked against the reachability scan at all,
+    so a broken/empty scan cannot affect it.
+28. G2: the SAME zero-importer closure, but the addition IS exported → OWED,
+    specifically via the "positive-control failure" reason string, not
+    "provably unreachable" — `boats.ts` being IN the closure at all is a
+    precondition of reaching this code path, so an empty importer list must
+    mean the scan is broken, never that nothing imports the file.
+    Mutation-checked: removing the `importers.length === 0` gate (reading
+    an empty scan as "nothing reachable") reds exactly this row; G1 stays
+    green under that same mutation, since it never reaches the gate.
 
 **Neither `npm --prefix app run typecheck` nor `npm --prefix app run
 lint` cover this file at all** — the tsconfigs and `eslint src e2e sweep`

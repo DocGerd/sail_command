@@ -42,26 +42,38 @@
  * 4. For each hit, default to **OWED** — this is a NUDGE-class tool, and per
  *    the repo's guard-asymmetry convention a nudge must fail OPEN (a false
  *    "owed" costs ~31 minutes of unnecessary solver time; a false "not owed"
- *    ships an unverified routing change). The only carve-out from that
- *    default is `app/src/data/boats.ts`'s `draftProvenance` field, because
- *    that specific exemption is STRUCTURALLY provable from the type system
- *    on disk today (see `classifyBoatsTs` below) rather than merely assumed.
+ *    ships an unverified routing change). `app/src/data/boats.ts` carries
+ *    TWO carve-outs from that default, both inside `classifyBoatsTs` below,
+ *    both structurally provable rather than merely assumed: the
+ *    `draftProvenance` field-level exemption (`BoatSnapshot` omits the
+ *    field entirely), and (#944) an ADDITIVE-EXPORT exemption — a
+ *    pure-insertion hunk that adds one or more complete new top-level
+ *    `const`/`type`/`interface` declarations, none of whose EXPORTED names
+ *    is imported by anything in the sweep's own closure, cannot move a
+ *    single byte that closure ever reads. See `splitAdditiveDeclarations`
+ *    and `collectClosureImportersOf` below for the reachability proof, and
+ *    "Failure direction" for what it deliberately does NOT model.
  *
  * ## Failure direction — stated explicitly, per the issue's own request
  *
  * This tool is designed to OVER-REPORT, never under-report: every closure
- * hit is OWED by default, with exactly ONE modelled exception
- * (`app/src/data/boats.ts`'s `draftProvenance`/`DraftProvenance` blocks —
- * see `classifyBoatsTs`'s own doc comment for why that specific carve-out
- * is sound). It does NOT attempt full data-flow/taint analysis of every
- * field reachable from the closure — e.g. it does NOT model whether
- * `polarProvenance.note` (also present in `boats.ts`, also copied into
- * `BoatSnapshot`) can move a `PlanResult`; CLAUDE.md's own
- * "polarProvenance and draftProvenance have DIFFERENT blast radii" bullet
- * warns explicitly against assuming one field's exemption transfers to the
- * other, so a `polarProvenance`-only edit is deliberately left at the
- * default OWED verdict rather than silently generalising the exception
- * (see `selftest`'s "narrow-scope-check" case).
+ * hit is OWED by default, with exactly TWO modelled exceptions, both scoped
+ * to `app/src/data/boats.ts` and both inside `classifyBoatsTs`:
+ * the `draftProvenance`/`DraftProvenance` field-level span (see
+ * `classifyBoatsTs`'s own doc comment for why that specific carve-out is
+ * sound), and the #944 additive-export reachability check. It does NOT
+ * attempt full data-flow/taint analysis of every field reachable from the
+ * closure — e.g. it does NOT model whether `polarProvenance.note` (also
+ * present in `boats.ts`, also copied into `BoatSnapshot`) can move a
+ * `PlanResult`; CLAUDE.md's own "polarProvenance and draftProvenance have
+ * DIFFERENT blast radii" bullet warns explicitly against assuming one
+ * field's exemption transfers to the other, so a `polarProvenance`-only
+ * edit is deliberately left at the default OWED verdict rather than
+ * silently generalising the exception (see `selftest`'s
+ * "narrow-scope-check" case) — and the additive-export check does NOT make
+ * it exempt either, since a `polarProvenance.note` EDIT is a hunk that
+ * MODIFIES existing lines (`oldCount > 0`), which the additive-export path
+ * never even considers (see its own guard below).
  *
  * A PRIOR REVISION of this file made the stronger claim "never
  * under-reports" unconditionally — FALSIFIED in review (#729): the import
@@ -71,8 +83,28 @@
  * hand-maintained data (see its own header comment) rather than something
  * re-derived — so the honest claim is "over-reports against the modelled
  * universe below", not an unconditional guarantee. Extending EITHER
- * `PATH_PREFIXES` or the `draftProvenance` exception needs the same
- * structural proof `classifyBoatsTs` gives, never a guess by analogy.
+ * `PATH_PREFIXES` or either `boats.ts` exception needs the same structural
+ * proof `classifyBoatsTs` gives, never a guess by analogy.
+ *
+ * The additive-export check's OWN residuals (#944, deliberately unmodelled,
+ * all fail OPEN to OWED rather than silently passing): a closure member
+ * reaching the new export through a shape `collectClosureImportersOf`'s
+ * regex-based clause scan cannot parse (a dynamic `import()` with a
+ * COMPUTED specifier, `require(...)`, a re-export chain through a file
+ * this diff also ADDS in the same change — that new file is itself a
+ * closure hit if reached, and is classified independently, but the
+ * ADDITIVE-EXPORT scan of `boats.ts` reads today's `visited` set, built
+ * from files ALREADY on disk); a getter/accessor property (no such shape
+ * exists in `boats.ts` today — an `as const satisfies` literal has none);
+ * and the scan reads the WORKING TREE / `<head>` content of every closure
+ * member, never a synthetic reconstruction of "the tree as it will be
+ * after this diff lands" — if the SAME diff also edits a closer member's
+ * import list, `collectClosureImportersOf` still sees that file's CURRENT
+ * (post-diff, since `<head>`/working tree is what `diff` reads) imports,
+ * which is correct for the file it reads but means a two-hunk diff that
+ * ADDS an export to `boats.ts` and ADDS a new import of that same name in
+ * another closure file in the SAME commit is correctly caught OWED (the
+ * importer scan sees the new import), never silently missed.
  *
  * ## Usage
  *
@@ -528,34 +560,349 @@ function hunkIsSafe(hunk, oldBlocks, newBlocks) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// #944: additive-export safe span — the SECOND `boats.ts` exception,
+// alongside `draftProvenance` above. See the file header's "Method" step 4
+// and "Failure direction" for the argument this implements: a PURE-INSERTION
+// hunk whose added lines form one or more complete new top-level
+// `const`/`type`/`interface` declarations, none of whose EXPORTED name is
+// imported by anything in the sweep's own closure, cannot move a byte the
+// sweep ever compares — checked at EXPORT granularity via the same import
+// graph `computeClosure` already builds, not pre-declared as a named field
+// span the way `draftProvenance` is.
+//
+// Every ambiguous step below fails toward UNSAFE (the hunk stays OWED),
+// never toward silently accepting a shape that wasn't proven. This is
+// intentionally NOT a real parser — like `extractSpecifiers` above, a
+// pattern it cannot recognise is a pattern it refuses to certify, not one
+// it guesses about.
+// ---------------------------------------------------------------------------
+
+/** Bracket/paren nesting depth of `masked` immediately BEFORE `offset`. */
+function bracketDepthAt(masked, offset) {
+  let depth = 0;
+  for (let i = 0; i < offset; i++) {
+    const c = masked[i];
+    if (c === '{' || c === '[' || c === '(') depth++;
+    else if (c === '}' || c === ']' || c === ')') depth--;
+  }
+  return depth;
+}
+
+/**
+ * The character offset in `oldContent` where a pure-insertion hunk
+ * (`oldCount === 0`) lands — git's convention for such a hunk is that
+ * `oldStart` names the OLD line AFTER which the new lines are inserted
+ * (0 meaning "before the first line").
+ */
+function insertionOffsetOld(oldContent, oldLineStarts, oldStart) {
+  if (oldStart <= 0) return 0;
+  if (oldStart < oldLineStarts.length) return oldLineStarts[oldStart];
+  return oldContent.length;
+}
+
+/** The exact substring covering `count` lines starting at 1-indexed `startLine`. */
+function sliceLines(content, lineStarts, startLine, count) {
+  if (count <= 0) return '';
+  const fromIdx = startLine - 1;
+  const from = fromIdx < lineStarts.length ? lineStarts[fromIdx] : content.length;
+  const toIdx = fromIdx + count;
+  const to = toIdx < lineStarts.length ? lineStarts[toIdx] : content.length;
+  return content.slice(from, to);
+}
+
+/**
+ * Scans `masked` from `start` for the first `;` at bracket depth 0 relative
+ * to `start` — the end of a `const`/`type` initializer/RHS. Returns -1
+ * (unterminated / malformed) if depth ever goes negative (a `)`/`]`/`}`
+ * closing something opened before `start`) or no such `;` is found — never
+ * trust a negative result as "safe", only as "cannot classify".
+ */
+function findTopLevelSemicolon(masked, start) {
+  let depth = 0;
+  for (let i = start; i < masked.length; i++) {
+    const c = masked[i];
+    if (c === '{' || c === '[' || c === '(') depth++;
+    else if (c === '}' || c === ']' || c === ')') {
+      depth--;
+      if (depth < 0) return -1;
+    } else if (c === ';' && depth === 0) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+// A `const` initializer counts as PROVABLY PURE data only if it contains
+// none of these — every one is a way a "new unreferenced const" could still
+// have a runtime side effect that moves the world the sweep depends on
+// (a function call, `BOATS.push(...)`, `new X()`, a mutating operator, an
+// arrow/function expression, or a tagged template). Checked on the MASKED
+// text (strings/comments blanked) except the backtick check, which must run
+// on the RAW text — `maskNonCode` blanks a template literal's delimiters
+// too, so a masked scan can never see one.
+function isPureInitializer(maskedInit, rawInit) {
+  if (/[(]/.test(maskedInit)) return false; // calls, arrow-fn parens, parenthesised exprs
+  if (/=>/.test(maskedInit)) return false; // paren-less arrow functions
+  if (/\+\+|--/.test(maskedInit)) return false;
+  if (/\b(new|delete|await|yield|throw|function)\b/.test(maskedInit)) return false;
+  if (rawInit.includes('`')) return false; // template/tagged-template literal
+  return true;
+}
+
+/**
+ * Decomposes `maskedAdded` (the masked text of a pure-insertion hunk's added
+ * lines) into a sequence of top-level `const`/`type`/`interface`
+ * declarations, or fails closed. `rawAdded` is the SAME span unmasked, used
+ * only for the backtick check inside `isPureInitializer`.
+ *
+ * Returns `{ ok: true, decls: [{ kind, name, exported }] }` only when the
+ * ENTIRE added span decomposes into recognised declarations with nothing
+ * left over — a bare mutating statement (`BOATS.push({...})`), an
+ * unrecognised shape, or an unterminated declaration all return
+ * `{ ok: false, reason }` instead. This is deliberately NOT "does the span
+ * contain a safe declaration" — it is "does the span consist of NOTHING
+ * BUT safe declarations", so a mutating statement hidden among safe ones
+ * cannot slip through.
+ */
+function splitAdditiveDeclarations(maskedAdded, rawAdded) {
+  const decls = [];
+  let pos = 0;
+  const n = maskedAdded.length;
+  while (true) {
+    while (pos < n && /\s/.test(maskedAdded[pos])) pos++;
+    if (pos >= n) break;
+    const rest = maskedAdded.slice(pos);
+
+    const constHead = /^(export\s+)?const\s+([A-Za-z_$][\w$]*)\s*(:[^=]*?)?=/.exec(rest);
+    if (constHead) {
+      const exported = Boolean(constHead[1]);
+      const name = constHead[2];
+      const initStart = pos + constHead[0].length;
+      const end = findTopLevelSemicolon(maskedAdded, initStart);
+      if (end === -1) return { ok: false, reason: `unterminated const declaration for '${name}'` };
+      const initMasked = maskedAdded.slice(initStart, end);
+      const initRaw = rawAdded.slice(initStart, end);
+      if (!isPureInitializer(initMasked, initRaw)) {
+        return { ok: false, reason: `const '${name}' initializer is not provably free of calls/mutation/new/await/templates` };
+      }
+      decls.push({ kind: 'const', name, exported });
+      pos = end + 1;
+      continue;
+    }
+
+    const typeHead = /^(export\s+)?type\s+([A-Za-z_$][\w$]*)\b[^=;{]*=/.exec(rest);
+    if (typeHead) {
+      const exported = Boolean(typeHead[1]);
+      const name = typeHead[2];
+      const rhsStart = pos + typeHead[0].length;
+      const end = findTopLevelSemicolon(maskedAdded, rhsStart);
+      if (end === -1) return { ok: false, reason: `unterminated type declaration for '${name}'` };
+      // A type alias is erased at compile time — no runtime footprint to
+      // check for purity, unlike a `const` initializer.
+      decls.push({ kind: 'type', name, exported });
+      pos = end + 1;
+      continue;
+    }
+
+    const interfaceHead = /^(export\s+)?interface\s+([A-Za-z_$][\w$]*)\b[^{]*\{/.exec(rest);
+    if (interfaceHead) {
+      const exported = Boolean(interfaceHead[1]);
+      const name = interfaceHead[2];
+      const braceIdx = pos + interfaceHead[0].length - 1;
+      const closeIdx = matchBrace(maskedAdded, braceIdx);
+      if (closeIdx === -1) return { ok: false, reason: `unterminated interface declaration for '${name}'` };
+      let end = closeIdx + 1;
+      let j = end;
+      while (j < n && /\s/.test(maskedAdded[j])) j++;
+      if (maskedAdded[j] === ';') end = j + 1;
+      // An interface has no runtime footprint either — same reasoning as `type`.
+      decls.push({ kind: 'interface', name, exported });
+      pos = end;
+      continue;
+    }
+
+    return {
+      ok: false,
+      reason: `unrecognised top-level statement (not a const/type/interface declaration) at offset ${pos}: ${JSON.stringify(rest.slice(0, 60))}`,
+    };
+  }
+  return { ok: true, decls };
+}
+
+// `import`/`export ... from` clauses, capturing the KEYWORD and the CLAUSE
+// TEXT (everything between the keyword and `from`) separately from
+// `extractSpecifiers`'s FROM_RE above, because reachability needs to know
+// WHICH NAMES a clause binds, not just which file it resolves to.
+const FROM_CLAUSE_RE = /(?:^|\n)[ \t]*(import|export)\b([^'"()]*?)\bfrom\s*(['"])([^'"]+)\3/g;
+
+/**
+ * Parses one import/export clause (the text between `import`/`export` and
+ * `from`) into `{ wildcard, names }`. `wildcard` covers `import * as ns`,
+ * `export * from` and `export * as ns from` — any of which could re-expose
+ * ANY export of the target file, so it is treated as referencing every
+ * name (fail open), never resolved further.
+ */
+function parseClauseNames(clause) {
+  let c = clause.trim().replace(/^type\s+/, '');
+  if (c.startsWith('*')) return { wildcard: true, names: [] };
+  const braceMatch = c.match(/\{([^}]*)\}/);
+  if (!braceMatch) return { wildcard: false, names: [] }; // default-only import/export: no named binding
+  const names = braceMatch[1]
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((item) => item.replace(/^type\s+/, '').split(/\s+as\s+/)[0].trim())
+    .filter(Boolean);
+  return { wildcard: false, names };
+}
+
+/**
+ * For every file in the sweep's own import closure (`visited`, from
+ * `computeClosure` — never re-derived here), scans its import/export-from
+ * clauses for ones resolving to `targetRel`, returning one entry per
+ * IMPORTING closure member: `{ rel, wildcard, names }`. An empty return is
+ * a POSITIVE-CONTROL failure, not evidence of anything — see the caller,
+ * which refuses to certify any name unreachable on an empty scan (`rel`
+ * being IN the closure at all means at least one edge into it must exist).
+ */
+function collectClosureImportersOf(root, visited, targetRel) {
+  const targetAbs = path.join(root, targetRel);
+  const importers = [];
+  for (const [rel, info] of visited.entries()) {
+    if (info.missing || rel === targetRel) continue;
+    const abs = path.join(root, rel);
+    let source;
+    try {
+      source = readFileSync(abs, 'utf8');
+    } catch {
+      continue;
+    }
+    FROM_CLAUSE_RE.lastIndex = 0;
+    let m;
+    let wildcard = false;
+    const names = new Set();
+    while ((m = FROM_CLAUSE_RE.exec(source))) {
+      const resolvedAbs = resolveSpecifier(abs, m[4]);
+      if (!resolvedAbs || resolvedAbs !== targetAbs) continue;
+      const parsed = parseClauseNames(m[2]);
+      if (parsed.wildcard) wildcard = true;
+      for (const n of parsed.names) names.add(n);
+    }
+    if (wildcard || names.size > 0) importers.push({ rel, wildcard, names: [...names] });
+  }
+  return importers;
+}
+
+function isNameReachable(importers, name) {
+  return importers.some((imp) => imp.wildcard || imp.names.includes(name));
+}
+
+/**
+ * Classifies one pure-insertion hunk (`hunk.oldCount === 0`) as an
+ * additive-export safe span, or returns why it is not. `oldMasked` is the
+ * masked OLD content (for the insertion-point depth check); `newMasked`/
+ * `newContent`/`newLineStarts` locate and slice the added text.
+ * `getImporters()` is a memoised closure over `collectClosureImportersOf`
+ * so the (cheap, but non-trivial) scan runs at most once per diff.
+ */
+function classifyAdditiveHunk(hunk, { oldContent, oldMasked, oldLineStarts, newContent, newMasked, newLineStarts, getImporters }) {
+  const insertOffset = insertionOffsetOld(oldContent, oldLineStarts, hunk.oldStart);
+  const insertDepth = bracketDepthAt(oldMasked, insertOffset);
+  if (insertDepth !== 0) {
+    return {
+      safe: false,
+      why: `insertion point sits at bracket depth ${insertDepth} in the OLD file — not a new top-level statement (e.g. inside an existing array/object literal such as BOATS)`,
+    };
+  }
+  const addedMasked = sliceLines(newMasked, newLineStarts, hunk.newStart, hunk.newCount);
+  const addedRaw = sliceLines(newContent, newLineStarts, hunk.newStart, hunk.newCount);
+  const split = splitAdditiveDeclarations(addedMasked, addedRaw);
+  if (!split.ok) {
+    return { safe: false, why: `added text does not decompose into recognised const/type/interface declarations: ${split.reason}` };
+  }
+  const reachable = [];
+  for (const decl of split.decls) {
+    if (!decl.exported) continue; // module-private: nothing outside this file can ever import it
+    const importers = getImporters();
+    if (importers.length === 0) {
+      return {
+        safe: false,
+        why:
+          'reachability scan found ZERO closure files importing from this file, but the file is IN ' +
+          'the closure (a precondition of reaching this code path) — refusing to certify any export ' +
+          'as unreferenced on what must be a broken scan (positive-control failure), not a real result',
+      };
+    }
+    if (isNameReachable(importers, decl.name)) reachable.push(decl.name);
+  }
+  if (reachable.length > 0) {
+    return { safe: false, why: `exported name(s) referenced by the sweep's own closure: ${reachable.join(', ')}` };
+  }
+  return {
+    safe: true,
+    via: `additive export(s) [${split.decls.map((d) => `${d.kind} ${d.name}${d.exported ? '' : ' (module-private)'}`).join(', ')}] unreferenced by any closure import`,
+  };
+}
+
 /**
  * `oldContent`/`newContent`: the full text of `boats.ts` on each side.
  * `diffText`: `git diff -U0 <old> <new> -- boats.ts` (or `--no-index`) output.
+ * `root`/`visited`: repo root and the sweep's import closure (from
+ * `computeClosure`), needed ONLY by the #944 additive-export check —
+ * `targetRel` lets the synthetic selftest below point this at a fixture
+ * file living at the SAME relative path (`app/src/data/boats.ts`) under a
+ * throwaway root, exercising the real function rather than a stand-in.
  */
-function classifyBoatsTs({ oldContent, newContent, diffText }) {
+function classifyBoatsTs({ oldContent, newContent, diffText, root, visited, targetRel = BOATS_TS_PATH }) {
   const hunks = parseHunks(diffText);
   if (hunks.length === 0) {
     return { verdict: 'NOT_OWED', reason: 'no textual change in boats.ts on this diff' };
   }
   const oldBlocks = findSafeBlocks(oldContent);
   const newBlocks = findSafeBlocks(newContent);
-  const unsafeHunks = hunks.filter((h) => !hunkIsSafe(h, oldBlocks, newBlocks));
-  if (unsafeHunks.length === 0) {
+
+  const oldMasked = maskNonCode(oldContent);
+  const newMasked = maskNonCode(newContent);
+  const oldLineStarts = buildLineStarts(oldContent);
+  const newLineStarts = buildLineStarts(newContent);
+
+  let importersCache = null;
+  const getImporters = () => {
+    if (importersCache === null) importersCache = collectClosureImportersOf(root, visited, targetRel);
+    return importersCache;
+  };
+
+  const results = hunks.map((hunk) => {
+    if (hunkIsSafe(hunk, oldBlocks, newBlocks)) {
+      return { hunk, safe: true, via: 'draftProvenance/DraftProvenance span' };
+    }
+    if (hunk.oldCount === 0 && hunk.newCount > 0) {
+      const r = classifyAdditiveHunk(hunk, { oldContent, oldMasked, oldLineStarts, newContent, newMasked, newLineStarts, getImporters });
+      return { hunk, ...r };
+    }
+    return { hunk, safe: false, why: 'not a pure-insertion hunk (modifies or removes existing lines) — no exception modelled' };
+  });
+
+  const unsafe = results.filter((r) => !r.safe);
+  if (unsafe.length === 0) {
+    const kinds = [...new Set(results.map((r) => r.via))];
     return {
       verdict: 'NOT_OWED',
-      reason:
-        'every hunk falls entirely inside a draftProvenance/DraftProvenance span — ' +
-        'BoatSnapshot omits that field and PlanResult carries no boat field at all, ' +
-        'so this change structurally cannot move a serialised plan',
-      evidence: { oldBlocks, newBlocks, hunks },
+      reason: `every hunk is a modelled safe span — ${kinds.join('; ')}`,
+      // `importersCache`, never `getImporters()` — the latter would FORCE a
+      // scan (and require `root`/`visited`) even when every hunk was safe
+      // via the draftProvenance span alone, which is exactly the existing
+      // (root/visited-less) selftest calls below still exercise.
+      evidence: { results, importers: importersCache },
     };
   }
   return {
     verdict: 'OWED',
     reason:
-      `${unsafeHunks.length} of ${hunks.length} hunk(s) fall outside every modelled safe span — ` +
+      `${unsafe.length} of ${hunks.length} hunk(s) fall outside every modelled safe span — ` +
       'default fail-open verdict (see file header: this tool over-reports, never under-reports)',
-    evidence: { unsafeHunks, oldBlocks, newBlocks },
+    evidence: { unsafe, oldBlocks, newBlocks },
   };
 }
 
@@ -703,7 +1050,7 @@ function cmdDiff(root, base, head) {
       const oldContent = gitShow(root, oldRef, f);
       const newContent = head ? gitShow(root, head, f) : readFileSync(path.join(root, f), 'utf8');
       const diffText = gitDiffU0(root, base, head, f);
-      verdict = classifyBoatsTs({ oldContent, newContent, diffText });
+      verdict = classifyBoatsTs({ oldContent, newContent, diffText, root, visited });
     } else {
       verdict = {
         verdict: 'OWED',
@@ -929,6 +1276,215 @@ function runSelftest(root) {
   } finally {
     rmSync(renameRepo, { recursive: true, force: true });
   }
+
+  // #944: additive-export safe span. Each scenario builds a THROWAWAY
+  // closure repo (no git needed — `computeClosure` is pure fs) at exactly
+  // the relative paths `ROOTS`/`BOATS_TS_PATH` expect, so `classifyBoatsTs`
+  // exercises its REAL `collectClosureImportersOf` scan against a real
+  // `visited` map, never a hand-rolled stand-in for either.
+  const ADDITIVE_BASE = `export interface DraftProvenance {
+  readonly keel: string;
+}
+
+export const BOATS = [
+  {
+    id: 'salona-45',
+    draftM: 2.1,
+    draftProvenance: {
+      keel: 'standard',
+      note: 'Original draft note.',
+    },
+  },
+] as const;
+`;
+  const ADDITIVE_NEW_EXPORT = `\nexport const NEW_ID = 'genoa';\n`;
+
+  function buildAdditiveRepo(files) {
+    const tmp = mkdtempSync(path.join(tmpdir(), 'sweep-closure-selftest-additive-'));
+    for (const [rel, content] of Object.entries(files)) {
+      const abs = path.join(tmp, rel);
+      mkdirSync(path.dirname(abs), { recursive: true });
+      writeFileSync(abs, content);
+    }
+    return tmp;
+  }
+
+  function additiveVerdict(files, oldContent, newContent) {
+    const root = buildAdditiveRepo({ ...files, [BOATS_TS_PATH]: oldContent });
+    try {
+      const visited = computeClosure(root);
+      const oldFile = path.join(root, '_scenario_old.ts');
+      const newFile = path.join(root, '_scenario_new.ts');
+      writeFileSync(oldFile, oldContent);
+      writeFileSync(newFile, newContent);
+      return classifyBoatsTs({
+        oldContent,
+        newContent,
+        diffText: gitDiffNoIndex(oldFile, newFile),
+        root,
+        visited,
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
+
+  // A: a NEW top-level `export const` that nothing in the closure imports.
+  const vA = additiveVerdict(
+    { 'app/sweep/vitest.config.ts': 'export default {};\n', 'app/sweep/sweepArms.ts': "import { KEEP_ME } from '../src/data/boats';\n" },
+    ADDITIVE_BASE,
+    ADDITIVE_BASE + ADDITIVE_NEW_EXPORT,
+  );
+  results.push(check('#944 A: unreferenced additive export -> NOT_OWED (the #941 false positive this issue exists to fix)', vA.verdict === 'NOT_OWED', vA));
+
+  // B: same addition, but the closure's own root file names it directly.
+  const vB = additiveVerdict(
+    { 'app/sweep/vitest.config.ts': 'export default {};\n', 'app/sweep/sweepArms.ts': "import { KEEP_ME, NEW_ID } from '../src/data/boats';\n" },
+    ADDITIVE_BASE,
+    ADDITIVE_BASE + ADDITIVE_NEW_EXPORT,
+  );
+  results.push(check('#944 B: mutation-check — same export, now NAMED by a closure import -> OWED', vB.verdict === 'OWED', vB));
+
+  // B2: reachable only through a re-export BARREL the closure imports for a
+  // side effect — never named in sweepArms.ts's own import list. This is
+  // the issue's explicit "re-export and barrel files" residual.
+  const vB2 = additiveVerdict(
+    {
+      'app/sweep/vitest.config.ts': 'export default {};\n',
+      'app/sweep/sweepArms.ts': "import '../src/lib/index';\nimport { KEEP_ME } from '../src/data/boats';\n",
+      'app/src/lib/index.ts': "export { NEW_ID } from '../data/boats';\n",
+    },
+    ADDITIVE_BASE,
+    ADDITIVE_BASE + ADDITIVE_NEW_EXPORT,
+  );
+  results.push(check('#944 B2: mutation-check — same export, reachable only via a re-export BARREL -> OWED', vB2.verdict === 'OWED', vB2));
+
+  // C: a pure top-level ADDITION that is NOT a const/type/interface
+  // declaration at all — a bare call statement. Must not be waved through
+  // just because the hunk is additive-only.
+  const vC = additiveVerdict(
+    { 'app/sweep/vitest.config.ts': 'export default {};\n', 'app/sweep/sweepArms.ts': "import { KEEP_ME } from '../src/data/boats';\n" },
+    ADDITIVE_BASE,
+    ADDITIVE_BASE + "\nregisterExtraBoat(BOATS[0]);\n",
+  );
+  results.push(check('#944 C: additive but non-declaration statement (bare call) -> OWED ("additive is not the same as inert")', vC.verdict === 'OWED', vC));
+
+  // C2: a `const` declaration whose INITIALIZER itself mutates shared state
+  // — `BOATS.push(...)`. Matches the head regex, so purity of the RHS is
+  // the only thing standing between this and a false NOT_OWED.
+  const vC2 = additiveVerdict(
+    { 'app/sweep/vitest.config.ts': 'export default {};\n', 'app/sweep/sweepArms.ts': "import { KEEP_ME } from '../src/data/boats';\n" },
+    ADDITIVE_BASE,
+    ADDITIVE_BASE + "\nexport const PUSHED = BOATS.push({ id: 'x-boat', draftM: 1 } as const);\n",
+  );
+  results.push(check("#944 C2: additive const whose initializer calls BOATS.push(...) -> OWED (impure initializer)", vC2.verdict === 'OWED', vC2));
+
+  // D: a pure INSERTION whose landing point sits INSIDE the existing BOATS
+  // array (depth > 0 in the old file) — a new array element, not a new
+  // top-level statement. The issue's own example of "additive is not inert".
+  const vD = additiveVerdict(
+    { 'app/sweep/vitest.config.ts': 'export default {};\n', 'app/sweep/sweepArms.ts': "import { KEEP_ME } from '../src/data/boats';\n" },
+    ADDITIVE_BASE,
+    withReplacement(ADDITIVE_BASE, '  },\n] as const;', "  },\n  {\n    id: 'elan-444',\n    draftM: 1.9,\n  },\n] as const;"),
+  );
+  results.push(check('#944 D: pure insertion landing INSIDE the BOATS array literal -> OWED (insertion depth > 0)', vD.verdict === 'OWED', vD));
+
+  // D2: the DEPTH GUARD in isolation. Unlike D, the inserted text here IS a
+  // syntactically valid, pure, unreferenced `const` declaration on its
+  // own — the ONLY thing making this unsafe is that it lands INSIDE the
+  // BOATS array's element object (depth 2), a sibling of `draftM`, OUTSIDE
+  // both existing `findSafeBlocks` spans (`interface DraftProvenance` and
+  // `draftProvenance: { … }`) so the PRE-EXISTING draftProvenance mechanism
+  // cannot also classify it safe. D alone cannot mutation-check the depth
+  // guard specifically, because its inserted object-literal fragment also
+  // fails the SHAPE check independently (measured: disabling only
+  // `bracketDepthAt` left D still OWED, via the shape check). A first
+  // attempt at this scenario landed INSIDE the `DraftProvenance` interface
+  // body instead and was confounded by that PRE-EXISTING safe span
+  // (measured: reported NOT_OWED via "draftProvenance/DraftProvenance
+  // span", never reaching the additive-export path at all) — this
+  // placement avoids both confounds.
+  const vD2 = additiveVerdict(
+    { 'app/sweep/vitest.config.ts': 'export default {};\n', 'app/sweep/sweepArms.ts': "import { KEEP_ME } from '../src/data/boats';\n" },
+    ADDITIVE_BASE,
+    withReplacement(ADDITIVE_BASE, '    draftM: 2.1,\n', "    draftM: 2.1,\n    export const SNEAKY = 'x';\n"),
+  );
+  results.push(
+    check(
+      '#944 D2: mutation-check for the DEPTH GUARD — a valid, unreferenced const inserted INSIDE the interface body -> OWED',
+      vD2.verdict === 'OWED',
+      vD2,
+    ),
+  );
+
+  // E: a WILDCARD import (`import * as ns from`) of boats.ts anywhere in
+  // the closure must treat every new export as reachable, regardless of
+  // whether its name is spelled out anywhere. The SAME file also carries a
+  // named import of an UNRELATED export (`KEEP_ME`) so the positive
+  // control (>= 1 importer) is satisfied via that second clause too — a
+  // first attempt with a wildcard-only import was NOT a clean isolation of
+  // the wildcard guard: mutating wildcard detection alone made the
+  // (then-sole) importer clause resolve to `{wildcard:false, names:[]}`,
+  // which drops OUT of the importer list entirely, so the row stayed OWED
+  // via the UNRELATED positive-control-failure path instead — same
+  // verdict, wrong reason, and the wildcard mutation went undetected. This
+  // construction keeps the importer list non-empty regardless, so ONLY the
+  // wildcard guard stands between this and a false NOT_OWED.
+  const vE = additiveVerdict(
+    {
+      'app/sweep/vitest.config.ts': 'export default {};\n',
+      'app/sweep/sweepArms.ts': "import * as boatsNs from '../src/data/boats';\nimport { KEEP_ME } from '../src/data/boats';\n",
+    },
+    ADDITIVE_BASE,
+    ADDITIVE_BASE + ADDITIVE_NEW_EXPORT,
+  );
+  results.push(check('#944 E: closure member imports boats.ts via `import * as ns` -> OWED (wildcard, name never checked)', vE.verdict === 'OWED', vE));
+
+  // F: composition — a draftProvenance-note edit (existing exception) AND
+  // an unreferenced additive export in the SAME diff both classify safe,
+  // so the two mechanisms compose to NOT_OWED.
+  const vF = additiveVerdict(
+    { 'app/sweep/vitest.config.ts': 'export default {};\n', 'app/sweep/sweepArms.ts': "import { KEEP_ME } from '../src/data/boats';\n" },
+    ADDITIVE_BASE,
+    withReplacement(ADDITIVE_BASE, 'Original draft note.', 'A revised, longer draft note.') + ADDITIVE_NEW_EXPORT,
+  );
+  results.push(check('#944 F: draftProvenance-note edit + unreferenced additive export, same diff -> NOT_OWED (mechanisms compose)', vF.verdict === 'NOT_OWED', vF));
+
+  // F2: the same pairing, but the SECOND hunk is an ordinary unsafe edit
+  // (draftM) — one unsafe hunk must still force OWED for the whole file,
+  // proving the additive-export exception cannot be used to launder an
+  // unrelated unsafe hunk riding along in the same diff.
+  const vF2 = additiveVerdict(
+    { 'app/sweep/vitest.config.ts': 'export default {};\n', 'app/sweep/sweepArms.ts': "import { KEEP_ME } from '../src/data/boats';\n" },
+    ADDITIVE_BASE,
+    withReplacement(ADDITIVE_BASE, 'draftM: 2.1,', 'draftM: 2.2,') + ADDITIVE_NEW_EXPORT,
+  );
+  results.push(check('#944 F2: unreferenced additive export + an UNRELATED unsafe draftM edit, same diff -> OWED (one unsafe hunk dominates)', vF2.verdict === 'OWED', vF2));
+
+  // G1/G2: the reachability scan's own POSITIVE CONTROL. Nothing in this
+  // closure imports boats.ts at all, so `collectClosureImportersOf` must
+  // return an EMPTY list — that emptiness must never be read as "therefore
+  // nothing is reachable", only as "the scan cannot be trusted here". A
+  // module-PRIVATE addition (G1) never calls the reachability scan at all
+  // (nothing outside the file can import an unexported name) and stays
+  // NOT_OWED; an EXPORTED addition (G2) must fail toward OWED specifically
+  // because of that empty scan, not merely because the name happens to be
+  // unreachable.
+  const zeroImporterFiles = {
+    'app/sweep/vitest.config.ts': 'export default {};\n',
+    'app/sweep/sweepArms.ts': "import { unrelated } from '../src/lib/other';\n",
+    'app/src/lib/other.ts': 'export const unrelated = 1;\n',
+  };
+  const vG1 = additiveVerdict(zeroImporterFiles, ADDITIVE_BASE, ADDITIVE_BASE + "\nconst privateHelper = 'x';\n");
+  results.push(check('#944 G1: module-private additive const, ZERO closure importers of boats.ts -> NOT_OWED (never needs the scan)', vG1.verdict === 'NOT_OWED', vG1));
+  const vG2 = additiveVerdict(zeroImporterFiles, ADDITIVE_BASE, ADDITIVE_BASE + ADDITIVE_NEW_EXPORT);
+  results.push(
+    check(
+      '#944 G2: EXPORTED additive const, ZERO closure importers of boats.ts -> OWED (positive-control failure, not "provably unreachable")',
+      vG2.verdict === 'OWED' && JSON.stringify(vG2).includes('positive-control failure'),
+      vG2,
+    ),
+  );
 
   let failed = 0;
   for (const r of results) {
