@@ -314,6 +314,20 @@ test('#924: the saved-waypoint layer changes no other symbol family’s collisio
   try {
     await openMapWithSeededWaypoints(page, server.url);
 
+    // #1015: the header above cites specific z11.5-vs-z13 `sc-seamarks`
+    // counts as the evidence that culling is genuinely live below z12 — but
+    // until now that claim was PROSE ONLY: nothing in this test itself
+    // asserted it, so a future dataset or box change could make the z11.5
+    // arm vacuous (identical counts at both zooms, nothing left to cull)
+    // and this file would keep citing the old ratio with no test noticing.
+    // Record the `sc-seamarks` count at each zoom below and assert the
+    // STRUCTURAL relationship the header describes — below z12 must render
+    // FEWER (icon-overlap: 'never', competing for placement slots) than at
+    // z13 (icon-overlap: 'always', nothing culled) — rather than pinning
+    // the exact figures, which would rot the moment the fixture or camera
+    // box changes by one feature.
+    const seamarkCounts = new Map<number, number>();
+
     for (const zoom of [ZOOM_BELOW_12, ZOOM_AT_OR_ABOVE_12]) {
       await jumpToCluster(page, zoom);
 
@@ -334,6 +348,9 @@ test('#924: the saved-waypoint layer changes no other symbol family’s collisio
         `z${zoom}: no harbour or seamark feature in the box — nothing to be culled, so the ` +
           `comparison would pass vacuously`,
       ).toBeGreaterThan(0);
+      // `sc-seamarks:` (colon-anchored, so `sc-seamarks-hazard:` — a
+      // different layer whose id merely shares the prefix — is excluded).
+      seamarkCounts.set(zoom, withLayer.filter((f) => f.startsWith('sc-seamarks:')).length);
 
       // The control arm: a layer with `visibility: 'none'` is not placed, so
       // it enters no collision box — for collision purposes, the layer is
@@ -352,6 +369,13 @@ test('#924: the saved-waypoint layer changes no other symbol family’s collisio
 
       await setWaypointLayersVisible(page, true);
     }
+
+    expect(
+      seamarkCounts.get(ZOOM_BELOW_12),
+      `culling-is-live control: sc-seamarks rendered ${JSON.stringify([...seamarkCounts])} — ` +
+        `below z12 must render FEWER than at/above z12, or the z11.5 arm above is not actually ` +
+        `exercising collision culling and every "unchanged" result there is vacuous`,
+    ).toBeLessThan(seamarkCounts.get(ZOOM_AT_OR_ABOVE_12)!);
   } finally {
     server.kill();
   }
@@ -363,6 +387,22 @@ test('#924: the saved-waypoint layers sit above the depth overlays and below eve
   const server = await startPreview(page);
   try {
     await openMapWithSeededWaypoints(page, server.url);
+
+    // #1015: the shipped CHANGELOG entry for #924 (a RELEASED, frozen
+    // section — see CLAUDE.md's changelog-ritual bullet, never edited from
+    // here) claims the waypoint layers draw "below every harbour, seamark,
+    // AIS and route marker", but this loop used to walk only the first two
+    // families. The AIS half is cheap to add: `AisTraffic`/`AisLayer` mount
+    // unconditionally once the Live tab is active — no plan and no AIS key
+    // required, `AisLayer.tsx`'s own setup effect has no such gate — so
+    // switching tabs is enough to put `sc-ais-vectors` in the style. The
+    // ROUTE half is NOT added here: `RouteLayer`'s stack only exists once a
+    // route is planned, which this spec does not do (it only seeds
+    // IndexedDB waypoints and never drives the planner), and wiring a full
+    // plan into this spec is a larger change than this residual warrants —
+    // left for a follow-up rather than widening this task's scope.
+    await page.getByRole('tab', { name: 'Live' }).click();
+    await waitForLayer(page, 'sc-ais-vectors');
 
     // Counts are order-independent, so the test above is structurally blind
     // to a paint-order inversion (#200). This reads the style's own layer
@@ -385,8 +425,8 @@ test('#924: the saved-waypoint layers sit above the depth overlays and below eve
     expect(at('sc-saved-waypoint-labels')).toBeGreaterThan(at('sc-saved-waypoints'));
 
     // Below every curated or safety-bearing marker: a personal convenience
-    // marker must never outrank a charted hazard or a harbour.
-    for (const above of ['sc-harbor-points', 'sc-harbor-labels', 'sc-seamarks']) {
+    // marker must never outrank a charted hazard, a harbour, or AIS traffic.
+    for (const above of ['sc-harbor-points', 'sc-harbor-labels', 'sc-seamarks', 'sc-ais-vectors']) {
       expect(at(above), `${above} missing from ${JSON.stringify(order)}`).toBeGreaterThan(-1);
       expect(
         at('sc-saved-waypoint-labels'),
