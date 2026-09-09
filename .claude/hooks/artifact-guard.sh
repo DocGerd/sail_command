@@ -1044,7 +1044,7 @@ bash_hits_plans_confined() {
 #      advisory-only bug for exactly the trailing-slash/glob shapes this
 #      predicate exists to catch - MEASURED: `rm\t-rf\tdocs/superpowers/plans/`
 #      and `true\nrm -rf docs/superpowers/plans/` both fell through to
-#      `bash_advisory`. The fix widens the boundary from "a literal space"
+#      `bash_plans_advisory`. The fix widens the boundary from "a literal space"
 #      to "any character outside [A-Za-z0-9]" - `[!A-Za-z0-9]"$v"[!A-Za-z0-9]`
 #      - which subsumes space/tab/newline/vertical-tab/CR/form-feed AND every
 #      shell operator/quote character in one class, with no need to enumerate
@@ -3705,7 +3705,7 @@ if [ "$tn" = "Bash" ]; then
     # spelling of the path - see bash_hits_plans_dir_destruction()'s own
     # comment for the full mechanism and scope.
     if bash_hits_plans_dir_destruction "$cmd"; then
-      echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Bash command combines a destructive verb (rm/rmdir/mv) with the docs/superpowers/plans/ DIRECTORY itself, not a file inside it - this is the whole-subtree case the #1021 plans/ advisory was never meant to cover (issue #1041: the trailing-slash spelling of this exact target used to fall through to a non-blocking advisory while the slash-less spelling correctly asked - both spellings now ask). Confirm the user wants to destroy the plans/ directory before proceeding; a single tracked FILE inside plans/ still only advises, unchanged."}}'
+      echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Bash command names a destructive verb (rm/rmdir/mv) with the docs/superpowers/plans/ DIRECTORY itself, not a file inside it - this is the whole-subtree case the #1021 plans/ advisory was never meant to cover (issue #1041: the trailing-slash spelling of this exact target used to fall through to a non-blocking advisory while the slash-less spelling correctly asked - both spellings now ask). Confirm the user wants to destroy the plans/ directory before proceeding; a single tracked FILE inside plans/ still only advises, unchanged."}}'
       exit 0
     fi
     # 2026-08-09 split (DESIGN, "TWO OUTCOMES FOR A NON-EXEMPT HIT"): the
