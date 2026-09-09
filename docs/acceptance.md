@@ -87,14 +87,14 @@ results table at the bottom, and note it in the box below the check.
       search, look up Arnis, Kappeln, Maasholm, Dyvig, or Gråsten — each
       result shows a note that it is not reachable by the router at any
       depth setting, before you try planning to it, instead of only after a
-      full solve returns the generic "cannot be reached" message (#652).
-      Then pick one of them as the destination, with any ordinary harbour
-      (e.g. Flensburg) as the origin: the same note stays on the
-      selected-destination row in the planner (it used to vanish on
+      full solve returns the generic "the search could not find a way"
+      message (#652). Then pick one of them as the destination, with any
+      ordinary harbour (e.g. Flensburg) as the origin: the same note stays
+      on the selected-destination row in the planner (it used to vanish on
       selection), and pressing "Plan route" against it fails with a banner
       carrying that same sentence in place of the generic "No route found —
-      the destination cannot be reached …" message (#834). Clear the
-      destination again before continuing.
+      the search could not find a way to the destination …" message (#834).
+      Clear the destination again before continuing.
 - [ ] **Cable/pipeline seamarks visible at Standard.** Turn the **Seamarks**
       map overlay on — it is OFF by default, unlike "Water depths" — and
       leave the Seamarks display-tier control at its default "Standard"
