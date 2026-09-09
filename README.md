@@ -230,8 +230,7 @@ data; the code license is covered in the [License](#license) section below.
   ([#1170](https://github.com/DocGerd/sail_command/issues/1170)), and the
   gesture has no keyboard equivalent
   ([#1171](https://github.com/DocGerd/sail_command/issues/1171)). The other
-  ways of adding a waypoint — arming **Add waypoint** and tapping the map, or
-  typing coordinates — are unaffected.
+  ways of adding a waypoint are unaffected.
 - Map labels (place names) are set once at load time in the UI's active
   language; they don't switch live when you toggle German/English mid-session.
 - The router does not yet account for currents, tides, or sea state (waves)
