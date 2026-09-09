@@ -375,9 +375,8 @@ construction and `.sample(` call):
   plan.request.origin, lang, t)`), the RAW requested origin, not
   `plan.snappedOrigin`.
 
-The first four are inert by construction — every position they feed
-`bracket()` already passed a mask bounds/navigability check. The fifth is
-where the clamp is genuinely reachable, narrowly: `NavMask.snapToNavigable`
+The first four are inert by construction. The fifth is where the clamp is
+genuinely reachable, narrowly: `NavMask.snapToNavigable`
 searches up to `maxRadiusM = 300` m from the requested point, so a plan can
 succeed with a requested origin up to ~300 m outside the mask's grid
 boundary (≈0.0027° latitude, ≈0.0047° longitude at this latitude) if a
@@ -523,10 +522,8 @@ and separately rules that mask/harbours/seamarks/polars stay eager and
 monolithic — a ruling that is size-conditional and quantified, not
 area-independent: its §3 mask section concludes "Given the mask is small
 even after the extension (quantified in §9, item 2), this cost is not
-justified by the savings," and §9 item 2 quantifies exactly #295's proposed
-growth: "the mask stays small even after a 1.7x area growth (≈9.0 MB,
-method: 5,280,000 × 1.7, still far below the basemap)." Read precisely,
-this splits #295 into two pieces with two different answers:
+justified by the savings." Read precisely, this splits #295 into two pieces
+with two different answers:
 
 - **Mask, harbours, seamarks growth (branches in §2.2 / #295's steps 1–4):**
   consistent with #296's ruling. Not blocked on #1164.
