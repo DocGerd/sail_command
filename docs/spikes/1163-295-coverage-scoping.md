@@ -45,13 +45,12 @@ body for that specific claim instead of re-asserting it as newly measured.
 
 Enumerated by **claim shape** — what a site *asserts about* the covered
 area — not by grepping for the four literals `54.3`/`55.3`/`9.4`/`11.0`.
-That grep alone returns **58 tracked files** (`grep -rl` for those four
-substrings, excluding `pipeline/data-src/`, `node_modules/` and
-`package-lock.json`), and most of them are incidental: a test picks `54.3`
-as a convenient in-domain latitude for an unrelated fixture, not because it
-encodes the covered area. §1.4 accounts for that bucket as one group rather
-than as 30-odd individual rows, because publishing 30 "no-op" rows would
-bury the dozen that matter.
+A plain grep for those four substrings alone returns a large number of
+tracked files, and most of them are incidental: a test picks `54.3` as a
+convenient in-domain latitude for an unrelated fixture, not because it
+encodes the covered area. §1.4 accounts for a sample of that bucket as one
+group rather than as dozens of individual rows, because publishing every
+"no-op" row would bury the dozen that matter.
 
 ### 1.1 Shape A — production or pipeline constants that must change
 
@@ -66,7 +65,7 @@ bury the dozen that matter.
 | `app/src/lib/gpx.ts` | `DATA_AREA` | `{ west: 9.4, south: 54.3, east: 11.0, north: 55.3 }`, hand-copied from `mask.meta.json` per the file's own comment | Must move; two production consumers (`parseGpx`'s GPX-import rejection, and `PlannerPanel.tsx`'s `isInViaDataArea` since #829) both inherit the new bound automatically once the constant moves |
 | `app/src/services/openMeteo.ts` | `LATS`, `LONS` | `Array.from({length:11},...)` from 54.3 step 0.1; `Array.from({length:17},...)` from 9.4 step 0.1 → 187 points | Must grow to 14×22 = 308 points (§3) for a route into the new area to sample real wind there rather than the clamped edge |
 | `app/src/components/MapView.tsx` | `MAX_BOUNDS` | `[[8.9, 54.05], [11.5, 55.55]]` | **#295's own body says the camera is "already wider than the data" — true for the east edge (11.5 == the proposed east) but FALSE for the north edge: 55.55 < the proposed 55.6.** The camera would need to widen too, or Kolding/Middelfart's approach becomes visible on the basemap but un-pannable to at full zoom |
-| `app/public/data/mask.meta.json` | `west/south/east/north/cols/rows` | Mirrors `build_mask.py`'s constants exactly (verified: `{west:9.4,south:54.3,east:11.0,north:55.3,cols:2200,rows:2400}`) | Auto-follows once `build_mask.py` is edited and the pipeline is re-run — not a site to hand-edit, but the file every one of the twin guards in §1.3 reads |
+| `app/public/data/mask.meta.json` | `west/south/east/north/cols/rows` | Mirrors `build_mask.py`'s constants exactly (verified: `{west:9.4,south:54.3,east:11.0,north:55.3,cols:2200,rows:2400}`) | Auto-follows once `build_mask.py` is edited and the pipeline is re-run — not a site to hand-edit. Only one §1.3 twin actually reads this file off disk (`gpx.parse.test.ts`'s drift guard); the other §1.3 twins hardcode matching literals independently, without reading it |
 | `app/src/lib/depthColor.ts` | `MASK_CELL_M = 46.67` (comment: `1.6 deg / 2200 cols at ~54.8N`) | A hardcoded cell-size approximation used for hatch-stripe sizing | Falsified outright by branch (a) (§2.1, cell size becomes ~60 m); left approximately true by branch (b) (§2.2) |
 | `app/src/lib/depthColor.ts` | `HATCH_BAND_LAT_DEG = 54.8` (comment: `region centre; cos varies <1% over 54.3-55.3`) | A fixed-latitude cos approximation for the same hatch rendering | Measured here: at the CURRENT bounds the true max deviation of `cos(lat)` from `cos(54.8°)` across 54.3–55.3°N is **1.24%**, already over the comment's own "<1%" claim — a pre-existing, unrelated staleness, not something #295 introduces. At the proposed 54.3–55.6°N range (still centred on 54.8, i.e. not recentred), the deviation from 54.8 grows to **1.99%** at the new north edge. Low-severity: `depthColor.ts`'s own hatch-rendering invariant (pure-black RGBA, monotonically non-increasing alpha with depth) means this constant can only ever make the hatch cue MORE conservative, never produce false comfort, so a stale center latitude is a cosmetic banding-width error, not a safety one |
 | `app/vite.config.ts` | `maximumFileSizeToCacheInBytes = 40 * 1024 * 1024` | A per-file Workbox precache cap | Not itself a bbox constant, but the site that decides whether ANY of the widened assets can even ship eagerly — see §2.5 |
@@ -89,8 +88,13 @@ mechanically if they lag:
   fact.
 - `docs/superpowers/specs/2026-07-22-waves-routing-design.md` — same area
   statement, same out-of-scope note.
-- `ROADMAP.md` — a prose line naming the current Sea area and noting that
-  "growing that footprint is a real" [ongoing consideration].
+- `ROADMAP.md` — under a bullet headed **"No open-ended or unbounded
+  map-area expansion,"** states the current Sea area and that "growing that
+  footprint is a real data-pipeline and app-size cost, not a toggle." The
+  same bullet explicitly carves #295 out as the sanctioned bounded case: "A
+  specific, bounded extension is already triaged and open in `Backlog`
+  (#295) — this bullet declines an unscoped 'just cover more area' request,
+  not that one." Direct support for this spike existing at all.
 - `pipeline/README.md` — documents the bbox twice: once deriving the ~46 m
   cell size from `mask.meta.json`'s `cols: 2200, rows: 2400` and the bounds,
   and once describing the basemap extract's own bbox.
@@ -130,13 +134,14 @@ in lockstep, but the mechanism differs per site:
   chart region is 54.3-55.3 N (CLAUDE.md)". Would keep passing unchanged if
   left stale (it would just under-sample the new area, not fail), but its
   own comment would be wrong.
-- `app/scripts/gen-docs-wind-fixture.mjs`'s `LAT0 = 54.3` / `LON0 = 9.4`,
-  each commented "must match openMeteo.ts's [LATS/LONS] domain start" —
-  checked here, and because #295's proposal leaves the **south/west** edge
-  unchanged, this specific pair does **not** need to move for #295 as
-  proposed. Left alone deliberately, with the caveat spelled out: if the
-  domain's south or west edge ever moves, this is a real coupled site, not
-  an incidental one.
+- `app/scripts/gen-docs-wind-fixture.mjs` is **partially coupled**. Its
+  `LAT0 = 54.3` / `LON0 = 9.4`, each commented "must match openMeteo.ts's
+  [LATS/LONS] domain start", do NOT need to move for #295 as proposed,
+  because the proposal leaves the **south/west** edge unchanged. But the
+  same file's `N_POINTS_LAT = 11` / `N_POINTS_LON = 17`, commented "must
+  match openMeteo.ts's LATS.length"/"LONS.length" respectively, DO need to
+  move — to 14 and 22, the exact lengths §1.1 says `openMeteo.ts`'s `LATS`/
+  `LONS` become. Left as a site to revisit, not a site to leave alone.
 - `app/src/test/fixtures.ts`'s default mask-builder parameters and
   `app/src/test/fakeMaplibre.ts`'s `getBounds()`/pixel-projection literals —
   both reuse the current bbox as their default synthetic geometry. Neither
@@ -146,7 +151,9 @@ in lockstep, but the mechanism differs per site:
 
 ### 1.4 Shape D — incidental in-domain coordinates (left alone)
 
-The remaining files the repo-wide grep surfaced —
+The following 26 files were read individually and checked against the same
+grep filter — this is the set this spike actually classified, not a claim
+that it is the grep's entire residual:
 `app/src/App.test.tsx`, `app/src/components/AboutDialog.test.tsx`,
 `app/src/components/AisTraffic.test.tsx`, `app/src/components/CompassControl.test.tsx`,
 `app/src/components/DataLayers.test.tsx`, `app/src/components/DepthProfile.test.tsx`,
@@ -158,14 +165,13 @@ The remaining files the repo-wide grep surfaced —
 `app/src/routing/planRoute.depthComfort.test.ts`, `app/src/routing/planRoute.shallow.test.ts`,
 `app/src/routing/postprocess.test.ts`, `app/src/services/aisStream.test.ts`,
 `app/src/services/db.test.ts`, `app/src/state/useAisTraffic.test.tsx`,
-`app/src/state/useMapViewport.test.tsx`, `app/e2e/plan.spec.ts` (24 files, by the same
-grep filter minus the ones already classified above) — each reuses `54.3`,
-`55.3`, `9.4` and/or `11.0` as a convenient literal (a fake mask bound built
-locally rather than imported, an arbitrary in-domain lat/lon for an unrelated
-waypoint or AIS-target test, a `9.4 nm` distance that happens to share
-digits with the longitude). None of them asserts anything about the real
-covered area, and none needs to change for #295 to be correct. The one
-grep hit worth a specific note: `app/e2e/plan.spec.ts` types the literal
+`app/src/state/useMapViewport.test.tsx`, `app/e2e/plan.spec.ts`. Each reuses
+`54.3`, `55.3`, `9.4` and/or `11.0` as a convenient literal (a fake mask
+bound built locally rather than imported, an arbitrary in-domain lat/lon for
+an unrelated waypoint or AIS-target test, a `9.4 nm` distance that happens
+to share digits with the longitude). None of them asserts anything about
+the real covered area, and none needs to change for #295 to be correct. The
+one grep hit worth a specific note: `app/e2e/plan.spec.ts` types the literal
 latitude `'60'` to test the DATA_AREA-rejection message — 60°N is well
 outside both the current AND the proposed north edge (55.3/55.6), so this
 test does not flip under #295.
@@ -239,10 +245,9 @@ required regardless — this is not a shortcut around that.
 
 ### 2.3 Which branch #245 forbids
 
-#295's own body (and #1163's body, less carefully) reads #245 as having
-"measured that moving this resolution disconnects `aabenraa` and
-`augustenborg`." **That is not quite what #245 measured, and the direction
-matters.** #245 measured making cells *finer* (23 m, 12 m) and found the
+#1163's own body reads #245 as having "measured that moving this
+resolution disconnects `aabenraa` and `augustenborg`." **That is not quite
+what #245 measured, and the direction matters.** #245 measured making cells *finer* (23 m, 12 m) and found the
 mechanism is that a smaller cell stops "borrowing" depth from neighbouring
 deeper water during resampling, so a knife-edge harbour's blended depth
 drops by a decimetre or two — `aabenraa` sits exactly on `3.0 ≥ 3.0`.
@@ -307,8 +312,9 @@ archive silently drops out of the precache manifest with only a build
 warning (the exact failure #245 §3.2 already demonstrated for a 12 m mask:
 "the oversized entry is filtered out of the manifest and a `"… won't be
 precached"` string is pushed onto `warnings`... there IS a signal, it
-simply is not a failure"). A naive area-ratio projection (27.2 MB × 1.71 ≈
-46.4 MB) would land ABOVE that cap — stated explicitly as a naive,
+simply is not a failure"). A naive area-ratio projection (27,201,789 B ×
+1.7065 ≈ 46.4 MB, using §2.2's precise ratio rather than the rounded 1.71)
+would land ABOVE that cap — stated explicitly as a naive,
 almost-certainly-wrong projection method (vector density ≠ area density),
 not a prediction, but as the reason the basemap number needs to be
 MEASURED, not guessed, before this ships: guessing wrong in the direction
@@ -338,9 +344,12 @@ lattice value. No throw, no `NaN`, no signal.
 
 ### 3.2 Is this reachable in production today?
 
-`WindField.sample(p, tMs)` is `bracket()`'s only caller, and has exactly
-four production call sites (found by grepping every non-test `WindField(`
-construction and `.sample(` call):
+`WindField.sample(p, tMs)` is `bracket()`'s only caller. Grepping every
+non-test `.sample(` call (`git grep -n '\.sample(' -- app/src`, plus a
+second pass for a destructured/bound form, which found none) shows that
+every non-test call site takes a position that is either a solver-accepted
+frontier node or an endpoint of an already-solved route's leg, with a
+single exception:
 
 - `app/src/routing/planRoute.ts` (via `isochrone.ts`'s `wind.sample(from,
   node.tMs)`) — `from` is a frontier node the isochrone search has already
@@ -352,14 +361,19 @@ construction and `.sample(` call):
   of the mask-constrained solve above.
 - `app/src/lib/routeGeoJson.ts` — same: samples along route-leg geometry
   for barb rendering.
-- `app/src/components/DepartureCompare.tsx` — samples at `plan.request.origin`
-  (checked directly: `candidateCard(candidate, rank, windField,
-  plan.request.origin, lang, t)`), the RAW requested origin, not
+- `app/src/routing/postprocess.ts`'s `tryMerge` (`wind.sample(b.start,
+  b.startTimeMs)`, reached from `planRoute.ts`'s `mergeCollinearLegs(res.legs,
+  ...)`) — `b` is a leg of `res.legs`, the solver's own already-solved
+  output, so `b.start` is the same kind of mask-constrained point as the
+  other three.
+- `app/src/components/DepartureCompare.tsx` — the exception. Samples at
+  `plan.request.origin` (checked directly: `candidateCard(candidate, rank,
+  windField, plan.request.origin, lang, t)`), the RAW requested origin, not
   `plan.snappedOrigin`.
 
-The first three are inert by construction — every position they feed
-`bracket()` already passed a mask bounds/navigability check. The fourth is
-where the clamp is genuinely reachable, narrowly: `NavMask.snapToNavigable`
+Four of the five are inert by construction — every position they feed
+`bracket()` already passed a mask bounds/navigability check. The exception
+is where the clamp is genuinely reachable, narrowly: `NavMask.snapToNavigable`
 searches up to `maxRadiusM = 300` m from the requested point, so a plan can
 succeed with a requested origin up to ~300 m outside the mask's grid
 boundary (≈0.0027° latitude, ≈0.0047° longitude at this latitude) if a
@@ -501,20 +515,24 @@ specific than "keep everything eager":** its §3 ("Basemap: natively
 chunkable, but not for free") states directly — "today's committed
 54.3–55.3°N/9.4–11.0°E box stays a 'core' archive, unchanged; the area
 extension ships as one or more additional, separately-named archives" —
-and separately states that mask/harbours/seamarks/polars stay eager and
-monolithic REGARDLESS of area, because they're small and non-chunked by
-design (§2/§3 of that spike). Read precisely, this splits #295 into two
-pieces with two different answers:
+and separately rules that mask/harbours/seamarks/polars stay eager and
+monolithic — a ruling that is size-conditional and quantified, not
+area-independent: its §3 mask section concludes "Given the mask is small
+even after the extension (quantified in §9, item 2), this cost is not
+justified by the savings," and §9 item 2 quantifies exactly #295's proposed
+growth: "the mask stays small even after a 1.7x area growth (≈9.0 MB,
+method: 5,280,000 × 1.7, still far below the basemap)." Read precisely,
+this splits #295 into two pieces with two different answers:
 
 - **Mask, harbours, seamarks growth (branches in §2.2 / #295's steps 1–4):**
-  consistent with #296's ruling — these were always meant to stay eager and
-  monolithic no matter how large the area gets. Not blocked on #1164.
+  consistent with #296's ruling at #295's proposed 1.7x growth — the exact
+  growth #296 itself costed at §9 item 2. Not blocked on #1164.
 - **Basemap growth (`extract_basemap.sh`'s `BBOX`):** the OPPOSITE of what
   #296 already decided. Widening the single `extract_basemap.sh` bbox and
   rebuilding one bigger monolithic `basemap.pmtiles.png` is exactly the
   design #296 rejected in favour of a core-archive-plus-region-archives
-  split — a split that is unimplemented (#1164, confirmed still open,
-  "the basemap half is not started"). Doing the monolith-widening now would
+  split — a split that is unimplemented (#1164, open at `035d662`
+  (2026-09-09), "the basemap half is not started"). Doing the monolith-widening now would
   be throwaway work the moment #1164 ships, and risks the precache-cap
   failure mode in §2.5 in the meantime.
 
@@ -539,8 +557,9 @@ scope, not this spike's, and not something to duplicate ad hoc inside #295.
    worse product than today's (an unreachable camera edge; a silently
    un-precached archive) if missed.
 2. **Choose branch (b) — preserve resolution, grow the grid — over branch
-   (a).** It is the branch #245's measured (not merely predicted) finding
-   does not directly implicate (§2.3), at the cost of making the already-
+   (a).** It is the branch that does not reopen #245 §2.2's `TOLERANCE_M` /
+   `CONNECTIVITY_EXCEPTIONS_M` re-derivation for the entire existing grid
+   (§2.3), at the cost of making the already-
    tracked, already-unfixed `cellsConnected()` memory allocation 1.71× worse
    (§2.4). Pair it with implementing #245's own recommendation #3 (size the
    BFS queue to the frontier, not `rows*cols`) as a prerequisite or
@@ -583,7 +602,7 @@ scope, not this spike's, and not something to duplicate ad hoc inside #295.
 |---|---|
 | **Branch (a): hold `COLS`/`ROWS` fixed, coarsen cells to ~60 m** | Changes resolution for the ENTIRE existing grid, reopening #245's `TOLERANCE_M`/`CONNECTIVITY_EXCEPTIONS_M` re-derivation with an unmeasured (only predicted) direction of effect on the existing knife-edge harbours (§2.3), for the sole benefit of leaving `cellsConnected()`'s memory cost unchanged — a cost that already has a designed, unbuilt fix (§2.4) making that benefit avoidable anyway. |
 | **Widening `extract_basemap.sh`'s bbox to build one larger monolithic basemap archive now** | Directly contradicts #296's own already-decided per-region-archive design for exactly this scenario (§6); throwaway work once #1164 ships; risks the `maximumFileSizeToCacheInBytes` silent-drop failure mode (§2.5) with no measurement to rule it out. |
-| **Treating #295 as uniformly blocked on #1164** | Over-broad — #296's own ruling only constrains the basemap piece; mask/harbours/seamarks were always meant to stay eager and monolithic regardless of area, so blocking those on unrelated basemap-splitting infrastructure delays work that isn't actually coupled to it (§6). |
+| **Treating #295 as uniformly blocked on #1164** | Over-broad — #296's own ruling only constrains the basemap piece; mask/harbours/seamarks are consistent with #296's ruling at #295's proposed 1.7x growth (§6), so blocking those on unrelated basemap-splitting infrastructure delays work that isn't actually coupled to it. |
 | **Making `bracket()` throw on out-of-range input directly** | The one reachable production path (`DepartureCompare.tsx`'s raw `plan.request.origin`, §3.2) is a benign, bounded (~300 m) approximation, not a bug — throwing inside the hot per-sample function risks turning that harmless case into a crash. A one-time domain-coverage assertion at `WindField` construction is the guard-asymmetry-correct shape (§3.3). |
 | **Extrapolating basemap/seamarks payload from the mask's area ratio** | #295's own body already rejects this (vector-tile volume tracks coastline/settlement density, not area) and this spike agrees; a naive projection is shown in §2.5 only to demonstrate why guessing wrong is dangerous, never adopted as an estimate. |
 | **Extending the south edge below 54.3°N for Fehmarn margin** | #295's own cited Fehmarn coordinates (~54.42–54.58°N) already leave 0.12° of margin against the current south edge (§5) — no data supports moving it. |
