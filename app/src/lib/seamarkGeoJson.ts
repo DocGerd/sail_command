@@ -533,8 +533,33 @@ export function seamarkPopupAnchor<T extends { properties?: unknown; geometry?: 
  * (screen zoom [12,13) only) cosmetic residual rather than fixed, and
  * pinned as a forward regression guard by
  * `app/e2e/seamark-collision-icon-size-981.spec.ts`. That spec's own header
- * carries the full method and states what it does NOT measure (basemap
- * symbol layers, a second, unmeasured victim class of the same mechanism).
+ * carries the full method.
+ *
+ * #981 basemap victim class (verified 2026-09-09 against `maplibre-gl@6.7.0`,
+ * same session): the SAME mechanism was then measured against `@protomaps/
+ * basemaps`' own symbol layers (`places_locality`, `places_subplace`,
+ * `roads_labels_major`, `roads_shields`, and 10 others — every symbol layer
+ * `layers('protomaps', flavor, {lang})` emits at the `light` flavor), which
+ * sit BELOW the `sc-*` layers in the style's layer order (protomaps' layers
+ * are added at Map construction in `MapView.tsx`'s `buildStyle()`;
+ * `DataLayers.tsx`'s `setupLayers()` adds every `sc-*` layer, seamarks
+ * included, AFTER) and are therefore placed LATER than seamarks — the same
+ * "placed later loses the shared collision slot" direction as the
+ * harbor-label finding above. This class is REAL, not merely theoretical: 8
+ * of 33 harbors (`aabenraa`, `aaroesund`, `arnis`, `faaborg`, `gelting-mole`,
+ * `graasten`, `kappeln`, `svendborg`) showed a basemap symbol-layer count
+ * difference at z12.5 between the shipped `[13, 1.4]` table and the reverted
+ * pre-#860 `[13, 0.85]` one, with the z11.5 control byte-identical across all
+ * 33 harbors and a same-arm double-run at HEAD byte-identical across the
+ * full sweep (ruling out settle noise). Only `gelting-mole` overlaps the
+ * harbor-label `BLOCKED_AT_HEAD` set — the basemap's own point features sit
+ * at different coordinates than this app's harbor-snap points, so the two
+ * victim sets are largely disjoint. `app/e2e/seamark-collision-icon-size-981.spec.ts`'s
+ * header carries the full method, the per-harbor breakdown, and the
+ * non-monotonic `faaborg` residual; its `BASEMAP_VICTIM_PAIRS` test pins the
+ * 6-harbor/8-pair subset that flips cleanly absent->present as a forward
+ * regression guard. #1126 should size its lever choice against this WIDER
+ * scope, not against `sc-harbor-labels` alone.
  */
 const BASE_ICON_SIZE_STOPS = [
   [8, 0.55],
