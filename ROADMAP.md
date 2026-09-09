@@ -79,9 +79,11 @@ margin
 ([#929](https://github.com/DocGerd/sail_command/issues/929)).
 
 Three issues stayed open in the milestone, deliberately. `#1015` shipped 4
-of its 6 disclosed residuals (the two changelog fixes above plus a
-self-verifying culling-live claim and a real `waitFor`-on-already-true fix);
-the remaining two — a changelog-wording caveat now inside an already-frozen
+of its 6 disclosed residuals: the `handleLeave` cursor fix (one of the two
+changelog entries above; the other found during PR #1124's review, not one
+of the six), a self-verifying culling-live claim, a real
+`waitFor`-on-already-true fix, and a deferral-mechanism header clause. The
+remaining two — a changelog-wording caveat now inside an already-frozen
 released section, and widening a paint-order e2e test to cover the route
 layers a shipped changelog sentence names — stay open
 ([#1015](https://github.com/DocGerd/sail_command/issues/1015)). `#981`
