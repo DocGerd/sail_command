@@ -287,6 +287,13 @@ it — `v0.4.0` (1 bug of 9), `v0.7.0` (2 of 16) and `v0.8.0` (0 of 10, an
 all-`chore` cut). Every milestone SHIPPED from `v0.9.0` on clears it; the
 open one is covered by the paragraph above.
 
+The floor is bounded by supply: it applies only for as long as enough
+`type: bug` issues exist to fill it. A cut takes every available `type: bug`
+issue and the floor is met on that basis — read literally against a scarce
+bug supply, the 20% ratio would work backwards into a cap on milestone size
+(`ceil(N/5) <= <bugs open>` bounding `N`), and that reading is rejected: the
+reserve never limits how much non-bug work a milestone may carry.
+
 **Accessibility work is ranked by who is locked out.** Work that removes a
 barrier created by a *situational* impairment — glare, gloves, wet or cold
 hands, a moving boat, one-handed operation — is ranked on its merits like

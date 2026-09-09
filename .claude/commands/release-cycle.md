@@ -79,6 +79,9 @@ copy and the one to keep current. Restated here only so this command is self-con
    issues `type: bug`, rounded UP (a nine-issue milestone reserves two, not 1.8). A milestone
    still being filled may sit below it; that is a gap to close at this gate, not a rule to bend.
    The floor is forward-looking — `CONTRIBUTING.md` records which earlier milestones predate it.
+   It is also bounded by SUPPLY — it applies only while enough `type: bug` issues exist to fill
+   it, and a cut takes every available one and calls the floor met; it never caps how much
+   non-bug work the milestone may carry.
 
 **Do NOT re-ask which reading of the reserve was meant — it was SETTLED at the v0.18.0 cut
 (2026-09-01) as "at least 20% bug-typed", over the competing "at least 20% of slots left
