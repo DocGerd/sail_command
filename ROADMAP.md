@@ -217,8 +217,7 @@ settings; its four residuals did not close with it
 ([#649](https://github.com/DocGerd/sail_command/issues/649)). Of those,
 [#929](https://github.com/DocGerd/sail_command/issues/929) closed at the
 `v0.29.0` cut, as a documented "cannot be reconciled" answer;
-[#930](https://github.com/DocGerd/sail_command/issues/930) and
-[#931](https://github.com/DocGerd/sail_command/issues/931) remain open in
+[#930](https://github.com/DocGerd/sail_command/issues/930) remains open in
 `Backlog`, and
 [#932](https://github.com/DocGerd/sail_command/issues/932) remains open in
 `Icebox`.
@@ -498,9 +497,9 @@ re-enabling the Plan button, so a test gating on that button could edit the
 form before the still-pending effect overwrote it. Reproduced naturally at
 one failure in 25 full-file runs under 48-way CPU contention, and closed
 test-side by draining React's pending passive effects at every site
-carrying that shape; the underlying product race is untouched and tracked
-separately ([#631](https://github.com/DocGerd/sail_command/issues/631),
-[#660](https://github.com/DocGerd/sail_command/issues/660)). And the same PR
+carrying that shape; the underlying product race was fixed separately, at
+the `v0.14.0` cut
+([#660](https://github.com/DocGerd/sail_command/issues/660)). And the same PR
 that fixed #638's depth-hatch legend chrome also settled that legend's
 reachability gate, whose `44px` threshold an earlier, superseded fix attempt
 would have made stale: the number now lives behind a named constant with a
