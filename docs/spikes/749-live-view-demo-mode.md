@@ -560,9 +560,7 @@ it):
 4. Apply §7.2's preconditions 1 and 2 to the harness as well. Both are about
    what a synthetic fix can REACH, which does not depend on who the audience is.
 
-`docs/adr/README.md` records that #644 tracks consolidating `docs/spikes/` and
-`docs/adr/`; until that lands, both directories must be checked before assuming
-a decision is unrecorded. This document lives in `docs/spikes/` because it is an
+This document lives in `docs/spikes/` because it is an
 investigation ending in a recommendation, not a maintainer ruling already made.
 
 ---
