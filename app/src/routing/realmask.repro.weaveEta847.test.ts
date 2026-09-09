@@ -1,12 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { planRoute } from './planRoute';
-import { uniformWindGrid } from '../test/fixtures';
+import { uniformWindGrid, makeWindGrid } from '../test/fixtures';
 import { haversineNm, normalizeDeg180 } from '../lib/geo';
 import { uniformGate } from '../lib/depthGate';
 import { DEFAULT_SETTINGS, defaultBoatSnapshot } from '../types';
 import type { LatLon, Leg, PlanResultOk } from '../types';
 import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
-import { mask, SALONA_DEPS, T0, sailResult } from '../test/realmaskFixtures';
+import {
+  mask,
+  SALONA_DEPS,
+  T0,
+  sailResult,
+  FLENSBURG,
+  GLUECKSBURG,
+} from '../test/realmaskFixtures';
 
 // #847: "Some routes make slight course corrections every 2-3 minutes."
 //
@@ -38,6 +45,60 @@ import { mask, SALONA_DEPS, T0, sailResult } from '../test/realmaskFixtures';
 // CLAUDE.md's Verification-lessons bullet on infeasible baselines). Every
 // print below states the baseline's navigability on the same line as its
 // implied ETA, per the task brief.
+//
+// #1079 (2026-09-09) WIDENS this beyond the single Aeroeskoebing -> Soeby
+// / uniform-TWS-5.5 case above, along the two axes #1079's own body names:
+//
+//   (b) MORE ROUTES: 'Flensburg -> Glücksburg' (below) reproduces the SAME
+//       near-zero-cost shape at a DIFFERENT harbour pair, DIFFERENT wind
+//       cell, and a MID-ROUTE weave position rather than a destination
+//       approach -- structurally the same detector output, so it widens
+//       axis (b) rather than merely repeating axis (a)'s existing case.
+//       'Glücksburg -> Aeroeskoebing' widens it a second way: the
+//       reproducing span there is `kind: 'sail'` (board 'port'), not
+//       motor -- the ORIGINAL case and 'Flensburg -> Glücksburg' both
+//       happen to isolate all-MOTOR spans, so this is the first case in
+//       this file measuring a SAIL weave's ETA cost.
+//   (a) NON-UNIFORM WIND: 'route-scoped gradient' plans the ORIGINAL
+//       Aeroeskoebing -> Soeby route again, geography and rig held fixed,
+//       replacing ONLY the uniform wind grid with a `makeWindGrid` spatial
+//       gradient scaled to this route's own ~13 km bounding box (same
+//       technique `app/scripts/gen-docs-wind-fixture.mjs` uses to make a
+//       gradient visible across a short route, rather than the
+//       whole-forecast-domain gradient CLAUDE.md's #264 bullet records as
+//       already tried and NOT reproducing #847's "slight" shape). This is
+//       the sharpest isolation of the wind-field variable this session
+//       produced: it is NOT a fresh route search, it is the SAME
+//       origin/destination/rig/departure as the case above with only the
+//       wind construction changed.
+//
+// A real (live-fetched) Open-Meteo forecast was NOT substituted for any of
+// these, on the same grounds the original spike gave for not attempting it:
+// this harness runs OFFLINE against committed fixtures (CLAUDE.md:
+// "Planning requires network; everything else must keep working offline"),
+// and a routing-package `*.test.ts` file fetching a live forecast would
+// violate that. `makeWindGrid` is the same synthetic-gradient escape hatch
+// the original spike's own §5 aperture note already named as tried.
+//
+// WHAT THE GRADIENT CASE ESTABLISHES, precisely: under this route-scoped
+// gradient the SAME phenomenon (a run of >=3 same-kind legs with small
+// heading deltas, ending at the destination, all `kind: 'motor'`) still
+// occurs -- so the phenomenon is NOT an artefact of a uniform field. But
+// this gradient case's own weave-span chord (first waypoint of the span to
+// its last) is NOT navigable at the plan's requested depth --
+// `chordNavigable: false` below, asserted explicitly rather than silently
+// skipped -- so the #264 chord-ETA method this file otherwise relies on
+// CANNOT be applied to it without repeating the exact infeasible-baseline
+// mistake #264 itself opened with. No ETA-cost percentage is computed or
+// asserted for that case for this reason; the test instead asserts the
+// STRUCTURAL reproduction (a weave span exists, ends at the route's last
+// leg, and is all-motor) and records the chord-navigability finding.
+// WHAT THIS DOES NOT ESTABLISH: whether a gradient-wind weave costs more,
+// less, or the same ETA as a uniform-wind one -- that comparison remains
+// OPEN, exactly as CLAUDE.md's #264 motor-decision-rule bullet already
+// records the broader gradient-vs-uniform gap as "narrowed, not closed".
+// This case narrows it further (the phenomenon itself is confirmed
+// gradient-reproducible) without closing the ETA-cost half.
 
 interface WeaveSpan {
   startIdx: number;
@@ -237,6 +298,213 @@ describe('#847 weave ETA cost — reproduction + measurement', () => {
             `dist=${leg.distanceNm.toFixed(3)}nm speed=${leg.speedKn.toFixed(2)}kn`,
         );
       }
+    },
+  );
+
+  // #1079: axis (b) widening #1 -- a DIFFERENT harbour pair and wind cell,
+  // reproducing a MID-ROUTE (not destination-approach) all-motor weave.
+  it(
+    'Flensburg -> Glücksburg, TWS 8 / wdir 60 (genoa): reproduces an all-motor weave mid-route (not a destination approach)',
+    { timeout: SOLVER_TEST_TIMEOUT_MS },
+    () => {
+      const res = planRoute(
+        {
+          origin: FLENSBURG,
+          destination: GLUECKSBURG,
+          viaPoints: [],
+          originHarborId: 'flensburg',
+          destinationHarborId: 'gluecksburg',
+          departureMs: T0,
+          settings: DEFAULT_SETTINGS,
+          sailIds: ['genoa'],
+          boat: defaultBoatSnapshot(),
+        },
+        uniformWindGrid(8, 60),
+        SALONA_DEPS,
+      ) as PlanResultOk;
+      expect(res.status).toBe('ok');
+      expect('shallow' in res).toBe(false);
+      const rig = sailResult(res, 'genoa');
+      expect(rig).not.toBeNull();
+      const legs = rig!.legs;
+
+      const spans = findWeaveSpans(legs);
+      console.log(
+        `\nFlensburg->Glücksburg: ${legs.length} legs, ${rig!.distanceNm.toFixed(2)} nm, ` +
+          `${(rig!.durationMs / 60000).toFixed(1)} min. Weave spans found: ${spans.length}.`,
+      );
+      expect(spans.length).toBeGreaterThan(0);
+
+      const m = measureWeaveSpan(spans[0], DEFAULT_SETTINGS.safetyDepthM);
+      printMeasurement('span 0', m);
+
+      // Unlike the original case, this span is NOT the route's final legs
+      // -- it sits mid-route (legs[2..4] of 8), so this widens the
+      // phenomenon beyond "harbour-approach shape" specifically.
+      expect(m.span.endIdx).toBeLessThan(legs.length - 1);
+      expect(m.span.legs.every((l) => l.kind === 'motor')).toBe(true);
+      expect(m.chordNavigable).toBe(true);
+      // Bound, not a pinned literal: this is a real solver output, not a
+      // recomputed constant, so an exact-value assertion would be brittle
+      // to any future mask/polar change. 5% is well above the measured
+      // 0.7% and well below #264's large-swing regime, so it stays a
+      // genuine (mutation-reachable) bound rather than a theorem.
+      expect(Math.abs(m.etaDeltaS) / m.actualDurationS).toBeLessThan(0.05);
+
+      const wholeRouteChord = mask.segmentClearanceM(
+        FLENSBURG,
+        GLUECKSBURG,
+        uniformGate(DEFAULT_SETTINGS.safetyDepthM),
+      );
+      console.log(
+        `\nPositive control: whole-route chord navigable: ${wholeRouteChord !== null} ` +
+          `(clearance ${wholeRouteChord === null ? 'BLOCKED' : wholeRouteChord.toFixed(2) + ' m'})`,
+      );
+      expect(wholeRouteChord).toBeNull();
+    },
+  );
+
+  // #1079: axis (b) widening #2 -- a THIRD harbour pair, and the first
+  // SAIL-mode weave span this file measures (the original and the case
+  // above both happen to isolate all-motor spans).
+  it(
+    'Glücksburg -> Aeroeskoebing, TWS 5 / wdir 100 (genoa): reproduces an all-sail weave near the destination approach',
+    { timeout: SOLVER_TEST_TIMEOUT_MS },
+    () => {
+      const res = planRoute(
+        {
+          origin: GLUECKSBURG,
+          destination: AEROESKOEBING,
+          viaPoints: [],
+          originHarborId: 'gluecksburg',
+          destinationHarborId: 'aeroeskoebing',
+          departureMs: T0,
+          settings: DEFAULT_SETTINGS,
+          sailIds: ['genoa'],
+          boat: defaultBoatSnapshot(),
+        },
+        uniformWindGrid(5, 100),
+        SALONA_DEPS,
+      ) as PlanResultOk;
+      expect(res.status).toBe('ok');
+      expect('shallow' in res).toBe(false);
+      const rig = sailResult(res, 'genoa');
+      expect(rig).not.toBeNull();
+      const legs = rig!.legs;
+
+      const spans = findWeaveSpans(legs);
+      console.log(
+        `\nGlücksburg->Aeroeskoebing: ${legs.length} legs, ${rig!.distanceNm.toFixed(2)} nm, ` +
+          `${(rig!.durationMs / 60000).toFixed(1)} min. Weave spans found: ${spans.length}.`,
+      );
+      expect(spans.length).toBeGreaterThan(0);
+
+      const lastSpan = spans[spans.length - 1];
+      const m = measureWeaveSpan(lastSpan, DEFAULT_SETTINGS.safetyDepthM);
+      printMeasurement('last span', m);
+
+      expect(m.span.legs.every((l) => l.kind === 'sail')).toBe(true);
+      expect(m.chordNavigable).toBe(true);
+      // Measured 1.5% here (higher than the motor-span cases' 0.7%, still
+      // far below #264's large-swing regime) -- 5% keeps the same margin
+      // as the case above rather than a per-case-tuned bound.
+      expect(Math.abs(m.etaDeltaS) / m.actualDurationS).toBeLessThan(0.05);
+
+      const wholeRouteChord = mask.segmentClearanceM(
+        GLUECKSBURG,
+        AEROESKOEBING,
+        uniformGate(DEFAULT_SETTINGS.safetyDepthM),
+      );
+      console.log(
+        `\nPositive control: whole-route chord navigable: ${wholeRouteChord !== null} ` +
+          `(clearance ${wholeRouteChord === null ? 'BLOCKED' : wholeRouteChord.toFixed(2) + ' m'})`,
+      );
+      expect(wholeRouteChord).toBeNull();
+    },
+  );
+
+  // #1079: axis (a) widening -- SAME route/rig/departure as the original
+  // case above, ONLY the wind field construction changes (uniform ->
+  // route-scoped spatial gradient). See the file-header comment for the
+  // full rationale and for what this case does and does not establish.
+  it(
+    'Aeroeskoebing -> Soeby under a ROUTE-SCOPED GRADIENT (not uniform) wind field: the weave still occurs; its chord is NOT navigable, so no ETA-cost percentage is computed',
+    { timeout: SOLVER_TEST_TIMEOUT_MS },
+    () => {
+      // Gradient scaled to the ROUTE's own bounding box (padded slightly
+      // beyond the harbours themselves), not the whole forecast domain --
+      // the same technique `gen-docs-wind-fixture.mjs` uses so a gradient
+      // is actually visible across a route this short (~13 km). Centered
+      // on the original case's own wind cell (TWS 5.5 / wdir 120) with a
+      // deliberately modest spread (1 kn / 20 deg) across that span --
+      // a physically plausible gradient over 13 km, not an exaggerated one.
+      const LAT0 = 54.85;
+      const LAT1 = 54.98;
+      const LON0 = 10.2;
+      const LON1 = 10.45;
+      const grid = makeWindGrid((lat, lon) => {
+        const latFrac = Math.min(1, Math.max(0, (lat - LAT0) / (LAT1 - LAT0)));
+        const lonFrac = Math.min(1, Math.max(0, (lon - LON0) / (LON1 - LON0)));
+        return {
+          speedKn: 5.0 + 1.0 * lonFrac,
+          dirFromDeg: (110 + 20 * latFrac) % 360,
+        };
+      });
+
+      const res = planRoute(
+        {
+          origin: AEROESKOEBING,
+          destination: SOEBY,
+          viaPoints: [],
+          originHarborId: 'aeroeskoebing',
+          destinationHarborId: 'soeby',
+          departureMs: T0,
+          settings: DEFAULT_SETTINGS,
+          sailIds: ['genoa'],
+          boat: defaultBoatSnapshot(),
+        },
+        grid,
+        SALONA_DEPS,
+      ) as PlanResultOk;
+      expect(res.status).toBe('ok');
+      expect('shallow' in res).toBe(false);
+      const rig = sailResult(res, 'genoa');
+      expect(rig).not.toBeNull();
+      const legs = rig!.legs;
+
+      console.log(
+        `\nGradient-wind Aeroeskoebing->Soeby: ${legs.length} legs, ` +
+          `${rig!.distanceNm.toFixed(2)} nm, ${(rig!.durationMs / 60000).toFixed(1)} min.`,
+      );
+      for (const leg of legs) {
+        console.log(
+          `  ${leg.kind}/${leg.board ?? '-'} hdg=${leg.headingDeg.toFixed(1)} ` +
+            `dur=${((leg.endTimeMs - leg.startTimeMs) / 1000).toFixed(0)}s ` +
+            `dist=${leg.distanceNm.toFixed(3)}nm`,
+        );
+      }
+
+      const spans = findWeaveSpans(legs);
+      expect(spans.length).toBeGreaterThan(0);
+      const lastSpan = spans[spans.length - 1];
+      const m = measureWeaveSpan(lastSpan, DEFAULT_SETTINGS.safetyDepthM);
+      printMeasurement('last span (gradient wind)', m);
+
+      // The STRUCTURAL reproduction: the same shape (a run of >=3 all-motor
+      // legs, small heading deltas, ending at the route's last leg) occurs
+      // under this non-uniform field too.
+      expect(m.span.endIdx).toBe(legs.length - 1);
+      expect(m.span.legs.every((l) => l.kind === 'motor')).toBe(true);
+
+      // The chord-ETA method is NOT applied here: this span's own chord is
+      // BLOCKED at the requested depth (measured 2026-09-09), so treating
+      // its implied ETA as a baseline would repeat #264's own
+      // infeasible-baseline mistake. Assert the navigability reading
+      // explicitly (rather than silently skip it) so a future mask/solver
+      // change that makes the chord navigable is caught here, not missed --
+      // at that point a real ETA-cost percentage could be computed for
+      // this case, which it cannot honestly be today.
+      expect(m.chordNavigable).toBe(false);
     },
   );
 
