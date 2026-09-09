@@ -185,6 +185,26 @@ const PLAN_C: Plan = {
   },
 };
 
+// #1009: BOTH rigs' results are null on this plan — a shape planRoute()'s own
+// invariant forbids for a real `status: 'ok'` PlanResultOk (at least one
+// entry non-null, per types.ts's own comment on PlanResultOk), constructed
+// here anyway because AisTraffic's settle-gate reset key (`route`, #554)
+// cannot tell "no result on THIS rig" apart from "no result on ANY rig" —
+// activeRigResult(PLAN_NULL, 'genoa') and activeRigResult(PLAN_NULL, 'fock')
+// both resolve to the identical `null` value, so a genoa<->fock switch on
+// this plan is exactly the null-to-null rig switch #1009 asks to pin.
+const PLAN_NULL: Plan = {
+  ...PLAN,
+  id: 'plan-158-null',
+  result: {
+    ...PLAN.result,
+    sails: [
+      { sailId: 'genoa', result: null, reason: 'calm-motor-off' },
+      { sailId: 'fock', result: null, reason: 'calm-motor-off' },
+    ],
+  },
+};
+
 // #554: AisTraffic no longer takes plan+rig — it takes the already-resolved
 // corridor route, the same shape App.tsx now passes it (App.tsx's own memo is
 // `plan && rig ? activeRigResult(plan, rig) : null`). Reproducing that same
@@ -398,6 +418,51 @@ describe('AisTraffic corridor resubscription (#158)', () => {
     expect(ais.sockets[0].sent).toHaveLength(2); // immediate — zero timers ran
     expect(boxesOf(ais.sockets[0].sent[1])).toHaveLength(3);
     expect(ais.sockets).toHaveLength(1);
+  });
+});
+
+describe('AisTraffic null-to-null rig switch (#1009)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    mapHoist.map = makeAisFakeMap();
+    ais.sockets.length = 0;
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('a genoa<->fock switch where BOTH resolve to route:null never resends and never renders a corridor', () => {
+    // #1009: on PLAN_NULL, `route` is null under EITHER rig — the #554
+    // settle-gate reset key (`route` itself) therefore sees null -> null
+    // across the switch and never bypasses (Object.is(null, null) is true),
+    // unlike the old `[plan, rig] as const` tuple, which always bypassed on
+    // a rig IDENTITY change regardless of the resolved value. AisTraffic.tsx's
+    // own #158 comment argues this divergence is inert on two structural
+    // grounds this test exercises together: `activeLegIndex` is itself null
+    // in the real app during this window (LiveView.tsx derives it from the
+    // same activeRigResult call — no result, no active leg) and
+    // `corridorBoxes` short-circuits on `!route` before `settledLegIndex` is
+    // ever read.
+    const view = render(traffic(null, PLAN_NULL, 'genoa'));
+    expect(ais.sockets).toHaveLength(1);
+    act(() => ais.sockets[0].handlers.onOpen());
+    // route is null on genoa ⇒ corridorBoxes = [] ⇒ only the 1 viewport box.
+    expect(ais.sockets[0].sent).toHaveLength(1);
+    expect(boxesOf(ais.sockets[0].sent[0])).toHaveLength(1);
+
+    // Switch to fock — SAME plan, route ALSO null (genoa and fock resolve to
+    // the identical `null` value on PLAN_NULL): the null-to-null case itself.
+    view.rerender(traffic(null, PLAN_NULL, 'fock'));
+    // Immediately after the switch: if the settle gate's non-bypass left a
+    // stale settledLegIndex observable, it would show up here, in the same
+    // render — assert no resend at all yet.
+    expect(ais.sockets[0].sent).toHaveLength(1);
+    // ...and after the full 2 s settle window, in case a stale value only
+    // becomes observable once the gate would otherwise have adopted it.
+    act(() => vi.advanceTimersByTime(2000));
+    expect(ais.sockets[0].sent).toHaveLength(1); // still just the one send
+    expect(ais.sockets).toHaveLength(1); // no reconnect
+    expect(ais.sockets[0].closed).toBe(0);
   });
 });
 

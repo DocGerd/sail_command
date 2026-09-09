@@ -1288,6 +1288,38 @@ describe('PlannerPanel', () => {
         ).toBeInTheDocument();
       });
 
+      // #1064: no prior test enters a value that trips BOTH
+      // resolveHemisphereCoordCommit's +/-90 sanity clamp AND the DATA_AREA
+      // out-of-region rejection — by construction any value clamped to the
+      // +/-90/+/-180 sanity range is also outside DATA_AREA (54.3-55.3 deg N
+      // / 9.4-11.0 deg E), so both notices should coexist and Add must still
+      // append nothing. 95 deg N blurs to a clamped 90 (the same clamp
+      // message the '#886 residual 1' clamp test above pins), and 90 is
+      // north of DATA_AREA.north (55.3), so the outOfRegion rejection fires
+      // too when Add is pressed.
+      // MUTATION CHECK (non-vacuity): deleting the DATA_AREA check in
+      // PlannerPanel.tsx's isInViaDataArea (`return true;`) reds the
+      // outOfRegion half of this assertion (onAddVia gets called, the
+      // outOfRegion message never renders) while the clamp-notice half
+      // (asserted immediately after blur, before Add is even clicked) stays
+      // green — proving the two notices are independently load-bearing here,
+      // exactly as the sibling out-of-region-only test above is unaffected
+      // by a clamp regression.
+      it('shows BOTH the clamp-correction notice and the outOfRegion rejection for a coordinate that is clamped and out of region', () => {
+        const props = renderPanel({ viaPoints: [] });
+        fireEvent.change(latInput(), { target: { value: '95' } });
+        fireEvent.blur(latInput());
+        expect(screen.getByText('Corrected to 90 (allowed range -90–90)')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Add coordinates' }));
+        expect(props.onAddVia).not.toHaveBeenCalled();
+        expect(screen.getByText('Corrected to 90 (allowed range -90–90)')).toBeInTheDocument();
+        expect(
+          screen.getByText(
+            'The coordinates lie outside the covered area (Flensburg Fjord / Danish South Sea).',
+          ),
+        ).toBeInTheDocument();
+      });
+
       it('pressing a placed via point\'s own coordinate button enters "update" mode, seeded with its coordinates', () => {
         renderPanel({ viaPoints: [VIA_A, VIA_B] });
         fireEvent.click(screen.getByRole('button', { name: /Edit coordinates \(point 2\)/ }));

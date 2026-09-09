@@ -1020,6 +1020,24 @@ resolution above the cliff but cannot explain a 0-pinch reading *at* 1060 m.
 Until both figures are re-derived under one definition, neither should be
 the sole basis for choosing R.
 
+**#929 record check (2026-09-09): re-derivation is not possible from this
+tree today, and that is itself the correction being recorded here.** Neither
+figure states its disc-membership metric, and the two known implementations
+in this codebase disagree on that metric: `depthGate.ts`'s `Disc` doc (the
+shipped test) is a linearised ellipse in grid space, cell-centre to
+cell-centre, while `452-p3-implementation-record.md` §4's independent
+re-derivation used an exact haversine "a deliberately different
+construction" from the shipped test. Neither historical driver behind the
+two contradictory figures is committed — a repo-wide search (`grep -rl
+1068`, `grep -rl 1060`, no extension filter) finds no `.py`/`.mjs`/`.ts`
+script computing either number, matching this document's own §2.3 note that
+the numpy/scipy reimplementation is not reproducible from this repo and its
+§6 preamble note that the radius/pinch sweep's driver was "not re-verified
+in this correction pass." So the 1068-vs-1060 gap cannot be adjudicated by
+reading further, only by a NEW measurement run under one committed,
+single-metric driver against both figures at once — which this record check
+did not attempt and which is out of scope for a documentation-only pass.
+
 **Recommendation: R = 1852 m (1 nm)** — unchanged, and superseding §3.3's
 2400–2600 m counter-proposal (marked in place there). Reasons, each with
 what it does and does not rest on:

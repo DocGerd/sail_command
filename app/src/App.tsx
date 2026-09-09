@@ -259,8 +259,9 @@ function appTabId(tab: Tab): string {
 // `planner.via.marker` label ViaMarkers.tsx already shows for an unnamed
 // marker, so "which point" always matches what the panel/map displays.
 // As of 2026-09-07, every producer of a via-point `name` checked forecloses
-// a whitespace-only value: PlannerPanel's rename UI trims (viaCoordName
-// above); a seamark-sourced name comes from `seamarkWaypointName()`
+// a whitespace-only value: PlannerPanel.tsx's rename UI trims
+// (its local `viaCoordName` state); a seamark-sourced name comes from
+// `seamarkWaypointName()`
 // (lib/seamarkPopover.ts), which the pipeline never populates from an OSM
 // `name`/`ref` tag — it is always a translated TYPE label or `''`; and a
 // saved-waypoint's name is either that same seamark/rename-UI value or

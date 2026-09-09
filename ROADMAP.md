@@ -13,50 +13,95 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.28.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.29.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
-## Now — v0.28.0
+## Now — v0.29.0
 
-The `v0.28.0` cut (2026-09-08) completed the
-[`v0.28.0` milestone](https://github.com/DocGerd/sail_command/milestones),
-ten issues in total. Two changelog entries shipped, covering two distinct
-issues. The milestone's other eight issues had no user-facing changelog
-entry, all landing in one batch integration
-([#1101](https://github.com/DocGerd/sail_command/pull/1101)): a `-0`/`===`
-gap in `format.ts`'s `parseHemisphereCoord` was closed with the #203 `+ 0`
-precedent ([#1086](https://github.com/DocGerd/sail_command/issues/1086));
-`docs/screenshots/capture.mjs` gained a fail-closed guard against a grown
-panel silently re-cropping a hero image
-([#1088](https://github.com/DocGerd/sail_command/issues/1088));
-`timeoutBudgetVsJobCap.test.ts` regained a real YAML-parsed, addressed
-job-cap coupling and gained a suite-wall-time assertion, not just the
-heaviest per-test budget
-([#359](https://github.com/DocGerd/sail_command/issues/359),
-[#357](https://github.com/DocGerd/sail_command/issues/357)); the
-maplibre-gl 6.7.0 version-pinned source citations in `CLAUDE.md` and
-`app/src`/`app/e2e` were re-derived, and `CLAUDE.md`'s `#368` references
-were consolidated
-([#1058](https://github.com/DocGerd/sail_command/issues/1058),
-[#417](https://github.com/DocGerd/sail_command/issues/417)); and the OpenSSF
-Best Practices Silver criterion `access_continuity` was reassessed against
-what it actually requires — `GOVERNANCE.md` now argues it is met via fork
-continuity rather than needing a standing second maintainer
-([#1080](https://github.com/DocGerd/sail_command/issues/1080),
-[#667](https://github.com/DocGerd/sail_command/issues/667)).
+The `v0.29.0` cut (2026-09-09) worked the
+[`v0.29.0` milestone](https://github.com/DocGerd/sail_command/milestones)
+across three batch integrations
+([#1114](https://github.com/DocGerd/sail_command/pull/1114),
+[#1124](https://github.com/DocGerd/sail_command/pull/1124),
+[#1128](https://github.com/DocGerd/sail_command/pull/1128)). Fourteen
+issues were in scope; eleven closed, and three stayed open deliberately —
+this cut shipped no purely user-facing feature.
 
-A "Fit route to view" button in the route controls panel recenters and
-zooms the map to the current route
-([#297](https://github.com/DocGerd/sail_command/issues/297)).
+Two changelog entries shipped, both fixes for the same issue: a saved
+waypoint marker's pointer cursor could be left stuck as a pointer either
+after hovering off it onto an overlapping harbour marker, or after a click
+that added it as a via point, until an unrelated later interaction reset it
+([#1015](https://github.com/DocGerd/sail_command/issues/1015)).
 
-The map display settings' "All" seamark option is now hidden when it has
-no effect on the current chart data, instead of offering a choice that
-renders identically to "Standard"
-([#686](https://github.com/DocGerd/sail_command/issues/686)).
+The other eleven closed issues had no user-facing changelog entry. Two
+citation/coverage-gap corrections: an `App.tsx` comment's stale same-file
+reference to `PlannerPanel.tsx`'s `viaCoordName` was corrected
+([#1072](https://github.com/DocGerd/sail_command/issues/1072)); a
+`PlannerPanel` test gap — no case exercised a via coordinate that is both
+clamped to range AND out-of-region at once — was closed
+([#1064](https://github.com/DocGerd/sail_command/issues/1064)). A pin was
+added for the one `AisTraffic` #158 settle-gate case a prior tuple-to-value
+reset-key collapse left argued rather than tested — a rig switch between
+two rigs that both resolve to `null`
+([#1009](https://github.com/DocGerd/sail_command/issues/1009)).
+`CONTRIBUTING.md`'s 20% bug-reserve policy was corrected to read as a floor
+on bug-typed work, not a cap on milestone size, after a literal reading
+would have limited any cut to ten issues while only two `type: bug` issues
+existed repo-wide
+([#1109](https://github.com/DocGerd/sail_command/issues/1109)). Two
+short-landscape/header-height coupling issues were filed and left open by
+design after PR #1011 (#985/#991): a repeated `61px`/`69px` literal across
+`app.css` was judged a duplication residual, not a missing guard, since the
+real keeper is `layout.spec.ts`'s live-geometry measurements
+([#1013](https://github.com/DocGerd/sail_command/issues/1013)); and
+`ScaleBar`'s suppression margin at `shortLandscape740` was measured down to
+3px of headroom after that same header-height fix, confirmed still
+guarded by the existing `#231` e2e test rather than fixed further
+([#1014](https://github.com/DocGerd/sail_command/issues/1014)). A spike
+declined splitting `CLAUDE.md` into automatically-loaded nested files for
+the whole document (the compaction-loss hazard applies file-wide, not just
+to the sections already ruled out) and recommended a narrow, one-time
+evidence-extraction option instead
+([#1092](https://github.com/DocGerd/sail_command/issues/1092),
+`docs/spikes/1092-claude-md-lazy-loading.md`). The #297 "fit route to view"
+button gained e2e coverage against a real MapLibre map, closing the gap
+unit tests structurally cannot see (jsdom's canvas stub and the shared
+map fake never move a camera)
+([#1102](https://github.com/DocGerd/sail_command/issues/1102)). An
+advisory scan for home paths leaked into issue/PR/comment bodies was added
+alongside the existing tracked-files-only `check-no-home-paths.sh`, which
+has no reach into GitHub-hosted prose at all
+([#675](https://github.com/DocGerd/sail_command/issues/675)). And a spike
+recorded why the `docs/spikes/452-local-depth-relaxation.md` 1068 m vs.
+1060 m `APPROACH_RADIUS_M` pinch-cliff figures cannot currently be
+reconciled — neither figure affects the shipped 1852 m constant's safety
+margin
+([#929](https://github.com/DocGerd/sail_command/issues/929)).
 
-## Next — v0.29.0
+Three issues stayed open in the milestone, deliberately. `#1015` shipped 4
+of its 6 disclosed residuals: the `handleLeave` cursor fix (one of the two
+changelog entries above; the other found during PR #1124's review, not one
+of the six), a self-verifying culling-live claim, a real
+`waitFor`-on-already-true fix, and a deferral-mechanism header clause. The
+remaining two — a changelog-wording caveat now inside an already-frozen
+released section, and widening a paint-order e2e test to cover the route
+layers a shipped changelog sentence names — stay open
+([#1015](https://github.com/DocGerd/sail_command/issues/1015)). `#981`
+verified, from MapLibre's own `bucket.zoom + 1` collision-footprint
+evaluation, that #860's icon-size table change newly blocks six harbour
+labels at z12 that were visible before — a real, measured, directional
+effect, reported and pinned as a forward regression guard rather than
+fixed
+([#981](https://github.com/DocGerd/sail_command/issues/981)). `#1079`
+widened the #847 weave-ETA measurement to three route/wind/rig
+combinations, all still reading near-zero ETA cost on a navigable chord;
+the gradient-vs-uniform sub-question stays open because the one gradient
+case measured has no navigable chord to price
+([#1079](https://github.com/DocGerd/sail_command/issues/1079)).
 
-The [`v0.29.0` milestone](https://github.com/DocGerd/sail_command/milestones)
+## Next — v0.30.0
+
+The [`v0.30.0` milestone](https://github.com/DocGerd/sail_command/milestones)
 is the one now being filled. As of this cut it holds no issues yet; the
 milestone page is the only authoritative view, check it directly rather than
 this file.
@@ -123,8 +168,8 @@ transfer to a fork automatically).
 
 ### Routing depth
 
-The largest open product questions. Both sit in `Backlog` — accepted in
-principle, not scheduled into a release:
+The largest open product questions. Both sit in `Icebox` — deferred, not
+scheduled into a release:
 
 - Currents, tides, and sea state (waves) in the isochrone cost
   ([#18](https://github.com/DocGerd/sail_command/issues/18)) — a design spec
@@ -186,13 +231,15 @@ measurement refutes the complaint that opened it — sub-gate exposure is
 0.326 nm, 1.18x the provable minimum-necessary floor, all of it within the
 last 0.82 nm of the Marstal approach, where the bathymetry itself forces
 it — and the route is already disclosed, not a silent hazard, at default
-settings; its four live residuals do not close with it and are tracked
-separately in `Backlog`
-([#649](https://github.com/DocGerd/sail_command/issues/649),
-[#929](https://github.com/DocGerd/sail_command/issues/929),
-[#930](https://github.com/DocGerd/sail_command/issues/930),
-[#931](https://github.com/DocGerd/sail_command/issues/931),
-[#932](https://github.com/DocGerd/sail_command/issues/932)).
+settings; its four residuals did not close with it
+([#649](https://github.com/DocGerd/sail_command/issues/649)). Of those,
+[#929](https://github.com/DocGerd/sail_command/issues/929) closed at the
+`v0.29.0` cut, as a documented "cannot be reconciled" answer;
+[#930](https://github.com/DocGerd/sail_command/issues/930) and
+[#931](https://github.com/DocGerd/sail_command/issues/931) remain open in
+`Backlog`, and
+[#932](https://github.com/DocGerd/sail_command/issues/932) remains open in
+`Icebox`.
 
 The `v0.20.0` cut addressed sixteen items in this area, out of eighteen
 issues total that milestone closed. The largest strand cut what continuous

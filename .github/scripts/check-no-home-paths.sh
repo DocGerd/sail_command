@@ -244,15 +244,30 @@ scan_symlink_target() {
   return "$found"
 }
 
-# scan_tree [EXCLUDE_REL_PATH] -> scans every git-tracked file in the
-# current work tree (cwd must be inside it; `git ls-files` resolves relative
-# to the work tree root regardless of cwd, matching every other git command
-# in this repo's own hooks). Prints violation rows and/or a fail-closed
-# diagnostic to stdout. Returns 0 (clean), 1 (violations found), or 2
-# (internal / fail-closed error - unusable git, no tracked files, or an
+# scan_tree [EXCLUDE_REL_PATH] [EXCLUDE_REL_PATH_2] -> scans every git-tracked
+# file in the current work tree (cwd must be inside it; `git ls-files`
+# resolves relative to the work tree root regardless of cwd, matching every
+# other git command in this repo's own hooks). Prints violation rows and/or a
+# fail-closed diagnostic to stdout. Returns 0 (clean), 1 (violations found),
+# or 2 (internal / fail-closed error - unusable git, no tracked files, or an
 # unreadable tracked file).
+#
+# EXCLUDE_REL_PATH_2 (#675): `.github/scripts/scan-issue-home-paths.sh` is a
+# SIBLING guard for a DIFFERENT surface (GitHub-API-hosted issue/PR/comment
+# bodies, not tracked-file content) that shares this script's own
+# self-exclusion problem one level over - its `--selftest` block needs REAL
+# violating literal strings (`/home/alice`, `C:\Users\alice`, etc, exactly
+# the same shape this script's own selftest below uses) to prove its
+# detector fires, and those literals are unavoidably tracked once that file
+# is committed. `self_relative_path()` below only ever resolves to `$0`
+# (THIS file), so it cannot cover a sibling - hence a SECOND, hardcoded
+# exclude path rather than a second derived one: there is no `$0`-like
+# handle for "the other script", so naming it literally is the only sane
+# option. Kept EXACT-STRING-EQUALITY, never a prefix/glob match, so a
+# similarly-named but different file (`scan-issue-home-paths-copy.sh`, say)
+# is NOT silently exempted - pinned by selftest cases 34/35.
 scan_tree() {
-  local exclude="${1:-}" any_violation=1 any_error=0 f target
+  local exclude="${1:-}" exclude2="${2:-}" any_violation=1 any_error=0 f target
 
   git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
     echo "check-no-home-paths: not inside a git work tree (or git is unavailable) - cannot scan, failing closed."
@@ -280,6 +295,7 @@ scan_tree() {
 
   for f in "${files[@]}"; do
     [ -n "$exclude" ] && [ "$f" = "$exclude" ] && continue
+    [ -n "$exclude2" ] && [ "$f" = "$exclude2" ] && continue
     # #479: a tracked SYMLINK is handled entirely separately, BEFORE the
     # regular-file readability check below - `[ -f "$f" ]` FOLLOWS a symlink,
     # so a symlink pointing at an existing readable file/dir would otherwise
@@ -350,7 +366,7 @@ self_relative_path() {
 if [ "${1:-}" = "--selftest" ]; then
   fail=0
   total_cases=0
-  EXPECTED_CASES=33
+  EXPECTED_CASES=35
 
   case "$0" in
     */*) SELF="$0" ;;
@@ -614,6 +630,29 @@ if [ "${1:-}" = "--selftest" ]; then
     *) echo "SELFTEST FAIL: 33 did not report the symlink-target leak -> $LAST_OUT"; fail=1 ;;
   esac
 
+  # --- 34-35 (#675): the SECOND, hardcoded exclusion for
+  # `.github/scripts/scan-issue-home-paths.sh` - that sibling guard's own
+  # `--selftest` needs real violating literals in its fixtures (the same
+  # self-referential problem THIS script solves for itself via
+  # self_relative_path()), so it is named explicitly rather than derived.
+  # 34 proves the exact path IS excluded; 35 proves a near-miss path is NOT -
+  # exact-string equality, never a prefix/glob match.
+  r=$(mkrepo)
+  mkdir -p "$r/.github/scripts"
+  printf '%s\n' '#!/usr/bin/env bash' 'echo "run: cd /home/dave-selftest-marker/repo"' > "$r/.github/scripts/scan-issue-home-paths.sh"
+  git -C "$r" add -A >/dev/null 2>&1
+  check "34 sibling exclusion: scan-issue-home-paths.sh's own violating fixtures are excluded" pass "$r"
+
+  r=$(mkrepo)
+  mkdir -p "$r/.github/scripts"
+  printf '%s\n' '#!/usr/bin/env bash' 'echo "run: cd /home/dave-selftest-marker/repo"' > "$r/.github/scripts/scan-issue-home-paths-copy.sh"
+  git -C "$r" add -A >/dev/null 2>&1
+  check "35 sibling exclusion is EXACT, not prefix: a near-miss filename still fires" fail "$r"
+  case "$LAST_OUT" in
+    *"scan-issue-home-paths-copy.sh:"*"linux-home:/home/dave-selftest-marker"*) ;;
+    *) echo "SELFTEST FAIL: 35 near-miss file was not reported -> $LAST_OUT"; fail=1 ;;
+  esac
+
   if ! [ "$total_cases" -eq "$EXPECTED_CASES" ] 2>/dev/null; then
     echo "SELFTEST FAILURES: ran $total_cases cases, expected ${EXPECTED_CASES:-<unset/empty>} - a case was skipped or silently dropped"
     exit 1
@@ -626,7 +665,8 @@ fi
 
 # ---- production path ----
 EXCLUDE="$(self_relative_path)"
-out=$(scan_tree "$EXCLUDE")
+EXCLUDE2=".github/scripts/scan-issue-home-paths.sh"
+out=$(scan_tree "$EXCLUDE" "$EXCLUDE2")
 rc=$?
 if [ "$rc" -ne 0 ]; then
   echo "::error::check-no-home-paths found problems (see below) - a tracked file may leak a contributor's local absolute path (home directory, per-user temp path, or the flattened ~/.claude/projects/ form). Replace it with a repo-relative placeholder such as <repo>, <scratchpad>, or <flattened-repo-path> (see chore/redact-home-paths for the pattern)."

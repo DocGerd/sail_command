@@ -79,7 +79,21 @@ describe('SavedWaypointsLayer (#924)', () => {
     await saveWaypoint(waypoint('w1', 54.8, 9.9, 'Ankerplatz'));
     renderLayer();
 
-    await waitFor(() => expect(map.addSource).not.toHaveBeenCalled());
+    // #1015: a `waitFor` on an ALREADY-satisfied negative resolves on its
+    // first tick and cannot distinguish "never becomes true" from "was
+    // already false right now" — it is an assertion wearing a wait's
+    // clothes. The mount effect's own setup() call has already run
+    // synchronously by this point (no anchor -> early return, no
+    // addSource), so the old `waitFor` form here proved nothing about
+    // anything arriving LATER. Flush real pending async work first — the
+    // `useSavedWaypoints()` IndexedDB read is still in flight and its
+    // resolution triggers a re-render — THEN assert once, synchronously, so
+    // a hypothetical addSource call on a later microtask/macrotask would be
+    // caught rather than raced.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(map.addSource).not.toHaveBeenCalled();
     expect(map.getSource(SAVED_WAYPOINT_SOURCE)).toBeUndefined();
     expect(map.getLayer(SAVED_WAYPOINT_LAYER)).toBeUndefined();
     expect(map.getLayer(SAVED_WAYPOINT_LABEL_LAYER)).toBeUndefined();
@@ -221,6 +235,75 @@ describe('SavedWaypointsLayer (#924)', () => {
     // Resolved back through the STORED record, not read off the feature —
     // coordinates and name come from IndexedDB.
     expect(onPick).toHaveBeenCalledWith({ lat: 54.8, lon: 9.9, name: 'Ankerplatz' });
+  });
+
+  it('#1015: mouseleave clears the cursor only while armed, never a harbour handler’s cursor', async () => {
+    // DataLayers registers its own enter/leave pair on sc-harbor-points, so
+    // an overlapping saved waypoint's DISARMED mouseleave must not clear a
+    // cursor that handler set while the pointer is still over the harbour
+    // marker. Simulate that by pre-setting the canvas cursor to a sentinel
+    // no code path here would ever write.
+    await saveWaypoint(waypoint('w1', 54.8, 9.9, 'Ankerplatz'));
+    const { rerender } = renderLayer({ armed: false });
+    act(() => {
+      addAnchor(map);
+      map.fire('styledata');
+    });
+    await waitFor(() => expect(map.getSource(SAVED_WAYPOINT_SOURCE)?.setData).toHaveBeenCalled());
+
+    map.getCanvas().style.cursor = 'grab';
+    act(() => {
+      map.fireLayerEvent('mouseleave', SAVED_WAYPOINT_LAYER, {});
+    });
+    expect(map.getCanvas().style.cursor).toBe('grab');
+
+    // Armed: this layer now owns the affordance itself, so enter sets the
+    // pointer and leave must clear it again.
+    rerender(<SavedWaypointsLayer armed onPick={vi.fn()} />);
+    act(() => {
+      map.fireLayerEvent('mouseenter', SAVED_WAYPOINT_LAYER, {});
+    });
+    expect(map.getCanvas().style.cursor).toBe('pointer');
+    act(() => {
+      map.fireLayerEvent('mouseleave', SAVED_WAYPOINT_LAYER, {});
+    });
+    expect(map.getCanvas().style.cursor).toBe('');
+  });
+
+  it('#1015 (round 2): a click that disarms while the pointer stays on the marker still clears the cursor on leave', async () => {
+    // The TRANSITION the round-1 fix missed: App.tsx's onPick
+    // (`handleSavedWaypointMapPick`) calls `setTapTarget(null)` INSIDE the
+    // click handler this layer fires, so the common click-to-pick path
+    // disarms while the pointer is still over the marker. No further
+    // mouseenter/mouseleave fires until the pointer physically moves, and
+    // by the time it does, `armed` has already flipped to false — a guard
+    // that re-checks arming AT LEAVE TIME (rather than tracking that THIS
+    // handler owns the cursor it set) no-ops and leaves the pointer cursor
+    // stuck. A fresh-mount test cannot see this: it needs the ENTER (armed)
+    // -> DISARM -> LEAVE sequence, with no mouseenter/mouseleave in between
+    // the disarm and the leave.
+    await saveWaypoint(waypoint('w1', 54.8, 9.9, 'Ankerplatz'));
+    const { rerender } = renderLayer({ armed: true });
+    act(() => {
+      addAnchor(map);
+      map.fire('styledata');
+    });
+    await waitFor(() => expect(map.getSource(SAVED_WAYPOINT_SOURCE)?.setData).toHaveBeenCalled());
+
+    act(() => {
+      map.fireLayerEvent('mouseenter', SAVED_WAYPOINT_LAYER, {});
+    });
+    expect(map.getCanvas().style.cursor).toBe('pointer');
+
+    // Models the click's own onPick disarming — the prop transition
+    // App.tsx's tapTarget state change produces — with NO intervening
+    // mouseleave/mouseenter, because the pointer has not moved.
+    rerender(<SavedWaypointsLayer armed={false} onPick={vi.fn()} />);
+
+    act(() => {
+      map.fireLayerEvent('mouseleave', SAVED_WAYPOINT_LAYER, {});
+    });
+    expect(map.getCanvas().style.cursor).toBe('');
   });
 
   it('ignores a click whose feature id is not in the current list', async () => {
