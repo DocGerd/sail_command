@@ -54,8 +54,9 @@ from the `/release-cycle` command that applied it.
 One further spike doc landed in this window without closing its issue:
 [#1136](https://github.com/DocGerd/sail_command/issues/1136) (motor-off
 solves terminating inside the inner fjord before observing wind) was
-investigated and written up as a decision record, and the issue itself
-stays open in the next milestone.
+investigated and written up as a decision record
+([#1169](https://github.com/DocGerd/sail_command/pull/1169)), and the issue
+itself stays open in the next milestone.
 
 ## Next — v0.32.0
 
