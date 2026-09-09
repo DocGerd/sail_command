@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { stripCommentsAndStrings } from './sourceStrip';
 
 // #253 (maplibre-gl 6 migration): the guard CompassControl.tsx's `onMoveEnd`
 // uses to tell "our own tracked camera ease is still in flight" from "it just
@@ -113,68 +114,38 @@ const CAMERA_METHODS = [
  */
 const ALLOWED_FILES = new Set(['../components/CompassControl.tsx', '../components/RouteLayer.tsx']);
 
-// Strips comments with a small character-scanning state machine rather than
-// a `//`-to-end-of-line regex: the naive regex truncates a line at the FIRST
-// `//` it sees, including one that is actually inside a string or template
-// literal (e.g. `` fetch(`https://x/y`); map.flyTo({...}) ``), which erases
-// the real call that followed it on the same line. That failure direction is
-// a FALSE GREEN — the guard would silently miss a genuine new call site —
-// which is worse than the reverse, so this tracks string state explicitly
-// and only treats `//`/`/*` as a comment opener outside of one.
+// Strips comments (and masks string/regex-literal content) via the shared
+// `./sourceStrip` helper.
 //
-// KNOWN RESIDUAL, latent not live (verified: zero differences in the scan
-// results across all 100 non-test source files as of #253's fix-up pass) —
-// documented rather than fixed because closing it needs a real tokenizer:
-// this state machine has no notion of a regex literal, so a quote character
-// that is actually inside one (e.g. `/['"]/`) is read as an ordinary string
-// opener. The scanner would then stay "in string" past the literal's closing
-// `/`, and a real camera call on the same line after such a regex could be
-// swallowed — a FALSE GREEN (the new call site goes unreported), the same
-// dangerous direction as the comment-truncation bug above. Distinguishing a
-// regex literal from a division expression requires tracking the preceding
-// token, which this character-only scanner does not do.
-function stripComments(source: string): string {
-  let out = '';
-  let i = 0;
-  let inString: '"' | "'" | '`' | null = null;
-  while (i < source.length) {
-    const c = source[i]!;
-    const c2 = source[i + 1];
-    if (inString) {
-      out += c;
-      if (c === '\\') {
-        out += c2 ?? '';
-        i += 2;
-        continue;
-      }
-      if (c === inString) inString = null;
-      i += 1;
-      continue;
-    }
-    if (c === '"' || c === "'" || c === '`') {
-      inString = c;
-      out += c;
-      i += 1;
-      continue;
-    }
-    if (c === '/' && c2 === '/') {
-      while (i < source.length && source[i] !== '\n') i += 1;
-      continue;
-    }
-    if (c === '/' && c2 === '*') {
-      i += 2;
-      while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) {
-        if (source[i] === '\n') out += '\n';
-        i += 1;
-      }
-      i += 2;
-      continue;
-    }
-    out += c;
-    i += 1;
-  }
-  return out;
-}
+// #1121: this file used to carry its own small character-scanning state
+// machine with a documented "KNOWN RESIDUAL, latent not live" — no notion of
+// a regex literal, so a quote character actually inside one (e.g.
+// `/['"]/`) was read as an ordinary string opener, desyncing the
+// string-state tracking for the rest of the scan (real structural content
+// after it silently swallowed as "string content"). That was accepted at
+// #253's fix-up pass because it verified zero differences across all 100
+// non-test source files at the time. STILL LATENT, not live, by that same
+// yardstick — re-measured 2026-09-09 by running BOTH the old stripper and
+// `./sourceStrip`'s regex-aware one through the actual `CAMERA_METHOD_PATTERN`
+// scan across all 143 current non-test `app/src` files: zero differences in
+// scan results, same as #253 originally found. The divergence is now
+// measurably REAL, though: `lib/format.ts`'s `DM_DMS_RE`
+// (`/^(-?\d+)\s*°?\s*(\d{1,2})(?:[.,](\d+))?\s*['′]?\s*(?:(\d{1,2}
+// )(?:[.,](\d+))?\s*["″]?\s*)?([A-Za-z])?$/`) contains BOTH a single quote
+// (`['′]`) and a double quote (`["″]`) inside its character classes, and the
+// old stripper's output for that file byte-diffs ~943 characters shorter
+// than the regex-aware one's — but the confusion RESYNCS (returns to a
+// clean, non-string state) before reaching any exported symbol the camera
+// scan or its own non-vacuity control could observe, so it does not
+// currently affect this guard's own detection. Adopted anyway, because the
+// resync point is a property of THIS file's current text, not a guarantee —
+// a future edit to `format.ts` could easily land a real camera-method-named
+// string or a second desync-triggering regex literal past the point where
+// today's confusion happens to clear. `./sourceStrip`'s
+// `isRegexContext`/`scanRegexLiteral` closes the mechanism the same way
+// #1120 closed it for `startPreviewSwAssertCallSites.test.ts`'s own scan
+// target, where the identical hole IS live (see that file's own comment).
+const stripComments = stripCommentsAndStrings;
 
 // Matches both dot dispatch (`map.easeTo(...)`) and bracket dispatch with a
 // literal string key (`map['easeTo'](...)`, `` map[`easeTo`](...) ``) — the
@@ -202,15 +173,15 @@ function findCameraCallSites(): Map<string, string[]> {
   return hits;
 }
 
-// KNOWN RESIDUAL, latent not live (verified: zero differences in scan results
-// across all 100 non-test source files): a dynamic bracket key —
+// KNOWN RESIDUAL, latent not live: a dynamic bracket key —
 // `map[methodNameVariable]()` — cannot be matched by this or any text-only
 // scanner, since the actual method name never appears as a literal in the
 // source. This scanner is a structural guard against ACCIDENTAL new call
 // sites written the ordinary way, not an exhaustive proof against deliberate
-// obfuscation; both the regex-literal hole documented above stripComments and
-// this one fail in the same direction — a missed call site reads as green,
-// never as a false failure.
+// obfuscation. #1121 closed the SIBLING regex-literal hole this comment used
+// to also name (see `stripComments`'s own header above); this one fails in
+// the same direction — a missed call site reads as green, never as a false
+// failure.
 
 describe('#253 structural guard: camera-animating call sites', () => {
   it('finds every currently-known call site (proves the scan itself works)', () => {
@@ -240,4 +211,21 @@ describe('#253 structural guard: camera-animating call sites', () => {
       );
     }
   });
+
+  // #1121 review round 2 (Major): a file-specific non-vacuity control was
+  // tried here (asserting `lib/format.ts`'s stripped output still contained
+  // `parseHemisphereCoord`, a symbol declared after the quote-bearing
+  // `DM_DMS_RE`) and DELETED after mutation-checking it. Forcing
+  // `./sourceStrip`'s `isRegexContext` to always return `false` (the
+  // sharpest available reproduction of "regex-literal awareness regresses")
+  // left ALL THREE tests in this file passing, that control included — the
+  // desync in `format.ts` resyncs before reaching `parseHemisphereCoord` (see
+  // `stripComments`'s header comment above), so the control could never red
+  // under the mutation it existed to catch. A control that cannot fail is
+  // worse than no control: it stops anyone looking for a real one. The
+  // shared `assertNonVacuousStrip` primitive is still exercised
+  // load-bearingly by `timeoutGuard.test.ts` and
+  // `startPreviewSwAssertCallSites.test.ts` (both genuinely red under the
+  // same mutation), so nothing is lost by not duplicating a non-discriminating
+  // copy here.
 });
