@@ -120,7 +120,7 @@ import { startPreview, mapReady } from './helpers';
 // collision footprint lets a higher-priority basemap candidate claim a slot
 // that had been going to a different, lower-priority one under the bigger
 // box. Reported as measured, not smoothed into the monotonic story: the
-// `BASEMAP_VICTIM_PAIRS` guard below pins only the 6 harbors' 8 (harbor,
+// basemap guard below covers only the 6 harbors' 8 (harbor,
 // layer) pairs that flip cleanly from ABSENT (0 features) under the shipped
 // table to PRESENT (>=1) under the reverted one — `gelting-mole` and
 // `graasten` show a same-layer COUNT increase without a layer newly
@@ -139,17 +139,19 @@ import { startPreview, mapReady } from './helpers';
 // basemap point features (town centres, POIs) sit at different coordinates
 // than this app's own harbor-snap points.
 //
-// #1126 (2026-09-09) FIXED the harbor-label class alone, by reordering
-// `sc-harbor-labels` to be added last in `DataLayers.tsx`'s `setupLayers()`
-// — see the mechanism paragraph above. This basemap class is EXPLICITLY
-// NOT closed by that fix and remains untouched: protomaps' own symbol
-// layers are added even earlier, at Map construction (`MapView.tsx`'s
-// `buildStyle()`), so they sit below BOTH seamarks and `sc-harbor-labels`
-// regardless of `DataLayers.tsx`'s internal insertion order — a reorder
-// confined to that one component's own layers cannot reach a layer added
-// before that component ever mounts. This class stays an open residual;
-// the `BASEMAP_VICTIM_PAIRS` test below is unchanged and still asserts it
-// blocked at z12.5.
+// #1126 (2026-09-09) fixed the harbor-label class with a zoom-stepped
+// `icon-ignore-placement` on the seamark layers (`seamarksLayout()`,
+// seamarkGeoJson.ts), which takes seamark collision boxes OUT of the shared
+// grid at z>=12 while changing nothing below z12. Because that removes the
+// blocking boxes themselves rather than re-ranking one victim layer, it
+// reaches this basemap class too: all 8 pairs were RE-MEASURED under it and
+// 7 flip BLOCKED -> PRESENT, with `svendborg/places_subplace` alone still
+// absent. The guard below now pins each pair in its measured direction. So
+// this class is NARROWED, not closed — and a layer REORDER, the lever
+// #1126 first tried, could not have reached it at all: protomaps' symbol
+// layers are added at Map construction (`MapView.tsx`'s `buildStyle()`),
+// below every `sc-*` layer regardless of `DataLayers.tsx`'s internal
+// insertion order.
 
 interface ScTestMap {
   jumpTo(options: { center: [number, number]; zoom: number }): unknown;
@@ -229,7 +231,7 @@ async function settledLabelPresent(page: Page, h: Harbor): Promise<boolean> {
   );
 }
 
-test('#1126: layer-order fix restores 6 named harbor labels at z12.5', async ({ page }) => {
+test('#1126: zoom-stepped icon-ignore-placement restores 6 named harbor labels at z12.5', async ({ page }) => {
   test.setTimeout(120_000);
   const server = await startPreview(page);
   try {
@@ -272,7 +274,18 @@ test('#1126: layer-order fix restores 6 named harbor labels at z12.5', async ({ 
 // `gelting-mole`/`graasten`/`faaborg` are therefore UNCOVERED by this
 // forward guard, not overlooked — tracked in #1142, which records this
 // exact exclusion.
-const BASEMAP_VICTIM_PAIRS: Array<{ harborId: string; layer: string }> = [
+//
+// #1126 (2026-09-09) RE-MEASURED all 8 pairs under the zoom-stepped
+// `icon-ignore-placement` that closes the harbor-label class: 7 of the 8
+// flip BLOCKED -> PRESENT, and exactly one (`svendborg/places_subplace`)
+// stays blocked. Each pair below is therefore pinned in the direction it
+// was MEASURED in, not assumed — the 7 as a forward regression guard that
+// they stay recovered, and the 1 as an honest record that this residual is
+// NARROWED, not closed. What still blocks `svendborg/places_subplace` was
+// NOT investigated: at z>=12 seamarks no longer enter the collision grid at
+// all, so whatever wins that slot is not a seamark, and attributing it
+// would need its own measurement.
+const BASEMAP_PAIRS_RECOVERED: Array<{ harborId: string; layer: string }> = [
   { harborId: 'aabenraa', layer: 'places_locality' },
   { harborId: 'aabenraa', layer: 'roads_labels_major' },
   { harborId: 'aaroesund', layer: 'places_locality' },
@@ -280,6 +293,8 @@ const BASEMAP_VICTIM_PAIRS: Array<{ harborId: string; layer: string }> = [
   { harborId: 'faaborg', layer: 'places_locality' },
   { harborId: 'faaborg', layer: 'roads_shields' },
   { harborId: 'kappeln', layer: 'places_subplace' },
+];
+const BASEMAP_PAIRS_STILL_BLOCKED: Array<{ harborId: string; layer: string }> = [
   { harborId: 'svendborg', layer: 'places_subplace' },
 ];
 
@@ -318,7 +333,7 @@ async function settledLayerAbsent(page: Page, h: Harbor, layer: string): Promise
   );
 }
 
-test('#981: seamark z12-bucket collision growth blocks basemap symbol layers at z12.5', async ({
+test('#981: seamark z12-bucket collision growth vs. basemap symbol layers at z12.5 — 7 of 8 pairs recovered by #1126, 1 still blocked', async ({
   page,
 }) => {
   test.setTimeout(120_000);
@@ -330,7 +345,11 @@ test('#981: seamark z12-bucket collision growth blocks basemap symbol layers at 
     await expect(seamarksToggle).toBeVisible();
     await seamarksToggle.check();
 
-    for (const { harborId, layer } of BASEMAP_VICTIM_PAIRS) {
+    const cases: Array<{ harborId: string; layer: string; expectAbsent: boolean }> = [
+      ...BASEMAP_PAIRS_RECOVERED.map((p) => ({ ...p, expectAbsent: false })),
+      ...BASEMAP_PAIRS_STILL_BLOCKED.map((p) => ({ ...p, expectAbsent: true })),
+    ];
+    for (const { harborId, layer, expectAbsent } of cases) {
       const h = harbors.find((x) => x.id === harborId);
       expect(h, `harbor ${harborId} missing from harbors.json`).toBeTruthy();
       if (!h) continue;
@@ -342,8 +361,14 @@ test('#981: seamark z12-bucket collision growth blocks basemap symbol layers at 
       const absent = await settledLayerAbsent(page, h, layer);
       expect(
         absent,
-        `${harborId}/${layer}: expected BLOCKED (absent) at z${PROBE_ZOOM} (#981 basemap victim class)`,
-      ).toBe(true);
+        expectAbsent
+          ? `${harborId}/${layer}: expected STILL BLOCKED (absent) at z${PROBE_ZOOM} — the one ` +
+            `#981 basemap pair #1126 did NOT recover. If this now reads present, the residual ` +
+            `narrowed further; re-measure and move it to BASEMAP_PAIRS_RECOVERED.`
+          : `${harborId}/${layer}: expected PRESENT (recovered) at z${PROBE_ZOOM} — #1126's ` +
+            `zoom-stepped icon-ignore-placement takes seamark boxes out of the collision grid ` +
+            `at z>=12; a regression here means they are blocking basemap symbols again.`,
+      ).toBe(expectAbsent);
     }
   } finally {
     await server.kill();

@@ -1093,7 +1093,10 @@ test('#232 item 2: cross-tile placement ordering — measurement, not a fix', as
     expect(
       unexplained,
       `${unexplained.length} culled hazard mark(s) had no overlapping displacer found at their own ` +
-        `screen pixel — most likely viewport clipping (see the setViewportSize comment above); ` +
+        `screen pixel — either viewport clipping (see the setViewportSize comment above), or a `
+        + `displacer on a layer this probe does not search: nearestDisplacerAt looks only at the `
+        + `two seamark layers, so a harbour label or basemap symbol that won the collision slot `
+        + `is invisible to it (measured at #1148, whose layer reorder produced exactly this); ` +
         `investigate before trusting the rest of this table: ${JSON.stringify(unexplained, null, 2)}`,
     ).toEqual([]);
 
