@@ -626,19 +626,14 @@ function nearestPointOnRoute(
 // element (`marker.ts`'s `_addDragHandler`), so a smaller ring would reveal
 // over a wider radius than it actually responds to.
 //
-// Deliberately carries NO role/tabIndex/aria-label: unlike a real via
-// marker it is never keyboard-reachable. #850's own accessibility section
-// argues the OPPOSITE of "this is fine to defer" — that shipping a
-// map-only, pointer-only insertion gesture widens the WCAG 2.1.1 gap #714
-// already documented, and that a keyboard equivalent would reuse this same
-// insertion model, making the two cheaper to build together than either
-// alone. No keyboard equivalent is built in this PR. That is a DEVIATION
-// from what #850 asks for, not something the issue licenses, and is
-// recorded as a deviation for the maintainer to rule on rather than
-// resolved here. `aria-hidden` keeps this transient element out of the
-// accessibility tree in the meantime, rather than announcing an unlabelled,
-// here-one-moment-gone-the-next control to a screen-reader user who could
-// never reach it anyway.
+// Deliberately carries NO role/tabIndex/aria-label: this gesture is
+// desktop/pointer-only. Touch has no hover phase to reveal this handle,
+// and there is no keyboard equivalent — both deliberately OUT OF SCOPE for
+// this PR, accepted by the maintainer at the v0.31.0 cut, and tracked as
+// #1170 (touch) and #1171 (keyboard). `aria-hidden` keeps this transient
+// element out of the accessibility tree in the meantime, rather than
+// announcing an unlabelled, here-one-moment-gone-the-next control to a
+// screen-reader user who could not reach it anyway.
 function routeDragHandleElement(): HTMLDivElement {
   const el = document.createElement('div');
   el.className = 'sc-route-drag-handle';
