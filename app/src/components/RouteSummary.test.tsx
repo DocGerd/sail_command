@@ -991,15 +991,24 @@ describe('RouteSummary', () => {
     expect(screen.queryByText(/\d+ h old/i)).not.toBeInTheDocument();
   });
 
-  // #265: pin against the live dict value, not a paraphrased regex — the
-  // string was reworded to stop claiming the destination is provably
-  // unreachable (isochrone.ts's #866 comment: 'mask-blocked' cannot tell a
-  // genuinely unreachable destination from a search that gave up early).
+  // #265: the string was reworded to stop claiming the destination is
+  // provably unreachable (isochrone.ts's #866 comment: 'mask-blocked' cannot
+  // tell a genuinely unreachable destination from a search that gave up
+  // early). TWO assertions, deliberately from two different sources — a
+  // dict-derived one alone is a tautology for exactly this wording
+  // regression (review found on PR #1137: reverting dict.en.ts's
+  // error.noRoute.unreachable to the pre-#265 overclaiming string left this
+  // test green when it read only `en['error.noRoute.unreachable']`). The
+  // dict-derived assertion below IS still load-bearing for KEY ROUTING
+  // (mutating NO_ROUTE_MESSAGE_KEY.unreachable to a different key reds it),
+  // so it stays; the regex below pins the CONTENT independently, with a
+  // literal written here rather than imported from the dict.
   it('renders a no-route message instead of stats/legs when the selected rig has no result', () => {
     const plan = makePlan();
     setSail(plan, 'fock', { result: null, reason: 'unreachable' });
     renderSummary({ plan, rig: 'fock' });
     expect(screen.getByRole('alert')).toHaveTextContent(en['error.noRoute.unreachable']);
+    expect(screen.getByRole('alert')).toHaveTextContent(/does not prove no route exists/i);
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
