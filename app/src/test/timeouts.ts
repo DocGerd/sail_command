@@ -163,8 +163,24 @@ const processEnv = (globalThis as { process?: { env?: Record<string, string | un
 //        statement (currently line 46 — anchor on the statement, not the
 //        number, which moves on the next edit above it), so `closure.mjs
 //        diff` reports OWED for this change. The sweep was run against
-//        this diff: [SWEEP RESULT PENDING — to be recorded here once the
-//        run completes].
+//        this diff (2026-09-09): determinism control (base1 vs base2)
+//        363/363 plans byte-identical across 11 arms; matched-contention
+//        comparison (base3 vs this diff's HEAD) also 363/363 across the
+//        same 11 arms; all 11 arm sha256 prefixes match the table
+//        `app/sweep/README.md` already records for the #653 control (a
+//        different machine/day/merge-base — the stronger control, since it
+//        proves the baseline stable against the very thing that would
+//        invalidate it, not merely self-consistent). A-side outcome
+//        distribution, identical in both runs: ok 102, ok+shallow 110,
+//        unreachable 65, calm-motor-off 55, beyond-horizon 28,
+//        snap-failed-destination 3 — not error-dominated, so the
+//        byte-identity is informative. base1 and base2 each logged one
+//        vitest FAIL for `salona44-relaxation` (a test-wrapper timeout
+//        under four-way contention); the arm's own JSON output is
+//        byte-identical across all four run directories and matches the
+//        README-recorded prefix, so the underlying compute/write completed
+//        correctly and only vitest's own timeout bookkeeping fired late.
+//        Verdict: this diff moves zero routes.
 //
 //   => 8 (roughly 2x the measured 4.9x lower-bound floor, absorbing both the
 //      "measured on a killed run" gap in point 3 and the "solver tests pay
