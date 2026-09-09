@@ -273,8 +273,7 @@ scanning gate depths against the 46 m mask specifically (#245 §2.2). So:
   calls for — with an unmeasured, merely-predicted direction of effect.
 - **Branch (b)** does not change resolution for the pre-existing region in
   the sense #245 tested (cell size stays ~46–47 m there, modulo the §2.2
-  rounding drift above), so it is the branch NOT directly implicated by
-  #245's measured finding. It is still not free: `verify_mask.py` must be
+  rounding drift above). It is still not free: `verify_mask.py` must be
   re-run regardless, because the new region has its own harbours never
   checked at any resolution, and the rounding drift in §2.2 is a real,
   if tiny, perturbation of the old region's cell boundaries.
