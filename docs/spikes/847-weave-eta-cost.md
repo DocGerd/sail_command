@@ -13,6 +13,14 @@
   presentation matter (more waypoints than the passage needs to show), not a
   routing defect.** That verdict is scoped to the ONE reproducing case
   measured below — see "Aperture" (§5) for exactly how far it generalises.
+  **#1079 (2026-09-09) WIDENED this measurement** — see §7. The near-zero
+  finding held across three route/wind combinations (0.7%, 0.7%, 1.5%, all
+  well below #264's large-swing regime), including the FIRST sail-mode
+  weave span measured here. The gradient-wind question is NARROWED, not
+  closed: the same phenomenon reproduces under a non-uniform (route-scoped
+  gradient) field, but that case's own chord is not navigable, so no
+  ETA-cost percentage could be honestly computed for it — see §7 for
+  exactly what is and is not established.
 
 > Harness: `app/src/routing/realmask.repro.weaveEta847.test.ts` (new file,
 > named to match the `realmask.repro*.test.ts` glob so it lands in
@@ -178,16 +186,23 @@ reporting it as more waypoints than a human would draw by hand.
 
 ## 5. Aperture — what this measurement can and cannot say
 
-- **One route, one wind cell, one rig.** This mirrors #354's own spike's
-  honesty about its aperture: a single reproducing case establishes that
-  the phenomenon EXISTS and CAN be near-zero-cost, not that it always is.
-- **Uniform wind only.** The issue's own screenshot almost certainly comes
-  from a real (spatially/temporally varying) Open-Meteo forecast, which
-  this harness does not reproduce — the same "narrowed, not closed"
-  evidential gap CLAUDE.md's motor-decision-rule bullet already records for
-  #264 (a uniform field is not NECESSARY to produce a weave — this
-  reproduction shows that again — but is not established to behave
-  IDENTICALLY to a gradient field either).
+- **One route, one wind cell, one rig — WIDENED by #1079, see §7.** This
+  originally mirrored #354's own spike's honesty about its aperture: a
+  single reproducing case establishes that the phenomenon EXISTS and CAN be
+  near-zero-cost, not that it always is. §7 measured two further
+  route/wind combinations (one motor-mode, one sail-mode) and found the
+  same near-zero-cost result each time — so the finding is now established
+  across three route/wind/rig combinations, not one, but see §7 for what
+  is still NOT covered (departure time, both rigs, sail-locked-arc
+  motor-tacking specifically).
+- **Uniform wind only — NARROWED (not closed) by #1079, see §7.** The
+  issue's own screenshot almost certainly comes from a real
+  (spatially/temporally varying) Open-Meteo forecast, which this harness
+  does not reproduce — the same "narrowed, not closed" evidential gap
+  CLAUDE.md's motor-decision-rule bullet already records for #264 (a
+  uniform field is not NECESSARY to produce a weave — this reproduction
+  shows that again — but is not established to behave IDENTICALLY to a
+  gradient field either).
   Gradient wind was tried during this session's exploration (a synthetic
   smooth direction gradient built with `makeWindGrid`, not a real
   Open-Meteo pull) on three other route/wind combinations; it reliably
@@ -195,7 +210,14 @@ reporting it as more waypoints than a human would draw by hand.
   #264's shape more than #847's), not the "slight" pattern — so a gradient
   was not what reproduced #847's own reported shape here. That is a
   negative result about those three combinations, not a general claim about
-  gradients.
+  gradients. **#1079 tried a DIFFERENT gradient construction — a
+  route-scoped one, holding the ORIGINAL reproducing route/rig/departure
+  fixed and varying only the wind field — and it DID reproduce the same
+  destination-approach, all-motor weave shape.** But that case's own chord
+  is not navigable at the requested depth, so no ETA-cost percentage could
+  be computed for it without repeating #264's own infeasible-baseline
+  mistake. See §7 for the full measurement and what it does and does not
+  establish — the gradient-vs-uniform ETA-cost question remains OPEN.
 - **The reporter's own route was never obtained** (identical caveat to
   #354's spike) — the screenshot's timestamps (16:26, 16:29, 16:31, 16:34,
   16:39) do not correspond to any specific route/wind cell tested here, and
@@ -285,3 +307,163 @@ the `realmask.repro.*` regression-bar rule. That sentence is now stale by
 one — this is reported here rather than silently fixed in CLAUDE.md, which
 is outside this task's allowlist and, per CLAUDE.md's own convention, a
 main-session act.
+
+## 7. Widening (#1079, 2026-09-09)
+
+#1079 was filed on closing #847 as ANSWERED specifically to widen this
+measurement beyond the single Aeroeskoebing -> Soeby / uniform-TWS-5.5 case
+above, along the two axes #1079's own body names: more routes, and a
+non-uniform (gradient) wind field. Per #1079's explicit scoping, no solver
+file (`isochrone.ts`, `planRoute.ts`, `relaxedDepth.ts`, `depthGate.ts`,
+`types.ts`, `boats.ts`, anything under `app/public/data/`) was touched;
+this is a measurement-only extension of the existing harness
+(`app/src/routing/realmask.repro.weaveEta847.test.ts`), same file, three
+new `it()` blocks plus the existing negative control. §282's sweep-closure
+walk runs OUTWARD from `app/sweep/sweepArms.ts`/`vitest.config.ts` — a new
+TEST file that imports closure members does not thereby join the closure,
+and this widening added no new file at all, so no #282 sweep is owed.
+
+### 7a. More routes (axis "b")
+
+Two further route/wind/rig combinations were added to the SAME harness,
+using the SAME method as §4 (chord ETA vs actual, navigability-gated,
+against `mask.segmentClearanceM` at the plan's REQUESTED depth, never the
+relaxed gate):
+
+| Route | Wind | Span (kind/board) | Headings | Actual dur | Chord | Navigable? | ETA delta |
+|---|---|---|---|---|---|---|---|
+| Aeroeskoebing -> Soeby (§4, unchanged) | TWS 5.5/120 | motor, legs[10..12] | 274.3->285.0->268.4 | 568.9 s | 1.0199 nm | YES, 4.60 m | +4.0 s (0.7%) |
+| Flensburg -> Glücksburg | TWS 8/60 | motor, legs[2..4] of 8 | 40.0->54.5->40.0 | 525.0 s | 0.9417 nm | YES, 4.90 m | +3.4 s (0.7%) |
+| Glücksburg -> Aeroeskoebing | TWS 5/100 | sail/port, legs[31..33] of 35 | 175.0->195.0->175.0 | 337.5 s | 0.4493 nm | YES, 4.10 m | +5.0 s (1.5%) |
+
+Each row's whole-route chord (harbour to harbour, no waypoints) was checked
+as a POSITIVE CONTROL on the navigability primitive and reads BLOCKED in
+all three cases — the same control §4 already ran, repeated here so a
+`chordNavigable: true` reading on the SPAN cannot be dismissed as "the
+function always returns true for this data".
+
+The Flensburg -> Glücksburg case widens the STRUCTURAL shape too: its span
+sits at legs[2..4] of 8, not the route's final legs — this is a MID-ROUTE
+weave, not a harbour-approach one, which rules out "the phenomenon is
+specific to harbour-approach geometry" as a necessary condition. The
+Glücksburg -> Aeroeskoebing case is the first SAIL-mode (not motor) weave
+span measured in this file — `kind: 'sail'`, `board: 'port'` throughout,
+so the near-zero-cost finding is not specific to motor legs either.
+
+**What this establishes**: across three route/wind/rig combinations (one
+of which is a repeat rig — all three are genoa; see "still open" below),
+spanning both `kind: 'motor'` and `kind: 'sail'` weave spans and both
+harbour-approach and mid-route positions, the ETA cost measured this way
+stayed in a 0.7%-1.5% band — an order of magnitude below anything that
+would read as a routing defect, and consistent with §4's original verdict
+generalising rather than being a one-off.
+
+**What this does NOT establish** (still open, unchanged by this widening):
+the reporter's own route/departure was never obtained (§5's caveat stands);
+only the genoa rig was exercised (the fock rig's polar could in principle
+produce a differently-shaped weave at the same wind cell); only ONE
+departure time (`T0`) was used per case; and §3's origin-end #354-shaped
+mode-churn span was again not ETA-measured (still #354's own territory, by
+the same reasoning §6 already gave).
+
+### 7b. Non-uniform wind (axis "a")
+
+§5's own aperture note already recorded that a synthetic gradient built
+with `makeWindGrid`, scaled over the WHOLE forecast domain, had been tried
+on three OTHER route/wind combinations and reproduced #264's large-swing
+shape rather than #847's slight one — a negative result about a
+domain-scale gradient, not about gradients generally. #1079 tried a
+DIFFERENT gradient construction instead: the SAME `makeWindGrid` primitive,
+but scaled to the REPRODUCING route's OWN ~13 km bounding box (lat
+54.85-54.98, lon 10.20-10.45 — padded slightly beyond the two harbours),
+centred on the ORIGINAL reproducing wind cell (TWS 5.5/wdir 120) with a
+modest, physically-plausible spread across that span (speed 5.0-6.0 kn,
+direction 110-130 deg) — the same route-scoping technique
+`app/scripts/gen-docs-wind-fixture.mjs` already uses to make a gradient
+visible across a route this short (`docs/spikes/847-weave-eta-cost.md`
+itself is not that script's target; the technique is reused, not the
+script). This isolates the wind-field-construction variable by
+CONSTRUCTION: same origin, same destination, same rig, same departure —
+ONLY the wind grid changes from `uniformWindGrid(5.5, 120)` to this
+gradient.
+
+**Result** (`app/src/routing/realmask.repro.weaveEta847.test.ts`, the
+"ROUTE-SCOPED GRADIENT" case, run 2026-09-09): the plan still resolves
+`status: 'ok'` with no `shallow` key (§53 relaxation still does not fire),
+now 9 legs / 7.10 nm / 67.0 min (vs the uniform case's 13 legs / 7.16 nm /
+67.6 min — a materially different path, as expected once the wind field
+changes). A weave span is STILL found, ending at the route's final leg,
+STILL entirely `kind: 'motor'`:
+
+```
+legs[5..8]: headings 287.9 -> 268.1 -> 288.1 -> 270.4, all motor
+  actual duration:  721.7 s
+  chord distance:   1.2866 nm
+  chord navigable (requested depth): FALSE (BLOCKED)
+  avg speed in span: 6.500 kn
+  chord-implied ETA (if it were trustworthy): 712.6 s
+  (uncomputed) ETA delta: +9.1 s (1.3% of span duration)
+```
+
+**The span's own chord is NOT navigable at the plan's requested depth.**
+This is exactly the infeasible-baseline shape CLAUDE.md's Verification
+lessons warn about (the same class that opened #264's own "32.9% detour"
+mistake): treating the 712.6 s chord-implied ETA as a trustworthy baseline
+and reporting "+1.3%" would be using a straight line that the mask itself
+says is not navigable — the boat cannot actually travel that chord at 3.0
+m, so the comparison would be meaningless even though the arithmetic is
+correct. The harness therefore does NOT assert or report an ETA-cost
+percentage for this case; it asserts the STRUCTURAL reproduction (weave
+span present, ends at the last leg, all-motor) and asserts
+`chordNavigable === false` explicitly, so a future mask or solver change
+that makes the chord navigable would be caught (the assertion would then
+need updating to compute and check a real percentage), rather than the gap
+staying silently unnoticed.
+
+**What this establishes**: the destination-approach, all-motor weave shape
+§4 measured under uniform wind is NOT an artefact of the uniform field —
+the same shape reproduces under a route-scoped, physically-modest spatial
+gradient, holding everything else fixed. This directly answers the
+"reproducible under non-uniform wind?" half of #1079's question: yes.
+
+**What this does NOT establish, and must not be read as establishing**:
+whether the weave costs MORE, LESS, or the SAME ETA under gradient wind as
+under uniform wind. The one honest number this case produced (+9.1 s /
+1.3%, computed but never asserted) is HIGHER than any of the three uniform
+cases in §7a (0.7%, 0.7%, 1.5%) — but that comparison is not licensed: the
+gradient case's own chord is infeasible, so its "1.3%" is measured against
+a baseline the boat cannot actually sail, exactly the comparison this
+whole methodology exists to refuse. Stating "gradient costs more" from
+this one uncomputed number would be the SAME mistake #264 opened with, one
+level removed. CLAUDE.md's motor-decision-rule bullet already records the
+broader gradient-vs-uniform evidential gap as "narrowed, not closed" (one
+real Open-Meteo forecast measured a differently-shaped weave under a
+gradient — more turns, more legs, more total ETA — without establishing
+that the gradient CAUSED any of it). This session's result is consistent
+with that framing and narrows it further in one respect (the SAME
+phenomenon, not just weaving in general, reproduces under a gradient) while
+leaving the ETA-cost comparison exactly as open as it was.
+
+### 7c. Summary: what #1079 widened, precisely
+
+- Route/wind/rig axis: widened from 1 to 3 combinations, spanning both
+  motor and sail weave spans and both mid-route and destination-approach
+  positions; near-zero ETA cost held in all three (0.7%-1.5%).
+- Wind-field-construction axis: the SAME reproducing route/rig/departure
+  was re-run under a route-scoped gradient instead of a uniform field; the
+  weave phenomenon reproduces, but the resulting span's chord is not
+  navigable, so the ETA-cost question for THIS axis remains open — narrowed
+  (phenomenon confirmed gradient-reproducible) but not closed (cost
+  comparison unavailable).
+- Still not attempted: a live Open-Meteo forecast (this harness runs
+  offline against committed fixtures by design — CLAUDE.md: "Planning
+  requires network; everything else must keep working offline" — a
+  routing-package `*.test.ts` fetching a live forecast would violate that);
+  the fock rig; more than one departure time; and a gradient construction
+  whose span DOES yield a navigable chord (which would need either a
+  different bounding box or a different weave span to isolate — not
+  attempted here, since constructing one specifically to get a navigable
+  chord risks selecting for the answer rather than measuring it).
+- No solver file was touched, and no #282 sweep is owed (no production
+  module and no `DEFAULT_SETTINGS` field were edited; only the existing
+  measurement-only test file grew three new `it()` blocks).
