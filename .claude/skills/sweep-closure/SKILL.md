@@ -184,21 +184,37 @@ Concretely:
   keeps reporting success). `selftest` pins each entry individually with a
   HARDCODED expected path (never derived from either array) for exactly this
   reason — see "Testing this skill itself" below.
-- **(#944) The additive-export check's own residuals — deliberately
-  unmodelled, all fail OPEN to OWED rather than silently passing**: a
-  closure member reaching the new export through a shape
-  `collectClosureImportersOf`'s regex-based clause scan cannot parse (a
-  dynamic `import()` with a COMPUTED specifier, `require(...)`); a
-  getter/accessor property (no such shape exists in `boats.ts` today — its
-  `as const satisfies` literal data has none); and the reachability scan
-  reads the WORKING TREE / `<head>` content of every closure member as it
-  stands TODAY, never a reconstruction of the tree after the diff lands —
-  which is the correct thing to read (a diff that also adds a NEW import of
-  the same name in the same commit is caught OWED, since that import is
-  already present in the content being scanned). The check is also scoped
-  to `const`/`type`/`interface` declarations ONLY — a `function`/`class`/
-  `enum` addition is NOT modelled and reports OWED unconditionally, the
-  default fail-open behaviour, never a false NOT_OWED.
+- **(#944) The additive-export check's own residuals — REVISED after a
+  review round found the first version of this bullet over-claimed two
+  items as open gaps that a fix wave had already closed, and never named a
+  third real one.** Genuinely unmodelled today, all failing OPEN to OWED,
+  never silently to NOT_OWED: (1) `require(...)` — no regex in this file
+  recognises it (`FROM_CLAUSE_RE` matches only ES `import`/`export ...
+  from`; the dynamic-import scan matches only the literal `import(` token),
+  so a closure member reaching the target via `require(...)` is invisible
+  — zero occurrences in `app/sweep`/`pipeline` as of 2026-09-09, a fact
+  about today's tree, not a guarantee; (2) a getter/accessor property on an
+  object/array literal (no such shape exists in `boats.ts` today — its `as
+  const satisfies` literal data has none) is not checked by the
+  initializer-purity scan; (3) a re-export chain through a file the SAME
+  diff also ADDS is read at whatever state `diff` sees on the working
+  tree/`<head>` — correct for a same-commit add-export-plus-add-importer
+  pair (caught OWED, since the importer scan sees the new import), but a
+  hypothetical LATER commit adding the importer is outside any one `diff`
+  invocation's view, same as everywhere else in this tool.
+  **Two gaps a prior revision of this bullet named are now CLOSED, not
+  residual, and are not re-listed above:** a dynamic `import()` with a
+  COMPUTED specifier is now RESOLVED where provably safe — a bare string
+  literal, or `resolve(here, 'literal')` (the verified real shape
+  `app/sweep/compare.mjs`/`tripRate.mjs` both use) — and falls back to
+  wildcard-unsafe only when genuinely unresolvable, never silently ignored;
+  and a file reachable ONLY via `PATH_PREFIXES` (never the import walk,
+  e.g. a NEW `app/sweep/arm-*.test.ts`) is now included in the reachability
+  scan, matching this file's own "Method" section's definition of the
+  closure. The check is also scoped to `const`/`type`/`interface`
+  declarations ONLY — a `function`/`class`/`enum` addition is NOT modelled
+  and reports OWED unconditionally, the default fail-open behaviour, never
+  a false NOT_OWED.
 
 If you need to extend the exception list (a new field, a new file), do it by
 adding a new, independently-provable `classify*` function with its own
@@ -326,6 +342,48 @@ real `visited` map, not a stand-in:
     Mutation-checked: removing the `importers.length === 0` gate (reading
     an empty scan as "nothing reachable") reds exactly this row; G1 stays
     green under that same mutation, since it never reaches the gate.
+
+**#944 review-round-2 checks (rows 29–33)**, added after a reviewer measured
+three real gaps in rows 17–28's coverage — each is mutation-checked in
+isolation, and two of them are re-verified directly against the real repo's
+own #941/`5e6d236` history, not only the synthetic fixtures:
+
+29. H: an additive `const` initializer performs a bare ASSIGNMENT with no
+    parens at all (`BOATS[0].draftM = 999`) → OWED — Blocker 1: the purity
+    check must reject ANY further `=`, not just calls/`new`/templates.
+    Mutation-checked: removing that check reds exactly this row.
+30. I: a closure member dynamically imports the TARGET via a bare string
+    literal (`import('../src/data/boats')`) → OWED — Blocker 2's baseline
+    case. Mutation-checked: making the dynamic-import scan return nothing
+    at all reds this row and I3, not I2 (I2 was never OWED via a dynamic
+    import in the first place).
+31. I2: a closure member's `resolve(here, 'literal')` dynamic import
+    resolves to a DIFFERENT real file, not the target — exactly the shape
+    `app/sweep/compare.mjs`/`tripRate.mjs` use today → NOT OWED. This is
+    the narrowing Blocker 2's fix depends on: a first, blunter fix (ANY
+    `import(` anywhere makes the whole file wildcard-reachable to EVERY
+    target, unconditionally) is equally SOUND but makes the additive-export
+    exception PERMANENTLY INERT against the real repo — measured directly,
+    not reasoned about: under that blunter version the real
+    #941/`5e6d236` reproduction (see rows above and CLAUDE.md) regressed
+    from NOT_OWED back to OWED, because `compare.mjs`/`tripRate.mjs` are
+    always in the closure via `PATH_PREFIXES`. Mutation-checked twice: (a)
+    reverting `classifyDynamicImportArg` to always report unresolvable reds
+    row 31 alone; (b) the SAME mutation, re-run as `node closure.mjs diff
+    8669013 5e6d236` against the real repo, reproduces the OWED regression
+    on `boats.ts` specifically — the row and the real-world case fail
+    TOGETHER, confirming row 31 is not synthetic-only coverage.
+32. I3: a dynamic import whose argument is a bare COMPUTED variable
+    (`import(mod)`, not a literal or a recognised `resolve(...)` call) →
+    OWED — the unresolvable-argument fallback. Mutation-checked alongside
+    row 30 above.
+33. J: a NEW `app/sweep/arm-*.test.ts`-shaped file, reachable ONLY via
+    `PATH_PREFIXES` and named by NEITHER `sweepArms.ts` nor
+    `vitest.config.ts`, statically imports the additive export → OWED —
+    Blocker 3: the reachability scan must cover the SAME union `closureInfo`
+    already defines the sweep's closure to be. Mutation-checked: reverting
+    the scan to `visited`-only (dropping the `PATH_PREFIXES` union) reds
+    exactly this row.
 
 **Neither `npm --prefix app run typecheck` nor `npm --prefix app run
 lint` cover this file at all** — the tsconfigs and `eslint src e2e sweep`

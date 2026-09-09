@@ -86,25 +86,49 @@
  * `PATH_PREFIXES` or either `boats.ts` exception needs the same structural
  * proof `classifyBoatsTs` gives, never a guess by analogy.
  *
- * The additive-export check's OWN residuals (#944, deliberately unmodelled,
- * all fail OPEN to OWED rather than silently passing): a closure member
- * reaching the new export through a shape `collectClosureImportersOf`'s
- * regex-based clause scan cannot parse (a dynamic `import()` with a
- * COMPUTED specifier, `require(...)`, a re-export chain through a file
- * this diff also ADDS in the same change — that new file is itself a
- * closure hit if reached, and is classified independently, but the
- * ADDITIVE-EXPORT scan of `boats.ts` reads today's `visited` set, built
- * from files ALREADY on disk); a getter/accessor property (no such shape
- * exists in `boats.ts` today — an `as const satisfies` literal has none);
- * and the scan reads the WORKING TREE / `<head>` content of every closure
- * member, never a synthetic reconstruction of "the tree as it will be
- * after this diff lands" — if the SAME diff also edits a closer member's
- * import list, `collectClosureImportersOf` still sees that file's CURRENT
- * (post-diff, since `<head>`/working tree is what `diff` reads) imports,
- * which is correct for the file it reads but means a two-hunk diff that
- * ADDS an export to `boats.ts` and ADDS a new import of that same name in
- * another closure file in the SAME commit is correctly caught OWED (the
- * importer scan sees the new import), never silently missed.
+ * The additive-export check's OWN residuals — REVISED after a review round
+ * (#944) found the FIRST version of this paragraph over-claimed two of
+ * these as open gaps when they were already closed, and under-claimed one
+ * real gap it never named at all. Read this list as the current state, not
+ * the original design intent; the three items below are the ones still
+ * genuinely unmodelled, and every one of them fails OPEN to OWED, never
+ * silently to NOT_OWED:
+ *
+ * 1. `require(...)` (a CommonJS dynamic-ish call) is not recognised by
+ *    ANY of this file's regexes — `FROM_CLAUSE_RE` matches only ES
+ *    `import`/`export ... from` syntax, and the dynamic-import scan
+ *    (`findDynamicImportArgs`) matches only the literal token `import(`.
+ *    A closure member reaching the target via `require('../data/boats')`
+ *    is therefore invisible to `collectClosureImportersOf` and could yield
+ *    a false NOT_OWED. Not observed anywhere in `app/sweep`/`pipeline`
+ *    today (`grep -rn '\brequire(' app/sweep pipeline`, zero hits,
+ *    2026-09-09) — but that is a fact about today's tree, not a guarantee.
+ * 2. A getter/accessor property on an object/array literal (no such shape
+ *    exists in `boats.ts` today — its `as const satisfies BoatDef[]`
+ *    literal data has none) is not checked for by `isPureInitializer`,
+ *    which looks for calls/`new`/mutating operators/assignment/templates
+ *    but not `get x() { ... }` syntax inside an object literal.
+ * 3. A re-export chain through a file the SAME diff also ADDS (not merely
+ *    edits) is scanned at whatever state it holds on the WORKING TREE /
+ *    `<head>` `diff` reads — correct for that file, and for a two-hunk
+ *    diff that both adds the export AND adds a new importer of it in the
+ *    same commit (the importer scan sees the new import and correctly
+ *    reports OWED) — but a hypothetical multi-commit sequence where a
+ *    LATER, un-scanned commit adds the importer is outside any single
+ *    `diff` invocation's view, same as it always was for every other part
+ *    of this tool.
+ *
+ * TWO gaps a prior revision of this paragraph named are now CLOSED, not
+ * residual — recorded here so a future reader does not re-file them:
+ * a dynamic `import()` with a COMPUTED specifier is now RESOLVED where
+ * provably safe (`resolve(here, 'literal')` — verified against the real
+ * `app/sweep/compare.mjs`/`tripRate.mjs` shape — or a bare string literal)
+ * and falls back to wildcard-unsafe only when it genuinely cannot be
+ * resolved, never silently ignored (`collectClosureImportersOf`,
+ * `classifyDynamicImportArg`); and a file reachable ONLY via
+ * `PATH_PREFIXES` (never the import walk) is now included in the
+ * reachability scan (`collectClosureScanTargets`), matching this file's
+ * own Method section's definition of the closure.
  *
  * ## Usage
  *
@@ -140,7 +164,7 @@
  * from a bare checkout with no `npm install`.
  */
 
-import { existsSync, readFileSync, statSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -269,9 +293,16 @@ function isFile(p) {
   }
 }
 
-/** Resolves a relative specifier to an absolute file path, or null (external package / unresolved). */
-function resolveSpecifier(fromFileAbs, specifier) {
-  if (!specifier.startsWith('.')) return null; // bare specifier: external package, not app source
+/**
+ * Resolves a specifier relative to `fromFileAbs`'s OWN DIRECTORY to an
+ * absolute file path, or null if nothing on disk matches — the shared
+ * filesystem-probing core of both `resolveSpecifier` (ES `import`
+ * specifiers, which must start with `.`) and the `#944` dynamic-import
+ * literal resolution below (`path.resolve(here, specifier)` semantics,
+ * which do NOT require a leading `.` — `path.resolve`'s second argument is
+ * always relative-ish, `./` or not).
+ */
+function resolveRelativeTo(fromFileAbs, specifier) {
   const base = path.resolve(path.dirname(fromFileAbs), specifier);
   if (isFile(base)) return base;
   for (const ext of RESOLVE_EXTENSIONS) {
@@ -282,6 +313,12 @@ function resolveSpecifier(fromFileAbs, specifier) {
     if (isFile(indexFile)) return indexFile;
   }
   return null;
+}
+
+/** Resolves a relative specifier to an absolute file path, or null (external package / unresolved). */
+function resolveSpecifier(fromFileAbs, specifier) {
+  if (!specifier.startsWith('.')) return null; // bare specifier: external package, not app source
+  return resolveRelativeTo(fromFileAbs, specifier);
 }
 
 // ---------------------------------------------------------------------------
@@ -641,12 +678,30 @@ function findTopLevelSemicolon(masked, start) {
 // text (strings/comments blanked) except the backtick check, which must run
 // on the RAW text — `maskNonCode` blanks a template literal's delimiters
 // too, so a masked scan can never see one.
+//
+// #944 Blocker 1 fix wave: the ASSIGNMENT check below is deliberately
+// "reject any further '=' at all" rather than an enumeration of "unsafe"
+// assignment forms — a first version tried to strip only the SAFE
+// multi-character operators that legitimately contain '=' (`==`, `===`,
+// `!=`, `!==`, `<=`, `>=`, `=>`) and treat anything left over as an
+// assignment, but `<=` is a literal SUBSTRING of the shift-assignment
+// `<<=` (its last two characters), so stripping `<=` first would eat the
+// tail of `<<=` too and leave nothing behind to flag — a real false
+// NOT_OWED for `export const X = BOATS[0].draftM <<= 1;`-shaped code
+// (contrived here, but the exact trap the fix must not reproduce for the
+// simpler `+=`/`-=`/`&&=`/etc. forms). Per this repo's guard-asymmetry
+// rule ("reject any assignment operator outright, don't try to parse
+// which ones are safe" — #944 review), this checks for ANY '=' at all:
+// `boats.ts`'s own idiom (`as const satisfies BoatDef[]`, plain literals)
+// never needs one, so this costs nothing on the shapes that file actually
+// uses, and every assignment form — simple, compound, and shift — reliably
+// contains a bare '=' that this alone is enough to catch.
 function isPureInitializer(maskedInit, rawInit) {
   if (/[(]/.test(maskedInit)) return false; // calls, arrow-fn parens, parenthesised exprs
-  if (/=>/.test(maskedInit)) return false; // paren-less arrow functions
   if (/\+\+|--/.test(maskedInit)) return false;
   if (/\b(new|delete|await|yield|throw|function)\b/.test(maskedInit)) return false;
   if (rawInit.includes('`')) return false; // template/tagged-template literal
+  if (maskedInit.includes('=')) return false; // ANY assignment (=, +=, <<=, =>, ...) — reject outright, never enumerate
   return true;
 }
 
@@ -757,20 +812,208 @@ function parseClauseNames(clause) {
   return { wildcard: false, names };
 }
 
+// #944 Blocker 3 fix wave: the reachability scan must cover exactly what
+// this file's own "Method" section (see the header doc comment) defines
+// the sweep's closure to BE — the import walk UNIONED with PATH_PREFIXES —
+// not merely the subset a static import walk (`visited`) can see. A file
+// reachable ONLY by prefix match (a NEW `app/sweep/arm-*.test.ts`, say,
+// which is never discovered by the walk per PATH_PREFIXES's own header
+// comment: "an edge INTO sweepArms.ts that a walk FROM it can never
+// traverse") that statically imports the additive export is otherwise
+// invisible to `collectClosureImportersOf` and yields a false NOT_OWED —
+// measured directly: a synthetic `app/sweep/arm-check.test.ts` importing
+// `{ NEW_ID }` from `boats.ts`, reached by NEITHER `sweepArms.ts` nor
+// `vitest.config.ts`, was missed before this fix and caught after it (see
+// selftest scenario J below).
+//
+// Only .ts/.tsx/.mts/.cts/.mjs/.cjs/.js/.jsx/.py are ever READ — `pipeline`
+// alone can hold an ~887 MiB gitignored download cache
+// (`pipeline/data-src/`, per CLAUDE.md's own pipeline bullet) of large
+// binary rasters, and extension-filtering BEFORE any `readFileSync` is what
+// keeps this scan from ever opening one of those files at all, not merely
+// fast on them. `.py` is included even though Python's `from x import y`
+// never matches `FROM_CLAUSE_RE` (no quoted module path) — harmless to
+// scan, and future-proofs against a JS-shaped import syntax appearing
+// there. `node_modules` and `.git` directories are skipped outright: they
+// are never part of the app's OWN source closure (external packages, per
+// this file's own `extractSpecifiers` walking no further into them either).
+const PATH_PREFIX_SCAN_EXTENSIONS = new Set(['.ts', '.tsx', '.mts', '.cts', '.mjs', '.cjs', '.js', '.jsx', '.py']);
+
+/** Recursively lists every scannable-extension file under `root/prefix`. */
+function listScannableFilesUnder(root, prefix) {
+  const results = [];
+  const stack = [path.join(root, prefix)];
+  while (stack.length) {
+    const dir = stack.pop();
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue; // prefix directory doesn't exist, or a permission error — nothing to scan there
+    }
+    for (const entry of entries) {
+      if (entry.name === 'node_modules' || entry.name === '.git') continue;
+      const abs = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(abs);
+      } else if (entry.isFile() && PATH_PREFIX_SCAN_EXTENSIONS.has(path.extname(entry.name))) {
+        results.push(abs);
+      }
+    }
+  }
+  return results;
+}
+
 /**
- * For every file in the sweep's own import closure (`visited`, from
- * `computeClosure` — never re-derived here), scans its import/export-from
- * clauses for ones resolving to `targetRel`, returning one entry per
- * IMPORTING closure member: `{ rel, wildcard, names }`. An empty return is
- * a POSITIVE-CONTROL failure, not evidence of anything — see the caller,
+ * The UNION of every file the reachability scan must examine: the import
+ * walk's own closure (`visited`) plus every scannable file under each
+ * `PATH_PREFIXES` directory — the same union this file's Method section
+ * defines the sweep's closure to be, so the reachability scan can never be
+ * narrower than the closure membership test (`closureInfo`) itself.
+ * Deduplicated via a Set (a file can be reached both ways, e.g.
+ * `app/sweep/sweepArms.ts` is both a ROOT and under the `app/sweep` prefix).
+ */
+function collectClosureScanTargets(root, visited) {
+  const set = new Set();
+  for (const [rel, info] of visited.entries()) {
+    if (!info.missing) set.add(rel);
+  }
+  for (const p of PATH_PREFIXES) {
+    for (const abs of listScannableFilesUnder(root, p.prefix)) {
+      set.add(path.relative(root, abs));
+    }
+  }
+  return set;
+}
+
+// #944 Blocker 2 fix wave: a dynamic `import(...)` call cannot be resolved
+// by `FROM_CLAUSE_RE` at all — it only ever matches the STATIC
+// `import ... from '...'` / `export ... from '...'` grammar, and a call
+// expression is a different production entirely. This is not hypothetical:
+// `app/sweep/compare.mjs:86` and `tripRate.mjs:108-110` already do
+// `await import(resolve(here, 'sweepArms.ts'))` (`here =
+// dirname(fileURLToPath(import.meta.url))`, i.e. the IMPORTING FILE'S OWN
+// DIRECTORY — verified at both real call sites, and `resolve` verified
+// imported from `node:path` at both, so this is `path.resolve(here, X)`
+// exactly, not a project-defined function of the same name).
+//
+// A first version of this fix (measured directly against the real repo,
+// not merely reasoned about) treated ANY file containing `import(`
+// anywhere as WILDCARD-reachable to EVERY target, unconditionally — the
+// bluntest possible fail-open reading of "refuse to resolve, don't
+// enumerate what's safe". That is SOUND but makes the additive-export
+// exception PERMANENTLY INERT against the real repo today: `compare.mjs`
+// and `tripRate.mjs` are always in the closure (PATH_PREFIXES `app/sweep`),
+// so `boats.ts` reported OWED for the real #941/`5e6d236` reproduction
+// again under that version — the exact false positive this issue exists to
+// fix, un-fixed by the safety patch meant to harden it. That regression is
+// what motivates the narrower resolution below, rather than shipping the
+// blanket form.
+//
+// The narrowing is a POSITIVE resolution, never a negative one: for each
+// `import(...)` call, only a call whose ENTIRE argument is (a) a bare
+// string literal, or (b) `resolve(<anything>, 'STRING LITERAL')` — the
+// verified real-world shape — is resolved at all, via `resolveRelativeTo`
+// (matching `path.resolve(here, specifier)`'s actual semantics, which do
+// NOT require a leading `.` the way an ES import specifier does). If that
+// resolves to `targetRel`, the call proves reachability (wildcard, since a
+// dynamic import's destructured names aren't tracked). If it resolves to a
+// DIFFERENT real file, the call is POSITIVELY PROVEN not to reach the
+// target — never inferred, never guessed. Any call NOT matching one of
+// these two shapes (a template literal, string concatenation, a computed
+// variable, `resolve()` with the wrong argument count, or a literal that
+// fails to resolve to any file at all) falls back to the ORIGINAL blanket
+// rule: wildcard-unsafe, unconditionally. So this can only ever NARROW
+// wildcard classification for a call it can POSITIVELY resolve away from
+// the target — it never manufactures a false "not reachable" the way
+// attempting to resolve a genuinely ambiguous specifier would.
+function splitTopLevelCommas(text) {
+  const parts = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '(' || c === '[' || c === '{') depth++;
+    else if (c === ')' || c === ']' || c === '}') depth--;
+    else if (c === ',' && depth === 0) {
+      parts.push(text.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(text.slice(start));
+  return parts;
+}
+
+/** Extracts the RAW (unmasked) argument text of every `import(...)` call
+ * site found via the MASKED text (so a comment/string mentioning the
+ * token can't be mistaken for a real call) — paired so the returned text
+ * still has real quote characters to parse. */
+function findDynamicImportArgs(masked, raw) {
+  const args = [];
+  const re = /\bimport\s*\(/g;
+  let m;
+  while ((m = re.exec(masked))) {
+    const openIdx = m.index + m[0].length - 1;
+    let depth = 0;
+    let closeIdx = -1;
+    for (let i = openIdx; i < masked.length; i++) {
+      const c = masked[i];
+      if (c === '(') depth++;
+      else if (c === ')') {
+        depth--;
+        if (depth === 0) {
+          closeIdx = i;
+          break;
+        }
+      }
+    }
+    if (closeIdx === -1) {
+      args.push({ rawArg: null }); // unterminated: caller must treat as unresolvable
+    } else {
+      args.push({ rawArg: raw.slice(openIdx + 1, closeIdx) });
+      re.lastIndex = closeIdx + 1;
+    }
+  }
+  return args;
+}
+
+const STRING_LITERAL_RE = /^(['"])([^'"]*)\1$/;
+
+/** Classifies one dynamic-import call argument: `{ resolvable, specifier }`
+ * for the two provably-safe shapes described above, `{ resolvable: false }`
+ * for everything else. */
+function classifyDynamicImportArg(rawArg) {
+  if (rawArg === null) return { resolvable: false };
+  const trimmed = rawArg.trim();
+  const bareLit = STRING_LITERAL_RE.exec(trimmed);
+  if (bareLit) return { resolvable: true, specifier: bareLit[2] };
+  const call = /^resolve\s*\((.*)\)$/s.exec(trimmed);
+  if (call) {
+    const parts = splitTopLevelCommas(call[1]);
+    if (parts.length === 2) {
+      const secondLit = STRING_LITERAL_RE.exec(parts[1].trim());
+      if (secondLit) return { resolvable: true, specifier: secondLit[2] };
+    }
+  }
+  return { resolvable: false };
+}
+
+/**
+ * For every file the sweep's closure reaches (`collectClosureScanTargets`
+ * — the import walk UNIONED with PATH_PREFIXES, never `visited` alone),
+ * scans its import/export-from clauses for ones resolving to `targetRel`,
+ * PLUS every dynamic `import(...)` call (resolved where provably safe,
+ * else wildcard per the comment above), returning one entry per IMPORTING
+ * closure member: `{ rel, wildcard, names }`. An empty return is a
+ * POSITIVE-CONTROL failure, not evidence of anything — see the caller,
  * which refuses to certify any name unreachable on an empty scan (`rel`
  * being IN the closure at all means at least one edge into it must exist).
  */
 function collectClosureImportersOf(root, visited, targetRel) {
   const targetAbs = path.join(root, targetRel);
   const importers = [];
-  for (const [rel, info] of visited.entries()) {
-    if (info.missing || rel === targetRel) continue;
+  for (const rel of collectClosureScanTargets(root, visited)) {
+    if (rel === targetRel) continue;
     const abs = path.join(root, rel);
     let source;
     try {
@@ -778,16 +1021,34 @@ function collectClosureImportersOf(root, visited, targetRel) {
     } catch {
       continue;
     }
-    FROM_CLAUSE_RE.lastIndex = 0;
-    let m;
     let wildcard = false;
+    const masked = maskNonCode(source);
+    for (const { rawArg } of findDynamicImportArgs(masked, source)) {
+      const cls = classifyDynamicImportArg(rawArg);
+      if (!cls.resolvable) {
+        wildcard = true;
+        break;
+      }
+      const resolvedAbs = resolveRelativeTo(abs, cls.specifier);
+      if (resolvedAbs && resolvedAbs === targetAbs) {
+        wildcard = true;
+        break;
+      }
+      // resolves to a DIFFERENT real file, or to nothing at all: this call
+      // is positively proven (or, if unresolved, structurally cannot be) to
+      // reach the target via THIS call — contributes nothing, keep scanning.
+    }
     const names = new Set();
-    while ((m = FROM_CLAUSE_RE.exec(source))) {
-      const resolvedAbs = resolveSpecifier(abs, m[4]);
-      if (!resolvedAbs || resolvedAbs !== targetAbs) continue;
-      const parsed = parseClauseNames(m[2]);
-      if (parsed.wildcard) wildcard = true;
-      for (const n of parsed.names) names.add(n);
+    if (!wildcard) {
+      FROM_CLAUSE_RE.lastIndex = 0;
+      let m;
+      while ((m = FROM_CLAUSE_RE.exec(source))) {
+        const resolvedAbs = resolveSpecifier(abs, m[4]);
+        if (!resolvedAbs || resolvedAbs !== targetAbs) continue;
+        const parsed = parseClauseNames(m[2]);
+        if (parsed.wildcard) wildcard = true;
+        for (const n of parsed.names) names.add(n);
+      }
     }
     if (wildcard || names.size > 0) importers.push({ rel, wildcard, names: [...names] });
   }
@@ -1483,6 +1744,95 @@ export const BOATS = [
       '#944 G2: EXPORTED additive const, ZERO closure importers of boats.ts -> OWED (positive-control failure, not "provably unreachable")',
       vG2.verdict === 'OWED' && JSON.stringify(vG2).includes('positive-control failure'),
       vG2,
+    ),
+  );
+
+  // H (Blocker 1, review round 2): an additive const whose initializer
+  // MUTATES shared state via a bare ASSIGNMENT — no call, no parens at
+  // all, so the `(` purity check alone cannot catch it.
+  // `export const X = BOATS[0].draftM = 999;` reassigns an existing
+  // element's field as a side effect of the initializer. Must be OWED.
+  const vH = additiveVerdict(
+    { 'app/sweep/vitest.config.ts': 'export default {};\n', 'app/sweep/sweepArms.ts': "import { KEEP_ME } from '../src/data/boats';\n" },
+    ADDITIVE_BASE,
+    ADDITIVE_BASE + "\nexport const X = BOATS[0].draftM = 999;\n",
+  );
+  results.push(check('#944 H: additive const initializer performs a bare ASSIGNMENT (no parens) -> OWED (Blocker 1)', vH.verdict === 'OWED', vH));
+
+  // I (Blocker 2, review round 2): a closure member reaches the target via
+  // a dynamic `import(...)` whose ENTIRE argument is a bare string literal
+  // resolving to the target file itself -- must be wildcard-reachable.
+  const vI = additiveVerdict(
+    {
+      'app/sweep/vitest.config.ts': 'export default {};\n',
+      'app/sweep/sweepArms.ts': "import { KEEP_ME } from '../src/data/boats';\nawait import('../src/data/boats');\n",
+    },
+    ADDITIVE_BASE,
+    ADDITIVE_BASE + ADDITIVE_NEW_EXPORT,
+  );
+  results.push(check('#944 I: closure member dynamically imports the TARGET via a bare string literal -> OWED (Blocker 2)', vI.verdict === 'OWED', vI));
+
+  // I2 (Blocker 2, the real-world shape that MOTIVATED the narrowing): a
+  // dynamic import via `resolve(here, 'literal')` -- exactly what
+  // `compare.mjs`/`tripRate.mjs` do today -- whose literal resolves to a
+  // DIFFERENT real file, not the target. Must NOT force wildcard: the
+  // additive export stays NOT_OWED. This is the scenario the blanket
+  // "any import() poisons everything" reading of Blocker 2 broke (measured
+  // directly against the real repo: the #941/`5e6d236` reproduction
+  // regressed to OWED under that reading, because `compare.mjs` and
+  // `tripRate.mjs` are always in the closure via PATH_PREFIXES).
+  const vI2 = additiveVerdict(
+    {
+      'app/sweep/vitest.config.ts': 'export default {};\n',
+      'app/sweep/sweepArms.ts':
+        "import { KEEP_ME } from '../src/data/boats';\nimport { resolve, dirname } from 'node:path';\nimport { fileURLToPath } from 'node:url';\nconst here = dirname(fileURLToPath(import.meta.url));\nawait import(resolve(here, 'other.mjs'));\n",
+      'app/sweep/other.mjs': 'export const unrelated = 1;\n',
+    },
+    ADDITIVE_BASE,
+    ADDITIVE_BASE + ADDITIVE_NEW_EXPORT,
+  );
+  results.push(
+    check(
+      "#944 I2: closure member's resolve(here, 'literal') dynamic import resolves AWAY from the target -> NOT_OWED (the narrowing this fix depends on)",
+      vI2.verdict === 'NOT_OWED',
+      vI2,
+    ),
+  );
+
+  // I3 (Blocker 2, the unresolvable-argument fallback): a dynamic import
+  // whose argument is neither a bare literal nor `resolve(x, 'literal')` --
+  // a plain variable -- so it cannot be positively resolved away from the
+  // target either. Must fall back to wildcard-unsafe -> OWED.
+  const vI3 = additiveVerdict(
+    {
+      'app/sweep/vitest.config.ts': 'export default {};\n',
+      'app/sweep/sweepArms.ts': "import { KEEP_ME } from '../src/data/boats';\nconst mod = pickOne();\nawait import(mod);\n",
+    },
+    ADDITIVE_BASE,
+    ADDITIVE_BASE + ADDITIVE_NEW_EXPORT,
+  );
+  results.push(check('#944 I3: closure member dynamically imports a COMPUTED, unresolvable specifier -> OWED (Blocker 2 fallback)', vI3.verdict === 'OWED', vI3));
+
+  // J (Blocker 3, review round 2): a NEW file reachable ONLY via
+  // PATH_PREFIXES (`app/sweep`), never via the import walk -- named by
+  // neither `sweepArms.ts` nor `vitest.config.ts` -- that statically
+  // imports the additive export. Must be OWED: the reachability scan has
+  // to cover the SAME union `closureInfo`/Method step 2 already define the
+  // sweep's closure to be, not merely `visited`.
+  const vJ = additiveVerdict(
+    {
+      'app/sweep/vitest.config.ts': 'export default {};\n',
+      'app/sweep/sweepArms.ts': "import { KEEP_ME } from '../src/data/boats';\n",
+      'app/sweep/arm-check.test.ts': "import { NEW_ID } from '../src/data/boats';\n",
+    },
+    ADDITIVE_BASE,
+    ADDITIVE_BASE + ADDITIVE_NEW_EXPORT,
+  );
+  results.push(
+    check(
+      '#944 J: a NEW arm-*.test.ts reachable ONLY via PATH_PREFIXES statically imports the export -> OWED (Blocker 3)',
+      vJ.verdict === 'OWED',
+      vJ,
     ),
   );
 
