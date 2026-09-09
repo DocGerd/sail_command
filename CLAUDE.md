@@ -69,16 +69,21 @@ making design-level decisions; do not silently deviate.
   made, and several existing spikes are genuinely both** — that overlap
   governs where a NEW document goes, not a retroactive reclassification of
   what was on record at that date. Both README indexes cross-link the other
-  directory. Measured at that date: 22 top-level `.md` spikes plus 2
-  same-named subdirectories of supporting artifacts (`1022-whole-journey-ux/`,
-  `354-mode-churn/`), and **39 inbound citations of a `docs/spikes/` path
-  across 17 tracked files** (`git grep -n 'docs/spikes' -- ':!docs/spikes'`)
-  — including two files already inside the #282 sweep closure
+  directory. Measured at `257f1fc` (this change's own base commit, before
+  its own additions — the same command run later returns a higher count,
+  since this bullet and its neighbours themselves cite `docs/spikes/`
+  paths): 22 top-level `.md` spikes plus 2 same-named subdirectories of
+  supporting artifacts (`1022-whole-journey-ux/`, `354-mode-churn/`), and
+  **39 inbound citations of a `docs/spikes/` path across 17 tracked files**
+  (`git grep -n 'docs/spikes' -- ':!docs/spikes'` at that commit) —
+  including two files already inside the #282 sweep closure
   (`app/src/lib/depthGate.ts`, `app/sweep/sweepArms.ts:89`, both named in
-  that closure's own listing below). That is why #644 shipped as a
-  convention-and-cross-link change with **ZERO files moved**: renaming any
-  cited spike path would have flipped the sweep verdict to OWED for what
-  would otherwise be a `docs`/`low` chore.
+  that closure's own listing below), each citing only the
+  `452-local-depth-relaxation.md` spike. That is why #644 shipped as a
+  convention-and-cross-link change with **ZERO files moved**: renaming that
+  #452 spike path specifically — the one cited inside both closure files —
+  would have flipped the sweep verdict to OWED for what would otherwise be
+  a `docs`/`low` chore.
   Design records live in FOUR places and three survive a clone:
   `docs/superpowers/specs/`, `docs/spikes/` and `docs/adr/` (ADRs plus a
   README index) are all COMMITTED — but
