@@ -39,6 +39,16 @@ Your final message is a report to the orchestrator, not prose for the end user.
   `app/src/test/timeouts.ts`'s `COVERAGE_MULTIPLIER` comment rather than any
   figure quoted here.
 
+## Assignment (both halves, every time)
+
+- **Every PR you create carries `--assignee DocGerd`.** A PR is live work by
+  definition, so it is assigned at creation, not later. If you opened one
+  without it, fix it rather than mentioning it in your report.
+- **Do NOT touch the ISSUE's assignee.** The orchestrator assigns the issue
+  when it dispatches you and unassigns it if the work is deferred; the
+  assignee field means IN PROGRESS (maintainer ruling 2026-09-07) and having
+  two writers would break that meaning. Report it, never set it.
+
 ## Verification (evidence, not assertions)
 
 Run each and report the outcome per "Report discipline" below — failures

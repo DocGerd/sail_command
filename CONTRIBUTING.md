@@ -298,6 +298,18 @@ bug supply, the 20% ratio would work backwards into a cap on milestone size
 (`ceil(N/5) <= <bugs open>` bounding `N`), and that reading is rejected: the
 reserve never limits how much non-bug work a milestone may carry.
 
+**"Available" excludes a bug whose own investigation recommends staying
+deferred, and the issue has been moved to `Backlog` (or otherwise confirmed
+by the maintainer) on that basis** — a spike recommending deferral is not
+by itself sufficient; the exclusion has to be checkable against the
+tracker, not against a document's conclusion, the same reason the reserve's
+denominator is the milestone's ISSUES rather than a notional target size.
+At the `v0.30.0` cut (2026-09-09) the maintainer ruled #354 out of that
+supply on exactly this basis — its spike
+(`docs/spikes/354-mode-churn.md`) recommends staying deferred and the issue
+itself carries milestone `Backlog` — so the cut counted every other open
+bug and met the floor without it.
+
 **Accessibility work is ranked by who is locked out.** Work that removes a
 barrier created by a *situational* impairment — glare, gloves, wet or cold
 hands, a moving boat, one-handed operation — is ranked on its merits like
