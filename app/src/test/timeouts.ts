@@ -64,9 +64,12 @@ const processEnv = (globalThis as { process?: { env?: Record<string, string | un
 //   2. ratio = CI-coverage / CI-plain = 2558 / ~525 (midpoint) ~= 4.9x —
 //      this is the SUITE-AVERAGE marginal coverage cost, already inside a
 //      CI-sized budget (the base constants below, e.g. 120_000ms, are
-//      themselves already sized for CI's general slowdown per their own
-//      file-level comments — this multiplier only needs to cover
-//      COVERAGE's additional cost on top of that, not CI-vs-local again).
+//      themselves already sized for CI's general slowdown — see point 6
+//      below for the real figure that sizing rests on; PR #891 deleted the
+//      per-file duration comments this point used to defer to, and until
+//      point 6 was added nothing here actually stated one — this multiplier
+//      only needs to cover COVERAGE's additional cost on top of that, not
+//      CI-vs-local again).
 //   3. UPDATE (PR #351 review N4, folded into this derivation rather than
 //      left to go stale beside it): that 2558s figure originally came from
 //      CI runs 30810112565 / 30815617721, which were KILLED by their own
@@ -88,10 +91,102 @@ const processEnv = (globalThis as { process?: { env?: Record<string, string | un
 //      applies elsewhere to blocking-vs-nudge guards, applied here to a
 //      floor sized from an incomplete measurement: round UP, not to the
 //      nearest whole number of the lower bound itself.
+//   6. #907 (closing #406's two remaining acceptance criteria — the
+//      SUITE-AVERAGE ratio above was never what those criteria asked for;
+//      they asked for a real solver-specific CI-vs-local pair and a check
+//      of the 120s base against it): a fresh, isolated PLAIN (no
+//      `SC_COVERAGE`) timing pair for the single heaviest solver test,
+//      `invariants.property.test.ts` (1 test, byte-identical at every SHA
+//      cited below and at the commit this comment was written against).
+//        CI plain (`app` job's `npm run test` step, this file's own
+//        vitest-reported per-file duration), three readings, all
+//        2026-09-09, none under `SC_COVERAGE`:
+//          - run 34307445804 job 102326974459 (57bdc721) 03:42:43Z: 619.743s
+//          - run 34308240094 job 102329313149 (83b6e122) 03:55:16Z: 615.354s
+//          - run 34309146778 job 102331977373 (5070e109) 04:09:19Z: 597.393s
+//        range 597.4-619.7s, midpoint ~610.8s.
+//        Local isolated (`npm --prefix app run test -- invariants.property`,
+//        filtered single-file run, no other test file sharing the process):
+//        measured 2026-09-09T09:45:52Z in this session's own worktree
+//        (vitest 4.1.11, 32-core WSL2 sandbox, load average 1.5-3.3 at the
+//        time per `uptime`/`/proc/loadavg` — not under contention). Vitest's
+//        own reported Duration was 312.42s (tests component 311.42s); the
+//        wrapping shell's own `time` reported a lower 284.123s real for the
+//        same process — the two disagree by ~9%, likely this sandbox's
+//        virtualized clock, and BOTH are recorded rather than silently
+//        picking one.
+//        ratio (CI-plain midpoint / local) = 610.8 / 312.42..284.123 ~=
+//        1.95x-2.15x, call it ~2x. This is an UPPER BOUND on the pure
+//        CI-hardware slowdown, not a clean reading of it: the CI figure was
+//        measured INSIDE a 180-file suite run sharing the runner's cores
+//        across concurrent worker processes (that run's own summary line
+//        shows `tests` time at ~2.8x its wall `Duration`, i.e. real
+//        parallelism/contention), while the local figure is a single
+//        isolated file with no such contention — some of the ~2x therefore
+//        reflects CI worker-pool scheduling, not raw per-core speed, so the
+//        real hardware-only factor is <= ~2x. Either way this REFUTES both
+//        of #406's earlier unverified figures (the original "~6-10x" label
+//        and the later "~30-44x" claim PR #891 also found unsupported and
+//        deleted) — the real solver-specific plain CI slowdown, measured
+//        directly rather than inferred, is roughly 2x.
+//        Budget check against that figure, discharging #406/#907's second
+//        criterion: this file's one test overrides the 120s base with an
+//        explicit `solverTimeoutMs(900_000)` (see the IMPORTANT COUPLING
+//        note below) — CI plain 597-620s fits under the 900s plain budget
+//        with >=1.45x margin, and a same-week CI coverage reading (two
+//        readings: run 34198227035 job 101970704550 (73ada826)
+//        2026-09-08T07:56:47Z: 2611.432s; run 34323415924 job 102375030161
+//        (a463f519) 2026-09-09T07:59:32Z: 2269.103s — same byte-identical
+//        file) fits under the 7200s coverage budget (900_000 * 8) with
+//        >=2.76x margin. For every OTHER file that imports
+//        `SOLVER_TEST_TIMEOUT_MS` and does NOT override it (so each of its
+//        tests individually faces the bare 120s/960s budget), the same CI
+//        runs' per-file totals were checked (the three plain and two
+//        coverage runs cited above): the largest is
+//        `planRoute.notCompared.test.ts` (9 tests; plain 105.4-130.4s
+//        across the three runs, coverage 427.3-428.9s across the two), next
+//        `isochrone.test.ts` (18 tests; plain 94.7-102.5s, coverage
+//        327.4-374.4s) — `viaPoints.test.ts` (up to 92.8s / 282.3s) is
+//        smaller than both. The tightest single reading,
+//        `planRoute.notCompared.test.ts`'s own 130.4s plain figure, EXCEEDS
+//        the bare 120s per-test figure — a file TOTAL is not itself a
+//        per-test bound, since it can exceed one test's budget while every
+//        individual test stays under it, and the real evidence is that
+//        every one of these CI runs completed with conclusion `success` and
+//        no vitest per-test timeout failure, which is what actually proves
+//        no individual test breached its 120s/960s budget. The 120s base
+//        comfortably covers the measured real CI slowdown; no change to it
+//        is needed.
+//        Sweep-closure note: this file is IN the #282 closure via
+//        `app/sweep/sweepArms.ts`'s own
+//        `import { solverTimeoutMs } from '../src/test/timeouts';`
+//        statement (currently line 46 — anchor on the statement, not the
+//        number, which moves on the next edit above it), so `closure.mjs
+//        diff` reports OWED for this change. The sweep was run against
+//        this diff (2026-09-09): determinism control (base1 vs base2)
+//        363/363 plans byte-identical across 11 arms; matched-contention
+//        comparison (base3 vs this diff's HEAD) also 363/363 across the
+//        same 11 arms; all 11 arm sha256 prefixes match the table
+//        `app/sweep/README.md` already records for the #653 control (a
+//        different machine/day/merge-base — the stronger control, since it
+//        proves the baseline stable against the very thing that would
+//        invalidate it, not merely self-consistent). A-side outcome
+//        distribution, identical in both runs: ok 102, ok+shallow 110,
+//        unreachable 65, calm-motor-off 55, beyond-horizon 28,
+//        snap-failed-destination 3 — not error-dominated, so the
+//        byte-identity is informative. base1 and base2 each logged one
+//        vitest FAIL for `salona44-relaxation` (a test-wrapper timeout
+//        under four-way contention); the arm's own JSON output is
+//        byte-identical across all four run directories and matches the
+//        README-recorded prefix, so the underlying compute/write completed
+//        correctly and only vitest's own timeout bookkeeping fired late.
+//        Verdict: this diff moves zero routes.
 //
 //   => 8 (roughly 2x the measured 4.9x lower-bound floor, absorbing both the
 //      "measured on a killed run" gap in point 3 and the "solver tests pay
-//      more than average" gap in point 4).
+//      more than average" gap in point 4. Point 6 measures a DIFFERENT
+//      axis — CI-vs-local, validating the 120s base — and is silent on
+//      whether 8 itself has slack).
 //
 //   IMPORTANT COUPLING (PR #351 review N1): raising this multiplier is NOT
 //   free with respect to `.github/workflows/coverage.yml`'s job-level
