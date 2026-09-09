@@ -991,11 +991,15 @@ describe('RouteSummary', () => {
     expect(screen.queryByText(/\d+ h old/i)).not.toBeInTheDocument();
   });
 
+  // #265: pin against the live dict value, not a paraphrased regex — the
+  // string was reworded to stop claiming the destination is provably
+  // unreachable (isochrone.ts's #866 comment: 'mask-blocked' cannot tell a
+  // genuinely unreachable destination from a search that gave up early).
   it('renders a no-route message instead of stats/legs when the selected rig has no result', () => {
     const plan = makePlan();
     setSail(plan, 'fock', { result: null, reason: 'unreachable' });
     renderSummary({ plan, rig: 'fock' });
-    expect(screen.getByRole('alert')).toHaveTextContent(/cannot be reached/i);
+    expect(screen.getByRole('alert')).toHaveTextContent(en['error.noRoute.unreachable']);
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
