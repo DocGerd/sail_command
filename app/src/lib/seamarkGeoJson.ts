@@ -517,24 +517,82 @@ export function seamarkPopupAnchor<T extends { properties?: unknown; geometry?: 
  * the RENDERED size this table gives at zoom 13 (44.8px), for the whole
  * [12,13) screen-zoom range, well before the icon visibly grows that large.
  * Seamarks are never self-culled by that inflated box (per the paragraph
- * above), but `icon-ignore-placement` is not set on the seamark layers, so
- * the box still occupies space in the shared MapLibre collision grid and
- * can block OTHER, lower-placement-priority symbol layers' labels. Measured
- * via a fixed-box, settle-gated mutation A/B (this table's shipped `[13,
- * 1.4]` top stop vs. a reverted pre-#860 `[13, 0.85]`, all 33 committed
- * harbors, `sc-harbor-labels` at zoom 12.5): 6 of 33 harbor labels
- * (`aaroesund`, `drejoe`, `gelting-mole`, `hoeruphav`, `troense`,
- * `wackerballig`) are newly BLOCKED under the shipped table that were
- * VISIBLE under the reverted one, at that same zoom, with the z11.5 control
- * (bucket z11, unaffected by this table's [12,13] segment) byte-identical
- * across both arms. So this z12-bucket cross-layer blocking IS a real,
- * measurable side effect of #860 — not the harmless-by-construction claim
- * the #981 issue's own author read into it — accepted as a one-zoom-band
- * (screen zoom [12,13) only) cosmetic residual rather than fixed, and
- * pinned as a forward regression guard by
- * `app/e2e/seamark-collision-icon-size-981.spec.ts`. That spec's own header
- * carries the full method and states what it does NOT measure (basemap
- * symbol layers, a second, unmeasured victim class of the same mechanism).
+ * above), but below z12 the box still occupies space in the shared
+ * MapLibre collision grid and
+ * COULD block OTHER, lower-placement-priority symbol layers' labels.
+ * Measured via a fixed-box, settle-gated mutation A/B (this table's shipped
+ * `[13, 1.4]` top stop vs. a reverted pre-#860 `[13, 0.85]`, all 33
+ * committed harbors, `sc-harbor-labels` at zoom 12.5): PRE-#1126, 6 of 33
+ * harbor labels (`aaroesund`, `drejoe`, `gelting-mole`, `hoeruphav`,
+ * `troense`, `wackerballig`) were newly BLOCKED under the shipped table
+ * that were VISIBLE under the reverted one, at that same zoom, with the
+ * z11.5 control (bucket z11, unaffected by this table's [12,13] segment)
+ * byte-identical across both arms. So this z12-bucket cross-layer blocking
+ * WAS a real, measurable side effect of #860 — not the harmless-by-
+ * construction claim the #981 issue's own author read into it.
+ *
+ * FIXED by #1126 (2026-09-09) with the zoom-stepped
+ * `icon-ignore-placement` in `seamarksLayout()` below — NOT by a layer
+ * reorder. That knob governs whether a layer's own box is ENTERED into the
+ * shared collision grid for others to query. Stepped `false` below z12 and
+ * `true` at/above z12, seamarks stop blocking other layers exactly in the
+ * [12,13) band where the blocking was measured, and NOTHING changes below
+ * z12 — the band where seamarks are genuinely cullable and their own
+ * self-de-confliction matters (the ground on which #981's own
+ * recommendation correctly rejected a BLANKET `icon-ignore-placement`; the
+ * zoom-stepped form never reaches that band). At/above z12 `icon-overlap`
+ * is already `'always'`, so seamarks are never culled and need no grid
+ * entry for their own sake — removing it costs them nothing. The knob is
+ * expression-capable over `["zoom"]` (maplibre-gl-style-spec,
+ * non-interpolated, so `step` is valid), the same shape as the
+ * `icon-overlap` line it sits beside.
+ *
+ * REORDERING WAS MEASURED AND REJECTED. Adding `HARBOR_LABEL_LAYER` after
+ * the seamark layers also recovers all 6 labels, but placement runs
+ * TOP-TO-BOTTOM (`PauseablePlacement`'s `_currentPlacementIndex =
+ * order.length - 1`), so it makes harbor labels outrank
+ * `sc-seamarks-hazard` and falsifies item (b) above — the hazard layer no
+ * longer wins from being topmost. Measured on CI, reorder arm vs. a
+ * control tree identical except for the reorder: culled hazard marks
+ * across z8+z9 over the whole app data region rose 99 -> 128, and the
+ * `#353` z11.5 cluster-box id set lost a `seamark-cardinal-south`. That
+ * cost falls entirely BELOW z12 — the z13 arm of the same failing run was
+ * byte-identical to control — i.e. in a different zoom band from the
+ * benefit, which is why this lever buys the benefit without paying it.
+ * `app/e2e/seamarks.spec.ts`'s `#353` and `#232 item 2` are the guards
+ * that caught it; a negative control (this line removed, order left at
+ * base) fails `#1126` at `aaroesund`, so the line is load-bearing.
+ *
+ * #981 basemap victim class (verified 2026-09-09 against `maplibre-gl@6.7.0`,
+ * same session): the SAME mechanism was then measured against `@protomaps/
+ * basemaps`' own symbol layers (`places_locality`, `places_subplace`,
+ * `roads_labels_major`, `roads_shields`, and 10 others — every symbol layer
+ * `layers('protomaps', flavor, {lang})` emits at the `light` flavor), which
+ * sit BELOW the `sc-*` layers in the style's layer order (protomaps' layers
+ * are added at Map construction in `MapView.tsx`'s `buildStyle()`;
+ * `DataLayers.tsx`'s `setupLayers()` adds every `sc-*` layer, seamarks
+ * included, AFTER) and are therefore placed LATER than seamarks — the same
+ * "placed later loses the shared collision slot" direction as the
+ * harbor-label finding above. This class is REAL, not merely theoretical: 8
+ * of 33 harbors (`aabenraa`, `aaroesund`, `arnis`, `faaborg`, `gelting-mole`,
+ * `graasten`, `kappeln`, `svendborg`) showed a basemap symbol-layer count
+ * difference at z12.5 between the shipped `[13, 1.4]` table and the reverted
+ * pre-#860 `[13, 0.85]` one, with the z11.5 control byte-identical across all
+ * 33 harbors and a same-arm double-run at HEAD byte-identical across the
+ * full sweep (ruling out settle noise). Only `gelting-mole` overlaps the
+ * (now-fixed) harbor-label victim set — the basemap's own point features
+ * sit at different coordinates than this app's harbor-snap points, so the
+ * two victim sets are largely disjoint. `app/e2e/seamark-collision-icon-size-981.spec.ts`'s
+ * header carries the full method, the per-harbor breakdown, and the
+ * non-monotonic `faaborg` residual; its basemap guard pins the
+ * 6-harbor/8-pair subset that flips cleanly absent->present as a forward
+ * regression guard for this residual. #1126 (2026-09-09) NARROWED it: the
+ * zoom-stepped `icon-ignore-placement` above removes seamark boxes from the
+ * collision grid at z>=12, the same mechanism that blocked these basemap
+ * layers. All 8 pairs were RE-MEASURED under it — 7 flip BLOCKED ->
+ * PRESENT and `svendborg/places_subplace` alone stays absent, so that spec
+ * now pins each pair in its measured direction. Narrowed, not closed; what
+ * still blocks the remaining pair was not investigated.
  */
 const BASE_ICON_SIZE_STOPS = [
   [8, 0.55],
@@ -593,6 +651,12 @@ export function seamarksLayout(scale: number): NonNullable<SymbolLayerSpecificat
     // green lateral buoy, which the glyph fidelity needs (seamarkGlyphs.ts).
     'icon-image': ['get', 'icon'],
     'icon-overlap': ['step', ['zoom'], 'never', 12, 'always'],
+    // #1126: seamarks stop BLOCKING other layers at z>=12, where
+    // `icon-overlap: 'always'` already makes them unculled so they need no
+    // grid entry of their own. Below z12 this is `false` — unchanged — so
+    // their self-de-confliction is untouched. See the BASE_ICON_SIZE_STOPS
+    // comment above for the measurement and the rejected reorder.
+    'icon-ignore-placement': ['step', ['zoom'], false, 12, true],
     'symbol-sort-key': ['get', 'priority'],
     'icon-size': ['interpolate', ['linear'], ['zoom'], ...iconSizeStops],
     'icon-padding': ['interpolate', ['linear'], ['zoom'], ...iconPaddingStops],
