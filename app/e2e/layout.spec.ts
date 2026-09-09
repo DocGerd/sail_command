@@ -395,6 +395,25 @@ for (const [label, viewport] of Object.entries(SINGLE_BANNER_VIEWPORTS)) {
       // DoD's own phrasing: measured overlap between the two clusters is 0.
       // A second, independent signal from the same fix (top offset moved,
       // not a z-index reorder) rather than a restatement of the hit test.
+      // #992: the OVERLAP poll below is now structurally guaranteed too at
+      // tabletPortrait/phonePortrait/narrowPortrait360 (this loop's narrow,
+      // non-short-landscape entries) -- app.css's #909 grid block puts
+      // `.banner-area` and `.map-area` (containing `.map-stack-tl`) in
+      // disjoint grid rows here (narrow, non-short-landscape), overriding the
+      // older `--sc-banner-height` push at equal selector specificity by
+      // source order. MUTATION-VERIFIED: forcing `--sc-banner-height: 0px` via
+      // the CSSOM against a real single-/multi-banner state at these viewports
+      // (measured baselines 48-172px across the standalone #992-annotated
+      // tests below and the retained single-banner scenario in this loop, all
+      // confirmed non-zero) left this overlap at 0; the identical mutation at
+      // `shortLandscape844` (still the pre-#909 overlay layout -- the #909
+      // query never matches short landscape by construction) produced a
+      // genuine 200.28px^2 overlap. NOT retired: the HIT-TEST poll just above
+      // asserts a WIDER claim ("nothing at all -- not just the banner --
+      // covers the checkbox", the same shape as compass.spec.ts's
+      // `topmostIsWithin`), which this mechanism does not cover and was not
+      // separately mutation-tested; keeping the whole test is what keeps that
+      // protection live.
       await expect
         .poll(
           async () => overlapArea(await box(page.locator('.banner-area')), await box(depthToggle)),
@@ -577,6 +596,22 @@ test('#368: two stacked banners at 320x568 (previously measured broken) no longe
       .poll(() => settledHitDescription(page, depthToggle), { timeout: 10_000 })
       .toMatch(/^INPUT\b/);
 
+    // #992: the OVERLAP poll below is now structurally guaranteed too at
+    // deepPortrait320 -- app.css's #909 grid block puts `.banner-area` and
+    // `.map-area` (containing `.map-stack-tl`) in disjoint grid rows here
+    // (narrow, non-short-landscape), overriding the older `--sc-banner-height`
+    // push at equal selector specificity by source order. MUTATION-VERIFIED:
+    // forcing `--sc-banner-height: 0px` via the CSSOM against this test's own
+    // two-banner state (baseline 110px, confirmed non-zero, `.map-stack-tl`
+    // confirmed staying inside `.map-area`'s own box) left this overlap at 0;
+    // the identical mutation at `shortLandscape844` (still the pre-#909
+    // overlay layout -- the #909 query never matches short landscape by
+    // construction) produced a genuine 200.28px^2 overlap. NOT retired: the
+    // HIT-TEST poll just above asserts a WIDER claim ("nothing at all -- not
+    // just the banner -- covers the checkbox", the same shape as
+    // compass.spec.ts's `topmostIsWithin`), which this mechanism does not
+    // cover and was not separately mutation-tested; keeping the whole test is
+    // what keeps that protection live.
     await expect
       .poll(
         async () => overlapArea(await box(page.locator('.banner-area')), await box(depthToggle)),
@@ -635,6 +670,22 @@ test('#368: three simultaneous banners at 390x844 do not intercept the depth che
       .poll(() => settledHitDescription(page, depthToggle), { timeout: 10_000 })
       .toMatch(/^INPUT\b/);
 
+    // #992: the OVERLAP poll below is now structurally guaranteed too at
+    // phonePortrait -- app.css's #909 grid block puts `.banner-area` and
+    // `.map-area` (containing `.map-stack-tl`) in disjoint grid rows here
+    // (narrow, non-short-landscape), overriding the older `--sc-banner-height`
+    // push at equal selector specificity by source order. MUTATION-VERIFIED:
+    // forcing `--sc-banner-height: 0px` via the CSSOM against this test's own
+    // three-banner state (baseline 172px, confirmed non-zero, `.map-stack-tl`
+    // confirmed staying inside `.map-area`'s own box) left this overlap at 0;
+    // the identical mutation at `shortLandscape844` (still the pre-#909
+    // overlay layout -- the #909 query never matches short landscape by
+    // construction) produced a genuine 200.28px^2 overlap. NOT retired: the
+    // HIT-TEST poll just above asserts a WIDER claim ("nothing at all -- not
+    // just the banner -- covers the checkbox", the same shape as
+    // compass.spec.ts's `topmostIsWithin`), which this mechanism does not
+    // cover and was not separately mutation-tested; keeping the whole test is
+    // what keeps that protection live.
     await expect
       .poll(
         async () => overlapArea(await box(page.locator('.banner-area')), await box(depthToggle)),
@@ -703,6 +754,22 @@ test('#368: a banner that wraps to two lines (280px width) does not intercept th
       .poll(() => settledHitDescription(page, depthToggle), { timeout: 10_000 })
       .toMatch(/^INPUT\b/);
 
+    // #992: the OVERLAP poll below is now structurally guaranteed too at
+    // wrapForcing280 -- app.css's #909 grid block puts `.banner-area` and
+    // `.map-area` (containing `.map-stack-tl`) in disjoint grid rows here
+    // (narrow, non-short-landscape), overriding the older `--sc-banner-height`
+    // push at equal selector specificity by source order. MUTATION-VERIFIED:
+    // forcing `--sc-banner-height: 0px` via the CSSOM against this test's own
+    // wrapped-banner state (baseline 64px, confirmed non-zero, `.map-stack-tl`
+    // confirmed staying inside `.map-area`'s own box) left this overlap at 0;
+    // the identical mutation at `shortLandscape844` (still the pre-#909
+    // overlay layout -- the #909 query never matches short landscape by
+    // construction) produced a genuine 200.28px^2 overlap. NOT retired: the
+    // HIT-TEST poll just above asserts a WIDER claim ("nothing at all -- not
+    // just the banner -- covers the checkbox", the same shape as
+    // compass.spec.ts's `topmostIsWithin`), which this mechanism does not
+    // cover and was not separately mutation-tested; keeping the whole test is
+    // what keeps that protection live.
     await expect
       .poll(
         async () => overlapArea(await box(page.locator('.banner-area')), await box(depthToggle)),
@@ -863,6 +930,22 @@ test('#299: the stale-route banner (a Boat-tab settings change) does not interce
     await expect
       .poll(() => settledHitDescription(page, depthToggle), { timeout: 10_000 })
       .toMatch(/^INPUT\b/);
+    // #992: the OVERLAP poll below is now structurally guaranteed too at
+    // deepPortrait320 (the #299 test's own single-banner state) -- app.css's
+    // #909 grid block puts `.banner-area` and `.map-area` (containing
+    // `.map-stack-tl`) in disjoint grid rows here (narrow,
+    // non-short-landscape), overriding the older `--sc-banner-height` push at
+    // equal selector specificity by source order. MUTATION-VERIFIED: forcing
+    // `--sc-banner-height: 0px` via the CSSOM against this test's own
+    // single-banner state (baseline 48px, confirmed non-zero) left this
+    // overlap at 0; the identical mutation at `shortLandscape844` (still the
+    // pre-#909 overlay layout -- the #909 query never matches short landscape
+    // by construction) produced a genuine 200.28px^2 overlap. NOT retired: the
+    // HIT-TEST poll just above asserts a WIDER claim ("nothing at all -- not
+    // just the banner -- covers the checkbox", the same shape as
+    // compass.spec.ts's `topmostIsWithin`), which this mechanism does not
+    // cover and was not separately mutation-tested; keeping the whole test is
+    // what keeps that protection live.
     await expect
       .poll(
         async () => overlapArea(await box(page.locator('.banner-area')), await box(depthToggle)),

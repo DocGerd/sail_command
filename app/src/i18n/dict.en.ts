@@ -286,8 +286,14 @@ export const en = {
     'The route was calculated but could not be saved. Try again, or check available storage on this device.',
   'error.windUnknown':
     'Wind forecast could not be loaded due to an unexpected error. Try again in a moment.',
+  // #265/#866: 'mask-blocked' cannot distinguish a destination that is
+  // genuinely unreachable from a search that simply gave up before
+  // finishing (see isochrone.ts's #866 comment) — so this string must not
+  // claim either. Distinct from error.noRoute.searchBudget, whose cause
+  // ('budget-exhausted') is a different, later-stage timeout; this one is
+  // the ordinary no-route case and gets the same epistemic hedge.
   'error.noRoute.unreachable':
-    'No route found — the destination cannot be reached without crossing land or too-shallow water.',
+    'No route found — the search could not find a way to the destination without crossing land or too-shallow water. This does not prove no route exists; the search may simply have given up too soon.',
   'error.noRoute.beyondHorizon':
     'No route found within the 6-day forecast horizon. Try a later departure or a closer destination.',
   // #804: "in options" named no surface in this app. The motorEnabled

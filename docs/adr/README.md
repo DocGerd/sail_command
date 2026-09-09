@@ -30,10 +30,17 @@ This index lists ADRs only — see "Two decision-record locations" below for
 
 ## Two decision-record locations — read both
 
-This repo also has `docs/spikes/`, which predates this directory and holds
-one investigation-and-decision document per issue that was investigated but
-not built (or built after a design detour), named `<issue>-<slug>.md`. An
-ADR here is not a replacement for a spike: a spike is an *investigation* that
-ends in a recommendation; an ADR is the record of a *ruling* already made.
-**#644 tracks consolidating the two locations** — until that lands, check
-both directories before assuming a decision hasn't been recorded anywhere.
+This repo also has [`docs/spikes/`](../spikes/README.md), which predates this
+directory and holds one investigation-and-decision document per issue that
+was investigated before (or instead of) being built, named
+`<issue>-<slug>.md`. **#644 (2026-09-09) settled the convention between the
+two rather than merging them: a spike is an *investigation* — evidence,
+often with measurements that stay citable, that ends in a recommendation; an
+ADR is the record of a *ruling* already made**, usually without the
+investigative apparatus behind it. Several existing spikes are genuinely
+both — an investigation whose own recommendation the maintainer then
+accepted as the ruling — and that overlap was left as-is: the distinction
+governs where a NEW document goes, not a retroactive split of the 22 spikes
+already on record. No existing document moved. Check both directories before
+assuming a decision hasn't been recorded anywhere; `docs/spikes/README.md`
+indexes the spike side.
