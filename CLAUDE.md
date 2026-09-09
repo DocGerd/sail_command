@@ -281,7 +281,19 @@ making design-level decisions; do not silently deviate.
   exists once a prior run is on record: BASE *and* HEAD arm sha256 prefixes
   matching that run on a different machine, day and merge-base proves the
   baseline stable against the very thing that would invalidate it, where a
-  self double-run only proves a run deterministic against itself. It sits OUTSIDE
+  self double-run only proves a run deterministic against itself. EXERCISED
+  2026-09-09 at #1141: all 11 arms matched `app/sweep/README.md`'s recorded
+  #653 table, so the practice is proven rather than proposed — read the
+  prefixes THERE, never from here.
+  **Under contention a vitest wrapper timeout is NOT a failed arm.** Two
+  BASE runs each logged `salona44-relaxation` "timed out in 3600000ms" under
+  four-way load while that arm's JSON was byte-identical across all four run
+  directories and matched the recorded prefix — compute and write had
+  completed and only vitest's own bookkeeping fired late. The ARTIFACT hash
+  is the discriminator, never the runner's exit line. Note also the arms are
+  FILE-PARALLEL, not sequential, so completion order reflects each arm's own
+  solve time and a level file count across runs is not evidence of a stall.
+  It sits OUTSIDE
   `app/src/` so `vite.config.ts`'s `include` never collects it into
   `npm run test` or CI; run it deliberately with `--config
   sweep/vitest.config.ts`. vitest 4 has NO `--include` (`CACError: Unknown
@@ -1592,6 +1604,7 @@ making design-level decisions; do not silently deviate.
   | v0.27.0 | 2026-09-08 | 58 s | read as **NO `deploy` JOB CREATED YET** (only `build`) immediately before the tag push -- the same non-answer v0.17.0, v0.25.0 and v0.26.0 recorded; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `34226445185` (created 12:30:17Z) -> tag `34226540901` (created 12:31:15Z) on `ecf08ff`. EVERY job of the merge run ended `cancelled`, and its `deploy` job carries **`steps: 0`** against that SAME run's `build` job's `steps: 23` -- v0.25.0's control in a DIFFERENT shape -- within-run job-vs-job here, cross-run same-job there -- and the reason either discriminates: a job that never started and one interrupted after running both report `cancelled`, and they mean OPPOSITE things for whether a `success`-state deployment of that SHA already exists. The `github-pages` deployments list for that SHA returns exactly ONE object, `6327652761`, `ref: v0.27.0`. The tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production afterwards served `assets/index-B3638HqI.js` at ``about.version`,{version:`v0.27.0`}`` with ZERO suffixed matches, so no back-merge remedy was owed. Release object `isLatest: true`; tag object `b669e29` reported `verified: true, reason: "valid"`. **THIRD consecutive not-yet-started reading**, after v0.25.0 and v0.26.0, so the WIDENED criterion those rows established -- the merge `deploy` job has not reached terminal `success` -- now rests on three observations rather than two. Three is still not a mechanism: this row names NONE, and per this table's own rule the gap gates nothing. |
   | v0.28.0 | 2026-09-08 | 112 s | `success` (MEASURED immediately before the tag push, and the failure CALLED IN ADVANCE from it) | **`smoke-probe` FAILED** | merge-push `34282950799` (created 21:52:27Z) -> tag `34283116096` (created 21:54:19Z) on `905d1a3`. The tag run's `build` AND `deploy` both succeeded; only `smoke-probe` failed, by the #398 signature -- its own prod entry chunk `assets/index-C5NE_lFC.js` 404'd. Back-merge `34285495537` (different SHA `59a8123`) then probed green and republished **that same chunk name**, which production then served at ``about.version`,{version:`v0.28.0`}`` with ZERO suffixed matches -- so the tag run's BUILD was correct and only its DEPLOYMENT no-opped. Release object `isLatest: true`; tag object reported `verified: true, reason: "valid"`. **ENDS the three-cut run of not-yet-started readings** (v0.25.0-v0.27.0); first terminal `success` since v0.24.0, and it behaved exactly as this table says a `success` reading behaves. **Sharpens the v0.23.0/v0.24.0 gate finding with the tightest margin yet:** the merge `deploy` job ran 21:53:37Z -> **21:53:45Z `success`**, terminal **34 s BEFORE the tag run was created** -- so the cancel-supersede escape was again unavailable, now on three observations reached from both readings. Still names no MECHANISM. |
   | v0.29.0 | 2026-09-09 | 2 min | `success` (MEASURED immediately before the tag push, and the failure CALLED IN ADVANCE from it, written down BEFORE the push) | **`smoke-probe` FAILED** | merge-push `34323066038` -> tag `34323514588` on `ffaa41d`. The tag run's `build`, `deploy` AND `prod-environment` all succeeded; only `smoke-probe` failed, by the #398 signature -- its own prod entry chunk `assets/index-DDdE4ANJ.js` returned **404 on all 10 attempts** (07:23:57Z -> 07:28:28Z, ~4m31s). BOTH basemap Range probes passed on attempt 1, at 07:23:56-57Z -- note they run BEFORE the entry-chunk probe, so they are a temporally-PRIOR CDN control, not a simultaneous one. Back-merge `34329387900` (different SHA `067a39f`) then probed green and republished **that same chunk name**, which production then served at ``about.version`,{version:`v0.29.0`}`` with ZERO suffixed matches. SECOND consecutive terminal-`success` reading, after v0.28.0. **What this row ADDS is that the `steps` COUNT on the merge run's `deploy` job is itself a discriminator, not just the conclusion:** here `steps=6` (the job genuinely RAN and deployed, and the no-op followed), against v0.25.0's and v0.27.0's `steps: 0` (never started), which those rows used as the control making their SAFE outcome attributable. A job that never started and one interrupted after running both report a non-`success` conclusion and mean OPPOSITE things. Still names no MECHANISM. |
+  | v0.30.0 | 2026-09-09 | 45 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) immediately before the tag push -- the same non-answer v0.17.0, v0.25.0, v0.26.0 and v0.27.0 recorded; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `34368277678` (created 15:08:33Z) -> tag `34368356087` (created 15:09:18Z) on `b66e178`. The merge run's `deploy` job carries **`steps: 0`** with `started_at` == `completed_at` == 15:09:56Z -- the v0.25.0/v0.27.0 control -- so it NEVER STARTED and left no `success`-state deployment of that SHA behind. The tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production afterwards served `assets/index-Cc9EuFnt.js` with ZERO suffixed `vX.Y.Z-N-g<sha>` matches, so no back-merge remedy was owed. Release object `isLatest: true`; tag object `verified: true, reason: "valid"`. **FOURTH not-yet-started reading, and the first SAFE outcome since v0.27.0** -- it ends the run of `smoke-probe` failures at v0.28.0 and v0.29.0, both of which read terminal `success`. The widened criterion those rows established -- the merge `deploy` job has not reached terminal `success` -- now rests on four observations. Four is still not a mechanism: this row names NONE, and per this table's own rule the gap gates nothing. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -2517,11 +2530,16 @@ making design-level decisions; do not silently deviate.
   (2) A SUBSTANTIVE positive control: include a ONE-CHARACTER edit that
   preserves stripped length (a wide `z-index` 2→3) and confirm the digest still
   moves. Not because sha256 could miss it — it cannot — but because it proves
-  the STRIPPER passed that character through rather than eating it. Also match the stripper to
-  the language: a `.ts` stripper must drop only whole-line `//` comments or it
-  mangles `//` inside regex literals; a `//`-based diff-shape checker cannot see
-  inside a CSS block comment at all — replace the instrument rather than relax
-  its rule, which would be calibrating a guard to accept what it should catch.
+  the STRIPPER passed that character through rather than eating it. Do not
+  hand-roll the
+  stripper: `app/src/test/sourceStrip.ts` (#1121) is the shared regex-aware
+  one and exports `assertNonVacuousStrip`, making the non-vacuity control
+  above structural rather than remembered. It is deliberately NOT registered
+  in `app/src/test/setup.ts` — a global shim there flips the #282 sweep
+  verdict to OWED. The mismatch it prevents: a naive `.ts` stripper mangles
+  `//` inside a regex literal, and a `//`-based checker cannot see inside a
+  CSS block comment at all — replace the instrument rather than relax its
+  rule, which would be calibrating a guard to accept what it should catch.
 - **A duplicated ALGORITHM must be proven equivalent by DIFFERENTIAL
   TESTING, never by reading.** `shallowExposureNm` re-implements `NavMask`'s
   private `walkCells` DDA, deliberately, to keep `PlanResult` byte-identical
@@ -3041,11 +3059,13 @@ making design-level decisions; do not silently deviate.
   its cut with", had the identical defect further back — earlier shipped
   releases miss it — and was caught only at the next audit round (`cf3d643`:
   "the replacement had the same defect, further back"). The criterion that had
-  just rejected one wording was not re-run against its replacement. Fixed by
-  stating the floor as forward-looking and naming the exceptions;
-  CONTRIBUTING.md's "The floor is forward-looking" paragraph names them, so do
-  not copy them here. Whenever a criterion has just rejected a draft, run it
-  against the replacement before committing.
+  just rejected one wording was not re-run against its replacement. Fixed at
+  the time by stating the floor as forward-looking and naming the
+  exceptions. **The rule itself was RETIRED 2026-09-09 (#1160, maintainer
+  decision), so this is a HISTORICAL example only — there is no bug-reserve
+  floor to consult and none to look for in CONTRIBUTING.md.** The durable
+  lesson is unaffected: whenever a criterion has just rejected a draft, run
+  it against the replacement before committing.
 - Documenting a rule fixes nothing already in flight. #412 (the
   banner-clearance-guard stale-geometry finding) was filed while `app/e2e/panel-resize.spec.ts` was
   being written in parallel under a brief that predated the finding — the
@@ -3266,6 +3286,25 @@ making design-level decisions; do not silently deviate.
   laundering shape this file records elsewhere for a reviewer's incidental
   explanation. An unverified pairing is worse than none: it stops anyone
   looking for a real one.
+- **Before RETIRING a guard as superseded, enumerate its assertions one by
+  one: a mechanism argument covering the assertion you are looking at can
+  leave a SECOND, WIDER one in the same test untouched.** Measured at
+  #992/PR #1152, where the answer was that NOTHING was retirable.
+  `app.css`'s #909 grid block re-declares `.route-layer-controls,
+  .map-stack-tl`'s `top` at EQUAL specificity but LATER in source, so it
+  wins and puts `.banner-area` and `.map-area` in disjoint grid rows —
+  making the banner-overlap class unconstructible at every narrow viewport
+  EXCEPT short-landscape, whose media query never matches (forcing
+  `--sc-banner-height` to 0 moves overlap 0 -> 200.28px² at
+  `shortLandscape844` and 0 -> 0 elsewhere, against real 110/172/64px
+  baselines). That argument is sound and still retired nothing: every
+  #368-family test pairs its overlap poll with a raw `elementFromPoint`
+  hit-test asserting NOTHING AT ALL occludes the target, which the grid says
+  nothing about. Deleting on partial coverage is how a live invariant
+  vanishes while the commit message reads "superseded", and the loss leaves
+  no artifact — where a redundant test that stays costs nobody anything.
+  When only part of a test is covered, ANNOTATE that assertion and keep the
+  test.
 - **vitest's DEFAULT reporter suppresses console output from PASSING tests**, so
   a console-spy check run on a green suite is a FALSE NEGATIVE. Measured
   2026-09-04 with a control: a passing test logging a unique marker printed it
@@ -3370,8 +3409,17 @@ making design-level decisions; do not silently deviate.
   (`git grep -n "..." -- '*.md'`, silently Markdown-only) yet reported as
   "repo-wide, zero remaining instances" — a reviewer's genuinely unscoped grep
   found 14 more in source/test comments, 6 fixed and 8 deliberately left as a
-  correctly-cited different defect — a dated ~30-44x solver-CI measurement in
-  `app/src/routing/*.test.ts`, not the fabricated 6-10x figure. So a scoped grep reported as repo-wide is
+  different defect — a dated ~30-44x solver-CI measurement in
+  `app/src/routing/*.test.ts`, not the fabricated 6-10x figure. **This
+  passage used to call that measurement "correctly-cited"; that is now
+  false.** PR #891 found ~30-44x itself unsupported over the full 17-run
+  population and DELETED it, and #907/PR #1141 then measured the real
+  solver-specific ratio — read it off `app/src/test/timeouts.ts`'s own
+  derivation, never from here. The two differ only in HOW they failed:
+  6-10x never existed as a phrase, while ~30-44x was a real citation whose
+  support did not survive re-measurement. A citation that passes a numeric
+  spot-check is exactly what makes the second kind durable. So a scoped grep
+  reported as repo-wide is
   the same prose-rot over-claim this file documents, occurring INSIDE the PR
   fixing prose-rot claims; and an allowlist derived from an unverified claim
   about the code is enumerate-don't-patch relocated one level up, into the
