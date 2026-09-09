@@ -214,6 +214,10 @@ Per task:
   sweep as a harness background task.
 - Spec edits under `docs/superpowers/specs/` are MAIN-SESSION ONLY (the ask-gate hook must prompt).
 
+**An INTEGRATION PR you open yourself also gets `--assignee DocGerd`.** You are the one running
+`gh pr create` there, so neither the implementer brief nor the agent definition covers it — this
+is the one PR class with no other actor to inherit the rule from.
+
 Merge with `/merge-train`: strictly serial, re-sync each branch from `origin/develop` before its
 turn, verify `head.sha` equals what was pushed AND that check-runs exist for that exact SHA
 (#119), gate on `app` + `e2e` only (the sole required checks; `ruff`/`verify`/CodeQL/
