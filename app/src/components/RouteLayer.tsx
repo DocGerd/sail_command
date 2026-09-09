@@ -532,17 +532,24 @@ function fitToLegs(map: MaplibreMap, legs: Leg[]) {
 // slop, not a tappable control.
 const ROUTE_DRAG_HOVER_TOLERANCE_PX = 12;
 
-// #850 round-2 BLOCKER: a via point sits exactly ON a leg vertex, so
-// `nearestPointOnRoute`'s returned point there is IDENTICAL to that via
-// point's own coordinate — the ghost handle would otherwise stack directly
-// over `ViaMarkers.tsx`'s own 16px `.sc-via-marker` dot and steal its drag
+// #850 round-2 BLOCKER: a via point's leg vertex coincides with the via
+// point's own coordinate whenever the drop was already navigable
+// (`planRoute.ts` snaps each via through `mask.snapToNavigable` before
+// routing, so the leg vertex is the SNAPPED cell centre, not the raw drop —
+// they diverge once a drop needed snapping). Either way, the ghost handle
+// would otherwise stack directly over `ViaMarkers.tsx`'s own 16px
+// `.sc-via-marker` dot and steal its drag wherever the two DO coincide
 // (dragging what looks like an existing waypoint instead inserted a
 // DUPLICATE one, since the ghost's own `dragend` always calls
 // `onRouteLineInsert`). Suppress the ghost within the real marker's own
 // half-width of any DRAFT via point (`ViaMarkers.tsx`'s `viaElement()` is
 // 16px wide), checked in `onMouseMove` BEFORE the route-line hit-test below —
 // not by resizing this file's own ring, which does not touch where the OTHER
-// element renders.
+// element renders. Keying the suppression to `draftViaPoints` rather than to
+// the route's own vertices is what makes this correct regardless of
+// snapping: `draftViaPoints` is exactly the list `<ViaMarkers
+// viaPoints={draftViaPoints} …>` below renders from, so suppression and
+// marker always coincide, whatever the router did with the point.
 const VIA_MARKER_HALF_WIDTH_PX = 8;
 
 // #850: pixel-space projection of a screen point onto the nearest point of
@@ -1149,9 +1156,9 @@ export default function RouteLayer({
     };
 
     // #850 round-2 BLOCKER: suppress the ghost whenever the cursor is over
-    // an existing via marker — checked BEFORE the route-line hit-test below,
-    // so a via point sitting exactly on a leg vertex never grows a ghost on
-    // top of the real marker.
+    // an existing via marker — checked BEFORE the route-line hit-test below
+    // (see VIA_MARKER_HALF_WIDTH_PX above for why this is keyed to
+    // `draftViaPoints` rather than to the route's own vertices).
     const isOverViaMarker = (cursorPx: { x: number; y: number }): boolean =>
       draftViaPoints.some((via) => {
         const p = map.project([via.lon, via.lat]);

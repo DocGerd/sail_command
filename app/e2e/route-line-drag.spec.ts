@@ -180,17 +180,36 @@ test('#850 round-2 BLOCKER: dragging an existing via marker moves it, never inse
     const planButton = page.getByRole('button', { name: 'Route planen' });
     await planButton.click();
     await expect(planButton).toBeEnabled({ timeout: 60_000 });
+    await mapReady(page);
     await expect(via).toHaveCount(1);
 
     // The BLOCKER this test pins: the ghost handle used to stack directly
-    // over the real via marker (a via point sits exactly on a leg vertex,
-    // so `nearestPointOnRoute`'s own hit is identical to the marker's own
-    // coordinate) and steal its drag — dragging what looked like the
-    // existing marker instead fired `onRouteLineInsert` and produced a
-    // SECOND, duplicate marker ("Wegpunkt 2") rather than moving the first.
-    const viaBox = await via.boundingBox();
-    if (!viaBox) throw new Error('the via marker has no bounding box');
-    const viaCentre = { x: viaBox.x + viaBox.width / 2, y: viaBox.y + viaBox.height / 2 };
+    // over the real via marker and steal its drag — dragging what looked
+    // like the existing marker instead fired `onRouteLineInsert` and
+    // produced a SECOND, duplicate marker ("Wegpunkt 2") rather than moving
+    // the first. (The two coincide here because the drop point was already
+    // navigable, so `mask.snapToNavigable` returned it unchanged — see
+    // `RouteLayer.tsx`'s `VIA_MARKER_HALF_WIDTH_PX` comment. That is NOT the
+    // general case: a snap moves the leg vertex away from the marker, and
+    // the fix works there too, since it is keyed to `draftViaPoints`
+    // — where the marker renders — not to the route's own geometry.)
+    //
+    // #412: re-sampled INSIDE the poll on every attempt, never frozen from a
+    // single read before this — the replan above moves the camera
+    // (`fitToLegs`), and a box read before that settles would make a stale
+    // coordinate and a real defect produce the same signature.
+    let viaCentre = { x: 0, y: 0 };
+    await expect
+      .poll(
+        async () => {
+          const viaBox = await via.boundingBox();
+          if (!viaBox) return null;
+          viaCentre = { x: viaBox.x + viaBox.width / 2, y: viaBox.y + viaBox.height / 2 };
+          return viaCentre;
+        },
+        { timeout: 10_000 },
+      )
+      .not.toBeNull();
 
     // Hovering the real marker must NOT reveal the route-drag ghost at all
     // (the fix suppresses it before the route-line hit-test ever runs) —
