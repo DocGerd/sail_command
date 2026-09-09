@@ -334,6 +334,19 @@ select {
    use that tier's exact z-index, and if it can spatially overlap something
    already in the SAME tier, fix the overlap by moving one of them — never
    by inventing a value between tiers. */
+/* #1013: `.app-header`'s own rendered height, MEASURED (real Chromium, all
+   3 short-landscape EDGE_VIEWPORTS) at a CONSTANT 61px (see `.banner-area`'s
+   own comment below for the measurement) — declared once here instead of
+   restated as a literal `61px`/`69px` (61px + the fixed 8px breathing room
+   the derivation comment further below establishes) at every site that must
+   clear it: `.banner-area`'s short-landscape `top`, the narrow
+   banner-clearance rule's `--sc-banner-clear-top` base term, and the
+   `.route-layer-controls`/`.map-stack-tl` base-rule `top`/`max-height`
+   fallbacks (#985, #991, #1013). */
+:root {
+  --sc-app-header-height: 61px;
+}
+
 .app-header {
   position: absolute;
   top: 0;
@@ -410,8 +423,9 @@ select {
      own bottom edge (the DERIVATION comment below preserves the SAME 8px
      breathing room to the cluster above it via a matching short-landscape
      override of `--sc-banner-clear-top`, not by touching this literal
-     further). */
-  top: 61px;
+     further). #1013: reads `--sc-app-header-height` (declared once above
+     `.app-header`) instead of restating `61px`. */
+  top: var(--sc-app-header-height);
   left: 0;
   right: 0;
   display: flex;
@@ -1048,9 +1062,10 @@ select {
 
      Draft 1 hardcoded `.map-stack-tl`'s own narrow-layout `top` as a flat
      `3.5rem` (the pre-#985 value), ignoring that it is actually
-     `var(--sc-banner-clear-top)` (`calc(69px + var(--sc-banner-height))`
-     since #985, the narrow banner-clearance rule above) whenever a banner
-     is on screen. Manual testing against a
+     `var(--sc-banner-clear-top)` (`calc(var(--sc-app-header-height) + 8px +
+     var(--sc-banner-height))`, #1013 — `calc(69px + var(--sc-banner-height))`
+     before it — since #985, the narrow banner-clearance rule above) whenever
+     a banner is on screen. Manual testing against a
      long-lived dev-server page (banner already dismissed) never exercised
      that case; a fresh `npm run e2e` browser context does — every
      `mapReady()` load shows the one-shot "offline ready" toast (#368's own
@@ -1096,7 +1111,7 @@ select {
   max-height: max(
     0px,
     calc(
-      100dvh - var(--sc-banner-clear-top, 69px) - 55vh - 0.5rem -
+      100dvh - var(--sc-banner-clear-top, calc(var(--sc-app-header-height) + 8px)) - 55vh - 0.5rem -
         var(--sc-depth-controls-height, 130px) - 60px - 44px - 0.15rem
     )
   );
@@ -1247,7 +1262,8 @@ select {
   );
 }
 
-/* NAMED COUPLING: `top: 69px` clears the narrow-layout .app-header where
+/* NAMED COUPLING: `top: calc(var(--sc-app-header-height) + 8px)` (61px + 8px
+   = 69px, #1013) clears the narrow-layout .app-header where
    it overlays the map — SHORT LANDSCAPE only since #909, whose block at the
    END of this file gives the header its own grid row (and this cluster a
    `0.5rem` top) at every other narrow viewport. The wide media query below
@@ -1285,12 +1301,13 @@ select {
    plain overflow). */
 .route-layer-controls {
   position: absolute;
-  top: 69px;
+  top: calc(var(--sc-app-header-height) + 8px);
   right: 0.5rem;
   z-index: 2;
-  /* Sheet caps at 55vh; the tab strip (Tier 3) sits above that, 69px down
-     from the viewport top; 0.5rem breathing room above the sheet's edge. */
-  max-height: calc(100dvh - 69px - 55vh - 0.5rem);
+  /* Sheet caps at 55vh; the tab strip (Tier 3) sits above that, 69px
+     (header + 8px, #1013) down from the viewport top; 0.5rem breathing room
+     above the sheet's edge. */
+  max-height: calc(100dvh - (var(--sc-app-header-height) + 8px) - 55vh - 0.5rem);
   overflow-y: auto;
   /* #205: this cluster is unsized (shrink-to-fit), so its content width is
      constant regardless of viewport — measured 233.86px (DE) / 194.58px (EN)
@@ -1424,7 +1441,8 @@ select {
    Opposite corner from the plan-gated route cluster so the two can never
    collide when a plan is active — the toggles stay terse (dict) to share the
    map-top row with it even at phone widths.
-   NAMED COUPLING: `top` mirrors .route-layer-controls above (69px, #985, to
+   NAMED COUPLING: `top` mirrors .route-layer-controls above
+   (calc(var(--sc-app-header-height) + 8px) = 69px, #985/#1013, to
    clear the narrow-layout .app-header where it overlays the map — short
    landscape only since #909; 0.75rem on wide) and `left: 0.5rem` mirrors
    its `right: 0.5rem`. The 1024px breakpoint that switches them is the SAME
@@ -1456,7 +1474,7 @@ select {
    ~60px and keeps the compass's bottom edge safely above the tab strip. */
 .map-stack-tl {
   position: absolute;
-  top: 69px;
+  top: calc(var(--sc-app-header-height) + 8px);
   left: 0.5rem;
   display: flex;
   flex-direction: column;
@@ -1466,7 +1484,7 @@ select {
   z-index: 2;
   /* Same formula as .route-layer-controls above, and the same reason: the
      sheet caps at 55vh, so this bound is static. */
-  max-height: calc(100dvh - 69px - 55vh - 0.5rem);
+  max-height: calc(100dvh - (var(--sc-app-header-height) + 8px) - 55vh - 0.5rem);
 }
 
 .map-stack-tl > * {
@@ -1616,8 +1634,11 @@ select {
        at every narrow viewport via inherited custom-property, not only at
        short landscape — a documented, ACCEPTED narrowing of that
        element's already-generous budget (13px), never past its own
-       `max(0px, ...)` floor. */
-    --sc-banner-clear-top: calc(69px + var(--sc-banner-height, 176px));
+       `max(0px, ...)` floor. #1013: `69px` is now
+       `calc(var(--sc-app-header-height) + 8px)` — see the token's own
+       comment above `.app-header` — so this term reads the same header
+       height everywhere instead of restating the literal. */
+    --sc-banner-clear-top: calc(var(--sc-app-header-height) + 8px + var(--sc-banner-height, 176px));
     top: var(--sc-banner-clear-top);
     max-height: calc(100dvh - var(--sc-banner-clear-top) - 55vh - 0.5rem);
   }
