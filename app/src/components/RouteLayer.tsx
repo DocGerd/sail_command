@@ -532,13 +532,9 @@ function fitToLegs(map: MaplibreMap, legs: Leg[]) {
 // slop, not a tappable control.
 const ROUTE_DRAG_HOVER_TOLERANCE_PX = 12;
 
-// #850 round-2 BLOCKER: a via point's leg vertex coincides with the via
-// point's own coordinate whenever the drop was already navigable
-// (`planRoute.ts` snaps each via through `mask.snapToNavigable` before
-// routing, so the leg vertex is the SNAPPED cell centre, not the raw drop —
-// they diverge once a drop needed snapping). Either way, the ghost handle
-// would otherwise stack directly over `ViaMarkers.tsx`'s own 16px
-// `.sc-via-marker` dot and steal its drag wherever the two DO coincide
+// #850 round-2 BLOCKER: the ghost handle would otherwise appear close
+// enough to `ViaMarkers.tsx`'s own 16px `.sc-via-marker` dot to stack over
+// it and steal its drag
 // (dragging what looks like an existing waypoint instead inserted a
 // DUPLICATE one, since the ghost's own `dragend` always calls
 // `onRouteLineInsert`). Suppress the ghost within the real marker's own

@@ -187,12 +187,9 @@ test('#850 round-2 BLOCKER: dragging an existing via marker moves it, never inse
     // over the real via marker and steal its drag — dragging what looked
     // like the existing marker instead fired `onRouteLineInsert` and
     // produced a SECOND, duplicate marker ("Wegpunkt 2") rather than moving
-    // the first. (The two coincide here because the drop point was already
-    // navigable, so `mask.snapToNavigable` returned it unchanged — see
-    // `RouteLayer.tsx`'s `VIA_MARKER_HALF_WIDTH_PX` comment. That is NOT the
-    // general case: a snap moves the leg vertex away from the marker, and
-    // the fix works there too, since it is keyed to `draftViaPoints`
-    // — where the marker renders — not to the route's own geometry.)
+    // the first.
+    // (the ghost's own hit lands on the rendered route line, close enough
+    // to the marker to cover it)
     //
     // #412: re-sampled INSIDE the poll on every attempt, never frozen from a
     // single read before this — the replan above moves the camera

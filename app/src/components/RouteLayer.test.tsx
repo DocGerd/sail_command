@@ -1219,7 +1219,7 @@ describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
     const onMouseMove = mousemoveHandler(map);
     // The sibling test above (with NO via points) proves this exact pixel
     // — (400, 275), the leg's midpoint — reveals a ghost. A via point sits
-    // exactly on that leg vertex here, and the ghost must not appear over
+    // exactly on that leg midpoint here, and the ghost must not appear over
     // it (round-2 BLOCKER: it used to, stealing the real marker's drag).
     onMouseMove({ point: { x: 400, y: 275 } });
     expect(ghostMarker()).toBeUndefined();
