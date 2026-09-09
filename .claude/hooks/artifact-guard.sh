@@ -13,14 +13,18 @@
 #                    the one thing the 2026-08-09 advisory split below did
 #                    NOT touch, since that split was Bash-arm-only; #1021
 #                    widens the same carve-out to this arm).
-#   - Bash        -> path-presence match on the command string. Four outcomes:
-#                    provably read-only -> emit NOTHING; docs/superpowers/specs,
+#   - Bash        -> path-presence match on the command string. FIVE outcomes:
+#                    provably read-only -> emit NOTHING; a destructive verb
+#                    (rm/rmdir/mv) naming the plans/ DIRECTORY itself, either
+#                    spelling, or the plans/* glob -> blocking `ask`, checked
+#                    BEFORE everything below (#1041 ruling 1 — see
+#                    bash_hits_plans_dir_destruction()); docs/superpowers/specs,
 #                    or a docs/superpowers write NOT confined to plans/ ->
 #                    blocking `ask`; a docs/superpowers write CONFINED to
-#                    plans/ (#1021), or any OTHER protected path -> a
-#                    NON-BLOCKING `additionalContext` ADVISORY carrying no
-#                    permissionDecision at all. See "TWO OUTCOMES FOR A
-#                    NON-EXEMPT HIT" in DESIGN below for the ruling, the
+#                    plans/ (#1021) to a single FILE, or any OTHER protected
+#                    path -> a NON-BLOCKING `additionalContext` ADVISORY
+#                    carrying no permissionDecision at all. See "TWO OUTCOMES
+#                    FOR A NON-EXEMPT HIT" in DESIGN below for the ruling, the
 #                    measurement and why the two halves differ.
 #
 # ---------------------------------------------------------------------------
@@ -801,6 +805,23 @@
 #      other literal-substring check in this arm. Recorded so the residual
 #      is documented rather than believed absent, per the maintainer's
 #      explicit instruction on this review round.
+#
+# KNOWN-OVER-ASK, ACCEPTED (#1041 ruling 2, maintainer, 2026-09-09): a
+# literal ".." ANYWHERE in a command forces `ask` on an otherwise-advisory
+# docs/superpowers/plans/ write (case 2 of bash_hits_spec_gated_path() above
+# does not check whether the ".." is anywhere near the docs/superpowers
+# substring) - e.g. `cp ../f docs/superpowers/plans/x.md` asks even though
+# the ".." has nothing to do with the plans/ path. This is an OVER-ask, the
+# safe direction, and it asks at BASE too, so it is not a regression. Making
+# it path-aware would mean parsing WHERE the ".." sits relative to
+# docs/superpowers - more shell parsing on a security-adjacent predicate,
+# which is exactly the ambition #233 was closed over, and this repo has
+# twice MEASURED and REJECTED "obvious" loosenings of this same hook
+# (#404/#405: adding `cd` to READONLY_VERBS removed 0 of 1115 real asks;
+# segmenting on `;`/`&&`/newline removed at most 2 and was independently
+# unsafe, since an oversized heredoc times the hook out into a silent
+# allow). Declined permanently on that record - do not scope a path-aware
+# form without a new explicit maintainer decision.
 set -uo pipefail
 
 # Single source of truth for the Bash path-presence arm (see DESIGN above).
@@ -971,6 +992,99 @@ bash_hits_plans_confined() {
   esac
   bash_hits_spec_gated_path "$cmd" >/dev/null && return 1
   return 0
+}
+
+# #1041 RULING 1 (maintainer, 2026-09-09): the #1021 carve-out above turns a
+# BARE, trailing-slash spelling of the plans/ DIRECTORY into an advisory
+# ("rm -rf docs/superpowers/plans/" -> advisory, destroying 7 tracked files
+# unprompted) while the slash-less spelling of the exact same target
+# ("rm -rf docs/superpowers/plans" -> ask) correctly falls through to
+# bash_hits_spec_gated_path's bare-ancestor check, because it does not match
+# SPEC_GATED_PLANS_PATH's trailing slash at all. MEASURED at issue #1041
+# filing: both spellings agree with each other, so this is not an
+# arm-divergence bug - it is that the MORE CANONICAL spelling for a
+# directory (trailing slash) is the PERMISSIVE one. Per CLAUDE.md's
+# guard-asymmetry rule (a BLOCKING guard fails CLOSED, a NUDGE may fail
+# OPEN) destroying the whole tracked subtree must always ask, regardless of
+# spelling - the #1021 policy never ruled on whole-directory destruction,
+# only on per-file plans/ WRITES becoming advisory (issue #1041, ruling 1).
+#
+# This predicate is evaluated BEFORE the #1021 carve-out (see the call site)
+# and, when it fires, forces `ask` unconditionally - it never itself
+# produces an advisory or an allow.
+#
+# SCOPE, deliberately narrow on TWO axes:
+#   - VERB: only PLANS_DIR_DESTRUCTIVE_VERBS (rm, rmdir, mv) - an ordinary
+#     read or a non-destructive write naming the bare directory (e.g. `cat
+#     docs/superpowers/plans/`, `cp -r docs/superpowers/plans/ /tmp/backup`)
+#     is out of scope; the issue asked for a fix to DESTRUCTION, not to
+#     widen every protected path (explicitly declined in the ruling).
+#   - TARGET: only the DIRECTORY itself (bare, trailing-slash, or the
+#     plans/* glob) - a destructive op on a single FILE inside plans/
+#     (`rm -rf docs/superpowers/plans/onefile.md`) is left alone and stays
+#     advisory, which is the #1021-intended behaviour for a per-file write
+#     and is pinned by its own selftest row below so this check cannot
+#     silently widen onto it later.
+#
+# MECHANISM, same "path-presence substring matching only, no shell-syntax
+# awareness" design as the rest of this file (DESIGN above) - no parser, no
+# tokenizer. The command is padded with a leading and trailing space so
+# "verb at the very start/end of the string" and "verb bounded by
+# whitespace" become the SAME case (the padding technique already used by
+# strip_inert_redirects() above), then:
+#   1. a destructive verb must appear as a whitespace-bounded WORD anywhere
+#      in the padded command (matching this file's general philosophy of
+#      matching ANY position, not just the first word - see
+#      bash_hits_protected_path's own comment for the precedent);
+#   2. the text immediately following the LITERAL "docs/superpowers/plans"
+#      occurrence is inspected: if what follows is NOT a path-continuation
+#      character (letters, digits, `.`, `_`, `-`, or - only right after the
+#      bare form - a `/` that itself continues into MORE such characters),
+#      the match is the directory itself, not a file inside it. The
+#      trailing-slash and plans/* glob forms both reduce to "a `/`
+#      immediately followed by a non-path character" - `/` then `*`, `/`
+#      then whitespace/end (thanks to the padding), `/` then a shell
+#      operator or quote character - so ONE case arm covers both spellings
+#      the issue's table names plus the glob form, without hand-listing
+#      every operator: any character that cannot start or continue a bare
+#      filename is treated as "this is the directory, not a file in it".
+#
+# KNOWN RESIDUAL, recorded rather than fixed here (see the sibling-shape
+# table in the #1041 PR description, not restated here per this file's own
+# rot-avoidance discipline): `find docs/superpowers/plans -delete`,
+# `git rm -r docs/superpowers/plans`, `rsync --delete ... plans/` and any
+# other destructive shape that does not use one of the three named verbs
+# stays a silent advisory - out of scope per the ruling's own ask (scoped to
+# rm/rmdir/mv, not every destructive verb in existence).
+PLANS_DIR_DESTRUCTIVE_VERBS=(rm rmdir mv)
+
+bash_hits_plans_dir_destruction() {
+  local cmd="$1" padded v verb_present=1 rest
+  padded=" $cmd "
+  for v in "${PLANS_DIR_DESTRUCTIVE_VERBS[@]}"; do
+    case "$padded" in
+      *" $v "*) verb_present=0; break ;;
+    esac
+  done
+  [ "$verb_present" -eq 0 ] || return 1
+
+  case "$padded" in
+    *"docs/superpowers/plans"*) : ;;
+    *) return 1 ;;
+  esac
+
+  rest="${padded#*docs/superpowers/plans}"
+  case "$rest" in
+    # "/" immediately followed by anything that cannot start a filename -
+    # covers the trailing slash alone (next char is the padding space) and
+    # the plans/* glob (next char is a literal "*") in one arm.
+    "/"[!A-Za-z0-9._-]*) return 0 ;;
+    # bare form: anything except "/" (handled above) or a path-continuation
+    # character right after "plans" means a word boundary, i.e. the
+    # directory itself (includes the padding space at end-of-command).
+    [!/A-Za-z0-9._-]*)   return 0 ;;
+  esac
+  return 1
 }
 
 # --- read-only exemption (#309 follow-up; see DESIGN above for the full
@@ -2011,7 +2125,18 @@ if [ "${1:-}" = "--selftest" ]; then
   # that mutation reds ZERO rows in the pre-#1035-fix-wave battery, which is
   # exactly Blocker 1's shape and exactly why a passing mutation battery
   # only proves an assertion CAN fail, never that it covers the hazard.
-  EXPECTED_CASES=327
+  # (#1041 ruling 1) 327 -> 335, +8: bash_hits_plans_dir_destruction() rows.
+  # SEVEN `decide ask` rows - one per {rm, rmdir, mv} x {bare, trailing-slash}
+  # spelling (six), plus the plans/* glob form (the seventh, rm-only, since
+  # that is the shape the issue named) - and ONE bounding negative
+  # (`decide advisory`) proving a destructive op on a single FILE inside
+  # plans/ is UNCHANGED by this ruling. The bare-spelling rows for all three
+  # verbs already asked before this ruling (pre-existing ancestor spec-gate,
+  # unrelated to the new check) and are kept as regression guards, not as
+  # rows proving the fix - the trailing-slash and glob rows are what the
+  # fix actually moves (MEASURED pre-fix: ADVISORY, destroying the whole
+  # tracked plans/ subtree unprompted; issue #1041 table rows 2-3).
+  EXPECTED_CASES=335
 
   # (#309 fix-wave m1, moved here by #404 so decide()/decide_exempt() below
   # can use it too - they now drive the production entry point through it
@@ -3115,6 +3240,33 @@ if [ "${1:-}" = "--selftest" ]; then
   # "docs/superpowers/plans/" from "docs/superpowers/plans/.." leaving only
   # "..", which contains no "docs/superpowers" at all.
   decide ask "PLANS #1021 BLOCKER 2: 'mv docs/superpowers/plans/..' tree-level move still ASKS" "mv docs/superpowers/plans/.. /tmp/stash"
+
+  # ======================================================================
+  # #1041 RULING 1 (maintainer, 2026-09-09): a destructive verb (rm/rmdir/
+  # mv) naming the plans/ DIRECTORY itself must ALWAYS ask, both spellings
+  # (bare and trailing-slash) and the plans/* glob - see
+  # bash_hits_plans_dir_destruction()'s own comment for the mechanism. The
+  # bare, no-trailing-slash spelling already asked before this ruling (it
+  # falls through to the pre-existing ancestor spec-gate, unrelated to this
+  # new check) - kept as a regression guard alongside the trailing-slash
+  # rows that were the actual defect (issue #1041 table rows 2-3: the
+  # MEASURED pre-fix behaviour was ADVISORY for these two, destroying 7
+  # tracked files unprompted).
+  decide ask "PLANS #1041: bare 'rm -rf docs/superpowers/plans' still ASKS" "rm -rf docs/superpowers/plans"
+  decide ask "PLANS #1041: trailing-slash 'rm -rf docs/superpowers/plans/' now ASKS (was ADVISORY pre-fix)" "rm -rf docs/superpowers/plans/"
+  decide ask "PLANS #1041: glob 'rm -rf docs/superpowers/plans/*' now ASKS (was ADVISORY pre-fix)" "rm -rf docs/superpowers/plans/*"
+  decide ask "PLANS #1041: bare 'rmdir docs/superpowers/plans' still ASKS" "rmdir docs/superpowers/plans"
+  decide ask "PLANS #1041: trailing-slash 'rmdir docs/superpowers/plans/' now ASKS" "rmdir docs/superpowers/plans/"
+  decide ask "PLANS #1041: bare 'mv docs/superpowers/plans /tmp/x' still ASKS" "mv docs/superpowers/plans /tmp/x"
+  decide ask "PLANS #1041: trailing-slash 'mv docs/superpowers/plans/ /tmp/x' now ASKS" "mv docs/superpowers/plans/ /tmp/x"
+  # BOUNDING NEGATIVE (per-file destruction inside plans/ is UNCHANGED by
+  # this ruling - #1021's per-file advisory stays the answer; this check
+  # exists only for whole-subtree destruction). Mutation-checked: dropping
+  # the "/" +path-continuation-char exclusion from
+  # bash_hits_plans_dir_destruction()'s case arms (matching "/" followed by
+  # ANY character, not just a non-path one) reds this row to ask.
+  decide advisory "PLANS #1041 BOUNDING NEGATIVE: single FILE inside plans/ still ADVISES, unaffected" "rm -rf docs/superpowers/plans/onefile.md"
+
   # CONTENT: the plans advisory must be its OWN emitter, not a fall-through
   # to the generic build-output bash_advisory()/regen_hint() default - a
   # hand-authored plan doc has no generator to cite, and "see
@@ -3486,6 +3638,15 @@ if [ "$tn" = "Bash" ]; then
     # DESIGN). Everything else - including anything this predicate cannot
     # prove - falls through to the split below.
     if bash_is_provably_readonly "$cmd"; then
+      exit 0
+    fi
+    # #1041 RULING 1: a destructive verb naming the plans/ DIRECTORY itself
+    # (not a file inside it) always asks, evaluated BEFORE the #1021
+    # carve-out below so it cannot be downgraded to an advisory by either
+    # spelling of the path - see bash_hits_plans_dir_destruction()'s own
+    # comment for the full mechanism and scope.
+    if bash_hits_plans_dir_destruction "$cmd"; then
+      echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Bash command combines a destructive verb (rm/rmdir/mv) with the docs/superpowers/plans/ DIRECTORY itself, not a file inside it - this is the whole-subtree case the #1021 plans/ advisory was never meant to cover (issue #1041: the trailing-slash spelling of this exact target used to fall through to a non-blocking advisory while the slash-less spelling correctly asked - both spellings now ask). Confirm the user wants to destroy the plans/ directory before proceeding; a single tracked FILE inside plans/ still only advises, unchanged."}}'
       exit 0
     fi
     # 2026-08-09 split (DESIGN, "TWO OUTCOMES FOR A NON-EXEMPT HIT"): the
