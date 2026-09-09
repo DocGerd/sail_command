@@ -62,7 +62,23 @@ making design-level decisions; do not silently deviate.
   under `docs/superpowers/specs/`: that path is guarded by a main-session
   ask-gate hook, and a subagent writing there would slip a spec edit past
   the gate. A spike doc is evidence for a decision, never a spec — promoting
-  one to a spec is a main-session act.
+  one to a spec is a main-session act. `docs/spikes/README.md` indexes every
+  entry. **#644 (2026-09-09) settled the spike-vs-ADR convention rather than
+  merging the two directories: a spike is an investigation that ends in a
+  recommendation, an ADR (`docs/adr/`) is the record of a ruling already
+  made, and several existing spikes are genuinely both** — that overlap
+  governs where a NEW document goes, not a retroactive reclassification of
+  what was on record at that date. Both README indexes cross-link the other
+  directory. Measured at that date: 22 top-level `.md` spikes plus 2
+  same-named subdirectories of supporting artifacts (`1022-whole-journey-ux/`,
+  `354-mode-churn/`), and **39 inbound citations of a `docs/spikes/` path
+  across 17 tracked files** (`git grep -n 'docs/spikes' -- ':!docs/spikes'`)
+  — including two files already inside the #282 sweep closure
+  (`app/src/lib/depthGate.ts`, `app/sweep/sweepArms.ts:89`, both named in
+  that closure's own listing below). That is why #644 shipped as a
+  convention-and-cross-link change with **ZERO files moved**: renaming any
+  cited spike path would have flipped the sweep verdict to OWED for what
+  would otherwise be a `docs`/`low` chore.
   Design records live in FOUR places and three survive a clone:
   `docs/superpowers/specs/`, `docs/spikes/` and `docs/adr/` (ADRs plus a
   README index) are all COMMITTED — but
