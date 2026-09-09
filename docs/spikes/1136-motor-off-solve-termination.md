@@ -10,9 +10,12 @@
   angle; they die holding fully mask-validated children that domination
   pruning discards — on the dying ring, every accepted edge is dropped by
   `visitedDominates` and nothing else. The re-expansion salvage designed
-  against that mechanism was NOT implemented: its plan-level containment is
-  refuted by measurement, its trigger cannot distinguish a solver give-up from
-  a genuine no-route, and its efficacy has never been run on any input. #1136
+  against that mechanism was NOT implemented: its containment is airtight at
+  SOLVE level and breaks at PLAN level — a solve dying inside a plan that
+  returns `ok` today, which is the designer's `planRoute` row and is
+  UNCORROBORATED (§5, hole 1); its trigger cannot distinguish a solver give-up
+  from a genuine no-route; and as of 2026-09-09 its efficacy had not been run
+  on any input. #1136
   is DEFERRED to milestone v0.32.0 (maintainer ruling, 2026-09-09). This
   document exists so the next attempt starts from the measurement rather than
   from the issue title.**
@@ -152,9 +155,10 @@ those 188 rings**, not merely on the dying ones.
 `stampVisited` LOWERS each surviving node's prune cell toward
 `{costMs, maneuvers}` at the end of every ring (the loop over `next` after the
 frontier cap) — it takes the minimum on each axis INDEPENDENTLY, so a cell's
-stamp need not be any single node's arrival. That function's own doc comment
-says what follows: "Componentwise minima can combine two different stampers
-into a dominator neither of them was alone". On the next ring `visitedDominates(seen, child)` discards any child that
+stamp need not be any single node's arrival. The doc comment that says what
+follows is `visitedDominates`'s, not `stampVisited`'s (`isochrone.ts:263-264`
+at `035d662`): "Componentwise minima can combine two different stampers into a
+dominator neither of them was alone". On the next ring `visitedDominates(seen, child)` discards any child that
 is no better on **both** axes — `seen.costMs <= cand.costMs && seen.maneuvers
 <= cand.maneuvers`. A node's own stamp dominates a child that lands back in the
 node's **own** cell by construction, since the ranking clock only advances and
@@ -184,8 +188,11 @@ Salona-45 genoa speed over TWA, computed here from the committed polar, is
 0.003` (~190 m). A full-step child therefore lands several prune cells away
 from its parent and cannot be dominated by its parent's own stamp. Same-cell
 self-domination is reachable only through the `dtS/2`, `dtS/4`, `dtS/8`
-substep retry, whose shortest hop is under 130 m at TWS 2.8's BEST TWA, and
-less at any other heading — inside one cell either way. The
+substep retry, whose shortest hop is 127.5 m at TWS 2.8's BEST TWA, and less
+at any other heading — inside one cell there. That is TWS-2.8-only: the same
+`dtS/8` substep runs 285.1 m at TWS 8, which exceeds both `PRUNE_LAT` and
+`PRUNE_LON`, so a same-cell child at TWS 8 needs a heading slower than the
+best one. The
 blocked counts on the dying rings are large (66, 53, 85 against accepted 104,
 49, 51), which is consistent with most accepted edges being fitted substeps,
 but **the instrumentation does not split `accepted` into full-step and fitted**,
@@ -462,7 +469,7 @@ byte-for-byte.
 
 It was **not implemented**. Five holes, in the order they bite.
 
-### Hole 1 — plan-level containment is REFUTED by measurement
+### Hole 1 — containment breaks at PLAN level (that half UNCORROBORATED)
 
 Containment at **solve level** is airtight: a solve that already holds a `best`
 never salvages. But `planRoute` does not succeed on a solve — it succeeds on
@@ -501,10 +508,15 @@ The designer declined to guess, correctly. Width is bounded by the existing
 `MAX_FRONTIER` slice; **depth** is the real cost and is unmeasured. It must be
 measured against `PLAN_BUDGET_MS` (120 000 ms, `workerClient.ts`) on
 Flensburg → Marstal — the route #1147 records as the least forgiving input in
-the repo for a change that adds rings. Quote its figure with the CLOCK
-attached: **29.5 %** headroom on the monotonic clock, **36.8 %** on the wall
-clock, and #1147's own body says the wall-clock figure is the operative one
-because the deadline check is `Date.now() - startedAtMs >= budgetMs`. Note also
+the repo for a change that adds rings. Quote its figure with BOTH qualifiers
+#1147 puts in bold — the CLOCK and the LOAD. The clock: **29.5 %** headroom on
+the monotonic clock, **36.8 %** on the wall clock, and #1147's own body says
+the wall-clock figure is the operative one because the deadline check is
+`Date.now() - startedAtMs >= budgetMs`. The load: #1147 records the
+environment as WSL2 with roughly a dozen concurrent sibling agent sessions on
+the same machine at measurement time — measured under real, unquantified CPU
+contention — and therefore calls the reported headroom a **conservative lower
+bound**. Note also
 that #1147 locates `PLAN_BUDGET_MS` in `protocol.ts`; it is not there —
 `grep -c PLAN_BUDGET_MS app/src/routing/protocol.ts` returns **0** and the
 constant is declared at `workerClient.ts:108` (verified 2026-09-09 at
@@ -532,9 +544,11 @@ destination was ever logged. The derivation is short enough to give rather than
 hedge: `next.length === 0` means `byKey` is empty, i.e. `byKeySet == 0`;
 `betterLoss` requires a truthy `incumbent`, which requires a prior `byKey.set`
 in the same ring, so `byKeySet == 0` forces `betterLoss == 0`; §1.2's identity
-then gives `accepted == horizonDrops + dominatedDrops`, which with
-`horizonDrops == 0` is `dominatedDrops == accepted`. That holds for ANY
-frontier-exhaustion death, connected or not. The hole's conclusion is safe
+then gives `accepted == horizonDrops + dominatedDrops`, and THAT equality
+holds for ANY frontier-exhaustion death, connected or not. Its collapse to
+`dominatedDrops == accepted` additionally needs `horizonDrops == 0`, which is
+measured on all 188 logged rings here but is not derived for a disconnected
+destination. The hole's conclusion is safe
 either way, because the proposed trigger is `next.length === 0 && best === null`
 and fires on every frontier-exhaustion death whatever the counters read. The proposed trigger therefore
 cannot distinguish "the solver gave up on reachable water" from "this really is
@@ -737,7 +751,8 @@ Pruning is what bounds this search. The measured magnitudes: on a single
 motor-on ring at TWS 8 (`base.txt`, `ON tws8 dir0`, ring 42),
 `dominatedDrops` reaches **384 379** of **464 874** accepted edges —
 `dominatedDrops / accepted` = **82.7 %**, discarded by domination alone on that
-one ring — and the frontier is still 8 491 wide at ring 45. State the
+one ring — and ring 45's `nextLen` is still 8 491 (that ring's `nodes` is
+10 910). State the
 denominator with the figure: 94 % is reachable here only as
 `dom / (dom + byKeySet)`, which excludes the 57 599 children `better()` dropped
 and is not the set this sentence is about. Removing the test
@@ -907,8 +922,11 @@ is outside the `accepted` total (§2.1).
 **Read this section header before reusing anything below.** The harness was
 edited in place as the investigation went, and three successive on-disk states
 survive. They are printed SEPARATELY and verbatim rather than merged: each has a
-different `run()` signature and a different `it()` body, so a single combined
-body would be a file that never existed and never produced any of these logs.
+different `it()` body, and B.2 additionally uses the RAW harbour coordinates
+where B.1 and B.3 use snapped ones, so a single combined body would be a file
+that never existed and never produced any of these logs. (Only B.3's `run()`
+SIGNATURE differs — it adds `beat?`, `gybe?`, `comfort?`; B.1's and B.2's are
+byte-identical, so the signature is not what separates those two.)
 An earlier draft of this appendix did exactly that — unioning the option surface
 of the last state onto the `it()` of the first — and it regenerated `base.txt`
 alone while claiming to be the harness.
