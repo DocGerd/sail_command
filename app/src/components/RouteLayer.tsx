@@ -551,10 +551,8 @@ const VIA_MARKER_HALF_WIDTH_PX = 8;
 // Deliberately returns `t`, never the projected PIXEL — the caller
 // reuses `t` to interpolate the corresponding LNGLAT directly (see
 // `nearestPointOnRoute` below), sidestepping a screen->lngLat `unproject()`
-// call: `map.project()` is all the shared test fake (`test/fakeMaplibre.ts`)
-// models, and this repo's file allowlist for this task does not extend to
-// that shared fake, so the production code is shaped to stay testable
-// against what already exists there.
+// call and keeping this helper testable against the shared test fake
+// (`test/fakeMaplibre.ts`), which models `map.project()` alone.
 function closestPointOnSegmentPx(
   p: { x: number; y: number },
   a: { x: number; y: number },
