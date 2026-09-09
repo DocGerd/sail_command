@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assertNonVacuousStrip, stripCommentsAndStrings } from './sourceStrip';
+import { stripCommentsAndStrings } from './sourceStrip';
 
 // #253 (maplibre-gl 6 migration): the guard CompassControl.tsx's `onMoveEnd`
 // uses to tell "our own tracked camera ease is still in flight" from "it just
@@ -124,19 +124,27 @@ const ALLOWED_FILES = new Set(['../components/CompassControl.tsx', '../component
 // string-state tracking for the rest of the scan (real structural content
 // after it silently swallowed as "string content"). That was accepted at
 // #253's fix-up pass because it verified zero differences across all 100
-// non-test source files at the time. It is LIVE now: `lib/format.ts`'s
-// `DM_DMS_RE` (`/^(-?\d+)\s*°?\s*(\d{1,2})(?:[.,](\d+))?\s*['′]?\s*(?:(\d{1,2}
+// non-test source files at the time. STILL LATENT, not live, by that same
+// yardstick — re-measured 2026-09-09 by running BOTH the old stripper and
+// `./sourceStrip`'s regex-aware one through the actual `CAMERA_METHOD_PATTERN`
+// scan across all 143 current non-test `app/src` files: zero differences in
+// scan results, same as #253 originally found. The divergence is now
+// measurably REAL, though: `lib/format.ts`'s `DM_DMS_RE`
+// (`/^(-?\d+)\s*°?\s*(\d{1,2})(?:[.,](\d+))?\s*['′]?\s*(?:(\d{1,2}
 // )(?:[.,](\d+))?\s*["″]?\s*)?([A-Za-z])?$/`) contains BOTH a single quote
-// (`['′]`) and a double quote (`["″]`) inside its character classes — under
-// the old stripper this desyncs string-state tracking from that line
-// onward for the rest of the file, which could silently hide a real
-// camera-animating call site added anywhere after it in `format.ts`
-// (measured via a byte-diff against the regex-aware stripper: the two
-// outputs diverge at exactly that line, and the old stripper's output is
-// ~943 characters SHORTER — content downstream got swallowed as apparent
-// "string"). `./sourceStrip`'s `isRegexContext`/`scanRegexLiteral` closes
-// this the same way #1120 closed it for `startPreviewSwAssertCallSites
-// .test.ts`'s own scan target.
+// (`['′]`) and a double quote (`["″]`) inside its character classes, and the
+// old stripper's output for that file byte-diffs ~943 characters shorter
+// than the regex-aware one's — but the confusion RESYNCS (returns to a
+// clean, non-string state) before reaching any exported symbol the camera
+// scan or its own non-vacuity control could observe, so it does not
+// currently affect this guard's own detection. Adopted anyway, because the
+// resync point is a property of THIS file's current text, not a guarantee —
+// a future edit to `format.ts` could easily land a real camera-method-named
+// string or a second desync-triggering regex literal past the point where
+// today's confusion happens to clear. `./sourceStrip`'s
+// `isRegexContext`/`scanRegexLiteral` closes the mechanism the same way
+// #1120 closed it for `startPreviewSwAssertCallSites.test.ts`'s own scan
+// target, where the identical hole IS live (see that file's own comment).
 const stripComments = stripCommentsAndStrings;
 
 // Matches both dot dispatch (`map.easeTo(...)`) and bracket dispatch with a
@@ -204,22 +212,20 @@ describe('#253 structural guard: camera-animating call sites', () => {
     }
   });
 
-  // #1121 non-vacuity control on the SHARED stripper, over a real file whose
-  // quote-in-regex-literal shape used to desync the old, non-regex-aware
-  // stripper (see this file's `stripComments` header comment). A stripper
-  // that silently swallowed content downstream of that line would leave
-  // both assertions above passing having read a truncated file. `easeTo`
-  // appears nowhere in `lib/format.ts` — the needle instead pins that the
-  // stripper's output still contains real, later code from the file, proving
-  // the regex literal did not swallow the rest of it as "string content".
-  it('the shared stripper does not vacuously truncate lib/format.ts at its quote-bearing regex literal', () => {
-    const source = sourceFiles['../lib/format.ts'];
-    expect(source, '#1121 guard: lib/format.ts?raw did not resolve').toBeDefined();
-    const stripped = stripComments(source!);
-    // parseHemisphereCoord is declared AFTER DM_DMS_RE (the quote-bearing
-    // regex) in the file — its presence in the stripped output is direct
-    // evidence the scan reached past that line rather than getting stuck
-    // "in string" for the rest of the file.
-    assertNonVacuousStrip(stripped, 'parseHemisphereCoord', '../lib/format.ts');
-  });
+  // #1121 review round 2 (Major): a file-specific non-vacuity control was
+  // tried here (asserting `lib/format.ts`'s stripped output still contained
+  // `parseHemisphereCoord`, a symbol declared after the quote-bearing
+  // `DM_DMS_RE`) and DELETED after mutation-checking it. Forcing
+  // `./sourceStrip`'s `isRegexContext` to always return `false` (the
+  // sharpest available reproduction of "regex-literal awareness regresses")
+  // left ALL THREE tests in this file passing, that control included — the
+  // desync in `format.ts` resyncs before reaching `parseHemisphereCoord` (see
+  // `stripComments`'s header comment above), so the control could never red
+  // under the mutation it existed to catch. A control that cannot fail is
+  // worse than no control: it stops anyone looking for a real one. The
+  // shared `assertNonVacuousStrip` primitive is still exercised
+  // load-bearingly by `timeoutGuard.test.ts` and
+  // `startPreviewSwAssertCallSites.test.ts` (both genuinely red under the
+  // same mutation), so nothing is lost by not duplicating a non-discriminating
+  // copy here.
 });

@@ -113,6 +113,30 @@ export function scanRegexLiteral(source: string, start: number): number {
  * regex-literal CONTENT to spaces (newlines preserved). See this module's
  * header comment for why regex-literal awareness matters and what class of
  * guard this is for.
+ *
+ * KNOWN RESIDUALS (#1121 review round 2), named rather than fixed — none is
+ * live against any current caller's scan target, checked by that caller's
+ * own guard, not merely asserted here:
+ *
+ *   1. A template literal's `${...}` interpolation is invisible to this
+ *      scanner — the backtick opens an opaque string mode that runs to the
+ *      matching closing backtick, so a regex literal or a quote character
+ *      INSIDE an interpolated expression gets masked as ordinary string
+ *      content instead of being separately parsed. Closing this needs a
+ *      real tokenizer that can re-enter code mode inside `${}`, which this
+ *      character-only scanner does not attempt.
+ *   2. Regex-vs-division ambiguity after a `)` or `]` not preceded by one of
+ *      `isRegexContext`'s recognised keywords: the heuristic defaults to
+ *      "division", matching how real JS tokenizers resolve the same
+ *      ambiguity — not a gap so much as an inherent limit of a
+ *      context-free character scanner, named here for completeness.
+ *
+ * A THIRD candidate — a regex literal containing an escaped forward slash
+ * (e.g. `/\//`) — was checked, not merely assumed: `scanRegexLiteral`'s
+ * `c === '\\'` branch advances two characters before the next check can see
+ * the escaped `/`, so an escaped slash never prematurely ends the literal.
+ * Verified by inspection against every `\\`-handling branch in this file;
+ * not listed as a residual because it is not one.
  */
 export function stripCommentsAndStrings(source: string): string {
   let out = '';
