@@ -1032,10 +1032,28 @@ bash_hits_plans_confined() {
 # "verb at the very start/end of the string" and "verb bounded by
 # whitespace" become the SAME case (the padding technique already used by
 # strip_inert_redirects() above), then:
-#   1. a destructive verb must appear as a whitespace-bounded WORD anywhere
-#      in the padded command (matching this file's general philosophy of
-#      matching ANY position, not just the first word - see
-#      bash_hits_protected_path's own comment for the precedent);
+#   1. a destructive verb must appear anywhere in the padded command with a
+#      NON-ALPHANUMERIC character immediately before AND after it (matching
+#      this file's general philosophy of matching ANY position, not just the
+#      first word - see bash_hits_protected_path's own comment for the
+#      precedent). BLOCKER, PR #1144 review: the first cut of this bounded
+#      the verb with a LITERAL ASCII space only (`*" $v "*`), so a tab, a
+#      newline (an entirely ordinary separator inside a multi-line Bash tool
+#      call, not a contrived probe) or a vertical tab between the verb and
+#      its neighbours silently defeated it and reverted to the pre-#1041
+#      advisory-only bug for exactly the trailing-slash/glob shapes this
+#      predicate exists to catch - MEASURED: `rm\t-rf\tdocs/superpowers/plans/`
+#      and `true\nrm -rf docs/superpowers/plans/` both fell through to
+#      `bash_advisory`. The fix widens the boundary from "a literal space"
+#      to "any character outside [A-Za-z0-9]" - `[!A-Za-z0-9]"$v"[!A-Za-z0-9]`
+#      - which subsumes space/tab/newline/vertical-tab/CR/form-feed AND every
+#      shell operator/quote character in one class, with no need to enumerate
+#      IFS members by name. Per this repo's guard-asymmetry rule (a BLOCKING
+#      guard fails CLOSED; over-firing is the default and only PROVABLY-SAFE
+#      shapes get suppressed): this also makes the check strictly MORE
+#      permissive than before in the safe direction - e.g. a `-rm` flag-like
+#      token or a quoted `'rm'` now also satisfies the boundary and forces
+#      `ask`, which costs an extra confirmation, never a silent hazard;
 #   2. the text immediately following the LITERAL "docs/superpowers/plans"
 #      occurrence is inspected: if what follows is NOT a path-continuation
 #      character (letters, digits, `.`, `_`, `-`, or - only right after the
@@ -1051,11 +1069,23 @@ bash_hits_plans_confined() {
 #
 # KNOWN RESIDUAL, recorded rather than fixed here (see the sibling-shape
 # table in the #1041 PR description, not restated here per this file's own
-# rot-avoidance discipline): `find docs/superpowers/plans -delete`,
-# `git rm -r docs/superpowers/plans`, `rsync --delete ... plans/` and any
-# other destructive shape that does not use one of the three named verbs
-# stays a silent advisory - out of scope per the ruling's own ask (scoped to
-# rm/rmdir/mv, not every destructive verb in existence).
+# rot-avoidance discipline): `find docs/superpowers/plans/ -delete`
+# (trailing-slash form specifically - the bare, no-slash form already asks,
+# but via the PRE-EXISTING ancestor spec-gate, not this function, so it is
+# not evidence this check covers `find`), `rsync --delete ... plans/`, and
+# any other destructive shape whose VERB is not one of the three named
+# (rm/rmdir/mv) as a standalone, non-alphanumeric-bounded word stays a
+# silent advisory - out of scope per the ruling's own ask (scoped to
+# rm/rmdir/mv, not every destructive verb in existence). CORRECTED (PR
+# #1144 review, MINOR): an earlier revision of this comment named
+# `git rm -r docs/superpowers/plans` as an example of this residual - WRONG,
+# refuted by measurement: the widened non-alphanumeric verb-boundary check
+# (see MECHANISM above) matches "rm" incidentally inside "git rm -r" (a
+# space precedes and follows it), so that command DOES ask, just not for
+# any reason specific to `git`. Do not re-add it as an example without
+# re-measuring; the safe-direction error (over-claiming a gap that does not
+# exist) is still an error in a security-adjacent comment a future reader
+# may act on.
 PLANS_DIR_DESTRUCTIVE_VERBS=(rm rmdir mv)
 
 bash_hits_plans_dir_destruction() {
@@ -1063,7 +1093,7 @@ bash_hits_plans_dir_destruction() {
   padded=" $cmd "
   for v in "${PLANS_DIR_DESTRUCTIVE_VERBS[@]}"; do
     case "$padded" in
-      *" $v "*) verb_present=0; break ;;
+      *[!A-Za-z0-9]"$v"[!A-Za-z0-9]*) verb_present=0; break ;;
     esac
   done
   [ "$verb_present" -eq 0 ] || return 1
@@ -2136,7 +2166,15 @@ if [ "${1:-}" = "--selftest" ]; then
   # rows proving the fix - the trailing-slash and glob rows are what the
   # fix actually moves (MEASURED pre-fix: ADVISORY, destroying the whole
   # tracked plans/ subtree unprompted; issue #1041 table rows 2-3).
-  EXPECTED_CASES=335
+  # (PR #1144 review, BLOCKER) 335 -> 338, +3: one `decide ask` row per
+  # separator (TAB, NEWLINE, VERTICAL TAB) pinning the widened verb-boundary
+  # class against the trailing-slash shape - MEASURED pre-fix: all three
+  # fell through to ADVISORY, the identical pre-#1041 bug the ASCII-space-only
+  # boundary reintroduced. json_escape() also gained a \v case for this wave
+  # (see its own comment) - without it a raw vertical tab is illegal inside a
+  # JSON string and the row would be answered by the "could not parse tool
+  # input" fallback instead of exercising the boundary check at all.
+  EXPECTED_CASES=338
 
   # (#309 fix-wave m1, moved here by #404 so decide()/decide_exempt() below
   # can use it too - they now drive the production entry point through it
@@ -2196,14 +2234,18 @@ if [ "${1:-}" = "--selftest" ]; then
   # decide()/decide_exempt() below can build a synthetic tool_input payload
   # for any test command and feed it through the real production script
   # (#404). Backslash MUST be escaped first, before the replacement it
-  # introduces would itself be re-escaped. Only \\, \", \n and \r are
-  # handled - the only forms any row in this suite's command strings
-  # actually contains (CHAR backslash / CHAR newline / CHAR carriage return
-  # rows, plus the INERT tab-boundary row). TAB is not cosmetic here: a raw
-  # tab is an ILLEGAL character inside a JSON string, so without escaping it
-  # the tab row would be answered by production's "could not parse tool
-  # input" fallback - reading as `inert`, and testing the JSON parser
-  # instead of the whitespace boundary it exists to pin.
+  # introduces would itself be re-escaped. \\, \", \n, \r, \t and (PR #1144
+  # review) \v are handled - the only forms any row in this suite's command
+  # strings actually contains (CHAR backslash / CHAR newline / CHAR carriage
+  # return rows, the INERT tab-boundary row, and #1144's TAB/NEWLINE/VERTICAL
+  # TAB verb-boundary rows). Each of these is not cosmetic: a raw tab or
+  # vertical tab is an ILLEGAL character inside a JSON string, so without
+  # escaping it the row would be answered by production's "could not parse
+  # tool input" fallback - reading as `inert` (verified: hook_decision()
+  # buckets that fallback separately from `ask`, so such a row would FAIL
+  # loudly rather than silently mis-pass, but it would still be testing the
+  # JSON parser instead of the whitespace boundary it exists to pin). \v has
+  # no short JSON escape, so it uses the \uXXXX form.
   json_escape() {
     local s="$1"
     s="${s//\\/\\\\}"
@@ -2211,6 +2253,7 @@ if [ "${1:-}" = "--selftest" ]; then
     s="${s//$'\n'/\\n}"
     s="${s//$'\r'/\\r}"
     s="${s//$'\t'/\\t}"
+    s="${s//$'\v'/\\u000b}"
     printf '%s' "$s"
   }
 
@@ -3259,6 +3302,22 @@ if [ "${1:-}" = "--selftest" ]; then
   decide ask "PLANS #1041: trailing-slash 'rmdir docs/superpowers/plans/' now ASKS" "rmdir docs/superpowers/plans/"
   decide ask "PLANS #1041: bare 'mv docs/superpowers/plans /tmp/x' still ASKS" "mv docs/superpowers/plans /tmp/x"
   decide ask "PLANS #1041: trailing-slash 'mv docs/superpowers/plans/ /tmp/x' now ASKS" "mv docs/superpowers/plans/ /tmp/x"
+
+  # ======================================================================
+  # PR #1144 BLOCKER (maintainer review, 2026-09-09): the first cut of
+  # bash_hits_plans_dir_destruction() bounded the verb with a LITERAL ASCII
+  # space only (`*" $v "*`), so a tab, a newline (routine inside a
+  # multi-line Bash tool call, not a contrived probe) or a vertical tab
+  # between the verb and its neighbours silently defeated the whole check
+  # and reverted to the pre-#1041 advisory-only bug for the exact
+  # trailing-slash/glob shapes it exists to catch. THREE rows, one per
+  # separator, all against the trailing-slash shape (the one #1041 itself
+  # was about) so each pins the fix at its most safety-relevant target, not
+  # merely at the boundary-matching machinery in isolation.
+  decide ask "PLANS #1144 BLOCKER: TAB-separated verb now ASKS (was ADVISORY pre-fix)" $'rm\t-rf\tdocs/superpowers/plans/'
+  decide ask "PLANS #1144 BLOCKER: NEWLINE-separated verb (own line) now ASKS (was ADVISORY pre-fix)" $'true\nrm -rf docs/superpowers/plans/'
+  decide ask "PLANS #1144 BLOCKER: VERTICAL-TAB-separated verb now ASKS (was ADVISORY pre-fix)" $'rm\v-rf\vdocs/superpowers/plans/'
+
   # BOUNDING NEGATIVE (per-file destruction inside plans/ is UNCHANGED by
   # this ruling - #1021's per-file advisory stays the answer; this check
   # exists only for whole-subtree destruction). Mutation-checked: dropping
