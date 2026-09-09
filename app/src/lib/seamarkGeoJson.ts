@@ -505,6 +505,36 @@ export function seamarkPopupAnchor<T extends { properties?: unknown; geometry?: 
  * this table exists to avoid re-triggering, and
  * `seamarkGeoJson.test.ts`'s "#860" tests for the mutation-checked pin (the
  * [8,12) segment fails closed against ANY change to the new top stop).
+ *
+ * #981 (verified 2026-09-09 against `maplibre-gl@6.7.0`, the version
+ * `app/package-lock.json` pinned that day): the "cannot cull anything" claim
+ * above is about SELF-culling only (`icon-overlap: 'always'` at z>=12,
+ * exactly the #191/#192 mechanism it names). It does NOT cover a DIFFERENT
+ * quirk — MapLibre evaluates a symbol layer's icon-size for a tile bucket's
+ * COLLISION footprint at `EvaluationParameters(bucket.zoom + 1)`
+ * (`possiblyEvaluate(new EvaluationParameters(args.bucket.zoom + 1), ...)`
+ * at `symbol_layout.ts:98`), so the z12 bucket's collision box is fixed at
+ * the RENDERED size this table gives at zoom 13 (44.8px), for the whole
+ * [12,13) screen-zoom range, well before the icon visibly grows that large.
+ * Seamarks are never self-culled by that inflated box (per the paragraph
+ * above), but `icon-ignore-placement` is not set on the seamark layers, so
+ * the box still occupies space in the shared MapLibre collision grid and
+ * can block OTHER, lower-placement-priority symbol layers' labels. Measured
+ * via a fixed-box, settle-gated mutation A/B (this table's shipped `[13,
+ * 1.4]` top stop vs. a reverted pre-#860 `[13, 0.85]`, all 33 committed
+ * harbors, `sc-harbor-labels` at zoom 12.5): 6 of 33 harbor labels
+ * (`aaroesund`, `drejoe`, `gelting-mole`, `hoeruphav`, `troense`,
+ * `wackerballig`) are newly BLOCKED under the shipped table that were
+ * VISIBLE under the reverted one, at that same zoom, with the z11.5 control
+ * (bucket z11, unaffected by this table's [12,13] segment) byte-identical
+ * across both arms. So this z12-bucket cross-layer blocking IS a real,
+ * measurable side effect of #860 — not the harmless-by-construction claim
+ * the #981 issue's own author read into it — accepted as a one-zoom-band
+ * (screen zoom [12,13) only) cosmetic residual rather than fixed, and
+ * pinned as a forward regression guard by
+ * `app/e2e/seamark-collision-icon-size-981.spec.ts`. That spec's own header
+ * carries the full method and states what it does NOT measure (basemap
+ * symbol layers, a second, unmeasured victim class of the same mechanism).
  */
 const BASE_ICON_SIZE_STOPS = [
   [8, 0.55],
