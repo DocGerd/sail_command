@@ -1564,6 +1564,7 @@ making design-level decisions; do not silently deviate.
   | v0.26.0 | 2026-09-08 | 74 s | read as **NO `deploy` JOB CREATED YET** (only `build`) immediately before the tag push -- the same non-answer v0.17.0 and v0.25.0 recorded; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `34194830060` (created 06:28:44Z) -> tag `34194916855` (created 06:29:58Z) on `2d8b3df`. The merge run's `deploy` job NEVER RAN -- it was cancel-superseded by the tag run and the run ended `cancelled`, so no `success`-state deployment of that SHA preceded the tag run. The tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**, and its own prod entry chunk `assets/index-C-AG8CEf.js` returned 200. Production afterwards served that same chunk at ``about.version`,{version:`v0.26.0`}`` with ZERO suffixed matches, so no back-merge remedy was owed -- unlike every row from v0.18.0 through v0.24.0, each of which read `smoke-probe` FAILED. Release object `isLatest: true`; tag object `90ed636` reported `verified: true, reason: "valid"`. **This row REPEATS v0.25.0's WIDENED reading specifically** -- the merge `deploy` job not yet STARTED when the tag run was created, which is weaker than the "genuinely still running" wording v0.23.0/v0.24.0 used -- so that widening now rests on two observations rather than one. It is NOT the first safe outcome in this table (the terminal-`cancelled` shape was safe at v0.12.0, v0.12.1, v0.13.0, v0.13.1, v0.14.0 and v0.17.0); what is new is the repetition of the not-yet-started reading. Two observations are still not a mechanism: this row names NONE, and per this table's own rule the gap gates nothing.  |
   | v0.27.0 | 2026-09-08 | 58 s | read as **NO `deploy` JOB CREATED YET** (only `build`) immediately before the tag push -- the same non-answer v0.17.0, v0.25.0 and v0.26.0 recorded; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `34226445185` (created 12:30:17Z) -> tag `34226540901` (created 12:31:15Z) on `ecf08ff`. EVERY job of the merge run ended `cancelled`, and its `deploy` job carries **`steps: 0`** against that SAME run's `build` job's `steps: 23` -- v0.25.0's control in a DIFFERENT shape -- within-run job-vs-job here, cross-run same-job there -- and the reason either discriminates: a job that never started and one interrupted after running both report `cancelled`, and they mean OPPOSITE things for whether a `success`-state deployment of that SHA already exists. The `github-pages` deployments list for that SHA returns exactly ONE object, `6327652761`, `ref: v0.27.0`. The tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production afterwards served `assets/index-B3638HqI.js` at ``about.version`,{version:`v0.27.0`}`` with ZERO suffixed matches, so no back-merge remedy was owed. Release object `isLatest: true`; tag object `b669e29` reported `verified: true, reason: "valid"`. **THIRD consecutive not-yet-started reading**, after v0.25.0 and v0.26.0, so the WIDENED criterion those rows established -- the merge `deploy` job has not reached terminal `success` -- now rests on three observations rather than two. Three is still not a mechanism: this row names NONE, and per this table's own rule the gap gates nothing. |
   | v0.28.0 | 2026-09-08 | 112 s | `success` (MEASURED immediately before the tag push, and the failure CALLED IN ADVANCE from it) | **`smoke-probe` FAILED** | merge-push `34282950799` (created 21:52:27Z) -> tag `34283116096` (created 21:54:19Z) on `905d1a3`. The tag run's `build` AND `deploy` both succeeded; only `smoke-probe` failed, by the #398 signature -- its own prod entry chunk `assets/index-C5NE_lFC.js` 404'd. Back-merge `34285495537` (different SHA `59a8123`) then probed green and republished **that same chunk name**, which production then served at ``about.version`,{version:`v0.28.0`}`` with ZERO suffixed matches -- so the tag run's BUILD was correct and only its DEPLOYMENT no-opped. Release object `isLatest: true`; tag object reported `verified: true, reason: "valid"`. **ENDS the three-cut run of not-yet-started readings** (v0.25.0-v0.27.0); first terminal `success` since v0.24.0, and it behaved exactly as this table says a `success` reading behaves. **Sharpens the v0.23.0/v0.24.0 gate finding with the tightest margin yet:** the merge `deploy` job ran 21:53:37Z -> **21:53:45Z `success`**, terminal **34 s BEFORE the tag run was created** -- so the cancel-supersede escape was again unavailable, now on three observations reached from both readings. Still names no MECHANISM. |
+  | v0.29.0 | 2026-09-09 | 2 min | `success` (MEASURED immediately before the tag push, and the failure CALLED IN ADVANCE from it, written down BEFORE the push) | **`smoke-probe` FAILED** | merge-push `34323066038` -> tag `34323514588` on `ffaa41d`. The tag run's `build`, `deploy` AND `prod-environment` all succeeded; only `smoke-probe` failed, by the #398 signature -- its own prod entry chunk `assets/index-DDdE4ANJ.js` returned **404 on all 10 attempts** (07:23:57Z -> 07:28:28Z, ~4m31s). BOTH basemap Range probes passed on attempt 1, at 07:23:56-57Z -- note they run BEFORE the entry-chunk probe, so they are a temporally-PRIOR CDN control, not a simultaneous one. Back-merge `34329387900` (different SHA `067a39f`) then probed green and republished **that same chunk name**, which production then served at ``about.version`,{version:`v0.29.0`}`` with ZERO suffixed matches. SECOND consecutive terminal-`success` reading, after v0.28.0. **What this row ADDS is that the `steps` COUNT on the merge run's `deploy` job is itself a discriminator, not just the conclusion:** here `steps=6` (the job genuinely RAN and deployed, and the no-op followed), against v0.25.0's and v0.27.0's `steps: 0` (never started), which those rows used as the control making their SAFE outcome attributable. A job that never started and one interrupted after running both report a non-`success` conclusion and mean OPPOSITE things. Still names no MECHANISM. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -2058,6 +2059,17 @@ making design-level decisions; do not silently deviate.
   cuts BOTH ways — the bracketed form silently strands a deliberately-deferred
   issue, and, under the `Closes #N` default above, it silently leaves OPEN an
   issue the PR actually delivered and its author believes closed.
+  **But `fix: #N` — the COLON-SPACE conventional-commit form — DOES close, and it is one
+  character from the bracketed form that does not.** Measured 2026-09-09: commit `57bdc72`,
+  subject `fix: #1015 round 2 — …`, closed #1015 on merge (timeline `closed` with
+  `commit_id=57bdc72`, a COMMIT trigger) despite `Refs #1015` in BOTH the trailer and the PR
+  body; #1015 had to be reopened by hand. GitHub's match is the keyword then `[\s:(]*` then
+  `#N`, so `fix:` + space + `#N` qualifies while `fix(#N):` does not.
+  **Corollary, and this is what actually let it through: re-run the closing-keyword grep after
+  every FOLD into an integration branch, not only at branch creation.** The grep was run before
+  that batch's first push; `57bdc72` was folded in afterwards and only the TESTS were re-run. A
+  fold makes a NEW commit range, so every pre-merge check has to be re-run against it — not just
+  the ones that feel related to the change being folded.
 - **Cross-PR file collisions are invisible to per-PR review — only the
   orchestrator holds that view, and it is represented in no artifact.** Measured
   2026-08-31: two implementers were sent to append a new guard to
@@ -4546,6 +4558,11 @@ making design-level decisions; do not silently deviate.
   `npm --prefix app run typecheck` and BLOCKS on exit 2 — including on
   PRE-EXISTING errors elsewhere in the tree, which is a confusing way to
   discover someone else's broken branch.
+- **A `gh api … -X PATCH` inside a `for` LOOP was denied by the auto-mode permission
+  classifier while the IDENTICAL single call succeeded** (11 milestone assignments, observed
+  2026-09-09 against this harness). Issue such calls one at a time rather than reaching for a
+  permission rule. This is a HARNESS observation, not a repo property — a read-only agent could
+  not reproduce it, and it may not survive a harness upgrade.
 - **`gh api` rejects `--repo`/`-R`** — `unknown flag: --repo`, unlike `gh pr`
   and `gh issue`, which both take it. The repo belongs in the endpoint path.
   Measured 2026-09-04 with a control: the same call minus the flag returned the
@@ -4743,9 +4760,14 @@ making design-level decisions; do not silently deviate.
   check-runs list none). A red check-run on a release commit is therefore never
   scorecard noise — chase it.
 - e2e's preview port is fixed (4173 in helpers.ts): full e2e runs from
-  parallel worktrees contend — serialize them; per-agent dev ports are for
-  manual browser passes only. The dirty wind fixture (see E2E section) also
-  blocks `git worktree remove` — restore before removing; never `--force`.
+  parallel worktrees contend — serialize them, i.e. dispatch **at most ONE e2e implementer at a
+  time**; per-agent dev ports are for
+  manual browser passes only. Measured 2026-09-09: three concurrent e2e agents, and one found a
+  FOREIGN build already bound to 4173 and killed the listener by port PID to unblock itself.
+  `startPreview()`'s #803 build-identity check REFUSED that foreign build rather than
+  silently measuring it — the guard worked; the scheduling was the error.
+  The dirty wind fixture (see E2E section) also blocks `git worktree remove`
+  — restore before removing; never `--force`.
 - IDE/LSP diagnostics emit bogus cannot-find-module bursts when worktrees
   churn — trust `npm --prefix app run typecheck` (`tsc -b`), never the
   diagnostics stream.
