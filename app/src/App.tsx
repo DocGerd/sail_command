@@ -869,9 +869,17 @@ function AppShell() {
   // hover-reveal grab handle) — the SAME §2.6 nearest-chain placement as a
   // seamark or saved-waypoint pick, just fed a bare dropped LatLon (a valid
   // ViaPoint — `name` is optional) instead of a named waypoint. Always
-  // succeeds, matching those two siblings: no navigability check at insert
-  // time, an unnavigable drop surfaces only via the next Plan-route press's
-  // own warnings.
+  // succeeds: no navigability check at insert time, an unnavigable drop
+  // surfaces only via the next Plan-route press's own warnings — matching
+  // the seamark/saved-waypoint precedent (insertViaNearestOrAppend), which
+  // also inserts unconditionally.
+  //
+  // #850 §5 names a DIFFERENT precedent for a rejected drop specifically —
+  // reuse ViaMarkers.tsx's existing snapBack pattern. This does not do
+  // that; it follows the seamark/saved-waypoint precedent instead. That is
+  // a DEVIATION from what the issue names, not something the issue
+  // licenses, and it is recorded as a deviation (PR body) for the
+  // maintainer to rule on rather than resolved here.
   const handleRouteLineInsert = useCallback(
     (point: LatLon) => insertViaNearestOrAppend(point),
     [insertViaNearestOrAppend],

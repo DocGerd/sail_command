@@ -563,13 +563,34 @@ function closestPointOnSegmentPx(
 // chain `lib/viaInsertion.ts`'s `nearestViaInsertIndex` projects onto (the
 // straight origin -> viaPoints -> destination chain, which has no tack/gybe
 // vertices of its own): the user sees and grabs the RENDERED line, matching
-// this issue's own "grab handle over the line" survey of established
-// behaviour, while the eventual insert INDEX is still computed against the
-// draft chain by that existing, unmodified primitive — exactly the same
-// projection "add via from a seamark" already performs for a point that
-// need not lie on the solved route at all (App.tsx's
+// the web-routing hover-grab convention (Google Maps/Mapbox Directions)
+// that #850's design question 1 names as ONE option among several — that
+// same question also asks for a survey of marine/chartplotter conventions
+// specifically before choosing one, since it warns those may differ (an
+// explicit insert-on-a-leg action, or an edit mode entered first, instead
+// of a free drag). That survey has NOT been performed here; this is the
+// web-routing pattern adopted without it — the v0.26.0 triage comment on
+// #850 names "behavioural survey" as one of the design questions that
+// "still stands" (the LATER 2026-09-09 retriage comment does not repeat
+// that line, so attribute this specifically to the v0.26.0 comment, not
+// to "the retriage comment" generically). The eventual insert INDEX is
+// computed against the draft chain by that existing, unmodified primitive —
+// exactly the same projection "add via from a seamark" already performs for
+// a point that need not lie on the solved route at all (App.tsx's
 // `insertViaNearestOrAppend`). Returns `null` only for an empty `legs`
 // (defensive; every call site already guards this).
+//
+// Linear interpolation of `lat` below (in the point construction) is a
+// disclosed APPROXIMATION, not exact: `t` is a Web-Mercator PIXEL-space
+// fraction, and Mercator's y is not linear in latitude, so the interpolated
+// point can miss the true point on the rendered line by more than `lon`'s
+// interpolation does (which IS exact — Mercator's x is linear in longitude).
+// Measured at 54.7°N: ~0.14 m off-line error at a 0.02 degree (~1.2 nm) leg
+// span, ~13.75 m at 0.20 degree (~12 nm) — sub-pixel at today's isochrone
+// leg lengths, so this stays a note rather than a fix here; it would only
+// become visible if leg-merging ever produced a much longer leg, and the
+// failure mode is silent (the handle sits beside the line it claims to be
+// on, never in the wrong place by a visible amount today).
 function nearestPointOnRoute(
   map: MaplibreMap,
   legs: readonly Leg[],
@@ -599,18 +620,30 @@ function nearestPointOnRoute(
 // reads as "not yet a waypoint" until dropped. Styled with plain inline
 // styles (matching ViaMarkers.tsx's own `viaElement()` pattern) rather than
 // an app.css class, so there is no cascade/specificity surface to verify in
-// a real browser for this element. Deliberately carries NO role/tabIndex/
-// aria-label: unlike a real via marker it is never keyboard-reachable —
-// there is nothing PERMANENT here for a keyboard user to tab to, and a
-// keyboard equivalent for mid-route insertion is a separate, not-yet-built
-// feature per #850's own issue text — so `aria-hidden` keeps it out of the
-// accessibility tree entirely rather than announcing an unlabelled,
-// here-one-moment-gone-the-next control.
+// a real browser for this element. 24px, matching
+// ROUTE_DRAG_HOVER_TOLERANCE_PX's 12px hover radius — a real MapLibre
+// Marker's drag only starts when the mousedown TARGET is inside this
+// element (`marker.ts`'s `_addDragHandler`), so a smaller ring would reveal
+// over a wider radius than it actually responds to.
+//
+// Deliberately carries NO role/tabIndex/aria-label: unlike a real via
+// marker it is never keyboard-reachable. #850's own accessibility section
+// argues the OPPOSITE of "this is fine to defer" — that shipping a
+// map-only, pointer-only insertion gesture widens the WCAG 2.1.1 gap #714
+// already documented, and that a keyboard equivalent would reuse this same
+// insertion model, making the two cheaper to build together than either
+// alone. No keyboard equivalent is built in this PR. That is a DEVIATION
+// from what #850 asks for, not something the issue licenses, and is
+// recorded as a deviation for the maintainer to rule on rather than
+// resolved here. `aria-hidden` keeps this transient element out of the
+// accessibility tree in the meantime, rather than announcing an unlabelled,
+// here-one-moment-gone-the-next control to a screen-reader user who could
+// never reach it anyway.
 function routeDragHandleElement(): HTMLDivElement {
   const el = document.createElement('div');
   el.className = 'sc-route-drag-handle';
-  el.style.width = '12px';
-  el.style.height = '12px';
+  el.style.width = '24px';
+  el.style.height = '24px';
   el.style.borderRadius = '50%';
   el.style.background = 'transparent';
   el.style.border = `2px dashed ${VIA_COLOR}`;
@@ -1056,8 +1089,27 @@ export default function RouteLayer({
   // is animating is silently swallowed. This is the SAME risk
   // `ViaMarkers.tsx`'s existing via-point dragging already carries (both
   // ride the identical map-level mousedown/mousemove/mouseup machinery),
-  // not a new one this feature introduces — see this file's own #297
-  // `fitToLegs` comment for the two call sites that animate the camera here.
+  // not a new one this feature introduces. The mechanism that actually
+  // makes it safe (`ViaMarkers.tsx`'s drag too): a real `Marker`'s drag
+  // rides its OWN map-level `mousemove`/`mouseup` listeners
+  // (`marker.ts`'s `_addDragHandler`/`_onMove`/`_onUp`), never MapLibre's
+  // `HandlerManager` — and it is `_stopHandlers()` an ease's completion
+  // calls, so a live drag is structurally untouched by that call
+  // regardless of whether the ease itself is `duration: 0` or genuinely
+  // animating (`CompassControl.tsx`'s `easeTo` is a reachable non-zero-
+  // duration one while the route line is hoverable, so #391's risk here is
+  // not confined to this file's own `duration: 0` `fitToLegs` calls).
+  //
+  // A DIFFERENT teardown is reachable and NOT covered by that argument:
+  // this whole effect's cleanup (below) also fires whenever `result`'s
+  // identity changes — `result` is `activeRigResult(plan, rig)` above, so
+  // EITHER a new plan (a Live-mode reroute) OR just switching the
+  // RouteSummary rig tab (same plan, different `rig`) changes it — and
+  // that cleanup's `removeGhost()` calls the ghost `Marker`'s own
+  // `remove()`, which unregisters ITS `mousemove`/`mouseup` listeners.
+  // Mid-drag, that silently drops an in-progress drag (no `dragend`, no
+  // insert) rather than completing or rejecting it. Accepted, not fixed
+  // here — same rarity class as #391 itself.
   useEffect(() => {
     if (!map || !result || result.legs.length === 0) return;
     const legs = result.legs;

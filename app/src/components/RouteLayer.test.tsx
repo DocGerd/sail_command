@@ -40,6 +40,15 @@ vi.mock('maplibre-gl', () => ({
     lngLat: [number, number] = [0, 0];
     removed = false;
     handlers = new Map<string, () => void>();
+    // #850 review Minor 5 (second half): the real bug this pins — calling
+    // `addTo()` before the first `setLngLat()` positions a real MapLibre
+    // Marker from an unset lngLat — has NO regression pin without this
+    // field: this fake's `addTo()` was previously a no-op that could not
+    // see call ORDER at all. Snapshotting `lngLat` (not just recording that
+    // `addTo` was called) is what lets a test assert the coordinate was
+    // ALREADY correct by the time `addTo` ran, rather than merely that both
+    // methods were called at some point.
+    addToLngLat: [number, number] | null = null;
     constructor(opts?: { element?: HTMLElement; draggable?: boolean }) {
       this.element = opts?.element;
       this.draggable = Boolean(opts?.draggable);
@@ -53,6 +62,7 @@ vi.mock('maplibre-gl', () => ({
       return { lng: this.lngLat[0], lat: this.lngLat[1] };
     }
     addTo() {
+      this.addToLngLat = this.lngLat;
       return this;
     }
     on(type: string, handler: () => void) {
@@ -88,6 +98,7 @@ interface RecordedRouteLayerMarker {
   lngLat: [number, number];
   removed: boolean;
   handlers: Map<string, () => void>;
+  addToLngLat: [number, number] | null;
   setLngLat(coords: [number, number]): RecordedRouteLayerMarker;
   getLngLat(): { lng: number; lat: number };
 }
@@ -1154,6 +1165,16 @@ describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
     expect(ghost!.lngLat[0]).toBeCloseTo(10.2, 5);
     expect(ghost!.lngLat[1]).toBeCloseTo(54.75, 5);
     expect(ghost!.removed).toBe(false);
+    // #850 review Minor 5 (second half): the coordinate must ALREADY be
+    // set by the time `addTo()` runs — a real MapLibre `Marker.addTo()`
+    // projects `this._lngLat` synchronously, and that field is only ever
+    // written by `setLngLat()`. `addToLngLat` snapshots `lngLat` INSIDE
+    // this fake's `addTo()`, so this fails if the two calls are ever
+    // reordered (this fake's `[0, 0]` initial value is what a wrong order
+    // would leave behind).
+    expect(ghost!.addToLngLat).not.toBeNull();
+    expect(ghost!.addToLngLat![0]).toBeCloseTo(10.2, 5);
+    expect(ghost!.addToLngLat![1]).toBeCloseTo(54.75, 5);
 
     // Far from the leg (>12px in every direction) — the handle must vanish.
     onMouseMove({ point: { x: 0, y: 1000 } });
@@ -1233,5 +1254,73 @@ describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
     );
     const call = map.on.mock.calls.find((c) => c[0] === 'mousemove');
     expect(call).toBeUndefined();
+  });
+
+  it('removes the ghost when the plan (and its route) goes away', () => {
+    const map = makeFakeMap();
+    hoisted.map = map;
+    const { rerender } = render(
+      <RouteLayer
+        plan={makePlan()}
+        rig="genoa"
+        activeLegIndex={null}
+        draftViaPoints={[]}
+        viaReplanning={false}
+        onViaDragEnd={async () => true}
+        onRouteLineInsert={() => {}}
+      />,
+    );
+    const onMouseMove = mousemoveHandler(map);
+    onMouseMove({ point: { x: 400, y: 275 } });
+    const ghost = ghostMarker();
+    expect(ghost).toBeDefined();
+    expect(ghost!.removed).toBe(false);
+
+    // #850 review Major 1: this effect's OWN cleanup — reached here via a
+    // `result` identity change (plan -> null), the SAME path a Live-mode
+    // reroute or an unmount takes — is the only thing that removes a ghost
+    // left behind once the route it was drawn against disappears. Nothing
+    // else in this file exercised it.
+    rerender(
+      <RouteLayer
+        plan={null}
+        rig={null}
+        activeLegIndex={null}
+        draftViaPoints={[]}
+        viaReplanning={false}
+        onViaDragEnd={async () => true}
+        onRouteLineInsert={() => {}}
+      />,
+    );
+    expect(ghost!.removed).toBe(true);
+  });
+
+  it('keeps the ghost anchored during an active drag, ignoring hover distance until the drag ends', () => {
+    const map = makeFakeMap();
+    hoisted.map = map;
+    render(
+      <RouteLayer
+        plan={makePlan()}
+        rig="genoa"
+        activeLegIndex={null}
+        draftViaPoints={[]}
+        viaReplanning={false}
+        onViaDragEnd={async () => true}
+        onRouteLineInsert={() => {}}
+      />,
+    );
+    const onMouseMove = mousemoveHandler(map);
+    onMouseMove({ point: { x: 400, y: 275 } });
+    const ghost = ghostMarker();
+    expect(ghost).toBeDefined();
+
+    // #850 review Minor 5: once a real drag starts (dragstart fired), the
+    // hover handler's distance check must be SUSPENDED — a real drag moves
+    // the cursor far from the original leg on purpose, and an intermediate
+    // mousemove of that same drag must not re-trigger the "too far, remove
+    // it" branch and cancel the drag out from under the user.
+    ghost!.handlers.get('dragstart')?.();
+    onMouseMove({ point: { x: 0, y: 1000 } }); // far outside tolerance
+    expect(ghost!.removed).toBe(false);
   });
 });
