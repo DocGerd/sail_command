@@ -66,9 +66,12 @@ SC_PURE_ADD=35 SC_LOG=... npx vitest run --config vitest.config.ts --reporter=ve
 `--reporter=verbose` is required because vitest's default reporter suppresses
 console output from PASSING tests; the harness writes to a file for that
 reason, so the flag matters only for incidental logs. The instrumentation
-patch is reproduced verbatim in Appendix A and the probe harness in
-Appendix B, because the scratch directory they lived in is not tracked and
-will not survive this session.
+patch (Appendix A), the surviving harness states (Appendix B) and all five raw
+logs (Appendix C) are reproduced VERBATIM here — each byte-diffed against its
+source, with only the two absolute paths placeholdered — because the scratch
+directory they lived in is not tracked and will not survive this session. One
+harness state did not survive even that long: the F4 driver's `it()` body is
+absent from disk, and Appendix B says so rather than reconstructing it.
 
 Connectivity is established by the repo's **own oracle**, not by assertion and
 not by `solve()` itself:
@@ -102,9 +105,11 @@ connected at the requested gate.
 
 **Identical at tier-1 fidelity.** Re-run with `comfortDepthM = 3 +
 DEFAULT_SETTINGS.depthComfortMarginM = 5`, every counter on every ring is
-unchanged (`comfort.txt` against `base.txt`, byte-for-byte on the logged
-rows). So this is not an artifact of running bare `solve()` at tier-2
-fidelity: the depth-comfort preference does not touch it.
+unchanged (`comfort.txt` against `base.txt`, byte-for-byte on the logged rows —
+covering `tws2.8`, `tws3` and `tws8`, i.e. **three of the four** motor-off
+configurations in `base.txt`; `tws2` was not re-run at tier-1 fidelity). So
+this is not an artifact of running bare `solve()` at tier-2 fidelity: the
+depth-comfort preference does not touch it.
 
 ### 1.2 Why the conclusion is exact rather than an enumeration argument
 
@@ -123,7 +128,15 @@ accepted == horizonDrops + dominatedDrops + betterLoss + byKeySet
 ```
 
 with **zero violations** (checked mechanically over the logged rows while
-writing this document, not spot-checked). On the dying rings the other three
+writing this document, not spot-checked).
+
+**The count carries its filter.** The harness logs `RING_STATS.slice(-4)`, so
+"188 logged rings" is the LAST FOUR rings of each of **47** runs — 188 of the
+**1356** rings those runs executed, about 14 %. That aperture does not weaken
+the conclusion, and the reason is structural rather than lucky: a run's dying
+ring is by construction its last, so every ring the argument turns on is inside
+its own window. It does mean the identity is verified on the tail of each run,
+not on every ring executed. On the dying rings the other three
 terms are 0, so the identity collapses to `accepted == dominatedDrops`. That
 is an accounting identity over the recorded quantities, not an argument about
 which code paths exist — an unenumerated drop channel would have shown up as
@@ -136,9 +149,12 @@ those 188 rings**, not merely on the dying ones.
 
 ### 1.3 The mechanism, by symbol
 
-`stampVisited` writes each surviving node's `{costMs, maneuvers}` into its own
-prune cell at the end of every ring (the loop over `next` after the frontier
-cap). On the next ring `visitedDominates(seen, child)` discards any child that
+`stampVisited` LOWERS each surviving node's prune cell toward
+`{costMs, maneuvers}` at the end of every ring (the loop over `next` after the
+frontier cap) — it takes the minimum on each axis INDEPENDENTLY, so a cell's
+stamp need not be any single node's arrival. That function's own doc comment
+says what follows: "Componentwise minima can combine two different stampers
+into a dominator neither of them was alone". On the next ring `visitedDominates(seen, child)` discards any child that
 is no better on **both** axes — `seen.costMs <= cand.costMs && seen.maneuvers
 <= cand.maneuvers`. A node's own stamp dominates a child that lands back in the
 node's **own** cell by construction, since the ranking clock only advances and
@@ -151,8 +167,13 @@ lanes (port and starboard) rather than one.
 **Label: the same-cell clause above is ARGUED from the code, not measured.** The
 instrumentation counts `dominatedDrops` but does not record *which* stamp
 dominated each dropped child — the parent's own cell, or a cell stamped in an
-earlier ring by an entirely different thread. Both are `visitedDominates`
-drops and the counter cannot tell them apart. See §4.
+earlier ring by different threads. Both are `visitedDominates` drops and the
+counter cannot tell them apart. Note the componentwise merge above makes the
+question "WHICH stamp dominated?" not quite well-posed: the dominating pair may
+be a synthetic minimum no node ever arrived with. The by-CELL split is still
+exhaustive, so the argument survives — but a child landing back in its parent's
+own cell may be dominated by a foreign thread's lower `costMs` merged into that
+cell rather than by its parent. See §4.
 
 **One DEDUCED refinement, because it changes what a fix would have to
 target.** `dtS` is 600 s while the destination is more than 5 nm away
@@ -190,9 +211,14 @@ Designer's appendix, `planRoute` (the whole tier ladder, endpoints snapped by
 | TWS 3, dir 45 | ok 18.65 / 19.91 h |
 
 `PLAN_BUDGET_MS` is 120 000 ms. Three of the four failures abandon a 43 nm
-passage having spent **under 0.5 %** of the budget. Note also that at fixed
-TWS 3 the direction alone decides: dir 0 dies in bare `solve()` and dir 45
-routes.
+passage having spent **under 0.5 %** of the budget.
+
+Do not read this table as showing that direction decides between routing and
+not routing: at fixed TWS 3, dir 0 dies in the refuter's bare `solve()` while
+dir 45 routes in the designer's `planRoute` — two different instruments, and no
+bare `solve()` was run at dir 45. At the instrument the user actually meets,
+`planRoute` returns `ok` at dir 0 as well; what direction changes there is a
+full two-rig comparison versus a half one (the #1166 row).
 
 **The refuter ran no `planRoute` call at all** (§4), so this table is the
 designer's alone — with the single exception of the TWS 3 row, whose
@@ -350,8 +376,10 @@ The appendix reports motor-on alive past ring 45 in all 12 configurations it
 tested, with frontier "5 000–20 000". The refuter re-checked **2** of those 12
 (TWS 2.8 and TWS 8, snapped, dir 0), both alive at ring 46, with ring-45
 `nextLen` of **3121** and **8491** respectively — against motor-off's dying
-frontiers, whose `nextLen` never exceeds 17 across the four dying runs in
-`base.txt`.
+frontiers, whose `nextLen` never exceeds **15** across the **three** dying runs
+in `base.txt` (`OFF tws2.8`, `OFF tws3`, `OFF tws8`). The fourth motor-off run
+there, `OFF tws2`, is ALIVE at ring 45 and reaches `nextLen` 130, so it belongs
+to neither side of this contrast.
 
 Note the two figures are different apertures and must not be conflated: the
 designer's 5 000–20 000 is a peak-frontier range over 12 configurations (the
@@ -408,10 +436,13 @@ surviving one.
   to be true of the sizes and false of the counters.
 - **Tier-escalation perturbation and the cause-flip (§5 hole 2): ARGUED from
   the code, never instanced.**
+- **That a genuinely disconnected destination dies with the same signature
+  (§5 hole 5): DEDUCED from the identity, never instanced** — every run here is
+  Flensburg → Bagenkop, which the oracle proves connected.
 - **No `planRoute`-level run by the refuter at all.** Every refuter measurement
   is a bare `solve()` call.
-- **Salvage efficacy: never run on any input.** The proposal has never been
-  executed.
+- **Salvage efficacy: as of 2026-09-09, not run on any input.** The proposal
+  had not been executed at that date.
 - **Which stamp dominated each dropped child** (parent's own cell vs. an
   earlier ring's), and **the full-step / fitted-substep split of `accepted`**
   (§1.3). The instrumentation records neither.
@@ -440,7 +471,12 @@ counter-example is #1166: at TWS 3, snapped, dir 0, one rig's `solve()` dies
 with `next = 0`, `best === false`, `dominated == accepted` at **both** tier-1
 and tier-2 fidelity, inside a plan that returns `ok` **today**. The salvage
 would fire inside a currently-succeeding plan and can change `sails`, the rig
-comparison, and the ★ recommendation. This is measured, not argued.
+comparison, and the ★ recommendation.
+
+Both halves are measured, but by different agents and only one is corroborated:
+the refuter measured the `solve()`-level death, while "inside a plan that
+returns `ok` today" is the designer's `planRoute` row, which §4 records the
+refuter never ran. Read the plan-level half as UNCORROBORATED (§1.4).
 
 ### Hole 2 — the classifier's INPUTS are not frozen, and freezing them is not sufficient
 
@@ -464,15 +500,21 @@ and leaves two open.
 The designer declined to guess, correctly. Width is bounded by the existing
 `MAX_FRONTIER` slice; **depth** is the real cost and is unmeasured. It must be
 measured against `PLAN_BUDGET_MS` (120 000 ms, `workerClient.ts`) on
-Flensburg → Marstal — the route #1147 already records as leaving only ~30 %
-headroom against that budget in a real browser, i.e. the least forgiving input
-in the repo for a change that adds rings.
+Flensburg → Marstal — the route #1147 records as the least forgiving input in
+the repo for a change that adds rings. Quote its figure with the CLOCK
+attached: **29.5 %** headroom on the monotonic clock, **36.8 %** on the wall
+clock, and #1147's own body says the wall-clock figure is the operative one
+because the deadline check is `Date.now() - startedAtMs >= budgetMs`. Note also
+that #1147 locates `PLAN_BUDGET_MS` in `protocol.ts`; it is not there —
+`grep -c PLAN_BUDGET_MS app/src/routing/protocol.ts` returns **0** and the
+constant is declared at `workerClient.ts:108` (verified 2026-09-09 at
+`035d662`). The next reader will meet that contradiction.
 
 ### Hole 4 — the design was never RUN
 
 Its author was read-only. Every claim about behaviour on working plans is
-structural, not empirical. In particular, **salvage efficacy has never been
-measured on any input**: salvaged nodes sit in already-stamped cells and may
+structural, not empirical. In particular, **salvage efficacy had not been
+measured on any input as of 2026-09-09**: salvaged nodes sit in already-stamped cells and may
 simply re-die on the next ring. The fix could cost a full `app/sweep/` baseline
 (BASE double-run plus BASE-vs-HEAD, roughly 90 minutes, never runnable as a
 harness background task) and rescue nothing.
@@ -482,7 +524,19 @@ harness background task) and rescue nothing.
 **This is the hole that most changes the design's standing.** A genuinely
 disconnected destination dies with the **identical** signature: once the
 frontier has covered all reachable water, the last ring's children all land in
-stamped cells and `dominatedDrops == accepted`. The proposed trigger therefore
+stamped cells and `dominatedDrops == accepted`.
+
+**Label: DEDUCED, not observed** — every run in this document is
+Flensburg → Bagenkop, which §0's oracle proves CONNECTED, so no disconnected
+destination was ever logged. The derivation is short enough to give rather than
+hedge: `next.length === 0` means `byKey` is empty, i.e. `byKeySet == 0`;
+`betterLoss` requires a truthy `incumbent`, which requires a prior `byKey.set`
+in the same ring, so `byKeySet == 0` forces `betterLoss == 0`; §1.2's identity
+then gives `accepted == horizonDrops + dominatedDrops`, which with
+`horizonDrops == 0` is `dominatedDrops == accepted`. That holds for ANY
+frontier-exhaustion death, connected or not. The hole's conclusion is safe
+either way, because the proposed trigger is `next.length === 0 && best === null`
+and fires on every frontier-exhaustion death whatever the counters read. The proposed trigger therefore
 cannot distinguish "the solver gave up on reachable water" from "this really is
 unreachable", and the salvage fires up to `MAX_SALVAGES` times on **every**
 frontier-exhaustion death, true no-routes included. The cost of that is bounded
@@ -533,7 +587,8 @@ green is the information destroyed.
 ## 7. The pre-registered prediction
 
 Recorded **as pre-registered**: the designer stated this on **2026-09-09**,
-BEFORE any HEAD run of the proposal, and no HEAD run has happened since.
+BEFORE any HEAD run of the proposal, and as of that date no HEAD run had
+happened.
 
 **Target.** The `light-motorless` sweep arm (`app/sweep/sweepArms.ts`): real
 committed mask and polars, `motorEnabled: false`, otherwise `DEFAULT_SETTINGS`,
@@ -564,6 +619,25 @@ designer): `verify_mask.py`'s `KNOWN_DISCONNECTED` contains exactly those five
 ids — arnis, kappeln, maasholm, dyvig, graasten — and `marstal` carries a
 `CONNECTIVITY_EXCEPTIONS_M[("marstal", 3.0)] = 2.0` entry, i.e. it is
 exempted at 2.0 m against the 3.0 m gate.
+
+**A second, OLDER and unrelated source corroborates the 16 and the 2 — but not
+the 15, and not as an outcome distribution.** `app/sweep/sweepArms.ts`'s own
+arm-inventory comment records `light-motorless` as `Gate 16/2`, measured on the
+**2026-08-07 baseline (198 plans)**, i.e. a different day and a different tree
+from §7's BASE run. Quote it with the meaning that comment's own header gives
+it: "Gate counts below are `depthRelaxationMayHelp` true/false and come from an
+instrumented run" — so 16/2 is a PREDICATE's true/false split over 18
+observations, **not** 16 `unreachable` and 2 `beyond-horizon` outcomes.
+
+What makes it corroboration rather than coincidence is DEDUCED, not stated
+there: `depthRelaxationMayHelp` is consulted only on a failed solve and admits
+only `mask-blocked`, so a gate-TRUE observation corresponds to a `mask-blocked`
+failure and a gate-FALSE one to a failure of another cause — on this arm,
+`horizon-exceeded`. Its 18 total also matches §7's 16 + 2 = 18 error rows
+against 33 harbours. Two limits worth stating rather than glossing: the gate can
+in principle be consulted more than once per plan, so the counts are
+observations and not necessarily per-harbour; and a gate observation happens
+only on FAILURE, so this source says **nothing** about the 15 `ok` rows.
 
 ### Recorder's note — the criterion's BASIS is unstated and must be fixed before any HEAD run
 
@@ -599,11 +673,13 @@ different design and inherits nothing from this section.
 **HOLD. Do not implement the solve-level salvage. #1136 is DEFERRED to
 milestone v0.32.0 (maintainer ruling, 2026-09-09).**
 
-Both independent verdicts on the proposal were HOLD, on three grounds:
+Three grounds:
 
 1. **Plan-level containment is refuted by measurement** (hole 1, #1166) — the
    change is not inert on currently-succeeding plans, which is what the design
-   claimed for it.
+   claimed for it. The `solve()`-level half is the refuter's, corroborated; the
+   plan-level half is the designer's `planRoute` run and is UNCORROBORATED
+   (§1.4, §4).
 2. **Efficacy is unmeasured** (hole 4) — salvaged nodes sit in already-stamped
    cells and may re-die immediately, so the fix could cost a full sweep baseline
    and rescue nothing.
@@ -618,14 +694,17 @@ What this spike **does** settle, and what makes the next attempt cheap:
   issue title.
 - The candidate-set lever — the intervention #1136's own text points at — is
   **rejected on measurement**, not on cost (§9.1).
-- The efficacy question (§5 prerequisite 1) is cheap, is the first thing to
-  run, and needs no sweep: the instrumentation in Appendix A plus one probe
-  answers it.
+- The efficacy question (§5 prerequisite 1) is cheap and is the first thing to
+  run. It needs no sweep — a scratch measurement owes no baseline, only a
+  shipped change does — but it does need the salvage itself written: the
+  instrumentation in Appendix A contains no salvage, so answering it takes that
+  instrumentation PLUS a scratch implementation of the re-expansion PLUS one
+  probe.
 - Two separable surfaces were split out (#1166, #1168) so a future #1136 fix is
   not judged on their behaviour.
 
-#1136 stays **open**. This document is evidence for a decision, not a fix and
-not a spec.
+#1136 was **open** at `035d662` on 2026-09-09. This document is evidence for
+a decision, not a fix and not a spec.
 
 ---
 
@@ -655,9 +734,13 @@ own polar says it cannot sail.
 ### 9.2 Relax `visitedDominates` unconditionally — REJECTED
 
 Pruning is what bounds this search. The measured magnitudes: on a single
-motor-on ring at TWS 8, `dominatedDrops` reaches **384 379** against
-`byKeySet` 22 896 — pruning is discarding roughly 94 % of accepted children on
-that ring, and the frontier is still 8 491 wide at ring 45. Removing the test
+motor-on ring at TWS 8 (`base.txt`, `ON tws8 dir0`, ring 42),
+`dominatedDrops` reaches **384 379** of **464 874** accepted edges —
+`dominatedDrops / accepted` = **82.7 %**, discarded by domination alone on that
+one ring — and the frontier is still 8 491 wide at ring 45. State the
+denominator with the figure: 94 % is reachable here only as
+`dom / (dom + byKeySet)`, which excludes the 57 599 children `better()` dropped
+and is not the set this sentence is about. Removing the test
 unconditionally would multiply the frontier by something of that order at every
 ring, against `MAX_FRONTIER = 30 000` and `PLAN_BUDGET_MS = 120 000`.
 
@@ -672,19 +755,24 @@ unconditional form better.
 Superficially attractive given §1.3: a finer grid would make fewer children
 share a cell with a stamped ancestor. Against it:
 
-- **Unmeasured.** No run exists at any other grid size. Per §1.3 it is not even
+- **Unmeasured.** As of 2026-09-09 no run at any other grid size existed. Per §1.3 it is not even
   established that same-cell self-domination is the dominant channel — the
   instrumentation does not record which stamp dominated.
 - **It changes `pruneKey` for every plan**, so it owes a full `app/sweep/`
   baseline (BASE double-run plus BASE-vs-HEAD, ~90 min) before anyone knows
   whether it helps.
-- **§2.2 and §3.5 both show search-shape changes are unpredictable in sign.** A
+- **Search-shape changes are unpredictable, on two different axes.** §2.2
+  (MEASURED) shows the OUTCOME itself flipping both ways, dead to alive and
+  back; §3.5 (NOT RE-RUN) shows search COST changing sign, +83 % / -34 %. A
   finer grid is a search-shape change of exactly that kind; there is no reason
   to expect it monotone where adding a heading was not.
 - It multiplies frontier and memory at every ring, against `MAX_FRONTIER`.
 
 Not refuted — untested, and untestable cheaply. If the full-step/fitted split
-of §1.3 shows self-domination dominating, this becomes worth one measurement.
+of §1.3 shows self-domination dominating, this becomes worth one measurement —
+but note that split cannot see a COMPONENTWISE dominator (§1.3): a synthetic
+cell minimum is neither self- nor cross-thread domination, and a finer grid
+would not obviously remove it.
 
 ### 9.4 A new `SolveFailureCause` to distinguish "gave up" from "unreachable" — REJECTED as a fix
 
@@ -814,12 +902,49 @@ is outside the `accepted` total (§2.1).
 
 ---
 
-## Appendix B — probe harness
+## Appendix B — the probe harness, in the three states that survive
 
-Imports rewritten to placeholders: `<scratchpad>/wt-refute/` is the worktree
-created at step 2 of §0, `<repo>` the repository root. The harness reads the
-real committed assets from `<repo>/app/public/data`, so the mask and polars are
-the shipped ones, not fixtures.
+**Read this section header before reusing anything below.** The harness was
+edited in place as the investigation went, and three successive on-disk states
+survive. They are printed SEPARATELY and verbatim rather than merged: each has a
+different `run()` signature and a different `it()` body, so a single combined
+body would be a file that never existed and never produced any of these logs.
+An earlier draft of this appendix did exactly that — unioning the option surface
+of the last state onto the `it()` of the first — and it regenerated `base.txt`
+alone while claiming to be the harness.
+
+| state | `it()` | produced |
+|---|---|---|
+| B.1 `probe.f3.bak` | `F3 + F1 + F7` | `base.txt` |
+| B.2 `tmp.ts` | `F2 chaos, UNSNAPPED` | `f2.txt` |
+| B.3 `probe.test.ts` | `tier-1 fidelity: comfortDepthM present` | `comfort.txt` |
+
+**The F4 driver is NOT among them and is not recoverable from disk.** No
+surviving file contains the `beat: 35` / `gybe: 35` call sites or the
+`(doc ADD)` / `(doc SWAP)` labels that `f4_base.txt` and `f4_add.txt` record, so
+that `it()` body is lost. What survives of it: B.3's `run()` signature carries
+the `beat`/`gybe` options it used, and the logs in C.4 record exactly which
+combinations it iterated (TWS 2 / 2.4 / 2.8 / 3 / 8 x PLAIN / `gybe: 35` /
+`beat: 35`, snapped, dir 0, with `SC_PURE_ADD=35` supplying the corrected pure
+add). Reconstructing that loop from B.3 is straightforward and is deliberately
+left to whoever needs it — this document does not print invented code as though
+it had been recovered.
+
+Every import path below is placeholdered: `<scratchpad>/wt-refute/` is the
+worktree created at step 2 of §0, `<repo>` the repository root. Each block was
+byte-diffed against its source file after that substitution and the
+substitution was verified reversible.
+
+### B.0 `vitest.config.ts` (shared by all three states)
+
+```ts
+import { defineConfig } from 'vitest/config';
+export default defineConfig({ test: { include: ['probe.test.ts'], environment: 'node', testTimeout: 1800_000 } });
+```
+
+`node_modules` beside it is a symlink to `<repo>/app/node_modules`.
+
+### B.1 `probe.f3.bak` — produced `base.txt` (§1.1, §3.1, §3.3)
 
 ```ts
 import { it } from 'vitest';
@@ -842,19 +967,139 @@ const tG = JSON.parse(readFileSync(`${dd}/polars/salona-45-genoa.json`, 'utf8'))
 const FLENSBURG = { lat: 54.798, lon: 9.4335 };
 const BAGENKOP = { lat: 54.753, lon: 10.668 };
 const T0 = Date.UTC(2026, 6, 15, 6, 0, 0);
-// SNAPPED variant (faithful to planRoute). The unsnapped variant sets
-// ORIGIN = FLENSBURG, DEST = BAGENKOP instead; the two differ by 24.7 m.
 const ORIGIN = realMask.snapToNavigable(FLENSBURG, 3)!;
 const DEST = realMask.snapToNavigable(BAGENKOP, 3)!;
 const ALIVE = 'ALIVE_AT_CAP';
 
-function run(label: string, o: { tws: number; dir: number; motor: boolean; cap?: number;
-    origin?: {lat:number;lon:number}; beat?: number; gybe?: number; comfort?: number }) {
+function run(label: string, o: { tws: number; dir: number; motor: boolean; cap?: number; origin?: {lat:number;lon:number} }) {
+  resetRingStats();
+  const base = new Polar(tG);
+  const settings: Settings = { ...DEFAULT_SETTINGS, safetyDepthM: 3, motorEnabled: o.motor };
+  const wind = new WindField(uniformWindGrid(o.tws, o.dir));
+  const cap = o.cap ?? 45;
+  let rings = 0;
+  let out = '';
+  try {
+    const res = solve({
+      origin: o.origin ?? ORIGIN, destination: DEST, departureMs: T0,
+      polar: base, wind, mask: realMask, settings,
+      onProgress: () => { rings++; if (rings >= cap) throw new Error(ALIVE); },
+    });
+    out = `status=${res.status} cause=${(res as any).cause ?? '-'} rings=${rings}` + (res.status==='ok'?` etaH=${((res.etaMs-T0)/3.6e6).toFixed(2)}`:'');
+  } catch (e) {
+    if ((e as Error).message === ALIVE) out = `ALIVE at ring ${cap}`; else throw e;
+  }
+  OUT(`### [${label}] ${out}  RING_STATS.len=${RING_STATS.length}`);
+  for (const r of RING_STATS.slice(-4)) OUT(`    ring${r.ring} nodes=${r.nodes} acc=${r.accepted} blk=${r.blocked} horiz=${r.horizonDrops} dom=${r.dominatedDrops} betterLoss=${r.betterLoss} set=${r.byKeySet} dir=${r.directAccepted} cap=${r.captureAccepted} next=${r.nextLen} best=${r.hasBest}`);
+}
+
+it('F3 + F1 + F7', () => {
+  writeFileSync(LOG, `PURE_ADD=${process.env.SC_PURE_ADD ?? '(none)'}\norigin=${JSON.stringify(ORIGIN)} dest=${JSON.stringify(DEST)}\n`);
+  OUT(`connected@3.0 = ${realMask.cellsConnected(ORIGIN, DEST, uniformGate(3))}`);
+  for (const tws of [2.0, 2.8, 3, 8]) run(`OFF tws${tws} dir0`, { tws, dir: 0, motor: false });
+  run('ON tws2.8 dir0 (motor control)', { tws: 2.8, dir: 0, motor: true, cap: 46 });
+  run('ON tws8 dir0 (motor control)', { tws: 8, dir: 0, motor: true, cap: 46 });
+});
+```
+
+### B.2 `tmp.ts` — produced `f2.txt` (§3.2)
+
+Note `ORIGIN`/`DEST` are the RAW harbour coordinates here: this is the
+unsnapped state, and its second loop re-runs the same four inputs in reverse
+order inside one process, which is the order-independence control.
+
+```ts
+import { it } from 'vitest';
+import { readFileSync, writeFileSync, appendFileSync } from 'node:fs';
+import { NavMask } from '<scratchpad>/wt-refute/app/src/lib/mask';
+import { Polar } from '<scratchpad>/wt-refute/app/src/lib/polar';
+import { WindField } from '<scratchpad>/wt-refute/app/src/lib/wind';
+import { solve, RING_STATS, resetRingStats } from '<scratchpad>/wt-refute/app/src/routing/isochrone';
+import { uniformWindGrid } from '<scratchpad>/wt-refute/app/src/test/fixtures';
+import { DEFAULT_SETTINGS } from '<scratchpad>/wt-refute/app/src/types';
+import { uniformGate } from '<scratchpad>/wt-refute/app/src/lib/depthGate';
+import type { MaskMeta, PolarTable, Settings } from '<scratchpad>/wt-refute/app/src/types';
+
+const LOG = process.env.SC_LOG!;
+const OUT = (s: string) => appendFileSync(LOG, s + '\n');
+const dd = '<repo>/app/public/data';
+const meta = JSON.parse(readFileSync(`${dd}/mask.meta.json`, 'utf8')) as MaskMeta;
+const realMask = new NavMask(meta, new Uint8Array(readFileSync(`${dd}/mask.bin`)));
+const tG = JSON.parse(readFileSync(`${dd}/polars/salona-45-genoa.json`, 'utf8')) as PolarTable;
+const FLENSBURG = { lat: 54.798, lon: 9.4335 };
+const BAGENKOP = { lat: 54.753, lon: 10.668 };
+const T0 = Date.UTC(2026, 6, 15, 6, 0, 0);
+const ORIGIN = FLENSBURG;
+const DEST = BAGENKOP;
+const ALIVE = 'ALIVE_AT_CAP';
+
+function run(label: string, o: { tws: number; dir: number; motor: boolean; cap?: number; origin?: {lat:number;lon:number} }) {
+  resetRingStats();
+  const base = new Polar(tG);
+  const settings: Settings = { ...DEFAULT_SETTINGS, safetyDepthM: 3, motorEnabled: o.motor };
+  const wind = new WindField(uniformWindGrid(o.tws, o.dir));
+  const cap = o.cap ?? 45;
+  let rings = 0;
+  let out = '';
+  try {
+    const res = solve({
+      origin: o.origin ?? ORIGIN, destination: DEST, departureMs: T0,
+      polar: base, wind, mask: realMask, settings,
+      onProgress: () => { rings++; if (rings >= cap) throw new Error(ALIVE); },
+    });
+    out = `status=${res.status} cause=${(res as any).cause ?? '-'} rings=${rings}` + (res.status==='ok'?` etaH=${((res.etaMs-T0)/3.6e6).toFixed(2)}`:'');
+  } catch (e) {
+    if ((e as Error).message === ALIVE) out = `ALIVE at ring ${cap}`; else throw e;
+  }
+  OUT(`### [${label}] ${out}  RING_STATS.len=${RING_STATS.length}`);
+  for (const r of RING_STATS.slice(-4)) OUT(`    ring${r.ring} nodes=${r.nodes} acc=${r.accepted} blk=${r.blocked} horiz=${r.horizonDrops} dom=${r.dominatedDrops} betterLoss=${r.betterLoss} set=${r.byKeySet} dir=${r.directAccepted} cap=${r.captureAccepted} next=${r.nextLen} best=${r.hasBest}`);
+}
+
+it('F2 chaos, UNSNAPPED', () => {
+  writeFileSync(LOG, `UNSNAPPED origin=${JSON.stringify(ORIGIN)} dest=${JSON.stringify(DEST)}\n`);
+  OUT(`connected@3.0 = ${realMask.cellsConnected(ORIGIN, DEST, uniformGate(3))}`);
+  // forward order
+  for (const tws of [2.4, 2.6, 2.8, 3.0]) run(`UNSNAP tws${tws}`, { tws, dir: 0, motor: false });
+  // determinism / order-independence: reverse order, repeat
+  for (const tws of [3.0, 2.8, 2.6, 2.4]) run(`REPEAT-REV tws${tws}`, { tws, dir: 0, motor: false });
+});
+```
+
+### B.3 `probe.test.ts` — produced `comfort.txt` (§1.1's tier-1 row)
+
+The `run()` signature here is the widest of the three — `beat`, `gybe` and
+`comfort` — and the polar facade it builds under `o.beat`/`o.gybe` is the
+DESIGNER's swap form, not a pure add (§2.2). The corrected pure add needs no
+facade at all: it is `SC_PURE_ADD=35` against the untouched `Polar`.
+
+```ts
+import { it } from 'vitest';
+import { readFileSync, writeFileSync, appendFileSync } from 'node:fs';
+import { NavMask } from '<scratchpad>/wt-refute/app/src/lib/mask';
+import { Polar } from '<scratchpad>/wt-refute/app/src/lib/polar';
+import { WindField } from '<scratchpad>/wt-refute/app/src/lib/wind';
+import { solve, RING_STATS, resetRingStats } from '<scratchpad>/wt-refute/app/src/routing/isochrone';
+import { uniformWindGrid } from '<scratchpad>/wt-refute/app/src/test/fixtures';
+import { DEFAULT_SETTINGS } from '<scratchpad>/wt-refute/app/src/types';
+import { uniformGate } from '<scratchpad>/wt-refute/app/src/lib/depthGate';
+import type { MaskMeta, PolarTable, Settings } from '<scratchpad>/wt-refute/app/src/types';
+
+const LOG = process.env.SC_LOG!;
+const OUT = (s: string) => appendFileSync(LOG, s + '\n');
+const dd = '<repo>/app/public/data';
+const meta = JSON.parse(readFileSync(`${dd}/mask.meta.json`, 'utf8')) as MaskMeta;
+const realMask = new NavMask(meta, new Uint8Array(readFileSync(`${dd}/mask.bin`)));
+const tG = JSON.parse(readFileSync(`${dd}/polars/salona-45-genoa.json`, 'utf8')) as PolarTable;
+const FLENSBURG = { lat: 54.798, lon: 9.4335 };
+const BAGENKOP = { lat: 54.753, lon: 10.668 };
+const T0 = Date.UTC(2026, 6, 15, 6, 0, 0);
+const ORIGIN = realMask.snapToNavigable(FLENSBURG, 3)!;
+const DEST = realMask.snapToNavigable(BAGENKOP, 3)!;
+const ALIVE = 'ALIVE_AT_CAP';
+
+function run(label: string, o: { tws: number; dir: number; motor: boolean; cap?: number; origin?: {lat:number;lon:number}; beat?: number; gybe?: number; comfort?: number }) {
   resetRingStats();
   const b0 = new Polar(tG);
-  // beat/gybe overrides are the DESIGNER'S forms; both are swaps, not adds -
-  // see section 2.2. The corrected pure-add uses SC_PURE_ADD=35 and leaves
-  // the polar alone (o.beat and o.gybe both undefined).
   const base = (o.beat === undefined && o.gybe === undefined) ? b0 : ({
     rig: b0.rig,
     speedKn: (t: number, w: number) => b0.speedKn(t, w),
@@ -873,86 +1118,95 @@ function run(label: string, o: { tws: number; dir: number; motor: boolean; cap?:
       ...(o.comfort !== undefined ? { comfortDepthM: o.comfort } : {}),
       onProgress: () => { rings++; if (rings >= cap) throw new Error(ALIVE); },
     });
-    out = `status=${res.status} cause=${(res as any).cause ?? '-'} rings=${rings}`
-      + (res.status === 'ok' ? ` etaH=${((res.etaMs - T0) / 3.6e6).toFixed(2)}` : '');
+    out = `status=${res.status} cause=${(res as any).cause ?? '-'} rings=${rings}` + (res.status==='ok'?` etaH=${((res.etaMs-T0)/3.6e6).toFixed(2)}`:'');
   } catch (e) {
     if ((e as Error).message === ALIVE) out = `ALIVE at ring ${cap}`; else throw e;
   }
   OUT(`### [${label}] ${out}  RING_STATS.len=${RING_STATS.length}`);
-  for (const r of RING_STATS.slice(-4))
-    OUT(`    ring${r.ring} nodes=${r.nodes} acc=${r.accepted} blk=${r.blocked} horiz=${r.horizonDrops}`
-      + ` dom=${r.dominatedDrops} betterLoss=${r.betterLoss} set=${r.byKeySet} dir=${r.directAccepted}`
-      + ` cap=${r.captureAccepted} next=${r.nextLen} best=${r.hasBest}`);
+  for (const r of RING_STATS.slice(-4)) OUT(`    ring${r.ring} nodes=${r.nodes} acc=${r.accepted} blk=${r.blocked} horiz=${r.horizonDrops} dom=${r.dominatedDrops} betterLoss=${r.betterLoss} set=${r.byKeySet} dir=${r.directAccepted} cap=${r.captureAccepted} next=${r.nextLen} best=${r.hasBest}`);
 }
 
-it('F3 + F1 + F7', () => {
-  writeFileSync(LOG, `PURE_ADD=${process.env.SC_PURE_ADD ?? '(none)'}\n`
-    + `origin=${JSON.stringify(ORIGIN)} dest=${JSON.stringify(DEST)}\n`);
-  OUT(`connected@3.0 = ${realMask.cellsConnected(ORIGIN, DEST, uniformGate(3))}`);
-  for (const tws of [2.0, 2.8, 3, 8]) run(`OFF tws${tws} dir0`, { tws, dir: 0, motor: false });
-  run('ON tws2.8 dir0 (motor control)', { tws: 2.8, dir: 0, motor: true, cap: 46 });
-  run('ON tws8 dir0 (motor control)', { tws: 8, dir: 0, motor: true, cap: 46 });
+it('tier-1 fidelity: comfortDepthM present', () => {
+  writeFileSync(LOG, `margin=${DEFAULT_SETTINGS.depthComfortMarginM}\n`);
+  const c = 3 + DEFAULT_SETTINGS.depthComfortMarginM;
+  for (const tws of [2.8, 3, 8]) run(`tws${tws} comfort=${c}`, { tws, dir: 0, motor: false, comfort: c });
 });
 ```
 
-The `vitest.config.ts` beside it is a three-line file setting `include` to
-`probe.test.ts`; `node_modules` is a symlink to `<repo>/app/node_modules`.
-
 ---
 
-## Appendix C — raw `RING_STATS` tails
+## Appendix C — the five raw logs, complete
 
-The last four rings of each cited run. `ALIVE at ring N` means the probe's
-`onProgress` cap fired, i.e. **still searching** — not "routed" (§3.2).
+All five files verbatim, not excerpted. Each run's block is whatever
+`RING_STATS.slice(-4)` emitted, so a run of four or more rings shows its last
+four and a shorter one shows all it had — that is why the block lengths differ.
+`ALIVE at ring N` means the probe's `onProgress` cap fired, i.e. **still
+searching**, never "routed" (§3.2).
 
-### C.1 Snapped, dir 0 — the decisive measurement (`base.txt`)
+### C.1 `base.txt` — snapped, dir 0; the decisive measurement
 
 ```
+PURE_ADD=(none)
 origin={"lat":54.798125,"lon":9.433818181818182} dest={"lat":54.753125,"lon":10.668}
 connected@3.0 = true
-### [OFF tws2 dir0] ALIVE at ring 45
+### [OFF tws2 dir0] ALIVE at ring 45  RING_STATS.len=45
     ring41 nodes=59 acc=1925 blk=81 horiz=0 dom=1217 betterLoss=478 set=230 dir=0 cap=0 next=88 best=false
     ring42 nodes=88 acc=2917 blk=75 horiz=0 dom=1821 betterLoss=821 set=275 dir=0 cap=0 next=92 best=false
     ring43 nodes=92 acc=3085 blk=43 horiz=0 dom=2016 betterLoss=813 set=256 dir=0 cap=0 next=92 best=false
     ring44 nodes=92 acc=3039 blk=89 horiz=0 dom=1767 betterLoss=912 set=360 dir=0 cap=0 next=130 best=false
-### [OFF tws2.8 dir0] status=no-route cause=mask-blocked rings=5
+### [OFF tws2.8 dir0] status=no-route cause=mask-blocked rings=5  RING_STATS.len=5
     ring1 nodes=8 acc=203 blk=69 horiz=0 dom=130 betterLoss=46 set=27 dir=0 cap=0 next=13 best=false
     ring2 nodes=13 acc=305 blk=137 horiz=0 dom=261 betterLoss=22 set=22 dir=0 cap=0 next=7 best=false
     ring3 nodes=7 acc=146 blk=92 horiz=0 dom=134 betterLoss=6 set=6 dir=0 cap=0 next=5 best=false
     ring4 nodes=5 acc=104 blk=66 horiz=0 dom=104 betterLoss=0 set=0 dir=0 cap=0 next=0 best=false
-### [OFF tws3 dir0] status=no-route cause=mask-blocked rings=5
+### [OFF tws3 dir0] status=no-route cause=mask-blocked rings=5  RING_STATS.len=5
     ring1 nodes=8 acc=186 blk=86 horiz=0 dom=135 betterLoss=32 set=19 dir=0 cap=0 next=11 best=false
     ring2 nodes=11 acc=289 blk=85 horiz=0 dom=249 betterLoss=20 set=20 dir=0 cap=0 next=5 best=false
     ring3 nodes=5 acc=106 blk=64 horiz=0 dom=80 betterLoss=17 set=9 dir=0 cap=0 next=3 best=false
     ring4 nodes=3 acc=49 blk=53 horiz=0 dom=49 betterLoss=0 set=0 dir=0 cap=0 next=0 best=false
-### [OFF tws8 dir0] status=no-route cause=mask-blocked rings=4
+### [OFF tws8 dir0] status=no-route cause=mask-blocked rings=4  RING_STATS.len=4
     ring0 nodes=1 acc=17 blk=17 horiz=0 dom=0 betterLoss=4 set=13 dir=0 cap=0 next=9 best=false
     ring1 nodes=9 acc=128 blk=178 horiz=0 dom=63 betterLoss=41 set=24 dir=0 cap=0 next=15 best=false
     ring2 nodes=15 acc=235 blk=275 horiz=0 dom=226 betterLoss=3 set=6 dir=0 cap=0 next=4 best=false
     ring3 nodes=4 acc=51 blk=85 horiz=0 dom=51 betterLoss=0 set=0 dir=0 cap=0 next=0 best=false
-### [ON tws2.8 dir0 (motor control)] ALIVE at ring 46
+### [ON tws2.8 dir0 (motor control)] ALIVE at ring 46  RING_STATS.len=46
+    ring42 nodes=5870 acc=219957 blk=8251 horiz=0 dom=175123 betterLoss=31405 set=13429 dir=0 cap=0 next=5622 best=false
+    ring43 nodes=5622 acc=210857 blk=7708 horiz=0 dom=167274 betterLoss=30495 set=13088 dir=0 cap=0 next=5582 best=false
+    ring44 nodes=5582 acc=208969 blk=8095 horiz=0 dom=165953 betterLoss=30588 set=12428 dir=0 cap=0 next=5366 best=false
     ring45 nodes=5366 acc=203410 blk=5227 horiz=0 dom=178719 betterLoss=17146 set=7545 dir=0 cap=0 next=3121 best=false
-### [ON tws8 dir0 (motor control)] ALIVE at ring 46
+### [ON tws8 dir0 (motor control)] ALIVE at ring 46  RING_STATS.len=46
+    ring42 nodes=12309 acc=464874 blk=13765 horiz=0 dom=384379 betterLoss=57599 set=22896 dir=0 cap=0 next=11802 best=false
+    ring43 nodes=11802 acc=448881 blk=10099 horiz=0 dom=344689 betterLoss=74660 set=29532 dir=0 cap=0 next=13370 best=false
     ring44 nodes=13370 acc=509769 blk=10346 horiz=0 dom=416673 betterLoss=67122 set=25974 dir=0 cap=0 next=10910 best=false
     ring45 nodes=10910 acc=415126 blk=9340 horiz=0 dom=345617 betterLoss=49390 set=20119 dir=0 cap=0 next=8491 best=false
 ```
 
-### C.2 Tier-1 fidelity, `comfortDepthM = 5` (`comfort.txt`)
+### C.2 `comfort.txt` — tier-1 fidelity, `comfortDepthM = 5`
 
 `DEFAULT_SETTINGS.depthComfortMarginM` is 2, so the tier-1 comfort depth is
-3 + 2 = 5. Every counter matches C.1 exactly.
+3 + 2 = 5. Every counter matches its `base.txt` twin for the three
+configurations re-run.
 
 ```
 margin=2
-### [tws2.8 comfort=5] status=no-route cause=mask-blocked rings=5
+### [tws2.8 comfort=5] status=no-route cause=mask-blocked rings=5  RING_STATS.len=5
+    ring1 nodes=8 acc=203 blk=69 horiz=0 dom=130 betterLoss=46 set=27 dir=0 cap=0 next=13 best=false
+    ring2 nodes=13 acc=305 blk=137 horiz=0 dom=261 betterLoss=22 set=22 dir=0 cap=0 next=7 best=false
+    ring3 nodes=7 acc=146 blk=92 horiz=0 dom=134 betterLoss=6 set=6 dir=0 cap=0 next=5 best=false
     ring4 nodes=5 acc=104 blk=66 horiz=0 dom=104 betterLoss=0 set=0 dir=0 cap=0 next=0 best=false
-### [tws3 comfort=5] status=no-route cause=mask-blocked rings=5
+### [tws3 comfort=5] status=no-route cause=mask-blocked rings=5  RING_STATS.len=5
+    ring1 nodes=8 acc=186 blk=86 horiz=0 dom=135 betterLoss=32 set=19 dir=0 cap=0 next=11 best=false
+    ring2 nodes=11 acc=289 blk=85 horiz=0 dom=249 betterLoss=20 set=20 dir=0 cap=0 next=5 best=false
+    ring3 nodes=5 acc=106 blk=64 horiz=0 dom=80 betterLoss=17 set=9 dir=0 cap=0 next=3 best=false
     ring4 nodes=3 acc=49 blk=53 horiz=0 dom=49 betterLoss=0 set=0 dir=0 cap=0 next=0 best=false
-### [tws8 comfort=5] status=no-route cause=mask-blocked rings=4
+### [tws8 comfort=5] status=no-route cause=mask-blocked rings=4  RING_STATS.len=4
+    ring0 nodes=1 acc=17 blk=17 horiz=0 dom=0 betterLoss=4 set=13 dir=0 cap=0 next=9 best=false
+    ring1 nodes=9 acc=128 blk=178 horiz=0 dom=63 betterLoss=41 set=24 dir=0 cap=0 next=15 best=false
+    ring2 nodes=15 acc=235 blk=275 horiz=0 dom=226 betterLoss=3 set=6 dir=0 cap=0 next=4 best=false
     ring3 nodes=4 acc=51 blk=85 horiz=0 dom=51 betterLoss=0 set=0 dir=0 cap=0 next=0 best=false
 ```
 
-### C.3 Non-monotonicity and the order-independence control (`f2.txt`, unsnapped)
+### C.3 `f2.txt` — UNSNAPPED, dir 0; non-monotonicity and its control
 
 The `REPEAT-REV` block re-runs the same four inputs in reverse order inside one
 process. Every counter is byte-identical to the forward run, which is what
@@ -961,56 +1215,213 @@ kills the shared-mutable-state hypothesis.
 ```
 UNSNAPPED origin={"lat":54.798,"lon":9.4335} dest={"lat":54.753,"lon":10.668}
 connected@3.0 = true
-### [UNSNAP tws2.4] status=no-route cause=mask-blocked rings=6
+### [UNSNAP tws2.4] status=no-route cause=mask-blocked rings=6  RING_STATS.len=6
+    ring2 nodes=13 acc=297 blk=145 horiz=0 dom=280 betterLoss=6 set=11 dir=0 cap=0 next=6 best=false
+    ring3 nodes=6 acc=121 blk=83 horiz=0 dom=119 betterLoss=0 set=2 dir=0 cap=0 next=1 best=false
+    ring4 nodes=1 acc=16 blk=18 horiz=0 dom=6 betterLoss=5 set=5 dir=0 cap=0 next=3 best=false
     ring5 nodes=3 acc=77 blk=25 horiz=0 dom=77 betterLoss=0 set=0 dir=0 cap=0 next=0 best=false
-### [UNSNAP tws2.6] ALIVE at ring 45
+### [UNSNAP tws2.6] ALIVE at ring 45  RING_STATS.len=45
+    ring41 nodes=264 acc=8577 blk=399 horiz=0 dom=6600 betterLoss=1356 set=621 dir=0 cap=0 next=231 best=false
+    ring42 nodes=231 acc=7639 blk=215 horiz=0 dom=5374 betterLoss=1632 set=633 dir=0 cap=0 next=245 best=false
+    ring43 nodes=245 acc=8057 blk=273 horiz=0 dom=5378 betterLoss=1915 set=764 dir=0 cap=0 next=296 best=false
     ring44 nodes=296 acc=9855 blk=209 horiz=0 dom=6672 betterLoss=2245 set=938 dir=0 cap=0 next=374 best=false
-### [UNSNAP tws2.8] status=no-route cause=mask-blocked rings=5
+### [UNSNAP tws2.8] status=no-route cause=mask-blocked rings=5  RING_STATS.len=5
+    ring1 nodes=9 acc=222 blk=84 horiz=0 dom=143 betterLoss=52 set=27 dir=0 cap=0 next=11 best=false
+    ring2 nodes=11 acc=297 blk=77 horiz=0 dom=260 betterLoss=20 set=17 dir=0 cap=0 next=6 best=false
+    ring3 nodes=6 acc=119 blk=85 horiz=0 dom=99 betterLoss=13 set=7 dir=0 cap=0 next=5 best=false
     ring4 nodes=5 acc=117 blk=53 horiz=0 dom=117 betterLoss=0 set=0 dir=0 cap=0 next=0 best=false
-### [UNSNAP tws3] ALIVE at ring 45
+### [UNSNAP tws3] ALIVE at ring 45  RING_STATS.len=45
+    ring41 nodes=664 acc=22119 blk=420 horiz=0 dom=16527 betterLoss=3785 set=1807 dir=0 cap=0 next=760 best=false
+    ring42 nodes=760 acc=25432 blk=343 horiz=0 dom=19188 betterLoss=4204 set=2040 dir=0 cap=0 next=865 best=false
+    ring43 nodes=865 acc=28847 blk=484 horiz=0 dom=21791 betterLoss=4742 set=2314 dir=0 cap=0 next=1012 best=false
     ring44 nodes=1012 acc=33689 blk=625 horiz=0 dom=25077 betterLoss=5906 set=2706 dir=0 cap=0 next=1195 best=false
-### [REPEAT-REV tws3] ALIVE at ring 45
+### [REPEAT-REV tws3] ALIVE at ring 45  RING_STATS.len=45
+    ring41 nodes=664 acc=22119 blk=420 horiz=0 dom=16527 betterLoss=3785 set=1807 dir=0 cap=0 next=760 best=false
+    ring42 nodes=760 acc=25432 blk=343 horiz=0 dom=19188 betterLoss=4204 set=2040 dir=0 cap=0 next=865 best=false
+    ring43 nodes=865 acc=28847 blk=484 horiz=0 dom=21791 betterLoss=4742 set=2314 dir=0 cap=0 next=1012 best=false
     ring44 nodes=1012 acc=33689 blk=625 horiz=0 dom=25077 betterLoss=5906 set=2706 dir=0 cap=0 next=1195 best=false
-### [REPEAT-REV tws2.8] status=no-route cause=mask-blocked rings=5
+### [REPEAT-REV tws2.8] status=no-route cause=mask-blocked rings=5  RING_STATS.len=5
+    ring1 nodes=9 acc=222 blk=84 horiz=0 dom=143 betterLoss=52 set=27 dir=0 cap=0 next=11 best=false
+    ring2 nodes=11 acc=297 blk=77 horiz=0 dom=260 betterLoss=20 set=17 dir=0 cap=0 next=6 best=false
+    ring3 nodes=6 acc=119 blk=85 horiz=0 dom=99 betterLoss=13 set=7 dir=0 cap=0 next=5 best=false
     ring4 nodes=5 acc=117 blk=53 horiz=0 dom=117 betterLoss=0 set=0 dir=0 cap=0 next=0 best=false
-### [REPEAT-REV tws2.6] ALIVE at ring 45
+### [REPEAT-REV tws2.6] ALIVE at ring 45  RING_STATS.len=45
+    ring41 nodes=264 acc=8577 blk=399 horiz=0 dom=6600 betterLoss=1356 set=621 dir=0 cap=0 next=231 best=false
+    ring42 nodes=231 acc=7639 blk=215 horiz=0 dom=5374 betterLoss=1632 set=633 dir=0 cap=0 next=245 best=false
+    ring43 nodes=245 acc=8057 blk=273 horiz=0 dom=5378 betterLoss=1915 set=764 dir=0 cap=0 next=296 best=false
     ring44 nodes=296 acc=9855 blk=209 horiz=0 dom=6672 betterLoss=2245 set=938 dir=0 cap=0 next=374 best=false
-### [REPEAT-REV tws2.4] status=no-route cause=mask-blocked rings=6
+### [REPEAT-REV tws2.4] status=no-route cause=mask-blocked rings=6  RING_STATS.len=6
+    ring2 nodes=13 acc=297 blk=145 horiz=0 dom=280 betterLoss=6 set=11 dir=0 cap=0 next=6 best=false
+    ring3 nodes=6 acc=121 blk=83 horiz=0 dom=119 betterLoss=0 set=2 dir=0 cap=0 next=1 best=false
+    ring4 nodes=1 acc=16 blk=18 horiz=0 dom=6 betterLoss=5 set=5 dir=0 cap=0 next=3 best=false
     ring5 nodes=3 acc=77 blk=25 horiz=0 dom=77 betterLoss=0 set=0 dir=0 cap=0 next=0 best=false
 ```
 
-### C.4 The candidate-set mutation, corrected form (`f4_base.txt` / `f4_add.txt`, snapped)
+### C.4 `f4_base.txt` — snapped, base `EXTRA_TWAS`
 
-`PLAIN` rows use the untouched polar; the difference between the two files is
-`SC_PURE_ADD=35` alone. Read the PLAIN rows against each other — those are the
-corrected pure-add comparison of §2.2. The `gybe=35` / `beat=35` rows are the
-designer's two swap forms, kept so the method note in §2.2 stays checkable.
+`PLAIN` rows use the untouched polar; `gybe=35` and `beat=35` are the
+designer's two swap forms (§2.2).
 
 ```
---- f4_base.txt (PURE_ADD=(none)) ---
-### [tws2 PLAIN] ALIVE at ring 45
-### [tws2 gybe=35 (doc ADD)] status=no-route cause=mask-blocked rings=5
+PURE_ADD=(none)
+### [tws2 PLAIN] ALIVE at ring 45  RING_STATS.len=45
+    ring41 nodes=59 acc=1925 blk=81 horiz=0 dom=1217 betterLoss=478 set=230 dir=0 cap=0 next=88 best=false
+    ring42 nodes=88 acc=2917 blk=75 horiz=0 dom=1821 betterLoss=821 set=275 dir=0 cap=0 next=92 best=false
+    ring43 nodes=92 acc=3085 blk=43 horiz=0 dom=2016 betterLoss=813 set=256 dir=0 cap=0 next=92 best=false
+    ring44 nodes=92 acc=3039 blk=89 horiz=0 dom=1767 betterLoss=912 set=360 dir=0 cap=0 next=130 best=false
+### [tws2 gybe=35 (doc ADD)] status=no-route cause=mask-blocked rings=5  RING_STATS.len=5
     ring1 nodes=9 acc=243 blk=63 horiz=0 dom=171 betterLoss=47 set=25 dir=0 cap=0 next=12 best=false
+    ring2 nodes=12 acc=344 blk=64 horiz=0 dom=325 betterLoss=9 set=10 dir=0 cap=0 next=6 best=false
+    ring3 nodes=6 acc=133 blk=71 horiz=0 dom=128 betterLoss=2 set=3 dir=0 cap=0 next=2 best=false
     ring4 nodes=2 acc=39 blk=29 horiz=0 dom=39 betterLoss=0 set=0 dir=0 cap=0 next=0 best=false
-### [tws2 beat=35 (doc SWAP)] status=no-route cause=mask-blocked rings=5
+### [tws2 beat=35 (doc SWAP)] status=no-route cause=mask-blocked rings=5  RING_STATS.len=5
     ring1 nodes=9 acc=244 blk=62 horiz=0 dom=176 betterLoss=39 set=29 dir=0 cap=0 next=12 best=false
+    ring2 nodes=12 acc=344 blk=64 horiz=0 dom=324 betterLoss=10 set=10 dir=0 cap=0 next=6 best=false
+    ring3 nodes=6 acc=132 blk=72 horiz=0 dom=127 betterLoss=2 set=3 dir=0 cap=0 next=2 best=false
     ring4 nodes=2 acc=40 blk=28 horiz=0 dom=40 betterLoss=0 set=0 dir=0 cap=0 next=0 best=false
-### [tws2.4 PLAIN] status=no-route cause=mask-blocked rings=5
-### [tws2.8 PLAIN] status=no-route cause=mask-blocked rings=5
-### [tws3 PLAIN]   status=no-route cause=mask-blocked rings=5
-### [tws8 PLAIN]   status=no-route cause=mask-blocked rings=4
+### [tws2.4 PLAIN] status=no-route cause=mask-blocked rings=5  RING_STATS.len=5
+    ring1 nodes=9 acc=240 blk=66 horiz=0 dom=161 betterLoss=41 set=38 dir=0 cap=0 next=16 best=false
+    ring2 nodes=16 acc=434 blk=110 horiz=0 dom=419 betterLoss=3 set=12 dir=0 cap=0 next=6 best=false
+    ring3 nodes=6 acc=126 blk=78 horiz=0 dom=118 betterLoss=5 set=3 dir=0 cap=0 next=3 best=false
+    ring4 nodes=3 acc=77 blk=25 horiz=0 dom=77 betterLoss=0 set=0 dir=0 cap=0 next=0 best=false
+### [tws2.4 gybe=35 (doc ADD)] ALIVE at ring 45  RING_STATS.len=45
+    ring41 nodes=344 acc=11235 blk=461 horiz=0 dom=7843 betterLoss=2661 set=731 dir=0 cap=0 next=316 best=false
+    ring42 nodes=316 acc=10273 blk=471 horiz=0 dom=7243 betterLoss=2306 set=724 dir=0 cap=0 next=308 best=false
+    ring43 nodes=308 acc=10176 blk=296 horiz=0 dom=7150 betterLoss=2288 set=738 dir=0 cap=0 next=338 best=false
+    ring44 nodes=338 acc=11141 blk=351 horiz=0 dom=7670 betterLoss=2616 set=855 dir=0 cap=0 next=374 best=false
+### [tws2.4 beat=35 (doc SWAP)] ALIVE at ring 45  RING_STATS.len=45
+    ring41 nodes=159 acc=5170 blk=236 horiz=0 dom=3454 betterLoss=1280 set=436 dir=0 cap=0 next=130 best=false
+    ring42 nodes=130 acc=4171 blk=249 horiz=0 dom=2887 betterLoss=905 set=379 dir=0 cap=0 next=117 best=false
+    ring43 nodes=117 acc=3760 blk=218 horiz=0 dom=2374 betterLoss=1012 set=374 dir=0 cap=0 next=136 best=false
+    ring44 nodes=136 acc=4467 blk=157 horiz=0 dom=2839 betterLoss=1166 set=462 dir=0 cap=0 next=167 best=false
+### [tws2.8 PLAIN] status=no-route cause=mask-blocked rings=5  RING_STATS.len=5
+    ring1 nodes=8 acc=203 blk=69 horiz=0 dom=130 betterLoss=46 set=27 dir=0 cap=0 next=13 best=false
+    ring2 nodes=13 acc=305 blk=137 horiz=0 dom=261 betterLoss=22 set=22 dir=0 cap=0 next=7 best=false
+    ring3 nodes=7 acc=146 blk=92 horiz=0 dom=134 betterLoss=6 set=6 dir=0 cap=0 next=5 best=false
+    ring4 nodes=5 acc=104 blk=66 horiz=0 dom=104 betterLoss=0 set=0 dir=0 cap=0 next=0 best=false
+### [tws2.8 gybe=35 (doc ADD)] ALIVE at ring 45  RING_STATS.len=45
+    ring41 nodes=387 acc=12975 blk=182 horiz=0 dom=9474 betterLoss=2501 set=1000 dir=0 cap=0 next=461 best=false
+    ring42 nodes=461 acc=15439 blk=219 horiz=0 dom=11397 betterLoss=2879 set=1163 dir=0 cap=0 next=535 best=false
+    ring43 nodes=535 acc=17975 blk=185 horiz=0 dom=13392 betterLoss=3252 set=1331 dir=0 cap=0 next=643 best=false
+    ring44 nodes=643 acc=21440 blk=375 horiz=0 dom=16049 betterLoss=3790 set=1601 dir=0 cap=0 next=744 best=false
+### [tws2.8 beat=35 (doc SWAP)] ALIVE at ring 45  RING_STATS.len=45
+    ring41 nodes=261 acc=8800 blk=74 horiz=0 dom=5955 betterLoss=2109 set=736 dir=0 cap=0 next=321 best=false
+    ring42 nodes=321 acc=10722 blk=178 horiz=0 dom=7568 betterLoss=2313 set=841 dir=0 cap=0 next=387 best=false
+    ring43 nodes=387 acc=12897 blk=238 horiz=0 dom=9173 betterLoss=2691 set=1033 dir=0 cap=0 next=475 best=false
+    ring44 nodes=475 acc=15868 blk=244 horiz=0 dom=11387 betterLoss=3261 set=1220 dir=0 cap=0 next=560 best=false
+### [tws3 PLAIN] status=no-route cause=mask-blocked rings=5  RING_STATS.len=5
+    ring1 nodes=8 acc=186 blk=86 horiz=0 dom=135 betterLoss=32 set=19 dir=0 cap=0 next=11 best=false
+    ring2 nodes=11 acc=289 blk=85 horiz=0 dom=249 betterLoss=20 set=20 dir=0 cap=0 next=5 best=false
+    ring3 nodes=5 acc=106 blk=64 horiz=0 dom=80 betterLoss=17 set=9 dir=0 cap=0 next=3 best=false
+    ring4 nodes=3 acc=49 blk=53 horiz=0 dom=49 betterLoss=0 set=0 dir=0 cap=0 next=0 best=false
+### [tws3 gybe=35 (doc ADD)] ALIVE at ring 45  RING_STATS.len=45
+    ring41 nodes=610 acc=20367 blk=319 horiz=0 dom=15166 betterLoss=3681 set=1520 dir=0 cap=0 next=697 best=false
+    ring42 nodes=697 acc=23130 blk=508 horiz=0 dom=16911 betterLoss=4418 set=1801 dir=0 cap=0 next=832 best=false
+    ring43 nodes=832 acc=27777 blk=436 horiz=0 dom=20497 betterLoss=5280 set=2000 dir=0 cap=0 next=896 best=false
+    ring44 nodes=896 acc=30056 blk=321 horiz=0 dom=22672 betterLoss=5251 set=2133 dir=0 cap=0 next=954 best=false
+### [tws3 beat=35 (doc SWAP)] ALIVE at ring 45  RING_STATS.len=45
+    ring41 nodes=716 acc=23942 blk=348 horiz=0 dom=18122 betterLoss=3995 set=1825 dir=0 cap=0 next=827 best=false
+    ring42 nodes=827 acc=27715 blk=331 horiz=0 dom=20782 betterLoss=4809 set=2124 dir=0 cap=0 next=987 best=false
+    ring43 nodes=987 acc=33115 blk=363 horiz=0 dom=25130 betterLoss=5537 set=2448 dir=0 cap=0 next=1122 best=false
+    ring44 nodes=1122 acc=37566 blk=452 horiz=0 dom=29315 betterLoss=5700 set=2551 dir=0 cap=0 next=1166 best=false
+### [tws8 PLAIN] status=no-route cause=mask-blocked rings=4  RING_STATS.len=4
+    ring0 nodes=1 acc=17 blk=17 horiz=0 dom=0 betterLoss=4 set=13 dir=0 cap=0 next=9 best=false
+    ring1 nodes=9 acc=128 blk=178 horiz=0 dom=63 betterLoss=41 set=24 dir=0 cap=0 next=15 best=false
+    ring2 nodes=15 acc=235 blk=275 horiz=0 dom=226 betterLoss=3 set=6 dir=0 cap=0 next=4 best=false
+    ring3 nodes=4 acc=51 blk=85 horiz=0 dom=51 betterLoss=0 set=0 dir=0 cap=0 next=0 best=false
+### [tws8 gybe=35 (doc ADD)] ALIVE at ring 45  RING_STATS.len=45
+    ring41 nodes=10491 acc=351862 blk=3709 horiz=0 dom=271773 betterLoss=58746 set=21343 dir=0 cap=0 next=11929 best=false
+    ring42 nodes=11929 acc=400266 blk=4111 horiz=0 dom=311521 betterLoss=62664 set=26081 dir=0 cap=0 next=12372 best=false
+    ring43 nodes=12372 acc=414559 blk=4898 horiz=0 dom=348223 betterLoss=44686 set=21650 dir=0 cap=0 next=9644 best=false
+    ring44 nodes=9644 acc=321989 blk=4921 horiz=0 dom=260652 betterLoss=41663 set=19674 dir=0 cap=0 next=8802 best=false
+### [tws8 beat=35 (doc SWAP)] ALIVE at ring 45  RING_STATS.len=45
+    ring41 nodes=11198 acc=375787 blk=3822 horiz=0 dom=293877 betterLoss=57663 set=24247 dir=0 cap=0 next=10787 best=false
+    ring42 nodes=10787 acc=360542 blk=5123 horiz=0 dom=303942 betterLoss=37606 set=18994 dir=0 cap=0 next=8090 best=false
+    ring43 nodes=8090 acc=269251 blk=4887 horiz=0 dom=214096 betterLoss=36742 set=18413 dir=0 cap=0 next=7768 best=false
+    ring44 nodes=7768 acc=258350 blk=4876 horiz=0 dom=201271 betterLoss=38238 set=18841 dir=0 cap=0 next=8167 best=false
+```
 
---- f4_add.txt (PURE_ADD=35) ---
-### [tws2 PLAIN] status=no-route cause=mask-blocked rings=5
+### C.5 `f4_add.txt` — snapped, `SC_PURE_ADD=35`
+
+Identical driver, `EXTRA_TWAS` prepended with 35 and the polar untouched. Read
+the `PLAIN` rows here against C.4's `PLAIN` rows: that pair is the corrected
+pure-add comparison of §2.2.
+
+```
+PURE_ADD=35
+### [tws2 PLAIN] status=no-route cause=mask-blocked rings=5  RING_STATS.len=5
     ring1 nodes=9 acc=259 blk=65 horiz=0 dom=186 betterLoss=48 set=25 dir=0 cap=0 next=12 best=false
     ring2 nodes=12 acc=364 blk=68 horiz=0 dom=345 betterLoss=9 set=10 dir=0 cap=0 next=6 best=false
     ring3 nodes=6 acc=140 blk=76 horiz=0 dom=135 betterLoss=2 set=3 dir=0 cap=0 next=2 best=false
     ring4 nodes=2 acc=42 blk=30 horiz=0 dom=42 betterLoss=0 set=0 dir=0 cap=0 next=0 best=false
-### [tws2.4 PLAIN] ALIVE at ring 45
-### [tws2.8 PLAIN] ALIVE at ring 45
-### [tws3 PLAIN]   ALIVE at ring 45
-### [tws8 PLAIN]   ALIVE at ring 45
+### [tws2 gybe=35 (doc ADD)] status=no-route cause=mask-blocked rings=5  RING_STATS.len=5
+    ring1 nodes=9 acc=243 blk=63 horiz=0 dom=171 betterLoss=47 set=25 dir=0 cap=0 next=12 best=false
+    ring2 nodes=12 acc=344 blk=64 horiz=0 dom=325 betterLoss=9 set=10 dir=0 cap=0 next=6 best=false
+    ring3 nodes=6 acc=133 blk=71 horiz=0 dom=128 betterLoss=2 set=3 dir=0 cap=0 next=2 best=false
+    ring4 nodes=2 acc=39 blk=29 horiz=0 dom=39 betterLoss=0 set=0 dir=0 cap=0 next=0 best=false
+### [tws2 beat=35 (doc SWAP)] status=no-route cause=mask-blocked rings=5  RING_STATS.len=5
+    ring1 nodes=9 acc=244 blk=62 horiz=0 dom=176 betterLoss=39 set=29 dir=0 cap=0 next=12 best=false
+    ring2 nodes=12 acc=344 blk=64 horiz=0 dom=324 betterLoss=10 set=10 dir=0 cap=0 next=6 best=false
+    ring3 nodes=6 acc=132 blk=72 horiz=0 dom=127 betterLoss=2 set=3 dir=0 cap=0 next=2 best=false
+    ring4 nodes=2 acc=40 blk=28 horiz=0 dom=40 betterLoss=0 set=0 dir=0 cap=0 next=0 best=false
+### [tws2.4 PLAIN] ALIVE at ring 45  RING_STATS.len=45
+    ring41 nodes=378 acc=13070 blk=538 horiz=0 dom=9374 betterLoss=2707 set=989 dir=0 cap=0 next=344 best=false
+    ring42 nodes=344 acc=11963 blk=421 horiz=0 dom=8511 betterLoss=2564 set=888 dir=0 cap=0 next=322 best=false
+    ring43 nodes=322 acc=11269 blk=323 horiz=0 dom=7590 betterLoss=2734 set=945 dir=0 cap=0 next=342 best=false
+    ring44 nodes=342 acc=11915 blk=397 horiz=0 dom=7870 betterLoss=2971 set=1074 dir=0 cap=0 next=401 best=false
+### [tws2.4 gybe=35 (doc ADD)] ALIVE at ring 45  RING_STATS.len=45
+    ring41 nodes=344 acc=11235 blk=461 horiz=0 dom=7843 betterLoss=2661 set=731 dir=0 cap=0 next=316 best=false
+    ring42 nodes=316 acc=10273 blk=471 horiz=0 dom=7243 betterLoss=2306 set=724 dir=0 cap=0 next=308 best=false
+    ring43 nodes=308 acc=10176 blk=296 horiz=0 dom=7150 betterLoss=2288 set=738 dir=0 cap=0 next=338 best=false
+    ring44 nodes=338 acc=11141 blk=351 horiz=0 dom=7670 betterLoss=2616 set=855 dir=0 cap=0 next=374 best=false
+### [tws2.4 beat=35 (doc SWAP)] ALIVE at ring 45  RING_STATS.len=45
+    ring41 nodes=159 acc=5170 blk=236 horiz=0 dom=3454 betterLoss=1280 set=436 dir=0 cap=0 next=130 best=false
+    ring42 nodes=130 acc=4171 blk=249 horiz=0 dom=2887 betterLoss=905 set=379 dir=0 cap=0 next=117 best=false
+    ring43 nodes=117 acc=3760 blk=218 horiz=0 dom=2374 betterLoss=1012 set=374 dir=0 cap=0 next=136 best=false
+    ring44 nodes=136 acc=4467 blk=157 horiz=0 dom=2839 betterLoss=1166 set=462 dir=0 cap=0 next=167 best=false
+### [tws2.8 PLAIN] ALIVE at ring 45  RING_STATS.len=45
+    ring41 nodes=302 acc=10679 blk=192 horiz=0 dom=7566 betterLoss=2276 set=837 dir=0 cap=0 next=354 best=false
+    ring42 nodes=354 acc=12526 blk=208 horiz=0 dom=9053 betterLoss=2498 set=975 dir=0 cap=0 next=409 best=false
+    ring43 nodes=409 acc=14597 blk=101 horiz=0 dom=10460 betterLoss=3051 set=1086 dir=0 cap=0 next=490 best=false
+    ring44 nodes=490 acc=17405 blk=193 horiz=0 dom=12665 betterLoss=3431 set=1309 dir=0 cap=0 next=559 best=false
+### [tws2.8 gybe=35 (doc ADD)] ALIVE at ring 45  RING_STATS.len=45
+    ring41 nodes=387 acc=12975 blk=182 horiz=0 dom=9474 betterLoss=2501 set=1000 dir=0 cap=0 next=461 best=false
+    ring42 nodes=461 acc=15439 blk=219 horiz=0 dom=11397 betterLoss=2879 set=1163 dir=0 cap=0 next=535 best=false
+    ring43 nodes=535 acc=17975 blk=185 horiz=0 dom=13392 betterLoss=3252 set=1331 dir=0 cap=0 next=643 best=false
+    ring44 nodes=643 acc=21440 blk=375 horiz=0 dom=16049 betterLoss=3790 set=1601 dir=0 cap=0 next=744 best=false
+### [tws2.8 beat=35 (doc SWAP)] ALIVE at ring 45  RING_STATS.len=45
+    ring41 nodes=261 acc=8800 blk=74 horiz=0 dom=5955 betterLoss=2109 set=736 dir=0 cap=0 next=321 best=false
+    ring42 nodes=321 acc=10722 blk=178 horiz=0 dom=7568 betterLoss=2313 set=841 dir=0 cap=0 next=387 best=false
+    ring43 nodes=387 acc=12897 blk=238 horiz=0 dom=9173 betterLoss=2691 set=1033 dir=0 cap=0 next=475 best=false
+    ring44 nodes=475 acc=15868 blk=244 horiz=0 dom=11387 betterLoss=3261 set=1220 dir=0 cap=0 next=560 best=false
+### [tws3 PLAIN] ALIVE at ring 45  RING_STATS.len=45
+    ring41 nodes=761 acc=26933 blk=397 horiz=0 dom=20476 betterLoss=4466 set=1991 dir=0 cap=0 next=864 best=false
+    ring42 nodes=864 acc=30604 blk=430 horiz=0 dom=22965 betterLoss=5357 set=2282 dir=0 cap=0 next=1030 best=false
+    ring43 nodes=1030 acc=36500 blk=488 horiz=0 dom=27450 betterLoss=6425 set=2625 dir=0 cap=0 next=1129 best=false
+    ring44 nodes=1129 acc=40266 blk=284 horiz=0 dom=30930 betterLoss=6555 set=2781 dir=0 cap=0 next=1175 best=false
+### [tws3 gybe=35 (doc ADD)] ALIVE at ring 45  RING_STATS.len=45
+    ring41 nodes=610 acc=20367 blk=319 horiz=0 dom=15166 betterLoss=3681 set=1520 dir=0 cap=0 next=697 best=false
+    ring42 nodes=697 acc=23130 blk=508 horiz=0 dom=16911 betterLoss=4418 set=1801 dir=0 cap=0 next=832 best=false
+    ring43 nodes=832 acc=27777 blk=436 horiz=0 dom=20497 betterLoss=5280 set=2000 dir=0 cap=0 next=896 best=false
+    ring44 nodes=896 acc=30056 blk=321 horiz=0 dom=22672 betterLoss=5251 set=2133 dir=0 cap=0 next=954 best=false
+### [tws3 beat=35 (doc SWAP)] ALIVE at ring 45  RING_STATS.len=45
+    ring41 nodes=716 acc=23942 blk=348 horiz=0 dom=18122 betterLoss=3995 set=1825 dir=0 cap=0 next=827 best=false
+    ring42 nodes=827 acc=27715 blk=331 horiz=0 dom=20782 betterLoss=4809 set=2124 dir=0 cap=0 next=987 best=false
+    ring43 nodes=987 acc=33115 blk=363 horiz=0 dom=25130 betterLoss=5537 set=2448 dir=0 cap=0 next=1122 best=false
+    ring44 nodes=1122 acc=37566 blk=452 horiz=0 dom=29315 betterLoss=5700 set=2551 dir=0 cap=0 next=1166 best=false
+### [tws8 PLAIN] ALIVE at ring 45  RING_STATS.len=45
+    ring41 nodes=10339 acc=367432 blk=3670 horiz=0 dom=281365 betterLoss=63652 set=22415 dir=0 cap=0 next=11776 best=false
+    ring42 nodes=11776 acc=418421 blk=4353 horiz=0 dom=323831 betterLoss=67515 set=27075 dir=0 cap=0 next=12301 best=false
+    ring43 nodes=12301 acc=436399 blk=5180 horiz=0 dom=365778 betterLoss=48262 set=22359 dir=0 cap=0 next=9583 best=false
+    ring44 nodes=9583 acc=338818 blk=5117 horiz=0 dom=273583 betterLoss=44638 set=20597 dir=0 cap=0 next=8757 best=false
+### [tws8 gybe=35 (doc ADD)] ALIVE at ring 45  RING_STATS.len=45
+    ring41 nodes=10491 acc=351862 blk=3709 horiz=0 dom=271773 betterLoss=58746 set=21343 dir=0 cap=0 next=11929 best=false
+    ring42 nodes=11929 acc=400266 blk=4111 horiz=0 dom=311521 betterLoss=62664 set=26081 dir=0 cap=0 next=12372 best=false
+    ring43 nodes=12372 acc=414559 blk=4898 horiz=0 dom=348223 betterLoss=44686 set=21650 dir=0 cap=0 next=9644 best=false
+    ring44 nodes=9644 acc=321989 blk=4921 horiz=0 dom=260652 betterLoss=41663 set=19674 dir=0 cap=0 next=8802 best=false
+### [tws8 beat=35 (doc SWAP)] ALIVE at ring 45  RING_STATS.len=45
+    ring41 nodes=11198 acc=375787 blk=3822 horiz=0 dom=293877 betterLoss=57663 set=24247 dir=0 cap=0 next=10787 best=false
+    ring42 nodes=10787 acc=360542 blk=5123 horiz=0 dom=303942 betterLoss=37606 set=18994 dir=0 cap=0 next=8090 best=false
+    ring43 nodes=8090 acc=269251 blk=4887 horiz=0 dom=214096 betterLoss=36742 set=18413 dir=0 cap=0 next=7768 best=false
+    ring44 nodes=7768 acc=258350 blk=4876 horiz=0 dom=201271 betterLoss=38238 set=18841 dir=0 cap=0 next=8167 best=false
 ```
-
-The three TWS 2.0 death runs share the frontier-size sequence 9, 12, 6, 2, 0
-while their per-ring counters differ — see §2.3.
