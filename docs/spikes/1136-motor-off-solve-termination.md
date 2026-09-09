@@ -140,12 +140,15 @@ those 188 rings**, not merely on the dying ones.
 prune cell at the end of every ring (the loop over `next` after the frontier
 cap). On the next ring `visitedDominates(seen, child)` discards any child that
 is no better on **both** axes — `seen.costMs <= cand.costMs && seen.maneuvers
-<= cand.maneuvers`. A node's own stamp dominates its own same-cell children by
-construction, since the ranking clock only advances and maneuvers only
-accumulate. `pruneKey`'s third component is `'M' | 'P' | 'S'`, so a beating
-thread has two lanes (port and starboard) rather than one.
+<= cand.maneuvers`. A node's own stamp dominates a child that lands back in the
+node's **own** cell by construction, since the ranking clock only advances and
+maneuvers only accumulate — but read that clause with the paragraph below: on
+this route only a `dtS/2`..`dtS/8` substep produces a same-cell child at all,
+so self-domination is a sufficient condition that a full step cannot meet.
+`pruneKey`'s third component is `'M' | 'P' | 'S'`, so a beating thread has two
+lanes (port and starboard) rather than one.
 
-**Label: the clause above is ARGUED from the code, not measured.** The
+**Label: the same-cell clause above is ARGUED from the code, not measured.** The
 instrumentation counts `dominatedDrops` but does not record *which* stamp
 dominated each dropped child — the parent's own cell, or a cell stamped in an
 earlier ring by an entirely different thread. Both are `visitedDominates`
@@ -160,7 +163,8 @@ Salona-45 genoa speed over TWA, computed here from the committed polar, is
 0.003` (~190 m). A full-step child therefore lands several prune cells away
 from its parent and cannot be dominated by its parent's own stamp. Same-cell
 self-domination is reachable only through the `dtS/2`, `dtS/4`, `dtS/8`
-substep retry, whose shortest hop is ~128 m at TWS 2.8 — inside one cell. The
+substep retry, whose shortest hop is under 130 m at TWS 2.8's BEST TWA, and
+less at any other heading — inside one cell either way. The
 blocked counts on the dying rings are large (66, 53, 85 against accepted 104,
 49, 51), which is consistent with most accepted edges being fitted substeps,
 but **the instrumentation does not split `accepted` into full-step and fitted**,
@@ -730,17 +734,24 @@ index d34083e..c133712 100644
 +}[] = [];
 +export function resetRingStats() { RING_STATS.length = 0; }
  const MOTOR_TWAS = [0, 20, 35];
+ // #243 depth comfort preference: the maximum fraction by which a segment's
+ // clock cost is inflated when its clearance sits exactly at the gate (linear
 @@ -400,6 +408,7 @@ export function solve(p: SolveParams): SolveResult {
      }
  
      const byKey = new Map<string, Node>();
 +    let _accepted = 0, _blocked = 0, _horizonDrops = 0, _dominatedDrops = 0, _betterLoss = 0, _byKeySet = 0, _directAcc = 0, _captureAcc = 0;
      for (const node of frontier) {
+       const from = { lat: node.lat, lon: node.lon };
+       const w = wind.sample(from, node.tMs);
 @@ -466,6 +475,7 @@ export function solve(p: SolveParams): SolveResult {
+             comfortDepthM,
            );
            if (directFactor !== null) {
 +            _directAcc++;
              const penaltyS = dtS - effS;
+             // TRUE elapsed time for this hop — unaffected by the depth
+             // comfort factor (#243 §D.5: geometry and true time stay honest;
 @@ -513,6 +523,7 @@ export function solve(p: SolveParams): SolveResult {
          const fullFactor = edgeFactor(mask, from, end, gate, comfortDepthM);
          let factor: number;
@@ -748,7 +759,10 @@ index d34083e..c133712 100644
 +          _accepted++;
            factor = fullFactor;
          } else {
+           // A full step can be far longer than the local channel is straight
 @@ -540,12 +551,14 @@ export function solve(p: SolveParams): SolveResult {
+             }
+           }
            if (fitted === null) {
 +            _blocked++;
              sawBlocked = true;
@@ -759,11 +773,19 @@ index d34083e..c133712 100644
          }
 -        if (node.tMs + stepMs > horizonMs) continue;
 +        if (node.tMs + stepMs > horizonMs) { _horizonDrops++; continue; }
+ 
+         const child: Node = {
+           lat: end.lat,
 @@ -587,6 +600,7 @@ export function solve(p: SolveParams): SolveResult {
+               comfortDepthM,
+             );
              if (captureFactor !== null) {
 +              _captureAcc++;
                const candCostMs = child.costMs + durMs / captureFactor;
+               if (!best || candCostMs < best.costMs) {
+                 const last: Node = {
 @@ -608,9 +622,9 @@ export function solve(p: SolveParams): SolveResult {
+ 
          const key = pruneKey(child.lat, child.lon, child.kind, child.board);
          const seen = visited.get(key);
 -        if (seen !== undefined && visitedDominates(seen, child)) continue;
@@ -783,6 +805,7 @@ index d34083e..c133712 100644
 +      directAccepted: _directAcc, captureAccepted: _captureAcc, nextLen: next.length, hasBest: best !== null });
      frontier = next;
      tMs += dtS * 1000;
+     // Report the true frontier clock: substepped nodes lag the ring clock by
 ```
 
 Note the `_directAcc++` site sits inside the direct-arrival block, which ends
