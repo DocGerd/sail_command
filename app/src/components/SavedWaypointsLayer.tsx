@@ -73,7 +73,14 @@ const EMPTY = { type: 'FeatureCollection' as const, features: [] };
  * Deferring costs nothing, because `installStyleSetup` re-runs this setup on
  * every 'styledata' and DataLayers' own `addLayer` calls fire that event —
  * so the layers appear as soon as the anchor does, and the same mechanism
- * re-creates them after a mid-session `map.setStyle()` (#153). Before that
+ * re-creates them after a mid-session `map.setStyle()` (#153). What the
+ * deferral actually waits on is wider than "a style mutation": DataLayers'
+ * own setup returns early while its `assets` state is still null
+ * (`loadRoutingAssets()` hasn't resolved), so `HARBOR_CIRCLE_LAYER` does not
+ * exist until that network round trip completes — the real wait here is on
+ * a FETCH, not merely on the style being parsed. The degradation this
+ * implies is accepted: harbours are equally absent from the map during that
+ * same window, so there is nothing worse to sit under. Before that
  * moment the component is in a genuine null phase: no source, no layers, no
  * click target. Failing that way round is the safe direction — the shared
  * fake map and real MapLibre both DROP a layer whose beforeId names a
@@ -312,7 +319,13 @@ export default function SavedWaypointsLayer({ armed, onPick }: SavedWaypointsLay
       if (armedRef.current) map.getCanvas().style.cursor = 'pointer';
     };
     const handleLeave = () => {
-      map.getCanvas().style.cursor = '';
+      // #1015: guarded the SAME way as handleEnter, and for the same
+      // reason — DataLayers registers its own enter/leave pair on
+      // sc-harbor-points, and an unguarded clear here wipes a cursor THAT
+      // handler set while the pointer is still over an overlapping harbour
+      // marker (this layer never sets a cursor while disarmed, so there is
+      // nothing of its own to clean up in that state).
+      if (armedRef.current) map.getCanvas().style.cursor = '';
     };
     map.on('click', SAVED_WAYPOINT_LAYER, handleClick);
     map.on('mouseenter', SAVED_WAYPOINT_LAYER, handleEnter);
