@@ -1730,36 +1730,42 @@ making design-level decisions; do not silently deviate.
   bookkeeping: a develop push evicts production's CDN edge Range objects as
   described in the smoke-probe bullet above, and it is also
   the only thing that makes "check the About dialog on UAT" a meaningful request.
-- The github-pages ENVIRONMENT deployment policy (repo Settings, not YAML)
-  gates deploys by triggering REF — branch entries `main`+`develop` (#96) plus
-  a TAG entry `v*` (#197; deliberately permissive — `deploy.yml`'s `v[0-9]*`
-  trigger glob is the narrowing gate, so tightening the release shape never
-  needs a Settings change). A new deploying branch or tag pattern needs a policy
-  entry (`gh api repos/DocGerd/sail_command/environments/github-pages/deployment-branch-policies
-  -f name=<name> -f type=branch|tag`) or the deploy job is rejected with "not
-  allowed to deploy" — AFTER the build job has already run, so the run reds
-  late, not fast.
-- **#267 finding: the three-environment list cannot be reduced to two, and no
-  protection rule can be added anywhere without either removing the only real
-  gate or gating nothing.** Measured 2026-09-09: `gh api
-  repos/DocGerd/sail_command/environments/<name>` read `github-pages` ->
-  `branch_policy`, `prod` -> `[]`, `uat` -> `[]` — byte-identical to the
-  issue's own 2026-07-30 snapshot, so nothing drifted in the six intervening
-  weeks. `github-pages` is the ONLY one of the three that gates anything (its
-  branch/tag deployment policy is documented in the "github-pages
-  ENVIRONMENT deployment policy" bullet above and in `deploy.yml`'s own
-  `:578` comment) — deleting it removes the sole real gate, and renaming it
-  is the same platform trap the #127 spike already established. Adding a
-  wait timer or a required reviewer to it would break the UNATTENDED
-  `v[0-9]*` release-tag path (#197): that push must deploy with nobody
-  clicking anything. `prod` (`deploy.yml:735-759`) and `uat`
-  (`deploy.yml:714-732`) are bookkeeping-only entries recorded so the
-  Deployments UI shows which target a run published to (#106/#127/#197, also
-  documented in the "Deploy — concurrency and environments" bullet) — a
-  protection rule on either would gate NOTHING while reading as a release
-  gate, worse than no rule at all because it would misinform a future
-  maintainer. No YAML or environment setting was changed to reach this
-  finding.
+- **The environment deployment-branch policy (repo Settings, not YAML) gates
+  deploys by triggering REF, and since 2026-09-09 (#267) THREE environments
+  carry one, not one alone** — `github-pages`, `prod` and `uat` each hold
+  their own independently-configured but IDENTICAL policy: `deployment_branch_policy:
+  {protected_branches: false, custom_branch_policies: true}` plus branch
+  entries `main`+`develop` (#96) and a TAG entry `v*` (#197; deliberately
+  permissive — `deploy.yml`'s `v[0-9]*` trigger glob is the narrowing gate,
+  so tightening the release shape never needs a Settings change). Only
+  `github-pages` gates the real Pages deploy (the OIDC flow is bound to it,
+  #127 spike — renaming it is the same trap); `prod`'s and `uat`'s policies
+  gate their own bookkeeping jobs (`prod-environment`/`uat-environment` in
+  `deploy.yml`) redundantly with those jobs' own `if:` ref conditions — belt
+  and suspenders, not a second real gate. **A new deploying branch or tag
+  pattern needs the SAME policy entry added to ALL THREE environments, not
+  just `github-pages`** — miss one and only that environment's job is
+  rejected with "not allowed to deploy" while the others succeed, which
+  reads as one broken job rather than a missed policy update across three
+  places. Entry command:
+  `gh api repos/DocGerd/sail_command/environments/<env>/deployment-branch-policies
+  -f name=<name> -f type=branch|tag` (repeat per environment) — rejection
+  happens AFTER the build job has already run, so the run reds late, not
+  fast.
+- **#267 finding, NARROWED 2026-09-09, not closed.** The first draft checked
+  only `required_reviewers`/`wait_timer` and concluded no protection could be
+  added to `prod`/`uat`; re-measured that day, both carried
+  `deployment_branch_policy: null` while `github-pages` already had it enabled
+  — a mechanism needing NO human in the loop — so it was mirrored onto both
+  (see the environment deployment-branch policy bullet above for the resulting
+  shape). `github-pages` still cannot be deleted or renamed (#127 spike), and
+  a REQUIRED REVIEWER on it would still break the unattended tag path (#197).
+  Correcting the first draft's other claim: a WAIT TIMER needs no human click,
+  but it lengthens how long the deploy job sits PENDING in the shared `pages`
+  concurrency group before calling `actions/deploy-pages`, and the "Deploy-
+  collision timing" bullet already shows a merely-pending run there is
+  cancelled by a newer push same as a running one — so a wait timer reopens
+  the #398 collision hazard, not the "needs a human" violation first claimed.
 - UAT-only UI (#107): gate on the `__SC_UAT__` Vite `define` (set by
   `SC_DEPLOY_ENV=uat`) with a fold-exact ternary — a JSX `&&` gate leaves a
   minified residue in the prod bundle — and keep its strings in a
