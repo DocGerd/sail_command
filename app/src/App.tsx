@@ -865,6 +865,25 @@ function AppShell() {
     [insertViaNearestOrAppend],
   );
 
+  // #850: drag-the-route-line-to-insert-a-waypoint (RouteLayer.tsx's
+  // hover-reveal grab handle) — the SAME §2.6 nearest-chain placement as a
+  // seamark or saved-waypoint pick, just fed a bare dropped LatLon (a valid
+  // ViaPoint — `name` is optional) instead of a named waypoint. Always
+  // succeeds: no navigability check at insert time, an unnavigable drop
+  // surfaces only via the next Plan-route press's own warnings — matching
+  // the seamark/saved-waypoint precedent (insertViaNearestOrAppend), which
+  // also inserts unconditionally.
+  //
+  // #850 §5 names a DIFFERENT precedent for a rejected drop specifically —
+  // reuse ViaMarkers.tsx's existing snapBack pattern. This does not do
+  // that; it follows the seamark/saved-waypoint precedent instead. That is
+  // a DEVIATION from what the issue names, not something the issue
+  // licenses — recorded as such in the PR body's Deviations section.
+  const handleRouteLineInsert = useCallback(
+    (point: LatLon) => insertViaNearestOrAppend(point),
+    [insertViaNearestOrAppend],
+  );
+
   // #924: the SAME handler, reached by tapping the saved-waypoint ring on
   // the map instead of the panel row. Identical insertion by construction —
   // that is what makes SavedWaypoints.tsx's button the keyboard equivalent
@@ -1390,6 +1409,7 @@ function AppShell() {
             draftViaPoints={draftViaPoints}
             viaReplanning={viaDraftStale}
             onViaDragEnd={handleViaDragEnd}
+            onRouteLineInsert={handleRouteLineInsert}
           />
           {/* #25 addendum: the standalone ownship marker — always mounted
               (like DataLayers above), gated only on there being a fix, which
