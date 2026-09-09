@@ -166,6 +166,27 @@ function labelLiteral(label: string): RegExp {
  * whichever comment opener appears EARLIER in the source always wins, in both
  * directions. The `(^|[^:])` prefix keeps a `://` inside a real string literal
  * from being read as a line comment.
+ *
+ * KNOWN RESIDUAL, latent not live (#1121 review round 2, Minor): this
+ * function never tracks string state at all — no `inString` mode, unlike
+ * `./sourceStrip`'s regex-aware character scanner. It cannot desync from a
+ * QUOTE inside a regex literal the way the guards `./sourceStrip` fixed
+ * could — but it has a DIFFERENT, sibling hazard: a regex literal in
+ * `planRoute.ts`/`isochrone.ts` containing a bare comment-opener sequence
+ * (two consecutive forward slashes not preceded by a colon, or a forward
+ * slash immediately followed by an asterisk) would be misread as a genuine
+ * comment opener and silently delete real code from the scanned text — the
+ * same fail-open direction the paragraph above already worries about for a
+ * bare `//` inside a STRING, just triggered by a regex literal instead.
+ * Zero regex literals exist in either scanned file today (checked: no
+ * `.test(`/`.match(`/`.replace(`/`.exec(`/`RegExp(` call against a literal
+ * in either file), so this is LATENT, not live. `#1121` deliberately did
+ * NOT adopt `./sourceStrip` here: that helper MASKS string content to
+ * close its own regex-literal hole, while this guard's whole detection
+ * depends on reading quoted label literals VERBATIM — swapping strippers
+ * would break the very detection this guard exists to provide. If a
+ * future edit adds a regex literal to either scanned file, re-derive
+ * whether this residual has gone live before trusting a green result here.
  */
 function stripComments(src: string): string {
   return src.replace(/\/\*[\s\S]*?\*\/|(^|[^:])\/\/[^\n]*/g, (_match, before?: string) =>
