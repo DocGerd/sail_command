@@ -396,7 +396,7 @@ for (const [label, viewport] of Object.entries(SINGLE_BANNER_VIEWPORTS)) {
       // A second, independent signal from the same fix (top offset moved,
       // not a z-index reorder) rather than a restatement of the hit test.
       // #992: the OVERLAP poll below is now structurally guaranteed too at
-      // tabletPortrait/phonePortrait/narrowPortrait360 (this loop's
+      // tabletPortrait/phonePortrait/narrowPortrait360 (this loop's narrow,
       // non-short-landscape entries) -- app.css's #909 grid block puts
       // `.banner-area` and `.map-area` (containing `.map-stack-tl`) in
       // disjoint grid rows here (narrow, non-short-landscape), overriding the
