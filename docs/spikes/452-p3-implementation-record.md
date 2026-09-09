@@ -325,10 +325,118 @@ be pushed past it by a 1.33x factor and would fail as a user-facing
 `search-budget-exceeded`, with the whole vitest suite still green. The Node
 figures above are NOT comparable to a browser worker's budget (CLAUDE.md is
 explicit on this); only the RATIO transfers. A real-browser timing pass on
-Flensburg→Marstal is owed and has not been done.
+Flensburg→Marstal was owed; it is now MEASURED below (R4-B, 2026-09-09).
 
-**Also not done:** no e2e run (port 4173 is contended), and no real-browser
-pass of any kind.
+**Also not done at the time R4 was written:** no e2e run (port 4173 is
+contended — `app/e2e/**` still gains no coverage of this route), and no
+real-browser pass of any kind. The real-browser gap is closed by R4-B
+immediately below; the e2e gap is unchanged.
+
+**R4-B — real-browser wall-clock timing, MEASURED 2026-09-09 (#931).**
+
+*Method.* A `npm --prefix app run dev` manual pass (NOT `npm run e2e` — this
+does not touch the contended port-4173 preview slot), driven by Playwright
+MCP's `browser_run_code_unsafe` against a fresh Chromium page. `Worker`
+was wrapped via `page.addInitScript` (a `class InstrumentedWorker extends
+Worker` swapped onto `window.Worker` before navigation) to timestamp the
+exact `{type:'plan'}` `postMessage` call and the matching `{type:'result'}`
+message — the SAME two events `protocol.ts`'s own deadline brackets
+(`startedAtMs = Date.now()` at the `plan` handler; `expired()` checked
+against it), so this measures the worker's OWN budgeted window, not a wider
+UI round-trip that would also include the pre-solve wind fetch. No source
+file was edited to obtain this — the instrumentation lives entirely in the
+injected page script. Origin `Flensburg`, destination `Marstal`, default
+boat (`salona-45`) and `DEFAULT_SETTINGS` were driven through the real
+`PlannerPanel` UI (`section[aria-label="Start"]`/`"Ziel"` comboboxes, the
+`Route planen` button), never via a direct `planRoute()` call.
+
+*Environment.* WSL2 (`Linux 6.18.33.2-microsoft-standard-WSL2`), dev server
+on `localhost:5834` (chosen to avoid the fixed e2e preview port 4173),
+Chromium via the Playwright MCP server. **Not an idle machine**: this ran
+inside a multi-agent session with roughly a dozen sibling Claude Code agents
+active concurrently in other worktrees (git operations, other dev servers,
+test runs), so the CPU was under real, unquantified contention — a load
+condition worth naming per CLAUDE.md's own "never quote a duration measured
+under load [without saying so]" rule, not a clean baseline.
+
+*Wind.* LIVE Open-Meteo (no `?windFixture=`) — an ordinary dev-server pass,
+per the E2E section above ("do NOT regenerate [the fixture] reflexively").
+The committed `wind-sw12.json` e2e fixture was never touched.
+
+*Samples (4, two departure configurations, two repeats each — the worker
+posts exactly one `{type:'plan'}` message per `Route planen` click, covering
+both rigs sequentially inside that one budgeted window):*
+
+| label | departure | `event.type` (worker) | `status` | Δ`performance.now()` | Δ`Date.now()` |
+|---|---|---|---|---|---|
+| default-1 | next full hour (UI default) | `result` | `ok` | 79.871 s | 71.201 s |
+| default-2 | next full hour (UI default) | `result` | `ok` | 84.595 s | 75.861 s |
+| noon-1 | today 12:00 local | `result` | `ok` | 77.360 s | 71.567 s |
+| noon-2 | today 12:00 local | `result` | `ok` | 77.190 s | 71.486 s |
+
+All four returned `status: 'ok'` — confirmed by inspecting the rendered
+result, not just the returned status string: the accessibility snapshot
+after the noon-2 run shows the German shallow-water banner reading
+"Geplant mit einer Sicherheitstiefe von 2,3 m" (planned at a 2.3 m safety
+depth) and "0,3 nm dieser Route verlaufen durch Wasser, das flacher als die
+eingestellte Sicherheitstiefe von 3,0 m kartiert ist" — i.e.
+`requestedDepthM 3.0` / `usedDepthM ≈ 2.3`, exactly the #53-relaxed
+Flensburg→Marstal shape this file's own `realmask.repro.*` DEFAULT_SETTINGS
+case asserts. This was not an accidental no-route or a different route.
+
+*A genuine anomaly, reported rather than smoothed over:* the two clocks
+disagree by 5.7–8.7 s per sample, `performance.now()` (monotonic, immune to
+system-clock adjustment) consistently reading LARGER than `Date.now()`
+(the wall clock `protocol.ts`'s own budget check actually uses). This was
+not investigated to a root cause; the leading hypothesis is WSL2 guest-clock
+drift/correction under the concurrent CPU load described above, since a
+`Date.now()` deficit is the direction that would make the wall clock
+UNDER-report elapsed time relative to a monotonic timer sampled at the same
+two instants. Because it is `Date.now()` that `protocol.ts` checks against
+`budgetMs`, the `Date.now()` column is the one that answers "would the
+shipped budget check itself have fired" on THIS run — but because it may be
+biased toward UNDER-counting real elapsed time here, the `performance.now()`
+column is treated as the conservative figure for the headroom statement
+below. Both are reported so neither is silently preferred without saying so.
+
+*Comparison against `PLAN_BUDGET_MS = 120_000`* (`app/src/routing/isochrone.ts`):
+worst observed sample (default-2) took **84.595 s** by the monotonic clock,
+**75.861 s** by the wall clock `protocol.ts` itself checks. Headroom: **35.4 s
+(29.5% of budget) by the conservative reading; 44.1 s (36.8%) by the wall
+clock the budget check uses.** Best observed sample (noon-2) leaves
+42.8–48.5 s of headroom on the same two readings.
+
+*Plain statement.* This is NOT a comfortable margin. The operative figure is
+**36.8% headroom (44.1 s)**, not the 29.5% conservative reading above:
+`protocol.ts:102/106` checks the budget against `Date.now()` and nothing
+else, so that is the clock whose comparison actually decides whether this
+route would time out. Because this ran under the CPU contention described in
+*Environment* above, these figures are a conservative LOWER BOUND on the true
+margin, not an upper one — an idle machine would plausibly solve faster, so
+the real at-rest headroom is likely larger than 36.8%, not smaller. Every
+sample landed within 71–85 s of the same 120 s ceiling this route is known
+(R4, above) to approach in Node under a 1.33x HEAD/BASE regression — and the
+browser figures measured here sit close in magnitude to that Node HEAD
+figure (77.61 s), not a claim that the two numbers are directly comparable.
+A machine meaningfully slower than this one, or a route/forecast combination
+that drives the solver harder than either sample here, could plausibly exceed
+`PLAN_BUDGET_MS` and surface as a user-facing `search-budget-exceeded` on a
+route the shipped mask/relaxation logic would otherwise route correctly.
+That the noon departure (chosen to probe #649's "shifts more of the route
+into relaxed/marginal water" scenario) was, on THIS day's live wind, no
+slower than the default departure — unlike #649's own Node figures, where a
+12:00 departure against a DIFFERENT, 2026-08-21 forecast solved in 104 s
+against 06:00's 25.8 s — is itself evidence that solve time is
+forecast-dependent in a way this single live-wind snapshot cannot bound;
+it does not establish that a shifted departure is generally safe.
+
+*What this does NOT establish, stated per the issue's own framing:* this is
+one machine, one day's live wind, one boat, four samples under real but
+unquantified concurrent-agent CPU contention. It replaces the "not been
+done" sentence at #931's request with a genuine real-browser measurement,
+not with a proof that the browser worker is safely inside budget on every
+machine or every forecast. Item 5 (§6, below) remains untouched by this
+addition.
 
 **R7 note.** Only `1852` appears in the code. The spike's `1852 m / 3704 m`
 pairing is deliberately absent from every comment: they license 34x-vs-90x

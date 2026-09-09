@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-09-09
+
+### Changed
+
+- The "no route found" message no longer claims the destination is provably unreachable — the router cannot tell a genuinely unreachable destination from a search that gave up before finishing, so the message now says only that no route was found, in both English and German (#265).
+
+### Fixed
+
+- Harbour name labels no longer disappear near a subset of harbours at mid-range map zoom, where the larger seamark symbols introduced in an earlier release (#860) were winning the on-map layout priority over the label text (#1126).
+
 ## [0.29.0] - 2026-09-09
 
 ### Fixed
@@ -1044,7 +1054,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.29.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.30.0...HEAD
+[0.30.0]: https://github.com/DocGerd/sail_command/compare/v0.29.0...v0.30.0
 [0.29.0]: https://github.com/DocGerd/sail_command/compare/v0.28.0...v0.29.0
 [0.28.0]: https://github.com/DocGerd/sail_command/compare/v0.27.0...v0.28.0
 [0.27.0]: https://github.com/DocGerd/sail_command/compare/v0.26.0...v0.27.0

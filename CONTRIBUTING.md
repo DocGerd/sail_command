@@ -229,14 +229,14 @@ labels on **pull requests** are applied automatically from changed paths by
 
 **Milestones**
 
-- `v0.30.0` — the milestone now being filled; it closes when the release PR
+- `v0.31.0` — the milestone now being filled; it closes when the release PR
   merges and the tag is pushed.
-- `v0.31.0` — the next MINOR release, opened fresh at the `v0.29.0` cut per
+- `v0.32.0` — the next MINOR release, opened fresh at the `v0.30.0` cut per
   the roll-forward convention below.
 - `Backlog` — accepted, not yet scheduled into a release.
 - `Icebox` — deferred / maybe-never; revisit opportunistically.
 
-`v0.4.0` through `v0.28.0` are closed (plus the `v0.5.1`, `v0.12.1`, and
+`v0.4.0` through `v0.29.0` are closed (plus the `v0.5.1`, `v0.12.1`, and
 `v0.13.1` patch milestones). Whichever cut is in flight is always the
 exception, and reads the same way every time: its issues are closed while
 its milestone object is not, because that closes only at tag push (first
@@ -297,6 +297,18 @@ issue and the floor is met on that basis — read literally against a scarce
 bug supply, the 20% ratio would work backwards into a cap on milestone size
 (`ceil(N/5) <= <bugs open>` bounding `N`), and that reading is rejected: the
 reserve never limits how much non-bug work a milestone may carry.
+
+**"Available" excludes a bug whose own investigation recommends staying
+deferred, and the issue has been moved to `Backlog` (or otherwise confirmed
+by the maintainer) on that basis** — a spike recommending deferral is not
+by itself sufficient; the exclusion has to be checkable against the
+tracker, not against a document's conclusion, the same reason the reserve's
+denominator is the milestone's ISSUES rather than a notional target size.
+At the `v0.30.0` cut (2026-09-09) the maintainer ruled #354 out of that
+supply on exactly this basis — its spike
+(`docs/spikes/354-mode-churn.md`) recommends staying deferred and the issue
+itself carries milestone `Backlog` — so the cut counted every other open
+bug and met the floor without it.
 
 **Accessibility work is ranked by who is locked out.** Work that removes a
 barrier created by a *situational* impairment — glare, gloves, wet or cold

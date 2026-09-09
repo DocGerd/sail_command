@@ -1,4 +1,5 @@
-import { describe, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
+import { assertNonVacuousStrip, stripCommentsAndStrings } from './sourceStrip';
 
 // #342 structural guard: a hardcoded `testTimeout`/`timeout` literal in a
 // test file silently reintroduces the exact failure this issue exists to
@@ -56,56 +57,29 @@ const testFiles = import.meta.glob<string>(['../**/*.test.{ts,tsx}', '!./timeout
   eager: true,
 });
 
-// Same character-scanning comment stripper as cameraAnimationCallSites.test.ts
-// (kept local rather than shared — extracting a two-file-used helper isn't
-// worth the indirection, and each guard documents its own known residuals
-// independently). KNOWN RESIDUAL, latent not live: no notion of a regex
+// Comment/string stripper: `./sourceStrip`'s shared, regex-literal-aware
+// implementation.
+//
+// #1121: this file used to carry its own local character-scanning stripper
+// (the same shape as `cameraAnimationCallSites.test.ts`'s former one) with a
+// documented "KNOWN RESIDUAL, latent not live" — no notion of a regex
 // literal, so a quote character inside one could desync the string-state
-// tracking; the failure direction is a FALSE GREEN (a hardcoded timeout goes
-// unreported), never a false failure — no such regex exists near a timeout
-// literal in this codebase today (checked).
-function stripComments(source: string): string {
-  let out = '';
-  let i = 0;
-  let inString: '"' | "'" | '`' | null = null;
-  while (i < source.length) {
-    const c = source[i]!;
-    const c2 = source[i + 1];
-    if (inString) {
-      out += c;
-      if (c === '\\') {
-        out += c2 ?? '';
-        i += 2;
-        continue;
-      }
-      if (c === inString) inString = null;
-      i += 1;
-      continue;
-    }
-    if (c === '"' || c === "'" || c === '`') {
-      inString = c;
-      out += c;
-      i += 1;
-      continue;
-    }
-    if (c === '/' && c2 === '/') {
-      while (i < source.length && source[i] !== '\n') i += 1;
-      continue;
-    }
-    if (c === '/' && c2 === '*') {
-      i += 2;
-      while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) {
-        if (source[i] === '\n') out += '\n';
-        i += 1;
-      }
-      i += 2;
-      continue;
-    }
-    out += c;
-    i += 1;
-  }
-  return out;
-}
+// tracking, a FALSE GREEN (a hardcoded timeout going unreported). That was
+// accepted as "no such regex exists near a timeout literal in this codebase
+// today" — true of the KEYED/POSITIONAL patterns' immediate neighbourhood,
+// but not of this guard's actual scan target: it globs EVERY
+// `app/src/**/*.test.{ts,tsx}` file, and several real test files in that
+// set carry quote-bearing regex literals (e.g.
+// `harborKnownDisconnected.test.ts`'s `/^\s*"([^"]+)"\s*:/gm`,
+// `safetyDepthHelpNbsp.test.ts`'s `/'options\.safetyDepth\.help':\s*'([^']*)'/`,
+// and `shallowWarningExtraction.test.ts`'s `['"`]` character classes) —
+// measured via a byte-diff against the regex-aware stripper, each desyncs
+// the old local stripper's string tracking for the rest of that file. Once
+// desynced, a hardcoded `testTimeout`/`timeout` literal added anywhere later
+// in the SAME file would silently stop being detected. `./sourceStrip`
+// closes this the same way #1120 closed it for
+// `startPreviewSwAssertCallSites.test.ts`'s own scan target.
+const stripComments = stripCommentsAndStrings;
 
 // --- Form 1: KEYED (`timeout: <number>` / `testTimeout: <number>`) ---
 //
@@ -259,5 +233,24 @@ describe('#342 structural guard: centralized coverage-aware test timeout', () =>
           `positional) from '../test/timeouts' instead of hardcoding a literal.`,
       );
     }
+  });
+
+  // #1121 non-vacuity control on the SHARED stripper, over a real file whose
+  // quote-in-regex-literal shape used to desync the old, non-regex-aware
+  // stripper this file carried locally (see `stripComments`'s header
+  // comment). A stripper that silently swallowed content downstream of that
+  // line would leave the assertion above passing having read a truncated
+  // file. The needle is text that appears well AFTER the quote-bearing
+  // regex literal (`/^\s*"([^"]+)"\s*:/gm`) in this real file.
+  it('the shared stripper does not vacuously truncate harborKnownDisconnected.test.ts at its quote-bearing regex literal', () => {
+    const path = './harborKnownDisconnected.test.ts';
+    const source = testFiles[path];
+    expect(source, `#1121 guard: ${path}?raw did not resolve`).toBeDefined();
+    const stripped = stripComments(source!);
+    // `readShippedKnownDisconnectedIds` is declared and used only AFTER the
+    // quote-bearing regex literal at line ~70 — its presence in the
+    // stripped output is direct evidence the scan reached past that line
+    // rather than getting stuck "in string" for the rest of the file.
+    assertNonVacuousStrip(stripped, 'readShippedKnownDisconnectedIds', path);
   });
 });

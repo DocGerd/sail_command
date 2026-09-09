@@ -967,6 +967,26 @@ test('#208 review "Major 2" / #368: the offline banner and .map-stack-tl no long
     // same region at all — asserted here as zero overlap, replacing the old
     // "who's on top at the overlap point" probe (still exercised, in more
     // depth, by layout.spec.ts's own #368 regression test).
+    // #992: at THIS viewport (375x667) the overlap assertion below is now
+    // STRUCTURALLY guaranteed too — app.css's #909 grid block puts
+    // `.banner-area` and `.map-area` (containing `.map-stack-tl`) in
+    // disjoint grid rows here (narrow, non-short-landscape), overriding the
+    // `--sc-banner-height` push this comment describes at equal selector
+    // specificity by source order. MUTATION-VERIFIED: forcing
+    // `--sc-banner-height: 0px` via the CSSOM against this exact viewport's
+    // real single-banner state (baseline 48px, non-zero) left the overlap
+    // at 0; the identical mutation at `shortLandscape844` (still the
+    // pre-#909 overlay layout — the #909 query never matches short
+    // landscape by construction) produced a genuine 200.28px² overlap, the
+    // positive control. NOT retired despite that, because the test below
+    // ALSO asserts the offline banner's own TEXT stays uncovered by
+    // ANYTHING (`topmostIsWithin`, further down) — a distinct claim the
+    // #909-grid argument does not cover (it is about `.banner-area` vs
+    // `.map-stack-tl`/`.route-layer-controls` specifically, not "nothing at
+    // all sits on top of the banner"), and that second assertion was never
+    // mutation-tested. Splitting the two into separate tests was judged out
+    // of scope for #992; retire the overlap half specifically if it is ever
+    // isolated into its own test.
     // #412: geometry is RE-SAMPLED on every poll tick below, never frozen
     // from a single read taken before the `--sc-banner-height` ResizeObserver
     // write (and the CSS push it drives) has settled — a stale pre-push read

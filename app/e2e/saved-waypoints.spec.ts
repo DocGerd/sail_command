@@ -678,6 +678,36 @@ test('#1016: a via-armed tap on a saved waypoint still inserts it BY NAME once a
     // re-enabling alone is not sufficient.
     await waitForLayer(page, 'sc-route-shallow');
 
+    // #1015 residual 6: the #924 paint-order loop above plans no route (its
+    // own comment says so explicitly), so it cannot assert saved-waypoints
+    // paint below the ROUTE stack. This test already drives a real plan and
+    // already awaits `sc-route-shallow`, so the state is already set up —
+    // reuse the same order/at() pattern rather than opening a new test.
+    // `sc-route-shallow` is `RouteLayer.tsx`'s `ROUTE_STACK_BOTTOM_LAYER`,
+    // added FIRST and with no `beforeId` in `setupLayers()` (that file's own
+    // comment: "the bottom-most layer of RouteLayer's stack"), and
+    // `setupLayers` is a single synchronous function with no `await` between
+    // its `addLayer` calls — so by the time `sc-route-shallow` is in the
+    // style, every other route layer added in that same call is too.
+    const routeOrder = await page.evaluate(() =>
+      (window as unknown as { __scE2eMap: ScTestMap }).__scE2eMap
+        .getStyle()
+        .layers.map((l) => l.id),
+    );
+    const atRoute = (id: string) => routeOrder.indexOf(id);
+    expect(
+      atRoute('sc-route-shallow'),
+      `sc-route-shallow missing from ${JSON.stringify(routeOrder)}`,
+    ).toBeGreaterThan(-1);
+    expect(
+      atRoute('sc-saved-waypoint-labels'),
+      `sc-saved-waypoint-labels missing from ${JSON.stringify(routeOrder)}`,
+    ).toBeGreaterThan(-1);
+    expect(
+      atRoute('sc-saved-waypoint-labels'),
+      'sc-saved-waypoint-labels must paint below the route stack (sc-route-shallow is its bottom layer)',
+    ).toBeLessThan(atRoute('sc-route-shallow'));
+
     await jumpToCluster(page, ZOOM_AT_OR_ABOVE_12);
     const target = SEED_WAYPOINTS[4];
     const viaSection = page.getByRole('region', { name: 'Wegpunkte' });

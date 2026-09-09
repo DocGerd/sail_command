@@ -88,7 +88,10 @@ const EMPTY = { type: 'FeatureCollection' as const, features: [] };
  * silently vanish.
  *
  * Resulting stack, bottom to top: depth ramp, depth hatch, THESE TWO,
- * harbour circles, harbour labels, seamarks, AIS stack, route stack. Saved
+ * harbour circles, seamarks, seamarks-hazard, harbour labels, AIS stack,
+ * route stack (#1126 reordered harbour labels above seamarks in
+ * `DataLayers.tsx`'s `setupLayers()`, so they win the shared MapLibre
+ * collision index instead of losing to seamarks' larger z12+ icons). Saved
  * waypoints therefore paint above the general navigability shading and below
  * every curated or safety-bearing marker — the same ranking DataLayers' own
  * #492 comment applies to the hatch ("a general navigability cue should

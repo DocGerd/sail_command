@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { assertNonVacuousStrip, stripCommentsAndStrings } from './sourceStrip';
 
 /**
  * #976: PR #973 threaded an explicit `assertCleanServiceWorkerState(page)`
@@ -62,162 +63,38 @@ function readSpec(name: string): string {
   return readFileSync(resolve(E2E_DIR, name), 'utf8');
 }
 
-// Comment/string stripper. Adapted from cameraAnimationCallSites.test.ts's
-// stripComments with one deliberate difference: string and template-literal
-// CONTENT is replaced with spaces rather than kept verbatim, so a test
-// TITLE (always a string, and the one place in a test body most likely to
-// narrate "startPreview()"/"assertCleanServiceWorkerState(" in prose — this
-// repo's own comments do exactly that throughout this file) can never
-// contribute a real brace/arrow to the structural scan below, and prose
-// mentioning either name in a title can never be mistaken for a real call.
-// Newlines are preserved character-for-character on every path (masked
-// strings, dropped line comments, block comments, masked regex literals), so
-// a line number computed on the RETURNED string is the true line number in
-// the ORIGINAL file — which is what lets `declarationTitle` below index
-// straight into the original file's own lines with no separate offset
-// bookkeeping.
+// Comment/string stripper. Masks string and template-literal CONTENT with
+// spaces rather than keeping it verbatim, so a test TITLE (always a string,
+// and the one place in a test body most likely to narrate
+// "startPreview()"/"assertCleanServiceWorkerState(" in prose — this repo's
+// own comments do exactly that throughout this file) can never contribute a
+// real brace/arrow to the structural scan below, and prose mentioning either
+// name in a title can never be mistaken for a real call. Newlines are
+// preserved character-for-character on every path (masked strings, dropped
+// line comments, block comments, masked regex literals), so a line number
+// computed on the RETURNED string is the true line number in the ORIGINAL
+// file — which is what lets `declarationTitle` below index straight into
+// the original file's own lines with no separate offset bookkeeping.
 //
-// UNLIKE cameraAnimationCallSites.test.ts's stripComments (which documents a
-// regex-literal blind spot as a "KNOWN RESIDUAL, latent not live" because no
-// camera-method-adjacent regex ever tripped it), this scan's REAL subject —
-// `app/e2e/*.spec.ts` — hits that exact hole live, not latently: a quote
-// character INSIDE a regex literal (never given special handling by a
-// string-only stripper) gets read as an ordinary string opener, and
-// everything after it — including real structural braces — is silently
-// swallowed as "string content" until a LATER, unrelated matching quote
-// somewhere else in the file is found (or never is, throwing "unbalanced
-// braces"). Measured against this exact tree at #976: `startPreviewIdentity
-// .spec.ts` contains `/service worker doesn't byte-match/` (an apostrophe
-// inside a regex body) and `offline.spec.ts` contains
-// `/importScripts\(|new URL\(|import\s*[*{"']/g` (a double-quote AND a
-// single-quote inside a regex CHARACTER CLASS) — both throw
-// "unbalanced braces" with the string-only stripper, over real, currently
-// shipped, non-test code. So this stripper ALSO recognizes and masks regex
-// literals — `isRegexContext`/`scanRegexLiteral` below — closing the hole
-// this file's own scan target requires closed, rather than inheriting it.
-function isRegexContext(outSoFar: string): boolean {
-  let j = outSoFar.length - 1;
-  while (j >= 0 && /\s/.test(outSoFar[j]!)) j -= 1;
-  if (j < 0) return true; // start of file
-  const c = outSoFar[j]!;
-  if (/[A-Za-z0-9_$)\]]/.test(c)) {
-    // Ends in an identifier/number/`)`/`]` char — normally division, UNLESS
-    // the trailing WORD is a keyword after which a regex literal is legal
-    // (`return /x/`, `typeof /x/` never occurs but kept for safety, etc.).
-    const wordMatch = /([A-Za-z_$][A-Za-z0-9_$]*)$/.exec(outSoFar.slice(0, j + 1));
-    const REGEX_LEGAL_AFTER_KEYWORD = new Set([
-      'return',
-      'typeof',
-      'instanceof',
-      'in',
-      'of',
-      'new',
-      'void',
-      'delete',
-      'yield',
-      'case',
-      'do',
-      'else',
-      'throw',
-    ]);
-    return wordMatch !== null && REGEX_LEGAL_AFTER_KEYWORD.has(wordMatch[1]!);
-  }
-  return true; // trailing punctuation/operator — a regex literal is plausible
-}
-
-/**
- * `source[start]` is the opening `/` of a candidate regex literal. Returns
- * the index just past its closing `/` and any trailing flag letters, or -1
- * if this is not actually a terminated single-line regex literal (in which
- * case the caller must fall back to treating `/` as an ordinary character —
- * a real JS regex literal can never contain a literal newline). Tracks
- * character-class (`[...]`) depth because an UNESCAPED `/` inside `[...]`
- * does not end the regex (`/[a/b]/` is one regex, not two) — the same
- * detail `offline.spec.ts`'s own `[*{"']` character class depends on.
- */
-function scanRegexLiteral(source: string, start: number): number {
-  let i = start + 1;
-  let inClass = false;
-  while (i < source.length) {
-    const c = source[i]!;
-    if (c === '\n') return -1;
-    if (c === '\\') {
-      i += 2;
-      continue;
-    }
-    if (inClass) {
-      if (c === ']') inClass = false;
-      i += 1;
-      continue;
-    }
-    if (c === '[') {
-      inClass = true;
-      i += 1;
-      continue;
-    }
-    if (c === '/') {
-      i += 1;
-      while (i < source.length && /[a-zA-Z]/.test(source[i]!)) i += 1;
-      return i;
-    }
-    i += 1;
-  }
-  return -1;
-}
-
-function stripCommentsAndStrings(source: string): string {
-  let out = '';
-  let i = 0;
-  let inString: '"' | "'" | '`' | null = null;
-  while (i < source.length) {
-    const c = source[i]!;
-    const c2 = source[i + 1];
-    if (inString) {
-      out += c === '\n' ? '\n' : ' ';
-      if (c === '\\') {
-        out += c2 === '\n' ? '\n' : ' ';
-        i += 2;
-        continue;
-      }
-      if (c === inString) inString = null;
-      i += 1;
-      continue;
-    }
-    if (c === '"' || c === "'" || c === '`') {
-      inString = c;
-      out += ' ';
-      i += 1;
-      continue;
-    }
-    if (c === '/' && c2 === '/') {
-      while (i < source.length && source[i] !== '\n') i += 1;
-      continue;
-    }
-    if (c === '/' && c2 === '*') {
-      i += 2;
-      while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) {
-        out += source[i] === '\n' ? '\n' : '';
-        i += 1;
-      }
-      i += 2;
-      continue;
-    }
-    if (c === '/') {
-      const contextAllowsRegex = isRegexContext(out);
-      if (contextAllowsRegex) {
-        const end = scanRegexLiteral(source, i);
-        if (end !== -1) {
-          for (let k = i; k < end; k += 1) out += source[k] === '\n' ? '\n' : ' ';
-          i = end;
-          continue;
-        }
-      }
-    }
-    out += c;
-    i += 1;
-  }
-  return out;
-}
+// #1121: EXTRACTED to `./sourceStrip` (`stripCommentsAndStrings`) — this was
+// the original, and only, regex-literal-aware stripper in this repo, added
+// here because this scan's REAL subject — `app/e2e/*.spec.ts` — hits that
+// hole live: a quote character INSIDE a regex literal (never given special
+// handling by a string-only stripper) gets read as an ordinary string
+// opener, and everything after it — including real structural braces — is
+// silently swallowed as "string content" until a LATER, unrelated matching
+// quote somewhere else in the file is found (or never is, throwing
+// "unbalanced braces"). Measured against this exact tree at #976:
+// `startPreviewIdentity.spec.ts` contains `/service worker doesn't
+// byte-match/` (an apostrophe inside a regex body) and `offline.spec.ts`
+// contains `/importScripts\(|new URL\(|import\s*[*{"']/g` (a double-quote
+// AND a single-quote inside a regex CHARACTER CLASS) — both throw
+// "unbalanced braces" with a string-only stripper, over real, currently
+// shipped, non-test code. #1121 found the identical hole LIVE in two other
+// guards' own scan targets (`cameraAnimationCallSites.test.ts`'s app/src
+// scan, `timeoutGuard.test.ts`'s app/src/**/*.test.ts scan) that used a
+// weaker, non-regex-aware stripper — this module is now the single shared
+// implementation all three import, instead of three independent copies.
 
 // Matches a real Playwright test declaration — bare `test(`, `test.skip(` or
 // `test.only(` — while excluding the ubiquitous `someRegex.test(str)`
@@ -593,5 +470,27 @@ describe('#976 structural guard: real e2e suite', () => {
         title: '#803: still starts normally against its own build with no foreign server',
       }),
     );
+  });
+
+  // #1121 non-vacuity control on the SHARED stripper, over the two real
+  // shipped files this guard depends on regex-literal awareness for (the
+  // ones whose regex literals throw "unbalanced braces" under the
+  // string-only stripper this repo used to ship, per this file's own header
+  // comment). A stripper that silently swallowed content (e.g. degraded to
+  // emitting the empty string) would leave every assertion above passing
+  // having read nothing. `offline.spec.ts` never calls
+  // assertCleanServiceWorkerState (its only startPreview() site passes
+  // `page`, the internally-guarded form) so its needle is `startPreview(`
+  // instead — still a call this guard's own detection depends on seeing.
+  it('the shared stripper does not vacuously empty startPreviewIdentity.spec.ts / offline.spec.ts', () => {
+    const needleByFile: Record<string, string> = {
+      'startPreviewIdentity.spec.ts': 'assertCleanServiceWorkerState(',
+      'offline.spec.ts': 'startPreview(',
+    };
+    for (const [file, needle] of Object.entries(needleByFile)) {
+      const source = readSpec(file);
+      const stripped = stripCommentsAndStrings(source);
+      assertNonVacuousStrip(stripped, needle, file);
+    }
   });
 });

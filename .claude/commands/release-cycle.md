@@ -81,7 +81,11 @@ copy and the one to keep current. Restated here only so this command is self-con
    The floor is forward-looking — `CONTRIBUTING.md` records which earlier milestones predate it.
    It is also bounded by SUPPLY — it applies only while enough `type: bug` issues exist to fill
    it, and a cut takes every available one and calls the floor met; it never caps how much
-   non-bug work the milestone may carry.
+   non-bug work the milestone may carry. "Available" excludes a bug whose own investigation
+   recommends staying deferred, AND the issue has been moved to `Backlog` (or otherwise
+   confirmed by the maintainer) on that basis — a spike recommending deferral alone is NOT
+   sufficient; check the tracker, not the document (settled at the `v0.30.0` cut, 2026-09-09,
+   using #354 — see `CONTRIBUTING.md`).
 
 **Do NOT re-ask which reading of the reserve was meant — it was SETTLED at the v0.18.0 cut
 (2026-09-01) as "at least 20% bug-typed", over the competing "at least 20% of slots left
@@ -148,6 +152,16 @@ conflict avoidance: #828 had merged #827's branch into its own history to test t
 reverse order would have landed #827's changeset under #828's PR.
 
 Per task:
+- **ASSIGN THE ISSUE TO `DocGerd` THE MOMENT YOU DISPATCH ITS IMPLEMENTER** —
+  `gh api repos/DocGerd/sail_command/issues/<n>/assignees -X POST -f 'assignees[]=DocGerd'`.
+  The assignee field means IN PROGRESS (maintainer ruling 2026-09-07), so it must go on at
+  dispatch, not at filing and not at merge — a filed or queued issue stays UNASSIGNED so the
+  field keeps answering "is anyone on this?". This is the ORCHESTRATOR's job and nobody else's:
+  the implementer works in a worktree and never touches issue metadata, so if you skip it here
+  no later step catches it. Read the assignee back to assert it. Measured at the v0.30.0 cycle:
+  every PR was correctly assigned while all ELEVEN in-flight issues sat unassigned for the whole
+  of Phase 2, because the PR half of the rule lives in the implementer brief and the ISSUE half
+  lived nowhere. If a task is later DEFERRED to another milestone, UNASSIGN it — work stopped.
 - Spawn a **FRESH `sail-implementer`** (never reuse one across tasks), `isolation: worktree`.
   **PIN THE BASE BRANCH** in the brief (`git fetch` then `git switch -c <branch> origin/develop`)
   and require the merge-base as a reported deliverable — 10 of 10 worktree agents in one session
@@ -155,7 +169,10 @@ Per task:
 - **Forbid implementers the full test suite** (~8.3 min); brief a FILTERED FOREGROUND run
   (`npm --prefix app run test -- <filter>`). Budget for the stall anyway: nudge once, and after a
   SECOND stall TAKE the watch yourself. CI is the authority.
-- Tell them to **commit, push and open a DRAFT PR at the first push** — work is never local-only.
+- Tell them to **commit, push and open a DRAFT PR at the first push** — work is never local-only —
+  and to create it with **`--assignee DocGerd`**. A PR is live work by definition, so it is
+  assigned from creation. Put this in the brief explicitly: a subagent cannot infer it, and the
+  orchestrator is not the one running `gh pr create`.
 - **Use `Closes #N` when the PR delivers its issue** — `develop` IS the default branch, so
   the issue closes on merge, which is what I want. Reserve `Refs #N` for a PR that genuinely
   does NOT close it (partial delivery, or a spike informing a larger issue). The v0.18.0 cut
@@ -200,6 +217,10 @@ Per task:
   cannot see. Either way, never pay ~31 min per arm-set on a guess, and never run a full
   sweep as a harness background task.
 - Spec edits under `docs/superpowers/specs/` are MAIN-SESSION ONLY (the ask-gate hook must prompt).
+
+**An INTEGRATION PR you open yourself also gets `--assignee DocGerd`.** You are the one running
+`gh pr create` there, so neither the implementer brief nor the agent definition covers it — this
+is the one PR class with no other actor to inherit the rule from.
 
 Merge with `/merge-train`: strictly serial, re-sync each branch from `origin/develop` before its
 turn, verify `head.sha` equals what was pushed AND that check-runs exist for that exact SHA

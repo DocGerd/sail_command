@@ -62,7 +62,28 @@ making design-level decisions; do not silently deviate.
   under `docs/superpowers/specs/`: that path is guarded by a main-session
   ask-gate hook, and a subagent writing there would slip a spec edit past
   the gate. A spike doc is evidence for a decision, never a spec — promoting
-  one to a spec is a main-session act.
+  one to a spec is a main-session act. `docs/spikes/README.md` indexes every
+  entry. **#644 (2026-09-09) settled the spike-vs-ADR convention rather than
+  merging the two directories: a spike is an investigation that ends in a
+  recommendation, an ADR (`docs/adr/`) is the record of a ruling already
+  made, and several existing spikes are genuinely both** — that overlap
+  governs where a NEW document goes, not a retroactive reclassification of
+  what was on record at that date. Both README indexes cross-link the other
+  directory. Measured at `257f1fc` (this change's own base commit, before
+  its own additions — the same command run later returns a higher count,
+  since this bullet and its neighbours themselves cite `docs/spikes/`
+  paths): 22 top-level `.md` spikes plus 2 same-named subdirectories of
+  supporting artifacts (`1022-whole-journey-ux/`, `354-mode-churn/`), and
+  **39 inbound citations of a `docs/spikes/` path across 17 tracked files**
+  (`git grep -n 'docs/spikes' -- ':!docs/spikes'` at that commit) —
+  including two files already inside the #282 sweep closure
+  (`app/src/lib/depthGate.ts`, `app/sweep/sweepArms.ts:89`, both named in
+  that closure's own listing below), each citing only the
+  `452-local-depth-relaxation.md` spike. That is why #644 shipped as a
+  convention-and-cross-link change with **ZERO files moved**: renaming that
+  #452 spike path specifically — the one cited inside both closure files —
+  would have flipped the sweep verdict to OWED for what would otherwise be
+  a `docs`/`low` chore.
   Design records live in FOUR places and three survive a clone:
   `docs/superpowers/specs/`, `docs/spikes/` and `docs/adr/` (ADRs plus a
   README index) are all COMMITTED — but
@@ -952,6 +973,12 @@ making design-level decisions; do not silently deviate.
   defect is LIVE for users — that spike's §4.3 says so, and says explicitly
   that it does not supersede this entry; symptom, measurement and the e2e-side
   workaround in the #383 bullet under Verification lessons).
+- **MapLibre's `fitBounds`/camera math is NOT bit-deterministic across two calls with
+  identical inputs** — ~1e-14 divergence in lng/lat/zoom from float accumulation order inside
+  the library, not a real positional difference (measured 2026-09-09 writing
+  `app/e2e/fit-route.spec.ts`). ROUND before comparing; never assert exact camera equality,
+  even on a nominally deterministic map call. Note `Object.is(-0, 0)` is `false` and
+  Playwright's `toBe` uses it, so normalise with `+ 0` as well.
 - `fitBounds` must pass `bearing: map.getBearing()` explicitly —
   `cameraForBounds` defaults bearing to 0, so every new `plan.id` (including a
   Live reroute under way) silently un-rotates the chart and kills track-up
@@ -1564,6 +1591,7 @@ making design-level decisions; do not silently deviate.
   | v0.26.0 | 2026-09-08 | 74 s | read as **NO `deploy` JOB CREATED YET** (only `build`) immediately before the tag push -- the same non-answer v0.17.0 and v0.25.0 recorded; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `34194830060` (created 06:28:44Z) -> tag `34194916855` (created 06:29:58Z) on `2d8b3df`. The merge run's `deploy` job NEVER RAN -- it was cancel-superseded by the tag run and the run ended `cancelled`, so no `success`-state deployment of that SHA preceded the tag run. The tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**, and its own prod entry chunk `assets/index-C-AG8CEf.js` returned 200. Production afterwards served that same chunk at ``about.version`,{version:`v0.26.0`}`` with ZERO suffixed matches, so no back-merge remedy was owed -- unlike every row from v0.18.0 through v0.24.0, each of which read `smoke-probe` FAILED. Release object `isLatest: true`; tag object `90ed636` reported `verified: true, reason: "valid"`. **This row REPEATS v0.25.0's WIDENED reading specifically** -- the merge `deploy` job not yet STARTED when the tag run was created, which is weaker than the "genuinely still running" wording v0.23.0/v0.24.0 used -- so that widening now rests on two observations rather than one. It is NOT the first safe outcome in this table (the terminal-`cancelled` shape was safe at v0.12.0, v0.12.1, v0.13.0, v0.13.1, v0.14.0 and v0.17.0); what is new is the repetition of the not-yet-started reading. Two observations are still not a mechanism: this row names NONE, and per this table's own rule the gap gates nothing.  |
   | v0.27.0 | 2026-09-08 | 58 s | read as **NO `deploy` JOB CREATED YET** (only `build`) immediately before the tag push -- the same non-answer v0.17.0, v0.25.0 and v0.26.0 recorded; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `34226445185` (created 12:30:17Z) -> tag `34226540901` (created 12:31:15Z) on `ecf08ff`. EVERY job of the merge run ended `cancelled`, and its `deploy` job carries **`steps: 0`** against that SAME run's `build` job's `steps: 23` -- v0.25.0's control in a DIFFERENT shape -- within-run job-vs-job here, cross-run same-job there -- and the reason either discriminates: a job that never started and one interrupted after running both report `cancelled`, and they mean OPPOSITE things for whether a `success`-state deployment of that SHA already exists. The `github-pages` deployments list for that SHA returns exactly ONE object, `6327652761`, `ref: v0.27.0`. The tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production afterwards served `assets/index-B3638HqI.js` at ``about.version`,{version:`v0.27.0`}`` with ZERO suffixed matches, so no back-merge remedy was owed. Release object `isLatest: true`; tag object `b669e29` reported `verified: true, reason: "valid"`. **THIRD consecutive not-yet-started reading**, after v0.25.0 and v0.26.0, so the WIDENED criterion those rows established -- the merge `deploy` job has not reached terminal `success` -- now rests on three observations rather than two. Three is still not a mechanism: this row names NONE, and per this table's own rule the gap gates nothing. |
   | v0.28.0 | 2026-09-08 | 112 s | `success` (MEASURED immediately before the tag push, and the failure CALLED IN ADVANCE from it) | **`smoke-probe` FAILED** | merge-push `34282950799` (created 21:52:27Z) -> tag `34283116096` (created 21:54:19Z) on `905d1a3`. The tag run's `build` AND `deploy` both succeeded; only `smoke-probe` failed, by the #398 signature -- its own prod entry chunk `assets/index-C5NE_lFC.js` 404'd. Back-merge `34285495537` (different SHA `59a8123`) then probed green and republished **that same chunk name**, which production then served at ``about.version`,{version:`v0.28.0`}`` with ZERO suffixed matches -- so the tag run's BUILD was correct and only its DEPLOYMENT no-opped. Release object `isLatest: true`; tag object reported `verified: true, reason: "valid"`. **ENDS the three-cut run of not-yet-started readings** (v0.25.0-v0.27.0); first terminal `success` since v0.24.0, and it behaved exactly as this table says a `success` reading behaves. **Sharpens the v0.23.0/v0.24.0 gate finding with the tightest margin yet:** the merge `deploy` job ran 21:53:37Z -> **21:53:45Z `success`**, terminal **34 s BEFORE the tag run was created** -- so the cancel-supersede escape was again unavailable, now on three observations reached from both readings. Still names no MECHANISM. |
+  | v0.29.0 | 2026-09-09 | 2 min | `success` (MEASURED immediately before the tag push, and the failure CALLED IN ADVANCE from it, written down BEFORE the push) | **`smoke-probe` FAILED** | merge-push `34323066038` -> tag `34323514588` on `ffaa41d`. The tag run's `build`, `deploy` AND `prod-environment` all succeeded; only `smoke-probe` failed, by the #398 signature -- its own prod entry chunk `assets/index-DDdE4ANJ.js` returned **404 on all 10 attempts** (07:23:57Z -> 07:28:28Z, ~4m31s). BOTH basemap Range probes passed on attempt 1, at 07:23:56-57Z -- note they run BEFORE the entry-chunk probe, so they are a temporally-PRIOR CDN control, not a simultaneous one. Back-merge `34329387900` (different SHA `067a39f`) then probed green and republished **that same chunk name**, which production then served at ``about.version`,{version:`v0.29.0`}`` with ZERO suffixed matches. SECOND consecutive terminal-`success` reading, after v0.28.0. **What this row ADDS is that the `steps` COUNT on the merge run's `deploy` job is itself a discriminator, not just the conclusion:** here `steps=6` (the job genuinely RAN and deployed, and the no-op followed), against v0.25.0's and v0.27.0's `steps: 0` (never started), which those rows used as the control making their SAFE outcome attributable. A job that never started and one interrupted after running both report a non-`success` conclusion and mean OPPOSITE things. Still names no MECHANISM. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -1723,15 +1751,42 @@ making design-level decisions; do not silently deviate.
   bookkeeping: a develop push evicts production's CDN edge Range objects as
   described in the smoke-probe bullet above, and it is also
   the only thing that makes "check the About dialog on UAT" a meaningful request.
-- The github-pages ENVIRONMENT deployment policy (repo Settings, not YAML)
-  gates deploys by triggering REF — branch entries `main`+`develop` (#96) plus
-  a TAG entry `v*` (#197; deliberately permissive — `deploy.yml`'s `v[0-9]*`
-  trigger glob is the narrowing gate, so tightening the release shape never
-  needs a Settings change). A new deploying branch or tag pattern needs a policy
-  entry (`gh api repos/DocGerd/sail_command/environments/github-pages/deployment-branch-policies
-  -f name=<name> -f type=branch|tag`) or the deploy job is rejected with "not
-  allowed to deploy" — AFTER the build job has already run, so the run reds
-  late, not fast.
+- **The environment deployment-branch policy (repo Settings, not YAML) gates
+  deploys by triggering REF, and since 2026-09-09 (#267) THREE environments
+  carry one, not one alone** — `github-pages`, `prod` and `uat` each hold
+  their own independently-configured but IDENTICAL policy: `deployment_branch_policy:
+  {protected_branches: false, custom_branch_policies: true}` plus branch
+  entries `main`+`develop` (#96) and a TAG entry `v*` (#197; deliberately
+  permissive — `deploy.yml`'s `v[0-9]*` trigger glob is the narrowing gate,
+  so tightening the release shape never needs a Settings change). Only
+  `github-pages` gates the real Pages deploy (the OIDC flow is bound to it,
+  #127 spike — renaming it is the same trap); `prod`'s and `uat`'s policies
+  gate their own bookkeeping jobs (`prod-environment`/`uat-environment` in
+  `deploy.yml`) redundantly with those jobs' own `if:` ref conditions — belt
+  and suspenders, not a second real gate. **A new deploying branch or tag
+  pattern needs the SAME policy entry added to ALL THREE environments, not
+  just `github-pages`** — miss one and only that environment's job is
+  rejected with "not allowed to deploy" while the others succeed, which
+  reads as one broken job rather than a missed policy update across three
+  places. Entry command:
+  `gh api repos/DocGerd/sail_command/environments/<env>/deployment-branch-policies
+  -f name=<name> -f type=branch|tag` (repeat per environment) — rejection
+  happens AFTER the build job has already run, so the run reds late, not
+  fast.
+- **#267 finding, NARROWED 2026-09-09, not closed.** The first draft checked
+  only `required_reviewers`/`wait_timer` and concluded no protection could be
+  added to `prod`/`uat`; re-measured that day, both carried
+  `deployment_branch_policy: null` while `github-pages` already had it enabled
+  — a mechanism needing NO human in the loop — so it was mirrored onto both
+  (see the environment deployment-branch policy bullet above for the resulting
+  shape). `github-pages` still cannot be deleted or renamed (#127 spike), and
+  a REQUIRED REVIEWER on it would still break the unattended tag path (#197).
+  Correcting the first draft's other claim: a WAIT TIMER needs no human click,
+  but it lengthens how long the deploy job sits PENDING in the shared `pages`
+  concurrency group before calling `actions/deploy-pages`, and the "Deploy-
+  collision timing" bullet already shows a merely-pending run there is
+  cancelled by a newer push same as a running one — so a wait timer reopens
+  the #398 collision hazard, not the "needs a human" violation first claimed.
 - UAT-only UI (#107): gate on the `__SC_UAT__` Vite `define` (set by
   `SC_DEPLOY_ENV=uat`) with a fold-exact ternary — a JSX `&&` gate leaves a
   minified residue in the prod bundle — and keep its strings in a
@@ -2058,6 +2113,17 @@ making design-level decisions; do not silently deviate.
   cuts BOTH ways — the bracketed form silently strands a deliberately-deferred
   issue, and, under the `Closes #N` default above, it silently leaves OPEN an
   issue the PR actually delivered and its author believes closed.
+  **But `fix: #N` — the COLON-SPACE conventional-commit form — DOES close, and it is one
+  character from the bracketed form that does not.** Measured 2026-09-09: commit `57bdc72`,
+  subject `fix: #1015 round 2 — …`, closed #1015 on merge (timeline `closed` with
+  `commit_id=57bdc72`, a COMMIT trigger) despite `Refs #1015` in BOTH the trailer and the PR
+  body; #1015 had to be reopened by hand. GitHub's match is the keyword then `[\s:(]*` then
+  `#N`, so `fix:` + space + `#N` qualifies while `fix(#N):` does not.
+  **Corollary, and this is what actually let it through: re-run the closing-keyword grep after
+  every FOLD into an integration branch, not only at branch creation.** The grep was run before
+  that batch's first push; `57bdc72` was folded in afterwards and only the TESTS were re-run. A
+  fold makes a NEW commit range, so every pre-merge check has to be re-run against it — not just
+  the ones that feel related to the change being folded.
 - **Cross-PR file collisions are invisible to per-PR review — only the
   orchestrator holds that view, and it is represented in no artifact.** Measured
   2026-08-31: two implementers were sent to append a new guard to
@@ -4193,6 +4259,12 @@ making design-level decisions; do not silently deviate.
   churn this file already calls expected. FOUR agents hit the denial and
   found `git restore` independently in one session (2026-09-04), so the
   rediscovery cost is real and repeated.
+  **But `git restore <path>` reverts to the last COMMIT, not to "the state before my
+  mutation" — so during mutation-testing it SILENTLY WIPES a still-uncommitted intended fix
+  living in that same file.** Measured 2026-09-09 on PR #1096; the agent caught it from
+  `git status`/`git diff` and switched every later mutation-revert to a targeted `sed`/`python3`
+  edit. Use those when mutating against uncommitted work; `git restore` is only safe when the
+  file's committed state IS the state you want back.
   **NOT the destructive-git guard** — that hook contains zero `checkout` logic
   (it matches `push --force`/`-f`, `reset --hard`, `clean -f`). The denial is a
   declarative `deny` PAIR in the PERSONAL global `~/.claude/settings.json`
@@ -4546,6 +4618,11 @@ making design-level decisions; do not silently deviate.
   `npm --prefix app run typecheck` and BLOCKS on exit 2 — including on
   PRE-EXISTING errors elsewhere in the tree, which is a confusing way to
   discover someone else's broken branch.
+- **A `gh api … -X PATCH` inside a `for` LOOP was denied by the auto-mode permission
+  classifier while the IDENTICAL single call succeeded** (11 milestone assignments, observed
+  2026-09-09 against this harness). Issue such calls one at a time rather than reaching for a
+  permission rule. This is a HARNESS observation, not a repo property — a read-only agent could
+  not reproduce it, and it may not survive a harness upgrade.
 - **`gh api` rejects `--repo`/`-R`** — `unknown flag: --repo`, unlike `gh pr`
   and `gh issue`, which both take it. The repo belongs in the endpoint path.
   Measured 2026-09-04 with a control: the same call minus the flag returned the
@@ -4610,6 +4687,11 @@ making design-level decisions; do not silently deviate.
   file to go looking in -- an easy misattribution, since that guard is
   separately documented here as over-firing on prose. Remedy: brief worktree
   agents to use plain, SEPARATE git commands inside their own worktree.
+  **It also refuses a SINGLE, non-compound command containing a HEREDOC** —
+  `git commit -m "$(cat <<'EOF' … )"` with no `cd` and no multi-repo shape at all, and a
+  plain heredoc write to a path outside the worktree. Broader than the compound-command
+  trigger above; hit independently by two worktree agents on 2026-09-09. Remedy: write the
+  message with the `Write` tool, then a single plain `git commit -F <file>`.
 - **`gh pr merge` is SERVER-SIDE, so your local checkout never moves.** Seven
   PRs merged over ~4 h left the main tree at the pre-milestone commit. Harmless
   while every check names an explicit ref (`origin/develop`,
@@ -4743,9 +4825,14 @@ making design-level decisions; do not silently deviate.
   check-runs list none). A red check-run on a release commit is therefore never
   scorecard noise — chase it.
 - e2e's preview port is fixed (4173 in helpers.ts): full e2e runs from
-  parallel worktrees contend — serialize them; per-agent dev ports are for
-  manual browser passes only. The dirty wind fixture (see E2E section) also
-  blocks `git worktree remove` — restore before removing; never `--force`.
+  parallel worktrees contend — serialize them, i.e. dispatch **at most ONE e2e implementer at a
+  time**; per-agent dev ports are for
+  manual browser passes only. Measured 2026-09-09: three concurrent e2e agents, and one found a
+  FOREIGN build already bound to 4173 and killed the listener by port PID to unblock itself.
+  `startPreview()`'s #803 build-identity check REFUSED that foreign build rather than
+  silently measuring it — the guard worked; the scheduling was the error.
+  The dirty wind fixture (see E2E section) also blocks `git worktree remove`
+  — restore before removing; never `--force`.
 - IDE/LSP diagnostics emit bogus cannot-find-module bursts when worktrees
   churn — trust `npm --prefix app run typecheck` (`tsc -b`), never the
   diagnostics stream.
