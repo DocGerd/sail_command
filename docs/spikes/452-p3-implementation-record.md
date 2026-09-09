@@ -328,9 +328,9 @@ explicit on this); only the RATIO transfers. A real-browser timing pass on
 Flensburg→Marstal was owed; it is now MEASURED below (R4-B, 2026-09-09).
 
 **Also not done at the time R4 was written:** no e2e run (port 4173 is
-contended — `app/e2e/**` still gains no coverage of this route, deliberately,
-per #931), and no real-browser pass of any kind. The real-browser gap is
-closed by R4-B immediately below; the e2e gap is unchanged.
+contended — `app/e2e/**` still gains no coverage of this route), and no
+real-browser pass of any kind. The real-browser gap is closed by R4-B
+immediately below; the e2e gap is unchanged.
 
 **R4-B — real-browser wall-clock timing, MEASURED 2026-09-09 (#931).**
 
@@ -406,16 +406,20 @@ worst observed sample (default-2) took **84.595 s** by the monotonic clock,
 clock the budget check uses.** Best observed sample (noon-2) leaves
 42.8–48.5 s of headroom on the same two readings.
 
-*Plain statement.* This is NOT a comfortable margin. Every sample landed
-within 71–85 s of the same 120 s ceiling this route is known (R4, above) to
-approach in Node under a 1.33x HEAD/BASE regression — and the browser figures
-measured here sit close in magnitude to that Node HEAD figure (77.61 s),
-which is itself the kind of cross-environment agreement CLAUDE.md warns is
-plausible rather than suspicious for CPU-bound V8 work on the same physical
-machine (Node and Chromium's worker both JIT the same JS on the same core),
-not a claim that the two numbers are directly comparable. A machine
-meaningfully slower than this one, or a route/forecast combination that
-drives the solver harder than either sample here, could plausibly exceed
+*Plain statement.* This is NOT a comfortable margin. The operative figure is
+**36.8% headroom (44.1 s)**, not the 29.5% conservative reading above:
+`protocol.ts:102/106` checks the budget against `Date.now()` and nothing
+else, so that is the clock whose comparison actually decides whether this
+route would time out. Because this ran under the CPU contention described in
+*Environment* above, these figures are a conservative LOWER BOUND on the true
+margin, not an upper one — an idle machine would plausibly solve faster, so
+the real at-rest headroom is likely larger than 36.8%, not smaller. Every
+sample landed within 71–85 s of the same 120 s ceiling this route is known
+(R4, above) to approach in Node under a 1.33x HEAD/BASE regression — and the
+browser figures measured here sit close in magnitude to that Node HEAD
+figure (77.61 s), not a claim that the two numbers are directly comparable.
+A machine meaningfully slower than this one, or a route/forecast combination
+that drives the solver harder than either sample here, could plausibly exceed
 `PLAN_BUDGET_MS` and surface as a user-facing `search-budget-exceeded` on a
 route the shipped mask/relaxation logic would otherwise route correctly.
 That the noon departure (chosen to probe #649's "shifts more of the route
