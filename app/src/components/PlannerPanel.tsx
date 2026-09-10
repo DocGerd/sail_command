@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
-import type { Harbor, LatLon, PickedPoint, Plan, SailId, Settings, ViaPoint } from '../types';
+import type {
+  Harbor,
+  LatLon,
+  PickedPoint,
+  Plan,
+  SailId,
+  SailResult,
+  Settings,
+  ViaPoint,
+} from '../types';
 import { useLang, useT } from '../i18n';
 // #834: the `harbors` prop is widened from `Harbor[]` to
 // `HarborWithReachability[]` below — the selected-endpoint row must see the
@@ -664,12 +673,14 @@ export default function PlannerPanel({
   // that reads it is gated on `summary`, which is itself null whenever
   // `plan` is, so the default is never actually rendered.
   const comparisonComplete = plan?.result.comparisonComplete ?? true;
-  // #578: `route.rigTie`'s two sail ids, in solve order — computed here,
-  // where `plan` is still a bare `Plan | null` prop, so the chip render site
-  // below never needs its own `plan` null-narrowing (mirrors the
+  // #578: the plan's compared sails, in solve order — computed here, where
+  // `plan` is still a bare `Plan | null` prop, so the chip render site below
+  // never needs its own `plan` null-narrowing (mirrors the
   // `comparisonComplete` default immediately above: unused whenever `plan`
-  // is absent, since the chip is gated on `summary`).
-  const comparedSailIds: readonly SailId[] = plan ? plan.result.sails.map((s) => s.sailId) : [];
+  // is absent, since the chip is gated on `summary`). #1166: the full
+  // `SailResult[]`, not just the ids — `renderRigVerdict` needs each sail's
+  // `result`/`reason` to detect and name a one-sail-failed comparison.
+  const comparedSails: readonly SailResult[] = plan ? plan.result.sails : [];
 
   // Cross-PR composition fix (Refs #299, found by an adversarial cumulative-
   // diff sweep over PR #486): computed independently of App.tsx's own
@@ -1394,7 +1405,7 @@ export default function PlannerPanel({
                   : renderRigVerdict(
                       summary.rigRecommendation.kind,
                       comparisonComplete,
-                      comparedSailIds,
+                      comparedSails,
                       t,
                     )}
               </Chip>

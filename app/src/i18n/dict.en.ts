@@ -367,6 +367,20 @@ export const en = {
   // plan's search was cut short".
   'route.comparisonIncomplete':
     'The search ran out of time before comparing both sails, so no faster rig is claimed',
+  // #1166: a SECOND, more specific 'not-compared' cause, distinct from
+  // rigNotCompared (N=1, N>=3 or tier-C suppression, all with zero solve
+  // failures) and from comparisonIncomplete above (a truncated SEARCH).
+  // Here exactly two sails were requested and exactly ONE of them found no
+  // route at all — its `result` is null — while the other solved. Before
+  // this key existed that case collapsed onto the generic rigNotCompared
+  // sentence, so a real solver failure on one rig read identically to "there
+  // was nothing to compare", with no signal that a route silently lost half
+  // its comparison. `{rig}` names the sail that found no route
+  // (lib/resultSummary.ts's renderRigVerdict resolves it through the same
+  // sailLabelKey every other rig-facing string uses); the survivor's own
+  // route is still shown, since `recommended` always names a sail with a
+  // non-null result regardless of this key.
+  'route.rigOneFailed': '{rig} found no route for this passage, so no faster rig is claimed',
   // #748: label-style age form. This is Option 3 (age-only, no absolute
   // timestamp) — #748's own research established this app has NO model
   // reference/initialisation time to print (Open-Meteo's standard forecast
