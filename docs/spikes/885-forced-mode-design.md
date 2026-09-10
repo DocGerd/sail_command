@@ -11,10 +11,11 @@
   four questions. Q3 needs no code at all. Q1 has a **soft** form the issue does
   not consider that needs no new `SolveFailureCause` and cannot make a plan
   unroutable; the hard form is a real option but carries the whole #282 cost
-  line. The representation is decided by the four `PlanRequest` REBUILD sites,
-  not by taste: a positional per-segment array desynchronises silently at
-  `replan.ts`, so modes must be **keyed to the waypoint the segment arrives
-  at**.
+  line. The representation is decided by the five sites that build or rebuild
+  the via list, not by taste: a positional per-segment array desynchronises
+  silently on the LIVE plan path (`usePlanFlow.ts`, which spreads the request
+  while pruning the via list), so modes must be **keyed to the waypoint the
+  segment arrives at**.
 
 > Companions: [`354-mode-churn.md`](./354-mode-churn.md) (§5 below — #885 does
 > not close it), [`244-buoyed-fairways.md`](./244-buoyed-fairways.md) (why the
@@ -85,22 +86,25 @@ alternative units are worse (§7 A, B). It matters most for §5.
 
 ### 1.3 Representation: keyed, not positional — decided by the rebuild sites
 
-Four sites construct a `PlanRequest` from an existing one, and they disagree
-about via points:
+Five sites build or rebuild the via list, and they disagree about it:
 
 | Site | What it does to `viaPoints` | What that does to a POSITIONAL `segmentModes[]` |
 |---|---|---|
+| `state/usePlanFlow.ts` `run()` | `req = { ...req, viaPoints: dedupeViaPoints(...).kept }` — **the live path**: every Plan-route press and every recalc | **PRUNED list, unpruned array — silent desynchronisation** |
 | `lib/recalc.ts` | `planViaPoints(plan.request).map((v) => ({ ...v }))` | survives only if copied explicitly; a field ON each via survives free |
-| `state/replan.ts` `replanWithVias` | `{ ...plan.request, viaPoints: kept }`, `kept` from `dedupeViaPoints` | **PRUNED list, unpruned array — silent desynchronisation** |
 | `state/reroute.ts` | builds the object field by field with `viaPoints: []` and `origin: { ...fixPoint }` | array dropped, like every other unlisted field |
+| `state/replan.ts` `replanWithVias` | same spread-and-prune shape; **dormant** — its own comment records that since #571 `App.tsx` no longer calls it or `useViaReplan`, kept "as still-valid infrastructure" | same hazard, currently unreachable from the UI |
 | `routing/planRoute.ts` | does not rebuild the request; `run()` closes over `req` | unaffected (§4) |
 
-`replan.ts` is decisive. `dedupeViaPoints` drops any via within
-`DEDUPE_THRESHOLD_NM` of its predecessor and pops trailing ones near the
-destination, and the request then spreads `{ ...plan.request }` — so a sibling
-positional array SURVIVES the spread while the list it indexes SHRINKS. Modes
-land on the wrong segments, silently, with no type error. The dangerous
-direction of that shift is forcing SAIL in the channel the captain marked motor.
+`usePlanFlow.ts` is decisive, and it is live rather than hypothetical.
+`dedupeViaPoints` drops any via within `DEDUPE_THRESHOLD_NM` of its predecessor
+and pops trailing ones near the destination; the request then spreads
+`{ ...req }` — so a sibling positional array SURVIVES the spread while the list
+it indexes SHRINKS. Modes land on the wrong segments, silently, with no type
+error. The dangerous direction of that shift is forcing SAIL in the channel the
+captain marked motor. `usePlanFlow.ts`'s own comment calls this call "the
+actual, authoritative enforcement", so it is not a path a future refactor is
+likely to remove.
 
 **Recommendation: key each mode to the waypoint its segment ARRIVES at.**
 Concretely, an optional field on `ViaPoint` (the #846 optional-superset shape,
@@ -116,6 +120,17 @@ segment arriving at `destination`. Then:
   which is the RIGHT survivor: the harbour-entrance override is the motivating
   case in the issue and the one that still applies after a mid-passage reroute.
   That site spreads nothing, so the scalar needs an explicit line there.
+
+Two implementation sites this does NOT make free, both worth budgeting now.
+`App.tsx`'s via draft state is `useState<LatLon[]>([])` (`draftViaPoints`), and
+since #571 a via edit is plain form state applied at the next Plan-route press,
+so the UI list must widen to carry modes at all. And `dedupeViaPoints` is typed
+`(origin: LatLon, viaPoints: LatLon[], destination: LatLon)`: it preserves extra
+properties at RUNTIME because it re-pushes the same objects, but nothing in the
+type system stops a caller from handing it freshly-built `{ lat, lon }`
+literals, which would drop modes before dedupe ever runs. #846's `name` field
+has the identical exposure, so the right move is to check how `name` survives
+that path and follow it — see §9.4.
 
 Inside `planRoute()` the keyed form is flattened to a positional array ONCE,
 where `waypoints` is built, and indexed by the existing loop. **Keyed at rest,
@@ -145,6 +160,10 @@ motor : sailSpeed >= MIN_SAIL_KN ? sail : (sawCalm, skip)`. So:
   `sailPreferenceKn` were unbounded. The boat then sails wherever it makes at
   least `motorThresholdKn` (2.5 kn at defaults) and motors only below that
   seaworthiness floor. **Never unroutable**, no new cause, zero #282 exposure.
+  This is not a new regime: CLAUDE.md records that a margin at or above
+  `motorSpeedKn - motorThresholdKn` collapses the floor back and restores the
+  pre-#254 path byte-for-byte, so the soft form is the app's own pre-#254 rule
+  applied to one segment rather than an invented semantic.
 - **Force sail, HARD** = `motorEnabled: false` semantics for that segment —
   `MOTOR_TWAS` leave the candidate set and sub-`MIN_SAIL_KN` candidates take the
   `sawCalm` path. This is the only form that can make a plan unroutable, and the
@@ -199,9 +218,17 @@ NoRouteReason>` makes an omission a compile error rather than a silent gap; a
 actionable than anything currently in that order; `comfortRetryMayHelp` and
 `depthRelaxationMayHelp`, which must NOT admit it (no depth gate and no comfort
 retry can answer "you forbade the engine in a calm"); one `error.noRoute.*` key
-in BOTH `dict.de.ts` and `dict.en.ts`; and rows in `planRoute.budget.test.ts`'s
-5x5 table, `planRoute.test.ts`'s four-cause table and
-`planRoute.reasonDecoupling.test.ts`.
+in BOTH `dict.de.ts` and `dict.en.ts`; and AT LEAST these test files, which a
+grep for the cause union and the two gate predicates returns —
+`planRoute.reasonDecoupling.test.ts`, `planRoute.budget.test.ts`,
+`planRoute.depthComfort.test.ts` and `invariants.property.test.ts`. The
+hardest-edged of them is `reasonDecoupling.test.ts`, which asserts
+`SOLVER_CAUSES.length` `.toBe(4)` against a LITERAL 4 — deliberately not
+`Object.keys(...).length`, per its own comment — so a fifth cause reds it by
+construction. (`planRoute.ts`'s comments name `planRoute.test.ts` as holding
+the exhaustive four-cause table; that grep does not find the gate predicates
+there, so treat the source comment as the weaker citation and re-derive the
+list at implementation time.)
 
 **Caveat that must ship with it:** the `planRoute.ts` translation inherits the
 solver's death-count heuristic. `isochrone.ts` returns
@@ -283,10 +310,12 @@ relaxation — correct, since a shallower gate cannot supply wind.
    named segment is not the solver applying a rule, so #885 neither breaks that
    invariant nor vindicates G.
 2. **The churn routes have no vias to mark.** #354's reproduction plans six
-   curated routes origin-to-destination; its churn appears on two of them (four
-   of twelve rig rows, 75-225 s sail interludes). Suppressing that churn with
-   #885 means ADDING via points, which moves the route (§1.2) and re-partitions
-   the solve. The captain pays a geometry change to buy a mode change.
+   curated routes origin-to-destination and passes `viaPoints: []` for every
+   one of them (`354-mode-churn/scratch354.test.ts`, its single `viaPoints`
+   occurrence); its churn appears on two routes (four of twelve rig rows,
+   75-225 s sail interludes). Suppressing that churn with #885 means ADDING via
+   points, which moves the route (§1.2) and re-partitions the solve. The
+   captain pays a geometry change to buy a mode change.
 3. **#354's open question is untouched.** Its §5 asks whether forfeiting
    1.6-2.4 min on a ~68 min passage is an acceptable price for removing one
    150-225 s sail interlude — a judgement about what a plan is for, which #885
@@ -315,9 +344,19 @@ IN_CLOSURE      app/src/types.ts  (import walk)
 ```
 
 So a field on `PlanRequest` or `Settings` owes the full run — BASE double-run
-control plus BASE-vs-HEAD across every arm, roughly 3 hours detached, per
-`app/sweep/README.md`. CLAUDE.md's rule is that OWED is authoritative and gets
-paid; nothing below argues for skipping it.
+control plus BASE-vs-HEAD across every arm, i.e. three arm-sets. CLAUDE.md's
+rule is that OWED is authoritative and gets paid; nothing below argues for
+skipping it.
+
+**Budget it from the README, not from the issue.** The issue says "roughly 3
+hours detached, per `app/sweep/README.md`"; that README does not say 3 hours.
+What it records is ONE arm-set at **2184.14 s wall** (11 arms,
+`fileParallelism`, slowest single arm 2048.7 s), explicitly measured under
+that session's own concurrent multi-agent load rather than on a quiet machine,
+and it warns that its former `~20 minutes` figure is stale. Three arm-sets at
+that figure is ~1.8 h loaded; the issue's 3 h is a safe upper bound but is the
+issue's own number. Re-measure rather than inherit either — per CLAUDE.md,
+counts are load-independent and durations are not.
 
 What IS worth stating in advance is the expected RESULT, so a non-identical arm
 reads as a red flag rather than an accepted diff: **every arm should be
@@ -460,3 +499,12 @@ re-opened here.
    affordance looks like on a tablet, is not designed here; #1170's armed
    "Add waypoint" mode is the nearest precedent, and #846 supplies the names
    that make a segment nameable in a control.
+4. **"Survives by construction" is scoped to `dedupeViaPoints` itself, not to
+   the whole path into it.** That function re-pushes the caller's own objects,
+   so extra properties survive it; but its parameter is typed `LatLon[]`, and
+   `App.tsx`'s `draftViaPoints` is `useState<LatLon[]>`, so a caller that
+   rebuilds `{ lat, lon }` literals anywhere upstream drops the modes before
+   dedupe runs — with no type error. This was NOT traced end to end here.
+   #846's `name` field has the identical exposure and shipped, so the cheap
+   first step is to establish how (or whether) `name` survives an edit-then-plan
+   round trip today, and treat that as the contract rather than re-deriving one.
