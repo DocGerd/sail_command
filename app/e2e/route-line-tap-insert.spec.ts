@@ -10,24 +10,6 @@ import { startPreview, mapReady } from './helpers';
 // touch-driven spec in the suite. `tabletPortrait` (820x1180) is the
 // maintainer's 2026-09-07 floor: it renders the NARROW layout branch and is
 // first-class, not a nice-to-have.
-//
-// KNOWN LIMITATION (recorded here, not silently worked around — see the PR
-// body's own section on it): a STRONGER version of this test placed a
-// pre-existing via point first and asserted the new insert lands BEFORE it
-// (the ordinal check that actually discriminates "insert at the nearest
-// point" from "append", mirroring App.test.tsx's #1170 unit test). That
-// version measured `sc-route-hit`'s real-browser `visibility` staying
-// 'none' even immediately after arming, with a displayed route and
-// `viaArmed`/`result` both confirmed truthy by every OTHER signal (the
-// discoverability banner text, the solved route rendering) — a divergence
-// from RouteLayer.test.tsx's own passing fake-map unit test for the
-// identical effect. Root cause NOT established in the time available; not
-// silently worked around by weakening the production code, only by
-// narrowing THIS spec to the single-via-point form below, which cannot
-// discriminate insert-at-nearest from append (both produce an
-// indistinguishable single "Wegpunkt 1" when no via point exists yet) and
-// so is honest evidence of touch-reachability only, not of the ordinal
-// correctness the unit tests already pin against the fake map.
 test.use({ hasTouch: true, viewport: { width: 820, height: 1180 } });
 
 // Types are erased before this reaches the browser (page.evaluate); this
@@ -52,6 +34,18 @@ interface ScTestMap {
  * already known to produce a real multi-leg route on this wind. Explicitly
  * selects the "Planen" tab first: at this viewport's narrow layout the
  * planner panel is a bottom sheet over the map, not a permanent side panel.
+ *
+ * If the fixture's baked-in forecast window has drifted stale (only
+ * possible when this spec is exercised OUTSIDE `npm run e2e` — see
+ * CLAUDE.md's "pree2e regenerates wind-sw12.json with fresh timestamps"
+ * bullet), planning fails with "beyond horizon" and every downstream
+ * assertion in this file becomes a false negative rooted entirely in stale
+ * test fixtures, not in RouteLayer/App.tsx — asserting a real result exists
+ * here turns that failure mode into a clear, attributable error instead of
+ * a confusing downstream one (measured while writing this spec: a
+ * git-restored, un-regenerated fixture produced exactly this failure, with
+ * `plan`/`rig` both null throughout and `sc-route-hit`'s visibility
+ * consequently stuck at 'none' — nothing to do with the feature itself).
  */
 async function planRoute(page: Page, serverUrl: string): Promise<void> {
   await page.goto(`${serverUrl}?windFixture=test-fixtures/wind-sw12.json`);
@@ -67,6 +61,7 @@ async function planRoute(page: Page, serverUrl: string): Promise<void> {
   const planButton = page.getByRole('button', { name: 'Route planen' });
   await planButton.click();
   await expect(planButton).toBeEnabled({ timeout: 60_000 });
+  await expect(page.getByRole('heading', { name: 'Ergebnis' })).toBeVisible({ timeout: 10_000 });
 }
 
 /** Page-space pixel centre of a lngLat at the live camera — mirrors
@@ -84,26 +79,54 @@ async function pagePointOf(
   return { x: box.x + local.x, y: box.y + local.y };
 }
 
-/** The midpoint of the FIRST rendered route leg — mirrors
- * route-line-drag.spec.ts's own firstLegMidpoint helper. A tap exactly at
- * this point sits at distance 0 from ROUTE_HIT_LAYER, well inside its 44px
- * width; the width itself (not this midpoint choice) is what this spec
- * exists to prove reachable from a real touch tap. */
-async function firstLegMidpoint(page: Page): Promise<[number, number]> {
-  const coords = await page.evaluate(async () => {
+/** Every rendered route leg's [start, end] pair, source order — read from
+ * the `sc-route` GeoJSON source's own `getData()` (the ORIGINAL, un-tiled
+ * leg geometry `routeGeoJson.ts`'s `legsToFeatureCollection` built, never
+ * `queryRenderedFeatures`'s tile-clipped fragments), mirroring
+ * route-line-drag.spec.ts's own firstLegMidpoint helper. */
+async function legEndpoints(page: Page): Promise<[number, number][][]> {
+  return page.evaluate(async () => {
     const map = (window as unknown as { __scE2eMap: ScTestMap }).__scE2eMap;
     const src = map.getSource('sc-route');
     if (!src) throw new Error('sc-route source not installed');
     const data = await src.getData();
-    const first = data.features[0];
-    if (!first || first.geometry.type !== 'LineString') {
-      throw new Error('sc-route has no leg features yet');
-    }
-    return first.geometry.coordinates as [number, number][];
+    const lines = data.features.filter((f) => f.geometry.type === 'LineString');
+    if (lines.length === 0) throw new Error('sc-route has no leg features yet');
+    return lines.map((f) => f.geometry.coordinates as [number, number][]);
   });
-  const [a, b] = coords;
-  if (!a || !b) throw new Error('leg feature has fewer than 2 coordinates');
-  return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+}
+
+/** A point 8% of the way along the FIRST leg, from its start — close enough
+ * to the origin to stay unambiguously nearest the origin->via1 segment of
+ * the draft chain (the geometric property the ordinal test below depends
+ * on), but far enough from the origin's own coordinate to clear
+ * EndpointMarkers.tsx's `sc-endpoint-marker-origin` DOM marker, which sits
+ * exactly ON the route's start point and — being an absolutely-positioned
+ * sibling over the canvas — swallows a touch tap landing on it before
+ * MapLibre ever sees the event (measured: tapping the EXACT origin
+ * coordinate hit that marker div, not the canvas, and inserted nothing). */
+async function firstLegNearOrigin(page: Page): Promise<[number, number]> {
+  const legs = await legEndpoints(page);
+  const [a, b] = legs[0]!;
+  if (!a || !b) throw new Error('first leg has fewer than 2 coordinates');
+  const t = 0.08;
+  return [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])];
+}
+
+/** The END point of the LAST leg — the route's own destination, as close to
+ * `destination.point`/`snappedDestination` as the geometry gets. Used to
+ * place a pre-existing via point hugging the DESTINATION end, mirroring
+ * App.test.tsx's own #1170 unit test and the #845 seamark e2e fixture shape
+ * (`'inserts at the NEAREST point along the route, not appended after an
+ * existing via point'`). Deliberately the leg's END, not its midpoint: a
+ * midpoint can sit ANYWHERE along a tacking route, which is not
+ * unambiguously nearest the destination-side chain segment; the true
+ * endpoint is. */
+async function lastLegEnd(page: Page): Promise<[number, number]> {
+  const legs = await legEndpoints(page);
+  const [, end] = legs[legs.length - 1]!;
+  if (!end) throw new Error('last leg has no end coordinate');
+  return end;
 }
 
 /**
@@ -112,7 +135,7 @@ async function firstLegMidpoint(page: Page): Promise<[number, number]> {
  * armed — is capped at 55vh (app.css) and painted ON TOP of the map
  * (untiered above map chrome, per app.css's own declared stacking order).
  * The auto-fit camera `fitToLegs` runs after planning has NO knowledge of
- * that DOM overlay, so a leg's projected midpoint lands under the sheet as
+ * that DOM overlay, so a leg's projected point lands under the sheet as
  * often as not (measured: y=1027 of a 1180px-tall viewport, deep inside the
  * sheet's bottom ~55%). Re-centres the camera via `easeTo({ duration: 0,
  * offset })` — `jumpTo` was tried first and does NOT honour `offset` at all
@@ -139,7 +162,7 @@ async function centerAboveBottomSheet(page: Page, lngLat: [number, number]): Pro
   );
 }
 
-test('a touch tap on the route line inserts a waypoint while armed, at the tablet-portrait floor', async ({
+test('a touch tap on the route line inserts a waypoint at the NEAREST point, not appended after an existing via, at the tablet-portrait floor', async ({
   page,
 }) => {
   const server = await startPreview(page);
@@ -148,9 +171,29 @@ test('a touch tap on the route line inserts a waypoint while armed, at the table
     await mapReady(page);
 
     await expect(page.getByRole('button', { name: /^Wegpunkt \d+$/ })).toHaveCount(0);
+    const viaSection = page.getByRole('region', { name: 'Wegpunkte' });
+
+    // Place ONE via point hugging the DESTINATION end via the coordinate-
+    // entry row, BEFORE arming or tapping — mirrors App.test.tsx's own
+    // #1170 unit test and the #845 seamark e2e fixture. This is the ONLY
+    // construction that discriminates "insert at the nearest point" from
+    // "append": with no via point pre-placed and a tap landing exactly on
+    // the route line, the correct nearest-point insert and the pre-existing
+    // raw-tap-append fallback (App.tsx's handleMapTap 'via' branch, reached
+    // whenever a click misses every layer in `interactiveLayerIds`) would
+    // both produce an INDISTINGUISHABLE single "Wegpunkt 1" — only a
+    // SECOND, already-ordered via point makes the two paths diverge.
+    const [destLon, destLat] = await lastLegEnd(page);
+    await viaSection.getByLabel('Breitengrad').fill(destLat.toFixed(4));
+    await viaSection.getByLabel('Längengrad').fill(destLon.toFixed(4));
+    await viaSection.getByRole('button', { name: 'Koordinaten hinzufügen' }).click();
+    await expect(viaSection.getByRole('listitem')).toHaveCount(1);
+    // Captured verbatim rather than re-deriving the panel's own display
+    // rounding (formatLatLon) from destLat/destLon — comparing the SAME
+    // rendered string before/after avoids any rounding-boundary mismatch.
+    const preExistingViaText = await viaSection.getByRole('listitem').first().textContent();
 
     // Arm "Add waypoint" — the same control #845/#924's specs drive.
-    const viaSection = page.getByRole('region', { name: 'Wegpunkte' });
     await viaSection.getByRole('button', { name: 'Wegpunkt hinzufügen', exact: true }).click();
     await expect(page.getByText('Auf Karte tippen für Wegpunkte.')).toBeVisible();
     // #1170's discoverability requirement: the route line's tappability is
@@ -159,22 +202,28 @@ test('a touch tap on the route line inserts a waypoint while armed, at the table
       page.getByText('Oder auf die Routenlinie tippen, um dort einen Wegpunkt einzufügen.'),
     ).toBeVisible();
 
-    const midLngLat = await firstLegMidpoint(page);
-    await centerAboveBottomSheet(page, midLngLat);
-    const tapPoint = await pagePointOf(page, midLngLat);
+    // Tap near the ORIGIN end — nearest the origin->via1 segment, so it
+    // must land BEFORE via1, not after it.
+    const startLngLat = await firstLegNearOrigin(page);
+    await centerAboveBottomSheet(page, startLngLat);
+    const tapPoint = await pagePointOf(page, startLngLat);
 
     // A real touch TAP (hasTouch: true above), never a mouse click — the
     // whole point of this spec is proving MapLibre relays it as a 'click'
     // RouteLayer's ROUTE_HIT_LAYER handler can act on.
     await page.touchscreen.tap(tapPoint.x, tapPoint.y);
 
-    // The insert landed, at the first (and only) index — no via point
-    // existed beforehand, so this also rules out the double-insert hole
-    // (a second producer would show a SECOND "Wegpunkt N" button, not a
-    // renamed first).
-    await expect(page.getByRole('button', { name: 'Wegpunkt 1', exact: true })).toHaveCount(1, {
-      timeout: 10_000,
-    });
+    // Inserted FIRST (nearest the origin->via1 segment), not appended after
+    // the pre-existing via — the ordinal check, not just a presence count.
+    // This is what rules out the "false green from the raw-tap-append
+    // fallback" failure mode: that path always appends, regardless of
+    // where on the map the tap lands, so it could only ever produce
+    // item[1] === the new point, never item[0].
+    await expect(viaSection.getByRole('listitem')).toHaveCount(2, { timeout: 10_000 });
+    const items = await viaSection.getByRole('listitem').all();
+    await expect(items[0]!).not.toHaveText(preExistingViaText ?? '');
+    await expect(items[1]!).toHaveText(preExistingViaText ?? '');
+
     // The pick disarmed itself in the same gesture (handleRouteLineArmedTap's
     // extra step over the #850 drag path, which has no arming to clear).
     await expect(page.getByText('Auf Karte tippen für Wegpunkte.')).not.toBeVisible();

@@ -90,6 +90,19 @@ const mapTestHooks = vi.hoisted(() => ({
   // marker under a specific tap so the generic-tap gate (queryRenderedFeatures)
   // engages exactly as it would in the browser; empty means open water.
   harborHitFeatures: {} as Record<string, { properties?: Record<string, unknown> }[]>,
+  // #1170: same idea as harborHitFeatures, for RouteLayer's ROUTE_HIT_LAYER
+  // ('sc-route-hit'). Needed so a test can prove MapView's generic-tap gate
+  // itself bails on a ROUTE_HIT_LAYER hit — firing ONLY RouteLayer's own
+  // delegated layer handler (as an earlier version of this suite's #1170
+  // test did) cannot distinguish "the gate correctly suppressed the raw
+  // append" from "both handlers fired and the delegated one's write merely
+  // landed last" (measured: with ROUTE_HIT_LAYER removed from
+  // App.tsx's interactiveLayerIds, firing only the layer handler still
+  // produced the CORRECT final via list, because React applies the two
+  // handlers' setDraftViaPoints calls in registration order and the later
+  // one — RouteLayer's — overwrote the earlier raw-append one; the raw
+  // append fired regardless and left no trace in the final state alone).
+  routeHitFeatures: {} as Record<string, { properties?: Record<string, unknown> }[]>,
   // Latest setData payload per source id (FakeMap.getSource returns a spy for
   // added sources). Lets tests observe the language-relabel rebuild wiring,
   // which previously no-opped because getSource returned undefined.
@@ -293,14 +306,18 @@ vi.mock('maplibre-gl', () => {
     getLayer(id?: string) {
       return typeof id === 'string' && this._addedLayers.has(id) ? { id } : undefined;
     }
-    // Faithful stand-in for MapView.handleClick's harbor-hit gate: reports the
-    // harbor feature only when the click point matches a marker the test placed
-    // there (mapTestHooks.harborHitFeatures) AND the harbor layer is the one
-    // queried — otherwise open water, so a plain tap-pick proceeds.
+    // Faithful stand-in for MapView.handleClick's per-layer hit gate: reports
+    // a feature only when the click point matches something a test placed
+    // there (mapTestHooks.harborHitFeatures / routeHitFeatures) AND the
+    // matching layer is the one queried — otherwise open water, so a plain
+    // tap-pick proceeds. #1170 added the sc-route-hit arm, mirroring the
+    // pre-existing sc-harbor-points one exactly.
     queryRenderedFeatures(point: { x: number; y: number }, options?: { layers?: string[] }) {
       const layers = options?.layers ?? [];
-      if (!layers.includes('sc-harbor-points')) return [];
-      return mapTestHooks.harborHitFeatures[`${point.x},${point.y}`] ?? [];
+      const key = `${point.x},${point.y}`;
+      if (layers.includes('sc-harbor-points')) return mapTestHooks.harborHitFeatures[key] ?? [];
+      if (layers.includes('sc-route-hit')) return mapTestHooks.routeHitFeatures[key] ?? [];
+      return [];
     }
     removeLayer() {}
     removeSource() {}
@@ -644,6 +661,8 @@ beforeEach(async () => {
     delete mapTestHooks.layerClickHandlers[key];
   for (const key of Object.keys(mapTestHooks.harborHitFeatures))
     delete mapTestHooks.harborHitFeatures[key];
+  for (const key of Object.keys(mapTestHooks.routeHitFeatures))
+    delete mapTestHooks.routeHitFeatures[key];
   for (const key of Object.keys(mapTestHooks.sourceSetData)) delete mapTestHooks.sourceSetData[key];
   mapTestHooks.lastPopupContent = null;
   depthProfileProps.last = null;
@@ -1788,11 +1807,27 @@ describe('#1170: tap the route line to insert a waypoint (App wiring)', () => {
     expect(await screen.findByText(message)).toBeInTheDocument();
 
     await waitFor(() => expect(mapTestHooks.layerClickHandlers['sc-route-hit']).toBeTruthy());
+    await waitFor(() => expect(mapTestHooks.clickHandler).toBeTruthy());
     // ORIGIN_A {54.79, 9.43} projects to px (15, 255) under this fake's
     // linear project() (see the FakeMap class above: x=(lon-9.4)*500,
     // y=(55.3-lat)*500) — tapping exactly there clamps
     // nearestPointOnRoute's segment projection to t=0, i.e. ORIGIN_A itself.
+    // #1170 wave 2: fires BOTH mapTestHooks.clickHandler (MapView's generic
+    // handler) AND the delegated sc-route-hit handler TOGETHER, mirroring
+    // simulateHarborMarkerClick's own comment on why — in the real browser
+    // ONE native click reaches every registered listener, generic first
+    // then delegated. Firing only the delegated handler (the wave-1 form of
+    // this test) could not tell "App.tsx's interactiveLayerIds gate
+    // correctly bailed the generic append" from "both fired, and the
+    // delegated write happened to land last and overwrite the append's" —
+    // MEASURED while investigating this PR: with ROUTE_HIT_LAYER removed
+    // from interactiveLayerIds, the wave-1 form of this test still passed,
+    // because React applies the two setDraftViaPoints calls in dispatch
+    // order and the later (delegated) one silently wins. `routeHitFeatures`
+    // makes the generic handler's OWN hit-test see what a real click would.
+    mapTestHooks.routeHitFeatures['15,255'] = [{}];
     act(() => {
+      mapTestHooks.clickHandler?.({ lngLat: { lat: 54.79, lng: 9.43 }, point: { x: 15, y: 255 } });
       mapTestHooks.layerClickHandlers['sc-route-hit']?.({ point: { x: 15, y: 255 } });
     });
 
@@ -1807,6 +1842,47 @@ describe('#1170: tap the route line to insert a waypoint (App wiring)', () => {
     // #850 drag path, which has no arming to clear): the pick disarms
     // itself, matching handleSavedWaypointMapPick's own comment.
     expect(screen.queryByText(message)).not.toBeInTheDocument();
+  });
+
+  // #1170 wave 2: the test above proves the CORRECT final state when BOTH
+  // handlers fire, but cannot prove the generic handler actually BAILED —
+  // a "last write wins" race would produce the identical final list even if
+  // the generic append ALSO ran (measured, see that test's own comment).
+  // This test isolates the bail itself: fire ONLY mapTestHooks.clickHandler
+  // (never the delegated sc-route-hit handler) with a routeHitFeatures hit
+  // registered at the tap point, and assert NOTHING is appended — the only
+  // way that can be true is if App.tsx's interactiveLayerIds array actually
+  // contains ROUTE_HIT_LAYER while armed, since MapView's generic handler's
+  // sole source of truth for "did I hit something interactive" is exactly
+  // that array plus this queryRenderedFeatures gate.
+  it('the generic tap handler alone bails on a ROUTE_HIT_LAYER hit while armed — it does not append', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    pickOriginAndDestination();
+
+    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+    await waitFor(() => expect(routingMock.calls.length).toBe(1));
+    routingMock.calls[0].resolve(okPlanResult(20));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled(),
+    );
+    await flushPlanFormSync();
+
+    const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
+    fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.add'] }));
+    await screen.findByText(de['banner.tapPick'].replace('{target}', de['planner.via.label']), {
+      exact: false,
+    });
+
+    await waitFor(() => expect(mapTestHooks.clickHandler).toBeTruthy());
+    mapTestHooks.routeHitFeatures['15,255'] = [{}];
+    act(() => {
+      mapTestHooks.clickHandler?.({ lngLat: { lat: 54.79, lng: 9.43 }, point: { x: 15, y: 255 } });
+    });
+
+    // No via point exists yet; the generic handler firing its append branch
+    // would create exactly one. Its absence is the proof the bail ran.
+    expect(within(viaSection).queryAllByRole('listitem')).toHaveLength(0);
   });
 });
 
