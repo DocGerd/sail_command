@@ -13,12 +13,7 @@
   against Samsung Galaxy Tab S7 performance as the reference device." This
   replaces the three open directions in #1147's body.
 
-**Verdict, in one line: the throttling mechanism named in the brief
-(`Emulation.setCPUThrottlingRate`) does not reach the routing solver at
-all, and no reliable substitute was found in this sandboxed session — but
-the plain, unthrottled, idle-machine measurement already answers the
-underlying question: `PLAN_BUDGET_MS = 120_000` does not clear any
-plausible Tab S7-class device today.**
+**Verdict, in one line: the throttling mechanism named in the brief (`Emulation.setCPUThrottlingRate`) does not reach the routing solver at all, and no reliable substitute was found in this sandboxed session — but the plain, unthrottled, idle-machine measurement is already enough to INFER, not measure, the underlying answer: on every (unverified but directionally consistent) benchmark figure found, `PLAN_BUDGET_MS = 120_000` does not clear a plausible Tab S7-class device today.**
 
 ---
 
@@ -159,11 +154,19 @@ and 3 are not averaged with run 1** — they are reported beside it with load
 stated, as a second data point on load-sensitivity, not as replicates of
 the same condition.
 
-**Two clocks (`performance.now()` / `Date.now()`) agreed to 0.1 ms on run
-1.** #1147's unresolved clock-disagreement anomaly (5.7-8.7 s per sample) did
-**not** reproduce at near-zero load. This is one data point, not a
-root-cause — consistent with (but not proof of) the WSL2-guest-clock-under-
-load hypothesis #1147 already flagged as unconfirmed.
+**Both clocks (`performance.now()` / `Date.now()`) were logged for every run,
+and all three agreed to within 0.5 ms**: run 1 (idle) 0.1 ms, run 2
+(contended, load 7-22) 0.2 ms, run 3 (contended, load 9-22) -0.5 ms — the
+table above reports the wall-clock (`Date.now()`) figure for all three rows,
+and the monotonic figure differs by less than the rounding shown in that
+table in every case, so the choice of clock does not affect §6's
+comparisons. #1147's unresolved clock-disagreement anomaly (5.7-8.7 s per
+sample) did **not** reproduce at any of the three load levels sampled here,
+including the two contended runs — the same condition the original anomaly
+was observed under. This narrows, not closes, the open question: three
+samples on one machine in one session is not a root-cause, and is not proof
+against the WSL2-guest-clock-under-load hypothesis #1147 already flagged as
+unconfirmed — only evidence the anomaly is not universal under load.
 
 ## 4. Throttle factor for "Galaxy Tab S7" — could not be independently verified
 
@@ -236,8 +239,7 @@ not rule out — only the *headroom-sizing* direction was decided).
 
 ## 6. A stale in-code claim this measurement surfaces
 
-`app/src/routing/workerClient.ts:95-106`'s comment above `PLAN_BUDGET_MS`
-cites a **2.4-2.9× slower device** as the threshold that "reaches the
+The comment immediately above `export const PLAN_BUDGET_MS = 120_000;` in `app/src/routing/workerClient.ts` (currently lines 95-106, a hint only) cites a **2.4-2.9× slower device** as the threshold that "reaches the
 budget at all", derived from **synthetic uniform-wind** measurements
 (`uniformWindGrid(12, 225)`: 41-43 s; `uniformWindGrid(12, 270)`: 50.5 s).
 Both this document's run and #1147's own PR #1145 measurement use **live,
