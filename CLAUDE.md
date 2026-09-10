@@ -1637,7 +1637,8 @@ making design-level decisions; do not silently deviate.
   | v0.28.0 | 2026-09-08 | 112 s | `success` (MEASURED immediately before the tag push, and the failure CALLED IN ADVANCE from it) | **`smoke-probe` FAILED** | merge-push `34282950799` (created 21:52:27Z) -> tag `34283116096` (created 21:54:19Z) on `905d1a3`. The tag run's `build` AND `deploy` both succeeded; only `smoke-probe` failed, by the #398 signature -- its own prod entry chunk `assets/index-C5NE_lFC.js` 404'd. Back-merge `34285495537` (different SHA `59a8123`) then probed green and republished **that same chunk name**, which production then served at ``about.version`,{version:`v0.28.0`}`` with ZERO suffixed matches -- so the tag run's BUILD was correct and only its DEPLOYMENT no-opped. Release object `isLatest: true`; tag object reported `verified: true, reason: "valid"`. **ENDS the three-cut run of not-yet-started readings** (v0.25.0-v0.27.0); first terminal `success` since v0.24.0, and it behaved exactly as this table says a `success` reading behaves. **Sharpens the v0.23.0/v0.24.0 gate finding with the tightest margin yet:** the merge `deploy` job ran 21:53:37Z -> **21:53:45Z `success`**, terminal **34 s BEFORE the tag run was created** -- so the cancel-supersede escape was again unavailable, now on three observations reached from both readings. Still names no MECHANISM. |
   | v0.29.0 | 2026-09-09 | 2 min | `success` (MEASURED immediately before the tag push, and the failure CALLED IN ADVANCE from it, written down BEFORE the push) | **`smoke-probe` FAILED** | merge-push `34323066038` -> tag `34323514588` on `ffaa41d`. The tag run's `build`, `deploy` AND `prod-environment` all succeeded; only `smoke-probe` failed, by the #398 signature -- its own prod entry chunk `assets/index-DDdE4ANJ.js` returned **404 on all 10 attempts** (07:23:57Z -> 07:28:28Z, ~4m31s). BOTH basemap Range probes passed on attempt 1, at 07:23:56-57Z -- note they run BEFORE the entry-chunk probe, so they are a temporally-PRIOR CDN control, not a simultaneous one. Back-merge `34329387900` (different SHA `067a39f`) then probed green and republished **that same chunk name**, which production then served at ``about.version`,{version:`v0.29.0`}`` with ZERO suffixed matches. SECOND consecutive terminal-`success` reading, after v0.28.0. **What this row ADDS is that the `steps` COUNT on the merge run's `deploy` job is itself a discriminator, not just the conclusion:** here `steps=6` (the job genuinely RAN and deployed, and the no-op followed), against v0.25.0's and v0.27.0's `steps: 0` (never started), which those rows used as the control making their SAFE outcome attributable. A job that never started and one interrupted after running both report a non-`success` conclusion and mean OPPOSITE things. Still names no MECHANISM. |
   | v0.30.0 | 2026-09-09 | 45 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) immediately before the tag push -- the same non-answer v0.17.0, v0.25.0, v0.26.0 and v0.27.0 recorded; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `34368277678` (created 15:08:33Z) -> tag `34368356087` (created 15:09:18Z) on `b66e178`. The merge run's `deploy` job carries **`steps: 0`** with `started_at` == `completed_at` == 15:09:56Z -- the v0.25.0/v0.27.0 control -- so it NEVER STARTED and left no `success`-state deployment of that SHA behind. The tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production afterwards served `assets/index-Cc9EuFnt.js` with ZERO suffixed `vX.Y.Z-N-g<sha>` matches, so no back-merge remedy was owed. Release object `isLatest: true`; tag object `verified: true, reason: "valid"`. **FOURTH not-yet-started reading, and the first SAFE outcome since v0.27.0** -- it ends the run of `smoke-probe` failures at v0.28.0 and v0.29.0, both of which read terminal `success`. The widened criterion those rows established -- the merge `deploy` job has not reached terminal `success` -- now rests on four observations. Four is still not a mechanism: this row names NONE, and per this table's own rule the gap gates nothing. |
-  | v0.31.0 | 2026-09-10 | 54 s | read as **NO `deploy` JOB CREATED YET** immediately before the tag push -- the FIFTH not-yet-started reading, after v0.17.0, v0.25.0, v0.26.0, v0.27.0 and v0.30.0; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `34449455451` (created 07:20:19Z) -> tag `34449529039` (created 07:21:13Z) on `a0bed8f`. The merge run's `deploy` job carries **`steps: 0`** with `started_at` == `completed_at` == 07:21:20Z, against that SAME run's `build` job at **`steps: 23`** which ran 07:20:22Z -> 07:21:19Z and was cancelled mid-flight -- the within-run control v0.27.0 used, so `deploy` NEVER STARTED and left no `success`-state deployment of that SHA behind. The tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production afterwards served `assets/index-ksgT8KEb.js` at ``about.version`,{version:`v0.31.0`}`` with ZERO suffixed `vX.Y.Z-N-g<sha>` matches, so no back-merge remedy was owed. Release object `isLatest: true`; tag object `f11d2501` reported `verified: true, reason: "valid"`. The widened criterion -- the merge `deploy` job has not reached terminal `success` -- now rests on FIVE observations. Five is still not a mechanism: this row names NONE, and per this table's own rule the gap gates nothing. |
+  | v0.31.0 | 2026-09-10 | 54 s | read as **NO `deploy` JOB CREATED YET** immediately before the tag push -- a not-yet-started reading; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `34449455451` (created 07:20:19Z) -> tag `34449529039` (created 07:21:13Z) on `a0bed8f`. The merge run's `deploy` job carries **`steps: 0`** with `started_at` == `completed_at` == 07:21:20Z, against that SAME run's `build` job at **`steps: 23`** which ran 07:20:22Z -> 07:21:19Z and was cancelled mid-flight -- the within-run control v0.27.0 used, so `deploy` NEVER STARTED and left no `success`-state deployment of that SHA behind. The tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production afterwards served `assets/index-ksgT8KEb.js` at ``about.version`,{version:`v0.31.0`}`` with ZERO suffixed `vX.Y.Z-N-g<sha>` matches, so no back-merge remedy was owed. Release object `isLatest: true`; tag object `f11d2501` reported `verified: true, reason: "valid"`. The widened criterion -- the merge `deploy` job has not reached terminal `success` -- gains another observation here. COUNT the rows reading "NO `deploy` JOB CREATED YET" rather than trusting an ordinal: this row carried one reading FIFTH while naming five priors, the exact off-by-one this table's own preamble forbids a running total for. A count is still not a mechanism: this row names NONE, and per this table's own rule the gap gates nothing. |
+  | v0.32.0 | 2026-09-10 | 62 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) immediately before the tag push -- another not-yet-started reading; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `34471115059` (created 11:24:20Z) -> tag `34471205143` (created 11:25:22Z) on `4e1e92d`. The merge run's `deploy` job carries **`steps: 0`** against that SAME run's `build` job at **`steps: 23`**, which ran and was cancelled mid-flight -- the within-run control v0.27.0 and v0.31.0 used -- so `deploy` NEVER STARTED and left no `success`-state deployment of that SHA behind. The tag run (`head_branch: v0.32.0`) had `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**, `uat-environment` skipped; production afterwards served ``about.version`,{version:`v0.32.0`}`` with ZERO suffixed `vX.Y.Z-N-g<sha>` matches, so no back-merge remedy was owed. Release object `isLatest: true`; tag object reported `verified: true, reason: "valid"`. Still names no MECHANISM, and per this table's own rule the gap gates nothing. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -2170,6 +2171,26 @@ making design-level decisions; do not silently deviate.
   that batch's first push; `57bdc72` was folded in afterwards and only the TESTS were re-run. A
   fold makes a NEW commit range, so every pre-merge check has to be re-run against it — not just
   the ones that feel related to the change being folded.
+  **The pattern also fires on ORDINARY DESCRIPTIVE PROSE, and the release
+  sweep is where that shape lives.** Verified 2026-09-10 by running this
+  repo's own documented grep both ways: `Fixed (#1154` MATCHES, because the
+  `[[:space:]:(]*` class admits the paren, while `two under Fixed, namely
+  #1154` does NOT. Nothing here is a deliberate issue reference — it is a
+  sentence saying which changelog CATEGORIES received entries, which every
+  sweep PR body and every fold commit contains. It occurred three times in one
+  session, in a commit message and two PR bodies, each caught by the PreToolUse
+  hook and none by review. The second-order defect is the one worth naming: one
+  of those PR bodies simultaneously CLAIMED "no closing keyword appears in this
+  body", so a false self-verification shipped alongside the keyword and would
+  have told the next reader the check was already done. Write "two under Fixed,
+  namely #N", and re-run the grep against the LIVE body after any edit — a
+  local copy proves nothing about what was posted. **The worked example is
+  safe in THIS file and unsafe the moment it is quoted into a commit message
+  or a PR body** — auto-close scans those two, never file content — and
+  backticks do NOT protect, since the scan does not respect code spans.
+  Measured 2026-09-10: the PR body explaining this very bullet tripped the
+  hook on its own example. Cite it with a placeholder number when writing
+  either.
 - **Cross-PR file collisions are invisible to per-PR review — only the
   orchestrator holds that view, and it is represented in no artifact.** Measured
   2026-08-31: two implementers were sent to append a new guard to
@@ -3350,6 +3371,20 @@ making design-level decisions; do not silently deviate.
   no artifact — where a redundant test that stays costs nobody anything.
   When only part of a test is covered, ANNOTATE that assertion and keep the
   test.
+- **CDP CPU throttling is INERT on a dedicated Worker.** Measured 2026-09-10
+  with a positive control: a tight-loop Worker ran 90,073.7 ms unthrottled
+  against 94,033.9 ms at a REQUESTED `Emulation.setCPUThrottlingRate` of 4 —
+  ratio 1.04, i.e. no effect. MAIN-THREAD throttling is unaffected and still
+  works — the #355 `--sc-panel-w` `useLayoutEffect` finding elsewhere in this
+  file rests on it, and the two do not contradict. The control is what makes
+  the result usable: without it, "throttling had no effect" and "this workload
+  is throttle-insensitive" are the same reading. The solver runs in a dedicated
+  Worker (`app/src/routing/worker.ts`), so a CDP-throttled slow-device
+  measurement of ROUTING silently measures an UNTHROTTLED run — the failure
+  direction that reports comfortable headroom on hardware that has none. A
+  SIGSTOP/SIGCONT substitute was tried next and is not a workaround: the
+  in-process `process.kill()` variant HUNG the target in kernel state `T` and
+  had to be killed by hand.
 - **vitest's DEFAULT reporter suppresses console output from PASSING tests**, so
   a console-spy check run on a green suite is a FALSE NEGATIVE. Measured
   2026-09-04 with a control: a passing test logging a unique marker printed it
@@ -4782,10 +4817,20 @@ making design-level decisions; do not silently deviate.
   because a run landing post-switch would have certified the other branch's
   `CLAUDE.md`. Send the correction to EVERY live agent, not only the ones you
   think are affected.
-- **Claude Code's OWN Agent tool refuses a worktree-isolated agent's git
-  command that leaves its worktree -- this is the HARNESS, not a hook.** Two
-  shapes, measured 2026-09-08 against Claude Code 2.1.263 (a harness-version
-  property -- re-check after an upgrade): a command that `cd`s to the shared
+- **Claude Code's OWN Agent tool refuses a worktree-isolated agent's command
+  whose literal argv it cannot statically verify -- this is the HARNESS, not a
+  hook, and it is NOT git-specific.** The refusal reads as being about git
+  because its message says so, but what it actually gates on is whether the
+  argv can be shown not to be git. Two NON-git shapes were measured 2026-09-10:
+  `sed -n "$(grep ... | cut -d: -f1),+16p" file` was refused, the message
+  stating verbatim that it "runs sed with a value computed at runtime ... so
+  what it runs cannot be shown not to be git" -- zero git in the command -- and
+  `FILE=/abs/path...; python3 -c "...open('$FILE')..."` was refused on the same
+  reasoning about the shell variable. Remedy is the same family as the git
+  shapes below: a literal `grep -A<n> "<pattern>"` instead of a computed `sed`
+  range, and an inline path instead of `$VAR`. The original git shapes,
+  measured 2026-09-08 against Claude Code 2.1.263 (a harness-version property -- re-check
+  after an upgrade): a command that `cd`s to the shared
   checkout before running git is refused with "a worktree-isolated agent's
   git operations must target its own worktree", and a COMPOUND git command is
   refused as "too complex to verify that it stays inside the worktree". Both
