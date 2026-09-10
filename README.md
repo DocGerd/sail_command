@@ -224,13 +224,18 @@ data; the code license is covered in the [License](#license) section below.
   Deeper-drafted fleet boats are not in the catalogue yet: they can no longer
   reach every harbor, and the picker does not yet grey unreachable harbors out
   per boat.
-- Inserting a waypoint by dragging the plotted route line is desktop/mouse
-  only. The grab handle is revealed by hovering the line, so touch has no
-  hover phase in which to reach it
-  ([#1170](https://github.com/DocGerd/sail_command/issues/1170)), and the
-  gesture has no keyboard equivalent
+- Inserting a waypoint by dragging the plotted route line is still
+  desktop/mouse only: the grab handle is revealed by hovering, and touch has
+  no hover phase in which to reach it. Touch has its own equivalent instead —
+  tap the route line while "Add waypoint" is armed to insert at the tapped
+  position ([#1170](https://github.com/DocGerd/sail_command/issues/1170)).
+  Keyboard users get a different equivalent: a per-row "insert waypoint after
+  this one" button in the via list, which inserts at the great-circle
+  midpoint of that gap rather than an arbitrary point, and does not cover the
+  gap between the origin and the first via point
   ([#1171](https://github.com/DocGerd/sail_command/issues/1171)). The other
-  ways of adding a waypoint are unaffected.
+  ways of adding a waypoint (typed coordinates, saved waypoints, plain map
+  tap) are unaffected.
 - Map labels (place names) are set once at load time in the UI's active
   language; they don't switch live when you toggle German/English mid-session.
 - The router does not yet account for currents, tides, or sea state (waves)

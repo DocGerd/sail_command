@@ -401,6 +401,27 @@ selected in §1.
       delete the saved waypoint from the "Saved waypoints" list (its own
       delete button, tap once to arm and again to confirm)
       before §3 (#924).
+- [ ] **2.17 Route-line tap insert (#1170).** Arm "Add waypoint" ("Wegpunkt
+      hinzufügen") again: the armed banner now also reads "Or tap the route
+      line to insert a waypoint there." ("Oder auf die Routenlinie tippen,
+      um dort einen Wegpunkt einzufügen."). Tap (or click) directly on the
+      displayed route line — not open water, not a saved-waypoint ring: the
+      new point is inserted at the tapped LEG, in correct via-list order
+      (never appended at the end regardless of where along the route you
+      tapped), and the pick disarms itself; the route line itself does not
+      move until "Plan route" is pressed again, same as 2.15. If a
+      saved-waypoint ring happens to sit on top of the tapped point, the
+      ring wins and inserts by name instead (§2.16's precedence) — expected,
+      not a defect. Remove the point before §3.
+- [ ] **2.18 Cancel an in-flight solve (#1193).** Start a route plan and,
+      while the planner shows a busy state (its status line reads a
+      fetching/routing/probing phase, not idle), press "Cancel route
+      planning" ("Routenberechnung abbrechen") — visible only while busy,
+      never while idle. Confirm the app returns to idle silently: no error
+      banner appears, and any plan that was already displayed (e.g.
+      cancelling a recalculate) is left exactly as it was, never replaced by
+      completion copy for the cancelled attempt. Press "Plan route" again
+      and confirm a fresh solve starts and completes normally.
 
 **Result:** Pass / Fail / Partial — notes: ___________________________
 
