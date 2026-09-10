@@ -4244,16 +4244,16 @@ select {
 
 /* #947: visible sibling of the via marker dot's own aria-label
    (ViaMarkers.tsx's `viaElement`) — a sighted user could not previously tell
-   waypoints apart. `position: absolute` against the root resolves correctly
-   without the root itself needing `position: relative` — MapLibre keeps
-   that root `position: absolute` via its own `.maplibregl-marker` class
-   (see ViaMarkers.tsx's own comment for why an inline `position: relative`
-   on the root was tried and reverted). This label must never grow the
-   root's own explicitly-sized (16x16) box,
-   which MapLibre centers with a percentage-based `translate(-50%,-50%)`
-   resolved against that box. `pointer-events: none` keeps the label out of
-   the dot's own click/drag/touch target; several waypoints close together
-   can still overlap labels (not solved here, no worse than before). */
+   waypoints apart. Since #1186 this anchors to the 16px `.sc-via-marker-dot`,
+   which carries `position: relative`, NOT to the marker root, which is a
+   transparent 44px hit box — `viaElement`'s own comment carries the mechanism
+   and why the root cannot take it. Measured in Chromium at PR #1196: the
+   label's offset from its map coordinate is unchanged by that restructuring.
+   The label must never grow the dot's explicitly-sized box, which MapLibre's
+   percentage-based `translate(-50%, -50%)` centering resolves against.
+   `pointer-events: none` keeps it out of the drag target; labels on close
+   waypoints can still overlap (no worse than before), and their 44px hit
+   boxes can now contend — #1198. */
 .sc-via-marker-label {
   position: absolute;
   top: 100%;
