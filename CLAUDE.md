@@ -2790,17 +2790,15 @@ making design-level decisions; do not silently deviate.
   while still reading SUCCESS for NOT-MEASURED-YET. (1) Counting check-runs
   with `conclusion == null` to detect "still pending": before the runs are
   CREATED that count is 0, so the loop breaks instantly and prints "settled
-  after ~0s". (2) Counting TERMINAL check-runs across the SHA: a release PR's
+  after ~0s". Recurred 2026-09-10 in its READING form — conclusions read off
+  an EMPTY check list, so a monitor exited "ALL TERMINAL" having measured
+  nothing; an empty set satisfies any "all of them passed" test.
+  (2) Counting TERMINAL check-runs across the SHA: a release PR's
   head IS `develop`'s tip, so the merge-push run's finished `app`/`e2e`
   satisfied a `count >= 2` test while the PR's OWN run was still
   `in_progress`. Require both jobs to EXIST IN THE SPECIFIC RUN ID and be
   terminal (`runs/<id>/jobs`, not `commits/<sha>/check-runs`), and cross-check
   `mergeable_state` — it read `blocked` and contradicted watcher (2) correctly.
-  A THIRD shape, 2026-09-10: reading CONCLUSIONS before the named checks
-  EXIST. Nothing-pending and everything-passed are the same reading before the
-  runs are created, so a monitor exited "ALL TERMINAL" with EMPTY check lists
-  — require `n >= 2` NAMED checks to EXIST in the specific run id before
-  reading any conclusion at all.
   CAVEAT, measured 2026-08-14 on #518: that `head_sha=` filter returned
   `total_count: 0` for a live run while `commits/<sha>/check-runs` saw 7 and
   `actions/runs?branch=<branch>` showed that run carrying that exact
@@ -2850,10 +2848,12 @@ making design-level decisions; do not silently deviate.
   `setDraftViaPoints` from TWO handlers, so the broken guard and the correct
   one settled to identical final state and every end-state assertion passed
   either way. Only a test firing the GENERIC handler ALONE could see it, and
-  the fake had to gain the ability to DIVERGE from production first
-  (`routeHitFeatures`, mirroring the existing `harborHitFeatures`) —
-  `app/src/App.test.tsx:1881`. When one event can reach a setter twice, assert
-  on the HANDLER, never on the settled state.
+  the FAKE had to gain the ability to DIVERGE from production first —
+  `routeHitFeatures` on `App.test.tsx`'s own `mapTestHooks`, mirroring the
+  existing `harborHitFeatures` there, NOT on `fakeMaplibre.ts`. Pinned by that
+  file's `'the generic tap handler alone bails on a ROUTE_HIT_LAYER hit while
+  armed'` test (~:1881). When one event can reach a setter twice, assert on
+  the HANDLER, never on the settled state.
 - **A guard can pass forever for TWO opposite reasons, and both shipped a
   defect in v0.13.0.** (a) JOINT BLINDNESS — #638's legend rendered with no
   panel background and a 104px column at every viewport, while its only e2e
@@ -4106,9 +4106,9 @@ making design-level decisions; do not silently deviate.
   (#433/PR #442 and #432/PR #453, both shipped 2026-08-07; this bullet
   previously described the pre-fix state and is rewritten, not amended).
   `RoutingError` in `workerClient.ts` carries a `readonly kind:
-  RoutingFailureKind` — SIX members (`timeout`, `worker-fatal`,
+  RoutingFailureKind` — SEVEN members (`timeout`, `worker-fatal`,
   `worker-error`, `messageerror`, `disposed`, `boat-not-in-catalogue` added by
-  #54 §I.3), and that six-vs-nine
+  #54 §I.3, `cancelled` added by #1193), and that seven-vs-ten
   distinction IS the layering, not a detail: `ROUTING_FAILURE_MESSAGE_KEY`
   (`replan.ts`) keys on `RoutingFailureKind | 'worker-init' |
   'persist-failed' | 'wind-unclassified'`, and those three extra causes
@@ -4168,8 +4168,10 @@ making design-level decisions; do not silently deviate.
   `dispose()`'s teardown rather than signalling the worker, and any future
   "ask it to stop" protocol is unimplementable without first making the solve
   loop yield.
-  STILL TRUE and load-bearing: `routing/` **and `state/usePlanFlow.ts`**
-  contain ZERO `console.*` calls, so an empty console is DESIGNED behaviour,
+  STILL TRUE and load-bearing: `routing/`'s PRODUCTION files (its `.test.ts`
+  siblings excepted — two carry `console.*` today) **and
+  `state/usePlanFlow.ts`** contain ZERO `console.*` calls, so an empty
+  console is DESIGNED behaviour,
   not evidence nothing happened — never ask a reporter to check it.
   `usePlanFlow.ts` matters most here: it handles the plan-failure path, so it
   is the file a triager would expect to log. Measure that inventory with BOTH
