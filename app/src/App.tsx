@@ -30,7 +30,7 @@ import DataLayers, {
 import SavedWaypointsLayer, { SAVED_WAYPOINT_LAYER } from './components/SavedWaypointsLayer';
 import CompassControl from './components/CompassControl';
 import ScaleBar from './components/ScaleBar';
-import RouteLayer from './components/RouteLayer';
+import RouteLayer, { ROUTE_HIT_LAYER } from './components/RouteLayer';
 import OwnshipMarker from './components/OwnshipMarker';
 import EndpointMarkers from './components/EndpointMarkers';
 import PlannerPanel, {
@@ -938,6 +938,19 @@ function AppShell() {
     [insertViaNearestOrAppend],
   );
 
+  // #1170: touch/pointer counterpart of handleRouteLineInsert above, reached
+  // by tapping the route line while "Add waypoint" is armed instead of
+  // dragging the (pointer-only) #850 ghost handle. Same insertion primitive;
+  // the extra step is the disarm, matching handleSavedWaypointMapPick's own
+  // "extra step over the panel path" comment above.
+  const handleRouteLineArmedTap = useCallback(
+    (point: LatLon) => {
+      handleRouteLineInsert(point);
+      setTapTarget(null);
+    },
+    [handleRouteLineInsert],
+  );
+
   // #924: the SAME handler, reached by tapping the saved-waypoint ring on
   // the map instead of the panel row. Identical insertion by construction —
   // that is what makes SavedWaypoints.tsx's button the keyboard equivalent
@@ -961,10 +974,14 @@ function AppShell() {
   // handler claimed it. Scoped this way, an origin-armed tap on a saved
   // waypoint still falls through to the raw-coordinate pick it would have
   // been anywhere else on the water.
+  // #1170: ROUTE_HIT_LAYER joins the SAME armed-only set, for the SAME
+  // reason — RouteLayer.tsx's own armed-tap click effect owns a hit on it,
+  // and precedence between the two (saved-waypoint ring first) is resolved
+  // inside that effect, not here (see its own doc comment).
   const interactiveLayerIds = useMemo(
     () =>
       tapTarget === 'via'
-        ? [...INTERACTIVE_MAP_LAYER_IDS, SAVED_WAYPOINT_LAYER]
+        ? [...INTERACTIVE_MAP_LAYER_IDS, SAVED_WAYPOINT_LAYER, ROUTE_HIT_LAYER]
         : INTERACTIVE_MAP_LAYER_IDS,
     [tapTarget],
   );
@@ -1464,6 +1481,8 @@ function AppShell() {
             viaReplanning={viaDraftStale}
             onViaDragEnd={handleViaDragEnd}
             onRouteLineInsert={handleRouteLineInsert}
+            viaArmed={tapTarget === 'via'}
+            onArmedRouteTapInsert={handleRouteLineArmedTap}
           />
           {/* #25 addendum: the standalone ownship marker — always mounted
               (like DataLayers above), gated only on there being a fix, which
@@ -1696,6 +1715,11 @@ function AppShell() {
             dismissLabel={t('banner.tapPick.cancel')}
           >
             {t('banner.tapPick', { target: t(TAP_TARGET_LABEL_KEY[tapTarget]) })}
+            {/* #1170: discoverability for the armed route-line tap — only
+                while a route is actually displayed (aisRoute, the same
+                activeRigResult() this file already resolves for #554/#25),
+                since there is nothing to tap otherwise. */}
+            {tapTarget === 'via' && aisRoute && ` ${t('banner.tapPick.viaRouteLine')}`}
           </Banner>
         )}
         {/* #115: live-reroute failures (stale stored forecast, fix outside

@@ -1004,6 +1004,12 @@ export const de = {
   // §3.5: retry action shown on network/offline plan errors (re-runs the plan).
   'banner.retry': 'Erneut versuchen',
   'banner.tapPick': 'Auf Karte tippen für {target}.',
+  // #1170: an dieselbe Zeile angehängt, nur solange 'via' aktiv ist UND eine
+  // Route angezeigt wird (App.tsx steuert das) — Substring-Kollisionsprüfung
+  // gegen 'planner.via.add'/'.cancel' durchgeführt: kein Präfix/Suffix-
+  // Bezug, siehe #1170's PR body.
+  'banner.tapPick.viaRouteLine':
+    'Oder auf die Routenlinie tippen, um dort einen Wegpunkt einzufügen.',
   'banner.tapPick.cancel': 'Abbrechen',
   // #571 redesign: triggered from App.tsx's handlePlan pre-check now (a
   // dedupeViaPoints call mirroring what usePlanFlow.ts's run() does

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { LngLatBounds, Map as MaplibreMap, Marker } from 'maplibre-gl';
-import type { GeoJSONSource, MapMouseEvent } from 'maplibre-gl';
+import type { GeoJSONSource, MapLayerMouseEvent, MapMouseEvent } from 'maplibre-gl';
 import { useMapInstance } from './MapView';
+import { SAVED_WAYPOINT_LAYER } from './SavedWaypointsLayer';
 import { useLang, useT } from '../i18n';
 import { formatDateTime, formatSliderTime } from '../lib/format';
 import { activeRigResult } from '../lib/plan';
@@ -70,6 +71,20 @@ export interface RouteLayerProps {
   // below for why the grab affordance follows the rendered route line while
   // the eventual insert index is computed against a different chain.
   onRouteLineInsert: (point: LatLon) => void;
+  // #1170: true while App.tsx's "Add waypoint" pick is armed for 'via' — the
+  // SAME arming SavedWaypointsLayer's `armed` prop reads. Drives BOTH the
+  // invisible touch/click hit-line (ROUTE_HIT_LAYER) and the visible
+  // discoverability casing (see the armed-tap effect below), independent of
+  // the desktop hover-drag gesture above, which needs no arming at all.
+  viaArmed: boolean;
+  // #1170: fired once a tap on ROUTE_HIT_LAYER resolves while armed, with the
+  // point projected onto the rendered route (same #850 nearestPointOnRoute
+  // geometry the hover-drag ghost uses). Deliberately a SEPARATE callback
+  // from onRouteLineInsert above rather than reusing it: this path must also
+  // disarm the pick afterwards (matching handleSavedWaypointMapPick's
+  // "extra step" over handleSelectSavedWaypoint), where the desktop drag
+  // gesture has no arming to clear.
+  onArmedRouteTapInsert: (point: LatLon) => void;
 }
 
 // jsdom has no MapLibre/WebGL runtime — map.addSource/addLayer/getSource
@@ -130,6 +145,22 @@ export const ROUTE_STACK_BOTTOM_LAYER = 'sc-route-shallow';
 // No leg can ever have this index — an always-false filter, used while no
 // leg is active instead of toggling the layer's visibility on/off.
 const NO_HIGHLIGHT_IDX = -1;
+// #1170: the visible discoverability casing shown only while the via pick is
+// armed AND a route is displayed — the spike's "widened casing while armed"
+// requirement. Painted below sc-route-sail/-motor (added right after
+// HIGHLIGHT_LAYER, before them), so it reads as emphasis under the existing
+// line rather than a new competing one. Not exported — nothing outside this
+// file anchors against it.
+const ROUTE_ARMED_CASING_LAYER = 'sc-route-armed-casing';
+// #1170: the invisible (line-opacity 0) hit-test line a touch or pointer tap
+// resolves against while armed — exported so App.tsx can add it to
+// MapView's `interactiveLayerIds`, ARMED-ONLY (#924 precedent: the route
+// layers are not in INTERACTIVE_MAP_LAYER_IDS unconditionally). line-width
+// 44 makes the >=44px touch-target floor a rendered fact of the hit
+// geometry itself, not a separate tolerance constant to keep in sync with
+// one (contrast ROUTE_DRAG_HOVER_TOLERANCE_PX below, a 12px POINTER-only
+// hover slop for the unrelated #850 drag gesture).
+export const ROUTE_HIT_LAYER = 'sc-route-hit';
 
 // Style setup/re-add gating lives in the shared installStyleSetup hook
 // (lib/styleReload.ts, #153) — see its doc for the 'load'-fires-once and
@@ -181,6 +212,24 @@ function setupLayers(map: MaplibreMap): void {
         'line-color': POSITION_HALO_COLOR,
         'line-opacity': 0.55,
         'line-blur': 1,
+      },
+    });
+    // #1170: discoverability casing, created hidden (default OFF — matches
+    // sc-route-alt-*'s creation-hidden pattern above) and toggled by the
+    // armed-visibility effect below. Every leg (no filter), matching
+    // ROUTE_ARMED_CASING_LAYER's job of emphasising the WHOLE displayed
+    // route, not just one kind. VIA_COLOR ties it visually to the via pick
+    // it belongs to, distinguishing it from ROUTE_STACK_BOTTOM_LAYER's
+    // orange safety casing beneath it.
+    map.addLayer({
+      id: ROUTE_ARMED_CASING_LAYER,
+      type: 'line',
+      source: ROUTE_SOURCE,
+      layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
+      paint: {
+        'line-width': 9,
+        'line-color': VIA_COLOR,
+        'line-opacity': 0.5,
       },
     });
     // Two filtered layers rather than one data-driven layer: line-dasharray
@@ -241,6 +290,21 @@ function setupLayers(map: MaplibreMap): void {
         'text-color': INK_COLOR,
         'text-halo-color': HALO_COLOR,
         'text-halo-width': 1.4,
+      },
+    });
+    // #1170: the invisible hit-test line — see ROUTE_HIT_LAYER's own doc
+    // comment above. Position among siblings doesn't matter (line-opacity 0
+    // paints nothing), so added last in this block. Created hidden, same
+    // creation-hidden/visibility-effect pattern as ROUTE_ARMED_CASING_LAYER
+    // just above.
+    map.addLayer({
+      id: ROUTE_HIT_LAYER,
+      type: 'line',
+      source: ROUTE_SOURCE,
+      layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
+      paint: {
+        'line-width': 44,
+        'line-opacity': 0,
       },
     });
   }
@@ -645,13 +709,14 @@ function nearestPointOnRoute(
 // over a wider radius than it actually responds to.
 //
 // Deliberately carries NO role/tabIndex/aria-label: this gesture is
-// desktop/pointer-only. Touch has no hover phase to reveal this handle,
-// and there is no keyboard equivalent — both deliberately OUT OF SCOPE for
-// this PR, accepted by the maintainer at the v0.31.0 cut, and tracked as
-// #1170 (touch) and #1171 (keyboard). `aria-hidden` keeps this transient
-// element out of the accessibility tree in the meantime, rather than
-// announcing an unlabelled, here-one-moment-gone-the-next control to a
-// screen-reader user who could not reach it anyway.
+// desktop/pointer-only. Touch has no hover phase to reveal THIS handle, and
+// there is no keyboard equivalent — #1170 closes the touch gap with a
+// SEPARATE armed-tap path (ROUTE_HIT_LAYER's click effect below), not by
+// making this ghost handle touch-reachable; #1171 (keyboard) remains out of
+// scope. `aria-hidden` keeps this transient element out of the
+// accessibility tree, rather than announcing an unlabelled,
+// here-one-moment-gone-the-next control to a screen-reader user who could
+// not reach it anyway.
 function routeDragHandleElement(): HTMLDivElement {
   const el = document.createElement('div');
   el.className = 'sc-route-drag-handle';
@@ -673,6 +738,8 @@ export default function RouteLayer({
   viaReplanning,
   onViaDragEnd,
   onRouteLineInsert,
+  viaArmed,
+  onArmedRouteTapInsert,
 }: RouteLayerProps) {
   const map = useMapInstance();
   const [lang] = useLang();
@@ -1071,6 +1138,21 @@ export default function RouteLayer({
     }
   }, [map, styleEpoch, altRigVisible, altToggleAvailable]);
 
+  // #1170: sync the discoverability casing AND the invisible hit-line to
+  // "armed and a route is displayed" — gated on `result`, not merely
+  // `viaArmed`, so arming before a plan exists (or on a rig tab whose own
+  // result is null, PR #384's #324 lesson reused here) shows neither: there
+  // is no route line to tap, and a 44px hit line with nothing to project
+  // onto would let a tap silently vanish rather than fall through to the
+  // ordinary raw-coordinate pick.
+  useEffect(() => {
+    if (!map || styleEpoch === 0) return;
+    const visibility = viaArmed && result ? 'visible' : 'none';
+    for (const id of [ROUTE_ARMED_CASING_LAYER, ROUTE_HIT_LAYER]) {
+      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visibility);
+    }
+  }, [map, styleEpoch, viaArmed, result]);
+
   // Cheap setFilter() only — no source re-set — so this stays cheap even
   // when GPS noise near a leg boundary flips activeLegIndex back and forth.
   // The effect dependency array already value-gates this to real changes.
@@ -1234,6 +1316,53 @@ export default function RouteLayer({
       removeGhost();
     };
   }, [map, result, onRouteLineInsert, draftViaPoints]);
+
+  // #1170: click-to-insert while armed — the touch/pointer counterpart to
+  // the #850 hover-drag effect above, reached by tapping ROUTE_HIT_LAYER
+  // (App.tsx's generic tap handler bails onto this delegated click once
+  // that layer joins `interactiveLayerIds`, armed-only) instead of dragging
+  // the pointer-only ghost handle. Registered once per map/styleEpoch, like
+  // SavedWaypointsLayer.tsx's own click effect, with the live values read
+  // from refs so an armed/result/callback churn never re-registers the map
+  // listener.
+  const viaArmedRef = useRef(viaArmed);
+  const armedInsertLegsRef = useRef<readonly Leg[]>(result?.legs ?? []);
+  const onArmedRouteTapInsertRef = useRef(onArmedRouteTapInsert);
+  useEffect(() => {
+    viaArmedRef.current = viaArmed;
+    armedInsertLegsRef.current = result?.legs ?? [];
+    onArmedRouteTapInsertRef.current = onArmedRouteTapInsert;
+  });
+
+  useEffect(() => {
+    if (!map || styleEpoch === 0) return;
+    const handleClick = (e: MapLayerMouseEvent) => {
+      if (!viaArmedRef.current) return;
+      // Precedence: saved-waypoint ring > route hit-line > raw tap (App.tsx's
+      // INTERACTIVE_MAP_LAYER_IDS comment carries the third rank).
+      // SavedWaypointsLayer's own delegated click and this one both fire
+      // independently on a tap that hits both layers (MapLibre's delegated
+      // click model — see that component's own "Which layer wins the tap"
+      // doc), so bail HERE rather than rely on registration order: a saved
+      // waypoint sitting on the route line must insert exactly once.
+      if (
+        map.getLayer(SAVED_WAYPOINT_LAYER) &&
+        map.queryRenderedFeatures(e.point, { layers: [SAVED_WAYPOINT_LAYER] }).length > 0
+      ) {
+        return;
+      }
+      const hit = nearestPointOnRoute(map, armedInsertLegsRef.current, {
+        x: e.point.x,
+        y: e.point.y,
+      });
+      if (!hit) return;
+      onArmedRouteTapInsertRef.current(hit.point);
+    };
+    map.on('click', ROUTE_HIT_LAYER, handleClick);
+    return () => {
+      map.off('click', ROUTE_HIT_LAYER, handleClick);
+    };
+  }, [map, styleEpoch]);
 
   if (!plan) return null;
 
