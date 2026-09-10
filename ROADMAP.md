@@ -13,62 +13,53 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.32.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.33.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
-## Now — v0.32.0
+## Now — v0.33.0
 
-The `v0.32.0` cut (2026-09-10) worked the
-[`v0.32.0` milestone](https://github.com/DocGerd/sail_command/milestones),
-which closed four issues and shipped three user-visible changes.
+The `v0.33.0` cut (2026-09-10) worked the
+[`v0.33.0` milestone](https://github.com/DocGerd/sail_command/milestones),
+which closed four issues, all user-visible.
 
-Keyboard users can now insert a waypoint mid-route. Every entry in the
-planner's via list carries a button that inserts a new waypoint directly
-after it, placed at the great-circle midpoint to the next point
-([#1171](https://github.com/DocGerd/sail_command/issues/1171)). The gap it
-does not cover — inserting before the *first* via point — is tracked as
-[#1181](https://github.com/DocGerd/sail_command/issues/1181).
+The two decisions carried over from the last cut both shipped. `v0.32.0`'s
+route budget finding turned into a fix: the solver now gets 4 minutes before
+giving up, up from 2, so a slower device has time to finish a route the app
+can actually solve
+([#1147](https://github.com/DocGerd/sail_command/issues/1147)). Whether that
+budget should become a user-facing setting is now its own issue,
+[#1194](https://github.com/DocGerd/sail_command/issues/1194). And the
+touch-insert survey turned into a build: tapping the plotted route line
+while "Add waypoint" is armed now inserts a waypoint at that point
+([#1170](https://github.com/DocGerd/sail_command/issues/1170)).
 
-Harbour name labels now paint above routine seamark icons from zoom 12
-([#1154](https://github.com/DocGerd/sail_command/issues/1154)). Hazard
-marks deliberately stay on top. The fix is a layer split of the kind
-[#682](https://github.com/DocGerd/sail_command/issues/682) established, and
-it leaves placement below zoom 12 untouched.
+An in-flight route solve can now be cancelled, returning to a re-plannable
+state instead of waiting it out
+([#1193](https://github.com/DocGerd/sail_command/issues/1193)).
 
-A plan that solved only one rig no longer withholds the comparison in
-silence: it names the sail that found no route, instead of reusing the
-generic wording meant for the case where there was nothing to compare
-([#1166](https://github.com/DocGerd/sail_command/issues/1166)).
+The via-point marker's drag/tap target is now 44px without changing its
+visible size, so repositioning a waypoint no longer needs a sub-16px hit
+([#1186](https://github.com/DocGerd/sail_command/issues/1186)). Review of
+that work found two adjacent 44px markers can capture each other's drags;
+that residual is [#1198](https://github.com/DocGerd/sail_command/issues/1198).
 
-One change has no user-visible surface.
-[#1178](https://github.com/DocGerd/sail_command/issues/1178) added two
-guards against a wind lattice that fails to cover the depth mask — a
-condition the sampling code previously absorbed by silently clamping to the
-nearest edge value, with no error and no warning. Review of that work found
-the same hazard reachable through the plan import path, which bypasses the
-routing pipeline entirely, and it was closed at the import boundary in the
-same change.
-
-Two investigations landed as decision records without closing their issues.
-[#1147](https://github.com/DocGerd/sail_command/issues/1147) measured the
-solver's headroom against a named reference device and found the current
-budget does not clear it; the fix direction is deliberately unruled.
-[#1170](https://github.com/DocGerd/sail_command/issues/1170) surveyed how
-marine software inserts a waypoint on touch and recommends an explicit edit
-mode; the build was deferred. Both issues moved to `v0.33.0`.
-
-## Next — v0.33.0
-
-The [`v0.33.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-is the one now being filled. As of this cut it holds four issues:
-[#885](https://github.com/DocGerd/sail_command/issues/885) (letting the
-captain force motor or sail on a chosen leg or segment),
+Four further issues landed decision records without a build, and all moved
+to `v0.34.0`: [#885](https://github.com/DocGerd/sail_command/issues/885)
+(a design pass on forcing motor or sail per leg — the build itself is
+undecided), [#930](https://github.com/DocGerd/sail_command/issues/930) (a
+differential-testing harness; the population it covers is complete, the
+general theorem it was chasing is not),
 [#1136](https://github.com/DocGerd/sail_command/issues/1136) (motor-off
-solves terminating early — an efficacy probe at this cut established that
-the salvage direction survives, but found no workable bound on how often it
-may fire), [#1147](https://github.com/DocGerd/sail_command/issues/1147) and
-[#1170](https://github.com/DocGerd/sail_command/issues/1170), both carried
-forward with their decision records written. The milestone page is the only
+solves terminating early — one of four prerequisite questions answered this
+cut), and
+[#1164](https://github.com/DocGerd/sail_command/issues/1164) (basemap
+plumbing for the core/regional archive split — the split itself stays
+unbuilt).
+
+## Next — v0.34.0
+
+The [`v0.34.0` milestone](https://github.com/DocGerd/sail_command/milestones)
+carries forward the four issues named above. The milestone page is the only
 authoritative view, check it directly rather than this file.
 
 ## Themes for the next year

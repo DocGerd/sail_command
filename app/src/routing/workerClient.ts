@@ -57,7 +57,20 @@ export type RoutingFailureKind =
   // §I.3's guarantee is exactly this narrow: such a plan "still opens, still
   // renders, still exports GPX … Only 'plan again with this boat' is
   // unavailable, and it says so."
-  | 'boat-not-in-catalogue';
+  | 'boat-not-in-catalogue'
+  // #1193: a user-initiated cancel, not a fault — the ONE kind this class
+  // carries that the presentation layer must not apologise for.
+  //
+  // A worker's onmessage handler runs planRoute() fully synchronously (no
+  // `await` between accepting a request and posting its result), so a
+  // posted 'cancel' message would sit unread behind the very handler it is
+  // meant to interrupt. `Worker.terminate()` is therefore the only way to
+  // actually stop a running solve, and cancel() below uses exactly the
+  // dispose() mechanism (terminate + reject every pending entry) — it earns
+  // its own kind rather than reusing 'disposed' because 'disposed' means
+  // "this client was already dead when you asked", while 'cancelled' means
+  // "the user asked, and this client is dead BECAUSE of that ask".
+  | 'cancelled';
 
 // NOT structured-clone-safe: Error subclasses lose their prototype chain
 // across postMessage/IndexedDB (mirrors OpenMeteoError's and ReplanError's
@@ -81,31 +94,35 @@ export class RoutingError extends Error {
 // exactly one definition and no drift-guard test is needed to keep two in
 // step.
 //
-// The VALUE is deliberately unchanged from the pre-#432 client deadline
-// (120 s): #432 does not argue that number is wrong, only that exceeding it
-// was misreported and unbudgeted. Keeping it is what makes "no
-// currently-succeeding plan starts failing" true by construction rather than
-// by measurement — the wall a slow solve hits is the same wall, moved from
-// the client to the solver, which is the only side that can say where it got
-// to.
+// The VALUE was originally the pre-#432 client deadline (120 s): #432 did
+// not argue that number was wrong, only that exceeding it was misreported
+// and unbudgeted.
 //
 // For scale, with the machine named next to every figure — the headroom is a
 // property of the DEVICE, not of the route, and PR #453 review caught the
 // first draft stating a one-machine ratio as a general property. This app's
 // most expensive real input is Flensburg -> Marstal at DEFAULT_SETTINGS
-// against the real committed mask and polars, 2026-08-07:
+// against the real committed mask and polars.
 //
-//   author's dev machine, uniformWindGrid(12, 225):  41-43 s  -> ~2.8x headroom there
-//   reviewer's machine,   uniformWindGrid(12, 270):  50.5 s   -> ~2.4x headroom there
+// #432's own figures (2026-08-07) were SYNTHETIC uniformWindGrid wind —
+// author's machine 41-43 s, reviewer's machine 50.5 s (sibling inputs, not
+// a strict replication) — and understated the risk; see #1147 below for
+// why.
 //
-// (Different wind directions, so these are SIBLING inputs rather than a
-// strict replication; the ~1.2x delta is consistent across total time, ring
-// count and worst ring, which is what a slower machine looks like.) So a
-// device roughly 2.4-2.9x slower than one of these reaches the budget at all
-// — and a phone, the case #432's report is about, is exactly the device for
-// which that multiplier is plausible. Do not restate this as an absolute
-// "~3x slower" without naming a machine.
-export const PLAN_BUDGET_MS = 120_000;
+// #1147 measurement, 2026-09-10, LIVE Open-Meteo wind (not synthetic), real
+// committed mask, idle 2023 desktop i9-13900F: 91.9 s against the then-120 s
+// budget — 23.4% headroom, i.e. any device >=1.31x slower on this workload
+// blows the old budget outright. Full record:
+// docs/spikes/1147-budget-headroom-reference-device.md.
+//
+// 240 s: maintainer ruling 2026-09-10, recorded on #1147 (the spike itself
+// declined to pick a value, so nothing before that comment authorised one).
+// It covers a device up to ~2.6x slower than the i9 baseline above. Whether
+// that clears a Galaxy Tab S7 is NOT established: the spike could not verify
+// that device's factor and says only "well past 2x". Do not restate any of
+// this as a bare multiplier without naming a machine and whether the wind was
+// live or synthetic.
+export const PLAN_BUDGET_MS = 240_000;
 
 // How much longer the CLIENT waits than the budget it handed the worker. The
 // solver must always win this race: it is the side that produces the honest,
@@ -129,7 +146,7 @@ const PLAN_TIMEOUT_GRACE_MS = 15_000;
 // a Chromium OOM frequently does exactly that, #432). Raised from the
 // pre-#432 bare 120 s so it can no longer pre-empt the budget; the cost is
 // that a genuinely dead worker is reported PLAN_TIMEOUT_GRACE_MS later,
-// which is a small addition to an already ~2-minute wait and does not affect
+// which is a small addition to an already ~4-minute wait and does not affect
 // worker.onerror/onmessageerror, which fail fast through failAll() and never
 // touch this timer.
 const DEFAULT_PLAN_TIMEOUT_MS = PLAN_BUDGET_MS + PLAN_TIMEOUT_GRACE_MS;
@@ -315,7 +332,7 @@ export class RoutingClient {
   }
 
   // `timeoutMs` defaults to DEFAULT_PLAN_TIMEOUT_MS; overridable so tests
-  // don't need to wait out (or fake-timer-advance) two real minutes.
+  // don't need to wait out (or fake-timer-advance) four real minutes.
   async plan(
     request: PlanRequest,
     windGrid: WindGrid,
@@ -323,6 +340,12 @@ export class RoutingClient {
     timeoutMs: number = DEFAULT_PLAN_TIMEOUT_MS,
     onProbe?: ProbeCb,
   ): Promise<PlanResult> {
+    // #1193 residual: a cancel() landing between this line and pending.set()
+    // below sees nothing pending and no-ops. Unreachable today — by the time
+    // usePlanFlow.ts calls plan(), `ready` is already resolved (ensureClient()
+    // awaited it first), so this is one microtask tick, too narrow for a DOM
+    // click to land inside. Reachable if a future caller invokes plan()
+    // before `ready` resolves and cancels inside that window.
     await this.ready;
     if (this.disposed) throw new RoutingError('disposed', 'RoutingClient disposed');
     // #553 / spec §I.3: resolve the REQUEST's own boat against the catalogue,
@@ -390,9 +413,31 @@ export class RoutingClient {
     });
   }
 
-  dispose() {
+  // Shared by dispose() and cancel(): both stop the client by the same
+  // mechanism (terminate + reject everything pending) and differ only in
+  // which RoutingFailureKind that rejection carries.
+  private teardown(kind: 'disposed' | 'cancelled', message: string) {
     this.disposed = true;
-    this.failAll(new RoutingError('disposed', 'RoutingClient disposed'));
+    this.failAll(new RoutingError(kind, message));
     this.worker.terminate();
+  }
+
+  dispose() {
+    this.teardown('disposed', 'RoutingClient disposed');
+  }
+
+  /**
+   * #1193: stop whatever plan() call is currently in flight. A no-op when
+   * nothing is pending (already settled, or never started) — cancel racing
+   * a result that is already on its way, or a stray second click, costs
+   * nothing. See RoutingFailureKind's 'cancelled' comment for why this must
+   * terminate the worker rather than post a message, and
+   * state/replan.ts's disposeAfterFailure doc for the shared-singleton
+   * consequence this inherits from dispose(): an unrelated in-flight
+   * request on the same client is torn down too.
+   */
+  cancel() {
+    if (this.pending.size === 0) return;
+    this.teardown('cancelled', 'plan cancelled by user');
   }
 }

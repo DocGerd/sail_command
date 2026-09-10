@@ -66,7 +66,10 @@ const mapTestHooks = vi.hoisted(() => ({
   // harbor markers AND, since #845, its seamark-popover click handler, which
   // additionally reads `e.lngLat` and a feature's `geometry`), keyed by layer
   // id. Kept apart from clickHandler above: the 3-arg registration must
-  // never clobber MapView's generic 2-arg one.
+  // never clobber MapView's generic 2-arg one. `point` added for #1170:
+  // RouteLayer's ROUTE_HIT_LAYER click handler reads only `e.point` (it
+  // resolves the insertion point itself via nearestPointOnRoute, never a
+  // feature/lngLat).
   layerClickHandlers: {} as Record<
     string,
     (e: {
@@ -75,6 +78,7 @@ const mapTestHooks = vi.hoisted(() => ({
         geometry?: { type: string; coordinates: [number, number] };
       }[];
       lngLat?: { lat: number; lng: number };
+      point?: { x: number; y: number };
     }) => void
   >,
   // #845: the DOM content most recently handed to a Popup's setDOMContent —
@@ -86,6 +90,19 @@ const mapTestHooks = vi.hoisted(() => ({
   // marker under a specific tap so the generic-tap gate (queryRenderedFeatures)
   // engages exactly as it would in the browser; empty means open water.
   harborHitFeatures: {} as Record<string, { properties?: Record<string, unknown> }[]>,
+  // #1170: same idea as harborHitFeatures, for RouteLayer's ROUTE_HIT_LAYER
+  // ('sc-route-hit'). Needed so a test can prove MapView's generic-tap gate
+  // itself bails on a ROUTE_HIT_LAYER hit — firing ONLY RouteLayer's own
+  // delegated layer handler (as an earlier version of this suite's #1170
+  // test did) cannot distinguish "the gate correctly suppressed the raw
+  // append" from "both handlers fired and the delegated one's write merely
+  // landed last" (measured: with ROUTE_HIT_LAYER removed from
+  // App.tsx's interactiveLayerIds, firing only the layer handler still
+  // produced the CORRECT final via list, because React applies the two
+  // handlers' setDraftViaPoints calls in registration order and the later
+  // one — RouteLayer's — overwrote the earlier raw-append one; the raw
+  // append fired regardless and left no trace in the final state alone).
+  routeHitFeatures: {} as Record<string, { properties?: Record<string, unknown> }[]>,
   // Latest setData payload per source id (FakeMap.getSource returns a spy for
   // added sources). Lets tests observe the language-relabel rebuild wiring,
   // which previously no-opped because getSource returned undefined.
@@ -111,7 +128,13 @@ const mapTestHooks = vi.hoisted(() => ({
 // Fake plan()-call queue for the RoutingClient mock below, shared the same
 // way (vi.hoisted — see comment above).
 const routingMock = vi.hoisted(() => ({
-  calls: [] as { request: PlanRequest; resolve: (r: PlanResult) => void }[],
+  calls: [] as {
+    request: PlanRequest;
+    resolve: (r: PlanResult) => void;
+    // #1193: lets a test drive the SAME rejection path a real cancelled
+    // plan() takes (reject/settle is a no-op on an already-resolved call).
+    reject: (e: unknown) => void;
+  }[],
 }));
 
 // Controllable-resolution-timing fake for the E8 gate fix wave's clobber-
@@ -120,17 +143,34 @@ const routingMock = vi.hoisted(() => ({
 // for the test to resolve on its own schedule, so a replan can be left
 // pending while the test drives an unrelated "load a different plan" action
 // in between.
-vi.mock('./routing/workerClient', () => ({
-  RoutingClient: class {
-    async init() {}
-    plan(request: PlanRequest): Promise<PlanResult> {
-      return new Promise<PlanResult>((resolve) => {
-        routingMock.calls.push({ request, resolve });
-      });
-    }
-    dispose() {}
-  },
-}));
+//
+// #1193: importOriginal + spread (not a from-scratch object) so
+// usePlanFlow.ts's `err instanceof RoutingError` check sees the REAL class —
+// a bare `RoutingClient: class {...}` replacement, as this used to be, left
+// `RoutingError` undefined in this mocked module and would throw
+// "Right-hand side of 'instanceof' is not callable" the first time any test
+// here drove a rejected plan() through App.tsx, which none did until
+// cancel() made that reachable.
+vi.mock('./routing/workerClient', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./routing/workerClient')>();
+  return {
+    ...actual,
+    RoutingClient: class {
+      async init() {}
+      plan(request: PlanRequest): Promise<PlanResult> {
+        return new Promise<PlanResult>((resolve, reject) => {
+          routingMock.calls.push({ request, resolve, reject });
+        });
+      }
+      dispose() {}
+      cancel() {
+        for (const call of routingMock.calls) {
+          call.reject(new actual.RoutingError('cancelled', 'plan cancelled by user'));
+        }
+      }
+    },
+  };
+});
 
 // fetchWindGrid talks to the real Open-Meteo API by default; mocked here
 // (rather than added to fetchMock() below) so tests don't need to fabricate
@@ -289,14 +329,18 @@ vi.mock('maplibre-gl', () => {
     getLayer(id?: string) {
       return typeof id === 'string' && this._addedLayers.has(id) ? { id } : undefined;
     }
-    // Faithful stand-in for MapView.handleClick's harbor-hit gate: reports the
-    // harbor feature only when the click point matches a marker the test placed
-    // there (mapTestHooks.harborHitFeatures) AND the harbor layer is the one
-    // queried — otherwise open water, so a plain tap-pick proceeds.
+    // Faithful stand-in for MapView.handleClick's per-layer hit gate: reports
+    // a feature only when the click point matches something a test placed
+    // there (mapTestHooks.harborHitFeatures / routeHitFeatures) AND the
+    // matching layer is the one queried — otherwise open water, so a plain
+    // tap-pick proceeds. #1170 added the sc-route-hit arm, mirroring the
+    // pre-existing sc-harbor-points one exactly.
     queryRenderedFeatures(point: { x: number; y: number }, options?: { layers?: string[] }) {
       const layers = options?.layers ?? [];
-      if (!layers.includes('sc-harbor-points')) return [];
-      return mapTestHooks.harborHitFeatures[`${point.x},${point.y}`] ?? [];
+      const key = `${point.x},${point.y}`;
+      if (layers.includes('sc-harbor-points')) return mapTestHooks.harborHitFeatures[key] ?? [];
+      if (layers.includes('sc-route-hit')) return mapTestHooks.routeHitFeatures[key] ?? [];
+      return [];
     }
     removeLayer() {}
     removeSource() {}
@@ -640,6 +684,8 @@ beforeEach(async () => {
     delete mapTestHooks.layerClickHandlers[key];
   for (const key of Object.keys(mapTestHooks.harborHitFeatures))
     delete mapTestHooks.harborHitFeatures[key];
+  for (const key of Object.keys(mapTestHooks.routeHitFeatures))
+    delete mapTestHooks.routeHitFeatures[key];
   for (const key of Object.keys(mapTestHooks.sourceSetData)) delete mapTestHooks.sourceSetData[key];
   mapTestHooks.lastPopupContent = null;
   depthProfileProps.last = null;
@@ -1706,6 +1752,160 @@ describe('#845: seamark "add as waypoint" (App wiring)', () => {
     expect(items).toHaveLength(2);
     expect(items[0]).toHaveTextContent(de['seamark.value.type.buoy_cardinal']); // inserted FIRST
     expect(items[1]).toHaveTextContent('54.840°N 10.300°E'); // the pre-existing via, unmoved in content
+  });
+});
+
+// #1170: tap the route line to insert a waypoint while the "Add waypoint"
+// pick is armed for 'via' — driven end to end through the REAL RouteLayer
+// component (never mocked) via the sc-route-hit layer-scoped click handler
+// mapTestHooks.layerClickHandlers exposes (the same mechanism #845's
+// simulateSeamarkClick above uses for sc-seamarks). This is the "App row"
+// mutation check for App.tsx's handleRouteLineArmedTap: deleting either its
+// insertViaNearestOrAppend call or its setTapTarget(null) disarm reds one of
+// the two assertions below — RouteLayer.test.tsx's own #1170 tests pin the
+// click-effect's precedence/visibility logic in isolation and can't see
+// App.tsx's wiring of insertion + disarm together.
+describe('#1170: tap the route line to insert a waypoint (App wiring)', () => {
+  it('an armed tap on the displayed route line inserts at the NEAREST point along it, not appended after an existing via point, and disarms the pick', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    pickOriginAndDestination(); // ORIGIN_A {54.79, 9.43} -> DEST_A {54.85, 10.35}
+
+    // Plan a route so RouteLayer has REAL leg geometry to hit-test against —
+    // okPlanResult()'s own legs are empty, so splice in a single leg running
+    // ORIGIN_A -> DEST_A, mirroring the session-restore describe block's own
+    // savedPlan() leg-construction pattern below in this same file.
+    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+    await waitFor(() => expect(routingMock.calls.length).toBe(1));
+    const planned = okPlanResult(20);
+    const genoaResult = planned.sails.find((s) => s.sailId === 'genoa')?.result;
+    if (!genoaResult) throw new Error('fixture invariant: okPlanResult carries a genoa result');
+    const routeLeg: Leg = {
+      kind: 'sail',
+      board: 'starboard',
+      twaDeg: 50,
+      maneuverAtStart: null,
+      start: ORIGIN_A,
+      end: DEST_A,
+      startTimeMs: Date.now(),
+      endTimeMs: Date.now() + 3_600_000,
+      headingDeg: 90,
+      twsKn: 10,
+      speedKn: 6,
+      distanceNm: 20,
+    };
+    routingMock.calls[0].resolve({
+      ...planned,
+      sails: planned.sails.map((s) =>
+        s.sailId === 'genoa' ? { ...s, result: { ...genoaResult, legs: [routeLeg] } } : s,
+      ),
+    });
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled(),
+    );
+    await flushPlanFormSync(); // #631 — the via add below is a sync-effect-written field
+
+    // Place one via point hugging the DESTINATION end, same fixture shape
+    // as the seamark test above.
+    const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
+    const latInput = within(viaSection).getByLabelText(de['planner.via.coord.latLabel']);
+    const lonInput = within(viaSection).getByLabelText(de['planner.via.coord.lonLabel']);
+    fireEvent.change(latInput, { target: { value: '54.84' } });
+    fireEvent.blur(latInput);
+    fireEvent.change(lonInput, { target: { value: '10.3' } });
+    fireEvent.blur(lonInput);
+    fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.coord.add'] }));
+    expect(within(viaSection).getAllByRole('listitem')).toHaveLength(1);
+
+    // Arm the via pick, then tap the route line near the ORIGIN end. A route
+    // is displayed at this point (planned above), so the banner must ALSO
+    // carry #1170's discoverability sentence — this pins that requirement
+    // directly, not just the pre-existing arm message. Testing Library's
+    // getByText/findByText default to an EXACT match on normalized text
+    // content (the opposite default from Playwright's getByText, which
+    // substring-matches — see this repo's own #7/#844 notes on that split),
+    // so the two sentences are asserted together as ONE string.
+    fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.add'] }));
+    const message = `${de['banner.tapPick'].replace('{target}', de['planner.via.label'])} ${de['banner.tapPick.viaRouteLine']}`;
+    expect(await screen.findByText(message)).toBeInTheDocument();
+
+    await waitFor(() => expect(mapTestHooks.layerClickHandlers['sc-route-hit']).toBeTruthy());
+    await waitFor(() => expect(mapTestHooks.clickHandler).toBeTruthy());
+    // ORIGIN_A {54.79, 9.43} projects to px (15, 255) under this fake's
+    // linear project() (see the FakeMap class above: x=(lon-9.4)*500,
+    // y=(55.3-lat)*500) — tapping exactly there clamps
+    // nearestPointOnRoute's segment projection to t=0, i.e. ORIGIN_A itself.
+    // #1170 wave 2: fires BOTH mapTestHooks.clickHandler (MapView's generic
+    // handler) AND the delegated sc-route-hit handler TOGETHER, mirroring
+    // simulateHarborMarkerClick's own comment on why — in the real browser
+    // ONE native click reaches every registered listener, generic first
+    // then delegated. Firing only the delegated handler (the wave-1 form of
+    // this test) could not tell "App.tsx's interactiveLayerIds gate
+    // correctly bailed the generic append" from "both fired, and the
+    // delegated write happened to land last and overwrite the append's" —
+    // MEASURED while investigating this PR: with ROUTE_HIT_LAYER removed
+    // from interactiveLayerIds, the wave-1 form of this test still passed,
+    // because React applies the two setDraftViaPoints calls in dispatch
+    // order and the later (delegated) one silently wins. `routeHitFeatures`
+    // makes the generic handler's OWN hit-test see what a real click would.
+    mapTestHooks.routeHitFeatures['15,255'] = [{}];
+    act(() => {
+      mapTestHooks.clickHandler?.({ lngLat: { lat: 54.79, lng: 9.43 }, point: { x: 15, y: 255 } });
+      mapTestHooks.layerClickHandlers['sc-route-hit']?.({ point: { x: 15, y: 255 } });
+    });
+
+    const items = within(viaSection).getAllByRole('listitem');
+    expect(items).toHaveLength(2);
+    // Inserted FIRST (nearest the origin->via1 segment, distance 0 since the
+    // snapped point IS the origin), not appended after the pre-existing via.
+    expect(items[0]).toHaveTextContent('54.790°N 9.430°E');
+    expect(items[1]).toHaveTextContent('54.840°N 10.300°E'); // pre-existing via, unmoved in content
+
+    // handleRouteLineArmedTap's "extra step" over handleRouteLineInsert (the
+    // #850 drag path, which has no arming to clear): the pick disarms
+    // itself, matching handleSavedWaypointMapPick's own comment.
+    expect(screen.queryByText(message)).not.toBeInTheDocument();
+  });
+
+  // #1170 wave 2: the test above proves the CORRECT final state when BOTH
+  // handlers fire, but cannot prove the generic handler actually BAILED —
+  // a "last write wins" race would produce the identical final list even if
+  // the generic append ALSO ran (measured, see that test's own comment).
+  // This test isolates the bail itself: fire ONLY mapTestHooks.clickHandler
+  // (never the delegated sc-route-hit handler) with a routeHitFeatures hit
+  // registered at the tap point, and assert NOTHING is appended — the only
+  // way that can be true is if App.tsx's interactiveLayerIds array actually
+  // contains ROUTE_HIT_LAYER while armed, since MapView's generic handler's
+  // sole source of truth for "did I hit something interactive" is exactly
+  // that array plus this queryRenderedFeatures gate.
+  it('the generic tap handler alone bails on a ROUTE_HIT_LAYER hit while armed — it does not append', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    pickOriginAndDestination();
+
+    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+    await waitFor(() => expect(routingMock.calls.length).toBe(1));
+    routingMock.calls[0].resolve(okPlanResult(20));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled(),
+    );
+    await flushPlanFormSync();
+
+    const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
+    fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.add'] }));
+    await screen.findByText(de['banner.tapPick'].replace('{target}', de['planner.via.label']), {
+      exact: false,
+    });
+
+    await waitFor(() => expect(mapTestHooks.clickHandler).toBeTruthy());
+    mapTestHooks.routeHitFeatures['15,255'] = [{}];
+    act(() => {
+      mapTestHooks.clickHandler?.({ lngLat: { lat: 54.79, lng: 9.43 }, point: { x: 15, y: 255 } });
+    });
+
+    // No via point exists yet; the generic handler firing its append branch
+    // would create exactly one. Its absence is the proof the bail ran.
+    expect(within(viaSection).queryAllByRole('listitem')).toHaveLength(0);
   });
 });
 
@@ -3935,6 +4135,41 @@ describe('#983: recalculate completion announced regardless of active tab', () =
       .getAllByRole('status')
       .filter((el) => el.textContent?.includes(announcePrefix));
     expect(withAnnouncement).toHaveLength(1);
+  });
+
+  // #1193: a cancelled recalculate-and-replace returns busy -> idle WITHOUT
+  // ever calling setPlan() — the exact shape that used to make the
+  // busy->idle watcher fire on the STALE prior plan (App.tsx's
+  // planAtBusyStartRef comment). Before that fix this test's
+  // announceRegion() assertion fails: the watcher announces the untouched
+  // p1/21 as if the cancelled recalculate had completed.
+  it('#1193: cancelling a recalculate-and-replace does NOT announce (the stale-plan false positive)', async () => {
+    await db.savePlan(savedPlan('p1', 21));
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    // p1 must be the ACTIVE plan (App.tsx's `plan` state) BEFORE the
+    // cancelled recalc starts — otherwise `plan !== null` is already false
+    // and the bug this test guards is unreachable (recalc alone never sets
+    // the active plan; only Load or a completed run does).
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+    fireEvent.click(await screen.findByRole('button', { name: /Solo/ }));
+    await waitFor(() => expect(screen.getByText(formatNm(21, 'de'))).toBeInTheDocument());
+
+    await startRecalculateAndReplace();
+    // Back to the Plan tab, where the #1193 Cancel button lives.
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+    fireEvent.click(screen.getByRole('button', { name: de['planner.cancel'] }));
+    // The recalc reuses the saved plan's stored request, never touching this
+    // tab's own origin/destination form state — so `canPlan`/the Plan button
+    // is not the right idle signal here. The Cancel button disappearing IS:
+    // it renders only while planning.phase is fetching/routing/probing.
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: de['planner.cancel'] })).not.toBeInTheDocument(),
+    );
+
+    await act(async () => {}); // flush the busy->idle watcher effect
+    expect(announceRegion()).toHaveTextContent('');
   });
 
   // PR #1012 review, Minor D: the reviewer wrote and validated (out-of-tree)

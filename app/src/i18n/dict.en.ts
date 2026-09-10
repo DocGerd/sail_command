@@ -198,6 +198,11 @@ export const en = {
   'planner.via.coord.invalidEntry': "Couldn't read that as a coordinate — kept {value}",
   'planner.departure.label': 'Departure',
   'planner.plan': 'Plan route',
+  // #1193: distinct accessible name from the three plain "Cancel" buttons
+  // elsewhere (plansList.recalc.cancel, banner.tapPick.cancel,
+  // departureScan.cancel) — a bare "Cancel" here would be a fourth,
+  // identical accessible name.
+  'planner.cancel': 'Cancel route planning',
   // §3.5 empty/first-run: friendly guidance near the primary action while no
   // plan exists yet and an endpoint is still unpicked.
   'planner.onboarding': 'Pick a start and destination to plan a route.',
@@ -277,6 +282,10 @@ export const en = {
   'error.routingMessageError':
     'The routing engine sent back a reply that could not be read. Try again — it restarts fresh.',
   'error.routingInterrupted': 'Route planning was interrupted. Try again.',
+  // #1193: fallback only — usePlanFlow.run() special-cases 'cancelled'
+  // straight back to idle and never renders this. Kept for Record
+  // completeness and any other RoutingClient consumer.
+  'error.routingCancelled': 'Route planning was cancelled.',
   // #553 / spec §I.3. Remedy copy true of THIS path specifically: neither a
   // retry (a fresh worker changes nothing — the catalogue is the same) nor a
   // reload (likewise) can help, so neither is offered. What the sentence
@@ -1005,6 +1014,11 @@ export const en = {
   // §3.5: retry action shown on network/offline plan errors (re-runs the plan).
   'banner.retry': 'Try again',
   'banner.tapPick': 'Tap the map to set {target}.',
+  // #1170: appended after banner.tapPick's own sentence, only while armed
+  // for 'via' AND a route is on screen (App.tsx gates this) — the map-tap
+  // path's discoverability for inserting a waypoint at a chosen point on
+  // the route, not just at the end of the list.
+  'banner.tapPick.viaRouteLine': 'Or tap the route line to insert a waypoint there.',
   'banner.tapPick.cancel': 'Cancel',
   // #571 redesign: triggered from App.tsx's handlePlan pre-check now (a
   // dedupeViaPoints call mirroring what usePlanFlow.ts's run() does

@@ -197,6 +197,39 @@ describe('ViaMarkers marker accessibility contract (#470)', () => {
   });
 });
 
+// #1186: jsdom computes no layout, so this pins the STYLE DECLARATIONS that
+// determine the rendered hit/visible geometry, not a measured box — see the
+// file-level CLAUDE.md note on jsdom's paint blindness. MapLibre centers the
+// marker root on the coordinate via a %-based transform regardless of its
+// pixel size, so a root inline width/height IS the drag/tap target size.
+describe('ViaMarkers hit-target geometry (#1186)', () => {
+  it('keeps the marker ROOT at the 44px gloved-use floor while the visible dot stays 16px', () => {
+    hoisted.map = makeFakeMap();
+    const viaPoints: LatLon[] = [{ lat: 54.5, lon: 10.0 }];
+    render(<ViaMarkers viaPoints={viaPoints} replanning={false} onDragEnd={noopDragEnd} />);
+
+    const [marker] = createdMarkers as [RecordedMarker];
+    expect(marker.element.style.width).toBe('44px');
+    expect(marker.element.style.height).toBe('44px');
+
+    const dot = marker.element.querySelector<HTMLElement>('.sc-via-marker-dot');
+    expect(dot).not.toBeNull();
+    expect(dot?.style.width).toBe('16px');
+    expect(dot?.style.height).toBe('16px');
+  });
+
+  it('keeps the dot inside the root element, so a drag anywhere in the 44px area is still `_element.contains(target)`', () => {
+    hoisted.map = makeFakeMap();
+    const viaPoints: LatLon[] = [{ lat: 54.5, lon: 10.0 }];
+    render(<ViaMarkers viaPoints={viaPoints} replanning={false} onDragEnd={noopDragEnd} />);
+
+    const [marker] = createdMarkers as [RecordedMarker];
+    const dot = marker.element.querySelector('.sc-via-marker-dot');
+    expect(dot).not.toBeNull();
+    expect(marker.element.contains(dot)).toBe(true);
+  });
+});
+
 // #947: the accessibility-contract block above asserts `aria-label` only.
 // These assertions read `element.textContent` instead, a different DOM
 // content-tree surface — they prove the label node and its text exist in

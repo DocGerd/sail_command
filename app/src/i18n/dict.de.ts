@@ -214,6 +214,10 @@ export const de = {
     'Eingabe konnte nicht als Koordinate gelesen werden – {value} beibehalten',
   'planner.departure.label': 'Abfahrt',
   'planner.plan': 'Route planen',
+  // #1193: distinct from the three plain "Abbrechen" buttons elsewhere
+  // (plansList.recalc.cancel, banner.tapPick.cancel, departureScan.cancel)
+  // — see dict.en.ts's twin key for why a bare "Abbrechen" would collide.
+  'planner.cancel': 'Routenberechnung abbrechen',
   // §3.5 empty/first-run: friendly guidance near the primary action while no
   // plan exists yet and an endpoint is still unpicked.
   'planner.onboarding': 'Wähle Start und Ziel, um eine Route zu planen.',
@@ -300,6 +304,9 @@ export const de = {
   'error.routingMessageError':
     'Die Routen-Engine hat eine nicht lesbare Antwort gesendet. Erneut versuchen — sie startet dabei neu.',
   'error.routingInterrupted': 'Die Routenberechnung wurde unterbrochen. Erneut versuchen.',
+  // #1193: nur ein Fallback — usePlanFlow.run() behandelt 'cancelled'
+  // gesondert und kehrt direkt zu idle zurück, ohne diesen Text zu zeigen.
+  'error.routingCancelled': 'Die Routenberechnung wurde abgebrochen.',
   // #553 / spec §I.3: der eine typisierte Fehler, bei dem weder „Erneut
   // versuchen" noch „App neu laden" hilft — beides ändert nichts am Katalog.
   // Der Satz nennt deshalb stattdessen, wie eng der Verlust ist: die
@@ -997,6 +1004,12 @@ export const de = {
   // §3.5: retry action shown on network/offline plan errors (re-runs the plan).
   'banner.retry': 'Erneut versuchen',
   'banner.tapPick': 'Auf Karte tippen für {target}.',
+  // #1170: an dieselbe Zeile angehängt, nur solange 'via' aktiv ist UND eine
+  // Route angezeigt wird (App.tsx steuert das) — Substring-Kollisionsprüfung
+  // gegen 'planner.via.add'/'.cancel' durchgeführt: kein Präfix/Suffix-
+  // Bezug, siehe #1170's PR body.
+  'banner.tapPick.viaRouteLine':
+    'Oder auf die Routenlinie tippen, um dort einen Wegpunkt einzufügen.',
   'banner.tapPick.cancel': 'Abbrechen',
   // #571 redesign: triggered from App.tsx's handlePlan pre-check now (a
   // dedupeViaPoints call mirroring what usePlanFlow.ts's run() does
