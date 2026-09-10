@@ -1495,8 +1495,9 @@ where the ordinary expansion died, i.e. every `salvaged=true` row, condensed):
 TWS 8's 30 rescued counts, in order, are `13,12` (rings 3, 5) then, for the
 28 consecutive rounds from ring 7 onward,
 `1,2,2,2,2,2,3,3,3,2,2,3,3,4,4,4,3,3,3,3,4,4,4,3,3,3,3,4` — single digits
-throughout, no growth trend across those 28: a stuck pocket, not a slow
-recovery.
+throughout, no growth trend across those 28; consistent with this input
+being structurally trapped rather than slow, though a substantially larger
+budget was not tried (confirmed at 4x in §10.2).
 
 ### 10.1 Answer
 
