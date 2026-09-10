@@ -75,27 +75,6 @@ copy and the one to keep current. Restated here only so this command is self-con
 2. **Then favour user-facing work** — `type: feature` and user-visible `type: bug` outrank
    `type: chore` and `type: docs` at equal priority. A `chore` that unblocks a `feature` inherits
    the feature's rank; say so explicitly when you promote one.
-3. **The 20% bug reserve** — the milestone should REACH ITS CUT with at least a fifth of its
-   issues `type: bug`, rounded UP (a nine-issue milestone reserves two, not 1.8). A milestone
-   still being filled may sit below it; that is a gap to close at this gate, not a rule to bend.
-   The floor is forward-looking — `CONTRIBUTING.md` records which earlier milestones predate it.
-   It is also bounded by SUPPLY — it applies only while enough `type: bug` issues exist to fill
-   it, and a cut takes every available one and calls the floor met; it never caps how much
-   non-bug work the milestone may carry. "Available" excludes a bug whose own investigation
-   recommends staying deferred, AND the issue has been moved to `Backlog` (or otherwise
-   confirmed by the maintainer) on that basis — a spike recommending deferral alone is NOT
-   sufficient; check the tracker, not the document (settled at the `v0.30.0` cut, 2026-09-09,
-   using #354 — see `CONTRIBUTING.md`).
-
-**Do NOT re-ask which reading of the reserve was meant — it was SETTLED at the v0.18.0 cut
-(2026-09-01) as "at least 20% bug-typed", over the competing "at least 20% of slots left
-unfilled".** The denominator is the milestone's ISSUES, not a notional target size, because that
-is the only form a contributor can check against the tracker. A timing qualifier ("evaluated at
-fill time") was drafted and REJECTED: there is no allocation-pass marker in GitHub, so the fill
-boundary has to be constructed by hand, which makes the rule undecidable and self-certifying —
-and every timing-based wording tested made the already-shipped v0.18.0 retroactively
-non-compliant (its fill batch was four issues, zero bugs). Report a milestone that misses the
-floor as a finding at GATE 1; do not redefine the floor to absorb it.
 
 **Accessibility work is ranked by who is locked out** — situational-impairment fixes rank on
 merit, keyboard- or screen-reader-only work one step below; exceptions in `CONTRIBUTING.md`.
@@ -124,7 +103,7 @@ Check specifically for:
 ### 🛑 GATE 1 — present, then WAIT
 
 Present ONE scannable block: a table of proposed moves (issue → from → to → why), the resulting
-milestone composition (count, type mix, computed reserve %), what you are NOT moving and why, and
+milestone composition (count, type mix), what you are NOT moving and why, and
 any close-recommendations that SURVIVED adversarial verify. Use `AskUserQuestion` to consolidate
 the decisions. **Make no `gh` mutation until I approve.** If I approve a subset, apply exactly
 that subset.
@@ -371,8 +350,8 @@ measured to contain 30 further defects, 9 of them major.
   required check — alerts accumulate silently. A dismissal comment caps at 280 chars, so point it
   at a linked evidence record.
 - Run `/remember` to write the handoff.
-- The Phase 1 allocation policy is now recorded in `CONTRIBUTING.md` (added 2026-09-02, recording
-  the reading settled at the `v0.18.0` cut). If a cut CHANGES it, update that section in the same PR — and check the twin in this
+- The Phase 1 allocation policy is now recorded in `CONTRIBUTING.md`. If a cut CHANGES it, update
+  that section in the same PR — and check the twin in this
   file's Phase 1, which restates it and has no automatic keeper.
 
 ---

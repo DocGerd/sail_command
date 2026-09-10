@@ -229,14 +229,14 @@ labels on **pull requests** are applied automatically from changed paths by
 
 **Milestones**
 
-- `v0.31.0` — the milestone now being filled; it closes when the release PR
+- `v0.32.0` — the milestone now being filled; it closes when the release PR
   merges and the tag is pushed.
-- `v0.32.0` — the next MINOR release, opened fresh at the `v0.30.0` cut per
+- `v0.33.0` — the next MINOR release, opened fresh at the `v0.31.0` cut per
   the roll-forward convention below.
 - `Backlog` — accepted, not yet scheduled into a release.
 - `Icebox` — deferred / maybe-never; revisit opportunistically.
 
-`v0.4.0` through `v0.29.0` are closed (plus the `v0.5.1`, `v0.12.1`, and
+`v0.4.0` through `v0.30.0` are closed (plus the `v0.5.1`, `v0.12.1`, and
 `v0.13.1` patch milestones). Whichever cut is in flight is always the
 exception, and reads the same way every time: its issues are closed while
 its milestone object is not, because that closes only at tag push (first
@@ -264,51 +264,6 @@ this order:
    outrank `type: chore` and `type: docs` at equal priority. A `chore` that
    unblocks a feature inherits the feature's rank; the promotion is stated
    explicitly.
-3. **A 20% bug reserve** — a milestone should reach its cut with at least a
-   fifth of its issues `type: bug`, rounded up (a nine-issue milestone
-   reserves two, not 1.8).
-
-The reserve is a floor on bug-typed work, not empty headroom held back for
-later: a bug filed mid-cycle is triaged on its merits like any other issue and
-may land in the current cut, the next one, or `Backlog`. That reading was
-settled on 2026-09-01, at the `v0.18.0` cut — "at least 20% bug-typed" over the
-competing "at least 20% of slots left unfilled"; neither is inferable from the
-milestones themselves, which is why it is written down here.
-
-The floor is the target a cut is planned against, not a property every open
-milestone already satisfies. One still being filled may sit below the floor
-— closing that gap is part of the triage that opens the cut, and a milestone
-that misses it AT the cut is a finding to report, not a reason to restate
-the rule.
-
-The floor is forward-looking and is not applied retroactively: it was first
-written down at the `v0.18.0` cut, and three earlier milestones would miss
-it — `v0.4.0` (1 bug of 9), `v0.7.0` (2 of 16) and `v0.8.0` (0 of 10, an
-all-`chore` cut). Every milestone shipped from `v0.9.0` through `v0.27.0`
-clears the literal ratio. `v0.28.0` (0 of 10) misses it too, but on the
-bounded-supply basis the next paragraph states: no `type: bug` issue carried
-a `v0.28.0` milestone at any point, open or closed — the last one to close,
-`#1071`, shipped in `v0.27.0` the same day `v0.28.0` was tagged, and none
-was left unassigned to it. The open one is covered by the paragraph above.
-
-The floor is bounded by supply: it applies only for as long as enough
-`type: bug` issues exist to fill it. A cut takes every available `type: bug`
-issue and the floor is met on that basis — read literally against a scarce
-bug supply, the 20% ratio would work backwards into a cap on milestone size
-(`ceil(N/5) <= <bugs open>` bounding `N`), and that reading is rejected: the
-reserve never limits how much non-bug work a milestone may carry.
-
-**"Available" excludes a bug whose own investigation recommends staying
-deferred, and the issue has been moved to `Backlog` (or otherwise confirmed
-by the maintainer) on that basis** — a spike recommending deferral is not
-by itself sufficient; the exclusion has to be checkable against the
-tracker, not against a document's conclusion, the same reason the reserve's
-denominator is the milestone's ISSUES rather than a notional target size.
-At the `v0.30.0` cut (2026-09-09) the maintainer ruled #354 out of that
-supply on exactly this basis — its spike
-(`docs/spikes/354-mode-churn.md`) recommends staying deferred and the issue
-itself carries milestone `Backlog` — so the cut counted every other open
-bug and met the floor without it.
 
 **Accessibility work is ranked by who is locked out.** Work that removes a
 barrier created by a *situational* impairment — glare, gloves, wet or cold

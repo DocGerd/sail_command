@@ -77,6 +77,14 @@ instead of here.
   in tracked `CLAUDE.md` vs. the maintainer's own setup (folds in #471)
 - [1092-claude-md-lazy-loading.md](1092-claude-md-lazy-loading.md) —
   #1092: would splitting `CLAUDE.md` into lazily-loaded files pay?
+- [1136-motor-off-solve-termination.md](1136-motor-off-solve-termination.md)
+  — #1136: motor-off solves terminate holding mask-validated children
+  (domination pruning, not the `MOTOR_TWAS` heading gap); re-expansion
+  salvage designed and NOT implemented; deferred to v0.32.0 by maintainer
+  ruling 2026-09-09
+- [1163-295-coverage-scoping.md](1163-295-coverage-scoping.md) — #1163:
+  scoping the #295 coverage extension (Kolding/Middelfart/Fehmarn) — coupled
+  sites, payload, wind-lattice safety, Great Belt, #1164 dependency
 
 Two entries carry a same-named subdirectory of supporting artifacts rather
 than being self-contained: `1022-whole-journey-ux/` (reference screenshots)
