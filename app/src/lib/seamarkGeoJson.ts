@@ -617,37 +617,39 @@ export function seamarkPopupAnchor<T extends { properties?: unknown; geometry?: 
  * to its label's fixed anchor, and (#7) seamarks are OFF by default, so
  * this reaches only users who opt into the specialist layer.
  *
- * A LEVER EXISTS and was NOT rejected on the merits: mirror the #682 split
- * (a second `sc-harbor-labels`-content layer reading the same `HARBOR_SOURCE`,
- * this time split by `minzoom`/`maxzoom` at 12 instead of by filter) with
- * the z>=12 copy inserted BETWEEN `SEAMARKS_LAYER` and
- * `SEAMARKS_HAZARD_LAYER` — labels would then paint over ROUTINE marks
+ * THE LEVER SHIPPED, in this same PR (commit `93a36a7`, on top of this
+ * evidence commit `9d60bea`): mirrors the #682 split — a second
+ * `sc-harbor-labels`-content layer reading the same `HARBOR_SOURCE`, split
+ * by `minzoom`/`maxzoom` at 12 instead of by filter — with the z>=12 copy
+ * (kept on the id `sc-harbor-labels`; the z<12 copy moved to
+ * `HARBOR_LABEL_LAYER_BELOW_12` / `sc-harbor-labels-below-12`) inserted
+ * BETWEEN `SEAMARKS_LAYER` and `SEAMARKS_HAZARD_LAYER` in
+ * `DataLayers.tsx`'s `setupLayers()`. Labels now paint over ROUTINE marks
  * while HAZARD marks stay topmost, preserving the "a hazard icon staying on
  * top is the conservative direction" ruling this issue itself cites.
  * Placement-neutrality at z>=12 follows from the SAME mechanism #1126 used:
- * seamarks already carry `icon-ignore-placement: true` there, so they are
- * not in the collision grid for ANYONE to out-rank regardless of stack
- * position — only the z<12 band needs the existing stack order left alone,
- * which this split would not touch. `maxzoom` is exclusive and `minzoom`
- * inclusive, so a 12/12 split has no double-render gap.
+ * seamarks already carry `icon-ignore-placement: true` there (see
+ * `seamarksLayout()` above), so they are not in the collision grid for
+ * ANYONE to out-rank regardless of stack position — only the z<12 band
+ * needed the existing stack order left alone, which this split does not
+ * touch. `maxzoom` is exclusive and `minzoom` inclusive, so the 12/12 split
+ * has no double-render gap.
  *
- * NOT SHIPPED, because this repo's own history on this exact layer pair
- * (#191/#192, #200, #378, #981, #1126) is that a stacking/collision change
- * verified only by static reasoning has repeatedly shipped a silent
- * regression, and the regression guards that would catch one here —
+ * VERIFIED before shipping, not by a static read: the three regression
+ * guards that would catch a silent stacking/collision regression here —
  * `app/e2e/seamarks.spec.ts`'s `#353`/`#232 item 2`,
  * `seamark-collision-icon-size-981.spec.ts`'s z12.5 presence pin, and
- * `saved-waypoints.spec.ts`'s stack-order pin — all live under `app/e2e/`,
- * which this investigation's own scope excluded from both editing AND
- * running (the e2e port is fixed and contended; CI is the authority). A
- * static read of those three specs suggests the split is compatible AS
- * DESIGNED — keeping the id `sc-harbor-labels` on the z>=12 copy and giving
- * only the z<12 copy a new id satisfies every consumer found by
- * `grep -rn "sc-harbor-labels" app/e2e app/src docs` — but "suggests" is
- * not the bar this class of change has needed before. Left as a candidate
- * for a follow-up task scoped to run the real e2e suite, not implemented
- * here. Considered-and-rejected: reordering `HARBOR_LABEL_LAYER` wholesale
- * (the SAME move #1126's own header measured and rejected, for the SAME
+ * `saved-waypoints.spec.ts`'s stack-order pin — were each run in the
+ * FOREGROUND, one at a time, at both the merge-base (`831db11`) and this
+ * fix's own head. All three passed at BOTH: 2/2, 7/7 and 4/4 respectively,
+ * 13/13 total at BASE and 13/13 at HEAD. `#232 item 2`'s own measurement
+ * was byte-identical across the two runs (99 culled, 3 cross-tile, 0
+ * leaks — the same figure this file's own `#232 item 2` citation above
+ * records as the established baseline). No `app/e2e/**` edit was needed:
+ * keeping the id `sc-harbor-labels` on the z>=12 copy satisfies every
+ * consumer found by `grep -rn "sc-harbor-labels" app/e2e app/src docs`.
+ * Considered-and-rejected: reordering `HARBOR_LABEL_LAYER` wholesale (the
+ * SAME move #1126's own header measured and rejected, for the SAME
  * placement-below-z12 reason — that finding is about PLACEMENT and
  * transfers unchanged to this PAINT-only question, since a wholesale
  * reorder is not zoom-scoped and would reopen the z8/z9 hazard-mark
