@@ -516,11 +516,13 @@ making design-level decisions; do not silently deviate.
   AND `ruff format --check .` under `working-directory: pipeline`; `Mask
   integrity` (`verify-mask.yml`, job `verify`) is advisory the same way — with
   ONE carve-out worth knowing before you rely on "merges silently": since #550,
-  `app/src/test/verifyMaskConnectivity.test.ts` re-runs the HARBOUR-REACHABILITY
-  flood fill against the same committed `mask.bin`/`harbors.json` for every
+  `app/src/test/verifyMaskConnectivity.test.ts` re-runs the
+  HARBOUR-REACHABILITY flood fill against the same committed
+  `mask.bin`/`harbors.json` for every
   `BOATS` entry, inside the REQUIRED `app` check — so that ONE assertion no
   longer merges silently. Everything else in `verify_mask.py`'s connectivity
-  section stays Python-only, including a STALE `KNOWN_DISCONNECTED` entry, which
+  section stays Python-only, including a STALE `KNOWN_DISCONNECTED` entry,
+  which
   that file's own SCOPE comment calls "the one with real teeth". Read that
   comment before claiming either coverage or its absence. The
   `protect-main` ruleset requires **`app` and `e2e` only** (read off the ruleset
