@@ -340,6 +340,12 @@ export class RoutingClient {
     timeoutMs: number = DEFAULT_PLAN_TIMEOUT_MS,
     onProbe?: ProbeCb,
   ): Promise<PlanResult> {
+    // #1193 residual: a cancel() landing between this line and pending.set()
+    // below sees nothing pending and no-ops. Unreachable today — by the time
+    // usePlanFlow.ts calls plan(), `ready` is already resolved (ensureClient()
+    // awaited it first), so this is one microtask tick, too narrow for a DOM
+    // click to land inside. Reachable if a future caller invokes plan()
+    // before `ready` resolves and cancels inside that window.
     await this.ready;
     if (this.disposed) throw new RoutingError('disposed', 'RoutingClient disposed');
     // #553 / spec §I.3: resolve the REQUEST's own boat against the catalogue,
