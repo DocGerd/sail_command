@@ -4230,6 +4230,21 @@ making design-level decisions; do not silently deviate.
 
 ## Working style for this repo
 
+- **Prose is CONCISE — comments, JSDoc, PR bodies, issue bodies, commit
+  messages (maintainer instruction, 2026-09-10).** State the claim, then a
+  POINTER to its evidence; never inline the transcript — "measured at PR #1141"
+  beats a pasted table. One fact per sentence. A comment says WHY, never WHAT
+  the code already says. A PR body says what changed, why, and how to verify;
+  findings belong in review threads. An issue body is observation, evidence
+  pointer, ask. **Cut WORDS, never SCOPE** — a caveat that changes a decision
+  stays, and so does a measurement's FILTER and BASIS. Brief every implementer,
+  reviewer and doc agent with this EXPLICITLY: verbose prose was the
+  established house style through 2026-09-10, so an agent reproduces it by
+  default. Nothing mechanical enforces this — no hook and no required check
+  reads a PR body — so it holds only as far as briefs and review carry it.
+  Governs NEWLY AUTHORED text; a retro-compression pass over existing files is
+  a different thing and was measured net-negative (#724: -350 B compressed, 27
+  defects found over two review rounds, file ended +442 B LARGER).
 - Planning requires network; everything else must keep working offline. Any
   new feature that silently assumes connectivity is a bug.
 - The app is a passage-planning aid, not a navigation device — user-facing
