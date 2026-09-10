@@ -4272,9 +4272,13 @@ select {
 }
 
 /* #1020: visible sibling of the origin/destination marker's own aria-label
-   (EndpointMarkers.tsx's `endpointElement`) — same reasoning and the same
-   "no `position: relative` on the root" constraint as `.sc-via-marker-label`
-   directly above; read that rule's own comment for the full mechanism. */
+   (EndpointMarkers.tsx's `endpointElement`) — same reasoning as
+   `.sc-via-marker-label` directly above, but NOT the same structure since
+   #1186: an endpoint label is still a direct child of its marker ROOT and
+   anchors against that root, whereas a via label now anchors against the
+   16px dot nested inside a wider transparent hit box. The "no
+   `position: relative` on the root" constraint applies here exactly as it
+   originally applied to both. */
 .sc-endpoint-marker-label {
   position: absolute;
   top: 100%;
