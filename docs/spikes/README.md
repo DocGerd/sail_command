@@ -70,6 +70,10 @@ instead of here.
   for the Live view — user-facing, UAT-only, or declined?
 - [847-weave-eta-cost.md](847-weave-eta-cost.md) — #847: slight course
   corrections every 2-3 minutes — ETA cost measurement
+- [930-relaxation-trade-measurement.md](930-relaxation-trade-measurement.md)
+  — #930: P3's disc-vs-global relaxation trade, measured against the
+  shipped `findRelaxedGate` on the real mask — never bites on the complete
+  reachable population
 - [1022-whole-journey-ux.md](1022-whole-journey-ux.md) — #1022: the whole
   client journey, as a design exercise (reference screenshots in
   `1022-whole-journey-ux/`)
