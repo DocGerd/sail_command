@@ -514,7 +514,17 @@ making design-level decisions; do not silently deviate.
 - **Python gates live OUTSIDE the `app` toolchain and are NOT required checks.**
   Workflow `Python lint` (`python-lint.yml`), job **`ruff`**, runs `ruff check .`
   AND `ruff format --check .` under `working-directory: pipeline`; `Mask
-  integrity` (`verify-mask.yml`, job `verify`) is advisory the same way. The
+  integrity` (`verify-mask.yml`, job `verify`) is advisory the same way — with
+  ONE carve-out worth knowing before you rely on "merges silently": since #550,
+  `app/src/test/verifyMaskConnectivity.test.ts` re-runs the
+  HARBOUR-REACHABILITY flood fill against the same committed
+  `mask.bin`/`harbors.json` for every
+  `BOATS` entry, inside the REQUIRED `app` check — so that ONE assertion no
+  longer merges silently. Everything else in `verify_mask.py`'s connectivity
+  section stays Python-only, including a STALE `KNOWN_DISCONNECTED` entry,
+  which
+  that file's own SCOPE comment calls "the one with real teeth". Read that
+  comment before claiming either coverage or its absence. The
   `protect-main` ruleset requires **`app` and `e2e` only** (read off the ruleset
   API 2026-08-18), so a red `ruff` merges silently — it is not a gate, it is a
   job someone has to look at. Run both after ANY `pipeline/**` change:
@@ -535,7 +545,10 @@ making design-level decisions; do not silently deviate.
   `pipeline/.venv` — `python3 -m venv .venv && .venv/bin/pip install -r
   requirements.txt`). `pipeline/data-src/` is an ~887 MiB (~930 MB) gitignored download
   cache — NEVER delete it casually (re-downloading costs an hour); preserve it
-  when removing worktrees. `verify_mask.py` must exit 0: it flood-fill-checks
+  when removing worktrees. A NEW worktree starts with it EMPTY — a gitignored
+  cache is not carried across (observed at #1163) — so a worktree agent cannot
+  inspect the cached raster's extent and must say so rather than infer it.
+  `verify_mask.py` must exit 0: it flood-fill-checks
   every harbor snap and has a documented KNOWN_DISCONNECTED allowlist (#9).
 - **CodeQL runs `security-and-quality` (#534) — and a PR CANNOT validate a suite
   change.** GitHub's `pull_request` analysis is DIFF-SCOPED (measured from the run
@@ -974,7 +987,17 @@ making design-level decisions; do not silently deviate.
   users: a gesture BEGUN while any `easeTo`/`flyTo`/`fitBounds` is in flight
   is swallowed whole, because the ease's own completion calls a bare
   `this.stop()` (no `allowGestures`) → `_stopHandlers()` → `reset()` on every
-  handler, disarming the gesture mid-drag (#391 — closed 2026-09-01 as
+  handler, disarming the gesture mid-drag. **SCOPE, re-derived twice at #1167
+  against installed `maplibre-gl@6.7.0` (confirmed == the lockfile): this
+  reaches HandlerManager-REGISTERED gestures ONLY.** `map.ts` wires
+  `stopHandlers` to `this._handlers?.stop(false)`, and `handler_manager.ts`'s
+  `stop()` iterates `_handlers` calling `handler.reset()` — whereas
+  `marker.ts`'s `_addDragHandler` registers `_onMove`/`_onUp` via
+  `this._map.on(...)`, plain `Evented` listeners that are never added to
+  `_handlers`. So a `Marker` drag — existing via-point dragging AND #850's
+  route-line drag — is NOT swallowed; pan, rotate and keyboard gestures still
+  are. NOT audited: whether any other gesture in the app is
+  HandlerManager-based and therefore still exposed (#391 — closed 2026-09-01 as
   ACCEPTED, NOT fixed: `docs/spikes/391-maplibre-gesture-during-ease.md` §4
   decides accept-no-mitigation on two grounds — every mitigation shape THAT
   SPIKE CONSIDERED (§5) "risks disturbing the exact ordering" the #203/#227
@@ -1421,6 +1444,15 @@ making design-level decisions; do not silently deviate.
   magic preflight (`app/src/services/basemapSource.ts`, `cache:'no-store'`) that
   falls back to a full-body Blob-backed source if the CDN ever re-gzips — a
   future CDN flip degrades to a slow map, never an outage.
+- **`maximumFileSizeToCacheInBytes` (`app/vite.config.ts`, 40 MiB) drops the
+  WHOLE basemap archive from the precache manifest if exceeded — a build
+  warning, then silent online-only at runtime.** Not partial degradation: every
+  ranged tile request then cache-misses, logs one `console.warn` invisible to a
+  real user, and falls through to a plain `fetch()` that fails outright
+  offline — a total regression of a currently-tested guarantee. A 12 m-
+  resolution rebuild would produce an 84.5 MB asset and trip it. Same failure
+  shape #245 demonstrated for the mask. Full analysis in
+  `docs/spikes/1163-295-coverage-scoping.md`.
 - Font glyphs (`basemap-assets/fonts/**`) are runtime-cached, never precached
   (#28): a `sailcommand-glyphs-*` CacheFirst route in `app/src/sw.ts` plus an
   app-side background warm-up (`app/src/services/glyphWarmup.ts`) that runs
@@ -1605,6 +1637,7 @@ making design-level decisions; do not silently deviate.
   | v0.28.0 | 2026-09-08 | 112 s | `success` (MEASURED immediately before the tag push, and the failure CALLED IN ADVANCE from it) | **`smoke-probe` FAILED** | merge-push `34282950799` (created 21:52:27Z) -> tag `34283116096` (created 21:54:19Z) on `905d1a3`. The tag run's `build` AND `deploy` both succeeded; only `smoke-probe` failed, by the #398 signature -- its own prod entry chunk `assets/index-C5NE_lFC.js` 404'd. Back-merge `34285495537` (different SHA `59a8123`) then probed green and republished **that same chunk name**, which production then served at ``about.version`,{version:`v0.28.0`}`` with ZERO suffixed matches -- so the tag run's BUILD was correct and only its DEPLOYMENT no-opped. Release object `isLatest: true`; tag object reported `verified: true, reason: "valid"`. **ENDS the three-cut run of not-yet-started readings** (v0.25.0-v0.27.0); first terminal `success` since v0.24.0, and it behaved exactly as this table says a `success` reading behaves. **Sharpens the v0.23.0/v0.24.0 gate finding with the tightest margin yet:** the merge `deploy` job ran 21:53:37Z -> **21:53:45Z `success`**, terminal **34 s BEFORE the tag run was created** -- so the cancel-supersede escape was again unavailable, now on three observations reached from both readings. Still names no MECHANISM. |
   | v0.29.0 | 2026-09-09 | 2 min | `success` (MEASURED immediately before the tag push, and the failure CALLED IN ADVANCE from it, written down BEFORE the push) | **`smoke-probe` FAILED** | merge-push `34323066038` -> tag `34323514588` on `ffaa41d`. The tag run's `build`, `deploy` AND `prod-environment` all succeeded; only `smoke-probe` failed, by the #398 signature -- its own prod entry chunk `assets/index-DDdE4ANJ.js` returned **404 on all 10 attempts** (07:23:57Z -> 07:28:28Z, ~4m31s). BOTH basemap Range probes passed on attempt 1, at 07:23:56-57Z -- note they run BEFORE the entry-chunk probe, so they are a temporally-PRIOR CDN control, not a simultaneous one. Back-merge `34329387900` (different SHA `067a39f`) then probed green and republished **that same chunk name**, which production then served at ``about.version`,{version:`v0.29.0`}`` with ZERO suffixed matches. SECOND consecutive terminal-`success` reading, after v0.28.0. **What this row ADDS is that the `steps` COUNT on the merge run's `deploy` job is itself a discriminator, not just the conclusion:** here `steps=6` (the job genuinely RAN and deployed, and the no-op followed), against v0.25.0's and v0.27.0's `steps: 0` (never started), which those rows used as the control making their SAFE outcome attributable. A job that never started and one interrupted after running both report a non-`success` conclusion and mean OPPOSITE things. Still names no MECHANISM. |
   | v0.30.0 | 2026-09-09 | 45 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) immediately before the tag push -- the same non-answer v0.17.0, v0.25.0, v0.26.0 and v0.27.0 recorded; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `34368277678` (created 15:08:33Z) -> tag `34368356087` (created 15:09:18Z) on `b66e178`. The merge run's `deploy` job carries **`steps: 0`** with `started_at` == `completed_at` == 15:09:56Z -- the v0.25.0/v0.27.0 control -- so it NEVER STARTED and left no `success`-state deployment of that SHA behind. The tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production afterwards served `assets/index-Cc9EuFnt.js` with ZERO suffixed `vX.Y.Z-N-g<sha>` matches, so no back-merge remedy was owed. Release object `isLatest: true`; tag object `verified: true, reason: "valid"`. **FOURTH not-yet-started reading, and the first SAFE outcome since v0.27.0** -- it ends the run of `smoke-probe` failures at v0.28.0 and v0.29.0, both of which read terminal `success`. The widened criterion those rows established -- the merge `deploy` job has not reached terminal `success` -- now rests on four observations. Four is still not a mechanism: this row names NONE, and per this table's own rule the gap gates nothing. |
+  | v0.31.0 | 2026-09-10 | 54 s | read as **NO `deploy` JOB CREATED YET** immediately before the tag push -- the FIFTH not-yet-started reading, after v0.17.0, v0.25.0, v0.26.0, v0.27.0 and v0.30.0; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `34449455451` (created 07:20:19Z) -> tag `34449529039` (created 07:21:13Z) on `a0bed8f`. The merge run's `deploy` job carries **`steps: 0`** with `started_at` == `completed_at` == 07:21:20Z, against that SAME run's `build` job at **`steps: 23`** which ran 07:20:22Z -> 07:21:19Z and was cancelled mid-flight -- the within-run control v0.27.0 used, so `deploy` NEVER STARTED and left no `success`-state deployment of that SHA behind. The tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production afterwards served `assets/index-ksgT8KEb.js` at ``about.version`,{version:`v0.31.0`}`` with ZERO suffixed `vX.Y.Z-N-g<sha>` matches, so no back-merge remedy was owed. Release object `isLatest: true`; tag object `f11d2501` reported `verified: true, reason: "valid"`. The widened criterion -- the merge `deploy` job has not reached terminal `success` -- now rests on FIVE observations. Five is still not a mechanism: this row names NONE, and per this table's own rule the gap gates nothing. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -2935,6 +2968,18 @@ making design-level decisions; do not silently deviate.
   "tighter" bound differed only by count (`sMax-sMin+1`) vs span
   (`sMax-sMin`); complying would have made a safety bound wrong by one. State
   the definition beside any countable bound.
+- **Supplied text also carries the SCOPE of the artifact it was written for.**
+  A sentence true in an e2e-spec comment can be false or misleading in a PR
+  body describing the same fix, because the spec comment may carry
+  fixture-local scope the body cannot. Byte-identical is NOT sufficient — check
+  the claim still holds in the DESTINATION's scope. Caught before shipping at
+  #1167, where the reuse was then judged CORRECT: this is a check to run, not a
+  measured defect. **And the mechanical remedy that finally worked there
+  (#1167, wave 5, after four rounds of self-authored replacements each growing
+  a new defect): pull the fenced block from the review via the comments API,
+  paste it UNEDITED, then SUBSTRING-MATCH it against the file on disk and
+  report the match per block.** Verifying the claim at source and then
+  rewriting the sentence is what keeps producing a fresh variant.
 - **Supplied replacement text goes STALE when the passage it patches moves — a
   precondition the adopt-verbatim rule above does not state.** Measured
   2026-09-02 on PR #852: a reviewer's fenced block targeted the #803 bullet as
@@ -4066,6 +4111,16 @@ making design-level decisions; do not silently deviate.
   routing key, `error.routingFailed` included. Recorded because an earlier
   revision of this bullet claimed the opposite from a mis-attributed dict
   line: this is a place the fix WORKED.
+- **`mask.ts` :: `snapToNavigable` NEVER returns its input — always the cell
+  CENTRE, on every path.** It has ONE point-returning statement, `return best ?
+  best.p : null`, and `best.p` is only ever assigned `center`. Consequence, and
+  the FALSE form of it survived four review rounds across four sites at #1167:
+  a via-point MARKER renders at the RAW dropped coordinate while the
+  corresponding LEG VERTEX is the SNAPPED cell centre — `planRoute.ts` snaps
+  into a separate local array and never mutates `req.viaPoints`, and
+  `planViaPoints.ts` returns `request.viaPoints` verbatim. Gap up to half a
+  ~46 m cell diagonal when the drop was already navigable, up to `maxRadiusM =
+  300` when it was not. Never write that the two coincide.
 - `NavMask.segmentShallowestBelow` returns `null` for BOTH "no cell below the
   threshold" AND "the walk left the grid / tripped its iteration guard" — it
   cannot distinguish clear water from no coverage. Anything that renders a
@@ -4372,6 +4427,11 @@ making design-level decisions; do not silently deviate.
   shape than the heredoc-prose case — `-f` inside a longer word or a longer
   flag is not `-f` as a TOKEN, so exact-match on the argument would fix them
   without the parser PR #233 was closed over. Still out of repo scope (#236).
+- **A `COMMENTED` review with a substantial body can carry ZERO inline
+  threads** — `reviewThreads.nodes` and `pulls/N/comments` both empty,
+  confirmed with a positive control at #1173. So a brief saying "reply on each
+  thread" is then UNEXECUTABLE; the right response is one plain PR comment,
+  never manufacturing threads to reply to.
 - PR review threads via API: send bodies containing backticks as JSON
   `--input` files (double-quoted shell interpolation mangles them) — and put
   `event` INSIDE that same JSON, never as a sibling `-f`, which `--input`
