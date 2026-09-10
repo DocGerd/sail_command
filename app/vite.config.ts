@@ -456,6 +456,11 @@ export default defineConfig(({ command }) => ({
         // #118: the basemap archive ships as `.pmtiles.png` (CDN gzip-of-
         // range workaround, see src/lib/basemap.ts) — it is matched by the
         // `png` token below, so no dedicated `pmtiles` token remains.
+        // #1164: this cap is PER FILE, and the `png` token matches any
+        // basename — a future per-region archive is gated independently of
+        // the core one, no config change needed. Any single archive over
+        // this cap still silently drops from precache (see the standing
+        // CLAUDE.md bullet on this constant).
         maximumFileSizeToCacheInBytes: 40 * 1024 * 1024,
         // #253: the maplibre-gl worker chunk MUST be precached — without it
         // the vector basemap works online but breaks OFFLINE, since
