@@ -356,7 +356,11 @@ export function planRoute(
   // once — `solve()` and `mergeCollinearLegs` take it by reference.
   const requestedGate = uniformGate(s.safetyDepthM);
 
-  const wind = new WindField(windGrid);
+  // #1178: pass the real mask bounds so the constructor can assert the
+  // fetched wind lattice actually covers the mask's domain — this is the
+  // ONE place real forecast data enters the routing pipeline, so it's the
+  // one place that matters for catching a lattice/mask mismatch at runtime.
+  const wind = new WindField(windGrid, mask.meta);
   // #54: a key the caller never supplied is absent from `deps.polars`
   // (rejected below via Object.hasOwn, #601). This throw pins the
   // DIAGNOSTIC, not the existence of a failure — `new Polar(undefined)`
