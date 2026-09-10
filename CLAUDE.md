@@ -590,6 +590,20 @@ making design-level decisions; do not silently deviate.
 
 ## Code conventions (enforced, will fail review otherwise)
 
+- **Prose is CONCISE — comments, JSDoc, PR bodies, issue bodies, commit
+  messages (maintainer instruction, 2026-09-10).** State the claim, then a
+  POINTER to its evidence; never inline the transcript — "measured at PR #1141"
+  beats a pasted table. One fact per sentence; delete any sentence that does not
+  change what the reader does. A comment says WHY, never WHAT the code already
+  says. A PR body says what changed, why, and how to verify — findings go in
+  review threads. An issue body is observation + evidence pointer + ask, never a
+  spike; a claim needing three paragraphs belongs in `docs/spikes/` with the
+  artifact citing it. **Cut WORDS, never SCOPE** — a caveat that changes a
+  decision stays, and so does a measurement's FILTER and BASIS. Brief every
+  implementer, reviewer and doc agent with this explicitly: the established house
+  style here is verbose, so agents reproduce it by default. This governs NEWLY
+  AUTHORED text; a retro-compression pass over existing files is a different
+  thing and was measured net-negative (#724).
 - TypeScript `strict` + `exactOptionalPropertyTypes` are ON; tsconfig
   `erasableSyntaxOnly` forbids enums and constructor parameter properties.
 - `String.replace` with a STRING pattern (not a regex/global) silently
