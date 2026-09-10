@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-09-10
+
+### Added
+
+- Each waypoint in the route planner's via list now has a button to insert a new waypoint right after it, at the midpoint to the next one, giving keyboard users a way to add a stop mid-route without touching the map (#1171).
+
+### Fixed
+
+- Harbour name labels now paint above nearby routine seamark icons at zoom 12 and higher, so the name stays legible instead of being partly covered by the icon (#1154).
+- A route where one rig silently failed to find a course now says so in the rig comparison, naming the sail that found no route, instead of showing the same generic "not compared" wording used when there was simply nothing to compare (#1166).
+
 ## [0.31.0] - 2026-09-10
 
 ### Added
@@ -1060,7 +1071,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.31.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.32.0...HEAD
+[0.32.0]: https://github.com/DocGerd/sail_command/compare/v0.31.0...v0.32.0
 [0.31.0]: https://github.com/DocGerd/sail_command/compare/v0.30.0...v0.31.0
 [0.30.0]: https://github.com/DocGerd/sail_command/compare/v0.29.0...v0.30.0
 [0.29.0]: https://github.com/DocGerd/sail_command/compare/v0.28.0...v0.29.0

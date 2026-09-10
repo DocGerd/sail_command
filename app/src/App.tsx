@@ -77,7 +77,7 @@ import { PANEL_MIN_WIDTH_PX, panelMaxWidthPx } from './lib/panelWidth';
 import { formatLatLon } from './lib/format';
 import { resolveHarborPickTarget } from './lib/harborGeoJson';
 import { boatById, sailIdsOf } from './data/boats';
-import { nearestViaInsertIndex } from './lib/viaInsertion';
+import { nearestViaInsertIndex, segmentMidpoint } from './lib/viaInsertion';
 import { usePersistedBoatId } from './lib/usePersistedBoatId';
 import { usePersistedOwnMmsi } from './lib/ownMmsi';
 // #834: same widening PlannerPanel.tsx's own `harbors` prop already carries —
@@ -797,6 +797,39 @@ function AppShell() {
       handleViaPointsChange(next);
     },
     [viaPoints, handleViaPointsChange],
+  );
+
+  // #1171: keyboard equivalent of #850's drag-to-insert-a-waypoint gesture —
+  // "insert between waypoint N and N+1" for N = index+1 (1-based, matching
+  // the row's own aria-labelled position). #850's drag has a pointer-release
+  // point to place the new waypoint at; this control has none, so per the
+  // issue's own settled default it uses the MIDPOINT of the two adjacent
+  // waypoints — viaPoints[index] and whichever comes next in the chain
+  // (viaPoints[index + 1], or the destination if this is the last via
+  // point). PlannerPanel disables the row's insert button whenever that
+  // "next" point does not exist (last via point, no destination chosen
+  // yet) — this still no-ops safely rather than throwing if reached anyway
+  // (e.g. a stale index from a fast double-click racing a removal).
+  //
+  // Deliberately NOT nearestViaInsertIndex/insertViaNearestOrAppend: those
+  // place an EXTERNALLY-sourced point (a seamark, a saved waypoint, a map
+  // drop) at whichever gap it happens to be nearest to. Here the user has
+  // already CHOSEN the gap (this row), so the index is a direct splice
+  // position, not a nearest-point search — the "underlying primitive" this
+  // issue names as non-obstacle is `nearestViaInsertIndex`'s SPLICE
+  // convention (index i inserts before the current occupant of index i),
+  // reused via `next.splice(index + 1, 0, ...)` below, not the nearest-point
+  // search itself.
+  const handleInsertViaAfter = useCallback(
+    (index: number) => {
+      const from = viaPoints[index];
+      const to = index + 1 < viaPoints.length ? viaPoints[index + 1] : destination?.point;
+      if (!from || !to) return;
+      const next = [...viaPoints];
+      next.splice(index + 1, 0, segmentMidpoint(from, to));
+      handleViaPointsChange(next);
+    },
+    [viaPoints, destination, handleViaPointsChange],
   );
 
   // #829: keyboard-reachable equivalents of handleMapTap's 'via' branch above
@@ -1812,6 +1845,7 @@ function AppShell() {
                   viaPoints={viaPoints}
                   onRemoveVia={handleRemoveVia}
                   onReorderVia={handleReorderVia}
+                  onInsertViaAfter={handleInsertViaAfter}
                   onAddVia={handleAddViaByCoord}
                   onUpdateVia={handleUpdateViaByCoord}
                   onSelectSavedWaypoint={handleSelectSavedWaypoint}

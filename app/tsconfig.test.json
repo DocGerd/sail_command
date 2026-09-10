@@ -167,8 +167,15 @@
   // also invokes `assertCleanServiceWorkerState` in the same test body.
   // Same `node:fs`-reads-a-real-artifact-outside-`src/` pattern as
   // sweepSailIds.test.ts above.
+  // windLatticeMaskCoverage.test.ts (#1178): reads app/src/services/
+  // openMeteo.ts (its LATS/LONS declarations, as TEXT) AND the shipped
+  // app/public/data/mask.meta.json via `node:fs` to structurally guard that
+  // the wind lattice's lat/lon extent covers the mask's domain — otherwise
+  // WindField.sample()'s bracket() silently clamps out-of-lattice samples
+  // with no signal. Same reason and pattern as maskTolerance.test.ts above.
   "include": [
     "src/**/startPreviewSwAssertCallSites.test.ts",
+    "src/**/windLatticeMaskCoverage.test.ts",
     "src/**/realmask.repro*.test.ts",
     "src/**/realmaskFixtures.ts",
     "src/**/gpx.parse.test.ts",

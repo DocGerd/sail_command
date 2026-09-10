@@ -192,6 +192,13 @@ selected in §1.
     hit its wall-clock budget before both sails finished. No ★ is shown, and
     one sail tab may carry a no-route reason instead of an ETA. Correct
     behaviour (#540) — record the route and departure in §5 and pass.
+  - **Any boat, if the chip names one sail — "… found no route for this
+    passage, so no faster rig is claimed"** — that sail's search
+    finished and returned nothing, while the other found a route. No ★ is
+    shown and the named sail's tab carries a no-route reason instead of an
+    ETA. Distinct from the budget case above: there the search was cut short,
+    here it completed with a negative answer. Correct behaviour (#1166) —
+    record the route and departure in §5 and pass.
 - [ ] **2.6 Motor legs (if any) are gray-dashed and listed.** If sailing
       speed would be too low anywhere on the route, that leg is rendered
       dashed/gray on the map and appears explicitly as a motor leg in the

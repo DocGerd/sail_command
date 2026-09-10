@@ -5,6 +5,7 @@ import type {
   GeoJSONSource,
   Map as MaplibreMap,
   MapLayerMouseEvent,
+  SymbolLayerSpecification,
 } from 'maplibre-gl';
 import { useMapInstance } from './MapView';
 import { useSettings, useActivePlan } from '../state/AppState';
@@ -149,7 +150,25 @@ const HARBOR_SOURCE = 'sc-harbors';
 // App.test.tsx FakeMap still hardcodes it — a vi.mock factory is hoisted above
 // the imports and can't reference this constant.) (#38)
 export const HARBOR_CIRCLE_LAYER = 'sc-harbor-points';
+// #1154: the label layer is now TWO layers over the SAME HARBOR_SOURCE data,
+// split by minzoom/maxzoom at 12 (the #682 pattern reused, split by zoom
+// instead of by filter) — paint order is a STACK-POSITION property, not a
+// zoom-dependent one, so achieving "labels under seamarks below z12, over
+// ROUTINE seamarks at/above z12" needs two layer objects, not one. This id
+// stays on the z>=12 copy specifically (added below, between SEAMARKS_LAYER
+// and SEAMARKS_HAZARD_LAYER) — every existing consumer of this id
+// (`app/e2e/seamark-collision-icon-size-981.spec.ts`'s z12.5 presence pin,
+// `saved-waypoints.spec.ts`'s stack-order pin) queries at z>=12 or is
+// zoom-agnostic, so keeping the id here rather than on the z<12 copy is what
+// lets this change ship without editing app/e2e. See seamarkGeoJson.ts's
+// #1154 doc comment for the measurement and the placement-neutrality
+// argument.
 const HARBOR_LABEL_LAYER = 'sc-harbor-labels';
+// The z<12 copy — SAME position in the stack as this whole feature's
+// pre-#1154 shape (added before both seamark layers), so it is UNCHANGED for
+// #682's placement-priority argument: below z12 seamarks still enter the
+// collision grid and must still out-rank labels there, exactly as before.
+const HARBOR_LABEL_LAYER_BELOW_12 = 'sc-harbor-labels-below-12';
 const SEAMARKS_SOURCE = 'sc-seamarks';
 // Exported for the same reason as HARBOR_CIRCLE_LAYER: App hands MapView this
 // id so a click landing on a seamark glyph is gated OUT of the generic
@@ -301,6 +320,29 @@ function rebuildHatchCanvas(
   source.play();
   source.pause();
 }
+
+// #1154: shared by HARBOR_LABEL_LAYER and HARBOR_LABEL_LAYER_BELOW_12 —
+// same layout/paint on both, only minzoom/maxzoom differ, so this is
+// declared ONCE rather than duplicated at both addLayer call sites (the
+// #144 SEAMARKS_LAYOUT precedent: shared layout, different zoom/filter
+// scoping per layer).
+const HARBOR_LABEL_LAYOUT: NonNullable<SymbolLayerSpecification['layout']> = {
+  'text-field': ['get', 'name'],
+  // Explicit stack: it must exist under basemap-assets/fonts/ — MapLibre's
+  // implicit default stack does not.
+  'text-font': ['Noto Sans Regular'],
+  'text-size': 11,
+  'text-anchor': 'top',
+  'text-offset': [0, 0.8],
+  // Collision-culled (unlike the maneuver letters): 33 labels around a
+  // small map would otherwise pile up at low zoom.
+  'text-allow-overlap': false,
+};
+const HARBOR_LABEL_PAINT: NonNullable<SymbolLayerSpecification['paint']> = {
+  'text-color': INK_COLOR,
+  'text-halo-color': HALO_COLOR,
+  'text-halo-width': 1.2,
+};
 
 function setupLayers(
   map: MaplibreMap,
@@ -455,26 +497,16 @@ function setupLayers(
     );
     map.addLayer(
       {
-        id: HARBOR_LABEL_LAYER,
+        id: HARBOR_LABEL_LAYER_BELOW_12,
         type: 'symbol',
         source: HARBOR_SOURCE,
-        layout: {
-          'text-field': ['get', 'name'],
-          // Explicit stack: it must exist under basemap-assets/fonts/ —
-          // MapLibre's implicit default stack does not.
-          'text-font': ['Noto Sans Regular'],
-          'text-size': 11,
-          'text-anchor': 'top',
-          'text-offset': [0, 0.8],
-          // Collision-culled (unlike the maneuver letters): 33 labels around
-          // a small map would otherwise pile up at low zoom.
-          'text-allow-overlap': false,
-        },
-        paint: {
-          'text-color': INK_COLOR,
-          'text-halo-color': HALO_COLOR,
-          'text-halo-width': 1.2,
-        },
+        // #1154: exclusive of 12 — the z>=12 copy (added below, between
+        // SEAMARKS_LAYER and SEAMARKS_HAZARD_LAYER) takes over at exactly
+        // the zoom this one stops, so the two never both render the same
+        // feature at once.
+        maxzoom: 12,
+        layout: HARBOR_LABEL_LAYOUT,
+        paint: HARBOR_LABEL_PAINT,
       },
       beforeId,
     );
@@ -501,6 +533,30 @@ function setupLayers(
           // profile (#7, opt-in specialist layer) — before any paint.
           visibility: 'none',
         },
+      },
+      beforeId,
+    );
+    // #1154: the z>=12 harbor-label copy, inserted HERE — after
+    // SEAMARKS_LAYER (routine), before SEAMARKS_HAZARD_LAYER — so labels
+    // paint OVER routine seamark icons while HAZARD marks stay topmost,
+    // preserving the maintainer ruling that a hazard icon staying on top is
+    // the conservative direction for a sailing app. `minzoom: 12` is the
+    // exact complement of HARBOR_LABEL_LAYER_BELOW_12's `maxzoom: 12` above.
+    // Placement-neutral by the SAME mechanism #1126 established:
+    // `icon-ignore-placement: true` on both seamark layers at z>=12
+    // (seamarkGeoJson.ts's SEAMARKS_LAYOUT) means neither seamark layer
+    // enters the collision grid there, so this layer's stack position
+    // relative to them cannot affect any placement decision — only paint
+    // order moves. See seamarkGeoJson.ts's #1154 doc comment for the
+    // measurement and the rejected-reorder precedent this narrows.
+    map.addLayer(
+      {
+        id: HARBOR_LABEL_LAYER,
+        type: 'symbol',
+        source: HARBOR_SOURCE,
+        minzoom: 12,
+        layout: HARBOR_LABEL_LAYOUT,
+        paint: HARBOR_LABEL_PAINT,
       },
       beforeId,
     );

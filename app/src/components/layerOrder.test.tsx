@@ -134,12 +134,20 @@ vi.mock('../services/assets', () => ({
 // #682's own definition of done, exercised across every setup-timing
 // interleaving AND the #153 style-reload re-add path this file already
 // covers for the rest of the stack.
+// #1154: 'sc-harbor-labels' is now TWO layer objects sharing one id-string
+// pair — 'sc-harbor-labels-below-12' (z<12, unchanged position: before both
+// seamark layers, so seamarks still out-rank it in the z<12 collision grid
+// per #682's placement-priority argument) and 'sc-harbor-labels' itself
+// (z>=12, moved BETWEEN the routine and hazard seamark layers so labels
+// paint over routine marks while hazard stays topmost). See
+// DataLayers.tsx's own #1154 comments at each addLayer call site.
 const OVERLAYS_BELOW_AIS = [
   'sc-depth',
   'sc-depth-hatch',
   'sc-harbor-points',
-  'sc-harbor-labels',
+  'sc-harbor-labels-below-12',
   'sc-seamarks',
+  'sc-harbor-labels',
   'sc-seamarks-hazard',
   'sc-ais-vectors',
   'sc-ais-vessels',

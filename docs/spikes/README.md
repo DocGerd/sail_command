@@ -80,11 +80,24 @@ instead of here.
 - [1136-motor-off-solve-termination.md](1136-motor-off-solve-termination.md)
   — #1136: motor-off solves terminate holding mask-validated children
   (domination pruning, not the `MOTOR_TWAS` heading gap); re-expansion
-  salvage designed and NOT implemented; deferred to v0.32.0 by maintainer
-  ruling 2026-09-09
+  salvage designed and NOT implemented. An efficacy probe run at the
+  v0.32.0 cut discharged the doc's fourth open hole — salvaged nodes do
+  survive the next ring — but found no workable `MAX_SALVAGES` constant;
+  its numbers are on the issue, not in this doc. Deferred to v0.33.0.
+- [1147-budget-headroom-reference-device.md](1147-budget-headroom-reference-device.md)
+  — #1147: sizing `PLAN_BUDGET_MS` against a Galaxy Tab S7 reference device —
+  CDP CPU throttling measured inert on the routing Worker; the current
+  120 s budget does not clear the reference device on the idle-machine BASE
+  measurement alone; sizing the replacement left to a maintainer call
 - [1163-295-coverage-scoping.md](1163-295-coverage-scoping.md) — #1163:
   scoping the #295 coverage extension (Kolding/Middelfart/Fehmarn) — coupled
   sites, payload, wind-lattice safety, Great Belt, #1164 dependency
+- [1170-touch-waypoint-insertion.md](1170-touch-waypoint-insertion.md) —
+  #1170: how touch should insert a waypoint at a chosen position on the
+  route. Surveys four marine products (all mode-first, none hover-reveal),
+  recommends extending the existing armed "Add waypoint" mode, and rejects
+  long-press with its mechanism. Design shipped at the v0.32.0 cut; the
+  build was deferred to v0.33.0
 
 Two entries carry a same-named subdirectory of supporting artifacts rather
 than being self-contained: `1022-whole-journey-ux/` (reference screenshots)

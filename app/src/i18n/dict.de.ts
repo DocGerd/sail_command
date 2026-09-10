@@ -160,6 +160,14 @@ export const de = {
   'planner.via.moveUp': 'Wegpunkt {index} nach oben verschieben',
   'planner.via.moveDown': 'Wegpunkt {index} nach unten verschieben',
   'planner.via.marker': 'Wegpunkt {index}',
+  // #1171: keyboard equivalent of #850's drag-to-insert-waypoint gesture —
+  // "Wegpunkt" is deliberately NOT immediately followed by "{index}" (as
+  // moveUp/moveDown/remove/marker all are), so this string cannot collide
+  // via a non-exact getByRole substring match with any of them or with
+  // ViaMarkers.tsx's own "Wegpunkt {index}" marker aria-label — same
+  // avoidance the clearAll/coord.edit comments above already document for
+  // this same scoped via-list region.
+  'planner.via.insertAfter': 'Wegpunkt nach Punkt {index} einfügen',
   // #938: abandon the whole draft in one action — draft-only, never the
   // persisted 'waypoints' store. Two-tap confirm (planner.via.clearAll ->
   // planner.via.clearAll.confirm), same convention as
@@ -373,6 +381,11 @@ export const de = {
   // MsgKey helper (resultVerdictKey in lib/resultSummary.ts).
   'route.comparisonIncomplete':
     'Die Suche wurde durch Zeitüberschreitung abgebrochen, bevor beide Segel verglichen werden konnten — es wird kein schnelleres Rigg angegeben',
+  // #1166: zweite, spezifischere "not-compared"-Ursache, siehe dict.en.ts
+  // für die volle Begründung — genau zwei Segel angefordert, genau eines
+  // fand keine Route, während das andere gelöst wurde.
+  'route.rigOneFailed':
+    '{rig} fand für diese Passage keine Route — es wird kein schnelleres Rigg angegeben',
   // #748: completes Option 3 — renders the real fetch->departure gap via
   // {hours} (lib/plan.ts's staleForecastGapHours, rounded to whole hours —
   // see its own comment for why round, not floor or ceil) instead of the

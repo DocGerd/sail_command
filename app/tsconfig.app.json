@@ -134,6 +134,7 @@
   // invokes `assertCleanServiceWorkerState` in the same test body.
   "exclude": [
     "src/**/startPreviewSwAssertCallSites.test.ts",
+    "src/**/windLatticeMaskCoverage.test.ts",
     "src/**/realmask.repro*.test.ts",
     "src/**/realmaskFixtures.ts",
     "src/**/gpx.parse.test.ts",

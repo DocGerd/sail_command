@@ -5,6 +5,7 @@ import {
   type RigRecommendation,
   type RigResult,
   type SailId,
+  type SailResult,
 } from '../types';
 import { uniformWindGrid } from '../test/fixtures';
 import { BOATS } from '../data/boats';
@@ -215,6 +216,60 @@ describe('resultVerdictKey (#540 spec §E.3)', () => {
   it("'moot' ignores comparisonComplete entirely (discriminating control)", () => {
     expect(resultVerdictKey('moot', true)).toBe('route.rigMoot');
     expect(resultVerdictKey('moot', false)).toBe('route.rigMoot');
+  });
+});
+
+// #1166: a plan can report status ok while silently dropping one rig — two
+// requested sails, exactly one solved. Before this fix that shape collapsed
+// onto the generic route.rigNotCompared, identical to N=1/N>=3/tier-C
+// suppression, none of which have a solve failure at all.
+describe('resultVerdictKey (#1166 one-sail-failed)', () => {
+  const solved: SailResult = { sailId: 'genoa', result: rigResult({}), reason: null };
+  const failed: SailResult = { sailId: 'fock', result: null, reason: 'unreachable' };
+
+  it('two requested sails, exactly one solved: reports the specific one-failed key, not the generic one', () => {
+    expect(resultVerdictKey('not-compared', true, [solved, failed])).toBe('route.rigOneFailed');
+  });
+
+  it('order-independent: the failed sail can be first', () => {
+    expect(resultVerdictKey('not-compared', true, [failed, solved])).toBe('route.rigOneFailed');
+  });
+
+  it('two requested sails, BOTH solved (tier-C-suppression shape): falls through to the generic key, not the one-failed key', () => {
+    const bothSolved: SailResult = {
+      sailId: 'fock',
+      result: rigResult({ sailId: 'fock' }),
+      reason: null,
+    };
+    expect(resultVerdictKey('not-compared', true, [solved, bothSolved])).toBe(
+      'route.rigNotCompared',
+    );
+  });
+
+  it('N=1 (one requested sail, that one failed): the length!==2 gate excludes it from the one-failed key', () => {
+    expect(resultVerdictKey('not-compared', true, [failed])).toBe('route.rigNotCompared');
+  });
+
+  it('N>=3 with one failure: the length!==2 gate excludes it from the one-failed key', () => {
+    const third: SailResult = { sailId: 'genoa', result: rigResult({}), reason: null };
+    expect(resultVerdictKey('not-compared', true, [solved, failed, third])).toBe(
+      'route.rigNotCompared',
+    );
+  });
+
+  it('comparisonComplete false takes priority even in the one-sail-failed shape (a budget-truncated sail is also null)', () => {
+    expect(resultVerdictKey('not-compared', false, [solved, failed])).toBe(
+      'route.comparisonIncomplete',
+    );
+  });
+
+  it('omitted sails argument: backward-compatible with every pre-#1166 call site, never crashes or misfires', () => {
+    expect(resultVerdictKey('not-compared', true)).toBe('route.rigNotCompared');
+  });
+
+  it("'tie'/'moot' ignore the one-sail-failed shape entirely (discriminating control — the branch is 'not-compared'-only)", () => {
+    expect(resultVerdictKey('tie', true, [solved, failed])).toBe('route.rigTie');
+    expect(resultVerdictKey('moot', true, [solved, failed])).toBe('route.rigMoot');
   });
 });
 
