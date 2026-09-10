@@ -84,6 +84,11 @@ instead of here.
   v0.32.0 cut discharged the doc's fourth open hole — salvaged nodes do
   survive the next ring — but found no workable `MAX_SALVAGES` constant;
   its numbers are on the issue, not in this doc. Deferred to v0.33.0.
+- [1147-budget-headroom-reference-device.md](1147-budget-headroom-reference-device.md)
+  — #1147: sizing `PLAN_BUDGET_MS` against a Galaxy Tab S7 reference device —
+  CDP CPU throttling measured inert on the routing Worker; the current
+  120 s budget does not clear the reference device on the idle-machine BASE
+  measurement alone; sizing the replacement left to a maintainer call
 - [1163-295-coverage-scoping.md](1163-295-coverage-scoping.md) — #1163:
   scoping the #295 coverage extension (Kolding/Middelfart/Fehmarn) — coupled
   sites, payload, wind-lattice safety, Great Belt, #1164 dependency
