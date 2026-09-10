@@ -373,6 +373,11 @@ export const de = {
   // MsgKey helper (resultVerdictKey in lib/resultSummary.ts).
   'route.comparisonIncomplete':
     'Die Suche wurde durch Zeitüberschreitung abgebrochen, bevor beide Segel verglichen werden konnten — es wird kein schnelleres Rigg angegeben',
+  // #1166: zweite, spezifischere "not-compared"-Ursache, siehe dict.en.ts
+  // für die volle Begründung — genau zwei Segel angefordert, genau eines
+  // fand keine Route, während das andere gelöst wurde.
+  'route.rigOneFailed':
+    '{rig} fand für diese Passage keine Route — es wird kein schnelleres Rigg angegeben',
   // #748: completes Option 3 — renders the real fetch->departure gap via
   // {hours} (lib/plan.ts's staleForecastGapHours, rounded to whole hours —
   // see its own comment for why round, not floor or ceil) instead of the

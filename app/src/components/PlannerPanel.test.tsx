@@ -18,6 +18,7 @@ import {
   type Harbor,
   type LatLon,
   type Leg,
+  type NoRouteReason,
   type PickedPoint,
   type Plan,
   type RigRecommendation,
@@ -256,7 +257,15 @@ function makePlan(
 // fields are now `readonly`, so a test that used to write
 // `plan.result.genoa = X` instead REPLACES the whole `result` object
 // (Plan.result itself is not readonly — only PlanResultOk's own fields are).
-function setSail(plan: Plan, sailId: SailId, patch: { result?: RigResult | null }): void {
+function setSail(
+  plan: Plan,
+  sailId: SailId,
+  // #1166: widened to also accept `reason` (still optional — the two
+  // pre-existing call sites patch `result` only) so a test can put a sail
+  // back into a SOLVED state (`result` non-null, `reason` null) without
+  // hand-rolling the `plan.result` rewrite inline.
+  patch: { result?: RigResult | null; reason?: NoRouteReason | null },
+): void {
   plan.result = {
     ...plan.result,
     sails: plan.result.sails.map((s) => (s.sailId === sailId ? { ...s, ...patch } : s)),
@@ -2411,7 +2420,33 @@ describe('PlannerPanel', () => {
     // #553: the MIRROR of RouteSummary.test.tsx's not-compared row. These are
     // two independent call sites and #259's own banner is about exactly this
     // pair drifting apart, so one row cannot stand in for the other.
-    it('#553: a not-compared verdict renders the honest no-comparison chip', () => {
+    //
+    // #1166: this row's PURPOSE is the GENERIC not-compared bucket (e.g.
+    // tier-C suppression), where BOTH sails still solve and the comparison
+    // is withheld for some other reason — distinct from the ONE-SAIL-FAILED
+    // case, which now renders its own message and has its own row below.
+    // The base `makePlan()` fixture's `fock` is null by default (used
+    // elsewhere in this file to exercise the no-route tab), which is
+    // exactly the #1166 shape — so this row must explicitly put fock back
+    // into a solved state to keep testing what it always meant to.
+    it('#553: a not-compared verdict (both sails solved) renders the honest no-comparison chip', () => {
+      const plan = makePlan({ rigRecommendation: { kind: 'not-compared' } });
+      setSail(plan, 'fock', { result: { ...GENOA_RESULT, sailId: 'fock' }, reason: null });
+      const { container } = renderPanelReturningContainer({
+        planning: { phase: 'idle' },
+        plan,
+        rig: 'genoa',
+      });
+      const chip = container.querySelector('.chip-faster-rig');
+      expect(chip?.textContent).toBe(
+        'The sails were not compared for this passage, so no faster rig is claimed',
+      );
+    });
+
+    // #1166: the shape the base fixture actually carries by default (fock
+    // null) — two requested sails, exactly one found no route. Must render
+    // a DIFFERENT chip text than the #553 row above, naming the failed sail.
+    it('#1166: a not-compared verdict caused by one sail failing to solve names the failed sail, not the generic sentence', () => {
       const { container } = renderPanelReturningContainer({
         planning: { phase: 'idle' },
         plan: makePlan({ rigRecommendation: { kind: 'not-compared' } }),
@@ -2419,7 +2454,7 @@ describe('PlannerPanel', () => {
       });
       const chip = container.querySelector('.chip-faster-rig');
       expect(chip?.textContent).toBe(
-        'The sails were not compared for this passage, so no faster rig is claimed',
+        'Fock found no route for this passage, so no faster rig is claimed',
       );
     });
 
