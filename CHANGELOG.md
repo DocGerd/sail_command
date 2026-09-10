@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-09-10
+
+### Added
+
+- On a touch device you can now tap the plotted route line, while "Add waypoint" is armed, to insert a waypoint at that point on the route (#1170).
+- Added a Cancel button to stop an in-flight route solve and return to a re-plannable state (#1193).
+
+### Changed
+
+- Route planning now waits up to 4 minutes (up from 2) before giving up, so a slower device has time to finish a route the app can actually solve (#1147).
+
+### Fixed
+
+- Widened the via-point marker's drag/tap target to 44px without changing its visible size, so repositioning a waypoint no longer needs a sub-16px hit (#1186).
+
 ## [0.32.0] - 2026-09-10
 
 ### Added
@@ -1071,7 +1086,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.32.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.33.0...HEAD
+[0.33.0]: https://github.com/DocGerd/sail_command/compare/v0.32.0...v0.33.0
 [0.32.0]: https://github.com/DocGerd/sail_command/compare/v0.31.0...v0.32.0
 [0.31.0]: https://github.com/DocGerd/sail_command/compare/v0.30.0...v0.31.0
 [0.30.0]: https://github.com/DocGerd/sail_command/compare/v0.29.0...v0.30.0
