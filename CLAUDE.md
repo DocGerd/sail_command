@@ -1639,6 +1639,7 @@ making design-level decisions; do not silently deviate.
   | v0.30.0 | 2026-09-09 | 45 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) immediately before the tag push -- the same non-answer v0.17.0, v0.25.0, v0.26.0 and v0.27.0 recorded; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `34368277678` (created 15:08:33Z) -> tag `34368356087` (created 15:09:18Z) on `b66e178`. The merge run's `deploy` job carries **`steps: 0`** with `started_at` == `completed_at` == 15:09:56Z -- the v0.25.0/v0.27.0 control -- so it NEVER STARTED and left no `success`-state deployment of that SHA behind. The tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production afterwards served `assets/index-Cc9EuFnt.js` with ZERO suffixed `vX.Y.Z-N-g<sha>` matches, so no back-merge remedy was owed. Release object `isLatest: true`; tag object `verified: true, reason: "valid"`. **FOURTH not-yet-started reading, and the first SAFE outcome since v0.27.0** -- it ends the run of `smoke-probe` failures at v0.28.0 and v0.29.0, both of which read terminal `success`. The widened criterion those rows established -- the merge `deploy` job has not reached terminal `success` -- now rests on four observations. Four is still not a mechanism: this row names NONE, and per this table's own rule the gap gates nothing. |
   | v0.31.0 | 2026-09-10 | 54 s | read as **NO `deploy` JOB CREATED YET** immediately before the tag push -- a not-yet-started reading; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `34449455451` (created 07:20:19Z) -> tag `34449529039` (created 07:21:13Z) on `a0bed8f`. The merge run's `deploy` job carries **`steps: 0`** with `started_at` == `completed_at` == 07:21:20Z, against that SAME run's `build` job at **`steps: 23`** which ran 07:20:22Z -> 07:21:19Z and was cancelled mid-flight -- the within-run control v0.27.0 used, so `deploy` NEVER STARTED and left no `success`-state deployment of that SHA behind. The tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production afterwards served `assets/index-ksgT8KEb.js` at ``about.version`,{version:`v0.31.0`}`` with ZERO suffixed `vX.Y.Z-N-g<sha>` matches, so no back-merge remedy was owed. Release object `isLatest: true`; tag object `f11d2501` reported `verified: true, reason: "valid"`. The widened criterion -- the merge `deploy` job has not reached terminal `success` -- gains another observation here. COUNT the rows reading "NO `deploy` JOB CREATED YET" rather than trusting an ordinal: this row carried one reading FIFTH while naming five priors, the exact off-by-one this table's own preamble forbids a running total for. A count is still not a mechanism: this row names NONE, and per this table's own rule the gap gates nothing. |
   | v0.32.0 | 2026-09-10 | 62 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) immediately before the tag push -- another not-yet-started reading; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `34471115059` (created 11:24:20Z) -> tag `34471205143` (created 11:25:22Z) on `4e1e92d`. The merge run's `deploy` job carries **`steps: 0`** against that SAME run's `build` job at **`steps: 23`**, which ran and was cancelled mid-flight -- the within-run control v0.27.0 and v0.31.0 used -- so `deploy` NEVER STARTED and left no `success`-state deployment of that SHA behind. The tag run (`head_branch: v0.32.0`) had `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**, `uat-environment` skipped; production afterwards served ``about.version`,{version:`v0.32.0`}`` with ZERO suffixed `vX.Y.Z-N-g<sha>` matches, so no back-merge remedy was owed. Release object `isLatest: true`; tag object reported `verified: true, reason: "valid"`. Still names no MECHANISM, and per this table's own rule the gap gates nothing. |
+  | v0.33.0 | 2026-09-10 | 134 s | `success` (MEASURED immediately before the tag push, and the failure CALLED IN ADVANCE from it, written down BEFORE the push) | **`smoke-probe` FAILED** | merge-push `34510823659` (created 17:52:05Z) -> tag `34511051995` (created 17:54:19Z) on `84fc200`. The merge run's `deploy` job carries **`steps=6`** and was terminal `success` at **17:53:36Z, 43 s BEFORE the tag run was created** -- v0.29.0's `steps` discriminator in the reading that means the job genuinely RAN and deployed. The tag run's `build` AND `deploy` both succeeded; only `smoke-probe` failed, by the #398 signature -- its own prod entry chunk `assets/index-BruyVo4z.js` returned **404 on all 10 attempts** (17:55:49Z -> 18:00:20Z) while BOTH basemap Range probes passed on attempt 1, ruling out a CDN regression. Back-merge `34513753191` (different SHA `3637c30`) then probed green and republished **that same chunk name**, which then returned 200 on attempt 1 -- so the tag run's BUILD was correct and only its DEPLOYMENT no-opped. Production afterwards served that chunk at ``about.version`,{version:`v0.33.0`}`` with ZERO suffixed `vX.Y.Z-N-g<sha>` matches. **ENDS the run of not-yet-started readings at v0.30.0, v0.31.0 and v0.32.0** -- read those three rows rather than trusting a count here -- and is the first terminal `success` since v0.29.0, behaving exactly as this table says a `success` reading behaves. Still names no MECHANISM, and per this table's own rule the gap gates nothing. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -2203,7 +2204,12 @@ making design-level decisions; do not silently deviate.
   and treat two PRs appending to the same file as a SCHEDULED conflict, not a
   risk. Sequence merges by FILE SURFACE (disjoint PRs first) rather than by
   readiness. Cost here was one wave plus one CI cycle, and only that low because
-  the two guards happened to be mechanically combinable.
+  the two guards happened to be mechanically combinable. An INDEX file is the
+  collision surface a per-DOCUMENT map cannot see: three spike documents in
+  one milestone each APPEND to `docs/spikes/README.md`, so a map treating each
+  new doc as disjoint schedules a conflict it never records — measured at PR
+  #1201, which came up `mergeable_state: dirty` for exactly that, both index
+  entries being the correct resolution.
 - Multiple open PRs: develop in parallel, merge strictly serially — after each
   merge, re-sync the next branch from its base (`git merge origin/develop`, or
   `origin/main` for a hotfix/release PR) and let full CI (~10 min) re-run before
@@ -2790,6 +2796,11 @@ making design-level decisions; do not silently deviate.
   `in_progress`. Require both jobs to EXIST IN THE SPECIFIC RUN ID and be
   terminal (`runs/<id>/jobs`, not `commits/<sha>/check-runs`), and cross-check
   `mergeable_state` — it read `blocked` and contradicted watcher (2) correctly.
+  A THIRD shape, 2026-09-10: reading CONCLUSIONS before the named checks
+  EXIST. Nothing-pending and everything-passed are the same reading before the
+  runs are created, so a monitor exited "ALL TERMINAL" with EMPTY check lists
+  — require `n >= 2` NAMED checks to EXIST in the specific run id before
+  reading any conclusion at all.
   CAVEAT, measured 2026-08-14 on #518: that `head_sha=` filter returned
   `total_count: 0` for a live run while `commits/<sha>/check-runs` saw 7 and
   `actions/runs?branch=<branch>` showed that run carrying that exact
@@ -2834,7 +2845,15 @@ making design-level decisions; do not silently deviate.
   a fully green suite (PR #688 Major A, fixed by keying that effect on
   `[plan]` — the effect's own comment says why). Whenever a component has a
   null-render phase, at least one test must render it IN that phase and then
-  transition into the live one.
+  transition into the live one. LAST-WRITE-WINS hides the same class a third
+  way: #1170 shipped a REAL false green because one tap reached
+  `setDraftViaPoints` from TWO handlers, so the broken guard and the correct
+  one settled to identical final state and every end-state assertion passed
+  either way. Only a test firing the GENERIC handler ALONE could see it, and
+  the fake had to gain the ability to DIVERGE from production first
+  (`routeHitFeatures`, mirroring the existing `harborHitFeatures`) —
+  `app/src/App.test.tsx:1881`. When one event can reach a setter twice, assert
+  on the HANDLER, never on the settled state.
 - **A guard can pass forever for TWO opposite reasons, and both shipped a
   defect in v0.13.0.** (a) JOINT BLINDNESS — #638's legend rendered with no
   panel background and a 104px column at every viewport, while its only e2e
@@ -3519,7 +3538,15 @@ making design-level decisions; do not silently deviate.
   is a hypothesis about where the defect lives; a claim-shape pattern tests
   the property itself. Same failure as the delegation corollary above, one
   level further in: scoping a search from what you already know — and note
-  that the output being on screen is no defence.
+  that the output being on screen is no defence. **LOCATION is the same
+  failure as a token list**: a sweep scoped to a LINE RANGE (77-138) missed a
+  stale figure at `:322` in the very file it had just swept, found only by
+  re-enumerating on claim shape over the whole file and then repo-wide
+  (2026-09-10). And a token list cannot see the MIRROR IMAGE of its own claim
+  — an overclaim enumerated as `trapped|stuck` missed a fourth instance
+  phrased "never needed again", invisible to either token (PR #1197).
+  Enumerate on the PROPERTY, never on a location, a token list, or one
+  polarity of the wording.
 - **State a verified fact as a past-tense EVENT, never as a current-state
   claim.** "re-verified against `maplibre-gl@6.2.0`" survives the next bump;
   "…, the version `app/package-lock.json` pins" goes FALSE at it — and a
@@ -4101,15 +4128,19 @@ making design-level decisions; do not silently deviate.
   coupling in a new place), and keep `RoutingFailureKind` OUT of `types.ts`
   exactly as `SolveFailureCause` is.
   `isochrone.ts` NOW HAS a per-plan wall-clock budget: `PLAN_BUDGET_MS`
-  (120_000, byte-identical to the old client timeout) checked at ring ENTRY
-  plus once before the #53 BFS probes, imposed ONLY by `protocol.ts` —
+  (240_000 since #1147, 2026-09-10; it was 120_000 and equal to the old
+  client timeout until then) checked at ring ENTRY plus once before the #53
+  BFS probes, imposed ONLY by `protocol.ts` —
   `planRoute()` is unbudgeted unless handed a deadline, which is what lets
   `app/sweep/` exercise the solver at all. Client deadline is budget + 15 s
   so the solver wins. WHY THAT CANNOT BREAK A WORKING PLAN, structurally
   rather than by margin: the worker's clock starts at the plan handler,
   strictly LATER than the client's at `plan()` (postMessage + clone between),
   so the new wall is >= the old one and anything that fitted the old client
-  window fits the new worker window. All four former bare catches in
+  window fits the new worker window. That held by EQUAL value plus the later
+  start while the budget was 120_000; since #1147 the value is LARGER too, so
+  it holds a fortiori — never restate the argument as resting on identity.
+  All four former bare catches in
   `replan.ts`/`reroute.ts` now preserve the discriminator, but only the TWO
   wrapping `plan()` dispose UNLESS `failureLeavesWorkerHealthy(err)`
   (`replan.ts`, today exactly `boat-not-in-catalogue`, whose worker never saw
@@ -4130,6 +4161,13 @@ making design-level decisions; do not silently deviate.
   deliberately NOT surfaced to the caller (plan-amendment pending), so
   implying such a failure is attributable is exactly backwards in a bullet
   about typed failures.
+  `planRoute()` and `solve()` are fully SYNCHRONOUS — no `await` and no
+  `async` anywhere on that path — so a posted cancel message would sit unread
+  in the queue until the solve returned, and `Worker.terminate()` is the ONLY
+  interrupt. That is what shaped #1193's cancel design: `cancel()` shares
+  `dispose()`'s teardown rather than signalling the worker, and any future
+  "ask it to stop" protocol is unimplementable without first making the solve
+  loop yield.
   STILL TRUE and load-bearing: `routing/` **and `state/usePlanFlow.ts`**
   contain ZERO `console.*` calls, so an empty console is DESIGNED behaviour,
   not evidence nothing happened — never ask a reporter to check it.
