@@ -4249,8 +4249,11 @@ select {
    transparent 44px hit box — `viaElement`'s own comment carries the mechanism
    and why the root cannot take it. Measured in Chromium at PR #1196: the
    label's offset from its map coordinate is unchanged by that restructuring.
-   The label must never grow the dot's explicitly-sized box, which MapLibre's
-   percentage-based `translate(-50%, -50%)` centering resolves against.
+   The label is out of flow (`position: absolute`), so it cannot grow the
+   marker ROOT's explicitly-sized 44px box, which is what MapLibre's
+   percentage-based `translate(-50%, -50%)` centering resolves against
+   (`marker.ts`'s `_update`, via the element `viaElement` passes to
+   `new Marker({ element })`).
    `pointer-events: none` keeps it out of the drag target; labels on close
    waypoints can still overlap (no worse than before), and their 44px hit
    boxes can now contend — #1198. */
