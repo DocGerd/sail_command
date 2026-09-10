@@ -83,8 +83,7 @@ export class RoutingError extends Error {
 //
 // The VALUE was originally the pre-#432 client deadline (120 s): #432 did
 // not argue that number was wrong, only that exceeding it was misreported
-// and unbudgeted. #1147 (2026-09-10 maintainer ruling) raised it to 240 s —
-// see below for why.
+// and unbudgeted.
 //
 // For scale, with the machine named next to every figure — the headroom is a
 // property of the DEVICE, not of the route, and PR #453 review caught the
@@ -92,26 +91,22 @@ export class RoutingError extends Error {
 // most expensive real input is Flensburg -> Marstal at DEFAULT_SETTINGS
 // against the real committed mask and polars.
 //
-// #432-era measurement, 2026-08-07, SYNTHETIC uniformWindGrid wind:
-//   author's dev machine, uniformWindGrid(12, 225):  41-43 s
-//   reviewer's machine,   uniformWindGrid(12, 270):  50.5 s
-// (Different wind directions, sibling inputs, not a strict replication.)
-// That read as "~2.4-2.9x slower device reaches the budget" against the then
-// 120 s value — UNDERSTATED, per the #1147 re-measurement below.
+// #432's own figures (2026-08-07) were SYNTHETIC uniformWindGrid wind
+// (41-50.5 s) and understated the risk — see #1147 below for why.
 //
 // #1147 measurement, 2026-09-10, LIVE Open-Meteo wind (not synthetic), real
 // committed mask, idle 2023 desktop i9-13900F: 91.9 s against the then-120 s
 // budget — 23.4% headroom, i.e. any device >=1.31x slower on this workload
-// blows the old budget outright. No benchmark found puts a Galaxy Tab S7
-// (this repo's 2026-09-07 tablet-is-the-design-floor reference device)
-// within that margin of an i9-13900F. Full record:
+// blows the old budget outright. Full record:
 // docs/spikes/1147-budget-headroom-reference-device.md.
 //
-// 240 s was sized between that spike's two unverified throttle brackets —
-// ~184 s at a 2x slowdown, ~368 s at 4x — clearing the reference device at
-// the verified-directional (>=1.31x) end without committing to the
-// unverified 4x figure. Do not restate any of this as a bare multiplier
-// without naming a machine and whether the wind was live or synthetic.
+// 240 s: maintainer ruling 2026-09-10, recorded on #1147 (the spike itself
+// declined to pick a value, so nothing before that comment authorised one).
+// It covers a device up to ~2.6x slower than the i9 baseline above. Whether
+// that clears a Galaxy Tab S7 is NOT established: the spike could not verify
+// that device's factor and says only "well past 2x". Do not restate any of
+// this as a bare multiplier without naming a machine and whether the wind was
+// live or synthetic.
 export const PLAN_BUDGET_MS = 240_000;
 
 // How much longer the CLIENT waits than the budget it handed the worker. The
