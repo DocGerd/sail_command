@@ -13,65 +13,63 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.31.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.32.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
-## Now — v0.31.0
+## Now — v0.32.0
 
-The `v0.31.0` cut (2026-09-10) worked the
-[`v0.31.0` milestone](https://github.com/DocGerd/sail_command/milestones),
-which held three issues and one pull request. All three issues closed; the
-pull request ([#1146](https://github.com/DocGerd/sail_command/pull/1146),
-modelling additive `boats.ts` exports for the sweep-closure check) was
-closed without merging, and the issue behind it
-([#944](https://github.com/DocGerd/sail_command/issues/944)) returned to
-`Backlog`.
+The `v0.32.0` cut (2026-09-10) worked the
+[`v0.32.0` milestone](https://github.com/DocGerd/sail_command/milestones),
+which closed four issues and shipped three user-visible changes.
 
-One changelog entry shipped. On desktop, the plotted route line can now be
-dragged with a mouse to insert a new waypoint at the point where it is
-released ([#850](https://github.com/DocGerd/sail_command/issues/850)). The
-gesture is pointer-only by design: the grab handle is revealed by hover, so
-touch has no phase in which to reveal it, and it carries no keyboard
-equivalent. Both gaps were accepted at this cut rather than left
-unrecorded, and are tracked as
-[#1170](https://github.com/DocGerd/sail_command/issues/1170) (touch) and
-[#1171](https://github.com/DocGerd/sail_command/issues/1171) (keyboard) in
-the next milestone.
+Keyboard users can now insert a waypoint mid-route. Every entry in the
+planner's via list carries a button that inserts a new waypoint directly
+after it, placed at the great-circle midpoint to the next point
+([#1171](https://github.com/DocGerd/sail_command/issues/1171)). The gap it
+does not cover — inserting before the *first* via point — is tracked as
+[#1181](https://github.com/DocGerd/sail_command/issues/1181).
 
-The other two closed issues had no user-facing changelog entry.
-[#1163](https://github.com/DocGerd/sail_command/issues/1163) scoped
-[#295](https://github.com/DocGerd/sail_command/issues/295)'s coverage
-extension (north to Kolding/Middelfart, east to Fehmarn) ahead of any
-build, and recommended against implementing it as a single widened-bbox
-pipeline re-run: the basemap half is blocked behind #296's ruled but
-unimplemented per-region-archive split
-([#1164](https://github.com/DocGerd/sail_command/issues/1164)), while the
-mask, harbour and seamark pieces are not. #295 itself stays in `Backlog`.
-[#1160](https://github.com/DocGerd/sail_command/issues/1160) dropped the
-20% bug reserve from `CONTRIBUTING.md`'s milestone-allocation policy and
-from the `/release-cycle` command that applied it.
+Harbour name labels now paint above routine seamark icons from zoom 12
+([#1154](https://github.com/DocGerd/sail_command/issues/1154)). Hazard
+marks deliberately stay on top. The fix is a layer split of the kind
+[#682](https://github.com/DocGerd/sail_command/issues/682) established, and
+it leaves placement below zoom 12 untouched.
 
-One further spike doc landed in this window without closing its issue:
-[#1136](https://github.com/DocGerd/sail_command/issues/1136) (motor-off
-solves terminating inside the inner fjord before observing wind) was
-investigated and written up as a decision record
-([#1169](https://github.com/DocGerd/sail_command/pull/1169)), and the issue
-itself stays open in the next milestone.
+A plan that solved only one rig no longer withholds the comparison in
+silence: it names the sail that found no route, instead of reusing the
+generic wording meant for the case where there was nothing to compare
+([#1166](https://github.com/DocGerd/sail_command/issues/1166)).
 
-## Next — v0.32.0
+One change has no user-visible surface.
+[#1178](https://github.com/DocGerd/sail_command/issues/1178) added two
+guards against a wind lattice that fails to cover the depth mask — a
+condition the sampling code previously absorbed by silently clamping to the
+nearest edge value, with no error and no warning. Review of that work found
+the same hazard reachable through the plan import path, which bypasses the
+routing pipeline entirely, and it was closed at the import boundary in the
+same change.
 
-The [`v0.32.0` milestone](https://github.com/DocGerd/sail_command/milestones)
+Two investigations landed as decision records without closing their issues.
+[#1147](https://github.com/DocGerd/sail_command/issues/1147) measured the
+solver's headroom against a named reference device and found the current
+budget does not clear it; the fix direction is deliberately unruled.
+[#1170](https://github.com/DocGerd/sail_command/issues/1170) surveyed how
+marine software inserts a waypoint on touch and recommends an explicit edit
+mode; the build was deferred. Both issues moved to `v0.33.0`.
+
+## Next — v0.33.0
+
+The [`v0.33.0` milestone](https://github.com/DocGerd/sail_command/milestones)
 is the one now being filled. As of this cut it holds four issues:
-[#1170](https://github.com/DocGerd/sail_command/issues/1170) and
-[#1171](https://github.com/DocGerd/sail_command/issues/1171) (the touch and
-keyboard gaps the #850 gesture left open),
-[#1136](https://github.com/DocGerd/sail_command/issues/1136) (motor-off
-solves terminating inside the inner fjord before observing wind, now with a
-spike doc behind it), and
 [#885](https://github.com/DocGerd/sail_command/issues/885) (letting the
-captain force motor or sail on a chosen leg or waypoint-to-waypoint
-segment). The milestone page is the only authoritative view, check it
-directly rather than this file.
+captain force motor or sail on a chosen leg or segment),
+[#1136](https://github.com/DocGerd/sail_command/issues/1136) (motor-off
+solves terminating early — an efficacy probe at this cut established that
+the salvage direction survives, but found no workable bound on how often it
+may fire), [#1147](https://github.com/DocGerd/sail_command/issues/1147) and
+[#1170](https://github.com/DocGerd/sail_command/issues/1170), both carried
+forward with their decision records written. The milestone page is the only
+authoritative view, check it directly rather than this file.
 
 ## Themes for the next year
 
