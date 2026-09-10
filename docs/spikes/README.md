@@ -70,6 +70,12 @@ instead of here.
   for the Live view — user-facing, UAT-only, or declined?
 - [847-weave-eta-cost.md](847-weave-eta-cost.md) — #847: slight course
   corrections every 2-3 minutes — ETA cost measurement
+- [885-forced-mode-design.md](885-forced-mode-design.md) — #885: letting the
+  captain force motor or sail on part of a route. Settles the issue's four
+  design questions; recommends soft force-sail plus hard force-motor (no new
+  `SolveFailureCause`), modes keyed to the arriving waypoint rather than a
+  positional array, and an optional field needing no DB migration. Design
+  only — implementation deferred (maintainer ruling, 2026-09-10)
 - [1022-whole-journey-ux.md](1022-whole-journey-ux.md) — #1022: the whole
   client journey, as a design exercise (reference screenshots in
   `1022-whole-journey-ux/`)
