@@ -69,15 +69,25 @@ export interface ViaMarkersProps {
 // and the route's port/starboard green/red) is now imported from
 // lib/mapColors.ts.
 
+// #1186: the visible dot stays 16px, but the DRAG/TAP target is widened to
+// the spec's >=44px gloved-use floor by making the whole marker root a
+// transparent 44px box (flex-centered on the dot) — MapLibre positions the
+// root's CENTER at the coordinate regardless of its size (a %-based CSS
+// transform, not a pixel offset), so the dot's on-map position is unchanged.
+// maplibre-gl's drag handler gates on `_element.contains(target)` where
+// `_element` is this root, so the padding is part of the same element and
+// stays draggable. Keep role/aria-label on the ROOT (unchanged contract).
+const VIA_MARKER_VISIBLE_PX = 16;
+const VIA_MARKER_HIT_PX = 44;
+
 function viaElement(ariaLabel: string): HTMLDivElement {
   const el = document.createElement('div');
   el.className = 'sc-via-marker';
-  el.style.width = '16px';
-  el.style.height = '16px';
-  el.style.borderRadius = '50%';
-  el.style.background = VIA_COLOR;
-  el.style.border = `2px solid ${HALO_COLOR}`;
-  el.style.boxShadow = '0 0 2px rgba(0,0,0,0.5)';
+  el.style.width = `${VIA_MARKER_HIT_PX}px`;
+  el.style.height = `${VIA_MARKER_HIT_PX}px`;
+  el.style.display = 'flex';
+  el.style.alignItems = 'center';
+  el.style.justifyContent = 'center';
   // A draggable point on the map, not a native <button> — role/tabIndex
   // make it reachable and identifiable to assistive tech (dragging itself
   // stays mouse/touch-only, same as every other MapLibre marker; v1 scope).
@@ -85,25 +95,40 @@ function viaElement(ariaLabel: string): HTMLDivElement {
   el.tabIndex = 0;
   el.setAttribute('aria-label', ariaLabel);
 
+  // The visible dot: a plain child, so `position: relative` here does NOT
+  // hit the root/MapLibre conflict described below (that conflict is
+  // specific to the root, which carries MapLibre's own absolute
+  // positioning transform).
+  const dot = document.createElement('div');
+  dot.className = 'sc-via-marker-dot';
+  dot.style.position = 'relative';
+  dot.style.width = `${VIA_MARKER_VISIBLE_PX}px`;
+  dot.style.height = `${VIA_MARKER_VISIBLE_PX}px`;
+  dot.style.borderRadius = '50%';
+  dot.style.background = VIA_COLOR;
+  dot.style.border = `2px solid ${HALO_COLOR}`;
+  dot.style.boxShadow = '0 0 2px rgba(0,0,0,0.5)';
+  el.appendChild(dot);
+
   // #947: previously this element carried ONLY the aria-label above — a
   // screen-reader user heard the waypoint's name, but a sighted user saw an
   // unlabelled dot, and several waypoints were mutually indistinguishable on
   // the map. Render the SAME text visibly, `aria-hidden` so assistive tech
   // does not announce it a second time alongside the root's own aria-label
   // (the two must say the same thing, so neither can drift from the other).
-  // The label span below is `position: absolute` (app.css) — deliberately
-  // WITHOUT setting `position: relative` on this root: MapLibre's own
-  // `.maplibregl-marker` class already keeps the root `position: absolute`,
-  // and an inline override of that (tried during review, PR #954) put the
-  // root back into normal document flow, offsetting every via marker beyond
-  // the first by the stacked height of the ones before it.
+  // The label span below is `position: absolute` (app.css), anchored to the
+  // DOT (not the root): MapLibre's own `.maplibregl-marker` class already
+  // keeps the ROOT `position: absolute`, and an inline override of that
+  // (tried during review, PR #954) put the root back into normal document
+  // flow, offsetting every via marker beyond the first by the stacked
+  // height of the ones before it.
   // `pointer-events: none` (app.css) keeps the label out of the marker's
   // own click/drag/touch target.
   const labelEl = document.createElement('span');
   labelEl.className = 'sc-via-marker-label';
   labelEl.textContent = ariaLabel;
   labelEl.setAttribute('aria-hidden', 'true');
-  el.appendChild(labelEl);
+  dot.appendChild(labelEl);
 
   return el;
 }
