@@ -91,8 +91,10 @@ export class RoutingError extends Error {
 // most expensive real input is Flensburg -> Marstal at DEFAULT_SETTINGS
 // against the real committed mask and polars.
 //
-// #432's own figures (2026-08-07) were SYNTHETIC uniformWindGrid wind
-// (41-50.5 s) and understated the risk — see #1147 below for why.
+// #432's own figures (2026-08-07) were SYNTHETIC uniformWindGrid wind —
+// author's machine 41-43 s, reviewer's machine 50.5 s (sibling inputs, not
+// a strict replication) — and understated the risk; see #1147 below for
+// why.
 //
 // #1147 measurement, 2026-09-10, LIVE Open-Meteo wind (not synthetic), real
 // committed mask, idle 2023 desktop i9-13900F: 91.9 s against the then-120 s
@@ -131,7 +133,7 @@ const PLAN_TIMEOUT_GRACE_MS = 15_000;
 // a Chromium OOM frequently does exactly that, #432). Raised from the
 // pre-#432 bare 120 s so it can no longer pre-empt the budget; the cost is
 // that a genuinely dead worker is reported PLAN_TIMEOUT_GRACE_MS later,
-// which is a small addition to an already ~2-minute wait and does not affect
+// which is a small addition to an already ~4-minute wait and does not affect
 // worker.onerror/onmessageerror, which fail fast through failAll() and never
 // touch this timer.
 const DEFAULT_PLAN_TIMEOUT_MS = PLAN_BUDGET_MS + PLAN_TIMEOUT_GRACE_MS;
