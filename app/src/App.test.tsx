@@ -66,7 +66,10 @@ const mapTestHooks = vi.hoisted(() => ({
   // harbor markers AND, since #845, its seamark-popover click handler, which
   // additionally reads `e.lngLat` and a feature's `geometry`), keyed by layer
   // id. Kept apart from clickHandler above: the 3-arg registration must
-  // never clobber MapView's generic 2-arg one.
+  // never clobber MapView's generic 2-arg one. `point` added for #1170:
+  // RouteLayer's ROUTE_HIT_LAYER click handler reads only `e.point` (it
+  // resolves the insertion point itself via nearestPointOnRoute, never a
+  // feature/lngLat).
   layerClickHandlers: {} as Record<
     string,
     (e: {
@@ -75,6 +78,7 @@ const mapTestHooks = vi.hoisted(() => ({
         geometry?: { type: string; coordinates: [number, number] };
       }[];
       lngLat?: { lat: number; lng: number };
+      point?: { x: number; y: number };
     }) => void
   >,
   // #845: the DOM content most recently handed to a Popup's setDOMContent —
@@ -1706,6 +1710,103 @@ describe('#845: seamark "add as waypoint" (App wiring)', () => {
     expect(items).toHaveLength(2);
     expect(items[0]).toHaveTextContent(de['seamark.value.type.buoy_cardinal']); // inserted FIRST
     expect(items[1]).toHaveTextContent('54.840°N 10.300°E'); // the pre-existing via, unmoved in content
+  });
+});
+
+// #1170: tap the route line to insert a waypoint while the "Add waypoint"
+// pick is armed for 'via' — driven end to end through the REAL RouteLayer
+// component (never mocked) via the sc-route-hit layer-scoped click handler
+// mapTestHooks.layerClickHandlers exposes (the same mechanism #845's
+// simulateSeamarkClick above uses for sc-seamarks). This is the "App row"
+// mutation check for App.tsx's handleRouteLineArmedTap: deleting either its
+// insertViaNearestOrAppend call or its setTapTarget(null) disarm reds one of
+// the two assertions below — RouteLayer.test.tsx's own #1170 tests pin the
+// click-effect's precedence/visibility logic in isolation and can't see
+// App.tsx's wiring of insertion + disarm together.
+describe('#1170: tap the route line to insert a waypoint (App wiring)', () => {
+  it('an armed tap on the displayed route line inserts at the NEAREST point along it, not appended after an existing via point, and disarms the pick', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    pickOriginAndDestination(); // ORIGIN_A {54.79, 9.43} -> DEST_A {54.85, 10.35}
+
+    // Plan a route so RouteLayer has REAL leg geometry to hit-test against —
+    // okPlanResult()'s own legs are empty, so splice in a single leg running
+    // ORIGIN_A -> DEST_A, mirroring the session-restore describe block's own
+    // savedPlan() leg-construction pattern below in this same file.
+    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+    await waitFor(() => expect(routingMock.calls.length).toBe(1));
+    const planned = okPlanResult(20);
+    const genoaResult = planned.sails.find((s) => s.sailId === 'genoa')?.result;
+    if (!genoaResult) throw new Error('fixture invariant: okPlanResult carries a genoa result');
+    const routeLeg: Leg = {
+      kind: 'sail',
+      board: 'starboard',
+      twaDeg: 50,
+      maneuverAtStart: null,
+      start: ORIGIN_A,
+      end: DEST_A,
+      startTimeMs: Date.now(),
+      endTimeMs: Date.now() + 3_600_000,
+      headingDeg: 90,
+      twsKn: 10,
+      speedKn: 6,
+      distanceNm: 20,
+    };
+    routingMock.calls[0].resolve({
+      ...planned,
+      sails: planned.sails.map((s) =>
+        s.sailId === 'genoa' ? { ...s, result: { ...genoaResult, legs: [routeLeg] } } : s,
+      ),
+    });
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled(),
+    );
+    await flushPlanFormSync(); // #631 — the via add below is a sync-effect-written field
+
+    // Place one via point hugging the DESTINATION end, same fixture shape
+    // as the seamark test above.
+    const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
+    const latInput = within(viaSection).getByLabelText(de['planner.via.coord.latLabel']);
+    const lonInput = within(viaSection).getByLabelText(de['planner.via.coord.lonLabel']);
+    fireEvent.change(latInput, { target: { value: '54.84' } });
+    fireEvent.blur(latInput);
+    fireEvent.change(lonInput, { target: { value: '10.3' } });
+    fireEvent.blur(lonInput);
+    fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.coord.add'] }));
+    expect(within(viaSection).getAllByRole('listitem')).toHaveLength(1);
+
+    // Arm the via pick, then tap the route line near the ORIGIN end. A route
+    // is displayed at this point (planned above), so the banner must ALSO
+    // carry #1170's discoverability sentence — this pins that requirement
+    // directly, not just the pre-existing arm message. Testing Library's
+    // getByText/findByText default to an EXACT match on normalized text
+    // content (the opposite default from Playwright's getByText, which
+    // substring-matches — see this repo's own #7/#844 notes on that split),
+    // so the two sentences are asserted together as ONE string.
+    fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.add'] }));
+    const message = `${de['banner.tapPick'].replace('{target}', de['planner.via.label'])} ${de['banner.tapPick.viaRouteLine']}`;
+    expect(await screen.findByText(message)).toBeInTheDocument();
+
+    await waitFor(() => expect(mapTestHooks.layerClickHandlers['sc-route-hit']).toBeTruthy());
+    // ORIGIN_A {54.79, 9.43} projects to px (15, 255) under this fake's
+    // linear project() (see the FakeMap class above: x=(lon-9.4)*500,
+    // y=(55.3-lat)*500) — tapping exactly there clamps
+    // nearestPointOnRoute's segment projection to t=0, i.e. ORIGIN_A itself.
+    act(() => {
+      mapTestHooks.layerClickHandlers['sc-route-hit']?.({ point: { x: 15, y: 255 } });
+    });
+
+    const items = within(viaSection).getAllByRole('listitem');
+    expect(items).toHaveLength(2);
+    // Inserted FIRST (nearest the origin->via1 segment, distance 0 since the
+    // snapped point IS the origin), not appended after the pre-existing via.
+    expect(items[0]).toHaveTextContent('54.790°N 9.430°E');
+    expect(items[1]).toHaveTextContent('54.840°N 10.300°E'); // pre-existing via, unmoved in content
+
+    // handleRouteLineArmedTap's "extra step" over handleRouteLineInsert (the
+    // #850 drag path, which has no arming to clear): the pick disarms
+    // itself, matching handleSavedWaypointMapPick's own comment.
+    expect(screen.queryByText(message)).not.toBeInTheDocument();
   });
 });
 
