@@ -1583,6 +1583,50 @@ describe('#1171: keyboard-reachable insert-between-waypoints (App wiring)', () =
       }),
     ).toBeDisabled();
   });
+
+  it("the last via row's insert control is ENABLED once a destination is chosen — the missing NEXT waypoint from the previous test now exists", async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    // Origin and destination via the same "Pick on map" + harbor-combobox
+    // flow the tap-to-pick describe block above uses (armOrigin() there is
+    // scoped to that block, so this repeats the same two calls rather than
+    // hoisting it — keeps this test self-contained).
+    const originSection = screen.getByRole('region', { name: de['planner.origin.label'] });
+    fireEvent.click(within(originSection).getByRole('button', { name: de['planner.pickOnMap'] }));
+    fireEvent.change(within(originSection).getByRole('combobox'), {
+      target: { value: FLENSBURG.names.de },
+    });
+    fireEvent.click(within(originSection).getByRole('option', { name: FLENSBURG.names.de }));
+
+    const destinationSection = screen.getByRole('region', {
+      name: de['planner.destination.label'],
+    });
+    fireEvent.click(
+      within(destinationSection).getByRole('button', { name: de['planner.pickOnMap'] }),
+    );
+    fireEvent.change(within(destinationSection).getByRole('combobox'), {
+      target: { value: RELABEL_HARBOR.names.de },
+    });
+    fireEvent.click(
+      within(destinationSection).getByRole('option', { name: RELABEL_HARBOR.names.de }),
+    );
+
+    const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
+    const latInput = within(viaSection).getByLabelText(de['planner.via.coord.latLabel']);
+    const lonInput = within(viaSection).getByLabelText(de['planner.via.coord.lonLabel']);
+    fireEvent.change(latInput, { target: { value: '54.85' } });
+    fireEvent.blur(latInput);
+    fireEvent.change(lonInput, { target: { value: '10.1' } });
+    fireEvent.blur(lonInput);
+    fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.coord.add'] }));
+
+    expect(
+      within(viaSection).getByRole('button', {
+        name: de['planner.via.insertAfter'].replace('{index}', '1'),
+      }),
+    ).toBeEnabled();
+  });
 });
 
 // #845: "add as waypoint" from the seamark popover, driven end to end through

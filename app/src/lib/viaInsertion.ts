@@ -65,9 +65,11 @@ export function nearestViaInsertIndex(
  * pointer-release point to place the new waypoint at (unlike #850's
  * drag-to-insert gesture). A simple lat/lon average would drift off the
  * great-circle line for a long segment; this is the standard spherical
- * midpoint formula, self-contained here (no dependency on lib/geo.ts, which
- * IS in `app/sweep/`'s import closure — see this file's own header comment)
- * rather than a haversine/bearing-based construction that would need it.
+ * midpoint formula, self-contained here rather than a haversine/bearing-
+ * based construction built on lib/geo.ts's primitives — not because
+ * lib/geo.ts is in app/sweep/'s import closure (importing a closure member
+ * would not pull this file in; see this file's own header comment), but
+ * simply to avoid adding a needless dependency for one formula.
  */
 export function segmentMidpoint(a: LatLon, b: LatLon): LatLon {
   const lat1 = (a.lat * Math.PI) / 180;
