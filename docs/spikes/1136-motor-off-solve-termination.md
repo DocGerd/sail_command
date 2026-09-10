@@ -1506,7 +1506,8 @@ different, not two points on one spectrum.** At TWS 2.8 and TWS 3, skipping
 `visitedDominates` for the dying ring DOES produce a surviving frontier: the
 ordinary expansion permanently resumes producing children on its own after a
 bounded number of salvage rounds (1 at TWS 3, 16 at TWS 2.8, all within
-21 rings) and the salvage is never needed again. At TWS 8 it does NOT: every
+21 rings) and the salvage is never needed again (0 further salvages needed
+through ring 78, the last recorded, per the table above). At TWS 8 it does NOT: every
 single ring from 7 onward dies on ordinary expansion, salvage rescues only a
 token 1–4 nodes each time with no growth trend, and the search dies
 identically to the unsalvaged case the moment the budget runs out —
