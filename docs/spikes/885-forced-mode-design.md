@@ -257,16 +257,21 @@ comment gives the reason a tier is plan-level rather than per-rig — solving th
 rigs under different objectives "would skew the recommended-rig comparison". An
 override applied to one rig only would be exactly that skew.
 
-The issue's observation stands and belongs in the copy: forced MOTOR is
-rig-independent (motor legs run at `settings.motorSpeedKn`, no polar is read),
-so a fully-forced-motor segment contributes identical time to both solves and
-the comparison is decided entirely elsewhere. Forced SAIL is rig-dependent, and
-a consequence follows that reads as a bug and is a FEATURE: under a hard forced
-sail one rig can fail where the other succeeds. `SailResult` already carries a
-per-sail `reason`, so that surfaces with no new shape — and it answers a
-question the captain actually has, namely which rig can carry the stretch. Under
-the soft form of §2.1 it cannot arise, since neither rig can fail on mode
-grounds.
+The issue's observation stands in a NARROWER form than it states, and only the
+narrow form belongs in the copy: under forced motor **the recorded leg speed is
+polar-independent** (`settings.motorSpeedKn`). It does NOT follow that a
+fully-forced-motor segment contributes identical time to both solves —
+`isochrone.ts` still builds its candidate TWA set from `polar.beatAngleDeg` and
+`polar.gybeAngleDeg`, which interpolate that rig's OWN table, so the two rigs
+search a fully-motored segment along different candidate headings and may reach
+its end at different times. Treat "forced motor is rig-independent" as a claim
+about the leg speed only, unverified for the solved result — see §9.1. Forced
+SAIL is rig-dependent, and a consequence follows that reads as a bug and is a
+FEATURE: under a hard forced sail one rig can fail where the other succeeds.
+`SailResult` already carries a per-sail `reason`, so that surfaces with no new
+shape — and it answers a question the captain actually has, namely which rig can
+carry the stretch. Under the soft form of §2.1 it cannot arise, since neither
+rig can fail on mode grounds.
 
 ---
 
@@ -429,8 +434,9 @@ in the settings object would apply to every subsequent plan. It also sits one
 `{ ...s, X }` refactor away from the shape #452 deleted (§4).
 
 **D. A positional `segmentModes[]` array on `PlanRequest`.** Rejected on
-evidence: `replan.ts` spreads the request while pruning `viaPoints` through
-`dedupeViaPoints`, so array and list desynchronise with no type error, in the
+evidence: `usePlanFlow.ts`'s `run()` — the live plan path — spreads the request
+while pruning `viaPoints` through `dedupeViaPoints` (and, dormantly,
+`replan.ts`), so array and list desynchronise with no type error, in the
 direction that forces sail where the captain wanted motor (§1.3).
 
 **E. Widen `PlanRequest.destination` to `ViaPoint` so all modes live on arrival
@@ -485,20 +491,25 @@ re-opened here.
 
 ## 9. Open holes in this document
 
-1. **Nothing here is measured.** In particular, the claim that forced motor is
-   rig-independent in the SOLVED result (not merely in the leg speed) assumes
-   the two rigs' searches through a fully-motored segment coincide; both rigs
-   still generate sail-angle candidates that resolve to `kind: 'motor'`, so the
-   candidate SETS are equal, but this was not run. A first increment should
-   solve one segment both ways and compare rather than inherit the claim.
+1. **Nothing here is measured.** In particular, forced motor is rig-independent
+   in the LEG SPEED and there is positive reason to doubt it in the SOLVED
+   result: `polar.beatAngleDeg`/`gybeAngleDeg` interpolate the rig's own table,
+   so the two rigs' candidate TWA sets differ even when every candidate
+   resolves to `kind: 'motor'`. (An earlier revision of this document asserted
+   those sets were EQUAL; that was wrong, and §3 is written to the corrected
+   form.) A first increment should solve one fully-motored segment on both rigs
+   and compare, rather than inherit either claim.
 2. **The soft form's user-visible effect is unquantified.** How often collapsing
    `sailFloorKn` to `motorThresholdKn` actually changes a plan on a real route
    is unknown; if it rarely does, the feature under-delivers on "insist on
    sailing" and question 1 in §8 is decided by that rather than by principle.
 3. **The UI is out of scope.** How a captain selects a segment, and what the
-   affordance looks like on a tablet, is not designed here; #1170's armed
-   "Add waypoint" mode is the nearest precedent, and #846 supplies the names
-   that make a segment nameable in a control.
+   affordance looks like on a tablet, is not designed here. The nearest
+   precedent is the ALREADY-SHIPPED armed "Add waypoint" mode — the panel
+   button that arms map-tap-to-add and toggles to cancel, in `App.tsx` and
+   `PlannerPanel.tsx` — not #1170, which is an open issue proposing to EXTEND
+   that affordance to touch. #846 supplies the names that make a segment
+   nameable in a control.
 4. **"Survives by construction" is scoped to `dedupeViaPoints` itself, not to
    the whole path into it.** That function re-pushes the caller's own objects,
    so extra properties survive it; but its parameter is typed `LatLon[]`, and
