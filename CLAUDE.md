@@ -2850,10 +2850,11 @@ making design-level decisions; do not silently deviate.
   either way. Only a test firing the GENERIC handler ALONE could see it, and
   the FAKE had to gain the ability to DIVERGE from production first —
   `routeHitFeatures` on `App.test.tsx`'s own `mapTestHooks`, mirroring the
-  existing `harborHitFeatures` there, NOT on `fakeMaplibre.ts`. Pinned by that
-  file's `'the generic tap handler alone bails on a ROUTE_HIT_LAYER hit while
-  armed'` test (~:1881). When one event can reach a setter twice, assert on
-  the HANDLER, never on the settled state.
+  existing `harborHitFeatures` there, NOT on `fakeMaplibre.ts`. Pinned in
+  `App.test.tsx` by its `'the generic tap handler alone bails on a
+  ROUTE_HIT_LAYER hit while armed — it does not append'` test (~:1881).
+  When one event can reach a setter twice, assert on the HANDLER, never on
+  the settled state.
 - **A guard can pass forever for TWO opposite reasons, and both shipped a
   defect in v0.13.0.** (a) JOINT BLINDNESS — #638's legend rendered with no
   panel background and a 104px column at every viewport, while its only e2e
@@ -4123,7 +4124,11 @@ making design-level decisions; do not silently deviate.
   by retrying at all. `boat-not-in-catalogue` is a fourth remedy again — raised
   CLIENT-side by `RoutingClient.plan()` (`workerClient.ts`) before anything is
   posted, so neither a retry nor a reload helps and the copy must name the
-  boat. Do not glue one remedy sentence onto all of them.
+  boat. `cancelled` takes NO remedy at all: `usePlanFlow.run()` transitions
+  straight to `idle` before `routingFailureKey` is ever called, so no banner
+  renders — `error.routingCancelled` is a fallback for some other observer,
+  and the layer must not apologise for a user-initiated cancel. Do not glue
+  one remedy sentence onto all of them.
   NEVER infer a cause by matching a message string (the #282 label-as-control
   coupling in a new place), and keep `RoutingFailureKind` OUT of `types.ts`
   exactly as `SolveFailureCause` is.
@@ -4169,7 +4174,7 @@ making design-level decisions; do not silently deviate.
   "ask it to stop" protocol is unimplementable without first making the solve
   loop yield.
   STILL TRUE and load-bearing: `routing/`'s PRODUCTION files (its `.test.ts`
-  siblings excepted — two carry `console.*` today) **and
+  siblings excepted — some carry `console.*`) **and
   `state/usePlanFlow.ts`** contain ZERO `console.*` calls, so an empty
   console is DESIGNED behaviour,
   not evidence nothing happened — never ask a reporter to check it.
