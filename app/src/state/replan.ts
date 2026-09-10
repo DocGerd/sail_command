@@ -128,6 +128,10 @@ export const ROUTING_FAILURE_MESSAGE_KEY: Record<
   // (an allowlist, so absence is the fail-closed direction and suppresses
   // the retry affordance without a second edit).
   'boat-not-in-catalogue': 'error.boatNotInCatalogue',
+  // #1193: a fallback for a path other than usePlanFlow.run() that somehow
+  // observes a cancelled plan() — run() itself never renders this key, it
+  // special-cases 'cancelled' straight back to idle before reaching here.
+  cancelled: 'error.routingCancelled',
   'worker-init': 'error.workerInit',
   'persist-failed': 'error.planSaveFailed',
   'wind-unclassified': 'error.windUnknown',
@@ -214,8 +218,11 @@ export function disposeAfterFailure(client: ReplanClient): void {
  * other kind leaves a healthy worker to preserve: 'worker-fatal',
  * 'worker-error' and 'messageerror' ARE worker faults, 'timeout' leaves one
  * still grinding on an abandoned solve (the client deadline settles the
- * promise, it does not terminate the thread), and 'disposed' names a client
- * already torn down, where the extra call is a no-op anyway.
+ * promise, it does not terminate the thread), 'disposed' names a client
+ * already torn down, where the extra call is a no-op anyway, and
+ * 'cancelled' names one RoutingClient.cancel() just terminated on purpose —
+ * unhealthy in the same literal sense as any other kind here, it just got
+ * that way deliberately.
  *
  * Two costs this avoids, one certain and one sharp: a full re-init (a fresh
  * mask `.slice(0)` plus transfer and the whole polar map) on the next plan,

@@ -353,7 +353,7 @@ function AppShell() {
   // settle-gate reset key with no separate [plan, rig] tuple.
   const aisRoute = useMemo(() => (plan && rig ? activeRigResult(plan, rig) : null), [plan, rig]);
   const [settingsPersistenceError, clearSettingsPersistenceError] = useSettingsPersistenceError();
-  const { planning, run, ensureClient } = usePlanFlow();
+  const { planning, run, ensureClient, cancel } = usePlanFlow();
   // #115: manual "reroute from here" (Live view). Shares the same singleton
   // RoutingClient via ensureClient and, like a via-replan, reuses the plan's
   // STORED wind grid — never refetches, so it stays available offline.
@@ -421,11 +421,32 @@ function AppShell() {
     setCompletionAnnouncement({ result: res, key: `${p.id}-${p.createdAtMs}` });
   }, []);
   const prevPlanningPhaseRef = useRef(planning.phase);
+  // #1193: which `plan` object was active when the CURRENT busy period
+  // started — usePlanFlow's run() used to be the only way out of busy, and
+  // it always calls setPlan(plan) with a brand-new object in the same tick
+  // as its idle transition, so busy->idle used to imply "plan just became
+  // NEW" by construction. cancel() breaks that: it reaches idle WITHOUT
+  // ever calling setPlan, so on a cancelled re-plan/recalc `plan` is still
+  // the PRIOR result. Comparing by reference against this snapshot is what
+  // tells a genuine completion (a fresh object, always) from a cancel (the
+  // same object survives) — `plan !== null && rig !== null` alone can't,
+  // since a re-plan or recalc has both non-null already.
+  const planAtBusyStartRef = useRef<Plan | null>(plan);
   useEffect(() => {
     const prevPhase = prevPlanningPhaseRef.current;
     prevPlanningPhaseRef.current = planning.phase;
     const wasBusy = prevPhase !== 'idle' && prevPhase !== 'error';
-    if (wasBusy && planning.phase === 'idle' && plan !== null && rig !== null) {
+    const isBusy = planning.phase !== 'idle' && planning.phase !== 'error';
+    if (!wasBusy && isBusy) {
+      planAtBusyStartRef.current = plan;
+    }
+    if (
+      wasBusy &&
+      planning.phase === 'idle' &&
+      plan !== null &&
+      rig !== null &&
+      plan !== planAtBusyStartRef.current
+    ) {
       announceCompletion(plan, rig);
     }
   }, [planning.phase, plan, rig, announceCompletion]);
@@ -1858,6 +1879,7 @@ function AppShell() {
                   planDisabledReason={planDisabledReason}
                   online={online}
                   onPlan={handlePlan}
+                  onCancelPlan={cancel}
                   planning={plannerStatus}
                   plan={plan}
                   rig={rig}

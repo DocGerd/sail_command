@@ -96,6 +96,7 @@ function renderPanel(overrides: Overrides = {}) {
     planDisabledReason: null,
     online: true,
     onPlan: vi.fn(),
+    onCancelPlan: vi.fn(),
     planning: { phase: 'idle' } as PlannerStatus,
     plan: null,
     rig: null,

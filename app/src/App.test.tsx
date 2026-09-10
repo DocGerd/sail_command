@@ -111,7 +111,13 @@ const mapTestHooks = vi.hoisted(() => ({
 // Fake plan()-call queue for the RoutingClient mock below, shared the same
 // way (vi.hoisted — see comment above).
 const routingMock = vi.hoisted(() => ({
-  calls: [] as { request: PlanRequest; resolve: (r: PlanResult) => void }[],
+  calls: [] as {
+    request: PlanRequest;
+    resolve: (r: PlanResult) => void;
+    // #1193: lets a test drive the SAME rejection path a real cancelled
+    // plan() takes (reject/settle is a no-op on an already-resolved call).
+    reject: (e: unknown) => void;
+  }[],
 }));
 
 // Controllable-resolution-timing fake for the E8 gate fix wave's clobber-
@@ -120,17 +126,34 @@ const routingMock = vi.hoisted(() => ({
 // for the test to resolve on its own schedule, so a replan can be left
 // pending while the test drives an unrelated "load a different plan" action
 // in between.
-vi.mock('./routing/workerClient', () => ({
-  RoutingClient: class {
-    async init() {}
-    plan(request: PlanRequest): Promise<PlanResult> {
-      return new Promise<PlanResult>((resolve) => {
-        routingMock.calls.push({ request, resolve });
-      });
-    }
-    dispose() {}
-  },
-}));
+//
+// #1193: importOriginal + spread (not a from-scratch object) so
+// usePlanFlow.ts's `err instanceof RoutingError` check sees the REAL class —
+// a bare `RoutingClient: class {...}` replacement, as this used to be, left
+// `RoutingError` undefined in this mocked module and would throw
+// "Right-hand side of 'instanceof' is not callable" the first time any test
+// here drove a rejected plan() through App.tsx, which none did until
+// cancel() made that reachable.
+vi.mock('./routing/workerClient', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./routing/workerClient')>();
+  return {
+    ...actual,
+    RoutingClient: class {
+      async init() {}
+      plan(request: PlanRequest): Promise<PlanResult> {
+        return new Promise<PlanResult>((resolve, reject) => {
+          routingMock.calls.push({ request, resolve, reject });
+        });
+      }
+      dispose() {}
+      cancel() {
+        for (const call of routingMock.calls) {
+          call.reject(new actual.RoutingError('cancelled', 'plan cancelled by user'));
+        }
+      }
+    },
+  };
+});
 
 // fetchWindGrid talks to the real Open-Meteo API by default; mocked here
 // (rather than added to fetchMock() below) so tests don't need to fabricate
@@ -3935,6 +3958,41 @@ describe('#983: recalculate completion announced regardless of active tab', () =
       .getAllByRole('status')
       .filter((el) => el.textContent?.includes(announcePrefix));
     expect(withAnnouncement).toHaveLength(1);
+  });
+
+  // #1193: a cancelled recalculate-and-replace returns busy -> idle WITHOUT
+  // ever calling setPlan() — the exact shape that used to make the
+  // busy->idle watcher fire on the STALE prior plan (App.tsx's
+  // planAtBusyStartRef comment). Before that fix this test's
+  // announceRegion() assertion fails: the watcher announces the untouched
+  // p1/21 as if the cancelled recalculate had completed.
+  it('#1193: cancelling a recalculate-and-replace does NOT announce (the stale-plan false positive)', async () => {
+    await db.savePlan(savedPlan('p1', 21));
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    // p1 must be the ACTIVE plan (App.tsx's `plan` state) BEFORE the
+    // cancelled recalc starts — otherwise `plan !== null` is already false
+    // and the bug this test guards is unreachable (recalc alone never sets
+    // the active plan; only Load or a completed run does).
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+    fireEvent.click(await screen.findByRole('button', { name: /Solo/ }));
+    await waitFor(() => expect(screen.getByText(formatNm(21, 'de'))).toBeInTheDocument());
+
+    await startRecalculateAndReplace();
+    // Back to the Plan tab, where the #1193 Cancel button lives.
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+    fireEvent.click(screen.getByRole('button', { name: de['planner.cancel'] }));
+    // The recalc reuses the saved plan's stored request, never touching this
+    // tab's own origin/destination form state — so `canPlan`/the Plan button
+    // is not the right idle signal here. The Cancel button disappearing IS:
+    // it renders only while planning.phase is fetching/routing/probing.
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: de['planner.cancel'] })).not.toBeInTheDocument(),
+    );
+
+    await act(async () => {}); // flush the busy->idle watcher effect
+    expect(announceRegion()).toHaveTextContent('');
   });
 
   // PR #1012 review, Minor D: the reviewer wrote and validated (out-of-tree)

@@ -17,12 +17,7 @@ import { DEFAULT_BOAT_ID, polarKey } from '../data/boats';
 import { __resetDbForTests, getPlan, listPlans, savePlan } from '../services/db';
 import { destinationPoint } from '../lib/geo';
 import { recalcRequest } from '../lib/recalc';
-import {
-  OFF_CATALOGUE_BOAT,
-  TEST_MASK_META,
-  TEST_POLAR,
-  uniformWindGrid,
-} from '../test/fixtures';
+import { OFF_CATALOGUE_BOAT, TEST_MASK_META, TEST_POLAR, uniformWindGrid } from '../test/fixtures';
 import {
   DEFAULT_SETTINGS,
   type NoRouteReason,
@@ -30,6 +25,7 @@ import {
   type PlanRequest,
   type PlanResultOk,
   type SailId,
+  type WindGrid,
 } from '../types';
 import type { MsgKey } from '../i18n/dict.de';
 import { defaultBoatSnapshot } from '../types';
@@ -782,6 +778,105 @@ describe('usePlanFlow', () => {
 
     expect(fetchWind).toHaveBeenCalledTimes(1);
     expect(result.current.planning).toEqual({ phase: 'fetching-wind' });
+  });
+
+  it('#1193: cancel() during fetching-wind returns to idle before a worker is ever touched', async () => {
+    let resolveFetch!: (g: WindGrid) => void;
+    const fetchWind = vi.fn().mockImplementation(
+      () =>
+        new Promise<WindGrid>((r) => {
+          resolveFetch = r;
+        }),
+    );
+    const save = vi.fn<(plan: Plan) => Promise<void>>().mockResolvedValue(undefined);
+    const w = fakeWorker();
+    vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
+
+    const { result } = renderHook(
+      () =>
+        usePlanFlow({
+          fetchWind,
+          save,
+          makeClient: () => new RoutingClient(() => w as unknown as Worker),
+        }),
+      { wrapper: AppStateProvider },
+    );
+
+    let runPromise!: Promise<void>;
+    act(() => {
+      runPromise = result.current.run(REQ, 'Cancel me');
+    });
+    expect(result.current.planning).toEqual({ phase: 'fetching-wind' });
+
+    act(() => {
+      result.current.cancel();
+    });
+    await act(async () => {
+      resolveFetch(uniformWindGrid(12, 0));
+      await runPromise;
+    });
+
+    expect(result.current.planning).toEqual({ phase: 'idle' });
+    // Nothing was ever posted to a worker — cancel landed before
+    // ensureClient() (and therefore init()) was even reached.
+    expect(w.posted).toHaveLength(0);
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('#1193: cancel() while routing (mid-solve) terminates the worker, returns to idle (not error), and the next run() gets a fresh client', async () => {
+    const firstWorker = fakeWorker();
+    const secondWorker = fakeWorker();
+    const makeClient = vi
+      .fn()
+      .mockImplementationOnce(() => new RoutingClient(() => firstWorker as unknown as Worker))
+      .mockImplementationOnce(() => new RoutingClient(() => secondWorker as unknown as Worker));
+    const windGrid = uniformWindGrid(12, 0);
+    const fetchWind = vi.fn().mockResolvedValue(windGrid);
+    const save = vi.fn<(plan: Plan) => Promise<void>>().mockResolvedValue(undefined);
+    vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
+
+    const { result } = renderHook(() => usePlanFlow({ fetchWind, save, makeClient }), {
+      wrapper: AppStateProvider,
+    });
+
+    let runPromise!: Promise<void>;
+    await act(async () => {
+      runPromise = result.current.run(REQ, 'Cancel me');
+      await flush();
+    });
+    findPosted(firstWorker.posted, 'plan'); // the solve is genuinely in flight
+
+    await act(async () => {
+      result.current.cancel();
+      await runPromise;
+    });
+
+    // A cancel is not an error — it returns to idle, never the generic
+    // error banner (usePlanFlow.ts's routingFailureKey path).
+    expect(result.current.planning).toEqual({ phase: 'idle' });
+    expect(save).not.toHaveBeenCalled();
+    // The worker running the abandoned solve is actually torn down, not
+    // merely abandoned — see workerClient.ts's RoutingFailureKind
+    // 'cancelled' comment for why terminate() is the only way to stop it.
+    // TWICE: client.cancel() terminates it once, and run()'s catch still
+    // disposes unconditionally afterwards (client.dispose() is idempotent —
+    // see cancel()'s own doc comment).
+    expect(firstWorker.terminate).toHaveBeenCalledTimes(2);
+
+    let secondRunPromise!: Promise<void>;
+    await act(async () => {
+      secondRunPromise = result.current.run(REQ, 'Retry');
+      await flush();
+    });
+    expect(makeClient).toHaveBeenCalledTimes(2); // fresh client, not the torn-down one
+
+    const secondPlanMsg = findPosted(secondWorker.posted, 'plan');
+    await act(async () => {
+      secondWorker.emit({ type: 'result', id: secondPlanMsg.id, result: OK_RESULT });
+      await secondRunPromise;
+    });
+    expect(result.current.planning).toEqual({ phase: 'idle' });
+    expect(save).toHaveBeenCalledTimes(1);
   });
 });
 

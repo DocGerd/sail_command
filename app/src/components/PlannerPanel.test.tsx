@@ -296,6 +296,7 @@ interface Overrides {
   planDisabledReason?: string | null;
   online?: boolean;
   onPlan?: () => void;
+  onCancelPlan?: () => void;
   planning?: PlannerStatus;
   plan?: Plan | null;
   rig?: SailId | null;
@@ -339,6 +340,7 @@ function baseProps(overrides: Overrides = {}) {
     planDisabledReason: null,
     online: true,
     onPlan: vi.fn(),
+    onCancelPlan: vi.fn(),
     planning: { phase: 'idle' } as PlannerStatus,
     plan: null as Plan | null,
     rig: null as SailId | null,
@@ -970,6 +972,25 @@ describe('PlannerPanel', () => {
     fireEvent.click(button);
     expect(props.onPlan).toHaveBeenCalled();
   });
+
+  it('#1193: no Cancel button while idle', () => {
+    renderPanel({ planning: { phase: 'idle' } });
+    expect(screen.queryByRole('button', { name: 'Cancel route planning' })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['fetching', { phase: 'fetching' } as PlannerStatus],
+    ['routing', { phase: 'routing', sailId: 'genoa', index: 1, total: 2 } as PlannerStatus],
+    ['probing', { phase: 'probing' } as PlannerStatus],
+  ])(
+    '#1193: renders a Cancel button during planning.phase %s and calls onCancelPlan when clicked',
+    (_label, planning) => {
+      const props = renderPanel({ planning });
+      const button = screen.getByRole('button', { name: 'Cancel route planning' });
+      fireEvent.click(button);
+      expect(props.onCancelPlan).toHaveBeenCalled();
+    },
+  );
 
   it('renders a fetching status message during planning.phase "fetching"', () => {
     renderPanel({ planning: { phase: 'fetching' } });
