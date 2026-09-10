@@ -76,6 +76,10 @@ instead of here.
   `SolveFailureCause`), modes keyed to the arriving waypoint rather than a
   positional array, and an optional field needing no DB migration. Design
   only — implementation deferred (maintainer ruling, 2026-09-10)
+- [930-relaxation-trade-measurement.md](930-relaxation-trade-measurement.md)
+  — #930: P3's disc-vs-global relaxation trade, measured against the
+  shipped `findRelaxedGate` on the real mask — never bites on the complete
+  reachable population
 - [1022-whole-journey-ux.md](1022-whole-journey-ux.md) — #1022: the whole
   client journey, as a design exercise (reference screenshots in
   `1022-whole-journey-ux/`)
