@@ -58,3 +58,35 @@ export function nearestViaInsertIndex(
   }
   return bestIndex;
 }
+
+/**
+ * Great-circle midpoint of `a` and `b` — the default coordinate for #1171's
+ * keyboard "insert waypoint between N and N+1" control, which has no
+ * pointer-release point to place the new waypoint at (unlike #850's
+ * drag-to-insert gesture). A simple lat/lon average would drift off the
+ * great-circle line for a long segment; this is the standard spherical
+ * midpoint formula, self-contained here (no dependency on lib/geo.ts, which
+ * IS in `app/sweep/`'s import closure — see this file's own header comment)
+ * rather than a haversine/bearing-based construction that would need it.
+ */
+export function segmentMidpoint(a: LatLon, b: LatLon): LatLon {
+  const lat1 = (a.lat * Math.PI) / 180;
+  const lon1 = (a.lon * Math.PI) / 180;
+  const lat2 = (b.lat * Math.PI) / 180;
+  const dLon = ((b.lon - a.lon) * Math.PI) / 180;
+
+  const bx = Math.cos(lat2) * Math.cos(dLon);
+  const by = Math.cos(lat2) * Math.sin(dLon);
+  const lat3 = Math.atan2(
+    Math.sin(lat1) + Math.sin(lat2),
+    Math.sqrt((Math.cos(lat1) + bx) ** 2 + by ** 2),
+  );
+  const lon3 = lon1 + Math.atan2(by, Math.cos(lat1) + bx);
+
+  return {
+    lat: (lat3 * 180) / Math.PI,
+    // Normalize back into (-180, 180] rather than leaving lon1 + atan2(...)
+    // to drift outside it for a segment crossing the antimeridian.
+    lon: (((lon3 * 180) / Math.PI + 540) % 360) - 180,
+  };
+}

@@ -151,6 +151,10 @@ export const en = {
   'planner.via.moveUp': 'Move waypoint {index} up',
   'planner.via.moveDown': 'Move waypoint {index} down',
   'planner.via.marker': 'Waypoint {index}',
+  // #1171: see dict.de.ts's matching comment — "waypoint" is deliberately
+  // NOT immediately followed by "{index}" here either, for the same
+  // getByRole substring-collision reason.
+  'planner.via.insertAfter': 'Insert waypoint after point {index}',
   // #938: see dict.de.ts's matching comment — draft-only, two-tap confirm,
   // worded to avoid a getByRole substring collision with the sibling
   // add/remove buttons in the same scoped via-list region.

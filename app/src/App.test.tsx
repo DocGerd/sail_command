@@ -1516,6 +1516,75 @@ describe('#829: keyboard-reachable via-point coordinate entry (App wiring)', () 
   });
 });
 
+// #1171: keyboard equivalent of #850's drag-to-insert-a-waypoint gesture —
+// "insert between waypoint N and N+1" with no pointer-release point, so the
+// new waypoint lands at the great-circle midpoint of the two adjacent via
+// points. Drives the REAL App + PlannerPanel wiring (never a mock callback),
+// so this is the "App row" mutation check for App.tsx's handleInsertViaAfter:
+// deleting either its onInsertViaAfter prop wiring or the handler's own
+// splice/midpoint call reds the first test below.
+describe('#1171: keyboard-reachable insert-between-waypoints (App wiring)', () => {
+  it('inserting after the first via point splices a new one at the great-circle midpoint, leaving the others untouched', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
+    const latInput = within(viaSection).getByLabelText(de['planner.via.coord.latLabel']);
+    const lonInput = within(viaSection).getByLabelText(de['planner.via.coord.lonLabel']);
+
+    // Two via points via the #829 coordinate row — no origin/destination
+    // needed for a midpoint BETWEEN two existing via points.
+    fireEvent.change(latInput, { target: { value: '54.85' } });
+    fireEvent.blur(latInput);
+    fireEvent.change(lonInput, { target: { value: '10.1' } });
+    fireEvent.blur(lonInput);
+    fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.coord.add'] }));
+
+    fireEvent.change(latInput, { target: { value: '54.95' } });
+    fireEvent.blur(latInput);
+    fireEvent.change(lonInput, { target: { value: '10.3' } });
+    fireEvent.blur(lonInput);
+    fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.coord.add'] }));
+
+    expect(within(viaSection).getAllByRole('listitem')).toHaveLength(2);
+
+    fireEvent.click(
+      within(viaSection).getByRole('button', {
+        name: de['planner.via.insertAfter'].replace('{index}', '1'),
+      }),
+    );
+
+    const items = within(viaSection).getAllByRole('listitem');
+    expect(items).toHaveLength(3);
+    expect(items[0]).toHaveTextContent('54.850°N 10.100°E'); // untouched
+    // Great-circle midpoint of (54.85,10.1) and (54.95,10.3), computed
+    // independently (Python's atan2-based spherical midpoint formula, not
+    // read off this app's own output — CLAUDE.md's equivalence-test trap).
+    expect(items[1]).toHaveTextContent('54.900°N 10.200°E'); // the new point
+    expect(items[2]).toHaveTextContent('54.950°N 10.300°E'); // untouched
+  });
+
+  it("the last via row's insert control is disabled with no destination chosen — there is no NEXT waypoint for a midpoint", async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
+    const latInput = within(viaSection).getByLabelText(de['planner.via.coord.latLabel']);
+    const lonInput = within(viaSection).getByLabelText(de['planner.via.coord.lonLabel']);
+    fireEvent.change(latInput, { target: { value: '54.85' } });
+    fireEvent.blur(latInput);
+    fireEvent.change(lonInput, { target: { value: '10.1' } });
+    fireEvent.blur(lonInput);
+    fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.coord.add'] }));
+
+    expect(
+      within(viaSection).getByRole('button', {
+        name: de['planner.via.insertAfter'].replace('{index}', '1'),
+      }),
+    ).toBeDisabled();
+  });
+});
+
 // #845: "add as waypoint" from the seamark popover, driven end to end through
 // the REAL DataLayers component (never mocked) via the sc-seamarks
 // layer-scoped click handler mapTestHooks.layerClickHandlers exposes, and
