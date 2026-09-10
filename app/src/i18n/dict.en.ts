@@ -1005,6 +1005,11 @@ export const en = {
   // §3.5: retry action shown on network/offline plan errors (re-runs the plan).
   'banner.retry': 'Try again',
   'banner.tapPick': 'Tap the map to set {target}.',
+  // #1170: appended after banner.tapPick's own sentence, only while armed
+  // for 'via' AND a route is on screen (App.tsx gates this) — the map-tap
+  // path's discoverability for inserting a waypoint at a chosen point on
+  // the route, not just at the end of the list.
+  'banner.tapPick.viaRouteLine': 'Or tap the route line to insert a waypoint there.',
   'banner.tapPick.cancel': 'Cancel',
   // #571 redesign: triggered from App.tsx's handlePlan pre-check now (a
   // dedupeViaPoints call mirroring what usePlanFlow.ts's run() does

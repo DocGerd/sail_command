@@ -9,7 +9,12 @@ process.env.TZ = 'Europe/Berlin';
 
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import RouteLayer, { HIGHLIGHT_LAYER, ROUTE_STACK_BOTTOM_LAYER } from './RouteLayer';
+import RouteLayer, {
+  HIGHLIGHT_LAYER,
+  ROUTE_HIT_LAYER,
+  ROUTE_STACK_BOTTOM_LAYER,
+} from './RouteLayer';
+import { SAVED_WAYPOINT_LAYER } from './SavedWaypointsLayer';
 import { I18nProvider } from '../i18n';
 import { makeFakeMap, simulateStyleReload } from '../test/fakeMaplibre';
 import { TEST_MASK_META, uniformWindGrid } from '../test/fixtures';
@@ -265,6 +270,8 @@ function renderRouteLayer(map: ReturnType<typeof makeFakeMap>, activeLegIndex: n
       viaReplanning={false}
       onViaDragEnd={async () => true}
       onRouteLineInsert={() => {}}
+      viaArmed={false}
+      onArmedRouteTapInsert={() => {}}
     />,
   );
 }
@@ -284,6 +291,8 @@ function renderRouteLayerWithPlan(
       viaReplanning={false}
       onViaDragEnd={async () => true}
       onRouteLineInsert={() => {}}
+      viaArmed={false}
+      onArmedRouteTapInsert={() => {}}
     />,
   );
 }
@@ -446,6 +455,8 @@ describe('RouteLayer fit-to-view button (#297)', () => {
       viaReplanning: false,
       onViaDragEnd: async () => true,
       onRouteLineInsert: () => {},
+      viaArmed: false,
+      onArmedRouteTapInsert: () => {},
     };
     const { rerender } = render(<RouteLayer plan={null} rig={null} {...props} />);
     expect(screen.queryByRole('button', { name: 'Route einpassen' })).toBeNull();
@@ -669,6 +680,8 @@ describe('RouteLayer style reload (#153)', () => {
         viaReplanning={false}
         onViaDragEnd={async () => true}
         onRouteLineInsert={() => {}}
+        viaArmed={false}
+        onArmedRouteTapInsert={() => {}}
       />,
     );
     act(() => {
@@ -767,6 +780,8 @@ describe('RouteLayer wind-barb slider aria-valuetext (#292, #373 fix-wave)', () 
           viaReplanning={false}
           onViaDragEnd={async () => true}
           onRouteLineInsert={() => {}}
+          viaArmed={false}
+          onArmedRouteTapInsert={() => {}}
         />
       </I18nProvider>,
     );
@@ -861,6 +876,8 @@ describe('RouteLayer collapsible controls cluster (#628)', () => {
         viaReplanning
         onViaDragEnd={async () => true}
         onRouteLineInsert={() => {}}
+        viaArmed={false}
+        onArmedRouteTapInsert={() => {}}
       />,
     );
     const chip = container.querySelector('.via-markers-spinner-chip');
@@ -946,6 +963,8 @@ describe('RouteLayer collapsible controls cluster (#628)', () => {
         viaReplanning={false}
         onViaDragEnd={async () => true}
         onRouteLineInsert={() => {}}
+        viaArmed={false}
+        onArmedRouteTapInsert={() => {}}
       />,
     );
     expect(container.querySelector('.route-layer-controls')).toBeNull();
@@ -959,6 +978,8 @@ describe('RouteLayer collapsible controls cluster (#628)', () => {
         viaReplanning={false}
         onViaDragEnd={async () => true}
         onRouteLineInsert={() => {}}
+        viaArmed={false}
+        onArmedRouteTapInsert={() => {}}
       />,
     );
     const details = () =>
@@ -1000,6 +1021,8 @@ describe('RouteLayer collapsible controls cluster (#628)', () => {
         viaReplanning={false}
         onViaDragEnd={async () => true}
         onRouteLineInsert={() => {}}
+        viaArmed={false}
+        onArmedRouteTapInsert={() => {}}
       />,
     );
     const details = () =>
@@ -1021,6 +1044,8 @@ describe('RouteLayer collapsible controls cluster (#628)', () => {
         viaReplanning={false}
         onViaDragEnd={async () => true}
         onRouteLineInsert={() => {}}
+        viaArmed={false}
+        onArmedRouteTapInsert={() => {}}
       />,
     );
     expect(container.querySelector('.route-layer-controls')).toBeNull();
@@ -1034,6 +1059,8 @@ describe('RouteLayer collapsible controls cluster (#628)', () => {
         viaReplanning={false}
         onViaDragEnd={async () => true}
         onRouteLineInsert={() => {}}
+        viaArmed={false}
+        onArmedRouteTapInsert={() => {}}
       />,
     );
     expect(details()?.open).toBe(true);
@@ -1153,6 +1180,8 @@ describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
         viaReplanning={false}
         onViaDragEnd={async () => true}
         onRouteLineInsert={() => {}}
+        viaArmed={false}
+        onArmedRouteTapInsert={() => {}}
       />,
     );
     const onMouseMove = mousemoveHandler(map);
@@ -1193,6 +1222,8 @@ describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
         viaReplanning={false}
         onViaDragEnd={async () => true}
         onRouteLineInsert={() => {}}
+        viaArmed={false}
+        onArmedRouteTapInsert={() => {}}
       />,
     );
     const onMouseMove = mousemoveHandler(map);
@@ -1214,6 +1245,8 @@ describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
         viaReplanning={false}
         onViaDragEnd={async () => true}
         onRouteLineInsert={() => {}}
+        viaArmed={false}
+        onArmedRouteTapInsert={() => {}}
       />,
     );
     const onMouseMove = mousemoveHandler(map);
@@ -1238,6 +1271,8 @@ describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
         viaReplanning={false}
         onViaDragEnd={async () => true}
         onRouteLineInsert={onRouteLineInsert}
+        viaArmed={false}
+        onArmedRouteTapInsert={() => {}}
       />,
     );
     const onMouseMove = mousemoveHandler(map);
@@ -1274,6 +1309,8 @@ describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
         viaReplanning={false}
         onViaDragEnd={async () => true}
         onRouteLineInsert={() => {}}
+        viaArmed={false}
+        onArmedRouteTapInsert={() => {}}
       />,
     );
     const call = map.on.mock.calls.find((c) => c[0] === 'mousemove');
@@ -1292,6 +1329,8 @@ describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
         viaReplanning={false}
         onViaDragEnd={async () => true}
         onRouteLineInsert={() => {}}
+        viaArmed={false}
+        onArmedRouteTapInsert={() => {}}
       />,
     );
     const onMouseMove = mousemoveHandler(map);
@@ -1314,6 +1353,8 @@ describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
         viaReplanning={false}
         onViaDragEnd={async () => true}
         onRouteLineInsert={() => {}}
+        viaArmed={false}
+        onArmedRouteTapInsert={() => {}}
       />,
     );
     expect(ghost!.removed).toBe(true);
@@ -1331,6 +1372,8 @@ describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
         viaReplanning={false}
         onViaDragEnd={async () => true}
         onRouteLineInsert={() => {}}
+        viaArmed={false}
+        onArmedRouteTapInsert={() => {}}
       />,
     );
     const onMouseMove = mousemoveHandler(map);
@@ -1346,5 +1389,176 @@ describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
     ghost!.handlers.get('dragstart')?.();
     onMouseMove({ point: { x: 0, y: 1000 } }); // far outside tolerance
     expect(ghost!.removed).toBe(false);
+  });
+});
+
+// #1170: tap the route line to insert a waypoint while the "Add waypoint"
+// pick is armed for 'via' — the touch/pointer counterpart to the #850
+// hover-drag gesture above. Reuses LEG's geometry (project() midpoint at px
+// (400, 275), per the #850 header comment above), so the same coordinate
+// probes both gestures against the identical fixture.
+function fireRouteHitClick(map: ReturnType<typeof makeFakeMap>, point: { x: number; y: number }) {
+  map.fireLayerEvent('click', ROUTE_HIT_LAYER, { point });
+}
+
+// The shared fake has no queryRenderedFeatures at all (App.tsx's generic-tap
+// gate is the only shipped caller, and App.test.tsx keeps its own, separate
+// whole-app fake with one) — RouteLayer's #1170 precedence check is the
+// FIRST caller inside this file's fake-map surface, so these tests attach
+// their own stub rather than widening the shared fixture for every other
+// test in this suite.
+function withQueryRenderedFeatures(
+  map: ReturnType<typeof makeFakeMap>,
+  impl: (point: unknown, options?: { layers?: string[] }) => unknown[] = () => [],
+): ReturnType<typeof makeFakeMap> & { queryRenderedFeatures: ReturnType<typeof vi.fn> } {
+  return Object.assign(map, { queryRenderedFeatures: vi.fn(impl) });
+}
+
+describe('RouteLayer #1170: tap the route line to insert a waypoint while armed', () => {
+  it('inserts at the nearest point on the route when armed', () => {
+    const map = withQueryRenderedFeatures(makeFakeMap());
+    hoisted.map = map;
+    const onArmedRouteTapInsert = vi.fn();
+    render(
+      <RouteLayer
+        plan={makePlan()}
+        rig="genoa"
+        activeLegIndex={null}
+        draftViaPoints={[]}
+        viaReplanning={false}
+        onViaDragEnd={async () => true}
+        onRouteLineInsert={() => {}}
+        viaArmed={true}
+        onArmedRouteTapInsert={onArmedRouteTapInsert}
+      />,
+    );
+
+    fireRouteHitClick(map, { x: 400, y: 275 });
+
+    expect(onArmedRouteTapInsert).toHaveBeenCalledTimes(1);
+    // toBeCloseTo per field, not toHaveBeenCalledWith: nearestPointOnRoute's
+    // linear interpolation of `t` accumulates ordinary floating-point error
+    // (10.2 -> 10.200000000000001 here), matching this file's own #850
+    // ghost-marker assertions above (`toBeCloseTo(10.2, 5)`).
+    const [[inserted]] = onArmedRouteTapInsert.mock.calls;
+    expect(inserted.lat).toBeCloseTo(54.75, 5);
+    expect(inserted.lon).toBeCloseTo(10.2, 5);
+  });
+
+  it('does NOT insert while unarmed — the click handler must independently refuse, not rely solely on App.tsx keeping the layer out of interactiveLayerIds', () => {
+    const map = withQueryRenderedFeatures(makeFakeMap());
+    hoisted.map = map;
+    const onArmedRouteTapInsert = vi.fn();
+    render(
+      <RouteLayer
+        plan={makePlan()}
+        rig="genoa"
+        activeLegIndex={null}
+        draftViaPoints={[]}
+        viaReplanning={false}
+        onViaDragEnd={async () => true}
+        onRouteLineInsert={() => {}}
+        viaArmed={false}
+        onArmedRouteTapInsert={onArmedRouteTapInsert}
+      />,
+    );
+
+    fireRouteHitClick(map, { x: 400, y: 275 });
+
+    expect(onArmedRouteTapInsert).not.toHaveBeenCalled();
+  });
+
+  it('#1170 precedence: a tap that ALSO hits the saved-waypoint ring must not double-insert — the route hit-line bails', () => {
+    const map = withQueryRenderedFeatures(makeFakeMap(), (_point, options) =>
+      options?.layers?.includes(SAVED_WAYPOINT_LAYER) ? [{}] : [],
+    );
+    // RouteLayer's precedence guard also checks `map.getLayer(SAVED_WAYPOINT_
+    // LAYER)` before querying — this test doesn't mount SavedWaypointsLayer,
+    // so simulate it having done so already (the ordinary case, since it is
+    // always-mounted like DataLayers, per App.tsx's own comment on it).
+    map.layers.set(SAVED_WAYPOINT_LAYER, { id: SAVED_WAYPOINT_LAYER, type: 'circle' });
+    hoisted.map = map;
+    const onArmedRouteTapInsert = vi.fn();
+    render(
+      <RouteLayer
+        plan={makePlan()}
+        rig="genoa"
+        activeLegIndex={null}
+        draftViaPoints={[]}
+        viaReplanning={false}
+        onViaDragEnd={async () => true}
+        onRouteLineInsert={() => {}}
+        viaArmed={true}
+        onArmedRouteTapInsert={onArmedRouteTapInsert}
+      />,
+    );
+
+    fireRouteHitClick(map, { x: 400, y: 275 });
+
+    expect(onArmedRouteTapInsert).not.toHaveBeenCalled();
+    // Control: the query is scoped to SAVED_WAYPOINT_LAYER specifically, not
+    // a blanket "any hit anywhere" bail — a vacuity check on the precedence
+    // probe itself (the fake's stub above only returns a hit for THAT
+    // layer id, so a passing bail proves the code queries the right one).
+    expect(map.queryRenderedFeatures).toHaveBeenCalledWith(
+      { x: 400, y: 275 },
+      { layers: [SAVED_WAYPOINT_LAYER] },
+    );
+  });
+
+  it('creates the invisible 44px hit-test line hidden by default, and toggles it visible once armed with a displayed route', () => {
+    const map = makeFakeMap();
+    hoisted.map = map;
+    const { rerender } = render(
+      <RouteLayer
+        plan={makePlan()}
+        rig="genoa"
+        activeLegIndex={null}
+        draftViaPoints={[]}
+        viaReplanning={false}
+        onViaDragEnd={async () => true}
+        onRouteLineInsert={() => {}}
+        viaArmed={false}
+        onArmedRouteTapInsert={() => {}}
+      />,
+    );
+    const hitLayer = map.layers.get(ROUTE_HIT_LAYER);
+    expect(hitLayer?.paint?.['line-width']).toBe(44);
+    expect(hitLayer?.paint?.['line-opacity']).toBe(0);
+    expect(hitLayer?.layout?.visibility).toBe('none');
+
+    rerender(
+      <RouteLayer
+        plan={makePlan()}
+        rig="genoa"
+        activeLegIndex={null}
+        draftViaPoints={[]}
+        viaReplanning={false}
+        onViaDragEnd={async () => true}
+        onRouteLineInsert={() => {}}
+        viaArmed={true}
+        onArmedRouteTapInsert={() => {}}
+      />,
+    );
+    expect(map.layers.get(ROUTE_HIT_LAYER)?.layout?.visibility).toBe('visible');
+  });
+
+  it('keeps the hit-test line hidden while armed but no route is displayed (plan null) — gated on the displayed RESULT, not viaArmed alone', () => {
+    const map = makeFakeMap();
+    hoisted.map = map;
+    render(
+      <RouteLayer
+        plan={null}
+        rig={null}
+        activeLegIndex={null}
+        draftViaPoints={[]}
+        viaReplanning={false}
+        onViaDragEnd={async () => true}
+        onRouteLineInsert={() => {}}
+        viaArmed={true}
+        onArmedRouteTapInsert={() => {}}
+      />,
+    );
+    expect(map.layers.get(ROUTE_HIT_LAYER)?.layout?.visibility).toBe('none');
   });
 });
