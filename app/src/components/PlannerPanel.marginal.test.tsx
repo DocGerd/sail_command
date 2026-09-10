@@ -202,6 +202,7 @@ async function renderPanelWithPlan() {
         planDisabledReason={null}
         online={true}
         onPlan={vi.fn()}
+        onCancelPlan={vi.fn()}
         planning={{ phase: 'idle' } as PlannerStatus}
         plan={nonRelaxedPlan()}
         rig="genoa"

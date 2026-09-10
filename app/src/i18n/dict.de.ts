@@ -214,6 +214,10 @@ export const de = {
     'Eingabe konnte nicht als Koordinate gelesen werden – {value} beibehalten',
   'planner.departure.label': 'Abfahrt',
   'planner.plan': 'Route planen',
+  // #1193: distinct from the three plain "Abbrechen" buttons elsewhere
+  // (plansList.recalc.cancel, banner.tapPick.cancel, departureScan.cancel)
+  // — see dict.en.ts's twin key for why a bare "Abbrechen" would collide.
+  'planner.cancel': 'Routenberechnung abbrechen',
   // §3.5 empty/first-run: friendly guidance near the primary action while no
   // plan exists yet and an endpoint is still unpicked.
   'planner.onboarding': 'Wähle Start und Ziel, um eine Route zu planen.',
@@ -300,6 +304,9 @@ export const de = {
   'error.routingMessageError':
     'Die Routen-Engine hat eine nicht lesbare Antwort gesendet. Erneut versuchen — sie startet dabei neu.',
   'error.routingInterrupted': 'Die Routenberechnung wurde unterbrochen. Erneut versuchen.',
+  // #1193: nur ein Fallback — usePlanFlow.run() behandelt 'cancelled'
+  // gesondert und kehrt direkt zu idle zurück, ohne diesen Text zu zeigen.
+  'error.routingCancelled': 'Die Routenberechnung wurde abgebrochen.',
   // #553 / spec §I.3: der eine typisierte Fehler, bei dem weder „Erneut
   // versuchen" noch „App neu laden" hilft — beides ändert nichts am Katalog.
   // Der Satz nennt deshalb stattdessen, wie eng der Verlust ist: die

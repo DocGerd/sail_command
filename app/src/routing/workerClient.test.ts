@@ -119,6 +119,60 @@ describe('RoutingClient promise settling', () => {
   );
 
   it(
+    '#1193: cancel() rejects an in-flight plan with kind cancelled and terminates the worker',
+    async () => {
+      const w = fakeWorker();
+      const client = new RoutingClient(() => w as unknown as Worker);
+      w.emit({ type: 'ready' });
+      const p = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0));
+      await flush();
+      client.cancel();
+      await expectRoutingError(p, 'cancelled', /cancelled/);
+      expect(client.isDisposed).toBe(true);
+    },
+    WORKER_CLIENT_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    '#1193: cancel() with nothing pending is a no-op — does not terminate the worker',
+    async () => {
+      const w = fakeWorker();
+      const terminate = vi.fn();
+      w.terminate = terminate;
+      const client = new RoutingClient(() => w as unknown as Worker);
+      w.emit({ type: 'ready' });
+      client.cancel();
+      expect(terminate).not.toHaveBeenCalled();
+      expect(client.isDisposed).toBe(false);
+      // Still usable afterwards — a no-op cancel must not have disposed it.
+      const p = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0));
+      await flush();
+      const sent = w.posted[w.posted.length - 1];
+      if (sent.type !== 'plan') throw new Error('expected a plan message');
+      const result: PlanResult = { status: 'error', reason: 'unreachable' };
+      w.emit({ type: 'result', id: sent.id, result });
+      await expect(p).resolves.toBe(result);
+    },
+    WORKER_CLIENT_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    '#1193: cancel() rejects EVERY pending plan, not just the one the caller had in mind (Worker.terminate() is all-or-nothing)',
+    async () => {
+      const w = fakeWorker();
+      const client = new RoutingClient(() => w as unknown as Worker);
+      w.emit({ type: 'ready' });
+      const p1 = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0));
+      const p2 = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0));
+      await flush();
+      client.cancel();
+      await expectRoutingError(p1, 'cancelled', /cancelled/);
+      await expectRoutingError(p2, 'cancelled', /cancelled/);
+    },
+    WORKER_CLIENT_TEST_TIMEOUT_MS,
+  );
+
+  it(
     'global fatal rejects an in-flight plan',
     async () => {
       const w = fakeWorker();

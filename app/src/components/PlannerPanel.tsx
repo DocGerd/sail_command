@@ -157,6 +157,10 @@ export interface PlannerPanelProps {
   // own comment above for the full two-reason enumeration.
   online: boolean;
   onPlan: () => void;
+  // #1193: stops whatever solve `planning` currently reports (fetching,
+  // routing, probing) and returns to idle. The button is shown for exactly
+  // that in-flight window, alongside the (necessarily disabled) Plan button.
+  onCancelPlan: () => void;
   planning: PlannerStatus;
   // #64 phase 3: the active plan + rig drive the compact Ergebnis strip and the
   // plan-completion announcement. Null before the first plan.
@@ -249,6 +253,7 @@ export default function PlannerPanel({
   planDisabledReason,
   online,
   onPlan,
+  onCancelPlan,
   planning,
   plan,
   rig,
@@ -1359,6 +1364,14 @@ export default function PlannerPanel({
         <Button variant="primary" onClick={onPlan} disabled={!canPlan}>
           {t('planner.plan')}
         </Button>
+        {/* #1193: shown for exactly the in-flight window (fetching/routing/
+            probing) — the Plan button above is already disabled for that
+            same window via `canPlan`, so this is never a duplicate action. */}
+        {isPlanningInFlight && (
+          <Button variant="secondary" onClick={onCancelPlan}>
+            {t('planner.cancel')}
+          </Button>
+        )}
         {showOnboarding ? (
           <p className="planner-guidance">{t('planner.onboarding')}</p>
         ) : (

@@ -57,7 +57,20 @@ export type RoutingFailureKind =
   // §I.3's guarantee is exactly this narrow: such a plan "still opens, still
   // renders, still exports GPX … Only 'plan again with this boat' is
   // unavailable, and it says so."
-  | 'boat-not-in-catalogue';
+  | 'boat-not-in-catalogue'
+  // #1193: a user-initiated cancel, not a fault — the ONE kind this class
+  // carries that the presentation layer must not apologise for.
+  //
+  // A worker's onmessage handler runs planRoute() fully synchronously (no
+  // `await` between accepting a request and posting its result), so a
+  // posted 'cancel' message would sit unread behind the very handler it is
+  // meant to interrupt. `Worker.terminate()` is therefore the only way to
+  // actually stop a running solve, and cancel() below uses exactly the
+  // dispose() mechanism (terminate + reject every pending entry) — it earns
+  // its own kind rather than reusing 'disposed' because 'disposed' means
+  // "this client was already dead when you asked", while 'cancelled' means
+  // "the user asked, and this client is dead BECAUSE of that ask".
+  | 'cancelled';
 
 // NOT structured-clone-safe: Error subclasses lose their prototype chain
 // across postMessage/IndexedDB (mirrors OpenMeteoError's and ReplanError's
@@ -327,6 +340,12 @@ export class RoutingClient {
     timeoutMs: number = DEFAULT_PLAN_TIMEOUT_MS,
     onProbe?: ProbeCb,
   ): Promise<PlanResult> {
+    // #1193 residual: a cancel() landing between this line and pending.set()
+    // below sees nothing pending and no-ops. Unreachable today — by the time
+    // usePlanFlow.ts calls plan(), `ready` is already resolved (ensureClient()
+    // awaited it first), so this is one microtask tick, too narrow for a DOM
+    // click to land inside. Reachable if a future caller invokes plan()
+    // before `ready` resolves and cancels inside that window.
     await this.ready;
     if (this.disposed) throw new RoutingError('disposed', 'RoutingClient disposed');
     // #553 / spec §I.3: resolve the REQUEST's own boat against the catalogue,
@@ -394,9 +413,31 @@ export class RoutingClient {
     });
   }
 
-  dispose() {
+  // Shared by dispose() and cancel(): both stop the client by the same
+  // mechanism (terminate + reject everything pending) and differ only in
+  // which RoutingFailureKind that rejection carries.
+  private teardown(kind: 'disposed' | 'cancelled', message: string) {
     this.disposed = true;
-    this.failAll(new RoutingError('disposed', 'RoutingClient disposed'));
+    this.failAll(new RoutingError(kind, message));
     this.worker.terminate();
+  }
+
+  dispose() {
+    this.teardown('disposed', 'RoutingClient disposed');
+  }
+
+  /**
+   * #1193: stop whatever plan() call is currently in flight. A no-op when
+   * nothing is pending (already settled, or never started) — cancel racing
+   * a result that is already on its way, or a stray second click, costs
+   * nothing. See RoutingFailureKind's 'cancelled' comment for why this must
+   * terminate the worker rather than post a message, and
+   * state/replan.ts's disposeAfterFailure doc for the shared-singleton
+   * consequence this inherits from dispose(): an unrelated in-flight
+   * request on the same client is torn down too.
+   */
+  cancel() {
+    if (this.pending.size === 0) return;
+    this.teardown('cancelled', 'plan cancelled by user');
   }
 }

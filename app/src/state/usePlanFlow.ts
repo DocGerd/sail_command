@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { fetchWindGrid, OpenMeteoError } from '../services/openMeteo';
 import { savePlan } from '../services/db';
 import { loadRoutingAssets } from '../services/assets';
-import { RoutingClient } from '../routing/workerClient';
+import { RoutingClient, RoutingError } from '../routing/workerClient';
 import { useActivePlan } from './AppState';
 import { NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
 import {
@@ -101,6 +101,11 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
   // starts fresh); callers must treat a null result as a real failure, not
   // silently do nothing.
   ensureClient: () => Promise<RoutingClient | null>;
+  // #1193: stop whatever run() call is currently in flight. A no-op while
+  // idle/erroring — see cancelRequestedRef's own comment for how a cancel
+  // before the worker even exists (still fetching wind, or still loading
+  // routing assets) is honoured too.
+  cancel: () => void;
 } {
   const { setPlan } = useActivePlan();
   const [planning, setPlanning] = useState<PlanningState>({ phase: 'idle' });
@@ -114,6 +119,16 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
     phaseRef.current = next.phase;
     setPlanning(next);
   }, []);
+
+  // #1193: set by cancel(), read at every checkpoint in run() BEFORE the
+  // worker exists or has anything pending — client.cancel() alone only
+  // reaches an already-posted plan() (workerClient.ts's RoutingFailureKind
+  // 'cancelled' comment: it is a no-op with nothing pending), so a click
+  // during 'fetching-wind' or while ensureClient() is still loading assets
+  // would otherwise be silently ignored and the run would proceed anyway.
+  // Reset at the top of every run() so a cancel from a PRIOR, already-
+  // finished run can never affect a fresh one.
+  const cancelRequestedRef = useRef(false);
 
   // Singleton client + its init() promise, created lazily on the first
   // run() and reused for the hook's lifetime — init() transfers maskBuffer
@@ -192,11 +207,11 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
       opts: RunOptions = {},
     ): Promise<void> => {
       // Belt, not the primary guard: the UI's canPlan already disables the
-      // plan button while a run is in flight. Per-plan cancellation
-      // (dispose + recreate the client mid-run) is deliberately deferred —
-      // RoutingClient's dispose-race guard (Phase B) makes that safe to add
-      // later without touching this hook.
+      // plan button while a run is in flight.
       if (phaseRef.current !== 'idle' && phaseRef.current !== 'error') return;
+      // #1193: clear any cancel a PRIOR run left set — this is a fresh run
+      // the user just started, not the one that was cancelled.
+      cancelRequestedRef.current = false;
 
       // Planning is the only network feature (repo rule) — checked before
       // anything else so a fetch is never attempted while offline. Replans
@@ -243,8 +258,21 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
         transition({ phase: 'error', messageKey: mapWindError(err) });
         return;
       }
+      // #1193: nothing was posted to a worker yet (there may not even BE one)
+      // — client.cancel() has nothing to reach here, so this checkpoint is
+      // what makes a cancel during 'fetching-wind' actually stop the run.
+      if (cancelRequestedRef.current) {
+        transition({ phase: 'idle' });
+        return;
+      }
 
       const client = await ensureClient();
+      // #1193: same reasoning as above — a cancel during a slow first-run
+      // asset load (loadRoutingAssets + worker init) reaches nothing yet.
+      if (cancelRequestedRef.current) {
+        transition({ phase: 'idle' });
+        return;
+      }
       if (!client) {
         transition({ phase: 'error', messageKey: ROUTING_FAILURE_MESSAGE_KEY['worker-init'] });
         return;
@@ -340,6 +368,18 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
         // this path, replanWithVias() and rerouteFromFix() now all use — one
         // classification, three call sites, instead of one classification
         // and two bare `catch {}`s.
+        //
+        // #1193: a cancel is not an error — it is the outcome the user
+        // asked for, so it returns straight to idle instead of the generic
+        // error banner. The teardown above still runs unconditionally
+        // first: cancel() already terminated the worker, so this is a
+        // harmless second call, and the ref-nulling is what makes the next
+        // run() build a genuinely fresh worker rather than reusing a dead
+        // one.
+        if (err instanceof RoutingError && err.kind === 'cancelled') {
+          transition({ phase: 'idle' });
+          return;
+        }
         transition({ phase: 'error', messageKey: routingFailureKey(err) });
         return;
       }
@@ -372,5 +412,16 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
     [ensureClient, fetchWind, save, setPlan, transition],
   );
 
-  return { planning, run, ensureClient };
+  // #1193: a no-op while idle/erroring, matching run()'s own guard — set
+  // the flag for the pre-worker checkpoints inside run() regardless of
+  // whether a client exists yet, then let client.cancel() reach an
+  // already-posted plan() if one exists (also a no-op otherwise, per its
+  // own doc comment).
+  const cancel = useCallback(() => {
+    if (phaseRef.current === 'idle' || phaseRef.current === 'error') return;
+    cancelRequestedRef.current = true;
+    clientRef.current?.cancel();
+  }, []);
+
+  return { planning, run, ensureClient, cancel };
 }
