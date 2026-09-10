@@ -20,6 +20,35 @@ function bracket(xs: number[], x: number): { i: number; f: number } {
  */
 export type WindLatticeCoverageBounds = Pick<MaskMeta, 'west' | 'south' | 'east' | 'north'>;
 
+/**
+ * #1178: whether `grid`'s lat/lon lattice covers `bounds` — the exact
+ * predicate `bracket()` above needs to avoid silently clamping. Exported
+ * (not private to `WindField`) so `lib/planExport.ts`'s `decodeWindGrid`
+ * can apply the SAME check to an untrusted imported grid BEFORE it is ever
+ * persisted — see that file's own doc comment for why the import boundary
+ * needs this independently of `WindField`'s own constructor check. Sharing
+ * one predicate rather than hand-duplicating the inequality in both places
+ * is deliberate: the #1178 hazard this whole check exists to catch is
+ * exactly the kind of subtly-wrong inequality that a second, independently
+ * written copy could reintroduce.
+ */
+export function windGridCoversBounds(
+  grid: Pick<WindGrid, 'lats' | 'lons'>,
+  bounds: WindLatticeCoverageBounds,
+): boolean {
+  const { lats, lons } = grid;
+  const latMin = lats[0];
+  const latMax = lats[lats.length - 1];
+  const lonMin = lons[0];
+  const lonMax = lons[lons.length - 1];
+  return (
+    latMin <= bounds.south &&
+    latMax >= bounds.north &&
+    lonMin <= bounds.west &&
+    lonMax >= bounds.east
+  );
+}
+
 export class WindField {
   private grid: WindGrid;
 
@@ -79,24 +108,13 @@ export class WindField {
       throw new Error(
         `windGrid gustKn length ${grid.gustKn.length} != timesMs*lats*lons ${expected}`,
       );
-    if (maskBounds) {
+    if (maskBounds && !windGridCoversBounds(grid, maskBounds)) {
       const { lats, lons } = grid;
-      const latMin = lats[0];
-      const latMax = lats[lats.length - 1];
-      const lonMin = lons[0];
-      const lonMax = lons[lons.length - 1];
-      if (
-        latMin > maskBounds.south ||
-        latMax < maskBounds.north ||
-        lonMin > maskBounds.west ||
-        lonMax < maskBounds.east
-      ) {
-        throw new Error(
-          `windGrid lattice lat [${latMin}, ${latMax}] lon [${lonMin}, ${lonMax}] does not cover mask bounds ` +
-            `lat [${maskBounds.south}, ${maskBounds.north}] lon [${maskBounds.west}, ${maskBounds.east}] — ` +
-            `sample() would silently clamp points outside the lattice instead of interpolating real forecast data (#1178)`,
-        );
-      }
+      throw new Error(
+        `windGrid lattice lat [${lats[0]}, ${lats[lats.length - 1]}] lon [${lons[0]}, ${lons[lons.length - 1]}] does not cover mask bounds ` +
+          `lat [${maskBounds.south}, ${maskBounds.north}] lon [${maskBounds.west}, ${maskBounds.east}] — ` +
+          `sample() would silently clamp points outside the lattice instead of interpolating real forecast data (#1178)`,
+      );
     }
     this.grid = grid;
   }

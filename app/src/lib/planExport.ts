@@ -35,6 +35,7 @@
 import { migratePlan } from '../services/migratePlan';
 import type { SavedWaypoint } from '../services/db';
 import type { Plan, Settings, WindGrid } from '../types';
+import { windGridCoversBounds, type WindLatticeCoverageBounds } from './wind';
 
 /** Bumped whenever the ENVELOPE shape changes (settings/waypoints presence,
  * wind-grid encoding) — independent of `types.ts`'s `PLAN_SCHEMA_VERSION`,
@@ -134,7 +135,26 @@ function encodeWindGrid(grid: WindGrid): ExportedWindGrid {
 // (`DepthProfile.tsx`, `DepartureCompare.tsx`, `lib/routeGeoJson.ts`) —
 // `app/src` has no ErrorBoundary, so that takes the whole React root down,
 // not just the one plan.
-function decodeWindGrid(raw: unknown): WindGrid | null {
+//
+// #1178 MAJOR (PR #1182 review): an imported plan bypasses `planRoute.ts`
+// entirely — SettingsPanel.tsx's import handler -> parseExportFile ->
+// decodeWindGrid -> migratePlan -> savePlan(p) never constructs a
+// `WindField` at all, so `wind.ts`'s own construction-time domain-coverage
+// assertion (see that file's doc comment) NEVER RUNS for this path. A
+// spatially narrow but dimension-consistent imported windGrid would
+// therefore reach DepthProfile.tsx/DepartureCompare.tsx/routeGeoJson.ts's
+// "already validated" WindField constructions completely unvalidated —
+// exactly the #1178 hazard this whole feature exists to close, reachable
+// by a user through Settings -> Import backup. `maskBounds` closes it HERE,
+// at the same trust boundary the dimension check above already guards: an
+// imported grid failing coverage is treated exactly like any other
+// malformed windGrid — null, counted as an invalid plan, the rest of the
+// import proceeds. Optional (mirrors `WindField`'s own optional
+// `maskBounds`) so every EXISTING unit test in planExport.test.ts, which
+// calls `parseExportFile` with no mask context at all, is unaffected;
+// SettingsPanel.tsx's real import handler is the one call site that must
+// supply it.
+function decodeWindGrid(raw: unknown, maskBounds?: WindLatticeCoverageBounds): WindGrid | null {
   if (!isRecord(raw)) return null;
   const { lats, lons, timesMs, speedKn, dirFromDeg, gustKn, fetchedAtMs, model } = raw;
   if (!isNumberArray(lats) || !isNumberArray(lons) || !isNumberArray(timesMs)) return null;
@@ -143,6 +163,7 @@ function decodeWindGrid(raw: unknown): WindGrid | null {
   if (typeof speedKn !== 'string' || typeof dirFromDeg !== 'string' || typeof gustKn !== 'string')
     return null;
   if (typeof fetchedAtMs !== 'number' || typeof model !== 'string') return null;
+  if (maskBounds && !windGridCoversBounds({ lats, lons }, maskBounds)) return null;
   try {
     const decodedSpeedKn = base64ToFloat32(speedKn);
     const decodedDirFromDeg = base64ToFloat32(dirFromDeg);
@@ -294,9 +315,9 @@ function isSettingsLike(x: unknown): x is Settings {
 // untrusted input in exactly the way a foreign IndexedDB record is, so it
 // gets identical schemaVersion dispatch, boat-catalogue validation and
 // forward/backward-compatibility handling.
-function decodePlan(raw: unknown): Plan | null {
+function decodePlan(raw: unknown, maskBounds?: WindLatticeCoverageBounds): Plan | null {
   if (!isRecord(raw)) return null;
-  const windGrid = decodeWindGrid(raw.windGrid);
+  const windGrid = decodeWindGrid(raw.windGrid, maskBounds);
   if (windGrid === null) return null;
   return migratePlan({ ...raw, windGrid });
 }
@@ -309,8 +330,18 @@ function decodePlan(raw: unknown): Plan | null {
  * waypoint INSIDE an otherwise-good file is counted and skipped, never
  * fatal to the rest of the import — the same "one corrupt record must not
  * blank the whole list" principle services/db.ts's listPlans applies.
+ *
+ * `maskBounds` is OPTIONAL — see `decodeWindGrid`'s own #1178 comment for
+ * why: it lets `SettingsPanel.tsx` reject a spatially narrow imported
+ * windGrid (counted as an invalid plan) while leaving every plain-call
+ * test in `planExport.test.ts` unaffected. Pass `mask?.meta` from
+ * `useNavMask()` — `undefined` while the mask is still loading skips the
+ * check exactly as `WindField`'s own constructor does.
  */
-export function parseExportFile(text: string): ImportResult {
+export function parseExportFile(
+  text: string,
+  maskBounds?: WindLatticeCoverageBounds,
+): ImportResult {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -328,7 +359,7 @@ export function parseExportFile(text: string): ImportResult {
   const plans: Plan[] = [];
   let invalidPlanCount = 0;
   for (const rawPlan of rawPlans) {
-    const plan = decodePlan(rawPlan);
+    const plan = decodePlan(rawPlan, maskBounds);
     if (plan === null) invalidPlanCount++;
     else plans.push(plan);
   }
