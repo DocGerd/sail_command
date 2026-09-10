@@ -16,7 +16,9 @@
   UNCORROBORATED (§5, hole 1); its trigger cannot distinguish a solver give-up
   from a genuine no-route; and as of 2026-09-09 its efficacy had not been run
   on any input. #1136
-  is DEFERRED to milestone v0.32.0 (maintainer ruling, 2026-09-09). This
+  was DEFERRED to milestone v0.32.0 on 2026-09-09 (maintainer ruling); v0.32.0
+  has since SHIPPED and #1136 sits open in v0.33.0 as of 2026-09-10 (see §10
+  for the first of §5's four prerequisites, now run). This
   document exists so the next attempt starts from the measurement rather than
   from the issue title.**
 
@@ -1444,3 +1446,66 @@ PURE_ADD=35
     ring43 nodes=8090 acc=269251 blk=4887 horiz=0 dom=214096 betterLoss=36742 set=18413 dir=0 cap=0 next=7768 best=false
     ring44 nodes=7768 acc=258350 blk=4876 horiz=0 dom=201271 betterLoss=38238 set=18841 dir=0 cap=0 next=8167 best=false
 ```
+
+---
+
+## 10. Prerequisite 1 — RUN 2026-09-10 (efficacy of the solve-level salvage)
+
+**Filter.** Real committed mask + Salona-45 genoa polar, Flensburg → Bagenkop,
+`safetyDepthM: 3`, `motorEnabled: false`, uniform wind dir 0, snapped
+endpoints (§0's convention) — the exact §1 configuration, at
+`chore/1136-salvage-efficacy-probe`'s merge-base `4e1e92d` (develop tip,
+2026-09-10; `isochrone.ts` unchanged since `035d662`, confirmed via
+`git log 035d662..HEAD -- app/src/routing/isochrone.ts`, empty). Three TWS,
+each capped at 80 onProgress calls (higher for the TWS 8 confirmation run,
+§10.2).
+
+**Method — SCRATCH, never committed.** §5's salvage was written directly into
+a local copy of `isochrone.ts`: after an ordinary ring produces
+`byKey.size === 0 && best === null` (§5's exact trigger) and the salvage
+counter is under a cap, the SAME per-node expansion is re-run verbatim over
+the SAME frontier with the one `visitedDominates` line skipped, and its
+result becomes `next` — reusing the real edge/substep/capture logic rather
+than a hand-written approximation of it. The instrumented file was reverted
+with `git restore` before any commit — `git show --stat` on this task's own
+commits confirms no routing source is in them.
+
+**Positive control.** A motor-on run (known to keep expanding) records
+non-zero `RING_STATS` with `salvaged: false` throughout — the instrument
+fires and the salvage path stays dormant when it should. Confirms the
+zero-rows below are a genuine finding, not a silent instrument.
+
+**Ring-by-ring result, salvage cap 30** (full per-ring dump kept only in this
+session's transcript, not reproduced here — the table below is every ring
+where the ordinary expansion died, i.e. every `salvaged=true` row, condensed):
+
+| TWS | ordinary-expansion deaths in rings 4–24 | salvage rounds fired | outcome by ring 80 |
+|---|---|---|---|
+| 2.8 | 16 of 21 rings (interspersed with 5 tiny 1–3-node ordinary survivals) | 16 (rings 4,6,8,10,12,13,14,15,17–24) | recovers permanently at ring 25 — 0 further salvages needed through ring 79, frontier 667 at ring 78 |
+| 3   | 1 of 21 rings (ring 4 only) | 1 | recovers permanently at ring 5 — 0 further salvages needed through ring 79, frontier 2087+ at ring 78 |
+| 8   | every ring from 7 onward, no exception | 30 of 30 (budget exhausted) | dies for good at ring 35, `no-route cause=mask-blocked` — identical to the unsalvaged case |
+
+TWS 8 rescued counts across those 30 salvage rounds hover at 1–4 and never
+trend upward (`1,2,2,2,2,3,3,3,2,2,3,3,4,4,4,3,3,3,3,4,4,4,3,3,3,3,4,4,4,3`) —
+a stuck pocket, not a slow recovery.
+
+### 10.1 Answer
+
+**Efficacy is TWS-dependent, and the two outcomes are qualitatively
+different, not two points on one spectrum.** At TWS 2.8 and TWS 3, skipping
+`visitedDominates` for the dying ring DOES produce a surviving frontier: the
+ordinary expansion permanently resumes producing children on its own after a
+bounded number of salvage rounds (1 at TWS 3, 16 at TWS 2.8, all within
+21 rings) and the salvage is never needed again. At TWS 8 it does NOT: every
+single ring from 7 onward dies on ordinary expansion, salvage rescues only a
+token 1–4 nodes each time with no growth trend, and the search dies
+identically to the unsalvaged case the moment the budget runs out —
+confirmed at 4x the budget (§10.2) rather than assumed from one cap.
+
+### 10.2 Confirmation at 4x budget (TWS 8 only)
+
+Re-run at salvage cap 120, probe cap 200: 118 consecutive salvage rounds
+(rings 7–124), rescued counts still oscillating 2–4 with no growth trend,
+dies for good at ring 125 once the enlarged budget is exhausted. Rules out
+"budget 30 was merely too small" for this TWS specifically — this input is
+trapped, not slow.
