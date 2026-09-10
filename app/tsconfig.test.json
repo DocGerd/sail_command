@@ -173,9 +173,16 @@
   // the wind lattice's lat/lon extent covers the mask's domain — otherwise
   // WindField.sample()'s bracket() silently clamps out-of-lattice samples
   // with no signal. Same reason and pattern as maskTolerance.test.ts above.
+  // relaxationTrade.differential.test.ts (#930): reads the shipped
+  // harbors.json via `node:fs` (and imports realmaskFixtures.ts's real
+  // mask/harbour fixtures) to run the shipped findRelaxedGate against the
+  // real committed mask at the shipped disc radius AND the #452 kill-switch
+  // radius, differentially. Same reason as realmask.repro*.test.ts above —
+  // its name doesn't match that glob, so it needs its own entry.
   "include": [
     "src/**/startPreviewSwAssertCallSites.test.ts",
     "src/**/windLatticeMaskCoverage.test.ts",
+    "src/**/relaxationTrade.differential.test.ts",
     "src/**/realmask.repro*.test.ts",
     "src/**/realmaskFixtures.ts",
     "src/**/gpx.parse.test.ts",
