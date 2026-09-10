@@ -9,6 +9,7 @@ import {
 } from './planExport';
 import type { SavedWaypoint } from '../services/db';
 import { defaultBoatSnapshot, PLAN_SCHEMA_VERSION, type Plan, type Settings } from '../types';
+import { TEST_MASK_META } from '../test/fixtures';
 
 const TEST_SETTINGS: Settings = {
   safetyDepthM: 3.0,
@@ -300,6 +301,83 @@ describe('parseExportFile: per-item corruption is isolated, not fatal', () => {
     expect(result.invalidPlanCount).toBe(1);
     expect(result.plans).toHaveLength(1);
     expect(result.plans[0].id).toBe('good-5');
+  });
+
+  // #1178 (PR #1182 round-2 review): the import path (SettingsPanel.tsx ->
+  // parseExportFile -> decodePlan -> migratePlan -> savePlan) never
+  // constructs a WindField, so wind.ts's own construction-time domain-
+  // coverage assertion never runs for an imported plan — a spatially
+  // narrow but dimension-consistent windGrid would reach
+  // DepthProfile.tsx/DepartureCompare.tsx/routeGeoJson.ts's "already
+  // validated" WindField constructions completely unvalidated. This test
+  // FAILS on the pre-#1178-part-2 shape of decodeWindGrid (no maskBounds
+  // parameter at all -> the narrow grid below was silently accepted, see
+  // the mutation check in this PR's report) and PASSES now that
+  // parseExportFile threads an optional maskBounds through to it.
+  // makeTestPlan's own windGrid is `lats: [54.0], lons: [9.0]` — a SINGLE
+  // point, nowhere near TEST_MASK_META's 54.3-55.3/9.4-11.0 domain — so no
+  // fixture mutation is needed to construct the narrow case.
+  it('skips a plan whose windGrid does not cover the supplied mask bounds (#1178)', () => {
+    const narrow = buildExportEnvelope([makeTestPlan('narrow-1')], null, []).plans[0];
+    const envelope = {
+      schemaVersion: EXPORT_SCHEMA_VERSION,
+      exportedAtMs: Date.now(),
+      plans: [narrow],
+      settings: null,
+      waypoints: [],
+    };
+    const result = parseExportFile(JSON.stringify(envelope), TEST_MASK_META);
+    expect(result.invalidPlanCount).toBe(1);
+    expect(result.plans).toHaveLength(0);
+  });
+
+  // Complement of the test above: the SAME narrow windGrid is still
+  // ACCEPTED when maskBounds is omitted — preserving every pre-existing
+  // caller (this whole file's other tests, none of which pass maskBounds)
+  // byte-for-byte. Proves the parameter is genuinely optional, not merely
+  // typed as such.
+  it('still accepts the narrow windGrid above when maskBounds is omitted', () => {
+    const narrow = buildExportEnvelope([makeTestPlan('narrow-2')], null, []).plans[0];
+    const envelope = {
+      schemaVersion: EXPORT_SCHEMA_VERSION,
+      exportedAtMs: Date.now(),
+      plans: [narrow],
+      settings: null,
+      waypoints: [],
+    };
+    const result = parseExportFile(JSON.stringify(envelope));
+    expect(result.invalidPlanCount).toBe(0);
+    expect(result.plans).toHaveLength(1);
+  });
+
+  // Positive control for the #1178 check: a windGrid that DOES cover the
+  // supplied mask bounds must still be accepted — proves the guard
+  // discriminates rather than rejecting every import once maskBounds is
+  // supplied. A 2x2x3 grid (lats/lons spanning TEST_MASK_META's corners,
+  // 3 times) is built with CORRECTLY sized Float32Arrays and run through
+  // the real `buildExportEnvelope` (its own `encodeWindGrid` does the
+  // base64 encoding) so this exercises the exact round-trip, not a
+  // hand-spliced partial object like the dimension-mismatch tests above —
+  // those deliberately construct a broken shape; this one must not be one.
+  it('accepts a plan whose windGrid covers the supplied mask bounds', () => {
+    const base = makeTestPlan('covers-1');
+    const covering: Plan = {
+      ...base,
+      windGrid: {
+        lats: [TEST_MASK_META.south, TEST_MASK_META.north],
+        lons: [TEST_MASK_META.west, TEST_MASK_META.east],
+        timesMs: base.windGrid.timesMs,
+        speedKn: new Float32Array(12).fill(5),
+        dirFromDeg: new Float32Array(12).fill(90),
+        gustKn: new Float32Array(12).fill(7),
+        fetchedAtMs: base.windGrid.fetchedAtMs,
+        model: base.windGrid.model,
+      },
+    };
+    const envelope = buildExportEnvelope([covering], null, []);
+    const result = parseExportFile(exportEnvelopeToJson(envelope), TEST_MASK_META);
+    expect(result.invalidPlanCount).toBe(0);
+    expect(result.plans).toHaveLength(1);
   });
 
   it('skips a waypoint missing a required field and counts it, keeping the others', () => {

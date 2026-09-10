@@ -413,6 +413,34 @@ describe('RouteSummary', () => {
     expect(screen.queryByText(/Faster:/)).not.toBeInTheDocument();
   });
 
+  // #1166: the shape the issue actually reproduced — two requested sails,
+  // exactly ONE of them found no route. Before this fix that shape rendered
+  // the SAME generic sentence as #553's row above (which has both sails
+  // solved), giving the user no signal that one rig silently failed to
+  // solve at all. Distinct message required — the two rows must never
+  // render the same text.
+  it('#1166: a not-compared verdict caused by one sail failing to solve names the failed sail, not the generic sentence', () => {
+    const plan = makePlan({ rigRecommendation: { kind: 'not-compared' }, recommended: 'fock' });
+    setSail(plan, 'genoa', { result: null, reason: 'unreachable' });
+    renderSummary({ plan, rig: 'fock' });
+    const tablist = screen.getByRole('tablist', { name: 'Rig comparison' });
+    expect(within(tablist).queryAllByLabelText('Recommended')).toHaveLength(0);
+    expect(
+      screen.getByText('Genoa found no route for this passage, so no faster rig is claimed'),
+    ).toBeInTheDocument();
+    // The generic sentence (#553's row) must NOT also render — the two are
+    // mutually exclusive presentations of 'not-compared'.
+    expect(
+      screen.queryByText(
+        'The sails were not compared for this passage, so no faster rig is claimed',
+      ),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/Faster:/)).not.toBeInTheDocument();
+    // The surviving rig's own route is still shown — only the comparison
+    // wording changes, the usable route never disappears.
+    expect(screen.getByText('22.0 nm')).toBeInTheDocument();
+  });
+
   // #540 spec §E.3: same 'not-compared' verdict as the row above, but the
   // DISCRIMINATING control (comparisonComplete: false) — the budget-specific
   // sentence must render INSTEAD of the generic rigNotCompared one, never

@@ -4,7 +4,14 @@
 // two never drift. Pure: reads the in-memory plan + the active rig's result
 // only (no re-fetch, no wind-grid sampling, offline-safe).
 import type { MsgKey } from '../i18n/dict.de';
-import type { Plan, PlanResultOk, RigResult, RigRecommendation, SailId } from '../types';
+import type {
+  Plan,
+  PlanResultOk,
+  RigResult,
+  RigRecommendation,
+  SailId,
+  SailResult,
+} from '../types';
 import { formatDateTime, formatDuration, formatKn, formatNm, type Lang } from './format';
 
 // SailId -> its display label key. Shared so RouteSummary and the planner
@@ -136,6 +143,39 @@ export function rigVerdictKey(kind: Exclude<RigRecommendation['kind'], 'decided'
 }
 
 /**
+ * #1166: within the 'not-compared' bucket (#553 spec §N.4), detects the one
+ * cause that used to collapse onto the generic `route.rigNotCompared`
+ * sentence with no signal distinguishing it from the other three: exactly
+ * two sails were REQUESTED and exactly ONE of them found no route, while the
+ * other solved. Measured reproduction (issue #1166): Flensburg -> Bagenkop,
+ * `motorEnabled: false`, uniform TWS 3 — `status: 'ok'`,
+ * `sails = [null, <RigResult>]`, and the plan silently withholds the
+ * two-rig comparison with no user-visible signal that one rig never solved.
+ *
+ * Presentation-only, exactly like `resultVerdictKey`'s `comparisonComplete`
+ * branch below: reads a shape `PlanResultOk.sails` already carries, adds no
+ * field, so `PlanResult`/`RigRecommendation` stay byte-identical and no
+ * `app/sweep/` acceptance sweep is owed.
+ *
+ * The `sails.length === 2` gate is what keeps this from firing on the other
+ * three not-compared causes: N=1 (one requested sail) and N>=3 both fail it
+ * outright (`assemble()`'s own guard only ever calls `compareRigs` — and so
+ * only ever reaches the 'not-compared' fallback at all with two-vs-not-two
+ * sails, per `tiedSailIds`'s own doc comment above), and a tier-C
+ * suppression (#553 spec §N.4) withholds the comparison while BOTH sails
+ * still solved, so it has zero null results and also fails the
+ * `filter(... === null).length === 1` check. Budget exhaustion is handled
+ * upstream of this helper — `resultVerdictKey` checks `comparisonComplete`
+ * FIRST, so a budget-truncated sail (whose own `result` is also null) never
+ * reaches this branch at all.
+ */
+function partiallyFailedSail(sails: readonly SailResult[]): SailResult | null {
+  if (sails.length !== 2) return null;
+  const failed = sails.filter((s) => s.result === null);
+  return failed.length === 1 ? (failed[0] ?? null) : null;
+}
+
+/**
  * #540 spec §E.3: the MsgKey a display surface should render for a
  * non-'decided' verdict, given ALSO whether the plan's comparison finished.
  *
@@ -161,13 +201,24 @@ export function rigVerdictKey(kind: Exclude<RigRecommendation['kind'], 'decided'
  * budget-truncated attempt can still report `true` for the tier that
  * produced the result. This only claims the REPORTED comparison did not
  * finish.
+ *
+ * #1166: `sails` is optional so every pre-existing call site (and the
+ * `resultVerdictKey`-only unit tests below) keeps typechecking unchanged —
+ * omitting it simply never reaches the new `route.rigOneFailed` branch.
+ * Checked AFTER `comparisonComplete`: a budget-exhausted sail's own `result`
+ * is also null, and `route.comparisonIncomplete` is the more specific
+ * sentence for THAT cause, so it must win first.
  */
 export function resultVerdictKey(
   kind: Exclude<RigRecommendation['kind'], 'decided'>,
   comparisonComplete: boolean,
+  sails?: readonly SailResult[],
 ): MsgKey {
   if (kind === 'not-compared' && !comparisonComplete) {
     return 'route.comparisonIncomplete';
+  }
+  if (kind === 'not-compared' && sails && partiallyFailedSail(sails)) {
+    return 'route.rigOneFailed';
   }
   return rigVerdictKey(kind);
 }
@@ -223,17 +274,38 @@ function tiedSailIds(sailIds: readonly SailId[]): [string, string] {
  * Ergebnis-strip chip) call this instead of `t(resultVerdictKey(...))`
  * directly, so the two can never drift on how a tie is worded — same reason
  * `resultVerdictKey` itself is shared rather than duplicated per surface.
+ *
+ * #1166: takes the plan's full `sails` array (not just the ids) so
+ * `resultVerdictKey` can detect the one-sail-failed case and, when it does,
+ * so this function can name WHICH sail failed in `route.rigOneFailed`'s
+ * `{rig}` slot. `sailIds` for the tie case is derived from it below rather
+ * than taken as a separate parameter — one input, one source of truth.
  */
 export function renderRigVerdict(
   kind: Exclude<RigRecommendation['kind'], 'decided'>,
   comparisonComplete: boolean,
-  sailIds: readonly SailId[],
+  sails: readonly SailResult[],
   t: (key: MsgKey, vars?: Record<string, string | number>) => string,
 ): string {
-  const key = resultVerdictKey(kind, comparisonComplete);
+  const key = resultVerdictKey(kind, comparisonComplete, sails);
   if (key === 'route.rigTie') {
-    const [a, b] = tiedSailIds(sailIds);
+    const [a, b] = tiedSailIds(sails.map((s) => s.sailId));
     return t(key, { sailA: t(sailLabelKey(a)), sailB: t(sailLabelKey(b)) });
+  }
+  if (key === 'route.rigOneFailed') {
+    // resultVerdictKey only returns this key when partiallyFailedSail(sails)
+    // is non-null (same predicate, same `sails`) — the `?? null` fallback
+    // keeps this typesafe without a non-null assertion rather than asserting
+    // the invariant holds; per this repo's guard-asymmetry rule an
+    // unresolved `{rig}` must never render literally (see rigVerdictKey's
+    // own comment on why 'decided' is excluded from ITS parameter for the
+    // same reason), so an unreachable mismatch falls back to the generic
+    // sentence instead of a broken interpolation.
+    const failed = partiallyFailedSail(sails);
+    if (failed) {
+      return t(key, { rig: t(sailLabelKey(failed.sailId)) });
+    }
+    return t('route.rigNotCompared');
   }
   return t(key);
 }

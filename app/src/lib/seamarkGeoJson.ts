@@ -593,6 +593,67 @@ export function seamarkPopupAnchor<T extends { properties?: unknown; geometry?: 
  * PRESENT and `svendborg/places_subplace` alone stays absent, so that spec
  * now pins each pair in its measured direction. Narrowed, not closed; what
  * still blocks the remaining pair was not investigated.
+ *
+ * #1154 (2026-09-10): a SEPARATE, deliberately UNFIXED residual of the
+ * `icon-ignore-placement` fix above — PAINT order, not placement. #1126
+ * makes all 6 `VISIBLE_AT_HEAD` labels RENDER at z>=12; it says nothing
+ * about which of the two overlapping features paints on TOP, because
+ * `DataLayers.tsx`'s `setupLayers()` still adds `HARBOR_LABEL_LAYER` BEFORE
+ * both seamark layers (unchanged since before #1126), so wherever a
+ * label's text box and a seamark's icon box genuinely intersect — which the
+ * #1126 comment above already calls "expected... not hypothetical" for
+ * these 6 harbors by construction — the seamark icon paints OVER the label
+ * text, not the reverse. MEASURED with a real dev-server browser pass (not
+ * jsdom — a MapLibre-rendered feature has no DOM node) at z12.5, seamarks
+ * ON: `gelting-mole`'s label ("Gelting Mole") has its middle three letters
+ * ("elti") fully occluded by an opaque green/red `buoy_lateral` pair —
+ * ROUTINE marks, not hazard — a real legibility cost, not a cosmetic
+ * corner-clip. `troense`, checked as a comparison, shows its OWN label
+ * clean at the same zoom (the nearby seamark icons sit below/right of the
+ * text box, not over it) — the other basemap labels visible in that same
+ * crop (`BLÅBY`) ARE occluded, which is the pre-existing #981 basemap
+ * victim class above, not this one. So the defect is REAL but NARROW: it
+ * depends on where a given harbor's actual seamark geometry falls relative
+ * to its label's fixed anchor, and (#7) seamarks are OFF by default, so
+ * this reaches only users who opt into the specialist layer.
+ *
+ * THE LEVER SHIPPED, in this same PR (commit `93a36a7`, on top of this
+ * evidence commit `9d60bea`): mirrors the #682 split — a second
+ * `sc-harbor-labels`-content layer reading the same `HARBOR_SOURCE`, split
+ * by `minzoom`/`maxzoom` at 12 instead of by filter — with the z>=12 copy
+ * (kept on the id `sc-harbor-labels`; the z<12 copy moved to
+ * `HARBOR_LABEL_LAYER_BELOW_12` / `sc-harbor-labels-below-12`) inserted
+ * BETWEEN `SEAMARKS_LAYER` and `SEAMARKS_HAZARD_LAYER` in
+ * `DataLayers.tsx`'s `setupLayers()`. Labels now paint over ROUTINE marks
+ * while HAZARD marks stay topmost, preserving the "a hazard icon staying on
+ * top is the conservative direction" ruling this issue itself cites.
+ * Placement-neutrality at z>=12 follows from the SAME mechanism #1126 used:
+ * seamarks already carry `icon-ignore-placement: true` there (see
+ * `seamarksLayout()` above), so they are not in the collision grid for
+ * ANYONE to out-rank regardless of stack position — only the z<12 band
+ * needed the existing stack order left alone, which this split does not
+ * touch. `maxzoom` is exclusive and `minzoom` inclusive, so the 12/12 split
+ * has no double-render gap.
+ *
+ * VERIFIED before shipping, not by a static read: the three regression
+ * guards that would catch a silent stacking/collision regression here —
+ * `app/e2e/seamarks.spec.ts`'s `#353`/`#232 item 2`,
+ * `seamark-collision-icon-size-981.spec.ts`'s z12.5 presence pin, and
+ * `saved-waypoints.spec.ts`'s stack-order pin — were each run in the
+ * FOREGROUND, one at a time, at both the merge-base (`831db11`) and this
+ * fix's own head. All three passed at BOTH: 2/2, 7/7 and 4/4 respectively,
+ * 13/13 total at BASE and 13/13 at HEAD. `#232 item 2`'s own measurement
+ * was byte-identical across the two runs (99 culled, 3 cross-tile, 0
+ * leaks — the same figure this file's own `#232 item 2` citation above
+ * records as the established baseline). No `app/e2e/**` edit was needed:
+ * keeping the id `sc-harbor-labels` on the z>=12 copy satisfies every
+ * consumer found by `grep -rn "sc-harbor-labels" app/e2e app/src docs`.
+ * Considered-and-rejected: reordering `HARBOR_LABEL_LAYER` wholesale (the
+ * SAME move #1126's own header measured and rejected, for the SAME
+ * placement-below-z12 reason — that finding is about PLACEMENT and
+ * transfers unchanged to this PAINT-only question, since a wholesale
+ * reorder is not zoom-scoped and would reopen the z8/z9 hazard-mark
+ * culling #1126's header measured).
  */
 const BASE_ICON_SIZE_STOPS = [
   [8, 0.55],

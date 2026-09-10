@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
-import type { Harbor, LatLon, PickedPoint, Plan, SailId, Settings, ViaPoint } from '../types';
+import type {
+  Harbor,
+  LatLon,
+  PickedPoint,
+  Plan,
+  SailId,
+  SailResult,
+  Settings,
+  ViaPoint,
+} from '../types';
 import { useLang, useT } from '../i18n';
 // #834: the `harbors` prop is widened from `Harbor[]` to
 // `HarborWithReachability[]` below — the selected-endpoint row must see the
@@ -95,6 +104,11 @@ export interface PlannerPanelProps {
   viaPoints: ViaPoint[];
   onRemoveVia: (index: number) => void;
   onReorderVia: (index: number, direction: 'up' | 'down') => void;
+  // #1171: keyboard equivalent of #850's drag-to-insert-a-waypoint gesture —
+  // inserts a new waypoint immediately after via row `index`, at the
+  // midpoint of that row and whichever waypoint comes next in the chain
+  // (App.tsx owns that computation and the destination it may need).
+  onInsertViaAfter: (index: number) => void;
   // #829: keyboard-reachable equivalents of the map-tap 'via' path — same
   // producer shape as App.tsx's handleMapTap 'via' branch
   // (handleViaPointsChange([...viaPoints, p])), just fed a typed LatLon
@@ -222,6 +236,7 @@ export default function PlannerPanel({
   viaPoints,
   onRemoveVia,
   onReorderVia,
+  onInsertViaAfter,
   onAddVia,
   onUpdateVia,
   onSelectSavedWaypoint,
@@ -664,12 +679,14 @@ export default function PlannerPanel({
   // that reads it is gated on `summary`, which is itself null whenever
   // `plan` is, so the default is never actually rendered.
   const comparisonComplete = plan?.result.comparisonComplete ?? true;
-  // #578: `route.rigTie`'s two sail ids, in solve order — computed here,
-  // where `plan` is still a bare `Plan | null` prop, so the chip render site
-  // below never needs its own `plan` null-narrowing (mirrors the
+  // #578: the plan's compared sails, in solve order — computed here, where
+  // `plan` is still a bare `Plan | null` prop, so the chip render site below
+  // never needs its own `plan` null-narrowing (mirrors the
   // `comparisonComplete` default immediately above: unused whenever `plan`
-  // is absent, since the chip is gated on `summary`).
-  const comparedSailIds: readonly SailId[] = plan ? plan.result.sails.map((s) => s.sailId) : [];
+  // is absent, since the chip is gated on `summary`). #1166: the full
+  // `SailResult[]`, not just the ids — `renderRigVerdict` needs each sail's
+  // `result`/`reason` to detect and name a one-sail-failed comparison.
+  const comparedSails: readonly SailResult[] = plan ? plan.result.sails : [];
 
   // Cross-PR composition fix (Refs #299, found by an adversarial cumulative-
   // diff sweep over PR #486): computed independently of App.tsx's own
@@ -1017,6 +1034,20 @@ export default function PlannerPanel({
                     aria-label={t('planner.via.remove', { index: i + 1 })}
                   >
                     ×
+                  </Button>
+                  {/* #1171: keyboard equivalent of #850's drag-to-insert
+                      gesture — "insert between waypoint N and N+1", N =
+                      i + 1. Disabled whenever there is no NEXT waypoint to
+                      take a midpoint against: the last row with no
+                      destination chosen yet. A middle row always has a next
+                      via point, so it is never disabled for that reason. */}
+                  <Button
+                    variant="ghost"
+                    disabled={clearingVia || (i === viaPoints.length - 1 && !destination)}
+                    onClick={() => onInsertViaAfter(i)}
+                    aria-label={t('planner.via.insertAfter', { index: i + 1 })}
+                  >
+                    +
                   </Button>
                 </li>
               ))}
@@ -1394,7 +1425,7 @@ export default function PlannerPanel({
                   : renderRigVerdict(
                       summary.rigRecommendation.kind,
                       comparisonComplete,
-                      comparedSailIds,
+                      comparedSails,
                       t,
                     )}
               </Chip>

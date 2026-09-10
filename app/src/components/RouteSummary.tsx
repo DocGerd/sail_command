@@ -553,7 +553,12 @@ export default function RouteSummary({
       <Chip className="chip-faster-rig">
         {rigRecommendation.kind === 'decided'
           ? t('route.fasterRig', { rig: t(sailLabelKey(rigRecommendation.rig)) })
-          : renderRigVerdict(rigRecommendation.kind, plan.result.comparisonComplete, sailTabs, t)}
+          : renderRigVerdict(
+              rigRecommendation.kind,
+              plan.result.comparisonComplete,
+              plan.result.sails,
+              t,
+            )}
       </Chip>
 
       {/* #703: bare `<p role="alert">` carried no visual treatment at all —
