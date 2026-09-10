@@ -81,31 +81,38 @@ export class RoutingError extends Error {
 // exactly one definition and no drift-guard test is needed to keep two in
 // step.
 //
-// The VALUE is deliberately unchanged from the pre-#432 client deadline
-// (120 s): #432 does not argue that number is wrong, only that exceeding it
-// was misreported and unbudgeted. Keeping it is what makes "no
-// currently-succeeding plan starts failing" true by construction rather than
-// by measurement — the wall a slow solve hits is the same wall, moved from
-// the client to the solver, which is the only side that can say where it got
-// to.
+// The VALUE was originally the pre-#432 client deadline (120 s): #432 did
+// not argue that number was wrong, only that exceeding it was misreported
+// and unbudgeted. #1147 (2026-09-10 maintainer ruling) raised it to 240 s —
+// see below for why.
 //
 // For scale, with the machine named next to every figure — the headroom is a
 // property of the DEVICE, not of the route, and PR #453 review caught the
 // first draft stating a one-machine ratio as a general property. This app's
 // most expensive real input is Flensburg -> Marstal at DEFAULT_SETTINGS
-// against the real committed mask and polars, 2026-08-07:
+// against the real committed mask and polars.
 //
-//   author's dev machine, uniformWindGrid(12, 225):  41-43 s  -> ~2.8x headroom there
-//   reviewer's machine,   uniformWindGrid(12, 270):  50.5 s   -> ~2.4x headroom there
+// #432-era measurement, 2026-08-07, SYNTHETIC uniformWindGrid wind:
+//   author's dev machine, uniformWindGrid(12, 225):  41-43 s
+//   reviewer's machine,   uniformWindGrid(12, 270):  50.5 s
+// (Different wind directions, sibling inputs, not a strict replication.)
+// That read as "~2.4-2.9x slower device reaches the budget" against the then
+// 120 s value — UNDERSTATED, per the #1147 re-measurement below.
 //
-// (Different wind directions, so these are SIBLING inputs rather than a
-// strict replication; the ~1.2x delta is consistent across total time, ring
-// count and worst ring, which is what a slower machine looks like.) So a
-// device roughly 2.4-2.9x slower than one of these reaches the budget at all
-// — and a phone, the case #432's report is about, is exactly the device for
-// which that multiplier is plausible. Do not restate this as an absolute
-// "~3x slower" without naming a machine.
-export const PLAN_BUDGET_MS = 120_000;
+// #1147 measurement, 2026-09-10, LIVE Open-Meteo wind (not synthetic), real
+// committed mask, idle 2023 desktop i9-13900F: 91.9 s against the then-120 s
+// budget — 23.4% headroom, i.e. any device >=1.31x slower on this workload
+// blows the old budget outright. No benchmark found puts a Galaxy Tab S7
+// (this repo's 2026-09-07 tablet-is-the-design-floor reference device)
+// within that margin of an i9-13900F. Full record:
+// docs/spikes/1147-budget-headroom-reference-device.md.
+//
+// 240 s was sized between that spike's two unverified throttle brackets —
+// ~184 s at a 2x slowdown, ~368 s at 4x — clearing the reference device at
+// the verified-directional (>=1.31x) end without committing to the
+// unverified 4x figure. Do not restate any of this as a bare multiplier
+// without naming a machine and whether the wind was live or synthetic.
+export const PLAN_BUDGET_MS = 240_000;
 
 // How much longer the CLIENT waits than the budget it handed the worker. The
 // solver must always win this race: it is the side that produces the honest,
