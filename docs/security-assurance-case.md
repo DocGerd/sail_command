@@ -1,6 +1,6 @@
 # SailCommand security assurance case
 
-**Status:** current as of 2026-09-09, describing `develop` at the time of
+**Status:** current as of 2026-09-10, describing `develop` at the time of
 writing (`v0.31.0` cut). Reviewed at each release cut.
 **Audience:** users deciding whether to trust the app, and reviewers assessing
 the project (this document is the artifact for the OpenSSF Best Practices

@@ -18,7 +18,7 @@ shipped.
 
 ## Now — v0.31.0
 
-The `v0.31.0` cut (2026-09-09) worked the
+The `v0.31.0` cut (2026-09-10) worked the
 [`v0.31.0` milestone](https://github.com/DocGerd/sail_command/milestones),
 which held three issues and one pull request. All three issues closed; the
 pull request ([#1146](https://github.com/DocGerd/sail_command/pull/1146),
