@@ -320,6 +320,7 @@ function baseProps(overrides: Overrides = {}) {
     viaPoints: [],
     onRemoveVia: vi.fn(),
     onReorderVia: vi.fn(),
+    onInsertViaAfter: vi.fn(),
     onAddVia: vi.fn(),
     onUpdateVia: vi.fn(),
     // #848: this file doesn't exercise the saved-waypoint picker directly —

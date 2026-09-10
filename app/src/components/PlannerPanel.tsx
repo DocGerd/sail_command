@@ -104,6 +104,11 @@ export interface PlannerPanelProps {
   viaPoints: ViaPoint[];
   onRemoveVia: (index: number) => void;
   onReorderVia: (index: number, direction: 'up' | 'down') => void;
+  // #1171: keyboard equivalent of #850's drag-to-insert-a-waypoint gesture —
+  // inserts a new waypoint immediately after via row `index`, at the
+  // midpoint of that row and whichever waypoint comes next in the chain
+  // (App.tsx owns that computation and the destination it may need).
+  onInsertViaAfter: (index: number) => void;
   // #829: keyboard-reachable equivalents of the map-tap 'via' path — same
   // producer shape as App.tsx's handleMapTap 'via' branch
   // (handleViaPointsChange([...viaPoints, p])), just fed a typed LatLon
@@ -231,6 +236,7 @@ export default function PlannerPanel({
   viaPoints,
   onRemoveVia,
   onReorderVia,
+  onInsertViaAfter,
   onAddVia,
   onUpdateVia,
   onSelectSavedWaypoint,
@@ -1028,6 +1034,20 @@ export default function PlannerPanel({
                     aria-label={t('planner.via.remove', { index: i + 1 })}
                   >
                     ×
+                  </Button>
+                  {/* #1171: keyboard equivalent of #850's drag-to-insert
+                      gesture — "insert between waypoint N and N+1", N =
+                      i + 1. Disabled whenever there is no NEXT waypoint to
+                      take a midpoint against: the last row with no
+                      destination chosen yet. A middle row always has a next
+                      via point, so it is never disabled for that reason. */}
+                  <Button
+                    variant="ghost"
+                    disabled={clearingVia || (i === viaPoints.length - 1 && !destination)}
+                    onClick={() => onInsertViaAfter(i)}
+                    aria-label={t('planner.via.insertAfter', { index: i + 1 })}
+                  >
+                    +
                   </Button>
                 </li>
               ))}
