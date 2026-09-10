@@ -2184,7 +2184,13 @@ making design-level decisions; do not silently deviate.
   body", so a false self-verification shipped alongside the keyword and would
   have told the next reader the check was already done. Write "two under Fixed,
   namely #N", and re-run the grep against the LIVE body after any edit — a
-  local copy proves nothing about what was posted.
+  local copy proves nothing about what was posted. **The worked example is
+  safe in THIS file and unsafe the moment it is quoted into a commit message
+  or a PR body** — auto-close scans those two, never file content — and
+  backticks do NOT protect, since the scan does not respect code spans.
+  Measured 2026-09-10: the PR body explaining this very bullet tripped the
+  hook on its own example. Cite it with a placeholder number when writing
+  either.
 - **Cross-PR file collisions are invisible to per-PR review — only the
   orchestrator holds that view, and it is represented in no artifact.** Measured
   2026-08-31: two implementers were sent to append a new guard to
