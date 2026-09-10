@@ -34,4 +34,13 @@ describe('isBasemapArchivePath (sw.ts Range→206 route scoping)', () => {
   it('matches under the UAT sub-path deployment too', () => {
     expect(isBasemapArchivePath('/sail_command/uat/data/basemap.pmtiles.png')).toBe(true);
   });
+
+  // #1164: matched by suffix, not the "basemap" basename — a future
+  // per-region archive under a different basename must route identically,
+  // with no change to this predicate. deploy.yml's `data/*.pmtiles*`
+  // discovery glob relies on the same suffix-only rule.
+  it('matches a differently-named (future per-region) archive by suffix alone', () => {
+    expect(isBasemapArchivePath('/sail_command/data/basemap-baltic.pmtiles.png')).toBe(true);
+    expect(isBasemapArchivePath('/sail_command/data/basemap-baltic.pmtiles')).toBe(true);
+  });
 });

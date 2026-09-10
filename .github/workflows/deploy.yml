@@ -304,8 +304,13 @@ jobs:
               [ -d "$d/$entry" ] || { echo "expected top-level dir $entry missing"; return 1; }
             done
             shopt -s nullglob
-            archives=("$d"/data/basemap.pmtiles*)
-            [ "${#archives[@]}" -ge 1 ] || { echo "no data/basemap.pmtiles* archive"; return 1; }
+            # #1164: matched by SUFFIX, not the "basemap" basename — any
+            # current or future archive (core or per-region) ends in
+            # .pmtiles/.pmtiles.png, same rule as src/lib/basemap.ts's
+            # isBasemapArchivePath. A basename-anchored glob would silently
+            # skip a differently-named regional archive.
+            archives=("$d"/data/*.pmtiles*)
+            [ "${#archives[@]}" -ge 1 ] || { echo "no data/*.pmtiles* archive"; return 1; }
             for a in "${archives[@]}"; do
               [ "$(head -c 7 "$a")" = "PMTiles" ] || { echo "$a lacks the PMTiles magic"; return 1; }
             done
@@ -490,7 +495,10 @@ jobs:
           shopt -s nullglob
           locate() {
             files=""
-            for m in "$1"/data/basemap.pmtiles*; do
+            # #1164: SUFFIX match (see the validate-cache step's identical
+            # comment) — covers any number of archives under one basename
+            # convention, not just today's single "basemap.pmtiles.png".
+            for m in "$1"/data/*.pmtiles*; do
               files="$files${files:+ }$(basename "$m")"
             done
             printf '%s' "$files"
@@ -849,7 +857,7 @@ jobs:
             files="$2"
             label="$3"
             if [ -z "${files// /}" ]; then
-              echo "::error::#117/#118 smoke probe: no data/basemap.pmtiles* file found in the $label build output — a missing basemap archive is itself a regression."
+              echo "::error::#117/#118 smoke probe: no data/*.pmtiles* file found in the $label build output — a missing basemap archive is itself a regression."
               exit 1
             fi
             for f in $files; do
