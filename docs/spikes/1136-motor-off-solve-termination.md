@@ -1474,10 +1474,13 @@ commits confirms no routing source is in them. Each run's FIRST death ring
 (`nodes=5/3/4` at TWS 2.8/3/8) matches §1.1's table exactly, tying this run
 to the same mechanism that table measures.
 
-**Positive control.** A motor-on run (known to keep expanding) records
-non-zero `RING_STATS` with `salvaged: false` throughout — the instrument
-fires and the salvage path stays dormant when it should. Confirms the
-zero-rows below are a genuine finding, not a silent instrument.
+**Non-vacuity control.** A motor-on run (known to keep expanding) records
+non-zero `RING_STATS` with `salvaged: false` throughout — confirms the
+instrument isn't vacuous and doesn't false-positive; it does not by itself
+show the salvage path fires correctly when it should. That evidence is the
+TWS 2.8/3 recovery pattern below (§10.1): permanent resumption of ordinary
+growth after a bounded number of salvage rounds. Confirms the zero-rows
+below are a genuine finding, not a silent instrument.
 
 **Ring-by-ring result, salvage cap 30** (full per-ring dump kept only in this
 session's transcript, not reproduced here — the table below is every ring
@@ -1514,6 +1517,7 @@ Re-run at salvage cap 120, probe cap 200: 118 consecutive salvage rounds
 (rings 7–124), rescued counts still single-digit (1–4, matching the cap-30
 run's identical rings 7–34 exactly, since only `MAX_SALVAGES_PROBE` differs
 between the two runs) with no growth trend, dies for good at ring 125 once
-the enlarged budget is exhausted. Rules out
-"budget 30 was merely too small" for this TWS specifically — this input is
-trapped, not slow.
+the enlarged budget is exhausted — rules out the 30-cap being merely too
+small; the flat, non-growing rescue counts across both budgets are
+consistent with this input being structurally trapped rather than slow,
+though a substantially larger budget was not tried.
