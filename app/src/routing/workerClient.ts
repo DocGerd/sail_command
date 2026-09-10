@@ -319,7 +319,7 @@ export class RoutingClient {
   }
 
   // `timeoutMs` defaults to DEFAULT_PLAN_TIMEOUT_MS; overridable so tests
-  // don't need to wait out (or fake-timer-advance) two real minutes.
+  // don't need to wait out (or fake-timer-advance) four real minutes.
   async plan(
     request: PlanRequest,
     windGrid: WindGrid,
