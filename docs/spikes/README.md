@@ -85,6 +85,11 @@ instead of here.
 - [1163-295-coverage-scoping.md](1163-295-coverage-scoping.md) — #1163:
   scoping the #295 coverage extension (Kolding/Middelfart/Fehmarn) — coupled
   sites, payload, wind-lattice safety, Great Belt, #1164 dependency
+- [1147-budget-headroom-reference-device.md](1147-budget-headroom-reference-device.md)
+  — #1147: sizing `PLAN_BUDGET_MS` against a Galaxy Tab S7 reference device —
+  CDP CPU throttling measured inert on the routing Worker; the current
+  120 s budget does not clear the reference device on the idle-machine BASE
+  measurement alone; sizing the replacement left to a maintainer call
 
 Two entries carry a same-named subdirectory of supporting artifacts rather
 than being self-contained: `1022-whole-journey-ux/` (reference screenshots)
