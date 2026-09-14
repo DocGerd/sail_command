@@ -165,6 +165,7 @@
     "src/**/shallowWarningExtraction.test.ts",
     "src/**/harborKnownDisconnected.test.ts",
     "src/**/harborPickerKnownDisconnectedCoupling.test.tsx",
-    "src/**/timeoutBudgetVsJobCap.test.ts"
+    "src/**/timeoutBudgetVsJobCap.test.ts",
+    "src/**/regionManifest.test.ts"
   ]
 }
