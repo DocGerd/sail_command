@@ -3,11 +3,15 @@ declare const self: ServiceWorkerGlobalScope;
 
 import { clientsClaim } from 'workbox-core';
 import { matchPrecache, precacheAndRoute, cleanupOutdatedCaches } from 'workbox-precaching';
-import { createPartialResponse } from 'workbox-range-requests';
 import { registerRoute } from 'workbox-routing';
 import { CacheFirst } from 'workbox-strategies';
+import {
+  respondToBasemapArchiveRequest,
+  isRetiredBasemapRuntimeCache,
+} from './lib/basemapArchiveRoute';
 import { isBasemapArchivePath } from './lib/basemap';
-import { GLYPH_CACHE_NAME, isGlyphPath, isRetiredGlyphCache } from './lib/glyphs';
+import { regionCacheName } from './lib/basemapRegions';
+import { GLYPH_CACHE_NAME, isGlyphPath } from './lib/glyphs';
 
 // MUST be registered before precacheAndRoute: first-registered route wins, and the
 // default precache route replays a full 200 to Range requests, which makes
@@ -18,19 +22,18 @@ import { GLYPH_CACHE_NAME, isGlyphPath, isRetiredGlyphCache } from './lib/glyphs
 // ROUTE for the update transition — but the new precache holds only the
 // renamed file, so a legacy request matchPrecache-MISSES and degrades to a
 // network fetch (404 post-rename), self-healing on the update reload.
+// #1164 T3: also serves a PINNED per-region archive from its runtime cache —
+// see lib/basemapArchiveRoute.ts's own header for the full precache -> region
+// cache -> network order and why a miss never writes to any cache here.
 registerRoute(
   ({ url }) => isBasemapArchivePath(url.pathname),
-  async ({ request }) => {
-    const full = await matchPrecache(request.url);
-    if (full) {
-      return request.headers.has('range') ? createPartialResponse(request, full) : full;
-    }
-    // Cache miss, e.g. a file exceeding maximumFileSizeToCacheInBytes was
-    // dropped from the manifest at build time (the SW never runs in dev —
-    // devOptions is disabled).
-    console.warn('[sw] pmtiles precache miss, falling through to network:', request.url);
-    return fetch(request);
-  },
+  ({ request }) =>
+    respondToBasemapArchiveRequest(request, {
+      matchPrecache: (url) => matchPrecache(url),
+      openRegionCache: () => caches.open(regionCacheName(import.meta.env.BASE_URL)),
+      fetch: (req) => fetch(req),
+      warn: (...args) => console.warn(...args),
+    }),
 );
 
 // #28: font glyph ranges are runtime-cached, not precached — see
@@ -63,6 +66,11 @@ clientsClaim();
 // #96: isRetiredGlyphCache is scoped to this deployment's BASE_URL (statically
 // replaced in this injectManifest bundle) so a UAT deploy never evicts
 // production's live glyph cache (or vice versa) on the shared Pages origin.
+// #1164 T3: isRetiredBasemapRuntimeCache (lib/basemapArchiveRoute.ts) ALSO
+// deletes this deployment's retired region caches on a REGION_CACHE_VERSION
+// bump — same deployment-scoping guarantee, composed there so it stays
+// unit-testable (this handler itself is not: jsdom has no real
+// ServiceWorker/activate event).
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches
@@ -70,7 +78,7 @@ self.addEventListener('activate', (event) => {
       .then((names) =>
         Promise.all(
           names
-            .filter((name) => isRetiredGlyphCache(name, import.meta.env.BASE_URL))
+            .filter(isRetiredBasemapRuntimeCache(import.meta.env.BASE_URL))
             .map((name) => caches.delete(name)),
         ),
       ),
