@@ -12,7 +12,6 @@ const hoisted = vi.hoisted(() => ({
   mapCtorCalls: [] as unknown[],
   // Set per-test to make the FakeMap constructor throw (WebGL init failure).
   mapCtorError: { current: null as Error | null },
-  protocolAddCalls: [] as unknown[],
   removeCalls: { count: 0 },
 }));
 
@@ -43,22 +42,22 @@ vi.mock('maplibre-gl', () => {
 });
 
 vi.mock('pmtiles', () => {
-  class FakeProtocol {
-    tile = () => {};
-    add(p: unknown) {
-      hoisted.protocolAddCalls.push(p);
-    }
-  }
   class FakePMTiles {
     source: unknown;
     constructor(source: unknown) {
       this.source = source;
     }
   }
-  return { Protocol: FakeProtocol, PMTiles: FakePMTiles };
+  return { PMTiles: FakePMTiles };
 });
 
 import MapView from './MapView';
+import { BASEMAP_SOURCE_URL, basemapProtocol } from '../services/compositeBasemapProtocol';
+
+// #1164: MapView registers the composite protocol singleton; spy on it
+// directly (the pmtiles Protocol is no longer used).
+let protocolAdd: ReturnType<typeof vi.spyOn>;
+let protocolConfigure: ReturnType<typeof vi.spyOn>;
 
 /** First 7 bytes of a real PMTiles archive — makes the preflight pass. */
 const PM_MAGIC = Uint8Array.from([0x50, 0x4d, 0x54, 0x69, 0x6c, 0x65, 0x73]);
@@ -83,8 +82,9 @@ async function flushAsyncMount() {
 beforeEach(() => {
   hoisted.mapCtorCalls.length = 0;
   hoisted.mapCtorError.current = null;
-  hoisted.protocolAddCalls.length = 0;
   hoisted.removeCalls.count = 0;
+  protocolAdd = vi.spyOn(basemapProtocol, 'add');
+  protocolConfigure = vi.spyOn(basemapProtocol, 'configure');
 });
 
 afterEach(() => {
@@ -104,7 +104,7 @@ describe('MapView async mount (#118 cancelled-flag window)', () => {
     unmount();
     await flushAsyncMount();
     expect(hoisted.mapCtorCalls.length).toBe(0);
-    expect(hoisted.protocolAddCalls.length).toBe(0);
+    expect(protocolAdd).not.toHaveBeenCalled();
   });
 
   it('preflight resolving AFTER unmount: continuation is skipped, nothing constructed', async () => {
@@ -125,7 +125,30 @@ describe('MapView async mount (#118 cancelled-flag window)', () => {
     resolveFetch?.(ok206());
     await flushAsyncMount();
     expect(hoisted.mapCtorCalls.length).toBe(0);
-    expect(hoisted.protocolAddCalls.length).toBe(0);
+    expect(protocolAdd).not.toHaveBeenCalled();
+    expect(protocolConfigure).not.toHaveBeenCalled();
+  });
+
+  it('#1164: configures the composite protocol before constructing a one-source style', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(ok206()));
+    let configuredBeforeCtor = false;
+    protocolConfigure.mockImplementation(() => {
+      configuredBeforeCtor = hoisted.mapCtorCalls.length === 0;
+    });
+    render(<MapView tapActive={false} onTap={() => {}} />);
+    await flushAsyncMount();
+    expect(protocolConfigure).toHaveBeenCalledTimes(1);
+    expect(configuredBeforeCtor).toBe(true);
+    // jsdom has no SW controller: regions stay off, the core href is the archive.
+    expect(protocolConfigure).toHaveBeenCalledWith({
+      coreUrl: 'http://localhost:3000/data/basemap.pmtiles.png',
+      baseHref: 'http://localhost:3000/',
+      regionsEnabled: false,
+    });
+    const style = (hoisted.mapCtorCalls[0] as { style: { sources: Record<string, { url: string }> } })
+      .style;
+    expect(Object.keys(style.sources)).toEqual(['protomaps']);
+    expect(style.sources['protomaps']?.url).toBe(BASEMAP_SOURCE_URL);
   });
 
   it('#207: constructs with pitch locked flat (maxPitch: 0), not left to reset later', async () => {
@@ -178,6 +201,6 @@ describe('MapView async mount (#118 cancelled-flag window)', () => {
     await flushAsyncMount();
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(hoisted.mapCtorCalls.length).toBe(1);
-    expect(hoisted.protocolAddCalls.length).toBe(0);
+    expect(protocolAdd).not.toHaveBeenCalled();
   });
 });

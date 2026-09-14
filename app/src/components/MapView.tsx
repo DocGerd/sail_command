@@ -7,7 +7,6 @@ import type {
   LngLatBoundsLike,
   LngLatLike,
 } from 'maplibre-gl';
-import { Protocol } from 'pmtiles';
 import { layers, namedFlavor } from '@protomaps/basemaps';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
@@ -15,13 +14,18 @@ import { useLang } from '../i18n';
 import { BASEMAP_PATH } from '../lib/basemap';
 import { MAP_MAX_ZOOM } from '../lib/mapOrientation';
 import { ensureBasemapProtocolSource } from '../services/basemapSource';
+import {
+  BASEMAP_SCHEME,
+  BASEMAP_SOURCE_URL,
+  basemapProtocol,
+} from '../services/compositeBasemapProtocol';
 import { noteMapError } from '../services/swRecovery';
 import type { LatLon } from '../types';
 
-// Register the pmtiles:// protocol once per module load (MapLibre protocols
-// are process-global; re-registering per mount would be redundant, not wrong).
-const pmtilesProtocol = new Protocol();
-addProtocol('pmtiles', pmtilesProtocol.tile);
+// Register the composite basemap protocol once per module load (MapLibre
+// protocols are process-global). #1164: one source, routed per tile to the
+// core or a region archive — see compositeBasemapProtocol.ts.
+addProtocol(BASEMAP_SCHEME, basemapProtocol.tile);
 
 // #253: maplibre-gl 6 loads its worker via `new Worker(new URL(...,
 // import.meta.url), {type:'module'})` INSIDE the library itself
@@ -31,7 +35,7 @@ addProtocol('pmtiles', pmtilesProtocol.tile);
 // the request 404s into the SPA fallback, `index.html`, which the worker
 // then silently fails to execute as JS). The library's own escape hatch is
 // `setWorkerUrl`, which must run before any `Map` is constructed — module
-// scope here, alongside the pmtiles protocol registration above, since both
+// scope here, alongside the basemap protocol registration above, since both
 // must be set up exactly once and before the first `Map` this module
 // constructs.
 //
@@ -71,11 +75,10 @@ const ATTRIBUTION =
   '<a href="https://emodnet.ec.europa.eu/en/bathymetry" target="_blank" rel="noopener">EMODnet Bathymetry</a> (CC-BY 4.0) · ' +
   '<a href="https://open-meteo.com/" target="_blank" rel="noopener">Weather data by Open-Meteo.com</a> (CC-BY 4.0)';
 
-// #118: `pmtilesUrl` is computed ONCE in the mount effect and passed in here
-// so the style's 'pmtiles://' reference uses the IDENTICAL href string the
-// fallback Blob source may have been keyed with (see basemapSource.ts's
-// key-drift warning) — never rebuild the URL independently in two places.
-function buildStyle(lang: string, pmtilesUrl: string): StyleSpecification {
+// #1164: the source points at the composite protocol, which reads the core
+// archive under the href passed to `basemapProtocol.configure` — the same
+// string any #118 fallback Blob source was keyed with.
+function buildStyle(lang: string): StyleSpecification {
   const flavor = { ...namedFlavor('light'), water: '#bfd9ea' };
   return {
     version: 8,
@@ -85,7 +88,7 @@ function buildStyle(lang: string, pmtilesUrl: string): StyleSpecification {
     sources: {
       protomaps: {
         type: 'vector',
-        url: 'pmtiles://' + pmtilesUrl,
+        url: BASEMAP_SOURCE_URL,
         attribution: ATTRIBUTION,
       },
     },
@@ -217,14 +220,22 @@ export default function MapView({
 
     void (async () => {
       // Computed ONCE and passed both to the transport check and to
-      // buildStyle — the style's 'pmtiles://' reference and a possible
-      // fallback Blob source key must be the IDENTICAL href string (see
-      // basemapSource.ts's key-drift warning).
+      // configure — a possible fallback Blob source key and the protocol's
+      // core href must be the IDENTICAL string (see basemapSource.ts's
+      // key-drift warning).
       const pmtilesUrl = new URL(import.meta.env.BASE_URL + BASEMAP_PATH, location.href).href;
       const controlled = 'serviceWorker' in navigator && navigator.serviceWorker.controller != null;
       try {
-        await ensureBasemapProtocolSource(pmtilesProtocol, pmtilesUrl, controlled);
+        await ensureBasemapProtocolSource(basemapProtocol, pmtilesUrl, controlled);
         if (cancelled) return;
+        // Regions only on SW-controlled pages: an uncontrolled page cannot
+        // hold a pinned region, so it renders region areas blank (#1164
+        // ruling 4) and skips the manifest fetch entirely.
+        basemapProtocol.configure({
+          coreUrl: pmtilesUrl,
+          baseHref: new URL(import.meta.env.BASE_URL, location.href).href,
+          regionsEnabled: controlled,
+        });
 
         // Label language is baked into the style at creation time; SailCommand's
         // language switch is rare enough that re-fetching/re-diffing the whole
@@ -238,7 +249,7 @@ export default function MapView({
         // panel column — so a second observer here would only double-fire resize.
         instance = new MaplibreMap({
           container,
-          style: buildStyle(lang, pmtilesUrl),
+          style: buildStyle(lang),
           center: CENTER,
           zoom: ZOOM,
           maxBounds: MAX_BOUNDS,
