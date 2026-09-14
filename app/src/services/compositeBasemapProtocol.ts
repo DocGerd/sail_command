@@ -8,8 +8,8 @@
 //  - CORE failures throw, reaching MapLibre's `error` event and MapView's
 //    map-error banner exactly as the plain pmtiles protocol did.
 //  - REGION failures (unpinned + offline, 404, SW-uncontrolled page) resolve
-//    to an EMPTY tile: the area renders blank and never trips the banner or
-//    swRecovery. No full-archive Blob fallback for regions (ruling 4).
+//    to an EMPTY tile (one console.warn per archive): the area renders blank
+//    and never trips the banner or swRecovery. No full-archive Blob fallback for regions (ruling 4).
 import { PMTiles, TileType } from 'pmtiles';
 import type { Header } from 'pmtiles';
 import type { AddProtocolAction, GetResourceResponse, RequestParameters } from 'maplibre-gl';
@@ -25,7 +25,14 @@ export const BASEMAP_SCHEME = 'sc-basemap';
 /** The style's source `url` — one composite source, not an archive href. */
 export const BASEMAP_SOURCE_URL = `${BASEMAP_SCHEME}://basemap`;
 /** BASE_URL-relative manifest path emitted by the build (T2, PR #1220). */
+// Twin of the `fileName` in `app/vite.config.ts`'s `regionManifest()`; keep both in sync.
 export const REGION_MANIFEST_PATH = 'basemap-regions.json';
+
+// The manifest is precached (#1220), so a network wait this long means lie-fi; the core map waits on it.
+export const MANIFEST_TIMEOUT_MS = 3_000;
+
+// Offline, a failed region is retried at most once per window instead of once per tile.
+export const REGION_RETRY_MS = 30_000;
 
 const TILE_URL_RE = /^sc-basemap:\/\/basemap\/(\d+)\/(\d+)\/(\d+)$/;
 
@@ -96,12 +103,17 @@ export function selectTileArchive(
  */
 export async function loadRegionEntries(manifestUrl: string): Promise<RegionManifestEntry[]> {
   let body: unknown;
+  // Own controller, never a tile's signal: the result is memoised for every request.
+  const timeout = new AbortController();
+  const timer = setTimeout(() => timeout.abort(), MANIFEST_TIMEOUT_MS);
   try {
-    const res = await fetch(manifestUrl);
+    const res = await fetch(manifestUrl, { signal: timeout.signal });
     if (!res.ok || !(res.headers.get('content-type') ?? '').includes('json')) return [];
     body = await res.json();
   } catch {
     return [];
+  } finally {
+    clearTimeout(timer);
   }
   const regions = (body as { regions?: unknown } | null)?.regions;
   if (!Array.isArray(regions)) {
@@ -144,6 +156,8 @@ export class CompositeBasemapProtocol {
   readonly #archives = new Map<string, BasemapArchive>();
   readonly #open: (href: string) => BasemapArchive;
   readonly #loadRegions: (manifestUrl: string) => Promise<RegionManifestEntry[]>;
+  readonly #regionRetryAt = new Map<string, number>();
+  readonly #warnedRegions = new Set<string>();
   #config: BasemapProtocolConfig | null = null;
   #regions: Promise<RegionManifestEntry[]> | null = null;
 
@@ -174,6 +188,7 @@ export class CompositeBasemapProtocol {
     return this.#config;
   }
 
+  // Check-then-set is synchronous, so concurrent first requests for one href share an instance.
   #archive(href: string): BasemapArchive {
     let a = this.#archives.get(href);
     if (!a) {
@@ -239,15 +254,24 @@ export class CompositeBasemapProtocol {
     if (choice.kind === 'none') return EMPTY_TILE();
 
     const href = new URL(choice.entry.path, config.baseHref).href;
+    const retryAt = this.#regionRetryAt.get(href);
+    if (retryAt !== undefined && Date.now() < retryAt) return EMPTY_TILE();
     const region = this.#archive(href);
     try {
-      return await readTile(region, z, x, y, signal);
+      const out = await readTile(region, z, x, y, signal);
+      this.#regionRetryAt.delete(href);
+      return out;
     } catch (err) {
       if (signal.aborted) throw err;
       // pmtiles' SharedPromiseCache keeps a REJECTED header promise forever,
       // so a region that failed while unpinned would stay blank after
-      // pinning. Drop the instance; the next request rebuilds it.
+      // pinning. Drop the instance; the first request after the window rebuilds it.
       if (this.#archives.get(href) === region) this.#archives.delete(href);
+      this.#regionRetryAt.set(href, Date.now() + REGION_RETRY_MS);
+      if (!this.#warnedRegions.has(href)) {
+        this.#warnedRegions.add(href);
+        console.warn(`[#1164] basemap region archive unavailable, rendering blank: ${href}`, err);
+      }
       return EMPTY_TILE();
     }
   };

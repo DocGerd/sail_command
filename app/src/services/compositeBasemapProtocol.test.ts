@@ -4,6 +4,8 @@ import type { RegionBbox, RegionManifestEntry } from '../lib/basemapRegions';
 import {
   CompositeBasemapProtocol,
   loadRegionEntries,
+  MANIFEST_TIMEOUT_MS,
+  REGION_RETRY_MS,
   selectTileArchive,
   tileBbox,
   type BasemapArchive,
@@ -78,6 +80,7 @@ const tileUrl = (x: number) => `sc-basemap://basemap/10/${x}/${Y}`;
 const data = async (r: Promise<{ data: unknown }>) => [...((await r).data as Uint8Array)];
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -156,6 +159,7 @@ describe('CompositeBasemapProtocol.tile', () => {
   });
 
   it('a failing REGION read resolves to an empty tile, never rejects', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { p } = setup({
       regions: [east],
       regionTile: () => Promise.reject(new Error('offline')),
@@ -165,7 +169,9 @@ describe('CompositeBasemapProtocol.tile', () => {
     expect((res.data as Uint8Array).byteLength).toBe(0);
   });
 
-  it('a failed region archive is dropped and reopened on the next request', async () => {
+  it('a failed region archive is dropped and reopened after the retry window', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
     let fail = true;
     const { p, opened } = setup({
       regions: [east],
@@ -173,8 +179,57 @@ describe('CompositeBasemapProtocol.tile', () => {
     });
     await p.tile(params(tileUrl(544)), new AbortController());
     fail = false;
+    vi.advanceTimersByTime(REGION_RETRY_MS);
     expect(await data(p.tile(params(tileUrl(544)), new AbortController()))).toEqual([7]);
     expect(opened.filter((h) => h === REGION_URL)).toHaveLength(2);
+  });
+
+  it('within the retry window a failed region is not reopened (no offline storm)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { p, opened } = setup({
+      regions: [east],
+      regionTile: () => Promise.reject(new Error('offline')),
+    });
+    await p.tile(params(tileUrl(544)), new AbortController());
+    vi.advanceTimersByTime(REGION_RETRY_MS - 1);
+    for (const x of [544, 545, 544]) {
+      const res = await p.tile(params(tileUrl(x)), new AbortController());
+      expect((res.data as Uint8Array).byteLength).toBe(0);
+    }
+    expect(opened.filter((h) => h === REGION_URL)).toHaveLength(1);
+  });
+
+  it('warns once per region archive across repeated failures', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { p, opened } = setup({
+      regions: [east],
+      regionTile: () => Promise.reject(new Error('offline')),
+    });
+    await p.tile(params(tileUrl(544)), new AbortController());
+    vi.advanceTimersByTime(REGION_RETRY_MS);
+    await p.tile(params(tileUrl(545)), new AbortController());
+    expect(opened.filter((h) => h === REGION_URL)).toHaveLength(2);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]?.[0])).toContain(REGION_URL);
+  });
+
+  it('concurrent first requests into one region share a single archive', async () => {
+    const { p, opened } = setup({ regions: [east] });
+    await Promise.all(
+      [544, 545].map((x) => p.tile(params(tileUrl(x)), new AbortController())),
+    );
+    expect(opened.filter((h) => h === REGION_URL)).toHaveLength(1);
+  });
+
+  it('loads the BASE_URL-relative manifest once across requests', async () => {
+    const { p, loadRegions } = setup({ regions: [east] });
+    await p.tile(params('sc-basemap://basemap', 'json'), new AbortController());
+    await p.tile(params(tileUrl(540)), new AbortController());
+    await p.tile(params(tileUrl(544)), new AbortController());
+    expect(loadRegions).toHaveBeenCalledTimes(1);
+    expect(loadRegions).toHaveBeenCalledWith('https://example.test/sail_command/basemap-regions.json');
   });
 
   it('an ABORTED region read rejects rather than resolving empty', async () => {
@@ -299,6 +354,25 @@ describe('loadRegionEntries', () => {
       ),
     );
     expect(await loadRegionEntries(URL_)).toEqual([]);
+  });
+
+  it('a manifest fetch that hangs past the timeout yields no regions', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        (_url: string, init?: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => reject(new DOMException('t', 'AbortError')));
+          }),
+      ),
+    );
+    let settled: RegionManifestEntry[] | undefined;
+    void loadRegionEntries(URL_).then((r) => (settled = r));
+    await vi.advanceTimersByTimeAsync(MANIFEST_TIMEOUT_MS - 1);
+    expect(settled).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(settled).toEqual([]);
   });
 
   it('a network failure yields no regions', async () => {
