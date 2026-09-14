@@ -132,10 +132,10 @@ export function nearestCandidate<T>(
 
 // Touch construction needs feature detection: `Touch`/`TouchEvent` are
 // unavailable in jsdom, so #1198's regression test exercises the mouse path
-// only — the touch path is not reachable under jsdom; it was verified in
-// real Chromium (CDP touch events) during PR #1221's review — see that
-// review for the probe. Touch matters most here, since it is this app's
-// primary on-deck, gloved input (#1186).
+// only — the touch path is not reachable under jsdom; it is pinned in real
+// Chromium by app/e2e/via-marker-drag.spec.ts (CDP touch drag). Touch
+// matters most here, since it is this app's primary on-deck, gloved input
+// (#1186).
 function buildSyntheticPress(
   e: MouseEvent | TouchEvent,
   intendedTarget: EventTarget,
@@ -296,8 +296,7 @@ export default function ViaMarkers({ viaPoints, replanning, onDragEnd }: ViaMark
   // through MapLibre's own pipeline unmodified — `_addDragHandler`'s
   // `.contains()` check now passes for the RIGHT marker, and
   // `_positionDelta`/state/pan-suppression/dragend all run exactly as for
-  // an uncontended press. Only via roots are ever the REDIRECT TARGET, and
-  // it is a no-op whenever <2 of them contain the press point.
+  // an uncontended press. Only via roots are ever the REDIRECT TARGET.
   useEffect(() => {
     if (!map) return;
     const container = map.getCanvasContainer();
@@ -316,17 +315,17 @@ export default function ViaMarkers({ viaPoints, replanning, onDragEnd }: ViaMark
       const candidates = markersRef.current
         .map((marker) => ({ marker, rect: marker.getElement().getBoundingClientRect() }))
         .filter(({ rect }) => rectContainsPoint(rect, clientX, clientY));
-      if (candidates.length < 2) return;
 
-      const intended = nearestCandidate(
-        { x: clientX, y: clientY },
-        candidates.map(({ marker, rect }) => ({ rect, value: marker })),
-      );
       const target = e.target as Node | null;
       // Only arbitrate between VIA roots: a press on anything stacked above
       // them (the #850 route-line ghost handle, an endpoint marker) is that
       // element's own gesture and must pass through untouched.
       if (!candidates.some(({ marker }) => marker.getElement().contains(target))) return;
+
+      const intended = nearestCandidate(
+        { x: clientX, y: clientY },
+        candidates.map(({ marker, rect }) => ({ rect, value: marker })),
+      );
       const intendedEl = intended.getElement();
       if (intendedEl.contains(target)) return;
 

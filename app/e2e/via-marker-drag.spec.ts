@@ -253,9 +253,10 @@ test('#1221 review Major: a drag on the #850 route-line ghost handle still inser
     });
 
     // Two via points straddling the leg midpoint by ~0.0025 deg each side
-    // (~320m total) — close enough that at the SAME contended zoom used
-    // above, the midpoint (and thus the ghost handle) sits inside BOTH via
-    // roots' 44px boxes, not just near them.
+    // (~320m total) — close enough that at the [20,30] contended zoom band
+    // below (wider than the mouse/touch tests' [10,20]), the midpoint (and
+    // thus the ghost handle) sits inside BOTH via roots' 44px boxes, not
+    // just near them.
     const A: [number, number] = [midLngLat[0] - 0.0025, midLngLat[1]];
     const B: [number, number] = [midLngLat[0] + 0.0025, midLngLat[1]];
     await addViaByCoord(page, A[1], A[0]);
@@ -293,7 +294,7 @@ test('#1221 review Major: a drag on the #850 route-line ghost handle still inser
     // mid-drag — so a drop path that drifts toward B (the nearer one on an
     // X-only path) would kill this test's OWN ghost before it completes,
     // for a reason unrelated to #1198. Moving in Y only keeps distance to
-    // BOTH vias monotonically increasing from their ~14-15px starting gap.
+    // BOTH vias monotonically increasing from their starting gap.
     await page.mouse.down();
     await page.mouse.move(midPoint.x, midPoint.y + 80, { steps: 12 });
     await page.mouse.up();

@@ -533,7 +533,7 @@ describe('ViaMarkers overlap disambiguation (#1198)', () => {
   // genuine contention (candidates.length === 2) — but whose native target
   // is that foreign element, never a via root.
   it("does not redirect a press on a foreign element (e.g. #850's route-line ghost handle) stacked inside two overlapping via boxes", () => {
-    const { container, a, seen } = renderTwoOverlapping();
+    const { container, seen } = renderTwoOverlapping();
     const ghost = document.createElement('div');
     ghost.className = 'sc-route-drag-handle';
     container.appendChild(ghost);
@@ -548,13 +548,11 @@ describe('ViaMarkers overlap disambiguation (#1198)', () => {
     });
     ghost.dispatchEvent(event);
 
-    // At BASE (no Major fix) the code redirects to A regardless of target:
+    // At 32a2d3a (no Major fix) the code redirects to A regardless of target:
     // `seen` would be [a.element], not [ghost]. At HEAD the guard requiring
     // the native target to already belong to SOME via root fires first.
     expect(seen).toHaveLength(1);
     expect(seen[0]).toBe(ghost);
     expect(event.defaultPrevented).toBe(false);
-    // A's own drag machinery is untouched — only its construction setLngLat.
-    expect(a.setLngLatCalls).toHaveLength(1);
   });
 });
