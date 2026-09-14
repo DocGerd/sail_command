@@ -85,6 +85,13 @@ export function makeFakeMap({ styleLoaded = true }: { styleLoaded?: boolean } = 
   // is exactly the bug RouteLayer's fitBounds had.
   const state = { styleLoaded, bearing: 0 };
   const canvas = { style: {} as Record<string, string> };
+  // #1198: a REAL (detached) div, memoized per makeFakeMap() call, so a
+  // consumer that appends marker elements into it (ViaMarkers.test.tsx's own
+  // local Marker.addTo) and one that registers event listeners on it
+  // (ViaMarkers.tsx's own overlap-disambiguation effect) share the exact
+  // same node across repeated getCanvasContainer() calls — a fresh div per
+  // call would silently defeat both.
+  const canvasContainer = document.createElement('div');
   const bucket = (store: Map<string, Set<Handler>>, type: string): Set<Handler> => {
     let set = store.get(type);
     if (!set) {
@@ -233,6 +240,7 @@ export function makeFakeMap({ styleLoaded = true }: { styleLoaded?: boolean } = 
       state.bearing = deg;
     },
     getCanvas: () => canvas,
+    getCanvasContainer: () => canvasContainer,
     // Fixed app-region viewport + linear projection (the App.test.tsx stubs):
     // keeps RouteLayer's barb rebuild effect deterministic under jsdom; barb
     // OUTPUT is never asserted against these (that's a real-browser concern).
