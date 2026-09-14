@@ -1,0 +1,99 @@
+{'oracle': {'bagenkopAt3': True, 'marstalAt3': False, 'marstalRelaxedUsedDepthM': 2.3}}
+A bagenkop tws2.8 ctrl: no-route mask-blocked eta=None rings=5 salv=0 ms=6
+A bagenkop tws2.8 SALV: ok None eta=17.559606866251627 rings=170 salv=16 ms=2765
+   final tH=21.00 visited=88200 bestMinDist=0.02
+   visited at salvages: [28, 31, 31, 31, 32, 32, 32, 32, 33, 33, 33, 33, 33, 33, 33, 33]
+   bestMinDist at salvages: [42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69]
+   rule new-cells stops at salvage #2 of 16
+   longest run of consecutive salvages claiming no new prune cell: 7
+   rule no-progress K=2 stops at salvage #2
+   rule no-progress K=4 stops at salvage #4
+   rule no-progress K=8 stops at salvage #8
+   rule no-progress K=16 stops at salvage #None
+A bagenkop tws3 ctrl: no-route mask-blocked eta=None rings=5 salv=0 ms=2
+A bagenkop tws3 SALV: ok None eta=15.554897700195312 rings=121 salv=1 ms=2619
+   final tH=16.33 visited=86811 bestMinDist=0.02
+   visited at salvages: [26]
+   bestMinDist at salvages: [42.7]
+   rule new-cells stops at salvage #None of 1
+   longest run of consecutive salvages claiming no new prune cell: 0
+   rule no-progress K=2 stops at salvage #None
+   rule no-progress K=4 stops at salvage #None
+   rule no-progress K=8 stops at salvage #None
+   rule no-progress K=16 stops at salvage #None
+A bagenkop tws8 ctrl: no-route mask-blocked eta=None rings=4 salv=0 ms=1
+A bagenkop tws8 SALV: threw RING_CAP eta=None rings=4001 salv=1998 ms=366
+   final tH=333.67 visited=30 bestMinDist=42.69
+   visited at salvages: [27, 29, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30]
+   bestMinDist at salvages: [42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69]
+   rule new-cells stops at salvage #3 of 1998
+   longest run of consecutive salvages claiming no new prune cell: 1995
+   rule no-progress K=2 stops at salvage #2
+   rule no-progress K=4 stops at salvage #4
+   rule no-progress K=8 stops at salvage #8
+   rule no-progress K=16 stops at salvage #16
+B marstal@3.0 tws3 ctrl: no-route mask-blocked eta=None rings=5 salv=0 ms=2
+B marstal@3.0 tws3 SALV: no-route horizon-exceeded eta=None rings=660 salv=156 ms=9403
+   final tH=58.58 visited=254394 bestMinDist=0.29
+   visited at salvages: [26, 254376, 254376, 254376, 254377, 254377, 254377, 254391, 254391, 254392, 254392, 254392, 254392, 254392, 254392, 254392, 254392, 254392, 254393, 254393, 254393, 254393, 254393, 254393, 254393, 254393, 254393, 254393, 254393, 254393, 254393, 254393, 254393, 254393, 254393, 254393, 254393, 254393, 254393, 254393]
+   bestMinDist at salvages: [37.88, 0.29, 0.29, 0.29, 0.29, 0.29, 0.29, 0.29, 0.29, 0.29, 0.29, 0.29, 0.29, 0.29, 0.29, 0.29, 0.29, 0.29, 0.29, 0.29, 0.29, 0.29, 0.29, 0.29, 0.29, 0.29, 0.29, 0.29, 0.29, 0.29, 0.29, 0.29, 0.29, 0.29, 0.29, 0.29, 0.29, 0.29, 0.29, 0.29]
+   rule new-cells stops at salvage #2 of 156
+   longest run of consecutive salvages claiming no new prune cell: 111
+   rule no-progress K=2 stops at salvage #3
+   rule no-progress K=4 stops at salvage #5
+   rule no-progress K=8 stops at salvage #9
+   rule no-progress K=16 stops at salvage #17
+C marstal relaxed genoa comfort5 ctrl: no-route mask-blocked eta=None rings=5 salv=0 ms=3
+C marstal relaxed genoa comfort5 SALV: no-route horizon-exceeded eta=None rings=378 salv=12 ms=22852
+   final tH=50.58 visited=252964 bestMinDist=0.55
+   visited at salvages: [29, 29, 31, 31, 34, 34, 35, 35, 35, 35, 35, 252964]
+   bestMinDist at salvages: [37.89, 37.88, 37.88, 37.88, 37.88, 37.88, 37.88, 37.88, 37.88, 37.88, 37.88, 0.55]
+   rule new-cells stops at salvage #1 of 12
+   longest run of consecutive salvages claiming no new prune cell: 4
+   rule no-progress K=2 stops at salvage #2
+   rule no-progress K=4 stops at salvage #4
+   rule no-progress K=8 stops at salvage #8
+   rule no-progress K=16 stops at salvage #None
+C marstal relaxed genoa comfort- ctrl: no-route mask-blocked eta=None rings=5 salv=0 ms=2
+C marstal relaxed genoa comfort- SALV: no-route horizon-exceeded eta=None rings=363 salv=11 ms=11158
+   final tH=50.04 visited=252644 bestMinDist=0.67
+   visited at salvages: [29, 29, 31, 31, 34, 34, 35, 35, 35, 35, 35]
+   bestMinDist at salvages: [37.89, 37.88, 37.88, 37.88, 37.88, 37.88, 37.88, 37.88, 37.88, 37.88, 37.88]
+   rule new-cells stops at salvage #1 of 11
+   longest run of consecutive salvages claiming no new prune cell: 4
+   rule no-progress K=2 stops at salvage #2
+   rule no-progress K=4 stops at salvage #4
+   rule no-progress K=8 stops at salvage #8
+   rule no-progress K=16 stops at salvage #None
+C marstal relaxed fock comfort5 ctrl: no-route mask-blocked eta=None rings=5 salv=0 ms=2
+C marstal relaxed fock comfort5 SALV: no-route horizon-exceeded eta=None rings=345 salv=1 ms=17492
+   final tH=48.29 visited=252474 bestMinDist=0.62
+   visited at salvages: [31]
+   bestMinDist at salvages: [37.88]
+   rule new-cells stops at salvage #None of 1
+   longest run of consecutive salvages claiming no new prune cell: 0
+   rule no-progress K=2 stops at salvage #None
+   rule no-progress K=4 stops at salvage #None
+   rule no-progress K=8 stops at salvage #None
+   rule no-progress K=16 stops at salvage #None
+C marstal relaxed fock comfort- ctrl: no-route mask-blocked eta=None rings=5 salv=0 ms=2
+C marstal relaxed fock comfort- SALV: no-route horizon-exceeded eta=None rings=337 salv=1 ms=9704
+   final tH=47.96 visited=252238 bestMinDist=0.63
+   visited at salvages: [31]
+   bestMinDist at salvages: [37.88]
+   rule new-cells stops at salvage #None of 1
+   longest run of consecutive salvages claiming no new prune cell: 0
+   rule no-progress K=2 stops at salvage #None
+   rule no-progress K=4 stops at salvage #None
+   rule no-progress K=8 stops at salvage #None
+   rule no-progress K=16 stops at salvage #None
+A bagenkop tws8 SALV cap20000: no-route horizon-exceeded eta=None rings=4477 salv=2236 ms=450
+   final tH=373.33 visited=30 bestMinDist=42.69
+   visited at salvages: [27, 29, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30]
+   bestMinDist at salvages: [42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69, 42.69]
+   rule new-cells stops at salvage #3 of 2236
+   longest run of consecutive salvages claiming no new prune cell: 2233
+   rule no-progress K=2 stops at salvage #2
+   rule no-progress K=4 stops at salvage #4
+   rule no-progress K=8 stops at salvage #8
+   rule no-progress K=16 stops at salvage #16
