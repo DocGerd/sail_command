@@ -696,8 +696,7 @@ milestone v0.32.0 on 2026-09-09 (maintainer ruling); v0.32.0 has since
 SHIPPED and #1136 sits open in v0.33.0 as of 2026-09-10 (see §10 for the
 first of §5's four prerequisites, now run).**
 
-This HOLD covers §5's design — salvage gated inside `solve()` alone. §11.5
-recommends the same salvage behind a ladder-level gate.
+This HOLD covers §5's design — salvage gated inside `solve()` alone.
 
 Three grounds:
 
@@ -1584,7 +1583,7 @@ tiers it ran and the relaxed gate it found (if any).
 **Pass 2** re-runs exactly the tiers pass 1 ran, in order, with a new
 `SolveParams` flag that enables the §5 salvage (§11.2); tiers 3/4 use pass 1's
 relaxed gate, with no second `findRelaxedGate`. No retry predicate reads a
-pass-2 result: pass 2 stops at the first tier with a routed sail.
+pass-2 result: pass 2 stops at the first tier with a routed sail. That tier's result is assembled exactly as pass 1 would assemble it: `assemble(tierN, null)` for tiers 1–2, and for tiers 3–4 `assemble(tierN, flagShallowLegs(mask, tierN, s.safetyDepthM, usedDepthM))` with pass 1's `usedDepthM`, so a relaxed rescue carries the same shallow disclosure a relaxed route carries today.
 
 **Pass-2 failure, for any cause, returns pass 1's `PlanResult` verbatim.**
 
@@ -1625,11 +1624,13 @@ Flensburg→Bagenkop at TWS 2.8 / 3 / 8 in exactly that shape (`results_plan.txt
   salvage fires only on today's no-route exit (§11.3's containment mutation
   carries the check);
 - mapped through today's success rules (`tier1/tier2.some((r) =>
-  r.rigResult)`), TWS 2.8 is the one plan-level failure — both rigs die in
-  tiers 1–2, and pass 1 then runs tiers 3–4 on a relaxed gate (unprobed) — so
-  pass 2 rescues it. TWS 3 (genoa dies, fock routes) and
-  TWS 8 (fock dies, genoa routes) return `ok` today with one sail failed.
-  INFERRED from the rules, not a `planRoute` run.
+  r.rigResult)`), TWS 2.8 is the only candidate plan-level failure: both rigs
+  die in tiers 1–2, so pass 1 runs tiers 3–4 on a relaxed gate (unprobed).
+  §1.4's designer row reports that plan `unreachable` at `035d662`
+  (UNCORROBORATED); if that still holds, pass 2 is admitted and rescues it at
+  tier 1. TWS 3 (genoa dies, fock routes) and TWS 8 (fock dies, genoa routes)
+  return `ok` today with one sail failed. INFERRED from the rules and §1.4,
+  not a `planRoute` run.
 
 **What it does not reach.** A plan that returns `ok` with one sail failed
 (the #1166 shape — closed in v0.32.0; its PR #1183 is titled as DISCLOSING
