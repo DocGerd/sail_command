@@ -217,9 +217,7 @@ describe('CompositeBasemapProtocol.tile', () => {
 
   it('concurrent first requests into one region share a single archive', async () => {
     const { p, opened } = setup({ regions: [east] });
-    await Promise.all(
-      [544, 545].map((x) => p.tile(params(tileUrl(x)), new AbortController())),
-    );
+    await Promise.all([544, 545].map((x) => p.tile(params(tileUrl(x)), new AbortController())));
     expect(opened.filter((h) => h === REGION_URL)).toHaveLength(1);
   });
 
@@ -229,7 +227,9 @@ describe('CompositeBasemapProtocol.tile', () => {
     await p.tile(params(tileUrl(540)), new AbortController());
     await p.tile(params(tileUrl(544)), new AbortController());
     expect(loadRegions).toHaveBeenCalledTimes(1);
-    expect(loadRegions).toHaveBeenCalledWith('https://example.test/sail_command/basemap-regions.json');
+    expect(loadRegions).toHaveBeenCalledWith(
+      'https://example.test/sail_command/basemap-regions.json',
+    );
   });
 
   it('an ABORTED region read rejects rather than resolving empty', async () => {
@@ -314,8 +314,29 @@ describe('loadRegionEntries', () => {
   const json = (body: unknown) =>
     new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } });
 
-  it('keeps valid regions and drops the core and malformed entries', async () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  it('keeps every region of a well-formed manifest', async () => {
+    const good = region([12.3, 54.3, 13.0, 55.3]);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          json({
+            core: { id: 'core', path: 'data/basemap.pmtiles.png', bytes: 1, bbox: CORE_BBOX },
+            regions: [good],
+          }),
+        ),
+      ),
+    );
+    expect(await loadRegionEntries(URL_)).toEqual([good]);
+  });
+
+  // #1164 follow-up: parsing now delegates to basemapRegions.ts's
+  // parseRegionManifest, whose contract is ALL-OR-NOTHING — a single
+  // malformed region entry (or a missing/invalid `core`) empties the WHOLE
+  // regions list rather than dropping just that entry. This deliberately
+  // replaces the module's earlier tolerated-single-bad-entry behaviour.
+  it('a manifest with ANY malformed region entry yields NO regions (all-or-nothing)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const good = region([12.3, 54.3, 13.0, 55.3]);
     vi.stubGlobal(
       'fetch',
@@ -325,15 +346,25 @@ describe('loadRegionEntries', () => {
             core: { id: 'core', path: 'data/basemap.pmtiles.png', bytes: 1, bbox: CORE_BBOX },
             regions: [
               good,
-              { ...good, id: 'core' },
+              // Fails isRegionArchivePath — this is the CORE archive's own path.
               { ...good, path: 'data/basemap.pmtiles.png' },
-              { ...good, bbox: [13, 54, 12, 55] },
             ],
           }),
         ),
       ),
     );
-    expect(await loadRegionEntries(URL_)).toEqual([good]);
+    expect(await loadRegionEntries(URL_)).toEqual([]);
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('a manifest missing a valid core entry yields NO regions (all-or-nothing)', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const good = region([12.3, 54.3, 13.0, 55.3]);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(json({ regions: [good] }))),
+    );
+    expect(await loadRegionEntries(URL_)).toEqual([]);
   });
 
   it('a 404 yields no regions', async () => {
@@ -363,7 +394,9 @@ describe('loadRegionEntries', () => {
       vi.fn(
         (_url: string, init?: RequestInit) =>
           new Promise((_resolve, reject) => {
-            init?.signal?.addEventListener('abort', () => reject(new DOMException('t', 'AbortError')));
+            init?.signal?.addEventListener('abort', () =>
+              reject(new DOMException('t', 'AbortError')),
+            );
           }),
       ),
     );
