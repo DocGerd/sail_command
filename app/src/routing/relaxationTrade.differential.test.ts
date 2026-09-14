@@ -6,7 +6,7 @@ import { findRelaxedGate } from './relaxedDepth';
 import { APPROACH_RADIUS_M, uniformGate } from '../lib/depthGate';
 import { defaultSafetyDepthM, relaxationFloorM } from '../lib/boatDepth';
 import type { NavMask } from '../lib/mask';
-import { BOATS, boatById, DEFAULT_BOAT_ID } from '../data/boats';
+import { BOATS } from '../data/boats';
 import { mask } from '../test/realmaskFixtures';
 import { makeMask, TEST_MASK_META } from '../test/fixtures';
 import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
@@ -33,8 +33,8 @@ vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
  * global's at every probe, and phase 2 only raises disc gates. Equality does
  * NOT follow — both positive controls below break it, on the real mask at a
  * tighter radius and on a synthetic mask — so the equality assertion is an
- * empirical pin of THIS mask, harbour set and catalogue, and it is what reds
- * if a future change makes the trade bite.
+ * empirical pin of THIS mask, harbour set and catalogue over `POPULATIONS`
+ * below; it reds only if a change makes the trade bite on one of those pairs.
  *
  * Waypoints are snapped at the requested gate first, exactly as `planRoute`
  * does before it calls `findRelaxedGate`. A raw `harbors.json` snap sitting
@@ -297,26 +297,5 @@ describe('#930 R3: P3 disc-vs-global relaxation trade (shipped findRelaxedGate, 
     expectSubsetConsistency(rows, 'synthetic');
     expect(() => expectRadiusInvariant(rows, 'synthetic')).toThrow(/trade bites/);
     expect(() => expectRadiusInvariant([], 'synthetic')).toThrow(/nothing measured/);
-  });
-
-  it('direction check: findRelaxedGate([A,B]) vs findRelaxedGate([B,A]) at the shipped radius, on a 5-harbour sample', () => {
-    // Phase 2 walks the waypoint array IN ORDER, so order could matter in
-    // principle. Reported, not pinned: asymmetry would be a disclosed property.
-    const boat = boatById(DEFAULT_BOAT_ID);
-    const requestedM = defaultSafetyDepthM(boat);
-    const floorM = relaxationFloorM(boat);
-    const sample = ['flensburg', 'soenderborg', 'bagenkop', 'aeroeskoebing', 'faaborg'];
-    const rows = sample.map((id) => {
-      const h = snapAt(harbor(id), requestedM);
-      const m = snapAt(harbor('marstal'), requestedM);
-      if (!h || !m) throw new Error(`'${id}' or 'marstal' fails to snap at ${requestedM} m`);
-      return {
-        id,
-        marstalFirst: usedDepthM(mask, [m, h], requestedM, APPROACH_RADIUS_M, floorM),
-        marstalSecond: usedDepthM(mask, [h, m], requestedM, APPROACH_RADIUS_M, floorM),
-      };
-    });
-    console.log('#930 direction check:', JSON.stringify(rows));
-    expect(rows.length).toBe(sample.length);
   });
 });

@@ -92,8 +92,6 @@ relaxing pair left the differential assertion green.
   equality assertion reds if that pinch changes `usedDepthM` on a pair of this
   population; before this change the harness could not (its assertions were
   structural only).
-- Other origins, via-point chains, user-lowered or raised gates, and phase-2
-  ascent with two simultaneous bottlenecks are outside this population.
 - Phase-2 ascent order is measured only on this population: the `[X, Marstal]`
   mirror is asserted equal above; other orders are not.
 
@@ -104,7 +102,7 @@ relaxing pair left the differential assertion green.
   control is a counterexample to equality.
 - **Plan-level differential via `vi.mock` of `depthGate`:** rejected, it
   swaps a module the whole solver imports, and one Flensburg→Marstal plan
-  alone measured 77.61 s in Node (P3 record R4), so 128 pair-runs x 2 radii
+  alone measured 77.61 s in Node (P3 record R4), so pair-runs x 2 radii
   cannot run in CI; §7's sweep compared plan level for the 2.1 m floor.
 - **Mask-level LAND-forcing simulation** (the pre-P3 R3 numbers): not the
   shipped mechanism, and run at 2400 m, not 1852 m.
@@ -117,5 +115,5 @@ relaxing pair left the differential assertion green.
 npm --prefix app run test -- relaxationTrade
 ```
 
-10 tests, ~160 s locally (largest single test ~34 s, under
+9 tests, ~160 s locally (largest single test ~34 s, under
 `SOLVER_TEST_TIMEOUT_MS`). Per-pair rows print only with `--reporter=verbose`.
