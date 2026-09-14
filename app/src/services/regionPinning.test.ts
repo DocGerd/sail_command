@@ -479,7 +479,10 @@ describe('pinRegionsForPlan', () => {
     await pinRegionsForPlan(plan);
 
     const aUrl = BASE + m.regions[0].path;
-    expect(fetchMock).toHaveBeenCalledWith(aUrl, { cache: 'no-store' });
+    // The fetch URL carries a cache-busting `?pin=` suffix (see the
+    // successor-fix test below), so match by PREFIX, not exact equality.
+    const archiveFetchCall = fetchMock.mock.calls.find((call: unknown[]) => (call[0] as string).startsWith(aUrl));
+    expect(archiveFetchCall?.[1]).toEqual({ cache: 'no-store' });
   });
 
   it('rejects a body that is not a PMTiles archive (fails the magic-number check) even when the length matches (PWA review Minor r4008640259)', async () => {
@@ -619,46 +622,88 @@ describe('pinRegionsForPlan', () => {
     const plan = makePlan('p1', [[leg()]]);
     const outcome = await pinRegionsForPlan(plan);
     expect(outcome).toEqual({ status: 'pinned', total: 1, pinned: 1 });
-    // Only the manifest may have been fetched over the network (it was
-    // seeded via stubEnv's fetch mock, not pre-cached here) — the archive
-    // itself was already present and must not be re-fetched.
-    expect(fetchMock).not.toHaveBeenCalledWith(aUrl);
+    // No archive fetch at all — the archive was already present and must
+    // not be re-fetched (not even through the cache-busting `?pin=` URL, so
+    // this checks by PREFIX, never an exact bare-URL match — every real
+    // archive fetch now goes through a `?pin=` URL, so an exact-match check
+    // against the bare url would be vacuously true regardless of whether a
+    // fetch happened).
+    const archiveFetches = fetchMock.mock.calls.filter((call: unknown[]) => (call[0] as string).startsWith(aUrl));
+    expect(archiveFetches).toHaveLength(0);
   });
 
-  it('deletes a STALE cached entry BEFORE re-fetching, so a real SW Range route cannot keep serving stale bytes forever (cross-PR Major, #1223 review r4008628008)', async () => {
+  it('a FAILED re-fetch of a stale-length entry (e.g. offline) leaves the existing entry INTACT — never delete-before-fetch (successor fix, PR review r4009096166)', async () => {
+    const m = manifest();
+    const { fake, fetchMock } = stubEnv({ manifest: m });
+    await seedManifestInCache(fake, m);
+    const cache = await fake.open(REGION_CACHE_NAME);
+    const aUrl = BASE + m.regions[0].path;
+    // A stale entry from a previous build: wrong length, so isArchivePresent
+    // reads it as absent — but the map can still be served 206s from it
+    // until a VERIFIED replacement exists.
+    await cache.put(
+      aUrl,
+      new Response(new Uint8Array(999), { headers: { 'content-length': '999' } }),
+    );
+
+    // Simulate offline: every archive fetch throws (the manifest is already
+    // cache-resident via seedManifestInCache, so this never needs network).
+    fetchMock.mockImplementation(async (input: string) => {
+      if (input === MANIFEST_URL) return new Response(JSON.stringify(m), { status: 200 });
+      throw new TypeError('Failed to fetch');
+    });
+
+    const plan = makePlan('p1', [[leg()]]); // requires region-a only
+    const outcome = await pinRegionsForPlan(plan);
+    expect(outcome).toEqual({ status: 'pinned', total: 1, pinned: 0 });
+
+    // The STALE entry must still be there — a failed re-pin must never have
+    // deleted it first.
+    const stillCached = await cache.match(aUrl);
+    expect(stillCached).toBeDefined();
+    expect(Number(stillCached?.headers.get('content-length'))).toBe(999);
+  });
+
+  it('a SUCCESSFUL re-fetch of a stale-length entry overwrites it in place (cache.put replaces — no delete needed)', async () => {
+    const m = manifest();
+    const { fake } = stubEnv({ manifest: m, archiveBody: () => pmtilesBytes(m.regions[0].bytes) });
+    await seedManifestInCache(fake, m);
+    const cache = await fake.open(REGION_CACHE_NAME);
+    const aUrl = BASE + m.regions[0].path;
+    await cache.put(
+      aUrl,
+      new Response(new Uint8Array(999), { headers: { 'content-length': '999' } }),
+    );
+
+    const plan = makePlan('p1', [[leg()]]);
+    const outcome = await pinRegionsForPlan(plan);
+    expect(outcome).toEqual({ status: 'pinned', total: 1, pinned: 1 });
+
+    const cached = await cache.match(aUrl);
+    expect(Number(cached?.headers.get('content-length'))).toBe(m.regions[0].bytes);
+  });
+
+  it('fetches through a cache-busting `?pin=` URL, but cache.put stores the archive under the CANONICAL search-less URL (#1223 basemapArchiveRoute.ts does an EXACT-URL region-cache match with no ignoreSearch, so `?pin=` is what makes it miss and fall through to network)', async () => {
     const m = manifest();
     const { fake, fetchMock } = stubEnv({
       manifest: m,
       archiveBody: () => pmtilesBytes(m.regions[0].bytes),
     });
     await seedManifestInCache(fake, m);
-    const cache = await fake.open(REGION_CACHE_NAME);
-    const aUrl = BASE + m.regions[0].path;
-    // A stale entry from a previous build: wrong length, so isArchivePresent
-    // reads it as absent — but it is STILL occupying the cache key sw.ts's
-    // own Range route would otherwise keep serving stale bytes from.
-    await cache.put(
-      aUrl,
-      new Response(new Uint8Array(999), { headers: { 'content-length': '999' } }),
-    );
-
-    const calls: string[] = [];
-    vi.spyOn(cache, 'delete').mockImplementation(async (req: string) => {
-      calls.push(`delete:${req}`);
-      return true;
-    });
-    fetchMock.mockImplementation(async (input: string) => {
-      calls.push(`fetch:${input}`);
-      return new Response(pmtilesBytes(m.regions[0].bytes), { status: 200 });
-    });
-
     const plan = makePlan('p1', [[leg()]]);
-    const outcome = await pinRegionsForPlan(plan);
 
-    // Order matters: delete must precede fetch, or a real SW route reading
-    // this same cache would still answer from the stale entry.
-    expect(calls).toEqual([`delete:${aUrl}`, `fetch:${aUrl}`]);
-    expect(outcome).toEqual({ status: 'pinned', total: 1, pinned: 1 });
+    await pinRegionsForPlan(plan);
+
+    const aUrl = BASE + m.regions[0].path;
+    const archiveFetchCall = fetchMock.mock.calls.find((call: unknown[]) => (call[0] as string).startsWith(aUrl));
+    expect(archiveFetchCall?.[0]).toMatch(/\?pin=\d+$/);
+    expect(archiveFetchCall?.[0]).not.toBe(aUrl);
+
+    const cache = await fake.open(REGION_CACHE_NAME);
+    // EXACT match (no ignoreSearch, mirroring basemapArchiveRoute.ts's own
+    // region-cache lookup) — only succeeds if the STORED key is bit-for-bit
+    // the canonical URL, never the `?pin=`-suffixed one.
+    expect(await cache.match(aUrl)).toBeDefined();
   });
 
   it('a saveRegionPin failure (e.g. the cross-deployment DB_VERSION VersionError window — maintainer ruling, #1164 issue comment 5669811466) returns a named outcome instead of rejecting after archives are already handled (PWA review Minor r4008640266)', async () => {

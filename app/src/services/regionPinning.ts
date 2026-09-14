@@ -269,28 +269,38 @@ async function isPmtilesBlob(blob: Blob): Promise<boolean> {
  * the manifest before `cache.put`. A short or wrong-length body is left
  * uncached entirely. Idempotent: an already-correctly-cached entry short-
  * circuits without a network request.
+ *
+ * NEVER `cache.delete`s a stale entry before fetching (successor fix, PR
+ * review r4009096166, replacing an earlier `cache.delete`-then-fetch
+ * version): measured in Chromium with a real region archive and #1223's
+ * route merged in, deleting first is destructive OFFLINE — a length-
+ * mismatched (stale) entry the map was still serving 206s from is erased,
+ * and if the re-fetch then fails (offline, or a magic/size mismatch), the
+ * region is left with NOTHING servable where a moment ago it had a stale
+ * but working copy. Instead, the fetch goes through a cache-busting
+ * `?pin=<token>` query so #1223's `basemapArchiveRoute.ts` — whose
+ * `regionCache.match(request.url)` is an EXACT-URL match with no
+ * `ignoreSearch`, and whose `isRegionArchivePath` check reads only
+ * `pathname`, ignoring the query — cannot hit the region cache for THIS
+ * request and falls straight through to network (the Pages CDN normalises
+ * query strings, so the response body is unaffected). Only once the fetched
+ * body is verified (magic + exact byte length) does `cache.put` write it
+ * under the CANONICAL (search-less) URL, where `put` REPLACES the old
+ * value atomically — the stale copy remains servable right up until a
+ * verified replacement exists, and is never left absent.
  */
 async function pinOneRegion(entry: RegionManifestEntry): Promise<boolean> {
   if (await isArchivePresent(entry)) return true;
   try {
-    const cache = await caches.open(REGION_CACHE_NAME);
-    // #1223 review r4008628008 (cross-PR Major): a STALE cached entry (wrong
-    // byte length left over from an old build) would otherwise be re-served
-    // by sw.ts's basemap Range route for THIS SAME fetch — the route's own
-    // cache.match hits the stale entry regardless of isArchivePresent's
-    // verdict above, so re-pinning could never recover. Clear this cache's
-    // entry first so the route falls through to network. Do NOT bypass via
-    // `request.cache: 'no-store'`/`reload` instead: pmtiles' own FetchSource
-    // already sends `no-store` on Chrome/Windows, and relying on that would
-    // break OFFLINE reads of an already-pinned region through the same
-    // route.
-    await cache.delete(archiveUrl(entry));
-
+    const url = archiveUrl(entry);
     // `cache: 'no-store'` (PWA review Minor r4008640259): region archive
     // paths are unhashed, so without it an HTTP-cached copy from a PREVIOUS
     // build could be served whenever its length happens to match the
-    // current manifest's.
-    const res = await fetch(archiveUrl(entry), { cache: 'no-store' });
+    // current manifest's. The `?pin=` query is what makes the SW's region-
+    // cache lookup miss (see this function's own doc comment); `no-store`
+    // is the separate, still-needed guard against the browser's OWN HTTP
+    // cache serving a stale body for that busted URL.
+    const res = await fetch(`${url}?pin=${Date.now()}`, { cache: 'no-store' });
     if (!res.ok) return false;
     const blob = await res.blob();
     // PMTiles magic check (same review): cheap, and mirrors
@@ -298,14 +308,12 @@ async function pinOneRegion(entry: RegionManifestEntry): Promise<boolean> {
     // actually a PMTiles archive before it is ever cached.
     if (!(await isPmtilesBlob(blob))) return false;
     if (blob.size !== entry.bytes) return false;
+    const cache = await caches.open(REGION_CACHE_NAME);
     // Stamp our own content-length from the verified Blob size so
     // isArchivePresent's later reads are a cheap header check, never a full
     // body drain (mirrors #118's basemapSource.ts pattern for the same
     // reason).
-    await cache.put(
-      archiveUrl(entry),
-      new Response(blob, { headers: { 'content-length': String(blob.size) } }),
-    );
+    await cache.put(url, new Response(blob, { headers: { 'content-length': String(blob.size) } }));
     return true;
   } catch {
     return false;
