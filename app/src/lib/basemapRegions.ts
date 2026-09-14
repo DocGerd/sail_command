@@ -22,6 +22,17 @@ export const CORE_REGION_ID = 'core';
  */
 export const REGION_ARCHIVE_PREFIX = 'region-';
 
+/**
+ * `[minLon, minLat, maxLon, maxLat]` — the shape and axis order T2 (PR #1220)
+ * emits from the PMTiles header (`pmtilesHeaderBbox()`,
+ * `app/vite.config.ts`). Deliberately basemap-owned, NOT `AisBoundingBox`
+ * (`[[latMin, lonMin], [latMax, lonMax]]`, a different tuple shape AND a
+ * different axis order): reusing the AIS type here would couple two
+ * unrelated domains and, worse, silently accept a lat/lon-swapped or
+ * lon/lat-ordered value as if it were valid (review finding on PR #1219).
+ */
+export type RegionBbox = readonly [minLon: number, minLat: number, maxLon: number, maxLat: number];
+
 /** One entry of the build-emitted region manifest (`dist/basemap-regions.json`, T2). */
 export interface RegionManifestEntry {
   /** CORE_REGION_ID for the always-precached core archive; a region slug otherwise. */
@@ -30,8 +41,8 @@ export interface RegionManifestEntry {
   readonly path: string;
   /** Decoded archive size in bytes, read from the built file — never Content-Length (T4). */
   readonly bytes: number;
-  /** `[[latMin, lonMin], [latMax, lonMax]]`, read from the PMTiles header. */
-  readonly bbox: AisBoundingBox;
+  /** See RegionBbox — read from the PMTiles header, never hand-authored. */
+  readonly bbox: RegionBbox;
 }
 
 /**
@@ -92,9 +103,60 @@ export function isRetiredRegionCache(name: string, base: string): boolean {
   return name.startsWith(deploymentScopedPrefix(base)) && name !== regionCacheName(base);
 }
 
-/** Inclusive-edges overlap test — touching boxes count as intersecting (routeCorridor.ts's convention). */
-function boxesIntersect(a: AisBoundingBox, b: AisBoundingBox): boolean {
-  return a[0][0] <= b[1][0] && b[0][0] <= a[1][0] && a[0][1] <= b[1][1] && b[0][1] <= a[1][1];
+/**
+ * True for a well-formed RegionBbox: every coordinate finite AND
+ * minLon <= maxLon AND minLat <= maxLat. A malformed value (NaN,
+ * +/-Infinity, or a reversed min/max — e.g. a T2 bug transcribing the
+ * PMTiles header's named fields into the wrong tuple slots) must NOT be
+ * treated as "provably non-intersecting" by boxesIntersect below.
+ */
+function isValidRegionBbox(b: RegionBbox): boolean {
+  const [minLon, minLat, maxLon, maxLat] = b;
+  return (
+    Number.isFinite(minLon) &&
+    Number.isFinite(minLat) &&
+    Number.isFinite(maxLon) &&
+    Number.isFinite(maxLat) &&
+    minLon <= maxLon &&
+    minLat <= maxLat
+  );
+}
+
+/** Same well-formedness check for an AIS-domain corridor box. */
+function isValidCorridorBox(b: AisBoundingBox): boolean {
+  const [[latMin, lonMin], [latMax, lonMax]] = b;
+  return (
+    Number.isFinite(latMin) &&
+    Number.isFinite(lonMin) &&
+    Number.isFinite(latMax) &&
+    Number.isFinite(lonMax) &&
+    latMin <= latMax &&
+    lonMin <= lonMax
+  );
+}
+
+/**
+ * Inclusive-edges overlap test between a region's RegionBbox and a
+ * corridor's AisBoundingBox (two DIFFERENT tuple shapes and axis orders —
+ * see RegionBbox's own comment) — touching boxes count as intersecting
+ * (routeCorridor.ts's convention).
+ *
+ * FAIL-CLOSED on a malformed operand (review finding on PR #1219): if
+ * EITHER box fails isValidRegionBbox/isValidCorridorBox, this returns
+ * `true` unconditionally rather than attempting a comparison whose result
+ * would be meaningless. Requiring a region on bad geometry is the safe
+ * direction — under-requiring (silently excluding a region that a malformed
+ * bbox happens to make LOOK non-intersecting) is what would leave a plan
+ * "offline-ready" while actually missing tiles, the same guard-asymmetry
+ * this module's requiredRegions() already applies to an empty corridor.
+ */
+function boxesIntersect(region: RegionBbox, corridor: AisBoundingBox): boolean {
+  if (!isValidRegionBbox(region) || !isValidCorridorBox(corridor)) {
+    return true;
+  }
+  const [minLon, minLat, maxLon, maxLat] = region;
+  const [[latMin, lonMin], [latMax, lonMax]] = corridor;
+  return minLon <= lonMax && lonMin <= maxLon && minLat <= latMax && latMin <= maxLat;
 }
 
 /**
@@ -129,6 +191,12 @@ export function regionById(
  * direction for a readiness claim, per CLAUDE.md's guard-asymmetry rule (an
  * absent-measurement path must fail toward the expensive-but-safe outcome).
  * An empty corridor therefore requires EVERY lazy region in the manifest.
+ *
+ * ALSO FAIL-CLOSED on a malformed bbox on EITHER side (a manifest entry's
+ * RegionBbox or a corridor box) — see boxesIntersect's own comment. Such an
+ * entry is required against ANY non-empty corridor, and a single malformed
+ * corridor box makes EVERY lazy region required (boxesIntersect returns
+ * `true` unconditionally for that pairing, which `.some()` then propagates).
  */
 export function requiredRegions(
   entries: readonly RegionManifestEntry[],
