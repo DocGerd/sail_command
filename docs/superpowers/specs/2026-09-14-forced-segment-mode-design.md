@@ -162,8 +162,9 @@ Via-mutation sites and their rules:
   copied-never-aliased contract);
 - `state/replan.ts:dedupeViaPoints` also returns the kept indices beside `kept`
   (`App.tsx:droppedViaLabels` needs `kept`'s object identity). `usePlanFlow.ts`'s
-  run path and `replanWithVias` rebuild `segmentModes` from them; a dropped via
-  merges two segments into one that keeps the mode of its non-degenerate half (the one outside the 60 m dedupe radius), never `null`: clearing would silently free a constrained segment, the outcome §5.1's refusal avoids. The other two
+  run path and `replanWithVias` rebuild `segmentModes` from them. The mode of a
+  segment that dedupe merges is an OPEN QUESTION, to settle in the
+  implementation PR (#1232). The other two
   callers, `droppedViaLabels` and `useViaReplan` (`droppedCount` only), need no
   change. `replanWithVias`/`useViaReplan` have no production caller (#571);
 - `state/reroute.ts` drops `segmentModes` with the vias (R6): its request is a
@@ -203,8 +204,10 @@ Carried by spread, no edit: `useDepartureConfirm`, `DepartureCompare`'s `base`.
 - **Persistence:** `segmentModes` and `forced` round-trip through `migratePlan`;
   a wrong-length record is refused.
 - **Mutation checks:** delete the forced-motor branch → the real-mask test reds;
-  drop `normaliseSegmentModes` → the round-trip test reds; admit the new cause in
-  `depthRelaxationMayHelp` → its truth table reds. Run each at BASE as well.
+  drop `normaliseSegmentModes` → the wrong-length refusal test reds (the
+  round-trip test stays green: `migrateRequest`'s spread already carries the
+  field, §5.1); admit the new cause in `depthRelaxationMayHelp` → its truth
+  table reds. Run each at BASE as well.
 - **Sweep:** `isochrone.ts` and `planRoute.ts` change, so the #282 sweep is owed
   — BASE double-run plus HEAD, detached, per `app/sweep/README.md`. Every arm
   plans with `viaPoints: []`, so it proves only that the override-absent path is
