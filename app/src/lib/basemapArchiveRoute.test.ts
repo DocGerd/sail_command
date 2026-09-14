@@ -11,6 +11,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
+import { assertNonVacuousStrip, stripCommentsAndStrings } from '../test/sourceStrip';
 import {
   respondToBasemapArchiveRequest,
   isRetiredBasemapRuntimeCache,
@@ -19,6 +20,19 @@ import {
 
 const CORE_URL = 'https://example.test/sail_command/data/basemap.pmtiles.png';
 const REGION_URL = 'https://example.test/sail_command/data/region-abc.pmtiles.png';
+
+/**
+ * sw.ts's own source, comments/strings stripped (#1223 review r4008628003):
+ * a raw `indexOf` over unstripped source is fooled by a MENTION of a needle
+ * inside a comment, so a mutation moving `precacheAndRoute` above the
+ * archive route while leaving the needle in a comment stayed 11/11 green.
+ * `stripCommentsAndStrings` removes comments outright (never merely masks
+ * them), so a commented-out mention cannot satisfy indexOf after stripping.
+ */
+function readStrippedSwSource(): string {
+  const swPath = resolve(dirname(fileURLToPath(import.meta.url)), '../sw.ts');
+  return stripCommentsAndStrings(readFileSync(swPath, 'utf8'));
+}
 
 /** A fake Cache good enough for match()/put() call assertions — never a real CacheStorage. */
 function fakeCache(
@@ -102,10 +116,22 @@ describe('respondToBasemapArchiveRequest', () => {
     expect(d.fetchSpy).toHaveBeenCalledTimes(1);
     expect(cache.put).not.toHaveBeenCalled();
     expect(await res.text()).toBe('network');
-    expect(d.warnSpy).toHaveBeenCalledWith(
-      '[sw] basemap archive cache miss, falling through to network:',
-      REGION_URL,
-    );
+    // #1223 review r4008628015: an unpinned region's miss is the NORMAL
+    // pre-pin state (fires on every Range read of an online unpinned
+    // region) — it must stay SILENT so it never buries the one diagnostic
+    // this warn exists for, an exceptional CORE/legacy precache miss.
+    expect(d.warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('forwards the Range header to the network on an UNPINNED region fall-through (#1223 review r4008628020)', async () => {
+    const cache = fakeCache(new Map());
+    const d = deps({ openRegionCache: async () => cache });
+    const req = new Request(REGION_URL, { headers: { Range: 'bytes=0-15' } });
+    await respondToBasemapArchiveRequest(req, d);
+    expect(d.fetchSpy).toHaveBeenCalledTimes(1);
+    const forwarded = d.fetchSpy.mock.calls[0]?.[0] as Request;
+    expect(forwarded.headers.get('range')).toBe('bytes=0-15');
+    expect(cache.put).not.toHaveBeenCalled();
   });
 
   it('never opens the region cache for the CORE archive on a precache miss (legacy .pmtiles transition)', async () => {
@@ -114,6 +140,13 @@ describe('respondToBasemapArchiveRequest', () => {
     await respondToBasemapArchiveRequest(new Request(CORE_URL), d);
     expect(openRegionCache).not.toHaveBeenCalled();
     expect(d.fetchSpy).toHaveBeenCalledTimes(1);
+    // #1223 review r4008628015: a CORE/legacy precache miss is the
+    // EXCEPTIONAL case this warn exists to diagnose (e.g. an archive
+    // dropped by maximumFileSizeToCacheInBytes) — it must still fire here.
+    expect(d.warnSpy).toHaveBeenCalledWith(
+      '[sw] basemap archive cache miss, falling through to network:',
+      CORE_URL,
+    );
   });
 });
 
@@ -165,12 +198,35 @@ describe('isRetiredBasemapRuntimeCache (activate cleanup scoping, #96)', () => {
 
 describe('#1164 T3: Range→206 route stays registered BEFORE precacheAndRoute (sw.ts)', () => {
   it('the basemap archive registerRoute call appears earlier in source than precacheAndRoute()', () => {
-    const swPath = resolve(dirname(fileURLToPath(import.meta.url)), '../sw.ts');
-    const source = readFileSync(swPath, 'utf8');
-    const routeIndex = source.indexOf('isBasemapArchivePath(url.pathname)');
-    const precacheIndex = source.indexOf('precacheAndRoute(self.__WB_MANIFEST)');
+    const stripped = readStrippedSwSource();
+    assertNonVacuousStrip(stripped, 'isBasemapArchivePath', 'sw.ts');
+    assertNonVacuousStrip(stripped, 'precacheAndRoute', 'sw.ts');
+
+    const predicateIndex = stripped.indexOf('isBasemapArchivePath(url.pathname)');
+    expect(predicateIndex).toBeGreaterThan(-1);
+    // Anchor the route needle on registerRoute( PLUS the predicate (#1223
+    // review r4008628003), tighter than the predicate alone: the nearest
+    // preceding `registerRoute(` must sit close enough to be the SAME call.
+    const routeIndex = stripped.lastIndexOf('registerRoute(', predicateIndex);
     expect(routeIndex).toBeGreaterThan(-1);
+    expect(predicateIndex - routeIndex).toBeLessThan(200);
+
+    const precacheIndex = stripped.indexOf('precacheAndRoute(self.__WB_MANIFEST)');
     expect(precacheIndex).toBeGreaterThan(-1);
     expect(routeIndex).toBeLessThan(precacheIndex);
+  });
+
+  it('the activate handler filters caches through isRetiredBasemapRuntimeCache, not a no-op (#1223 review r4008628024)', () => {
+    const stripped = readStrippedSwSource();
+    // 'activate' itself is a STRING literal, which stripCommentsAndStrings
+    // masks to spaces (it strips comments outright but only MASKS string
+    // content) — so the anchor must be the call site literal itself, which
+    // is ordinary code, not string content. A `.filter(() => false)` (or
+    // any other) mutation of that call site cannot satisfy this literal.
+    assertNonVacuousStrip(
+      stripped,
+      '.filter(isRetiredBasemapRuntimeCache(import.meta.env.BASE_URL))',
+      'sw.ts',
+    );
   });
 });

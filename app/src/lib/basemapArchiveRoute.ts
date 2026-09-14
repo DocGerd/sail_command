@@ -55,6 +55,13 @@ export async function respondToBasemapArchiveRequest(
     if (cached) {
       return request.headers.has('range') ? createPartialResponse(request, cached) : cached;
     }
+    // #1223 review r4008628015: STAY SILENT here. An unpinned region's
+    // precache+region-cache miss is the NORMAL pre-pin state and fires on
+    // every Range read (header, directories, each tile) of an online
+    // unpinned region — warning on every one would bury the one diagnostic
+    // this warn exists for, an exceptional CORE/legacy precache miss (e.g.
+    // an archive dropped by maximumFileSizeToCacheInBytes).
+    return deps.fetch(request);
   }
 
   deps.warn('[sw] basemap archive cache miss, falling through to network:', request.url);
