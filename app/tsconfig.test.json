@@ -180,9 +180,13 @@
   // radius, differentially. Same reason as realmask.repro*.test.ts above —
   // its name doesn't match that glob, so it needs its own entry.
   // basemapArchiveRoute.test.ts (#1164 T3): reads app/src/sw.ts via
-  // `node:fs`/`node:url` to structurally guard the basemap archive
-  // Range->206 route stays registered before precacheAndRoute() — same
-  // reason and pattern as startPreviewSwAssertCallSites.test.ts above.
+  // `node:fs`/`node:path`/`node:url` to structurally guard the basemap
+  // archive Range->206 route stays registered before precacheAndRoute() —
+  // same reason and pattern as startPreviewSwAssertCallSites.test.ts above.
+  // regionManifest.test.ts (#1164): imports vite.config.ts (same reason as
+  // subPathMeta.test.ts above) and builds real temp-directory fixtures via
+  // `node:fs` to exercise the #1164 build-time region-manifest plugin's
+  // pure logic directly.
   "include": [
     "src/**/startPreviewSwAssertCallSites.test.ts",
     "src/**/basemapArchiveRoute.test.ts",
@@ -218,6 +222,7 @@
     "src/**/harborKnownDisconnected.test.ts",
     "src/**/harborPickerKnownDisconnectedCoupling.test.tsx",
     "src/**/timeoutBudgetVsJobCap.test.ts",
+    "src/**/regionManifest.test.ts",
     "sweep/**/*.ts"
   ]
 }
