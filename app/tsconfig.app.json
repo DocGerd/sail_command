@@ -132,8 +132,14 @@
   // more — reads app/e2e/*.spec.ts via `node:fs`/`node:path`/`node:url` to
   // structurally guard that every own-page `startPreview()` call site
   // invokes `assertCleanServiceWorkerState` in the same test body.
+  // basemapArchiveRoute.test.ts (#1164 T3) is the same shape again — reads
+  // sw.ts's own source via `node:fs`/`node:url` to structurally guard that
+  // the basemap archive Range->206 route stays registered BEFORE
+  // precacheAndRoute() (the same invariant sw.ts's own header comment
+  // states; sw.ts itself is untestable — jsdom has no real ServiceWorker).
   "exclude": [
     "src/**/startPreviewSwAssertCallSites.test.ts",
+    "src/**/basemapArchiveRoute.test.ts",
     "src/**/windLatticeMaskCoverage.test.ts",
     "src/**/relaxationTrade.differential.test.ts",
     "src/**/realmask.repro*.test.ts",

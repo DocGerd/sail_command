@@ -179,8 +179,13 @@
   // real committed mask at the shipped disc radius AND the #452 kill-switch
   // radius, differentially. Same reason as realmask.repro*.test.ts above —
   // its name doesn't match that glob, so it needs its own entry.
+  // basemapArchiveRoute.test.ts (#1164 T3): reads app/src/sw.ts via
+  // `node:fs`/`node:url` to structurally guard the basemap archive
+  // Range->206 route stays registered before precacheAndRoute() — same
+  // reason and pattern as startPreviewSwAssertCallSites.test.ts above.
   "include": [
     "src/**/startPreviewSwAssertCallSites.test.ts",
+    "src/**/basemapArchiveRoute.test.ts",
     "src/**/windLatticeMaskCoverage.test.ts",
     "src/**/relaxationTrade.differential.test.ts",
     "src/**/realmask.repro*.test.ts",
