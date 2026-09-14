@@ -506,23 +506,55 @@ describe('ViaMarkers overlap disambiguation (#1198)', () => {
   });
 
   it("never fires when the press falls inside only ONE via marker's box, whatever the native target", () => {
-    const { container, seen } = renderTwoOverlapping();
+    const { b, seen } = renderTwoOverlapping();
+    const bDot = b.element.querySelector('.sc-via-marker-dot')!;
     // (130,100) is inside B's box (93-137) and outside A's (78-122) — a
-    // single candidate. Dispatched on the CONTAINER itself (outside every
-    // via marker's own DOM tree), which also pins the >=2-candidate guard
-    // specifically: with it relaxed to >=1, a lone candidate whose tree
-    // does not contain the native target would wrongly be treated as
-    // contended and redirected to that candidate anyway.
+    // single candidate, so there is no contention to arbitrate.
     const event = new MouseEvent('mousedown', {
       bubbles: true,
       cancelable: true,
       clientX: 130,
       clientY: 100,
     });
-    container.dispatchEvent(event);
+    bDot.dispatchEvent(event);
 
     expect(seen).toHaveLength(1);
-    expect(seen[0]).toBe(container);
+    expect(seen[0]).toBe(bDot);
     expect(event.defaultPrevented).toBe(false);
+  });
+
+  // #1221 review Major (:321): the arbitration used to fire for ANY
+  // contended press, whether or not it landed on a via root at all — which
+  // hijacked #850's route-line ghost-handle insert (a mouse-drag on that
+  // handle between two overlapping vias moved an existing via instead of
+  // inserting a new one, measured in real Chromium). Reproduced here with a
+  // foreign element (not a via marker) appended into the SAME container,
+  // positioned so its own press point falls inside BOTH via boxes —
+  // genuine contention (candidates.length === 2) — but whose native target
+  // is that foreign element, never a via root.
+  it("does not redirect a press on a foreign element (e.g. #850's route-line ghost handle) stacked inside two overlapping via boxes", () => {
+    const { container, a, seen } = renderTwoOverlapping();
+    const ghost = document.createElement('div');
+    ghost.className = 'sc-route-drag-handle';
+    container.appendChild(ghost);
+    // (100,100) is A's centre and inside B's box too (93-137) — the same
+    // contended point the first test in this block uses, this time hit by
+    // something that is NOT a via marker at all.
+    const event = new MouseEvent('mousedown', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 100,
+      clientY: 100,
+    });
+    ghost.dispatchEvent(event);
+
+    // At BASE (no Major fix) the code redirects to A regardless of target:
+    // `seen` would be [a.element], not [ghost]. At HEAD the guard requiring
+    // the native target to already belong to SOME via root fires first.
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toBe(ghost);
+    expect(event.defaultPrevented).toBe(false);
+    // A's own drag machinery is untouched — only its construction setLngLat.
+    expect(a.setLngLatCalls).toHaveLength(1);
   });
 });

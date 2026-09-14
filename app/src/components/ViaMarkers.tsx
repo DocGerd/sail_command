@@ -132,35 +132,42 @@ export function nearestCandidate<T>(
 
 // Touch construction needs feature detection: `Touch`/`TouchEvent` are
 // unavailable in jsdom, so #1198's regression test exercises the mouse path
-// only — the touch path is verified by code (it mirrors marker.ts's own
-// event shape) and matters most here, since touch is this app's primary
-// on-deck, gloved input (#1186).
+// only — the touch path is not reachable under jsdom; it was verified in
+// real Chromium (CDP touch events) during PR #1221's review — see that
+// review for the probe. Touch matters most here, since it is this app's
+// primary on-deck, gloved input (#1186).
 function buildSyntheticPress(
   e: MouseEvent | TouchEvent,
   intendedTarget: EventTarget,
   clientX: number,
   clientY: number,
 ): MouseEvent | TouchEvent | null {
-  if (e.type === 'mousedown') {
+  if (e instanceof MouseEvent) {
     return new MouseEvent('mousedown', {
       bubbles: true,
       cancelable: true,
       clientX,
       clientY,
-      button: 0,
+      button: e.button,
+      buttons: e.buttons,
     });
   }
   if (typeof Touch !== 'function' || typeof TouchEvent !== 'function') return null;
-  // `identifier` only needs to be distinct per touch; Date.now() is unique
-  // enough for a single-finger press and is never compared to a real
-  // browser's own identifiers.
-  const touch = new Touch({ identifier: Date.now(), target: intendedTarget, clientX, clientY });
-  return new TouchEvent('touchstart', {
-    bubbles: true,
-    cancelable: true,
-    touches: [touch],
-    changedTouches: [touch],
-  });
+  try {
+    // `identifier` only needs to be distinct per touch; Date.now() is unique
+    // enough for a single-finger press and is never compared to a real
+    // browser's own identifiers.
+    const touch = new Touch({ identifier: Date.now(), target: intendedTarget, clientX, clientY });
+    return new TouchEvent('touchstart', {
+      bubbles: true,
+      cancelable: true,
+      touches: [touch],
+      targetTouches: [touch],
+      changedTouches: [touch],
+    });
+  } catch {
+    return null;
+  }
 }
 
 function viaElement(ariaLabel: string): HTMLDivElement {
@@ -274,28 +281,26 @@ export default function ViaMarkers({ viaPoints, replanning, onDragEnd }: ViaMark
   // #1198: this listens in the CAPTURE phase on the canvas container — the
   // exact element handler_manager.ts attaches its own, bubble-phase
   // 'mousedown'/'touchstart' listeners to (confirmed against installed
-  // maplibre-gl 6.7.0's HandlerManager constructor: `this._el =
+  // maplibre-gl 6.9.0's HandlerManager constructor: `this._el =
   // this._map.getCanvasContainer()`), so it always runs BEFORE MapLibre's
   // own dispatch for the same event. When the press point falls inside >=2
   // via roots (from `markersRef.current`, read fresh at event time — this
-  // effect deliberately depends on `[map]` only, never `viaPoints`) and the
-  // nearest-by-centre one disagrees with the browser's own target, it
-  // suppresses the original event and redispatches an equivalent synthetic
-  // one AT the intended root: `dispatchEvent` sets `.target` to the element
-  // it is called on directly (no re-hit-test), so the synthetic bubbles
-  // back through MapLibre's own pipeline unmodified — `_addDragHandler`'s
+  // effect deliberately depends on `[map]` only, never `viaPoints`) AND the
+  // native target already belongs to one of those roots (a press on
+  // anything else — the #850 route-line ghost handle, an endpoint marker —
+  // is that element's own gesture and must pass through untouched), and the
+  // nearest-by-centre via root disagrees with that target, it suppresses
+  // the original event and redispatches an equivalent synthetic one AT the
+  // intended root: `dispatchEvent` sets `.target` to the element it is
+  // called on directly (no re-hit-test), so the synthetic bubbles back
+  // through MapLibre's own pipeline unmodified — `_addDragHandler`'s
   // `.contains()` check now passes for the RIGHT marker, and
   // `_positionDelta`/state/pan-suppression/dragend all run exactly as for
-  // an uncontended press. Never touches any OTHER marker kind (BoatMarker,
-  // the route-line drag handle, #850) — only via roots are inspected, and
+  // an uncontended press. Only via roots are ever the REDIRECT TARGET, and
   // it is a no-op whenever <2 of them contain the press point.
   useEffect(() => {
     if (!map) return;
-    // A test fake (App.test.tsx's own ad hoc Map stub) may not model this
-    // DOM surface at all; real MapLibre always exposes it.
-    if (typeof map.getCanvasContainer !== 'function') return;
     const container = map.getCanvasContainer();
-    if (!container || typeof container.addEventListener !== 'function') return;
 
     // The redirect's own synthetic event re-enters this SAME capture
     // listener (it bubbles through the same container) — this set is how
@@ -317,14 +322,20 @@ export default function ViaMarkers({ viaPoints, replanning, onDragEnd }: ViaMark
         { x: clientX, y: clientY },
         candidates.map(({ marker, rect }) => ({ rect, value: marker })),
       );
+      const target = e.target as Node | null;
+      // Only arbitrate between VIA roots: a press on anything stacked above
+      // them (the #850 route-line ghost handle, an endpoint marker) is that
+      // element's own gesture and must pass through untouched.
+      if (!candidates.some(({ marker }) => marker.getElement().contains(target))) return;
       const intendedEl = intended.getElement();
-      if (intendedEl.contains(e.target as Node | null)) return;
-
-      e.preventDefault();
-      e.stopPropagation();
+      if (intendedEl.contains(target)) return;
 
       const synthetic = buildSyntheticPress(e, intendedEl, clientX, clientY);
+      // Build first: if no equivalent can be constructed, leave the native
+      // press alone (the pre-#1198 behaviour) rather than swallowing it.
       if (!synthetic) return;
+      e.preventDefault();
+      e.stopPropagation();
       redispatched.add(synthetic);
       intendedEl.dispatchEvent(synthetic);
     };

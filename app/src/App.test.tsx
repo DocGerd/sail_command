@@ -276,6 +276,11 @@ vi.mock('maplibre-gl', () => {
       // CSS box, so the fake has to report one (jsdom lays nothing out).
       return { style: {}, clientWidth: 800, clientHeight: 600 } as HTMLCanvasElement;
     }
+    // #1198: ViaMarkers listens on the real canvas container.
+    _canvasContainer?: HTMLDivElement;
+    getCanvasContainer() {
+      return (this._canvasContainer ??= document.createElement('div'));
+    }
     // #155 camera surface. The compass reads getBearing() and drives the
     // camera through easeTo(); ScaleBar unprojects two screen points and
     // haversines them. A linear equirectangular fake is enough for both: at
