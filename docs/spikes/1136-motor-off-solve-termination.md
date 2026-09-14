@@ -2,7 +2,7 @@
 
 - **Issue:** #1136 (siblings filed from this work: #1166, #1168)
 - **Date:** 2026-09-09
-- **Merge-base of every measurement:** `035d662`
+- **Merge-base:** `035d662` (§1–§9); `cd5e936` (§10); `d3e3769` (§11)
 - **Status:** Decision / Recommendation — record of an investigation, not a plan
   to implement
 - **Verdict:** **The mechanism is MEASURED and is not the one #1136's title
@@ -21,6 +21,9 @@
   for the first of §5's four prerequisites, now run). This
   document exists so the next attempt starts from the measurement rather than
   from the issue title.**
+- **Update 2026-09-14:** #1136 is in milestone v0.34.0 for a design pass
+  (maintainer ruling 2026-09-14, #1136 comment 5668779060); §11
+  designs a ladder-level gate and recommends funding that design for v0.35.0.
 
 > Read alongside the `#866` comment in `app/src/routing/isochrone.ts`'s
 > `if (!best)` branch, which already concedes that `'mask-blocked'` "cannot
@@ -426,7 +429,7 @@ not re-run this.
   other returned nothing, and the two-rig recommendation — the app's headline
   output — is silently withheld. This **survives any solver fix**: whenever one
   rig's `solve()` fails for any reason while the other succeeds, the surface
-  reports unqualified success. It is also the measured case that refutes the
+  reported unqualified success at `035d662`. It is also the measured case that refutes the
   proposal's containment claim (§5, hole 1).
 - **#1168** — the §3.2 non-monotonicity, with its caveat.
 
@@ -582,7 +585,8 @@ pre-registered prediction (§7 does not transfer to it — see §7's closing not
 2. A containment gate at **ladder** level per the section above.
 3. The counter freeze, plus the two residual cause-drift routes of hole 2, plus
    a maintainer ruling on acceptable cause drift.
-4. Only then BASE-vs-HEAD on the three `motorEnabled: false` sweep arms.
+4. Only then BASE-vs-HEAD on the three `motorEnabled: false` sweep arms
+   (superseded for the ladder design: §11.4).
 
 ---
 
@@ -692,6 +696,8 @@ milestone v0.32.0 on 2026-09-09 (maintainer ruling); v0.32.0 has since
 SHIPPED and #1136 sits open in v0.33.0 as of 2026-09-10 (see §10 for the
 first of §5's four prerequisites, now run).**
 
+This HOLD covers §5's design — salvage gated inside `solve()` alone.
+
 Three grounds:
 
 1. **Plan-level containment is refuted by measurement** (hole 1, #1166) — the
@@ -699,7 +705,7 @@ Three grounds:
    claimed for it. The `solve()`-level half is the refuter's, corroborated; the
    plan-level half is the designer's `planRoute` run and is UNCORROBORATED
    (§1.4, §4).
-2. **Efficacy is unmeasured** (hole 4, measured 2026-09-10, §10) — salvaged nodes sit in already-stamped
+2. **Efficacy was unmeasured** at this HOLD (hole 4; measured since, §10) — salvaged nodes sit in already-stamped
    cells and may re-die immediately, so the fix could cost a full sweep baseline
    and rescue nothing.
 3. **The trigger is not defect-specific** (hole 5) — it fires on genuine
@@ -713,8 +719,8 @@ What this spike **does** settle, and what makes the next attempt cheap:
   issue title.
 - The candidate-set lever — the intervention #1136's own text points at — is
   **rejected on measurement**, not on cost (§9.1).
-- The efficacy question (§5 prerequisite 1) is cheap and is the first thing to
-  run. It needs no sweep — a scratch measurement owes no baseline, only a
+- The efficacy question (§5 prerequisite 1; answered since, §10) was cheap and
+  the first thing to run. It needs no sweep — a scratch measurement owes no baseline, only a
   shipped change does — but it does need the salvage itself written: the
   instrumentation in Appendix A contains no salvage, so answering it takes that
   instrumentation PLUS a scratch implementation of the re-expansion PLUS one
@@ -1523,3 +1529,297 @@ the enlarged budget is exhausted — rules out the 30-cap being merely too
 small; the flat, non-growing rescue counts across both budgets are
 consistent with this input being structurally trapped rather than slow,
 though a substantially larger budget was not tried.
+
+§11.2 has since run that larger budget: unbounded, TWS 8 terminates at the
+horizon.
+
+---
+
+## 11. Design pass — ladder-level containment (2026-09-14, v0.34.0 cycle)
+
+Funded by the maintainer's 2026-09-14 ruling on #1136 (comment 5668779060).
+The FIX targets v0.35.0 and is not in this document. §5's prerequisite 1 (efficacy) is
+discharged by §10 and the #1136 efficacy-probe comment (2026-09-10); this
+section answers prerequisites 2 and 3 and re-registers prerequisite 4.
+
+**Currency.** Merge-base `d3e3769`. `git log 035d662..d3e3769 --
+app/src/routing/isochrone.ts` is empty. Between the probe comment's `831db11`
+and `d3e3769` (`git diff --stat 831db11 d3e3769 -- app pipeline`),
+`isochrone.ts`, `relaxedDepth.ts`, `mask.ts`, `polar.ts`, `depthGate.ts`,
+`geo.ts` and `app/public/data/` are unchanged. Changed on the solver path:
+`planRoute.ts` and `wind.ts` (#1178: `WindField` takes `mask.meta`; lattice
+guards). Everything else is off it, including `workerClient.ts` (#1147
+budget 120 000 → 240 000, #1193 cancel; neither reaches a deadline-free
+`solve()`) and `pipeline/requirements.txt`. The §11.2 measurement
+re-runs at `d3e3769` and reproduces the probe comment's rescues exactly
+(TWS 2.8: ok, 170 rings, 16 salvages, ETA 17.56 h; TWS 3: ok, 121 rings,
+1 salvage, ETA 15.55 h).
+
+**Stale figure, corrected here only:** `PLAN_BUDGET_MS` is **240 000**
+(`workerClient.ts`, #1147). §1.4, §5 hole 3 and §9.2 quote 120 000, and
+hole 3's 29.5 % / 36.8 % headroom is measured against it — all true at
+`035d662`.
+
+**Probe:** `1136-motor-off-solve-termination/` (scripts, `README.md`,
+`results.txt`). Every §11 number without another pointer comes from
+`results.txt`. Durations are order-of-magnitude (load unknown; `README.md`).
+
+### 11.1 The containment gate — a two-pass ladder in `planRoute`
+
+**Pass 1** is today's `planRoute`, byte-for-byte, plus a record of which
+tiers it ran and the relaxed gate it found (if any).
+
+**Admission to pass 2** is conjunctive; every clause must hold:
+
+1. pass 1 returned `status: 'error'`;
+2. its plan-level cause is `'mask-blocked'` (label `unreachable`) —
+   `'calm-without-motor'`, `'horizon-exceeded'` and `'budget-exhausted'`
+   never enter, mirroring `depthRelaxationMayHelp`. On tiers 1–2 that cause
+   is the first requested sail's (`tier1[0]?.cause`, which `planRoute.ts`
+   calls an arbitrary tie-break);
+3. pass 1 ran at least one solving tier (1 or 3);
+4. `deadline?.expired()` is false.
+
+**Pass 2** re-runs exactly the tiers pass 1 ran, in order, with a new
+`SolveParams` flag that enables the §5 salvage (§11.2); tiers 3/4 use pass 1's
+relaxed gate, with no second `findRelaxedGate`. No retry predicate reads a
+pass-2 result: pass 2 stops at the first tier with a routed sail. That tier's result is assembled exactly as pass 1 would assemble it: `assemble(tierN, null)` for tiers 1–2, and for tiers 3–4 `assemble(tierN, flagShallowLegs(mask, tierN, s.safetyDepthM, usedDepthM))` with pass 1's `usedDepthM`, so a relaxed rescue carries the same shallow disclosure a relaxed route carries today.
+
+**Pass-2 failure, for any cause, returns pass 1's `PlanResult` verbatim.**
+
+What this buys, per §5 hole:
+
+- **Hole 1 (plan-level containment): closed by construction.** Clause 1 makes
+  pass 2 unreachable for every plan that returns `ok` today. The only possible
+  effect is error → `ok`.
+- **Hole 2 (cause drift): closed at plan level.** No pass-2 cause reaches a
+  label or a retry predicate. Needed, not tidy: set C measured all four
+  relaxed `mirrorCase` solves ending `horizon-exceeded` under salvage (control:
+  `mask-blocked` at ring 5), so surfacing pass-2 causes would relabel that plan
+  `unreachable` → `beyond-horizon` and red `mirrorCase`'s `reason` assertion.
+- **Hole 5 (trigger not defect-specific): closed at ladder level.** Tiers 1–2
+  run only when `connectedAt(requestedGate)` holds, and tiers 3–4 only on a
+  gate whose every accepted probe passed `cellsConnected`
+  (`relaxedDepth.ts`'s `connectsWith`). So every pass-2 solve runs on an
+  oracle-connected pair. Instanced at solve level by set B: the
+  oracle-disconnected Flensburg→Marstal at 3.0 m dies at ring 5 like a
+  connected pair, then under salvage floods ~254 000 prune cells and ends
+  `horizon-exceeded` at ring 660. `planRoute` never runs that solve.
+- Rows where neither oracle passes — the #9 `KNOWN_DISCONNECTED` harbours
+  included — run no tier and are excluded structurally.
+
+**Guard asymmetry.** The expensive failure is changing a plan that works
+today, or relabelling a failure. So every uncertain branch — a clause false,
+the deadline, any pass-2 error — returns pass 1. The gate can only fail
+toward not salvaging.
+
+**Plan fidelity — set D.** Sets A and B run bare `solve()` at
+`performanceFactor` 1.0 without comfort; set C already runs 0.9, comfort 5 /
+none, both rigs, on the relaxed gate. A user's plan runs 0.9, tier 1 at
+comfort 5 and tier 2 without, both rigs. Set D reruns snapped
+Flensburg→Bagenkop at TWS 2.8 / 3 / 8 in exactly that shape (`results_plan.txt`):
+
+- all 8 dying solves route under salvage, needing 1–21 salvages, 2.3–8.5 s;
+- all 4 solves that route today are unchanged — structural, not evidence:
+  salvage fires only on today's no-route exit (§11.3's containment mutation
+  carries the check);
+- mapped through today's success rules (`tier1/tier2.some((r) =>
+  r.rigResult)`), TWS 2.8 is the only candidate plan-level failure: both rigs
+  die in tiers 1–2, so pass 1 runs tiers 3–4 on a relaxed gate (unprobed).
+  §1.4's designer row reports that plan `unreachable` at `035d662`
+  (UNCORROBORATED); if that still holds, pass 2 is admitted and rescues it at
+  tier 1. TWS 3 (genoa dies, fock routes) and TWS 8 (fock dies, genoa routes)
+  return `ok` today with one sail failed. INFERRED from the rules and §1.4,
+  not a `planRoute` run.
+
+**What it does not reach.** A plan that returns `ok` with one sail failed
+(the #1166 shape — closed in v0.32.0; its PR #1183 is titled as DISCLOSING
+the dropped rig, and `isochrone.ts` is unchanged, so the solve-level death
+behind it stands). Set D puts TWS 3 and TWS 8 in that shape, matching §1.4's
+snapped TWS 3 row; this design gives them nothing, although salvage rescues
+the dying rig in both. Maintainer question 2.
+
+**Cost.** Only failing plans pay, under the one shared `deadline` where a
+caller passes one. Deadline-free callers (`app/sweep/`, real-mask `planRoute`
+tests) are bounded only by the horizon: set C's four solves sum to ~61 s per
+`mirrorCase`-shaped plan on the same 48 h fixture; estimate HEAD-arm time from
+that before scheduling the sweep. Set C's
+four relaxed-tier solves took 9.7–22.9 s each under salvage against ≤ 3 ms
+unsalvaged, all on the fixture's 48 h horizon — shorter than a real
+6-day forecast (`openMeteo.ts` `FORECAST_DAYS`), so real cost is likely higher
+(ARGUED, not measured). Worst case: the user waits out the rest of the 240 s
+budget and then gets today's error. Maintainer question 3.
+
+### 11.2 Stopping rule for salvage — the horizon, not a count
+
+**Rule.** Inside `solve()`: salvage on every frontier-exhaustion death
+(`next.length === 0 && best === null`), never twice in a row, no count cap.
+Freeze `blockedDeaths`/`calmDeaths` at the first salvage. A salvaged solve
+terminates the way any solve does, with an existing cause:
+
+| terminator | typed cause |
+|---|---|
+| a route found | `status: 'ok'` |
+| forecast horizon (`minTMs + dtS > horizonMs`) | `'horizon-exceeded'` |
+| plan deadline at ring entry | `'budget-exhausted'` |
+| a salvage pass that also empties the frontier | frozen-counter cause (pass 1's) |
+
+No new `SolveFailureCause`. Pass 2 discards every one of these (§11.1), so
+none reaches a label or a gate.
+
+**Why it terminates — ARGUED from the code, then MEASURED once.** Every child
+clock exceeds its parent's by at least `dtS/8` (the `[2, 4, 8]` substep retry,
+`dtS >= 150` s), so each non-empty ring raises the frontier's `minTMs`, and
+salvage rings are never consecutive. The horizon guard therefore ends any
+solve within at most 2 × horizon / 18.75 s rings. The probe comment's
+"non-terminating treadmill" at TWS 8 is finite. Unbounded at `d3e3769` (bare
+solve, `performanceFactor` 1.0) it ends `horizon-exceeded` after 4 477 rings
+and 2 236 salvages, in 450 ms. At plan fidelity the same TWS 8 routes (set D:
+genoa unsalvaged, fock after 2 salvages).
+
+**Where the cost is.** Wide searches that flood the region without capturing
+the destination (sets B and C: 9.4–22.9 s), not treadmills. The deadline
+bounds those; a salvage counter would not, since set C's genoa solves spent
+only 11–12 salvages.
+
+**Progress-based stopping — measured and rejected** (§11.6). Best-ever
+distance to destination sits at 42.69 nm through every one of TWS 2.8's 16
+salvages, exactly as at TWS 8. TWS 2.8's longest run of salvages claiming no
+new prune cell is 7; TWS 8's starts at its fourth salvage and lasts until the
+horizon ends the solve. Both signals separate the measured inputs only at a
+threshold set by the most demanding one seen: set A needs no-progress K ≥ 16
+or K ≥ 8 consecutive no-new-cell salvages; set D's TWS 3 genoa (21 flat
+salvages, an 11-salvage no-new-cell run, `results_plan.txt`) raises those to
+K ≥ 21 and K ≥ 12. A threshold that moves with each new input is fitted, not
+a rule.
+
+### 11.3 Regression tests must pin a band, not a point (#1168)
+
+#1168 measured the motor-off outcome as non-monotonic in TWS (unsnapped:
+dies at 2.4, alive at 2.6, dies at 2.8, alive at 3.0). A 24.7 m origin shift
+(§0's snapped vs unsnapped) flips TWS 3. Caveat that travels with it: `alive`
+means "alive at ring 45", not "routes". A single-input pin can pass while the
+behaviour flips 0.2 kn or 25 m away. So the fix's tests pin SEVERAL inputs:
+
+- **Efficacy, solve level, salvage on:** at plan fidelity (set D), snapped
+  TWS 2.8 / 3 / 8 → `ok` on both rigs and both comfort settings; at
+  `performanceFactor` 1.0, TWS 8 → `horizon-exceeded`, not a crash or a hang
+  (§11.2). That TWS 8 pair is itself a #1168-style flip on one parameter, so
+  pin both. The unsnapped TWS 2.4 / 2.6 / 2.8 / 3.0 row's salvaged outcomes
+  are UNMEASURED — measure at HEAD before pinning.
+- **Efficacy, plan level:** snapped TWS 2.8 motor-off Flensburg→Bagenkop
+  error → `ok` (set D, inferred through the success rules; confirm with a
+  `planRoute` run).
+- **Containment, plan level:** for inputs `ok` today, the `PlanResult` is
+  byte-identical with the flag on. Mutation: admit pass 2 on `ok` plans; it
+  must red.
+- **Discard:** `realmask.repro.mirrorCase.test.ts` unchanged. Mutation: surface
+  pass-2 causes; set C predicts `reason` reds as `beyond-horizon`.
+- Each is a real-mask solve under `SOLVER_TEST_TIMEOUT_MS`; wall-clock under CI
+  is unmeasured.
+- Uniform wind is the harness, not the product (#1168).
+
+### 11.4 #282 consequence
+
+`isochrone.ts` and `planRoute.ts` are sweep-closure members, so the fix owes
+the full `app/sweep/` run: a BASE double-run control, then BASE-vs-HEAD
+(~90 min, detached, never a harness background task). The design changes no
+classification: `SolveFailureCause`, the death heuristic and
+`NO_ROUTE_LABEL_OF_CAUSE` are untouched. It still owes the sweep by closure
+membership, and a trajectory change is exactly what the sweep checks.
+
+**Candidate arms, for THIS lever (ladder-level salvage).** The sweep is
+containment evidence only: predictions 1–3 below hold for a build that never
+wires the flag; efficacy rests on §11.3's plan-level test.
+
+- `light-motorless` — #282's configuration (TWS 3, motor off), which §1's
+  TWS 3 row shares: 16
+  `error/unreachable` at `035d662` (§7). The five `KNOWN_DISCONNECTED` ids
+  among them are excluded (`verify_mask.py` fails any entry that reaches open
+  water at some gate). Whether the other 11 end in the §1 death shape is
+  UNMEASURED.
+- `becalmed` / `deep-becalmed` — CLAUDE.md calls them vacuous for the DEPTH
+  lever (and, with `light-motorless`, for a MODE lever). That does not
+  transfer. Their rows enter pass 2 only where the plan cause is `mask-blocked`
+  and a tier ran. Whether any does, and whether salvage moves it at
+  TWS 0.15, is UNMEASURED: count neither their byte-identity nor a flip as
+  evidence until measured.
+- Motor-on arms — NOT exempt. Admission is not motor-scoped, so an
+  `unreachable` row where a tier ran enters pass 2. Example:
+  `salona44-relaxation`'s `rudkoebing` (#866, a blocked death, relaxed tier
+  ran). Maintainer question 1.
+
+**Pre-registration for the two-pass design** (§7 does not transfer, per its
+own scope note). Structural predictions, falsifiable per row:
+
+1. Every `ok` / `ok+shallow` row in every arm of `app/sweep/armNames.ts` at
+   `d3e3769` (11) is byte-identical.
+2. Every `error` row is byte-identical or becomes `ok` / `ok+shallow`.
+3. No error row changes its `reason`.
+
+Any violation is evidence against the implementation, not tuning headroom.
+No flip COUNT is predicted here. Register one, with its basis stated (§7
+recorder's note), before the HEAD run.
+
+### 11.5 Recommendation
+
+**Fund the fix for v0.35.0 as specified in §11.1 + §11.2:**
+
+- solve-level salvage behind an opt-in `SolveParams` flag — unbounded,
+  terminated by the horizon and the deadline, counters frozen;
+- a conjunctive ladder-level pass 2 that re-runs exactly pass 1's tiers,
+  read by no retry predicate;
+- pass-2 failure returns pass 1 verbatim;
+- no new failure cause;
+- the full sweep with §11.4's pre-registration.
+
+Evidence at plan-fidelity settings: set D's bare `solve()` runs rescue all 8
+dying tier-1/2 solves of motor-off Flensburg→Bagenkop at TWS 2.8 / 3 / 8; the
+plan-level rescue is inferred, not a `planRoute` run (§11.1). This replaces §8's HOLD
+for this design only; §8 still rejects the solve-level gate of §5.
+
+### 11.6 Considered and rejected
+
+- **A fixed `MAX_SALVAGES`.** The demand is 1 or 16 at `performanceFactor`
+  1.0 (TWS 8 never routes, spending 2 236 salvages before the horizon; §10,
+  §11.2), and 1–21 at plan fidelity (set D); termination does not need a
+  cap. Any constant either strands TWS 2.8 or is decorative.
+- **Progress-based stopping** (best-ever distance to destination, or new
+  prune cells). Distance is flat through all of TWS 2.8's rescue; either
+  signal needs a threshold set by the most demanding input seen, and set D
+  moved both (§11.2).
+- **A solve-level gate** (§5 as proposed). Hole 1: it fires inside plans that
+  succeed today.
+- **Surfacing pass-2 causes, or re-running the ladder with live cause gates.**
+  The first relabels failures (set C: `mirrorCase` → `beyond-horizon`). The
+  second lets a pass-2 cause open a tier pass 1 never ran.
+- **Re-applying today's retry predicates to pass-2 results** (an earlier §11.1
+  reading). A salvaged tier 1/2 ending `horizon-exceeded` fails
+  `depthRelaxationMayHelp`, so pass 2 would skip relaxed tiers 3/4 that pass 1
+  ran.
+- **A new `SolveFailureCause` for "salvage gave up".** It would be read by
+  `depthRelaxationMayHelp` and `comfortRetryMayHelp` — the #282 coupling —
+  and the discard makes it unnecessary.
+- **Per-sail salvage on `ok` plans** (the #1166 shape). It changes rig
+  comparisons on plans that work today. Left to maintainer question 2 rather
+  than designed in.
+
+### 11.7 Questions the maintainer must rule on before code is funded
+
+1. Admit pass 2 only for `motorEnabled: false` plans, or for every plan-level
+   `unreachable`? Motor-on rows such as `rudkoebing` then pay pass 2 too;
+   #866's 2026-09-04 ruling (a) accepted that death as a documented limit
+   without ruling on a general salvage reaching it.
+2. Leave plans that return `ok` with one sail failed (#1166 shape) untouched,
+   as designed, or also salvage the failed sail — at the cost of changing rig
+   comparisons on plans that succeed today?
+3. May a failing plan spend the rest of `PLAN_BUDGET_MS` (240 s) in pass 2
+   before returning today's error, or does pass 2 get a sub-budget? #432 chose
+   one shared deadline so the user's wait stays bounded however many tiers
+   fire (`planRoute.ts`'s deadline doc comment).
+4. When pass 2 ends `budget-exhausted`, return pass 1's verdict (as designed)
+   or `search-budget-exceeded`? For pass 1: §11.1's rule that no pass-2 cause
+   reaches a label. For `search-budget-exceeded`: `planRoute.ts`'s
+   pre-relaxation deadline check returns it after tiers 1–2 finish
+   `mask-blocked`, and `combineFailureCause` ranks the budget first because
+   `unreachable` is a claim about the water (#432/PR #453).
