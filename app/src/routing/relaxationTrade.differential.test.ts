@@ -7,14 +7,13 @@ import { APPROACH_RADIUS_M, uniformGate } from '../lib/depthGate';
 import { defaultSafetyDepthM, relaxationFloorM } from '../lib/boatDepth';
 import type { NavMask } from '../lib/mask';
 import { BOATS, boatById, DEFAULT_BOAT_ID } from '../data/boats';
-import { mask, MARSTAL } from '../test/realmaskFixtures';
+import { mask } from '../test/realmaskFixtures';
 import { makeMask, TEST_MASK_META } from '../test/fixtures';
 import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
 import type { LatLon } from '../types';
 
-// Each probe allocates a fresh 5.28M-cell BFS buffer (`NavMask.cellsConnected`)
-// and this file runs hundreds of them. Shared budget, never a literal
-// (`timeoutGuard.test.ts`).
+// Each probe allocates a fresh 5.28M-cell BFS buffer (`NavMask.cellsConnected`).
+// Shared budget, never a literal (`timeoutGuard.test.ts`).
 vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
 
 /**
@@ -69,6 +68,7 @@ function snapAt(h: Harbor, requestedM: number): LatLon | null {
 function snappedPairs(
   originId: string,
   requestedM: number,
+  reversed = false,
 ): { pairs: { id: string; waypoints: LatLon[] }[]; snapFailed: string[] } {
   const origin = snapAt(harbor(originId), requestedM);
   if (!origin) throw new Error(`origin '${originId}' fails to snap at ${requestedM} m`);
@@ -77,7 +77,7 @@ function snappedPairs(
   for (const h of harbors) {
     if (h.id === originId) continue;
     const dest = snapAt(h, requestedM);
-    if (dest) pairs.push({ id: h.id, waypoints: [origin, dest] });
+    if (dest) pairs.push({ id: h.id, waypoints: reversed ? [dest, origin] : [origin, dest] });
     else snapFailed.push(h.id);
   }
   return { pairs, snapFailed };
@@ -124,7 +124,7 @@ function usedDepthM(
 
 interface Row {
   id: string;
-  /** Disconnected at the requested gate, i.e. a pair on which relaxation can fire. */
+  /** Snapped pair disconnected at the requested gate (BFS). */
   relevant: boolean;
   localUsedDepthM: number | null;
   globalUsedDepthM: number | null;
@@ -173,7 +173,13 @@ function expectSubsetConsistency(rows: readonly Row[], label: string): void {
   }
 }
 
-const ORIGIN_IDS = ['marstal', 'flensburg'] as const;
+// `reversed` puts the fixed harbour LAST: [X, Marstal] is the mirror of the
+// Marstal-origin population, measured because phase 2 walks waypoints in order.
+const POPULATIONS = [
+  { name: 'origin marstal', fixedId: 'marstal', reversed: false },
+  { name: 'origin flensburg', fixedId: 'flensburg', reversed: false },
+  { name: 'destination marstal', fixedId: 'marstal', reversed: true },
+] as const;
 
 describe('#930 R3: P3 disc-vs-global relaxation trade (shipped findRelaxedGate, real mask)', () => {
   it('derives one depth case per distinct (gate, floor) pair across every catalogue boat', () => {
@@ -182,12 +188,12 @@ describe('#930 R3: P3 disc-vs-global relaxation trade (shipped findRelaxedGate, 
   });
 
   describe.each(DEPTH_CASES)('boats $boatIds (gate $requestedM m, floor $floorM m)', (c) => {
-    it.each(ORIGIN_IDS)('origin %s: shipped radius == global search on every pair', (originId) => {
-      const { pairs, snapFailed } = snappedPairs(originId, c.requestedM);
+    it.each(POPULATIONS)('$name: shipped radius == global search on every pair', (pop) => {
+      const { pairs, snapFailed } = snappedPairs(pop.fixedId, c.requestedM, pop.reversed);
       expect(pairs.length + snapFailed.length, 'harbors.json harbour count').toBe(32);
 
       const rows = measure(mask, pairs, c.requestedM, c.floorM, APPROACH_RADIUS_M);
-      const label = `[${c.boatIds.join(',')}] ${originId}`;
+      const label = `[${c.boatIds.join(',')}] ${pop.name}`;
 
       // LICENCE: equality over pairs where nothing relaxes proves nothing, so
       // at least one relevant pair must actually relax.
@@ -208,11 +214,12 @@ describe('#930 R3: P3 disc-vs-global relaxation trade (shipped findRelaxedGate, 
     });
   });
 
-  it('POSITIVE CONTROL (real mask): at 1000 m, below the ~1050 m Marstal cliff, the tripwire reds with BOTH a lost route and a different depth', () => {
+  it('POSITIVE CONTROL (real mask): at 1000 m, below the ~1060 m Marstal cliff, the tripwire reds with BOTH a lost route and a different depth', () => {
     // Compared against Infinity, not APPROACH_RADIUS_M, so the control does
     // not move with the constant it guards. Measured: at 1000 m Marstal's
     // pinch falls outside its disc, so a 2.1 m floor loses the route while a
-    // 1.9 m floor finds a deeper 1.9 m detour against global's 2.3 m.
+    // 1.9 m floor relaxes further, to a 1.9 m detour, against global's 2.3 m.
+    // The different-depth half needs a catalogue boat with a 1.9 m floor.
     const TIGHT_RADIUS_M = 1000;
     const rows = DEPTH_CASES.flatMap((c) =>
       measure(
@@ -300,11 +307,13 @@ describe('#930 R3: P3 disc-vs-global relaxation trade (shipped findRelaxedGate, 
     const floorM = relaxationFloorM(boat);
     const sample = ['flensburg', 'soenderborg', 'bagenkop', 'aeroeskoebing', 'faaborg'];
     const rows = sample.map((id) => {
-      const h = harbor(id);
+      const h = snapAt(harbor(id), requestedM);
+      const m = snapAt(harbor('marstal'), requestedM);
+      if (!h || !m) throw new Error(`'${id}' or 'marstal' fails to snap at ${requestedM} m`);
       return {
         id,
-        marstalFirst: usedDepthM(mask, [MARSTAL, h.snap], requestedM, APPROACH_RADIUS_M, floorM),
-        marstalSecond: usedDepthM(mask, [h.snap, MARSTAL], requestedM, APPROACH_RADIUS_M, floorM),
+        marstalFirst: usedDepthM(mask, [m, h], requestedM, APPROACH_RADIUS_M, floorM),
+        marstalSecond: usedDepthM(mask, [h, m], requestedM, APPROACH_RADIUS_M, floorM),
       };
     });
     console.log('#930 direction check:', JSON.stringify(rows));

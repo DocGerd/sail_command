@@ -79,8 +79,8 @@ instead of here.
 - [930-relaxation-trade-measurement.md](930-relaxation-trade-measurement.md)
   — #930: P3's disc-vs-global relaxation trade, measured against the
   shipped `findRelaxedGate` on the real mask — equal to the global search on
-  all 128 Marstal- and Flensburg-origin pair-runs, each catalogue boat's own
-  gate/floor
+  every Marstal- and Flensburg-origin harbour pair at each catalogue boat's
+  own gate/floor
 - [1022-whole-journey-ux.md](1022-whole-journey-ux.md) — #1022: the whole
   client journey, as a design exercise (reference screenshots in
   `1022-whole-journey-ux/`)
