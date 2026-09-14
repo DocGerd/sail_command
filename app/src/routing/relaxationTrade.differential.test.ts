@@ -33,8 +33,13 @@ vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
  * global relaxes") follows from the code: local's navigable set is a subset of
  * global's at every probe, and phase 2 only raises disc gates. Equality does
  * NOT follow — both positive controls below break it, on the real mask at a
- * tighter radius and on a synthetic mask — so the equality assertion is an empirical pin of THIS mask and harbour set,
- * and it is what reds if a future mask makes the trade bite.
+ * tighter radius and on a synthetic mask — so the equality assertion is an
+ * empirical pin of THIS mask, harbour set and catalogue, and it is what reds
+ * if a future change makes the trade bite.
+ *
+ * Waypoints are snapped at the requested gate first, exactly as `planRoute`
+ * does before it calls `findRelaxedGate`. A raw `harbors.json` snap sitting
+ * below the gate would otherwise read as disconnected at its own endpoint.
  *
  * Plan-level (solver) evidence is not attempted here: `planRoute` takes no
  * radius parameter. See the P3 record §7 sweep instead.
@@ -48,6 +53,35 @@ interface Harbor {
 }
 
 const harbors = JSON.parse(readFileSync(resolve(dataDir, 'harbors.json'), 'utf8')) as Harbor[];
+
+/**
+ * `planRoute`'s own snap at the requested gate; null means `planRoute` returns
+ * `snap-failed-*` and never reaches relaxation.
+ */
+function snapAt(h: Harbor, requestedM: number): LatLon | null {
+  return mask.snapToNavigable(h.snap, requestedM);
+}
+
+/**
+ * Snapped (origin, harbour) pairs for every other harbour. Pairs whose snap
+ * fails are returned separately so the caller logs them — never dropped silently.
+ */
+function snappedPairs(
+  originId: string,
+  requestedM: number,
+): { pairs: { id: string; waypoints: LatLon[] }[]; snapFailed: string[] } {
+  const origin = snapAt(harbor(originId), requestedM);
+  if (!origin) throw new Error(`origin '${originId}' fails to snap at ${requestedM} m`);
+  const pairs: { id: string; waypoints: LatLon[] }[] = [];
+  const snapFailed: string[] = [];
+  for (const h of harbors) {
+    if (h.id === originId) continue;
+    const dest = snapAt(h, requestedM);
+    if (dest) pairs.push({ id: h.id, waypoints: [origin, dest] });
+    else snapFailed.push(h.id);
+  }
+  return { pairs, snapFailed };
+}
 
 function harbor(id: string): Harbor {
   const h = harbors.find((x) => x.id === id);
@@ -149,17 +183,10 @@ describe('#930 R3: P3 disc-vs-global relaxation trade (shipped findRelaxedGate, 
 
   describe.each(DEPTH_CASES)('boats $boatIds (gate $requestedM m, floor $floorM m)', (c) => {
     it.each(ORIGIN_IDS)('origin %s: shipped radius == global search on every pair', (originId) => {
-      const origin = harbor(originId);
-      const others = harbors.filter((h) => h.id !== originId);
-      expect(others.length, 'harbors.json harbour count').toBe(32);
+      const { pairs, snapFailed } = snappedPairs(originId, c.requestedM);
+      expect(pairs.length + snapFailed.length, 'harbors.json harbour count').toBe(32);
 
-      const rows = measure(
-        mask,
-        others.map((h) => ({ id: h.id, waypoints: [origin.snap, h.snap] })),
-        c.requestedM,
-        c.floorM,
-        APPROACH_RADIUS_M,
-      );
+      const rows = measure(mask, pairs, c.requestedM, c.floorM, APPROACH_RADIUS_M);
       const label = `[${c.boatIds.join(',')}] ${originId}`;
 
       // LICENCE: equality over pairs where nothing relaxes proves nothing, so
@@ -175,7 +202,7 @@ describe('#930 R3: P3 disc-vs-global relaxation trade (shipped findRelaxedGate, 
 
       console.log(
         `#930 ${label}: ${rows.length} pairs, ${rows.filter((r) => r.relevant).length} relevant, ` +
-          `${relaxedRelevant.length} relevant+relaxed:`,
+          `${relaxedRelevant.length} relevant+relaxed, snap-failed ${JSON.stringify(snapFailed)}:`,
         JSON.stringify(rows),
       );
     });
@@ -187,12 +214,13 @@ describe('#930 R3: P3 disc-vs-global relaxation trade (shipped findRelaxedGate, 
     // pinch falls outside its disc, so a 2.1 m floor loses the route while a
     // 1.9 m floor finds a deeper 1.9 m detour against global's 2.3 m.
     const TIGHT_RADIUS_M = 1000;
-    const marstal = harbor('marstal');
-    const others = harbors.filter((h) => h.id !== 'marstal');
     const rows = DEPTH_CASES.flatMap((c) =>
       measure(
         mask,
-        others.map((h) => ({ id: `[${c.boatIds.join(',')}] ${h.id}`, waypoints: [marstal.snap, h.snap] })),
+        snappedPairs('marstal', c.requestedM).pairs.map((p) => ({
+          ...p,
+          id: `[${c.boatIds.join(',')}] ${p.id}`,
+        })),
         c.requestedM,
         c.floorM,
         TIGHT_RADIUS_M,
@@ -206,8 +234,14 @@ describe('#930 R3: P3 disc-vs-global relaxation trade (shipped findRelaxedGate, 
         r.localUsedDepthM !== r.globalUsedDepthM,
     );
     const diag = JSON.stringify(rows);
-    expect(lost.length, `no lost-route divergence at ${TIGHT_RADIUS_M} m.\n${diag}`).toBeGreaterThan(0);
-    expect(deeper.length, `no different-depth divergence at ${TIGHT_RADIUS_M} m.\n${diag}`).toBeGreaterThan(0);
+    expect(
+      lost.length,
+      `no lost-route divergence at ${TIGHT_RADIUS_M} m.\n${diag}`,
+    ).toBeGreaterThan(0);
+    expect(
+      deeper.length,
+      `no different-depth divergence at ${TIGHT_RADIUS_M} m.\n${diag}`,
+    ).toBeGreaterThan(0);
     expectSubsetConsistency(rows, 'control');
     expect(() => expectRadiusInvariant(lost, 'control')).toThrow(/trade bites/);
     expect(() => expectRadiusInvariant(deeper, 'control')).toThrow(/trade bites/);

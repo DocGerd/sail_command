@@ -30,21 +30,21 @@ property of the committed data, never a theorem.
 Population: origins Marstal and Flensburg x the other 32 harbours, x one depth
 case per distinct (default gate, relaxation floor) derived from `BOATS` —
 Salona 45 + Salona 44 share 3.0 m / 2.1 m, Elan 444 has 2.8 m / 1.9 m.
-"Relevant" = not connected at the requested gate (BFS), i.e. a pair on which
-relaxation can fire.
+Waypoints are snapped at the requested gate first, as `planRoute` does (no
+snap failed). "Relevant" = the snapped pair is not connected at the requested
+gate (BFS), i.e. a pair on which relaxation can fire.
 
 | case | origin | pairs equal | relevant | relevant + relaxed |
 |---|---|---|---|---|
 | 3.0 / 2.1 | Marstal | 32/32 | 32 | 27 (all 2.3 m) |
-| 3.0 / 2.1 | Flensburg | 32/32 | 7 | 2 (Marstal 2.3 m, Augustenborg 2.8 m) |
+| 3.0 / 2.1 | Flensburg | 32/32 | 6 | 1 (Marstal 2.3 m) |
 | 2.8 / 1.9 | Marstal | 32/32 | 32 | 27 (all 2.3 m) |
 | 2.8 / 1.9 | Flensburg | 32/32 | 6 | 1 (Marstal 2.3 m) |
 
 The 5 `KNOWN_DISCONNECTED` harbours are null under both radii in every case.
-Flensburg→Augustenborg is a second, non-Marstal relaxing geography at the
-3.0 m gate. That corrects this document's earlier claim that relaxation
-fires only on Marstal pairs. The sweep's shallow-block count (solver level) is
-a different filter from this BFS one; neither is derived from the other.
+Every relaxing pair in this population involves Marstal. Without the snap,
+Flensburg→Augustenborg reads as relaxing at 2.8 m: its raw snap sits at 2.8 m,
+below the 3.0 m gate, while the re-snapped pair connects at 3.0 m.
 
 Plan-level (solver) evidence is out of scope here: `planRoute` takes no radius
 parameter, and changing that is a production change. The plan-level BASE vs
