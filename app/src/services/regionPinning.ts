@@ -15,9 +15,9 @@
 //
 // SCOPE (maintainer ruling on #1164, 2026-09-14 — see the issue's pinned
 // comment): service + state only, no readiness UI this release.
-// pinRegionsForPlan/regionReadiness are exported for a future call site
-// (planned: the saved-plan list / plan-open flow, tracked under #295) and
-// are NOT wired into App.tsx or any component in this change.
+// pinRegionsForPlan is wired in at pinAfterSave.ts :: pinRegionsAfterSave.
+// regionReadiness is exported for a future call site (planned: the
+// saved-plan list / plan-open flow, tracked under #295).
 //
 // Guard-asymmetry (CLAUDE.md): every "can't tell" branch here resolves
 // toward NOT-READY or PIN-NOTHING, never toward a false "ready" or a

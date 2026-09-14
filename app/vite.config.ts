@@ -467,17 +467,20 @@ function regionManifest(): Plugin {
         // the precache like any real region. See app/e2e/region-offline.spec.ts.
         const fixturePath = resolve(APP_DIR, 'e2e/fixtures', E2E_REGION_FIXTURE_FILE);
         let fixture: RegionManifestEntry;
+        let buf: Buffer;
         try {
+          // Read once: the manifest's bytes and the emitted asset come from the same buffer.
+          buf = readFileSync(fixturePath);
           fixture = {
             id: E2E_REGION_FIXTURE_ID,
             path: `data/${E2E_REGION_FIXTURE_FILE}`,
-            bytes: statSync(fixturePath).size,
+            bytes: buf.length,
             bbox: pmtilesHeaderBbox(fixturePath),
           };
         } catch (err) {
           this.error(err instanceof Error ? err.message : String(err));
         }
-        this.emitFile({ type: 'asset', fileName: fixture.path, source: readFileSync(fixturePath) });
+        this.emitFile({ type: 'asset', fileName: fixture.path, source: buf });
         manifest.regions.push(fixture);
         manifest.regions.sort((a, b) => a.id.localeCompare(b.id));
       }

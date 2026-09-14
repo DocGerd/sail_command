@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto';
 import { act, renderHook } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { usePlanFlow } from './usePlanFlow';
 import { useViaReplan } from './replan';
 import { AppStateProvider, useActivePlan } from './AppState';
@@ -1336,6 +1336,11 @@ describe('#1164 T6: region pinning after a successful save', () => {
   });
 
   it('a rejecting pin neither fails the run nor unsets the saved plan', async () => {
+    // createPinAfterSave pins only under a controlling SW; jsdom has none.
+    Object.defineProperty(navigator, 'serviceWorker', { value: { controller: {} }, configurable: true });
+    onTestFinished(() => {
+      Reflect.deleteProperty(navigator, 'serviceWorker');
+    });
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const save = vi.fn<(plan: Plan) => Promise<void>>().mockResolvedValue(undefined);
     const pin = vi.fn<(plan: Plan) => Promise<unknown>>().mockRejectedValue(new Error('offline'));
