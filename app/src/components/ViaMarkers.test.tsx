@@ -1,6 +1,6 @@
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import ViaMarkers from './ViaMarkers';
+import ViaMarkers, { nearestCandidate } from './ViaMarkers';
 import { de } from '../i18n/dict.de';
 import { makeFakeMap } from '../test/fakeMaplibre';
 import type { LatLon } from '../types';
@@ -78,13 +78,26 @@ vi.mock('maplibre-gl', () => ({
       this.setLngLatCalls.push(coords);
       return this;
     }
-    addTo(map: unknown) {
+    // #1198: mirrors real MapLibre's `addTo()` (marker.ts), which appends
+    // `_element` into `map.getCanvasContainer()` — ViaMarkers.tsx's overlap
+    // effect listens on that SAME container, so a fake that only records
+    // `addToMap` (as this one did before #1198) would leave that container
+    // permanently empty and the effect's `container.addEventListener` calls
+    // unreachable by any dispatched event.
+    addTo(map: { getCanvasContainer: () => HTMLElement }) {
       this.addToMap = map;
+      map.getCanvasContainer().appendChild(this.element);
       return this;
     }
     on(type: string, handler: () => void) {
       if (type === 'dragend') this.dragendHandler = handler;
       return this;
+    }
+    // #1198: real MapLibre's public `Marker.getElement()` (marker.ts) —
+    // ViaMarkers.tsx's overlap-disambiguation effect calls this on every
+    // `markersRef.current` entry.
+    getElement() {
+      return this.element;
     }
     getLngLat() {
       if (!this.draggedTo) {
@@ -382,5 +395,134 @@ describe('ViaMarkers dragend / snapBack branches (#470)', () => {
     expect(second.setLngLatCalls).toHaveLength(2);
     expect(second.setLngLatCalls[1]).toEqual([10.2, 54.7]);
     expect(first.setLngLatCalls).toHaveLength(1);
+  });
+});
+
+// #1198: adjacent via markers overlapping at the widened 44px hit target
+// (#1186) capture each other's drags — MapLibre's own Marker._addDragHandler
+// gates purely on `_element.contains(e.originalEvent.target)`, and the
+// browser resolves `target` to whichever marker paints on top (the
+// LATER-constructed one, since addTo() appends siblings in construction
+// order), unrelated to which marker the press was actually closer to.
+//
+// These tests dispatch REAL DOM events through the fake map's
+// `getCanvasContainer()` (this file's local `Marker.addTo` now appends
+// `element` into it, mirroring real MapLibre) rather than calling
+// ViaMarkers.tsx's internals directly, so they exercise the SAME capture/
+// bubble pipeline a real browser would — jsdom computes no LAYOUT (so
+// `getBoundingClientRect` is stubbed per element below), but it implements
+// the DOM EVENTS spec (capture/target/bubble ordering, `dispatchEvent`
+// setting `.target` to the element it is called on) faithfully, which is
+// the actual mechanism under test here, not paint.
+describe('ViaMarkers overlap disambiguation (#1198)', () => {
+  it('nearestCandidate (pure): picks the candidate whose rect CENTRE is nearest the point', () => {
+    const a = { rect: { left: 78, top: 78, right: 122, bottom: 122 }, value: 'A' };
+    const b = { rect: { left: 93, top: 78, right: 137, bottom: 122 }, value: 'B' };
+    expect(nearestCandidate({ x: 100, y: 100 }, [a, b])).toBe('A');
+    expect(nearestCandidate({ x: 115, y: 100 }, [a, b])).toBe('B');
+  });
+
+  // A (first via point, constructed FIRST -> painted BELOW) and B (second,
+  // painted ON TOP) with overlapping 44px boxes: A centred at (100,100),
+  // B centred at (115,100) — the overlap band is x in [93,122], y in
+  // [78,122].
+  function twoOverlappingVias(): LatLon[] {
+    return [
+      { lat: 54.5, lon: 10.0 },
+      { lat: 54.5, lon: 10.001 },
+    ];
+  }
+
+  function stubRect(
+    el: HTMLElement,
+    r: { left: number; top: number; right: number; bottom: number },
+  ): void {
+    el.getBoundingClientRect = () =>
+      ({
+        ...r,
+        width: r.right - r.left,
+        height: r.bottom - r.top,
+        x: r.left,
+        y: r.top,
+        toJSON: () => r,
+      }) as DOMRect;
+  }
+
+  function renderTwoOverlapping(): {
+    container: HTMLElement;
+    a: RecordedMarker;
+    b: RecordedMarker;
+    seen: EventTarget[];
+  } {
+    hoisted.map = makeFakeMap();
+    render(
+      <ViaMarkers viaPoints={twoOverlappingVias()} replanning={false} onDragEnd={noopDragEnd} />,
+    );
+    const [a, b] = createdMarkers as [RecordedMarker, RecordedMarker];
+    stubRect(a.element, { left: 78, top: 78, right: 122, bottom: 122 });
+    stubRect(b.element, { left: 93, top: 78, right: 137, bottom: 122 });
+    const container = (hoisted.map as ReturnType<typeof makeFakeMap>).getCanvasContainer();
+    // Bubble-phase, undefined options — exactly how handler_manager.ts
+    // registers its own 'mousedown' listener on this SAME element, so this
+    // spy sees exactly what MapLibre's own dispatch would see.
+    const seen: EventTarget[] = [];
+    container.addEventListener('mousedown', (e) => seen.push(e.target!));
+    return { container, a, b, seen };
+  }
+
+  it("redirects a press that lands on the visually-topmost marker (B) but is nearer marker A's centre — the #1198 defect", () => {
+    const { a, b, seen } = renderTwoOverlapping();
+    const bDot = b.element.querySelector('.sc-via-marker-dot')!;
+    const event = new MouseEvent('mousedown', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 100,
+      clientY: 100,
+    });
+    bDot.dispatchEvent(event);
+
+    // At BASE (no #1198 fix) the original event bubbles through unmodified
+    // — `seen` would be [bDot], never reaching A. At HEAD the original is
+    // suppressed and a synthetic dispatched directly at A's root instead.
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toBe(a.element);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it("does not interfere when the browser's own target already agrees with the nearest centre", () => {
+    const { b, seen } = renderTwoOverlapping();
+    const bDot = b.element.querySelector('.sc-via-marker-dot')!;
+    const event = new MouseEvent('mousedown', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 115, // B's own centre — nearest is B, which already agrees.
+      clientY: 100,
+    });
+    bDot.dispatchEvent(event);
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toBe(bDot);
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it("never fires when the press falls inside only ONE via marker's box, whatever the native target", () => {
+    const { container, seen } = renderTwoOverlapping();
+    // (130,100) is inside B's box (93-137) and outside A's (78-122) — a
+    // single candidate. Dispatched on the CONTAINER itself (outside every
+    // via marker's own DOM tree), which also pins the >=2-candidate guard
+    // specifically: with it relaxed to >=1, a lone candidate whose tree
+    // does not contain the native target would wrongly be treated as
+    // contended and redirected to that candidate anyway.
+    const event = new MouseEvent('mousedown', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 130,
+      clientY: 100,
+    });
+    container.dispatchEvent(event);
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toBe(container);
+    expect(event.defaultPrevented).toBe(false);
   });
 });
