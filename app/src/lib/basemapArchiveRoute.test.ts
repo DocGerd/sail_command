@@ -7,16 +7,33 @@
 // Range/CDN assurance comes from app/e2e/offline.spec.ts and
 // basemap-fallback.spec.ts (see that file's own comment).
 
+import { Blob as NodeBlob } from 'node:buffer';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { assertNonVacuousStrip, stripCommentsAndStrings } from '../test/sourceStrip';
 import {
   respondToBasemapArchiveRequest,
   isRetiredBasemapRuntimeCache,
   type BasemapArchiveRouteDeps,
 } from './basemapArchiveRoute';
+
+// #1223 review r4008955321: jsdom and Node disagree on which `Blob` is
+// global, and `createPartialResponse` (workbox-range-requests) calls
+// `originalResponse.blob()`. Node 22.23.2 (CI) rejects the result against
+// its OWN Blob (workbox's dev-mode instanceof assert throws -> 416, the
+// required `app` check's actual CI failure); Node 24.15.0 accepts it but
+// undici's `new Response(slicedBlob)` stringifies the Blob body to the
+// literal `"[object Blob]"`, so a status/Content-Length-only assertion
+// passes with the WRONG bytes. Stubbing node:buffer's Blob as the global
+// makes the slice correct on BOTH Node versions. TEST-ONLY: sw.ts's real
+// route runs inside a Chromium ServiceWorker, which has exactly one
+// native, standards-correct Blob — this divergence is a Node/jsdom
+// test-environment artifact, never a production one.
+beforeAll(() => {
+  vi.stubGlobal('Blob', NodeBlob);
+});
 
 const CORE_URL = 'https://example.test/sail_command/data/basemap.pmtiles.png';
 const REGION_URL = 'https://example.test/sail_command/data/region-abc.pmtiles.png';
@@ -80,12 +97,14 @@ describe('respondToBasemapArchiveRequest', () => {
   });
 
   it('serves a 206 partial response from the precache for a Range request', async () => {
-    const body = new Response('x'.repeat(32), { status: 200 });
+    const body = new Response('0123456789abcdefghijklmnopqrstuv', { status: 200 });
     const d = deps({ matchPrecache: async () => body });
-    const req = new Request(CORE_URL, { headers: { Range: 'bytes=0-15' } });
+    const req = new Request(CORE_URL, { headers: { Range: 'bytes=10-19' } });
     const res = await respondToBasemapArchiveRequest(req, d);
     expect(res.status).toBe(206);
-    expect(res.headers.get('Content-Length')).toBe('16');
+    expect(res.headers.get('Content-Length')).toBe('10');
+    expect(res.headers.get('Content-Range')).toBe('bytes 10-19/32');
+    expect(await res.text()).toBe('abcdefghij');
   });
 
   it('serves a PINNED region from its runtime cache, full body for a non-Range request', async () => {
@@ -99,13 +118,15 @@ describe('respondToBasemapArchiveRequest', () => {
   });
 
   it('serves a 206 partial response from the region cache for a Range request', async () => {
-    const body = new Response('x'.repeat(64), { status: 200 });
+    const body = new Response('0123456789abcdefghijklmnopqrstuv', { status: 200 });
     const cache = fakeCache(new Map([[REGION_URL, body]]));
     const d = deps({ openRegionCache: async () => cache });
     const req = new Request(REGION_URL, { headers: { Range: 'bytes=0-7' } });
     const res = await respondToBasemapArchiveRequest(req, d);
     expect(res.status).toBe(206);
     expect(res.headers.get('Content-Length')).toBe('8');
+    expect(res.headers.get('Content-Range')).toBe('bytes 0-7/32');
+    expect(await res.text()).toBe('01234567');
     expect(cache.put).not.toHaveBeenCalled();
   });
 
@@ -216,17 +237,22 @@ describe('#1164 T3: Range→206 route stays registered BEFORE precacheAndRoute (
     expect(routeIndex).toBeLessThan(precacheIndex);
   });
 
-  it('the activate handler filters caches through isRetiredBasemapRuntimeCache, not a no-op (#1223 review r4008628024)', () => {
+  it('the activate handler chains isRetiredBasemapRuntimeCache DIRECTLY into the delete .map (#1223 review r4008955333)', () => {
     const stripped = readStrippedSwSource();
     // 'activate' itself is a STRING literal, which stripCommentsAndStrings
     // masks to spaces (it strips comments outright but only MASKS string
-    // content) — so the anchor must be the call site literal itself, which
-    // is ordinary code, not string content. A `.filter(() => false)` (or
-    // any other) mutation of that call site cannot satisfy this literal.
-    assertNonVacuousStrip(
-      stripped,
-      '.filter(isRetiredBasemapRuntimeCache(import.meta.env.BASE_URL))',
-      'sw.ts',
+    // content) — so the control needle here is `caches`, ordinary code,
+    // not string content.
+    assertNonVacuousStrip(stripped, 'caches', 'sw.ts');
+    // A bare substring check on the filter call site alone is satisfied by
+    // `.filter(isRetiredBasemapRuntimeCache(...)).filter(() => false)` — a
+    // no-op chained AFTER the real filter, which stays green (#1223 review
+    // r4008955333, measured: 13/13). Requiring `.map(` immediately
+    // (only whitespace between) after the filter call's closing paren
+    // means an inserted `.filter(...)` in between breaks the match, so
+    // this reds on that exact mutation.
+    expect(stripped).toMatch(
+      /\.filter\(isRetiredBasemapRuntimeCache\(import\.meta\.env\.BASE_URL\)\)\s*\.map\(/,
     );
   });
 });
