@@ -1,14 +1,16 @@
 /// <reference types="vitest/config" />
 import { execFileSync } from 'node:child_process';
-import { readFileSync, readdirSync } from 'node:fs';
+import { closeSync, openSync, readFileSync, readdirSync, readSync, statSync } from 'node:fs';
 import { dirname, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import type { Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
+import { bytesToHeader } from 'pmtiles';
 import { VitePWA } from 'vite-plugin-pwa';
 import { BaseSequencer } from 'vitest/node';
 import type { TestSpecification } from 'vitest/node';
+import { BASEMAP_PATH } from './src/lib/basemap.ts';
 import { readFragmentsFromDir } from './src/lib/changelogFragmentsFs.ts';
 
 const APP_DIR = dirname(fileURLToPath(import.meta.url));
@@ -304,6 +306,164 @@ function glyphManifest(): Plugin {
   };
 }
 
+// #1164: shared between the PWA plugin's own silent-drop cap (below) and
+// regionManifest()'s fail-loud guard — one file, one constant, so the two
+// can never diverge (CLAUDE.md's maximumFileSizeToCacheInBytes bullet).
+const PRECACHE_MAX_FILE_SIZE_BYTES = 40 * 1024 * 1024;
+
+// #1164 basemap-region split (docs/spikes/296-lazy-load-map-data.md §3).
+// Region archives are flat — `data/region-<id>.pmtiles.png` (maintainer
+// ruling 2026-09-14) — so deploy.yml's flat `data/*.pmtiles*` smoke-probe
+// glob keeps seeing them. Duplicated here rather than imported from
+// app/src/lib/basemapRegions.ts (a sibling task, not yet merged as of this
+// PR): a twin test asserting the two patterns agree is owed once that
+// module ships — see this PR's body.
+const CORE_REGION_ID = 'core';
+const REGION_ARCHIVE_FILENAME_RE = /^region-([a-z0-9][a-z0-9-]*)\.pmtiles\.png$/;
+
+function isArchiveLikeFilename(fileName: string): boolean {
+  return fileName.endsWith('.pmtiles.png') || fileName.endsWith('.pmtiles');
+}
+
+export interface RegionManifestEntry {
+  id: string;
+  path: string;
+  bytes: number;
+  /** [minLon, minLat, maxLon, maxLat], read from the PMTiles header — never hand-authored. */
+  bbox: [number, number, number, number];
+}
+
+export interface RegionManifest {
+  core: RegionManifestEntry;
+  regions: RegionManifestEntry[];
+}
+
+/** Reads a PMTiles archive's declared bbox from its fixed 127-byte header. Throws if the file
+ * is shorter than the header, if the magic number is wrong, or (via `bytesToHeader`'s own
+ * guard) if the spec version exceeds 3. `bytesToHeader` itself never checks the magic — the
+ * installed pmtiles@4.5.0's `getHeaderAndRoot` (app/node_modules/pmtiles/dist/cjs/index.cjs)
+ * does, immediately before calling `bytesToHeader`, via
+ * `new DataView(bytes).getUint16(0, true) !== 19792` (little-endian bytes 0-1 spelling "PM") —
+ * mirrored here so a non-PMTiles file with a plausible version byte doesn't parse to a bogus
+ * bbox (PR #1220 review). */
+export function pmtilesHeaderBbox(archivePath: string): [number, number, number, number] {
+  const HEADER_BYTES = 127;
+  const PMTILES_MAGIC_UINT16_LE = 19792; // "PM" — see getHeaderAndRoot, cited above.
+  const buf = Buffer.alloc(HEADER_BYTES);
+  const fd = openSync(archivePath, 'r');
+  let bytesRead: number;
+  try {
+    bytesRead = readSync(fd, buf, 0, HEADER_BYTES, 0);
+  } finally {
+    closeSync(fd);
+  }
+  if (bytesRead < HEADER_BYTES) {
+    throw new Error(
+      `regionManifest: ${archivePath} is only ${bytesRead} bytes — too short for a PMTiles ` +
+        `header (needs ${HEADER_BYTES})`,
+    );
+  }
+  const view = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+  if (new DataView(view).getUint16(0, true) !== PMTILES_MAGIC_UINT16_LE) {
+    throw new Error(`regionManifest: ${archivePath} is not a PMTiles archive (bad magic number)`);
+  }
+  const header = bytesToHeader(view);
+  return [header.minLon, header.minLat, header.maxLon, header.maxLat];
+}
+
+/** Classifies one `app/public/data/` filename as the core archive, a region archive, or
+ * (returning null) unrelated. Any OTHER `*.pmtiles*`-shaped name is a naming-convention
+ * violation the caller must fail closed on — see buildRegionManifest(). */
+function classifyArchiveFile(
+  fileName: string,
+  coreFileName: string,
+): { kind: 'core' } | { kind: 'region'; id: string } | null {
+  if (fileName === coreFileName) return { kind: 'core' };
+  const match = REGION_ARCHIVE_FILENAME_RE.exec(fileName);
+  return match ? { kind: 'region', id: match[1] } : null;
+}
+
+/** Builds the region manifest by scanning `dataDir` (an `app/public/data`-shaped directory) —
+ * never hand-authored (1163 §1's case against a bbox table). Fails closed: throws if the core
+ * archive is missing/unreadable, or if a `*.pmtiles*`-shaped file matches neither the core
+ * filename nor the region naming convention (a typo that would otherwise ship an archive no
+ * manifest entry, and no cache route, ever names). */
+export function buildRegionManifest(dataDir: string, coreFileName: string): RegionManifest {
+  const entries = readdirSync(dataDir, { withFileTypes: true }).filter((e) => e.isFile());
+  let core: RegionManifestEntry | undefined;
+  const regions: RegionManifestEntry[] = [];
+  for (const entry of entries) {
+    if (!isArchiveLikeFilename(entry.name)) continue;
+    const classified = classifyArchiveFile(entry.name, coreFileName);
+    if (classified === null) {
+      throw new Error(
+        `regionManifest: ${entry.name} matches neither the core archive filename ` +
+          `(${coreFileName}) nor the region-<id>.pmtiles.png naming convention (#1164)`,
+      );
+    }
+    const archivePath = resolve(dataDir, entry.name);
+    const entryData: RegionManifestEntry = {
+      id: classified.kind === 'core' ? CORE_REGION_ID : classified.id,
+      path: `data/${entry.name}`,
+      bytes: statSync(archivePath).size,
+      bbox: pmtilesHeaderBbox(archivePath),
+    };
+    if (classified.kind === 'core') core = entryData;
+    else regions.push(entryData);
+  }
+  if (core === undefined) {
+    throw new Error(`regionManifest: no core archive (${coreFileName}) found under ${dataDir}`);
+  }
+  regions.sort((a, b) => a.id.localeCompare(b.id));
+  return { core, regions };
+}
+
+/** The maximumFileSizeToCacheInBytes silent-drop hazard (CLAUDE.md), made loud: a core archive
+ * over the precache cap is dropped from the SW's precache manifest with only a `console.warn`
+ * at runtime, degrading the WHOLE offline chart to online-only. Fails the build instead. */
+export function assertCoreWithinPrecacheCap(core: RegionManifestEntry, capBytes: number): void {
+  if (core.bytes > capBytes) {
+    throw new Error(
+      `regionManifest: core archive ${core.path} is ${core.bytes} bytes, over the ` +
+        `${capBytes}-byte precache cap (maximumFileSizeToCacheInBytes) — it would be SILENTLY ` +
+        'dropped from the SW precache manifest, degrading the whole offline map to online-only.',
+    );
+  }
+}
+
+// #1164: emits dist/basemap-regions.json — id/path/byte-length/bbox for the core archive plus
+// any per-region archives under app/public/data/ (region-<id>.pmtiles.png). Mirrors
+// glyphManifest() above: dist/-only (never app/public/data/, keeping this OUT of the #282
+// sweep closure), build-only, and fails the build rather than warning — see the two functions
+// above for the specific fail-closed conditions. Reads the SOURCE tree (app/public/data/)
+// directly rather than the copied dist/ output, so it is independent of Vite's public-dir
+// copy timing relative to this plugin's own generateBundle hook.
+function regionManifest(): Plugin {
+  return {
+    name: 'sailcommand:region-manifest',
+    apply: 'build',
+    generateBundle() {
+      const dataDir = resolve(APP_DIR, 'public/data');
+      const coreFileName = BASEMAP_PATH.split('/').pop();
+      if (coreFileName === undefined) {
+        this.error('regionManifest: BASEMAP_PATH has no filename component');
+      }
+      let manifest: RegionManifest;
+      try {
+        manifest = buildRegionManifest(dataDir, coreFileName);
+        assertCoreWithinPrecacheCap(manifest.core, PRECACHE_MAX_FILE_SIZE_BYTES);
+      } catch (err) {
+        this.error(err instanceof Error ? err.message : String(err));
+      }
+      this.emitFile({
+        type: 'asset',
+        fileName: 'basemap-regions.json',
+        source: JSON.stringify(manifest),
+      });
+    },
+  };
+}
+
 // #125: build-time app version shown in the About dialog — baked into the
 // bundle by the `define` below, NEVER runtime-fetched: the whole point is
 // diagnosing stale-service-worker installs, so the string must identify the
@@ -437,6 +597,7 @@ export default defineConfig(({ command }) => ({
   plugins: [
     react(),
     glyphManifest(),
+    regionManifest(),
     changelogFragmentsPlugin(),
     subPathMeta(basePath, isUat),
     cspMeta(),
@@ -460,8 +621,11 @@ export default defineConfig(({ command }) => ({
         // basename — a future per-region archive is gated independently of
         // the core one, no config change needed. Any single archive over
         // this cap still silently drops from precache (see the standing
-        // CLAUDE.md bullet on this constant).
-        maximumFileSizeToCacheInBytes: 40 * 1024 * 1024,
+        // CLAUDE.md bullet on this constant) — regionManifest() above turns
+        // that silent drop into a build failure for the CORE archive
+        // specifically (region archives are deliberately NOT precached at
+        // all, per the #1164 ruling, so this cap never gates them).
+        maximumFileSizeToCacheInBytes: PRECACHE_MAX_FILE_SIZE_BYTES,
         // #253: the maplibre-gl worker chunk MUST be precached — without it
         // the vector basemap works online but breaks OFFLINE, since
         // `setWorkerUrl`'s hashed asset URL has no runtime-cache route. The
@@ -480,7 +644,17 @@ export default defineConfig(({ command }) => ({
         // a dedicated runtime CacheFirst route in src/sw.ts and warmed by
         // src/services/glyphWarmup.ts; offline.spec.ts's built-output guard
         // fails loudly if a glob change re-adds them here.
-        globIgnores: ['**/test-fixtures/**', '**/brand/**', '**/basemap-assets/fonts/**'],
+        // #1164: region archives are deliberately NOT precached — kept out
+        // of workbox's manifest so the install stays small; a pin/readiness
+        // service (a later task) fetches and caches them on demand instead.
+        // `deploy.yml`'s smoke-probe glob (`data/*.pmtiles*`) is flat and
+        // still reaches them regardless of this exclusion.
+        globIgnores: [
+          '**/test-fixtures/**',
+          '**/brand/**',
+          '**/basemap-assets/fonts/**',
+          '**/data/region-*.pmtiles*',
+        ],
       },
       // devOptions.enabled defaults to false, so `vite dev`/Vitest (both
       // resolve this config with command 'serve') never register a real SW
