@@ -15,6 +15,9 @@ import { STANDARD_VIEWPORTS, mapReady, startPreview, type PreviewServer } from '
 // z11-12, west of Flensburg: every z>=11 tile there ends at or before 9.3164 E,
 // so none overlaps the core. No route can leave the core, but the plan's 5 nm
 // pin corridor (routeCorridorBoxes) does reach 9.29 E from Flensburg.
+// The fixture is z11-12 only, to stay small; the protocol advertises the core's
+// maxzoom, so this area renders blank outside z11-12.99. That is a property of
+// the fixture, not the protocol, and the camera below pins z12.2.
 //
 // Offline is made honest by killing the preview server: setOffline() does not
 // block service-worker fetches (see offline.spec.ts).
@@ -68,8 +71,10 @@ async function planAndPin(page: Page, server: PreviewServer, bytes: number): Pro
   await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
   await page.evaluate(() => navigator.serviceWorker.ready);
   await expect
-    .poll(() => page.evaluate(() => navigator.serviceWorker.controller !== null))
-    .toBe(true);
+    .poll(() =>
+      page.evaluate(() => navigator.serviceWorker.controller?.scriptURL ?? 'no-controller'),
+    )
+    .toContain('sw.js');
 
   await page.getByRole('region', { name: 'Start' }).getByRole('combobox').fill('Flensburg');
   await page.getByRole('region', { name: 'Start' }).getByRole('option').first().click();
