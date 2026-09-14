@@ -167,9 +167,9 @@ describe('ensureBasemapProtocolSource', () => {
       { headers?: Record<string, string> } | undefined;
     expect(secondInit?.headers?.['Range']).toBeUndefined();
     expect(protocol.add).toHaveBeenCalledTimes(1);
-    // The registered archive MUST be keyed on the exact URL string MapLibre
-    // parses out of the style's pmtiles:// reference — any drift silently
-    // falls through to a lazily auto-created FetchSource, resurrecting #118.
+    // The registered archive MUST be keyed on the exact core href MapView
+    // passes to basemapProtocol.configure (#1164) — any drift silently falls
+    // through to a lazily auto-created FetchSource, resurrecting #118.
     const added = protocol.add.mock.calls[0]?.[0] as PMTiles;
     expect(added.source.getKey()).toBe(ARCHIVE_URL);
     expect(warn).toHaveBeenCalledTimes(1);
