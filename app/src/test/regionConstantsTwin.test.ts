@@ -135,7 +135,7 @@ describe('#1164 follow-up: vite.config.ts region constants twin basemapRegions.t
     const value = extractLiteral(
       readViteConfigSource(),
       /function regionManifest\(\): Plugin \{[\s\S]*?fileName:\s*,/,
-      /fileName: '([^']+)'/,
+      /^\s*fileName: '([^']+)'/,
       'region manifest emitted filename',
     );
     expect(value).toBe(REGION_MANIFEST_PATH);
