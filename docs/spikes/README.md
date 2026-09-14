@@ -78,8 +78,9 @@ instead of here.
   only — implementation deferred (maintainer ruling, 2026-09-10)
 - [930-relaxation-trade-measurement.md](930-relaxation-trade-measurement.md)
   — #930: P3's disc-vs-global relaxation trade, measured against the
-  shipped `findRelaxedGate` on the real mask — never bites on the complete
-  reachable population
+  shipped `findRelaxedGate` on the real mask — equal to the global search on
+  every Marstal- and Flensburg-origin harbour pair at each catalogue boat's
+  own gate/floor
 - [1022-whole-journey-ux.md](1022-whole-journey-ux.md) — #1022: the whole
   client journey, as a design exercise (reference screenshots in
   `1022-whole-journey-ux/`)
@@ -90,10 +91,8 @@ instead of here.
 - [1136-motor-off-solve-termination.md](1136-motor-off-solve-termination.md)
   — #1136: motor-off solves terminate holding mask-validated children
   (domination pruning, not the `MOTOR_TWAS` heading gap); re-expansion
-  salvage designed and NOT implemented. An efficacy probe run at the
-  v0.32.0 cut discharged the doc's fourth open hole — salvaged nodes do
-  survive the next ring — but found no workable `MAX_SALVAGES` constant;
-  its numbers are on the issue, not in this doc. Deferred to v0.33.0.
+  salvage designed and NOT implemented. §10 records the efficacy probe; §11
+  designs a ladder-level containment gate for v0.35.0.
 - [1147-budget-headroom-reference-device.md](1147-budget-headroom-reference-device.md)
   — #1147: sizing `PLAN_BUDGET_MS` against a Galaxy Tab S7 reference device —
   CDP CPU throttling measured inert on the routing Worker; the current
@@ -109,6 +108,7 @@ instead of here.
   long-press with its mechanism. Design shipped at the v0.32.0 cut; the
   build was deferred to v0.33.0
 
-Two entries carry a same-named subdirectory of supporting artifacts rather
-than being self-contained: `1022-whole-journey-ux/` (reference screenshots)
-and `354-mode-churn/` (the reproduction test file and its measured output).
+Three entries carry a same-named subdirectory of supporting artifacts rather
+than being self-contained: `1022-whole-journey-ux/` (reference screenshots),
+`354-mode-churn/` (the reproduction test file and its measured output) and
+`1136-motor-off-solve-termination/` (the §11 probe scripts and results).
