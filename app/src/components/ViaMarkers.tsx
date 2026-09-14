@@ -105,8 +105,8 @@ function rectContainsPoint(rect: ScreenRect, x: number, y: number): boolean {
 
 // Exported so the #1198 regression test can pin this pure selection rule
 // directly, without any DOM/event plumbing: given a press point and the
-// candidates whose rendered box already contains it (>=2, i.e. an overlap),
-// returns the one whose CENTRE is nearest. This is the disambiguation
+// candidates whose rendered box already contains it, returns the one whose
+// CENTRE is nearest. This is the disambiguation
 // MapLibre's own hit test cannot perform — it resolves purely by DOM paint
 // order, which is unrelated to which marker the press was actually closer to.
 // eslint-disable-next-line react-refresh/only-export-components

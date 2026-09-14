@@ -505,7 +505,7 @@ describe('ViaMarkers overlap disambiguation (#1198)', () => {
     expect(event.defaultPrevented).toBe(false);
   });
 
-  it("never fires when the press falls inside only ONE via marker's box, whatever the native target", () => {
+  it("never fires when the press falls inside only ONE via marker's box", () => {
     const { b, seen } = renderTwoOverlapping();
     const bDot = b.element.querySelector('.sc-via-marker-dot')!;
     // (130,100) is inside B's box (93-137) and outside A's (78-122) — a
