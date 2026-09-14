@@ -3,8 +3,11 @@ import type { AisBoundingBox } from '../services/aisStream';
 import {
   CORE_REGION_ID,
   REGION_ARCHIVE_PREFIX,
+  REGION_MANIFEST_PATH,
   isRegionArchivePath,
   isRetiredRegionCache,
+  isValidRegionBbox,
+  parseRegionManifest,
   regionById,
   regionCacheName,
   requiredRegions,
@@ -245,5 +248,116 @@ describe('malformed bbox — fail-closed, never under-require', () => {
     const result = requiredRegions([near, far], [reversedCorridor]);
     expect(result).toEqual(expect.arrayContaining(['near', 'far']));
     expect(result).toHaveLength(2);
+  });
+});
+
+// #1225/#1224 consolidation (PR #1224 review r4008717160): isValidRegionBbox
+// and parseRegionManifest were EXPORTED here so both PR #1225's pin service
+// and PR #1224's composite protocol (once it switches over) share one
+// definition instead of two that could drift.
+describe('isValidRegionBbox', () => {
+  it('accepts a well-formed bbox', () => {
+    expect(isValidRegionBbox(regionBbox(9.4, 54.3, 11.0, 55.3))).toBe(true);
+  });
+
+  it('rejects a NaN coordinate', () => {
+    expect(isValidRegionBbox([NaN, 0, 1, 1])).toBe(false);
+  });
+
+  it('rejects a non-finite (Infinity) coordinate', () => {
+    expect(isValidRegionBbox([0, 0, Infinity, 1])).toBe(false);
+  });
+
+  it('rejects a reversed (min > max) bbox on either axis', () => {
+    expect(isValidRegionBbox([10, 0, 5, 1])).toBe(false); // maxLon < minLon
+    expect(isValidRegionBbox([0, 10, 1, 5])).toBe(false); // maxLat < minLat
+  });
+
+  it('accepts a degenerate but valid bbox (min === max)', () => {
+    expect(isValidRegionBbox([1, 1, 1, 1])).toBe(true);
+  });
+});
+
+describe('REGION_MANIFEST_PATH', () => {
+  it('is the flat, BASE_URL-relative filename T2 emits', () => {
+    expect(REGION_MANIFEST_PATH).toBe('basemap-regions.json');
+    expect(REGION_MANIFEST_PATH.includes('/')).toBe(false);
+  });
+});
+
+describe('parseRegionManifest', () => {
+  const validCore = {
+    id: CORE_REGION_ID,
+    path: 'data/basemap.pmtiles.png',
+    bytes: 999,
+    bbox: [9.4, 54.3, 11, 55.3],
+  };
+  const validRegion = {
+    id: 'a',
+    path: `data/${REGION_ARCHIVE_PREFIX}a.pmtiles.png`,
+    bytes: 1024,
+    bbox: [9.5, 54.4, 10.5, 54.9],
+  };
+
+  it('accepts a well-formed manifest and returns it structurally unchanged', () => {
+    const parsed = parseRegionManifest({ core: validCore, regions: [validRegion] });
+    expect(parsed).toEqual({ core: validCore, regions: [validRegion] });
+  });
+
+  it('accepts a well-formed manifest with zero regions (single-archive deployment)', () => {
+    expect(parseRegionManifest({ core: validCore, regions: [] })).toEqual({
+      core: validCore,
+      regions: [],
+    });
+  });
+
+  it.each([
+    ['not an object', null],
+    ['an array', [1, 2, 3]],
+    ['missing core', { regions: [] }],
+    ["core.id is not literally 'core'", { core: { ...validCore, id: 'not-core' }, regions: [] }],
+    ['core missing bbox', { core: { id: CORE_REGION_ID, path: 'x', bytes: 1 }, regions: [] }],
+    [
+      'core bbox has only 3 numbers',
+      { core: { id: CORE_REGION_ID, path: 'x', bytes: 1, bbox: [1, 2, 3] }, regions: [] },
+    ],
+    [
+      'core bbox is reversed (min > max)',
+      { core: { ...validCore, bbox: [11, 55.3, 9.4, 54.3] }, regions: [] },
+    ],
+    ['regions is not an array', { core: validCore, regions: 'nope' }],
+    [
+      'a region entry is malformed (missing bytes)',
+      {
+        core: validCore,
+        regions: [{ id: 'r', path: 'data/region-r.pmtiles.png', bbox: [0, 0, 1, 1] }],
+      },
+    ],
+    [
+      'a region entry has a reversed (min > max) bbox',
+      { core: validCore, regions: [{ ...validRegion, bbox: [10.5, 54.9, 9.5, 54.4] }] },
+    ],
+    [
+      "a region entry's path does not match the region naming convention (#1224 review — the #1225-only gap this consolidation closes)",
+      { core: validCore, regions: [{ ...validRegion, path: 'data/notaregion.pmtiles.png' }] },
+    ],
+    [
+      "a region entry's path is actually the CORE archive path",
+      { core: validCore, regions: [{ ...validRegion, path: 'data/basemap.pmtiles.png' }] },
+    ],
+  ])('rejects (ALL-OR-NOTHING, fail-closed): %s', (_name, data) => {
+    expect(parseRegionManifest(data)).toBeNull();
+  });
+
+  it('rejects the WHOLE manifest when only the SECOND region entry is malformed (all-or-nothing, never a partial region list)', () => {
+    const secondBroken = {
+      ...validRegion,
+      id: 'b',
+      path: `data/${REGION_ARCHIVE_PREFIX}b.pmtiles.png`,
+      bbox: [1, 1, 0, 0],
+    };
+    expect(
+      parseRegionManifest({ core: validCore, regions: [validRegion, secondBroken] }),
+    ).toBeNull();
   });
 });

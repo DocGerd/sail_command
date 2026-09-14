@@ -11,8 +11,11 @@ import {
   saveWaypoint,
   listWaypoints,
   deleteWaypoint,
+  saveRegionPin,
+  getRegionPin,
   __resetDbForTests,
   type SavedWaypoint,
+  type RegionPinRecord,
 } from './db';
 import type { Plan, Settings, WindGrid } from '../types';
 import { defaultBoatSnapshot } from '../types';
@@ -1276,5 +1279,114 @@ describe('#848: saved-waypoint persistence (services/db.ts)', () => {
     expect(loadedPlan?.name).toBe('A Plan');
     const loadedWaypoints = await listWaypoints();
     expect(loadedWaypoints).toEqual([waypoint]);
+  });
+});
+
+// #1164 T4 — same shape as the #848 v1->v2 migration test above (and for the
+// same reason): a test that only ever opens a fresh (version-3) database
+// cannot see whether the `oldVersion` gating is real, because a fresh
+// install runs every block regardless. This opens a REAL v2 database
+// (plans + settings + waypoints, no pins store) first, closes it, and only
+// THEN reopens through this module's own db() to exercise the branching.
+describe('#1164 T4: v2 -> v3 migration adds the pins store additively', () => {
+  beforeEach(async () => {
+    await __resetDbForTests();
+  });
+
+  it('an existing v2 database (no pins store) upgrades cleanly through db(), and pre-existing data in EVERY prior store survives untouched', async () => {
+    const v2 = await openDB('sailcommand', 2, {
+      upgrade(d) {
+        const plans = d.createObjectStore('plans', { keyPath: 'id' });
+        plans.createIndex('by-createdAt', 'createdAtMs');
+        d.createObjectStore('settings');
+        const waypoints = d.createObjectStore('waypoints', { keyPath: 'id' });
+        waypoints.createIndex('by-createdAt', 'createdAtMs');
+      },
+    });
+    expect(v2.objectStoreNames.contains('pins')).toBe(false);
+
+    const preExistingSettings: Settings = {
+      safetyDepthM: 3.0,
+      depthComfortMarginM: 2.0,
+      motorSpeedKn: 6.5,
+      motorThresholdKn: 2.5,
+      sailPreferenceKn: 2.8,
+      maneuverPenaltyS: 45,
+      performanceFactor: 0.9,
+      motorEnabled: true,
+      showOwnship: false,
+    };
+    await v2.put('settings', preExistingSettings, 'user');
+    const preExistingWaypoint: SavedWaypoint = {
+      id: 'wp-pre-v3',
+      name: 'Vorhandener Ankerplatz',
+      lat: 54.7,
+      lon: 9.95,
+      createdAtMs: 500,
+    };
+    await v2.add('waypoints', preExistingWaypoint);
+    // Close BEFORE any of this module's own db() calls — a live v2 handle
+    // would make the version-upgrading open below hang rather than exercise
+    // it (same IndexedDB rule the v1->v2 test above documents).
+    v2.close();
+
+    // This module's own db() now reopens at its real DB_VERSION (3). If the
+    // oldVersion<1/<2 blocks were NOT correctly skipped, re-running
+    // `d.createObjectStore('settings')` or the waypoints store creation on a
+    // database where they already exist would throw — getting past this
+    // call at all already rules that out.
+    const record: RegionPinRecord = {
+      planId: 'plan-migration-1',
+      regionIds: ['region-a', 'region-b'],
+      pinnedAtMs: 2000,
+    };
+    await saveRegionPin(record);
+    expect(await getRegionPin('plan-migration-1')).toEqual(record);
+
+    // Pre-existing data in the OLDER stores must have survived the upgrade
+    // untouched — this is what distinguishes "the block was skipped" from
+    // "the block re-ran and happened not to throw".
+    expect(await loadSettings()).toEqual(preExistingSettings);
+    expect(await listWaypoints()).toEqual([preExistingWaypoint]);
+  });
+});
+
+describe('#1164 T4: region pin intent persistence (services/db.ts)', () => {
+  beforeEach(async () => {
+    await __resetDbForTests();
+  });
+
+  it('save -> get roundtrip', async () => {
+    const record: RegionPinRecord = {
+      planId: 'plan-a',
+      regionIds: ['region-a', 'region-b'],
+      pinnedAtMs: 12345,
+    };
+    await saveRegionPin(record);
+    expect(await getRegionPin('plan-a')).toEqual(record);
+  });
+
+  it('a repeat pin for the same plan id OVERWRITES the prior intent record (put, not add)', async () => {
+    await saveRegionPin({ planId: 'plan-a', regionIds: ['region-a'], pinnedAtMs: 1000 });
+    const updated: RegionPinRecord = {
+      planId: 'plan-a',
+      regionIds: ['region-a', 'region-b'],
+      pinnedAtMs: 2000,
+    };
+    await saveRegionPin(updated);
+    expect(await getRegionPin('plan-a')).toEqual(updated);
+  });
+
+  it('an unknown plan id resolves to undefined, never a throw', async () => {
+    expect(await getRegionPin('never-pinned')).toBeUndefined();
+  });
+
+  it('two plans pin independently', async () => {
+    const a: RegionPinRecord = { planId: 'plan-a', regionIds: ['region-a'], pinnedAtMs: 1 };
+    const b: RegionPinRecord = { planId: 'plan-b', regionIds: ['region-b'], pinnedAtMs: 2 };
+    await saveRegionPin(a);
+    await saveRegionPin(b);
+    expect(await getRegionPin('plan-a')).toEqual(a);
+    expect(await getRegionPin('plan-b')).toEqual(b);
   });
 });
