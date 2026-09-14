@@ -22,10 +22,27 @@ export interface SavedWaypoint {
   createdAtMs: number;
 }
 
+// #1164 T4: a per-plan PIN INTENT, not a readiness verdict — that verdict is
+// re-derived from CacheStorage on every call (services/regionPinning.ts's
+// regionReadiness), never cached here as a boolean (PWA review on PR #1219:
+// a REGION_CACHE_VERSION bump retires every pinned region's cache at once,
+// so a stored "ready" flag would go stale the instant that happens). This
+// record exists only so a future UI (#295) can list which plans a user asked
+// to keep offline-ready, independent of whether the fetches succeeded.
+export interface RegionPinRecord {
+  readonly planId: string;
+  // Required region ids at the time pinning was requested (basemapRegions.ts's
+  // requiredRegions output) — NOT necessarily all successfully cached; see
+  // regionReadiness for the authoritative per-region cache state.
+  readonly regionIds: readonly string[];
+  readonly pinnedAtMs: number;
+}
+
 interface SailDB extends DBSchema {
   plans: { key: string; value: Plan; indexes: { 'by-createdAt': number } };
   settings: { key: 'user'; value: Settings };
   waypoints: { key: string; value: SavedWaypoint; indexes: { 'by-createdAt': number } };
+  pins: { key: string; value: RegionPinRecord };
 }
 
 // #848 spec §2.3 — THE BLOCKER this design exists to prevent: IndexedDB runs
@@ -41,7 +58,14 @@ interface SailDB extends DBSchema {
 // one pass. See db.test.ts's "#848: v1 -> v2 migration" for the mutation
 // check this comment promises — it opens a v1 database FIRST, closes it,
 // then reopens through `db()`, which a fresh-database-only test cannot see.
-const DB_VERSION = 2;
+//
+// #1164 T4: version 3 adds the `pins` store the SAME additive way — an
+// existing v1 OR v2 database gains ONLY `pins` (oldVersion < 1 / < 2 stay
+// gated exactly as before, so a v2 database does not re-run the v1 block and
+// throw on an already-existing store). Pre-1.0 no-migration ruling (ADR-0002)
+// does not apply here: that ruling covers RESHAPING existing stored data, not
+// adding a brand-new, empty store that no prior version wrote anything into.
+const DB_VERSION = 3;
 
 let dbPromise: Promise<IDBPDatabase<SailDB>> | null = null;
 
@@ -56,6 +80,9 @@ function db(): Promise<IDBPDatabase<SailDB>> {
       if (oldVersion < 2) {
         const waypoints = d.createObjectStore('waypoints', { keyPath: 'id' });
         waypoints.createIndex('by-createdAt', 'createdAtMs');
+      }
+      if (oldVersion < 3) {
+        d.createObjectStore('pins', { keyPath: 'planId' });
       }
     },
   });
@@ -409,4 +436,16 @@ export async function listWaypoints(): Promise<SavedWaypoint[]> {
 
 export async function deleteWaypoint(id: string): Promise<void> {
   await (await db()).delete('waypoints', id);
+}
+
+// #1164 T4: the `pins` store — see RegionPinRecord's own comment for what it
+// does and (deliberately) does not represent. `put` (not `add`) so a repeat
+// pin request for the same plan overwrites its prior intent record rather
+// than throwing on a duplicate keyPath.
+export async function saveRegionPin(record: RegionPinRecord): Promise<void> {
+  await (await db()).put('pins', record);
+}
+
+export async function getRegionPin(planId: string): Promise<RegionPinRecord | undefined> {
+  return (await db()).get('pins', planId);
 }
