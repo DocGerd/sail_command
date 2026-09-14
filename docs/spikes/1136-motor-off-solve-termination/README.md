@@ -16,9 +16,12 @@ the test suite or the sweep.
   (`performanceFactor` 0.9, comfort 5 / none, both rigs, TWS 2.8 / 3 / 8).
 - `run.sh <worktree>` / `run_tws8.sh` / `run_plan.sh` — need a
   `node_modules` link to `<repo>/app/node_modules` beside these files.
-- `analyze.py <out.json>` — replays candidate stopping rules over a trace.
-  Exact: a stopping rule only ends a run at a salvage trigger, so the
-  trajectory before it is the unbounded one.
+- `analyze.py <out.json>` — replays candidate stopping rules over a trace
+  (`python3 analyze.py <out.json>`, stdout saved as the `results*.txt`
+  below). Exact: a stopping rule only ends
+  a run at a salvage trigger, so the trajectory before it is the unbounded
+  one. The trace's `tH` is the ring clock, which does not advance on a dying
+  ring, so it can exceed the horizon (`final tH=373.33` on a 48 h fixture).
 - `results.txt` — `analyze.py` output for sets A–C and the TWS 8 rerun;
   `results_plan.txt` — for set D. The `ms` figures are
   bare `solve()` under vitest on one WSL2 dev machine, load unknown: an order

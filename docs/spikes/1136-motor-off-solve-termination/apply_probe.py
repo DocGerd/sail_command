@@ -11,7 +11,8 @@ Usage: python3 apply_probe.py <path-to-isochrone.ts>
 import sys
 
 path = sys.argv[1]
-src = open(path, encoding="utf8").read()
+with open(path, encoding="utf8") as fh:
+    src = fh.read()
 
 
 def sub(old: str, new: str) -> None:
@@ -61,5 +62,6 @@ sub(
     "      continue;\n"
     "    }\n",
 )
-open(path, "w", encoding="utf8").write(src)
+with open(path, "w", encoding="utf8") as fh:
+    fh.write(src)
 print("probe applied")

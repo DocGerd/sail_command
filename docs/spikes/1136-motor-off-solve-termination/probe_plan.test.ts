@@ -10,12 +10,7 @@ const { WindField } = await import(`${WT}/app/src/lib/wind`);
 const iso = await import(`${WT}/app/src/routing/isochrone`);
 const { uniformWindGrid } = await import(`${WT}/app/src/test/fixtures`);
 const { DEFAULT_SETTINGS } = await import(`${WT}/app/src/types`);
-const { uniformGate, APPROACH_RADIUS_M } = await import(
-  `${WT}/app/src/lib/depthGate`
-);
-const { findRelaxedGate } = await import(`${WT}/app/src/routing/relaxedDepth`);
-const { relaxationFloorM } = await import(`${WT}/app/src/lib/boatDepth`);
-const { boatById, DEFAULT_BOAT_ID } = await import(`${WT}/app/src/data/boats`);
+const { uniformGate } = await import(`${WT}/app/src/lib/depthGate`);
 
 const dd = `${WT}/app/public/data`;
 const meta = JSON.parse(readFileSync(`${dd}/mask.meta.json`, "utf8"));
@@ -24,7 +19,6 @@ const table = (rig: string) =>
   JSON.parse(readFileSync(`${dd}/polars/salona-45-${rig}.json`, "utf8"));
 const FLENSBURG = { lat: 54.798, lon: 9.4335 };
 const BAGENKOP = { lat: 54.753, lon: 10.668 };
-const MARSTAL = { lat: 54.8579, lon: 10.528 };
 const T0 = Date.UTC(2026, 6, 15, 6, 0, 0);
 const snap = (p: { lat: number; lon: number }) => mask.snapToNavigable(p, 3)!;
 

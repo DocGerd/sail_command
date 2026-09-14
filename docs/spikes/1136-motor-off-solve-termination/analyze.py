@@ -8,7 +8,8 @@ unbounded trace and stopping at the first refused salvage is exact.
 import json
 import sys
 
-runs = json.load(open(sys.argv[1]))
+with open(sys.argv[1]) as fh:
+    runs = json.load(fh)
 
 
 def events(trace):
