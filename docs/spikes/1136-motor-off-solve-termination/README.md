@@ -12,11 +12,14 @@ the test suite or the sweep.
   Flensburg→Marstal at 3.0 m) and C (Flensburg→Marstal on the relaxed gate,
   plan fidelity: `performanceFactor` 0.9, comfort 5 / none, both rigs).
   `probe_tws8.test.ts` re-runs A's TWS 8 with a 20 000-ring cap.
-- `run.sh <worktree>` / `run_tws8.sh <worktree>` — needs a `node_modules`
-  link to `<repo>/app/node_modules` beside these files.
+  `probe_plan.test.ts` is set D: Flensburg→Bagenkop at plan fidelity
+  (`performanceFactor` 0.9, comfort 5 / none, both rigs, TWS 2.8 / 3 / 8).
+- `run.sh <worktree>` / `run_tws8.sh` / `run_plan.sh` — need a
+  `node_modules` link to `<repo>/app/node_modules` beside these files.
 - `analyze.py <out.json>` — replays candidate stopping rules over a trace.
   Exact: a stopping rule only ends a run at a salvage trigger, so the
   trajectory before it is the unbounded one.
-- `results.txt` — `analyze.py` output for both runs. The `ms` figures are
+- `results.txt` — `analyze.py` output for sets A–C and the TWS 8 rerun;
+  `results_plan.txt` — for set D. The `ms` figures are
   bare `solve()` under vitest on one WSL2 dev machine, load unknown: an order
   of magnitude, never a browser-worker figure.

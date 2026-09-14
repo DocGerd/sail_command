@@ -1542,9 +1542,14 @@ discharged by §10 and the #1136 efficacy-probe comment (2026-09-10); this
 section answers prerequisites 2 and 3 and re-registers prerequisite 4.
 
 **Currency.** Merge-base `d3e3769`. `git log 035d662..d3e3769 --
-app/src/routing/isochrone.ts` is empty. Since the probe comment's `831db11`,
-routing inputs changed only by #1178 (`planRoute.ts` passes `mask.meta` to
-`WindField`; `wind.ts` gains lattice-coverage guards). The §11.2 measurement
+app/src/routing/isochrone.ts` is empty. Between the probe comment's `831db11`
+and `d3e3769` (`git diff --stat 831db11 d3e3769 -- app pipeline`),
+`isochrone.ts`, `relaxedDepth.ts`, `mask.ts`, `polar.ts`, `depthGate.ts`,
+`geo.ts` and `app/public/data/` are unchanged. Changed on the solver path:
+`planRoute.ts` and `wind.ts` (#1178: `WindField` takes `mask.meta`; lattice
+guards). Changed off it: `workerClient.ts` (#1147 budget 120 000 → 240 000,
+#1193 cancel; neither reaches a deadline-free `solve()`), tests,
+`pipeline/requirements.txt`. The §11.2 measurement
 re-runs at `d3e3769` and reproduces the probe comment's rescues exactly
 (TWS 2.8: ok, 170 rings, 16 salvages, ETA 17.56 h; TWS 3: ok, 121 rings,
 1 salvage, ETA 15.55 h).
@@ -1606,13 +1611,25 @@ today, or relabelling a failure. So every uncertain branch — a clause false,
 the deadline, any pass-2 error — returns pass 1. The gate can only fail
 toward not salvaging.
 
+**Plan fidelity — set D.** Sets A–C run bare `solve()` at
+`performanceFactor` 1.0; a user's plan runs 0.9, tier 1 at comfort 5 and
+tier 2 without, both rigs. Set D reruns snapped Flensburg→Bagenkop at TWS
+2.8 / 3 / 8 in exactly that shape (`results_plan.txt`):
+
+- all 8 dying solves route under salvage, needing 1–21 salvages, 2.3–8.5 s;
+- all 4 solves that route today are unchanged (same ETA, 0 salvages);
+- mapped through today's success rules (`tier1/tier2.some((r) =>
+  r.rigResult)`), TWS 2.8 is the one plan-level failure — both rigs die in
+  both tiers — so pass 2 rescues it. TWS 3 (genoa dies, fock routes) and
+  TWS 8 (fock dies, genoa routes) return `ok` today with one sail failed.
+  INFERRED from the rules, not a `planRoute` run.
+
 **What it does not reach.** A plan that returns `ok` with one sail failed
 (the #1166 shape — closed in v0.32.0; its PR #1183 is titled as DISCLOSING
 the dropped rig, and `isochrone.ts` is unchanged, so the solve-level death
-behind it stands). §1.4's snapped TWS 3 Flensburg→Bagenkop row is that shape
-(designer's `planRoute` run, uncorroborated), so this design gives it
-nothing, although §10 rescues its dying genoa solve with one salvage.
-Maintainer question 2.
+behind it stands). Set D puts TWS 3 and TWS 8 in that shape, matching §1.4's
+snapped TWS 3 row; this design gives them nothing, although salvage rescues
+the dying rig in both. Maintainer question 2.
 
 **Cost.** Only failing plans pay, under the one shared `deadline`. Set C's
 four relaxed-tier solves took 9.7–22.9 s each under salvage against ≤ 3 ms
@@ -1642,9 +1659,11 @@ none reaches a label or a gate.
 clock exceeds its parent's by at least `dtS/8` (the `[2, 4, 8]` substep retry,
 `dtS >= 150` s), so each non-empty ring raises the frontier's `minTMs`, and
 salvage rings are never consecutive. The horizon guard therefore ends any
-solve within about 2 × horizon / 18.75 s rings. §10's TWS 8 "treadmill" is
-finite. Unbounded at `d3e3769` it ends `horizon-exceeded` after 4 477 rings
-and 2 236 salvages, in 450 ms: its frontier is 1–4 nodes.
+solve within at most 2 × horizon / 18.75 s rings. §10's TWS 8 "treadmill" is
+finite. Unbounded at `d3e3769` (bare solve, `performanceFactor` 1.0) it ends
+`horizon-exceeded` after 4 477 rings and 2 236 salvages, in 450 ms: its
+frontier is 1–4 nodes. At plan fidelity the same TWS 8 routes (set D: genoa
+unsalvaged, fock after 2 salvages).
 
 **Where the cost is.** Wide searches that flood the region without capturing
 the destination (sets B and C: 9.4–22.9 s), not treadmills. The deadline
@@ -1655,9 +1674,12 @@ only 11–12 salvages.
 separates TWS 2.8, which needs all 16 salvages, from the TWS 8 treadmill.
 Best-ever distance to destination sits at 42.69 nm through every one of TWS
 2.8's 16 salvages, exactly as at TWS 8. New prune cells claimed: TWS 2.8's
-longest run of salvages claiming none is 7; TWS 8's starts at its third
-salvage and never ends. The only rule keeping TWS 2.8 alive stops at K ≥ 8
-consecutive no-new-cell salvages — a one-salvage margin fitted to one input.
+longest run of salvages claiming none is 7; TWS 8's begins after its first
+three salvages and never ends. The only rule keeping TWS 2.8 alive stops at
+K ≥ 8 consecutive no-new-cell salvages — a one-salvage margin fitted to one
+input. Set D breaks both signals again: "stop at the first salvage claiming
+no new cell" strands TWS 3 genoa at salvage 1 of the 21 it needs, and
+no-progress K = 4 stops it at 4.
 
 ### 11.3 Regression tests must pin a band, not a point (#1168)
 
@@ -1667,10 +1689,15 @@ dies at 2.4, alive at 2.6, dies at 2.8, alive at 3.0). A 24.7 m origin shift
 means "alive at ring 45", not "routes". A single-input pin can pass while the
 behaviour flips 0.2 kn or 25 m away. So the fix's tests pin SEVERAL inputs:
 
-- **Efficacy, solve level, salvage on:** snapped TWS 2.8 / 3 → `ok`; snapped
-  TWS 8 → `horizon-exceeded`, not a crash or a hang (all measured, §11.2);
-  plus the unsnapped TWS 2.4 / 2.6 / 2.8 / 3.0 row, whose salvaged outcomes
+- **Efficacy, solve level, salvage on:** at plan fidelity (set D), snapped
+  TWS 2.8 / 3 / 8 → `ok` on both rigs and both comfort settings; at
+  `performanceFactor` 1.0, TWS 8 → `horizon-exceeded`, not a crash or a hang
+  (§11.2). That TWS 8 pair is itself a #1168-style flip on one parameter, so
+  pin both. The unsnapped TWS 2.4 / 2.6 / 2.8 / 3.0 row's salvaged outcomes
   are UNMEASURED — measure at HEAD before pinning.
+- **Efficacy, plan level:** snapped TWS 2.8 motor-off Flensburg→Bagenkop
+  error → `ok` (set D, inferred through the success rules; confirm with a
+  `planRoute` run).
 - **Containment, plan level:** for inputs `ok` today, the `PlanResult` is
   byte-identical with the flag on. Mutation: admit pass 2 on `ok` plans; it
   must red.
@@ -1729,13 +1756,15 @@ recorder's note), before the HEAD run.
 - no new failure cause;
 - the full sweep with §11.4's pre-registration.
 
-This replaces §8's HOLD for this design only; §8 still rejects the
-solve-level gate of §5.
+Evidence at the shape a user runs: set D rescues every dying solve of the
+motor-off Flensburg→Bagenkop plan at TWS 2.8 / 3 / 8. This replaces §8's HOLD
+for this design only; §8 still rejects the solve-level gate of §5.
 
 ### 11.6 Considered and rejected
 
 - **A fixed `MAX_SALVAGES`.** The demand is 1, 16, or finite-but-thousands
-  (§10, §11.2), and termination does not need a cap. Any constant either
+  at `performanceFactor` 1.0 (§10, §11.2), and 1–21 at plan fidelity (set
+  D); termination does not need a cap. Any constant either
   strands TWS 2.8 or is decorative.
 - **Progress-based stopping** (best-ever distance to destination, or new
   prune cells). Measured flat through all of TWS 2.8's rescue (§11.2). The
