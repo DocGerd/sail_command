@@ -3,55 +3,41 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { findRelaxedGate } from './relaxedDepth';
-import { APPROACH_RADIUS_M } from '../lib/depthGate';
-import { relaxationFloorM } from '../lib/boatDepth';
-import { boatById, DEFAULT_BOAT_ID } from '../data/boats';
+import { APPROACH_RADIUS_M, uniformGate } from '../lib/depthGate';
+import { defaultSafetyDepthM, relaxationFloorM } from '../lib/boatDepth';
+import type { NavMask } from '../lib/mask';
+import { BOATS, boatById, DEFAULT_BOAT_ID } from '../data/boats';
 import { mask, MARSTAL } from '../test/realmaskFixtures';
+import { makeMask, TEST_MASK_META } from '../test/fixtures';
 import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
 import type { LatLon } from '../types';
 
-// Each `usedDepthM()` call allocates a fresh 5.28M-cell BFS visited/queue
-// buffer per probe (`NavMask.cellsConnected`) and this file runs dozens of
-// them per test (32 pairs x 2+ radii, ~10 probes each) — cheap per call, not
-// cheap in aggregate. Default 5000ms times out; import the shared budget
-// rather than hardcoding one (`timeoutGuard.test.ts` reds a bare literal).
+// Each probe allocates a fresh 5.28M-cell BFS buffer (`NavMask.cellsConnected`)
+// and this file runs hundreds of them. Shared budget, never a literal
+// (`timeoutGuard.test.ts`).
 vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
 
 /**
- * #930 (R3, split from #649/#452): P3's named trade — a per-disc-restricted
- * connectivity search is strictly harder to satisfy than the old global
- * search, so `findRelaxedGate` can return a LOWER `usedDepthM` (deeper
- * relaxation) under the shipped disc radius than an unrestricted search
- * would need for the same route. No prior measurement exercised the SHIPPED
- * mechanism: `docs/spikes/452-p3-implementation-record.md` §6 "R3" records
- * that the only existing figures forced cells to LAND in a mask clone and
- * re-ran the pre-P3 SCALAR `findRelaxedDepthM`, at R = 2400 m, never the
- * shipped `APPROACH_RADIUS_M = 1852 m`.
+ * #930 (R3, split from #649/#452): P3's named trade. A per-disc connectivity
+ * search is harder to satisfy than the global one, so `findRelaxedGate` can
+ * return a LOWER `usedDepthM` (or none) at the shipped radius than the global
+ * search would. Findings and method: docs/spikes/930-relaxation-trade-measurement.md.
  *
- * This file runs the SHIPPED `findRelaxedGate` twice per pair, changing only
- * `approachRadiusM`:
- *   - LOCAL:  `APPROACH_RADIUS_M` (1852 m) — exactly what `planRoute.ts` passes.
- *   - GLOBAL: `Infinity` — `depthGate.ts`'s own documented kill switch, which
- *     `relaxedDepth.test.ts` pins as reproducing the pre-#452 route-wide
- *     search "cell for cell" (that file's own header comment). No mask
- *     cloning, no LAND-forcing, no alternate scalar search: both runs go
- *     through the identical shipped function and the identical committed
- *     mask, differing only in the one parameter the trade is ABOUT.
+ * Runs the SHIPPED `findRelaxedGate` twice per pair on the real committed mask,
+ * changing only `approachRadiusM`:
+ *   - LOCAL:  `APPROACH_RADIUS_M`, as `planRoute.ts` passes it.
+ *   - GLOBAL: `Infinity`, `depthGate.ts`'s kill switch, which reproduces the
+ *     pre-#452 route-wide search (pinned by `relaxedDepth.test.ts`).
  *
- * SAMPLE: every (Marstal, X) pair for the other 32 harbours in the shipped
- * `harbors.json`. `app/sweep/sweepArms.ts`'s own header comment records that
- * relaxation fires for exactly 27 of Marstal's 32 pairs (the giant-component
- * harbours) and for none of the other 528-27 pairs region-wide except the
- * mirror direction — Marstal is the ONLY harbour whose pairs ever reach
- * `findRelaxedGate` with a chance of connecting. This harness does not
- * hand-classify which 27 those are; it runs all 32 and lets the shipped
- * function report which pairs relax under either radius.
+ * STRUCTURAL vs EMPIRICAL. Only `local <= global` (and "local relaxes =>
+ * global relaxes") follows from the code: local's navigable set is a subset of
+ * global's at every probe, and phase 2 only raises disc gates. Equality does
+ * NOT follow — both positive controls below break it, on the real mask at a
+ * tighter radius and on a synthetic mask — so the equality assertion is an empirical pin of THIS mask and harbour set,
+ * and it is what reds if a future mask makes the trade bite.
  *
- * DIRECTION: `cellsConnected` is symmetric and phase 1 (the binary search)
- * treats the waypoint array uniformly, but phase 2's per-disc ascent walks
- * the array IN ORDER, mutating as it goes — so `findRelaxedGate([A, B], …)`
- * and `findRelaxedGate([B, A], …)` are not obviously identical after ascent.
- * A small reversed-order sample checks this directly (see the second `it`).
+ * Plan-level (solver) evidence is not attempted here: `planRoute` takes no
+ * radius parameter. See the P3 record §7 sweep instead.
  */
 
 const dataDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../public/data');
@@ -63,124 +49,231 @@ interface Harbor {
 
 const harbors = JSON.parse(readFileSync(resolve(dataDir, 'harbors.json'), 'utf8')) as Harbor[];
 
-const boat = boatById(DEFAULT_BOAT_ID);
-const FLOOR_M = relaxationFloorM(boat);
-const REQUESTED_M = 3.0;
+function harbor(id: string): Harbor {
+  const h = harbors.find((x) => x.id === id);
+  if (!h) throw new Error(`fixture drift: '${id}' missing from harbors.json`);
+  return h;
+}
 
-function usedDepthM(waypoints: readonly LatLon[], radiusM: number): number | null {
-  return findRelaxedGate(mask, [...waypoints], REQUESTED_M, radiusM, FLOOR_M)?.usedDepthM ?? null;
+interface DepthCase {
+  /** Catalogue boats sharing this (gate, floor) pair — deduplicated, never dropped. */
+  readonly boatIds: readonly string[];
+  readonly requestedM: number;
+  readonly floorM: number;
+}
+
+// Each boat's OWN default gate and relaxation floor, derived from the
+// catalogue. Boats with an identical pair would repeat the same computation,
+// so they share one case; the merge is logged, not silent.
+const DEPTH_CASES: readonly DepthCase[] = (() => {
+  const byKey = new Map<string, { boatIds: string[]; requestedM: number; floorM: number }>();
+  for (const b of BOATS) {
+    const requestedM = defaultSafetyDepthM(b);
+    const floorM = relaxationFloorM(b);
+    const key = `${requestedM}/${floorM}`;
+    const existing = byKey.get(key);
+    if (existing) existing.boatIds.push(b.id);
+    else byKey.set(key, { boatIds: [b.id], requestedM, floorM });
+  }
+  return [...byKey.values()];
+})();
+
+function usedDepthM(
+  m: NavMask,
+  waypoints: readonly LatLon[],
+  requestedM: number,
+  radiusM: number,
+  floorM: number,
+): number | null {
+  return findRelaxedGate(m, [...waypoints], requestedM, radiusM, floorM)?.usedDepthM ?? null;
 }
 
 interface Row {
   id: string;
+  /** Disconnected at the requested gate, i.e. a pair on which relaxation can fire. */
+  relevant: boolean;
   localUsedDepthM: number | null;
   globalUsedDepthM: number | null;
 }
 
-describe('#930 R3: P3 disc-vs-global relaxation trade (shipped findRelaxedGate, real mask)', () => {
-  it('local (R=1852, shipped) never needs LESS relaxation than global (R=Infinity) across every Marstal pair', () => {
-    const others = harbors.filter((h) => h.id !== 'marstal');
-    expect(others.length, 'harbors.json harbour count').toBe(32);
+function measure(
+  m: NavMask,
+  pairs: readonly { id: string; waypoints: readonly LatLon[] }[],
+  requestedM: number,
+  floorM: number,
+  localRadiusM: number,
+): Row[] {
+  return pairs.map(({ id, waypoints }) => ({
+    id,
+    relevant: !m.cellsConnected(waypoints[0], waypoints[1], uniformGate(requestedM)),
+    localUsedDepthM: usedDepthM(m, waypoints, requestedM, localRadiusM, floorM),
+    globalUsedDepthM: usedDepthM(m, waypoints, requestedM, Infinity, floorM),
+  }));
+}
 
-    const rows: Row[] = others.map((h) => ({
-      id: h.id,
-      localUsedDepthM: usedDepthM([MARSTAL, h.snap], APPROACH_RADIUS_M),
-      globalUsedDepthM: usedDepthM([MARSTAL, h.snap], Infinity),
-    }));
-
-    // LICENCE: an absence assertion below is vacuous unless something here
-    // actually relaxed. Report the raw table so a red carries the diagnostic.
-    const relaxed = rows.filter((r) => r.localUsedDepthM !== null || r.globalUsedDepthM !== null);
+/**
+ * THE TRIPWIRE: per pair, the shipped radius must give the same outcome
+ * (null vs non-null) and the same relaxed gate as the global search. The gate
+ * FIELD necessarily differs (approach vs uniform); `usedDepthM` is what the
+ * plan reports.
+ */
+function expectRadiusInvariant(rows: readonly Row[], label: string): void {
+  if (rows.length === 0) throw new Error(`${label}: empty population — nothing measured`);
+  for (const r of rows) {
     expect(
-      relaxed.length,
-      `no Marstal pair triggered relaxation under either radius — nothing measured.\n${JSON.stringify(rows, null, 2)}`,
-    ).toBeGreaterThan(0);
+      r.localUsedDepthM,
+      `${label} ${r.id}: local usedDepthM ${r.localUsedDepthM} != global ${r.globalUsedDepthM} — ` +
+        `the per-disc trade bites here.\n${JSON.stringify(rows)}`,
+    ).toBe(r.globalUsedDepthM);
+  }
+}
 
-    // Classification must agree: a pair that connects under the (looser)
-    // global search but never connects under the (stricter) local search is
-    // an expected, named shape of the trade (local finds nothing where
-    // global does) — record it, don't fail on it. The opposite (local
-    // connects, global doesn't) would be impossible by construction (local's
-    // licensed set is a subset of global's at every probe depth) and IS a
-    // hard failure if observed.
-    for (const r of relaxed) {
-      if (r.localUsedDepthM !== null) {
-        expect(
-          r.globalUsedDepthM,
-          `${r.id}: local relaxed to ${r.localUsedDepthM} m but global found nothing — ` +
-            `impossible under the subset argument (local's per-probe navigable set ⊆ global's)`,
-        ).not.toBeNull();
-      }
-      if (r.localUsedDepthM !== null && r.globalUsedDepthM !== null) {
-        expect(
-          r.localUsedDepthM,
-          `${r.id}: local usedDepthM <= global usedDepthM`,
-        ).toBeLessThanOrEqual(r.globalUsedDepthM);
-      }
-    }
+/** Consistency checks only: both CANNOT fail given the code (subset argument above). */
+function expectSubsetConsistency(rows: readonly Row[], label: string): void {
+  for (const r of rows) {
+    if (r.localUsedDepthM === null) continue;
+    expect(r.globalUsedDepthM, `${label} ${r.id}: local relaxed, global did not`).not.toBeNull();
+    expect(r.localUsedDepthM, `${label} ${r.id}: local <= global`).toBeLessThanOrEqual(
+      r.globalUsedDepthM as number,
+    );
+  }
+}
 
-    console.log('#930 R3 differential (Marstal pairs):', JSON.stringify(rows));
+const ORIGIN_IDS = ['marstal', 'flensburg'] as const;
+
+describe('#930 R3: P3 disc-vs-global relaxation trade (shipped findRelaxedGate, real mask)', () => {
+  it('derives one depth case per distinct (gate, floor) pair across every catalogue boat', () => {
+    expect(DEPTH_CASES.flatMap((c) => c.boatIds).sort()).toEqual(BOATS.map((b) => b.id).sort());
+    console.log('#930 depth cases:', JSON.stringify(DEPTH_CASES));
   });
 
-  it('POSITIVE CONTROL: a tighter-than-shipped radius (1000 m) measurably breaks relaxation relative to the shipped 1852 m on every relaxing pair', () => {
-    // Two calibration attempts preceded this value. 100 m produced NULL
-    // everywhere (too tight to be a control — see below). 1200 m produced
-    // NO CHANGE from 1852 m on any pair: an exploratory fine sweep (not
-    // committed — see the results doc) found the Marstal-local pinch is a
-    // hard CLIFF at ~1050-1060 m — null below it, exactly 2.3 m at and above
-    // it, for every harbour tested, all the way to Infinity. 1852 m and
-    // 1200 m both sit above that cliff, so neither could show movement.
-    // 1000 m sits just below it, so it is expected to newly DISCONNECT every
-    // relaxing pair — a decisive, non-marginal control.
+  describe.each(DEPTH_CASES)('boats $boatIds (gate $requestedM m, floor $floorM m)', (c) => {
+    it.each(ORIGIN_IDS)('origin %s: shipped radius == global search on every pair', (originId) => {
+      const origin = harbor(originId);
+      const others = harbors.filter((h) => h.id !== originId);
+      expect(others.length, 'harbors.json harbour count').toBe(32);
+
+      const rows = measure(
+        mask,
+        others.map((h) => ({ id: h.id, waypoints: [origin.snap, h.snap] })),
+        c.requestedM,
+        c.floorM,
+        APPROACH_RADIUS_M,
+      );
+      const label = `[${c.boatIds.join(',')}] ${originId}`;
+
+      // LICENCE: equality over pairs where nothing relaxes proves nothing, so
+      // at least one relevant pair must actually relax.
+      const relaxedRelevant = rows.filter((r) => r.relevant && r.globalUsedDepthM !== null);
+      expect(
+        relaxedRelevant.length,
+        `${label}: no relevant pair relaxed — nothing measured.\n${JSON.stringify(rows)}`,
+      ).toBeGreaterThan(0);
+
+      expectSubsetConsistency(rows, label);
+      expectRadiusInvariant(rows, label);
+
+      console.log(
+        `#930 ${label}: ${rows.length} pairs, ${rows.filter((r) => r.relevant).length} relevant, ` +
+          `${relaxedRelevant.length} relevant+relaxed:`,
+        JSON.stringify(rows),
+      );
+    });
+  });
+
+  it('POSITIVE CONTROL (real mask): at 1000 m, below the ~1050 m Marstal cliff, the tripwire reds with BOTH a lost route and a different depth', () => {
+    // Compared against Infinity, not APPROACH_RADIUS_M, so the control does
+    // not move with the constant it guards. Measured: at 1000 m Marstal's
+    // pinch falls outside its disc, so a 2.1 m floor loses the route while a
+    // 1.9 m floor finds a deeper 1.9 m detour against global's 2.3 m.
     const TIGHT_RADIUS_M = 1000;
+    const marstal = harbor('marstal');
     const others = harbors.filter((h) => h.id !== 'marstal');
-    const tight = others.map((h) => ({
-      id: h.id,
-      tightUsedDepthM: usedDepthM([MARSTAL, h.snap], TIGHT_RADIUS_M),
-      localUsedDepthM: usedDepthM([MARSTAL, h.snap], APPROACH_RADIUS_M),
-    }));
-    const moved = tight.filter(
+    const rows = DEPTH_CASES.flatMap((c) =>
+      measure(
+        mask,
+        others.map((h) => ({ id: `[${c.boatIds.join(',')}] ${h.id}`, waypoints: [marstal.snap, h.snap] })),
+        c.requestedM,
+        c.floorM,
+        TIGHT_RADIUS_M,
+      ),
+    );
+    const lost = rows.filter((r) => r.localUsedDepthM === null && r.globalUsedDepthM !== null);
+    const deeper = rows.filter(
       (r) =>
-        r.tightUsedDepthM !== null &&
         r.localUsedDepthM !== null &&
-        r.tightUsedDepthM < r.localUsedDepthM,
+        r.globalUsedDepthM !== null &&
+        r.localUsedDepthM !== r.globalUsedDepthM,
     );
-    const newlyBlocked = tight.filter(
-      (r) => r.tightUsedDepthM === null && r.localUsedDepthM !== null,
+    const diag = JSON.stringify(rows);
+    expect(lost.length, `no lost-route divergence at ${TIGHT_RADIUS_M} m.\n${diag}`).toBeGreaterThan(0);
+    expect(deeper.length, `no different-depth divergence at ${TIGHT_RADIUS_M} m.\n${diag}`).toBeGreaterThan(0);
+    expectSubsetConsistency(rows, 'control');
+    expect(() => expectRadiusInvariant(lost, 'control')).toThrow(/trade bites/);
+    expect(() => expectRadiusInvariant(deeper, 'control')).toThrow(/trade bites/);
+  });
+
+  it('POSITIVE CONTROL (synthetic): on a two-channel mask local relaxes DEEPER than global, and the tripwire reds', () => {
+    // Mask-independent twin of the real-mask control: shows the divergence is
+    // a property of the mechanism, not of Marstal's geometry. Waypoints A and B share a deep (5.0 m) corridor with a
+    // 2.5 m pinch midway, far outside both discs; a detour leaves A through a
+    // 2.3 m pinch inside A's disc. Global relaxes to 2.5 (midway pinch);
+    // local must use the detour, 2.3.
+    const DEEP = 50;
+    const A = { row: 100, col: 50 };
+    const B = { row: 100, col: 250 };
+    const water = new Map<number, number>();
+    const cols = TEST_MASK_META.cols;
+    const set = (row: number, col: number, byte: number) => water.set(row * cols + col, byte);
+    for (let c = A.col; c <= B.col; c++) set(100, c, DEEP); // direct corridor
+    set(100, 150, 25); // midway pinch, 2.5 m
+    for (let r = 101; r <= 140; r++) set(r, 53, DEEP); // detour north from col 53
+    for (let c = 53; c <= B.col; c++) set(140, c, DEEP); // detour east
+    for (let r = 101; r <= 140; r++) set(r, B.col, DEEP); // detour south into B
+    set(101, 53, 23); // detour pinch inside A's disc, 2.3 m
+    const synthetic = makeMask((row, col) => water.get(row * cols + col) ?? 0);
+    const centre = (p: { row: number; col: number }): LatLon => ({
+      lat: TEST_MASK_META.south + (p.row + 0.5) * 0.005,
+      lon: TEST_MASK_META.west + (p.col + 0.5) * 0.005,
+    });
+
+    // ~3.6 rows / ~6.2 cols on this 0.005-degree grid: covers the detour
+    // pinch (1 row, 3 cols from A), nowhere near the midway pinch (100 cols).
+    const RADIUS_M = 2000;
+    const rows = measure(
+      synthetic,
+      [{ id: 'synthetic-A-B', waypoints: [centre(A), centre(B)] }],
+      3.0,
+      2.1,
+      RADIUS_M,
     );
-    // This is the needle: if the harness can detect NO movement even when
-    // the radius is deliberately shrunk below the shipped value, the
-    // comparison mechanism itself is broken (or a null result elsewhere is
-    // not evidence of anything). Either a measurably deeper gate OR an
-    // outright loss of connectivity counts as detected movement.
-    expect(
-      moved.length + newlyBlocked.length,
-      `tightening the radius to ${TIGHT_RADIUS_M} m produced NO detectable change vs 1852 m anywhere — ` +
-        `the harness cannot detect movement; treat every other result in this file as unverified.\n${JSON.stringify(tight, null, 2)}`,
-    ).toBeGreaterThan(0);
-    console.log(
-      `#930 positive control (radius=${TIGHT_RADIUS_M}m vs shipped 1852m):`,
-      JSON.stringify(tight),
-    );
+    expect(rows[0]).toEqual({
+      id: 'synthetic-A-B',
+      relevant: true,
+      localUsedDepthM: 2.3,
+      globalUsedDepthM: 2.5,
+    });
+    expectSubsetConsistency(rows, 'synthetic');
+    expect(() => expectRadiusInvariant(rows, 'synthetic')).toThrow(/trade bites/);
+    expect(() => expectRadiusInvariant([], 'synthetic')).toThrow(/nothing measured/);
   });
 
   it('direction check: findRelaxedGate([A,B]) vs findRelaxedGate([B,A]) at the shipped radius, on a 5-harbour sample', () => {
+    // Phase 2 walks the waypoint array IN ORDER, so order could matter in
+    // principle. Reported, not pinned: asymmetry would be a disclosed property.
+    const boat = boatById(DEFAULT_BOAT_ID);
+    const requestedM = defaultSafetyDepthM(boat);
+    const floorM = relaxationFloorM(boat);
     const sample = ['flensburg', 'soenderborg', 'bagenkop', 'aeroeskoebing', 'faaborg'];
     const rows = sample.map((id) => {
-      const h = harbors.find((x) => x.id === id);
-      if (!h) throw new Error(`fixture drift: '${id}' missing from harbors.json`);
+      const h = harbor(id);
       return {
         id,
-        marstalFirst: usedDepthM([MARSTAL, h.snap], APPROACH_RADIUS_M),
-        marstalSecond: usedDepthM([h.snap, MARSTAL], APPROACH_RADIUS_M),
+        marstalFirst: usedDepthM(mask, [MARSTAL, h.snap], requestedM, APPROACH_RADIUS_M, floorM),
+        marstalSecond: usedDepthM(mask, [h.snap, MARSTAL], requestedM, APPROACH_RADIUS_M, floorM),
       };
     });
     console.log('#930 direction check:', JSON.stringify(rows));
-    // Not asserted equal: this is reported as evidence, not pinned as an
-    // invariant — the shipped ascent is documented (relaxedDepth.ts) to walk
-    // the waypoint array IN ORDER, so asymmetry would be a real, disclosed
-    // property of the shipped mechanism rather than a bug. See the results
-    // doc for what was actually observed.
     expect(rows.length).toBe(sample.length);
   });
 });
