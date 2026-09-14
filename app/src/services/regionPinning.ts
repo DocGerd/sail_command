@@ -1,20 +1,17 @@
 // #1164 T4: per-region basemap archive pinning + network-free offline
 // readiness for a saved plan. Naming/scoping (regionCacheName,
-// requiredRegions, RegionManifestEntry, CORE_REGION_ID) comes from
-// basemapRegions.ts (T1, merged as PR #1219); corridor geometry reuses
-// routeCorridor.ts's routeCorridorBoxes rather than re-deriving it — #146's
-// AIS corridor and this pin service answer the same "which map area does
-// this plan touch?" question, and #146's own fail-toward-"require more"
-// convention (an over-cap corridor falls back to viewport-only, i.e. `[]`)
-// is exactly what basemapRegions.ts's requiredRegions() already treats as
-// "require every lazy region" — reusing the function inherits that
-// guard-asymmetry for free instead of re-arguing it here.
-//
-// Manifest shape is T2's (`dist/basemap-regions.json`, PR #1220 — NOT YET
-// MERGED at the time this file was written): `{ core, regions }`, id/path/
-// bytes/bbox per entry, read from the PMTiles header at build time. This
-// file treats that shape as an EXTERNAL, UNTRUSTED artifact (parseManifest
-// below) rather than importing anything from #1220's branch.
+// requiredRegions, RegionManifestEntry, CORE_REGION_ID) plus the ONE
+// manifest parser (REGION_MANIFEST_PATH, RegionManifest, parseRegionManifest,
+// isValidRegionBbox) live in basemapRegions.ts (T1, merged as PR #1219;
+// consolidated there per PR #1224 review r4008717160, since this PR merges
+// second). Corridor geometry reuses routeCorridor.ts's routeCorridorBoxes
+// rather than re-deriving it — #146's AIS corridor and this pin service
+// answer the same "which map area does this plan touch?" question, and
+// #146's own fail-toward-"require more" convention (an over-cap corridor
+// falls back to viewport-only, i.e. `[]`) is exactly what basemapRegions.ts's
+// requiredRegions() already treats as "require every lazy region" — reusing
+// the function inherits that guard-asymmetry for free instead of re-arguing
+// it here.
 //
 // SCOPE (maintainer ruling on #1164, 2026-09-14 — see the issue's pinned
 // comment): service + state only, no readiness UI this release.
@@ -29,9 +26,12 @@
 //     (never falls back to "fetch every path in the manifest anyway" — an
 //     unvalidated shape could name the wrong archive under a schema drift),
 //     and regionReadiness reports not-ready.
-//   - A required id absent from an otherwise-valid manifest (stale cache,
-//     partial precache): not-ready, never "ready because a shorter list of
-//     ids happened to be satisfied".
+//   - Anything short of ALL required archives verified present: not-ready.
+//     There is deliberately no "downloading" state — a network-free
+//     snapshot check can never tell "genuinely in flight right now" apart
+//     from "permanently stuck" (a 404 or a short body), so claiming an
+//     in-progress state it cannot verify would be the false-comfort
+//     direction (PWA review r4008640274).
 //   - A cached archive whose stored byte length disagrees with the
 //     manifest's: not counted as present — see #118 CLAUDE.md rule "read
 //     the decoded blob size, never Content-Length" for why the length is
@@ -49,60 +49,20 @@ import type { Leg, Plan } from '../types';
 import { AIS_CORRIDOR_HALF_WIDTH_NM, routeCorridorBoxes } from '../lib/routeCorridor';
 import {
   CORE_REGION_ID,
+  REGION_MANIFEST_PATH,
+  parseRegionManifest,
   regionById,
   regionCacheName,
   requiredRegions,
-  type RegionBbox,
+  type RegionManifest,
   type RegionManifestEntry,
 } from '../lib/basemapRegions';
+import { looksLikePmtiles } from './basemapSource';
 import { getRegionPin, saveRegionPin, type RegionPinRecord } from './db';
-
-/** BASE_URL-relative path T2 (PR #1220) emits the manifest at. */
-export const REGION_MANIFEST_PATH = 'basemap-regions.json';
-
-/** T2's manifest shape: core plus every lazy region, each a RegionManifestEntry. */
-export interface RegionManifest {
-  readonly core: RegionManifestEntry;
-  readonly regions: readonly RegionManifestEntry[];
-}
 
 /** Every manifest entry (core + lazy) as one lookup-ready array. */
 function manifestEntries(manifest: RegionManifest): readonly RegionManifestEntry[] {
   return [manifest.core, ...manifest.regions];
-}
-
-function isFiniteNumber(v: unknown): v is number {
-  return typeof v === 'number' && Number.isFinite(v);
-}
-
-function isRegionBbox(v: unknown): v is RegionBbox {
-  return Array.isArray(v) && v.length === 4 && v.every(isFiniteNumber);
-}
-
-function isRegionManifestEntry(v: unknown): v is RegionManifestEntry {
-  if (typeof v !== 'object' || v === null) return false;
-  const r = v as Record<string, unknown>;
-  return (
-    typeof r.id === 'string' &&
-    typeof r.path === 'string' &&
-    isFiniteNumber(r.bytes) &&
-    isRegionBbox(r.bbox)
-  );
-}
-
-/**
- * Parses and validates an untrusted manifest payload. Returns `null` for
- * ANY structural deviation — wrong types, a missing field, a non-array
- * `regions`, a malformed bbox on any entry — never a best-effort partial
- * parse. Callers treat `null` as "cannot determine required regions", the
- * fail-closed branch documented in this module's header comment.
- */
-export function parseRegionManifest(data: unknown): RegionManifest | null {
-  if (typeof data !== 'object' || data === null) return null;
-  const r = data as Record<string, unknown>;
-  if (!isRegionManifestEntry(r.core)) return null;
-  if (!Array.isArray(r.regions) || !r.regions.every(isRegionManifestEntry)) return null;
-  return { core: r.core, regions: r.regions };
 }
 
 /** This deployment's region runtime cache — see basemapRegions.ts's regionCacheName. */
@@ -122,14 +82,25 @@ function archiveUrl(entry: RegionManifestEntry): string {
  * precache mechanism as glyph-manifest.json (lib/glyphs.ts's own comment),
  * so `caches.match` (which searches every cache, precache included) finds it
  * whenever the SW has ever installed — exactly the network-free contract
- * regionReadiness needs. Returns `null` on ANY failure (no `caches`, no
- * match, a response that fails to parse or validate) — this is the ONLY
- * manifest reader regionReadiness may call.
+ * regionReadiness needs.
+ *
+ * `{ ignoreSearch: true }` is load-bearing (PWA review Blocker r4008640242,
+ * measured in Chromium): workbox's precache stamps an unhashed asset's cache
+ * key with a `?__WB_REVISION__=<rev>` query it derives from the asset's own
+ * content, so the bare BASE_URL-relative path this function would otherwise
+ * look up never matches what is actually stored — `regionReadiness` would be
+ * permanently `not-ready` in a real build despite a healthy precache.
+ * Accepted transient: between SW install and activate, two revisions can
+ * coexist in the precache and `ignoreSearch` may return either one.
+ *
+ * Returns `null` on ANY failure (no `caches`, no match, a response that
+ * fails to parse or validate) — this is the ONLY manifest reader
+ * regionReadiness may call.
  */
 async function readManifestFromCache(): Promise<RegionManifest | null> {
   if (!('caches' in globalThis)) return null;
   try {
-    const res = await caches.match(manifestUrl());
+    const res = await caches.match(manifestUrl(), { ignoreSearch: true });
     if (!res) return null;
     const data: unknown = await res.clone().json();
     return parseRegionManifest(data);
@@ -164,7 +135,10 @@ async function fetchManifestForPinning(): Promise<RegionManifest | null> {
  * `content-length` header is one THIS module wrote at pin time from the
  * decoded Blob's own `.size` (never trusted from a network response header —
  * see pinOneRegion), so this equality check is comparing two locally-derived
- * numbers, not re-trusting anything from the network.
+ * numbers, not re-trusting anything from the network. Deliberately `===`,
+ * never `>=`: an OVERSIZED stored length (a corrupted or substituted
+ * archive) must not count as present either (conventions review, PR #1225
+ * inline r4008643175).
  */
 async function isArchivePresent(entry: RegionManifestEntry): Promise<boolean> {
   try {
@@ -200,7 +174,16 @@ function requiredRegionIdsForPlan(plan: Plan, manifest: RegionManifest): readonl
   return requiredRegions(manifestEntries(manifest), corridorBoxes);
 }
 
-/** Resolves each required id to its manifest entry; drops any id the manifest lacks. */
+/**
+ * Resolves each required id to its manifest entry. The `.filter` below is
+ * for TypeScript's benefit only, not a runtime possibility: `ids` is always
+ * `requiredRegions(manifestEntries(manifest), ...)`'s OWN output over this
+ * SAME `manifest`, so every id it returns is drawn from `manifest`'s own
+ * entries and `regionById` over that same array can never fail to find one
+ * (PWA review Minor r4008640282 confirmed this is structurally unreachable —
+ * a prior explicit "entries.length !== ids.length -> not-ready" branch here
+ * was deleted rather than kept as an untestable guard claiming protection).
+ */
 function resolveEntries(
   manifest: RegionManifest,
   ids: readonly string[],
@@ -211,7 +194,15 @@ function resolveEntries(
 
 export type PinRegionsOutcome =
   | { readonly status: 'pinned'; readonly total: number; readonly pinned: number }
-  | { readonly status: 'manifest-unavailable' };
+  | { readonly status: 'manifest-unavailable' }
+  // The archives themselves were fetched/verified (or attempted) — only the
+  // pin-INTENT record failed to write (IndexedDB quota, or the
+  // cross-deployment DB_VERSION VersionError window the PWA review recorded
+  // on db.ts — maintainer ruling: keep the v3 bump, #1164 issue comment
+  // 5669811466). Named as a distinct outcome rather than letting
+  // pinRegionsForPlan's promise reject after real work already happened
+  // (PWA review Minor r4008640266).
+  | { readonly status: 'pin-record-failed'; readonly total: number; readonly pinned: number };
 
 /**
  * Fetches every region archive `plan`'s route corridor requires that is not
@@ -241,7 +232,11 @@ export async function pinRegionsForPlan(plan: Plan): Promise<PinRegionsOutcome> 
     if (await pinOneRegion(entry)) pinned += 1;
   }
 
-  await saveRegionPin({ planId: plan.id, regionIds: ids, pinnedAtMs: Date.now() });
+  try {
+    await saveRegionPin({ planId: plan.id, regionIds: ids, pinnedAtMs: Date.now() });
+  } catch {
+    return { status: 'pin-record-failed', total: ids.length, pinned };
+  }
 
   return { status: 'pinned', total: ids.length, pinned };
 }
@@ -258,6 +253,16 @@ export async function getRegionPinIntent(planId: string): Promise<RegionPinRecor
 }
 
 /**
+ * True iff `blob`'s first two bytes are the PMTiles magic — reuses
+ * basemapSource.ts's own `looksLikePmtiles` (the #118 preflight check)
+ * rather than re-implementing the magic-number test a second time.
+ */
+async function isPmtilesBlob(blob: Blob): Promise<boolean> {
+  const head = new Uint8Array(await blob.slice(0, 2).arrayBuffer());
+  return looksLikePmtiles(head);
+}
+
+/**
  * Fetches and caches one region archive, verifying its DECODED size (never
  * the response's Content-Length — a re-gzipping CDN could inflate that
  * transparently, the same #118 lesson `basemapSource.ts` documents) against
@@ -268,11 +273,31 @@ export async function getRegionPinIntent(planId: string): Promise<RegionPinRecor
 async function pinOneRegion(entry: RegionManifestEntry): Promise<boolean> {
   if (await isArchivePresent(entry)) return true;
   try {
-    const res = await fetch(archiveUrl(entry));
+    const cache = await caches.open(REGION_CACHE_NAME);
+    // #1223 review r4008628008 (cross-PR Major): a STALE cached entry (wrong
+    // byte length left over from an old build) would otherwise be re-served
+    // by sw.ts's basemap Range route for THIS SAME fetch — the route's own
+    // cache.match hits the stale entry regardless of isArchivePresent's
+    // verdict above, so re-pinning could never recover. Clear this cache's
+    // entry first so the route falls through to network. Do NOT bypass via
+    // `request.cache: 'no-store'`/`reload` instead: pmtiles' own FetchSource
+    // already sends `no-store` on Chrome/Windows, and relying on that would
+    // break OFFLINE reads of an already-pinned region through the same
+    // route.
+    await cache.delete(archiveUrl(entry));
+
+    // `cache: 'no-store'` (PWA review Minor r4008640259): region archive
+    // paths are unhashed, so without it an HTTP-cached copy from a PREVIOUS
+    // build could be served whenever its length happens to match the
+    // current manifest's.
+    const res = await fetch(archiveUrl(entry), { cache: 'no-store' });
     if (!res.ok) return false;
     const blob = await res.blob();
+    // PMTiles magic check (same review): cheap, and mirrors
+    // basemapSource.ts's own #118 preflight — reject a body that isn't
+    // actually a PMTiles archive before it is ever cached.
+    if (!(await isPmtilesBlob(blob))) return false;
     if (blob.size !== entry.bytes) return false;
-    const cache = await caches.open(REGION_CACHE_NAME);
     // Stamp our own content-length from the verified Blob size so
     // isArchivePresent's later reads are a cheap header check, never a full
     // body drain (mirrors #118's basemapSource.ts pattern for the same
@@ -288,17 +313,20 @@ async function pinOneRegion(entry: RegionManifestEntry): Promise<boolean> {
 }
 
 export type RegionReadinessReason =
-  // The manifest could not be read from CacheStorage at all, OR a required
-  // id is missing from an otherwise-valid manifest — both are "uncertain",
+  // The manifest could not be read from CacheStorage at all — "uncertain",
   // and per this module's guard-asymmetry header, uncertain fails closed.
   | 'manifest-unavailable'
-  // The manifest resolved fine and named N > 0 required regions, but NONE of
-  // them are cached yet (pinRegionsForPlan was never run, or every fetch
-  // failed, or the region cache was retired by a REGION_CACHE_VERSION bump).
+  // The manifest resolved fine and named N > 0 required regions, but not
+  // ALL of them are verified present yet — whether zero are cached
+  // (pinRegionsForPlan was never run, or the region cache was retired by a
+  // REGION_CACHE_VERSION bump) or some but not all are (a partial pin: one
+  // archive 404'd or arrived short-bodied). Both read identically from a
+  // network-free snapshot, and neither is distinguishable from "genuinely
+  // downloading right now" — see this module's header comment.
   | 'pending';
 
 export type RegionReadiness =
-  | { readonly state: 'ready' | 'downloading'; readonly done: number; readonly total: number }
+  | { readonly state: 'ready'; readonly done: number; readonly total: number }
   | { readonly state: 'not-ready'; readonly reason: RegionReadinessReason };
 
 /**
@@ -327,21 +355,14 @@ export async function regionReadiness(plan: Plan): Promise<RegionReadiness> {
   }
 
   const entries = resolveEntries(manifest, ids);
-  if (entries.length !== ids.length) {
-    // A required id the manifest doesn't name (stale/partial precache, or a
-    // schema drift) is exactly the "can't verify it" case — never report
-    // ready on a shorter, satisfied subset of the true requirement.
-    return { state: 'not-ready', reason: 'manifest-unavailable' };
-  }
 
   let done = 0;
   for (const entry of entries) {
     if (await isArchivePresent(entry)) done += 1;
   }
 
-  if (done === 0) return { state: 'not-ready', reason: 'pending' };
   if (done === entries.length) return { state: 'ready', done, total: entries.length };
-  return { state: 'downloading', done, total: entries.length };
+  return { state: 'not-ready', reason: 'pending' };
 }
 
 // Re-exported so a future call site (and this file's own tests) can name

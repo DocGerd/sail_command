@@ -109,8 +109,14 @@ export function isRetiredRegionCache(name: string, base: string): boolean {
  * +/-Infinity, or a reversed min/max — e.g. a T2 bug transcribing the
  * PMTiles header's named fields into the wrong tuple slots) must NOT be
  * treated as "provably non-intersecting" by boxesIntersect below.
+ *
+ * Exported (#1225/#1224 consolidation, PR #1224 review r4008717160): the
+ * ONE bbox-validity check for both the pin-service manifest parser
+ * (regionPinning.ts) and the composite-protocol manifest parser
+ * (compositeBasemapProtocol.ts, switched over once both PRs are on
+ * `develop`) — previously each defined its own copy, which could drift.
  */
-function isValidRegionBbox(b: RegionBbox): boolean {
+export function isValidRegionBbox(b: RegionBbox): boolean {
   const [minLon, minLat, maxLon, maxLat] = b;
   return (
     Number.isFinite(minLon) &&
@@ -209,4 +215,72 @@ export function requiredRegions(
   return lazy
     .filter((entry) => corridorBoxes.some((box) => boxesIntersect(entry.bbox, box)))
     .map((entry) => entry.id);
+}
+
+/** BASE_URL-relative path T2 (`app/vite.config.ts`'s `regionManifest()` plugin,
+ * PR #1220) emits the manifest at. */
+export const REGION_MANIFEST_PATH = 'basemap-regions.json';
+
+/** T2's manifest shape: the always-precached core archive plus every lazy region. */
+export interface RegionManifest {
+  readonly core: RegionManifestEntry;
+  readonly regions: readonly RegionManifestEntry[];
+}
+
+function isFiniteNumber(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v);
+}
+
+function isRegionBboxShaped(v: unknown): v is RegionBbox {
+  return Array.isArray(v) && v.length === 4 && v.every(isFiniteNumber);
+}
+
+function isRegionManifestEntryShaped(v: unknown): v is RegionManifestEntry {
+  if (typeof v !== 'object' || v === null) return false;
+  const r = v as Record<string, unknown>;
+  return (
+    typeof r.id === 'string' &&
+    typeof r.path === 'string' &&
+    isFiniteNumber(r.bytes) &&
+    isRegionBboxShaped(r.bbox) &&
+    isValidRegionBbox(r.bbox)
+  );
+}
+
+/**
+ * The ONE manifest parser (#1225/#1224 consolidation, PR #1224 review
+ * r4008717160 — previously each PR defined its own, with DIFFERENT
+ * acceptance rules: #1225's checked only bbox shape, skipping
+ * `isRegionArchivePath`; #1224's checked both but skipped bad entries
+ * one at a time rather than rejecting the whole manifest, so the two
+ * could disagree on the region set for readiness vs. for rendering).
+ *
+ * ALL-OR-NOTHING and fail-closed, deliberately narrower than #1224's
+ * skip-bad-entries behaviour: a manifest with even ONE malformed or
+ * misnamed entry returns `null` rather than a partial region list. A
+ * silently-dropped entry would under-report what a route corridor
+ * requires (`basemapRegions.ts`'s own requiredRegions() draws its ids
+ * from exactly this entries array), which is the expensive-but-silent
+ * direction for an offline-readiness signal — the opposite of the
+ * guard-asymmetry rule this module's callers document. #1224 is expected
+ * to adopt this same behaviour when it switches over.
+ *
+ * Returns `null` for ANY structural deviation: not an object, a missing
+ * or malformed `core`/`regions` field, a `core.id` other than
+ * CORE_REGION_ID, a region entry whose `bbox` fails isValidRegionBbox, or
+ * a region entry whose `path` does not match isRegionArchivePath (the
+ * flat `data/region-<id>.pmtiles(.png)?` naming convention — a #1225-only
+ * gap this consolidation closes).
+ */
+export function parseRegionManifest(data: unknown): RegionManifest | null {
+  if (typeof data !== 'object' || data === null) return null;
+  const r = data as Record<string, unknown>;
+  if (!isRegionManifestEntryShaped(r.core) || r.core.id !== CORE_REGION_ID) return null;
+  if (!Array.isArray(r.regions)) return null;
+  const regions: RegionManifestEntry[] = [];
+  for (const entry of r.regions) {
+    if (!isRegionManifestEntryShaped(entry) || !isRegionArchivePath(entry.path)) return null;
+    regions.push(entry);
+  }
+  return { core: r.core, regions };
 }
