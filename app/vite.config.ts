@@ -338,10 +338,17 @@ export interface RegionManifest {
   regions: RegionManifestEntry[];
 }
 
-/** Reads a PMTiles archive's declared bbox from its fixed 127-byte header (`bytesToHeader`'s
- * own guard throws above spec version 3). Throws if the file is shorter than the header. */
+/** Reads a PMTiles archive's declared bbox from its fixed 127-byte header. Throws if the file
+ * is shorter than the header, if the magic number is wrong, or (via `bytesToHeader`'s own
+ * guard) if the spec version exceeds 3. `bytesToHeader` itself never checks the magic — the
+ * installed pmtiles@4.5.0's `getHeaderAndRoot` (app/node_modules/pmtiles/dist/cjs/index.cjs)
+ * does, immediately before calling `bytesToHeader`, via
+ * `new DataView(bytes).getUint16(0, true) !== 19792` (little-endian bytes 0-1 spelling "PM") —
+ * mirrored here so a non-PMTiles file with a plausible version byte doesn't parse to a bogus
+ * bbox (PR #1220 review). */
 export function pmtilesHeaderBbox(archivePath: string): [number, number, number, number] {
   const HEADER_BYTES = 127;
+  const PMTILES_MAGIC_UINT16_LE = 19792; // "PM" — see getHeaderAndRoot, cited above.
   const buf = Buffer.alloc(HEADER_BYTES);
   const fd = openSync(archivePath, 'r');
   let bytesRead: number;
@@ -356,7 +363,11 @@ export function pmtilesHeaderBbox(archivePath: string): [number, number, number,
         `header (needs ${HEADER_BYTES})`,
     );
   }
-  const header = bytesToHeader(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
+  const view = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+  if (new DataView(view).getUint16(0, true) !== PMTILES_MAGIC_UINT16_LE) {
+    throw new Error(`regionManifest: ${archivePath} is not a PMTiles archive (bad magic number)`);
+  }
+  const header = bytesToHeader(view);
   return [header.minLon, header.minLat, header.maxLon, header.maxLat];
 }
 
@@ -436,7 +447,6 @@ function regionManifest(): Plugin {
       const coreFileName = BASEMAP_PATH.split('/').pop();
       if (coreFileName === undefined) {
         this.error('regionManifest: BASEMAP_PATH has no filename component');
-        return;
       }
       let manifest: RegionManifest;
       try {
@@ -444,7 +454,6 @@ function regionManifest(): Plugin {
         assertCoreWithinPrecacheCap(manifest.core, PRECACHE_MAX_FILE_SIZE_BYTES);
       } catch (err) {
         this.error(err instanceof Error ? err.message : String(err));
-        return;
       }
       this.emitFile({
         type: 'asset',

@@ -22,9 +22,12 @@ const CORE_FILE = 'basemap.pmtiles.png';
 const HEADER_BYTES = 127;
 
 /** Builds a minimal-but-valid 127-byte PMTiles v3 header with the given bbox — every OTHER
- * field is zeroed, which bytesToHeader accepts (it validates only the spec-version byte). */
+ * field is zeroed, which bytesToHeader accepts (it validates only the spec-version byte).
+ * Bytes 0-1 carry the real "PM" magic (see pmtilesHeaderBbox's own comment) so these fixtures
+ * pass that check and exercise whichever OTHER condition each test targets. */
 function syntheticHeader(bbox: [number, number, number, number], specVersion = 3): Buffer {
   const buf = Buffer.alloc(HEADER_BYTES);
+  buf.write('PM', 0, 'ascii');
   buf.writeUInt8(specVersion, 7);
   buf.writeUInt8(1, 96); // clustered
   buf.writeUInt8(1, 99); // tileType
@@ -73,6 +76,19 @@ describe('pmtilesHeaderBbox', () => {
     const path = join(dir, CORE_FILE);
     writeFileSync(path, syntheticHeader([0, 0, 1, 1], 99));
     expect(() => pmtilesHeaderBbox(path)).toThrow(/spec version/);
+  });
+
+  // PR #1220 review: an all-0x41 buffer with byte[7]=0 (a plausible spec-version byte) has no
+  // PMTiles magic at bytes 0-1, and bytesToHeader alone would have parsed it to a bogus bbox —
+  // exactly the reviewer's reproduction. The magic check must reject it before bytesToHeader
+  // ever runs.
+  it('fails closed on a non-PMTiles file with a plausible version byte (reviewer repro)', () => {
+    const dir = makeTempDataDir();
+    const path = join(dir, CORE_FILE);
+    const bogus = Buffer.alloc(200, 0x41);
+    bogus.writeUInt8(0, 7);
+    writeFileSync(path, bogus);
+    expect(() => pmtilesHeaderBbox(path)).toThrow(/bad magic number/);
   });
 });
 
