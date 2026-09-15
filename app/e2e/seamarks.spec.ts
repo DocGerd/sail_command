@@ -675,8 +675,8 @@ test('#353: seamark size-axis guard — icon-overlap collision culling below z12
 // features at z10 than at z13, backwards from what culling alone predicts,
 // because a lower zoom shows a much larger geographic area on screen and
 // conflates "more area visible" with "less culling"). This test's box is
-// the app's own stated data region (CLAUDE.md: 54.3-55.3 degrees N,
-// 9.4-11.0 degrees E) — fixed in exactly the sense CLUSTER_CENTER above is
+// the app's own stated data region (#295: 54.3-55.6 degrees N,
+// 9.4-11.6 degrees E) — fixed in exactly the sense CLUSTER_CENTER above is
 // fixed (one constant real-world rectangle, re-projected to current screen
 // pixels via map.project() at each zoom), and it is deliberately the WHOLE
 // data footprint rather than a hand-picked sub-box: a `node -e` scan of the
@@ -719,15 +719,15 @@ test('#353: seamark size-axis guard — icon-overlap collision culling below z12
 // require the pair to straddle a tile boundary to count a leak, since the
 // underlying question ("did a worse-ranked mark win?") does not depend on
 // tile membership; tile membership is recorded per row for diagnosis only.
-const SEAMARK_REGION = { lonMin: 9.4, lonMax: 11.0, latMin: 54.3, latMax: 55.3 } as const;
+const SEAMARK_REGION = { lonMin: 9.4, lonMax: 11.6, latMin: 54.3, latMax: 55.6 } as const;
 
-// #232 review MAJOR 3: the committed seamarks.json holds 127 hazard
+// #232 review MAJOR 3 (re-counted at #295): the committed seamarks.json holds 174 hazard
 // features, of which two PAIRS are coincident to 5 decimal places
 // (10.09792,54.48898 and 10.05338,54.51435), so the coordinate de-dup in
-// readHazardSourceFeatures legitimately yields 125 distinct positions —
+// readHazardSourceFeatures legitimately yields 172 distinct positions —
 // this is the non-vacuity pin for this test's "whole app data region"
 // claim, checked once per zoom below.
-const EXPECTED_HAZARD_POSITIONS = 125;
+const EXPECTED_HAZARD_POSITIONS = 172;
 
 interface RenderedHazardFeature {
   lng: number;

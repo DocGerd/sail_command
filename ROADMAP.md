@@ -738,13 +738,15 @@ implementing one of them will be declined on principle
 - **No native iOS/Android applications.** SailCommand is an installable PWA;
   that is the whole delivery model.
 - **No open-ended or unbounded map-area expansion.** The committed mask,
-  harbor list, and basemap are built for the Flensburg Fjord / Danish South
-  Sea area (54.3–55.3°N, 9.4–11.0°E); growing that footprint is a real
-  data-pipeline and app-size cost, not a toggle. A specific, bounded
-  extension is already triaged and open
-  ([#295](https://github.com/DocGerd/sail_command/issues/295), milestoned
-  `v0.35.0` at the `v0.34.0` cut) — this bullet
-  declines an unscoped "just cover more area" request, not that one.
+  harbor list and seamarks cover 54.3–55.6°N, 9.4–11.6°E (Flensburg Fjord and
+  the Danish South Sea to the Little Belt, Fehmarn and the Great Belt's
+  western approach); the basemap still covers 54.3–55.3°N, 9.4–11.0°E until
+  #295's region archive ships. Growing that footprint is a real data-pipeline
+  and app-size cost, not a toggle. That bounded extension is
+  [#295](https://github.com/DocGerd/sail_command/issues/295) (milestoned
+  `v0.35.0` at the `v0.34.0` cut), and the full Great Belt is deferred to
+  [#1240](https://github.com/DocGerd/sail_command/issues/1240) — this bullet
+  declines an unscoped "just cover more area" request, not those.
 - **No paid tiers, sponsorship flows, or commercial offering.**
 
 ## How this roadmap is kept honest

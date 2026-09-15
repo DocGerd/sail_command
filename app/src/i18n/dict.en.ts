@@ -187,7 +187,7 @@ export const en = {
   'planner.via.coord.update': 'Update coordinates',
   'planner.via.coord.edit': 'Edit coordinates (point {index}): {coord}',
   'planner.via.coord.outOfRegion':
-    'The coordinates lie outside the covered area (Flensburg Fjord / Danish South Sea).',
+    'The coordinates lie outside the covered area (Flensburg Fjord, Danish South Sea, Little Belt, Fehmarn).',
   // #886 residual 1: shown when a via-coordinate text entry doesn't parse
   // at all (garbage, a hemisphere letter on the wrong axis, or a sign+letter
   // conflict like "-54.8N") — the field silently reverts to its last
@@ -232,7 +232,7 @@ export const en = {
     'The GPX file has fewer than two usable points (origin and destination).',
   'planner.import.error.badCoord': 'The GPX file contains invalid coordinates.',
   'planner.import.error.outOfBounds':
-    'A point lies outside the covered area (Flensburg Fjord / Danish South Sea).',
+    'A point lies outside the covered area (Flensburg Fjord, Danish South Sea, Little Belt, Fehmarn).',
   'planner.import.error.tooLarge': 'The GPX file is too large to import.',
   'planner.import.error.failed': 'The GPX file could not be read.',
   'planner.import.notice.trackReduced':

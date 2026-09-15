@@ -77,7 +77,7 @@
 // lat 54.798-54.905 / lon 9.4338-9.7857; the constants below pad that
 // slightly (lon 9.40-9.80, lat 54.75-54.95) so the route sits mostly within
 // the 0..1 fraction rather than pinned to its edges. This does NOT change
-// the 187-point grid shape or its openMeteo.ts-mandated domain — every grid
+// the grid shape (322 points since #295) or its openMeteo.ts domain — every grid
 // point still gets a value from the same formula, just extrapolated
 // (fractions outside 0..1, clamped below) for points far from the route,
 // which are never sampled by this particular capture anyway.
@@ -142,8 +142,8 @@ import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const N_POINTS_LAT = 11; // must match openMeteo.ts's LATS.length
-const N_POINTS_LON = 17; // must match openMeteo.ts's LONS.length
+const N_POINTS_LAT = 14; // must match openMeteo.ts's LATS.length (#295)
+const N_POINTS_LON = 23; // must match openMeteo.ts's LONS.length (#295)
 const LAT0 = 54.3; // must match openMeteo.ts's LATS domain start
 const LON0 = 9.4; // must match openMeteo.ts's LONS domain start
 const N_HOURS = 144; // FORECAST_DAYS (6) * 24, matches openMeteo.ts's FORECAST_DAYS

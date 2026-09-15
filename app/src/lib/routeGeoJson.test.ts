@@ -255,8 +255,8 @@ describe('nearestHourIndex', () => {
 });
 
 describe('adaptiveBarbFeatures', () => {
-  // Real regional grid geometry: lats 54.3..55.3, lons 9.4..11.0, 0.1° step
-  // (11 x 17 = 187 nodes), constant wind so only the sampling geometry matters.
+  // Real regional grid geometry: lats 54.3..55.6, lons 9.4..11.6, 0.1° step
+  // (14 x 23 = 322 nodes since #295), constant wind so only the sampling geometry matters.
   const GRID = makeWindGrid(() => ({ speedKn: 10, dirFromDeg: 180 }), { hours: 3 });
   const T0 = GRID.timesMs[0];
 

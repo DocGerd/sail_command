@@ -1287,14 +1287,14 @@ describe('PlannerPanel', () => {
         expect(props.onUpdateVia).not.toHaveBeenCalled();
       });
 
-      // Positive control for the mutation check below: 54.8/10.2 (this
+      // Positive control for the mutation check below: 54.95/10.5 (this
       // panel's own default seed, DATA_AREA's midpoint) is INSIDE the
       // region, so a click with no typing at all must still append —
       // proves the DATA_AREA check isn't accidentally rejecting everything.
       it('the default seeded coordinate (DATA_AREA midpoint) is accepted unmodified', () => {
         const props = renderPanel({ viaPoints: [] });
         fireEvent.click(screen.getByRole('button', { name: 'Add coordinates' }));
-        expect(props.onAddVia).toHaveBeenCalledWith({ lat: 54.8, lon: 10.2 });
+        expect(props.onAddVia).toHaveBeenCalledWith({ lat: 54.95, lon: 10.5 });
       });
 
       // #829 DoD: "an out-of-region value is rejected with the new message
@@ -1314,7 +1314,7 @@ describe('PlannerPanel', () => {
         expect(props.onAddVia).not.toHaveBeenCalled();
         expect(
           screen.getByText(
-            'The coordinates lie outside the covered area (Flensburg Fjord / Danish South Sea).',
+            'The coordinates lie outside the covered area (Flensburg Fjord, Danish South Sea, Little Belt, Fehmarn).',
           ),
         ).toBeInTheDocument();
       });
@@ -1346,7 +1346,7 @@ describe('PlannerPanel', () => {
         expect(screen.getByText('Corrected to 90 (allowed range -90–90)')).toBeInTheDocument();
         expect(
           screen.getByText(
-            'The coordinates lie outside the covered area (Flensburg Fjord / Danish South Sea).',
+            'The coordinates lie outside the covered area (Flensburg Fjord, Danish South Sea, Little Belt, Fehmarn).',
           ),
         ).toBeInTheDocument();
       });
@@ -1388,7 +1388,7 @@ describe('PlannerPanel', () => {
         expect(props.onUpdateVia).not.toHaveBeenCalled();
         expect(
           screen.getByText(
-            'The coordinates lie outside the covered area (Flensburg Fjord / Danish South Sea).',
+            'The coordinates lie outside the covered area (Flensburg Fjord, Danish South Sea, Little Belt, Fehmarn).',
           ),
         ).toBeInTheDocument();
       });
@@ -1410,8 +1410,8 @@ describe('PlannerPanel', () => {
         setCoord('54.85', '10.1');
         fireEvent.click(screen.getByRole('button', { name: 'Add coordinates' }));
         expect(props.onAddVia).toHaveBeenCalledWith({ lat: 54.85, lon: 10.1 });
-        expect(latInput()).toHaveValue('54.8');
-        expect(lonInput()).toHaveValue('10.2');
+        expect(latInput()).toHaveValue('54.95');
+        expect(lonInput()).toHaveValue('10.5');
       });
 
       // #863 review round 1 (sail-reviewer MAJOR, PlannerPanel.tsx:325):
@@ -1581,8 +1581,8 @@ describe('PlannerPanel', () => {
           // Fields reset to the DATA_AREA midpoint seed, same as a
           // successful commit or the same-index toggle-off (#829's own
           // reset behaviour) — not left holding the discarded edit.
-          expect(latInput()).toHaveValue('54.8');
-          expect(lonInput()).toHaveValue('10.2');
+          expect(latInput()).toHaveValue('54.95');
+          expect(lonInput()).toHaveValue('10.5');
 
           expect(props.onAddVia).not.toHaveBeenCalled();
           expect(props.onUpdateVia).not.toHaveBeenCalled();
@@ -1630,7 +1630,7 @@ describe('PlannerPanel', () => {
           fireEvent.change(latInput(), { target: { value: 'garbage' } });
           fireEvent.blur(latInput());
           expect(
-            screen.getByText("Couldn't read that as a coordinate — kept 54.8"),
+            screen.getByText("Couldn't read that as a coordinate — kept 54.95"),
           ).toBeInTheDocument();
         });
 
@@ -1638,9 +1638,9 @@ describe('PlannerPanel', () => {
           const props = renderPanel({ viaPoints: [] });
           fireEvent.change(latInput(), { target: { value: 'garbage' } });
           fireEvent.blur(latInput());
-          expect(latInput()).toHaveValue('54.8');
+          expect(latInput()).toHaveValue('54.95');
           fireEvent.click(screen.getByRole('button', { name: 'Add coordinates' }));
-          expect(props.onAddVia).toHaveBeenCalledWith({ lat: 54.8, lon: 10.2 });
+          expect(props.onAddVia).toHaveBeenCalledWith({ lat: 54.95, lon: 10.5 });
         });
 
         // The sign+letter conflict is deliberately rejected (format.test.ts
@@ -1651,7 +1651,7 @@ describe('PlannerPanel', () => {
           fireEvent.change(latInput(), { target: { value: '-54.8N' } });
           fireEvent.blur(latInput());
           expect(
-            screen.getByText("Couldn't read that as a coordinate — kept 54.8"),
+            screen.getByText("Couldn't read that as a coordinate — kept 54.95"),
           ).toBeInTheDocument();
         });
 
@@ -1670,9 +1670,9 @@ describe('PlannerPanel', () => {
           renderPanel({ viaPoints: [] });
           fireEvent.change(latInput(), { target: { value: '' } });
           fireEvent.blur(latInput());
-          expect(latInput()).toHaveValue('54.8');
+          expect(latInput()).toHaveValue('54.95');
           expect(
-            screen.queryByText("Couldn't read that as a coordinate — kept 54.8"),
+            screen.queryByText("Couldn't read that as a coordinate — kept 54.95"),
           ).not.toBeInTheDocument();
         });
 
@@ -1688,8 +1688,8 @@ describe('PlannerPanel', () => {
         // viaCoordLatDraft` back to `value: formatBound(viaCoordLat, lang)`
         // reds this row with `Received: "Couldn't read that as a
         // coordinate — kept 54.85"` (formatBound's 2-decimal round) while
-        // the sibling "kept 54.8" tests above and below stay green, since
-        // 54.8 rounds to itself either way — this row is the one that can
+        // the sibling "kept 54.95" tests above and below stay green, since
+        // 54.95 rounds to itself either way — this row is the one that can
         // tell the two forms apart.
         it('quotes the field’s own full-precision value in the notice, not a rounded one', () => {
           renderPanel({ viaPoints: [] });
@@ -1712,7 +1712,7 @@ describe('PlannerPanel', () => {
           fireEvent.blur(latInput());
           expect(screen.getByText('Corrected to 90 (allowed range -90–90)')).toBeInTheDocument();
           expect(
-            screen.queryByText("Couldn't read that as a coordinate — kept 54.8"),
+            screen.queryByText("Couldn't read that as a coordinate — kept 54.95"),
           ).not.toBeInTheDocument();
         });
 
@@ -1726,11 +1726,11 @@ describe('PlannerPanel', () => {
           fireEvent.change(latInput(), { target: { value: 'garbage' } });
           fireEvent.blur(latInput());
           expect(
-            screen.getByText("Couldn't read that as a coordinate — kept 54.8"),
+            screen.getByText("Couldn't read that as a coordinate — kept 54.95"),
           ).toBeInTheDocument();
           fireEvent.click(screen.getByRole('button', { name: /Edit coordinates \(point 1\)/ }));
           expect(
-            screen.queryByText("Couldn't read that as a coordinate — kept 54.8"),
+            screen.queryByText("Couldn't read that as a coordinate — kept 54.95"),
           ).not.toBeInTheDocument();
         });
       });
