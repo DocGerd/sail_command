@@ -1536,8 +1536,9 @@ horizon.
 Funded by the maintainer's 2026-09-14 ruling on #1136 (comment 5668779060).
 The FIX targets v0.35.0 and is not in this document. §5's prerequisite 1 (efficacy) is
 discharged by §10 and the #1136 efficacy-probe comment (2026-09-10); this
-section answers prerequisite 2, answers prerequisite 3 except its maintainer
-ruling (§11.7 Q4, open), and re-registers prerequisite 4.
+section answers prerequisite 2, answers prerequisite 3 including its
+maintainer ruling (§11.7 Q4, ruled 2026-09-14, comment 5669891649), and
+re-registers prerequisite 4.
 
 **Currency.** Merge-base `d3e3769`. `git log 035d662..d3e3769 --
 app/src/routing/isochrone.ts` is empty. Between the probe comment's `831db11`
@@ -1580,8 +1581,10 @@ tiers it ran and the relaxed gate it found (if any).
 
 **Pass 2** re-runs exactly the tiers pass 1 ran, in order, with a new
 `SolveParams` flag that enables the §5 salvage (§11.2); tiers 3/4 use pass 1's
-relaxed gate, with no second `findRelaxedGate`. No retry predicate reads a
-pass-2 result: pass 2 stops at the first tier with a routed sail. That tier's result is assembled exactly as pass 1 would assemble it: `assemble(tierN, null)` for tiers 1–2, and for tiers 3–4 `assemble(tierN, flagShallowLegs(mask, tierN, s.safetyDepthM, usedDepthM))` with pass 1's `usedDepthM`, so a relaxed rescue carries the same shallow disclosure a relaxed route carries today.
+relaxed gate, with no second `findRelaxedGate`. Pass 2 continues through the
+tier set pass 1 recorded while any sail failed, falling back to the earlier
+routed tier exactly as today — no new predicate (maintainer ruling
+2026-09-15, #1136 comment 5679435574). That tier's result is assembled exactly as pass 1 would assemble it: `assemble(tierN, null)` for tiers 1–2, and for tiers 3–4 `assemble(tierN, flagShallowLegs(mask, tierN, s.safetyDepthM, usedDepthM))` with pass 1's `usedDepthM`, so a relaxed rescue carries the same shallow disclosure a relaxed route carries today.
 
 **Pass-2 failure, for any cause, returns pass 1's `PlanResult` verbatim.**
 
@@ -1811,16 +1814,26 @@ for this design only; §8 still rejects the solve-level gate of §5.
    `unreachable`? Motor-on rows such as `rudkoebing` then pay pass 2 too;
    #866's 2026-09-04 ruling (a) accepted that death as a documented limit
    without ruling on a general salvage reaching it.
+   **Ruled 2026-09-14** (comment 5669891649): motor-off only.
 2. Leave plans that return `ok` with one sail failed (#1166 shape) untouched,
    as designed, or also salvage the failed sail — at the cost of changing rig
    comparisons on plans that succeed today?
+   **Ruled 2026-09-14** (comment 5669891649): left untouched, as designed.
 3. May a failing plan spend the rest of `PLAN_BUDGET_MS` (240 s) in pass 2
    before returning today's error, or does pass 2 get a sub-budget? #432 chose
    one shared deadline so the user's wait stays bounded however many tiers
    fire (`planRoute.ts`'s deadline doc comment).
+   **Ruled 2026-09-14** (comment 5669891649): spends the rest of the shared
+   budget.
 4. When pass 2 ends `budget-exhausted`, return pass 1's verdict (as designed)
    or `search-budget-exceeded`? For pass 1: §11.1's rule that no pass-2 cause
    reaches a label. For `search-budget-exceeded`: `planRoute.ts`'s
    pre-relaxation deadline check returns it after tiers 1–2 finish
    `mask-blocked`, and `combineFailureCause` ranks the budget first because
    `unreachable` is a claim about the water (#432/PR #453).
+   **Ruled 2026-09-14** (comment 5669891649): falls back to pass 1's verdict.
+5. When a pass-2 tier-1 replay routes one sail and fails the other, does
+   pass 2 stop there, or continue to a recorded later tier as pass 1 would?
+   Raised by #1226 item 1 against discussion_r4008412242.
+   **Ruled 2026-09-15** (#1136 comment 5679435574): continues through the
+   tier set pass 1 recorded, no new predicate.
