@@ -9,6 +9,7 @@ import {
   pinRegionsAfterReplan,
   pinRegionsAfterReroute,
   pinRegionsAfterSave,
+  pinRegionsOnRetry,
 } from './pinAfterSave';
 import type { Plan } from '../types';
 import type { PinRegionsOutcome } from './regionPinning';
@@ -104,13 +105,14 @@ describe('createPinAfterSave (#1164 T6)', () => {
 
   // #1233 Major 2 (offline/PWA review): plans import is DELIBERATELY not a
   // fifth createPinAfterSave() instance — see pinImportedPlans's own
-  // comment (why it aggregates instead). Four remain.
-  it('the four named per-consumer instances are four distinct functions, not aliases of one shared singleton', () => {
+  // comment (why it aggregates instead). Five remain, #295's retry included.
+  it('the five named per-consumer instances are five distinct functions, not aliases of one shared singleton', () => {
     const instances = [
       pinRegionsAfterSave,
       pinRegionsAfterReplan,
       pinRegionsAfterReroute,
       pinRegionsAfterDepartureConfirm,
+      pinRegionsOnRetry,
     ];
     expect(new Set(instances).size).toBe(instances.length);
   });

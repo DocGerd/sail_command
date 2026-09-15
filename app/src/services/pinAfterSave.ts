@@ -143,7 +143,7 @@ export const pinRegionsOnRetry: PinAfterSave = createPinAfterSave();
 /**
  * #1233 Major 2 (offline/PWA review): components/SettingsPanel.tsx's
  * plans-import save path — deliberately NOT a createPinAfterSave() instance
- * like the four above. An import can touch many plans in one call, and
+ * like the five above. An import can touch many plans in one call, and
  * `regionPinning.ts`'s pinOneRegion coalesces concurrent fetches of the SAME
  * archive URL, so calling `pinRegionsForPlan` directly here (rather than
  * once per plan through an opaque PinAfterSave) is what lets that dedup
