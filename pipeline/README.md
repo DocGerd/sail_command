@@ -304,6 +304,22 @@ The script installs the `pmtiles` CLI into `pipeline/bin/` on first run
 10 MB (catches a truncated/failed extract), and prints `pmtiles show` output
 for a final sanity check.
 
+Protomaps prunes old daily builds irregularly (`20260714` returned 404 on
+2026-09-15), so a committed archive may not be reproducible from its recorded
+build date.
+
+A lazy region archive (#1164, #295) uses the same extract at the same
+`--maxzoom`:
+
+```
+pipeline/extract_basemap.sh [YYYYMMDD] --region <id> <min_lon,min_lat,max_lon,max_lat> [--out-dir <dir>]
+```
+
+It writes `region-<id>.pmtiles.png` (the name `vite.config.ts`'s region
+manifest requires) and asserts a 100 KiB floor instead of 10 MB. `--out-dir`
+defaults to `app/public/data/`; point it elsewhere for a trial extract, since
+any region archive there enters the next build.
+
 ### `app/public/basemap-assets/` — offline map fonts + sprites
 
 Self-hosted glyph (font) and sprite assets for MapLibre GL, so the basemap
