@@ -50,6 +50,65 @@ export function depthSourceCorners(
   ];
 }
 
+// Web Mercator y in [0, 1], 0 at the north edge of the world square.
+function mercatorY(latDeg: number): number {
+  const s = Math.sin((latDeg * Math.PI) / 180);
+  return 0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI);
+}
+
+function latFromMercatorY(y: number): number {
+  return (360 / Math.PI) * Math.atan(Math.exp((0.5 - y) * 2 * Math.PI)) - 90;
+}
+
+/**
+ * #1254: output canvas row (0 = north) -> mask row (0 = south) for both depth
+ * canvases. MapLibre stretches a canvas source linearly in Web Mercator between
+ * its corners (maplibre-gl 6.9.0 `source/image_source.ts`), while mask rows are
+ * evenly spaced in latitude, so a row-for-row copy drew the overlay up to ~7
+ * rows (~345 m) off at 54.3–55.3°N and ~12 rows (~585 m) at 54.3–55.6°N.
+ * Output rows are evenly spaced in Mercator y; each row's CENTRE is inverted to
+ * a latitude and takes the mask row containing it. Columns stay linear in
+ * longitude, which Mercator x already is.
+ *
+ * NEAREST sampling, no blending: every output pixel carries one real mask
+ * cell's own byte, so a shallow reading is never averaged toward deep. An
+ * output row straddling a cell boundary takes the cell at its centre, so up
+ * to half an output row (under half a mask row) can show a neighbour's byte.
+ *
+ * ROW COUNT: starts at the count whose Mercator row height is no taller than
+ * the shortest mask row and grows until every mask row holds at least one
+ * output row centre, so no shallow row is dropped. That is 3171 rows for the
+ * 3120-row mask (+1.6%, ~0.6 MB per RGBA buffer); keeping 3120 would skip 13
+ * mask rows across the southern half.
+ */
+export function depthCanvasRowMap(meta: Pick<MaskMeta, 'south' | 'north' | 'rows'>): Int32Array {
+  const { south, north, rows } = meta;
+  if (!(rows > 0) || !(north > south)) throw new Error(`unusable mask rows/bbox: ${rows}`);
+  const latStep = (north - south) / rows;
+  const yNorth = mercatorY(north);
+  const span = mercatorY(south) - yNorth;
+  let shortestRow = Infinity;
+  for (let r = 0; r < rows; r++) {
+    const h = mercatorY(south + r * latStep) - mercatorY(south + (r + 1) * latStep);
+    if (h < shortestRow) shortestRow = h;
+  }
+  for (let outRows = Math.ceil(span / shortestRow); ; outRows++) {
+    const map = new Int32Array(outRows);
+    const seen = new Uint8Array(rows);
+    let covered = 0;
+    for (let r = 0; r < outRows; r++) {
+      const lat = latFromMercatorY(yNorth + ((r + 0.5) / outRows) * span);
+      const maskRow = Math.min(rows - 1, Math.max(0, Math.floor((lat - south) / latStep)));
+      map[r] = maskRow;
+      if (!seen[maskRow]) {
+        seen[maskRow] = 1;
+        covered++;
+      }
+    }
+    if (covered === rows) return map;
+  }
+}
+
 // Okabe-Ito-anchored sequential ramp: shallows scream warm (that's what a
 // sailor scans for — the Salona 45 draws 2.1 m), then cools and fades so
 // deep water leaves the basemap (and its labels) fully readable. Alpha is
@@ -97,11 +156,14 @@ export function depthByteToRgba(byte: number): Rgba {
  * VERTICALLY FLIPPED: the mask stores row 0 = southernmost (mask.meta.json),
  * while canvas/image row 0 is the top — which the MapLibre source anchors at
  * the bbox's NORTH edge — so output row r mirrors mask row (rows-1-r).
+ * Production passes `rowMap` (depthCanvasRowMap, #1254), which replaces that
+ * flip with the Mercator-spaced one; the output then has `rowMap.length` rows.
  */
 export function buildDepthImageData(
   mask: Uint8Array,
   rows: number,
   cols: number,
+  rowMap?: Int32Array,
 ): Uint8ClampedArray {
   if (mask.length !== rows * cols)
     throw new Error(`mask length ${mask.length} != rows*cols ${rows * cols}`);
@@ -109,9 +171,10 @@ export function buildDepthImageData(
   // piecewise-linear interpolation per cell.
   const lut = new Uint8ClampedArray(256 * 4);
   for (let b = 0; b < 256; b++) lut.set(depthByteToRgba(b), b * 4);
-  const out = new Uint8ClampedArray(rows * cols * 4);
-  for (let outRow = 0; outRow < rows; outRow++) {
-    const maskRow = rows - 1 - outRow;
+  const outRows = rowMap ? rowMap.length : rows;
+  const out = new Uint8ClampedArray(outRows * cols * 4);
+  for (let outRow = 0; outRow < outRows; outRow++) {
+    const maskRow = rowMap ? rowMap[outRow] : rows - 1 - outRow;
     for (let col = 0; col < cols; col++) {
       const byte = mask[maskRow * cols + col];
       out.set(lut.subarray(byte * 4, byte * 4 + 4), (outRow * cols + col) * 4);
@@ -554,6 +617,7 @@ export function buildNavigabilityHatchImageData(
   cols: number,
   safetyDepthM: number,
   band: HatchBand = HATCH_FALLBACK_BAND,
+  rowMap?: Int32Array,
 ): Uint8ClampedArray {
   if (mask.length !== rows * cols)
     throw new Error(`mask length ${mask.length} != rows*cols ${rows * cols}`);
@@ -567,9 +631,12 @@ export function buildNavigabilityHatchImageData(
     // as "clear". #492 review; tracked as #597.
     marginal[b] = cautiousDepthLowerBoundM(byteToDepthM(b)) < safetyDepthM ? 1 : 0;
   }
-  const out = new Uint8ClampedArray(rows * cols * 4); // zero-init: fully transparent by default
-  for (let outRow = 0; outRow < rows; outRow++) {
-    const maskRow = rows - 1 - outRow; // same south->north flip as buildDepthImageData
+  const outRows = rowMap ? rowMap.length : rows;
+  const out = new Uint8ClampedArray(outRows * cols * 4); // zero-init: fully transparent by default
+  for (let outRow = 0; outRow < outRows; outRow++) {
+    // Same row choice as buildDepthImageData (flip, or #1254's rowMap). The
+    // stripe residue below uses the OUTPUT row, so stripes stay screen-regular.
+    const maskRow = rowMap ? rowMap[outRow] : rows - 1 - outRow;
     for (let col = 0; col < cols; col++) {
       const byte = mask[maskRow * cols + col];
       if (marginal[byte] && (outRow + col) % band.periodCells < band.stripeCells) {

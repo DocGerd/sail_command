@@ -3,6 +3,7 @@ import {
   buildDepthImageData,
   buildNavigabilityHatchImageData,
   depthByteToRgba,
+  depthCanvasRowMap,
   depthSourceCorners,
   hatchBandForZoom,
   hatchScreenPxPerCell,
@@ -467,5 +468,43 @@ describe('depthSourceCorners', () => {
       [east, south], // bottom-right
       [west, south], // bottom-left
     ]);
+  });
+});
+
+describe('depthCanvasRowMap (#1254)', () => {
+  // Literals from an independent Python reference (ln tan(pi/4 + phi/2)
+  // Mercator, Gudermannian inverse), not from this implementation. The probe
+  // latitude is the CENTRE of mask row 1104 (54.3 + 1104.5 * 1.3 / 3120), so
+  // the output row whose Mercator band contains it must sample that row.
+  const HEAD = { south: 54.3, north: 55.6, rows: 3120 };
+  const BASE = { south: 54.3, north: 55.3, rows: 2400 };
+
+  it('samples the mask row that actually holds the latitude at that Mercator row', () => {
+    const map = depthCanvasRowMap(HEAD);
+    expect(map.length).toBe(3171);
+    expect(map[0]).toBe(3119); // top = northernmost mask row
+    expect(map[3170]).toBe(0); // bottom = southernmost
+    // A latitude-linear flip would pick row 1092 here — the ~12-row offset.
+    expect(map[2060]).toBe(1104);
+    const base = depthCanvasRowMap(BASE);
+    expect(base.length).toBe(2430);
+    expect(base[1319]).toBe(1104); // a latitude-linear flip would pick 1096
+  });
+
+  it('drops no mask row, so no shallow row can vanish from the overlay', () => {
+    for (const meta of [HEAD, BASE]) {
+      const seen = new Set(depthCanvasRowMap(meta));
+      expect(seen.size).toBe(meta.rows);
+    }
+  });
+
+  it('every production depth builder call passes the row map', () => {
+    const src = DATA_LAYERS_SOURCE;
+    for (const fn of ['buildDepthImageData(', 'buildNavigabilityHatchImageData(']) {
+      const calls = src.split(fn).slice(1);
+      expect(calls.length, `expected DataLayers.tsx to call ${fn}`).toBeGreaterThan(0);
+      for (const call of calls) expect(call.slice(0, 400)).toMatch(/,\s*rowMap,?\s*\)/);
+    }
+    expect(src.match(/depthCanvasRowMap\(meta\)/g)?.length).toBe(3);
   });
 });

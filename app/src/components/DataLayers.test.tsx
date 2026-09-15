@@ -554,7 +554,8 @@ describe('#681 independent hazard-hatch toggle', () => {
 
   beforeEach(() => {
     HTMLCanvasElement.prototype.getContext = vi.fn(function (this: HTMLCanvasElement): unknown {
-      if (this.width !== 4 || this.height !== 4) return null; // e.g. a seamark glyph raster
+      // Width only: #1254 makes the height depthCanvasRowMap(meta).length, not rows.
+      if (this.width !== 4) return null; // e.g. a 64x64 seamark glyph raster
       return {
         createImageData: (w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4) }),
         putImageData: () => {},
@@ -695,7 +696,8 @@ describe('#681 x #813: hazard-hatch toggle stays synced across BOTH legend surfa
 
   beforeEach(() => {
     HTMLCanvasElement.prototype.getContext = vi.fn(function (this: HTMLCanvasElement): unknown {
-      if (this.width !== 4 || this.height !== 4) return null; // e.g. a seamark glyph raster
+      // Width only: #1254 makes the height depthCanvasRowMap(meta).length, not rows.
+      if (this.width !== 4) return null; // e.g. a 64x64 seamark glyph raster
       return {
         createImageData: (w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4) }),
         putImageData: () => {},

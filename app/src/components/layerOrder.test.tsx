@@ -54,7 +54,8 @@ import { __resetDbForTests } from '../services/db';
 // own maskMeta fixture (`cols: 4, rows: 4`, hoisted.assets above), which a
 // 64x64 glyph raster can never collide with.
 HTMLCanvasElement.prototype.getContext = vi.fn(function (this: HTMLCanvasElement): unknown {
-  if (this.width !== 4 || this.height !== 4) return null; // e.g. a seamark glyph raster
+  // Width only: #1254 makes the height depthCanvasRowMap(meta).length, not rows.
+  if (this.width !== 4) return null; // e.g. a 64x64 seamark glyph raster
   return {
     createImageData: (w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4) }),
     putImageData: () => {},
