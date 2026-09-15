@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto';
 import { act, renderHook } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { usePlanFlow } from './usePlanFlow';
 import { useViaReplan } from './replan';
 import { AppStateProvider, useActivePlan } from './AppState';
@@ -13,6 +13,7 @@ import {
 import type { WorkerRequest, WorkerResponse } from '../routing/protocol';
 import { OpenMeteoError, type OpenMeteoErrorKind } from '../services/openMeteo';
 import * as assetsModule from '../services/assets';
+import { createPinAfterSave, type PinAfterSave } from '../services/pinAfterSave';
 import { DEFAULT_BOAT_ID, polarKey } from '../data/boats';
 import { __resetDbForTests, getPlan, listPlans, savePlan } from '../services/db';
 import { destinationPoint } from '../lib/geo';
@@ -1265,5 +1266,94 @@ describe('usePlanFlow classifies every RoutingFailureKind (#433)', () => {
 
     expect(result.current.planning).toEqual({ phase: 'error', messageKey });
     expect(save).not.toHaveBeenCalled();
+  });
+});
+
+describe('#1164 T6: region pinning after a successful save', () => {
+  beforeEach(async () => {
+    await __resetDbForTests();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function renderFlow(deps: { save: (plan: Plan) => Promise<void>; pinRegions: PinAfterSave }) {
+    vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
+    const stubClient = {
+      init: vi.fn().mockResolvedValue(undefined),
+      plan: vi.fn().mockResolvedValue(OK_RESULT),
+      dispose: vi.fn(),
+    } as unknown as RoutingClient;
+    return renderHook(
+      () => ({
+        flow: usePlanFlow({
+          fetchWind: vi.fn().mockResolvedValue(uniformWindGrid(12, 0)),
+          makeClient: () => stubClient,
+          ...deps,
+        }),
+        active: useActivePlan(),
+      }),
+      { wrapper: AppStateProvider },
+    );
+  }
+
+  it('pins the saved plan once, only after save() resolves', async () => {
+    const order: string[] = [];
+    const save = vi.fn(async () => {
+      await flush();
+      order.push('save-resolved');
+    });
+    const pinRegions = vi.fn<PinAfterSave>(() => {
+      order.push('pin');
+    });
+    const { result } = renderFlow({ save, pinRegions });
+
+    await act(async () => {
+      await result.current.flow.run(REQ, 'Test plan');
+    });
+
+    expect(order).toEqual(['save-resolved', 'pin']);
+    expect(pinRegions).toHaveBeenCalledTimes(1);
+    expect(pinRegions.mock.calls[0][0]).toBe(result.current.active.plan);
+    expect(result.current.flow.planning).toEqual({ phase: 'idle' });
+  });
+
+  it('does not pin when save() fails', async () => {
+    const save = vi.fn<(plan: Plan) => Promise<void>>().mockRejectedValue(new Error('quota'));
+    const pinRegions = vi.fn<PinAfterSave>();
+    const { result } = renderFlow({ save, pinRegions });
+
+    await act(async () => {
+      await result.current.flow.run(REQ, 'Test plan');
+    });
+
+    expect(pinRegions).not.toHaveBeenCalled();
+    expect(result.current.flow.planning).toEqual({
+      phase: 'error',
+      messageKey: 'error.planSaveFailed',
+    });
+  });
+
+  it('a rejecting pin neither fails the run nor unsets the saved plan', async () => {
+    // createPinAfterSave pins only under a controlling SW; jsdom has none.
+    Object.defineProperty(navigator, 'serviceWorker', { value: { controller: {} }, configurable: true });
+    onTestFinished(() => {
+      Reflect.deleteProperty(navigator, 'serviceWorker');
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const save = vi.fn<(plan: Plan) => Promise<void>>().mockResolvedValue(undefined);
+    const pin = vi.fn<(plan: Plan) => Promise<unknown>>().mockRejectedValue(new Error('offline'));
+    const { result } = renderFlow({ save, pinRegions: createPinAfterSave(pin) });
+
+    await act(async () => {
+      await result.current.flow.run(REQ, 'Test plan');
+      await flush();
+    });
+
+    expect(pin).toHaveBeenCalledTimes(1);
+    expect(result.current.flow.planning).toEqual({ phase: 'idle' });
+    expect(result.current.active.plan).toBe(save.mock.calls[0][0]);
+    expect(warn).toHaveBeenCalledTimes(1);
   });
 });

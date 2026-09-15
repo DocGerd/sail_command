@@ -15,7 +15,7 @@
     "lint": "eslint src e2e sweep",
     "notices": "node scripts/gen-third-party-notices.mjs",
     "typecheck": "tsc -b --noEmit",
-    "pree2e": "node scripts/gen-wind-fixture.mjs && npm run build",
+    "pree2e": "node scripts/gen-wind-fixture.mjs && SC_E2E_REGION_FIXTURE=1 npm run build",
     "e2e": "playwright test"
   },
   "dependencies": {

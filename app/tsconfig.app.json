@@ -137,6 +137,10 @@
   // guard that the basemap archive Range->206 route stays registered BEFORE
   // precacheAndRoute() (the same invariant sw.ts's own header comment
   // states; sw.ts itself is untestable — jsdom has no real ServiceWorker).
+  // regionConstantsTwin.test.ts (#1164 follow-up) is the same shape once
+  // more — reads app/vite.config.ts's raw source via `node:fs` to
+  // structurally guard its private region constants against
+  // basemapRegions.ts's exports.
   "exclude": [
     "src/**/startPreviewSwAssertCallSites.test.ts",
     "src/**/basemapArchiveRoute.test.ts",
@@ -172,6 +176,7 @@
     "src/**/harborKnownDisconnected.test.ts",
     "src/**/harborPickerKnownDisconnectedCoupling.test.tsx",
     "src/**/timeoutBudgetVsJobCap.test.ts",
-    "src/**/regionManifest.test.ts"
+    "src/**/regionManifest.test.ts",
+    "src/**/regionConstantsTwin.test.ts"
   ]
 }

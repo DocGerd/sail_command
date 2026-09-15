@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { fetchWindGrid, OpenMeteoError } from '../services/openMeteo';
 import { savePlan } from '../services/db';
+import { pinRegionsAfterSave, type PinAfterSave } from '../services/pinAfterSave';
 import { loadRoutingAssets } from '../services/assets';
 import { RoutingClient, RoutingError } from '../routing/workerClient';
 import { useActivePlan } from './AppState';
@@ -48,6 +49,8 @@ export interface PlanFlowDeps {
   fetchWind?: typeof fetchWindGrid;
   makeClient?: () => RoutingClient;
   save?: typeof savePlan;
+  /** #1164 T6: fire-and-forget region pinning after a successful save. */
+  pinRegions?: PinAfterSave;
 }
 
 // #432: ROUTING_FAILURE_MESSAGE_KEY (and its `routingFailureKey` accessor)
@@ -145,6 +148,7 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
     [deps.makeClient],
   );
   const save = deps.save ?? savePlan;
+  const pinRegions = deps.pinRegions ?? pinRegionsAfterSave;
 
   // Shared by run() below and by the ensureClient this hook returns
   // (state/replan.ts's useViaReplan calls it directly, so a via-replan on a
@@ -406,10 +410,12 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
         transition({ phase: 'error', messageKey: ROUTING_FAILURE_MESSAGE_KEY['persist-failed'] });
         return;
       }
+      // #1164 T6: never awaited — pinning cannot delay or fail the saved plan.
+      pinRegions(plan);
       setPlan(plan);
       transition({ phase: 'idle' });
     },
-    [ensureClient, fetchWind, save, setPlan, transition],
+    [ensureClient, fetchWind, pinRegions, save, setPlan, transition],
   );
 
   // #1193: a no-op while idle/erroring, matching run()'s own guard — set

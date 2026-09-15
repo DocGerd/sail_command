@@ -431,6 +431,10 @@ export function assertCoreWithinPrecacheCap(core: RegionManifestEntry, capBytes:
   }
 }
 
+// #1164 T6: the e2e-only fixture region (see regionManifest()'s SC_E2E_REGION_FIXTURE branch).
+const E2E_REGION_FIXTURE_ID = 'e2e';
+const E2E_REGION_FIXTURE_FILE = `region-${E2E_REGION_FIXTURE_ID}.pmtiles.png`;
+
 // #1164: emits dist/basemap-regions.json — id/path/byte-length/bbox for the core archive plus
 // any per-region archives under app/public/data/ (region-<id>.pmtiles.png). Mirrors
 // glyphManifest() above: dist/-only (never app/public/data/, keeping this OUT of the #282
@@ -454,6 +458,31 @@ function regionManifest(): Plugin {
         assertCoreWithinPrecacheCap(manifest.core, PRECACHE_MAX_FILE_SIZE_BYTES);
       } catch (err) {
         this.error(err instanceof Error ? err.message : String(err));
+      }
+      if (process.env.SC_E2E_REGION_FIXTURE === '1') {
+        // #1164 T6: e2e-only lazy region, set by package.json's `pree2e` and
+        // nothing else, so prod/uat output is unchanged. The fixture lives
+        // outside public/data/ (which would ship it, and is #282 sweep
+        // closure) and is copied into dist/ here. globIgnores keeps it out of
+        // the precache like any real region. See app/e2e/region-offline.spec.ts.
+        const fixturePath = resolve(APP_DIR, 'e2e/fixtures', E2E_REGION_FIXTURE_FILE);
+        let fixture: RegionManifestEntry;
+        let buf: Buffer;
+        try {
+          // Read once: the manifest's bytes and the emitted asset come from the same buffer.
+          buf = readFileSync(fixturePath);
+          fixture = {
+            id: E2E_REGION_FIXTURE_ID,
+            path: `data/${E2E_REGION_FIXTURE_FILE}`,
+            bytes: buf.length,
+            bbox: pmtilesHeaderBbox(fixturePath),
+          };
+        } catch (err) {
+          this.error(err instanceof Error ? err.message : String(err));
+        }
+        this.emitFile({ type: 'asset', fileName: fixture.path, source: buf });
+        manifest.regions.push(fixture);
+        manifest.regions.sort((a, b) => a.id.localeCompare(b.id));
       }
       this.emitFile({
         type: 'asset',

@@ -14,8 +14,9 @@ import { PMTiles, TileType } from 'pmtiles';
 import type { Header } from 'pmtiles';
 import type { AddProtocolAction, GetResourceResponse, RequestParameters } from 'maplibre-gl';
 import {
-  CORE_REGION_ID,
-  isRegionArchivePath,
+  isValidRegionBbox,
+  parseRegionManifest,
+  REGION_MANIFEST_PATH,
   type RegionBbox,
   type RegionManifestEntry,
 } from '../lib/basemapRegions';
@@ -24,9 +25,6 @@ import {
 export const BASEMAP_SCHEME = 'sc-basemap';
 /** The style's source `url` — one composite source, not an archive href. */
 export const BASEMAP_SOURCE_URL = `${BASEMAP_SCHEME}://basemap`;
-/** BASE_URL-relative manifest path emitted by the build (T2, PR #1220). */
-// Twin of the `fileName` in `app/vite.config.ts`'s `regionManifest()`; keep both in sync.
-export const REGION_MANIFEST_PATH = 'basemap-regions.json';
 
 // The manifest is precached (#1220), so a network wait this long means lie-fi; the core map waits on it.
 export const MANIFEST_TIMEOUT_MS = 3_000;
@@ -45,23 +43,6 @@ export function tileBbox(z: number, x: number, y: number): RegionBbox {
   const lat = (row: number) =>
     (Math.atan(Math.sinh(Math.PI * (1 - (2 * row) / n))) * 180) / Math.PI;
   return [(x / n) * 360 - 180, lat(y + 1), ((x + 1) / n) * 360 - 180, lat(y)];
-}
-
-function isValidBbox(b: unknown): b is RegionBbox {
-  if (!Array.isArray(b) || b.length !== 4) return false;
-  const [minLon, minLat, maxLon, maxLat] = b as unknown[];
-  return (
-    typeof minLon === 'number' &&
-    typeof minLat === 'number' &&
-    typeof maxLon === 'number' &&
-    typeof maxLat === 'number' &&
-    Number.isFinite(minLon) &&
-    Number.isFinite(minLat) &&
-    Number.isFinite(maxLon) &&
-    Number.isFinite(maxLat) &&
-    minLon <= maxLon &&
-    minLat <= maxLat
-  );
 }
 
 /** Positive-area overlap; boxes touching only along an edge do not overlap. */
@@ -90,16 +71,26 @@ export function selectTileArchive(
   regions: readonly RegionManifestEntry[],
 ): TileArchiveChoice {
   const tile = tileBbox(z, x, y);
-  if (!isValidBbox(coreBbox) || overlaps(coreBbox, tile)) return { kind: 'core' };
-  const entry = regions.find((r) => isValidBbox(r.bbox) && overlaps(r.bbox, tile));
+  if (!isValidRegionBbox(coreBbox) || overlaps(coreBbox, tile)) return { kind: 'core' };
+  const entry = regions.find((r) => isValidRegionBbox(r.bbox) && overlaps(r.bbox, tile));
   return entry ? { kind: 'region', entry } : { kind: 'none' };
 }
 
 /**
  * Lazy region entries from `<BASE_URL>basemap-regions.json`. Fails toward
  * `[]` (core only, i.e. today's map) on any fetch/shape problem. Silent for a
- * missing file or a non-JSON answer (vite's SPA fallback serves HTML); warns
- * only for a JSON body that fails validation.
+ * missing file or a non-JSON answer (vite's SPA fallback serves HTML).
+ *
+ * Parsing delegates entirely to basemapRegions.ts's `parseRegionManifest`
+ * (#1225/#1224 consolidation) — its ALL-OR-NOTHING contract means a manifest
+ * with even ONE malformed/misnamed region entry, or a missing/invalid `core`
+ * field, yields NO regions rather than the well-formed subset. That is a
+ * deliberate narrowing from an earlier revision of this module, which
+ * tolerated and skipped individual bad entries: two independent manifest
+ * consumers (this protocol and regionPinning.ts's readiness check) must
+ * agree on the region SET for a corridor, which a per-consumer partial-parse
+ * policy could not guarantee. Failing toward core-only on any manifest
+ * defect is the same safe direction as a timeout or 404 above.
  */
 export async function loadRegionEntries(manifestUrl: string): Promise<RegionManifestEntry[]> {
   let body: unknown;
@@ -115,30 +106,12 @@ export async function loadRegionEntries(manifestUrl: string): Promise<RegionMani
   } finally {
     clearTimeout(timer);
   }
-  const regions = (body as { regions?: unknown } | null)?.regions;
-  if (!Array.isArray(regions)) {
-    console.warn('[#1164] basemap region manifest has no regions array — core only');
+  const manifest = parseRegionManifest(body);
+  if (manifest === null) {
+    console.warn('[#1164] basemap region manifest failed validation — regions disabled, core only');
     return [];
   }
-  const valid: RegionManifestEntry[] = [];
-  for (const r of regions as unknown[]) {
-    const e = r as Partial<Record<keyof RegionManifestEntry, unknown>> | null;
-    if (
-      e !== null &&
-      typeof e === 'object' &&
-      typeof e.id === 'string' &&
-      e.id !== CORE_REGION_ID &&
-      typeof e.path === 'string' &&
-      isRegionArchivePath(e.path) &&
-      typeof e.bytes === 'number' &&
-      isValidBbox(e.bbox)
-    ) {
-      valid.push({ id: e.id, path: e.path, bytes: e.bytes, bbox: e.bbox });
-    } else {
-      console.warn('[#1164] skipping malformed basemap region manifest entry', r);
-    }
-  }
-  return valid;
+  return [...manifest.regions];
 }
 
 export interface BasemapProtocolConfig {
