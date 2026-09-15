@@ -13,54 +13,46 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.33.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.34.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
-## Now — v0.33.0
+## Now — v0.34.0
 
-The `v0.33.0` cut (2026-09-10) worked the
-[`v0.33.0` milestone](https://github.com/DocGerd/sail_command/milestones),
-which closed four issues, all user-visible.
+The `v0.34.0` cut (2026-09-15) closed the
+[`v0.34.0` milestone](https://github.com/DocGerd/sail_command/milestones):
+one user-visible fix, plus two closes with no build.
 
-The two decisions carried over from the last cut both shipped. `v0.32.0`'s
-route budget finding turned into a fix: the solver now gets 4 minutes before
-giving up, up from 2, so a slower device has time to finish a route the app
-can actually solve
-([#1147](https://github.com/DocGerd/sail_command/issues/1147)). Whether that
-budget should become a user-facing setting is now its own issue,
-[#1194](https://github.com/DocGerd/sail_command/issues/1194). And the
-touch-insert survey turned into a build: tapping the plotted route line
-while "Add waypoint" is armed now inserts a waypoint at that point
-([#1170](https://github.com/DocGerd/sail_command/issues/1170)).
+Two adjacent 44px via-point markers no longer capture each other's drags —
+the residual `v0.33.0`'s marker-target widen left open
+([#1198](https://github.com/DocGerd/sail_command/issues/1198)).
 
-An in-flight route solve can now be cancelled, returning to a re-plannable
-state instead of waiting it out
-([#1193](https://github.com/DocGerd/sail_command/issues/1193)).
+[#930](https://github.com/DocGerd/sail_command/issues/930) closed as
+answered: its differential-testing harness's population is complete, the
+general theorem it was chasing is not, and that was never the closing bar.
+[#1164](https://github.com/DocGerd/sail_command/issues/1164) closed with
+the basemap core/regional-archive split's pinning mechanism built and zero
+regions shipped — not user-visible.
 
-The via-point marker's drag/tap target is now 44px without changing its
-visible size, so repositioning a waypoint no longer needs a sub-16px hit
-([#1186](https://github.com/DocGerd/sail_command/issues/1186)). Review of
-that work found two adjacent 44px markers can capture each other's drags;
-that residual is [#1198](https://github.com/DocGerd/sail_command/issues/1198).
+Two design records moved without a build, each spawning a residual-review
+issue moved to `v0.35.0`: the per-leg/per-waypoint motor-or-sail override
+spec ([#885](https://github.com/DocGerd/sail_command/issues/885) →
+[#1232](https://github.com/DocGerd/sail_command/issues/1232)) and the
+motor-off early-termination design pass
+([#1136](https://github.com/DocGerd/sail_command/issues/1136) →
+[#1226](https://github.com/DocGerd/sail_command/issues/1226)).
+[#1164](https://github.com/DocGerd/sail_command/issues/1164)'s own review
+left a third such residual,
+[#1233](https://github.com/DocGerd/sail_command/issues/1233).
 
-Four further issues landed decision records without a build, and all moved
-to `v0.34.0`: [#885](https://github.com/DocGerd/sail_command/issues/885)
-(a design pass on forcing motor or sail per leg — the build itself is
-undecided), [#930](https://github.com/DocGerd/sail_command/issues/930) (a
-differential-testing harness; the population it covers is complete, the
-general theorem it was chasing is not),
-[#1136](https://github.com/DocGerd/sail_command/issues/1136) (motor-off
-solves terminating early — one of four prerequisite questions answered this
-cut), and
-[#1164](https://github.com/DocGerd/sail_command/issues/1164) (basemap
-plumbing for the core/regional archive split — the split itself stays
-unbuilt).
+## Next — v0.35.0
 
-## Next — v0.34.0
-
-The [`v0.34.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-carries forward the four issues named above. The milestone page is the only
-authoritative view, check it directly rather than this file.
+The [`v0.35.0` milestone](https://github.com/DocGerd/sail_command/milestones)
+carries the three residual-review issues above plus their originating specs'
+implementation ([#885](https://github.com/DocGerd/sail_command/issues/885),
+[#1136](https://github.com/DocGerd/sail_command/issues/1136)) and the
+Kolding/Fehmarn coverage extension
+([#295](https://github.com/DocGerd/sail_command/issues/295)). The milestone
+page is the only authoritative view, check it directly rather than this file.
 
 ## Themes for the next year
 
@@ -163,6 +155,16 @@ revisited, not that it has been lifted.
 
 Not user-visible, but it is where a meaningful share of the effort goes and it
 sets the pace of everything above.
+
+The `v0.34.0` cut closed two further items in this area, neither with a
+user-visible surface: a differential-testing harness whose covered
+population is complete, closed as answered rather than extended toward its
+originally-chased general theorem
+([#930](https://github.com/DocGerd/sail_command/issues/930)); and the
+basemap core/regional-archive split's pinning plumbing, built with zero
+regions actually shipped
+([#1164](https://github.com/DocGerd/sail_command/issues/1164), the `v0.8.0`
+lazy-loading spike above).
 
 The `v0.21.0` cut addressed three further items in this area, of the eight
 issues (plus part (a) of a ninth) that milestone closed, none with a
