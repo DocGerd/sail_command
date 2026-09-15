@@ -222,6 +222,115 @@ test('(a) a pinned region renders offline from the region cache, with no map-err
   }
 });
 
+// #295: the real north strip (region-north, shape a2). Årösund→Assens stays in
+// the core, but its 5 nm pin corridor crosses 55.3N, so saving it pins the
+// north strip; Kolding (55.49N) then renders offline from that archive alone.
+const NORTH_PATH = 'data/region-north.pmtiles.png';
+// z12.2 over Kolding: every z12 tile in view lies north of the z12 row that
+// straddles 55.3N, so none of them is served by the core.
+const KOLDING_CAMERA = { center: [9.55, 55.45] as [number, number], zoom: 12.2 };
+const KOLDING_BOX: [[number, number], [number, number]] = [
+  [9.48, 55.42],
+  [9.62, 55.48],
+];
+
+function regionEntry(path: string): RegionEntry {
+  const manifest = JSON.parse(readFileSync(resolve(DIST_DIR, 'basemap-regions.json'), 'utf8')) as {
+    regions: RegionEntry[];
+  };
+  const entry = manifest.regions.find((r) => r.path === path);
+  if (!entry) throw new Error(`dist/basemap-regions.json has no ${path} entry`);
+  return entry;
+}
+
+test('(c) #295: saving a core plan near 55.3N pins the north strip, shows it saved, and Kolding renders offline', async ({
+  page,
+}) => {
+  test.setTimeout(300_000);
+  const { bytes } = regionEntry(NORTH_PATH);
+  const server = await startPreview(page);
+  try {
+    await page.setViewportSize(STANDARD_VIEWPORTS.desktopHd);
+    await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
+    await page.evaluate(() => navigator.serviceWorker.ready);
+    await expect
+      .poll(() =>
+        page.evaluate(() => navigator.serviceWorker.controller?.scriptURL ?? 'no-controller'),
+      )
+      .toContain('sw.js');
+
+    await page.getByRole('region', { name: 'Start' }).getByRole('combobox').fill('Årösund');
+    await page.getByRole('region', { name: 'Start' }).getByRole('option').first().click();
+    await page.getByRole('region', { name: 'Ziel' }).getByRole('combobox').fill('Assens');
+    await page.getByRole('region', { name: 'Ziel' }).getByRole('option').first().click();
+    const planButton = page.getByRole('button', { name: 'Route planen' });
+    await planButton.click();
+    await expect(planButton).toBeEnabled({ timeout: 60_000 });
+    await page.getByRole('tab', { name: 'Routen' }).click();
+
+    // The readiness chip is the user-facing claim; the stored body size is its evidence.
+    const chip = page.getByRole('status').filter({ hasText: 'Offline-Karte' });
+    await expect(chip).toHaveText('Offline-Karte gespeichert', { timeout: 120_000 });
+    expect(
+      await page.evaluate(
+        async ({ cacheName, path }) => {
+          const hit = await (await caches.open(cacheName)).match(path);
+          return hit ? (await hit.blob()).size : null;
+        },
+        { cacheName: REGION_CACHE, path: NORTH_PATH },
+      ),
+    ).toBe(bytes);
+
+    await goOfflineAndReload(page, server);
+    await expect
+      .poll(
+        () =>
+          page.evaluate(
+            ({ camera, box }) => {
+              const map = (window as unknown as { __scE2eMap?: ProbeMap }).__scE2eMap;
+              if (!map) return 'no-map-handle';
+              const c = map.getCenter();
+              if (
+                Math.abs(c.lng - camera.center[0]) > 1e-6 ||
+                Math.abs(c.lat - camera.center[1]) > 1e-6 ||
+                Math.abs(map.getZoom() - camera.zoom) > 1e-6
+              ) {
+                map.jumpTo(camera);
+                return 'camera-moved';
+              }
+              if (!map.loaded()) return 'not-loaded';
+              const layers = map
+                .getStyle()
+                .layers.filter(
+                  (l) => l.source === 'protomaps' && (l.type === 'fill' || l.type === 'line'),
+                )
+                .map((l) => l.id);
+              const a = map.project(box[0]);
+              const b = map.project(box[1]);
+              const n = map.queryRenderedFeatures(
+                [
+                  [Math.min(a.x, b.x), Math.min(a.y, b.y)],
+                  [Math.max(a.x, b.x), Math.max(a.y, b.y)],
+                ],
+                { layers },
+              ).length;
+              return n > 0 ? 'rendered' : `features=${n}`;
+            },
+            { camera: KOLDING_CAMERA, box: KOLDING_BOX },
+          ),
+        { timeout: 60_000 },
+      )
+      .toBe('rendered');
+    await expect(page.getByText(GERMAN_MAP_ERROR_BANNER)).toHaveCount(0);
+  } finally {
+    await page
+      .context()
+      .setOffline(false)
+      .catch(() => {});
+    server.kill();
+  }
+});
+
 test('(b) an unpinned region renders blank offline, core still renders, no map-error banner', async ({
   page,
 }) => {
