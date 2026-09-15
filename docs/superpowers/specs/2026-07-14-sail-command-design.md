@@ -26,7 +26,7 @@ Android as an offline-capable PWA.
 | Offline scope | Planning requires internet; following/viewing planned routes fully offline (route + wind used + map data persisted) |
 | Sail choice | Router evaluates both rigs (main+genoa, main+fock) and recommends the faster; routes with recommendation |
 | Live guidance | GPS position + active leg, heading to steer, distance to next maneuver, ETA. No live re-routing in v1 |
-| Area | 54.3–55.3°N, 9.4–11.0°E (Flensburg Fjord, Als, Schlei, Kiel Bight, Ærø, Fyn archipelago to Svendborg/Faaborg, southern Little Belt) |
+| Area | 54.3–55.6°N, 9.4–11.6°E (Flensburg Fjord, Als, Schlei, Kiel Bight, Ærø, Fyn archipelago to Svendborg/Faaborg, Little Belt to Kolding/Middelfart, Fehmarn, Great Belt western approach only). Amended by the 2026-09-15 coverage addendum (#295) — was "54.3–55.3°N, 9.4–11.0°E … southern Little Belt" |
 | Engine | Configurable motoring speed (default 6.5 kn); router may plan engine legs where sailing would be slower than motoring by more than the sail preference margin (default 2.8 kn), and always below the motor threshold (default 2.5 kn), clearly marked. Amended by `2026-07-30-motor-decision-rule-design.md` (#254) — was "motor fallback … when sailing speed < threshold" |
 | Language | German + English, UI toggle |
 | Hosting | GitHub Pages via GitHub Actions (static site, HTTPS) |
@@ -306,8 +306,8 @@ AtoN only) per feasibility research (2026-07-22) and user approval. Presentation
 routing/solver behavior changes.
 
 - **Scope.** In scope: `seamark:type` nodes tagged `buoy_*`, `beacon_*`, or `light_*` (lateral,
-  cardinal, safe-water, special-purpose, minor/major lights) in the app bbox (54.3–55.3°N,
-  9.4–11.0°E) — ~1,794 nodes per a live Overpass pull. **Out of scope for v1**: all other
+  cardinal, safe-water, special-purpose, minor/major lights) in the app bbox (§2 Area row) —
+  ~1,794 nodes per a live Overpass pull at the pre-#295 bbox. **Out of scope for v1**: all other
   `seamark:*` types (`rock`, `wreck`, `obstruction`, `mooring`, `seabed_area`, … — a hazard/clutter
   layer deferred to a future issue) and **routing integration** (feeding `seamark:fairway` /
   dredged-depth tags into the mask pipeline) — a separate future design-gate, not bundled here; this
@@ -422,3 +422,25 @@ two points, this addendum wins; on all other behavior the source spec wins.
   granted; Live View route-following is unchanged and shows no duplicate marker; works offline; "aid,
   not a navigation device" caveat retained; de/en parity. AIS shipped separately in v0.4.0 per the
   2026-07-23 as-built spec.
+
+## Addendum 2026-09-15: Coverage extension (#295)
+
+Maintainer rulings on #295 (2026-09-15); evidence and coupled sites in
+`docs/spikes/1163-295-coverage-scoping.md`.
+
+- **Bbox.** 54.3–55.6°N, 9.4–11.6°E; south and west edges unchanged. The east
+  edge is 11.6°E, not the spike's 11.5°E: 11.6°E is a whole number of cell steps
+  from the existing grid (`COLS` 3025), so the old region's mask cells stay
+  byte-identical.
+- **Great Belt.** Western approach only. Extending east across the full Great
+  Belt is deferred to #1240.
+- **Basemap.** The existing basemap stays the core archive; the extension ships
+  as a separately-named region archive (#296's ruling, on the #1164 mechanism),
+  not a widened single file. Mask, harbours and seamarks ship first; the region
+  archive second, together with the per-plan readiness UI (#1164 ruling 2). The
+  archive's shape is chosen after both candidate shapes are measured and brought
+  to the maintainer.
+- **Stored plans with the old wind grid.** A plan whose stored grid is the old
+  187-point lattice (11 × 17 at 0.1° from 54.3°N / 9.4°E) makes departure
+  scan/confirm and Live reroute return a typed, copy-backed error. No migration
+  (pre-1.0); a BREAKING-CHANGE changelog line records it.
