@@ -15,7 +15,9 @@
 //
 // SCOPE (maintainer ruling on #1164, 2026-09-14 — see the issue's pinned
 // comment): service + state only, no readiness UI this release.
-// pinRegionsForPlan is wired in at pinAfterSave.ts :: pinRegionsAfterSave.
+// pinRegionsForPlan is wired in at pinAfterSave.ts, once per save-path
+// consumer (#1233 widened this from the original single
+// pinRegionsAfterSave wiring — see that file's own header).
 // regionReadiness is exported for a future call site (planned: the
 // saved-plan list / plan-open flow, tracked under #295).
 //
@@ -202,7 +204,13 @@ export type PinRegionsOutcome =
   // 5669811466). Named as a distinct outcome rather than letting
   // pinRegionsForPlan's promise reject after real work already happened
   // (PWA review Minor r4008640266).
-  | { readonly status: 'pin-record-failed'; readonly total: number; readonly pinned: number };
+  | { readonly status: 'pin-record-failed'; readonly total: number; readonly pinned: number }
+  // #1233 Major (offline/PWA review): the plan was deleted while its
+  // archives were still being fetched. The archives may still have been
+  // cached (harmless and reusable — content-addressed by region, not by
+  // plan), but db.ts's saveRegionPin found no matching plan row and wrote
+  // no pin-intent record, by design (see its own comment).
+  | { readonly status: 'plan-gone'; readonly total: number; readonly pinned: number };
 
 /**
  * Fetches every region archive `plan`'s route corridor requires that is not
@@ -232,12 +240,25 @@ export async function pinRegionsForPlan(plan: Plan): Promise<PinRegionsOutcome> 
     if (await pinOneRegion(entry)) pinned += 1;
   }
 
+  let writeOutcome: 'saved' | 'plan-gone';
   try {
-    await saveRegionPin({ planId: plan.id, regionIds: ids, pinnedAtMs: Date.now() });
+    writeOutcome = await saveRegionPin(plan.id, (currentPlan) => ({
+      planId: plan.id,
+      // Recomputed from the plan row `saveRegionPin` reads INSIDE its own
+      // transaction, never from the `ids` computed above — #1233 Minor
+      // (replan.ts:369): two same-id pins racing (e.g. two quick via edits)
+      // must converge on the corridor the plan ACTUALLY has, regardless of
+      // which call's archive downloads happen to finish last.
+      regionIds: requiredRegionIdsForPlan(currentPlan, manifest),
+      pinnedAtMs: Date.now(),
+    }));
   } catch {
     return { status: 'pin-record-failed', total: ids.length, pinned };
   }
 
+  if (writeOutcome === 'plan-gone') {
+    return { status: 'plan-gone', total: ids.length, pinned };
+  }
   return { status: 'pinned', total: ids.length, pinned };
 }
 
@@ -262,13 +283,38 @@ async function isPmtilesBlob(blob: Blob): Promise<boolean> {
   return looksLikePmtiles(head);
 }
 
+// #1233 Major 2 (offline/PWA review): every concurrent caller for the SAME
+// archive URL shares ONE in-flight fetch/verify/cache.put instead of each
+// starting its own — a bulk plan import, or two plans whose corridors share
+// a region, would otherwise fire one full multi-MB download PER PLAN. Keyed
+// by the CANONICAL (search-less) url, so it is stable across every
+// `?pin=<token>` cache-busting attempt below. Cleared once the attempt
+// settles (success OR failure) so a LATER, separate pin — after this one is
+// fully done — starts fresh rather than replaying a stale result forever.
+const inFlightRegionFetches = new Map<string, Promise<boolean>>();
+
+async function pinOneRegion(entry: RegionManifestEntry): Promise<boolean> {
+  if (await isArchivePresent(entry)) return true;
+  const url = archiveUrl(entry);
+  const existing = inFlightRegionFetches.get(url);
+  if (existing) return existing;
+  const attempt = fetchAndCacheRegion(entry, url).finally(() => {
+    inFlightRegionFetches.delete(url);
+  });
+  inFlightRegionFetches.set(url, attempt);
+  return attempt;
+}
+
 /**
  * Fetches and caches one region archive, verifying its DECODED size (never
  * the response's Content-Length — a re-gzipping CDN could inflate that
  * transparently, the same #118 lesson `basemapSource.ts` documents) against
  * the manifest before `cache.put`. A short or wrong-length body is left
  * uncached entirely. Idempotent: an already-correctly-cached entry short-
- * circuits without a network request.
+ * circuits without a network request (`pinOneRegion`'s own `isArchivePresent`
+ * check — this function is reached only past that gate). Split out of
+ * `pinOneRegion` so the coalescing map above can share ONE Promise across
+ * every concurrent caller for the same `url` (#1233 Major 2).
  *
  * NEVER `cache.delete`s a stale entry before fetching (successor fix, PR
  * review r4009096166, replacing an earlier `cache.delete`-then-fetch
@@ -289,10 +335,8 @@ async function isPmtilesBlob(blob: Blob): Promise<boolean> {
  * value atomically — the stale copy remains servable right up until a
  * verified replacement exists, and is never left absent.
  */
-async function pinOneRegion(entry: RegionManifestEntry): Promise<boolean> {
-  if (await isArchivePresent(entry)) return true;
+async function fetchAndCacheRegion(entry: RegionManifestEntry, url: string): Promise<boolean> {
   try {
-    const url = archiveUrl(entry);
     // `cache: 'no-store'` (PWA review Minor r4008640259): region archive
     // paths are unhashed, so without it an HTTP-cached copy from a PREVIOUS
     // build could be served whenever its length happens to match the

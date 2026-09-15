@@ -447,12 +447,43 @@ export async function deleteWaypoint(id: string): Promise<void> {
   await (await db()).delete('waypoints', id);
 }
 
-// #1164 T4: the `pins` store — see RegionPinRecord's own comment for what it
-// does and (deliberately) does not represent. `put` (not `add`) so a repeat
-// pin request for the same plan overwrites its prior intent record rather
-// than throwing on a duplicate keyPath.
-export async function saveRegionPin(record: RegionPinRecord): Promise<void> {
-  await (await db()).put('pins', record);
+// #1233 (offline/PWA review Major): a plan can be DELETED while its region
+// archives are still downloading (minutes, on a marine link) — writing the
+// pin-intent record unconditionally afterwards would resurrect a record for
+// a plan that no longer exists, and nothing would ever remove it (deletePlan
+// already ran and found no record yet to clean up). Reading the plan and
+// writing the record in ONE ['plans','pins'] readwrite transaction closes
+// that window: IndexedDB serializes overlapping readwrite transactions over
+// shared stores, so this can never interleave with deletePlan's own
+// transaction — one must fully commit before the other starts.
+//
+// `buildRecord` is handed the plan row AS CURRENTLY STORED, not necessarily
+// the one the caller started pinning — this is what makes two same-id pins
+// racing (e.g. two quick via-replans) converge on the SAME regionIds
+// regardless of which one's archive downloads finish last: by the time
+// EITHER write runs, `plans.get` already sees whichever save landed most
+// recently, so a stale corridor computed at call time can never win (see
+// regionPinning.ts's pinRegionsForPlan, this function's only caller — it
+// recomputes `regionIds` from the row this callback receives).
+//
+// `put` (not `add`), same as before: a repeat pin request for the same plan
+// overwrites its prior intent record rather than throwing on a duplicate
+// keyPath.
+export async function saveRegionPin(
+  planId: string,
+  buildRecord: (plan: Plan) => RegionPinRecord,
+): Promise<'saved' | 'plan-gone'> {
+  const tx = (await db()).transaction(['plans', 'pins'], 'readwrite');
+  const plans = tx.objectStore('plans');
+  const pins = tx.objectStore('pins');
+  const plan = await plans.get(planId);
+  if (plan === undefined) {
+    await tx.done;
+    return 'plan-gone';
+  }
+  await pins.put(buildRecord(plan));
+  await tx.done;
+  return 'saved';
 }
 
 export async function getRegionPin(planId: string): Promise<RegionPinRecord | undefined> {

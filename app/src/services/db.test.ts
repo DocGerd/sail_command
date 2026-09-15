@@ -684,7 +684,7 @@ describe('IndexedDB persistence', () => {
       regionIds: ['region-a'],
       pinnedAtMs: 1000,
     };
-    await saveRegionPin(pin);
+    await saveRegionPin('has-a-pin', () => pin);
     expect(await getRegionPin('has-a-pin')).toEqual(pin);
 
     await deletePlan('has-a-pin');
@@ -1107,7 +1107,14 @@ describe('#54 lazy plan migration at the read boundary', () => {
     const before = await listPlans();
     const displayedId = before[0]!.id;
     expect(displayedId).toBe('67890');
-    await saveRegionPin({ planId: displayedId, regionIds: ['region-a'], pinnedAtMs: 1000 });
+    // Seeded directly, NOT via saveRegionPin — its #1233 existence guard
+    // needs plans.get(planId) to resolve, and the plan's REAL storage key
+    // is the NUMBER 67890, never the string display id, so that guard can
+    // never pass here. This test is about deletePlan's cleanup, not about
+    // how the record got there.
+    const raw = await openDB('sailcommand', 3);
+    await raw.put('pins', { planId: displayedId, regionIds: ['region-a'], pinnedAtMs: 1000 });
+    raw.close();
     expect(await getRegionPin(displayedId)).toBeDefined();
 
     await deletePlan(displayedId);
@@ -1402,12 +1409,20 @@ describe('#1164 T4: v2 -> v3 migration adds the pins store additively', () => {
     // `d.createObjectStore('settings')` or the waypoints store creation on a
     // database where they already exist would throw — getting past this
     // call at all already rules that out.
+    await savePlan({
+      id: 'plan-migration-1',
+      name: 'Migration',
+      createdAtMs: 1,
+      request: {},
+      windGrid: {},
+      result: {},
+    } as unknown as Plan);
     const record: RegionPinRecord = {
       planId: 'plan-migration-1',
       regionIds: ['region-a', 'region-b'],
       pinnedAtMs: 2000,
     };
-    await saveRegionPin(record);
+    await saveRegionPin('plan-migration-1', () => record);
     expect(await getRegionPin('plan-migration-1')).toEqual(record);
 
     // Pre-existing data in the OLDER stores must have survived the upgrade
@@ -1423,24 +1438,41 @@ describe('#1164 T4: region pin intent persistence (services/db.ts)', () => {
     await __resetDbForTests();
   });
 
+  function minimalPlan(id: string): Plan {
+    return {
+      id,
+      name: id,
+      createdAtMs: 1,
+      request: {},
+      windGrid: {},
+      result: {},
+    } as unknown as Plan;
+  }
+
   it('save -> get roundtrip', async () => {
+    await savePlan(minimalPlan('plan-a'));
     const record: RegionPinRecord = {
       planId: 'plan-a',
       regionIds: ['region-a', 'region-b'],
       pinnedAtMs: 12345,
     };
-    await saveRegionPin(record);
+    await saveRegionPin('plan-a', () => record);
     expect(await getRegionPin('plan-a')).toEqual(record);
   });
 
   it('a repeat pin for the same plan id OVERWRITES the prior intent record (put, not add)', async () => {
-    await saveRegionPin({ planId: 'plan-a', regionIds: ['region-a'], pinnedAtMs: 1000 });
+    await savePlan(minimalPlan('plan-a'));
+    await saveRegionPin('plan-a', () => ({
+      planId: 'plan-a',
+      regionIds: ['region-a'],
+      pinnedAtMs: 1000,
+    }));
     const updated: RegionPinRecord = {
       planId: 'plan-a',
       regionIds: ['region-a', 'region-b'],
       pinnedAtMs: 2000,
     };
-    await saveRegionPin(updated);
+    await saveRegionPin('plan-a', () => updated);
     expect(await getRegionPin('plan-a')).toEqual(updated);
   });
 
@@ -1449,11 +1481,31 @@ describe('#1164 T4: region pin intent persistence (services/db.ts)', () => {
   });
 
   it('two plans pin independently', async () => {
+    await savePlan(minimalPlan('plan-a'));
+    await savePlan(minimalPlan('plan-b'));
     const a: RegionPinRecord = { planId: 'plan-a', regionIds: ['region-a'], pinnedAtMs: 1 };
     const b: RegionPinRecord = { planId: 'plan-b', regionIds: ['region-b'], pinnedAtMs: 2 };
-    await saveRegionPin(a);
-    await saveRegionPin(b);
+    await saveRegionPin('plan-a', () => a);
+    await saveRegionPin('plan-b', () => b);
     expect(await getRegionPin('plan-a')).toEqual(a);
     expect(await getRegionPin('plan-b')).toEqual(b);
+  });
+
+  // #1233 Major (offline/PWA review): the positive control for the
+  // existence guard — writes nothing, and reports 'plan-gone', for a
+  // planId that names no row in the plans store (the exact shape of a
+  // plan deleted mid-pin).
+  it("writes NO record and returns 'plan-gone' when the plan does not exist", async () => {
+    const buildRecord = vi.fn(() => ({
+      planId: 'never-saved',
+      regionIds: ['region-a'],
+      pinnedAtMs: 1,
+    }));
+
+    const outcome = await saveRegionPin('never-saved', buildRecord);
+
+    expect(outcome).toBe('plan-gone');
+    expect(buildRecord).not.toHaveBeenCalled();
+    expect(await getRegionPin('never-saved')).toBeUndefined();
   });
 });

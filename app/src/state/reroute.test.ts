@@ -605,6 +605,29 @@ describe('useLiveReroute', () => {
     expect(result.current.state).toEqual({ rerouting: false, error: null });
   });
 
+  // #1233 Minor (sail-reviewer PR #1231/#1242): the hook-level
+  // `deps.pinRegions` pass-through, mirroring the `save`/`now`-injection
+  // test below. Mutation-checked: deleting the
+  // `...(deps.pinRegions ? { pinRegions: deps.pinRegions } : {})` spread
+  // reds this row.
+  it('passes deps.pinRegions through to rerouteFromFix', async () => {
+    const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
+    const pinRegions = vi.fn<PinAfterSave>();
+    const { result } = renderHook(() =>
+      useLiveReroute(() => Promise.resolve(client), {
+        save: vi.fn().mockResolvedValue(undefined),
+        now: () => NOW_MS,
+        pinRegions,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.reroute(makePlan(), FIX, 'Rerouted');
+    });
+
+    expect(pinRegions).toHaveBeenCalledTimes(1);
+  });
+
   it('a failed ensureClient surfaces error.replanInit — not a silent no-op', async () => {
     const ensureClient = vi.fn().mockResolvedValue(null);
     const { result } = renderHook(() => useLiveReroute(ensureClient));

@@ -531,6 +531,28 @@ describe('useViaReplan', () => {
     expect(result.current.state).toEqual({ replanning: false, error: null, droppedCount: 0 });
   });
 
+  // #1233 Minor (sail-reviewer PR #1231/#1242): the hook-level
+  // `deps.pinRegions` pass-through, mirroring the existing `save`-injection
+  // tests. Mutation-checked: deleting the
+  // `...(deps.pinRegions ? { pinRegions: deps.pinRegions } : {})` spread
+  // reds this row.
+  it('passes deps.pinRegions through to replanWithVias', async () => {
+    const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
+    const pinRegions = vi.fn<PinAfterSave>();
+    const { result } = renderHook(() =>
+      useViaReplan(() => Promise.resolve(client), {
+        save: vi.fn().mockResolvedValue(undefined),
+        pinRegions,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.replace(makePlan(), []);
+    });
+
+    expect(pinRegions).toHaveBeenCalledTimes(1);
+  });
+
   it('a failed ensureClient (asset load or worker init failure) surfaces error.replanInit — not a silent no-op', async () => {
     const ensureClient = vi.fn().mockResolvedValue(null);
     const { result } = renderHook(() => useViaReplan(ensureClient));

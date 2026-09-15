@@ -1089,16 +1089,14 @@ describe('SettingsPanel (#849 local import/export)', () => {
 
   // #1233 save-path coverage: an imported plan can carry a corridor the
   // device never pinned before (it never went through the app's own
-  // planner). Only a SUCCESSFULLY-saved plan may pin — its regions never
-  // reached IndexedDB either if the write failed.
-  it('pins each successfully-saved imported plan, and not the one whose save failed', async () => {
+  // planner). Only SUCCESSFULLY-saved plans may pin — a plan whose save
+  // failed never reached IndexedDB, so its regions must not be requested.
+  it('pins each successfully-saved imported plan in one batch, excluding the one whose save failed', async () => {
     const planA = makeTestPlan('plan-a');
     const planB = makeTestPlan('plan-b');
     const envelope = buildExportEnvelope([planA, planB], null, []);
     vi.spyOn(db, 'savePlan').mockRejectedValueOnce(new Error('quota exceeded'));
-    const pinSpy = vi
-      .spyOn(pinAfterSaveModule, 'pinRegionsAfterImport')
-      .mockImplementation(() => {});
+    const pinSpy = vi.spyOn(pinAfterSaveModule, 'pinImportedPlans').mockImplementation(() => {});
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     renderPanel();
@@ -1111,7 +1109,8 @@ describe('SettingsPanel (#849 local import/export)', () => {
     await screen.findByText((content) => content.startsWith('1 route(s)'));
 
     expect(pinSpy).toHaveBeenCalledTimes(1);
-    expect(pinSpy.mock.calls[0]?.[0]?.id).toBe('plan-b');
+    const [passedPlans] = pinSpy.mock.calls[0] ?? [];
+    expect(passedPlans?.map((p) => p.id)).toEqual(['plan-b']);
 
     consoleErrorSpy.mockRestore();
   });
