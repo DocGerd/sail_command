@@ -1444,18 +1444,22 @@ making design-level decisions; do not silently deviate.
   magic preflight (`app/src/services/basemapSource.ts`, `cache:'no-store'`) that
   falls back to a full-body Blob-backed source if the CDN ever re-gzips — a
   future CDN flip degrades to a slow map, never an outage.
-- A CORE basemap archive over `maximumFileSizeToCacheInBytes` now FAILS the build
-  (`app/vite.config.ts`'s `assertCoreWithinPrecacheCap`, pinned by
-  `regionManifest.test.ts`, #1220); region archives are deliberately outside the
-  precache. Why it matters: `docs/spikes/1163-295-coverage-scoping.md`.
-- **Precached unhashed files are keyed `<url>?__WB_REVISION__=…`** — a bare-URL
+- A CORE basemap archive over `maximumFileSizeToCacheInBytes` FAILS the build
+  (`app/vite.config.ts`'s `assertCoreWithinPrecacheCap`, #1220 — its throw is
+  pinned by `regionManifest.test.ts`, its call site is not); any OTHER precached
+  file over the cap still drops with only a build warning. Region archives are
+  deliberately outside the precache. Why it matters:
+  `docs/spikes/1163-295-coverage-scoping.md`.
+- **Precached unhashed files are keyed `<url>?__WB_REVISION__=…`** (workbox-precaching
+  7.4.1) — a bare-URL
   `caches.match` MISSES in a real build; use `{ ignoreSearch: true }`
   (`regionPinning.ts`). A test fake storing the bare URL hides it (PR #1225).
 - **Bumping `DB_VERSION` (`services/db.ts`) on `develop` breaks PROD for anyone who
-  has opened `/uat/`** — one origin, one IndexedDB, so prod's older `openDB`
-  throws `VersionError` until the release reaches `main`. Measured in Chromium
-  on PR #1225 (2→3, accepted by maintainer ruling on #1164); #848's 1→2 shipped
-  the same window. Cut the release promptly after such a bump.
+  opens `/uat/` after it deploys** — one origin, one IndexedDB, so prod's older
+  `openDB` throws `VersionError` until the release reaches `main`. Derived in the
+  multi-boat spec §I.2 (OQ-5: no bump); measured in Chromium on PR #1225 (2→3,
+  accepted by maintainer ruling on #1164); #848's 1→2 shipped the same window.
+  Cut the release promptly after such a bump.
 - Font glyphs (`basemap-assets/fonts/**`) are runtime-cached, never precached
   (#28): a `sailcommand-glyphs-*` CacheFirst route in `app/src/sw.ts` plus an
   app-side background warm-up (`app/src/services/glyphWarmup.ts`) that runs
@@ -3409,11 +3413,12 @@ making design-level decisions; do not silently deviate.
   SIGSTOP/SIGCONT substitute was tried next and is not a workaround: the
   in-process `process.kill()` variant HUNG the target in kernel state `T` and
   had to be killed by hand.
-- **CI runs Node 22; a local Node 24 pass is not evidence for Blob/Response
-  behaviour.** A 206 Range test asserting only status and length passed on 24
-  with a body of `"[object Blob]"` and failed on CI with `expected 416 to be 206`
-  (PR #1223, run 34886147240). Assert the body bytes; `vi.stubGlobal('Blob',
-  NodeBlob)` in `basemapArchiveRoute.test.ts` is the fix shape.
+- **A local pass on a different Node version than CI's is not evidence for
+  Blob/Response behaviour.** At PR #1223 (run 34886147240) a 206 Range test
+  asserting only status and length passed on Node 24.15.0 with a body of
+  `"[object Blob]"` and failed on CI's Node 22.23.2 with `expected 416 to be 206`.
+  Assert the body bytes; `vi.stubGlobal('Blob', NodeBlob)` in
+  `basemapArchiveRoute.test.ts` is the fix shape (its comment has the mechanism).
 - **vitest's DEFAULT reporter suppresses console output from PASSING tests**, so
   a console-spy check run on a green suite is a FALSE NEGATIVE. Measured
   2026-09-04 with a control: a passing test logging a unique marker printed it
