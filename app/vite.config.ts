@@ -640,8 +640,9 @@ export default defineConfig(({ command }) => ({
       // working until the user opts into ReloadPrompt's reload.
       registerType: 'prompt',
       injectManifest: {
-        // ~33 MB expected (basemap.pmtiles.png + mask.bin + polars + sprites
-        // + app shell) — see spec §7's first-load budget. The ~11 MB of font
+        // ~40 MB (basemap.pmtiles.png + mask.bin + polars + sprites + app
+        // shell; 39,715,432 B over 28 manifest entries in the built sw.js after
+        // #295) — see spec §7's first-load budget. The ~11 MB of font
         // glyph ranges are runtime-cached, not precached (#28, below).
         // #118: the basemap archive ships as `.pmtiles.png` (CDN gzip-of-
         // range workaround, see src/lib/basemap.ts) — it is matched by the

@@ -9,7 +9,7 @@
 //
 // The population is deliberately VIEWPORT-BOUNDED, mirroring what a sighted
 // mouse user can actually click: the #714 spike rejected a region-wide list
-// (1,794 features in the shipped seamarks.json) on scale and on fidelity.
+// (1,794 features then, 2,905 since #295) on scale and on fidelity.
 // What it does NOT mirror is MapLibre's z<12 collision culling — a mark the
 // map culled for lack of screen room is still listed here. That is the safe
 // direction (a keyboard user gets a SUPERSET of what the mouse user sees,

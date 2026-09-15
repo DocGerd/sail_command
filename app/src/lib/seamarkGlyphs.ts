@@ -342,8 +342,8 @@ const FAMILY_RANK: Record<SeamarkFamily, number> = {
  *   revision justified that with Appendix 2 item 3.2's "submarine cables
  *   and pipelines"; that was a CATEGORY ERROR and is not used here. Item
  *   3.2 is plain English and names no object class; in S-57 that content
- *   is `CBLSUB` (Line) / `PIPSOL`, whereas all 1794 features in the
- *   shipped data are POINTS (measured 2026-08-13: zero lines, zero
+ *   is `CBLSUB` (Line) / `PIPSOL`, whereas all 2,905 features in the
+ *   shipped data are POINTS (re-measured after #295: zero lines, zero
  *   areas) — `category=cable` is S-57 CATSPM 6, "cable mark", a point aid
  *   to navigation under item 2.3 exactly like every other STANDARD-tier
  *   mark. The maintainer ruling on #521 (2026-08-21) resolved the
@@ -361,16 +361,17 @@ const FAMILY_RANK: Record<SeamarkFamily, number> = {
  *   that data, not a resolution of the PresLib question; it stays open for
  *   a future issue, not this one.
  *
- * At the shipped data (measured against `app/public/data/seamarks.json`,
- * 1794 features: lateral 828, specialPurpose 703 [cable 117, pipeline 2,
- * everything else 584], cardinal 121, lightMinor 107, safeWater 23,
- * lightMajor 6, isolatedDanger 6, unknown 0), the default (STANDARD) now
- * hides ZERO `specialPurpose` marks — not the 119 cable/pipeline marks it
- * hid before #521, and not the 810 the family-level mapping in the FIRST
- * #353 PR2 revision hid (#513's Blocker F1). That does NOT depend on
- * whether `safeWater`/`lightMajor` sit in BASE or STANDARD (both are shown
- * at the STANDARD default either way) — only on the `specialPurpose` split,
- * which #521 made a no-op.
+ * At the shipped data (re-measured after #295 against
+ * `app/public/data/seamarks.json` with classifySeamark, 2,905 features:
+ * lateral 1384, specialPurpose 1024 [cable 133, pipeline 10, everything
+ * else 881], cardinal 168, lightMinor 263, safeWater 48, lightMajor 12,
+ * isolatedDanger 6, unknown 0), the default (STANDARD) now hides ZERO
+ * `specialPurpose` marks — not the 119 cable/pipeline marks it hid before
+ * #521, and not the 810 the family-level mapping in the FIRST #353 PR2
+ * revision hid (#513's Blocker F1), both counted on the pre-#295 data.
+ * That does NOT depend on whether `safeWater`/`lightMajor` sit in BASE or
+ * STANDARD (both are shown at the STANDARD default either way) — only on
+ * the `specialPurpose` split, which #521 made a no-op.
  */
 export type SeamarkDisplayTier = 0 | 1 | 2;
 export const SEAMARK_DISPLAY_TIER_BASE = 0;
