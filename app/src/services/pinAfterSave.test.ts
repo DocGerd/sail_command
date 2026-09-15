@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  __resetPinActivityForTests,
   createPinAfterSave,
+  pinActivityFor,
   pinImportedPlans,
+  subscribePinActivity,
   pinRegionsAfterDepartureConfirm,
   pinRegionsAfterReplan,
   pinRegionsAfterReroute,
@@ -209,5 +212,109 @@ describe('pinImportedPlans (#1233 Major 2)', () => {
     expect(() => pinImportedPlans([PLAN_A], pin)).not.toThrow();
     await settle();
     expect(warn).toHaveBeenCalledTimes(1);
+  });
+});
+
+// #295: the per-plan pin activity the readiness chip reads.
+describe('pin activity (#295)', () => {
+  beforeEach(() => {
+    setController({});
+    __resetPinActivityForTests();
+  });
+
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, 'serviceWorker');
+    vi.restoreAllMocks();
+  });
+
+  function deferred<T>() {
+    let resolve!: (v: T) => void;
+    let reject!: (e: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  }
+
+  it('is "pinning" while in flight and clears on a full pin', async () => {
+    const d = deferred<PinRegionsOutcome>();
+    createPinAfterSave(() => d.promise)(PLAN);
+    expect(pinActivityFor('p1')).toBe('pinning');
+    d.resolve({ status: 'pinned', total: 2, pinned: 2 });
+    await settle();
+    expect(pinActivityFor('p1')).toBeUndefined();
+  });
+
+  it.each<[string, PinRegionsOutcome]>([
+    ['a partial pin', { status: 'pinned', total: 2, pinned: 1 }],
+    ['an unavailable manifest', { status: 'manifest-unavailable' }],
+    ['a failed pin record', { status: 'pin-record-failed', total: 1, pinned: 1 }],
+  ])('reads "failed" after %s', async (_name, outcome) => {
+    createPinAfterSave(() => Promise.resolve(outcome))(PLAN);
+    await settle();
+    expect(pinActivityFor('p1')).toBe('failed');
+  });
+
+  it('reads "failed" after a rejection', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    createPinAfterSave(() => Promise.reject(new Error('offline')))(PLAN);
+    await settle();
+    expect(pinActivityFor('p1')).toBe('failed');
+  });
+
+  it('forgets a deleted plan ("plan-gone")', async () => {
+    createPinAfterSave(() => Promise.resolve({ status: 'plan-gone', total: 1, pinned: 1 }))(PLAN);
+    await settle();
+    expect(pinActivityFor('p1')).toBeUndefined();
+  });
+
+  it('records nothing when no service worker controls the page', async () => {
+    setController(null);
+    createPinAfterSave(() => Promise.resolve(PINNED))(PLAN);
+    await settle();
+    expect(pinActivityFor('p1')).toBeUndefined();
+  });
+
+  it('an older attempt settling late does not overwrite a newer one still in flight', async () => {
+    const first = deferred<PinRegionsOutcome>();
+    const second = deferred<PinRegionsOutcome>();
+    const pinAfterSave = createPinAfterSave(
+      vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise),
+    );
+    pinAfterSave(PLAN);
+    await settle();
+    pinAfterSave(PLAN);
+    await settle();
+    first.resolve({ status: 'manifest-unavailable' });
+    await settle();
+    expect(pinActivityFor('p1')).toBe('pinning');
+    second.resolve(PINNED);
+    await settle();
+    expect(pinActivityFor('p1')).toBeUndefined();
+  });
+
+  it('notifies subscribers on every change and stops after unsubscribe', async () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribePinActivity(listener);
+    createPinAfterSave(() => Promise.resolve(PINNED))(PLAN);
+    await settle();
+    expect(listener).toHaveBeenCalledTimes(2); // pinning, then cleared
+    unsubscribe();
+    createPinAfterSave(() => Promise.resolve(PINNED))(PLAN);
+    await settle();
+    expect(listener).toHaveBeenCalledTimes(2);
+  });
+
+  it('pinImportedPlans records per-plan activity', async () => {
+    const pin = vi
+      .fn<(p: Plan) => Promise<PinRegionsOutcome>>()
+      .mockResolvedValueOnce(PINNED)
+      .mockResolvedValueOnce({ status: 'manifest-unavailable' });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    pinImportedPlans([PLAN_A, PLAN_B], pin);
+    await settle();
+    expect(pinActivityFor('a')).toBeUndefined();
+    expect(pinActivityFor('b')).toBe('failed');
   });
 });

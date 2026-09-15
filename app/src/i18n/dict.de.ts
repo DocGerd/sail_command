@@ -399,6 +399,13 @@ export const de = {
   // static "> 12 h" threshold label PR #763 shipped. See dict.en.ts for the
   // full rationale. "bei Abfahrt" (PR #763 review Major 3) is unchanged.
   'route.staleForecast': 'Vorhersage bei Abfahrt {hours} h alt',
+  // #295: ob der Kartenbereich dieses Plans offline gespeichert ist.
+  'route.offlineMap.checking': 'Offline-Karte: wird geprüft…',
+  'route.offlineMap.ready': 'Offline-Karte gespeichert',
+  'route.offlineMap.pinning': 'Offline-Karte wird gespeichert…',
+  'route.offlineMap.failed': 'Download der Offline-Karte fehlgeschlagen',
+  'route.offlineMap.notReady': 'Offline-Karte nicht gespeichert',
+  'route.offlineMap.retry': 'Offline-Karte speichern',
   // #53/#452: honest passage-planning-aid copy — see dict.en.ts's comment
   // for why {used} < {requested} always holds here, why the closing
   // sentence deliberately does not imply unflagged water is safe, and why
