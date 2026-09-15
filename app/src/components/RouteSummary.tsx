@@ -909,6 +909,9 @@ export default function RouteSummary({
               {result.legs.length > 0 && (
                 <p className="route-legs-note">{t('route.legs.motorNote')}</p>
               )}
+              {result.legs.some((l) => l.forced === true) && (
+                <p className="route-legs-note">{t('route.legs.forcedNote')}</p>
+              )}
               {/* #325: the reef suggestion is advisory seamanship guidance,
                 computed AFTER routing from apparent wind speed — it is NOT
                 part of the time optimisation (the boat speed every leg used

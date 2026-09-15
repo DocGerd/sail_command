@@ -258,6 +258,12 @@ describe('#885 forced legs in the legs table', () => {
     const forced = chips.filter((c) => c.textContent?.includes(en['route.legs.forced']));
     expect(forced).toEqual([chips[0]]);
     expect(forced[0]!.querySelector(`[title="${en['route.legs.forcedTitle']}"]`)).not.toBeNull();
+    expect(screen.getByText(en['route.legs.forcedNote'])).toBeInTheDocument();
+  });
+
+  it('omits the map-mark note when no leg is forced', () => {
+    renderSummary({ plan: makePlan() });
+    expect(screen.queryByText(en['route.legs.forcedNote'])).not.toBeInTheDocument();
   });
 });
 

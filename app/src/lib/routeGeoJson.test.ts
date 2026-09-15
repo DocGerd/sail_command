@@ -128,16 +128,16 @@ describe('legsToFeatureCollection', () => {
 });
 
 describe('legsToFeatureCollection: #885 forced legs', () => {
-  it('appends the injected forced label to a forced leg only', () => {
+  it('appends the injected forced mark to a forced leg only', () => {
     const fc = legsToFeatureCollection(
       [SAIL_LEG, { ...MOTOR_LEG, forced: true }, { ...SAIL_LEG, forced: true }],
       'en',
-      { motorLetter: 'M', forcedLabel: 'forced' },
+      { motorLetter: 'M', forcedMark: '*' },
     );
     const labels = fc.features.map((f) => f.properties.speedLabel);
-    expect(labels[0]).not.toContain('forced');
-    expect(labels[1]).toMatch(/^M · .* · forced$/);
-    expect(labels[2]).toMatch(/ · forced$/);
+    expect(labels[0]).not.toContain('*');
+    expect(labels[1]).toMatch(/^M · [^*]*\*$/);
+    expect(labels[2]).toMatch(/kn\*$/);
   });
 });
 

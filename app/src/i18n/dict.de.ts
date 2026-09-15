@@ -592,6 +592,10 @@ export const de = {
   'route.legs.shallowCautious': 'vorsichtig: bis auf {depth} m',
   'route.legs.motorNote': 'Motor = reine Motorfahrt, keine Segelleistung modelliert.',
   // #885 R5: siehe die englische Fassung.
+  'route.legs.forcedNote':
+    '* auf der Karte: ein von dir für diesen Abschnitt vorgegebener Modus, nicht von der Planung gewählt.',
+  // #885: the map's compact forced-leg mark, explained by route.legs.forcedNote.
+  'route.map.forcedMark': '*',
   'route.legs.forced': 'vorgegeben',
   'route.legs.forcedTitle':
     'Modus von dir für diesen Abschnitt vorgegeben, nicht von der Planung gewählt',

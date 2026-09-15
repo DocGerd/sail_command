@@ -49,13 +49,15 @@ export function legsToFeatureCollection(
   opts: {
     motorLetter?: string;
     // #885 R5: appended to a forced leg's label; injected like motorLetter.
-    forcedLabel?: string;
+    // Kept to one character: `sc-leg-speed` culls a label longer than its leg
+    // (#378), and a word-length suffix measurably hid forced legs' labels.
+    forcedMark?: string;
     mask?: NavMask | null;
     gateM?: number | undefined;
   } = {},
 ): FeatureCollection<LineString, LegProperties> {
   const motorLetter = opts.motorLetter ?? 'M';
-  const forcedLabel = opts.forcedLabel ?? 'forced';
+  const forcedMark = opts.forcedMark ?? '*';
   // #651: computed ONCE for the whole collection, never per feature —
   // legMinDepthsM returns one entry per leg in order (PER-LEG null; see its
   // own doc comment for why a whole-array null was replaced), so a per-leg
@@ -87,7 +89,7 @@ export function legsToFeatureCollection(
         speedLabel:
           (leg.kind === 'motor'
             ? `${motorLetter} · ${formatKn(leg.speedKn, lang)}`
-            : formatKn(leg.speedKn, lang)) + (leg.forced ? ` · ${forcedLabel}` : ''),
+            : formatKn(leg.speedKn, lang)) + (leg.forced ? forcedMark : ''),
         shallow:
           leg.shallow !== undefined ||
           (minDepths !== null &&

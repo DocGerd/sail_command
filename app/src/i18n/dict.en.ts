@@ -661,6 +661,10 @@ export const en = {
   'route.legs.motorNote': 'Motor = engine only; no sail contribution modelled.',
   // #885 R5: a leg whose mode the captain forced, so it does not read as the
   // planner's speed verdict.
+  'route.legs.forcedNote':
+    '* on the map: a mode you set for that segment, not one the planner chose.',
+  // #885: the map's compact forced-leg mark, explained by route.legs.forcedNote.
+  'route.map.forcedMark': '*',
   'route.legs.forced': 'forced',
   'route.legs.forcedTitle': 'Mode set by you for this segment, not chosen by the planner',
   // #325: advisory-only per the issue's own DoD — the boat speed every leg
