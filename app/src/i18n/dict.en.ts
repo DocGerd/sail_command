@@ -166,8 +166,10 @@ export const en = {
   'planner.segment.auto': 'Auto',
   'planner.segment.motor': 'Motor',
   'planner.segment.sail': 'Sail',
-  'planner.segment.motorOff': 'Motor is disabled — enable it under Boat › Propulsion to force motor.',
-  'planner.segment.conflict': 'Marked motor-only, but the motor is disabled: planning will refuse this.',
+  'planner.segment.motorOff':
+    'Motor is disabled — enable it under Boat › Propulsion to force motor.',
+  'planner.segment.conflict':
+    'Marked motor-only, but the motor is disabled: planning will refuse this.',
   // #829: keyboard-reachable coordinate entry — a second producer/renderer of
   // the same LatLon the map tap already produces (spike
   // docs/spikes/714-keyboard-map-equivalents.md §3.1/§5.1). "coord.edit" is
@@ -348,7 +350,7 @@ export const en = {
   'error.noRoute.segmentModesInvalid':
     'Internal error: the segment settings do not match the waypoints. Re-select the segment modes and plan again.',
   'error.segmentModesMergeConflict':
-    'Two waypoints are so close they merge, and the segments around them are marked motor-only and sail-only. Change one of those segments or move a waypoint.',
+    'Waypoint {index} is too close to a neighbor, and the segments it would merge have different modes (Auto, Motor, Sail). Remove or move waypoint {index}, or give those segments the same mode.',
   'error.replanStaleWind':
     "This plan's stored wind forecast no longer covers its departure time. Plan the route again to load a current forecast.",
   'error.replanInit':

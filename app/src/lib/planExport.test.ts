@@ -143,6 +143,98 @@ describe('planExport round-trip', () => {
   });
 });
 
+// #885: forced segment modes and forced legs travel through export/import; the
+// import delegates validation to migratePlan, so a malformed mode list is one
+// skipped plan, not a crashed import.
+function makeForcedPlan(id: string): Plan {
+  const plan = makeTestPlan(id);
+  const via = { lat: 54.6, lon: 9.7 };
+  const leg = {
+    kind: 'motor' as const,
+    board: null,
+    start: { lat: 54.3, lon: 9.4 },
+    end: via,
+    startTimeMs: 1626340800000,
+    endTimeMs: 1626344400000,
+    headingDeg: 30,
+    twsKn: 8,
+    speedKn: 6.5,
+    distanceNm: 6.5,
+    maneuverAtStart: null,
+    forced: true as const,
+  };
+  const genoa = plan.result.status === 'ok' ? plan.result.sails[0] : null;
+  if (plan.result.status !== 'ok' || genoa?.result == null) throw new Error('fixture');
+  return {
+    ...plan,
+    request: { ...plan.request, viaPoints: [via], segmentModes: ['motor', null] },
+    result: {
+      ...plan.result,
+      sails: [{ ...genoa, result: { ...genoa.result, legs: [leg] } }, plan.result.sails[1]],
+    },
+  };
+}
+
+describe('#885 planExport: segment modes and forced legs', () => {
+  it('round-trips segmentModes and forced legs through export and import', () => {
+    const plan = makeForcedPlan('forced-1');
+    const result = parseExportFile(exportEnvelopeToJson(buildExportEnvelope([plan], null, [])));
+    expect(result.invalidPlanCount).toBe(0);
+    const back = result.plans[0];
+    expect(back.request.segmentModes).toEqual(['motor', null]);
+    const legs = back.result.status === 'ok' ? (back.result.sails[0].result?.legs ?? []) : [];
+    expect(legs).toHaveLength(1);
+    expect(legs[0].forced).toBe(true);
+  });
+
+  it.each<[string, unknown]>([
+    ['the wrong length', ['motor']],
+    ['an unknown mode', ['motor', 'oars']],
+    ['a non-array', 'motor'],
+  ])(
+    'counts an imported plan whose segmentModes has %s as invalid, keeping the others',
+    (_n, bad) => {
+      const good = buildExportEnvelope([makeForcedPlan('good')], null, []).plans[0];
+      const broken = JSON.parse(JSON.stringify(good)) as {
+        id: string;
+        request: Record<string, unknown>;
+      };
+      broken.id = 'broken';
+      broken.request.segmentModes = bad;
+      const envelope = {
+        schemaVersion: EXPORT_SCHEMA_VERSION,
+        exportedAtMs: Date.now(),
+        plans: [good, broken],
+        settings: null,
+        waypoints: [],
+      };
+      const result = parseExportFile(JSON.stringify(envelope));
+      expect(result.invalidPlanCount).toBe(1);
+      expect(result.plans.map((p) => p.id)).toEqual(['good']);
+    },
+  );
+
+  it('counts an imported plan whose leg carries forced other than true as invalid', () => {
+    const good = buildExportEnvelope([makeForcedPlan('good')], null, []).plans[0];
+    const broken = JSON.parse(JSON.stringify(good)) as {
+      id: string;
+      result: { sails: { result: { legs: Record<string, unknown>[] } }[] };
+    };
+    broken.id = 'broken';
+    broken.result.sails[0].result.legs[0].forced = 'yes';
+    const envelope = {
+      schemaVersion: EXPORT_SCHEMA_VERSION,
+      exportedAtMs: Date.now(),
+      plans: [good, broken],
+      settings: null,
+      waypoints: [],
+    };
+    const result = parseExportFile(JSON.stringify(envelope));
+    expect(result.invalidPlanCount).toBe(1);
+    expect(result.plans.map((p) => p.id)).toEqual(['good']);
+  });
+});
+
 describe('parseExportFile: fundamentally unreadable files', () => {
   it('rejects non-JSON text', () => {
     expect(() => parseExportFile('not json at all {{{')).toThrow(ImportParseError);

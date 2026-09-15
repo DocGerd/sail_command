@@ -49,7 +49,7 @@ export default function SegmentModeControl({
       <span id={labelId} className="sc-field-help">
         {t('planner.segment.group', { index: index + 1, from: fromLabel, to: toLabel })}
       </span>
-      <div>
+      <div className="planner-segment-mode-options">
         {options.map((o) => (
           <Button
             key={o.value ?? 'auto'}

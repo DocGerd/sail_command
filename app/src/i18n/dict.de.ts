@@ -183,8 +183,10 @@ export const de = {
   'planner.segment.auto': 'Auto',
   'planner.segment.motor': 'Motor',
   'planner.segment.sail': 'Segel',
-  'planner.segment.motorOff': 'Motor ist deaktiviert — unter Boot › Antrieb aktivieren, um Motor vorzugeben.',
-  'planner.segment.conflict': 'Als „nur Motor“ markiert, aber der Motor ist deaktiviert: Die Planung wird das ablehnen.',
+  'planner.segment.motorOff':
+    'Motor ist deaktiviert — unter Boot › Antrieb aktivieren, um Motor vorzugeben.',
+  'planner.segment.conflict':
+    'Als „nur Motor“ markiert, aber der Motor ist deaktiviert: Die Planung wird das ablehnen.',
   // #829: keyboard-reachable coordinate entry — a second producer/renderer of
   // the same LatLon the map tap already produces (spike
   // docs/spikes/714-keyboard-map-equivalents.md §3.1/§5.1). "coord.edit" is
@@ -364,7 +366,7 @@ export const de = {
   'error.noRoute.segmentModesInvalid':
     'Interner Fehler: Die Abschnittsvorgaben passen nicht zu den Wegpunkten. Vorgaben neu wählen und erneut planen.',
   'error.segmentModesMergeConflict':
-    'Zwei Wegpunkte liegen so dicht, dass sie zusammengelegt werden, und die Abschnitte daneben sind als „nur Motor“ und „nur Segel“ markiert. Einen der Abschnitte ändern oder einen Wegpunkt verschieben.',
+    'Wegpunkt {index} liegt zu nah am Nachbarn, und die Abschnitte, die dadurch zusammengelegt würden, haben unterschiedliche Vorgaben (Auto, Motor, Segel). Wegpunkt {index} entfernen oder verschieben oder den Abschnitten dieselbe Vorgabe geben.',
   'error.replanStaleWind':
     'Die gespeicherte Windvorhersage deckt die Abfahrtszeit dieses Plans nicht mehr ab. Route neu planen, um eine aktuelle Vorhersage zu laden.',
   'error.replanInit':
@@ -591,7 +593,8 @@ export const de = {
   'route.legs.motorNote': 'Motor = reine Motorfahrt, keine Segelleistung modelliert.',
   // #885 R5: siehe die englische Fassung.
   'route.legs.forced': 'vorgegeben',
-  'route.legs.forcedTitle': 'Modus von dir für diesen Abschnitt vorgegeben, nicht von der Planung gewählt',
+  'route.legs.forcedTitle':
+    'Modus von dir für diesen Abschnitt vorgegeben, nicht von der Planung gewählt',
   // #325: siehe dict.en.ts's Kommentar — dieselbe Begründung, dieselbe
   // Interpolation ({first}/{second}/{third} = REEF1_AWS_KN/REEF2_AWS_KN/
   // REEF3_AWS_KN, reefSuggestion.ts). Letzter Satz = review MAJOR 3 (Böen).

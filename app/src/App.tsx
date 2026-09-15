@@ -16,7 +16,7 @@ import {
   useSettings,
 } from './state/AppState';
 import { usePlanFlow, type PlanningState as FlowPlanningState } from './state/usePlanFlow';
-import { dedupeViaPoints } from './state/replan';
+import { dedupeRequestVias, dedupeViaPoints } from './state/replan';
 import { useLiveReroute } from './state/reroute';
 import { useOwnshipGps } from './state/useOwnshipGps';
 import { useSessionRestore } from './state/useSessionRestore';
@@ -171,7 +171,7 @@ export function toPlannerStatus(
     case 'probing-depth':
       return { phase: 'probing' };
     case 'error':
-      return { phase: 'error', message: t(flow.messageKey) };
+      return { phase: 'error', message: t(flow.messageKey, flow.messageVars) };
   }
 }
 
@@ -1273,47 +1273,52 @@ function AppShell() {
     // to compute what's about to be dropped (run() still performs its own
     // dedupe as the actual, authoritative enforcement; this is presentation
     // only and duplicating the check costs nothing since it's O(vias)).
-    setDroppedVia(droppedViaLabels(origin.point, viaPoints, destination.point, lang, t));
-    void run(
-      {
-        origin: origin.point,
-        destination: destination.point,
-        // The draft via list (App.tsx's draftViaPoints — the unconditional
-        // source since the #571 redesign) is what the next plan request gets;
-        // there is no committed-list branch left. run() dedupes it again
-        // internally; the pre-check above only computes what that will drop.
-        viaPoints,
-        originHarborId: origin.source === 'harbor' ? origin.harborId : null,
-        destinationHarborId: destination.source === 'harbor' ? destination.harborId : null,
-        departureMs,
-        settings,
-        // #54 / #572: the one production call site with no existing plan to
-        // inherit from — every other constructor (recalcRequest,
-        // replanWithVias, rerouteFromFix) spreads/copies an existing
-        // request's own values instead, and MUST keep doing so: spec §I.3
-        // makes the boat a property of the plan, so a saved plan is re-solved
-        // against the boat it was planned for, never against today's picker.
-        // This is the only site that reads the LIVE selection.
-        //
-        // Both fields come from the same `boat`, so the sails a plan compares
-        // and the hull it is solved against can never name different boats.
-        sailIds: sailIdsOf(boat),
-        // #54 spec §I.3: denormalised by value, so the saved plan can be
-        // rendered without the catalogue.
-        //
-        // #572: this was `defaultBoatSnapshot()`, which pinned it to the
-        // Salona 45 whatever the picker showed. `request.boat.id` is what
-        // workerClient.ts resolves the polar tables AND the §C.4(a)
-        // relaxation floor from, so the constant here silently solved every
-        // boat's plan on the wrong hull while the picker, the tier chip, the
-        // keel sentence and the safety-depth field all described the boat the
-        // user actually picked.
-        boat: boatSnapshot(boat),
-        // #885: omitted when nothing is forced, so such plans store exactly as before.
-        ...requestSegmentModes(draftSegmentModes),
-      },
-      `${origin.label} → ${destination.label}`,
+    const request = {
+      origin: origin.point,
+      destination: destination.point,
+      // The draft via list (App.tsx's draftViaPoints — the unconditional
+      // source since the #571 redesign) is what the next plan request gets;
+      // there is no committed-list branch left. run() dedupes it again
+      // internally; the pre-check above only computes what that will drop.
+      viaPoints,
+      originHarborId: origin.source === 'harbor' ? origin.harborId : null,
+      destinationHarborId: destination.source === 'harbor' ? destination.harborId : null,
+      departureMs,
+      settings,
+      // #54 / #572: the one production call site with no existing plan to
+      // inherit from — every other constructor (recalcRequest,
+      // replanWithVias, rerouteFromFix) spreads/copies an existing
+      // request's own values instead, and MUST keep doing so: spec §I.3
+      // makes the boat a property of the plan, so a saved plan is re-solved
+      // against the boat it was planned for, never against today's picker.
+      // This is the only site that reads the LIVE selection.
+      //
+      // Both fields come from the same `boat`, so the sails a plan compares
+      // and the hull it is solved against can never name different boats.
+      sailIds: sailIdsOf(boat),
+      // #54 spec §I.3: denormalised by value, so the saved plan can be
+      // rendered without the catalogue.
+      //
+      // #572: this was `defaultBoatSnapshot()`, which pinned it to the
+      // Salona 45 whatever the picker showed. `request.boat.id` is what
+      // workerClient.ts resolves the polar tables AND the §C.4(a)
+      // relaxation floor from, so the constant here silently solved every
+      // boat's plan on the wrong hull while the picker, the tier chip, the
+      // keel sentence and the safety-depth field all described the boat the
+      // user actually picked.
+      boat: boatSnapshot(boat),
+      // #885: omitted when nothing is forced, so such plans store exactly as before.
+      ...requestSegmentModes(draftSegmentModes),
+    };
+    // #885: a request run() refuses before planning (a segment-mode merge or
+    // motor-off conflict) plans nothing, so no "waypoint skipped" banner may
+    // sit beside the refusal.
+    setDroppedVia(
+      dedupeRequestVias(request).kind === 'error'
+        ? { count: 0, named: false, labels: '' }
+        : droppedViaLabels(origin.point, viaPoints, destination.point, lang, t),
     );
+    void run(request, `${origin.label} → ${destination.label}`);
   }, [
     origin,
     destination,
@@ -1792,7 +1797,7 @@ function AppShell() {
             {planning.messageKey === 'error.noRoute.unreachable' &&
             (originKnownDisconnected || destinationKnownDisconnected)
               ? t('harborPicker.knownDisconnected')
-              : t(planning.messageKey)}
+              : t(planning.messageKey, planning.messageVars)}
           </Banner>
         )}
         {tapTarget && (

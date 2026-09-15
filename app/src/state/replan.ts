@@ -65,21 +65,21 @@ export function dedupeViaPoints(
 
 export type SegmentModesMerge =
   | { kind: 'ok'; segmentModes: (SegmentMode | null)[] }
-  // Two segments merged into one carry both 'motor' and 'sail'.
-  | { kind: 'conflict' }
+  // A merged run whose segments do not all carry the same mode. `viaIndex` is
+  // the input index of the first via dedupe drops inside that run.
+  | { kind: 'conflict'; viaIndex: number }
   // The input modes do not match the input via list (a producer defect).
   | { kind: 'invalid' };
 
 /**
- * #885 / #1232: the modes for the segments that survive `dedupeViaPoints`.
+ * #885 / #1232 (maintainer ruling 2026-09-15): the modes for the segments that
+ * survive `dedupeViaPoints`.
  *
- * Each surviving segment spans a run of original segments between two surviving
- * waypoints (a run can be longer than two: consecutive drops and repeated
- * trailing pops merge together). The run takes the one mode its non-null
- * members agree on; all-null stays null; 'motor' beside 'sail' is a conflict the
- * caller refuses. Computed from `keptIndices` alone, with no distances, so it
- * holds for every run shape either dedupe pass produces, and it never frees a
- * constraint the captain set (R1).
+ * Each surviving segment spans a run of original segments between two
+ * surviving waypoints. A run merges only when every member carries the same
+ * mode, Auto (`null`) included; any other run is a conflict the caller refuses
+ * before planning. So a forced mode is never extended over unmarked water and
+ * never freed. Computed from `keptIndices` alone.
  */
 export function mergeSegmentModes(
   segmentModes: readonly (SegmentMode | null)[],
@@ -91,34 +91,43 @@ export function mergeSegmentModes(
   const bounds = [0, ...keptIndices.map((k) => k + 1), viaCount + 1];
   const merged: (SegmentMode | null)[] = [];
   for (let j = 0; j < bounds.length - 1; j++) {
-    let mode: SegmentMode | null = null;
-    for (let i = bounds[j]; i < bounds[j + 1]; i++) {
-      const m = segmentModes[i];
-      if (m === null) continue;
-      if (mode !== null && mode !== m) return { kind: 'conflict' };
-      mode = m;
+    const mode = segmentModes[bounds[j]];
+    for (let i = bounds[j] + 1; i < bounds[j + 1]; i++) {
+      // Waypoint bounds[j] + 1 is the first dropped via: input index bounds[j].
+      if (segmentModes[i] !== mode) return { kind: 'conflict', viaIndex: bounds[j] };
     }
     merged.push(mode);
   }
   return { kind: 'ok', segmentModes: merged };
 }
 
+export type RequestIntake<R> =
+  | { kind: 'ok'; request: R }
+  | { kind: 'error'; messageKey: MsgKey; messageVars?: Record<string, number> };
+
 /**
- * #885: the ~60 m via dedupe applied to a whole request, keeping
- * `segmentModes` aligned with the surviving vias. Absent modes take exactly
- * the pre-#885 path (`{ ...req, viaPoints: kept }`).
+ * #885: pre-planning intake. Applies the ~60 m via dedupe to a whole request,
+ * keeping `segmentModes` aligned with the surviving vias, and refuses a mode
+ * set planning would refuse anyway (merge conflict, R4 motor-off conflict), so
+ * the refusal needs no wind fetch. Absent modes take exactly the pre-#885 path
+ * (`{ ...req, viaPoints: kept }`). `planRoute` keeps its own checks.
  */
-export function dedupeRequestVias<R extends PlanRequest>(
-  req: R,
-): { kind: 'ok'; request: R } | { kind: 'error'; messageKey: MsgKey } {
+export function dedupeRequestVias<R extends PlanRequest>(req: R): RequestIntake<R> {
   const { kept, keptIndices } = dedupeViaPoints(req.origin, req.viaPoints, req.destination);
   if (req.segmentModes === undefined) return { kind: 'ok', request: { ...req, viaPoints: kept } };
   const merge = mergeSegmentModes(req.segmentModes, req.viaPoints.length, keptIndices);
   if (merge.kind === 'conflict') {
-    return { kind: 'error', messageKey: 'error.segmentModesMergeConflict' };
+    return {
+      kind: 'error',
+      messageKey: 'error.segmentModesMergeConflict',
+      messageVars: { index: merge.viaIndex + 1 },
+    };
   }
   if (merge.kind === 'invalid') {
     return { kind: 'error', messageKey: NO_ROUTE_MESSAGE_KEY['segment-modes-invalid'] };
+  }
+  if (!req.settings.motorEnabled && merge.segmentModes.includes('motor')) {
+    return { kind: 'error', messageKey: NO_ROUTE_MESSAGE_KEY['segment-mode-conflict'] };
   }
   return {
     kind: 'ok',
@@ -132,11 +141,13 @@ export function dedupeRequestVias<R extends PlanRequest>(
 // IndexedDB boundary.
 export class ReplanError extends Error {
   readonly messageKey: MsgKey;
+  readonly messageVars: Record<string, number> | undefined;
 
-  constructor(messageKey: MsgKey, message: string) {
+  constructor(messageKey: MsgKey, message: string, messageVars?: Record<string, number>) {
     super(message);
     this.name = 'ReplanError';
     this.messageKey = messageKey;
+    this.messageVars = messageVars;
   }
 }
 
@@ -385,7 +396,11 @@ export async function replanWithVias(
     ...(segmentModes !== undefined ? { segmentModes } : {}),
   });
   if (deduped.kind === 'error') {
-    throw new ReplanError(deduped.messageKey, 'segment modes cannot follow the via edit');
+    throw new ReplanError(
+      deduped.messageKey,
+      'segment modes cannot follow the via edit',
+      deduped.messageVars,
+    );
   }
   const request: PlanRequest = {
     ...deduped.request,

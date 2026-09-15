@@ -765,7 +765,11 @@ describe('usePlanFlow', () => {
     vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
     const via1 = { lat: 54.76, lon: 10.1 };
     const via2 = destinationPoint(via1, 10, 50 / 1852); // dropped against via1
-    const req = { ...REQ, viaPoints: [via1, via2], segmentModes: [null, 'motor', null] as const };
+    const req = {
+      ...REQ,
+      viaPoints: [via1, via2],
+      segmentModes: [null, 'motor', 'motor'] as const,
+    };
 
     const { result } = renderHook(
       () =>
@@ -783,7 +787,7 @@ describe('usePlanFlow', () => {
     });
     const planMsg = findPosted(w.posted, 'plan');
     // [O->via1, via1->via2, via2->D] collapses to [O->via1, via1->D]; the run
-    // via1->D holds 'motor' and null, so it takes 'motor'.
+    // via1->D is 'motor' on both members, so it merges as 'motor'.
     expect(planMsg.request.segmentModes).toEqual([null, 'motor']);
     await act(async () => {
       w.emit({ type: 'result', id: planMsg.id, result: OK_RESULT });
@@ -814,6 +818,36 @@ describe('usePlanFlow', () => {
     expect(result.current.planning).toEqual({
       phase: 'error',
       messageKey: 'error.segmentModesMergeConflict',
+      messageVars: { index: 2 },
+    });
+    expect(fetchWind).not.toHaveBeenCalled();
+    expect(w.posted.some((m) => (m as { type?: string }).type === 'plan')).toBe(false);
+  });
+
+  it('#885 R4: run() refuses a motor-only segment with the motor off before any wind fetch', async () => {
+    const w = fakeWorker();
+    const fetchWind = vi.fn().mockResolvedValue(uniformWindGrid(12, 0));
+    vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
+    const req = {
+      ...REQ,
+      settings: { ...REQ.settings, motorEnabled: false },
+      segmentModes: ['motor'] as const,
+    };
+
+    const { result } = renderHook(
+      () =>
+        usePlanFlow({
+          fetchWind,
+          makeClient: () => new RoutingClient(() => w as unknown as Worker),
+        }),
+      { wrapper: AppStateProvider },
+    );
+    await act(async () => {
+      await result.current.run(req, 'Motor off');
+    });
+    expect(result.current.planning).toEqual({
+      phase: 'error',
+      messageKey: 'error.noRoute.segmentModeConflict',
     });
     expect(fetchWind).not.toHaveBeenCalled();
     expect(w.posted.some((m) => (m as { type?: string }).type === 'plan')).toBe(false);

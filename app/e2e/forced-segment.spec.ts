@@ -37,10 +37,10 @@ for (const name of ['tabletPortrait', 'tabletLandscape'] as const) {
         await motor.click();
         await expect(motor).toHaveAttribute('aria-pressed', 'true');
 
-        const planButton = page.getByRole('button', { name: 'Route planen' });
-        await planButton.click();
-        await expect(planButton).toBeEnabled({ timeout: 60_000 });
+        await page.getByRole('button', { name: 'Route planen' }).click();
 
+        // The rig comparison exists only once a plan has landed: the state signal
+        // that gates on the solve (a fresh page has no earlier plan to show).
         await page.getByRole('tab', { name: 'Routen' }).click();
         const rigTabs = page.getByRole('tablist', { name: 'Riggvergleich' });
         await expect(rigTabs).toBeVisible({ timeout: 60_000 });
