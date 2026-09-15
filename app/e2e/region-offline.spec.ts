@@ -270,7 +270,7 @@ test('(c) #295: saving a core plan near 55.3N pins the north strip, shows it sav
 
     // The readiness chip is the user-facing claim; the stored body size is its evidence.
     const chip = page.getByRole('status').filter({ hasText: 'Offline-Karte' });
-    await expect(chip).toHaveText('Offline-Karte gespeichert', { timeout: 120_000 });
+    await expect(chip).toHaveText(/Offline-Karte gespeichert \(\d+,\d MB\)/, { timeout: 120_000 });
     expect(
       await page.evaluate(
         async ({ cacheName, path }) => {
