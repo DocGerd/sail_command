@@ -7,6 +7,13 @@
 // maintainer ruling that an uncontrolled page downloads no full archive): pin
 // only while a service worker controls the page, the same condition under
 // which MapView.tsx enables regions. Otherwise return with no network request.
+//
+// #1233 (PR #1231 review r4009769671): `warned` must be scoped PER SAVE
+// PATH, not to one module-level singleton shared by every caller — a pin
+// failure on one path (e.g. Live reroute) would otherwise permanently
+// silence the warning for every OTHER path (via-replan, plans import, the
+// main save) for the rest of the page lifetime. Each consumer below gets
+// its own createPinAfterSave() instance.
 import type { Plan } from '../types';
 import { pinRegionsForPlan } from './regionPinning';
 
@@ -38,5 +45,13 @@ export function createPinAfterSave(
   };
 }
 
-/** The app's single instance, used by usePlanFlow. */
+/** usePlanFlow's main plan-save path. */
 export const pinRegionsAfterSave: PinAfterSave = createPinAfterSave();
+/** state/replan.ts's via-replan save path. */
+export const pinRegionsAfterReplan: PinAfterSave = createPinAfterSave();
+/** state/reroute.ts's Live reroute save path. */
+export const pinRegionsAfterReroute: PinAfterSave = createPinAfterSave();
+/** state/useDepartureConfirm.ts's two-rig departure-confirm save path. */
+export const pinRegionsAfterDepartureConfirm: PinAfterSave = createPinAfterSave();
+/** components/SettingsPanel.tsx's plans-import save path. */
+export const pinRegionsAfterImport: PinAfterSave = createPinAfterSave();

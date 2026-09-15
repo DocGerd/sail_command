@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createPinAfterSave } from './pinAfterSave';
+import {
+  createPinAfterSave,
+  pinRegionsAfterDepartureConfirm,
+  pinRegionsAfterImport,
+  pinRegionsAfterReplan,
+  pinRegionsAfterReroute,
+  pinRegionsAfterSave,
+} from './pinAfterSave';
 import type { Plan } from '../types';
 
 const PLAN = { id: 'p1' } as unknown as Plan;
@@ -73,5 +80,32 @@ describe('createPinAfterSave (#1164 T6)', () => {
     createPinAfterSave(() => Promise.resolve({ status: 'pinned', total: 0, pinned: 0 }))(PLAN);
     await settle();
     expect(warn).not.toHaveBeenCalled();
+  });
+
+  // #1233 (PR #1231 review r4009769671): warn scope must be PER CONSUMER,
+  // not one module singleton shared by every save path — a failure on one
+  // consumer's own factory instance must not silence a DIFFERENT instance's
+  // first failure.
+  it('two independently-created instances each warn on their own first failure', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const a = createPinAfterSave(() => Promise.reject(new Error('a failed')));
+    const b = createPinAfterSave(() => Promise.reject(new Error('b failed')));
+    a(PLAN);
+    await settle();
+    expect(warn).toHaveBeenCalledTimes(1);
+    b(PLAN);
+    await settle();
+    expect(warn).toHaveBeenCalledTimes(2);
+  });
+
+  it('the five named per-consumer instances are five distinct functions, not aliases of one shared singleton', () => {
+    const instances = [
+      pinRegionsAfterSave,
+      pinRegionsAfterReplan,
+      pinRegionsAfterReroute,
+      pinRegionsAfterDepartureConfirm,
+      pinRegionsAfterImport,
+    ];
+    expect(new Set(instances).size).toBe(instances.length);
   });
 });

@@ -666,6 +666,48 @@ describe('IndexedDB persistence', () => {
     expect(retrieved).toBeUndefined();
   });
 
+  // #1233 pin-record cleanup: the direct-match delete path (plan.id === the
+  // real IndexedDB key) must remove the plan's pin record in the SAME
+  // transaction, not leave it orphaned.
+  it("deletePlan removes the plan's pin record (direct-match path)", async () => {
+    const plan = {
+      id: 'has-a-pin',
+      name: 'Has A Pin',
+      createdAtMs: 1000,
+      request: {},
+      windGrid: {},
+      result: {},
+    } as unknown as Plan;
+    await savePlan(plan);
+    const pin: RegionPinRecord = {
+      planId: 'has-a-pin',
+      regionIds: ['region-a'],
+      pinnedAtMs: 1000,
+    };
+    await saveRegionPin(pin);
+    expect(await getRegionPin('has-a-pin')).toEqual(pin);
+
+    await deletePlan('has-a-pin');
+
+    expect(await getPlan('has-a-pin')).toBeUndefined();
+    expect(await getRegionPin('has-a-pin')).toBeUndefined();
+  });
+
+  it('deletePlan is a no-op on the pins store for a plan that was never pinned', async () => {
+    const plan = {
+      id: 'never-pinned',
+      name: 'Never Pinned',
+      createdAtMs: 1000,
+      request: {},
+      windGrid: {},
+      result: {},
+    } as unknown as Plan;
+    await savePlan(plan);
+
+    await expect(deletePlan('never-pinned')).resolves.toBeUndefined();
+    expect(await getPlan('never-pinned')).toBeUndefined();
+  });
+
   it('settings roundtrip preserves all values', async () => {
     const settings: Settings = {
       safetyDepthM: 2.5,
@@ -1047,6 +1089,31 @@ describe('#54 lazy plan migration at the read boundary', () => {
     await deletePlan(displayedId);
 
     expect(await listPlans()).toHaveLength(0);
+  });
+
+  // #1233 pin-record cleanup: same non-string-key row, but exercising the
+  // FALLBACK-CURSOR path — deletePlan's own comment says pin removal must
+  // cover this path too, not only the direct-key match above.
+  it('#1233: deletePlan removes the pin record on the fallback-cursor (non-string key) path', async () => {
+    const numeric = {
+      id: 67890,
+      name: 'Numeric',
+      createdAtMs: 1000,
+      request: {},
+      windGrid: {},
+      result: {},
+    } as unknown as Plan;
+    await savePlan(numeric);
+    const before = await listPlans();
+    const displayedId = before[0]!.id;
+    expect(displayedId).toBe('67890');
+    await saveRegionPin({ planId: displayedId, regionIds: ['region-a'], pinnedAtMs: 1000 });
+    expect(await getRegionPin(displayedId)).toBeDefined();
+
+    await deletePlan(displayedId);
+
+    expect(await listPlans()).toHaveLength(0);
+    expect(await getRegionPin(displayedId)).toBeUndefined();
   });
 
   // #551 review round 2, Minor 2 (folded with a second, independent PWA-

@@ -7,6 +7,7 @@ import { safetyDepthFieldFor } from './OptionsPanel';
 import { DEFAULT_BOAT_ID, boatById } from '../data/boats';
 import { __resetDbForTests, listPlans, listWaypoints, type SavedWaypoint } from '../services/db';
 import * as db from '../services/db';
+import * as pinAfterSaveModule from '../services/pinAfterSave';
 import { buildExportEnvelope, exportEnvelopeToJson } from '../lib/planExport';
 import {
   DEFAULT_SETTINGS,
@@ -1082,6 +1083,35 @@ describe('SettingsPanel (#849 local import/export)', () => {
     expect(plans.filter((p) => p.kind === 'ok').map((p) => p.id)).toEqual(['plan-b']);
     const waypoints = await listWaypoints();
     expect(waypoints).toEqual([TEST_WAYPOINT]);
+
+    consoleErrorSpy.mockRestore();
+  });
+
+  // #1233 save-path coverage: an imported plan can carry a corridor the
+  // device never pinned before (it never went through the app's own
+  // planner). Only a SUCCESSFULLY-saved plan may pin — its regions never
+  // reached IndexedDB either if the write failed.
+  it('pins each successfully-saved imported plan, and not the one whose save failed', async () => {
+    const planA = makeTestPlan('plan-a');
+    const planB = makeTestPlan('plan-b');
+    const envelope = buildExportEnvelope([planA, planB], null, []);
+    vi.spyOn(db, 'savePlan').mockRejectedValueOnce(new Error('quota exceeded'));
+    const pinSpy = vi
+      .spyOn(pinAfterSaveModule, 'pinRegionsAfterImport')
+      .mockImplementation(() => {});
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    renderPanel();
+    const file = new File([exportEnvelopeToJson(envelope)], 'x.json', {
+      type: 'application/json',
+    });
+    await act(async () => {
+      fireEvent.change(getFileInput(), { target: { files: [file] } });
+    });
+    await screen.findByText((content) => content.startsWith('1 route(s)'));
+
+    expect(pinSpy).toHaveBeenCalledTimes(1);
+    expect(pinSpy.mock.calls[0]?.[0]?.id).toBe('plan-b');
 
     consoleErrorSpy.mockRestore();
   });

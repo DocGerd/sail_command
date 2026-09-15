@@ -3,6 +3,7 @@ import { savePlan } from '../services/db';
 import { DEFAULT_SAIL_IDS } from '../data/boats';
 import { NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
 import { haversineNm } from '../lib/geo';
+import { pinRegionsAfterReplan, type PinAfterSave } from '../services/pinAfterSave';
 import { RoutingError, type RoutingFailureKind } from '../routing/workerClient';
 import type { MsgKey } from '../i18n/dict.de';
 import {
@@ -258,6 +259,11 @@ export interface ReplanClient {
 export interface ReplanDeps {
   client: ReplanClient;
   save?: typeof savePlan;
+  // #1233: shared with rerouteFromFix (reroute.ts) via this same type —
+  // each caller defaults to its OWN pinAfterSave.ts instance, never a
+  // common one, so a pin failure on one save path cannot silence another's
+  // warning (see pinAfterSave.ts's header comment).
+  pinRegions?: PinAfterSave;
 }
 
 /**
@@ -357,6 +363,10 @@ export async function replanWithVias(
       `failed to persist the replanned plan: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
+  // #1233: never awaited — pinning cannot delay or fail the replanned save.
+  // A moved corridor can otherwise go blank offline with no signal.
+  const pinRegions = deps.pinRegions ?? pinRegionsAfterReplan;
+  pinRegions(updated);
   return updated;
 }
 
@@ -394,7 +404,7 @@ const IDLE_STATE: ViaReplanState = { replanning: false, error: null, droppedCoun
  */
 export function useViaReplan(
   ensureClient: () => Promise<ReplanClient | null>,
-  deps: { save?: typeof savePlan } = {},
+  deps: { save?: typeof savePlan; pinRegions?: PinAfterSave } = {},
 ): {
   state: ViaReplanState;
   replace: (plan: Plan, viaPoints: LatLon[]) => Promise<Plan | null>;
@@ -432,15 +442,16 @@ export function useViaReplan(
           return null;
         }
 
-        // exactOptionalPropertyTypes: ReplanDeps.save is optional-if-present,
-        // not optional-or-undefined, so an absent deps.save must omit the key
-        // entirely rather than pass `{ save: undefined }` (mirrors
-        // workerClient.ts's onProgress handling).
-        const updated = await replanWithVias(
-          plan,
-          viaPoints,
-          deps.save ? { client, save: deps.save } : { client },
-        );
+        // exactOptionalPropertyTypes: ReplanDeps's optional fields are
+        // optional-if-present, not optional-or-undefined, so an absent
+        // deps.save/pinRegions must omit the key entirely rather than pass
+        // `{ save: undefined }` (mirrors workerClient.ts's onProgress
+        // handling).
+        const updated = await replanWithVias(plan, viaPoints, {
+          client,
+          ...(deps.save ? { save: deps.save } : {}),
+          ...(deps.pinRegions ? { pinRegions: deps.pinRegions } : {}),
+        });
         setState({ replanning: false, error: null, droppedCount });
         return updated;
       } catch (err) {
@@ -451,7 +462,7 @@ export function useViaReplan(
         busyRef.current = false;
       }
     },
-    [ensureClient, deps.save],
+    [ensureClient, deps.save, deps.pinRegions],
   );
 
   const clearError = useCallback(() => setState((s) => ({ ...s, error: null })), []);

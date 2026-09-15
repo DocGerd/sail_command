@@ -9,6 +9,7 @@ import {
   type ReplanClient,
 } from './replan';
 import { destinationPoint } from '../lib/geo';
+import type { PinAfterSave } from '../services/pinAfterSave';
 import { RoutingError, type RoutingFailureKind } from '../routing/workerClient';
 import type { MsgKey } from '../i18n/dict.de';
 import * as openMeteoModule from '../services/openMeteo';
@@ -465,6 +466,46 @@ describe('replanWithVias', () => {
     expect(err.name).toBe('ReplanError');
     expect(err.messageKey).toBe('error.internal');
     expect(err.message).toBe('boom');
+  });
+
+  // #1233 save-path coverage: mirrors usePlanFlow.test.tsx's own
+  // '#1164 T6' block for this pure function's own pin call.
+  describe('#1233: region pinning after a successful replan', () => {
+    it('pins the replanned plan once, only after save() resolves', async () => {
+      const order: string[] = [];
+      const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
+      const save = vi.fn(async (p: Plan) => {
+        order.push('save-resolved');
+        return p;
+      }) as unknown as (p: Plan) => Promise<void>;
+      const pinRegions = vi.fn<PinAfterSave>(() => {
+        order.push('pin');
+      });
+      const plan = makePlan();
+
+      const updated = await replanWithVias(plan, [{ lat: 54.9, lon: 10.2 }], {
+        client,
+        save,
+        pinRegions,
+      });
+
+      expect(order).toEqual(['save-resolved', 'pin']);
+      expect(pinRegions).toHaveBeenCalledTimes(1);
+      expect(pinRegions).toHaveBeenCalledWith(updated);
+    });
+
+    it('does not pin when save() fails', async () => {
+      const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
+      const save = vi.fn<(p: Plan) => Promise<void>>().mockRejectedValue(new Error('quota'));
+      const pinRegions = vi.fn<PinAfterSave>();
+      const plan = makePlan();
+
+      await expect(
+        replanWithVias(plan, [{ lat: 54.9, lon: 10.2 }], { client, save, pinRegions }),
+      ).rejects.toThrow(ReplanError);
+
+      expect(pinRegions).not.toHaveBeenCalled();
+    });
   });
 });
 

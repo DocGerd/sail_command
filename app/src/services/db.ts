@@ -392,20 +392,29 @@ export async function getPlan(id: string): Promise<Plan | undefined> {
 // (e.g. a double-tap after the row is already gone) walks the whole store
 // before returning — O(n), not O(1), on that path. Fine at realistic plan
 // counts.
+// #1233: the `pins` store's key is always the deleted plan's own `id`
+// (RegionPinRecord.planId, written by saveRegionPin — see its own comment),
+// so it is removed in this SAME 'plans'+'pins' readwrite transaction,
+// including on the fallback-cursor path. `pins.delete(id)` is a no-op for a
+// plan that was never pinned or is already gone, so it needs no `if`.
 export async function deletePlan(id: string): Promise<void> {
-  const store = (await db()).transaction('plans', 'readwrite').store;
-  if ((await store.getKey(id)) !== undefined) {
-    await store.delete(id);
-    return;
-  }
-  let cursor = await store.openCursor();
-  while (cursor) {
-    if (displayIdOfKey(cursor.key) === id) {
-      await cursor.delete();
-      return;
+  const tx = (await db()).transaction(['plans', 'pins'], 'readwrite');
+  const plans = tx.objectStore('plans');
+  const pins = tx.objectStore('pins');
+  if ((await plans.getKey(id)) !== undefined) {
+    await plans.delete(id);
+  } else {
+    let cursor = await plans.openCursor();
+    while (cursor) {
+      if (displayIdOfKey(cursor.key) === id) {
+        await cursor.delete();
+        break;
+      }
+      cursor = await cursor.continue();
     }
-    cursor = await cursor.continue();
   }
+  await pins.delete(id);
+  await tx.done;
 }
 
 export async function loadSettings(): Promise<Settings | undefined> {
