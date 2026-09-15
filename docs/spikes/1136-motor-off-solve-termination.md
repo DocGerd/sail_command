@@ -1603,8 +1603,8 @@ cause is masked to pass 1's recorded cause for that sail before `assemble`
 otherwise assembled exactly as pass 1 would assemble it: `assemble(tierN, null)` for tiers 1–2, and for tiers 3–4 `assemble(tierN, flagShallowLegs(mask, tierN, s.safetyDepthM, usedDepthM))` with pass 1's `usedDepthM`, so a relaxed rescue carries the same shallow disclosure a relaxed route carries today.
 
 **Pass-2 failure — no tier′ routing any sail, for any cause including
-`budget-exhausted` (ruling item 2) — returns pass 1's `PlanResult`
-verbatim.**
+`budget-exhausted` when that later tier routed nothing (maintainer,
+5680325538) — returns pass 1's `PlanResult` verbatim.**
 
 What this buys, per §5 hole:
 
@@ -1884,4 +1884,10 @@ for this design only; §8 still rejects the solve-level gate of §5.
    within a pair, tier 2′ wins if it routed any sail, otherwise tier 1′
    (today's `planRoute.ts` fallback, `~:624`); tier 2′ enters when some
    sail lacks a result and pass 1 ran tier 2, never reading a pass-2 cause
-   (§11.1).
+   (§11.1). A tier 2′ that routed one sail while the other ended
+   `budget-exhausted` is returned under this winner rule. The budget
+   ruling's wording ("a later pass-2 tier hits budget-exhausted, return
+   the earlier routed tier") does not name that case; the maintainer has
+   ruled it (2026-09-15, #1136 comment 5680325538), confirming 5679853743's
+   reading: it scopes the budget ruling to a later tier that routed
+   nothing.
