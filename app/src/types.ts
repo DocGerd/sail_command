@@ -32,6 +32,8 @@ export interface ViaPoint extends LatLon {
 }
 
 export type Board = 'port' | 'starboard';
+// #885: a captain-forced mode for one waypoint segment (R1: a hard constraint).
+export type SegmentMode = 'motor' | 'sail';
 export type LegKind = 'sail' | 'motor';
 export type ManeuverKind = 'tack' | 'gybe';
 
@@ -148,6 +150,9 @@ export interface LegCommon {
   // omitted entirely on unflagged legs, never set to undefined. Lives on
   // LegCommon so both Leg variants (sail and motor) carry it.
   shallow?: { minDepthM: number };
+  // #885 R5: present only on legs solved inside a captain-forced segment, so an
+  // unforced plan serialises exactly as before.
+  forced?: true;
 }
 
 export type Leg =
@@ -213,7 +218,15 @@ export type NoRouteReason =
   // so it is explicitly not a claim that no route exists. Deliberately spelled
   // unlike its internal cause ('budget-exhausted', routing/planRoute.ts) so the
   // presentational and control vocabularies stay greppable apart (#282).
-  | 'search-budget-exceeded';
+  | 'search-budget-exceeded'
+  // #885: no progress under sail on a segment marked sail-only.
+  | 'calm-sail-only'
+  // #885 R4: a segment is marked motor-only while settings.motorEnabled is false.
+  // Pre-solve, like snap-failed-*.
+  | 'segment-mode-conflict'
+  // #885: segmentModes does not match the waypoint list. Every producer keeps the
+  // invariant, so this is reachable only through a defect.
+  | 'segment-modes-invalid';
 
 // #54 spec §I.3: the boat a plan was computed for, denormalised BY VALUE
 // into the plan record — never a catalogue id reference. Precedent is
@@ -277,6 +290,9 @@ export interface PlanRequest {
   readonly sailIds: readonly SailId[];
   // #54 spec §I.3: by value, never a catalogue id reference.
   readonly boat: BoatSnapshot;
+  // #885: index i governs waypoint i -> i+1 of [origin, ...viaPoints, destination];
+  // length === viaPoints.length + 1. null and an absent array mean "solver decides".
+  readonly segmentModes?: readonly (SegmentMode | null)[];
 }
 
 // #53 graceful degradation below safety depth: when a plan only routes at a
