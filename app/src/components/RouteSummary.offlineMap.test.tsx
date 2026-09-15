@@ -9,7 +9,7 @@ import { OfflineMapStatus } from './RouteSummary';
 // #295: the readiness chip, driven by a stubbed hook (the hook itself is
 // covered by useRegionReadiness.test.ts).
 const view: { current: RegionReadinessView } = {
-  current: { status: 'checking', canRetry: true, retry: () => {} },
+  current: { status: 'checking', canRetry: true, retry: () => {}, bytes: null },
 };
 vi.mock('../state/useRegionReadiness', () => ({
   useRegionReadiness: () => view.current,
@@ -18,9 +18,12 @@ vi.mock('../state/useSeamarks', () => ({ useSeamarks: vi.fn(() => null) }));
 
 const PLAN = { id: 'p1', createdAtMs: 1 } as unknown as Plan;
 
-function renderStatus(status: RegionReadinessStatus, opts: { canRetry?: boolean } = {}) {
+function renderStatus(
+  status: RegionReadinessStatus,
+  opts: { canRetry?: boolean; bytes?: number | null } = {},
+) {
   const retry = vi.fn();
-  view.current = { status, canRetry: opts.canRetry ?? true, retry };
+  view.current = { status, canRetry: opts.canRetry ?? true, retry, bytes: opts.bytes ?? null };
   render(
     <I18nProvider>
       <OfflineMapStatus plan={PLAN} />
@@ -32,6 +35,7 @@ function renderStatus(status: RegionReadinessStatus, opts: { canRetry?: boolean 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  localStorage.removeItem('sc-lang');
 });
 
 describe('OfflineMapStatus (#295)', () => {
@@ -68,6 +72,26 @@ describe('OfflineMapStatus (#295)', () => {
   it('offers no retry without a controlling service worker', () => {
     renderStatus('failed', { canRetry: false });
     expect(screen.queryByRole('button', { name: de['route.offlineMap.retry'] })).toBeNull();
+  });
+
+  // #295 ruling (Save-Data): the download size shows in every state it is known.
+  it.each(['not-ready', 'ready'] as const)(
+    'shows the download size in megabytes when %s',
+    (status) => {
+      renderStatus(status, { bytes: 12_603_919 });
+      expect(screen.getByRole('status')).toHaveTextContent('(12,6 MB)');
+    },
+  );
+
+  it('formats the size in the English locale too', () => {
+    localStorage.setItem('sc-lang', 'en');
+    renderStatus('not-ready', { bytes: 21_886_686 });
+    expect(screen.getByRole('status')).toHaveTextContent('(21.9 MB)');
+  });
+
+  it('shows no size when none is known', () => {
+    renderStatus('not-ready', { bytes: null });
+    expect(screen.getByRole('status')).not.toHaveTextContent('MB');
   });
 
   it('offers no retry while offline', () => {

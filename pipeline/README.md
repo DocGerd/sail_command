@@ -335,10 +335,22 @@ pipeline/extract_basemap.sh 20260720 --region east 11.0302736,54.3,11.6,55.6
 The inner edges are the first z13 tile boundaries past the core's 55.3°N and
 11.0°E (+1e-7°), not the round numbers: tiles straddling the core edge are
 always served by the core (`compositeBasemapProtocol.ts`'s core-wins rule),
-so snapping drops 0.47 MB of never-read tiles. Measured on #295/PR #1249:
-every non-core tile of a single 9.4–11.6°E × 54.3–55.6°N extract is served
-byte-identically by these two (1518/1518). The snap depends on `MAXZOOM=13`;
-recompute it if that changes.
+so snapping drops 0.47 MB of never-read tiles. The snap depends on
+`MAXZOOM=13`; recompute it if that changes, then re-run the identity check:
+
+```
+pipeline/extract_basemap.sh 20260720 --region whole 9.4,54.3,11.6,55.6 --out-dir <tmp>
+python3 pipeline/verify_region_split.py --whole <tmp>/region-whole.pmtiles.png \
+  --core app/public/data/basemap.pmtiles.png \
+  app/public/data/region-east.pmtiles.png app/public/data/region-north.pmtiles.png
+```
+
+It compares every non-core tile of the single extract with the tile the
+region the protocol would pick holds, and exits non-zero on any missing,
+differing or unserved tile. Output at PR #1249 against build `20260720`:
+`identical 1518, missing 0, content-mismatch 0, no-region 0, region-only 0`.
+The check needs that build to still be downloadable (see the pruning note
+above).
 
 ### `app/public/basemap-assets/` — offline map fonts + sprites
 

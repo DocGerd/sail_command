@@ -14,6 +14,10 @@
 // plans import, the main save) for the rest of the page lifetime. Each
 // consumer below gets its own createPinAfterSave() instance.
 //
+// Save-Data (maintainer ruling on #295, 2026-09-15): automatic pins skip
+// while `navigator.connection.saveData` is true; only the chip's explicit
+// save button (pinRegionsOnRetry) downloads then.
+//
 // `warned` fires only on an UNEXPECTED REJECTION. A RESOLVED failure
 // (`pinRegionsForPlan`'s named statuses, or `pinned < total`) is surfaced in
 // the UI instead (#295): every attempt is recorded in the per-plan pin
@@ -113,13 +117,25 @@ export function canPinRegions(): boolean {
   return serviceWorkerControlsPage();
 }
 
-/** Builds a pin-after-save hook that warns at most once per instance. */
+/** The browser's data-saver request; absent API reads as not requested. */
+export function saveDataRequested(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const connection = (navigator as Navigator & { connection?: { saveData?: unknown } }).connection;
+  return connection?.saveData === true;
+}
+
+/**
+ * Builds a pin-after-save hook that warns at most once per instance.
+ * `automatic` instances skip under Save-Data; a user-initiated one does not.
+ */
 export function createPinAfterSave(
   pin: (plan: Plan) => Promise<unknown> = pinRegionsForPlan,
+  { automatic = true }: { automatic?: boolean } = {},
 ): PinAfterSave {
   let warned = false;
   return (plan) => {
     if (!serviceWorkerControlsPage()) return;
+    if (automatic && saveDataRequested()) return;
     // The pin call is deferred past the save (first microtask inside trackedPin).
     trackedPin(plan, pin).catch((err: unknown) => {
       if (warned) return;
@@ -137,21 +153,25 @@ export const pinRegionsAfterReplan: PinAfterSave = createPinAfterSave();
 export const pinRegionsAfterReroute: PinAfterSave = createPinAfterSave();
 /** state/useDepartureConfirm.ts's two-rig departure-confirm save path. */
 export const pinRegionsAfterDepartureConfirm: PinAfterSave = createPinAfterSave();
-/** #295: the readiness chip's user-initiated retry (RouteSummary). */
-export const pinRegionsOnRetry: PinAfterSave = createPinAfterSave();
+/** #295: the readiness chip's user-initiated save button — ignores Save-Data. */
+export const pinRegionsOnRetry: PinAfterSave = createPinAfterSave(pinRegionsForPlan, {
+  automatic: false,
+});
+/** #295: a plan shown while the service worker first takes control (useRegionReadiness). */
+export const pinRegionsOnControl: PinAfterSave = createPinAfterSave();
 
 /**
  * #1233 Major 2 (offline/PWA review): components/SettingsPanel.tsx's
  * plans-import save path — deliberately NOT a createPinAfterSave() instance
- * like the five above. An import can touch many plans in one call, and
+ * like the six above. An import can touch many plans in one call, and
  * `regionPinning.ts`'s pinOneRegion coalesces concurrent fetches of the SAME
  * archive URL, so calling `pinRegionsForPlan` directly here (rather than
  * once per plan through an opaque PinAfterSave) is what lets that dedup
  * apply, AND lets failures be reported as ONE aggregated warning for the
  * whole import instead of either N separate warn-once instances or total
- * silence. Still gated on the page being SW-controlled (checked ONCE for
- * the whole batch — the same "an uncontrolled page downloads nothing" rule
- * every other pin call site follows) and still fire-and-forget: never
+ * silence. Still gated on the page being SW-controlled and on Save-Data
+ * being off (both checked ONCE for the whole batch, the same rules every
+ * automatic pin call site follows) and still fire-and-forget: never
  * awaited by the caller, so an import's own success notice is never delayed
  * by archive downloads.
  */
@@ -159,7 +179,7 @@ export function pinImportedPlans(
   plans: readonly Plan[],
   pin: (plan: Plan) => Promise<PinRegionsOutcome> = pinRegionsForPlan,
 ): void {
-  if (plans.length === 0 || !serviceWorkerControlsPage()) return;
+  if (plans.length === 0 || !serviceWorkerControlsPage() || saveDataRequested()) return;
   void (async () => {
     const outcomes = await Promise.allSettled(plans.map((p) => trackedPin(p, pin)));
     const failed = outcomes.filter(

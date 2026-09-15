@@ -9,6 +9,7 @@ import {
   pinRegionsAfterReplan,
   pinRegionsAfterReroute,
   pinRegionsAfterSave,
+  pinRegionsOnControl,
   pinRegionsOnRetry,
 } from './pinAfterSave';
 import type { Plan } from '../types';
@@ -105,16 +106,67 @@ describe('createPinAfterSave (#1164 T6)', () => {
 
   // #1233 Major 2 (offline/PWA review): plans import is DELIBERATELY not a
   // fifth createPinAfterSave() instance — see pinImportedPlans's own
-  // comment (why it aggregates instead). Five remain, #295's retry included.
-  it('the five named per-consumer instances are five distinct functions, not aliases of one shared singleton', () => {
+  // comment (why it aggregates instead). Six remain, #295's two included.
+  it('the six named per-consumer instances are six distinct functions, not aliases of one shared singleton', () => {
     const instances = [
       pinRegionsAfterSave,
       pinRegionsAfterReplan,
       pinRegionsAfterReroute,
       pinRegionsAfterDepartureConfirm,
       pinRegionsOnRetry,
+      pinRegionsOnControl,
     ];
     expect(new Set(instances).size).toBe(instances.length);
+  });
+});
+
+function setSaveData(saveData: boolean): void {
+  Object.defineProperty(navigator, 'connection', { value: { saveData }, configurable: true });
+}
+
+// #295 maintainer ruling: automatic pins skip under Save-Data; the chip's
+// explicit save button still downloads.
+describe('Save-Data (#295)', () => {
+  beforeEach(() => {
+    setController({});
+  });
+
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, 'serviceWorker');
+    Reflect.deleteProperty(navigator, 'connection');
+    vi.restoreAllMocks();
+  });
+
+  it('an automatic pin makes no call while Save-Data is on', async () => {
+    setSaveData(true);
+    const pin = vi.fn(() => Promise.resolve());
+    createPinAfterSave(pin)(PLAN);
+    await settle();
+    expect(pin).not.toHaveBeenCalled();
+  });
+
+  it('an automatic pin still runs when Save-Data is explicitly off', async () => {
+    setSaveData(false);
+    const pin = vi.fn(() => Promise.resolve());
+    createPinAfterSave(pin)(PLAN);
+    await settle();
+    expect(pin).toHaveBeenCalledWith(PLAN);
+  });
+
+  it('a user-initiated pin runs under Save-Data', async () => {
+    setSaveData(true);
+    const pin = vi.fn(() => Promise.resolve());
+    createPinAfterSave(pin, { automatic: false })(PLAN);
+    await settle();
+    expect(pin).toHaveBeenCalledWith(PLAN);
+  });
+
+  it('plans import downloads nothing under Save-Data', async () => {
+    setSaveData(true);
+    const pin = vi.fn(() => Promise.resolve(PINNED));
+    pinImportedPlans([PLAN_A], pin);
+    await settle();
+    expect(pin).not.toHaveBeenCalled();
   });
 });
 

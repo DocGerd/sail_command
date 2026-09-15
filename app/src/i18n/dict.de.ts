@@ -406,6 +406,7 @@ export const de = {
   'route.offlineMap.failed': 'Download der Offline-Karte fehlgeschlagen',
   'route.offlineMap.notReady': 'Offline-Karte nicht gespeichert',
   'route.offlineMap.retry': 'Offline-Karte speichern',
+  'route.offlineMap.size': '{mb} MB',
   // #53/#452: honest passage-planning-aid copy — see dict.en.ts's comment
   // for why {used} < {requested} always holds here, why the closing
   // sentence deliberately does not imply unflagged water is safe, and why

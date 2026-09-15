@@ -1,6 +1,13 @@
 import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getRegionPinIntent, pinRegionsForPlan, regionReadiness } from './regionPinning';
+import {
+  REGION_FETCH_MIN_TIMEOUT_MS,
+  getRegionPinIntent,
+  pinRegionsForPlan,
+  regionDownloadBytes,
+  regionFetchTimeoutMs,
+  regionReadiness,
+} from './regionPinning';
 import { __resetDbForTests, deletePlan, savePlan, saveRegionPin } from './db';
 import {
   REGION_ARCHIVE_PREFIX,
@@ -498,7 +505,7 @@ describe('pinRegionsForPlan', () => {
     const archiveFetchCall = fetchMock.mock.calls.find((call: unknown[]) =>
       (call[0] as string).startsWith(aUrl),
     );
-    expect(archiveFetchCall?.[1]).toEqual({ cache: 'no-store' });
+    expect(archiveFetchCall?.[1]).toMatchObject({ cache: 'no-store' });
   });
 
   it('rejects a body that is not a PMTiles archive (fails the magic-number check) even when the length matches (PWA review Minor r4008640259)', async () => {
@@ -817,5 +824,80 @@ describe('#1233 Major 2 (offline/PWA review): in-flight archive fetch coalescing
       (call[0] as string).startsWith(aUrl),
     );
     expect(archiveFetches).toHaveLength(1);
+  });
+});
+
+// #295 (PWA review r4016341249): the chip's download size.
+describe('regionDownloadBytes', () => {
+  it('sums the required regions from the cached manifest', async () => {
+    const { fake, fetchMock } = stubEnv();
+    await seedManifestInCache(fake, manifest({ a: 12_603_919 }));
+    expect(await regionDownloadBytes(makePlan('p1', [[leg()]]))).toBe(12_603_919);
+    // An empty corridor requires every region (fail-closed), so both count.
+    expect(await regionDownloadBytes(makePlan('p2', [[]]))).toBe(12_603_919 + 2048);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('is 0 when no region is required and null without a cached manifest', async () => {
+    const { fake } = stubEnv();
+    expect(await regionDownloadBytes(makePlan('p1', [[leg()]]))).toBeNull();
+    await seedManifestInCache(fake, { ...manifest(), regions: [] });
+    expect(await regionDownloadBytes(makePlan('p1', [[leg()]]))).toBe(0);
+  });
+});
+
+// #295 (PWA review r4016341243): a stalled archive download must settle so
+// the chip can offer a retry.
+describe('region fetch deadline', () => {
+  it('scales with archive size at 256 kbit/s, floored at 60 s', () => {
+    // 12,603,919 B * 8 / 256,000 bit/s = 393.872468... s, rounded up to ms.
+    expect(regionFetchTimeoutMs(12_603_919)).toBe(393_873);
+    expect(regionFetchTimeoutMs(1024)).toBe(60_000);
+    expect(REGION_FETCH_MIN_TIMEOUT_MS).toBe(60_000);
+  });
+
+  it('aborts a stalled archive fetch at the deadline and reports it unpinned', async () => {
+    const m = manifest();
+    const { fake, fetchMock } = stubEnv({ manifest: m });
+    await seedManifestInCache(fake, m);
+    const plan = makePlan('p1', [[leg()]]);
+    await savePlan(plan);
+    const aUrl = BASE + m.regions[0].path;
+    let aborted = false;
+    fetchMock.mockImplementation(
+      (input: string, init?: RequestInit) =>
+        new Promise<Response>((resolve, reject) => {
+          if (!input.startsWith(aUrl)) {
+            resolve(new Response(JSON.stringify(m), { status: 200 }));
+            return;
+          }
+          init?.signal?.addEventListener('abort', () => {
+            aborted = true;
+            reject(new DOMException('aborted', 'AbortError'));
+          });
+        }),
+    );
+
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    let outcome: Awaited<ReturnType<typeof pinRegionsForPlan>> | undefined;
+    const pending = pinRegionsForPlan(plan).then((o) => (outcome = o));
+    try {
+      for (
+        let i = 0;
+        i < 100 && !fetchMock.mock.calls.some((c) => String(c[0]).startsWith(aUrl));
+        i++
+      ) {
+        await Promise.resolve();
+      }
+      expect(fetchMock.mock.calls.some((c) => String(c[0]).startsWith(aUrl))).toBe(true);
+      vi.advanceTimersByTime(regionFetchTimeoutMs(m.regions[0].bytes) - 1);
+      expect(aborted).toBe(false);
+      vi.advanceTimersByTime(1);
+      expect(aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+    await pending;
+    expect(outcome).toEqual({ status: 'pinned', total: 1, pinned: 0 });
   });
 });
