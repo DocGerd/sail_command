@@ -601,6 +601,9 @@ const SLOW_TEST_FILES_FIRST = [
   'src/routing/realmask.repro.salona44.test.ts',
   'src/routing/realmask.repro.relaxationFloor.test.ts',
   'src/routing/realmask.repro.depthComfort.test.ts',
+  // #295: 556 s on CI run 34991379729, the third-slowest file there, 12.8 KB,
+  // and the last file of that run to finish.
+  'src/routing/relaxationTrade.differential.test.ts',
 ];
 
 // Extends BaseSequencer rather than reimplementing it: only `sort` changes

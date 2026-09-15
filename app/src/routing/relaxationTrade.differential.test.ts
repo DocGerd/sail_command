@@ -9,12 +9,13 @@ import type { NavMask } from '../lib/mask';
 import { BOATS } from '../data/boats';
 import { mask } from '../test/realmaskFixtures';
 import { makeMask, TEST_MASK_META } from '../test/fixtures';
-import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
+import { solverTimeoutMs } from '../test/timeouts';
 import type { LatLon } from '../types';
 
-// Each probe allocates a fresh 5.28M-cell BFS buffer (`NavMask.cellsConnected`).
-// Shared budget, never a literal (`timeoutGuard.test.ts`).
-vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
+// Each probe allocates a fresh mask-sized BFS buffer (`NavMask.cellsConnected`).
+// Budget: slowest row 138 s on CI run 34991379729 at 39 pairs (32 before #295,
+// x1.22), so ~2x that; via solverTimeoutMs, never a literal (`timeoutGuard.test.ts`).
+vi.setConfig({ testTimeout: solverTimeoutMs(300_000) });
 
 /**
  * #930 (R3, split from #649/#452): P3's named trade. A per-disc connectivity
