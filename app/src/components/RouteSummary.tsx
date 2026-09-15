@@ -15,7 +15,7 @@ import { PORT_COLOR, STARBOARD_COLOR } from '../lib/mapColors';
 import {
   activeRigResult,
   isStaleForecast,
-  NO_ROUTE_MESSAGE_KEY,
+  noRouteMessageKey,
   staleForecastGapHours,
 } from '../lib/plan';
 import {
@@ -647,7 +647,7 @@ export default function RouteSummary({
               the honest fallback: it names the one remedy that DOES apply
               here, re-planning, instead of retry/reload framing that
               cannot. */}
-            {t(reason ? NO_ROUTE_MESSAGE_KEY[reason] : 'error.savedPlanUnreadable')}
+            {t(reason ? noRouteMessageKey(reason, plan.request) : 'error.savedPlanUnreadable')}
           </p>
         ) : (
           <>

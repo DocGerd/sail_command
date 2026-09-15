@@ -49,6 +49,10 @@ export function recalcRequest(plan: Plan, departureMs: number): PlanRequest {
     // #654: plan.request.viaPoints read through the shared accessor —
     // defends a hand-edited/corrupted stored record; see planViaPoints.ts.
     viaPoints: planViaPoints(plan.request).map((v) => ({ ...v })),
+    // #885: copied for the same reason as viaPoints; absent stays absent.
+    ...(plan.request.segmentModes !== undefined
+      ? { segmentModes: [...plan.request.segmentModes] }
+      : {}),
     settings: { ...DEFAULT_SETTINGS, ...plan.request.settings },
     sailIds: plan.request.sailIds ?? DEFAULT_SAIL_IDS,
     // #54 Task 11: copied rather than carried through the spread above, for
