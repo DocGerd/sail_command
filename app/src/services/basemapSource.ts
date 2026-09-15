@@ -93,12 +93,11 @@ export async function pmtilesRangeModeWorks(url: string): Promise<boolean> {
  *    future CDN policy change re-gzipping image/png) — the archive was
  *    fetched whole and registered as an in-memory Blob source.
  *
- * CRITICAL: the registered source's key MUST be the exact string MapLibre
- * parses from the style's 'pmtiles://<key>/{z}/{x}/{y}' reference (Protocol's
- * tilev4 regex capture; the JSON-metadata branch strips the 10-char scheme
- * prefix). MapView passes the IDENTICAL href into both this function and
- * buildStyle for that reason — any drift makes Protocol.get miss and lazily
- * auto-create a FetchSource, silently resurrecting #118.
+ * CRITICAL: the registered source's key MUST be the exact core href passed to
+ * `basemapProtocol.configure` (#1164, compositeBasemapProtocol.ts). MapView
+ * passes the IDENTICAL href into both for that reason — any drift makes the
+ * composite registry miss and lazily auto-create a FetchSource, silently
+ * resurrecting #118.
  */
 export async function ensureBasemapProtocolSource(
   protocol: Pick<Protocol, 'add'>,

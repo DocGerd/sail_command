@@ -80,6 +80,96 @@ export interface ViaMarkersProps {
 const VIA_MARKER_VISIBLE_PX = 16;
 const VIA_MARKER_HIT_PX = 44;
 
+// #1198: adjacent via markers can overlap at the widened 44px hit target
+// (#1186). MapLibre's Marker._addDragHandler (marker.ts) gates purely on
+// `_element.contains(e.originalEvent.target)`, where `target` is the
+// browser's own hit-test result for the native mousedown/touchstart — fixed
+// BEFORE any JS runs (marker.ts's MapMouseEvent/MapTouchEvent constructors
+// wrap that SAME native event object directly, never re-hit-testing it) and
+// unrelated to which marker the press was actually closer to. Later-
+// constructed via markers paint on top (addTo() appends siblings in
+// construction order) and win every ambiguous press, so an earlier marker's
+// drag silently no-ops. Raising a marker's z-order IN RESPONSE to the press
+// cannot fix that SAME press — `.target` is immutable for an event already
+// in flight; the only lever is WHICH element the event is dispatched at.
+interface ScreenRect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+function rectContainsPoint(rect: ScreenRect, x: number, y: number): boolean {
+  return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+}
+
+// Exported so the #1198 regression test can pin this pure selection rule
+// directly, without any DOM/event plumbing: given a press point and the
+// candidates whose rendered box already contains it, returns the one whose
+// CENTRE is nearest. This is the disambiguation
+// MapLibre's own hit test cannot perform — it resolves purely by DOM paint
+// order, which is unrelated to which marker the press was actually closer to.
+// eslint-disable-next-line react-refresh/only-export-components
+export function nearestCandidate<T>(
+  point: { x: number; y: number },
+  candidates: readonly { rect: ScreenRect; value: T }[],
+): T {
+  let best = candidates[0]!;
+  let bestDistSq = Infinity;
+  for (const c of candidates) {
+    const cx = (c.rect.left + c.rect.right) / 2;
+    const cy = (c.rect.top + c.rect.bottom) / 2;
+    const dx = point.x - cx;
+    const dy = point.y - cy;
+    const distSq = dx * dx + dy * dy;
+    if (distSq < bestDistSq) {
+      bestDistSq = distSq;
+      best = c;
+    }
+  }
+  return best.value;
+}
+
+// Touch construction needs feature detection: `Touch`/`TouchEvent` are
+// unavailable in jsdom, so #1198's regression test exercises the mouse path
+// only — the touch path is not reachable under jsdom; it is pinned in real
+// Chromium by app/e2e/via-marker-drag.spec.ts (CDP touch drag). Touch
+// matters most here, since it is this app's primary on-deck, gloved input
+// (#1186).
+function buildSyntheticPress(
+  e: MouseEvent | TouchEvent,
+  intendedTarget: EventTarget,
+  clientX: number,
+  clientY: number,
+): MouseEvent | TouchEvent | null {
+  if (e instanceof MouseEvent) {
+    return new MouseEvent('mousedown', {
+      bubbles: true,
+      cancelable: true,
+      clientX,
+      clientY,
+      button: e.button,
+      buttons: e.buttons,
+    });
+  }
+  if (typeof Touch !== 'function' || typeof TouchEvent !== 'function') return null;
+  try {
+    // `identifier` only needs to be distinct per touch; Date.now() is unique
+    // enough for a single-finger press and is never compared to a real
+    // browser's own identifiers.
+    const touch = new Touch({ identifier: Date.now(), target: intendedTarget, clientX, clientY });
+    return new TouchEvent('touchstart', {
+      bubbles: true,
+      cancelable: true,
+      touches: [touch],
+      targetTouches: [touch],
+      changedTouches: [touch],
+    });
+  } catch {
+    return null;
+  }
+}
+
 function viaElement(ariaLabel: string): HTMLDivElement {
   const el = document.createElement('div');
   el.className = 'sc-via-marker';
@@ -187,6 +277,75 @@ export default function ViaMarkers({ viaPoints, replanning, onDragEnd }: ViaMark
       markersRef.current = [];
     };
   }, [map, viaPoints, onDragEnd, t]);
+
+  // #1198: this listens in the CAPTURE phase on the canvas container — the
+  // exact element handler_manager.ts attaches its own, bubble-phase
+  // 'mousedown'/'touchstart' listeners to (confirmed against installed
+  // maplibre-gl 6.9.0's HandlerManager constructor: `this._el =
+  // this._map.getCanvasContainer()`), so it always runs BEFORE MapLibre's
+  // own dispatch for the same event. When the press point falls inside >=2
+  // via roots (from `markersRef.current`, read fresh at event time — this
+  // effect deliberately depends on `[map]` only, never `viaPoints`) AND the
+  // native target already belongs to one of those roots (a press on
+  // anything else — the #850 route-line ghost handle, an endpoint marker —
+  // is that element's own gesture and must pass through untouched), and the
+  // nearest-by-centre via root disagrees with that target, it suppresses
+  // the original event and redispatches an equivalent synthetic one AT the
+  // intended root: `dispatchEvent` sets `.target` to the element it is
+  // called on directly (no re-hit-test), so the synthetic bubbles back
+  // through MapLibre's own pipeline unmodified — `_addDragHandler`'s
+  // `.contains()` check now passes for the RIGHT marker, and
+  // `_positionDelta`/state/pan-suppression/dragend all run exactly as for
+  // an uncontended press. Only via roots are ever the REDIRECT TARGET.
+  useEffect(() => {
+    if (!map) return;
+    const container = map.getCanvasContainer();
+
+    // The redirect's own synthetic event re-enters this SAME capture
+    // listener (it bubbles through the same container) — this set is how
+    // it recognises and ignores its own redispatch rather than looping.
+    const redispatched = new WeakSet<Event>();
+
+    const handlePress = (e: MouseEvent | TouchEvent): void => {
+      if (redispatched.has(e)) return;
+      const point = 'touches' in e ? e.touches[0] : e;
+      if (!point) return;
+      const { clientX, clientY } = point;
+
+      const candidates = markersRef.current
+        .map((marker) => ({ marker, rect: marker.getElement().getBoundingClientRect() }))
+        .filter(({ rect }) => rectContainsPoint(rect, clientX, clientY));
+
+      const target = e.target as Node | null;
+      // Only arbitrate between VIA roots: a press on anything stacked above
+      // them (the #850 route-line ghost handle, an endpoint marker) is that
+      // element's own gesture and must pass through untouched.
+      if (!candidates.some(({ marker }) => marker.getElement().contains(target))) return;
+
+      const intended = nearestCandidate(
+        { x: clientX, y: clientY },
+        candidates.map(({ marker, rect }) => ({ rect, value: marker })),
+      );
+      const intendedEl = intended.getElement();
+      if (intendedEl.contains(target)) return;
+
+      const synthetic = buildSyntheticPress(e, intendedEl, clientX, clientY);
+      // Build first: if no equivalent can be constructed, leave the native
+      // press alone (the pre-#1198 behaviour) rather than swallowing it.
+      if (!synthetic) return;
+      e.preventDefault();
+      e.stopPropagation();
+      redispatched.add(synthetic);
+      intendedEl.dispatchEvent(synthetic);
+    };
+
+    container.addEventListener('mousedown', handlePress, { capture: true });
+    container.addEventListener('touchstart', handlePress, { capture: true });
+    return () => {
+      container.removeEventListener('mousedown', handlePress, { capture: true });
+      container.removeEventListener('touchstart', handlePress, { capture: true });
+    };
+  }, [map]);
 
   // #571 redesign REMOVED the effect that used to live here, disabling
   // dragging while `replanning` (then: a replan in flight) was true.

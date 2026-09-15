@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.34.0] - 2026-09-15
+
+### Fixed
+
+- Adjacent via-point markers no longer capture each other's drags at the widened 44px touch target (#1198).
+
 ## [0.33.0] - 2026-09-10
 
 ### Added
@@ -1086,7 +1092,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.33.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.34.0...HEAD
+[0.34.0]: https://github.com/DocGerd/sail_command/compare/v0.33.0...v0.34.0
 [0.33.0]: https://github.com/DocGerd/sail_command/compare/v0.32.0...v0.33.0
 [0.32.0]: https://github.com/DocGerd/sail_command/compare/v0.31.0...v0.32.0
 [0.31.0]: https://github.com/DocGerd/sail_command/compare/v0.30.0...v0.31.0
