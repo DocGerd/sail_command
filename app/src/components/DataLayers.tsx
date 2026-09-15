@@ -277,8 +277,8 @@ function buildHatchCanvas(
       meta.rows,
       meta.cols,
       safetyDepthM,
-      hatchBandForZoom(map.getZoom()),
       rowMap,
+      hatchBandForZoom(map.getZoom()),
     ),
   );
   ctx.putImageData(image, 0, 0);
@@ -320,8 +320,8 @@ function rebuildHatchCanvas(
       meta.rows,
       meta.cols,
       safetyDepthM,
-      hatchBandForZoom(map.getZoom()),
       rowMap,
+      hatchBandForZoom(map.getZoom()),
     ),
   );
   ctx.putImageData(image, 0, 0);

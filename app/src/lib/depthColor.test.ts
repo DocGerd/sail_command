@@ -5,6 +5,7 @@ import {
   depthByteToRgba,
   depthCanvasRowMap,
   depthSourceCorners,
+  flipRowMap,
   hatchBandForZoom,
   hatchScreenPxPerCell,
   HATCH_FALLBACK_BAND,
@@ -59,13 +60,13 @@ describe('depthByteToRgba', () => {
 
 describe('buildDepthImageData', () => {
   it('throws on a rows*cols mismatch', () => {
-    expect(() => buildDepthImageData(new Uint8Array(5), 2, 3)).toThrow(/rows\*cols/);
+    expect(() => buildDepthImageData(new Uint8Array(5), 2, 3, flipRowMap(2))).toThrow(/rows\*cols/);
   });
 
   it('flips vertically: mask row 0 (south) becomes the bottom image row', () => {
     // 2 rows x 3 cols; south row = shallow (byte 10), north row = land (0).
     const mask = new Uint8Array([10, 10, 10, 0, 0, 0]);
-    const img = buildDepthImageData(mask, 2, 3);
+    const img = buildDepthImageData(mask, 2, 3, flipRowMap(2));
     const land = depthByteToRgba(0);
     const shallow = depthByteToRgba(10);
     // Image row 0 (top = north) must be the land row…
@@ -76,7 +77,7 @@ describe('buildDepthImageData', () => {
 
   it('maps every cell through the same ramp as depthByteToRgba', () => {
     const bytes = [0, 1, 42, 254, 255, 128];
-    const img = buildDepthImageData(new Uint8Array(bytes), 1, 6);
+    const img = buildDepthImageData(new Uint8Array(bytes), 1, 6, flipRowMap(1));
     for (let i = 0; i < bytes.length; i++) {
       expect(Array.from(img.subarray(i * 4, i * 4 + 4))).toEqual(depthByteToRgba(bytes[i]));
     }
@@ -85,12 +86,12 @@ describe('buildDepthImageData', () => {
 
 describe('buildNavigabilityHatchImageData (#492)', () => {
   it('throws on a rows*cols mismatch', () => {
-    expect(() => buildNavigabilityHatchImageData(new Uint8Array(5), 2, 3, 3)).toThrow(/rows\*cols/);
+    expect(() => buildNavigabilityHatchImageData(new Uint8Array(5), 2, 3, 3, flipRowMap(2))).toThrow(/rows\*cols/);
   });
 
   it('land (byte 0) never hatches, even at an absurdly high safetyDepthM', () => {
     const mask = new Uint8Array([0, 0, 0, 0]);
-    const img = buildNavigabilityHatchImageData(mask, 1, 4, 1000);
+    const img = buildNavigabilityHatchImageData(mask, 1, 4, 1000, flipRowMap(1));
     expect(Array.from(img).every((v) => v === 0)).toBe(true);
   });
 
@@ -101,21 +102,21 @@ describe('buildNavigabilityHatchImageData (#492)', () => {
   // MASK_TOLERANCE_M) * 10) / 10 = floor((3.0 - 0.9) * 10) / 10 = 2.1.
   it('ABSENT below the gate, APPEARS above it, for the identical mask', () => {
     const mask = new Uint8Array(64).fill(30); // 8x8, uniform 3.0 m shipped depth
-    const clear = buildNavigabilityHatchImageData(mask, 8, 8, 2.0); // 2.1 < 2.0 is false
+    const clear = buildNavigabilityHatchImageData(mask, 8, 8, 2.0, flipRowMap(8)); // 2.1 < 2.0 is false
     expect(Array.from(clear).every((v) => v === 0)).toBe(true); // control: absent
-    const marginal = buildNavigabilityHatchImageData(mask, 8, 8, 3.0); // 2.1 < 3.0 is true
+    const marginal = buildNavigabilityHatchImageData(mask, 8, 8, 3.0, flipRowMap(8)); // 2.1 < 3.0 is true
     expect(Array.from(marginal).some((v) => v !== 0)).toBe(true); // appears
   });
 
   it("deep water (byte 255) never hatches, even at the UI's own maximum safetyDepthM (10)", () => {
     const mask = new Uint8Array(4).fill(255);
-    const img = buildNavigabilityHatchImageData(mask, 1, 4, 10);
+    const img = buildNavigabilityHatchImageData(mask, 1, 4, 10, flipRowMap(1));
     expect(Array.from(img).every((v) => v === 0)).toBe(true);
   });
 
   it('hatches SPARSELY, not a solid fill: exactly 2 of every 8 columns per row (25% coverage)', () => {
     const mask = new Uint8Array(64).fill(1); // 8x8, uniformly very shallow (0.1 m) — always marginal
-    const img = buildNavigabilityHatchImageData(mask, 8, 8, 10);
+    const img = buildNavigabilityHatchImageData(mask, 8, 8, 10, flipRowMap(8));
     let hatched = 0;
     for (let i = 0; i < 64; i++) if (img[i * 4 + 3] !== 0) hatched++;
     // Exact, not approximate: this call passes no band, so it uses
@@ -130,7 +131,7 @@ describe('buildNavigabilityHatchImageData (#492)', () => {
 
   it('paints the fixed HATCH_RGBA colour, never a depth-dependent one', () => {
     const mask = new Uint8Array(64).fill(1);
-    const img = buildNavigabilityHatchImageData(mask, 8, 8, 10);
+    const img = buildNavigabilityHatchImageData(mask, 8, 8, 10, flipRowMap(8));
     // row 0, col 0: (0 + 0) % 8 = 0 < 2 -> hatched.
     expect(Array.from(img.subarray(0, 4))).toEqual(HATCH_RGBA);
   });
@@ -142,7 +143,7 @@ describe('buildNavigabilityHatchImageData (#492)', () => {
     const south = new Array(8).fill(1); // shallow, marginal at a high gate
     const north = new Array(8).fill(0); // land
     const mask = new Uint8Array([...south, ...north]);
-    const img = buildNavigabilityHatchImageData(mask, 2, 8, 10);
+    const img = buildNavigabilityHatchImageData(mask, 2, 8, 10, flipRowMap(2));
     // Image row 0 (top = north = land) must be fully transparent throughout.
     expect(Array.from(img.subarray(0, 32)).every((v) => v === 0)).toBe(true);
     // Image row 1 (bottom = south = shallow) must have at least one hatched pixel.
@@ -154,7 +155,7 @@ describe('buildNavigabilityHatchImageData (#492)', () => {
     // @ts-expect-error HARD DOMAIN RULE: the absolute ramp must have no slot for
     // safetyDepthM. Reds at COMPILE time if one is ever added — including a
     // DEFAULTED one, which Function.length cannot see (PR #591 review, MEASURED).
-    expect(() => buildDepthImageData(m, 1, 1, 3)).not.toThrow();
+    expect(() => buildDepthImageData(m, 1, 1, flipRowMap(1), 3)).not.toThrow();
     // @ts-expect-error same rule for the per-byte ramp
     expect(depthByteToRgba(1, 3)).toBeDefined();
   });
@@ -283,8 +284,8 @@ describe('hatchBandForZoom (#599)', () => {
     const data = new Uint8Array(ROWS * COLS);
     for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) data[r * COLS + c] = 1 + (c % 200);
     for (const gate of [2.2, 3.0, 10]) {
-      const striped = buildNavigabilityHatchImageData(data, ROWS, COLS, gate, hatchBandForZoom(13));
-      const washed = buildNavigabilityHatchImageData(data, ROWS, COLS, gate, hatchBandForZoom(16));
+      const striped = buildNavigabilityHatchImageData(data, ROWS, COLS, gate, flipRowMap(ROWS), hatchBandForZoom(13));
+      const washed = buildNavigabilityHatchImageData(data, ROWS, COLS, gate, flipRowMap(ROWS), hatchBandForZoom(16));
       let stripedPainted = 0;
       let washedPainted = 0;
       for (let i = 0; i < ROWS * COLS; i++) {
@@ -395,7 +396,7 @@ describe('hatchBandForZoom (#599)', () => {
     // uniformly-marginal mask. This is the assertion that would have caught
     // the original defect, since the band object alone looks harmless.
     const mask = new Uint8Array(64).fill(1); // 8x8, always marginal
-    const img = buildNavigabilityHatchImageData(mask, 8, 8, 10, hatchBandForZoom(NaN));
+    const img = buildNavigabilityHatchImageData(mask, 8, 8, 10, flipRowMap(8), hatchBandForZoom(NaN));
     let painted = 0;
     for (let i = 0; i < 64; i++) if (img[i * 4 + 3] !== 0) painted++;
     expect(painted, 'a non-finite zoom must not silently paint zero hatch').toBeGreaterThan(0);
@@ -417,12 +418,12 @@ describe('hatchBandForZoom (#599)', () => {
     for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) data[r * COLS + c] = c;
     const solid = { periodCells: 1, stripeCells: 1 };
     for (const gate of [2.2, 2.8, 3.0, 5.0, 10]) {
-      const all = buildNavigabilityHatchImageData(data, ROWS, COLS, gate, solid);
+      const all = buildNavigabilityHatchImageData(data, ROWS, COLS, gate, flipRowMap(ROWS), solid);
       const marginalBytes = new Set<number>();
       for (let c = 0; c < COLS; c++) if (all[c * 4 + 3] !== 0) marginalBytes.add(c);
       // Every band paints a SUBSET of that set and never anything outside it.
       for (const z of [9, 10, 11, 12, 13, 16, 22]) {
-        const img = buildNavigabilityHatchImageData(data, ROWS, COLS, gate, hatchBandForZoom(z));
+        const img = buildNavigabilityHatchImageData(data, ROWS, COLS, gate, flipRowMap(ROWS), hatchBandForZoom(z));
         const painted = new Set<number>();
         for (let r = 0; r < ROWS; r++)
           for (let c = 0; c < COLS; c++) if (img[(r * COLS + c) * 4 + 3] !== 0) painted.add(c);
@@ -437,7 +438,7 @@ describe('hatchBandForZoom (#599)', () => {
 
   it('#599: every PRODUCTION call site passes a band (the optional parameter is for guards only)', () => {
     // buildNavigabilityHatchImageData's `band` is optional so the two
-    // criterion guards that call the 4-argument form keep exercising the
+    // criterion guards that pass no band keep exercising the
     // fallback band unchanged. That optionality would otherwise let a
     // production call site silently ship the pre-#599 fixed pair at every
     // zoom, which no type error and no unit test would catch — so the
@@ -468,6 +469,35 @@ describe('depthSourceCorners', () => {
       [east, south], // bottom-right
       [west, south], // bottom-left
     ]);
+  });
+});
+
+describe('builders sample the row map (#1254)', () => {
+  // Hand-written map, not depthCanvasRowMap and not the flip: mask rows are
+  // south->north, output rows north->south, and output row 1 repeats row 2.
+  // A builder that ignores the map and flips instead reads mask rows 2,1,0,0.
+  const ROW_MAP = Int32Array.of(2, 2, 1, 0);
+
+  it('buildDepthImageData colours each output row from its mapped mask row', () => {
+    const mask = new Uint8Array([10, 20, 30]); // rows=3, cols=1, south->north
+    const expected = [30, 30, 20, 10].map((b) => depthByteToRgba(b));
+    expect(new Set(expected.map((c) => c.join())).size).toBe(3); // bytes are distinguishable
+    const img = buildDepthImageData(mask, 3, 1, ROW_MAP);
+    expect(img.length).toBe(16);
+    for (let r = 0; r < 4; r++) expect(Array.from(img.subarray(r * 4, r * 4 + 4))).toEqual(expected[r]);
+  });
+
+  it('buildNavigabilityHatchImageData hatches the output row its map points at a marginal byte', () => {
+    // byte 10 = 1.0 m -> cautious floor 0.1 m (< 0.5 gate); 20 -> 1.1 m and
+    // 30 -> 2.1 m stay clear. Mask south->north [20, 10, 30]; the map reads
+    // [30, 30, 10, 20], so only output row 2 is marginal (the flip would
+    // read [30, 10, 20, 20] and hatch row 1). A 1-cell period paints every
+    // marginal cell.
+    const mask = new Uint8Array([20, 10, 30]);
+    const img = buildNavigabilityHatchImageData(mask, 3, 1, 0.5, ROW_MAP, HATCH_WASH_BAND);
+    expect(img.length).toBe(16);
+    const hatchedRows = [0, 1, 2, 3].filter((r) => img[r * 4 + 3] !== 0);
+    expect(hatchedRows).toEqual([2]);
   });
 });
 
@@ -503,7 +533,7 @@ describe('depthCanvasRowMap (#1254)', () => {
     for (const fn of ['buildDepthImageData(', 'buildNavigabilityHatchImageData(']) {
       const calls = src.split(fn).slice(1);
       expect(calls.length, `expected DataLayers.tsx to call ${fn}`).toBeGreaterThan(0);
-      for (const call of calls) expect(call.slice(0, 400)).toMatch(/,\s*rowMap,?\s*\)/);
+      for (const call of calls) expect(call.slice(0, 400)).toMatch(/,\s*rowMap\s*[,)]/);
     }
     expect(src.match(/depthCanvasRowMap\(meta\)/g)?.length).toBe(3);
   });

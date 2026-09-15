@@ -544,8 +544,8 @@ describe('#492 navigability hatch wiring', () => {
 // test/setup.ts stubs `HTMLCanvasElement.prototype.getContext` to `null`
 // globally, so buildDepthCanvas/buildHatchCanvas always bail under the
 // describe blocks above). Restores just enough of the 2D context — the
-// SAME size-discriminated fake `layerOrder.test.tsx` already uses, matched
-// to this FILE's own 4x4 maskMeta fixture — scoped to ONLY this describe
+// SAME width-discriminated fake `layerOrder.test.tsx` already uses, matched
+// to this FILE's own 4-column maskMeta fixture — scoped to ONLY this describe
 // block via beforeEach/afterEach, so the vacuous-by-default behavior the
 // rest of this file relies on (e.g. the debounce tests' `getLayer`-call-only
 // assertions) is untouched outside it.
