@@ -123,10 +123,11 @@ internal-state message: a user reaches it only through a producer defect.
   `horizon-exceeded` also names "unmark the sail-only segment" in its remedy.
   The label stays `beyond-horizon` (#282: labels are a function of the cause);
   a presentation helper `noRouteMessageKey(reason, request)` in `lib/plan.ts`
-  replaces every direct `NO_ROUTE_MESSAGE_KEY[...]` read that renders copy
-  (usePlanFlow, replan, reroute, useDepartureConfirm, RouteSummary,
-  DepartureCompare). `migratePlan.ts`'s `Object.hasOwn` validation keeps
-  reading the table.
+  replaces every direct `NO_ROUTE_MESSAGE_KEY[...]` read that renders a
+  `planRoute` reason (usePlanFlow, replan, reroute, useDepartureConfirm,
+  RouteSummary, DepartureCompare). `state/replan.ts:dedupeRequestVias` reads
+  the table directly for its two intake refusals (§3.3), and `migratePlan.ts`'s
+  `Object.hasOwn` validation keeps reading it.
 - Forced-motor segments fail on mask, horizon and budget; on `forcedKind === 'motor'` the heuristic's fallback arm returns `mask-blocked`, since a motor candidate cannot be calm.
   Site: the `cause:` return at the end of `isochrone.ts:solve`
   (`blockedDeaths >= calmDeaths && blockedDeaths > 0 ? 'mask-blocked' : 'calm-without-motor'`).
@@ -135,10 +136,11 @@ internal-state message: a user reaches it only through a producer defect.
 - Disclosed residual: the death heuristic can still classify a forced-sail calm
   as mask-blocked (#264's incidental finding), and forced-sail segments inherit
   #1136: motor-off solves can die on connected water and report `mask-blocked`,
-  measured at TWS 8. Once #1243 lands, its salvage admission
-  (`salvagePassAdmitted`, at 3c5e660) reads the plan-level `motorEnabled`, so a
-  forced-sail segment in a motor-ON plan is not salvaged. The new cause narrows
-  the "impossible constraint vs blocked mask" ambiguity; it does not close it.
+  measured at TWS 8. At 3c5e660, unmerged PR #1243's salvage admission
+  (`salvagePassAdmitted`) read the plan-level `settings.motorEnabled`; if that
+  ships, a forced-sail segment in a motor-on plan is not salvaged. The new cause
+  narrows the "impossible constraint vs blocked mask" ambiguity; it does not
+  close it.
 
 ## 5. Persistence and via edits
 
@@ -195,7 +197,7 @@ Via-mutation sites and their rules:
   segment takes that mode. Any other run is refused before planning, before the
   wind fetch, with `error.segmentModesMergeConflict` (de + en), naming the run's
   first dropped waypoint (`mergeSegmentModes`; maintainer ruling, #1232 comment
-  5680851958). A forced mode is never extended or freed.
+  5680851958). Dedupe never extends or frees a forced mode.
   `replanWithVias(plan, viaPoints, deps, segmentModes?)` takes modes aligned with
   its `viaPoints` argument and never carries the stored
   `plan.request.segmentModes`; an absent argument means no overrides. The other
