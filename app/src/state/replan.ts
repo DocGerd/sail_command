@@ -128,6 +128,10 @@ export const ROUTING_FAILURE_MESSAGE_KEY: Record<
   // (an allowlist, so absence is the fail-closed direction and suppresses
   // the retry affordance without a second edit).
   'boat-not-in-catalogue': 'error.boatNotInCatalogue',
+  // #295: a plan saved on the pre-#295 wind lattice. Neither retry nor reload
+  // helps — only planning afresh fetches a grid that covers the mask.
+  // Deliberately absent from RETRY_MAY_HELP_KEYS, like the boat key above.
+  'wind-grid-coverage': 'error.windGridCoverage',
   // #1193: a fallback for a path other than usePlanFlow.run() that somehow
   // observes a cancelled plan() — run() itself never renders this key, it
   // special-cases 'cancelled' straight back to idle before reaching here.
@@ -212,10 +216,10 @@ export function disposeAfterFailure(client: ReplanClient): void {
  * #553: true when a `plan()` rejection tells us NOTHING is wrong with the
  * worker, so tearing it down would be pure cost.
  *
- * Exactly one kind qualifies today. `'boat-not-in-catalogue'` is raised by a
- * client-side catalogue lookup before `plan()` posts anything — no pending
- * entry, no timer, no message — so the worker is untouched and healthy. No
- * other kind leaves a healthy worker to preserve: 'worker-fatal',
+ * Two kinds qualify today. `'boat-not-in-catalogue'` (a catalogue lookup)
+ * and `'wind-grid-coverage'` (#295, a lattice-bounds check) are both raised
+ * client-side before `plan()` posts anything — no pending entry, no timer, no
+ * message — so the worker is untouched and healthy. No other kind leaves a healthy worker to preserve: 'worker-fatal',
  * 'worker-error' and 'messageerror' ARE worker faults, 'timeout' leaves one
  * still grinding on an abandoned solve (the client deadline settles the
  * promise, it does not terminate the thread), 'disposed' names a client
@@ -240,7 +244,12 @@ export function disposeAfterFailure(client: ReplanClient): void {
  * how the next one drifts.
  */
 export function failureLeavesWorkerHealthy(err: unknown): boolean {
-  return err instanceof RoutingError && err.kind === 'boat-not-in-catalogue';
+  // #295: 'wind-grid-coverage' is raised at the same pre-post point as the
+  // boat check, so it qualifies for the same reason.
+  return (
+    err instanceof RoutingError &&
+    (err.kind === 'boat-not-in-catalogue' || err.kind === 'wind-grid-coverage')
+  );
 }
 
 // Minimal structural slice of RoutingClient (routing/workerClient.ts) —

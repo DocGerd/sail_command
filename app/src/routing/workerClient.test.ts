@@ -598,3 +598,44 @@ describe('#54: keyed polars across the worker boundary', () => {
     WORKER_CLIENT_TEST_TIMEOUT_MS,
   );
 });
+
+// #295: a plan saved on the pre-#295 187-point lattice (11 x 17 from
+// 54.3N/9.4E) must fail as a typed kind before anything is posted, not reach
+// planRoute's WindField coverage throw as an untyped 'worker-fatal'.
+describe('#295: stored wind grid must cover the mask domain', () => {
+  const WIDE_META = { ...TEST_MASK_META, north: 55.6, east: 11.6 };
+  const OLD_GRID_OPTS = { north: 55.3, east: 11.0 };
+
+  async function initClient() {
+    const w = fakeWorker();
+    const client = new RoutingClient(() => w as unknown as Worker);
+    const p = client.init({ ...INIT_ASSETS, maskMeta: WIDE_META, maskBuffer: openWaterBuffer() });
+    w.emit({ type: 'ready' });
+    await p;
+    return { w, client };
+  }
+
+  it(
+    'rejects an old 187-point grid as wind-grid-coverage and posts no plan',
+    async () => {
+      const { w, client } = await initClient();
+      const oldGrid = uniformWindGrid(12, 0, OLD_GRID_OPTS);
+      expect(oldGrid.lats.length * oldGrid.lons.length).toBe(187);
+      await expectRoutingError(client.plan(PLAN_REQUEST, oldGrid), 'wind-grid-coverage', /cover/);
+      expect(w.posted.filter((m) => m.type === 'plan')).toHaveLength(0);
+      expect(client.isDisposed).toBe(false);
+    },
+    WORKER_CLIENT_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'posts a plan for a grid that covers the widened domain',
+    async () => {
+      const { w, client } = await initClient();
+      void client.plan(PLAN_REQUEST, uniformWindGrid(12, 0));
+      await flush();
+      expect(w.posted.filter((m) => m.type === 'plan')).toHaveLength(1);
+    },
+    WORKER_CLIENT_TEST_TIMEOUT_MS,
+  );
+});
