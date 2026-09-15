@@ -430,17 +430,21 @@ Maintainer rulings on #295 (2026-09-15); evidence and coupled sites in
 
 - **Bbox.** 54.3–55.6°N, 9.4–11.6°E; south and west edges unchanged. The east
   edge is 11.6°E, not the spike's 11.5°E: 11.6°E is a whole number of cell steps
-  from the existing grid (`COLS` 3025), so the old region's mask cells stay
-  byte-identical.
+  from the existing grid (`COLS` 3025), so the grid stays aligned. Interior
+  cells are byte-identical; the old north row and east column (1,044 cells)
+  change by up to ±1.0 m, because the old build resampled them from a download
+  clipped to the old bbox (review 5210504886 on PR #1245).
 - **Great Belt.** Western approach only. Extending east across the full Great
   Belt is deferred to #1240.
 - **Basemap.** The existing basemap stays the core archive; the extension ships
   as a separately-named region archive (#296's ruling, on the #1164 mechanism),
   not a widened single file. Mask, harbours and seamarks ship first; the region
   archive second, together with the per-plan readiness UI (#1164 ruling 2). The
-  archive's shape is chosen after both candidate shapes are measured and brought
-  to the maintainer.
+  region archive is two strips (maintainer ruling on #295): north 9.4–11.0°E ×
+  55.3–55.6°N and east 11.0–11.6°E × 54.3–55.6°N.
 - **Stored plans with the old wind grid.** A plan whose stored grid is the old
-  187-point lattice (11 × 17 at 0.1° from 54.3°N / 9.4°E) makes departure
-  scan/confirm and Live reroute return a typed, copy-backed error. No migration
+  187-point lattice (11 × 17 at 0.1° from 54.3°N / 9.4°E) stays viewable, and
+  old backups import it. Paths that re-plan on the stored grid (departure
+  compare/confirm, Live reroute) return a typed, copy-backed error; paths that
+  fetch a fresh forecast (Recalculate, via edits) are unaffected. No migration
   (pre-1.0); a BREAKING-CHANGE changelog line records it.
