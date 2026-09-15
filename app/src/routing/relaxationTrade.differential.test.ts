@@ -9,12 +9,14 @@ import type { NavMask } from '../lib/mask';
 import { BOATS } from '../data/boats';
 import { mask } from '../test/realmaskFixtures';
 import { makeMask, TEST_MASK_META } from '../test/fixtures';
-import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
+import { solverTimeoutMs } from '../test/timeouts';
 import type { LatLon } from '../types';
 
-// Each probe allocates a fresh 5.28M-cell BFS buffer (`NavMask.cellsConnected`).
-// Shared budget, never a literal (`timeoutGuard.test.ts`).
-vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
+// Each probe allocates a fresh mask-sized BFS buffer (`NavMask.cellsConnected`).
+// Budget: slowest row 62 s on CI before #295 (run 34967193450, 32 pairs per
+// fixed origin), 138-149 s after it (runs 34991379729, 34997849572, 39 pairs);
+// ~2x the slowest, via solverTimeoutMs, never a literal (`timeoutGuard.test.ts`).
+vi.setConfig({ testTimeout: solverTimeoutMs(300_000) });
 
 /**
  * #930 (R3, split from #649/#452): P3's named trade. A per-disc connectivity
@@ -190,7 +192,7 @@ describe('#930 R3: P3 disc-vs-global relaxation trade (shipped findRelaxedGate, 
   describe.each(DEPTH_CASES)('boats $boatIds (gate $requestedM m, floor $floorM m)', (c) => {
     it.each(POPULATIONS)('$name: shipped radius == global search on every pair', (pop) => {
       const { pairs, snapFailed } = snappedPairs(pop.fixedId, c.requestedM, pop.reversed);
-      expect(pairs.length + snapFailed.length, 'harbors.json harbour count').toBe(32);
+      expect(pairs.length + snapFailed.length, 'harbour pairs per fixed origin').toBe(39);
 
       const rows = measure(mask, pairs, c.requestedM, c.floorM, APPROACH_RADIUS_M);
       const label = `[${c.boatIds.join(',')}] ${pop.name}`;

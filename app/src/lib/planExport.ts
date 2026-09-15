@@ -114,7 +114,24 @@ function encodeWindGrid(grid: WindGrid): ExportedWindGrid {
   };
 }
 
-// Returns null (never throws) on any malformed shape or undecodable
+// The Open-Meteo lattice every plan saved before #295 carries: 11 lats x 17
+// lons at 0.1 deg from 54.3N / 9.4E (the pre-#295 `openMeteo.ts` LATS/LONS).
+// Exact match only, so a narrower or shifted grid is still rejected.
+const LEGACY_LATTICE_LATS = Array.from({ length: 11 }, (_, i) => 54.3 + i * 0.1);
+const LEGACY_LATTICE_LONS = Array.from({ length: 17 }, (_, i) => 9.4 + i * 0.1);
+
+function sameAxis(axis: readonly number[], expected: readonly number[]): boolean {
+  return axis.length === expected.length && axis.every((v, i) => Math.abs(v - expected[i]!) < 1e-6);
+}
+
+export function isLegacyWindLattice(grid: {
+  lats: readonly number[];
+  lons: readonly number[];
+}): boolean {
+  return sameAxis(grid.lats, LEGACY_LATTICE_LATS) && sameAxis(grid.lons, LEGACY_LATTICE_LONS);
+}
+
+// decodeWindGrid returns null (never throws) on any malformed shape or undecodable
 // base64 — an imported file is untrusted input, and one damaged plan must
 // not abort the whole import (mirrors services/db.ts's own "one corrupt
 // record must not blank the list" philosophy for listPlans).
@@ -136,24 +153,11 @@ function encodeWindGrid(grid: WindGrid): ExportedWindGrid {
 // `app/src` has no ErrorBoundary, so that takes the whole React root down,
 // not just the one plan.
 //
-// #1178 MAJOR (PR #1182 review): an imported plan bypasses `planRoute.ts`
-// entirely — SettingsPanel.tsx's import handler -> parseExportFile ->
-// decodeWindGrid -> migratePlan -> savePlan(p) never constructs a
-// `WindField` at all, so `wind.ts`'s own construction-time domain-coverage
-// assertion (see that file's doc comment) NEVER RUNS for this path. A
-// spatially narrow but dimension-consistent imported windGrid would
-// therefore reach DepthProfile.tsx/DepartureCompare.tsx/routeGeoJson.ts's
-// "already validated" WindField constructions completely unvalidated —
-// exactly the #1178 hazard this whole feature exists to close, reachable
-// by a user through Settings -> Import backup. `maskBounds` closes it HERE,
-// at the same trust boundary the dimension check above already guards: an
-// imported grid failing coverage is treated exactly like any other
-// malformed windGrid — null, counted as an invalid plan, the rest of the
-// import proceeds. Optional (mirrors `WindField`'s own optional
-// `maskBounds`) so every EXISTING unit test in planExport.test.ts, which
-// calls `parseExportFile` with no mask context at all, is unaffected;
-// SettingsPanel.tsx's real import handler is the one call site that must
-// supply it.
+// #1178: an imported plan never passes through `planRoute.ts`, so the grid's
+// spatial coverage is checked HERE when `maskBounds` is supplied: a
+// non-covering grid is a malformed one (null, counted invalid). #295 ruling:
+// the ONE exception is the exact pre-#295 lattice, so old backups import and
+// stay viewable; replanning them is rejected, typed, by `RoutingClient.plan()`.
 function decodeWindGrid(raw: unknown, maskBounds?: WindLatticeCoverageBounds): WindGrid | null {
   if (!isRecord(raw)) return null;
   const { lats, lons, timesMs, speedKn, dirFromDeg, gustKn, fetchedAtMs, model } = raw;
@@ -163,7 +167,12 @@ function decodeWindGrid(raw: unknown, maskBounds?: WindLatticeCoverageBounds): W
   if (typeof speedKn !== 'string' || typeof dirFromDeg !== 'string' || typeof gustKn !== 'string')
     return null;
   if (typeof fetchedAtMs !== 'number' || typeof model !== 'string') return null;
-  if (maskBounds && !windGridCoversBounds({ lats, lons }, maskBounds)) return null;
+  if (
+    maskBounds &&
+    !windGridCoversBounds({ lats, lons }, maskBounds) &&
+    !isLegacyWindLattice({ lats, lons })
+  )
+    return null;
   try {
     const decodedSpeedKn = base64ToFloat32(speedKn);
     const decodedDirFromDeg = base64ToFloat32(dirFromDeg);
@@ -331,12 +340,9 @@ function decodePlan(raw: unknown, maskBounds?: WindLatticeCoverageBounds): Plan 
  * fatal to the rest of the import — the same "one corrupt record must not
  * blank the whole list" principle services/db.ts's listPlans applies.
  *
- * `maskBounds` is OPTIONAL — see `decodeWindGrid`'s own #1178 comment for
- * why: it lets `SettingsPanel.tsx` reject a spatially narrow imported
- * windGrid (counted as an invalid plan) while leaving every plain-call
- * test in `planExport.test.ts` unaffected. Pass `mask?.meta` from
- * `useNavMask()` — `undefined` while the mask is still loading skips the
- * check exactly as `WindField`'s own constructor does.
+ * `maskBounds` enables the coverage check in `decodeWindGrid`. The app passes
+ * the static `DATA_AREA` (pinned to mask.meta.json), so the outcome never
+ * depends on the mask having loaded; unit tests of other checks omit it.
  */
 export function parseExportFile(
   text: string,

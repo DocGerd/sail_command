@@ -298,6 +298,25 @@ describe('useDepartureConfirm', () => {
     expect(dispose).not.toHaveBeenCalled();
   });
 
+  // #295: a plan saved on the old wind lattice fails typed, copy-backed, and
+  // leaves the worker alone (the check runs before plan() posts).
+  it("'wind-grid-coverage' surfaces its own key and leaves the client healthy", async () => {
+    const plan = makePlan();
+    const dispose = vi.fn();
+    const client: ReplanClient = {
+      plan: vi.fn().mockRejectedValue(new RoutingError('wind-grid-coverage', 'old lattice')),
+      dispose,
+    };
+    const { result } = renderHook(() => useDepartureConfirm(() => Promise.resolve(client)));
+
+    await act(async () => {
+      await result.current.confirm(plan, plan.request.departureMs);
+    });
+
+    expect(result.current.state.error).toBe('error.windGridCoverage');
+    expect(dispose).not.toHaveBeenCalled();
+  });
+
   it('a typed no-route result surfaces its NoRouteReason key, not a generic failure', async () => {
     const plan = makePlan();
     const client: ReplanClient = {

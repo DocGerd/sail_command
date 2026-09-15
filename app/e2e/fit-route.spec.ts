@@ -158,8 +158,13 @@ test.describe('#1102: fit-route-to-view against a real MapLibre camera', () => {
         // appeared — this is the target the button's OWN fit must reproduce.
         const fitted = await waitForStableCamera(page);
 
-        // Pan/zoom the real camera away — Null Island, a location and zoom
-        // nothing about the Flensburg Fjord region could produce.
+        // Move the camera away. MAX_BOUNDS (MapView.tsx) clamps this request
+        // back into the region at the bounds' minimum zoom, so where it lands
+        // depends on the bounds and the viewport aspect — at phonePortrait
+        // since #295 the clamped centre is 0.026 deg of longitude from the
+        // fitted one, at zoom 7.34 against 10.61. So the sanity check is the
+        // negation of the poll's own success predicate below, not a distance:
+        // if it failed, that poll would pass without the button doing anything.
         await page.evaluate(() => {
           (window as unknown as { __scMap?: ScTestMap }).__scMap?.jumpTo({
             center: [0, 0],
@@ -167,10 +172,7 @@ test.describe('#1102: fit-route-to-view against a real MapLibre camera', () => {
           });
         });
         const panned = await readCamera(page);
-        expect(panned.lng, 'sanity: the pan actually moved the camera').not.toBeCloseTo(
-          fitted.lng,
-          1,
-        );
+        expect(panned, 'sanity: the jump must leave the fitted camera').not.toEqual(fitted);
 
         await fitButton.click();
 

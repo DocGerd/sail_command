@@ -472,6 +472,7 @@ describe('rerouteFromFix', () => {
     // this table silently — measured in review: repointing the mapping to
     // 'error.routingTimeout' left 140 tests green.
     ['boat-not-in-catalogue', 'error.boatNotInCatalogue'],
+    ['wind-grid-coverage', 'error.windGridCoverage'],
   ])('preserves RoutingError kind %s as ReplanError(%s)', async (kind, messageKey) => {
     const plan = makePlan();
     const client: ReplanClient = {

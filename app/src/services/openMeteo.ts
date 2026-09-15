@@ -2,8 +2,8 @@ import type { WindGrid } from '../types';
 
 export const FORECAST_DAYS = 6;
 const API = 'https://api.open-meteo.com/v1/forecast';
-const LATS = Array.from({ length: 11 }, (_, i) => Number((54.3 + i * 0.1).toFixed(1)));
-const LONS = Array.from({ length: 17 }, (_, i) => Number((9.4 + i * 0.1).toFixed(1)));
+const LATS = Array.from({ length: 14 }, (_, i) => Number((54.3 + i * 0.1).toFixed(1)));
+const LONS = Array.from({ length: 23 }, (_, i) => Number((9.4 + i * 0.1).toFixed(1)));
 const RETRY_DELAYS_MS = [1000, 4000];
 const REQUEST_TIMEOUT_MS = 15_000;
 

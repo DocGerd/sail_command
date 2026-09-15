@@ -35,6 +35,7 @@ import { buildSeamarkPopoverContent } from '../lib/seamarkPopupDom';
 import {
   buildDepthImageData,
   buildNavigabilityHatchImageData,
+  depthCanvasRowMap,
   depthSourceCorners,
   hatchBandForZoom,
 } from '../lib/depthColor';
@@ -230,14 +231,17 @@ const SEAMARK_LAYER_IDS = [SEAMARKS_LAYER, SEAMARKS_HAZARD_LAYER];
 // vertically-flipped result (mask row 0 = south, canvas row 0 = north) into a
 // canvas for a MapLibre canvas source. MapLibre resamples on pan/zoom — no
 // per-frame redraw. Returns null where there's no 2D canvas backend (jsdom).
+// #1254: rows are Mercator-spaced (depthCanvasRowMap), so the canvas is
+// rowMap.length tall, not meta.rows.
 function buildDepthCanvas(meta: MaskMeta, buffer: ArrayBuffer): HTMLCanvasElement | null {
+  const rowMap = depthCanvasRowMap(meta);
   const canvas = document.createElement('canvas');
   canvas.width = meta.cols;
-  canvas.height = meta.rows;
+  canvas.height = rowMap.length;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
-  const image = ctx.createImageData(meta.cols, meta.rows);
-  image.data.set(buildDepthImageData(new Uint8Array(buffer), meta.rows, meta.cols));
+  const image = ctx.createImageData(meta.cols, rowMap.length);
+  image.data.set(buildDepthImageData(new Uint8Array(buffer), meta.rows, meta.cols, rowMap));
   ctx.putImageData(image, 0, 0);
   return canvas;
 }
@@ -260,18 +264,20 @@ function buildHatchCanvas(
   buffer: ArrayBuffer,
   safetyDepthM: number,
 ): HTMLCanvasElement | null {
+  const rowMap = depthCanvasRowMap(meta); // #1254, same rows as buildDepthCanvas
   const canvas = document.createElement('canvas');
   canvas.width = meta.cols;
-  canvas.height = meta.rows;
+  canvas.height = rowMap.length;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
-  const image = ctx.createImageData(meta.cols, meta.rows);
+  const image = ctx.createImageData(meta.cols, rowMap.length);
   image.data.set(
     buildNavigabilityHatchImageData(
       new Uint8Array(buffer),
       meta.rows,
       meta.cols,
       safetyDepthM,
+      rowMap,
       hatchBandForZoom(map.getZoom()),
     ),
   );
@@ -304,7 +310,8 @@ function rebuildHatchCanvas(
   const canvas = source.getCanvas();
   const ctx = canvas.getContext('2d');
   if (!ctx) return; // no 2D backend (jsdom) — matches buildHatchCanvas's own guard
-  const image = ctx.createImageData(meta.cols, meta.rows);
+  const rowMap = depthCanvasRowMap(meta); // #1254, same rows as buildHatchCanvas
+  const image = ctx.createImageData(meta.cols, rowMap.length);
   // #599: same ordering rule as buildHatchCanvas — getZoom() sits behind both
   // bail-outs above, so jsdom (where the source never exists) never reaches it.
   image.data.set(
@@ -313,6 +320,7 @@ function rebuildHatchCanvas(
       meta.rows,
       meta.cols,
       safetyDepthM,
+      rowMap,
       hatchBandForZoom(map.getZoom()),
     ),
   );
@@ -401,13 +409,13 @@ function setupLayers(
   //
   // #492 review m9: this DOUBLES the depth overlay's retained memory —
   // arithmetic, not measured (this environment has no device/GPU profiler
-  // to read GL texture memory back from): the mask is 2200x2400 cells
-  // (mask.meta.json), so ONE full-resolution RGBA canvas backing store is
-  // 2200*2400*4 = 21.12 MB, and CanvasSource.prepare() uploads it to an
-  // equally-sized GL texture — ~42.2 MB total for this canvas, on top of
-  // buildDepthCanvas's identical ~42.2 MB for the absolute ramp, so ~84.5 MB
-  // retained for the depth overlay alone once both layers exist. Not
-  // verified against a real mid-range device (none available here); the
+  // to read GL texture memory back from): the canvas is 3025x3171 (the
+  // 3025x3120 mask, #295, with #1254's Mercator-spaced rows), so ONE RGBA
+  // canvas backing store is 3025*3171*4 = 38.37 MB, and CanvasSource.prepare()
+  // uploads it to an equally-sized GL texture — ~76.7 MB total for this
+  // canvas, on top of buildDepthCanvas's identical ~76.7 MB for the absolute
+  // ramp, so ~153 MB retained for the depth overlay alone once both layers
+  // exist. Not verified against a real mid-range device (none available here); the
   // e2e suite elsewhere exercises depth+AIS+route together without a crash,
   // which is weak evidence, not a memory profile. If this turns out to
   // matter, M8's screen-space fill-pattern alternative (the option #599 did
@@ -522,8 +530,8 @@ function setupLayers(
         type: 'symbol',
         source: SEAMARKS_SOURCE,
         layout: {
-          // ~1,794 points is dense enough that unculled icons would pile up
-          // at low zoom (unlike the 33 harbor markers). #144: the culling is
+          // ~2,900 points is dense enough that unculled icons would pile up
+          // at low zoom (unlike the 40 harbor markers). #144: the culling is
           // priority-ordered (symbol-sort-key) with a z>=12 tap-safety
           // overlap valve and a zoom size taper — expressions pinned in
           // seamarkGeoJson.test.ts, rationale on SEAMARKS_LAYOUT itself.
@@ -655,7 +663,7 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
   // `useLayoutEffect` running before paint, same as the `--sc-depth-
   // controls-height` write below.
   const [legendHidden, setLegendHidden] = useState(false);
-  // #7: default OFF — ~1,794 points is a dense specialist layer (vs. 33
+  // #7: default OFF — ~2,900 points is a dense specialist layer (vs. 40
   // harbor markers) that would clutter the map before the user opts in.
   const [seamarksVisible, setSeamarksVisible] = usePersistedToggle('sc-seamarks-visible', false);
   // #353 PR2: the seamark size/display-category controls live in

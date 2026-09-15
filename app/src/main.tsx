@@ -7,7 +7,7 @@ import App from './App.tsx';
 import './app.css';
 
 // Best-effort: protects saved plans (IndexedDB) and the offline storage
-// (~33 MB SW precache + up to ~11 MB glyph runtime cache, #28) from browser
+// (~40 MB SW precache + up to ~11 MB glyph runtime cache, #28) from browser
 // storage-pressure eviction. The browser may still deny the request (no
 // prompt on most desktop browsers, and it's not guaranteed even when
 // granted) — nothing here depends on it succeeding.
