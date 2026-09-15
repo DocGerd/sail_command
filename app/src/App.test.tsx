@@ -3040,6 +3040,15 @@ describe('toPlannerStatus (#53: relaxed-depth probe phase mapping)', () => {
       total: 2,
     });
   });
+
+  it("#1136: passes a second-pass 'routing' state's secondPass through", () => {
+    expect(
+      toPlannerStatus(
+        { phase: 'routing', sailId: 'genoa', index: 1, total: 2, secondPass: true },
+        t,
+      ),
+    ).toEqual({ phase: 'routing', sailId: 'genoa', index: 1, total: 2, secondPass: true });
+  });
 });
 
 // #64 phase 4 (§3.5): the plan-run error banner classifies an already-existing

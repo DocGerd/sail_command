@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  PASS2_BUDGET_MS,
   planRoute,
   planRouteWithRecord,
   salvagePassAdmitted,
   type Pass1Record,
+  type PlanDeadline,
   type TierRecord,
 } from './planRoute';
 import { solve, type SolveDeadline, type SolveFailureCause, type SolveParams } from './isochrone';
@@ -176,7 +178,7 @@ function request(settings: Settings): PlanRequest {
     boat: defaultBoatSnapshot(),
   };
 }
-function plan(settings: Settings, where: keyof typeof MASKS = 'open', deadline?: SolveDeadline) {
+function plan(settings: Settings, where: keyof typeof MASKS = 'open', deadline?: PlanDeadline) {
   const deps = testPlanDeps(MASKS[where], {
     genoa: TEST_POLAR,
     fock: FOCK,
@@ -564,8 +566,32 @@ describe('#1136 pass-2 return path', () => {
     const { result } = plan(MOTOR_OFF);
     expect(distanceOf(result, 'genoa')).toBe(101);
     expect(sailOf(result, 'fock')?.reason).toBe('calm-motor-off');
-    // The pass-2 budget-exhausted cause does not mark the comparison partial.
-    if (result.status === 'ok') expect(result.comparisonComplete).toBe(true);
+  });
+
+  it('comparisonComplete: false when a sail of the returned tier was cut by the budget in pass 2', () => {
+    script({
+      ...P1_REQ_BLOCKED,
+      'p2:req:c5:genoa': ok(121),
+      'p2:req:c5:fock': fail('budget-exhausted'),
+      'p2:req:none:genoa': fail('budget-exhausted'),
+      'p2:req:none:fock': fail('budget-exhausted'),
+    });
+    const { result } = plan(MOTOR_OFF);
+    expect(distanceOf(result, 'genoa')).toBe(121);
+    expect(result.status === 'ok' && result.comparisonComplete).toBe(false);
+  });
+
+  it("comparisonComplete: true when the returned tier's failed sail finished its pass-2 search", () => {
+    script({
+      ...P1_REQ_BLOCKED,
+      'p2:req:c5:genoa': ok(131),
+      'p2:req:c5:fock': fail('horizon-exceeded'),
+      'p2:req:none:genoa': fail('horizon-exceeded'),
+      'p2:req:none:fock': fail('horizon-exceeded'),
+    });
+    const { result } = plan(MOTOR_OFF);
+    expect(distanceOf(result, 'genoa')).toBe(131);
+    expect(result.status === 'ok' && result.comparisonComplete).toBe(true);
   });
 
   it('discard: pass 2 routing nothing returns pass 1 verbatim', () => {
@@ -612,5 +638,128 @@ describe('#1136 pass-2 return path', () => {
     ]);
     expect(distanceOf(result, 'genoa')).toBe(111);
     if (result.status === 'ok') expect(result.shallow?.usedDepthM).toBe(2.5);
+  });
+});
+
+describe('#1136 pass-2 cap (ruling of 2026-09-15, comment 5680650879)', () => {
+  // A fake clock: a live solve advances it by `costMs`; a solve entered with its
+  // deadline expired returns budget-exhausted at once, as `solve()` does.
+  function clocked(table: Record<string, { out: Out; costMs: number }>, sharedEndMs: number) {
+    let clockMs = 0;
+    const entries: string[] = [];
+    const shared: PlanDeadline = {
+      expired: () => clockMs >= sharedEndMs,
+      now: () => clockMs,
+    };
+    solveMock.mockImplementation((p: SolveParams) => {
+      const pass = p.salvage === true ? 'p2' : 'p1';
+      const comfort = p.comfortDepthM === undefined ? 'none' : `c${p.comfortDepthM}`;
+      const key = `${pass}:req:${comfort}:${p.polar.rig}`;
+      if (p.deadline?.expired() === true) {
+        entries.push(`${key}@${clockMs}:cut`);
+        return fail('budget-exhausted');
+      }
+      entries.push(`${key}@${clockMs}`);
+      const row = table[key];
+      if (row === undefined) throw new Error(`unscripted solve ${key}`);
+      clockMs += row.costMs;
+      return row.out;
+    });
+    return { shared, entries };
+  }
+  const P1_SLOW = {
+    'p1:req:c5:genoa': { out: fail('mask-blocked'), costMs: 25_000 },
+    'p1:req:c5:fock': { out: fail('mask-blocked'), costMs: 25_000 },
+    'p1:req:none:genoa': { out: fail('mask-blocked'), costMs: 25_000 },
+    'p1:req:none:fock': { out: fail('mask-blocked'), costMs: 25_000 },
+  };
+
+  it('stops pass 2 at 60 s after pass 2 starts while the shared budget has time left', () => {
+    const { shared, entries } = clocked(
+      {
+        ...P1_SLOW,
+        'p2:req:c5:genoa': { out: fail('horizon-exceeded'), costMs: 25_000 },
+        'p2:req:c5:fock': { out: fail('horizon-exceeded'), costMs: 25_000 },
+        'p2:req:none:genoa': { out: fail('horizon-exceeded'), costMs: 25_000 },
+        'p2:req:none:fock': { out: fail('horizon-exceeded'), costMs: 25_000 },
+      },
+      240_000,
+    );
+    const { result } = plan(MOTOR_OFF, 'open', shared);
+    expect(PASS2_BUDGET_MS).toBe(60_000);
+    // Pass 1 spent 100 s; pass 2 runs 75 s of solves and the fourth is cut at
+    // 175 s, 65 s before the shared budget ends.
+    expect(entries.slice(4)).toEqual([
+      'p2:req:c5:genoa@100000',
+      'p2:req:c5:fock@125000',
+      'p2:req:none:genoa@150000',
+      'p2:req:none:fock@175000:cut',
+    ]);
+    expect(result).toEqual({ status: 'error', reason: 'unreachable' });
+    // Pass 1 solves get the shared deadline; pass 2 solves a sub-deadline.
+    const deadlines = solveMock.mock.calls.map(([p]) => p.deadline);
+    expect(deadlines.slice(0, 4).every((d) => d === shared)).toBe(true);
+    expect(deadlines.slice(4).every((d) => d !== undefined && d !== shared)).toBe(true);
+  });
+
+  it('stops pass 2 when the shared budget ends before the cap', () => {
+    const { shared, entries } = clocked(
+      {
+        ...P1_SLOW,
+        'p2:req:c5:genoa': { out: fail('horizon-exceeded'), costMs: 25_000 },
+        'p2:req:c5:fock': { out: fail('horizon-exceeded'), costMs: 25_000 },
+      },
+      120_000,
+    );
+    const { result } = plan(MOTOR_OFF, 'open', shared);
+    expect(entries.slice(4)).toEqual([
+      'p2:req:c5:genoa@100000',
+      'p2:req:c5:fock@125000:cut',
+      'p2:req:none:genoa@125000:cut',
+      'p2:req:none:fock@125000:cut',
+    ]);
+    expect(result).toEqual({ status: 'error', reason: 'unreachable' });
+  });
+
+  it('a tier cut by the cap leaves the earlier routed pass-2 tier standing', () => {
+    const { shared } = clocked(
+      {
+        ...P1_SLOW,
+        'p2:req:c5:genoa': { out: ok(141), costMs: 25_000 },
+        'p2:req:c5:fock': { out: fail('horizon-exceeded'), costMs: 40_000 },
+      },
+      240_000,
+    );
+    const { result } = plan(MOTOR_OFF, 'open', shared);
+    expect(distanceOf(result, 'genoa')).toBe(141);
+    expect(result.status === 'ok' && result.comparisonComplete).toBe(true);
+  });
+
+  it('an unbudgeted plan gives pass 2 no deadline', () => {
+    script({ ...P1_REQ_BLOCKED, ...P2_REQ_NONE });
+    plan(MOTOR_OFF);
+    expect(solveMock.mock.calls.some(([p]) => 'deadline' in p)).toBe(false);
+  });
+});
+
+describe('#1136 second-pass progress', () => {
+  it('marks progress secondPass: true on pass-2 solves only', () => {
+    solveMock.mockImplementation((p: SolveParams) => {
+      p.onProgress?.({ tMs: 1, frontierSize: 1 });
+      return p.salvage === true ? fail('horizon-exceeded') : fail('mask-blocked');
+    });
+    const onProgress = vi.fn();
+    const deps = testPlanDeps(MASKS.open, { genoa: TEST_POLAR, fock: FOCK });
+    planRoute(request(MOTOR_OFF), uniformWindGrid(12, 0), deps, onProgress);
+    expect(onProgress.mock.calls).toEqual([
+      ['genoa', { tMs: 1, frontierSize: 1 }],
+      ['fock', { tMs: 1, frontierSize: 1 }],
+      ['genoa', { tMs: 1, frontierSize: 1 }],
+      ['fock', { tMs: 1, frontierSize: 1 }],
+      ['genoa', { tMs: 1, frontierSize: 1, secondPass: true }],
+      ['fock', { tMs: 1, frontierSize: 1, secondPass: true }],
+      ['genoa', { tMs: 1, frontierSize: 1, secondPass: true }],
+      ['fock', { tMs: 1, frontierSize: 1, secondPass: true }],
+    ]);
   });
 });

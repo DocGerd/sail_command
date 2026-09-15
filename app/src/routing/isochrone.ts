@@ -359,11 +359,8 @@ export function solve(p: SolveParams): SolveResult {
   const visited = new Map<string, VisitedStamp>(); // pruneKey → min cost + min maneuvers seen
   let blockedDeaths = 0;
   let calmDeaths = 0;
-  // #1136: `skipDominance` marks the current ring as a salvage pass. The death
-  // counters freeze at the first salvage, so a solve whose salvage pass also
-  // empties the frontier reports the cause of its first death (spike §5 hole 2).
+  // #1136: `skipDominance` marks the current ring as a salvage pass.
   let skipDominance = false;
-  let deathsFrozen = false;
 
   while (frontier.length > 0) {
     // #432 plan-level wall-clock budget. Checked FIRST in the ring, before
@@ -629,7 +626,7 @@ export function solve(p: SolveParams): SolveResult {
         produced++;
       }
 
-      if (produced === 0 && !deathsFrozen) {
+      if (produced === 0) {
         if (sawBlocked) blockedDeaths++;
         if (sawCalm && !sawBlocked) calmDeaths++;
       }
@@ -643,7 +640,6 @@ export function solve(p: SolveParams): SolveResult {
       // clock or reporting progress. A salvage pass that also empties the
       // frontier falls through and ends the solve.
       skipDominance = true;
-      deathsFrozen = true;
       continue;
     }
     if (next.length > maxFrontier) {

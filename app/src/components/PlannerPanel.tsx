@@ -64,7 +64,7 @@ export type TapTarget = 'origin' | 'destination' | 'via';
 export type PlannerStatus =
   | { phase: 'idle' }
   | { phase: 'fetching' }
-  | { phase: 'routing'; sailId: SailId; index: number; total: number }
+  | { phase: 'routing'; sailId: SailId; index: number; total: number; secondPass?: true }
   // #53: probing relaxed depth gates after an unreachable requested-depth solve
   | { phase: 'probing' }
   | { phase: 'error'; message: string };
@@ -725,11 +725,14 @@ export default function PlannerPanel({
     // off the PlannerStatus itself (usePlanFlow.ts derives them from
     // request.sailIds, the router's actual solve order), not a module
     // constant, so the index always matches which solve is really running.
-    statusText = t('planner.status.routingSail', {
-      index: planning.index,
-      total: planning.total,
-      sail: t(sailLabelKey(planning.sailId)),
-    });
+    statusText = t(
+      planning.secondPass ? 'planner.status.routingSailSecondPass' : 'planner.status.routingSail',
+      {
+        index: planning.index,
+        total: planning.total,
+        sail: t(sailLabelKey(planning.sailId)),
+      },
+    );
   else if (planning.phase === 'probing') statusText = t('planner.status.probing');
   else if (planning.phase === 'idle') {
     // #301 originally folded the dirty-form sentence in here unconditionally

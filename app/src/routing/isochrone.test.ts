@@ -299,15 +299,6 @@ describe('#243 depth comfort preference preserves true wall-clock time and geome
   });
 });
 
-// #243 §D.4's residual risk, demonstrated with the REAL solver (no mocks):
-// "the reachability argument is not a proof — the fallback ladder is."
-// Reusing the SAME test-only maxFrontier injection #67 established (a
-// deliberately tiny cap to stress the search's approximate frontier
-// pruning) — the depth comfort preference can change which candidate wins a
-// prune-cell bucket, and under a constrained frontier that can starve the
-// only surviving path to a still-reachable destination. This is a search
-// CAPACITY artifact, not a data property: the same mask solves fine under
-// EITHER preference state at the default (30 000) cap.
 describe('#1136 salvage (SolveParams.salvage)', () => {
   it('leaves a solve that routes unchanged: salvage fires only on a death with no best', () => {
     expect(solve(params({ salvage: true }))).toEqual(solve(params({})));
@@ -315,8 +306,14 @@ describe('#1136 salvage (SolveParams.salvage)', () => {
 
   it('a salvage pass that also empties the frontier ends the solve with the unsalvaged cause', () => {
     // Every edge is calm: ring 1 dies, the salvage pass dies identically, and
-    // salvage never fires twice in a row, so the solve terminates.
-    const calm = { wind: new WindField(uniformWindGrid(0.1, 0)) };
+    // salvage never fires twice in a row, so the solve terminates. The counting
+    // deadline turns a regression of that guard (an endless synchronous loop,
+    // which vitest's timeout cannot interrupt) into a `budget-exhausted` red.
+    let reads = 0;
+    const calm = {
+      wind: new WindField(uniformWindGrid(0.1, 0)),
+      deadline: { expired: () => ++reads > 10_000 },
+    };
     expect(solve(params({ ...calm, salvage: true }))).toEqual({
       status: 'no-route',
       cause: 'calm-without-motor',
@@ -339,6 +336,15 @@ describe('#1136 salvage (SolveParams.salvage)', () => {
   });
 });
 
+// #243 §D.4's residual risk, demonstrated with the REAL solver (no mocks):
+// "the reachability argument is not a proof — the fallback ladder is."
+// Reusing the SAME test-only maxFrontier injection #67 established (a
+// deliberately tiny cap to stress the search's approximate frontier
+// pruning) — the depth comfort preference can change which candidate wins a
+// prune-cell bucket, and under a constrained frontier that can starve the
+// only surviving path to a still-reachable destination. This is a search
+// CAPACITY artifact, not a data property: the same mask solves fine under
+// EITHER preference state at the default (30 000) cap.
 describe('#243 search-capacity effect (why the tier-ladder fallback is mandatory, not decorative)', () => {
   const META: MaskMeta = { west: 9.9, south: 54.7, east: 10.1, north: 54.8, cols: 200, rows: 100 };
   const cell = (r: number, c: number) => ({

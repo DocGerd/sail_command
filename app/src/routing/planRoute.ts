@@ -40,7 +40,26 @@ export interface PlanDeps {
   mask: NavMask;
 }
 
-export type RigProgress = (sailId: SailId, info: { tMs: number; frontierSize: number }) => void;
+/** `secondPass` is present (true) only for #1136 pass-2 solves. */
+export type RigProgress = (
+  sailId: SailId,
+  info: { tMs: number; frontierSize: number; secondPass?: true },
+) => void;
+
+/**
+ * #1136: the plan deadline, plus an optional clock for pass 2's sub-deadline.
+ * `now` defaults to `Date.now`; tests inject a fake.
+ */
+export interface PlanDeadline extends SolveDeadline {
+  now?: () => number;
+}
+
+/**
+ * #1136 ruling (2026-09-15, comment 5680650879 on #1136): pass 2 may use at
+ * most min(60 s, remaining shared budget). Applied only to a budgeted plan: an
+ * unbudgeted `planRoute()` stays uncapped, like the plan budget itself.
+ */
+export const PASS2_BUDGET_MS = 60_000;
 
 /**
  * #282: the ONE translation from the solver's internal control vocabulary
@@ -72,6 +91,11 @@ interface RunOut {
   rigResult: RigResult | null;
   /** Null exactly when `rigResult` is non-null. Never the user-facing label. */
   cause: SolveFailureCause | null;
+}
+
+/** #1136: a pass-2 run — salvage on, under pass 2's sub-deadline. */
+interface Pass2 {
+  deadline: SolveDeadline | undefined;
 }
 
 /** The user-facing label for a RunOut, or null when the rig actually solved. */
@@ -390,7 +414,7 @@ export function planRoute(
   deps: PlanDeps,
   onProgress?: RigProgress,
   onProbe?: ProbeProgress,
-  deadline?: SolveDeadline,
+  deadline?: PlanDeadline,
 ): PlanResult {
   return planRouteWithRecord(req, windGrid, deps, onProgress, onProbe, deadline).result;
 }
@@ -402,7 +426,7 @@ export function planRouteWithRecord(
   deps: PlanDeps,
   onProgress?: RigProgress,
   onProbe?: ProbeProgress,
-  deadline?: SolveDeadline,
+  deadline?: PlanDeadline,
 ): { result: PlanResult; record: Pass1Record } {
   const record: Pass1Record = { tiers: [], cause: null };
   const result = runLadder(record, req, windGrid, deps, onProgress, onProbe, deadline);
@@ -416,7 +440,7 @@ function runLadder(
   deps: PlanDeps,
   onProgress: RigProgress | undefined,
   onProbe: ProbeProgress | undefined,
-  deadline: SolveDeadline | undefined,
+  deadline: PlanDeadline | undefined,
 ): PlanResult {
   const { mask } = deps;
   const s = req.settings;
@@ -489,9 +513,10 @@ function runLadder(
     settings: Settings,
     gate: DepthGate,
     comfort: number | undefined,
-    salvage: boolean,
+    pass2: Pass2 | null,
   ): RunOut => {
     const polar = new Polar(table, settings.performanceFactor);
+    const solveDeadline = pass2 === null ? deadline : pass2.deadline;
     const legs: Leg[] = [];
     // Segments are solved sequentially, each departing at the previous
     // segment's ETA. Maneuver state (board, tack/gybe count) is v1-simplified
@@ -508,14 +533,16 @@ function runLadder(
         mask,
         settings,
         gate,
-        onProgress: (info) => onProgress?.(sailId, info),
+        onProgress: (info) =>
+          onProgress?.(sailId, pass2 === null ? info : { ...info, secondPass: true }),
         ...(comfort !== undefined ? { comfortDepthM: comfort } : {}),
         // exactOptionalPropertyTypes: omit the key entirely when unbudgeted,
         // never pass `{ deadline: undefined }`. The SAME object goes to every
-        // solve of this plan — see the `deadline` parameter's doc comment.
-        ...(deadline !== undefined ? { deadline } : {}),
+        // pass-1 solve of this plan — see the `deadline` parameter's doc
+        // comment — and pass 2's sub-deadline to every pass-2 solve.
+        ...(solveDeadline !== undefined ? { deadline: solveDeadline } : {}),
         // #1136: key omitted in pass 1, so its SolveParams are unchanged.
-        ...(salvage ? { salvage: true } : {}),
+        ...(pass2 !== null ? { salvage: true } : {}),
       });
       // #282: the solver's own cause, taken verbatim — no label ever exists on
       // this path. #432's 'budget-exhausted' needs no branch of its own here:
@@ -555,9 +582,9 @@ function runLadder(
     settings: Settings,
     gate: DepthGate,
     comfort: number | undefined,
-    salvage = false,
+    pass2: Pass2 | null = null,
   ): RunOut[] =>
-    req.sailIds.map((sailId) => run(sailId, polarFor(sailId), settings, gate, comfort, salvage));
+    req.sailIds.map((sailId) => run(sailId, polarFor(sailId), settings, gate, comfort, pass2));
 
   /**
    * #553 / spec §N.4: a comparison involving a tier-C ('estimated') sail is
@@ -601,7 +628,11 @@ function runLadder(
     return sail === undefined || sail.polarProvenance.tier === 'estimated';
   });
 
-  const assemble = (sails: readonly RunOut[], shallow: ShallowInfo | null): PlanResult => {
+  const assemble = (
+    sails: readonly RunOut[],
+    shallow: ShallowInfo | null,
+    budgetCut = sails.some((out) => out.cause === 'budget-exhausted'),
+  ): PlanResult => {
     // #259: `recommended` stays a plain SailId for consumers that only ever
     // need a single pick (tab-seeding in AppState, the saved-plan chip in
     // PlansList, recommendedResult()'s invariant) — it always names a sail
@@ -669,8 +700,9 @@ function runLadder(
       // FINISHED (see combineFailureCause's precedence comment).
       //
       // Reads the internal cause, never `SailResult.reason` — #282: no code
-      // in this file may branch on a user-facing label.
-      comparisonComplete: sails.every((out) => out.cause !== 'budget-exhausted'),
+      // in this file may branch on a user-facing label. #1136 pass 2 passes
+      // `budgetCut` from its unmasked causes.
+      comparisonComplete: !budgetCut,
       rigRecommendation,
       snappedOrigin: origin,
       snappedDestination: destination,
@@ -713,14 +745,24 @@ function runLadder(
   // at pass 1's gates, never reading a pass-2 cause.
   const routed = (r: RunOut): boolean => r.rigResult !== null;
   // A failed pass-2 sail carries the cause pass 1 recorded for that sail and
-  // tier, so no pass-2 cause reaches `noRouteLabel` or `comparisonComplete`.
-  // Every sail of an admitted plan failed in every recorded tier, so the
-  // `record.cause` fallback is defensive.
+  // tier, so no pass-2 cause reaches `noRouteLabel`. `comparisonComplete` is
+  // the exception (ruling, comment 5680650879): false when a pass-2 solve of
+  // the returned tier was cut by the budget. Every sail of an admitted plan
+  // failed in every recorded tier, so the `record.cause` fallback is defensive.
   const withPass1Causes = (sails: RunOut[], tier: TierRecord): RunOut[] =>
     sails.map((r, i) =>
       routed(r) ? r : { ...r, cause: tier.causes[i] ?? record.cause ?? 'mask-blocked' },
     );
+  // Started when pass 2 starts; expires with the shared deadline or after
+  // PASS2_BUDGET_MS, whichever is first.
+  const pass2Deadline = (): SolveDeadline | undefined => {
+    if (deadline === undefined) return undefined;
+    const now = deadline.now ?? (() => Date.now());
+    const startMs = now();
+    return { expired: () => deadline.expired() || now() - startMs >= PASS2_BUDGET_MS };
+  };
   const replayWithSalvage = (): PlanResult | null => {
+    const pass2: Pass2 = { deadline: pass2Deadline() };
     const tiers = record.tiers;
     for (let i = 0; i < tiers.length; i++) {
       const first = tiers[i];
@@ -733,13 +775,14 @@ function runLadder(
           tier.usedDepthM === null
             ? null
             : flagShallowLegs(mask, masked, s.safetyDepthM, tier.usedDepthM);
-        return assemble(masked, shallow);
+        const budgetCut = sails.some((r) => r.cause === 'budget-exhausted');
+        return assemble(masked, shallow, budgetCut);
       };
-      const firstRun = runAll(s, first.gate, first.comfortDepthM, true);
+      const firstRun = runAll(s, first.gate, first.comfortDepthM, pass2);
       // Retry entry: pass 1 ran the retry tier and a sail still has no result.
       const retryRun =
         retryTier !== undefined && !firstRun.every(routed)
-          ? runAll(s, retryTier.gate, retryTier.comfortDepthM, true)
+          ? runAll(s, retryTier.gate, retryTier.comfortDepthM, pass2)
           : null;
       // As in pass 1: the retry wins if it routed any sail, else the first tier
       // if it did. A budget-exhausted retry routes nothing, so the first tier

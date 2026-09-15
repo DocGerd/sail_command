@@ -445,6 +445,26 @@ describe('usePlanFlow', () => {
       total: 2,
     });
 
+    // #1136: a pass-2 progress message marks the readout as the second pass.
+    now += 150;
+    act(() => {
+      w.emit({
+        type: 'progress',
+        id: planMsg.id,
+        sailId: 'genoa',
+        tMs: 100,
+        frontierSize: 1,
+        secondPass: true,
+      });
+    });
+    expect(result.current.planning).toEqual({
+      phase: 'routing',
+      sailId: 'genoa',
+      index: 1,
+      total: 2,
+      secondPass: true,
+    });
+
     await act(async () => {
       w.emit({ type: 'result', id: planMsg.id, result: OK_RESULT });
       await runPromise;
@@ -1337,7 +1357,10 @@ describe('#1164 T6: region pinning after a successful save', () => {
 
   it('a rejecting pin neither fails the run nor unsets the saved plan', async () => {
     // createPinAfterSave pins only under a controlling SW; jsdom has none.
-    Object.defineProperty(navigator, 'serviceWorker', { value: { controller: {} }, configurable: true });
+    Object.defineProperty(navigator, 'serviceWorker', {
+      value: { controller: {} },
+      configurable: true,
+    });
     onTestFinished(() => {
       Reflect.deleteProperty(navigator, 'serviceWorker');
     });

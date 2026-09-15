@@ -2,7 +2,7 @@ import type { PlanRequest, PlanResult, SailId, WindGrid } from '../types';
 import type { WorkerRequest, WorkerResponse } from './protocol';
 import { BOATS, polarKey, type BoatId } from '../data/boats';
 
-type ProgressCb = (sailId: SailId, tMs: number, frontierSize: number) => void;
+type ProgressCb = (sailId: SailId, tMs: number, frontierSize: number, secondPass: boolean) => void;
 // #53 relaxed-depth probe phase (one call per mask-connectivity probe). Not
 // throttled like ProgressCb: a whole search is at most a handful of probes.
 type ProbeCb = (probeDepthM: number, done: number, total: number) => void;
@@ -284,7 +284,9 @@ export class RoutingClient {
       const now = Date.now();
       if (last !== undefined && now - last < 100) return;
       this.lastProgressAt.set(key, now);
-      this.pending.get(msg.id)?.onProgress?.(msg.sailId, msg.tMs, msg.frontierSize);
+      this.pending
+        .get(msg.id)
+        ?.onProgress?.(msg.sailId, msg.tMs, msg.frontierSize, msg.secondPass === true);
     } else if (msg.type === 'probe') {
       this.pending.get(msg.id)?.onProbe?.(msg.probeDepthM, msg.done, msg.total);
     } else if (msg.type === 'result') {
