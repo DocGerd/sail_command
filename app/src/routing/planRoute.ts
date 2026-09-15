@@ -65,6 +65,7 @@ export const NO_ROUTE_LABEL_OF_CAUSE = {
   'calm-without-motor': 'calm-motor-off',
   'horizon-exceeded': 'beyond-horizon',
   'budget-exhausted': 'search-budget-exceeded',
+  'forced-sail-calm': 'calm-sail-only',
 } as const satisfies Record<SolveFailureCause, NoRouteReason>;
 
 interface RunOut {
@@ -119,6 +120,9 @@ export function combineFailureCause(
   // during the other.
   if (a === 'budget-exhausted' || b === 'budget-exhausted') return 'budget-exhausted';
   if (a === 'horizon-exceeded' || b === 'horizon-exceeded') return 'horizon-exceeded';
+  // #885: an actionable constraint the captain set, so it ranks above the
+  // motor-off calm (whose remedy it would otherwise hide).
+  if (a === 'forced-sail-calm' || b === 'forced-sail-calm') return 'forced-sail-calm';
   if (a === 'calm-without-motor' || b === 'calm-without-motor') return 'calm-without-motor';
   return 'mask-blocked';
 }
@@ -302,6 +306,12 @@ function flagShallowLegs(
   return minGateDepthM === Infinity ? null : { requestedDepthM, usedDepthM, minGateDepthM };
 }
 
+/** #885 R5: marks a leg solved inside a captain-forced segment. */
+function markForced(leg: Leg): Leg {
+  // Narrow on kind (never cast) so each variant's spread keeps its own shape.
+  return leg.kind === 'sail' ? { ...leg, forced: true } : { ...leg, forced: true };
+}
+
 /**
  * #432: the plan-level wall-clock budget, shared by every `solve()` this
  * plan runs (up to 4 tiers x 2 rigs x N waypoint segments). ONE deadline
@@ -329,6 +339,20 @@ export function planRoute(
 ): PlanResult {
   const { mask } = deps;
   const s = req.settings;
+  // #885 §3.3: validated before any snap or solve. The R4 guarantee is this
+  // refusal, not the UI's disabled option.
+  const segmentModes = req.segmentModes;
+  if (segmentModes !== undefined) {
+    if (
+      segmentModes.length !== req.viaPoints.length + 1 ||
+      segmentModes.some((m) => m !== null && m !== 'motor' && m !== 'sail')
+    ) {
+      return { status: 'error', reason: 'segment-modes-invalid' };
+    }
+    if (!s.motorEnabled && segmentModes.includes('motor')) {
+      return { status: 'error', reason: 'segment-mode-conflict' };
+    }
+  }
   const origin = mask.snapToNavigable(req.origin, s.safetyDepthM);
   if (!origin) return { status: 'error', reason: 'snap-failed-origin' };
   const destination = mask.snapToNavigable(req.destination, s.safetyDepthM);
@@ -407,6 +431,7 @@ export function planRoute(
     // charged a maneuver penalty.
     let departureMs = req.departureMs;
     for (let i = 0; i < waypoints.length - 1; i++) {
+      const forcedKind = segmentModes?.[i] ?? null;
       const res = solve({
         origin: waypoints[i],
         destination: waypoints[i + 1],
@@ -422,6 +447,8 @@ export function planRoute(
         // never pass `{ deadline: undefined }`. The SAME object goes to every
         // solve of this plan — see the `deadline` parameter's doc comment.
         ...(deadline !== undefined ? { deadline } : {}),
+        // #885: absent key when the solver decides — the byte-identical path.
+        ...(forcedKind !== null ? { forcedKind } : {}),
       });
       // #282: the solver's own cause, taken verbatim — no label ever exists on
       // this path. #432's 'budget-exhausted' needs no branch of its own here:
@@ -431,7 +458,9 @@ export function planRoute(
       if (res.status !== 'ok') return { sailId, rigResult: null, cause: res.cause };
       // #452 graft 5: the merge pass re-validates against the SAME gate this
       // segment solved at — never a route-wide scalar.
-      legs.push(...mergeCollinearLegs(res.legs, mask, wind, gate, comfort));
+      const merged = mergeCollinearLegs(res.legs, mask, wind, gate, comfort);
+      // #885 R5: marked after the merge, which never crosses a via joint.
+      legs.push(...(forcedKind !== null ? merged.map(markForced) : merged));
       departureMs = res.etaMs;
     }
     const etaMs = departureMs;

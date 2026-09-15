@@ -15,7 +15,7 @@ lets the captain state the mode for a stretch of the passage directly.
 |---|---|---|
 | R1 | Hard constraint or preference? | **Hard, both directions.** Forced motor plans motor only; forced sail never motors. |
 | R2 | Unit of the override | **The waypoint segment** (origin→via, via→via, via→destination). A `Leg` is solver output and is not addressable before planning. |
-| R3 | Does it apply to both rig solves? | **Yes, to every requested sail.** Forced-motor segments use a **rig-independent heading fan** (§3.2). |
+| R3 | Does it apply to both rig solves? | **Yes, to every requested sail.** |
 | R4 | Forced motor while `settings.motorEnabled` is false | **Rejected** (enforcement: §3.3, §6). |
 | R5 | Mark forced legs in the result | **Yes**, optional `forced` marker on legs. |
 | R6 | Via edits | Structural edits **clear** the affected overrides; inserting a via **inside** a forced segment copies its mode to both halves; live reroute drops all overrides with the vias, disclosed. |
@@ -116,8 +116,10 @@ The length check is only safe once every producer keeps the invariant (§5.2).
 - One sail failing on a forced segment while the other routes is handled by
   `assemble` unchanged.
 - Disclosed residual: the death heuristic can still classify a forced-sail calm
-  as mask-blocked (#264's incidental finding). The new cause narrows the
-  "impossible constraint vs blocked mask" ambiguity; it does not close it.
+  as mask-blocked (#264's incidental finding), and forced-sail segments inherit
+  #1136: motor-off solves can die on connected water and report `mask-blocked`,
+  measured at TWS 8. The new cause narrows the "impossible constraint vs
+  blocked mask" ambiguity; it does not close it.
 
 ## 5. Persistence and via edits
 
@@ -125,6 +127,8 @@ The length check is only safe once every producer keeps the invariant (§5.2).
 
 - Absent `segmentModes` reads as no overrides; not a breaking change, no
   migration machinery.
+- The older-build disclosures below assume `PLAN_SCHEMA_VERSION` is not
+  bumped: `migratePlan` refuses a record with a newer `schemaVersion`.
 - `migratePlan.ts:migrateRequest` spreads the stored request, so a new
   top-level field would pass through unvalidated. Add a `normaliseSegmentModes`:
   absent → omit; malformed or wrong length → refuse the record (fail closed,
@@ -143,7 +147,9 @@ The length check is only safe once every producer keeps the invariant (§5.2).
 
 Draft modes live in `App.tsx` as `draftSegmentModes`, beside `draftViaPoints`.
 Via-mutation sites and their rules:
-- appends (`handleMapTap`'s via branch, `handleAddViaByCoord`, `insertViaNearestOrAppend`'s fallback) insert into the last segment, so they copy its mode to both halves (R6);
+- appends (`handleMapTap`'s via branch, `handleAddViaByCoord`,
+  `insertViaNearestOrAppend`'s fallback) split the last segment by index; this
+  spec applies R6's insertion rule to them, so they copy its mode to both halves;
 - insertion inside a segment copies the split segment's mode to both halves
   (R6): `lib/viaInsertion.ts:nearestViaInsertIndex` (via
   `App.tsx:insertViaNearestOrAppend`) and `App.tsx:handleInsertViaAfter`
@@ -170,7 +176,7 @@ Via-mutation sites and their rules:
 - `state/reroute.ts` drops `segmentModes` with the vias (R6): its request is a
   fresh literal.
 
-Carried by spread, no edit: `useDepartureConfirm`, `DepartureCompare`'s `base`.
+Carried by spread, no `segmentModes` edit: `useDepartureConfirm`, `DepartureCompare`'s `base`.
 
 ## 6. UI
 
@@ -203,11 +209,11 @@ Carried by spread, no edit: `useDepartureConfirm`, `DepartureCompare`'s `base`.
 - #354's reproduction routes (`docs/spikes/354-mode-churn.md` §3.1) are never cited as fix evidence (R7).
 - **Persistence:** `segmentModes` and `forced` round-trip through `migratePlan`;
   a wrong-length record is refused.
-- **Mutation checks:** delete the forced-motor branch → the real-mask test reds;
+- **Mutation checks:** delete the forced-motor branch → the real-mask test reds, under a wind where the unforced plan sails part of that segment;
   drop `normaliseSegmentModes` → the wrong-length refusal test reds (the
   round-trip test stays green: `migrateRequest`'s spread already carries the
   field, §5.1); admit the new cause in `depthRelaxationMayHelp` → its truth
-  table reds. Run each at BASE as well.
+  table reds.
 - **Sweep:** `isochrone.ts` and `planRoute.ts` change, so the #282 sweep is owed
   — BASE double-run plus HEAD, detached, per `app/sweep/README.md`. Every arm
   plans with `viaPoints: []`, so it proves only that the override-absent path is

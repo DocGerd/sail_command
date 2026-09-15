@@ -55,6 +55,10 @@ const EXPECTED: Record<SolveFailureCause, { comfortRetry: boolean; depthRelaxati
   'horizon-exceeded': { comfortRetry: true, depthRelaxation: false },
   'calm-without-motor': { comfortRetry: false, depthRelaxation: false },
   'budget-exhausted': { comfortRetry: false, depthRelaxation: false },
+  // #885: a forced-sail calm is a wind fact under a constraint the captain set;
+  // neither a preference-off retry nor a shallower gate makes the air move, so
+  // it must not burn tiers 2-4.
+  'forced-sail-calm': { comfortRetry: false, depthRelaxation: false },
 };
 
 // The user-facing label each cause carries today. Pinned so that a change to
@@ -73,6 +77,8 @@ const EXPECTED_LABELS: Record<SolveFailureCause, string> = {
   // NO_ROUTE_LABEL_OF_CAUSE, and the pre-relaxation budget check nearby
   // reaches it through the CAUSE key rather than by naming the string.
   'budget-exhausted': 'search-budget-exceeded',
+  // #885: spelled unlike 'calm-motor-off' so the two calm labels stay distinct.
+  'forced-sail-calm': 'calm-sail-only',
 };
 
 describe('#282: retry gates read an internal cause, never the user-facing reason', () => {
@@ -257,13 +263,13 @@ describe('#282 structural guard: the guard\u2019s own primitives', () => {
     expect([...SOLVER_CAUSES].sort(), '#282 guard: SOLVER_CAUSES lost a cause').toEqual(
       Object.keys(EXPECTED).sort(),
     );
-    // #432: 3 -> 4 for 'budget-exhausted'. Deliberately still a hand-written
+    // #432: 3 -> 4 for 'budget-exhausted'; #885: 4 -> 5 for 'forced-sail-calm'. Deliberately still a hand-written
     // LITERAL and not `Object.keys(EXPECTED).length`: SOLVER_CAUSES IS
     // `Object.keys(EXPECTED)`, so the comparison just above is a tautology and
     // this literal is the only half of the row carrying information — it is
     // what catches a cause being dropped from the type and the table TOGETHER.
     // Deriving it would make the whole row vacuous.
-    expect(SOLVER_CAUSES.length, '#282 guard: the cause union should have 4 members').toBe(4);
+    expect(SOLVER_CAUSES.length, '#282 guard: the cause union should have 5 members').toBe(5);
   });
 
   it("the label detector recognises all three of TypeScript's quote forms", () => {

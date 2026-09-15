@@ -172,12 +172,14 @@ describe('#432 solve(): the plan-level wall-clock budget', () => {
 //   budget-exhausted   the search did not finish — we do not know, and must
 //                      not report a finished sibling's verdict as fact
 //   > horizon-exceeded change departure / refresh forecast
+//   > forced-sail-calm unmark the sail-only segment (#885)
 //   > calm-without-motor  enable the motor
 //   > mask-blocked     nothing the user can change; also the both-null default
 const B = 'budget-exhausted';
 const H = 'horizon-exceeded';
 const C = 'calm-without-motor';
 const M = 'mask-blocked';
+const F = 'forced-sail-calm';
 
 const PRECEDENCE: ReadonlyArray<[SolveFailureCause | null, SolveFailureCause | null, string]> = [
   // both null -> the mask-level default (pre-#432 behaviour, unchanged)
@@ -210,6 +212,18 @@ const PRECEDENCE: ReadonlyArray<[SolveFailureCause | null, SolveFailureCause | n
   [C, B, B],
   [B, H, B],
   [H, B, B],
+  // #885: forced-sail-calm sits below horizon and budget, above calm and mask
+  [null, F, F],
+  [F, null, F],
+  [F, F, F],
+  [F, M, F],
+  [M, F, F],
+  [F, C, F],
+  [C, F, F],
+  [F, H, H],
+  [H, F, H],
+  [F, B, B],
+  [B, F, B],
 ];
 
 describe('#432/#453 combineFailureCause precedence', () => {
@@ -218,7 +232,7 @@ describe('#432/#453 combineFailureCause precedence', () => {
   });
 
   it('is symmetric in its two arguments', () => {
-    const all: (SolveFailureCause | null)[] = [null, M, C, H, B];
+    const all: (SolveFailureCause | null)[] = [null, M, C, H, B, F];
     for (const a of all) {
       for (const b of all) {
         expect(
@@ -229,13 +243,13 @@ describe('#432/#453 combineFailureCause precedence', () => {
     }
   });
 
-  it('the table covers every ordered pair over the four causes plus null', () => {
+  it('the table covers every ordered pair over the five causes plus null', () => {
     // Fails closed: a shrunken PRECEDENCE table would silently stop testing
     // the arm this describe exists for, the SOLVER_LABELS failure mode one
     // level up (PR #411).
-    expect(PRECEDENCE.length, 'PRECEDENCE must cover all 5x5 ordered pairs').toBe(25);
+    expect(PRECEDENCE.length, 'PRECEDENCE must cover all 6x6 ordered pairs').toBe(36);
     const seen = new Set(PRECEDENCE.map(([a, b]) => `${a}|${b}`));
-    expect(seen.size, 'PRECEDENCE contains a duplicate pair').toBe(25);
+    expect(seen.size, 'PRECEDENCE contains a duplicate pair').toBe(36);
   });
 });
 
@@ -255,7 +269,7 @@ describe('#54 combineAllCauses', () => {
     expect(combineAllCauses([runOut(a), runOut(b)])).toBe(expected);
   });
 
-  it.each<SolveFailureCause>([M, C, H, B])(
+  it.each<SolveFailureCause>([M, C, H, B, F])(
     'N=1 returns the single sail’s own cause (%s)',
     (cause) => {
       expect(combineAllCauses([runOut(cause)])).toBe(cause);

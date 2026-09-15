@@ -230,4 +230,17 @@ describe('recalcRequest (#114 seed-from-plan)', () => {
     expect(seeded.boat).not.toBe(plan.request.boat);
     expect(seeded.boat.sails[0]).not.toBe(plan.request.boat.sails[0]);
   });
+
+  it('#885: copies segmentModes, never aliasing the saved array; absent stays absent', () => {
+    const plan = makePlan();
+    expect('segmentModes' in recalcRequest(plan, 1)).toBe(false);
+    const modes = plan.request.viaPoints.map(() => null);
+    const withModes: Plan = {
+      ...plan,
+      request: { ...plan.request, segmentModes: [...modes, 'motor'] },
+    };
+    const seeded = recalcRequest(withModes, 1);
+    expect(seeded.segmentModes).toEqual(withModes.request.segmentModes);
+    expect(seeded.segmentModes).not.toBe(withModes.request.segmentModes);
+  });
 });
