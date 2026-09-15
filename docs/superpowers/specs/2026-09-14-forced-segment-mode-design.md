@@ -62,7 +62,9 @@ mask-only and stay mode-agnostic.
   from a **fixed heading fan plus the direct bearing**, independent of
   `polar.beatAngleDeg`/`gybeAngleDeg` (meaningless with no sail up). The fan's
   spacing is an implementation choice; the PR must report its candidate count
-  against today's per-node candidate set (`mags` in `solve`, motor enabled).
+  against today's per-node candidate set (`twas` in `solve`, motor enabled).
+  Implemented: `FORCED_MOTOR_HEADINGS` (10°) is 36 headings plus the direct
+  bearing, at most 37, vs `twas` at most 39 (PR #1244).
 - Rig independence claimed here is polar independence. Forced-motor geometry does not read the clock except at the forecast horizon, so both rigs should produce identical geometry up to floating-point near-ties; §7 measures it and a mismatch is a finding.
 - Motor turns stay uncharged (motor-decision spec §10). The #264 justification
   for motor weaving (sail-locked heading bands) does not exist inside an
@@ -74,20 +76,31 @@ mask-only and stay mode-agnostic.
 - Via-joint maneuver-state reset and per-segment `mergeCollinearLegs` are
   unchanged; merging never crosses a joint, so a forced span never merges into a
   neighbour.
-- Every leg solved in a forced segment carries `forced: true`.
+- Every leg solved in a forced segment carries `forced: true`, set by
+  `planRoute.ts:markForced` in `run` after `mergeCollinearLegs`.
 
 ### 3.3 Pre-solve validation
 
 `planRoute` returns a typed error, with no solve, when:
 - any entry is `'motor'` and `settings.motorEnabled` is false (label
   `segment-mode-conflict`), or
-- `segmentModes.length !== viaPoints.length + 1`.
+- `segmentModes.length !== viaPoints.length + 1`, or an entry is not
+  `null`/`'motor'`/`'sail'` (label `segment-modes-invalid`).
 
-That rejection is the R4 guarantee. The UI additionally shows the conflict on
-the segment control while the motor is off (§6), which covers the
-settings-first order: mark a segment motor, disable the motor, then Plan.
+That rejection is the R4 guarantee. Intake (`state/replan.ts:dedupeRequestVias`,
+in `usePlanFlow.run` and `replanWithVias`) also refuses the R4 conflict and a
+length mismatch before the wind fetch; `planRoute` keeps its own checks.
+`App.tsx:handlePlan` shows no "waypoint skipped" banner beside an intake
+refusal. The UI additionally shows the conflict on the segment control while
+the motor is off (§6), which covers the settings-first order: mark a segment
+motor, disable the motor, then Plan.
 
 The length check is only safe once every producer keeps the invariant (§5.2).
+
+Each label needs a `NO_ROUTE_MESSAGE_KEY` entry and de + en copy.
+`error.noRoute.segmentModeConflict` names both remedies: enable the motor under
+Boat › Propulsion, or change the segment. `segment-modes-invalid`'s copy is an
+internal-state message: a user reaches it only through a producer defect.
 
 ## 4. Failure modes
 
@@ -102,6 +115,10 @@ The length check is only safe once every producer keeps the invariant (§5.2).
   `calm-without-motor`.
 - Copy names the real remedy: "Too little wind to sail the segment you marked
   sail-only. Unmark it or choose another departure." (de + en).
+- `noRouteMessageKey` selects `error.noRoute.calmSailOnlyMotorOff` when
+  `settings.motorEnabled` is false: "Too little wind to sail the segment you
+  marked sail-only. Choose another departure, or enable the motor and unmark the
+  segment." (de + en). Unmarking alone cannot help while the motor is off.
 - A plan whose request carries a forced-sail segment and fails
   `horizon-exceeded` also names "unmark the sail-only segment" in its remedy.
   The label stays `beyond-horizon` (#282: labels are a function of the cause);
@@ -118,8 +135,10 @@ The length check is only safe once every producer keeps the invariant (§5.2).
 - Disclosed residual: the death heuristic can still classify a forced-sail calm
   as mask-blocked (#264's incidental finding), and forced-sail segments inherit
   #1136: motor-off solves can die on connected water and report `mask-blocked`,
-  measured at TWS 8. The new cause narrows the "impossible constraint vs
-  blocked mask" ambiguity; it does not close it.
+  measured at TWS 8. Once #1243 lands, its salvage admission
+  (`salvagePassAdmitted`, at 3c5e660) reads the plan-level `motorEnabled`, so a
+  forced-sail segment in a motor-ON plan is not salvaged. The new cause narrows
+  the "impossible constraint vs blocked mask" ambiguity; it does not close it.
 
 ## 5. Persistence and via edits
 
@@ -161,18 +180,27 @@ Via-mutation sites and their rules:
 - the plan-sync effect loads draft modes from `plan.request` under the same #660
   guard, and `pendingFormBaselineRef` snapshots them;
 - `handleImportRoute` resets draft modes to all-`null`;
-- `handlePlan`'s `usePlanFlow` `run({ … })` request literal carries them;
+- `handlePlan`'s `usePlanFlow` `run({ … })` request literal carries them, and
+  omits the key when every entry is `null`
+  (`lib/viaInsertion.ts:requestSegmentModes`);
 - `lib/planForm.ts:planFormDirty` and `App.tsx:viaDraftStale` compare modes, so
   a mode-only edit dirties the form;
 - `lib/recalc.ts:recalcRequest` copies `segmentModes` explicitly (its
   copied-never-aliased contract);
 - `state/replan.ts:dedupeViaPoints` also returns the kept indices beside `kept`
-  (`App.tsx:droppedViaLabels` needs `kept`'s object identity). `usePlanFlow.ts`'s
-  run path and `replanWithVias` rebuild `segmentModes` from them. The mode of a
-  segment that dedupe merges is an OPEN QUESTION, to settle in the
-  implementation PR (#1232). The other two
-  callers, `droppedViaLabels` and `useViaReplan` (`droppedCount` only), need no
-  change. `replanWithVias`/`useViaReplan` have no production caller (#571);
+  (`App.tsx:droppedViaLabels` needs `kept`'s object identity).
+  `dedupeRequestVias` rebuilds `segmentModes` from them for `usePlanFlow.ts`'s
+  run path and `replanWithVias`. A run of segments that dedupe merges is allowed
+  only if every segment in it has the same mode, `null` included; the surviving
+  segment takes that mode. Any other run is refused before planning, before the
+  wind fetch, with `error.segmentModesMergeConflict` (de + en), naming the run's
+  first dropped waypoint (`mergeSegmentModes`; maintainer ruling, #1232 comment
+  5680851958). A forced mode is never extended or freed.
+  `replanWithVias(plan, viaPoints, deps, segmentModes?)` takes modes aligned with
+  its `viaPoints` argument and never carries the stored
+  `plan.request.segmentModes`; an absent argument means no overrides. The other
+  two callers, `droppedViaLabels` and `useViaReplan` (`droppedCount` only), need
+  no change. `replanWithVias`/`useViaReplan` have no production caller (#571);
 - `state/reroute.ts` drops `segmentModes` with the vias (R6): its request is a
   fresh literal.
 
@@ -183,11 +211,16 @@ Carried by spread, no `segmentModes` edit: `useDepartureConfirm`, `DepartureComp
 - Between consecutive waypoint rows in the planner, a segmented control
   (solver decides / motor / sail) built from the existing `Button` primitive
   and `--sc-*` tokens; de + en keys.
-- While the motor is off, the motor option is disabled with its reason shown,
-  and a segment already marked motor shows the conflict (R4, §3.3).
+- While the motor is off, the motor option is disabled, its reason is shown once
+  (first segment), and a segment already marked motor shows the conflict (R4,
+  §3.3).
 - `live.reroute.hint` (de + en) says via points and segment overrides are not carried over (R6).
-- The legs table and map label forced legs as ordered by the captain, so they
-  do not read as the solver's speed verdict.
+- The legs table labels forced legs as ordered by the captain
+  (`route.legs.forced`), so they do not read as the solver's speed verdict. The
+  map appends a one-character `route.map.forcedMark` (`*`) to the leg's speed
+  label, explained by `route.legs.forcedNote` under the legs table: a word
+  suffix culled `sc-leg-speed` labels (fixed box, z10 0 vs 1, z12 2 vs 6; PR
+  #1244).
 - Design floor: ≥ 820 CSS px (maintainer ruling 2026-09-07).
 - A Playwright locator for the new control must not collide with existing
   accessible names in either language (`getByRole` substring matching).
