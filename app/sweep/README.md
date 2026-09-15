@@ -1,7 +1,8 @@
 # #282 acceptance sweep
 
-All 33 harbours × 11 settings arms = **363 plans** (9 arms / 297 plans
-through #452; #653 added the two `salona44-*` arms below), against the real
+All 40 harbours × 11 settings arms = **440 plans** (9 arms / 297 plans
+through #452; #653 added the two `salona44-*` arms below; #295 grew the
+harbour list 33 -> 40, see "#295 sweep control" below), against the real
 committed mask and polars, with every `PlanResult` serialised for
 byte-for-byte comparison between two revisions.
 
@@ -209,6 +210,42 @@ member, no solver-path import of any of the 11 files (grepped
 `data/boats.ts`, zero hits), and `types.ts` itself is unchanged — so
 `DEFAULT_SETTINGS`, `app/public/data/` and `pipeline/` stay untouched and
 the double-run above still certifies the branch.
+
+## #295 sweep control — 40-harbour baseline
+
+**COMPLETE, recorded at `e1346bd`** (#295 grew `harbors.json` 33 -> 40).
+`node .claude/skills/sweep-closure/closure.mjs diff e1346bd 5f3eeeb` reports
+NOT OWED: PR #1245's four changed files past this commit
+(`app/e2e/seamarks.spec.ts`,
+`app/src/routing/realmask.repro.relaxationFloor.test.ts`,
+`app/src/routing/relaxationTrade.differential.test.ts`,
+`app/vite.config.ts`) sit outside the sweep's import-walk closure and
+outside `app/public/data/`/`pipeline/`, so this baseline still certifies the
+PR head at `5f3eeeb`.
+
+Two full runs of the eleven-arm harness at `e1346bd`, **440/440 plans
+byte-identical across 11 arms x 40 harbours** (`node app/sweep/compare.mjs
+sa1 sa2`). Per-arm sha256 prefixes, both runs identical: `becalmed
+bfa4e82d1b41a7ed`, `breeze ccfffed81dc680b5`, `deep-becalmed
+9c56e946f1ebdd8e`, `light-motorless d733f4f2d0163ca0`, `margin-extreme
+50df940335e1f3d2`, `margin-zero 98f15ecf7c5a0a9e`, `no-comfort
+917dde9fa1b8592a`, `relaxation-dense 04a11f4569b6459f`, `salona44-breeze
+46d950d2789d5223`, `salona44-relaxation ad49449d8430abf5`, `short-horizon
+0afc647344fba0bc`.
+
+A-side outcome distribution across all 440 plans: `ok` 125, `ok+shallow`
+138, `error/calm-motor-off` 67, `error/unreachable` 70,
+`error/beyond-horizon` 35, `error/snap-failed-destination` 5.
+
+A companion 33-harbour BASE double-run at the same commit lineage
+(pre-#295 harbour list) reproduces the "#653 sweep control" table above
+prefix-for-prefix, 11/11 — cross-run corroboration of that existing
+baseline, not a new measurement.
+
+The maintainer accepted this diff (against `develop`'s `33dbad2`) on
+2026-09-15. Classification (why the change is presentational, not routing)
+is in the sweep-verdict review comment on PR #1245 — read it there, not
+here.
 
 ## Why it lives here and not under `src/`
 
