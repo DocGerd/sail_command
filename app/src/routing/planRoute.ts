@@ -255,6 +255,71 @@ export function depthRelaxationMayHelp(cause: SolveFailureCause): boolean {
   return cause === 'mask-blocked';
 }
 
+/** #1136: one tier as pass 1 ran it. */
+export interface TierRecord {
+  tier: 1 | 2 | 3 | 4;
+  gate: DepthGate;
+  comfortDepthM: number | undefined;
+  /** Pass 1's relaxed depth on tiers 3–4; null on the requested gate. */
+  usedDepthM: number | null;
+  /** Per sail in `req.sailIds` order: the solver cause, null where it routed. Never a label. */
+  causes: (SolveFailureCause | null)[];
+}
+
+/** #1136: what pass 1 ran, for pass 2 to admit and replay. */
+export interface Pass1Record {
+  /** In run order. Empty when no solving tier ran. */
+  tiers: TierRecord[];
+  /**
+   * The plan-level cause at pass 1's final error return: `tier1[0]?.cause` /
+   * `tier2[0]?.cause` when tiers 3–4 did not run, else `combineAllCauses` of
+   * tier 4 or 3. Null on every other return (`ok`, snap failures, the
+   * pre-relaxation deadline exit).
+   */
+  cause: SolveFailureCause | null;
+}
+
+function recordTier(
+  record: Pass1Record,
+  tier: TierRecord['tier'],
+  gate: DepthGate,
+  comfortDepthM: number | undefined,
+  usedDepthM: number | null,
+  sails: readonly RunOut[],
+): void {
+  record.tiers.push({ tier, gate, comfortDepthM, usedDepthM, causes: sails.map((r) => r.cause) });
+}
+
+/**
+ * #1136 pass-2 admission (spike docs/spikes/1136-motor-off-solve-termination.md
+ * §11.1; maintainer rulings on #1136, 2026-09-14). Every clause must hold:
+ *  1. pass 1 returned an error — an `ok` plan, incl. the #1166 one-sail-failed
+ *     shape, is never admitted (ruling 2);
+ *  2. pass 1 recorded the plan-level cause 'mask-blocked';
+ *  3. pass 1 ran a solving tier, so every pass-2 solve is on an
+ *     oracle-connected pair (§11.1 hole 5);
+ *  4. motor off (ruling 1);
+ *  5. the shared deadline is not spent (ruling 3). Read last, so a plan another
+ *     clause rejects never consumes an `expired()` call.
+ * Clause 1 is redundant with clause 2 for records `planRouteWithRecord` builds
+ * (an `ok` return records no cause); it is kept so the predicate does not rely
+ * on that.
+ */
+export function salvagePassAdmitted(
+  pass1: PlanResult,
+  record: Pass1Record,
+  settings: Settings,
+  deadline: SolveDeadline | undefined,
+): boolean {
+  return (
+    pass1.status === 'error' &&
+    record.cause === 'mask-blocked' &&
+    record.tiers.length > 0 &&
+    !settings.motorEnabled &&
+    !(deadline?.expired() ?? false)
+  );
+}
+
 /**
  * #243: does this rig-pair result need a full-tier retry with the depth
  * comfort preference turned off? True when EITHER rig individually failed with
@@ -327,6 +392,32 @@ export function planRoute(
   onProbe?: ProbeProgress,
   deadline?: SolveDeadline,
 ): PlanResult {
+  return planRouteWithRecord(req, windGrid, deps, onProgress, onProbe, deadline).result;
+}
+
+/** #1136: `planRoute`'s result (after any pass 2) plus pass 1's record. */
+export function planRouteWithRecord(
+  req: PlanRequest,
+  windGrid: WindGrid,
+  deps: PlanDeps,
+  onProgress?: RigProgress,
+  onProbe?: ProbeProgress,
+  deadline?: SolveDeadline,
+): { result: PlanResult; record: Pass1Record } {
+  const record: Pass1Record = { tiers: [], cause: null };
+  const result = runLadder(record, req, windGrid, deps, onProgress, onProbe, deadline);
+  return { result, record };
+}
+
+function runLadder(
+  record: Pass1Record,
+  req: PlanRequest,
+  windGrid: WindGrid,
+  deps: PlanDeps,
+  onProgress: RigProgress | undefined,
+  onProbe: ProbeProgress | undefined,
+  deadline: SolveDeadline | undefined,
+): PlanResult {
   const { mask } = deps;
   const s = req.settings;
   const origin = mask.snapToNavigable(req.origin, s.safetyDepthM);
@@ -398,6 +489,7 @@ export function planRoute(
     settings: Settings,
     gate: DepthGate,
     comfort: number | undefined,
+    salvage: boolean,
   ): RunOut => {
     const polar = new Polar(table, settings.performanceFactor);
     const legs: Leg[] = [];
@@ -422,6 +514,8 @@ export function planRoute(
         // never pass `{ deadline: undefined }`. The SAME object goes to every
         // solve of this plan — see the `deadline` parameter's doc comment.
         ...(deadline !== undefined ? { deadline } : {}),
+        // #1136: key omitted in pass 1, so its SolveParams are unchanged.
+        ...(salvage ? { salvage: true } : {}),
       });
       // #282: the solver's own cause, taken verbatim — no label ever exists on
       // this path. #432's 'budget-exhausted' needs no branch of its own here:
@@ -457,8 +551,13 @@ export function planRoute(
   // separately-maintained constant that could drift from it. Reordering
   // `req.sailIds` changes the real solve order and the guard test observes
   // exactly that.
-  const runAll = (settings: Settings, gate: DepthGate, comfort: number | undefined): RunOut[] =>
-    req.sailIds.map((sailId) => run(sailId, polarFor(sailId), settings, gate, comfort));
+  const runAll = (
+    settings: Settings,
+    gate: DepthGate,
+    comfort: number | undefined,
+    salvage = false,
+  ): RunOut[] =>
+    req.sailIds.map((sailId) => run(sailId, polarFor(sailId), settings, gate, comfort, salvage));
 
   /**
    * #553 / spec §N.4: a comparison involving a tier-C ('estimated') sail is
@@ -608,10 +707,58 @@ export function planRoute(
   // gate below — never the label. The label is derived from it exactly once,
   // at the `return` at the end of this function.
   let cause: SolveFailureCause = 'mask-blocked';
+
+  // #1136 pass 2 (spike §11.1; rulings on #1136, 2026-09-14 and comments
+  // 5679435574 / 5679649933): replay pass 1's recorded tiers with salvage on,
+  // at pass 1's gates, never reading a pass-2 cause.
+  const routed = (r: RunOut): boolean => r.rigResult !== null;
+  // A failed pass-2 sail carries the cause pass 1 recorded for that sail and
+  // tier, so no pass-2 cause reaches `noRouteLabel` or `comparisonComplete`.
+  // Every sail of an admitted plan failed in every recorded tier, so the
+  // `record.cause` fallback is defensive.
+  const withPass1Causes = (sails: RunOut[], tier: TierRecord): RunOut[] =>
+    sails.map((r, i) =>
+      routed(r) ? r : { ...r, cause: tier.causes[i] ?? record.cause ?? 'mask-blocked' },
+    );
+  const replayWithSalvage = (): PlanResult | null => {
+    const tiers = record.tiers;
+    for (let i = 0; i < tiers.length; i++) {
+      const first = tiers[i];
+      // Tier 2 pairs with tier 1, tier 4 with tier 3; the pair shares a gate.
+      const retryTier = tiers[i + 1]?.tier === first.tier + 1 ? tiers[i + 1] : undefined;
+      if (retryTier !== undefined) i++;
+      const done = (sails: RunOut[], tier: TierRecord): PlanResult => {
+        const masked = withPass1Causes(sails, tier);
+        const shallow =
+          tier.usedDepthM === null
+            ? null
+            : flagShallowLegs(mask, masked, s.safetyDepthM, tier.usedDepthM);
+        return assemble(masked, shallow);
+      };
+      const firstRun = runAll(s, first.gate, first.comfortDepthM, true);
+      // Retry entry: pass 1 ran the retry tier and a sail still has no result.
+      const retryRun =
+        retryTier !== undefined && !firstRun.every(routed)
+          ? runAll(s, retryTier.gate, retryTier.comfortDepthM, true)
+          : null;
+      // As in pass 1: the retry wins if it routed any sail, else the first tier
+      // if it did. A budget-exhausted retry routes nothing, so the first tier
+      // stands.
+      if (retryTier !== undefined && retryRun?.some(routed)) return done(retryRun, retryTier);
+      if (firstRun.some(routed)) return done(firstRun, first);
+      // Nothing routed at this gate: only then move on to the relaxed gate.
+    }
+    return null;
+  };
+  // Every pass-1 return after the ladder starts goes through here. Pass 2
+  // routing nothing, for any cause, returns pass 1 verbatim (ruling 4).
+  const finish = (pass1: PlanResult): PlanResult =>
+    salvagePassAdmitted(pass1, record, s, deadline) ? (replayWithSalvage() ?? pass1) : pass1;
   if (connectedAt(requestedGate)) {
     // #243 tier 1: requested gate, preference on — the happy path, nothing
     // extra paid.
     const tier1 = runAll(s, requestedGate, comfortDepthM);
+    recordTier(record, 1, requestedGate, comfortDepthM, null, tier1);
     if (comfortDepthM !== undefined && needsUnpreferencedRetry(tier1)) {
       // #243 tier 2: requested gate, preference off — bit-identical to the
       // pre-#243 single `runAll(s, …)` call this replaces (comfortDepthM
@@ -621,7 +768,8 @@ export function planRoute(
       // needsUnpreferencedRetry) — this is what makes "no plan can get worse
       // than pre-#243" true by construction rather than by argument.
       const tier2 = runAll(s, requestedGate, undefined);
-      if (tier2.some((r) => r.rigResult)) return assemble(tier2, null);
+      recordTier(record, 2, requestedGate, undefined, null, tier2);
+      if (tier2.some((r) => r.rigResult)) return finish(assemble(tier2, null));
       // #243 fix-wave item 5: tier 2 failed on EVERY sail, but tier 1 may
       // still hold a genuinely successful one (the retry was triggered by
       // ANOTHER sail failing, per needsUnpreferencedRetry's per-sail check —
@@ -632,7 +780,7 @@ export function planRoute(
       // because the retry didn't pan out — that would be strictly worse
       // than what tier 1 already had.
       if (tier1.some((r) => r.rigResult)) {
-        return assemble(tier1, null);
+        return finish(assemble(tier1, null));
       }
       // Arbitrary tie-break: take the first requested sail's cause (checked
       // first, per req.sailIds order); every sail solves identical
@@ -648,7 +796,7 @@ export function planRoute(
       // to.
       cause = tier2[0]?.cause ?? 'mask-blocked';
     } else if (tier1.some((r) => r.rigResult)) {
-      return assemble(tier1, null);
+      return finish(assemble(tier1, null));
     } else {
       // Arbitrary tie-break: take the first requested sail's cause (checked
       // first); every sail solves identical mask/wind/waypoints and differs
@@ -727,12 +875,14 @@ export function planRoute(
       // usedDepthM }` copy is deleted, which spike §7 records as a
       // correctness improvement independent of locality.
       const tier3 = runAll(s, relaxedGate, comfortDepthM);
+      recordTier(record, 3, relaxedGate, comfortDepthM, usedDepthM, tier3);
       if (comfortDepthM !== undefined && needsUnpreferencedRetry(tier3)) {
         // #243 tier 4: relaxed gate, preference off.
         const tier4 = runAll(s, relaxedGate, undefined);
+        recordTier(record, 4, relaxedGate, undefined, usedDepthM, tier4);
         if (tier4.some((r) => r.rigResult)) {
           const shallow = flagShallowLegs(mask, tier4, s.safetyDepthM, usedDepthM);
-          return assemble(tier4, shallow);
+          return finish(assemble(tier4, shallow));
         }
         // #243 fix-wave item 5 (mirrors the tier 1/2 fallback above): tier 4
         // failed on EVERY sail, but tier 3 may still hold a genuinely
@@ -742,7 +892,7 @@ export function planRoute(
         // stays apples-to-apples.
         if (tier3.some((r) => r.rigResult)) {
           const shallow = flagShallowLegs(mask, tier3, s.safetyDepthM, usedDepthM);
-          return assemble(tier3, shallow);
+          return finish(assemble(tier3, shallow));
         }
         // #68: relaxation FOUND a connected gate but every sail still failed
         // to solve there even without the preference, so this is no longer a
@@ -757,7 +907,7 @@ export function planRoute(
         cause = combineAllCauses(tier4);
       } else if (tier3.some((r) => r.rigResult)) {
         const shallow = flagShallowLegs(mask, tier3, s.safetyDepthM, usedDepthM);
-        return assemble(tier3, shallow);
+        return finish(assemble(tier3, shallow));
       } else {
         // #68: relaxation FOUND a connected gate but every sail still failed
         // to solve there, so this is no longer a mask-level failure —
@@ -775,5 +925,9 @@ export function planRoute(
   // propagated relaxed-solve class.
   //
   // #282: the ONE place a plan-level failure becomes a user-facing label.
-  return { status: 'error', reason: NO_ROUTE_LABEL_OF_CAUSE[cause] };
+  // #1136: the only return that records a plan-level cause. The pre-relaxation
+  // deadline exit above leaves it null although the local `cause` still reads
+  // 'mask-blocked' there.
+  record.cause = cause;
+  return finish({ status: 'error', reason: NO_ROUTE_LABEL_OF_CAUSE[cause] });
 }
