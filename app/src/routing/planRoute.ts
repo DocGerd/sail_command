@@ -741,8 +741,8 @@ function runLadder(
   let cause: SolveFailureCause = 'mask-blocked';
 
   // #1136 pass 2 (spike §11.1; rulings on #1136, 2026-09-14 and comments
-  // 5679435574 / 5679649933): replay pass 1's recorded tiers with salvage on,
-  // at pass 1's gates, never reading a pass-2 cause.
+  // 5679435574 / 5679649933 / 5680650879): replay pass 1's recorded tiers with
+  // salvage on, at pass 1's gates.
   const routed = (r: RunOut): boolean => r.rigResult !== null;
   // A failed pass-2 sail carries the cause pass 1 recorded for that sail and
   // tier, so no pass-2 cause reaches `noRouteLabel`. `comparisonComplete` is

@@ -582,14 +582,18 @@ function appVersion(command: 'build' | 'serve'): string {
 // other): invariants.property 306.4s, issue20 278.3s, salona44 196.2s,
 // relaxationFloor 169.7s, depthComfort 113.4s, mirrorCase 1.3s.
 //
-// `mirrorCase` is EXCLUDED from this array: at ~90x below its nearest
-// neighbour it is small AND fast — the exact inverse of the admission
-// criterion this array exists for (a file that is small but SLOW, so
-// BaseSequencer's size-descending default schedules it last). Pinning it to
-// the front would spend a first-wave worker slot on nothing.
+// `mirrorCase` WAS excluded from this array on that measurement: at ~90x
+// below its nearest neighbour it was small AND fast — the inverse of the
+// admission criterion this array exists for (a file that is small but SLOW,
+// so BaseSequencer's size-descending default schedules it last).
 //
-// The other four `realmask.repro.*` siblings are ordered by that
-// measurement (issue20 > salona44 > relaxationFloor > depthComfort).
+// #1136 invalidated that: its motor-off pass 2 made `mirrorCase` slow, and
+// added the small, slow `realmask.repro.motorOffSalvage.test.ts`. Re-measured
+// WITHIN ONE RUN (`vitest run realmask`, 2026-09-15, summed test durations,
+// comparable only to each other): issue20 332.5s, salona44 247.3s,
+// relaxationFloor 218.9s, motorOffSalvage 180.5s, depthComfort 147.9s,
+// mirrorCase 97.5s, weaveEta847 45.2s (not pinned; outside #1136's scope).
+// The pinned `realmask.repro.*` entries follow that order.
 // `invariants.property.test.ts` is kept FIRST on its OWN #214 justification
 // (independent of this PR's realmask measurements) — this does NOT claim it
 // is slower than `issue20`: a ~10% gap under shared load establishes
@@ -600,7 +604,9 @@ const SLOW_TEST_FILES_FIRST = [
   'src/routing/realmask.repro.issue20.test.ts',
   'src/routing/realmask.repro.salona44.test.ts',
   'src/routing/realmask.repro.relaxationFloor.test.ts',
+  'src/routing/realmask.repro.motorOffSalvage.test.ts',
   'src/routing/realmask.repro.depthComfort.test.ts',
+  'src/routing/realmask.repro.mirrorCase.test.ts',
 ];
 
 // Extends BaseSequencer rather than reimplementing it: only `sort` changes

@@ -63,7 +63,8 @@ export interface SolveParams {
    * in a row: motor-off solves die holding mask-validated children that
    * domination discards (spike `docs/spikes/1136-motor-off-solve-termination.md`
    * §1). No count cap — the horizon and the deadline terminate it (§11.2).
-   * Only `planRoute`'s pass 2 sets it, and it discards every pass-2 cause.
+   * Only `planRoute`'s pass 2 sets it, and it reads a pass-2 cause only as
+   * `budget-exhausted` (for `comparisonComplete`).
    */
   salvage?: boolean;
 }
