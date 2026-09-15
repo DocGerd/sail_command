@@ -431,8 +431,8 @@ Maintainer rulings on #295 (2026-09-15); evidence and coupled sites in
 - **Bbox.** 54.3–55.6°N, 9.4–11.6°E; south and west edges unchanged. The east
   edge is 11.6°E, not the spike's 11.5°E: 11.6°E is a whole number of cell steps
   from the existing grid (`COLS` 3025), so the grid stays aligned. Interior
-  cells are byte-identical; the old north row and east column (1,044 cells)
-  change by up to ±1.0 m, because the old build resampled them from a download
+  cells are byte-identical; 1,044 cells on the old north row and east column
+  change by between −1.0 m and +0.8 m, because the old build resampled them from a download
   clipped to the old bbox (review 5210504886 on PR #1245).
 - **Great Belt.** Western approach only. Extending east across the full Great
   Belt is deferred to #1240.
