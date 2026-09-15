@@ -168,6 +168,19 @@ interface ScTestMap {
     properties: Record<string, unknown>;
     geometry: { type: string; coordinates: [number, number] };
   }>;
+  // #232 item 2 settle gate: no in-view tile of any source still loading.
+  areTilesLoaded(): boolean;
+  isSourceLoaded(sourceId: string): boolean;
+  // Internal (maplibre-gl 6.9.0, `ui/map.ts` `_render`): true while a symbol
+  // placement or fade is still running; `style.ts`'s `_releaseSymbolFadeTiles`
+  // only drops tiles held for a fade on a render where it is false.
+  _placementDirty: boolean;
+  style: {
+    tileManagers: Record<
+      string,
+      { _inViewTiles: { getAllTiles(): Array<{ holdingForSymbolFade(): boolean }> } }
+    >;
+  };
 }
 
 // One of the two JOINT-densest cells (#484 F7 — an earlier revision of this
@@ -803,11 +816,31 @@ async function readHazardRenderedFeaturesInRegion(
   page: Page,
   region: typeof SEAMARK_REGION,
 ): Promise<RenderedHazardFeature[]> {
+  return (await readHazardRenderedSnapshot(page, region)).features;
+}
+
+// One synchronous page read, so the settle flags and the features describe
+// the same moment: no tile message can land between them.
+async function readHazardRenderedSnapshot(
+  page: Page,
+  region: typeof SEAMARK_REGION,
+): Promise<{
+  tilesLoaded: boolean;
+  placementSettled: boolean;
+  features: RenderedHazardFeature[];
+}> {
   return page.evaluate((region) => {
     const map = (window as unknown as { __scE2eMap: ScTestMap }).__scE2eMap;
+    const tilesLoaded = map.isSourceLoaded('sc-seamarks') && map.areTilesLoaded();
+    // A tile from the previous zoom stays renderable while held for the
+    // symbol fade; queryRenderedFeatures then reports its coarser geometry.
+    const fadeHeld = map.style.tileManagers['sc-seamarks']._inViewTiles
+      .getAllTiles()
+      .some((t) => t.holdingForSymbolFade());
+    const placementSettled = !map._placementDirty && !fadeHeld;
     const nw = map.project([region.lonMin, region.latMax]);
     const se = map.project([region.lonMax, region.latMin]);
-    return map
+    const features = map
       .queryRenderedFeatures(
         [
           [nw.x, nw.y],
@@ -821,6 +854,7 @@ async function readHazardRenderedFeaturesInRegion(
         priority: Number(f.properties.priority),
         icon: String(f.properties.icon),
       }));
+    return { tilesLoaded, placementSettled, features };
   }, region);
 }
 
@@ -829,19 +863,36 @@ async function readHazardRenderedFeaturesInRegion(
 // region query instead of the small cluster box, and comparing the full
 // sorted (lng,lat,priority,icon) tuple set rather than icon ids alone, so a
 // same-count SWAP at the region scale is caught exactly as it is above.
+//
+// A read counts toward the stable window only when no in-view tile is loading
+// AND placement has settled with no tile held for the symbol fade; any other
+// read resets the window. A tile from the previous zoom stays renderable
+// while held for the fade, so three reads can agree on its coarser geometry
+// and then change: CI run 34991379729 failed the recheck below that way.
+// Delaying `sc-seamarks` tile loads by 1.2 s reproduced it on the
+// stability-only gate (4 of 4 red) and on the tiles-loaded-only gate (2 of
+// 3); this gate passed 3 of 3. REGION_SETTLE_MAX_READS exceeds
+// SETTLE_MAX_READS because the gate now also waits out the region's tile
+// loads and fades.
+const REGION_SETTLE_MAX_READS = 50; // ~20s at 400ms cadence; exhaustion throws
 async function settledHazardRenderedFeatures(
   page: Page,
   region: typeof SEAMARK_REGION,
   label: string,
 ): Promise<RenderedHazardFeature[]> {
-  const countHistory: number[] = [];
+  const history: string[] = [];
   const recentReads: RenderedHazardFeature[][] = [];
-  for (let reads = 0; reads <= SETTLE_MAX_READS; reads++) {
+  for (let reads = 0; reads <= REGION_SETTLE_MAX_READS; reads++) {
     if (reads > 0) await page.waitForTimeout(SETTLE_POLL_INTERVAL_MS);
-    const next = (await readHazardRenderedFeaturesInRegion(page, region)).sort(
-      (a, b) => a.lng - b.lng || a.lat - b.lat,
+    const snapshot = await readHazardRenderedSnapshot(page, region);
+    const next = snapshot.features.sort((a, b) => a.lng - b.lng || a.lat - b.lat);
+    history.push(
+      `${next.length}${snapshot.tilesLoaded ? '' : '(loading)'}${snapshot.placementSettled ? '' : '(placing)'}`,
     );
-    countHistory.push(next.length);
+    if (!snapshot.tilesLoaded || !snapshot.placementSettled) {
+      recentReads.length = 0;
+      continue;
+    }
     recentReads.push(next);
     if (recentReads.length > SETTLE_STABLE_READS_REQUIRED) recentReads.shift();
     const windowStable =
@@ -850,9 +901,9 @@ async function settledHazardRenderedFeatures(
     if (windowStable) return next;
   }
   throw new Error(
-    `[${label}] hazard layer placement in the region never stabilized across ${countHistory.length} reads ` +
-      `(${SETTLE_POLL_INTERVAL_MS}ms apart, ${SETTLE_STABLE_READS_REQUIRED} consecutive matches required); ` +
-      `counts seen: ${JSON.stringify(countHistory)}`,
+    `[${label}] hazard layer placement in the region never settled across ${history.length} reads ` +
+      `(${SETTLE_POLL_INTERVAL_MS}ms apart, ${SETTLE_STABLE_READS_REQUIRED} consecutive matching reads with ` +
+      `tiles loaded and placement settled required); counts seen: ${JSON.stringify(history)}`,
   );
 }
 
