@@ -1444,15 +1444,22 @@ making design-level decisions; do not silently deviate.
   magic preflight (`app/src/services/basemapSource.ts`, `cache:'no-store'`) that
   falls back to a full-body Blob-backed source if the CDN ever re-gzips — a
   future CDN flip degrades to a slow map, never an outage.
-- **`maximumFileSizeToCacheInBytes` (`app/vite.config.ts`, 40 MiB) drops the
-  WHOLE basemap archive from the precache manifest if exceeded — a build
-  warning, then silent online-only at runtime.** Not partial degradation: every
-  ranged tile request then cache-misses, logs one `console.warn` invisible to a
-  real user, and falls through to a plain `fetch()` that fails outright
-  offline — a total regression of a currently-tested guarantee. A 12 m-
-  resolution rebuild would produce an 84.5 MB asset and trip it. Same failure
-  shape #245 demonstrated for the mask. Full analysis in
+- A CORE basemap archive over `maximumFileSizeToCacheInBytes` FAILS the build
+  (`app/vite.config.ts`'s `assertCoreWithinPrecacheCap`, #1220 — its throw is
+  pinned by `regionManifest.test.ts`, its call site is not); any OTHER precached
+  file over the cap still drops with only a build warning. Region archives are
+  deliberately outside the precache. Why it matters:
   `docs/spikes/1163-295-coverage-scoping.md`.
+- **Precached unhashed files are keyed `<url>?__WB_REVISION__=…`** (workbox-precaching
+  7.4.1) — a bare-URL
+  `caches.match` MISSES in a real build; use `{ ignoreSearch: true }`
+  (`regionPinning.ts`). A test fake storing the bare URL hides it (PR #1225).
+- **Bumping `DB_VERSION` (`services/db.ts`) on `develop` breaks PROD for anyone who
+  opens `/uat/` after it deploys** — one origin, one IndexedDB, so prod's older
+  `openDB` throws `VersionError` until the release reaches `main`. Derived in the
+  multi-boat spec §I.2 (OQ-5: no bump); measured in Chromium on PR #1225 (2→3,
+  accepted by maintainer ruling on #1164); #848's 1→2 shipped the same window.
+  Cut the release promptly after such a bump.
 - Font glyphs (`basemap-assets/fonts/**`) are runtime-cached, never precached
   (#28): a `sailcommand-glyphs-*` CacheFirst route in `app/src/sw.ts` plus an
   app-side background warm-up (`app/src/services/glyphWarmup.ts`) that runs
@@ -1640,6 +1647,7 @@ making design-level decisions; do not silently deviate.
   | v0.31.0 | 2026-09-10 | 54 s | read as **NO `deploy` JOB CREATED YET** immediately before the tag push -- a not-yet-started reading; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `34449455451` (created 07:20:19Z) -> tag `34449529039` (created 07:21:13Z) on `a0bed8f`. The merge run's `deploy` job carries **`steps: 0`** with `started_at` == `completed_at` == 07:21:20Z, against that SAME run's `build` job at **`steps: 23`** which ran 07:20:22Z -> 07:21:19Z and was cancelled mid-flight -- the within-run control v0.27.0 used, so `deploy` NEVER STARTED and left no `success`-state deployment of that SHA behind. The tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production afterwards served `assets/index-ksgT8KEb.js` at ``about.version`,{version:`v0.31.0`}`` with ZERO suffixed `vX.Y.Z-N-g<sha>` matches, so no back-merge remedy was owed. Release object `isLatest: true`; tag object `f11d2501` reported `verified: true, reason: "valid"`. The widened criterion -- the merge `deploy` job has not reached terminal `success` -- gains another observation here. COUNT the rows reading "NO `deploy` JOB CREATED YET" rather than trusting an ordinal: this row carried one reading FIFTH while naming five priors, the exact off-by-one this table's own preamble forbids a running total for. A count is still not a mechanism: this row names NONE, and per this table's own rule the gap gates nothing. |
   | v0.32.0 | 2026-09-10 | 62 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) immediately before the tag push -- another not-yet-started reading; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `34471115059` (created 11:24:20Z) -> tag `34471205143` (created 11:25:22Z) on `4e1e92d`. The merge run's `deploy` job carries **`steps: 0`** against that SAME run's `build` job at **`steps: 23`**, which ran and was cancelled mid-flight -- the within-run control v0.27.0 and v0.31.0 used -- so `deploy` NEVER STARTED and left no `success`-state deployment of that SHA behind. The tag run (`head_branch: v0.32.0`) had `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**, `uat-environment` skipped; production afterwards served ``about.version`,{version:`v0.32.0`}`` with ZERO suffixed `vX.Y.Z-N-g<sha>` matches, so no back-merge remedy was owed. Release object `isLatest: true`; tag object reported `verified: true, reason: "valid"`. Still names no MECHANISM, and per this table's own rule the gap gates nothing. |
   | v0.33.0 | 2026-09-10 | 134 s | `success` (MEASURED immediately before the tag push, and the failure CALLED IN ADVANCE from it, written down BEFORE the push) | **`smoke-probe` FAILED** | merge-push `34510823659` (created 17:52:05Z) -> tag `34511051995` (created 17:54:19Z) on `84fc200`. The merge run's `deploy` job carries **`steps=6`** and was terminal `success` at **17:53:36Z, 43 s BEFORE the tag run was created** -- v0.29.0's `steps` discriminator in the reading that means the job genuinely RAN and deployed. The tag run's `build` AND `deploy` both succeeded; only `smoke-probe` failed, by the #398 signature -- its own prod entry chunk `assets/index-BruyVo4z.js` returned **404 on all 10 attempts** (17:55:49Z -> 18:00:20Z) while BOTH basemap Range probes passed on attempt 1, ruling out a CDN regression. Back-merge `34513753191` (different SHA `3637c30`) then probed green and republished **that same chunk name**, which then returned 200 on attempt 1 -- so the tag run's BUILD was correct and only its DEPLOYMENT no-opped. Production afterwards served that chunk at ``about.version`,{version:`v0.33.0`}`` with ZERO suffixed `vX.Y.Z-N-g<sha>` matches. **ENDS the run of not-yet-started readings at v0.30.0, v0.31.0 and v0.32.0** -- read those three rows rather than trusting a count here -- and is the first terminal `success` since v0.29.0, behaving exactly as this table says a `success` reading behaves. Still names no MECHANISM, and per this table's own rule the gap gates nothing. |
+  | v0.34.0 | 2026-09-15 | 44 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 08:28:02Z, two seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `34947043144` (created 08:27:21Z) -> tag `34947108798` (created 08:28:05Z) on `85afd47`. The merge run's `deploy` job carries **`steps: 0`** against that run's `build` at **`steps: 23`** (the within-run control). The tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production then served `assets/index-CEJof43x.js` at ``about.version`,{version:`v0.34.0`}`` with ZERO suffixed matches, so no back-merge remedy was owed. Release object `isLatest: true`; tag object `fe18dcb` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -3405,6 +3413,12 @@ making design-level decisions; do not silently deviate.
   SIGSTOP/SIGCONT substitute was tried next and is not a workaround: the
   in-process `process.kill()` variant HUNG the target in kernel state `T` and
   had to be killed by hand.
+- **A local pass on a different Node version than CI's is not evidence for
+  Blob/Response behaviour.** At PR #1223 (run 34886147240) a 206 Range test
+  asserting only status and length passed on Node 24.15.0 with a body of
+  `"[object Blob]"` and failed on CI's Node 22.23.2 with `expected 416 to be 206`.
+  Assert the body bytes; `vi.stubGlobal('Blob', NodeBlob)` in
+  `basemapArchiveRoute.test.ts` is the fix shape (its comment has the mechanism).
 - **vitest's DEFAULT reporter suppresses console output from PASSING tests**, so
   a console-spy check run on a green suite is a FALSE NEGATIVE. Measured
   2026-09-04 with a control: a passing test logging a unique marker printed it
