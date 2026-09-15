@@ -276,7 +276,7 @@ describe('#295 committed region archives', () => {
       route(P.nyborg, { lat: 55.2, lon: 10.95 }, { lat: 54.5, lon: 11.0 }, P.burgstaaken),
       ['east', 'north'],
     ],
-  ])('%s requires %j', (_name, legs, expected) => {
+  ])('%s', (_name, legs, expected) => {
     const boxes = routeCorridorBoxes(legs, null, AIS_CORRIDOR_HALF_WIDTH_NM);
     expect(boxes.length).toBeGreaterThan(0); // under the area cap: a real corridor, not the fail-closed []
     const entries = [manifest.core, ...manifest.regions];
