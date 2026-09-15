@@ -308,6 +308,37 @@ describe('#243 depth comfort preference preserves true wall-clock time and geome
 // only surviving path to a still-reachable destination. This is a search
 // CAPACITY artifact, not a data property: the same mask solves fine under
 // EITHER preference state at the default (30 000) cap.
+describe('#1136 salvage (SolveParams.salvage)', () => {
+  it('leaves a solve that routes unchanged: salvage fires only on a death with no best', () => {
+    expect(solve(params({ salvage: true }))).toEqual(solve(params({})));
+  });
+
+  it('a salvage pass that also empties the frontier ends the solve with the unsalvaged cause', () => {
+    // Every edge is calm: ring 1 dies, the salvage pass dies identically, and
+    // salvage never fires twice in a row, so the solve terminates.
+    const calm = { wind: new WindField(uniformWindGrid(0.1, 0)) };
+    expect(solve(params({ ...calm, salvage: true }))).toEqual({
+      status: 'no-route',
+      cause: 'calm-without-motor',
+    });
+  });
+
+  it('on a mask-disconnected pair, salvage floods until a terminator instead of dying blocked', () => {
+    // Origin in a small enclosed pocket (rows 85-95, cols 110-130), 6 h forecast.
+    const walled = {
+      mask: makeMask((r: number, c: number) =>
+        r >= 85 && r <= 95 && c >= 110 && c <= 130 ? 200 : 0,
+      ),
+      wind: new WindField(uniformWindGrid(12, 0, { hours: 6 })),
+    };
+    expect(solve(params(walled))).toEqual({ status: 'no-route', cause: 'mask-blocked' });
+    expect(solve(params({ ...walled, salvage: true }))).toEqual({
+      status: 'no-route',
+      cause: 'horizon-exceeded',
+    });
+  });
+});
+
 describe('#243 search-capacity effect (why the tier-ladder fallback is mandatory, not decorative)', () => {
   const META: MaskMeta = { west: 9.9, south: 54.7, east: 10.1, north: 54.8, cols: 200, rows: 100 };
   const cell = (r: number, c: number) => ({
