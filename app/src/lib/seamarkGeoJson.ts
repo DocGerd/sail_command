@@ -351,7 +351,7 @@ export function seamarkPopupAnchor<T extends { properties?: unknown; geometry?: 
  *         test diffs the hazard layer's SOURCE features (every hazard mark
  *         MapLibre has loaded, via `querySourceFeatures`, BEFORE collision
  *         culling) against its RENDERED features (AFTER culling) across the
- *         whole app data region at z8 and z9 against the real committed
+ *         whole app data region at z8 and z9 against the real, then-committed (pre-#295)
  *         `app/public/data/seamarks.json` — not a hand-picked sub-box — and
  *         found **99 culled hazard marks (53 at z8, 46 at z9), 3 cross-tile
  *         ROWS (2 distinct pairs — one of them recurs at both zooms), and ZERO
@@ -369,8 +369,12 @@ export function seamarkPopupAnchor<T extends { properties?: unknown; geometry?: 
  *         features in view at z8, 911 at z9), where this test measured 125
  *         unique hazard positions (pre-#295 data) over one fixed rectangle at both zooms (72
  *         rendered at z8, 79 at z9). What is established here is narrower and
- *         sufficient for item 2: at z8/z9 on the committed data, EVERY culled
- *         hazard mark was displaced by an equal-or-better-ranked hazard mark.
+ *         sufficient for item 2: at the recorded aperture (z8 as rendered at
+ *         z8.663 under the pre-#295 MAX_BOUNDS, and z9) on the pre-#295 data,
+ *         EVERY culled hazard mark was displaced by an equal-or-better-ranked
+ *         hazard mark. The #295 MAX_BOUNDS renders a requested z8 at z8.394,
+ *         where one ordering leak is recorded (#1248); the e2e test now pins
+ *         z8.663.
  *         Hazard-vs-hazard is the only collision available in either layer
  *         arrangement — every hazard rank (<=2) sorts ahead of every routine
  *         rank (>=3) under the global cross-tile sort verified in (c), so this

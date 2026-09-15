@@ -296,7 +296,7 @@ export const en = {
   'error.boatNotInCatalogue':
     'This route was planned for a boat that is no longer available, so it cannot be planned again. The saved route still opens, and you can still view and export it.',
   // #295: a plan saved before the coverage extension carries a wind forecast
-  // for the old, smaller area. Retry and reload cannot help; a new plan can.
+  // for the old, smaller area. Retry and reload cannot help; Recalculate or a new plan can.
   'error.windGridCoverage':
     'The wind forecast saved with this route covers a smaller area than the current chart data, so this action cannot use it. Recalculate or plan the route again to fetch a new forecast. The saved route still opens, and you can still view and export it.',
   'error.planSaveFailed':

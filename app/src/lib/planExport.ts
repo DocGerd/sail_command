@@ -114,7 +114,24 @@ function encodeWindGrid(grid: WindGrid): ExportedWindGrid {
   };
 }
 
-// Returns null (never throws) on any malformed shape or undecodable
+// The Open-Meteo lattice every plan saved before #295 carries: 11 lats x 17
+// lons at 0.1 deg from 54.3N / 9.4E (the pre-#295 `openMeteo.ts` LATS/LONS).
+// Exact match only, so a narrower or shifted grid is still rejected.
+const LEGACY_LATTICE_LATS = Array.from({ length: 11 }, (_, i) => 54.3 + i * 0.1);
+const LEGACY_LATTICE_LONS = Array.from({ length: 17 }, (_, i) => 9.4 + i * 0.1);
+
+function sameAxis(axis: readonly number[], expected: readonly number[]): boolean {
+  return axis.length === expected.length && axis.every((v, i) => Math.abs(v - expected[i]!) < 1e-6);
+}
+
+export function isLegacyWindLattice(grid: {
+  lats: readonly number[];
+  lons: readonly number[];
+}): boolean {
+  return sameAxis(grid.lats, LEGACY_LATTICE_LATS) && sameAxis(grid.lons, LEGACY_LATTICE_LONS);
+}
+
+// decodeWindGrid returns null (never throws) on any malformed shape or undecodable
 // base64 — an imported file is untrusted input, and one damaged plan must
 // not abort the whole import (mirrors services/db.ts's own "one corrupt
 // record must not blank the list" philosophy for listPlans).
@@ -141,23 +158,6 @@ function encodeWindGrid(grid: WindGrid): ExportedWindGrid {
 // non-covering grid is a malformed one (null, counted invalid). #295 ruling:
 // the ONE exception is the exact pre-#295 lattice, so old backups import and
 // stay viewable; replanning them is rejected, typed, by `RoutingClient.plan()`.
-// The Open-Meteo lattice every plan saved before #295 carries: 11 lats x 17
-// lons at 0.1 deg from 54.3N / 9.4E (the pre-#295 `openMeteo.ts` LATS/LONS).
-// Exact match only, so a narrower or shifted grid is still rejected.
-const LEGACY_LATTICE_LATS = Array.from({ length: 11 }, (_, i) => 54.3 + i * 0.1);
-const LEGACY_LATTICE_LONS = Array.from({ length: 17 }, (_, i) => 9.4 + i * 0.1);
-
-function sameAxis(axis: readonly number[], expected: readonly number[]): boolean {
-  return axis.length === expected.length && axis.every((v, i) => Math.abs(v - expected[i]!) < 1e-6);
-}
-
-export function isLegacyWindLattice(grid: {
-  lats: readonly number[];
-  lons: readonly number[];
-}): boolean {
-  return sameAxis(grid.lats, LEGACY_LATTICE_LATS) && sameAxis(grid.lons, LEGACY_LATTICE_LONS);
-}
-
 function decodeWindGrid(raw: unknown, maskBounds?: WindLatticeCoverageBounds): WindGrid | null {
   if (!isRecord(raw)) return null;
   const { lats, lons, timesMs, speedKn, dirFromDeg, gustKn, fetchedAtMs, model } = raw;

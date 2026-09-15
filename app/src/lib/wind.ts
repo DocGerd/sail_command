@@ -86,8 +86,9 @@ export class WindField {
    * `mask.meta.json`. The two are NOT redundant: that test catches drift at
    * CI time against the committed source/data files (so it fires even
    * before a build exists), while THIS assertion catches it at RUNTIME for
-   * any `WindGrid` constructed from data the test never saw (e.g. a future
-   * dynamic bbox, #295) — neither subsumes the other, so neither should be
+   * any `WindGrid` constructed from data the test never saw (e.g. a plan
+   * saved before #295 widened the area) — neither subsumes the other, so
+   * neither should be
    * deleted as "already covered by the other one".
    */
   constructor(grid: WindGrid, maskBounds?: WindLatticeCoverageBounds) {

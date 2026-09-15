@@ -19,7 +19,7 @@
  * DELIBERATELY OUTSIDE `app/src/`. `vite.config.ts`'s `test.include` is
  * `['src/**\/*.test.{ts,tsx}']`, so nothing here is collected by
  * `npm --prefix app run test` or by CI — this is an on-demand experiment
- * costing ~20 minutes of real solver time, not part of the suite's contract.
+ * with real solver cost, not part of the suite's contract.
  * See `README.md` in this directory for how to run it.
  *
  * BASELINE PARAMETERS ARE LOAD-BEARING. Every constant below — the arm list,
@@ -69,10 +69,12 @@ export interface Arm {
    * to the recorded baseline. Only the three #452 relaxation arms below set
    * it, because Flensburg is the wrong origin for what they need to
    * demonstrate: a mask-connectivity probe over all 528 unique harbour pairs
-   * in `harbors.json` (33 choose 2 — the SAME 528 the file-level comment
+   * in the pre-#295, 33-harbour `harbors.json` (33 choose 2 — the SAME 528
+   * the file-level comment
    * above cites; twin-searched to agree, see #488 review) — `cellsConnected`
    * BFS at the 3.0 m gate vs. down to the 2.1 m `BOAT_DRAFT_M` floor, run
-   * once per origin against all 32 other harbours as destinations, as a
+   * once per origin against all 32 other harbours then listed as
+   * destinations, as a
    * one-off exploration, not part of this committed harness — found that
    * from any of the 27 GIANT-COMPONENT origins (every harbour except the 5
    * below), exactly 1 of the other 32 harbours needs depth relaxation at all
@@ -190,11 +192,13 @@ export const T0 = Date.UTC(2026, 6, 15, 6, 0, 0);
  * through to `unreachable`, real if weak coverage (a future scoping bug that
  * made one of them suddenly relax would be caught here). What IS rare is a
  * SUCCESSFUL relaxation: only
- * 27 of the 528 unique harbour pairs in `harbors.json` (33 choose 2) are
+ * 27 of the 528 unique harbour pairs in the pre-#295 `harbors.json`
+ * (33 choose 2) are
  * mask-connected at a relaxed gate at all, and every one of the 27 involves
  * Marstal — measured via a `cellsConnected` BFS probe over every pair at the
  * 3.0 m gate (see `Arm.originId`'s doc comment). At Flensburg origin only
- * ONE of the 33 per-arm rows (the Marstal leg) can ever carry a SUCCESSFUL
+ * ONE of the 33 pre-#295 per-arm rows (the Marstal leg) could carry a
+ * SUCCESSFUL
  * relaxation (a `shallow` block) — so the existing arms carry at most 1/33
  * discriminating power for the mechanism this PR needs coverage of —
  * `breeze` and `no-comfort` are, per the header above, the source of the

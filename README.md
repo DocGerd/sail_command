@@ -127,10 +127,10 @@ works fully offline once the app has been loaded once.
 
 ## First load / offline
 
-The first visit precaches roughly **33 MB** (regional basemap tiles,
+The first visit precaches roughly **40 MB** (regional basemap tiles,
 land/depth mask, polar tables, harbor list, sprites, app shell); the ~11 MB
 of map fonts land in a runtime cache in the background after install (#28),
-for a total eventual download of ~45 MB. Subsequent visits are served from
+for a total eventual download of ~51 MB. Subsequent visits are served from
 the cache and work with no network at all; an update prompt appears when a
 new version is available in the background, applied on demand rather than
 mid-passage.
@@ -304,7 +304,7 @@ flowchart LR
     UI -->|"plan request + wind grid"| WORKER["isochrone router (Web Worker), tack/gybe time penalty, dual-rig"]
     WORKER -->|"Plan (legs, wind grid)"| UI
     UI <--> IDB[("IndexedDB — saved plans incl. their wind grids")]
-    SW["service worker — ~33 MB precache + runtime font cache"] -.-> UI
+    SW["service worker — ~40 MB precache + runtime font cache"] -.-> UI
   end
 ```
 
