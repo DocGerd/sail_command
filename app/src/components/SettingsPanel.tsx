@@ -25,6 +25,7 @@ import {
 import { usePersistedNumber } from '../lib/usePersistedNumber';
 import { useNavMask } from '../state/useNavMask';
 import { getPlan, listPlans, listWaypoints, savePlan, saveWaypoint } from '../services/db';
+import { pinImportedPlans } from '../services/pinAfterSave';
 import Button from './Button';
 import Card from './Card';
 import Field from './Field';
@@ -356,6 +357,12 @@ export default function SettingsPanel({
     for (const outcome of waypointOutcomes)
       if (outcome.status === 'rejected')
         console.error('SettingsPanel: waypoint import write failed', outcome.reason);
+    // #1233: pin every SUCCESSFULLY-saved plan (never a rejected one — its
+    // regions never reached IndexedDB either) as ONE batch — never awaited
+    // — so a shared region across plans coalesces to one archive fetch and
+    // failures surface as a single aggregated warning (pinImportedPlans's
+    // own comment has the full reasoning).
+    pinImportedPlans(result.plans.filter((_p, i) => planOutcomes[i]?.status === 'fulfilled'));
 
     // Only announced when something actually changed — mirrors
     // useSavedWaypoints.ts's own "safe to call with no subscribers" note,
