@@ -276,8 +276,18 @@ const LEGS_SCROLL_HINT_ID = 'route-legs-scroll-hint';
 
 function LegKindChip({ leg, rig }: { leg: Leg; rig: SailId }) {
   const t = useT();
+  // #885 R5: a captain-forced mode is labelled, so it does not read as the
+  // planner's speed verdict.
+  const forced = leg.forced ? (
+    <span title={t('route.legs.forcedTitle')}> · {t('route.legs.forced')}</span>
+  ) : null;
   if (leg.kind === 'motor') {
-    return <span className="chip chip-motor">{t('route.kind.motor')}</span>;
+    return (
+      <span className="chip chip-motor">
+        {t('route.kind.motor')}
+        {forced}
+      </span>
+    );
   }
   const boardKey = leg.board === 'port' ? 'route.board.port' : 'route.board.starboard';
   // Prefix the displayed rig's sail name so each sail leg names the sail
@@ -290,6 +300,7 @@ function LegKindChip({ leg, rig }: { leg: Leg; rig: SailId }) {
         style={{ backgroundColor: BOARD_COLOR[leg.board] }}
       />
       {t(sailLabelKey(rig))} · {t(boardKey)} {t(pointOfSailKey(leg.twaDeg))}
+      {forced}
     </span>
   );
 }

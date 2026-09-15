@@ -4298,3 +4298,59 @@ describe('#939: droppedViaLabels (App.tsx)', () => {
     expect(result.labels).toBe('„North Cardinal“');
   });
 });
+
+// #885 §5.2/§6: the segment control's App wiring — draft modes reach the
+// routed request, follow a via insertion, and are omitted when nothing is forced.
+describe('#885: segment modes (App wiring)', () => {
+  const segmentGroup = (index: number, from: string, to: string) =>
+    screen.getByRole('group', {
+      name: de['planner.segment.group']
+        .replace('{index}', String(index))
+        .replace('{from}', from)
+        .replace('{to}', to),
+    });
+
+  it('an unforced plan carries no segmentModes key', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    pickOriginAndDestination();
+    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+    await waitFor(() => expect(routingMock.calls.length).toBe(1));
+    expect('segmentModes' in routingMock.calls[0].request).toBe(false);
+  });
+
+  it('marking origin→destination motor, then appending a via, routes [motor, motor]', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    pickOriginAndDestination();
+    const origin = de['planner.origin.label'];
+    const destination = de['planner.destination.label'];
+    fireEvent.click(
+      within(segmentGroup(1, origin, destination)).getByRole('button', {
+        name: de['planner.segment.motor'],
+      }),
+    );
+
+    const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
+    const latInput = within(viaSection).getByLabelText(de['planner.via.coord.latLabel']);
+    const lonInput = within(viaSection).getByLabelText(de['planner.via.coord.lonLabel']);
+    fireEvent.change(latInput, { target: { value: '54.85' } });
+    fireEvent.blur(latInput);
+    fireEvent.change(lonInput, { target: { value: '10.1' } });
+    fireEvent.blur(lonInput);
+    fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.coord.add'] }));
+
+    const waypoint1 = de['planner.segment.waypoint'].replace('{index}', '1');
+    for (const group of [
+      segmentGroup(1, origin, waypoint1),
+      segmentGroup(2, waypoint1, destination),
+    ]) {
+      expect(
+        within(group).getByRole('button', { name: de['planner.segment.motor'] }),
+      ).toHaveAttribute('aria-pressed', 'true');
+    }
+    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+    await waitFor(() => expect(routingMock.calls.length).toBe(1));
+    expect(routingMock.calls[0].request.segmentModes).toEqual(['motor', 'motor']);
+  });
+});

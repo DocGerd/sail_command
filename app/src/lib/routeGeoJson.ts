@@ -46,9 +46,16 @@ export function legsToFeatureCollection(
   // exactOptionalPropertyTypes distinguishes an omitted key from one
   // explicitly set to undefined, and only the latter is what such a caller
   // actually produces.
-  opts: { motorLetter?: string; mask?: NavMask | null; gateM?: number | undefined } = {},
+  opts: {
+    motorLetter?: string;
+    // #885 R5: appended to a forced leg's label; injected like motorLetter.
+    forcedLabel?: string;
+    mask?: NavMask | null;
+    gateM?: number | undefined;
+  } = {},
 ): FeatureCollection<LineString, LegProperties> {
   const motorLetter = opts.motorLetter ?? 'M';
+  const forcedLabel = opts.forcedLabel ?? 'forced';
   // #651: computed ONCE for the whole collection, never per feature —
   // legMinDepthsM returns one entry per leg in order (PER-LEG null; see its
   // own doc comment for why a whole-array null was replaced), so a per-leg
@@ -78,9 +85,9 @@ export function legsToFeatureCollection(
         maneuver: leg.maneuverAtStart,
         legIndex,
         speedLabel:
-          leg.kind === 'motor'
+          (leg.kind === 'motor'
             ? `${motorLetter} · ${formatKn(leg.speedKn, lang)}`
-            : formatKn(leg.speedKn, lang),
+            : formatKn(leg.speedKn, lang)) + (leg.forced ? ` · ${forcedLabel}` : ''),
         shallow:
           leg.shallow !== undefined ||
           (minDepths !== null &&

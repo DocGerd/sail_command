@@ -961,6 +961,7 @@ export default function RouteLayer({
     const gateM = plan ? requestedGateM(plan) : undefined;
     const routeData = legsToFeatureCollection(legs, lang, {
       motorLetter: t('route.motorLetter'),
+      forcedLabel: t('route.legs.forced'),
       mask,
       gateM,
     });
