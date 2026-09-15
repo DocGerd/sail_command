@@ -1591,9 +1591,10 @@ ruling 2026-09-15, #1136 comment 5679649933, item 3).
 relaxed gate, with no second `findRelaxedGate`. It mirrors pass 1's own
 control flow over that record (maintainer ruling 2026-09-15, #1136 comment
 5679649933): tier 1′ runs if pass 1 ran tier 1; tier 2′ runs if pass 1 ran
-tier 2 AND some tier-1′ sail has no `rigResult` (ruling item 5) — it never
-reads a pass-2 cause. If tier 2′ routed any sail, return it; else if tier 1′
-did, return it (ruling item 4, today's fallback). Tiers 3′/4′ run only when
+tier 2 AND some tier-1′ sail has no `rigResult` (orchestrator decision,
+same comment) — it never reads a pass-2 cause. If tier 2′ routed any
+sail, return it; else if tier 1′ did, return it (orchestrator decision,
+5679649933, winner corrected by 5679853743). Tiers 3′/4′ run only when
 no requested-gate tier′ routed any sail — the gate never relaxes once one
 has (ruling item 1) — with the same pair rule (tier 4′ over tier 3′). The
 returned tier may carry the #1166 one-sail-failed shape; its failed sail's
@@ -1629,9 +1630,10 @@ What this buys, per §5 hole:
   included — run no tier and are excluded structurally.
 
 **Guard asymmetry.** The expensive failure is changing a plan that works
-today, or relabelling a failure. So every uncertain branch — a clause false,
-the deadline, any pass-2 error — returns pass 1. The gate can only fail
-toward not salvaging.
+today, or relabelling a failure. So a false clause returns pass 1, and the
+deadline or any pass-2 error returns pass 1 or a pass-2 tier that routed a
+sail (§11.1), never a pass-2 cause. The gate can only fail toward not
+salvaging.
 
 **Plan fidelity — set D.** Sets A and B run bare `solve()` at
 `performanceFactor` 1.0 without comfort; set C already runs 0.9, comfort 5 /
@@ -1737,11 +1739,17 @@ behaviour flips 0.2 kn or 25 m away. So the fix's tests pin SEVERAL inputs:
 - **Containment, plan level:** for inputs `ok` today (clause 1), the
   `PlanResult` is byte-identical with the flag on; include a one-sail-failed
   plan (set D's TWS 3 or TWS 8). Mutation: replace the whole admission
-  predicate with `true`; it must red. Then delete each other clause ALONE
-  against an input only that clause rejects; each must red: clause 2 (a
-  `calm-without-motor` or `horizon-exceeded` error plan), clause 3 (no tier
-  ran), clause 4 (an expired deadline), clause 5 (a motor-on `unreachable`
-  plan). An input where every rig routes at tier 1 cannot red any of them.
+  predicate with `true`; it must red on set D's TWS 3. Per-clause deletions
+  red on `PlanResult` only where pass 2 would otherwise ROUTE, because a
+  failed pass 2 returns pass 1 verbatim: clause 2 needs a MIXED-cause plan
+  (tiers 1–2: first sail not `mask-blocked`, another sail a salvage-
+  rescuable death; tiers 3–4: a `combineAllCauses` winner above
+  `mask-blocked` with a rescuable loser); clause 5 needs a motor-on
+  `unreachable` plan salvage rescues. Both inputs are UNMEASURED — find
+  them before pinning. Clauses 3 and 4 cannot change `PlanResult` (nothing
+  to replay; every pass-2 solve exits at ring entry), and clause 3 cannot
+  change a `solve` call count either (no recorded tier, no call), so pin
+  both on the admission predicate's own return value.
 - **Discard:** `realmask.repro.mirrorCase.test.ts` unchanged. Mutation: surface
   pass-2 causes; set C predicts `reason` reds as `beyond-horizon`.
 - Each is a real-mask solve under `SOLVER_TEST_TIMEOUT_MS`; wall-clock under CI
@@ -1868,10 +1876,12 @@ for this design only; §8 still rejects the solve-level gate of §5.
    there; which tier wins when two tiers route different single sails;
    does a later tier's `budget-exhausted` override an earlier tier's
    route; what predicate enters tier 2′? Raised by PR #1241 reviews
-   5209489026 and 5209538320 against discussion_r4008412242 (line 1587).
-   **Ruled 2026-09-15** (#1136 comment 5679649933): never relaxes once any
-   sail has routed at that gate; the earlier tier wins between two
-   different-single-sail tiers (today's fallback); an earlier routed tier
-   wins over a later `budget-exhausted` one too; tier 2′ enters when some
+   5209489026 and 5209538320.
+   **Ruled (maintainer, 5679649933):** never relaxes once any sail has
+   routed at that gate; an earlier routed tier wins over a later
+   `budget-exhausted` one; a failed sail carries pass 1's recorded cause.
+   **Orchestrator decision (5679649933, winner corrected by 5679853743):**
+   within a pair, tier 2′ wins if it routed any sail, otherwise tier 1′
+   (today's `planRoute.ts` fallback, `~:624`); tier 2′ enters when some
    sail lacks a result and pass 1 ran tier 2, never reading a pass-2 cause
    (§11.1).
