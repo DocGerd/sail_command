@@ -3,6 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cloneWindGrid, rerouteFromFix, useLiveReroute } from './reroute';
 import { type ReplanClient } from './replan';
+import type { PinAfterSave } from '../services/pinAfterSave';
 import { RoutingError, type RoutingFailureKind } from '../routing/workerClient';
 import type { MsgKey } from '../i18n/dict.de';
 import * as openMeteoModule from '../services/openMeteo';
@@ -503,7 +504,6 @@ describe('rerouteFromFix', () => {
     expect(dispose, 'a timed-out reroute must dispose its client').toHaveBeenCalledTimes(1);
   });
 
-
   // #553 MAJOR 5: the ONE rejection kind that must NOT tear the worker down.
   // `'boat-not-in-catalogue'` is raised by a client-side catalogue lookup
   // BEFORE plan() posts anything, so the worker never saw the request and is
@@ -522,9 +522,9 @@ describe('rerouteFromFix', () => {
       dispose,
     };
 
-    await expect(
-      rerouteFromFix(plan, FIX, NOW_MS, 'Rerouted', { client }),
-    ).rejects.toMatchObject({ messageKey: 'error.boatNotInCatalogue' });
+    await expect(rerouteFromFix(plan, FIX, NOW_MS, 'Rerouted', { client })).rejects.toMatchObject({
+      messageKey: 'error.boatNotInCatalogue',
+    });
     expect(
       dispose,
       'a catalogue-miss rejection must leave the healthy worker alone',
@@ -554,6 +554,45 @@ describe('rerouteFromFix', () => {
     ).rejects.toMatchObject({ messageKey: 'error.planSaveFailed' });
     expect(dispose).not.toHaveBeenCalled();
   });
+
+  // #1233 save-path coverage: a mid-passage reroute is the case most likely
+  // to move the corridor into a region the original pin never fetched.
+  describe('#1233: region pinning after a successful reroute', () => {
+    it('pins the rerouted plan once, only after save() resolves', async () => {
+      const order: string[] = [];
+      const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
+      const save = vi.fn(async () => {
+        order.push('save-resolved');
+      });
+      const pinRegions = vi.fn<PinAfterSave>(() => {
+        order.push('pin');
+      });
+      const plan = makePlan();
+
+      const rerouted = await rerouteFromFix(plan, FIX, NOW_MS, 'Rerouted', {
+        client,
+        save,
+        pinRegions,
+      });
+
+      expect(order).toEqual(['save-resolved', 'pin']);
+      expect(pinRegions).toHaveBeenCalledTimes(1);
+      expect(pinRegions).toHaveBeenCalledWith(rerouted);
+    });
+
+    it('does not pin when save() fails', async () => {
+      const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
+      const save = vi.fn().mockRejectedValue(new Error('idb full'));
+      const pinRegions = vi.fn<PinAfterSave>();
+      const plan = makePlan();
+
+      await expect(
+        rerouteFromFix(plan, FIX, NOW_MS, 'Rerouted', { client, save, pinRegions }),
+      ).rejects.toMatchObject({ messageKey: 'error.planSaveFailed' });
+
+      expect(pinRegions).not.toHaveBeenCalled();
+    });
+  });
 });
 
 describe('useLiveReroute', () => {
@@ -564,6 +603,29 @@ describe('useLiveReroute', () => {
   it('starts idle', () => {
     const { result } = renderHook(() => useLiveReroute(() => Promise.resolve(null)));
     expect(result.current.state).toEqual({ rerouting: false, error: null });
+  });
+
+  // #1233 Minor (sail-reviewer PR #1231/#1242): the hook-level
+  // `deps.pinRegions` pass-through, mirroring the `save`/`now`-injection
+  // test below. Mutation-checked: deleting the
+  // `...(deps.pinRegions ? { pinRegions: deps.pinRegions } : {})` spread
+  // reds this row.
+  it('passes deps.pinRegions through to rerouteFromFix', async () => {
+    const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
+    const pinRegions = vi.fn<PinAfterSave>();
+    const { result } = renderHook(() =>
+      useLiveReroute(() => Promise.resolve(client), {
+        save: vi.fn().mockResolvedValue(undefined),
+        now: () => NOW_MS,
+        pinRegions,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.reroute(makePlan(), FIX, 'Rerouted');
+    });
+
+    expect(pinRegions).toHaveBeenCalledTimes(1);
   });
 
   it('a failed ensureClient surfaces error.replanInit — not a silent no-op', async () => {

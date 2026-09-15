@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { savePlan } from '../services/db';
 import { NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
+import { pinRegionsAfterReroute, type PinAfterSave } from '../services/pinAfterSave';
 import {
   disposeAfterFailure,
   failureLeavesWorkerHealthy,
@@ -189,6 +190,11 @@ export async function rerouteFromFix(
       `failed to persist the rerouted plan: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
+  // #1233: never awaited — pinning cannot delay or fail the reroute. A
+  // mid-passage reroute is exactly the case most likely to move the
+  // corridor into a region the original pin never fetched.
+  const pinRegions = deps.pinRegions ?? pinRegionsAfterReroute;
+  pinRegions(rerouted);
   return rerouted;
 }
 
@@ -216,7 +222,7 @@ const IDLE_STATE: LiveRerouteState = { rerouting: false, error: null };
  */
 export function useLiveReroute(
   ensureClient: () => Promise<ReplanClient | null>,
-  deps: { save?: typeof savePlan; now?: () => number } = {},
+  deps: { save?: typeof savePlan; now?: () => number; pinRegions?: PinAfterSave } = {},
 ): {
   state: LiveRerouteState;
   reroute: (plan: Plan, fixPoint: LatLon, name: string) => Promise<Plan | null>;
@@ -244,16 +250,14 @@ export function useLiveReroute(
         }
 
         const nowMs = (deps.now ?? Date.now)();
-        // exactOptionalPropertyTypes: ReplanDeps.save is optional-if-present
-        // — an absent deps.save must omit the key entirely (mirrors
-        // useViaReplan).
-        const rerouted = await rerouteFromFix(
-          plan,
-          fixPoint,
-          nowMs,
-          name,
-          deps.save ? { client, save: deps.save } : { client },
-        );
+        // exactOptionalPropertyTypes: ReplanDeps's optional fields are
+        // optional-if-present — an absent deps.save/pinRegions must omit the
+        // key entirely (mirrors useViaReplan).
+        const rerouted = await rerouteFromFix(plan, fixPoint, nowMs, name, {
+          client,
+          ...(deps.save ? { save: deps.save } : {}),
+          ...(deps.pinRegions ? { pinRegions: deps.pinRegions } : {}),
+        });
         setState({ rerouting: false, error: null });
         return rerouted;
       } catch (err) {
@@ -264,7 +268,7 @@ export function useLiveReroute(
         busyRef.current = false;
       }
     },
-    [ensureClient, deps.save, deps.now],
+    [ensureClient, deps.save, deps.now, deps.pinRegions],
   );
 
   const clearError = useCallback(() => setState((s) => ({ ...s, error: null })), []);
