@@ -320,6 +320,26 @@ manifest requires) and asserts a 100 KiB floor instead of 10 MB. `--out-dir`
 defaults to `app/public/data/`; point it elsewhere for a trial extract, since
 any region archive there enters the next build.
 
+### `region-north.pmtiles.png`, `region-east.pmtiles.png` — #295 region archives
+
+**Hook-protected binaries — regenerate, never hand-edit.** Lazy (not
+precached) basemap archives for the #295 extension, pinned per saved plan
+(#1164). Both from Protomaps build `20260720` (tileset 4.14.11, the core's
+schema); shape a2 per the maintainer ruling on #295:
+
+```
+pipeline/extract_basemap.sh 20260720 --region north 9.4,55.3041379,11.0,55.6
+pipeline/extract_basemap.sh 20260720 --region east 11.0302736,54.3,11.6,55.6
+```
+
+The inner edges are the first z13 tile boundaries past the core's 55.3°N and
+11.0°E (+1e-7°), not the round numbers: tiles straddling the core edge are
+always served by the core (`compositeBasemapProtocol.ts`'s core-wins rule),
+so snapping drops 0.47 MB of never-read tiles. Measured on #295/PR #1249:
+every non-core tile of a single 9.4–11.6°E × 54.3–55.6°N extract is served
+byte-identically by these two (1518/1518). The snap depends on `MAXZOOM=13`;
+recompute it if that changes.
+
 ### `app/public/basemap-assets/` — offline map fonts + sprites
 
 Self-hosted glyph (font) and sprite assets for MapLibre GL, so the basemap
