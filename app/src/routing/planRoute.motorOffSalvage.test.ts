@@ -507,7 +507,7 @@ describe('#1136 pass-2 return path', () => {
     expect(distanceOf(result, 'genoa')).toBe(61);
   });
 
-  it('earliest routed tier wins when tiers route different single sails', () => {
+  it('tier 2′ wins when it routes any sail, even a different single sail than tier 1′', () => {
     script({
       ...P1_REQ_BLOCKED,
       'p2:req:c5:genoa': ok(71),
@@ -516,8 +516,8 @@ describe('#1136 pass-2 return path', () => {
       'p2:req:none:fock': ok(72),
     });
     const { result } = plan(MOTOR_OFF);
-    expect(distanceOf(result, 'genoa')).toBe(71);
-    expect(distanceOf(result, 'fock')).toBeNull();
+    expect(distanceOf(result, 'genoa')).toBeNull();
+    expect(distanceOf(result, 'fock')).toBe(72);
   });
 
   it('a partial tier 2′ is returned when tier 1′ routed nothing', () => {

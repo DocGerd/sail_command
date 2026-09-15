@@ -741,13 +741,10 @@ function runLadder(
         retryTier !== undefined && !firstRun.every(routed)
           ? runAll(s, retryTier.gate, retryTier.comfortDepthM, true)
           : null;
-      // The retry displaces a routed first tier only by routing every sail
-      // (earliest routed tier wins otherwise). A budget-exhausted retry routes
-      // nothing, so the first tier stands.
-      if (retryTier !== undefined && retryRun !== null) {
-        if (retryRun.every(routed)) return done(retryRun, retryTier);
-        if (!firstRun.some(routed) && retryRun.some(routed)) return done(retryRun, retryTier);
-      }
+      // As in pass 1: the retry wins if it routed any sail, else the first tier
+      // if it did. A budget-exhausted retry routes nothing, so the first tier
+      // stands.
+      if (retryTier !== undefined && retryRun?.some(routed)) return done(retryRun, retryTier);
       if (firstRun.some(routed)) return done(firstRun, first);
       // Nothing routed at this gate: only then move on to the relaxed gate.
     }
