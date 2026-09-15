@@ -243,9 +243,9 @@ prefix-for-prefix, 11/11 — cross-run corroboration of that existing
 baseline, not a new measurement.
 
 The maintainer accepted this diff (against `develop`'s `33dbad2`) on
-2026-09-15. Classification (why the change is presentational, not routing)
-is in the sweep-verdict review comment on PR #1245 — read it there, not
-here.
+2026-09-15. Classification of the accepted routing differences (grid-step
+drift, frontier-cap pressure, one status flip, two rig flips; residuals
+#1257, #1258, #1259) is in the sweep-verdict comment on PR #1245.
 
 ## Why it lives here and not under `src/`
 
@@ -438,8 +438,8 @@ longer comparable. **Add an arm rather than editing one.**
 
 ## Recorded baseline — 2026-08-07, PR #450 (`dbcd519`)
 
-**Covers only the ORIGINAL six arms (198 of the 363 plans this harness now
-produces).** No BASE-vs-HEAD baseline has been recorded for the three #452
+**Covers only the ORIGINAL six arms (198 of the 363 plans this harness
+produced at 33 harbours).** No BASE-vs-HEAD baseline has been recorded for the three #452
 arms (`margin-zero`, `relaxation-dense`, `margin-extreme`) — that comparison
 was deliberately deferred to whenever a real depth-relaxation change is
 actually implemented, so it can be recorded against that change's own
