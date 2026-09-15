@@ -85,6 +85,7 @@ function noRouteLabel(out: RunOut): NoRouteReason | null {
  * re-solve into one plan-level cause. Precedence encodes actionability, so the
  * class the user can act on wins when the rigs disagree:
  *   'horizon-exceeded' (change departure / refresh forecast)
+ *   > 'forced-sail-calm' (#885: change departure, or unmark the segment)
  *   > 'calm-without-motor' (enable motor)
  *   > 'mask-blocked' (mask-level, nothing the user can change).
  * Both rigs share mask/wind/waypoints and differ only in polar table, so a
@@ -101,7 +102,7 @@ function noRouteLabel(out: RunOut): NoRouteReason | null {
  * called only where BOTH rigs failed with non-null causes, and a shared
  * deadline expiring during the SECOND rig's solve after the first finished
  * with 'mask-blocked'/'horizon-exceeded' produces precisely that mixed pair.
- * planRoute.budget.test.ts now pins the whole 5x5 table (the four causes plus
+ * planRoute.budget.test.ts now pins the whole 6x6 table (the five causes plus
  * null in both argument positions), so the older `horizon > calm > mask`
  * ordering — equally unpinned until now — is covered too.
  */
