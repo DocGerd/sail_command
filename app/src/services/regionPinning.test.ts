@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getRegionPinIntent, pinRegionsForPlan, regionReadiness } from './regionPinning';
-import { __resetDbForTests, saveRegionPin } from './db';
+import { __resetDbForTests, deletePlan, savePlan, saveRegionPin } from './db';
 import {
   REGION_ARCHIVE_PREFIX,
   REGION_MANIFEST_PATH,
@@ -253,6 +253,7 @@ describe('#1225 PWA review Blocker r4008640242: workbox precache revision key', 
     const { fake } = stubEnv();
     await seedManifestInCache(fake, manifest());
     const plan = makePlan('p1', [[leg()]]); // requires region-a only
+    await savePlan(plan);
 
     // A bare, non-ignoreSearch cache.match would miss the revision-keyed
     // entry entirely and report not-ready/manifest-unavailable.
@@ -266,6 +267,7 @@ describe('regionReadiness', () => {
   it('reports not-ready when the manifest cannot be read from CacheStorage at all (never fetches)', async () => {
     const { fetchMock } = stubEnv(); // manifest never seeded into any fake cache
     const plan = makePlan('p1', [[leg()]]);
+    await savePlan(plan);
 
     expect(await regionReadiness(plan)).toEqual({
       state: 'not-ready',
@@ -280,6 +282,7 @@ describe('regionReadiness', () => {
     const { fake, fetchMock } = stubEnv();
     await seedManifestInCache(fake, { core: 'not-an-entry' } as unknown as RegionManifest);
     const plan = makePlan('p1', [[leg()]]);
+    await savePlan(plan);
 
     expect(await regionReadiness(plan)).toEqual({
       state: 'not-ready',
@@ -292,6 +295,7 @@ describe('regionReadiness', () => {
     const { fake } = stubEnv();
     await seedManifestInCache(fake, { ...manifest(), regions: [] });
     const plan = makePlan('p1', [[leg()]]);
+    await savePlan(plan);
 
     expect(await regionReadiness(plan)).toEqual({ state: 'ready', done: 0, total: 0 });
   });
@@ -300,6 +304,7 @@ describe('regionReadiness', () => {
     const { fake } = stubEnv();
     await seedManifestInCache(fake, manifest());
     const plan = makePlan('p1', [[]]);
+    await savePlan(plan);
 
     const readiness = await regionReadiness(plan);
     expect(readiness).toEqual({ state: 'not-ready', reason: 'pending' });
@@ -311,7 +316,9 @@ describe('regionReadiness', () => {
       archiveBody: () => pmtilesBytes(1024),
     });
     vi.stubGlobal('caches', fake2);
-    const outcome = await pinRegionsForPlan(makePlan('p2', [[]]));
+    const p2 = makePlan('p2', [[]]);
+    await savePlan(p2);
+    const outcome = await pinRegionsForPlan(p2);
     expect(outcome.status).toBe('pinned');
     if (outcome.status === 'pinned') expect(outcome.total).toBe(2);
     expect(fetchMock).toHaveBeenCalled();
@@ -326,6 +333,7 @@ describe('regionReadiness', () => {
     const plan = makePlan('p1', [
       [leg({ start: { lat: 60.5, lon: 20.5 }, end: { lat: 54.65, lon: 10.0 } })],
     ]);
+    await savePlan(plan);
 
     expect(await regionReadiness(plan)).toEqual({ state: 'not-ready', reason: 'pending' });
 
@@ -361,6 +369,7 @@ describe('regionReadiness', () => {
     ]); // requires region-a AND region-b
 
     const cache = await fake.open(REGION_CACHE_NAME);
+    await savePlan(plan);
     // region-a pinned; region-b permanently missing (e.g. it 404'd forever).
     await cache.put(
       BASE + m.regions[0].path,
@@ -379,6 +388,7 @@ describe('regionReadiness', () => {
     const m = manifest();
     await seedManifestInCache(fake, m);
     const plan = makePlan('p1', [[leg()]]); // requires region-a only
+    await savePlan(plan);
 
     const cache = await fake.open(REGION_CACHE_NAME);
     const aUrl = BASE + m.regions[0].path;
@@ -395,6 +405,7 @@ describe('regionReadiness', () => {
     const m = manifest();
     await seedManifestInCache(fake, m);
     const plan = makePlan('p1', [[leg()]]); // requires region-a only
+    await savePlan(plan);
 
     const cache = await fake.open(REGION_CACHE_NAME);
     const aUrl = BASE + m.regions[0].path;
@@ -415,6 +426,7 @@ describe('regionReadiness', () => {
     const m = manifest();
     await seedManifestInCache(fake, m);
     const plan = makePlan('p1', [[leg()]]); // requires region-a only
+    await savePlan(plan);
 
     const cache = await fake.open(REGION_CACHE_NAME);
     const aUrl = BASE + m.regions[0].path;
@@ -446,6 +458,7 @@ describe('pinRegionsForPlan', () => {
     // check at the end of this test (network-free by contract) can see it.
     await seedManifestInCache(fake, m);
     const plan = makePlan('p1', [[leg()]]); // requires region-a only
+    await savePlan(plan);
 
     const outcome = await pinRegionsForPlan(plan);
     expect(outcome).toEqual({ status: 'pinned', total: 1, pinned: 1 });
@@ -475,13 +488,16 @@ describe('pinRegionsForPlan', () => {
     });
     await seedManifestInCache(fake, m);
     const plan = makePlan('p1', [[leg()]]);
+    await savePlan(plan);
 
     await pinRegionsForPlan(plan);
 
     const aUrl = BASE + m.regions[0].path;
     // The fetch URL carries a cache-busting `?pin=` suffix (see the
     // successor-fix test below), so match by PREFIX, not exact equality.
-    const archiveFetchCall = fetchMock.mock.calls.find((call: unknown[]) => (call[0] as string).startsWith(aUrl));
+    const archiveFetchCall = fetchMock.mock.calls.find((call: unknown[]) =>
+      (call[0] as string).startsWith(aUrl),
+    );
     expect(archiveFetchCall?.[1]).toEqual({ cache: 'no-store' });
   });
 
@@ -494,6 +510,7 @@ describe('pinRegionsForPlan', () => {
     });
     await seedManifestInCache(fake, m);
     const plan = makePlan('p1', [[leg()]]);
+    await savePlan(plan);
 
     const outcome = await pinRegionsForPlan(plan);
     expect(outcome).toEqual({ status: 'pinned', total: 1, pinned: 0 });
@@ -508,6 +525,7 @@ describe('pinRegionsForPlan', () => {
     const { fake } = stubEnv({ manifest: m, archiveBody: () => pmtilesBytes(10) });
     await seedManifestInCache(fake, m);
     const plan = makePlan('p1', [[leg()]]);
+    await savePlan(plan);
 
     const outcome = await pinRegionsForPlan(plan);
     expect(outcome).toEqual({ status: 'pinned', total: 1, pinned: 0 });
@@ -529,6 +547,7 @@ describe('pinRegionsForPlan', () => {
     });
     await seedManifestInCache(fake, m);
     const plan = makePlan('p1', [[leg()]]);
+    await savePlan(plan);
 
     const outcome = await pinRegionsForPlan(plan);
     expect(outcome).toEqual({ status: 'pinned', total: 1, pinned: 0 });
@@ -541,6 +560,7 @@ describe('pinRegionsForPlan', () => {
   it('a malformed manifest pins NOTHING and records no pin intent', async () => {
     const { fake, fetchMock } = stubEnv({ manifest: 'malformed' });
     const plan = makePlan('p1', [[leg()]]);
+    await savePlan(plan);
 
     const outcome = await pinRegionsForPlan(plan);
     expect(outcome).toEqual({ status: 'manifest-unavailable' });
@@ -563,6 +583,7 @@ describe('pinRegionsForPlan', () => {
   it('an unreachable manifest (network failure) pins NOTHING', async () => {
     stubEnv({ manifest: 'unreachable' });
     const plan = makePlan('p1', [[leg()]]);
+    await savePlan(plan);
 
     expect(await pinRegionsForPlan(plan)).toEqual({ status: 'manifest-unavailable' });
     expect(await getRegionPinIntent('p1')).toBeUndefined();
@@ -580,6 +601,7 @@ describe('pinRegionsForPlan', () => {
     vi.stubGlobal('fetch', fetchMock);
     vi.stubGlobal('caches', new FakeCacheStorage()); // nothing precached -> forces the network branch
     const plan = makePlan('p1', [[leg()]]);
+    await savePlan(plan);
 
     expect(await pinRegionsForPlan(plan)).toEqual({ status: 'manifest-unavailable' });
   });
@@ -589,6 +611,7 @@ describe('pinRegionsForPlan', () => {
     const { fake, fetchMock } = stubEnv({ manifest: zeroRegionManifest });
     await seedManifestInCache(fake, zeroRegionManifest);
     const plan = makePlan('p1', [[leg()]]);
+    await savePlan(plan);
 
     const outcome = await pinRegionsForPlan(plan);
     expect(outcome).toEqual({ status: 'pinned', total: 0, pinned: 0 });
@@ -620,6 +643,7 @@ describe('pinRegionsForPlan', () => {
     );
 
     const plan = makePlan('p1', [[leg()]]);
+    await savePlan(plan);
     const outcome = await pinRegionsForPlan(plan);
     expect(outcome).toEqual({ status: 'pinned', total: 1, pinned: 1 });
     // No archive fetch at all — the archive was already present and must
@@ -628,7 +652,9 @@ describe('pinRegionsForPlan', () => {
     // archive fetch now goes through a `?pin=` URL, so an exact-match check
     // against the bare url would be vacuously true regardless of whether a
     // fetch happened).
-    const archiveFetches = fetchMock.mock.calls.filter((call: unknown[]) => (call[0] as string).startsWith(aUrl));
+    const archiveFetches = fetchMock.mock.calls.filter((call: unknown[]) =>
+      (call[0] as string).startsWith(aUrl),
+    );
     expect(archiveFetches).toHaveLength(0);
   });
 
@@ -654,6 +680,7 @@ describe('pinRegionsForPlan', () => {
     });
 
     const plan = makePlan('p1', [[leg()]]); // requires region-a only
+    await savePlan(plan);
     const outcome = await pinRegionsForPlan(plan);
     expect(outcome).toEqual({ status: 'pinned', total: 1, pinned: 0 });
 
@@ -676,6 +703,7 @@ describe('pinRegionsForPlan', () => {
     );
 
     const plan = makePlan('p1', [[leg()]]);
+    await savePlan(plan);
     const outcome = await pinRegionsForPlan(plan);
     expect(outcome).toEqual({ status: 'pinned', total: 1, pinned: 1 });
 
@@ -691,11 +719,14 @@ describe('pinRegionsForPlan', () => {
     });
     await seedManifestInCache(fake, m);
     const plan = makePlan('p1', [[leg()]]);
+    await savePlan(plan);
 
     await pinRegionsForPlan(plan);
 
     const aUrl = BASE + m.regions[0].path;
-    const archiveFetchCall = fetchMock.mock.calls.find((call: unknown[]) => (call[0] as string).startsWith(aUrl));
+    const archiveFetchCall = fetchMock.mock.calls.find((call: unknown[]) =>
+      (call[0] as string).startsWith(aUrl),
+    );
     expect(archiveFetchCall?.[0]).toMatch(/\?pin=\d+$/);
     expect(archiveFetchCall?.[0]).not.toBe(aUrl);
 
@@ -714,11 +745,77 @@ describe('pinRegionsForPlan', () => {
     const { fake } = stubEnv({ manifest: zeroRegionManifest });
     await seedManifestInCache(fake, zeroRegionManifest);
     const plan = makePlan('p1', [[leg()]]);
+    await savePlan(plan);
 
     await expect(pinRegionsForPlan(plan)).resolves.toEqual({
       status: 'pin-record-failed',
       total: 0,
       pinned: 0,
     });
+  });
+});
+
+describe('#1233 Major (offline/PWA review): delete-during-pin race', () => {
+  it('a plan deleted while its archive is still in flight leaves NO orphaned pin record', async () => {
+    const m = manifest();
+    const fake = new FakeCacheStorage();
+    vi.stubGlobal('caches', fake);
+    await seedManifestInCache(fake, m);
+
+    const aUrl = BASE + m.regions[0].path;
+    let fetchStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      fetchStarted = resolve;
+    });
+    let releaseFetch!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseFetch = resolve;
+    });
+    const fetchMock = vi.fn(async (input: string) => {
+      if (input.startsWith(aUrl)) {
+        fetchStarted();
+        await gate; // held open until the test releases it below
+        return new Response(pmtilesBytes(m.regions[0].bytes), { status: 200 });
+      }
+      return new Response(JSON.stringify(m), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const plan = makePlan('p-race', [[leg()]]);
+    await savePlan(plan);
+
+    const pinPromise = pinRegionsForPlan(plan);
+    await started; // the archive fetch is now in flight
+    await deletePlan('p-race');
+    releaseFetch();
+    const outcome = await pinPromise;
+
+    expect(outcome.status).toBe('plan-gone');
+    expect(await getRegionPinIntent('p-race')).toBeUndefined();
+  });
+});
+
+describe('#1233 Major 2 (offline/PWA review): in-flight archive fetch coalescing', () => {
+  it('5 concurrent pins of plans sharing one region produce exactly 1 fetch of that archive', async () => {
+    const m = manifest();
+    const { fake, fetchMock } = stubEnv({
+      manifest: m,
+      archiveBody: () => pmtilesBytes(m.regions[0].bytes),
+    });
+    await seedManifestInCache(fake, m);
+
+    const plans = Array.from({ length: 5 }, (_, i) => makePlan(`p${i}`, [[leg()]]));
+    await Promise.all(plans.map((p) => savePlan(p)));
+
+    const outcomes = await Promise.all(plans.map((p) => pinRegionsForPlan(p)));
+
+    for (const outcome of outcomes) {
+      expect(outcome).toEqual({ status: 'pinned', total: 1, pinned: 1 });
+    }
+    const aUrl = BASE + m.regions[0].path;
+    const archiveFetches = fetchMock.mock.calls.filter((call: unknown[]) =>
+      (call[0] as string).startsWith(aUrl),
+    );
+    expect(archiveFetches).toHaveLength(1);
   });
 });

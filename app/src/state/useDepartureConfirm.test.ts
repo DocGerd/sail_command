@@ -3,6 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useDepartureConfirm } from './useDepartureConfirm';
 import type { ReplanClient } from './replan';
+import type { PinAfterSave } from '../services/pinAfterSave';
 import { RoutingError } from '../routing/workerClient';
 import { __resetDbForTests } from '../services/db';
 import { uniformWindGrid } from '../test/fixtures';
@@ -347,6 +348,51 @@ describe('useDepartureConfirm', () => {
 
     expect(outcome).toBeNull();
     expect(result.current.state.error).toBe('error.planSaveFailed');
+  });
+
+  // #1233 save-path coverage: a confirmed departure-window candidate can
+  // shift enough (different wind window -> different route) that the
+  // corridor needs a region the original save never fetched.
+  describe('#1233: region pinning after a successful confirm', () => {
+    it('pins the confirmed plan once, only after save() resolves', async () => {
+      const order: string[] = [];
+      const plan = makePlan();
+      const client: ReplanClient = { plan: vi.fn().mockResolvedValue(TWO_RIG_OK_RESULT) };
+      const save = vi.fn(async () => {
+        order.push('save-resolved');
+      });
+      const pinRegions = vi.fn<PinAfterSave>(() => {
+        order.push('pin');
+      });
+      const { result } = renderHook(() =>
+        useDepartureConfirm(() => Promise.resolve(client), { save, pinRegions }),
+      );
+
+      let outcome: Plan | null = null;
+      await act(async () => {
+        outcome = await result.current.confirm(plan, plan.request.departureMs);
+      });
+
+      expect(order).toEqual(['save-resolved', 'pin']);
+      expect(pinRegions).toHaveBeenCalledTimes(1);
+      expect(pinRegions).toHaveBeenCalledWith(outcome);
+    });
+
+    it('does not pin when save() fails', async () => {
+      const plan = makePlan();
+      const client: ReplanClient = { plan: vi.fn().mockResolvedValue(TWO_RIG_OK_RESULT) };
+      const save = vi.fn().mockRejectedValue(new Error('quota exceeded'));
+      const pinRegions = vi.fn<PinAfterSave>();
+      const { result } = renderHook(() =>
+        useDepartureConfirm(() => Promise.resolve(client), { save, pinRegions }),
+      );
+
+      await act(async () => {
+        await result.current.confirm(plan, plan.request.departureMs);
+      });
+
+      expect(pinRegions).not.toHaveBeenCalled();
+    });
   });
 
   it('clearError resets the error without disturbing departureMs', async () => {
