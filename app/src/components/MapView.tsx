@@ -6,6 +6,7 @@ import type {
   ErrorEvent,
   LngLatBoundsLike,
   LngLatLike,
+  VectorTileSource,
 } from 'maplibre-gl';
 import { layers, namedFlavor } from '@protomaps/basemaps';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -217,6 +218,7 @@ export default function MapView({
     let stopAttributionCollapse: () => void = () => {};
     let handleClick: ((e: MapMouseEvent) => void) | undefined;
     let handleError: ((e: ErrorEvent) => void) | undefined;
+    let handleControllerChange: (() => void) | undefined;
 
     void (async () => {
       // Computed ONCE and passed both to the transport check and to
@@ -231,11 +233,22 @@ export default function MapView({
         // Regions only on SW-controlled pages: an uncontrolled page cannot
         // hold a pinned region, so it renders region areas blank (#1164
         // ruling 4) and skips the manifest fetch entirely.
-        basemapProtocol.configure({
-          coreUrl: pmtilesUrl,
-          baseHref: new URL(import.meta.env.BASE_URL, location.href).href,
-          regionsEnabled: controlled,
-        });
+        const baseHref = new URL(import.meta.env.BASE_URL, location.href).href;
+        basemapProtocol.configure({ coreUrl: pmtilesUrl, baseHref, regionsEnabled: controlled });
+        // #295 (PWA review r4016341229): a fresh install claims the page
+        // mid-session (sw.ts's clientsClaim). Enable regions then and reload
+        // the source's TileJSON, whose bounds gate which tiles MapLibre asks
+        // for, so a strip pinned after the claim renders without a reload.
+        if (!controlled && 'serviceWorker' in navigator) {
+          handleControllerChange = () => {
+            if (cancelled || navigator.serviceWorker.controller == null) return;
+            basemapProtocol.configure({ coreUrl: pmtilesUrl, baseHref, regionsEnabled: true });
+            instance?.getSource<VectorTileSource>('protomaps')?.setUrl(BASEMAP_SOURCE_URL);
+          };
+          navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange, {
+            once: true,
+          });
+        }
 
         // Label language is baked into the style at creation time; SailCommand's
         // language switch is rare enough that re-fetching/re-diffing the whole
@@ -400,6 +413,9 @@ export default function MapView({
 
     return () => {
       cancelled = true;
+      if (handleControllerChange) {
+        navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
+      }
       stopAttributionCollapse();
       if (instance !== undefined) {
         if (handleClick) instance.off('click', handleClick);

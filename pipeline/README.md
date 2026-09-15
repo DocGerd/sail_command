@@ -304,6 +304,54 @@ The script installs the `pmtiles` CLI into `pipeline/bin/` on first run
 10 MB (catches a truncated/failed extract), and prints `pmtiles show` output
 for a final sanity check.
 
+Protomaps prunes old daily builds irregularly (`20260714` returned 404 on
+2026-09-15), so a committed archive may not be reproducible from its recorded
+build date.
+
+A lazy region archive (#1164, #295) uses the same extract at the same
+`--maxzoom`:
+
+```
+pipeline/extract_basemap.sh [YYYYMMDD] --region <id> <min_lon,min_lat,max_lon,max_lat> [--out-dir <dir>]
+```
+
+It writes `region-<id>.pmtiles.png` (the name `vite.config.ts`'s region
+manifest requires) and asserts a 100 KiB floor instead of 10 MB. `--out-dir`
+defaults to `app/public/data/`; point it elsewhere for a trial extract, since
+any region archive there enters the next build.
+
+### `region-north.pmtiles.png`, `region-east.pmtiles.png` — #295 region archives
+
+**Hook-protected binaries — regenerate, never hand-edit.** Lazy (not
+precached) basemap archives for the #295 extension, pinned per saved plan
+(#1164). Both from Protomaps build `20260720` (tileset 4.14.11, the core's
+schema); shape a2 per the maintainer ruling on #295:
+
+```
+pipeline/extract_basemap.sh 20260720 --region north 9.4,55.3041379,11.0,55.6
+pipeline/extract_basemap.sh 20260720 --region east 11.0302736,54.3,11.6,55.6
+```
+
+The inner edges are the first z13 tile boundaries past the core's 55.3°N and
+11.0°E (+1e-7°), not the round numbers: tiles straddling the core edge are
+always served by the core (`compositeBasemapProtocol.ts`'s core-wins rule),
+so snapping drops 0.47 MB of never-read tiles. The snap depends on
+`MAXZOOM=13`; recompute it if that changes, then re-run the identity check:
+
+```
+pipeline/extract_basemap.sh 20260720 --region whole 9.4,54.3,11.6,55.6 --out-dir <tmp>
+python3 pipeline/verify_region_split.py --whole <tmp>/region-whole.pmtiles.png \
+  --core app/public/data/basemap.pmtiles.png \
+  app/public/data/region-east.pmtiles.png app/public/data/region-north.pmtiles.png
+```
+
+It compares every non-core tile of the single extract with the tile the
+region the protocol would pick holds, and exits non-zero on any missing,
+differing or unserved tile. Output at PR #1249 against build `20260720`:
+`identical 1518, missing 0, content-mismatch 0, no-region 0, region-only 0`.
+The check needs that build to still be downloadable (see the pruning note
+above).
+
 ### `app/public/basemap-assets/` — offline map fonts + sprites
 
 Self-hosted glyph (font) and sprite assets for MapLibre GL, so the basemap

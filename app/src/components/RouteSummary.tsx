@@ -1,5 +1,5 @@
 import { useMemo, useRef, type KeyboardEvent, type Ref } from 'react';
-import { useT, useLang } from '../i18n';
+import { useT, useLang, type Lang } from '../i18n';
 import {
   formatHeading,
   formatKn,
@@ -42,6 +42,8 @@ import {
 } from '../lib/reefSuggestion';
 import { useNavMask } from '../state/useNavMask';
 import { useSeamarks } from '../state/useSeamarks';
+import { useOnline } from '../state/AppState';
+import { useRegionReadiness, type RegionReadinessStatus } from '../state/useRegionReadiness';
 import type { MsgKey } from '../i18n/dict.de';
 import type { Board, Leg, NoRouteReason, Plan, SailId } from '../types';
 import Card from './Card';
@@ -418,6 +420,49 @@ function Stat({ label, value, className }: { label: string; value: string; class
   );
 }
 
+const OFFLINE_MAP_KEY: Record<RegionReadinessStatus, MsgKey> = {
+  checking: 'route.offlineMap.checking',
+  ready: 'route.offlineMap.ready',
+  pinning: 'route.offlineMap.pinning',
+  failed: 'route.offlineMap.failed',
+  'not-ready': 'route.offlineMap.notReady',
+};
+
+/** Decimal megabytes, one fraction digit, in the UI language (format.ts's locale pair). */
+function formatMegabytes(bytes: number, lang: Lang): string {
+  return new Intl.NumberFormat(lang === 'de' ? 'de-DE' : 'en-GB', {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(bytes / 1_000_000);
+}
+
+/**
+ * #295: whether this plan's map area is stored for offline use, and its
+ * download size. Only `ready` claims readiness; a failed or missing download
+ * offers a save button while online and a service worker controls the page
+ * (pinning needs both). Under Save-Data that button is the only trigger.
+ */
+export function OfflineMapStatus({ plan }: { plan: Plan }) {
+  const t = useT();
+  const [lang] = useLang();
+  const online = useOnline();
+  const { status, canRetry, retry, bytes } = useRegionReadiness(plan);
+  const showRetry = (status === 'failed' || status === 'not-ready') && canRetry && online;
+  return (
+    <div className="planner-result-chips">
+      <Chip className="chip-offline-map" role="status">
+        {t(OFFLINE_MAP_KEY[status])}
+        {bytes !== null && ` (${t('route.offlineMap.size', { mb: formatMegabytes(bytes, lang) })})`}
+      </Chip>
+      {showRetry && (
+        <Button variant="ghost" onClick={retry}>
+          {t('route.offlineMap.retry')}
+        </Button>
+      )}
+    </div>
+  );
+}
+
 export default function RouteSummary({
   plan,
   rig,
@@ -560,6 +605,8 @@ export default function RouteSummary({
               t,
             )}
       </Chip>
+
+      <OfflineMapStatus key={`${plan.id}-${plan.createdAtMs}`} plan={plan} />
 
       {/* #703: bare `<p role="alert">` carried no visual treatment at all —
           same muted body-copy problem as `.planner-guidance`/`.options-help`

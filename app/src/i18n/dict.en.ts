@@ -416,6 +416,14 @@ export const en = {
   // departure" frame #748's own Constraints section requires. "at
   // departure" names the endpoint {hours} is measured to.
   'route.staleForecast': 'Forecast {hours} h old at departure',
+  // #295: whether this plan's map area is stored for offline use.
+  'route.offlineMap.checking': 'Offline map: checking…',
+  'route.offlineMap.ready': 'Offline map saved',
+  'route.offlineMap.pinning': 'Saving offline map…',
+  'route.offlineMap.failed': 'Offline map download failed',
+  'route.offlineMap.notReady': 'Offline map not saved',
+  'route.offlineMap.retry': 'Save offline map',
+  'route.offlineMap.size': '{mb} MB',
   // #504 fix wave 4: restructured from ONE dense paragraph into three parts
   // inside ONE role="alert" region (ShallowWarning, ShallowWarning.tsx: a
   // <div> with .lead/.detail/.caveat children) — leads with the most
