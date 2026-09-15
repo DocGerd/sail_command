@@ -303,23 +303,42 @@ describe('parseExportFile: per-item corruption is isolated, not fatal', () => {
     expect(result.plans[0].id).toBe('good-5');
   });
 
-  // #295 ruling: a backup made before #295 carries its wind grid on the old
-  // 11 x 17 lattice (54.3-55.3N, 9.4-11.0E). Coverage is not an import
-  // criterion, so it must round-trip intact; replanning it is rejected
-  // (typed) by workerClient.ts instead.
-  it('#295: imports a plan on the pre-#295 187-point lattice with its grid intact', () => {
-    const oldGrid = uniformWindGrid(12, 45, { north: 55.3, east: 11.0 });
-    expect(oldGrid.lats.length * oldGrid.lons.length).toBe(187);
-    const plan: Plan = { ...makeTestPlan('old-lattice'), windGrid: oldGrid };
-    const json = exportEnvelopeToJson(buildExportEnvelope([plan], null, []));
+  // #295 ruling: with bounds supplied (the app passes DATA_AREA), import accepts
+  // a grid that covers them OR the exact pre-#295 11 x 17 lattice, and still
+  // rejects any other non-covering grid (#1178).
+  describe('#295: wind-grid coverage on import', () => {
+    const BOUNDS = { west: 9.4, south: 54.3, east: 11.6, north: 55.6 };
+    const importGrid = (id: string, windGrid: Plan['windGrid']) =>
+      parseExportFile(
+        exportEnvelopeToJson(buildExportEnvelope([{ ...makeTestPlan(id), windGrid }], null, [])),
+        BOUNDS,
+      );
 
-    const result = parseExportFile(json);
-    expect(result.invalidPlanCount).toBe(0);
-    expect(result.plans).toHaveLength(1);
-    const imported = result.plans[0].windGrid;
-    expect(imported.lats).toEqual(oldGrid.lats);
-    expect(imported.lons).toEqual(oldGrid.lons);
-    expect(imported.speedKn).toEqual(oldGrid.speedKn);
+    it('imports a plan on the pre-#295 187-point lattice with its grid intact', () => {
+      const oldGrid = uniformWindGrid(12, 45, { north: 55.3, east: 11.0 });
+      expect(oldGrid.lats.length * oldGrid.lons.length).toBe(187);
+      const result = importGrid('old-lattice', oldGrid);
+      expect(result.invalidPlanCount).toBe(0);
+      expect(result.plans).toHaveLength(1);
+      const imported = result.plans[0].windGrid;
+      expect(imported.lats).toEqual(oldGrid.lats);
+      expect(imported.lons).toEqual(oldGrid.lons);
+      expect(imported.speedKn).toEqual(oldGrid.speedKn);
+    });
+
+    it('imports a plan whose grid covers the bounds', () => {
+      const result = importGrid('covering', uniformWindGrid(12, 45));
+      expect(result.invalidPlanCount).toBe(0);
+      expect(result.plans).toHaveLength(1);
+    });
+
+    it('rejects an 11 x 17 lattice shifted 0.1 deg north of the legacy one', () => {
+      const shifted = uniformWindGrid(12, 45, { south: 54.4, north: 55.4, east: 11.0 });
+      expect([shifted.lats.length, shifted.lons.length]).toEqual([11, 17]);
+      const result = importGrid('shifted', shifted);
+      expect(result.invalidPlanCount).toBe(1);
+      expect(result.plans).toHaveLength(0);
+    });
   });
 
   it('skips a waypoint missing a required field and counts it, keeping the others', () => {

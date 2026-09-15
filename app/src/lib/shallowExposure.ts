@@ -60,8 +60,8 @@ const METRES_PER_NM = 1852;
  * (private), though not the same allowance: walkCells visits its first cell
  * BEFORE its loop and so tolerates one more cell than this loop, which
  * counts the first cell inside the bound. Immaterial in both directions — a
- * full diagonal of the shipped 2400x2200 mask visits `rows + cols - 1` =
- * 4599 cells against a 4604 bound, and this walk's stricter bound fails to
+ * full diagonal of the shipped 3120x3025 mask visits `rows + cols - 1` =
+ * 6144 cells against a 6149 bound, and this walk's stricter bound fails to
  * `false`, the safe direction. Should be unreachable in practice: both
  * endpoints are bound-checked against `meta` by every caller first, and the
  * mask's coverage rectangle is convex, so a straight segment between two

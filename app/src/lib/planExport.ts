@@ -35,6 +35,7 @@
 import { migratePlan } from '../services/migratePlan';
 import type { SavedWaypoint } from '../services/db';
 import type { Plan, Settings, WindGrid } from '../types';
+import { windGridCoversBounds, type WindLatticeCoverageBounds } from './wind';
 
 /** Bumped whenever the ENVELOPE shape changes (settings/waypoints presence,
  * wind-grid encoding) — independent of `types.ts`'s `PLAN_SCHEMA_VERSION`,
@@ -135,13 +136,29 @@ function encodeWindGrid(grid: WindGrid): ExportedWindGrid {
 // `app/src` has no ErrorBoundary, so that takes the whole React root down,
 // not just the one plan.
 //
-// #295 ruling: spatial coverage is NOT an import criterion. A backup made
-// before #295 carries its grid on the old 11 x 17 lattice and must import and
-// stay viewable; the render paths build `WindField` without mask bounds, so a
-// narrow grid only clamps at its edge there. Replanning it is what must not
-// silently clamp, and `RoutingClient.plan()` rejects it as the typed
-// `wind-grid-coverage` failure (workerClient.ts).
-function decodeWindGrid(raw: unknown): WindGrid | null {
+// #1178: an imported plan never passes through `planRoute.ts`, so the grid's
+// spatial coverage is checked HERE when `maskBounds` is supplied: a
+// non-covering grid is a malformed one (null, counted invalid). #295 ruling:
+// the ONE exception is the exact pre-#295 lattice, so old backups import and
+// stay viewable; replanning them is rejected, typed, by `RoutingClient.plan()`.
+// The Open-Meteo lattice every plan saved before #295 carries: 11 lats x 17
+// lons at 0.1 deg from 54.3N / 9.4E (the pre-#295 `openMeteo.ts` LATS/LONS).
+// Exact match only, so a narrower or shifted grid is still rejected.
+const LEGACY_LATTICE_LATS = Array.from({ length: 11 }, (_, i) => 54.3 + i * 0.1);
+const LEGACY_LATTICE_LONS = Array.from({ length: 17 }, (_, i) => 9.4 + i * 0.1);
+
+function sameAxis(axis: readonly number[], expected: readonly number[]): boolean {
+  return axis.length === expected.length && axis.every((v, i) => Math.abs(v - expected[i]!) < 1e-6);
+}
+
+export function isLegacyWindLattice(grid: {
+  lats: readonly number[];
+  lons: readonly number[];
+}): boolean {
+  return sameAxis(grid.lats, LEGACY_LATTICE_LATS) && sameAxis(grid.lons, LEGACY_LATTICE_LONS);
+}
+
+function decodeWindGrid(raw: unknown, maskBounds?: WindLatticeCoverageBounds): WindGrid | null {
   if (!isRecord(raw)) return null;
   const { lats, lons, timesMs, speedKn, dirFromDeg, gustKn, fetchedAtMs, model } = raw;
   if (!isNumberArray(lats) || !isNumberArray(lons) || !isNumberArray(timesMs)) return null;
@@ -150,6 +167,12 @@ function decodeWindGrid(raw: unknown): WindGrid | null {
   if (typeof speedKn !== 'string' || typeof dirFromDeg !== 'string' || typeof gustKn !== 'string')
     return null;
   if (typeof fetchedAtMs !== 'number' || typeof model !== 'string') return null;
+  if (
+    maskBounds &&
+    !windGridCoversBounds({ lats, lons }, maskBounds) &&
+    !isLegacyWindLattice({ lats, lons })
+  )
+    return null;
   try {
     const decodedSpeedKn = base64ToFloat32(speedKn);
     const decodedDirFromDeg = base64ToFloat32(dirFromDeg);
@@ -301,9 +324,9 @@ function isSettingsLike(x: unknown): x is Settings {
 // untrusted input in exactly the way a foreign IndexedDB record is, so it
 // gets identical schemaVersion dispatch, boat-catalogue validation and
 // forward/backward-compatibility handling.
-function decodePlan(raw: unknown): Plan | null {
+function decodePlan(raw: unknown, maskBounds?: WindLatticeCoverageBounds): Plan | null {
   if (!isRecord(raw)) return null;
-  const windGrid = decodeWindGrid(raw.windGrid);
+  const windGrid = decodeWindGrid(raw.windGrid, maskBounds);
   if (windGrid === null) return null;
   return migratePlan({ ...raw, windGrid });
 }
@@ -316,8 +339,15 @@ function decodePlan(raw: unknown): Plan | null {
  * waypoint INSIDE an otherwise-good file is counted and skipped, never
  * fatal to the rest of the import — the same "one corrupt record must not
  * blank the whole list" principle services/db.ts's listPlans applies.
+ *
+ * `maskBounds` enables the coverage check in `decodeWindGrid`. The app passes
+ * the static `DATA_AREA` (pinned to mask.meta.json), so the outcome never
+ * depends on the mask having loaded; unit tests of other checks omit it.
  */
-export function parseExportFile(text: string): ImportResult {
+export function parseExportFile(
+  text: string,
+  maskBounds?: WindLatticeCoverageBounds,
+): ImportResult {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -335,7 +365,7 @@ export function parseExportFile(text: string): ImportResult {
   const plans: Plan[] = [];
   let invalidPlanCount = 0;
   for (const rawPlan of rawPlans) {
-    const plan = decodePlan(rawPlan);
+    const plan = decodePlan(rawPlan, maskBounds);
     if (plan === null) invalidPlanCount++;
     else plans.push(plan);
   }

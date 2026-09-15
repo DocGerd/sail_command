@@ -23,6 +23,7 @@ import {
   toSeamarkDisplayTier,
 } from '../lib/seamarkGlyphs';
 import { usePersistedNumber } from '../lib/usePersistedNumber';
+import { DATA_AREA } from '../lib/gpx';
 import { getPlan, listPlans, listWaypoints, savePlan, saveWaypoint } from '../services/db';
 import Button from './Button';
 import Card from './Card';
@@ -305,7 +306,7 @@ export default function SettingsPanel({
 
     let result: ImportResult;
     try {
-      result = parseExportFile(await file.text());
+      result = parseExportFile(await file.text(), DATA_AREA);
     } catch (err) {
       if (err instanceof ImportParseError) {
         const key: Record<ImportParseError['reason'], MsgKey> = {

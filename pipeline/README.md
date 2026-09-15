@@ -163,11 +163,30 @@ first's.
 
 ### `harbors.json` — curated harbor list
 
-40 harbors in the Flensburg Fjord, Danish South Sea, Little Belt and Fehmarn
-area, each with a
+40 harbors in the Flensburg Fjord, Danish South Sea, Little Belt, western
+Great Belt approach and Fehmarn area, each with a
 navigable snap point (`snap.lat`/`snap.lon`) validated against `mask.bin`
-(depth ≥ 2.2 m — see below) and a de/en approach note for harbors with a
-genuine draft caveat for a 2.1 m-draft boat. Harbors whose approach is
+(depth ≥ 2.2 m — see below) and, where needed, a de/en approach note: a
+draft caveat for a 2.1 m-draft boat, or (for harbors added at #295) a
+depth-data caveat when the snap sits off the harbor.
+
+The #295 caveat is written when the snap cell is more than ~3 mask cells
+(~140 m) from the harbor's OpenStreetMap feature, so the depth data does not
+resolve the last stretch; the note states no distance. Measured against the
+Overpass snapshot of 2026-09-15 (`leisure=marina` / `seamark:type=harbour`):
+
+| Harbor | OSM feature | Snap to feature | Note |
+|---|---|---|---|
+| kolding | way 118700947 (Kolding Marina Nord) | 560 m | yes |
+| middelfart | node 1837527400 (Middelfart city harbour) | 35 m | none |
+| fredericia | way 343752531 (Fredericia Lystbådehavn) | 206 m | yes |
+| nyborg | node 9584470867 (Nyborg Marina) | 536 m | yes |
+| kerteminde | way 601304886 (Kerteminde Marina) | 192 m | yes |
+| burgstaaken | node 2153078797 (Yachthafen Burgstaaken) | 1156 m | yes |
+| orth | node 431070790 (Hafen Orth/Fehmarn) | 790 m | yes |
+
+Snap cells were chosen as the nearest cell ≥ 3.3 m connected to Flensburg at
+the 3.0 m gate; those notes are derived from the mask, not from pilot books. Harbors whose approach is
 *never* adequately deep (e.g. Ristinge) are excluded outright rather than
 included with a misleadingly "safe" snap point.
 

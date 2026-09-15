@@ -10,8 +10,9 @@
 
 **Zeitoptimale Törnplanung — offline an Bord.** — *Time-optimal passage planning — offline, on board.*
 
-SailCommand plans time-optimal sailing routes in the Flensburg Fjord /
-Danish South Sea area, using real hourly wind forecasts and an isochrone
+SailCommand plans time-optimal sailing routes from the Flensburg Fjord and
+Danish South Sea to the Little Belt, the western Great Belt approach and
+Fehmarn, using real hourly wind forecasts and an isochrone
 router that accounts for tacks and gybes. It ships polar tables for three
 boats — a Salona 45, a Salona 44 (SPEEDY GO!) and an Elan Impression 444
 (PIRANJA) — and routes for whichever one you pick. It runs entirely in the
@@ -182,7 +183,7 @@ data; the code license is covered in the [License](#license) section below.
 
 ## Known limitations
 
-- Only 33 curated harbors are included; a handful of shallow/narrow
+- Only 40 curated harbors are included; a handful of shallow/narrow
   approaches (Schlei fairway, Dyvig channel, Gråsten bridge) remain
   disconnected from the routable mask at sub-cell resolution. The harbor
   search flags the harbors behind them before you plan to one, instead of

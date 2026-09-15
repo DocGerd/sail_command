@@ -401,11 +401,11 @@ function setupLayers(
   //
   // #492 review m9: this DOUBLES the depth overlay's retained memory —
   // arithmetic, not measured (this environment has no device/GPU profiler
-  // to read GL texture memory back from): the mask is 2200x2400 cells
-  // (mask.meta.json), so ONE full-resolution RGBA canvas backing store is
-  // 2200*2400*4 = 21.12 MB, and CanvasSource.prepare() uploads it to an
-  // equally-sized GL texture — ~42.2 MB total for this canvas, on top of
-  // buildDepthCanvas's identical ~42.2 MB for the absolute ramp, so ~84.5 MB
+  // to read GL texture memory back from): the mask is 3025x3120 cells
+  // (mask.meta.json, #295), so ONE full-resolution RGBA canvas backing store
+  // is 3025*3120*4 = 37.75 MB, and CanvasSource.prepare() uploads it to an
+  // equally-sized GL texture — ~75.5 MB total for this canvas, on top of
+  // buildDepthCanvas's identical ~75.5 MB for the absolute ramp, so ~151 MB
   // retained for the depth overlay alone once both layers exist. Not
   // verified against a real mid-range device (none available here); the
   // e2e suite elsewhere exercises depth+AIS+route together without a crash,
@@ -522,8 +522,8 @@ function setupLayers(
         type: 'symbol',
         source: SEAMARKS_SOURCE,
         layout: {
-          // ~1,794 points is dense enough that unculled icons would pile up
-          // at low zoom (unlike the 33 harbor markers). #144: the culling is
+          // ~2,900 points is dense enough that unculled icons would pile up
+          // at low zoom (unlike the 40 harbor markers). #144: the culling is
           // priority-ordered (symbol-sort-key) with a z>=12 tap-safety
           // overlap valve and a zoom size taper — expressions pinned in
           // seamarkGeoJson.test.ts, rationale on SEAMARKS_LAYOUT itself.
@@ -655,7 +655,7 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
   // `useLayoutEffect` running before paint, same as the `--sc-depth-
   // controls-height` write below.
   const [legendHidden, setLegendHidden] = useState(false);
-  // #7: default OFF — ~1,794 points is a dense specialist layer (vs. 33
+  // #7: default OFF — ~2,900 points is a dense specialist layer (vs. 40
   // harbor markers) that would clutter the map before the user opts in.
   const [seamarksVisible, setSeamarksVisible] = usePersistedToggle('sc-seamarks-visible', false);
   // #353 PR2: the seamark size/display-category controls live in

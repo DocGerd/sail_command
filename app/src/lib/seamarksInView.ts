@@ -56,7 +56,7 @@ export interface SeamarksInViewResult {
  * The row cap. A maintainer JUDGEMENT CALL in the sense panelWidth.ts's
  * PANEL_MAP_RESERVE_PX names — not derived from a measurement. At the
  * start zoom (z9 over the fjord) a phone viewport already holds well over
- * a hundred of the 1,794 shipped marks; a flat list that long is not a
+ * a hundred of the ~2,900 shipped marks; a flat list that long is not a
  * usable keyboard surface at any viewport this app targets (down to 280px),
  * and the copy tells the user to zoom in for the rest
  * (`seamarks.inView.truncated`). Interpolated into that copy as `{shown}`

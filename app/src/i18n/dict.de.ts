@@ -208,7 +208,7 @@ export const de = {
   'planner.via.coord.update': 'Koordinaten aktualisieren',
   'planner.via.coord.edit': 'Koordinaten bearbeiten (Punkt {index}): {coord}',
   'planner.via.coord.outOfRegion':
-    'Die Koordinaten liegen außerhalb des abgedeckten Seegebiets (Flensburger Förde, Dänische Südsee, Kleiner Belt, Fehmarn).',
+    'Die Koordinaten liegen außerhalb des abgedeckten Seegebiets (Flensburger Förde, Dänische Südsee, Kleiner Belt, westliche Zufahrt zum Großen Belt, Fehmarn).',
   // #886 residual 1: see dict.en.ts's matching comment.
   'planner.via.coord.invalidEntry':
     'Eingabe konnte nicht als Koordinate gelesen werden – {value} beibehalten',
@@ -246,7 +246,7 @@ export const de = {
     'Die GPX-Datei enthält keine zwei verwendbaren Punkte (Start und Ziel).',
   'planner.import.error.badCoord': 'Die GPX-Datei enthält ungültige Koordinaten.',
   'planner.import.error.outOfBounds':
-    'Ein Punkt liegt außerhalb des abgedeckten Seegebiets (Flensburger Förde, Dänische Südsee, Kleiner Belt, Fehmarn).',
+    'Ein Punkt liegt außerhalb des abgedeckten Seegebiets (Flensburger Förde, Dänische Südsee, Kleiner Belt, westliche Zufahrt zum Großen Belt, Fehmarn).',
   'planner.import.error.tooLarge': 'Die GPX-Datei ist zu groß für den Import.',
   'planner.import.error.failed': 'GPX-Datei konnte nicht gelesen werden.',
   'planner.import.notice.trackReduced':
@@ -317,7 +317,7 @@ export const de = {
   // #295: ein vor der Gebietserweiterung gespeicherter Plan trägt eine
   // Windvorhersage für das alte, kleinere Gebiet. Siehe dict.en.ts.
   'error.windGridCoverage':
-    'Die Windvorhersage dieser gespeicherten Route deckt ein kleineres Gebiet ab als die aktuellen Kartendaten und kann deshalb nicht neu berechnet werden. Route neu planen, um eine aktuelle Vorhersage zu laden. Die gespeicherte Route lässt sich weiterhin öffnen, ansehen und exportieren.',
+    'Die gespeicherte Windvorhersage dieser Route deckt ein kleineres Gebiet ab als die aktuellen Kartendaten und reicht für diese Aktion nicht aus. Route neu berechnen oder neu planen, um eine aktuelle Vorhersage zu laden. Die gespeicherte Route lässt sich weiterhin öffnen, ansehen und exportieren.',
   'error.planSaveFailed':
     'Die Route wurde berechnet, konnte aber nicht gespeichert werden. Erneut versuchen oder freien Speicherplatz auf diesem Gerät prüfen.',
   'error.windUnknown':
@@ -871,8 +871,9 @@ export const de = {
   // dartboard/shooting-range target, not a floating nautical mark).
   'seamark.value.category.target': 'Zieltonne',
   'seamark.value.category.unknown_purpose': 'Unbekannter Zweck',
-  // #295: OSM `upper` occurs only as `upper;leading` on beacons in the shipped
-  // data — the rear, higher mark of a Richtbakenlinie (Ober- vs Unterbake).
+  // #295: OSM `upper` occurs only on `beacon_special_purpose` leading marks in
+  // the shipped data (`upper;leading`, `upper;leading;cable`) — the rear,
+  // higher mark of a Richtbakenlinie (Ober- vs Unterbake).
   // A mark noun, like `leading`'s "Richtbake" — the tag sits on a beacon, not a light.
   'seamark.value.category.upper': 'Oberbake',
   'seamark.value.category.warning': 'Warnung',

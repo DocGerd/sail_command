@@ -9,7 +9,7 @@ import type { SeamarkProperties } from '../types';
 // browser-only (manual/Playwright verification).
 
 const IMAGE_SIZE = 24; // smaller than windBarbs' 32: seamarks are a much
-// denser point layer (~1,794 vs one barb per route sample). This is the
+// denser point layer (~2,900 vs one barb per route sample). This is the
 // LOGICAL glyph coordinate space every segment below is expressed in — kept
 // at 24 so none of the hand-derived R1001 geometry constants (#165) below
 // need touching. The registered image is drawn at a higher raster

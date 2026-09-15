@@ -1298,7 +1298,7 @@ describe('PlannerPanel', () => {
       });
 
       // #829 DoD: "an out-of-region value is rejected with the new message
-      // and appends nothing." 56°N is north of DATA_AREA's 55.3°N exclusive
+      // and appends nothing." 56°N is north of DATA_AREA's 55.6°N exclusive
       // bound — chosen (not 90°N) so resolveHemisphereCoordCommit's own
       // -90..90 sanity clamp (#886 residual 1's replacement for the
       // NumberInput clamp this field used before) never fires first; the
@@ -1314,7 +1314,7 @@ describe('PlannerPanel', () => {
         expect(props.onAddVia).not.toHaveBeenCalled();
         expect(
           screen.getByText(
-            'The coordinates lie outside the covered area (Flensburg Fjord, Danish South Sea, Little Belt, Fehmarn).',
+            'The coordinates lie outside the covered area (Flensburg Fjord, Danish South Sea, Little Belt, western Great Belt approach, Fehmarn).',
           ),
         ).toBeInTheDocument();
       });
@@ -1322,11 +1322,11 @@ describe('PlannerPanel', () => {
       // #1064: no prior test enters a value that trips BOTH
       // resolveHemisphereCoordCommit's +/-90 sanity clamp AND the DATA_AREA
       // out-of-region rejection — by construction any value clamped to the
-      // +/-90/+/-180 sanity range is also outside DATA_AREA (54.3-55.3 deg N
-      // / 9.4-11.0 deg E), so both notices should coexist and Add must still
+      // +/-90/+/-180 sanity range is also outside DATA_AREA (54.3-55.6 deg N
+      // / 9.4-11.6 deg E), so both notices should coexist and Add must still
       // append nothing. 95 deg N blurs to a clamped 90 (the same clamp
       // message the '#886 residual 1' clamp test above pins), and 90 is
-      // north of DATA_AREA.north (55.3), so the outOfRegion rejection fires
+      // north of DATA_AREA.north (55.6), so the outOfRegion rejection fires
       // too when Add is pressed.
       // MUTATION CHECK (non-vacuity): deleting the DATA_AREA check in
       // PlannerPanel.tsx's isInViaDataArea (`return true;`) reds the
@@ -1346,7 +1346,7 @@ describe('PlannerPanel', () => {
         expect(screen.getByText('Corrected to 90 (allowed range -90–90)')).toBeInTheDocument();
         expect(
           screen.getByText(
-            'The coordinates lie outside the covered area (Flensburg Fjord, Danish South Sea, Little Belt, Fehmarn).',
+            'The coordinates lie outside the covered area (Flensburg Fjord, Danish South Sea, Little Belt, western Great Belt approach, Fehmarn).',
           ),
         ).toBeInTheDocument();
       });
@@ -1388,7 +1388,7 @@ describe('PlannerPanel', () => {
         expect(props.onUpdateVia).not.toHaveBeenCalled();
         expect(
           screen.getByText(
-            'The coordinates lie outside the covered area (Flensburg Fjord, Danish South Sea, Little Belt, Fehmarn).',
+            'The coordinates lie outside the covered area (Flensburg Fjord, Danish South Sea, Little Belt, western Great Belt approach, Fehmarn).',
           ),
         ).toBeInTheDocument();
       });

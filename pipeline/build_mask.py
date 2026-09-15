@@ -37,6 +37,11 @@ WCS_URL = (
     f"&subset=Lat({SOUTH},{NORTH})&subset=Long({WEST},{EAST})&format=image/tiff"
 )
 LAND_URL = "https://osmdata.openstreetmap.de/download/land-polygons-split-4326.zip"
+# #295: the cache is existence-only, so the DTM filename carries the bbox. A
+# raster fetched for an older bbox is then never reused, and
+# check_dtm_covers() below still fails closed on any cached file whose extent
+# does not cover the bbox (it would otherwise rebuild the uncovered cells as land).
+DTM_PATH = SRC / f"emodnet_dtm_{WEST}_{SOUTH}_{EAST}_{NORTH}.tif"
 
 # The OSM coastline-derived land-polygons dataset above only carves the sea
 # out of "land" along ways tagged natural=coastline. Large tidal/brackish
@@ -67,8 +72,23 @@ def fetch(url: str, dest: pathlib.Path, headers: dict | None = None) -> None:
             out.write(chunk)
 
 
+def check_dtm_covers(bounds, res: tuple[float, float]) -> None:
+    """Raise SystemExit unless the raster extent covers (WEST, SOUTH, EAST, NORTH).
+
+    `bounds` is rasterio's (left, bottom, right, top); half a source pixel of
+    slack absorbs the WCS grid alignment.
+    """
+    tol_x, tol_y = abs(res[0]) / 2, abs(res[1]) / 2
+    left, bottom, right, top = bounds
+    if left > WEST + tol_x or bottom > SOUTH + tol_y or right < EAST - tol_x or top < NORTH - tol_y:
+        raise SystemExit(
+            f"{DTM_PATH.name}: raster extent {tuple(bounds)} does not cover the mask bbox "
+            f"{(WEST, SOUTH, EAST, NORTH)}; delete the cached file and re-run"
+        )
+
+
 def main() -> None:
-    fetch(WCS_URL, SRC / "emodnet_dtm.tif")
+    fetch(WCS_URL, DTM_PATH)
     fetch(LAND_URL, SRC / "land-polygons-split-4326.zip")
     fetch(
         SCHLEI_URL,
@@ -79,7 +99,8 @@ def main() -> None:
     dst_transform = from_origin(WEST, NORTH, (EAST - WEST) / COLS, (NORTH - SOUTH) / ROWS)
     elev_max = np.full((ROWS, COLS), np.nan, dtype=np.float32)  # row 0 = north (numpy)
     elev_bilinear = np.full((ROWS, COLS), np.nan, dtype=np.float32)
-    with rasterio.open(SRC / "emodnet_dtm.tif") as src:
+    with rasterio.open(DTM_PATH) as src:
+        check_dtm_covers(src.bounds, src.res)
         # LAST-RESORT DEVIATION (issue #6): Resampling.max on LAT-referenced
         # *elevation* picks the SHALLOWEST contributing source cell, which is
         # the conservative default for navigability - but on the ~115 m

@@ -187,7 +187,7 @@ export const en = {
   'planner.via.coord.update': 'Update coordinates',
   'planner.via.coord.edit': 'Edit coordinates (point {index}): {coord}',
   'planner.via.coord.outOfRegion':
-    'The coordinates lie outside the covered area (Flensburg Fjord, Danish South Sea, Little Belt, Fehmarn).',
+    'The coordinates lie outside the covered area (Flensburg Fjord, Danish South Sea, Little Belt, western Great Belt approach, Fehmarn).',
   // #886 residual 1: shown when a via-coordinate text entry doesn't parse
   // at all (garbage, a hemisphere letter on the wrong axis, or a sign+letter
   // conflict like "-54.8N") — the field silently reverts to its last
@@ -232,7 +232,7 @@ export const en = {
     'The GPX file has fewer than two usable points (origin and destination).',
   'planner.import.error.badCoord': 'The GPX file contains invalid coordinates.',
   'planner.import.error.outOfBounds':
-    'A point lies outside the covered area (Flensburg Fjord, Danish South Sea, Little Belt, Fehmarn).',
+    'A point lies outside the covered area (Flensburg Fjord, Danish South Sea, Little Belt, western Great Belt approach, Fehmarn).',
   'planner.import.error.tooLarge': 'The GPX file is too large to import.',
   'planner.import.error.failed': 'The GPX file could not be read.',
   'planner.import.notice.trackReduced':
@@ -298,7 +298,7 @@ export const en = {
   // #295: a plan saved before the coverage extension carries a wind forecast
   // for the old, smaller area. Retry and reload cannot help; a new plan can.
   'error.windGridCoverage':
-    'The wind forecast saved with this route covers a smaller area than the current chart data, so it cannot be recalculated. Plan the route again to fetch a new forecast. The saved route still opens, and you can still view and export it.',
+    'The wind forecast saved with this route covers a smaller area than the current chart data, so this action cannot use it. Recalculate or plan the route again to fetch a new forecast. The saved route still opens, and you can still view and export it.',
   'error.planSaveFailed':
     'The route was calculated but could not be saved. Try again, or check available storage on this device.',
   'error.windUnknown':
@@ -862,8 +862,9 @@ export const en = {
   'seamark.value.category.starboard': 'Starboard',
   'seamark.value.category.target': 'Target',
   'seamark.value.category.unknown_purpose': 'Unknown purpose',
-  // #295: OSM `upper` occurs only as `upper;leading` on beacons in the shipped
-  // data — the rear, higher mark of a leading line.
+  // #295: OSM `upper` occurs only on `beacon_special_purpose` leading marks in
+  // the shipped data (`upper;leading`, `upper;leading;cable`) — the rear,
+  // higher mark of a leading line.
   'seamark.value.category.upper': 'Upper (rear) mark',
   'seamark.value.category.warning': 'Warning',
   'seamark.value.category.wave_recorder': 'Wave recorder',

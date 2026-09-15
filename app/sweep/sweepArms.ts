@@ -2,7 +2,7 @@
  * #282 ACCEPTANCE SWEEP — the shared engine.
  *
  * Every harbour in the shipped `harbors.json`, across eleven settings arms
- * (33 destinations x 11 = 363 plans) since #653, against the REAL committed
+ * (40 destinations x 11 = 440 plans since #295; 33 x 11 = 363 from #653), against the REAL committed
  * mask and polars. Every `PlanResult` is serialised deterministically so a
  * BASE run and a HEAD run can be compared byte-for-byte: #282's standing
  * requirement is that a change which is meant to be presentational moves NO

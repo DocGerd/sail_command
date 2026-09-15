@@ -1023,7 +1023,7 @@ test('#829: adds, repositions and rejects a via point by typing coordinates — 
 
     await expect(
       page.getByText(
-        'Die Koordinaten liegen außerhalb des abgedeckten Seegebiets (Flensburger Förde, Dänische Südsee, Kleiner Belt, Fehmarn).',
+        'Die Koordinaten liegen außerhalb des abgedeckten Seegebiets (Flensburger Förde, Dänische Südsee, Kleiner Belt, westliche Zufahrt zum Großen Belt, Fehmarn).',
       ),
     ).toBeVisible();
     await expect(items).toHaveCount(1);

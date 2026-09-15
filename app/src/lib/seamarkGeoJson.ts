@@ -366,8 +366,8 @@ export function seamarkPopupAnchor<T extends { properties?: unknown; geometry?: 
  *         significant mark won. This does NOT re-derive #200's own z8/z9
  *         retention figure: #200/PR #225 measured pre-#682, on a viewport-
  *         scoped aperture that differs between its two zoom rows (1794
- *         features in view at z8, 911 at z9), where this test measures 125
- *         unique hazard positions over one fixed rectangle at both zooms (72
+ *         features in view at z8, 911 at z9), where this test measured 125
+ *         unique hazard positions (pre-#295 data) over one fixed rectangle at both zooms (72
  *         rendered at z8, 79 at z9). What is established here is narrower and
  *         sufficient for item 2: at z8/z9 on the committed data, EVERY culled
  *         hazard mark was displaced by an equal-or-better-ranked hazard mark.

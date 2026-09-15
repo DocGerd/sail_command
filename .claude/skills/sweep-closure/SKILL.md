@@ -5,8 +5,8 @@ description: Use when deciding whether a SailCommand diff owes an `app/sweep/` #
 
 # Sweep closure: does this diff owe a #282 sweep?
 
-`app/sweep/` is SailCommand's #282 acceptance harness — nine settings arms
-across 33 harbours, run against the real committed mask and polars, whose
+`app/sweep/` is SailCommand's #282 acceptance harness — every settings arm in
+`app/sweep/armNames.ts` across every harbour in `harbors.json`, run against the real committed mask and polars, whose
 whole point is that a change meant to be presentational moves **no** route.
 A single arm-set costs ~31 minutes unloaded; the required BASE double-run
 control doubles that, and a BASE-vs-HEAD comparison triples it. Guessing

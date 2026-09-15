@@ -53,7 +53,7 @@ import {
 // shipped, NOT the state today: the #521 maintainer ruling (2026-08-21)
 // reversed that carve-out (`SPECIAL_PURPOSE_ALL_CATEGORIES` in
 // seamarkGlyphs.ts is now empty), so the STANDARD default hides ZERO of
-// 1794 and `SEAMARK_DISPLAY_TIER_ALL` is inert for today's shipped data —
+// the 2,905 shipped marks and `SEAMARK_DISPLAY_TIER_ALL` is inert for today's shipped data —
 // "All" renders identically to "Standard". So the Standard-category PIN
 // VALUES below are no longer smaller than PR1's own committed baseline at
 // the identical cluster/zoom pair; they are now IDENTICAL to it (measured,
@@ -135,6 +135,7 @@ import {
 
 interface ScTestMap {
   jumpTo(options: { center: [number, number]; zoom: number }): unknown;
+  getZoom(): number;
   getLayer(id: string): unknown;
   project(lngLat: [number, number]): { x: number; y: number };
   // #999: shifts rendered content by exactly the given SCREEN-space pixel
@@ -979,21 +980,30 @@ test('#232 item 2: cross-tile placement ordering — measurement, not a fix', as
 
     const rows: CulledHazardRow[] = [];
 
-    for (const zoom of [8, 9]) {
-      await page.evaluate(
-        ({ center, zoom }) =>
-          (window as unknown as { __scE2eMap: ScTestMap }).__scE2eMap.jumpTo({ center, zoom }),
+    // The recorded aperture, pinned so a MAX_BOUNDS zoom clamp cannot move it:
+    // the pre-#295 bounds clamped the requested z8 to 8.663, the #295 bounds to
+    // 8.394, where a real fractional-zoom ordering leak shows (#1248).
+    for (const zoom of [8.663, 9]) {
+      const renderedZoom = await page.evaluate(
+        ({ center, zoom }) => {
+          const map = (window as unknown as { __scE2eMap: ScTestMap }).__scE2eMap;
+          map.jumpTo({ center, zoom });
+          return map.getZoom();
+        },
         { center: regionCenter, zoom },
       );
+      expect(renderedZoom, `requested z${zoom} rendered at z${renderedZoom}`).toBeCloseTo(zoom, 6);
+      // Tiles load at the integer zoom below the camera zoom.
+      const tileZoom = Math.floor(zoom);
 
       const rendered = await settledHazardRenderedFeatures(page, SEAMARK_REGION, `z${zoom}`);
       const source = await readHazardSourceFeatures(page);
 
       // Non-vacuity guard for this test's OWN scope claim: the committed
-      // seamarks.json holds 127 hazard features, of which two PAIRS are
+      // seamarks.json holds 174 hazard features, of which two PAIRS are
       // coincident to 5 decimal places (10.09792,54.48898 and
       // 10.05338,54.51435), so the coordinate de-dup above legitimately
-      // yields 125 distinct positions. If fewer source tiles are renderable
+      // yields 172 distinct positions. If fewer source tiles are renderable
       // at query time, a mark drops out of BOTH the source and the rendered
       // set, produces no row, and trips nothing below — a silently shrunken
       // measurement that still reports "zero leaks".
@@ -1047,8 +1057,8 @@ test('#232 item 2: cross-tile placement ordering — measurement, not a fix', as
           mark.lat,
         ]);
 
-        const culledTile = tileXY(mark.lng, mark.lat, zoom);
-        const displacerTile = displacer ? tileXY(displacer.lng, displacer.lat, zoom) : null;
+        const culledTile = tileXY(mark.lng, mark.lat, tileZoom);
+        const displacerTile = displacer ? tileXY(displacer.lng, displacer.lat, tileZoom) : null;
 
         rows.push({
           zoom,
@@ -1068,18 +1078,18 @@ test('#232 item 2: cross-tile placement ordering — measurement, not a fix', as
     // actually needed — an unconditional full-table dump cost ~2000 lines on
     // every green run of a required-adjacent job for a table nobody reads.
     console.log(
-      `[#232 item 2] culled-hazard-mark measurement across z8/z9, whole app data region: ` +
+      `[#232 item 2] culled-hazard-mark measurement across z8.663/z9, whole app data region: ` +
         `${rows.length} culled, ${rows.filter((r) => r.crossTile).length} cross-tile, ` +
         `${rows.filter((r) => r.leak).length} leaks.`,
     );
 
     // The measurement must actually EXERCISE hazard-vs-hazard collision
-    // culling at least once, at z8 or z9 — otherwise a green result here
+    // culling at least once, at z8.663 or z9 — otherwise a green result here
     // carries no information (CLAUDE.md: "an experiment that never ran
     // emits exactly the output of one that found nothing").
     expect(
       rows.length,
-      'no hazard mark was culled at z8 or z9 anywhere in the app data region — this measurement ' +
+      'no hazard mark was culled at z8.663 or z9 anywhere in the app data region — this measurement ' +
         'did not exercise hazard-vs-hazard collision culling at all, so it cannot speak to #232 item 2',
     ).toBeGreaterThan(0);
 
@@ -1093,10 +1103,10 @@ test('#232 item 2: cross-tile placement ordering — measurement, not a fix', as
     expect(
       unexplained,
       `${unexplained.length} culled hazard mark(s) had no overlapping displacer found at their own ` +
-        `screen pixel — either viewport clipping (see the setViewportSize comment above), or a `
-        + `displacer on a layer this probe does not search: nearestDisplacerAt looks only at the `
-        + `two seamark layers, so a harbour label or basemap symbol that won the collision slot `
-        + `is invisible to it (measured at #1148, whose layer reorder produced exactly this); ` +
+        `screen pixel — either viewport clipping (see the setViewportSize comment above), or a ` +
+        `displacer on a layer this probe does not search: nearestDisplacerAt looks only at the ` +
+        `two seamark layers, so a harbour label or basemap symbol that won the collision slot ` +
+        `is invisible to it (measured at #1148, whose layer reorder produced exactly this); ` +
         `investigate before trusting the rest of this table: ${JSON.stringify(unexplained, null, 2)}`,
     ).toEqual([]);
 

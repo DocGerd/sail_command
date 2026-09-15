@@ -71,7 +71,7 @@
  *
  * NAMED RESIDUAL (PR #488 review): this only checks that BOTH SIDES agree on
  * which arms exist and which harbours each arm covers — it has no idea that
- * a real run always covers all 33 harbours, so it cannot distinguish a
+ * a real run always covers every harbour in `harbors.json`, so it cannot distinguish a
  * genuine full comparison from two `SC_SWEEP_LIMIT`-truncated runs compared
  * against each other (README.md's own "never for a real comparison" caveat
  * on that env var is not mechanically enforced here). The summary line below

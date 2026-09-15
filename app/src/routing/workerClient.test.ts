@@ -618,15 +618,45 @@ describe('#295: stored wind grid must cover the mask domain', () => {
     return { w, client };
   }
 
+  // Asserts the rejection within one tick instead of awaiting `plan()`: if the
+  // guard were gone the plan would be posted and never answered by the fake,
+  // so awaiting it would fail only by timeout. Posted-count and kind are
+  // checked first, and the client is disposed so no pending entry leaks.
+  async function expectCoverageRejection(
+    w: ReturnType<typeof fakeWorker>,
+    client: RoutingClient,
+    request: PlanRequest,
+    windGrid: Parameters<RoutingClient['plan']>[1],
+  ): Promise<void> {
+    const settled = client.plan(request, windGrid).then(
+      () => 'resolved' as const,
+      (e: unknown) => e,
+    );
+    try {
+      await flush();
+      expect(
+        w.posted.filter((m) => m.type === 'plan'),
+        'plan was posted',
+      ).toHaveLength(0);
+      const outcome = await Promise.race([settled, Promise.resolve('pending' as const)]);
+      expect(outcome).toBeInstanceOf(RoutingError);
+      const kind = (outcome as RoutingError).kind;
+      expect(kind, `expected kind 'wind-grid-coverage', got '${kind}'`).toBe('wind-grid-coverage');
+      expect((outcome as RoutingError).message).toMatch(/cover/);
+      expect(client.isDisposed).toBe(false);
+    } finally {
+      client.dispose();
+      await settled;
+    }
+  }
+
   it(
     'rejects an old 187-point grid as wind-grid-coverage and posts no plan',
     async () => {
       const { w, client } = await initClient();
       const oldGrid = uniformWindGrid(12, 0, OLD_GRID_OPTS);
       expect(oldGrid.lats.length * oldGrid.lons.length).toBe(187);
-      await expectRoutingError(client.plan(PLAN_REQUEST, oldGrid), 'wind-grid-coverage', /cover/);
-      expect(w.posted.filter((m) => m.type === 'plan')).toHaveLength(0);
-      expect(client.isDisposed).toBe(false);
+      await expectCoverageRejection(w, client, PLAN_REQUEST, oldGrid);
     },
     WORKER_CLIENT_TEST_TIMEOUT_MS,
   );
@@ -667,18 +697,18 @@ describe('#295: stored wind grid must cover the mask domain', () => {
       };
       const imported = parseExportFile(
         exportEnvelopeToJson(buildExportEnvelope([stored], null, [])),
+        WIDE_META,
       );
       expect(imported.invalidPlanCount).toBe(0);
       expect(imported.plans).toHaveLength(1);
 
       const { w, client } = await initClient();
-      await expectRoutingError(
-        client.plan(imported.plans[0].request, imported.plans[0].windGrid),
-        'wind-grid-coverage',
-        /cover/,
+      await expectCoverageRejection(
+        w,
+        client,
+        imported.plans[0].request,
+        imported.plans[0].windGrid,
       );
-      expect(w.posted.filter((m) => m.type === 'plan')).toHaveLength(0);
-      expect(client.isDisposed).toBe(false);
     },
     WORKER_CLIENT_TEST_TIMEOUT_MS,
   );

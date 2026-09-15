@@ -700,7 +700,7 @@ export default defineConfig(({ command }) => ({
         name: isUat ? 'SailCommand UAT' : 'SailCommand',
         short_name: isUat ? 'SailCommand UAT' : 'SailCommand',
         description:
-          'Offline-Törnplaner für zeitoptimale Segelrouten in Flensburger Förde und Dänischer Südsee. Kein Navigationsgerät.',
+          'Offline-Törnplaner für zeitoptimale Segelrouten von der Flensburger Förde und Dänischen Südsee bis zum Kleinen Belt und Fehmarn. Kein Navigationsgerät.',
         lang: 'de',
         theme_color: '#10243D',
         background_color: '#10243D',
