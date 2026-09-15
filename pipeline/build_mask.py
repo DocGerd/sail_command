@@ -22,8 +22,14 @@ from rasterio.warp import Resampling, reproject
 HERE = pathlib.Path(__file__).parent
 SRC = HERE / "data-src"
 OUT = HERE.parent / "app" / "public" / "data"
-WEST, SOUTH, EAST, NORTH = 9.4, 54.3, 11.0, 55.3
-COLS, ROWS = 2200, 2400  # ~46 m cells; 2x the original 1100x1200 (~93 m) - see issue #6
+WEST, SOUTH, EAST, NORTH = 9.4, 54.3, 11.6, 55.6
+# ~46 m cells; 2x the original 1100x1200 (~93 m) - see issue #6. #295 widened the
+# bbox from 9.4-11.0E / 54.3-55.3N by whole cell steps (1.6/2200 deg lon,
+# 1.0/2400 deg lat): 2.2 deg -> 3025 cols, 1.3 deg -> 3120 rows, so the old
+# region's cells keep their extents. Values are identical except along the old
+# north row and east column, where resampling now sees source beyond the old
+# edge (measured on the #295 PR).
+COLS, ROWS = 3025, 3120
 
 WCS_URL = (
     "https://ows.emodnet-bathymetry.eu/wcs?service=WCS&version=2.0.1"

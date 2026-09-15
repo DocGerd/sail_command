@@ -295,6 +295,10 @@ export const en = {
   // broken" and invite the user to delete a record that is entirely intact.
   'error.boatNotInCatalogue':
     'This route was planned for a boat that is no longer available, so it cannot be planned again. The saved route still opens, and you can still view and export it.',
+  // #295: a plan saved before the coverage extension carries a wind forecast
+  // for the old, smaller area. Retry and reload cannot help; a new plan can.
+  'error.windGridCoverage':
+    'The wind forecast saved with this route covers a smaller area than the current chart data, so it cannot be recalculated. Plan the route again to fetch a new forecast. The saved route still opens, and you can still view and export it.',
   'error.planSaveFailed':
     'The route was calculated but could not be saved. Try again, or check available storage on this device.',
   'error.windUnknown':
@@ -858,6 +862,9 @@ export const en = {
   'seamark.value.category.starboard': 'Starboard',
   'seamark.value.category.target': 'Target',
   'seamark.value.category.unknown_purpose': 'Unknown purpose',
+  // #295: OSM `upper` occurs only as `upper;leading` on beacons in the shipped
+  // data — the rear, higher mark of a leading line.
+  'seamark.value.category.upper': 'Upper (rear) mark',
   'seamark.value.category.warning': 'Warning',
   'seamark.value.category.wave_recorder': 'Wave recorder',
   'seamark.value.category.west': 'West',

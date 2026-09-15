@@ -314,6 +314,10 @@ export const de = {
   // Neuberechnung ist nicht möglich. Siehe dict.en.ts.
   'error.boatNotInCatalogue':
     'Diese Route wurde für ein Boot geplant, das nicht mehr verfügbar ist, und kann deshalb nicht neu berechnet werden. Die gespeicherte Route lässt sich weiterhin öffnen, ansehen und exportieren.',
+  // #295: ein vor der Gebietserweiterung gespeicherter Plan trägt eine
+  // Windvorhersage für das alte, kleinere Gebiet. Siehe dict.en.ts.
+  'error.windGridCoverage':
+    'Die Windvorhersage dieser gespeicherten Route deckt ein kleineres Gebiet ab als die aktuellen Kartendaten und kann deshalb nicht neu berechnet werden. Route neu planen, um eine aktuelle Vorhersage zu laden. Die gespeicherte Route lässt sich weiterhin öffnen, ansehen und exportieren.',
   'error.planSaveFailed':
     'Die Route wurde berechnet, konnte aber nicht gespeichert werden. Erneut versuchen oder freien Speicherplatz auf diesem Gerät prüfen.',
   'error.windUnknown':
@@ -867,6 +871,10 @@ export const de = {
   // dartboard/shooting-range target, not a floating nautical mark).
   'seamark.value.category.target': 'Zieltonne',
   'seamark.value.category.unknown_purpose': 'Unbekannter Zweck',
+  // #295: OSM `upper` occurs only as `upper;leading` on beacons in the shipped
+  // data — the rear, higher mark of a Richtbakenlinie (Ober- vs Unterbake).
+  // A mark noun, like `leading`'s "Richtbake" — the tag sits on a beacon, not a light.
+  'seamark.value.category.upper': 'Oberbake',
   'seamark.value.category.warning': 'Warnung',
   'seamark.value.category.wave_recorder': 'Wellenmessboje',
   'seamark.value.category.west': 'West',

@@ -409,8 +409,8 @@ export const HATCH_RGBA: Rgba = [0, 0, 0, 190];
 // app/src/test/maskTolerance.test.ts's #612 twin-pin reads that LUT back
 // out of this function's own RGBA output and is deliberately left calling
 // the 4-argument form, so it keeps exercising the fallback band.
-const MASK_CELL_M = 46.67; // 1.6 deg / 2200 cols at ~54.8N (mask.meta.json)
-const HATCH_BAND_LAT_DEG = 54.8; // region centre; cos varies <1% over 54.3-55.3
+const MASK_CELL_M = 46.67; // 2.2 deg / 3025 cols (= 1.6 / 2200) at ~54.8N (mask.meta.json)
+const HATCH_BAND_LAT_DEG = 54.8; // cos(lat) deviates up to ~2% from this over 54.3-55.6 (#1163 spike)
 const HATCH_TARGET_STRIPE_PX = 8;
 const HATCH_MAX_GAP_CELLS = 12; // measured cap — see the SAFETY note above
 const HATCH_GAP_PER_STRIPE = 3; // 3:1 gap:stripe = the design's nominal 25% duty
