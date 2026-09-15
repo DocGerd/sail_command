@@ -8,6 +8,8 @@ import { DEFAULT_BOAT_ID, boatById } from '../data/boats';
 import { __resetDbForTests, listPlans, listWaypoints, type SavedWaypoint } from '../services/db';
 import * as db from '../services/db';
 import { buildExportEnvelope, exportEnvelopeToJson } from '../lib/planExport';
+import * as assetsModule from '../services/assets';
+import { TEST_MASK_META, uniformWindGrid } from '../test/fixtures';
 import {
   DEFAULT_SETTINGS,
   defaultBoatSnapshot,
@@ -1084,5 +1086,46 @@ describe('SettingsPanel (#849 local import/export)', () => {
     expect(waypoints).toEqual([TEST_WAYPOINT]);
 
     consoleErrorSpy.mockRestore();
+  });
+
+  // #295 ruling: a backup made before #295 carries its wind grid on the old
+  // 11 x 17 lattice. Import keeps it viewable; only replanning rejects it
+  // (typed, workerClient.ts). The widened mask is loaded first, so a coverage
+  // check wired back into the import path would skip the plan here.
+  it('#295: imports a plan on the pre-#295 187-point wind lattice while the widened mask is loaded', async () => {
+    const wideMeta = { ...TEST_MASK_META, north: 55.6, east: 11.6 };
+    const loadSpy = vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue({
+      maskMeta: wideMeta,
+      maskBuffer: new ArrayBuffer(wideMeta.rows * wideMeta.cols),
+      polars: {},
+      harbors: [],
+      seamarks: { type: 'FeatureCollection', features: [] },
+    });
+    try {
+      const oldGrid = uniformWindGrid(12, 0, { north: 55.3, east: 11.0 });
+      expect(oldGrid.lats.length * oldGrid.lons.length).toBe(187);
+      const plan: Plan = { ...makeTestPlan('old-lattice'), windGrid: oldGrid };
+      const envelope = buildExportEnvelope([plan], null, []);
+
+      renderPanel();
+      await act(async () => {
+        await loadSpy.mock.results[0]?.value;
+      });
+      const file = new File([exportEnvelopeToJson(envelope)], 'old.json', {
+        type: 'application/json',
+      });
+      await act(async () => {
+        fireEvent.change(getFileInput(), { target: { files: [file] } });
+      });
+
+      const notice = await screen.findByText((content) =>
+        content.startsWith('1 route(s) and 0 waypoint(s) imported.'),
+      );
+      expect(notice).not.toHaveTextContent(/skipped/i);
+      const plans = await listPlans();
+      expect(plans.filter((p) => p.kind === 'ok').map((p) => p.id)).toEqual(['old-lattice']);
+    } finally {
+      loadSpy.mockRestore();
+    }
   });
 });

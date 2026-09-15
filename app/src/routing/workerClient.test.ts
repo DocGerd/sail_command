@@ -7,10 +7,13 @@ import {
   type RoutingFailureKind,
 } from './workerClient';
 import type { WorkerRequest, WorkerResponse } from './protocol';
+import { buildExportEnvelope, exportEnvelopeToJson, parseExportFile } from '../lib/planExport';
 import { polarKey } from '../data/boats';
 import { TEST_MASK_META, TEST_POLAR, uniformWindGrid } from '../test/fixtures';
 import {
   DEFAULT_SETTINGS,
+  PLAN_SCHEMA_VERSION,
+  type Plan,
   type PlanRequest,
   type PlanResult,
   type PolarTable,
@@ -622,6 +625,58 @@ describe('#295: stored wind grid must cover the mask domain', () => {
       const oldGrid = uniformWindGrid(12, 0, OLD_GRID_OPTS);
       expect(oldGrid.lats.length * oldGrid.lons.length).toBe(187);
       await expectRoutingError(client.plan(PLAN_REQUEST, oldGrid), 'wind-grid-coverage', /cover/);
+      expect(w.posted.filter((m) => m.type === 'plan')).toHaveLength(0);
+      expect(client.isDisposed).toBe(false);
+    },
+    WORKER_CLIENT_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'a pre-#295 plan imported from a backup still gets wind-grid-coverage on replan',
+    async () => {
+      const stored: Plan = {
+        id: 'old-backup',
+        name: 'old backup',
+        createdAtMs: PLAN_REQUEST.departureMs,
+        schemaVersion: PLAN_SCHEMA_VERSION,
+        request: PLAN_REQUEST,
+        windGrid: uniformWindGrid(12, 0, OLD_GRID_OPTS),
+        result: {
+          status: 'ok',
+          sails: [
+            {
+              sailId: 'genoa',
+              result: {
+                sailId: 'genoa',
+                legs: [],
+                etaMs: PLAN_REQUEST.departureMs + 3_600_000,
+                durationMs: 3_600_000,
+                distanceNm: 10,
+                maneuverCount: 0,
+                motorDistanceNm: 0,
+              },
+              reason: null,
+            },
+            { sailId: 'fock', result: null, reason: null },
+          ],
+          recommended: 'genoa',
+          comparisonComplete: true,
+          snappedOrigin: PLAN_REQUEST.origin,
+          snappedDestination: PLAN_REQUEST.destination,
+        },
+      };
+      const imported = parseExportFile(
+        exportEnvelopeToJson(buildExportEnvelope([stored], null, [])),
+      );
+      expect(imported.invalidPlanCount).toBe(0);
+      expect(imported.plans).toHaveLength(1);
+
+      const { w, client } = await initClient();
+      await expectRoutingError(
+        client.plan(imported.plans[0].request, imported.plans[0].windGrid),
+        'wind-grid-coverage',
+        /cover/,
+      );
       expect(w.posted.filter((m) => m.type === 'plan')).toHaveLength(0);
       expect(client.isDisposed).toBe(false);
     },

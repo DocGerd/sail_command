@@ -23,12 +23,11 @@ export type WindLatticeCoverageBounds = Pick<MaskMeta, 'west' | 'south' | 'east'
 /**
  * #1178: whether `grid`'s lat/lon lattice covers `bounds` — the exact
  * predicate `bracket()` above needs to avoid silently clamping. Exported
- * (not private to `WindField`) so `lib/planExport.ts`'s `decodeWindGrid`
- * can apply the SAME check to an untrusted imported grid BEFORE it is ever
- * persisted — see that file's own doc comment for why the import boundary
- * needs this independently of `WindField`'s own constructor check. Sharing
- * one predicate rather than hand-duplicating the inequality in both places
- * is deliberate: the #1178 hazard this whole check exists to catch is
+ * (not private to `WindField`) so `routing/workerClient.ts` can reject a
+ * stored grid that no longer covers the mask as a typed failure before
+ * posting a replan (#295; import deliberately does not check, see
+ * `lib/planExport.ts`'s `decodeWindGrid`). Sharing one predicate rather than
+ * hand-duplicating the inequality in both places is deliberate: the #1178 hazard this whole check exists to catch is
  * exactly the kind of subtly-wrong inequality that a second, independently
  * written copy could reintroduce.
  */
