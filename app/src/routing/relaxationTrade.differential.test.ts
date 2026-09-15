@@ -13,8 +13,9 @@ import { solverTimeoutMs } from '../test/timeouts';
 import type { LatLon } from '../types';
 
 // Each probe allocates a fresh mask-sized BFS buffer (`NavMask.cellsConnected`).
-// Budget: slowest row 138 s on CI run 34991379729 at 39 pairs (32 before #295,
-// x1.22), so ~2x that; via solverTimeoutMs, never a literal (`timeoutGuard.test.ts`).
+// Budget: slowest row 62 s on CI before #295 (run 34967193450, 32 pairs per
+// fixed origin), 138-149 s after it (runs 34991379729, 34997849572, 39 pairs);
+// ~2x the slowest, via solverTimeoutMs, never a literal (`timeoutGuard.test.ts`).
 vi.setConfig({ testTimeout: solverTimeoutMs(300_000) });
 
 /**

@@ -72,7 +72,9 @@ describe('#54 spec C.4(a): the relaxation floor comes from the selected boat', (
 
   it(
     '(b) WIRING: planRoute relaxes to the floor of deps.boat, not to a shared constant',
-    { timeout: solverTimeoutMs(600_000) },
+    // #295: 210 s on CI before the widening, 552 s and 604 s after it (runs
+    // 34967193450, 34991379729, 34997849572); ~1.5x the slowest.
+    { timeout: solverTimeoutMs(900_000) },
     () => {
       const salona = boatById(DEFAULT_BOAT_ID);
       // Deliberately NOT a catalogue entry: the catalogue has one boat, whose
