@@ -123,7 +123,9 @@ installs as a standalone icon and works fully offline after the first visit
 
 Planning a new route requires an internet connection (wind forecast fetch);
 everything else — viewing/loading saved plans, the map, live GPS guidance —
-works fully offline once the app has been loaded once.
+works fully offline once the app has been loaded once, except that the map's
+northern and eastern extension needs its region archive saved first (see
+[First load / offline](#first-load--offline)).
 
 ## First load / offline
 
@@ -134,6 +136,12 @@ for a total eventual download of ~51 MB. Subsequent visits are served from
 the cache and work with no network at all; an update prompt appears when a
 new version is available in the background, applied on demand rather than
 mid-passage.
+
+The base map's northern and eastern extension ships as two separate archives
+that are deliberately **not** precached (#295). A saved route reaching into
+that ground downloads the archive it needs — on request instead, when the
+browser's data saver is on — and the route result says whether that route's
+map area is already saved and what downloading it would cost.
 
 ## Data sources & attribution
 
