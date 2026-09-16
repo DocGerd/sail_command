@@ -12,7 +12,9 @@ import { makeMask, TEST_MASK_META } from '../test/fixtures';
 import { solverTimeoutMs } from '../test/timeouts';
 import type { LatLon } from '../types';
 
-// Each probe allocates a fresh mask-sized BFS buffer (`NavMask.cellsConnected`).
+// Each probe runs `NavMask.cellsConnected`, whose BFS scratch is module-level
+// and reused across calls since #1256 — stamped per call, not reallocated.
+// The budget below was measured BEFORE that change and is not re-measured here.
 // Budget: slowest row 62 s on CI before #295 (run 34967193450, 32 pairs per
 // fixed origin), 138-149 s after it (runs 34991379729, 34997849572, 39 pairs);
 // ~2x the slowest, via solverTimeoutMs, never a literal (`timeoutGuard.test.ts`).
