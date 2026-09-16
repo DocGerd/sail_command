@@ -445,6 +445,7 @@ Maintainer rulings on #295 (2026-09-15); evidence and coupled sites in
 - **Stored plans with the old wind grid.** A plan whose stored grid is the old
   187-point lattice (11 × 17 at 0.1° from 54.3°N / 9.4°E) stays viewable, and
   old backups import it. Paths that re-plan on the stored grid (departure
-  compare/confirm, Live reroute) return a typed, copy-backed error; paths that
-  fetch a fresh forecast (Recalculate, via edits) are unaffected. No migration
+  compare/confirm, Live reroute, via edits) return a typed, copy-backed
+  `wind-grid-coverage` error; Recalculate fetches a fresh forecast and is
+  unaffected (#1268). No migration
   (pre-1.0); a BREAKING-CHANGE changelog line records it.
