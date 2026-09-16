@@ -5060,8 +5060,13 @@ making design-level decisions; do not silently deviate.
   at all (verified 2026-08-19 on the `v0.12.0` merge `3f3b75e`, whose
   check-runs list none). A red check-run on a release commit is therefore never
   scorecard noise — chase it.
-- e2e's preview port is fixed (4173 in helpers.ts): full e2e runs from
-  parallel worktrees contend — serialize them, i.e. dispatch **at most ONE e2e implementer at a
+- e2e's preview port is DERIVED per Playwright worker since #1260
+  (`helpers.ts`'s `currentPort()`, `4173 + parallelIndex`; unchanged for
+  `startPreviewIdentity.spec.ts`, which runs alone in its own
+  single-worker `identity` project) — but SEPARATE `npm run e2e`
+  invocations (different agents, different worktrees) each start their own
+  worker 0 at 4173, so full e2e runs from parallel worktrees still
+  contend — serialize them, i.e. dispatch **at most ONE e2e implementer at a
   time**; per-agent dev ports are for
   manual browser passes only. Measured 2026-09-09: three concurrent e2e agents, and one found a
   FOREIGN build already bound to 4173 and killed the listener by port PID to unblock itself.
