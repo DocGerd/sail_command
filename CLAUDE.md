@@ -218,10 +218,11 @@ making design-level decisions; do not silently deviate.
 - `app/sweep/` (#450) is the committed #282 acceptance harness — one arm-set is
   EVERY name in `app/sweep/armNames.ts` x every harbour in `harbors.json`. Do
   NOT restate either count here: the arm count went stale twice (SIX until
-  #452, NINE until #653) and the harbour count went 33 -> 40 at #295, and `armNames.ts` plus `app/sweep/README.md`'s opening line decay on
-  the same schedule as the thing they describe. Read current composition
-  from `armNames.ts` and `app/sweep/README.md` directly, never restate a
-  count here. That README carries the full rebuild spec,
+  #452, NINE until #653) and the harbour count went 33 -> 40 at #295, and
+  `armNames.ts` plus `app/sweep/README.md`'s opening line decay on the same
+  schedule as the thing they describe. Read current composition from
+  `armNames.ts` and `app/sweep/README.md` directly, never restate a count
+  here. That README carries the full rebuild spec,
   and a REQUIRED BASE double-run control (two BASE runs must be byte-identical
   to each other before any BASE-vs-HEAD comparison means anything). Record
   that control against the merge-base of the branch it will certify. A moved
@@ -274,7 +275,9 @@ making design-level decisions; do not silently deviate.
   already on develop and inside #1264's base; against the base tree the same
   run was 440/440. Compare to a run of the tree the branch forked from.
   **Post-#295 an arm can outlive vitest's own per-arm timeout.** Six of 11
-  arms exceeded `solverTimeoutMs(3_600_000)` at 4464-5086 s on 2026-09-16 and
+  arms exceeded `solverTimeoutMs(3_600_000)` at 4464-5086 s on 2026-09-16 —
+  under no competing workload, the load being the sweep's own 11 parallel
+  arms, which is how a sweep always runs — and
   the run exited 1, yet all 11 JSONs were complete and byte-correct: the solve
   is synchronous, so the timer fires only after the arm has written its file.
   The ARTIFACT HASH is the verdict, never the runner's exit code. #1262 tracks
@@ -282,10 +285,12 @@ making design-level decisions; do not silently deviate.
   **Never run a full sweep as a harness background task** — a harness
   background task was killed at ~58 min (observed 2026-08-18 against Claude
   Code 2.1.235; re-check after any harness upgrade, this is a harness-version
-  property). `base1` alone took ~1850 s UNLOADED — ~31 min, i.e. INSIDE that
-  ceiling: what exceeds it is the REQUIRED BASE double-run (2×) and a
-  BASE-vs-HEAD comparison (3×), so the ceiling bites on the control, never on
-  a single arm-set. Detach from the start
+  property). `base1` alone took ~1850 s UNLOADED — ~31 min — but that is a
+  PRE-#295, 33-harbour measurement. Arms are FILE-PARALLEL, so an arm-set's
+  wall time is its SLOWEST arm: #1262 measures that at 4303 s (~72 min) over
+  40 harbours — past the ~58 min ceiling as measured 2026-08-18. Post-#295
+  a single arm-set can blow that ceiling too; re-measure both halves rather
+  than assuming either. Detach from the start
   (`setsid` + `nohup`), and report the `SC_SWEEP_OUT` path AT DETACH, not on
   completion: an agent died mid-sweep on 2026-08-18 and its output path died
   with it. A killed run and a finished one are both silent.
@@ -1285,8 +1290,11 @@ making design-level decisions; do not silently deviate.
   consecutive byte-equal screenshots before byte-comparing frames against them.
   **The rule governs an assertion's INPUTS, not only its predicate.** A guard
   that captures `boundingBox()` ONCE and then polls against that frozen
-  coordinate can PASS with the defect live — a real interception and a stale
-  read have a byte-identical signature. Fixed at #412/#419 and #422
+  coordinate can PASS with the defect live, and an un-polled IMMEDIATE
+  one-shot on the same frozen read FAILS outright — not polling is not the
+  same as not needing a gate (`compass.spec.ts`'s `#412` comment on its
+  `toBe(0)` overlap guard). A real interception and a stale read have a
+  byte-identical signature. Fixed at #412/#419 and #422
   (`89f4880`), which re-sample geometry INSIDE the poll callback; the sites
   carry `#412`/`#422` comments saying so. The suite has not been re-enumerated
   since, so "no frozen-geometry site remains" is not a claim this file makes.
@@ -2593,7 +2601,8 @@ making design-level decisions; do not silently deviate.
   discriminating experiment was to break the SPLICE while leaving the
   DERIVATION intact: correct form reds 1, suggested form reds 0.
 - **A comment-only wave can PROVE its prior measurement still holds by
-  strip-and-hash instead of re-running it — use the shared stripper.**
+  strip-and-hash instead of re-running it — but the proof needs TWO
+  controls; use the shared stripper.**
   `app/src/test/sourceStrip.ts` (#1121) is regex-aware and exports
   `assertNonVacuousStrip`, so the non-vacuity control is structural rather
   than remembered; a hand-rolled stripper gave three sha256-of-nothing
@@ -3717,8 +3726,9 @@ making design-level decisions; do not silently deviate.
   A "~45% of cells" figure survived a move with the wrong denominator — the
   #455 spike says ~45% of WATER cells on the ENCODED basis (1,192,923 of
   2,646,047), and water was only about HALF of the mask's then-5,280,000 cells
-  (2,646,047, i.e. 50.1% — a PRE-#295 total; the mask is 9,438,000 cells since,
-  so re-derive rather than reuse), so the two denominators differ by ~2x; that
+  (2,646,047, i.e. 50.1% — a PRE-#295 total; the mask is 9,438,000 cells
+  since, `cols × rows` in `mask.meta.json` — so re-derive rather than reuse),
+  so the two denominators differ by roughly 2x; that
   same spike had already rejected draft copy for mixing bases ("the right
   response is a stated basis, not the largest number"). Verify a moved claim
   as if you were writing it fresh.
@@ -4130,10 +4140,12 @@ making design-level decisions; do not silently deviate.
   `onerror`/`onmessageerror`/`disposed`), a wind blip is helped by
   RE-FETCHING with no worker involved, and the input-deterministic ones
   (budget exhaustion, a deterministic `planRoute()` throw) cannot be helped
-  by retrying at all. `boat-not-in-catalogue` is a fourth remedy again — raised
-  CLIENT-side by `RoutingClient.plan()` (`workerClient.ts`) before anything is
-  posted, so neither a retry nor a reload helps and the copy must name the
-  boat. `cancelled` takes NO remedy at all: `usePlanFlow.run()` transitions
+  by retrying at all. `boat-not-in-catalogue` and `wind-grid-coverage` (#295)
+  are a fourth remedy again — both raised CLIENT-side by
+  `RoutingClient.plan()` (`workerClient.ts`) before anything is posted, so
+  neither a retry nor a reload helps; the copy must name the boat, or say
+  that only a fresh forecast fixes it.
+  `cancelled` takes NO remedy at all: `usePlanFlow.run()` transitions
   straight to `idle` before `routingFailureKey` is ever called, so no banner
   renders — `error.routingCancelled` is a fallback for some other observer,
   and the layer must not apologise for a user-initiated cancel. Do not glue
@@ -4157,8 +4169,10 @@ making design-level decisions; do not silently deviate.
   All four former bare catches in
   `replan.ts`/`reroute.ts` now preserve the discriminator, but only the TWO
   wrapping `plan()` dispose UNLESS `failureLeavesWorkerHealthy(err)`
-  (`replan.ts`, today exactly `boat-not-in-catalogue`, whose worker never saw
-  the request; the same guard is at `reroute.ts` and `usePlanFlow.ts`, and must
+  (`replan.ts` — read its members off that predicate; at #295 they are
+  `boat-not-in-catalogue` and `wind-grid-coverage`, both raised client-side
+  before anything is posted, so the worker never saw the request; the same
+  guard is at `reroute.ts` and `usePlanFlow.ts`, and must
   never be made unconditional — `dispose()` calls `failAll()` on a singleton
   shared by three consumers). The two wrapping `save()` deliberately do NOT,
   and their comments say why: routing SUCCEEDED and only the write failed, so
