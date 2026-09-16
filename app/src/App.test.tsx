@@ -174,7 +174,7 @@ vi.mock('./routing/workerClient', async (importOriginal) => {
 
 // fetchWindGrid talks to the real Open-Meteo API by default; mocked here
 // (rather than added to fetchMock() below) so tests don't need to fabricate
-// a 187-point Open-Meteo response body just to drive a plan through
+// a 322-point Open-Meteo response body just to drive a plan through
 // usePlanFlow.run(). OpenMeteoError is re-exported from the real module
 // (importOriginal) — usePlanFlow.ts's mapWindError does an `instanceof`
 // check against it, which would break if this mock provided its own,

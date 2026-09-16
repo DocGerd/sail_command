@@ -125,6 +125,23 @@
   }
  },
  {
+  "id": "burgstaaken",
+  "names": {
+   "de": "Burgstaaken",
+   "da": "Burgstaaken",
+   "en": "Burgstaaken"
+  },
+  "country": "DE",
+  "snap": {
+   "lat": 54.4094,
+   "lon": 11.1924
+  },
+  "approachNote": {
+   "de": "Der Start- bzw. Zielpunkt der Route liegt vor dem Hafen in Wasser, das die Tiefendaten als befahrbar ausweisen; die letzte Anfahrt bilden die Tiefendaten nicht ab – dem gekennzeichneten Fahrwasser folgen und die Seekarte prüfen.",
+   "en": "Route start/end point lies off the harbor in water the depth data shows as navigable; the depth data does not resolve the final approach - follow the marked channel and check the chart."
+  }
+ },
+ {
   "id": "damp",
   "names": {
    "de": "Damp",
@@ -217,6 +234,23 @@
   "snap": {
    "lat": 54.798,
    "lon": 9.4335
+  }
+ },
+ {
+  "id": "fredericia",
+  "names": {
+   "de": "Fredericia",
+   "da": "Fredericia",
+   "en": "Fredericia"
+  },
+  "country": "DK",
+  "snap": {
+   "lat": 55.5527,
+   "lon": 9.732
+  },
+  "approachNote": {
+   "de": "Der Start- bzw. Zielpunkt der Route liegt vor dem Hafen in Wasser, das die Tiefendaten als befahrbar ausweisen; die letzte Anfahrt bilden die Tiefendaten nicht ab – dem gekennzeichneten Fahrwasser folgen und die Seekarte prüfen.",
+   "en": "Route start/end point lies off the harbor in water the depth data shows as navigable; the depth data does not resolve the final approach - follow the marked channel and check the chart."
   }
  },
  {
@@ -324,6 +358,40 @@
   "knownDisconnected": true
  },
  {
+  "id": "kerteminde",
+  "names": {
+   "de": "Kerteminde",
+   "da": "Kerteminde",
+   "en": "Kerteminde"
+  },
+  "country": "DK",
+  "snap": {
+   "lat": 55.4531,
+   "lon": 10.6702
+  },
+  "approachNote": {
+   "de": "Der Start- bzw. Zielpunkt der Route liegt vor dem Hafen in Wasser, das die Tiefendaten als befahrbar ausweisen; die letzte Anfahrt bilden die Tiefendaten nicht ab – dem gekennzeichneten Fahrwasser folgen und die Seekarte prüfen.",
+   "en": "Route start/end point lies off the harbor in water the depth data shows as navigable; the depth data does not resolve the final approach - follow the marked channel and check the chart."
+  }
+ },
+ {
+  "id": "kolding",
+  "names": {
+   "de": "Kolding",
+   "da": "Kolding",
+   "en": "Kolding"
+  },
+  "country": "DK",
+  "snap": {
+   "lat": 55.4931,
+   "lon": 9.508
+  },
+  "approachNote": {
+   "de": "Der Start- bzw. Zielpunkt der Route liegt vor dem Hafen in Wasser, das die Tiefendaten als befahrbar ausweisen; die letzte Anfahrt bilden die Tiefendaten nicht ab – dem gekennzeichneten Fahrwasser folgen und die Seekarte prüfen.",
+   "en": "Route start/end point lies off the harbor in water the depth data shows as navigable; the depth data does not resolve the final approach - follow the marked channel and check the chart."
+  }
+ },
+ {
   "id": "langballigau",
   "names": {
    "de": "Langballigau",
@@ -393,6 +461,19 @@
   }
  },
  {
+  "id": "middelfart",
+  "names": {
+   "de": "Middelfart",
+   "da": "Middelfart",
+   "en": "Middelfart"
+  },
+  "country": "DK",
+  "snap": {
+   "lat": 55.5065,
+   "lon": 9.7364
+  }
+ },
+ {
   "id": "mommark",
   "names": {
    "de": "Mommark",
@@ -410,6 +491,23 @@
   }
  },
  {
+  "id": "nyborg",
+  "names": {
+   "de": "Nyborg",
+   "da": "Nyborg",
+   "en": "Nyborg"
+  },
+  "country": "DK",
+  "snap": {
+   "lat": 55.3031,
+   "lon": 10.7975
+  },
+  "approachNote": {
+   "de": "Der Start- bzw. Zielpunkt der Route liegt vor dem Hafen in Wasser, das die Tiefendaten als befahrbar ausweisen; die letzte Anfahrt bilden die Tiefendaten nicht ab – dem gekennzeichneten Fahrwasser folgen und die Seekarte prüfen.",
+   "en": "Route start/end point lies off the harbor in water the depth data shows as navigable; the depth data does not resolve the final approach - follow the marked channel and check the chart."
+  }
+ },
+ {
   "id": "olpenitz",
   "names": {
    "de": "Olpenitz",
@@ -420,6 +518,23 @@
   "snap": {
    "lat": 54.6612,
    "lon": 10.0436
+  }
+ },
+ {
+  "id": "orth",
+  "names": {
+   "de": "Orth",
+   "da": "Orth",
+   "en": "Orth"
+  },
+  "country": "DE",
+  "snap": {
+   "lat": 54.4394,
+   "lon": 11.052
+  },
+  "approachNote": {
+   "de": "Der Start- bzw. Zielpunkt der Route liegt vor dem Hafen in Wasser, das die Tiefendaten als befahrbar ausweisen; die letzte Anfahrt bilden die Tiefendaten nicht ab – dem gekennzeichneten Fahrwasser folgen und die Seekarte prüfen.",
+   "en": "Route start/end point lies off the harbor in water the depth data shows as navigable; the depth data does not resolve the final approach - follow the marked channel and check the chart."
   }
  },
  {

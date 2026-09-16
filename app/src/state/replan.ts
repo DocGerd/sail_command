@@ -3,6 +3,7 @@ import { savePlan } from '../services/db';
 import { DEFAULT_SAIL_IDS } from '../data/boats';
 import { NO_ROUTE_MESSAGE_KEY, noRouteMessageKey } from '../lib/plan';
 import { haversineNm } from '../lib/geo';
+import { pinRegionsAfterReplan, type PinAfterSave } from '../services/pinAfterSave';
 import { RoutingError, type RoutingFailureKind } from '../routing/workerClient';
 import type { MsgKey } from '../i18n/dict.de';
 import {
@@ -209,6 +210,10 @@ export const ROUTING_FAILURE_MESSAGE_KEY: Record<
   // (an allowlist, so absence is the fail-closed direction and suppresses
   // the retry affordance without a second edit).
   'boat-not-in-catalogue': 'error.boatNotInCatalogue',
+  // #295: a plan saved on the pre-#295 wind lattice. Neither retry nor reload
+  // helps — only planning afresh fetches a grid that covers the mask.
+  // Deliberately absent from RETRY_MAY_HELP_KEYS, like the boat key above.
+  'wind-grid-coverage': 'error.windGridCoverage',
   // #1193: a fallback for a path other than usePlanFlow.run() that somehow
   // observes a cancelled plan() — run() itself never renders this key, it
   // special-cases 'cancelled' straight back to idle before reaching here.
@@ -293,10 +298,10 @@ export function disposeAfterFailure(client: ReplanClient): void {
  * #553: true when a `plan()` rejection tells us NOTHING is wrong with the
  * worker, so tearing it down would be pure cost.
  *
- * Exactly one kind qualifies today. `'boat-not-in-catalogue'` is raised by a
- * client-side catalogue lookup before `plan()` posts anything — no pending
- * entry, no timer, no message — so the worker is untouched and healthy. No
- * other kind leaves a healthy worker to preserve: 'worker-fatal',
+ * Two kinds qualify today. `'boat-not-in-catalogue'` (a catalogue lookup)
+ * and `'wind-grid-coverage'` (#295, a lattice-bounds check) are both raised
+ * client-side before `plan()` posts anything — no pending entry, no timer, no
+ * message — so the worker is untouched and healthy. No other kind leaves a healthy worker to preserve: 'worker-fatal',
  * 'worker-error' and 'messageerror' ARE worker faults, 'timeout' leaves one
  * still grinding on an abandoned solve (the client deadline settles the
  * promise, it does not terminate the thread), 'disposed' names a client
@@ -321,7 +326,12 @@ export function disposeAfterFailure(client: ReplanClient): void {
  * how the next one drifts.
  */
 export function failureLeavesWorkerHealthy(err: unknown): boolean {
-  return err instanceof RoutingError && err.kind === 'boat-not-in-catalogue';
+  // #295: 'wind-grid-coverage' is raised at the same pre-post point as the
+  // boat check, so it qualifies for the same reason.
+  return (
+    err instanceof RoutingError &&
+    (err.kind === 'boat-not-in-catalogue' || err.kind === 'wind-grid-coverage')
+  );
 }
 
 // Minimal structural slice of RoutingClient (routing/workerClient.ts) —
@@ -339,6 +349,11 @@ export interface ReplanClient {
 export interface ReplanDeps {
   client: ReplanClient;
   save?: typeof savePlan;
+  // #1233: shared with rerouteFromFix (reroute.ts) via this same type —
+  // each caller defaults to its OWN pinAfterSave.ts instance, never a
+  // common one, so a pin failure on one save path cannot silence another's
+  // warning (see pinAfterSave.ts's header comment).
+  pinRegions?: PinAfterSave;
 }
 
 /**
@@ -454,6 +469,10 @@ export async function replanWithVias(
       `failed to persist the replanned plan: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
+  // #1233: never awaited — pinning cannot delay or fail the replanned save.
+  // A moved corridor can otherwise go blank offline with no signal.
+  const pinRegions = deps.pinRegions ?? pinRegionsAfterReplan;
+  pinRegions(updated);
   return updated;
 }
 
@@ -491,7 +510,7 @@ const IDLE_STATE: ViaReplanState = { replanning: false, error: null, droppedCoun
  */
 export function useViaReplan(
   ensureClient: () => Promise<ReplanClient | null>,
-  deps: { save?: typeof savePlan } = {},
+  deps: { save?: typeof savePlan; pinRegions?: PinAfterSave } = {},
 ): {
   state: ViaReplanState;
   replace: (plan: Plan, viaPoints: LatLon[]) => Promise<Plan | null>;
@@ -529,15 +548,16 @@ export function useViaReplan(
           return null;
         }
 
-        // exactOptionalPropertyTypes: ReplanDeps.save is optional-if-present,
-        // not optional-or-undefined, so an absent deps.save must omit the key
-        // entirely rather than pass `{ save: undefined }` (mirrors
-        // workerClient.ts's onProgress handling).
-        const updated = await replanWithVias(
-          plan,
-          viaPoints,
-          deps.save ? { client, save: deps.save } : { client },
-        );
+        // exactOptionalPropertyTypes: ReplanDeps's optional fields are
+        // optional-if-present, not optional-or-undefined, so an absent
+        // deps.save/pinRegions must omit the key entirely rather than pass
+        // `{ save: undefined }` (mirrors workerClient.ts's onProgress
+        // handling).
+        const updated = await replanWithVias(plan, viaPoints, {
+          client,
+          ...(deps.save ? { save: deps.save } : {}),
+          ...(deps.pinRegions ? { pinRegions: deps.pinRegions } : {}),
+        });
         setState({ replanning: false, error: null, droppedCount });
         return updated;
       } catch (err) {
@@ -548,7 +568,7 @@ export function useViaReplan(
         busyRef.current = false;
       }
     },
-    [ensureClient, deps.save],
+    [ensureClient, deps.save, deps.pinRegions],
   );
 
   const clearError = useCallback(() => setState((s) => ({ ...s, error: null })), []);

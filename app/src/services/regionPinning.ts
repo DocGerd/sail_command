@@ -13,11 +13,10 @@
 // the function inherits that guard-asymmetry for free instead of re-arguing
 // it here.
 //
-// SCOPE (maintainer ruling on #1164, 2026-09-14 — see the issue's pinned
-// comment): service + state only, no readiness UI this release.
-// pinRegionsForPlan is wired in at pinAfterSave.ts :: pinRegionsAfterSave.
-// regionReadiness is exported for a future call site (planned: the
-// saved-plan list / plan-open flow, tracked under #295).
+// SCOPE: pinRegionsForPlan is wired in at pinAfterSave.ts, once per
+// save-path consumer (#1233), plus the #295 readiness chip's save button.
+// regionReadiness and regionDownloadBytes are read by
+// state/useRegionReadiness.ts (#295), which drives that chip.
 //
 // Guard-asymmetry (CLAUDE.md): every "can't tell" branch here resolves
 // toward NOT-READY or PIN-NOTHING, never toward a false "ready" or a
@@ -27,11 +26,13 @@
 //     unvalidated shape could name the wrong archive under a schema drift),
 //     and regionReadiness reports not-ready.
 //   - Anything short of ALL required archives verified present: not-ready.
-//     There is deliberately no "downloading" state — a network-free
-//     snapshot check can never tell "genuinely in flight right now" apart
-//     from "permanently stuck" (a 404 or a short body), so claiming an
-//     in-progress state it cannot verify would be the false-comfort
-//     direction (PWA review r4008640274).
+//     regionReadiness has deliberately no "downloading" state — a
+//     network-free snapshot can never tell "in flight right now" from
+//     "permanently stuck" (a 404 or a short body), so it would be the
+//     false-comfort direction (PWA review r4008640274). The chip's
+//     "saving" state is not that: it comes from pinAfterSave.ts's
+//     in-memory record of a live pin promise, which REGION_FETCH_FLOOR_KBPS
+//     below bounds so a stalled download settles as failed.
 //   - A cached archive whose stored byte length disagrees with the
 //     manifest's: not counted as present — see #118 CLAUDE.md rule "read
 //     the decoded blob size, never Content-Length" for why the length is
@@ -202,7 +203,13 @@ export type PinRegionsOutcome =
   // 5669811466). Named as a distinct outcome rather than letting
   // pinRegionsForPlan's promise reject after real work already happened
   // (PWA review Minor r4008640266).
-  | { readonly status: 'pin-record-failed'; readonly total: number; readonly pinned: number };
+  | { readonly status: 'pin-record-failed'; readonly total: number; readonly pinned: number }
+  // #1233 Major (offline/PWA review): the plan was deleted while its
+  // archives were still being fetched. The archives may still have been
+  // cached (harmless and reusable — content-addressed by region, not by
+  // plan), but db.ts's saveRegionPin found no matching plan row and wrote
+  // no pin-intent record, by design (see its own comment).
+  | { readonly status: 'plan-gone'; readonly total: number; readonly pinned: number };
 
 /**
  * Fetches every region archive `plan`'s route corridor requires that is not
@@ -232,12 +239,25 @@ export async function pinRegionsForPlan(plan: Plan): Promise<PinRegionsOutcome> 
     if (await pinOneRegion(entry)) pinned += 1;
   }
 
+  let writeOutcome: 'saved' | 'plan-gone';
   try {
-    await saveRegionPin({ planId: plan.id, regionIds: ids, pinnedAtMs: Date.now() });
+    writeOutcome = await saveRegionPin(plan.id, (currentPlan) => ({
+      planId: plan.id,
+      // Recomputed from the plan row `saveRegionPin` reads INSIDE its own
+      // transaction, never from the `ids` computed above — #1233 Minor
+      // (replan.ts:369): two same-id pins racing (e.g. two quick via edits)
+      // must converge on the corridor the plan ACTUALLY has, regardless of
+      // which call's archive downloads happen to finish last.
+      regionIds: requiredRegionIdsForPlan(currentPlan, manifest),
+      pinnedAtMs: Date.now(),
+    }));
   } catch {
     return { status: 'pin-record-failed', total: ids.length, pinned };
   }
 
+  if (writeOutcome === 'plan-gone') {
+    return { status: 'plan-gone', total: ids.length, pinned };
+  }
   return { status: 'pinned', total: ids.length, pinned };
 }
 
@@ -262,13 +282,38 @@ async function isPmtilesBlob(blob: Blob): Promise<boolean> {
   return looksLikePmtiles(head);
 }
 
+// #1233 Major 2 (offline/PWA review): every concurrent caller for the SAME
+// archive URL shares ONE in-flight fetch/verify/cache.put instead of each
+// starting its own — a bulk plan import, or two plans whose corridors share
+// a region, would otherwise fire one full multi-MB download PER PLAN. Keyed
+// by the CANONICAL (search-less) url, so it is stable across every
+// `?pin=<token>` cache-busting attempt below. Cleared once the attempt
+// settles (success OR failure) so a LATER, separate pin — after this one is
+// fully done — starts fresh rather than replaying a stale result forever.
+const inFlightRegionFetches = new Map<string, Promise<boolean>>();
+
+async function pinOneRegion(entry: RegionManifestEntry): Promise<boolean> {
+  if (await isArchivePresent(entry)) return true;
+  const url = archiveUrl(entry);
+  const existing = inFlightRegionFetches.get(url);
+  if (existing) return existing;
+  const attempt = fetchAndCacheRegion(entry, url).finally(() => {
+    inFlightRegionFetches.delete(url);
+  });
+  inFlightRegionFetches.set(url, attempt);
+  return attempt;
+}
+
 /**
  * Fetches and caches one region archive, verifying its DECODED size (never
  * the response's Content-Length — a re-gzipping CDN could inflate that
  * transparently, the same #118 lesson `basemapSource.ts` documents) against
  * the manifest before `cache.put`. A short or wrong-length body is left
  * uncached entirely. Idempotent: an already-correctly-cached entry short-
- * circuits without a network request.
+ * circuits without a network request (`pinOneRegion`'s own `isArchivePresent`
+ * check — this function is reached only past that gate). Split out of
+ * `pinOneRegion` so the coalescing map above can share ONE Promise across
+ * every concurrent caller for the same `url` (#1233 Major 2).
  *
  * NEVER `cache.delete`s a stale entry before fetching (successor fix, PR
  * review r4009096166, replacing an earlier `cache.delete`-then-fetch
@@ -289,10 +334,13 @@ async function isPmtilesBlob(blob: Blob): Promise<boolean> {
  * value atomically — the stale copy remains servable right up until a
  * verified replacement exists, and is never left absent.
  */
-async function pinOneRegion(entry: RegionManifestEntry): Promise<boolean> {
-  if (await isArchivePresent(entry)) return true;
+async function fetchAndCacheRegion(entry: RegionManifestEntry, url: string): Promise<boolean> {
+  // #295 (PWA review r4016341243): without a deadline a stalled body keeps
+  // the chip at "saving" forever, with retry hidden. Aborting resolves false,
+  // which the chip shows as failed with retry offered.
+  const deadline = new AbortController();
+  const timer = setTimeout(() => deadline.abort(), regionFetchTimeoutMs(entry.bytes));
   try {
-    const url = archiveUrl(entry);
     // `cache: 'no-store'` (PWA review Minor r4008640259): region archive
     // paths are unhashed, so without it an HTTP-cached copy from a PREVIOUS
     // build could be served whenever its length happens to match the
@@ -300,7 +348,10 @@ async function pinOneRegion(entry: RegionManifestEntry): Promise<boolean> {
     // cache lookup miss (see this function's own doc comment); `no-store`
     // is the separate, still-needed guard against the browser's OWN HTTP
     // cache serving a stale body for that busted URL.
-    const res = await fetch(`${url}?pin=${Date.now()}`, { cache: 'no-store' });
+    const res = await fetch(`${url}?pin=${Date.now()}`, {
+      cache: 'no-store',
+      signal: deadline.signal,
+    });
     if (!res.ok) return false;
     const blob = await res.blob();
     // PMTiles magic check (same review): cheap, and mirrors
@@ -317,7 +368,25 @@ async function pinOneRegion(entry: RegionManifestEntry): Promise<boolean> {
     return true;
   } catch {
     return false;
+  } finally {
+    clearTimeout(timer);
   }
+}
+
+/**
+ * Slowest link a region download is allowed to take, in kbit/s. 256 kbit/s
+ * is a degraded 3G link; the committed north strip (12,603,919 B) then needs
+ * ~394 s. Slower than that, failing and offering a retry beats "saving…"
+ * with no end.
+ */
+export const REGION_FETCH_FLOOR_KBPS = 256;
+/** Floor for small archives, so latency alone never trips the deadline. */
+export const REGION_FETCH_MIN_TIMEOUT_MS = 60_000;
+
+/** Whole-download deadline for an archive of `bytes`, at REGION_FETCH_FLOOR_KBPS. */
+export function regionFetchTimeoutMs(bytes: number): number {
+  const atFloorMs = ((bytes * 8) / (REGION_FETCH_FLOOR_KBPS * 1000)) * 1000;
+  return Math.max(REGION_FETCH_MIN_TIMEOUT_MS, Math.ceil(atFloorMs));
 }
 
 export type RegionReadinessReason =
@@ -371,6 +440,18 @@ export async function regionReadiness(plan: Plan): Promise<RegionReadiness> {
 
   if (done === entries.length) return { state: 'ready', done, total: entries.length };
   return { state: 'not-ready', reason: 'pending' };
+}
+
+/**
+ * Total byte size of the lazy region archives `plan` requires, from the
+ * cached manifest only (network-free, like regionReadiness). 0 when none is
+ * required; null when the manifest cannot be read. Shown on the #295 chip.
+ */
+export async function regionDownloadBytes(plan: Plan): Promise<number | null> {
+  const manifest = await readManifestFromCache();
+  if (manifest === null) return null;
+  const entries = resolveEntries(manifest, requiredRegionIdsForPlan(plan, manifest));
+  return entries.reduce((sum, e) => sum + e.bytes, 0);
 }
 
 // Re-exported so a future call site (and this file's own tests) can name

@@ -218,7 +218,7 @@ export const de = {
   'planner.via.coord.update': 'Koordinaten aktualisieren',
   'planner.via.coord.edit': 'Koordinaten bearbeiten (Punkt {index}): {coord}',
   'planner.via.coord.outOfRegion':
-    'Die Koordinaten liegen außerhalb des abgedeckten Seegebiets (Flensburger Förde / Dänische Südsee).',
+    'Die Koordinaten liegen außerhalb des abgedeckten Seegebiets (Flensburger Förde, Dänische Südsee, Kleiner Belt, westliche Zufahrt zum Großen Belt, Fehmarn).',
   // #886 residual 1: see dict.en.ts's matching comment.
   'planner.via.coord.invalidEntry':
     'Eingabe konnte nicht als Koordinate gelesen werden – {value} beibehalten',
@@ -256,7 +256,7 @@ export const de = {
     'Die GPX-Datei enthält keine zwei verwendbaren Punkte (Start und Ziel).',
   'planner.import.error.badCoord': 'Die GPX-Datei enthält ungültige Koordinaten.',
   'planner.import.error.outOfBounds':
-    'Ein Punkt liegt außerhalb des abgedeckten Seegebiets (Flensburger Förde / Dänische Südsee).',
+    'Ein Punkt liegt außerhalb des abgedeckten Seegebiets (Flensburger Förde, Dänische Südsee, Kleiner Belt, westliche Zufahrt zum Großen Belt, Fehmarn).',
   'planner.import.error.tooLarge': 'Die GPX-Datei ist zu groß für den Import.',
   'planner.import.error.failed': 'GPX-Datei konnte nicht gelesen werden.',
   'planner.import.notice.trackReduced':
@@ -324,6 +324,10 @@ export const de = {
   // Neuberechnung ist nicht möglich. Siehe dict.en.ts.
   'error.boatNotInCatalogue':
     'Diese Route wurde für ein Boot geplant, das nicht mehr verfügbar ist, und kann deshalb nicht neu berechnet werden. Die gespeicherte Route lässt sich weiterhin öffnen, ansehen und exportieren.',
+  // #295: ein vor der Gebietserweiterung gespeicherter Plan trägt eine
+  // Windvorhersage für das alte, kleinere Gebiet. Siehe dict.en.ts.
+  'error.windGridCoverage':
+    'Die gespeicherte Windvorhersage dieser Route deckt ein kleineres Gebiet ab als die aktuellen Kartendaten und reicht für diese Aktion nicht aus. Route neu berechnen oder neu planen, um eine aktuelle Vorhersage zu laden. Die gespeicherte Route lässt sich weiterhin öffnen, ansehen und exportieren.',
   'error.planSaveFailed':
     'Die Route wurde berechnet, konnte aber nicht gespeichert werden. Erneut versuchen oder freien Speicherplatz auf diesem Gerät prüfen.',
   'error.windUnknown':
@@ -422,6 +426,14 @@ export const de = {
   // static "> 12 h" threshold label PR #763 shipped. See dict.en.ts for the
   // full rationale. "bei Abfahrt" (PR #763 review Major 3) is unchanged.
   'route.staleForecast': 'Vorhersage bei Abfahrt {hours} h alt',
+  // #295: ob der Kartenbereich dieses Plans offline gespeichert ist.
+  'route.offlineMap.checking': 'Offline-Karte: wird geprüft…',
+  'route.offlineMap.ready': 'Offline-Karte gespeichert',
+  'route.offlineMap.pinning': 'Offline-Karte wird gespeichert…',
+  'route.offlineMap.failed': 'Download der Offline-Karte fehlgeschlagen',
+  'route.offlineMap.notReady': 'Offline-Karte nicht gespeichert',
+  'route.offlineMap.retry': 'Offline-Karte speichern',
+  'route.offlineMap.size': '{mb} MB',
   // #53/#452: honest passage-planning-aid copy — see dict.en.ts's comment
   // for why {used} < {requested} always holds here, why the closing
   // sentence deliberately does not imply unflagged water is safe, and why
@@ -898,6 +910,11 @@ export const de = {
   // dartboard/shooting-range target, not a floating nautical mark).
   'seamark.value.category.target': 'Zieltonne',
   'seamark.value.category.unknown_purpose': 'Unbekannter Zweck',
+  // #295: OSM `upper` occurs only on `beacon_special_purpose` leading marks in
+  // the shipped data (`upper;leading`, `upper;leading;cable`) — the rear,
+  // higher mark of a Richtbakenlinie (Ober- vs Unterbake).
+  // A mark noun, like `leading`'s "Richtbake" — the tag sits on a beacon, not a light.
+  'seamark.value.category.upper': 'Oberbake',
   'seamark.value.category.warning': 'Warnung',
   'seamark.value.category.wave_recorder': 'Wellenmessboje',
   'seamark.value.category.west': 'West',

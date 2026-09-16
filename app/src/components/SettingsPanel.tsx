@@ -23,8 +23,9 @@ import {
   toSeamarkDisplayTier,
 } from '../lib/seamarkGlyphs';
 import { usePersistedNumber } from '../lib/usePersistedNumber';
-import { useNavMask } from '../state/useNavMask';
+import { DATA_AREA } from '../lib/gpx';
 import { getPlan, listPlans, listWaypoints, savePlan, saveWaypoint } from '../services/db';
+import { pinImportedPlans } from '../services/pinAfterSave';
 import Button from './Button';
 import Card from './Card';
 import Field from './Field';
@@ -266,16 +267,6 @@ export default function SettingsPanel({
   // must already be in the accessibility tree before its text changes, and
   // an empty child renders as :empty for the shared `.boat-picker-notice`
   // CSS rule, so no new stylesheet rule is needed here.
-  // #1178: the import path bypasses planRoute.ts entirely (parseExportFile
-  // -> decodePlan -> migratePlan -> savePlan, never a WindField), so it is
-  // the one production windGrid consumer that must supply its OWN mask
-  // bounds to close the domain-coverage hazard — see planExport.ts's
-  // decodeWindGrid doc comment. `useNavMask()` is the same fetch-once
-  // module-cached mask every other component (LiveView, RouteSummary,
-  // ShallowWarning) already reads; `null` while it is still loading (or
-  // unavailable) skips the check, matching WindField's own optional-bounds
-  // design rather than blocking an import on a race.
-  const mask = useNavMask();
   const importInputRef = useRef<HTMLInputElement>(null);
   const [backupError, setBackupError] = useState<string | null>(null);
   const [backupNotice, setBackupNotice] = useState<string | null>(null);
@@ -316,7 +307,7 @@ export default function SettingsPanel({
 
     let result: ImportResult;
     try {
-      result = parseExportFile(await file.text(), mask?.meta);
+      result = parseExportFile(await file.text(), DATA_AREA);
     } catch (err) {
       if (err instanceof ImportParseError) {
         const key: Record<ImportParseError['reason'], MsgKey> = {
@@ -356,6 +347,12 @@ export default function SettingsPanel({
     for (const outcome of waypointOutcomes)
       if (outcome.status === 'rejected')
         console.error('SettingsPanel: waypoint import write failed', outcome.reason);
+    // #1233: pin every SUCCESSFULLY-saved plan (never a rejected one — its
+    // regions never reached IndexedDB either) as ONE batch — never awaited
+    // — so a shared region across plans coalesces to one archive fetch and
+    // failures surface as a single aggregated warning (pinImportedPlans's
+    // own comment has the full reasoning).
+    pinImportedPlans(result.plans.filter((_p, i) => planOutcomes[i]?.status === 'fulfilled'));
 
     // Only announced when something actually changed — mirrors
     // useSavedWaypoints.ts's own "safe to call with no subscribers" note,
