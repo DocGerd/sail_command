@@ -5,9 +5,11 @@ Run 2026-09-14 at merge-base `d3e3769`. Nothing here is imported by the app,
 the test suite or the sweep.
 
 - `apply_probe.py <isochrone.ts>` — scratch-instruments `solve()`: UNBOUNDED
-  salvage (no cap; never two salvage passes in a row), death counters frozen
-  after the first salvage, per-ring trace. Inert while `PROBE.enabled` is
-  false. Restore the file (`git restore`) before committing anything.
+  salvage (no salvage cap; never two salvage passes in a row; a 4 000-ring
+  trace cap throws `RING_CAP`, hence set A's TWS 8 `threw` row), death
+  counters frozen after the first salvage, per-ring trace. Inert while
+  `PROBE.enabled` is false. Restore the file (`git restore`) before
+  committing anything.
 - `probe.test.ts` — sets A (spike §1 config), B (oracle-disconnected
   Flensburg→Marstal at 3.0 m) and C (Flensburg→Marstal on the relaxed gate,
   plan fidelity: `performanceFactor` 0.9, comfort 5 / none, both rigs).

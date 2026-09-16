@@ -13,6 +13,7 @@ const hoisted = vi.hoisted(() => ({
   // Set per-test to make the FakeMap constructor throw (WebGL init failure).
   mapCtorError: { current: null as Error | null },
   removeCalls: { count: 0 },
+  setUrlCalls: [] as string[],
 }));
 
 vi.mock('maplibre-gl', () => {
@@ -30,6 +31,11 @@ vi.mock('maplibre-gl', () => {
     }
     remove() {
       hoisted.removeCalls.count += 1;
+    }
+    getSource(id: string) {
+      return id === 'protomaps'
+        ? { setUrl: (url: string) => hoisted.setUrlCalls.push(url) }
+        : undefined;
     }
   }
   class FakeAttributionControl {}
@@ -83,6 +89,7 @@ beforeEach(() => {
   hoisted.mapCtorCalls.length = 0;
   hoisted.mapCtorError.current = null;
   hoisted.removeCalls.count = 0;
+  hoisted.setUrlCalls.length = 0;
   protocolAdd = vi.spyOn(basemapProtocol, 'add');
   protocolConfigure = vi.spyOn(basemapProtocol, 'configure');
 });
@@ -145,10 +152,38 @@ describe('MapView async mount (#118 cancelled-flag window)', () => {
       baseHref: 'http://localhost:3000/',
       regionsEnabled: false,
     });
-    const style = (hoisted.mapCtorCalls[0] as { style: { sources: Record<string, { url: string }> } })
-      .style;
+    const style = (
+      hoisted.mapCtorCalls[0] as { style: { sources: Record<string, { url: string }> } }
+    ).style;
     expect(Object.keys(style.sources)).toEqual(['protomaps']);
     expect(style.sources['protomaps']?.url).toBe(BASEMAP_SOURCE_URL);
+  });
+
+  // #295 (PWA review r4016341229): a fresh install claims the page mid-session.
+  it('#295: the service worker taking control enables regions and reloads the source TileJSON', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(ok206()));
+    const sw = Object.assign(new EventTarget(), { controller: null as object | null });
+    Object.defineProperty(navigator, 'serviceWorker', { value: sw, configurable: true });
+    try {
+      const { unmount } = render(<MapView tapActive={false} onTap={() => {}} />);
+      await flushAsyncMount();
+      expect(protocolConfigure).toHaveBeenLastCalledWith(
+        expect.objectContaining({ regionsEnabled: false }),
+      );
+      expect(hoisted.setUrlCalls).toEqual([]);
+
+      sw.controller = {};
+      sw.dispatchEvent(new Event('controllerchange'));
+      expect(protocolConfigure).toHaveBeenLastCalledWith({
+        coreUrl: 'http://localhost:3000/data/basemap.pmtiles.png',
+        baseHref: 'http://localhost:3000/',
+        regionsEnabled: true,
+      });
+      expect(hoisted.setUrlCalls).toEqual([BASEMAP_SOURCE_URL]);
+      unmount();
+    } finally {
+      Reflect.deleteProperty(navigator, 'serviceWorker');
+    }
   });
 
   it('#207: constructs with pitch locked flat (maxPitch: 0), not left to reset later', async () => {

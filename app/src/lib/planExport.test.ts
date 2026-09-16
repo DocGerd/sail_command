@@ -9,7 +9,7 @@ import {
 } from './planExport';
 import type { SavedWaypoint } from '../services/db';
 import { defaultBoatSnapshot, PLAN_SCHEMA_VERSION, type Plan, type Settings } from '../types';
-import { TEST_MASK_META } from '../test/fixtures';
+import { uniformWindGrid } from '../test/fixtures';
 
 const TEST_SETTINGS: Settings = {
   safetyDepthM: 3.0,
@@ -140,6 +140,98 @@ describe('planExport round-trip', () => {
     const envelope = buildExportEnvelope([], null, []);
     expect(envelope.schemaVersion).toBe(EXPORT_SCHEMA_VERSION);
     expect(() => parseExportFile(exportEnvelopeToJson(envelope))).not.toThrow();
+  });
+});
+
+// #885: forced segment modes and forced legs travel through export/import; the
+// import delegates validation to migratePlan, so a malformed mode list is one
+// skipped plan, not a crashed import.
+function makeForcedPlan(id: string): Plan {
+  const plan = makeTestPlan(id);
+  const via = { lat: 54.6, lon: 9.7 };
+  const leg = {
+    kind: 'motor' as const,
+    board: null,
+    start: { lat: 54.3, lon: 9.4 },
+    end: via,
+    startTimeMs: 1626340800000,
+    endTimeMs: 1626344400000,
+    headingDeg: 30,
+    twsKn: 8,
+    speedKn: 6.5,
+    distanceNm: 6.5,
+    maneuverAtStart: null,
+    forced: true as const,
+  };
+  const genoa = plan.result.status === 'ok' ? plan.result.sails[0] : null;
+  if (plan.result.status !== 'ok' || genoa?.result == null) throw new Error('fixture');
+  return {
+    ...plan,
+    request: { ...plan.request, viaPoints: [via], segmentModes: ['motor', null] },
+    result: {
+      ...plan.result,
+      sails: [{ ...genoa, result: { ...genoa.result, legs: [leg] } }, plan.result.sails[1]],
+    },
+  };
+}
+
+describe('#885 planExport: segment modes and forced legs', () => {
+  it('round-trips segmentModes and forced legs through export and import', () => {
+    const plan = makeForcedPlan('forced-1');
+    const result = parseExportFile(exportEnvelopeToJson(buildExportEnvelope([plan], null, [])));
+    expect(result.invalidPlanCount).toBe(0);
+    const back = result.plans[0];
+    expect(back.request.segmentModes).toEqual(['motor', null]);
+    const legs = back.result.status === 'ok' ? (back.result.sails[0].result?.legs ?? []) : [];
+    expect(legs).toHaveLength(1);
+    expect(legs[0].forced).toBe(true);
+  });
+
+  it.each<[string, unknown]>([
+    ['the wrong length', ['motor']],
+    ['an unknown mode', ['motor', 'oars']],
+    ['a non-array', 'motor'],
+  ])(
+    'counts an imported plan whose segmentModes has %s as invalid, keeping the others',
+    (_n, bad) => {
+      const good = buildExportEnvelope([makeForcedPlan('good')], null, []).plans[0];
+      const broken = JSON.parse(JSON.stringify(good)) as {
+        id: string;
+        request: Record<string, unknown>;
+      };
+      broken.id = 'broken';
+      broken.request.segmentModes = bad;
+      const envelope = {
+        schemaVersion: EXPORT_SCHEMA_VERSION,
+        exportedAtMs: Date.now(),
+        plans: [good, broken],
+        settings: null,
+        waypoints: [],
+      };
+      const result = parseExportFile(JSON.stringify(envelope));
+      expect(result.invalidPlanCount).toBe(1);
+      expect(result.plans.map((p) => p.id)).toEqual(['good']);
+    },
+  );
+
+  it('counts an imported plan whose leg carries forced other than true as invalid', () => {
+    const good = buildExportEnvelope([makeForcedPlan('good')], null, []).plans[0];
+    const broken = JSON.parse(JSON.stringify(good)) as {
+      id: string;
+      result: { sails: { result: { legs: Record<string, unknown>[] } }[] };
+    };
+    broken.id = 'broken';
+    broken.result.sails[0].result.legs[0].forced = 'yes';
+    const envelope = {
+      schemaVersion: EXPORT_SCHEMA_VERSION,
+      exportedAtMs: Date.now(),
+      plans: [good, broken],
+      settings: null,
+      waypoints: [],
+    };
+    const result = parseExportFile(JSON.stringify(envelope));
+    expect(result.invalidPlanCount).toBe(1);
+    expect(result.plans.map((p) => p.id)).toEqual(['good']);
   });
 });
 
@@ -303,81 +395,42 @@ describe('parseExportFile: per-item corruption is isolated, not fatal', () => {
     expect(result.plans[0].id).toBe('good-5');
   });
 
-  // #1178 (PR #1182 round-2 review): the import path (SettingsPanel.tsx ->
-  // parseExportFile -> decodePlan -> migratePlan -> savePlan) never
-  // constructs a WindField, so wind.ts's own construction-time domain-
-  // coverage assertion never runs for an imported plan — a spatially
-  // narrow but dimension-consistent windGrid would reach
-  // DepthProfile.tsx/DepartureCompare.tsx/routeGeoJson.ts's "already
-  // validated" WindField constructions completely unvalidated. This test
-  // FAILS on the pre-#1178-part-2 shape of decodeWindGrid (no maskBounds
-  // parameter at all -> the narrow grid below was silently accepted, see
-  // the mutation check in this PR's report) and PASSES now that
-  // parseExportFile threads an optional maskBounds through to it.
-  // makeTestPlan's own windGrid is `lats: [54.0], lons: [9.0]` — a SINGLE
-  // point, nowhere near TEST_MASK_META's 54.3-55.3/9.4-11.0 domain — so no
-  // fixture mutation is needed to construct the narrow case.
-  it('skips a plan whose windGrid does not cover the supplied mask bounds (#1178)', () => {
-    const narrow = buildExportEnvelope([makeTestPlan('narrow-1')], null, []).plans[0];
-    const envelope = {
-      schemaVersion: EXPORT_SCHEMA_VERSION,
-      exportedAtMs: Date.now(),
-      plans: [narrow],
-      settings: null,
-      waypoints: [],
-    };
-    const result = parseExportFile(JSON.stringify(envelope), TEST_MASK_META);
-    expect(result.invalidPlanCount).toBe(1);
-    expect(result.plans).toHaveLength(0);
-  });
+  // #295 ruling: with bounds supplied (the app passes DATA_AREA), import accepts
+  // a grid that covers them OR the exact pre-#295 11 x 17 lattice, and still
+  // rejects any other non-covering grid (#1178).
+  describe('#295: wind-grid coverage on import', () => {
+    const BOUNDS = { west: 9.4, south: 54.3, east: 11.6, north: 55.6 };
+    const importGrid = (id: string, windGrid: Plan['windGrid']) =>
+      parseExportFile(
+        exportEnvelopeToJson(buildExportEnvelope([{ ...makeTestPlan(id), windGrid }], null, [])),
+        BOUNDS,
+      );
 
-  // Complement of the test above: the SAME narrow windGrid is still
-  // ACCEPTED when maskBounds is omitted — preserving every pre-existing
-  // caller (this whole file's other tests, none of which pass maskBounds)
-  // byte-for-byte. Proves the parameter is genuinely optional, not merely
-  // typed as such.
-  it('still accepts the narrow windGrid above when maskBounds is omitted', () => {
-    const narrow = buildExportEnvelope([makeTestPlan('narrow-2')], null, []).plans[0];
-    const envelope = {
-      schemaVersion: EXPORT_SCHEMA_VERSION,
-      exportedAtMs: Date.now(),
-      plans: [narrow],
-      settings: null,
-      waypoints: [],
-    };
-    const result = parseExportFile(JSON.stringify(envelope));
-    expect(result.invalidPlanCount).toBe(0);
-    expect(result.plans).toHaveLength(1);
-  });
+    it('imports a plan on the pre-#295 187-point lattice with its grid intact', () => {
+      const oldGrid = uniformWindGrid(12, 45, { north: 55.3, east: 11.0 });
+      expect(oldGrid.lats.length * oldGrid.lons.length).toBe(187);
+      const result = importGrid('old-lattice', oldGrid);
+      expect(result.invalidPlanCount).toBe(0);
+      expect(result.plans).toHaveLength(1);
+      const imported = result.plans[0].windGrid;
+      expect(imported.lats).toEqual(oldGrid.lats);
+      expect(imported.lons).toEqual(oldGrid.lons);
+      expect(imported.speedKn).toEqual(oldGrid.speedKn);
+    });
 
-  // Positive control for the #1178 check: a windGrid that DOES cover the
-  // supplied mask bounds must still be accepted — proves the guard
-  // discriminates rather than rejecting every import once maskBounds is
-  // supplied. A 2x2x3 grid (lats/lons spanning TEST_MASK_META's corners,
-  // 3 times) is built with CORRECTLY sized Float32Arrays and run through
-  // the real `buildExportEnvelope` (its own `encodeWindGrid` does the
-  // base64 encoding) so this exercises the exact round-trip, not a
-  // hand-spliced partial object like the dimension-mismatch tests above —
-  // those deliberately construct a broken shape; this one must not be one.
-  it('accepts a plan whose windGrid covers the supplied mask bounds', () => {
-    const base = makeTestPlan('covers-1');
-    const covering: Plan = {
-      ...base,
-      windGrid: {
-        lats: [TEST_MASK_META.south, TEST_MASK_META.north],
-        lons: [TEST_MASK_META.west, TEST_MASK_META.east],
-        timesMs: base.windGrid.timesMs,
-        speedKn: new Float32Array(12).fill(5),
-        dirFromDeg: new Float32Array(12).fill(90),
-        gustKn: new Float32Array(12).fill(7),
-        fetchedAtMs: base.windGrid.fetchedAtMs,
-        model: base.windGrid.model,
-      },
-    };
-    const envelope = buildExportEnvelope([covering], null, []);
-    const result = parseExportFile(exportEnvelopeToJson(envelope), TEST_MASK_META);
-    expect(result.invalidPlanCount).toBe(0);
-    expect(result.plans).toHaveLength(1);
+    it('imports a plan whose grid covers the bounds', () => {
+      const result = importGrid('covering', uniformWindGrid(12, 45));
+      expect(result.invalidPlanCount).toBe(0);
+      expect(result.plans).toHaveLength(1);
+    });
+
+    it('rejects an 11 x 17 lattice shifted 0.1 deg north of the legacy one', () => {
+      const shifted = uniformWindGrid(12, 45, { south: 54.4, north: 55.4, east: 11.0 });
+      expect([shifted.lats.length, shifted.lons.length]).toEqual([11, 17]);
+      const result = importGrid('shifted', shifted);
+      expect(result.invalidPlanCount).toBe(1);
+      expect(result.plans).toHaveLength(0);
+    });
   });
 
   it('skips a waypoint missing a required field and counts it, keeping the others', () => {

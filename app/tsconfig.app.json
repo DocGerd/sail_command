@@ -145,6 +145,7 @@
     "src/**/startPreviewSwAssertCallSites.test.ts",
     "src/**/basemapArchiveRoute.test.ts",
     "src/**/windLatticeMaskCoverage.test.ts",
+    "src/**/maxBoundsMaskCoverage.test.ts",
     "src/**/relaxationTrade.differential.test.ts",
     "src/**/realmask.repro*.test.ts",
     "src/**/realmaskFixtures.ts",

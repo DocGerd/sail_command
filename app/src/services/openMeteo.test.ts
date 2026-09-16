@@ -4,11 +4,14 @@ import { fetchWindGrid, OpenMeteoError, FORECAST_DAYS } from './openMeteo';
 // Grid-bounds literals (not the same Array.from formula openMeteo.ts uses to
 // build these — re-deriving via the identical formula would let a bug in the
 // source's own bounds silently pass here too).
-const LATS = [54.3, 54.4, 54.5, 54.6, 54.7, 54.8, 54.9, 55.0, 55.1, 55.2, 55.3];
+const LATS = [
+  54.3, 54.4, 54.5, 54.6, 54.7, 54.8, 54.9, 55.0, 55.1, 55.2, 55.3, 55.4, 55.5, 55.6,
+];
 const LONS = [
   9.4, 9.5, 9.6, 9.7, 9.8, 9.9, 10.0, 10.1, 10.2, 10.3, 10.4, 10.5, 10.6, 10.7, 10.8, 10.9, 11.0,
+  11.1, 11.2, 11.3, 11.4, 11.5, 11.6,
 ];
-const NPOINTS = LATS.length * LONS.length; // 187
+const NPOINTS = LATS.length * LONS.length; // 322
 
 interface FakePoint {
   hourly: {
@@ -65,8 +68,8 @@ describe('openMeteo', () => {
     }
   });
 
-  // Step 2: URL assertion test — verify all 187 coordinates in correct order
-  it('should build URL with 187 comma-separated latitude,longitude pairs in correct order', async () => {
+  // Step 2: URL assertion test — verify all 322 coordinates in correct order
+  it('should build URL with 322 comma-separated latitude,longitude pairs in correct order', async () => {
     const fakeData = buildFakeResponse();
     const mockFetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify(fakeData), { status: 200 })

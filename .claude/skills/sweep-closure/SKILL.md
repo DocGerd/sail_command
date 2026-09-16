@@ -5,10 +5,10 @@ description: Use when deciding whether a SailCommand diff owes an `app/sweep/` #
 
 # Sweep closure: does this diff owe a #282 sweep?
 
-`app/sweep/` is SailCommand's #282 acceptance harness — nine settings arms
-across 33 harbours, run against the real committed mask and polars, whose
+`app/sweep/` is SailCommand's #282 acceptance harness — every settings arm in
+`app/sweep/armNames.ts` across every harbour in `harbors.json`, run against the real committed mask and polars, whose
 whole point is that a change meant to be presentational moves **no** route.
-A single arm-set costs ~31 minutes unloaded; the required BASE double-run
+A single arm-set cost ~31 minutes unloaded on the pre-#295 33-harbour set; the required BASE double-run
 control doubles that, and a BASE-vs-HEAD comparison triples it. Guessing
 "owed" wrong burns ~90 minutes for nothing; guessing "not owed" wrong ships
 an unverified routing change.
@@ -114,7 +114,7 @@ convention requires for a NUDGE-class tool
 **This tool is designed to over-report, not under-report, against the
 UNIVERSE described in "Method" above (the import walk UNIONED with
 `PATH_PREFIXES`) — with exactly one modelled exception.** A false "owed"
-costs ~31 minutes of unnecessary solver time; a false "not owed" ships an
+costs an arm-set of unnecessary solver time; a false "not owed" ships an
 unverified routing change — those costs are not symmetric, so the tool is
 built to fail toward the expensive-but-safe side.
 

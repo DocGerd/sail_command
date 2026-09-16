@@ -1,5 +1,5 @@
 import type { MsgKey } from '../i18n/dict.de';
-import type { NoRouteReason, Plan, RigResult, SailId } from '../types';
+import type { NoRouteReason, Plan, PlanRequest, RigResult, SailId } from '../types';
 
 // Spec §4: "Stale forecast (fetch → departure gap > 12 h)" — strictly
 // greater, so a plan departing exactly 12 h after its wind was fetched is
@@ -25,7 +25,30 @@ export const NO_ROUTE_MESSAGE_KEY: Record<NoRouteReason, MsgKey> = {
   'snap-failed-destination': 'error.noRoute.snapDestination',
   'snap-failed-via': 'error.noRoute.snapVia',
   'search-budget-exceeded': 'error.noRoute.searchBudget',
+  'calm-sail-only': 'error.noRoute.calmSailOnly',
+  'segment-mode-conflict': 'error.noRoute.segmentModeConflict',
+  'segment-modes-invalid': 'error.noRoute.segmentModesInvalid',
 };
+
+/**
+ * #885 §4: the copy for a no-route reason, given the request that produced it.
+ * Labels stay a function of the cause (#282); only the remedy sentence depends on
+ * the request, so it is chosen here rather than by minting new labels. Every
+ * render site uses this; migratePlan's membership check still reads the table.
+ */
+export function noRouteMessageKey(
+  reason: NoRouteReason,
+  request: Pick<PlanRequest, 'segmentModes' | 'settings'>,
+): MsgKey {
+  // With the motor off, unmarking the segment alone cannot help (§3.2).
+  if (reason === 'calm-sail-only' && !request.settings.motorEnabled) {
+    return 'error.noRoute.calmSailOnlyMotorOff';
+  }
+  if (reason === 'beyond-horizon' && (request.segmentModes?.includes('sail') ?? false)) {
+    return 'error.noRoute.beyondHorizonSailOnly';
+  }
+  return NO_ROUTE_MESSAGE_KEY[reason];
+}
 
 export function isStaleForecast(plan: Plan): boolean {
   return plan.request.departureMs - plan.windGrid.fetchedAtMs > STALE_THRESHOLD_MS;

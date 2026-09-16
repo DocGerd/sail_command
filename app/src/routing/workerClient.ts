@@ -1,6 +1,7 @@
 import type { PlanRequest, PlanResult, SailId, WindGrid } from '../types';
 import type { WorkerRequest, WorkerResponse } from './protocol';
 import { BOATS, polarKey, type BoatId } from '../data/boats';
+import { windGridCoversBounds, type WindLatticeCoverageBounds } from '../lib/wind';
 
 type ProgressCb = (sailId: SailId, tMs: number, frontierSize: number, secondPass: boolean) => void;
 // #53 relaxed-depth probe phase (one call per mask-connectivity probe). Not
@@ -58,6 +59,12 @@ export type RoutingFailureKind =
   // renders, still exports GPX … Only 'plan again with this boat' is
   // unavailable, and it says so."
   | 'boat-not-in-catalogue'
+  // #295: the stored wind grid does not cover the mask's domain — a plan saved
+  // on the pre-#295 187-point lattice, re-planned against the widened mask.
+  // Rejected here, before posting, with the same predicate planRoute.ts's
+  // `new WindField(windGrid, mask.meta)` (#1178) would otherwise throw as an
+  // untyped 'worker-fatal'. Only a fresh forecast fixes it; no migration.
+  | 'wind-grid-coverage'
   // #1193: a user-initiated cancel, not a fault — the ONE kind this class
   // carries that the presentation layer must not apologise for.
   //
@@ -230,6 +237,9 @@ export class RoutingClient {
   private readyResolve!: () => void;
   private readyReject!: (e: Error) => void;
   private disposed = false;
+  // #295: the mask domain init() handed the worker, kept for plan()'s
+  // wind-grid coverage check. Set before `ready` can resolve.
+  private maskBounds: WindLatticeCoverageBounds | null = null;
   private pending = new Map<string, PendingEntry>();
   // #432: readable so an owner holding this client as a SINGLETON can notice
   // it was disposed by someone else and rebuild instead of handing the dead
@@ -329,6 +339,8 @@ export class RoutingClient {
   }
 
   init(assets: Omit<Extract<WorkerRequest, { type: 'init' }>, 'type'>): Promise<void> {
+    const { west, south, east, north } = assets.maskMeta;
+    this.maskBounds = { west, south, east, north };
     this.worker.postMessage({ type: 'init', ...assets }, [assets.maskBuffer]);
     return this.ready;
   }
@@ -358,6 +370,14 @@ export class RoutingClient {
     const boatId = catalogueBoatId(request.boat.id);
     if (boatId === null) {
       throw new RoutingError('boat-not-in-catalogue', `boat not in catalogue: ${request.boat.id}`);
+    }
+    // #295: same pre-post position and no-state-to-clean-up property as the
+    // boat check above.
+    if (this.maskBounds !== null && !windGridCoversBounds(windGrid, this.maskBounds)) {
+      throw new RoutingError(
+        'wind-grid-coverage',
+        'stored wind grid does not cover the mask domain',
+      );
     }
     const id = crypto.randomUUID();
     return new Promise<PlanResult>((resolve, reject) => {

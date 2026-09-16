@@ -66,7 +66,7 @@ function readKnownDisconnectedIds() {
 }
 const KNOWN_DISCONNECTED_IDS = readKnownDisconnectedIds();
 
-const BBOX = { south: 54.3, north: 55.3, west: 9.4, east: 11.0 };
+const BBOX = { south: 54.3, north: 55.6, west: 9.4, east: 11.6 }; // #295: mirrors build_mask.py
 const seen = new Set();
 const harbors = rows.map(([id, de, da, en, country, lat, lon, noteEn]) => {
   if (seen.has(id)) throw new Error(`duplicate id ${id}`);

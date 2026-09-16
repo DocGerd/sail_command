@@ -157,7 +157,7 @@ describe('parseGpx — validation errors (§6)', () => {
   });
 
   it('rejects a WGS84-valid point outside the mask data-area', () => {
-    // 55.9°N is a perfectly valid latitude but north of the 55.3°N data-area
+    // 55.9°N is a perfectly valid latitude but north of the 55.6°N data-area
     // edge — must be out-of-bounds, NOT bad-coord.
     const xml =
       GPX_OPEN + '<rte><rtept lat="54.8" lon="9.9"/><rtept lat="55.9" lon="10.0"/></rte></gpx>';

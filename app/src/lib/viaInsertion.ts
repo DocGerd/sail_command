@@ -15,7 +15,7 @@
 // none of which sit in the sweep's import closure, so it stays out of it
 // regardless of what it itself imports.
 import { pointToSegmentM } from './seamarkProximity';
-import type { LatLon } from '../types';
+import type { LatLon, SegmentMode } from '../types';
 
 /**
  * Index into `viaPoints` (0-based, valid for Array#splice's insertion
@@ -91,4 +91,53 @@ export function segmentMidpoint(a: LatLon, b: LatLon): LatLon {
     // to drift outside it for a segment crossing the antimeridian.
     lon: (((lon3 * 180) / Math.PI + 540) % 360) - 180,
   };
+}
+
+// #885 §5.2: draft segment modes kept aligned with the draft via list. Index i
+// governs waypoint i -> i+1 of [origin, ...vias, destination], so the array is
+// always vias.length + 1 long.
+export type DraftSegmentModes = readonly (SegmentMode | null)[];
+
+export function emptySegmentModes(viaCount: number): (SegmentMode | null)[] {
+  return Array.from({ length: viaCount + 1 }, () => null);
+}
+
+/** R6: a via inserted at via index `viaIndex` splits segment `viaIndex`; both halves keep its mode. */
+export function segmentModesAfterInsert(
+  modes: DraftSegmentModes,
+  viaIndex: number,
+): (SegmentMode | null)[] {
+  const split = modes[viaIndex] ?? null;
+  return [...modes.slice(0, viaIndex), split, split, ...modes.slice(viaIndex + 1)];
+}
+
+/** R6: removing via `viaIndex` merges its two segments into one, cleared. */
+export function segmentModesAfterRemove(
+  modes: DraftSegmentModes,
+  viaIndex: number,
+): (SegmentMode | null)[] {
+  return [...modes.slice(0, viaIndex), null, ...modes.slice(viaIndex + 2)];
+}
+
+/** R6: moving via `viaIndex` (drag or new coordinates) clears the two segments touching it. */
+export function segmentModesAfterMove(
+  modes: DraftSegmentModes,
+  viaIndex: number,
+): (SegmentMode | null)[] {
+  return modes.map((m, i) => (i === viaIndex || i === viaIndex + 1 ? null : m));
+}
+
+/** R6: swapping adjacent vias `a` and `a + 1` clears every segment touching either. */
+export function segmentModesAfterSwap(
+  modes: DraftSegmentModes,
+  a: number,
+): (SegmentMode | null)[] {
+  return modes.map((m, i) => (i >= a && i <= a + 2 ? null : m));
+}
+
+/** The request field for draft modes: omitted when nothing is forced. */
+export function requestSegmentModes(
+  modes: DraftSegmentModes,
+): { segmentModes: (SegmentMode | null)[] } | Record<string, never> {
+  return modes.some((m) => m !== null) ? { segmentModes: [...modes] } : {};
 }

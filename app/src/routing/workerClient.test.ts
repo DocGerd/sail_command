@@ -7,10 +7,13 @@ import {
   type RoutingFailureKind,
 } from './workerClient';
 import type { WorkerRequest, WorkerResponse } from './protocol';
+import { buildExportEnvelope, exportEnvelopeToJson, parseExportFile } from '../lib/planExport';
 import { polarKey } from '../data/boats';
 import { TEST_MASK_META, TEST_POLAR, uniformWindGrid } from '../test/fixtures';
 import {
   DEFAULT_SETTINGS,
+  PLAN_SCHEMA_VERSION,
+  type Plan,
   type PlanRequest,
   type PlanResult,
   type PolarTable,
@@ -594,6 +597,129 @@ describe('#54: keyed polars across the worker boundary', () => {
       const sent = w.posted[w.posted.length - 1];
       if (sent.type !== 'plan') throw new Error('expected a plan message');
       expect(sent.polarKeys).toEqual(['salona-45/fock']);
+    },
+    WORKER_CLIENT_TEST_TIMEOUT_MS,
+  );
+});
+
+// #295: a plan saved on the pre-#295 187-point lattice (11 x 17 from
+// 54.3N/9.4E) must fail as a typed kind before anything is posted, not reach
+// planRoute's WindField coverage throw as an untyped 'worker-fatal'.
+describe('#295: stored wind grid must cover the mask domain', () => {
+  const WIDE_META = { ...TEST_MASK_META, north: 55.6, east: 11.6 };
+  const OLD_GRID_OPTS = { north: 55.3, east: 11.0 };
+
+  async function initClient() {
+    const w = fakeWorker();
+    const client = new RoutingClient(() => w as unknown as Worker);
+    const p = client.init({ ...INIT_ASSETS, maskMeta: WIDE_META, maskBuffer: openWaterBuffer() });
+    w.emit({ type: 'ready' });
+    await p;
+    return { w, client };
+  }
+
+  // Asserts the rejection within one tick instead of awaiting `plan()`: if the
+  // guard were gone the plan would be posted and never answered by the fake,
+  // so awaiting it would fail only by timeout. Posted-count and kind are
+  // checked first, and the client is disposed so no pending entry leaks.
+  async function expectCoverageRejection(
+    w: ReturnType<typeof fakeWorker>,
+    client: RoutingClient,
+    request: PlanRequest,
+    windGrid: Parameters<RoutingClient['plan']>[1],
+  ): Promise<void> {
+    const settled = client.plan(request, windGrid).then(
+      () => 'resolved' as const,
+      (e: unknown) => e,
+    );
+    try {
+      await flush();
+      expect(
+        w.posted.filter((m) => m.type === 'plan'),
+        'plan was posted',
+      ).toHaveLength(0);
+      const outcome = await Promise.race([settled, Promise.resolve('pending' as const)]);
+      expect(outcome).toBeInstanceOf(RoutingError);
+      const kind = (outcome as RoutingError).kind;
+      expect(kind, `expected kind 'wind-grid-coverage', got '${kind}'`).toBe('wind-grid-coverage');
+      expect((outcome as RoutingError).message).toMatch(/cover/);
+      expect(client.isDisposed).toBe(false);
+    } finally {
+      client.dispose();
+      await settled;
+    }
+  }
+
+  it(
+    'rejects an old 187-point grid as wind-grid-coverage and posts no plan',
+    async () => {
+      const { w, client } = await initClient();
+      const oldGrid = uniformWindGrid(12, 0, OLD_GRID_OPTS);
+      expect(oldGrid.lats.length * oldGrid.lons.length).toBe(187);
+      await expectCoverageRejection(w, client, PLAN_REQUEST, oldGrid);
+    },
+    WORKER_CLIENT_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'a pre-#295 plan imported from a backup still gets wind-grid-coverage on replan',
+    async () => {
+      const stored: Plan = {
+        id: 'old-backup',
+        name: 'old backup',
+        createdAtMs: PLAN_REQUEST.departureMs,
+        schemaVersion: PLAN_SCHEMA_VERSION,
+        request: PLAN_REQUEST,
+        windGrid: uniformWindGrid(12, 0, OLD_GRID_OPTS),
+        result: {
+          status: 'ok',
+          sails: [
+            {
+              sailId: 'genoa',
+              result: {
+                sailId: 'genoa',
+                legs: [],
+                etaMs: PLAN_REQUEST.departureMs + 3_600_000,
+                durationMs: 3_600_000,
+                distanceNm: 10,
+                maneuverCount: 0,
+                motorDistanceNm: 0,
+              },
+              reason: null,
+            },
+            { sailId: 'fock', result: null, reason: null },
+          ],
+          recommended: 'genoa',
+          comparisonComplete: true,
+          snappedOrigin: PLAN_REQUEST.origin,
+          snappedDestination: PLAN_REQUEST.destination,
+        },
+      };
+      const imported = parseExportFile(
+        exportEnvelopeToJson(buildExportEnvelope([stored], null, [])),
+        WIDE_META,
+      );
+      expect(imported.invalidPlanCount).toBe(0);
+      expect(imported.plans).toHaveLength(1);
+
+      const { w, client } = await initClient();
+      await expectCoverageRejection(
+        w,
+        client,
+        imported.plans[0].request,
+        imported.plans[0].windGrid,
+      );
+    },
+    WORKER_CLIENT_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'posts a plan for a grid that covers the widened domain',
+    async () => {
+      const { w, client } = await initClient();
+      void client.plan(PLAN_REQUEST, uniformWindGrid(12, 0));
+      await flush();
+      expect(w.posted.filter((m) => m.type === 'plan')).toHaveLength(1);
     },
     WORKER_CLIENT_TEST_TIMEOUT_MS,
   );

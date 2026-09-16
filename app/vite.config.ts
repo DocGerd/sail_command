@@ -607,6 +607,10 @@ const SLOW_TEST_FILES_FIRST = [
   'src/routing/realmask.repro.motorOffSalvage.test.ts',
   'src/routing/realmask.repro.depthComfort.test.ts',
   'src/routing/realmask.repro.mirrorCase.test.ts',
+  // #295: 556 s on CI run 34991379729, the third-slowest file there, 12.8 KB,
+  // and the last file of that run to finish. Measured on a different run from
+  // the realmask figures above, so its position here ranks against neither.
+  'src/routing/relaxationTrade.differential.test.ts',
 ];
 
 // Extends BaseSequencer rather than reimplementing it: only `sort` changes
@@ -646,8 +650,9 @@ export default defineConfig(({ command }) => ({
       // working until the user opts into ReloadPrompt's reload.
       registerType: 'prompt',
       injectManifest: {
-        // ~33 MB expected (basemap.pmtiles.png + mask.bin + polars + sprites
-        // + app shell) — see spec §7's first-load budget. The ~11 MB of font
+        // ~40 MB (basemap.pmtiles.png + mask.bin + polars + sprites + app
+        // shell; the #295 build reports 31 precache entries, 38,784 KiB) —
+        // see spec §7's first-load budget. The ~11 MB of font
         // glyph ranges are runtime-cached, not precached (#28, below).
         // #118: the basemap archive ships as `.pmtiles.png` (CDN gzip-of-
         // range workaround, see src/lib/basemap.ts) — it is matched by the
@@ -706,7 +711,7 @@ export default defineConfig(({ command }) => ({
         name: isUat ? 'SailCommand UAT' : 'SailCommand',
         short_name: isUat ? 'SailCommand UAT' : 'SailCommand',
         description:
-          'Offline-Törnplaner für zeitoptimale Segelrouten in Flensburger Förde und Dänischer Südsee. Kein Navigationsgerät.',
+          'Offline-Törnplaner für zeitoptimale Segelrouten von der Flensburger Förde und Dänischen Südsee bis zum Kleinen Belt und Fehmarn. Kein Navigationsgerät.',
         lang: 'de',
         theme_color: '#10243D',
         background_color: '#10243D',

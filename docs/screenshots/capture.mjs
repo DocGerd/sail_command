@@ -208,7 +208,18 @@ const PANEL_WIDTH_PX = 518;
 // panel `scrollHeight === clientHeight` first holds at 1379). BUMPED
 // 1200 -> 1385: past every element with margin, landing in the panel's own
 // trailing padding past the last summary, not a manufactured dead band.
-const START_VIEW_HEIGHT_PX = 1385;
+// RE-MEASURED 2026-09-16 (#885): the segment-mode control renders for the
+// zero-via segment too (spec §2 models it: `segmentModes.length ===
+// viaPoints.length + 1`), growing `.app-panel` content 1212 -> 1290px, so
+// `assertFitsViewport` threw by 78px at 1385. Re-measured against this flow
+// at its natural layout, in viewport coordinates at height 1385: waypoints
+// disclosure 1081.8-1127.8, Departure/Safety-depth row 1139.8-1240.8, the
+// boat-settings link 1252.8-1296.8, `.planner-actions` 1289-1373, and
+// Seamarks-in-view 1404.8-1450.8 — LAST, with panel chrome 173px, so
+// `scrollHeight === clientHeight` first holds at 1463. BUMPED 1385 -> 1469,
+// the same 6px past first fit the 2026-09-08 measure used: inside the
+// panel's own trailing padding, past every element.
+const START_VIEW_HEIGHT_PX = 1469;
 
 // #1088: the viewport-height constants above have been mis-measured THREE
 // times (#741; #716's BOAT_SELECTION_HEIGHT_PX going stale at #746; the

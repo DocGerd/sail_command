@@ -191,7 +191,11 @@ test('a touch tap on the route line inserts a waypoint at the NEAREST point, not
     // Captured verbatim rather than re-deriving the panel's own display
     // rounding (formatLatLon) from destLat/destLon — comparing the SAME
     // rendered string before/after avoids any rounding-boundary mismatch.
-    const preExistingViaText = await viaSection.getByRole('listitem').first().textContent();
+    // #885: scoped to the via row — the list item also holds the segment-mode
+    // control, whose label renumbers when a via is inserted before it.
+    const viaRow = (i: number) =>
+      viaSection.getByRole('listitem').nth(i).locator('.planner-via-row');
+    const preExistingViaText = await viaRow(0).textContent();
 
     // Arm "Add waypoint" — the same control #845/#924's specs drive.
     await viaSection.getByRole('button', { name: 'Wegpunkt hinzufügen', exact: true }).click();
@@ -220,9 +224,8 @@ test('a touch tap on the route line inserts a waypoint at the NEAREST point, not
     // where on the map the tap lands, so it could only ever produce
     // item[1] === the new point, never item[0].
     await expect(viaSection.getByRole('listitem')).toHaveCount(2, { timeout: 10_000 });
-    const items = await viaSection.getByRole('listitem').all();
-    await expect(items[0]!).not.toHaveText(preExistingViaText ?? '');
-    await expect(items[1]!).toHaveText(preExistingViaText ?? '');
+    await expect(viaRow(0)).not.toHaveText(preExistingViaText ?? '');
+    await expect(viaRow(1)).toHaveText(preExistingViaText ?? '');
 
     // The pick disarmed itself in the same gesture (handleRouteLineArmedTap's
     // extra step over the #850 drag path, which has no arming to clear).

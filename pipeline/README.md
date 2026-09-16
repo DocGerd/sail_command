@@ -163,10 +163,30 @@ first's.
 
 ### `harbors.json` — curated harbor list
 
-33 harbors in the Flensburg Fjord / Danish South Sea area, each with a
+40 harbors in the Flensburg Fjord, Danish South Sea, Little Belt, western
+Great Belt approach and Fehmarn area, each with a
 navigable snap point (`snap.lat`/`snap.lon`) validated against `mask.bin`
-(depth ≥ 2.2 m — see below) and a de/en approach note for harbors with a
-genuine draft caveat for a 2.1 m-draft boat. Harbors whose approach is
+(depth ≥ 2.2 m — see below) and, where needed, a de/en approach note: a
+draft caveat for a 2.1 m-draft boat, or (for harbors added at #295) a
+depth-data caveat when the snap sits off the harbor.
+
+The #295 caveat is written when the snap cell is more than ~3 mask cells
+(~140 m) from the harbor's OpenStreetMap feature, so the depth data does not
+resolve the last stretch; the note states no distance. Measured against the
+Overpass snapshot of 2026-09-15 (`leisure=marina` / `seamark:type=harbour`):
+
+| Harbor | OSM feature | Snap to feature | Note |
+|---|---|---|---|
+| kolding | way 118700947 (Kolding Marina Nord) | 560 m | yes |
+| middelfart | node 1837527400 (Middelfart city harbour) | 35 m | none |
+| fredericia | way 343752531 (Fredericia Lystbådehavn) | 206 m | yes |
+| nyborg | node 9584470867 (Nyborg Marina) | 536 m | yes |
+| kerteminde | way 601304886 (Kerteminde Marina) | 192 m | yes |
+| burgstaaken | node 2153078797 (Yachthafen Burgstaaken) | 1156 m | yes |
+| orth | node 431070790 (Hafen Orth/Fehmarn) | 790 m | yes |
+
+Snap cells were chosen as the nearest cell ≥ 3.3 m connected to Flensburg at
+the 3.0 m gate; those notes are derived from the mask, not from pilot books. Harbors whose approach is
 *never* adequately deep (e.g. Ristinge) are excluded outright rather than
 included with a misleadingly "safe" snap point.
 
@@ -181,7 +201,7 @@ lat/lon, English approach note) and `pipeline/harbors-notes-de.json` (German
 translation, required for every non-null English note) to change the data.
 **Snap points must be re-validated against the current `mask.bin` after any
 edit to either source file or after any mask rebuild** — run
-`pipeline/.venv/bin/python pipeline/verify_mask.py`, which checks all 33
+`pipeline/.venv/bin/python pipeline/verify_mask.py`, which checks all 40
 snap points. If a rebuild moves a snap point's cell below 2.2 m, move the
 coordinate further out along the harbor's real approach fairway (checked
 against OSM) rather than weakening the threshold or fudging the mask.
@@ -189,7 +209,7 @@ against OSM) rather than weakening the threshold or fudging the mask.
 ### `seamarks.json` — aids-to-navigation overlay (#7)
 
 Core aids-to-navigation (`seamark:type` nodes tagged `buoy_*`, `beacon_*`, or
-`light_*`) in the app bbox — 1,794 nodes as of the 2026-07-22 build, a
+`light_*`) in the app bbox — 2,905 nodes as of the 2026-09-15 build (#295), a
 GeoJSON `FeatureCollection` of Point features trimmed to `seamarkType`,
 `category`, `colour`, `shape`, and light `lightCharacter`/`lightPeriod`/
 `lightColour` where tagged. Presentation-only overlay (`app/src/lib/
@@ -214,11 +234,13 @@ point-in-time extract, not a continuously-verified feed.
 
 **Hook-protected binary — regenerate, never hand-edit `mask.bin`.**
 
-A packed 2200×2400 grid (dLon ≈ 46.8 m, dLat ≈ 46.4 m at 54.8°N; 2× the
-original 1100×1200 grid — see issue #6) covering
-9.4–11.0°E, 54.3–55.3°N. Derived from `mask.meta.json`'s `cols: 2200, rows:
-2400`, bounds 9.4–11.0°E / 54.3–55.3°N: `dLat_deg = (55.3-54.3)/2400 =
-0.00041667°`, `dLon_deg = (11.0-9.4)/2200 = 0.00072727°`; WGS84 arc length
+A packed 3025×3120 grid (dLon ≈ 46.8 m, dLat ≈ 46.4 m at 54.8°N; 2× the
+original 1100×1200 grid's resolution — see issue #6) covering
+9.4–11.6°E, 54.3–55.6°N. #295 widened it from 2200×2400 over 9.4–11.0°E /
+54.3–55.3°N by whole cell steps, so the old region's cells keep their extents.
+Derived from `mask.meta.json`'s `cols: 3025, rows: 3120`, bounds 9.4–11.6°E /
+54.3–55.6°N: `dLat_deg = (55.6-54.3)/3120 = 0.00041667°`,
+`dLon_deg = (11.6-9.4)/3025 = 0.00072727°`; WGS84 arc length
 per degree at 54.8°N via the standard series (`M ≈ 111319.80 m/deg`,
 `P ≈ 64312.03 m/deg`) gives `dLat = M·dLat_deg ≈ 46.38 m`,
 `dLon = P·dLon_deg ≈ 46.77 m` (#393). Each cell is one byte: `0` = land or
@@ -267,7 +289,7 @@ Regenerate:
 
 ```
 pipeline/.venv/bin/python pipeline/build_mask.py     # first run downloads ~887 MiB / ~930 MB (measured 2026-08-26: 930,179,378 bytes), cached in pipeline/data-src/ (gitignored) after
-pipeline/.venv/bin/python pipeline/verify_mask.py    # sanity probes: must print "all probes OK (6 water, 5 land, 33 harbor snaps)"
+pipeline/.venv/bin/python pipeline/verify_mask.py    # sanity probes: must print "all probes OK (8 water, 7 land, 40 harbor snaps)"
 ```
 
 `build_mask.py` asserts the overall water fraction is between 0.45 and 0.85
@@ -303,6 +325,54 @@ The script installs the `pmtiles` CLI into `pipeline/bin/` on first run
 (gitignored), extracts the regional slice, asserts the output is larger than
 10 MB (catches a truncated/failed extract), and prints `pmtiles show` output
 for a final sanity check.
+
+Protomaps prunes old daily builds irregularly (`20260714` returned 404 on
+2026-09-15), so a committed archive may not be reproducible from its recorded
+build date.
+
+A lazy region archive (#1164, #295) uses the same extract at the same
+`--maxzoom`:
+
+```
+pipeline/extract_basemap.sh [YYYYMMDD] --region <id> <min_lon,min_lat,max_lon,max_lat> [--out-dir <dir>]
+```
+
+It writes `region-<id>.pmtiles.png` (the name `vite.config.ts`'s region
+manifest requires) and asserts a 100 KiB floor instead of 10 MB. `--out-dir`
+defaults to `app/public/data/`; point it elsewhere for a trial extract, since
+any region archive there enters the next build.
+
+### `region-north.pmtiles.png`, `region-east.pmtiles.png` — #295 region archives
+
+**Hook-protected binaries — regenerate, never hand-edit.** Lazy (not
+precached) basemap archives for the #295 extension, pinned per saved plan
+(#1164). Both from Protomaps build `20260720` (tileset 4.14.11, the core's
+schema); shape a2 per the maintainer ruling on #295:
+
+```
+pipeline/extract_basemap.sh 20260720 --region north 9.4,55.3041379,11.0,55.6
+pipeline/extract_basemap.sh 20260720 --region east 11.0302736,54.3,11.6,55.6
+```
+
+The inner edges are the first z13 tile boundaries past the core's 55.3°N and
+11.0°E (+1e-7°), not the round numbers: tiles straddling the core edge are
+always served by the core (`compositeBasemapProtocol.ts`'s core-wins rule),
+so snapping drops 0.47 MB of never-read tiles. The snap depends on
+`MAXZOOM=13`; recompute it if that changes, then re-run the identity check:
+
+```
+pipeline/extract_basemap.sh 20260720 --region whole 9.4,54.3,11.6,55.6 --out-dir <tmp>
+python3 pipeline/verify_region_split.py --whole <tmp>/region-whole.pmtiles.png \
+  --core app/public/data/basemap.pmtiles.png \
+  app/public/data/region-east.pmtiles.png app/public/data/region-north.pmtiles.png
+```
+
+It compares every non-core tile of the single extract with the tile the
+region the protocol would pick holds, and exits non-zero on any missing,
+differing or unserved tile. Output at PR #1249 against build `20260720`:
+`identical 1518, missing 0, content-mismatch 0, no-region 0, region-only 0`.
+The check needs that build to still be downloadable (see the pruning note
+above).
 
 ### `app/public/basemap-assets/` — offline map fonts + sprites
 
