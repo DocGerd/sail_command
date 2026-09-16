@@ -420,6 +420,85 @@ BASE runs are not byte-identical, the harness is not deterministic and a
 matching HEAD result proves nothing. This control is not optional; it is what
 licenses the comparison at all.
 
+## Sharding (#1262)
+
+Arms are file-parallel (`vitest.config.ts`'s `fileParallelism`), so a plain
+run's wall time is its SLOWEST single arm — measured at 4303 s (~72 min) over
+40 harbours (#1262's own issue text; see CLAUDE.md's `app/sweep/` bullet for
+the up-to-date figure, which decays on the same schedule this note does).
+`SC_SWEEP_SHARD=<index>/<count>` (1-indexed, Playwright's `--shard`
+convention) splits EVERY arm's destinations across `<count>` invocations
+instead, each computing only its own slice — run them in parallel and merge.
+
+```bash
+# One invocation per shard, each its own SC_SWEEP_OUT.
+for i in 1 2 3 4; do
+  SC_SWEEP_OUT=/tmp/sweep/head-shard-${i}of4 SC_SWEEP_SHARD=${i}/4 \
+    npm --prefix app run test -- --config sweep/vitest.config.ts --maxWorkers=6 &
+done
+wait
+
+# Reassemble the parts into the standard one-file-per-arm shape.
+node app/sweep/merge-shards.mjs /tmp/sweep/head \
+  /tmp/sweep/head-shard-1of4 /tmp/sweep/head-shard-2of4 \
+  /tmp/sweep/head-shard-3of4 /tmp/sweep/head-shard-4of4
+
+# compare.mjs is UNCHANGED — point it at the merged directory as always.
+node app/sweep/compare.mjs /tmp/sweep/base1 /tmp/sweep/head
+```
+
+The split is `idx % count`, applied AFTER `SC_SWEEP_LIMIT` — so a
+`SC_SWEEP_LIMIT`-truncated calibration run can still be sharded, and each
+destination keeps its relative position from `harbors.json`. Each shard's
+output filename is `<label>.shard<i>of<count>.json` (`sweepArms.ts`'s
+`armFileBase`), never `<label>.json` — `compare.mjs`'s own arm-name check
+would (correctly) reject a shard part file pointed at directly, since its
+name is not in `armNames.ts`. **Never point `compare.mjs` at a shard
+directory** — always merge first.
+
+`merge-shards.mjs` reassembles the parts in `harbors.json`'s own order — the
+same order an unsharded `runArm()` inserts rows in — using the identical
+`serialize()` (`serialize.ts`, extracted from `sweepArms.ts` so this plain-Node
+script can import it without pulling in the app's module graph — see
+`armNames.ts`'s own doc comment for why that constraint exists). A merged
+directory is therefore BYTE-IDENTICAL to what one unsharded run at the same
+commit would have written; sharding changes WHICH destinations a process
+solves and WHERE it writes them, never `T0`, `settings`, `wind()`, the
+origin, or the serialized bytes — the baseline-identity parameters named
+below are untouched. It fails CLOSED on a missing shard, a harbour
+double-counted across shards, an incomplete arm set, or a harbour id the
+CURRENT `harbors.json` no longer lists — see its own header comment for the
+full list. `sweep/merge-shards.test.mjs` (run via `npm --prefix app run
+test:sweep-unit`, in CI's required `app` job) mutation-checks the ordering
+claim and the fail-closed paths against synthetic fixtures; it cannot
+substitute for the empirical BASE double-run above, which still needs a real
+solver run start to finish.
+
+**`--maxWorkers` cap.** Each shard invocation still runs all eleven arms in
+parallel within itself (`fileParallelism`'s one-worker-per-arm-file shape is
+unchanged), so `<count>` concurrent invocations multiply potential
+concurrency to up to `11 * <count>` solver workers. #1262's own estimate is
+~0.66 GB per solver worker — size `--maxWorkers` (passed after `--` to the
+underlying vitest invocation, as in the example above) so `<count> *
+--maxWorkers` stays around 20–24 on a 26 GB host, never uncapped. A cap that
+is too low costs wall time; one that is too high risks the host, which is
+the worse failure.
+
+**Overlaying onto an older BASE tree.** A BASE checkout predating #1262 has
+no `SC_SWEEP_SHARD` branch, no `serialize.ts`, and no `merge-shards.mjs` — so
+it cannot be sharded as-is. Because none of those additions touch anything
+in "the baseline is defined by these parameters" below (the arm list, wind
+fields, settings, origins, boats, `T0`, or `serialize()`'s bytes — `serialize`
+was only MOVED, not changed; diff it against the version in `sweepArms.ts`
+before this change to confirm), copying just the harness files forward —
+`git checkout <HEAD-commit> -- app/sweep/sweepArms.ts app/sweep/serialize.ts
+app/sweep/merge-shards.mjs` onto the BASE checkout, never touching
+`app/src/**` — lets a BASE run be sharded too, comparably against a HEAD run
+sharded the same way. This is the same portability `sweepArms.ts`'s own
+header already documents for the arm-definition file itself ("imports
+nothing that exists on only one side of a refactor … runs unchanged at BASE
+and at HEAD").
+
 ## The baseline is defined by these parameters
 
 Everything in `sweepArms.ts` that shapes the input is part of the baseline's
