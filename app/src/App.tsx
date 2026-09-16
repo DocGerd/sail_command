@@ -167,7 +167,13 @@ export function toPlannerStatus(
     case 'fetching-wind':
       return { phase: 'fetching' };
     case 'routing':
-      return { phase: 'routing', sailId: flow.sailId, index: flow.index, total: flow.total };
+      return {
+        phase: 'routing',
+        sailId: flow.sailId,
+        index: flow.index,
+        total: flow.total,
+        ...(flow.secondPass ? { secondPass: true } : {}),
+      };
     case 'probing-depth':
       return { phase: 'probing' };
     case 'error':

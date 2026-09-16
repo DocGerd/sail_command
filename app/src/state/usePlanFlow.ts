@@ -37,7 +37,8 @@ export type PlanningState =
   // `RIG_ORDER` for exactly this reason: the request's own ordered list is
   // the one source of truth. PlannerPanel.tsx's "sail N of 2" phase readout
   // renders these two fields directly.
-  | { phase: 'routing'; sailId: SailId; index: number; total: number }
+  // #1136: `secondPass` (present only when true) marks the salvage re-run.
+  | { phase: 'routing'; sailId: SailId; index: number; total: number; secondPass?: true }
   // #53: the worker is probing relaxed depth gates (mask connectivity BFS)
   // after an unreachable solve at the requested safety depth. Reported so the
   // UI shows the probe phase instead of a stalled routing bar; the relaxed
@@ -331,7 +332,7 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
           // route to a distinct error phase and must not be described as one.
           // Pinned by usePlanFlow.test.tsx's '#54: an unknown sail in a
           // progress message' row.
-          (sailId) => {
+          (sailId, _tMs, _frontierSize, secondPass) => {
             const index = req.sailIds.indexOf(sailId);
             if (index === -1) {
               throw new Error(
@@ -343,6 +344,7 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
               sailId,
               index: index + 1,
               total: req.sailIds.length,
+              ...(secondPass ? { secondPass: true } : {}),
             });
           },
           undefined,

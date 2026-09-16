@@ -445,6 +445,26 @@ describe('usePlanFlow', () => {
       total: 2,
     });
 
+    // #1136: a pass-2 progress message marks the readout as the second pass.
+    now += 150;
+    act(() => {
+      w.emit({
+        type: 'progress',
+        id: planMsg.id,
+        sailId: 'genoa',
+        tMs: 100,
+        frontierSize: 1,
+        secondPass: true,
+      });
+    });
+    expect(result.current.planning).toEqual({
+      phase: 'routing',
+      sailId: 'genoa',
+      index: 1,
+      total: 2,
+      secondPass: true,
+    });
+
     await act(async () => {
       w.emit({ type: 'result', id: planMsg.id, result: OK_RESULT });
       await runPromise;

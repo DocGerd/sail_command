@@ -66,7 +66,15 @@ export type WorkerRequest =
 
 export type WorkerResponse =
   | { type: 'ready' }
-  | { type: 'progress'; id: string; sailId: SailId; tMs: number; frontierSize: number }
+  | {
+      type: 'progress';
+      id: string;
+      sailId: SailId;
+      tMs: number;
+      frontierSize: number;
+      /** #1136: present (true) only on a pass-2 solve's progress. */
+      secondPass?: true;
+    }
   // #53: one message per relaxed-depth connectivity probe (mask BFS, no solver
   // run) so the UI can show the probe phase instead of a stalled routing bar.
   | { type: 'probe'; id: string; probeDepthM: number; done: number; total: number }
@@ -133,6 +141,7 @@ export function createHandler(post: (r: WorkerResponse) => void): (req: WorkerRe
             sailId,
             tMs: info.tMs,
             frontierSize: info.frontierSize,
+            ...(info.secondPass ? { secondPass: true } : {}),
           }),
         (p) =>
           post({

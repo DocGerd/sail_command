@@ -57,6 +57,17 @@ export interface SolveParams {
    */
   deadline?: SolveDeadline;
   /**
+   * #1136 salvage. ABSENT ⇒ byte-identical to a pre-#1136 solve. When true, a
+   * ring that ends with no surviving child and no `best` is re-expanded over the
+   * SAME frontier at the SAME clock with `visitedDominates` skipped, never twice
+   * in a row: motor-off solves die holding mask-validated children that
+   * domination discards (spike `docs/spikes/1136-motor-off-solve-termination.md`
+   * §1). No count cap — the horizon and the deadline terminate it (§11.2).
+   * Only `planRoute`'s pass 2 sets it, and it reads a pass-2 cause only as
+   * `budget-exhausted` (for `comparisonComplete`).
+   */
+  salvage?: boolean;
+  /**
    * #885: the captain-forced mode for this segment. ABSENT ⇒ the solver decides,
    * byte-identical to a pre-#885 solve. 'sail' behaves as motor-off; 'motor'
    * generates only motor candidates (see FORCED_MOTOR_HEADINGS).
@@ -371,6 +382,8 @@ export function solve(p: SolveParams): SolveResult {
   const visited = new Map<string, VisitedStamp>(); // pruneKey → min cost + min maneuvers seen
   let blockedDeaths = 0;
   let calmDeaths = 0;
+  // #1136: `skipDominance` marks the current ring as a salvage pass.
+  let skipDominance = false;
 
   while (frontier.length > 0) {
     // #432 plan-level wall-clock budget. Checked FIRST in the ring, before
@@ -639,7 +652,7 @@ export function solve(p: SolveParams): SolveResult {
 
         const key = pruneKey(child.lat, child.lon, child.kind, child.board);
         const seen = visited.get(key);
-        if (seen !== undefined && visitedDominates(seen, child)) continue;
+        if (seen !== undefined && visitedDominates(seen, child) && !skipDominance) continue;
         const incumbent = byKey.get(key);
         if (!incumbent || better(child, incumbent)) byKey.set(key, child);
         produced++;
@@ -652,6 +665,15 @@ export function solve(p: SolveParams): SolveResult {
     }
 
     let next = [...byKey.values()];
+    const wasSalvagePass = skipDominance;
+    skipDominance = false;
+    if (p.salvage === true && next.length === 0 && best === null && !wasSalvagePass) {
+      // #1136: re-expand this frontier without reassigning it, advancing the
+      // clock or reporting progress. A salvage pass that also empties the
+      // frontier falls through and ends the solve.
+      skipDominance = true;
+      continue;
+    }
     if (next.length > maxFrontier) {
       next.sort((a, b) => (better(a, b) ? -1 : better(b, a) ? 1 : 0));
       next = next.slice(0, maxFrontier);

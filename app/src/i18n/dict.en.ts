@@ -258,6 +258,9 @@ export const en = {
   // bounded, unlike the removed percentage (capped ~5%, reset to 0 at every
   // sail switch).
   'planner.status.routingSail': 'Calculating route… sail {index} of {total} ({sail})',
+  // #1136: the motor-off salvage re-run after a failed first search
+  'planner.status.routingSailSecondPass':
+    'No route found — second search pass… sail {index} of {total} ({sail})',
   // #53: relaxed-depth probe phase after an unreachable requested-depth solve
   'planner.status.probing': 'No route at the set safety depth — probing reduced depth gates…',
   'error.offline': 'Wind forecast service is unreachable. Check your connection and try again.',

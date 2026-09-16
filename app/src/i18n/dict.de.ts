@@ -273,6 +273,9 @@ export const de = {
   // already localized via sailLabelKey) is honest and bounded, unlike the
   // removed percentage.
   'planner.status.routingSail': 'Route wird berechnet… Segel {index} von {total} ({sail})',
+  // #1136: der Rettungslauf ohne Motor nach einer gescheiterten ersten Suche
+  'planner.status.routingSailSecondPass':
+    'Keine Route gefunden — zweiter Suchlauf… Segel {index} von {total} ({sail})',
   // #53: relaxed-depth probe phase after an unreachable requested-depth solve
   'planner.status.probing':
     'Keine Route bei eingestellter Sicherheitstiefe — geringere Sicherheitstiefen werden geprüft…',
