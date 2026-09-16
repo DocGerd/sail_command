@@ -17,12 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- BREAKING CHANGE: routes saved before this release carry a wind forecast for the old, smaller area. Comparing departure times and Live rerouting on those routes now fail with a message asking you to recalculate or plan the route again; they still open, render and export, including when imported from a backup made before this release (#295).
+- BREAKING CHANGE: routes saved before this release carry a wind forecast for the old, smaller area. Comparing departure times, Live rerouting and editing waypoints on those routes now fail with a message asking you to recalculate or plan the route again; they still open, render and export, including when imported from a backup made before this release (#295).
 
 ### Fixed
 
 - A motor-off passage plan that failed as unreachable although the water was connected now gets a second search pass of up to about a minute; if that pass also finds nothing, the original error is shown unchanged, so such a plan can take about a minute longer to fail (#1136).
-- Depth shading and shallow-water hatching now sit where the depth data places them; towards the middle of the area they were drawn up to about 350 m north of their true position (#1254).
+- Depth shading and shallow-water hatching now sit where the depth data places them; in `v0.34.0`'s smaller area they were drawn up to about 350 m north of their true position, most towards the middle of its latitude band (#1254).
 
 ## [0.34.0] - 2026-09-15
 

@@ -32,9 +32,10 @@ archives now ship, fetched when a saved route needs them — on request
 instead when the browser's data saver is on — and pinned per plan, with the
 route result naming whether that route's map area is saved offline and what
 it would cost to download. This is a BREAKING change for routes saved before
-this release: their stored wind grid covers the old, smaller area, so
-departure comparison and Live rerouting on them now fail with a prompt to
-recalculate, though they still open, render and export.
+this release: their stored wind grid covers the old, smaller area. Comparing
+departure times, Live rerouting and editing waypoints on those routes now
+fail with a prompt to recalculate, though they still open, render and
+export.
 
 A stretch between two waypoints can now be forced to motor or to sail, with
 the planner routing that segment under the chosen mode on both sails and
@@ -53,11 +54,13 @@ full-mask buffer allocated per `cellsConnected` call — about 47 MB each, and
 some 470 MB over a relaxing route — but no measured route gained wall-clock
 time above run-to-run noise, so the premise that it would recover the
 post-[#295](https://github.com/DocGerd/sail_command/issues/295) solve
-slowdown is refuted; that slowdown is tracked separately in `v0.36.0`. The
-other three closes are review residuals with no build behind them:
-[#1226](https://github.com/DocGerd/sail_command/issues/1226),
-[#1232](https://github.com/DocGerd/sail_command/issues/1232) and
-[#1233](https://github.com/DocGerd/sail_command/issues/1233).
+slowdown is refuted; that slowdown is tracked separately in `v0.36.0`.
+[#1226](https://github.com/DocGerd/sail_command/issues/1226) and
+[#1232](https://github.com/DocGerd/sail_command/issues/1232) are docs-only
+review residuals;
+[#1233](https://github.com/DocGerd/sail_command/issues/1233) shipped
+region-pin save-path coverage, pin-record cleanup and warn scope (PR #1242)
+with no separately-announced surface.
 
 ## Next — v0.36.0
 
@@ -699,8 +702,8 @@ archive plus per-region archives fetched and pinned per plan, gated by a
 network-free, byte-length-verified completeness check. That split was built
 at the `v0.34.0` cut, with zero regions shipped
 ([#1164](https://github.com/DocGerd/sail_command/issues/1164)); the first
-two region archives ship at the `v0.35.0` cut, carrying #295's extension
-([#295](https://github.com/DocGerd/sail_command/issues/295)).
+two region archives ship at the `v0.35.0` cut, carrying the coverage
+extension ([#295](https://github.com/DocGerd/sail_command/issues/295)).
 
 ### Deferred (Icebox)
 
