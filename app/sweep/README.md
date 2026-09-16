@@ -486,15 +486,26 @@ the worse failure.
 
 **Overlaying onto an older BASE tree.** A BASE checkout predating #1262 has
 no `SC_SWEEP_SHARD` branch, no `serialize.ts`, and no `merge-shards.mjs` — so
-it cannot be sharded as-is. Because none of those additions touch anything
-in "the baseline is defined by these parameters" below (the arm list, wind
-fields, settings, origins, boats, `T0`, or `serialize()`'s bytes — `serialize`
-was only MOVED, not changed; diff it against the version in `sweepArms.ts`
-before this change to confirm), copying just the harness files forward —
-`git checkout <HEAD-commit> -- app/sweep/sweepArms.ts app/sweep/serialize.ts
-app/sweep/merge-shards.mjs` onto the BASE checkout, never touching
-`app/src/**` — lets a BASE run be sharded too, comparably against a HEAD run
-sharded the same way. This is the same portability `sweepArms.ts`'s own
+it cannot be sharded as-is. Overlay from **`<the #1262 merge commit>`** — a
+FIXED ref, never `<HEAD-commit>` of whatever branch is under test: that
+commit's own `sweepArms.ts` may carry OTHER, later hunks (a changed arm), and
+overlaying its whole file would silently run HEAD's arms at BASE. FIRST
+confirm the precondition: `git diff <BASE> <the #1262 merge commit> --
+app/sweep/sweepArms.ts` must show only the shard hunks (the arm list, wind
+fields, settings, origins, boats, `T0`, or `serialize()`'s bytes are
+untouched — `serialize` was only MOVED, not changed, out of `sweepArms.ts`).
+Then copy the three harness files forward with
+`git restore --source=<the #1262 merge commit> -- app/sweep/sweepArms.ts
+app/sweep/serialize.ts app/sweep/merge-shards.mjs` onto the BASE checkout
+(never `git checkout <ref> -- <paths>`: CLAUDE.md records a local deny pair
+on `git checkout -- *`, and whether the three-argument form matches it is
+not established) — never touching `app/src/**`. `armNames.ts`, the test
+file and `package.json` need no copy: `armNames.ts` is unchanged by #1262,
+and the other two aren't needed to RUN the harness. Merge each side's shards
+with THAT SIDE's own `merge-shards.mjs` — it reads `harbors.json` and
+`armNames.ts` relative to its own file location, not the shard directory —
+so a BASE run's shards get merged by the overlaid BASE-tree copy, a HEAD
+run's by HEAD's own copy. This is the same portability `sweepArms.ts`'s own
 header already documents for the arm-definition file itself ("imports
 nothing that exists on only one side of a refactor … runs unchanged at BASE
 and at HEAD").

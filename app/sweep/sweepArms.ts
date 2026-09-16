@@ -86,11 +86,19 @@ function parseShard(raw: string): Shard {
   }
   return { index, count };
 }
+// #1262 review Minor 3: read but NOT parsed here — `parseShard` is a
+// throwing validator, and calling it at module scope would crash
+// COLLECTION of all 11 arm files on a malformed value (`3/2`, `1of3`),
+// exactly the "a thrown error at module scope reads as a collection crash
+// rather than an actionable message" trap `OUT_DIR`'s own comment two
+// paragraphs up already names. The authoritative, validated `SHARD` is
+// computed inside each `it()` callback below, same as `OUT_DIR`'s
+// fail-closed check. This raw string is used only for the test TITLE,
+// which needs something descriptive, never something authoritative.
 const SHARD_RAW = env?.SC_SWEEP_SHARD;
-const SHARD: Shard | null = SHARD_RAW ? parseShard(SHARD_RAW) : null;
 
 /**
- * Part-file base name for an arm under the active shard, or the arm's own
+ * Part-file base name for an arm under the given shard, or the arm's own
  * label when unsharded — so a plain run's output filenames are byte-for-byte
  * unchanged (`<label>.json`), and a sharded run's parts (`<label>.shard<i>
  * of<n>.json`) can never be mistaken for a complete arm file by
@@ -98,8 +106,8 @@ const SHARD: Shard | null = SHARD_RAW ? parseShard(SHARD_RAW) : null;
  * `armNames.ts` (see `merge-shards.mjs`, which reassembles the parts INTO a
  * `<label>.json` before `compare.mjs` ever sees the directory).
  */
-function armFileBase(label: string): string {
-  return SHARD ? `${label}.shard${SHARD.index}of${SHARD.count}` : label;
+function armFileBase(label: string, shard: Shard | null): string {
+  return shard ? `${label}.shard${shard.index}of${shard.count}` : label;
 }
 
 const dataDir = resolve(dirname(fileURLToPath(import.meta.url)), '../public/data');
@@ -500,7 +508,7 @@ export function runArm(label: (typeof ARM_NAMES)[number]): void {
   if (!origin) throw new Error(`#282/#452 sweep: harbors.json has no \`${originId}\` entry`);
 
   it(
-    `#282 sweep arm ${label}${SHARD ? ` [shard ${SHARD.index}/${SHARD.count}]` : ''}: ${originId} -> all harbours`,
+    `#282 sweep arm ${label}${SHARD_RAW ? ` [shard ${SHARD_RAW}]` : ''}: ${originId} -> all harbours`,
     () => {
       // Fail closed, and inside the test so the whole file still collects when
       // the variable is unset (a thrown error at module scope reads as a
@@ -508,6 +516,10 @@ export function runArm(label: (typeof ARM_NAMES)[number]): void {
       expect(OUT_DIR, '#282 sweep: set SC_SWEEP_OUT to an absolute output directory').toBeTruthy();
       const outDir = OUT_DIR as string;
       mkdirSync(outDir, { recursive: true });
+
+      // #1262 review Minor 3: parsed HERE, not at module scope — see
+      // `SHARD_RAW`'s own comment above for why.
+      const SHARD: Shard | null = SHARD_RAW ? parseShard(SHARD_RAW) : null;
 
       const limited = LIMIT > 0 ? harbors.slice(0, LIMIT) : harbors;
       // #1262: applied AFTER `SC_SWEEP_LIMIT`, so LIMIT keeps meaning "only
@@ -550,7 +562,7 @@ export function runArm(label: (typeof ARM_NAMES)[number]): void {
         );
         timings[h.id] = Date.now() - t;
       }
-      const base = armFileBase(label);
+      const base = armFileBase(label, SHARD);
       writeFileSync(resolve(outDir, `${base}.json`), serialize(rows));
       writeFileSync(resolve(outDir, `${base}.timings.json`), serialize(timings));
       expect(Object.keys(rows).length).toBe(dests.length);

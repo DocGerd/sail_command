@@ -113,6 +113,19 @@ const harbourOrder = harbors.map((h) => h.id);
 
 mkdirSync(outDir, { recursive: true });
 
+// #1262 review Minor 2: an honest sweep run always takes destinations as a
+// PREFIX of `harbors.json` (`sweepArms.ts`'s `limited = harbors.slice(0,
+// SC_SWEEP_LIMIT || harbors.length)`, then the shard filter over `limited`
+// preserving relative order) — so every arm's row set is always exactly
+// `harbourOrder.slice(0, totalRows)`, and every arm shares the SAME
+// `totalRows` (they all sweep the same destination list). Tracked across
+// the loop below and checked per arm, so a row silently dropped from the
+// MIDDLE of one shard (a bad copy, an `SC_SWEEP_LIMIT` mismatch across
+// shard invocations, a broken `idx % count` filter) reds the merge instead
+// of writing a short arm file at exit 0.
+let referenceTotalRows = null;
+let referenceArmLabel = null;
+
 for (const label of EXPECTED) {
   const shardsForArm = byArm.get(label);
   const n = expectedShardCount;
@@ -155,6 +168,37 @@ for (const label of EXPECTED) {
     console.error(
       `FAIL: arm "${label}": ${unaccounted.length} harbour id(s) in the shard output are not in the ` +
         `current harbors.json (stale shards against a moved harbour list?): ${unaccounted.join(', ')}`,
+    );
+    process.exit(1);
+  }
+
+  // #1262 review Minor 2, check 1: the merged ids must be EXACTLY
+  // `harbourOrder`'s first `totalRows` entries, in order — catches a GAP
+  // in the middle (e.g. row 3 of 6 missing from every shard) that the
+  // stale-harbour check above cannot see, since that check only looks for
+  // EXTRA ids, never missing ones.
+  const mergedIds = Object.keys(mergedRows);
+  const expectedIds = harbourOrder.slice(0, totalRows);
+  if (mergedIds.length !== expectedIds.length || !mergedIds.every((id, i) => id === expectedIds[i])) {
+    console.error(
+      `FAIL: arm "${label}": merged harbour ids are not harbors.json's first ${totalRows} entries — ` +
+        `a gap in the middle of the shard output? got [${mergedIds.slice(0, 3).join(', ')}...], ` +
+        `expected [${expectedIds.slice(0, 3).join(', ')}...]`,
+    );
+    process.exit(1);
+  }
+  // #1262 review Minor 2, check 2: every arm sweeps the SAME destination
+  // list, so `totalRows` must agree across all of them — a per-arm gap that
+  // happens to still land on a harbors.json prefix (e.g. one shard
+  // invocation run under a different SC_SWEEP_LIMIT) would pass check 1
+  // alone and only shows up as a cross-arm count mismatch.
+  if (referenceTotalRows === null) {
+    referenceTotalRows = totalRows;
+    referenceArmLabel = label;
+  } else if (totalRows !== referenceTotalRows) {
+    console.error(
+      `FAIL: arm "${label}" merged ${totalRows} rows but arm "${referenceArmLabel}" merged ` +
+        `${referenceTotalRows} — every arm must sweep the same destination count`,
     );
     process.exit(1);
   }
