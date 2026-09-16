@@ -21,6 +21,11 @@ import type { LatLon, MaskMeta } from '../types';
 // `app` Vitest suite by re-running it here, against the SAME committed
 // mask.bin/harbors.json, for every boat in the real catalogue (`BOATS`).
 //
+// #1256 appended two further describe blocks at the END of this file, with
+// their own header: a probe-sequence differential for `NavMask.cellsConnected`
+// and its scratch-reuse guards. They are here because this file already loads
+// the real mask; the scope note below governs the #550 block only.
+//
 // SCOPE, deliberately narrow — only the harbour-reachability assertion.
 // Everything else in verify_mask.py's connectivity section stays
 // Python-only, including checks that are part of the SAME gate this file
