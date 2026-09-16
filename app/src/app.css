@@ -4232,6 +4232,31 @@ select {
   }
 }
 
+/* #885: the per-segment mode control sits between two waypoint rows. Indented
+   with a rule on the left so it reads as belonging to the leg between them,
+   not as a waypoint of its own; wraps so the three buttons never overflow the
+   panel at narrow widths. */
+.planner-segment-mode {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  margin: 0.25rem 0 0.25rem 0.5rem;
+  padding: 0.15rem 0 0.15rem 0.75rem;
+  border-left: 2px solid var(--sc-border);
+}
+
+.planner-segment-mode-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.planner-segment-mode > p {
+  flex-basis: 100%;
+  margin: 0;
+}
+
 .via-markers-spinner-chip {
   display: inline-flex;
   align-items: center;

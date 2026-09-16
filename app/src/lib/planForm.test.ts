@@ -265,6 +265,17 @@ describe('planFormDirty (#301)', () => {
     expect(planFormDirty(makePlan(), matchingForm(), true)).toBe(false);
   });
 
+  it('#885: a mode-only edit dirties the form; all-null matches an unforced plan', () => {
+    const nulls = ORIGINAL_REQUEST.viaPoints.map(() => null);
+    const clean = { ...matchingForm(), segmentModes: [...nulls, null] };
+    expect(planFormDirty(makePlan(), clean, true)).toBe(false);
+    const forced = { ...matchingForm(), segmentModes: [...nulls, 'motor' as const] };
+    expect(planFormDirty(makePlan(), forced, true)).toBe(true);
+    const planned = makePlan({ ...ORIGINAL_REQUEST, segmentModes: [...nulls, 'motor'] });
+    expect(planFormDirty(planned, forced, true)).toBe(false);
+    expect(planFormDirty(planned, clean, true)).toBe(true);
+  });
+
   it('is dirty when departureMs differs', () => {
     const form = { ...matchingForm(), departureMs: ORIGINAL_REQUEST.departureMs + 3_600_000 };
     expect(planFormDirty(makePlan(), form, true)).toBe(true);

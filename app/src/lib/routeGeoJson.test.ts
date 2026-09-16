@@ -127,6 +127,20 @@ describe('legsToFeatureCollection', () => {
   });
 });
 
+describe('legsToFeatureCollection: #885 forced legs', () => {
+  it('appends the injected forced mark to a forced leg only', () => {
+    const fc = legsToFeatureCollection(
+      [SAIL_LEG, { ...MOTOR_LEG, forced: true }, { ...SAIL_LEG, forced: true }],
+      'en',
+      { motorLetter: 'M', forcedMark: '*' },
+    );
+    const labels = fc.features.map((f) => f.properties.speedLabel);
+    expect(labels[0]).not.toContain('*');
+    expect(labels[1]).toMatch(/^M · [^*]*\*$/);
+    expect(labels[2]).toMatch(/kn\*$/);
+  });
+});
+
 describe('legsToFeatureCollection: #651 render-time MARGINAL flag', () => {
   // A plain gate, deliberately not DEFAULT_SETTINGS.safetyDepthM — this file
   // tests legsToFeatureCollection's own threading, not the app's default

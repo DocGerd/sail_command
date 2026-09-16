@@ -16,7 +16,7 @@ import {
   useSettings,
 } from './state/AppState';
 import { usePlanFlow, type PlanningState as FlowPlanningState } from './state/usePlanFlow';
-import { dedupeViaPoints } from './state/replan';
+import { dedupeRequestVias, dedupeViaPoints } from './state/replan';
 import { useLiveReroute } from './state/reroute';
 import { useOwnshipGps } from './state/useOwnshipGps';
 import { useSessionRestore } from './state/useSessionRestore';
@@ -68,6 +68,7 @@ import {
   pickedPointsOfPlan,
   planFormDirty,
   routingSettingsDirty,
+  segmentModesDiffer,
   viaPointsDiffer,
 } from './lib/planForm';
 import { useWideLayout } from './lib/useWideLayout';
@@ -77,7 +78,16 @@ import { PANEL_MIN_WIDTH_PX, panelMaxWidthPx } from './lib/panelWidth';
 import { formatLatLon } from './lib/format';
 import { resolveHarborPickTarget } from './lib/harborGeoJson';
 import { boatById, sailIdsOf } from './data/boats';
-import { nearestViaInsertIndex, segmentMidpoint } from './lib/viaInsertion';
+import {
+  emptySegmentModes,
+  nearestViaInsertIndex,
+  requestSegmentModes,
+  segmentMidpoint,
+  segmentModesAfterInsert,
+  segmentModesAfterMove,
+  segmentModesAfterRemove,
+  segmentModesAfterSwap,
+} from './lib/viaInsertion';
 import { usePersistedBoatId } from './lib/usePersistedBoatId';
 import { usePersistedOwnMmsi } from './lib/ownMmsi';
 // #834: same widening PlannerPanel.tsx's own `harbors` prop already carries —
@@ -95,6 +105,7 @@ import {
   type Plan,
   type RigResult,
   type SailId,
+  type SegmentMode,
   type ViaPoint,
 } from './types';
 
@@ -156,11 +167,17 @@ export function toPlannerStatus(
     case 'fetching-wind':
       return { phase: 'fetching' };
     case 'routing':
-      return { phase: 'routing', sailId: flow.sailId, index: flow.index, total: flow.total };
+      return {
+        phase: 'routing',
+        sailId: flow.sailId,
+        index: flow.index,
+        total: flow.total,
+        ...(flow.secondPass ? { secondPass: true } : {}),
+      };
     case 'probing-depth':
       return { phase: 'probing' };
     case 'error':
-      return { phase: 'error', message: t(flow.messageKey) };
+      return { phase: 'error', message: t(flow.messageKey, flow.messageVars) };
   }
 }
 
@@ -595,6 +612,11 @@ function AppShell() {
   // fold (via `formDirty`) is the equivalent disclosure there.
   const [draftViaPoints, setDraftViaPoints] = useState<LatLon[]>([]);
   const viaPoints = draftViaPoints;
+  // #885 §5.2: always draftViaPoints.length + 1 long; every via write below
+  // writes both, so the two never drift apart.
+  const [draftSegmentModes, setDraftSegmentModes] = useState<(SegmentMode | null)[]>(() =>
+    emptySegmentModes(0),
+  );
   // MAJOR 4 (review, #571 redesign): the LAST Plan-route press's dropped-via
   // disclosure (dedupeViaPoints, ~60 m threshold) — set in handlePlan below,
   // drives the banner near the other via-editing banners. Recomputed (never
@@ -696,10 +718,17 @@ function AppShell() {
     destination: PickedPoint | null;
     departureMs: number;
     draftViaPoints: LatLon[];
+    draftSegmentModes: (SegmentMode | null)[];
   } | null>(null);
   useEffect(() => {
     if (!plan) return;
-    pendingFormBaselineRef.current = { origin, destination, departureMs, draftViaPoints };
+    pendingFormBaselineRef.current = {
+      origin,
+      destination,
+      departureMs,
+      draftViaPoints,
+      draftSegmentModes,
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on plan id ONLY, deliberately: see the comment above
   }, [plan?.id]);
 
@@ -728,10 +757,23 @@ function AppShell() {
     if (baseline === null || departureMs === baseline.departureMs) {
       setDepartureMs(departureSeedMs(plan));
     }
-    if (baseline === null || !viaPointsDiffer(draftViaPoints, baseline.draftViaPoints)) {
+    // #885: vias and segment modes sync as ONE field — modes index the via
+    // list, so keeping a user-edited half beside a synced half would misalign.
+    if (
+      baseline === null ||
+      (!viaPointsDiffer(draftViaPoints, baseline.draftViaPoints) &&
+        !segmentModesDiffer(draftSegmentModes, baseline.draftSegmentModes))
+    ) {
       // #654: plan.request.viaPoints read through the shared accessor —
       // defends a hand-edited/corrupted stored record; see planViaPoints.ts.
-      setDraftViaPoints(planViaPoints(plan.request));
+      const syncedVias = planViaPoints(plan.request);
+      const storedModes = plan.request.segmentModes;
+      setDraftViaPoints(syncedVias);
+      setDraftSegmentModes(
+        storedModes?.length === syncedVias.length + 1
+          ? [...storedModes]
+          : emptySegmentModes(syncedVias.length),
+      );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on plan id + harborsLoaded deliberately, see the comment above
   }, [plan?.id, harborsLoaded]);
@@ -776,8 +818,14 @@ function AppShell() {
   // (handlePlan below, which already reads `viaPoints` — i.e. this same
   // draft), exactly like an origin/destination/departure/settings edit
   // already did.
-  const handleViaPointsChange = useCallback((next: LatLon[]) => {
+  // #885: every via write carries the matching segment modes (§5.2).
+  const handleViaPointsChange = useCallback((next: LatLon[], nextModes: (SegmentMode | null)[]) => {
     setDraftViaPoints(next);
+    setDraftSegmentModes(nextModes);
+  }, []);
+
+  const handleSegmentModeChange = useCallback((segmentIndex: number, mode: SegmentMode | null) => {
+    setDraftSegmentModes((modes) => modes.map((m, i) => (i === segmentIndex ? mode : m)));
   }, []);
 
   const handleMapTap = useCallback(
@@ -790,7 +838,10 @@ function AppShell() {
           // updater functions in dev, but handleViaPointsChange is now a
           // plain, idempotent setState computed identically both times (no
           // async replan path any more — see its own comment above).
-          handleViaPointsChange([...viaPoints, p]);
+          handleViaPointsChange(
+            [...viaPoints, p],
+            segmentModesAfterInsert(draftSegmentModes, viaPoints.length),
+          );
           return null;
         }
         const picked: PickedPoint = { source: 'tap', point: p, label: formatLatLon(p) };
@@ -799,14 +850,17 @@ function AppShell() {
         return null; // disarm
       });
     },
-    [viaPoints, handleViaPointsChange],
+    [viaPoints, draftSegmentModes, handleViaPointsChange],
   );
 
   const handleRemoveVia = useCallback(
     (index: number) => {
-      handleViaPointsChange(viaPoints.filter((_, i) => i !== index));
+      handleViaPointsChange(
+        viaPoints.filter((_, i) => i !== index),
+        segmentModesAfterRemove(draftSegmentModes, index),
+      );
     },
-    [viaPoints, handleViaPointsChange],
+    [viaPoints, draftSegmentModes, handleViaPointsChange],
   );
 
   const handleReorderVia = useCallback(
@@ -815,9 +869,12 @@ function AppShell() {
       if (swapWith < 0 || swapWith >= viaPoints.length) return;
       const next = [...viaPoints];
       [next[index], next[swapWith]] = [next[swapWith], next[index]];
-      handleViaPointsChange(next);
+      handleViaPointsChange(
+        next,
+        segmentModesAfterSwap(draftSegmentModes, Math.min(index, swapWith)),
+      );
     },
-    [viaPoints, handleViaPointsChange],
+    [viaPoints, draftSegmentModes, handleViaPointsChange],
   );
 
   // #1171: keyboard equivalent of #850's drag-to-insert-a-waypoint gesture —
@@ -848,9 +905,9 @@ function AppShell() {
       if (!from || !to) return;
       const next = [...viaPoints];
       next.splice(index + 1, 0, segmentMidpoint(from, to));
-      handleViaPointsChange(next);
+      handleViaPointsChange(next, segmentModesAfterInsert(draftSegmentModes, index + 1));
     },
-    [viaPoints, destination, handleViaPointsChange],
+    [viaPoints, draftSegmentModes, destination, handleViaPointsChange],
   );
 
   // #829: keyboard-reachable equivalents of handleMapTap's 'via' branch above
@@ -859,18 +916,28 @@ function AppShell() {
   // map click (spike docs/spikes/714-keyboard-map-equivalents.md §3.1/§5.1).
   const handleAddViaByCoord = useCallback(
     (p: LatLon) => {
-      handleViaPointsChange([...viaPoints, p]);
+      handleViaPointsChange(
+        [...viaPoints, p],
+        segmentModesAfterInsert(draftSegmentModes, viaPoints.length),
+      );
     },
-    [viaPoints, handleViaPointsChange],
+    [viaPoints, draftSegmentModes, handleViaPointsChange],
   );
 
   // Repositioning counterpart (spike §2 row 2) — same draft-array replace
   // shape as handleReorderVia above, indexed instead of swapped.
   const handleUpdateViaByCoord = useCallback(
     (index: number, next: LatLon) => {
-      handleViaPointsChange(viaPoints.map((v, i) => (i === index ? next : v)));
+      const prev = viaPoints[index];
+      // #885 §5.2: a coordinate change clears the touched segments; a
+      // name-only edit keeps them.
+      const moved = !prev || prev.lat !== next.lat || prev.lon !== next.lon;
+      handleViaPointsChange(
+        viaPoints.map((v, i) => (i === index ? next : v)),
+        moved ? segmentModesAfterMove(draftSegmentModes, index) : draftSegmentModes,
+      );
     },
-    [viaPoints, handleViaPointsChange],
+    [viaPoints, draftSegmentModes, handleViaPointsChange],
   );
 
   // #845: "add as waypoint" from the seamark popover (DataLayers.tsx and,
@@ -896,12 +963,15 @@ function AppShell() {
         const idx = nearestViaInsertIndex(waypoint, origin.point, destination.point, viaPoints);
         const next = [...viaPoints];
         next.splice(idx, 0, waypoint);
-        handleViaPointsChange(next);
+        handleViaPointsChange(next, segmentModesAfterInsert(draftSegmentModes, idx));
       } else {
-        handleViaPointsChange([...viaPoints, waypoint]);
+        handleViaPointsChange(
+          [...viaPoints, waypoint],
+          segmentModesAfterInsert(draftSegmentModes, viaPoints.length),
+        );
       }
     },
-    [origin, destination, viaPoints, handleViaPointsChange],
+    [origin, destination, viaPoints, draftSegmentModes, handleViaPointsChange],
   );
 
   const handleAddViaFromSeamark = useCallback(
@@ -1003,9 +1073,10 @@ function AppShell() {
     async (index: number, next: LatLon): Promise<boolean> => {
       if (!plan) return false; // ViaMarkers only ever renders once a plan exists; guarded defensively
       setDraftViaPoints(draftViaPoints.map((v, i) => (i === index ? next : v)));
+      setDraftSegmentModes(segmentModesAfterMove(draftSegmentModes, index));
       return true;
     },
-    [plan, draftViaPoints],
+    [plan, draftViaPoints, draftSegmentModes],
   );
 
   const handleCancelTapPick = useCallback(() => setTapTarget(null), []);
@@ -1050,6 +1121,7 @@ function AppShell() {
       // see the guard's own comment at its declaration above.
       syncedPlanIdRef.current = null;
       setDraftViaPoints(vias);
+      setDraftSegmentModes(emptySegmentModes(vias.length));
       handlePickOrigin(o);
       handlePickDestination(d);
     },
@@ -1207,46 +1279,64 @@ function AppShell() {
     // to compute what's about to be dropped (run() still performs its own
     // dedupe as the actual, authoritative enforcement; this is presentation
     // only and duplicating the check costs nothing since it's O(vias)).
-    setDroppedVia(droppedViaLabels(origin.point, viaPoints, destination.point, lang, t));
-    void run(
-      {
-        origin: origin.point,
-        destination: destination.point,
-        // The draft via list (App.tsx's draftViaPoints — the unconditional
-        // source since the #571 redesign) is what the next plan request gets;
-        // there is no committed-list branch left. run() dedupes it again
-        // internally; the pre-check above only computes what that will drop.
-        viaPoints,
-        originHarborId: origin.source === 'harbor' ? origin.harborId : null,
-        destinationHarborId: destination.source === 'harbor' ? destination.harborId : null,
-        departureMs,
-        settings,
-        // #54 / #572: the one production call site with no existing plan to
-        // inherit from — every other constructor (recalcRequest,
-        // replanWithVias, rerouteFromFix) spreads/copies an existing
-        // request's own values instead, and MUST keep doing so: spec §I.3
-        // makes the boat a property of the plan, so a saved plan is re-solved
-        // against the boat it was planned for, never against today's picker.
-        // This is the only site that reads the LIVE selection.
-        //
-        // Both fields come from the same `boat`, so the sails a plan compares
-        // and the hull it is solved against can never name different boats.
-        sailIds: sailIdsOf(boat),
-        // #54 spec §I.3: denormalised by value, so the saved plan can be
-        // rendered without the catalogue.
-        //
-        // #572: this was `defaultBoatSnapshot()`, which pinned it to the
-        // Salona 45 whatever the picker showed. `request.boat.id` is what
-        // workerClient.ts resolves the polar tables AND the §C.4(a)
-        // relaxation floor from, so the constant here silently solved every
-        // boat's plan on the wrong hull while the picker, the tier chip, the
-        // keel sentence and the safety-depth field all described the boat the
-        // user actually picked.
-        boat: boatSnapshot(boat),
-      },
-      `${origin.label} → ${destination.label}`,
+    const request = {
+      origin: origin.point,
+      destination: destination.point,
+      // The draft via list (App.tsx's draftViaPoints — the unconditional
+      // source since the #571 redesign) is what the next plan request gets;
+      // there is no committed-list branch left. run() dedupes it again
+      // internally; the pre-check above only computes what that will drop.
+      viaPoints,
+      originHarborId: origin.source === 'harbor' ? origin.harborId : null,
+      destinationHarborId: destination.source === 'harbor' ? destination.harborId : null,
+      departureMs,
+      settings,
+      // #54 / #572: the one production call site with no existing plan to
+      // inherit from — every other constructor (recalcRequest,
+      // replanWithVias, rerouteFromFix) spreads/copies an existing
+      // request's own values instead, and MUST keep doing so: spec §I.3
+      // makes the boat a property of the plan, so a saved plan is re-solved
+      // against the boat it was planned for, never against today's picker.
+      // This is the only site that reads the LIVE selection.
+      //
+      // Both fields come from the same `boat`, so the sails a plan compares
+      // and the hull it is solved against can never name different boats.
+      sailIds: sailIdsOf(boat),
+      // #54 spec §I.3: denormalised by value, so the saved plan can be
+      // rendered without the catalogue.
+      //
+      // #572: this was `defaultBoatSnapshot()`, which pinned it to the
+      // Salona 45 whatever the picker showed. `request.boat.id` is what
+      // workerClient.ts resolves the polar tables AND the §C.4(a)
+      // relaxation floor from, so the constant here silently solved every
+      // boat's plan on the wrong hull while the picker, the tier chip, the
+      // keel sentence and the safety-depth field all described the boat the
+      // user actually picked.
+      boat: boatSnapshot(boat),
+      // #885: omitted when nothing is forced, so such plans store exactly as before.
+      ...requestSegmentModes(draftSegmentModes),
+    };
+    // #885: a request run() refuses before planning (a segment-mode merge or
+    // motor-off conflict) plans nothing, so no "waypoint skipped" banner may
+    // sit beside the refusal.
+    setDroppedVia(
+      dedupeRequestVias(request).kind === 'error'
+        ? { count: 0, named: false, labels: '' }
+        : droppedViaLabels(origin.point, viaPoints, destination.point, lang, t),
     );
-  }, [origin, destination, departureMs, settings, run, viaPoints, boat, lang, t]);
+    void run(request, `${origin.label} → ${destination.label}`);
+  }, [
+    origin,
+    destination,
+    departureMs,
+    settings,
+    run,
+    viaPoints,
+    draftSegmentModes,
+    boat,
+    lang,
+    t,
+  ]);
 
   // #114: recalculate a saved plan with a FRESH forecast — seeds run() from
   // the plan's own stored request (origin/destination/vias/settings) with the
@@ -1345,7 +1435,14 @@ function AppShell() {
     plan && origin && destination
       ? planFormDirty(
           plan,
-          { origin, destination, departureMs, viaPoints, settings },
+          {
+            origin,
+            destination,
+            departureMs,
+            viaPoints,
+            segmentModes: draftSegmentModes,
+            settings,
+          },
           harbors.length > 0,
         )
       : false;
@@ -1370,7 +1467,8 @@ function AppShell() {
     plan !== null &&
     origin !== null &&
     destination !== null &&
-    viaPointsDiffer(draftViaPoints, planViaPoints(plan.request));
+    (viaPointsDiffer(draftViaPoints, planViaPoints(plan.request)) ||
+      segmentModesDiffer(draftSegmentModes, plan.request.segmentModes));
   // #299 fix (PR #486 review): the cross-tab staleness BANNER (.banner-area,
   // below) intentionally uses this NARROWER signal instead of `formDirty` —
   // see routingSettingsDirty's own comment in lib/planForm.ts for why (in
@@ -1705,7 +1803,7 @@ function AppShell() {
             {planning.messageKey === 'error.noRoute.unreachable' &&
             (originKnownDisconnected || destinationKnownDisconnected)
               ? t('harborPicker.knownDisconnected')
-              : t(planning.messageKey)}
+              : t(planning.messageKey, planning.messageVars)}
           </Banner>
         )}
         {tapTarget && (
@@ -1888,6 +1986,8 @@ function AppShell() {
                   tapTarget={tapTarget}
                   onCancelTapPick={handleCancelTapPick}
                   viaPoints={viaPoints}
+                  segmentModes={draftSegmentModes}
+                  onSegmentModeChange={handleSegmentModeChange}
                   onRemoveVia={handleRemoveVia}
                   onReorderVia={handleReorderVia}
                   onInsertViaAfter={handleInsertViaAfter}

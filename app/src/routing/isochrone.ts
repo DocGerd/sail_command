@@ -1,4 +1,4 @@
-import type { Board, Leg, LegKind, LatLon, ManeuverKind, Settings } from '../types';
+import type { Board, Leg, LegKind, LatLon, ManeuverKind, SegmentMode, Settings } from '../types';
 import type { Polar } from '../lib/polar';
 import type { WindField } from '../lib/wind';
 import type { NavMask } from '../lib/mask';
@@ -56,6 +56,23 @@ export interface SolveParams {
    * workerClient.ts ships in the plan request.
    */
   deadline?: SolveDeadline;
+  /**
+   * #1136 salvage. ABSENT ⇒ byte-identical to a pre-#1136 solve. When true, a
+   * ring that ends with no surviving child and no `best` is re-expanded over the
+   * SAME frontier at the SAME clock with `visitedDominates` skipped, never twice
+   * in a row: motor-off solves die holding mask-validated children that
+   * domination discards (spike `docs/spikes/1136-motor-off-solve-termination.md`
+   * §1). No count cap — the horizon and the deadline terminate it (§11.2).
+   * Only `planRoute`'s pass 2 sets it, and it reads a pass-2 cause only as
+   * `budget-exhausted` (for `comparisonComplete`).
+   */
+  salvage?: boolean;
+  /**
+   * #885: the captain-forced mode for this segment. ABSENT ⇒ the solver decides,
+   * byte-identical to a pre-#885 solve. 'sail' behaves as motor-off; 'motor'
+   * generates only motor candidates (see FORCED_MOTOR_HEADINGS).
+   */
+  forcedKind?: SegmentMode;
 }
 
 /**
@@ -126,7 +143,11 @@ export type SolveFailureCause =
   // true of 'horizon-exceeded', which is likewise a search LIMIT rather than
   // a finding about the water; the honesty is carried where the user actually
   // reads it, by the 'search-budget-exceeded' label's own copy.
-  | 'budget-exhausted';
+  | 'budget-exhausted'
+  // #885: the calm arm of the heuristic below, on a forced-sail segment. Kept
+  // apart from 'calm-without-motor' because the remedy differs (unmark the
+  // segment), and neither retry gate may admit it.
+  | 'forced-sail-calm';
 
 export type SolveResult =
   { status: 'ok'; legs: Leg[]; etaMs: number } | { status: 'no-route'; cause: SolveFailureCause };
@@ -173,6 +194,14 @@ const PRUNE_LON = 0.003; // ~190 m at 55°N
 const MAX_FRONTIER = 30_000;
 const EXTRA_TWAS = [45, 55, 65, 75, 85, 95, 105, 115, 125, 135, 145, 155, 165, 175];
 const MOTOR_TWAS = [0, 20, 35];
+// #885: a forced-motor segment has no sail up, so candidates are headings, not
+// TWAs. 10° spacing gives 36 headings (+ the direct bearing), against today's
+// ~39-entry per-node TWA set with motor enabled.
+const FORCED_MOTOR_FAN_DEG = 10;
+const FORCED_MOTOR_HEADINGS = Array.from(
+  { length: 360 / FORCED_MOTOR_FAN_DEG },
+  (_, i) => i * FORCED_MOTOR_FAN_DEG,
+);
 // #243 depth comfort preference: the maximum fraction by which a segment's
 // clock cost is inflated when its clearance sits exactly at the gate (linear
 // ramp to 0 extra cost at `comfortDepthM`). Fixed, not user-configurable —
@@ -314,12 +343,16 @@ export function solve(p: SolveParams): SolveResult {
   // runs per candidate edge — millions of times per plan — so a gate object
   // must never be constructed inside it or any loop body.
   const gate = p.gate ?? uniformGate(settings.safetyDepthM);
+  const forcedKind = p.forcedKind;
+  // #885: a forced-sail segment solves as motor-off. Absent forcedKind this is
+  // exactly settings.motorEnabled, so every read below is unchanged.
+  const motorEnabled = forcedKind === 'sail' ? false : settings.motorEnabled;
   // #254: the sail-speed floor. A heading motors when sailing it would be more
   // than settings.sailPreferenceKn slower than motoring. motorThresholdKn is the
   // seaworthiness floor underneath, so a small engine can never be handed legs
   // slower than sailing. When motoring is disabled the floor is the bare
   // threshold and the branch below falls through to the MIN_SAIL_KN path.
-  const sailFloorKn = settings.motorEnabled
+  const sailFloorKn = motorEnabled
     ? Math.max(settings.motorThresholdKn, settings.motorSpeedKn - settings.sailPreferenceKn)
     : settings.motorThresholdKn;
 
@@ -349,6 +382,8 @@ export function solve(p: SolveParams): SolveResult {
   const visited = new Map<string, VisitedStamp>(); // pruneKey → min cost + min maneuvers seen
   let blockedDeaths = 0;
   let calmDeaths = 0;
+  // #1136: `skipDominance` marks the current ring as a salvage pass.
+  let skipDominance = false;
 
   while (frontier.length > 0) {
     // #432 plan-level wall-clock budget. Checked FIRST in the ring, before
@@ -405,44 +440,65 @@ export function solve(p: SolveParams): SolveResult {
       const w = wind.sample(from, node.tMs);
       const bearingToDest = initialBearingDeg(from, destination);
 
-      // Candidate signed TWAs (deduped within 1°), plus the direct candidate.
-      const mags = [
-        polar.beatAngleDeg(w.speedKn),
-        polar.gybeAngleDeg(w.speedKn),
-        ...EXTRA_TWAS,
-        ...(settings.motorEnabled ? MOTOR_TWAS : []),
-      ];
-      const twas: number[] = [];
-      for (const m of mags)
-        for (const s of [1, -1]) {
-          const t = s * m;
-          if (!twas.some((x) => Math.abs(x - t) < 1)) twas.push(t);
-        }
-      if (!twas.includes(180)) twas.push(180);
-      const directTwa = normalizeDeg180(w.dirFromDeg - bearingToDest);
-      if (!twas.some((x) => Math.abs(x - directTwa) < 0.5)) twas.push(directTwa);
+      // Candidates: signed TWAs (deduped within 1°) plus the direct TWA; on a
+      // forced-motor segment, headings (#885) plus the direct bearing.
+      let candidates: number[];
+      if (forcedKind === 'motor') {
+        candidates = FORCED_MOTOR_HEADINGS.some(
+          (h) => Math.abs(normalizeDeg180(h - bearingToDest)) < 0.5,
+        )
+          ? FORCED_MOTOR_HEADINGS
+          : [...FORCED_MOTOR_HEADINGS, bearingToDest];
+      } else {
+        const mags = [
+          polar.beatAngleDeg(w.speedKn),
+          polar.gybeAngleDeg(w.speedKn),
+          ...EXTRA_TWAS,
+          ...(motorEnabled ? MOTOR_TWAS : []),
+        ];
+        const twas: number[] = [];
+        for (const m of mags)
+          for (const s of [1, -1]) {
+            const t = s * m;
+            if (!twas.some((x) => Math.abs(x - t) < 1)) twas.push(t);
+          }
+        if (!twas.includes(180)) twas.push(180);
+        const directTwa = normalizeDeg180(w.dirFromDeg - bearingToDest);
+        if (!twas.some((x) => Math.abs(x - directTwa) < 0.5)) twas.push(directTwa);
+        candidates = twas;
+      }
 
       let produced = 0;
       let sawBlocked = false;
       let sawCalm = false;
 
-      for (const twa of twas) {
-        const headingDeg = (((w.dirFromDeg - twa) % 360) + 360) % 360;
-        const sailSpeed = polar.speedKn(twa, w.speedKn);
+      for (const candidate of candidates) {
+        let headingDeg: number;
+        let twa: number;
         let kind: LegKind;
         let speed: number;
-        if (sailSpeed >= sailFloorKn) {
-          kind = 'sail';
-          speed = sailSpeed;
-        } else if (settings.motorEnabled) {
+        if (forcedKind === 'motor') {
+          headingDeg = candidate;
+          twa = NaN; // no sail up: never read on a motor candidate
           kind = 'motor';
           speed = settings.motorSpeedKn;
-        } else if (sailSpeed >= MIN_SAIL_KN) {
-          kind = 'sail';
-          speed = sailSpeed;
         } else {
-          sawCalm = true;
-          continue;
+          twa = candidate;
+          headingDeg = (((w.dirFromDeg - twa) % 360) + 360) % 360;
+          const sailSpeed = polar.speedKn(twa, w.speedKn);
+          if (sailSpeed >= sailFloorKn) {
+            kind = 'sail';
+            speed = sailSpeed;
+          } else if (motorEnabled) {
+            kind = 'motor';
+            speed = settings.motorSpeedKn;
+          } else if (sailSpeed >= MIN_SAIL_KN) {
+            kind = 'sail';
+            speed = sailSpeed;
+          } else {
+            sawCalm = true;
+            continue;
+          }
         }
 
         const board = kind === 'sail' ? boardForCandidate(twa, node.board) : null;
@@ -458,13 +514,7 @@ export function solve(p: SolveParams): SolveResult {
         // Direct-candidate arrival test (exact leg to destination)
         const isDirect = Math.abs(normalizeDeg180(headingDeg - bearingToDest)) < 0.5;
         if (isDirect && node.distToDestNm <= distNm) {
-          const directFactor = edgeFactor(
-            mask,
-            from,
-            destination,
-            gate,
-            comfortDepthM,
-          );
+          const directFactor = edgeFactor(mask, from, destination, gate, comfortDepthM);
           if (directFactor !== null) {
             const penaltyS = dtS - effS;
             // TRUE elapsed time for this hop — unaffected by the depth
@@ -579,13 +629,7 @@ export function solve(p: SolveParams): SolveResult {
           const durMs = (child.distToDestNm / Math.max(speed, MIN_SAIL_KN)) * 3600 * 1000;
           const finalEtaMs = child.tMs + durMs;
           if (finalEtaMs <= horizonMs && (!best || finalEtaMs < best.costMs)) {
-            const captureFactor = edgeFactor(
-              mask,
-              end,
-              destination,
-              gate,
-              comfortDepthM,
-            );
+            const captureFactor = edgeFactor(mask, end, destination, gate, comfortDepthM);
             if (captureFactor !== null) {
               const candCostMs = child.costMs + durMs / captureFactor;
               if (!best || candCostMs < best.costMs) {
@@ -608,7 +652,7 @@ export function solve(p: SolveParams): SolveResult {
 
         const key = pruneKey(child.lat, child.lon, child.kind, child.board);
         const seen = visited.get(key);
-        if (seen !== undefined && visitedDominates(seen, child)) continue;
+        if (seen !== undefined && visitedDominates(seen, child) && !skipDominance) continue;
         const incumbent = byKey.get(key);
         if (!incumbent || better(child, incumbent)) byKey.set(key, child);
         produced++;
@@ -621,6 +665,15 @@ export function solve(p: SolveParams): SolveResult {
     }
 
     let next = [...byKey.values()];
+    const wasSalvagePass = skipDominance;
+    skipDominance = false;
+    if (p.salvage === true && next.length === 0 && best === null && !wasSalvagePass) {
+      // #1136: re-expand this frontier without reassigning it, advancing the
+      // clock or reporting progress. A salvage pass that also empties the
+      // frontier falls through and ends the solve.
+      skipDominance = true;
+      continue;
+    }
     if (next.length > maxFrontier) {
       next.sort((a, b) => (better(a, b) ? -1 : better(b, a) ? 1 : 0));
       next = next.slice(0, maxFrontier);
@@ -673,10 +726,19 @@ export function solve(p: SolveParams): SolveResult {
     // closed). Accepted as a known limit, not fixed — see #866's
     // investigation comment for the full measurement and the disposition
     // ruling.
+    // #885: a motor candidate cannot be calm, so a forced-motor segment's
+    // fallback arm is mask-blocked; a forced-sail calm gets its own cause.
+    if (blockedDeaths >= calmDeaths && blockedDeaths > 0) {
+      return { status: 'no-route', cause: 'mask-blocked' };
+    }
     return {
       status: 'no-route',
       cause:
-        blockedDeaths >= calmDeaths && blockedDeaths > 0 ? 'mask-blocked' : 'calm-without-motor',
+        forcedKind === 'sail'
+          ? 'forced-sail-calm'
+          : forcedKind === 'motor'
+            ? 'mask-blocked'
+            : 'calm-without-motor',
     };
   }
   return { status: 'ok', legs: backtrack(best.last, p.departureMs), etaMs: best.etaMs };

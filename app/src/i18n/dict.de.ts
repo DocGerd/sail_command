@@ -177,6 +177,16 @@ export const de = {
   // below, since both live buttons sit in the same scoped via-list region.
   'planner.via.clearAll': 'Alle Wegpunkte löschen',
   'planner.via.clearAll.confirm': 'Löschen aller Wegpunkte bestätigen',
+  // #885: Modus je Abschnitt zwischen den Wegpunktzeilen.
+  'planner.segment.group': 'Abschnitt {index}: {from} → {to}',
+  'planner.segment.waypoint': 'Wegpunkt {index}',
+  'planner.segment.auto': 'Auto',
+  'planner.segment.motor': 'Motor',
+  'planner.segment.sail': 'Segel',
+  'planner.segment.motorOff':
+    'Motor ist deaktiviert — unter Boot › Antrieb aktivieren, um Motor vorzugeben.',
+  'planner.segment.conflict':
+    'Als „nur Motor“ markiert, aber der Motor ist deaktiviert: Die Planung wird das ablehnen.',
   // #829: keyboard-reachable coordinate entry — a second producer/renderer of
   // the same LatLon the map tap already produces (spike
   // docs/spikes/714-keyboard-map-equivalents.md §3.1/§5.1). "coord.edit" is
@@ -263,6 +273,9 @@ export const de = {
   // already localized via sailLabelKey) is honest and bounded, unlike the
   // removed percentage.
   'planner.status.routingSail': 'Route wird berechnet… Segel {index} von {total} ({sail})',
+  // #1136: der Rettungslauf ohne Motor nach einer gescheiterten ersten Suche
+  'planner.status.routingSailSecondPass':
+    'Keine Route gefunden — zweiter Suchlauf… Segel {index} von {total} ({sail})',
   // #53: relaxed-depth probe phase after an unreachable requested-depth solve
   'planner.status.probing':
     'Keine Route bei eingestellter Sicherheitstiefe — geringere Sicherheitstiefen werden geprüft…',
@@ -348,6 +361,19 @@ export const de = {
   // ob es eine Route gibt.
   'error.noRoute.searchBudget':
     'Die Routenberechnung hat ihr Zeitlimit erreicht, bevor sie fertig war — das heißt nicht, dass es keine Route gibt. Ein näheres Ziel, weniger Wegpunkte oder eine kleinere Tiefen-Komfortspanne helfen; ein schnelleres Gerät ebenfalls.',
+  // #885: siehe die englische Fassung.
+  'error.noRoute.calmSailOnly':
+    'Zu wenig Wind, um den als „nur Segel“ markierten Abschnitt zu segeln. Markierung aufheben oder eine andere Abfahrtszeit wählen.',
+  'error.noRoute.calmSailOnlyMotorOff':
+    'Zu wenig Wind, um den als „nur Segel“ markierten Abschnitt zu segeln. Eine andere Abfahrtszeit wählen, oder Motor aktivieren und Markierung aufheben.',
+  'error.noRoute.beyondHorizonSailOnly':
+    'Keine Route innerhalb des 6-Tage-Vorhersagehorizonts gefunden. Spätere Abfahrt oder ein näheres Ziel versuchen, oder die „nur Segel“-Markierung aufheben.',
+  'error.noRoute.segmentModeConflict':
+    'Ein Abschnitt ist als „nur Motor“ markiert, aber der Motor ist deaktiviert. Motor unter Boot › Antrieb aktivieren oder den Abschnitt ändern.',
+  'error.noRoute.segmentModesInvalid':
+    'Interner Fehler: Die Abschnittsvorgaben passen nicht zu den Wegpunkten. Vorgaben neu wählen und erneut planen.',
+  'error.segmentModesMergeConflict':
+    'Wegpunkt {index} liegt zu nah am Nachbarn, und die Abschnitte, die dadurch zusammengelegt würden, haben unterschiedliche Vorgaben (Auto, Motor, Segel). Wegpunkt {index} entfernen oder verschieben oder den Abschnitten dieselbe Vorgabe geben.',
   'error.replanStaleWind':
     'Die gespeicherte Windvorhersage deckt die Abfahrtszeit dieses Plans nicht mehr ab. Route neu planen, um eine aktuelle Vorhersage zu laden.',
   'error.replanInit':
@@ -403,6 +429,14 @@ export const de = {
   // static "> 12 h" threshold label PR #763 shipped. See dict.en.ts for the
   // full rationale. "bei Abfahrt" (PR #763 review Major 3) is unchanged.
   'route.staleForecast': 'Vorhersage bei Abfahrt {hours} h alt',
+  // #295: ob der Kartenbereich dieses Plans offline gespeichert ist.
+  'route.offlineMap.checking': 'Offline-Karte: wird geprüft…',
+  'route.offlineMap.ready': 'Offline-Karte gespeichert',
+  'route.offlineMap.pinning': 'Offline-Karte wird gespeichert…',
+  'route.offlineMap.failed': 'Download der Offline-Karte fehlgeschlagen',
+  'route.offlineMap.notReady': 'Offline-Karte nicht gespeichert',
+  'route.offlineMap.retry': 'Offline-Karte speichern',
+  'route.offlineMap.size': '{mb} MB',
   // #53/#452: honest passage-planning-aid copy — see dict.en.ts's comment
   // for why {used} < {requested} always holds here, why the closing
   // sentence deliberately does not imply unflagged water is safe, and why
@@ -572,6 +606,14 @@ export const de = {
   // "bis auf ... m" benennt dieselbe Gefahr konsistent in beiden Texten.
   'route.legs.shallowCautious': 'vorsichtig: bis auf {depth} m',
   'route.legs.motorNote': 'Motor = reine Motorfahrt, keine Segelleistung modelliert.',
+  // #885 R5: siehe die englische Fassung.
+  'route.legs.forcedNote':
+    '* auf der Karte: ein von dir für diesen Abschnitt vorgegebener Modus, nicht von der Planung gewählt.',
+  // #885: the map's compact forced-leg mark, explained by route.legs.forcedNote.
+  'route.map.forcedMark': '*',
+  'route.legs.forced': 'vorgegeben',
+  'route.legs.forcedTitle':
+    'Modus von dir für diesen Abschnitt vorgegeben, nicht von der Planung gewählt',
   // #325: siehe dict.en.ts's Kommentar — dieselbe Begründung, dieselbe
   // Interpolation ({first}/{second}/{third} = REEF1_AWS_KN/REEF2_AWS_KN/
   // REEF3_AWS_KN, reefSuggestion.ts). Letzter Satz = review MAJOR 3 (Böen).
@@ -963,7 +1005,7 @@ export const de = {
   'live.reroute.needFix':
     'Erfordert eine aktive GPS-Position — Live-Ansicht starten und auf einen GPS-Fix warten.',
   'live.reroute.hint':
-    'Erstellt einen neuen Plan von der aktuellen Position zum Ziel mit der gespeicherten Windvorhersage; der ursprüngliche Plan bleibt erhalten. Planungshilfe, keine Navigationsführung.',
+    'Erstellt einen neuen Plan von der aktuellen Position zum Ziel mit der gespeicherten Windvorhersage; der ursprüngliche Plan bleibt erhalten. Wegpunkte und Abschnittsvorgaben werden nicht übernommen. Planungshilfe, keine Navigationsführung.',
   'live.reroute.name': '{name} (ab Position neu geplant)',
   'nav.plan': 'Planen',
   'nav.routes': 'Routen',

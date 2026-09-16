@@ -1891,3 +1891,16 @@ for this design only; §8 still rejects the solve-level gate of §5.
    ruled it (2026-09-15, #1136 comment 5680325538), confirming 5679853743's
    reading: it scopes the budget ruling to a later tier that routed
    nothing.
+
+Implementation record (PR #1243, appended 2026-09-15):
+
+- Ruling 3 was amended 2026-09-15 (comment 5680650879 on #1136): pass 2 may
+  use at most min(60 s, remaining shared budget), as a sub-deadline started
+  when pass 2 starts.
+- `comparisonComplete` is `false` whenever a sail's pass-2 solve was cut by
+  the budget (same comment), matching its `types.ts` definition; the failed
+  sail's `reason` stays pass 1's.
+- The death-counter freeze (§11.2's "frozen-counter cause" row) was removed:
+  pass 2 reads a salvaged solve's cause only as `budget-exhausted`, which the
+  death counters never produce, so no production path can observe it (review
+  5210285989).

@@ -1,8 +1,8 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { savePlan } from '../services/db';
 import { DEFAULT_SAIL_IDS } from '../data/boats';
+import { noRouteMessageKey } from '../lib/plan';
 import { pinRegionsAfterDepartureConfirm, type PinAfterSave } from '../services/pinAfterSave';
-import { NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
 import {
   disposeAfterFailure,
   failureLeavesWorkerHealthy,
@@ -124,7 +124,11 @@ export function useDepartureConfirm(
         }
 
         if (result.status === 'error') {
-          setState({ confirming: false, departureMs, error: NO_ROUTE_MESSAGE_KEY[result.reason] });
+          setState({
+            confirming: false,
+            departureMs,
+            error: noRouteMessageKey(result.reason, request),
+          });
           return null;
         }
 

@@ -445,6 +445,26 @@ describe('usePlanFlow', () => {
       total: 2,
     });
 
+    // #1136: a pass-2 progress message marks the readout as the second pass.
+    now += 150;
+    act(() => {
+      w.emit({
+        type: 'progress',
+        id: planMsg.id,
+        sailId: 'genoa',
+        tMs: 100,
+        frontierSize: 1,
+        secondPass: true,
+      });
+    });
+    expect(result.current.planning).toEqual({
+      phase: 'routing',
+      sailId: 'genoa',
+      index: 1,
+      total: 2,
+      secondPass: true,
+    });
+
     await act(async () => {
       w.emit({ type: 'result', id: planMsg.id, result: OK_RESULT });
       await runPromise;
@@ -756,6 +776,101 @@ describe('usePlanFlow', () => {
     expect(save).toHaveBeenCalledTimes(1);
     const savedPlan = save.mock.calls[0][0];
     expect(savedPlan.request.viaPoints).toEqual([via1]); // the saved plan carries the deduped list too
+  });
+
+  it('#885: run() rebuilds segmentModes in the same dedupe step, for the request and the saved plan', async () => {
+    const w = fakeWorker();
+    const fetchWind = vi.fn().mockResolvedValue(uniformWindGrid(12, 0));
+    const save = vi.fn<(plan: Plan) => Promise<void>>().mockResolvedValue(undefined);
+    vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
+    const via1 = { lat: 54.76, lon: 10.1 };
+    const via2 = destinationPoint(via1, 10, 50 / 1852); // dropped against via1
+    const req = {
+      ...REQ,
+      viaPoints: [via1, via2],
+      segmentModes: [null, 'motor', 'motor'] as const,
+    };
+
+    const { result } = renderHook(
+      () =>
+        usePlanFlow({
+          fetchWind,
+          save,
+          makeClient: () => new RoutingClient(() => w as unknown as Worker),
+        }),
+      { wrapper: AppStateProvider },
+    );
+    let runPromise!: Promise<void>;
+    await act(async () => {
+      runPromise = result.current.run(req, 'Modes');
+      await flush();
+    });
+    const planMsg = findPosted(w.posted, 'plan');
+    // [O->via1, via1->via2, via2->D] collapses to [O->via1, via1->D]; the run
+    // via1->D is 'motor' on both members, so it merges as 'motor'.
+    expect(planMsg.request.segmentModes).toEqual([null, 'motor']);
+    await act(async () => {
+      w.emit({ type: 'result', id: planMsg.id, result: OK_RESULT });
+      await runPromise;
+    });
+    expect(save.mock.calls[0][0].request.segmentModes).toEqual([null, 'motor']);
+  });
+
+  it('#885: run() refuses a dedupe that merges a motor-only and a sail-only segment, posting nothing', async () => {
+    const w = fakeWorker();
+    const fetchWind = vi.fn().mockResolvedValue(uniformWindGrid(12, 0));
+    vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
+    const via1 = { lat: 54.76, lon: 10.1 };
+    const via2 = destinationPoint(via1, 10, 50 / 1852);
+    const req = { ...REQ, viaPoints: [via1, via2], segmentModes: [null, 'motor', 'sail'] as const };
+
+    const { result } = renderHook(
+      () =>
+        usePlanFlow({
+          fetchWind,
+          makeClient: () => new RoutingClient(() => w as unknown as Worker),
+        }),
+      { wrapper: AppStateProvider },
+    );
+    await act(async () => {
+      await result.current.run(req, 'Conflict');
+    });
+    expect(result.current.planning).toEqual({
+      phase: 'error',
+      messageKey: 'error.segmentModesMergeConflict',
+      messageVars: { index: 2 },
+    });
+    expect(fetchWind).not.toHaveBeenCalled();
+    expect(w.posted.some((m) => (m as { type?: string }).type === 'plan')).toBe(false);
+  });
+
+  it('#885 R4: run() refuses a motor-only segment with the motor off before any wind fetch', async () => {
+    const w = fakeWorker();
+    const fetchWind = vi.fn().mockResolvedValue(uniformWindGrid(12, 0));
+    vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
+    const req = {
+      ...REQ,
+      settings: { ...REQ.settings, motorEnabled: false },
+      segmentModes: ['motor'] as const,
+    };
+
+    const { result } = renderHook(
+      () =>
+        usePlanFlow({
+          fetchWind,
+          makeClient: () => new RoutingClient(() => w as unknown as Worker),
+        }),
+      { wrapper: AppStateProvider },
+    );
+    await act(async () => {
+      await result.current.run(req, 'Motor off');
+    });
+    expect(result.current.planning).toEqual({
+      phase: 'error',
+      messageKey: 'error.noRoute.segmentModeConflict',
+    });
+    expect(fetchWind).not.toHaveBeenCalled();
+    expect(w.posted.some((m) => (m as { type?: string }).type === 'plan')).toBe(false);
   });
 
   it('run() is a guarded no-op while a plan is already in flight', async () => {
@@ -1337,7 +1452,10 @@ describe('#1164 T6: region pinning after a successful save', () => {
 
   it('a rejecting pin neither fails the run nor unsets the saved plan', async () => {
     // createPinAfterSave pins only under a controlling SW; jsdom has none.
-    Object.defineProperty(navigator, 'serviceWorker', { value: { controller: {} }, configurable: true });
+    Object.defineProperty(navigator, 'serviceWorker', {
+      value: { controller: {} },
+      configurable: true,
+    });
     onTestFinished(() => {
       Reflect.deleteProperty(navigator, 'serviceWorker');
     });

@@ -1005,6 +1005,15 @@ describe('PlannerPanel', () => {
     expect(plannerStatus()).toHaveTextContent('Calculating route… sail 1 of 2 (Genoa)');
   });
 
+  it('#1136: renders a second-pass routing phase distinctly from the first pass', () => {
+    renderPanel({
+      planning: { phase: 'routing', sailId: 'genoa', index: 1, total: 2, secondPass: true },
+    });
+    expect(plannerStatus()).toHaveTextContent(
+      'No route found — second search pass… sail 1 of 2 (Genoa)',
+    );
+  });
+
   it('renders the fock routing phase as "sail 2 of 2 (Fock)" — the genoa->fock switch is not a regression', () => {
     renderPanel({ planning: { phase: 'routing', sailId: 'fock', index: 2, total: 2 } });
     expect(plannerStatus()).toHaveTextContent('Calculating route… sail 2 of 2 (Fock)');

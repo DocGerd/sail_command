@@ -1,9 +1,9 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useLang, useT } from '../i18n';
 import type { MsgKey } from '../i18n/dict.de';
-import type { LatLon, Plan, PlanResultOk, SailId } from '../types';
+import type { LatLon, Plan, PlanRequest, PlanResultOk, SailId } from '../types';
 import type { ReplanClient } from '../state/replan';
-import { NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
+import { noRouteMessageKey } from '../lib/plan';
 import { motorSplit, rigRecommendationOf, sailLabelKey } from '../lib/resultSummary';
 import { recommendedResult } from '../types';
 import { formatDateTime, formatDuration, formatHeading, formatNm } from '../lib/format';
@@ -106,6 +106,7 @@ function candidateCard(
   originPos: LatLon,
   lang: 'de' | 'en',
   t: TFn,
+  request: Pick<PlanRequest, 'segmentModes' | 'settings'>,
 ): CandidateCard {
   const title = formatDateTime(candidate.departureMs, lang);
   const badges: string[] = [];
@@ -157,7 +158,9 @@ function candidateCard(
   // merely "slower" than an 'ok' candidate — it has no rank badge and its
   // detail names its own cause, not a generic "no route" sentence.
   const detail =
-    outcome.kind === 'no-route' ? t(NO_ROUTE_MESSAGE_KEY[outcome.reason]) : t(outcome.messageKey);
+    outcome.kind === 'no-route'
+      ? t(noRouteMessageKey(outcome.reason, request))
+      : t(outcome.messageKey);
   return { title, badges, detail };
 }
 
@@ -358,6 +361,7 @@ export default function DepartureCompare({
               plan.request.origin,
               lang,
               t,
+              plan.request,
             );
             return (
               <li key={candidate.departureMs}>
