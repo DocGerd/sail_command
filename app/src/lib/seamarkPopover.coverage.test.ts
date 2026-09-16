@@ -24,7 +24,7 @@ describe('seamarkPopoverRows coverage over the shipped seamarks.json', () => {
 
   it('translates every type/category/colour/lightColour value present in the shipped data — no fallback token', () => {
     // #300 F8: collected into a Set of DISTINCT VALUES, not one line per
-    // feature — 1794 features share only a few dozen distinct tag values, so
+    // feature — 2,905 features share only a few dozen distinct tag values, so
     // a per-feature list drowns a real drift in duplicate lines (a dropped
     // colour.grey entry alone produced 31 byte-identical lines under the
     // old per-feature form) and vitest truncates long array diffs, hiding

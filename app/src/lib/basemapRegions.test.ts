@@ -191,9 +191,9 @@ describe('requiredRegions', () => {
     // "bbox":[9.4,54.3,11,55.3]},"regions":[]} — applied here to a LAZY
     // region entry (never id CORE_REGION_ID, which requiredRegions always
     // excludes) so the test actually exercises axis handling. bbox is
-    // [minLon,minLat,maxLon,maxLat] = [9.4, 54.3, 11, 55.3], SailCommand's
-    // own Flensburg Fjord operating area (54.3-55.3 degN, 9.4-11.0 degE, per
-    // CLAUDE.md). An axis swap (treating this as [minLat,minLon,maxLat,
+    // [minLon,minLat,maxLon,maxLat] = [9.4, 54.3, 11, 55.3], the pre-#295
+    // operating area and still the core basemap's extent (54.3-55.3 degN,
+    // 9.4-11.0 degE). An axis swap (treating this as [minLat,minLon,maxLat,
     // maxLon]) would place the "region" near the equator/Persian Gulf
     // instead, missing a real Flensburg-area corridor box entirely.
     const flensburgShaped: RegionManifestEntry = {

@@ -6,7 +6,7 @@
 // range the map never requested while online would be unavailable offline.
 // This module closes that gap from the WINDOW side — never from the SW's
 // install/activate waitUntil, which must not grow (install already awaits
-// the ~33 MB precache) — by fetching every not-yet-cached range once the
+// the ~40 MB precache) — by fetching every not-yet-cached range once the
 // SW controls the page and the app is idle.
 //
 // Resilience contract (issue #28): every failure here is non-fatal and

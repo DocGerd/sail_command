@@ -16,7 +16,7 @@ import {
 } from '../lib/boatDepth';
 import { SAFETY_DEPTH_FIELD } from '../components/OptionsPanel';
 import { depthMaskCaveatVars } from '../lib/depthDisclosure';
-import { buildNavigabilityHatchImageData } from '../lib/depthColor';
+import { buildNavigabilityHatchImageData, flipRowMap } from '../lib/depthColor';
 import { marginalDepthThresholdM } from '../lib/shallowExposure';
 import type { Lang } from '../i18n';
 
@@ -505,7 +505,7 @@ function hatchedBytesAt(gateM: number): Set<number> {
   const COLS = 256;
   const data = new Uint8Array(ROWS * COLS);
   for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) data[r * COLS + c] = c;
-  const rgba = buildNavigabilityHatchImageData(data, ROWS, COLS, gateM);
+  const rgba = buildNavigabilityHatchImageData(data, ROWS, COLS, gateM, flipRowMap(ROWS));
   const hatched = new Set<number>();
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {

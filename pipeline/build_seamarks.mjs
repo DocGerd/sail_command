@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-const BBOX = { south: 54.3, north: 55.3, west: 9.4, east: 11.0 };
+const BBOX = { south: 54.3, north: 55.6, west: 9.4, east: 11.6 }; // #295: mirrors build_mask.py
 // Core AtoN per the design addendum: buoy_*/beacon_*/light_* only. Everything
 // else (rock, wreck, mooring, seabed_area, ...) is deliberately out of scope
 // for v1 — a hazard/clutter layer is a separate future issue.

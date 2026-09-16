@@ -372,14 +372,14 @@ describe('pickScaleBar — unit-selection boundaries', () => {
 });
 
 describe('pickScaleBar — invariants across the app region and zoom range', () => {
-  // The app's chart region is 54.3-55.3 N (CLAUDE.md). Zoom is swept from 4
+  // The app's chart region is 54.3-55.6 N (mask.meta.json). Zoom is swept from 4
   // (far below anything MapLibre's maxBounds constraint permits — the narrow
   // 375x667 viewport bottoms out near z 7.5) up to the map's own MAP_MAX_ZOOM.
   // Sweeping the CONSTANT, not a copy of its value, is what makes the integer-
   // rung invariant below a live guard: raising the map's max zoom moves this
   // sweep with it and fails here rather than shipping a "0.5 m" label.
   const arbView = fc.record({
-    lat: fc.double({ min: 54.3, max: 55.3, noNaN: true }),
+    lat: fc.double({ min: 54.3, max: 55.6, noNaN: true }),
     zoom: fc.double({ min: 4, max: MAP_MAX_ZOOM, noNaN: true }),
   });
 

@@ -31,5 +31,12 @@
   ["assens", "Assens", "Assens", "Assens", "DK", 55.2621, 9.8778, null],
   ["aaroesund", "Årösund", "Årøsund", "Årøsund", "DK", 55.26, 9.7165, "Harbor approx 2.5-3 m; strong current in the Årøsund channel."],
   ["graasten", "Gravenstein", "Gråsten", "Gråsten", "DK", 54.9162, 9.6, "Via Egernsund bascule bridge (scheduled openings), then buoyed channel approx 2.5 m across shallow Nybøl Nor."],
-  ["faldsled", "Faldsled", "Faldsled", "Faldsled", "DK", 55.15, 10.142, "Buoyed approach approx 2.5 m through a shallow bay - little margin for 2.1 m."]
+  ["faldsled", "Faldsled", "Faldsled", "Faldsled", "DK", 55.15, 10.142, "Buoyed approach approx 2.5 m through a shallow bay - little margin for 2.1 m."],
+  ["kolding", "Kolding", "Kolding", "Kolding", "DK", 55.4931, 9.508, "Route start/end point lies off the harbor in water the depth data shows as navigable; the depth data does not resolve the final approach - follow the marked channel and check the chart."],
+  ["middelfart", "Middelfart", "Middelfart", "Middelfart", "DK", 55.5065, 9.7364, null],
+  ["fredericia", "Fredericia", "Fredericia", "Fredericia", "DK", 55.5527, 9.732, "Route start/end point lies off the harbor in water the depth data shows as navigable; the depth data does not resolve the final approach - follow the marked channel and check the chart."],
+  ["nyborg", "Nyborg", "Nyborg", "Nyborg", "DK", 55.3031, 10.7975, "Route start/end point lies off the harbor in water the depth data shows as navigable; the depth data does not resolve the final approach - follow the marked channel and check the chart."],
+  ["kerteminde", "Kerteminde", "Kerteminde", "Kerteminde", "DK", 55.4531, 10.6702, "Route start/end point lies off the harbor in water the depth data shows as navigable; the depth data does not resolve the final approach - follow the marked channel and check the chart."],
+  ["burgstaaken", "Burgstaaken", "Burgstaaken", "Burgstaaken", "DE", 54.4094, 11.1924, "Route start/end point lies off the harbor in water the depth data shows as navigable; the depth data does not resolve the final approach - follow the marked channel and check the chart."],
+  ["orth", "Orth", "Orth", "Orth", "DE", 54.4394, 11.052, "Route start/end point lies off the harbor in water the depth data shows as navigable; the depth data does not resolve the final approach - follow the marked channel and check the chart."]
 ]

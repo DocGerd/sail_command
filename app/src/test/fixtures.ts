@@ -39,9 +39,11 @@ export function makeWindGrid(
 ): WindGrid {
   const {
     south = 54.3,
-    north = 55.3,
+    // #295: the real mask's domain (mask.meta.json); planRoute's WindField
+    // asserts the lattice covers it (#1178). TEST_MASK_META below stays narrow.
+    north = 55.6,
     west = 9.4,
-    east = 11.0,
+    east = 11.6,
     latStep = 0.1,
     lonStep = 0.1,
     hours = 48,

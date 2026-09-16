@@ -107,6 +107,7 @@ const SEAMARK_CATEGORY_KEYS: Record<string, MsgKey> = {
   starboard: 'seamark.value.category.starboard',
   target: 'seamark.value.category.target',
   unknown_purpose: 'seamark.value.category.unknown_purpose',
+  upper: 'seamark.value.category.upper',
   warning: 'seamark.value.category.warning',
   wave_recorder: 'seamark.value.category.wave_recorder',
   west: 'seamark.value.category.west',

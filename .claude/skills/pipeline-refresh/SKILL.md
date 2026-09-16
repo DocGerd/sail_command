@@ -36,7 +36,7 @@ are hook-protected against hand-edits — regenerate, never edit.
 | Basemap | — | `pipeline/extract_basemap.sh [YYYYMMDD]` |
 | Icons | `app/public/icons/icon.svg` | `node pipeline/build_icons.mjs` |
 
-Harbor rows: unique kebab-case id, inside bbox 9.4–11.0°E / 54.3–55.3°N,
+Harbor rows: unique kebab-case id, inside bbox 9.4–11.6°E / 54.3–55.6°N,
 country DE|DK; snap point on the real approach fairway (cross-check OSM).
 Order matters: rebuild harbors **before** running mask verify.
 
