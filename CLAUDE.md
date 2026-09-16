@@ -1142,7 +1142,8 @@ making design-level decisions; do not silently deviate.
   One-time setup: `npm --prefix app exec playwright install chromium`.
   Single-spec runs work: `npm --prefix app run e2e -- plan.spec.ts` — validate a
   failing spec locally before burning a ~10 min CI cycle (pree2e still rebuilds;
-  restore the wind fixture afterwards).
+  restore the wind fixture afterwards); add `--no-deps` (since #1260) to skip
+  the `identity` project when it doesn't matter for the spec under test.
 - **`ci.yml`'s `e2e` job caps at `timeout-minutes: 30`** (the
   `timeout-minutes` key under `ci.yml`'s `e2e:` job, #605) —
   derived from 8 re-measured real runs spanning **5m53s–14m33s**, not the stale

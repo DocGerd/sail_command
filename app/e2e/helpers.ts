@@ -763,7 +763,7 @@ async function verifyResidualDistFilesOnce(relPaths: string[]): Promise<void> {
 }
 
 /**
- * Spawns `npm run preview -- --port 4173 --strictPort` in app/ and waits
+ * Spawns `npm run preview -- --port <currentPort()> --strictPort` in app/ and waits
  * until it answers with a 200 SERVING THIS RUN'S OWN BUILD (see the #803
  * block comment above). `START_TIMEOUT_MS` (30s) bounds the OUTER loop —
  * the number of poll iterations. Each individual `fetch` (there are now
@@ -777,7 +777,7 @@ async function verifyResidualDistFilesOnce(relPaths: string[]): Promise<void> {
  * makes the child the leader of its own process group so kill() can take
  * out `npm` *and* the `vite preview` process it launches with one SIGKILL
  * to the negated pid — killing only the `npm` pid can leave `vite preview`
- * (and its bound port) running, which would strand port 4173 for the next
+ * (and its bound port) running, which would strand that port for the next
  * spec/run.
  *
  * `page` (#832, optional): when supplied, once the Node-side identity checks
