@@ -4203,8 +4203,10 @@ making design-level decisions; do not silently deviate.
   not evidence nothing happened — never ask a reporter to check it.
   `usePlanFlow.ts` matters most here: it handles the plan-failure path, so it
   is the file a triager would expect to log. Measure that inventory with BOTH
-  `console\.[a-z]+\(` (invocations) and `console\.[a-z]+[^(a-z]` (bare refs
-  like `.catch(console.error)` plus comment mentions): the invocation-only
+  `grep -rE 'console\.[a-z]+\('` (invocations) and
+  `grep -rE 'console\.[a-z]+[^(a-z]'` (bare refs
+  like `.catch(console.error)` plus comment mentions) — `-E` is required, or
+  `+` reads as a literal plus and both return zero matches (#1210): the invocation-only
   grep UNDER-counts, and the composition shifts between merges even when the
   total does not. And the old "'reload the app' helps essentially only the
   asset/init case" caution is now SATISFIED, not residual — after #433/#432
