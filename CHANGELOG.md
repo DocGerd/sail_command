@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.35.0] - 2026-09-16
+
+### Added
+
+- Planning now covers 54.3–55.6°N, 9.4–11.6°E: the depth mask, harbours and seamarks reach north to Kolding, Fredericia and Middelfart, the Great Belt's western approach (Nyborg, Kerteminde) and Fehmarn (Burgstaaken, Orth), with seven new harbours (#295).
+- The base map extends over the same new area, downloaded automatically for saved routes that need it, or on request when the browser's data saver is on; the route result shows whether the route's map area is saved for offline use and its download size, and while online offers to save it whenever it is not (#295).
+- Force motor or sail on any stretch between two waypoints: the planner then routes that segment only under the chosen mode, on both sails, and marks those legs as set by you in the legs table and on the map (#885).
+
+### Changed
+
+- BREAKING CHANGE: routes saved before this release carry a wind forecast for the old, smaller area. Comparing departure times and Live rerouting on those routes now fail with a message asking you to recalculate or plan the route again; they still open, render and export, including when imported from a backup made before this release (#295).
+
+### Fixed
+
+- A motor-off passage plan that failed as unreachable although the water was connected now gets a second search pass of up to about a minute; if that pass also finds nothing, the original error is shown unchanged, so such a plan can take about a minute longer to fail (#1136).
+- Depth shading and shallow-water hatching now sit where the depth data places them; towards the middle of the area they were drawn up to about 350 m north of their true position (#1254).
+
 ## [0.34.0] - 2026-09-15
 
 ### Fixed
@@ -1092,7 +1109,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.34.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.35.0...HEAD
+[0.35.0]: https://github.com/DocGerd/sail_command/compare/v0.34.0...v0.35.0
 [0.34.0]: https://github.com/DocGerd/sail_command/compare/v0.33.0...v0.34.0
 [0.33.0]: https://github.com/DocGerd/sail_command/compare/v0.32.0...v0.33.0
 [0.32.0]: https://github.com/DocGerd/sail_command/compare/v0.31.0...v0.32.0

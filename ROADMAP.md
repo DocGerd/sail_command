@@ -13,53 +13,59 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.34.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.35.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
-## Now — v0.34.0
+## Now — v0.35.0
 
-The `v0.34.0` cut (2026-09-15) worked the
-[`v0.34.0` milestone](https://github.com/DocGerd/sail_command/milestones),
-which closed three issues: one user-visible fix, and two with nothing
-user-visible.
+The `v0.35.0` cut (2026-09-16) worked the
+[`v0.35.0` milestone](https://github.com/DocGerd/sail_command/milestones),
+which closed eight issues: four user-visible, and four with no user-visible
+change against `v0.34.0`.
 
-Two adjacent 44px via-point markers no longer capture each other's drags —
-the residual `v0.33.0`'s marker-target widen left open
-([#1198](https://github.com/DocGerd/sail_command/issues/1198)).
+The covered area now reaches 54.3–55.6°N, 9.4–11.6°E — north to Kolding,
+Fredericia and Middelfart, the Great Belt's western approach and Fehmarn,
+with seven new harbours
+([#295](https://github.com/DocGerd/sail_command/issues/295)). The base map
+covers the same ground through `v0.34.0`'s core/region split: two region
+archives now ship, fetched when a saved route needs them — on request
+instead when the browser's data saver is on — and pinned per plan, with the
+route result naming whether that route's map area is saved offline and what
+it would cost to download. This is a BREAKING change for routes saved before
+this release: their stored wind grid covers the old, smaller area, so
+departure comparison and Live rerouting on them now fail with a prompt to
+recalculate, though they still open, render and export.
 
-[#930](https://github.com/DocGerd/sail_command/issues/930) closed with its
-disc-vs-global relaxation harness made able to fail: a per-pair equality
-tripwire over Marstal- and Flensburg-origin pairs at each catalogue boat's
-default gate and floor (PR #1222). Equality holds on that population but
-does not follow from the code
-(`docs/spikes/930-relaxation-trade-measurement.md`).
-[#1164](https://github.com/DocGerd/sail_command/issues/1164) closed with the
-basemap core/regional-archive split built (region manifest, service-worker
-region route, composite protocol, per-plan pinning with network-free
-readiness, offline e2e) and zero regions shipped, so nothing is
-user-visible yet.
+A stretch between two waypoints can now be forced to motor or to sail, with
+the planner routing that segment under the chosen mode on both sails and
+marking those legs as set by the captain
+([#885](https://github.com/DocGerd/sail_command/issues/885)).
 
-Two design records merged without a build, and their issues moved to
-`v0.35.0` for implementation: the per-waypoint-segment motor-or-sail
-override spec
-([#885](https://github.com/DocGerd/sail_command/issues/885), residuals
-[#1232](https://github.com/DocGerd/sail_command/issues/1232)) and the
-motor-off early-termination design pass
-([#1136](https://github.com/DocGerd/sail_command/issues/1136), residuals
-[#1226](https://github.com/DocGerd/sail_command/issues/1226)).
-[#1164](https://github.com/DocGerd/sail_command/issues/1164)'s review left
-[#1233](https://github.com/DocGerd/sail_command/issues/1233), also in
-`v0.35.0`.
+Two fixes: a motor-off plan that failed as unreachable over connected water
+now gets a second search pass before the original error stands
+([#1136](https://github.com/DocGerd/sail_command/issues/1136)), and depth
+shading and hatching now sit where the depth data places them, having been
+drawn up to about 350 m north of it
+([#1254](https://github.com/DocGerd/sail_command/issues/1254)).
 
-## Next — v0.35.0
+[#1256](https://github.com/DocGerd/sail_command/issues/1256) closed a ~1.8x
+plan slowdown that [#295](https://github.com/DocGerd/sail_command/issues/295)
+introduced earlier in this same cut, so it restores the previous speed rather
+than changing anything a user of `v0.34.0` would notice. The other three
+closes are review residuals with no build behind them:
+[#1226](https://github.com/DocGerd/sail_command/issues/1226),
+[#1232](https://github.com/DocGerd/sail_command/issues/1232) and
+[#1233](https://github.com/DocGerd/sail_command/issues/1233).
 
-The [`v0.35.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-carries the implementation of
-[#885](https://github.com/DocGerd/sail_command/issues/885) and
-[#1136](https://github.com/DocGerd/sail_command/issues/1136), the three
-residual issues above, and the Kolding/Fehmarn coverage extension
-([#295](https://github.com/DocGerd/sail_command/issues/295)). The milestone
-page is the only authoritative view, check it directly rather than this file.
+## Next — v0.36.0
+
+The [`v0.36.0` milestone](https://github.com/DocGerd/sail_command/milestones)
+carries the residual Minors left by this cut's implementation PRs, the
+follow-ups the larger mask opened — solve cost against the plan budget, a
+motor-off Flensburg→Troense regression, `MAX_FRONTIER` scaling, and
+depth-overlay memory on a tablet — and a strand on CI and test scheduling.
+The milestone page is the only authoritative view, check it directly rather
+than this file.
 
 ## Themes for the next year
 
@@ -690,7 +696,9 @@ and polars monolithic and eager, but split the basemap into an eager "core"
 archive plus per-region archives fetched and pinned per plan, gated by a
 network-free, byte-length-verified completeness check. That split was built
 at the `v0.34.0` cut, with zero regions shipped
-([#1164](https://github.com/DocGerd/sail_command/issues/1164)).
+([#1164](https://github.com/DocGerd/sail_command/issues/1164)); the first
+two region archives ship at the `v0.35.0` cut, carrying #295's extension
+([#295](https://github.com/DocGerd/sail_command/issues/295)).
 
 ### Deferred (Icebox)
 
@@ -740,11 +748,12 @@ implementing one of them will be declined on principle
 - **No open-ended or unbounded map-area expansion.** The committed mask,
   harbor list and seamarks cover 54.3–55.6°N, 9.4–11.6°E (Flensburg Fjord and
   the Danish South Sea to the Little Belt, Fehmarn and the Great Belt's
-  western approach); the basemap still covers 54.3–55.3°N, 9.4–11.0°E until
-  #295's region archive ships. Growing that footprint is a real data-pipeline
+  western approach); the basemap covers the same box, as an eager core over
+  54.3–55.3°N, 9.4–11.0°E plus two lazily-fetched region archives over the
+  extension. Growing that footprint is a real data-pipeline
   and app-size cost, not a toggle. That bounded extension is
-  [#295](https://github.com/DocGerd/sail_command/issues/295) (milestoned
-  `v0.35.0` at the `v0.34.0` cut), and the full Great Belt is deferred to
+  [#295](https://github.com/DocGerd/sail_command/issues/295) (shipped at the
+  `v0.35.0` cut), and the full Great Belt is deferred to
   [#1240](https://github.com/DocGerd/sail_command/issues/1240) — this bullet
   declines an unscoped "just cover more area" request, not those.
 - **No paid tiers, sponsorship flows, or commercial offering.**
