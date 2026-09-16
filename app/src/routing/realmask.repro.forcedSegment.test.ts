@@ -19,12 +19,19 @@ import { FLENSBURG, GLUECKSBURG, MARSTAL, mask, SALONA_DEPS, T0 } from '../test/
 // bracket the inner-fjord bend north of Flensburg (~1 km wide).
 vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
 
-// Built here rather than from test/fixtures' defaults, which another change moves.
+// Lattice derived from the real mask's own bounds, never from literals:
+// planRoute's WindField refuses a grid that does not cover them (#1178), and
+// #295 widened the mask, which is exactly how a pinned copy goes stale.
+function axis(min: number, max: number, step: number): number[] {
+  const out = [min];
+  for (let v = min + step; v < max - 1e-9; v += step) out.push(Number(v.toFixed(6)));
+  out.push(max);
+  return out;
+}
+
 function windGrid(speedKn: number, dirFromDeg: number): WindGrid {
-  const lats: number[] = [];
-  const lons: number[] = [];
-  for (let la = 54.3; la <= 55.3 + 1e-9; la += 0.1) lats.push(Number(la.toFixed(6)));
-  for (let lo = 9.4; lo <= 11.0 + 1e-9; lo += 0.1) lons.push(Number(lo.toFixed(6)));
+  const lats = axis(mask.meta.south, mask.meta.north, 0.1);
+  const lons = axis(mask.meta.west, mask.meta.east, 0.1);
   const timesMs = Array.from({ length: 48 }, (_, i) => T0 + i * 3_600_000);
   const n = timesMs.length * lats.length * lons.length;
   return {
