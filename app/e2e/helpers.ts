@@ -7,16 +7,38 @@ import { spawn } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { expect, type Page } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const APP_DIR = resolve(__dirname, '..');
 const DIST_DIR = resolve(APP_DIR, 'dist');
 const DIST_INDEX_HTML = resolve(APP_DIR, 'dist', 'index.html');
 const DIST_SW_JS = resolve(APP_DIR, 'dist', 'sw.js');
-const PORT = 4173;
-const BASE = `http://localhost:${PORT}/sail_command/`;
-const SW_JS_URL = `${BASE}sw.js`;
+const BASE_PORT = 4173;
+
+// #1260: each Playwright WORKER PROCESS gets its own preview-server port
+// (`BASE_PORT + parallelIndex`), so `playwright.config.ts`'s local
+// `workers` > 1 can run without every worker's `vite preview --strictPort`
+// child fighting over one socket. `test.info()` is only valid while a test
+// is executing on this worker — true of every call site below, since none
+// runs from a module-level scope or a `beforeAll` hook (grepped). CI keeps
+// `workers: 1` on the `chromium` project, so `parallelIndex` there is
+// always 0 and the effective port stays the historical 4173.
+// `startPreviewIdentity.spec.ts` runs in its own single-worker `identity`
+// project instead of deriving through these functions — see that file's
+// own header comment for why its port must stay the literal `4173`.
+function currentPort(): number {
+  return BASE_PORT + test.info().parallelIndex;
+}
+
+function currentBase(): string {
+  return `http://localhost:${currentPort()}/sail_command/`;
+}
+
+function currentSwJsUrl(): string {
+  return `${currentBase()}sw.js`;
+}
+
 const START_TIMEOUT_MS = 30_000;
 const POLL_INTERVAL_MS = 300;
 // #803 MINOR 2 (PR #823 review): bounds EACH individual fetch attempt, not
@@ -94,10 +116,11 @@ export interface PreviewServer {
 }
 
 // #803: `startPreview()` used to return as soon as ANY 200 answered
-// `fetch(BASE)`, with no check that the responder was the `vite preview`
-// process THIS call just spawned, or that it was serving THIS run's own
-// `dist/`. A process already bound to port 4173 (a leftover preview server,
-// a parallel worktree's run, a stray `vite preview`) makes our own
+// `fetch(currentBase())`, with no check that the responder was the `vite
+// preview` process THIS call just spawned, or that it was serving THIS
+// run's own `dist/`. A process already bound to this call's port (a
+// leftover preview server, a parallel worktree's run, a stray `vite
+// preview`) makes our own
 // `--strictPort` child fail to bind — and WHEN THE FOREIGN RESPONDER
 // ANSWERS 200, that bind failure is invisible from here: the foreign
 // process just answers our readiness poll with its OWN content, so we
@@ -287,7 +310,7 @@ export interface PreviewServer {
 // The navigation that gives `navigator.serviceWorker`/`caches` a same-origin
 // execution context to run in (both are scoped per-origin) is deliberately
 // unconditional and happens FIRST — see this function's own body for exactly
-// which URL it targets and why (not `BASE`: a real, measured race with the
+// which URL it targets and why (not `currentBase()`: a real, measured race with the
 // app's own bootstrap).
 export interface ServiceWorkerCleanupResult {
   /** How many registrations/caches existed on this origin BEFORE this call cleared them. */
@@ -310,22 +333,22 @@ export interface ServiceWorkerCleanupResult {
 export async function assertCleanServiceWorkerState(
   page: Page,
 ): Promise<ServiceWorkerCleanupResult> {
-  // Navigate to `SW_JS_URL`, NOT `BASE` — a real measured race, not a
+  // Navigate to `currentSwJsUrl()`, NOT `currentBase()` — a real measured race, not a
   // theoretical one (reproduced on `offline.spec.ts`'s very first, otherwise
-  // ordinary run: `page.goto(BASE)` loads this run's OWN honest app shell,
+  // ordinary run: `page.goto(currentBase())` loads this run's OWN honest app shell,
   // whose bootstrap legitimately self-registers ITS OWN service worker
   // (CLAUDE.md's #28 glyph-cache bullet) — and that registration can land
   // BETWEEN this function's own `regsBefore`/`regsAfter` queries, so a
   // perfectly healthy page with NO stale/foreign worker at all throws here
   // with "0 registration(s)... started from 0" moments before "1... still
-  // present"). `SW_JS_URL` is a plain `.js` response, not an HTML document —
+  // present"). `currentSwJsUrl()` is a plain `.js` response, not an HTML document —
   // Chromium renders it as inert source text with no `<script>` tag to
   // execute, so no app bootstrap runs on this page and nothing can
   // self-register while we clear. `navigator.serviceWorker`/`caches` are
   // scoped to the ORIGIN, not the path, so a registration/cache left by a
   // PRIOR (stale/foreign) page load on this exact origin is still fully
   // visible and clearable from here.
-  await page.goto(SW_JS_URL);
+  await page.goto(currentSwJsUrl());
   const result = await page.evaluate(async () => {
     const regsBefore = await navigator.serviceWorker.getRegistrations();
     await Promise.all(regsBefore.map((r) => r.unregister()));
@@ -343,7 +366,7 @@ export async function assertCleanServiceWorkerState(
   if (result.remainingRegs !== 0 || result.remainingCaches !== 0) {
     throw new Error(
       `#832: failed to clear this origin's service-worker state before the caller's first ` +
-        `real navigation to ${BASE} — ${result.remainingRegs} registration(s) and ` +
+        `real navigation to ${currentBase()} — ${result.remainingRegs} registration(s) and ` +
         `${result.remainingCaches} cache(s) still present after unregister()/delete() (started ` +
         `from ${result.unregisteredCount} registration(s), ${result.deletedCacheCount} cache(s)). ` +
         `Refusing to proceed against a possibly-foreign cached build.`,
@@ -408,15 +431,15 @@ function assertServingThisBuild(servedHtml: string, localHtml: string): void {
   const expected = extractEntryScriptSrc(localHtml, `local ${DIST_INDEX_HTML}`);
   let observed: string;
   try {
-    observed = extractEntryScriptSrc(servedHtml, `served ${BASE}`);
+    observed = extractEntryScriptSrc(servedHtml, `served ${currentBase()}`);
   } catch {
     observed = `(no recognisable entry tag; first 200 chars: ${JSON.stringify(servedHtml.slice(0, 200))})`;
   }
   throw new Error(
-    `#803: the server answering at ${BASE} is not serving this run's own build.\n` +
+    `#803: the server answering at ${currentBase()} is not serving this run's own build.\n` +
       `  expected entry chunk (from ${DIST_INDEX_HTML}): ${expected}\n` +
       `  observed entry chunk:                            ${observed}\n` +
-      `This usually means a process was already bound to port ${PORT} before this run's own ` +
+      `This usually means a process was already bound to port ${currentPort()} before this run's own ` +
       `\`vite preview --strictPort\` could bind it — so EADDRINUSE was never raised, the foreign ` +
       `responder just answered our readiness poll instead — or a stale dist/ is being served. ` +
       `Refusing to proceed rather than test the wrong build.`,
@@ -434,7 +457,7 @@ function assertServingThisBuild(servedHtml: string, localHtml: string): void {
 function assertSwJsMatches(servedSwJs: string, localSwJs: string): void {
   if (servedSwJs === localSwJs) return;
   throw new Error(
-    `#803: the server answering at ${SW_JS_URL} is not serving this run's own build — its ` +
+    `#803: the server answering at ${currentSwJsUrl()} is not serving this run's own build — its ` +
       `service worker doesn't byte-match ${DIST_SW_JS}.\n` +
       `  expected length: ${localSwJs.length} bytes\n` +
       `  observed length: ${servedSwJs.length} bytes\n` +
@@ -642,7 +665,7 @@ async function assertResidualDistFilesMatch(relPaths: string[]): Promise<void> {
         { cause: err },
       );
     }
-    const url = BASE + relPath.split('/').map(encodeURIComponent).join('/');
+    const url = currentBase() + relPath.split('/').map(encodeURIComponent).join('/');
     let res: Response;
     try {
       res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
@@ -689,12 +712,14 @@ async function assertResidualDistFilesMatch(relPaths: string[]): Promise<void> {
 // (what `computeEscapingDistFiles` returns, and the bytes `readFileSync`
 // reads for each of them) is invariant across every call in this process.
 //
-// `playwright.config.ts` hardcodes `workers: 1` today with no CI override,
-// which is what makes "once per process" mean "once for the whole e2e run"
-// rather than once per worker of several — if `workers` is ever raised,
-// BOTH the exhaustive fetch's cost (paid again per worker) and the residual
-// gap below (one per worker instead of one for the whole run) multiply
-// accordingly; re-derive this comment's cost/coverage claims if that changes.
+// `playwright.config.ts` keeps `workers: 1` on CI, so there "once per
+// process" still means "once for the whole e2e run" — but LOCALLY (#1260)
+// the `chromium` project now runs across up to `process.env.CI ? 1 : 4`
+// worker processes, so both the exhaustive fetch's cost (paid again per
+// worker) and the residual gap below (one per worker instead of one for
+// the whole run) multiply accordingly there. `startPreviewIdentity.spec.ts`
+// is unaffected — it runs alone in its own single-worker `identity`
+// project (playwright.config.ts's `dependencies`).
 //
 // GOVERNING CONSTRAINT — see the block comment above `assertSwJsMatches`
 // for the full account: this memoized pass must never be the ONLY residual
@@ -738,21 +763,21 @@ async function verifyResidualDistFilesOnce(relPaths: string[]): Promise<void> {
 }
 
 /**
- * Spawns `npm run preview -- --port 4173 --strictPort` in app/ and waits
+ * Spawns `npm run preview -- --port <currentPort()> --strictPort` in app/ and waits
  * until it answers with a 200 SERVING THIS RUN'S OWN BUILD (see the #803
  * block comment above). `START_TIMEOUT_MS` (30s) bounds the OUTER loop —
  * the number of poll iterations. Each individual `fetch` (there are now
- * two per successful iteration: `BASE`, then `SW_JS_URL`) is ALSO bounded,
+ * two per successful iteration: `currentBase()`, then `currentSwJsUrl()`) is ALSO bounded,
  * via `FETCH_TIMEOUT_MS`'s `AbortSignal.timeout(...)`: without it, a
  * responder that accepts the connection and then never answers can hold a
  * single `await` for undici's own headers-timeout ceiling — measured (PR
- * #823 review) at 301,364 ms on `fetch(BASE)` and 300,340 ms on
- * `fetch(SW_JS_URL)` once the latter existed — well past `START_TIMEOUT_MS`
+ * #823 review) at 301,364 ms on `fetch(currentBase())` and 300,340 ms on
+ * `fetch(currentSwJsUrl())` once the latter existed — well past `START_TIMEOUT_MS`
  * and material against `ci.yml`'s 30-minute `e2e` cap. `detached: true`
  * makes the child the leader of its own process group so kill() can take
  * out `npm` *and* the `vite preview` process it launches with one SIGKILL
  * to the negated pid — killing only the `npm` pid can leave `vite preview`
- * (and its bound port) running, which would strand port 4173 for the next
+ * (and its bound port) running, which would strand that port for the next
  * spec/run.
  *
  * `page` (#832, optional): when supplied, once the Node-side identity checks
@@ -799,11 +824,15 @@ export async function startPreview(page?: Page): Promise<PreviewServer> {
   const residualRepresentatives = pickResidualRepresentatives(distFiles, manifestUrls);
   const residualFiles = computeEscapingDistFiles(distFiles, manifestUrls);
 
-  const child = spawn('npm', ['run', 'preview', '--', '--port', String(PORT), '--strictPort'], {
-    cwd: APP_DIR,
-    detached: true,
-    stdio: 'ignore',
-  });
+  const child = spawn(
+    'npm',
+    ['run', 'preview', '--', '--port', String(currentPort()), '--strictPort'],
+    {
+      cwd: APP_DIR,
+      detached: true,
+      stdio: 'ignore',
+    },
+  );
 
   // Captured rather than thrown immediately: 'error' (e.g. ENOENT if `npm`
   // isn't on PATH) can fire before or after the poll loop starts, and we
@@ -828,12 +857,12 @@ export async function startPreview(page?: Page): Promise<PreviewServer> {
   while (Date.now() < deadline) {
     if (spawnError) {
       throw new Error(
-        `preview server process failed to spawn before answering at ${BASE}: ${spawnError.message}`,
+        `preview server process failed to spawn before answering at ${currentBase()}: ${spawnError.message}`,
       );
     }
     if (child.exitCode !== null) {
       throw new Error(
-        `preview server process exited early (code ${child.exitCode}) before answering at ${BASE}`,
+        `preview server process exited early (code ${child.exitCode}) before answering at ${currentBase()}`,
       );
     }
     let res: Response | undefined;
@@ -841,7 +870,7 @@ export async function startPreview(page?: Page): Promise<PreviewServer> {
       // Bounded via AbortSignal.timeout — see this function's own doc
       // comment. A timeout here lands in this catch (retry-worthy, same as
       // ECONNREFUSED) rather than hanging the whole poll loop.
-      res = await fetch(BASE, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+      res = await fetch(currentBase(), { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     } catch {
       // server not accepting connections yet, or the fetch timed out — keep polling
     }
@@ -860,15 +889,15 @@ export async function startPreview(page?: Page): Promise<PreviewServer> {
         // public/** (see the block comment above extractEntryScriptSrc) —
         // this second fetch closes that gap. A non-200, a timeout, or a
         // throw here is itself evidence of a foreign/broken responder, not
-        // a "keep polling" condition: BASE already answered 200 moments
+        // a "keep polling" condition: currentBase() already answered 200 moments
         // ago, so this fetch is bounded (FETCH_TIMEOUT_MS) and its failure
         // reported directly rather than silently retried.
         let swRes: Response;
         try {
-          swRes = await fetch(SW_JS_URL, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+          swRes = await fetch(currentSwJsUrl(), { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
         } catch (fetchErr) {
           throw new Error(
-            `#803: fetching ${SW_JS_URL} (this build's service worker) failed or timed out ` +
+            `#803: fetching ${currentSwJsUrl()} (this build's service worker) failed or timed out ` +
               `after ${FETCH_TIMEOUT_MS}ms — cannot establish build identity: ` +
               `${(fetchErr as Error).message}`,
             { cause: fetchErr },
@@ -876,7 +905,7 @@ export async function startPreview(page?: Page): Promise<PreviewServer> {
         }
         if (!swRes.ok) {
           throw new Error(
-            `#803: expected ${SW_JS_URL} (this build's service worker) to respond 200, got ` +
+            `#803: expected ${currentSwJsUrl()} (this build's service worker) to respond 200, got ` +
               `${swRes.status} — cannot establish build identity`,
           );
         }
@@ -903,7 +932,7 @@ export async function startPreview(page?: Page): Promise<PreviewServer> {
         kill();
         throw err;
       }
-      return { url: BASE, kill };
+      return { url: currentBase(), kill };
     }
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
   }
@@ -911,7 +940,9 @@ export async function startPreview(page?: Page): Promise<PreviewServer> {
   // A captured spawn error (e.g. ENOENT) is the real cause of a timeout here —
   // surface it instead of a bare, misleading "didn't respond in 30s".
   const cause = spawnError ? `: ${spawnError.message}` : '';
-  throw new Error(`preview server did not respond at ${BASE} within ${START_TIMEOUT_MS}ms${cause}`);
+  throw new Error(
+    `preview server did not respond at ${currentBase()} within ${START_TIMEOUT_MS}ms${cause}`,
+  );
 }
 
 // #253 fix-up: readiness gate for a map that has actually rendered. The app

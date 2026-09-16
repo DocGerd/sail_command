@@ -1329,9 +1329,10 @@ test('#628 review Major 1: the controls cluster can be expanded at 390px without
 //
 // #628 review Minor 7: trimmed from 4 narrow / 2 wide entries. Each of
 // these 6 tests boots its own preview server and runs a real route solve —
-// this file's most expensive test shape — and `playwright.config.ts` runs
-// `workers: 1, fullyParallel: false`, so they add their full wall time
-// SERIALLY to the `e2e` job (capped at 30 min, #605). The default-open
+// this file's most expensive test shape — and `playwright.config.ts` keeps
+// `workers: 1` on CI (#1260 raised it to 4 locally), with `fullyParallel:
+// false` throughout, so they add their full wall time SERIALLY to the
+// `e2e` job (capped at 30 min, #605). The default-open
 // decision is a single `matchMedia` read at mount, so every narrow entry
 // exercises the SAME branch, and both assertions below were MEASURED
 // viewport-INVARIANT (collapsed height exactly 60.00px) at every one of the

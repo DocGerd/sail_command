@@ -17,12 +17,17 @@ import { startPreview, assertCleanServiceWorkerState } from './helpers';
 // spawn, and the ordinary path (no foreign server, a real `dist/` on disk
 // from this run's own `pree2e` build) must still succeed.
 //
-// `workers: 1` / `fullyParallel: false` (playwright.config.ts) makes this
-// safe to run alongside every other spec in the suite: tests execute
-// strictly serially, so nothing else is contending for port 4173 while
-// this spec's decoy holds it, and no other spec observes the local
-// `dist/index.html` mutations below (each is written, exercised, and
-// restored inside ONE test, synchronously before that test resolves).
+// #1260: this file runs in its OWN `identity` Playwright project
+// (`playwright.config.ts`, capped at `workers: 1`), and the `chromium`
+// project — every other spec — DEPENDS on it, so Playwright always
+// finishes this whole project, single worker, before starting any
+// `chromium` test. That is what makes this file safe to keep hardcoding
+// `PORT = 4173` rather than deriving it like every other spec does via
+// `helpers.ts`'s `currentPort()`: nothing else is ever running while this
+// file is, so nothing else is contending for port 4173, and no other spec
+// observes the local `dist/index.html` mutations below (each is written,
+// exercised, and restored inside ONE test, synchronously before that test
+// resolves).
 
 const PORT = 4173;
 const APP_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');

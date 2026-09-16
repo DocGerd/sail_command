@@ -10,8 +10,8 @@ import { startPreview, assertCleanServiceWorkerState } from './helpers';
 // full-body fetch into a Blob-backed pmtiles source.
 //
 // These specs run in a context with `serviceWorkers: 'block'` — the honest
-// no-SW cohort #118 breaks for. The preview server (fixed port 4173,
-// helpers.ts — serialize with the other e2e specs) serves real identity 206s,
+// no-SW cohort #118 breaks for. The preview server (per-worker port since
+// #1260, helpers.ts's `currentPort()`) serves real identity 206s,
 // so the CDN's gzip-of-range corruption does NOT reproduce locally; the first
 // spec simulates it exactly via page.route, fulfilling ranged requests with a
 // 206 whose body starts with the gzip magic the live probe captured, while
