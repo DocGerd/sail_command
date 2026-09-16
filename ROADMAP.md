@@ -48,11 +48,13 @@ shading and hatching now sit where the depth data places them, having been
 drawn up to about 350 m north of it
 ([#1254](https://github.com/DocGerd/sail_command/issues/1254)).
 
-[#1256](https://github.com/DocGerd/sail_command/issues/1256) closed a ~1.8x
-plan slowdown that [#295](https://github.com/DocGerd/sail_command/issues/295)
-introduced earlier in this same cut, so it restores the previous speed rather
-than changing anything a user of `v0.34.0` would notice. The other three
-closes are review residuals with no build behind them:
+[#1256](https://github.com/DocGerd/sail_command/issues/1256) removed a
+full-mask buffer allocated per `cellsConnected` call — about 47 MB each, and
+some 470 MB over a relaxing route — but no measured route gained wall-clock
+time above run-to-run noise, so the premise that it would recover the
+post-[#295](https://github.com/DocGerd/sail_command/issues/295) solve
+slowdown is refuted; that slowdown is tracked separately in `v0.36.0`. The
+other three closes are review residuals with no build behind them:
 [#1226](https://github.com/DocGerd/sail_command/issues/1226),
 [#1232](https://github.com/DocGerd/sail_command/issues/1232) and
 [#1233](https://github.com/DocGerd/sail_command/issues/1233).
