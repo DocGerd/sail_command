@@ -1,7 +1,11 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
+import { requiredRegions, type RegionBbox } from '../lib/basemapRegions';
+import { AIS_CORRIDOR_HALF_WIDTH_NM, routeCorridorBoxes } from '../lib/routeCorridor';
+import { selectTileArchive } from '../services/compositeBasemapProtocol';
 import {
   assertCoreWithinPrecacheCap,
   buildRegionManifest,
@@ -175,5 +179,107 @@ describe('assertCoreWithinPrecacheCap', () => {
   it('does not throw at or under the cap', () => {
     expect(() => assertCoreWithinPrecacheCap(entry(100), 100)).not.toThrow();
     expect(() => assertCoreWithinPrecacheCap(entry(99), 100)).not.toThrow();
+  });
+});
+
+// #295: the committed region archives (shape a2, pipeline/README.md), read
+// from the real app/public/data — not synthetic headers.
+describe('#295 committed region archives', () => {
+  const DATA_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '../../public/data');
+  const COVERAGE: RegionBbox = [9.4, 54.3, 11.6, 55.6];
+  const manifest = buildRegionManifest(DATA_DIR, CORE_FILE);
+
+  function zoomRange(path: string): [number, number] {
+    const header = readFileSync(join(DATA_DIR, path.replace(/^data\//, '')));
+    return [header.readUInt8(100), header.readUInt8(101)];
+  }
+
+  it('ships exactly the east and north regions beside the core', () => {
+    expect(manifest.core.id).toBe('core');
+    expect(manifest.regions.map((r) => r.id)).toEqual(['east', 'north']);
+  });
+
+  it('every region shares the core zoom range (the protocol advertises the core header)', () => {
+    const core = zoomRange(manifest.core.path);
+    for (const r of manifest.regions) expect(zoomRange(r.path), r.id).toEqual(core);
+  });
+
+  it('core and regions together span exactly the #295 coverage bbox', () => {
+    const all = [manifest.core, ...manifest.regions].map((e) => e.bbox);
+    const union = [
+      Math.min(...all.map((b) => b[0])),
+      Math.min(...all.map((b) => b[1])),
+      Math.max(...all.map((b) => b[2])),
+      Math.max(...all.map((b) => b[3])),
+    ];
+    for (let i = 0; i < 4; i++) expect(union[i]).toBeCloseTo(COVERAGE[i], 6);
+  });
+
+  it('every tile of the coverage bbox, z0-z13, is served by the core or a region (no gap)', () => {
+    const gaps: string[] = [];
+    const [minLon, minLat, maxLon, maxLat] = COVERAGE;
+    for (let z = 0; z <= 13; z++) {
+      const n = 2 ** z;
+      const x0 = Math.floor(((minLon + 180) / 360) * n);
+      const x1 = Math.floor(((maxLon + 180) / 360) * n);
+      const row = (lat: number) =>
+        Math.floor(((1 - Math.asinh(Math.tan((lat * Math.PI) / 180)) / Math.PI) / 2) * n);
+      for (let x = x0; x <= x1; x++) {
+        for (let y = row(maxLat); y <= row(minLat); y++) {
+          const choice = selectTileArchive(z, x, y, manifest.core.bbox, manifest.regions);
+          if (choice.kind === 'none') gaps.push(`${z}/${x}/${y}`);
+        }
+      }
+    }
+    expect(gaps).toEqual([]);
+  });
+
+  // Hand-drawn waypoint routes (APPROXIMATE: a solver route bows further out,
+  // which only grows the corridor). Snaps for kolding/nyborg/burgstaaken are
+  // #295's new harbours (PR #1245's harbors.json).
+  const P = {
+    flensburg: { lat: 54.798, lon: 9.4335 },
+    fjordMouth: { lat: 54.84, lon: 9.98 },
+    soenderborg: { lat: 54.9046, lon: 9.7833 },
+    aaroesund: { lat: 55.26, lon: 9.7165 },
+    assens: { lat: 55.2621, lon: 9.8778 },
+    kolding: { lat: 55.4931, lon: 9.508 },
+    bagenkop: { lat: 54.753, lon: 10.668 },
+    nyborg: { lat: 55.3031, lon: 10.7975 },
+    burgstaaken: { lat: 54.4094, lon: 11.1924 },
+  };
+  const route = (...pts: { lat: number; lon: number }[]) =>
+    pts.slice(1).map((end, i) => ({ start: pts[i], end }));
+
+  it.each([
+    ['core-only Flensburg->Soenderborg', route(P.flensburg, P.fjordMouth, P.soenderborg), []],
+    // Both harbours lie in the core; the 5 nm corridor still crosses 55.3N.
+    ['core plan near 55.3N, Aaroesund->Assens', route(P.aaroesund, P.assens), ['north']],
+    [
+      'Flensburg->Kolding',
+      route(
+        P.flensburg,
+        P.fjordMouth,
+        { lat: 55.0, lon: 10.05 },
+        { lat: 55.45, lon: 9.72 },
+        P.kolding,
+      ),
+      ['north'],
+    ],
+    [
+      'Bagenkop->Burgstaaken',
+      route(P.bagenkop, { lat: 54.45, lon: 11.1 }, P.burgstaaken),
+      ['east'],
+    ],
+    [
+      'Nyborg->Burgstaaken (both new areas)',
+      route(P.nyborg, { lat: 55.2, lon: 10.95 }, { lat: 54.5, lon: 11.0 }, P.burgstaaken),
+      ['east', 'north'],
+    ],
+  ])('%s', (_name, legs, expected) => {
+    const boxes = routeCorridorBoxes(legs, null, AIS_CORRIDOR_HALF_WIDTH_NM);
+    expect(boxes.length).toBeGreaterThan(0); // under the area cap: a real corridor, not the fail-closed []
+    const entries = [manifest.core, ...manifest.regions];
+    expect([...requiredRegions(entries, boxes)].sort()).toEqual(expected);
   });
 });
