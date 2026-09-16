@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { savePlan } from '../services/db';
 import { DEFAULT_SAIL_IDS } from '../data/boats';
-import { NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
+import { NO_ROUTE_MESSAGE_KEY, noRouteMessageKey } from '../lib/plan';
 import { haversineNm } from '../lib/geo';
 import { pinRegionsAfterReplan, type PinAfterSave } from '../services/pinAfterSave';
 import { RoutingError, type RoutingFailureKind } from '../routing/workerClient';
@@ -12,6 +12,7 @@ import {
   type Plan,
   type PlanRequest,
   type PlanResult,
+  type SegmentMode,
   type WindGrid,
 } from '../types';
 
@@ -26,6 +27,9 @@ const DEDUPE_THRESHOLD_NM = 60 / 1852;
 
 export interface ViaDedupeResult {
   kept: LatLon[];
+  // #885: the input index of each kept via, ascending. `kept` keeps object
+  // identity (App.tsx droppedViaLabels relies on it); these index it.
+  keptIndices: number[];
   droppedCount: number;
 }
 
@@ -45,16 +49,91 @@ export function dedupeViaPoints(
   destination: LatLon,
 ): ViaDedupeResult {
   const kept: LatLon[] = [];
+  const keptIndices: number[] = [];
   let previous = origin;
-  for (const via of viaPoints) {
-    if (haversineNm(via, previous) < DEDUPE_THRESHOLD_NM) continue;
+  viaPoints.forEach((via, i) => {
+    if (haversineNm(via, previous) < DEDUPE_THRESHOLD_NM) return;
     kept.push(via);
+    keptIndices.push(i);
     previous = via;
-  }
+  });
   while (kept.length > 0 && haversineNm(kept[kept.length - 1], destination) < DEDUPE_THRESHOLD_NM) {
     kept.pop();
+    keptIndices.pop();
   }
-  return { kept, droppedCount: viaPoints.length - kept.length };
+  return { kept, keptIndices, droppedCount: viaPoints.length - kept.length };
+}
+
+export type SegmentModesMerge =
+  | { kind: 'ok'; segmentModes: (SegmentMode | null)[] }
+  // A merged run whose segments do not all carry the same mode. `viaIndex` is
+  // the input index of the first via dedupe drops inside that run.
+  | { kind: 'conflict'; viaIndex: number }
+  // The input modes do not match the input via list (a producer defect).
+  | { kind: 'invalid' };
+
+/**
+ * #885 / #1232 (maintainer ruling 2026-09-15): the modes for the segments that
+ * survive `dedupeViaPoints`.
+ *
+ * Each surviving segment spans a run of original segments between two
+ * surviving waypoints. A run merges only when every member carries the same
+ * mode, Auto (`null`) included; any other run is a conflict the caller refuses
+ * before planning. So a forced mode is never extended over unmarked water and
+ * never freed. Computed from `keptIndices` alone.
+ */
+export function mergeSegmentModes(
+  segmentModes: readonly (SegmentMode | null)[],
+  viaCount: number,
+  keptIndices: readonly number[],
+): SegmentModesMerge {
+  if (segmentModes.length !== viaCount + 1) return { kind: 'invalid' };
+  // Waypoint indices of the survivors in [origin, ...vias, destination].
+  const bounds = [0, ...keptIndices.map((k) => k + 1), viaCount + 1];
+  const merged: (SegmentMode | null)[] = [];
+  for (let j = 0; j < bounds.length - 1; j++) {
+    const mode = segmentModes[bounds[j]];
+    for (let i = bounds[j] + 1; i < bounds[j + 1]; i++) {
+      // Waypoint bounds[j] + 1 is the first dropped via: input index bounds[j].
+      if (segmentModes[i] !== mode) return { kind: 'conflict', viaIndex: bounds[j] };
+    }
+    merged.push(mode);
+  }
+  return { kind: 'ok', segmentModes: merged };
+}
+
+export type RequestIntake<R> =
+  | { kind: 'ok'; request: R }
+  | { kind: 'error'; messageKey: MsgKey; messageVars?: Record<string, number> };
+
+/**
+ * #885: pre-planning intake. Applies the ~60 m via dedupe to a whole request,
+ * keeping `segmentModes` aligned with the surviving vias, and refuses a mode
+ * set planning would refuse anyway (merge conflict, R4 motor-off conflict), so
+ * the refusal needs no wind fetch. Absent modes take exactly the pre-#885 path
+ * (`{ ...req, viaPoints: kept }`). `planRoute` keeps its own checks.
+ */
+export function dedupeRequestVias<R extends PlanRequest>(req: R): RequestIntake<R> {
+  const { kept, keptIndices } = dedupeViaPoints(req.origin, req.viaPoints, req.destination);
+  if (req.segmentModes === undefined) return { kind: 'ok', request: { ...req, viaPoints: kept } };
+  const merge = mergeSegmentModes(req.segmentModes, req.viaPoints.length, keptIndices);
+  if (merge.kind === 'conflict') {
+    return {
+      kind: 'error',
+      messageKey: 'error.segmentModesMergeConflict',
+      messageVars: { index: merge.viaIndex + 1 },
+    };
+  }
+  if (merge.kind === 'invalid') {
+    return { kind: 'error', messageKey: NO_ROUTE_MESSAGE_KEY['segment-modes-invalid'] };
+  }
+  if (!req.settings.motorEnabled && merge.segmentModes.includes('motor')) {
+    return { kind: 'error', messageKey: NO_ROUTE_MESSAGE_KEY['segment-mode-conflict'] };
+  }
+  return {
+    kind: 'ok',
+    request: { ...req, viaPoints: kept, segmentModes: merge.segmentModes },
+  };
 }
 
 // Mirrors OpenMeteoError (services/openMeteo.ts): a typed reason (here, the
@@ -63,11 +142,13 @@ export function dedupeViaPoints(
 // IndexedDB boundary.
 export class ReplanError extends Error {
   readonly messageKey: MsgKey;
+  readonly messageVars: Record<string, number> | undefined;
 
-  constructor(messageKey: MsgKey, message: string) {
+  constructor(messageKey: MsgKey, message: string, messageVars?: Record<string, number>) {
     super(message);
     this.name = 'ReplanError';
     this.messageKey = messageKey;
+    this.messageVars = messageVars;
   }
 }
 
@@ -296,6 +377,10 @@ export async function replanWithVias(
   plan: Plan,
   viaPoints: LatLon[],
   deps: ReplanDeps,
+  // #885: modes aligned with THIS `viaPoints` argument. The stored
+  // plan.request.segmentModes indexes the stored via list, so it is never
+  // carried over; absent means no overrides.
+  segmentModes?: readonly (SegmentMode | null)[],
 ): Promise<Plan> {
   const { timesMs } = plan.windGrid;
   const horizonMs = timesMs[timesMs.length - 1];
@@ -318,10 +403,22 @@ export async function replanWithVias(
   // the caller already pre-filtered (dedupeViaPoints is exported separately
   // so a caller can also use it to decide whether to show the "waypoint
   // skipped" info banner — see state/replan.ts's useViaReplan).
-  const { kept } = dedupeViaPoints(plan.request.origin, viaPoints, plan.request.destination);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructured only to omit it
+  const { segmentModes: _storedModes, ...storedRequest } = plan.request;
+  const deduped = dedupeRequestVias<PlanRequest>({
+    ...storedRequest,
+    viaPoints,
+    ...(segmentModes !== undefined ? { segmentModes } : {}),
+  });
+  if (deduped.kind === 'error') {
+    throw new ReplanError(
+      deduped.messageKey,
+      'segment modes cannot follow the via edit',
+      deduped.messageVars,
+    );
+  }
   const request: PlanRequest = {
-    ...plan.request,
-    viaPoints: kept,
+    ...deduped.request,
     // #54 review round 2: the third site that builds a router-bound request
     // from a PERSISTED one. A plan saved before `sailIds` existed on
     // PlanRequest does not carry the key at all, and planRoute.ts's `runAll`
@@ -354,7 +451,7 @@ export async function replanWithVias(
   }
 
   if (result.status === 'error') {
-    throw new ReplanError(NO_ROUTE_MESSAGE_KEY[result.reason], `no route: ${result.reason}`);
+    throw new ReplanError(noRouteMessageKey(result.reason, request), `no route: ${result.reason}`);
   }
 
   const updated: Plan = { ...plan, request, result };

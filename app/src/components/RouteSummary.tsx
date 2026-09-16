@@ -15,7 +15,7 @@ import { PORT_COLOR, STARBOARD_COLOR } from '../lib/mapColors';
 import {
   activeRigResult,
   isStaleForecast,
-  NO_ROUTE_MESSAGE_KEY,
+  noRouteMessageKey,
   staleForecastGapHours,
 } from '../lib/plan';
 import {
@@ -278,8 +278,18 @@ const LEGS_SCROLL_HINT_ID = 'route-legs-scroll-hint';
 
 function LegKindChip({ leg, rig }: { leg: Leg; rig: SailId }) {
   const t = useT();
+  // #885 R5: a captain-forced mode is labelled, so it does not read as the
+  // planner's speed verdict.
+  const forced = leg.forced ? (
+    <span title={t('route.legs.forcedTitle')}> · {t('route.legs.forced')}</span>
+  ) : null;
   if (leg.kind === 'motor') {
-    return <span className="chip chip-motor">{t('route.kind.motor')}</span>;
+    return (
+      <span className="chip chip-motor">
+        {t('route.kind.motor')}
+        {forced}
+      </span>
+    );
   }
   const boardKey = leg.board === 'port' ? 'route.board.port' : 'route.board.starboard';
   // Prefix the displayed rig's sail name so each sail leg names the sail
@@ -292,6 +302,7 @@ function LegKindChip({ leg, rig }: { leg: Leg; rig: SailId }) {
         style={{ backgroundColor: BOARD_COLOR[leg.board] }}
       />
       {t(sailLabelKey(rig))} · {t(boardKey)} {t(pointOfSailKey(leg.twaDeg))}
+      {forced}
     </span>
   );
 }
@@ -694,7 +705,7 @@ export default function RouteSummary({
               the honest fallback: it names the one remedy that DOES apply
               here, re-planning, instead of retry/reload framing that
               cannot. */}
-            {t(reason ? NO_ROUTE_MESSAGE_KEY[reason] : 'error.savedPlanUnreadable')}
+            {t(reason ? noRouteMessageKey(reason, plan.request) : 'error.savedPlanUnreadable')}
           </p>
         ) : (
           <>
@@ -944,6 +955,9 @@ export default function RouteSummary({
               </p>
               {result.legs.length > 0 && (
                 <p className="route-legs-note">{t('route.legs.motorNote')}</p>
+              )}
+              {result.legs.some((l) => l.forced === true) && (
+                <p className="route-legs-note">{t('route.legs.forcedNote')}</p>
               )}
               {/* #325: the reef suggestion is advisory seamanship guidance,
                 computed AFTER routing from apparent wind speed — it is NOT

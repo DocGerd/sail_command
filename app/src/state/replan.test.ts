@@ -131,7 +131,11 @@ describe('dedupeViaPoints', () => {
   });
 
   it('an empty via list is a no-op', () => {
-    expect(dedupeViaPoints(ORIGIN, [], DESTINATION)).toEqual({ kept: [], droppedCount: 0 });
+    expect(dedupeViaPoints(ORIGIN, [], DESTINATION)).toEqual({
+      kept: [],
+      keptIndices: [],
+      droppedCount: 0,
+    });
   });
 });
 

@@ -10,6 +10,7 @@ import {
   type RigResult,
   type SailId,
   type SailResult,
+  type SegmentMode,
   type ViaPoint,
   type WindGrid,
 } from '../types';
@@ -126,6 +127,27 @@ function normaliseViaPoints(x: unknown): ViaPoint[] | null {
 }
 
 /**
+ * #885 §5.1: `migrateRequest` spreads the stored request, so without this a
+ * malformed `segmentModes` would pass through unvalidated. Absent → absent (no
+ * overrides, the only state older records have). Present but malformed or the
+ * wrong length → refuse the record: dropping the field would silently free a
+ * constrained segment, and guessing a mode would fabricate one.
+ */
+function normaliseSegmentModes(
+  x: unknown,
+  viaCount: number,
+): { ok: true; modes: (SegmentMode | null)[] | undefined } | { ok: false } {
+  if (x === undefined) return { ok: true, modes: undefined };
+  if (!Array.isArray(x) || x.length !== viaCount + 1) return { ok: false };
+  const modes: (SegmentMode | null)[] = [];
+  for (const m of x as unknown[]) {
+    if (m !== null && m !== 'motor' && m !== 'sail') return { ok: false };
+    modes.push(m);
+  }
+  return { ok: true, modes };
+}
+
+/**
  * Task 9 renamed RigResult.rig to .sailId. A record written before that
  * carries the old key; one written after already carries the new one. Strips
  * the old key rather than leaving both, so a migrated record has exactly the
@@ -222,6 +244,8 @@ function isLegShaped(x: unknown): boolean {
   if (x.shallow !== undefined) {
     if (!isRecord(x.shallow) || !Number.isFinite(x.shallow.minDepthM)) return false;
   }
+  // #885 §5.1: optional marker; anything but `true` is not a shape any build wrote.
+  if (x.forced !== undefined && x.forced !== true) return false;
   return true;
 }
 
@@ -605,7 +629,15 @@ function migrateRequest(
   // separate) does not apply to `.includes`, which is false, not
   // vacuously true, on an empty array.
   if (!sailIds.includes(recommended)) return null;
-  return { ...request, sailIds, boat, viaPoints } as unknown as PlanRequest;
+  const segmentModes = normaliseSegmentModes(request.segmentModes, viaPoints.length);
+  if (!segmentModes.ok) return null;
+  return {
+    ...request,
+    sailIds,
+    boat,
+    viaPoints,
+    ...(segmentModes.modes !== undefined ? { segmentModes: segmentModes.modes } : {}),
+  } as unknown as PlanRequest;
 }
 
 export function migratePlan(raw: unknown): Plan | null {

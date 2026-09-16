@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { savePlan } from '../services/db';
-import { NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
+import { noRouteMessageKey } from '../lib/plan';
 import { pinRegionsAfterReroute, type PinAfterSave } from '../services/pinAfterSave';
 import {
   disposeAfterFailure,
@@ -111,6 +111,7 @@ export async function rerouteFromFix(
   const request: PlanRequest = {
     origin: { ...fixPoint },
     destination: { ...plan.request.destination },
+    // #885 R6: segmentModes is dropped with the vias (disclosed in live.reroute.hint).
     viaPoints: [],
     originHarborId: null,
     destinationHarborId: plan.request.destinationHarborId,
@@ -164,7 +165,7 @@ export async function rerouteFromFix(
     throw new ReplanError(
       result.reason === 'snap-failed-origin'
         ? 'error.rerouteFixOutside'
-        : NO_ROUTE_MESSAGE_KEY[result.reason],
+        : noRouteMessageKey(result.reason, request),
       `no route: ${result.reason}`,
     );
   }

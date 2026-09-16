@@ -5,9 +5,9 @@ import { pinRegionsAfterSave, type PinAfterSave } from '../services/pinAfterSave
 import { loadRoutingAssets } from '../services/assets';
 import { RoutingClient, RoutingError } from '../routing/workerClient';
 import { useActivePlan } from './AppState';
-import { NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
+import { noRouteMessageKey } from '../lib/plan';
 import {
-  dedupeViaPoints,
+  dedupeRequestVias,
   failureLeavesWorkerHealthy,
   ROUTING_FAILURE_MESSAGE_KEY,
   routingFailureKey,
@@ -43,7 +43,8 @@ export type PlanningState =
   // UI shows the probe phase instead of a stalled routing bar; the relaxed
   // re-solve transitions back to 'routing'.
   | { phase: 'probing-depth' }
-  | { phase: 'error'; messageKey: MsgKey };
+  // #885: `messageVars` fills a key's placeholders (the merge refusal names a waypoint).
+  | { phase: 'error'; messageKey: MsgKey; messageVars?: Record<string, number> };
 
 export interface PlanFlowDeps {
   fetchWind?: typeof fetchWindGrid;
@@ -247,7 +248,20 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
       // it re-submits a plan's own STORED request unchanged, whose via list
       // already passed this exact dedupe when the plan was first created —
       // droppedCount is 0 there by construction.
-      req = { ...req, viaPoints: dedupeViaPoints(req.origin, req.viaPoints, req.destination).kept };
+      // #885: segmentModes is rebuilt in the same step, or every deduped plan
+      // with modes would fail planRoute's length check. A mode set planning
+      // would refuse (merge conflict, motor-off conflict) is refused here, so
+      // the refusal does not depend on a wind fetch.
+      const deduped = dedupeRequestVias(req);
+      if (deduped.kind === 'error') {
+        transition({
+          phase: 'error',
+          messageKey: deduped.messageKey,
+          ...(deduped.messageVars !== undefined ? { messageVars: deduped.messageVars } : {}),
+        });
+        return;
+      }
+      req = deduped.request;
 
       transition({ phase: 'fetching-wind' });
 
@@ -389,7 +403,7 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
       }
 
       if (result.status === 'error') {
-        transition({ phase: 'error', messageKey: NO_ROUTE_MESSAGE_KEY[result.reason] });
+        transition({ phase: 'error', messageKey: noRouteMessageKey(result.reason, req) });
         return;
       }
 

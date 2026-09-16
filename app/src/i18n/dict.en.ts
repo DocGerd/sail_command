@@ -160,6 +160,16 @@ export const en = {
   // add/remove buttons in the same scoped via-list region.
   'planner.via.clearAll': 'Clear all waypoints',
   'planner.via.clearAll.confirm': 'Confirm clearing all waypoints',
+  // #885: per-segment mode control between waypoint rows.
+  'planner.segment.group': 'Segment {index}: {from} → {to}',
+  'planner.segment.waypoint': 'waypoint {index}',
+  'planner.segment.auto': 'Auto',
+  'planner.segment.motor': 'Motor',
+  'planner.segment.sail': 'Sail',
+  'planner.segment.motorOff':
+    'Motor is disabled — enable it under Boat › Propulsion to force motor.',
+  'planner.segment.conflict':
+    'Marked motor-only, but the motor is disabled: planning will refuse this.',
   // #829: keyboard-reachable coordinate entry — a second producer/renderer of
   // the same LatLon the map tap already produces (spike
   // docs/spikes/714-keyboard-map-equivalents.md §3.1/§5.1). "coord.edit" is
@@ -329,6 +339,22 @@ export const en = {
   // route exists.
   'error.noRoute.searchBudget':
     'Route planning hit its time limit before finishing — this does not mean no route exists. A nearer destination, fewer waypoints, or a smaller depth-comfort span will help; so will a faster device.',
+  // #885: forced-sail calm. The motor-off variant drops "unmark it", which alone
+  // cannot help while the motor is off (lib/plan.ts noRouteMessageKey).
+  'error.noRoute.calmSailOnly':
+    'Too little wind to sail the segment you marked sail-only. Unmark it or choose another departure.',
+  'error.noRoute.calmSailOnlyMotorOff':
+    'Too little wind to sail the segment you marked sail-only. Choose another departure, or enable the motor and unmark the segment.',
+  'error.noRoute.beyondHorizonSailOnly':
+    'No route found within the 6-day forecast horizon. Try a later departure or a closer destination, or unmark the sail-only segment.',
+  'error.noRoute.segmentModeConflict':
+    'A segment is marked motor-only but the motor is disabled. Enable the motor under Boat › Propulsion, or change that segment.',
+  // #885: internal-state message — every producer keeps segmentModes aligned
+  // with the waypoints, so this is reachable only through a defect.
+  'error.noRoute.segmentModesInvalid':
+    'Internal error: the segment settings do not match the waypoints. Re-select the segment modes and plan again.',
+  'error.segmentModesMergeConflict':
+    'Waypoint {index} is too close to a neighbor, and the segments it would merge have different modes (Auto, Motor, Sail). Remove or move waypoint {index}, or give those segments the same mode.',
   'error.replanStaleWind':
     "This plan's stored wind forecast no longer covers its departure time. Plan the route again to load a current forecast.",
   'error.replanInit':
@@ -645,6 +671,14 @@ export const en = {
   // for the same fact; "as low as" names the same hazard consistently.
   'route.legs.shallowCautious': 'cautious: as low as {depth} m',
   'route.legs.motorNote': 'Motor = engine only; no sail contribution modelled.',
+  // #885 R5: a leg whose mode the captain forced, so it does not read as the
+  // planner's speed verdict.
+  'route.legs.forcedNote':
+    '* on the map: a mode you set for that segment, not one the planner chose.',
+  // #885: the map's compact forced-leg mark, explained by route.legs.forcedNote.
+  'route.map.forcedMark': '*',
+  'route.legs.forced': 'forced',
+  'route.legs.forcedTitle': 'Mode set by you for this segment, not chosen by the planner',
   // #325: advisory-only per the issue's own DoD — the boat speed every leg
   // used still assumes full main, so this suggestion never fed the time
   // optimisation. {first}/{second}/{third} are REEF1_AWS_KN/REEF2_AWS_KN/
@@ -971,7 +1005,7 @@ export const en = {
   'live.reroute.busy': 'Replanning route from current position…',
   'live.reroute.needFix': 'Needs an active GPS fix — start the live view and wait for a fix.',
   'live.reroute.hint':
-    'Creates a new plan from the current position to the destination using the stored wind forecast; the original plan is kept. A planning aid, not navigation guidance.',
+    'Creates a new plan from the current position to the destination using the stored wind forecast; the original plan is kept. Waypoints and segment modes are not carried over. A planning aid, not navigation guidance.',
   'live.reroute.name': '{name} (replanned from position)',
   'nav.plan': 'Plan',
   'nav.routes': 'Routes',
