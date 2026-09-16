@@ -641,9 +641,12 @@ describe('#1256: the shared BFS scratch leaks no state between calls', () => {
     // The stamp is one byte, so the counter's period is 255 and the scratch is
     // zeroed once per period. EXACTLY 254 intervening BFS calls therefore
     // bring the third assertion back to the SAME stamp value the first used —
-    // the one alignment at which stale marks are indistinguishable from fresh
-    // ones. Drop the zeroing and the last call reads its own first call's
-    // marks and answers false. The filler must not restamp the corridor, and
+    // the one alignment at which STALE MARKS are indistinguishable from fresh
+    // ones. That is all this test covers: it says nothing about the stamp's
+    // DOMAIN, and a too-late wrap threshold passes straight through it (the
+    // open-water test below covers that half). Drop the zeroing and the last
+    // call reads its own first call's marks and answers false.
+    // The filler must not restamp the corridor, and
     // cannot: `small`'s only marked index is 5*40+4 = 204, while `big`'s
     // corridor is row 10 of a 320-column grid, indices 3200-3519.
     expect(big.cellsConnected(bigA, bigB, gate)).toBe(true);
@@ -651,5 +654,21 @@ describe('#1256: the shared BFS scratch leaks no state between calls', () => {
       expect(small.cellsConnected(smallA, smallB, gate), `filler ${i}`).toBe(false);
     }
     expect(big.cellsConnected(bigA, bigB, gate)).toBe(true);
+  });
+
+  it('every stamp value in one full period keeps a 2-D open-water pair connected', () => {
+    // #1256: the stamp is one byte, so a too-LATE wrap threshold (`> 255`, or
+    // `>= 256`) hands back 256, which truncates to 0 in the Uint8Array and
+    // disables visited-tracking for that one call in every 256. 260 CONSECUTIVE
+    // calls cover a full period from any starting generation, so this cannot be
+    // defeated by test ordering the way an alignment-exact shape can. Open water
+    // (2-D) is load-bearing: a thin corridor still reaches its target under the
+    // mutant and stays green.
+    const open = makeMask(() => 200);
+    const A = cellCentre(TEST_MASK_META, 0, 0);
+    const B = cellCentre(TEST_MASK_META, 199, 319);
+    for (let i = 0; i < 260; i++) {
+      expect(open.cellsConnected(A, B, gate), `call ${i}`).toBe(true);
+    }
   });
 });

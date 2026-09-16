@@ -60,8 +60,13 @@ export function cautiousDepthLowerBoundM(shippedDepthM: number): number {
  * #1256: BFS scratch for {@link NavMask.cellsConnected}, reused across calls
  * rather than allocated per call. At the #295 mask size (3025 x 3120 =
  * 9,438,000 cells) a fresh `Uint8Array` + `Int32Array` pair costs ~47 MB of
- * allocation and zeroing on EVERY call, and one `planRoute` makes up to ten
- * of them.
+ * allocation and zeroing on EVERY call, and one `planRoute` makes many of
+ * them: `relaxedDepth.ts`'s `connectsWith` runs one call per waypoint
+ * SEGMENT per probe, so a relaxation search costs about
+ * `phase1Total * (1 + W) * (W - 1)` for W waypoints, on top of
+ * `planRoute.ts`'s own pre-check loop. At defaults for a plain A->B plan
+ * (floor 2.1 -> `loDm` 21, requested 3.0 -> `hiDm` 29, `phase1Total` 4,
+ * W = 2) that is already ~12, and it is quadratic in via-point count.
  *
  * `bfsVisited` holds a GENERATION STAMP, not a boolean, so a call needs no
  * clearing pass: only cells carrying the CURRENT generation count as
