@@ -88,6 +88,12 @@ instead of here.
   in tracked `CLAUDE.md` vs. the maintainer's own setup (folds in #471)
 - [1092-claude-md-lazy-loading.md](1092-claude-md-lazy-loading.md) —
   #1092: would splitting `CLAUDE.md` into lazily-loaded files pay?
+- [1135-boat-picker-gate-design.md](1135-boat-picker-gate-design.md) —
+  #1135: marking harbours a deep-draft boat cannot reach. Recommends a
+  selectable boat with a harbour-access disclosure, per-boat harbour marking,
+  and a runtime-derived gate (at 3.5 m a stored `verify_mask.py` figure
+  marks 7 more harbours than the snap-aware derivation). Design only —
+  direction pending maintainer review
 - [1136-motor-off-solve-termination.md](1136-motor-off-solve-termination.md)
   — #1136: motor-off solves terminate holding mask-validated children
   (domination pruning, not the `MOTOR_TWAS` heading gap); re-expansion
