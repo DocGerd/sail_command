@@ -173,6 +173,9 @@
   // the wind lattice's lat/lon extent covers the mask's domain — otherwise
   // WindField.sample()'s bracket() silently clamps out-of-lattice samples
   // with no signal. Same reason and pattern as maskTolerance.test.ts above.
+  // maxBoundsMaskCoverage.test.ts (#295): reads MapView.tsx's MAX_BOUNDS
+  // literal and mask.meta.json via `node:fs`; same pattern as
+  // windLatticeMaskCoverage.test.ts above.
   // relaxationTrade.differential.test.ts (#930): reads the shipped
   // harbors.json via `node:fs` (and imports realmaskFixtures.ts's real
   // mask/harbour fixtures) to run the shipped findRelaxedGate against the
@@ -196,6 +199,7 @@
     "src/**/startPreviewSwAssertCallSites.test.ts",
     "src/**/basemapArchiveRoute.test.ts",
     "src/**/windLatticeMaskCoverage.test.ts",
+    "src/**/maxBoundsMaskCoverage.test.ts",
     "src/**/relaxationTrade.differential.test.ts",
     "src/**/realmask.repro*.test.ts",
     "src/**/realmaskFixtures.ts",

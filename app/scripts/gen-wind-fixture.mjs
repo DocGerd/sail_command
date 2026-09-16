@@ -5,8 +5,8 @@
 // API or on real (variable) weather.
 //
 // Shape matches src/services/openMeteo.ts's `fetchWindGrid` expectations
-// exactly: a JSON array of one object per queried point (187 = LATS.length *
-// LONS.length there — 11 lats * 17 lons), each `{ hourly: { time,
+// exactly: a JSON array of one object per queried point (322 = LATS.length *
+// LONS.length there — 14 lats * 23 lons since #295), each `{ hourly: { time,
 // wind_speed_10m, wind_direction_10m, wind_gusts_10m } }` with `time` in
 // unix seconds (`timeformat: 'unixtime'`). fetchWindGrid never reads any
 // lat/lon field off the response itself (the grid's lats/lons are the
@@ -26,7 +26,9 @@ import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const N_POINTS = 187; // 11 lats * 17 lons — must match openMeteo.ts's LATS.length * LONS.length
+const N_LATS = 14; // must match openMeteo.ts's LATS.length (#295)
+const N_LONS = 23; // must match openMeteo.ts's LONS.length (#295)
+const N_POINTS = N_LATS * N_LONS;
 const N_HOURS = 144; // FORECAST_DAYS (6) * 24 — must match openMeteo.ts's FORECAST_DAYS
 const WIND_SPEED_KN = 12;
 const WIND_DIR_FROM_DEG = 225; // SW

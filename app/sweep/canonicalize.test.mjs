@@ -428,3 +428,107 @@ test('#553: --canonical and --rig-verdict-change together are refused as differe
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// ---------------------------------------------------------------------------
+// #295 — --harbour-superset: a HEAD that ADDS harbours, compared on the shared
+// ones. Each row runs compare.mjs as a real child process.
+
+const harbourGamma = { ...harbourBeta, genoa: { rig: 'genoa', etaMs: 3, legs: [] } };
+
+/** Every arm carries `rows` verbatim. */
+function writeRowsDir(rows) {
+  const dir = mkdtempSync(join(tmpdir(), 'sweep-295-'));
+  const body = JSON.stringify(rows, null, 1);
+  for (const arm of ARM_NAMES) writeFileSync(join(dir, `${arm}.json`), body);
+  return dir;
+}
+
+test('#295 END TO END: a HEAD with an extra harbour fails default mode and passes --harbour-superset', () => {
+  const base = writeRowsDir({ alpha: harbourAlpha, beta: harbourBeta });
+  const head = writeRowsDir({ alpha: harbourAlpha, gamma: harbourGamma, beta: harbourBeta });
+  try {
+    assert.throws(
+      () => execFileSync('node', [compareMjs, base, head], { encoding: 'utf8', stdio: 'pipe' }),
+      (err) => {
+        assert.equal(err.status, 1);
+        assert.match(err.stderr, /harbour set differs/);
+        return true;
+      },
+    );
+    const out = execFileSync('node', [compareMjs, '--harbour-superset', base, head], {
+      encoding: 'utf8',
+    });
+    const shared = ARM_NAMES.length * 2;
+    assert.match(out, new RegExp(`${shared}/${shared} plans byte-identical`));
+    assert.doesNotMatch(out, /DIFFERS/);
+    assert.match(out, new RegExp(`HEAD-only harbour rows: ${ARM_NAMES.length} across`));
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+    rmSync(head, { recursive: true, force: true });
+  }
+});
+
+test('#295 END TO END: --harbour-superset still fails when a SHARED harbour differs', () => {
+  const base = writeRowsDir({ alpha: harbourAlpha, beta: harbourBeta });
+  const head = writeRowsDir({ alpha: harbourAlpha, beta: harbourGamma, gamma: harbourGamma });
+  try {
+    assert.throws(
+      () =>
+        execFileSync('node', [compareMjs, '--harbour-superset', base, head], {
+          encoding: 'utf8',
+          stdio: 'pipe',
+        }),
+      (err) => {
+        assert.equal(err.status, 1);
+        assert.match(err.stdout, /DIFFERING PLANS:\n {2}\S+\/beta /);
+        return true;
+      },
+    );
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+    rmSync(head, { recursive: true, force: true });
+  }
+});
+
+test('#295 END TO END: --harbour-superset is order-sensitive — a BASE harbour missing from HEAD fails', () => {
+  const base = writeRowsDir({ alpha: harbourAlpha, gamma: harbourGamma, beta: harbourBeta });
+  const head = writeRowsDir({ alpha: harbourAlpha, beta: harbourBeta });
+  try {
+    assert.throws(
+      () =>
+        execFileSync('node', [compareMjs, '--harbour-superset', base, head], {
+          encoding: 'utf8',
+          stdio: 'pipe',
+        }),
+      (err) => {
+        assert.equal(err.status, 1);
+        assert.match(err.stderr, /BASE harbours missing from HEAD: gamma/);
+        return true;
+      },
+    );
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+    rmSync(head, { recursive: true, force: true });
+  }
+});
+
+test('#295: --harbour-superset with another mode is refused as a different claim', () => {
+  const dir = writeRowsDir({ alpha: harbourAlpha });
+  try {
+    for (const other of ['--canonical', '--rig-verdict-change']) {
+      assert.throws(
+        () =>
+          execFileSync('node', [compareMjs, '--harbour-superset', other, dir, dir], {
+            encoding: 'utf8',
+            stdio: 'pipe',
+          }),
+        (err) => {
+          assert.equal(err.status, 2);
+          return true;
+        },
+      );
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

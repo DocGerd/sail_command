@@ -42,6 +42,8 @@ WATER_PROBES = [  # (name, lat, lon, min expected depth m)
     ("Little Belt south", 55.10, 9.85, 10.0),
     ("Aeroe SE open water", 54.75, 10.55, 5.0),
     ("Kiel Bight edge", 54.55, 10.30, 10.0),
+    ("Fehmarnbelt", 54.57, 11.30, 10.0),  # #295 extension
+    ("Great Belt west, off Nyborg", 55.30, 10.95, 10.0),  # #295 extension
 ]
 LAND_PROBES = [
     ("Flensburg city", 54.79, 9.42),
@@ -49,6 +51,8 @@ LAND_PROBES = [
     ("Aeroe center", 54.87, 10.35),
     ("Langeland center", 54.90, 10.75),
     ("Angeln inland", 54.70, 9.70),
+    ("Fehmarn centre", 54.47, 11.15),  # #295 extension
+    ("Fyn inland north", 55.40, 10.30),  # #295 extension
 ]
 
 failures = []

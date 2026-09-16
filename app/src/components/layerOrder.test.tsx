@@ -49,12 +49,13 @@ import { __resetDbForTests } from '../services/db';
 // failed that way on the first attempt). registerSeamarkImages already
 // handles a NULL context gracefully (`if (!ctx) continue;`,
 // seamarkGlyphs.ts), so the fix is to answer null for anything that ISN'T
-// the depth/hatch canvas — discriminated by SIZE, since only
-// buildDepthCanvas/buildHatchCanvas produce a canvas matching this file's
-// own maskMeta fixture (`cols: 4, rows: 4`, hoisted.assets above), which a
-// 64x64 glyph raster can never collide with.
+// the depth/hatch canvas — discriminated by WIDTH, since only
+// buildDepthCanvas/buildHatchCanvas produce a canvas as wide as this file's
+// own maskMeta fixture (`cols: 4`, hoisted.assets above), which a 64x64
+// glyph raster can never collide with. Not by height: since #1254 that is
+// depthCanvasRowMap(meta).length, not `rows`.
 HTMLCanvasElement.prototype.getContext = vi.fn(function (this: HTMLCanvasElement): unknown {
-  if (this.width !== 4 || this.height !== 4) return null; // e.g. a seamark glyph raster
+  if (this.width !== 4) return null; // e.g. a 64x64 seamark glyph raster
   return {
     createImageData: (w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4) }),
     putImageData: () => {},

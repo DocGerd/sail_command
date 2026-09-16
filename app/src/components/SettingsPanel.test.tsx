@@ -9,6 +9,7 @@ import { __resetDbForTests, listPlans, listWaypoints, type SavedWaypoint } from 
 import * as db from '../services/db';
 import * as pinAfterSaveModule from '../services/pinAfterSave';
 import { buildExportEnvelope, exportEnvelopeToJson } from '../lib/planExport';
+import { uniformWindGrid } from '../test/fixtures';
 import {
   DEFAULT_SETTINGS,
   defaultBoatSnapshot,
@@ -716,20 +717,9 @@ function makeTestPlan(id: string): Plan {
       sailIds: ['genoa', 'fock'],
       boat: defaultBoatSnapshot(),
     },
-    // #1068 review MAJOR: sized to satisfy WindField's dimension invariant
-    // exactly (1 lat * 1 lon * 2 times = 2) — see planExport.test.ts's
-    // matching comment for why this matters now that decodeWindGrid
-    // enforces it.
-    windGrid: {
-      lats: [54.0],
-      lons: [9.0],
-      timesMs: [1000, 2000],
-      speedKn: new Float32Array([5.1, 6.2]),
-      dirFromDeg: new Float32Array([90, 95]),
-      gustKn: new Float32Array([7.1, 8.2]),
-      fetchedAtMs: 1700000000000,
-      model: 'open-meteo',
-    },
+    // Covers DATA_AREA: the import handler rejects a non-covering grid (#1178,
+    // #295), and decodeWindGrid enforces the dimension invariant (#1068).
+    windGrid: uniformWindGrid(5, 90, { hours: 2 }),
     result: {
       status: 'ok',
       sails: [
@@ -1113,5 +1103,39 @@ describe('SettingsPanel (#849 local import/export)', () => {
     expect(passedPlans?.map((p) => p.id)).toEqual(['plan-b']);
 
     consoleErrorSpy.mockRestore();
+  });
+
+  // #295 ruling: a backup made before #295 carries its wind grid on the old
+  // 11 x 17 lattice and must import (replanning it is rejected, typed, in
+  // workerClient.ts). Any OTHER non-covering grid is still skipped (#1178),
+  // which proves the panel passes bounds to the parser; the bounds are the
+  // static DATA_AREA, so the outcome does not wait on the mask loading.
+  it('#295: imports a pre-#295 lattice plan and skips a narrow non-legacy one', async () => {
+    const oldGrid = uniformWindGrid(12, 0, { north: 55.3, east: 11.0 });
+    expect(oldGrid.lats.length * oldGrid.lons.length).toBe(187);
+    const narrowGrid = uniformWindGrid(12, 0, { south: 54.4, north: 55.4, east: 11.0 });
+    const envelope = buildExportEnvelope(
+      [
+        { ...makeTestPlan('old-lattice'), windGrid: oldGrid },
+        { ...makeTestPlan('narrow'), windGrid: narrowGrid },
+      ],
+      null,
+      [],
+    );
+
+    renderPanel();
+    const file = new File([exportEnvelopeToJson(envelope)], 'old.json', {
+      type: 'application/json',
+    });
+    await act(async () => {
+      fireEvent.change(getFileInput(), { target: { files: [file] } });
+    });
+
+    const notice = await screen.findByText((content) =>
+      content.startsWith('1 route(s) and 0 waypoint(s) imported.'),
+    );
+    expect(notice).toHaveTextContent('1 route(s) in the file could not be read and were skipped.');
+    const plans = await listPlans();
+    expect(plans.filter((p) => p.kind === 'ok').map((p) => p.id)).toEqual(['old-lattice']);
   });
 });

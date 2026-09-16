@@ -24,11 +24,10 @@ export type WindLatticeCoverageBounds = Pick<MaskMeta, 'west' | 'south' | 'east'
  * #1178: whether `grid`'s lat/lon lattice covers `bounds` — the exact
  * predicate `bracket()` above needs to avoid silently clamping. Exported
  * (not private to `WindField`) so `lib/planExport.ts`'s `decodeWindGrid`
- * can apply the SAME check to an untrusted imported grid BEFORE it is ever
- * persisted — see that file's own doc comment for why the import boundary
- * needs this independently of `WindField`'s own constructor check. Sharing
- * one predicate rather than hand-duplicating the inequality in both places
- * is deliberate: the #1178 hazard this whole check exists to catch is
+ * can reject a non-covering imported grid (the exact pre-#295 lattice
+ * excepted) and `routing/workerClient.ts` can reject a stored grid as a typed
+ * failure before posting a replan (#295). Sharing one predicate rather than
+ * hand-duplicating the inequality is deliberate: the #1178 hazard this whole check exists to catch is
  * exactly the kind of subtly-wrong inequality that a second, independently
  * written copy could reintroduce.
  */
@@ -73,25 +72,23 @@ export class WindField {
    * unconditional would make those tests throw, or force them to fabricate a
    * matching fake mask bounds object that means nothing. Every PRODUCTION
    * call site that has a real `NavMask` on hand (`planRoute.ts`) passes
-   * `deps.mask.meta`; sites that reconstruct a `WindField` from an
-   * ALREADY-VALIDATED `plan.windGrid` (`DepthProfile.tsx`,
+   * `deps.mask.meta`; the view sites (`DepthProfile.tsx`,
    * `DepartureCompare.tsx`, `routeGeoJson.ts`'s `adaptiveBarbFeatures`) omit
-   * it deliberately — that grid was already checked once, at the point it
-   * was fetched and used to plan the route in `planRoute.ts`, and it is
-   * stored/passed through unchanged (never re-fetched) per this repo's own
-   * "wind grids are stored with each plan" rule. Omitting the check there
-   * does not hide a real production drift: `openMeteo.ts`'s lattice bounds
-   * are a MODULE-LEVEL constant, not something that varies per plan, so if
-   * it ever stops covering the mask, `planRoute.ts`'s own construction is
-   * where that surfaces — every plan goes through it.
+   * it deliberately, because they only DISPLAY a stored `plan.windGrid`. That
+   * grid covered the mask it was planned against, but a plan saved before
+   * #295 carries the narrower pre-#295 lattice (import admits it by exact
+   * match, `planExport.ts`), so these sites clamp at its edge rather than
+   * throw and the plan stays viewable. Replanning such a grid is rejected
+   * before `planRoute.ts` by `workerClient.ts`'s typed `wind-grid-coverage`.
    *
    * See `app/src/test/windLatticeMaskCoverage.test.ts` for the SEPARATE,
    * CI-time drift guard between the committed `openMeteo.ts` lattice and
    * `mask.meta.json`. The two are NOT redundant: that test catches drift at
    * CI time against the committed source/data files (so it fires even
    * before a build exists), while THIS assertion catches it at RUNTIME for
-   * any `WindGrid` constructed from data the test never saw (e.g. a future
-   * dynamic bbox, #295) — neither subsumes the other, so neither should be
+   * any `WindGrid` constructed from data the test never saw (e.g. a plan
+   * saved before #295 widened the area) — neither subsumes the other, so
+   * neither should be
    * deleted as "already covered by the other one".
    */
   constructor(grid: WindGrid, maskBounds?: WindLatticeCoverageBounds) {

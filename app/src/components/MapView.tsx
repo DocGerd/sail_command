@@ -61,7 +61,7 @@ setWorkerUrl(maplibreWorkerUrl);
 
 const MAX_BOUNDS: LngLatBoundsLike = [
   [8.9, 54.05],
-  [11.5, 55.55],
+  [12.1, 55.85],
 ];
 const CENTER: LngLatLike = [9.9, 54.85];
 const ZOOM = 9;

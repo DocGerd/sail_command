@@ -544,8 +544,8 @@ describe('#492 navigability hatch wiring', () => {
 // test/setup.ts stubs `HTMLCanvasElement.prototype.getContext` to `null`
 // globally, so buildDepthCanvas/buildHatchCanvas always bail under the
 // describe blocks above). Restores just enough of the 2D context — the
-// SAME size-discriminated fake `layerOrder.test.tsx` already uses, matched
-// to this FILE's own 4x4 maskMeta fixture — scoped to ONLY this describe
+// SAME width-discriminated fake `layerOrder.test.tsx` already uses, matched
+// to this FILE's own 4-column maskMeta fixture — scoped to ONLY this describe
 // block via beforeEach/afterEach, so the vacuous-by-default behavior the
 // rest of this file relies on (e.g. the debounce tests' `getLayer`-call-only
 // assertions) is untouched outside it.
@@ -554,7 +554,8 @@ describe('#681 independent hazard-hatch toggle', () => {
 
   beforeEach(() => {
     HTMLCanvasElement.prototype.getContext = vi.fn(function (this: HTMLCanvasElement): unknown {
-      if (this.width !== 4 || this.height !== 4) return null; // e.g. a seamark glyph raster
+      // Width only: #1254 makes the height depthCanvasRowMap(meta).length, not rows.
+      if (this.width !== 4) return null; // e.g. a 64x64 seamark glyph raster
       return {
         createImageData: (w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4) }),
         putImageData: () => {},
@@ -695,7 +696,8 @@ describe('#681 x #813: hazard-hatch toggle stays synced across BOTH legend surfa
 
   beforeEach(() => {
     HTMLCanvasElement.prototype.getContext = vi.fn(function (this: HTMLCanvasElement): unknown {
-      if (this.width !== 4 || this.height !== 4) return null; // e.g. a seamark glyph raster
+      // Width only: #1254 makes the height depthCanvasRowMap(meta).length, not rows.
+      if (this.width !== 4) return null; // e.g. a 64x64 seamark glyph raster
       return {
         createImageData: (w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4) }),
         putImageData: () => {},

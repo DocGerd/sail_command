@@ -1014,7 +1014,7 @@ test('#829: adds, repositions and rejects a via point by typing coordinates — 
     await expect(items).toHaveCount(1);
     await expect(items.first()).toContainText('54.900°N 10.000°E');
 
-    // Reject: a value north of DATA_AREA's 55.3°N bound is refused, with the
+    // Reject: a value north of DATA_AREA's 55.6°N bound is refused, with the
     // new message shown, and the placed point is left untouched.
     await latInput.click();
     await page.keyboard.press('ControlOrMeta+a');
@@ -1023,7 +1023,7 @@ test('#829: adds, repositions and rejects a via point by typing coordinates — 
 
     await expect(
       page.getByText(
-        'Die Koordinaten liegen außerhalb des abgedeckten Seegebiets (Flensburger Förde / Dänische Südsee).',
+        'Die Koordinaten liegen außerhalb des abgedeckten Seegebiets (Flensburger Förde, Dänische Südsee, Kleiner Belt, westliche Zufahrt zum Großen Belt, Fehmarn).',
       ),
     ).toBeVisible();
     await expect(items).toHaveCount(1);

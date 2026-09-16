@@ -82,7 +82,7 @@ export const MAX_GPX_ELEMENTS = 100_000;
 
 // The app can only route inside its committed mask data-area, so an imported
 // point beyond this window is rejected at parse time. Mirrors the bounds in
-// app/public/data/mask.meta.json — the locked 54.3..55.3°N / 9.4..11.0°E domain
+// app/public/data/mask.meta.json — the 54.3..55.6°N / 9.4..11.6°E domain (#295)
 // area the design spec fixes (openMeteo.ts hardcodes the same corner). Keep in
 // sync with mask.meta.json if the data-area ever changes.
 // Exported so a test can pin it against the committed mask.meta.json (the only
@@ -95,8 +95,8 @@ export const MAX_GPX_ELEMENTS = 100_000;
 export const DATA_AREA: Pick<MaskMeta, 'west' | 'south' | 'east' | 'north'> = {
   west: 9.4,
   south: 54.3,
-  east: 11.0,
-  north: 55.3,
+  east: 11.6,
+  north: 55.6,
 };
 
 export type GpxErrorReason =
