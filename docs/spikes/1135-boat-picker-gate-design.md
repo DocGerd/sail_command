@@ -12,8 +12,13 @@ direction is the maintainer's to pick after review (ruling on #1135,
    the selected-endpoint row, extending the existing `knownDisconnected`
    marker (#652/#834).
 3. **The per-(boat, harbour) state is derived at runtime** from the loaded
-   mask, in a new module outside the #282 sweep closure — not stored in
-   `harbors.json`.
+   mask, by extending the existing #834 module `app/src/lib/harborReachability.ts`
+   (outside the #282 sweep closure) — not stored in `harbors.json`.
+
+Two of these depart from the multi-boat spec and need a maintainer ruling
+(Q6): §5.2 keeps affected harbour entries selectable where §L prescribes
+"greyed-out picker entries", and C1 replaces §C.6 bullet 2's requirement that
+the harbour list or verify output carry a per-harbour minimum gate.
 
 Measured on the committed mask (§3): a stored `verify_mask.py` figure would
 mark **11** harbours for a 3.5 m gate, where a derivation shaped like the
@@ -92,7 +97,10 @@ drafts. Node v24.15.0, WSL2, 32 cores, load average 2.66 at start.
 
 **Positive control.** The port's deepest-connecting-gate per harbour equals a
 fresh `verify_mask.py` run (exit 0) on **40 of 40** harbours; the five
-`KNOWN_DISCONNECTED` harbours read `none` in both (negative control).
+`KNOWN_DISCONNECTED` harbours read `none` in both (negative control). This
+controls the fill port only; the snap and one-disc relaxation ports are
+uncontrolled beyond the Marstal row below, so follow-up 1's differential
+against the real `snapToNavigable`/`findRelaxedGate` remains the gate.
 
 **Result** (40 harbours; `known-disconnected` = arnis, dyvig, graasten,
 kappeln, maasholm for every hull):
@@ -217,10 +225,11 @@ itself is kept, not cleared (open question Q1).
 
 | Option | Why it lost |
 |---|---|
-| **Greyed-out, unselectable boat (A2)** | The routing is correct and most harbours work (31–34 of 40 `ok` for every hull measured), so disabling hides a usable boat for a per-harbour fact. §N.7 records the greyed-out entry as *not designed*, not as decided. |
+| **Greyed-out, unselectable boat (A2)** | The routing is correct and most harbours work (31–34 of 40 `ok` for every hull measured), so disabling hides a usable boat for a per-harbour fact. |
+| **Greyed-out / disabled harbour entries (§L, §N.7)** | The spec's own prescription, so rejecting it is a deviation for the maintainer (Q6). `shallow-approach` harbours route (§3), so disabling would block routable destinations; an `unreachable` pick already ends in the typed no-route error (§5.2). |
 | **Disclosure on the Boat tab only (A1 without B1)** | The #455 §6 argument the spec's §L already applies to the About dialog: a disclosure away from the moment of exposure is structurally withheld. The user picks a harbour in the Plan tab, not the Boat tab. |
 | **Harbour marking only (B1 without A1)** | Hides the per-boat comparison until a harbour is typed; a skipper choosing between SPEEDY GO! and EASY GO! for a Marstal trip would have to switch boats to find out. |
-| **Stored per-harbour gate in `harbors.json` (C2)** | Has a real precedent — `knownDisconnected` is already a build-generated field from `verify_mask.py` (`HarborPicker.tsx`'s #652 comment) — and costs nothing at runtime. Loses on three counts: (1) it stores the exact-snap-cell answer, which at 3.5 m marks 7 harbours the snap-aware derivation leaves `ok` (§3); (2) it is gate-keyed data for a gate that is a user setting, so it would need a full per-decimetre table rather than one number per boat; (3) `harbors.json` and `pipeline/build_harbors.mjs` are IN the #282 closure (§9), so the stored form owes a sweep that the runtime form does not. Keep `knownDisconnected` stored: it is gate-independent, so none of the three applies to it. |
+| **Stored per-harbour gate in `harbors.json` (C2)** | Has a real precedent — `knownDisconnected` is already a build-generated field from `verify_mask.py` (`HarborPicker.tsx`'s #652 comment) — and costs nothing at runtime. Loses on three counts: (1) the figure `verify_mask.py` computes today is the exact-cell one, which at 3.5 m marks 7 harbours the snap-aware derivation leaves `ok` (§3) — an algorithm difference, not a storage one, since a pipeline could store the snap-aware answer; (2) it is gate-keyed data for a gate that is a user setting, so it would need a full per-decimetre table rather than one number per boat; (3) `harbors.json` and `pipeline/build_harbors.mjs` are IN the #282 closure (§9), so the stored form owes a sweep that the runtime form does not. Keep `knownDisconnected` stored: it is gate-independent, so none of the three applies to it. |
 | **Store the gate, derive only relaxation at runtime** | Two sources for one state, and the stored half still carries the snap-ring divergence. |
 | **Demote affected harbours in search ranking** | See §5.2. |
 | **Clear an endpoint that becomes unreachable on boat switch** | Silent loss of user input on a reversible action (a switch back would not restore it). Marking is enough. |
@@ -290,16 +299,17 @@ term the shipped `ShallowWarning` banner uses, so the two surfaces name one thin
 | `app/src/routing/protocol.ts` | NOT_IN_CLOSURE |
 | `app/src/lib/mask.ts`, `app/src/lib/depthGate.ts`, `app/src/lib/boatDepth.ts` | IN_CLOSURE (import walk) |
 | `app/src/data/boats.ts` | IN_CLOSURE (import walk) |
-| `app/public/data/harbors.json`, `pipeline/build_harbors.mjs` | IN_CLOSURE (path prefix) |
+| `app/public/data/harbors.json`, `pipeline/build_harbors.mjs`, `pipeline/verify_mask.py` | IN_CLOSURE (path prefix) |
+| `app/src/test/verifyMaskConnectivity.test.ts` | NOT_IN_CLOSURE |
 
 So:
 
-- **Runtime derivation in a new module** that imports `mask.ts`/`depthGate.ts`
+- **Runtime derivation in `harborReachability.ts`** (#834) that imports `mask.ts`/`depthGate.ts`
   but is imported by nothing in the closure: **NOT owed** (the walk runs
   outward from the sweep's roots).
 - **Adding a method to `NavMask`** (e.g. a seed-component fill): **OWED** at
   file granularity, though `PlanResult` would be byte-identical. The seed fill
-  therefore belongs in the new module, over `NavMask`'s public surface or a
+  therefore belongs in `harborReachability.ts`, over `NavMask`'s public surface or a
   duplicated traversal guarded by a differential test (the `shallowExposureNm`
   precedent). `verifyMaskConnectivity.test.ts` already carries a test-side TS
   seed fill (`reachableSetAtGate`) with its own differential against
@@ -335,6 +345,9 @@ This design removes the presentation blocker only. Still separately needed:
   only (§5.4), or also disable "Route planen" until changed?
 - **Q2.** Show `shallow-approach` as its own state, or fold it into `ok`
   (Marstal would then read clean for the reference boat, as it does today)?
+  Folding is the less cautious option: it drops the pick-time caveat for a
+  route relaxed toward `relaxationFloorM(b)`, leaving only the plan-time
+  `shallow` banner.
 - **Q3.** Derive all boats' disclosures when assets load (~1 s per hull in
   Node before skipping `known-disconnected`, §3), or lazily when the Boat tab
   mounts?
@@ -345,15 +358,21 @@ This design removes the presentation blocker only. Still separately needed:
   at `defaultSafetyDepthM(b)` and §5.2 at `settings.safetyDepthM`, so the Boat
   tab and the harbour picker disagree whenever the stored setting differs
   from the default. Acceptable, or should the selected boat's disclosure
-  follow the live setting?
+  follow the live setting? The Boat tab errs less cautious only when the live
+  setting is above the default (it under-marks); below the default it
+  over-marks.
 - **Q5.** Split `unreachable` into "at this setting" vs "at any setting this
   boat allows" (below `relaxationFloorM`)? The copy in §7 says "at {depth} m"
   to stay true for both.
+- **Q6.** Spec deviations: keep affected harbour entries selectable (§5.2)
+  or grey them out as §L prescribes; and accept a runtime-derived gate in
+  place of §C.6 bullet 2's per-harbour gate carried by the harbour list or
+  verify output?
 
 ## 13. Proposed follow-up issues (not filed)
 
-1. **Runtime per-(boat, harbour) access derivation.** New module outside the
-   closure; four states per §2; caching and off-main-thread per §9;
+1. **Runtime per-(boat, harbour) access derivation.** Extends
+   `app/src/lib/harborReachability.ts` (#834, outside the closure); four states per §2; caching and off-main-thread per §9;
    differential test against a real `NavMask.snapToNavigable`/`cellsConnected`
    and against `verify_mask.py`'s deepest-gate table. No UI.
 2. **Harbour-side marking.** `HarborPicker` option row and `PlannerPanel`
@@ -364,7 +383,8 @@ This design removes the presentation blocker only. Still separately needed:
    on 1.
 4. **Per-boat expected-drop set in `verify_mask.py` and
    `verifyMaskConnectivity.test.ts`.** Pipeline + required-check test; OWES a
-   sweep only if it touches in-closure paths. Prerequisite for any #573 deep
+   sweep (`pipeline/verify_mask.py` is IN_CLOSURE by path prefix, §10). Prerequisite for any #573 deep
    hull, independent of 2–3.
 5. **Spec amendment (main session only).** Update §N.7/§N.8's harbour lists
-   to the post-#295 mask and record the chosen direction.
+   to the post-#295 mask, amend §C.6 bullet 2 and the §L "greyed-out picker
+   entries" row per Q6, and record the chosen direction.
