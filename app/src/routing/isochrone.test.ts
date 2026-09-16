@@ -299,6 +299,43 @@ describe('#243 depth comfort preference preserves true wall-clock time and geome
   });
 });
 
+describe('#1136 salvage (SolveParams.salvage)', () => {
+  it('leaves a solve that routes unchanged: salvage fires only on a death with no best', () => {
+    expect(solve(params({ salvage: true }))).toEqual(solve(params({})));
+  });
+
+  it('a salvage pass that also empties the frontier ends the solve with the unsalvaged cause', () => {
+    // Every edge is calm: ring 1 dies, the salvage pass dies identically, and
+    // salvage never fires twice in a row, so the solve terminates. The counting
+    // deadline turns a regression of that guard (an endless synchronous loop,
+    // which vitest's timeout cannot interrupt) into a `budget-exhausted` red.
+    let reads = 0;
+    const calm = {
+      wind: new WindField(uniformWindGrid(0.1, 0)),
+      deadline: { expired: () => ++reads > 10_000 },
+    };
+    expect(solve(params({ ...calm, salvage: true }))).toEqual({
+      status: 'no-route',
+      cause: 'calm-without-motor',
+    });
+  });
+
+  it('on a mask-disconnected pair, salvage floods until a terminator instead of dying blocked', () => {
+    // Origin in a small enclosed pocket (rows 85-95, cols 110-130), 6 h forecast.
+    const walled = {
+      mask: makeMask((r: number, c: number) =>
+        r >= 85 && r <= 95 && c >= 110 && c <= 130 ? 200 : 0,
+      ),
+      wind: new WindField(uniformWindGrid(12, 0, { hours: 6 })),
+    };
+    expect(solve(params(walled))).toEqual({ status: 'no-route', cause: 'mask-blocked' });
+    expect(solve(params({ ...walled, salvage: true }))).toEqual({
+      status: 'no-route',
+      cause: 'horizon-exceeded',
+    });
+  });
+});
+
 // #243 §D.4's residual risk, demonstrated with the REAL solver (no mocks):
 // "the reachability argument is not a proof — the fallback ladder is."
 // Reusing the SAME test-only maxFrontier injection #67 established (a

@@ -53,7 +53,7 @@ import {
 // shipped, NOT the state today: the #521 maintainer ruling (2026-08-21)
 // reversed that carve-out (`SPECIAL_PURPOSE_ALL_CATEGORIES` in
 // seamarkGlyphs.ts is now empty), so the STANDARD default hides ZERO of
-// 1794 and `SEAMARK_DISPLAY_TIER_ALL` is inert for today's shipped data —
+// the 2,905 shipped marks and `SEAMARK_DISPLAY_TIER_ALL` is inert for today's shipped data —
 // "All" renders identically to "Standard". So the Standard-category PIN
 // VALUES below are no longer smaller than PR1's own committed baseline at
 // the identical cluster/zoom pair; they are now IDENTICAL to it (measured,
@@ -135,6 +135,9 @@ import {
 
 interface ScTestMap {
   jumpTo(options: { center: [number, number]; zoom: number }): unknown;
+  getZoom(): number;
+  getCanvas(): { clientWidth: number; clientHeight: number };
+  getContainer(): { clientWidth: number; clientHeight: number };
   getLayer(id: string): unknown;
   project(lngLat: [number, number]): { x: number; y: number };
   // #999: shifts rendered content by exactly the given SCREEN-space pixel
@@ -165,13 +168,26 @@ interface ScTestMap {
     properties: Record<string, unknown>;
     geometry: { type: string; coordinates: [number, number] };
   }>;
+  // #232 item 2 settle gate: no in-view tile of any source still loading.
+  areTilesLoaded(): boolean;
+  isSourceLoaded(sourceId: string): boolean;
+  // Internal (maplibre-gl 6.9.0, `ui/map.ts` `_render`): true while a symbol
+  // placement or fade is still running; `style.ts`'s `_releaseSymbolFadeTiles`
+  // only drops tiles held for a fade on a render where it is false.
+  _placementDirty: boolean;
+  style: {
+    tileManagers: Record<
+      string,
+      { _inViewTiles: { getAllTiles(): Array<{ holdingForSymbolFade(): boolean }> } }
+    >;
+  };
 }
 
 // One of the two JOINT-densest cells (#484 F7 — an earlier revision of this
 // comment claimed "the single densest cell", which is FALSE: re-derived via
-// `node -e` over the committed `app/public/data/seamarks.json` (1,794
-// features total, matching seamarkGlyphs.ts's own doc comment), a 0.03°-grid
-// scan finds TWO cells tied at 43 marks — this one and (10.695, 54.945) —
+// `node -e` over the then-committed, pre-#295 `app/public/data/seamarks.json`
+// (1,794 features total), a 0.03°-grid scan finds TWO cells tied at 43
+// marks — this one and (10.695, 54.945) —
 // with (10.215, 54.405) next at 42. Nothing depends on the tie being
 // broken; a joint-densest cell is just as good a choice for this guard, so
 // this is purely a wording fix, not a behaviour change) within +/-0.015° of
@@ -675,8 +691,8 @@ test('#353: seamark size-axis guard — icon-overlap collision culling below z12
 // features at z10 than at z13, backwards from what culling alone predicts,
 // because a lower zoom shows a much larger geographic area on screen and
 // conflates "more area visible" with "less culling"). This test's box is
-// the app's own stated data region (CLAUDE.md: 54.3-55.3 degrees N,
-// 9.4-11.0 degrees E) — fixed in exactly the sense CLUSTER_CENTER above is
+// the app's own stated data region (#295: 54.3-55.6 degrees N,
+// 9.4-11.6 degrees E) — fixed in exactly the sense CLUSTER_CENTER above is
 // fixed (one constant real-world rectangle, re-projected to current screen
 // pixels via map.project() at each zoom), and it is deliberately the WHOLE
 // data footprint rather than a hand-picked sub-box: a `node -e` scan of the
@@ -719,15 +735,19 @@ test('#353: seamark size-axis guard — icon-overlap collision culling below z12
 // require the pair to straddle a tile boundary to count a leak, since the
 // underlying question ("did a worse-ranked mark win?") does not depend on
 // tile membership; tile membership is recorded per row for diagnosis only.
-const SEAMARK_REGION = { lonMin: 9.4, lonMax: 11.0, latMin: 54.3, latMax: 55.3 } as const;
+const SEAMARK_REGION = { lonMin: 9.4, lonMax: 11.6, latMin: 54.3, latMax: 55.6 } as const;
 
-// #232 review MAJOR 3: the committed seamarks.json holds 127 hazard
+// #232 review MAJOR 3 (re-counted at #295): the committed seamarks.json holds 174 hazard
 // features, of which two PAIRS are coincident to 5 decimal places
 // (10.09792,54.48898 and 10.05338,54.51435), so the coordinate de-dup in
-// readHazardSourceFeatures legitimately yields 125 distinct positions —
+// readHazardSourceFeatures legitimately yields 172 distinct positions —
 // this is the non-vacuity pin for this test's "whole app data region"
 // claim, checked once per zoom below.
-const EXPECTED_HAZARD_POSITIONS = 125;
+const EXPECTED_HAZARD_POSITIONS = 172;
+
+// #232 item 2 viewports, one per sampled zoom (see that test's comment).
+const Z8_VIEWPORT = { width: 2200, height: 1500 } as const;
+const Z9_VIEWPORT = { width: 3010, height: 2000 } as const;
 
 interface RenderedHazardFeature {
   lng: number;
@@ -796,11 +816,31 @@ async function readHazardRenderedFeaturesInRegion(
   page: Page,
   region: typeof SEAMARK_REGION,
 ): Promise<RenderedHazardFeature[]> {
+  return (await readHazardRenderedSnapshot(page, region)).features;
+}
+
+// One synchronous page read, so the settle flags and the features describe
+// the same moment: no tile message can land between them.
+async function readHazardRenderedSnapshot(
+  page: Page,
+  region: typeof SEAMARK_REGION,
+): Promise<{
+  tilesLoaded: boolean;
+  placementSettled: boolean;
+  features: RenderedHazardFeature[];
+}> {
   return page.evaluate((region) => {
     const map = (window as unknown as { __scE2eMap: ScTestMap }).__scE2eMap;
+    const tilesLoaded = map.isSourceLoaded('sc-seamarks') && map.areTilesLoaded();
+    // A tile from the previous zoom stays renderable while held for the
+    // symbol fade; queryRenderedFeatures then reports its coarser geometry.
+    const fadeHeld = map.style.tileManagers['sc-seamarks']._inViewTiles
+      .getAllTiles()
+      .some((t) => t.holdingForSymbolFade());
+    const placementSettled = !map._placementDirty && !fadeHeld;
     const nw = map.project([region.lonMin, region.latMax]);
     const se = map.project([region.lonMax, region.latMin]);
-    return map
+    const features = map
       .queryRenderedFeatures(
         [
           [nw.x, nw.y],
@@ -814,6 +854,7 @@ async function readHazardRenderedFeaturesInRegion(
         priority: Number(f.properties.priority),
         icon: String(f.properties.icon),
       }));
+    return { tilesLoaded, placementSettled, features };
   }, region);
 }
 
@@ -822,19 +863,36 @@ async function readHazardRenderedFeaturesInRegion(
 // region query instead of the small cluster box, and comparing the full
 // sorted (lng,lat,priority,icon) tuple set rather than icon ids alone, so a
 // same-count SWAP at the region scale is caught exactly as it is above.
+//
+// A read counts toward the stable window only when no in-view tile is loading
+// AND placement has settled with no tile held for the symbol fade; any other
+// read resets the window. A tile from the previous zoom stays renderable
+// while held for the fade, so three reads can agree on its coarser geometry
+// and then change: CI run 34991379729 failed the recheck below that way.
+// Delaying `sc-seamarks` tile loads by 1.2 s reproduced it on the
+// stability-only gate (4 of 4 red) and on the tiles-loaded-only gate (2 of
+// 3); this gate passed 3 of 3. REGION_SETTLE_MAX_READS exceeds
+// SETTLE_MAX_READS because the gate now also waits out the region's tile
+// loads and fades.
+const REGION_SETTLE_MAX_READS = 50; // ~20s at 400ms cadence; exhaustion throws
 async function settledHazardRenderedFeatures(
   page: Page,
   region: typeof SEAMARK_REGION,
   label: string,
 ): Promise<RenderedHazardFeature[]> {
-  const countHistory: number[] = [];
+  const history: string[] = [];
   const recentReads: RenderedHazardFeature[][] = [];
-  for (let reads = 0; reads <= SETTLE_MAX_READS; reads++) {
+  for (let reads = 0; reads <= REGION_SETTLE_MAX_READS; reads++) {
     if (reads > 0) await page.waitForTimeout(SETTLE_POLL_INTERVAL_MS);
-    const next = (await readHazardRenderedFeaturesInRegion(page, region)).sort(
-      (a, b) => a.lng - b.lng || a.lat - b.lat,
+    const snapshot = await readHazardRenderedSnapshot(page, region);
+    const next = snapshot.features.sort((a, b) => a.lng - b.lng || a.lat - b.lat);
+    history.push(
+      `${next.length}${snapshot.tilesLoaded ? '' : '(loading)'}${snapshot.placementSettled ? '' : '(placing)'}`,
     );
-    countHistory.push(next.length);
+    if (!snapshot.tilesLoaded || !snapshot.placementSettled) {
+      recentReads.length = 0;
+      continue;
+    }
     recentReads.push(next);
     if (recentReads.length > SETTLE_STABLE_READS_REQUIRED) recentReads.shift();
     const windowStable =
@@ -843,9 +901,9 @@ async function settledHazardRenderedFeatures(
     if (windowStable) return next;
   }
   throw new Error(
-    `[${label}] hazard layer placement in the region never stabilized across ${countHistory.length} reads ` +
-      `(${SETTLE_POLL_INTERVAL_MS}ms apart, ${SETTLE_STABLE_READS_REQUIRED} consecutive matches required); ` +
-      `counts seen: ${JSON.stringify(countHistory)}`,
+    `[${label}] hazard layer placement in the region never settled across ${history.length} reads ` +
+      `(${SETTLE_POLL_INTERVAL_MS}ms apart, ${SETTLE_STABLE_READS_REQUIRED} consecutive matching reads with ` +
+      `tiles loaded and placement settled required); counts seen: ${JSON.stringify(history)}`,
   );
 }
 
@@ -953,16 +1011,14 @@ interface CulledHazardRow {
 test('#232 item 2: cross-tile placement ordering — measurement, not a fix', async ({ page }) => {
   const server = await startPreview(page);
   try {
-    // #232 review MINOR 9: measured live at this exact viewport (2200x1500)
-    // against z9 — map canvas 1459x1500 CSS px; the region projects to
-    // 1165.1x1263.3 px anchored at nw (147.0, 114.4) -> se (1312.0, 1377.8).
-    // ~147px horizontal / ~114px vertical margin: comfortably big enough that
-    // the whole SEAMARK_REGION's map-canvas footprint fits inside the
-    // visible map even after the wide-layout side panel takes its share of
-    // the viewport width, but NOT so big that a taller header, a wider
-    // default panel, or a `--sc-panel-w` default change couldn't erode it —
-    // see the `unexplained` assertion below for what happens if it ever does.
-    await page.setViewportSize({ width: 2200, height: 1500 });
+    // #232 review MINOR 9, re-measured for the #295 region (9.4-11.6E /
+    // 54.3-55.6N). z8.663 at Z8_VIEWPORT: canvas 1459x1500 CSS px, region
+    // nw (95.4, 92.2) -> se (1363.6, 1397.3). z9 no longer fits that
+    // viewport (22 of 172 region hazard marks projected off-canvas), so it
+    // uses Z9_VIEWPORT: canvas 1999x2000, region nw (198.5, 169.1) -> se
+    // (1800.5, 1817.6). Z9_VIEWPORT stays inside what MAX_BOUNDS allows at z9
+    // without clamping; the `offCanvas` assertion below pins the fit.
+    await page.setViewportSize(Z8_VIEWPORT);
     await page.goto(server.url);
     await mapReady(page);
     await waitForSeamarksLayer(page);
@@ -979,21 +1035,47 @@ test('#232 item 2: cross-tile placement ordering — measurement, not a fix', as
 
     const rows: CulledHazardRow[] = [];
 
-    for (const zoom of [8, 9]) {
-      await page.evaluate(
-        ({ center, zoom }) =>
-          (window as unknown as { __scE2eMap: ScTestMap }).__scE2eMap.jumpTo({ center, zoom }),
+    // The recorded aperture, pinned so a MAX_BOUNDS zoom clamp cannot move it:
+    // the pre-#295 bounds clamped the requested z8 to 8.663, the #295 bounds to
+    // 8.394, where a real fractional-zoom ordering leak shows (#1248).
+    for (const zoom of [8.663, 9]) {
+      // #295: the widened region no longer fits the 2200x1500 viewport at z9,
+      // so z9 gets its own. Wait for MapLibre's canvas to follow the container
+      // before moving the camera.
+      await page.setViewportSize(zoom === 9 ? Z9_VIEWPORT : Z8_VIEWPORT);
+      await expect
+        .poll(() =>
+          page.evaluate(() => {
+            const map = (window as unknown as { __scE2eMap: ScTestMap }).__scE2eMap;
+            const canvas = map.getCanvas();
+            const container = map.getContainer();
+            return [
+              canvas.clientWidth - container.clientWidth,
+              canvas.clientHeight - container.clientHeight,
+            ];
+          }),
+        )
+        .toEqual([0, 0]);
+      const renderedZoom = await page.evaluate(
+        ({ center, zoom }) => {
+          const map = (window as unknown as { __scE2eMap: ScTestMap }).__scE2eMap;
+          map.jumpTo({ center, zoom });
+          return map.getZoom();
+        },
         { center: regionCenter, zoom },
       );
+      expect(renderedZoom, `requested z${zoom} rendered at z${renderedZoom}`).toBeCloseTo(zoom, 6);
+      // Tiles load at the integer zoom at or below the camera zoom.
+      const tileZoom = Math.floor(zoom);
 
       const rendered = await settledHazardRenderedFeatures(page, SEAMARK_REGION, `z${zoom}`);
       const source = await readHazardSourceFeatures(page);
 
       // Non-vacuity guard for this test's OWN scope claim: the committed
-      // seamarks.json holds 127 hazard features, of which two PAIRS are
+      // seamarks.json holds 174 hazard features, of which two PAIRS are
       // coincident to 5 decimal places (10.09792,54.48898 and
       // 10.05338,54.51435), so the coordinate de-dup above legitimately
-      // yields 125 distinct positions. If fewer source tiles are renderable
+      // yields 172 distinct positions. If fewer source tiles are renderable
       // at query time, a mark drops out of BOTH the source and the rendered
       // set, produces no row, and trips nothing below — a silently shrunken
       // measurement that still reports "zero leaks".
@@ -1025,6 +1107,18 @@ test('#232 item 2: cross-tile placement ordering — measurement, not a fix', as
           `a tile likely arrived mid-measurement`,
       ).toEqual(rendered);
 
+      // Every region mark must project inside the visible map canvas, or a
+      // mark MapLibre placed in its off-screen padding reads as culled.
+      const offCanvas = await page.evaluate((marks) => {
+        const map = (window as unknown as { __scE2eMap: ScTestMap }).__scE2eMap;
+        const { clientWidth: w, clientHeight: h } = map.getCanvas();
+        return marks.filter((m) => {
+          const p = map.project([m.lng, m.lat]);
+          return p.x < 0 || p.x > w || p.y < 0 || p.y > h;
+        });
+      }, inRegion);
+      expect(offCanvas, `z${zoom}: region hazard marks outside the visible map canvas`).toEqual([]);
+
       const renderedKeys = new Set(rendered.map((f) => `${f.lng.toFixed(5)},${f.lat.toFixed(5)}`));
 
       for (const mark of source) {
@@ -1047,8 +1141,8 @@ test('#232 item 2: cross-tile placement ordering — measurement, not a fix', as
           mark.lat,
         ]);
 
-        const culledTile = tileXY(mark.lng, mark.lat, zoom);
-        const displacerTile = displacer ? tileXY(displacer.lng, displacer.lat, zoom) : null;
+        const culledTile = tileXY(mark.lng, mark.lat, tileZoom);
+        const displacerTile = displacer ? tileXY(displacer.lng, displacer.lat, tileZoom) : null;
 
         rows.push({
           zoom,
@@ -1068,18 +1162,18 @@ test('#232 item 2: cross-tile placement ordering — measurement, not a fix', as
     // actually needed — an unconditional full-table dump cost ~2000 lines on
     // every green run of a required-adjacent job for a table nobody reads.
     console.log(
-      `[#232 item 2] culled-hazard-mark measurement across z8/z9, whole app data region: ` +
+      `[#232 item 2] culled-hazard-mark measurement across z8.663/z9, whole app data region: ` +
         `${rows.length} culled, ${rows.filter((r) => r.crossTile).length} cross-tile, ` +
         `${rows.filter((r) => r.leak).length} leaks.`,
     );
 
     // The measurement must actually EXERCISE hazard-vs-hazard collision
-    // culling at least once, at z8 or z9 — otherwise a green result here
+    // culling at least once, at z8.663 or z9 — otherwise a green result here
     // carries no information (CLAUDE.md: "an experiment that never ran
     // emits exactly the output of one that found nothing").
     expect(
       rows.length,
-      'no hazard mark was culled at z8 or z9 anywhere in the app data region — this measurement ' +
+      'no hazard mark was culled at z8.663 or z9 anywhere in the app data region — this measurement ' +
         'did not exercise hazard-vs-hazard collision culling at all, so it cannot speak to #232 item 2',
     ).toBeGreaterThan(0);
 
@@ -1093,10 +1187,10 @@ test('#232 item 2: cross-tile placement ordering — measurement, not a fix', as
     expect(
       unexplained,
       `${unexplained.length} culled hazard mark(s) had no overlapping displacer found at their own ` +
-        `screen pixel — either viewport clipping (see the setViewportSize comment above), or a `
-        + `displacer on a layer this probe does not search: nearestDisplacerAt looks only at the `
-        + `two seamark layers, so a harbour label or basemap symbol that won the collision slot `
-        + `is invisible to it (measured at #1148, whose layer reorder produced exactly this); ` +
+        `screen pixel — either viewport clipping (see the setViewportSize comment above), or a ` +
+        `displacer on a layer this probe does not search: nearestDisplacerAt looks only at the ` +
+        `two seamark layers, so a harbour label or basemap symbol that won the collision slot ` +
+        `is invisible to it (measured at #1148, whose layer reorder produced exactly this); ` +
         `investigate before trusting the rest of this table: ${JSON.stringify(unexplained, null, 2)}`,
     ).toEqual([]);
 

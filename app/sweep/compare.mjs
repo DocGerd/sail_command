@@ -62,9 +62,16 @@
  * the per-plan compare — order-independent — reports every plan identical).
  *
 
+ * #295: `--harbour-superset` (ORDER-SENSITIVE: dirA BASE, dirB HEAD) relaxes
+ * only the per-arm harbour-set check, for a change that ADDS harbours: every
+ * BASE harbour must exist in HEAD, shared harbours are compared byte-for-byte
+ * as in default mode, and HEAD-only rows are counted with their own outcome
+ * distribution but never compared. The digest covers shared harbours only, in
+ * each side's own key order. Refused alongside the other two modes.
+ *
  * NAMED RESIDUAL (PR #488 review): this only checks that BOTH SIDES agree on
  * which arms exist and which harbours each arm covers — it has no idea that
- * a real run always covers all 33 harbours, so it cannot distinguish a
+ * a real run always covers every harbour in `harbors.json`, so it cannot distinguish a
  * genuine full comparison from two `SC_SWEEP_LIMIT`-truncated runs compared
  * against each other (README.md's own "never for a real comparison" caveat
  * on that env var is not mechanically enforced here). The summary line below
@@ -90,16 +97,22 @@ const rawArgs = process.argv.slice(2);
 const canonical = rawArgs.includes('--canonical');
 // #553 MAJOR 4: the third mode. ORDER-SENSITIVE — dirA must be BASE, dirB HEAD.
 const rigVerdictChange = rawArgs.includes('--rig-verdict-change');
-const [a, b] = rawArgs.filter((x) => x !== '--canonical' && x !== '--rig-verdict-change');
+// #295: ORDER-SENSITIVE too — dirA BASE, dirB HEAD.
+const harbourSuperset = rawArgs.includes('--harbour-superset');
+const [a, b] = rawArgs.filter(
+  (x) => x !== '--canonical' && x !== '--rig-verdict-change' && x !== '--harbour-superset',
+);
 if (!a || !b) {
   console.error(
-    'usage: node compare.mjs [--canonical | --rig-verdict-change] <dirA> <dirB>\n' +
-      '  --rig-verdict-change is ORDER-SENSITIVE: <dirA> BASE, <dirB> HEAD',
+    'usage: node compare.mjs [--canonical | --rig-verdict-change | --harbour-superset] <dirA> <dirB>\n' +
+      '  --rig-verdict-change and --harbour-superset are ORDER-SENSITIVE: <dirA> BASE, <dirB> HEAD',
   );
   process.exit(2);
 }
-if (canonical && rigVerdictChange) {
-  console.error('FAIL: --canonical and --rig-verdict-change are different claims; pass one');
+if ([canonical, rigVerdictChange, harbourSuperset].filter(Boolean).length > 1) {
+  console.error(
+    'FAIL: --canonical, --rig-verdict-change and --harbour-superset are different claims; pass one',
+  );
   process.exit(2);
 }
 
@@ -138,6 +151,11 @@ const outcomes = {};
 // #553 MAJOR 4: half 2's bookkeeping (unused unless --rig-verdict-change).
 let verdictChanges = 0;
 const verdictViolations = [];
+// #295: HEAD-only rows under --harbour-superset (counted, never compared).
+let headOnlyTotal = 0;
+const headOnlyOutcomes = {};
+const outcomeOf = (plan) =>
+  plan.status === 'ok' ? (plan.shallow ? 'ok+shallow' : 'ok') : `error/${plan.reason}`;
 
 for (const arm of arms) {
   const fa = readFileSync(`${a}/${arm}.json`, 'utf8');
@@ -145,7 +163,18 @@ for (const arm of arms) {
   const ja = JSON.parse(fa);
   const jb = JSON.parse(fb);
   const keys = Object.keys(ja).sort();
-  if (keys.join() !== Object.keys(jb).sort().join()) {
+  if (harbourSuperset) {
+    const missing = keys.filter((k) => !Object.hasOwn(jb, k));
+    if (missing.length) {
+      console.error(`ARM ${arm}: BASE harbours missing from HEAD: ${missing.join(', ')}`);
+      process.exit(1);
+    }
+    for (const k of Object.keys(jb).filter((k) => !Object.hasOwn(ja, k))) {
+      headOnlyTotal++;
+      const o = outcomeOf(jb[k]);
+      headOnlyOutcomes[o] = (headOnlyOutcomes[o] ?? 0) + 1;
+    }
+  } else if (keys.join() !== Object.keys(jb).sort().join()) {
     console.error(`ARM ${arm}: harbour set differs`);
     process.exit(1);
   }
@@ -186,26 +215,46 @@ for (const arm of arms) {
         if (!verdict.ok) verdictViolations.push(`${arm}/${k}  ${verdict.why}`);
       }
     }
-    const o = ja[k].status === 'ok' ? (ja[k].shallow ? 'ok+shallow' : 'ok') : `error/${ja[k].reason}`;
+    const o = outcomeOf(ja[k]);
     outcomes[o] = (outcomes[o] ?? 0) + 1;
   }
   // Whole-file digest as well: catches an order change a per-plan compare
   // would not see (both classes — see header comment). DIAGNOSTIC ONLY,
   // never gating: this line's verdict does not affect the exit code below.
+  const sharedInOwnOrder = (j) =>
+    JSON.stringify(
+      Object.fromEntries(
+        Object.keys(j)
+          .filter((k) => Object.hasOwn(ja, k))
+          .map((k) => [k, j[k]]),
+      ),
+    );
   const digestA = rigVerdictChange
     ? JSON.stringify(Object.fromEntries(keys.map((k) => [k, withoutRigRecommendation(ja[k])])))
     : canonical
       ? JSON.stringify(canonA)
-      : fa;
+      : harbourSuperset
+        ? sharedInOwnOrder(ja)
+        : fa;
   const digestB = rigVerdictChange
     ? JSON.stringify(Object.fromEntries(keys.map((k) => [k, withoutRigRecommendation(jb[k])])))
     : canonical
       ? JSON.stringify(canonB)
-      : fb;
+      : harbourSuperset
+        ? sharedInOwnOrder(jb)
+        : fb;
   console.log(
     `arm ${arm.padEnd(16)} ${keys.length} plans  sha A=${sha(digestA)} B=${sha(digestB)} ${
       digestA === digestB ? 'IDENTICAL' : '*** DIFFERS ***'
-    }${canonical ? ' (canonical)' : rigVerdictChange ? ' (rig-verdict-change)' : ''}`,
+    }${
+      canonical
+        ? ' (canonical)'
+        : rigVerdictChange
+          ? ' (rig-verdict-change)'
+          : harbourSuperset
+            ? ' (harbour-superset, shared harbours)'
+            : ''
+    }`,
   );
 }
 
@@ -218,6 +267,11 @@ console.log(
   `\n${same}/${total} plans ${modeWord}-identical across ${arms.length} arms x ${harboursPerArm} harbours/arm`,
 );
 console.log('A-side outcome distribution:', JSON.stringify(outcomes));
+if (harbourSuperset) {
+  console.log(
+    `HEAD-only harbour rows: ${headOnlyTotal} across ${arms.length} arms; outcome distribution: ${JSON.stringify(headOnlyOutcomes)}`,
+  );
+}
 if (rigVerdictChange) {
   console.log(
     `#553 verdict changes: ${verdictChanges} (all must be decided -> not-compared on a plan with <2 solved sails)`,

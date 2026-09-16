@@ -582,14 +582,18 @@ function appVersion(command: 'build' | 'serve'): string {
 // other): invariants.property 306.4s, issue20 278.3s, salona44 196.2s,
 // relaxationFloor 169.7s, depthComfort 113.4s, mirrorCase 1.3s.
 //
-// `mirrorCase` is EXCLUDED from this array: at ~90x below its nearest
-// neighbour it is small AND fast — the exact inverse of the admission
-// criterion this array exists for (a file that is small but SLOW, so
-// BaseSequencer's size-descending default schedules it last). Pinning it to
-// the front would spend a first-wave worker slot on nothing.
+// `mirrorCase` WAS excluded from this array on that measurement: at ~90x
+// below its nearest neighbour it was small AND fast — the inverse of the
+// admission criterion this array exists for (a file that is small but SLOW,
+// so BaseSequencer's size-descending default schedules it last).
 //
-// The other four `realmask.repro.*` siblings are ordered by that
-// measurement (issue20 > salona44 > relaxationFloor > depthComfort).
+// #1136 invalidated that: its motor-off pass 2 made `mirrorCase` slow, and
+// added the small, slow `realmask.repro.motorOffSalvage.test.ts`. Re-measured
+// WITHIN ONE RUN (`vitest run realmask`, 2026-09-15, summed test durations,
+// comparable only to each other): issue20 332.5s, salona44 247.3s,
+// relaxationFloor 218.9s, motorOffSalvage 180.5s, depthComfort 147.9s,
+// mirrorCase 97.5s, weaveEta847 45.2s (not pinned; outside #1136's scope).
+// The pinned `realmask.repro.*` entries follow that order.
 // `invariants.property.test.ts` is kept FIRST on its OWN #214 justification
 // (independent of this PR's realmask measurements) — this does NOT claim it
 // is slower than `issue20`: a ~10% gap under shared load establishes
@@ -600,7 +604,13 @@ const SLOW_TEST_FILES_FIRST = [
   'src/routing/realmask.repro.issue20.test.ts',
   'src/routing/realmask.repro.salona44.test.ts',
   'src/routing/realmask.repro.relaxationFloor.test.ts',
+  'src/routing/realmask.repro.motorOffSalvage.test.ts',
   'src/routing/realmask.repro.depthComfort.test.ts',
+  'src/routing/realmask.repro.mirrorCase.test.ts',
+  // #295: 556 s on CI run 34991379729, the third-slowest file there, 12.8 KB,
+  // and the last file of that run to finish. Measured on a different run from
+  // the realmask figures above, so its position here ranks against neither.
+  'src/routing/relaxationTrade.differential.test.ts',
 ];
 
 // Extends BaseSequencer rather than reimplementing it: only `sort` changes
@@ -640,8 +650,9 @@ export default defineConfig(({ command }) => ({
       // working until the user opts into ReloadPrompt's reload.
       registerType: 'prompt',
       injectManifest: {
-        // ~33 MB expected (basemap.pmtiles.png + mask.bin + polars + sprites
-        // + app shell) — see spec §7's first-load budget. The ~11 MB of font
+        // ~40 MB (basemap.pmtiles.png + mask.bin + polars + sprites + app
+        // shell; the #295 build reports 31 precache entries, 38,784 KiB) —
+        // see spec §7's first-load budget. The ~11 MB of font
         // glyph ranges are runtime-cached, not precached (#28, below).
         // #118: the basemap archive ships as `.pmtiles.png` (CDN gzip-of-
         // range workaround, see src/lib/basemap.ts) — it is matched by the
@@ -700,7 +711,7 @@ export default defineConfig(({ command }) => ({
         name: isUat ? 'SailCommand UAT' : 'SailCommand',
         short_name: isUat ? 'SailCommand UAT' : 'SailCommand',
         description:
-          'Offline-Törnplaner für zeitoptimale Segelrouten in Flensburger Förde und Dänischer Südsee. Kein Navigationsgerät.',
+          'Offline-Törnplaner für zeitoptimale Segelrouten von der Flensburger Förde und Dänischen Südsee bis zum Kleinen Belt und Fehmarn. Kein Navigationsgerät.',
         lang: 'de',
         theme_color: '#10243D',
         background_color: '#10243D',

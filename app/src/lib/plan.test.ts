@@ -1,5 +1,39 @@
 import { describe, it, expect } from 'vitest';
-import { isStaleForecast, staleForecastGapHours, activeRigResult } from './plan';
+import {
+  activeRigResult,
+  isStaleForecast,
+  NO_ROUTE_MESSAGE_KEY,
+  noRouteMessageKey,
+  staleForecastGapHours,
+} from './plan';
+
+describe('#885 noRouteMessageKey', () => {
+  const motorOn = { settings: DEFAULT_SETTINGS };
+  const motorOff = { settings: { ...DEFAULT_SETTINGS, motorEnabled: false } };
+
+  it('calm-sail-only names "unmark it" only while the motor is on', () => {
+    expect(noRouteMessageKey('calm-sail-only', motorOn)).toBe('error.noRoute.calmSailOnly');
+    expect(noRouteMessageKey('calm-sail-only', motorOff)).toBe(
+      'error.noRoute.calmSailOnlyMotorOff',
+    );
+  });
+
+  it('beyond-horizon adds the unmark remedy only when a segment is sail-only', () => {
+    expect(noRouteMessageKey('beyond-horizon', motorOn)).toBe('error.noRoute.beyondHorizon');
+    expect(noRouteMessageKey('beyond-horizon', { ...motorOn, segmentModes: [null, 'motor'] })).toBe(
+      'error.noRoute.beyondHorizon',
+    );
+    expect(noRouteMessageKey('beyond-horizon', { ...motorOn, segmentModes: [null, 'sail'] })).toBe(
+      'error.noRoute.beyondHorizonSailOnly',
+    );
+  });
+
+  it('every other reason reads the table', () => {
+    expect(noRouteMessageKey('unreachable', { ...motorOn, segmentModes: ['sail'] })).toBe(
+      NO_ROUTE_MESSAGE_KEY.unreachable,
+    );
+  });
+});
 import { uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS, type Plan } from '../types';
 import { defaultBoatSnapshot } from '../types';

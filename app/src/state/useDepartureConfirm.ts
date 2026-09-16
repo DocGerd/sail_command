@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { savePlan } from '../services/db';
 import { DEFAULT_SAIL_IDS } from '../data/boats';
-import { NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
+import { noRouteMessageKey } from '../lib/plan';
+import { pinRegionsAfterDepartureConfirm, type PinAfterSave } from '../services/pinAfterSave';
 import {
   disposeAfterFailure,
   failureLeavesWorkerHealthy,
@@ -49,6 +50,7 @@ const IDLE_STATE: DepartureConfirmState = { confirming: false, departureMs: null
 
 export interface DepartureConfirmDeps {
   save?: typeof savePlan;
+  pinRegions?: PinAfterSave;
 }
 
 /**
@@ -122,7 +124,11 @@ export function useDepartureConfirm(
         }
 
         if (result.status === 'error') {
-          setState({ confirming: false, departureMs, error: NO_ROUTE_MESSAGE_KEY[result.reason] });
+          setState({
+            confirming: false,
+            departureMs,
+            error: noRouteMessageKey(result.reason, request),
+          });
           return null;
         }
 
@@ -147,6 +153,9 @@ export function useDepartureConfirm(
           });
           return null;
         }
+        // #1233: never awaited — pinning cannot delay or fail the confirm.
+        const pinRegions = deps.pinRegions ?? pinRegionsAfterDepartureConfirm;
+        pinRegions(updated);
 
         setState({ confirming: false, departureMs, error: null });
         return updated;
@@ -154,7 +163,7 @@ export function useDepartureConfirm(
         busyRef.current = false;
       }
     },
-    [ensureClient, deps.save],
+    [ensureClient, deps.save, deps.pinRegions],
   );
 
   const clearError = useCallback(() => setState((s) => ({ ...s, error: null })), []);

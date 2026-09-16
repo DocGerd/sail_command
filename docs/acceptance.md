@@ -370,7 +370,8 @@ selected in §1.
       and the point is unchanged (#886). Re-open the edit, change a value,
       press "Update coordinates", and confirm the marker moves. Coordinates
       outside the covered area are refused with "The coordinates lie
-      outside the covered area (Flensburg Fjord / Danish South Sea)." and
+      outside the covered area (Flensburg Fjord, Danish South Sea, Little
+      Belt, western Great Belt approach, Fehmarn)." and
       nothing is added. Re-plan through the point and confirm 2.1 still
       holds, then remove it ("Remove waypoint N") and re-plan before §3
       (#829).
@@ -455,7 +456,12 @@ Do this part on an actual Android phone with Chrome.
 - [ ] **4.3 Saved plan renders offline, incl. basemap.** Still in airplane
       mode, open a previously-saved plan. The route, both rig ETAs, and the
       map basemap tiles must all render — nothing should show a broken/blank
-      map tile or a "failed to load" state.
+      map tile or a "failed to load" state. §2's and §3's routes both sit
+      inside the eagerly precached core area, so this holds unconditionally
+      for them. For a plan reaching into the map's northern or eastern
+      extension, its region archive must have been saved while online first —
+      the route result says whether it is — and a blank tile out there
+      without it is that archive missing, not a basemap fault (#295).
 - [ ] **4.4 Live view on a short walk.** With a loaded plan active and
       location permission granted, use Live view and walk a short distance
       outside. Confirm the position marker moves, heading-to-steer (HTS)

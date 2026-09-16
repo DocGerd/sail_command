@@ -20,7 +20,7 @@ test('true offline reload: precached app shell renders and a saved plan reloads 
 
     // Resolves once this origin has an active worker. workbox-precaching's
     // install-event handler (src/sw.ts) awaits the full precache download
-    // (~33 MB, including the 27 MB basemap.pmtiles.png — fonts are runtime-
+    // (~40 MB, including the 27 MB basemap.pmtiles.png — fonts are runtime-
     // cached since #28) before the worker can reach 'installed'; since this
     // is a brand-new registration with no prior controller to conflict
     // with, it then auto-activates, and clientsClaim() (also sw.ts) hands

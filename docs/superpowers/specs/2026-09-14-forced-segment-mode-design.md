@@ -15,7 +15,7 @@ lets the captain state the mode for a stretch of the passage directly.
 |---|---|---|
 | R1 | Hard constraint or preference? | **Hard, both directions.** Forced motor plans motor only; forced sail never motors. |
 | R2 | Unit of the override | **The waypoint segment** (origin→via, via→via, via→destination). A `Leg` is solver output and is not addressable before planning. |
-| R3 | Does it apply to both rig solves? | **Yes, to every requested sail.** Forced-motor segments use a **rig-independent heading fan** (§3.2). |
+| R3 | Does it apply to both rig solves? | **Yes, to every requested sail.** |
 | R4 | Forced motor while `settings.motorEnabled` is false | **Rejected** (enforcement: §3.3, §6). |
 | R5 | Mark forced legs in the result | **Yes**, optional `forced` marker on legs. |
 | R6 | Via edits | Structural edits **clear** the affected overrides; inserting a via **inside** a forced segment copies its mode to both halves; live reroute drops all overrides with the vias, disclosed. |
@@ -62,7 +62,9 @@ mask-only and stay mode-agnostic.
   from a **fixed heading fan plus the direct bearing**, independent of
   `polar.beatAngleDeg`/`gybeAngleDeg` (meaningless with no sail up). The fan's
   spacing is an implementation choice; the PR must report its candidate count
-  against today's per-node candidate set (`mags` in `solve`, motor enabled).
+  against today's per-node candidate set (`twas` in `solve`, motor enabled).
+  Implemented: `FORCED_MOTOR_HEADINGS` (10°) is 36 headings plus the direct
+  bearing, at most 37, vs `twas` at most 39 (PR #1244).
 - Rig independence claimed here is polar independence. Forced-motor geometry does not read the clock except at the forecast horizon, so both rigs should produce identical geometry up to floating-point near-ties; §7 measures it and a mismatch is a finding.
 - Motor turns stay uncharged (motor-decision spec §10). The #264 justification
   for motor weaving (sail-locked heading bands) does not exist inside an
@@ -74,20 +76,31 @@ mask-only and stay mode-agnostic.
 - Via-joint maneuver-state reset and per-segment `mergeCollinearLegs` are
   unchanged; merging never crosses a joint, so a forced span never merges into a
   neighbour.
-- Every leg solved in a forced segment carries `forced: true`.
+- Every leg solved in a forced segment carries `forced: true`, set by
+  `planRoute.ts:markForced` in `run` after `mergeCollinearLegs`.
 
 ### 3.3 Pre-solve validation
 
 `planRoute` returns a typed error, with no solve, when:
 - any entry is `'motor'` and `settings.motorEnabled` is false (label
   `segment-mode-conflict`), or
-- `segmentModes.length !== viaPoints.length + 1`.
+- `segmentModes.length !== viaPoints.length + 1`, or an entry is not
+  `null`/`'motor'`/`'sail'` (label `segment-modes-invalid`).
 
-That rejection is the R4 guarantee. The UI additionally shows the conflict on
-the segment control while the motor is off (§6), which covers the
-settings-first order: mark a segment motor, disable the motor, then Plan.
+That rejection is the R4 guarantee. Intake (`state/replan.ts:dedupeRequestVias`,
+in `usePlanFlow.run` and `replanWithVias`) also refuses the R4 conflict and a
+length mismatch before the wind fetch; `planRoute` keeps its own checks.
+`App.tsx:handlePlan` shows no "waypoint skipped" banner beside an intake
+refusal. The UI additionally shows the conflict on the segment control while
+the motor is off (§6), which covers the settings-first order: mark a segment
+motor, disable the motor, then Plan.
 
 The length check is only safe once every producer keeps the invariant (§5.2).
+
+Each label needs a `NO_ROUTE_MESSAGE_KEY` entry and de + en copy.
+`error.noRoute.segmentModeConflict` names both remedies: enable the motor under
+Boat › Propulsion, or change the segment. `segment-modes-invalid`'s copy is an
+internal-state message: a user reaches it only through a producer defect.
 
 ## 4. Failure modes
 
@@ -102,22 +115,32 @@ The length check is only safe once every producer keeps the invariant (§5.2).
   `calm-without-motor`.
 - Copy names the real remedy: "Too little wind to sail the segment you marked
   sail-only. Unmark it or choose another departure." (de + en).
+- `noRouteMessageKey` selects `error.noRoute.calmSailOnlyMotorOff` when
+  `settings.motorEnabled` is false: "Too little wind to sail the segment you
+  marked sail-only. Choose another departure, or enable the motor and unmark the
+  segment." (de + en). Unmarking alone cannot help while the motor is off.
 - A plan whose request carries a forced-sail segment and fails
   `horizon-exceeded` also names "unmark the sail-only segment" in its remedy.
   The label stays `beyond-horizon` (#282: labels are a function of the cause);
   a presentation helper `noRouteMessageKey(reason, request)` in `lib/plan.ts`
-  replaces every direct `NO_ROUTE_MESSAGE_KEY[...]` read that renders copy
-  (usePlanFlow, replan, reroute, useDepartureConfirm, RouteSummary,
-  DepartureCompare). `migratePlan.ts`'s `Object.hasOwn` validation keeps
-  reading the table.
+  replaces every direct `NO_ROUTE_MESSAGE_KEY[...]` read that renders a
+  `planRoute` reason (usePlanFlow, replan, reroute, useDepartureConfirm,
+  RouteSummary, DepartureCompare). `state/replan.ts:dedupeRequestVias` reads
+  the table directly for its two intake refusals (§3.3), and `migratePlan.ts`'s
+  `Object.hasOwn` validation keeps reading it.
 - Forced-motor segments fail on mask, horizon and budget; on `forcedKind === 'motor'` the heuristic's fallback arm returns `mask-blocked`, since a motor candidate cannot be calm.
   Site: the `cause:` return at the end of `isochrone.ts:solve`
   (`blockedDeaths >= calmDeaths && blockedDeaths > 0 ? 'mask-blocked' : 'calm-without-motor'`).
 - One sail failing on a forced segment while the other routes is handled by
   `assemble` unchanged.
 - Disclosed residual: the death heuristic can still classify a forced-sail calm
-  as mask-blocked (#264's incidental finding). The new cause narrows the
-  "impossible constraint vs blocked mask" ambiguity; it does not close it.
+  as mask-blocked (#264's incidental finding), and forced-sail segments inherit
+  #1136: motor-off solves can die on connected water and report `mask-blocked`,
+  measured at TWS 8. At 3c5e660, unmerged PR #1243's salvage admission
+  (`salvagePassAdmitted`) read the plan-level `settings.motorEnabled`; if that
+  ships, a forced-sail segment in a motor-on plan is not salvaged. The new cause
+  narrows the "impossible constraint vs blocked mask" ambiguity; it does not
+  close it.
 
 ## 5. Persistence and via edits
 
@@ -125,6 +148,8 @@ The length check is only safe once every producer keeps the invariant (§5.2).
 
 - Absent `segmentModes` reads as no overrides; not a breaking change, no
   migration machinery.
+- The older-build disclosures below assume `PLAN_SCHEMA_VERSION` is not
+  bumped: `migratePlan` refuses a record with a newer `schemaVersion`.
 - `migratePlan.ts:migrateRequest` spreads the stored request, so a new
   top-level field would pass through unvalidated. Add a `normaliseSegmentModes`:
   absent → omit; malformed or wrong length → refuse the record (fail closed,
@@ -143,7 +168,9 @@ The length check is only safe once every producer keeps the invariant (§5.2).
 
 Draft modes live in `App.tsx` as `draftSegmentModes`, beside `draftViaPoints`.
 Via-mutation sites and their rules:
-- appends (`handleMapTap`'s via branch, `handleAddViaByCoord`, `insertViaNearestOrAppend`'s fallback) insert into the last segment, so they copy its mode to both halves (R6);
+- appends (`handleMapTap`'s via branch, `handleAddViaByCoord`,
+  `insertViaNearestOrAppend`'s fallback) split the last segment by index; this
+  spec applies R6's insertion rule to them, so they copy its mode to both halves;
 - insertion inside a segment copies the split segment's mode to both halves
   (R6): `lib/viaInsertion.ts:nearestViaInsertIndex` (via
   `App.tsx:insertViaNearestOrAppend`) and `App.tsx:handleInsertViaAfter`
@@ -155,33 +182,47 @@ Via-mutation sites and their rules:
 - the plan-sync effect loads draft modes from `plan.request` under the same #660
   guard, and `pendingFormBaselineRef` snapshots them;
 - `handleImportRoute` resets draft modes to all-`null`;
-- `handlePlan`'s `usePlanFlow` `run({ … })` request literal carries them;
+- `handlePlan`'s `usePlanFlow` `run({ … })` request literal carries them, and
+  omits the key when every entry is `null`
+  (`lib/viaInsertion.ts:requestSegmentModes`);
 - `lib/planForm.ts:planFormDirty` and `App.tsx:viaDraftStale` compare modes, so
   a mode-only edit dirties the form;
 - `lib/recalc.ts:recalcRequest` copies `segmentModes` explicitly (its
   copied-never-aliased contract);
 - `state/replan.ts:dedupeViaPoints` also returns the kept indices beside `kept`
-  (`App.tsx:droppedViaLabels` needs `kept`'s object identity). `usePlanFlow.ts`'s
-  run path and `replanWithVias` rebuild `segmentModes` from them. The mode of a
-  segment that dedupe merges is an OPEN QUESTION, to settle in the
-  implementation PR (#1232). The other two
-  callers, `droppedViaLabels` and `useViaReplan` (`droppedCount` only), need no
-  change. `replanWithVias`/`useViaReplan` have no production caller (#571);
+  (`App.tsx:droppedViaLabels` needs `kept`'s object identity).
+  `dedupeRequestVias` rebuilds `segmentModes` from them for `usePlanFlow.ts`'s
+  run path and `replanWithVias`. A run of segments that dedupe merges is allowed
+  only if every segment in it has the same mode, `null` included; the surviving
+  segment takes that mode. Any other run is refused before planning, before the
+  wind fetch, with `error.segmentModesMergeConflict` (de + en), naming the run's
+  first dropped waypoint (`mergeSegmentModes`; maintainer ruling, #1232 comment
+  5680851958). Dedupe never extends or frees a forced mode.
+  `replanWithVias(plan, viaPoints, deps, segmentModes?)` takes modes aligned with
+  its `viaPoints` argument and never carries the stored
+  `plan.request.segmentModes`; an absent argument means no overrides. The other
+  two callers, `droppedViaLabels` and `useViaReplan` (`droppedCount` only), need
+  no change. `replanWithVias`/`useViaReplan` have no production caller (#571);
 - `state/reroute.ts` drops `segmentModes` with the vias (R6): its request is a
   fresh literal.
 
-Carried by spread, no edit: `useDepartureConfirm`, `DepartureCompare`'s `base`.
+Carried by spread, no `segmentModes` edit: `useDepartureConfirm`, `DepartureCompare`'s `base`.
 
 ## 6. UI
 
 - Between consecutive waypoint rows in the planner, a segmented control
   (solver decides / motor / sail) built from the existing `Button` primitive
   and `--sc-*` tokens; de + en keys.
-- While the motor is off, the motor option is disabled with its reason shown,
-  and a segment already marked motor shows the conflict (R4, §3.3).
+- While the motor is off, the motor option is disabled, its reason is shown once
+  (first segment), and a segment already marked motor shows the conflict (R4,
+  §3.3).
 - `live.reroute.hint` (de + en) says via points and segment overrides are not carried over (R6).
-- The legs table and map label forced legs as ordered by the captain, so they
-  do not read as the solver's speed verdict.
+- The legs table labels forced legs as ordered by the captain
+  (`route.legs.forced`), so they do not read as the solver's speed verdict. The
+  map appends a one-character `route.map.forcedMark` (`*`) to the leg's speed
+  label, explained by `route.legs.forcedNote` under the legs table: a word
+  suffix culled `sc-leg-speed` labels (fixed box, z10 0 vs 1, z12 2 vs 6; PR
+  #1244).
 - Design floor: ≥ 820 CSS px (maintainer ruling 2026-09-07).
 - A Playwright locator for the new control must not collide with existing
   accessible names in either language (`getByRole` substring matching).
@@ -203,11 +244,11 @@ Carried by spread, no edit: `useDepartureConfirm`, `DepartureCompare`'s `base`.
 - #354's reproduction routes (`docs/spikes/354-mode-churn.md` §3.1) are never cited as fix evidence (R7).
 - **Persistence:** `segmentModes` and `forced` round-trip through `migratePlan`;
   a wrong-length record is refused.
-- **Mutation checks:** delete the forced-motor branch → the real-mask test reds;
+- **Mutation checks:** delete the forced-motor branch → the real-mask test reds, under a wind where the unforced plan sails part of that segment;
   drop `normaliseSegmentModes` → the wrong-length refusal test reds (the
   round-trip test stays green: `migrateRequest`'s spread already carries the
   field, §5.1); admit the new cause in `depthRelaxationMayHelp` → its truth
-  table reds. Run each at BASE as well.
+  table reds.
 - **Sweep:** `isochrone.ts` and `planRoute.ts` change, so the #282 sweep is owed
   — BASE double-run plus HEAD, detached, per `app/sweep/README.md`. Every arm
   plans with `viaPoints: []`, so it proves only that the override-absent path is

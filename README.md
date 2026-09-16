@@ -10,8 +10,9 @@
 
 **Zeitoptimale Törnplanung — offline an Bord.** — *Time-optimal passage planning — offline, on board.*
 
-SailCommand plans time-optimal sailing routes in the Flensburg Fjord /
-Danish South Sea area, using real hourly wind forecasts and an isochrone
+SailCommand plans time-optimal sailing routes from the Flensburg Fjord and
+Danish South Sea to the Little Belt, the western Great Belt approach and
+Fehmarn, using real hourly wind forecasts and an isochrone
 router that accounts for tacks and gybes. It ships polar tables for three
 boats — a Salona 45, a Salona 44 (SPEEDY GO!) and an Elan Impression 444
 (PIRANJA) — and routes for whichever one you pick. It runs entirely in the
@@ -122,17 +123,25 @@ installs as a standalone icon and works fully offline after the first visit
 
 Planning a new route requires an internet connection (wind forecast fetch);
 everything else — viewing/loading saved plans, the map, live GPS guidance —
-works fully offline once the app has been loaded once.
+works fully offline once the app has been loaded once, except that the map's
+northern and eastern extension needs its region archive saved first (see
+[First load / offline](#first-load--offline)).
 
 ## First load / offline
 
-The first visit precaches roughly **33 MB** (regional basemap tiles,
+The first visit precaches roughly **40 MB** (regional basemap tiles,
 land/depth mask, polar tables, harbor list, sprites, app shell); the ~11 MB
 of map fonts land in a runtime cache in the background after install (#28),
-for a total eventual download of ~45 MB. Subsequent visits are served from
+for a total eventual download of ~51 MB. Subsequent visits are served from
 the cache and work with no network at all; an update prompt appears when a
 new version is available in the background, applied on demand rather than
 mid-passage.
+
+The base map's northern and eastern extension ships as two separate archives
+that are deliberately **not** precached (#295). A saved route reaching into
+that ground downloads the archive it needs — on request instead, when the
+browser's data saver is on — and the route result says whether that route's
+map area is already saved and what downloading it would cost.
 
 ## Data sources & attribution
 
@@ -182,7 +191,7 @@ data; the code license is covered in the [License](#license) section below.
 
 ## Known limitations
 
-- Only 33 curated harbors are included; a handful of shallow/narrow
+- Only 40 curated harbors are included; a handful of shallow/narrow
   approaches (Schlei fairway, Dyvig channel, Gråsten bridge) remain
   disconnected from the routable mask at sub-cell resolution. The harbor
   search flags the harbors behind them before you plan to one, instead of
@@ -303,7 +312,7 @@ flowchart LR
     UI -->|"plan request + wind grid"| WORKER["isochrone router (Web Worker), tack/gybe time penalty, dual-rig"]
     WORKER -->|"Plan (legs, wind grid)"| UI
     UI <--> IDB[("IndexedDB — saved plans incl. their wind grids")]
-    SW["service worker — ~33 MB precache + runtime font cache"] -.-> UI
+    SW["service worker — ~40 MB precache + runtime font cache"] -.-> UI
   end
 ```
 

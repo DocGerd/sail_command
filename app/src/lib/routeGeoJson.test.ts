@@ -127,6 +127,20 @@ describe('legsToFeatureCollection', () => {
   });
 });
 
+describe('legsToFeatureCollection: #885 forced legs', () => {
+  it('appends the injected forced mark to a forced leg only', () => {
+    const fc = legsToFeatureCollection(
+      [SAIL_LEG, { ...MOTOR_LEG, forced: true }, { ...SAIL_LEG, forced: true }],
+      'en',
+      { motorLetter: 'M', forcedMark: '*' },
+    );
+    const labels = fc.features.map((f) => f.properties.speedLabel);
+    expect(labels[0]).not.toContain('*');
+    expect(labels[1]).toMatch(/^M · [^*]*\*$/);
+    expect(labels[2]).toMatch(/kn\*$/);
+  });
+});
+
 describe('legsToFeatureCollection: #651 render-time MARGINAL flag', () => {
   // A plain gate, deliberately not DEFAULT_SETTINGS.safetyDepthM — this file
   // tests legsToFeatureCollection's own threading, not the app's default
@@ -255,8 +269,8 @@ describe('nearestHourIndex', () => {
 });
 
 describe('adaptiveBarbFeatures', () => {
-  // Real regional grid geometry: lats 54.3..55.3, lons 9.4..11.0, 0.1° step
-  // (11 x 17 = 187 nodes), constant wind so only the sampling geometry matters.
+  // Real regional grid geometry: lats 54.3..55.6, lons 9.4..11.6, 0.1° step
+  // (14 x 23 = 322 nodes since #295), constant wind so only the sampling geometry matters.
   const GRID = makeWindGrid(() => ({ speedKn: 10, dirFromDeg: 180 }), { hours: 3 });
   const T0 = GRID.timesMs[0];
 

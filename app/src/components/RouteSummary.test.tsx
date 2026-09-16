@@ -247,6 +247,26 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe('#885 forced legs in the legs table', () => {
+  it('labels exactly the forced legs as forced, with the explanation as a title', () => {
+    const plan = makePlan();
+    const legs = GENOA_LEGS.map((l, i) => (i === 0 ? { ...l, forced: true as const } : l));
+    setSail(plan, 'genoa', { result: { ...plan.result.sails[0]!.result!, legs } });
+    const { container } = renderSummary({ plan });
+    const chips = Array.from(container.querySelectorAll('.chip-motor, .chip-sail'));
+    expect(chips.length).toBe(GENOA_LEGS.length);
+    const forced = chips.filter((c) => c.textContent?.includes(en['route.legs.forced']));
+    expect(forced).toEqual([chips[0]]);
+    expect(forced[0]!.querySelector(`[title="${en['route.legs.forcedTitle']}"]`)).not.toBeNull();
+    expect(screen.getByText(en['route.legs.forcedNote'])).toBeInTheDocument();
+  });
+
+  it('omits the map-mark note when no leg is forced', () => {
+    renderSummary({ plan: makePlan() });
+    expect(screen.queryByText(en['route.legs.forcedNote'])).not.toBeInTheDocument();
+  });
+});
+
 describe('RouteSummary', () => {
   it('wraps the results in an Ergebnis card whose heading is a focus target', () => {
     const { container } = renderSummary();

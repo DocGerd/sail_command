@@ -159,6 +159,25 @@ describe('useDepartureScan', () => {
     });
   });
 
+  // #295: an old-lattice plan fails every candidate identically with the typed
+  // key; the worker is untouched, so nothing is disposed.
+  it("'wind-grid-coverage' marks candidates failed with its own key and disposes nothing", async () => {
+    const dispose = vi.fn();
+    const plan = vi.fn().mockRejectedValue(new RoutingError('wind-grid-coverage', 'old lattice'));
+    const client: ReplanClient = { plan, dispose };
+    const { result } = renderHook(() => useDepartureScan(() => Promise.resolve(client)));
+
+    await act(async () => {
+      await result.current.scan(makeRequest({ count: 2 }));
+    });
+
+    expect(result.current.state.candidates.map((c) => c.outcome)).toEqual([
+      { kind: 'failed', messageKey: 'error.windGridCoverage' },
+      { kind: 'failed', messageKey: 'error.windGridCoverage' },
+    ]);
+    expect(dispose).not.toHaveBeenCalled();
+  });
+
   it('a worker-killing failure (not boat-not-in-catalogue) disposes the client and stops scanning the rest', async () => {
     const dispose = vi.fn();
     const plan = vi

@@ -81,9 +81,9 @@ describe('WindField', () => {
     });
 
     it('does not throw when the grid covers the supplied mask bounds', () => {
-      // uniformWindGrid's default opts span the full 54.3-55.3 / 9.4-11.0
-      // domain, matching TEST_MASK_META exactly (both derived from the real
-      // committed mask.meta.json bounds) — this is the production shape.
+      // uniformWindGrid's default opts span the real mask.meta.json domain
+      // (54.3-55.6 / 9.4-11.6), which covers the narrower TEST_MASK_META —
+      // this is the production shape.
       expect(() => new WindField(uniformWindGrid(12, 0), TEST_MASK_META)).not.toThrow();
     });
 

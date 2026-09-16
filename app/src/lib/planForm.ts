@@ -8,6 +8,7 @@ import {
   type LatLon,
   type PickedPoint,
   type Plan,
+  type SegmentMode,
   type Settings,
 } from '../types';
 
@@ -92,6 +93,7 @@ export interface PlanFormSnapshot {
   // edits and the next Plan-route press, same as origin/destination/
   // departure/settings already could.
   viaPoints: LatLon[];
+  segmentModes?: readonly (SegmentMode | null)[];
 }
 
 /**
@@ -104,6 +106,19 @@ export interface PlanFormSnapshot {
  * `replanning` prop, fed a boolean computed with this same function) — one
  * comparison, two presentation sites.
  */
+/**
+ * #885: true when two segment-mode lists force different modes. Absent and
+ * all-null both mean "solver decides", so they compare equal.
+ */
+export function segmentModesDiffer(
+  a: readonly (SegmentMode | null)[] | undefined,
+  b: readonly (SegmentMode | null)[] | undefined,
+): boolean {
+  const n = Math.max(a?.length ?? 0, b?.length ?? 0);
+  for (let i = 0; i < n; i++) if ((a?.[i] ?? null) !== (b?.[i] ?? null)) return true;
+  return false;
+}
+
 export function viaPointsDiffer(a: LatLon[], b: LatLon[]): boolean {
   if (a.length !== b.length) return true;
   return a.some((p, i) => p.lat !== b[i].lat || p.lon !== b[i].lon);
@@ -256,6 +271,8 @@ export function planFormDirty(
   // #654: req.viaPoints read through the shared accessor — defends a
   // hand-edited/corrupted stored record; see planViaPoints.ts.
   if (viaPointsDiffer(form.viaPoints, planViaPoints(req))) return true;
+  // #885: a mode-only edit dirties the form too.
+  if (segmentModesDiffer(form.segmentModes, req.segmentModes)) return true;
 
   return routingSettingsDirty(plan, form.settings);
 }

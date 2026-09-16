@@ -251,6 +251,22 @@ describe('worker protocol handler: fatal.stack population (#433 review Minor 2)'
     expect(Object.prototype.hasOwnProperty.call(fatal, 'stack')).toBe(false);
     expect(fatal.stack).toBeUndefined();
   });
+
+  it('#1136: forwards secondPass on a pass-2 progress message and omits it otherwise', () => {
+    vi.mocked(planRoute).mockImplementationOnce((_req, _wind, _deps, onProgress) => {
+      onProgress?.('genoa', { tMs: 1, frontierSize: 2 });
+      onProgress?.('genoa', { tMs: 3, frontierSize: 4, secondPass: true });
+      return { status: 'error', reason: 'unreachable' };
+    });
+    const out: WorkerResponse[] = [];
+    planFatal(out);
+    expect(out.filter((m) => m.type === 'progress')).toEqual([
+      { type: 'progress', id: 'p1', sailId: 'genoa', tMs: 1, frontierSize: 2 },
+      { type: 'progress', id: 'p1', sailId: 'genoa', tMs: 3, frontierSize: 4, secondPass: true },
+    ]);
+    const first = out.find((m) => m.type === 'progress');
+    expect(first !== undefined && Object.hasOwn(first, 'secondPass')).toBe(false);
+  });
 });
 
 // #432: the worker side of the plan budget. This is the only test that

@@ -1,5 +1,5 @@
 import { useMemo, useRef, type KeyboardEvent, type Ref } from 'react';
-import { useT, useLang } from '../i18n';
+import { useT, useLang, type Lang } from '../i18n';
 import {
   formatHeading,
   formatKn,
@@ -15,7 +15,7 @@ import { PORT_COLOR, STARBOARD_COLOR } from '../lib/mapColors';
 import {
   activeRigResult,
   isStaleForecast,
-  NO_ROUTE_MESSAGE_KEY,
+  noRouteMessageKey,
   staleForecastGapHours,
 } from '../lib/plan';
 import {
@@ -42,6 +42,8 @@ import {
 } from '../lib/reefSuggestion';
 import { useNavMask } from '../state/useNavMask';
 import { useSeamarks } from '../state/useSeamarks';
+import { useOnline } from '../state/AppState';
+import { useRegionReadiness, type RegionReadinessStatus } from '../state/useRegionReadiness';
 import type { MsgKey } from '../i18n/dict.de';
 import type { Board, Leg, NoRouteReason, Plan, SailId } from '../types';
 import Card from './Card';
@@ -276,8 +278,18 @@ const LEGS_SCROLL_HINT_ID = 'route-legs-scroll-hint';
 
 function LegKindChip({ leg, rig }: { leg: Leg; rig: SailId }) {
   const t = useT();
+  // #885 R5: a captain-forced mode is labelled, so it does not read as the
+  // planner's speed verdict.
+  const forced = leg.forced ? (
+    <span title={t('route.legs.forcedTitle')}> · {t('route.legs.forced')}</span>
+  ) : null;
   if (leg.kind === 'motor') {
-    return <span className="chip chip-motor">{t('route.kind.motor')}</span>;
+    return (
+      <span className="chip chip-motor">
+        {t('route.kind.motor')}
+        {forced}
+      </span>
+    );
   }
   const boardKey = leg.board === 'port' ? 'route.board.port' : 'route.board.starboard';
   // Prefix the displayed rig's sail name so each sail leg names the sail
@@ -290,6 +302,7 @@ function LegKindChip({ leg, rig }: { leg: Leg; rig: SailId }) {
         style={{ backgroundColor: BOARD_COLOR[leg.board] }}
       />
       {t(sailLabelKey(rig))} · {t(boardKey)} {t(pointOfSailKey(leg.twaDeg))}
+      {forced}
     </span>
   );
 }
@@ -414,6 +427,49 @@ function Stat({ label, value, className }: { label: string; value: string; class
     <div className={['ergebnis-stat', className].filter(Boolean).join(' ')}>
       <span className="ergebnis-stat-label">{label}</span>
       <span className="ergebnis-stat-value tabular-nums">{value}</span>
+    </div>
+  );
+}
+
+const OFFLINE_MAP_KEY: Record<RegionReadinessStatus, MsgKey> = {
+  checking: 'route.offlineMap.checking',
+  ready: 'route.offlineMap.ready',
+  pinning: 'route.offlineMap.pinning',
+  failed: 'route.offlineMap.failed',
+  'not-ready': 'route.offlineMap.notReady',
+};
+
+/** Decimal megabytes, one fraction digit, in the UI language (format.ts's locale pair). */
+function formatMegabytes(bytes: number, lang: Lang): string {
+  return new Intl.NumberFormat(lang === 'de' ? 'de-DE' : 'en-GB', {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(bytes / 1_000_000);
+}
+
+/**
+ * #295: whether this plan's map area is stored for offline use, and its
+ * download size. Only `ready` claims readiness; a failed or missing download
+ * offers a save button while online and a service worker controls the page
+ * (pinning needs both). Under Save-Data that button is the only trigger.
+ */
+export function OfflineMapStatus({ plan }: { plan: Plan }) {
+  const t = useT();
+  const [lang] = useLang();
+  const online = useOnline();
+  const { status, canRetry, retry, bytes } = useRegionReadiness(plan);
+  const showRetry = (status === 'failed' || status === 'not-ready') && canRetry && online;
+  return (
+    <div className="planner-result-chips">
+      <Chip className="chip-offline-map" role="status">
+        {t(OFFLINE_MAP_KEY[status])}
+        {bytes !== null && ` (${t('route.offlineMap.size', { mb: formatMegabytes(bytes, lang) })})`}
+      </Chip>
+      {showRetry && (
+        <Button variant="ghost" onClick={retry}>
+          {t('route.offlineMap.retry')}
+        </Button>
+      )}
     </div>
   );
 }
@@ -561,6 +617,8 @@ export default function RouteSummary({
             )}
       </Chip>
 
+      <OfflineMapStatus key={`${plan.id}-${plan.createdAtMs}`} plan={plan} />
+
       {/* #703: bare `<p role="alert">` carried no visual treatment at all —
           same muted body-copy problem as `.planner-guidance`/`.options-help`
           elsewhere, just with no class to attach a compound-selector override
@@ -647,7 +705,7 @@ export default function RouteSummary({
               the honest fallback: it names the one remedy that DOES apply
               here, re-planning, instead of retry/reload framing that
               cannot. */}
-            {t(reason ? NO_ROUTE_MESSAGE_KEY[reason] : 'error.savedPlanUnreadable')}
+            {t(reason ? noRouteMessageKey(reason, plan.request) : 'error.savedPlanUnreadable')}
           </p>
         ) : (
           <>
@@ -897,6 +955,9 @@ export default function RouteSummary({
               </p>
               {result.legs.length > 0 && (
                 <p className="route-legs-note">{t('route.legs.motorNote')}</p>
+              )}
+              {result.legs.some((l) => l.forced === true) && (
+                <p className="route-legs-note">{t('route.legs.forcedNote')}</p>
               )}
               {/* #325: the reef suggestion is advisory seamanship guidance,
                 computed AFTER routing from apparent wind speed — it is NOT

@@ -5,9 +5,9 @@ import { pinRegionsAfterSave, type PinAfterSave } from '../services/pinAfterSave
 import { loadRoutingAssets } from '../services/assets';
 import { RoutingClient, RoutingError } from '../routing/workerClient';
 import { useActivePlan } from './AppState';
-import { NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
+import { noRouteMessageKey } from '../lib/plan';
 import {
-  dedupeViaPoints,
+  dedupeRequestVias,
   failureLeavesWorkerHealthy,
   ROUTING_FAILURE_MESSAGE_KEY,
   routingFailureKey,
@@ -37,13 +37,15 @@ export type PlanningState =
   // `RIG_ORDER` for exactly this reason: the request's own ordered list is
   // the one source of truth. PlannerPanel.tsx's "sail N of 2" phase readout
   // renders these two fields directly.
-  | { phase: 'routing'; sailId: SailId; index: number; total: number }
+  // #1136: `secondPass` (present only when true) marks the salvage re-run.
+  | { phase: 'routing'; sailId: SailId; index: number; total: number; secondPass?: true }
   // #53: the worker is probing relaxed depth gates (mask connectivity BFS)
   // after an unreachable solve at the requested safety depth. Reported so the
   // UI shows the probe phase instead of a stalled routing bar; the relaxed
   // re-solve transitions back to 'routing'.
   | { phase: 'probing-depth' }
-  | { phase: 'error'; messageKey: MsgKey };
+  // #885: `messageVars` fills a key's placeholders (the merge refusal names a waypoint).
+  | { phase: 'error'; messageKey: MsgKey; messageVars?: Record<string, number> };
 
 export interface PlanFlowDeps {
   fetchWind?: typeof fetchWindGrid;
@@ -247,7 +249,20 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
       // it re-submits a plan's own STORED request unchanged, whose via list
       // already passed this exact dedupe when the plan was first created —
       // droppedCount is 0 there by construction.
-      req = { ...req, viaPoints: dedupeViaPoints(req.origin, req.viaPoints, req.destination).kept };
+      // #885: segmentModes is rebuilt in the same step, or every deduped plan
+      // with modes would fail planRoute's length check. A mode set planning
+      // would refuse (merge conflict, motor-off conflict) is refused here, so
+      // the refusal does not depend on a wind fetch.
+      const deduped = dedupeRequestVias(req);
+      if (deduped.kind === 'error') {
+        transition({
+          phase: 'error',
+          messageKey: deduped.messageKey,
+          ...(deduped.messageVars !== undefined ? { messageVars: deduped.messageVars } : {}),
+        });
+        return;
+      }
+      req = deduped.request;
 
       transition({ phase: 'fetching-wind' });
 
@@ -317,7 +332,7 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
           // route to a distinct error phase and must not be described as one.
           // Pinned by usePlanFlow.test.tsx's '#54: an unknown sail in a
           // progress message' row.
-          (sailId) => {
+          (sailId, _tMs, _frontierSize, secondPass) => {
             const index = req.sailIds.indexOf(sailId);
             if (index === -1) {
               throw new Error(
@@ -329,6 +344,7 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
               sailId,
               index: index + 1,
               total: req.sailIds.length,
+              ...(secondPass ? { secondPass: true } : {}),
             });
           },
           undefined,
@@ -389,7 +405,7 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
       }
 
       if (result.status === 'error') {
-        transition({ phase: 'error', messageKey: NO_ROUTE_MESSAGE_KEY[result.reason] });
+        transition({ phase: 'error', messageKey: noRouteMessageKey(result.reason, req) });
         return;
       }
 
