@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { findRelaxedGate } from './relaxedDepth';
-import { APPROACH_RADIUS_M, uniformGate } from '../lib/depthGate';
+import { uniformGate } from '../lib/depthGate';
 import { defaultSafetyDepthM, relaxationFloorM } from '../lib/boatDepth';
 import type { NavMask } from '../lib/mask';
 import { BOATS } from '../data/boats';
@@ -46,6 +46,25 @@ vi.setConfig({ testTimeout: solverTimeoutMs(300_000) });
  *
  * Plan-level (solver) evidence is not attempted here: `planRoute` takes no
  * radius parameter. See the P3 record §7 sweep instead.
+ *
+ * #1261: the per-`POPULATIONS`-entry `describe.each(DEPTH_CASES)`/`it.each`
+ * block (~728 s CI total, this file's biggest cost) was split into three
+ * sibling files, one per population — realmask.repro.relaxationTrade.
+ * originMarstal/originFlensburg/destinationMarstal.test.ts — so vitest can
+ * schedule them on separate workers instead of serializing inside one file.
+ * They are named with the `realmask.repro.` prefix (rather than
+ * `relaxationTrade.differential.*`) so they fall inside the EXISTING
+ * `realmask.repro*.test.ts` tsconfig glob (both `tsconfig.app.json`'s
+ * exclude and `tsconfig.test.json`'s include use that wildcard, where this
+ * file's own entry is an EXACT filename with no wildcard) — this split adds
+ * zero tsconfig entries. The `describe.each`/`it.each` helper functions
+ * below (snapAt/snappedPairs/measure/expectRadiusInvariant/
+ * expectSubsetConsistency/DEPTH_CASES) are DUPLICATED verbatim in each of
+ * those three files rather than factored into a shared non-test module,
+ * because importing one `.test.ts` from another would re-register this
+ * file's own `describe`/`it` calls inside the importer (vitest collects
+ * both files independently). This file keeps the light "derives one depth
+ * case" test and both POSITIVE CONTROLs, which never touch `POPULATIONS`.
  */
 
 const dataDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../public/data');
@@ -177,45 +196,10 @@ function expectSubsetConsistency(rows: readonly Row[], label: string): void {
   }
 }
 
-// `reversed` puts the fixed harbour LAST: [X, Marstal] is the mirror of the
-// Marstal-origin population, measured because phase 2 walks waypoints in order.
-const POPULATIONS = [
-  { name: 'origin marstal', fixedId: 'marstal', reversed: false },
-  { name: 'origin flensburg', fixedId: 'flensburg', reversed: false },
-  { name: 'destination marstal', fixedId: 'marstal', reversed: true },
-] as const;
-
 describe('#930 R3: P3 disc-vs-global relaxation trade (shipped findRelaxedGate, real mask)', () => {
   it('derives one depth case per distinct (gate, floor) pair across every catalogue boat', () => {
     expect(DEPTH_CASES.flatMap((c) => c.boatIds).sort()).toEqual(BOATS.map((b) => b.id).sort());
     console.log('#930 depth cases:', JSON.stringify(DEPTH_CASES));
-  });
-
-  describe.each(DEPTH_CASES)('boats $boatIds (gate $requestedM m, floor $floorM m)', (c) => {
-    it.each(POPULATIONS)('$name: shipped radius == global search on every pair', (pop) => {
-      const { pairs, snapFailed } = snappedPairs(pop.fixedId, c.requestedM, pop.reversed);
-      expect(pairs.length + snapFailed.length, 'harbour pairs per fixed origin').toBe(39);
-
-      const rows = measure(mask, pairs, c.requestedM, c.floorM, APPROACH_RADIUS_M);
-      const label = `[${c.boatIds.join(',')}] ${pop.name}`;
-
-      // LICENCE: equality over pairs where nothing relaxes proves nothing, so
-      // at least one relevant pair must actually relax.
-      const relaxedRelevant = rows.filter((r) => r.relevant && r.globalUsedDepthM !== null);
-      expect(
-        relaxedRelevant.length,
-        `${label}: no relevant pair relaxed — nothing measured.\n${JSON.stringify(rows)}`,
-      ).toBeGreaterThan(0);
-
-      expectSubsetConsistency(rows, label);
-      expectRadiusInvariant(rows, label);
-
-      console.log(
-        `#930 ${label}: ${rows.length} pairs, ${rows.filter((r) => r.relevant).length} relevant, ` +
-          `${relaxedRelevant.length} relevant+relaxed, snap-failed ${JSON.stringify(snapFailed)}:`,
-        JSON.stringify(rows),
-      );
-    });
   });
 
   it('POSITIVE CONTROL (real mask): at 1000 m, below the ~1060 m Marstal cliff, the tripwire reds with BOTH a lost route and a different depth', () => {

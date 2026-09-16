@@ -599,17 +599,48 @@ function appVersion(command: 'build' | 'serve'): string {
 // is slower than `issue20`: a ~10% gap under shared load establishes
 // nothing, and no measurement here licenses reordering it relative to the
 // realmask files. Do not tighten this into a claim it doesn't make.
+// #1261: `realmask.repro.issue20.test.ts`, `realmask.repro.depthComfort.test.ts`,
+// `realmask.repro.relaxationFloor.test.ts` and `relaxationTrade.differential.test.ts`
+// each had ONE (or, for relaxationTrade, several) `planRoute`/`findRelaxedGate`
+// call(s) that dominated the file's own CI time, serializing behind the
+// file's other, fast tests. Those calls moved into their own sibling files
+// (`realmask.repro.issue20.marstal23/marstalDefault/marstalMargin0.test.ts`,
+// `realmask.repro.depthComfort.pinchLocalization.test.ts`,
+// `realmask.repro.relaxationFloor.wiring.test.ts`,
+// `realmask.repro.relaxationTrade.originMarstal/originFlensburg/
+// destinationMarstal.test.ts`), each now able to run on a separate worker.
+// Per-test source figures (CI app job 104541296436, cited in #1261's own
+// body — not re-measured here): relaxationFloor's WIRING test ~531 s (the
+// file's whole prior total, since (a)/(a2) call `findRelaxedGate` directly
+// with no `planRoute` solve); issue20's three Marstal cases ~170-185 s each;
+// depthComfort's G.4 ~180 s of that file's prior 214 s total, leaving its
+// four remaining tests ~34 s combined. relaxationTrade's per-population cost
+// was not broken out per row in that source; its three new files and its own
+// remaining POSITIVE CONTROLs are placed here by inference, not measurement,
+// and should be re-ordered once a real run reports their individual times.
+// The four TRIMMED originals (issue20, depthComfort, relaxationFloor) now
+// hold only fast tests and are REMOVED from this array — BaseSequencer's
+// default (size-descending, and now genuinely small) schedules them fine.
 const SLOW_TEST_FILES_FIRST = [
   'src/routing/invariants.property.test.ts',
-  'src/routing/realmask.repro.issue20.test.ts',
+  'src/routing/realmask.repro.relaxationFloor.wiring.test.ts',
+  'src/routing/realmask.repro.issue20.marstal23.test.ts',
+  'src/routing/realmask.repro.issue20.marstalDefault.test.ts',
+  'src/routing/realmask.repro.issue20.marstalMargin0.test.ts',
   'src/routing/realmask.repro.salona44.test.ts',
-  'src/routing/realmask.repro.relaxationFloor.test.ts',
   'src/routing/realmask.repro.motorOffSalvage.test.ts',
-  'src/routing/realmask.repro.depthComfort.test.ts',
+  'src/routing/realmask.repro.depthComfort.pinchLocalization.test.ts',
   'src/routing/realmask.repro.mirrorCase.test.ts',
+  'src/routing/realmask.repro.relaxationTrade.originMarstal.test.ts',
+  'src/routing/realmask.repro.relaxationTrade.originFlensburg.test.ts',
+  'src/routing/realmask.repro.relaxationTrade.destinationMarstal.test.ts',
   // #295: 556 s on CI run 34991379729, the third-slowest file there, 12.8 KB,
-  // and the last file of that run to finish. Measured on a different run from
-  // the realmask figures above, so its position here ranks against neither.
+  // and the last file of that run to finish — a PRE-#1261 measurement of the
+  // whole monolithic file. Most of that weight moved into the three
+  // `realmask.repro.relaxationTrade.*` entries above; what remains here
+  // (the "derives one depth case" test and both POSITIVE CONTROLs) is
+  // unmeasured post-split, so the entry is kept defensively rather than
+  // dropped.
   'src/routing/relaxationTrade.differential.test.ts',
 ];
 
