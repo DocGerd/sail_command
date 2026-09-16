@@ -56,6 +56,56 @@ export function cautiousDepthLowerBoundM(shippedDepthM: number): number {
   return Math.max(0, flooredTenthsM / 10);
 }
 
+/**
+ * #1256: BFS scratch for {@link NavMask.cellsConnected}, reused across calls
+ * rather than allocated per call. At the #295 mask size (3025 x 3120 =
+ * 9,438,000 cells) a fresh `Uint8Array` + `Int32Array` pair costs ~47 MB of
+ * allocation and zeroing on EVERY call, and one `planRoute` makes up to ten
+ * of them.
+ *
+ * `bfsVisited` holds a GENERATION STAMP, not a boolean, so a call needs no
+ * clearing pass: only cells carrying the CURRENT generation count as
+ * visited. The stamp is one byte, so the counter's period is 255 and the
+ * array is zeroed once per period — one 9.4 MB `fill` per 255 calls, against
+ * 47 MB per call before.
+ *
+ * GROW-ONLY and shared by every NavMask instance, sized to the largest grid
+ * seen. The unit suite and the #282 sweep hold masks of several sizes at
+ * once, and an exact-size or per-instance buffer would reallocate on every
+ * alternation between them. Trade-off: once a full-size mask has been
+ * probed, ~47 MB stays resident for the process lifetime, where before the
+ * same ~47 MB was allocated and discarded per call.
+ */
+let bfsVisited = new Uint8Array(0);
+let bfsQueue = new Int32Array(0);
+let bfsGeneration = 0;
+
+/**
+ * Reserve the scratch for a `cells`-cell grid and return this call's
+ * generation stamp. Never returns 0, so a zeroed `bfsVisited` entry can
+ * never read as visited.
+ */
+function beginBfs(cells: number): number {
+  if (bfsVisited.length < cells) {
+    bfsVisited = new Uint8Array(cells);
+    bfsQueue = new Int32Array(cells);
+    bfsGeneration = 0; // the new arrays are already zeroed
+  } else if (bfsGeneration >= 255) {
+    bfsVisited.fill(0);
+    bfsGeneration = 0;
+  }
+  return ++bfsGeneration;
+}
+
+/**
+ * The 4-neighbourhood, in the order `cellsConnected` visits it: north, south,
+ * west, east. A fixed table rather than the per-dequeued-cell
+ * `[[row-1,col],…]` literal it replaced, which allocated five arrays and ran
+ * an iterator protocol for every cell the BFS popped.
+ */
+const BFS_DROW = new Int8Array([-1, 1, 0, 0]);
+const BFS_DCOL = new Int8Array([0, 0, -1, 1]);
+
 export class NavMask {
   readonly meta: MaskMeta;
   private data: Uint8Array;
@@ -346,11 +396,14 @@ export class NavMask {
     const target = cb.row * cols + cb.col;
     const startIdx = ca.row * cols + ca.col;
     if (startIdx === target) return true;
-    const visited = new Uint8Array(rows * cols);
-    const queue = new Int32Array(rows * cols);
+    // #1256: module-level scratch, stamped per call — see beginBfs above for
+    // why it is neither allocated here nor cleared afterwards.
+    const generation = beginBfs(rows * cols);
+    const visited = bfsVisited;
+    const queue = bfsQueue;
     let head = 0;
     let tail = 0;
-    visited[startIdx] = 1;
+    visited[startIdx] = generation;
     queue[tail++] = startIdx;
     while (head < tail) {
       const idx = queue[head++];
@@ -358,18 +411,19 @@ export class NavMask {
       const col = idx - row * cols;
       // 4-neighborhood (edge-sharing only — diagonal corner touches do not
       // connect; mirrors pipeline/verify_mask.py's flood fill).
-      for (const [nr, nc] of [
-        [row - 1, col],
-        [row + 1, col],
-        [row, col - 1],
-        [row, col + 1],
-      ]) {
+      for (let k = 0; k < 4; k++) {
+        const nr = row + BFS_DROW[k];
+        const nc = col + BFS_DCOL[k];
         if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
         const nIdx = nr * cols + nc;
-        if (visited[nIdx]) continue;
+        if (visited[nIdx] === generation) continue;
+        // Kept as a METHOD call: verifyMaskConnectivity.test.ts's #1256
+        // differential records the probe sequence by patching
+        // NavMask.prototype.cellNavigable, and inlining the depth read here
+        // would leave that guard recording nothing.
         if (!this.cellNavigable(nr, nc, gate)) continue;
         if (nIdx === target) return true;
-        visited[nIdx] = 1;
+        visited[nIdx] = generation;
         queue[tail++] = nIdx;
       }
     }

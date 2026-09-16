@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { NavMask } from '../lib/mask';
-import { uniformGate } from '../lib/depthGate';
+import { APPROACH_RADIUS_M, approachGate, uniformGate, type DepthGate } from '../lib/depthGate';
 import { BOATS, type BoatDef } from '../data/boats';
 import { defaultSafetyDepthM } from '../lib/boatDepth';
+import { makeMask, TEST_MASK_META } from './fixtures';
+import { solverTimeoutMs } from './timeouts';
 import type { LatLon, MaskMeta } from '../types';
 
 // #550 (spec C.6): pipeline/verify_mask.py's per-harbor connectivity flood
@@ -368,5 +371,280 @@ describe('#550: mask connectivity is a REQUIRED check (promoted from advisory ve
     };
     const failures = connectivityFailures(fixtureBoat);
     expect(failures.length).toBeGreaterThan(20);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #1256: NavMask.cellsConnected reuses module-level BFS scratch
+// ---------------------------------------------------------------------------
+//
+// WHY HERE. This file already loads the real committed mask.bin /
+// mask.meta.json / harbors.json, and the differential below needs that real
+// mask. A new `node:fs` test file would additionally need matching entries in
+// tsconfig.app.json's `exclude` and tsconfig.test.json's `include` (see both
+// files' comments), outside #1256's change scope.
+//
+// WHAT IS PROVEN. #1256 replaced `cellsConnected`'s two per-call mask-sized
+// allocations with module-level scratch stamped by a generation counter, and
+// its per-dequeued-cell `[[row-1,col],…]` array literals with a fixed offset
+// table. Both are meant to leave behaviour byte-identical, so the RETURN
+// VALUE alone cannot see a traversal-ORDER regression — the guard therefore
+// hashes the PROBE SEQUENCE (every `cellNavigable(row,col)` call, in order),
+// which determines the visit order and the visited set.
+//
+// COUPLING: the recorder patches `NavMask.prototype.cellNavigable`, so
+// `cellsConnected` must keep calling it as a method. Inlining the depth read
+// there would silently record nothing — mask.ts carries the same note at its
+// call site.
+
+/** Runtime view of the TS-private members the pre-#1256 oracle below needs. */
+type MaskInternals = {
+  readonly meta: MaskMeta;
+  cellOf(p: LatLon): { row: number; col: number } | null;
+  cellNavigable(row: number, col: number, gate: DepthGate): boolean;
+};
+
+/**
+ * The 4-neighbourhood in the order the shipped BFS visits it. The pre-#1256
+ * source spelled this as an inline `[[row-1,col],[row+1,col],[row,col-1],
+ * [row,col+1]]` literal; hoisting it to an offset table is the ONLY edit to
+ * the verbatim body below, and is what lets the positive control re-use the
+ * same oracle with two entries swapped.
+ */
+const PRE_1256_NEIGHBOURS: ReadonlyArray<readonly [number, number]> = [
+  [-1, 0],
+  [1, 0],
+  [0, -1],
+  [0, 1],
+];
+
+/** Positive control: the same oracle with the first two neighbours swapped. */
+const PERTURBED_NEIGHBOURS: ReadonlyArray<readonly [number, number]> = [
+  [1, 0],
+  [-1, 0],
+  [0, -1],
+  [0, 1],
+];
+
+/**
+ * `NavMask.cellsConnected` as it stood at `99a983a` (this change's
+ * merge-base), copied verbatim except that `this` became `self` and the
+ * neighbour literal became `neighbours`. The oracle for the differential.
+ */
+function cellsConnectedPre1256(
+  m: NavMask,
+  a: LatLon,
+  b: LatLon,
+  gate: DepthGate,
+  neighbours: ReadonlyArray<readonly [number, number]> = PRE_1256_NEIGHBOURS,
+): boolean {
+  const self = m as unknown as MaskInternals;
+  const ca = self.cellOf(a);
+  const cb = self.cellOf(b);
+  if (!ca || !cb) return false;
+  if (!self.cellNavigable(ca.row, ca.col, gate) || !self.cellNavigable(cb.row, cb.col, gate))
+    return false;
+  const { rows, cols } = self.meta;
+  const target = cb.row * cols + cb.col;
+  const startIdx = ca.row * cols + ca.col;
+  if (startIdx === target) return true;
+  const visited = new Uint8Array(rows * cols);
+  const queue = new Int32Array(rows * cols);
+  let head = 0;
+  let tail = 0;
+  visited[startIdx] = 1;
+  queue[tail++] = startIdx;
+  while (head < tail) {
+    const idx = queue[head++];
+    const row = (idx / cols) | 0;
+    const col = idx - row * cols;
+    for (const [dr, dc] of neighbours) {
+      const nr = row + dr;
+      const nc = col + dc;
+      if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
+      const nIdx = nr * cols + nc;
+      if (visited[nIdx]) continue;
+      if (!self.cellNavigable(nr, nc, gate)) continue;
+      if (nIdx === target) return true;
+      visited[nIdx] = 1;
+      queue[tail++] = nIdx;
+    }
+  }
+  return false;
+}
+
+interface ProbeDump {
+  readonly result: boolean;
+  readonly digest: string;
+  readonly probes: number;
+}
+
+/**
+ * Run `bfs` with every `cellNavigable(row,col)` call streamed into a sha256.
+ * A full-mask BFS makes millions of calls, so the rows/cols are buffered into
+ * a fixed Int32Array and flushed rather than retained (a `vi.spyOn` would keep
+ * every call's arguments alive).
+ */
+function recordProbes(bfs: () => boolean): ProbeDump {
+  const proto = NavMask.prototype as unknown as MaskInternals;
+  const original = proto.cellNavigable;
+  const hash = createHash('sha256');
+  const buf = new Int32Array(1 << 16);
+  let n = 0;
+  let probes = 0;
+  const flush = () => {
+    if (n === 0) return;
+    hash.update(Buffer.from(buf.buffer, 0, n * 4));
+    n = 0;
+  };
+  proto.cellNavigable = function (this: MaskInternals, row: number, col: number, gate: DepthGate) {
+    buf[n++] = row;
+    buf[n++] = col;
+    probes++;
+    if (n === buf.length) flush();
+    return original.call(this, row, col, gate);
+  };
+  try {
+    const result = bfs();
+    flush();
+    return { result, digest: hash.digest('hex'), probes };
+  } finally {
+    proto.cellNavigable = original;
+  }
+}
+
+describe('#1256: cellsConnected scratch reuse is byte-identical to the pre-#1256 BFS', () => {
+  const SEED = readSeed();
+  const snapOf = (id: string): LatLon => {
+    const h = harbors.find((x) => x.id === id);
+    expect(h, `fixture harbor "${id}" missing from harbors.json`).toBeDefined();
+    return h!.snap;
+  };
+
+  // Mixed by outcome and by gate shape. `dyvig` and `graasten` are
+  // KNOWN_DISCONNECTED pockets (pipeline/verify_mask.py), so using them as the
+  // ORIGIN exhausts a small component and yields a cheap `false`; `SEED` as
+  // origin yields `true` against reachable harbours. The last row is the #452
+  // per-cell gate FIELD, whose `gateAtCell` path the uniform rows never take.
+  const CASES: ReadonlyArray<{ label: string; from: LatLon; to: LatLon; gate: DepthGate }> = [
+    { label: 'seed->flensburg @3.0', from: SEED, to: snapOf('flensburg'), gate: uniformGate(3.0) },
+    { label: 'seed->marstal @2.3', from: SEED, to: snapOf('marstal'), gate: uniformGate(2.3) },
+    { label: 'seed->troense @4.2', from: SEED, to: snapOf('troense'), gate: uniformGate(4.2) },
+    { label: 'dyvig->seed @3.0', from: snapOf('dyvig'), to: SEED, gate: uniformGate(3.0) },
+    { label: 'graasten->seed @3.0', from: snapOf('graasten'), to: SEED, gate: uniformGate(3.0) },
+    {
+      label: 'graasten->flensburg @approachGate(3.0, relaxed 2.3)',
+      from: snapOf('graasten'),
+      to: snapOf('flensburg'),
+      gate: approachGate(
+        maskMeta,
+        [snapOf('graasten'), snapOf('flensburg')],
+        3.0,
+        [2.3, 2.3],
+        APPROACH_RADIUS_M,
+      ),
+    },
+  ];
+
+  it(
+    'result, probe count and probe-sequence sha256 all match the oracle on the real mask',
+    { timeout: solverTimeoutMs(300_000) },
+    () => {
+      const lines: string[] = [];
+      const outcomes = new Set<boolean>();
+      const probeCounts: number[] = [];
+      for (const c of CASES) {
+        const shipped = recordProbes(() => mask.cellsConnected(c.from, c.to, c.gate));
+        const oracle = recordProbes(() => cellsConnectedPre1256(mask, c.from, c.to, c.gate));
+        // Non-vacuity: a harness that recorded nothing would emit two
+        // identical empty dumps and read as proof.
+        expect(shipped.probes, `${c.label}: recorded no probes`).toBeGreaterThan(0);
+        expect(shipped.result, `${c.label}: result`).toBe(oracle.result);
+        expect(shipped.probes, `${c.label}: probe count`).toBe(oracle.probes);
+        expect(shipped.digest, `${c.label}: probe-sequence sha256`).toBe(oracle.digest);
+        outcomes.add(shipped.result);
+        probeCounts.push(shipped.probes);
+        lines.push(`${c.label}|${shipped.result}|${shipped.probes}|${shipped.digest}`);
+      }
+      // Both outcomes must occur, and at least one row must actually walk the
+      // grid — otherwise every row could agree on the pre-BFS early-exit path
+      // alone, where the two implementations share the same code.
+      expect([...outcomes].sort()).toEqual([false, true]);
+      expect(Math.max(...probeCounts)).toBeGreaterThan(1000);
+      const combined = createHash('sha256').update(lines.join('\n')).digest('hex');
+      console.log(`#1256 differential dump sha256=${combined}\n${lines.join('\n')}`);
+    },
+  );
+
+  it(
+    'positive control: swapping two neighbour offsets moves the dump while the result does not',
+    { timeout: solverTimeoutMs(300_000) },
+    () => {
+      const c = CASES[0]; // seed->flensburg @3.0 — deliberately a case that walks the grid
+      const oracle = recordProbes(() => cellsConnectedPre1256(mask, c.from, c.to, c.gate));
+      const perturbed = recordProbes(() =>
+        cellsConnectedPre1256(mask, c.from, c.to, c.gate, PERTURBED_NEIGHBOURS),
+      );
+      // A control on a case that exits before the BFS could not move the dump
+      // at all, and its equal digests would read as a broken recorder.
+      expect(oracle.probes).toBeGreaterThan(1000);
+      expect(perturbed.result).toBe(oracle.result);
+      expect(perturbed.digest).not.toBe(oracle.digest);
+    },
+  );
+});
+
+describe('#1256: the shared BFS scratch leaks no state between calls', () => {
+  // Two masks whose grids differ in BOTH dimensions and in cell count, so the
+  // scratch must serve a smaller grid after it has grown for a larger one.
+  const SMALL_META: MaskMeta = {
+    west: 9.4,
+    south: 54.3,
+    east: 9.8,
+    north: 54.5,
+    cols: 40,
+    rows: 20,
+  };
+  const cellCentre = (m: MaskMeta, row: number, col: number): LatLon => ({
+    lat: m.south + ((row + 0.5) * (m.north - m.south)) / m.rows,
+    lon: m.west + ((col + 0.5) * (m.east - m.west)) / m.cols,
+  });
+
+  // Big grid: one open row 10, everything else land — A and B connect along it.
+  const big = makeMask((r) => (r === 10 ? 200 : 0));
+  const bigA = cellCentre(TEST_MASK_META, 10, 5);
+  const bigB = cellCentre(TEST_MASK_META, 10, 300);
+  // Small grid: two navigable cells with a land cell between them — never
+  // connected, so an interleaved `true` here would be leaked state.
+  const small = makeMask((r, c) => (r === 5 && (c === 4 || c === 6) ? 200 : 0), SMALL_META);
+  const smallA = cellCentre(SMALL_META, 5, 4);
+  const smallB = cellCentre(SMALL_META, 5, 6);
+  const gate = uniformGate(3);
+
+  it('interleaved calls on two differently-sized masks each answer as they do alone', () => {
+    expect(big.cellsConnected(bigA, bigB, gate)).toBe(true);
+    expect(small.cellsConnected(smallA, smallB, gate)).toBe(false);
+    for (let i = 0; i < 5; i++) {
+      expect(small.cellsConnected(smallA, smallB, gate)).toBe(false);
+      expect(big.cellsConnected(bigA, bigB, gate)).toBe(true);
+      expect(small.cellsConnected(smallB, smallA, gate)).toBe(false);
+      expect(big.cellsConnected(bigB, bigA, gate)).toBe(true);
+    }
+  });
+
+  it('the generation stamp survives its own wraparound (a one-byte counter)', () => {
+    // The stamp is one byte, so the counter's period is 255 and the scratch is
+    // zeroed once per period. EXACTLY 254 intervening BFS calls therefore
+    // bring the third assertion back to the SAME stamp value the first used —
+    // the one alignment at which stale marks are indistinguishable from fresh
+    // ones. Drop the zeroing and the last call reads its own first call's
+    // marks and answers false. The filler must not restamp the corridor, and
+    // cannot: `small`'s only marked index is 5*40+4 = 204, while `big`'s
+    // corridor is row 10 of a 320-column grid, indices 3200-3519.
+    expect(big.cellsConnected(bigA, bigB, gate)).toBe(true);
+    for (let i = 0; i < 254; i++) {
+      expect(small.cellsConnected(smallA, smallB, gate), `filler ${i}`).toBe(false);
+    }
+    expect(big.cellsConnected(bigA, bigB, gate)).toBe(true);
   });
 });
