@@ -13,62 +13,73 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.35.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.36.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
-## Now — v0.35.0
+## Now — v0.36.0
 
-The `v0.35.0` cut (2026-09-16) worked the
-[`v0.35.0` milestone](https://github.com/DocGerd/sail_command/milestones),
-which closed eight issues: four user-visible, and four with no user-visible
-change against `v0.34.0`.
+The `v0.36.0` cut (2026-09-17) worked the
+[`v0.36.0` milestone](https://github.com/DocGerd/sail_command/milestones),
+which closed sixteen issues: five user-visible, the other eleven CI and test
+tooling, a hook fix, docs and two measurements with no user-visible surface.
+A sixth `CHANGELOG.md` entry ships the client-side part of
+[#1280](https://github.com/DocGerd/sail_command/issues/1280), which stays
+open in `v0.37.0` for the worker-side part.
 
-The covered area now reaches 54.3–55.6°N, 9.4–11.6°E — north to Kolding,
-Fredericia and Middelfart, the Great Belt's western approach and Fehmarn,
-with seven new harbours
-([#295](https://github.com/DocGerd/sail_command/issues/295)). The base map
-covers the same ground through `v0.34.0`'s core/region split: two region
-archives now ship, fetched when a saved route needs them — on request
-instead when the browser's data saver is on — and pinned per plan, with the
-route result naming whether that route's map area is saved offline and what
-it would cost to download. This is a BREAKING change for routes saved before
-this release: their stored wind grid covers the old, smaller area. Comparing
-departure times and Live rerouting on those routes now fail with a prompt to
-recalculate, though they still open, render and export.
+A route that failed as "beyond horizon" at the requested safety depth now
+also tries the shallower relaxed gate before giving up, flagging shallow
+water as before
+([#1258](https://github.com/DocGerd/sail_command/issues/1258)). The
+shallow-route warning's wording is corrected for a horizon-triggered
+relaxation
+([#1300](https://github.com/DocGerd/sail_command/issues/1300)), the
+beyond-horizon no-route message no longer recommends a later departure
+([#1307](https://github.com/DocGerd/sail_command/issues/1307)), and the
+shallow-route warning's departure-time/forecast advice is no longer left out
+on narrow layouts or at the safety-depth minimum
+([#1308](https://github.com/DocGerd/sail_command/issues/1308)). A slow
+device's route search is no longer cut off at a fixed deadline while the
+solver is still reporting progress
+([#1280](https://github.com/DocGerd/sail_command/issues/1280)). The
+`v0.35.0` release notes' wrong claim that editing waypoints fails on a
+pre-`v0.35.0` route is corrected
+([#1268](https://github.com/DocGerd/sail_command/issues/1268)).
 
-A stretch between two waypoints can now be forced to motor or to sail, with
-the planner routing that segment under the chosen mode on both sails and
-marking those legs as set by the captain
-([#885](https://github.com/DocGerd/sail_command/issues/885)).
+The rest of the milestone: CI/test sharding (`app`/`e2e` and the #282 sweep
+across workers, solver test files split for scheduling), a per-test timeout
+fix for the nightly coverage run
+([#1287](https://github.com/DocGerd/sail_command/issues/1287)), a hook fix
+exempting read-only pipelines from the spec-path ask, a `CLAUDE.md` grep
+correction ([#1210](https://github.com/DocGerd/sail_command/issues/1210)),
+and design docs settling the `v0.37.0` boat-picker gate and the #1185
+free-tap/#295 via-edit rulings — none with a user-visible surface.
+[#1266](https://github.com/DocGerd/sail_command/issues/1266) (solve cost
+against `PLAN_BUDGET_MS`) closed "not reproduced on a quiet machine" per
+maintainer ruling, no code change, and
+[#1250](https://github.com/DocGerd/sail_command/issues/1250) measured
+depth-overlay canvas memory at tablet viewports in desktop Chromium.
 
-Two fixes: a motor-off plan that failed as unreachable over connected water
-now gets a second search pass before the original error stands
-([#1136](https://github.com/DocGerd/sail_command/issues/1136)), and depth
-shading and hatching now sit where the depth data places them, having been
-drawn up to about 350 m north of it
-([#1254](https://github.com/DocGerd/sail_command/issues/1254)).
+## Next — v0.37.0
 
-[#1256](https://github.com/DocGerd/sail_command/issues/1256) removed a
-full-mask buffer allocated per `cellsConnected` call — about 47 MB each, and
-some 470 MB over a relaxing route — but no measured route gained wall-clock
-time above run-to-run noise, so the premise that it would recover the
-post-[#295](https://github.com/DocGerd/sail_command/issues/295) solve
-slowdown is refuted; that slowdown is tracked separately in `v0.36.0`.
-[#1226](https://github.com/DocGerd/sail_command/issues/1226) and
-[#1232](https://github.com/DocGerd/sail_command/issues/1232) are docs-only
-review residuals;
-[#1233](https://github.com/DocGerd/sail_command/issues/1233) shipped
-region-pin save-path coverage, pin-record cleanup and warn scope (PR #1242)
-with no separately-announced surface.
-
-## Next — v0.36.0
-
-The [`v0.36.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-carries the residual Minors left by this cut's implementation PRs, the
-follow-ups the larger mask opened — solve cost against the plan budget, a
-motor-off Flensburg→Troense regression, `MAX_FRONTIER` scaling, and
-depth-overlay memory on a tablet — and a strand on CI and test scheduling.
-The milestone page is the only authoritative view, check it directly rather
+The [`v0.37.0` milestone](https://github.com/DocGerd/sail_command/milestones)
+carries one routing defect class: visited-cell pruning can seal a narrow
+passage, so a more complete search can return a slower route. An untruncated
+search misses the Svendborgsund route that today's frontier-capped search
+finds ([#1303](https://github.com/DocGerd/sail_command/issues/1303)), and a
+Salona 44 route family flips between rigs and between capped and uncapped
+search ([#1305](https://github.com/DocGerd/sail_command/issues/1305)); both
+get one general confined-water prune fix and one sweep. Scaling
+`MAX_FRONTIER` with the mask's cell count
+([#1257](https://github.com/DocGerd/sail_command/issues/1257)) is held until
+that fix lands. The milestone also carries the rest of the worker-vs-client
+timeout fix under CPU contention, deadline checks inside a search ring and
+between relaxation probes
+([#1280](https://github.com/DocGerd/sail_command/issues/1280)), six follow-up
+issues from the #1135 boat-picker gate design
+([#1290](https://github.com/DocGerd/sail_command/issues/1290)–[#1295](https://github.com/DocGerd/sail_command/issues/1295)),
+and a local eslint-cache/vitest-sharding chore
+([#1263](https://github.com/DocGerd/sail_command/issues/1263)). The
+milestone page is the only authoritative view, check it directly rather
 than this file.
 
 ## Themes for the next year
