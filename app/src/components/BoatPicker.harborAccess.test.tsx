@@ -32,6 +32,7 @@ import { findLowerSettingHint, type HarborWithReachability } from '../lib/harbor
 import { NavMask } from '../lib/mask';
 import { en } from '../i18n/dict.en';
 import type { MsgKey } from '../i18n/dict.de';
+import { solverTimeoutMs } from '../test/timeouts';
 
 const mockedLoad = vi.mocked(loadRoutingAssets);
 
@@ -211,7 +212,7 @@ describe('#1292/#1321 lower-setting hint: deferred, resumable, never overclaims'
       () => {
         expect(option.getByText(/Augustenborg/)).toBeInTheDocument();
       },
-      { timeout: 5000 },
+      { timeout: solverTimeoutMs(5000) },
     );
     await waitFor(
       () => {
@@ -219,7 +220,7 @@ describe('#1292/#1321 lower-setting hint: deferred, resumable, never overclaims'
           option.getByText(/Augustenborg \(may route at 3.2 m \(depth data only\)\)/),
         ).toBeInTheDocument();
       },
-      { timeout: 5000 },
+      { timeout: solverTimeoutMs(5000) },
     );
     // #1321: never the unqualified over-claim, even transiently once resolved.
     expect(option.queryByText(/at any setting/)).not.toBeInTheDocument();
