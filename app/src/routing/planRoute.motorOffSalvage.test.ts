@@ -763,3 +763,24 @@ describe('#1136 second-pass progress', () => {
     ]);
   });
 });
+
+describe('#1258 cause fold after a requested-gate horizon failure', () => {
+  it('keeps beyond-horizon and admits no pass 2 when every relaxed tier is mask-blocked', () => {
+    // The requested gate overruns the horizon, which opens relaxation (#1258);
+    // the relaxed tiers die on the mask. Unfolded, the plan cause would become
+    // 'mask-blocked': relabelled 'unreachable' and admitted to pass 2.
+    script({
+      'p1:req:c5:genoa': fail('horizon-exceeded'),
+      'p1:req:c5:fock': fail('horizon-exceeded'),
+      'p1:req:none:genoa': fail('horizon-exceeded'),
+      'p1:req:none:fock': fail('horizon-exceeded'),
+      ...P1_REL_BLOCKED,
+    });
+    relaxMock.mockReturnValue(RELAXED);
+    const { result, record } = plan(MOTOR_OFF);
+    expect(record.tiers.map((t) => t.tier)).toEqual([1, 2, 3, 4]);
+    expect(pass2Keys()).toEqual([]);
+    expect(record.cause).toBe('horizon-exceeded');
+    expect(result).toEqual({ status: 'error', reason: 'beyond-horizon' });
+  });
+});
