@@ -544,7 +544,9 @@ describe('HarborPicker option row: #1291 per-boat access markers', () => {
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'apenrade' } });
     const option = screen.getByRole('option', { name: /Apenrade/ });
     expect(
-      within(option).getByText('Eventuell planbar bei 2,8 m Sicherheitstiefe, mit Tiefenwarnung.'),
+      within(option).getByText(
+        'Eventuell planbar bei 2,8 m Sicherheitstiefe, mit Tiefenwarnung (nur Tiefendaten geprüft).',
+      ),
     ).toBeInTheDocument();
   });
 

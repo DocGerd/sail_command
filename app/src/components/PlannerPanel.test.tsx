@@ -2637,7 +2637,9 @@ describe('#1291 per-boat harbour access markers on the selected-endpoint row', (
       },
     });
     const destinationSection = screen.getByRole('region', { name: 'Destination' });
-    expect(within(destinationSection).getByText('May route at 3.2 m.')).toBeInTheDocument();
+    expect(
+      within(destinationSection).getByText('May route at 3.2 m (depth data only).'),
+    ).toBeInTheDocument();
     expect(
       within(destinationSection).queryByText(/Not reachable at or above/),
     ).not.toBeInTheDocument();

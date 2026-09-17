@@ -1218,6 +1218,9 @@ export const de = {
   // options and PlannerPanel's selected-endpoint row. `{boat}` is
   // `BoatDef.name`, catalogue data, not translated per-language.
   'harborPicker.boatUnreachable': 'Mit {boat} bei {depth} m Sicherheitstiefe nicht erreichbar.',
+  // PR #1323 review comment-only wave: "Tiefenwarnung" names the same hazard
+  // ShallowWarning's Achtung/Caution vocabulary does; spec §7 asks for
+  // alignment, not done here (maintainer call), tracked in #1326.
   'harborPicker.boatShallow': 'Mit {boat} nur über eine flachere Zufahrt – Tiefenwarnung.',
   // PR #1323 review Major 1: NO "below the boat's recommended depth" clause
   // — `findLowerSettingHint`'s frozen floor is `defaultSafetyDepthM(boat)`,
@@ -1228,10 +1231,15 @@ export const de = {
   // never "Einstellung". The word order here (verb-first, "Eventuell
   // planbar bei …") still avoids the design spec's own §7 draft bug ("Mit
   // {depth} m eventuell mit Tiefenwarnung planbar", two "mit" in a row) —
-  // there is only ever one "mit" in this phrasing.
-  'harborPicker.boatLowerSettingAtDefault': 'Eventuell planbar bei {depth} m Sicherheitstiefe.',
+  // there is only ever one "mit" in this phrasing. The "(nur Tiefendaten
+  // geprüft)" hedge states what was checked — the reachability derivation is
+  // depth-only (no bridges/channel width/obstructions) — never a softener.
+  'harborPicker.boatLowerSettingAtDefault':
+    'Eventuell planbar bei {depth} m Sicherheitstiefe (nur Tiefendaten geprüft).',
+  // PR #1323 review comment-only wave: see `boatShallow`'s matching comment
+  // — "Tiefenwarnung" tracked in #1326, not aligned with ShallowWarning here.
   'harborPicker.boatLowerSettingAtDefaultShallow':
-    'Eventuell planbar bei {depth} m Sicherheitstiefe, mit Tiefenwarnung.',
+    'Eventuell planbar bei {depth} m Sicherheitstiefe, mit Tiefenwarnung (nur Tiefendaten geprüft).',
   // #1321/PR #1323 review Major 2: `findLowerSettingHint` only checks
   // `[defaultSafetyDepthM(boat), safetyDepthM)` — `OptionsPanel.tsx` lets a
   // user dial the safety depth down to `minSafetyDepthM(boat)` WITHOUT a
