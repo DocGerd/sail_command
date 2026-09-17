@@ -1542,12 +1542,15 @@ describe('#493: cautious depth disclosure', () => {
       expect(lead?.textContent).toBe(
         interpolate(en['route.shallow.lead'], { cautious: CAUTIOUS_AT_BOUNDARY_M }),
       );
+      // #1308: showHorizonRemedy carries no gate — it renders whenever the
+      // banner does, regardless of exposureDist (null in this file, which
+      // never mocks useNavMask), so .detail now ends with that sentence too.
       expect(detail?.textContent).toBe(
-        interpolate(en['route.shallow.detail'], {
+        `${interpolate(en['route.shallow.detail'], {
           requested: REQUESTED_M,
           used: BOUNDARY_USED_DEPTH_M.toFixed(1),
           minGate: MIN_GATE_M,
-        }),
+        })} ${en['route.shallow.remedyHorizon']}`,
       );
       expect(caveat?.textContent).toBe(en['route.shallow.caveat']);
       // #504 review round 2's dict-independence requirement, extended to the
@@ -1573,12 +1576,14 @@ describe('#493: cautious depth disclosure', () => {
           draft: BOAT_DRAFT_M.toFixed(1),
         }),
       );
+      // #1308: see the non-severe test above for why .detail now ends with
+      // the horizon-remedy sentence unconditionally.
       expect(detail?.textContent).toBe(
-        interpolate(en['route.shallow.detail'], {
+        `${interpolate(en['route.shallow.detail'], {
           requested: REQUESTED_M,
           used: BELOW_BOUNDARY_USED_DEPTH_M.toFixed(1),
           minGate: MIN_GATE_M,
-        }),
+        })} ${en['route.shallow.remedyHorizon']}`,
       );
       expect(caveat?.textContent).toBe(en['route.shallow.caveat']);
       // Same dict-independence requirement as the non-severe test above,

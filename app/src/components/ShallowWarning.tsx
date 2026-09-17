@@ -185,20 +185,26 @@ export function ShallowWarning({
   //
   // showHorizonRemedy — the "different departure time or a fresh forecast"
   // sentence (#1300/#1258's trigger, its own key since #1308). Drops
-  // conditions 2 and 3 above ENTIRELY: they name reasons a DEPTH change is
-  // unhelpful or unreadable, and neither applies to this sentence — a
-  // horizon-triggered relaxation can leave usedDepthM at this boat's own
-  // field minimum (where "lower your depth" is unavailable but a different
-  // departure/forecast still is) and CLAUDE.md's tablet-floor ruling makes
-  // narrow (>= 820 CSS px, incl. tabletPortrait) a required target, not a
-  // nice-to-have — so a wide-only mount gate would hide the one remedy that
-  // may be the ONLY useful one there. Condition 1 stays: exposureDist !== null
-  // is still the "is there a real, measured problem" signal both sentences
-  // share, reusing the SAME resolved value the figure renders (same
-  // reasoning as showDepthRemedy's own condition 1).
+  // condition 3: a horizon-triggered relaxation can leave usedDepthM at
+  // this boat's own field minimum, where "lower your depth" is unavailable
+  // but a different departure/forecast still is. Drops condition 2 as a
+  // TRADE, not because #516 item 5's reason is depth-specific — that
+  // 390x844 height measurement applies to any added sentence, but it
+  // predates #747 moving the remedy into a Disclosure that starts collapsed
+  // (#788), and CLAUDE.md's tablet-floor ruling makes the narrow layout's
+  // 820-1023 px band (tabletPortrait) required, < 820 px nice-to-have.
+  // #1308 ALSO drops condition 1, unlike showDepthRemedy: a missing or
+  // measured-zero exposureDist does not make THIS sentence wrong — the
+  // banner mounts only after the requested-gate search has already failed,
+  // so "a different departure time or a fresh forecast might help" stays
+  // true whether or not the mask has finished loading or found an exposed
+  // leg. Hiding advice while a measurement is still loading costs more than
+  // showing it, which is the opposite of Blocker 1's reasoning for the
+  // figure. So it renders whenever this component does — no further gate.
   const safetyDepthMinM = safetyDepthFieldFor(plan.request.boat).min;
   const showDepthRemedy = exposureDist !== null && isWide && shallow.usedDepthM > safetyDepthMinM;
-  const showHorizonRemedy = exposureDist !== null;
+  // Always true — see the comment above for why no condition survived.
+  const showHorizonRemedy = true;
   // #54 spec C.4(a), fixed in #539: renders THE PLAN'S OWN boat's draft — see
   // the `draftM` read above for why the plan, not the picker, decides.
   // #596 (fixed here): PR #590 review (MAJOR, round 2) found that #525 made

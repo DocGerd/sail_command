@@ -229,9 +229,10 @@ describe('#516: ShallowWarning exposure sentence', () => {
   // DEPTH sentence ("A lower safety depth setting...") keeps its pre-#1308
   // gate (exposureDist !== null && isWide && usedDepthM > field min); the
   // HORIZON sentence ("...a different departure time or a fresh forecast
-  // might help") is gated on exposureDist !== null alone, so it can render
-  // at narrow layout and at the depth field minimum, where the depth
-  // sentence cannot.
+  // might help") carries NO gate at all — it renders whenever the banner
+  // itself does, including narrow layout, the depth field minimum, a
+  // still-loading mask and a measured-zero exposure, none of which make
+  // this advice wrong the way they make the depth advice wrong or moot.
   const DEPTH_REMEDY_TEXT = 'lower safety depth setting';
   const HORIZON_REMEDY_TEXT = 'a different departure time or a fresh forecast might help';
 
@@ -292,9 +293,10 @@ describe('#516: ShallowWarning exposure sentence', () => {
     expect(caveat?.textContent).toBeTruthy();
     expect(detail?.textContent).not.toContain('of this route crosses');
     expect(detail?.textContent).not.toContain(DEPTH_REMEDY_TEXT);
-    // #1308: exposureDist is null here too (mask never resolves), so the
-    // horizon sentence — gated on exposureDist alone — stays suppressed too.
-    expect(detail?.textContent).not.toContain(HORIZON_REMEDY_TEXT);
+    // #1308: showHorizonRemedy carries no gate at all — it renders here even
+    // though the mask (and so exposureDist) has not resolved yet, since the
+    // advice is not a claim about a measurement the way the figure is.
+    expect(detail?.textContent).toContain(HORIZON_REMEDY_TEXT);
     // The pre-existing "what happened" mechanism sentence is unaffected.
     expect(detail?.textContent).toContain('so this route was planned at a reduced');
   });
@@ -329,10 +331,11 @@ describe('#516: ShallowWarning exposure sentence', () => {
     expect(detail?.textContent).toContain('so this route was planned at a reduced');
     expect(detail?.textContent).not.toContain('of this route crosses');
     expect(detail?.textContent).not.toContain(DEPTH_REMEDY_TEXT);
-    // #1308: a measured-zero exposureDist suppresses the horizon sentence
-    // too — it shares that gate with the depth sentence (see this describe
-    // block's own comment on the two constants above).
-    expect(detail?.textContent).not.toContain(HORIZON_REMEDY_TEXT);
+    // #1308: a measured-zero exposureDist does NOT suppress the horizon
+    // sentence — unlike the depth sentence, it carries no exposure gate at
+    // all (see this describe block's own comment on the two constants
+    // above), so it still renders here.
+    expect(detail?.textContent).toContain(HORIZON_REMEDY_TEXT);
     // Not merely "no sentence": the formatted zero itself must never appear.
     expect(detail?.textContent).not.toContain('0.0 nm');
     // #516 increment 2: the vacuous-true path, and the ONLY row that reaches
@@ -351,10 +354,10 @@ describe('#516: ShallowWarning exposure sentence', () => {
     // from the DOM on narrow, so a screen reader there does not read a
     // sentence a sighted user cannot see.
     // #1308: the HORIZON remedy is NOT wide-only — CLAUDE.md's tablet-floor
-    // ruling makes narrow (>= 820 CSS px, incl. tabletPortrait) a required
-    // target, and this may be the only useful remedy there — so it renders at
-    // BOTH widths, transitioning across the isWide boundary independently of
-    // the depth sentence.
+    // ruling makes the narrow layout's 820-1023 px band (tabletPortrait) a
+    // required target, and this may be the only useful remedy there — so it
+    // renders at BOTH widths. Each width is a fresh mount (cleanup between);
+    // setWideLayout mocks the breakpoint result, not an 820 px viewport.
     mockedLoad.mockResolvedValue(shallowMask());
     setWideLayout(false);
     const narrow = await renderAndSettle([EXPOSURE_LEG]);
