@@ -4441,7 +4441,12 @@ making design-level decisions; do not silently deviate.
   `READONLY_VERBS` (removes 0 of 1,115 real asks); and segmenting on
   `;`/`&&`/newline (removes at most 2 of 1,115, and running before the char
   check makes it independently UNSAFE — an oversized heredoc times the hook
-  out into a silent allow).
+  out into a silent allow). #1273 (2026-09-16, maintainer ruling) added a
+  SEPARATE, bounded pipeline predicate — `bash_is_readonly_pipeline`: a
+  quote-aware splitter that IS the char check, fails closed on any other
+  metachar, newline or unterminated quote, and requires EVERY `|`/`;`/`&&`/
+  `||` segment to be read-only. Not the rejected shape; read its header
+  before widening it.
 - A NEW concrete guard-asymmetry instance (#368, PR #382 review): a value the
   FIRST PAINT depends on must be written in `useLayoutEffect`, not
   `useEffect` — `useEffect` fires AFTER paint, leaving a real window on a
