@@ -256,10 +256,17 @@ correct there, because with an empty via list the two rules agree anyway.
 Specify it explicitly rather than leaving it to the implementer, or the natural
 reading of §2.6 is a crash or a silent no-op on the empty case.
 
+**A free map tap and keyboard coordinate entry append instead of following the
+nearest-point rule** (maintainer ruling on #1185, 2026-09-16). A picked seamark
+or saved waypoint names a point already on the chart, and a drag from or armed
+tap on the route line (#850, #1170) also inserts; a bare tap on open water most
+plausibly means "then go here".
+
 ### 2.7 #848 ships panel-only; the map layer is a separate issue
 
 Saved waypoints live in a panel list, and selecting one loads it into the
-current route draft. They get no permanent map presence in v0.21.0.
+current route draft. They got no permanent map presence in v0.21.0; #924 later
+added one (`SavedWaypointsLayer.tsx`).
 
 A selectable symbol layer would compete for the z12 `symbol-sort-key` and
 collision budget already shared by harbour markers and seamark glyphs — the same
