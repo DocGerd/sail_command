@@ -270,8 +270,27 @@ export function edgeFactor(
   return 1 - DEPTH_DERATE_MAX * shortfall;
 }
 
-function pruneKey(lat: number, lon: number, kind: LegKind | 'start', board: Board | null): string {
+// #1303: within NEAR_DEST_NM of the segment's destination, prune on a grid
+// NEAR_DEST_PRUNE_DIV times finer per axis. Arrival (a navigable direct or
+// capture edge) depends on position within a coarse cell there, so a cheaper
+// stamp from a position with no line to the destination must not prune a
+// better-placed later node. Dominance still applies on the finer grid, so a
+// blocked approach still dies. Calibration: PR for #1303.
+const NEAR_DEST_NM = 1;
+const NEAR_DEST_PRUNE_DIV = 4;
+
+function pruneKey(
+  lat: number,
+  lon: number,
+  kind: LegKind | 'start',
+  board: Board | null,
+  distToDestNm: number,
+): string {
   const b = kind === 'motor' ? 'M' : board === 'port' ? 'P' : 'S';
+  if (distToDestNm < NEAR_DEST_NM) {
+    const k = NEAR_DEST_PRUNE_DIV;
+    return `f${Math.floor((lat * k) / PRUNE_LAT)}:${Math.floor((lon * k) / PRUNE_LON)}:${b}`;
+  }
   return `${Math.floor(lat / PRUNE_LAT)}:${Math.floor(lon / PRUNE_LON)}:${b}`;
 }
 
@@ -650,7 +669,7 @@ export function solve(p: SolveParams): SolveResult {
           }
         }
 
-        const key = pruneKey(child.lat, child.lon, child.kind, child.board);
+        const key = pruneKey(child.lat, child.lon, child.kind, child.board, child.distToDestNm);
         const seen = visited.get(key);
         if (seen !== undefined && visitedDominates(seen, child) && !skipDominance) continue;
         const incumbent = byKey.get(key);
@@ -691,7 +710,7 @@ export function solve(p: SolveParams): SolveResult {
     // every winner — the uncapped path (the common case, incl. every real-mask
     // route whose frontier peaks below MAX_FRONTIER) is unchanged.
     for (const n of next)
-      stampVisited(visited, pruneKey(n.lat, n.lon, n.kind, n.board), {
+      stampVisited(visited, pruneKey(n.lat, n.lon, n.kind, n.board, n.distToDestNm), {
         costMs: n.costMs,
         maneuvers: n.maneuvers,
       });
