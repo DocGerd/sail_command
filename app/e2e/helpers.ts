@@ -773,7 +773,7 @@ async function verifyResidualDistFilesOnce(relPaths: string[]): Promise<void> {
  * single `await` for undici's own headers-timeout ceiling — measured (PR
  * #823 review) at 301,364 ms on `fetch(currentBase())` and 300,340 ms on
  * `fetch(currentSwJsUrl())` once the latter existed — well past `START_TIMEOUT_MS`
- * and material against `ci.yml`'s 30-minute `e2e` cap. `detached: true`
+ * and material against `ci.yml`'s 35-minute per-shard `e2e` cap. `detached: true`
  * makes the child the leader of its own process group so kill() can take
  * out `npm` *and* the `vite preview` process it launches with one SIGKILL
  * to the negated pid — killing only the `npm` pid can leave `vite preview`
