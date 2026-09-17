@@ -1184,7 +1184,7 @@ describe('shallow-water warning banner (#53/#452)', () => {
     // ITSELF was unpassable — since #1258 this same banner also fires when
     // the requested gate connected fine and the search instead ran out of
     // forecast horizon, where that claim would be false.
-    expect(banner?.textContent).not.toMatch(/not passable|unpassable/i);
+    expect(banner?.textContent).not.toMatch(/passable/i);
   });
 
   it('renders on BOTH rig tabs — the warning is plan-level, not per rig', () => {
@@ -1221,11 +1221,11 @@ describe('shallow-water warning banner (#53/#452)', () => {
     // safe — this is the same #455 constraint as the English copy, and it
     // has to hold independently since the two strings are maintained by hand.
     expect(banner?.textContent).toContain('nicht garantiert frei von Untiefen');
-    // #1300: the German string never asserted "nicht passierbar" (see
-    // dict.de.ts's own comment) — pinned here so a future edit cannot
-    // reintroduce a depth-causal claim that's false for a horizon-exceeded
-    // relaxation.
-    expect(banner?.textContent).not.toMatch(/nicht passierbar/i);
+    // #1300: the German .detail string makes no "nicht passierbar" claim
+    // today (dict.de.ts's comment records that the pre-#452/#504
+    // route.shallow.banner did) — pinned so a future edit cannot reintroduce
+    // that wording, which is false for a horizon-triggered relaxation.
+    expect(banner?.textContent).not.toMatch(/passierbar|befahrbar/i);
   });
 
   it('is absent on plans without relaxation', () => {

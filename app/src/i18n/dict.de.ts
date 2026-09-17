@@ -507,13 +507,13 @@ export const de = {
   // größer als null wie die Zahl davor, das breite Layout, und usedDepthM
   // über SAFETY_DEPTH_FIELD.min. Die Begründung zu jeder einzelnen steht an
   // dieser Deklaration; sie ist die einzige Stelle zum Nachlesen und Ändern.
-  // #1300: seit #1258 kann dieses Banner auch bei einem Horizont-Fehlschlag
-  // der eingestellten Tiefe erscheinen — dort hilft eine geringere
-  // Sicherheitstiefe nicht. Zweiter, gehedgter Satz (spätere Abfahrt)
-  // angehängt statt des ersten ersetzt, da der String den Auslöser nicht
-  // benennen darf (Entscheidung: kein neues ShallowInfo-Feld).
+  // #1300: seit #1258 kann dieses Banner auch nach einem Horizont-Fehlschlag
+  // bei der eingestellten Tiefe erscheinen, daher nennt ein zweiter, bedingter
+  // Satz Abfahrtszeit und Vorhersage als Abhilfe. Angehängt, statt den ersten
+  // zu ersetzen, da der String den Auslöser nicht benennen kann
+  // (Entscheidung: kein neues ShallowInfo-Feld).
   'route.shallow.remedy':
-    'Eine geringere Sicherheitstiefe könnte dem Planer helfen, eine direktere Route zu finden. Ist stattdessen der Vorhersagehorizont ausgeschöpft, hilft möglicherweise eine spätere Abfahrt.',
+    'Eine geringere Sicherheitstiefe könnte dem Planer helfen, eine direktere Route zu finden. Reichte der Vorhersagehorizont stattdessen für die Suche mit der eingestellten Tiefe nicht aus, hilft möglicherweise eine andere Abfahrtszeit oder eine neue Vorhersage.',
   // Was passiert ist, ohne Ursache zu benennen: bei der eingestellten Tiefe
   // wurde keine Route gefunden, die tatsächlich verwendete Tiefe, die
   // geringste gequerte Kartentiefe. Dieser String behauptet HEUTE an keiner

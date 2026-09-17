@@ -520,13 +520,13 @@ export const en = {
   // conditions — a positive exposure figure, the wide layout, and usedDepthM
   // exceeding SAFETY_DEPTH_FIELD.min — and that declaration carries the
   // reason for each; it is the single place to read or change them.
-  // #1300: since #1258 this banner can also fire on a requested-gate
-  // forecast-horizon failure, where lowering the safety depth is not the
-  // relevant remedy — appended a hedged second sentence (a later departure)
-  // rather than replacing the first, since the string cannot name the
-  // trigger (ruling: no new ShallowInfo field).
+  // #1300: since #1258 this banner can also fire after a requested-gate
+  // forecast-horizon failure, so a second, conditional sentence names the
+  // departure-time and forecast remedies. Appended rather than replacing the
+  // first, since the string cannot name the trigger (ruling: no new
+  // ShallowInfo field).
   'route.shallow.remedy':
-    'A lower safety depth setting might let the planner find a more direct route. If the search instead ran out of forecast horizon, a later departure might help.',
+    'A lower safety depth setting might let the planner find a more direct route. If the search at your requested depth instead reached the end of the forecast horizon, a different departure time or a fresh forecast might help.',
   // What happened, stated without naming a cause: no route was found at the
   // requested depth, the depth actually used, the shallowest charted depth
   // crossed. #1300: dropped "was not passable" — since #1258 this sentence
