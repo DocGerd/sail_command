@@ -15,12 +15,11 @@ follows in the §13 issues.
    mask, by extending the existing #834 module `app/src/lib/harborReachability.ts`
    (outside the #282 sweep closure) — not stored in `harbors.json`.
 
-Two of these depart from the multi-boat spec and were accepted by the
-maintainer (Q6, §12): §5.2 keeps affected harbour entries selectable where §L
-prescribes "greyed-out picker entries", and C1 replaces §C.6 bullet 2's
-requirement that the harbour list or verify output carry a per-harbour minimum
-gate. A boat switch also raises a stored safety depth to the boat's default
-(Q4).
+Three spec changes, all ruled (§12): §5.2 keeps affected harbour entries
+selectable where §L prescribes "greyed-out picker entries" (Q6); C1 replaces
+§C.6 bullet 2's per-harbour minimum gate in the harbour list or verify output
+(Q6); and a boat switch will raise a stored safety depth to the boat's default
+(§C.7, Q4, §13 item 4).
 
 Measured on the committed mask (§3): a stored `verify_mask.py` figure would
 mark **11** harbours for a 3.5 m gate, where a derivation shaped like the
@@ -47,7 +46,7 @@ Three quantities, all per boat (`app/src/lib/boatDepth.ts`):
   boat's recommended gate.
 - `minSafetyDepthM(b)` = `ceilToDecimetre(draftM + 0.1)` — the clamp floor.
   `clampSettingsToBoat` (`app/src/lib/boatSettings.ts`) raises a stored
-  `safetyDepthM` only to THIS on a boat switch, never to the default. So the
+  `safetyDepthM` only to THIS on a boat switch today (Q4 changes this, §13 item 4). So the
   gate actually in force is `settings.safetyDepthM`, which can sit below the
   default (a stored 3.0 m survives a switch to EASY GO!, whose default is 3.5 m).
 - `relaxationFloorM(b)` = `ceilToDecimetre(draftM)` — how low #53 relaxation
@@ -161,14 +160,15 @@ cannot stand in for it on a Worker (#1147). Treat as a relative cost only.
 
 ### 5.1 `BoatPicker.tsx` option row (`BoatOption`)
 
-Computed for each boat at its OWN `defaultSafetyDepthM(b)`: the picker compares
-boats, so it must not use the live setting, which belongs to the selected boat.
+The selected boat uses the live `settings.safetyDepthM`, so it matches the
+harbour picker; every other boat uses its own `defaultSafetyDepthM(b)`,
+labelled as the default (Q7, §12).
 
 ```
 ( ) EASY GO!                         Draft 2.55 m   [Estimated]
     Assumed keel: <keel>. Not checked against this vessel's papers.
     <draft provenance note>
-    ▸ Harbour access — 4 harbours affected at 3.5 m          <- new Disclosure
+    ▸ Harbour access — 4 harbours affected at 3.5 m (default) <- new Disclosure
         Only with a depth warning: Faldsled, Rudkøbing
         Not reachable: Augustenborg, Marstal
     ▸ Polar data & provenance
@@ -250,8 +250,14 @@ number-first phrasing that needs none.
 | `boat.harbors.pending` | Harbour access not yet checked. | Hafenzugang noch nicht geprüft. |
 | `harborPicker.boatUnreachable` | Not reachable with {boat} at {depth} m safety depth. | Mit {boat} bei {depth} m Sicherheitstiefe nicht erreichbar. |
 | `harborPicker.boatShallow` | Only via a shallower approach with {boat} — depth warning. | Mit {boat} nur über eine flachere Zufahrt – Tiefenwarnung. |
-| `harborPicker.boatReachableLower` | Reachable at a lower allowed setting ({depth} m). | Bei einer niedrigeren zulässigen Einstellung erreichbar ({depth} m). |
+| `harborPicker.boatLowerSetting` | May route at {depth} m, below {boat}'s recommended {default} m safety depth (depth data only). | Mit {depth} m eventuell planbar, unter der für {boat} empfohlenen Sicherheitstiefe von {default} m (nur Tiefendaten geprüft). |
+| `harborPicker.boatLowerSettingShallow` | May route at {depth} m with a depth warning, below {boat}'s recommended {default} m safety depth (depth data only). | Mit {depth} m eventuell mit Tiefenwarnung planbar, unter der für {boat} empfohlenen Sicherheitstiefe von {default} m (nur Tiefendaten geprüft). |
 | `boat.switch.endpointUnreachable` | {endpoint} {harbor} is not reachable with {boat}. | {endpoint} {harbor} ist mit {boat} nicht erreichbar. |
+
+For the two `boatLowerSetting*` keys (Q5): `{default}` is
+`defaultSafetyDepthM(b)`, and `{depth}` is the highest decimetre in
+`[minSafetyDepthM(b), min(G, {default}))` at which the harbour is `ok` (plain
+key) or `shallow-approach` (`…Shallow` key); no decimetre, no hint.
 
 `{list}` is harbour names in the active language (`names[lang]`), joined by the
 implementation. `{boat}` is `BoatDef.name`, catalogue data. Before shipping,
@@ -344,7 +350,7 @@ This design removes the presentation blocker only. Still separately needed:
 
 ## 12. Maintainer rulings (resolved)
 
-All six resolved 2026-09-17 in [#1135 comment 5705456439](https://github.com/DocGerd/sail_command/issues/1135#issuecomment-5705456439).
+Q1–Q6 resolved 2026-09-17 in [#1135 comment 5705456439](https://github.com/DocGerd/sail_command/issues/1135#issuecomment-5705456439).
 
 - **Q1 RESOLVED.** Endpoint unreachable after a boat switch: mark and
   announce (§5.4); planning stays enabled.
@@ -363,6 +369,10 @@ All six resolved 2026-09-17 in [#1135 comment 5705456439](https://github.com/Doc
 - **Q6 RESOLVED.** Both deviations accepted: harbour entries stay selectable
   with a marker, and the gate is runtime-derived. Spec §L and §C.6 are
   amended by the main session (§13 item 6).
+- **Q7 RESOLVED** ([#1135 comment 5710179550](https://github.com/DocGerd/sail_command/issues/1135#issuecomment-5710179550)).
+  The Boat tab's disclosure uses the live safety depth for the selected boat,
+  so it matches the harbour picker; other boats use their own default,
+  labelled (§5.1).
 
 ## 13. Follow-up issues (ready to file, not filed)
 
@@ -382,7 +392,8 @@ Sweep verdicts from `closure.mjs files` on this branch's base (§10):
    Depends on 1. Sweep owed: **no**.
 3. **Show harbour access on each boat in the Boat tab** — `BoatOption`
    disclosure, `aria-describedby`, pending state, boat-switch announcement
-   (Q1). Depends on 1. Sweep owed: **no**.
+   (Q1); selected boat at the live setting, others at their labelled default
+   (Q7). Depends on 1. Sweep owed: **no**.
 4. **Raise safety depth to the boat's default on boat switch** —
    `clampSettingsToBoat` floor `minSafetyDepthM` → `defaultSafetyDepthM`,
    clamp-notice copy, tests (Q4). Sweep owed: **no** while confined to
