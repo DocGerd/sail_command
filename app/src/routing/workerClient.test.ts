@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildPlanMessage,
   PLAN_BUDGET_MS,
+  PLAN_TIMEOUT_GRACE_MS,
+  PLAN_TIMEOUT_HARD_CAP_EXTRA_MS,
   RoutingClient,
   RoutingError,
   type RoutingFailureKind,
@@ -529,6 +531,148 @@ describe('RoutingClient.plan() timeout', () => {
 
     await outcome;
     expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+// #1280: root cause was the client's liveness deadline being a single FIXED
+// window from postMessage — a worker genuinely still working (one slow ring
+// under CPU contention, or a late clock start) could blow it while never
+// going silent. These pin the re-arm-on-progress fix and its two edges: the
+// window must still be BOUNDED (the hard cap), and re-arming must be keyed
+// to the RIGHT plan id.
+describe('RoutingClient.plan() liveness re-arm (#1280)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('progress every 10 s keeps the plan alive past budget+15 s, until the worker answers', async () => {
+    vi.useFakeTimers();
+    const w = fakeWorker();
+    const client = new RoutingClient(() => w as unknown as Worker);
+    w.emit({ type: 'ready' });
+
+    // Default timeoutMs (DEFAULT_PLAN_TIMEOUT_MS = budget + grace), so the
+    // ORIGINAL absolute deadline this exercises past is the real one #1280
+    // is about, not a test-shortened stand-in.
+    const p = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0));
+    let settled = false;
+    void p.then(
+      (r) => {
+        settled = true;
+        return r;
+      },
+      (e: Error) => {
+        settled = true;
+        return e;
+      },
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    const sent = w.posted[w.posted.length - 1];
+    if (sent.type !== 'plan') throw new Error('expected a plan message');
+
+    const originalWindowMs = PLAN_BUDGET_MS + PLAN_TIMEOUT_GRACE_MS;
+    const stepMs = 10_000; // strictly under the 15 s grace, so each progress re-arms in time
+    let elapsed = 0;
+    // Run 30 s past the ORIGINAL deadline — the pre-#1280 client would
+    // already have rejected with 'timeout' well before this point.
+    while (elapsed < originalWindowMs + 30_000) {
+      w.emit({ type: 'progress', id: sent.id, sailId: 'genoa', tMs: elapsed, frontierSize: 1 });
+      await vi.advanceTimersByTimeAsync(stepMs);
+      elapsed += stepMs;
+    }
+    expect(settled).toBe(false);
+
+    const result: PlanResult = { status: 'error', reason: 'unreachable' };
+    w.emit({ type: 'result', id: sent.id, result });
+    await expect(p).resolves.toBe(result);
+  });
+
+  it('silence exceeding the grace window after the last progress message still times out', async () => {
+    vi.useFakeTimers();
+    const w = fakeWorker();
+    const client = new RoutingClient(() => w as unknown as Worker);
+    w.emit({ type: 'ready' });
+
+    // A timeoutMs comfortably larger than one grace window, so the assertion
+    // below isolates the RE-ARMED window rather than the initial one.
+    const timeoutMs = PLAN_TIMEOUT_GRACE_MS + 60_000;
+    const p = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0), undefined, timeoutMs);
+    const outcome = p.catch((e: Error) => e);
+    await vi.advanceTimersByTimeAsync(0);
+    const sent = w.posted[w.posted.length - 1];
+    if (sent.type !== 'plan') throw new Error('expected a plan message');
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    w.emit({ type: 'progress', id: sent.id, sailId: 'genoa', tMs: 5_000, frontierSize: 3 });
+
+    // Strictly more than PLAN_TIMEOUT_GRACE_MS of silence, and still well
+    // inside the (much larger) original timeoutMs — only the re-arm's own
+    // window can explain a timeout landing here.
+    await vi.advanceTimersByTimeAsync(PLAN_TIMEOUT_GRACE_MS + 1_000);
+
+    const err = await outcome;
+    expect(err).toBeInstanceOf(RoutingError);
+    expect((err as RoutingError).kind).toBe('timeout');
+  });
+
+  it('a hard cap fires even under continuous progress faster than the grace window', async () => {
+    vi.useFakeTimers();
+    const w = fakeWorker();
+    const client = new RoutingClient(() => w as unknown as Worker);
+    w.emit({ type: 'ready' });
+
+    const timeoutMs = 20_000;
+    const p = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0), undefined, timeoutMs);
+    const outcome = p.catch((e: Error) => e);
+    await vi.advanceTimersByTimeAsync(0);
+    const sent = w.posted[w.posted.length - 1];
+    if (sent.type !== 'plan') throw new Error('expected a plan message');
+
+    const hardCapMs = timeoutMs + PLAN_TIMEOUT_HARD_CAP_EXTRA_MS;
+    const stepMs = PLAN_TIMEOUT_GRACE_MS - 1_000; // strictly under the grace window
+    let settled = false;
+    outcome.then(() => {
+      settled = true;
+    });
+    let elapsed = 0;
+    while (!settled && elapsed < hardCapMs + 3 * stepMs) {
+      w.emit({ type: 'progress', id: sent.id, sailId: 'genoa', tMs: elapsed, frontierSize: 1 });
+      await vi.advanceTimersByTimeAsync(stepMs);
+      elapsed += stepMs;
+    }
+
+    const err = await outcome;
+    expect(err).toBeInstanceOf(RoutingError);
+    expect((err as RoutingError).kind).toBe('timeout');
+  });
+
+  it('progress for a DIFFERENT plan id does not re-arm this one', async () => {
+    vi.useFakeTimers();
+    const w = fakeWorker();
+    const client = new RoutingClient(() => w as unknown as Worker);
+    w.emit({ type: 'ready' });
+
+    const timeoutMs = 10_000;
+    const p1 = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0), undefined, timeoutMs);
+    const p2 = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0), undefined, timeoutMs);
+    const outcome1 = p1.catch((e: Error) => e);
+    p2.catch(() => {}); // left pending on purpose — see the #432 concurrent-ids test above for this pattern
+    await vi.advanceTimersByTimeAsync(0);
+    const [sent1, sent2] = w.posted.slice(-2);
+    if (sent1.type !== 'plan' || sent2.type !== 'plan') throw new Error('expected plan messages');
+    expect(sent1.id).not.toBe(sent2.id);
+
+    // Flood id2 with progress well past id1's own timeoutMs; id1 never
+    // receives one. If progress re-armed by message content alone (or every
+    // pending entry) rather than by msg.id, id1 would survive this too.
+    for (let elapsed = 0; elapsed < timeoutMs + 5_000; elapsed += 1_000) {
+      w.emit({ type: 'progress', id: sent2.id, sailId: 'genoa', tMs: elapsed, frontierSize: 1 });
+      await vi.advanceTimersByTimeAsync(1_000);
+    }
+
+    const err = await outcome1;
+    expect(err).toBeInstanceOf(RoutingError);
+    expect((err as RoutingError).kind).toBe('timeout');
   });
 });
 
