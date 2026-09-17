@@ -133,12 +133,14 @@ jobs:
       # #54 rename-vs-solve-order coupling) but is never collected by vitest
       # (app/sweep/ is deliberately excluded from vite.config.ts's `include`
       # so the ~20 min #282 arm sweep never runs here - see the `app/sweep/`
-      # bullet in CLAUDE.md). This step runs ONLY that one file under plain
-      # Node (`node --test`), never `sweep/vitest.config.ts` - the expensive
-      # nine-arm harness stays exclusively on-demand. Placed BEFORE `npm run
-      # test` deliberately (PR #588 review, Minor 7): it completes in ~0.4s
-      # (19 tests) against the full suite's ~500s, so a regression here
-      # surfaces in seconds rather than ~8 minutes into the job.
+      # bullet in CLAUDE.md). #1262 added app/sweep/merge-shards.test.mjs to
+      # the same `test:sweep-unit` script, so this step now runs BOTH files
+      # under plain Node (`node --test`), never `sweep/vitest.config.ts` -
+      # the expensive arm harness stays exclusively on-demand. Placed BEFORE
+      # `npm run test` deliberately (PR #588 review, Minor 7): both files
+      # together still complete in well under a second against the full
+      # suite's ~500s, so a regression here surfaces in seconds rather than
+      # ~8 minutes into the job.
       - run: npm run test:sweep-unit
         if: steps.classify.outputs.run_app != 'false' && steps.retest.outputs.retest != 'false'
       - run: npm run test
