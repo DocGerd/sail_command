@@ -100,14 +100,25 @@ const SHARD_RAW = env?.SC_SWEEP_SHARD;
 /**
  * Part-file base name for an arm under the given shard, or the arm's own
  * label when unsharded — so a plain run's output filenames are byte-for-byte
- * unchanged (`<label>.json`), and a sharded run's parts (`<label>.shard<i>
- * of<n>.json`) can never be mistaken for a complete arm file by
- * `compare.mjs`'s own arm-name check, which only recognises names in
- * `armNames.ts` (see `merge-shards.mjs`, which reassembles the parts INTO a
- * `<label>.json` before `compare.mjs` ever sees the directory).
+ * unchanged (`<label>.json`), regardless of `limit`, and a sharded run's
+ * parts (`<label>.shard<i>of<n>.limit<limit>.json`) can never be mistaken
+ * for a complete arm file by `compare.mjs`'s own arm-name check, which only
+ * recognises names in `armNames.ts` (see `merge-shards.mjs`, which
+ * reassembles the parts INTO a `<label>.json` before `compare.mjs` ever sees
+ * the directory).
+ *
+ * #1283: `limit` (`SC_SWEEP_LIMIT`, 0 meaning unset/full) is encoded in the
+ * SHARDED filename — never a JSON header, which would touch the merged
+ * output's bytes and break byte identity with README.md's recorded arm
+ * sha256 prefixes. Two shard directories produced under different limits
+ * (one `SC_SWEEP_LIMIT=4`, the other `SC_SWEEP_LIMIT=6`) can merge into a
+ * plausible-looking but WRONG row count that agrees across every arm — the
+ * cross-arm row-count check in merge-shards.mjs cannot see it, since it only
+ * compares arms to each other, never to the limit that produced them. The
+ * filename is what lets merge-shards.mjs fail closed directly instead.
  */
-function armFileBase(label: string, shard: Shard | null): string {
-  return shard ? `${label}.shard${shard.index}of${shard.count}` : label;
+function armFileBase(label: string, shard: Shard | null, limit: number): string {
+  return shard ? `${label}.shard${shard.index}of${shard.count}.limit${limit}` : label;
 }
 
 const dataDir = resolve(dirname(fileURLToPath(import.meta.url)), '../public/data');
@@ -562,7 +573,7 @@ export function runArm(label: (typeof ARM_NAMES)[number]): void {
         );
         timings[h.id] = Date.now() - t;
       }
-      const base = armFileBase(label, SHARD);
+      const base = armFileBase(label, SHARD, LIMIT);
       writeFileSync(resolve(outDir, `${base}.json`), serialize(rows));
       writeFileSync(resolve(outDir, `${base}.timings.json`), serialize(timings));
       expect(Object.keys(rows).length).toBe(dests.length);

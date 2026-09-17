@@ -36,6 +36,13 @@ function fakePlan(id, tag) {
   return { status: 'error', reason: `fixture-${tag}-${id}` };
 }
 
+// #1283: every real shard part filename carries a `.limit<n>` segment
+// (`sweepArms.ts`'s `armFileBase`, `n` = the literal `SC_SWEEP_LIMIT` that
+// invocation ran under, `0` when unset). Fixtures below use LIMIT for that
+// segment throughout so they match production filenames; only
+// `writeMismatchedLimitPair` varies it deliberately.
+const LIMIT = 0;
+
 /** Writes a complete two-shard part-file set for every arm in ARM_NAMES. */
 function writeShardPair(
   dir1,
@@ -72,11 +79,11 @@ function writeShardPair(
       // short one row).
       delete rows2[shard2Ids[0]];
     }
-    writeFileSync(join(dir1, `${label}.shard1of2.json`), serialize(rows1));
-    writeFileSync(join(dir1, `${label}.shard1of2.timings.json`), serialize({}));
+    writeFileSync(join(dir1, `${label}.shard1of2.limit${LIMIT}.json`), serialize(rows1));
+    writeFileSync(join(dir1, `${label}.shard1of2.limit${LIMIT}.timings.json`), serialize({}));
     if (label === dropShard2For) continue; // simulates a missing shard index
-    writeFileSync(join(dir2, `${label}.shard2of2.json`), serialize(rows2));
-    writeFileSync(join(dir2, `${label}.shard2of2.timings.json`), serialize({}));
+    writeFileSync(join(dir2, `${label}.shard2of2.limit${LIMIT}.json`), serialize(rows2));
+    writeFileSync(join(dir2, `${label}.shard2of2.limit${LIMIT}.timings.json`), serialize({}));
   }
 }
 
@@ -91,10 +98,32 @@ function writeMismatchedShardCountPair(dir1, dir2) {
   for (const label of ARM_NAMES) {
     const rows1 = { [ids[0]]: fakePlan(ids[0], label) };
     const rows2 = { [ids[1]]: fakePlan(ids[1], label) };
-    writeFileSync(join(dir1, `${label}.shard1of2.json`), serialize(rows1));
-    writeFileSync(join(dir1, `${label}.shard1of2.timings.json`), serialize({}));
-    writeFileSync(join(dir2, `${label}.shard2of3.json`), serialize(rows2));
-    writeFileSync(join(dir2, `${label}.shard2of3.timings.json`), serialize({}));
+    writeFileSync(join(dir1, `${label}.shard1of2.limit${LIMIT}.json`), serialize(rows1));
+    writeFileSync(join(dir1, `${label}.shard1of2.limit${LIMIT}.timings.json`), serialize({}));
+    writeFileSync(join(dir2, `${label}.shard2of3.limit${LIMIT}.json`), serialize(rows2));
+    writeFileSync(join(dir2, `${label}.shard2of3.limit${LIMIT}.timings.json`), serialize({}));
+  }
+}
+
+/**
+ * Writes a shard-LIMIT mismatch (#1283): dir1's parts all ran under
+ * `SC_SWEEP_LIMIT=6`, dir2's under `SC_SWEEP_LIMIT=4` — same shard count
+ * (`of2` both sides), so only the limit segment differs. This is the exact
+ * residual #1283 reports: two shard directories that agree on everything
+ * merge-shards.mjs checked BEFORE this fix (arm set, shard count, harbour
+ * disjointness, cross-arm row-count parity) yet were produced under
+ * different `SC_SWEEP_LIMIT` values.
+ */
+function writeMismatchedLimitPair(dir1, dir2) {
+  mkdirSync(dir1, { recursive: true });
+  mkdirSync(dir2, { recursive: true });
+  for (const label of ARM_NAMES) {
+    const rows1 = { [ids[0]]: fakePlan(ids[0], label) };
+    const rows2 = { [ids[1]]: fakePlan(ids[1], label) };
+    writeFileSync(join(dir1, `${label}.shard1of2.limit6.json`), serialize(rows1));
+    writeFileSync(join(dir1, `${label}.shard1of2.limit6.timings.json`), serialize({}));
+    writeFileSync(join(dir2, `${label}.shard2of2.limit4.json`), serialize(rows2));
+    writeFileSync(join(dir2, `${label}.shard2of2.limit4.timings.json`), serialize({}));
   }
 }
 
@@ -146,7 +175,7 @@ test('changing a shard file changes the merged output (merge is not vacuous)', (
 
     // Perturb ONE row of ONE shard file for one arm — a change the harness
     // can actually produce (a different solve result for that harbour).
-    const target = join(dir1, `${ARM_NAMES[0]}.shard1of2.json`);
+    const target = join(dir1, `${ARM_NAMES[0]}.shard1of2.limit${LIMIT}.json`);
     const rows = JSON.parse(readFileSync(target, 'utf8'));
     const firstId = Object.keys(rows)[0];
     rows[firstId] = { status: 'error', reason: 'mutated' };
@@ -226,6 +255,22 @@ test('fails closed on a shard-count mismatch between directories', () => {
   }
 });
 
+test('fails closed on a shard-limit mismatch between directories (#1283)', () => {
+  const root = mkdtempSync(join(tmpdir(), 'merge-shards-'));
+  try {
+    const dir1 = join(root, 's1');
+    const dir2 = join(root, 's2');
+    const outDir = join(root, 'merged');
+    writeMismatchedLimitPair(dir1, dir2);
+
+    const result = run([outDir, dir1, dir2]);
+    assert.notEqual(result.status, 0, 'shards run under different SC_SWEEP_LIMIT values must not merge at exit 0');
+    assert.match(result.stderr, /shard-limit mismatch/i);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('fails closed on a harbour id not in the current harbors.json', () => {
   const root = mkdtempSync(join(tmpdir(), 'merge-shards-'));
   try {
@@ -271,7 +316,7 @@ test('fails closed when one arm merges a different total row count than another 
     // comparison (check 2) can catch it — every other arm still merges 4.
     const shard2Ids = ids.filter((_, i) => i % 2 === 1); // ids[1], ids[3]
     const rowsShort = { [shard2Ids[0]]: fakePlan(shard2Ids[0], ARM_NAMES[0]) }; // drops ids[3]
-    writeFileSync(join(dir2, `${ARM_NAMES[0]}.shard2of2.json`), serialize(rowsShort));
+    writeFileSync(join(dir2, `${ARM_NAMES[0]}.shard2of2.limit${LIMIT}.json`), serialize(rowsShort));
 
     const result = run([outDir, dir1, dir2]);
     assert.notEqual(result.status, 0, 'arms disagreeing on total row count must not exit 0');
