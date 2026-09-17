@@ -1261,5 +1261,40 @@ export const de = {
   // ranked this window by.
   'departureScan.confirm.done.disagreement':
     'Plan übernommen — die vollständige Berechnung empfiehlt hier {rig}, nicht die Genua, mit der dieses Fenster eingestuft wurde.',
+  // #1291/§5.2/§5.3/§7: per-boat harbour-access markers in HarborPicker's
+  // options and PlannerPanel's selected-endpoint row. `{boat}` is
+  // `BoatDef.name`, catalogue data, not translated per-language.
+  'harborPicker.boatUnreachable': 'Mit {boat} bei {depth} m Sicherheitstiefe nicht erreichbar.',
+  // PR #1323 review comment-only wave: "Tiefenwarnung" names the same hazard
+  // ShallowWarning's Achtung/Caution vocabulary does; spec §7 asks for
+  // alignment, not done here (maintainer call), tracked in #1326.
+  'harborPicker.boatShallow': 'Mit {boat} nur über eine flachere Zufahrt – Tiefenwarnung.',
+  // PR #1323 review Major 1: NO "below the boat's recommended depth" clause
+  // — `findLowerSettingHint`'s frozen floor is `defaultSafetyDepthM(boat)`,
+  // so a real 'found' outcome is NEVER below it (see HarborPicker.tsx's
+  // `harborAccessCopy` doc comment). Keyed on the hint's own reached state
+  // alone. Wording DECIDED by the maintainer (coordinator addendum) to match
+  // sibling PR #1324's identical strings — noun is always "Sicherheitstiefe",
+  // never "Einstellung". The word order here (verb-first, "Eventuell
+  // planbar bei …") still avoids the design spec's own §7 draft bug ("Mit
+  // {depth} m eventuell mit Tiefenwarnung planbar", two "mit" in a row) —
+  // there is only ever one "mit" in this phrasing. The "(nur Tiefendaten
+  // geprüft)" hedge states what was checked — the reachability derivation is
+  // depth-only (no bridges/channel width/obstructions) — never a softener.
+  'harborPicker.boatLowerSettingAtDefault':
+    'Eventuell planbar bei {depth} m Sicherheitstiefe (nur Tiefendaten geprüft).',
+  // PR #1323 review comment-only wave: see `boatShallow`'s matching comment
+  // — "Tiefenwarnung" tracked in #1326, not aligned with ShallowWarning here.
+  'harborPicker.boatLowerSettingAtDefaultShallow':
+    'Eventuell planbar bei {depth} m Sicherheitstiefe, mit Tiefenwarnung (nur Tiefendaten geprüft).',
+  // #1321/PR #1323 review Major 2: `findLowerSettingHint` only checks
+  // `[defaultSafetyDepthM(boat), safetyDepthM)` — `OptionsPanel.tsx` lets a
+  // user dial the safety depth down to `minSafetyDepthM(boat)` WITHOUT a
+  // boat switch, a range this hint never searches. So this must say ONLY
+  // what was checked ("at or above the recommended depth"), never a claim
+  // covering settings below it. Wording DECIDED by the maintainer
+  // (coordinator addendum) to match sibling PR #1324.
+  'harborPicker.boatUnreachableAtOrAboveDefault':
+    'Nicht erreichbar bei der für {boat} empfohlenen Sicherheitstiefe oder darüber.',
 } as const;
 export type MsgKey = keyof typeof de;

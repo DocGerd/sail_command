@@ -1243,4 +1243,28 @@ export const en = {
   'departureScan.confirm.done': 'Plan updated.',
   'departureScan.confirm.done.disagreement':
     'Plan updated — the full solve favours {rig} here, not the genoa this window was ranked by.',
+  // #1291: see dict.de.ts's matching comment.
+  'harborPicker.boatUnreachable': 'Not reachable with {boat} at {depth} m safety depth.',
+  // PR #1323 review comment-only wave: "depth warning" names the same hazard
+  // ShallowWarning's Achtung/Caution vocabulary does; spec §7 asks for
+  // alignment, not done here (maintainer call), tracked in #1326.
+  'harborPicker.boatShallow': 'Only via a shallower approach with {boat} — depth warning.',
+  // PR #1323 review Major 1: see dict.de.ts's matching comment — no "below
+  // recommended" clause, keyed on the hint's own reached state alone.
+  // Wording DECIDED by the maintainer (coordinator addendum) to match
+  // sibling PR #1324's identical strings. The "(depth data only)" hedge
+  // states what was checked — the reachability derivation is depth-only (no
+  // bridges/channel width/obstructions) — never a softener.
+  'harborPicker.boatLowerSettingAtDefault': 'May route at {depth} m (depth data only).',
+  // PR #1323 review comment-only wave: see `boatShallow`'s matching comment
+  // — "depth warning" tracked in #1326, not aligned with ShallowWarning here.
+  'harborPicker.boatLowerSettingAtDefaultShallow':
+    'May route at {depth} m, with a depth warning (depth data only).',
+  // #1321/PR #1323 review Major 2: see dict.de.ts's matching comment — scoped
+  // to what `findLowerSettingHint` actually searched (at or above the
+  // boat's recommended depth), never a claim covering settings below it.
+  // Wording DECIDED by the maintainer (coordinator addendum) to match
+  // sibling PR #1324.
+  'harborPicker.boatUnreachableAtOrAboveDefault':
+    "Not reachable at or above {boat}'s recommended safety depth.",
 } satisfies Record<MsgKey, string>;

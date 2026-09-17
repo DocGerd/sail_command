@@ -5,6 +5,31 @@
 import 'fake-indexeddb/auto';
 import { render, screen, fireEvent, within, cleanup, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+// #1291: real `useNavMask` never resolves a non-null mask synchronously in
+// jsdom (no `loadRoutingAssets` mock in this file, so its fetch rejects and
+// the hook stays `null` forever — the SAME behaviour every OTHER test here
+// already relies on unmocked). Wrapping it as a spy over its real
+// implementation keeps that default for every existing row while letting the
+// new #1291 describe block below override it per test via
+// `mockReturnValueOnce`. `computeHarborAccess`/`findLowerSettingHint` are
+// wrapped the same way so a test can hand PlannerPanel a synthetic
+// access/hint without needing a real NavMask. Placed AFTER the `vitest`
+// import (PR #1323 review, CodeQL "variable used before declaration" —
+// `vi` is referenced inside these factories) — vitest hoists `vi.mock`
+// calls regardless of source position, so this is a source-order fix only,
+// matching DepthProfile.test.tsx's own established convention.
+vi.mock('../state/useNavMask', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../state/useNavMask')>();
+  return { ...actual, useNavMask: vi.fn(actual.useNavMask) };
+});
+vi.mock('../lib/harborReachability', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/harborReachability')>();
+  return {
+    ...actual,
+    computeHarborAccess: vi.fn(actual.computeHarborAccess),
+    findLowerSettingHint: vi.fn(actual.findLowerSettingHint),
+  };
+});
 import { useState } from 'react';
 import { I18nProvider } from '../i18n';
 import { en } from '../i18n/dict.en';
@@ -30,7 +55,9 @@ import PlannerPanel, { nextFullHourMs, type PlannerStatus, type TapTarget } from
 import { boatById, DEFAULT_BOAT_ID, type BoatDef } from '../data/boats';
 import { defaultBoatSnapshot } from '../types';
 import { PLAN_SCHEMA_VERSION } from '../types';
+import { computeHarborAccess, findLowerSettingHint } from '../lib/harborReachability';
 import type { HarborWithReachability } from '../lib/harborReachability';
+import { useNavMask } from '../state/useNavMask';
 
 // PR #763 review Minor 7: see RouteSummary.test.tsx's own copy of this
 // helper for the full rationale (jsdom does not hide closed-<details>
@@ -2522,6 +2549,117 @@ describe('PlannerPanel', () => {
         'The search ran out of time before comparing both sails, so no faster rig is claimed',
       );
     });
+  });
+});
+
+// #1291/§5.3: the selected-endpoint row's per-boat access marker, using the
+// SAME `harborAccessCopy` precedence HarborPicker.test.tsx pins directly —
+// this describe block only exercises PlannerPanel's OWN wiring (deriving
+// `harborAccess`/calling `findLowerSettingHint` off `mask`/`boat`/
+// `settings.safetyDepthM` and rendering the result), never the precedence
+// table itself. `useNavMask` and `computeHarborAccess`/`findLowerSettingHint`
+// are mocked so a jsdom test can drive a resolved (non-null) mask/access map
+// without loading real routing assets.
+//
+// `useNavMask`'s mock MUST use `mockReturnValue` (persistent), never
+// `mockReturnValueOnce`: it is a REACT HOOK, so a mid-test fallback to the
+// wrapped real implementation (which internally calls its own `useState`/
+// `useEffect`) after the canned value is exhausted would change the NUMBER
+// of hooks PlannerPanel calls between renders of the SAME instance — a real
+// "Rendered more hooks than during the previous render" crash, not a
+// hypothetical one. The `afterEach` below restores it to `null` (this
+// environment's own real, always-null-in-jsdom resolution — confirmed by
+// the #834 known-disconnected rows above passing fully unmocked) so it
+// cannot leak into the GPX-import/saved-waypoint describes that follow this
+// one in the file. `computeHarborAccess`/`findLowerSettingHint` are ordinary
+// functions (no hook-order constraint) and stay on `mockReturnValueOnce`,
+// auto-reverting to their real implementation after one call — safe here
+// because a real re-invocation only happens if `mask`'s identity changes,
+// which `useNavMask`'s persistent mock prevents.
+describe('#1291 per-boat harbour access markers on the selected-endpoint row', () => {
+  afterEach(() => {
+    vi.mocked(useNavMask).mockReturnValue(null);
+  });
+
+  it('shows the boat-scoped "not reachable" line plus the #1321-scoped hint line, never an unscoped "any depth" claim', () => {
+    vi.mocked(useNavMask).mockReturnValue({} as never);
+    vi.mocked(computeHarborAccess).mockReturnValueOnce(
+      new Map([
+        ['flensburg', 'unreachable'],
+        ['marstal', 'ok'],
+      ]),
+    );
+    vi.mocked(findLowerSettingHint).mockReturnValueOnce({ kind: 'not-found' });
+
+    renderPanel({
+      boat: { ...boatById(DEFAULT_BOAT_ID), name: 'SPEEDY GO!' },
+      origin: {
+        source: 'harbor',
+        point: FLENSBURG.snap,
+        harborId: FLENSBURG.id,
+        label: 'Flensburg',
+      },
+    });
+    const originSection = screen.getByRole('region', { name: 'Origin' });
+    // DEFAULT_SETTINGS.safetyDepthM = defaultSafetyDepthM(the default boat) = 3.0.
+    expect(
+      within(originSection).getByText('Not reachable with SPEEDY GO! at 3.0 m safety depth.'),
+    ).toBeInTheDocument();
+    // #1321/PR #1323 review Major 2: scoped to what was actually checked
+    // ("at or above the recommended depth"), never a claim about settings
+    // below it. Wording DECIDED by the maintainer to match sibling PR #1324.
+    expect(
+      within(originSection).getByText(
+        "Not reachable at or above SPEEDY GO!'s recommended safety depth.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('shows only the "found" lower-setting line when the hint search succeeds — never the #1321 line too', () => {
+    vi.mocked(useNavMask).mockReturnValue({} as never);
+    vi.mocked(computeHarborAccess).mockReturnValueOnce(new Map([['marstal', 'unreachable']]));
+    // PR #1323 review Major 1: depthM here is realistic (>= the boat's own
+    // default) — the fixed `harborAccessCopy` keys on `state` alone, never
+    // on a depth comparison (see HarborPicker.test.tsx's own mutation-aimed
+    // test using a below-default depth to prove that directly).
+    vi.mocked(findLowerSettingHint).mockReturnValueOnce({
+      kind: 'found',
+      hint: { depthM: 3.2, state: 'ok' },
+    });
+
+    renderPanel({
+      boat: { ...boatById(DEFAULT_BOAT_ID), name: 'SPEEDY GO!' },
+      destination: {
+        source: 'harbor',
+        point: MARSTAL.snap,
+        harborId: MARSTAL.id,
+        label: 'Marstal',
+      },
+    });
+    const destinationSection = screen.getByRole('region', { name: 'Destination' });
+    expect(
+      within(destinationSection).getByText('May route at 3.2 m (depth data only).'),
+    ).toBeInTheDocument();
+    expect(
+      within(destinationSection).queryByText(/Not reachable at or above/),
+    ).not.toBeInTheDocument();
+  });
+
+  it('renders no per-boat marker for an ok harbor', () => {
+    vi.mocked(useNavMask).mockReturnValue({} as never);
+    vi.mocked(computeHarborAccess).mockReturnValueOnce(new Map([['flensburg', 'ok']]));
+
+    renderPanel({
+      origin: {
+        source: 'harbor',
+        point: FLENSBURG.snap,
+        harborId: FLENSBURG.id,
+        label: 'Flensburg',
+      },
+    });
+    const originSection = screen.getByRole('region', { name: 'Origin' });
+    expect(within(originSection).queryByText(/not reachable/i)).not.toBeInTheDocument();
+    expect(within(originSection).queryByText(/may route/i)).not.toBeInTheDocument();
   });
 });
 
