@@ -491,15 +491,13 @@ FIXED ref, never `<HEAD-commit>` of whatever branch is under test: that
 commit's own `sweepArms.ts` may carry OTHER, later hunks (a changed arm), and
 overlaying its whole file would silently run HEAD's arms at BASE. FIRST
 confirm the precondition: `git diff <BASE> <the #1262 merge commit> --
-app/sweep/sweepArms.ts` must show only the shard hunks (the arm list, wind
+app/sweep/sweepArms.ts` must show only the #1262 hunks (the arm list, wind
 fields, settings, origins, boats, `T0`, or `serialize()`'s bytes are
 untouched — `serialize` was only MOVED, not changed, out of `sweepArms.ts`).
 Then copy the three harness files forward with
 `git restore --source=<the #1262 merge commit> -- app/sweep/sweepArms.ts
-app/sweep/serialize.ts app/sweep/merge-shards.mjs` onto the BASE checkout
-(never `git checkout <ref> -- <paths>`: CLAUDE.md records a local deny pair
-on `git checkout -- *`, and whether the three-argument form matches it is
-not established) — never touching `app/src/**`. `armNames.ts`, the test
+app/sweep/serialize.ts app/sweep/merge-shards.mjs` onto the BASE checkout —
+never touching `app/src/**`. `armNames.ts`, the test
 file and `package.json` need no copy: `armNames.ts` is unchanged by #1262,
 and the other two aren't needed to RUN the harness. Merge each side's shards
 with THAT SIDE's own `merge-shards.mjs` — it reads `harbors.json` and

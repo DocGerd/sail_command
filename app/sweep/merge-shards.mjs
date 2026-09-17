@@ -120,9 +120,8 @@ mkdirSync(outDir, { recursive: true });
 // `harbourOrder.slice(0, totalRows)`, and every arm shares the SAME
 // `totalRows` (they all sweep the same destination list). Tracked across
 // the loop below and checked per arm, so a row silently dropped from the
-// MIDDLE of one shard (a bad copy, an `SC_SWEEP_LIMIT` mismatch across
-// shard invocations, a broken `idx % count` filter) reds the merge instead
-// of writing a short arm file at exit 0.
+// MIDDLE of one shard (a bad copy, a broken `idx % count` filter) reds the
+// merge instead of writing a short arm file at exit 0.
 let referenceTotalRows = null;
 let referenceArmLabel = null;
 
@@ -189,9 +188,8 @@ for (const label of EXPECTED) {
   }
   // #1262 review Minor 2, check 2: every arm sweeps the SAME destination
   // list, so `totalRows` must agree across all of them — a per-arm gap that
-  // happens to still land on a harbors.json prefix (e.g. one shard
-  // invocation run under a different SC_SWEEP_LIMIT) would pass check 1
-  // alone and only shows up as a cross-arm count mismatch.
+  // happens to still land on a harbors.json prefix would pass check 1 alone
+  // and only shows up as a cross-arm count mismatch.
   if (referenceTotalRows === null) {
     referenceTotalRows = totalRows;
     referenceArmLabel = label;
