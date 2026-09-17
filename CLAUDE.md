@@ -4182,7 +4182,8 @@ making design-level decisions; do not silently deviate.
   dispose alone would make every later replan fail `disposed`.
   TWO things TERMINATE the search with a named cause — the wall-clock budget
   above (`budget-exhausted`) and the forecast-horizon guard
-  (`horizon-exceeded`). `MAX_FRONTIER = 30_000` is NOT one of them and its
+  (`horizon-exceeded`). `MAX_FRONTIER` (30_000, scaled by mask cell count
+  since #1257) is NOT one of them and its
   declaration says so: a "Perf safeguard, not a correctness bound" that
   TRUNCATES the frontier by count and lets the loop CONTINUE. Do not group the
   three as "bounds" — a no-route in the capped regime may reflect search

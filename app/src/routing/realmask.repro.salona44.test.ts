@@ -31,7 +31,9 @@ vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
 // assertion site's own comment for the sanity checks applied).
 const SALONA44_GLUECKSBURG_DISTANCE_NM = 4.211804567041051;
 const SALONA44_GLUECKSBURG_DURATION_MS = 2374384.2580566406;
-const SALONA44_MARSTAL_DURATION_MS = 28020116.832763672;
+// #1257: re-pinned when MAX_FRONTIER began scaling with mask cell count
+// (was 28020116.832763672 at f229f96, i.e. +39.2 s under the larger cap).
+const SALONA44_MARSTAL_DURATION_MS = 28059324.346191406;
 
 // #653: both real-mask harnesses (this suite and app/sweep/) exercised only
 // the Salona 45 before this describe block — see the issue for the
