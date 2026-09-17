@@ -1841,7 +1841,7 @@ describe('PlannerPanel', () => {
     // decimal POINT ("Erlaubter Bereich: 2.2-10 m"), contradicting the
     // comma convention every OTHER depth figure in this app uses via
     // formatDepthM — including this very PR's own boat.clamp.notice two
-    // components over ("Sicherheitstiefe auf 2,4 m angehoben"). renderPanel()
+    // components over ("Sicherheitstiefe auf 3,2 m angehoben"). renderPanel()
     // hardcodes English, so this test renders directly under 'de' to reach
     // the gap no other row in this describe block exercises. MUTATION-CHECKED:
     // reverting PlannerPanel.tsx's help vars to the bare numbers (no

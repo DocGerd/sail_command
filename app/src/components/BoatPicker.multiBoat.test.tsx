@@ -132,25 +132,29 @@ describe('#54 BoatPicker with a multi-boat catalogue', () => {
 });
 
 describe('#539 item 1 / spec C.7: the clamp is WIRED to the boat switch', () => {
-  it('clamps a below-minimum safety depth UP, persists it, and announces it', () => {
-    // Deep 46 draws 2.30 m, so spec J OQ-1's `draftM + 0.1` floor is 2.4 —
-    // above the 2.2 m the user had stored under the shallower default boat.
+  // #1293 (#1135 Q4): the floor is now `defaultSafetyDepthM`, not
+  // `minSafetyDepthM` — a boat switch raises a stored gate to the boat's
+  // RECOMMENDED default, not merely to its UI-typeable minimum.
+  it('clamps a below-default safety depth UP to the boat DEFAULT, persists it, and announces it', () => {
+    // Deep 46 draws 2.30 m, so its default gate (`ceilToDecimetre(draftM +
+    // MASK_TOLERANCE_M)`, boatDepth.ts) is 3.2 m — above the 2.2 m the user
+    // had stored under the shallower default boat.
     const { onBoatIdChange, onSettingsChange } = renderPicker({ safetyDepthM: 2.2 });
     selectBoat(/Deep 46/);
 
     expect(onSettingsChange).toHaveBeenCalledTimes(1);
-    expect(onSettingsChange.mock.calls[0]![0]).toMatchObject({ safetyDepthM: 2.4 });
+    expect(onSettingsChange.mock.calls[0]![0]).toMatchObject({ safetyDepthM: 3.2 });
     expect(onBoatIdChange).toHaveBeenCalledWith('deep-46');
     expect(screen.getByRole('status')).toHaveTextContent(
-      'Safety depth raised to 2.4 m — the minimum for Deep 46.',
+      'Safety depth raised to 3.2 m — the default for Deep 46.',
     );
   });
 
   it('NEVER clamps down: a generous stored depth survives a switch to a shoal boat', () => {
-    // The direction that matters. Shoal 40's floor is 1.7 m; a user who chose
-    // 4.0 m deliberately keeps it, and nothing is announced because nothing
-    // changed. A clamp implemented as "set to the new boat's floor" would
-    // pass the row above and fail here.
+    // The direction that matters. Shoal 40's default gate is 2.5 m; a user
+    // who chose 4.0 m deliberately keeps it, and nothing is announced
+    // because nothing changed. A clamp implemented as "set to the new
+    // boat's floor" would pass the row above and fail here.
     const { onBoatIdChange, onSettingsChange } = renderPicker({ safetyDepthM: 4.0 });
     selectBoat(/Shoal 40/);
 
@@ -163,7 +167,7 @@ describe('#539 item 1 / spec C.7: the clamp is WIRED to the boat switch', () => 
     // The `>=` boundary, at the wiring level rather than inside
     // clampSettingsToBoat (lib/boatSettings.test.ts owns the function's own
     // boundary row). A `>` here would announce a change that never happened.
-    const { onSettingsChange } = renderPicker({ safetyDepthM: 2.4 });
+    const { onSettingsChange } = renderPicker({ safetyDepthM: 3.2 });
     selectBoat(/Deep 46/);
     expect(onSettingsChange).not.toHaveBeenCalled();
     expect(screen.getByRole('status')).toBeEmptyDOMElement();
@@ -171,8 +175,11 @@ describe('#539 item 1 / spec C.7: the clamp is WIRED to the boat switch', () => 
 
   it('clears a previous clamp notice on a later switch that clamps nothing', () => {
     // Otherwise the announcement outlives the action that caused it and
-    // claims a change the second switch did not make.
-    renderPicker({ safetyDepthM: 2.2 });
+    // claims a change the second switch did not make. 2.6 m sits below Deep
+    // 46's 3.2 m default (clamps) but at/above Shoal 40's 2.5 m default
+    // (does not) — this harness does not feed onSettingsChange's result
+    // back into a re-render, so both selects see the same stored 2.6 m.
+    renderPicker({ safetyDepthM: 2.6 });
     selectBoat(/Deep 46/);
     expect(screen.getByRole('status')).not.toBeEmptyDOMElement();
     selectBoat(/Shoal 40/);
@@ -186,12 +193,12 @@ describe('#539 item 1 / spec C.7: the clamp is WIRED to the boat switch', () => 
     //
     // #596: the depth figure is now locale-aware (formatDepthM) like every
     // other user-visible depth in the app, so the German render reads
-    // "2,4 m" — a decimal COMMA, not the English "2.4 m" this row pinned
+    // "3,2 m" — a decimal COMMA, not the English "3.2 m" this row pinned
     // before #596 fixed the mixed-convention hazard.
     renderPicker({ safetyDepthM: 2.2, lang: 'de' });
     selectBoat(/Deep 46/);
     expect(screen.getByRole('status')).toHaveTextContent(
-      'Sicherheitstiefe auf 2,4 m angehoben – Mindestwert für Deep 46.',
+      'Sicherheitstiefe auf 3,2 m angehoben – Standardwert für Deep 46.',
     );
   });
 
@@ -252,9 +259,9 @@ describe('#699: a clamping switch scrolls the notice into view', () => {
     // boat's floor.
     const scrollIntoView = installScrollIntoViewMock();
     renderPicker({ safetyDepthM: 1.0 });
-    selectBoat(/Deep 46/); // draft 2.3 m -> floor 2.4 m, clamps (1.0 < 2.4)
+    selectBoat(/Deep 46/); // draft 2.3 m -> default 3.2 m, clamps (1.0 < 3.2)
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
-    selectBoat(/Shoal 40/); // draft 1.6 m -> floor 1.7 m, ALSO clamps (1.0 < 1.7)
+    selectBoat(/Shoal 40/); // draft 1.6 m -> default 2.5 m, ALSO clamps (1.0 < 2.5)
     expect(scrollIntoView).toHaveBeenCalledTimes(2);
   });
 });
