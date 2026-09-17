@@ -206,6 +206,14 @@ const PRUNE_LON = 0.003; // ~190 m at 55°N
 // reflect search capacity rather than actual unreachability; surfacing that
 // distinction to the caller is deferred (plan-amendment pending).
 const MAX_FRONTIER = 30_000;
+/**
+ * #1280 part B: how many frontier nodes one ring expands between wall-clock
+ * budget checks. Sized from this machine's measured per-node cost (~60 us at
+ * a 30 000-node ring, PR body's perf table), so a batch is ~8 ms — three
+ * orders below the 15 s client grace the old one-ring granularity overshot,
+ * while the per-node cost is an increment and a compare.
+ */
+export const DEADLINE_CHECK_NODES = 128;
 const EXTRA_TWAS = [45, 55, 65, 75, 85, 95, 105, 115, 125, 135, 145, 155, 165, 175];
 const MOTOR_TWAS = [0, 20, 35];
 // #885: a forced-motor segment has no sail up, so candidates are headings, not
@@ -498,13 +506,14 @@ export function solve(p: SolveParams): SolveResult {
     // (a later tier, or a later waypoint segment) costs one predicate rather
     // than one ring.
     //
-    // ABORT GRANULARITY is one ring, so the real abort overshoots the
-    // deadline by up to one ring's duration. Measured on this app's most
-    // expensive real input (Flensburg -> Marstal, DEFAULT_SETTINGS, real
-    // committed mask+polars, 2026-08-07, one dev machine): 132 rings,
-    // 41.4 s total, slowest ring 1045 ms, frontier peaking at MAX_FRONTIER.
-    // The client-side backstop is sized to absorb that overshoot with room
-    // for a much slower device — see PLAN_TIMEOUT_GRACE_MS in workerClient.ts.
+    // ABORT GRANULARITY is DEADLINE_CHECK_NODES frontier nodes since #1280
+    // part B — this ring-entry check is kept because a solve entered with an
+    // already-spent budget must cost one predicate, not one node batch. The
+    // pre-#1280 granularity was one whole ring, which under CPU contention
+    // overshot the client's 15 s grace and surfaced as `error.routingTimeout`
+    // instead of the typed budget failure (#1280).
+    // The client-side backstop is sized to absorb the remaining overshoot —
+    // see PLAN_TIMEOUT_GRACE_MS in workerClient.ts.
     //
     // A `best` already found is DISCARDED rather than returned. It is a
     // complete, fully mask-validated route, but the loop has not yet proven
@@ -542,7 +551,19 @@ export function solve(p: SolveParams): SolveResult {
     }
 
     const byKey = new Map<string, Node>();
+    let sinceDeadlineCheck = 0;
     for (const node of frontier) {
+      // #1280 part B: the budget check, every DEADLINE_CHECK_NODES nodes. It
+      // sits at a NODE BOUNDARY and reads the deadline only — it never
+      // reorders or skips a node's children, so the ring either completes or
+      // the whole solve aborts, and an UNBUDGETED solve (no deadline: every
+      // vitest call site and the #282 sweep) is a counter increment and one
+      // `undefined?.expired()` — byte-identical results either way.
+      // `best` is discarded for the same reason as at ring entry above.
+      if (++sinceDeadlineCheck >= DEADLINE_CHECK_NODES) {
+        sinceDeadlineCheck = 0;
+        if (p.deadline?.expired()) return { status: 'no-route', cause: 'budget-exhausted' };
+      }
       const from = { lat: node.lat, lon: node.lon };
       const w = wind.sample(from, node.tMs);
       const bearingToDest = initialBearingDeg(from, destination);

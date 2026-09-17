@@ -1,5 +1,6 @@
 import type { LatLon } from '../types';
 import type { NavMask } from '../lib/mask';
+import type { SolveDeadline } from './isochrone';
 import { approachGate, type DepthGate } from '../lib/depthGate';
 
 /**
@@ -94,6 +95,16 @@ export interface RelaxedGate {
  *
  * Returns null when requestedDepthM <= floorM (nothing to relax within the
  * floor) or no candidate gate connects.
+ *
+ * `deadline` (#1280 part B) is OPTIONAL — absent means unbudgeted, the
+ * byte-identical pre-#1280 path (every vitest call site and the #282 sweep).
+ * When present it is read between probes and between a probe's per-pair
+ * `cellsConnected` BFS passes, and expiry ABANDONS the search and returns
+ * null, discarding any gate already found. Null is deliberately not a third
+ * return value: `planRoute` re-reads the same deadline immediately after this
+ * call and reports the typed 'budget-exhausted' label, so a spent budget can
+ * never be mistaken for "nothing connects". A BFS pass runs to completion —
+ * the check is between passes, never inside one.
  */
 export function findRelaxedGate(
   mask: NavMask,
@@ -102,6 +113,7 @@ export function findRelaxedGate(
   approachRadiusM: number,
   floorM: number,
   onProbe?: ProbeProgress,
+  deadline?: SolveDeadline,
 ): RelaxedGate | null {
   // CEIL, never round (spec C.8, and lib/boatDepth.ts's ceilToDecimetre says
   // the same in capitals): Math.round(1.73 * 10) === 17 would hand a 1.73 m
@@ -136,6 +148,11 @@ export function findRelaxedGate(
   const connectsWith = (gatesDm: readonly number[]): boolean => {
     const gate = scopedGate(gatesDm);
     for (let i = 0; i < waypoints.length - 1; i++) {
+      // #1280 part B: a spent budget reports "does not connect" here, and the
+      // loops below re-read the deadline before their next probe and return
+      // null — so the result is abandonment, never a gate derived from a
+      // half-run probe.
+      if (deadline?.expired()) return false;
       if (!mask.cellsConnected(waypoints[i], waypoints[i + 1], gate)) return false;
     }
     return true;
@@ -156,6 +173,7 @@ export function findRelaxedGate(
   };
 
   while (lo <= hi) {
+    if (deadline?.expired()) return null;
     const mid = (lo + hi) >> 1;
     if (
       probe(
@@ -178,6 +196,7 @@ export function findRelaxedGate(
       let ascentHi = hiDm;
       let found = gatesDm[i];
       while (ascentLo <= ascentHi) {
+        if (deadline?.expired()) return null;
         const mid = (ascentLo + ascentHi) >> 1;
         const trial = [...gatesDm];
         trial[i] = mid;
