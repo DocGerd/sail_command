@@ -197,8 +197,8 @@ jobs:
     # #605 capped the unsharded job at 30 min to turn install wedges into a
     # fast red. Shard 1 carries all of layout.spec.ts: measured 12m57s green
     # (run 35199641189) and 16m59s on a slow runner (run 35195770591), so
-    # 30 min is 2.3x / 1.77x.
-    timeout-minutes: 30
+    # 35 min is 2.7x / 2.06x.
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:

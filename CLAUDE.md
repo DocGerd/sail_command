@@ -1149,7 +1149,7 @@ making design-level decisions; do not silently deviate.
   restore the wind fixture afterwards); add `--no-deps` (since #1260) to skip
   the `identity` project when it doesn't matter for the spec under test.
 - **`ci.yml`'s `e2e` job capped at `timeout-minutes: 30`** (#605; since
-  #1286 the same 30 sits on each `e2e-shard` job, sized ~2x the heavier
+  #1286 each `e2e-shard` job caps at 35, sized ~2x the heavier
   shard) —
   derived from 8 re-measured real runs spanning **5m53s–14m33s**, not the stale
   3–4 min this file used to quote; a wedge now reds in 30 min instead of 360.
