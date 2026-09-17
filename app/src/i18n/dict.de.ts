@@ -106,11 +106,30 @@ export const de = {
   // Begriff für denselben Sachverhalt erfunden.
   'boat.harbors.shallow': 'Nur über eine flachere Zufahrt: {list}',
   'boat.harbors.unreachable': 'Nicht erreichbar: {list}',
-  'boat.harbors.hintFound': 'kann eventuell bei {depth} m fahren',
-  // #1321: NIE „bei keiner Einstellung erreichbar" — die Suche endet am
-  // Standardwert dieses Boots, nicht an seinem tatsächlichen Minimum, ein
-  // niedrigerer Bereich bleibt also ungeprüft.
-  'boat.harbors.hintNotFound': 'mit keiner von diesem Boot vorgesehenen Einstellung erreichbar',
+  // Orchestrator-Entscheidung 2026-09-17 (kanonischer Wortlaut, geteilt mit
+  // #1323s harborPicker.boatUnreachableAnySetting): Substantiv
+  // „Sicherheitstiefe", nicht „Einstellung".
+  // „(nur Tiefendaten geprüft)": nennt, WAS geprüft wurde — eine reine
+  // Tiefenableitung ohne Brücken, Fahrwasserbreite oder Hindernisse — nie
+  // ein Anspruch auf amtliche Kartenautorität (App-weite Regel).
+  'boat.harbors.hintFound':
+    'eventuell planbar bei {depth} m Sicherheitstiefe (nur Tiefendaten geprüft)',
+  // PR #1324 Review Major: der ZUSTAND eines `found`-Treffers zählt — ein
+  // nur über eine flachere Zufahrt erreichter Hafen trägt weiterhin die
+  // Warnung, die boat.harbors.shallow anderswo ausspricht; dieser Schlüssel
+  // fügt sie zurück, statt identisch mit einem reinen `ok`-Treffer zu
+  // rendern (hintFound oben).
+  // „Tiefenwarnung": Spec §7 verlangt Angleichung an ShallowWarnings
+  // Achtung/Caution-Wortlaut; hier nicht umgesetzt, verfolgt in #1326.
+  'boat.harbors.hintFoundShallow':
+    'eventuell planbar bei {depth} m Sicherheitstiefe, mit Tiefenwarnung (nur Tiefendaten geprüft)',
+  // Orchestrator-Entscheidung 2026-09-17: NIE „bei keiner von diesem Boot
+  // vorgesehenen Einstellung erreichbar" — die Suche endet am STANDARDWERT
+  // dieses Boots, nicht an seinem tatsächlichen Minimum, und ein Nutzer kann
+  // schon ohne Bootswechsel eine niedrigere Tiefe eingestellt haben, sodass
+  // dieser Anspruch über das tatsächlich Geprüfte hinausgeht.
+  'boat.harbors.hintNotFound':
+    'nicht erreichbar bei der für {boat} empfohlenen Sicherheitstiefe oder darüber',
   'boat.harbors.hintPending': 'wird noch geprüft',
   // #299: Abschnittsüberschriften im Boot-Tab (SettingsPanel).
   'settings.section.boatSafety': 'Boot & Sicherheit',

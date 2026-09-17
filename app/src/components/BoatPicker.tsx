@@ -215,16 +215,36 @@ function harborAccessSummaryText(
  * `boat.harbors.unreachable`'s `{list}` — `undefined`/`'exhausted'` both
  * render as still-checking, since a caller must never surface an
  * intermediate `resumeFromDepthM` state as if it were a final answer. */
-function harborHintSuffix(
+/** Exported for direct unit testing against a REAL `findLowerSettingHint`
+ * outcome — a pure function, no React involved. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function harborHintSuffix(
   outcome: LowerSettingHintOutcome | undefined,
+  boat: BoatDef,
   lang: Lang,
   t: TFunction,
 ): string {
   if (!outcome || outcome.kind === 'exhausted') return t('boat.harbors.hintPending');
   if (outcome.kind === 'found') {
-    return t('boat.harbors.hintFound', { depth: formatDepthM(outcome.hint.depthM, lang) });
+    const depth = formatDepthM(outcome.hint.depthM, lang);
+    // Review Major (PR #1324): a `found` hint's OWN state matters — reaching
+    // a harbour only via `shallow-approach` still carries the depth-warning
+    // caution `boat.harbors.shallow` states elsewhere; collapsing it into
+    // the plain `hintFound` phrase silently dropped that caution. Keyed by
+    // the outcome's `hint.state`, never by the harbour's own (always
+    // `unreachable`, since that's the only state this hint is ever queried
+    // for) — mirrors sibling PR #1323's `harborAccessCopy`, which keys the
+    // same distinction the same way.
+    return outcome.hint.state === 'shallow-approach'
+      ? t('boat.harbors.hintFoundShallow', { depth })
+      : t('boat.harbors.hintFound', { depth });
   }
-  return t('boat.harbors.hintNotFound');
+  // #1321/orchestrator ruling 2026-09-17: the search floor is this boat's
+  // DEFAULT safety depth, not its true minimum, and a user can already hold
+  // a depth below that default without ever switching boats — so this must
+  // never claim "at any setting this boat keeps"; it states only what the
+  // search actually checked.
+  return t('boat.harbors.hintNotFound', { boat: boat.name });
 }
 
 export interface BoatPickerProps {
@@ -245,22 +265,39 @@ export interface BoatPickerProps {
  * not happen.
  */
 interface ClampNotice {
+  /** Kept alongside `boatName` so the announcement's access clause can be
+   * RECOMPUTED reactively (see `composeSwitchAnnouncement`) rather than
+   * frozen at switch time — see that function's own comment for why. */
+  boatId: BoatId;
   boatName: string;
   clamp: { fromM: number; toM: number } | null;
-  /** The depth ACTUALLY used to compute `accessCount` below — the CLAMPED
-   * value when `clamp` is set, otherwise the live setting this switch found
-   * unchanged. #1292 ordering rule: this is read AFTER the clamp decision in
-   * `handleSelect`, never `settings.safetyDepthM` from before it — reading
-   * pre-clamp here would announce the wrong boat's access at a depth the
-   * app never actually applies (spec C.7 clamps UP before anything else
-   * runs). */
+  /** The depth ACTUALLY used to compute the access clause below — the
+   * CLAMPED value when `clamp` is set, otherwise the live setting this
+   * switch found unchanged. #1292 ordering rule: this is read AFTER the
+   * clamp decision in `handleSelect`, never `settings.safetyDepthM` from
+   * before it — reading pre-clamp here would announce the wrong boat's
+   * access at a depth the app never actually applies (spec C.7 clamps UP
+   * before anything else runs). */
   depthM: number;
-  /** `null` = harbour access could not be computed yet (mask/harbors not
-   * loaded) — composes as `boat.harbors.pending`, never a silent 0. */
-  accessCount: number | null;
 }
 
-function composeSwitchAnnouncement(notice: ClampNotice, lang: Lang, t: TFunction): string {
+/**
+ * PR #1324 review Minor: the access clause is computed HERE, at RENDER
+ * time, from the CURRENT `mask`/`harbors` — never captured once inside
+ * `handleSelect` and frozen into `notice`. A switch fired before assets
+ * finished loading used to freeze on `boat.harbors.pending` forever, even
+ * after `mask`/`harbors` resolved and the boat's OWN row updated reactively;
+ * calling `computeHarborAccess` inline here means every re-render (including
+ * the one `mask`/`harbors` loading triggers) recomputes it fresh, at no
+ * extra cost — the function is memoised per (mask, harbors, boat.id, depth).
+ */
+function composeSwitchAnnouncement(
+  notice: ClampNotice,
+  mask: NavMask | null,
+  harbors: HarborWithReachability[] | null,
+  lang: Lang,
+  t: TFunction,
+): string {
   const parts = [t('boat.switch.selected', { boat: notice.boatName })];
   if (notice.clamp) {
     parts.push(
@@ -270,7 +307,14 @@ function composeSwitchAnnouncement(notice: ClampNotice, lang: Lang, t: TFunction
       }),
     );
   }
-  parts.push(harborAccessSummaryText(notice.accessCount, notice.depthM, lang, t, false));
+  const accessCount =
+    mask && harbors
+      ? countAffectedHarbors(
+          computeHarborAccess(mask, harbors, boatById(notice.boatId), notice.depthM),
+          harbors,
+        )
+      : null;
+  parts.push(harborAccessSummaryText(accessCount, notice.depthM, lang, t, false));
   return parts.join(' ');
 }
 
@@ -513,7 +557,10 @@ function BoatOption({ boat, selected, onSelect, mask, harbors, liveDepthM }: Boa
               <p>
                 {t('boat.harbors.unreachable', {
                   list: unreachable
-                    .map((h) => `${h.names[lang]} (${harborHintSuffix(hints.get(h.id), lang, t)})`)
+                    .map(
+                      (h) =>
+                        `${h.names[lang]} (${harborHintSuffix(hints.get(h.id), boat, lang, t)})`,
+                    )
                     .join(', '),
                 })}
               </p>
@@ -639,23 +686,23 @@ export default function BoatPicker({
     const { settings: clampedSettings, clamped } = clampSettingsToBoat(settings, nextBoat);
     if (clamped) onSettingsChange(clampedSettings);
 
-    // #1292 ORDERING RULE: recompute harbour access AFTER the clamp decision
-    // above, at the depth THIS switch actually applies — the clamped value
-    // when `clamped`, the unchanged live setting otherwise. Reading
-    // `settings.safetyDepthM` here unconditionally would show the newly
-    // selected boat's access at its PRE-clamp depth, which the app never
-    // actually plans at (spec C.7 raises it before anything else runs).
+    // #1292 ORDERING RULE: the depth THIS switch actually applies — the
+    // clamped value when `clamped`, the unchanged live setting otherwise.
+    // Reading `settings.safetyDepthM` here unconditionally would announce
+    // the newly selected boat's access at its PRE-clamp depth, which the
+    // app never actually plans at (spec C.7 raises it before anything else
+    // runs). The access COUNT itself is deliberately NOT computed here —
+    // `composeSwitchAnnouncement` derives it at render time from the
+    // CURRENT `mask`/`harbors` (review Minor: computing it once here would
+    // freeze on `boat.harbors.pending` forever if assets were still loading
+    // at switch time, never catching up once they resolved).
     const depthM = clamped ? clampedSettings.safetyDepthM : settings.safetyDepthM;
-    const accessCount =
-      mask && harbors
-        ? countAffectedHarbors(computeHarborAccess(mask, harbors, nextBoat, depthM), harbors)
-        : null;
 
     setNotice({
+      boatId: nextId,
       boatName: nextBoat.name,
       clamp: clamped ? { fromM: settings.safetyDepthM, toM: clampedSettings.safetyDepthM } : null,
       depthM,
-      accessCount,
     });
     onBoatIdChange(nextId);
 
@@ -701,7 +748,7 @@ export default function BoatPicker({
           tree and lose the announcement — see that rule's own comment, and
           test/boatPickerNoticeLiveRegion.test.ts, which pins it. */}
       <p className="boat-picker-notice" role="status" ref={noticeRef}>
-        {notice ? composeSwitchAnnouncement(notice, lang, t) : null}
+        {notice ? composeSwitchAnnouncement(notice, mask, harbors, lang, t) : null}
       </p>
       {/* #746. The own-vessel MMSI, scoped to the SELECTED boat. It sits here
           rather than in the Live & AIS card because a field that must follow
