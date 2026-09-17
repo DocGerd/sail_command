@@ -12,7 +12,9 @@ import { solverTimeoutMs } from './timeouts';
 import {
   computeHarborAccess,
   findLowerSettingHint,
+  floodHasCell,
   SEED_POINT,
+  type FloodResult,
   type HarborWithReachability,
 } from '../lib/harborReachability';
 import type { MaskMeta } from '../types';
@@ -312,53 +314,67 @@ describe('#1290 harborReachability', () => {
   });
 
   // ---- Q5 hint search ----
-  // §3's EASY GO! row: augustenborg resolves quickly (well inside the
-  // default step budget); marstal has no answer down to the floor at all.
-  it('findLowerSettingHint: augustenborg reaches ok at a lower setting within the default budget', () => {
-    const g = defaultSafetyDepthM(synthetic);
-    const augustenborg = harbors.find((h) => h.id === 'augustenborg')!;
-    const outcome = findLowerSettingHint(mask, augustenborg, synthetic, g);
-    expect(outcome.kind).toBe('found');
-    if (outcome.kind === 'found') {
-      expect(outcome.hint.depthM).toBeLessThan(g);
-      expect(['ok', 'shallow-approach']).toContain(outcome.hint.state);
-    }
+  // PR #1316 fix-wave 2 (maintainer ruling) raised the search floor from
+  // `minSafetyDepthM(boat)` to `defaultSafetyDepthM(boat)` — measured against
+  // the real mask, this moves BOTH augustenborg's and marstal's synthetic-boat
+  // "found" case below the new floor entirely (their whole reachable band for
+  // this boat sits under 3.5 m), so §3's EASY GO! row no longer demonstrates
+  // the 'found' path. faldsled DOES: 'ok'/'shallow-approach' from 3.5 m up
+  // through 5.0 m, 'unreachable' from 5.1 m — measured by sweeping
+  // `computeHarborAccess` across that boat/harbour pair.
+  it('findLowerSettingHint: faldsled reaches shallow-approach at a lower setting within the default budget', () => {
+    const faldsled = harbors.find((h) => h.id === 'faldsled')!;
+    const outcome = findLowerSettingHint(mask, faldsled, synthetic, 5.2);
+    expect(outcome).toEqual({ kind: 'found', hint: { depthM: 5, state: 'shallow-approach' } });
   });
 
   it(
     'findLowerSettingHint: marstal has no answer down to the floor (scanned in full, under the default budget)',
     { timeout: solverTimeoutMs(300_000) },
     () => {
-      const g = defaultSafetyDepthM(synthetic);
       const marstal = harbors.find((h) => h.id === 'marstal')!;
-      const outcome = findLowerSettingHint(mask, marstal, synthetic, g);
+      const outcome = findLowerSettingHint(mask, marstal, synthetic, 4.6);
       expect(outcome.kind).toBe('not-found');
     },
   );
+
+  // PR #1316 fix-wave 2 maintainer ruling: the raised floor's accepted cost.
+  // augustenborg's ENTIRE reachable band for the synthetic boat sits BELOW
+  // `defaultSafetyDepthM(synthetic)` (measured, same sweep as faldsled's
+  // above) — #1293 raises `clampSettingsToBoat`'s own floor to the boat's
+  // default on a boat switch, so a hint below it would be silently clamped
+  // away the instant the app applied it. This pins that the search therefore
+  // returns `'not-found'` rather than a depth the app would then undo.
+  it('findLowerSettingHint never returns a hint below defaultSafetyDepthM(boat)', () => {
+    const g = defaultSafetyDepthM(synthetic);
+    const augustenborg = harbors.find((h) => h.id === 'augustenborg')!;
+    const outcome = findLowerSettingHint(mask, augustenborg, synthetic, g + 0.1);
+    expect(outcome).toEqual({ kind: 'not-found' });
+  });
 
   // PR #1316 fix-wave 1 Major 5: the step budget and its resumability
   // contract. A caller supplying a small `maxSteps` must see `'exhausted'`
   // with a `resumeFromDepthM` that, fed back in as the next call's
   // `safetyDepthM`, continues the SAME downward scan rather than restarting
   // it. Pins the EXACT `resumeFromDepthM` sequence a correct resume must
-  // produce for this boat/harbour/depth (hand-derived: topDm 34, floorDm 27,
-  // so decimetres 34-32 / 31-29 / 28-27 across three budget-3 calls — a
-  // resume that restarted from the top, or skipped a decimetre, would
-  // diverge from this exact sequence), and confirms the chain still ends at
-  // marstal's known full-range answer ('not-found', pinned above).
+  // produce for this boat/harbour/depth (topDm 43, floorDm 35 under the
+  // fix-wave-2 floor, so decimetres 43-41 / 40-38 / 37-35 across three
+  // budget-3 calls — a resume that restarted from the top, or skipped a
+  // decimetre, would diverge from this exact sequence), and confirms the
+  // chain still ends at marstal's known full-range answer ('not-found',
+  // pinned above).
   it(
     'findLowerSettingHint is resumable across a step budget, continuing rather than restarting the scan',
     { timeout: solverTimeoutMs(300_000) },
     () => {
-      const g = defaultSafetyDepthM(synthetic);
       const marstal = harbors.find((h) => h.id === 'marstal')!;
-      const first = findLowerSettingHint(mask, marstal, synthetic, g, 3);
-      expect(first).toEqual({ kind: 'exhausted', resumeFromDepthM: 3.2 });
+      const first = findLowerSettingHint(mask, marstal, synthetic, 4.4, 3);
+      expect(first).toEqual({ kind: 'exhausted', resumeFromDepthM: 4.1 });
       const second =
         first.kind === 'exhausted'
           ? findLowerSettingHint(mask, marstal, synthetic, first.resumeFromDepthM, 3)
           : null;
-      expect(second).toEqual({ kind: 'exhausted', resumeFromDepthM: 2.9 });
+      expect(second).toEqual({ kind: 'exhausted', resumeFromDepthM: 3.8 });
       const third =
         second?.kind === 'exhausted'
           ? findLowerSettingHint(mask, marstal, synthetic, second.resumeFromDepthM, 3)
@@ -372,5 +388,46 @@ describe('#1290 harborReachability', () => {
     const g = defaultSafetyDepthM(boat);
     const arnis = harbors.find((h) => h.id === 'arnis')!;
     expect(findLowerSettingHint(mask, arnis, boat, g)).toEqual({ kind: 'not-found' });
+  });
+
+  // PR #1316 fix-wave 2 Minor: `maxSteps <= 0` must not silently make no
+  // progress — that would return `resumeFromDepthM === safetyDepthM`
+  // unchanged and loop a caller following the resume contract above forever.
+  it('findLowerSettingHint clamps a non-positive maxSteps to make at least one step of progress', () => {
+    const marstal = harbors.find((h) => h.id === 'marstal')!;
+    const outcome = findLowerSettingHint(mask, marstal, synthetic, 4.4, 0);
+    expect(outcome).toEqual({ kind: 'exhausted', resumeFromDepthM: 4.3 });
+  });
+
+  // PR #1316 fix-wave 2 Minor: `floodHasCell`'s shape guard (exported for
+  // this test only) is unreachable through the public API — the per-`NavMask`
+  // cache keying prevents the mismatch from arising naturally — so it must be
+  // pinned directly with a synthetic, deliberately mismatched `FloodResult`.
+  it('floodHasCell fails closed on a FloodResult shaped for a different mask', () => {
+    const validIdx = 0;
+    // All-ones bits: absent the shape guard, `hasBit` would read a `1` here
+    // and the function would (wrongly) return `true`.
+    const allOnes = (n: number) => new Uint8Array(Math.ceil(n / 8)).fill(0xff);
+
+    const wrongRows: FloodResult = {
+      bits: allOnes(mask.meta.rows * mask.meta.cols),
+      rows: mask.meta.rows + 1,
+      cols: mask.meta.cols,
+    };
+    expect(floodHasCell(wrongRows, mask, validIdx)).toBe(false);
+
+    const wrongCols: FloodResult = {
+      bits: allOnes(mask.meta.rows * mask.meta.cols),
+      rows: mask.meta.rows,
+      cols: mask.meta.cols + 1,
+    };
+    expect(floodHasCell(wrongCols, mask, validIdx)).toBe(false);
+
+    const wrongBitsLength: FloodResult = {
+      bits: allOnes(mask.meta.rows * mask.meta.cols + 8),
+      rows: mask.meta.rows,
+      cols: mask.meta.cols,
+    };
+    expect(floodHasCell(wrongBitsLength, mask, validIdx)).toBe(false);
   });
 });

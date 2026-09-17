@@ -2,7 +2,7 @@ import type { Harbor, LatLon } from '../types';
 import type { BoatDef } from '../data/boats';
 import { NavMask } from './mask';
 import { approachGate, APPROACH_RADIUS_M } from './depthGate';
-import { relaxationFloorM, minSafetyDepthM } from './boatDepth';
+import { relaxationFloorM, defaultSafetyDepthM } from './boatDepth';
 
 // #834: promoted out of HarborPicker.tsx, which is where #652 first added
 // this field. That file's own comment explained why it lived there as a
@@ -118,7 +118,9 @@ export const SEED_POINT: LatLon = { lat: 54.8455, lon: 9.5216 };
  * at all (PR #1316 fix-wave 1 Major 1) — not merely at gates neither
  * convention diverges on.
  */
-interface FloodResult {
+/** Exported for `harborReachability.test.ts` only — NOT part of the frozen
+ * consumer-facing API (#1291/#1292 never need it). */
+export interface FloodResult {
   readonly bits: Uint8Array;
   readonly rows: number;
   readonly cols: number;
@@ -219,10 +221,11 @@ function cellIndexOf(mask: NavMask, p: LatLon): number | null {
  * somehow computed for a DIFFERENT mask than `mask` — a cell index valid in
  * one grid can silently read a valid-but-WRONG bit in a differently-shaped
  * one instead of throwing or going out of bounds. The per-`NavMask` cache
- * keying below is what actually prevents this mismatch from arising; this
- * is the second, structural guard the review asked for on top of it.
+ * keying below is what actually prevents this mismatch from arising, which
+ * is also why this guard is UNREACHABLE through the public API and must be
+ * pinned directly (PR #1316 fix-wave 2 Minor) — exported for test use only.
  */
-function floodHasCell(flood: FloodResult, mask: NavMask, idx: number): boolean {
+export function floodHasCell(flood: FloodResult, mask: NavMask, idx: number): boolean {
   const expectedBits = Math.ceil((mask.meta.rows * mask.meta.cols) / 8);
   if (flood.rows !== mask.meta.rows || flood.cols !== mask.meta.cols) return false;
   if (flood.bits.length !== expectedBits) return false;
@@ -416,10 +419,19 @@ export const DEFAULT_HINT_MAX_STEPS = 12;
 
 /**
  * §5.1/§13 item 1 Q5: for a harbour, the highest lower setting (searched
- * decimetre by decimetre, HIGH to LOW, down to `minSafetyDepthM(boat)` —
+ * decimetre by decimetre, HIGH to LOW, down to `defaultSafetyDepthM(boat)` —
  * non-monotone in the gate per §7, since a lower gate can move the snap CELL
  * itself, so a binary search is unsound here) below `safetyDepthM` at which
  * it would read `ok` or `shallow-approach`.
+ *
+ * FLOOR RAISED (PR #1316 fix-wave 2, maintainer ruling) from
+ * `minSafetyDepthM(boat)` to `defaultSafetyDepthM(boat)`: #1293 raises
+ * `clampSettingsToBoat`'s own floor to the boat's default on a boat switch,
+ * so a hint below that default would be silently clamped away the instant
+ * the app applied it — this function must never suggest a depth the app
+ * then undoes. Accepted cost: a harbour reachable only in the
+ * `[minSafetyDepthM(boat), defaultSafetyDepthM(boat))` band is not
+ * surfaced by this hint.
  *
  * WIDENED (PR #1316 fix-wave 1 Major 5) from a bare `LowerSettingHint | null`
  * to {@link LowerSettingHintOutcome} before #1291/#1292 (the frozen API's
@@ -436,12 +448,15 @@ export const DEFAULT_HINT_MAX_STEPS = 12;
  * DELIBERATELY LAZY, and never called from `computeHarborAccess` or any
  * eager path: each decimetre step costs up to one fresh `floodFromSeed` call
  * (cached afterwards via `floodAtGate`, so a repeated hint query — or a
- * second `unreachable` harbour at the same boat/depth — reuses every flood
- * already computed by an earlier step, INCLUDING one from a PRIOR exhausted
- * call to this same harbour, since the flood cache is keyed by mask+gate,
- * not by call). §9/§13 item 1's own recommendation is "compute it lazily
- * when the option renders"; this function is the thing to call FROM that
- * render, never before it.
+ * second `unreachable` harbour at the same boat/depth — reuses any flood
+ * still cached; the resumed scan never revisits a gate it has already
+ * tested, so eviction costs it nothing). §9/§13 item 1's own recommendation
+ * is "compute it lazily when the option renders"; this function is the
+ * thing to call FROM that render, never before it.
+ *
+ * @param maxSteps Step budget for this call; clamped to at least 1 — `0` or
+ * negative would return `resumeFromDepthM === safetyDepthM` unchanged,
+ * making a caller following the resume contract above loop forever.
  */
 export function findLowerSettingHint(
   mask: NavMask,
@@ -451,11 +466,12 @@ export function findLowerSettingHint(
   maxSteps: number = DEFAULT_HINT_MAX_STEPS,
 ): LowerSettingHintOutcome {
   if (harbor.knownDisconnected === true) return { kind: 'not-found' };
-  const floorDm = Math.round(minSafetyDepthM(boat) * 10);
+  const floorDm = Math.round(defaultSafetyDepthM(boat) * 10);
   const topDm = Math.round(safetyDepthM * 10) - 1;
+  const stepBudget = Math.max(1, Math.floor(maxSteps));
   let steps = 0;
   for (let dm = topDm; dm >= floorDm; dm--) {
-    if (steps >= maxSteps) return { kind: 'exhausted', resumeFromDepthM: (dm + 1) / 10 };
+    if (steps >= stepBudget) return { kind: 'exhausted', resumeFromDepthM: (dm + 1) / 10 };
     steps++;
     const depthM = dm / 10;
     const flood = floodAtGate(mask, depthM);
