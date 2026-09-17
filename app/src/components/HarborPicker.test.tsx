@@ -1,11 +1,27 @@
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { I18nProvider } from '../i18n';
+// #1291: `findLowerSettingHint` is the one call HarborPicker makes into
+// `harborReachability.ts` that needs a REAL `NavMask` (it walks
+// `mask.meta`/`floodAtGate`) — wrapping it as a spy over its real
+// implementation lets the render-level test below hand HarborPicker a
+// canned outcome without constructing one, while every other test in this
+// file (which never passes `boat`/`mask` props at all) never reaches this
+// call site and is unaffected.
+vi.mock('../lib/harborReachability', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/harborReachability')>();
+  return { ...actual, findLowerSettingHint: vi.fn(actual.findLowerSettingHint) };
+});
 import HarborPicker, {
+  harborAccessCopy,
   normalizeHarborSearch,
   rankHarbors,
   type HarborWithReachability,
 } from './HarborPicker';
+import { findLowerSettingHint, type LowerSettingHintOutcome } from '../lib/harborReachability';
+import { BOATS } from '../data/boats';
+import { defaultSafetyDepthM } from '../lib/boatDepth';
+import { formatDepthM } from '../lib/depthDisclosure';
 import type { Harbor } from '../types';
 
 // Mirrors real data shapes from app/public/data/harbors.json: a harbor whose
@@ -338,5 +354,211 @@ describe('HarborPicker combobox', () => {
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'aero' } });
     fireEvent.click(screen.getByRole('option', { name: /Ærøskøbing/ }));
     expect(onSelect).toHaveBeenCalledWith(AEROESKOEBING);
+  });
+});
+
+// #1291/§13 item 2: `harborAccessCopy`'s ordered-marker precedence table,
+// tested directly (no render needed) — HarborPicker/PlannerPanel's OWN
+// wiring around it is covered by the render-level describe below and by
+// PlannerPanel.test.tsx's matching block.
+describe('harborAccessCopy (#1291/§13 item 2 precedence table)', () => {
+  // Salona 44 (SPEEDY GO!): draftM 2.1 -> defaultSafetyDepthM 3.0.
+  const boat = BOATS[1];
+  const defaultDepthM = defaultSafetyDepthM(boat);
+
+  it('known-disconnected wins over every boat-scoped state and needs neither boat nor depth', () => {
+    expect(harborAccessCopy('known-disconnected', null, undefined, undefined, 'en')).toEqual([
+      { key: 'harborPicker.knownDisconnected' },
+    ]);
+    // Even when a hint/boat/depth ARE supplied, known-disconnected still wins
+    // — it is a per-HARBOUR fact, independent of the boat-scoped ones.
+    expect(
+      harborAccessCopy(
+        'known-disconnected',
+        { kind: 'found', hint: { depthM: 2.5, state: 'ok' } },
+        boat,
+        3.5,
+        'en',
+      ),
+    ).toEqual([{ key: 'harborPicker.knownDisconnected' }]);
+  });
+
+  it('renders nothing for "ok" and for a not-yet-computed (undefined) state', () => {
+    expect(harborAccessCopy('ok', null, boat, 3.5, 'en')).toEqual([]);
+    expect(harborAccessCopy(undefined, null, boat, 3.5, 'en')).toEqual([]);
+  });
+
+  it('renders nothing for a boat-scoped state when boat or depth is unavailable', () => {
+    expect(harborAccessCopy('unreachable', null, undefined, 3.5, 'en')).toEqual([]);
+    expect(harborAccessCopy('unreachable', null, boat, undefined, 'en')).toEqual([]);
+    expect(harborAccessCopy('shallow-approach', null, undefined, 3.5, 'en')).toEqual([]);
+  });
+
+  it('"shallow-approach" renders only the boatShallow line — no hint search applies (it already routes)', () => {
+    expect(harborAccessCopy('shallow-approach', null, boat, 3.5, 'en')).toEqual([
+      { key: 'harborPicker.boatShallow', vars: { boat: boat.name } },
+    ]);
+  });
+
+  it('"unreachable" with no hint renders only the base line', () => {
+    expect(harborAccessCopy('unreachable', null, boat, 3.5, 'en')).toEqual([
+      { key: 'harborPicker.boatUnreachable', vars: { boat: boat.name, depth: '3.5' } },
+    ]);
+  });
+
+  it('a "found" hint at "ok" below the default keys by boatLowerSetting', () => {
+    const hint: LowerSettingHintOutcome = { kind: 'found', hint: { depthM: 2.8, state: 'ok' } };
+    expect(harborAccessCopy('unreachable', hint, boat, 3.5, 'en')).toEqual([
+      { key: 'harborPicker.boatUnreachable', vars: { boat: boat.name, depth: '3.5' } },
+      {
+        key: 'harborPicker.boatLowerSetting',
+        vars: { depth: '2.8', boat: boat.name, default: formatDepthM(defaultDepthM, 'en') },
+      },
+    ]);
+  });
+
+  // The #1291 "which key wins when a harbour qualifies for both states" rule:
+  // keyed by the hint's OWN reached state (shallow-approach here), never by
+  // the harbor's own (unreachable) state.
+  it('a "found" hint at "shallow-approach" below the default keys by boatLowerSettingShallow', () => {
+    const hint: LowerSettingHintOutcome = {
+      kind: 'found',
+      hint: { depthM: 2.8, state: 'shallow-approach' },
+    };
+    expect(harborAccessCopy('unreachable', hint, boat, 3.5, 'en')[1]).toEqual({
+      key: 'harborPicker.boatLowerSettingShallow',
+      vars: { depth: '2.8', boat: boat.name, default: formatDepthM(defaultDepthM, 'en') },
+    });
+  });
+
+  it("a hint depth at or above the default uses the AtDefault phrasing regardless of the hint's own state", () => {
+    const hint: LowerSettingHintOutcome = {
+      kind: 'found',
+      hint: { depthM: defaultDepthM, state: 'shallow-approach' },
+    };
+    expect(harborAccessCopy('unreachable', hint, boat, 3.5, 'en')[1]).toEqual({
+      key: 'harborPicker.boatLowerSettingAtDefault',
+      vars: { depth: formatDepthM(defaultDepthM, 'en') },
+    });
+  });
+
+  // #1321: `findLowerSettingHint` only searches down to
+  // `defaultSafetyDepthM(boat)`, never the boat's absolute floor — a
+  // 'not-found' outcome must read as "not found in the searched range",
+  // never as an unscoped "at any depth" claim.
+  it('#1321: a "not-found" hint adds the scoped "any setting it keeps" line, never an unscoped claim', () => {
+    const hint: LowerSettingHintOutcome = { kind: 'not-found' };
+    expect(harborAccessCopy('unreachable', hint, boat, 3.5, 'en')).toEqual([
+      { key: 'harborPicker.boatUnreachable', vars: { boat: boat.name, depth: '3.5' } },
+      { key: 'harborPicker.boatUnreachableAnySetting', vars: { boat: boat.name } },
+    ]);
+  });
+
+  it('an "exhausted" hint (step budget hit before finishing) adds nothing rather than a wrong claim either way', () => {
+    const hint: LowerSettingHintOutcome = { kind: 'exhausted', resumeFromDepthM: 2.9 };
+    expect(harborAccessCopy('unreachable', hint, boat, 3.5, 'en')).toEqual([
+      { key: 'harborPicker.boatUnreachable', vars: { boat: boat.name, depth: '3.5' } },
+    ]);
+  });
+});
+
+// #1291: HarborPicker's OWN wiring around harborAccessCopy — deriving the
+// per-option access state from the caller-supplied `harborAccess` map and
+// calling `findLowerSettingHint` (mocked above) for the unreachable case.
+describe('HarborPicker option row: #1291 per-boat access markers', () => {
+  const boat = BOATS[1]; // SPEEDY GO! — a NON-default boat, per #1291's e2e requirement.
+  const FAKE_MASK = {} as never;
+
+  afterEach(() => {
+    vi.mocked(findLowerSettingHint).mockReset();
+  });
+
+  it('shows the base "not reachable" line and the #1321-scoped hint line for an unreachable harbor', () => {
+    localStorage.setItem('sc-lang', 'en');
+    vi.mocked(findLowerSettingHint).mockReturnValue({ kind: 'not-found' });
+    render(
+      <I18nProvider>
+        <HarborPicker
+          harbors={HARBORS}
+          recentIds={[]}
+          onSelect={vi.fn()}
+          boat={boat}
+          safetyDepthM={3.5}
+          harborAccess={new Map([['aabenraa', 'unreachable']])}
+          mask={FAKE_MASK}
+        />
+      </I18nProvider>,
+    );
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'aabenraa' } });
+    const option = screen.getByRole('option', { name: /Aabenraa/ });
+    expect(
+      within(option).getByText(`Not reachable with ${boat.name} at 3.5 m safety depth.`),
+    ).toBeInTheDocument();
+    expect(
+      within(option).getByText(`Not reachable with ${boat.name} at any setting it keeps.`),
+    ).toBeInTheDocument();
+  });
+
+  it('shows the shallow-approach line for that state, with no hint search', () => {
+    localStorage.setItem('sc-lang', 'en');
+    render(
+      <I18nProvider>
+        <HarborPicker
+          harbors={HARBORS}
+          recentIds={[]}
+          onSelect={vi.fn()}
+          boat={boat}
+          safetyDepthM={3.5}
+          harborAccess={new Map([['aabenraa', 'shallow-approach']])}
+          mask={FAKE_MASK}
+        />
+      </I18nProvider>,
+    );
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'aabenraa' } });
+    const option = screen.getByRole('option', { name: /Aabenraa/ });
+    expect(
+      within(option).getByText(`Only via a shallower approach with ${boat.name} — depth warning.`),
+    ).toBeInTheDocument();
+    expect(findLowerSettingHint).not.toHaveBeenCalled();
+  });
+
+  // German #13 item 2 word-order fix, verbatim.
+  it('#13 item 2: the German "…Shallow" line uses the FIXED word order', () => {
+    vi.mocked(findLowerSettingHint).mockReturnValue({
+      kind: 'found',
+      hint: { depthM: 2.8, state: 'shallow-approach' },
+    });
+    localStorage.setItem('sc-lang', 'de');
+    render(
+      <I18nProvider>
+        <HarborPicker
+          harbors={HARBORS}
+          recentIds={[]}
+          onSelect={vi.fn()}
+          boat={boat}
+          safetyDepthM={3.5}
+          harborAccess={new Map([['aabenraa', 'unreachable']])}
+          mask={FAKE_MASK}
+        />
+      </I18nProvider>,
+    );
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'apenrade' } });
+    const option = screen.getByRole('option', { name: /Apenrade/ });
+    expect(
+      within(option).getByText(
+        // `default` is `defaultSafetyDepthM(boat)` (3.0 for the 2.1 m-draft
+        // Salona 44), NOT the `safetyDepthM` prop (3.5) — a different number
+        // deliberately, so a swap of the two would fail this string match.
+        `Bei 2,8 m Sicherheitstiefe eventuell planbar, mit Tiefenwarnung, unter der für ${boat.name} empfohlenen Sicherheitstiefe von 3,0 m (nur Tiefendaten geprüft).`,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('renders no per-boat marker for an "ok" harbor, and no marker at all until harborAccess/boat/depth are supplied', () => {
+    renderPicker(vi.fn(), HARBORS); // renderPicker itself sets lang 'en'.
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'aabenraa' } });
+    const option = screen.getByRole('option', { name: /Aabenraa/ });
+    expect(within(option).queryByText(/not reachable/i)).not.toBeInTheDocument();
+    expect(within(option).queryByText(/may route/i)).not.toBeInTheDocument();
   });
 });

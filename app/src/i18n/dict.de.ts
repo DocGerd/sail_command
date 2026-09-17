@@ -1214,5 +1214,25 @@ export const de = {
   // ranked this window by.
   'departureScan.confirm.done.disagreement':
     'Plan übernommen — die vollständige Berechnung empfiehlt hier {rig}, nicht die Genua, mit der dieses Fenster eingestuft wurde.',
+  // #1291/§5.2/§5.3/§7: per-boat harbour-access markers in HarborPicker's
+  // options and PlannerPanel's selected-endpoint row. `{boat}` is
+  // `BoatDef.name`, catalogue data, not translated per-language.
+  'harborPicker.boatUnreachable': 'Mit {boat} bei {depth} m Sicherheitstiefe nicht erreichbar.',
+  'harborPicker.boatShallow': 'Mit {boat} nur über eine flachere Zufahrt – Tiefenwarnung.',
+  'harborPicker.boatLowerSetting':
+    'Mit {depth} m eventuell planbar, unter der für {boat} empfohlenen Sicherheitstiefe von {default} m (nur Tiefendaten geprüft).',
+  // #1291/§13 item 2: word order FIXED vs. the design spec's own §7 draft
+  // ("Mit {depth} m eventuell mit Tiefenwarnung planbar, …", two "mit" in a
+  // row) — adopts §13 item 2's own corrected fragment verbatim.
+  'harborPicker.boatLowerSettingShallow':
+    'Bei {depth} m Sicherheitstiefe eventuell planbar, mit Tiefenwarnung, unter der für {boat} empfohlenen Sicherheitstiefe von {default} m (nur Tiefendaten geprüft).',
+  'harborPicker.boatLowerSettingAtDefault':
+    'Mit {depth} m eventuell planbar (nur Tiefendaten geprüft).',
+  // #1321: `findLowerSettingHint` only searches down to
+  // `defaultSafetyDepthM(boat)`, never to the boat's absolute floor, so this
+  // must NOT claim unreachability "bei jeder Tiefe" (any depth at all) —
+  // only that none of the settings this boat's own gate keeps would help.
+  'harborPicker.boatUnreachableAnySetting':
+    'Mit {boat} bei keiner von ihm vorgesehenen Sicherheitstiefe erreichbar.',
 } as const;
 export type MsgKey = keyof typeof de;

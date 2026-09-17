@@ -1203,4 +1203,15 @@ export const en = {
   'departureScan.confirm.done': 'Plan updated.',
   'departureScan.confirm.done.disagreement':
     'Plan updated — the full solve favours {rig} here, not the genoa this window was ranked by.',
+  // #1291: see dict.de.ts's matching comment.
+  'harborPicker.boatUnreachable': 'Not reachable with {boat} at {depth} m safety depth.',
+  'harborPicker.boatShallow': 'Only via a shallower approach with {boat} — depth warning.',
+  'harborPicker.boatLowerSetting':
+    "May route at {depth} m, below {boat}'s recommended {default} m safety depth (depth data only).",
+  'harborPicker.boatLowerSettingShallow':
+    "May route at {depth} m with a depth warning, below {boat}'s recommended {default} m safety depth (depth data only).",
+  'harborPicker.boatLowerSettingAtDefault': 'May route at {depth} m (depth data only).',
+  // #1321: see dict.de.ts's matching comment — the search floor is the
+  // boat's own default safety depth, not its absolute minimum.
+  'harborPicker.boatUnreachableAnySetting': 'Not reachable with {boat} at any setting it keeps.',
 } satisfies Record<MsgKey, string>;

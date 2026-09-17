@@ -9,7 +9,18 @@ import {
 } from 'react';
 import type { Harbor } from '../types';
 import { useLang, useT, type Lang } from '../i18n';
-import type { HarborWithReachability } from '../lib/harborReachability';
+import type { MsgKey } from '../i18n/dict.de';
+import {
+  findLowerSettingHint,
+  type HarborAccessByHarbor,
+  type HarborAccessState,
+  type HarborWithReachability,
+  type LowerSettingHintOutcome,
+} from '../lib/harborReachability';
+import type { NavMask } from '../lib/mask';
+import type { BoatDef } from '../data/boats';
+import { defaultSafetyDepthM } from '../lib/boatDepth';
+import { formatDepthM } from '../lib/depthDisclosure';
 
 // #652: `knownDisconnected` is a build-generated field (pipeline/
 // build_harbors.mjs, sourced from pipeline/verify_mask.py's
@@ -51,6 +62,101 @@ export interface HarborPickerProps {
   // omits it), so no focus is stolen (#695's fix hit exactly this trap on the
   // CLOSING side: a derived boolean that also flips on unrelated prop churn).
   autoFocus?: boolean;
+  // #1291/§13 item 2: the SELECTED boat + its live safety-depth setting,
+  // used to derive each option's per-boat access marker (§5.2). Optional so
+  // existing call sites/tests that don't need access markers need not
+  // thread them through — omitting either yields NO per-boat marker (the
+  // known-disconnected one is unaffected, it needs neither).
+  boat?: BoatDef;
+  safetyDepthM?: number;
+  // #1291: `computeHarborAccess(mask, harbors, boat, safetyDepthM)`'s result
+  // for `harbors`, or null/undefined while the mask or derivation is not yet
+  // available. Owned by the caller (PlannerPanel) so the SAME map instance
+  // is reused across this picker's sibling instance and the selected-
+  // endpoint row (§5.3) — computing it once per (mask, harbors, boat, gate)
+  // via `computeHarborAccess`'s own memoisation, never per option render.
+  harborAccess?: HarborAccessByHarbor | null;
+  mask?: NavMask | null;
+}
+
+/**
+ * §5.2/§5.3/§13 item 2: the ORDERED marker line(s) for one harbor's access
+ * state, ready for `t()`. Precedence: `known-disconnected` wins over every
+ * boat-scoped state (harborReachability.ts's own §2 doc comment — it is a
+ * per-HARBOUR fact, independent of boat/gate) and needs neither `boat` nor
+ * `safetyDepthM`; `ok` and a not-yet-computed (`undefined`) state render
+ * NOTHING (never an empty-reads-as-clear false all-clear, but here there is
+ * genuinely nothing to disclose). For `unreachable`, `hint` supplies the
+ * OPTIONAL second line, keyed by the STATE `findLowerSettingHint` found at
+ * its highest reaching decimetre (`hint.hint.state`) — 'ok' vs
+ * 'shallow-approach' — never by the harbor's OWN (unreachable) state; that
+ * is the #1291 "which key wins when a harbour qualifies for both states"
+ * rule. A `hint.hint.depthM` at or above the boat's own
+ * `defaultSafetyDepthM` uses the "AtDefault" phrasing (no "below
+ * recommended" clause — it isn't below anything). `'not-found'` adds the
+ * #1321 line: `findLowerSettingHint` only searches down to
+ * `defaultSafetyDepthM(boat)`, so "not found" means "not reachable in the
+ * searched range", never "at any depth" — the copy must say so, not imply
+ * more. `'exhausted'` (the search hit its own step budget without
+ * finishing) adds nothing rather than a wrong claim either way; this
+ * component does not implement the design's idle-slicing resume — an
+ * accepted, documented simplification (§9 calls the resume a
+ * recommendation, not a requirement for this consumer).
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function harborAccessCopy(
+  state: HarborAccessState | undefined,
+  hint: LowerSettingHintOutcome | null,
+  boat: BoatDef | undefined,
+  safetyDepthM: number | undefined,
+  lang: Lang,
+): { key: MsgKey; vars?: Record<string, string | number> }[] {
+  if (state === 'known-disconnected') return [{ key: 'harborPicker.knownDisconnected' }];
+  if (!boat || safetyDepthM === undefined) return [];
+  if (state === 'shallow-approach') {
+    return [{ key: 'harborPicker.boatShallow', vars: { boat: boat.name } }];
+  }
+  if (state === 'unreachable') {
+    const lines: { key: MsgKey; vars?: Record<string, string | number> }[] = [
+      {
+        key: 'harborPicker.boatUnreachable',
+        vars: { boat: boat.name, depth: formatDepthM(safetyDepthM, lang) },
+      },
+    ];
+    if (hint?.kind === 'found') {
+      const defaultDepthM = defaultSafetyDepthM(boat);
+      const depth = formatDepthM(hint.hint.depthM, lang);
+      if (hint.hint.depthM >= defaultDepthM) {
+        lines.push({ key: 'harborPicker.boatLowerSettingAtDefault', vars: { depth } });
+      } else {
+        const vars = { depth, boat: boat.name, default: formatDepthM(defaultDepthM, lang) };
+        lines.push(
+          hint.hint.state === 'shallow-approach'
+            ? { key: 'harborPicker.boatLowerSettingShallow', vars }
+            : { key: 'harborPicker.boatLowerSetting', vars },
+        );
+      }
+    } else if (hint?.kind === 'not-found') {
+      lines.push({ key: 'harborPicker.boatUnreachableAnySetting', vars: { boat: boat.name } });
+    }
+    return lines;
+  }
+  return [];
+}
+
+/** §5.2: the per-option access state, `known-disconnected` derived from
+ * either the caller's `harborAccess` map (once computed) or the harbor's own
+ * static `knownDisconnected` field as a pre-mask fallback — the two never
+ * disagree once `harborAccess` is available, since `computeHarborAccess`
+ * reads the same field. */
+function accessStateOf(
+  harbor: HarborWithReachability,
+  harborAccess: HarborAccessByHarbor | null | undefined,
+): HarborAccessState | undefined {
+  return (
+    harborAccess?.get(harbor.id) ??
+    (harbor.knownDisconnected === true ? 'known-disconnected' : undefined)
+  );
 }
 
 // Diacritic-insensitive normalization for harbor-name search. Lowercase
@@ -145,6 +251,10 @@ export default function HarborPicker({
   onSelect,
   onCancel,
   autoFocus,
+  boat,
+  safetyDepthM,
+  harborAccess,
+  mask,
 }: HarborPickerProps) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
@@ -186,15 +296,6 @@ export default function HarborPicker({
   const results = useMemo(
     () => rankHarbors(harbors, query, lang, recentIds),
     [harbors, query, lang, recentIds],
-  );
-
-  // #652: looked up by id against the ORIGINAL `harbors` prop, not
-  // `results` — `rankHarbors` is typed `Harbor[] -> Harbor[]`, so
-  // `knownDisconnected` would otherwise be invisible on its return value
-  // even though the same object references still carry it at runtime.
-  const knownDisconnectedIds = useMemo(
-    () => new Set(harbors.filter((h) => h.knownDisconnected === true).map((h) => h.id)),
-    [harbors],
   );
 
   // Keep the active option visible: with the aria-activedescendant pattern DOM
@@ -310,11 +411,20 @@ export default function HarborPicker({
         >
           {results.map((h, i) => {
             const caveat = h.approachNote?.[lang];
-            // #652: disclosed BEFORE a solve — the whole point of this
-            // issue is that today a user only learns this after spending a
-            // full solve plus the #53 depth-relaxation probe search on a
-            // harbor that cannot route at ANY safety-depth setting.
-            const disconnected = knownDisconnectedIds.has(h.id);
+            // #652/#1291: disclosed BEFORE a solve — the whole point of the
+            // original #652 issue is that today a user only learns this
+            // after spending a full solve plus the #53 depth-relaxation
+            // probe search on a harbor that cannot route at ANY
+            // safety-depth setting. `accessStateOf` extends that to the
+            // per-boat states (§5.2) once `harborAccess` is available, and
+            // otherwise falls back to `h.knownDisconnected` alone — the one
+            // state that needs no mask to be already known.
+            const access = accessStateOf(h, harborAccess);
+            const hint =
+              access === 'unreachable' && mask && boat && safetyDepthM !== undefined
+                ? findLowerSettingHint(mask, h, boat, safetyDepthM)
+                : null;
+            const accessLines = harborAccessCopy(access, hint, boat, safetyDepthM, lang);
             return (
               <li
                 key={h.id}
@@ -328,11 +438,11 @@ export default function HarborPicker({
                 onClick={() => choose(h)}
               >
                 <span className="harbor-picker-name">{h.names[lang]}</span>
-                {disconnected && (
-                  <span className="harbor-picker-unreachable">
-                    {t('harborPicker.knownDisconnected')}
+                {accessLines.map((line) => (
+                  <span key={line.key} className="harbor-picker-unreachable">
+                    {t(line.key, line.vars)}
                   </span>
-                )}
+                ))}
                 {caveat && <span className="harbor-picker-caveat">{caveat}</span>}
               </li>
             );
