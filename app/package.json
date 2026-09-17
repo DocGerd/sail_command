@@ -12,7 +12,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage.enabled --coverage.provider=v8",
     "test:sweep-unit": "node --test sweep/canonicalize.test.mjs sweep/merge-shards.test.mjs",
-    "lint": "eslint src e2e sweep",
+    "lint": "eslint src e2e sweep --cache --cache-location node_modules/.cache/eslint/ --cache-strategy content",
     "notices": "node scripts/gen-third-party-notices.mjs",
     "typecheck": "tsc -b --noEmit",
     "pree2e": "node scripts/gen-wind-fixture.mjs && SC_E2E_REGION_FIXTURE=1 npm run build",
