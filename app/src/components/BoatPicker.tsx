@@ -533,8 +533,12 @@ function BoatOption({ boat, selected, onSelect, mask, harbors, liveDepthM }: Boa
           (which accepts no such prop) — whichever of the three states is
           showing is what the radio's `aria-describedby` above reaches; a
           closed `<details>`'s body drops out of the accessibility tree
-          regardless, so this reaches exactly the SUMMARY text either way. */}
-      <div id={harborsId}>
+          regardless, so this reaches exactly the SUMMARY text either way.
+          `boat-option-harbors-slot` gives it `grid-column: 2` matching
+          `.boat-option-keel`/`-draft-note`/`-polars` — omitting it left this
+          wrapper auto-placed into the narrow radio column (measured 2026-09-18,
+          app.css's own comment on the rule). */}
+      <div id={harborsId} className="boat-option-harbors-slot">
         {access === null ? (
           <p className="boat-option-harbors">{t('boat.harbors.pending')}</p>
         ) : affectedCount === 0 ? (
