@@ -32,7 +32,14 @@ import { findLowerSettingHint, type HarborWithReachability } from '../lib/harbor
 import { NavMask } from '../lib/mask';
 import { en } from '../i18n/dict.en';
 import type { MsgKey } from '../i18n/dict.de';
-import { solverTimeoutMs } from '../test/timeouts';
+import { SOLVER_TEST_TIMEOUT_MS, solverTimeoutMs } from '../test/timeouts';
+
+// Solver-adjacent file: every test below does real depth-mask/flood-fill work
+// (computeHarborAccess or findLowerSettingHint) against the real committed
+// mask, and #1324 CI measured the marstal not-found case at 7054ms against
+// vitest's 5000ms default — see test/timeouts.ts for the shared budget and
+// the coverage multiplier's derivation.
+vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
 
 const mockedLoad = vi.mocked(loadRoutingAssets);
 
