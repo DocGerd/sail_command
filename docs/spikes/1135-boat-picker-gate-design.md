@@ -252,12 +252,16 @@ number-first phrasing that needs none.
 | `harborPicker.boatShallow` | Only via a shallower approach with {boat} — depth warning. | Mit {boat} nur über eine flachere Zufahrt – Tiefenwarnung. |
 | `harborPicker.boatLowerSetting` | May route at {depth} m, below {boat}'s recommended {default} m safety depth (depth data only). | Mit {depth} m eventuell planbar, unter der für {boat} empfohlenen Sicherheitstiefe von {default} m (nur Tiefendaten geprüft). |
 | `harborPicker.boatLowerSettingShallow` | May route at {depth} m with a depth warning, below {boat}'s recommended {default} m safety depth (depth data only). | Mit {depth} m eventuell mit Tiefenwarnung planbar, unter der für {boat} empfohlenen Sicherheitstiefe von {default} m (nur Tiefendaten geprüft). |
+| `harborPicker.boatLowerSettingAtDefault` | May route at {depth} m (depth data only). | Mit {depth} m eventuell planbar (nur Tiefendaten geprüft). |
 | `boat.switch.endpointUnreachable` | {endpoint} {harbor} is not reachable with {boat}. | {endpoint} {harbor} ist mit {boat} nicht erreichbar. |
 
-For the two `boatLowerSetting*` keys (Q5): `{default}` is
+For the three `boatLowerSetting*` keys (Q5): `{default}` is
 `defaultSafetyDepthM(b)`, and `{depth}` is the highest decimetre in
-`[minSafetyDepthM(b), min(G, {default}))` at which the harbour is `ok` (plain
-key) or `shallow-approach` (`…Shallow` key); no decimetre, no hint.
+`[minSafetyDepthM(b), G)` at which the harbour is `ok` (plain key) or
+`shallow-approach` (`…Shallow` key), searched decimetre by decimetre since
+reachability need not be monotone in the gate; a result at or above
+`{default}` uses `…AtDefault`, which has no "below recommended" clause; no
+decimetre, no hint.
 
 `{list}` is harbour names in the active language (`names[lang]`), joined by the
 implementation. `{boat}` is `BoatDef.name`, catalogue data. Before shipping,
@@ -386,14 +390,21 @@ Sweep verdicts from `closure.mjs files` on this branch's base (§10):
    others lazily), caching per §9, differential tests against real
    `snapToNavigable`/`findRelaxedGate` and `verify_mask.py`'s table. Sweep
    owed: **no**, if `mask.ts`/`depthGate.ts` are imported, not edited.
+   Also: cost the Q5 hint search (up to one uniform plus one disc fill per
+   decimetre per `unreachable` harbour, outside §3's measurement) or compute
+   it lazily when the option renders.
 2. **Mark harbour access in the origin/destination pickers** — marker in
    `HarborPicker` options and `PlannerPanel`'s selected-endpoint row, Q5's
    lower-setting hint, de/en keys, jsdom + e2e with a non-default boat.
-   Depends on 1. Sweep owed: **no**.
+   Also: fix the `…Shallow` German word order ("Bei {depth} m Sicherheitstiefe
+   eventuell planbar, mit Tiefenwarnung, …") and state key precedence when a
+   harbour qualifies as both states (highest reaching decimetre, key by its
+   state). Depends on 1. Sweep owed: **no**.
 3. **Show harbour access on each boat in the Boat tab** — `BoatOption`
    disclosure, `aria-describedby`, pending state, boat-switch announcement
    (Q1); selected boat at the live setting, others at their labelled default
-   (Q7). Depends on 1. Sweep owed: **no**.
+   (Q7). Also: add a de/en key (e.g. `boat.harbors.summaryDefault`) for the
+   "(default)" label. Depends on 1. Sweep owed: **no**.
 4. **Raise safety depth to the boat's default on boat switch** —
    `clampSettingsToBoat` floor `minSafetyDepthM` → `defaultSafetyDepthM`,
    clamp-notice copy, tests (Q4). Sweep owed: **no** while confined to
