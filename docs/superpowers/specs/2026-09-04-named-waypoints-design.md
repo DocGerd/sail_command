@@ -265,7 +265,8 @@ plausibly means "then go here".
 ### 2.7 #848 ships panel-only; the map layer is a separate issue
 
 Saved waypoints live in a panel list, and selecting one loads it into the
-current route draft. They get no permanent map presence in v0.21.0.
+current route draft. They got no permanent map presence in v0.21.0; #924 later
+added one (`SavedWaypointsLayer.tsx`).
 
 A selectable symbol layer would compete for the z12 `symbol-sort-key` and
 collision budget already shared by harbour markers and seamark glyphs — the same
