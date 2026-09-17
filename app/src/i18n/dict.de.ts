@@ -81,8 +81,9 @@ export const de = {
   // Texten die Register-Wörter genau/verifiziert/zuverlässig/sicher.
   'boat.keel.assumed':
     'Angenommener Kiel: {keel}. Nicht anhand der Papiere dieses Schiffs geprüft.',
-  // Spec C.7: nach oben geklemmt, gespeichert — und angesagt. Nur nach oben.
-  'boat.clamp.notice': 'Sicherheitstiefe auf {depth} m angehoben – Mindestwert für {boat}.',
+  // Spec C.7 (#1293/#1135 Q4): auf den Standardwert des Boots angehoben,
+  // gespeichert — und angesagt. Nur nach oben.
+  'boat.clamp.notice': 'Sicherheitstiefe auf {depth} m angehoben – Standardwert für {boat}.',
   // #299: Abschnittsüberschriften im Boot-Tab (SettingsPanel).
   'settings.section.boatSafety': 'Boot & Sicherheit',
   'settings.section.propulsion': 'Antrieb',

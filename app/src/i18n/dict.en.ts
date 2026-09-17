@@ -78,8 +78,9 @@ export const en = {
   // Spec N.2. "Checked", not "verified": spec N.5 rules the register words
   // accurate/verified/reliable/safe out of any new copy.
   'boat.keel.assumed': "Assumed keel: {keel}. Not checked against this vessel's papers.",
-  // Spec C.7: clamped up, persisted — and announced. Up only.
-  'boat.clamp.notice': 'Safety depth raised to {depth} m — the minimum for {boat}.',
+  // Spec C.7 (#1293/#1135 Q4): clamped up to the boat's DEFAULT gate,
+  // persisted — and announced. Up only.
+  'boat.clamp.notice': 'Safety depth raised to {depth} m — the default for {boat}.',
   // #299: section headings on the Boat tab (SettingsPanel).
   'settings.section.boatSafety': 'Boat & safety',
   'settings.section.propulsion': 'Propulsion',
