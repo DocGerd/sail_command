@@ -629,6 +629,7 @@ const SLOW_TEST_FILES_FIRST = [
   'src/routing/realmask.repro.issue20.marstalMargin0.test.ts',
   'src/routing/realmask.repro.salona44.test.ts',
   'src/routing/realmask.repro.motorOffSalvage.test.ts',
+  'src/routing/realmask.repro.horizonRelaxation.test.ts',
   'src/routing/realmask.repro.depthComfort.pinchLocalization.test.ts',
   'src/routing/realmask.repro.mirrorCase.test.ts',
   'src/routing/realmask.repro.relaxationTrade.originMarstal.test.ts',

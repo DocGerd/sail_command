@@ -238,8 +238,7 @@ export function compareRigs(a: RigResult, b: RigResult): RigRecommendation {
  * encoding was designed to avoid but cannot PROVE it always avoids
  * ('mask-blocked'), and for a preference-inflated ranking clock tripping the
  * horizon guard ('horizon-exceeded'). A calm forecast with the engine off is a
- * wind fact the preference can neither cause nor cure — mirroring #53's own
- * rule that only mask-unreachability degrades further — so it never triggers a
+ * wind fact the preference can neither cause nor cure, so it never triggers a
  * retry.
  *
  * #282: takes the internal cause, NOT the user-facing reason. Exported for
@@ -261,11 +260,11 @@ export function comfortRetryMayHelp(cause: SolveFailureCause): boolean {
 }
 
 /**
- * #53 gate predicate: might a SHALLOWER safety gate connect a mask the
- * requested gate does not? Only a mask-level block can be answered by moving
- * the depth gate — a calm forecast or an exhausted forecast horizon is
- * unchanged by it, which is why those two keep their errors instead of
- * degrading further.
+ * #53 gate predicate: might a SHALLOWER safety gate help? True for a
+ * mask-level block, and since #1258 for 'horizon-exceeded': a requested-gate
+ * search still running at the horizon can finish in time on the wider relaxed
+ * field (measured: motor-off Flensburg->Troense routes only at 2.9 m). A calm
+ * forecast is unchanged by the gate, so it keeps its error.
  *
  * #282: takes the internal cause, NOT the user-facing reason. Exported for
  * direct unit testing of the truth table.
@@ -274,14 +273,15 @@ export function comfortRetryMayHelp(cause: SolveFailureCause): boolean {
  * `comfortRetryMayHelp` above, and pinned the same way (the exhaustive
  * four-cause table in planRoute.test.ts, not a redundant statement here).
  * Note this exclusion alone does NOT cover the case where tiers 1-2 spend
- * the whole budget and still finish with a genuine 'mask-blocked' verdict —
+ * the whole budget and still finish with a genuine 'mask-blocked' or
+ * 'horizon-exceeded' verdict —
  * the cause is then honestly mask-blocked, this gate opens, and
  * `findRelaxedGate`'s BFS probes would run past the deadline. That gap is
  * closed by an explicit deadline check immediately before the relaxation
  * block, not here.
  */
 export function depthRelaxationMayHelp(cause: SolveFailureCause): boolean {
-  return cause === 'mask-blocked';
+  return cause === 'mask-blocked' || cause === 'horizon-exceeded';
 }
 
 /** #1136: one tier as pass 1 ran it. */
@@ -890,9 +890,9 @@ function runLadder(
     }
   }
 
-  // #53 graceful degradation below safety depth: ONLY the mask-unreachability
-  // class relaxes — a calm forecast and an exhausted horizon keep their errors
-  // — and never at or below the boat-draft floor. The relaxed gate is
+  // #53 graceful degradation below safety depth: only the causes
+  // `depthRelaxationMayHelp` admits relax (a calm forecast keeps its error),
+  // and never at or below the boat-draft floor. The relaxed gate is
   // discovered once (cheap mask BFS probes, no solver runs), then BOTH rigs
   // solve against that single gate FIELD, so the rig comparison stays
   // apples-to-apples by construction. The user's safetyDepthM setting is
@@ -911,8 +911,8 @@ function runLadder(
   // #432: the ONE place the budget needs an explicit check outside solve().
   // `depthRelaxationMayHelp` already rejects 'budget-exhausted', but that
   // does not cover the case this check exists for: tiers 1-2 can spend the
-  // ENTIRE budget and still finish with a genuine 'mask-blocked' verdict, so
-  // the cause is honestly mask-blocked, the gate opens, and
+  // ENTIRE budget and still finish with a genuine 'mask-blocked' (or, since
+  // #1258, 'horizon-exceeded') verdict, so the gate opens, and
   // `findRelaxedGate`'s BFS probes — the only work in this function that
   // does not run inside solve()'s ring loop, and therefore the only work the
   // per-ring check cannot stop — would run past a deadline that has already
@@ -977,7 +977,11 @@ function runLadder(
         // requested sail via combineAllCauses — a positional
         // combineFailureCause(tier4[0], tier4[1]) crashed at
         // sailIds.length === 1 (tier4[1] undefined).
-        cause = combineAllCauses(tier4);
+        // #1258: folded with the requested-gate cause, so a requested-gate
+        // horizon failure is never relabelled 'unreachable' by a relaxed
+        // mask-block. combineFailureCause('mask-blocked', x) === x, so every
+        // pre-#1258 path is unchanged.
+        cause = combineFailureCause(cause, combineAllCauses(tier4));
       } else if (tier3.some((r) => r.rigResult)) {
         const shallow = flagShallowLegs(mask, tier3, s.safetyDepthM, usedDepthM);
         return finish(assemble(tier3, shallow));
@@ -989,7 +993,8 @@ function runLadder(
         // one. See combineFailureCause for the rig-disagreement precedence.
         // #54 fix round 1: folds over every requested sail via
         // combineAllCauses (see the tier-4 call site's comment above).
-        cause = combineAllCauses(tier3);
+        // #1258: folded with the requested-gate cause (see tier 4 above).
+        cause = combineFailureCause(cause, combineAllCauses(tier3));
       }
     }
   }

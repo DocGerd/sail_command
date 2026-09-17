@@ -4095,8 +4095,8 @@ making design-level decisions; do not silently deviate.
   remove it: the two retry gates — named predicates `comfortRetryMayHelp` /
   `depthRelaxationMayHelp` — now branch on an INTERNAL `SolveFailureCause`
   (`'mask-blocked' | 'calm-without-motor' | 'horizon-exceeded' |
-  'budget-exhausted'` — four members since #432; both gates still admit only
-  `mask-blocked`, plus `horizon-exceeded` for `comfortRetryMayHelp`), deliberately
+  'budget-exhausted'` — four members since #432; both gates admit
+  `mask-blocked` and `horizon-exceeded`, the latter for relaxation since #1258), deliberately
   kept OUT of `types.ts` so it cannot leak into UI code. The public
   `NoRouteReason` is unchanged, derived from the cause at exactly three
   presentation boundaries via `NO_ROUTE_LABEL_OF_CAUSE` — `noRouteLabel()` for
