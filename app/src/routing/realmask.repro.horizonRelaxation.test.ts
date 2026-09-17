@@ -7,11 +7,12 @@ import { solverTimeoutMs, SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
 import { SALONA_DEPS, FLENSBURG, T0 } from '../test/realmaskFixtures';
 
 // #1258 against the real committed mask and polars: the `light-motorless` sweep
-// arm's Flensburg->Troense plan. At the requested 3.0 m gate the genoa search is
-// still running when the 48 h horizon hits ('horizon-exceeded'); only the
-// relaxed 2.9 m gate finishes in time. Before #1258 that cause never opened
-// relaxation, so the plan failed 'beyond-horizon'. The outcome flips on small
-// input changes (#1168), so a neighbouring origin is pinned too.
+// arm's Flensburg->Troense plan. At #1258's base the requested 3.0 m genoa
+// search hit the 48 h horizon and only the relaxed 2.9 m gate routed. Since
+// #1303's finer approach grid, genoa routes at the requested gate, so no
+// real-mask input here reaches horizon -> relaxed -> ok any more (probes in
+// PR #1304). That path is now covered only by synthetic tests. The outcome
+// flips on small input changes (#1168), so a neighbouring origin is pinned too.
 vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
 
 // harbors.json `troense` snap, as the sweep plans it.
@@ -37,20 +38,19 @@ function plan(origin: LatLon, tws: number, hours = 48) {
 }
 
 describe('#1258: a requested-gate horizon failure opens #53 relaxation (real mask)', () => {
+  // #1303: this row pinned #1258's relaxed-tier route until #1303's
+  // near-destination grid let genoa reach Troense inside the horizon at the
+  // requested gate (PR #1304). Now a drift sentinel for that change.
   it(
-    'Flensburg harbour snap, TWS 3: routes from the relaxed 2.9 m tier',
+    '#1303: Flensburg harbour snap, TWS 3: genoa routes at the requested gate without relaxing',
     { timeout: solverTimeoutMs(600_000) },
     () => {
       const { result, record } = plan(FLENSBURG, 3);
       expect(result.status).toBe('ok');
       if (result.status !== 'ok') return;
       expect(result.sails.find((s) => s.sailId === 'genoa')?.result).not.toBeNull();
-      // Mechanism: the requested gate failed on the horizon, and the route came
-      // from tier 3 at the relaxed gate.
-      expect(record.tiers[0]?.causes[0]).toBe('horizon-exceeded');
-      const tier3 = record.tiers.find((t) => t.tier === 3);
-      expect(tier3?.usedDepthM).toBe(2.9);
-      expect(tier3?.causes[0]).toBeNull();
+      expect(record.tiers[0]?.causes[0]).toBeNull();
+      expect(record.tiers.some((t) => t.tier === 3)).toBe(false);
     },
   );
 
