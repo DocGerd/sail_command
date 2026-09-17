@@ -99,12 +99,16 @@ export interface RelaxedGate {
  * `deadline` (#1280 part B) is OPTIONAL — absent means unbudgeted, the
  * byte-identical pre-#1280 path (every vitest call site and the #282 sweep).
  * When present it is read between probes and between a probe's per-pair
- * `cellsConnected` BFS passes, and expiry ABANDONS the search and returns
- * null, discarding any gate already found. Null is deliberately not a third
- * return value: `planRoute` re-reads the same deadline immediately after this
- * call and reports the typed 'budget-exhausted' label, so a spent budget can
- * never be mistaken for "nothing connects". A BFS pass runs to completion —
- * the check is between passes, never inside one.
+ * `cellsConnected` BFS passes. Expiry returns null from either binary search;
+ * expiry first seen inside a `connectsWith` pass instead reports 'does not
+ * connect', so the ladder may return a gate derived from a truncated probe -
+ * `planRoute`'s re-read discards it either way. That re-read, immediately
+ * after this call, is also why null is not a third return value here: a spent
+ * budget is reported as the typed 'budget-exhausted' label rather than
+ * mistaken for "nothing connects". A BFS pass runs to completion — the check
+ * is between passes, never inside one. Residual overshoot, measured on the
+ * real mask by the PR #1322 review (Flensburg -> Troense, full four-probe
+ * ladder): 153 ms total, longest inter-probe gap 47 ms.
  */
 export function findRelaxedGate(
   mask: NavMask,

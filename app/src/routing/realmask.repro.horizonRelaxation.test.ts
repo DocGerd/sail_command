@@ -88,6 +88,11 @@ describe('#1258: a requested-gate horizon failure opens #53 relaxation (real mas
       const { result, record } = plan(FLENSBURG, 3, 24);
       expect(result).toEqual({ status: 'error', reason: 'unreachable' });
       expect(record.tiers.some((t) => t.tier === 3)).toBe(true);
+      // #1258's WIDENED arm is what opens relaxation here: the tier-1 causes
+      // measured ['mask-blocked', 'horizon-exceeded'] fold to horizon-exceeded
+      // (`combineFailureCause`), so this row is the last real-mask exercise of
+      // that predicate and nothing else asserts it (PR #1322 review).
+      expect(record.tiers[0]?.causes).toContain('horizon-exceeded');
     },
   );
 

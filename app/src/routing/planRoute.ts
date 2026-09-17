@@ -958,11 +958,6 @@ function runLadder(
     // Re-reading the deadline HERE is what keeps the typed budget failure
     // winning: without it an abandoned search would be reported as a
     // mask-level verdict the probes never actually reached.
-    // #1280 part B: `findRelaxedGate` abandons its probe ladder on a spent
-    // budget and returns null, which is also its "nothing connects" answer.
-    // Re-reading the deadline HERE is what keeps the typed budget failure
-    // winning: without it an abandoned search would be reported as a
-    // mask-level verdict the probes never actually reached.
     if (deadline?.expired()) {
       return { status: 'error', reason: NO_ROUTE_LABEL_OF_CAUSE['budget-exhausted'] };
     }

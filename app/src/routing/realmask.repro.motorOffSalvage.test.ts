@@ -149,9 +149,11 @@ describe('#1136 planRoute pass 2 (real mask)', () => {
   // (1784159977571.5435 / 1784122896754.3152, both reproducing with the rule
   // off). Under the confined-water grid BOTH sails route at both TWS, so that
   // fixture no longer produces the #1166 shape and no real-mask fixture in
-  // this file does. What still pins NON-ADMISSION structurally is
-  // `record.cause === null`: an ok pass 1 records no cause, and admission
-  // requires 'mask-blocked' (clause 2), so this cannot pass while pass 2 runs.
+  // this file does. `record.cause === null` pins a PRECONDITION of
+  // non-admission — that pass 1 did not fail — not non-admission itself:
+  // deleting clause 2 from `salvagePassAdmitted` leaves this row green (PR
+  // #1322 review). Clause 2 is pinned directly by
+  // `planRoute.motorOffSalvage.test.ts`'s truth table.
   it.each([{ tws: 3 }, { tws: 8 }])(
     'TWS $tws: an ok plan is left as it was — pass 2 is not admitted',
     ({ tws }) => {

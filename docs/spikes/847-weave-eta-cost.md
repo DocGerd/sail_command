@@ -308,24 +308,6 @@ one — this is reported here rather than silently fixed in CLAUDE.md, which
 is outside this task's allowlist and, per CLAUDE.md's own convention, a
 main-session act.
 
-## 7bis. What #1303 changed (2026-09-17)
-
-#1303/#1305's confined-water prune refinement moves two of the measurements
-above; the spike's verdict (#847 answered, approach weaves are near-zero-cost
-presentational artefacts) is unchanged. Measured on this branch against base
-36d86a7, BASE = the same tree with the refinement off:
-
-- §7a row 3, Glücksburg -> Ærøskøbing: the approach weave is GONE (1 span ->
-  0), and the route arrives EARLIER (402.9 -> 401.7 min). The span was an
-  artefact of coarse pruning through the approach, which is what #1303 fixes.
-- §4's negative control, Flensburg -> Gelting-Mole: 0 spans -> 1 (18 -> 17
-  legs). That route is no longer weave-free, so the detector's non-vacuity
-  control moved to Flensburg -> Wackerballig (0 spans, 14 legs, measured at
-  HEAD) in the harness. Recorded because it shows the refinement can ADD a
-  weave span as well as remove one.
-- §2's reproducing case still reproduces (1 span), on a slightly different
-  route: 13 legs / 67.6 min -> 10 legs / 67.2 min.
-
 ## 7. Widening (#1079, 2026-09-09)
 
 #1079 was filed on closing #847 as ANSWERED specifically to widen this
@@ -485,3 +467,21 @@ leaving the ETA-cost comparison exactly as open as it was.
 - No solver file was touched, and no #282 sweep is owed (no production
   module and no `DEFAULT_SETTINGS` field were edited; only the existing
   measurement-only test file grew three new `it()` blocks).
+
+## 7bis. What #1303 changed (2026-09-17)
+
+#1303/#1305's confined-water prune refinement moves two of the measurements
+above; the spike's verdict (#847 answered, approach weaves are near-zero-cost
+presentational artefacts) is unchanged. Measured on this branch against base
+36d86a7, BASE = the same tree with the refinement off:
+
+- §7a row 3, Glücksburg -> Ærøskøbing: the approach weave is GONE (1 span ->
+  0), and the route arrives EARLIER (402.9 -> 401.7 min). The span was an
+  artefact of coarse pruning through the approach, which is what #1303 fixes.
+- §4's negative control, Flensburg -> Gelting-Mole: 0 spans -> 1 (18 -> 17
+  legs). That route is no longer weave-free, so the detector's non-vacuity
+  control moved to Flensburg -> Wackerballig (0 spans, 14 legs, measured at
+  HEAD) in the harness. Recorded because it shows the refinement can ADD a
+  weave span as well as remove one.
+- §2's reproducing case still reproduces (1 span), on a slightly different
+  route: 13 legs / 67.6 min -> 10 legs / 67.2 min.

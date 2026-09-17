@@ -80,9 +80,15 @@ describe('#1303: Flensburg -> Svendborg keeps the Svendborgsund route (real mask
   // family 6.7 h slower on its own ranking clock. The capped row was already
   // on the short family at BASE and is here as a non-regression control, since
   // the cap kept that route by accident (#1303's root-cause comment) and a
-  // fix that traded it away would red here. HEAD: 8.8282 / 52.05 capped,
-  // 8.7675 / 51.05 uncapped. The bounds sit between the two families, not on
+  // fix that traded it away would red here. HEAD: 8.7749 / 51.20 capped,
+  // 8.7658 / 51.37 uncapped. The bounds sit between the two families, not on
   // either measurement.
+  //
+  // CORRECTION (PR #1322 review): the HEAD pair above first recorded
+  // 8.8282 / 52.05 and 8.7675 / 51.05, which are the CONFINED_PRUNE_DIV = 4
+  // measurements — the variant this PR rejects. Commit f45a9da's message
+  // carries the same wrong uncapped figure and cannot be rewritten; this line
+  // is the correction. The #1305 block's figures below reproduce as recorded.
   it.each<[string, number | undefined]>([
     ['capped', undefined],
     ['uncapped', UNCAPPED],

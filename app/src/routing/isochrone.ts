@@ -318,8 +318,11 @@ const CONFINEMENT_MARGIN_CELLS = 1;
  * passage is narrower than a prune cell — a cheaper arrival with no navigable
  * onward edge seals the cell against a better-placed later one (#1303 at a
  * harbour approach, #1305 at a pass-through narrow). Refining the key inside
- * confined water only ever REMOVES pruning, so no route reachable before
- * becomes unreachable; open water keeps the coarse grid and its cost.
+ * confined water only ever removes pruning, so under an uncapped frontier no
+ * route reachable before becomes unreachable. At `MAX_FRONTIER` a larger
+ * winner set changes which nodes survive truncation, so the capped regime can
+ * move either way - measured, the starved-cap pin moved 5 -> 4.
+ * Open water keeps the coarse grid and its cost.
  *
  * Exported for direct testing of the classification itself, which is cheaper
  * to interrogate than a 100 s solve.
