@@ -1659,7 +1659,7 @@ making design-level decisions; do not silently deviate.
   | v0.33.0 | 2026-09-10 | 134 s | `success` (MEASURED immediately before the tag push, and the failure CALLED IN ADVANCE from it, written down BEFORE the push) | **`smoke-probe` FAILED** | merge-push `34510823659` (created 17:52:05Z) -> tag `34511051995` (created 17:54:19Z) on `84fc200`. The merge run's `deploy` job carries **`steps=6`** and was terminal `success` at **17:53:36Z, 43 s BEFORE the tag run was created** -- v0.29.0's `steps` discriminator in the reading that means the job genuinely RAN and deployed. The tag run's `build` AND `deploy` both succeeded; only `smoke-probe` failed, by the #398 signature -- its own prod entry chunk `assets/index-BruyVo4z.js` returned **404 on all 10 attempts** (17:55:49Z -> 18:00:20Z) while BOTH basemap Range probes passed on attempt 1, ruling out a CDN regression. Back-merge `34513753191` (different SHA `3637c30`) then probed green and republished **that same chunk name**, which then returned 200 on attempt 1 -- so the tag run's BUILD was correct and only its DEPLOYMENT no-opped. Production afterwards served that chunk at ``about.version`,{version:`v0.33.0`}`` with ZERO suffixed `vX.Y.Z-N-g<sha>` matches. **ENDS the run of not-yet-started readings at v0.30.0, v0.31.0 and v0.32.0** -- read those three rows rather than trusting a count here -- and is the first terminal `success` since v0.29.0, behaving exactly as this table says a `success` reading behaves. Still names no MECHANISM, and per this table's own rule the gap gates nothing. |
   | v0.34.0 | 2026-09-15 | 44 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 08:28:02Z, two seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `34947043144` (created 08:27:21Z) -> tag `34947108798` (created 08:28:05Z) on `85afd47`. The merge run's `deploy` job carries **`steps: 0`** against that run's `build` at **`steps: 23`** (the within-run control). The tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production then served `assets/index-CEJof43x.js` at ``about.version`,{version:`v0.34.0`}`` with ZERO suffixed matches, so no back-merge remedy was owed. Release object `isLatest: true`; tag object `fe18dcb` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.35.0 | 2026-09-16 | 41 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) immediately before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `35109752970` (created 14:37:06Z) -> tag `35109830067` (created 14:37:47Z) on `2d94af4`. The merge run's `deploy` job carries **`steps: 0`** against that run's `build` at **`steps: 23`** — the within-run control — so it never started. The tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded** (`uat-environment` skipped); production then served `assets/index-D0g3cIVk.js` at ``about.version`,{version:`v0.35.0`}`` with ZERO suffixed matches, so no back-merge remedy was owed. Release object `isLatest: true`; tag object reported `verified: true, reason: "valid"`. Names no MECHANISM. |
-  | v0.36.0 | 2026-09-17 | 41 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 17:11:02Z, two seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `35251123294` (created 17:10:41Z) -> tag `35251164754` on `43466e5`. Merge run's `deploy` **`steps: 0`** against its `build` at **`steps: 23`**. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` succeeded**; production served `assets/index-CF3qycIZ.js` at ``version:`v0.36.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag `verified: true, reason: "valid"`. Names no MECHANISM. |
+  | v0.36.0 | 2026-09-17 | 24 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 17:11:02Z, two seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `35251123294` (created 17:10:41Z) -> tag `35251164754` (created 17:11:05Z) on `43466e5`. Merge run's `deploy` **`steps: 0`** against its `build` at **`steps: 23`**. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` succeeded**; production served `assets/index-CF3qycIZ.js` at ``version:`v0.36.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag `verified: true, reason: "valid"`. Names no MECHANISM. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -2231,9 +2231,14 @@ making design-level decisions; do not silently deviate.
   #1201, which came up `mergeable_state: dirty` for exactly that, both index
   entries being the correct resolution.
 - **MAINTAINER RULING 2026-09-17: batch file-disjoint ready PRs into one
-  integration PR BY DEFAULT and merge the moment a PR is green, clean and has
-  zero unresolved threads** — serial per-PR re-syncs were 55% of PR wall time
-  over 25 PRs (measured 2026-09-17).
+  integration PR BY DEFAULT, merge a PR the moment it is green, run reviews
+  while CI runs, and turn non-safety prose findings into follow-up issues,
+  with at most 2 fix waves per PR.** A merge still needs zero unresolved
+  threads and a POSTED reviewer verdict (see "Never state a CI check's state
+  from your own tracking table"). The serial re-sync flow in the next bullet
+  is the fallback for PRs that are not file-disjoint. Measured 2026-09-17 over
+  25 merged PRs (#1218–#1279): the last-commit→merge tail (CI re-runs,
+  re-syncs, and queue or idle waiting together) was 55% of summed PR lifetime.
 - Multiple open PRs: develop in parallel, merge strictly serially — after each
   merge, re-sync the next branch from its base (`git merge origin/develop`, or
   `origin/main` for a hotfix/release PR) and let full CI (~10 min) re-run before
@@ -2392,9 +2397,10 @@ making design-level decisions; do not silently deviate.
   designed, yet yielded 0 barbs at harbor-approach zoom on long routes (#36) —
   the design doc itself encoded the bug.
 - **A routing fix can delete another fix's only real-data reproduction.**
-  PR #1304 (#1303) made #1258's Troense pin route at the requested gate, and 14
-  probes found no other real-mask input reaching horizon→relaxed→ok (PR #1304
-  comment 5717102784). Re-run sibling fixes' repro tests on a routing change.
+  On PR #1304's branch (#1303), #1258's Troense pin routed at the requested
+  gate instead of the relaxed tier, and none of the probes listed in PR #1304
+  comment 5717102784 reached horizon→relaxed→ok. Re-run sibling fixes' repro
+  tests on a routing change.
 - **A TIMING measured on a route that never enters the changed path is zero
   evidence — count the calls, don't infer them.** #1256 removed a ~47 MB
   per-call allocation from `cellsConnected`; the two routes benchmarked first
@@ -4083,15 +4089,17 @@ making design-level decisions; do not silently deviate.
   in TWS, replacing a heading-space hole with a wind-space cliff a real forecast
   crosses hourly, and it preserves today's 309-heading hole rather than the
   sailing). Spec: `docs/superpowers/specs/2026-07-30-motor-decision-rule-design.md`.
-- **A MORE complete search can return a SLOWER route — never treat an
-  uncapped result as ground truth.** Visited-cell pruning keeps one node per
-  cell, so an early cheap node with no navigable onward edge seals a narrow
-  passage and prunes better-placed later arrivals (root causes on #1303 and
-  #1305). Compare both route families' `costMs` before calling a result
-  intended. Fix pending in v0.37.0.
+- **Neither a capped nor an uncapped search result is ground truth — either
+  can return the SLOWER route family.** Prune-cell dominance
+  (`visitedDominates` over per-cell minimum stamps, plus one `byKey` node per
+  `pruneKey` per ring) ignores position within a cell, so an early, cheaper
+  arrival with no navigable onward edge seals a narrow and prunes
+  better-placed later arrivals (root causes on #1303 and #1305). Compare both
+  route families' `costMs` before calling a result intended.
 - **The forecast horizon is the FIXED end of the stored grid** (`wind.ts`
   `horizonMs()`), so a later departure leaves LESS forecast — never advise
-  it; `app/src/i18n/beyondHorizonRemedyCopy.test.ts` guards the no-route keys.
+  it; `app/src/i18n/beyondHorizonRemedyCopy.test.ts` guards only the two
+  `error.noRoute.beyondHorizon*` keys, not `route.shallow.remedyHorizon`.
 - **A reported motor "zigzag" is usually the router MOTOR-TACKING around a
   sail-locked heading band, and it is FASTER — do not fix it** (#264, §8.6 of
   the motor spec). The floor is a hard threshold on sail speed, so one wind cell
