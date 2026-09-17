@@ -266,6 +266,14 @@ interface PendingEntry {
   onProgress?: ProgressCb;
   onProbe?: ProbeCb;
   timer: ReturnType<typeof setTimeout>;
+  // #1280 review Major 1: the ORIGINAL fixed deadline (plan start + this
+  // call's own timeoutMs) — a re-arm may EXTEND past this, never resolve to
+  // a moment before it. Without this floor, armLiveness()'s window-only form
+  // could time out EARLIER than the pre-#1280 client ever did (a progress
+  // message followed by a >grace, sub-timeoutMs silence — e.g. one 20 s ring
+  // after a fast first ring — rejected at first-progress + grace, where the
+  // old single fixed timer would still have been waiting). See armLiveness().
+  softDeadlineAtMs: number;
   // #1280: absolute Date.now()-based ceiling this entry's liveness timer may
   // never be re-armed past, set once at plan() call time. See armLiveness().
   hardDeadlineAtMs: number;
@@ -375,16 +383,24 @@ export class RoutingClient {
     for (const sailId of SAIL_IDS) this.lastProgressAt.delete(`${id}:${sailId}`);
   }
 
-  // #1280: (re)arms `id`'s liveness timer to fire `windowMs` from now, unless
-  // that would land past the entry's own hardDeadlineAtMs — clamped there
-  // instead, so PLAN_TIMEOUT_HARD_CAP_EXTRA_MS bounds the total wait however
-  // many progress/probe messages keep arriving. A no-op once the entry has
-  // settled (settle() already deleted it from `pending`).
+  // #1280 review Major 1: (re)arms `id`'s liveness timer to fire no EARLIER
+  // than `windowMs` from now AND no earlier than the entry's own
+  // softDeadlineAtMs (the pre-#1280 fixed deadline this plan started with) —
+  // whichever is LATER — but never later than hardDeadlineAtMs. The floor is
+  // what makes a re-arm strictly EXTEND the wait a caller would already have
+  // gotten pre-#1280, never shorten it: reviewer-supplied form,
+  // `delay = min(max(softDeadlineAtMs - now, windowMs), hardDeadlineAtMs -
+  // now)`. A no-op once the entry has settled (settle() already deleted it
+  // from `pending`).
   private armLiveness(id: string, windowMs: number) {
     const entry = this.pending.get(id);
     if (!entry) return;
     clearTimeout(entry.timer);
-    const delay = Math.max(0, Math.min(windowMs, entry.hardDeadlineAtMs - Date.now()));
+    const now = Date.now();
+    const delay = Math.max(
+      0,
+      Math.min(Math.max(entry.softDeadlineAtMs - now, windowMs), entry.hardDeadlineAtMs - now),
+    );
     entry.timer = setTimeout(() => {
       this.settle(id, (e) => e.reject(new RoutingError('timeout', 'routing timed out')));
     }, delay);
@@ -450,19 +466,20 @@ export class RoutingClient {
       // keys, so a worker result that does eventually arrive late is a
       // silent no-op (settle() finds nothing left to settle) rather than a
       // second, conflicting resolution.
-      // #1280: hardDeadlineAtMs is the absolute ceiling armLiveness() below
-      // may never re-arm past — set once, here, from THIS call's own
-      // timeoutMs (never PLAN_BUDGET_MS/DEFAULT_PLAN_TIMEOUT_MS directly), so
-      // a caller that shortens timeoutMs (every existing test) shortens the
-      // hard cap with it, mirroring how budgetMs is already derived from
-      // timeoutMs above. The RE-ARM window itself (PLAN_TIMEOUT_GRACE_MS,
-      // used by armLiveness() below) is NOT derived from timeoutMs — it is
-      // always the module constant, so a caller passing a timeoutMs shorter
-      // than PLAN_TIMEOUT_GRACE_MS (no production caller does; several tests
-      // do, deliberately, to reach 'timeout' fast) gets a re-arm window
-      // longer than its own initial one. Harmless for what that shape is
-      // used to test, but not a claim that the two windows track together.
-      const hardDeadlineAtMs = Date.now() + timeoutMs + PLAN_TIMEOUT_HARD_CAP_EXTRA_MS;
+      // #1280: softDeadlineAtMs is the ORIGINAL fixed deadline (set once,
+      // here, from THIS call's own timeoutMs — never
+      // PLAN_BUDGET_MS/DEFAULT_PLAN_TIMEOUT_MS directly, mirroring how
+      // budgetMs is already derived from timeoutMs above). armLiveness()'s
+      // review-fixed floor means a re-arm can never resolve to a moment
+      // before this, so a caller that shortens timeoutMs (every existing
+      // test) shortens BOTH the initial wait and that floor together, and
+      // the two can never invert.
+      const softDeadlineAtMs = Date.now() + timeoutMs;
+      // hardDeadlineAtMs is the absolute ceiling armLiveness() below may
+      // never re-arm past regardless of the floor above, so
+      // PLAN_TIMEOUT_HARD_CAP_EXTRA_MS bounds the total wait even under
+      // continuous progress.
+      const hardDeadlineAtMs = softDeadlineAtMs + PLAN_TIMEOUT_HARD_CAP_EXTRA_MS;
       // Initial window is timeoutMs itself, exactly as before #1280 — no
       // progress/probe has arrived yet, so there is nothing to re-arm on.
       // The Math.min clamp is a no-op here (hardDeadlineAtMs - now() >
@@ -481,7 +498,7 @@ export class RoutingClient {
       // here (omitted args), but the map's value type declares them as
       // optional-if-present, not optional-or-undefined — so an absent
       // callback must omit its key entirely rather than set it to undefined.
-      const entry: PendingEntry = { resolve, reject, timer, hardDeadlineAtMs };
+      const entry: PendingEntry = { resolve, reject, timer, softDeadlineAtMs, hardDeadlineAtMs };
       if (onProgress) entry.onProgress = onProgress;
       if (onProbe) entry.onProbe = onProbe;
       this.pending.set(id, entry);

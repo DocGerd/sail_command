@@ -587,15 +587,22 @@ describe('RoutingClient.plan() liveness re-arm (#1280)', () => {
     await expect(p).resolves.toBe(result);
   });
 
-  it('silence exceeding the grace window after the last progress message still times out', async () => {
+  // #1280 review Major 1: FLIPPED from the pre-fix version of this test,
+  // which asserted the OPPOSITE — that a >grace silence after progress timed
+  // out EARLY, inside the original timeoutMs. That was the regression: a
+  // caller who got the full original window pre-#1280 must still get at
+  // least that, so a re-arm may only EXTEND the deadline, never shorten it
+  // below the original fixed one (softDeadlineAtMs).
+  it('silence longer than the grace window after progress does not fire before the original deadline', async () => {
     vi.useFakeTimers();
     const w = fakeWorker();
     const client = new RoutingClient(() => w as unknown as Worker);
     w.emit({ type: 'ready' });
 
-    // A timeoutMs comfortably larger than one grace window, so the assertion
-    // below isolates the RE-ARMED window rather than the initial one.
-    const timeoutMs = PLAN_TIMEOUT_GRACE_MS + 60_000;
+    // A timeoutMs comfortably larger than one grace window, so a naive
+    // "always re-arm to windowMs" re-arm (the pre-fix shape) would time out
+    // WELL before this, at 5_000 + PLAN_TIMEOUT_GRACE_MS.
+    const timeoutMs = PLAN_TIMEOUT_GRACE_MS + 60_000; // 75_000
     const p = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0), undefined, timeoutMs);
     const outcome = p.catch((e: Error) => e);
     await vi.advanceTimersByTimeAsync(0);
@@ -605,14 +612,64 @@ describe('RoutingClient.plan() liveness re-arm (#1280)', () => {
     await vi.advanceTimersByTimeAsync(5_000);
     w.emit({ type: 'progress', id: sent.id, sailId: 'genoa', tMs: 5_000, frontierSize: 3 });
 
-    // Strictly more than PLAN_TIMEOUT_GRACE_MS of silence, and still well
-    // inside the (much larger) original timeoutMs — only the re-arm's own
-    // window can explain a timeout landing here.
+    // Strictly more than PLAN_TIMEOUT_GRACE_MS of silence, but still well
+    // BEFORE the original deadline (plan start + timeoutMs) — must NOT
+    // reject yet. Total elapsed here: 5_000 + 16_000 = 21_000, comfortably
+    // under timeoutMs (75_000).
+    let settled = false;
+    void outcome.then(() => {
+      settled = true;
+    });
     await vi.advanceTimersByTimeAsync(PLAN_TIMEOUT_GRACE_MS + 1_000);
+    expect(settled).toBe(false);
 
+    // Advance the rest of the way to the ORIGINAL deadline with no further
+    // messages — this is the pre-#1280 fixed timer's own job, unaffected by
+    // the re-arm floor: it still times out, just not earlier than this.
+    await vi.advanceTimersByTimeAsync(timeoutMs - (5_000 + PLAN_TIMEOUT_GRACE_MS + 1_000));
     const err = await outcome;
     expect(err).toBeInstanceOf(RoutingError);
     expect((err as RoutingError).kind).toBe('timeout');
+  });
+
+  // #1280 review Major 1: the concrete regression the reviewer's own example
+  // named — "a device with 20 s rings now times out at ~35 s, where it used
+  // to finish inside 240 s" — reproduced directly rather than only via the
+  // floor-boundary test above, and carried through to a SUCCESSFUL result to
+  // prove the gap is tolerated rather than merely delaying an inevitable
+  // timeout.
+  it('a 20 s silent stretch before the soft deadline does not time out', async () => {
+    vi.useFakeTimers();
+    const w = fakeWorker();
+    const client = new RoutingClient(() => w as unknown as Worker);
+    w.emit({ type: 'ready' });
+
+    // The real default window, so this reproduces the reviewed regression at
+    // its actual scale, not a test-shortened stand-in.
+    const p = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0));
+    const outcome = p.catch((e: Error) => e);
+    await vi.advanceTimersByTimeAsync(0);
+    const sent = w.posted[w.posted.length - 1];
+    if (sent.type !== 'plan') throw new Error('expected a plan message');
+
+    // Ring 1 ends after 20 s and posts progress.
+    await vi.advanceTimersByTimeAsync(20_000);
+    w.emit({ type: 'progress', id: sent.id, sailId: 'genoa', tMs: 20_000, frontierSize: 5 });
+
+    // Ring 2 is ALSO 20 s — longer than the 15 s grace, and (pre-fix) enough
+    // to reject at ring1_end + grace = 35_000. Must not settle.
+    let settled = false;
+    void outcome.then(() => {
+      settled = true;
+    });
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(settled).toBe(false);
+
+    // Ring 2 posts, then the worker answers — the plan resolves normally.
+    w.emit({ type: 'progress', id: sent.id, sailId: 'genoa', tMs: 40_000, frontierSize: 8 });
+    const result: PlanResult = { status: 'error', reason: 'unreachable' };
+    w.emit({ type: 'result', id: sent.id, result });
+    await expect(p).resolves.toBe(result);
   });
 
   it('a hard cap fires even under continuous progress faster than the grace window', async () => {
@@ -673,6 +730,50 @@ describe('RoutingClient.plan() liveness re-arm (#1280)', () => {
     const err = await outcome1;
     expect(err).toBeInstanceOf(RoutingError);
     expect((err as RoutingError).kind).toBe('timeout');
+  });
+
+  // #1280 review Minor: every other test above sends only `progress`, so
+  // nothing here proved `probe` re-arms too. Advances PAST the original
+  // timeoutMs on probes alone — deleting armLiveness() from the probe branch
+  // must red this, where the pre-fix code (which never called it there
+  // either) would already have failed even sooner.
+  it('probe messages also re-arm the liveness timer, past the original deadline', async () => {
+    vi.useFakeTimers();
+    const w = fakeWorker();
+    const client = new RoutingClient(() => w as unknown as Worker);
+    w.emit({ type: 'ready' });
+
+    const timeoutMs = 30_000; // small, so the test needs few iterations
+    const p = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0), undefined, timeoutMs);
+    let settled = false;
+    void p.then(
+      (r) => {
+        settled = true;
+        return r;
+      },
+      (e: Error) => {
+        settled = true;
+        return e;
+      },
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    const sent = w.posted[w.posted.length - 1];
+    if (sent.type !== 'plan') throw new Error('expected a plan message');
+
+    const stepMs = 10_000; // under the grace window
+    let elapsed = 0;
+    // Run comfortably past the ORIGINAL timeoutMs using ONLY probe messages —
+    // if probes didn't re-arm, this alone would already have timed out.
+    while (elapsed < timeoutMs + 20_000) {
+      w.emit({ type: 'probe', id: sent.id, probeDepthM: 2.5, done: 1, total: 4 });
+      await vi.advanceTimersByTimeAsync(stepMs);
+      elapsed += stepMs;
+    }
+    expect(settled).toBe(false);
+
+    const result: PlanResult = { status: 'error', reason: 'unreachable' };
+    w.emit({ type: 'result', id: sent.id, result });
+    await expect(p).resolves.toBe(result);
   });
 });
 
