@@ -16,7 +16,7 @@ export interface SolveParams {
   settings: Settings;
   onProgress?: (info: { tMs: number; frontierSize: number }) => void;
   /**
-   * Perf-cap on the per-ring frontier size. Defaults to {@link MAX_FRONTIER}.
+   * Perf-cap on the per-ring frontier size. Defaults to {@link defaultMaxFrontier}.
    * Injectable so tests can drive the cap into a regime where it actually
    * truncates the frontier (issue #67) without building a 30 000-node mask.
    */
@@ -186,12 +186,29 @@ const MIN_SAIL_KN = 0.2;
 const CAPTURE_NM = 0.1;
 const PRUNE_LAT = 0.002; // ~220 m
 const PRUNE_LON = 0.003; // ~190 m at 55°N
-// Perf safeguard, not a correctness bound: when the frontier exceeds this,
+// Perf safeguard, not a correctness bound: when the frontier exceeds the cap,
 // non-dominated candidates are discarded by count (see `better()` below for
 // the ordering) rather than by geometry. A no-route in that regime may
 // reflect search capacity rather than actual unreachability; surfacing that
 // distinction to the caller is deferred (plan-amendment pending).
+// MAX_FRONTIER is the cap at the pre-#295 2400x2200 mask (MAX_FRONTIER_REF_CELLS);
+// see defaultMaxFrontier for how it scales.
 const MAX_FRONTIER = 30_000;
+const MAX_FRONTIER_REF_CELLS = 2400 * 2200;
+
+/**
+ * #1257: the default frontier cap for a mask, scaled by its cell count
+ * (rows x cols) so a wider domain does not raise truncation pressure. Floored
+ * at MAX_FRONTIER so small (synthetic) masks keep the historical cap. Uses
+ * grid cells, not navigable cells: navigability is decided per query against
+ * a gate, so a navigable count would vary with settings and #53 relaxation.
+ */
+export function defaultMaxFrontier(meta: { rows: number; cols: number }): number {
+  return Math.max(
+    MAX_FRONTIER,
+    Math.round((MAX_FRONTIER * meta.rows * meta.cols) / MAX_FRONTIER_REF_CELLS),
+  );
+}
 const EXTRA_TWAS = [45, 55, 65, 75, 85, 95, 105, 115, 125, 135, 145, 155, 165, 175];
 const MOTOR_TWAS = [0, 20, 35];
 // #885: a forced-motor segment has no sail up, so candidates are headings, not
@@ -336,7 +353,7 @@ function better(a: Node, b: Node): boolean {
 
 export function solve(p: SolveParams): SolveResult {
   const { polar, wind, mask, settings, destination } = p;
-  const maxFrontier = p.maxFrontier ?? MAX_FRONTIER;
+  const maxFrontier = p.maxFrontier ?? defaultMaxFrontier(mask.meta);
   const horizonMs = wind.horizonMs();
   const comfortDepthM = p.comfortDepthM;
   // #452: resolved ONCE per solve and passed down by reference. `edgeFactor`
@@ -395,7 +412,8 @@ export function solve(p: SolveParams): SolveResult {
     // deadline by up to one ring's duration. Measured on this app's most
     // expensive real input (Flensburg -> Marstal, DEFAULT_SETTINGS, real
     // committed mask+polars, 2026-08-07, one dev machine): 132 rings,
-    // 41.4 s total, slowest ring 1045 ms, frontier peaking at MAX_FRONTIER.
+    // 41.4 s total, slowest ring 1045 ms, frontier peaking at MAX_FRONTIER
+    // (then 30_000; pre-#295 mask, before #1257's scaling).
     // The client-side backstop is sized to absorb that overshoot with room
     // for a much slower device — see PLAN_TIMEOUT_GRACE_MS in workerClient.ts.
     //
@@ -689,7 +707,7 @@ export function solve(p: SolveParams): SolveResult {
     // cells that have no surviving expander. When the frontier fits under the
     // cap, `next` === all byKey winners, so this is byte-identical to stamping
     // every winner — the uncapped path (the common case, incl. every real-mask
-    // route whose frontier peaks below MAX_FRONTIER) is unchanged.
+    // route whose frontier peaks below the cap) is unchanged.
     for (const n of next)
       stampVisited(visited, pruneKey(n.lat, n.lon, n.kind, n.board), {
         costMs: n.costMs,
