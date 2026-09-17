@@ -281,6 +281,12 @@ at gate depths ≤ 2.3 m.
   relaxation contract above (single rig-independent gate, never below draft, `safetyDepthM` never
   mutated, genoa/fock apples-to-apples) is preserved exactly. The DEPTH relaxation itself continues
   to trigger on `unreachable` only — a relaxed gate cannot cure a horizon failure.
+  *Amendment (2026-09-17, #1258, maintainer ruling):* this sentence and the addendum's opening
+  "ONLY for that failure class" are superseded in part — relaxation also triggers when the
+  requested-gate solve fails **beyond-horizon**. Measured after #295: motor-off Flensburg → Troense
+  failed beyond-horizon at 3.0 m and routes at the relaxed 2.9 m gate (#1258 comments).
+  Calm+motor-off still keeps its own error; if relaxation then runs out of plan budget, the
+  beyond-horizon label is kept; the #1136 salvage pass is not widened.
 - **Result contract (structured-clone-safe).** Plan-level `shallow?: { requestedDepthM,
   usedDepthM, minGateDepthM }` (minGateDepthM = shallowest charted cell actually traversed below
   the requested depth). Per-leg flagging of legs whose geometry crosses cells below the requested

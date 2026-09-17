@@ -296,7 +296,8 @@ mode is identical in a tier-4 plan and a tier-1 plan; nothing else would catch a
 future re-introduction.
 
 One interaction to state rather than assume: relaxation is gated on
-`depthRelaxationMayHelp(cause)`, which admits only `mask-blocked`. A hard
+`depthRelaxationMayHelp(cause)`, which admits only `mask-blocked` (plus
+`horizon-exceeded` since #1258). A hard
 forced-sail failure classified as a calm (§2.3) therefore does NOT trigger
 relaxation — correct, since a shallower gate cannot supply wind.
 

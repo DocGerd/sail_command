@@ -651,8 +651,8 @@ instrumented run" — so 16/2 is a PREDICATE's true/false split over 18
 observations, **not** 16 `unreachable` and 2 `beyond-horizon` outcomes.
 
 What makes it corroboration rather than coincidence is DEDUCED, not stated
-there: `depthRelaxationMayHelp` is consulted only on a failed solve and admits
-only `mask-blocked`, so a gate-TRUE observation corresponds to a `mask-blocked`
+there: `depthRelaxationMayHelp` is consulted only on a failed solve and admitted
+only `mask-blocked` (until #1258 added `horizon-exceeded`), so a gate-TRUE observation corresponds to a `mask-blocked`
 failure and a gate-FALSE one to a failure of another cause — on this arm,
 `horizon-exceeded`. Its 18 total also matches §7's 16 + 2 = 18 error rows
 against 33 harbours. Two limits worth stating rather than glossing: the gate can
@@ -1575,10 +1575,11 @@ ruling 2026-09-15, #1136 comment 5679649933, item 3).
 1. pass 1 returned `status: 'error'`;
 2. its plan-level cause is `'mask-blocked'` (label `unreachable`) —
    `'calm-without-motor'`, `'horizon-exceeded'` and `'budget-exhausted'`
-   never enter, mirroring `depthRelaxationMayHelp`. The cause is
+   never enter, mirroring `depthRelaxationMayHelp` as it stood then (#1258
+   later widened that gate to `horizon-exceeded`; this clause did not). The cause is
    `planRoute`'s local `cause` at its final `return`: `tier2[0]?.cause` /
    `tier1[0]?.cause` when tiers 3–4 did not run (`planRoute.ts` calls that
-   an arbitrary tie-break), otherwise `combineAllCauses(tier4)` /
+   an arbitrary tie-break), otherwise (since #1258 folded with the requested-gate cause) `combineAllCauses(tier4)` /
    `combineAllCauses(tier3)`. Pass 1's record carries this cause, never the
    label, and the pre-relaxation deadline exit records no admissible cause;
 3. pass 1 ran at least one solving tier (1 or 3);
