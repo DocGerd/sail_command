@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import type {
   Harbor,
   LatLon,
@@ -17,7 +17,12 @@ import { useLang, useT } from '../i18n';
 // already discloses (#652). See that module's own comment for why it lives
 // outside the `app/sweep/` #282 closure rather than on `Harbor` in
 // `types.ts`.
-import type { HarborWithReachability } from '../lib/harborReachability';
+import {
+  computeHarborAccess,
+  findLowerSettingHint,
+  type HarborWithReachability,
+} from '../lib/harborReachability';
+import { useNavMask } from '../state/useNavMask';
 import { FORECAST_DAYS } from '../services/openMeteo';
 import { formatLatLon, resolveHemisphereCoordCommit, toLocalInputValue } from '../lib/format';
 import {
@@ -32,7 +37,7 @@ import { routingSettingsDirty } from '../lib/planForm';
 import { renderRigVerdict, resultSummary, sailLabelKey } from '../lib/resultSummary';
 import { useRecentHarbors } from '../lib/useRecentHarbors';
 import { formatDepthM } from '../lib/depthDisclosure';
-import HarborPicker from './HarborPicker';
+import HarborPicker, { harborAccessCopy } from './HarborPicker';
 import { commitSetting, safetyDepthFieldFor } from './OptionsPanel';
 import type { BoatDef } from '../data/boats';
 import NumberInput, { formatBound, useClampCorrection } from './NumberInput';
@@ -289,6 +294,21 @@ export default function PlannerPanel({
       />
     ) : null;
   const [lang] = useLang();
+  // #1291/§13 item 2: derived per-boat harbour access (§2/§5.2/§5.3),
+  // computed for the SELECTED boat at the LIVE `settings.safetyDepthM` —
+  // §5.2's own scoping ("Computed for the SELECTED boat at
+  // settings.safetyDepthM"). `computeHarborAccess` itself memoises on
+  // `(mask, harbors, boat.id, gate-decimetre)`, so this `useMemo` mainly
+  // avoids re-deriving on renders that touch neither. `useNavMask()` is
+  // `null` until the routing assets resolve, in which case every marker
+  // simply doesn't render yet (harborAccessCopy's own "not yet computed"
+  // no-op) — never a false "reachable"/"unreachable" claim before the mask
+  // is known.
+  const mask = useNavMask();
+  const harborAccess = useMemo(
+    () => (mask ? computeHarborAccess(mask, harbors, boat, settings.safetyDepthM) : null),
+    [mask, harbors, boat, settings.safetyDepthM],
+  );
   // #539 item 2: bounds follow the SELECTED boat (spec J OQ-1's
   // `draftM + 0.1`). Same derivation the Boat tab's own render of this field
   // uses, so the two surfaces still clamp identically.
@@ -690,6 +710,47 @@ export default function PlannerPanel({
       ? harbors.find((h) => h.id === destination.harborId)
       : undefined;
 
+  // #1291/§5.3: mirrors the #834 precedent for `originHarbor?.knownDisconnected`
+  // above — SAME keys/class as HarborPicker's own option row (§5.2), so the
+  // marker survives the pick rather than vanishing once an endpoint is
+  // chosen. `harborAccess` is the map computed for the SELECTED boat above;
+  // falls back to the harbor's own static `knownDisconnected` field (via
+  // `harborAccessCopy`'s `undefined`-state no-op plus the same fallback
+  // HarborPicker's `accessStateOf` uses) while the mask has not loaded yet.
+  // PR #1323 review Minor: this used to be an unmemoized per-render helper,
+  // called for both endpoints on EVERY render, and for an `unreachable`
+  // harbor synchronously calls `findLowerSettingHint` — up to
+  // `DEFAULT_HINT_MAX_STEPS` flood lookups, ~2s worst case per the frozen
+  // API's own comment (cheap once the flood cache warms, but re-executed
+  // every render regardless). Each endpoint's lines are now memoized
+  // separately so an unrelated re-render (any other form field) doesn't pay
+  // it; the computation is inlined in each factory (rather than shared via a
+  // helper closure) so `useMemo`'s own dependency array stays exhaustive —
+  // a shared closure recreated every render would need to be a dependency
+  // itself, defeating the memoization.
+  const originAccessLines = useMemo(() => {
+    if (!originHarbor) return [];
+    const access =
+      harborAccess?.get(originHarbor.id) ??
+      (originHarbor.knownDisconnected === true ? 'known-disconnected' : undefined);
+    const hint =
+      access === 'unreachable' && mask
+        ? findLowerSettingHint(mask, originHarbor, boat, settings.safetyDepthM)
+        : null;
+    return harborAccessCopy(access, hint, boat, settings.safetyDepthM, lang);
+  }, [originHarbor, harborAccess, mask, boat, settings.safetyDepthM, lang]);
+  const destinationAccessLines = useMemo(() => {
+    if (!destinationHarbor) return [];
+    const access =
+      harborAccess?.get(destinationHarbor.id) ??
+      (destinationHarbor.knownDisconnected === true ? 'known-disconnected' : undefined);
+    const hint =
+      access === 'unreachable' && mask
+        ? findLowerSettingHint(mask, destinationHarbor, boat, settings.safetyDepthM)
+        : null;
+    return harborAccessCopy(access, hint, boat, settings.safetyDepthM, lang);
+  }, [destinationHarbor, harborAccess, mask, boat, settings.safetyDepthM, lang]);
+
   // The active rig's result + its single-source display fields — used by the
   // compact Ergebnis strip below and the completion announcement.
   const result = plan && rig ? activeRigResult(plan, rig) : null;
@@ -865,15 +926,17 @@ export default function PlannerPanel({
               />
               <div className="endpoint-detail">
                 <p className="endpoint-name">{origin.label}</p>
-                {/* #834: HarborPicker's own option row discloses this via
+                {/* #834/#1291: HarborPicker's own option row discloses this via
                     the identical key/class BEFORE a harbor is picked (#652);
                     this used to vanish the instant the pick landed here,
                     right before the moment it mattered most. Reuses the
-                    picker's exact string and styling — never re-authored —
+                    picker's exact strings and styling — never re-authored —
                     so the two surfaces cannot drift onto different wording. */}
-                {originHarbor?.knownDisconnected === true && (
-                  <p className="harbor-picker-unreachable">{t('harborPicker.knownDisconnected')}</p>
-                )}
+                {originAccessLines.map((line) => (
+                  <p key={line.key} className="harbor-picker-unreachable">
+                    {t(line.key, line.vars)}
+                  </p>
+                ))}
                 {originHarbor?.approachNote && (
                   <p className="endpoint-caveat">{originHarbor.approachNote[lang]}</p>
                 )}
@@ -890,6 +953,13 @@ export default function PlannerPanel({
             <HarborPicker
               harbors={harbors}
               recentIds={recent}
+              // #1291: SAME `harborAccess`/`mask`/`boat`/`safetyDepthM` the
+              // destination picker below and the selected-endpoint rows use
+              // — one derivation, computed once above.
+              boat={boat}
+              safetyDepthM={settings.safetyDepthM}
+              harborAccess={harborAccess}
+              mask={mask}
               // #737: true only when this mount was caused by the Change
               // button above (see HarborPicker's own `autoFocus` doc comment
               // for why `editingOrigin` itself, not a derived expression, is
@@ -950,10 +1020,12 @@ export default function PlannerPanel({
               />
               <div className="endpoint-detail">
                 <p className="endpoint-name">{destination.label}</p>
-                {/* #834: see the matching comment on the origin row above. */}
-                {destinationHarbor?.knownDisconnected === true && (
-                  <p className="harbor-picker-unreachable">{t('harborPicker.knownDisconnected')}</p>
-                )}
+                {/* #834/#1291: see the matching comment on the origin row above. */}
+                {destinationAccessLines.map((line) => (
+                  <p key={line.key} className="harbor-picker-unreachable">
+                    {t(line.key, line.vars)}
+                  </p>
+                ))}
                 {destinationHarbor?.approachNote && (
                   <p className="endpoint-caveat">{destinationHarbor.approachNote[lang]}</p>
                 )}
@@ -970,6 +1042,11 @@ export default function PlannerPanel({
             <HarborPicker
               harbors={harbors}
               recentIds={recent}
+              // #1291: see the matching comment on the origin HarborPicker above.
+              boat={boat}
+              safetyDepthM={settings.safetyDepthM}
+              harborAccess={harborAccess}
+              mask={mask}
               // #737: see the matching comment on the origin HarborPicker above.
               autoFocus={editingDestination}
               onSelect={(h) => {
