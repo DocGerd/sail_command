@@ -324,8 +324,15 @@ export const en = {
   // the ordinary no-route case and gets the same epistemic hedge.
   'error.noRoute.unreachable':
     'No route found — the search could not find a way to the destination without crossing land or too-shallow water. This does not prove no route exists; the search may simply have given up too soon.',
+  // #1307: the horizon is the FIXED end of the stored forecast
+  // (wind.ts's horizonMs()), so a LATER departure leaves strictly LESS
+  // forecast to search within, not more; #1258's re-measure went both ways
+  // (+1 h routed, -1 h failed), so the copy names no direction. Wording
+  // follows the remedy #1306 adopted in route.shallow.remedy (split into
+  // .remedyHorizon by #1308); "a closer destination" is kept from the
+  // original string.
   'error.noRoute.beyondHorizon':
-    'No route found within the 6-day forecast horizon. Try a later departure or a closer destination.',
+    'No route found within the 6-day forecast horizon. Try a different departure time, a fresh forecast, or a closer destination.',
   // #804: "in options" named no surface in this app. The motorEnabled
   // checkbox renders in SettingsPanel's settings.section.propulsion card, on
   // the Boat tab (nav.boat) — read off the component, not assumed.
@@ -348,8 +355,9 @@ export const en = {
     'Too little wind to sail the segment you marked sail-only. Unmark it or choose another departure.',
   'error.noRoute.calmSailOnlyMotorOff':
     'Too little wind to sail the segment you marked sail-only. Choose another departure, or enable the motor and unmark the segment.',
+  // #1307: same reword as error.noRoute.beyondHorizon above.
   'error.noRoute.beyondHorizonSailOnly':
-    'No route found within the 6-day forecast horizon. Try a later departure or a closer destination, or unmark the sail-only segment.',
+    'No route found within the 6-day forecast horizon. Try a different departure time, a fresh forecast, or a closer destination, or unmark the sail-only segment.',
   'error.noRoute.segmentModeConflict':
     'A segment is marked motor-only but the motor is disabled. Enable the motor under Boat › Propulsion, or change that segment.',
   // #885: internal-state message — every producer keeps segmentModes aligned
@@ -516,17 +524,31 @@ export const en = {
   // call, flagged rather than designed" — since ruled on). Rendered LAST in
   // .detail, after the mechanism sentence it responds to (PR #523 review,
   // Minor 3 — advice must not precede the fact that the router has already
-  // reduced the gate). RouteSummary.tsx's `showRemedy` gates it on three
-  // conditions — a positive exposure figure, the wide layout, and usedDepthM
-  // exceeding SAFETY_DEPTH_FIELD.min — and that declaration carries the
-  // reason for each; it is the single place to read or change them.
+  // reduced the gate). ShallowWarning.tsx's `showDepthRemedy` gates it on
+  // three conditions — a positive exposure figure, the wide layout, and
+  // usedDepthM exceeding this boat's own safety-depth field minimum
+  // (safetyDepthFieldFor) — and that declaration carries the reason for
+  // each; it is the single place to read or change them.
   // #1300: since #1258 this banner can also fire after a requested-gate
   // forecast-horizon failure, so a second, conditional sentence names the
   // departure-time and forecast remedies. Appended rather than replacing the
   // first, since the string cannot name the trigger (ruling: no new
   // ShallowInfo field).
+  // #1308 SPLIT that second sentence into its own key, `.remedyHorizon`
+  // below — the combined string hid the horizon advice behind
+  // `showDepthRemedy`'s wide-layout and depth-minimum conditions, absent
+  // exactly where it may be the only useful remedy (narrow layout, incl.
+  // tabletPortrait 820 — CLAUDE.md's tablet-floor ruling — or usedDepthM
+  // already at this boat's field minimum). `showHorizonRemedy` carries no
+  // gate of its own now — it renders whenever this component does; see its
+  // own declaration for why.
   'route.shallow.remedy':
-    'A lower safety depth setting might let the planner find a more direct route. If the search at your requested depth instead reached the end of the forecast horizon, a different departure time or a fresh forecast might help.',
+    'A lower safety depth setting might let the planner find a more direct route.',
+  // #1308: split from .remedy above — #1300's appended sentence minus
+  // "instead", which pointed back at the depth sentence and has nothing to
+  // refer to when this one renders alone (narrow layout, field minimum).
+  'route.shallow.remedyHorizon':
+    'If the search at your requested depth reached the end of the forecast horizon, a different departure time or a fresh forecast might help.',
   // What happened, stated without naming a cause: no route was found at the
   // requested depth, the depth actually used, the shallowest charted depth
   // crossed. #1300: dropped "was not passable" — since #1258 this sentence
