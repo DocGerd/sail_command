@@ -19,7 +19,6 @@ import {
 } from '../lib/harborReachability';
 import type { NavMask } from '../lib/mask';
 import type { BoatDef } from '../data/boats';
-import { defaultSafetyDepthM } from '../lib/boatDepth';
 import { formatDepthM } from '../lib/depthDisclosure';
 
 // #652: `knownDisconnected` is a build-generated field (pipeline/
@@ -91,16 +90,35 @@ export interface HarborPickerProps {
  * its highest reaching decimetre (`hint.hint.state`) — 'ok' vs
  * 'shallow-approach' — never by the harbor's OWN (unreachable) state; that
  * is the #1291 "which key wins when a harbour qualifies for both states"
- * rule. A `hint.hint.depthM` at or above the boat's own
- * `defaultSafetyDepthM` uses the "AtDefault" phrasing (no "below
- * recommended" clause — it isn't below anything). `'not-found'` adds the
- * #1321 line: `findLowerSettingHint` only searches down to
- * `defaultSafetyDepthM(boat)`, so "not found" means "not reachable in the
- * searched range", never "at any depth" — the copy must say so, not imply
- * more. `'exhausted'` (the search hit its own step budget without
- * finishing) adds nothing rather than a wrong claim either way; this
- * component does not implement the design's idle-slicing resume — an
- * accepted, documented simplification (§9 calls the resume a
+ * rule.
+ *
+ * PR #1323 review Major 1: there is NO "below the boat's recommended depth"
+ * branch here — `findLowerSettingHint`'s own frozen floor is
+ * `defaultSafetyDepthM(boat)` (harborReachability.ts's PR #1316 fix-wave-2
+ * comment), so `hint.hint.depthM >= defaultSafetyDepthM(boat)` is a THEOREM
+ * given the real API, true for EVERY `'found'` outcome the production
+ * caller can ever observe, not a runtime branch. An earlier revision
+ * branched on that inequality and, on the (unreachable) false side, keyed
+ * by `hint.hint.state` — so the real, reachable branch discarded
+ * `hint.hint.state` unconditionally and always rendered the no-caveat
+ * copy, even for a `shallow-approach` hint (`harborReachability.test.ts`'s
+ * own faldsled fixture: `findLowerSettingHint(...)` →
+ * `{kind:'found', hint:{depthM:5, state:'shallow-approach'}}`). Fixed by
+ * keying on `hint.hint.state` ALONE — no depth comparison, no "below
+ * recommended" clause, since there is nothing to be below.
+ *
+ * `'not-found'` adds the #1321 line, SCOPED to what
+ * `findLowerSettingHint` actually checked: it searches only
+ * `[defaultSafetyDepthM(boat), safetyDepthM)`, never the boat's absolute
+ * floor (`OptionsPanel.tsx` lets a user dial `safetyDepthM` down to
+ * `minSafetyDepthM(boat)` without a boat switch — PR #1323 review Major 2),
+ * so the copy states "not reachable at or above the recommended depth" and
+ * says NOTHING about settings below it — not even the "any setting it
+ * keeps" framing #1321's own issue text first proposed, which read as
+ * covering the boat's whole valid range. `'exhausted'` (the search hit its
+ * own step budget without finishing) adds nothing rather than a wrong claim
+ * either way; this component does not implement the design's idle-slicing
+ * resume — an accepted, documented simplification (§9 calls the resume a
  * recommendation, not a requirement for this consumer).
  */
 // eslint-disable-next-line react-refresh/only-export-components
@@ -124,20 +142,17 @@ export function harborAccessCopy(
       },
     ];
     if (hint?.kind === 'found') {
-      const defaultDepthM = defaultSafetyDepthM(boat);
       const depth = formatDepthM(hint.hint.depthM, lang);
-      if (hint.hint.depthM >= defaultDepthM) {
-        lines.push({ key: 'harborPicker.boatLowerSettingAtDefault', vars: { depth } });
-      } else {
-        const vars = { depth, boat: boat.name, default: formatDepthM(defaultDepthM, lang) };
-        lines.push(
-          hint.hint.state === 'shallow-approach'
-            ? { key: 'harborPicker.boatLowerSettingShallow', vars }
-            : { key: 'harborPicker.boatLowerSetting', vars },
-        );
-      }
+      lines.push(
+        hint.hint.state === 'shallow-approach'
+          ? { key: 'harborPicker.boatLowerSettingAtDefaultShallow', vars: { depth } }
+          : { key: 'harborPicker.boatLowerSettingAtDefault', vars: { depth } },
+      );
     } else if (hint?.kind === 'not-found') {
-      lines.push({ key: 'harborPicker.boatUnreachableAnySetting', vars: { boat: boat.name } });
+      lines.push({
+        key: 'harborPicker.boatUnreachableAtOrAboveDefault',
+        vars: { boat: boat.name },
+      });
     }
     return lines;
   }

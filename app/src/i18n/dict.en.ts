@@ -1206,12 +1206,17 @@ export const en = {
   // #1291: see dict.de.ts's matching comment.
   'harborPicker.boatUnreachable': 'Not reachable with {boat} at {depth} m safety depth.',
   'harborPicker.boatShallow': 'Only via a shallower approach with {boat} — depth warning.',
-  'harborPicker.boatLowerSetting':
-    "May route at {depth} m, below {boat}'s recommended {default} m safety depth (depth data only).",
-  'harborPicker.boatLowerSettingShallow':
-    "May route at {depth} m with a depth warning, below {boat}'s recommended {default} m safety depth (depth data only).",
-  'harborPicker.boatLowerSettingAtDefault': 'May route at {depth} m (depth data only).',
-  // #1321: see dict.de.ts's matching comment — the search floor is the
-  // boat's own default safety depth, not its absolute minimum.
-  'harborPicker.boatUnreachableAnySetting': 'Not reachable with {boat} at any setting it keeps.',
+  // PR #1323 review Major 1: see dict.de.ts's matching comment — no "below
+  // recommended" clause, keyed on the hint's own reached state alone.
+  // Wording DECIDED by the maintainer (coordinator addendum) to match
+  // sibling PR #1324's identical strings.
+  'harborPicker.boatLowerSettingAtDefault': 'May route at {depth} m.',
+  'harborPicker.boatLowerSettingAtDefaultShallow': 'May route at {depth} m, with a depth warning.',
+  // #1321/PR #1323 review Major 2: see dict.de.ts's matching comment — scoped
+  // to what `findLowerSettingHint` actually searched (at or above the
+  // boat's recommended depth), never a claim covering settings below it.
+  // Wording DECIDED by the maintainer (coordinator addendum) to match
+  // sibling PR #1324.
+  'harborPicker.boatUnreachableAtOrAboveDefault':
+    "Not reachable at or above {boat}'s recommended safety depth.",
 } satisfies Record<MsgKey, string>;

@@ -717,17 +717,39 @@ export default function PlannerPanel({
   // falls back to the harbor's own static `knownDisconnected` field (via
   // `harborAccessCopy`'s `undefined`-state no-op plus the same fallback
   // HarborPicker's `accessStateOf` uses) while the mask has not loaded yet.
-  const accessLinesFor = (harbor: HarborWithReachability | undefined) => {
-    if (!harbor) return [];
+  // PR #1323 review Minor: this used to be an unmemoized per-render helper,
+  // called for both endpoints on EVERY render, and for an `unreachable`
+  // harbor synchronously calls `findLowerSettingHint` — up to
+  // `DEFAULT_HINT_MAX_STEPS` flood lookups, ~2s worst case per the frozen
+  // API's own comment (cheap once the flood cache warms, but re-executed
+  // every render regardless). Each endpoint's lines are now memoized
+  // separately so an unrelated re-render (any other form field) doesn't pay
+  // it; the computation is inlined in each factory (rather than shared via a
+  // helper closure) so `useMemo`'s own dependency array stays exhaustive —
+  // a shared closure recreated every render would need to be a dependency
+  // itself, defeating the memoization.
+  const originAccessLines = useMemo(() => {
+    if (!originHarbor) return [];
     const access =
-      harborAccess?.get(harbor.id) ??
-      (harbor.knownDisconnected === true ? 'known-disconnected' : undefined);
+      harborAccess?.get(originHarbor.id) ??
+      (originHarbor.knownDisconnected === true ? 'known-disconnected' : undefined);
     const hint =
       access === 'unreachable' && mask
-        ? findLowerSettingHint(mask, harbor, boat, settings.safetyDepthM)
+        ? findLowerSettingHint(mask, originHarbor, boat, settings.safetyDepthM)
         : null;
     return harborAccessCopy(access, hint, boat, settings.safetyDepthM, lang);
-  };
+  }, [originHarbor, harborAccess, mask, boat, settings.safetyDepthM, lang]);
+  const destinationAccessLines = useMemo(() => {
+    if (!destinationHarbor) return [];
+    const access =
+      harborAccess?.get(destinationHarbor.id) ??
+      (destinationHarbor.knownDisconnected === true ? 'known-disconnected' : undefined);
+    const hint =
+      access === 'unreachable' && mask
+        ? findLowerSettingHint(mask, destinationHarbor, boat, settings.safetyDepthM)
+        : null;
+    return harborAccessCopy(access, hint, boat, settings.safetyDepthM, lang);
+  }, [destinationHarbor, harborAccess, mask, boat, settings.safetyDepthM, lang]);
 
   // The active rig's result + its single-source display fields — used by the
   // compact Ergebnis strip below and the completion announcement.
@@ -910,7 +932,7 @@ export default function PlannerPanel({
                     right before the moment it mattered most. Reuses the
                     picker's exact strings and styling — never re-authored —
                     so the two surfaces cannot drift onto different wording. */}
-                {accessLinesFor(originHarbor).map((line) => (
+                {originAccessLines.map((line) => (
                   <p key={line.key} className="harbor-picker-unreachable">
                     {t(line.key, line.vars)}
                   </p>
@@ -999,7 +1021,7 @@ export default function PlannerPanel({
               <div className="endpoint-detail">
                 <p className="endpoint-name">{destination.label}</p>
                 {/* #834/#1291: see the matching comment on the origin row above. */}
-                {accessLinesFor(destinationHarbor).map((line) => (
+                {destinationAccessLines.map((line) => (
                   <p key={line.key} className="harbor-picker-unreachable">
                     {t(line.key, line.vars)}
                   </p>

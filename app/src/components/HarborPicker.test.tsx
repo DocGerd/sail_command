@@ -20,8 +20,6 @@ import HarborPicker, {
 } from './HarborPicker';
 import { findLowerSettingHint, type LowerSettingHintOutcome } from '../lib/harborReachability';
 import { BOATS } from '../data/boats';
-import { defaultSafetyDepthM } from '../lib/boatDepth';
-import { formatDepthM } from '../lib/depthDisclosure';
 import type { Harbor } from '../types';
 
 // Mirrors real data shapes from app/public/data/harbors.json: a harbor whose
@@ -364,7 +362,6 @@ describe('HarborPicker combobox', () => {
 describe('harborAccessCopy (#1291/§13 item 2 precedence table)', () => {
   // Salona 44 (SPEEDY GO!): draftM 2.1 -> defaultSafetyDepthM 3.0.
   const boat = BOATS[1];
-  const defaultDepthM = defaultSafetyDepthM(boat);
 
   it('known-disconnected wins over every boat-scoped state and needs neither boat nor depth', () => {
     expect(harborAccessCopy('known-disconnected', null, undefined, undefined, 'en')).toEqual([
@@ -406,51 +403,47 @@ describe('harborAccessCopy (#1291/§13 item 2 precedence table)', () => {
     ]);
   });
 
-  it('a "found" hint at "ok" below the default keys by boatLowerSetting', () => {
-    const hint: LowerSettingHintOutcome = { kind: 'found', hint: { depthM: 2.8, state: 'ok' } };
-    expect(harborAccessCopy('unreachable', hint, boat, 3.5, 'en')).toEqual([
-      { key: 'harborPicker.boatUnreachable', vars: { boat: boat.name, depth: '3.5' } },
-      {
-        key: 'harborPicker.boatLowerSetting',
-        vars: { depth: '2.8', boat: boat.name, default: formatDepthM(defaultDepthM, 'en') },
-      },
-    ]);
-  });
-
-  // The #1291 "which key wins when a harbour qualifies for both states" rule:
-  // keyed by the hint's OWN reached state (shallow-approach here), never by
-  // the harbor's own (unreachable) state.
-  it('a "found" hint at "shallow-approach" below the default keys by boatLowerSettingShallow', () => {
-    const hint: LowerSettingHintOutcome = {
-      kind: 'found',
-      hint: { depthM: 2.8, state: 'shallow-approach' },
-    };
-    expect(harborAccessCopy('unreachable', hint, boat, 3.5, 'en')[1]).toEqual({
-      key: 'harborPicker.boatLowerSettingShallow',
-      vars: { depth: '2.8', boat: boat.name, default: formatDepthM(defaultDepthM, 'en') },
-    });
-  });
-
-  it("a hint depth at or above the default uses the AtDefault phrasing regardless of the hint's own state", () => {
-    const hint: LowerSettingHintOutcome = {
-      kind: 'found',
-      hint: { depthM: defaultDepthM, state: 'shallow-approach' },
-    };
+  // PR #1323 review Major 1: there is NO "below the boat's recommended
+  // depth" branch — `findLowerSettingHint`'s real floor makes a
+  // strictly-below-default 'found' outcome unreachable in production, so
+  // keying is by STATE ALONE. Asserted with `depthM: 3.2` (a plausible,
+  // at-or-above-default value) for the plain "ok" case.
+  it('a "found" hint at "ok" keys by boatLowerSettingAtDefault', () => {
+    const hint: LowerSettingHintOutcome = { kind: 'found', hint: { depthM: 3.2, state: 'ok' } };
     expect(harborAccessCopy('unreachable', hint, boat, 3.5, 'en')[1]).toEqual({
       key: 'harborPicker.boatLowerSettingAtDefault',
-      vars: { depth: formatDepthM(defaultDepthM, 'en') },
+      vars: { depth: '3.2' },
     });
   });
 
-  // #1321: `findLowerSettingHint` only searches down to
-  // `defaultSafetyDepthM(boat)`, never the boat's absolute floor — a
-  // 'not-found' outcome must read as "not found in the searched range",
-  // never as an unscoped "at any depth" claim.
-  it('#1321: a "not-found" hint adds the scoped "any setting it keeps" line, never an unscoped claim', () => {
+  // The #1291 "which key wins when a harbour qualifies for both states" rule.
+  // `depthM: 1.0` is deliberately BELOW the boat's own default (impossible
+  // from the real `findLowerSettingHint`, whose floor IS the default) —
+  // proving state-keying holds regardless of depth, i.e. that no depth
+  // comparison survives in the fixed code (mutation target for review
+  // Major 1: reintroducing a depth branch would re-key this row wrong).
+  it('a "found" hint at "shallow-approach" keys by boatLowerSettingAtDefaultShallow, regardless of depth', () => {
+    const hint: LowerSettingHintOutcome = {
+      kind: 'found',
+      hint: { depthM: 1.0, state: 'shallow-approach' },
+    };
+    expect(harborAccessCopy('unreachable', hint, boat, 3.5, 'en')[1]).toEqual({
+      key: 'harborPicker.boatLowerSettingAtDefaultShallow',
+      vars: { depth: '1.0' },
+    });
+  });
+
+  // #1321/PR #1323 review Major 2: `findLowerSettingHint` only searches
+  // `[defaultSafetyDepthM(boat), safetyDepthM)`, never the boat's absolute
+  // floor (a user CAN dial safety depth down to `minSafetyDepthM(boat)`
+  // without a boat switch, per `OptionsPanel.tsx`) — a 'not-found' outcome
+  // must therefore claim only "not reachable at or above the recommended
+  // depth", never a claim covering settings below it.
+  it('#1321: a "not-found" hint adds the scoped "at or above default" line, never a claim about settings below it', () => {
     const hint: LowerSettingHintOutcome = { kind: 'not-found' };
     expect(harborAccessCopy('unreachable', hint, boat, 3.5, 'en')).toEqual([
       { key: 'harborPicker.boatUnreachable', vars: { boat: boat.name, depth: '3.5' } },
-      { key: 'harborPicker.boatUnreachableAnySetting', vars: { boat: boat.name } },
+      { key: 'harborPicker.boatUnreachableAtOrAboveDefault', vars: { boat: boat.name } },
     ]);
   });
 
@@ -495,7 +488,9 @@ describe('HarborPicker option row: #1291 per-boat access markers', () => {
       within(option).getByText(`Not reachable with ${boat.name} at 3.5 m safety depth.`),
     ).toBeInTheDocument();
     expect(
-      within(option).getByText(`Not reachable with ${boat.name} at any setting it keeps.`),
+      within(option).getByText(
+        `Not reachable at or above ${boat.name}'s recommended safety depth.`,
+      ),
     ).toBeInTheDocument();
   });
 
@@ -522,8 +517,12 @@ describe('HarborPicker option row: #1291 per-boat access markers', () => {
     expect(findLowerSettingHint).not.toHaveBeenCalled();
   });
 
-  // German #13 item 2 word-order fix, verbatim.
-  it('#13 item 2: the German "…Shallow" line uses the FIXED word order', () => {
+  // German "…Shallow" line — the maintainer-DECIDED wording (coordinator
+  // addendum on PR #1323, aligned with sibling PR #1324): "Sicherheitstiefe",
+  // never "Einstellung", and only ONE "mit" (avoids the design spec's own
+  // §7 draft bug, "Mit {depth} m eventuell mit Tiefenwarnung planbar", two
+  // "mit" in a row).
+  it('the German "…Shallow" line uses the decided wording (one "mit", "Sicherheitstiefe")', () => {
     vi.mocked(findLowerSettingHint).mockReturnValue({
       kind: 'found',
       hint: { depthM: 2.8, state: 'shallow-approach' },
@@ -545,12 +544,7 @@ describe('HarborPicker option row: #1291 per-boat access markers', () => {
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'apenrade' } });
     const option = screen.getByRole('option', { name: /Apenrade/ });
     expect(
-      within(option).getByText(
-        // `default` is `defaultSafetyDepthM(boat)` (3.0 for the 2.1 m-draft
-        // Salona 44), NOT the `safetyDepthM` prop (3.5) — a different number
-        // deliberately, so a swap of the two would fail this string match.
-        `Bei 2,8 m Sicherheitstiefe eventuell planbar, mit Tiefenwarnung, unter der für ${boat.name} empfohlenen Sicherheitstiefe von 3,0 m (nur Tiefendaten geprüft).`,
-      ),
+      within(option).getByText('Eventuell planbar bei 2,8 m Sicherheitstiefe, mit Tiefenwarnung.'),
     ).toBeInTheDocument();
   });
 

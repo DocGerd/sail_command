@@ -1219,20 +1219,27 @@ export const de = {
   // `BoatDef.name`, catalogue data, not translated per-language.
   'harborPicker.boatUnreachable': 'Mit {boat} bei {depth} m Sicherheitstiefe nicht erreichbar.',
   'harborPicker.boatShallow': 'Mit {boat} nur über eine flachere Zufahrt – Tiefenwarnung.',
-  'harborPicker.boatLowerSetting':
-    'Mit {depth} m eventuell planbar, unter der für {boat} empfohlenen Sicherheitstiefe von {default} m (nur Tiefendaten geprüft).',
-  // #1291/§13 item 2: word order FIXED vs. the design spec's own §7 draft
-  // ("Mit {depth} m eventuell mit Tiefenwarnung planbar, …", two "mit" in a
-  // row) — adopts §13 item 2's own corrected fragment verbatim.
-  'harborPicker.boatLowerSettingShallow':
-    'Bei {depth} m Sicherheitstiefe eventuell planbar, mit Tiefenwarnung, unter der für {boat} empfohlenen Sicherheitstiefe von {default} m (nur Tiefendaten geprüft).',
-  'harborPicker.boatLowerSettingAtDefault':
-    'Mit {depth} m eventuell planbar (nur Tiefendaten geprüft).',
-  // #1321: `findLowerSettingHint` only searches down to
-  // `defaultSafetyDepthM(boat)`, never to the boat's absolute floor, so this
-  // must NOT claim unreachability "bei jeder Tiefe" (any depth at all) —
-  // only that none of the settings this boat's own gate keeps would help.
-  'harborPicker.boatUnreachableAnySetting':
-    'Mit {boat} bei keiner von ihm vorgesehenen Sicherheitstiefe erreichbar.',
+  // PR #1323 review Major 1: NO "below the boat's recommended depth" clause
+  // — `findLowerSettingHint`'s frozen floor is `defaultSafetyDepthM(boat)`,
+  // so a real 'found' outcome is NEVER below it (see HarborPicker.tsx's
+  // `harborAccessCopy` doc comment). Keyed on the hint's own reached state
+  // alone. Wording DECIDED by the maintainer (coordinator addendum) to match
+  // sibling PR #1324's identical strings — noun is always "Sicherheitstiefe",
+  // never "Einstellung". The word order here (verb-first, "Eventuell
+  // planbar bei …") still avoids the design spec's own §7 draft bug ("Mit
+  // {depth} m eventuell mit Tiefenwarnung planbar", two "mit" in a row) —
+  // there is only ever one "mit" in this phrasing.
+  'harborPicker.boatLowerSettingAtDefault': 'Eventuell planbar bei {depth} m Sicherheitstiefe.',
+  'harborPicker.boatLowerSettingAtDefaultShallow':
+    'Eventuell planbar bei {depth} m Sicherheitstiefe, mit Tiefenwarnung.',
+  // #1321/PR #1323 review Major 2: `findLowerSettingHint` only checks
+  // `[defaultSafetyDepthM(boat), safetyDepthM)` — `OptionsPanel.tsx` lets a
+  // user dial the safety depth down to `minSafetyDepthM(boat)` WITHOUT a
+  // boat switch, a range this hint never searches. So this must say ONLY
+  // what was checked ("at or above the recommended depth"), never a claim
+  // covering settings below it. Wording DECIDED by the maintainer
+  // (coordinator addendum) to match sibling PR #1324.
+  'harborPicker.boatUnreachableAtOrAboveDefault':
+    'Nicht erreichbar bei der für {boat} empfohlenen Sicherheitstiefe oder darüber.',
 } as const;
 export type MsgKey = keyof typeof de;
