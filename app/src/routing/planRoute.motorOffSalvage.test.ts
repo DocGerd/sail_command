@@ -141,6 +141,9 @@ const ok = (distanceNm = 1) => ({
   status: 'ok' as const,
   legs: [leg(distanceNm)],
   etaMs: T0 + 1,
+  // #1303: solve()'s ok arm carries the ranking clock too; no preference here,
+  // so cost === eta.
+  costMs: T0 + 1,
 });
 const fail = (cause: SolveFailureCause) => ({
   status: 'no-route' as const,

@@ -150,7 +150,21 @@ export type SolveFailureCause =
   | 'forced-sail-calm';
 
 export type SolveResult =
-  { status: 'ok'; legs: Leg[]; etaMs: number } | { status: 'no-route'; cause: SolveFailureCause };
+  | {
+      status: 'ok';
+      legs: Leg[];
+      etaMs: number;
+      /**
+       * #1303: the winning arrival's RANKING clock (`Node.costMs`), equal to
+       * `etaMs` whenever `comfortDepthM` is absent. Exposed because the search
+       * optimises cost, not ETA, so only cost can state "this search found a
+       * better route" — a finer prune grid can lower cost while ETA rises
+       * (measured on PR #1304). `planRoute` never reads it and `PlanResult`
+       * never carries it.
+       */
+      costMs: number;
+    }
+  | { status: 'no-route'; cause: SolveFailureCause };
 
 interface Node {
   lat: number;
@@ -270,6 +284,65 @@ export function edgeFactor(
   return 1 - DEPTH_DERATE_MAX * shortfall;
 }
 
+/**
+ * #1303/#1305: how much finer the prune grid gets, per axis, inside CONFINED
+ * water. `1` disables the refinement and restores the pre-#1303 key exactly —
+ * the off switch every re-pin in this change was measured against (the BASE
+ * control), not decoration. Typed `number` so that comparison typechecks.
+ */
+const CONFINED_PRUNE_DIV: number = 2;
+/**
+ * Mask cells of dilation around a prune cell when classifying confinement. A
+ * prune cell is ~220x190 m against ~46 m mask cells, so one cell of margin
+ * asks "is there land or sub-gate water within ~46 m of this cell". Calibrated
+ * on the #1303/#1305 narrows — see the PR body.
+ */
+const CONFINEMENT_MARGIN_CELLS = 1;
+
+/**
+ * True when the prune cell `(latIdx, lonIdx)`, dilated by `marginCells` mask
+ * cells, touches any cell that is NOT navigable at this solve's gate — land,
+ * sub-gate water, or outside the mask (which reads confined, so the refinement
+ * fails toward MORE pruning resolution rather than less).
+ *
+ * This is the general form of PR #1304's destination-only rule: dominance
+ * treats position within a prune cell as irrelevant, which is wrong wherever a
+ * passage is narrower than a prune cell — a cheaper arrival with no navigable
+ * onward edge seals the cell against a better-placed later one (#1303 at a
+ * harbour approach, #1305 at a pass-through narrow). Refining the key inside
+ * confined water only ever REMOVES pruning, so no route reachable before
+ * becomes unreachable; open water keeps the coarse grid and its cost.
+ *
+ * Exported for direct testing of the classification itself, which is cheaper
+ * to interrogate than a 100 s solve.
+ */
+export function pruneCellConfined(
+  mask: NavMask,
+  gate: DepthGate,
+  latIdx: number,
+  lonIdx: number,
+  marginCells: number,
+): boolean {
+  const { south, west, north, east, rows, cols } = mask.meta;
+  const latStep = (north - south) / rows;
+  const lonStep = (east - west) / cols;
+  const rowLo = Math.floor((latIdx * PRUNE_LAT - south) / latStep) - marginCells;
+  const rowHi = Math.floor(((latIdx + 1) * PRUNE_LAT - south) / latStep) + marginCells;
+  const colLo = Math.floor((lonIdx * PRUNE_LON - west) / lonStep) - marginCells;
+  const colHi = Math.floor(((lonIdx + 1) * PRUNE_LON - west) / lonStep) + marginCells;
+  for (let row = rowLo; row <= rowHi; row++) {
+    const lat = south + (row + 0.5) * latStep;
+    for (let col = colLo; col <= colHi; col++) {
+      // A degenerate segment walks exactly this one cell, so this is the
+      // per-cell gate test `segmentNavigable` already applies to every edge —
+      // the same predicate the solver navigates by, never a second copy of it.
+      const p = { lat, lon: west + (col + 0.5) * lonStep };
+      if (!mask.segmentNavigable(p, p, gate)) return true;
+    }
+  }
+  return false;
+}
+
 function pruneKey(lat: number, lon: number, kind: LegKind | 'start', board: Board | null): string {
   const b = kind === 'motor' ? 'M' : board === 'port' ? 'P' : 'S';
   return `${Math.floor(lat / PRUNE_LAT)}:${Math.floor(lon / PRUNE_LON)}:${b}`;
@@ -382,6 +455,40 @@ export function solve(p: SolveParams): SolveResult {
   const visited = new Map<string, VisitedStamp>(); // pruneKey → min cost + min maneuvers seen
   let blockedDeaths = 0;
   let calmDeaths = 0;
+  // #1303/#1305: confinement is classified per COARSE prune cell, never per
+  // node, so a cell is wholly coarse-keyed or wholly fine-keyed and a node
+  // gets the same key at the dominance lookup and at the stamp. Cached per
+  // solve because the gate is fixed per solve (a relaxed tier builds its own
+  // cache, with its own gate).
+  const confinedCells = new Map<string, boolean>();
+  const keyOf = (
+    lat: number,
+    lon: number,
+    kind: LegKind | 'start',
+    board: Board | null,
+  ): string => {
+    const coarse = pruneKey(lat, lon, kind, board);
+    if (CONFINED_PRUNE_DIV === 1) return coarse;
+    const cell = `${Math.floor(lat / PRUNE_LAT)}:${Math.floor(lon / PRUNE_LON)}`;
+    let confined = confinedCells.get(cell);
+    if (confined === undefined) {
+      confined = pruneCellConfined(
+        mask,
+        gate,
+        Math.floor(lat / PRUNE_LAT),
+        Math.floor(lon / PRUNE_LON),
+        CONFINEMENT_MARGIN_CELLS,
+      );
+      confinedCells.set(cell, confined);
+    }
+    if (!confined) return coarse;
+    const b = kind === 'motor' ? 'M' : board === 'port' ? 'P' : 'S';
+    const k = CONFINED_PRUNE_DIV;
+    // The `f` prefix keeps the two key spaces disjoint (a coarse key starts
+    // with a digit or `-`), so a coarse stamp can never dominate a fine-keyed
+    // node or the reverse.
+    return `f${Math.floor((lat * k) / PRUNE_LAT)}:${Math.floor((lon * k) / PRUNE_LON)}:${b}`;
+  };
   // #1136: `skipDominance` marks the current ring as a salvage pass.
   let skipDominance = false;
 
@@ -650,7 +757,7 @@ export function solve(p: SolveParams): SolveResult {
           }
         }
 
-        const key = pruneKey(child.lat, child.lon, child.kind, child.board);
+        const key = keyOf(child.lat, child.lon, child.kind, child.board);
         const seen = visited.get(key);
         if (seen !== undefined && visitedDominates(seen, child) && !skipDominance) continue;
         const incumbent = byKey.get(key);
@@ -691,7 +798,7 @@ export function solve(p: SolveParams): SolveResult {
     // every winner — the uncapped path (the common case, incl. every real-mask
     // route whose frontier peaks below MAX_FRONTIER) is unchanged.
     for (const n of next)
-      stampVisited(visited, pruneKey(n.lat, n.lon, n.kind, n.board), {
+      stampVisited(visited, keyOf(n.lat, n.lon, n.kind, n.board), {
         costMs: n.costMs,
         maneuvers: n.maneuvers,
       });
@@ -741,7 +848,12 @@ export function solve(p: SolveParams): SolveResult {
             : 'calm-without-motor',
     };
   }
-  return { status: 'ok', legs: backtrack(best.last, p.departureMs), etaMs: best.etaMs };
+  return {
+    status: 'ok',
+    legs: backtrack(best.last, p.departureMs),
+    etaMs: best.etaMs,
+    costMs: best.costMs,
+  };
 }
 
 function backtrack(last: Node, departureMs: number): Leg[] {

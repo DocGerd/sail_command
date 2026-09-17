@@ -29,9 +29,19 @@ vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
 // #653: pinned literals for the describe block below, recomputed from actual
 // solver output observed against the real committed mask/polars (see each
 // assertion site's own comment for the sanity checks applied).
-const SALONA44_GLUECKSBURG_DISTANCE_NM = 4.211804567041051;
-const SALONA44_GLUECKSBURG_DURATION_MS = 2374384.2580566406;
-const SALONA44_MARSTAL_DURATION_MS = 28020116.832763672;
+//
+// #1303 re-pin (confined-water prune refinement). Evidence per literal, all
+// measured on this branch against base 36d86a7: (a) with the rule off
+// (CONFINED_PRUNE_DIV = 1) the BASE literals 4.211804567041051 nm,
+// 2374384.2580566406 ms and 28020116.832763672 ms reproduce exactly — the
+// whole file passes; (b) the winning solve's `costMs` FELL on both plans
+// (Glücksburg -10.2 s, Marstal -73.8 s); (c) the new literals red with the
+// rule off. Marstal's ETA ROSE 41.1 s while its cost fell: the solver ranks on
+// depth-comfort cost (#243 §D.5), not on true time, so a better-ranked route
+// can be slightly slower in the water.
+const SALONA44_GLUECKSBURG_DISTANCE_NM = 4.202976959559601;
+const SALONA44_GLUECKSBURG_DURATION_MS = 2364150.1494140625;
+const SALONA44_MARSTAL_DURATION_MS = 28061198.46435547;
 
 // #653: both real-mask harnesses (this suite and app/sweep/) exercised only
 // the Salona 45 before this describe block — see the issue for the

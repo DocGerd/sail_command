@@ -98,6 +98,9 @@ const ok = (distanceNm: number, etaMs = T0 + 1000) => ({
   status: 'ok' as const,
   legs: [leg(distanceNm)],
   etaMs,
+  // #1303: solve()'s ok arm carries the ranking clock too. These fakes run
+  // without a depth-comfort preference in mind, where cost === eta.
+  costMs: etaMs,
 });
 // #282: `solve()` speaks the INTERNAL control vocabulary (SolveFailureCause),
 // not the user-facing NoRouteReason label — so these mocked failures are
