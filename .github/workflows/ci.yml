@@ -142,8 +142,8 @@ jobs:
     name: app-shard (${{ matrix.shard }}/3)
     needs: changes
     runs-on: ubuntu-latest
-    # #882 capped the unsharded job at 45 min over a 1557 s max; one third of
-    # the suite plus setup is well under half of 30.
+    # #882 capped the unsharded job at 45 min over a 1557 s max. Measured
+    # slowest shard 10m07s (run 35199641189), so 30 min is ~3x.
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -195,8 +195,9 @@ jobs:
     needs: changes
     runs-on: ubuntu-latest
     # #605 capped the unsharded job at 30 min to turn install wedges into a
-    # fast red. The heavier shard carries layout.spec.ts: ~736 s of test time
-    # on run 35191095819 plus ~2 min install/build, so 30 min is ~2x.
+    # fast red. Shard 1 carries all of layout.spec.ts: measured 12m57s green
+    # (run 35199641189) and 16m59s on a slow runner (run 35195770591), so
+    # 30 min is 2.3x / 1.77x.
     timeout-minutes: 30
     strategy:
       fail-fast: false

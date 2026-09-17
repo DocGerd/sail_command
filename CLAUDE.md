@@ -159,8 +159,8 @@ making design-level decisions; do not silently deviate.
   whole-file scan.
 ## Commands
 - App (run from repo root): `npm --prefix app run typecheck` / `lint` / `test` /
-  `build` / `dev`. CI runs lint+typecheck BEFORE tests — vitest alone will not
-  catch unused imports or type errors.
+  `build` / `dev`. CI runs lint+typecheck in `app-static`, concurrently with the test shards
+  (#1286) — vitest alone will not catch unused imports or type errors.
   **CI's `lint` covers `app/e2e/**` AND `app/sweep/**` — the script is
   `eslint src e2e sweep`** (measured 2026-09-01; `e2e` added by PR #508
   closing #420 on 2026-08-11, `sweep` by #602 at the v0.17.0 cut, so the #282
