@@ -263,7 +263,7 @@ describe('#516: ShallowWarning exposure sentence', () => {
     // PR #523 review, Minor 3: the remedy must follow the mechanism sentence
     // that justifies it, never precede it.
     expect(text.indexOf('A lower safety depth setting')).toBeGreaterThan(
-      text.indexOf('was not passable'),
+      text.indexOf('so this route was planned at a reduced'),
     );
   });
 
@@ -281,7 +281,7 @@ describe('#516: ShallowWarning exposure sentence', () => {
     expect(detail?.textContent).not.toContain('of this route crosses');
     expect(detail?.textContent).not.toContain('lower safety depth setting');
     // The pre-existing "what happened" mechanism sentence is unaffected.
-    expect(detail?.textContent).toContain('was not passable');
+    expect(detail?.textContent).toContain('so this route was planned at a reduced');
   });
 
   it('omits the exposure sentence when the mask load fails outright — no fallback number', async () => {
@@ -293,7 +293,7 @@ describe('#516: ShallowWarning exposure sentence', () => {
     });
     const detail = container.querySelector('.shallow-warning__detail');
     expect(detail?.textContent).not.toContain('of this route crosses');
-    expect(detail?.textContent).toContain('was not passable');
+    expect(detail?.textContent).toContain('so this route was planned at a reduced');
   });
 
   it('omits the exposure, confinement and remedy sentences when the mask has loaded and the measured exposure is exactly zero', async () => {
@@ -311,7 +311,7 @@ describe('#516: ShallowWarning exposure sentence', () => {
     const detail = container.querySelector('.shallow-warning__detail');
     expect(banner?.querySelector('.shallow-warning__lead')?.textContent).toBeTruthy();
     expect(banner?.querySelector('.shallow-warning__caveat')?.textContent).toBeTruthy();
-    expect(detail?.textContent).toContain('was not passable');
+    expect(detail?.textContent).toContain('so this route was planned at a reduced');
     expect(detail?.textContent).not.toContain('of this route crosses');
     expect(detail?.textContent).not.toContain('lower safety depth setting');
     // Not merely "no sentence": the formatted zero itself must never appear.
@@ -349,7 +349,7 @@ describe('#516: ShallowWarning exposure sentence', () => {
     expect(narrowSummaryDetail?.textContent).toContain(
       '3.0 nm of this route crosses water charted',
     );
-    expect(narrowDetail?.textContent).toContain('was not passable');
+    expect(narrowDetail?.textContent).toContain('so this route was planned at a reduced');
     expect(narrowDetail?.textContent).not.toContain('lower safety depth setting');
 
     cleanup();
@@ -365,7 +365,7 @@ describe('#516: ShallowWarning exposure sentence', () => {
     expect(wideBanners[0].querySelector('.shallow-warning__lead')?.textContent).toBeTruthy();
     expect(wideBanners[0].querySelector('.shallow-warning__caveat')?.textContent).toBeTruthy();
     expect(wideSummaryDetail?.textContent).toContain('3.0 nm of this route crosses water charted');
-    expect(wideDetail?.textContent).toContain('was not passable');
+    expect(wideDetail?.textContent).toContain('so this route was planned at a reduced');
     expect(wideDetail?.textContent).toContain('lower safety depth setting');
   });
 
@@ -487,7 +487,7 @@ describe('#516 increment 2: ShallowWarning confinement sentence', () => {
       text.indexOf('of this route crosses water charted'),
     );
     expect(text.indexOf('Every stretch below your safety depth')).toBeLessThan(
-      text.indexOf('was not passable'),
+      text.indexOf('so this route was planned at a reduced'),
     );
   });
 
@@ -517,7 +517,7 @@ describe('#516 increment 2: ShallowWarning confinement sentence', () => {
     const container = await renderAndSettle([EXPOSURE_LEG]);
     const detail = container.querySelector('.shallow-warning__detail');
     expect(detail?.textContent).not.toContain('Every stretch below your safety depth');
-    expect(detail?.textContent).toContain('was not passable');
+    expect(detail?.textContent).toContain('so this route was planned at a reduced');
   });
 });
 
@@ -747,13 +747,13 @@ describe('#612: the marginal-depth notice on a route that did not relax', () => 
   });
 
   it('never borrows the relaxed copy, which is false on this route in both clauses', async () => {
-    // route.shallow.detail says the requested depth "was not passable, so
-    // this route was planned at a reduced X m instead" — nothing was reduced.
-    // route.shallow.exposure measures charted-below-gate distance, which is
-    // 0 here by construction. Both are false, in both languages.
+    // route.shallow.detail says "so this route was planned at a reduced
+    // X m instead" — nothing was reduced. route.shallow.exposure measures
+    // charted-below-gate distance, which is 0 here by construction. Both are
+    // false, in both languages.
     mockedLoad.mockResolvedValue(marginalMask());
     const container = await renderNonRelaxed([EXPOSURE_LEG]);
-    expect(container.textContent).not.toContain('was not passable');
+    expect(container.textContent).not.toContain('so this route was planned at a reduced');
     expect(container.textContent).not.toContain('crosses water charted shallower');
     expect(container.textContent).not.toContain('A lower safety depth setting');
   });

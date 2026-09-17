@@ -507,13 +507,26 @@ export const de = {
   // größer als null wie die Zahl davor, das breite Layout, und usedDepthM
   // über SAFETY_DEPTH_FIELD.min. Die Begründung zu jeder einzelnen steht an
   // dieser Deklaration; sie ist die einzige Stelle zum Nachlesen und Ändern.
+  // #1300: seit #1258 kann dieses Banner auch nach einem Horizont-Fehlschlag
+  // bei der eingestellten Tiefe erscheinen, daher nennt ein zweiter, bedingter
+  // Satz Abfahrtszeit und Vorhersage als Abhilfe. Angehängt, statt den ersten
+  // zu ersetzen, da der String den Auslöser nicht benennen kann
+  // (Entscheidung: kein neues ShallowInfo-Feld).
   'route.shallow.remedy':
-    'Eine geringere Sicherheitstiefe könnte dem Planer helfen, eine direktere Route zu finden.',
-  // Was passiert ist: die eingestellte Sicherheitstiefe war nicht
-  // passierbar, die tatsächlich verwendete Tiefe, die geringste gequerte
-  // Kartentiefe. Normale Textstärke (nicht mehr hervorgehoben) — siehe
-  // dict.en.ts's Kommentar für den vollen Hintergrund ({used} < {requested},
-  // {minGate} als Plan-weite Angabe).
+    'Eine geringere Sicherheitstiefe könnte dem Planer helfen, eine direktere Route zu finden. Reichte der Vorhersagehorizont stattdessen für die Suche mit der eingestellten Tiefe nicht aus, hilft möglicherweise eine andere Abfahrtszeit oder eine neue Vorhersage.',
+  // Was passiert ist, ohne Ursache zu benennen: bei der eingestellten Tiefe
+  // wurde keine Route gefunden, die tatsächlich verwendete Tiefe, die
+  // geringste gequerte Kartentiefe. Dieser String behauptet HEUTE an keiner
+  // Stelle "nicht passierbar" (anders als die englische Fassung vor #1300)
+  // und blieb daher inhaltlich unverändert — eine frühere Fassung
+  // (`route.shallow.banner`, vor der #452/#504-Aufspaltung, Commit a73ac1a)
+  // sagte das sehr wohl; keine Aussage über die gesamte Historie dieses
+  // Strings. Seit #1258 kann er auch rendern, wenn die eingestellte Tiefe
+  // verbunden WAR und die Suche stattdessen den Vorhersagehorizont
+  // ausgeschöpft hat (PR #1299 review, finding 4); "keine ... Route
+  // gefunden" ist für beide Fälle wahr. Siehe dict.en.ts's Kommentar für den
+  // vollen Hintergrund ({used} < {requested}, {minGate} als Plan-weite
+  // Angabe).
   'route.shallow.detail':
     'Mit der eingestellten Sicherheitstiefe von {requested} m wurde keine durchgehende Route gefunden — diese Route wurde daher mit einer reduzierten Tiefe von {used} m geplant. Geringste von diesem Plan gequerte Kartentiefe: {minGate} m.',
   // #452 gap 3: siehe dict.en.ts's Kommentar für Zweck und Konvention

@@ -2104,7 +2104,7 @@ describe('PlannerPanel', () => {
       // wave 4 restructure moved it onto a wrapping <div>, an implementation
       // detail this assertion no longer depends on.
       const banner = screen.getByRole('alert');
-      expect(banner).toHaveTextContent(/was not passable/);
+      expect(banner).toHaveTextContent(/so this route was planned at a reduced/);
       expectShallowDetailOpen(false);
       // Requested depth.
       expect(banner.textContent).toContain('3.0 m');
@@ -2141,12 +2141,12 @@ describe('PlannerPanel', () => {
       // RouteSummary.test.tsx's twin comment. No ShallowWarning mounts at
       // all on a non-relaxed plan, so there is no Disclosure open/closed
       // state for this assertion to distinguish.
-      expect(screen.queryByText(/was not passable/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/so this route was planned at a reduced/)).not.toBeInTheDocument();
     });
 
     it('is absent before any plan exists', () => {
       renderPanel({ plan: null, rig: null });
-      expect(screen.queryByText(/was not passable/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/so this route was planned at a reduced/)).not.toBeInTheDocument();
     });
 
     // Review finding (PR #461 Major 1): the warning is plan-level, but its
@@ -2158,7 +2158,7 @@ describe('PlannerPanel', () => {
     // it on the fock tab reproduces the reviewer's measured probe.
     it('#452 Major 1: still renders when the ACTIVE rig itself has no result', () => {
       renderPanel({ plan: makeShallowPlan(), rig: 'fock' });
-      const banner = screen.getByText(/was not passable/);
+      const banner = screen.getByText(/so this route was planned at a reduced/);
       expect(banner).toBeInTheDocument();
       expectShallowDetailOpen(false);
       // No summary-dependent content exists for fock — the warning is the
@@ -2189,7 +2189,7 @@ describe('PlannerPanel', () => {
 
     it('reports the right count and first occurrence for non-contiguous flagged legs', () => {
       renderPanel({ plan: makeNonContiguousShallowPlan(), rig: 'genoa' });
-      const banner = screen.getByText(/was not passable/);
+      const banner = screen.getByText(/so this route was planned at a reduced/);
       expectShallowDetailOpen(false);
       const expected = en['route.shallow.locator.plural']
         .replace('{count}', '2')
@@ -2207,7 +2207,7 @@ describe('PlannerPanel', () => {
         },
       });
       renderPanel({ plan, rig: 'genoa' });
-      const banner = screen.getByText(/was not passable/);
+      const banner = screen.getByText(/so this route was planned at a reduced/);
       expectShallowDetailOpen(false);
       const expected = en['route.shallow.locator'].replace(
         '{time}',
@@ -2227,7 +2227,7 @@ describe('PlannerPanel', () => {
         shallow: { requestedDepthM: 3.0, usedDepthM: 2.5, minGateDepthM: 2.3 },
       };
       renderPanel({ plan, rig: 'genoa' });
-      const banner = screen.getByText(/was not passable/);
+      const banner = screen.getByText(/so this route was planned at a reduced/);
       expectShallowDetailOpen(false);
       expect(banner.textContent).not.toContain('starts at');
     });

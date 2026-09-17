@@ -520,19 +520,25 @@ export const en = {
   // conditions — a positive exposure figure, the wide layout, and usedDepthM
   // exceeding SAFETY_DEPTH_FIELD.min — and that declaration carries the
   // reason for each; it is the single place to read or change them.
+  // #1300: since #1258 this banner can also fire after a requested-gate
+  // forecast-horizon failure, so a second, conditional sentence names the
+  // departure-time and forecast remedies. Appended rather than replacing the
+  // first, since the string cannot name the trigger (ruling: no new
+  // ShallowInfo field).
   'route.shallow.remedy':
-    'A lower safety depth setting might let the planner find a more direct route.',
-  // What happened: the requested safety depth was not passable, the depth
-  // actually used, the shallowest charted depth crossed. Normal weight (no
-  // longer emphasised) — review (PR #461 Minor 5): "shallowest charted
-  // depth actually crossed" overclaimed — `flagShallowLegs` (planRoute.ts)
+    'A lower safety depth setting might let the planner find a more direct route. If the search at your requested depth instead reached the end of the forecast horizon, a different departure time or a fresh forecast might help.',
+  // What happened, stated without naming a cause: no route was found at the
+  // requested depth, the depth actually used, the shallowest charted depth
+  // crossed. #1300: dropped "was not passable" — since #1258 this sentence
+  // can also render when the requested gate WAS connected and the search
+  // instead ran out of forecast horizon, so a depth-causal claim is false in
+  // that case (PR #1299 review, finding 4). "crossed by this plan", not
+  // "actually crossed" (PR #461 Minor 5): `flagShallowLegs` (planRoute.ts)
   // folds `minGateDepthM` over BOTH rigs' legs, so on a given rig's tab the
   // number may describe the OTHER rig's leg, not one this route actually
-  // sails. "crossed by this plan" is the honest, plan-level framing. `used`
-  // < `requested` always holds here (#53's relaxation only runs after the
-  // requested gate failed to connect).
+  // sails. `used` < `requested` always holds here.
   'route.shallow.detail':
-    'Your requested safety depth of {requested} m was not passable, so this route was planned at a reduced {used} m instead — shallowest charted depth crossed by this plan: {minGate} m.',
+    'No route was found at your requested safety depth of {requested} m, so this route was planned at a reduced {used} m instead — shallowest charted depth crossed by this plan: {minGate} m.',
   // #452 gap 3: one-sentence locator appended to .detail above (the "what
   // happened" statement this locates a row against) — names how many legs
   // are individually flagged shallow and when the first one starts.
