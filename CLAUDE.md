@@ -2353,7 +2353,7 @@ making design-level decisions; do not silently deviate.
   siblings rather than trusting a filename or a count here). The mechanism is #53's relaxation tier, which
   fires on `depthRelaxationMayHelp(cause)` (defined and called in
   `planRoute.ts`, ~:254 / ~:687) whenever the failure cause is
-  mask-unreachability — **independent of `depthComfortMarginM`**, which is
+  mask-unreachability (or, since #1258, a requested-gate horizon overrun) — **independent of `depthComfortMarginM`**, which is
   #243's soft comfort PREFERENCE (`planRoute.ts`'s only production use of
   it, ~:353) and does not gate relaxation at all; `planRoute.ts`'s own
   "Unaffected by #243" comment (~:661) says so.

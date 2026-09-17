@@ -39,7 +39,7 @@ const SHOAL_DEPTH_BYTE = 25;
  * distance is a closed square annulus one cell thick, which no 4-connected path
  * can cross — and `NavMask.cellsConnected` is 4-connected — so at the requested
  * 3.0 m gate the origin's own cell is sealed off and the plan fails
- * `mask-blocked`, the one cause `depthRelaxationMayHelp` admits. Radius 2 keeps
+ * `mask-blocked`, a cause `depthRelaxationMayHelp` admits. Radius 2 keeps
  * the whole ring inside the origin's #452 approach disc (`APPROACH_RADIUS_M`
  * 1852 m against ~557 m row / ~321 m column cells here), which is what lets the
  * localized relaxation actually open it.
