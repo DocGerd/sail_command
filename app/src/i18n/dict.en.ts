@@ -81,6 +81,46 @@ export const en = {
   // Spec C.7 (#1293/#1135 Q4): clamped up to the boat's DEFAULT gate,
   // persisted — and announced. Up only.
   'boat.clamp.notice': 'Safety depth raised to {depth} m — the default for {boat}.',
+  // #1292 (#1135 §13 item 3): per-boat harbour access, `BoatOption`'s own
+  // disclosure (§5.1). Selected boat uses the live safety depth; every other
+  // boat uses its own default, labelled with `summaryDefault`.
+  // `boat.switch.selected` opens the merged boat-switch announcement
+  // (#1293's `ClampNotice` widened to carry it) — boat, then the raised
+  // depth if any (boat.clamp.notice), then this boat's access.
+  'boat.switch.selected': '{boat} selected.',
+  'boat.harbors.summary': 'Harbour access — {count} affected at {depth} m',
+  'boat.harbors.summaryDefault': '(default)',
+  'boat.harbors.noneAffected': 'Harbour access — no known issues at {depth} m',
+  'boat.harbors.pending': 'Harbour access not yet checked.',
+  // #1321: `findLowerSettingHint` only searches down to this boat's DEFAULT
+  // safety depth, so a harbour reachable only below that is never found —
+  // `shallow` needs no such hint (it is already reachable at the checked
+  // depth); only `unreachable` names one, per harbour, via `hintFound`/
+  // `hintNotFound`/`hintPending`. Wording reuses #1291's "shallower
+  // approach" phrase rather than "depth warning" — ShallowWarning never
+  // ships that noun (it says "Caution:"), so this avoids inventing a term
+  // the app doesn't otherwise use for the same concept.
+  'boat.harbors.shallow': 'Only via a shallower approach: {list}',
+  'boat.harbors.unreachable': 'Not reachable: {list}',
+  // "(depth data only)": states what the hint actually checked — a pure
+  // depth-only derivation modelling no bridges, channel width or
+  // obstructions — never a claim of chart authority (app-wide rule).
+  'boat.harbors.hintFound': 'may route at {depth} m (depth data only)',
+  // PR #1324 review Major: a `found` hint's own `state` matters — reaching a
+  // harbour only via `shallow-approach` still carries the caution
+  // `boat.harbors.shallow` states elsewhere; this key adds it back rather
+  // than rendering identically to a plain `ok` hint (`hintFound` above).
+  // "depth warning": spec §7 asks this align with ShallowWarning's Achtung/
+  // Caution vocabulary; not done here, tracked in #1326.
+  'boat.harbors.hintFoundShallow': 'may route at {depth} m, with a depth warning (depth data only)',
+  // Orchestrator ruling 2026-09-17 (canonical wording, shared with sibling
+  // #1323's `harborPicker.boatUnreachableAnySetting`): NEVER "at any setting
+  // this boat keeps" — the search floor is this boat's DEFAULT safety
+  // depth, not its true minimum, and a user can already hold a lower depth
+  // without ever switching boats, so that claim over-scopes what the search
+  // actually checked.
+  'boat.harbors.hintNotFound': "not reachable at or above {boat}'s recommended safety depth",
+  'boat.harbors.hintPending': 'still checking',
   // #299: section headings on the Boat tab (SettingsPanel).
   'settings.section.boatSafety': 'Boat & safety',
   'settings.section.propulsion': 'Propulsion',

@@ -84,6 +84,53 @@ export const de = {
   // Spec C.7 (#1293/#1135 Q4): auf den Standardwert des Boots angehoben,
   // gespeichert — und angesagt. Nur nach oben.
   'boat.clamp.notice': 'Sicherheitstiefe auf {depth} m angehoben – Standardwert für {boat}.',
+  // #1292 (#1135 §13 Punkt 3): Hafenzugang je Boot, in BoatOptions eigener
+  // Disclosure (§5.1). Das ausgewählte Boot nutzt die aktuelle
+  // Sicherheitstiefe; jedes andere Boot seinen eigenen Standardwert,
+  // beschriftet mit summaryDefault. `boat.switch.selected` eröffnet die
+  // zusammengeführte Bootswechsel-Ansage (#1293s ClampNotice, erweitert um
+  // diesen Zugang) — Boot, dann die angehobene Tiefe (falls vorhanden,
+  // boat.clamp.notice), dann der Zugang dieses Boots.
+  'boat.switch.selected': '{boat} ausgewählt.',
+  'boat.harbors.summary': 'Hafenzugang – {count} betroffen bei {depth} m',
+  'boat.harbors.summaryDefault': '(Standard)',
+  'boat.harbors.noneAffected': 'Hafenzugang – keine bekannten Einschränkungen bei {depth} m',
+  'boat.harbors.pending': 'Hafenzugang noch nicht geprüft.',
+  // #1321: `findLowerSettingHint` sucht nur bis zur STANDARD-Sicherheitstiefe
+  // dieses Boots, ein nur darunter erreichbarer Hafen wird also nie
+  // gefunden — `shallow` braucht keinen solchen Hinweis (dort ist der Hafen
+  // bei der geprüften Tiefe bereits erreichbar); nur `unreachable` nennt
+  // je Hafen einen über hintFound/hintNotFound/hintPending. Formulierung
+  // übernimmt #1291s „flachere Zufahrt" statt „Tiefenwarnung" — das nennt
+  // ShallowWarning nirgends (dort steht „Achtung:"), so wird kein neuer
+  // Begriff für denselben Sachverhalt erfunden.
+  'boat.harbors.shallow': 'Nur über eine flachere Zufahrt: {list}',
+  'boat.harbors.unreachable': 'Nicht erreichbar: {list}',
+  // Orchestrator-Entscheidung 2026-09-17 (kanonischer Wortlaut, geteilt mit
+  // #1323s harborPicker.boatUnreachableAnySetting): Substantiv
+  // „Sicherheitstiefe", nicht „Einstellung".
+  // „(nur Tiefendaten geprüft)": nennt, WAS geprüft wurde — eine reine
+  // Tiefenableitung ohne Brücken, Fahrwasserbreite oder Hindernisse — nie
+  // ein Anspruch auf amtliche Kartenautorität (App-weite Regel).
+  'boat.harbors.hintFound':
+    'eventuell planbar bei {depth} m Sicherheitstiefe (nur Tiefendaten geprüft)',
+  // PR #1324 Review Major: der ZUSTAND eines `found`-Treffers zählt — ein
+  // nur über eine flachere Zufahrt erreichter Hafen trägt weiterhin die
+  // Warnung, die boat.harbors.shallow anderswo ausspricht; dieser Schlüssel
+  // fügt sie zurück, statt identisch mit einem reinen `ok`-Treffer zu
+  // rendern (hintFound oben).
+  // „Tiefenwarnung": Spec §7 verlangt Angleichung an ShallowWarnings
+  // Achtung/Caution-Wortlaut; hier nicht umgesetzt, verfolgt in #1326.
+  'boat.harbors.hintFoundShallow':
+    'eventuell planbar bei {depth} m Sicherheitstiefe, mit Tiefenwarnung (nur Tiefendaten geprüft)',
+  // Orchestrator-Entscheidung 2026-09-17: NIE „bei keiner von diesem Boot
+  // vorgesehenen Einstellung erreichbar" — die Suche endet am STANDARDWERT
+  // dieses Boots, nicht an seinem tatsächlichen Minimum, und ein Nutzer kann
+  // schon ohne Bootswechsel eine niedrigere Tiefe eingestellt haben, sodass
+  // dieser Anspruch über das tatsächlich Geprüfte hinausgeht.
+  'boat.harbors.hintNotFound':
+    'nicht erreichbar bei der für {boat} empfohlenen Sicherheitstiefe oder darüber',
+  'boat.harbors.hintPending': 'wird noch geprüft',
   // #299: Abschnittsüberschriften im Boot-Tab (SettingsPanel).
   'settings.section.boatSafety': 'Boot & Sicherheit',
   'settings.section.propulsion': 'Antrieb',
