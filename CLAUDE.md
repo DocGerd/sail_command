@@ -1142,7 +1142,8 @@ making design-level decisions; do not silently deviate.
   One-time setup: `npm --prefix app exec playwright install chromium`.
   Single-spec runs work: `npm --prefix app run e2e -- plan.spec.ts` — validate a
   failing spec locally before burning a ~10 min CI cycle (pree2e still rebuilds;
-  restore the wind fixture afterwards).
+  restore the wind fixture afterwards); add `--no-deps` (since #1260) to skip
+  the `identity` project when it doesn't matter for the spec under test.
 - **`ci.yml`'s `e2e` job caps at `timeout-minutes: 30`** (the
   `timeout-minutes` key under `ci.yml`'s `e2e:` job, #605) —
   derived from 8 re-measured real runs spanning **5m53s–14m33s**, not the stale
@@ -4203,8 +4204,9 @@ making design-level decisions; do not silently deviate.
   not evidence nothing happened — never ask a reporter to check it.
   `usePlanFlow.ts` matters most here: it handles the plan-failure path, so it
   is the file a triager would expect to log. Measure that inventory with BOTH
-  `console\.[a-z]+\(` (invocations) and `console\.[a-z]+[^(a-z]` (bare refs
-  like `.catch(console.error)` plus comment mentions): the invocation-only
+  `grep -rE 'console\.[a-z]+\('` (invocations) and
+  `grep -rE 'console\.[a-z]+[^(a-z]'` (bare refs
+  like `.catch(console.error)` plus comment mentions) — `-E` is required (#1210): the invocation-only
   grep UNDER-counts, and the composition shifts between merges even when the
   total does not. And the old "'reload the app' helps essentially only the
   asset/init case" caution is now SATISFIED, not residual — after #433/#432
@@ -4439,7 +4441,12 @@ making design-level decisions; do not silently deviate.
   `READONLY_VERBS` (removes 0 of 1,115 real asks); and segmenting on
   `;`/`&&`/newline (removes at most 2 of 1,115, and running before the char
   check makes it independently UNSAFE — an oversized heredoc times the hook
-  out into a silent allow).
+  out into a silent allow). #1273 (2026-09-16, maintainer ruling) added a
+  SEPARATE, bounded pipeline predicate — `bash_is_readonly_pipeline`: a
+  quote-aware splitter that IS the char check, fails closed on any other
+  metachar, newline or unterminated quote, and requires EVERY `|`/`;`/`&&`/
+  `||` segment to be read-only. Not the rejected shape; read its header
+  before widening it.
 - A NEW concrete guard-asymmetry instance (#368, PR #382 review): a value the
   FIRST PAINT depends on must be written in `useLayoutEffect`, not
   `useEffect` — `useEffect` fires AFTER paint, leaving a real window on a
@@ -5060,8 +5067,13 @@ making design-level decisions; do not silently deviate.
   at all (verified 2026-08-19 on the `v0.12.0` merge `3f3b75e`, whose
   check-runs list none). A red check-run on a release commit is therefore never
   scorecard noise — chase it.
-- e2e's preview port is fixed (4173 in helpers.ts): full e2e runs from
-  parallel worktrees contend — serialize them, i.e. dispatch **at most ONE e2e implementer at a
+- e2e's preview port is DERIVED per Playwright worker since #1260
+  (`helpers.ts`'s `currentPort()`, `4173 + parallelIndex`; unchanged for
+  `startPreviewIdentity.spec.ts`, which runs alone in its own
+  single-worker `identity` project) — but SEPARATE `npm run e2e`
+  invocations (different agents, different worktrees) each start their own
+  worker 0 at 4173, so full e2e runs from parallel worktrees still
+  contend — serialize them, i.e. dispatch **at most ONE e2e implementer at a
   time**; per-agent dev ports are for
   manual browser passes only. Measured 2026-09-09: three concurrent e2e agents, and one found a
   FOREIGN build already bound to 4173 and killed the listener by port PID to unblock itself.
