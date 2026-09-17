@@ -241,8 +241,8 @@ export const T0 = Date.UTC(2026, 6, 15, 6, 0, 0);
  * above are structurally unable to discriminate a depth-relaxation change.
  * `depthRelaxationMayHelp` is consulted (and answers true) 51 of 198 times
  * across the six arms — README.md's gate-coverage table — so the GATE itself
- * is not rare: `planRoute.ts`'s relaxation block opens on `mask-blocked`
- * alone, and the five #9 KNOWN_DISCONNECTED harbours (arnis, kappeln,
+ * is not rare: `planRoute.ts`'s relaxation block opened on `mask-blocked`
+ * alone at that measurement (#1258 also admits `horizon-exceeded`), and the five #9 KNOWN_DISCONNECTED harbours (arnis, kappeln,
  * maasholm, dyvig, graasten) enter it too on EVERY Flensburg-origin row that
  * names one — they run `findRelaxedGate`'s full probe search and take its
  * NULL-RESULT path (no candidate gate connects — since #452 the null is the

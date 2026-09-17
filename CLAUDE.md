@@ -2358,7 +2358,8 @@ making design-level decisions; do not silently deviate.
   siblings rather than trusting a filename or a count here). The mechanism is #53's relaxation tier, which
   fires on `depthRelaxationMayHelp(cause)` (defined and called in
   `planRoute.ts`, ~:254 / ~:687) whenever the failure cause is
-  mask-unreachability — **independent of `depthComfortMarginM`**, which is
+  mask-unreachability (or, since #1258, a requested-gate horizon overrun) —
+  **independent of `depthComfortMarginM`**, which is
   #243's soft comfort PREFERENCE (`planRoute.ts`'s only production use of
   it, ~:353) and does not gate relaxation at all; `planRoute.ts`'s own
   "Unaffected by #243" comment (~:661) says so.
@@ -4100,8 +4101,9 @@ making design-level decisions; do not silently deviate.
   remove it: the two retry gates — named predicates `comfortRetryMayHelp` /
   `depthRelaxationMayHelp` — now branch on an INTERNAL `SolveFailureCause`
   (`'mask-blocked' | 'calm-without-motor' | 'horizon-exceeded' |
-  'budget-exhausted'` — four members since #432; both gates still admit only
-  `mask-blocked`, plus `horizon-exceeded` for `comfortRetryMayHelp`), deliberately
+  'budget-exhausted'` — four members since #432; both gates admit
+  `mask-blocked` and `horizon-exceeded`, the latter for relaxation since
+  #1258), deliberately
   kept OUT of `types.ts` so it cannot leak into UI code. The public
   `NoRouteReason` is unchanged, derived from the cause at exactly three
   presentation boundaries via `NO_ROUTE_LABEL_OF_CAUSE` — `noRouteLabel()` for

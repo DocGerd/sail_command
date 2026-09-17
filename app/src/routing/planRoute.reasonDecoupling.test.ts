@@ -31,12 +31,12 @@ import type { SolveFailureCause } from './isochrone';
 // this failure, so that re-solving with it off might succeed?" The preference
 // inflates the ranking clock, so it can exhaust the search ('mask-blocked') or
 // trip the forecast-horizon guard ('horizon-exceeded'). It cannot make the air
-// calmer or the engine available, so 'calm-without-motor' is beyond its reach —
-// mirroring #53's own rule that only mask-unreachability degrades further.
+// calmer or the engine available, so 'calm-without-motor' is beyond its reach.
 //
-// depthRelaxation — "might a SHALLOWER safety gate connect a mask that the
-// requested gate does not?" Only a mask-level block can be answered by moving
-// the depth gate; a calm forecast or an exhausted horizon is unchanged by it.
+// depthRelaxation — "might a SHALLOWER safety gate help?" A mask-level block
+// can be answered by moving the depth gate, and so can a requested-gate search
+// still running at the horizon (#1258: motor-off Flensburg->Troense routes only
+// at the relaxed gate). A calm forecast is unchanged by it.
 //
 // #432 budget-exhausted — "the plan's wall-clock budget ran out mid-search".
 // FALSE for both gates, and this table is the ONLY thing pinning that:
@@ -52,7 +52,7 @@ import type { SolveFailureCause } from './isochrone';
 // findRelaxedGate's BFS probes past a deadline that has already passed.
 const EXPECTED: Record<SolveFailureCause, { comfortRetry: boolean; depthRelaxation: boolean }> = {
   'mask-blocked': { comfortRetry: true, depthRelaxation: true },
-  'horizon-exceeded': { comfortRetry: true, depthRelaxation: false },
+  'horizon-exceeded': { comfortRetry: true, depthRelaxation: true },
   'calm-without-motor': { comfortRetry: false, depthRelaxation: false },
   'budget-exhausted': { comfortRetry: false, depthRelaxation: false },
   // #885: a forced-sail calm is a wind fact under a constraint the captain set;
