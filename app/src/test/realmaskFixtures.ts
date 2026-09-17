@@ -6,9 +6,11 @@ import { NavMask } from '../lib/mask';
 import { Polar } from '../lib/polar';
 import { WindField } from '../lib/wind';
 import { solve } from '../routing/isochrone';
+import { findRelaxedGate } from '../routing/relaxedDepth';
 import { uniformWindGrid } from './fixtures';
 import { uniformGate } from '../lib/depthGate';
-import { boatById, DEFAULT_BOAT_ID, polarKey } from '../data/boats';
+import { defaultSafetyDepthM, relaxationFloorM } from '../lib/boatDepth';
+import { BOATS, boatById, DEFAULT_BOAT_ID, polarKey } from '../data/boats';
 import type {
   LatLon,
   Leg,
@@ -169,7 +171,7 @@ export function exposureNm(legs: Leg[], thresholdM: number): number {
 
 // ---------------------------------------------------------------------------
 // #452 / #494 approach-disc geometry, shared by the #452 route-wide test
-// (realmask.repro.issue20.test.ts) and the #494 per-leg assertions at the
+// (realmask.repro.issue20.marstalMargin0.test.ts) and the #494 per-leg assertions at the
 // two RELAXED-path call sites.
 //
 // Hoisted to module scope by #494 rather than copied: two independent
@@ -283,7 +285,7 @@ function subRequestedCrossings(
  * DEFAULT_SETTINGS the #243 comfort preference already holds these routes in
  * deep water everywhere but the pinch, so a gate-localization regression is NOT
  * detectable at those two sites. It IS detectable at the third call site — the
- * `depthComfortMarginM: 0` test in realmask.repro.issue20.test.ts, added by
+ * `depthComfortMarginM: 0` test in realmask.repro.issue20.marstalMargin0.test.ts, added by
  * the #494 review — so read the DEFAULT_SETTINGS pair as a structural pin plus
  * a disclosure check, and the margin-0 call as the locality detector.
  */
@@ -310,4 +312,148 @@ export function expectRelaxedWaterConfinedToPinch(
         `${c.depthM.toFixed(1)} m at ${(c.metresFromAnchor / 1852).toFixed(2)} nm from the pinch`,
     );
   expect(strays.slice(0, 10), label).toEqual([]);
+}
+
+// ---------------------------------------------------------------------------
+// #930 R3 relaxation-trade harness helpers (#1261 move). Pure relocation of
+// code that was duplicated verbatim across relaxationTrade.differential.test.ts
+// and its three realmask.repro.relaxationTrade.originMarstal/originFlensburg/
+// destinationMarstal.test.ts population siblings — no logic changed. See
+// relaxationTrade.differential.test.ts's own #1261 comment for why the split
+// exists and why the helpers live here rather than in a per-population copy.
+// ---------------------------------------------------------------------------
+
+export interface RelaxationTradeHarbor {
+  id: string;
+  snap: LatLon;
+}
+
+const relaxationTradeHarbors = JSON.parse(
+  readFileSync(resolve(dataDir, 'harbors.json'), 'utf8'),
+) as RelaxationTradeHarbor[];
+
+/**
+ * `planRoute`'s own snap at the requested gate; null means `planRoute` returns
+ * `snap-failed-*` and never reaches relaxation.
+ */
+export function relaxationTradeSnapAt(h: RelaxationTradeHarbor, requestedM: number): LatLon | null {
+  return mask.snapToNavigable(h.snap, requestedM);
+}
+
+function relaxationTradeHarbor(id: string): RelaxationTradeHarbor {
+  const h = relaxationTradeHarbors.find((x) => x.id === id);
+  if (!h) throw new Error(`fixture drift: '${id}' missing from harbors.json`);
+  return h;
+}
+
+/**
+ * Snapped (origin, harbour) pairs for every other harbour. Pairs whose snap
+ * fails are returned separately so the caller logs them — never dropped silently.
+ */
+export function relaxationTradeSnappedPairs(
+  originId: string,
+  requestedM: number,
+  reversed = false,
+): { pairs: { id: string; waypoints: LatLon[] }[]; snapFailed: string[] } {
+  const origin = relaxationTradeSnapAt(relaxationTradeHarbor(originId), requestedM);
+  if (!origin) throw new Error(`origin '${originId}' fails to snap at ${requestedM} m`);
+  const pairs: { id: string; waypoints: LatLon[] }[] = [];
+  const snapFailed: string[] = [];
+  for (const h of relaxationTradeHarbors) {
+    if (h.id === originId) continue;
+    const dest = relaxationTradeSnapAt(h, requestedM);
+    if (dest) pairs.push({ id: h.id, waypoints: reversed ? [dest, origin] : [origin, dest] });
+    else snapFailed.push(h.id);
+  }
+  return { pairs, snapFailed };
+}
+
+export interface RelaxationTradeDepthCase {
+  /** Catalogue boats sharing this (gate, floor) pair — deduplicated, never dropped. */
+  readonly boatIds: readonly string[];
+  readonly requestedM: number;
+  readonly floorM: number;
+}
+
+// Each boat's OWN default gate and relaxation floor, derived from the
+// catalogue. Boats with an identical pair would repeat the same computation,
+// so they share one case; the merge is logged, not silent.
+export const RELAXATION_TRADE_DEPTH_CASES: readonly RelaxationTradeDepthCase[] = (() => {
+  const byKey = new Map<string, { boatIds: string[]; requestedM: number; floorM: number }>();
+  for (const b of BOATS) {
+    const requestedM = defaultSafetyDepthM(b);
+    const floorM = relaxationFloorM(b);
+    const key = `${requestedM}/${floorM}`;
+    const existing = byKey.get(key);
+    if (existing) existing.boatIds.push(b.id);
+    else byKey.set(key, { boatIds: [b.id], requestedM, floorM });
+  }
+  return [...byKey.values()];
+})();
+
+function relaxationTradeUsedDepthM(
+  m: NavMask,
+  waypoints: readonly LatLon[],
+  requestedM: number,
+  radiusM: number,
+  floorM: number,
+): number | null {
+  return findRelaxedGate(m, [...waypoints], requestedM, radiusM, floorM)?.usedDepthM ?? null;
+}
+
+export interface RelaxationTradeRow {
+  id: string;
+  /** Snapped pair disconnected at the requested gate (BFS). */
+  relevant: boolean;
+  localUsedDepthM: number | null;
+  globalUsedDepthM: number | null;
+}
+
+export function measureRelaxationTrade(
+  m: NavMask,
+  pairs: readonly { id: string; waypoints: readonly LatLon[] }[],
+  requestedM: number,
+  floorM: number,
+  localRadiusM: number,
+): RelaxationTradeRow[] {
+  return pairs.map(({ id, waypoints }) => ({
+    id,
+    relevant: !m.cellsConnected(waypoints[0], waypoints[1], uniformGate(requestedM)),
+    localUsedDepthM: relaxationTradeUsedDepthM(m, waypoints, requestedM, localRadiusM, floorM),
+    globalUsedDepthM: relaxationTradeUsedDepthM(m, waypoints, requestedM, Infinity, floorM),
+  }));
+}
+
+/**
+ * THE TRIPWIRE: per pair, the shipped radius must give the same outcome
+ * (null vs non-null) and the same relaxed gate as the global search. The gate
+ * FIELD necessarily differs (approach vs uniform); `usedDepthM` is what the
+ * plan reports.
+ */
+export function expectRelaxationTradeRadiusInvariant(
+  rows: readonly RelaxationTradeRow[],
+  label: string,
+): void {
+  if (rows.length === 0) throw new Error(`${label}: empty population — nothing measured`);
+  for (const r of rows) {
+    expect(
+      r.localUsedDepthM,
+      `${label} ${r.id}: local usedDepthM ${r.localUsedDepthM} != global ${r.globalUsedDepthM} — ` +
+        `the per-disc trade bites here.\n${JSON.stringify(rows)}`,
+    ).toBe(r.globalUsedDepthM);
+  }
+}
+
+/** Consistency checks only: both CANNOT fail given the code (subset argument above). */
+export function expectRelaxationTradeSubsetConsistency(
+  rows: readonly RelaxationTradeRow[],
+  label: string,
+): void {
+  for (const r of rows) {
+    if (r.localUsedDepthM === null) continue;
+    expect(r.globalUsedDepthM, `${label} ${r.id}: local relaxed, global did not`).not.toBeNull();
+    expect(r.localUsedDepthM, `${label} ${r.id}: local <= global`).toBeLessThanOrEqual(
+      r.globalUsedDepthM as number,
+    );
+  }
 }

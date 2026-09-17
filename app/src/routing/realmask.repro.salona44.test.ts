@@ -86,7 +86,7 @@ describe('#653: Salona 44 real-mask coverage (second catalogue boat)', () => {
     }
 
     // MANDATORY companion, not optional (same pattern as
-    // realmask.repro.relaxationFloor.test.ts's own C.4(a) WIRING row): without it, "the Salona 44 plan looks sane" is not
+    // realmask.repro.relaxationFloor.wiring.test.ts's own C.4(a) WIRING row): without it, "the Salona 44 plan looks sane" is not
     // evidence it is BOAT-SENSITIVE — a `SALONA44_DEPS` that silently
     // resolved to the Salona 45 (a wrong catalogue lookup) would pass every
     // assertion above identically, since both boats share the 2.1 m draft
@@ -121,7 +121,7 @@ describe('#653: Salona 44 real-mask coverage (second catalogue boat)', () => {
   });
 
   // Heavier case (~45 s per solve x2, same runtime class as
-  // realmask.repro.issue20.test.ts's own 'Flensburg -> Marstal at
+  // realmask.repro.issue20.marstalDefault.test.ts's own 'Flensburg -> Marstal at
   // DEFAULT_SETTINGS degrades gracefully with shallow warnings (#53)' case): the #53 relaxation path, for a SECOND
   // catalogue boat. This is the case the issue's own motivating concern
   // names directly — a defaultSafetyDepthM/relaxationFloorM mixup would be
@@ -152,7 +152,7 @@ describe('#653: Salona 44 real-mask coverage (second catalogue boat)', () => {
       expect(res44.shallow).toBeDefined();
       expect(res44.shallow!.requestedDepthM).toBe(3.0);
       // SAME usedDepthM as the Salona 45's own DEFAULT_SETTINGS case in
-      // realmask.repro.issue20.test.ts
+      // realmask.repro.issue20.marstalDefault.test.ts
       // (2.3 m) — NOT a coincidence: defaultSafetyDepthM/relaxationFloorM
       // are pure functions of b.draftM, and both Salonas draft 2.1 m, so the
       // search range findRelaxedGate probes is identical for either boat.
