@@ -516,14 +516,17 @@ export const de = {
     'Eine geringere Sicherheitstiefe könnte dem Planer helfen, eine direktere Route zu finden. Ist stattdessen der Vorhersagehorizont ausgeschöpft, hilft möglicherweise eine spätere Abfahrt.',
   // Was passiert ist, ohne Ursache zu benennen: bei der eingestellten Tiefe
   // wurde keine Route gefunden, die tatsächlich verwendete Tiefe, die
-  // geringste gequerte Kartentiefe. Dieser String hat NIE "nicht passierbar"
-  // behauptet (anders als die englische Fassung vor #1300) und blieb daher
-  // inhaltlich unverändert — seit #1258 kann er auch rendern, wenn die
-  // eingestellte Tiefe verbunden WAR und die Suche stattdessen den
-  // Vorhersagehorizont ausgeschöpft hat (PR #1299 review, finding 4); "keine
-  // ... Route gefunden" ist für beide Fälle wahr. Siehe dict.en.ts's
-  // Kommentar für den vollen Hintergrund ({used} < {requested}, {minGate}
-  // als Plan-weite Angabe).
+  // geringste gequerte Kartentiefe. Dieser String behauptet HEUTE an keiner
+  // Stelle "nicht passierbar" (anders als die englische Fassung vor #1300)
+  // und blieb daher inhaltlich unverändert — eine frühere Fassung
+  // (`route.shallow.banner`, vor der #452/#504-Aufspaltung, Commit a73ac1a)
+  // sagte das sehr wohl; keine Aussage über die gesamte Historie dieses
+  // Strings. Seit #1258 kann er auch rendern, wenn die eingestellte Tiefe
+  // verbunden WAR und die Suche stattdessen den Vorhersagehorizont
+  // ausgeschöpft hat (PR #1299 review, finding 4); "keine ... Route
+  // gefunden" ist für beide Fälle wahr. Siehe dict.en.ts's Kommentar für den
+  // vollen Hintergrund ({used} < {requested}, {minGate} als Plan-weite
+  // Angabe).
   'route.shallow.detail':
     'Mit der eingestellten Sicherheitstiefe von {requested} m wurde keine durchgehende Route gefunden — diese Route wurde daher mit einer reduzierten Tiefe von {used} m geplant. Geringste von diesem Plan gequerte Kartentiefe: {minGate} m.',
   // #452 gap 3: siehe dict.en.ts's Kommentar für Zweck und Konvention
