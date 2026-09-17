@@ -84,7 +84,7 @@ describe('#54 the clamp announcement stays in the accessibility tree while empty
     // zeroed the box unconditionally would pass "costs no layout" and silently
     // render the real announcement as unstyled body text.
     withAppCss();
-    const filled = renderNotice('Safety depth raised to 2.4 m — the minimum for Deep 46.');
+    const filled = renderNotice('Safety depth raised to 3.2 m — the default for Deep 46.');
     const cs = getComputedStyle(filled);
     expect(cs.display).not.toBe('none');
     expect(cs.paddingTop).not.toBe('0px');

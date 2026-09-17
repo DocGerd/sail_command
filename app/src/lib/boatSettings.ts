@@ -1,6 +1,6 @@
 import type { Settings } from '../types';
 import type { BoatDef } from '../data/boats';
-import { defaultSafetyDepthM, minSafetyDepthM } from './boatDepth';
+import { defaultSafetyDepthM } from './boatDepth';
 
 /**
  * Spec C.7. The three Settings fields with a natural per-boat default: the
@@ -20,15 +20,17 @@ export function settingsDefaultsForBoat(
 }
 
 /**
- * Spec C.7. Deliberately DIFFERENT from usePersistedNumber's contract (#355),
- * where a bounds change alone leaves the stored value untouched. That
- * asymmetry is right for a panel width and wrong here: per the
- * guard-asymmetry rule the uncertain path must fail toward the
- * expensive-but-safe direction, and a silently retained below-hull gate is
- * the cheap-and-dangerous one.
+ * Spec C.7, floor RAISED to `defaultSafetyDepthM` by #1135 Q4 (#1293) — a
+ * stored `safetyDepthM` below the new boat's DEFAULT (recommended) gate is
+ * clamped up to it, not merely to `minSafetyDepthM`. Deliberately DIFFERENT
+ * from usePersistedNumber's contract (#355), where a bounds change alone
+ * leaves the stored value untouched. That asymmetry is right for a panel
+ * width and wrong here: per the guard-asymmetry rule the uncertain path
+ * must fail toward the expensive-but-safe direction, and a silently
+ * retained below-default gate is the cheap-and-dangerous one.
  *
  * NEVER clamp down: a stored safetyDepthM already at or above the new
- * boat's minimum is returned unchanged, however far above the new floor it
+ * boat's default is returned unchanged, however far above the new floor it
  * sits — a deeper-drafted user's deliberately generous margin is not ours
  * to shrink.
  *
@@ -42,7 +44,7 @@ export function clampSettingsToBoat(
   s: Settings,
   b: BoatDef,
 ): { settings: Settings; clamped: boolean } {
-  const floor = minSafetyDepthM(b);
+  const floor = defaultSafetyDepthM(b);
   if (s.safetyDepthM >= floor) {
     return { settings: s, clamped: false };
   }
