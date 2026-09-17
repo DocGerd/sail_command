@@ -195,12 +195,23 @@ function printMeasurement(label: string, m: WeaveMeasurement) {
   );
 }
 
+// #1303: base (61ec1c6) genoa durations, measured with NEAR_DEST_NM = 0
+// (keys identical to base). The approach pins must route no later.
+const AEROE_SOEBY_BASE_DURATION_MS = 4056398.767578125;
+const GLUECKS_AEROE_BASE_DURATION_MS = 24175621.98486328;
+
 const AEROESKOEBING: LatLon = { lat: 54.8935, lon: 10.416 };
 const SOEBY: LatLon = { lat: 54.9454, lon: 10.256 };
 
 describe('#847 weave ETA cost — reproduction + measurement', () => {
+  // #1303 pin (was #847's original reproduction). At base this route carried
+  // one approach weave span (legs 10-12 of 13; docs/spikes/847-weave-eta-cost.md
+  // section 2). It was an artefact of coarse approach pruning: #1303's finer
+  // near-destination grid removes it at no ETA cost. #847 stays answered; the
+  // mid-route case below is its surviving reproduction and the detector's
+  // positive control.
   it(
-    'Aeroeskoebing -> Soeby, TWS 5.5 / wdir 120 (genoa): reproduces a small-correction weave near the destination approach',
+    '#1303: Aeroeskoebing -> Soeby, TWS 5.5 / wdir 120 (genoa): no weave span on the destination approach',
     { timeout: SOLVER_TEST_TIMEOUT_MS },
     () => {
       const res = planRoute(
@@ -219,85 +230,12 @@ describe('#847 weave ETA cost — reproduction + measurement', () => {
         SALONA_DEPS,
       ) as PlanResultOk;
       expect(res.status).toBe('ok');
-      // #452/#494's relaxation-disc mechanism must NOT be in play here --
-      // otherwise the weave could be an artefact of the relaxed-gate
-      // approach ring rather of ordinary ring-to-ring routing.
       expect('shallow' in res).toBe(false);
-
       const rig = sailResult(res, 'genoa');
       expect(rig).not.toBeNull();
-      const legs = rig!.legs;
-
-      // The route as a whole is NOT purely #264's shape (a sail-locked-arc
-      // motor-tack) and DOES carry a #354-shaped mode change near the
-      // origin -- print the mode sequence so the spike doc can quote it
-      // verbatim rather than restate a claim from memory.
-      console.log(
-        `\nMode sequence (all ${legs.length} legs): ` +
-          legs
-            .map((l) => (l.kind === 'motor' ? 'M' : l.board === 'port' ? 'S(port)' : 'S(stbd)'))
-            .join(' -> '),
-      );
-
-      const spans = findWeaveSpans(legs);
-      console.log(
-        `\nRoute: ${legs.length} legs, ${rig!.distanceNm.toFixed(2)} nm, ` +
-          `${(rig!.durationMs / 60000).toFixed(1)} min. Weave spans found: ${spans.length}.`,
-      );
-      expect(spans.length).toBeGreaterThan(0);
-
-      const measurements = spans.map((s) => measureWeaveSpan(s, DEFAULT_SETTINGS.safetyDepthM));
-      measurements.forEach((m, i) => printMeasurement(`span ${i}`, m));
-
-      // The reproducing span asserted on below is the one nearest the
-      // destination (issue's own screenshot: the corrections read as
-      // happening on an otherwise straight final approach), and it is the
-      // one span in this route where EVERY leg is a motor leg with no mode
-      // change -- the cleanest isolation of the heading-only phenomenon.
-      // Assert it exists and print its numbers; the VERDICT (cost ~zero vs
-      // real) is recorded in the spike doc, never asserted here as a
-      // pass/fail threshold -- a measurement
-      // harness's job is to produce the number, not to pre-judge it.
-      const lastSpan = measurements[measurements.length - 1];
-      expect(lastSpan.span.endIdx).toBe(legs.length - 1);
-      expect(lastSpan.span.legs.every((l) => l.kind === 'motor')).toBe(true);
-
-      // The comparison only means something if the baseline is reachable
-      // at the plan's own requested depth (#264's lesson) -- assert this
-      // explicitly so a future run that silently lost navigability (a mask
-      // rebuild, a route change) fails LOUDLY here rather than shipping a
-      // meaningless percentage in the spike doc.
-      expect(lastSpan.chordNavigable).toBe(true);
-
-      // POSITIVE CONTROL for that assertion, using the SAME
-      // `mask.segmentClearanceM` call: a `chordNavigable: true` reading is
-      // worth nothing if the function can never return false. The real
-      // route took 67.6 min / 7.16 nm to thread from origin to
-      // destination -- a straight chord between them, through the very
-      // island/shoal geometry the router routed AROUND, is exactly the
-      // "infeasible baseline" shape #264 warns about, so it must read
-      // BLOCKED here.
-      const wholeRouteChord = mask.segmentClearanceM(
-        AEROESKOEBING,
-        SOEBY,
-        uniformGate(DEFAULT_SETTINGS.safetyDepthM),
-      );
-      console.log(
-        `\nPositive control: whole-route chord (origin->destination direct) navigable: ` +
-          `${wholeRouteChord !== null} (clearance ${wholeRouteChord === null ? 'BLOCKED' : wholeRouteChord.toFixed(2) + ' m'})`,
-      );
-      expect(wholeRouteChord).toBeNull();
-
-      // Print the whole leg table too, so the spike doc's route/wind/leg
-      // description can be quoted verbatim from this run's own output.
-      console.log('\nFull leg table:');
-      for (const leg of legs) {
-        console.log(
-          `  ${leg.kind}/${leg.board ?? '-'} hdg=${leg.headingDeg.toFixed(1)} ` +
-            `dur=${((leg.endTimeMs - leg.startTimeMs) / 1000).toFixed(0)}s ` +
-            `dist=${leg.distanceNm.toFixed(3)}nm speed=${leg.speedKn.toFixed(2)}kn`,
-        );
-      }
+      console.log(`\nAeroeskoebing->Soeby durationMs=${rig!.durationMs}`);
+      expect(findWeaveSpans(rig!.legs)).toHaveLength(0);
+      expect(rig!.durationMs).toBeLessThanOrEqual(AEROE_SOEBY_BASE_DURATION_MS);
     },
   );
 
@@ -364,11 +302,11 @@ describe('#847 weave ETA cost — reproduction + measurement', () => {
     },
   );
 
-  // #1079: axis (b) widening #2 -- a THIRD harbour pair, and the first
-  // SAIL-mode weave span this file measures (the original and the case
-  // above both happen to isolate all-motor spans).
+  // #1303 pin (was #1079's axis (b) widening #2, an all-sail approach weave).
+  // At base: one span on legs 31-33. #1303's finer near-destination grid
+  // removes it (PR #1304, comment 5716085827).
   it(
-    'Glücksburg -> Aeroeskoebing, TWS 5 / wdir 100 (genoa): reproduces an all-sail weave near the destination approach',
+    '#1303: Glücksburg -> Aeroeskoebing, TWS 5 / wdir 100 (genoa): no weave span on the destination approach',
     { timeout: SOLVER_TEST_TIMEOUT_MS },
     () => {
       const res = planRoute(
@@ -390,36 +328,9 @@ describe('#847 weave ETA cost — reproduction + measurement', () => {
       expect('shallow' in res).toBe(false);
       const rig = sailResult(res, 'genoa');
       expect(rig).not.toBeNull();
-      const legs = rig!.legs;
-
-      const spans = findWeaveSpans(legs);
-      console.log(
-        `\nGlücksburg->Aeroeskoebing: ${legs.length} legs, ${rig!.distanceNm.toFixed(2)} nm, ` +
-          `${(rig!.durationMs / 60000).toFixed(1)} min. Weave spans found: ${spans.length}.`,
-      );
-      expect(spans.length).toBeGreaterThan(0);
-
-      const lastSpan = spans[spans.length - 1];
-      const m = measureWeaveSpan(lastSpan, DEFAULT_SETTINGS.safetyDepthM);
-      printMeasurement('last span', m);
-
-      expect(m.span.legs.every((l) => l.kind === 'sail')).toBe(true);
-      expect(m.chordNavigable).toBe(true);
-      // Measured 1.5% here (higher than the motor-span cases' 0.7%, still
-      // far below #264's large-swing regime) -- 5% keeps the same margin
-      // as the case above rather than a per-case-tuned bound.
-      expect(Math.abs(m.etaDeltaS) / m.actualDurationS).toBeLessThan(0.05);
-
-      const wholeRouteChord = mask.segmentClearanceM(
-        GLUECKSBURG,
-        AEROESKOEBING,
-        uniformGate(DEFAULT_SETTINGS.safetyDepthM),
-      );
-      console.log(
-        `\nPositive control: whole-route chord navigable: ${wholeRouteChord !== null} ` +
-          `(clearance ${wholeRouteChord === null ? 'BLOCKED' : wholeRouteChord.toFixed(2) + ' m'})`,
-      );
-      expect(wholeRouteChord).toBeNull();
+      console.log(`\nGluecksburg->Aeroeskoebing durationMs=${rig!.durationMs}`);
+      expect(findWeaveSpans(rig!.legs)).toHaveLength(0);
+      expect(rig!.durationMs).toBeLessThanOrEqual(GLUECKS_AEROE_BASE_DURATION_MS);
     },
   );
 

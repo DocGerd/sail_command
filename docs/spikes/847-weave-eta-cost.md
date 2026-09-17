@@ -67,6 +67,11 @@ the plan routes entirely at the REQUESTED 3.0 m gate, so nothing here is an
 artefact of the relaxed-gate approach-disc mechanism), 13 legs, 7.16 nm,
 67.6 min.
 
+**Update (#1303, PR #1304):** this approach span, and the Glücksburg ->
+Ærøskøbing approach span in §7, came from coarse near-destination pruning and
+are gone since #1303, at no ETA cost; the mid-route and gradient-wind weaves
+remain, so this spike's verdict is unchanged.
+
 Both harbours' committed `approachNote`s name exactly the geometry this
 reproduces: Ærøskøbing's is "buoyed approach channel through flats; keep
 strictly to the channel, shoals close on both sides" (this is the ORIGIN of

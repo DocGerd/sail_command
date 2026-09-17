@@ -44,6 +44,9 @@ describe('#1303: near-destination visited dominance (real mask)', () => {
       if (res.status !== 'ok') return;
       const hours = (res.etaMs - T0) / 3_600_000;
       const nm = res.legs.reduce((a, l) => a + l.distanceNm, 0);
+      // Jointly pin the Svendborgsund route family, not two coverages: no
+      // reachable mutant keeps < 9 h over >= 60 nm (that needs a sustained
+      // 6.7 kn, near fock's top speed), so `nm` is not individually load-bearing.
       expect(hours).toBeLessThanOrEqual(9);
       expect(nm).toBeLessThan(60);
     },

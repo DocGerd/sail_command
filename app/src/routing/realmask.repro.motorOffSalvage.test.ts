@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import { planRoute } from './planRoute';
+import { planRoute, planRouteWithRecord } from './planRoute';
 import { solve } from './isochrone';
 import { Polar } from '../lib/polar';
 import { WindField } from '../lib/wind';
 import { uniformGate } from '../lib/depthGate';
 import { uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS, defaultBoatSnapshot } from '../types';
-import type { LatLon, PlanResult, PolarTable, Settings } from '../types';
+import type { LatLon, PlanRequest, PlanResult, PolarTable, Settings } from '../types';
 import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
 import {
   mask,
@@ -53,22 +53,22 @@ function solveSalvaged(o: {
   });
 }
 
+function bagenkopRequest(): PlanRequest {
+  return {
+    origin: FLENSBURG,
+    destination: BAGENKOP,
+    viaPoints: [],
+    originHarborId: 'flensburg',
+    destinationHarborId: 'bagenkop',
+    departureMs: T0,
+    settings: SETTINGS,
+    sailIds: ['genoa', 'fock'],
+    boat: defaultBoatSnapshot(),
+  };
+}
+
 function planBagenkop(tws: number): PlanResult {
-  return planRoute(
-    {
-      origin: FLENSBURG,
-      destination: BAGENKOP,
-      viaPoints: [],
-      originHarborId: 'flensburg',
-      destinationHarborId: 'bagenkop',
-      departureMs: T0,
-      settings: SETTINGS,
-      sailIds: ['genoa', 'fock'],
-      boat: defaultBoatSnapshot(),
-    },
-    uniformWindGrid(tws, 0),
-    SALONA_DEPS,
-  );
+  return planRoute(bagenkopRequest(), uniformWindGrid(tws, 0), SALONA_DEPS);
 }
 
 describe('#1136 solve-level salvage (real mask)', () => {
@@ -132,21 +132,25 @@ describe('#1136 planRoute pass 2 (real mask)', () => {
   });
 
   // Containment: pass 1 already returns ok with one sail failed (#1166 shape),
-  // so pass 2 is not admitted and the result is unchanged. Expected values
-  // measured at the change's base, 33dbad2.
+  // so pass 2 is not admitted. An ok pass 1 records no cause, and admission
+  // requires 'mask-blocked', so `record.cause === null` pins non-admission
+  // structurally. It replaced base-pinned ETAs that #1303's approach grid
+  // moved (PR #1304, comment 5716085827).
   it.each([
-    { tws: 3, failed: 'genoa', routed: 'fock', etaMs: 1784159977571.5435 },
-    { tws: 8, failed: 'fock', routed: 'genoa', etaMs: 1784122896754.3152 },
-  ])(
-    'TWS $tws: an ok plan with $failed failed is left as it was',
-    ({ tws, failed, routed, etaMs }) => {
-      const res = planBagenkop(tws);
-      expect(res.status).toBe('ok');
-      if (res.status !== 'ok') return;
-      const byId = (id: string) => res.sails.find((s) => s.sailId === id);
-      expect(byId(failed)?.result).toBeNull();
-      expect(byId(failed)?.reason).toBe('unreachable');
-      expect(byId(routed)?.result?.etaMs).toBe(etaMs);
-    },
-  );
+    { tws: 3, failed: 'genoa', routed: 'fock' },
+    { tws: 8, failed: 'fock', routed: 'genoa' },
+  ])('TWS $tws: an ok plan with $failed failed is left as it was', ({ tws, failed, routed }) => {
+    const { result: res, record } = planRouteWithRecord(
+      bagenkopRequest(),
+      uniformWindGrid(tws, 0),
+      SALONA_DEPS,
+    );
+    expect(record.cause).toBeNull();
+    expect(res.status).toBe('ok');
+    if (res.status !== 'ok') return;
+    const byId = (id: string) => res.sails.find((s) => s.sailId === id);
+    expect(byId(failed)?.result).toBeNull();
+    expect(byId(failed)?.reason).toBe('unreachable');
+    expect(byId(routed)?.result).not.toBeNull();
+  });
 });

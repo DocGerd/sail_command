@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { planRoute } from './planRoute';
+import { planRouteWithRecord } from './planRoute';
 import { uniformWindGrid } from '../test/fixtures';
 import { uniformGate } from '../lib/depthGate';
 import { DEFAULT_SETTINGS, defaultBoatSnapshot } from '../types';
@@ -41,19 +41,16 @@ describe('issue #265: the mirror case — genuinely mask-limited must stay unrea
   });
 
   it(
-    'a light-air, motor-off plan reports unreachable, not calm-motor-off, even though #53 relaxation is attempted',
+    'a light-air, motor-off plan records pass 1 as mask-blocked, not calm, even though #53 relaxation is attempted',
     { timeout: solverTimeoutMs(600_000) },
     () => {
-      // Measured directly (not derived from this PR's own reasoning): #53's
-      // relaxed-gate mechanism DOES fire here (reason defaults to
-      // 'unreachable' from the disconnected-at-3.0m fast path, which is the
-      // relaxation trigger), finds the same 2.3 m gate as the DEFAULT_SETTINGS
-      // test above, and re-solves both rigs there under this scenario's
-      // light air + motor-off settings — which still fails (the pinch is
-      // narrow enough that the solver can't thread it at this wind/motor
-      // combination), so the plan correctly falls through to 'unreachable'
-      // rather than being coerced into 'calm-motor-off'.
-      const res = planRoute(
+      // #53 relaxation fires here, finds 2.3 m, and pass 1 (tiers 1-4) still
+      // fails; its folded cause is the #265 guard. A reclassification to
+      // 'calm-without-motor' reds `record.cause` and also disables #1136
+      // pass 2. Since #1303's finer approach grid, pass 2 threads the pinch,
+      // so the plan itself is ok at the relaxed gate (PR #1304, comment
+      // 5716085827).
+      const { result: res, record } = planRouteWithRecord(
         {
           origin: FLENSBURG,
           destination: MARSTAL,
@@ -68,15 +65,11 @@ describe('issue #265: the mirror case — genuinely mask-limited must stay unrea
         uniformWindGrid(3, 0),
         SALONA_DEPS,
       );
-      // Split so a red run names WHICH fact broke: `status` is the
-      // solver-capability/mask-connectivity fact (would flip to 'ok' if
-      // either the mask reconnects at 3.0 m OR the relaxed 2.3 m re-solve
-      // starts succeeding — both "good news", neither a classification
-      // regression), while `reason` is the actual classification guard this
-      // test exists to protect. A single `toEqual` would report both as one
-      // failure and couldn't tell them apart.
-      expect(res.status).toBe('error');
-      if (res.status === 'error') expect(res.reason).toBe('unreachable');
+      // Split so a red run names WHICH fact broke: `record.cause` is the
+      // classification guard; `status`/`usedDepthM` pin the salvage outcome.
+      expect(record.cause).toBe('mask-blocked');
+      expect(res.status).toBe('ok');
+      if (res.status === 'ok') expect(res.shallow?.usedDepthM).toBeCloseTo(2.3, 5);
     },
   );
 });

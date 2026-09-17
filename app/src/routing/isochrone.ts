@@ -275,7 +275,7 @@ export function edgeFactor(
 // capture edge) depends on position within a coarse cell there, so a cheaper
 // stamp from a position with no line to the destination must not prune a
 // better-placed later node. Dominance still applies on the finer grid, so a
-// blocked approach still dies. Calibration: PR for #1303.
+// blocked approach still dies. Calibration: PR #1304, comment 5715341586.
 const NEAR_DEST_NM = 1;
 const NEAR_DEST_PRUNE_DIV = 4;
 
