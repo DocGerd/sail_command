@@ -84,6 +84,34 @@ export const de = {
   // Spec C.7 (#1293/#1135 Q4): auf den Standardwert des Boots angehoben,
   // gespeichert — und angesagt. Nur nach oben.
   'boat.clamp.notice': 'Sicherheitstiefe auf {depth} m angehoben – Standardwert für {boat}.',
+  // #1292 (#1135 §13 Punkt 3): Hafenzugang je Boot, in BoatOptions eigener
+  // Disclosure (§5.1). Das ausgewählte Boot nutzt die aktuelle
+  // Sicherheitstiefe; jedes andere Boot seinen eigenen Standardwert,
+  // beschriftet mit summaryDefault. `boat.switch.selected` eröffnet die
+  // zusammengeführte Bootswechsel-Ansage (#1293s ClampNotice, erweitert um
+  // diesen Zugang) — Boot, dann die angehobene Tiefe (falls vorhanden,
+  // boat.clamp.notice), dann der Zugang dieses Boots.
+  'boat.switch.selected': '{boat} ausgewählt.',
+  'boat.harbors.summary': 'Hafenzugang – {count} betroffen bei {depth} m',
+  'boat.harbors.summaryDefault': '(Standard)',
+  'boat.harbors.noneAffected': 'Hafenzugang – keine bekannten Einschränkungen bei {depth} m',
+  'boat.harbors.pending': 'Hafenzugang noch nicht geprüft.',
+  // #1321: `findLowerSettingHint` sucht nur bis zur STANDARD-Sicherheitstiefe
+  // dieses Boots, ein nur darunter erreichbarer Hafen wird also nie
+  // gefunden — `shallow` braucht keinen solchen Hinweis (dort ist der Hafen
+  // bei der geprüften Tiefe bereits erreichbar); nur `unreachable` nennt
+  // je Hafen einen über hintFound/hintNotFound/hintPending. Formulierung
+  // übernimmt #1291s „flachere Zufahrt" statt „Tiefenwarnung" — das nennt
+  // ShallowWarning nirgends (dort steht „Achtung:"), so wird kein neuer
+  // Begriff für denselben Sachverhalt erfunden.
+  'boat.harbors.shallow': 'Nur über eine flachere Zufahrt: {list}',
+  'boat.harbors.unreachable': 'Nicht erreichbar: {list}',
+  'boat.harbors.hintFound': 'kann eventuell bei {depth} m fahren',
+  // #1321: NIE „bei keiner Einstellung erreichbar" — die Suche endet am
+  // Standardwert dieses Boots, nicht an seinem tatsächlichen Minimum, ein
+  // niedrigerer Bereich bleibt also ungeprüft.
+  'boat.harbors.hintNotFound': 'mit keiner von diesem Boot vorgesehenen Einstellung erreichbar',
+  'boat.harbors.hintPending': 'wird noch geprüft',
   // #299: Abschnittsüberschriften im Boot-Tab (SettingsPanel).
   'settings.section.boatSafety': 'Boot & Sicherheit',
   'settings.section.propulsion': 'Antrieb',

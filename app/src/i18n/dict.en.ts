@@ -81,6 +81,32 @@ export const en = {
   // Spec C.7 (#1293/#1135 Q4): clamped up to the boat's DEFAULT gate,
   // persisted — and announced. Up only.
   'boat.clamp.notice': 'Safety depth raised to {depth} m — the default for {boat}.',
+  // #1292 (#1135 §13 item 3): per-boat harbour access, `BoatOption`'s own
+  // disclosure (§5.1). Selected boat uses the live safety depth; every other
+  // boat uses its own default, labelled with `summaryDefault`.
+  // `boat.switch.selected` opens the merged boat-switch announcement
+  // (#1293's `ClampNotice` widened to carry it) — boat, then the raised
+  // depth if any (boat.clamp.notice), then this boat's access.
+  'boat.switch.selected': '{boat} selected.',
+  'boat.harbors.summary': 'Harbour access — {count} affected at {depth} m',
+  'boat.harbors.summaryDefault': '(default)',
+  'boat.harbors.noneAffected': 'Harbour access — no known issues at {depth} m',
+  'boat.harbors.pending': 'Harbour access not yet checked.',
+  // #1321: `findLowerSettingHint` only searches down to this boat's DEFAULT
+  // safety depth, so a harbour reachable only below that is never found —
+  // `shallow` needs no such hint (it is already reachable at the checked
+  // depth); only `unreachable` names one, per harbour, via `hintFound`/
+  // `hintNotFound`/`hintPending`. Wording reuses #1291's "shallower
+  // approach" phrase rather than "depth warning" — ShallowWarning never
+  // ships that noun (it says "Caution:"), so this avoids inventing a term
+  // the app doesn't otherwise use for the same concept.
+  'boat.harbors.shallow': 'Only via a shallower approach: {list}',
+  'boat.harbors.unreachable': 'Not reachable: {list}',
+  'boat.harbors.hintFound': 'may route at {depth} m',
+  // #1321: NEVER "unreachable at any setting" — the search floor is this
+  // boat's default, not its true minimum, so a lower band is unexplored.
+  'boat.harbors.hintNotFound': 'not reachable at any setting this boat keeps',
+  'boat.harbors.hintPending': 'still checking',
   // #299: section headings on the Boat tab (SettingsPanel).
   'settings.section.boatSafety': 'Boat & safety',
   'settings.section.propulsion': 'Propulsion',

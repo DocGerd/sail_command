@@ -1,16 +1,231 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Settings } from '../types';
 import { BOATS, boatById, type BoatDef, type BoatId } from '../data/boats';
-import { useLang, useT } from '../i18n';
+import { type Lang, useLang, useT } from '../i18n';
 import { clampSettingsToBoat } from '../lib/boatSettings';
+import { defaultSafetyDepthM } from '../lib/boatDepth';
 import { POLAR_TIER_LABEL_KEY, weakestPolarTier } from '../lib/boatProvenance';
 import { formatDepthM } from '../lib/depthDisclosure';
+import {
+  computeHarborAccess,
+  findLowerSettingHint,
+  type HarborAccessByHarbor,
+  type HarborWithReachability,
+  type LowerSettingHintOutcome,
+} from '../lib/harborReachability';
+import type { NavMask } from '../lib/mask';
 import { isValidMmsi } from '../lib/mmsi';
 import { usePersistedOwnMmsi } from '../lib/ownMmsi';
+import { useNavMask } from '../state/useNavMask';
+import { loadRoutingAssets } from '../services/assets';
 import Card from './Card';
 import Chip from './Chip';
 import Disclosure from './Disclosure';
 import Field from './Field';
+
+type TFunction = ReturnType<typeof useT>;
+
+// #1292 (#1135 §13 item 1/3, PR #1316): per-`unreachable` harbour, decimetres
+// scanned per idle tick before yielding — a full scan can cost up to
+// ~DEFAULT_HINT_MAX_STEPS floods (~150-200ms each, harborReachability.ts's
+// own comment), so this keeps any ONE synchronous slice small regardless of
+// how many decimetres a search ultimately needs. `findLowerSettingHint`'s
+// `resumeFromDepthM` is what lets `useLowerSettingHints` below continue the
+// SAME downward scan across ticks rather than restarting it.
+const HINT_STEPS_PER_SLICE = 3;
+
+/**
+ * §12 Q3/§9: loaded independently of any parent prop, mirroring
+ * `state/useNavMask.ts`'s own module-cached `loadRoutingAssets()` singleton
+ * (see that hook's comment) — this component has no route to a new prop
+ * without editing `SettingsPanel.tsx`/`App.tsx`, and none is needed: the
+ * promise is fetch-once and shared, so this costs no extra network work and
+ * shares the SAME `harbors` array reference `computeHarborAccess`'s own
+ * per-(mask, harbors) cache keys on.
+ */
+function useHarborsAsset(): HarborWithReachability[] | null {
+  const [harbors, setHarbors] = useState<HarborWithReachability[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    loadRoutingAssets()
+      .then((assets) => {
+        if (cancelled) return;
+        setHarbors(assets.harbors as HarborWithReachability[]);
+      })
+      .catch((err: unknown) => {
+        // Mirrors useNavMask's own degrade-to-null contract: a failed asset
+        // load must read as the §5.1 "not yet checked" pending string, never
+        // throw into the Boat tab or silently read as all-clear.
+        console.warn('BoatPicker: routing assets unavailable, harbour access disabled', err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return harbors;
+}
+
+function scheduleIdle(work: () => void): { cancel: () => void } {
+  if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+    const handle = window.requestIdleCallback(work, { timeout: 2000 });
+    return {
+      cancel: () => {
+        if (typeof window.cancelIdleCallback === 'function') window.cancelIdleCallback(handle);
+      },
+    };
+  }
+  const handle = setTimeout(work, 0);
+  return { cancel: () => clearTimeout(handle) };
+}
+
+/**
+ * §12 Q3: derive the SELECTED boat's access synchronously as soon as the
+ * assets are ready (`eager`); every OTHER boat only once this component has
+ * already mounted, and lazily even then — §9's cost note ("a per-hull
+ * classification is ~1 s… compute off the main thread or in idle slices")
+ * is why a non-selected row does not compute at all until an idle tick, so
+ * three boats don't pay their worst-case cost in the same render.
+ * `computeHarborAccess` is itself memoised per (mask, harbors, boat.id,
+ * depth), so calling it again on every render of the eager path is cheap
+ * after the first.
+ */
+function useHarborAccessForOption(
+  mask: NavMask | null,
+  harbors: HarborWithReachability[] | null,
+  boat: BoatDef,
+  depthM: number,
+  eager: boolean,
+): HarborAccessByHarbor | null {
+  const [deferred, setDeferred] = useState<HarborAccessByHarbor | null>(null);
+
+  useEffect(() => {
+    // `eager`: rendered directly below, not from this state. `!mask ||
+    // !harbors`: nothing to schedule yet — `deferred` starts `null` and is
+    // set only from the scheduled callback below, so there is nothing to
+    // reset here (mask/harbors only ever transition null -> loaded, never
+    // back, so this branch is not a state a later render needs undone).
+    if (eager || !mask || !harbors) return;
+    let cancelled = false;
+    const { cancel } = scheduleIdle(() => {
+      if (!cancelled) setDeferred(computeHarborAccess(mask, harbors, boat, depthM));
+    });
+    return () => {
+      cancelled = true;
+      cancel();
+    };
+  }, [eager, mask, harbors, boat, depthM]);
+
+  if (eager) return mask && harbors ? computeHarborAccess(mask, harbors, boat, depthM) : null;
+  return deferred;
+}
+
+/**
+ * #1321 (round-3 review of PR #1316): `findLowerSettingHint` only searches
+ * down to this boat's own DEFAULT safety depth, so a harbour reachable only
+ * BELOW that default is never surfaced — never render "unreachable at any
+ * setting"; `boat.harbors.hintNotFound` states the narrower, true claim.
+ * Deferred and step-bounded (`HINT_STEPS_PER_SLICE`) for the same reason as
+ * `useHarborAccessForOption`: the search is DELIBERATELY LAZY per that
+ * function's own doc comment and must never run from `handleSelect` or any
+ * eager path. A non-selected boat sits at its own default, so its search
+ * range is empty and every outcome resolves 'not-found' in one step; only
+ * the SELECTED boat at a live depth above its default can need more than one
+ * idle tick, which is exactly the `resumeFromDepthM` resume this hook drives.
+ */
+function useLowerSettingHints(
+  mask: NavMask | null,
+  boat: BoatDef,
+  depthM: number,
+  unreachable: readonly HarborWithReachability[],
+): ReadonlyMap<string, LowerSettingHintOutcome> {
+  const [hints, setHints] = useState<ReadonlyMap<string, LowerSettingHintOutcome>>(new Map());
+
+  useEffect(() => {
+    // A stale `hints` entry from a PRIOR (boat, depthM) run is at worst one
+    // idle tick out of date — the very first step below overwrites it, and
+    // nothing reads an entry for a harbour that has left `unreachable`
+    // (BoatOption only looks up ids from the CURRENT `unreachable` array) —
+    // so no synchronous reset is needed here, only the mask-not-loaded and
+    // nothing-to-search guards.
+    if (!mask || unreachable.length === 0) return;
+    const boundMask = mask;
+    let cancelled = false;
+    let cancelIdle: (() => void) | null = null;
+    const working = new Map<string, LowerSettingHintOutcome>();
+
+    function step(index: number, resumeFromDepthM: number | undefined): void {
+      if (cancelled || index >= unreachable.length) return;
+      const scheduled = scheduleIdle(() => {
+        if (cancelled) return;
+        const harbor = unreachable[index]!;
+        const outcome = findLowerSettingHint(
+          boundMask,
+          harbor,
+          boat,
+          resumeFromDepthM ?? depthM,
+          HINT_STEPS_PER_SLICE,
+        );
+        working.set(harbor.id, outcome);
+        setHints(new Map(working));
+        if (outcome.kind === 'exhausted') step(index, outcome.resumeFromDepthM);
+        else step(index + 1, undefined);
+      });
+      cancelIdle = scheduled.cancel;
+    }
+    step(0, undefined);
+
+    return () => {
+      cancelled = true;
+      cancelIdle?.();
+    };
+  }, [mask, boat, depthM, unreachable]);
+
+  return hints;
+}
+
+/**
+ * §5.1: one line for the harbour-access disclosure's summary (or the
+ * no-disclosure/pending states) AND for the merged boat-switch announcement
+ * below — both name the same fact, so they share this composer rather than
+ * drifting into two phrasings of "N affected at X m". `null` count means the
+ * derivation has not run yet (mask/harbors not loaded, or — for a
+ * non-selected boat — its own deferred computation hasn't fired); `isDefault`
+ * appends `boat.harbors.summaryDefault` for every row EXCEPT the announcement
+ * and the selected boat's own row, both of which are always at the LIVE
+ * setting (§12 Q7).
+ */
+function harborAccessSummaryText(
+  count: number | null,
+  depthM: number,
+  lang: Lang,
+  t: TFunction,
+  isDefault: boolean,
+): string {
+  const depth = formatDepthM(depthM, lang);
+  if (count === null) return t('boat.harbors.pending');
+  const suffix = isDefault ? ` ${t('boat.harbors.summaryDefault')}` : '';
+  const body =
+    count === 0
+      ? t('boat.harbors.noneAffected', { depth })
+      : t('boat.harbors.summary', { count, depth });
+  return `${body}${suffix}`;
+}
+
+/** #1321: the per-harbour qualifier appended to each name inside
+ * `boat.harbors.unreachable`'s `{list}` — `undefined`/`'exhausted'` both
+ * render as still-checking, since a caller must never surface an
+ * intermediate `resumeFromDepthM` state as if it were a final answer. */
+function harborHintSuffix(
+  outcome: LowerSettingHintOutcome | undefined,
+  lang: Lang,
+  t: TFunction,
+): string {
+  if (!outcome || outcome.kind === 'exhausted') return t('boat.harbors.hintPending');
+  if (outcome.kind === 'found') {
+    return t('boat.harbors.hintFound', { depth: formatDepthM(outcome.hint.depthM, lang) });
+  }
+  return t('boat.harbors.hintNotFound');
+}
 
 export interface BoatPickerProps {
   boatId: BoatId;
@@ -21,25 +236,76 @@ export interface BoatPickerProps {
 }
 
 /**
- * What the spec C.7 clamp changed, captured for the status announcement.
- * Carries BOTH endpoints (not just the raised-to value) so #1292 can later
- * compose this into one combined live-region message alongside a harbour-
- * access announcement without re-deriving the "raised from X to Y" phrase
- * from `settings`/`nextBoat` at that call site.
+ * The merged boat-switch announcement (maintainer ruling on #1292, 2026-09-17):
+ * boat, then the raised depth if any, then this boat's harbour access — ONE
+ * `role="status"` message, never two. `clamp` carries BOTH endpoints (#1293's
+ * original reason for the shape) though only `toM` reaches `boat.clamp.notice`
+ * today; `null` means spec C.7 did not fire on this switch, so the composer
+ * below skips that clause entirely rather than reporting a change that did
+ * not happen.
  */
 interface ClampNotice {
-  fromM: number;
-  toM: number;
   boatName: string;
+  clamp: { fromM: number; toM: number } | null;
+  /** The depth ACTUALLY used to compute `accessCount` below — the CLAMPED
+   * value when `clamp` is set, otherwise the live setting this switch found
+   * unchanged. #1292 ordering rule: this is read AFTER the clamp decision in
+   * `handleSelect`, never `settings.safetyDepthM` from before it — reading
+   * pre-clamp here would announce the wrong boat's access at a depth the
+   * app never actually applies (spec C.7 clamps UP before anything else
+   * runs). */
+  depthM: number;
+  /** `null` = harbour access could not be computed yet (mask/harbors not
+   * loaded) — composes as `boat.harbors.pending`, never a silent 0. */
+  accessCount: number | null;
+}
+
+function composeSwitchAnnouncement(notice: ClampNotice, lang: Lang, t: TFunction): string {
+  const parts = [t('boat.switch.selected', { boat: notice.boatName })];
+  if (notice.clamp) {
+    parts.push(
+      t('boat.clamp.notice', {
+        depth: formatDepthM(notice.clamp.toM, lang),
+        boat: notice.boatName,
+      }),
+    );
+  }
+  parts.push(harborAccessSummaryText(notice.accessCount, notice.depthM, lang, t, false));
+  return parts.join(' ');
+}
+
+/** Count of harbours affected for one (boat, depth) pair — `shallow-approach`
+ * plus `unreachable`, `known-disconnected` EXCLUDED because that state is a
+ * per-HARBOUR fact (already marked in the harbor picker's #652 marker),
+ * independent of this boat's draft or depth setting; §5.1's "nothing
+ * affected beyond known-disconnected" one-line/no-disclosure case is exactly
+ * this exclusion. */
+function countAffectedHarbors(
+  access: HarborAccessByHarbor,
+  harbors: readonly HarborWithReachability[],
+): number {
+  let n = 0;
+  for (const h of harbors) {
+    const state = access.get(h.id);
+    if (state === 'shallow-approach' || state === 'unreachable') n++;
+  }
+  return n;
 }
 
 interface BoatOptionProps {
   boat: BoatDef;
   selected: boolean;
   onSelect: () => void;
+  mask: NavMask | null;
+  harbors: HarborWithReachability[] | null;
+  /** `settings.safetyDepthM` — used only when `selected` (§12 Q7); every
+   * other row uses its OWN `defaultSafetyDepthM`, never this value (§6's
+   * rejected "one derivation for every boat at the live setting" option,
+   * which would under-mark a deeper boat by a shallower boat's setting). */
+  liveDepthM: number;
 }
 
-function BoatOption({ boat, selected, onSelect }: BoatOptionProps) {
+function BoatOption({ boat, selected, onSelect, mask, harbors, liveDepthM }: BoatOptionProps) {
   const t = useT();
   const [lang] = useLang();
   const tier = weakestPolarTier(boat);
@@ -51,6 +317,35 @@ function BoatOption({ boat, selected, onSelect }: BoatOptionProps) {
   // comment on that paragraph), so it must always be in the description
   // list, not just when `keelUnverified`.
   const noteId = `${inputId}-note`;
+  // #1292: this boat's own harbour-access disclosure id, joined into the
+  // radio's `aria-describedby` below just like `noteId` — it renders
+  // UNCONDITIONALLY (pending, one-line, or the full disclosure), so it is
+  // always in the description list.
+  const harborsId = `${inputId}-harbors`;
+  const depthM = selected ? liveDepthM : defaultSafetyDepthM(boat);
+  const access = useHarborAccessForOption(mask, harbors, boat, depthM, selected);
+  const { shallow, unreachable, affectedCount } = useMemo(() => {
+    if (!access || !harbors) {
+      return {
+        shallow: [] as HarborWithReachability[],
+        unreachable: [] as HarborWithReachability[],
+        affectedCount: 0,
+      };
+    }
+    const shallowList: HarborWithReachability[] = [];
+    const unreachableList: HarborWithReachability[] = [];
+    for (const h of harbors) {
+      const state = access.get(h.id);
+      if (state === 'shallow-approach') shallowList.push(h);
+      else if (state === 'unreachable') unreachableList.push(h);
+    }
+    return {
+      shallow: shallowList,
+      unreachable: unreachableList,
+      affectedCount: shallowList.length + unreachableList.length,
+    };
+  }, [access, harbors]);
+  const hints = useLowerSettingHints(mask, boat, depthM, unreachable);
   // Spec N.2's disclosure fires on `hullVerified === false`, i.e. "this draft
   // was NOT checked against this hull's own papers" — not on the presence of
   // a field. `draftProvenance` is REQUIRED on every BoatDef, so a fleet entry
@@ -66,7 +361,12 @@ function BoatOption({ boat, selected, onSelect }: BoatOptionProps) {
   // omitted entirely on a hull-verified boat (today only the Salona 45), so
   // the citation was unreachable to a screen-reader user who arrows onto it.
   const keelDescribedBy = {
-    'aria-describedby': keelUnverified ? `${keelId} ${noteId}` : noteId,
+    // #1292: `harborsId` joins the list UNCONDITIONALLY, alongside `noteId`
+    // — arrowing onto this boat must announce its harbour-access count the
+    // same way it already announces the provenance note.
+    'aria-describedby': keelUnverified
+      ? `${keelId} ${noteId} ${harborsId}`
+      : `${noteId} ${harborsId}`,
   };
   return (
     <div
@@ -175,6 +475,52 @@ function BoatOption({ boat, selected, onSelect }: BoatOptionProps) {
       <p className="boat-option-draft-note" id={noteId} lang="en">
         {boat.draftProvenance.note}
       </p>
+      {/* #1292 (#1135 §5.1/§13 item 3): per-boat harbour access. THREE render
+          states, in this order: PENDING while `mask`/`harbors` haven't
+          loaded yet, or — for a non-selected boat — before its own deferred
+          derivation has run (§9: computing all three boats synchronously up
+          front could cost ~1s each, so a non-selected row's own
+          `computeHarborAccess` call is deferred to an idle tick); a ONE-LINE
+          no-disclosure summary when nothing beyond `known-disconnected` is
+          affected (§5.1 explicitly rejects wrapping that in a `Disclosure`
+          with nothing to expand into); and the full disclosure once >=1
+          harbour is `shallow-approach`/`unreachable`. Wrapped in a `<div
+          id={harborsId}>` rather than passing an id to `Disclosure` itself
+          (which accepts no such prop) — whichever of the three states is
+          showing is what the radio's `aria-describedby` above reaches; a
+          closed `<details>`'s body drops out of the accessibility tree
+          regardless, so this reaches exactly the SUMMARY text either way. */}
+      <div id={harborsId}>
+        {access === null ? (
+          <p className="boat-option-harbors">{t('boat.harbors.pending')}</p>
+        ) : affectedCount === 0 ? (
+          <p className="boat-option-harbors">
+            {harborAccessSummaryText(0, depthM, lang, t, !selected)}
+          </p>
+        ) : (
+          <Disclosure
+            className="boat-option-harbors"
+            summary={harborAccessSummaryText(affectedCount, depthM, lang, t, !selected)}
+          >
+            {shallow.length > 0 && (
+              <p>
+                {t('boat.harbors.shallow', {
+                  list: shallow.map((h) => h.names[lang]).join(', '),
+                })}
+              </p>
+            )}
+            {unreachable.length > 0 && (
+              <p>
+                {t('boat.harbors.unreachable', {
+                  list: unreachable
+                    .map((h) => `${h.names[lang]} (${harborHintSuffix(hints.get(h.id), lang, t)})`)
+                    .join(', '),
+                })}
+              </p>
+            )}
+          </Disclosure>
+        )}
+      </div>
       <Disclosure className="boat-option-polars" summary={t('boat.polarDetail.summary')}>
         <ul className="boat-option-sails">
           {boat.sails.map((sail) => (
@@ -236,6 +582,11 @@ export default function BoatPicker({
   const [lang] = useLang();
   const [notice, setNotice] = useState<ClampNotice | null>(null);
   const noticeRef = useRef<HTMLParagraphElement>(null);
+  // #1292: loaded once here, shared by every BoatOption row AND `handleSelect`'s
+  // own announcement — see `useNavMask`/`useHarborsAsset`'s own comments for
+  // why this needs no new prop from SettingsPanel/App.tsx.
+  const mask = useNavMask();
+  const harbors = useHarborsAsset();
   // #746: keyed on the CURRENTLY SELECTED boat, so a switch swaps the field's
   // value in the same commit that swaps the selection — the hook re-reads
   // during render rather than in an effect, for the reason its own comment
@@ -269,8 +620,13 @@ export default function BoatPicker({
   // notice already sits fully in view with nothing to visibly scroll past,
   // and no tool available here captures frame-level paint timing to show
   // the difference on a card that DOES overflow.
+  // #1292: gated on `notice?.clamp`, not on `notice` being non-null — the
+  // merged announcement now sets `notice` on EVERY switch (clamped or not),
+  // where before #1292 an unclamped switch left `notice` `null` and this
+  // effect's own `if (notice)` never fired. #699's "only when clamped"
+  // requirement is unchanged; only the condition that expresses it moved.
   useLayoutEffect(() => {
-    if (notice) noticeRef.current?.scrollIntoView?.({ block: 'nearest' });
+    if (notice?.clamp) noticeRef.current?.scrollIntoView?.({ block: 'nearest' });
   }, [notice]);
 
   function handleSelect(nextId: BoatId): void {
@@ -281,19 +637,26 @@ export default function BoatPicker({
     // not ours to shrink, and `clampSettingsToBoat` is what enforces that;
     // this call site must not second-guess its `clamped` verdict.
     const { settings: clampedSettings, clamped } = clampSettingsToBoat(settings, nextBoat);
-    if (clamped) {
-      onSettingsChange(clampedSettings);
-      setNotice({
-        fromM: settings.safetyDepthM,
-        toM: clampedSettings.safetyDepthM,
-        boatName: nextBoat.name,
-      });
-    } else {
-      // A later switch that needs no clamp must not leave the previous
-      // switch's notice standing beside it, claiming a change that this
-      // selection did not make.
-      setNotice(null);
-    }
+    if (clamped) onSettingsChange(clampedSettings);
+
+    // #1292 ORDERING RULE: recompute harbour access AFTER the clamp decision
+    // above, at the depth THIS switch actually applies — the clamped value
+    // when `clamped`, the unchanged live setting otherwise. Reading
+    // `settings.safetyDepthM` here unconditionally would show the newly
+    // selected boat's access at its PRE-clamp depth, which the app never
+    // actually plans at (spec C.7 raises it before anything else runs).
+    const depthM = clamped ? clampedSettings.safetyDepthM : settings.safetyDepthM;
+    const accessCount =
+      mask && harbors
+        ? countAffectedHarbors(computeHarborAccess(mask, harbors, nextBoat, depthM), harbors)
+        : null;
+
+    setNotice({
+      boatName: nextBoat.name,
+      clamp: clamped ? { fromM: settings.safetyDepthM, toM: clampedSettings.safetyDepthM } : null,
+      depthM,
+      accessCount,
+    });
     onBoatIdChange(nextId);
 
     // Native radios select on arrow-key focus, so arrowing THROUGH a deeper
@@ -324,6 +687,9 @@ export default function BoatPicker({
             boat={b}
             selected={b.id === boatId}
             onSelect={() => handleSelect(b.id)}
+            mask={mask}
+            harbors={harbors}
+            liveDepthM={settings.safetyDepthM}
           />
         ))}
       </div>
@@ -335,12 +701,7 @@ export default function BoatPicker({
           tree and lose the announcement — see that rule's own comment, and
           test/boatPickerNoticeLiveRegion.test.ts, which pins it. */}
       <p className="boat-picker-notice" role="status" ref={noticeRef}>
-        {notice
-          ? t('boat.clamp.notice', {
-              depth: formatDepthM(notice.toM, lang),
-              boat: notice.boatName,
-            })
-          : null}
+        {notice ? composeSwitchAnnouncement(notice, lang, t) : null}
       </p>
       {/* #746. The own-vessel MMSI, scoped to the SELECTED boat. It sits here
           rather than in the Live & AIS card because a field that must follow

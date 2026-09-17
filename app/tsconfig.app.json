@@ -184,6 +184,7 @@
     "src/**/timeoutBudgetVsJobCap.test.ts",
     "src/**/regionManifest.test.ts",
     "src/**/regionConstantsTwin.test.ts",
-    "src/**/harborReachability.test.ts"
+    "src/**/harborReachability.test.ts",
+    "src/**/BoatPicker.harborAccess.test.tsx"
   ]
 }
