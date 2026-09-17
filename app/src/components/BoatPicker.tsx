@@ -20,9 +20,16 @@ export interface BoatPickerProps {
   onSettingsChange: (s: Settings) => void;
 }
 
-/** What the spec C.7 clamp changed, captured for the status announcement. */
+/**
+ * What the spec C.7 clamp changed, captured for the status announcement.
+ * Carries BOTH endpoints (not just the raised-to value) so #1292 can later
+ * compose this into one combined live-region message alongside a harbour-
+ * access announcement without re-deriving the "raised from X to Y" phrase
+ * from `settings`/`nextBoat` at that call site.
+ */
 interface ClampNotice {
-  depthM: number;
+  fromM: number;
+  toM: number;
   boatName: string;
 }
 
@@ -276,7 +283,11 @@ export default function BoatPicker({
     const { settings: clampedSettings, clamped } = clampSettingsToBoat(settings, nextBoat);
     if (clamped) {
       onSettingsChange(clampedSettings);
-      setNotice({ depthM: clampedSettings.safetyDepthM, boatName: nextBoat.name });
+      setNotice({
+        fromM: settings.safetyDepthM,
+        toM: clampedSettings.safetyDepthM,
+        boatName: nextBoat.name,
+      });
     } else {
       // A later switch that needs no clamp must not leave the previous
       // switch's notice standing beside it, claiming a change that this
@@ -326,7 +337,7 @@ export default function BoatPicker({
       <p className="boat-picker-notice" role="status" ref={noticeRef}>
         {notice
           ? t('boat.clamp.notice', {
-              depth: formatDepthM(notice.depthM, lang),
+              depth: formatDepthM(notice.toM, lang),
               boat: notice.boatName,
             })
           : null}

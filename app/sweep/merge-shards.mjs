@@ -8,9 +8,10 @@
  *   node app/sweep/merge-shards.mjs <mergedOutDir> <shardDir1> [<shardDir2> ...]
  *
  * Each `<shardDirK>` is one `SC_SWEEP_SHARD` invocation's `SC_SWEEP_OUT` —
- * it holds, for every arm, a `<label>.shard<i>of<n>.json` (+
- * `.timings.json`) pair for THAT invocation's shard index `i` of `n`
- * (`sweepArms.ts`'s `armFileBase`). This script unions the `n` part files
+ * it holds, for every arm, a `<label>.shard<i>of<n>.limit<limit>.json` (+
+ * `.timings.json`) pair for THAT invocation's shard index `i` of `n`, run
+ * under `SC_SWEEP_LIMIT=<limit>` (`0` when unset) (`sweepArms.ts`'s
+ * `armFileBase`). This script unions the `n` part files
  * per arm, reassembles the rows in `harbors.json`'s own order — the SAME
  * order an unsharded `runArm()` inserts them in, since it iterates
  * `harbors` in file order and the shard filter preserves each destination's
@@ -20,15 +21,17 @@
  * at the same commit would have written. `compare.mjs` needs no changes —
  * point it at `<mergedOutDir>` like any other sweep output directory; never
  * at a shard directory directly (its own arm-name check correctly rejects
- * `<label>.shard<i>of<n>` as an arm name not in `armNames.ts`).
+ * `<label>.shard<i>of<n>.limit<limit>` as an arm name not in `armNames.ts`).
  *
  * Fails CLOSED on: a missing shard index for some arm, two shard files
- * disagreeing on the total shard count `n`, the same harbour id appearing
- * in more than one shard for one arm (double-counted), an arm present in
- * some shard directories but absent from others, an arm not in
- * `armNames.ts`, or a harbour id in the shard output that the CURRENT
- * `harbors.json` no longer lists (a stale shard run against a moved
- * harbour list — silently dropping it would understate the merged arm).
+ * disagreeing on the total shard count `n`, two shard files disagreeing on
+ * the `SC_SWEEP_LIMIT` they were run under (#1283 — see the filename comment
+ * below), the same harbour id appearing in more than one shard for one arm
+ * (double-counted), an arm present in some shard directories but absent
+ * from others, an arm not in `armNames.ts`, or a harbour id in the shard
+ * output that the CURRENT `harbors.json` no longer lists (a stale shard run
+ * against a moved harbour list — silently dropping it would understate the
+ * merged arm).
  *
  * Requires Node >= 22.18, same floor as `compare.mjs` and for the same
  * reason (`armNames.ts`'s own doc comment: unflagged `.ts` type-stripping
@@ -49,24 +52,46 @@ if (!outDir || shardDirs.length === 0) {
   process.exit(2);
 }
 
-const SHARD_FILE_RE = /^(.+)\.shard(\d+)of(\d+)\.json$/;
+// #1283: `.limit<n>` is REQUIRED on every shard part filename —
+// `sweepArms.ts`'s `armFileBase` always writes it for a sharded run (`n` is
+// literally `SC_SWEEP_LIMIT`, 0 meaning unset/full), so a filename lacking
+// it is either pre-#1283 tooling output or something else entirely; either
+// way it falls through to the "no shard files found" check below rather
+// than being merged blind to what limit produced it.
+const SHARD_FILE_RE = /^(.+)\.shard(\d+)of(\d+)\.limit(\d+)\.json$/;
 
 // arm label -> shard index -> { rows, timings }
 const byArm = new Map();
 let expectedShardCount = null;
+let expectedLimit = null;
 
 for (const dir of shardDirs) {
   for (const f of readdirSync(dir)) {
     const m = SHARD_FILE_RE.exec(f);
     if (!m) continue; // ignores *.timings.json siblings and anything else
-    const [, label, idxStr, countStr] = m;
+    const [, label, idxStr, countStr, limitStr] = m;
     const idx = Number(idxStr);
     const count = Number(countStr);
+    const limit = Number(limitStr);
     if (expectedShardCount === null) {
       expectedShardCount = count;
     } else if (count !== expectedShardCount) {
       console.error(
         `FAIL: shard-count mismatch — ${dir}/${f} says ${count} but an earlier file said ${expectedShardCount}`,
+      );
+      process.exit(1);
+    }
+    // #1283: the residual this closes — one shard directory run under one
+    // SC_SWEEP_LIMIT and another under a different one used to merge at
+    // exit 0 with a plausible-looking but wrong row count, because the
+    // cross-arm row-count check below only compares arms to EACH OTHER and
+    // both directories agreed with themselves. The limit is now load-bearing
+    // config carried in the filename, so a mismatch fails here directly.
+    if (expectedLimit === null) {
+      expectedLimit = limit;
+    } else if (limit !== expectedLimit) {
+      console.error(
+        `FAIL: shard-limit mismatch — ${dir}/${f} says SC_SWEEP_LIMIT=${limit} but an earlier file said ${expectedLimit}`,
       );
       process.exit(1);
     }
@@ -91,7 +116,7 @@ for (const dir of shardDirs) {
 
 if (byArm.size === 0) {
   console.error(
-    'FAIL: no `<label>.shard<i>of<n>.json` files found in any given directory — wrong path, or an unsharded run?',
+    'FAIL: no `<label>.shard<i>of<n>.limit<limit>.json` files found in any given directory — wrong path, or an unsharded run?',
   );
   process.exit(1);
 }

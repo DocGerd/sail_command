@@ -224,6 +224,7 @@ def load_catalogue_boats() -> list[dict]:
 
 CATALOGUE_BOATS = load_catalogue_boats()
 CATALOGUE_GATE_DM = {dm(b["gateM"]) for b in CATALOGUE_BOATS}
+CATALOGUE_BOAT_IDS = {b["id"] for b in CATALOGUE_BOATS}
 
 # ---- Connectivity gate (issue #6) ----
 # A harbor snap can sit on an individually-navigable cell (checked above) yet
@@ -312,6 +313,24 @@ KNOWN_DISCONNECTED: dict[str, str] = {
     "dyvig": "~30 m buoyed channel narrower than one 46 m cell - issue #9",
     "graasten": "Egernsund bascule bridge deck land-rasterized - issue #9",
 }
+
+# ---- Per-boat expected-unreachable harbours (#1294, spec 1135 section 13 item 5) ----
+# KNOWN_DISCONNECTED above means "unreachable at EVERY gate this mask can
+# express" - a data limitation, boat-independent. This table is the
+# boat-SPECIFIC counterpart: a harbour that a shallower boat reaches fine but
+# THIS boat's own derived gate cuts off, because the boat's draft genuinely
+# cannot get there - not a data defect. Prerequisite for #573 landing a
+# deep-draft hull without every one of its stranded harbours reading as a
+# mask regression.
+#
+# Keyed by BOAT id (not by gate, unlike CONNECTIVITY_EXCEPTIONS_M): an entry
+# says nothing about any other boat. Checked for EXACTNESS below (both
+# directions enforced in the per-boat loop) - a harbour genuinely unreachable
+# for a boat that is NOT listed here fails as an undocumented regression, and
+# a LISTED harbour that turns out reachable at that boat's gate fails as a
+# stale entry. So today's empty table is not a loophole: it commits every
+# catalogue boat to reaching every harbour it does today.
+EXPECTED_UNREACHABLE_BY_BOAT: dict[str, list[str]] = {}
 
 # Flag any harbor whose snap cell clears its own gate by less than this. A
 # binary gate cannot see a harbor that passes with nothing to spare, and two
@@ -410,6 +429,30 @@ for hid, reason in KNOWN_DISCONNECTED.items():
             "the entry claims it is disconnected at every gate and it is not; remove it"
         )
 
+# #1294: EXPECTED_UNREACHABLE_BY_BOAT structural validation - boat id and
+# harbour id must be real, and a harbour already boat-independently
+# KNOWN_DISCONNECTED needs no per-boat entry too. The stronger EXACTNESS
+# checks (does the boat actually fail to reach it, is a listed harbour still
+# genuinely unreachable) run per-boat below, where the effective gate is known.
+for _bid, _hids in EXPECTED_UNREACHABLE_BY_BOAT.items():
+    if _bid not in CATALOGUE_BOAT_IDS:
+        failures.append(
+            f"EXPECTED_UNREACHABLE_BY_BOAT lists boat '{_bid}', which is not in the catalogue "
+            "(polars-source.json) - remove the stale entry or add the boat"
+        )
+    for _hid in _hids:
+        if _hid not in DEEPEST_CONNECTING_GATE_M:
+            failures.append(
+                f"EXPECTED_UNREACHABLE_BY_BOAT['{_bid}'] lists '{_hid}', which is not a harbor in "
+                "harbors.json - remove the stale entry"
+            )
+        elif _hid in KNOWN_DISCONNECTED:
+            failures.append(
+                f"EXPECTED_UNREACHABLE_BY_BOAT['{_bid}'] lists '{_hid}', which is already in "
+                "KNOWN_DISCONNECTED (disconnected at every gate, boat-independent) - remove the "
+                "redundant per-boat entry"
+            )
+
 # #652: harbors.json's `knownDisconnected` field (build_harbors.mjs, sourced
 # from this same KNOWN_DISCONNECTED dict) must name EXACTLY these ids - the
 # harbor picker discloses it before a solve, so a stale field would either
@@ -442,6 +485,7 @@ for b in CATALOGUE_BOATS:
         raise AssertionError(f"connectivity seed ({SEED_LAT},{SEED_LON}) is not itself navigable at {gate_m} m")
     print(f"open-water seed component: {seed_cells} cells at >= {gate_m} m")
 
+    expected_unreachable = set(EXPECTED_UNREACHABLE_BY_BOAT.get(b["id"], []))
     connectivity_report = []
     for h in harbors:
         hid = h["id"]
@@ -467,27 +511,44 @@ for b in CATALOGUE_BOATS:
                     f"CONNECTIVITY {hid} is now connected at gate depth {effective_gate_m} m but is still listed "
                     f"in KNOWN_DISCONNECTED ({KNOWN_DISCONNECTED[hid]}) - remove the stale entry"
                 )
+            elif hid in expected_unreachable:
+                # #1294 EXACTNESS, stale direction: the entry claims this
+                # boat cannot reach {hid} and it can - the entry no longer
+                # documents reality.
+                status = "FAIL"
+                failures.append(
+                    f"EXPECTED_UNREACHABLE_BY_BOAT['{b['id']}'] lists {hid} but it reaches open water at "
+                    f"gate {effective_gate_m} m for this boat - remove the stale entry"
+                )
         elif hid in KNOWN_DISCONNECTED:
             status = "KNOWN"
+        elif hid in expected_unreachable:
+            # #1294 EXACTNESS, accept direction: a per-boat expected gap, not
+            # a data defect - this is the only status EXPECTED_UNREACHABLE_BY_BOAT
+            # entries can produce without an accompanying failure.
+            status = "EXPECT"
         else:
             status = "FAIL"
             failures.append(
                 f"CONNECTIVITY {hid} snap ({h['snap']['lat']},{h['snap']['lon']}) not reachable from open "
-                f"water at gate depth {effective_gate_m} m (boat {b['id']}, derived gate {gate_m} m)"
+                f"water at gate depth {effective_gate_m} m (boat {b['id']}, derived gate {gate_m} m) - "
+                "add an EXPECTED_UNREACHABLE_BY_BOAT entry if this boat's draft genuinely cannot reach it"
             )
         connectivity_report.append((hid, effective_gate_m, exception_m is not None, status))
 
     n_connected = sum(1 for _, _, _, status in connectivity_report if status == "OK")
     n_known = sum(1 for _, _, _, status in connectivity_report if status == "KNOWN")
+    n_expected = sum(1 for _, _, _, status in connectivity_report if status == "EXPECT")
     n_exceptions = sum(1 for _, _, is_exc, status in connectivity_report if status == "OK" and is_exc)
     print(
         f"connectivity: {n_connected}/{len(connectivity_report)} harbors reach open water "
-        f"({n_exceptions} via exception, {n_known} known-disconnected and tracked)"
+        f"({n_exceptions} via exception, {n_known} known-disconnected and tracked, "
+        f"{n_expected} expected-unreachable for this boat)"
     )
     for hid, effective_gate_m, is_exc, status in connectivity_report:
         exc = f" (exception @ {effective_gate_m} m)" if is_exc and status == "OK" else ""
         known = f" [{KNOWN_DISCONNECTED[hid]}]" if hid in KNOWN_DISCONNECTED else ""
-        print(f"  {status:5} {hid}{exc}{known}")
+        print(f"  {status:6} {hid}{exc}{known}")
 
     # Snap-cell margin. A harbor can pass the binary gate above with nothing to
     # spare; aabenraa and augustenborg both do, at exactly 0.0 m. Reported, not
@@ -497,7 +558,7 @@ for b in CATALOGUE_BOATS:
     margins = [
         (hid, harbor_snap_depth_m[hid], eff, round(harbor_snap_depth_m[hid] - eff, 1))
         for hid, eff, _, status in connectivity_report
-        if status != "KNOWN"
+        if status not in ("KNOWN", "EXPECT")
     ]
     low = [m for m in margins if m[3] < SNAP_MARGIN_FLOOR_M]
     print(f"snap-cell margin below {SNAP_MARGIN_FLOOR_M} m: {len(low)} of {len(margins)} scanned harbors")

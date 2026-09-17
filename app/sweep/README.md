@@ -450,11 +450,12 @@ node app/sweep/compare.mjs /tmp/sweep/base1 /tmp/sweep/head
 The split is `idx % count`, applied AFTER `SC_SWEEP_LIMIT` — so a
 `SC_SWEEP_LIMIT`-truncated calibration run can still be sharded, and each
 destination keeps its relative position from `harbors.json`. Each shard's
-output filename is `<label>.shard<i>of<count>.json` (`sweepArms.ts`'s
-`armFileBase`), never `<label>.json` — `compare.mjs`'s own arm-name check
-would (correctly) reject a shard part file pointed at directly, since its
-name is not in `armNames.ts`. **Never point `compare.mjs` at a shard
-directory** — always merge first.
+output filename is `<label>.shard<i>of<count>.limit<limit>.json`
+(`sweepArms.ts`'s `armFileBase`; `<limit>` is the literal `SC_SWEEP_LIMIT`
+value that invocation ran under, `0` when unset), never `<label>.json` —
+`compare.mjs`'s own arm-name check would (correctly) reject a shard part file
+pointed at directly, since its name is not in `armNames.ts`. **Never point
+`compare.mjs` at a shard directory** — always merge first.
 
 `merge-shards.mjs` reassembles the parts in `harbors.json`'s own order — the
 same order an unsharded `runArm()` inserts rows in — using the identical
@@ -465,10 +466,12 @@ directory is therefore BYTE-IDENTICAL to what one unsharded run at the same
 commit would have written; sharding changes WHICH destinations a process
 solves and WHERE it writes them, never `T0`, `settings`, `wind()`, the
 origin, or the serialized bytes — the baseline-identity parameters named
-below are untouched. It fails CLOSED on a missing shard, a harbour
-double-counted across shards, an incomplete arm set, or a harbour id the
-CURRENT `harbors.json` no longer lists — see its own header comment for the
-full list. `sweep/merge-shards.test.mjs` (run via `npm --prefix app run
+below are untouched. It fails CLOSED on a missing shard, two shards run under
+DIFFERENT `SC_SWEEP_LIMIT` values (#1283 — the limit lives in the filename
+precisely so this is a filename-level check, not an inferred one), a
+harbour double-counted across shards, an incomplete arm set, or a harbour id
+the CURRENT `harbors.json` no longer lists — see its own header comment for
+the full list. `sweep/merge-shards.test.mjs` (run via `npm --prefix app run
 test:sweep-unit`, in CI's required `app` job) mutation-checks the ordering
 claim and the fail-closed paths against synthetic fixtures; it cannot
 substitute for the empirical BASE double-run above, which still needs a real
