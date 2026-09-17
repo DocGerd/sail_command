@@ -195,6 +195,12 @@
   // CORE_REGION_ID/REGION_ARCHIVE_FILENAME_RE/emitted-manifest-filename
   // literals stay in sync with basemapRegions.ts's exports — same reason and
   // pattern as regionManifest.test.ts above.
+  // harborReachability.test.ts (#1290): reads pipeline/verify_mask.py (its
+  // SEED_LAT/SEED_LON literal) AND the real shipped mask.bin/mask.meta.json/
+  // harbors.json via `node:fs`, to differentially test the #1290 per-boat
+  // harbour-access derivation against NavMask.cellsConnected and against the
+  // design doc's own independently-measured §3 table — same reason and
+  // pattern as verifyMaskConnectivity.test.ts above.
   "include": [
     "src/**/startPreviewSwAssertCallSites.test.ts",
     "src/**/basemapArchiveRoute.test.ts",
@@ -234,6 +240,7 @@
     "src/**/timeoutBudgetVsJobCap.test.ts",
     "src/**/regionManifest.test.ts",
     "src/**/regionConstantsTwin.test.ts",
+    "src/**/harborReachability.test.ts",
     "sweep/**/*.ts"
   ]
 }
