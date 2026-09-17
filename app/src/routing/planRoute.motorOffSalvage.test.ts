@@ -783,4 +783,39 @@ describe('#1258 cause fold after a requested-gate horizon failure', () => {
     expect(record.cause).toBe('horizon-exceeded');
     expect(result).toEqual({ status: 'error', reason: 'beyond-horizon' });
   });
+
+  // Comfort off: tier 3 fails and tier 4 never runs, so this reaches the tier-3
+  // fold site the test above cannot.
+  it('comfort off (tiers 1, 3): keeps beyond-horizon and admits no pass 2', () => {
+    script({
+      'p1:req:none:genoa': fail('horizon-exceeded'),
+      'p1:req:none:fock': fail('horizon-exceeded'),
+      'p1:rel:none:genoa': fail('mask-blocked'),
+      'p1:rel:none:fock': fail('mask-blocked'),
+    });
+    relaxMock.mockReturnValue(RELAXED);
+    const { result, record } = plan({ ...MOTOR_OFF, depthComfortMarginM: 0 });
+    expect(record.tiers.map((t) => t.tier)).toEqual([1, 3]);
+    expect(pass2Keys()).toEqual([]);
+    expect(record.cause).toBe('horizon-exceeded');
+    expect(result).toEqual({ status: 'error', reason: 'beyond-horizon' });
+  });
+
+  // Ruling M3 on PR #1299: a budget cut inside the speculative relaxed tier
+  // keeps the requested gate's horizon verdict, not search-budget-exceeded.
+  it('a relaxed tier cut by the budget keeps beyond-horizon', () => {
+    script({
+      'p1:req:c5:genoa': fail('horizon-exceeded'),
+      'p1:req:c5:fock': fail('horizon-exceeded'),
+      'p1:req:none:genoa': fail('horizon-exceeded'),
+      'p1:req:none:fock': fail('horizon-exceeded'),
+      'p1:rel:c5:genoa': fail('budget-exhausted'),
+      'p1:rel:c5:fock': fail('budget-exhausted'),
+    });
+    relaxMock.mockReturnValue(RELAXED);
+    const { result, record } = plan(MOTOR_OFF, 'open', NOT_EXPIRED);
+    expect(record.tiers.map((t) => t.tier)).toEqual([1, 2, 3]);
+    expect(record.cause).toBe('horizon-exceeded');
+    expect(result).toEqual({ status: 'error', reason: 'beyond-horizon' });
+  });
 });

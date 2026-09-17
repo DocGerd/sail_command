@@ -178,6 +178,22 @@ export function combineAllCauses(sails: readonly RunOut[]): SolveFailureCause {
   );
 }
 
+/**
+ * #1258: the plan-level cause after a relaxed tier failed, folded with the
+ * requested-gate cause. `combineFailureCause('mask-blocked', x) === x`, so
+ * every pre-#1258 path is unchanged. One cell differs from that fold
+ * (maintainer ruling M3 on PR #1299): a requested-gate horizon failure whose
+ * speculative relaxed tier ran out of budget keeps 'horizon-exceeded', the
+ * verdict the requested gate actually proved.
+ */
+function relaxedPlanCause(
+  requested: SolveFailureCause,
+  relaxed: SolveFailureCause,
+): SolveFailureCause {
+  if (requested === 'horizon-exceeded' && relaxed === 'budget-exhausted') return requested;
+  return combineFailureCause(requested, relaxed);
+}
+
 // #259: an ETA gap smaller than this is measurement noise, not a genuine
 // speed difference between rigs — 23.8x the worst knife-edge measured to date
 // (2.52 s at the sail-speed floor's 3.8 kn boundary, see the motor-decision-rule
@@ -275,7 +291,7 @@ export function comfortRetryMayHelp(cause: SolveFailureCause): boolean {
  * Note this exclusion alone does NOT cover the case where tiers 1-2 spend
  * the whole budget and still finish with a genuine 'mask-blocked' or
  * 'horizon-exceeded' verdict —
- * the cause is then honestly mask-blocked, this gate opens, and
+ * the cause is then honestly that cause, this gate opens, and
  * `findRelaxedGate`'s BFS probes would run past the deadline. That gap is
  * closed by an explicit deadline check immediately before the relaxation
  * block, not here.
@@ -301,9 +317,10 @@ export interface Pass1Record {
   tiers: TierRecord[];
   /**
    * The plan-level cause at pass 1's final error return: `tier1[0]?.cause` /
-   * `tier2[0]?.cause` when tiers 3–4 did not run, else `combineAllCauses` of
-   * tier 4 or 3. Null on every other return (`ok`, snap failures, the
-   * pre-relaxation deadline exit).
+   * `tier2[0]?.cause` when tiers 3–4 did not run, else `relaxedPlanCause` of
+   * that requested cause and `combineAllCauses` of tier 4 or 3 (#1258). Null
+   * on every other return (`ok`, snap failures, the pre-relaxation deadline
+   * exit).
    */
   cause: SolveFailureCause | null;
 }
@@ -977,11 +994,8 @@ function runLadder(
         // requested sail via combineAllCauses — a positional
         // combineFailureCause(tier4[0], tier4[1]) crashed at
         // sailIds.length === 1 (tier4[1] undefined).
-        // #1258: folded with the requested-gate cause, so a requested-gate
-        // horizon failure is never relabelled 'unreachable' by a relaxed
-        // mask-block. combineFailureCause('mask-blocked', x) === x, so every
-        // pre-#1258 path is unchanged.
-        cause = combineFailureCause(cause, combineAllCauses(tier4));
+        // #1258: folded with the requested-gate cause; see relaxedPlanCause.
+        cause = relaxedPlanCause(cause, combineAllCauses(tier4));
       } else if (tier3.some((r) => r.rigResult)) {
         const shallow = flagShallowLegs(mask, tier3, s.safetyDepthM, usedDepthM);
         return finish(assemble(tier3, shallow));
@@ -993,8 +1007,8 @@ function runLadder(
         // one. See combineFailureCause for the rig-disagreement precedence.
         // #54 fix round 1: folds over every requested sail via
         // combineAllCauses (see the tier-4 call site's comment above).
-        // #1258: folded with the requested-gate cause (see tier 4 above).
-        cause = combineFailureCause(cause, combineAllCauses(tier3));
+        // #1258: folded with the requested-gate cause; see relaxedPlanCause.
+        cause = relaxedPlanCause(cause, combineAllCauses(tier3));
       }
     }
   }

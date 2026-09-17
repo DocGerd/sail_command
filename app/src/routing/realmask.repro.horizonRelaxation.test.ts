@@ -55,8 +55,9 @@ describe('#1258: a requested-gate horizon failure opens #53 relaxation (real mas
   );
 
   // Neighbour (#1168): 25 m west snaps to the adjacent cell, where the fock
-  // routes at the requested gate and relaxation is never needed. Measured at
-  // this change's HEAD; pinned so a drift of the knife-edge is visible.
+  // routes at the requested gate and relaxation is never needed. Measured on
+  // base f229f96 plus this change; a knife-edge drift sentinel, not a pin of
+  // #1258 (it does not reach the widened predicate).
   it(
     'origin 25 m W, TWS 3: routes at the requested gate without relaxing',
     { timeout: solverTimeoutMs(600_000) },
