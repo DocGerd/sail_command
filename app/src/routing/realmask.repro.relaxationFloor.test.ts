@@ -1,13 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { planRoute } from './planRoute';
 import { findRelaxedGate } from './relaxedDepth';
-import { uniformWindGrid } from '../test/fixtures';
 import { APPROACH_RADIUS_M } from '../lib/depthGate';
-import { boatById, DEFAULT_BOAT_ID, type BoatDef } from '../data/boats';
-import { DEFAULT_SETTINGS, defaultBoatSnapshot } from '../types';
-import type { LatLon, SailId } from '../types';
-import { solverTimeoutMs, SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
-import { mask, polars, FLENSBURG, T0 } from '../test/realmaskFixtures';
+import type { LatLon } from '../types';
+import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
+import { mask, FLENSBURG } from '../test/realmaskFixtures';
 
 // #878: split out of the former realmask.repro.test.ts (~1286 lines, five
 // top-level describe blocks) so vitest can parallelise the real-mask suite
@@ -16,6 +12,12 @@ import { mask, polars, FLENSBURG, T0 } from '../test/realmaskFixtures';
 // describe block; shared setup lives in ../test/realmaskFixtures.ts. These run
 // against the real shipped mask and polars, unlike the synthetic masks used
 // everywhere else in the suite.
+//
+// #1261: (b) WIRING (the `planRoute`-level case, ~531 s CI — the file's own
+// heaviest test) was split into its own sibling file,
+// realmask.repro.relaxationFloor.wiring.test.ts, so vitest can schedule it
+// on a separate worker. Pure relocation; (a)/(a2) below call `findRelaxedGate`
+// directly and stay fast.
 vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
 
 describe('#54 spec C.4(a): the relaxation floor comes from the selected boat', () => {
@@ -24,9 +26,10 @@ describe('#54 spec C.4(a): the relaxation floor comes from the selected boat', (
 
   // The two rows below are NOT redundant. (a) guards the FIXTURE at the
   // `findRelaxedGate` level and cannot see this task's wiring at all; (b) is
-  // the wiring test and is the only row a `planRoute.ts` perturbation can
-  // red. Without (a), a future mask rebuild that made this pocket unroutable
-  // at every gate would leave (b) passing for the wrong reason.
+  // the wiring test (realmask.repro.relaxationFloor.wiring.test.ts) and is
+  // the only row a `planRoute.ts` perturbation can red. Without (a), a
+  // future mask rebuild that made this pocket unroutable at every gate
+  // would leave (b) passing for the wrong reason.
   it('(a) FIXTURE KEEPER: the pocket still diverges between floor 2.1 and floor 2.3', () => {
     const origin = mask.snapToNavigable(FLENSBURG, REQUESTED_DEPTH_M);
     const dest = mask.snapToNavigable(POCKET, REQUESTED_DEPTH_M);
@@ -69,43 +72,4 @@ describe('#54 spec C.4(a): the relaxation floor comes from the selected boat', (
     const raw = findRelaxedGate(mask, [origin!, dest!], REQUESTED_DEPTH_M, APPROACH_RADIUS_M, 2.14);
     expect(raw, 'a 2.14 m floor must not be granted the 2.1 m gate below it').toBeNull();
   });
-
-  it(
-    '(b) WIRING: planRoute relaxes to the floor of deps.boat, not to a shared constant',
-    // #295: 210 s on CI before the widening, 552 s and 604 s after it (runs
-    // 34967193450, 34991379729, 34997849572); ~1.5x the slowest.
-    { timeout: solverTimeoutMs(900_000) },
-    () => {
-      const salona = boatById(DEFAULT_BOAT_ID);
-      // Deliberately NOT a catalogue entry: the catalogue has one boat, whose
-      // draft coincides with the old module constant, so no real boat can
-      // discriminate the wiring.
-      const deepBoat: BoatDef = { ...salona, id: 'deep-test', draftM: 2.3 };
-      const request = {
-        origin: FLENSBURG,
-        destination: POCKET,
-        viaPoints: [],
-        originHarborId: 'flensburg',
-        destinationHarborId: null,
-        departureMs: T0,
-        settings: DEFAULT_SETTINGS,
-        sailIds: ['genoa', 'fock'] as SailId[],
-        boat: defaultBoatSnapshot(),
-      };
-      const wind = uniformWindGrid(12, 270);
-
-      const deepRes = planRoute(request, wind, { polars, boat: deepBoat, mask });
-      expect(deepRes.status, 'a 2.30 m boat must not be routed through a 2.1 m relaxed gate').toBe(
-        'error',
-      );
-      if (deepRes.status === 'error') expect(deepRes.reason).toBe('unreachable');
-
-      // MANDATORY companion, not optional: without it the row above is
-      // indistinguishable from "this fixture is simply unroutable", which is
-      // the vacuity mode the whole fixture measurement exists to avoid.
-      const salonaRes = planRoute(request, wind, { polars, boat: salona, mask });
-      expect(salonaRes.status, 'the 2.10 m Salona 45 must still reach the pocket').toBe('ok');
-      if (salonaRes.status === 'ok') expect(salonaRes.shallow?.usedDepthM).toBeCloseTo(2.1, 6);
-    },
-  );
 });
