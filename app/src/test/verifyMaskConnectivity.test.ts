@@ -26,8 +26,13 @@ import type { LatLon, MaskMeta } from '../types';
 // and its scratch-reuse guards. They are here because this file already loads
 // the real mask; the scope note below governs the #550 block only.
 //
-// SCOPE, deliberately narrow — only the harbour-reachability assertion.
-// Everything else in verify_mask.py's connectivity section stays
+// SCOPE, deliberately narrow — the harbour-reachability assertion, now TWO
+// of them since #1294: connected-when-expected (the original #550 promotion)
+// AND accepted-when-a-boat's-own-gate-genuinely-cannot-reach-it, via
+// EXPECTED_UNREACHABLE_BY_BOAT (both directions — accept and stale — are
+// wired into connectivityFailures() below, since #1294 needs this REQUIRED
+// check to accept a real per-boat gap, not merely record one). Everything
+// else in verify_mask.py's connectivity section stays
 // Python-only, including checks that are part of the SAME gate this file
 // claims to promote, not just unrelated sanity probes (PR #568 review,
 // MINOR 7):
@@ -163,6 +168,52 @@ function readKnownDisconnected(): Set<string> {
   return out;
 }
 
+/**
+ * #1294 (spec 1135 §13 item 5): `EXPECTED_UNREACHABLE_BY_BOAT` in
+ * verify_mask.py, keyed boat id -> harbour ids that boat's own derived gate
+ * cuts off (not a data defect — see that dict's own comment). Read directly
+ * out of the Python source, same twin idiom as `readConnectivityExceptions`/
+ * `readKnownDisconnected` above.
+ *
+ * UNLIKE those two, an EMPTY table is the legitimate today's-catalogue
+ * state (#1294's own issue text), so `.size > 0` cannot guard against a
+ * silently-broken entry regex here. Instead every top-level `"boat-id":
+ * [...]` entry is stripped from the captured block; whatever is left over
+ * (after dropping blank lines and `#` comments) must be empty, or this
+ * regex stopped matching something the Python source actually contains.
+ */
+function readExpectedUnreachableByBoat(): Map<string, Set<string>> {
+  const py = readFileSync(VERIFY_MASK_PATH, 'utf8');
+  const block = py.match(
+    /^EXPECTED_UNREACHABLE_BY_BOAT\s*:\s*dict\[str,\s*list\[str\]\]\s*=\s*\{([\s\S]*?)\}/m,
+  );
+  expect(
+    block,
+    'EXPECTED_UNREACHABLE_BY_BOAT literal not found in pipeline/verify_mask.py (renamed, retyped or ' +
+      'reformatted) — update this regex alongside the pipeline change',
+  ).not.toBeNull();
+  const body = block![1];
+  const out = new Map<string, Set<string>>();
+  const ENTRY_RE = /"([a-z0-9-]+)"\s*:\s*\[([\s\S]*?)\]\s*,?/g;
+  let residue = body;
+  for (const m of body.matchAll(ENTRY_RE)) {
+    const hids = new Set<string>();
+    for (const hm of m[2].matchAll(/"([a-z0-9-]+)"/g)) hids.add(hm[1]);
+    out.set(m[1], hids);
+    residue = residue.replace(m[0], '');
+  }
+  const unparsed = residue
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0 && !l.startsWith('#'));
+  expect(
+    unparsed.join('\n'),
+    'EXPECTED_UNREACHABLE_BY_BOAT has content this regex could not parse as a "boat-id": [...] entry ' +
+      '— update the entry regex alongside the pipeline change',
+  ).toBe('');
+  return out;
+}
+
 // ---- Fast connectivity: one flood fill per distinct gate ----
 
 function cellOf(p: LatLon): { row: number; col: number } | null {
@@ -239,6 +290,26 @@ describe('#550: mask connectivity is a REQUIRED check (promoted from advisory ve
   const SEED = readSeed();
   const EXCEPTIONS = readConnectivityExceptions();
   const KNOWN_DISCONNECTED = readKnownDisconnected();
+  const EXPECTED_UNREACHABLE_BY_BOAT = readExpectedUnreachableByBoat();
+
+  // #1294: every boat id this table names must be a real catalogue boat, and
+  // every harbour id must be a real harbour — the same parity KNOWN_DISCONNECTED
+  // and CONNECTIVITY_EXCEPTIONS_M get checked for on the Python side; mirrored
+  // here since this table's ACCEPT behaviour is wired into the REQUIRED loop
+  // below, unlike KNOWN_DISCONNECTED's own staleness check (Python-only, see
+  // this file's SCOPE comment).
+  for (const [bid, hids] of EXPECTED_UNREACHABLE_BY_BOAT) {
+    expect(
+      BOATS.some((b) => b.id === bid),
+      `EXPECTED_UNREACHABLE_BY_BOAT lists boat "${bid}", which is not in BOATS`,
+    ).toBe(true);
+    for (const hid of hids) {
+      expect(
+        harbors.some((h) => h.id === hid),
+        `EXPECTED_UNREACHABLE_BY_BOAT["${bid}"] lists "${hid}", which is not a harbor in harbors.json`,
+      ).toBe(true);
+    }
+  }
 
   // MINOR 5 (PR #568 review): module-describe-scoped, so it is shared by
   // EVERY test below — the required `it.each(BOATS)` loop, the guard-fires
@@ -261,10 +332,21 @@ describe('#550: mask connectivity is a REQUIRED check (promoted from advisory ve
    * Mirrors pipeline/verify_mask.py's per-boat connectivity loop: every
    * harbor snap must 4-connect to the open-water seed at the boat's derived
    * gate (or its exception gate), UNLESS the harbor is in
-   * KNOWN_DISCONNECTED. Returns one string per failing harbor; an empty
-   * array is the pass case.
+   * KNOWN_DISCONNECTED or listed in EXPECTED_UNREACHABLE_BY_BOAT for this
+   * boat (#1294) — a per-boat, not boat-independent, expected gap. Returns
+   * one string per failing harbor; an empty array is the pass case.
+   *
+   * `expectedUnreachable` defaults to this boat's real, file-read entries
+   * (empty for every catalogue boat today) but can be overridden — the
+   * verifyMaskExpectedUnreachable describe block below does exactly that,
+   * with a synthetic deep-draft boat, to exercise the ACCEPT and MISSING
+   * directions this real table cannot reach while it is empty.
    */
-  function connectivityFailures(boat: BoatDef): string[] {
+  function connectivityFailures(
+    boat: BoatDef,
+    expectedUnreachable: ReadonlySet<string> = EXPECTED_UNREACHABLE_BY_BOAT.get(boat.id) ??
+      new Set(),
+  ): string[] {
     const gateM = defaultSafetyDepthM(boat);
     const gateDm = Math.round(gateM * 10);
     const failures: string[] = [];
@@ -272,10 +354,19 @@ describe('#550: mask connectivity is a REQUIRED check (promoted from advisory ve
       const exceptionM = EXCEPTIONS.get(`${h.id}@${gateDm}`);
       const effectiveGateM = exceptionM ?? gateM;
       const connected = connectedAtGate(reachableAt(effectiveGateM), h.snap);
-      if (!connected && !KNOWN_DISCONNECTED.has(h.id)) {
+      if (!connected && !KNOWN_DISCONNECTED.has(h.id) && !expectedUnreachable.has(h.id)) {
         failures.push(
           `${boat.id}: harbor ${h.id} not reachable from open water at gate ${effectiveGateM} m ` +
             `(derived gate ${gateM} m)`,
+        );
+      } else if (connected && expectedUnreachable.has(h.id)) {
+        // #1294 EXACTNESS, stale direction: mirrors verify_mask.py's own
+        // stale-entry check — a harbour listed as expected-unreachable for
+        // this boat that is actually reachable is an undocumented change,
+        // not a legitimate expected gap.
+        failures.push(
+          `${boat.id}: harbor ${h.id} is listed in EXPECTED_UNREACHABLE_BY_BOAT but reaches open ` +
+            `water at gate ${effectiveGateM} m — stale entry`,
         );
       }
     }
@@ -374,34 +465,89 @@ describe('#550: mask connectivity is a REQUIRED check (promoted from advisory ve
   // (8.0 m) forces a real flood fill over the real committed mask, measured
   // at 208ms plain-local, well under the default 5000ms but exposed to the
   // same SC_COVERAGE 8x multiplier risk on CI hardware.
+  // #1294: hoisted (was local to the guard-fires proof `it()` alone) so the
+  // EXPECTED_UNREACHABLE_BY_BOAT describe block below can reuse the SAME
+  // stranded-harbour population without a second draft/gate to keep in sync.
+  const FIXTURE_DEEP_DRAFT_BOAT: BoatDef = {
+    id: 'fixture-deep-draft-550',
+    name: 'fixture (test-only, never added to BOATS)',
+    draftM: 7.1,
+    // #563 made `draftProvenance` REQUIRED on BoatDef, so this fixture must
+    // carry one. Requiredness is one half of that fix — it makes a boat
+    // shipping without the FIELD a compile error; the other half moved the
+    // §N.2 disclosure onto that same field, so the paragraph can no longer
+    // read something nothing writes. This fixture exercised the first half:
+    // the field landed on `develop` while this PR was open and the merged
+    // result failed `typecheck` here, in a PR that touches no catalogue code.
+    draftProvenance: {
+      keel: 'n/a — synthetic fixture, not a real hull',
+      hullVerified: false,
+      note: 'Test-only fixture for the guard-fires proof below. Never added to BOATS.',
+    },
+    motorSpeedKn: 6,
+    maneuverPenaltyS: 30,
+    sails: [],
+  };
+
   it(
     'guard-fires proof: a deep-draft fixture boat is reported as disconnected (exercises the real flood fill)',
     { timeout: solverTimeoutMs(300_000) },
     () => {
-      const fixtureBoat: BoatDef = {
-        id: 'fixture-deep-draft-550',
-        name: 'fixture (test-only, never added to BOATS)',
-        draftM: 7.1,
-        // #563 made `draftProvenance` REQUIRED on BoatDef, so this fixture must
-        // carry one. Requiredness is one half of that fix — it makes a boat
-        // shipping without the FIELD a compile error; the other half moved the
-        // §N.2 disclosure onto that same field, so the paragraph can no longer
-        // read something nothing writes. This fixture exercised the first half:
-        // the field landed on `develop` while this PR was open and the merged
-        // result failed `typecheck` here, in a PR that touches no catalogue code.
-        draftProvenance: {
-          keel: 'n/a — synthetic fixture, not a real hull',
-          hullVerified: false,
-          note: 'Test-only fixture for the guard-fires proof below. Never added to BOATS.',
-        },
-        motorSpeedKn: 6,
-        maneuverPenaltyS: 30,
-        sails: [],
-      };
-      const failures = connectivityFailures(fixtureBoat);
+      const failures = connectivityFailures(FIXTURE_DEEP_DRAFT_BOAT);
       expect(failures.length).toBeGreaterThan(20);
     },
   );
+
+  // #1294 (spec 1135 §13 item 5): today's real EXPECTED_UNREACHABLE_BY_BOAT
+  // table is EMPTY (no catalogue boat's gate strands anything), so the
+  // ACCEPT and MISSING-entry directions are DEAD CODE against it — these
+  // tests exercise `connectivityFailures`'s second parameter directly, with
+  // the SAME 7.1 m fixture boat's real stranded-harbour population, to prove
+  // the mechanism the real table will lean on once #573 lands a deep hull.
+  describe("EXPECTED_UNREACHABLE_BY_BOAT exactness (uses connectivityFailures' override parameter, not the real empty table)", () => {
+    // The exact set of harbours FIXTURE_DEEP_DRAFT_BOAT cannot reach, derived
+    // the same way the REQUIRED loop above does (empty override — no table
+    // entry can hide a failure here) — never hand-listed, so a harbour-list
+    // change cannot silently desync this fixture from reality.
+    const stranded = connectivityFailures(FIXTURE_DEEP_DRAFT_BOAT).map((msg) => {
+      const m = /harbor (\S+) not reachable/.exec(msg);
+      expect(m, `could not extract a harbour id from failure message: ${msg}`).not.toBeNull();
+      return m![1];
+    });
+
+    it('ACCEPT: every stranded harbour listed as expected-unreachable clears the check', () => {
+      expect(stranded.length, 'fixture boat unexpectedly reaches every harbour').toBeGreaterThan(
+        20,
+      );
+      expect(connectivityFailures(FIXTURE_DEEP_DRAFT_BOAT, new Set(stranded))).toEqual([]);
+    });
+
+    it('MISSING: dropping ONE entry from the accepted set surfaces exactly that one failure', () => {
+      const missingOne = new Set(stranded.slice(1));
+      const failures = connectivityFailures(FIXTURE_DEEP_DRAFT_BOAT, missingOne);
+      expect(failures.length).toBe(1);
+      expect(failures[0]).toContain(`harbor ${stranded[0]} not reachable`);
+    });
+
+    it('STALE: listing a harbour the boat CAN reach is reported as a stale entry', () => {
+      // Excludes KNOWN_DISCONNECTED too: a harbour disconnected at EVERY
+      // gate is neither in `stranded` (it never produces a "not reachable"
+      // failure — KNOWN_DISCONNECTED already excuses it) NOR genuinely
+      // connected, so it must not be the "reachable" harbour this row needs.
+      const reachableHarbour = harbors.find(
+        (h) => !stranded.includes(h.id) && !KNOWN_DISCONNECTED.has(h.id),
+      );
+      expect(
+        reachableHarbour,
+        'every harbour is stranded or known-disconnected — fixture draft too deep for this test',
+      ).not.toBeUndefined();
+      const withStaleEntry = new Set([...stranded, reachableHarbour!.id]);
+      const failures = connectivityFailures(FIXTURE_DEEP_DRAFT_BOAT, withStaleEntry);
+      expect(failures.length).toBe(1);
+      expect(failures[0]).toContain(`harbor ${reachableHarbour!.id} is listed`);
+      expect(failures[0]).toContain('stale entry');
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
