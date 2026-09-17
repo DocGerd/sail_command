@@ -3,10 +3,12 @@ import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { NavMask } from '../lib/mask';
-import { uniformGate } from '../lib/depthGate';
+import { uniformGate, APPROACH_RADIUS_M } from '../lib/depthGate';
 import { findRelaxedGate } from '../routing/relaxedDepth';
 import { BOATS, type BoatDef } from '../data/boats';
 import { defaultSafetyDepthM, relaxationFloorM } from '../lib/boatDepth';
+import { openWaterMask } from './fixtures';
+import { solverTimeoutMs } from './timeouts';
 import {
   computeHarborAccess,
   findLowerSettingHint,
@@ -29,6 +31,12 @@ const mask = new NavMask(maskMeta, maskBytes);
 const harbors = JSON.parse(
   readFileSync(resolve(dataDir, 'harbors.json'), 'utf8'),
 ) as HarborWithReachability[];
+
+const synthetic: BoatDef = {
+  ...BOATS[0],
+  id: 'harborReachability-fixture-easy-go' as BoatDef['id'],
+  draftM: 2.55,
+};
 
 // ---- TWIN: SEED_POINT vs pipeline/verify_mask.py's SEED_LAT, SEED_LON ----
 // Same regex idiom verifyMaskConnectivity.test.ts's own readSeed() uses — no
@@ -54,10 +62,13 @@ describe('#1290 harborReachability', () => {
 
   // ---- §3's own table, reproduced independently ----
   // The design doc's §3 measured these exact counts with a SEPARATE plain-JS
-  // scratch port (never committed) reading the mask's raw bytes directly.
-  // Getting the identical counts here, through this module's own
-  // isNavigable()-based flood, is a real cross-check between two independent
-  // implementations, not a self-consistency tautology.
+  // scratch port (never committed) reading the mask's raw bytes directly, and
+  // its own §3 text flags that port's snap/disc halves as uncontrolled beyond
+  // the marstal row. Matching its counts here is corroboration for the FILL,
+  // not a proof for the snap/disc boundary — see the oracle tests below for
+  // that half's own evidence (PR #1316 fix-wave 1 Minor: this comment
+  // previously over-claimed "two independent implementations… not a
+  // self-consistency tautology" for the whole state, not just the fill).
   it.each(BOATS)(
     '$id: 34 ok, marstal shallow-approach, 0 unreachable, 5 known-disconnected',
     (boat) => {
@@ -90,11 +101,6 @@ describe('#1290 harborReachability', () => {
   // catalogue boat whose gate is deep enough to reach the unreachable
   // branch at all — the three REAL catalogue boats never do (row above).
   it('synthetic 2.55 m draft: 31 ok, 2 shallow-approach, 2 unreachable, 5 known-disconnected', () => {
-    const synthetic: BoatDef = {
-      ...BOATS[0],
-      id: 'easy-go-2026-09-17-synthetic' as BoatDef['id'],
-      draftM: 2.55,
-    };
     const g = defaultSafetyDepthM(synthetic);
     expect(g).toBe(3.5);
     const result = computeHarborAccess(mask, harbors, synthetic, g);
@@ -118,8 +124,15 @@ describe('#1290 harborReachability', () => {
   // algorithm (CLAUDE.md): proven equivalent by running both, not trusted by
   // reading. Runs over all three catalogue boats' own default gates so both
   // gate values (2.8 m, 3.0 m) get covered.
+  //
+  // PR #1316 fix-wave 1 Major 1: NONE of these three gates is a verified
+  // 4- vs 8-connectivity divergence point on this mask, so this block alone
+  // cannot catch a broken neighbourhood (measured: substituting an
+  // 8-neighbourhood here left all three rows GREEN). See the DIVERGENCE
+  // block below, which is what actually closes that gap.
   it.each(BOATS)(
     '$id: flood membership agrees with NavMask.cellsConnected for every harbour',
+    { timeout: solverTimeoutMs(300_000) },
     (boat) => {
       const g = defaultSafetyDepthM(boat);
       const gate = uniformGate(g);
@@ -139,35 +152,114 @@ describe('#1290 harborReachability', () => {
     },
   );
 
-  // ---- Oracle: shallow-approach agrees with the REAL production relaxation ----
-  // marstal is the one harbour that actually exercises this path on the real
-  // catalogue. findRelaxedGate discs BOTH waypoints (the seed too), where
-  // this module's shallowApproachConnected only discs the harbour — the
-  // seed sits in 13.1 m water (verifyMaskConnectivity.test.ts's own comment),
-  // so discing it too should never change the answer for a real approach,
-  // but this test does not assume that: it runs the real function and
-  // checks it agrees, rather than asserting the two are the same by
-  // construction.
-  it.each(BOATS)('$id: marstal shallow-approach agrees with the real findRelaxedGate', (boat) => {
-    const g = defaultSafetyDepthM(boat);
-    const marstal = harbors.find((h) => h.id === 'marstal')!;
-    const snapped = mask.snapToNavigable(marstal.snap, g)!;
-    expect(snapped).not.toBeNull();
-    const relaxed = findRelaxedGate(
-      mask,
-      [SEED_POINT, snapped],
-      g,
-      Infinity,
-      relaxationFloorM(boat),
-    );
-    expect(
-      relaxed,
-      `${boat.id}: real relaxation search found no connecting gate for marstal`,
-    ).not.toBeNull();
-  });
+  // ---- Differential, at the VERIFIED first-divergence points ----
+  // PR #1316 fix-wave 1 Major 1. `rudkoebing`@3.5, `troense`@4.2 and
+  // `flensburg`@8.8 are the three (harbour, gate) pairs
+  // `verifyMaskConnectivity.test.ts`'s own `SAMPLE` names as where 4- and
+  // 8-connectivity first diverge on this committed mask (re-measured there
+  // over every decimetre gate 0.1-14.0 m) — without a row at one of these,
+  // a broken neighbourhood in `floodFromSeed` passes silently, because
+  // neither this module's own default gates (2.8/3.0/3.5 m) nor most
+  // arbitrary gates are divergence points at all. Uses `computeHarborAccess`
+  // (the real entry point), not `floodFromSeed` directly, so the assertion
+  // exercises the same code path a consumer does.
+  const DIVERGENCE_SAMPLE: ReadonlyArray<readonly [string, number]> = [
+    ['rudkoebing', 3.5],
+    ['troense', 4.2],
+    ['flensburg', 8.8],
+  ];
 
-  // ---- Cache: same (boatId, safetyDepthM) returns the SAME Map instance ----
-  it('memoises on (boat.id, safetyDepthM): repeat calls return the identical Map', () => {
+  it.each(DIVERGENCE_SAMPLE)(
+    '%s at a %s m gate: flood membership agrees with NavMask.cellsConnected (verified first-divergence point)',
+    { timeout: solverTimeoutMs(300_000) },
+    (hid, gateM) => {
+      const harbor = harbors.find((h) => h.id === hid);
+      expect(harbor, `fixture harbor "${hid}" missing from harbors.json`).toBeDefined();
+      const snapped = mask.snapToNavigable(harbor!.snap, gateM);
+      expect(snapped, `${hid}@${gateM}m: snap failed`).not.toBeNull();
+      const floodOk = computeHarborAccess(mask, harbors, BOATS[0], gateM).get(hid) === 'ok';
+      const oracleConnected = mask.cellsConnected(SEED_POINT, snapped!, uniformGate(gateM));
+      expect(floodOk, `${hid}@${gateM}m: flood vs cellsConnected disagree`).toBe(oracleConnected);
+    },
+  );
+
+  // ---- Oracle: shallow-approach agrees with the REAL production relaxation ----
+  // PR #1316 fix-wave 1 Major 2 REPLACES the prior version of this block,
+  // which called `findRelaxedGate` with `Infinity` as `approachRadiusM` —
+  // `depthGate.ts`'s documented KILL SWITCH, which disables discing
+  // entirely and so never exercised the shipped 1 nm disc behaviour this
+  // module's own `shallowApproachConnected` implements. Uses the REAL
+  // `APPROACH_RADIUS_M` here. `findRelaxedGate` still discs BOTH waypoints
+  // (the seed too) where `shallowApproachConnected` only discs the harbour —
+  // the seed sits in 13.1 m water (verifyMaskConnectivity.test.ts's own
+  // comment), so discing it too should never change the answer for a real
+  // approach, but this test does not assume that: it runs the real function
+  // and checks it AGREES, rather than asserting the two are the same by
+  // construction.
+  it.each(BOATS)(
+    '$id: marstal shallow-approach agrees with the real findRelaxedGate at the shipped disc radius',
+    { timeout: solverTimeoutMs(300_000) },
+    (boat) => {
+      const g = defaultSafetyDepthM(boat);
+      const marstal = harbors.find((h) => h.id === 'marstal')!;
+      const state = computeHarborAccess(mask, harbors, boat, g).get('marstal');
+      const snapped = mask.snapToNavigable(marstal.snap, g)!;
+      expect(snapped).not.toBeNull();
+      const relaxed = findRelaxedGate(
+        mask,
+        [SEED_POINT, snapped],
+        g,
+        APPROACH_RADIUS_M,
+        relaxationFloorM(boat),
+      );
+      expect(state !== 'unreachable', `${boat.id}: marstal state vs oracle disagree`).toBe(
+        relaxed !== null,
+      );
+    },
+  );
+
+  // Comprehensive form of the oracle, over EVERY non-known-disconnected
+  // harbour of the one boat that actually reaches BOTH the `unreachable` and
+  // `shallow-approach` branches on the real catalogue (§3's EASY GO! row) —
+  // the reviewer's own suggested fix for Major 2, run as specified.
+  it(
+    'synthetic 2.55 m draft: every non-known-disconnected harbour agrees with the real findRelaxedGate at the shipped disc radius',
+    { timeout: solverTimeoutMs(300_000) },
+    () => {
+      const g = defaultSafetyDepthM(synthetic);
+      const result = computeHarborAccess(mask, harbors, synthetic, g);
+      let checked = 0;
+      for (const harbor of harbors) {
+        if (harbor.knownDisconnected === true) continue;
+        const state = result.get(harbor.id);
+        const snapped = mask.snapToNavigable(harbor.snap, g);
+        if (!snapped) {
+          expect(state, `${harbor.id}: snap failed but state is not unreachable`).toBe(
+            'unreachable',
+          );
+          checked++;
+          continue;
+        }
+        const relaxed = findRelaxedGate(
+          mask,
+          [SEED_POINT, snapped],
+          g,
+          APPROACH_RADIUS_M,
+          relaxationFloorM(synthetic),
+        );
+        expect(state !== 'unreachable', `${harbor.id}: state vs oracle disagree`).toBe(
+          relaxed !== null,
+        );
+        checked++;
+      }
+      // Both directions must actually have been exercised — a filter bug
+      // that skipped every harbour would otherwise pass vacuously.
+      expect(checked).toBe(harbors.length - 5);
+    },
+  );
+
+  // ---- Cache: same (mask, harbors, boat.id, safetyDepthM) returns the SAME Map ----
+  it('memoises on (mask, harbors, boat.id, safetyDepthM): repeat calls return the identical Map', () => {
     const boat = BOATS[0];
     const g = defaultSafetyDepthM(boat);
     const first = computeHarborAccess(mask, harbors, boat, g);
@@ -175,28 +267,110 @@ describe('#1290 harborReachability', () => {
     expect(second).toBe(first);
   });
 
-  // ---- Q5 hint search: the augustenborg/marstal cases from §3's EASY GO! row ----
-  it('findLowerSettingHint: augustenborg reaches ok at a lower setting, marstal reaches none down to the floor', () => {
-    const synthetic: BoatDef = {
-      ...BOATS[0],
-      id: 'easy-go-2026-09-17-synthetic-2' as BoatDef['id'],
-      draftM: 2.55,
-    };
-    const g = defaultSafetyDepthM(synthetic);
-    const augustenborg = harbors.find((h) => h.id === 'augustenborg')!;
-    const marstal = harbors.find((h) => h.id === 'marstal')!;
-    const augustenborgHint = findLowerSettingHint(mask, augustenborg, synthetic, g);
-    expect(augustenborgHint).not.toBeNull();
-    expect(augustenborgHint!.depthM).toBeLessThan(g);
-    expect(['ok', 'shallow-approach']).toContain(augustenborgHint!.state);
-    const marstalHint = findLowerSettingHint(mask, marstal, synthetic, g);
-    expect(marstalHint).toBeNull();
+  // ---- Cache correctness: PR #1316 fix-wave 1 Major 4 ----
+  // Reproduces the pre-fix defect directly: a cache keyed only on
+  // `${boat.id}@${depth}` cannot tell two DIFFERENT masks apart, so the
+  // second call below would (under the old bug) silently return the FIRST
+  // mask's cached Map, computed for a mask with a different `meta` entirely.
+  it('caches independently per NavMask instance, not merely per (boatId, depth)', () => {
+    const boat = BOATS[0];
+    const g = defaultSafetyDepthM(boat);
+    const resultForRealMask = computeHarborAccess(mask, harbors, boat, g);
+    // openWaterMask() uses TEST_MASK_META (54.3-55.3N, 9.4-11.0E), a
+    // DIFFERENT grid shape than the real committed mask, and SEED_POINT
+    // falls inside its bounds — a small, genuinely different NavMask
+    // instance, not a clone.
+    const syntheticMask = openWaterMask();
+    const resultForSyntheticMask = computeHarborAccess(syntheticMask, harbors, boat, g);
+    expect(resultForSyntheticMask).not.toBe(resultForRealMask);
   });
 
-  it('findLowerSettingHint returns null for a known-disconnected harbour without searching', () => {
+  // Reproduces the other half of the same pre-fix defect: a cache keyed only
+  // on `${boat.id}@${depth}` cannot tell a FILTERED harbours array from the
+  // full catalogue, so a later full-catalogue call would (under the old bug)
+  // silently return the earlier filtered call's partial Map — `.get(id)` on
+  // an id outside the filtered set then returns `undefined`, a third value
+  // `HarborAccessByHarbor`'s own doc comment says must never happen.
+  it('caches independently per harbors array reference, not merely per (boatId, depth)', () => {
+    const boat = BOATS[0];
+    const g = defaultSafetyDepthM(boat);
+    const filteredHarbors = harbors.slice(0, 5);
+    const filteredResult = computeHarborAccess(mask, filteredHarbors, boat, g);
+    expect(filteredResult.size).toBe(5);
+
+    const fullResult = computeHarborAccess(mask, harbors, boat, g);
+    expect(fullResult.size).toBe(harbors.length);
+    expect(fullResult).not.toBe(filteredResult);
+    // Every id outside the filtered set must be genuinely present, not
+    // `undefined` from a stale partial cache entry.
+    for (const harbor of harbors.slice(5)) {
+      expect(
+        fullResult.get(harbor.id),
+        `${harbor.id} missing from the full-catalogue result`,
+      ).toBeDefined();
+    }
+  });
+
+  // ---- Q5 hint search ----
+  // §3's EASY GO! row: augustenborg resolves quickly (well inside the
+  // default step budget); marstal has no answer down to the floor at all.
+  it('findLowerSettingHint: augustenborg reaches ok at a lower setting within the default budget', () => {
+    const g = defaultSafetyDepthM(synthetic);
+    const augustenborg = harbors.find((h) => h.id === 'augustenborg')!;
+    const outcome = findLowerSettingHint(mask, augustenborg, synthetic, g);
+    expect(outcome.kind).toBe('found');
+    if (outcome.kind === 'found') {
+      expect(outcome.hint.depthM).toBeLessThan(g);
+      expect(['ok', 'shallow-approach']).toContain(outcome.hint.state);
+    }
+  });
+
+  it(
+    'findLowerSettingHint: marstal has no answer down to the floor (scanned in full, under the default budget)',
+    { timeout: solverTimeoutMs(300_000) },
+    () => {
+      const g = defaultSafetyDepthM(synthetic);
+      const marstal = harbors.find((h) => h.id === 'marstal')!;
+      const outcome = findLowerSettingHint(mask, marstal, synthetic, g);
+      expect(outcome.kind).toBe('not-found');
+    },
+  );
+
+  // PR #1316 fix-wave 1 Major 5: the step budget and its resumability
+  // contract. A caller supplying a small `maxSteps` must see `'exhausted'`
+  // with a `resumeFromDepthM` that, fed back in as the next call's
+  // `safetyDepthM`, continues the SAME downward scan rather than restarting
+  // it. Pins the EXACT `resumeFromDepthM` sequence a correct resume must
+  // produce for this boat/harbour/depth (hand-derived: topDm 34, floorDm 27,
+  // so decimetres 34-32 / 31-29 / 28-27 across three budget-3 calls — a
+  // resume that restarted from the top, or skipped a decimetre, would
+  // diverge from this exact sequence), and confirms the chain still ends at
+  // marstal's known full-range answer ('not-found', pinned above).
+  it(
+    'findLowerSettingHint is resumable across a step budget, continuing rather than restarting the scan',
+    { timeout: solverTimeoutMs(300_000) },
+    () => {
+      const g = defaultSafetyDepthM(synthetic);
+      const marstal = harbors.find((h) => h.id === 'marstal')!;
+      const first = findLowerSettingHint(mask, marstal, synthetic, g, 3);
+      expect(first).toEqual({ kind: 'exhausted', resumeFromDepthM: 3.2 });
+      const second =
+        first.kind === 'exhausted'
+          ? findLowerSettingHint(mask, marstal, synthetic, first.resumeFromDepthM, 3)
+          : null;
+      expect(second).toEqual({ kind: 'exhausted', resumeFromDepthM: 2.9 });
+      const third =
+        second?.kind === 'exhausted'
+          ? findLowerSettingHint(mask, marstal, synthetic, second.resumeFromDepthM, 3)
+          : null;
+      expect(third).toEqual({ kind: 'not-found' });
+    },
+  );
+
+  it('findLowerSettingHint returns not-found for a known-disconnected harbour without searching', () => {
     const boat = BOATS[0];
     const g = defaultSafetyDepthM(boat);
     const arnis = harbors.find((h) => h.id === 'arnis')!;
-    expect(findLowerSettingHint(mask, arnis, boat, g)).toBeNull();
+    expect(findLowerSettingHint(mask, arnis, boat, g)).toEqual({ kind: 'not-found' });
   });
 });
