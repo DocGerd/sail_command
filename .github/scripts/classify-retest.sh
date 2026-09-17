@@ -360,7 +360,7 @@ fi
 # `timeout` sends SIGTERM only, and a child that ignores it or immediately
 # re-stops wins that race; `-k 5` follows up with SIGKILL 5s later if the
 # process is still alive. This is a hardening nit, not a live hole: the
-# job's own `timeout-minutes` (45/30) bounds the damage either way, and
+# `changes` job's own `timeout-minutes` (10) bounds the damage either way, and
 # `gh` has no documented habit of ignoring SIGTERM.
 run_gh() {
   timeout -k 5 30 bash -c 'gh "$@"' _ "$@"

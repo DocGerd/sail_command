@@ -33,9 +33,8 @@ instead when the browser's data saver is on — and pinned per plan, with the
 route result naming whether that route's map area is saved offline and what
 it would cost to download. This is a BREAKING change for routes saved before
 this release: their stored wind grid covers the old, smaller area. Comparing
-departure times, Live rerouting and editing waypoints on those routes now
-fail with a prompt to recalculate, though they still open, render and
-export.
+departure times and Live rerouting on those routes now fail with a prompt to
+recalculate, though they still open, render and export.
 
 A stretch between two waypoints can now be forced to motor or to sail, with
 the planner routing that segment under the chosen mode on both sails and

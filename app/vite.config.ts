@@ -621,7 +621,7 @@ function appVersion(command: 'build' | 'serve'): string {
 // The four TRIMMED originals (issue20, depthComfort, relaxationFloor) now
 // hold only fast tests and are REMOVED from this array — BaseSequencer's
 // default (size-descending, and now genuinely small) schedules them fine.
-const SLOW_TEST_FILES_FIRST = [
+export const SLOW_TEST_FILES_FIRST = [
   'src/routing/invariants.property.test.ts',
   'src/routing/realmask.repro.relaxationFloor.wiring.test.ts',
   'src/routing/realmask.repro.issue20.marstal23.test.ts',
@@ -645,22 +645,37 @@ const SLOW_TEST_FILES_FIRST = [
   'src/routing/relaxationTrade.differential.test.ts',
 ];
 
-// Extends BaseSequencer rather than reimplementing it: only `sort` changes
-// (the files listed above move to the front, everything else keeps
-// BaseSequencer's default order); `shard` is inherited untouched so sharded
-// runs still work.
-class SlowFileFirstSequencer extends BaseSequencer {
+// Extends BaseSequencer rather than reimplementing it: `sort` moves the files
+// listed above to the front (everything else keeps BaseSequencer's default
+// order). #1286: `shard` spreads those same files round-robin by array
+// position across CI's `--shard=i/N` runners — BaseSequencer's default
+// splits by path hash, which could stack the slowest files on one runner.
+// Every other file keeps BaseSequencer's root-relative hash split.
+// `shard()` runs before `sort()`. Pinned by `test/sequencerShard.test.ts`.
+export class SlowFileFirstSequencer extends BaseSequencer {
+  override async shard(files: TestSpecification[]): Promise<TestSpecification[]> {
+    const shard = this.ctx.config.shard;
+    if (!shard) return super.shard(files);
+    const pinned = files.filter((spec) => {
+      const rank = slowFileRank(spec);
+      return rank !== -1 && rank % shard.count === shard.index - 1;
+    });
+    const rest = files.filter((spec) => slowFileRank(spec) === -1);
+    return [...pinned, ...(await super.shard(rest))];
+  }
+
   override async sort(files: TestSpecification[]): Promise<TestSpecification[]> {
-    const priorityRank = (spec: TestSpecification): number => {
-      const path = spec.moduleId.replace(/\\/g, '/');
-      return SLOW_TEST_FILES_FIRST.findIndex((suffix) => path.endsWith(suffix));
-    };
     const priority = files
-      .filter((spec) => priorityRank(spec) !== -1)
-      .sort((a, b) => priorityRank(a) - priorityRank(b));
-    const rest = files.filter((spec) => priorityRank(spec) === -1);
+      .filter((spec) => slowFileRank(spec) !== -1)
+      .sort((a, b) => slowFileRank(a) - slowFileRank(b));
+    const rest = files.filter((spec) => slowFileRank(spec) === -1);
     return [...priority, ...(await super.sort(rest))];
   }
+}
+
+function slowFileRank(spec: TestSpecification): number {
+  const path = spec.moduleId.replace(/\\/g, '/');
+  return SLOW_TEST_FILES_FIRST.findIndex((suffix) => path.endsWith(suffix));
 }
 
 export default defineConfig(({ command }) => ({
