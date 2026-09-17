@@ -27,264 +27,247 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
-  app:
+  # #1286: `app` and `e2e` are each a FAN-IN over sharded jobs. Both names are
+  # REQUIRED checks under `protect-main`'s strict policy, so the fan-ins keep
+  # those exact names, always run (`if: always()`), and fail unless EVERY
+  # needed job reports `success`. Shard jobs never skip at the job level: the
+  # docs-only (#327/#875) and unchanged-tree (#877) gates skip their STEPS,
+  # so a skipped path still ends `success` and the fan-in needs no
+  # "legitimately skipped" branch. A failed `changes` job skips its
+  # dependents (result `skipped`), which the fan-in reads as red.
+  changes:
     runs-on: ubuntu-latest
-    # #882: this job had NO cap (GitHub's 360-minute default) until now. Sized
-    # generously rather than tightly: re-measured 2026-09-03 via the Actions
-    # API against the 30 most recent `ci.yml` runs, `app`'s max is 1557s
-    # (25.95 min, n=29 completed) — consistent with #882's own 1551s figure
-    # from a day earlier. #878 (same milestone, in flight) is SPLITTING
-    # `routing/realmask.repro.test.ts`, the one file that dominates this
-    # job's wall clock (CLAUDE.md's "Full test suite" bullet), which will
-    # change this duration — so this cap is deliberately NOT tuned tight
-    # against today's measurement (that would risk a false red the moment
-    # #878 lands, or before it if a slow runner is hit). 45 min is close to
-    # #882's own recommendation and leaves ~1.7x headroom over the measured
-    # max; revisit once #878 has landed and the new duration is measured.
-    timeout-minutes: 45
-    defaults: { run: { working-directory: app } }
-    # #875/#877: this job's two classify steps below need `checks: read` and
-    # `actions: read` to read check-run/workflow-run state (the #877
-    # skip-retest classifier) - the workflow-level `permissions: contents:
-    # read` alone would leave those two unset (an explicit `permissions:`
-    # block zeroes every unlisted scope), so this job declares its own,
-    # REPLACING rather than adding to the workflow-level block.
+    timeout-minutes: 10
+    # The #877 retest classifier reads check-run and workflow-run state. An
+    # explicit `permissions:` block zeroes every unlisted scope, so this job
+    # declares its own rather than inheriting `contents: read` alone.
     permissions:
       contents: read
       checks: read
       actions: read
+    outputs:
+      run_app: ${{ steps.classify.outputs.run_app }}
+      run_e2e: ${{ steps.classify.outputs.run_e2e }}
+      retest_app: ${{ steps.retest_app.outputs.retest }}
+      retest_e2e: ${{ steps.retest_e2e.outputs.retest }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Full history (#875/#877): the classify step below diffs a PR's
-          # base against its head (needs both commits reachable), and the
-          # #877 retest classifier walks a push commit's SECOND PARENT and
-          # compares tree objects - a default depth-1 clone would make both
-          # unreachable. Mirrors `e2e`'s own checkout, which already needed
-          # this for the #327 classify step.
+          # Full history: the docs-only classifier diffs a PR's base against
+          # its head, and the #877 classifier reads a push commit's second
+          # parent and its tree. A depth-1 clone makes both unreachable.
           fetch-depth: 0
-      # Privacy guard (#474): fails the build if any tracked file leaks a
-      # contributor's absolute home-directory path. Placed FIRST, before
-      # `setup-node`/`npm ci`, since it needs neither (git + bash only) and
-      # a leak is cheaper to catch before spending the rest of the job's
-      # runtime. Wired into `app` rather than a new job because `app` is
-      # one of the two REQUIRED status checks on `develop`/`main`
-      # (`e2e` is the other) - a standalone job would report but not gate,
-      # per this file's own `hook-selftests` job comment on that distinction.
-      # Deliberately NOT wired into `e2e`: that job gates its expensive
-      # steps behind a docs-only classify step, and docs are exactly where
-      # this leaked (commit e5358d4) - skipping this check on a docs-only
-      # PR would exempt the one path class it exists to cover. Overrides the
-      # job's `app`-relative `defaults.run.working-directory` (same pattern
-      # as the `e2e` job's classify step) because the leaks this guard
-      # exists to catch were mostly OUTSIDE `app/` (`.claude/`, `CLAUDE.md`,
-      # `docs/`) - scoping the scan to `app/` would miss most of what it's
-      # for.
+      # Privacy guard (#474): fails on any tracked file leaking an absolute
+      # home-directory path. Ungated, so it covers docs-only PRs too (docs are
+      # where it leaked, commit e5358d4). It runs here, once, so a leak now
+      # reds BOTH required checks via the fan-ins.
       - name: No leaked home paths (#474)
-        working-directory: ${{ github.workspace }}
         run: bash .github/scripts/check-no-home-paths.sh
-      # #875: docs-only vs. code classifier, same script `e2e` uses (#327),
-      # but this step reads its OWN `run_app` output rather than `run_e2e` -
-      # `run_app` is a STRICT SUBSET of `run_e2e`'s skip set (CHANGELOG.md
-      # and changelog.d/* are excluded: they are build inputs baked into the
-      # bundle at build time, and `app` running in full is exactly what
-      # makes `e2e` skipping on them safe - see the script's own header and
-      # CLAUDE.md's `ci.yml`'s `e2e` job bullet). The job still always runs
-      # and always reports (`app` is a REQUIRED check) - only the expensive
-      # steps below are `if:`-gated.
-      - name: Classify change (docs-only vs. code) for app (#875)
+      # Docs-only classifier (#327, #875). Writes `run_e2e` and `run_app`;
+      # `run_app`'s skip set is a strict subset (CHANGELOG.md/changelog.d/*
+      # are build inputs), see the script header. `bash -e` is load-bearing:
+      # a bare script path execs a new bash that does not inherit errexit
+      # (PR #350 review, Finding 1).
+      - name: Classify change (docs-only vs. code)
         id: classify
-        working-directory: ${{ github.workspace }}
         env:
           EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: bash -e .github/scripts/classify-docs-only.sh
-      # #877: skip the expensive steps below when this push's TREE is
-      # byte-identical to an already-tested PR head (a `develop`/`main` push
-      # after a strict-up-to-date-policy merge always is - see the script's
-      # own header for the full mechanism and the recursion guard). Applies
-      # to `push` events only; every `pull_request` run gets `retest=true`
-      # (run) immediately and is unaffected.
+      # #877: skip re-testing a push whose tree equals an already-tested PR
+      # head. CHECK_NAME is the FAN-IN check-run name the script looks up on
+      # the second parent (`app`/`e2e`), so the fan-ins keep that contract.
+      # `push` only; every `pull_request` run gets `retest=true`.
       - name: Classify skip-retest for app (#877)
-        id: retest
-        working-directory: ${{ github.workspace }}
+        id: retest_app
         env:
           EVENT_NAME: ${{ github.event_name }}
           HEAD_SHA: ${{ github.sha }}
           CHECK_NAME: app
           GH_TOKEN: ${{ github.token }}
         run: bash -e .github/scripts/classify-retest.sh
-      # The four `if:` gates below (and the two more on npm run notices/the
-      # notices diff check) default to RUN unless BOTH classify steps
-      # explicitly say `false` - matching #327's `!= 'false'` polarity on
-      # both terms, so an absent/empty/errored output from EITHER step fails
-      # this REQUIRED check's gate CLOSED, i.e. still runs the step.
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        if: steps.classify.outputs.run_app != 'false' && steps.retest.outputs.retest != 'false'
-        with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
-      - run: npm ci
-        if: steps.classify.outputs.run_app != 'false' && steps.retest.outputs.retest != 'false'
-      - run: npm run lint
-        if: steps.classify.outputs.run_app != 'false' && steps.retest.outputs.retest != 'false'
-      - run: npm run typecheck
-        if: steps.classify.outputs.run_app != 'false' && steps.retest.outputs.retest != 'false'
-      # #537: app/sweep/canonicalize.test.mjs guards a Critical defect (the
-      # #54 rename-vs-solve-order coupling) but is never collected by vitest
-      # (app/sweep/ is deliberately excluded from vite.config.ts's `include`
-      # so the ~20 min #282 arm sweep never runs here - see the `app/sweep/`
-      # bullet in CLAUDE.md). #1262 added app/sweep/merge-shards.test.mjs to
-      # the same `test:sweep-unit` script, so this step now runs BOTH files
-      # under plain Node (`node --test`), never `sweep/vitest.config.ts` -
-      # the expensive arm harness stays exclusively on-demand. Placed BEFORE
-      # `npm run test` deliberately (PR #588 review, Minor 7): both files
-      # together still complete in well under a second against the full
-      # suite's ~500s, so a regression here surfaces in seconds rather than
-      # ~8 minutes into the job.
-      - run: npm run test:sweep-unit
-        if: steps.classify.outputs.run_app != 'false' && steps.retest.outputs.retest != 'false'
-      - run: npm run test
-        if: steps.classify.outputs.run_app != 'false' && steps.retest.outputs.retest != 'false'
-      - run: npm run build
-        if: steps.classify.outputs.run_app != 'false' && steps.retest.outputs.retest != 'false'
-      # Drift guard: a dependency bump that forgets to regenerate the
-      # committed third-party notices fails CI. Pathspec is relative to the
-      # job's working-directory (app/).
-      - run: npm run notices
-        if: steps.classify.outputs.run_app != 'false' && steps.retest.outputs.retest != 'false'
-      - run: git diff --exit-code public/THIRD-PARTY-NOTICES.txt
-        if: steps.classify.outputs.run_app != 'false' && steps.retest.outputs.retest != 'false'
-  # Deliberately no `needs: app` edge. The e2e job is self-contained: its
-  # `pree2e` hook rebuilds the app from scratch, so no artifact flows from the
-  # `app` job. Running the two jobs concurrently rather than gated saves ~120s
-  # of wall clock on every run, which compounds because `app`+`e2e` are both
-  # required checks under a strict up-to-date branch policy — every merge in a
-  # train pays a full CI cycle. Trade-off: a PR whose unit tests fail in `app`
-  # now also burns e2e runner minutes instead of skipping them.
-  # `app` and `e2e` also share an npm cache key (setup-node's `cache: npm` +
-  # `cache-dependency-path: app/package-lock.json` above): now that the two
-  # jobs start concurrently instead of `e2e` waiting on `app`, a
-  # lockfile-changing PR may have `e2e` restore a cache miss (the two runners
-  # race to populate the same cache key) and pay an uncached `npm ci`
-  # (~5-6s). Accepted knowingly (#214) — the ~120s saved on every run
-  # outweighs a few extra seconds on lockfile-changing PRs only.
-  e2e:
-    runs-on: ubuntu-latest
-    # #605: with no cap this job inherited GitHub's 360-minute default, so a
-    # wedged `npx playwright install --with-deps chromium` looked "healthy"
-    # for hours instead of failing fast (32/54/65/90 min on PR runs, ~5h15m
-    # once on a develop push - `ci.yml`'s push-runs-queue-behind-same-ref
-    # concurrency group means one such wedge blocks every later develop push
-    # too). Re-measured 2026-08-20 via the Actions API: the 8 most recent
-    # real (non-docs-skip) `e2e` completions ordered by RUN CREATION time
-    # (not job started_at, which lags creation under the same push-queue
-    # behavior above) are 32353038925 (7m02s), 32335374485 (7m15s),
-    # 32334063726 (7m26s), 32314957244 (7m10s), 32311732590 (7m06s),
-    # 32311697344 (5m53s), 32303526023 (13m22s), 32301750085 (14m33s) -
-    # range 5m53s-14m33s, worst case run 32301750085. An older completion
-    # outside this window, run 32190387219 (2026-08-18, 16m43s), is also
-    # cleared. 30 min clears the sampled worst case (14m33s) at ~2.06x and
-    # the 16m43s outlier at ~1.79x, while still converting a silent
-    # multi-hour wedge into a fast, obviously-retryable red (CLAUDE.md:
-    # "tens of minutes, not hours"). This BOUNDS wedge damage, it does not
-    # eliminate it: a wedge on a develop push still queue-blocks every later
-    # develop push for up to this cap (same concurrency group as above), and
-    # a human still has to notice the red and retry (`gh run cancel` /
-    # `gh run rerun --failed`, per this file's own PWA/E2E/deploy section of
-    # CLAUDE.md) - nothing here auto-retries.
-    timeout-minutes: 30
-    defaults: { run: { working-directory: app } }
-    # #877: the skip-retest classify step below needs `checks: read` and
-    # `actions: read` (see the identical job-level permissions comment on
-    # `app`, above).
-    permissions:
-      contents: read
-      checks: read
-      actions: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          # Full history: the classify step below diffs the PR's base SHA
-          # against its head SHA. A default depth-1 clone only holds the
-          # merge-ref tip, so the base commit is unreachable and the diff
-          # can't run — see the classify step's fail-closed default (#327).
-          fetch-depth: 0
-      # `e2e` is a REQUIRED status check under `protect-main` with a strict
-      # up-to-date policy, so it must always run this job and always report
-      # — a trigger-level `paths:`/`paths-ignore:` filter would make the
-      # check never report at all on a skipped PR, blocking the PR forever.
-      # Instead this classify step decides whether the PR's diff is
-      # docs-only, and only the EXPENSIVE steps below are `if:`-gated on the
-      # result; the job itself always completes and reports success (#327).
-      - name: Classify change (docs-only vs. code) — fail-closed to RUN
-        id: classify
-        # Not under the job's `app`-relative default: path strings here must
-        # stay unambiguously repo-root-relative to match the docs allowlist.
-        working-directory: ${{ github.workspace }}
-        # Pass templated context through env (not inlined into the script) so
-        # nothing from the event payload is interpolated directly into a
-        # shell command.
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        # Extracted to .github/scripts/classify-docs-only.sh (#334) so the
-        # decision logic carries committed test coverage (a 34-case adversarial
-        # harness runnable offline via `--selftest`) instead of living only as
-        # untested inline YAML shell — see that script's header for the full
-        # rationale.
-        #
-        # `bash -e` here is LOAD-BEARING, not stylistic (PR #350 review,
-        # Finding 1). GitHub's default `run:` shell already wraps the step in
-        # `bash -e {0}`, but a bare `run: .github/scripts/classify-docs-only.sh`
-        # execs the script via its own `#!/usr/bin/env bash` shebang, which
-        # starts a NEW bash process — errexit is not inherited across that
-        # exec (SHELLOPTS is not exported), so a failure inside the script
-        # (e.g. `>> "$GITHUB_OUTPUT"` against an unwritable path) is silently
-        # swallowed instead of aborting the step. Explicitly invoking
-        # `bash -e <script>` runs the whole file under ONE interpreter with
-        # `-e` set from the start, restoring the fail-closed semantics the
-        # inline pre-extraction version had for free. This also makes the
-        # script's own `--selftest` (which drives itself via `bash -e "$SELF"`)
-        # an honest model of production instead of a stricter one.
-        run: bash -e .github/scripts/classify-docs-only.sh
-      # #877: same skip-retest classifier the `app` job runs, with
-      # CHECK_NAME=e2e - see that job's identical step for the full
-      # mechanism. `push` events only; every `pull_request` run is
-      # unaffected (`retest=true` immediately).
       - name: Classify skip-retest for e2e (#877)
-        id: retest
-        working-directory: ${{ github.workspace }}
+        id: retest_e2e
         env:
           EVENT_NAME: ${{ github.event_name }}
           HEAD_SHA: ${{ github.sha }}
           CHECK_NAME: e2e
           GH_TOKEN: ${{ github.token }}
         run: bash -e .github/scripts/classify-retest.sh
-      # The four `if:` gates below default to RUN on anything OTHER than the
-      # literal string 'false' — not `== 'true'` (PR #350 review, Finding 1).
-      # An absent or empty `run_e2e`/`retest` output (a classify step
-      # aborted before writing it, `GITHUB_OUTPUT` unwritable, any future
-      # classifier bug) must fail this REQUIRED check's gate CLOSED, i.e.
-      # still run e2e; an equality-on-'true' gate does the opposite — it
-      # skips on anything that isn't exactly 'true', which includes "wrote
-      # nothing at all". Both conditions must allow RUN for a step to be
-      # skipped (#877 is additive to #327, never a replacement for it).
+  # Lint, typecheck, the #537 sweep unit tests, build and the notices drift
+  # guard run ONCE here, concurrently with the vitest shards.
+  app-static:
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults: { run: { working-directory: app } }
+    # Fail-closed polarity (PR #350 review, Finding 1): SKIP only on an
+    # explicit 'false' from either classifier; an empty/absent output RUNS.
+    env:
+      SKIP: ${{ needs.changes.outputs.run_app == 'false' || needs.changes.outputs.retest_app == 'false' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.SKIP != 'true'
+        with:
+          # Full history keeps the build's `git describe` version string
+          # identical to the pre-#1286 single job.
+          fetch-depth: 0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        if: steps.classify.outputs.run_e2e != 'false' && steps.retest.outputs.retest != 'false'
+        if: env.SKIP != 'true'
         with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
       - run: npm ci
-        if: steps.classify.outputs.run_e2e != 'false' && steps.retest.outputs.retest != 'false'
-      - run: npx playwright install --with-deps chromium
-        if: steps.classify.outputs.run_e2e != 'false' && steps.retest.outputs.retest != 'false'
-      - run: npm run e2e
-        if: steps.classify.outputs.run_e2e != 'false' && steps.retest.outputs.retest != 'false'
+        if: env.SKIP != 'true'
+      - run: npm run lint
+        if: env.SKIP != 'true'
+      - run: npm run typecheck
+        if: env.SKIP != 'true'
+      # #537/#1262: plain `node --test` over app/sweep/'s unit files, which
+      # vite.config.ts's `include` never collects; the arm sweep itself stays
+      # on-demand.
+      - run: npm run test:sweep-unit
+        if: env.SKIP != 'true'
+      - run: npm run build
+        if: env.SKIP != 'true'
+      # Drift guard: a dependency bump that forgets to regenerate the
+      # committed third-party notices fails CI.
+      - run: npm run notices
+        if: env.SKIP != 'true'
+      - run: git diff --exit-code public/THIRD-PARTY-NOTICES.txt
+        if: env.SKIP != 'true'
+  # Vitest across three runners. `SlowFileFirstSequencer.shard()`
+  # (app/vite.config.ts) spreads SLOW_TEST_FILES_FIRST round-robin; every
+  # other file splits by BaseSequencer's root-relative path hash.
+  app-shard:
+    name: app-shard (${{ matrix.shard }}/3)
+    needs: changes
+    runs-on: ubuntu-latest
+    # #882 capped the unsharded job at 45 min over a 1557 s max; one third of
+    # the suite plus setup is well under half of 30.
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    defaults: { run: { working-directory: app } }
+    env:
+      SKIP: ${{ needs.changes.outputs.run_app == 'false' || needs.changes.outputs.retest_app == 'false' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.SKIP != 'true'
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: env.SKIP != 'true'
+        with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
+      - run: npm ci
+        if: env.SKIP != 'true'
+      - run: npm run test -- --shard=${{ matrix.shard }}/3
+        if: env.SKIP != 'true'
+  app:
+    name: app
+    needs: [changes, app-static, app-shard]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # A matrix job's `needs.<id>.result` is the aggregate: `failure` if any
+      # shard failed, `cancelled` if cancelled. The length check stops an
+      # empty or renamed `needs` map from reading green.
+      - name: Require every app job to succeed (#1286)
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+          EXPECTED: 3
+        run: |
+          set -euo pipefail
+          printf '%s' "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          count=$(printf '%s' "$NEEDS" | jq 'length')
+          bad=$(printf '%s' "$NEEDS" | jq -r '[to_entries[] | select(.value.result != "success") | .key] | join(" ")')
+          if [ "$count" != "$EXPECTED" ]; then
+            echo "::error::expected $EXPECTED needed jobs, got $count"; exit 1
+          fi
+          if [ -n "$bad" ]; then
+            echo "::error::not successful: $bad"; exit 1
+          fi
+  # No `needs` edge between the app and e2e trees: `pree2e` rebuilds the app,
+  # so nothing flows between them and both run concurrently (#214). Accepted
+  # trade: a unit-test red still burns e2e minutes.
+  e2e-shard:
+    name: e2e-shard (${{ matrix.shard }}/2)
+    needs: changes
+    runs-on: ubuntu-latest
+    # #605 capped the unsharded job at 30 min to turn install wedges into a
+    # fast red. The heavier shard carries layout.spec.ts: ~736 s of test time
+    # on run 35191095819 plus ~2 min install/build, so 30 min is ~2x.
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    defaults: { run: { working-directory: app } }
+    env:
+      SKIP: ${{ needs.changes.outputs.run_e2e == 'false' || needs.changes.outputs.retest_e2e == 'false' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.SKIP != 'true'
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: env.SKIP != 'true'
+        with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
+      - run: npm ci
+        if: env.SKIP != 'true'
+      # Browser cache keyed on the exact lockfile @playwright/test version.
+      # It removes only the DOWNLOAD half of #605's install wedges: the apt
+      # half (`install-deps`) still runs on every shard.
+      - name: Resolve Playwright version
+        id: pw
+        if: env.SKIP != 'true'
+        run: |
+          v=$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")
+          [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]] || { echo "::error::bad Playwright version '$v'"; exit 1; }
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: pw-cache
+        if: env.SKIP != 'true'
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+      - run: npx playwright install chromium
+        if: env.SKIP != 'true' && steps.pw-cache.outputs.cache-hit != 'true'
+      - run: npx playwright install-deps chromium
+        if: env.SKIP != 'true'
+      # Each shard runs its own `pree2e` build, so #803's build-identity
+      # checks hold per runner. The `identity` dependency project runs in
+      # full on every shard (Playwright re-adds dependencies after sharding).
+      - run: npm run e2e -- --shard=${{ matrix.shard }}/2
+        if: env.SKIP != 'true'
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.shard }}
           path: app/playwright-report/
           retention-days: 7
+  e2e:
+    name: e2e
+    needs: [changes, e2e-shard]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every e2e job to succeed (#1286)
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+          EXPECTED: 2
+        run: |
+          set -euo pipefail
+          printf '%s' "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          count=$(printf '%s' "$NEEDS" | jq 'length')
+          bad=$(printf '%s' "$NEEDS" | jq -r '[to_entries[] | select(.value.result != "success") | .key] | join(" ")')
+          if [ "$count" != "$EXPECTED" ]; then
+            echo "::error::expected $EXPECTED needed jobs, got $count"; exit 1
+          fi
+          if [ -n "$bad" ]; then
+            echo "::error::not successful: $bad"; exit 1
+          fi
   # Non-required (#334; NOT added to `protect-main`'s required checks, same
   # treatment as the coverage job in #319 — and per `mergeable_state:
   # unstable`'s meaning in this repo, "only optional checks are red" is still

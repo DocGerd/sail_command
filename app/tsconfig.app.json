@@ -154,6 +154,7 @@
     "src/**/changelogFragmentsFs.ts",
     "src/**/changelogFragmentsFs.test.ts",
     "src/**/subPathMeta.test.ts",
+    "src/**/sequencerShard.test.ts",
     "src/**/glyphFallbackWarningGuard.test.ts",
     "src/**/useBannerHeight.test.ts",
     "src/**/legDistanceReconciliation.test.ts",

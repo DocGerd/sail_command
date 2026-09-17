@@ -169,9 +169,9 @@ making design-level decisions; do not silently deviate.
   specs are the ONLY functional assurance for `src/sw.ts` and
   `src/routing/worker.ts` (both ~0% coverage by design), so a lint gap there
   was never cosmetic. No hand-run is needed any more.
-  The REQUIRED `app` job runs `.github/scripts/check-no-home-paths.sh`
-  immediately after `checkout` and before `setup-node`/`npm ci` (#474,
-  `ci.yml`'s `No leaked home paths (#474)` step, ~:37 — it needs neither):
+  `ci.yml`'s `changes` job runs `.github/scripts/check-no-home-paths.sh`
+  ungated (#474, its `No leaked home paths (#474)` step; since #1286 both
+  required fan-ins `app` and `e2e` need that job):
   any absolute per-user home path in ANY tracked file reds a required check,
   `docs/**`, `.claude/**` and `CLAUDE.md` included. The usual vector is a pasted
   agent transcript — use `<repo>`/`<scratchpad>` placeholders.
@@ -401,7 +401,8 @@ making design-level decisions; do not silently deviate.
   here per that bullet's own rule (duration), and to avoid a second copy
   that can drift (size). Fixed with a custom `sequence.sequencer` in
   `app/vite.config.ts` that schedules known-slow files first (#214).
-  #214 also REMOVED `needs: app` from `ci.yml`'s `e2e` job: the two now run
+  #214 also REMOVED `needs: app` from `ci.yml`'s `e2e` job (since #1286: no
+  edge between the `app-*` and `e2e-shard` jobs): the two now run
   concurrently (~120 s saved per run, which compounds under the strict
   up-to-date policy), so a red `app` no longer skips `e2e`, and both jobs race
   the SAME `setup-node` cache key — a lockfile-changing PR may have `e2e`
@@ -417,9 +418,12 @@ making design-level decisions; do not silently deviate.
   sized from; read the figure there rather than restating it here. The older
   ~10 min figure may still describe a full CI *cycle*
   including queueing/startup, not the job's own duration.
-- `ci.yml`'s `e2e` job gates its four expensive steps (`setup-node`, `npm ci`,
-  `playwright install`, `npm run e2e`) behind a docs-only classify step (#327,
-  PR #330). The JOB always runs and always reports — a trigger-level
+- **Since #1286 the required `app` and `e2e` checks are FAN-IN jobs** that
+  fail unless every needed job (`changes`, `app-static`, `app-shard (i/3)`;
+  `changes`, `e2e-shard (i/2)`) reports `success`. The docs-only classify step
+  (#327, PR #330) and #877's retest step run once in `changes`; its outputs
+  gate the shard jobs' STEPS (checkout through `npm run e2e`), never the jobs.
+  The JOB always runs and always reports — a trigger-level
   `paths`/`paths-ignore` on a REQUIRED check never reports at all, leaving the
   PR blocked forever, so only STEPS may be skipped; `python-lint.yml`/
   `verify-mask.yml` may use trigger filters precisely because neither is
@@ -1144,8 +1148,9 @@ making design-level decisions; do not silently deviate.
   failing spec locally before burning a ~10 min CI cycle (pree2e still rebuilds;
   restore the wind fixture afterwards); add `--no-deps` (since #1260) to skip
   the `identity` project when it doesn't matter for the spec under test.
-- **`ci.yml`'s `e2e` job caps at `timeout-minutes: 30`** (the
-  `timeout-minutes` key under `ci.yml`'s `e2e:` job, #605) —
+- **`ci.yml`'s `e2e` job capped at `timeout-minutes: 30`** (#605; since
+  #1286 the same 30 sits on each `e2e-shard` job, sized ~2x the heavier
+  shard) —
   derived from 8 re-measured real runs spanning **5m53s–14m33s**, not the stale
   3–4 min this file used to quote; a wedge now reds in 30 min instead of 360.
   An older **16m43s** outlier sits outside that window and sets the real margin
