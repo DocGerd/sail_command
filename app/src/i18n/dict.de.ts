@@ -342,8 +342,12 @@ export const de = {
   // Ursache 'budget-exhausted', ein späteres, anderes Zeitlimit).
   'error.noRoute.unreachable':
     'Keine Route gefunden — die Suche hat keinen Weg zum Ziel gefunden, ohne Land oder zu flaches Wasser zu queren. Das beweist nicht, dass es keine Route gibt; die Suche hat möglicherweise zu früh aufgegeben.',
+  // #1307: siehe die englische Fassung — der Vorhersagehorizont ist das FESTE
+  // Ende des gespeicherten Zeitraums, eine SPÄTERE Abfahrt lässt also
+  // weniger, nicht mehr, Vorhersage übrig. Umformuliert auf den Wortlaut, den
+  // PR #1306 für route.shallow.remedyHorizon bereits übernommen hat.
   'error.noRoute.beyondHorizon':
-    'Keine Route innerhalb des 6-Tage-Vorhersagehorizonts gefunden. Spätere Abfahrt oder ein näheres Ziel versuchen.',
+    'Keine Route innerhalb des 6-Tage-Vorhersagehorizonts gefunden. Eine andere Abfahrtszeit, eine neue Vorhersage oder ein näheres Ziel versuchen.',
   // #804: „in den Optionen“ benannte keine Oberfläche dieser App. Der
   // motorEnabled-Schalter steht in SettingsPanel in der Karte
   // settings.section.propulsion, im Boot-Tab (nav.boat) — am Bauteil
@@ -366,8 +370,9 @@ export const de = {
     'Zu wenig Wind, um den als „nur Segel“ markierten Abschnitt zu segeln. Markierung aufheben oder eine andere Abfahrtszeit wählen.',
   'error.noRoute.calmSailOnlyMotorOff':
     'Zu wenig Wind, um den als „nur Segel“ markierten Abschnitt zu segeln. Eine andere Abfahrtszeit wählen, oder Motor aktivieren und Markierung aufheben.',
+  // #1307: gleiche Umformulierung wie error.noRoute.beyondHorizon oben.
   'error.noRoute.beyondHorizonSailOnly':
-    'Keine Route innerhalb des 6-Tage-Vorhersagehorizonts gefunden. Spätere Abfahrt oder ein näheres Ziel versuchen, oder die „nur Segel“-Markierung aufheben.',
+    'Keine Route innerhalb des 6-Tage-Vorhersagehorizonts gefunden. Eine andere Abfahrtszeit, eine neue Vorhersage oder ein näheres Ziel versuchen, oder die „nur Segel“-Markierung aufheben.',
   'error.noRoute.segmentModeConflict':
     'Ein Abschnitt ist als „nur Motor“ markiert, aber der Motor ist deaktiviert. Motor unter Boot › Antrieb aktivieren oder den Abschnitt ändern.',
   'error.noRoute.segmentModesInvalid':
@@ -502,18 +507,32 @@ export const de = {
   // #516-Entwurfsdokument bewusst UNEMPFOHLEN gelassen, "eine
   // Maintainer-Entscheidung, markiert statt entworfen" — inzwischen
   // entschieden). Zuletzt in .detail gerendert, nach dem Mechanismus-Satz,
-  // auf den er antwortet (PR #523, Minor 3). In RouteSummary.tsx an drei
-  // Bedingungen gekoppelt — `showRemedy`: dieselbe gemessene Exposition
+  // auf den er antwortet (PR #523, Minor 3). In ShallowWarning.tsx an drei
+  // Bedingungen gekoppelt — `showDepthRemedy`: dieselbe gemessene Exposition
   // größer als null wie die Zahl davor, das breite Layout, und usedDepthM
   // über SAFETY_DEPTH_FIELD.min. Die Begründung zu jeder einzelnen steht an
   // dieser Deklaration; sie ist die einzige Stelle zum Nachlesen und Ändern.
-  // #1300: seit #1258 kann dieses Banner auch nach einem Horizont-Fehlschlag
-  // bei der eingestellten Tiefe erscheinen, daher nennt ein zweiter, bedingter
-  // Satz Abfahrtszeit und Vorhersage als Abhilfe. Angehängt, statt den ersten
-  // zu ersetzen, da der String den Auslöser nicht benennen kann
-  // (Entscheidung: kein neues ShallowInfo-Feld).
+  // #1300/#1258: dieses Banner kann auch nach einem Horizont-Fehlschlag bei
+  // der eingestellten Tiefe erscheinen, wo eine geringere Sicherheitstiefe
+  // nicht die passende Abhilfe ist. #1300 hängte dafür einen gehedgten
+  // zweiten Satz (Abfahrtszeit/Vorhersage) an, statt den ersten zu ersetzen,
+  // da der String den Auslöser nicht benennen kann (Entscheidung: kein neues
+  // ShallowInfo-Feld).
+  // #1308 TRENNT diesen zweiten Satz in einen eigenen Schlüssel,
+  // `.remedyHorizon` unten — der kombinierte String verbarg den
+  // Horizont-Hinweis hinter `showDepthRemedy`s Bedingungen für breites
+  // Layout und Tiefen-Minimum und fehlte damit genau dort, wo er die einzig
+  // hilfreiche Abhilfe sein kann (schmales Layout, auch bei tabletPortrait
+  // 820 — CLAUDE.mds Tablet-Untergrenze — oder usedDepthM bereits am
+  // Feld-Minimum dieses Boots). `showHorizonRemedy` behält nur die
+  // Expositions-Bedingung; siehe deren eigene Deklaration.
   'route.shallow.remedy':
-    'Eine geringere Sicherheitstiefe könnte dem Planer helfen, eine direktere Route zu finden. Reichte der Vorhersagehorizont stattdessen für die Suche mit der eingestellten Tiefe nicht aus, hilft möglicherweise eine andere Abfahrtszeit oder eine neue Vorhersage.',
+    'Eine geringere Sicherheitstiefe könnte dem Planer helfen, eine direktere Route zu finden.',
+  // #1308: aus .remedy oben getrennt — derselbe Satz, den #1300 dort
+  // angehängt hatte, jetzt als eigener Schlüssel, damit er unabhängig von
+  // der reinen Tiefen-Bedingung rendern kann.
+  'route.shallow.remedyHorizon':
+    'Reichte der Vorhersagehorizont stattdessen für die Suche mit der eingestellten Tiefe nicht aus, hilft möglicherweise eine andere Abfahrtszeit oder eine neue Vorhersage.',
   // Was passiert ist, ohne Ursache zu benennen: bei der eingestellten Tiefe
   // wurde keine Route gefunden, die tatsächlich verwendete Tiefe, die
   // geringste gequerte Kartentiefe. Dieser String behauptet HEUTE an keiner
