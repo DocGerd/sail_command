@@ -342,8 +342,13 @@ export const de = {
   // Ursache 'budget-exhausted', ein späteres, anderes Zeitlimit).
   'error.noRoute.unreachable':
     'Keine Route gefunden — die Suche hat keinen Weg zum Ziel gefunden, ohne Land oder zu flaches Wasser zu queren. Das beweist nicht, dass es keine Route gibt; die Suche hat möglicherweise zu früh aufgegeben.',
+  // #1307: siehe die englische Fassung — der Vorhersagehorizont ist das FESTE
+  // Ende des gespeicherten Zeitraums, eine SPÄTERE Abfahrt lässt also
+  // weniger, nicht mehr, Vorhersage übrig. Wortlaut wie die Abhilfe, die
+  // PR #1306 in route.shallow.remedy übernommen hat (durch #1308 in
+  // .remedyHorizon abgetrennt); „ein näheres Ziel“ stammt aus dem Original.
   'error.noRoute.beyondHorizon':
-    'Keine Route innerhalb des 6-Tage-Vorhersagehorizonts gefunden. Spätere Abfahrt oder ein näheres Ziel versuchen.',
+    'Keine Route innerhalb des 6-Tage-Vorhersagehorizonts gefunden. Eine andere Abfahrtszeit, eine neue Vorhersage oder ein näheres Ziel versuchen.',
   // #804: „in den Optionen“ benannte keine Oberfläche dieser App. Der
   // motorEnabled-Schalter steht in SettingsPanel in der Karte
   // settings.section.propulsion, im Boot-Tab (nav.boat) — am Bauteil
@@ -366,8 +371,9 @@ export const de = {
     'Zu wenig Wind, um den als „nur Segel“ markierten Abschnitt zu segeln. Markierung aufheben oder eine andere Abfahrtszeit wählen.',
   'error.noRoute.calmSailOnlyMotorOff':
     'Zu wenig Wind, um den als „nur Segel“ markierten Abschnitt zu segeln. Eine andere Abfahrtszeit wählen, oder Motor aktivieren und Markierung aufheben.',
+  // #1307: gleiche Umformulierung wie error.noRoute.beyondHorizon oben.
   'error.noRoute.beyondHorizonSailOnly':
-    'Keine Route innerhalb des 6-Tage-Vorhersagehorizonts gefunden. Spätere Abfahrt oder ein näheres Ziel versuchen, oder die „nur Segel“-Markierung aufheben.',
+    'Keine Route innerhalb des 6-Tage-Vorhersagehorizonts gefunden. Eine andere Abfahrtszeit, eine neue Vorhersage oder ein näheres Ziel versuchen, oder die „nur Segel“-Markierung aufheben.',
   'error.noRoute.segmentModeConflict':
     'Ein Abschnitt ist als „nur Motor“ markiert, aber der Motor ist deaktiviert. Motor unter Boot › Antrieb aktivieren oder den Abschnitt ändern.',
   'error.noRoute.segmentModesInvalid':
@@ -502,18 +508,46 @@ export const de = {
   // #516-Entwurfsdokument bewusst UNEMPFOHLEN gelassen, "eine
   // Maintainer-Entscheidung, markiert statt entworfen" — inzwischen
   // entschieden). Zuletzt in .detail gerendert, nach dem Mechanismus-Satz,
-  // auf den er antwortet (PR #523, Minor 3). In RouteSummary.tsx an drei
-  // Bedingungen gekoppelt — `showRemedy`: dieselbe gemessene Exposition
+  // auf den er antwortet (PR #523, Minor 3). In ShallowWarning.tsx an drei
+  // Bedingungen gekoppelt — `showDepthRemedy`: dieselbe gemessene Exposition
   // größer als null wie die Zahl davor, das breite Layout, und usedDepthM
-  // über SAFETY_DEPTH_FIELD.min. Die Begründung zu jeder einzelnen steht an
-  // dieser Deklaration; sie ist die einzige Stelle zum Nachlesen und Ändern.
+  // über dem eigenen Feld-Minimum dieses Boots (safetyDepthFieldFor). Die
+  // Begründung zu jeder einzelnen steht an dieser Deklaration; sie ist die
+  // einzige Stelle zum Nachlesen und Ändern.
+  // #1300: seit #1258 kann dieses Banner auch nach einem Horizont-Fehlschlag
+  // bei der eingestellten Tiefe erscheinen, daher nennt ein zweiter, bedingter
+  // Satz Abfahrtszeit und Vorhersage als Abhilfe. Angehängt, statt den ersten
+  // zu ersetzen, da der String den Auslöser nicht benennen kann
+  // (Entscheidung: kein neues ShallowInfo-Feld).
+  // #1308 TRENNT diesen zweiten Satz in einen eigenen Schlüssel,
+  // `.remedyHorizon` unten — der kombinierte String verbarg den
+  // Horizont-Hinweis hinter `showDepthRemedy`s Bedingungen für breites
+  // Layout und Tiefen-Minimum und fehlte damit genau dort, wo er die einzig
+  // hilfreiche Abhilfe sein kann (schmales Layout, auch bei tabletPortrait
+  // 820 — CLAUDE.mds Tablet-Untergrenze — oder usedDepthM bereits am
+  // Feld-Minimum dieses Boots). `showHorizonRemedy` trägt jetzt KEINE eigene
+  // Bedingung mehr — es rendert immer, wenn diese Komponente rendert; siehe
+  // deren eigene Deklaration für die Begründung.
   'route.shallow.remedy':
     'Eine geringere Sicherheitstiefe könnte dem Planer helfen, eine direktere Route zu finden.',
-  // Was passiert ist: die eingestellte Sicherheitstiefe war nicht
-  // passierbar, die tatsächlich verwendete Tiefe, die geringste gequerte
-  // Kartentiefe. Normale Textstärke (nicht mehr hervorgehoben) — siehe
-  // dict.en.ts's Kommentar für den vollen Hintergrund ({used} < {requested},
-  // {minGate} als Plan-weite Angabe).
+  // #1308: aus .remedy oben getrennt — #1300s angehängter Satz ohne
+  // „stattdessen", das sich auf den Tiefen-Satz bezog und ohne ihn
+  // (schmales Layout, Feld-Minimum) keinen Bezug hat.
+  'route.shallow.remedyHorizon':
+    'Reichte der Vorhersagehorizont für die Suche mit der eingestellten Tiefe nicht aus, hilft möglicherweise eine andere Abfahrtszeit oder eine neue Vorhersage.',
+  // Was passiert ist, ohne Ursache zu benennen: bei der eingestellten Tiefe
+  // wurde keine Route gefunden, die tatsächlich verwendete Tiefe, die
+  // geringste gequerte Kartentiefe. Dieser String behauptet HEUTE an keiner
+  // Stelle "nicht passierbar" (anders als die englische Fassung vor #1300)
+  // und blieb daher inhaltlich unverändert — eine frühere Fassung
+  // (`route.shallow.banner`, vor der #452/#504-Aufspaltung, Commit a73ac1a)
+  // sagte das sehr wohl; keine Aussage über die gesamte Historie dieses
+  // Strings. Seit #1258 kann er auch rendern, wenn die eingestellte Tiefe
+  // verbunden WAR und die Suche stattdessen den Vorhersagehorizont
+  // ausgeschöpft hat (PR #1299 review, finding 4); "keine ... Route
+  // gefunden" ist für beide Fälle wahr. Siehe dict.en.ts's Kommentar für den
+  // vollen Hintergrund ({used} < {requested}, {minGate} als Plan-weite
+  // Angabe).
   'route.shallow.detail':
     'Mit der eingestellten Sicherheitstiefe von {requested} m wurde keine durchgehende Route gefunden — diese Route wurde daher mit einer reduzierten Tiefe von {used} m geplant. Geringste von diesem Plan gequerte Kartentiefe: {minGate} m.',
   // #452 gap 3: siehe dict.en.ts's Kommentar für Zweck und Konvention

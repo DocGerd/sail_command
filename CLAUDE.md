@@ -7,7 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 SailCommand — an offline-capable PWA that plans time-optimal sailing routes
 for a three-boat Flensburg fleet (Salona 45; Salona 44 "SPEEDY GO!"; Elan
 Impression 444 "PIRANJA" — drafts 2.1/2.1/1.9 m, so TWO distinct depth gates)
-in the Flensburg Fjord / Danish South Sea area (54.3–55.3°N, 9.4–11.0°E),
+in the Flensburg Fjord / Danish South Sea area (54.3–55.6°N, 9.4–11.6°E
+since #295 — read the live bounds off `app/public/data/mask.meta.json`),
 using hourly Open-Meteo wind forecasts and an isochrone router that prices
 tacks/gybes as time penalties. Only the Salona 45 is `hullVerified` with
 certificate-anchored polars; the other two are tier-C estimates, which
@@ -158,8 +159,8 @@ making design-level decisions; do not silently deviate.
   whole-file scan.
 ## Commands
 - App (run from repo root): `npm --prefix app run typecheck` / `lint` / `test` /
-  `build` / `dev`. CI runs lint+typecheck BEFORE tests — vitest alone will not
-  catch unused imports or type errors.
+  `build` / `dev`. CI runs lint+typecheck in `app-static`, concurrently with the test shards
+  (#1286) — vitest alone will not catch unused imports or type errors.
   **CI's `lint` covers `app/e2e/**` AND `app/sweep/**` — the script is
   `eslint src e2e sweep`** (measured 2026-09-01; `e2e` added by PR #508
   closing #420 on 2026-08-11, `sweep` by #602 at the v0.17.0 cut, so the #282
@@ -168,9 +169,9 @@ making design-level decisions; do not silently deviate.
   specs are the ONLY functional assurance for `src/sw.ts` and
   `src/routing/worker.ts` (both ~0% coverage by design), so a lint gap there
   was never cosmetic. No hand-run is needed any more.
-  The REQUIRED `app` job runs `.github/scripts/check-no-home-paths.sh`
-  immediately after `checkout` and before `setup-node`/`npm ci` (#474,
-  `ci.yml`'s `No leaked home paths (#474)` step, ~:37 — it needs neither):
+  `ci.yml`'s `changes` job runs `.github/scripts/check-no-home-paths.sh`
+  ungated (#474, its `No leaked home paths (#474)` step; since #1286 both
+  required fan-ins `app` and `e2e` need that job):
   any absolute per-user home path in ANY tracked file reds a required check,
   `docs/**`, `.claude/**` and `CLAUDE.md` included. The usual vector is a pasted
   agent transcript — use `<repo>`/`<scratchpad>` placeholders.
@@ -215,12 +216,13 @@ making design-level decisions; do not silently deviate.
   tautology (statements execute without modeling real CacheStorage/Range/CDN
   semantics, the bug class that actually bit in #96 and #118).
 - `app/sweep/` (#450) is the committed #282 acceptance harness — one arm-set is
-  EVERY name in `app/sweep/armNames.ts` x 33 harbours. Do NOT restate that
-  count here: it has gone stale twice already (SIX until #452, NINE until
-  #653), and `armNames.ts` plus `app/sweep/README.md`'s opening line decay on
-  the same schedule as the thing they describe. Read current composition
-  from `armNames.ts` and `app/sweep/README.md` directly, never restate a
-  count here. That README carries the full rebuild spec,
+  EVERY name in `app/sweep/armNames.ts` x every harbour in `harbors.json`. Do
+  NOT restate either count here: the arm count went stale twice (SIX until
+  #452, NINE until #653) and the harbour count went 33 -> 40 at #295, and
+  `armNames.ts` plus `app/sweep/README.md`'s opening line decay on the same
+  schedule as the thing they describe. Read current composition from
+  `armNames.ts` and `app/sweep/README.md` directly, never restate a count
+  here. That README carries the full rebuild spec,
   and a REQUIRED BASE double-run control (two BASE runs must be byte-identical
   to each other before any BASE-vs-HEAD comparison means anything). Record
   that control against the merge-base of the branch it will certify. A moved
@@ -267,13 +269,28 @@ making design-level decisions; do not silently deviate.
   rule was wrong (measured 2026-08-13: #518's evidence did survive #513,
   #522 and #523, verified by running the closure check this rule prescribes
   — none of the 22 files they changed is in the closure).
+  **A sweep's BASELINE is the branch's own base tree, not the last RECORDED
+  baseline.** Measured at #1264 (2026-09-16): against the baseline recorded
+  two PRs earlier, `light-motorless` read CHANGED — that change was #1136's,
+  already on develop and inside #1264's base; against the base tree the same
+  run was 440/440. Compare to a run of the tree the branch forked from.
+  **Post-#295 an arm can outlive vitest's own per-arm timeout.** Six of 11
+  arms exceeded `solverTimeoutMs(3_600_000)` at 4464-5086 s on 2026-09-16 —
+  under no competing workload, the load being the sweep's own 11 parallel
+  arms, which is how a sweep always runs — and
+  the run exited 1, yet all 11 JSONs were complete and byte-correct: the solve
+  is synchronous, so the timer fires only after the arm has written its file.
+  The ARTIFACT HASH is the verdict, never the runner's exit code. #1262 tracks
+  sharding so arms stop outgrowing the cap.
   **Never run a full sweep as a harness background task** — a harness
   background task was killed at ~58 min (observed 2026-08-18 against Claude
   Code 2.1.235; re-check after any harness upgrade, this is a harness-version
-  property). `base1` alone took ~1850 s UNLOADED — ~31 min, i.e. INSIDE that
-  ceiling: what exceeds it is the REQUIRED BASE double-run (2×) and a
-  BASE-vs-HEAD comparison (3×), so the ceiling bites on the control, never on
-  a single arm-set. Detach from the start
+  property). `base1` alone took ~1850 s UNLOADED — ~31 min — but that is a
+  PRE-#295, 33-harbour measurement. Arms are FILE-PARALLEL, so an arm-set's
+  wall time is its SLOWEST arm: #1262 measures that at 4303 s (~72 min) over
+  40 harbours — past the ~58 min ceiling as measured 2026-08-18. Post-#295
+  a single arm-set can blow that ceiling too; re-measure both halves rather
+  than assuming either. Detach from the start
   (`setsid` + `nohup`), and report the `SC_SWEEP_OUT` path AT DETACH, not on
   completion: an agent died mid-sweep on 2026-08-18 and its output path died
   with it. A killed run and a finished one are both silent.
@@ -384,7 +401,8 @@ making design-level decisions; do not silently deviate.
   here per that bullet's own rule (duration), and to avoid a second copy
   that can drift (size). Fixed with a custom `sequence.sequencer` in
   `app/vite.config.ts` that schedules known-slow files first (#214).
-  #214 also REMOVED `needs: app` from `ci.yml`'s `e2e` job: the two now run
+  #214 also REMOVED `needs: app` from `ci.yml`'s `e2e` job (since #1286: no
+  edge between the `app-*` and `e2e-shard` jobs): the two now run
   concurrently (~120 s saved per run, which compounds under the strict
   up-to-date policy), so a red `app` no longer skips `e2e`, and both jobs race
   the SAME `setup-node` cache key — a lockfile-changing PR may have `e2e`
@@ -400,9 +418,12 @@ making design-level decisions; do not silently deviate.
   sized from; read the figure there rather than restating it here. The older
   ~10 min figure may still describe a full CI *cycle*
   including queueing/startup, not the job's own duration.
-- `ci.yml`'s `e2e` job gates its four expensive steps (`setup-node`, `npm ci`,
-  `playwright install`, `npm run e2e`) behind a docs-only classify step (#327,
-  PR #330). The JOB always runs and always reports — a trigger-level
+- **Since #1286 the required `app` and `e2e` checks are FAN-IN jobs** that
+  fail unless every needed job (`changes`, `app-static`, `app-shard (i/3)`;
+  `changes`, `e2e-shard (i/2)`) reports `success`. The docs-only classify step
+  (#327, PR #330) and #877's retest step run once in `changes`; its outputs
+  gate the shard jobs' STEPS (checkout through `npm run e2e`), never the jobs.
+  The JOB always runs and always reports — a trigger-level
   `paths`/`paths-ignore` on a REQUIRED check never reports at all, leaving the
   PR blocked forever, so only STEPS may be skipped; `python-lint.yml`/
   `verify-mask.yml` may use trigger filters precisely because neither is
@@ -1125,11 +1146,13 @@ making design-level decisions; do not silently deviate.
   One-time setup: `npm --prefix app exec playwright install chromium`.
   Single-spec runs work: `npm --prefix app run e2e -- plan.spec.ts` — validate a
   failing spec locally before burning a ~10 min CI cycle (pree2e still rebuilds;
-  restore the wind fixture afterwards).
-- **`ci.yml`'s `e2e` job caps at `timeout-minutes: 30`** (the
-  `timeout-minutes` key under `ci.yml`'s `e2e:` job, #605) —
+  restore the wind fixture afterwards); add `--no-deps` (since #1260) to skip
+  the `identity` project when it doesn't matter for the spec under test.
+- **`ci.yml`'s `e2e` job capped at `timeout-minutes: 30`** (#605; since
+  #1286 each `e2e-shard` job caps at 35, sized from this PR's measured
+  shard runs) —
   derived from 8 re-measured real runs spanning **5m53s–14m33s**, not the stale
-  3–4 min this file used to quote; a wedge now reds in 30 min instead of 360.
+  3–4 min this file used to quote; a wedge now reds in 35 min per shard instead of 360.
   An older **16m43s** outlier sits outside that window and sets the real margin
   at ~1.79x, not 2.06x — size any future change against the outlier, not the
   sampled range. It BOUNDS wedge damage, it does not prevent it: a wedge still
@@ -1271,31 +1294,18 @@ making design-level decisions; do not silently deviate.
 - E2E determinism: no fixed `waitForTimeout` as a synchronization wait — gate
   on state signals with `expect.poll`; settle canvas baselines via two
   consecutive byte-equal screenshots before byte-comparing frames against them.
-  **The rule governs an assertion's INPUTS, not only its predicate.**
-  The banner-clearance guards in `app/e2e/layout.spec.ts` (a
-  parametrized viewport sweep plus three named fix-wave tests) and the
-  SIBLING guard in `app/e2e/compass.spec.ts` each USED TO capture
-  `depthToggle`'s `boundingBox()` ONCE and then assert against a coordinate
-  frozen from that single read — taken before the `ResizeObserver` write of
-  `--sc-banner-height`, and the CSS push it causes, had settled. A real
-  interception and a stale-coordinate read produce a BYTE-IDENTICAL
-  signature, so the race could make a guard PASS with the defect live. The
-  two forms differed only in CI signature, which is exactly why recognising
-  them as ONE class mattered: `layout.spec.ts` polled a stale point until its
-  budget expired (a predicate timeout), while `compass.spec.ts` fed the
-  frozen boxes to an IMMEDIATE one-shot `expect(overlap area).toBe(0)` with
-  zero settle tolerance and failed an overlap comparison outright — not
-  polling is not the same as not needing a gate. FIXED in #412 / PR #419:
-  every one of those guards now RE-SAMPLES its geometry INSIDE the poll
-  callback, so no box survives across a tick; the specs carry `#412` comments
-  at each site saying so. The two residual frozen-geometry sites #422 tracked
-  — both in `compass.spec.ts`'s #208 occlusion sweep — were closed the same
-  way at #422 (`89f4880`, 2026-08-28); they now carry `#422 (residual of
-  #412)` comments saying the geometry is RE-SAMPLED on every poll tick. The
-  suite has not been re-enumerated since, so "no frozen-geometry site
-  remains" is not a claim this file makes. The durable rule outlives the fix: polling a
-  state signal is not enough if the coordinate or handle being polled was
-  itself sampled before settle.
+  **The rule governs an assertion's INPUTS, not only its predicate.** A guard
+  that captures `boundingBox()` ONCE and then polls against that frozen
+  coordinate can PASS with the defect live, and an un-polled IMMEDIATE
+  one-shot on the same frozen read FAILS outright — not polling is not the
+  same as not needing a gate (`compass.spec.ts`'s `#412` comment on its
+  `toBe(0)` overlap guard). A real interception and a stale read have a
+  byte-identical signature. Fixed at #412/#419 and #422
+  (`89f4880`), which re-sample geometry INSIDE the poll callback; the sites
+  carry `#412`/`#422` comments saying so. The suite has not been re-enumerated
+  since, so "no frozen-geometry site remains" is not a claim this file makes.
+  Durable rule: polling a state signal is not enough if the coordinate or
+  handle being polled was itself sampled before settle.
 - **Playwright's `getByRole` matches `name` by SUBSTRING, case-insensitively,
   unless `exact: true`** — so a NEW control whose accessible name CONTAINS an
   existing one's resolves both and reds every locator with a strict-mode
@@ -1648,6 +1658,7 @@ making design-level decisions; do not silently deviate.
   | v0.32.0 | 2026-09-10 | 62 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) immediately before the tag push -- another not-yet-started reading; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `34471115059` (created 11:24:20Z) -> tag `34471205143` (created 11:25:22Z) on `4e1e92d`. The merge run's `deploy` job carries **`steps: 0`** against that SAME run's `build` job at **`steps: 23`**, which ran and was cancelled mid-flight -- the within-run control v0.27.0 and v0.31.0 used -- so `deploy` NEVER STARTED and left no `success`-state deployment of that SHA behind. The tag run (`head_branch: v0.32.0`) had `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**, `uat-environment` skipped; production afterwards served ``about.version`,{version:`v0.32.0`}`` with ZERO suffixed `vX.Y.Z-N-g<sha>` matches, so no back-merge remedy was owed. Release object `isLatest: true`; tag object reported `verified: true, reason: "valid"`. Still names no MECHANISM, and per this table's own rule the gap gates nothing. |
   | v0.33.0 | 2026-09-10 | 134 s | `success` (MEASURED immediately before the tag push, and the failure CALLED IN ADVANCE from it, written down BEFORE the push) | **`smoke-probe` FAILED** | merge-push `34510823659` (created 17:52:05Z) -> tag `34511051995` (created 17:54:19Z) on `84fc200`. The merge run's `deploy` job carries **`steps=6`** and was terminal `success` at **17:53:36Z, 43 s BEFORE the tag run was created** -- v0.29.0's `steps` discriminator in the reading that means the job genuinely RAN and deployed. The tag run's `build` AND `deploy` both succeeded; only `smoke-probe` failed, by the #398 signature -- its own prod entry chunk `assets/index-BruyVo4z.js` returned **404 on all 10 attempts** (17:55:49Z -> 18:00:20Z) while BOTH basemap Range probes passed on attempt 1, ruling out a CDN regression. Back-merge `34513753191` (different SHA `3637c30`) then probed green and republished **that same chunk name**, which then returned 200 on attempt 1 -- so the tag run's BUILD was correct and only its DEPLOYMENT no-opped. Production afterwards served that chunk at ``about.version`,{version:`v0.33.0`}`` with ZERO suffixed `vX.Y.Z-N-g<sha>` matches. **ENDS the run of not-yet-started readings at v0.30.0, v0.31.0 and v0.32.0** -- read those three rows rather than trusting a count here -- and is the first terminal `success` since v0.29.0, behaving exactly as this table says a `success` reading behaves. Still names no MECHANISM, and per this table's own rule the gap gates nothing. |
   | v0.34.0 | 2026-09-15 | 44 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 08:28:02Z, two seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `34947043144` (created 08:27:21Z) -> tag `34947108798` (created 08:28:05Z) on `85afd47`. The merge run's `deploy` job carries **`steps: 0`** against that run's `build` at **`steps: 23`** (the within-run control). The tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production then served `assets/index-CEJof43x.js` at ``about.version`,{version:`v0.34.0`}`` with ZERO suffixed matches, so no back-merge remedy was owed. Release object `isLatest: true`; tag object `fe18dcb` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
+  | v0.35.0 | 2026-09-16 | 41 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) immediately before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `35109752970` (created 14:37:06Z) -> tag `35109830067` (created 14:37:47Z) on `2d94af4`. The merge run's `deploy` job carries **`steps: 0`** against that run's `build` at **`steps: 23`** — the within-run control — so it never started. The tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded** (`uat-environment` skipped); production then served `assets/index-D0g3cIVk.js` at ``about.version`,{version:`v0.35.0`}`` with ZERO suffixed matches, so no back-merge remedy was owed. Release object `isLatest: true`; tag object reported `verified: true, reason: "valid"`. Names no MECHANISM. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -2338,15 +2349,17 @@ making design-level decisions; do not silently deviate.
   real-data browser run found in minutes (#20: step length vs. real channel
   width). UI tasks should end with a real-browser pass (dev server +
   Playwright); routing changes must keep `app/src/routing/realmask.repro.*.test.ts`
-  green — five files since #878, all against the real committed mask/polars.
+  green — all against the real committed mask/polars. The file COUNT decays
+  (5 at #878, 8 at v0.35.0): enumerate with `git ls-files`, never restate it.
 - Flensburg→Marstal fails the RAW 3.0 m gate but ROUTES ANYWAY at DEFAULT
   settings — `planRoute()` returns `status: 'ok'` with shallow warnings at
   `requestedDepthM 3.0` / `usedDepthM ≈ 2.3`, as the `realmask.repro.*`
-  DEFAULT_SETTINGS case asserts (that file was split at #878 — grep the five
-  siblings rather than trusting a filename here). The mechanism is #53's relaxation tier, which
+  DEFAULT_SETTINGS case asserts (that file was split at #878 — grep the
+  siblings rather than trusting a filename or a count here). The mechanism is #53's relaxation tier, which
   fires on `depthRelaxationMayHelp(cause)` (defined and called in
   `planRoute.ts`, ~:254 / ~:687) whenever the failure cause is
-  mask-unreachability — **independent of `depthComfortMarginM`**, which is
+  mask-unreachability (or, since #1258, a requested-gate horizon overrun) —
+  **independent of `depthComfortMarginM`**, which is
   #243's soft comfort PREFERENCE (`planRoute.ts`'s only production use of
   it, ~:353) and does not gate relaxation at all; `planRoute.ts`'s own
   "Unaffected by #243" comment (~:661) says so.
@@ -2373,6 +2386,15 @@ making design-level decisions; do not silently deviate.
   the unclipped barb ribbon was implemented and unit-test-pinned exactly as
   designed, yet yielded 0 barbs at harbor-approach zoom on long routes (#36) —
   the design doc itself encoded the bug.
+- **A TIMING measured on a route that never enters the changed path is zero
+  evidence — count the calls, don't infer them.** #1256 removed a ~47 MB
+  per-call allocation from `cellsConnected`; the two routes benchmarked first
+  made **1** and **3** calls, because a plan that succeeds at its requested
+  gate never enters #53 relaxation, and the measured 4.8%/1.1% read as
+  confirmation. The relaxing route (Flensburg->Marstal) makes **10** — and
+  even there the delta (-3.5%) sat inside each side's own ~7 s spread, so the
+  honest verdict was NO resolvable wall-clock gain (2026-09-16). A call-count
+  spy is what discriminated; wall time alone never would have.
 - **A mutation that cannot REACH the code path under test is ZERO evidence,
   not weak evidence** (#455 session, 2026-08-09). Forcing `comfortDepthM =
   undefined` looked like a discriminating control for a test running at
@@ -2585,29 +2607,16 @@ making design-level decisions; do not silently deviate.
   test written to catch its absence can still be the wrong fix.** The
   discriminating experiment was to break the SPLICE while leaving the
   DERIVATION intact: correct form reds 1, suggested form reds 0.
-- **A comment-only wave can PROVE its prior measurement still holds instead of
-  re-running it — but a strip-and-hash proof needs TWO controls or it proves
-  nothing.** Strip comments/strings from both sides and compare digests: cheaper
-  than re-measuring AND stronger, since it is equivalence by construction rather
-  than by sampling. Both failure modes were hit in one session (2026-08-31).
-  (1) NON-VACUITY: a wave built its proof on esbuild-minify hashing; esbuild is
-  not installed under vite 8 and stderr was suppressed, so the hasher emitted the
-  EMPTY STRING for every input — three identical `e3b0c442…` digests (sha256 of
-  nothing) that read as proof. The stripper must REFUSE to emit a verdict unless
-  its output is non-empty AND contains a needle known present in the subject.
-  (2) A SUBSTANTIVE positive control: include a ONE-CHARACTER edit that
-  preserves stripped length (a wide `z-index` 2→3) and confirm the digest still
-  moves. Not because sha256 could miss it — it cannot — but because it proves
-  the STRIPPER passed that character through rather than eating it. Do not
-  hand-roll the
-  stripper: `app/src/test/sourceStrip.ts` (#1121) is the shared regex-aware
-  one and exports `assertNonVacuousStrip`, making the non-vacuity control
-  above structural rather than remembered. It is deliberately NOT registered
-  in `app/src/test/setup.ts` — a global shim there flips the #282 sweep
-  verdict to OWED. The mismatch it prevents: a naive `.ts` stripper mangles
-  `//` inside a regex literal, and a `//`-based checker cannot see inside a
-  CSS block comment at all — replace the instrument rather than relax its
-  rule, which would be calibrating a guard to accept what it should catch.
+- **A comment-only wave can PROVE its prior measurement still holds by
+  strip-and-hash instead of re-running it — but the proof needs TWO
+  controls; use the shared stripper.**
+  `app/src/test/sourceStrip.ts` (#1121) is regex-aware and exports
+  `assertNonVacuousStrip`, so the non-vacuity control is structural rather
+  than remembered; a hand-rolled stripper gave three sha256-of-nothing
+  digests that read as proof (2026-08-31). Still add a SUBSTANTIVE positive
+  control — a one-character edit preserving stripped length — to prove the
+  stripper passes that character through. Do NOT register it in
+  `app/src/test/setup.ts`: a global shim there flips the #282 sweep to OWED.
 - **A duplicated ALGORITHM must be proven equivalent by DIFFERENTIAL
   TESTING, never by reading.** `shallowExposureNm` re-implements `NavMask`'s
   private `walkCells` DDA, deliberately, to keep `PlanResult` byte-identical
@@ -3723,8 +3732,10 @@ making design-level decisions; do not silently deviate.
   nothing was LOST and never re-asks whether the moved claim was ever TRUE.
   A "~45% of cells" figure survived a move with the wrong denominator — the
   #455 spike says ~45% of WATER cells on the ENCODED basis (1,192,923 of
-  2,646,047), and water is only about HALF of the mask's 5,280,000 cells
-  (2,646,047, i.e. 50.1%), so the two denominators differ by roughly 2x; that
+  2,646,047), and water was only about HALF of the mask's then-5,280,000 cells
+  (2,646,047, i.e. 50.1% — a PRE-#295 total; the mask is 9,438,000 cells
+  since, `cols × rows` in `mask.meta.json` — so re-derive rather than reuse),
+  so the two denominators differ by roughly 2x; that
   same spike had already rejected draft copy for mixing bases ("the right
   response is a stated basis, not the largest number"). Verify a moved claim
   as if you were writing it fresh.
@@ -4090,8 +4101,9 @@ making design-level decisions; do not silently deviate.
   remove it: the two retry gates — named predicates `comfortRetryMayHelp` /
   `depthRelaxationMayHelp` — now branch on an INTERNAL `SolveFailureCause`
   (`'mask-blocked' | 'calm-without-motor' | 'horizon-exceeded' |
-  'budget-exhausted'` — four members since #432; both gates still admit only
-  `mask-blocked`, plus `horizon-exceeded` for `comfortRetryMayHelp`), deliberately
+  'budget-exhausted'` — four members since #432; both gates admit
+  `mask-blocked` and `horizon-exceeded`, the latter for relaxation since
+  #1258), deliberately
   kept OUT of `types.ts` so it cannot leak into UI code. The public
   `NoRouteReason` is unchanged, derived from the cause at exactly three
   presentation boundaries via `NO_ROUTE_LABEL_OF_CAUSE` — `noRouteLabel()` for
@@ -4121,9 +4133,10 @@ making design-level decisions; do not silently deviate.
   (#433/PR #442 and #432/PR #453, both shipped 2026-08-07; this bullet
   previously described the pre-fix state and is rewritten, not amended).
   `RoutingError` in `workerClient.ts` carries a `readonly kind:
-  RoutingFailureKind` — SEVEN members (`timeout`, `worker-fatal`,
+  RoutingFailureKind` — EIGHT members (`timeout`, `worker-fatal`,
   `worker-error`, `messageerror`, `disposed`, `boat-not-in-catalogue` added by
-  #54 §I.3, `cancelled` added by #1193), and that seven-vs-ten
+  #54 §I.3, `cancelled` added by #1193, `wind-grid-coverage` added by #295 for
+  a stored plan whose grid predates the widened mask), and that eight-vs-eleven
   distinction IS the layering, not a detail: `ROUTING_FAILURE_MESSAGE_KEY`
   (`replan.ts`) keys on `RoutingFailureKind | 'worker-init' |
   'persist-failed' | 'wind-unclassified'`, and those three extra causes
@@ -4135,10 +4148,12 @@ making design-level decisions; do not silently deviate.
   `onerror`/`onmessageerror`/`disposed`), a wind blip is helped by
   RE-FETCHING with no worker involved, and the input-deterministic ones
   (budget exhaustion, a deterministic `planRoute()` throw) cannot be helped
-  by retrying at all. `boat-not-in-catalogue` is a fourth remedy again — raised
-  CLIENT-side by `RoutingClient.plan()` (`workerClient.ts`) before anything is
-  posted, so neither a retry nor a reload helps and the copy must name the
-  boat. `cancelled` takes NO remedy at all: `usePlanFlow.run()` transitions
+  by retrying at all. `boat-not-in-catalogue` and `wind-grid-coverage` (#295)
+  are a fourth remedy again — both raised CLIENT-side by
+  `RoutingClient.plan()` (`workerClient.ts`) before anything is posted, so
+  neither a retry nor a reload helps; the copy must name the boat, or say
+  that only a fresh forecast fixes it.
+  `cancelled` takes NO remedy at all: `usePlanFlow.run()` transitions
   straight to `idle` before `routingFailureKey` is ever called, so no banner
   renders — `error.routingCancelled` is a fallback for some other observer,
   and the layer must not apologise for a user-initiated cancel. Do not glue
@@ -4162,8 +4177,10 @@ making design-level decisions; do not silently deviate.
   All four former bare catches in
   `replan.ts`/`reroute.ts` now preserve the discriminator, but only the TWO
   wrapping `plan()` dispose UNLESS `failureLeavesWorkerHealthy(err)`
-  (`replan.ts`, today exactly `boat-not-in-catalogue`, whose worker never saw
-  the request; the same guard is at `reroute.ts` and `usePlanFlow.ts`, and must
+  (`replan.ts` — read its members off that predicate; at #295 they are
+  `boat-not-in-catalogue` and `wind-grid-coverage`, both raised client-side
+  before anything is posted, so the worker never saw the request; the same
+  guard is at `reroute.ts` and `usePlanFlow.ts`, and must
   never be made unconditional — `dispose()` calls `failAll()` on a singleton
   shared by three consumers). The two wrapping `save()` deliberately do NOT,
   and their comments say why: routing SUCCEEDED and only the write failed, so
@@ -4194,8 +4211,9 @@ making design-level decisions; do not silently deviate.
   not evidence nothing happened — never ask a reporter to check it.
   `usePlanFlow.ts` matters most here: it handles the plan-failure path, so it
   is the file a triager would expect to log. Measure that inventory with BOTH
-  `console\.[a-z]+\(` (invocations) and `console\.[a-z]+[^(a-z]` (bare refs
-  like `.catch(console.error)` plus comment mentions): the invocation-only
+  `grep -rE 'console\.[a-z]+\('` (invocations) and
+  `grep -rE 'console\.[a-z]+[^(a-z]'` (bare refs
+  like `.catch(console.error)` plus comment mentions) — `-E` is required (#1210): the invocation-only
   grep UNDER-counts, and the composition shifts between merges even when the
   total does not. And the old "'reload the app' helps essentially only the
   asset/init case" caution is now SATISFIED, not residual — after #433/#432
@@ -4430,7 +4448,12 @@ making design-level decisions; do not silently deviate.
   `READONLY_VERBS` (removes 0 of 1,115 real asks); and segmenting on
   `;`/`&&`/newline (removes at most 2 of 1,115, and running before the char
   check makes it independently UNSAFE — an oversized heredoc times the hook
-  out into a silent allow).
+  out into a silent allow). #1273 (2026-09-16, maintainer ruling) added a
+  SEPARATE, bounded pipeline predicate — `bash_is_readonly_pipeline`: a
+  quote-aware splitter that IS the char check, fails closed on any other
+  metachar, newline or unterminated quote, and requires EVERY `|`/`;`/`&&`/
+  `||` segment to be read-only. Not the rejected shape; read its header
+  before widening it.
 - A NEW concrete guard-asymmetry instance (#368, PR #382 review): a value the
   FIRST PAINT depends on must be written in `useLayoutEffect`, not
   `useEffect` — `useEffect` fires AFTER paint, leaving a real window on a
@@ -5051,8 +5074,13 @@ making design-level decisions; do not silently deviate.
   at all (verified 2026-08-19 on the `v0.12.0` merge `3f3b75e`, whose
   check-runs list none). A red check-run on a release commit is therefore never
   scorecard noise — chase it.
-- e2e's preview port is fixed (4173 in helpers.ts): full e2e runs from
-  parallel worktrees contend — serialize them, i.e. dispatch **at most ONE e2e implementer at a
+- e2e's preview port is DERIVED per Playwright worker since #1260
+  (`helpers.ts`'s `currentPort()`, `4173 + parallelIndex`; unchanged for
+  `startPreviewIdentity.spec.ts`, which runs alone in its own
+  single-worker `identity` project) — but SEPARATE `npm run e2e`
+  invocations (different agents, different worktrees) each start their own
+  worker 0 at 4173, so full e2e runs from parallel worktrees still
+  contend — serialize them, i.e. dispatch **at most ONE e2e implementer at a
   time**; per-agent dev ports are for
   manual browser passes only. Measured 2026-09-09: three concurrent e2e agents, and one found a
   FOREIGN build already bound to 4173 and killed the listener by port PID to unblock itself.

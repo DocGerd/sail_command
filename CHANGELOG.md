@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.36.0] - 2026-09-17
+
+### Fixed
+
+- Some routes that failed with a forecast-horizon error now plan: when the search at the requested safety depth runs out of forecast time, the planner also tries the slightly shallower gate it already uses for unreachable routes, and flags any shallow water as before (#1258).
+- The 0.35.0 release notes wrongly listed editing waypoints among the actions that fail on routes saved before 0.35.0; a waypoint edit takes effect when you press Plan route, which fetches a fresh forecast, so the old stored forecast does not block it (#1268).
+- A slow device's route search is no longer cut off at a fixed deadline while the solver is still reporting progress — the wait now extends up to a fixed ceiling instead (#1280).
+- The shallow-route warning no longer says the requested safety depth was impassable when the search at that depth reached the end of the forecast horizon, and its remedy now also suggests a different departure time or a fresh forecast (#1300).
+- The beyond-horizon no-route message no longer suggests a later departure, which leaves less forecast time, not more; it now suggests a different departure time or a fresh forecast, alongside a closer destination (#1307).
+- The shallow-route warning's details now include its departure-time and forecast advice on narrow layouts, when planned at or below the lowest selectable safety depth, and while the shallow-water measurement is still loading or reads zero (#1308).
+
 ## [0.35.0] - 2026-09-16
 
 ### Added
@@ -1109,7 +1120,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.35.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.36.0...HEAD
+[0.36.0]: https://github.com/DocGerd/sail_command/compare/v0.35.0...v0.36.0
 [0.35.0]: https://github.com/DocGerd/sail_command/compare/v0.34.0...v0.35.0
 [0.34.0]: https://github.com/DocGerd/sail_command/compare/v0.33.0...v0.34.0
 [0.33.0]: https://github.com/DocGerd/sail_command/compare/v0.32.0...v0.33.0

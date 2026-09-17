@@ -162,7 +162,7 @@ import { startPreview } from './helpers';
 // whose stdout the `list` reporter streams to the job log on BOTH a pass
 // and a fail) and a `test.info().annotations` entry (the correct structured
 // form for a local HTML report or `--reporter=json`, but NOT what reaches
-// CI's log on a pass — `ci.yml`'s `playwright-report` upload is gated
+// CI's log on a pass — `ci.yml`'s per-shard `playwright-report-N` upload is gated
 // `if: failure()`, so the HTML report is never produced on a passing run,
 // and the `list` reporter prints nothing for a custom annotation on green;
 // measured directly in round 3). Neither channel alone is enough; both are

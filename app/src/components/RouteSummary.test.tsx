@@ -38,7 +38,7 @@ import type { LatLon } from '../types';
 vi.mock('../state/useSeamarks', () => ({ useSeamarks: vi.fn(() => null) }));
 import { useSeamarks } from '../state/useSeamarks';
 
-// PR #763 review Minor 7: `screen.getByText(/was not passable/)` (the
+// PR #763 review Minor 7: `screen.getByText(/so this route was planned at a reduced/)` (the
 // route.shallow.detail sentence, inside the #747 Disclosure body) finds the
 // text whether or not the Disclosure is open — jsdom does not hide non-
 // summary <details> content the way a real browser does, so a passing
@@ -1155,13 +1155,13 @@ describe('shallow-water warning banner (#53/#452)', () => {
 
   it('renders the plan-level warning with the requested, effective (used) and minimum gate depths', () => {
     // #504 wave 4: the warning is now a role="alert" CONTAINER (a <div>)
-    // holding three <p> parts, not one <p>. `screen.getByText(/was not
-    // passable/)` would now resolve to the .shallow-warning__detail leaf
-    // alone (Testing Library's getNodeText only considers a node's OWN
-    // direct text-node children, so the wrapping <div> — which has no
-    // direct text of its own, only element children — never matches) —
-    // querying the container by class is what actually asserts on the
-    // element role/class live on.
+    // holding three <p> parts, not one <p>. `screen.getByText(/so this
+    // route was planned at a reduced/)` would now resolve to the
+    // .shallow-warning__detail leaf alone (Testing Library's getNodeText
+    // only considers a node's OWN direct text-node children, so the
+    // wrapping <div> — which has no direct text of its own, only element
+    // children — never matches) — querying the container by class is what
+    // actually asserts on the element role/class live on.
     const { container } = renderSummary({ plan: makeShallowPlan() });
     const banner = container.querySelector('.shallow-warning');
     expect(banner).not.toBeNull();
@@ -1180,11 +1180,16 @@ describe('shallow-water warning banner (#53/#452)', () => {
     // below is the assertion actually doing the work.
     expect(banner?.textContent).not.toMatch(/\b(is|are) (safe|clear|verified|guaranteed)\b/i);
     expect(banner?.textContent).toContain('not guaranteed to be clear');
+    // #1300: the mechanism sentence must never claim the requested depth
+    // ITSELF was unpassable — since #1258 this same banner also fires when
+    // the requested gate connected fine and the search instead ran out of
+    // forecast horizon, where that claim would be false.
+    expect(banner?.textContent).not.toMatch(/passable/i);
   });
 
   it('renders on BOTH rig tabs — the warning is plan-level, not per rig', () => {
     renderSummary({ plan: makeShallowPlan(), rig: 'fock' });
-    expect(screen.getByText(/was not passable/)).toBeInTheDocument();
+    expect(screen.getByText(/so this route was planned at a reduced/)).toBeInTheDocument();
     expectShallowDetailOpen(false);
   });
 
@@ -1216,6 +1221,11 @@ describe('shallow-water warning banner (#53/#452)', () => {
     // safe — this is the same #455 constraint as the English copy, and it
     // has to hold independently since the two strings are maintained by hand.
     expect(banner?.textContent).toContain('nicht garantiert frei von Untiefen');
+    // #1300: the German .detail string makes no "nicht passierbar" claim
+    // today (dict.de.ts's comment records that the pre-#452/#504
+    // route.shallow.banner did) — pinned so a future edit cannot reintroduce
+    // that wording, which is false for a horizon-triggered relaxation.
+    expect(banner?.textContent).not.toMatch(/passierbar|befahrbar/i);
   });
 
   it('is absent on plans without relaxation', () => {
@@ -1226,7 +1236,7 @@ describe('shallow-water warning banner (#53/#452)', () => {
     // so the open/closed distinction the other assertions in this file now
     // check does not apply here; `queryByText` returning null is already
     // the strongest possible statement.
-    expect(screen.queryByText(/was not passable/)).toBeNull();
+    expect(screen.queryByText(/so this route was planned at a reduced/)).toBeNull();
   });
 });
 
@@ -1327,7 +1337,7 @@ describe('#452 gap 3: per-leg shallow marker + locator sentence', () => {
 
   it('reports the right count and first occurrence for non-contiguous flagged legs', () => {
     renderSummary({ plan: makeShallowPlan(NON_CONTIGUOUS_SHALLOW_LEGS), rig: 'genoa' });
-    const banner = screen.getByText(/was not passable/);
+    const banner = screen.getByText(/so this route was planned at a reduced/);
     expectShallowDetailOpen(false);
     const expected = en['route.shallow.locator.plural']
       .replace('{count}', '2')
@@ -1337,7 +1347,7 @@ describe('#452 gap 3: per-leg shallow marker + locator sentence', () => {
 
   it('uses the singular sentence (no count) when exactly one leg is flagged', () => {
     renderSummary({ plan: makeShallowPlan(SINGLE_SHALLOW_LEGS), rig: 'genoa' });
-    const banner = screen.getByText(/was not passable/);
+    const banner = screen.getByText(/so this route was planned at a reduced/);
     expectShallowDetailOpen(false);
     const expected = en['route.shallow.locator'].replace('{time}', formatTime(DEPARTURE_MS, 'en'));
     expect(banner.textContent).toContain(expected);
@@ -1356,7 +1366,7 @@ describe('#452 gap 3: per-leg shallow marker + locator sentence', () => {
       shallow: { requestedDepthM: 3.0, usedDepthM: 2.5, minGateDepthM: 2.3 },
     };
     renderSummary({ plan });
-    const banner = screen.getByText(/was not passable/);
+    const banner = screen.getByText(/so this route was planned at a reduced/);
     expectShallowDetailOpen(false);
     expect(banner.textContent).not.toContain('starts at');
   });
@@ -1365,7 +1375,7 @@ describe('#452 gap 3: per-leg shallow marker + locator sentence', () => {
     const plan = makeShallowPlan(NON_CONTIGUOUS_SHALLOW_LEGS);
     setSail(plan, 'fock', { result: null, reason: 'unreachable' });
     renderSummary({ plan, rig: 'fock' });
-    const banner = screen.getByText(/was not passable/);
+    const banner = screen.getByText(/so this route was planned at a reduced/);
     expectShallowDetailOpen(false);
     expect(banner.textContent).not.toContain('starts at');
   });
@@ -1532,12 +1542,15 @@ describe('#493: cautious depth disclosure', () => {
       expect(lead?.textContent).toBe(
         interpolate(en['route.shallow.lead'], { cautious: CAUTIOUS_AT_BOUNDARY_M }),
       );
+      // #1308: showHorizonRemedy carries no gate — it renders whenever the
+      // banner does, regardless of exposureDist (null in this file, which
+      // never mocks useNavMask), so .detail now ends with that sentence too.
       expect(detail?.textContent).toBe(
-        interpolate(en['route.shallow.detail'], {
+        `${interpolate(en['route.shallow.detail'], {
           requested: REQUESTED_M,
           used: BOUNDARY_USED_DEPTH_M.toFixed(1),
           minGate: MIN_GATE_M,
-        }),
+        })} ${en['route.shallow.remedyHorizon']}`,
       );
       expect(caveat?.textContent).toBe(en['route.shallow.caveat']);
       // #504 review round 2's dict-independence requirement, extended to the
@@ -1563,12 +1576,14 @@ describe('#493: cautious depth disclosure', () => {
           draft: BOAT_DRAFT_M.toFixed(1),
         }),
       );
+      // #1308: see the non-severe test above for why .detail now ends with
+      // the horizon-remedy sentence unconditionally.
       expect(detail?.textContent).toBe(
-        interpolate(en['route.shallow.detail'], {
+        `${interpolate(en['route.shallow.detail'], {
           requested: REQUESTED_M,
           used: BELOW_BOUNDARY_USED_DEPTH_M.toFixed(1),
           minGate: MIN_GATE_M,
-        }),
+        })} ${en['route.shallow.remedyHorizon']}`,
       );
       expect(caveat?.textContent).toBe(en['route.shallow.caveat']);
       // Same dict-independence requirement as the non-severe test above,

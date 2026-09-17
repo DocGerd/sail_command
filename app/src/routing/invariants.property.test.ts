@@ -39,7 +39,7 @@ const SHOAL_DEPTH_BYTE = 25;
  * distance is a closed square annulus one cell thick, which no 4-connected path
  * can cross — and `NavMask.cellsConnected` is 4-connected — so at the requested
  * 3.0 m gate the origin's own cell is sealed off and the plan fails
- * `mask-blocked`, the one cause `depthRelaxationMayHelp` admits. Radius 2 keeps
+ * `mask-blocked`, a cause `depthRelaxationMayHelp` admits. Radius 2 keeps
  * the whole ring inside the origin's #452 approach disc (`APPROACH_RADIUS_M`
  * 1852 m against ~557 m row / ~321 m column cells here), which is what lets the
  * localized relaxation actually open it.
@@ -152,7 +152,7 @@ describe('router invariants', () => {
           // waypoint disc. This battery does not check that locality — the
           // shoal ring is drawn inside the origin's own disc by construction,
           // so an assertion here would be a theorem of the fixture, not a test
-          // of the gate. `realmask.repro.issue20.test.ts`'s margin-0 case is
+          // of the gate. `realmask.repro.issue20.marstalMargin0.test.ts`'s margin-0 case is
           // what covers it. So the block below restores the DEPTH half of what
           // invariant 1 gives up, not the space half.
           const solvedGateM = r.shallow ? r.shallow.usedDepthM : DEFAULT_SETTINGS.safetyDepthM;

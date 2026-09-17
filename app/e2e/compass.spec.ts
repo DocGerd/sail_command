@@ -185,7 +185,8 @@ const TRACK_SPEED_MS = 2;
  * receives a fix carrying a course, and the compass sits on
  * "Kursorientierung ohne GPS-Kurs nicht verfügbar" until the test times out.
  * The session is left attached and dies with the per-test `context` fixture
- * (`workers: 1`, `fullyParallel: false`), so nothing leaks across tests.
+ * (`fullyParallel: false` keeps tests in this file serial within their
+ * worker), so nothing leaks across tests.
  *
  * ORDERING IS LOAD-BEARING at the call site: `grantPermissions` first, then
  * this override, and both BEFORE `page.goto` — Playwright clears the override

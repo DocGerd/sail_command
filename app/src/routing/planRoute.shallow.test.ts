@@ -231,10 +231,11 @@ describe('planRoute graceful shallow degradation (#53)', () => {
     expect(probes).toEqual([]);
   });
 
-  it('beyond-horizon keeps its own error class — relaxation never fires', () => {
+  it('beyond-horizon keeps its own error class after trying the relaxed gate (#1258)', () => {
     const probes: ProbeInfo[] = [];
     // Grid hours 06..08 UTC; departure 08:00 → the very first step would
-    // already overrun the horizon.
+    // already overrun the horizon. Since #1258 a horizon failure opens
+    // relaxation; the relaxed solve overruns too, so the label is unchanged.
     const r = planRoute(
       req,
       uniformWindGrid(12, 0, { hours: 3 }),
@@ -243,7 +244,7 @@ describe('planRoute graceful shallow degradation (#53)', () => {
       (p) => probes.push(p),
     );
     expect(r).toEqual({ status: 'error', reason: 'beyond-horizon' });
-    expect(probes).toEqual([]);
+    expect(probes.length).toBeGreaterThan(0);
   });
 
   it('propagates the relaxed solve reason: disconnected at requested, but beyond-horizon at the relaxed gate (#68)', () => {

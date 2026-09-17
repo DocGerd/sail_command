@@ -142,11 +142,15 @@ export function ShallowWarning({
   // confined" line would fire on every legitimately pre-#518 saved plan.
   const showConfined = exposureDist !== null && confinedWithin === true;
   const isWide = useWideLayout();
-  // The remedy sentence's ONE gate. Three conditions, one home — splitting
-  // them across the JSX is how the figure and the remedy diverged before
-  // (PR #523 review, Blocker 1). Each is an independent reason to say
-  // nothing: this is safety copy, so a sentence that is wrong, unreadable, or
-  // impossible to act on costs more than its absence.
+  // #1308: the remedy is now TWO independently gated sentences, not one —
+  // splitting the gate itself (not just the JSX) is how the figure and the
+  // remedy diverged before (PR #523 review, Blocker 1), so both gates are
+  // declared together here, the single place to read or change them.
+  //
+  // showDepthRemedy — the "lower your safety depth" sentence. Three
+  // conditions, each an independent reason to say nothing: this is safety
+  // copy, so a sentence that is wrong, unreadable, or impossible to act on
+  // costs more than its absence. UNCHANGED by #1308.
   //
   // 1. exposureDist !== null — Blocker 1. Reuses the SAME resolved value the
   //    figure renders, so the two can never disagree about whether there is a
@@ -178,8 +182,29 @@ export function ShallowWarning({
   //    `SAFETY_DEPTH_FIELD.min` is the DEFAULT boat's 2.2 m; the Elan's is
   //    2.0 m, so on that boat the remedy was SUPPRESSED across usedDepthM in
   //    (2.0, 2.2] — precisely the band where it is actionable.
+  //
+  // showHorizonRemedy — the "different departure time or a fresh forecast"
+  // sentence (#1300/#1258's trigger, its own key since #1308). Drops
+  // condition 3: a horizon-triggered relaxation can leave usedDepthM at
+  // this boat's own field minimum, where "lower your depth" is unavailable
+  // but a different departure/forecast still is. Drops condition 2 as a
+  // TRADE, not because #516 item 5's reason is depth-specific — that
+  // 390x844 height measurement applies to any added sentence, but it
+  // predates #747 moving the remedy into a Disclosure that starts collapsed
+  // (#788), and CLAUDE.md's tablet-floor ruling makes the narrow layout's
+  // 820-1023 px band (tabletPortrait) required, < 820 px nice-to-have.
+  // #1308 ALSO drops condition 1, unlike showDepthRemedy: a missing or
+  // measured-zero exposureDist does not make THIS sentence wrong — the
+  // banner mounts only after the requested-gate search has already failed,
+  // so "a different departure time or a fresh forecast might help" stays
+  // true whether or not the mask has finished loading or found an exposed
+  // leg. Hiding advice while a measurement is still loading costs more than
+  // showing it, which is the opposite of Blocker 1's reasoning for the
+  // figure. So it renders whenever this component does — no further gate.
   const safetyDepthMinM = safetyDepthFieldFor(plan.request.boat).min;
-  const showRemedy = exposureDist !== null && isWide && shallow.usedDepthM > safetyDepthMinM;
+  const showDepthRemedy = exposureDist !== null && isWide && shallow.usedDepthM > safetyDepthMinM;
+  // Always true — see the comment above for why no condition survived.
+  const showHorizonRemedy = true;
   // #54 spec C.4(a), fixed in #539: renders THE PLAN'S OWN boat's draft — see
   // the `draftM` read above for why the plan, not the picker, decides.
   // #596 (fixed here): PR #590 review (MAJOR, round 2) found that #525 made
@@ -275,7 +300,7 @@ export function ShallowWarning({
   // the limits of the warning above it" — a constraint #747 must not
   // silently violate by nesting it inside the collapsible body.
   //
-  // Accepted consequence, same shape as the showRemedy comment above:
+  // Accepted consequence, same shape as the showDepthRemedy comment above:
   // manually opening the Disclosure mutates DOM inside this role="alert"
   // container, so it can re-trigger an assistive-tech announcement of the
   // newly-revealed text — acceptable here since that text is exactly what
@@ -349,9 +374,12 @@ export function ShallowWarning({
           {/* PR #523 review, Minor 3: the remedy renders LAST, after the
               mechanism sentence that justifies it — a reader must learn the
               router already reduced the gate on their behalf before being
-              advised to reduce it themselves. Gated on showRemedy, whose
-              three conditions are enumerated at its declaration. */}
-          {showRemedy && <> {t('route.shallow.remedy')}</>}
+              advised to reduce it themselves. #1308: two independently
+              gated sentences now, not one — showDepthRemedy/
+              showHorizonRemedy are declared together above, the single
+              place to read or change either gate. */}
+          {showDepthRemedy && <> {t('route.shallow.remedy')}</>}
+          {showHorizonRemedy && <> {t('route.shallow.remedyHorizon')}</>}
         </p>
       </Disclosure>
       <p className="shallow-warning__caveat">{t('route.shallow.caveat')}</p>

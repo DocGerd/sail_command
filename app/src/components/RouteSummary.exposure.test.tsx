@@ -225,6 +225,17 @@ afterEach(() => {
 });
 
 describe('#516: ShallowWarning exposure sentence', () => {
+  // #1308: the remedy is TWO independently gated sentences, not one — the
+  // DEPTH sentence ("A lower safety depth setting...") keeps its pre-#1308
+  // gate (exposureDist !== null && isWide && usedDepthM > field min); the
+  // HORIZON sentence ("...a different departure time or a fresh forecast
+  // might help") carries NO gate at all — it renders whenever the banner
+  // itself does, including narrow layout, the depth field minimum, a
+  // still-loading mask and a measured-zero exposure, none of which make
+  // this advice wrong the way they make the depth advice wrong or moot.
+  const DEPTH_REMEDY_TEXT = 'lower safety depth setting';
+  const HORIZON_REMEDY_TEXT = 'a different departure time or a fresh forecast might help';
+
   it('renders the rendered NUMBER (never just that a key resolved) once the mask loads', async () => {
     mockedLoad.mockResolvedValue(shallowMask());
     const container = await renderAndSettle([EXPOSURE_LEG]);
@@ -254,16 +265,18 @@ describe('#516: ShallowWarning exposure sentence', () => {
     // whole focused suite green (MEASURED). Failure mode if this regresses
     // is a taller box, not a hidden safety figure.
     expect(detail?.textContent).not.toContain('crosses water charted shallower');
-    // The remedy line is paired with it (same gating condition) — always
-    // appears alongside the exposure figure, never alone.
+    // The remedy lines are paired with it (same gating condition on
+    // exposureDist) — both #1308 sentences always appear alongside the
+    // exposure figure here, never alone.
     const text = detail?.textContent ?? '';
     expect(text).toContain(
       'A lower safety depth setting might let the planner find a more direct route.',
     );
+    expect(text).toContain(HORIZON_REMEDY_TEXT);
     // PR #523 review, Minor 3: the remedy must follow the mechanism sentence
     // that justifies it, never precede it.
     expect(text.indexOf('A lower safety depth setting')).toBeGreaterThan(
-      text.indexOf('was not passable'),
+      text.indexOf('so this route was planned at a reduced'),
     );
   });
 
@@ -279,9 +292,13 @@ describe('#516: ShallowWarning exposure sentence', () => {
     expect(detail?.textContent).toBeTruthy();
     expect(caveat?.textContent).toBeTruthy();
     expect(detail?.textContent).not.toContain('of this route crosses');
-    expect(detail?.textContent).not.toContain('lower safety depth setting');
+    expect(detail?.textContent).not.toContain(DEPTH_REMEDY_TEXT);
+    // #1308: showHorizonRemedy carries no gate at all — it renders here even
+    // though the mask (and so exposureDist) has not resolved yet, since the
+    // advice is not a claim about a measurement the way the figure is.
+    expect(detail?.textContent).toContain(HORIZON_REMEDY_TEXT);
     // The pre-existing "what happened" mechanism sentence is unaffected.
-    expect(detail?.textContent).toContain('was not passable');
+    expect(detail?.textContent).toContain('so this route was planned at a reduced');
   });
 
   it('omits the exposure sentence when the mask load fails outright — no fallback number', async () => {
@@ -293,7 +310,7 @@ describe('#516: ShallowWarning exposure sentence', () => {
     });
     const detail = container.querySelector('.shallow-warning__detail');
     expect(detail?.textContent).not.toContain('of this route crosses');
-    expect(detail?.textContent).toContain('was not passable');
+    expect(detail?.textContent).toContain('so this route was planned at a reduced');
   });
 
   it('omits the exposure, confinement and remedy sentences when the mask has loaded and the measured exposure is exactly zero', async () => {
@@ -311,9 +328,14 @@ describe('#516: ShallowWarning exposure sentence', () => {
     const detail = container.querySelector('.shallow-warning__detail');
     expect(banner?.querySelector('.shallow-warning__lead')?.textContent).toBeTruthy();
     expect(banner?.querySelector('.shallow-warning__caveat')?.textContent).toBeTruthy();
-    expect(detail?.textContent).toContain('was not passable');
+    expect(detail?.textContent).toContain('so this route was planned at a reduced');
     expect(detail?.textContent).not.toContain('of this route crosses');
-    expect(detail?.textContent).not.toContain('lower safety depth setting');
+    expect(detail?.textContent).not.toContain(DEPTH_REMEDY_TEXT);
+    // #1308: a measured-zero exposureDist does NOT suppress the horizon
+    // sentence — unlike the depth sentence, it carries no exposure gate at
+    // all (see this describe block's own comment on the two constants
+    // above), so it still renders here.
+    expect(detail?.textContent).toContain(HORIZON_REMEDY_TEXT);
     // Not merely "no sentence": the formatted zero itself must never appear.
     expect(detail?.textContent).not.toContain('0.0 nm');
     // #516 increment 2: the vacuous-true path, and the ONLY row that reaches
@@ -325,12 +347,17 @@ describe('#516: ShallowWarning exposure sentence', () => {
     expect(detail?.textContent).not.toContain('Every stretch below your safety depth');
   });
 
-  it('drops the remedy on a narrow layout — everything else renders at both widths', async () => {
+  it('drops the DEPTH remedy on a narrow layout but keeps the horizon remedy — #1308', async () => {
     // #516 item 5: a real-browser pass on 2026-08-13 measured the German
-    // banner overrunning the panel viewport at 390x844, so the remedy is
-    // wide-only. Mount-gated, not CSS-hidden — it must be ABSENT from the DOM,
-    // so a screen reader on narrow does not read a sentence a sighted user
-    // cannot see.
+    // banner overrunning the panel viewport at 390x844, so the depth-only
+    // remedy stays wide-only. Mount-gated, not CSS-hidden — it must be ABSENT
+    // from the DOM on narrow, so a screen reader there does not read a
+    // sentence a sighted user cannot see.
+    // #1308: the HORIZON remedy is NOT wide-only — CLAUDE.md's tablet-floor
+    // ruling makes the narrow layout's 820-1023 px band (tabletPortrait) a
+    // required target, and this may be the only useful remedy there — so it
+    // renders at BOTH widths. Each width is a fresh mount (cleanup between);
+    // setWideLayout mocks the breakpoint result, not an 820 px viewport.
     mockedLoad.mockResolvedValue(shallowMask());
     setWideLayout(false);
     const narrow = await renderAndSettle([EXPOSURE_LEG]);
@@ -349,8 +376,9 @@ describe('#516: ShallowWarning exposure sentence', () => {
     expect(narrowSummaryDetail?.textContent).toContain(
       '3.0 nm of this route crosses water charted',
     );
-    expect(narrowDetail?.textContent).toContain('was not passable');
-    expect(narrowDetail?.textContent).not.toContain('lower safety depth setting');
+    expect(narrowDetail?.textContent).toContain('so this route was planned at a reduced');
+    expect(narrowDetail?.textContent).not.toContain(DEPTH_REMEDY_TEXT);
+    expect(narrowDetail?.textContent).toContain(HORIZON_REMEDY_TEXT);
 
     cleanup();
     setWideLayout(true);
@@ -365,16 +393,19 @@ describe('#516: ShallowWarning exposure sentence', () => {
     expect(wideBanners[0].querySelector('.shallow-warning__lead')?.textContent).toBeTruthy();
     expect(wideBanners[0].querySelector('.shallow-warning__caveat')?.textContent).toBeTruthy();
     expect(wideSummaryDetail?.textContent).toContain('3.0 nm of this route crosses water charted');
-    expect(wideDetail?.textContent).toContain('was not passable');
-    expect(wideDetail?.textContent).toContain('lower safety depth setting');
+    expect(wideDetail?.textContent).toContain('so this route was planned at a reduced');
+    expect(wideDetail?.textContent).toContain(DEPTH_REMEDY_TEXT);
+    expect(wideDetail?.textContent).toContain(HORIZON_REMEDY_TEXT);
   });
 
-  it('keeps the figure but drops the remedy when no selectable safety depth is lower', async () => {
-    // PR #523 review, Minor 5. SAFETY_DEPTH_FIELD clamps the user's input to
-    // >= its own min, so at a usedDepthM equal to that min every value they
-    // can choose is at or above the gate already used and "lower your safety
-    // depth" cannot be acted on. Only the advice is suppressed — the measured
-    // figure is still true and still renders.
+  it('keeps the figure and the horizon remedy but drops the depth remedy at the field minimum — #1308', async () => {
+    // PR #523 review, Minor 5 / #1308. SAFETY_DEPTH_FIELD clamps the user's
+    // input to >= its own min, so at a usedDepthM equal to that min every
+    // value they can choose is at or above the gate already used and "lower
+    // your safety depth" cannot be acted on — that half of the remedy stays
+    // suppressed. #1308: the horizon sentence has NO depth-minimum condition
+    // at all, so it renders here regardless — this is the transition point
+    // (usedDepthM == field min) where the two sentences diverge.
     mockedLoad.mockResolvedValue(shallowMask());
     const container = await renderAndSettle([EXPOSURE_LEG], SAFETY_DEPTH_FIELD.min);
     // PR #763 review Major A: settle gate + exposure-VALUE read from the
@@ -389,7 +420,8 @@ describe('#516: ShallowWarning exposure sentence', () => {
     expect(summaryDetail?.textContent).toContain(
       '3.0 nm of this route crosses water charted shallower',
     );
-    expect(detail?.textContent).not.toContain('lower safety depth setting');
+    expect(detail?.textContent).not.toContain(DEPTH_REMEDY_TEXT);
+    expect(detail?.textContent).toContain(HORIZON_REMEDY_TEXT);
   });
 
   // #539 (spec J OQ-1). The row directly above proves the remedy is
@@ -425,7 +457,7 @@ describe('#516: ShallowWarning exposure sentence', () => {
       expect(elan.querySelector('.shallow-warning__summary-detail')?.textContent).toMatch(/nm/);
     });
     expect(elan.querySelector('.shallow-warning__detail')?.textContent).toContain(
-      'lower safety depth setting',
+      DEPTH_REMEDY_TEXT,
     );
     cleanup();
 
@@ -451,7 +483,7 @@ describe('#516: ShallowWarning exposure sentence', () => {
     expect(salonaSummaryDetail?.textContent).toContain(
       'of this route crosses water charted shallower',
     );
-    expect(salonaDetail?.textContent).not.toContain('lower safety depth setting');
+    expect(salonaDetail?.textContent).not.toContain(DEPTH_REMEDY_TEXT);
   });
 
   it('omits the exposure sentence when the active rig has no legs at all', async () => {
@@ -487,7 +519,7 @@ describe('#516 increment 2: ShallowWarning confinement sentence', () => {
       text.indexOf('of this route crosses water charted'),
     );
     expect(text.indexOf('Every stretch below your safety depth')).toBeLessThan(
-      text.indexOf('was not passable'),
+      text.indexOf('so this route was planned at a reduced'),
     );
   });
 
@@ -517,7 +549,7 @@ describe('#516 increment 2: ShallowWarning confinement sentence', () => {
     const container = await renderAndSettle([EXPOSURE_LEG]);
     const detail = container.querySelector('.shallow-warning__detail');
     expect(detail?.textContent).not.toContain('Every stretch below your safety depth');
-    expect(detail?.textContent).toContain('was not passable');
+    expect(detail?.textContent).toContain('so this route was planned at a reduced');
   });
 });
 
@@ -747,13 +779,13 @@ describe('#612: the marginal-depth notice on a route that did not relax', () => 
   });
 
   it('never borrows the relaxed copy, which is false on this route in both clauses', async () => {
-    // route.shallow.detail says the requested depth "was not passable, so
-    // this route was planned at a reduced X m instead" — nothing was reduced.
-    // route.shallow.exposure measures charted-below-gate distance, which is
-    // 0 here by construction. Both are false, in both languages.
+    // route.shallow.detail says "so this route was planned at a reduced
+    // X m instead" — nothing was reduced. route.shallow.exposure measures
+    // charted-below-gate distance, which is 0 here by construction. Both are
+    // false, in both languages.
     mockedLoad.mockResolvedValue(marginalMask());
     const container = await renderNonRelaxed([EXPOSURE_LEG]);
-    expect(container.textContent).not.toContain('was not passable');
+    expect(container.textContent).not.toContain('so this route was planned at a reduced');
     expect(container.textContent).not.toContain('crosses water charted shallower');
     expect(container.textContent).not.toContain('A lower safety depth setting');
   });

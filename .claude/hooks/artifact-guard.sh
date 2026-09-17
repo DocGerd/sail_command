@@ -147,7 +147,10 @@
 #     `ask` or a non-blocking advisory, is decided by the 2026-08-09 split
 #     bullet further down, and by nothing else in this file.)
 #   - NO shell-syntax parsing. No segmentation, no heredoc awareness, no
-#     attempt to classify "is this command really a write". Command-string
+#     attempt to classify "is this command really a write". ONE BOUNDED
+#     EXCEPTION since #1273 (maintainer ruling 2026-09-16): a quote-aware,
+#     fail-closed split into read-only segments - see
+#     bash_is_readonly_pipeline() for why it is not #233's or #404's shape. Command-string
 #     segmentation is the exact shape that got PR #233 closed — a shell
 #     segmenter that exits 0 while emitting confidently-wrong segments about
 #     which command is really running. Never reintroduce that shape here.
@@ -1900,6 +1903,199 @@ bash_is_provably_readonly() {
   return 1
 }
 
+# --- READ-ONLY PIPELINES AND SEQUENCES (#1273, maintainer ruling
+# 2026-09-16: pipelines/sequences of read-only commands naming the spec tree
+# kept asking; "exempt pipelines/sequences whose every segment is a read-only
+# verb ... Spec WRITES must still ask"). That ruling is the "fresh maintainer
+# ruling" the #437 `|`-split record above asked for before re-proposing it.
+#
+# A SECOND predicate, tried only after bash_is_provably_readonly() said no;
+# the first is unchanged. It proves a command is a list of one or more simple
+# commands joined by `|`, `;`, `&&` or `||`, each passing its verb's check.
+#
+# WHY THIS IS NOT THE #404/#405 SEGMENTATION: that one split on `;`/`&&`/
+# newline BEFORE any character check, so an oversized heredoc timed the hook
+# out into a silent allow. Here (1) a byte bound 8x tighter than
+# MAX_EXEMPTIBLE_CMD_LEN runs first, (2) the splitter IS the character check -
+# it fails closed on every metachar outside the four separators, and on a
+# newline/CR anywhere, so a heredoc can never reach a segment, and (3) it
+# models quotes instead of guessing: inside '...' every byte is literal
+# (bash's own rule), inside "..." only `$`, backtick, `!` and a backslash
+# before `"`/`\`/`$`/backtick are live - those fail closed, so quote state
+# tracks exactly. An unterminated quote fails closed. A quoted metachar
+# (`grep "a\|b"`) is therefore just a pattern byte, which is what #1273's
+# commands needed.
+#
+# WHY QUOTED METACHARS DO NOT WEAKEN THE grep/sed DISQUALIFIERS: `$`, backtick
+# and every unquoted metachar are still rejected, so each segment is still ONE
+# simple command with no expansion. sed's script whitelist matches the whole
+# reconstructed word against anchored regexes, so a quoted `;w FILE` or `{}`
+# simply fails to match and fires; scan_quote_state needs no escape model
+# because `\"` inside "..." is rejected here. grep's option scan is unchanged.
+#
+# SEGMENT VERBS: READONLY_VERBS (with their #530 disqualifiers) plus
+# PIPELINE_EXTRA_VERBS, each checked below. `echo` is a bash builtin that
+# only prints. `git` and `gh` are files (`type git gh`, real Bash tool,
+# 2026-09-16) and each has a write/mutate surface, so each gets a
+# whitelist-first disqualifier. Deliberately NOT added: `sort` (`-o FILE`),
+# `uniq` (second operand is an OUTPUT file), `awk` (`>`/system()), `tee`,
+# `xargs` - none was needed by #1273's commands, and doubt resolves to the
+# smaller allowlist.
+#
+# SIZE BOUND, LOAD-BEARING: the splitter walks the string a byte at a time.
+# Measured 2026-09-16: the worst in-bound shape found, 195 quoted-sed
+# segments (3.1 KB), runs the whole hook in 0.32 s; raising the bound to
+# 999999 reds the selftest's multibyte [bound unit] row (hook killed at the
+# 5 s cap). Anything longer is not exempt and fires.
+MAX_PIPELINE_CMD_LEN=4096
+PIPELINE_EXTRA_VERBS=(echo git gh)
+
+# split_readonly_pipeline CMD - fills PIPELINE_SEGMENTS and returns 0 only for
+# a quote-balanced list of non-empty segments separated by `|`, `;`, `&&` or
+# `||` with no other live metachar. Global, not `$( )`, for the same reason
+# as STRIPPED_CMD.
+PIPELINE_SEGMENTS=()
+# shellcheck disable=SC1003  # '\' IS the literal backslash matched on
+split_readonly_pipeline() {
+  local s="$1"
+  local LC_ALL=C
+  local i n c nx state=none seg=""
+  PIPELINE_SEGMENTS=()
+  case "$s" in *$'\n'*|*$'\r'*) return 1 ;; esac
+  n=${#s}
+  for ((i = 0; i < n; i++)); do
+    c=${s:i:1}
+    if [ "$state" = sq ]; then
+      seg+=$c
+      [ "$c" = "'" ] && state=none
+      continue
+    fi
+    if [ "$state" = dq ]; then
+      case "$c" in
+        '"') state=none ;;
+        '$'|'`'|'!') return 1 ;;
+        '\')
+          nx=${s:i+1:1}
+          case "$nx" in '"'|'\'|'$'|'`'|'') return 1 ;; esac
+          ;;
+      esac
+      seg+=$c
+      continue
+    fi
+    case "$c" in
+      "'") state=sq; seg+=$c ;;
+      '"') state=dq; seg+=$c ;;
+      '|'|';'|'&')
+        nx=${s:i+1:1}
+        if [ "$c" = '&' ]; then
+          # A lone `&` backgrounds; only `&&` is a separator.
+          [ "$nx" = '&' ] || return 1
+          i=$((i + 1))
+        elif [ "$c" = '|' ] && [ "$nx" = '|' ]; then
+          i=$((i + 1))
+        fi
+        # An empty segment (`;;`, a leading `|`, `| |`) fails closed.
+        [[ $seg == *[![:space:]]* ]] || return 1
+        PIPELINE_SEGMENTS+=("$seg")
+        seg=""
+        ;;
+      '>'|'<'|'`'|'$'|'\'|'('|')'|'{'|'}'|'!'|'#') return 1 ;;
+      *) seg+=$c ;;
+    esac
+  done
+  [ "$state" = none ] || return 1
+  [[ $seg == *[![:space:]]* ]] || return 1
+  PIPELINE_SEGMENTS+=("$seg")
+  return 0
+}
+
+# git_readonly_ok SEG - `git show|log|diff` only, with the subcommand as the
+# SECOND word (so no global option such as `-c`, `-C` or `-p` can precede it),
+# rejecting every option that writes or runs a helper. git's parse-options
+# accepts unambiguous PREFIXES of long options, so these match prefixes:
+# `--o*` covers `--output=FILE` in every abbreviation (`--oneline` is exempted
+# by exact name), `--ext*` covers `--ext-diff`, `--textc*` `--textconv`.
+# Tokens are quote-stripped and glob-leading tokens rejected, as at
+# grep_readonly_ok (a glob could expand to `--output=...`).
+git_readonly_ok() {
+  local IFS=$' \t' tok nq bare name i
+  local -a toks
+  read -ra toks <<<"$1"
+  [ "${#toks[@]}" -ge 2 ] || return 1
+  case "${toks[1]}" in show|log|diff) ;; *) return 1 ;; esac
+  for ((i = 2; i < ${#toks[@]}; i++)); do
+    tok=${toks[$i]}
+    nq=${tok//\'\'/}; nq=${nq//\"\"/}
+    case "$nq" in '*'*|'?'*|'['*) return 1 ;; esac
+    bare=${tok//\'/}; bare=${bare//\"/}
+    name=${bare%%=*}
+    [ "$name" = --oneline ] && continue
+    case "$name" in --o*|--ext*|--textc*) return 1 ;; esac
+  done
+  return 0
+}
+
+# gh_readonly_ok SEG - `gh api` as a GET only. `-X`/`--method` change the
+# verb; `-f`/`-F`/`--field`/`--raw-field`/`--input` switch it to POST;
+# `-H`/`--header` could smuggle a method override. pflag bundles short flags
+# (`-iX`), so ANY single-dash token containing X, f, F or H is rejected.
+# pflag does not abbreviate long flags, so exact long names suffice.
+gh_readonly_ok() {
+  local IFS=$' \t' tok nq bare name i
+  local -a toks
+  read -ra toks <<<"$1"
+  [ "${#toks[@]}" -ge 3 ] || return 1
+  [ "${toks[1]}" = api ] || return 1
+  for ((i = 2; i < ${#toks[@]}; i++)); do
+    tok=${toks[$i]}
+    nq=${tok//\'\'/}; nq=${nq//\"\"/}
+    case "$nq" in '*'*|'?'*|'['*) return 1 ;; esac
+    bare=${tok//\'/}; bare=${bare//\"/}
+    name=${bare%%=*}
+    case "$name" in
+      --method|--field|--raw-field|--input|--header) return 1 ;;
+      --*) ;;
+      -*) case "$name" in *[XfFH]*) return 1 ;; esac ;;
+    esac
+  done
+  return 0
+}
+
+# pipeline_segment_ok SEG - one segment from split_readonly_pipeline.
+pipeline_segment_ok() {
+  local seg="$1" t v verb rest
+  for t in "${WRITE_CAPABLE_TOKENS[@]}"; do
+    case "$seg" in *"$t"*) return 1 ;; esac
+  done
+  local IFS=$' \t'
+  read -r verb rest <<<"$seg"
+  for v in "${READONLY_VERBS[@]}" "${PIPELINE_EXTRA_VERBS[@]}"; do
+    if [ "$verb" = "$v" ]; then
+      case "$verb" in
+        grep) grep_readonly_ok "$seg" || return 1 ;;
+        sed)  sed_readonly_ok  "$seg" || return 1 ;;
+        git)  git_readonly_ok  "$seg" || return 1 ;;
+        gh)   gh_readonly_ok   "$seg" || return 1 ;;
+      esac
+      return 0
+    fi
+  done
+  return 1
+}
+
+# bash_is_readonly_pipeline CMD - 0 only when every segment is proven
+# read-only; any doubt returns 1 and the caller fires.
+bash_is_readonly_pipeline() {
+  local cmd="$1" seg nbytes
+  nbytes=$( LC_ALL=C; printf '%s' "${#cmd}" )
+  [ "$nbytes" -le "$MAX_PIPELINE_CMD_LEN" ] || return 1
+  split_readonly_pipeline "$cmd" || return 1
+  for seg in "${PIPELINE_SEGMENTS[@]}"; do
+    pipeline_segment_ok "$seg" || return 1
+  done
+  return 0
+}
+
 # The user-facing verb list, DERIVED from READONLY_VERBS rather than typed out
 # a second time (#388 review, Finding 2: the hand-maintained string enumerated
 # 14 verbs while the array held 15 - it silently omitted `[`). A derived string
@@ -2174,7 +2370,8 @@ if [ "${1:-}" = "--selftest" ]; then
   # (see its own comment) - without it a raw vertical tab is illegal inside a
   # JSON string and the row would be answered by the "could not parse tool
   # input" fallback instead of exercising the boundary check at all.
-  EXPECTED_CASES=338
+  # (#1273) 338 -> 379: +41 rows in the #1273 pipeline block.
+  EXPECTED_CASES=379
 
   # (#309 fix-wave m1, moved here by #404 so decide()/decide_exempt() below
   # can use it too - they now drive the production entry point through it
@@ -2671,11 +2868,13 @@ if [ "${1:-}" = "--selftest" ]; then
   decide advisory "CHAR >>: append redirect"              "cat app/public/data/mask.bin >> /tmp/x"
   decide advisory "CHAR <: input redirect"                "wc -l < app/public/data/mask.bin"
   decide advisory "CHAR <<: heredoc"                      "cat app/public/data/mask.bin << EOF"
-  decide advisory "CHAR |: pipe (could pipe into tee)"    "cat app/public/data/mask.bin | wc -l"
-  decide advisory "CHAR ||: or-list"                      "stat app/public/data/mask.bin || true"
+  # #1273 flipped this row: `|` alone no longer disqualifies when every segment
+  # is read-only (bash_is_readonly_pipeline). Pipe-into-writer rows: #1273 block.
+  decide_exempt "#1273: cat | wc, every segment read-only (was CHAR | advisory)" "cat app/public/data/mask.bin | wc -l"
+  decide advisory "CHAR ||: or-list into non-allowlisted true (#1273)" "stat app/public/data/mask.bin || true"
   decide advisory "CHAR &: background"                    "stat app/public/data/mask.bin &"
-  decide advisory "CHAR &&: and-list (stat foo && rm bar shape)" "stat app/public/data/mask.bin && true"
-  decide advisory "CHAR ;: separator"                     "stat app/public/data/mask.bin ; true"
+  decide advisory "CHAR &&: and-list into non-allowlisted true (#1273)" "stat app/public/data/mask.bin && true"
+  decide advisory "CHAR ;: separator into non-allowlisted true (#1273)" "stat app/public/data/mask.bin ; true"
   # shellcheck disable=SC2016  # the literal backtick IS the test input
   decide advisory 'CHAR backtick: command substitution'   'stat app/public/data/mask.bin `true`'
   # shellcheck disable=SC2016  # literal $ is the test input, not an expansion
@@ -2700,7 +2899,11 @@ if [ "${1:-}" = "--selftest" ]; then
   # on the allowlist), while the real predicate's "any disqualifying char
   # anywhere" rule (the bare `;`) correctly still fires. This is the
   # maintainer's own reported reproduction command, unchanged.
-  decide advisory "MULTI-SEGMENT (#404): every segment individually looks read-only" "stat app/public/data/mask.bin; ls app/public/data"
+  # #1273 (maintainer ruling 2026-09-16) FLIPPED this row to exempt: it is
+  # exactly the shape that ruling asks to allow. There is still one
+  # implementation of the decision (production, via $SELF), so the #404 twin
+  # risk this row was written against does not return.
+  decide_exempt "MULTI-SEGMENT (#404, flipped by #1273): every segment read-only" "stat app/public/data/mask.bin; ls app/public/data"
 
   # --- #437 ACCEPTANCE PAIR, pinned at the decision the MEASUREMENT reached.
   # Row A is the shape #437 nominated as noise. It still FIRES (as an
@@ -2711,7 +2914,9 @@ if [ "${1:-}" = "--selftest" ]; then
   # its zero is a WEAKER zero than #404's two, in DESIGN above). This row is
   # therefore the REJECTION's pin, not the fix's: it reds the moment anyone
   # takes `|` out of WRITE_CAPABLE_CHARS without re-running that measurement.
-  decide advisory "#437 A: ls | head still fires (|-split measured 0, rejected)" "ls app/public/data/ | head -20"
+  # #1273 is the fresh maintainer ruling the #437 record required before the
+  # `|`-split could return, so this pin now asserts the exemption instead.
+  decide_exempt "#437 A (flipped by #1273): ls | head is exempt" "ls app/public/data/ | head -20"
   # Row B is the half of #437's reported command that MUST keep firing - the
   # issue says so itself ("no predicate short of running the JS can prove
   # otherwise"). Unlike the clause-isolating rows above, this one deliberately
@@ -2721,6 +2926,59 @@ if [ "${1:-}" = "--selftest" ]; then
   # membership - the MEMBERSHIP block above does that job.
   # shellcheck disable=SC2016  # literal $HOME is the test input, not an expansion
   decide advisory "#437 B: node -e naming a protected path must still fire" 'node -e "const h=require($HOME/app/public/data/harbors.json); console.log(h.length)"'
+
+  # --- #1273 READ-ONLY PIPELINES/SEQUENCES (bash_is_readonly_pipeline). The
+  # five commands the maintainer was prompted on, VERBATIM. Row 1 keeps
+  # asking on purpose: `git switch` rewrites working-tree files, the spec
+  # tree included, so it is not a read even though it names no spec path.
+  decide ask      '#1273 real 1: git switch && grep | head (switch is not a read)' 'git switch -c docs/x origin/develop && grep -n "2.6\|stale" docs/superpowers/specs/2026-07-14-sail-command-design.md | head -40'
+  decide_exempt   '#1273 real 2: sed; echo; sed; echo; gh api | head' 'sed -n 180,215p docs/superpowers/specs/2026-07-14-sail-command-design.md; echo ----; sed -n 440,455p docs/superpowers/specs/2026-07-14-sail-command-design.md; echo ----; gh api repos/DocGerd/sail_command/issues/1268 --jq .body | head -40'
+  decide_exempt   '#1273 real 3: grep "a\|b" | head; grep -rn | head' 'grep -n "nearest\|2\.6" docs/superpowers/specs/2026-07-14-sail-command-design.md | head; grep -rn "nearest ordinal" docs/superpowers/specs/ | head'
+  decide_exempt   '#1273 real 4: grep -rln ; grep glob | head' 'grep -rln "§2.6\|2\.6" docs/superpowers/specs/ ; grep -rn "picked" docs/superpowers/specs/*.md | head -20'
+  decide_exempt   '#1273 real 5: sed; git show | sed' 'sed -n 240,262p docs/superpowers/specs/2026-09-04-named-waypoints-design.md; git show origin/develop:app/src/lib/recalc.ts | sed -n 1,30p'
+  decide_exempt   '#1273: || and && separators' 'test -f docs/superpowers/specs/x.md && cat docs/superpowers/specs/x.md || ls docs/superpowers/specs'
+  decide_exempt   '#1273: git log --oneline (exact-name exemption from --o*)' 'git log --oneline -- docs/superpowers/specs/x.md | head'
+  # Sibling WRITE shapes: each must still ask on the spec arm.
+  decide ask '#1273 W: | tee'                     'grep -n x docs/superpowers/specs/a.md | tee docs/superpowers/specs/b.md'
+  decide ask '#1273 W: ; sed -i'                  'cat docs/superpowers/specs/a.md; sed -i s/x/y/ docs/superpowers/specs/a.md'
+  decide ask '#1273 W: | sh'                      'cat docs/superpowers/specs/a.md | sh'
+  decide ask '#1273 W: | xargs rm'                'echo docs/superpowers/specs/a.md | xargs rm'
+  # shellcheck disable=SC2016  # literal input, never expanded
+  decide ask '#1273 W: $( ) segment'              'cat docs/superpowers/specs/a.md; echo $(rm docs/superpowers/specs/a.md)'
+  # shellcheck disable=SC2016  # literal input, never expanded
+  decide ask '#1273 W: backtick segment'          'cat docs/superpowers/specs/a.md; echo `rm docs/superpowers/specs/a.md`'
+  decide ask '#1273 W: > after a pipe'            'grep x docs/superpowers/specs/a.md | head > docs/superpowers/specs/b.md'
+  decide ask '#1273 W: gh api -X PATCH segment'   'cat docs/superpowers/specs/a.md; gh api repos/o/r/issues/1 -X PATCH'
+  decide ask '#1273 W: bundled gh -iX'            'gh api repos/o/r/contents/docs/superpowers/specs/a.md -iX PUT'
+  decide ask '#1273 W: gh api -f'                 'gh api repos/o/r/contents/docs/superpowers/specs/a.md -f message=x'
+  decide ask '#1273 W: gh api --input'            'gh api repos/o/r/contents/docs/superpowers/specs/a.md --input body.json'
+  decide ask '#1273 W: gh api -H method override' "gh api repos/o/r/contents/docs/superpowers/specs/a.md -H 'X-HTTP-Method-Override: PUT'"
+  decide ask '#1273 W: | awk with >'              "cat docs/superpowers/specs/a.md | awk '{print > \"docs/superpowers/specs/b.md\"}'"
+  decide ask '#1273 W: | sed w command'           "sed -n 5p docs/superpowers/specs/a.md | sed -n 'w docs/superpowers/specs/b.md'"
+  decide ask '#1273 W: quoted ; hides sed w'      "sed -n '5p;w docs/superpowers/specs/b.md' docs/superpowers/specs/a.md"
+  decide ask '#1273 W: | sed -i'                  'grep x docs/superpowers/specs/a.md | sed -n 1p -i docs/superpowers/specs/a.md'
+  decide ask '#1273 W: ; cp onto path'            'cat docs/superpowers/specs/a.md; cp /tmp/x docs/superpowers/specs/a.md'
+  decide ask '#1273 W: && git restore'            'cat docs/superpowers/specs/a.md && git restore docs/superpowers/specs/a.md'
+  decide ask '#1273 W: | sort -o'                 'cat docs/superpowers/specs/a.md | sort -o docs/superpowers/specs/a.md'
+  decide ask '#1273 W: | uniq output operand'     'grep x docs/superpowers/specs/a.md | uniq - docs/superpowers/specs/b.md'
+  decide ask '#1273 W: git diff --output='        'cat docs/superpowers/specs/a.md; git diff --output=docs/superpowers/specs/b.md'
+  decide ask '#1273 W: git diff abbreviated --outp=' 'cat docs/superpowers/specs/a.md; git diff --outp=docs/superpowers/specs/b.md'
+  decide ask '#1273 W: git glob-leading [-]-output' 'cat docs/superpowers/specs/a.md; git log [-]-output=docs/superpowers/specs/b.md'
+  decide ask '#1273 W: git -c before subcommand'  'cat docs/superpowers/specs/a.md; git -c core.pager=sh log docs/superpowers/specs/a.md'
+  decide ask '#1273 W: git show --ext-diff'       'cat docs/superpowers/specs/a.md; git show --ext-diff HEAD'
+  # Not a write: pins the conservative choice that a lone `&` is no separator.
+  decide ask '#1273: lone & fails closed (over-fire, pinned)' 'cat docs/superpowers/specs/a.md & cat docs/superpowers/specs/b.md'
+  decide ask '#1273 W: |& is not a separator'     'cat docs/superpowers/specs/a.md |& tee x'
+  decide ask '#1273 W: process substitution'      'cat docs/superpowers/specs/a.md | cat <(rm x)'
+  decide ask '#1273 W: empty segment ;;'          'cat docs/superpowers/specs/a.md;; ls'
+  decide ask '#1273 W: leading |'                 '| cat docs/superpowers/specs/a.md'
+  # shellcheck disable=SC2016  # literal input, never expanded
+  decide ask '#1273 W: $( ) inside double quotes' 'cat "docs/superpowers/specs/a.md$(rm x)"'
+  # A `\"` inside "..." would desync quote tracking: the scanner would see the
+  # `>` as quoted while bash runs it as a redirect. Only a rejected `\"` stops it.
+  decide ask '#1273 W: escaped quote in dq hides >' 'cat "a\" "> docs/superpowers/specs/b.md \" ""'
+  decide ask '#1273 W: newline inside quotes'     "cat 'docs/superpowers/specs/a.md${nl}'; ls"
+  decide ask '#1273 W: over MAX_PIPELINE_CMD_LEN' "cat docs/superpowers/specs/a.md | head$(printf ' %.0s-n' $(seq 1 1400))"
 
   # --- MUST NOT SUPPRESS (advisory): a WRITE-CAPABLE TOKEN is what fails. Each token appears as
   # an ARGUMENT of an allowlisted verb, which is contrived on purpose: the
@@ -3696,7 +3954,7 @@ if [ "$tn" = "Bash" ]; then
     # #309 follow-up: suppress ONLY a provably-single read-only command (see
     # DESIGN). Everything else - including anything this predicate cannot
     # prove - falls through to the split below.
-    if bash_is_provably_readonly "$cmd"; then
+    if bash_is_provably_readonly "$cmd" || bash_is_readonly_pipeline "$cmd"; then
       exit 0
     fi
     # #1041 RULING 1: a destructive verb naming the plans/ DIRECTORY itself
@@ -3729,7 +3987,7 @@ if [ "$tn" = "Bash" ]; then
       fi
       exit 0
     fi
-    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Bash command mentions spec path '"$p"' (docs/superpowers/ is the user-approved source-of-truth spec/plan tree, matched here together with its ancestor; CLAUDE.md makes changing it a MAIN-SESSION act, which is what this prompt enforces). This is the ONLY protected family that still prompts, docs/superpowers/plans/ excepted (#1021 - a plans-confined write advises instead, same as the build outputs below) - the committed build outputs (app/public/{data,icons,brand}/, THIRD-PARTY-NOTICES.txt, .pmtiles) now get a non-blocking advisory instead, since a drifted artifact can be regenerated and a rewritten spec cannot. This guard checks whether the path STRING appears anywhere in the Bash command; it does NOT parse shell syntax to work out whether the command is really a write. The one exception is a command PROVEN read-only - a single simple command whose first word is a no-write verb ('"$(readonly_verbs_sentence)"') with no pipe, separator, substitution, expansion or escape anywhere in it, and no redirect other than the inert ones (the fd-dups and the /dev/null discards, which write no file and are stripped before that check) - which is suppressed silently. Two of those verbs, grep and sed, do have a write surface and so carry an ADDITIONAL per-verb condition (#530): grep must name none of the ugrep options the Claude Code shim intercepts, and sed must use only -n/-E/-r-class read-only flags with a single bare p/d/q/=/n/N script command under at most one address. The exemption also applies only up to a length limit, so that a very large input cannot stall this hook past its time budget and have the resulting silence read as approval. This command is not that, so it asks: it uses a verb outside that set, fails one of those two per-verb conditions, contains a write-capable construct, or is longer than that limit. Confirm intent before proceeding."}}'
+    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Bash command mentions spec path '"$p"' (docs/superpowers/ is the user-approved source-of-truth spec/plan tree, matched here together with its ancestor; CLAUDE.md makes changing it a MAIN-SESSION act, which is what this prompt enforces). This is the ONLY protected family that still prompts, docs/superpowers/plans/ excepted (#1021 - a plans-confined write advises instead, same as the build outputs below) - the committed build outputs (app/public/{data,icons,brand}/, THIRD-PARTY-NOTICES.txt, .pmtiles) now get a non-blocking advisory instead, since a drifted artifact can be regenerated and a rewritten spec cannot. This guard checks whether the path STRING appears anywhere in the Bash command; it does NOT parse shell syntax to work out whether the command is really a write. The one exception is a command PROVEN read-only - a single simple command whose first word is a no-write verb ('"$(readonly_verbs_sentence)"') with no pipe, separator, substitution, expansion or escape anywhere in it, and no redirect other than the inert ones (the fd-dups and the /dev/null discards, which write no file and are stripped before that check) - which is suppressed silently. Since #1273 a pipeline or |/;/&&/|| sequence is also suppressed when EVERY segment is such a read-only command (echo, git show/log/diff and a GET-only gh api are allowed as segments too), with no redirect, substitution or unquoted metachar anywhere, up to a smaller length limit. Two of those verbs, grep and sed, do have a write surface and so carry an ADDITIONAL per-verb condition (#530): grep must name none of the ugrep options the Claude Code shim intercepts, and sed must use only -n/-E/-r-class read-only flags with a single bare p/d/q/=/n/N script command under at most one address. The exemption also applies only up to a length limit, so that a very large input cannot stall this hook past its time budget and have the resulting silence read as approval. This command is not that, so it asks: it uses a verb outside that set, fails one of those two per-verb conditions, contains a write-capable construct, or is longer than that limit. Confirm intent before proceeding."}}'
   fi
   exit 0
 fi

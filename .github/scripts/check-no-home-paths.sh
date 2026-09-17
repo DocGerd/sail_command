@@ -36,7 +36,7 @@
 # documentation.
 #
 # FAIL-CLOSED (CLAUDE.md's guard-asymmetry rule): this is a BLOCKING check
-# wired into ci.yml's `app` job, a REQUIRED status check. A broken `git`, an
+# wired into ci.yml's `changes` job, which both REQUIRED checks need. A broken `git`, an
 # unreadable/missing tracked file, an empty tracked-file list, or any
 # internal error must FAIL the check, never pass it silently - a false
 # positive costs one line of explanation; a false negative publishes

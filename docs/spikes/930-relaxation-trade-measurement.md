@@ -12,6 +12,10 @@ Harness: `app/src/routing/relaxationTrade.differential.test.ts`. It calls the
 SHIPPED `findRelaxedGate` twice per pair on the real `mask.bin`, changing only
 `approachRadiusM`: `APPROACH_RADIUS_M` vs `Infinity` (`depthGate.ts`'s kill
 switch, pinned by `relaxedDepth.test.ts` as the pre-#452 global search).
+#1261 split the per-population `describe.each`/`it.each` rows out into
+`app/src/routing/realmask.repro.relaxationTrade.{originMarstal,originFlensburg,
+destinationMarstal}.test.ts`, one file per `POPULATIONS` entry; the named file
+above keeps only the derived-cases check and the two POSITIVE CONTROLs.
 
 ## What is structural and what is empirical
 

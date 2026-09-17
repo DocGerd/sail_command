@@ -45,12 +45,70 @@ import { boatSnapshot, DEFAULT_SETTINGS } from '../src/types';
 import type { LatLon, MaskMeta, PolarTable, SailId, Settings, WindGrid } from '../src/types';
 import { solverTimeoutMs } from '../src/test/timeouts';
 import { ARM_NAMES } from './armNames';
+import { serialize } from './serialize';
 
 const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
 /** Absolute output directory. REQUIRED — fail closed rather than silently overwrite a default. */
 const OUT_DIR = env?.SC_SWEEP_OUT;
 /** Optional: first N destinations only, for calibrating a change to this harness. */
 const LIMIT = Number(env?.SC_SWEEP_LIMIT ?? '0');
+
+/**
+ * #1262: optional "<index>/<count>", 1-indexed (Playwright's `--shard`
+ * convention) — when set, this invocation computes only its slice of
+ * destinations for EVERY arm, so N invocations run in parallel (one vitest
+ * worker pool each, `fileParallelism`'s existing one-worker-per-arm-file
+ * shape unchanged within an invocation) instead of the single arm-file
+ * granularity a plain run gets. See README.md's "Sharding" section for the
+ * run + merge workflow (`merge-shards.mjs` reassembles the parts).
+ *
+ * Deliberately does NOT change `T0`, `settings`, `wind()`, the origin, or
+ * `serialize()` — the baseline-identity parameters this file's header names
+ * — so a merged sharded run is byte-identical to an unsharded one at the
+ * same commit; only WHICH destinations a given process solves, and WHERE it
+ * writes them, differ.
+ */
+interface Shard {
+  index: number;
+  count: number;
+}
+function parseShard(raw: string): Shard {
+  const m = /^(\d+)\/(\d+)$/.exec(raw.trim());
+  if (!m) {
+    throw new Error(`#1262: SC_SWEEP_SHARD must be "<index>/<count>" (1-indexed), got "${raw}"`);
+  }
+  const index = Number(m[1]);
+  const count = Number(m[2]);
+  if (count < 1 || index < 1 || index > count) {
+    throw new Error(
+      `#1262: SC_SWEEP_SHARD "${raw}" out of range — index must be in [1, count], count >= 1`,
+    );
+  }
+  return { index, count };
+}
+// #1262 review Minor 3: read but NOT parsed here — `parseShard` is a
+// throwing validator, and calling it at module scope would crash
+// COLLECTION of all 11 arm files on a malformed value (`3/2`, `1of3`),
+// exactly the "a thrown error at module scope reads as a collection crash
+// rather than an actionable message" trap `OUT_DIR`'s own comment two
+// paragraphs up already names. The authoritative, validated `SHARD` is
+// computed inside each `it()` callback below, same as `OUT_DIR`'s
+// fail-closed check. This raw string is used only for the test TITLE,
+// which needs something descriptive, never something authoritative.
+const SHARD_RAW = env?.SC_SWEEP_SHARD;
+
+/**
+ * Part-file base name for an arm under the given shard, or the arm's own
+ * label when unsharded — so a plain run's output filenames are byte-for-byte
+ * unchanged (`<label>.json`), and a sharded run's parts (`<label>.shard<i>
+ * of<n>.json`) can never be mistaken for a complete arm file by
+ * `compare.mjs`'s own arm-name check, which only recognises names in
+ * `armNames.ts` (see `merge-shards.mjs`, which reassembles the parts INTO a
+ * `<label>.json` before `compare.mjs` ever sees the directory).
+ */
+function armFileBase(label: string, shard: Shard | null): string {
+  return shard ? `${label}.shard${shard.index}of${shard.count}` : label;
+}
 
 const dataDir = resolve(dirname(fileURLToPath(import.meta.url)), '../public/data');
 
@@ -183,8 +241,8 @@ export const T0 = Date.UTC(2026, 6, 15, 6, 0, 0);
  * above are structurally unable to discriminate a depth-relaxation change.
  * `depthRelaxationMayHelp` is consulted (and answers true) 51 of 198 times
  * across the six arms — README.md's gate-coverage table — so the GATE itself
- * is not rare: `planRoute.ts`'s relaxation block opens on `mask-blocked`
- * alone, and the five #9 KNOWN_DISCONNECTED harbours (arnis, kappeln,
+ * is not rare: `planRoute.ts`'s relaxation block opened on `mask-blocked`
+ * alone at that measurement (#1258 also admits `horizon-exceeded`), and the five #9 KNOWN_DISCONNECTED harbours (arnis, kappeln,
  * maasholm, dyvig, graasten) enter it too on EVERY Flensburg-origin row that
  * names one — they run `findRelaxedGate`'s full probe search and take its
  * NULL-RESULT path (no candidate gate connects — since #452 the null is the
@@ -394,20 +452,11 @@ export const ARMS: Record<(typeof ARM_NAMES)[number], Arm> = {
   },
 };
 
-/**
- * Deterministic serialization. `JSON.stringify(value, replacer, 1)` — the
- * 1-space indent is part of the baseline identity, not cosmetics: it fixes the
- * byte layout every stored comparison was made against. Non-finite numbers
- * become explicit sentinels because JSON would otherwise turn NaN/Infinity
- * into `null` and quietly erase a real difference.
- */
-export function serialize(value: unknown): string {
-  return JSON.stringify(
-    value,
-    (_k, v: unknown) => (typeof v === 'number' && !Number.isFinite(v) ? `#nf:${String(v)}` : v),
-    1,
-  );
-}
+// #1262: re-exported for anything already importing `serialize` from this
+// module (nothing does today, checked via `grep -rn "from './sweepArms'"`) —
+// the definition itself now lives in `serialize.ts` so `merge-shards.mjs` can
+// load the identical function under plain Node. See that file's own header.
+export { serialize } from './serialize';
 
 export function runArm(label: (typeof ARM_NAMES)[number]): void {
   const arm = ARMS[label];
@@ -459,7 +508,7 @@ export function runArm(label: (typeof ARM_NAMES)[number]): void {
   if (!origin) throw new Error(`#282/#452 sweep: harbors.json has no \`${originId}\` entry`);
 
   it(
-    `#282 sweep arm ${label}: ${originId} -> all harbours`,
+    `#282 sweep arm ${label}${SHARD_RAW ? ` [shard ${SHARD_RAW}]` : ''}: ${originId} -> all harbours`,
     () => {
       // Fail closed, and inside the test so the whole file still collects when
       // the variable is unset (a thrown error at module scope reads as a
@@ -468,7 +517,19 @@ export function runArm(label: (typeof ARM_NAMES)[number]): void {
       const outDir = OUT_DIR as string;
       mkdirSync(outDir, { recursive: true });
 
-      const dests = LIMIT > 0 ? harbors.slice(0, LIMIT) : harbors;
+      // #1262 review Minor 3: parsed HERE, not at module scope — see
+      // `SHARD_RAW`'s own comment above for why.
+      const SHARD: Shard | null = SHARD_RAW ? parseShard(SHARD_RAW) : null;
+
+      const limited = LIMIT > 0 ? harbors.slice(0, LIMIT) : harbors;
+      // #1262: applied AFTER `SC_SWEEP_LIMIT`, so LIMIT keeps meaning "only
+      // these first N destinations" and the shard divides THAT set — the
+      // `idx % count` split preserves each destination's relative position
+      // in `harbors.json`, which is what lets `merge-shards.mjs` reassemble
+      // the parts in that same order with zero re-sorting.
+      const dests = SHARD
+        ? limited.filter((_, idx) => idx % SHARD.count === SHARD.index - 1)
+        : limited;
       const windGrid = arm.wind();
       const rows: Record<string, unknown> = {};
       const timings: Record<string, number> = {};
@@ -501,8 +562,9 @@ export function runArm(label: (typeof ARM_NAMES)[number]): void {
         );
         timings[h.id] = Date.now() - t;
       }
-      writeFileSync(resolve(outDir, `${label}.json`), serialize(rows));
-      writeFileSync(resolve(outDir, `${label}.timings.json`), serialize(timings));
+      const base = armFileBase(label, SHARD);
+      writeFileSync(resolve(outDir, `${base}.json`), serialize(rows));
+      writeFileSync(resolve(outDir, `${base}.timings.json`), serialize(timings));
       expect(Object.keys(rows).length).toBe(dests.length);
     },
     solverTimeoutMs(3_600_000),
