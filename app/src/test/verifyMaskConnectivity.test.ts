@@ -321,7 +321,16 @@ describe('#550: mask connectivity is a REQUIRED check (promoted from advisory ve
       ['flensburg', 8.8],
     ];
 
-    it.each(SAMPLE)('%s at a %s m gate', (hid, gateM) => {
+    // #1287: vitest's default 5000ms testTimeout, uninstrumented, is not
+    // where this reds — a plain local run measured every row here under
+    // 400ms (max: 'rudkoebing at a 3.5 m gate', 362ms). It reds under
+    // SC_COVERAGE's 8x solver-budget multiplier on CI hardware, the same
+    // failure surface `solverTimeoutMs()`'s own header describes: v8
+    // instrumentation is a separate multiplier from CI's general slowdown,
+    // on top of a budget already sized for CI. 300_000 mirrors the
+    // `#1256` differential-proof `it()` below (~:556), whose own plain-run
+    // duration (475ms) is the closest sibling measurement in this file.
+    it.each(SAMPLE)('%s at a %s m gate', { timeout: solverTimeoutMs(300_000) }, (hid, gateM) => {
       const h = harbors.find((x) => x.id === hid);
       expect(h, `fixture harbor "${hid}" missing from harbors.json — update SAMPLE`).toBeDefined();
       const reachable = reachableAt(gateM);
@@ -331,9 +340,17 @@ describe('#550: mask connectivity is a REQUIRED check (promoted from advisory ve
     });
   });
 
-  it.each(BOATS)('$id: every harbor reaches open water at its derived gate', (boat) => {
-    expect(connectivityFailures(boat)).toEqual([]);
-  });
+  // #1287: same rationale as the differential-proof `it.each` above — a
+  // plain local run measured this row at 490ms ('salona-45'; the other two
+  // boats reused the cached flood fill at 0ms), well under the default
+  // 5000ms, but SC_COVERAGE's 8x multiplier on CI hardware exceeded it.
+  it.each(BOATS)(
+    '$id: every harbor reaches open water at its derived gate',
+    { timeout: solverTimeoutMs(300_000) },
+    (boat) => {
+      expect(connectivityFailures(boat)).toEqual([]);
+    },
+  );
 
   // "Prove the guard can fail" (CLAUDE.md): a fixture boat drafted deep
   // enough to strand most of the fleet — never added to BOATS — is reported
@@ -353,30 +370,38 @@ describe('#550: mask connectivity is a REQUIRED check (promoted from advisory ve
   // leaves headroom for a future harbor-list change and does not attempt to
   // catch the 4-/8-connectivity distinction — that is the differential
   // proof's job above, not this one's.
-  it('guard-fires proof: a deep-draft fixture boat is reported as disconnected (exercises the real flood fill)', () => {
-    const fixtureBoat: BoatDef = {
-      id: 'fixture-deep-draft-550',
-      name: 'fixture (test-only, never added to BOATS)',
-      draftM: 7.1,
-      // #563 made `draftProvenance` REQUIRED on BoatDef, so this fixture must
-      // carry one. Requiredness is one half of that fix — it makes a boat
-      // shipping without the FIELD a compile error; the other half moved the
-      // §N.2 disclosure onto that same field, so the paragraph can no longer
-      // read something nothing writes. This fixture exercised the first half:
-      // the field landed on `develop` while this PR was open and the merged
-      // result failed `typecheck` here, in a PR that touches no catalogue code.
-      draftProvenance: {
-        keel: 'n/a — synthetic fixture, not a real hull',
-        hullVerified: false,
-        note: 'Test-only fixture for the guard-fires proof below. Never added to BOATS.',
-      },
-      motorSpeedKn: 6,
-      maneuverPenaltyS: 30,
-      sails: [],
-    };
-    const failures = connectivityFailures(fixtureBoat);
-    expect(failures.length).toBeGreaterThan(20);
-  });
+  // #1287: same class as the two `it.each` blocks above — a fresh gate
+  // (8.0 m) forces a real flood fill over the real committed mask, measured
+  // at 208ms plain-local, well under the default 5000ms but exposed to the
+  // same SC_COVERAGE 8x multiplier risk on CI hardware.
+  it(
+    'guard-fires proof: a deep-draft fixture boat is reported as disconnected (exercises the real flood fill)',
+    { timeout: solverTimeoutMs(300_000) },
+    () => {
+      const fixtureBoat: BoatDef = {
+        id: 'fixture-deep-draft-550',
+        name: 'fixture (test-only, never added to BOATS)',
+        draftM: 7.1,
+        // #563 made `draftProvenance` REQUIRED on BoatDef, so this fixture must
+        // carry one. Requiredness is one half of that fix — it makes a boat
+        // shipping without the FIELD a compile error; the other half moved the
+        // §N.2 disclosure onto that same field, so the paragraph can no longer
+        // read something nothing writes. This fixture exercised the first half:
+        // the field landed on `develop` while this PR was open and the merged
+        // result failed `typecheck` here, in a PR that touches no catalogue code.
+        draftProvenance: {
+          keel: 'n/a — synthetic fixture, not a real hull',
+          hullVerified: false,
+          note: 'Test-only fixture for the guard-fires proof below. Never added to BOATS.',
+        },
+        motorSpeedKn: 6,
+        maneuverPenaltyS: 30,
+        sails: [],
+      };
+      const failures = connectivityFailures(fixtureBoat);
+      expect(failures.length).toBeGreaterThan(20);
+    },
+  );
 });
 
 // ---------------------------------------------------------------------------
