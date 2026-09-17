@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A slow device's route search is no longer cut off at a fixed deadline while the solver is still reporting progress — the wait now extends up to a fixed ceiling instead (#1280).
 - The shallow-route warning no longer says the requested safety depth was impassable when the search at that depth reached the end of the forecast horizon, and its remedy now also suggests a different departure time or a fresh forecast (#1300).
 - The beyond-horizon no-route message no longer suggests a later departure, which leaves less forecast time, not more; it now suggests a different departure time or a fresh forecast, alongside a closer destination (#1307).
-- The shallow-route warning's departure-time and forecast advice is no longer hidden on narrow layouts, when planned at or below the lowest selectable safety depth, or while the shallow-water measurement is still loading or reads zero (#1308).
+- The shallow-route warning's details now include its departure-time and forecast advice on narrow layouts, when planned at or below the lowest selectable safety depth, and while the shallow-water measurement is still loading or reads zero (#1308).
 
 ## [0.35.0] - 2026-09-16
 

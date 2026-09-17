@@ -20,11 +20,11 @@ shipped.
 
 The `v0.36.0` cut (2026-09-17) worked the
 [`v0.36.0` milestone](https://github.com/DocGerd/sail_command/milestones),
-which closed sixteen issues: six user-visible (five in `CHANGELOG.md`, plus
-[#1280](https://github.com/DocGerd/sail_command/issues/1280), whose fix
-shipped but which stays open in `v0.37.0` for further headroom work), the
-rest CI/test-scheduling tooling, a hook fix and design docs with no
-user-visible surface.
+which closed sixteen issues: five user-visible, the other eleven CI and test
+tooling, a hook fix, docs and two measurements with no user-visible surface.
+A sixth `CHANGELOG.md` entry ships the client-side part of
+[#1280](https://github.com/DocGerd/sail_command/issues/1280), which stays
+open in `v0.37.0` for the worker-side part.
 
 A route that failed as "beyond horizon" at the requested safety depth now
 also tries the shallower relaxed gate before giving up, flagging shallow
@@ -34,9 +34,9 @@ shallow-route warning's wording is corrected for a horizon-triggered
 relaxation
 ([#1300](https://github.com/DocGerd/sail_command/issues/1300)), the
 beyond-horizon no-route message no longer recommends a later departure
-([#1307](https://github.com/DocGerd/sail_command/issues/1307)), and that
-warning's departure-time/forecast advice no longer hides on narrow layouts
-or at the safety-depth minimum
+([#1307](https://github.com/DocGerd/sail_command/issues/1307)), and the
+shallow-route warning's departure-time/forecast advice is no longer left out
+on narrow layouts or at the safety-depth minimum
 ([#1308](https://github.com/DocGerd/sail_command/issues/1308)). A slow
 device's route search is no longer cut off at a fixed deadline while the
 solver is still reporting progress
@@ -46,27 +46,36 @@ pre-`v0.35.0` route is corrected
 ([#1268](https://github.com/DocGerd/sail_command/issues/1268)).
 
 The rest of the milestone: CI/test sharding (`app`/`e2e` and the #282 sweep
-across workers, solver test files split for scheduling), a hook fix
-exempting read-only pipelines from the spec-path ask, and design docs
-settling the `v0.37.0` boat-picker gate and the #1185 free-tap/#295
-via-edit rulings — none with a user-visible surface.
+across workers, solver test files split for scheduling), a per-test timeout
+fix for the nightly coverage run
+([#1287](https://github.com/DocGerd/sail_command/issues/1287)), a hook fix
+exempting read-only pipelines from the spec-path ask, a `CLAUDE.md` grep
+correction ([#1210](https://github.com/DocGerd/sail_command/issues/1210)),
+and design docs settling the `v0.37.0` boat-picker gate and the #1185
+free-tap/#295 via-edit rulings — none with a user-visible surface.
 [#1266](https://github.com/DocGerd/sail_command/issues/1266) (solve cost
 against `PLAN_BUDGET_MS`) closed "not reproduced on a quiet machine" per
-maintainer ruling, no code change.
+maintainer ruling, no code change, and
+[#1250](https://github.com/DocGerd/sail_command/issues/1250) measured
+depth-overlay canvas memory at tablet viewports in desktop Chromium.
 
 ## Next — v0.37.0
 
 The [`v0.37.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-carries three frontier-related routing issues — scaling `MAX_FRONTIER` with
-the mask's cell count
-([#1257](https://github.com/DocGerd/sail_command/issues/1257)), a route a
-frontier-capped search misses that an untruncated one finds
-([#1303](https://github.com/DocGerd/sail_command/issues/1303)), and a route
-family that flips between capped and uncapped search
-([#1305](https://github.com/DocGerd/sail_command/issues/1305)) — the
-worker-vs-client timeout race under CPU contention
-([#1280](https://github.com/DocGerd/sail_command/issues/1280)), the #1135
-boat-picker gate design's implementation across six issues
+carries one routing defect class: visited-cell pruning can seal a narrow
+passage, so a more complete search can return a slower route. An untruncated
+search misses the Svendborgsund route that today's frontier-capped search
+finds ([#1303](https://github.com/DocGerd/sail_command/issues/1303)), and a
+Salona 44 route family flips between rigs and between capped and uncapped
+search ([#1305](https://github.com/DocGerd/sail_command/issues/1305)); both
+get one general confined-water prune fix and one sweep. Scaling
+`MAX_FRONTIER` with the mask's cell count
+([#1257](https://github.com/DocGerd/sail_command/issues/1257)) is held until
+that fix lands. The milestone also carries the rest of the worker-vs-client
+timeout fix under CPU contention, deadline checks inside a search ring and
+between relaxation probes
+([#1280](https://github.com/DocGerd/sail_command/issues/1280)), six follow-up
+issues from the #1135 boat-picker gate design
 ([#1290](https://github.com/DocGerd/sail_command/issues/1290)–[#1295](https://github.com/DocGerd/sail_command/issues/1295)),
 and a local eslint-cache/vitest-sharding chore
 ([#1263](https://github.com/DocGerd/sail_command/issues/1263)). The
