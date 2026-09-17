@@ -52,3 +52,8 @@ describe('Polar', () => {
     expect(p.gybeAngleDeg(99)).toBeCloseTo(175, 5);
   });
 });
+
+// TEMP #1286 negative control - reverted in the next commit.
+it('temp fail (#1286 negative control)', () => {
+  expect(1).toBe(2);
+});
