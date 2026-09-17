@@ -1149,10 +1149,10 @@ making design-level decisions; do not silently deviate.
   restore the wind fixture afterwards); add `--no-deps` (since #1260) to skip
   the `identity` project when it doesn't matter for the spec under test.
 - **`ci.yml`'s `e2e` job capped at `timeout-minutes: 30`** (#605; since
-  #1286 each `e2e-shard` job caps at 35, sized ~2x the heavier
-  shard) —
+  #1286 each `e2e-shard` job caps at 35, sized from this PR's measured
+  shard runs) —
   derived from 8 re-measured real runs spanning **5m53s–14m33s**, not the stale
-  3–4 min this file used to quote; a wedge now reds in 30 min instead of 360.
+  3–4 min this file used to quote; a wedge now reds in 35 min per shard instead of 360.
   An older **16m43s** outlier sits outside that window and sets the real margin
   at ~1.79x, not 2.06x — size any future change against the outlier, not the
   sampled range. It BOUNDS wedge damage, it does not prevent it: a wedge still

@@ -139,7 +139,7 @@ jobs:
   # (app/vite.config.ts) spreads SLOW_TEST_FILES_FIRST round-robin; every
   # other file splits by BaseSequencer's root-relative path hash.
   app-shard:
-    name: app-shard (${{ matrix.shard }}/3)
+    name: app-shard (${{ matrix.shard }}/${{ strategy.job-total }})
     needs: changes
     runs-on: ubuntu-latest
     # #882 capped the unsharded job at 45 min over a 1557 s max. Measured
@@ -160,7 +160,7 @@ jobs:
         with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
       - run: npm ci
         if: env.SKIP != 'true'
-      - run: npm run test -- --shard=${{ matrix.shard }}/3
+      - run: npm run test -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}
         if: env.SKIP != 'true'
   app:
     name: app
@@ -191,7 +191,7 @@ jobs:
   # so nothing flows between them and both run concurrently (#214). Accepted
   # trade: a unit-test red still burns e2e minutes.
   e2e-shard:
-    name: e2e-shard (${{ matrix.shard }}/2)
+    name: e2e-shard (${{ matrix.shard }}/${{ strategy.job-total }})
     needs: changes
     runs-on: ubuntu-latest
     # #605 capped the unsharded job at 30 min to turn install wedges into a
@@ -239,7 +239,7 @@ jobs:
       # Each shard runs its own `pree2e` build, so #803's build-identity
       # checks hold per runner. The `identity` dependency project runs in
       # full on every shard (Playwright re-adds dependencies after sharding).
-      - run: npm run e2e -- --shard=${{ matrix.shard }}/2
+      - run: npm run e2e -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}
         if: env.SKIP != 'true'
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()
