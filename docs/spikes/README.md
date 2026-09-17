@@ -93,7 +93,7 @@ instead of here.
   selectable boat with a harbour-access disclosure, per-boat harbour marking,
   and a runtime-derived gate (at 3.5 m a stored `verify_mask.py` figure
   marks 7 more harbours than the snap-aware derivation). Design only —
-  direction pending maintainer review
+  maintainer ruled on all open questions 2026-09-17
 - [1136-motor-off-solve-termination.md](1136-motor-off-solve-termination.md)
   — #1136: motor-off solves terminate holding mask-validated children
   (domination pruning, not the `MOTOR_TWAS` heading gap); re-expansion
