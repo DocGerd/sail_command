@@ -144,7 +144,39 @@ export const PLAN_BUDGET_MS = 240_000;
 // clock starts BEFORE the worker's, so the worker's deadline lands strictly
 // later than this one otherwise would), plus unwinding four tiers and
 // posting the result back.
-const PLAN_TIMEOUT_GRACE_MS = 15_000;
+//
+// #1280: also the RE-ARM window once a plan has started — see armLiveness()
+// below. Exported so a test can advance a fake clock by exactly this amount
+// rather than duplicating the literal.
+export const PLAN_TIMEOUT_GRACE_MS = 15_000;
+
+// #1280: root cause was a single ring (or a late worker clock start) eating
+// the WHOLE grace above under CPU contention, so the client timed out
+// (`kind: 'timeout'`) while the worker was still genuinely working and would
+// have answered — observed at exactly budget+grace (255 s) with Genoa done
+// at 109 s and Fock still solving. armLiveness() below re-arms the liveness
+// timer to PLAN_TIMEOUT_GRACE_MS on every progress/probe message the worker
+// posts (isochrone.ts posts one `progress` per RING — the same granularity
+// its own deadline check runs at — so a normally-progressing solve re-arms
+// far more often than once per this window), so the client only times out on
+// a worker that has gone SILENT for a full grace window, not merely slow.
+//
+// This alone does not close the single-super-long-ring case (no progress
+// posts until that ring finishes) — pairing a mid-ring deadline check into
+// isochrone.ts is tracked separately, out of scope here.
+//
+// HARD_CAP_EXTRA bounds the other direction: a worker that posts progress
+// forever (whether a bug, or simply the case the #1280 comment scopes OUT —
+// one ring so long it straddles the worker's own PLAN_BUDGET_MS deadline
+// check, which only runs at ring ENTRY) must still not hold the client open
+// indefinitely. Four grace windows (60 s) gives that one straddling ring
+// several multiples of the existing per-ring margin to finish and post its
+// own honest budget-exhausted answer, rather than a margin sized to any
+// measured ring duration under contention (no such figure is established —
+// see the mid-ring check tracked separately for that case). The total extra
+// wait stays a small, fixed addition (255 s -> 315 s at the default
+// timeout) rather than unbounded.
+export const PLAN_TIMEOUT_HARD_CAP_EXTRA_MS = 4 * PLAN_TIMEOUT_GRACE_MS;
 
 // Now purely a LIVENESS backstop, not the routing wall it used to be: with
 // the budget above, a merely-slow solve is stopped worker-side and answers
@@ -156,6 +188,11 @@ const PLAN_TIMEOUT_GRACE_MS = 15_000;
 // which is a small addition to an already ~4-minute wait and does not affect
 // worker.onerror/onmessageerror, which fail fast through failAll() and never
 // touch this timer.
+//
+// #1280: this is now the INITIAL window only (start of plan() to the first
+// progress/probe message, or to the result if none ever arrives) — see
+// armLiveness() and PLAN_TIMEOUT_HARD_CAP_EXTRA_MS above for what happens
+// once the worker is known to be alive.
 const DEFAULT_PLAN_TIMEOUT_MS = PLAN_BUDGET_MS + PLAN_TIMEOUT_GRACE_MS;
 
 /**
@@ -229,6 +266,17 @@ interface PendingEntry {
   onProgress?: ProgressCb;
   onProbe?: ProbeCb;
   timer: ReturnType<typeof setTimeout>;
+  // #1280 review Major 1: the ORIGINAL fixed deadline (plan start + this
+  // call's own timeoutMs) — a re-arm may EXTEND past this, never resolve to
+  // a moment before it. Without this floor, armLiveness()'s window-only form
+  // could time out EARLIER than the pre-#1280 client ever did (a progress
+  // message followed by a >grace, sub-timeoutMs silence — e.g. one 20 s ring
+  // after a fast first ring — rejected at first-progress + grace, where the
+  // old single fixed timer would still have been waiting). See armLiveness().
+  softDeadlineAtMs: number;
+  // #1280: absolute Date.now()-based ceiling this entry's liveness timer may
+  // never be re-armed past, set once at plan() call time. See armLiveness().
+  hardDeadlineAtMs: number;
 }
 
 export class RoutingClient {
@@ -289,6 +337,10 @@ export class RoutingClient {
   private handle(msg: WorkerResponse) {
     if (msg.type === 'ready') this.readyResolve();
     else if (msg.type === 'progress') {
+      // #1280: re-arm on every RECEIVED progress message, independent of the
+      // 100 ms UI-forwarding throttle just below — a throttled message is
+      // still proof the worker is alive.
+      this.armLiveness(msg.id, PLAN_TIMEOUT_GRACE_MS);
       const key = `${msg.id}:${msg.sailId}`;
       const last = this.lastProgressAt.get(key);
       const now = Date.now();
@@ -298,6 +350,9 @@ export class RoutingClient {
         .get(msg.id)
         ?.onProgress?.(msg.sailId, msg.tMs, msg.frontierSize, msg.secondPass === true);
     } else if (msg.type === 'probe') {
+      // #1280: same re-arm as progress — probes are sparse (#53's "a handful
+      // per search" comment on ProbeCb) but equally real liveness evidence.
+      this.armLiveness(msg.id, PLAN_TIMEOUT_GRACE_MS);
       this.pending.get(msg.id)?.onProbe?.(msg.probeDepthM, msg.done, msg.total);
     } else if (msg.type === 'result') {
       this.settle(msg.id, (entry) => entry.resolve(msg.result));
@@ -326,6 +381,29 @@ export class RoutingClient {
 
   private clearProgress(id: string) {
     for (const sailId of SAIL_IDS) this.lastProgressAt.delete(`${id}:${sailId}`);
+  }
+
+  // #1280 review Major 1: (re)arms `id`'s liveness timer to fire no EARLIER
+  // than `windowMs` from now AND no earlier than the entry's own
+  // softDeadlineAtMs (the pre-#1280 fixed deadline this plan started with) —
+  // whichever is LATER — but never later than hardDeadlineAtMs. The floor is
+  // what makes a re-arm strictly EXTEND the wait a caller would already have
+  // gotten pre-#1280, never shorten it: reviewer-supplied form,
+  // `delay = min(max(softDeadlineAtMs - now, windowMs), hardDeadlineAtMs -
+  // now)`. A no-op once the entry has settled (settle() already deleted it
+  // from `pending`).
+  private armLiveness(id: string, windowMs: number) {
+    const entry = this.pending.get(id);
+    if (!entry) return;
+    clearTimeout(entry.timer);
+    const now = Date.now();
+    const delay = Math.max(
+      0,
+      Math.min(Math.max(entry.softDeadlineAtMs - now, windowMs), entry.hardDeadlineAtMs - now),
+    );
+    entry.timer = setTimeout(() => {
+      this.settle(id, (e) => e.reject(new RoutingError('timeout', 'routing timed out')));
+    }, delay);
   }
 
   private failAll(err: Error) {
@@ -388,14 +466,39 @@ export class RoutingClient {
       // keys, so a worker result that does eventually arrive late is a
       // silent no-op (settle() finds nothing left to settle) rather than a
       // second, conflicting resolution.
-      const timer = setTimeout(() => {
-        this.settle(id, (entry) => entry.reject(new RoutingError('timeout', 'routing timed out')));
-      }, timeoutMs);
+      // #1280: softDeadlineAtMs is the ORIGINAL fixed deadline (set once,
+      // here, from THIS call's own timeoutMs — never
+      // PLAN_BUDGET_MS/DEFAULT_PLAN_TIMEOUT_MS directly, mirroring how
+      // budgetMs is already derived from timeoutMs above). armLiveness()'s
+      // review-fixed floor means a re-arm can never resolve to a moment
+      // before this, so a caller that shortens timeoutMs (every existing
+      // test) shortens BOTH the initial wait and that floor together, and
+      // the two can never invert.
+      const softDeadlineAtMs = Date.now() + timeoutMs;
+      // hardDeadlineAtMs is the absolute ceiling armLiveness() below may
+      // never re-arm past regardless of the floor above, so
+      // PLAN_TIMEOUT_HARD_CAP_EXTRA_MS bounds the total wait even under
+      // continuous progress.
+      const hardDeadlineAtMs = softDeadlineAtMs + PLAN_TIMEOUT_HARD_CAP_EXTRA_MS;
+      // Initial window is timeoutMs itself, exactly as before #1280 — no
+      // progress/probe has arrived yet, so there is nothing to re-arm on.
+      // The Math.min clamp is a no-op here (hardDeadlineAtMs - now() >
+      // timeoutMs by construction) and exists only so this and armLiveness()
+      // share one invariant: no timer this entry owns ever exceeds
+      // hardDeadlineAtMs.
+      const timer = setTimeout(
+        () => {
+          this.settle(id, (entry) =>
+            entry.reject(new RoutingError('timeout', 'routing timed out')),
+          );
+        },
+        Math.min(timeoutMs, hardDeadlineAtMs - Date.now()),
+      );
       // exactOptionalPropertyTypes: `onProgress`/`onProbe` are `... | undefined`
       // here (omitted args), but the map's value type declares them as
       // optional-if-present, not optional-or-undefined — so an absent
       // callback must omit its key entirely rather than set it to undefined.
-      const entry: PendingEntry = { resolve, reject, timer };
+      const entry: PendingEntry = { resolve, reject, timer, softDeadlineAtMs, hardDeadlineAtMs };
       if (onProgress) entry.onProgress = onProgress;
       if (onProbe) entry.onProbe = onProbe;
       this.pending.set(id, entry);
