@@ -26,11 +26,15 @@ describe('#1257 defaultMaxFrontier', () => {
   });
 
   it('clears the worst frontier peak measured post-#1322', () => {
-    // The constant exists to keep truncation off real routes. Worst uncapped
-    // peak measured over 8 of the sweep's 440 plans (breeze aperture, solo)
-    // is 64 402, rudkoebing / Salona 44 / genoa. This is the assertion that
-    // ties 0.2 to that evidence rather than to a round number; it is a
-    // HEADROOM check over a SAMPLE, not a proof the cap can never bind.
+    // Worst uncapped peak measured over 8 of the sweep's 440 plans (breeze
+    // aperture, solo) is 64 402, rudkoebing / Salona 44 / genoa.
+    //
+    // NOT redundant with the exact pin above, and the difference is what it
+    // catches: that pin fixes the CURRENT constant, so anyone who re-derives
+    // 0.2 downward re-pins it mechanically and it stays green. This one pins
+    // the FLOOR of admissible constants against the evidence — any value
+    // below 0.1351 reds HERE while the re-pinned exact assertion passes.
+    // It is a HEADROOM check over a SAMPLE, never a proof the cap cannot bind.
     expect(defaultMaxFrontier(mask.meta)).toBeGreaterThan(64_402);
   });
 

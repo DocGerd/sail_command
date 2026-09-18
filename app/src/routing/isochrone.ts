@@ -214,9 +214,13 @@ const MAX_FRONTIER = 30_000;
  * #1257: frontier cap per prune cell of the mask's domain.
  *
  * Basis is PRUNE cells, not mask cells: the frontier is `byKey`-collapsed to
- * one node per prune key, so its size is bounded by the domain's prune-cell
+ * one node per prune key, so its size SCALES with the domain's prune-cell
  * count, which is fixed in degrees (`PRUNE_LAT`/`PRUNE_LON`) and therefore
- * independent of mask RESOLUTION. Scaling by mask cells would inflate the cap
+ * independent of mask RESOLUTION. Scales with, never bounded by — the true
+ * ceiling is higher by a constant factor this rule deliberately ignores,
+ * since a constant cancels out of a scaling law: three board suffixes per
+ * cell (`P`/`S`/`M`), and `CONFINED_PRUNE_DIV`^2 fine keys inside every
+ * confined cell since #1322. Scaling by mask cells would inflate the cap
  * on a mask refined over the same water (#245's rejected direction) where
  * nothing about the frontier changed. The two bases coincide exactly today —
  * #295 widened the domain at unchanged resolution, so both give 1.7875x the
