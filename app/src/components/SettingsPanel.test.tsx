@@ -100,7 +100,7 @@ describe('SettingsPanel (#299 Boat tab)', () => {
   // ("Erlaubter Bereich: 2.2-10 m"), contradicting the comma convention
   // every OTHER depth figure in this app uses via formatDepthM — including
   // this very PR's own boat.clamp.notice two components over ("Sicherheitstiefe
-  // auf 2,4 m angehoben"). renderPanel() hardcodes English, so this test
+  // auf 3,2 m angehoben"). renderPanel() hardcodes English, so this test
   // renders directly under 'de' to reach the gap no other row in this file
   // exercises. MUTATION-CHECKED: reverting SettingsPanel.tsx's help vars to
   // the bare numbers (no formatDepthM) reds this row, rendering the point
