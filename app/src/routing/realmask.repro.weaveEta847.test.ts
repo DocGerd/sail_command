@@ -195,6 +195,11 @@ function printMeasurement(label: string, m: WeaveMeasurement) {
   );
 }
 
+// #1303: the Glücksburg -> Ærøskøbing genoa duration measured at BASE
+// (CONFINED_PRUNE_DIV = 1) on this branch's base tree, 36d86a7. The pin below
+// requires the finer grid to arrive no later.
+const GLUECKS_AEROE_BASE_DURATION_MS = 24175621.98486328;
+
 const AEROESKOEBING: LatLon = { lat: 54.8935, lon: 10.416 };
 const SOEBY: LatLon = { lat: 54.9454, lon: 10.256 };
 
@@ -364,11 +369,15 @@ describe('#847 weave ETA cost — reproduction + measurement', () => {
     },
   );
 
-  // #1079: axis (b) widening #2 -- a THIRD harbour pair, and the first
-  // SAIL-mode weave span this file measures (the original and the case
-  // above both happen to isolate all-motor spans).
+  // #1303 pin (was #1079's axis (b) widening #2, an all-sail approach weave).
+  // At BASE (CONFINED_PRUNE_DIV = 1) this route carried one weave span on its
+  // destination approach; the finer prune grid in confined water removes it
+  // and arrives EARLIER (402.9 -> 401.7 min, cost -78.1 s). The weave was an
+  // artefact of coarse pruning through the approach, which is what #1303 is
+  // about; #847's own verdict is unchanged, and the mid-route case above
+  // remains its reproduction and the detector's positive control.
   it(
-    'Glücksburg -> Aeroeskoebing, TWS 5 / wdir 100 (genoa): reproduces an all-sail weave near the destination approach',
+    '#1303: Glücksburg -> Aeroeskoebing, TWS 5 / wdir 100 (genoa): no weave span on the destination approach',
     { timeout: SOLVER_TEST_TIMEOUT_MS },
     () => {
       const res = planRoute(
@@ -397,18 +406,10 @@ describe('#847 weave ETA cost — reproduction + measurement', () => {
         `\nGlücksburg->Aeroeskoebing: ${legs.length} legs, ${rig!.distanceNm.toFixed(2)} nm, ` +
           `${(rig!.durationMs / 60000).toFixed(1)} min. Weave spans found: ${spans.length}.`,
       );
-      expect(spans.length).toBeGreaterThan(0);
-
-      const lastSpan = spans[spans.length - 1];
-      const m = measureWeaveSpan(lastSpan, DEFAULT_SETTINGS.safetyDepthM);
-      printMeasurement('last span', m);
-
-      expect(m.span.legs.every((l) => l.kind === 'sail')).toBe(true);
-      expect(m.chordNavigable).toBe(true);
-      // Measured 1.5% here (higher than the motor-span cases' 0.7%, still
-      // far below #264's large-swing regime) -- 5% keeps the same margin
-      // as the case above rather than a per-case-tuned bound.
-      expect(Math.abs(m.etaDeltaS) / m.actualDurationS).toBeLessThan(0.05);
+      expect(spans).toHaveLength(0);
+      // No later than BASE: removing the weave cost no time, which is what
+      // makes this a #1303 improvement rather than a trade.
+      expect(rig!.durationMs).toBeLessThanOrEqual(GLUECKS_AEROE_BASE_DURATION_MS);
 
       const wholeRouteChord = mask.segmentClearanceM(
         GLUECKSBURG,
@@ -542,9 +543,49 @@ describe('#847 weave ETA cost — reproduction + measurement', () => {
       expect(rig).not.toBeNull();
       const spans = findWeaveSpans(rig!.legs);
       console.log(
+        `\nGelting-Mole: ${rig!.legs.length} legs, weave spans found: ${spans.length}.`,
+      );
+      // #1303 re-pin: 0 at BASE, 1 at HEAD (18 legs -> 17). The finer approach
+      // grid moved this route, so it is no longer a zero-span route and cannot
+      // be the detector's non-vacuity control; that role moves to the case
+      // below, measured 0 spans at HEAD. Recorded rather than deleted, because
+      // "the general rule can ADD a weave span" is a real finding about #1303.
+      expect(spans).toHaveLength(1);
+    },
+  );
+
+  // #1303: the detector's NON-VACUITY control, replacing Gelting-Mole above.
+  // Same origin, wind cell and rig, a neighbouring outer-fjord harbour; 0
+  // spans measured at HEAD over 14 legs. Without a zero-span route in this
+  // file, every "spans found" reading above could be the detector firing on
+  // any input at all.
+  it(
+    'negative control: Flensburg -> Wackerballig, TWS 12/225 (genoa) reports NO weave spans',
+    { timeout: SOLVER_TEST_TIMEOUT_MS },
+    () => {
+      const res = planRoute(
+        {
+          origin: { lat: 54.798, lon: 9.4335 },
+          destination: { lat: 54.7604, lon: 9.872 },
+          viaPoints: [],
+          originHarborId: 'flensburg',
+          destinationHarborId: 'wackerballig',
+          departureMs: T0,
+          settings: DEFAULT_SETTINGS,
+          sailIds: ['genoa'],
+          boat: defaultBoatSnapshot(),
+        },
+        uniformWindGrid(12, 225),
+        SALONA_DEPS,
+      ) as PlanResultOk;
+      expect(res.status).toBe('ok');
+      const rig = sailResult(res, 'genoa');
+      expect(rig).not.toBeNull();
+      const spans = findWeaveSpans(rig!.legs);
+      console.log(
         `\nNegative control: ${rig!.legs.length} legs, weave spans found: ${spans.length} (expect 0).`,
       );
-      expect(spans.length).toBe(0);
+      expect(spans).toHaveLength(0);
     },
   );
 });

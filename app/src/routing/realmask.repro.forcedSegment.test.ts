@@ -12,7 +12,7 @@ import {
   type PlanResultOk,
   type WindGrid,
 } from '../types';
-import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
+import { solverTimeoutMs, SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
 import { FLENSBURG, GLUECKSBURG, MARSTAL, mask, SALONA_DEPS, T0 } from '../test/realmaskFixtures';
 
 // #885 §7: forced motor against the real committed mask and polars. Two vias
@@ -123,25 +123,41 @@ describe('#885 forced motor on the real mask', () => {
     console.log(`#885 forced-motor geometry identical across rigs: ${geometry[0] === geometry[1]}`);
   });
 
-  it('survives a relaxed-tier plan: Marstal origin, one via, forced motor on the relaxed approach', () => {
-    const marstal: PlanRequest = {
-      ...req,
-      origin: MARSTAL,
-      // Short on purpose: a Marstal-origin passage to another harbour costs
-      // minutes on the real mask. Both points sit in >= 3.8 m charted water.
-      destination: { lat: 54.884, lon: 10.529 },
-      viaPoints: [{ lat: 54.873, lon: 10.543 }],
-      originHarborId: 'marstal',
-      destinationHarborId: null,
-      segmentModes: ['motor', null],
-    };
-    const r = ok(planRoute(marstal, windGrid(12, 270), SALONA_DEPS));
-    expect(r.shallow, 'the plan must actually take a relaxed tier').toBeDefined();
-    const via = mask.snapToNavigable(marstal.viaPoints[0], DEFAULT_SETTINGS.safetyDepthM)!;
-    for (const s of r.sails) {
-      const seg0 = segmentLegs(s.result!.legs, [r.snappedOrigin, via, r.snappedDestination], 0);
-      expect(seg0.length).toBeGreaterThan(0);
-      expect(seg0.every((l) => l.kind === 'motor' && l.forced === true)).toBe(true);
-    }
-  });
+  // #1330: this plan runs two segments x two rigs at the #53 relaxed tier, so
+  // it is one of the file's most expensive inputs, and #1303's confined-water
+  // grid made it more so: measured solo on one dev machine, 30.5 s at
+  // CONFINED_PRUNE_DIV = 1 against 43.6 s at 2 (+43%), while the plan itself
+  // got 2.2 h faster (genoa 10.163 h -> 7.929 h). CI then exceeded the shared
+  // 120 s file budget on this row (run 35318244674) — so the observed CI
+  // factor here is upwards of 2.75x the solo figure, not the suite-average
+  // solver ratio `../test/timeouts.ts` derives. Sized against that
+  // OBSERVATION rather than against a prediction: 300 s is >= 2.5x the only
+  // CI datum there is, its own 120 s floor. The explicit override is the
+  // documented shape for a single expensive test
+  // (`invariants.property.test.ts` uses the same one at 900_000).
+  it(
+    'survives a relaxed-tier plan: Marstal origin, one via, forced motor on the relaxed approach',
+    { timeout: solverTimeoutMs(300_000) },
+    () => {
+      const marstal: PlanRequest = {
+        ...req,
+        origin: MARSTAL,
+        // Short on purpose: a Marstal-origin passage to another harbour costs
+        // minutes on the real mask. Both points sit in >= 3.8 m charted water.
+        destination: { lat: 54.884, lon: 10.529 },
+        viaPoints: [{ lat: 54.873, lon: 10.543 }],
+        originHarborId: 'marstal',
+        destinationHarborId: null,
+        segmentModes: ['motor', null],
+      };
+      const r = ok(planRoute(marstal, windGrid(12, 270), SALONA_DEPS));
+      expect(r.shallow, 'the plan must actually take a relaxed tier').toBeDefined();
+      const via = mask.snapToNavigable(marstal.viaPoints[0], DEFAULT_SETTINGS.safetyDepthM)!;
+      for (const s of r.sails) {
+        const seg0 = segmentLegs(s.result!.legs, [r.snappedOrigin, via, r.snappedDestination], 0);
+        expect(seg0.length).toBeGreaterThan(0);
+        expect(seg0.every((l) => l.kind === 'motor' && l.forced === true)).toBe(true);
+      }
+    },
+  );
 });

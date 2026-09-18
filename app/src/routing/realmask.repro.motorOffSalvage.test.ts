@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import { planRoute } from './planRoute';
+import { planRoute, planRouteWithRecord } from './planRoute';
 import { solve } from './isochrone';
 import { Polar } from '../lib/polar';
 import { WindField } from '../lib/wind';
 import { uniformGate } from '../lib/depthGate';
 import { uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS, defaultBoatSnapshot } from '../types';
-import type { LatLon, PlanResult, PolarTable, Settings } from '../types';
+import type { LatLon, PlanRequest, PlanResult, PolarTable, Settings } from '../types';
 import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
 import {
   mask,
@@ -53,22 +53,22 @@ function solveSalvaged(o: {
   });
 }
 
+function bagenkopRequest(): PlanRequest {
+  return {
+    origin: FLENSBURG,
+    destination: BAGENKOP,
+    viaPoints: [],
+    originHarborId: 'flensburg',
+    destinationHarborId: 'bagenkop',
+    departureMs: T0,
+    settings: SETTINGS,
+    sailIds: ['genoa', 'fock'],
+    boat: defaultBoatSnapshot(),
+  };
+}
+
 function planBagenkop(tws: number): PlanResult {
-  return planRoute(
-    {
-      origin: FLENSBURG,
-      destination: BAGENKOP,
-      viaPoints: [],
-      originHarborId: 'flensburg',
-      destinationHarborId: 'bagenkop',
-      departureMs: T0,
-      settings: SETTINGS,
-      sailIds: ['genoa', 'fock'],
-      boat: defaultBoatSnapshot(),
-    },
-    uniformWindGrid(tws, 0),
-    SALONA_DEPS,
-  );
+  return planRoute(bagenkopRequest(), uniformWindGrid(tws, 0), SALONA_DEPS);
 }
 
 describe('#1136 solve-level salvage (real mask)', () => {
@@ -104,49 +104,68 @@ describe('#1136 solve-level salvage (real mask)', () => {
     },
   );
 
-  // The same TWS 8 input routes at plan fidelity (above) and terminates at the
-  // horizon at performanceFactor 1.0 — a #1168-style flip on one parameter, so
-  // both are pinned. What matters here is that it terminates (spike §11.2).
-  it('snapped, genoa, TWS 8, performanceFactor 1.0: ends horizon-exceeded, not a hang', () => {
+  // What matters here is that a salvaged solve TERMINATES (spike §11.2) rather
+  // than re-expanding forever. #1303 re-pin: at BASE (CONFINED_PRUNE_DIV = 1)
+  // this input terminated at the horizon with no route; under the
+  // confined-water grid it terminates WITH one. Both outcomes discharge §11.2,
+  // and the row keeps its teeth because a non-terminating salvage would time
+  // the test out rather than return either.
+  it('snapped, genoa, TWS 8, performanceFactor 1.0: terminates (now with a route)', () => {
     const r = solveSalvaged({
       origin: mask.snapToNavigable(FLENSBURG, 3)!,
       tws: 8,
       table: polarGenoa,
       performanceFactor: 1,
     });
-    expect(r).toEqual({ status: 'no-route', cause: 'horizon-exceeded' });
+    expect(r.status).toBe('ok');
   });
 });
 
 describe('#1136 planRoute pass 2 (real mask)', () => {
   // Before #1136 all three returned error 'unreachable' (measured at the
   // change's base, 33dbad2).
-  it.each([2.0, 2.4, 2.8])('TWS %s: a motor-off plan that died now routes', (tws) => {
+  // #1303 re-pin of the failed sail's LABEL only. At BASE every pass-1 sail
+  // died mask-blocked on all three rows; under the confined-water grid the
+  // TWS 2 row's failing sail reaches the horizon instead, so it reports
+  // 'beyond-horizon'. The claim the row makes — a failed sail carries PASS
+  // ONE's cause, never a pass-2 one — is unchanged; only which pass-1 cause
+  // this input produces moved, so the expected label is now per row.
+  it.each([
+    { tws: 2.0, failedReason: 'beyond-horizon' },
+    { tws: 2.4, failedReason: 'unreachable' },
+    { tws: 2.8, failedReason: 'unreachable' },
+  ])('TWS $tws: a motor-off plan that died now routes', ({ tws, failedReason }) => {
     const res = planBagenkop(tws);
     expect(res.status).toBe('ok');
     if (res.status !== 'ok') return;
     expect(res.sails.some((s) => s.result !== null)).toBe(true);
-    // A failed sail carries pass 1's cause (every pass-1 sail died mask-blocked
-    // here), never a pass-2 one.
-    for (const s of res.sails) if (s.result === null) expect(s.reason).toBe('unreachable');
+    for (const s of res.sails) if (s.result === null) expect(s.reason).toBe(failedReason);
   });
 
-  // Containment: pass 1 already returns ok with one sail failed (#1166 shape),
-  // so pass 2 is not admitted and the result is unchanged. Expected values
-  // measured at the change's base, 33dbad2.
-  it.each([
-    { tws: 3, failed: 'genoa', routed: 'fock', etaMs: 1784159977571.5435 },
-    { tws: 8, failed: 'fock', routed: 'genoa', etaMs: 1784122896754.3152 },
-  ])(
-    'TWS $tws: an ok plan with $failed failed is left as it was',
-    ({ tws, failed, routed, etaMs }) => {
-      const res = planBagenkop(tws);
+  // Containment: an ok pass 1 is never admitted to pass 2 (ruling 2).
+  //
+  // #1303 re-pin. At BASE these two rows carried the #1166 shape — pass 1 ok
+  // with ONE sail failed — and pinned the routed sail's ETA
+  // (1784159977571.5435 / 1784122896754.3152, both reproducing with the rule
+  // off). Under the confined-water grid BOTH sails route at both TWS, so that
+  // fixture no longer produces the #1166 shape and no real-mask fixture in
+  // this file does. `record.cause === null` pins a PRECONDITION of
+  // non-admission — that pass 1 did not fail — not non-admission itself:
+  // deleting clause 2 from `salvagePassAdmitted` leaves this row green (PR
+  // #1322 review). Clause 2 is pinned directly by
+  // `planRoute.motorOffSalvage.test.ts`'s truth table.
+  it.each([{ tws: 3 }, { tws: 8 }])(
+    'TWS $tws: an ok plan is left as it was — pass 2 is not admitted',
+    ({ tws }) => {
+      const { result: res, record } = planRouteWithRecord(
+        bagenkopRequest(),
+        uniformWindGrid(tws, 0),
+        SALONA_DEPS,
+      );
+      expect(record.cause).toBeNull();
       expect(res.status).toBe('ok');
       if (res.status !== 'ok') return;
-      const byId = (id: string) => res.sails.find((s) => s.sailId === id);
-      expect(byId(failed)?.result).toBeNull();
-      expect(byId(failed)?.reason).toBe('unreachable');
-      expect(byId(routed)?.result?.etaMs).toBe(etaMs);
+      expect(res.sails.every((s) => s.result !== null)).toBe(true);
     },
   );
 });

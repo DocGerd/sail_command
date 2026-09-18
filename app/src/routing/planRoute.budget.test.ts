@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { solve, type SolveDeadline, type SolveFailureCause } from './isochrone';
+import {
+  DEADLINE_CHECK_NODES,
+  solve,
+  type SolveDeadline,
+  type SolveFailureCause,
+} from './isochrone';
 import { combineAllCauses, combineFailureCause, planRoute } from './planRoute';
 import { NavMask } from '../lib/mask';
 import { Polar } from '../lib/polar';
@@ -155,6 +160,69 @@ describe('#432 solve(): the plan-level wall-clock budget', () => {
     // a route of unproven optimality returned silently).
     const res = solve({ ...base, deadline: deadlineAfterCalls(rings) });
     expect(res).toEqual({ status: 'no-route', cause: 'budget-exhausted' });
+  });
+});
+
+describe('#1280 part B: the budget is also checked INSIDE a ring', () => {
+  const base = () => ({
+    origin: ORIGIN,
+    destination: DESTINATION,
+    departureMs: T0,
+    polar: new Polar(TEST_POLAR, DEFAULT_SETTINGS.performanceFactor),
+    wind: new WindField(uniformWindGrid(12, 0)),
+    mask: openWaterMask(),
+    settings: DEFAULT_SETTINGS,
+  });
+
+  it('aborts partway through a ring, where ring-entry granularity could not', () => {
+    // Reference run: learn this input's ring count and its largest frontier,
+    // so the abort point below is derived from the search rather than guessed.
+    let rings = 0;
+    let peak = 0;
+    const reference = solve({
+      ...base(),
+      onProgress: (i) => {
+        rings++;
+        if (i.frontierSize > peak) peak = i.frontierSize;
+      },
+    });
+    expect(reference.status, 'the reference solve must succeed').toBe('ok');
+    // NON-VACUITY: a ring must carry more nodes than one check batch, or the
+    // mid-ring check could never fire on this fixture and the row below would
+    // pass for the wrong reason.
+    expect(peak, 'a ring must exceed one check batch').toBeGreaterThan(DEADLINE_CHECK_NODES);
+
+    // At ring-entry granularity `solve()` calls `expired()` exactly once per
+    // ring iteration, so on an input it completes it can never make more than
+    // `rings + 1` calls (the extra one belongs to the iteration that breaks
+    // out). A deadline firing only after that many calls is therefore
+    // unreachable for a ring-granularity solve — MEASURED: deleting the
+    // mid-ring check returns `status: 'ok'` here.
+    const d = deadlineAfterCalls(rings + 1);
+    const res = solve({ ...base(), deadline: d });
+    expect(res).toEqual({ status: 'no-route', cause: 'budget-exhausted' });
+    expect(d.calls, 'the abort must come from a mid-ring check').toBeGreaterThan(rings + 1);
+  });
+
+  it('checks more often than once per ring, and changes no result', () => {
+    // The two halves of "read-only between nodes": the extra checks really
+    // happen (call count exceeds the ring count) and they move nothing (a
+    // deadline that never fires returns the reference solve's own result).
+    let rings = 0;
+    const reference = solve({ ...base(), onProgress: () => rings++ });
+    const counter = {
+      calls: 0,
+      expired: () => {
+        counter.calls += 1;
+        return false;
+      },
+    };
+    const budgeted = solve({ ...base(), deadline: counter });
+    expect(budgeted).toEqual(reference);
+    // `rings + 1` is the ring-entry-only ceiling (see the row above), so this
+    // is the assertion that fails when the mid-ring check is deleted — a bare
+    // `> rings` passes on the extra breaking iteration alone (MEASURED).
+    expect(counter.calls).toBeGreaterThan(rings + 1);
   });
 });
 
@@ -333,6 +401,38 @@ describe('#432 planRoute(): one budget for the whole plan', () => {
     expect(unbudgeted.status).toBe('error');
     expect(probed, 'control: this geometry must reach the relaxation probes').toHaveBeenCalled();
   });
+
+  it('#1280 part B: a budget spent DURING the probes reports the budget, not the mask', () => {
+    // The gap the check above does not cover: the budget is live when the
+    // ladder STARTS and runs out inside it. `findRelaxedGate` then abandons
+    // the search and returns null — which is also its "nothing connects"
+    // answer — so without planRoute's re-read of the deadline the plan would
+    // report this walled mask's stale mask-level verdict for a search that
+    // never finished. MEASURED: deleting that re-read returns 'unreachable'.
+    const controlProbes: { done: number }[] = [];
+    planWith(undefined, walledMask(), (p) => controlProbes.push(p));
+    expect(controlProbes.length, 'control: the ladder must run probes here').toBeGreaterThan(1);
+
+    // Derive the abort point from the run itself: the call index at which the
+    // FIRST probe happens, plus one, so expiry lands inside the ladder rather
+    // than before it.
+    const counter = deadlineAfterCalls(Infinity);
+    let callsAtFirstProbe = 0;
+    planWith(counter, walledMask(), () => {
+      if (callsAtFirstProbe === 0) callsAtFirstProbe = counter.calls;
+    });
+    expect(callsAtFirstProbe).toBeGreaterThan(0);
+
+    const probes: { done: number }[] = [];
+    const res = planWith(deadlineAfterCalls(callsAtFirstProbe + 1), walledMask(), (p) =>
+      probes.push(p),
+    );
+    expect(probes.length, 'the ladder must start and then stop early').toBeGreaterThan(0);
+    expect(probes.length).toBeLessThan(controlProbes.length);
+    expect(res.status).toBe('error');
+    if (res.status !== 'error') return;
+    expect(res.reason).toBe('search-budget-exceeded');
+  });
 });
 
 // #54 spec §E.3: "Budget exhaustion partway through is a PARTIAL result, not a
@@ -358,16 +458,17 @@ describe('#54 §E.3: budget exhaustion mid-comparison', () => {
   }
 
   /**
-   * The abort point is DERIVED from the search, never guessed. `solve()` calls
-   * `deadline.expired()` exactly once per ring, as the first statement of the
-   * ring loop (isochrone.ts). For a plan that succeeds in TIER 1 without
-   * reaching the pre-relaxation check — the only shape this helper is used on
-   * — that is the plan's only `expired()` call site, so a single-sail plan's
-   * call count is that sail's ring count. `planRoute.ts`'s own pre-relaxation
-   * check is a second call site, so the count is NOT a sail's ring count for a
-   * plan that reaches a #243 retry or a #53 relaxed tier. A deadline expiring
-   * after that many calls lets the plan's first sail finish exactly as it
-   * would unbudgeted, and aborts the second at its own first ring.
+   * The abort point is DERIVED from the search, never guessed: this helper
+   * COUNTS the `expired()` calls one sail's own solve makes, whatever they
+   * are. Since #1280 part B that is one call per ring PLUS one per
+   * DEADLINE_CHECK_NODES frontier nodes, so it is no longer the sail's ring
+   * count — which changes nothing here, because the count is measured rather
+   * than reasoned about. `planRoute.ts`'s own pre-relaxation check and
+   * `findRelaxedGate`'s probe checks are further call sites, so this helper is
+   * only meaningful for a plan that succeeds in TIER 1 — the only shape it is
+   * used on. A deadline expiring after that many calls lets the plan's first
+   * sail finish exactly as it would unbudgeted, and aborts the second at its
+   * own first check.
    *
    * That target is a WINDOW, not a knife-edge. Three points were run, which
    * BRACKET the window rather than locate both its edges: `calls - 1` aborts

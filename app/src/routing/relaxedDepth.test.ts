@@ -239,3 +239,69 @@ describe('#54: the decimetre quantiser is duplicated across two files — pin bo
     }
   });
 });
+
+// #1280 part B: the probe ladder is the only work `planRoute` does outside
+// `solve()`'s ring loop, so nothing else can stop it once it starts — before
+// this change a whole BFS sweep could run past a spent budget.
+describe('#1280 part B: findRelaxedGate honours an optional deadline', () => {
+  /** Reports "spent" from the Nth `expired()` call onwards. */
+  const deadlineAfterCalls = (n: number) => {
+    const d = {
+      calls: 0,
+      expired() {
+        d.calls++;
+        return d.calls > n;
+      },
+    };
+    return d;
+  };
+
+  it('abandons the ladder mid-probe and returns null', () => {
+    // CONTROL first: unbudgeted, this input runs the full four-probe ladder
+    // and finds 2.4 m. Without it, the null below could be "nothing connects".
+    const control: ProbeInfo[] = [];
+    expect(relaxedM(gapMask(24), [WEST, EAST], 3.0, (p) => control.push(p))).toBeCloseTo(2.4, 6);
+    expect(control).toHaveLength(4);
+
+    const probes: ProbeInfo[] = [];
+    const d = deadlineAfterCalls(2);
+    const res = findRelaxedGate(
+      gapMask(24),
+      [WEST, EAST],
+      3.0,
+      Infinity,
+      BOAT_DRAFT_M,
+      (p) => probes.push(p),
+      d,
+    );
+    expect(res, 'a spent budget abandons the search').toBeNull();
+    expect(probes.length, 'it stops probing rather than running the ladder out').toBeLessThan(
+      control.length,
+    );
+  });
+
+  it('a deadline that never fires leaves the ladder byte-identical', () => {
+    // The fail-open half: the optional parameter must not move an answer.
+    const unbudgeted: ProbeInfo[] = [];
+    const never: ProbeInfo[] = [];
+    const a = findRelaxedGate(
+      gapMask(24),
+      [WEST, EAST],
+      3.0,
+      Infinity,
+      BOAT_DRAFT_M,
+      (p) => unbudgeted.push(p),
+    );
+    const b = findRelaxedGate(
+      gapMask(24),
+      [WEST, EAST],
+      3.0,
+      Infinity,
+      BOAT_DRAFT_M,
+      (p) => never.push(p),
+      { expired: () => false },
+    );
+    expect(b?.usedDepthM).toBe(a?.usedDepthM);
+    expect(never.map((p) => p.probeDepthM)).toEqual(unbudgeted.map((p) => p.probeDepthM));
+  });
+});
