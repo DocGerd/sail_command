@@ -607,7 +607,8 @@ asked (§G.3 rule 4). It is declined on measured cost, not overlooked: the deepe
 keel this fleet is now known to carry is EASY GO!'s **2.55 m**, which derives a **3.5 m** gate.
 Re-measured snap-aware over 40 harbours (§N.7, 2026-09-17), that gate leaves `augustenborg` and
 `marstal` unreachable and `faldsled` and `rudkoebing` shallow-approach — so the withdrawal from
-SPEEDY GO!, whose own tech sheet reads 2.10 m, is **four** harbours marked — `augustenborg` and
+SPEEDY GO!, whose own tech sheet reads 2.10 m, is **four** harbours marked at that gate against
+the one (`marstal`) it carries at 3.0 m — `augustenborg` and
 `marstal` unreachable, `faldsled` and `rudkoebing` routable only with a depth warning — against
 the **seven** this paragraph previously claimed from §N.8's pre-#295 exact-snap run, whose
 predicate is not the same one. The decision is
@@ -857,10 +858,10 @@ versioned section at the cut, so the fragment must be re-scoped or held back wit
 
 ### N.7 What is deferred, and why — so it is not read as forgotten
 
-- **Grand Soleil 46 (MARIN)** and **EASY GO! (Salona 44, 2.55 m)** — deferred together, for one
-  but no longer for one reason. EASY GO!'s 3.5 m gate leaves two
-  harbours unreachable; MARIN's 3.2 m gate leaves none, and drops `faldsled` only to
-  `shallow-approach`. For EASY GO!, §L's *"Treat a harbour dropping out at a deeper boat's gate as a defect"* row
+- **Grand Soleil 46 (MARIN)** and **EASY GO! (Salona 44, 2.55 m)** — deferred together, but no longer for one
+  reason. EASY GO!'s 3.5 m gate leaves two
+  harbours unreachable; MARIN's 3.2 m gate leaves none, and adds only `faldsled` to the
+  `shallow-approach` `marstal` every catalogue boat already carries. For EASY GO!, §L's *"Treat a harbour dropping out at a deeper boat's gate as a defect"* row
   stands: **the routing is correct — a 2.55 m keel cannot enter a 2.0 m basin —
   and the defect would be silently offering it.**
   **Re-measured 2026-09-17, and both of this bullet's original claims — the per-gate
@@ -871,7 +872,7 @@ versioned section at the cut, so the fragment must be re-scoped or held back wit
   none unreachable**, and EASY GO! (2.55 m, gate 3.5 m) **31 ok, `faldsled` and `rudkoebing`
   shallow-approach, `augustenborg` and `marstal` unreachable**. Against the post-#295 mask the
   exact-snap predicate fails eleven harbours at 3.5 m; seven of those eleven snap within 300 m
-  to a connected cell and are `ok` in production (spike §3).
+  to a connected cell and are `ok` under the spike's snap-aware classification (spike §3).
   Source: `docs/spikes/1135-boat-picker-gate-design.md` §3 — a Node port whose flood-fill half
   is controlled against `verify_mask.py` but whose snap and relaxation halves are uncontrolled
   beyond the Salona 45's `marstal` row, which §3 keeps as a router-side control, and neither
@@ -879,8 +880,9 @@ versioned section at the cut, so the fragment must be re-scoped or held back wit
   spike's measurement, not as verified fleet data.
   And the presentation now EXISTS: per-boat access is derived at runtime by
   `app/src/lib/harborReachability.ts` (#1290) and shown as a marker in the pickers (#1291) and
-  the Boat tab (#1292). So what still blocks these two hulls is the polar sourcing below and
-  the draft sourcing of §N.2 and §M item 8, no longer the missing presentation.
+  the Boat tab (#1292). So what still blocks these two hulls is the polar sourcing below, plus
+  draft sourcing — §N.2 and §M item 8 for EASY GO!, §M item 1's §C.5 caveat for MARIN — no
+  longer the missing presentation.
 - **The other six models.** Not Flensburg-stated; two of them (2.25 m, 2.30 m) also cross 3.2 m.
 - **Tier B for any fleet model.** Blocked on three items, none of which is a research question:
   donor-hull identity per keel, a reproducible white-sail downwind correction (the shipped `fock`
