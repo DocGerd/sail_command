@@ -201,7 +201,7 @@ Arithmetically the invariant is satisfiable at any draft by raising the gate. Th
 This is not a claim that the mask cannot serve them; it is a claim that it is unmeasured. Therefore:
 
 - **`verify_mask.py` must run its harbour scan at every catalogue boat's derived default gate**, reporting per-boat connected / exception / disconnected sets. `CONNECTIVITY_EXCEPTIONS_M` and `KNOWN_DISCONNECTED` become **per-boat-gate aware**: an exception justified against a 3.0 m gate says nothing about a 3.2 m one. (#455 §3.4 already records these constants as *tolerance*-coupled; this makes them *gate*-coupled too.)
-- **A harbour dropping out at a deeper boat's gate is CORRECT.** A 2.30 m keel genuinely cannot enter a 2.0 m basin; the failure to prevent is *silently offering* it. `harbors.json`'s snap points are documented as *"guaranteed-navigable"* — guaranteed at the 3.0 m verify gate, an implicit Salona-45 qualifier. The harbour list (or the verify script's output) must carry a **per-harbour minimum navigable gate**, so the picker can mark unreachable harbours per boat instead of failing at plan time with `snap-failed-destination`. **#1135 Q6 resolved how**: the entry stays selectable and carries a marker, never disabled, and the gate is derived at runtime (`app/src/lib/harborReachability.ts`, #1290) rather than stored in the harbour list.
+- **A harbour dropping out at a deeper boat's gate is CORRECT.** A 2.30 m keel genuinely cannot enter a 2.0 m basin; the failure to prevent is *silently offering* it. `harbors.json`'s snap points are documented as *"guaranteed-navigable"* — guaranteed at the 3.0 m verify gate, an implicit Salona-45 qualifier. **#1135 Q6 resolved this**: the picker marks unreachable harbours per boat instead of failing at plan time with `snap-failed-destination` — the entry stays selectable and carries a marker, never disabled, and the per-(boat, harbour) state is derived at runtime (`app/src/lib/harborReachability.ts`, #1290), not stored in the harbour list.
 - **No boat ships without a `verify_mask.py` run at its own derived gate**, and any boat deeper than 2.10 m needs that run *before* its catalogue PR is reviewable (§J OQ-6).
 - **Worked example, to be confirmed by a real run.** `verify_mask.py`'s `marstal` entry comments *"Reconnects at gate <= 2.3 m"*. A 2.30 m boat's relaxation window is `[2.3, 3.2)`, so it can just barely reach Marstal at 2.3 m — conservative floor 1.4 m against a 2.30 m keel. The First 47.7's 2.8 m racing variant could not reach it at all. Derived from the script's comment, **not** from a run; illustrative until measured (§M.2).
 
@@ -213,7 +213,7 @@ This is not a claim that the mask cannot serve them; it is a claim that it is un
 
 **Amended by #1135 Q4** (shipped in `clampSettingsToBoat`, #1293): the target is the boat's DEFAULT, not its minimum. Keeping a stored depth in the minimum-to-default band across a boat switch is not intended — a switch raises it, never lowers it.
 
-This deliberately differs from `usePersistedNumber`'s contract (#355), where a bounds change alone leaves the raw stored value untouched. That asymmetry is right for a panel width and wrong here: per this repo's guard-asymmetry rule the uncertain path must fail toward the expensive-but-safe direction, and a silently retained below-hull gate is the cheap-and-dangerous one. **Never clamp down on a boat switch.**
+This deliberately differs from `usePersistedNumber`'s contract (#355), where a bounds change alone leaves the raw stored value untouched. That asymmetry is right for a panel width and wrong here: per this repo's guard-asymmetry rule the uncertain path must fail toward the expensive-but-safe direction, and a silently retained below-default gate is the cheap-and-dangerous one. **Never clamp down on a boat switch.**
 
 ### C.8 Generalising the #455 drift guard
 
@@ -607,8 +607,10 @@ asked (§G.3 rule 4). It is declined on measured cost, not overlooked: the deepe
 keel this fleet is now known to carry is EASY GO!'s **2.55 m**, which derives a **3.5 m** gate.
 Re-measured snap-aware over 40 harbours (§N.7, 2026-09-17), that gate leaves `augustenborg` and
 `marstal` unreachable and `faldsled` and `rudkoebing` shallow-approach — so the withdrawal from
-SPEEDY GO!, whose own tech sheet reads 2.10 m, is **two** harbours outright rather than the
-**seven** this paragraph previously claimed from §N.8's pre-#295 exact-snap run. The decision is
+SPEEDY GO!, whose own tech sheet reads 2.10 m, is **four** harbours marked — `augustenborg` and
+`marstal` unreachable, `faldsled` and `rudkoebing` routable only with a depth warning — against
+the **seven** this paragraph previously claimed from §N.8's pre-#295 exact-snap run, whose
+predicate is not the same one. The decision is
 unchanged and the reasoning is now weaker in degree, not in direction: it still trades real
 reachability away to guard against a variant we already have evidence against for that hull. The identified keel plus the
 disclosure below is the chosen trade; row 13 remains the fallback the moment a keel is
@@ -856,25 +858,29 @@ versioned section at the cut, so the fragment must be re-scoped or held back wit
 ### N.7 What is deferred, and why — so it is not read as forgotten
 
 - **Grand Soleil 46 (MARIN)** and **EASY GO! (Salona 44, 2.55 m)** — deferred together, for one
-  reason. Both derive a gate that drops harbours. §L's *"Treat a harbour dropping out at a deeper boat's gate as a defect"* row
-  stands and settles both: **the routing is correct — a 2.55 m keel cannot enter a 2.0 m basin —
+  but no longer for one reason. EASY GO!'s 3.5 m gate leaves two
+  harbours unreachable; MARIN's 3.2 m gate leaves none, and drops `faldsled` only to
+  `shallow-approach`. For EASY GO!, §L's *"Treat a harbour dropping out at a deeper boat's gate as a defect"* row
+  stands: **the routing is correct — a 2.55 m keel cannot enter a 2.0 m basin —
   and the defect would be silently offering it.**
-  **Re-measured 2026-09-17 and both halves of this bullet changed.** The counts below were
-  a *stored-figure* artifact: they applied an exact-snap-cell predicate to a 33-harbour,
-  pre-#295 mask. The snap-aware measurement — real `snapToNavigable` with its 300 m search
+  **Re-measured 2026-09-17, and both of this bullet's original claims — the per-gate
+  harbour counts and the missing presentation — are superseded.** Those counts applied an
+  exact-snap-cell predicate to a 33-harbour, pre-#295 mask. The snap-aware measurement — real `snapToNavigable` with its 300 m search
   and one-disc relaxation, over the 40 harbours `app/public/data/harbors.json` now carries —
   gives MARIN (2.30 m, gate 3.2 m) **33 ok with `faldsled` and `marstal` shallow-approach and
   none unreachable**, and EASY GO! (2.55 m, gate 3.5 m) **31 ok, `faldsled` and `rudkoebing`
-  shallow-approach, `augustenborg` and `marstal` unreachable**. Seven of the harbours the old
-  predicate "lost" snap within 300 m to a connected cell and are reachable in production.
+  shallow-approach, `augustenborg` and `marstal` unreachable**. Against the post-#295 mask the
+  exact-snap predicate fails eleven harbours at 3.5 m; seven of those eleven snap within 300 m
+  to a connected cell and are `ok` in production (spike §3).
   Source: `docs/spikes/1135-boat-picker-gate-design.md` §3 — a Node port whose flood-fill half
-  is controlled against `verify_mask.py` but whose snap and relaxation halves are not, and
-  neither deferred hull is in the catalogue, so these two rows are **not** re-derivable from a
-  committed artifact. Treat them as the spike's measurement, not as verified fleet data.
+  is controlled against `verify_mask.py` but whose snap and relaxation halves are uncontrolled
+  beyond the Salona 45's `marstal` row, which §3 keeps as a router-side control, and neither
+  deferred hull is in `BOATS`, so no committed test pins these two rows. Treat them as the
+  spike's measurement, not as verified fleet data.
   And the presentation now EXISTS: per-boat access is derived at runtime by
   `app/src/lib/harborReachability.ts` (#1290) and shown as a marker in the pickers (#1291) and
-  the Boat tab (#1292). So what still blocks these two hulls is the polar and draft sourcing
-  below, no longer the missing presentation.
+  the Boat tab (#1292). So what still blocks these two hulls is the polar sourcing below and
+  the draft sourcing of §N.2 and §M item 8, no longer the missing presentation.
 - **The other six models.** Not Flensburg-stated; two of them (2.25 m, 2.30 m) also cross 3.2 m.
 - **Tier B for any fleet model.** Blocked on three items, none of which is a research question:
   donor-hull identity per keel, a reproducible white-sail downwind correction (the shipped `fock`
@@ -903,9 +909,14 @@ versioned section at the cut, so the fragment must be re-scoped or held back wit
   **33** harbours against today's 40, and its predicate is the exact snap cell rather than what
   the app does. Read the per-gate sets above as a record of what the 2026-08-18 run reported,
   never as today's reachability: §N.7 carries the snap-aware 40-harbour figures, and for the
-  three CATALOGUE boats the committed authority is `pipeline/verify_mask.py` —
-  `KNOWN_DISCONNECTED` (five, boat-independent) plus an empty `EXPECTED_UNREACHABLE_BY_BOAT`,
-  CI-checked, meaning no shipped boat has any unreachable harbour beyond those five.
+  three CATALOGUE boats the committed authority is `pipeline/verify_mask.py`'s per-boat
+  connectivity loop — `KNOWN_DISCONNECTED` (five, boat-independent), an empty
+  `EXPECTED_UNREACHABLE_BY_BOAT`, and the `CONNECTIVITY_EXCEPTIONS_M` rows that give `marstal`
+  and `augustenborg` a lowered effective gate. Its Python job (`verify-mask.yml`) is advisory,
+  but `app/src/test/verifyMaskConnectivity.test.ts` re-reads all three literals and re-runs the
+  same per-boat fill inside the REQUIRED `app` check. No shipped boat reaches its own default
+  gate with a harbour unreachable beyond those five — `marstal` at every catalogue gate, and
+  `augustenborg` at 3.0 m, only under a documented exception.
 - **§G.3 rule 2** ("*not designed here*") is now designed, by §N.4–N.6.
 - **§K's release-1 acceptance** ("*reduces to today*") no longer describes the catalogue. It
   remains the correct statement for the **Salona 45 row** and must be re-scoped, not deleted:
@@ -931,7 +942,7 @@ default* (load-bearing: both new gates derive to ≤ 3.0).
 
 Not engaged by this scope: *refine the mask for deeper boats* and *treat a harbour dropping out as
 a defect* — no boat in scope is deeper than 2.10 m. Both become engaged by §N.7's Grand Soleil and
-EASY GO! follow-up, which unblock together.
+EASY GO! follow-up.
 
 Explicitly **not** breached: *`[OQ-3]` generalise `RigRecommendation` to N-way*. Adding a
 `not-compared` variant is not N-way generalisation; the cap stays at 2 and no N-way tie semantics
