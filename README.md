@@ -232,8 +232,9 @@ data; the code license is covered in the [License](#license) section below.
   documented overlay ramp, no faster-sail recommendation is made for them.
   Deeper-drafted fleet boats are not in the catalogue yet: they can no longer
   reach every harbor. The origin/destination pickers and the Boat tab mark a
-  harbor's access for the selected boat and safety depth — not reachable,
-  only via a shallower approach, or a lower setting that would route it
+  harbor's access for the selected boat and safety depth — not reachable at
+  or above the boat's recommended depth, only via a shallower approach, or a
+  lower setting that would route it
   ([#1291](https://github.com/DocGerd/sail_command/issues/1291),
   [#1292](https://github.com/DocGerd/sail_command/issues/1292)).
 - Inserting a waypoint by dragging the plotted route line is still
