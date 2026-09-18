@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.37.0] - 2026-09-18
+
+### Added
+
+- Origin/destination pickers now mark a harbour's access for the selected boat and safety depth (not reachable, only via a shallower approach, or a lower setting that would route it), on top of the existing known-disconnected disclosure (#1291).
+- The Boat tab now shows each boat's own harbour access — how many harbours are affected at its checked safety depth, and which ones need a shallower approach or aren't reachable — with a screen-reader announcement on every boat switch (#1292).
+
+### Changed
+
+- On some routes the recommended sail is now a different one, because the search finds a faster route for that rig than it could before (#1257).
+- Switching boats now raises a below-default safety depth to the new boat's recommended default, not just its minimum, and announces the change (#1293).
+
+### Fixed
+
+- Long routes are no longer cut short by a search-size limit sized for the old, smaller chart area — the limit now scales with the charted area, so passages across the widened area can find a route the earlier limit hid. Measured on the two Fehmarn passages, which come out up to an hour faster (#1257).
+- A plan that runs out of its search budget on a slow or busy device now reports the search budget and suggests fewer waypoints, instead of timing out with generic advice (#1280).
+- Routes to harbours reached through a narrow passage, such as Flensburg to Svendborg, no longer lose the short way through the sound in favour of a long detour (#1303).
+- Some passages that previously reported no route at all, including light-air trips with the engine off, now return one (#1303).
+- Some routes now keep more water under the keel and arrive slightly later in exchange (#1303).
+- Flensburg to Rudkøbing on the Salona 44 now takes the short northern route for both rigs instead of flipping to the long way round Langeland (#1305).
+
 ## [0.36.0] - 2026-09-17
 
 ### Fixed
@@ -1120,7 +1141,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.36.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.37.0...HEAD
+[0.37.0]: https://github.com/DocGerd/sail_command/compare/v0.36.0...v0.37.0
 [0.36.0]: https://github.com/DocGerd/sail_command/compare/v0.35.0...v0.36.0
 [0.35.0]: https://github.com/DocGerd/sail_command/compare/v0.34.0...v0.35.0
 [0.34.0]: https://github.com/DocGerd/sail_command/compare/v0.33.0...v0.34.0
