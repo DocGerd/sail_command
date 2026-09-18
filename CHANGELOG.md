@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Origin/destination pickers now mark a harbour's access for the selected boat and safety depth (not reachable at or above the boat's recommended depth, only via a shallower approach, or a lower setting that would route it), on top of the existing known-disconnected disclosure (#1291).
+- Origin/destination pickers now mark a harbour's access for the selected boat and safety depth (not reachable at or above the boat's recommended depth, only via a shallower approach, or a lower setting that may route it), on top of the existing known-disconnected disclosure (#1291).
 - The Boat tab now shows each boat's own harbour access — how many harbours are affected at its checked safety depth, and which ones need a shallower approach or aren't reachable — with a screen-reader announcement on every boat switch (#1292).
 
 ### Changed
@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Long routes are no longer cut short by a search-size limit sized for the old, smaller chart area — the limit now scales with the charted area, so passages across the widened area can find a route the earlier limit hid (#1257).
+- Long routes are no longer cut short by a search-size limit sized for the old, smaller chart area — the limit now scales with the charted area, so passages across the widened area can find faster routes than the earlier limit allowed (#1257).
 - A plan that runs out of its search budget on a slow or busy device now fails with that cause and suggests fewer waypoints, instead of timing out with generic advice (#1280).
 - Routes to harbours reached through a narrow passage, such as Flensburg to Svendborg, no longer lose the short way through the sound in favour of a long detour (#1303).
 - Some passages that previously reported no route at all now return one, some only at a relaxed depth gate and flagged as shallow (#1303).

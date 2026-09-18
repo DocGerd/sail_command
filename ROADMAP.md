@@ -34,16 +34,16 @@ the search can reach a faster one
 ([#1303](https://github.com/DocGerd/sail_command/issues/1303),
 [#1305](https://github.com/DocGerd/sail_command/issues/1305),
 [#1257](https://github.com/DocGerd/sail_command/issues/1257)). A plan that
-exhausts its search budget on a slow or busy device now reports the budget
-and suggests fewer waypoints, closing the worker-side half of the
+exhausts its search budget on a slow or busy device now fails with that
+cause and suggests fewer waypoints, closing the worker-side half of the
 worker-vs-client timeout fix
 ([#1280](https://github.com/DocGerd/sail_command/issues/1280)).
 
 Boat/harbour UX from the #1135 boat-picker gate design: the
 origin/destination pickers and the Boat tab now mark a harbour's access for
 the selected boat and safety depth — not reachable at or above the boat's
-recommended depth, only via a shallower approach, or blocked only by too
-high a setting — and switching boats now
+recommended depth, only via a shallower approach, or possibly routable at a
+lower setting — and switching boats now
 raises a below-default safety depth to the new boat's own default rather
 than just its minimum
 ([#1290](https://github.com/DocGerd/sail_command/issues/1290)–[#1293](https://github.com/DocGerd/sail_command/issues/1293)).
@@ -58,7 +58,7 @@ spec amendment for the #1135 rulings
 ([#1295](https://github.com/DocGerd/sail_command/issues/1295)), a
 measurement of whether #1136's salvage would rescue more routes
 ([#1301](https://github.com/DocGerd/sail_command/issues/1301)), and two
-copy/claim corrections to the harbour-access and frontier-scaling work above
+copy/claim corrections to the harbour-access and confined-water prune work above
 ([#1321](https://github.com/DocGerd/sail_command/issues/1321),
 [#1333](https://github.com/DocGerd/sail_command/issues/1333)), and a ruling
 keeping the harbour-access wording as shipped
@@ -68,13 +68,16 @@ user-visible surface of its own.
 ## Next — v0.38.0
 
 The [`v0.38.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-carries five follow-ups from the `v0.37.0` confined-water prune fix and its
-own test infrastructure: whether 240 s is the right budget, exposed by a
-worst route already at ~96% of it at the old cap
-([#1331](https://github.com/DocGerd/sail_command/issues/1331)), whether the
-Fehmarn passages' pre-#1257 +34 to +62 min survives the shipped tree is
-still unmeasured
-([#1330](https://github.com/DocGerd/sail_command/issues/1330)), and three
+carries follow-ups from the `v0.37.0` confined-water prune fix, the
+harbour-access work, and the sweep's own test infrastructure: whether 240 s
+is the right budget, exposed by a worst route already at ~96% of it at the
+old cap
+([#1331](https://github.com/DocGerd/sail_command/issues/1331)), whether
+#1257 actually fixed the Fehmarn passages' regression or only masked it —
+the mechanism is still unconfirmed
+([#1330](https://github.com/DocGerd/sail_command/issues/1330)),
+`docs/acceptance.md` gaining checks for the per-boat harbour-access markers
+([#1341](https://github.com/DocGerd/sail_command/issues/1341)), and three
 sweep/test items — sharding the sweep across idle cores
 ([#1338](https://github.com/DocGerd/sail_command/issues/1338)), reusing
 stored sweep artifacts as BASE when the closure is untouched

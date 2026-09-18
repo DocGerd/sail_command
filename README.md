@@ -234,7 +234,7 @@ data; the code license is covered in the [License](#license) section below.
   reach every harbor. The origin/destination pickers and the Boat tab mark a
   harbor's access for the selected boat and safety depth — not reachable at
   or above the boat's recommended depth, only via a shallower approach, or a
-  lower setting that would route it
+  lower setting that may route it
   ([#1291](https://github.com/DocGerd/sail_command/issues/1291),
   [#1292](https://github.com/DocGerd/sail_command/issues/1292)).
 - Inserting a waypoint by dragging the plotted route line is still
