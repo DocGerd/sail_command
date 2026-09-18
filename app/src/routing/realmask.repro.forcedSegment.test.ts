@@ -12,7 +12,7 @@ import {
   type PlanResultOk,
   type WindGrid,
 } from '../types';
-import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
+import { solverTimeoutMs, SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
 import { FLENSBURG, GLUECKSBURG, MARSTAL, mask, SALONA_DEPS, T0 } from '../test/realmaskFixtures';
 
 // #885 §7: forced motor against the real committed mask and polars. Two vias
@@ -123,7 +123,19 @@ describe('#885 forced motor on the real mask', () => {
     console.log(`#885 forced-motor geometry identical across rigs: ${geometry[0] === geometry[1]}`);
   });
 
-  it('survives a relaxed-tier plan: Marstal origin, one via, forced motor on the relaxed approach', () => {
+  // #1330: this plan runs two segments x two rigs at the #53 relaxed tier, so
+  // it is one of the file's most expensive inputs, and #1303's confined-water
+  // grid made it more so: measured solo on one dev machine, 30.5 s at
+  // CONFINED_PRUNE_DIV = 1 against 43.6 s at 2 (+43%), while the plan itself
+  // got 2.2 h faster (genoa 10.163 h -> 7.929 h). At roughly 2x for CI plus
+  // shard contention the shared 120 s file budget no longer covered it (CI run
+  // 35318244674). The explicit override is the documented shape for a
+  // single expensive test (`invariants.property.test.ts` uses the same one at
+  // 900_000); 300 s is ~3.4x the ~87 s a 2x CI factor predicts.
+  it(
+    'survives a relaxed-tier plan: Marstal origin, one via, forced motor on the relaxed approach',
+    { timeout: solverTimeoutMs(300_000) },
+    () => {
     const marstal: PlanRequest = {
       ...req,
       origin: MARSTAL,
@@ -143,5 +155,6 @@ describe('#885 forced motor on the real mask', () => {
       expect(seg0.length).toBeGreaterThan(0);
       expect(seg0.every((l) => l.kind === 'motor' && l.forced === true)).toBe(true);
     }
-  });
+    },
+  );
 });
