@@ -16,7 +16,7 @@ export interface SolveParams {
   settings: Settings;
   onProgress?: (info: { tMs: number; frontierSize: number }) => void;
   /**
-   * Perf-cap on the per-ring frontier size. Defaults to {@link MAX_FRONTIER}.
+   * Perf-cap on the per-ring frontier size. Defaults to {@link defaultMaxFrontier}.
    * Injectable so tests can drive the cap into a regime where it actually
    * truncates the frontier (issue #67) without building a 30 000-node mask.
    */
@@ -200,12 +200,67 @@ const MIN_SAIL_KN = 0.2;
 const CAPTURE_NM = 0.1;
 const PRUNE_LAT = 0.002; // ~220 m
 const PRUNE_LON = 0.003; // ~190 m at 55°N
-// Perf safeguard, not a correctness bound: when the frontier exceeds this,
+// Perf safeguard, not a correctness bound: when the frontier exceeds the cap,
 // non-dominated candidates are discarded by count (see `better()` below for
 // the ordering) rather than by geometry. A no-route in that regime may
 // reflect search capacity rather than actual unreachability; surfacing that
 // distinction to the caller is deferred (plan-amendment pending).
+//
+// #1257: the FLOOR, and the cap for masks too small for the scaling rule
+// below to exceed it (every synthetic mask in the suite). It is #67's
+// original figure, never derived from a measurement.
 const MAX_FRONTIER = 30_000;
+/**
+ * #1257: frontier cap per prune cell of the mask's domain.
+ *
+ * Basis is PRUNE cells, not mask cells: the frontier is `byKey`-collapsed to
+ * one node per prune key, so its size SCALES with the domain's prune-cell
+ * count, which is fixed in degrees (`PRUNE_LAT`/`PRUNE_LON`) and therefore
+ * independent of mask RESOLUTION. Scales with, never bounded by — the true
+ * ceiling is higher by a constant factor this rule deliberately ignores,
+ * since a constant cancels out of a scaling law: three board suffixes per
+ * cell (`P`/`S`/`M`), and `CONFINED_PRUNE_DIV`^2 fine keys inside every
+ * confined cell since #1322. Scaling by mask cells would inflate the cap
+ * on a mask refined over the same water (#245's rejected direction) where
+ * nothing about the frontier changed. The two bases coincide exactly today —
+ * #295 widened the domain at unchanged resolution, so both give 1.7875x the
+ * pre-#295 mask.
+ *
+ * Grid extent, never NAVIGABLE cells, although #1257 asks for the latter:
+ * navigability is decided per query against a gate, so a navigable count
+ * would vary with `safetyDepthM` and with each #53 relaxation tier, giving
+ * one solve several different caps.
+ *
+ * DERIVATION of 0.2. Post-#1322 peak frontier, uncapped, real committed mask
+ * and polars, `breeze` arm aperture (Flensburg origin, DEFAULT_SETTINGS,
+ * uniform 12 kn / 225 deg, tier 1), solo: 61 653 (svendborg S45 fock),
+ * 61 883 (orth S45 genoa), 62 482 (burgstaaken S45 genoa), 64 402
+ * (rudkoebing S44 genoa), 38 758 (aeroeskoebing S45 genoa), 52 848 (marstal
+ * S44 genoa), and 578 / 2 988 on the two short routes that never truncate.
+ * Worst measured is 64 402 over 8 of the sweep's 440 plans, so the
+ * population maximum is NOT measured — 0.2 buys 1.48x headroom over it
+ * (0.2 x 476 667 prune cells = 95 333). Eight samples do not bound a
+ * population: read this as headroom chosen against the worst route family
+ * found, not as a proof that truncation can no longer fire.
+ */
+const FRONTIER_PER_PRUNE_CELL = 0.2;
+
+/**
+ * #1257: the default frontier cap for a mask's domain — see
+ * {@link FRONTIER_PER_PRUNE_CELL} for the basis and the derivation. Floored
+ * at {@link MAX_FRONTIER} so small (synthetic) masks keep the historical cap
+ * and every existing starved-cap test is unaffected.
+ */
+export function defaultMaxFrontier(meta: {
+  north: number;
+  south: number;
+  east: number;
+  west: number;
+}): number {
+  const pruneCells =
+    ((meta.north - meta.south) / PRUNE_LAT) * ((meta.east - meta.west) / PRUNE_LON);
+  return Math.max(MAX_FRONTIER, Math.round(FRONTIER_PER_PRUNE_CELL * pruneCells));
+}
 /**
  * #1280 part B: how many frontier nodes one ring expands between wall-clock
  * budget checks. Sized from this machine's measured per-node cost (~60 us at
@@ -317,12 +372,25 @@ const CONFINEMENT_MARGIN_CELLS = 1;
  * treats position within a prune cell as irrelevant, which is wrong wherever a
  * passage is narrower than a prune cell — a cheaper arrival with no navigable
  * onward edge seals the cell against a better-placed later one (#1303 at a
- * harbour approach, #1305 at a pass-through narrow). Refining the key inside
- * confined water only ever removes pruning, so under an uncapped frontier no
- * route reachable before becomes unreachable. At `MAX_FRONTIER` a larger
- * winner set changes which nodes survive truncation, so the capped regime can
- * move either way - measured, the starved-cap pin moved 5 -> 4.
- * Open water keeps the coarse grid and its cost.
+ * harbour approach, #1305 at a pass-through narrow). Open water keeps the
+ * coarse grid and its cost.
+ *
+ * #1333 — WHAT THIS DOES NOT GUARANTEE. Refining the key changes which cells
+ * share a prune key; it does NOT make the resulting node set a superset of
+ * the coarse one, in EITHER regime, and a route reachable before CAN be lost.
+ * The superset argument holds for one ring from a fixed frontier and does not
+ * survive induction: once the fine run's frontier differs, its extra children
+ * fall into the same FINE sub-cells as the coarse winners and can beat them
+ * under `better()`, evicting them — the #1303 shape turned on the refinement
+ * itself. Measured on Flensburg -> Bagenkop, `motorEnabled: false`, TWS 3.0
+ * unsnapped (#1168's comment 5727667435): ring 4 has 7 fine nodes to the
+ * coarse run's 3, ring 5 has ZERO fine to the coarse run's 3, and the route
+ * goes `mask-blocked` where it routed before — at a peak frontier of 38
+ * against a 30 000 cap, so truncation is not involved. An earlier revision of
+ * this comment claimed the uncapped regime was safe; it is refuted, not
+ * merely unproven. Truncation is a SECOND, independent way the node set
+ * moves: a larger winner set changes which nodes survive the cap — measured,
+ * the starved-cap pin moved 5 -> 4.
  *
  * Exported for direct testing of the classification itself, which is cheaper
  * to interrogate than a 100 s solve.
@@ -420,7 +488,7 @@ function better(a: Node, b: Node): boolean {
 
 export function solve(p: SolveParams): SolveResult {
   const { polar, wind, mask, settings, destination } = p;
-  const maxFrontier = p.maxFrontier ?? MAX_FRONTIER;
+  const maxFrontier = p.maxFrontier ?? defaultMaxFrontier(mask.meta);
   const horizonMs = wind.horizonMs();
   const comfortDepthM = p.comfortDepthM;
   // #452: resolved ONCE per solve and passed down by reference. `edgeFactor`
@@ -820,7 +888,7 @@ export function solve(p: SolveParams): SolveResult {
     // cells that have no surviving expander. When the frontier fits under the
     // cap, `next` === all byKey winners, so this is byte-identical to stamping
     // every winner — the uncapped path (the common case, incl. every real-mask
-    // route whose frontier peaks below MAX_FRONTIER) is unchanged.
+    // route whose frontier peaks below the cap) is unchanged.
     for (const n of next)
       stampVisited(visited, keyOf(n.lat, n.lon, n.kind, n.board), {
         costMs: n.costMs,

@@ -206,8 +206,13 @@
   // `../services/assets`) to exercise the #1292 Boat-tab disclosure's
   // clamp-then-recompute ordering and lower-setting-hint scheduling against
   // real geometry — same reason as harborReachability.test.ts above.
+  // isochrone.frontierCap.test.ts (#1257): imports realmaskFixtures.ts's real
+  // mask so the scaled frontier cap is pinned against the SHIPPED domain, not
+  // a hand-copied bounds literal — same reason as realmask.repro*.test.ts
+  // above; its name doesn't match that glob, so it needs its own entry.
   "include": [
     "src/**/startPreviewSwAssertCallSites.test.ts",
+    "src/**/isochrone.frontierCap.test.ts",
     "src/**/basemapArchiveRoute.test.ts",
     "src/**/windLatticeMaskCoverage.test.ts",
     "src/**/maxBoundsMaskCoverage.test.ts",

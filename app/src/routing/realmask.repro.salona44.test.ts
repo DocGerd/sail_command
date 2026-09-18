@@ -39,9 +39,17 @@ vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
 // rule off. Marstal's ETA ROSE 41.1 s while its cost fell: the solver ranks on
 // depth-comfort cost (#243 §D.5), not on true time, so a better-ranked route
 // can be slightly slower in the water.
+//
+// #1257 re-pin (frontier cap scaled with the mask domain, 30_000 -> 95_333).
+// ONLY the Marstal literal moves: 28061198.46435547 -> 27948774.107421875,
+// i.e. 112 424 ms (1 min 52 s) FASTER. Glücksburg is unaffected because its
+// frontier never approaches even the old cap — peak 578 measured on the
+// Salona 45 over the same passage — so there was nothing for the cap to
+// truncate. That asymmetry is the evidence that the cap is what moved this
+// literal: a change reaching both plans would not be the frontier cap.
 const SALONA44_GLUECKSBURG_DISTANCE_NM = 4.202976959559601;
 const SALONA44_GLUECKSBURG_DURATION_MS = 2364150.1494140625;
-const SALONA44_MARSTAL_DURATION_MS = 28061198.46435547;
+const SALONA44_MARSTAL_DURATION_MS = 27948774.107421875;
 
 // #653: both real-mask harnesses (this suite and app/sweep/) exercised only
 // the Salona 45 before this describe block — see the issue for the

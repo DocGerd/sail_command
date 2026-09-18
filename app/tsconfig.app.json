@@ -153,6 +153,7 @@
     "src/**/relaxationTrade.differential.test.ts",
     "src/**/realmask.repro*.test.ts",
     "src/**/realmaskFixtures.ts",
+    "src/**/isochrone.frontierCap.test.ts",
     "src/**/gpx.parse.test.ts",
     "src/**/seamarkPopover.coverage.test.ts",
     "src/**/changelogFragmentsFs.ts",
