@@ -32,10 +32,12 @@ const FIX_FJORD_MOUTH = { latitude: 54.83, longitude: 9.9, accuracy: 5 };
 // On Sønderborg Bay's approach, chosen for margin against the leg-selection
 // boundary near the #243 depth-comfort dogleg. Relocated twice, each time
 // because a routing change moved that dogleg: first by #243, then by #1303's
-// confined-water prune, which re-ranked the rerouted genoa route (sampled
-// minimum charted depth along it 3.7 m -> 5.0 m for +32 s of ETA — intended
-// behaviour, #243 ranks on cost, not ETA) and took the previous point
-// (54.8963, 9.7869) from 12° off north to 68°. Re-measured 2026-09-18
+// confined-water prune, under which the reroute returns a different genoa
+// route (sampled minimum charted depth along it 3.7 m -> 5.0 m, ETA +32 s;
+// the fock route is unchanged). Whether that trade is #243's cost-based
+// ranking buying the clearance was NOT measured — no `costMs` is exposed on
+// a saved plan. It took the previous point (54.8963, 9.7869) from 12° off
+// north to 68°. Re-measured 2026-09-18
 // against the real mask/polars on BOTH route families: this point reads 0.6°
 // off north on the #1303 route and 8.0° on the pre-#1303 one, and the
 // nearest position where EITHER leaves the [330°, 030°] sector is 189 m away
@@ -163,12 +165,14 @@ test('live view: emulated GPS drives readout, reroute-from-here, and leg advance
     // the #243 depth-comfort dogleg joint / the harbor beyond it, both
     // effectively due north from here — within the sector [330°..030°].
     // (See the FIX_OFF_SOENDERBORG comment above for the margin measured on
-    // both route families — the point is chosen so the check holds whichever
-    // leg the live projection picks; it was leg 1 on the #1303 route and
-    // leg 2 on the pre-#1303 one when measured.) The FAILURE signature this
-    // guards against: a projection that resolves to a leg pointing back at
-    // the dogleg joint reads well outside the sector — ~045° for an older
-    // zero-margin fixture, 68° for the one #1303 invalidated.
+    // both route families. The projection's own choice was leg 1 on the
+    // #1303 route and leg 2 on the pre-#1303 one, and both read in-sector —
+    // that is the measured claim, NOT that every leg would.) The FAILURE
+    // signature this guards against: a projection that resolves to a leg
+    // pointing back down the track reads well outside the sector — ~045° for
+    // an older zero-margin fixture, 68° for the one #1303 invalidated, and
+    // 129° when `activeLegIndex` is forced to 0 (the mutation run for this
+    // relocation).
     await context.setGeolocation(FIX_OFF_SOENDERBORG);
     await expect
       .poll(
