@@ -141,6 +141,10 @@
   // more — reads app/vite.config.ts's raw source via `node:fs` to
   // structurally guard its private region constants against
   // basemapRegions.ts's exports.
+  // harborReachability.test.ts (#1290) is the same shape once more — reads
+  // pipeline/verify_mask.py and the real shipped mask.bin/mask.meta.json/
+  // harbors.json via `node:fs`, same reason and pattern as
+  // verifyMaskConnectivity.test.ts above.
   "exclude": [
     "src/**/startPreviewSwAssertCallSites.test.ts",
     "src/**/basemapArchiveRoute.test.ts",
@@ -149,6 +153,7 @@
     "src/**/relaxationTrade.differential.test.ts",
     "src/**/realmask.repro*.test.ts",
     "src/**/realmaskFixtures.ts",
+    "src/**/isochrone.frontierCap.test.ts",
     "src/**/gpx.parse.test.ts",
     "src/**/seamarkPopover.coverage.test.ts",
     "src/**/changelogFragmentsFs.ts",
@@ -179,6 +184,8 @@
     "src/**/harborPickerKnownDisconnectedCoupling.test.tsx",
     "src/**/timeoutBudgetVsJobCap.test.ts",
     "src/**/regionManifest.test.ts",
-    "src/**/regionConstantsTwin.test.ts"
+    "src/**/regionConstantsTwin.test.ts",
+    "src/**/harborReachability.test.ts",
+    "src/**/BoatPicker.harborAccess.test.tsx"
   ]
 }

@@ -16,7 +16,7 @@ export interface SolveParams {
   settings: Settings;
   onProgress?: (info: { tMs: number; frontierSize: number }) => void;
   /**
-   * Perf-cap on the per-ring frontier size. Defaults to {@link MAX_FRONTIER}.
+   * Perf-cap on the per-ring frontier size. Defaults to {@link defaultMaxFrontier}.
    * Injectable so tests can drive the cap into a regime where it actually
    * truncates the frontier (issue #67) without building a 30 000-node mask.
    */
@@ -150,7 +150,21 @@ export type SolveFailureCause =
   | 'forced-sail-calm';
 
 export type SolveResult =
-  { status: 'ok'; legs: Leg[]; etaMs: number } | { status: 'no-route'; cause: SolveFailureCause };
+  | {
+      status: 'ok';
+      legs: Leg[];
+      etaMs: number;
+      /**
+       * #1303: the winning arrival's RANKING clock (`Node.costMs`), equal to
+       * `etaMs` whenever `comfortDepthM` is absent. Exposed because the search
+       * optimises cost, not ETA, so only cost can state "this search found a
+       * better route" — a finer prune grid can lower cost while ETA rises
+       * (measured on PR #1304). `planRoute` never reads it and `PlanResult`
+       * never carries it.
+       */
+      costMs: number;
+    }
+  | { status: 'no-route'; cause: SolveFailureCause };
 
 interface Node {
   lat: number;
@@ -186,12 +200,75 @@ const MIN_SAIL_KN = 0.2;
 const CAPTURE_NM = 0.1;
 const PRUNE_LAT = 0.002; // ~220 m
 const PRUNE_LON = 0.003; // ~190 m at 55°N
-// Perf safeguard, not a correctness bound: when the frontier exceeds this,
+// Perf safeguard, not a correctness bound: when the frontier exceeds the cap,
 // non-dominated candidates are discarded by count (see `better()` below for
 // the ordering) rather than by geometry. A no-route in that regime may
 // reflect search capacity rather than actual unreachability; surfacing that
 // distinction to the caller is deferred (plan-amendment pending).
+//
+// #1257: the FLOOR, and the cap for masks too small for the scaling rule
+// below to exceed it (every synthetic mask in the suite). It is #67's
+// original figure, never derived from a measurement.
 const MAX_FRONTIER = 30_000;
+/**
+ * #1257: frontier cap per prune cell of the mask's domain.
+ *
+ * Basis is PRUNE cells, not mask cells: the frontier is `byKey`-collapsed to
+ * one node per prune key, so its size SCALES with the domain's prune-cell
+ * count, which is fixed in degrees (`PRUNE_LAT`/`PRUNE_LON`) and therefore
+ * independent of mask RESOLUTION. Scales with, never bounded by — the true
+ * ceiling is higher by a constant factor this rule deliberately ignores,
+ * since a constant cancels out of a scaling law: three board suffixes per
+ * cell (`P`/`S`/`M`), and `CONFINED_PRUNE_DIV`^2 fine keys inside every
+ * confined cell since #1322. Scaling by mask cells would inflate the cap
+ * on a mask refined over the same water (#245's rejected direction) where
+ * nothing about the frontier changed. The two bases coincide exactly today —
+ * #295 widened the domain at unchanged resolution, so both give 1.7875x the
+ * pre-#295 mask.
+ *
+ * Grid extent, never NAVIGABLE cells, although #1257 asks for the latter:
+ * navigability is decided per query against a gate, so a navigable count
+ * would vary with `safetyDepthM` and with each #53 relaxation tier, giving
+ * one solve several different caps.
+ *
+ * DERIVATION of 0.2. Post-#1322 peak frontier, uncapped, real committed mask
+ * and polars, `breeze` arm aperture (Flensburg origin, DEFAULT_SETTINGS,
+ * uniform 12 kn / 225 deg, tier 1), solo: 61 653 (svendborg S45 fock),
+ * 61 883 (orth S45 genoa), 62 482 (burgstaaken S45 genoa), 64 402
+ * (rudkoebing S44 genoa), 38 758 (aeroeskoebing S45 genoa), 52 848 (marstal
+ * S44 genoa), and 578 / 2 988 on the two short routes that never truncate.
+ * Worst measured is 64 402 over 8 of the sweep's 440 plans, so the
+ * population maximum is NOT measured — 0.2 buys 1.48x headroom over it
+ * (0.2 x 476 667 prune cells = 95 333). Eight samples do not bound a
+ * population: read this as headroom chosen against the worst route family
+ * found, not as a proof that truncation can no longer fire.
+ */
+const FRONTIER_PER_PRUNE_CELL = 0.2;
+
+/**
+ * #1257: the default frontier cap for a mask's domain — see
+ * {@link FRONTIER_PER_PRUNE_CELL} for the basis and the derivation. Floored
+ * at {@link MAX_FRONTIER} so small (synthetic) masks keep the historical cap
+ * and every existing starved-cap test is unaffected.
+ */
+export function defaultMaxFrontier(meta: {
+  north: number;
+  south: number;
+  east: number;
+  west: number;
+}): number {
+  const pruneCells =
+    ((meta.north - meta.south) / PRUNE_LAT) * ((meta.east - meta.west) / PRUNE_LON);
+  return Math.max(MAX_FRONTIER, Math.round(FRONTIER_PER_PRUNE_CELL * pruneCells));
+}
+/**
+ * #1280 part B: how many frontier nodes one ring expands between wall-clock
+ * budget checks. Sized from this machine's measured per-node cost (~60 us at
+ * a 30 000-node ring, PR body's perf table), so a batch is ~8 ms — three
+ * orders below the 15 s client grace the old one-ring granularity overshot,
+ * while the per-node cost is an increment and a compare.
+ */
+export const DEADLINE_CHECK_NODES = 128;
 const EXTRA_TWAS = [45, 55, 65, 75, 85, 95, 105, 115, 125, 135, 145, 155, 165, 175];
 const MOTOR_TWAS = [0, 20, 35];
 // #885: a forced-motor segment has no sail up, so candidates are headings, not
@@ -270,6 +347,81 @@ export function edgeFactor(
   return 1 - DEPTH_DERATE_MAX * shortfall;
 }
 
+/**
+ * #1303/#1305: how much finer the prune grid gets, per axis, inside CONFINED
+ * water. `1` disables the refinement and restores the pre-#1303 key exactly —
+ * the off switch every re-pin in this change was measured against (the BASE
+ * control), not decoration. Typed `number` so that comparison typechecks.
+ */
+const CONFINED_PRUNE_DIV: number = 2;
+/**
+ * Mask cells of dilation around a prune cell when classifying confinement. A
+ * prune cell is ~220x190 m against ~46 m mask cells, so one cell of margin
+ * asks "is there land or sub-gate water within ~46 m of this cell". Calibrated
+ * on the #1303/#1305 narrows — see the PR body.
+ */
+const CONFINEMENT_MARGIN_CELLS = 1;
+
+/**
+ * True when the prune cell `(latIdx, lonIdx)`, dilated by `marginCells` mask
+ * cells, touches any cell that is NOT navigable at this solve's gate — land,
+ * sub-gate water, or outside the mask (which reads confined, so the refinement
+ * fails toward MORE pruning resolution rather than less).
+ *
+ * This is the general form of PR #1304's destination-only rule: dominance
+ * treats position within a prune cell as irrelevant, which is wrong wherever a
+ * passage is narrower than a prune cell — a cheaper arrival with no navigable
+ * onward edge seals the cell against a better-placed later one (#1303 at a
+ * harbour approach, #1305 at a pass-through narrow). Open water keeps the
+ * coarse grid and its cost.
+ *
+ * #1333 — WHAT THIS DOES NOT GUARANTEE. Refining the key changes which cells
+ * share a prune key; it does NOT make the resulting node set a superset of
+ * the coarse one, in EITHER regime, and a route reachable before CAN be lost.
+ * The superset argument holds for one ring from a fixed frontier and does not
+ * survive induction: once the fine run's frontier differs, its extra children
+ * fall into the same FINE sub-cells as the coarse winners and can beat them
+ * under `better()`, evicting them — the #1303 shape turned on the refinement
+ * itself. Measured on Flensburg -> Bagenkop, `motorEnabled: false`, TWS 3.0
+ * unsnapped (#1168's comment 5727667435): ring 4 has 7 fine nodes to the
+ * coarse run's 3, ring 5 has ZERO fine to the coarse run's 3, and the route
+ * goes `mask-blocked` where it routed before — at a peak frontier of 38
+ * against a 30 000 cap, so truncation is not involved. An earlier revision of
+ * this comment claimed the uncapped regime was safe; it is refuted, not
+ * merely unproven. Truncation is a SECOND, independent way the node set
+ * moves: a larger winner set changes which nodes survive the cap — measured,
+ * the starved-cap pin moved 5 -> 4.
+ *
+ * Exported for direct testing of the classification itself, which is cheaper
+ * to interrogate than a 100 s solve.
+ */
+export function pruneCellConfined(
+  mask: NavMask,
+  gate: DepthGate,
+  latIdx: number,
+  lonIdx: number,
+  marginCells: number,
+): boolean {
+  const { south, west, north, east, rows, cols } = mask.meta;
+  const latStep = (north - south) / rows;
+  const lonStep = (east - west) / cols;
+  const rowLo = Math.floor((latIdx * PRUNE_LAT - south) / latStep) - marginCells;
+  const rowHi = Math.floor(((latIdx + 1) * PRUNE_LAT - south) / latStep) + marginCells;
+  const colLo = Math.floor((lonIdx * PRUNE_LON - west) / lonStep) - marginCells;
+  const colHi = Math.floor(((lonIdx + 1) * PRUNE_LON - west) / lonStep) + marginCells;
+  for (let row = rowLo; row <= rowHi; row++) {
+    const lat = south + (row + 0.5) * latStep;
+    for (let col = colLo; col <= colHi; col++) {
+      // A degenerate segment walks exactly this one cell, so this is the
+      // per-cell gate test `segmentNavigable` already applies to every edge —
+      // the same predicate the solver navigates by, never a second copy of it.
+      const p = { lat, lon: west + (col + 0.5) * lonStep };
+      if (!mask.segmentNavigable(p, p, gate)) return true;
+    }
+  }
+  return false;
+}
+
 function pruneKey(lat: number, lon: number, kind: LegKind | 'start', board: Board | null): string {
   const b = kind === 'motor' ? 'M' : board === 'port' ? 'P' : 'S';
   return `${Math.floor(lat / PRUNE_LAT)}:${Math.floor(lon / PRUNE_LON)}:${b}`;
@@ -336,7 +488,7 @@ function better(a: Node, b: Node): boolean {
 
 export function solve(p: SolveParams): SolveResult {
   const { polar, wind, mask, settings, destination } = p;
-  const maxFrontier = p.maxFrontier ?? MAX_FRONTIER;
+  const maxFrontier = p.maxFrontier ?? defaultMaxFrontier(mask.meta);
   const horizonMs = wind.horizonMs();
   const comfortDepthM = p.comfortDepthM;
   // #452: resolved ONCE per solve and passed down by reference. `edgeFactor`
@@ -382,6 +534,40 @@ export function solve(p: SolveParams): SolveResult {
   const visited = new Map<string, VisitedStamp>(); // pruneKey → min cost + min maneuvers seen
   let blockedDeaths = 0;
   let calmDeaths = 0;
+  // #1303/#1305: confinement is classified per COARSE prune cell, never per
+  // node, so a cell is wholly coarse-keyed or wholly fine-keyed and a node
+  // gets the same key at the dominance lookup and at the stamp. Cached per
+  // solve because the gate is fixed per solve (a relaxed tier builds its own
+  // cache, with its own gate).
+  const confinedCells = new Map<string, boolean>();
+  const keyOf = (
+    lat: number,
+    lon: number,
+    kind: LegKind | 'start',
+    board: Board | null,
+  ): string => {
+    const coarse = pruneKey(lat, lon, kind, board);
+    if (CONFINED_PRUNE_DIV === 1) return coarse;
+    const cell = `${Math.floor(lat / PRUNE_LAT)}:${Math.floor(lon / PRUNE_LON)}`;
+    let confined = confinedCells.get(cell);
+    if (confined === undefined) {
+      confined = pruneCellConfined(
+        mask,
+        gate,
+        Math.floor(lat / PRUNE_LAT),
+        Math.floor(lon / PRUNE_LON),
+        CONFINEMENT_MARGIN_CELLS,
+      );
+      confinedCells.set(cell, confined);
+    }
+    if (!confined) return coarse;
+    const b = kind === 'motor' ? 'M' : board === 'port' ? 'P' : 'S';
+    const k = CONFINED_PRUNE_DIV;
+    // The `f` prefix keeps the two key spaces disjoint (a coarse key starts
+    // with a digit or `-`), so a coarse stamp can never dominate a fine-keyed
+    // node or the reverse.
+    return `f${Math.floor((lat * k) / PRUNE_LAT)}:${Math.floor((lon * k) / PRUNE_LON)}:${b}`;
+  };
   // #1136: `skipDominance` marks the current ring as a salvage pass.
   let skipDominance = false;
 
@@ -391,13 +577,14 @@ export function solve(p: SolveParams): SolveResult {
     // (a later tier, or a later waypoint segment) costs one predicate rather
     // than one ring.
     //
-    // ABORT GRANULARITY is one ring, so the real abort overshoots the
-    // deadline by up to one ring's duration. Measured on this app's most
-    // expensive real input (Flensburg -> Marstal, DEFAULT_SETTINGS, real
-    // committed mask+polars, 2026-08-07, one dev machine): 132 rings,
-    // 41.4 s total, slowest ring 1045 ms, frontier peaking at MAX_FRONTIER.
-    // The client-side backstop is sized to absorb that overshoot with room
-    // for a much slower device — see PLAN_TIMEOUT_GRACE_MS in workerClient.ts.
+    // ABORT GRANULARITY is DEADLINE_CHECK_NODES frontier nodes since #1280
+    // part B — this ring-entry check is kept because a solve entered with an
+    // already-spent budget must cost one predicate, not one node batch. The
+    // pre-#1280 granularity was one whole ring, which under CPU contention
+    // overshot the client's 15 s grace and surfaced as `error.routingTimeout`
+    // instead of the typed budget failure (#1280).
+    // The client-side backstop is sized to absorb the remaining overshoot —
+    // see PLAN_TIMEOUT_GRACE_MS in workerClient.ts.
     //
     // A `best` already found is DISCARDED rather than returned. It is a
     // complete, fully mask-validated route, but the loop has not yet proven
@@ -435,7 +622,19 @@ export function solve(p: SolveParams): SolveResult {
     }
 
     const byKey = new Map<string, Node>();
+    let sinceDeadlineCheck = 0;
     for (const node of frontier) {
+      // #1280 part B: the budget check, every DEADLINE_CHECK_NODES nodes. It
+      // sits at a NODE BOUNDARY and reads the deadline only — it never
+      // reorders or skips a node's children, so the ring either completes or
+      // the whole solve aborts, and an UNBUDGETED solve (no deadline: every
+      // vitest call site and the #282 sweep) is a counter increment and one
+      // `undefined?.expired()` — byte-identical results either way.
+      // `best` is discarded for the same reason as at ring entry above.
+      if (++sinceDeadlineCheck >= DEADLINE_CHECK_NODES) {
+        sinceDeadlineCheck = 0;
+        if (p.deadline?.expired()) return { status: 'no-route', cause: 'budget-exhausted' };
+      }
       const from = { lat: node.lat, lon: node.lon };
       const w = wind.sample(from, node.tMs);
       const bearingToDest = initialBearingDeg(from, destination);
@@ -650,7 +849,7 @@ export function solve(p: SolveParams): SolveResult {
           }
         }
 
-        const key = pruneKey(child.lat, child.lon, child.kind, child.board);
+        const key = keyOf(child.lat, child.lon, child.kind, child.board);
         const seen = visited.get(key);
         if (seen !== undefined && visitedDominates(seen, child) && !skipDominance) continue;
         const incumbent = byKey.get(key);
@@ -689,9 +888,9 @@ export function solve(p: SolveParams): SolveResult {
     // cells that have no surviving expander. When the frontier fits under the
     // cap, `next` === all byKey winners, so this is byte-identical to stamping
     // every winner — the uncapped path (the common case, incl. every real-mask
-    // route whose frontier peaks below MAX_FRONTIER) is unchanged.
+    // route whose frontier peaks below the cap) is unchanged.
     for (const n of next)
-      stampVisited(visited, pruneKey(n.lat, n.lon, n.kind, n.board), {
+      stampVisited(visited, keyOf(n.lat, n.lon, n.kind, n.board), {
         costMs: n.costMs,
         maneuvers: n.maneuvers,
       });
@@ -741,7 +940,12 @@ export function solve(p: SolveParams): SolveResult {
             : 'calm-without-motor',
     };
   }
-  return { status: 'ok', legs: backtrack(best.last, p.departureMs), etaMs: best.etaMs };
+  return {
+    status: 'ok',
+    legs: backtrack(best.last, p.departureMs),
+    etaMs: best.etaMs,
+    costMs: best.costMs,
+  };
 }
 
 function backtrack(last: Node, departureMs: number): Leg[] {

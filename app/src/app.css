@@ -3586,6 +3586,21 @@ select {
   font-size: 0.85rem;
 }
 
+/* #1292: the harbour-access wrapper div (BoatPicker.tsx's
+   `<div id={harborsId}>`) sits between `.boat-option-draft-note` and
+   `.boat-option-polars` in DOM order but, unlike them, shipped with no
+   `grid-column` rule at all — CSS grid's sparse row-major auto-placement
+   then dropped it into the narrow "auto" column 1 (sized for the radio
+   dial), wrapping its summary/list text into a ~190px box instead of the
+   ~322px column 2 gets. Measured live 2026-09-18: adding this one rule
+   alone recovered 559.34px of collapsed card height across three boats
+   (1829.44 -> 1270.09px card bottom at the 1280x1180 capture viewport,
+   `boat-selection.png`'s own dimensions) — a real misaligned-and-narrow
+   render for every user, not merely a capture artefact. */
+.boat-option-harbors-slot {
+  grid-column: 2;
+}
+
 .boat-option-polars {
   grid-column: 2;
 }

@@ -468,6 +468,19 @@ vi.mock('maplibre-gl', () => {
   };
 });
 
+// PR #1323 review: #1291's per-boat access markers append text INTO an
+// option's accessible name (deliberate — a screen-reader user picking an
+// unreachable harbour should hear that it is), so RTL's EXACT-by-default
+// `getByRole('option', { name })` can no longer match a bare harbour name
+// once that harbour's option carries a marker. Playwright's `getByRole`
+// matches by substring, so e2e specs are unaffected; this repo's own
+// CLAUDE.md documents that RTL/Playwright asymmetry. Anchor at the start
+// instead of asserting full equality, so the locator still resolves
+// uniquely regardless of any access text a real/test mask attaches.
+function harborOptionName(name: string): RegExp {
+  return new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`);
+}
+
 const FOCK: PolarTable = { ...TEST_POLAR, rig: 'fock' };
 const FLENSBURG: Harbor = {
   id: 'flensburg',
@@ -1347,7 +1360,7 @@ describe('App', () => {
       fireEvent.change(within(originSection).getByRole('combobox'), {
         target: { value: FLENSBURG.names.de },
       });
-      fireEvent.click(within(originSection).getByRole('option', { name: FLENSBURG.names.de }));
+      fireEvent.click(within(originSection).getByRole('option', { name: harborOptionName(FLENSBURG.names.de) }));
 
       expect(screen.queryByText(message)).not.toBeInTheDocument();
       expect(
@@ -1648,7 +1661,7 @@ describe('#1171: keyboard-reachable insert-between-waypoints (App wiring)', () =
     fireEvent.change(within(originSection).getByRole('combobox'), {
       target: { value: FLENSBURG.names.de },
     });
-    fireEvent.click(within(originSection).getByRole('option', { name: FLENSBURG.names.de }));
+    fireEvent.click(within(originSection).getByRole('option', { name: harborOptionName(FLENSBURG.names.de) }));
 
     const destinationSection = screen.getByRole('region', {
       name: de['planner.destination.label'],
@@ -1660,7 +1673,7 @@ describe('#1171: keyboard-reachable insert-between-waypoints (App wiring)', () =
       target: { value: RELABEL_HARBOR.names.de },
     });
     fireEvent.click(
-      within(destinationSection).getByRole('option', { name: RELABEL_HARBOR.names.de }),
+      within(destinationSection).getByRole('option', { name: harborOptionName(RELABEL_HARBOR.names.de) }),
     );
 
     const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
@@ -2417,7 +2430,7 @@ describe('banner surfacing (PR self-review fix wave)', () => {
     fireEvent.change(within(destSection).getByRole('combobox'), {
       target: { value: FLENSBURG.names.de },
     });
-    fireEvent.click(within(destSection).getByRole('option', { name: FLENSBURG.names.de }));
+    fireEvent.click(within(destSection).getByRole('option', { name: harborOptionName(FLENSBURG.names.de) }));
 
     fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
     await waitFor(() => expect(routingMock.calls.length).toBe(1));

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { settingsDefaultsForBoat, clampSettingsToBoat } from './boatSettings';
-import { minSafetyDepthM } from './boatDepth';
+import { defaultSafetyDepthM } from './boatDepth';
 import { boatById } from '../data/boats';
 import { DEFAULT_SETTINGS } from '../types';
 
@@ -36,14 +36,17 @@ describe('settingsDefaultsForBoat', () => {
 });
 
 describe('clampSettingsToBoat', () => {
-  it('clamps a stored safety depth UP on a boat switch, and reports it', () => {
+  // #1293 (#1135 Q4): floor raised from minSafetyDepthM to
+  // defaultSafetyDepthM — deep's 2.3 m draft now clamps to 3.2 m (the
+  // recommended default), not the old 2.4 m UI-minimum.
+  it('clamps a stored safety depth UP to the boat DEFAULT on a boat switch, and reports it', () => {
     const deep = { ...boatById('salona-45'), id: 'deep', draftM: 2.3 };
     const { settings, clamped } = clampSettingsToBoat(
       { ...DEFAULT_SETTINGS, safetyDepthM: 2.2 },
       deep,
     );
     expect(clamped).toBe(true);
-    expect(settings.safetyDepthM).toBe(minSafetyDepthM(deep)); // 2.4
+    expect(settings.safetyDepthM).toBe(defaultSafetyDepthM(deep)); // 3.2
   });
 
   // The `>=` BOUNDARY itself. Every other row here sits strictly above or
@@ -51,7 +54,7 @@ describe('clampSettingsToBoat', () => {
   // spurious `clamped: true` on a value that was never changed — passed.
   it('reports no clamp when the stored depth sits EXACTLY on the new floor', () => {
     const deep = { ...boatById('salona-45'), id: 'deep', draftM: 2.3 };
-    const stored = { ...DEFAULT_SETTINGS, safetyDepthM: minSafetyDepthM(deep) };
+    const stored = { ...DEFAULT_SETTINGS, safetyDepthM: defaultSafetyDepthM(deep) };
     const { settings, clamped } = clampSettingsToBoat(stored, deep);
     expect(clamped).toBe(false);
     // "returned unchanged" is identity, not equality: a `{ ...s }` copy that

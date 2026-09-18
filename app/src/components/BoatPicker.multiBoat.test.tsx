@@ -132,51 +132,74 @@ describe('#54 BoatPicker with a multi-boat catalogue', () => {
 });
 
 describe('#539 item 1 / spec C.7: the clamp is WIRED to the boat switch', () => {
-  it('clamps a below-minimum safety depth UP, persists it, and announces it', () => {
-    // Deep 46 draws 2.30 m, so spec J OQ-1's `draftM + 0.1` floor is 2.4 —
-    // above the 2.2 m the user had stored under the shallower default boat.
+  // #1293 (#1135 Q4): the floor is now `defaultSafetyDepthM`, not
+  // `minSafetyDepthM` — a boat switch raises a stored gate to the boat's
+  // RECOMMENDED default, not merely to its UI-typeable minimum.
+  it('clamps a below-default safety depth UP to the boat DEFAULT, persists it, and announces it', () => {
+    // Deep 46 draws 2.30 m, so its default gate (`ceilToDecimetre(draftM +
+    // MASK_TOLERANCE_M)`, boatDepth.ts) is 3.2 m — above the 2.2 m the user
+    // had stored under the shallower default boat.
     const { onBoatIdChange, onSettingsChange } = renderPicker({ safetyDepthM: 2.2 });
     selectBoat(/Deep 46/);
 
     expect(onSettingsChange).toHaveBeenCalledTimes(1);
-    expect(onSettingsChange.mock.calls[0]![0]).toMatchObject({ safetyDepthM: 2.4 });
+    expect(onSettingsChange.mock.calls[0]![0]).toMatchObject({ safetyDepthM: 3.2 });
     expect(onBoatIdChange).toHaveBeenCalledWith('deep-46');
     expect(screen.getByRole('status')).toHaveTextContent(
-      'Safety depth raised to 2.4 m — the minimum for Deep 46.',
+      'Safety depth raised to 3.2 m — the default for Deep 46.',
     );
   });
 
   it('NEVER clamps down: a generous stored depth survives a switch to a shoal boat', () => {
-    // The direction that matters. Shoal 40's floor is 1.7 m; a user who chose
-    // 4.0 m deliberately keeps it, and nothing is announced because nothing
-    // changed. A clamp implemented as "set to the new boat's floor" would
-    // pass the row above and fail here.
+    // The direction that matters. Shoal 40's default gate is 2.5 m; a user
+    // who chose 4.0 m deliberately keeps it, and no CLAMP clause is
+    // announced because nothing changed. A clamp implemented as "set to the
+    // new boat's floor" would pass the row above and fail here.
+    //
+    // #1292: the status region is no longer EMPTY on an unclamped switch —
+    // it still names the newly selected boat and its own harbour access
+    // (here `pending`, since this file never mocks `../services/assets`, so
+    // `useNavMask`/`useHarborsAsset` stay null — RouteSummary.test.tsx's own
+    // header documents why an unmocked `loadRoutingAssets()` degrading to
+    // null is the established, harmless pattern here). What must still be
+    // ABSENT is the raised-depth clause.
     const { onBoatIdChange, onSettingsChange } = renderPicker({ safetyDepthM: 4.0 });
     selectBoat(/Shoal 40/);
 
     expect(onSettingsChange).not.toHaveBeenCalled();
     expect(onBoatIdChange).toHaveBeenCalledWith('shoal-40');
-    expect(screen.getByRole('status')).toBeEmptyDOMElement();
+    expect(screen.getByRole('status')).toHaveTextContent('Shoal 40 selected.');
+    expect(screen.getByRole('status')).not.toHaveTextContent('Safety depth raised');
   });
 
   it('does not announce when the stored depth sits EXACTLY on the new floor', () => {
     // The `>=` boundary, at the wiring level rather than inside
     // clampSettingsToBoat (lib/boatSettings.test.ts owns the function's own
-    // boundary row). A `>` here would announce a change that never happened.
-    const { onSettingsChange } = renderPicker({ safetyDepthM: 2.4 });
+    // boundary row). A `>` here would announce a raised-depth clause that
+    // never happened — the boat-lead and pending-access clauses (#1292)
+    // still render regardless, per the row above.
+    const { onSettingsChange } = renderPicker({ safetyDepthM: 3.2 });
     selectBoat(/Deep 46/);
     expect(onSettingsChange).not.toHaveBeenCalled();
-    expect(screen.getByRole('status')).toBeEmptyDOMElement();
+    expect(screen.getByRole('status')).not.toHaveTextContent('Safety depth raised');
   });
 
   it('clears a previous clamp notice on a later switch that clamps nothing', () => {
     // Otherwise the announcement outlives the action that caused it and
-    // claims a change the second switch did not make.
-    renderPicker({ safetyDepthM: 2.2 });
+    // claims a change the second switch did not make. 2.6 m sits below Deep
+    // 46's 3.2 m default (clamps) but at/above Shoal 40's 2.5 m default
+    // (does not) — this harness does not feed onSettingsChange's result
+    // back into a re-render, so both selects see the same stored 2.6 m.
+    //
+    // #1292: the SECOND switch's status text is no longer empty (it still
+    // names Shoal 40 and its own access), so the discriminator is the
+    // raised-depth clause specifically, not emptiness.
+    renderPicker({ safetyDepthM: 2.6 });
     selectBoat(/Deep 46/);
-    expect(screen.getByRole('status')).not.toBeEmptyDOMElement();
+    expect(screen.getByRole('status')).toHaveTextContent('Safety depth raised');
     selectBoat(/Shoal 40/);
-    expect(screen.getByRole('status')).toBeEmptyDOMElement();
+    expect(screen.getByRole('status')).toHaveTextContent('Shoal 40 selected.');
+    expect(screen.getByRole('status')).not.toHaveTextContent('Safety depth raised');
   });
 
   it('announces in German too, with the depth and boat interpolated', () => {
@@ -186,12 +209,12 @@ describe('#539 item 1 / spec C.7: the clamp is WIRED to the boat switch', () => 
     //
     // #596: the depth figure is now locale-aware (formatDepthM) like every
     // other user-visible depth in the app, so the German render reads
-    // "2,4 m" — a decimal COMMA, not the English "2.4 m" this row pinned
+    // "3,2 m" — a decimal COMMA, not the English "3.2 m" this row pinned
     // before #596 fixed the mixed-convention hazard.
     renderPicker({ safetyDepthM: 2.2, lang: 'de' });
     selectBoat(/Deep 46/);
     expect(screen.getByRole('status')).toHaveTextContent(
-      'Sicherheitstiefe auf 2,4 m angehoben – Mindestwert für Deep 46.',
+      'Sicherheitstiefe auf 3,2 m angehoben – Standardwert für Deep 46.',
     );
   });
 
@@ -252,9 +275,9 @@ describe('#699: a clamping switch scrolls the notice into view', () => {
     // boat's floor.
     const scrollIntoView = installScrollIntoViewMock();
     renderPicker({ safetyDepthM: 1.0 });
-    selectBoat(/Deep 46/); // draft 2.3 m -> floor 2.4 m, clamps (1.0 < 2.4)
+    selectBoat(/Deep 46/); // draft 2.3 m -> default 3.2 m, clamps (1.0 < 3.2)
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
-    selectBoat(/Shoal 40/); // draft 1.6 m -> floor 1.7 m, ALSO clamps (1.0 < 1.7)
+    selectBoat(/Shoal 40/); // draft 1.6 m -> default 2.5 m, ALSO clamps (1.0 < 2.5)
     expect(scrollIntoView).toHaveBeenCalledTimes(2);
   });
 });
@@ -288,7 +311,12 @@ describe('#54 spec N.2: the keel assumption is disclosed on the picker', () => {
     renderPicker();
     const radio = screen.getByRole('radio', { name: /Deep 46/ });
     const describedBy = radio.getAttribute('aria-describedby');
-    expect(describedBy).toBe('boat-option-deep-46-keel boat-option-deep-46-note');
+    // #1292: the id list now ALSO carries this boat's own harbour-access
+    // disclosure id (`-harbors`), same shape as the `-note` addition #701
+    // made — this row stays scoped to the KEEL half.
+    expect(describedBy).toBe(
+      'boat-option-deep-46-keel boat-option-deep-46-note boat-option-deep-46-harbors',
+    );
     const [keelId] = describedBy!.split(' ');
     const caveat = document.getElementById(keelId!);
     expect(caveat?.textContent).toContain('Assumed keel');
@@ -309,9 +337,13 @@ describe('#54 spec N.2: the keel assumption is disclosed on the picker', () => {
     // aria-describedby entirely", which was the exact defect #701 fixed: a
     // hull-verified boat's own citation was unreachable because the whole
     // attribute was gated on the same condition as the keel caveat).
+    // #1292: the id list now ALSO carries this boat's own harbour-access
+    // disclosure id, same shape as the Deep 46 row above.
     renderPicker();
     const radio = screen.getByRole('radio', { name: /Salona 45/ });
-    expect(radio.getAttribute('aria-describedby')).toBe('boat-option-salona-45-note');
+    expect(radio.getAttribute('aria-describedby')).toBe(
+      'boat-option-salona-45-note boat-option-salona-45-harbors',
+    );
   });
 
   it('renders it for that boat ONLY, not for every row', () => {

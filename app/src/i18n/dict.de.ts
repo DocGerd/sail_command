@@ -81,8 +81,56 @@ export const de = {
   // Texten die Register-Wörter genau/verifiziert/zuverlässig/sicher.
   'boat.keel.assumed':
     'Angenommener Kiel: {keel}. Nicht anhand der Papiere dieses Schiffs geprüft.',
-  // Spec C.7: nach oben geklemmt, gespeichert — und angesagt. Nur nach oben.
-  'boat.clamp.notice': 'Sicherheitstiefe auf {depth} m angehoben – Mindestwert für {boat}.',
+  // Spec C.7 (#1293/#1135 Q4): auf den Standardwert des Boots angehoben,
+  // gespeichert — und angesagt. Nur nach oben.
+  'boat.clamp.notice': 'Sicherheitstiefe auf {depth} m angehoben – Standardwert für {boat}.',
+  // #1292 (#1135 §13 Punkt 3): Hafenzugang je Boot, in BoatOptions eigener
+  // Disclosure (§5.1). Das ausgewählte Boot nutzt die aktuelle
+  // Sicherheitstiefe; jedes andere Boot seinen eigenen Standardwert,
+  // beschriftet mit summaryDefault. `boat.switch.selected` eröffnet die
+  // zusammengeführte Bootswechsel-Ansage (#1293s ClampNotice, erweitert um
+  // diesen Zugang) — Boot, dann die angehobene Tiefe (falls vorhanden,
+  // boat.clamp.notice), dann der Zugang dieses Boots.
+  'boat.switch.selected': '{boat} ausgewählt.',
+  'boat.harbors.summary': 'Hafenzugang – {count} betroffen bei {depth} m',
+  'boat.harbors.summaryDefault': '(Standard)',
+  'boat.harbors.noneAffected': 'Hafenzugang – keine bekannten Einschränkungen bei {depth} m',
+  'boat.harbors.pending': 'Hafenzugang noch nicht geprüft.',
+  // #1321: `findLowerSettingHint` sucht nur bis zur STANDARD-Sicherheitstiefe
+  // dieses Boots, ein nur darunter erreichbarer Hafen wird also nie
+  // gefunden — `shallow` braucht keinen solchen Hinweis (dort ist der Hafen
+  // bei der geprüften Tiefe bereits erreichbar); nur `unreachable` nennt
+  // je Hafen einen über hintFound/hintNotFound/hintPending. Formulierung
+  // übernimmt #1291s „flachere Zufahrt" statt „Tiefenwarnung" — das nennt
+  // ShallowWarning nirgends (dort steht „Achtung:"), so wird kein neuer
+  // Begriff für denselben Sachverhalt erfunden.
+  'boat.harbors.shallow': 'Nur über eine flachere Zufahrt: {list}',
+  'boat.harbors.unreachable': 'Nicht erreichbar: {list}',
+  // Orchestrator-Entscheidung 2026-09-17 (kanonischer Wortlaut, geteilt mit
+  // #1323s harborPicker.boatUnreachableAnySetting): Substantiv
+  // „Sicherheitstiefe", nicht „Einstellung".
+  // „(nur Tiefendaten geprüft)": nennt, WAS geprüft wurde — eine reine
+  // Tiefenableitung ohne Brücken, Fahrwasserbreite oder Hindernisse — nie
+  // ein Anspruch auf amtliche Kartenautorität (App-weite Regel).
+  'boat.harbors.hintFound':
+    'eventuell planbar bei {depth} m Sicherheitstiefe (nur Tiefendaten geprüft)',
+  // PR #1324 Review Major: der ZUSTAND eines `found`-Treffers zählt — ein
+  // nur über eine flachere Zufahrt erreichter Hafen trägt weiterhin die
+  // Warnung, die boat.harbors.shallow anderswo ausspricht; dieser Schlüssel
+  // fügt sie zurück, statt identisch mit einem reinen `ok`-Treffer zu
+  // rendern (hintFound oben).
+  // „Tiefenwarnung": Spec §7 verlangt Angleichung an ShallowWarnings
+  // Achtung/Caution-Wortlaut; hier nicht umgesetzt, verfolgt in #1326.
+  'boat.harbors.hintFoundShallow':
+    'eventuell planbar bei {depth} m Sicherheitstiefe, mit Tiefenwarnung (nur Tiefendaten geprüft)',
+  // Orchestrator-Entscheidung 2026-09-17: NIE „bei keiner von diesem Boot
+  // vorgesehenen Einstellung erreichbar" — die Suche endet am STANDARDWERT
+  // dieses Boots, nicht an seinem tatsächlichen Minimum, und ein Nutzer kann
+  // schon ohne Bootswechsel eine niedrigere Tiefe eingestellt haben, sodass
+  // dieser Anspruch über das tatsächlich Geprüfte hinausgeht.
+  'boat.harbors.hintNotFound':
+    'nicht erreichbar bei der für {boat} empfohlenen Sicherheitstiefe oder darüber',
+  'boat.harbors.hintPending': 'wird noch geprüft',
   // #299: Abschnittsüberschriften im Boot-Tab (SettingsPanel).
   'settings.section.boatSafety': 'Boot & Sicherheit',
   'settings.section.propulsion': 'Antrieb',
@@ -1213,5 +1261,40 @@ export const de = {
   // ranked this window by.
   'departureScan.confirm.done.disagreement':
     'Plan übernommen — die vollständige Berechnung empfiehlt hier {rig}, nicht die Genua, mit der dieses Fenster eingestuft wurde.',
+  // #1291/§5.2/§5.3/§7: per-boat harbour-access markers in HarborPicker's
+  // options and PlannerPanel's selected-endpoint row. `{boat}` is
+  // `BoatDef.name`, catalogue data, not translated per-language.
+  'harborPicker.boatUnreachable': 'Mit {boat} bei {depth} m Sicherheitstiefe nicht erreichbar.',
+  // PR #1323 review comment-only wave: "Tiefenwarnung" names the same hazard
+  // ShallowWarning's Achtung/Caution vocabulary does; spec §7 asks for
+  // alignment, not done here (maintainer call), tracked in #1326.
+  'harborPicker.boatShallow': 'Mit {boat} nur über eine flachere Zufahrt – Tiefenwarnung.',
+  // PR #1323 review Major 1: NO "below the boat's recommended depth" clause
+  // — `findLowerSettingHint`'s frozen floor is `defaultSafetyDepthM(boat)`,
+  // so a real 'found' outcome is NEVER below it (see HarborPicker.tsx's
+  // `harborAccessCopy` doc comment). Keyed on the hint's own reached state
+  // alone. Wording DECIDED by the maintainer (coordinator addendum) to match
+  // sibling PR #1324's identical strings — noun is always "Sicherheitstiefe",
+  // never "Einstellung". The word order here (verb-first, "Eventuell
+  // planbar bei …") still avoids the design spec's own §7 draft bug ("Mit
+  // {depth} m eventuell mit Tiefenwarnung planbar", two "mit" in a row) —
+  // there is only ever one "mit" in this phrasing. The "(nur Tiefendaten
+  // geprüft)" hedge states what was checked — the reachability derivation is
+  // depth-only (no bridges/channel width/obstructions) — never a softener.
+  'harborPicker.boatLowerSettingAtDefault':
+    'Eventuell planbar bei {depth} m Sicherheitstiefe (nur Tiefendaten geprüft).',
+  // PR #1323 review comment-only wave: see `boatShallow`'s matching comment
+  // — "Tiefenwarnung" tracked in #1326, not aligned with ShallowWarning here.
+  'harborPicker.boatLowerSettingAtDefaultShallow':
+    'Eventuell planbar bei {depth} m Sicherheitstiefe, mit Tiefenwarnung (nur Tiefendaten geprüft).',
+  // #1321/PR #1323 review Major 2: `findLowerSettingHint` only checks
+  // `[defaultSafetyDepthM(boat), safetyDepthM)` — `OptionsPanel.tsx` lets a
+  // user dial the safety depth down to `minSafetyDepthM(boat)` WITHOUT a
+  // boat switch, a range this hint never searches. So this must say ONLY
+  // what was checked ("at or above the recommended depth"), never a claim
+  // covering settings below it. Wording DECIDED by the maintainer
+  // (coordinator addendum) to match sibling PR #1324.
+  'harborPicker.boatUnreachableAtOrAboveDefault':
+    'Nicht erreichbar bei der für {boat} empfohlenen Sicherheitstiefe oder darüber.',
 } as const;
 export type MsgKey = keyof typeof de;

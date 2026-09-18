@@ -52,13 +52,25 @@ describe('SlowFileFirstSequencer.shard (#1286)', () => {
     },
   );
 
+  // #1303 re-pin: inserting `realmask.repro.confinedDominance.test.ts` at rank 1
+  // shifted every later file's rank by one, so the literals below moved by one
+  // shard each. The row's INVARIANT is unchanged and still holds — measured on
+  // CI run 35318244674, the two slowest files are `confinedDominance`
+  // (1075 s, shard 2) and `horizonRelaxation` (855 s, shard 3), on different
+  // runners, with shard totals 2131 / 2700 / 2249 s. Placing the slowest file
+  // at rank 1 rather than appending it is deliberate: the sequencer schedules
+  // pinned files in array order, so the slowest must start early in its shard.
   it('with 3 shards, the two slowest pinned files never share a runner (literal)', async () => {
     const shard1 = await shardOf(files, 1, 3);
     const shard2 = await shardOf(files, 2, 3);
+    const shard3 = await shardOf(files, 3, 3);
     expect(shard1).toContain('src/routing/invariants.property.test.ts');
-    expect(shard1).toContain('src/routing/realmask.repro.issue20.marstalDefault.test.ts');
-    expect(shard2).toContain('src/routing/realmask.repro.relaxationFloor.wiring.test.ts');
+    expect(shard2).toContain('src/routing/realmask.repro.confinedDominance.test.ts');
+    expect(shard2).toContain('src/routing/realmask.repro.issue20.marstalDefault.test.ts');
+    expect(shard3).toContain('src/routing/realmask.repro.relaxationFloor.wiring.test.ts');
+    expect(shard3).toContain('src/routing/realmask.repro.horizonRelaxation.test.ts');
     expect(shard2).not.toContain('src/routing/invariants.property.test.ts');
+    expect(shard2).not.toContain('src/routing/realmask.repro.horizonRelaxation.test.ts');
   });
 
   it.each([2, 3, 4])('with %i shards, pinned slow files spread round-robin', async (count) => {
