@@ -13,72 +13,77 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.36.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.37.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
-## Now — v0.36.0
+## Now — v0.37.0
 
-The `v0.36.0` cut (2026-09-17) worked the
-[`v0.36.0` milestone](https://github.com/DocGerd/sail_command/milestones),
-which closed sixteen issues: five user-visible, the other eleven CI and test
-tooling, a hook fix, docs and two measurements with no user-visible surface.
-A sixth `CHANGELOG.md` entry ships the client-side part of
-[#1280](https://github.com/DocGerd/sail_command/issues/1280), which stays
-open in `v0.37.0` for the worker-side part.
+The `v0.37.0` cut (2026-09-18) worked the
+[`v0.37.0` milestone](https://github.com/DocGerd/sail_command/milestones),
+which closed sixteen issues: seven user-visible (per `CHANGELOG.md`'s own
+[0.37.0] section), the other nine copy/claim corrections folded into the
+same fixes, spec and pipeline-verification tooling, and a CI/lint chore.
 
-A route that failed as "beyond horizon" at the requested safety depth now
-also tries the shallower relaxed gate before giving up, flagging shallow
-water as before
-([#1258](https://github.com/DocGerd/sail_command/issues/1258)). The
-shallow-route warning's wording is corrected for a horizon-triggered
-relaxation
-([#1300](https://github.com/DocGerd/sail_command/issues/1300)), the
-beyond-horizon no-route message no longer recommends a later departure
-([#1307](https://github.com/DocGerd/sail_command/issues/1307)), and the
-shallow-route warning's departure-time/forecast advice is no longer left out
-on narrow layouts or at the safety-depth minimum
-([#1308](https://github.com/DocGerd/sail_command/issues/1308)). A slow
-device's route search is no longer cut off at a fixed deadline while the
-solver is still reporting progress
-([#1280](https://github.com/DocGerd/sail_command/issues/1280)). The
-`v0.35.0` release notes' wrong claim that editing waypoints fails on a
-pre-`v0.35.0` route is corrected
-([#1268](https://github.com/DocGerd/sail_command/issues/1268)).
+Visited-cell pruning could seal a narrow passage even though a fuller search
+finds a faster route through it. One confined-water prune fix, together with
+scaling `MAX_FRONTIER` to the mask's cell count, recovers the short way
+through Svendborgsund that a frontier-capped search used to miss and stops a
+Salona 44 route family from flipping between rigs and between capped and
+uncapped search; on some routes the recommended rig also changes now that
+the search can reach a faster one
+([#1303](https://github.com/DocGerd/sail_command/issues/1303),
+[#1305](https://github.com/DocGerd/sail_command/issues/1305),
+[#1257](https://github.com/DocGerd/sail_command/issues/1257)). A plan that
+exhausts its search budget on a slow or busy device now fails with that
+cause and suggests fewer waypoints, closing the worker-side half of the
+worker-vs-client timeout fix
+([#1280](https://github.com/DocGerd/sail_command/issues/1280)).
 
-The rest of the milestone: CI/test sharding (`app`/`e2e` and the #282 sweep
-across workers, solver test files split for scheduling), a per-test timeout
-fix for the nightly coverage run
-([#1287](https://github.com/DocGerd/sail_command/issues/1287)), a hook fix
-exempting read-only pipelines from the spec-path ask, a `CLAUDE.md` grep
-correction ([#1210](https://github.com/DocGerd/sail_command/issues/1210)),
-and design docs settling the `v0.37.0` boat-picker gate and the #1185
-free-tap/#295 via-edit rulings — none with a user-visible surface.
-[#1266](https://github.com/DocGerd/sail_command/issues/1266) (solve cost
-against `PLAN_BUDGET_MS`) closed "not reproduced on a quiet machine" per
-maintainer ruling, no code change, and
-[#1250](https://github.com/DocGerd/sail_command/issues/1250) measured
-depth-overlay canvas memory at tablet viewports in desktop Chromium.
+Boat/harbour UX from the #1135 boat-picker gate design: the
+origin/destination pickers and the Boat tab now mark a harbour's access for
+the selected boat and safety depth — not reachable at or above the boat's
+recommended depth, only via a shallower approach, or possibly routable at a
+lower setting — and switching boats now
+raises a below-default safety depth to the new boat's own default rather
+than just its minimum
+([#1290](https://github.com/DocGerd/sail_command/issues/1290)–[#1293](https://github.com/DocGerd/sail_command/issues/1293)).
 
-## Next — v0.37.0
+The rest of the milestone: a local eslint cache for `app/sweep/`
+([#1263](https://github.com/DocGerd/sail_command/issues/1263)), a
+sweep-merge guard against shards run under different `SC_SWEEP_LIMIT`
+values ([#1283](https://github.com/DocGerd/sail_command/issues/1283)),
+per-boat expected-unreachable harbours accepted in mask verification
+([#1294](https://github.com/DocGerd/sail_command/issues/1294)), a multi-boat
+spec amendment for the #1135 rulings
+([#1295](https://github.com/DocGerd/sail_command/issues/1295)), a
+measurement of whether #1136's salvage would rescue more routes
+([#1301](https://github.com/DocGerd/sail_command/issues/1301)), and two
+copy/claim corrections to the harbour-access and confined-water prune work above
+([#1321](https://github.com/DocGerd/sail_command/issues/1321),
+[#1333](https://github.com/DocGerd/sail_command/issues/1333)), and a ruling
+keeping the harbour-access wording as shipped
+([#1326](https://github.com/DocGerd/sail_command/issues/1326)) — none with a
+user-visible surface of its own.
 
-The [`v0.37.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-carries one routing defect class: visited-cell pruning can seal a narrow
-passage, so a more complete search can return a slower route. An untruncated
-search misses the Svendborgsund route that today's frontier-capped search
-finds ([#1303](https://github.com/DocGerd/sail_command/issues/1303)), and a
-Salona 44 route family flips between rigs and between capped and uncapped
-search ([#1305](https://github.com/DocGerd/sail_command/issues/1305)); both
-get one general confined-water prune fix and one sweep. Scaling
-`MAX_FRONTIER` with the mask's cell count
-([#1257](https://github.com/DocGerd/sail_command/issues/1257)) is held until
-that fix lands. The milestone also carries the rest of the worker-vs-client
-timeout fix under CPU contention, deadline checks inside a search ring and
-between relaxation probes
-([#1280](https://github.com/DocGerd/sail_command/issues/1280)), six follow-up
-issues from the #1135 boat-picker gate design
-([#1290](https://github.com/DocGerd/sail_command/issues/1290)–[#1295](https://github.com/DocGerd/sail_command/issues/1295)),
-and a local eslint-cache/vitest-sharding chore
-([#1263](https://github.com/DocGerd/sail_command/issues/1263)). The
+## Next — v0.38.0
+
+The [`v0.38.0` milestone](https://github.com/DocGerd/sail_command/milestones)
+carries follow-ups from the `v0.37.0` confined-water prune fix, the
+harbour-access work, and the sweep's own test infrastructure: whether 240 s
+is the right budget, exposed by a worst route already at ~96% of it at the
+old cap
+([#1331](https://github.com/DocGerd/sail_command/issues/1331)), whether
+#1257 actually fixed the Fehmarn passages' regression or only masked it —
+the mechanism is still unconfirmed
+([#1330](https://github.com/DocGerd/sail_command/issues/1330)),
+`docs/acceptance.md` gaining checks for the per-boat harbour-access markers
+([#1341](https://github.com/DocGerd/sail_command/issues/1341)), and three
+sweep/test items — sharding the sweep across idle cores
+([#1338](https://github.com/DocGerd/sail_command/issues/1338)), reusing
+stored sweep artifacts as BASE when the closure is untouched
+([#1337](https://github.com/DocGerd/sail_command/issues/1337)), and gating
+`realmask.repro` tests on the routing closure like the docs-only e2e gate
+([#1336](https://github.com/DocGerd/sail_command/issues/1336)). The
 milestone page is the only authoritative view, check it directly rather
 than this file.
 

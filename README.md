@@ -231,8 +231,12 @@ data; the code license is covered in the [License](#license) section below.
   boat, on the Boat tab. Because their two foresail tables differ only by a
   documented overlay ramp, no faster-sail recommendation is made for them.
   Deeper-drafted fleet boats are not in the catalogue yet: they can no longer
-  reach every harbor, and the picker does not yet grey unreachable harbors out
-  per boat.
+  reach every harbor. The origin/destination pickers and the Boat tab mark a
+  harbor's access for the selected boat and safety depth — not reachable at
+  or above the boat's recommended depth, only via a shallower approach, or a
+  lower setting that may route it
+  ([#1291](https://github.com/DocGerd/sail_command/issues/1291),
+  [#1292](https://github.com/DocGerd/sail_command/issues/1292)).
 - Inserting a waypoint by dragging the plotted route line is still
   desktop/mouse only: the grab handle is revealed by hovering, and touch has
   no hover phase in which to reach it. Touch has its own equivalent instead —
