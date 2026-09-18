@@ -226,7 +226,16 @@ describe('#243 depth comfort preference preserves true wall-clock time and geome
     const withoutPref = solve(params({ mask: uniform4m }));
     const withPref = solve(params({ mask: uniform4m, comfortDepthM: 5.0 }));
     expect(withoutPref.status).toBe('ok');
-    expect(withPref).toEqual(withoutPref);
+    expect(withPref.status).toBe('ok');
+    if (withoutPref.status !== 'ok' || withPref.status !== 'ok') return;
+    // #1303 exposed `costMs` on the ok arm, and the RANKING clock is exactly
+    // what the preference is supposed to move — so the observable equality
+    // this row asserts is over the legs and the true clock, and the differing
+    // cost is the positive control that the preference bit at all (a whole-
+    // result `toEqual` could never assert that, and would now fail on it).
+    expect(withPref.legs).toEqual(withoutPref.legs);
+    expect(withPref.etaMs).toBe(withoutPref.etaMs);
+    expect(withPref.costMs).not.toBe(withoutPref.costMs);
   });
 
   it('an active, BITING preference (non-uniform depth) still reports true elapsed time, not an inflated one', () => {
@@ -253,7 +262,7 @@ describe('#243 depth comfort preference preserves true wall-clock time and geome
     expect(hours).toBeLessThan(6); // well under any plausible cost-inflated figure
   });
 
-  it('a FORCED single-corridor path (no alternative route) keeps every leg timestamp and etaMs BYTE-IDENTICAL with the preference on vs off', () => {
+  it('#243 D.5: a derated corridor keeps every leg speed honest, preference on or off', () => {
     // Same land shape as fixtures.wallMask (wall at col 160, gap rows
     // 90..99) — origin/destination sit south of the gap so the direct track
     // is blocked and land forces a detour through the gap, exactly like the
@@ -288,14 +297,34 @@ describe('#243 depth comfort preference preserves true wall-clock time and geome
     // sanity: the gap is genuinely on the route and genuinely derated (not a
     // vacuous pass because the corridor was skipped or already free).
     expect(withoutPref.legs.some((l) => l.start.lon < 10.2 !== l.end.lon < 10.2)).toBe(true);
-    // The plan-level clock.
-    expect(withPref.etaMs).toBe(withoutPref.etaMs);
-    // Every leg's TRUE elapsed timestamps, individually — not just the total.
-    expect(withPref.legs.length).toBe(withoutPref.legs.length);
-    for (let i = 0; i < withoutPref.legs.length; i++) {
-      expect(withPref.legs[i].startTimeMs).toBe(withoutPref.legs[i].startTimeMs);
-      expect(withPref.legs[i].endTimeMs).toBe(withoutPref.legs[i].endTimeMs);
+
+    // #1303 re-pin. This row asserted BYTE-IDENTICAL leg timestamps on the
+    // premise that land leaves ONE path through the gap. That premise held
+    // only at the coarse prune grid: the gap is 10 mask cells (~5.5 km) wide,
+    // so with the confined-water refinement the preference legitimately picks
+    // a different line through it (measured: 20 legs vs 17, etaMs +124.6 s;
+    // with the rule off both solves are byte-identical, which is the old
+    // assertion reproducing at BASE).
+    //
+    // What the row exists to catch is the §D.1 leak — `Node.costMs` written
+    // into `Node.tMs` — and THIS assertion catches it without depending on
+    // the two searches finding the same path: a leg's reported speed must be
+    // the polar speed it was generated from. MEASURED with the leak mutant
+    // (`tMs: node.tMs + stepMs / factor`): worst relative error 0.2850 against
+    // 0.0002 honest, on this same fixture. Maneuver legs are excluded because
+    // the penalty shortens the travelled distance inside an unchanged step.
+    const polar = new Polar(TEST_POLAR, 1.0);
+    for (const res of [withoutPref, withPref]) {
+      for (const leg of res.legs) {
+        if (leg.kind !== 'sail' || leg.maneuverAtStart !== null) continue;
+        const expected = polar.speedKn(leg.twaDeg, leg.twsKn);
+        expect(Math.abs(leg.speedKn - expected) / expected).toBeLessThan(0.01);
+      }
     }
+    // The plan-level clock: the preference may move the line through the gap,
+    // but not by anything like the leak's inflation (363.8 s on this fixture
+    // under the mutant above, against 124.6 s honest).
+    expect(Math.abs(withPref.etaMs - withoutPref.etaMs)).toBeLessThan(200_000);
   });
 });
 
@@ -398,13 +427,23 @@ describe('#243 search-capacity effect (why the tier-ladder fallback is mandatory
     // both must arrive at the identical true clock (§D.5 invariant, reused
     // here as a sanity check on the fixture itself).
     if (withoutPref.status === 'ok' && withPref.status === 'ok') {
-      expect(withPref.etaMs).toBe(withoutPref.etaMs);
+      // #1303 re-pin: the two corridors are no longer clock-identical under
+      // the confined-water grid — the preference arrives 6.5 s EARLIER
+      // (measured; with the rule off the two are byte-identical). The bound
+      // keeps the §D.5 teeth: the leak mutant (`tMs: node.tMs + stepMs /
+      // factor`) moves this delta to +1107 s on the same fixture.
+      expect(Math.abs(withPref.etaMs - withoutPref.etaMs)).toBeLessThan(60_000);
     }
   });
 
   it('at a deliberately starved frontier cap, the preference alone flips ok -> unreachable', () => {
     const mask = twoCorridorMask();
-    const cap = 5;
+    // #1303 re-pin: the starving cap moved 5 -> 4, because the confined-water
+    // grid keeps more distinct nodes per ring. MEASURED at HEAD over caps
+    // 1,2,3,4,5,8,12,20: only cap 4 still flips (off ok / on mask-blocked);
+    // at cap 5 both now route. With the rule off, cap 5 flips and cap 4 does
+    // not, so this literal reds at BASE.
+    const cap = 4;
     const withoutPref = solve({
       origin: O,
       destination: D,

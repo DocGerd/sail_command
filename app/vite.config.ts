@@ -623,6 +623,9 @@ function appVersion(command: 'build' | 'serve'): string {
 // default (size-descending, and now genuinely small) schedules them fine.
 export const SLOW_TEST_FILES_FIRST = [
   'src/routing/invariants.property.test.ts',
+  // #1303/#1305: six real-mask solves, two of them uncapped — the slowest
+  // file in `src/routing` when it was added (durations in PR #1306's body).
+  'src/routing/realmask.repro.confinedDominance.test.ts',
   'src/routing/realmask.repro.relaxationFloor.wiring.test.ts',
   'src/routing/realmask.repro.issue20.marstal23.test.ts',
   'src/routing/realmask.repro.issue20.marstalDefault.test.ts',

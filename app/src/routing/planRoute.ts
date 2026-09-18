@@ -951,7 +951,16 @@ function runLadder(
       APPROACH_RADIUS_M,
       relaxationFloor,
       onProbe,
+      deadline,
     );
+    // #1280 part B: `findRelaxedGate` abandons its probe ladder on a spent
+    // budget and returns null, which is also its "nothing connects" answer.
+    // Re-reading the deadline HERE is what keeps the typed budget failure
+    // winning: without it an abandoned search would be reported as a
+    // mask-level verdict the probes never actually reached.
+    if (deadline?.expired()) {
+      return { status: 'error', reason: NO_ROUTE_LABEL_OF_CAUSE['budget-exhausted'] };
+    }
     if (relaxed !== null) {
       const { gate: relaxedGate, usedDepthM } = relaxed;
       // #243 tier 3: relaxed gate, preference on — the mechanism-2 fix.

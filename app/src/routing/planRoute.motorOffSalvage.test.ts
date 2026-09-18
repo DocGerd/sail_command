@@ -141,6 +141,9 @@ const ok = (distanceNm = 1) => ({
   status: 'ok' as const,
   legs: [leg(distanceNm)],
   etaMs: T0 + 1,
+  // #1303: solve()'s ok arm carries the ranking clock too; no preference here,
+  // so cost === eta.
+  costMs: T0 + 1,
 });
 const fail = (cause: SolveFailureCause) => ({
   status: 'no-route' as const,
@@ -447,10 +450,30 @@ describe('#1136 pass-2 admission, through planRoute', () => {
       'p2:req:c5:genoa': ok(),
       'p2:req:c5:fock': ok(),
     });
-    // solve() is mocked, so planRoute's own reads are the only ones: the
-    // pre-relaxation check (live), then admission (spent).
+    // solve() is mocked, so planRoute's own reads are the only ones. This row
+    // used to hardcode "expire on call 2", which was the pre-relaxation check
+    // followed by admission. #1280 part B added reads in between (one per
+    // relaxation probe, plus the post-`findRelaxedGate` re-read), so the abort
+    // point is now DERIVED from a reference run: admission reads the deadline
+    // last (clause 5), immediately before the first pass-2 solve, so the read
+    // count at that solve IS admission's read index.
+    let reads = 0;
+    let readsAtPass2: number | null = null;
+    const scripted = solveMock.getMockImplementation()!;
+    solveMock.mockImplementation((p: SolveParams) => {
+      if (p.salvage === true && readsAtPass2 === null) readsAtPass2 = reads;
+      return scripted(p);
+    });
+    plan(MOTOR_OFF, 'open', {
+      expired: () => {
+        reads++;
+        return false;
+      },
+    });
+    expect(readsAtPass2, 'the reference run must reach pass 2').not.toBeNull();
+    solveMock.mockClear();
     let calls = 0;
-    const deadline: SolveDeadline = { expired: () => ++calls > 1 };
+    const deadline: SolveDeadline = { expired: () => ++calls >= readsAtPass2! };
     expect(plan(MOTOR_OFF, 'open', deadline).result).toEqual({
       status: 'error',
       reason: 'unreachable',
