@@ -456,7 +456,11 @@ export const DEFAULT_HINT_MAX_STEPS = 12;
  *
  * @param maxSteps Step budget for this call; clamped to at least 1 — `0` or
  * negative would return `resumeFromDepthM === safetyDepthM` unchanged,
- * making a caller following the resume contract above loop forever.
+ * making a caller following the resume contract above loop forever. A
+ * non-finite value (`NaN`, `Infinity`) falls back to
+ * {@link DEFAULT_HINT_MAX_STEPS} instead of clamping, since
+ * `Math.max(1, Math.floor(NaN))` is itself `NaN` and would restore the
+ * unbounded search this budget exists to prevent (#1319).
  */
 export function findLowerSettingHint(
   mask: NavMask,
@@ -468,7 +472,9 @@ export function findLowerSettingHint(
   if (harbor.knownDisconnected === true) return { kind: 'not-found' };
   const floorDm = Math.round(defaultSafetyDepthM(boat) * 10);
   const topDm = Math.round(safetyDepthM * 10) - 1;
-  const stepBudget = Math.max(1, Math.floor(maxSteps));
+  const stepBudget = Number.isFinite(maxSteps)
+    ? Math.max(1, Math.floor(maxSteps))
+    : DEFAULT_HINT_MAX_STEPS;
   let steps = 0;
   for (let dm = topDm; dm >= floorDm; dm--) {
     if (steps >= stepBudget) return { kind: 'exhausted', resumeFromDepthM: (dm + 1) / 10 };
