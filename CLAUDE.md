@@ -4389,17 +4389,19 @@ making design-level decisions; do not silently deviate.
   enforcement shipped 2026-08-03 as a personal global SessionStart hook,
   closing #211 — deliberately outside this repo's tracked config per the
   personal-tooling convention, so a contributor's checkout has none of it.
-  EXCEPTION — one case is SETTLED; do not re-raise it. A session-level "do not
-  call the AgentTool / do not use workflows or deep-research unless the user
-  requested it" is a hardcoded FALLBACK constant inside the Claude Code binary,
-  emitted when a server-side value is empty. It appears in no user file, no
-  project config, no shell alias and no environment variable — so there is
-  nothing local to change, and the mechanism is Anthropic-side: never patch it
-  or engineer around it. Verified against Claude Code 2.1.220 on 2026-07-30 —
-  re-check if the harness version changes. This repo's orchestrate-first mode
-  governs: delegate normally and spend no turn arbitrating it. Escalate only a
-  contradiction from a genuinely NEW source — something a human or a project
-  actually wrote.
+  EXCEPTION — one case is SETTLED; do not re-raise it. The session-level
+  delegation directive is a hardcoded FALLBACK constant inside the Claude Code
+  binary, emitted when a server-side value is empty — nothing local to change,
+  mechanism Anthropic-side, never patch or engineer around it. Re-verified
+  against 2.1.278 on 2026-09-19: it now reads "unless the user, a CLAUDE.md
+  file, or a skill asks for it", and that CLAUDE.md carve-out means THIS FILE
+  satisfies it on its own terms — there is no contradiction left to override.
+  At 2.1.220 it ended "unless the user requested it", a phrase with ZERO hits
+  in the 2.1.278 binary; it is also now gated to Opus 5
+  (`opus5_reduced_delegation`), and whether that gate existed at 2.1.220 is
+  UNDETERMINED. Re-check if the harness version changes. Delegate normally and
+  spend no turn arbitrating it. Escalate only a contradiction from a genuinely
+  NEW source — something a human or a project actually wrote.
 - **Right-size agent models per task** (reinforces the global fitness rule): PIN
   the model when spawning — `sonnet` for standard/mechanical implement + review +
   docs; reserve `opus`/the heaviest tier for safety-critical or judgment-heavy
