@@ -251,24 +251,15 @@ making design-level decisions; do not silently deviate.
   accepting one, check whether the changed file is a RUNTIME input the
   import walk cannot see — a new data asset, arm file or pipeline generator
   outside `PATH_PREFIXES`, or a runtime-constructed edge outside
-  `EXTRA_EDGES`. The prose list that follows is a reader's aid, not the
-  source of truth. The closure
-  is wider than the obvious paths: besides `app/src/routing/`,
-  `app/src/lib/mask.ts`, `app/src/lib/depthGate.ts` (since #452),
-  `app/public/data/`, `app/sweep/` and `pipeline/`,
-  `app/src/data/boats.ts` and `app/src/lib/boatDepth.ts` (both since #538 —
-  `sweepArms.ts:38` imports `boatById`/`DEFAULT_BOAT_ID`/`polarKey`;
-  `types.ts:1` and `planRoute.ts:24` import `boatDepth`),
-  `sweepArms.ts` pulls `DEFAULT_SETTINGS` from `app/src/types.ts`,
-  `uniformWindGrid` from `app/src/test/fixtures` and `solverTimeoutMs` from
-  `app/src/test/timeouts`; `sweep/vitest.config.ts` loads
-  `app/src/test/setup.ts`; and the solver reaches `lib/geo.ts`,
-  `lib/polar.ts` and `lib/wind.ts`. One `DEFAULT_SETTINGS` field edit moves
-  plans across every arm that does not spread-override that field, while
-  touching none of the obvious paths — which is why the list form of this
-  rule was wrong (measured 2026-08-13: #518's evidence did survive #513,
-  #522 and #523, verified by running the closure check this rule prescribes
-  — none of the 22 files they changed is in the closure).
+  `EXTRA_EDGES`. RUN `closure.mjs files` FOR THE MEMBER LIST — it is derived
+  from the roots, no prose list here to drift. The closure is wider than the
+  obvious routing/mask/sweep/pipeline paths: it reaches the boat catalogue and
+  `boatDepth`, `DEFAULT_SETTINGS` in `types.ts`, the shared test fixtures and
+  timeouts, `setup.ts`, and the solver's `geo`/`polar`/`wind` helpers. One
+  `DEFAULT_SETTINGS` field edit therefore moves plans across every arm that
+  does not spread-override it while touching none of the obvious paths —
+  which is why the list form of this rule was wrong (measured 2026-08-13 on
+  #518 vs #513/#522/#523: none of their 22 files is in the closure).
   **A sweep's BASELINE is the branch's own base tree, not the last RECORDED
   baseline.** Measured at #1264 (2026-09-16): against the baseline recorded
   two PRs earlier, `light-motorless` read CHANGED — that change was #1136's,
@@ -280,8 +271,10 @@ making design-level decisions; do not silently deviate.
   arms, which is how a sweep always runs — and
   the run exited 1, yet all 11 JSONs were complete and byte-correct: the solve
   is synchronous, so the timer fires only after the arm has written its file.
-  The ARTIFACT HASH is the verdict, never the runner's exit code. #1262 tracks
-  sharding so arms stop outgrowing the cap.
+  The ARTIFACT HASH is the verdict, never the runner's exit code. Sharding
+  shipped at #1262 (`SC_SWEEP_SHARD`, `merge-shards.mjs`); #1283 then made the
+  merge fail closed on shards run under mismatched `SC_SWEEP_LIMIT`, encoding
+  the limit in the part filename via `armFileBase`.
   **Never run a full sweep as a harness background task** — a harness
   background task was killed at ~58 min (observed 2026-08-18 against Claude
   Code 2.1.235; re-check after any harness upgrade, this is a harness-version
@@ -540,8 +533,11 @@ making design-level decisions; do not silently deviate.
   `app/src/test/verifyMaskConnectivity.test.ts` re-runs the
   HARBOUR-REACHABILITY flood fill against the same committed
   `mask.bin`/`harbors.json` for every
-  `BOATS` entry, inside the REQUIRED `app` check — so that ONE assertion no
-  longer merges silently. Everything else in `verify_mask.py`'s connectivity
+  `BOATS` entry, inside the REQUIRED `app` check — so those assertions no
+  longer merge silently. TWO of them since #1294: connected-when-expected, and
+  accepted-when-a-boat's-own-gate-cannot-reach-it via
+  `EXPECTED_UNREACHABLE_BY_BOAT` (exact in both directions; the real table is
+  EMPTY today, so its non-vacuity rests on a synthetic fixture). Everything else in `verify_mask.py`'s connectivity
   section stays Python-only, including a STALE `KNOWN_DISCONNECTED` entry,
   which
   that file's own SCOPE comment calls "the one with real teeth". Read that
@@ -1660,6 +1656,7 @@ making design-level decisions; do not silently deviate.
   | v0.34.0 | 2026-09-15 | 44 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 08:28:02Z, two seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `34947043144` (created 08:27:21Z) -> tag `34947108798` (created 08:28:05Z) on `85afd47`. The merge run's `deploy` job carries **`steps: 0`** against that run's `build` at **`steps: 23`** (the within-run control). The tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production then served `assets/index-CEJof43x.js` at ``about.version`,{version:`v0.34.0`}`` with ZERO suffixed matches, so no back-merge remedy was owed. Release object `isLatest: true`; tag object `fe18dcb` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.35.0 | 2026-09-16 | 41 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) immediately before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `35109752970` (created 14:37:06Z) -> tag `35109830067` (created 14:37:47Z) on `2d94af4`. The merge run's `deploy` job carries **`steps: 0`** against that run's `build` at **`steps: 23`** — the within-run control — so it never started. The tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded** (`uat-environment` skipped); production then served `assets/index-D0g3cIVk.js` at ``about.version`,{version:`v0.35.0`}`` with ZERO suffixed matches, so no back-merge remedy was owed. Release object `isLatest: true`; tag object reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.36.0 | 2026-09-17 | 24 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 17:11:02Z, two seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `35251123294` (created 17:10:41Z) -> tag `35251164754` (created 17:11:05Z) on `43466e5`. Merge run's `deploy` **`steps: 0`** against its `build` at **`steps: 23`**. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` succeeded**; production served `assets/index-CF3qycIZ.js` at ``version:`v0.36.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag `verified: true, reason: "valid"`. Names no MECHANISM. |
+  | v0.37.0 | 2026-09-18 | 55 s | read as **NO `deploy` JOB CREATED YET** (run `in_progress`, only `build`) immediately before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `35388995635` (created 19:59:43Z) -> tag `35389087993` on `82bd958`, tag pushed 20:00:38Z. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`** -- the within-run control -- so it never started. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-CycH4hzZ.js` at ``about.version`,{version:`v0.37.0` `` with ZERO suffixed matches, so no back-merge remedy was owed. Release `isLatest: true`; tag object `489f5bc` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -4095,7 +4092,13 @@ making design-level decisions; do not silently deviate.
   `pruneKey` per ring) ignores position within a cell, so an early, cheaper
   arrival with no navigable onward edge seals a narrow and prunes
   better-placed later arrivals (root causes on #1303 and #1305). Compare both
-  route families' `costMs` before calling a result intended.
+  route families' `costMs` before calling a result intended. NARROWED, not
+  closed, by #1322: `pruneCellConfined` halves the prune grid
+  (`CONFINED_PRUNE_DIV`) only where a cell is within `CONFINEMENT_MARGIN_CELLS`
+  of land or sub-gate water, so the mechanism is unchanged in open water and at
+  the coarse/fine boundary. Its own comment records the measured refutation of
+  any monotonicity claim: the fine node set is NOT a superset, capped or not
+  (#1333).
 - **The forecast horizon is the FIXED end of the stored grid** (`wind.ts`
   `horizonMs()`), so a later departure leaves LESS forecast — never advise
   it; `app/src/i18n/beyondHorizonRemedyCopy.test.ts` guards only the two
@@ -4188,8 +4191,11 @@ making design-level decisions; do not silently deviate.
   exactly as `SolveFailureCause` is.
   `isochrone.ts` NOW HAS a per-plan wall-clock budget: `PLAN_BUDGET_MS`
   (240_000 since #1147, 2026-09-10; it was 120_000 and equal to the old
-  client timeout until then) checked at ring ENTRY plus once before the #53
-  BFS probes, imposed ONLY by `protocol.ts` —
+  client timeout until then) checked at ring ENTRY, mid-ring every
+  `DEADLINE_CHECK_NODES` nodes, before AND after the #53 BFS probes, and
+  between individual probes inside `findRelaxedGate` (the last three added by
+  #1280 part B; anchor on those symbols, not on offsets), imposed ONLY by
+  `protocol.ts` —
   `planRoute()` is unbudgeted unless handed a deadline, which is what lets
   `app/sweep/` exercise the solver at all. Client deadline is budget + 15 s
   so the solver wins. WHY THAT CANNOT BREAK A WORKING PLAN, structurally
@@ -4214,9 +4220,12 @@ making design-level decisions; do not silently deviate.
   dispose alone would make every later replan fail `disposed`.
   TWO things TERMINATE the search with a named cause — the wall-clock budget
   above (`budget-exhausted`) and the forecast-horizon guard
-  (`horizon-exceeded`). `MAX_FRONTIER = 30_000` is NOT one of them and its
+  (`horizon-exceeded`). The frontier cap is NOT one of them and its
   declaration says so: a "Perf safeguard, not a correctness bound" that
-  TRUNCATES the frontier by count and lets the loop CONTINUE. Do not group the
+  TRUNCATES the frontier by count and lets the loop CONTINUE. Since #1257 it
+  is DERIVED per mask by `defaultMaxFrontier(meta)`, with `MAX_FRONTIER =
+  30_000` surviving as the FLOOR for small/synthetic masks — never quote that
+  literal as the cap. Do not group the
   three as "bounds" — a no-route in the capped regime may reflect search
   capacity rather than actual unreachability, and that distinction is
   deliberately NOT surfaced to the caller (plan-amendment pending), so
@@ -4332,6 +4341,15 @@ making design-level decisions; do not silently deviate.
 
 ## Working style for this repo
 
+- **Do NOT re-measure wall-clock timings per change (maintainer ruling
+  2026-09-18).** It costs hours and mostly re-confirms a known direction.
+  Default evidence for a routing change is DETERMINISTIC: `costMs` deltas,
+  sweep artifact hashes, call counts, route family and distance. Drop
+  "measure per-ring wall time / BASE-vs-HEAD duration" from implementer
+  briefs unless a number GATES a decision (a plan crossing `PLAN_BUDGET_MS`
+  does; a 40% ring-time change does not). Measured why: two BASE runs of the
+  SAME tree differed 12.5% in wall time on byte-identical output, so the
+  noise floor swallows most signals a sweep could give.
 - **Prose is CONCISE — comments, JSDoc, PR bodies, issue bodies, commit
   messages (maintainer instruction, 2026-09-10).** State the claim, then a
   POINTER to its evidence; never inline the transcript — "measured at PR #1141"
