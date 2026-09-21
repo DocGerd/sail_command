@@ -261,10 +261,10 @@ changes at every anchor recording.
 
 ### Recording an anchor
 
-1. Record at the sweep's pinned HEAD SHA, never a merge commit — `reuse`'s
-   own ancestor check requires the recorded `sha` to be an ancestor of (or
-   equal to) any later `<base>` it is asked about, and a merge commit is
-   usually not an ancestor of the branch that produced it.
+1. Record the exact commit SHA the arms actually ran on, and pick one that
+   lands on `develop` — `reuse`'s own ancestor check (`git merge-base
+   --is-ancestor <recorded> <base>`) requires the recorded `sha` to be an
+   ancestor of (or equal to) any later `<base>` it is asked about.
 2. Take each arm's hash from `run-sharded.mjs`'s `manifest.json` `arms`
    field (or the unsharded equivalent, `compare.mjs`'s own
    `sha256(raw).slice(0,16)` convention — both are the same 16-hex-char
@@ -273,8 +273,9 @@ changes at every anchor recording.
 3. Never write an absolute or home-directory path into
    `recorded-runs.json`. The schema's `path` field is optional and
    unvalidated by `reuse`, but `.github/scripts/check-no-home-paths.sh` runs
-   ungated inside the REQUIRED `app` job over every tracked file — a
-   machine-specific path here reds it (happened at PR #1363, caught before
+   ungated in `ci.yml`'s `changes` job over every tracked file, and since
+   #1286 both required fan-ins `app` and `e2e` need that job — a
+   machine-specific path here reds both (happened at PR #1363, caught before
    merge). Omit `path` rather than filling it with a local output
    directory.
 4. Any later `app/sweep/` edit — README included, since `app/sweep/**` sits
