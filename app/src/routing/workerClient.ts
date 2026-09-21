@@ -131,10 +131,11 @@ export class RoutingError extends Error {
 // live or synthetic.
 //
 // 360 s: maintainer ruling 2026-09-21 on #1331 (option B). Both rigs solve
-// sequentially under this one deadline, and the worst known route
-// (Flensburg -> Burgstaaken, both rigs) took 271.9 s idle at the shipped
-// frontier cap — 113% of the old 240 s; 360 s leaves it at 76%. Per-rig
-// budgets are #1350.
+// sequentially under this one deadline. Flensburg -> Burgstaaken, two bare
+// solve() calls summed (tier 1, SYNTHETIC uniform 12 kn / 225 deg, idle box,
+// machine not recorded), took 271.9 s at the #1257 frontier cap: 113% of the
+// old 240 s, 76% of 360 s (#1331 comment, 2026-09-18). Per-rig budgets are
+// #1350.
 export const PLAN_BUDGET_MS = 360_000;
 
 // How much longer the CLIENT waits than the budget it handed the worker. The
