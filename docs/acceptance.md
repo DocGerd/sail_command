@@ -95,10 +95,13 @@ results table at the bottom, and note it in the box below the check.
       the disclosure on a boat with ≥1 affected harbour (SPEEDY GO! and
       PIRANJA both affect Marstal at their own default depth): it lists the
       harbour under "Only via a shallower approach: …" ("Nur über eine
-      flachere Zufahrt: …") or "Not reachable: …" ("Nicht erreichbar: …") as
-      appropriate. Whichever of the three states is showing (pending,
-      one-line summary, or the disclosure) is chained into that boat's own
-      radio's `aria-describedby`, alongside its existing keel/draft-
+      flachere Zufahrt: …") — the only wording reachable here: no real
+      catalogue boat is ever `unreachable` for any harbour at its own
+      default gate, so "Not reachable: …" ("Nicht erreichbar: …") cannot
+      be observed under this setup. Whichever of the three states is
+      showing (pending, one-line summary, or the disclosure) is chained
+      into that boat's own radio's `aria-describedby`, alongside its
+      existing keel/draft-
       provenance note ids — inspect via devtools, or confirm a screen
       reader announces it when arrowing onto the option. Then lower the
       safety depth below a boat's own default and switch to that boat: the
@@ -129,7 +132,10 @@ results table at the bottom, and note it in the box below the check.
       per-safety-depth, not a fact about the harbour alone, so it does not
       appear on Arnis/Kappeln/etc. — those already carry the stronger
       known-disconnected note instead. With a fleet boat selected (SPEEDY
-      GO! or PIRANJA) at its own default safety depth, search "Marstal" as
+      GO! or PIRANJA) and the safety-depth field set to that boat's own
+      default (2.8 m for PIRANJA, 3.0 m for SPEEDY GO! — selecting the
+      boat alone does not get you there, since spec C.7's clamp only ever
+      raises the live setting, never lowers it), search "Marstal" as
       either origin or destination: its option carries a second line,
       "Only via a shallower approach with <boat> — depth warning." ("Mit
       <boat> nur über eine flachere Zufahrt – Tiefenwarnung."), naming the
