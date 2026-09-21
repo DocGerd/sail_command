@@ -2042,6 +2042,11 @@ function AppShell() {
                 onChange={setSettings}
                 boatId={boatId}
                 onBoatIdChange={setBoatId}
+                // #1325 (#1135 §5.4): mirrors originKnownDisconnected/
+                // destinationKnownDisconnected below — a plain source==='harbor'
+                // guard over this same origin/destination state.
+                originHarborId={origin?.source === 'harbor' ? origin.harborId : null}
+                destinationHarborId={destination?.source === 'harbor' ? destination.harborId : null}
                 titleRef={boatSettingsHeadingRef}
               />
             )}

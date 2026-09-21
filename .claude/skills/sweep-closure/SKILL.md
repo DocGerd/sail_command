@@ -235,7 +235,7 @@ Schema — an object with one key, `runs`, an array of entries:
       "sha": "<full 40-char commit SHA the recorded run was taken at>",
       "date": "YYYY-MM-DD",
       "arms": { "<arm-name>": "<sha256 prefix>", "...": "..." },
-      "path": "<where the stored artifacts live, e.g. a $HOME output dir>",
+      "path": "<where the stored artifacts live>",
       "note": "<free text — e.g. which PR/session recorded this>"
     }
   ]
@@ -251,13 +251,39 @@ prefix under 7 characters or one matching more than one ledger entry here
 reports `unknown recorded run` and fails closed to `RUN BASE` rather than
 throwing — never the first/nearest entry.
 
-**The ledger starts EMPTY (`{"runs": []}`) as shipped by this PR — do not
-seed a fabricated entry.** The example above is a schema illustration, not a
-real anchor. The first real entry is recorded by a verification session that
-actually stores a run's artifacts durably (not `/tmp`) with their commit SHA,
-per the issue's own requirement; until then every `reuse` call reports
-`RUN BASE` with `unknown recorded run`, which is the correct, safe answer for
-an empty ledger.
+**The ledger is no longer empty.** PR #1363 recorded the first real entry
+(sha `68a89342c5…`, 2026-09-21) from a sharded-vs-unsharded verification run.
+The example in the schema above is still just an illustration — don't copy
+its literal values — and a NEW entry still must not be fabricated; follow
+"Recording an anchor" below. Read the ledger file directly for its current
+contents rather than trusting a count or SHA prefix restated here — it
+changes at every anchor recording.
+
+### Recording an anchor
+
+1. Record the exact commit SHA the arms actually ran on, and pick one that
+   lands on `develop` — `reuse`'s own ancestor check (`git merge-base
+   --is-ancestor <recorded> <base>`) requires the recorded `sha` to be an
+   ancestor of (or equal to) any later `<base>` it is asked about.
+2. Take each arm's hash from `run-sharded.mjs`'s `manifest.json` `arms`
+   field (or the unsharded equivalent, `compare.mjs`'s own
+   `sha256(raw).slice(0,16)` convention — both are the same 16-hex-char
+   prefix) and cross-check the sharded and unsharded arm-sets agree before
+   trusting either as the anchor, per PR #1363's own note field.
+3. Never write an absolute or home-directory path into
+   `recorded-runs.json`. The schema's `path` field is optional and
+   unvalidated by `reuse`, but `.github/scripts/check-no-home-paths.sh` runs
+   ungated in `ci.yml`'s `changes` job over every tracked file, and since
+   #1286 both required fan-ins `app` and `e2e` need that job — a
+   machine-specific path here reds both (happened at PR #1363, caught before
+   merge). Omit `path` rather than filling it with a local output
+   directory.
+4. Any later `app/sweep/` edit — README included, since `app/sweep/**` sits
+   inside `PATH_PREFIXES` — makes `reuse` answer `RUN BASE` again from that
+   commit forward. Recording an anchor is not a one-time setup step; a
+   fresh one is only worth recording when the sweep was just run for real
+   and its result is worth another session reusing before the next
+   `app/sweep/` edit lands.
 
 ## When the verdict is OWED — restating the constraints it is easy to lose
 
@@ -340,6 +366,28 @@ into this repo):
     the real validation, or reverting the ancestor check / the ref-checkout
     closure computation) and reds exactly the row(s) targeting that guard
     (the ancestor-check mutant reds both the side-branch and descendant rows).
+27. `reuse` M9 pin: `computeReuseVerdict`'s own `unionClosures` call —
+    unpinned by every row above. `base` deletes an EXTRA_EDGES target
+    (`setup.ts`) present at `recorded` → `RUN_BASE`, never a false `REUSE`
+    from `base`'s missing entry "winning" on argument order over
+    `recorded`'s real one.
+28. `diff`'s own checkout-independence (#1359/PR #1384), mirroring row 26
+    for `reuse` (a closure member visible only from `base`/`head`, with a
+    THIRD, divergent commit checked out) — built over its own disposable
+    repo, not `initClosureRepo`.
+29–33. Five more `diff`-side rows (#1359/PR #1384), all against
+    `computeDiffVerdict` over disposable repos sharing one `initClosureRepo`
+    helper: an EXTRA_EDGES deletion (`setup.ts`) on
+    `head`, `base` independently deleting it too → `OWED` via the true
+    merge-base's precedence, never via argument order; a head-ONLY member
+    (imported and created only on `head`); a merge-base-ONLY member (`base`
+    and `head` both independently drop the import) — one fixture
+    discriminates BOTH dropping the merge-base term outright and computing
+    it from `base` instead of the real `git merge-base`, since `base`'s own
+    closure lacks the import either way; `base` adding an import after the
+    fork point that `head` (forked earlier) only edits → `OWED` via
+    `base`'s own third unioned term; and `head` omitted reading the
+    WORKING TREE rather than the committed `HEAD` ref.
 
 **Neither `npm --prefix app run typecheck` nor `npm --prefix app run
 lint` cover this file at all** — the tsconfigs and `eslint src e2e sweep`

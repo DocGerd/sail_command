@@ -78,6 +78,11 @@ Split them into separate Bash invocations.
 
 ## 4. RESOLVE — reply to and resolve every thread
 
+A `COMMENTED` review can carry ZERO inline threads (confirmed at #1173,
+`reviewThreads.nodes` and `pulls/N/comments` both empty) — "reply on each
+thread" is then unexecutable; post one plain PR comment instead of hunting
+for threads that don't exist.
+
 The `pullRequest.reviewThreads` GraphQL path is unaffected by the
 Projects-classic bug. `resolve-threads.sh` (this directory) folds the
 enumerate → reply → resolve → re-verify loop into one invocation instead of
@@ -165,6 +170,7 @@ Done when re-running the enumerate query shows every `isResolved: true`.
 | double-quoted shell body (mangles backticks) | JSON `--input` file |
 | inline comment on an out-of-diff line (422) | anchor to an in-diff line, or PR-level `issues/N/comments` |
 | `gh api -f …` and `git push` in one Bash call (`-f` guard) | split into two Bash calls |
+| REST `pulls/N -X PATCH -f draft=false` (silently no-ops, exit 0) | GraphQL `markPullRequestReadyForReview` with the PR node id — triggers no new CI run |
 
 The `pullRequest.reviewThreads` / `resolveReviewThread` GraphQL path is the one
 `gh`-adjacent surface the Projects-classic bug does **not** touch — use it for

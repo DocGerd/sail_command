@@ -26,6 +26,8 @@ function renderPicker() {
         onBoatIdChange={onBoatIdChange}
         settings={DEFAULT_SETTINGS}
         onSettingsChange={onSettingsChange}
+        originHarborId={null}
+        destinationHarborId={null}
       />
     </I18nProvider>,
   );
@@ -323,6 +325,8 @@ describe('BoatPicker — per-boat own MMSI (#746)', () => {
           onBoatIdChange={vi.fn()}
           settings={DEFAULT_SETTINGS}
           onSettingsChange={vi.fn()}
+          originHarborId={null}
+          destinationHarborId={null}
         />
       </I18nProvider>,
     );
