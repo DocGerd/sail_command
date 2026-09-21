@@ -177,11 +177,22 @@ function sha256Prefix16(buf) {
   return createHash('sha256').update(buf).digest('hex').slice(0, 16);
 }
 
-// #1363 Minor 5: children this process has spawned, tracked so a SIGINT/
-// SIGTERM to the driver (the `setsid nohup` + `kill` detach path CLAUDE.md
-// documents) can be forwarded rather than orphaning up to shards*maxWorkers
-// solver workers. Measured: killing a bare driver under `setsid` left a
-// sleeping fake shard alive, reparented to init.
+// #1363 Minor 5 / NEW Major (round 2): children this process has spawned,
+// tracked so a SIGINT/SIGTERM to the driver (the `setsid nohup` + `kill`
+// detach path CLAUDE.md documents) can be forwarded rather than orphaning up
+// to shards*maxWorkers solver workers. `child.kill(signal)` ALONE does not
+// reach the solver: a shard's real chain is `npm -> sh -c -> vitest ->
+// fork workers`, and neither `sh` nor npm passes SIGTERM through to vitest
+// — measured with real npm + real vitest (two 300 s sleep tests standing in
+// for the solver): SIGTERM to the driver left the two vitest mains
+// (reparented to init) plus one fork worker each, 4 survivors at t+30 s. A
+// bare-`sleep` fake shard did not show this, because there was no
+// npm/sh/vitest chain to hide behind. Each shard therefore runs `detached:
+// true` (its own process GROUP) and forwarding signals the whole group via
+// `process.kill(-child.pid, signal)` — verified in the same harness: 0
+// survivors at t+30 s. `detached: true` also means a terminal Ctrl-C no
+// longer reaches the shards directly, which is why the SIGINT handler below
+// exists regardless of how the driver itself is invoked.
 const LIVE_CHILDREN = new Set();
 
 function trackChild(child) {
@@ -192,7 +203,13 @@ function trackChild(child) {
 
 function installSignalForwarding() {
   const forward = (signal) => () => {
-    for (const child of LIVE_CHILDREN) child.kill(signal);
+    for (const child of LIVE_CHILDREN) {
+      try {
+        process.kill(-child.pid, signal);
+      } catch {
+        child.kill(signal);
+      }
+    }
     process.exit(143);
   };
   process.on('SIGINT', forward('SIGINT'));
@@ -204,11 +221,15 @@ function runShard(spec) {
     mkdirSync(spec.env.SC_SWEEP_OUT, { recursive: true });
     // stdin 'ignore', not 'inherit' — a shard child has no business reading
     // the driver's stdin (CLAUDE.md's "Scripting CLI tools" rule).
+    // detached: true — its own process GROUP, so installSignalForwarding
+    // can reach the npm -> sh -> vitest -> fork-worker chain via a negative
+    // pid kill (see this file's own comment above LIVE_CHILDREN).
     const child = trackChild(
       spawn(spec.cmd, spec.args, {
         cwd: spec.cwd,
         env: { ...process.env, ...spec.env },
         stdio: ['ignore', 'inherit', 'inherit'],
+        detached: true,
       }),
     );
     child.on('exit', (code, signal) => resolvePromise({ code, signal }));

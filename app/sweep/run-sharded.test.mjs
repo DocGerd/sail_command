@@ -16,7 +16,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, readFileSync, existsSync, chmodSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, chmodSync, copyFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -416,4 +416,28 @@ test('integration: an INHERITED SC_SWEEP_LIMIT does not leak into a run with no 
   for (const line of logLines) {
     assert.equal(line.limitRaw, '0', `the shard child must see SC_SWEEP_LIMIT="0", not the inherited "999" (${JSON.stringify(line)})`);
   }
+});
+
+// #1363 Major 3 follow-up (round-2 review): the run-directly guard's own
+// regression row. `file://${process.argv[1]}` is not URL-encoded, so a path
+// containing a space never matched `import.meta.url` and the whole driver
+// silently no-opped at exit 0 (measured against a dir named `sp ace`,
+// `--shards 99 --max-workers 99` — should be exit 2, cap exceeded). This
+// file has only builtin imports before `parseArgs` runs, so a bare copy of
+// it runs standalone with no sibling files.
+test('integration (#1363 Major 3): a space in the driver\'s own path still triggers the run-directly guard', () => {
+  const spaceDir = mkdtempSync(join(tmpdir(), 'sc run sharded sp ace-'));
+  const copyPath = join(spaceDir, 'run-sharded.mjs');
+  copyFileSync(RUN_SHARDED_PATH, copyPath);
+  const result = spawnSync(
+    process.execPath,
+    [copyPath, '--shards', '99', '--max-workers', '99', '--out', '/tmp/sc-run-sharded-major3-unused'],
+    { encoding: 'utf8' },
+  );
+  assert.equal(
+    result.status,
+    2,
+    `expected exit 2 (cap exceeded), got ${result.status}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+  );
+  assert.match(result.stderr, /exceeds the documented cap/);
 });
