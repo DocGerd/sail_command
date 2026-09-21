@@ -129,7 +129,13 @@ export class RoutingError extends Error {
 // that device's factor and says only "well past 2x". Do not restate any of
 // this as a bare multiplier without naming a machine and whether the wind was
 // live or synthetic.
-export const PLAN_BUDGET_MS = 240_000;
+//
+// 360 s: maintainer ruling 2026-09-21 on #1331 (option B). Both rigs solve
+// sequentially under this one deadline, and the worst known route
+// (Flensburg -> Burgstaaken, both rigs) took 271.9 s idle at the shipped
+// frontier cap — 113% of the old 240 s; 360 s leaves it at 76%. Per-rig
+// budgets are #1350.
+export const PLAN_BUDGET_MS = 360_000;
 
 // How much longer the CLIENT waits than the budget it handed the worker. The
 // solver must always win this race: it is the side that produces the honest,
@@ -174,7 +180,7 @@ export const PLAN_TIMEOUT_GRACE_MS = 15_000;
 // own honest budget-exhausted answer, rather than a margin sized to any
 // measured ring duration under contention (no such figure is established —
 // see the mid-ring check tracked separately for that case). The total extra
-// wait stays a small, fixed addition (255 s -> 315 s at the default
+// wait stays a small, fixed addition (375 s -> 435 s at the default
 // timeout) rather than unbounded.
 export const PLAN_TIMEOUT_HARD_CAP_EXTRA_MS = 4 * PLAN_TIMEOUT_GRACE_MS;
 
@@ -185,7 +191,7 @@ export const PLAN_TIMEOUT_HARD_CAP_EXTRA_MS = 4 * PLAN_TIMEOUT_GRACE_MS;
 // a Chromium OOM frequently does exactly that, #432). Raised from the
 // pre-#432 bare 120 s so it can no longer pre-empt the budget; the cost is
 // that a genuinely dead worker is reported PLAN_TIMEOUT_GRACE_MS later,
-// which is a small addition to an already ~4-minute wait and does not affect
+// which is a small addition to an already ~6-minute wait and does not affect
 // worker.onerror/onmessageerror, which fail fast through failAll() and never
 // touch this timer.
 //
