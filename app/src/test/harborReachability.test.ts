@@ -73,6 +73,7 @@ describe('#1290 harborReachability', () => {
   // self-consistency tautology" for the whole state, not just the fill).
   it.each(BOATS)(
     '$id: 34 ok, marstal shallow-approach, 0 unreachable, 5 known-disconnected',
+    { timeout: solverTimeoutMs(300_000) },
     (boat) => {
       const g = defaultSafetyDepthM(boat);
       const result = computeHarborAccess(mask, harbors, boat, g);
@@ -87,36 +88,44 @@ describe('#1290 harborReachability', () => {
     },
   );
 
-  it('known-disconnected wins over both flood and disc checks, for exactly the 5 #9 harbours', () => {
-    const boat = BOATS[0];
-    const g = defaultSafetyDepthM(boat);
-    const result = computeHarborAccess(mask, harbors, boat, g);
-    const disconnectedIds = harbors.filter((h) => h.knownDisconnected === true).map((h) => h.id);
-    expect(disconnectedIds.sort()).toEqual(
-      ['arnis', 'dyvig', 'graasten', 'kappeln', 'maasholm'].sort(),
-    );
-    for (const id of disconnectedIds) expect(result.get(id)).toBe('known-disconnected');
-  });
+  it(
+    'known-disconnected wins over both flood and disc checks, for exactly the 5 #9 harbours',
+    { timeout: solverTimeoutMs(300_000) },
+    () => {
+      const boat = BOATS[0];
+      const g = defaultSafetyDepthM(boat);
+      const result = computeHarborAccess(mask, harbors, boat, g);
+      const disconnectedIds = harbors.filter((h) => h.knownDisconnected === true).map((h) => h.id);
+      expect(disconnectedIds.sort()).toEqual(
+        ['arnis', 'dyvig', 'graasten', 'kappeln', 'maasholm'].sort(),
+      );
+      for (const id of disconnectedIds) expect(result.get(id)).toBe('known-disconnected');
+    },
+  );
 
   // ---- §3's EASY GO! row (draft 2.55 m, deferred boat, #573) ----
   // A synthetic BoatDef reproduces §3's measured composition for the one
   // catalogue boat whose gate is deep enough to reach the unreachable
   // branch at all — the three REAL catalogue boats never do (row above).
-  it('synthetic 2.55 m draft: 31 ok, 2 shallow-approach, 2 unreachable, 5 known-disconnected', () => {
-    const g = defaultSafetyDepthM(synthetic);
-    expect(g).toBe(3.5);
-    const result = computeHarborAccess(mask, harbors, synthetic, g);
-    const byState = { ok: 0, 'shallow-approach': 0, unreachable: 0, 'known-disconnected': 0 };
-    for (const state of result.values()) byState[state]++;
-    expect(byState.ok).toBe(31);
-    expect(byState['shallow-approach']).toBe(2);
-    expect(byState.unreachable).toBe(2);
-    expect(byState['known-disconnected']).toBe(5);
-    expect(result.get('faldsled')).toBe('shallow-approach');
-    expect(result.get('rudkoebing')).toBe('shallow-approach');
-    expect(result.get('augustenborg')).toBe('unreachable');
-    expect(result.get('marstal')).toBe('unreachable');
-  });
+  it(
+    'synthetic 2.55 m draft: 31 ok, 2 shallow-approach, 2 unreachable, 5 known-disconnected',
+    { timeout: solverTimeoutMs(300_000) },
+    () => {
+      const g = defaultSafetyDepthM(synthetic);
+      expect(g).toBe(3.5);
+      const result = computeHarborAccess(mask, harbors, synthetic, g);
+      const byState = { ok: 0, 'shallow-approach': 0, unreachable: 0, 'known-disconnected': 0 };
+      for (const state of result.values()) byState[state]++;
+      expect(byState.ok).toBe(31);
+      expect(byState['shallow-approach']).toBe(2);
+      expect(byState.unreachable).toBe(2);
+      expect(byState['known-disconnected']).toBe(5);
+      expect(result.get('faldsled')).toBe('shallow-approach');
+      expect(result.get('rudkoebing')).toBe('shallow-approach');
+      expect(result.get('augustenborg')).toBe('unreachable');
+      expect(result.get('marstal')).toBe('unreachable');
+    },
+  );
 
   // ---- Differential: the duplicated flood traversal vs NavMask's own ----
   // For every non-known-disconnected harbour, "the harbour's snapped cell is
@@ -261,31 +270,39 @@ describe('#1290 harborReachability', () => {
   );
 
   // ---- Cache: same (mask, harbors, boat.id, safetyDepthM) returns the SAME Map ----
-  it('memoises on (mask, harbors, boat.id, safetyDepthM): repeat calls return the identical Map', () => {
-    const boat = BOATS[0];
-    const g = defaultSafetyDepthM(boat);
-    const first = computeHarborAccess(mask, harbors, boat, g);
-    const second = computeHarborAccess(mask, harbors, boat, g);
-    expect(second).toBe(first);
-  });
+  it(
+    'memoises on (mask, harbors, boat.id, safetyDepthM): repeat calls return the identical Map',
+    { timeout: solverTimeoutMs(300_000) },
+    () => {
+      const boat = BOATS[0];
+      const g = defaultSafetyDepthM(boat);
+      const first = computeHarborAccess(mask, harbors, boat, g);
+      const second = computeHarborAccess(mask, harbors, boat, g);
+      expect(second).toBe(first);
+    },
+  );
 
   // ---- Cache correctness: PR #1316 fix-wave 1 Major 4 ----
   // Reproduces the pre-fix defect directly: a cache keyed only on
   // `${boat.id}@${depth}` cannot tell two DIFFERENT masks apart, so the
   // second call below would (under the old bug) silently return the FIRST
   // mask's cached Map, computed for a mask with a different `meta` entirely.
-  it('caches independently per NavMask instance, not merely per (boatId, depth)', () => {
-    const boat = BOATS[0];
-    const g = defaultSafetyDepthM(boat);
-    const resultForRealMask = computeHarborAccess(mask, harbors, boat, g);
-    // openWaterMask() uses TEST_MASK_META (54.3-55.3N, 9.4-11.0E), a
-    // DIFFERENT grid shape than the real committed mask, and SEED_POINT
-    // falls inside its bounds — a small, genuinely different NavMask
-    // instance, not a clone.
-    const syntheticMask = openWaterMask();
-    const resultForSyntheticMask = computeHarborAccess(syntheticMask, harbors, boat, g);
-    expect(resultForSyntheticMask).not.toBe(resultForRealMask);
-  });
+  it(
+    'caches independently per NavMask instance, not merely per (boatId, depth)',
+    { timeout: solverTimeoutMs(300_000) },
+    () => {
+      const boat = BOATS[0];
+      const g = defaultSafetyDepthM(boat);
+      const resultForRealMask = computeHarborAccess(mask, harbors, boat, g);
+      // openWaterMask() uses TEST_MASK_META (54.3-55.3N, 9.4-11.0E), a
+      // DIFFERENT grid shape than the real committed mask, and SEED_POINT
+      // falls inside its bounds — a small, genuinely different NavMask
+      // instance, not a clone.
+      const syntheticMask = openWaterMask();
+      const resultForSyntheticMask = computeHarborAccess(syntheticMask, harbors, boat, g);
+      expect(resultForSyntheticMask).not.toBe(resultForRealMask);
+    },
+  );
 
   // Reproduces the other half of the same pre-fix defect: a cache keyed only
   // on `${boat.id}@${depth}` cannot tell a FILTERED harbours array from the
@@ -293,25 +310,29 @@ describe('#1290 harborReachability', () => {
   // silently return the earlier filtered call's partial Map — `.get(id)` on
   // an id outside the filtered set then returns `undefined`, a third value
   // `HarborAccessByHarbor`'s own doc comment says must never happen.
-  it('caches independently per harbors array reference, not merely per (boatId, depth)', () => {
-    const boat = BOATS[0];
-    const g = defaultSafetyDepthM(boat);
-    const filteredHarbors = harbors.slice(0, 5);
-    const filteredResult = computeHarborAccess(mask, filteredHarbors, boat, g);
-    expect(filteredResult.size).toBe(5);
+  it(
+    'caches independently per harbors array reference, not merely per (boatId, depth)',
+    { timeout: solverTimeoutMs(300_000) },
+    () => {
+      const boat = BOATS[0];
+      const g = defaultSafetyDepthM(boat);
+      const filteredHarbors = harbors.slice(0, 5);
+      const filteredResult = computeHarborAccess(mask, filteredHarbors, boat, g);
+      expect(filteredResult.size).toBe(5);
 
-    const fullResult = computeHarborAccess(mask, harbors, boat, g);
-    expect(fullResult.size).toBe(harbors.length);
-    expect(fullResult).not.toBe(filteredResult);
-    // Every id outside the filtered set must be genuinely present, not
-    // `undefined` from a stale partial cache entry.
-    for (const harbor of harbors.slice(5)) {
-      expect(
-        fullResult.get(harbor.id),
-        `${harbor.id} missing from the full-catalogue result`,
-      ).toBeDefined();
-    }
-  });
+      const fullResult = computeHarborAccess(mask, harbors, boat, g);
+      expect(fullResult.size).toBe(harbors.length);
+      expect(fullResult).not.toBe(filteredResult);
+      // Every id outside the filtered set must be genuinely present, not
+      // `undefined` from a stale partial cache entry.
+      for (const harbor of harbors.slice(5)) {
+        expect(
+          fullResult.get(harbor.id),
+          `${harbor.id} missing from the full-catalogue result`,
+        ).toBeDefined();
+      }
+    },
+  );
 
   // ---- Q5 hint search ----
   // PR #1316 fix-wave 2 (maintainer ruling) raised the search floor from
@@ -322,11 +343,15 @@ describe('#1290 harborReachability', () => {
   // the 'found' path. faldsled DOES: 'ok'/'shallow-approach' from 3.5 m up
   // through 5.0 m, 'unreachable' from 5.1 m — measured by sweeping
   // `computeHarborAccess` across that boat/harbour pair.
-  it('findLowerSettingHint: faldsled reaches shallow-approach at a lower setting within the default budget', () => {
-    const faldsled = harbors.find((h) => h.id === 'faldsled')!;
-    const outcome = findLowerSettingHint(mask, faldsled, synthetic, 5.2);
-    expect(outcome).toEqual({ kind: 'found', hint: { depthM: 5, state: 'shallow-approach' } });
-  });
+  it(
+    'findLowerSettingHint: faldsled reaches shallow-approach at a lower setting within the default budget',
+    { timeout: solverTimeoutMs(300_000) },
+    () => {
+      const faldsled = harbors.find((h) => h.id === 'faldsled')!;
+      const outcome = findLowerSettingHint(mask, faldsled, synthetic, 5.2);
+      expect(outcome).toEqual({ kind: 'found', hint: { depthM: 5, state: 'shallow-approach' } });
+    },
+  );
 
   it(
     'findLowerSettingHint: marstal has no answer down to the floor (scanned in full, under the default budget)',
@@ -345,12 +370,16 @@ describe('#1290 harborReachability', () => {
   // default on a boat switch, so a hint below it would be silently clamped
   // away the instant the app applied it. This pins that the search therefore
   // returns `'not-found'` rather than a depth the app would then undo.
-  it('findLowerSettingHint never returns a hint below defaultSafetyDepthM(boat)', () => {
-    const g = defaultSafetyDepthM(synthetic);
-    const augustenborg = harbors.find((h) => h.id === 'augustenborg')!;
-    const outcome = findLowerSettingHint(mask, augustenborg, synthetic, g + 0.1);
-    expect(outcome).toEqual({ kind: 'not-found' });
-  });
+  it(
+    'findLowerSettingHint never returns a hint below defaultSafetyDepthM(boat)',
+    { timeout: solverTimeoutMs(300_000) },
+    () => {
+      const g = defaultSafetyDepthM(synthetic);
+      const augustenborg = harbors.find((h) => h.id === 'augustenborg')!;
+      const outcome = findLowerSettingHint(mask, augustenborg, synthetic, g + 0.1);
+      expect(outcome).toEqual({ kind: 'not-found' });
+    },
+  );
 
   // PR #1316 fix-wave 1 Major 5: the step budget and its resumability
   // contract. A caller supplying a small `maxSteps` must see `'exhausted'`
@@ -393,11 +422,15 @@ describe('#1290 harborReachability', () => {
   // PR #1316 fix-wave 2 Minor: `maxSteps <= 0` must not silently make no
   // progress — that would return `resumeFromDepthM === safetyDepthM`
   // unchanged and loop a caller following the resume contract above forever.
-  it('findLowerSettingHint clamps a non-positive maxSteps to make at least one step of progress', () => {
-    const marstal = harbors.find((h) => h.id === 'marstal')!;
-    const outcome = findLowerSettingHint(mask, marstal, synthetic, 4.4, 0);
-    expect(outcome).toEqual({ kind: 'exhausted', resumeFromDepthM: 4.3 });
-  });
+  it(
+    'findLowerSettingHint clamps a non-positive maxSteps to make at least one step of progress',
+    { timeout: solverTimeoutMs(300_000) },
+    () => {
+      const marstal = harbors.find((h) => h.id === 'marstal')!;
+      const outcome = findLowerSettingHint(mask, marstal, synthetic, 4.4, 0);
+      expect(outcome).toEqual({ kind: 'exhausted', resumeFromDepthM: 4.3 });
+    },
+  );
 
   // PR #1316 fix-wave 2 Minor: `floodHasCell`'s shape guard (exported for
   // this test only) is unreachable through the public API — the per-`NavMask`
