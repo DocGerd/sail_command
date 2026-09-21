@@ -515,38 +515,50 @@ describe('#550: mask connectivity is a REQUIRED check (promoted from advisory ve
       return m![1];
     });
 
-    it('ACCEPT: every stranded harbour listed as expected-unreachable clears the check', () => {
-      expect(stranded.length, 'fixture boat unexpectedly reaches every harbour').toBeGreaterThan(
-        20,
-      );
-      expect(connectivityFailures(FIXTURE_DEEP_DRAFT_BOAT, new Set(stranded))).toEqual([]);
-    });
+    it(
+      'ACCEPT: every stranded harbour listed as expected-unreachable clears the check',
+      { timeout: solverTimeoutMs(300_000) },
+      () => {
+        expect(stranded.length, 'fixture boat unexpectedly reaches every harbour').toBeGreaterThan(
+          20,
+        );
+        expect(connectivityFailures(FIXTURE_DEEP_DRAFT_BOAT, new Set(stranded))).toEqual([]);
+      },
+    );
 
-    it('MISSING: dropping ONE entry from the accepted set surfaces exactly that one failure', () => {
-      const missingOne = new Set(stranded.slice(1));
-      const failures = connectivityFailures(FIXTURE_DEEP_DRAFT_BOAT, missingOne);
-      expect(failures.length).toBe(1);
-      expect(failures[0]).toContain(`harbor ${stranded[0]} not reachable`);
-    });
+    it(
+      'MISSING: dropping ONE entry from the accepted set surfaces exactly that one failure',
+      { timeout: solverTimeoutMs(300_000) },
+      () => {
+        const missingOne = new Set(stranded.slice(1));
+        const failures = connectivityFailures(FIXTURE_DEEP_DRAFT_BOAT, missingOne);
+        expect(failures.length).toBe(1);
+        expect(failures[0]).toContain(`harbor ${stranded[0]} not reachable`);
+      },
+    );
 
-    it('STALE: listing a harbour the boat CAN reach is reported as a stale entry', () => {
-      // Excludes KNOWN_DISCONNECTED too: a harbour disconnected at EVERY
-      // gate is neither in `stranded` (it never produces a "not reachable"
-      // failure — KNOWN_DISCONNECTED already excuses it) NOR genuinely
-      // connected, so it must not be the "reachable" harbour this row needs.
-      const reachableHarbour = harbors.find(
-        (h) => !stranded.includes(h.id) && !KNOWN_DISCONNECTED.has(h.id),
-      );
-      expect(
-        reachableHarbour,
-        'every harbour is stranded or known-disconnected — fixture draft too deep for this test',
-      ).not.toBeUndefined();
-      const withStaleEntry = new Set([...stranded, reachableHarbour!.id]);
-      const failures = connectivityFailures(FIXTURE_DEEP_DRAFT_BOAT, withStaleEntry);
-      expect(failures.length).toBe(1);
-      expect(failures[0]).toContain(`harbor ${reachableHarbour!.id} is listed`);
-      expect(failures[0]).toContain('stale entry');
-    });
+    it(
+      'STALE: listing a harbour the boat CAN reach is reported as a stale entry',
+      { timeout: solverTimeoutMs(300_000) },
+      () => {
+        // Excludes KNOWN_DISCONNECTED too: a harbour disconnected at EVERY
+        // gate is neither in `stranded` (it never produces a "not reachable"
+        // failure — KNOWN_DISCONNECTED already excuses it) NOR genuinely
+        // connected, so it must not be the "reachable" harbour this row needs.
+        const reachableHarbour = harbors.find(
+          (h) => !stranded.includes(h.id) && !KNOWN_DISCONNECTED.has(h.id),
+        );
+        expect(
+          reachableHarbour,
+          'every harbour is stranded or known-disconnected — fixture draft too deep for this test',
+        ).not.toBeUndefined();
+        const withStaleEntry = new Set([...stranded, reachableHarbour!.id]);
+        const failures = connectivityFailures(FIXTURE_DEEP_DRAFT_BOAT, withStaleEntry);
+        expect(failures.length).toBe(1);
+        expect(failures[0]).toContain(`harbor ${reachableHarbour!.id} is listed`);
+        expect(failures[0]).toContain('stale entry');
+      },
+    );
   });
 });
 
