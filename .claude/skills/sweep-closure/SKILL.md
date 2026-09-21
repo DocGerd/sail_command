@@ -203,8 +203,9 @@ of (or equal to) `<base>`, or an actual closure member changed between them.
 `REUSE` is returned only when every check positively confirms the closure is
 untouched.
 
-`REUSE` is only as good as `PATH_PREFIXES`/`EXTRA_EDGES`: a runtime input the
-import walk cannot see still gets `REUSE`. Apply the same NOT-OWED scrutiny.
+`REUSE` is only as good as `PATH_PREFIXES`/`EXTRA_EDGES`: a runtime input
+outside both, which the import walk cannot see, still gets `REUSE`. Apply
+the same NOT-OWED scrutiny.
 
 **Reuse replaces BOTH BASE arm-sets, never just one** — the recorded run's
 artifacts stand in for the double-run control itself, licensed by the
@@ -337,7 +338,8 @@ into this repo):
     Each of the ten rows is mutation-checked individually (the guard on that
     row alone disabled, e.g. `owed.length > 999`, `if (false)` in place of
     the real validation, or reverting the ancestor check / the ref-checkout
-    closure computation) and reds exactly that row and no other.
+    closure computation) and reds exactly the row(s) targeting that guard
+    (the ancestor-check mutant reds both the side-branch and descendant rows).
 
 **Neither `npm --prefix app run typecheck` nor `npm --prefix app run
 lint` cover this file at all** — the tsconfigs and `eslint src e2e sweep`
