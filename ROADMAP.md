@@ -21,8 +21,10 @@ shipped.
 The `v0.38.0` cut (2026-09-21) worked the
 [`v0.38.0` milestone](https://github.com/DocGerd/sail_command/milestones),
 which closed eight issues: one user-visible (per `CHANGELOG.md`'s own
-[0.38.0] section), the other seven sweep/test tooling and a routing-regression
-follow-up from `v0.37.0`'s confined-water prune fix.
+[0.38.0] section), the other seven: five sweep/test tooling and docs items, a
+routing-regression follow-up from `v0.37.0`'s confined-water prune fix
+(#1330), and an unrelated defensive fix surfaced by the harbour-access review
+(#1319).
 
 The per-plan search budget rose from 4 to 6 minutes, so long passages that
 previously stopped with a "time limit" error can now finish
@@ -47,9 +49,10 @@ BASE run is now reused from a stored artifact when the closure is untouched
 since that run, cutting a routing PR's sweep cost from three arm-sets to one
 ([#1337](https://github.com/DocGerd/sail_command/issues/1337)); the sweep's
 slowest arms are now sharded across idle cores to cut its long pole
-([#1338](https://github.com/DocGerd/sail_command/issues/1338)); and three
-solver-heavy tests with no scaled timeout, which had failed the nightly
-coverage run every night since 2026-09-16, now derive their budgets from
+([#1338](https://github.com/DocGerd/sail_command/issues/1338)); and six tests
+across three files with no scaled timeout, which had failed the nightly
+coverage run every night from 2026-09-18 (a 2026-09-16/17 failure was a
+different, already-fixed defect), now derive their budgets from
 `app/src/test/timeouts.ts`
 ([#1349](https://github.com/DocGerd/sail_command/issues/1349)).
 
