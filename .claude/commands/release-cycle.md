@@ -97,14 +97,19 @@ stale — #452's title still claims relaxation lowers the gate for the WHOLE rou
 v0.12.0 made it per-cell, and briefing from it produced a false premise (#649)),
 and a recommended destination with a reason. Then run an **adversarial verify pass over EVERY
 recommendation, not just CLOSE**: each "close as done / no longer applies" gets ≥2 independent
-refuters, default verdict REFUTED — but that pass has teeth only when a bucket recommends at
-least one close. Measured at the v0.38.0 cut (2026-09-21): 62 verdicts, 0 closes, so 0 refuters
-ran — every KEEP/MOVE recommendation, including 5 milestone moves, shipped unchallenged. So ALSO
-refute a SAMPLE of keep/move (promote/demote) recommendations: at minimum every milestone move
-and every issue whose body makes a state claim (blocked/shipped/superseded) gets one independent
-refuter. In a recent triage session every close-recommendation put through that pass was
-refuted — treat REFUTED as the prior for close; re-derive the ratio from THIS session rather than
-quoting one.
+refuters, default verdict REFUTED for close specifically — but that pass has teeth only when a
+bucket recommends at least one close. A triage with zero closes (v0.39.0 cycle, #1373) shipped
+with the refuter stage never firing at all — every keep/move recommendation went unchallenged. So
+ALSO refute a SAMPLE of keep/move (promote/demote) recommendations, one refuter per sampled
+verdict (close verdicts still get ≥2), capped at 5 sampled verdicts — 5 bucket/cross-cutting
+agents plus up to 5 refuters keeps the whole dispatch inside CLAUDE.md's Orchestration-policy
+~10-agent guideline for one Workflow batch. Prioritise every milestone move first, then every
+issue whose body makes a state claim (blocked/shipped/superseded); `log()` whatever the cap drops
+so it is never silently skipped. A keep/move a refuter CONTESTS is neither a bucket-vs-bucket
+disagreement (Reconcile's trigger, below) nor a close verdict (where REFUTED is the prior) — it
+surfaces at Gate 1 as CONTESTED instead, for me to decide. In a recent triage session every
+close-recommendation put through that pass was refuted — treat REFUTED as the prior for close;
+re-derive the ratio from THIS session rather than quoting one.
 
 Check specifically for:
 - issues whose body describes an already-shipped state (verify against CODE, not the title);
@@ -129,10 +134,11 @@ both and added a triage comment instead.
 ### 🛑 GATE 1 — present, then WAIT
 
 Present ONE scannable block: a table of proposed moves (issue → from → to → why), the resulting
-milestone composition (count, type mix), what you are NOT moving and why, and
-any close-recommendations that SURVIVED adversarial verify. Use `AskUserQuestion` to consolidate
-the decisions. **Make no `gh` mutation until I approve.** If I approve a subset, apply exactly
-that subset.
+milestone composition (count, type mix), what you are NOT moving and why,
+any close-recommendations that SURVIVED adversarial verify, and any keep/move recommendation a
+refuter CONTESTED (the recommendation and the refuter's evidence, one line each — mine to decide,
+never auto-resolved). Use `AskUserQuestion` to consolidate the decisions. **Make no `gh` mutation
+until I approve.** If I approve a subset, apply exactly that subset.
 
 Milestone edits are `gh api repos/O/R/issues/N -X PATCH -F milestone=<number>` — `-F` (typed int),
 not `-f`; the `issues/N/milestone` endpoint does not exist. After every mutating `gh` call, read

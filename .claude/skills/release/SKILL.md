@@ -28,7 +28,9 @@ Also read the latest nightly `Coverage` run's `test:coverage` step conclusion
 can skip an unchanged tree) and the latest `scan-issue-home-paths` run. Both
 are ADVISORY — `protect-main` gates only `app`+`e2e` — so a red run merges
 silently and nothing else in this runbook looks at them; #1349 is a Coverage
-run that stayed red 5 days untracked.
+run that stayed red 5 days untracked. A red result is not a blocker here —
+surface it in step 2's approval presentation to the maintainer alongside the
+screenshots, and let them decide whether it changes the go/no-go.
 
 ## 2. 🛑 HARD GATE — LOCAL APPROVAL FIRST 🛑
 
