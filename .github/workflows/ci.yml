@@ -81,8 +81,14 @@ jobs:
       # closure. Writes `run_realmask`; only `app-shard`'s test step reads
       # it (see the `--exclude` split below) - `app-static` and `e2e` are
       # unaffected. `bash -e` load-bearing for the same reason as above.
+      # `continue-on-error`: this step's only consumer is `app-shard`'s
+      # `if:` gate, which already reads an absent/empty output as RUN
+      # (`!= 'false'`, same fail-closed polarity as classify-docs-only.sh's
+      # outputs) - so a crash here must not also red `changes` and, through
+      # it, `e2e`, which never reads `run_realmask` at all.
       - name: Classify change (routing closure vs. not)
         id: classify_realmask
+        continue-on-error: true
         env:
           EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}

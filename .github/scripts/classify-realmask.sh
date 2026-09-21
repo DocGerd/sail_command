@@ -36,9 +36,10 @@ set -euo pipefail
 CLOSURE_MJS=".claude/skills/sweep-closure/closure.mjs"
 
 # The realmask supplement: paths that change HOW or WHAT the realmask suite
-# computes but that a static import walk from the #282 sweep's own roots
-# cannot see (the suite itself is NOT_IN_CLOSURE — verified 2026-09-21 against
-# develop@5b1b29b — since nothing in the sweep closure imports a *.test.ts).
+# computes. Most are invisible to a static import walk from the #282 sweep's
+# roots (the suite itself, realmaskFixtures.ts, config/lockfiles); setup.ts,
+# fixtures.ts and timeouts.ts are ALSO in the closure today and are listed
+# here so the gate does not depend on sweepArms.ts continuing to import them.
 # The last three entries exist because a change to the gate or to its own
 # oracle must run what it gates.
 is_supplement_path() {
@@ -81,11 +82,13 @@ run_closure_files() {
 
 # resolve_realmask_imports — prints repo-relative paths (one per line,
 # deduped, sorted) that the realmask suite's OWN current files relatively
-# `import` and that resolve to a real file on disk. Best-effort: an
-# unresolvable specifier (bare package, or a path that doesn't resolve to an
-# existing file under the tried extensions) is silently skipped — this is a
-# drift DETECTOR, not a bundler, and skipping only ever narrows what it
-# checks, never widens a false trigger.
+# import, `import()`, or `vi.mock`/`vi.doMock`/`vi.importActual`, and that
+# resolve to a real file on disk. An UNRESOLVED specifier is printed as
+# `UNRESOLVED:<file>:<spec>` instead of being silently dropped — the caller
+# treats any such line as drift (fail closed), per the finding that the
+# narrower `from '...'`-only regex and `.ts/.tsx/.mts/.cts`-only resolver
+# missed side-effect imports, `import()`, `vi.mock`, `.json`, and a TS ESM
+# `.js` specifier resolving to a `.ts` file.
 resolve_realmask_imports() {
   node - <<'NODE'
 const fs = require('node:fs');
@@ -100,25 +103,20 @@ if (fs.existsSync(routingDir)) {
 }
 const fixtures = path.join(root, 'app/src/test/realmaskFixtures.ts');
 if (fs.existsSync(fixtures)) targets.push(fixtures);
-const EXT = ['.ts', '.tsx', '.mts', '.cts'];
+const re = /(?:\bfrom\s+|\bimport\s*\(?\s*|vi\.(?:mock|doMock|importActual)\(\s*)['"`](\.[^'"`?]+)(?:\?[^'"`]*)?['"`]/g;
+const EXT = ['', '.ts', '.tsx', '.mts', '.cts', '.js', '.mjs', '.json'];
 const seen = new Set();
 for (const file of targets) {
   const text = fs.readFileSync(file, 'utf8');
-  const re = /from\s+['"](\.[^'"]+)['"]/g;
   let m;
   while ((m = re.exec(text))) {
-    const base = path.resolve(path.dirname(file), m[1]);
+    const spec = m[1].replace(/\.js$/, '');
+    const base = path.resolve(path.dirname(file), spec);
     let hit = null;
-    for (const ext of EXT) {
-      if (fs.existsSync(base + ext)) { hit = base + ext; break; }
-    }
-    if (!hit) {
-      for (const ext of EXT) {
-        const idx = path.join(base, 'index' + ext);
-        if (fs.existsSync(idx)) { hit = idx; break; }
-      }
-    }
-    if (hit) seen.add(path.relative(root, hit));
+    for (const ext of EXT) { const p = base + ext; if (fs.existsSync(p) && fs.statSync(p).isFile()) { hit = p; break; } }
+    if (!hit) for (const ext of EXT.slice(1)) { const p = path.join(base, 'index' + ext); if (fs.existsSync(p)) { hit = p; break; } }
+    if (!hit) { console.log('UNRESOLVED:' + path.relative(root, file) + ':' + m[1]); continue; }
+    seen.add(path.relative(root, hit));
   }
 }
 for (const r of [...seen].sort()) console.log(r);
@@ -224,9 +222,14 @@ EOF
   }
 
   # run <label> <expected run_realmask> <event> <base> <head> [PATH override]
+  # run <label> <expected run_realmask> <event> <base> <head> [reason substring] [PATH override]
+  # The reason-substring check is what makes a case load-bearing for its
+  # OWN trigger rather than an incidental one earlier in the fail-closed
+  # chain (e.g. a closure hit firing before a supplement entry would ever
+  # get evaluated) — a boolean-only assertion passes either way.
   run() {
-    local label="$1" expect="$2" ev="$3" b="$4" h="$5" pathoverride="${6:-}"
-    local out sum log rc got reason
+    local label="$1" expect="$2" ev="$3" b="$4" h="$5" reason_substr="${6:-}" pathoverride="${7:-}"
+    local out sum log rc got reason reason_ok
     out="$(mktemp)"
     sum="$(mktemp)"
     log="$(mktemp)"
@@ -245,17 +248,25 @@ EOF
     got="$(grep -o 'run_realmask=[a-z]*' "$out" 2>/dev/null | tail -1 | cut -d= -f2 || true)"
     [ -z "$got" ] && got="<none:step-exit-$rc>"
     reason="$(grep -o 'reason_realmask=.*' "$log" | tail -1 || true)"
-    if [ "$got" = "$expect" ]; then
+    reason_ok=true
+    if [ -n "$reason_substr" ]; then
+      case "$reason" in
+        *"$reason_substr"*) ;;
+        *) reason_ok=false ;;
+      esac
+    fi
+    if [ "$got" = "$expect" ] && [ "$reason_ok" = "true" ]; then
       printf '  OK   %-58s -> run_realmask=%-8s (%s)\n' "$label" "$got" "${reason:-step failed rc=$rc}"
       PASS=$((PASS + 1))
     else
-      printf '  XX   %-58s -> run_realmask=%-8s expected=%s  (%s)\n' "$label" "$got" "$expect" "${reason:-step failed rc=$rc}"
+      printf '  XX   %-58s -> run_realmask=%-8s expected=%s reason~=%s  (%s)\n' \
+        "$label" "$got" "$expect" "${reason_substr:-<any>}" "${reason:-step failed rc=$rc}"
       FAIL=$((FAIL + 1))
     fi
     rm -f "$out" "$sum" "$log"
   }
 
-  EXPECTED_CASES=29
+  EXPECTED_CASES=37
   echo "=== classify-realmask.sh: ${EXPECTED_CASES} adversarial cases (bash -e) ==="
 
   # ---------- 1 non-PR event ----------
@@ -338,17 +349,23 @@ EOF
   echo x >> app/tsconfig.json; H=$(commit_with supp6)
   run "15 supplement: app/tsconfig.json" true pull_request "$B" "$H"
 
+  # setup.ts/fixtures.ts are ALSO reachable via closure.mjs's EXTRA_EDGE
+  # (vitest.config.ts -> setup.ts -> ./fixtures) in this synthesized repo,
+  # so a boolean-only assertion here would still pass with the setup.ts /
+  # fixtures.ts entries deleted from is_supplement_path (the closure-hit
+  # check would catch it instead) — the reason-substring pins the row to
+  # ITS OWN trigger rather than that incidental one.
   r=$(mkrepo); cd "$r"; B=$(git rev-parse HEAD)
   echo x >> app/src/test/setup.ts; H=$(commit_with supp7)
-  run "16 supplement: app/src/test/setup.ts" true pull_request "$B" "$H"
+  run "16 supplement: app/src/test/setup.ts" true pull_request "$B" "$H" "supplement path: app/src/test/setup.ts"
 
   r=$(mkrepo); cd "$r"; B=$(git rev-parse HEAD)
   echo x >> app/src/test/fixtures.ts; H=$(commit_with supp8)
-  run "17 supplement: app/src/test/fixtures.ts" true pull_request "$B" "$H"
+  run "17 supplement: app/src/test/fixtures.ts" true pull_request "$B" "$H" "supplement path: app/src/test/fixtures.ts"
 
   r=$(mkrepo); cd "$r"; B=$(git rev-parse HEAD)
   echo x >> app/src/test/timeouts.ts; H=$(commit_with supp9)
-  run "18 supplement: app/src/test/timeouts.ts" true pull_request "$B" "$H"
+  run "18 supplement: app/src/test/timeouts.ts" true pull_request "$B" "$H" "supplement path: app/src/test/timeouts.ts"
 
   r=$(mkrepo); cd "$r"; B=$(git rev-parse HEAD)
   echo x >> .github/workflows/ci.yml; H=$(commit_with supp10)
@@ -383,7 +400,7 @@ EOF
   # ---------- 24 node unavailable ----------
   r=$(mkrepo); cd "$r"; B=$(git rev-parse HEAD)
   echo x >> docs/seed.md; H=$(commit_with docs5)
-  run "24 node unavailable" true pull_request "$B" "$H" "$NO_NODE_PATH"
+  run "24 node unavailable" true pull_request "$B" "$H" "" "$NO_NODE_PATH"
 
   # ---------- 25 closure.mjs missing (absent at BOTH base and head, so the
   # diff itself never touches .claude/skills/sweep-closure/ — a diff that
@@ -408,6 +425,112 @@ EOF
   B=$(git rev-parse HEAD)
   echo x >> docs/seed.md; H=$(commit_with docs8)
   run "27 closure.mjs prints unparseable output" true pull_request "$B" "$H"
+
+  # ---------- 28-32 drift regex/resolver shapes the OLD `from '...'`-only
+  # regex + `.ts/.tsx/.mts/.cts`-only resolver missed (Major 1). Each rogue
+  # import is baked into the BASE commit (unchanged across B..H) and the
+  # B..H diff is docs-only, so ONLY the drift check — which re-scans the
+  # working tree independent of the diff — can catch it; a supplement or
+  # closure-hit match would prove nothing about the regex. ----------
+  r=$(mkrepo); cd "$r"
+  echo 'export const probeB = 1;' > app/src/lib/probeB.ts
+  cat > app/src/routing/realmask.repro.shapeB.test.ts <<'EOF'
+import { it, expect } from 'vitest';
+import '../lib/probeB';
+it('shapeB', () => { expect(1).toBe(1); });
+EOF
+  git add -A >/dev/null; git commit -qm shapeB >/dev/null
+  B=$(git rev-parse HEAD)
+  echo x >> docs/seed.md; H=$(commit_with docs-shapeB)
+  run "28 drift shape: bare side-effect import" true pull_request "$B" "$H" "drift: realmask imports"
+
+  r=$(mkrepo); cd "$r"
+  echo '{}' > app/src/test/probeC.json
+  cat > app/src/routing/realmask.repro.shapeC.test.ts <<'EOF'
+import { it, expect } from 'vitest';
+import pj from '../test/probeC.json';
+it('shapeC', () => { expect(pj).toBeDefined(); });
+EOF
+  git add -A >/dev/null; git commit -qm shapeC >/dev/null
+  B=$(git rev-parse HEAD)
+  echo x >> docs/seed.md; H=$(commit_with docs-shapeC)
+  run "29 drift shape: .json import" true pull_request "$B" "$H" "drift: realmask imports"
+
+  r=$(mkrepo); cd "$r"
+  echo 'export const probeD = 1;' > app/src/lib/probeD.ts
+  cat > app/src/routing/realmask.repro.shapeD.test.ts <<'EOF'
+import { it, expect } from 'vitest';
+it('shapeD', async () => { await import('../lib/probeD'); expect(1).toBe(1); });
+EOF
+  git add -A >/dev/null; git commit -qm shapeD >/dev/null
+  B=$(git rev-parse HEAD)
+  echo x >> docs/seed.md; H=$(commit_with docs-shapeD)
+  run "30 drift shape: dynamic import()" true pull_request "$B" "$H" "drift: realmask imports"
+
+  r=$(mkrepo); cd "$r"
+  echo 'export const probeE = 1;' > app/src/lib/probeE.ts
+  cat > app/src/routing/realmask.repro.shapeE.test.ts <<'EOF'
+import { it, expect, vi } from 'vitest';
+vi.mock('../lib/probeE', () => ({ probeE: 1 }));
+it('shapeE', () => { expect(1).toBe(1); });
+EOF
+  git add -A >/dev/null; git commit -qm shapeE >/dev/null
+  B=$(git rev-parse HEAD)
+  echo x >> docs/seed.md; H=$(commit_with docs-shapeE)
+  run "31 drift shape: vi.mock" true pull_request "$B" "$H" "drift: realmask imports"
+
+  r=$(mkrepo); cd "$r"
+  echo 'export const probeF = 1;' > app/src/lib/probeF.ts
+  cat > app/src/routing/realmask.repro.shapeF.test.ts <<'EOF'
+import { it, expect } from 'vitest';
+import { probeF } from '../lib/probeF.js';
+it('shapeF', () => { expect(probeF).toBe(1); });
+EOF
+  git add -A >/dev/null; git commit -qm shapeF >/dev/null
+  B=$(git rev-parse HEAD)
+  echo x >> docs/seed.md; H=$(commit_with docs-shapeF)
+  run "32 drift shape: TS ESM .js specifier -> .ts file" true pull_request "$B" "$H" "drift: realmask imports"
+
+  # ---------- 33 drift: resolver crash (Minor 2) — a DIRECTORY matching the
+  # realmask glob makes readFileSync throw; baked into the base so the
+  # diff itself is docs-only and cannot be the trigger. ----------
+  r=$(mkrepo); cd "$r"
+  mkdir -p 'app/src/routing/realmask.repro.aaDir.test.ts'
+  echo x > 'app/src/routing/realmask.repro.aaDir.test.ts/placeholder.txt'
+  git add -A >/dev/null; git commit -qm baddir >/dev/null
+  B=$(git rev-parse HEAD)
+  echo x >> docs/seed.md; H=$(commit_with docs-baddir)
+  run "33 drift: resolver crash (directory matches realmask glob)" true pull_request "$B" "$H" "resolver failed"
+
+  # ---------- 34 drift: resolver resolves ZERO imports (Minor 2) — every
+  # realmask file's only imports are bare package specifiers (vitest),
+  # which the regex correctly ignores; the empty result must fail closed
+  # rather than read as "nothing to check". ----------
+  r=$(mkrepo); cd "$r"
+  for name in confinedDominance depthComfort forcedSegment horizonRelaxation; do
+    cat > "app/src/routing/realmask.repro.${name}.test.ts" <<'EOF'
+import { it, expect } from 'vitest';
+it('x', () => { expect(1).toBe(1); });
+EOF
+  done
+  cat > app/src/test/realmaskFixtures.ts <<'EOF'
+export const mask = { cells: 0 };
+EOF
+  git add -A >/dev/null; git commit -qm bare-realmask >/dev/null
+  B=$(git rev-parse HEAD)
+  echo x >> docs/seed.md; H=$(commit_with docs-bare)
+  run "34 drift: resolver resolves zero imports (fail closed)" true pull_request "$B" "$H" "zero imports"
+
+  # ---------- 35 deletion under app/ with a C-quoted filename (Minor 3) —
+  # without -z, git --name-only C-quotes a literal double-quote in a path
+  # and the resulting line can never match a bash `case app/*)` pattern. ----------
+  r=$(mkrepo); cd "$r"
+  printf 'x' > 'app/src/lib/q"t.ts'
+  git add -A >/dev/null; git commit -qm addquoted >/dev/null
+  B=$(git rev-parse HEAD)
+  git rm -q 'app/src/lib/q"t.ts'
+  H=$(commit_with delquoted)
+  run "35 deletion under app/ with a quoted filename (-z)" true pull_request "$B" "$H" "deleted path under app/"
 
   echo
   echo "PASS=$PASS FAIL=$FAIL"
@@ -434,7 +557,7 @@ fi
 
 run_realmask=true
 reason_realmask="not a pull_request event"
-changed=""
+changed_arr=()
 
 if [ "${EVENT_NAME}" = "pull_request" ]; then
   base_sha="${BASE_SHA}"
@@ -448,8 +571,19 @@ if [ "${EVENT_NAME}" = "pull_request" ]; then
     # base only ever ADDS files to the changed set — the fail-closed
     # direction. Same choice classify-docs-only.sh makes, for the same
     # reason (see that script's header).
-    if changed="$(git -c core.quotePath=false diff --no-renames --name-only "${base_sha}" "${head_sha}")"; then
-      if [ -z "${changed}" ]; then
+    #
+    # `-z` on EVERY `diff --name-only` call: `core.quotePath=false` only
+    # stops quoting of non-ASCII bytes — a literal quote/backslash/tab/
+    # newline in a path is still C-quoted, so a quoted line can never match
+    # a bash `case` pattern. `-z` + NUL-delimited reads sidestep quoting
+    # entirely. A bash command substitution cannot carry both a command's
+    # EXIT STATUS and its NUL-split stdout at once, so each comparison runs
+    # TWICE: a plain invocation whose only job is the `if`-exempt status
+    # check (`>/dev/null`, discarded), then the `-z` invocation of the
+    # IDENTICAL comparison read straight into an array via `mapfile -d ''`.
+    if git -c core.quotePath=false diff --no-renames --name-only "${base_sha}" "${head_sha}" >/dev/null; then
+      mapfile -d '' -t changed_arr < <(git -c core.quotePath=false diff --no-renames --name-only -z "${base_sha}" "${head_sha}")
+      if [ "${#changed_arr[@]}" -eq 0 ]; then
         run_realmask=true
         reason_realmask="empty changed-file list"
       else
@@ -461,8 +595,9 @@ if [ "${EVENT_NAME}" = "pull_request" ]; then
         # is a fail-closed trigger on its own (deliberately WHOLE-directory,
         # same "over-report, never under-report" shape as closure.mjs's own
         # PATH_PREFIXES). ---
-        if deleted="$(git -c core.quotePath=false diff --no-renames --name-only --diff-filter=D "${base_sha}" "${head_sha}")"; then
-          while IFS= read -r f; do
+        if git -c core.quotePath=false diff --no-renames --name-only --diff-filter=D "${base_sha}" "${head_sha}" >/dev/null; then
+          mapfile -d '' -t deleted_arr < <(git -c core.quotePath=false diff --no-renames --name-only --diff-filter=D -z "${base_sha}" "${head_sha}")
+          for f in "${deleted_arr[@]}"; do
             [ -z "$f" ] && continue
             case "$f" in
               app/*)
@@ -472,7 +607,7 @@ if [ "${EVENT_NAME}" = "pull_request" ]; then
                 fi
                 ;;
             esac
-          done <<< "${deleted}"
+          done
         else
           run_realmask=true
           reason_realmask="git diff (deletions) failed"
@@ -480,7 +615,7 @@ if [ "${EVENT_NAME}" = "pull_request" ]; then
 
         # --- supplement match on the changed set ---
         if [ "${run_realmask}" != "true" ]; then
-          while IFS= read -r f; do
+          for f in "${changed_arr[@]}"; do
             [ -z "$f" ] && continue
             if is_supplement_path "$f"; then
               if [ "${run_realmask}" != "true" ]; then
@@ -488,7 +623,7 @@ if [ "${EVENT_NAME}" = "pull_request" ]; then
                 reason_realmask="supplement path: ${f}"
               fi
             fi
-          done <<< "${changed}"
+          done
         fi
 
         # --- tooling check (shared by the closure-hit check and the drift
@@ -510,7 +645,6 @@ if [ "${EVENT_NAME}" = "pull_request" ]; then
         # sweep roots (`closure.mjs files`, never `diff`, so the tool's
         # sweep-only draftProvenance exemption is not silently inherited). ---
         if [ "${run_realmask}" != "true" ] && [ "${tooling_ok}" = "true" ]; then
-          mapfile -t changed_arr <<< "${changed}"
           if run_closure_files "${changed_arr[@]}" && [ "${CLOSURE_FILES_OK}" = "true" ]; then
             for i in "${!changed_arr[@]}"; do
               if [ "${CLOSURE_VERDICTS[$i]}" = "IN_CLOSURE" ]; then
@@ -529,22 +663,54 @@ if [ "${EVENT_NAME}" = "pull_request" ]; then
         # anything outside BOTH the closure and the supplement? Independent
         # of the diff — a standing invariant on the suite's own dependency
         # set, so a future import from a non-closure module fails closed on
-        # its own even on an otherwise-unrelated PR. ---
+        # its own even on an otherwise-unrelated PR. The resolver's own
+        # exit status is checked (a crash — e.g. a directory matching the
+        # realmask glob — must not silently disable the check), an
+        # UNRESOLVED specifier is fail-closed (a shape the regex/resolver
+        # cannot classify is exactly what this check exists to catch, not
+        # a reason to skip it), and so is a resolver that resolved ZERO
+        # imports across the whole suite (18 files always import
+        # something; a genuine zero means the extractor matched nothing). ---
         if [ "${run_realmask}" != "true" ] && [ "${tooling_ok}" = "true" ]; then
-          mapfile -t realmask_imports < <(resolve_realmask_imports)
-          if [ "${#realmask_imports[@]}" -gt 0 ]; then
-            if run_closure_files "${realmask_imports[@]}" && [ "${CLOSURE_FILES_OK}" = "true" ]; then
-              for i in "${!realmask_imports[@]}"; do
-                if [ "${CLOSURE_VERDICTS[$i]}" = "NOT_IN_CLOSURE" ] && ! is_supplement_path "${realmask_imports[$i]}"; then
-                  run_realmask=true
-                  reason_realmask="drift: realmask imports ${realmask_imports[$i]}, outside the routing closure and the supplement"
-                  echo "::warning::${reason_realmask}"
-                  break
-                fi
-              done
-            else
+          if ! realmask_imports_raw="$(resolve_realmask_imports)"; then
+            run_realmask=true
+            reason_realmask="drift check: realmask import resolver failed"
+          else
+            mapfile -t realmask_lines <<< "${realmask_imports_raw}"
+            unresolved=()
+            realmask_imports=()
+            for line in "${realmask_lines[@]}"; do
+              [ -z "$line" ] && continue
+              case "$line" in
+                UNRESOLVED:*)
+                  unresolved+=("${line#UNRESOLVED:}")
+                  ;;
+                *)
+                  realmask_imports+=("$line")
+                  ;;
+              esac
+            done
+            if [ "${#unresolved[@]}" -gt 0 ]; then
               run_realmask=true
-              reason_realmask="drift check: closure.mjs errored or gave unparseable output over realmask's own imports"
+              reason_realmask="drift: unresolved realmask import specifier: ${unresolved[0]}"
+              echo "::warning::${reason_realmask}"
+            elif [ "${#realmask_imports[@]}" -eq 0 ]; then
+              run_realmask=true
+              reason_realmask="drift check: realmask import resolver found zero imports"
+            else
+              if run_closure_files "${realmask_imports[@]}" && [ "${CLOSURE_FILES_OK}" = "true" ]; then
+                for i in "${!realmask_imports[@]}"; do
+                  if [ "${CLOSURE_VERDICTS[$i]}" = "NOT_IN_CLOSURE" ] && ! is_supplement_path "${realmask_imports[$i]}"; then
+                    run_realmask=true
+                    reason_realmask="drift: realmask imports ${realmask_imports[$i]}, outside the routing closure and the supplement"
+                    echo "::warning::${reason_realmask}"
+                    break
+                  fi
+                done
+              else
+                run_realmask=true
+                reason_realmask="drift check: closure.mjs errored or gave unparseable output over realmask's own imports"
+              fi
             fi
           fi
         fi
@@ -561,7 +727,11 @@ if [ "${EVENT_NAME}" = "pull_request" ]; then
 fi
 
 echo "changed paths:"
-printf '%s\n' "${changed:-<none>}"
+if [ "${#changed_arr[@]}" -eq 0 ]; then
+  echo "<none>"
+else
+  printf '%s\n' "${changed_arr[@]}"
+fi
 echo "run_realmask=${run_realmask} reason_realmask=${reason_realmask}"
 
 echo "run_realmask=${run_realmask}" >> "$GITHUB_OUTPUT"
