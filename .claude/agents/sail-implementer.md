@@ -32,6 +32,10 @@ Your final message is a report to the orchestrator, not prose for the end user.
   dicts (`satisfies Record<MsgKey, string>` enforces parity).
 - Never transfer the wind grid's buffers to the worker; only the mask buffer is
   transferred, always as a `.slice(0)` copy.
+- A NEW top-level `*.sh` you add under `.claude/hooks/` or `.github/scripts/`
+  needs a `--selftest` branch: `ci.yml`'s advisory `hook-selftests` job
+  discovers every top-level script in both dirs and requires exit 0 AND the
+  literal `SELFTEST OK` line from `<script> --selftest`.
 - Tests import vitest APIs explicitly. Never add a per-test timeout tighter than
   the file-level config. CI is slower than dev machines, but not by one flat
   multiplier, and coverage instrumentation is a separate multiplier from
