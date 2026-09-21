@@ -1,9 +1,9 @@
 ---
 name: merge-train
-description: The main-session serial merge loop for SailCommand develop PRs — arm a check-runs Monitor, verify head.sha before merging, merge, re-sync the next PR, and recover from #119 stale-SHA and #94 504 near-misses. Use when merging one or more feature/chore PRs into develop. Triggers on /merge-train.
+description: The main-session merge loop for SailCommand develop PRs (batch file-disjoint PRs by default, serial as fallback) — arm a check-runs Monitor, verify head.sha before merging, merge, re-sync the next PR, and recover from #119 stale-SHA and #94 504 near-misses. Use when merging one or more feature/chore PRs into develop. Triggers on /merge-train.
 ---
 
-# Merge-train: the develop serial merge loop
+# Merge-train: the develop merge loop
 
 Drives feature/chore PRs into `develop` from the **main session** — the loop is
 hand-driven on purpose: the watcher *agent* oversleeps (#176), so **you** arm
@@ -17,15 +17,20 @@ merge to `main` from here.
   `develop`): merge **commits** only (never squash/rebase), all review threads
   resolved, required checks `app` + `e2e` green, no force pushes/deletions.
 - **Batch file-disjoint ready PRs into one integration PR by default**
-  (maintainer ruling 2026-09-17, CLAUDE.md); merge it once green. Restate
-  every `Closes #N` in the INTEGRATION PR's body — a member PR's own body
-  does not fire auto-close on merge, only commit trailers do (CLAUDE.md's
-  "Closes #N COMMIT TRAILERS" note). **Serial single-PR merging (below) is
-  the fallback** for PRs that are not file-disjoint — the strict up-to-date
-  policy applies on `develop` too, so each serial merge staleifies every
-  other open PR's base.
+  (maintainer ruling 2026-09-17, CLAUDE.md); merge it once green, gated on
+  zero unresolved threads AND a POSTED reviewer verdict — not just the
+  absence of open threads (CLAUDE.md's "Never state a CI check's state from
+  your own tracking table"). Restate every `Closes #N` in the INTEGRATION
+  PR's body — a member PR's own body does not fire auto-close on merge, only
+  commit trailers do (CLAUDE.md's "Closes #N COMMIT TRAILERS" note). Once
+  merged, the batched member PRs read `merged: true` automatically — do not
+  `gh pr close` them, it refuses with "already merged" (CLAUDE.md's #912
+  measurement); verify by reading `.merged` back. **Serial single-PR merging
+  (below) is the fallback** for PRs that are not file-disjoint — the strict
+  up-to-date policy applies on `develop` too, so each serial merge
+  staleifies every other open PR's base.
 
-## The loop (repeat per PR, serially)
+## The loop (fallback: repeat per PR, serially)
 
 1. **Pick the next PR** and confirm its review threads are resolved.
 2. **Arm a check-runs Monitor** on the PR head SHA (see below) — don't delegate
