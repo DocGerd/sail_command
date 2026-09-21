@@ -1,11 +1,13 @@
 # #1330: Fehmarn slowdown after #1322 — frontier truncation, measured
 
-**Verdict: CONFIRMED, and resolved on `develop` by #1257.** The Fehmarn
-slowdown #1330 records against #1322 is `MAX_FRONTIER` truncation. The
-truncation was already live before #1322. #1322's finer confined prune grid
-raised the peak frontier, so the fixed 30 000 cap cut more rings. On
-`develop` the derived cap (#1257) no longer binds on these solves, and the
-default-cap result equals the uncapped result.
+**Verdict: CONFIRMED on the `breeze` arm, and resolved there on `develop` by
+#1257.** On the four `breeze` Fehmarn solves, the slowdown #1330 records
+against #1322 is `MAX_FRONTIER` truncation. The truncation was already live
+before #1322. #1322's finer confined prune grid raised the peak frontier, so
+the fixed 30 000 cap cut more rings. On `develop` the derived cap (#1257) no
+longer binds on these solves, and the default-cap result equals the uncapped
+result. The `no-comfort` and `salona44-breeze` rows of #1330 are not
+measured here; see Scope.
 
 ## Method
 
@@ -15,6 +17,7 @@ default-cap result equals the uncapped result.
   `comfortDepthM = 5.0`. This is not `planRoute()`: there is no merge pass,
   no relaxation and no retry tier.
 - **Cases.** Destinations `burgstaaken` and `orth`, rigs genoa and fock.
+- **Endpoints.** Origin `FLENSBURG` and destination `harbors.json` `snap`, each passed through `snapToNavigable(…, safetyDepthM)`, as in `realmask.repro.confinedDominance.test.ts`.
 - **Trees.** Each tree's `app/src` and data were extracted with `git archive`:
   - `36d86a7`: #1322's base
   - `16c7c6b`: #1322's head, pre-#1257
@@ -73,25 +76,26 @@ What the table shows:
   57 825-62 482. Truncated rings rise from 14-29 to 31-43. The capped ETA
   is 45.0-58.2 min worse than the same tree uncapped.
 - **BASE → HEAD at default caps** costs +33.9 (orth genoa), +38.4 (orth
-  fock), +41.2 (burgstaaken fock) and +51.0 min (burgstaaken genoa). All
-  four fall inside the issue's +34-62 min range, which was measured through
-  `planRoute()` over several arms, so it is a comparable but not identical
-  quantity.
+  fock), +41.2 (burgstaaken fock) and +51.0 min (burgstaaken genoa). All four fall in or at the lower edge of the issue's +34-62 min range (orth genoa +33.9).
+  That range was measured through `planRoute()` over several arms, so it is
+  a comparable but not identical quantity.
 - **The finer grid alone is roughly neutral.** HEAD uncapped vs BASE
   uncapped: −1.6, −1.5, −0.6 and +2.3 min (burgstaaken fock is the one
   worse case). HEAD uncapped beats BASE's capped result in all four cases.
 - **`develop` resolves it.** On all four cases, `develop` at its default cap
   gives the same ETA, cost, legs and distance as `16c7c6b` uncapped, with
   0 truncated rings. It beats BASE's capped result by 4.1-11.7 min. The
-  highest peak is 62 482, against a cap of 95 333 (1.53× headroom). The
-  62 482 and 61 883 peaks match `FRONTIER_PER_PRUNE_CELL`'s own derivation
+  highest peak among these four solves is 62 482, against a cap of 95 333
+  (1.53x); #1257's derivation records a higher worst case, 64 402
+  (rudkoebing, Salona 44 genoa), which leaves 1.48x.
+  The 62 482 and 61 883 peaks match `FRONTIER_PER_PRUNE_CELL`'s own derivation
   figures in `isochrone.ts`.
 
 ## Controls
 
 - **The counter fires.** On the `develop` tree, burgstaaken genoa at
   `maxFrontier: 20 000` gives 73 truncated rings and ETA 739.8 min.
-- **The cap alone reproduces the regression.** The same case at
+- **The cap alone accounts for develop's recovery.** The same case at
   `maxFrontier: 30 000` on the `develop` tree reproduces `16c7c6b`'s default
   row exactly: ETA 694.289, cost 699.166, 50 legs, 79.483 nm, and 43
   truncated rings on rings 34-116. On this route the `develop` tree differs
@@ -99,6 +103,12 @@ What the table shows:
 - **Negative control.** At `develop`'s default cap there are 0 truncated
   rings, and the result is byte-identical in every recorded field to the
   uncapped run.
+
+## Scope
+
+Only the `breeze` arm (Salona 45) was measured. #1330's Fehmarn rows also
+come from the `no-comfort` arm (no comfort preference, so cost equals ETA)
+and the `salona44-breeze` arm (Salona 44 polars); neither is measured here.
 
 ## Recommendation
 
@@ -111,9 +121,9 @@ Two residuals:
 - **`salona44-relaxation/aaroesund`** (+16.5 min, the twelfth row) is not
   measured here. It is outside the Fehmarn ask, and it runs a different
   boat and relaxation path.
-- **Headroom is not a guarantee.** Per #1257's own derivation comment, 1.53×
-  headroom over the worst family found does not prove truncation can never
-  fire.
+- **Headroom is not a guarantee.** #1257's derivation comment gives 1.48x
+  over the worst family it found (64 402, rudkoebing Salona 44 genoa), and
+  says itself that eight samples do not bound the population.
 
 ## Considered and rejected
 
