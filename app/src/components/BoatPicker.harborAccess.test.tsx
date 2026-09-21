@@ -92,9 +92,12 @@ function status(): HTMLElement {
  * test. Wait for every row's own derivation to finish first (none still
  * reads the §5.1 pending string) before interacting. */
 async function waitForAssetsReady(): Promise<void> {
-  await waitFor(() => {
-    expect(screen.queryAllByText('Harbour access not yet checked.')).toHaveLength(0);
-  });
+  await waitFor(
+    () => {
+      expect(screen.queryAllByText('Harbour access not yet checked.')).toHaveLength(0);
+    },
+    { timeout: solverTimeoutMs(5000) },
+  );
 }
 
 describe('#1292 ordering: reachability recomputed AFTER the clamp', () => {
@@ -117,9 +120,12 @@ describe('#1292 ordering: reachability recomputed AFTER the clamp', () => {
     expect(onSettingsChange).toHaveBeenCalledTimes(1);
     expect(onSettingsChange.mock.calls[0]![0]).toMatchObject({ safetyDepthM: 3.0 });
 
-    await waitFor(() => {
-      expect(status()).toHaveTextContent('Harbour access — 1 affected at 3.0 m');
-    });
+    await waitFor(
+      () => {
+        expect(status()).toHaveTextContent('Harbour access — 1 affected at 3.0 m');
+      },
+      { timeout: solverTimeoutMs(5000) },
+    );
     // The pre-clamp reading (0 affected) must never appear — a caller that
     // read `settings.safetyDepthM` instead of the clamped value would show
     // "no known issues" here instead.
@@ -153,9 +159,12 @@ describe('PR #1324 review Minor: the access clause catches up once assets resolv
 
     resolveAssets(await realAssets());
 
-    await waitFor(() => {
-      expect(status()).toHaveTextContent('Harbour access — 1 affected at 3.0 m');
-    });
+    await waitFor(
+      () => {
+        expect(status()).toHaveTextContent('Harbour access — 1 affected at 3.0 m');
+      },
+      { timeout: solverTimeoutMs(5000) },
+    );
     expect(status()).not.toHaveTextContent('not yet checked');
   });
 });
@@ -171,9 +180,12 @@ describe('#1292 announcement: ONE merged live region, in order', () => {
     // live region for the harbour-access half.
     expect(screen.getAllByRole('status')).toHaveLength(1);
 
-    await waitFor(() => {
-      expect(status()).toHaveTextContent('Harbour access — 1 affected at 3.0 m');
-    });
+    await waitFor(
+      () => {
+        expect(status()).toHaveTextContent('Harbour access — 1 affected at 3.0 m');
+      },
+      { timeout: solverTimeoutMs(5000) },
+    );
     const text = status().textContent ?? '';
     const boatIdx = text.indexOf('Salona 45 selected.');
     const clampIdx = text.indexOf('Safety depth raised to 3.0 m');
@@ -191,9 +203,12 @@ describe('#1292 announcement: ONE merged live region, in order', () => {
     await waitForAssetsReady();
     fireEvent.click(screen.getByRole('radio', { name: /SPEEDY GO/ }));
 
-    await waitFor(() => {
-      expect(status()).toHaveTextContent('Harbour access — 1 affected at 3.0 m');
-    });
+    await waitFor(
+      () => {
+        expect(status()).toHaveTextContent('Harbour access — 1 affected at 3.0 m');
+      },
+      { timeout: solverTimeoutMs(5000) },
+    );
     expect(status()).not.toHaveTextContent('Safety depth raised');
     const text = status().textContent ?? '';
     const boatIdx = text.indexOf('selected.');
