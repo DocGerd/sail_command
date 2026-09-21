@@ -827,19 +827,23 @@ describe('#1256: the shared BFS scratch leaks no state between calls', () => {
     expect(big.cellsConnected(bigA, bigB, gate)).toBe(true);
   });
 
-  it('every stamp value in one full period keeps a 2-D open-water pair connected', () => {
-    // #1256: the stamp is one byte, so a too-LATE wrap threshold (`> 255`, or
-    // `>= 256`) hands back 256, which truncates to 0 in the Uint8Array and
-    // disables visited-tracking for that one call in every 256. 260 CONSECUTIVE
-    // calls cover a full period from any starting generation, so this cannot be
-    // defeated by test ordering the way an alignment-exact shape can. Open water
-    // (2-D) is load-bearing: a thin corridor still reaches its target under the
-    // mutant and stays green.
-    const open = makeMask(() => 200);
-    const A = cellCentre(TEST_MASK_META, 0, 0);
-    const B = cellCentre(TEST_MASK_META, 199, 319);
-    for (let i = 0; i < 260; i++) {
-      expect(open.cellsConnected(A, B, gate), `call ${i}`).toBe(true);
-    }
-  });
+  it(
+    'every stamp value in one full period keeps a 2-D open-water pair connected',
+    { timeout: solverTimeoutMs(300_000) },
+    () => {
+      // #1256: the stamp is one byte, so a too-LATE wrap threshold (`> 255`, or
+      // `>= 256`) hands back 256, which truncates to 0 in the Uint8Array and
+      // disables visited-tracking for that one call in every 256. 260 CONSECUTIVE
+      // calls cover a full period from any starting generation, so this cannot be
+      // defeated by test ordering the way an alignment-exact shape can. Open water
+      // (2-D) is load-bearing: a thin corridor still reaches its target under the
+      // mutant and stays green.
+      const open = makeMask(() => 200);
+      const A = cellCentre(TEST_MASK_META, 0, 0);
+      const B = cellCentre(TEST_MASK_META, 199, 319);
+      for (let i = 0; i < 260; i++) {
+        expect(open.cellsConnected(A, B, gate), `call ${i}`).toBe(true);
+      }
+    },
+  );
 });

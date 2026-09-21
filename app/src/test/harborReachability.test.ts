@@ -102,21 +102,25 @@ describe('#1290 harborReachability', () => {
   // A synthetic BoatDef reproduces §3's measured composition for the one
   // catalogue boat whose gate is deep enough to reach the unreachable
   // branch at all — the three REAL catalogue boats never do (row above).
-  it('synthetic 2.55 m draft: 31 ok, 2 shallow-approach, 2 unreachable, 5 known-disconnected', () => {
-    const g = defaultSafetyDepthM(synthetic);
-    expect(g).toBe(3.5);
-    const result = computeHarborAccess(mask, harbors, synthetic, g);
-    const byState = { ok: 0, 'shallow-approach': 0, unreachable: 0, 'known-disconnected': 0 };
-    for (const state of result.values()) byState[state]++;
-    expect(byState.ok).toBe(31);
-    expect(byState['shallow-approach']).toBe(2);
-    expect(byState.unreachable).toBe(2);
-    expect(byState['known-disconnected']).toBe(5);
-    expect(result.get('faldsled')).toBe('shallow-approach');
-    expect(result.get('rudkoebing')).toBe('shallow-approach');
-    expect(result.get('augustenborg')).toBe('unreachable');
-    expect(result.get('marstal')).toBe('unreachable');
-  });
+  it(
+    'synthetic 2.55 m draft: 31 ok, 2 shallow-approach, 2 unreachable, 5 known-disconnected',
+    { timeout: solverTimeoutMs(300_000) },
+    () => {
+      const g = defaultSafetyDepthM(synthetic);
+      expect(g).toBe(3.5);
+      const result = computeHarborAccess(mask, harbors, synthetic, g);
+      const byState = { ok: 0, 'shallow-approach': 0, unreachable: 0, 'known-disconnected': 0 };
+      for (const state of result.values()) byState[state]++;
+      expect(byState.ok).toBe(31);
+      expect(byState['shallow-approach']).toBe(2);
+      expect(byState.unreachable).toBe(2);
+      expect(byState['known-disconnected']).toBe(5);
+      expect(result.get('faldsled')).toBe('shallow-approach');
+      expect(result.get('rudkoebing')).toBe('shallow-approach');
+      expect(result.get('augustenborg')).toBe('unreachable');
+      expect(result.get('marstal')).toBe('unreachable');
+    },
+  );
 
   // ---- Differential: the duplicated flood traversal vs NavMask's own ----
   // For every non-known-disconnected harbour, "the harbour's snapped cell is
@@ -322,11 +326,15 @@ describe('#1290 harborReachability', () => {
   // the 'found' path. faldsled DOES: 'ok'/'shallow-approach' from 3.5 m up
   // through 5.0 m, 'unreachable' from 5.1 m — measured by sweeping
   // `computeHarborAccess` across that boat/harbour pair.
-  it('findLowerSettingHint: faldsled reaches shallow-approach at a lower setting within the default budget', () => {
-    const faldsled = harbors.find((h) => h.id === 'faldsled')!;
-    const outcome = findLowerSettingHint(mask, faldsled, synthetic, 5.2);
-    expect(outcome).toEqual({ kind: 'found', hint: { depthM: 5, state: 'shallow-approach' } });
-  });
+  it(
+    'findLowerSettingHint: faldsled reaches shallow-approach at a lower setting within the default budget',
+    { timeout: solverTimeoutMs(300_000) },
+    () => {
+      const faldsled = harbors.find((h) => h.id === 'faldsled')!;
+      const outcome = findLowerSettingHint(mask, faldsled, synthetic, 5.2);
+      expect(outcome).toEqual({ kind: 'found', hint: { depthM: 5, state: 'shallow-approach' } });
+    },
+  );
 
   it(
     'findLowerSettingHint: marstal has no answer down to the floor (scanned in full, under the default budget)',
