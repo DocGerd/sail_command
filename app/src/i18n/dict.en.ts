@@ -88,6 +88,13 @@ export const en = {
   // (#1293's `ClampNotice` widened to carry it) — boat, then the raised
   // depth if any (boat.clamp.notice), then this boat's access.
   'boat.switch.selected': '{boat} selected.',
+  // #1325 (#1135 §5.4): appended right after boat.clamp.notice, before the
+  // access summary — one clause per SELECTED endpoint whose boat-scoped
+  // access reads 'unreachable' for the newly picked boat. {endpoint} is
+  // 'planner.origin.label'/'planner.destination.label' (already localized,
+  // same convention as map.endpoint.ariaLabel's {target}); {harbor} the
+  // harbour's names[lang]; {boat} the newly selected boat's name.
+  'boat.switch.endpointUnreachable': '{endpoint} {harbor} is not reachable with {boat}.',
   'boat.harbors.summary': 'Harbour access — {count} affected at {depth} m',
   'boat.harbors.summaryDefault': '(default)',
   'boat.harbors.noneAffected': 'Harbour access — no known issues at {depth} m',
