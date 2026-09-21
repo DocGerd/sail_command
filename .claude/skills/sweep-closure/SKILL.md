@@ -196,10 +196,15 @@ is clean.
 **Fails CLOSED, the opposite direction from `diff`.** `diff` over-reports
 OWED (safe: costs solver time). `reuse` under-reporting would be unsafe — a
 stale artifact standing in for a base that moved — so it reports `RUN BASE`
-on ANY of: a closure-tool error, an unknown recorded run, a ledger entry with
-no artifact hashes recorded, or an actual closure member changed between the
-recorded SHA and `<base>`. `REUSE` is returned only when every check
-positively confirms the closure is untouched.
+on ANY of: a closure-tool error, an unknown recorded run, an AMBIGUOUS SHA
+prefix (matches more than one ledger entry) or one shorter than 7 characters,
+a ledger entry with no artifact hashes recorded, `<recorded>` not an ancestor
+of (or equal to) `<base>`, or an actual closure member changed between them.
+`REUSE` is returned only when every check positively confirms the closure is
+untouched.
+
+`REUSE` is only as good as `PATH_PREFIXES`/`EXTRA_EDGES`: a runtime input the
+import walk cannot see still gets `REUSE`. Apply the same NOT-OWED scrutiny.
 
 **Reuse replaces BOTH BASE arm-sets, never just one** — the recorded run's
 artifacts stand in for the double-run control itself, licensed by the
@@ -210,10 +215,8 @@ deterministic against itself). The HEAD run is still required — `reuse` never
 substitutes for it.
 
 **An OWED-but-waived merge may only be reused through with its byte-identity
-argument recorded on the PR** (the #1317 precedent: a merge inside the
-closure that was OWED per the tool but waived because a `git diff` of the
-touched harness files was empty). `reuse`'s own diff has no way to see a
-waiver recorded in PR prose — a human call, not something this tool decides.
+argument recorded on the PR.** `reuse`'s own diff has no way to see a waiver
+recorded in PR prose — a human call, not something this tool decides.
 
 ### The ledger: `.claude/skills/sweep-closure/recorded-runs.json`
 
@@ -238,11 +241,14 @@ Schema — an object with one key, `runs`, an array of entries:
 }
 ```
 
-`sha`, `date` and `arms` are read by `reuse`; `path`/`note` are for a human
+`sha` and `arms` are read by `reuse`; `date`/`path`/`note` are for a human
 finding the actual stored files and are not validated. `reuse <key> <base>`
-matches `<key>` against `sha` by exact value or case-insensitive prefix (the
-same abbreviated-SHA convenience `git` itself offers) and fails closed
-(`unknown recorded run`) on no match — never on the first/nearest entry.
+matches `<key>` against `sha` by exact value or case-insensitive prefix — a
+bare prefix works like `git rev-parse`'s own abbreviated-SHA convenience, but
+the failure mode differs: `git` errors on an ambiguous short hash, while a
+prefix under 7 characters or one matching more than one ledger entry here
+reports `unknown recorded run` and fails closed to `RUN BASE` rather than
+throwing — never the first/nearest entry.
 
 **The ledger starts EMPTY (`{"runs": []}`) as shipped by this PR — do not
 seed a fabricated entry.** The example above is a schema illustration, not a
@@ -309,15 +315,29 @@ into this repo):
     make `--name-only` print only the destination, silently dropping an
     in-closure file from the diff. Mutation-checked: removing `--no-renames`
     from `changedFiles`'s args reds exactly this row and none other.
-17–21. `reuse`'s five fail-closed/happy-path rows (#1337), each against a
-    real, disposable two-commit git repo plus a synthetic ledger file written
-    to disk (never this repo's own ledger): closure untouched → `REUSE`;
-    a real closure member (`sweepArms.ts`, a ROOT) changed → `RUN_BASE`; a
-    ledger with no `"runs"` array → `RUN_BASE`; a recorded SHA with no
-    matching ledger entry → `RUN_BASE`; a matching entry with empty `arms` →
-    `RUN_BASE`. Each row is mutation-checked individually (the guard on that
-    row alone disabled, e.g. `owed.length > 999` or `if (false)` in place of
-    the real validation) and reds exactly that row and no other.
+17–25. `reuse`'s nine fail-closed/happy-path rows (#1337), against a real,
+    disposable three-commit git repo (a base plus two divergent children)
+    plus a synthetic ledger file written to disk (never this repo's own
+    ledger): closure untouched → `REUSE`; a real closure member
+    (`sweepArms.ts`, a ROOT) changed → `RUN_BASE`; a ledger with no `"runs"`
+    array → `RUN_BASE`; a recorded SHA with no matching ledger entry →
+    `RUN_BASE`; a matching entry with empty `arms` → `RUN_BASE`; `recorded`
+    on a divergent side branch (not an ancestor of `base`) → `RUN_BASE`;
+    `recorded` a DESCENDANT of `base` (misordered call) → `RUN_BASE`; an
+    AMBIGUOUS SHA prefix matching two entries → `RUN_BASE`; a prefix under 7
+    characters → `RUN_BASE`.
+26. A TENTH row, against a separate disposable repo: the verdict is
+    independent of whatever tree the CALLER has checked out — a closure
+    member (outside every `PATH_PREFIXES` directory, so its membership is
+    genuinely import-walk-dependent) changes only visibly from the
+    `recorded`/`base` trees themselves, while the repo's own working tree is
+    checked out on a THIRD, divergent commit that would give the wrong
+    answer if the closure were read from disk instead of from those two
+    commits → `RUN_BASE`.
+    Each of the ten rows is mutation-checked individually (the guard on that
+    row alone disabled, e.g. `owed.length > 999`, `if (false)` in place of
+    the real validation, or reverting the ancestor check / the ref-checkout
+    closure computation) and reds exactly that row and no other.
 
 **Neither `npm --prefix app run typecheck` nor `npm --prefix app run
 lint` cover this file at all** — the tsconfigs and `eslint src e2e sweep`
@@ -338,5 +358,4 @@ not touch `app/sweep/`'s arm definitions or `compare.mjs` — see
 `app/sweep/README.md` for actually running the harness once this says OWED.
 The one-line pointer from `app/sweep/README.md` to the reuse rule above is
 NOT added by this PR (#1337) — `app/sweep/**` is inside the sweep closure
-itself, so editing it owes a sweep; that pointer, plus the first real ledger
-entry, are #1338's.
+itself, so editing it owes a sweep.

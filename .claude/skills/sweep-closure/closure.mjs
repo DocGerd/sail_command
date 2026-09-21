@@ -774,20 +774,48 @@ function loadLedgerFile(absPath) {
 
 /**
  * Finds the ledger entry whose `sha` matches `key` exactly or as a prefix
- * (case-insensitive) — the same abbreviated-SHA convenience `git` itself
- * offers. Returns `null` (never throws) on no match, an empty ledger, or a
- * malformed entry in the array — a malformed INDIVIDUAL entry is skipped
- * rather than aborting the whole lookup, so one bad row can't mask another.
+ * (case-insensitive). Returns `null` (never throws) on no match, an empty
+ * ledger, a malformed entry (a malformed INDIVIDUAL entry is skipped rather
+ * than aborting the whole lookup, so one bad row can't mask another), a
+ * prefix shorter than 7 characters, or — Major, PR #1352 review — an
+ * AMBIGUOUS prefix matching more than one entry: unlike `git rev-parse`,
+ * which errors on an ambiguous short hash, a first-match lookup here would
+ * silently pick whichever entry sorts first in the ledger array, certifying
+ * a DIFFERENT run's artifacts than the one the caller meant. The caller
+ * reports both "no match" and "ambiguous match" as the same
+ * `unknown recorded run` RUN_BASE verdict; either way it fails closed.
  */
 function findLedgerEntry(ledger, key) {
-  if (typeof key !== 'string' || key.length === 0) return null;
+  if (typeof key !== 'string' || key.length < 7) return null;
   const lower = key.toLowerCase();
-  for (const entry of ledger.runs) {
-    if (entry && typeof entry === 'object' && typeof entry.sha === 'string' && entry.sha.toLowerCase().startsWith(lower)) {
-      return entry;
+  const matches = ledger.runs.filter(
+    (e) => e && typeof e === 'object' && typeof e.sha === 'string' && e.sha.toLowerCase().startsWith(lower),
+  );
+  return matches.length === 1 ? matches[0] : null; // caller reports unknown/ambiguous -> RUN_BASE
+}
+
+/**
+ * Checks out `ref` into a fresh, detached temp worktree via `git worktree
+ * add --detach`, runs `fn(tempDir)`, and tears the worktree down again —
+ * ALWAYS, even if `fn` throws. This is what lets `computeClosure` (which
+ * reads from a directory on disk, unmodified — see its own header) compute
+ * the closure AT a specific commit instead of at whatever the CALLER
+ * happens to have checked out (Blocker, PR #1352 review).
+ */
+function withRefCheckout(root, ref, fn) {
+  const tmp = mkdtempSync(path.join(tmpdir(), 'sweep-closure-ref-'));
+  execFileSync('git', ['worktree', 'add', '--detach', '--quiet', tmp, ref], { cwd: root });
+  try {
+    return fn(tmp);
+  } finally {
+    try {
+      execFileSync('git', ['worktree', 'remove', '--force', tmp], { cwd: root });
+    } catch {
+      // best effort; still remove the directory below even if git's own
+      // worktree bookkeeping failed to detach cleanly.
     }
+    rmSync(tmp, { recursive: true, force: true });
   }
-  return null;
 }
 
 /**
@@ -831,15 +859,35 @@ function computeReuseVerdict(root, recordedArg, baseArg) {
     const recordedSha = execFileSync('git', ['rev-parse', entry.sha], { cwd: root, encoding: 'utf8' }).trim();
     const baseSha = execFileSync('git', ['rev-parse', baseArg], { cwd: root, encoding: 'utf8' }).trim();
 
-    // Reuse the SAME membership predicate and the SAME `--merge-base
-    // --no-renames` diff `diff` itself uses (`changedFiles`/`closureInfo`),
-    // so `reuse` can never disagree with `diff` about what is in the
-    // closure — one predicate, two callers. If `recorded` is not actually
-    // an ancestor of `base`, `--merge-base` diffs from the older common
-    // ancestor instead, which only WIDENS the diff and therefore biases
-    // toward MORE hits, i.e. toward RUN_BASE — the safe direction, not a
-    // silent under-report.
-    const visited = computeClosure(root);
+    // Blocker (PR #1352 review): `git diff --merge-base` diffs
+    // merge-base(recorded, base) -> base, so it is BLIND to any change that
+    // lives only on `recorded`'s own side — a recorded run on a side branch
+    // (or, symmetrically, a `recorded` that is actually a DESCENDANT of
+    // `base`, where merge-base(recorded, base) == base and the diff
+    // collapses to base-vs-base, i.e. empty) can certify a base it never
+    // measured. `--merge-base` does NOT "only widen" the diff in general —
+    // that claim from an earlier revision of this comment was refuted by
+    // both a side-branch and a descendant reproduction. Require `recorded`
+    // to be an ancestor of (or equal to) `base` BEFORE diffing at all.
+    try {
+      execFileSync('git', ['merge-base', '--is-ancestor', recordedSha, baseSha], { cwd: root });
+    } catch {
+      return { verdict: 'RUN_BASE', reason: `recorded ${recordedSha} is not an ancestor of base ${baseSha}` };
+    }
+
+    // Blocker (PR #1352 review): compute the closure from the RECORDED and
+    // BASE trees themselves via disposable detached worktrees, never from
+    // whatever this process's OWN working tree happens to have checked
+    // out — `computeClosure(root)` reads `root`'s checked-out files, so a
+    // caller running `reuse` from a THIRD tree (the normal case: the branch
+    // under test, distinct from both `recorded` and `base`) got a verdict
+    // that depended on which branch was checked out when `reuse` ran, not
+    // on `recorded`/`base` themselves. Union the two trees' closures so a
+    // member that only exists in one of them (a file added, removed, or
+    // whose importing file changed between the two commits) is still seen.
+    const closureAtRecorded = withRefCheckout(root, recordedSha, (dir) => computeClosure(dir));
+    const closureAtBase = withRefCheckout(root, baseSha, (dir) => computeClosure(dir));
+    const visited = new Map([...closureAtRecorded, ...closureAtBase]);
     const changed = changedFiles(root, recordedSha, baseSha);
     const hits = changed.map((f) => ({ f, info: closureInfo(visited, f) })).filter((x) => x.info !== null);
 
@@ -1090,8 +1138,8 @@ function runSelftest(root) {
     rmSync(renameRepo, { recursive: true, force: true });
   }
 
-  // #1337: `reuse` selftest — a REAL, throwaway two-commit git repo (same
-  // pattern as the rename-check above) so `computeReuseVerdict` exercises
+  // #1337: `reuse` selftest — a real, disposable three-commit git repo (a
+  // base plus two divergent children) so `computeReuseVerdict` exercises
   // its actual `git rev-parse`/`changedFiles` calls rather than a stand-in.
   // The repo's own `.claude/skills/sweep-closure/recorded-runs.json` is
   // written to DISK (never committed) so `loadLedgerFile` reads a real file
@@ -1184,8 +1232,135 @@ function runSelftest(root) {
         rNoArms,
       ),
     );
+
+    // Blocker (PR #1352 review), side branch: `recorded`=touchedBaseSha and
+    // `base`=untouchedBaseSha are SIBLING children of `recordedSha` — neither
+    // is an ancestor of the other — so a plain `--merge-base` diff would
+    // diff their shared ancestor against base, missing `recorded`'s OWN
+    // closure edit (sweepArms.ts) entirely. Must fail closed on the ancestor
+    // check before ever reaching that diff.
+    writeLedger({ runs: [{ sha: touchedBaseSha, arms: { base1: 'deadbeef' } }] });
+    const rSideBranch = computeReuseVerdict(reuseRepo, touchedBaseSha, untouchedBaseSha);
+    results.push(
+      check(
+        'reuse: recorded sits on a divergent side branch (not an ancestor of base) -> RUN_BASE',
+        rSideBranch.verdict === 'RUN_BASE' && /not an ancestor/.test(rSideBranch.reason),
+        rSideBranch,
+      ),
+    );
+
+    // Blocker (PR #1352 review), descendant: `recorded`=touchedBaseSha is a
+    // DESCENDANT of `base`=recordedSha (a misordered call, or a ledger SHA
+    // newer than the base being checked) — merge-base(recorded, base)
+    // collapses to `base` itself, so the diff is EMPTY regardless of real
+    // changes between them. Same ledger entry as the row above.
+    const rDescendant = computeReuseVerdict(reuseRepo, touchedBaseSha, recordedSha);
+    results.push(
+      check(
+        'reuse: recorded is a DESCENDANT of base (misordered call) -> RUN_BASE',
+        rDescendant.verdict === 'RUN_BASE' && /not an ancestor/.test(rDescendant.reason),
+        rDescendant,
+      ),
+    );
+
+    // Major (PR #1352 review): an AMBIGUOUS SHA prefix matching MORE THAN
+    // ONE ledger entry must never silently resolve to whichever sorts
+    // first — unlike `git rev-parse`'s own ambiguity error, a first-match
+    // lookup here would certify a DIFFERENT run's artifacts than intended.
+    // Synthetic (non-git) SHA strings are fine: the ambiguity check returns
+    // before any `git rev-parse` call is made.
+    writeLedger({
+      runs: [
+        { sha: 'aaaaaaaa1111111111111111111111111111aaaa', arms: { base1: 'deadbeef' } },
+        { sha: 'aaaaaaaa2222222222222222222222222222bbbb', arms: { base1: 'deadbeef' } },
+      ],
+    });
+    const rAmbiguous = computeReuseVerdict(reuseRepo, 'aaaaaaaa', untouchedBaseSha);
+    results.push(
+      check(
+        'reuse: an ambiguous SHA prefix (matches 2 ledger entries) -> RUN_BASE, never the first match',
+        rAmbiguous.verdict === 'RUN_BASE' && /unknown recorded run/.test(rAmbiguous.reason),
+        rAmbiguous,
+      ),
+    );
+
+    // Major (PR #1352 review): a prefix shorter than 7 characters is
+    // refused outright, even where it happens to match exactly one entry
+    // today — a shorter prefix risks colliding with a future ledger entry.
+    writeLedger({ runs: [{ sha: recordedSha, arms: { base1: 'deadbeef' } }] });
+    const rShortPrefix = computeReuseVerdict(reuseRepo, recordedSha.slice(0, 6), untouchedBaseSha);
+    results.push(
+      check(
+        'reuse: a SHA prefix shorter than 7 characters is refused -> RUN_BASE',
+        rShortPrefix.verdict === 'RUN_BASE' && /unknown recorded run/.test(rShortPrefix.reason),
+        rShortPrefix,
+      ),
+    );
   } finally {
     rmSync(reuseRepo, { recursive: true, force: true });
+  }
+
+  // Blocker (PR #1352 review): the closure verdict must come from the
+  // RECORDED and BASE trees, never from whatever this process's OWN
+  // working tree happens to have checked out. `lib/extra.ts` sits OUTSIDE
+  // every PATH_PREFIXES directory (app/sweep, app/public/data, pipeline),
+  // so its closure membership is genuinely CONTENT-dependent on the import
+  // walk — a directory-prefix match could otherwise mask this bug
+  // regardless of what the import walk itself saw.
+  const blocker2Repo = mkdtempSync(path.join(tmpdir(), 'sweep-closure-selftest-blocker2-'));
+  try {
+    const git2 = (args) => execFileSync('git', args, { cwd: blocker2Repo, encoding: 'utf8' });
+    git2(['init', '-q']);
+    git2(['config', 'user.email', 'selftest@example.invalid']);
+    git2(['config', 'user.name', 'sweep-closure selftest']);
+    mkdirSync(path.join(blocker2Repo, 'app', 'sweep'), { recursive: true });
+    mkdirSync(path.join(blocker2Repo, 'lib'), { recursive: true });
+    writeFileSync(path.join(blocker2Repo, 'lib', 'extra.ts'), 'export const EXTRA = 1;\n');
+    writeFileSync(
+      path.join(blocker2Repo, 'app', 'sweep', 'sweepArms.ts'),
+      "import '../../lib/extra.ts';\nexport const ARMS = 1;\n",
+    );
+    writeFileSync(path.join(blocker2Repo, 'app', 'sweep', 'vitest.config.ts'), 'export default {};\n');
+    git2(['add', '-A']);
+    git2(['commit', '-q', '-m', 'recorded']);
+    const recorded3Sha = git2(['rev-parse', 'HEAD']).trim();
+
+    // base3: child of recorded3, changes ONLY lib/extra.ts — a genuine
+    // closure-member edit that base3's OWN (unchanged) sweepArms.ts still
+    // imports.
+    writeFileSync(path.join(blocker2Repo, 'lib', 'extra.ts'), 'export const EXTRA = 2;\n');
+    git2(['add', '-A']);
+    git2(['commit', '-q', '-m', 'base changes extra.ts']);
+    const base3Sha = git2(['rev-parse', 'HEAD']).trim();
+
+    // feature3: a SEPARATE child of recorded3 that drops the import —
+    // checked out as this repo's OWN HEAD below, so a working-tree-based
+    // closure walk (the pre-fix behaviour) would see a sweepArms.ts that
+    // does NOT import lib/extra.ts at all.
+    git2(['checkout', '-q', recorded3Sha]);
+    writeFileSync(path.join(blocker2Repo, 'app', 'sweep', 'sweepArms.ts'), 'export const ARMS = 1;\n');
+    git2(['add', '-A']);
+    git2(['commit', '-q', '-m', 'feature drops the import']);
+    // Stays checked out on `feature3` — computeReuseVerdict must still
+    // return the correct verdict for recorded3/base3 despite this.
+
+    const ledgerDir2 = path.join(blocker2Repo, '.claude', 'skills', 'sweep-closure');
+    mkdirSync(ledgerDir2, { recursive: true });
+    writeFileSync(
+      path.join(ledgerDir2, 'recorded-runs.json'),
+      JSON.stringify({ runs: [{ sha: recorded3Sha, arms: { base1: 'deadbeef' } }] }),
+    );
+
+    const rCheckoutIndependent = computeReuseVerdict(blocker2Repo, recorded3Sha, base3Sha);
+    results.push(
+      check(
+        "reuse: verdict is independent of the caller's own checked-out tree (a closure member changed off-tree) -> RUN_BASE",
+        rCheckoutIndependent.verdict === 'RUN_BASE',
+        rCheckoutIndependent,
+      ),
+    );
+  } finally {
+    rmSync(blocker2Repo, { recursive: true, force: true });
   }
 
   let failed = 0;
