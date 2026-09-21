@@ -1452,8 +1452,7 @@ function runSelftest(root) {
   }
 
   // #1359 PR #1384 review round 3 (M9 pin): `computeReuseVerdict`'s own
-  // `unionClosures` call is unpinned by every existing row above, because
-  // each one calls `computeDiffVerdict`, never `computeReuseVerdict`.
+  // `unionClosures` call is unpinned by every existing row above.
   // Reverting `computeReuseVerdict`'s union back to a naive last-write-wins
   // spread leaves ALL prior rows green. Unfixed shape: `recorded` has an
   // EXTRA_EDGES target (setup.ts) present; `base` (a direct child of

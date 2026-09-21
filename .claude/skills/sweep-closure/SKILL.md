@@ -235,7 +235,7 @@ Schema — an object with one key, `runs`, an array of entries:
       "sha": "<full 40-char commit SHA the recorded run was taken at>",
       "date": "YYYY-MM-DD",
       "arms": { "<arm-name>": "<sha256 prefix>", "...": "..." },
-      "path": "<where the stored artifacts live, e.g. a $HOME output dir>",
+      "path": "<where the stored artifacts live>",
       "note": "<free text — e.g. which PR/session recorded this>"
     }
   ]
@@ -366,6 +366,28 @@ into this repo):
     the real validation, or reverting the ancestor check / the ref-checkout
     closure computation) and reds exactly the row(s) targeting that guard
     (the ancestor-check mutant reds both the side-branch and descendant rows).
+27. `reuse` M9 pin: `computeReuseVerdict`'s own `unionClosures` call —
+    unpinned by every row above. `base` deletes an EXTRA_EDGES target
+    (`setup.ts`) present at `recorded` → `RUN_BASE`, never a false `REUSE`
+    from `base`'s missing entry "winning" on argument order over
+    `recorded`'s real one.
+28. `diff`'s own checkout-independence (#1359/PR #1384), mirroring row 26
+    for `reuse` (a closure member visible only from `base`/`head`, with a
+    THIRD, divergent commit checked out) — built over its own disposable
+    repo, not `initClosureRepo`.
+29–33. Five more `diff`-side rows (#1359/PR #1384), all against
+    `computeDiffVerdict` over disposable repos sharing one `initClosureRepo`
+    helper: an EXTRA_EDGES deletion (`setup.ts`) on
+    `head`, `base` independently deleting it too → `OWED` via the true
+    merge-base's precedence, never via argument order; a head-ONLY member
+    (imported and created only on `head`); a merge-base-ONLY member (`base`
+    and `head` both independently drop the import) — one fixture
+    discriminates BOTH dropping the merge-base term outright and computing
+    it from `base` instead of the real `git merge-base`, since `base`'s own
+    closure lacks the import either way; `base` adding an import after the
+    fork point that `head` (forked earlier) only edits → `OWED` via
+    `base`'s own third unioned term; and `head` omitted reading the
+    WORKING TREE rather than the committed `HEAD` ref.
 
 **Neither `npm --prefix app run typecheck` nor `npm --prefix app run
 lint` cover this file at all** — the tsconfigs and `eslint src e2e sweep`
