@@ -80,6 +80,38 @@ results table at the bottom, and note it in the box below the check.
       on those two the border is what keeps the two notes from reading as
       one run-on paragraph (#701). Pick the boat for this run and record it
       in §5.
+- [ ] **Per-boat harbour access disclosure and boat-switch announcement
+      (#1291/#1292/#1293).** Still on the Boat tab, each boat's own card
+      carries a "Harbour access — N affected at … m" ("Hafenzugang – N
+      betroffen bei … m") disclosure once its access has been computed for
+      the live safety-depth setting; a boat you have NOT yet selected may
+      briefly read "Harbour access not yet checked." ("Hafenzugang noch
+      nicht geprüft.") first while its own check runs in the background —
+      a designed pending state, not a stall, and it is a plain line with
+      nothing to expand, not a disclosure. A non-selected boat's summary
+      also appends "(default)" ("(Standard)") after its depth, since it is
+      showing that boat's OWN default gate rather than the live setting;
+      the currently selected boat's summary carries no such suffix. Expand
+      the disclosure on a boat with ≥1 affected harbour (SPEEDY GO! and
+      PIRANJA both affect Marstal at their own default depth): it lists the
+      harbour under "Only via a shallower approach: …" ("Nur über eine
+      flachere Zufahrt: …") — the only wording reachable here: no real
+      catalogue boat is ever `unreachable` for any harbour at its own
+      default gate, so "Not reachable: …" ("Nicht erreichbar: …") cannot
+      be observed under this setup. Whichever of the three states is
+      showing (pending, one-line summary, or the disclosure) is chained
+      into that boat's own radio's `aria-describedby`, alongside its
+      existing keel/draft-
+      provenance note ids — inspect via devtools, or confirm a screen
+      reader announces it when arrowing onto the option. Then lower the
+      safety depth below a boat's own default and switch to that boat: the
+      ONE `role="status"` boat-switch announcement reads, in this order,
+      the boat's name, then the raised-depth clause ("Safety depth raised
+      to … m — the default for …" / "Sicherheitstiefe auf … m angehoben –
+      Standardwert für …"), then that boat's own harbour-access summary —
+      a single merged sentence, never three separate announcements, and
+      the depth clause is absent entirely when the switch needed no clamp.
+      Restore the safety depth and boat afterward.
 - [ ] **At least one fleet boat is exercised.** Run §2 or §3 under SPEEDY GO!
       or PIRANJA, so the suppressed rig comparison in §2.5 is actually
       reached; a pass made entirely on the Salona 45 never exercises it.
@@ -95,6 +127,22 @@ results table at the bottom, and note it in the box below the check.
       carrying that same sentence in place of the generic "No route found —
       the search could not find a way to the destination …" message (#834).
       Clear the destination again before continuing.
+- [ ] **Per-boat harbour access marker in search (#1291).** A different
+      marker from the known-disconnected one above: it is per-BOAT and
+      per-safety-depth, not a fact about the harbour alone, so it does not
+      appear on Arnis/Kappeln/etc. — those already carry the stronger
+      known-disconnected note instead. With a fleet boat selected (SPEEDY
+      GO! or PIRANJA) and the safety-depth field set to that boat's own
+      default (2.8 m for PIRANJA, 3.0 m for SPEEDY GO! — selecting the
+      boat alone does not get you there, since spec C.7's clamp only ever
+      raises the live setting, never lowers it), search "Marstal" as
+      either origin or destination: its option carries a second line,
+      "Only via a shallower approach with <boat> — depth warning." ("Mit
+      <boat> nur über eine flachere Zufahrt – Tiefenwarnung."), naming the
+      selected boat, while an ordinary harbour in the same search (e.g.
+      Flensburg) carries no such line. Select Marstal: the same marker line
+      stays on the selected-endpoint row, same as the known-disconnected
+      note does above. Clear the selection again before continuing.
 - [ ] **Cable/pipeline seamarks visible at Standard.** Turn the **Seamarks**
       map overlay on — it is OFF by default, unlike "Water depths" — and
       leave the Seamarks display-tier control at its default "Standard"

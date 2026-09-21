@@ -41,6 +41,9 @@ node .claude/skills/sweep-closure/closure.mjs files app/src/types.ts app/src/dat
 node .claude/skills/sweep-closure/closure.mjs diff origin/develop           # base vs. working tree
 node .claude/skills/sweep-closure/closure.mjs diff <merge-base> <head-sha>  # base vs. a specific head
 
+# Reuse a recorded run as BASE instead of re-running it? (#1337)
+node .claude/skills/sweep-closure/closure.mjs reuse <recorded-sha-or-prefix> <base>
+
 # Verify the tool itself (positive/negative controls + mutation checks).
 node .claude/skills/sweep-closure/closure.mjs selftest
 ```
@@ -179,6 +182,83 @@ adding a new, independently-provable `classify*` function with its own
 same commit — an addition with no pin is exactly the shape that shipped the
 Blocker this file records above.
 
+## Reusing a stored BASE instead of re-running it (#1337)
+
+A sweep is BASE x2 + HEAD — the BASE double-run is a determinism control, and
+it recomputes artifacts already on disk whenever no merge since the last
+recorded run touched the closure. `reuse <recorded> <base>` asks the SAME
+closure tool that question, instead of a hand-checked path list: look up
+`<recorded>` in the ledger below, diff it against `<base>` with the identical
+`diff` logic above (same `--merge-base --no-renames`, same `PATH_PREFIXES`
+union, same `draftProvenance` exception), and only report `REUSE` if that diff
+is clean.
+
+**Fails CLOSED, the opposite direction from `diff`.** `diff` over-reports
+OWED (safe: costs solver time). `reuse` under-reporting would be unsafe — a
+stale artifact standing in for a base that moved — so it reports `RUN BASE`
+on ANY of: a closure-tool error, an unknown recorded run, an AMBIGUOUS SHA
+prefix (matches more than one ledger entry) or one shorter than 7 characters,
+a ledger entry with no artifact hashes recorded, `<recorded>` not an ancestor
+of (or equal to) `<base>`, or an actual closure member changed between them.
+`REUSE` is returned only when every check positively confirms the closure is
+untouched.
+
+`REUSE` is only as good as `PATH_PREFIXES`/`EXTRA_EDGES`: a runtime input
+outside both, which the import walk cannot see, still gets `REUSE`. Apply
+the same NOT-OWED scrutiny.
+
+**Reuse replaces BOTH BASE arm-sets, never just one** — the recorded run's
+artifacts stand in for the double-run control itself, licensed by the
+STRONGER cross-machine/day/merge-base control CLAUDE.md's `app/sweep/`
+section already documents (arm prefixes reproducing on a different machine,
+day and merge-base beats a self double-run, which only proves a run
+deterministic against itself). The HEAD run is still required — `reuse` never
+substitutes for it.
+
+**An OWED-but-waived merge may only be reused through with its byte-identity
+argument recorded on the PR.** `reuse`'s own diff has no way to see a waiver
+recorded in PR prose — a human call, not something this tool decides.
+
+### The ledger: `.claude/skills/sweep-closure/recorded-runs.json`
+
+**Maintainer ruling 2026-09-21: the ledger lives here, deliberately OUTSIDE
+the sweep closure** (`.claude/skills/**` is not under `PATH_PREFIXES`), so
+recording a table here never itself owes a sweep — unlike the pre-#1337
+convention of recording it in `app/sweep/README.md`.
+
+Schema — an object with one key, `runs`, an array of entries:
+
+```json
+{
+  "runs": [
+    {
+      "sha": "<full 40-char commit SHA the recorded run was taken at>",
+      "date": "YYYY-MM-DD",
+      "arms": { "<arm-name>": "<sha256 prefix>", "...": "..." },
+      "path": "<where the stored artifacts live, e.g. a $HOME output dir>",
+      "note": "<free text — e.g. which PR/session recorded this>"
+    }
+  ]
+}
+```
+
+`sha` and `arms` are read by `reuse`; `date`/`path`/`note` are for a human
+finding the actual stored files and are not validated. `reuse <key> <base>`
+matches `<key>` against `sha` by exact value or case-insensitive prefix — a
+bare prefix works like `git rev-parse`'s own abbreviated-SHA convenience, but
+the failure mode differs: `git` errors on an ambiguous short hash, while a
+prefix under 7 characters or one matching more than one ledger entry here
+reports `unknown recorded run` and fails closed to `RUN BASE` rather than
+throwing — never the first/nearest entry.
+
+**The ledger starts EMPTY (`{"runs": []}`) as shipped by this PR — do not
+seed a fabricated entry.** The example above is a schema illustration, not a
+real anchor. The first real entry is recorded by a verification session that
+actually stores a run's artifacts durably (not `/tmp`) with their commit SHA,
+per the issue's own requirement; until then every `reuse` call reports
+`RUN BASE` with `unknown recorded run`, which is the correct, safe answer for
+an empty ledger.
+
 ## When the verdict is OWED — restating the constraints it is easy to lose
 
 - Record the **BASE double-run control against the merge-base of the branch
@@ -236,6 +316,30 @@ into this repo):
     make `--name-only` print only the destination, silently dropping an
     in-closure file from the diff. Mutation-checked: removing `--no-renames`
     from `changedFiles`'s args reds exactly this row and none other.
+17–25. `reuse`'s nine fail-closed/happy-path rows (#1337), against a real,
+    disposable three-commit git repo (a base plus two divergent children)
+    plus a synthetic ledger file written to disk (never this repo's own
+    ledger): closure untouched → `REUSE`; a real closure member
+    (`sweepArms.ts`, a ROOT) changed → `RUN_BASE`; a ledger with no `"runs"`
+    array → `RUN_BASE`; a recorded SHA with no matching ledger entry →
+    `RUN_BASE`; a matching entry with empty `arms` → `RUN_BASE`; `recorded`
+    on a divergent side branch (not an ancestor of `base`) → `RUN_BASE`;
+    `recorded` a DESCENDANT of `base` (misordered call) → `RUN_BASE`; an
+    AMBIGUOUS SHA prefix matching two entries → `RUN_BASE`; a prefix under 7
+    characters → `RUN_BASE`.
+26. A TENTH row, against a separate disposable repo: the verdict is
+    independent of whatever tree the CALLER has checked out — a closure
+    member (outside every `PATH_PREFIXES` directory, so its membership is
+    genuinely import-walk-dependent) changes only visibly from the
+    `recorded`/`base` trees themselves, while the repo's own working tree is
+    checked out on a THIRD, divergent commit that would give the wrong
+    answer if the closure were read from disk instead of from those two
+    commits → `RUN_BASE`.
+    Each of the ten rows is mutation-checked individually (the guard on that
+    row alone disabled, e.g. `owed.length > 999`, `if (false)` in place of
+    the real validation, or reverting the ancestor check / the ref-checkout
+    closure computation) and reds exactly the row(s) targeting that guard
+    (the ancestor-check mutant reds both the side-branch and descendant rows).
 
 **Neither `npm --prefix app run typecheck` nor `npm --prefix app run
 lint` cover this file at all** — the tsconfigs and `eslint src e2e sweep`
@@ -254,3 +358,6 @@ exactly that row reds) before trusting it.
 This skill decides *whether* a sweep is owed. It never runs one, and it does
 not touch `app/sweep/`'s arm definitions or `compare.mjs` — see
 `app/sweep/README.md` for actually running the harness once this says OWED.
+The one-line pointer from `app/sweep/README.md` to the reuse rule above is
+NOT added by this PR (#1337) — `app/sweep/**` is inside the sweep closure
+itself, so editing it owes a sweep.
