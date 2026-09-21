@@ -678,10 +678,39 @@ function cmdFiles(root, paths) {
 }
 
 /**
- * Computes the sweep closure at the two endpoints `diff` actually compares —
- * the merge-base commit and `head` (or the working tree, when `head` is
- * omitted, since that IS what an omitted `head` means throughout this file)
- * — via disposable detached worktrees, exactly mirroring `reuse`'s own
+ * Unions any number of closure Maps (as `computeClosure` returns), preferring
+ * a NON-MISSING entry over a MISSING one wherever a key appears in more than
+ * one map. `computeClosure` marks a ROOT/EXTRA_EDGES target that does not
+ * exist at that commit as `{ missing: true }`, and `closureInfo` treats
+ * `missing` as NOT in closure — so a plain last-write-wins spread
+ * (`new Map([...a, ...b])`) lets a LATER map's missing placeholder silently
+ * shadow an EARLIER map's real entry. Major, PR #1384 review (#1359): with
+ * that spread, a `diff` where `head` deletes an EXTRA_EDGES target (e.g.
+ * `app/src/test/setup.ts`) read NOT OWED, because `head`'s `missing` entry
+ * overwrote `mergeBase`'s present one. `computeReuseVerdict` had the
+ * identical bug (`new Map([...closureAtRecorded, ...closureAtBase])`,
+ * #1352) — both callers now go through this one helper instead of each
+ * carrying their own (correct-or-not) precedence rule.
+ */
+function unionClosures(...maps) {
+  const merged = new Map();
+  for (const m of maps) {
+    for (const [k, v] of m) {
+      const existing = merged.get(k);
+      // Set on first sight, or replace a still-missing placeholder — but
+      // NEVER replace an already-present (non-missing) entry, regardless of
+      // what a later map says about the same key.
+      if (existing === undefined || existing.missing) merged.set(k, v);
+    }
+  }
+  return merged;
+}
+
+/**
+ * Computes the sweep closure at the THREE trees `diff` needs — the
+ * merge-base commit, `head` (or the working tree, when `head` is omitted,
+ * since that IS what an omitted `head` means throughout this file), and
+ * `base` itself — via disposable detached worktrees, mirroring `reuse`'s own
  * `computeReuseVerdict` (PR #1352) one command over.
  *
  * `computeClosure(root)` alone reads whatever `root` happens to have
@@ -693,16 +722,28 @@ function cmdFiles(root, paths) {
  * contains — the same false-NOT-OWED shape #1352 closed for `reuse`, here on
  * the command actually run before every solver-heavy code change.
  *
- * UNION the two endpoints' closures, same reasoning as `reuse`'s union: a
- * member present at only ONE endpoint (added, removed, or reached via an
- * importer that changed) must still be seen — narrowing to either endpoint
- * alone reopens an under-report inside this tool's own modelled universe.
+ * UNION all three trees' closures via `unionClosures` (never a bare spread —
+ * see its own header for the missing-precedence Major this fixed), same
+ * reasoning as `reuse`'s union: a member present at only ONE tree (added,
+ * removed, or reached via an importer that changed) must still be seen —
+ * narrowing to fewer trees reopens an under-report inside this tool's own
+ * modelled universe.
+ *
+ * The THIRD term — `base` itself, not just its merge-base with `head` — is a
+ * Minor from the same review (#1359): `changedFiles` diffs
+ * merge-base(base,head)..head, so an import `base` (e.g. `origin/develop`)
+ * ADDED after the fork point is invisible to the merge-base/head pair alone.
+ * Deliberately the SAFE direction (this tool over-reports by design) and
+ * deliberately NOT a substitute for the strict-up-to-date re-sync CLAUDE.md
+ * already requires before a merge — it only narrows the window where a
+ * stale `diff` run would otherwise miss a base-side import.
  */
 function computeClosureForDiff(root, base, head) {
   const mergeBase = mergeBaseCommit(root, base, head);
   const closureAtMergeBase = withRefCheckout(root, mergeBase, (dir) => computeClosure(dir));
   const closureAtHead = head ? withRefCheckout(root, head, (dir) => computeClosure(dir)) : computeClosure(root);
-  return new Map([...closureAtMergeBase, ...closureAtHead]);
+  const closureAtBase = withRefCheckout(root, base, (dir) => computeClosure(dir));
+  return unionClosures(closureAtMergeBase, closureAtHead, closureAtBase);
 }
 
 /**
@@ -934,7 +975,7 @@ function computeReuseVerdict(root, recordedArg, baseArg) {
     // whose importing file changed between the two commits) is still seen.
     const closureAtRecorded = withRefCheckout(root, recordedSha, (dir) => computeClosure(dir));
     const closureAtBase = withRefCheckout(root, baseSha, (dir) => computeClosure(dir));
-    const visited = new Map([...closureAtRecorded, ...closureAtBase]);
+    const visited = unionClosures(closureAtRecorded, closureAtBase);
     const changed = changedFiles(root, recordedSha, baseSha);
     const hits = changed.map((f) => ({ f, info: closureInfo(visited, f) })).filter((x) => x.info !== null);
 
@@ -1466,6 +1507,247 @@ function runSelftest(root) {
     );
   } finally {
     rmSync(diffRepo, { recursive: true, force: true });
+  }
+
+  /**
+   * Inits a disposable git repo with `app/sweep/sweepArms.ts` (importing
+   * `../../lib/extra.ts`, so it lands in `lib/`, outside every
+   * PATH_PREFIXES directory — membership is genuinely import-walk-dependent,
+   * same reasoning as `lib/extra.ts` above and `lib/extra.ts` in
+   * blocker2Repo) plus `app/sweep/vitest.config.ts`, and commits it. Shared
+   * by the five #1359 mutation-check fixtures below to cut the
+   * init-a-repo boilerplate five ways; the git-plumbing PATTERN (branch
+   * back, commit a sibling) still matches diffRepo/blocker2Repo above.
+   */
+  function initClosureRepo(dir, sweepArmsBody) {
+    const git = (args) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' });
+    git(['init', '-q']);
+    git(['config', 'user.email', 'selftest@example.invalid']);
+    git(['config', 'user.name', 'sweep-closure selftest']);
+    mkdirSync(path.join(dir, 'app', 'sweep'), { recursive: true });
+    mkdirSync(path.join(dir, 'lib'), { recursive: true });
+    writeFileSync(path.join(dir, 'app', 'sweep', 'sweepArms.ts'), sweepArmsBody);
+    writeFileSync(path.join(dir, 'app', 'sweep', 'vitest.config.ts'), 'export default {};\n');
+    return git;
+  }
+
+  // #1359 PR #1384 review, Major (fix #1 pin): head DELETES an EXTRA_EDGES
+  // target (app/src/test/setup.ts) — the exact repro from the review
+  // comment. Before `unionClosures`, head's `{missing:true}` placeholder
+  // silently overwrote mergeBase's real entry (last-write-wins spread), so
+  // this read NOT OWED; it must read OWED, because deleting a closure
+  // member is itself a closure-affecting change.
+  //
+  // `base` ALSO deletes setup.ts (independently, as a sibling of `head` off
+  // the same true merge-base) — deliberately, not merely `base == mergeBase`.
+  // With `base` unioned as a THIRD term (fix #3) and `base == mergeBase`
+  // this row would pass even under a NAIVE last-write-wins spread, because
+  // `base`'s own (present) entry is spread LAST and accidentally
+  // "re-wins" over head's missing one — an ordering accident that would
+  // mask exactly the bug this row exists to catch. Making `base` a sibling
+  // that ALSO lacks the file removes that accidental rescue: only the
+  // mergeBase term is present, and it must win on PRECEDENCE (via
+  // `unionClosures`), never on argument order.
+  const fix1Repo = mkdtempSync(path.join(tmpdir(), 'sweep-closure-selftest-fix1-'));
+  try {
+    const git = initClosureRepo(fix1Repo, 'export const ARMS = 1;\n');
+    mkdirSync(path.join(fix1Repo, 'app', 'src', 'test'), { recursive: true });
+    writeFileSync(path.join(fix1Repo, 'app', 'src', 'test', 'setup.ts'), 'export const SETUP = 1;\n');
+    git(['add', '-A']);
+    git(['commit', '-q', '-m', 'true merge-base, setup.ts present']);
+    const mergeBaseSha = git(['rev-parse', 'HEAD']).trim();
+
+    // `base` arg: sibling that deletes setup.ts.
+    git(['rm', '-q', 'app/src/test/setup.ts']);
+    git(['commit', '-q', '-m', 'base deletes setup.ts']);
+    const baseArgSha = git(['rev-parse', 'HEAD']).trim();
+
+    // `head` arg: a SEPARATE sibling off the same merge-base that also
+    // (independently) deletes setup.ts.
+    git(['checkout', '-q', mergeBaseSha]);
+    git(['rm', '-q', 'app/src/test/setup.ts']);
+    git(['commit', '-q', '-m', 'head independently deletes setup.ts']);
+    const headArgSha = git(['rev-parse', 'HEAD']).trim();
+
+    const result = computeDiffVerdict(fix1Repo, baseArgSha, headArgSha);
+    const hit = result.results.find((r) => r.f === 'app/src/test/setup.ts');
+    results.push(
+      check(
+        'diff fix #1 pin: head deletes an EXTRA_EDGES target (setup.ts), base independently deletes it too -> OWED via mergeBase precedence, never via argument order',
+        hit !== undefined && hit.verdict.verdict === 'OWED',
+        { results: result.results },
+      ),
+    );
+  } finally {
+    rmSync(fix1Repo, { recursive: true, force: true });
+  }
+
+  // #1359 PR #1384 review, Major (M2 pin): head-ONLY closure member — head
+  // newly imports AND creates lib/newhead.ts; base/mergeBase have neither
+  // the import nor the file. Dropping the HEAD half of the union (M2) loses
+  // this row: mergeBase's and base's closures both lack lib/newhead.ts, so
+  // only the head term can see it.
+  const m2Repo = mkdtempSync(path.join(tmpdir(), 'sweep-closure-selftest-m2-'));
+  try {
+    const git = initClosureRepo(m2Repo, 'export const ARMS = 1;\n');
+    git(['add', '-A']);
+    git(['commit', '-q', '-m', 'base, no import']);
+    const baseSha = git(['rev-parse', 'HEAD']).trim();
+
+    writeFileSync(path.join(m2Repo, 'lib', 'newhead.ts'), 'export const NEWHEAD = 1;\n');
+    writeFileSync(
+      path.join(m2Repo, 'app', 'sweep', 'sweepArms.ts'),
+      "import '../../lib/newhead.ts';\nexport const ARMS = 1;\n",
+    );
+    git(['add', '-A']);
+    git(['commit', '-q', '-m', 'head adds and imports newhead.ts']);
+    const headSha = git(['rev-parse', 'HEAD']).trim();
+
+    const result = computeDiffVerdict(m2Repo, baseSha, headSha);
+    const hit = result.results.find((r) => r.f === 'lib/newhead.ts');
+    results.push(
+      check(
+        'diff M2 pin: head-only closure member (newly imported AND created on head) -> OWED; dropping the head half of the union loses it',
+        hit !== undefined && hit.verdict.verdict === 'OWED',
+        { results: result.results },
+      ),
+    );
+  } finally {
+    rmSync(m2Repo, { recursive: true, force: true });
+  }
+
+  // #1359 PR #1384 review, Major (M3+M4 pin, ONE fixture discriminates
+  // both): the TRUE merge-base (c0) imports lib/oldbase.ts; BOTH `base` and
+  // `head` are children of c0 that independently drop the import (base does
+  // not touch lib/oldbase.ts; head also edits its content). So the file is
+  // visible ONLY via the mergeBase term computed from the real
+  // git-merge-base commit.
+  //   M3 (drop the merge-base half of the union entirely) loses it: the
+  //   remaining head/base terms both lack the import.
+  //   M4 (compute the "merge-base" term from `base` itself instead of the
+  //   true merge-base) ALSO loses it here, because `base`'s own closure
+  //   lacks the import too (by construction) — a mutant that skips the real
+  //   `git merge-base` call produces the same observable failure as one that
+  //   drops the term outright, so ONE fixture pins both; `base` here is a
+  //   SIBLING of `head` (neither an ancestor of the other), satisfying M4's
+  //   "base is not an ancestor of head" precondition too.
+  const m3m4Repo = mkdtempSync(path.join(tmpdir(), 'sweep-closure-selftest-m3m4-'));
+  try {
+    const git = initClosureRepo(
+      m3m4Repo,
+      "import '../../lib/oldbase.ts';\nexport const ARMS = 1;\n",
+    );
+    writeFileSync(path.join(m3m4Repo, 'lib', 'oldbase.ts'), 'export const OLDBASE = 1;\n');
+    git(['add', '-A']);
+    git(['commit', '-q', '-m', 'true merge-base, imports oldbase.ts']);
+    const mergeBaseSha = git(['rev-parse', 'HEAD']).trim();
+
+    // `base` arg: drops the import, does not touch lib/oldbase.ts.
+    writeFileSync(path.join(m3m4Repo, 'app', 'sweep', 'sweepArms.ts'), 'export const ARMS = 1;\n');
+    git(['add', '-A']);
+    git(['commit', '-q', '-m', 'base drops the import']);
+    const baseArgSha = git(['rev-parse', 'HEAD']).trim();
+
+    // `head` arg: sibling of `base` off the true merge-base — also drops
+    // the import (independently) AND edits lib/oldbase.ts.
+    git(['checkout', '-q', mergeBaseSha]);
+    writeFileSync(path.join(m3m4Repo, 'app', 'sweep', 'sweepArms.ts'), 'export const ARMS = 1;\n');
+    writeFileSync(path.join(m3m4Repo, 'lib', 'oldbase.ts'), 'export const OLDBASE = 2;\n');
+    git(['add', '-A']);
+    git(['commit', '-q', '-m', 'head drops the import and edits oldbase.ts']);
+    const headArgSha = git(['rev-parse', 'HEAD']).trim();
+
+    const result = computeDiffVerdict(m3m4Repo, baseArgSha, headArgSha);
+    const hit = result.results.find((r) => r.f === 'lib/oldbase.ts');
+    results.push(
+      check(
+        'diff M3+M4 pin: merge-base-only closure member (base and head both independently drop the import) -> OWED; dropping the merge-base term, or computing it from `base` instead of the real merge-base, both lose it',
+        hit !== undefined && hit.verdict.verdict === 'OWED',
+        { results: result.results },
+      ),
+    );
+  } finally {
+    rmSync(m3m4Repo, { recursive: true, force: true });
+  }
+
+  // #1359 PR #1384 review, Minor (fix #3 pin): `base` ADDS an import AFTER
+  // the fork point; `head` (a sibling forked from the SAME true merge-base,
+  // before the import existed) only edits that file's content. Neither the
+  // mergeBase term nor the head term can see the import — ONLY unioning
+  // `base`'s own closure (fix #3) surfaces it. Deleting that third union
+  // term reds this row specifically.
+  const fix3Repo = mkdtempSync(path.join(tmpdir(), 'sweep-closure-selftest-fix3-'));
+  try {
+    const git = initClosureRepo(fix3Repo, 'export const ARMS = 1;\n');
+    writeFileSync(path.join(fix3Repo, 'lib', 'x.ts'), 'export const X = 1;\n');
+    git(['add', '-A']);
+    git(['commit', '-q', '-m', 'true merge-base, no import yet']);
+    const mergeBaseSha = git(['rev-parse', 'HEAD']).trim();
+
+    // `base` arg: adds the import after the fork.
+    writeFileSync(
+      path.join(fix3Repo, 'app', 'sweep', 'sweepArms.ts'),
+      "import '../../lib/x.ts';\nexport const ARMS = 1;\n",
+    );
+    git(['add', '-A']);
+    git(['commit', '-q', '-m', 'base adds the import']);
+    const baseArgSha = git(['rev-parse', 'HEAD']).trim();
+
+    // `head` arg: sibling forked from the SAME merge-base, before the
+    // import existed — only edits lib/x.ts.
+    git(['checkout', '-q', mergeBaseSha]);
+    writeFileSync(path.join(fix3Repo, 'lib', 'x.ts'), 'export const X = 2;\n');
+    git(['add', '-A']);
+    git(['commit', '-q', '-m', 'head edits x.ts, forked before the import']);
+    const headArgSha = git(['rev-parse', 'HEAD']).trim();
+
+    const result = computeDiffVerdict(fix3Repo, baseArgSha, headArgSha);
+    const hit = result.results.find((r) => r.f === 'lib/x.ts');
+    results.push(
+      check(
+        "diff fix #3 pin: base adds an import after the fork; head (forked earlier) edits that file -> OWED via base's own unioned closure",
+        hit !== undefined && hit.verdict.verdict === 'OWED',
+        { results: result.results },
+      ),
+    );
+  } finally {
+    rmSync(fix3Repo, { recursive: true, force: true });
+  }
+
+  // #1359 PR #1384 review, M5 (omitted-head pin): with `head` omitted,
+  // `computeClosureForDiff` must read the WORKING TREE (`computeClosure(root)`),
+  // not the committed HEAD ref. An UNCOMMITTED (staged) edit adds an import
+  // and a new file; `base` is the current HEAD commit itself (so
+  // mergeBase(base,HEAD) === base, isolating the head TERM as the only one
+  // that can see the staged edit). M5 (checkout HEAD instead of reading the
+  // live tree) loses this row, since the staged changes are invisible to a
+  // fresh `git worktree add` of the committed HEAD.
+  const m5Repo = mkdtempSync(path.join(tmpdir(), 'sweep-closure-selftest-m5-'));
+  try {
+    const git = initClosureRepo(m5Repo, 'export const ARMS = 1;\n');
+    git(['add', '-A']);
+    git(['commit', '-q', '-m', 'base == HEAD, no import']);
+    const baseSha = git(['rev-parse', 'HEAD']).trim();
+
+    // Uncommitted (staged, never committed) working-tree edit.
+    writeFileSync(path.join(m5Repo, 'lib', 'z.ts'), 'export const Z = 1;\n');
+    writeFileSync(
+      path.join(m5Repo, 'app', 'sweep', 'sweepArms.ts'),
+      "import '../../lib/z.ts';\nexport const ARMS = 1;\n",
+    );
+    git(['add', '-A']); // staged, not committed — `head` argument stays omitted (working tree)
+
+    const result = computeDiffVerdict(m5Repo, baseSha, undefined);
+    const hit = result.results.find((r) => r.f === 'lib/z.ts');
+    results.push(
+      check(
+        'diff M5 pin: head omitted uses the WORKING TREE, not the committed HEAD ref -> uncommitted lib/z.ts import reads OWED',
+        hit !== undefined && hit.verdict.verdict === 'OWED',
+        { results: result.results },
+      ),
+    );
+  } finally {
+    rmSync(m5Repo, { recursive: true, force: true });
   }
 
   let failed = 0;
