@@ -14,9 +14,11 @@
  *     --out <absDir> [--limit L]
  *
  * Each shard writes into `<out>/shard-<i>of<N>`; the merge lands in
- * `<out>/merged`; a manifest (per-arm sha256 prefix, the ledger's own
- * `arms` shape — see `.claude/skills/sweep-closure/SKILL.md`'s "Reusing a
- * stored BASE" section) is written to `<out>/manifest.json`.
+ * `<out>/merged`; a manifest (per-arm hash in the ledger's own `arms` shape
+ * — see `.claude/skills/sweep-closure/SKILL.md`'s "Reusing a stored BASE"
+ * section — using compare.mjs's own 16-hex-char `sha256(raw).slice(0,16)`
+ * prefix; README.md's recorded tables print only its first 8) is written to
+ * `<out>/manifest.json`.
  *
  * This driver does NOT run `npm --prefix app exec vitest` — that resolves
  * the binary but executes in the CALLER's cwd, never loading
@@ -27,10 +29,13 @@
  * A non-zero shard exit is LOGGED, never the verdict — vitest's per-arm
  * wrapper timeout can fire after an arm has already written its JSON
  * (CLAUDE.md's `app/sweep/` bullet: "the artifact hash is the verdict,
- * never the runner's exit code"). The verdict is decided by whether every
- * expected merged arm file exists and `merge-shards.mjs` itself exits 0 —
- * that script already fails closed on a missing/incomplete/mismatched
- * shard set, so this driver does not re-implement that checking.
+ * never the runner's exit code"). A non-empty `--out` is refused OUTRIGHT
+ * (exit 2, before anything spawns) — a reused directory would let
+ * `merge-shards.mjs` merge STALE part files from a prior run. Over that
+ * freshly created `--out`, the verdict is decided by whether every expected
+ * merged arm file exists and `merge-shards.mjs` itself exits 0 — that
+ * script already fails closed on a missing/incomplete/mismatched shard set,
+ * so this driver does not re-implement that checking.
  *
  * Verification obligation this driver does NOT discharge itself (README.md
  * "Sharding"): a merged sharded run's per-arm hashes must reproduce an
@@ -41,8 +46,8 @@
  */
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, realpathSync } from 'node:fs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, resolve, isAbsolute } from 'node:path';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -158,33 +163,62 @@ export function shardCommand({ index, count, dir }, maxWorkers, limit) {
   const env = {
     SC_SWEEP_SHARD: `${index}/${count}`,
     SC_SWEEP_OUT: dir,
+    SC_SWEEP_LIMIT: String(limit),
   };
-  if (limit > 0) env.SC_SWEEP_LIMIT = String(limit);
   return { cmd: 'npm', args, cwd: REPO_ROOT, env };
 }
 
 function sha256Prefix16(buf) {
   // Matches compare.mjs's own `sha(s) = createHash('sha256').update(s)
-  // .digest('hex').slice(0, 16)` so a manifest entry is directly
-  // comparable to README.md's recorded prefixes and the sweep-closure
-  // ledger's `arms` field without a units mismatch.
+  // .digest('hex').slice(0, 16)` — its 16-hex-char prefix, not README.md's
+  // recorded tables, which print only ITS first 8; a manifest entry is
+  // directly comparable to compare.mjs's own output and the sweep-closure
+  // ledger's `arms` field, and to a README table only on its first 8 chars.
   return createHash('sha256').update(buf).digest('hex').slice(0, 16);
+}
+
+// #1363 Minor 5: children this process has spawned, tracked so a SIGINT/
+// SIGTERM to the driver (the `setsid nohup` + `kill` detach path CLAUDE.md
+// documents) can be forwarded rather than orphaning up to shards*maxWorkers
+// solver workers. Measured: killing a bare driver under `setsid` left a
+// sleeping fake shard alive, reparented to init.
+const LIVE_CHILDREN = new Set();
+
+function trackChild(child) {
+  LIVE_CHILDREN.add(child);
+  child.on('exit', () => LIVE_CHILDREN.delete(child));
+  return child;
+}
+
+function installSignalForwarding() {
+  const forward = (signal) => () => {
+    for (const child of LIVE_CHILDREN) child.kill(signal);
+    process.exit(143);
+  };
+  process.on('SIGINT', forward('SIGINT'));
+  process.on('SIGTERM', forward('SIGTERM'));
 }
 
 function runShard(spec) {
   return new Promise((resolvePromise) => {
     mkdirSync(spec.env.SC_SWEEP_OUT, { recursive: true });
-    const child = spawn(spec.cmd, spec.args, {
-      cwd: spec.cwd,
-      env: { ...process.env, ...spec.env },
-      stdio: 'inherit',
-    });
+    // stdin 'ignore', not 'inherit' — a shard child has no business reading
+    // the driver's stdin (CLAUDE.md's "Scripting CLI tools" rule).
+    const child = trackChild(
+      spawn(spec.cmd, spec.args, {
+        cwd: spec.cwd,
+        env: { ...process.env, ...spec.env },
+        stdio: ['ignore', 'inherit', 'inherit'],
+      }),
+    );
     child.on('exit', (code, signal) => resolvePromise({ code, signal }));
     child.on('error', (err) => resolvePromise({ code: null, signal: null, spawnError: err }));
   });
 }
 
 async function main(argv) {
+  installSignalForwarding();
+
   let parsed;
   try {
     parsed = parseArgs(argv);
@@ -198,6 +232,17 @@ async function main(argv) {
       return;
     }
     throw err;
+  }
+
+  // #1363 Blocker 1: a REUSED --out lets merge-shards.mjs merge stale part
+  // files from a PRIOR run alongside (or instead of) this run's own, and
+  // still exit 0 — measured: a dead shard over a populated --out reported
+  // exit 0 with a manifest built from the old run's parts, and a failed
+  // rerun left the OLD manifest in place. Refuse before anything spawns.
+  if (existsSync(parsed.out) && readdirSync(parsed.out).length > 0) {
+    console.error(`FAIL: --out ${parsed.out} is not empty — stale shard parts would be merged as this run's output`);
+    process.exit(2);
+    return;
   }
 
   const layout = planLayout(parsed);
@@ -225,7 +270,9 @@ async function main(argv) {
 
   const mergeArgs = ['app/sweep/merge-shards.mjs', layout.mergedDir, ...layout.shardDirs.map((sd) => sd.dir)];
   const mergeCode = await new Promise((res) => {
-    const child = spawn('node', mergeArgs, { cwd: REPO_ROOT, stdio: 'inherit' });
+    const child = trackChild(
+      spawn('node', mergeArgs, { cwd: REPO_ROOT, stdio: ['ignore', 'inherit', 'inherit'] }),
+    );
     child.on('exit', (code) => res(code));
     child.on('error', () => res(1));
   });
@@ -266,8 +313,14 @@ async function main(argv) {
 }
 
 // Only run when invoked directly — importing this module for its exports
-// (run-sharded.test.mjs) must not spawn anything.
-if (import.meta.url === `file://${process.argv[1]}`) {
+// (run-sharded.test.mjs) must not spawn anything. #1363 Major 3: a bare
+// `file://${process.argv[1]}` template is not URL-encoded, so a path
+// containing a space (or reached via a symlink) never matches
+// `import.meta.url` and this whole branch silently no-ops at exit 0 — the
+// worst failure direction for a sweep driver. `pathToFileURL` encodes it
+// the same way `import.meta.url` is encoded, and `realpathSync` resolves
+// any symlink first.
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   main(process.argv.slice(2)).catch((err) => {
     console.error(err);
     process.exit(1);

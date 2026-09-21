@@ -89,9 +89,9 @@ comfort margin from 0 to the shipped 2.0 m default therefore moves 16 of 33
 routes, not all 27 — the remaining 11 rows are ones where the extra pricing
 changes nothing observable.
 
-**Determinism control (COMPLETE, 2026-08-20 at `00a33ab`, HISTORIC — predates
-#1322's `pruneCellConfined` routing change, not a reproducible current
-baseline): all nine arms run twice, 297/297 plans byte-identical.** Per-arm sha256 prefixes, both runs:
+**Determinism control (COMPLETE, 2026-08-20 at `00a33ab`, HISTORIC — not
+reproducible at current develop (predates at least #1322's
+`pruneCellConfined`)): all nine arms run twice, 297/297 plans byte-identical.** Per-arm sha256 prefixes, both runs:
 `becalmed 8dc119cd`, `breeze 7aa9fb56`, `deep-becalmed 7e7ac2e1`,
 `light-motorless 0ded5d87`, `margin-extreme ae91bf71`, `margin-zero fa5e30f1`,
 `no-comfort 9fa297c8`, `relaxation-dense f4907139`, `short-horizon 3fb63b77`.
@@ -131,10 +131,10 @@ against the merge-base of whatever branch it will certify.
 
 ## #653 sweep control — two new arms, salona44-breeze/salona44-relaxation
 
-**COMPLETE, 2026-09-02 at `d23d4c0`, HISTORIC — predates #1322's
-`pruneCellConfined` routing change, not a reproducible current baseline:
-two full runs of the ELEVEN-arm harness on this branch's own HEAD, 363/363
-plans byte-identical, all eleven arm files sha-identical.** Per-arm sha256 prefixes, both runs (`compare.mjs`
+**COMPLETE, 2026-09-02 at `d23d4c0`, HISTORIC — not reproducible at current
+develop (predates at least #1322's `pruneCellConfined`): two full runs of
+the ELEVEN-arm harness on this branch's own HEAD, 363/363 plans
+byte-identical, all eleven arm files sha-identical.** Per-arm sha256 prefixes, both runs (`compare.mjs`
 output; the nine pre-#653 prefixes below were independently re-verified by
 PR #861's round-2 claim-auditor on 2026-09-02 by re-hashing `run2`'s raw
 arm-file bytes with `compare.mjs`'s own byte-mode algorithm
@@ -216,8 +216,8 @@ the double-run above still certifies the branch.
 ## #295 sweep control — 40-harbour baseline
 
 **COMPLETE, recorded at `e1346bd`** (#295 grew `harbors.json` 33 -> 40).
-**HISTORIC — predates #1322's `pruneCellConfined` routing change, not a
-reproducible current baseline.**
+**HISTORIC — not reproducible at current develop (predates at least #1322's
+`pruneCellConfined`).**
 `node .claude/skills/sweep-closure/closure.mjs diff e1346bd 5f3eeeb` reports
 NOT OWED: PR #1245's four changed files past this commit
 (`app/e2e/seamarks.spec.ts`,
@@ -450,10 +450,17 @@ node app/sweep/compare.mjs /tmp/sweep/base1 /tmp/sweep/head/merged
 `--out` must be absolute; `--limit` is optional, same meaning as
 `SC_SWEEP_LIMIT` below. It prints every shard/merged/manifest path BEFORE
 spawning anything, and never runs `npm --prefix app exec vitest` (wrong cwd,
-loads no config — see the file's own header). A non-zero shard exit is
-logged, not the verdict — the verdict is `merge-shards.mjs`'s own fail-closed
-checks. The manual for-loop form below still works if you need to run a
-subset of shards by hand or on separate machines.
+loads no config — see the file's own header). It also refuses a non-empty
+`--out` outright (exit 2, before anything spawns) — a reused directory would
+merge stale part files from a prior run into this run's manifest. A
+non-zero shard exit is logged, not the verdict — the verdict is
+`merge-shards.mjs`'s own fail-closed checks over that freshly created `--out`.
+The manual for-loop form below still works if you need to run a subset of
+shards by hand or on separate machines. For a REAL, multi-hour sharded
+sweep, detach it the same way CLAUDE.md's `app/sweep/` bullet requires for
+an unsharded run — `setsid`/`nohup`, reporting the `--out` path at detach,
+not on completion — the example above runs in the foreground only to show
+the invocation shape.
 
 **Reusing a recorded BASE instead of re-running it**: before paying either
 side of a sharded run, ask `.claude/skills/sweep-closure/`'s `reuse
@@ -558,8 +565,8 @@ longer comparable. **Add an arm rather than editing one.**
 
 ## Recorded baseline — 2026-08-07, PR #450 (`dbcd519`)
 
-**HISTORIC — predates #1322's `pruneCellConfined` routing change, not a
-reproducible current baseline.**
+**HISTORIC — not reproducible at current develop (predates at least #1322's
+`pruneCellConfined`).**
 
 **Covers only the ORIGINAL six arms (198 of the 363 plans this harness
 produced at 33 harbours).** No BASE-vs-HEAD baseline has been recorded for the three #452
