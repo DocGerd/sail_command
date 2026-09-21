@@ -1451,6 +1451,53 @@ function runSelftest(root) {
     rmSync(blocker2Repo, { recursive: true, force: true });
   }
 
+  // #1359 PR #1384 review round 3 (M9 pin): `computeReuseVerdict`'s own
+  // `unionClosures` call is unpinned by every existing row above, because
+  // each one calls `computeDiffVerdict`, never `computeReuseVerdict`.
+  // Reverting `computeReuseVerdict`'s union back to a naive last-write-wins
+  // spread leaves ALL prior rows green. Unfixed shape: `recorded` has an
+  // EXTRA_EDGES target (setup.ts) present; `base` (a direct child of
+  // `recorded`) deletes it. `unionClosures` must keep the present
+  // `recorded`-side entry -> RUN_BASE; a naive spread lets `base`'s missing
+  // entry win -> a false REUSE that certifies a base it never measured.
+  const reuseMissingRepo = mkdtempSync(path.join(tmpdir(), 'sweep-closure-selftest-reuse-missing-'));
+  try {
+    const git = (args) => execFileSync('git', args, { cwd: reuseMissingRepo, encoding: 'utf8' });
+    git(['init', '-q']);
+    git(['config', 'user.email', 'selftest@example.invalid']);
+    git(['config', 'user.name', 'sweep-closure selftest']);
+    mkdirSync(path.join(reuseMissingRepo, 'app', 'sweep'), { recursive: true });
+    mkdirSync(path.join(reuseMissingRepo, 'app', 'src', 'test'), { recursive: true });
+    writeFileSync(path.join(reuseMissingRepo, 'app', 'sweep', 'sweepArms.ts'), 'export const ARMS = 1;\n');
+    writeFileSync(path.join(reuseMissingRepo, 'app', 'sweep', 'vitest.config.ts'), 'export default {};\n');
+    writeFileSync(path.join(reuseMissingRepo, 'app', 'src', 'test', 'setup.ts'), 'export const SETUP = 1;\n');
+    git(['add', '-A']);
+    git(['commit', '-q', '-m', 'recorded, setup.ts present']);
+    const recordedSha = git(['rev-parse', 'HEAD']).trim();
+
+    git(['rm', '-q', 'app/src/test/setup.ts']);
+    git(['commit', '-q', '-m', 'base deletes setup.ts']);
+    const baseSha = git(['rev-parse', 'HEAD']).trim();
+
+    const ledgerDir3 = path.join(reuseMissingRepo, '.claude', 'skills', 'sweep-closure');
+    mkdirSync(ledgerDir3, { recursive: true });
+    writeFileSync(
+      path.join(ledgerDir3, 'recorded-runs.json'),
+      JSON.stringify({ runs: [{ sha: recordedSha, arms: { base1: 'deadbeef' } }] }),
+    );
+
+    const rMissingPrecedence = computeReuseVerdict(reuseMissingRepo, recordedSha, baseSha);
+    results.push(
+      check(
+        'reuse M9 pin: base deletes an EXTRA_EDGES target (setup.ts) present at recorded -> RUN_BASE, never a false REUSE via missing-precedence',
+        rMissingPrecedence.verdict === 'RUN_BASE',
+        rMissingPrecedence,
+      ),
+    );
+  } finally {
+    rmSync(reuseMissingRepo, { recursive: true, force: true });
+  }
+
   // #1359: `diff`'s own closure walk must be independent of the caller's
   // checked-out tree, exactly the property blocker2Repo above proves for
   // `reuse`. Same shape, one command over: `sweepArms.ts` imports
