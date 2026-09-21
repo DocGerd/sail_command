@@ -79,6 +79,7 @@
  *   node closure.mjs closure                 # print the whole derived closure
  *   node closure.mjs files <path> [<path>…]  # is <path> in the closure at all?
  *   node closure.mjs diff <base> [<head>]    # real usage: does this diff owe a sweep?
+ *   node closure.mjs reuse <recorded> <base> # #1337: can a recorded run's artifacts stand in as BASE?
  *   node closure.mjs selftest                # positive/negative controls, see #729
  *
  * `<base>`/`<head>` are anything `git diff --merge-base --no-renames`
@@ -733,6 +734,213 @@ function cmdDiff(root, base, head) {
 }
 
 // ---------------------------------------------------------------------------
+// reuse — #1337: can a RECORDED run's stored sweep artifacts stand in for a
+// fresh BASE arm-set, instead of re-running it, because the closure is
+// provably untouched between the recorded SHA and the current base?
+//
+// This is a NUDGE-class tool exactly like `diff` above, but its failure
+// direction is the OPPOSITE one: `diff` over-reports OWED (a false "owed"
+// only costs unnecessary solver time), while a false REUSE here would let a
+// stale artifact stand in for a base that has actually moved — silently
+// certifying a comparison that was never run. So `reuse` fails CLOSED,
+// never open: any ambiguity, any lookup miss, any tool error all resolve to
+// `RUN_BASE`, and `REUSE` is returned ONLY when every check below has
+// POSITIVELY confirmed the closure is untouched. `computeReuseVerdict`
+// therefore wraps its entire body in one try/catch that turns ANY thrown
+// error into `RUN_BASE` — a git failure, a malformed ledger, an
+// unresolvable ref all fall through to the same safe default rather than
+// crashing the caller or silently reporting REUSE on a fluke.
+// ---------------------------------------------------------------------------
+
+const LEDGER_REL_PATH = '.claude/skills/sweep-closure/recorded-runs.json';
+
+function ledgerPath(root) {
+  return path.join(root, LEDGER_REL_PATH);
+}
+
+/**
+ * Reads and validates the ledger file at `absPath`. Throws on anything that
+ * isn't `{ "runs": [...] }` — the caller (`computeReuseVerdict`) converts
+ * that throw into a `RUN_BASE` verdict, never lets it propagate further.
+ */
+function loadLedgerFile(absPath) {
+  const raw = readFileSync(absPath, 'utf8');
+  const parsed = JSON.parse(raw);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || !Array.isArray(parsed.runs)) {
+    throw new Error('ledger must be a JSON object with a "runs" array');
+  }
+  return parsed;
+}
+
+/**
+ * Finds the ledger entry whose `sha` matches `key` exactly or as a prefix
+ * (case-insensitive). Returns `null` (never throws) on no match, an empty
+ * ledger, a malformed entry (a malformed INDIVIDUAL entry is skipped rather
+ * than aborting the whole lookup, so one bad row can't mask another), a
+ * prefix shorter than 7 characters, or — Major, PR #1352 review — an
+ * AMBIGUOUS prefix matching more than one entry: unlike `git rev-parse`,
+ * which errors on an ambiguous short hash, a first-match lookup here would
+ * silently pick whichever entry sorts first in the ledger array, certifying
+ * a DIFFERENT run's artifacts than the one the caller meant. The caller
+ * reports both "no match" and "ambiguous match" as the same
+ * `unknown recorded run` RUN_BASE verdict; either way it fails closed.
+ */
+function findLedgerEntry(ledger, key) {
+  if (typeof key !== 'string' || key.length < 7) return null;
+  const lower = key.toLowerCase();
+  const matches = ledger.runs.filter(
+    (e) => e && typeof e === 'object' && typeof e.sha === 'string' && e.sha.toLowerCase().startsWith(lower),
+  );
+  return matches.length === 1 ? matches[0] : null; // caller reports unknown/ambiguous -> RUN_BASE
+}
+
+/**
+ * Checks out `ref` into a fresh, detached temp worktree via `git worktree
+ * add --detach`, runs `fn(tempDir)`, and tears the worktree down again —
+ * ALWAYS, even if `fn` throws. This is what lets `computeClosure` (which
+ * reads from a directory on disk, unmodified — see its own header) compute
+ * the closure AT a specific commit instead of at whatever the CALLER
+ * happens to have checked out (Blocker, PR #1352 review).
+ */
+function withRefCheckout(root, ref, fn) {
+  const tmp = mkdtempSync(path.join(tmpdir(), 'sweep-closure-ref-'));
+  execFileSync('git', ['worktree', 'add', '--detach', '--quiet', tmp, ref], { cwd: root });
+  try {
+    return fn(tmp);
+  } finally {
+    try {
+      execFileSync('git', ['worktree', 'remove', '--force', tmp], { cwd: root });
+    } catch {
+      // best effort; still remove the directory below even if git's own
+      // worktree bookkeeping failed to detach cleanly.
+    }
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+/**
+ * The pure decision function — no I/O side effects beyond reading the
+ * ledger file and invoking `git`/the closure walk, and it NEVER throws:
+ * every failure mode collapses to `{ verdict: 'RUN_BASE', reason }`. This is
+ * what `cmdReuse` calls for the CLI, and what `selftest` calls directly
+ * (against a synthetic repo + a synthetic ledger object) so the fail-closed
+ * behaviour is exercised without needing a real GitHub SHA on record.
+ */
+function computeReuseVerdict(root, recordedArg, baseArg) {
+  try {
+    if (!recordedArg || !baseArg) {
+      return { verdict: 'RUN_BASE', reason: 'usage: reuse <recorded> <base>' };
+    }
+
+    let ledger;
+    try {
+      ledger = loadLedgerFile(ledgerPath(root));
+    } catch (err) {
+      return { verdict: 'RUN_BASE', reason: `malformed ledger (${LEDGER_REL_PATH}): ${err.message}` };
+    }
+
+    const entry = findLedgerEntry(ledger, recordedArg);
+    if (!entry) {
+      return { verdict: 'RUN_BASE', reason: `unknown recorded run: ${recordedArg} (no matching entry in ${LEDGER_REL_PATH})` };
+    }
+    if (typeof entry.sha !== 'string' || entry.sha.length === 0) {
+      return { verdict: 'RUN_BASE', reason: `ledger entry for ${recordedArg} has no "sha" field` };
+    }
+    if (!entry.arms || typeof entry.arms !== 'object' || Array.isArray(entry.arms) || Object.keys(entry.arms).length === 0) {
+      return {
+        verdict: 'RUN_BASE',
+        reason: `ledger entry ${entry.sha} has no recorded artifact hashes ("arms" missing/empty)`,
+      };
+    }
+
+    // Resolve both refs to full SHAs up front — a `git rev-parse` failure
+    // (recorded SHA no longer reachable, base ref unknown) is a git
+    // failure, caught by the outer try/catch below like any other.
+    const recordedSha = execFileSync('git', ['rev-parse', entry.sha], { cwd: root, encoding: 'utf8' }).trim();
+    const baseSha = execFileSync('git', ['rev-parse', baseArg], { cwd: root, encoding: 'utf8' }).trim();
+
+    // Blocker (PR #1352 review): `git diff --merge-base` diffs
+    // merge-base(recorded, base) -> base, so it is BLIND to any change that
+    // lives only on `recorded`'s own side — a recorded run on a side branch
+    // (or, symmetrically, a `recorded` that is actually a DESCENDANT of
+    // `base`, where merge-base(recorded, base) == base and the diff
+    // collapses to base-vs-base, i.e. empty) can certify a base it never
+    // measured. `--merge-base` does NOT "only widen" the diff in general —
+    // that claim from an earlier revision of this comment was refuted by
+    // both a side-branch and a descendant reproduction. Require `recorded`
+    // to be an ancestor of (or equal to) `base` BEFORE diffing at all.
+    try {
+      execFileSync('git', ['merge-base', '--is-ancestor', recordedSha, baseSha], { cwd: root });
+    } catch {
+      return { verdict: 'RUN_BASE', reason: `recorded ${recordedSha} is not an ancestor of base ${baseSha}` };
+    }
+
+    // Blocker (PR #1352 review): compute the closure from the RECORDED and
+    // BASE trees themselves via disposable detached worktrees, never from
+    // whatever this process's OWN working tree happens to have checked
+    // out — `computeClosure(root)` reads `root`'s checked-out files, so a
+    // caller running `reuse` from a THIRD tree (the normal case: the branch
+    // under test, distinct from both `recorded` and `base`) got a verdict
+    // that depended on which branch was checked out when `reuse` ran, not
+    // on `recorded`/`base` themselves. Union the two trees' closures so a
+    // member that only exists in one of them (a file added, removed, or
+    // whose importing file changed between the two commits) is still seen.
+    const closureAtRecorded = withRefCheckout(root, recordedSha, (dir) => computeClosure(dir));
+    const closureAtBase = withRefCheckout(root, baseSha, (dir) => computeClosure(dir));
+    const visited = new Map([...closureAtRecorded, ...closureAtBase]);
+    const changed = changedFiles(root, recordedSha, baseSha);
+    const hits = changed.map((f) => ({ f, info: closureInfo(visited, f) })).filter((x) => x.info !== null);
+
+    const owed = [];
+    for (const { f, info } of hits) {
+      let isOwed = true;
+      if (f === BOATS_TS_PATH) {
+        const oldRef = mergeBaseCommit(root, recordedSha, baseSha);
+        const oldContent = gitShow(root, oldRef, f);
+        const newContent = gitShow(root, baseSha, f);
+        const diffText = gitDiffU0(root, recordedSha, baseSha, f);
+        isOwed = classifyBoatsTs({ oldContent, newContent, diffText }).verdict === 'OWED';
+      }
+      if (isOwed) owed.push({ f, info });
+    }
+
+    if (owed.length > 0) {
+      return {
+        verdict: 'RUN_BASE',
+        reason: `${owed.length} closure file(s) changed between ${recordedSha} and ${baseSha}`,
+        recordedSha,
+        baseSha,
+        owed,
+      };
+    }
+
+    return {
+      verdict: 'REUSE',
+      reason: `no closure member changed between ${recordedSha} and ${baseSha}`,
+      recordedSha,
+      baseSha,
+      entry,
+    };
+  } catch (err) {
+    return { verdict: 'RUN_BASE', reason: `closure-tool error: ${err.message}` };
+  }
+}
+
+function cmdReuse(root, recordedArg, baseArg) {
+  console.log(`# app/sweep #282 reuse check`);
+  console.log(`recorded=${recordedArg ?? '(missing)'} base=${baseArg ?? '(missing)'}`);
+  console.log('');
+
+  const result = computeReuseVerdict(root, recordedArg, baseArg);
+  const label = result.verdict === 'REUSE' ? 'REUSE' : 'RUN BASE';
+  console.log(`VERDICT: ${label} — ${result.reason}`);
+  if (result.owed) {
+    for (const { f } of result.owed) console.log(`  ${f}`);
+  }
+  process.exitCode = result.verdict === 'REUSE' ? 0 : 1; // non-zero means "run base", mirrors `diff`'s OWED convention
+}
+
+// ---------------------------------------------------------------------------
 // selftest — the issue's required positive/negative controls, plus two
 // non-vacuity mutation checks (an edit inside the SAME file that must still
 // be OWED, and an edit to a DIFFERENT boats.ts field the exception is
@@ -930,6 +1138,231 @@ function runSelftest(root) {
     rmSync(renameRepo, { recursive: true, force: true });
   }
 
+  // #1337: `reuse` selftest — a real, disposable three-commit git repo (a
+  // base plus two divergent children) so `computeReuseVerdict` exercises
+  // its actual `git rev-parse`/`changedFiles` calls rather than a stand-in.
+  // The repo's own `.claude/skills/sweep-closure/recorded-runs.json` is
+  // written to DISK (never committed) so `loadLedgerFile` reads a real file
+  // at the real relative path, exactly as `cmdReuse` would from the repo
+  // root. Nothing here touches THIS repo's own ledger or git state.
+  const reuseRepo = mkdtempSync(path.join(tmpdir(), 'sweep-closure-selftest-reuse-'));
+  try {
+    const git = (args) => execFileSync('git', args, { cwd: reuseRepo, encoding: 'utf8' });
+    git(['init', '-q']);
+    git(['config', 'user.email', 'selftest@example.invalid']);
+    git(['config', 'user.name', 'sweep-closure selftest']);
+    mkdirSync(path.join(reuseRepo, 'app', 'sweep'), { recursive: true });
+    writeFileSync(path.join(reuseRepo, 'app', 'sweep', 'sweepArms.ts'), 'export const ARMS = 1;\n');
+    writeFileSync(path.join(reuseRepo, 'app', 'sweep', 'vitest.config.ts'), 'export default {};\n');
+    writeFileSync(path.join(reuseRepo, 'README.md'), 'v1\n');
+    git(['add', '-A']);
+    git(['commit', '-q', '-m', 'recorded']);
+    const recordedSha = git(['rev-parse', 'HEAD']).trim();
+
+    // untouched-base: only a file OUTSIDE the closure changes.
+    writeFileSync(path.join(reuseRepo, 'README.md'), 'v2\n');
+    git(['add', '-A']);
+    git(['commit', '-q', '-m', 'untouched base']);
+    const untouchedBaseSha = git(['rev-parse', 'HEAD']).trim();
+
+    // touched-base: branch back from the recorded commit and edit a real
+    // closure member (`sweepArms.ts` is a ROOT — always in closure via the
+    // import walk, independent of PATH_PREFIXES).
+    git(['checkout', '-q', recordedSha]);
+    writeFileSync(path.join(reuseRepo, 'app', 'sweep', 'sweepArms.ts'), 'export const ARMS = 2;\n');
+    git(['add', '-A']);
+    git(['commit', '-q', '-m', 'touched base']);
+    const touchedBaseSha = git(['rev-parse', 'HEAD']).trim();
+
+    const ledgerDir = path.join(reuseRepo, '.claude', 'skills', 'sweep-closure');
+    mkdirSync(ledgerDir, { recursive: true });
+    const ledgerFile = path.join(ledgerDir, 'recorded-runs.json');
+    const writeLedger = (obj) => writeFileSync(ledgerFile, JSON.stringify(obj));
+
+    // Happy path: closure untouched -> REUSE.
+    writeLedger({ runs: [{ sha: recordedSha, arms: { base1: 'deadbeef' } }] });
+    const rUntouched = computeReuseVerdict(reuseRepo, recordedSha, untouchedBaseSha);
+    results.push(
+      check('reuse: closure untouched between recorded and base -> REUSE', rUntouched.verdict === 'REUSE', rUntouched),
+    );
+
+    // Closure member changed -> RUN_BASE, never REUSE (same ledger, same
+    // recorded SHA — only the BASE argument differs from the row above).
+    const rTouched = computeReuseVerdict(reuseRepo, recordedSha, touchedBaseSha);
+    results.push(
+      check(
+        'reuse: a closure member (sweepArms.ts) changed between recorded and base -> RUN_BASE',
+        rTouched.verdict === 'RUN_BASE',
+        rTouched,
+      ),
+    );
+
+    // Malformed ledger (not even an object with a "runs" array) -> RUN_BASE,
+    // never a thrown exception reaching the caller.
+    writeFileSync(ledgerFile, '{ "not-runs": true }');
+    const rMalformed = computeReuseVerdict(reuseRepo, recordedSha, untouchedBaseSha);
+    results.push(
+      check(
+        'reuse: malformed ledger (no "runs" array) -> RUN_BASE',
+        rMalformed.verdict === 'RUN_BASE' && /malformed ledger/.test(rMalformed.reason),
+        rMalformed,
+      ),
+    );
+
+    // Unknown recorded run: a syntactically valid, well-shaped ledger that
+    // simply has no entry matching the SHA asked for -> RUN_BASE.
+    writeLedger({ runs: [{ sha: touchedBaseSha, arms: { base1: 'deadbeef' } }] });
+    const rUnknown = computeReuseVerdict(reuseRepo, recordedSha, untouchedBaseSha);
+    results.push(
+      check(
+        'reuse: recorded SHA has no matching ledger entry -> RUN_BASE',
+        rUnknown.verdict === 'RUN_BASE' && /unknown recorded run/.test(rUnknown.reason),
+        rUnknown,
+      ),
+    );
+
+    // Ledger entry present and SHA matches, but no artifact hashes recorded
+    // ("arms" missing/empty) -> RUN_BASE, not REUSE-by-omission.
+    writeLedger({ runs: [{ sha: recordedSha, arms: {} }] });
+    const rNoArms = computeReuseVerdict(reuseRepo, recordedSha, untouchedBaseSha);
+    results.push(
+      check(
+        'reuse: ledger entry has no recorded artifact hashes -> RUN_BASE',
+        rNoArms.verdict === 'RUN_BASE' && /artifact hashes/.test(rNoArms.reason),
+        rNoArms,
+      ),
+    );
+
+    // Blocker (PR #1352 review), side branch: `recorded`=touchedBaseSha and
+    // `base`=untouchedBaseSha are SIBLING children of `recordedSha` — neither
+    // is an ancestor of the other — so a plain `--merge-base` diff would
+    // diff their shared ancestor against base, missing `recorded`'s OWN
+    // closure edit (sweepArms.ts) entirely. Must fail closed on the ancestor
+    // check before ever reaching that diff.
+    writeLedger({ runs: [{ sha: touchedBaseSha, arms: { base1: 'deadbeef' } }] });
+    const rSideBranch = computeReuseVerdict(reuseRepo, touchedBaseSha, untouchedBaseSha);
+    results.push(
+      check(
+        'reuse: recorded sits on a divergent side branch (not an ancestor of base) -> RUN_BASE',
+        rSideBranch.verdict === 'RUN_BASE' && /not an ancestor/.test(rSideBranch.reason),
+        rSideBranch,
+      ),
+    );
+
+    // Blocker (PR #1352 review), descendant: `recorded`=touchedBaseSha is a
+    // DESCENDANT of `base`=recordedSha (a misordered call, or a ledger SHA
+    // newer than the base being checked) — merge-base(recorded, base)
+    // collapses to `base` itself, so the diff is EMPTY regardless of real
+    // changes between them. Same ledger entry as the row above.
+    const rDescendant = computeReuseVerdict(reuseRepo, touchedBaseSha, recordedSha);
+    results.push(
+      check(
+        'reuse: recorded is a DESCENDANT of base (misordered call) -> RUN_BASE',
+        rDescendant.verdict === 'RUN_BASE' && /not an ancestor/.test(rDescendant.reason),
+        rDescendant,
+      ),
+    );
+
+    // Major (PR #1352 review): an AMBIGUOUS SHA prefix matching MORE THAN
+    // ONE ledger entry must never silently resolve to whichever sorts
+    // first — unlike `git rev-parse`'s own ambiguity error, a first-match
+    // lookup here would certify a DIFFERENT run's artifacts than intended.
+    // Synthetic (non-git) SHA strings are fine: the ambiguity check returns
+    // before any `git rev-parse` call is made.
+    writeLedger({
+      runs: [
+        { sha: 'aaaaaaaa1111111111111111111111111111aaaa', arms: { base1: 'deadbeef' } },
+        { sha: 'aaaaaaaa2222222222222222222222222222bbbb', arms: { base1: 'deadbeef' } },
+      ],
+    });
+    const rAmbiguous = computeReuseVerdict(reuseRepo, 'aaaaaaaa', untouchedBaseSha);
+    results.push(
+      check(
+        'reuse: an ambiguous SHA prefix (matches 2 ledger entries) -> RUN_BASE, never the first match',
+        rAmbiguous.verdict === 'RUN_BASE' && /unknown recorded run/.test(rAmbiguous.reason),
+        rAmbiguous,
+      ),
+    );
+
+    // Major (PR #1352 review): a prefix shorter than 7 characters is
+    // refused outright, even where it happens to match exactly one entry
+    // today — a shorter prefix risks colliding with a future ledger entry.
+    writeLedger({ runs: [{ sha: recordedSha, arms: { base1: 'deadbeef' } }] });
+    const rShortPrefix = computeReuseVerdict(reuseRepo, recordedSha.slice(0, 6), untouchedBaseSha);
+    results.push(
+      check(
+        'reuse: a SHA prefix shorter than 7 characters is refused -> RUN_BASE',
+        rShortPrefix.verdict === 'RUN_BASE' && /unknown recorded run/.test(rShortPrefix.reason),
+        rShortPrefix,
+      ),
+    );
+  } finally {
+    rmSync(reuseRepo, { recursive: true, force: true });
+  }
+
+  // Blocker (PR #1352 review): the closure verdict must come from the
+  // RECORDED and BASE trees, never from whatever this process's OWN
+  // working tree happens to have checked out. `lib/extra.ts` sits OUTSIDE
+  // every PATH_PREFIXES directory (app/sweep, app/public/data, pipeline),
+  // so its closure membership is genuinely CONTENT-dependent on the import
+  // walk — a directory-prefix match could otherwise mask this bug
+  // regardless of what the import walk itself saw.
+  const blocker2Repo = mkdtempSync(path.join(tmpdir(), 'sweep-closure-selftest-blocker2-'));
+  try {
+    const git2 = (args) => execFileSync('git', args, { cwd: blocker2Repo, encoding: 'utf8' });
+    git2(['init', '-q']);
+    git2(['config', 'user.email', 'selftest@example.invalid']);
+    git2(['config', 'user.name', 'sweep-closure selftest']);
+    mkdirSync(path.join(blocker2Repo, 'app', 'sweep'), { recursive: true });
+    mkdirSync(path.join(blocker2Repo, 'lib'), { recursive: true });
+    writeFileSync(path.join(blocker2Repo, 'lib', 'extra.ts'), 'export const EXTRA = 1;\n');
+    writeFileSync(
+      path.join(blocker2Repo, 'app', 'sweep', 'sweepArms.ts'),
+      "import '../../lib/extra.ts';\nexport const ARMS = 1;\n",
+    );
+    writeFileSync(path.join(blocker2Repo, 'app', 'sweep', 'vitest.config.ts'), 'export default {};\n');
+    git2(['add', '-A']);
+    git2(['commit', '-q', '-m', 'recorded']);
+    const recorded3Sha = git2(['rev-parse', 'HEAD']).trim();
+
+    // base3: child of recorded3, changes ONLY lib/extra.ts — a genuine
+    // closure-member edit that base3's OWN (unchanged) sweepArms.ts still
+    // imports.
+    writeFileSync(path.join(blocker2Repo, 'lib', 'extra.ts'), 'export const EXTRA = 2;\n');
+    git2(['add', '-A']);
+    git2(['commit', '-q', '-m', 'base changes extra.ts']);
+    const base3Sha = git2(['rev-parse', 'HEAD']).trim();
+
+    // feature3: a SEPARATE child of recorded3 that drops the import —
+    // checked out as this repo's OWN HEAD below, so a working-tree-based
+    // closure walk (the pre-fix behaviour) would see a sweepArms.ts that
+    // does NOT import lib/extra.ts at all.
+    git2(['checkout', '-q', recorded3Sha]);
+    writeFileSync(path.join(blocker2Repo, 'app', 'sweep', 'sweepArms.ts'), 'export const ARMS = 1;\n');
+    git2(['add', '-A']);
+    git2(['commit', '-q', '-m', 'feature drops the import']);
+    // Stays checked out on `feature3` — computeReuseVerdict must still
+    // return the correct verdict for recorded3/base3 despite this.
+
+    const ledgerDir2 = path.join(blocker2Repo, '.claude', 'skills', 'sweep-closure');
+    mkdirSync(ledgerDir2, { recursive: true });
+    writeFileSync(
+      path.join(ledgerDir2, 'recorded-runs.json'),
+      JSON.stringify({ runs: [{ sha: recorded3Sha, arms: { base1: 'deadbeef' } }] }),
+    );
+
+    const rCheckoutIndependent = computeReuseVerdict(blocker2Repo, recorded3Sha, base3Sha);
+    results.push(
+      check(
+        "reuse: verdict is independent of the caller's own checked-out tree (a closure member changed off-tree) -> RUN_BASE",
+        rCheckoutIndependent.verdict === 'RUN_BASE',
+        rCheckoutIndependent,
+      ),
+    );
+  } finally {
+    rmSync(blocker2Repo, { recursive: true, force: true });
+  }
+
   let failed = 0;
   for (const r of results) {
     console.log(`${r.pass ? 'PASS' : 'FAIL'} — ${r.name}`);
@@ -964,11 +1397,14 @@ function main() {
     case 'diff':
       cmdDiff(root, rest[0], rest[1]);
       break;
+    case 'reuse':
+      cmdReuse(root, rest[0], rest[1]);
+      break;
     case 'selftest':
       runSelftest(root);
       break;
     default:
-      console.error('usage: closure.mjs <closure|files <path…>|diff <base> [<head>]|selftest>');
+      console.error('usage: closure.mjs <closure|files <path…>|diff <base> [<head>]|reuse <recorded> <base>|selftest>');
       process.exit(2);
   }
 }

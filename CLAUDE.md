@@ -251,24 +251,15 @@ making design-level decisions; do not silently deviate.
   accepting one, check whether the changed file is a RUNTIME input the
   import walk cannot see — a new data asset, arm file or pipeline generator
   outside `PATH_PREFIXES`, or a runtime-constructed edge outside
-  `EXTRA_EDGES`. The prose list that follows is a reader's aid, not the
-  source of truth. The closure
-  is wider than the obvious paths: besides `app/src/routing/`,
-  `app/src/lib/mask.ts`, `app/src/lib/depthGate.ts` (since #452),
-  `app/public/data/`, `app/sweep/` and `pipeline/`,
-  `app/src/data/boats.ts` and `app/src/lib/boatDepth.ts` (both since #538 —
-  `sweepArms.ts:38` imports `boatById`/`DEFAULT_BOAT_ID`/`polarKey`;
-  `types.ts:1` and `planRoute.ts:24` import `boatDepth`),
-  `sweepArms.ts` pulls `DEFAULT_SETTINGS` from `app/src/types.ts`,
-  `uniformWindGrid` from `app/src/test/fixtures` and `solverTimeoutMs` from
-  `app/src/test/timeouts`; `sweep/vitest.config.ts` loads
-  `app/src/test/setup.ts`; and the solver reaches `lib/geo.ts`,
-  `lib/polar.ts` and `lib/wind.ts`. One `DEFAULT_SETTINGS` field edit moves
-  plans across every arm that does not spread-override that field, while
-  touching none of the obvious paths — which is why the list form of this
-  rule was wrong (measured 2026-08-13: #518's evidence did survive #513,
-  #522 and #523, verified by running the closure check this rule prescribes
-  — none of the 22 files they changed is in the closure).
+  `EXTRA_EDGES`. RUN `closure.mjs files` FOR THE MEMBER LIST — it is derived
+  from the roots, no prose list here to drift. The closure is wider than the
+  obvious routing/mask/sweep/pipeline paths: it reaches the boat catalogue and
+  `boatDepth`, `DEFAULT_SETTINGS` in `types.ts`, the shared test fixtures and
+  timeouts, `setup.ts`, and the solver's `geo`/`polar`/`wind` helpers. One
+  `DEFAULT_SETTINGS` field edit therefore moves plans across every arm that
+  does not spread-override it while touching none of the obvious paths —
+  which is why the list form of this rule was wrong (measured 2026-08-13 on
+  #518 vs #513/#522/#523: none of their 22 files is in the closure).
   **A sweep's BASELINE is the branch's own base tree, not the last RECORDED
   baseline.** Measured at #1264 (2026-09-16): against the baseline recorded
   two PRs earlier, `light-motorless` read CHANGED — that change was #1136's,
@@ -280,8 +271,10 @@ making design-level decisions; do not silently deviate.
   arms, which is how a sweep always runs — and
   the run exited 1, yet all 11 JSONs were complete and byte-correct: the solve
   is synchronous, so the timer fires only after the arm has written its file.
-  The ARTIFACT HASH is the verdict, never the runner's exit code. #1262 tracks
-  sharding so arms stop outgrowing the cap.
+  The ARTIFACT HASH is the verdict, never the runner's exit code. Sharding
+  shipped at #1262 (`SC_SWEEP_SHARD`, `merge-shards.mjs`); #1283 then made the
+  merge fail closed on shards run under mismatched `SC_SWEEP_LIMIT`, encoding
+  the limit in the part filename via `armFileBase`.
   **Never run a full sweep as a harness background task** — a harness
   background task was killed at ~58 min (observed 2026-08-18 against Claude
   Code 2.1.235; re-check after any harness upgrade, this is a harness-version
@@ -540,8 +533,11 @@ making design-level decisions; do not silently deviate.
   `app/src/test/verifyMaskConnectivity.test.ts` re-runs the
   HARBOUR-REACHABILITY flood fill against the same committed
   `mask.bin`/`harbors.json` for every
-  `BOATS` entry, inside the REQUIRED `app` check — so that ONE assertion no
-  longer merges silently. Everything else in `verify_mask.py`'s connectivity
+  `BOATS` entry, inside the REQUIRED `app` check — so those assertions no
+  longer merge silently. TWO of them since #1294: connected-when-expected, and
+  accepted-when-a-boat's-own-gate-cannot-reach-it via
+  `EXPECTED_UNREACHABLE_BY_BOAT` (exact in both directions; the real table is
+  EMPTY today, so its non-vacuity rests on a synthetic fixture). Everything else in `verify_mask.py`'s connectivity
   section stays Python-only, including a STALE `KNOWN_DISCONNECTED` entry,
   which
   that file's own SCOPE comment calls "the one with real teeth". Read that
@@ -751,8 +747,7 @@ making design-level decisions; do not silently deviate.
 - `Plan` is structured-clone-safe (IndexedDB/postMessage) but NOT JSON-safe
   (Float32Array wind grids) — file export needs a dedicated serializer (#3).
 - Tests import vitest APIs explicitly (`import { describe, it, expect, vi }
-  from 'vitest'`). i18n dicts enforce key parity via
-  `satisfies Record<MsgKey, string>` — add every key to BOTH dicts.
+  from 'vitest'`).
 - Never transfer the wind grid's buffers to the worker (clone keeps the saved
   plan's forecast intact); only the mask buffer is transferred, always as a
   `.slice(0)` copy of the cached original.
@@ -1641,10 +1636,10 @@ making design-level decisions; do not silently deviate.
   | v0.16.0 | 2026-08-31 | 498 s | `success` (MEASURED before the tag push, and the no-op CALLED IN ADVANCE from it) | **DID no-op** | merge-push `33409992738` → tag `33410773664`; `smoke-probe` FAILED, prod kept serving `v0.15.0-98-g04c4e6d`; fixed by the back-merge |
   | v0.17.0 | 2026-09-01 | 58 s | `cancelled` (MEASURED — the job had not been CREATED when the tag was pushed) | safe | merge-push `33502228802` → tag `33502309994` deployed cleanly, `smoke-probe` passed |
   | v0.18.0 | 2026-09-01 | 109 s | `success` — and BOTH deploy jobs read success, neither run cancelled, unlike every earlier row | **`smoke-probe` FAILED** | merge-push `33561093145` → tag `33561257642` on the same SHA; the tag run's `smoke-probe` 404'd its own entry chunk 10/10 over 4m31s while the merge run's passed. Back-merge `33563513697` then probed green. WHICH mechanism — a same-SHA no-op the back-merge fixed, or propagation later than that probe window — is NOT distinguishable from the end state: the back-merge's prod build produced the SAME entry-chunk name as the tag build (measured), so the end state cannot say which story produced it. Record the measurements, never a cause. |
-  | v0.19.0 | 2026-09-02 | 83 s | read as `in_progress`/`null` in the same Bash call that pushed the tag (transcript-only; recorded by the v0.19.0 cut's own session and NOT re-read here — the session applying this row did not run that gate — what IS independently established is that the job ran 20:36:48Z→20:37:10Z, so any read in that 22 s window returned `in_progress`); conclusion `cancelled` at 20:37:10Z, its Pages object `6231355284` reaching `error` at the same second | **`smoke-probe` FAILED** | merge-push `33680204038` → tag `33680338582` on `786c32f1`. The tag run's `deploy` job AND its Pages object `6231383135` BOTH reached `success` (20:38:34Z / 20:38:35Z), yet its own entry chunk `assets/index-Culp-AWd.js` returned 404 on all ten probe attempts, 20:38:53Z → 20:43:23Z, the job failing 20:43:25Z (read off the `smoke-probe` job log, which prints `PROD_ENTRY: /sail_command/assets/index-Culp-AWd.js`; the uat half was never reached, prod being probed first). Back-merge `33683275499` then probed green. Per the v0.19.0 learnings file and NOT re-verified here: prod was serving the MERGE run's chunk `index-BmIaq_PY.js` at 20:44:12Z — one fact row 11 lacked, the served artifact positively IDENTIFIED. It still names NO mechanism: a no-op against an `error`-state deployment object, and an edge-cached `index.html` plus negative-cached 404s, both produce this end state. Record the measurements, never a cause. |
-  | v0.20.0 | 2026-09-03 | 1735 s | `success` (MEASURED in the same Bash call that pushed the tag, and the failure CALLED IN ADVANCE from it) | **`smoke-probe` FAILED** | merge-push `33774574960` (created 15:46:00Z, `deploy: success`) → tag `33777477268` (created 16:14:55Z) on `286b280`. The tag run's `build` and `deploy` BOTH succeeded and only `smoke-probe` failed. Back-merge `33780148708` then probed green, and prod was positively identified as serving the clean tag afterwards: the live entry chunk `assets/index-CIpQmfDd.js` contains ``about.version`,{version:`v0.20.0`}`` with ZERO suffixed `vX.Y.Z-N-g<sha>` matches anywhere in it. Unlike rows 11 and 12 the PREDICTOR here was the durable answer — terminal `success`, which cannot un-succeed — not a volatile `in_progress`. That still names no MECHANISM: a same-SHA no-op and a propagation lag produce this end state alike, and this row does not distinguish them. Record the measurements, never a cause. |
+  | v0.19.0 | 2026-09-02 | 83 s | read as `in_progress`/`null` in the same Bash call that pushed the tag (transcript-only; recorded by the v0.19.0 cut's own session and NOT re-read here — the session applying this row did not run that gate — what IS independently established is that the job ran 20:36:48Z→20:37:10Z, so any read in that 22 s window returned `in_progress`); conclusion `cancelled` at 20:37:10Z, its Pages object `6231355284` reaching `error` at the same second | **`smoke-probe` FAILED** | merge-push `33680204038` → tag `33680338582` on `786c32f1`. The tag run's `deploy` job AND its Pages object `6231383135` BOTH reached `success` (20:38:34Z / 20:38:35Z), yet its own entry chunk `assets/index-Culp-AWd.js` returned 404 on all ten probe attempts, 20:38:53Z → 20:43:23Z, the job failing 20:43:25Z (read off the `smoke-probe` job log, which prints `PROD_ENTRY: /sail_command/assets/index-Culp-AWd.js`; the uat half was never reached, prod being probed first). Back-merge `33683275499` then probed green. Per the v0.19.0 learnings file and NOT re-verified here: prod was serving the MERGE run's chunk `index-BmIaq_PY.js` at 20:44:12Z — one fact v0.18.0 lacked, the served artifact positively IDENTIFIED. It still names NO mechanism: a no-op against an `error`-state deployment object, and an edge-cached `index.html` plus negative-cached 404s, both produce this end state. Record the measurements, never a cause. |
+  | v0.20.0 | 2026-09-03 | 1735 s | `success` (MEASURED in the same Bash call that pushed the tag, and the failure CALLED IN ADVANCE from it) | **`smoke-probe` FAILED** | merge-push `33774574960` (created 15:46:00Z, `deploy: success`) → tag `33777477268` (created 16:14:55Z) on `286b280`. The tag run's `build` and `deploy` BOTH succeeded and only `smoke-probe` failed. Back-merge `33780148708` then probed green, and prod was positively identified as serving the clean tag afterwards: the live entry chunk `assets/index-CIpQmfDd.js` contains ``about.version`,{version:`v0.20.0`}`` with ZERO suffixed `vX.Y.Z-N-g<sha>` matches anywhere in it. Unlike v0.19.0 the PREDICTOR here was the durable answer — terminal `success`, which cannot un-succeed — not a volatile `in_progress`. That still names no MECHANISM: a same-SHA no-op and a propagation lag produce this end state alike, and this row does not distinguish them. Record the measurements, never a cause. |
 
-  | v0.21.0 | 2026-09-04 | 113 s | `success` (MEASURED immediately before the tag push, and the failure CALLED IN ADVANCE from it) | **`smoke-probe` FAILED** | merge-push `33879362519` (`deploy: success`) → tag `33879536590` on `dfc80ed`. The tag run's `build` and `deploy` both succeeded; only `smoke-probe` failed, and by the #398 signature specifically — its own prod entry chunk `assets/index-UPcmWly8.js` returned **404 on all 10 attempts over ~4m42s** while the basemap Range probes PASSED for both prod and uat, which is what rules out a CDN regression. The back-merge (`33882094279`, on the different SHA `d30507a3`) then probed green and republished **that same chunk name** — so the tag run's BUILD was correct all along and only its DEPLOYMENT no-opped, the one fact rows 11 and 12 could not establish. Prod afterwards served ``about.version`,{version:`v0.21.0`}`` with ZERO suffixed matches. Predictor was the durable `success`, as at v0.20.0. Still names no MECHANISM. |
+  | v0.21.0 | 2026-09-04 | 113 s | `success` (MEASURED immediately before the tag push, and the failure CALLED IN ADVANCE from it) | **`smoke-probe` FAILED** | merge-push `33879362519` (`deploy: success`) → tag `33879536590` on `dfc80ed`. The tag run's `build` and `deploy` both succeeded; only `smoke-probe` failed, and by the #398 signature specifically — its own prod entry chunk `assets/index-UPcmWly8.js` returned **404 on all 10 attempts over ~4m42s** while the basemap Range probes PASSED for both prod and uat, which is what rules out a CDN regression. The back-merge (`33882094279`, on the different SHA `d30507a3`) then probed green and republished **that same chunk name** — so the tag run's BUILD was correct all along and only its DEPLOYMENT no-opped, the one fact v0.18.0 and v0.19.0 could not establish. Prod afterwards served ``about.version`,{version:`v0.21.0`}`` with ZERO suffixed matches. Predictor was the durable `success`, as at v0.20.0. Still names no MECHANISM. |
   | v0.22.0 | 2026-09-04 | 172 s | `success` (MEASURED immediately before the tag push, and the failure CALLED IN ADVANCE from it) | **`smoke-probe` FAILED** | merge-push `33916366319` -> tag `33916603758` on `3dd7bce`. The tag run's `build` and `deploy` both succeeded; only `smoke-probe` failed, and by the #398 signature specifically -- its own prod entry chunk `assets/index-Cxxioy59.js` returned **404 on all 10 attempts** (20:32:26Z -> 20:36:56Z) while the basemap Range probes PASSED for prod AND uat on attempt 1, which is what rules out a CDN regression. The back-merge (`33919057557`, on the different SHA `11cda98`) then probed green and republished **that same chunk name** -- so the tag run's BUILD was correct all along and only its DEPLOYMENT no-opped. Prod afterwards served ``about.version`,{version:`v0.22.0`}`` with ZERO suffixed matches. Predictor was the durable `success`, as at v0.20.0 and v0.21.0. |
   | v0.23.0 | 2026-09-05 | 92 s | read as **`in_progress`/`null`** immediately before the tag push -- the reading this file calls a NON-ANSWER and whose remedy it records as OPEN | **`smoke-probe` FAILED** | merge-push `33990376950` (created 20:31:41Z) -> tag `33990452597` (created 20:33:13Z) on `0ab001d`. The tag run's `build` AND `deploy` both succeeded; only `smoke-probe` failed, by the #398 signature -- its own prod entry chunk `assets/index-DxZuTLvK.js` returned **404 on all 10 attempts** (20:34:49Z -> 20:39:19Z) while BOTH basemap Range probes passed on attempt 1 for prod and uat, ruling out a CDN regression. Back-merge `33992089618` (different SHA `0afd321`) then probed green and republished **that same chunk name**, which then returned 200 -- so the tag run's BUILD was correct and only its DEPLOYMENT no-opped. Prod afterwards served `v0.23.0` with ZERO suffixed matches. **What is NEW here is about the GATE.** The merge run's `deploy` job ran 20:32:48Z -> **20:32:57Z `success`**, i.e. it was already terminal **16 s BEFORE the tag run was even created** at 20:33:13Z. So the orchestrator's stated reason for pushing on an `in_progress` reading -- that a fast tag push might let the tag run cancel-supersede the merge run -- was UNAVAILABLE at that moment and the push could not have outrun it. `in_progress` was a snapshot of a job about to succeed 9 s later; the volatility is inside the read, exactly as this file says. The remedy for that reading stays OPEN and UNTESTED -- but record that the cancel-supersede escape is only reachable while the merge `deploy` job is genuinely still running, which a gate read cannot tell you from one that is 9 s from done. |
   | v0.24.0 | 2026-09-07 | 163 s | `success` (MEASURED immediately before the tag push, and the failure CALLED IN ADVANCE from it) | **`smoke-probe` FAILED** | merge-push `34112529526` (created 10:38:47Z) -> tag `34112760062` (created 10:41:30Z) on `ad679ab`. The tag run's `build` AND `deploy` both succeeded; only `smoke-probe` failed, by the #398 signature -- its own prod entry chunk `assets/index-89U9nb6w.js` returned **404 on all 10 attempts** (10:42:47Z -> 10:47:18Z, ~4m31s) while BOTH basemap Range probes passed on attempt 1 for prod and uat, ruling out a CDN regression. Prod meanwhile served the merge-push run's `assets/index-DEa7vxDb.js` at ``about.version`,{version:`v0.23.0-44-gad679ab`}`` -- read off the live bundle DURING the window, so the superseded artifact is positively identified here rather than inferred afterwards. Back-merge `34114832995` (different SHA `305f8ca`) then probed green and republished **that same chunk name**, which then returned 200 -- so the tag run's BUILD was correct and only its DEPLOYMENT no-opped. Prod afterwards served ``about.version`,{version:`v0.24.0`}`` with ZERO suffixed matches. Predictor was the durable `success`, as at v0.20.0-v0.22.0. **What this row adds is a SECOND observation of v0.23.0's gate finding, from the OPPOSITE reading.** The merge-push `deploy` job ran 10:40:13Z -> **10:40:21Z `success`**, terminal **69 s BEFORE the tag run was created** at 10:41:30Z. v0.23.0 reached that conclusion from an `in_progress` non-answer; this cut reaches it from a durable `success`, so the two agree from different readings -- the cancel-supersede escape is only reachable while the merge `deploy` job is genuinely still running, and at neither cut was it available. Still names no MECHANISM. |
@@ -1660,6 +1655,7 @@ making design-level decisions; do not silently deviate.
   | v0.34.0 | 2026-09-15 | 44 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 08:28:02Z, two seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `34947043144` (created 08:27:21Z) -> tag `34947108798` (created 08:28:05Z) on `85afd47`. The merge run's `deploy` job carries **`steps: 0`** against that run's `build` at **`steps: 23`** (the within-run control). The tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production then served `assets/index-CEJof43x.js` at ``about.version`,{version:`v0.34.0`}`` with ZERO suffixed matches, so no back-merge remedy was owed. Release object `isLatest: true`; tag object `fe18dcb` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.35.0 | 2026-09-16 | 41 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) immediately before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `35109752970` (created 14:37:06Z) -> tag `35109830067` (created 14:37:47Z) on `2d94af4`. The merge run's `deploy` job carries **`steps: 0`** against that run's `build` at **`steps: 23`** — the within-run control — so it never started. The tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded** (`uat-environment` skipped); production then served `assets/index-D0g3cIVk.js` at ``about.version`,{version:`v0.35.0`}`` with ZERO suffixed matches, so no back-merge remedy was owed. Release object `isLatest: true`; tag object reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.36.0 | 2026-09-17 | 24 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 17:11:02Z, two seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `35251123294` (created 17:10:41Z) -> tag `35251164754` (created 17:11:05Z) on `43466e5`. Merge run's `deploy` **`steps: 0`** against its `build` at **`steps: 23`**. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` succeeded**; production served `assets/index-CF3qycIZ.js` at ``version:`v0.36.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag `verified: true, reason: "valid"`. Names no MECHANISM. |
+  | v0.37.0 | 2026-09-18 | 55 s | read as **NO `deploy` JOB CREATED YET** (run `in_progress`, only `build`) immediately before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `35388995635` (created 19:59:43Z) -> tag `35389087993` on `82bd958`, tag pushed 20:00:38Z. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`** -- the within-run control -- so it never started. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-CycH4hzZ.js` at ``about.version`,{version:`v0.37.0` `` with ZERO suffixed matches, so no back-merge remedy was owed. Release `isLatest: true`; tag object `489f5bc` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -2443,13 +2439,9 @@ making design-level decisions; do not silently deviate.
   be present. The first write-up of that very finding shipped a "control" that
   was itself vacuous (both its example strings occur zero times in that file's
   history), which is how convincing the shape is.
-- A tracked symlink whose target string leaks a home path is pinned by
-  `.github/scripts/check-no-home-paths.sh`'s `scan_symlink_target()`.
 - **A field written by one branch and read by another under a DIFFERENT name
   typechecks and renders nothing — the hazard needs OPTIONALITY closed: make
-  such a field required, so a missing one is a compile error.** `boats.ts`'s
-  `draftProvenance` is required on `BoatDef`, pinned by
-  `app/src/data/boats.test.ts`'s `@ts-expect-error` row.
+  such a field required, so a missing one is a compile error.**
 - **A fix verified AT ITS OWN SITE says nothing about siblings.** #538 removed
   `getPlan`'s destructive write-back and proved BY RUN that `getPlan` no longer
   writes — while `replanWithVias` and the recalc-replace still reach `savePlan`
@@ -3634,11 +3626,11 @@ making design-level decisions; do not silently deviate.
   only the other two are `setViewportSize`; do not collapse them.
   Hero CLIPPING is now pinned by a GUARD, not by this prose: #1088's
   `assertFitsViewport()` (`capture.mjs:246`, called at both hero sites)
-  THROWS the exact pixel shortfall instead of emitting a clipped PNG —
-  verified fail-closed at HEAD, both branches throw. Raising a constant to
-  silence a throw is the wrong fix. First exercised at the v0.28.0 cut and
-  passed. What the guard does NOT cover stays human judgement: whether the
-  capture REPRESENTS the product (sail-dominant, not motoring).
+  THROWS the exact pixel shortfall instead of emitting a clipped PNG.
+  Raising a constant to silence a throw is the wrong fix. First exercised
+  at the v0.28.0 cut and passed. What the guard does NOT cover stays
+  human judgement: whether the capture REPRESENTS the product
+  (sail-dominant, not motoring).
   Durable form: a capture
   or verification tool
   hardcoded to the PRODUCTION url can never capture a release candidate, since
@@ -4095,7 +4087,13 @@ making design-level decisions; do not silently deviate.
   `pruneKey` per ring) ignores position within a cell, so an early, cheaper
   arrival with no navigable onward edge seals a narrow and prunes
   better-placed later arrivals (root causes on #1303 and #1305). Compare both
-  route families' `costMs` before calling a result intended.
+  route families' `costMs` before calling a result intended. NARROWED, not
+  closed, by #1322: `pruneCellConfined` halves the prune grid
+  (`CONFINED_PRUNE_DIV`) only where a cell is within `CONFINEMENT_MARGIN_CELLS`
+  of land or sub-gate water, so the mechanism is unchanged in open water and at
+  the coarse/fine boundary. Its own comment records the measured refutation of
+  any monotonicity claim: the fine node set is NOT a superset, capped or not
+  (#1333).
 - **The forecast horizon is the FIXED end of the stored grid** (`wind.ts`
   `horizonMs()`), so a later departure leaves LESS forecast — never advise
   it; `app/src/i18n/beyondHorizonRemedyCopy.test.ts` guards only the two
@@ -4188,8 +4186,11 @@ making design-level decisions; do not silently deviate.
   exactly as `SolveFailureCause` is.
   `isochrone.ts` NOW HAS a per-plan wall-clock budget: `PLAN_BUDGET_MS`
   (240_000 since #1147, 2026-09-10; it was 120_000 and equal to the old
-  client timeout until then) checked at ring ENTRY plus once before the #53
-  BFS probes, imposed ONLY by `protocol.ts` —
+  client timeout until then) checked at ring ENTRY, mid-ring every
+  `DEADLINE_CHECK_NODES` nodes, before AND after the #53 BFS probes, and
+  between individual probes inside `findRelaxedGate` (the last three added by
+  #1280 part B; anchor on those symbols, not on offsets), imposed ONLY by
+  `protocol.ts` —
   `planRoute()` is unbudgeted unless handed a deadline, which is what lets
   `app/sweep/` exercise the solver at all. Client deadline is budget + 15 s
   so the solver wins. WHY THAT CANNOT BREAK A WORKING PLAN, structurally
@@ -4214,9 +4215,12 @@ making design-level decisions; do not silently deviate.
   dispose alone would make every later replan fail `disposed`.
   TWO things TERMINATE the search with a named cause — the wall-clock budget
   above (`budget-exhausted`) and the forecast-horizon guard
-  (`horizon-exceeded`). `MAX_FRONTIER = 30_000` is NOT one of them and its
+  (`horizon-exceeded`). The frontier cap is NOT one of them and its
   declaration says so: a "Perf safeguard, not a correctness bound" that
-  TRUNCATES the frontier by count and lets the loop CONTINUE. Do not group the
+  TRUNCATES the frontier by count and lets the loop CONTINUE. Since #1257 it
+  is DERIVED per mask by `defaultMaxFrontier(meta)`, with `MAX_FRONTIER =
+  30_000` surviving as the FLOOR for small/synthetic masks — never quote that
+  literal as the cap. Do not group the
   three as "bounds" — a no-route in the capped regime may reflect search
   capacity rather than actual unreachability, and that distinction is
   deliberately NOT surfaced to the caller (plan-amendment pending), so
@@ -4332,6 +4336,15 @@ making design-level decisions; do not silently deviate.
 
 ## Working style for this repo
 
+- **Do NOT re-measure wall-clock timings per change (maintainer ruling
+  2026-09-18).** It costs hours and mostly re-confirms a known direction.
+  Default evidence for a routing change is DETERMINISTIC: `costMs` deltas,
+  sweep artifact hashes, call counts, route family and distance. Drop
+  "measure per-ring wall time / BASE-vs-HEAD duration" from implementer
+  briefs unless a number GATES a decision (a plan crossing `PLAN_BUDGET_MS`
+  does; a 40% ring-time change does not). Measured why: two BASE runs of the
+  SAME tree differed 12.5% in wall time on byte-identical output, so the
+  noise floor swallows most signals a sweep could give.
 - **Prose is CONCISE — comments, JSDoc, PR bodies, issue bodies, commit
   messages (maintainer instruction, 2026-09-10).** State the claim, then a
   POINTER to its evidence; never inline the transcript — "measured at PR #1141"
@@ -4376,17 +4389,19 @@ making design-level decisions; do not silently deviate.
   enforcement shipped 2026-08-03 as a personal global SessionStart hook,
   closing #211 — deliberately outside this repo's tracked config per the
   personal-tooling convention, so a contributor's checkout has none of it.
-  EXCEPTION — one case is SETTLED; do not re-raise it. A session-level "do not
-  call the AgentTool / do not use workflows or deep-research unless the user
-  requested it" is a hardcoded FALLBACK constant inside the Claude Code binary,
-  emitted when a server-side value is empty. It appears in no user file, no
-  project config, no shell alias and no environment variable — so there is
-  nothing local to change, and the mechanism is Anthropic-side: never patch it
-  or engineer around it. Verified against Claude Code 2.1.220 on 2026-07-30 —
-  re-check if the harness version changes. This repo's orchestrate-first mode
-  governs: delegate normally and spend no turn arbitrating it. Escalate only a
-  contradiction from a genuinely NEW source — something a human or a project
-  actually wrote.
+  EXCEPTION — one case is SETTLED; do not re-raise it. The session-level
+  delegation directive is a hardcoded FALLBACK constant inside the Claude Code
+  binary, emitted when a server-side value is empty — nothing local to change,
+  mechanism Anthropic-side, never patch or engineer around it. Re-verified
+  against 2.1.278 on 2026-09-19: it now reads "unless the user, a CLAUDE.md
+  file, or a skill asks for it", and that CLAUDE.md carve-out means THIS FILE
+  satisfies it on its own terms — there is no contradiction left to override.
+  At 2.1.220 it ended "unless the user requested it", a phrase with ZERO hits
+  in the 2.1.278 binary; it is also now gated to Opus 5
+  (`opus5_reduced_delegation`), and whether that gate existed at 2.1.220 is
+  UNDETERMINED. Re-check if the harness version changes. Delegate normally and
+  spend no turn arbitrating it. Escalate only a contradiction from a genuinely
+  NEW source — something a human or a project actually wrote.
 - **Right-size agent models per task** (reinforces the global fitness rule): PIN
   the model when spawning — `sonnet` for standard/mechanical implement + review +
   docs; reserve `opus`/the heaviest tier for safety-critical or judgment-heavy

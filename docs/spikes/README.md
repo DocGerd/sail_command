@@ -113,6 +113,10 @@ instead of here.
   recommends extending the existing armed "Add waypoint" mode, and rejects
   long-press with its mechanism. Design shipped at the v0.32.0 cut; the
   build was deferred to v0.33.0
+- [1330-fehmarn-frontier-truncation.md](1330-fehmarn-frontier-truncation.md)
+  — #1330: the post-#1322 Fehmarn slowdown is `MAX_FRONTIER` truncation
+  (already live at #1322's base, deepened by it), confirmed per ring on the
+  `breeze` arm at three trees; resolved there on `develop` by #1257's derived cap
 
 Three entries carry a same-named subdirectory of supporting artifacts rather
 than being self-contained: `1022-whole-journey-ux/` (reference screenshots),

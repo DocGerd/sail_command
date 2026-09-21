@@ -13,77 +13,61 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.37.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.38.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
-## Now — v0.37.0
+## Now — v0.38.0
 
-The `v0.37.0` cut (2026-09-18) worked the
-[`v0.37.0` milestone](https://github.com/DocGerd/sail_command/milestones),
-which closed sixteen issues: seven user-visible (per `CHANGELOG.md`'s own
-[0.37.0] section), the other nine copy/claim corrections folded into the
-same fixes, spec and pipeline-verification tooling, and a CI/lint chore.
+The `v0.38.0` cut (2026-09-21) worked the
+[`v0.38.0` milestone](https://github.com/DocGerd/sail_command/milestones),
+which closed eight issues: one user-visible (per `CHANGELOG.md`'s own
+[0.38.0] section), the other seven: five sweep/test tooling and docs items, a
+routing-regression follow-up from `v0.37.0`'s confined-water prune fix
+(#1330), and an unrelated defensive fix surfaced by the harbour-access review
+(#1319).
 
-Visited-cell pruning could seal a narrow passage even though a fuller search
-finds a faster route through it. One confined-water prune fix, together with
-scaling `MAX_FRONTIER` to the mask's cell count, recovers the short way
-through Svendborgsund that a frontier-capped search used to miss and stops a
-Salona 44 route family from flipping between rigs and between capped and
-uncapped search; on some routes the recommended rig also changes now that
-the search can reach a faster one
-([#1303](https://github.com/DocGerd/sail_command/issues/1303),
-[#1305](https://github.com/DocGerd/sail_command/issues/1305),
-[#1257](https://github.com/DocGerd/sail_command/issues/1257)). A plan that
-exhausts its search budget on a slow or busy device now fails with that
-cause and suggests fewer waypoints, closing the worker-side half of the
-worker-vs-client timeout fix
-([#1280](https://github.com/DocGerd/sail_command/issues/1280)).
+The per-plan search budget rose from 4 to 6 minutes, so long passages that
+previously stopped with a "time limit" error can now finish
+([#1331](https://github.com/DocGerd/sail_command/issues/1331)).
 
-Boat/harbour UX from the #1135 boat-picker gate design: the
-origin/destination pickers and the Boat tab now mark a harbour's access for
-the selected boat and safety depth — not reachable at or above the boat's
-recommended depth, only via a shallower approach, or possibly routable at a
-lower setting — and switching boats now
-raises a below-default safety depth to the new boat's own default rather
-than just its minimum
-([#1290](https://github.com/DocGerd/sail_command/issues/1290)–[#1293](https://github.com/DocGerd/sail_command/issues/1293)).
+The rest of the milestone: the Fehmarn `burgstaaken`/`orth` slowdown #1330
+measured against the #1303 prune fix is confirmed as `MAX_FRONTIER`
+truncation, already resolved on `develop` by #1257's derived cap
+([#1330](https://github.com/DocGerd/sail_command/issues/1330),
+`docs/spikes/1330-fehmarn-frontier-truncation.md`);
+`findLowerSettingHint`'s step-budget clamp now normalises a non-finite
+`maxSteps` instead of restoring the unbounded search it exists to prevent
+([#1319](https://github.com/DocGerd/sail_command/issues/1319));
+`docs/acceptance.md` gained checks for the per-boat harbour-access markers
+`v0.37.0` shipped
+([#1341](https://github.com/DocGerd/sail_command/issues/1341));
+`realmask.repro.*` tests are now gated on the routing closure, the same
+shape as the docs-only e2e classifier, closing the largest single driver of
+a PR shard's runtime
+([#1336](https://github.com/DocGerd/sail_command/issues/1336)); a sweep's
+BASE run is now reused from a stored artifact when the closure is untouched
+since that run, cutting a routing PR's sweep cost from three arm-sets to one
+([#1337](https://github.com/DocGerd/sail_command/issues/1337)); the sweep's
+slowest arms are now sharded across idle cores to cut its long pole
+([#1338](https://github.com/DocGerd/sail_command/issues/1338)); and six tests
+across three files with no scaled timeout, which had failed the nightly
+coverage run every night from 2026-09-18 (a 2026-09-16/17 failure was a
+different, already-fixed defect), now derive their budgets from
+`app/src/test/timeouts.ts`
+([#1349](https://github.com/DocGerd/sail_command/issues/1349)).
 
-The rest of the milestone: a local eslint cache for `app/sweep/`
-([#1263](https://github.com/DocGerd/sail_command/issues/1263)), a
-sweep-merge guard against shards run under different `SC_SWEEP_LIMIT`
-values ([#1283](https://github.com/DocGerd/sail_command/issues/1283)),
-per-boat expected-unreachable harbours accepted in mask verification
-([#1294](https://github.com/DocGerd/sail_command/issues/1294)), a multi-boat
-spec amendment for the #1135 rulings
-([#1295](https://github.com/DocGerd/sail_command/issues/1295)), a
-measurement of whether #1136's salvage would rescue more routes
-([#1301](https://github.com/DocGerd/sail_command/issues/1301)), and two
-copy/claim corrections to the harbour-access and confined-water prune work above
-([#1321](https://github.com/DocGerd/sail_command/issues/1321),
-[#1333](https://github.com/DocGerd/sail_command/issues/1333)), and a ruling
-keeping the harbour-access wording as shipped
-([#1326](https://github.com/DocGerd/sail_command/issues/1326)) — none with a
-user-visible surface of its own.
+## Next — v0.39.0
 
-## Next — v0.38.0
-
-The [`v0.38.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-carries follow-ups from the `v0.37.0` confined-water prune fix, the
-harbour-access work, and the sweep's own test infrastructure: whether 240 s
-is the right budget, exposed by a worst route already at ~96% of it at the
-old cap
-([#1331](https://github.com/DocGerd/sail_command/issues/1331)), whether
-#1257 actually fixed the Fehmarn passages' regression or only masked it —
-the mechanism is still unconfirmed
-([#1330](https://github.com/DocGerd/sail_command/issues/1330)),
-`docs/acceptance.md` gaining checks for the per-boat harbour-access markers
-([#1341](https://github.com/DocGerd/sail_command/issues/1341)), and three
-sweep/test items — sharding the sweep across idle cores
-([#1338](https://github.com/DocGerd/sail_command/issues/1338)), reusing
-stored sweep artifacts as BASE when the closure is untouched
-([#1337](https://github.com/DocGerd/sail_command/issues/1337)), and gating
-`realmask.repro` tests on the routing closure like the docs-only e2e gate
-([#1336](https://github.com/DocGerd/sail_command/issues/1336)). The
+The [`v0.39.0` milestone](https://github.com/DocGerd/sail_command/milestones)
+carries two open issues: a maintainer-filed review of the app's UX against
+chartplotter conventions and general best practice, deliberately unscoped
+pending a design pass
+([#1344](https://github.com/DocGerd/sail_command/issues/1344)); and a
+boat-switch screen-reader announcement for when the switch makes the
+selected origin or destination unreachable — the #1135 design's §5.4, which
+fell between #1291 and #1292 because the data it needs spans both PRs' file
+allowlists
+([#1325](https://github.com/DocGerd/sail_command/issues/1325)). The
 milestone page is the only authoritative view, check it directly rather
 than this file.
 
