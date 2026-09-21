@@ -677,27 +677,46 @@ function cmdFiles(root, paths) {
   }
 }
 
-function cmdDiff(root, base, head) {
-  if (!base) {
-    console.error('usage: closure.mjs diff <base> [<head>]');
-    process.exit(2);
-  }
-  const visited = computeClosure(root);
+/**
+ * Computes the sweep closure at the two endpoints `diff` actually compares —
+ * the merge-base commit and `head` (or the working tree, when `head` is
+ * omitted, since that IS what an omitted `head` means throughout this file)
+ * — via disposable detached worktrees, exactly mirroring `reuse`'s own
+ * `computeReuseVerdict` (PR #1352) one command over.
+ *
+ * `computeClosure(root)` alone reads whatever `root` happens to have
+ * CHECKED OUT right now, which is unrelated to `base`/`head` whenever the
+ * caller's own tree sits on a third branch (#1359, found reviewing PR
+ * #1352/#1337: `reuse` got exactly this fix, `diff` did not). A file added
+ * only on `head`, or one reached only via an importer that changed on
+ * `head`, then reads NOT_IN_CLOSURE regardless of what the real diff
+ * contains — the same false-NOT-OWED shape #1352 closed for `reuse`, here on
+ * the command actually run before every solver-heavy code change.
+ *
+ * UNION the two endpoints' closures, same reasoning as `reuse`'s union: a
+ * member present at only ONE endpoint (added, removed, or reached via an
+ * importer that changed) must still be seen — narrowing to either endpoint
+ * alone reopens an under-report inside this tool's own modelled universe.
+ */
+function computeClosureForDiff(root, base, head) {
+  const mergeBase = mergeBaseCommit(root, base, head);
+  const closureAtMergeBase = withRefCheckout(root, mergeBase, (dir) => computeClosure(dir));
+  const closureAtHead = head ? withRefCheckout(root, head, (dir) => computeClosure(dir)) : computeClosure(root);
+  return new Map([...closureAtMergeBase, ...closureAtHead]);
+}
+
+/**
+ * The pure decision function for `diff` — mirrors `computeReuseVerdict`'s
+ * split from `cmdReuse`, so `selftest` can exercise the SAME
+ * closure-computation code path `cmdDiff` prints from, rather than a
+ * stand-in for it (#1359).
+ */
+function computeDiffVerdict(root, base, head) {
+  const visited = computeClosureForDiff(root, base, head);
   const changed = changedFiles(root, base, head);
   const hits = changed.map((f) => ({ f, info: closureInfo(visited, f) })).filter((x) => x.info !== null);
 
-  console.log(`# app/sweep #282 closure check`);
-  console.log(`base=${base} head=${head ?? '(working tree)'}`);
-  console.log(`changed files examined: ${changed.length}; closure (import walk) size: ${visited.size}`);
-  console.log('');
-
-  if (hits.length === 0) {
-    console.log('VERDICT: NOT OWED — no changed file is in the #282 sweep closure (import walk or path prefixes)');
-    return;
-  }
-
-  let anyOwed = false;
-  for (const { f, info } of hits) {
+  const results = hits.map(({ f, info }) => {
     let verdict;
     if (f === BOATS_TS_PATH) {
       const oldRef = mergeBaseCommit(root, base, head);
@@ -714,7 +733,35 @@ function cmdDiff(root, base, head) {
             : `in the sweep closure via path-prefix ${info.prefix}/ (${info.note})`,
       };
     }
-    if (verdict.verdict === 'OWED') anyOwed = true;
+    return { f, info, verdict };
+  });
+
+  return {
+    changedCount: changed.length,
+    closureSize: visited.size,
+    results,
+    anyOwed: results.some((r) => r.verdict.verdict === 'OWED'),
+  };
+}
+
+function cmdDiff(root, base, head) {
+  if (!base) {
+    console.error('usage: closure.mjs diff <base> [<head>]');
+    process.exit(2);
+  }
+  const { changedCount, closureSize, results, anyOwed } = computeDiffVerdict(root, base, head);
+
+  console.log(`# app/sweep #282 closure check`);
+  console.log(`base=${base} head=${head ?? '(working tree)'}`);
+  console.log(`changed files examined: ${changedCount}; closure (import walk) size: ${closureSize}`);
+  console.log('');
+
+  if (results.length === 0) {
+    console.log('VERDICT: NOT OWED — no changed file is in the #282 sweep closure (import walk or path prefixes)');
+    return;
+  }
+
+  for (const { f, info, verdict } of results) {
     console.log(`${verdict.verdict}  ${f}`);
     console.log(`  reason: ${verdict.reason}`);
     if (info.kind === 'import') {
@@ -1361,6 +1408,64 @@ function runSelftest(root) {
     );
   } finally {
     rmSync(blocker2Repo, { recursive: true, force: true });
+  }
+
+  // #1359: `diff`'s own closure walk must be independent of the caller's
+  // checked-out tree, exactly the property blocker2Repo above proves for
+  // `reuse`. Same shape, one command over: `sweepArms.ts` imports
+  // `lib/extra.ts` at `baseCommit`; `headCommit` (a child of `baseCommit`)
+  // changes ONLY `lib/extra.ts` — a genuine closure-member edit `diff
+  // baseCommit headCommit` must report OWED. `featureCommit` is a SEPARATE
+  // child of `baseCommit` that drops the import, and is left CHECKED OUT as
+  // this repo's own HEAD — so a closure walk over the checked-out tree (the
+  // pre-#1359 `computeClosure(root)` call inside `cmdDiff`) sees a
+  // `sweepArms.ts` that does NOT import `lib/extra.ts` at all, and would
+  // report `lib/extra.ts` NOT_IN_CLOSURE regardless of the real
+  // `baseCommit..headCommit` diff.
+  const diffRepo = mkdtempSync(path.join(tmpdir(), 'sweep-closure-selftest-diff-'));
+  try {
+    const git3 = (args) => execFileSync('git', args, { cwd: diffRepo, encoding: 'utf8' });
+    git3(['init', '-q']);
+    git3(['config', 'user.email', 'selftest@example.invalid']);
+    git3(['config', 'user.name', 'sweep-closure selftest']);
+    mkdirSync(path.join(diffRepo, 'app', 'sweep'), { recursive: true });
+    mkdirSync(path.join(diffRepo, 'lib'), { recursive: true });
+    writeFileSync(path.join(diffRepo, 'lib', 'extra.ts'), 'export const EXTRA = 1;\n');
+    writeFileSync(
+      path.join(diffRepo, 'app', 'sweep', 'sweepArms.ts'),
+      "import '../../lib/extra.ts';\nexport const ARMS = 1;\n",
+    );
+    writeFileSync(path.join(diffRepo, 'app', 'sweep', 'vitest.config.ts'), 'export default {};\n');
+    git3(['add', '-A']);
+    git3(['commit', '-q', '-m', 'base']);
+    const diffBaseSha = git3(['rev-parse', 'HEAD']).trim();
+
+    // headCommit: child of baseCommit, changes ONLY lib/extra.ts.
+    writeFileSync(path.join(diffRepo, 'lib', 'extra.ts'), 'export const EXTRA = 2;\n');
+    git3(['add', '-A']);
+    git3(['commit', '-q', '-m', 'head changes extra.ts']);
+    const diffHeadSha = git3(['rev-parse', 'HEAD']).trim();
+
+    // featureCommit: a SEPARATE child of baseCommit that drops the import —
+    // checked out as this repo's OWN HEAD below.
+    git3(['checkout', '-q', diffBaseSha]);
+    writeFileSync(path.join(diffRepo, 'app', 'sweep', 'sweepArms.ts'), 'export const ARMS = 1;\n');
+    git3(['add', '-A']);
+    git3(['commit', '-q', '-m', 'feature drops the import']);
+    // Stays checked out on `feature` — computeDiffVerdict must still return
+    // the correct verdict for diffBaseSha/diffHeadSha despite this.
+
+    const dResult = computeDiffVerdict(diffRepo, diffBaseSha, diffHeadSha);
+    const extraHit = dResult.results.find((r) => r.f === 'lib/extra.ts');
+    results.push(
+      check(
+        "diff: closure computed at base/head, not the checked-out tree — lib/extra.ts changed only reachable via base/head's own import graph -> OWED (#1359)",
+        extraHit !== undefined && extraHit.verdict.verdict === 'OWED',
+        { results: dResult.results },
+      ),
+    );
+  } finally {
+    rmSync(diffRepo, { recursive: true, force: true });
   }
 
   let failed = 0;
