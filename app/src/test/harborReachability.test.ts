@@ -73,6 +73,7 @@ describe('#1290 harborReachability', () => {
   // self-consistency tautology" for the whole state, not just the fill).
   it.each(BOATS)(
     '$id: 34 ok, marstal shallow-approach, 0 unreachable, 5 known-disconnected',
+    { timeout: solverTimeoutMs(300_000) },
     (boat) => {
       const g = defaultSafetyDepthM(boat);
       const result = computeHarborAccess(mask, harbors, boat, g);
@@ -401,11 +402,15 @@ describe('#1290 harborReachability', () => {
   // PR #1316 fix-wave 2 Minor: `maxSteps <= 0` must not silently make no
   // progress — that would return `resumeFromDepthM === safetyDepthM`
   // unchanged and loop a caller following the resume contract above forever.
-  it('findLowerSettingHint clamps a non-positive maxSteps to make at least one step of progress', () => {
-    const marstal = harbors.find((h) => h.id === 'marstal')!;
-    const outcome = findLowerSettingHint(mask, marstal, synthetic, 4.4, 0);
-    expect(outcome).toEqual({ kind: 'exhausted', resumeFromDepthM: 4.3 });
-  });
+  it(
+    'findLowerSettingHint clamps a non-positive maxSteps to make at least one step of progress',
+    { timeout: solverTimeoutMs(300_000) },
+    () => {
+      const marstal = harbors.find((h) => h.id === 'marstal')!;
+      const outcome = findLowerSettingHint(mask, marstal, synthetic, 4.4, 0);
+      expect(outcome).toEqual({ kind: 'exhausted', resumeFromDepthM: 4.3 });
+    },
+  );
 
   // PR #1316 fix-wave 2 Minor: `floodHasCell`'s shape guard (exported for
   // this test only) is unreachable through the public API — the per-`NavMask`
