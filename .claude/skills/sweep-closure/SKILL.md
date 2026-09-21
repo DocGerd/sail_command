@@ -366,6 +366,26 @@ into this repo):
     the real validation, or reverting the ancestor check / the ref-checkout
     closure computation) and reds exactly the row(s) targeting that guard
     (the ancestor-check mutant reds both the side-branch and descendant rows).
+27. `reuse` M9 pin: `computeReuseVerdict`'s own `unionClosures` call —
+    unpinned by every row above, since 17–26 all call `computeDiffVerdict`.
+    `base` deletes an EXTRA_EDGES target (`setup.ts`) present at `recorded`
+    → `RUN_BASE`, never a false `REUSE` from `base`'s missing entry
+    "winning" on argument order over `recorded`'s real one.
+28–33. Six `diff`-side rows (#1359/PR #1384), all against
+    `computeDiffVerdict` over disposable repos sharing one `initClosureRepo`
+    helper: `diff`'s own checkout-independence, mirroring row 26 for
+    `reuse` (a closure member visible only from `base`/`head`, with a THIRD,
+    divergent commit checked out); an EXTRA_EDGES deletion (`setup.ts`) on
+    `head`, `base` independently deleting it too → `OWED` via the true
+    merge-base's precedence, never via argument order; a head-ONLY member
+    (imported and created only on `head`); a merge-base-ONLY member (`base`
+    and `head` both independently drop the import) — one fixture
+    discriminates BOTH dropping the merge-base term outright and computing
+    it from `base` instead of the real `git merge-base`, since `base`'s own
+    closure lacks the import either way; `base` adding an import after the
+    fork point that `head` (forked earlier) only edits → `OWED` via
+    `base`'s own third unioned term; and `head` omitted reading the
+    WORKING TREE rather than the committed `HEAD` ref.
 
 **Neither `npm --prefix app run typecheck` nor `npm --prefix app run
 lint` cover this file at all** — the tsconfigs and `eslint src e2e sweep`
