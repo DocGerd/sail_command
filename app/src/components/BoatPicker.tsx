@@ -290,16 +290,6 @@ interface ClampNotice {
   depthM: number;
 }
 
-/**
- * PR #1324 review Minor: the access clause is computed HERE, at RENDER
- * time, from the CURRENT `mask`/`harbors` — never captured once inside
- * `handleSelect` and frozen into `notice`. A switch fired before assets
- * finished loading used to freeze on `boat.harbors.pending` forever, even
- * after `mask`/`harbors` resolved and the boat's OWN row updated reactively;
- * calling `computeHarborAccess` inline here means every re-render (including
- * the one `mask`/`harbors` loading triggers) recomputes it fresh, at no
- * extra cost — the function is memoised per (mask, harbors, boat.id, depth).
- */
 /** #1325 (#1135 §5.4): one clause for a SELECTED endpoint whose boat-scoped
  * access is 'unreachable' for the newly picked boat — `null` for every other
  * case (no pick, a tap pick with no `harborId`, the harbor missing from
@@ -327,6 +317,16 @@ function endpointUnreachableClause(
   });
 }
 
+/**
+ * PR #1324 review Minor: the access clause is computed HERE, at RENDER
+ * time, from the CURRENT `mask`/`harbors` — never captured once inside
+ * `handleSelect` and frozen into `notice`. A switch fired before assets
+ * finished loading used to freeze on `boat.harbors.pending` forever, even
+ * after `mask`/`harbors` resolved and the boat's OWN row updated reactively;
+ * calling `computeHarborAccess` inline here means every re-render (including
+ * the one `mask`/`harbors` loading triggers) recomputes it fresh, at no
+ * extra cost — the function is memoised per (mask, harbors, boat.id, depth).
+ */
 function composeSwitchAnnouncement(
   notice: ClampNotice,
   mask: NavMask | null,

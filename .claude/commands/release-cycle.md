@@ -48,8 +48,8 @@ network outright. They read state and report; only the `git fetch` below writes 
 3. **Nightly workflow state** — the latest `Coverage` run's `test:coverage`-step conclusion, not
    just the run's existence (`coverage-skip-gate.sh` can skip an unchanged tree, so a run existing
    is not evidence a fresh figure was produced), and the latest `scan-issue-home-paths` run. Both
-   are ADVISORY (`protect-main` gates only `app`+`e2e`), so a red run merges silently and nothing
-   else in this runbook looks at them — #1349 is a Coverage run that stayed red 5 days untracked.
+   are ADVISORY (`protect-main` gates only `app`+`e2e`), so a red run merges silently —
+   #1349 is the issue filed after a `Coverage` run stayed red 5 days untracked.
 
 Then answer these three questions IN WRITING before doing anything else:
 
@@ -95,15 +95,14 @@ Backlog, Icebox) plus one cross-cutting agent. Each returns, per issue: current 
 labels, a one-line statement of what it actually is, whether it is still LIVE (issue titles go
 stale — #452's title still claims relaxation lowers the gate for the WHOLE route, false since
 v0.12.0 made it per-cell, and briefing from it produced a false premise (#649)),
-and a recommended destination with a reason. Then run an **adversarial verify pass over EVERY
-recommendation, not just CLOSE**: each "close as done / no longer applies" gets ≥2 independent
-refuters, default verdict REFUTED for close specifically — but that pass has teeth only when a
-bucket recommends at least one close. A triage with zero closes (v0.39.0 cycle, #1373) shipped
-with the refuter stage never firing at all — every keep/move recommendation went unchallenged. So
-ALSO refute a SAMPLE of keep/move (promote/demote) recommendations, one refuter per sampled
-verdict (close verdicts still get ≥2), capped at 5 sampled verdicts — 5 bucket/cross-cutting
-agents plus up to 5 refuters keeps the whole dispatch inside CLAUDE.md's Orchestration-policy
-~10-agent guideline for one Workflow batch. Prioritise every milestone move first, then every
+and a recommended destination with a reason. Then run an **adversarial verify pass covering
+every CLOSE recommendation, plus a SAMPLE of keep/move**: each "close as done / no longer
+applies" gets ≥2 independent refuters, default verdict REFUTED for close specifically — but that
+pass has teeth only when a bucket recommends at least one close. A triage with zero closes
+(v0.39.0 cycle, #1373) shipped with the refuter stage never firing at all — every keep/move
+recommendation went unchallenged. So ALSO refute a SAMPLE of keep/move (promote/demote)
+recommendations, one refuter per sampled verdict (close verdicts still get ≥2), capped at 5
+sampled verdicts. Prioritise every milestone move first, then every
 issue whose body makes a state claim (blocked/shipped/superseded); `log()` whatever the cap drops
 so it is never silently skipped. A keep/move a refuter CONTESTS is neither a bucket-vs-bucket
 disagreement (Reconcile's trigger, below) nor a close verdict (where REFUTED is the prior) — it
@@ -236,8 +235,8 @@ Per task:
 `gh pr create` there, so neither the implementer brief nor the agent definition covers it — this
 is the one PR class with no other actor to inherit the rule from.
 
-Merge with `/merge-train`: strictly serial, re-sync each branch from `origin/develop` before its
-turn, verify `head.sha` equals what was pushed AND that check-runs exist for that exact SHA
+Merge with `/merge-train`: batch file-disjoint ready PRs by default (serial fallback: re-sync
+each branch from `origin/develop` before its turn), verify `head.sha` equals what was pushed AND that check-runs exist for that exact SHA
 (#119), gate on `app` + `e2e` only (the sole required checks; `ruff`/`verify`/CodeQL/
 `hook-selftests` are advisory and yield `unstable`, which still merges — so after ANY `pipeline/**`
 change run `./pipeline/.venv/bin/ruff check pipeline/` and `./pipeline/.venv/bin/ruff format --check pipeline/` BY HAND
