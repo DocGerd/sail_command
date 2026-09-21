@@ -274,7 +274,11 @@ making design-level decisions; do not silently deviate.
   The ARTIFACT HASH is the verdict, never the runner's exit code. Sharding
   shipped at #1262 (`SC_SWEEP_SHARD`, `merge-shards.mjs`); #1283 then made the
   merge fail closed on shards run under mismatched `SC_SWEEP_LIMIT`, encoding
-  the limit in the part filename via `armFileBase`.
+  the limit in the part filename via `armFileBase`. #1338 added the driver
+  `app/sweep/run-sharded.mjs` (refuses a non-empty `--out`); #1337 added
+  `closure.mjs reuse <recorded> <base>` over the ledger
+  `.claude/skills/sweep-closure/recorded-runs.json` — any later `app/sweep/`
+  edit, README included, makes it RUN BASE.
   **Never run a full sweep as a harness background task** — a harness
   background task was killed at ~58 min (observed 2026-08-18 against Claude
   Code 2.1.235; re-check after any harness upgrade, this is a harness-version
@@ -1656,6 +1660,7 @@ making design-level decisions; do not silently deviate.
   | v0.35.0 | 2026-09-16 | 41 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) immediately before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `35109752970` (created 14:37:06Z) -> tag `35109830067` (created 14:37:47Z) on `2d94af4`. The merge run's `deploy` job carries **`steps: 0`** against that run's `build` at **`steps: 23`** — the within-run control — so it never started. The tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded** (`uat-environment` skipped); production then served `assets/index-D0g3cIVk.js` at ``about.version`,{version:`v0.35.0`}`` with ZERO suffixed matches, so no back-merge remedy was owed. Release object `isLatest: true`; tag object reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.36.0 | 2026-09-17 | 24 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 17:11:02Z, two seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `35251123294` (created 17:10:41Z) -> tag `35251164754` (created 17:11:05Z) on `43466e5`. Merge run's `deploy` **`steps: 0`** against its `build` at **`steps: 23`**. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` succeeded**; production served `assets/index-CF3qycIZ.js` at ``version:`v0.36.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.37.0 | 2026-09-18 | 55 s | read as **NO `deploy` JOB CREATED YET** (run `in_progress`, only `build`) immediately before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `35388995635` (created 19:59:43Z) -> tag `35389087993` on `82bd958`, tag pushed 20:00:38Z. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`** -- the within-run control -- so it never started. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-CycH4hzZ.js` at ``about.version`,{version:`v0.37.0` `` with ZERO suffixed matches, so no back-merge remedy was owed. Release `isLatest: true`; tag object `489f5bc` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
+  | v0.38.0 | 2026-09-21 | 46 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 18:13:01Z, two seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `35636876713` (created 18:12:19Z) -> tag `35636960636` (created 18:13:05Z) on `1eee618`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`** -- the within-run control. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-CDWho9-g.js` at ``about.version`,{version:`v0.38.0` `` with ZERO suffixed matches, so no back-merge remedy was owed. Release `isLatest: true`; tag object reported `verified: true, reason: "valid"`. Names no MECHANISM. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -2356,7 +2361,9 @@ making design-level decisions; do not silently deviate.
   width). UI tasks should end with a real-browser pass (dev server +
   Playwright); routing changes must keep `app/src/routing/realmask.repro.*.test.ts`
   green — all against the real committed mask/polars. The file COUNT decays:
-  enumerate with `git ls-files`, never restate it.
+  enumerate with `git ls-files`, never restate it. Since #1336 CI's
+  `app-shard` SKIPS them unless `classify-realmask.sh` sees a routing-closure
+  or supplement path, so run them locally on a routing change.
 - Flensburg→Marstal fails the RAW 3.0 m gate but ROUTES ANYWAY at DEFAULT
   settings — `planRoute()` returns `status: 'ok'` with shallow warnings at
   `requestedDepthM 3.0` / `usedDepthM ≈ 2.3`, as the `realmask.repro.*`
@@ -4185,8 +4192,8 @@ making design-level decisions; do not silently deviate.
   coupling in a new place), and keep `RoutingFailureKind` OUT of `types.ts`
   exactly as `SolveFailureCause` is.
   `isochrone.ts` NOW HAS a per-plan wall-clock budget: `PLAN_BUDGET_MS`
-  (240_000 since #1147, 2026-09-10; it was 120_000 and equal to the old
-  client timeout until then) checked at ring ENTRY, mid-ring every
+  (360_000 since #1331, 2026-09-21; 240_000 from #1147, 2026-09-10; 120_000
+  before that) checked at ring ENTRY, mid-ring every
   `DEADLINE_CHECK_NODES` nodes, before AND after the #53 BFS probes, and
   between individual probes inside `findRelaxedGate` (the last three added by
   #1280 part B; anchor on those symbols, not on offsets), imposed ONLY by
@@ -4903,6 +4910,10 @@ making design-level decisions; do not silently deviate.
   2026-09-09 against this harness). Issue such calls one at a time rather than reaching for a
   permission rule. This is a HARNESS observation, not a repo property — a read-only agent could
   not reproduce it, and it may not survive a harness upgrade.
+- **A FORK PR's runs sit at `action_required`** until approved —
+  `gh api -X POST repos/O/R/actions/runs/<id>/approve` after a static safety
+  review; `pulls/N/update-branch` works when `maintainer_can_modify`, and the
+  branch tip lives in `head.repo.full_name`, not this repo (#1348).
 - **`gh api` rejects `--repo`/`-R`** — `unknown flag: --repo`, unlike `gh pr`
   and `gh issue`, which both take it. The repo belongs in the endpoint path.
   Measured 2026-09-04 with a control: the same call minus the flag returned the
