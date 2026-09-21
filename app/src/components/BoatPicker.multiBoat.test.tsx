@@ -90,6 +90,8 @@ function renderPicker(opts: { boatId?: string; safetyDepthM?: number; lang?: str
         onBoatIdChange={onBoatIdChange}
         settings={{ ...DEFAULT_SETTINGS, safetyDepthM: opts.safetyDepthM ?? 3.0 }}
         onSettingsChange={onSettingsChange}
+        originHarborId={null}
+        destinationHarborId={null}
       />
     </I18nProvider>,
   );
@@ -417,6 +419,8 @@ describe('#539 item 2: SAFETY_DEPTH_FIELD.min follows the SELECTED boat', () => 
           onChange={vi.fn()}
           boatId={boatId as BoatIdish}
           onBoatIdChange={vi.fn()}
+          originHarborId={null}
+          destinationHarborId={null}
         />
       </I18nProvider>,
     );
