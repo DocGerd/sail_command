@@ -376,8 +376,8 @@ EOF
   run "20 supplement: .github/scripts/classify-realmask.sh" true pull_request "$B" "$H"
 
   r=$(mkrepo); cd "$r"; B=$(git rev-parse HEAD)
-  echo x >> .claude/skills/sweep-closure/closure.mjs; H=$(commit_with supp12)
-  run "21 supplement: .claude/skills/sweep-closure/closure.mjs" true pull_request "$B" "$H"
+  echo '// selftest edit' >> .claude/skills/sweep-closure/closure.mjs; H=$(commit_with supp12)
+  run "21 supplement: .claude/skills/sweep-closure/closure.mjs" true pull_request "$B" "$H" "supplement path: .claude/skills/sweep-closure/"
 
   # ---------- 22 deletion under app/ ----------
   r=$(mkrepo); cd "$r"; B=$(git rev-parse HEAD)
