@@ -89,8 +89,9 @@ comfort margin from 0 to the shipped 2.0 m default therefore moves 16 of 33
 routes, not all 27 — the remaining 11 rows are ones where the extra pricing
 changes nothing observable.
 
-**Determinism control (COMPLETE, 2026-08-20 at `00a33ab`): all nine arms run
-twice, 297/297 plans byte-identical.** Per-arm sha256 prefixes, both runs:
+**Determinism control (COMPLETE, 2026-08-20 at `00a33ab`, HISTORIC — not
+reproducible at current develop (predates at least #1322's
+`pruneCellConfined`)): all nine arms run twice, 297/297 plans byte-identical.** Per-arm sha256 prefixes, both runs:
 `becalmed 8dc119cd`, `breeze 7aa9fb56`, `deep-becalmed 7e7ac2e1`,
 `light-motorless 0ded5d87`, `margin-extreme ae91bf71`, `margin-zero fa5e30f1`,
 `no-comfort 9fa297c8`, `relaxation-dense f4907139`, `short-horizon 3fb63b77`.
@@ -130,9 +131,10 @@ against the merge-base of whatever branch it will certify.
 
 ## #653 sweep control — two new arms, salona44-breeze/salona44-relaxation
 
-**COMPLETE, 2026-09-02 at `d23d4c0`: two full runs of the ELEVEN-arm harness
-on this branch's own HEAD, 363/363 plans byte-identical, all eleven arm
-files sha-identical.** Per-arm sha256 prefixes, both runs (`compare.mjs`
+**COMPLETE, 2026-09-02 at `d23d4c0`, HISTORIC — not reproducible at current
+develop (predates at least #1322's `pruneCellConfined`): two full runs of
+the ELEVEN-arm harness on this branch's own HEAD, 363/363 plans
+byte-identical, all eleven arm files sha-identical.** Per-arm sha256 prefixes, both runs (`compare.mjs`
 output; the nine pre-#653 prefixes below were independently re-verified by
 PR #861's round-2 claim-auditor on 2026-09-02 by re-hashing `run2`'s raw
 arm-file bytes with `compare.mjs`'s own byte-mode algorithm
@@ -214,6 +216,8 @@ the double-run above still certifies the branch.
 ## #295 sweep control — 40-harbour baseline
 
 **COMPLETE, recorded at `e1346bd`** (#295 grew `harbors.json` 33 -> 40).
+**HISTORIC — not reproducible at current develop (predates at least #1322's
+`pruneCellConfined`).**
 `node .claude/skills/sweep-closure/closure.mjs diff e1346bd 5f3eeeb` reports
 NOT OWED: PR #1245's four changed files past this commit
 (`app/e2e/seamarks.spec.ts`,
@@ -430,21 +434,51 @@ the up-to-date figure, which decays on the same schedule this note does).
 convention) splits EVERY arm's destinations across `<count>` invocations
 instead, each computing only its own slice — run them in parallel and merge.
 
+**`run-sharded.mjs` (#1338) drives this end to end** — spawns `<count>`
+`SC_SWEEP_SHARD` invocations concurrently, merges via `merge-shards.mjs`
+(unmodified), and writes a manifest of per-arm sha256 prefixes in the
+sweep-closure ledger's own `arms` shape:
+
 ```bash
-# One invocation per shard, each its own SC_SWEEP_OUT.
+node app/sweep/run-sharded.mjs --shards 4 --max-workers 6 --out /tmp/sweep/head
+
+# compare.mjs is UNCHANGED — point it at the merged directory as always.
+node app/sweep/compare.mjs /tmp/sweep/base1 /tmp/sweep/head/merged
+```
+
+`--shards`/`--max-workers`/`--out` are required (fail-closed, no default);
+`--out` must be absolute; `--limit` is optional, same meaning as
+`SC_SWEEP_LIMIT` below. It prints every shard/merged/manifest path BEFORE
+spawning anything, and never runs `npm --prefix app exec vitest` (wrong cwd,
+loads no config — see the file's own header). It also refuses a non-empty
+`--out` outright (exit 2, before anything spawns) — a reused directory would
+merge stale part files from a prior run into this run's manifest. A
+non-zero shard exit is logged, not the verdict — the verdict is
+`merge-shards.mjs`'s own fail-closed checks over that freshly created `--out`.
+The manual for-loop form below still works if you need to run a subset of
+shards by hand or on separate machines. For a REAL, multi-hour sharded
+sweep, detach it the same way CLAUDE.md's `app/sweep/` bullet requires for
+an unsharded run — `setsid`/`nohup`, reporting the `--out` path at detach,
+not on completion — the example above runs in the foreground only to show
+the invocation shape.
+
+**Reusing a recorded BASE instead of re-running it**: before paying either
+side of a sharded run, ask `.claude/skills/sweep-closure/`'s `reuse
+<recorded-sha> <base>` whether a ledger entry
+(`.claude/skills/sweep-closure/recorded-runs.json`) already covers your BASE
+— see that skill's own "Reusing a stored BASE" section for the schema and
+fail-closed rules.
+
+```bash
+# Manual form — one invocation per shard, each its own SC_SWEEP_OUT.
 for i in 1 2 3 4; do
   SC_SWEEP_OUT=/tmp/sweep/head-shard-${i}of4 SC_SWEEP_SHARD=${i}/4 \
     npm --prefix app run test -- --config sweep/vitest.config.ts --maxWorkers=6 &
 done
 wait
-
-# Reassemble the parts into the standard one-file-per-arm shape.
 node app/sweep/merge-shards.mjs /tmp/sweep/head \
   /tmp/sweep/head-shard-1of4 /tmp/sweep/head-shard-2of4 \
   /tmp/sweep/head-shard-3of4 /tmp/sweep/head-shard-4of4
-
-# compare.mjs is UNCHANGED — point it at the merged directory as always.
-node app/sweep/compare.mjs /tmp/sweep/base1 /tmp/sweep/head
 ```
 
 The split is `idx % count`, applied AFTER `SC_SWEEP_LIMIT` — so a
@@ -482,10 +516,12 @@ parallel within itself (`fileParallelism`'s one-worker-per-arm-file shape is
 unchanged), so `<count>` concurrent invocations multiply potential
 concurrency to up to `11 * <count>` solver workers. #1262's own estimate is
 ~0.66 GB per solver worker — size `--maxWorkers` (passed after `--` to the
-underlying vitest invocation, as in the example above) so `<count> *
+underlying vitest invocation, as in the manual example above) so `<count> *
 --maxWorkers` stays around 20–24 on a 26 GB host, never uncapped. A cap that
 is too low costs wall time; one that is too high risks the host, which is
-the worse failure.
+the worse failure. `run-sharded.mjs` enforces this as `MAX_TOTAL_WORKERS =
+24` and refuses `--shards * --max-workers` above it — the manual for-loop
+form has no such guard, so size it by hand.
 
 **Overlaying onto an older BASE tree.** A BASE checkout predating #1262 has
 no `SC_SWEEP_SHARD` branch, no `serialize.ts`, and no `merge-shards.mjs` — so
@@ -528,6 +564,9 @@ only of arms that omit `boatId`), `T0`, and `serialize()`'s replacer and
 longer comparable. **Add an arm rather than editing one.**
 
 ## Recorded baseline — 2026-08-07, PR #450 (`dbcd519`)
+
+**HISTORIC — not reproducible at current develop (predates at least #1322's
+`pruneCellConfined`).**
 
 **Covers only the ORIGINAL six arms (198 of the 363 plans this harness
 produced at 33 harbours).** No BASE-vs-HEAD baseline has been recorded for the three #452

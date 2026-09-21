@@ -1,3 +1,22 @@
 {
-  "runs": []
+  "runs": [
+    {
+      "sha": "68a89342c52ce14ecedab64aa0336ed7020c8161",
+      "date": "2026-09-21",
+      "arms": {
+        "becalmed": "bfa4e82d1b41a7ed",
+        "breeze": "6b34a4f7a31e549e",
+        "deep-becalmed": "9c56e946f1ebdd8e",
+        "light-motorless": "8f8c5541dfdf4fd8",
+        "margin-extreme": "0dd69405c540dd5e",
+        "margin-zero": "9826d96ae595ea95",
+        "no-comfort": "bd71e4ad06506f14",
+        "relaxation-dense": "0ae08c515648121d",
+        "salona44-breeze": "85308f4e3ad687ad",
+        "salona44-relaxation": "653f57fae29ade07",
+        "short-horizon": "fde10df45a51ca0c"
+      },
+      "note": "PR #1363 (#1338): sharded (4x6) vs unsharded arm-sets, sharded vs unsharded 440/440"
+    }
+  ]
 }
