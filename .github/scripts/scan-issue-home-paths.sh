@@ -244,7 +244,7 @@ fetch_and_scan() {
 if [ "${1:-}" = "--selftest" ]; then
   fail=0
   total_cases=0
-  EXPECTED_CASES=14
+  EXPECTED_CASES=16
 
   case "$0" in
     */*) SELF="$0" ;;
@@ -346,7 +346,29 @@ if [ "${1:-}" = "--selftest" ]; then
     *) echo "SELFTEST FAIL: 11 did not report the non-fixture match on #1117 -> $LAST_OUT"; fail=1 ;;
   esac
 
-  # --- 12: fail-closed - `gh` missing ---
+  # --- 12: PR review Minor (scan-issue-home-paths.sh:347) - the FIXTURE_ALLOWLIST
+  # key is type-specific ("pr"), so the SAME #1117 fixture literal posted as a
+  # DIFFERENT type (an issue-comment or review-comment on #1117 itself, number
+  # and match unchanged) is NOT suppressed and still reports (rc 1) ---
+  check "12  #1215: #1117's fixture literal via a non-pr type still fires" 1 \
+    '{"type":"issue-comment","number":1117,"url":"https://x/issues/1117#issuecomment-99","body":"needs real violating literal strings (/home/alice, C:\\Users\\alice, ...) in its fixtures"}'
+  case "$LAST_OUT" in
+    *"issue-comment:1117:"*linux-home*"/home/alice"*) ;;
+    *) echo "SELFTEST FAIL: 12 did not report the non-pr-type match on #1117 -> $LAST_OUT"; fail=1 ;;
+  esac
+
+  # --- 13: PR review Minor (scan-issue-home-paths.sh:347) - the allowlist
+  # compares the FULL captured match, so a fixture literal embedded as a
+  # SUBSTRING of a longer path on #1117 itself is a different string and
+  # still reports (rc 1) ---
+  check "13  #1215: fixture literal embedded in a longer path on #1117 still fires" 1 \
+    '{"type":"pr","number":1117,"url":"https://x/pull/1117","body":"see /home/alice2/notes for the fixture rationale"}'
+  case "$LAST_OUT" in
+    *"pr:1117:"*linux-home*"/home/alice2"*) ;;
+    *) echo "SELFTEST FAIL: 13 did not report the embedded-substring match on #1117 -> $LAST_OUT"; fail=1 ;;
+  esac
+
+  # --- 14: fail-closed - `gh` missing ---
   toolbox=$(mktemp -d)
   for b in bash jq sed cat mktemp dirname basename wc tr grep; do
     p=$(command -v "$b" 2>/dev/null) && ln -s "$p" "$toolbox/$b" 2>/dev/null
@@ -354,12 +376,12 @@ if [ "${1:-}" = "--selftest" ]; then
   total_cases=$((total_cases + 1))
   out=$(PATH="$toolbox" GITHUB_REPOSITORY=owner/repo bash "$SELF_ABS" 2>&1); rc=$?
   if [ "$rc" -ne 2 ]; then
-    echo "SELFTEST FAIL: 12 fail-closed: gh missing -> rc=$rc (want 2)"
+    echo "SELFTEST FAIL: 14 fail-closed: gh missing -> rc=$rc (want 2)"
     printf '%s\n' "$out" | sed 's/^/    /'
     fail=1
   fi
 
-  # --- 13: fail-closed - `jq` missing ---
+  # --- 15: fail-closed - `jq` missing ---
   toolbox2=$(mktemp -d)
   for b in bash gh sed cat mktemp dirname basename wc tr grep; do
     p=$(command -v "$b" 2>/dev/null) && ln -s "$p" "$toolbox2/$b" 2>/dev/null
@@ -367,18 +389,18 @@ if [ "${1:-}" = "--selftest" ]; then
   total_cases=$((total_cases + 1))
   out=$(PATH="$toolbox2" GITHUB_REPOSITORY=owner/repo bash "$SELF_ABS" 2>&1); rc=$?
   if [ "$rc" -ne 2 ]; then
-    echo "SELFTEST FAIL: 13 fail-closed: jq missing -> rc=$rc (want 2)"
+    echo "SELFTEST FAIL: 15 fail-closed: jq missing -> rc=$rc (want 2)"
     printf '%s\n' "$out" | sed 's/^/    /'
     fail=1
   fi
   rm -rf "$toolbox" "$toolbox2"
 
-  # --- 14: fail-closed - no repo determinable (no --repo, no
+  # --- 16: fail-closed - no repo determinable (no --repo, no
   # $GITHUB_REPOSITORY) ---
   total_cases=$((total_cases + 1))
   out=$(env -u GITHUB_REPOSITORY bash "$SELF_ABS" 2>&1); rc=$?
   if [ "$rc" -ne 2 ]; then
-    echo "SELFTEST FAIL: 14 fail-closed: no repo determinable -> rc=$rc (want 2)"
+    echo "SELFTEST FAIL: 16 fail-closed: no repo determinable -> rc=$rc (want 2)"
     printf '%s\n' "$out" | sed 's/^/    /'
     fail=1
   fi
