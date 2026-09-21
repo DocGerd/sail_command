@@ -24,10 +24,8 @@ main session, so a reviewer or implementer must clean its own tree before
 handing back; a fresh agent pointed at the surviving worktree is the fallback
 if the creator is gone.
 
-**A worktree-isolated agent cannot run compound or `cd`-prefixed git
-commands** — the harness refuses anything "too complex to verify it stays
-inside the worktree." Run each step below as its own separate `git` command,
-never chained with `&&`/`;` or wrapped in a subshell.
+**Run each step below as a separate plain command** — see CLAUDE.md's
+worktree-isolated-agent harness-refusal bullet for why.
 
 ## Steps (run from inside the worktree first, steps 1–2)
 
@@ -79,8 +77,7 @@ never chained with `&&`/`;` or wrapped in a subshell.
    `.claude/worktrees/`.** An out-of-tree worktree (session scratchpad,
    `/tmp`, a reviewer's own path) doesn't show up in a `.claude/worktrees/*`
    glob — it's still registered and still needs cleanup. The listing also
-   shows two things you need before step 7: whether an entry is `locked`, and
-   whether it's `(detached HEAD)` (no `[branch]` shown) or on a branch:
+   shows whether an entry is `locked`, which you need before step 7:
 
    ```bash
    git worktree list
@@ -136,5 +133,5 @@ never chained with `&&`/`;` or wrapped in a subshell.
 | "not a git repository" on an absolute path | cwd is elsewhere (persists across Bash calls) | step 4 |
 | worktree isn't under `.claude/worktrees/` at all | it was created out-of-tree (scratchpad, `/tmp`, a reviewer's own path) | `git worktree list` finds it regardless of location; step 5 |
 | `git branch --show-current` inside the worktree is empty | worktree is on a detached HEAD, not a branch | nothing extra to do — step 7 removes it the same way, no branch to delete |
-| `fatal: cannot remove a locked working tree` | worktree was `git worktree lock`ed (harness-managed agent worktrees are locked by default) | step 6, then step 7 |
+| `fatal: cannot remove a locked working tree` | worktree was `git worktree lock`ed | step 6, then step 7 |
 | an old worktree still lists as `prunable` after its directory is already gone | directory was deleted without `git worktree remove` (e.g. scratchpad expiry) | step 8 |
