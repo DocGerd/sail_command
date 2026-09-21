@@ -50,6 +50,7 @@ jobs:
       run_e2e: ${{ steps.classify.outputs.run_e2e }}
       retest_app: ${{ steps.retest_app.outputs.retest }}
       retest_e2e: ${{ steps.retest_e2e.outputs.retest }}
+      run_realmask: ${{ steps.classify_realmask.outputs.run_realmask }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -75,6 +76,24 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: bash -e .github/scripts/classify-docs-only.sh
+      # #1336: gates the ~18 realmask.repro.*.test.ts files (88.4% of a
+      # shard's runtime, measured on run 35334122320) on the routing
+      # closure. Writes `run_realmask`; only `app-shard`'s test step reads
+      # it (see the `--exclude` split below) - `app-static` and `e2e` are
+      # unaffected. `bash -e` load-bearing for the same reason as above.
+      # `continue-on-error`: this step's only consumer is `app-shard`'s
+      # `if:` gate, which already reads an absent/empty output as RUN
+      # (`!= 'false'`, same fail-closed polarity as classify-docs-only.sh's
+      # outputs) - so a crash here must not also red `changes` and, through
+      # it, `e2e`, which never reads `run_realmask` at all.
+      - name: Classify change (routing closure vs. not)
+        id: classify_realmask
+        continue-on-error: true
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash -e .github/scripts/classify-realmask.sh
       # #877: skip re-testing a push whose tree equals an already-tested PR
       # head. CHECK_NAME is the FAN-IN check-run name the script looks up on
       # the second parent (`app`/`e2e`), so the fan-ins keep that contract.
@@ -160,8 +179,12 @@ jobs:
         with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
       - run: npm ci
         if: env.SKIP != 'true'
+      # #1336: two mutually exclusive steps, gated by run_realmask - never
+      # --passWithNoTests, so a glob that empties a shard still reds it.
       - run: npm run test -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}
-        if: env.SKIP != 'true'
+        if: env.SKIP != 'true' && needs.changes.outputs.run_realmask != 'false'
+      - run: npm run test -- --shard=${{ matrix.shard }}/${{ strategy.job-total }} --exclude 'src/routing/realmask.repro.*.test.ts'
+        if: env.SKIP != 'true' && needs.changes.outputs.run_realmask == 'false'
   app:
     name: app
     needs: [changes, app-static, app-shard]
