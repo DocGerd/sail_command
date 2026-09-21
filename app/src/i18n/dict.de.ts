@@ -92,6 +92,8 @@ export const de = {
   // diesen Zugang) — Boot, dann die angehobene Tiefe (falls vorhanden,
   // boat.clamp.notice), dann der Zugang dieses Boots.
   'boat.switch.selected': '{boat} ausgewählt.',
+  // #1325 (#1135 §5.4): siehe dict.en.ts — gleiche Reihenfolge/Variablen.
+  'boat.switch.endpointUnreachable': '{endpoint} {harbor} ist mit {boat} nicht erreichbar.',
   'boat.harbors.summary': 'Hafenzugang – {count} betroffen bei {depth} m',
   'boat.harbors.summaryDefault': '(Standard)',
   'boat.harbors.noneAffected': 'Hafenzugang – keine bekannten Einschränkungen bei {depth} m',

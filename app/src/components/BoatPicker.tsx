@@ -253,12 +253,21 @@ export interface BoatPickerProps {
   /** The live settings record — read for the spec C.7 clamp, written back through onSettingsChange. */
   settings: Settings;
   onSettingsChange: (s: Settings) => void;
+  /** #1325 (#1135 §5.4): the currently SELECTED origin/destination's harbor
+   * id, `null` when nothing is picked or the pick is a map tap rather than a
+   * harbor (App.tsx: `origin?.source === 'harbor' ? origin.harborId : null`).
+   * This component has no other route to that state — see the module doc
+   * comment on why it self-loads `mask`/`harbors` instead of taking them as
+   * props; this is the one piece those two assets cannot substitute for. */
+  originHarborId: string | null;
+  destinationHarborId: string | null;
 }
 
 /**
  * The merged boat-switch announcement (maintainer ruling on #1292, 2026-09-17):
- * boat, then the raised depth if any, then this boat's harbour access — ONE
- * `role="status"` message, never two. `clamp` carries BOTH endpoints (#1293's
+ * boat, then the raised depth if any, then any now-unreachable SELECTED
+ * endpoint (#1325), then this boat's harbour access — ONE `role="status"`
+ * message, never two. `clamp` carries BOTH endpoints (#1293's
  * original reason for the shape) though only `toM` reaches `boat.clamp.notice`
  * today; `null` means spec C.7 did not fire on this switch, so the composer
  * below skips that clause entirely rather than reporting a change that did
@@ -291,10 +300,39 @@ interface ClampNotice {
  * the one `mask`/`harbors` loading triggers) recomputes it fresh, at no
  * extra cost — the function is memoised per (mask, harbors, boat.id, depth).
  */
+/** #1325 (#1135 §5.4): one clause for a SELECTED endpoint whose boat-scoped
+ * access is 'unreachable' for the newly picked boat — `null` for every other
+ * case (no pick, a tap pick with no `harborId`, the harbor missing from
+ * `harbors`, or any state other than 'unreachable'). Deliberately excludes
+ * 'known-disconnected': that state is boat-independent — it was already
+ * unreachable before this switch too, per its own #652/#834 marker on the
+ * endpoint row (§5.3) — so re-announcing it on every switch would be noise
+ * about a fact the switch did not change. */
+function endpointUnreachableClause(
+  harborId: string | null,
+  endpointLabelKey: 'planner.origin.label' | 'planner.destination.label',
+  access: HarborAccessByHarbor,
+  harbors: readonly HarborWithReachability[],
+  boatName: string,
+  lang: Lang,
+  t: TFunction,
+): string | null {
+  if (harborId === null || access.get(harborId) !== 'unreachable') return null;
+  const harbor = harbors.find((h) => h.id === harborId);
+  if (!harbor) return null;
+  return t('boat.switch.endpointUnreachable', {
+    endpoint: t(endpointLabelKey),
+    harbor: harbor.names[lang],
+    boat: boatName,
+  });
+}
+
 function composeSwitchAnnouncement(
   notice: ClampNotice,
   mask: NavMask | null,
   harbors: HarborWithReachability[] | null,
+  originHarborId: string | null,
+  destinationHarborId: string | null,
   lang: Lang,
   t: TFunction,
 ): string {
@@ -307,13 +345,33 @@ function composeSwitchAnnouncement(
       }),
     );
   }
-  const accessCount =
-    mask && harbors
-      ? countAffectedHarbors(
-          computeHarborAccess(mask, harbors, boatById(notice.boatId), notice.depthM),
-          harbors,
-        )
-      : null;
+  let accessCount: number | null = null;
+  if (mask && harbors) {
+    const access = computeHarborAccess(mask, harbors, boatById(notice.boatId), notice.depthM);
+    // Origin before destination — matches PlannerPanel's own top-to-bottom
+    // reading order for the two endpoint rows.
+    const originClause = endpointUnreachableClause(
+      originHarborId,
+      'planner.origin.label',
+      access,
+      harbors,
+      notice.boatName,
+      lang,
+      t,
+    );
+    if (originClause) parts.push(originClause);
+    const destinationClause = endpointUnreachableClause(
+      destinationHarborId,
+      'planner.destination.label',
+      access,
+      harbors,
+      notice.boatName,
+      lang,
+      t,
+    );
+    if (destinationClause) parts.push(destinationClause);
+    accessCount = countAffectedHarbors(access, harbors);
+  }
   parts.push(harborAccessSummaryText(accessCount, notice.depthM, lang, t, false));
   return parts.join(' ');
 }
@@ -628,6 +686,8 @@ export default function BoatPicker({
   onBoatIdChange,
   settings,
   onSettingsChange,
+  originHarborId,
+  destinationHarborId,
 }: BoatPickerProps) {
   const t = useT();
   const [lang] = useLang();
@@ -752,7 +812,17 @@ export default function BoatPicker({
           tree and lose the announcement — see that rule's own comment, and
           test/boatPickerNoticeLiveRegion.test.ts, which pins it. */}
       <p className="boat-picker-notice" role="status" ref={noticeRef}>
-        {notice ? composeSwitchAnnouncement(notice, mask, harbors, lang, t) : null}
+        {notice
+          ? composeSwitchAnnouncement(
+              notice,
+              mask,
+              harbors,
+              originHarborId,
+              destinationHarborId,
+              lang,
+              t,
+            )
+          : null}
       </p>
       {/* #746. The own-vessel MMSI, scoped to the SELECTED boat. It sits here
           rather than in the Live & AIS card because a field that must follow

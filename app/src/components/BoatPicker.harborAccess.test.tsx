@@ -64,7 +64,14 @@ afterEach(() => {
   mockedLoad.mockReset();
 });
 
-function renderPicker(opts: { boatId?: string; safetyDepthM?: number } = {}) {
+function renderPicker(
+  opts: {
+    boatId?: string;
+    safetyDepthM?: number;
+    originHarborId?: string | null;
+    destinationHarborId?: string | null;
+  } = {},
+) {
   localStorage.setItem('sc-lang', 'en');
   const onBoatIdChange = vi.fn();
   const onSettingsChange = vi.fn();
@@ -75,6 +82,8 @@ function renderPicker(opts: { boatId?: string; safetyDepthM?: number } = {}) {
         onBoatIdChange={onBoatIdChange}
         settings={{ ...DEFAULT_SETTINGS, safetyDepthM: opts.safetyDepthM ?? 3.0 }}
         onSettingsChange={onSettingsChange}
+        originHarborId={opts.originHarborId ?? null}
+        destinationHarborId={opts.destinationHarborId ?? null}
       />
     </I18nProvider>,
   );
@@ -214,6 +223,104 @@ describe('#1292 announcement: ONE merged live region, in order', () => {
     const boatIdx = text.indexOf('selected.');
     const accessIdx = text.indexOf('Harbour access — 1 affected');
     expect(accessIdx).toBeGreaterThan(boatIdx);
+  });
+});
+
+describe('#1325 (#1135 §5.4): endpoint-unreachable clause in the switch announcement', () => {
+  // MEASURED against the real committed mask (computeHarborAccess, not
+  // re-quoted here): every catalogue boat reads augustenborg AND
+  // burgstaaken 'unreachable' at 4.0 m — a DEFAULT-gate switch never does
+  // (harborReachability.test.ts's own "0 unreachable" row), so 4.0 m is
+  // what exercises this clause. Neither boat below clamps at 4.0 m (both
+  // defaults sit well under it), so these four tests isolate the new
+  // clause from the existing clamp-ordering ones above.
+  it('announces a selected ORIGIN that becomes unreachable for the new boat', async () => {
+    mockedLoad.mockImplementation(realAssets);
+    renderPicker({
+      boatId: 'salona-44-speedy-go',
+      safetyDepthM: 4.0,
+      originHarborId: 'augustenborg',
+    });
+    await waitForAssetsReady();
+    fireEvent.click(screen.getByRole('radio', { name: /Salona 45/ }));
+
+    await waitFor(
+      () => {
+        expect(status()).toHaveTextContent('Origin Augustenborg is not reachable with Salona 45.');
+      },
+      { timeout: solverTimeoutMs(5000) },
+    );
+    // Ordering: boat, then the endpoint clause, then the access summary.
+    const text = status().textContent ?? '';
+    const boatIdx = text.indexOf('Salona 45 selected.');
+    const endpointIdx = text.indexOf('Origin Augustenborg is not reachable');
+    const accessIdx = text.indexOf('Harbour access —');
+    expect(boatIdx).toBeGreaterThanOrEqual(0);
+    expect(endpointIdx).toBeGreaterThan(boatIdx);
+    expect(accessIdx).toBeGreaterThan(endpointIdx);
+  });
+
+  it('does not announce a selected endpoint that stays reachable', async () => {
+    mockedLoad.mockImplementation(realAssets);
+    // Marstal is 'shallow-approach' at every catalogue boat's own default
+    // (harborReachability.test.ts's "marstal shallow-approach" row) — it
+    // routes, with a shallow banner, never 'unreachable', so it must never
+    // get this clause even though it IS one of the harbours the general
+    // access summary counts as "affected".
+    renderPicker({
+      boatId: 'salona-44-speedy-go',
+      safetyDepthM: 3.0,
+      destinationHarborId: 'marstal',
+    });
+    await waitForAssetsReady();
+    fireEvent.click(screen.getByRole('radio', { name: /Salona 45/ }));
+
+    await waitFor(
+      () => {
+        expect(status()).toHaveTextContent('Harbour access — 1 affected at 3.0 m');
+      },
+      { timeout: solverTimeoutMs(5000) },
+    );
+    expect(status()).not.toHaveTextContent('is not reachable');
+  });
+
+  it('does not announce anything when no endpoint is selected', async () => {
+    mockedLoad.mockImplementation(realAssets);
+    renderPicker({ boatId: 'salona-44-speedy-go', safetyDepthM: 4.0 });
+    await waitForAssetsReady();
+    fireEvent.click(screen.getByRole('radio', { name: /Salona 45/ }));
+
+    await waitFor(
+      () => {
+        expect(status()).toHaveTextContent('Harbour access —');
+      },
+      { timeout: solverTimeoutMs(5000) },
+    );
+    expect(status()).not.toHaveTextContent('is not reachable');
+  });
+
+  it('announces BOTH endpoints, origin before destination, when both become unreachable', async () => {
+    mockedLoad.mockImplementation(realAssets);
+    renderPicker({
+      boatId: 'salona-44-speedy-go',
+      safetyDepthM: 4.0,
+      originHarborId: 'augustenborg',
+      destinationHarborId: 'burgstaaken',
+    });
+    await waitForAssetsReady();
+    fireEvent.click(screen.getByRole('radio', { name: /Salona 45/ }));
+
+    await waitFor(
+      () => {
+        expect(status()).toHaveTextContent('Origin Augustenborg is not reachable with Salona 45.');
+      },
+      { timeout: solverTimeoutMs(5000) },
+    );
+    expect(status()).toHaveTextContent('Destination Burgstaaken is not reachable with Salona 45.');
+    const text = status().textContent ?? '';
+    expect(text.indexOf('Origin Augustenborg')).toBeLessThan(
+      text.indexOf('Destination Burgstaaken'),
+    );
   });
 });
 
