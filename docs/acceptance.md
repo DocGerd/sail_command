@@ -113,17 +113,16 @@ results table at the bottom, and note it in the box below the check.
       the depth clause is absent entirely when the switch needed no clamp.
       Restore the safety depth and boat afterward.
 - [ ] **Endpoint-unreachable clause on boat switch (#1325).** Select an
-      origin AND a destination harbour (from search, not a map tap), then
-      switch boats while both stay selected. At default per-boat safety
-      depths this clause will likely NOT fire — #1393 found the three
-      shipped boats have identical per-harbour access at any one FIXED
-      depth — so raise the safety depth on the Boat tab (e.g. to 7.5 m) to
-      put a harbour into the new boat's `unreachable` band before
-      switching. When it fires, the merged `role="status"` announcement
-      inserts one sentence per affected endpoint right after the raised-depth
-      clause and before the harbour-access summary — "Origin/Start
-      <harbour> is not reachable with <boat>." / "<Start/Ziel> <harbour>
-      ist mit <boat> nicht erreichbar." — origin before destination if
+      origin AND a destination harbour (a harbour pick — search or harbour marker — not an open-water tap), then
+      switch boats while both stay selected. No boat reads any harbour `unreachable`
+      at its own default depth (`harborReachability.test.ts`), so pick
+      Augustenborg as origin and Burgstaaken as destination, set the safety
+      depth on the Boat tab to 4.0 m, and switch from SPEEDY GO! to
+      Salona 45 — both read `unreachable` there
+      (`BoatPicker.harborAccess.test.tsx`, #1325 block). When it fires, the merged `role="status"` announcement
+      inserts one sentence per affected endpoint after "<boat> selected." and any raised-depth clause, before
+      the harbour-access summary — "Origin/Destination <harbour> is not reachable with <boat>." /
+      "Start/Ziel <harbour> ist mit <boat> nicht erreichbar." — origin before destination if
       both are affected, and neither clause appears for a harbour already
       flagged known-disconnected (that marker is boat-independent, so the
       switch did not change it). Restore the safety depth, boats, and

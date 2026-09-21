@@ -27,12 +27,10 @@ redaction of historical home-path leaks, and an implementer-facing doc fix.
 
 Switching boats now announces when the newly selected boat can't reach the
 selected origin or destination harbour, closing the #1135 design's §5.4 gap
-that fell between `v0.37.0`'s two harbour-access PRs
 ([#1325](https://github.com/DocGerd/sail_command/issues/1325)).
 
 The rest of the milestone, all process/tooling with no user-visible surface:
-five Claude Code skill-doc gaps found running the `v0.38.0` release
-cycle — `merge-train`'s fork-PR path and integration-PR default
+`merge-train`'s fork-PR path and integration-PR default
 ([#1372](https://github.com/DocGerd/sail_command/issues/1372)),
 `release-cycle`'s adversarial pass on keep/move verdicts, a bucket-reconcile
 step, and a nightly-Coverage check
@@ -46,11 +44,11 @@ step, and a nightly-Coverage check
 `sail-implementer` agent definition now states the `--selftest` contract for
 a new top-level `.github/scripts/*.sh`
 ([#1377](https://github.com/DocGerd/sail_command/issues/1377));
-`closure.mjs diff` now computes the closure at both compared trees rather
+`closure.mjs diff` now computes the closure at the merge-base, head and base trees rather
 than the caller's checked-out one, the same fix `reuse` got in `v0.38.0`
 ([#1359](https://github.com/DocGerd/sail_command/issues/1359)); and the
-historical home-path leaks the advisory `scan-issue-home-paths` job had been
-reporting on every scheduled run since 2026-09-11 are redacted in place
+historical home-path leaks the advisory `scan-issue-home-paths.yml` scan
+reported are redacted in place
 ([#1215](https://github.com/DocGerd/sail_command/issues/1215)).
 
 ## Next — v0.40.0
