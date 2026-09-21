@@ -16,7 +16,6 @@
         "salona44-relaxation": "653f57fae29ade07",
         "short-horizon": "fde10df45a51ca0c"
       },
-      "path": "/home/pkuhn/sail_command-sweep-s1338-out",
       "note": "PR #1363 (#1338): sharded (4x6) vs unsharded arm-sets, sharded vs unsharded 440/440"
     }
   ]
