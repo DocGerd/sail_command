@@ -432,6 +432,24 @@ describe('#1290 harborReachability', () => {
     },
   );
 
+  // #1319: Math.max(1, Math.floor(NaN)) is NaN, and `steps >= NaN` is always
+  // false, so an explicit NaN maxSteps must not restore the unbounded search
+  // the budget exists to prevent — it should behave exactly as the default.
+  it(
+    'findLowerSettingHint normalises a non-finite maxSteps to the default budget instead of searching unbounded',
+    { timeout: solverTimeoutMs(300_000) },
+    () => {
+      // marstal needs 29 decimetre steps to scan from 6.4 m down to
+      // defaultSafetyDepthM(synthetic) (measured), so the default 12-step
+      // budget genuinely exhausts here rather than completing by coincidence.
+      const marstal = harbors.find((h) => h.id === 'marstal')!;
+      const withDefault = findLowerSettingHint(mask, marstal, synthetic, 6.4);
+      const withNaN = findLowerSettingHint(mask, marstal, synthetic, 6.4, Number.NaN);
+      expect(withDefault).toEqual({ kind: 'exhausted', resumeFromDepthM: 5.2 });
+      expect(withNaN).toEqual(withDefault);
+    },
+  );
+
   // PR #1316 fix-wave 2 Minor: `floodHasCell`'s shape guard (exported for
   // this test only) is unreachable through the public API — the per-`NavMask`
   // cache keying prevents the mismatch from arising naturally — so it must be
