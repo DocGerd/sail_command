@@ -695,6 +695,14 @@ function pickOriginAndDestination() {
 }
 
 beforeEach(async () => {
+  // #1399a: dismissed by DEFAULT for every pre-existing test in this file —
+  // its "Dismiss"/"Schließen" button shares that accessible name with the
+  // GPS-hint and other dismissible banners (banner.dismiss), so an
+  // undismissed caveat banner would turn every getByRole('button', { name:
+  // 'Schließen' }) in this file into a strict-mode multi-match. The
+  // caveat-banner's OWN describe block below removes this key before
+  // rendering.
+  localStorage.setItem('sc-caveat-banner-dismissed', '1');
   await __resetDbForTests();
   vi.stubGlobal('fetch', fetchMock());
   routingMock.calls.length = 0;
@@ -1360,7 +1368,9 @@ describe('App', () => {
       fireEvent.change(within(originSection).getByRole('combobox'), {
         target: { value: FLENSBURG.names.de },
       });
-      fireEvent.click(within(originSection).getByRole('option', { name: harborOptionName(FLENSBURG.names.de) }));
+      fireEvent.click(
+        within(originSection).getByRole('option', { name: harborOptionName(FLENSBURG.names.de) }),
+      );
 
       expect(screen.queryByText(message)).not.toBeInTheDocument();
       expect(
@@ -1661,7 +1671,9 @@ describe('#1171: keyboard-reachable insert-between-waypoints (App wiring)', () =
     fireEvent.change(within(originSection).getByRole('combobox'), {
       target: { value: FLENSBURG.names.de },
     });
-    fireEvent.click(within(originSection).getByRole('option', { name: harborOptionName(FLENSBURG.names.de) }));
+    fireEvent.click(
+      within(originSection).getByRole('option', { name: harborOptionName(FLENSBURG.names.de) }),
+    );
 
     const destinationSection = screen.getByRole('region', {
       name: de['planner.destination.label'],
@@ -1673,7 +1685,9 @@ describe('#1171: keyboard-reachable insert-between-waypoints (App wiring)', () =
       target: { value: RELABEL_HARBOR.names.de },
     });
     fireEvent.click(
-      within(destinationSection).getByRole('option', { name: harborOptionName(RELABEL_HARBOR.names.de) }),
+      within(destinationSection).getByRole('option', {
+        name: harborOptionName(RELABEL_HARBOR.names.de),
+      }),
     );
 
     const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
@@ -2430,7 +2444,9 @@ describe('banner surfacing (PR self-review fix wave)', () => {
     fireEvent.change(within(destSection).getByRole('combobox'), {
       target: { value: FLENSBURG.names.de },
     });
-    fireEvent.click(within(destSection).getByRole('option', { name: harborOptionName(FLENSBURG.names.de) }));
+    fireEvent.click(
+      within(destSection).getByRole('option', { name: harborOptionName(FLENSBURG.names.de) }),
+    );
 
     fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
     await waitFor(() => expect(routingMock.calls.length).toBe(1));
@@ -2776,6 +2792,43 @@ describe('banner surfacing (PR self-review fix wave)', () => {
     expect(await screen.findByRole('button', { name: en['nav.langToggle'] })).toHaveTextContent(
       de['nav.langToggle.de'],
     );
+  });
+});
+
+// #1399a: the dismissible first-run caveat banner. The top-level beforeEach
+// seeds `sc-caveat-banner-dismissed` so every OTHER test in this file never
+// sees it (it shares the "Schließen"/"Dismiss" accessible name with every
+// other dismissible banner) — this describe block removes that key first.
+describe('#1399a: first-run caveat banner', () => {
+  it('shows on first load (no stored dismissal) and reuses app.disclaimer verbatim', async () => {
+    localStorage.removeItem('sc-caveat-banner-dismissed');
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    expect(screen.getByText(de['app.disclaimer'])).toBeInTheDocument();
+  });
+
+  it('dismissing it removes it and persists the dismissal across a remount', async () => {
+    localStorage.removeItem('sc-caveat-banner-dismissed');
+    const { unmount } = renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    expect(screen.getByText(de['app.disclaimer'])).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: de['banner.dismiss'] }));
+    expect(screen.queryByText(de['app.disclaimer'])).not.toBeInTheDocument();
+    // The VALUE usePersistedToggle actually writes (#63's own convention),
+    // not merely that dismissal removed the element from THIS mount.
+    expect(localStorage.getItem('sc-caveat-banner-dismissed')).toBe('1');
+
+    unmount();
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    expect(screen.queryByText(de['app.disclaimer'])).not.toBeInTheDocument();
+  });
+
+  it('stays dismissed on an ordinary load once the key is set — the not-dismissed branch of the same guard', () => {
+    localStorage.setItem('sc-caveat-banner-dismissed', '1');
+    renderApp();
+    expect(screen.queryByText(de['app.disclaimer'])).not.toBeInTheDocument();
   });
 });
 

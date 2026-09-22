@@ -1,4 +1,4 @@
-import { useMemo, useRef, type KeyboardEvent, type Ref } from 'react';
+import { useMemo, useRef, useState, type KeyboardEvent, type Ref } from 'react';
 import { useT, useLang, type Lang } from '../i18n';
 import {
   formatHeading,
@@ -10,12 +10,15 @@ import {
 } from '../lib/format';
 import { toGpx } from '../lib/gpx';
 import { formatDepthM } from '../lib/depthDisclosure';
-import { cautiousDepthLowerBoundM, MASK_TOLERANCE_M } from '../lib/mask';
+import { cautiousDepthLowerBoundM, MASK_TOLERANCE_M, type NavMask } from '../lib/mask';
 import { PORT_COLOR, STARBOARD_COLOR } from '../lib/mapColors';
 import {
   activeRigResult,
+  forecastAgeNowHours,
+  isForecastStaleNow,
   isStaleForecast,
   noRouteMessageKey,
+  rigComparisonSuppressedByTier,
   staleForecastGapHours,
 } from '../lib/plan';
 import {
@@ -96,6 +99,30 @@ import { ShallowWarning } from './ShallowWarning';
  * the plan's bytes are identical and NO #282 acceptance sweep is owed — the
  * same shape #516/#518/#539 took, for the same reason.
  */
+type DepthExposureState = { kind: 'pending' } | { kind: 'clear' } | { kind: 'exposed'; nm: number };
+
+// #1398a (spike 1022 §8, slice 2 of #612's own residual): the shared gate
+// behind both MarginalDepthNotice's exposure figure and DepthClearNotice's
+// affirmative line, so the two — plus ShallowWarning's `relaxed` branch —
+// stay MUTUALLY EXCLUSIVE by construction rather than by three independently
+// maintained conditions. `marginalExposureNm` returns `null` for the WHOLE
+// route on a mask/walk failure (the #251/#255 rule this repo already
+// documents for `segmentShallowestBelow`) — that null is NOT informative and
+// must render as 'pending' ("not determined yet"), never as 'clear'
+// ("looked and found nothing"); only a genuine `nm <= 0` is the latter.
+function depthExposureState(
+  relaxed: boolean,
+  legs: Leg[] | null | undefined,
+  mask: NavMask | null,
+  gateM: number,
+): DepthExposureState {
+  if (relaxed || !mask || !legs || legs.length === 0) return { kind: 'pending' };
+  const nm = marginalExposureNm(legs, mask, gateM);
+  if (nm === null) return { kind: 'pending' };
+  if (nm <= 0) return { kind: 'clear' };
+  return { kind: 'exposed', nm };
+}
+
 export function MarginalDepthNotice({ plan, legs }: { plan: Plan; legs?: Leg[] | null }) {
   const t = useT();
   const [lang] = useLang();
@@ -135,10 +162,9 @@ export function MarginalDepthNotice({ plan, legs }: { plan: Plan; legs?: Leg[] |
   // container and not a "0.0 nm" sentence, which would be a notice about the
   // absence of the thing it is a notice about.
   const exposureDist = useMemo(() => {
-    if (relaxed || !mask || !legs || legs.length === 0) return null;
-    const nm = marginalExposureNm(legs, mask, gateM);
-    if (nm === null || nm <= 0) return null;
-    return formatNm(roundExposureNm(nm), lang);
+    const state = depthExposureState(relaxed, legs, mask, gateM);
+    if (state.kind !== 'exposed') return null;
+    return formatNm(roundExposureNm(state.nm), lang);
   }, [relaxed, legs, mask, gateM, lang]);
   if (exposureDist === null) return null;
   // THE PLAN'S OWN BOAT, never the live picker selection and never a
@@ -162,6 +188,54 @@ export function MarginalDepthNotice({ plan, legs }: { plan: Plan; legs?: Leg[] |
         requested: formatDepthM(gateM, lang),
         draft: formatDepthM(draftM, lang),
       })}
+    </p>
+  );
+}
+
+/**
+ * #1398a (spike 1022 §8, the residual #612 left open): the THIRD state
+ * alongside ShallowWarning (relaxed) and MarginalDepthNotice above
+ * (non-relaxed, exposed) — a non-relaxed route whose active rig crosses NO
+ * charted water below the requested gate. Before this there was no
+ * affirmative "no shallow water flagged" statement anywhere in the card; a
+ * user answered "is this route fine?" only by noticing that NEITHER of the
+ * other two disclosures fired, which conflates "we looked and found
+ * nothing" with "we do not know yet" (mask still loading, walk failure) —
+ * the exact false-all-clear shape the #251/#255 domain rule warns against.
+ * Shares `depthExposureState` with MarginalDepthNotice so the three states
+ * can never drift apart: this renders ONLY on 'clear', MarginalDepthNotice
+ * ONLY on 'exposed', ShallowWarning ONLY when `relaxed` — mutually
+ * exclusive by construction, never a fourth message layered beside either.
+ *
+ * Hedged like `boat.harbors.hintFound` ("depth data only" / "nur
+ * Tiefendaten geprüft") and never the word "safe"/"clear" as a claim — this
+ * is a depth-only derivation against the currently-loaded mask, and
+ * `app.disclaimer` already states the app makes no chart-authority claim.
+ *
+ * PRESENTATION-ONLY, same as MarginalDepthNotice: no field added to
+ * `ShallowInfo`/`PlanResult`, so no #282 acceptance sweep is owed.
+ *
+ * `.depth-clear-notice`, a DISTINCT class from `.marginal-depth-notice` —
+ * every existing `.marginal-depth-notice` query in this repo's test suite
+ * means "the exposed-nm state specifically" (e.g. the #612 deepMask()
+ * absence case), and reusing that class here would silently turn every such
+ * query into a match on the wrong element the moment both notices can
+ * render off the same fixture.
+ */
+export function DepthClearNotice({ plan, legs }: { plan: Plan; legs?: Leg[] | null }) {
+  const t = useT();
+  const [lang] = useLang();
+  const mask = useNavMask();
+  const gateM = requestedGateM(plan);
+  const relaxed = Boolean(plan.result.shallow);
+  const clear = useMemo(
+    () => depthExposureState(relaxed, legs, mask, gateM).kind === 'clear',
+    [relaxed, legs, mask, gateM],
+  );
+  if (!clear) return null;
+  return (
+    <p className="depth-clear-notice">
+      {t('route.marginal.clear', { requested: formatDepthM(gateM, lang) })}
     </p>
   );
 }
@@ -484,6 +558,13 @@ export default function RouteSummary({
   const [lang] = useLang();
   const result = activeRigResult(plan, rig);
   const stale = isStaleForecast(plan);
+  // #1399c: forecast age against NOW, not against the plan's own departure
+  // (isStaleForecast above). `nowMs` computed ONCE at mount — RouteLayer.tsx's
+  // own `useState(() => Date.now())` pattern, not a ticking clock, and pure
+  // for render (format.ts's rule: Date.now() itself never runs in the render
+  // body — see lib/plan.ts's own comment on `isForecastStaleNow`).
+  const [nowMs] = useState(() => Date.now());
+  const staleNow = isForecastStaleNow(plan, nowMs);
   const reason = !result ? reasonForRig(plan, rig) : null;
   const summary = result ? resultSummary(plan, result, lang) : null;
   // #259: plan-level, independent of `result`/`summary` — must still resolve
@@ -609,12 +690,20 @@ export default function RouteSummary({
       <Chip className="chip-faster-rig">
         {rigRecommendation.kind === 'decided'
           ? t('route.fasterRig', { rig: t(sailLabelKey(rigRecommendation.rig)) })
-          : renderRigVerdict(
-              rigRecommendation.kind,
-              plan.result.comparisonComplete,
-              plan.result.sails,
-              t,
-            )}
+          : // #1398b: name the tier-C reason instead of the generic
+            // "not compared" sentence — only when tier is WHY, per
+            // rigComparisonSuppressedByTier's own precedence comment.
+            rigComparisonSuppressedByTier(plan)
+            ? t('route.rigNotComparedEstimated', {
+                boat: plan.request.boat.name,
+                tier: t('boat.polarTier.estimated'),
+              })
+            : renderRigVerdict(
+                rigRecommendation.kind,
+                plan.result.comparisonComplete,
+                plan.result.sails,
+                t,
+              )}
       </Chip>
 
       <OfflineMapStatus key={`${plan.id}-${plan.createdAtMs}`} plan={plan} />
@@ -628,6 +717,20 @@ export default function RouteSummary({
       {stale && (
         <p className="inline-alert" role="alert">
           {t('route.staleForecast', { hours: staleForecastGapHours(plan) })}
+        </p>
+      )}
+
+      {/* #1399c (spike 1022 §10): distinct from route.staleForecast above —
+          that one compares the plan's OWN departure to its OWN fetch time,
+          both frozen at save time, so a plan reopened weeks later reports
+          the SAME status it had on the day it was saved. This compares the
+          stored forecast's fetch time against NOW, so it is the one signal
+          that actually answers "is this plan's wind data current". The two
+          can legitimately coexist — a stale-at-save plan reopened later is
+          also stale-now. */}
+      {staleNow && (
+        <p className="inline-alert" role="alert">
+          {t('route.forecastAgeNow', { hours: forecastAgeNowHours(plan, nowMs) })}
         </p>
       )}
 
@@ -675,6 +778,12 @@ export default function RouteSummary({
           legs, so the two rig tabs can legitimately show different figures (or
           one show none), which is the honest per-rig answer. */}
       <MarginalDepthNotice plan={plan} legs={result?.legs ?? null} />
+
+      {/* #1398a: the third, affirmative state — MUTUALLY EXCLUSIVE with the
+          banner above and MarginalDepthNotice, by construction (they share
+          `depthExposureState`). Rendered UNCONDITIONALLY for the same reason
+          as MarginalDepthNotice: the gate lives inside the component. */}
+      <DepthClearNotice plan={plan} legs={result?.legs ?? null} />
 
       {/* #615: the advisory seamark-proximity line, a SIBLING of the two
           depth surfaces above and, like MarginalDepthNotice, rendered

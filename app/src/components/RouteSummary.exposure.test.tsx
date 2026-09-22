@@ -870,6 +870,156 @@ describe('#612: the marginal-depth notice on a route that did not relax', () => 
   });
 });
 
+// #1398a: an out-of-bounds leg endpoint against a genuinely LOADED mask —
+// the walk-failure member of the #251/#255 null family, distinct from
+// "mask not loaded yet" and from "relaxed". Same construction as
+// shallowExposure.test.ts's own out-of-bounds row: TEST_MASK_META's
+// coverage tops out at north=55.3, so 56.0 is well outside it.
+const OUT_OF_BOUNDS_LEG: Leg = {
+  ...EXPOSURE_LEG,
+  start: { lat: 56.0, lon: 10.0 },
+  end: { lat: 56.01, lon: 10.01 },
+};
+
+describe('#1398a: DepthClearNotice, the affirmative third state', () => {
+  it('renders the affirmative line on a genuinely clean, non-relaxed route — with a discriminating control', async () => {
+    mockedLoad.mockResolvedValue(deepMask());
+    const clean = await renderNonRelaxed([EXPOSURE_LEG]);
+    const affirmative = clean.querySelector('.depth-clear-notice');
+    expect(affirmative).not.toBeNull();
+    // #1405 review MINOR F#1: 'route.marginal.clear' was changed to say
+    // "your safety depth", matching its siblings route.marginal.notice/
+    // noticeSevere (both unchanged, both already said "your").
+    expect(affirmative?.textContent).toContain(
+      'No charted water on this route falls below your safety depth of 3.0 m (depth data only).',
+    );
+    // Mutually exclusive with MarginalDepthNotice — same fixture, same
+    // render, both notices share depthExposureState.
+    expect(clean.querySelector('.marginal-depth-notice')).toBeNull();
+
+    // THE CONTROL: change exactly the mask (marginalMask() genuinely
+    // crosses shallow cells) and confirm the affirmative line disappears —
+    // an absence assertion elsewhere in this describe block carries no
+    // information without this pairing.
+    cleanup();
+    mockedLoad.mockResolvedValue(marginalMask());
+    const exposed = await renderNonRelaxed([EXPOSURE_LEG]);
+    expect(
+      exposed.querySelector('.depth-clear-notice'),
+      'control: an exposed mask must NOT render the affirmative line',
+    ).toBeNull();
+    expect(exposed.querySelector('.marginal-depth-notice')).not.toBeNull();
+  });
+
+  it('stays silent (never affirmative) while the mask is still loading', async () => {
+    // mockedLoad left at the beforeEach default: never resolves — the
+    // "we do not know yet" state, which must not collapse into "clear".
+    localStorage.setItem('sc-lang', 'en');
+    const { container } = render(
+      <I18nProvider>
+        <RouteSummary plan={makeNonRelaxedPlan([EXPOSURE_LEG])} rig="genoa" onRigChange={vi.fn()} />
+      </I18nProvider>,
+    );
+    expect(container.querySelector('.depth-clear-notice')).toBeNull();
+  });
+
+  it('stays silent (never affirmative) on an out-of-bounds walk failure against a LOADED mask', async () => {
+    // The sharpest case: the mask itself resolved (deepMask(), which reads
+    // 'clear' for every in-bounds leg), yet this specific leg's endpoint
+    // falls outside its coverage rectangle. marginalExposureNm's #251/#255
+    // null-for-the-whole-route contract must win over the loaded mask —
+    // exactly the false-all-clear shape this slice exists to close.
+    mockedLoad.mockResolvedValue(deepMask());
+    const container = await renderNonRelaxed([OUT_OF_BOUNDS_LEG]);
+    expect(container.querySelector('.depth-clear-notice')).toBeNull();
+    expect(container.querySelector('.marginal-depth-notice')).toBeNull();
+  });
+
+  it('never renders on a RELAXED route, even against a mask that would otherwise read clear', async () => {
+    // deepMask() would read 'clear' for this leg if the relaxed gate were
+    // absent — proving `relaxed` wins over the mask reading, not merely
+    // that the two happen to agree.
+    mockedLoad.mockResolvedValue(deepMask());
+    const container = await renderAndSettle([EXPOSURE_LEG]);
+    await waitFor(() => expect(mockedLoad).toHaveBeenCalled());
+    await act(async () => {});
+    expect(container.querySelector('.shallow-warning')).not.toBeNull();
+    expect(container.querySelector('.depth-clear-notice')).toBeNull();
+  });
+
+  it('is QUIET: no role="alert"', async () => {
+    mockedLoad.mockResolvedValue(deepMask());
+    const container = await renderNonRelaxed([EXPOSURE_LEG]);
+    const notice = container.querySelector('.depth-clear-notice');
+    expect(notice?.getAttribute('role')).toBeNull();
+  });
+
+  it('renders the German copy', async () => {
+    localStorage.setItem('sc-lang', 'de');
+    mockedLoad.mockResolvedValue(deepMask());
+    const { container } = render(
+      <I18nProvider>
+        <RouteSummary plan={makeNonRelaxedPlan([EXPOSURE_LEG])} rig="genoa" onRigChange={vi.fn()} />
+      </I18nProvider>,
+    );
+    await waitFor(() => expect(mockedLoad).toHaveBeenCalled());
+    await act(async () => {});
+    const notice = container.querySelector('.depth-clear-notice');
+    expect(notice?.textContent).toContain(
+      'Auf dieser Route liegt kein Wasser laut Kartentiefen unter der eingestellten Sicherheitstiefe von 3,0 m (nur Tiefendaten geprüft).',
+    );
+  });
+});
+
+// #1405 review MINOR E: two of depthExposureState's four OR-terms
+// (`relaxed || !mask || !legs || legs.length === 0`) had no row testing them
+// individually — `!legs` and `legs.length === 0`. Both reachable in
+// production: activeRigResult returns null when the active rig's own solve
+// result is null (lib/plan.ts's own comment — "the router legitimately
+// solves only one sail sometimes"), and a RigResult can carry a genuinely
+// empty legs array. marginalExposureNm([], mask, gateM) returns 0 (the walk
+// loop never executes for an empty array), so WITHOUT the legs.length===0
+// term a zero-leg route would render DepthClearNotice's affirmative 'clear'
+// line — the exact false-affirmative this file's #1398a block otherwise
+// exists to prevent.
+describe('#1405 MINOR E: the two untested legs OR-terms in depthExposureState', () => {
+  it('stays pending (neither notice renders) when the active rig has no result at all (legs===null) against a loaded mask', async () => {
+    mockedLoad.mockResolvedValue(marginalMask());
+    localStorage.setItem('sc-lang', 'en');
+    const base = makeNonRelaxedPlan([EXPOSURE_LEG]);
+    const plan: Plan = {
+      ...base,
+      result: {
+        ...base.result,
+        sails: base.result.sails.map((s) => ({
+          ...s,
+          result: null,
+          reason: 'unreachable' as const,
+        })),
+      },
+    };
+    const { container } = render(
+      <I18nProvider>
+        <RouteSummary plan={plan} rig="genoa" onRigChange={vi.fn()} />
+      </I18nProvider>,
+    );
+    await waitFor(() => expect(mockedLoad).toHaveBeenCalled());
+    await act(async () => {});
+    expect(container.querySelector('.depth-clear-notice')).toBeNull();
+    expect(container.querySelector('.marginal-depth-notice')).toBeNull();
+  });
+
+  it('stays pending (never the false-affirmative "clear") when the active rig genuinely has zero legs, against a mask that would otherwise read clear', async () => {
+    // deepMask() renders `.depth-clear-notice` for any NON-EMPTY legs array
+    // (see the '#1398a' describe block's first test above, same mask). legs
+    // here is [], not null — a real RigResult with a genuinely empty array.
+    mockedLoad.mockResolvedValue(deepMask());
+    const container = await renderNonRelaxed([]);
+    expect(container.querySelector('.depth-clear-notice')).toBeNull();
+    expect(container.querySelector('.marginal-depth-notice')).toBeNull();
+  });
+});
+
 // ---------------------------------------------------------------------------
 // #651: the legs-table marker's render-time complement — a leg the router
 // did NOT relax (no leg.shallow), so the pre-#651 table rendered NOTHING for

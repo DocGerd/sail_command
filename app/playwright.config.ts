@@ -33,6 +33,32 @@ import { defineConfig, devices } from '@playwright/test';
 // `helpers.ts`'s `currentPort()` (`4173 + test.info().parallelIndex`), so
 // raising `workers` below no longer means every worker's `vite preview
 // --strictPort` child fights over one socket.
+//
+// #1405 review BLOCKER: App.tsx's #1399a first-run caveat banner is
+// unconditional on a fresh profile, and this suite's specs assert a
+// banner-free cold load (seamarks.spec.ts's #830 composition guard among
+// others). `storageState.origins[]` seeds `sc-caveat-banner-dismissed`
+// BEFORE the page's own scripts ever run, for every spec using the
+// `page`/`context` FIXTURE (the vast majority) — this is "where every spec
+// gets it" without editing each spec file. One origin entry per possible
+// worker port (`BASE_PORT + parallelIndex`, `helpers.ts`'s own formula,
+// `workers: process.env.CI ? 1 : 4` below bounds parallelIndex to 0..3):
+// CI only ever uses port 4173, so only that entry matters there; the other
+// three exist for local multi-worker runs. `helpers.ts`'s `startPreview(page)`
+// ALSO seeds this (belt-and-suspenders for the documented "own page created
+// via browser.newContext() AFTER startPreview()" pattern several specs use,
+// where this config-level seed cannot reach) — see that function's comment.
+// A spec that must see the UNDISMISSED banner (this repo has exactly one:
+// `caveat-banner.spec.ts`) creates its OWN context with an explicit EMPTY
+// `storageState` to override this default.
+const CAVEAT_DISMISSED_STORAGE_STATE = {
+  cookies: [],
+  origins: [0, 1, 2, 3].map((workerOffset) => ({
+    origin: `http://localhost:${4173 + workerOffset}`,
+    localStorage: [{ name: 'sc-caveat-banner-dismissed', value: '1' }],
+  })),
+};
+
 export default defineConfig({
   testDir: 'e2e',
   timeout: 120_000,
@@ -40,6 +66,7 @@ export default defineConfig({
   fullyParallel: false,
   retries: 0,
   reporter: [['html', { open: 'never' }], ['list']],
+  use: { storageState: CAVEAT_DISMISSED_STORAGE_STATE },
   projects: [
     {
       name: 'identity',

@@ -37,7 +37,7 @@ import { formatTime, toLocalInputValue } from '../lib/format';
 import { MAX_GPX_FILE_BYTES } from '../lib/gpx';
 import { FORECAST_DAYS } from '../services/openMeteo';
 import { saveWaypoint, listWaypoints, __resetDbForTests } from '../services/db';
-import { uniformWindGrid } from '../test/fixtures';
+import { openWaterMask, uniformWindGrid } from '../test/fixtures';
 import {
   DEFAULT_SETTINGS,
   type Harbor,
@@ -53,7 +53,7 @@ import {
 } from '../types';
 import PlannerPanel, { nextFullHourMs, type PlannerStatus, type TapTarget } from './PlannerPanel';
 import { boatById, DEFAULT_BOAT_ID, type BoatDef } from '../data/boats';
-import { defaultBoatSnapshot } from '../types';
+import { boatSnapshot, defaultBoatSnapshot } from '../types';
 import { PLAN_SCHEMA_VERSION } from '../types';
 import { computeHarborAccess, findLowerSettingHint } from '../lib/harborReachability';
 import type { HarborWithReachability } from '../lib/harborReachability';
@@ -1818,6 +1818,13 @@ describe('PlannerPanel', () => {
       expect(screen.getByLabelText('Safety depth (m)')).toBeInTheDocument();
     });
 
+    // #1399b (spike 1022 §6): one sentence of context above the row —
+    // previously the two inputs were bare, no sentence saying what they do.
+    it('#1399b: renders a context sentence above the row', () => {
+      renderPanel();
+      expect(screen.getByText(en['planner.departureSafetyContext'])).toBeInTheDocument();
+    });
+
     // #699: the boat-dependent min/max previously existed only as native
     // min/max attributes on the <input> — never as visible or
     // accessible-description text. Assert BOTH halves: the wiring
@@ -2109,6 +2116,39 @@ describe('PlannerPanel', () => {
     });
   });
 
+  // #1398b: this chip's OWN call site — resultVerdictKey's precedence
+  // (comparisonIncomplete / rigOneFailed / generic) is covered exhaustively
+  // in RouteSummary.test.tsx; this only pins that PlannerPanel wires the
+  // SAME rigComparisonSuppressedByTier override its own copy of the chip
+  // reads, same scoping as the #452-gap-3 describe block below.
+  describe('#1398b: tier-C rig-not-compared chip wiring', () => {
+    function makeTierCPlan(): Plan {
+      const plan = makePlan({ rigRecommendation: { kind: 'not-compared' } });
+      setSail(plan, 'fock', { result: { ...GENOA_RESULT, sailId: 'fock' }, reason: null });
+      return {
+        ...plan,
+        request: { ...plan.request, boat: boatSnapshot(boatById('salona-44-speedy-go')) },
+      };
+    }
+
+    it('names the boat and tier for a tier-C boat with both sails solved', () => {
+      const plan = makeTierCPlan();
+      renderPanel({ plan, rig: 'genoa' });
+      const expected = en['route.rigNotComparedEstimated']
+        .replace('{boat}', plan.request.boat.name)
+        .replace('{tier}', en['boat.polarTier.estimated']);
+      expect(screen.getByText(expected)).toBeInTheDocument();
+      expect(screen.queryByText(en['route.rigNotCompared'])).not.toBeInTheDocument();
+    });
+
+    it('stays generic for the hullVerified default boat under the identical shape', () => {
+      const plan = makePlan({ rigRecommendation: { kind: 'not-compared' } });
+      setSail(plan, 'fock', { result: { ...GENOA_RESULT, sailId: 'fock' }, reason: null });
+      renderPanel({ plan, rig: 'genoa' });
+      expect(screen.getByText(en['route.rigNotCompared'])).toBeInTheDocument();
+    });
+  });
+
   // #452: the shallow-water warning + the effective (relaxed) depth must be
   // visible on THIS strip — the first surface a user sees a result on —
   // without switching to the Routes tab. Distinct requested/used/minGate
@@ -2257,6 +2297,36 @@ describe('PlannerPanel', () => {
       const banner = screen.getByText(/so this route was planned at a reduced/);
       expectShallowDetailOpen(false);
       expect(banner.textContent).not.toContain('starts at');
+    });
+  });
+
+  // #1398a: DepthClearNotice's OWN call site here — the state-space
+  // (pending/clear/exposed) is covered exhaustively in
+  // RouteSummary.exposure.test.tsx via the shared depthExposureState; this
+  // only needs to pin that the `plan &&` wiring and `legs` prop are correct
+  // on THIS strip, same scoping as the #452-gap-3 describe block above.
+  describe('#1398a: the affirmative depth-clear line on the compact strip', () => {
+    afterEach(() => {
+      // Matches the #1291 describe block's own convention: `useNavMask` is a
+      // REACT HOOK mock and must stay on a persistent mockReturnValue, reset
+      // explicitly so it cannot leak into a later describe block.
+      vi.mocked(useNavMask).mockReturnValue(null);
+    });
+
+    it('renders on a genuinely clean, non-relaxed plan (openWaterMask — every cell 20 m)', () => {
+      vi.mocked(useNavMask).mockReturnValue(openWaterMask());
+      renderPanel({ plan: makePlan(), rig: 'genoa' });
+      expect(
+        screen.getByText(en['route.marginal.clear'].replace('{requested}', '3.0')),
+      ).toBeInTheDocument();
+    });
+
+    it('is absent before any plan exists', () => {
+      vi.mocked(useNavMask).mockReturnValue(openWaterMask());
+      renderPanel({ plan: null, rig: null });
+      expect(
+        screen.queryByText(en['route.marginal.clear'].replace('{requested}', '3.0')),
+      ).not.toBeInTheDocument();
     });
   });
 
