@@ -98,9 +98,11 @@ gh api "repos/$REPO/commits/$SHA/check-runs" \
 
 - `mergeable_state: unstable` = only **optional** checks red → still mergeable
   (required checks are `app` + `e2e` only).
-- Scorecard's `analysis` job reds **every** push to `main` by design
-  (default-branch-only action, #124) — a release commit carries one cosmetic red
-  check-run; don't chase it.
+- Scorecard push-triggers on `develop` only (moved off `main` by #124,
+  after a default-branch-only action reds every release merge), plus a
+  weekly `schedule` and a `branch_protection_rule` trigger. A `main`
+  release commit therefore carries NO scorecard check-run at all — a red
+  check-run on one is never scorecard noise; chase it.
 
 ## #119 stale-SHA rerun (PR head stuck on an old SHA)
 
