@@ -112,6 +112,21 @@ results table at the bottom, and note it in the box below the check.
       a single merged sentence, never three separate announcements, and
       the depth clause is absent entirely when the switch needed no clamp.
       Restore the safety depth and boat afterward.
+- [ ] **Endpoint-unreachable clause on boat switch (#1325).** Select an
+      origin AND a destination harbour (a harbour pick — search or harbour marker — not an open-water tap), then
+      switch boats while both stay selected. No boat reads any harbour `unreachable`
+      at its own default depth (`harborReachability.test.ts`), so pick
+      Augustenborg as origin and Burgstaaken as destination, set the safety
+      depth on the Boat tab to 4.0 m, and switch from SPEEDY GO! to
+      Salona 45 — both read `unreachable` there
+      (`BoatPicker.harborAccess.test.tsx`, #1325 block). When it fires, the merged `role="status"` announcement
+      inserts one sentence per affected endpoint after "<boat> selected." and any raised-depth clause, before
+      the harbour-access summary — "Origin/Destination <harbour> is not reachable with <boat>." /
+      "Start/Ziel <harbour> ist mit <boat> nicht erreichbar." — origin before destination if
+      both are affected, and neither clause appears for a harbour already
+      flagged known-disconnected (that marker is boat-independent, so the
+      switch did not change it). Restore the safety depth, boats, and
+      selection afterward.
 - [ ] **At least one fleet boat is exercised.** Run §2 or §3 under SPEEDY GO!
       or PIRANJA, so the suppressed rig comparison in §2.5 is actually
       reached; a pass made entirely on the Salona 45 never exercises it.

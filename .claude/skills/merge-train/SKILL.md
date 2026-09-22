@@ -1,9 +1,9 @@
 ---
 name: merge-train
-description: The main-session serial merge loop for SailCommand develop PRs — arm a check-runs Monitor, verify head.sha before merging, merge, re-sync the next PR, and recover from #119 stale-SHA and #94 504 near-misses. Use when merging one or more feature/chore PRs into develop. Triggers on /merge-train.
+description: The main-session merge loop for SailCommand develop PRs (batch file-disjoint PRs by default, serial as fallback) — arm a check-runs Monitor, verify head.sha before merging, merge, re-sync the next PR, and recover from #119 stale-SHA and #94 504 near-misses. Use when merging one or more feature/chore PRs into develop. Triggers on /merge-train.
 ---
 
-# Merge-train: the develop serial merge loop
+# Merge-train: the develop merge loop
 
 Drives feature/chore PRs into `develop` from the **main session** — the loop is
 hand-driven on purpose: the watcher *agent* oversleeps (#176), so **you** arm
@@ -16,11 +16,21 @@ merge to `main` from here.
 - Merges are **PR-only** under the `protect-main` ruleset (covers `main` AND
   `develop`): merge **commits** only (never squash/rebase), all review threads
   resolved, required checks `app` + `e2e` green, no force pushes/deletions.
-- **Merge strictly serially.** Develop PRs in parallel, merge one at a time —
-  the strict up-to-date policy applies on `develop` too, so each merge staleifies
-  every other open PR's base.
+- **Batch file-disjoint ready PRs into one integration PR by default**
+  (maintainer ruling 2026-09-17, CLAUDE.md); merge it once green, gated on
+  zero unresolved threads AND a POSTED reviewer verdict — not just the
+  absence of open threads (CLAUDE.md's "Never state a CI check's state from
+  your own tracking table"). Restate every `Closes #N` in the INTEGRATION
+  PR's body — a member PR's own body does not fire auto-close on merge, only
+  commit trailers do (CLAUDE.md's "Closes #N COMMIT TRAILERS" note). Once
+  merged, the batched member PRs read `merged: true` automatically — do not
+  `gh pr close` them, it refuses with "already merged" (CLAUDE.md's #912
+  measurement); verify by reading `.merged` back. **Serial single-PR merging
+  (below) is the fallback** for PRs that are not file-disjoint — the strict
+  up-to-date policy applies on `develop` too, so each serial merge
+  staleifies every other open PR's base.
 
-## The loop (repeat per PR, serially)
+## The loop (fallback: repeat per PR, serially)
 
 1. **Pick the next PR** and confirm its review threads are resolved.
 2. **Arm a check-runs Monitor** on the PR head SHA (see below) — don't delegate
@@ -32,6 +42,15 @@ merge to `main` from here.
    any retry.
 6. **Re-sync the next PR** server-side: `gh api repos/OWNER/REPO/pulls/<next>/update-branch --method PUT`,
    then go to step 2 for it (full ~10-min CI re-runs under the strict policy).
+
+## Fork PRs (#1348)
+
+A fork PR's runs sit at `action_required` until approved — after a static
+safety review of the diff, `POST repos/O/R/actions/runs/<id>/approve`. The
+head branch lives in `head.repo.full_name`, not this repo, so the pre-merge
+verification LAW's tip lookup (`git/ref/heads/<branch>`) must target that
+fork's ref instead. `pulls/N/update-branch` still works for re-syncing, but
+only when the PR object's `maintainer_can_modify` is true.
 
 ## Pre-merge verification LAW (#119) — mechanised, still confirm
 
@@ -49,6 +68,12 @@ it **denies** `gh pr merge` on a stale head or zero check-runs, and **asks**
 (never hard-blocks) when it cannot verify (fork/deleted branch, API/auth
 failure). The hook is a backstop, not a substitute — read its reason string and
 resolve the actual cause; do not `ask`-approve past a `deny` without fixing it.
+
+**Re-check `head.sha` immediately before the merge call, not just once you
+saw the Monitor go green** — a fix-wave push can land in the gap, and a run
+you watched succeed may describe a commit that has since been superseded
+(this happened twice: #1352, #1368). Never state a check's state from your
+own tracking table; re-read it fresh right before `gh pr merge`.
 
 ```bash
 REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)

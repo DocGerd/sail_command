@@ -79,6 +79,11 @@ export interface SettingsPanelProps {
   // is not the active one.
   boatId: BoatId;
   onBoatIdChange: (next: BoatId) => void;
+  // #1325 (#1135 §5.4): threaded straight through to BoatPicker — see that
+  // component's own prop doc for why it needs this and cannot derive it
+  // itself. App.tsx is the only owner of `origin`/`destination`.
+  originHarborId: string | null;
+  destinationHarborId: string | null;
   // #299 fix (PR #486 review): focus target for the safety-depth field's
   // "boat settings" link (App.tsx forwards it onto this panel's first Card
   // heading, tabIndex -1, focused on jump) — mirrors RouteSummary's own
@@ -251,6 +256,8 @@ export default function SettingsPanel({
   onChange,
   boatId,
   onBoatIdChange,
+  originHarborId,
+  destinationHarborId,
   titleRef,
 }: SettingsPanelProps) {
   const t = useT();
@@ -461,6 +468,8 @@ export default function SettingsPanel({
         onBoatIdChange={onBoatIdChange}
         settings={value}
         onSettingsChange={onChange}
+        originHarborId={originHarborId}
+        destinationHarborId={destinationHarborId}
       />
 
       {/* #299 grouping: static boat characteristics + the depth safety

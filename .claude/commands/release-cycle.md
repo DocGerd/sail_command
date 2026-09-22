@@ -45,6 +45,11 @@ network outright. They read state and report; only the `git fetch` below writes 
    question below with the PREVIOUS truth and never errors), then: current branch, `origin/develop` tip, `git log --oneline origin/main..origin/develop | wc -l`,
    `git worktree list`, merged-but-undeleted local/remote branches, whether the working tree is
    clean, and the last `deploy.yml` run's `smoke-probe` conclusion.
+3. **Nightly workflow state** — the latest `Coverage` run's `test:coverage`-step conclusion, not
+   just the run's existence (`coverage-skip-gate.sh` can skip an unchanged tree, so a run existing
+   is not evidence a fresh figure was produced), and the latest `scan-issue-home-paths` run. Both
+   are ADVISORY (`protect-main` gates only `app`+`e2e`), so a red run merges silently —
+   #1349 is the issue filed after a `Coverage` run stayed red 5 days untracked.
 
 Then answer these three questions IN WRITING before doing anything else:
 
@@ -60,7 +65,11 @@ Then answer these three questions IN WRITING before doing anything else:
   assurance for `src/sw.ts` and `src/routing/worker.ts`. Then corroborate locally with `npm
   --prefix app run typecheck && npm --prefix app run lint && npm --prefix app run test` —
   `lint`/`test` are npm SCRIPT names, not binaries, so each needs its own `run`. Delegate the
-  run; do not do it inline.
+  run; do not do it inline. (This is the ORCHESTRATOR's own one-off delegated verification of the
+  whole tree, not an implementer's per-task run — Phase 2's ban on implementers running the full
+  suite does not apply here.) Weigh item 3's nightly advisory state too — a persistently red
+  `Coverage` or `scan-issue-home-paths` run is a real quality signal even though neither gates
+  the merge.
 
 ---
 
@@ -86,27 +95,49 @@ Backlog, Icebox) plus one cross-cutting agent. Each returns, per issue: current 
 labels, a one-line statement of what it actually is, whether it is still LIVE (issue titles go
 stale — #452's title still claims relaxation lowers the gate for the WHOLE route, false since
 v0.12.0 made it per-cell, and briefing from it produced a false premise (#649)),
-and a recommended destination with a reason. Then run an **adversarial verify pass**: every
-"close as done / no longer applies" recommendation gets ≥2 independent refuters, and the default
-verdict is REFUTED. In a recent triage session every close-recommendation put through that pass
-was refuted — treat REFUTED as the prior, and re-derive the ratio from THIS session rather than
-quoting one.
+and a recommended destination with a reason. Then run an **adversarial verify pass covering
+every CLOSE recommendation, plus a SAMPLE of keep/move**: each "close as done / no longer
+applies" gets ≥2 independent refuters, default verdict REFUTED for close specifically — but that
+pass has teeth only when a bucket recommends at least one close. A triage with zero closes
+(v0.39.0 cycle, #1373) shipped with the refuter stage never firing at all — every keep/move
+recommendation went unchallenged. So ALSO refute a SAMPLE of keep/move (promote/demote)
+recommendations, one refuter per sampled verdict (close verdicts still get ≥2), capped at 5
+sampled verdicts. Prioritise every milestone move first, then every
+issue whose body makes a state claim (blocked/shipped/superseded); `log()` whatever the cap drops
+so it is never silently skipped. A keep/move a refuter CONTESTS is neither a bucket-vs-bucket
+disagreement (Reconcile's trigger, below) nor a close verdict (where REFUTED is the prior) — it
+surfaces at Gate 1 as CONTESTED instead, for me to decide. In a recent triage session every
+close-recommendation put through that pass was refuted — treat REFUTED as the prior for close;
+re-derive the ratio from THIS session rather than quoting one.
 
 Check specifically for:
 - issues whose body describes an already-shipped state (verify against CODE, not the title);
 - `status: blocked` issues whose blocker has cleared;
+- a body-text state claim (e.g. "blocked") checked against the LABEL's own definition, not just
+  internal consistency — see Reconcile below;
 - issues that belong in `Backlog`/`Icebox` and are inflating the milestone;
 - missing `type:`/`priority:`/`area:` labels (there is no `area:` member for user-facing copy /
   i18n / UI structure — leaving it bare is correct, forcing a wrong one is not);
 - anything currently unmilestoned.
 
+### Reconcile — before Gate 1
+
+When two bucket agents (or the cross-cutting agent and a bucket agent) return OPPOSITE verdicts on
+the same issue, resolve it explicitly here — never let Gate 1 present both silently. Check any
+disputed body-text state claim against the LABEL's own definition (CONTRIBUTING.md's Labels &
+milestones section), not against the other agent's read. Worked example (v0.39.0 cycle): #567 and
+#923 both carried "blocked" prose pointing at internal design work; `status: blocked` is defined
+EXTERNAL-only (waiting on an external decision or dependency), so the reconcile left the label off
+both and added a triage comment instead.
+
 ### 🛑 GATE 1 — present, then WAIT
 
 Present ONE scannable block: a table of proposed moves (issue → from → to → why), the resulting
-milestone composition (count, type mix), what you are NOT moving and why, and
-any close-recommendations that SURVIVED adversarial verify. Use `AskUserQuestion` to consolidate
-the decisions. **Make no `gh` mutation until I approve.** If I approve a subset, apply exactly
-that subset.
+milestone composition (count, type mix), what you are NOT moving and why,
+any close-recommendations that SURVIVED adversarial verify, and any keep/move recommendation a
+refuter CONTESTED (the recommendation and the refuter's evidence, one line each — mine to decide,
+never auto-resolved). Use `AskUserQuestion` to consolidate the decisions. **Make no `gh` mutation
+until I approve.** If I approve a subset, apply exactly that subset.
 
 Milestone edits are `gh api repos/O/R/issues/N -X PATCH -F milestone=<number>` — `-F` (typed int),
 not `-f`; the `issues/N/milestone` endpoint does not exist. After every mutating `gh` call, read
@@ -145,9 +176,12 @@ Per task:
   **PIN THE BASE BRANCH** in the brief (`git fetch` then `git switch -c <branch> origin/develop`)
   and require the merge-base as a reported deliverable — 10 of 10 worktree agents in one session
   landed on the wrong ref, and no per-diff gate can see it.
-- **Forbid implementers the full test suite** (~8.3 min); brief a FILTERED FOREGROUND run
+- **Forbid IMPLEMENTERS the full test suite** (~8.3 min); brief a FILTERED FOREGROUND run
   (`npm --prefix app run test -- <filter>`). Budget for the stall anyway: nudge once, and after a
-  SECOND stall TAKE the watch yourself. CI is the authority.
+  SECOND stall TAKE the watch yourself. CI is the authority. This ban is implementer-scoped, not a
+  blanket rule: Phase 0's own delegated full-suite run for the "is `develop` shippable" check is
+  the orchestrator's one-off verification of the whole tree, not a per-task implementer run, and
+  is unaffected by this bullet.
 - Tell them to **commit, push and open a DRAFT PR at the first push** — work is never local-only —
   and to create it with **`--assignee DocGerd`**. A PR is live work by definition, so it is
   assigned from creation. Put this in the brief explicitly: a subagent cannot infer it, and the
@@ -201,8 +235,8 @@ Per task:
 `gh pr create` there, so neither the implementer brief nor the agent definition covers it — this
 is the one PR class with no other actor to inherit the rule from.
 
-Merge with `/merge-train`: strictly serial, re-sync each branch from `origin/develop` before its
-turn, verify `head.sha` equals what was pushed AND that check-runs exist for that exact SHA
+Merge with `/merge-train`: batch file-disjoint ready PRs by default (serial fallback: re-sync
+each branch from `origin/develop` before its turn), verify `head.sha` equals what was pushed AND that check-runs exist for that exact SHA
 (#119), gate on `app` + `e2e` only (the sole required checks; `ruff`/`verify`/CodeQL/
 `hook-selftests` are advisory and yield `unstable`, which still merges — so after ANY `pipeline/**`
 change run `./pipeline/.venv/bin/ruff check pipeline/` and `./pipeline/.venv/bin/ruff format --check pipeline/` BY HAND

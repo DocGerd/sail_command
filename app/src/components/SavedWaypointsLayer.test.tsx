@@ -55,6 +55,21 @@ function renderLayer(props: { armed?: boolean; onPick?: (w: unknown) => void } =
   return { onPick, ...utils };
 }
 
+/** The data effect fires `setData` on styleEpoch alone, so its FIRST call
+ * can carry an empty collection while the async IndexedDB read is still in
+ * flight (`useSavedWaypoints`'s `listWaypoints().then(...)`) — a
+ * `waitFor(setData called)` is satisfied by that empty call and a
+ * synchronous click right after races the real load (#1366-deps bisection:
+ * reproduced identically on both the pre- and post-bump lockfile, so it
+ * predates the dependency bump). Wait for the ids to actually be LOADED. */
+async function waitForLoadedIds(expectedIds: readonly string[]): Promise<void> {
+  await waitFor(() => {
+    const last = map.getSource(SAVED_WAYPOINT_SOURCE)?.setData.mock.calls.at(-1)?.[0] as
+      { features: { properties: { id: string } }[] } | undefined;
+    expect(last?.features.map((f) => f.properties.id)).toEqual(expectedIds);
+  });
+}
+
 let map: FakeMap;
 
 beforeEach(async () => {
@@ -218,7 +233,7 @@ describe('SavedWaypointsLayer (#924)', () => {
       addAnchor(map);
       map.fire('styledata');
     });
-    await waitFor(() => expect(map.getSource(SAVED_WAYPOINT_SOURCE)?.setData).toHaveBeenCalled());
+    await waitForLoadedIds(['w1']);
 
     const event = { features: [{ properties: { id: 'w1' } }] };
     // Disarmed: the harbour layer owns this arming (and the disarmed case),
@@ -313,7 +328,10 @@ describe('SavedWaypointsLayer (#924)', () => {
       addAnchor(map);
       map.fire('styledata');
     });
-    await waitFor(() => expect(map.getSource(SAVED_WAYPOINT_SOURCE)?.setData).toHaveBeenCalled());
+    // Load the real list first — a "not found" verdict reached before it
+    // loads would pass vacuously (id 'deleted-since' is absent from an
+    // EMPTY list too), so it must be genuinely populated with 'w1' first.
+    await waitForLoadedIds(['w1']);
 
     act(() => {
       map.fireLayerEvent('click', SAVED_WAYPOINT_LAYER, {

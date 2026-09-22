@@ -37,6 +37,8 @@ const renderPanel = (onChange = vi.fn()) => {
         onChange={onChange}
         boatId={DEFAULT_BOAT_ID}
         onBoatIdChange={vi.fn()}
+        originHarborId={null}
+        destinationHarborId={null}
       />
     </I18nProvider>,
   );
@@ -114,6 +116,8 @@ describe('SettingsPanel (#299 Boat tab)', () => {
           onChange={vi.fn()}
           boatId={DEFAULT_BOAT_ID}
           onBoatIdChange={vi.fn()}
+          originHarborId={null}
+          destinationHarborId={null}
         />
       </I18nProvider>,
     );
@@ -220,6 +224,8 @@ describe('SettingsPanel (#299 Boat tab)', () => {
             onChange={onChange}
             boatId={DEFAULT_BOAT_ID}
             onBoatIdChange={vi.fn()}
+            originHarborId={null}
+            destinationHarborId={null}
           />
         </I18nProvider>,
       );
@@ -236,6 +242,8 @@ describe('SettingsPanel (#299 Boat tab)', () => {
             onChange={onChange}
             boatId="elan-444-piranja"
             onBoatIdChange={vi.fn()}
+            originHarborId={null}
+            destinationHarborId={null}
           />
         </I18nProvider>,
       );
@@ -671,6 +679,8 @@ describe('#686: All radio reappears once a category is routed to ALL', () => {
           onChange={onChange}
           boatId={DEFAULT_BOAT_ID}
           onBoatIdChange={vi.fn()}
+          originHarborId={null}
+          destinationHarborId={null}
         />
       </FreshI18nProvider>,
     );
