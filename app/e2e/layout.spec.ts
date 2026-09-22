@@ -2268,8 +2268,8 @@ test('#871: the SW toast does not intercept .route-layer-controls with a plan lo
 }) => {
   // #1302: 9 viewports, each a fresh context + real SW install + full route
   // solve (not a missing settle gate) — measured 66-84s normal, breached the
-  // 120s file default on a slow runner. 240_000 matches this file's other
-  // multi-viewport/multi-context tests (region-offline.spec.ts, live.spec.ts).
+  // 120s file default on a slow runner. 240_000 is closer to
+  // region-offline.spec.ts's 240_000 than live.spec.ts's 360_000.
   test.setTimeout(240_000);
   const server = await startPreview();
   try {
