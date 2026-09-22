@@ -435,8 +435,13 @@ describe('#1290 harborReachability', () => {
   // #1319: Math.max(1, Math.floor(NaN)) is NaN, and `steps >= NaN` is always
   // false, so an explicit NaN maxSteps must not restore the unbounded search
   // the budget exists to prevent — it should behave exactly as the default.
+  // A guard narrowed to `Number.isNaN` still passes THIS case alone
+  // (isNaN(NaN) is true either way) — see the two +/-Infinity cases below,
+  // split into their own `it()`s so a mutation reddening one of them names
+  // that sign, and does not disappear behind a first-failing-expect
+  // short-circuit in a shared body (#1357).
   it(
-    'findLowerSettingHint normalises a non-finite maxSteps to the default budget instead of searching unbounded',
+    'findLowerSettingHint normalises a NaN maxSteps to the default budget instead of searching unbounded',
     { timeout: solverTimeoutMs(300_000) },
     () => {
       // marstal needs 29 decimetre steps to scan from 6.4 m down to
@@ -447,6 +452,48 @@ describe('#1290 harborReachability', () => {
       const withNaN = findLowerSettingHint(mask, marstal, synthetic, 6.4, Number.NaN);
       expect(withDefault).toEqual({ kind: 'exhausted', resumeFromDepthM: 5.2 });
       expect(withNaN).toEqual(withDefault);
+    },
+  );
+
+  // #1357: a guard narrowed to `Number.isNaN` restores the unbounded search
+  // for `+Infinity` (Math.floor(Infinity) is Infinity, so the step budget
+  // never caps).
+  it(
+    'findLowerSettingHint normalises a +Infinity maxSteps to the default budget instead of searching unbounded',
+    { timeout: solverTimeoutMs(300_000) },
+    () => {
+      const marstal = harbors.find((h) => h.id === 'marstal')!;
+      const withDefault = findLowerSettingHint(mask, marstal, synthetic, 6.4);
+      const withPositiveInfinity = findLowerSettingHint(
+        mask,
+        marstal,
+        synthetic,
+        6.4,
+        Number.POSITIVE_INFINITY,
+      );
+      expect(withDefault).toEqual({ kind: 'exhausted', resumeFromDepthM: 5.2 });
+      expect(withPositiveInfinity).toEqual(withDefault);
+    },
+  );
+
+  // #1357: the same narrowed guard instead clamps `-Infinity` to a 1-step
+  // budget (Math.floor(-Infinity) is -Infinity, so Math.max(1, -Infinity)
+  // is 1).
+  it(
+    'findLowerSettingHint normalises a -Infinity maxSteps to the default budget instead of searching unbounded',
+    { timeout: solverTimeoutMs(300_000) },
+    () => {
+      const marstal = harbors.find((h) => h.id === 'marstal')!;
+      const withDefault = findLowerSettingHint(mask, marstal, synthetic, 6.4);
+      const withNegativeInfinity = findLowerSettingHint(
+        mask,
+        marstal,
+        synthetic,
+        6.4,
+        Number.NEGATIVE_INFINITY,
+      );
+      expect(withDefault).toEqual({ kind: 'exhausted', resumeFromDepthM: 5.2 });
+      expect(withNegativeInfinity).toEqual(withDefault);
     },
   );
 

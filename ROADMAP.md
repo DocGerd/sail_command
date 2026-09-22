@@ -205,6 +205,8 @@ settings; its four residuals did not close with it
 ([#649](https://github.com/DocGerd/sail_command/issues/649)). Of those,
 [#929](https://github.com/DocGerd/sail_command/issues/929) closed at the
 `v0.29.0` cut, as a documented "cannot be reconciled" answer;
+[#931](https://github.com/DocGerd/sail_command/issues/931) closed at the
+`v0.30.0` cut;
 [#930](https://github.com/DocGerd/sail_command/issues/930) closed at the
 `v0.34.0` cut, its harness made able to fail; and
 [#932](https://github.com/DocGerd/sail_command/issues/932) remains open in
