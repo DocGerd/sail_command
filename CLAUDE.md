@@ -4368,17 +4368,21 @@ making design-level decisions; do not silently deviate.
   messages (maintainer instruction, 2026-09-10).** State the claim, then a
   POINTER to its evidence; never inline the transcript — "measured at PR #1141"
   beats a pasted table. One fact per sentence. A comment says WHY, never WHAT
-  the code already says. A PR body says what changed, why, and how to verify;
+  the code already says: if the code below is self-explanatory, write NO
+  comment rather than a shorter one. **Never put a timing, duration, date or
+  measured figure in a comment unless it is a REQUIREMENT** — anything else
+  decays and turns unrelated edits into comment updates; point at the artifact
+  that owns the number. A PR body says what changed, why, and how to verify;
   findings belong in review threads. An issue body is observation, evidence
   pointer, ask. **Cut WORDS, never SCOPE** — a caveat that changes a decision
   stays, and so does a measurement's FILTER and BASIS. Brief every implementer,
   reviewer and doc agent with this EXPLICITLY: verbose prose was the
   established house style through 2026-09-10, so an agent reproduces it by
-  default. Nothing mechanical enforces this — no hook and no required check
-  reads a PR body — so it holds only as far as briefs and review carry it.
-  Governs NEWLY AUTHORED text; a retro-compression pass over existing files is
-  a different thing and was measured net-negative (#724: -350 B compressed, 27
-  defects found over two review rounds, file ended +442 B LARGER).
+  default. Nothing mechanical enforces this, so it holds only as far as briefs
+  and review carry it. Governs NEWLY AUTHORED text; a retro-compression pass
+  is a different act — #724 measured one over CLAUDE.md as net-negative — so
+  #1407 must run its comment sweep deletion-first, per-file and review-gated,
+  never as a rewrite, since rephrasing a claim is how a new claim enters.
 - Planning requires network; everything else must keep working offline. Any
   new feature that silently assumes connectivity is a bug.
 - The app is a passage-planning aid, not a navigation device — user-facing
