@@ -175,6 +175,10 @@ making design-level decisions; do not silently deviate.
   any absolute per-user home path in ANY tracked file reds a required check,
   `docs/**`, `.claude/**` and `CLAUDE.md` included. The usual vector is a pasted
   agent transcript — use `<repo>`/`<scratchpad>` placeholders.
+  EXCEPTIONS: `check-no-home-paths.sh` exempts ITSELF and
+  `.github/scripts/scan-issue-home-paths.sh` (`EXCLUDE_REL_PATH_2`), so a real
+  path in EITHER script's selftest fixtures passes both required checks — it
+  happened in #1386 and only a claim audit caught it. Use fictional paths there.
 - `npm --prefix X run <script>` chdirs into `X` before running; `npm --prefix X
   exec <bin>` does NOT — it resolves the binary from `X`'s `node_modules` but
   executes in the CALLER's cwd. `npm --prefix app exec vitest run -- <flags>`
@@ -1661,6 +1665,7 @@ making design-level decisions; do not silently deviate.
   | v0.36.0 | 2026-09-17 | 24 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 17:11:02Z, two seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `35251123294` (created 17:10:41Z) -> tag `35251164754` (created 17:11:05Z) on `43466e5`. Merge run's `deploy` **`steps: 0`** against its `build` at **`steps: 23`**. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` succeeded**; production served `assets/index-CF3qycIZ.js` at ``version:`v0.36.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.37.0 | 2026-09-18 | 55 s | read as **NO `deploy` JOB CREATED YET** (run `in_progress`, only `build`) immediately before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `35388995635` (created 19:59:43Z) -> tag `35389087993` on `82bd958`, tag pushed 20:00:38Z. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`** -- the within-run control -- so it never started. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-CycH4hzZ.js` at ``about.version`,{version:`v0.37.0` `` with ZERO suffixed matches, so no back-merge remedy was owed. Release `isLatest: true`; tag object `489f5bc` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.38.0 | 2026-09-21 | 46 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 18:13:01Z, two seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `35636876713` (created 18:12:19Z) -> tag `35636960636` (created 18:13:05Z) on `1eee618`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`** -- the within-run control. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-CDWho9-g.js` at ``about.version`,{version:`v0.38.0` `` with ZERO suffixed matches, so no back-merge remedy was owed. Release `isLatest: true`; tag object reported `verified: true, reason: "valid"`. Names no MECHANISM. |
+  | v0.39.0 | 2026-09-22 | 46 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 00:02:40Z, three seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `35670196932` (created 00:01:58Z) -> tag `35670256087` (created 00:02:44Z) on `d00ade9`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`** -- the within-run control. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-KRWTYwpO.js` at ``version:`v0.39.0` `` with ZERO suffixed matches, so no back-merge remedy was owed. Release `isLatest: true`; tag object `79a79ce` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -2830,6 +2835,13 @@ making design-level decisions; do not silently deviate.
   `in_progress`. Require both jobs to EXIST IN THE SPECIFIC RUN ID and be
   terminal (`runs/<id>/jobs`, not `commits/<sha>/check-runs`), and cross-check
   `mergeable_state` — it read `blocked` and contradicted watcher (2) correctly.
+  (3) A separate shape, measured 2026-09-22 against Claude Code 2.1.278 (a
+  harness property; re-check after an upgrade): in the Bash tool's shell
+  `grep` is a shimmed FUNCTION that gets invert+quiet wrong in any spelling
+  (`-qv`, `-v -q`, `--invert-match --quiet`) — `! … | grep -qv '|completed|'`
+  read "all complete" with a job `in_progress`, where `/usr/bin/grep`
+  answers correctly (same input, controlled). Exit a watcher on the run's
+  own `.status`.
   CAVEAT, measured 2026-08-14 on #518: that `head_sha=` filter returned
   `total_count: 0` for a live run while `commits/<sha>/check-runs` saw 7 and
   `actions/runs?branch=<branch>` showed that run carrying that exact
@@ -4664,7 +4676,13 @@ making design-level decisions; do not silently deviate.
   composition defect that did not exist), and a PR was merged off a table entry
   reading "approved" when its reviewer had only been SPAWNED. Gate every merge on
   an explicit reviewer VERDICT plus a freshly-read check-run status — never on
-  your own bookkeeping.
+  your own bookkeeping. A full SHA in an agent REPORT is a claim too: at the
+  v0.39.0 cycle two implementers padded a real 7-char prefix into a 40-char SHA
+  that did not exist; merge only by `pulls/N --jq .head.sha` read fresh.
+- **Parallel subagents share ONE session scratchpad** (Claude Code 2.1.278;
+  a harness property). A fixed commit-message filename there raced: one
+  commit got a sibling's `Closes #N` (caught before push, v0.39.0 cycle).
+  Brief a unique filename and `cat` it before `git commit -F`.
 - **Forbid implementers the full test suite outright; CI is the authority.**
   MEASURED: 3 of 5 sonnet implementers independently backgrounded the ~8.3 min
   suite and then ended their turn "waiting on the background run" — a message
