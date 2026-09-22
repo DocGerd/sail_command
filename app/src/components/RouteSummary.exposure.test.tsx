@@ -887,8 +887,11 @@ describe('#1398a: DepthClearNotice, the affirmative third state', () => {
     const clean = await renderNonRelaxed([EXPOSURE_LEG]);
     const affirmative = clean.querySelector('.depth-clear-notice');
     expect(affirmative).not.toBeNull();
+    // #1405 review MINOR F#1: 'route.marginal.clear' was changed to say
+    // "your safety depth", matching its siblings route.marginal.notice/
+    // noticeSevere (both unchanged, both already said "your").
     expect(affirmative?.textContent).toContain(
-      'No charted water on this route falls below the requested safety depth of 3.0 m (depth data only).',
+      'No charted water on this route falls below your safety depth of 3.0 m (depth data only).',
     );
     // Mutually exclusive with MarginalDepthNotice — same fixture, same
     // render, both notices share depthExposureState.
@@ -965,6 +968,55 @@ describe('#1398a: DepthClearNotice, the affirmative third state', () => {
     expect(notice?.textContent).toContain(
       'Auf dieser Route liegt kein Wasser laut Kartentiefen unter der eingestellten Sicherheitstiefe von 3,0 m (nur Tiefendaten geprüft).',
     );
+  });
+});
+
+// #1405 review MINOR E: two of depthExposureState's four OR-terms
+// (`relaxed || !mask || !legs || legs.length === 0`) had no row testing them
+// individually — `!legs` and `legs.length === 0`. Both reachable in
+// production: activeRigResult returns null when the active rig's own solve
+// result is null (lib/plan.ts's own comment — "the router legitimately
+// solves only one sail sometimes"), and a RigResult can carry a genuinely
+// empty legs array. marginalExposureNm([], mask, gateM) returns 0 (the walk
+// loop never executes for an empty array), so WITHOUT the legs.length===0
+// term a zero-leg route would render DepthClearNotice's affirmative 'clear'
+// line — the exact false-affirmative this file's #1398a block otherwise
+// exists to prevent.
+describe('#1405 MINOR E: the two untested legs OR-terms in depthExposureState', () => {
+  it('stays pending (neither notice renders) when the active rig has no result at all (legs===null) against a loaded mask', async () => {
+    mockedLoad.mockResolvedValue(marginalMask());
+    localStorage.setItem('sc-lang', 'en');
+    const base = makeNonRelaxedPlan([EXPOSURE_LEG]);
+    const plan: Plan = {
+      ...base,
+      result: {
+        ...base.result,
+        sails: base.result.sails.map((s) => ({
+          ...s,
+          result: null,
+          reason: 'unreachable' as const,
+        })),
+      },
+    };
+    const { container } = render(
+      <I18nProvider>
+        <RouteSummary plan={plan} rig="genoa" onRigChange={vi.fn()} />
+      </I18nProvider>,
+    );
+    await waitFor(() => expect(mockedLoad).toHaveBeenCalled());
+    await act(async () => {});
+    expect(container.querySelector('.depth-clear-notice')).toBeNull();
+    expect(container.querySelector('.marginal-depth-notice')).toBeNull();
+  });
+
+  it('stays pending (never the false-affirmative "clear") when the active rig genuinely has zero legs, against a mask that would otherwise read clear', async () => {
+    // deepMask() renders `.depth-clear-notice` for any NON-EMPTY legs array
+    // (see the '#1398a' describe block's first test above, same mask). legs
+    // here is [], not null — a real RigResult with a genuinely empty array.
+    mockedLoad.mockResolvedValue(deepMask());
+    const container = await renderNonRelaxed([]);
+    expect(container.querySelector('.depth-clear-notice')).toBeNull();
+    expect(container.querySelector('.marginal-depth-notice')).toBeNull();
   });
 });
 

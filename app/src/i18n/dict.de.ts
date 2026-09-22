@@ -272,9 +272,12 @@ export const de = {
   // #886 residual 1: see dict.en.ts's matching comment.
   'planner.via.coord.invalidEntry':
     'Eingabe konnte nicht als Koordinate gelesen werden – {value} beibehalten',
-  // #1399b (spike 1022 §6): siehe dict.en.ts — gleicher Zweck.
+  // #1399b (spike 1022 §6): siehe dict.en.ts — gleicher Zweck. #1405 review
+  // (MAJOR, wrong-from-the-start): siehe dict.en.ts's Kommentar — die
+  // Abfahrtszeit löst KEINEN neuen Abruf aus, sie wählt nur einen Offset in
+  // das bereits abgerufene 6-Tage-Raster.
   'planner.departureSafetyContext':
-    'Die Abfahrtszeit bestimmt die Vorhersage; die Sicherheitstiefe legt fest, welches Wasser als zu flach gilt.',
+    'Die Abfahrtszeit bestimmt, welche Vorhersagestunden die Route nutzt; die Sicherheitstiefe legt fest, welches Wasser als zu flach gilt.',
   'planner.departure.label': 'Abfahrt',
   'planner.plan': 'Route planen',
   // #1193: distinct from the three plain "Abbrechen" buttons elsewhere
@@ -472,8 +475,12 @@ export const de = {
   // (rigComparisonSuppressedByTier, lib/plan.ts). {tier} kommt von
   // `t('boat.polarTier.estimated')` an der Aufrufstelle, kein fest
   // verdrahtetes Wort hier.
+  // #1405 review (MAJOR): {tier} in eine Label-Position verschoben
+  // ("(Stufe: {tier})") statt als Prädikativ mitten im Satz — "sind
+  // Geschätzt" war ungrammatisch (Prädikativa werden im Deutschen
+  // kleingeschrieben); die Großschreibung ist nur in Label-Position korrekt.
   'route.rigNotComparedEstimated':
-    'Die Segel wurden für diese Passage nicht verglichen — die Polardaten von {boat} sind {tier}, nicht zertifikatsgeprüft, daher wird kein schnelleres Rigg angegeben',
+    'Die Segel wurden für diese Passage nicht verglichen — die Polardaten von {boat} sind nicht zertifikatsgeprüft (Stufe: {tier}), daher wird kein schnelleres Rigg angegeben',
   // #540 spec §E.3: a budget-exhausted sail is ALSO a 'not-compared' verdict
   // (rigVerdictKey collapses onto route.rigNotCompared above), but a stalled
   // search reads very differently from "nothing to compare" — the ★-suppressed

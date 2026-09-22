@@ -311,6 +311,16 @@ const page = await browser.newPage({ viewport: { width: 1280, height: START_VIEW
 await page.addInitScript((px) => {
   window.localStorage.setItem('sc-panel-width', String(px));
 }, PANEL_WIDTH_PX);
+// #1405 review MAJOR A: App.tsx's #1399a first-run caveat banner is
+// unconditional on a fresh profile and added ~104px of `.app-panel` content
+// (measured: assertFitsViewport threw at start-view.png, scrollHeight
+// 1334px vs clientHeight 1230px). A docs screenshot means to show the
+// steady state a returning user sees, not the one-time first-run banner —
+// same rationale, and the same localStorage key, as
+// app/e2e/helpers.ts's seedFreshProfileDefaults().
+await page.addInitScript(() => {
+  window.localStorage.setItem('sc-caveat-banner-dismissed', '1');
+});
 // #462 review nit: build via URL rather than string-concatenating `?` onto
 // APP, which would silently break if APP ever carried its own query string.
 const startUrl = new URL(APP);

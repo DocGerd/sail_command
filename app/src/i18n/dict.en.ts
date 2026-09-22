@@ -257,8 +257,14 @@ export const en = {
   // #1399b (spike 1022 §6): one sentence above the departure/safety-depth
   // compact row — previously bare, with no sentence saying what the two
   // inputs do.
+  // #1405 review (MAJOR, wrong-from-the-start): openMeteo.ts's buildUrl()
+  // fetches one fixed 6-day grid with no departure parameter at all;
+  // departure only selects an offset into (and validates against the
+  // horizon of) the already-fetched grid — it never causes a different
+  // forecast to be fetched. "Picks the forecast" read as a causal/selection
+  // claim and was false.
   'planner.departureSafetyContext':
-    'Departure time picks the forecast; safety depth decides which water counts as too shallow.',
+    'Departure time picks which forecast hours the route uses; safety depth decides which water counts as too shallow.',
   'planner.departure.label': 'Departure',
   'planner.plan': 'Plan route',
   // #1193: distinct accessible name from the three plain "Cancel" buttons
@@ -464,8 +470,12 @@ export const en = {
   // rigComparisonSuppressedByTier, lib/plan.ts). {tier} is interpolated
   // from `t('boat.polarTier.estimated')` at the call site, never a hardcoded
   // word here, so a future reword of that label cannot drift the two apart.
+  // #1405 review (MAJOR): {tier} moved into a label-style slot
+  // ("(tier: {tier})") rather than embedded as a mid-sentence predicate —
+  // every other use of boat.polarTier.* is a standalone label value, and
+  // this is the position where that capitalization reads correctly.
   'route.rigNotComparedEstimated':
-    "The sails were not compared for this passage — {boat}'s polar data is {tier}, not certificate-verified, so no faster rig is claimed",
+    "The sails were not compared for this passage — {boat}'s polar data is not certificate-verified (tier: {tier}), so no faster rig is claimed",
   // #540 spec §E.3: a budget-exhausted sail is ALSO a 'not-compared' verdict
   // (rigVerdictKey collapses it onto rigNotCompared above), but a stalled
   // search reads very differently from "nothing to compare" — the
@@ -703,8 +713,12 @@ export const en = {
   // #251/#255 rule). "(depth data only)" hedge matches
   // boat.harbors.hintFound's — a depth-only derivation, never a chart-
   // authority claim.
+  // #1405 review (MINOR): "your safety depth" — matches this string's own
+  // siblings route.marginal.notice/noticeSevere immediately above, which
+  // this PR left unchanged; only this new string had drifted to "the
+  // requested safety depth".
   'route.marginal.clear':
-    'No charted water on this route falls below the requested safety depth of {requested} m (depth data only).',
+    'No charted water on this route falls below your safety depth of {requested} m (depth data only).',
   // #615: the advisory SEAMARK-PROXIMITY notice — a quiet route-scoped line,
   // sibling of route.marginal.notice above, for a route whose active-rig legs
   // pass closer than SEAMARK_PROXIMITY_M (lib/seamarkProximity.ts) to a

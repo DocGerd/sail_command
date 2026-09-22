@@ -97,9 +97,9 @@ export function activeRigResult(plan: Plan, sailId: SailId): RigResult | null {
 // purity rule as format.ts's tier chooser: callers snapshot the wall clock
 // once (`useState(() => Date.now())`, RouteLayer.tsx's pattern), not on
 // every render. Same >12 h strict threshold and rounding as
-// staleForecastGapHours above, for the same reason (round, not floor/ceil,
-// bounds the error at 30 min either way rather than reading fresher than
-// measured).
+// staleForecastGapHours above — same trade-off as that function's own
+// comment: it halves the optimistic (fresher-than-actual) direction rather
+// than eliminating it.
 export function isForecastStaleNow(plan: Plan, nowMs: number): boolean {
   return nowMs - plan.windGrid.fetchedAtMs > STALE_THRESHOLD_MS;
 }
