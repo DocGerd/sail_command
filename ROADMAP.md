@@ -18,7 +18,7 @@ shipped.
 
 ## Now — v0.40.0
 
-The `v0.40.0` cut (2026-09-23) worked the
+The `v0.40.0` cut (2026-09-22) worked the
 [`v0.40.0` milestone](https://github.com/DocGerd/sail_command/milestones),
 which closed nine issues: two user-visible (per `CHANGELOG.md`'s own
 [0.40.0] section), one a scoping/triage umbrella (#1344, below), and the
