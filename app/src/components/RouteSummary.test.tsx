@@ -1,5 +1,5 @@
 import { render, screen, fireEvent, within, cleanup } from '@testing-library/react';
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { I18nProvider } from '../i18n';
 import { en } from '../i18n/dict.en';
 import { de } from '../i18n/dict.de';
@@ -240,6 +240,19 @@ function renderSummary(
   );
   return { plan, rig, onRigChange, container };
 }
+
+// #1399c: this file's fixtures (FETCHED_AT_MS, DEPARTURE_MS) are fixed
+// mid-2026 timestamps, but RouteSummary now reads the REAL wall clock once
+// per render (RouteLayer.tsx's `useState(() => Date.now())` pattern) to
+// compute forecast age against NOW. Left unpinned, every pre-existing test
+// here would render that new notice unconditionally (the fixture is always
+// "old" relative to whenever the suite actually runs) — spyOn, not
+// `vi.useFakeTimers()` (LiveView.test.tsx:308's own comment: fake timers
+// hang RTL's findBy polling). `vi.restoreAllMocks()` below restores a
+// `spyOn` spy same as a `vi.fn()` mock.
+beforeEach(() => {
+  vi.spyOn(Date, 'now').mockReturnValue(DEPARTURE_MS);
+});
 
 afterEach(() => {
   cleanup();
@@ -516,6 +529,30 @@ describe('RouteSummary', () => {
         'The search ran out of time before comparing both sails, so no faster rig is claimed',
       ),
     ).not.toBeInTheDocument();
+  });
+
+  it('#1398b: a not-compared verdict on a tier-C boat names the boat and tier, not the generic sentence', () => {
+    const base = makePlan({ rigRecommendation: { kind: 'not-compared' } });
+    const plan: Plan = {
+      ...base,
+      request: { ...base.request, boat: boatSnapshot(boatById('salona-44-speedy-go')) },
+    };
+    renderSummary({ plan, rig: 'genoa' });
+    const expected = en['route.rigNotComparedEstimated']
+      .replace('{boat}', plan.request.boat.name)
+      .replace('{tier}', en['boat.polarTier.estimated']);
+    expect(screen.getByText(expected)).toBeInTheDocument();
+    // The generic sentence must NOT also render — mutually exclusive.
+    expect(screen.queryByText(en['route.rigNotCompared'])).not.toBeInTheDocument();
+  });
+
+  // The TIER clause in isolation: identical shape to the row above, default
+  // (hullVerified) boat. If this fired too, the generic sentence would be
+  // unreachable for any boat.
+  it('#1398b: the SAME not-compared verdict stays generic for the hullVerified default boat', () => {
+    const plan = makePlan({ rigRecommendation: { kind: 'not-compared' } });
+    renderSummary({ plan, rig: 'genoa' });
+    expect(screen.getByText(en['route.rigNotCompared'])).toBeInTheDocument();
   });
 
   it('#259: a decided comparison for fock badges the fock tab, not genoa', () => {
@@ -1037,6 +1074,35 @@ describe('RouteSummary', () => {
   it('hides the stale-forecast warning when departure is within 12h of the forecast fetch', () => {
     renderSummary();
     expect(screen.queryByText(/\d+ h old/i)).not.toBeInTheDocument();
+  });
+
+  // #1399c: forecast age against NOW, distinct from route.staleForecast
+  // above (departure-vs-fetch) — the top-level beforeEach pins Date.now()
+  // to DEPARTURE_MS (fetch+2h, "not stale"); these rows override it.
+  it('#1399c: shows the forecast-age-now line when the forecast is stale relative to the real clock', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(FETCHED_AT_MS + 13 * 3_600_000);
+    renderSummary({ plan: makePlan() });
+    expect(
+      screen.getByText(en['route.forecastAgeNow'].replace('{hours}', '13')),
+    ).toBeInTheDocument();
+  });
+
+  it('#1399c: hides the forecast-age-now line when NOW is close to the fetch time', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(FETCHED_AT_MS + 3_600_000);
+    renderSummary({ plan: makePlan() });
+    expect(screen.queryByText(/forecast is now/i)).not.toBeInTheDocument();
+  });
+
+  it('#1399c: the departure-vs-fetch and fetch-vs-now stale notices are independent and can coexist', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(FETCHED_AT_MS + 40 * 3_600_000);
+    const plan = makePlan({ departureMs: FETCHED_AT_MS + 26 * 3_600_000 });
+    renderSummary({ plan });
+    expect(
+      screen.getByText(en['route.staleForecast'].replace('{hours}', '26')),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(en['route.forecastAgeNow'].replace('{hours}', '40')),
+    ).toBeInTheDocument();
   });
 
   // #265: the string was reworded to stop claiming the destination is

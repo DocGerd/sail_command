@@ -84,7 +84,9 @@ not fix).
    (`app/sweep`, `app/public/data`, `pipeline`) for inputs that are not
    `import` statements at all. **This union exists because the import walk
    ALONE was measured to under-report (#729 Blocker)**: it cannot reach
-   vitest's real entry points (the nine `app/sweep/arm-*.test.ts` files,
+   vitest's real entry points (the `app/sweep/arm-*.test.ts` files — current
+   set in `app/sweep/armNames.ts` and `app/sweep/README.md`'s opening line,
+   never restated here — arm count went stale twice, see CLAUDE.md,
    wired in only through `vitest.config.ts`'s `include: ['**/*.test.ts']` —
    an edge INTO `sweepArms.ts` that a walk FROM it can never traverse), nor
    any of `sweepArms.ts`'s runtime `readFileSync` reads of shipped data
@@ -123,7 +125,8 @@ built to fail toward the expensive-but-safe side.
 
 **A prior revision of this file claimed the stronger, unconditional "never
 under-reports" — that was FALSIFIED in review (#729, Blocker).** The
-import walk alone missed the nine `arm-*.test.ts` files and every runtime
+import walk alone missed the `arm-*.test.ts` files (current set in
+`app/sweep/armNames.ts`) and every runtime
 data/pipeline input (see Method step 2), so a diff confined to those
 reported NOT OWED, exit 0 — for example changing which arm a file runs
 (each `arm-*.test.ts` is one `runArm('<name>')` call — `arm-marginzero.test.ts`

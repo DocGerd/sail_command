@@ -3089,6 +3089,26 @@ select {
   font-weight: 400;
 }
 
+/* #1398a: the affirmative "no shallow water flagged" line — a THIRD sibling
+   of .marginal-depth-notice (a hazard, --sc-depth-warning-*) and
+   .seamark-proximity-notice above (an advisory, --sc-banner-info-fg): this
+   one reports the ABSENCE of a hazard, so it takes the SAME info colour as
+   the proximity line, never the depth-warning family — that family is this
+   app's identity for a depth HAZARD (per .marginal-depth-notice's own
+   comment), and reusing it here would read as a caution rather than a
+   clean result. Byte-identical shape otherwise (quiet <p>, 2px rule,
+   0.85rem, normal weight) — a NEW class rather than reusing
+   .seamark-proximity-notice's own name, so a query for either stays
+   unambiguous about which notice it found. */
+.depth-clear-notice {
+  margin: 0;
+  padding: 0.35rem 0 0.35rem 0.55rem;
+  border-left: 2px solid var(--sc-banner-info-fg);
+  color: var(--sc-banner-info-fg);
+  font-size: 0.85rem;
+  font-weight: 400;
+}
+
 /* #452 gap 3: per-leg shallow marker in the legs table — same
    --sc-depth-warning-* family as .shallow-warning above (#251), so the
    hazard reads consistently between the plan-level banner and the row that
