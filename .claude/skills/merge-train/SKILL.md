@@ -100,9 +100,11 @@ gh api "repos/$REPO/commits/$SHA/check-runs" \
   (required checks are `app` + `e2e` only).
 - Scorecard push-triggers on `develop` only (moved off `main` by #124,
   after a default-branch-only action reds every release merge), plus a
-  weekly `schedule` and a `branch_protection_rule` trigger. A `main`
-  release commit therefore carries NO scorecard check-run at all — a red
-  check-run on one is never scorecard noise; chase it.
+  weekly `schedule` and a `branch_protection_rule` trigger; the `develop`
+  push trigger is additionally path-scoped since #883
+  (`.github/**`, `**/package-lock.json`, `pipeline/requirements.txt`). A
+  `main` release commit therefore carries NO scorecard check-run at all —
+  a red check-run on one is never scorecard noise; chase it.
 
 ## #119 stale-SHA rerun (PR head stuck on an old SHA)
 

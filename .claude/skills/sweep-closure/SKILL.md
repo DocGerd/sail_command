@@ -86,7 +86,7 @@ not fix).
    ALONE was measured to under-report (#729 Blocker)**: it cannot reach
    vitest's real entry points (the `app/sweep/arm-*.test.ts` files — current
    set in `app/sweep/armNames.ts` and `app/sweep/README.md`'s opening line,
-   never restated here — arm count went stale twice, see CLAUDE.md),
+   never restated here — arm count went stale twice, see CLAUDE.md,
    wired in only through `vitest.config.ts`'s `include: ['**/*.test.ts']` —
    an edge INTO `sweepArms.ts` that a walk FROM it can never traverse), nor
    any of `sweepArms.ts`'s runtime `readFileSync` reads of shipped data
