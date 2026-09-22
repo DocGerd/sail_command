@@ -4378,13 +4378,11 @@ making design-level decisions; do not silently deviate.
   stays, and so does a measurement's FILTER and BASIS. Brief every implementer,
   reviewer and doc agent with this EXPLICITLY: verbose prose was the
   established house style through 2026-09-10, so an agent reproduces it by
-  default. Nothing mechanical enforces this — no hook and no required check
-  reads a comment or a PR body — so it holds only as far as briefs and review
-  carry it. A RETRO pass is a different act and needs its own method: #724
-  measured one over CLAUDE.md as net-negative (-350 B compressed, 27 defects
-  over two review rounds, file ended +442 B LARGER), so #1407's comment sweep
-  runs deletion-first, per-file and review-gated — never as a rewrite, since
-  rephrasing a claim is how a new claim enters.
+  default. Nothing mechanical enforces this, so it holds only as far as briefs
+  and review carry it. Governs NEWLY AUTHORED text; a retro-compression pass
+  is a different act — #724 measured one over CLAUDE.md as net-negative — so
+  #1407 must run its comment sweep deletion-first, per-file and review-gated,
+  never as a rewrite, since rephrasing a claim is how a new claim enters.
 - Planning requires network; everything else must keep working offline. Any
   new feature that silently assumes connectivity is a bug.
 - The app is a passage-planning aid, not a navigation device — user-facing
