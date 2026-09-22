@@ -32,7 +32,7 @@ import {
   parseGpx,
   type GpxErrorReason,
 } from '../lib/gpx';
-import { activeRigResult } from '../lib/plan';
+import { activeRigResult, rigComparisonSuppressedByTier } from '../lib/plan';
 import { routingSettingsDirty } from '../lib/planForm';
 import { renderRigVerdict, resultSummary, sailLabelKey } from '../lib/resultSummary';
 import { useRecentHarbors } from '../lib/useRecentHarbors';
@@ -60,7 +60,9 @@ import { ShallowWarning } from './ShallowWarning';
 // #612: the non-relaxed complement of that warning, shared for the same
 // reason — see MarginalDepthNotice's own doc comment for why it is a quiet
 // <p> rather than a second banner.
-import { MarginalDepthNotice } from './RouteSummary';
+// #1398a: the third, affirmative state — shares depthExposureState with
+// MarginalDepthNotice so the two stay mutually exclusive here too.
+import { DepthClearNotice, MarginalDepthNotice } from './RouteSummary';
 
 export type TapTarget = 'origin' | 'destination' | 'via';
 
@@ -1369,6 +1371,11 @@ export default function PlannerPanel({
           its single source of truth with that tab's own render of it — there
           is no second copy of the value, only a second RENDER of the same
           settings.safetyDepthM via the same commitSetting helper. */}
+      {/* #1399b (spike 1022 §6): one sentence of context above the row — the
+          two inputs it introduces were previously bare, with no sentence
+          saying what they do. `.planner-guidance` is the same muted class
+          `planner.onboarding` already uses below — no new CSS. */}
+      <p className="planner-guidance">{t('planner.departureSafetyContext')}</p>
       <div className="planner-compact-row">
         <Field
           className="planner-departure"
@@ -1546,12 +1553,21 @@ export default function PlannerPanel({
               <Chip className="chip-faster-rig">
                 {summary.rigRecommendation.kind === 'decided'
                   ? t('route.fasterRig', { rig: t(sailLabelKey(summary.rigRecommendation.rig)) })
-                  : renderRigVerdict(
-                      summary.rigRecommendation.kind,
-                      comparisonComplete,
-                      comparedSails,
-                      t,
-                    )}
+                  : // #1398b: mirrors RouteSummary's own tier-C override —
+                    // see rigComparisonSuppressedByTier's comment (lib/plan.ts)
+                    // for why this cannot fire on the comparisonIncomplete or
+                    // rigOneFailed causes.
+                    plan && rigComparisonSuppressedByTier(plan)
+                    ? t('route.rigNotComparedEstimated', {
+                        boat: plan.request.boat.name,
+                        tier: t('boat.polarTier.estimated'),
+                      })
+                    : renderRigVerdict(
+                        summary.rigRecommendation.kind,
+                        comparisonComplete,
+                        comparedSails,
+                        t,
+                      )}
               </Chip>
               {/* #301: the form has drifted from this displayed route — a
                   re-run right now would produce something different. Sits ON
@@ -1613,6 +1629,10 @@ export default function PlannerPanel({
               the component itself; the `plan &&` here is the same TYPE-LEVEL
               requirement as the banner's above. */}
           {plan && <MarginalDepthNotice plan={plan} legs={result?.legs ?? null} />}
+          {/* #1398a: the third, affirmative state, mutually exclusive with
+              the two above by construction (depthExposureState, shared in
+              RouteSummary.tsx). Same `plan &&` type-level requirement. */}
+          {plan && <DepthClearNotice plan={plan} legs={result?.legs ?? null} />}
           {summary && (
             <>
               <div className="planner-result-primary">

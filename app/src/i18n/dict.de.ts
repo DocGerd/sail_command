@@ -109,7 +109,7 @@ export const de = {
   'boat.harbors.shallow': 'Nur über eine flachere Zufahrt: {list}',
   'boat.harbors.unreachable': 'Nicht erreichbar: {list}',
   // Orchestrator-Entscheidung 2026-09-17 (kanonischer Wortlaut, geteilt mit
-  // #1323s harborPicker.boatUnreachableAnySetting): Substantiv
+  // #1323s harborPicker.boatUnreachableAtOrAboveDefault): Substantiv
   // „Sicherheitstiefe", nicht „Einstellung".
   // „(nur Tiefendaten geprüft)": nennt, WAS geprüft wurde — eine reine
   // Tiefenableitung ohne Brücken, Fahrwasserbreite oder Hindernisse — nie
@@ -272,6 +272,12 @@ export const de = {
   // #886 residual 1: see dict.en.ts's matching comment.
   'planner.via.coord.invalidEntry':
     'Eingabe konnte nicht als Koordinate gelesen werden – {value} beibehalten',
+  // #1399b (spike 1022 §6): siehe dict.en.ts — gleicher Zweck. #1405 review
+  // (MAJOR, wrong-from-the-start): siehe dict.en.ts's Kommentar — die
+  // Abfahrtszeit löst KEINEN neuen Abruf aus, sie wählt nur einen Offset in
+  // das bereits abgerufene 6-Tage-Raster.
+  'planner.departureSafetyContext':
+    'Die Abfahrtszeit bestimmt, welche Vorhersagestunden die Route nutzt; die Sicherheitstiefe legt fest, welches Wasser als zu flach gilt.',
   'planner.departure.label': 'Abfahrt',
   'planner.plan': 'Route planen',
   // #1193: distinct from the three plain "Abbrechen" buttons elsewhere
@@ -464,6 +470,17 @@ export const de = {
   // stattgefunden. Siehe dict.en.ts für die drei auslösenden Fälle.
   'route.rigNotCompared':
     'Die Segel wurden für diese Passage nicht verglichen — es wird kein schnelleres Rigg angegeben',
+  // #1398b (spike 1022 §8): siehe dict.en.ts — nennt den Tier-C-Grund,
+  // niemals bei comparisonIncomplete/rigOneFailed
+  // (rigComparisonSuppressedByTier, lib/plan.ts). {tier} kommt von
+  // `t('boat.polarTier.estimated')` an der Aufrufstelle, kein fest
+  // verdrahtetes Wort hier.
+  // #1405 review (MAJOR): {tier} in eine Label-Position verschoben
+  // ("(Stufe: {tier})") statt als Prädikativ mitten im Satz — "sind
+  // Geschätzt" war ungrammatisch (Prädikativa werden im Deutschen
+  // kleingeschrieben); die Großschreibung ist nur in Label-Position korrekt.
+  'route.rigNotComparedEstimated':
+    'Die Segel wurden für diese Passage nicht verglichen — die Polardaten von {boat} sind nicht zertifikatsgeprüft (Stufe: {tier}), daher wird kein schnelleres Rigg angegeben',
   // #540 spec §E.3: a budget-exhausted sail is ALSO a 'not-compared' verdict
   // (rigVerdictKey collapses onto route.rigNotCompared above), but a stalled
   // search reads very differently from "nothing to compare" — the ★-suppressed
@@ -485,6 +502,10 @@ export const de = {
   // static "> 12 h" threshold label PR #763 shipped. See dict.en.ts for the
   // full rationale. "bei Abfahrt" (PR #763 review Major 3) is unchanged.
   'route.staleForecast': 'Vorhersage bei Abfahrt {hours} h alt',
+  // #1399c (spike 1022 §10): siehe dict.en.ts — Vorhersagealter gegenüber
+  // JETZT, nicht gegenüber der Abfahrt.
+  'route.forecastAgeNow':
+    'Die Vorhersage dieses Plans ist inzwischen {hours} h alt – für aktuelle Bedingungen neu planen.',
   // #295: ob der Kartenbereich dieses Plans offline gespeichert ist.
   'route.offlineMap.checking': 'Offline-Karte: wird geprüft…',
   'route.offlineMap.ready': 'Offline-Karte gespeichert',
@@ -627,6 +648,9 @@ export const de = {
     '{dist} dieser Route verlaufen durch Wasser, das eine vorsichtigere Lesart der Kartentiefen unter die eingestellte Sicherheitstiefe von {requested} m setzt.',
   'route.marginal.noticeSevere':
     'Achtung: {dist} dieser Route verlaufen durch Wasser, das eine vorsichtigere Lesart der Kartentiefen unter die eingestellte Sicherheitstiefe von {requested} m setzt — bei dieser Einstellung kann diese Lesart unter den Bootstiefgang von {draft} m fallen.',
+  // #1398a (spike 1022 §8, Slice 2 der #612-Restlücke): siehe dict.en.ts.
+  'route.marginal.clear':
+    'Auf dieser Route liegt kein Wasser laut Kartentiefen unter der eingestellten Sicherheitstiefe von {requested} m (nur Tiefendaten geprüft).',
   // #615: siehe dict.en.ts's Kommentar für Zweck, Auslöser und warum jede
   // Klausel tragend ist. {dist} kommt aus SEAMARK_PROXIMITY_M
   // (lib/seamarkProximity.ts), nie aus dem Wörterbuch. Der Klassenbegriff

@@ -4,6 +4,7 @@ import {
   mapReady,
   bannerHeightVar,
   assertCleanServiceWorkerState,
+  seedFreshProfileDefaults,
   STANDARD_VIEWPORTS,
   EDGE_VIEWPORTS,
   type Viewport,
@@ -2221,6 +2222,11 @@ test('#871: the SW toast alone never hides the depth legend, across the shared v
         // called here for symmetry/defence-in-depth (reachability tracked
         // at #975, not asserted here).
         await assertCleanServiceWorkerState(page);
+        // #1405 review BLOCKER: this test asserts `.banner-area .banner`
+        // hits 0 below — the caveat banner (#1399a) would otherwise still be
+        // up on this fresh context and make that assertion fail regardless
+        // of the toast. See seedFreshProfileDefaults()'s own comment.
+        await seedFreshProfileDefaults(page);
         await page.goto(server.url);
         await mapReady(page);
 
@@ -2698,6 +2704,10 @@ for (const state of ['toast only', 'toast + offline banner'] as const) {
         const page = await context.newPage();
         try {
           await assertCleanServiceWorkerState(page);
+          // #1405 review BLOCKER: this test polls `.banner-area .banner`
+          // COUNT to an exact 2 below (toast + offline) — an undismissed
+          // caveat banner (#1399a) would make that 3 on a fresh profile.
+          await seedFreshProfileDefaults(page);
           await page.goto(server.url);
           await mapReady(page);
           await page.locator('.reload-prompt').waitFor({ state: 'visible', timeout: 15_000 });

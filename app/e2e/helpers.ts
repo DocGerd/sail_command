@@ -375,6 +375,30 @@ export async function assertCleanServiceWorkerState(
   return result;
 }
 
+// #1405 review BLOCKER: App.tsx's #1399a first-run caveat banner is
+// unconditional on a fresh profile — several specs assert a banner-free
+// cold load (seamarks.spec.ts's #830 guard, layout.spec.ts's #871 guard).
+// playwright.config.ts's `storageState` seeds this for every spec using the
+// `page`/`context` FIXTURE; this export covers the residual "own page via
+// browser.newContext()" pattern that bypasses that config default (called
+// from `startPreview(page)`'s own branch above, AND from any spec that
+// creates additional pages of its own — see layout.spec.ts's #871 test).
+// `page.addInitScript()`, not `page.evaluate()`: it re-applies on every
+// subsequent navigation within this page/context, where evaluate() would
+// only touch the CURRENT document and be lost on the next `page.goto()`.
+// Wrapped in try/catch inside the injected script itself (not this async
+// wrapper) — `localStorage` can throw in a sandboxed or storage-partitioned
+// context, and a seeding failure must never abort the caller's setup.
+export async function seedFreshProfileDefaults(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    try {
+      window.localStorage.setItem('sc-caveat-banner-dismissed', '1');
+    } catch {
+      // best-effort — see this function's own comment above
+    }
+  });
+}
+
 /** Extracted for testability and reused by both the local-file and
  * served-response identity checks; deliberately fails CLOSED (throws)
  * rather than returning an empty/best-effort value on a shape it doesn't
@@ -927,6 +951,16 @@ export async function startPreview(page?: Page): Promise<PreviewServer> {
         // reaches.
         if (page) {
           await assertCleanServiceWorkerState(page);
+          // #1405 review BLOCKER: belt-and-suspenders with
+          // playwright.config.ts's `storageState` default — that config-level
+          // seed reaches the `page`/`context` FIXTURE only, so a spec using
+          // the "own page via browser.newContext()" pattern (this `page` arg
+          // omitted at THIS call, a fresh context created afterward) does NOT
+          // inherit it. Re-seeding here covers the fixture-page case
+          // redundantly (harmless) and documents the invariant at the one
+          // other call site (`assertCleanServiceWorkerState`) that already
+          // distinguishes the two patterns.
+          await seedFreshProfileDefaults(page);
         }
       } catch (err) {
         kill();

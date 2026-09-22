@@ -219,7 +219,12 @@ const PANEL_WIDTH_PX = 518;
 // `scrollHeight === clientHeight` first holds at 1463. BUMPED 1385 -> 1469,
 // the same 6px past first fit the 2026-09-08 measure used: inside the
 // panel's own trailing padding, past every element.
-const START_VIEW_HEIGHT_PX = 1469;
+// BUMPED again for #1399b's departure/safety-depth context sentence
+// (intended start-view content, not a bug to size around): measured by
+// hiding `.planner-guidance`'s departure-context paragraph and diffing
+// `.app-panel`'s scrollHeight against this flow's own value, then re-run at
+// successive heights until `scrollHeight === clientHeight` (first fit).
+const START_VIEW_HEIGHT_PX = 1507;
 
 // #1088: the viewport-height constants above have been mis-measured THREE
 // times (#741; #716's BOAT_SELECTION_HEIGHT_PX going stale at #746; the
@@ -311,6 +316,14 @@ const page = await browser.newPage({ viewport: { width: 1280, height: START_VIEW
 await page.addInitScript((px) => {
   window.localStorage.setItem('sc-panel-width', String(px));
 }, PANEL_WIDTH_PX);
+// #1405 review MAJOR A: App.tsx's #1399a first-run caveat banner is
+// unconditional on a fresh profile. A docs screenshot means to show the
+// steady state a returning user sees, not the one-time first-run banner —
+// same rationale, and the same localStorage key, as
+// app/e2e/helpers.ts's seedFreshProfileDefaults().
+await page.addInitScript(() => {
+  window.localStorage.setItem('sc-caveat-banner-dismissed', '1');
+});
 // #462 review nit: build via URL rather than string-concatenating `?` onto
 // APP, which would silently break if APP ever carried its own query string.
 const startUrl = new URL(APP);
