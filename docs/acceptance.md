@@ -257,11 +257,12 @@ selected in §1.
     engine ("Rig does not matter here …").
   - **SPEEDY GO! or PIRANJA** — both their sails are tier Estimated, so the
     comparison is withheld: **no ★ on either tab**, and the chip now names the
-    reason — "The sails were not compared for this passage — {boat}'s polar
-    data is not certificate-verified (tier: Estimated), so no faster rig is
-    claimed" (#1398). A missing ★ on these two boats is the designed outcome,
-    not a defect — their two tables differ by the Salona 45's overlay ramp,
-    which carries no information about the hull.
+    reason — "The sails were not compared for this passage — …'s polar data
+    is not certificate-verified (tier: Estimated), so no faster rig is
+    claimed" (#1398), where `…` is the plan's own boat name. A missing ★ on
+    these two boats is the designed outcome, not a defect — their two tables
+    differ by the Salona 45's overlay ramp, which carries no information
+    about the hull.
   - **Any boat, if the chip reads "The search ran out of time before
     comparing both sails, so no faster rig is claimed"** — the plan's search
     hit its wall-clock budget before both sails finished. No ★ is shown, and
@@ -294,11 +295,13 @@ selected in §1.
       whole hours, so a departure only just past the threshold legitimately
       reads "12 h": that is a PASS, not a stuck label.
 - [ ] **2.8b Reopened saved plan states forecast age against now (#1399c).**
-      Save this plan, wait at least an hour (or reopen one saved earlier),
-      then load it from Saved plans. Distinct from 2.8: this line reads
-      "This plan's forecast is now N h old — replan for current
-      conditions." and compares the forecast's fetch time to the CURRENT
-      clock, not to the plan's own departure time.
+      Reopen a plan saved more than 12 hours ago (`isForecastStaleNow`'s
+      >12 h threshold in `lib/plan.ts` — waiting in real time is
+      impractical for a manual check), then load it from Saved plans.
+      Distinct from 2.8: this line reads "This plan's forecast is now N h
+      old — replan for current conditions." and compares the forecast's
+      fetch time to the CURRENT clock, not to the plan's own departure
+      time.
 - [ ] **2.9 Depth hazard hatching is expected, not a rendering fault.** With
       the water-depths overlay on (it is on by default), water whose
       cautious, worst-case reading falls below your safety depth is drawn

@@ -21,7 +21,8 @@ shipped.
 The `v0.40.0` cut (2026-09-23) worked the
 [`v0.40.0` milestone](https://github.com/DocGerd/sail_command/milestones),
 which closed nine issues: two user-visible (per `CHANGELOG.md`'s own
-[0.40.0] section), the other seven process/tooling and documentation fixes.
+[0.40.0] section), one a scoping/triage umbrella (#1344, below), and the
+other six process/tooling and documentation fixes.
 
 The maintainer-filed chartplotter-conventions review
 ([#1344](https://github.com/DocGerd/sail_command/issues/1344)) scoped, via
