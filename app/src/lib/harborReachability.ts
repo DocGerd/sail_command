@@ -457,10 +457,11 @@ export const DEFAULT_HINT_MAX_STEPS = 12;
  * @param maxSteps Step budget for this call; clamped to at least 1 — `0` or
  * negative would return `resumeFromDepthM === safetyDepthM` unchanged,
  * making a caller following the resume contract above loop forever. A
- * non-finite value (`NaN`, `Infinity`) falls back to
- * {@link DEFAULT_HINT_MAX_STEPS} instead of clamping, since
- * `Math.max(1, Math.floor(NaN))` is itself `NaN` and would restore the
- * unbounded search this budget exists to prevent (#1319).
+ * non-finite value (`NaN`, `±Infinity`) falls back to
+ * {@link DEFAULT_HINT_MAX_STEPS} instead of clamping via `Number.isFinite`
+ * (#1319, #1357) — a guard narrowed to `Number.isNaN` would restore the
+ * unbounded search for `+Infinity` and clamp `-Infinity` to 1 instead of
+ * falling back to the default.
  */
 export function findLowerSettingHint(
   mask: NavMask,

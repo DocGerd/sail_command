@@ -432,11 +432,14 @@ describe('#1290 harborReachability', () => {
     },
   );
 
-  // #1319: Math.max(1, Math.floor(NaN)) is NaN, and `steps >= NaN` is always
-  // false, so an explicit NaN maxSteps must not restore the unbounded search
-  // the budget exists to prevent — it should behave exactly as the default.
+  // #1319/#1357: Math.max(1, Math.floor(NaN)) is NaN, and `steps >= NaN` is
+  // always false, so an explicit non-finite maxSteps must not restore the
+  // unbounded search the budget exists to prevent — it should behave exactly
+  // as the default. Covers all three `Number.isFinite`-false values: a guard
+  // narrowed to `Number.isNaN` still passes on NaN alone (isNaN(NaN) is true,
+  // same fallback either way) but diverges on ±Infinity — see #1357.
   it(
-    'findLowerSettingHint normalises a non-finite maxSteps to the default budget instead of searching unbounded',
+    'findLowerSettingHint normalises a non-finite maxSteps (NaN, +Infinity, -Infinity) to the default budget instead of searching unbounded',
     { timeout: solverTimeoutMs(300_000) },
     () => {
       // marstal needs 29 decimetre steps to scan from 6.4 m down to
@@ -445,8 +448,24 @@ describe('#1290 harborReachability', () => {
       const marstal = harbors.find((h) => h.id === 'marstal')!;
       const withDefault = findLowerSettingHint(mask, marstal, synthetic, 6.4);
       const withNaN = findLowerSettingHint(mask, marstal, synthetic, 6.4, Number.NaN);
+      const withPositiveInfinity = findLowerSettingHint(
+        mask,
+        marstal,
+        synthetic,
+        6.4,
+        Number.POSITIVE_INFINITY,
+      );
+      const withNegativeInfinity = findLowerSettingHint(
+        mask,
+        marstal,
+        synthetic,
+        6.4,
+        Number.NEGATIVE_INFINITY,
+      );
       expect(withDefault).toEqual({ kind: 'exhausted', resumeFromDepthM: 5.2 });
       expect(withNaN).toEqual(withDefault);
+      expect(withPositiveInfinity).toEqual(withDefault);
+      expect(withNegativeInfinity).toEqual(withDefault);
     },
   );
 
