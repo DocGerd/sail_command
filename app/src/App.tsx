@@ -74,6 +74,7 @@ import {
 import { useWideLayout } from './lib/useWideLayout';
 import { useBannerHeight } from './lib/useBannerHeight';
 import { usePersistedNumber } from './lib/usePersistedNumber';
+import { usePersistedToggle } from './lib/usePersistedToggle';
 import { PANEL_MIN_WIDTH_PX, panelMaxWidthPx } from './lib/panelWidth';
 import { formatLatLon } from './lib/format';
 import { resolveHarborPickTarget } from './lib/harborGeoJson';
@@ -551,6 +552,18 @@ function AppShell() {
     if (panelWidthPx === null) shell.style.removeProperty('--sc-panel-w');
     else shell.style.setProperty('--sc-panel-w', `${panelWidthPx}px`);
   }, [panelWidthPx]);
+  // #1399a (spike 1022 §1): the "planning aid, not a navigation device"
+  // caveat previously lived ONLY inside AboutDialog, reachable by one extra
+  // click a first-time user need never make. Dismissal persists via
+  // usePersistedToggle's localStorage contract (lib/storage.ts's safe
+  // wrappers, not IndexedDB — same shape as every other one-time hint in
+  // this file). Reuses `app.disclaimer` verbatim rather than a new body
+  // string, so the banner and the About dialog can never say two different
+  // things about what this app is.
+  const [caveatDismissed, setCaveatDismissed] = usePersistedToggle(
+    'sc-caveat-banner-dismissed',
+    false,
+  );
   // #31: on wide, LiveView (which must stay mounted inside MapView's subtree
   // for BoatMarker's map context) portals its textual readout into this
   // panel-column slot. A callback ref into state so the portal target becomes
@@ -1724,6 +1737,18 @@ function AppShell() {
 
       <div className="banner-area" inert={aboutOpen}>
         <ReloadPrompt />
+        {/* #1399a: dismissible first-run caveat — 'info', so it uses
+            role="status" (Banner.tsx) rather than the assertive role the
+            warning/error kinds below get. */}
+        {!caveatDismissed && (
+          <Banner
+            kind="info"
+            onDismiss={() => setCaveatDismissed(true)}
+            dismissLabel={t('banner.dismiss')}
+          >
+            {t('app.disclaimer')}
+          </Banner>
+        )}
         {!online && <Banner kind="warning">{t('banner.offline')}</Banner>}
         {mapError && (
           <Banner kind="error" onDismiss={handleDismissMapError} dismissLabel={t('banner.dismiss')}>

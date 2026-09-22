@@ -121,7 +121,7 @@ export const en = {
   // Caution vocabulary; not done here, tracked in #1326.
   'boat.harbors.hintFoundShallow': 'may route at {depth} m, with a depth warning (depth data only)',
   // Orchestrator ruling 2026-09-17 (canonical wording, shared with sibling
-  // #1323's `harborPicker.boatUnreachableAnySetting`): NEVER "at any setting
+  // #1323's `harborPicker.boatUnreachableAtOrAboveDefault`): NEVER "at any setting
   // this boat keeps" — the search floor is this boat's DEFAULT safety
   // depth, not its true minimum, and a user can already hold a lower depth
   // without ever switching boats, so that claim over-scopes what the search
@@ -254,6 +254,11 @@ export const en = {
   // field also reuses for the "parsed fine but was out of [-90,90]/[-180,180]"
   // case — a clamp and a rejection are different events for the user.
   'planner.via.coord.invalidEntry': "Couldn't read that as a coordinate — kept {value}",
+  // #1399b (spike 1022 §6): one sentence above the departure/safety-depth
+  // compact row — previously bare, with no sentence saying what the two
+  // inputs do.
+  'planner.departureSafetyContext':
+    'Departure time picks the forecast; safety depth decides which water counts as too shallow.',
   'planner.departure.label': 'Departure',
   'planner.plan': 'Plan route',
   // #1193: distinct accessible name from the three plain "Cancel" buttons
@@ -453,6 +458,14 @@ export const en = {
   // than that the sails are equal, because that is the honest difference.
   'route.rigNotCompared':
     'The sails were not compared for this passage, so no faster rig is claimed',
+  // #1398b (spike 1022 §8): names the tier-C reason for the SAME
+  // 'not-compared' verdict the generic route.rigNotCompared reports — never
+  // shown for the comparisonIncomplete or rigOneFailed causes (see
+  // rigComparisonSuppressedByTier, lib/plan.ts). {tier} is interpolated
+  // from `t('boat.polarTier.estimated')` at the call site, never a hardcoded
+  // word here, so a future reword of that label cannot drift the two apart.
+  'route.rigNotComparedEstimated':
+    "The sails were not compared for this passage — {boat}'s polar data is {tier}, not certificate-verified, so no faster rig is claimed",
   // #540 spec §E.3: a budget-exhausted sail is ALSO a 'not-compared' verdict
   // (rigVerdictKey collapses it onto rigNotCompared above), but a stalled
   // search reads very differently from "nothing to compare" — the
@@ -505,6 +518,13 @@ export const en = {
   // departure" frame #748's own Constraints section requires. "at
   // departure" names the endpoint {hours} is measured to.
   'route.staleForecast': 'Forecast {hours} h old at departure',
+  // #1399c (spike 1022 §10): forecast age against NOW, distinct from
+  // route.staleForecast above (departure vs. fetch, both frozen at save
+  // time) — this compares the same forecast's fetch time to the CURRENT
+  // wall clock, so it is the one signal answering "is this saved plan's
+  // wind data still current". {hours} from lib/plan.ts's forecastAgeNowHours.
+  'route.forecastAgeNow':
+    "This plan's forecast is now {hours} h old — replan for current conditions.",
   // #295: whether this plan's map area is stored for offline use.
   'route.offlineMap.checking': 'Offline map: checking…',
   'route.offlineMap.ready': 'Offline map saved',
@@ -676,6 +696,15 @@ export const en = {
     '{dist} of this route crosses water that a more cautious reading of the charted depth data puts below your safety depth of {requested} m.',
   'route.marginal.noticeSevere':
     "Caution: {dist} of this route crosses water that a more cautious reading of the charted depth data puts below your safety depth of {requested} m — at this setting that reading can fall below this boat's {draft} m draft.",
+  // #1398a (spike 1022 §8, slice 2 of #612's own residual): the affirmative
+  // THIRD state, mutually exclusive with the two notices above by
+  // construction (depthExposureState, RouteSummary.tsx) — never rendered
+  // while the mask is loading or a walk failed (stays silent, per the
+  // #251/#255 rule). "(depth data only)" hedge matches
+  // boat.harbors.hintFound's — a depth-only derivation, never a chart-
+  // authority claim.
+  'route.marginal.clear':
+    'No charted water on this route falls below the requested safety depth of {requested} m (depth data only).',
   // #615: the advisory SEAMARK-PROXIMITY notice — a quiet route-scoped line,
   // sibling of route.marginal.notice above, for a route whose active-rig legs
   // pass closer than SEAMARK_PROXIMITY_M (lib/seamarkProximity.ts) to a

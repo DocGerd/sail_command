@@ -86,3 +86,48 @@ export function staleForecastGapHours(plan: Plan): number {
 export function activeRigResult(plan: Plan, sailId: SailId): RigResult | null {
   return plan.result.sails.find((s) => s.sailId === sailId)?.result ?? null;
 }
+
+// #1399c (spike 1022 §10): forecast age against NOW, distinct from
+// isStaleForecast above, which compares the plan's OWN departure to its OWN
+// fetch time — both frozen at save time, so a plan reopened weeks later
+// reports the identical status it had on the day it was created. This pair
+// answers "is the wind data this plan carries stale RIGHT NOW", off
+// `windGrid.fetchedAtMs` (the actual forecast datum), never `createdAtMs`.
+// `nowMs` is an EXPLICIT parameter, never `Date.now()` in here — same
+// purity rule as format.ts's tier chooser: callers snapshot the wall clock
+// once (`useState(() => Date.now())`, RouteLayer.tsx's pattern), not on
+// every render. Same >12 h strict threshold and rounding as
+// staleForecastGapHours above, for the same reason (round, not floor/ceil,
+// bounds the error at 30 min either way rather than reading fresher than
+// measured).
+export function isForecastStaleNow(plan: Plan, nowMs: number): boolean {
+  return nowMs - plan.windGrid.fetchedAtMs > STALE_THRESHOLD_MS;
+}
+
+export function forecastAgeNowHours(plan: Plan, nowMs: number): number {
+  return Math.round((nowMs - plan.windGrid.fetchedAtMs) / 3_600_000);
+}
+
+// #1398b (spike 1022 §8, "route.rigNotCompared" unexplained): true exactly
+// when planRoute.ts's `comparisonSuppressed` (assemble()'s
+// `!comparisonSuppressed && sails.length === 2 && a.rigResult && b.rigResult`
+// guard) is WHY `RigRecommendation.kind` reads 'not-compared' — not one of
+// the two other causes lib/resultSummary.ts's `resultVerdictKey` already
+// gives more specific copy: a truncated search
+// (`!comparisonComplete` -> route.comparisonIncomplete) or a single solver
+// failure among exactly two requested sails (`partiallyFailedSail` ->
+// route.rigOneFailed). Requiring BOTH sails to carry a non-null `result` is
+// what excludes those two without re-deriving resultVerdictKey's own
+// precedence here (`lib/resultSummary.ts` is out of this change's file
+// scope) — a tier-C suppression fires with both results present, since
+// assemble()'s guard tests `comparisonSuppressed` before either result is
+// inspected. `plan.request.boat` is the by-value snapshot (never a
+// catalogue lookup — the boat may have left it), and `BoatSnapshot.sails[]`
+// carries `polarProvenance` per #54 spec §I.3, so no field is added here.
+export function rigComparisonSuppressedByTier(plan: Plan): boolean {
+  if (plan.result.rigRecommendation?.kind !== 'not-compared') return false;
+  if (!plan.result.comparisonComplete) return false;
+  if (plan.result.sails.length !== 2) return false;
+  if (plan.result.sails.some((s) => s.result === null)) return false;
+  return plan.request.boat.sails.some((s) => s.polarProvenance.tier === 'estimated');
+}
