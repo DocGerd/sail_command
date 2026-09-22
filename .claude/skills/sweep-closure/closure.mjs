@@ -25,8 +25,10 @@
  *    below) for inputs that are structurally NOT `import` statements at
  *    all. A Blocker review (#729) measured that the import walk ALONE is a
  *    strictly NARROWER, UNSAFE replacement for the prose list it exists to
- *    retire: it cannot see (a) vitest's real entry points — the nine
- *    `app/sweep/arm-*.test.ts` files, reached only via `vitest.config.ts`'s
+ *    retire: it cannot see (a) vitest's real entry points — the
+ *    `app/sweep/arm-*.test.ts` files (current set in `app/sweep/armNames.ts`,
+ *    never restated here — the arm count went stale twice, see CLAUDE.md),
+ *    reached only via `vitest.config.ts`'s
  *    `include: ['**\/*.test.ts']`, an edge INTO `sweepArms.ts` that a walk
  *    FROM it can never traverse — or (b) any of `sweepArms.ts`'s runtime
  *    `readFileSync` reads of shipped data (`mask.bin`, `mask.meta.json`,
@@ -65,7 +67,8 @@
  *
  * A PRIOR REVISION of this file made the stronger claim "never
  * under-reports" unconditionally — FALSIFIED in review (#729): the import
- * walk alone missed the nine `arm-*.test.ts` files and every runtime
+ * walk alone missed the `arm-*.test.ts` files (current set in
+ * `app/sweep/armNames.ts`) and every runtime
  * data/pipeline input (Method step 2), so a diff confined to those reported
  * NOT OWED, exit 0. `PATH_PREFIXES` closes that MEASURED gap, but is itself
  * hand-maintained data (see its own header comment) rather than something
