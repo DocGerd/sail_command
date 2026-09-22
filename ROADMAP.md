@@ -13,60 +13,63 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.39.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.40.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
-## Now — v0.39.0
+## Now — v0.40.0
 
-The `v0.39.0` cut (2026-09-22) worked the
-[`v0.39.0` milestone](https://github.com/DocGerd/sail_command/milestones),
-which closed nine issues: one user-visible (per `CHANGELOG.md`'s own
-[0.39.0] section), the other eight: five Claude Code skill-doc gaps found
-running the `v0.38.0` release cycle, a sweep-closure `diff` fix, a
-redaction of historical home-path leaks, and an implementer-facing doc fix.
+The `v0.40.0` cut (2026-09-23) worked the
+[`v0.40.0` milestone](https://github.com/DocGerd/sail_command/milestones),
+which closed nine issues: two user-visible (per `CHANGELOG.md`'s own
+[0.40.0] section), the other seven process/tooling and documentation fixes.
 
-Switching boats now announces when the newly selected boat can't reach the
-selected origin or destination harbour, closing the #1135 design's §5.4 gap
-([#1325](https://github.com/DocGerd/sail_command/issues/1325)).
+The maintainer-filed chartplotter-conventions review
+([#1344](https://github.com/DocGerd/sail_command/issues/1344)) scoped, via
+spike `docs/spikes/1022-whole-journey-ux.md`, into two slices delivered
+together in PR #1405: an explicit affirmative line for a clean, non-relaxed
+route and naming the tier-C reason when the two-rig comparison is
+suppressed
+([#1398](https://github.com/DocGerd/sail_command/issues/1398)); and a
+dismissible first-run caveat banner, a context sentence above the
+departure/safety-depth row, and a reloaded plan's forecast age measured
+against now rather than save time
+([#1399](https://github.com/DocGerd/sail_command/issues/1399)). A third
+slice (the via-coordinate format hint) is tracked separately in
+[#1400](https://github.com/DocGerd/sail_command/issues/1400); a broader
+chartplotter-UI audit was judged out of scope for this triage and would need
+its own issue. #1344 itself closed as the umbrella once both delivered
+slices shipped.
 
 The rest of the milestone, all process/tooling with no user-visible surface:
-`merge-train`'s fork-PR path and integration-PR default
-([#1372](https://github.com/DocGerd/sail_command/issues/1372)),
-`release-cycle`'s adversarial pass on keep/move verdicts, a bucket-reconcile
-step, and a nightly-Coverage check
-([#1373](https://github.com/DocGerd/sail_command/issues/1373)),
-`pr-selfreview`'s GraphQL undraft and zero-thread COMMENTED reviews
-([#1374](https://github.com/DocGerd/sail_command/issues/1374)),
-`worktree-cleanup`'s detached, out-of-tree and locked worktrees
-([#1375](https://github.com/DocGerd/sail_command/issues/1375)), and
-`sweep-closure`'s ledger-anchor recording steps
-([#1376](https://github.com/DocGerd/sail_command/issues/1376)); the
-`sail-implementer` agent definition now states the `--selftest` contract for
-a new top-level `.github/scripts/*.sh`
-([#1377](https://github.com/DocGerd/sail_command/issues/1377));
-`closure.mjs diff` now computes the closure at the merge-base, head and base trees rather
-than the caller's checked-out one, the same fix `reuse` got in `v0.38.0`
-([#1359](https://github.com/DocGerd/sail_command/issues/1359)); and the
-historical home-path leaks the advisory `scan-issue-home-paths.yml` scan
-reported are redacted in place
-([#1215](https://github.com/DocGerd/sail_command/issues/1215)).
+this file's own #649-residual list, which named three of its four residual
+issues and omitted #931
+([#1236](https://github.com/DocGerd/sail_command/issues/1236)); a
+`layout.spec.ts` #871 test whose 120 s timeout was too tight for a slow CI
+runner ([#1302](https://github.com/DocGerd/sail_command/issues/1302)); a
+dict comment citing a since-renamed key
+([#1328](https://github.com/DocGerd/sail_command/issues/1328));
+`findLowerSettingHint`'s non-finite `maxSteps` guard, pinned for `Infinity`
+and not only `NaN`
+([#1357](https://github.com/DocGerd/sail_command/issues/1357)); and two
+Claude Code skill-doc fixes — `merge-train`'s Scorecard bullet contradicting
+`CLAUDE.md` and `scorecard.yml`, and `sweep-closure`'s stale "nine arm
+files" count
+([#1391](https://github.com/DocGerd/sail_command/issues/1391),
+[#1392](https://github.com/DocGerd/sail_command/issues/1392)).
 
-## Next — v0.40.0
+Two issues carried in the prior "Next" section did not enter this cut and
+moved to `Backlog` instead: a sweep-arm coverage gap for a motor-off,
+near-exhausted-horizon plan
+([#1334](https://github.com/DocGerd/sail_command/issues/1334)), and a
+real-tablet measurement of the depth-overlay canvases' GPU memory
+([#1281](https://github.com/DocGerd/sail_command/issues/1281)).
 
-The [`v0.40.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-carries three open issues: the maintainer-filed UX-vs-chartplotter-conventions
-review, still deliberately unscoped pending a design pass
-([#1344](https://github.com/DocGerd/sail_command/issues/1344)); a sweep-arm
-coverage gap — no arm crosses a motor-off, near-exhausted-horizon plan, so
-#1136's salvage-admission widening has no exposure in the sweep to prove it
-against
-([#1334](https://github.com/DocGerd/sail_command/issues/1334)); and a
-real-tablet measurement of the depth-overlay canvases' GPU memory, to decide
-whether hiding the layers should free it or the hatch raster should become a
-screen-space fill pattern instead
-([#1281](https://github.com/DocGerd/sail_command/issues/1281)). The
-milestone page is the only authoritative view, check it directly rather
-than this file.
+## Next — v0.41.0
+
+The [`v0.41.0` milestone](https://github.com/DocGerd/sail_command/milestones)
+is empty at this cut — nothing has been triaged into it yet. The milestone
+page is the only authoritative view, check it directly rather than this
+file.
 
 ## Themes for the next year
 
