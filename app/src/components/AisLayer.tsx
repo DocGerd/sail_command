@@ -132,16 +132,15 @@ export const AIS_NATURAL_ICON_PX = CANVAS_SIZE / PIXEL_RATIO;
  *    taps exactly as before.
  * 2. Even ignoring (1), the padding math assumed `icon-size` and
  *    `icon-padding` are evaluated at the SAME zoom. They are not:
- *    `symbol_layout.ts:98` evaluates `icon-size` at `bucket.zoom + 1`
+ *    `symbol_layout.ts` evaluates `icon-size` at `bucket.zoom + 1`
  *    (deliberately, to keep anchor/collision geometry stable across a
  *    tile's whole zoom range — the same call also does this for
  *    `text-size`, per that file's own comment), while `getIconPadding`
- *    (`symbol_style_layer.ts`, called from `symbol_layout.ts:316`)
+ *    (`symbol_style_layer.ts`, called from `symbol_layout.ts`)
  *    evaluates `icon-padding` off the layer's already-recalculated
  *    `layout` — `bucket.zoom`, no `+1`. A one-zoom-level mismatch between
  *    the two terms of the footprint sum meant the "constant footprint"
- *    invariant was false by construction; measured in review at 49px on
- *    z12/z12.5 tiles instead of the intended 32.8px.
+ *    invariant was false by construction, confirmed in review.
  *
  * FIX (this version): keep growing `icon-size` (same z13 stop, 1.4 * 32 =
  * 44.8px, matching seamarks' own #860 choice), but do NOT touch
@@ -153,7 +152,7 @@ export const AIS_NATURAL_ICON_PX = CANVAS_SIZE / PIXEL_RATIO;
  * lower-priority label near a vessel), set `icon-ignore-placement: true`.
  * `collision_index.ts`'s `insertCollisionBox` files a feature into
  * `this.ignoredGrid` rather than `this.grid` when `ignorePlacement` is
- * true, and the SELF-placement hitTest (`placeCollisionBox`, ~:173) and
+ * true, and the SELF-placement hitTest (`placeCollisionBox`) and
  * every OTHER feature's collision check both read `this.grid` ONLY, never
  * `this.ignoredGrid` — so an ignored-placement box can never block another
  * symbol's placement, while `queryRenderedSymbols`'s
