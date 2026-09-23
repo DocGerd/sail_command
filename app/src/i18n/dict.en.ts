@@ -126,6 +126,8 @@ export const en = {
   // depth, not its true minimum, and a user can already hold a lower depth
   // without ever switching boats, so that claim over-scopes what the search
   // actually checked.
+  // #1329: the "or above" half is not searched; it rests on monotonicity
+  // pinned by test/harborReachabilityMonotone.test.ts.
   'boat.harbors.hintNotFound': "not reachable at or above {boat}'s recommended safety depth",
   'boat.harbors.hintPending': 'still checking',
   // #299: section headings on the Boat tab (SettingsPanel).
@@ -1319,6 +1321,8 @@ export const en = {
   // boat's recommended depth), never a claim covering settings below it.
   // Wording DECIDED by the maintainer (coordinator addendum) to match
   // sibling PR #1324.
+  // #1329: the "or above" half is not searched; it rests on monotonicity
+  // pinned by test/harborReachabilityMonotone.test.ts.
   'harborPicker.boatUnreachableAtOrAboveDefault':
     "Not reachable at or above {boat}'s recommended safety depth.",
 } satisfies Record<MsgKey, string>;
