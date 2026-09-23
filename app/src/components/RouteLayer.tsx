@@ -663,16 +663,13 @@ function closestPointOnSegmentPx(
 // fraction, and Mercator's y is not linear in latitude, so the interpolated
 // point can miss the true point on the rendered line by more than `lon`'s
 // interpolation does (which IS exact — Mercator's x is linear in longitude).
-// Measured at 54.7°N: ~0.1373 m off-line error at a 0.02 degree (~1.2 nm) leg
-// span, ~13.75 m at 0.20 degree (~12 nm). That 0.1373 m is NOT uniformly
-// sub-pixel: using `lib/mapOrientation.test.ts`'s own `metresPerPixel()`
-// formula, it is 0.80 px at zoom 18, but already 1.59 px at zoom 19 and
-// 12.73 px at `MAP_MAX_ZOOM` 22 (`lib/mapOrientation.ts`) — larger than
-// `ROUTE_DRAG_HOVER_TOLERANCE_PX` itself. So this stays a note rather than a
-// fix here at TODAY's shorter leg span and lower zooms, not on a
-// pixel-space guarantee at every zoom; the failure becomes visibly off-line,
-// not silent, once either a leg grows (leg-merging) or the user zooms in
-// past ~z18-19.
+// The error grows with leg span and is NOT uniformly sub-pixel — it can
+// exceed `ROUTE_DRAG_HOVER_TOLERANCE_PX` itself at higher zoom (see
+// `lib/mapOrientation.ts`'s `metresPerPixel()` for the conversion). So this
+// stays a note rather than a fix here, at TODAY's shorter leg span and
+// lower zooms, not on a pixel-space guarantee at every zoom; the failure
+// becomes visibly off-line, not silent, once either a leg grows
+// (leg-merging) or the user zooms in past ~z18-19.
 function nearestPointOnRoute(
   map: MaplibreMap,
   legs: readonly Leg[],
