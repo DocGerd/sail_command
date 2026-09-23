@@ -12,8 +12,8 @@ import type { GpsFix } from '../services/geolocation';
 // four painted states end up on `data-orientation` and the aria-label, that
 // hand rotation drops to free, and that the held-bearing ring only dims after
 // the grace period. jsdom has no MapLibre runtime, so the camera surface is
-// the shared fake in src/test/fakeMaplibre.ts, which models MapLibre 5.24's
-// interruption semantics line-referenced against maplibre-gl-dev.js.
+// the shared fake in src/test/fakeMaplibre.ts, which models MapLibre's own
+// interruption semantics.
 //
 // #203 added the interruption matrix below: a compass ease is not the only
 // thing that can move or stop this camera, and every OTHER source — a gesture
@@ -351,9 +351,8 @@ describe('CompassControl', () => {
     it('survives pan inertia: a flick-pan does not end course-following', () => {
       const { rerender } = enterTrackUp();
 
-      // maplibre-gl-dev.js:68712 — the inertial ease carries the flick's
-      // originalEvent but NO easeId, and a pan does not rotate, so it emits no
-      // rotate frames of its own.
+      // The inertial ease carries the flick's originalEvent but NO easeId,
+      // and a pan does not rotate, so it emits no rotate frames of its own.
       act(() => map.easeTo({ duration: 300 }, { originalEvent: new Event('touchend') }));
       expect(compass()).toHaveAttribute('data-orientation', 'track-up');
 
@@ -368,7 +367,7 @@ describe('CompassControl', () => {
     it('survives arrow-key panning, which eases under a foreign easeId', () => {
       const { rerender } = enterTrackUp();
 
-      // KeyboardHandler (:67341) eases with `easeId: 'keyboardHandler'`. An
+      // KeyboardHandler eases with `easeId: 'keyboardHandler'`. An
       // arrow key without shift PANS — same handler, same easeId, no bearing
       // change — so the user has not rotated anything.
       act(() =>
@@ -420,9 +419,7 @@ describe('CompassControl', () => {
 
     it('does not demote on a handler settle fired while its own ease still runs', () => {
       // HandlerManager fires a bare `moveend` at the end of a gesture
-      // (`_fireEvents`, node_modules/maplibre-gl/src/ui/handler_manager.ts
-      // :696, re-derived against maplibre-gl@6.7.0 — unmoved since 6.5.0)
-      // non-inertial branch. When
+      // (`_fireEvents`, handler_manager.ts) non-inertial branch. When
       // the gesture ended near north, our rotateend snap has already started
       // an ease toward 0 by then, so the camera is legitimately mid-flight and
       // the claim must not be judged yet.
@@ -574,7 +571,7 @@ describe('CompassControl', () => {
 
     it('exits on a rotate frame alone when rotatestart was suppressed', () => {
       // `_prepareEase` fires rotatestart only when no rotation was already in
-      // progress (:69537), so a keyboard rotate ease chained onto another one
+      // progress, so a keyboard rotate ease chained onto another one
       // under the SAME easeId emits rotate frames with no rotatestart at all.
       // The per-frame check is what catches those.
       render(<CompassControl fix={UNDER_WAY} showOwnship />);
