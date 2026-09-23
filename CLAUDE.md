@@ -1268,6 +1268,10 @@ making design-level decisions; do not silently deviate.
 - **Honest offline testing**: Playwright's `setOffline(true)` does NOT block
   service-worker fetches (Playwright #2311) — the offline spec kills the
   preview server instead. Never "simplify" that away.
+- **A new always-visible UI element changes every spec's starting state** —
+  #1405's first-load banner redded required `e2e` via guards asserting an
+  exact banner count; seed its dismissal in `playwright.config.ts`/`helpers.ts` and add a
+  fresh-profile spec for the undismissed path.
 - **Reproducing a settle race needs the write to land INSIDE the window, and
   the window is smaller than it looks** (#412, PR #419). The target here is
   the gap between `boundingBox()` and `elementsFromPoint` — two consecutive
@@ -1666,6 +1670,7 @@ making design-level decisions; do not silently deviate.
   | v0.37.0 | 2026-09-18 | 55 s | read as **NO `deploy` JOB CREATED YET** (run `in_progress`, only `build`) immediately before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `35388995635` (created 19:59:43Z) -> tag `35389087993` on `82bd958`, tag pushed 20:00:38Z. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`** -- the within-run control -- so it never started. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-CycH4hzZ.js` at ``about.version`,{version:`v0.37.0` `` with ZERO suffixed matches, so no back-merge remedy was owed. Release `isLatest: true`; tag object `489f5bc` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.38.0 | 2026-09-21 | 46 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 18:13:01Z, two seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `35636876713` (created 18:12:19Z) -> tag `35636960636` (created 18:13:05Z) on `1eee618`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`** -- the within-run control. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-CDWho9-g.js` at ``about.version`,{version:`v0.38.0` `` with ZERO suffixed matches, so no back-merge remedy was owed. Release `isLatest: true`; tag object reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.39.0 | 2026-09-22 | 46 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 00:02:40Z, three seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `35670196932` (created 00:01:58Z) -> tag `35670256087` (created 00:02:44Z) on `d00ade9`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`** -- the within-run control. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-KRWTYwpO.js` at ``version:`v0.39.0` `` with ZERO suffixed matches, so no back-merge remedy was owed. Release `isLatest: true`; tag object `79a79ce` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
+  | v0.40.0 | 2026-09-23 | 19203 s | `success`, `steps=6` (MEASURED before the tag push, and the failure CALLED IN ADVANCE from it) | **`smoke-probe` FAILED** | merge-push `35798660532` -> tag `35820738607` on `6aa9019`. Tag run's `build` and `deploy` succeeded; its prod entry chunk `assets/index-BuOWjfH-.js` 404'd on all 10 attempts while both basemap Range probes passed on attempt 1. Back-merge `35822017063` (`aa8f5fb`) republished that same chunk, 200 on attempt 1; production then served ``version:`v0.40.0` `` with ZERO suffixed matches. Tag object `verified: true, reason: "valid"`. Names no MECHANISM. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -4420,9 +4425,11 @@ making design-level decisions; do not silently deviate.
   file, or a skill asks for it", and that CLAUDE.md carve-out means THIS FILE
   satisfies it on its own terms — there is no contradiction left to override.
   At 2.1.220 it ended "unless the user requested it", a phrase with ZERO hits
-  in the 2.1.278 binary; it is also now gated to Opus 5
+  in the 2.1.278 binary; it was then gated to Opus 5
   (`opus5_reduced_delegation`), and whether that gate existed at 2.1.220 is
-  UNDETERMINED. Re-check if the harness version changes. Delegate normally and
+  UNDETERMINED. A static read of the 2.1.280 binary (2026-09-22, not a live
+  test) found the gate keyed on `opus_5_prompt_bundle`, which Opus 5.5 lacks.
+  Re-check if the harness version changes. Delegate normally and
   spend no turn arbitrating it. Escalate only a contradiction from a genuinely
   NEW source — something a human or a project actually wrote.
 - **Right-size agent models per task** (reinforces the global fitness rule): PIN
