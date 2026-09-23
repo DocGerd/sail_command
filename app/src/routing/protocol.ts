@@ -103,9 +103,8 @@ export function createHandler(post: (r: WorkerResponse) => void): (req: WorkerRe
       // human actually waiting on the answer, which is why the budget is
       // imposed here rather than defaulted inside planRoute(). Keeping
       // planRoute() pure is what stops a wall-clock bound from deciding the
-      // outcome of a vitest run whose speed swings with the runner
-      // (CLAUDE.md: ~2.1x on CI, and a separate 8x multiplier under coverage
-      // for solver-heavy work).
+      // outcome of a vitest run whose speed swings with the runner (see
+      // `app/src/test/timeouts.ts`).
       const budgetMs = req.budgetMs;
       const startedAtMs = Date.now();
       const deadline =

@@ -73,11 +73,6 @@ export const PASS2_BUDGET_MS = 60_000;
  * enforced structurally: planRoute.reasonDecoupling.test.ts fails the build if
  * any code in THIS file names a solver-derived label outside this table, or if
  * `isochrone.ts` names one at all.
- *
- * The reverse direction no longer exists. `solve()` used to return a
- * `NoRouteReason` that a second table translated back into a cause, so the
- * gates were one lookup hop from the display string; the solver now emits the
- * cause directly and this is the only table left.
  */
 export const NO_ROUTE_LABEL_OF_CAUSE = {
   'mask-blocked': 'unreachable',
@@ -119,16 +114,10 @@ function noRouteLabel(out: RunOut): NoRouteReason | null {
  *
  * Exported for direct unit testing of the truth table, exactly as
  * `comfortRetryMayHelp`/`depthRelaxationMayHelp` below are — and for the same
- * reason. PR #453 review MEASURED that deleting the `'budget-exhausted'` arm
- * below reds ZERO tests across all 25 `src/routing` + `src/state` files: a
- * reachable behavioural claim with nothing falsifying it, which is the exact
- * standard this file applies to the retry gates. `combineFailureCause` is
+ * reason. `combineFailureCause` is
  * called only where BOTH rigs failed with non-null causes, and a shared
  * deadline expiring during the SECOND rig's solve after the first finished
  * with 'mask-blocked'/'horizon-exceeded' produces precisely that mixed pair.
- * planRoute.budget.test.ts now pins the whole 6x6 table (the five causes plus
- * null in both argument positions), so the older `horizon > calm > mask`
- * ordering — equally unpinned until now — is covered too.
  */
 export function combineFailureCause(
   a: SolveFailureCause | null,
@@ -195,27 +184,18 @@ function relaxedPlanCause(
 }
 
 // #259: an ETA gap smaller than this is measurement noise, not a genuine
-// speed difference between rigs — 23.8x the worst knife-edge measured to date
-// (2.52 s at the sail-speed floor's 3.8 kn boundary, see the motor-decision-rule
-// spec and issue #264) so it comfortably absorbs solver-level noise from a
-// user-adjusted floor without swallowing a genuinely different route: 60 s is
-// 0.417% of a typical 4 h multi-hour Flensburg Fjord passage, so it cannot
-// misclassify two routes that actually differ AT THAT LENGTH.
+// speed difference between rigs (see the motor-decision-rule spec and issue
+// #264).
 //
 // Known trade-off, assessed and NOT acted on: this is an ABSOLUTE band, so it
-// grows proportionally larger as the passage gets shorter — 60 s stops being
-// under 1% below a 1 h 40 min passage and reaches 5% at 20 min, and a harbour
-// hop inside Flensburg Fjord is routinely an hour or less. No misclassification
-// has been MEASURED on this app's real in-domain route (Langballigau ->
-// Sønderborg, uniform 12 kn/225°, real mask+polars, #275 review): an 81 min
-// passage where 60 s is 1.23% of duration, and the true genoa/fock gap is
-// 13.57 s (0.28%) — noise, correctly absorbed as a tie. So this is a bound
-// worth recording, not an observed defect, and the value is NOT changed here
-// on that basis alone. If a real short-passage misclassification is ever
-// measured, the fix shape is a relative term floored at the noise level
-// (e.g. `Math.max(NOISE_FLOOR_MS, Math.min(RIG_TIE_BAND_MS, 0.005 *
-// durationMs))`), never a bare percentage — a purely relative band would fall
-// under the 2.52 s knife-edge on a 20 min hop and start ranking noise again.
+// grows proportionally larger as the passage gets shorter, and a harbour hop
+// inside Flensburg Fjord is routinely an hour or less. No misclassification
+// has been measured on this app's real in-domain route (#275 review). So
+// this is a bound worth recording, not an observed defect, and the value is
+// NOT changed here on that basis alone. If a real short-passage
+// misclassification is ever measured, the fix shape is a relative term
+// floored at the noise level (e.g. `Math.max(NOISE_FLOOR_MS,
+// Math.min(RIG_TIE_BAND_MS, 0.005 * durationMs))`), never a bare percentage.
 export const RIG_TIE_BAND_MS = 60_000;
 
 /** True when every leg of a RigResult is a motor leg (vacuously true for zero legs). */
@@ -279,8 +259,7 @@ export function comfortRetryMayHelp(cause: SolveFailureCause): boolean {
  * #53 gate predicate: might a SHALLOWER safety gate help? True for a
  * mask-level block, and since #1258 for 'horizon-exceeded': a requested-gate
  * search still running at the horizon can finish in time on the wider relaxed
- * field (measured: motor-off Flensburg->Troense routes only at 2.9 m). A calm
- * forecast is unchanged by the gate, so it keeps its error.
+ * field. A calm forecast is unchanged by the gate, so it keeps its error.
  *
  * #282: takes the internal cause, NOT the user-facing reason. Exported for
  * direct unit testing of the truth table.
@@ -433,8 +412,7 @@ function markForced(leg: Leg): Leg {
  * "unbudgeted" degrades exactly to today's shipped behaviour, never to
  * something unbounded that today bounds. It also keeps `planRoute()` a pure
  * function for every vitest call site, whose wall-clock cost swings with the
- * runner (CLAUDE.md: ~2.1x CI, and a separate 8x coverage multiplier for
- * solver-heavy work) and must not decide a test outcome.
+ * runner (see `app/src/test/timeouts.ts`) and must not decide a test outcome.
  */
 export function planRoute(
   req: PlanRequest,

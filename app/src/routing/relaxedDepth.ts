@@ -106,9 +106,8 @@ export interface RelaxedGate {
  * after this call, is also why null is not a third return value here: a spent
  * budget is reported as the typed 'budget-exhausted' label rather than
  * mistaken for "nothing connects". A BFS pass runs to completion — the check
- * is between passes, never inside one. Residual overshoot, measured on the
- * real mask by the PR #1322 review (Flensburg -> Troense, full four-probe
- * ladder): 153 ms total, longest inter-probe gap 47 ms.
+ * is between passes, never inside one. Residual overshoot was measured on
+ * the real mask by the PR #1322 review.
  */
 export function findRelaxedGate(
   mask: NavMask,

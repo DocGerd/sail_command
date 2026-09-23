@@ -101,56 +101,29 @@ export class RoutingError extends Error {
 // exactly one definition and no drift-guard test is needed to keep two in
 // step.
 //
-// The VALUE was originally the pre-#432 client deadline (120 s): #432 did
-// not argue that number was wrong, only that exceeding it was misreported
-// and unbudgeted.
-//
 // For scale, with the machine named next to every figure — the headroom is a
 // property of the DEVICE, not of the route, and PR #453 review caught the
 // first draft stating a one-machine ratio as a general property. This app's
 // most expensive real input is Flensburg -> Marstal at DEFAULT_SETTINGS
 // against the real committed mask and polars.
 //
-// #432's own figures (2026-08-07) were SYNTHETIC uniformWindGrid wind —
-// author's machine 41-43 s, reviewer's machine 50.5 s (sibling inputs, not
-// a strict replication) — and understated the risk; see #1147 below for
-// why.
-//
-// #1147 measurement, 2026-09-10, LIVE Open-Meteo wind (not synthetic), real
-// committed mask, idle 2023 desktop i9-13900F: 91.9 s against the then-120 s
-// budget — 23.4% headroom, i.e. any device >=1.31x slower on this workload
-// blows the old budget outright. Full record:
-// docs/spikes/1147-budget-headroom-reference-device.md.
-//
-// 240 s: maintainer ruling 2026-09-10, recorded on #1147 (the spike itself
-// declined to pick a value, so nothing before that comment authorised one).
-// It covers a device up to ~2.6x slower than the i9 baseline above. Whether
-// that clears a Galaxy Tab S7 is NOT established: the spike could not verify
-// that device's factor and says only "well past 2x". Do not restate any of
+// Full record of the #1147 headroom measurement:
+// docs/spikes/1147-budget-headroom-reference-device.md. Do not restate any of
 // this as a bare multiplier without naming a machine and whether the wind was
 // live or synthetic.
 //
 // 360 s: maintainer ruling 2026-09-21 on #1331 (option B). Both rigs solve
-// sequentially under this one deadline. Flensburg -> Burgstaaken, two bare
-// solve() calls summed (tier 1, SYNTHETIC uniform 12 kn / 225 deg, idle box,
-// machine not recorded), took 271.9 s at the #1257 frontier cap: 113% of the
-// old 240 s, 76% of 360 s (#1331 comment, 2026-09-18). Per-rig budgets are
-// #1350.
+// sequentially under this one deadline. Per-rig budgets are #1350.
 export const PLAN_BUDGET_MS = 360_000;
 
 // How much longer the CLIENT waits than the budget it handed the worker. The
 // solver must always win this race: it is the side that produces the honest,
 // specific "budget exceeded" answer, while this deadline can only ever say
 // "no reply". Sized to cover, in order: the worker's abort granularity of one
-// isochrone ring — worst ring MEASURED at 1045 ms (author, 132 rings) and
-// 1270 ms (reviewer, 144 rings) on the two machines above, so these are the
-// fastest observations anyone has taken and a LOWER BOUND on what a slow
-// device does; the 15 s margin is chosen to stay comfortable several
-// multiples above them rather than to sit just past 1270 ms — plus
-// postMessage + structured-clone of the request on the way in (the client's
-// clock starts BEFORE the worker's, so the worker's deadline lands strictly
-// later than this one otherwise would), plus unwinding four tiers and
-// posting the result back.
+// isochrone ring, plus postMessage + structured-clone of the request on the
+// way in (the client's clock starts BEFORE the worker's, so the worker's
+// deadline lands strictly later than this one otherwise would), plus
+// unwinding four tiers and posting the result back.
 //
 // #1280: also the RE-ARM window once a plan has started — see armLiveness()
 // below. Exported so a test can advance a fake clock by exactly this amount
@@ -160,13 +133,11 @@ export const PLAN_TIMEOUT_GRACE_MS = 15_000;
 // #1280: root cause was a single ring (or a late worker clock start) eating
 // the WHOLE grace above under CPU contention, so the client timed out
 // (`kind: 'timeout'`) while the worker was still genuinely working and would
-// have answered — observed at exactly budget+grace (255 s) with Genoa done
-// at 109 s and Fock still solving. armLiveness() below re-arms the liveness
-// timer to PLAN_TIMEOUT_GRACE_MS on every progress/probe message the worker
-// posts (isochrone.ts posts one `progress` per RING — the same granularity
-// its own deadline check runs at — so a normally-progressing solve re-arms
-// far more often than once per this window), so the client only times out on
-// a worker that has gone SILENT for a full grace window, not merely slow.
+// have answered. armLiveness() below re-arms the liveness timer to
+// PLAN_TIMEOUT_GRACE_MS on every progress/probe message the worker posts
+// (isochrone.ts posts one `progress` per RING — the same granularity its own
+// deadline check runs at), so the client only times out on a worker that has
+// gone SILENT for a full grace window, not merely slow.
 //
 // This alone does not close the single-super-long-ring case (no progress
 // posts until that ring finishes) — pairing a mid-ring deadline check into
@@ -176,13 +147,10 @@ export const PLAN_TIMEOUT_GRACE_MS = 15_000;
 // forever (whether a bug, or simply the case the #1280 comment scopes OUT —
 // one ring so long it straddles the worker's own PLAN_BUDGET_MS deadline
 // check, which only runs at ring ENTRY) must still not hold the client open
-// indefinitely. Four grace windows (60 s) gives that one straddling ring
-// several multiples of the existing per-ring margin to finish and post its
-// own honest budget-exhausted answer, rather than a margin sized to any
-// measured ring duration under contention (no such figure is established —
-// see the mid-ring check tracked separately for that case). The total extra
-// wait stays a small, fixed addition (375 s -> 435 s at the default
-// timeout) rather than unbounded.
+// indefinitely. Four grace windows gives that one straddling ring several
+// multiples of the existing per-ring margin to finish and post its own
+// honest budget-exhausted answer, so the total extra wait stays a small,
+// fixed addition rather than unbounded.
 export const PLAN_TIMEOUT_HARD_CAP_EXTRA_MS = 4 * PLAN_TIMEOUT_GRACE_MS;
 
 // Now purely a LIVENESS backstop, not the routing wall it used to be: with
@@ -190,11 +158,10 @@ export const PLAN_TIMEOUT_HARD_CAP_EXTRA_MS = 4 * PLAN_TIMEOUT_GRACE_MS;
 // honestly, so reaching this deadline means the worker never replied at all
 // (postMessage swallowed, thread wedged, or killed without firing onerror —
 // a Chromium OOM frequently does exactly that, #432). Raised from the
-// pre-#432 bare 120 s so it can no longer pre-empt the budget; the cost is
-// that a genuinely dead worker is reported PLAN_TIMEOUT_GRACE_MS later,
-// which is a small addition to an already ~6-minute wait and does not affect
-// worker.onerror/onmessageerror, which fail fast through failAll() and never
-// touch this timer.
+// pre-#432 client deadline so it can no longer pre-empt the budget; the cost
+// is a genuinely dead worker being reported PLAN_TIMEOUT_GRACE_MS later,
+// which does not affect worker.onerror/onmessageerror — those fail fast
+// through failAll() and never touch this timer.
 //
 // #1280: this is now the INITIAL window only (start of plan() to the first
 // progress/probe message, or to the result if none ever arrives) — see
