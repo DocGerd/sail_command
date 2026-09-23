@@ -1742,6 +1742,24 @@ describe('#1181: keyboard-reachable insert-before-first-via (App wiring)', () =>
     expect(items[1]).toHaveTextContent('54.850°N 10.100°E'); // untouched
   });
 
+  it('the control is disabled while a via exists but no origin is picked — vias can be added via coordinate entry before an origin', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
+    const latInput = within(viaSection).getByLabelText(de['planner.via.coord.latLabel']);
+    const lonInput = within(viaSection).getByLabelText(de['planner.via.coord.lonLabel']);
+    fireEvent.change(latInput, { target: { value: '54.85' } });
+    fireEvent.blur(latInput);
+    fireEvent.change(lonInput, { target: { value: '10.1' } });
+    fireEvent.blur(lonInput);
+    fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.coord.add'] }));
+
+    expect(
+      within(viaSection).getByRole('button', { name: de['planner.via.insertBeforeFirst'] }),
+    ).toBeDisabled();
+  });
+
   it('the control is absent while the via list is empty — with an empty list "Add waypoint" already covers the sole gap', async () => {
     renderApp();
     await screen.findByRole('heading', { name: 'SailCommand' });

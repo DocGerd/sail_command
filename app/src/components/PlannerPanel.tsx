@@ -1100,7 +1100,7 @@ export default function PlannerPanel({
                 "insert after" action on. */}
               <Button
                 variant="ghost"
-                disabled={clearingVia}
+                disabled={clearingVia || !origin}
                 onClick={onInsertViaBeforeFirst}
                 aria-label={t('planner.via.insertBeforeFirst')}
               >
