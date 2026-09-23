@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Keyboard-driven waypoint insertion now also covers the origin-to-first-via gap #1179 left out (#1181).
+- The route planner's via list can now insert a waypoint between the origin and the first stop, filling a gap the per-row insert buttons didn't cover (#1181).
 
 ## [0.40.0] - 2026-09-22
 
