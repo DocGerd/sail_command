@@ -112,7 +112,7 @@
  * from a bare checkout with no `npm install`.
  */
 
-import { existsSync, readFileSync, statSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -865,24 +865,58 @@ function loadLedgerFile(absPath) {
 
 /**
  * Finds the ledger entry whose `sha` matches `key` exactly or as a prefix
- * (case-insensitive). Returns `null` (never throws) on no match, an empty
- * ledger, a malformed entry (a malformed INDIVIDUAL entry is skipped rather
- * than aborting the whole lookup, so one bad row can't mask another), a
- * prefix shorter than 7 characters, or — Major, PR #1352 review — an
- * AMBIGUOUS prefix matching more than one entry: unlike `git rev-parse`,
+ * (case-insensitive). Never throws. Returns one of:
+ *   { status: 'short' }               — key shorter than 7 characters, refused outright
+ *   { status: 'none' }                — zero entries match
+ *   { status: 'ambiguous', count }     — more than one entry matches
+ *   { status: 'ok', entry }            — exactly one match
+ * A malformed INDIVIDUAL ledger entry is skipped rather than aborting the
+ * whole lookup, so one bad row can't mask another. #1361 (issue item 3):
+ * `ambiguous` and `none` used to collapse to the same `null` return and the
+ * same "unknown recorded run" RUN_BASE reason — unlike `git rev-parse`,
  * which errors on an ambiguous short hash, a first-match lookup here would
  * silently pick whichever entry sorts first in the ledger array, certifying
- * a DIFFERENT run's artifacts than the one the caller meant. The caller
- * reports both "no match" and "ambiguous match" as the same
- * `unknown recorded run` RUN_BASE verdict; either way it fails closed.
+ * a DIFFERENT run's artifacts than the one the caller meant, so the two
+ * cases are now reported with DIFFERENT reason strings. Both still resolve
+ * to RUN_BASE either way — this changes labelling only, never the verdict.
  */
 function findLedgerEntry(ledger, key) {
-  if (typeof key !== 'string' || key.length < 7) return null;
+  if (typeof key !== 'string' || key.length < 7) return { status: 'short' };
   const lower = key.toLowerCase();
   const matches = ledger.runs.filter(
     (e) => e && typeof e === 'object' && typeof e.sha === 'string' && e.sha.toLowerCase().startsWith(lower),
   );
-  return matches.length === 1 ? matches[0] : null; // caller reports unknown/ambiguous -> RUN_BASE
+  if (matches.length === 0) return { status: 'none' };
+  if (matches.length > 1) return { status: 'ambiguous', count: matches.length };
+  return { status: 'ok', entry: matches[0] };
+}
+
+/**
+ * Registered once, lazily, the first time a temp worktree is created.
+ * #1361 (issue item 1): with NO listener, Node's default SIGINT/SIGTERM
+ * disposition terminates the process immediately and skips every pending
+ * `finally` — so a Ctrl-C mid-`withRefCheckout` orphaned the just-created
+ * temp worktree (~86 MB, registered with git, sometimes left locked;
+ * reproduced 5 of 5 times). Registering ANY listener suppresses that
+ * default termination, which is this handler's entire job — the body does
+ * nothing further, on purpose: `withRefCheckout`'s `finally` block (or its
+ * new add-failure `catch`, below) is what actually removes the worktree,
+ * and it only gets a chance to run once the interrupted synchronous call
+ * (`execFileSync`, or the fs reads inside `fn`) throws or returns and
+ * control unwinds normally. Setting `process.exitCode` here (never calling
+ * `process.exit()`, which would skip that unwind) makes the process exit
+ * with the conventional 128+signum code once it does.
+ */
+let interruptHandlersInstalled = false;
+function installInterruptHandlers() {
+  if (interruptHandlersInstalled) return;
+  interruptHandlersInstalled = true;
+  process.on('SIGINT', () => {
+    process.exitCode = 130;
+  });
+  process.on('SIGTERM', () => {
+    process.exitCode = 143;
+  });
 }
 
 /**
@@ -894,8 +928,18 @@ function findLedgerEntry(ledger, key) {
  * happens to have checked out (Blocker, PR #1352 review).
  */
 function withRefCheckout(root, ref, fn) {
+  installInterruptHandlers();
   const tmp = mkdtempSync(path.join(tmpdir(), 'sweep-closure-ref-'));
-  execFileSync('git', ['worktree', 'add', '--detach', '--quiet', tmp, ref], { cwd: root });
+  try {
+    execFileSync('git', ['worktree', 'add', '--detach', '--quiet', tmp, ref], { cwd: root });
+  } catch (err) {
+    // #1361 (issue item 2): `git worktree add` never registered `tmp` with
+    // git on a failure (interrupted, bad ref, …), so there is nothing for
+    // `git worktree remove` to clean up — only the empty directory
+    // `mkdtempSync` already created above.
+    rmSync(tmp, { recursive: true, force: true });
+    throw err;
+  }
   try {
     return fn(tmp);
   } finally {
@@ -930,10 +974,20 @@ function computeReuseVerdict(root, recordedArg, baseArg) {
       return { verdict: 'RUN_BASE', reason: `malformed ledger (${LEDGER_REL_PATH}): ${err.message}` };
     }
 
-    const entry = findLedgerEntry(ledger, recordedArg);
-    if (!entry) {
+    const found = findLedgerEntry(ledger, recordedArg);
+    if (found.status === 'short') {
+      return { verdict: 'RUN_BASE', reason: `recorded ref too short to disambiguate: ${recordedArg} (need >= 7 characters)` };
+    }
+    if (found.status === 'ambiguous') {
+      return {
+        verdict: 'RUN_BASE',
+        reason: `ambiguous recorded run: ${recordedArg} matches ${found.count} entries in ${LEDGER_REL_PATH}`,
+      };
+    }
+    if (found.status === 'none') {
       return { verdict: 'RUN_BASE', reason: `unknown recorded run: ${recordedArg} (no matching entry in ${LEDGER_REL_PATH})` };
     }
+    const entry = found.entry;
     if (typeof entry.sha !== 'string' || entry.sha.length === 0) {
       return { verdict: 'RUN_BASE', reason: `ledger entry for ${recordedArg} has no "sha" field` };
     }
@@ -973,9 +1027,15 @@ function computeReuseVerdict(root, recordedArg, baseArg) {
     // caller running `reuse` from a THIRD tree (the normal case: the branch
     // under test, distinct from both `recorded` and `base`) got a verdict
     // that depended on which branch was checked out when `reuse` ran, not
-    // on `recorded`/`base` themselves. Union the two trees' closures so a
-    // member that only exists in one of them (a file added, removed, or
-    // whose importing file changed between the two commits) is still seen.
+    // on `recorded`/`base` themselves. Union the two trees' closures so an
+    // EXTRA_EDGES/ROOT target missing at one commit but present at the
+    // other (e.g. `app/src/test/setup.ts` added or removed between
+    // `recorded` and `base`) is still seen as present — `unionClosures`
+    // prefers a non-missing entry over a missing one regardless of which
+    // side supplies it (#1361: `closureAtRecorded` ALONE already passes
+    // every selftest row below except the M9-pin row below, which needs
+    // `closureAtBase`; the mirror-M9 row needs `closureAtRecorded`
+    // specifically, so BOTH halves are load-bearing, not just one).
     const closureAtRecorded = withRefCheckout(root, recordedSha, (dir) => computeClosure(dir));
     const closureAtBase = withRefCheckout(root, baseSha, (dir) => computeClosure(dir));
     const visited = unionClosures(closureAtRecorded, closureAtBase);
@@ -1359,7 +1419,8 @@ function runSelftest(root) {
     // first — unlike `git rev-parse`'s own ambiguity error, a first-match
     // lookup here would certify a DIFFERENT run's artifacts than intended.
     // Synthetic (non-git) SHA strings are fine: the ambiguity check returns
-    // before any `git rev-parse` call is made.
+    // before any `git rev-parse` call is made. #1361 (issue item 3): the
+    // reason string now says "ambiguous", distinct from a genuine no-match.
     writeLedger({
       runs: [
         { sha: 'aaaaaaaa1111111111111111111111111111aaaa', arms: { base1: 'deadbeef' } },
@@ -1369,8 +1430,10 @@ function runSelftest(root) {
     const rAmbiguous = computeReuseVerdict(reuseRepo, 'aaaaaaaa', untouchedBaseSha);
     results.push(
       check(
-        'reuse: an ambiguous SHA prefix (matches 2 ledger entries) -> RUN_BASE, never the first match',
-        rAmbiguous.verdict === 'RUN_BASE' && /unknown recorded run/.test(rAmbiguous.reason),
+        'reuse: an ambiguous SHA prefix (matches 2 ledger entries) -> RUN_BASE, reason says "ambiguous" not "unknown"',
+        rAmbiguous.verdict === 'RUN_BASE' &&
+          /ambiguous recorded run/.test(rAmbiguous.reason) &&
+          !/unknown recorded run/.test(rAmbiguous.reason),
         rAmbiguous,
       ),
     );
@@ -1378,12 +1441,14 @@ function runSelftest(root) {
     // Major (PR #1352 review): a prefix shorter than 7 characters is
     // refused outright, even where it happens to match exactly one entry
     // today — a shorter prefix risks colliding with a future ledger entry.
+    // #1361: its own reason string ("too short"), distinct from both
+    // "unknown" and "ambiguous".
     writeLedger({ runs: [{ sha: recordedSha, arms: { base1: 'deadbeef' } }] });
     const rShortPrefix = computeReuseVerdict(reuseRepo, recordedSha.slice(0, 6), untouchedBaseSha);
     results.push(
       check(
-        'reuse: a SHA prefix shorter than 7 characters is refused -> RUN_BASE',
-        rShortPrefix.verdict === 'RUN_BASE' && /unknown recorded run/.test(rShortPrefix.reason),
+        'reuse: a SHA prefix shorter than 7 characters is refused -> RUN_BASE, reason says "too short"',
+        rShortPrefix.verdict === 'RUN_BASE' && /too short to disambiguate/.test(rShortPrefix.reason),
         rShortPrefix,
       ),
     );
@@ -1498,6 +1563,89 @@ function runSelftest(root) {
     );
   } finally {
     rmSync(reuseMissingRepo, { recursive: true, force: true });
+  }
+
+  // #1361: the MIRROR of the M9 pin above. `closureAtRecorded` ALONE passes
+  // every prior reuse row including M9 (confirmed empirically), so M9 pins
+  // only the `closureAtBase` half of the union. This row pins the
+  // `closureAtRecorded` half: `recorded` lacks the EXTRA_EDGES target
+  // (setup.ts), `base` (a child of `recorded`) ADDS it. `changedFiles`
+  // lists the addition; `closureAtBase` sees it present, but
+  // `closureAtRecorded` alone marks it `{missing: true}` and a
+  // recorded-only walk would miss it entirely -> a false REUSE.
+  const reuseAddedRepo = mkdtempSync(path.join(tmpdir(), 'sweep-closure-selftest-reuse-added-'));
+  try {
+    const git = (args) => execFileSync('git', args, { cwd: reuseAddedRepo, encoding: 'utf8' });
+    git(['init', '-q']);
+    git(['config', 'user.email', 'selftest@example.invalid']);
+    git(['config', 'user.name', 'sweep-closure selftest']);
+    mkdirSync(path.join(reuseAddedRepo, 'app', 'sweep'), { recursive: true });
+    writeFileSync(path.join(reuseAddedRepo, 'app', 'sweep', 'sweepArms.ts'), 'export const ARMS = 1;\n');
+    writeFileSync(path.join(reuseAddedRepo, 'app', 'sweep', 'vitest.config.ts'), 'export default {};\n');
+    git(['add', '-A']);
+    git(['commit', '-q', '-m', 'recorded, setup.ts absent']);
+    const recordedSha = git(['rev-parse', 'HEAD']).trim();
+
+    mkdirSync(path.join(reuseAddedRepo, 'app', 'src', 'test'), { recursive: true });
+    writeFileSync(path.join(reuseAddedRepo, 'app', 'src', 'test', 'setup.ts'), 'export const SETUP = 1;\n');
+    git(['add', '-A']);
+    git(['commit', '-q', '-m', 'base adds setup.ts']);
+    const baseSha = git(['rev-parse', 'HEAD']).trim();
+
+    const ledgerDir4 = path.join(reuseAddedRepo, '.claude', 'skills', 'sweep-closure');
+    mkdirSync(ledgerDir4, { recursive: true });
+    writeFileSync(
+      path.join(ledgerDir4, 'recorded-runs.json'),
+      JSON.stringify({ runs: [{ sha: recordedSha, arms: { base1: 'deadbeef' } }] }),
+    );
+
+    const rAddedPrecedence = computeReuseVerdict(reuseAddedRepo, recordedSha, baseSha);
+    results.push(
+      check(
+        'reuse #1361 pin: base ADDS an EXTRA_EDGES target (setup.ts) absent at recorded -> RUN_BASE, never a false REUSE via a recorded-only walk',
+        rAddedPrecedence.verdict === 'RUN_BASE',
+        rAddedPrecedence,
+      ),
+    );
+  } finally {
+    rmSync(reuseAddedRepo, { recursive: true, force: true });
+  }
+
+  // #1361 (issue item 2): a FAILED `git worktree add` must not leave an
+  // empty temp dir behind. `withRefCheckout` calls `mkdtempSync` before
+  // `git worktree add`, so a bad ref (git refuses before ever registering
+  // the worktree) exercises the add-failure `catch` specifically, not the
+  // steady-state `finally`. Diffing `readdirSync(tmpdir())` before/after
+  // (a SET difference, not a count — other processes may share tmpdir())
+  // catches a leaked `sweep-closure-ref-*` directory either way.
+  const wtFailRepo = mkdtempSync(path.join(tmpdir(), 'sweep-closure-selftest-wtfail-'));
+  try {
+    const git = (args) => execFileSync('git', args, { cwd: wtFailRepo, encoding: 'utf8' });
+    git(['init', '-q']);
+    git(['config', 'user.email', 'selftest@example.invalid']);
+    git(['config', 'user.name', 'sweep-closure selftest']);
+    writeFileSync(path.join(wtFailRepo, 'README.md'), 'v1\n');
+    git(['add', '-A']);
+    git(['commit', '-q', '-m', 'init']);
+
+    const before = new Set(readdirSync(tmpdir()));
+    let threw = false;
+    try {
+      withRefCheckout(wtFailRepo, 'refs/heads/no-such-branch', (dir) => computeClosure(dir));
+    } catch {
+      threw = true;
+    }
+    const after = readdirSync(tmpdir());
+    const leaked = after.filter((name) => !before.has(name) && name.startsWith('sweep-closure-ref-'));
+    results.push(
+      check(
+        'withRefCheckout #1361 pin: a FAILED git worktree add leaves no leaked sweep-closure-ref-* temp dir',
+        threw && leaked.length === 0,
+        { threw, leaked },
+      ),
+    );
+  } finally {
+    rmSync(wtFailRepo, { recursive: true, force: true });
   }
 
   // #1359: `diff`'s own closure walk must be independent of the caller's

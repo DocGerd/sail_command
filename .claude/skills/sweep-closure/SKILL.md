@@ -251,8 +251,12 @@ matches `<key>` against `sha` by exact value or case-insensitive prefix — a
 bare prefix works like `git rev-parse`'s own abbreviated-SHA convenience, but
 the failure mode differs: `git` errors on an ambiguous short hash, while a
 prefix under 7 characters or one matching more than one ledger entry here
-reports `unknown recorded run` and fails closed to `RUN BASE` rather than
-throwing — never the first/nearest entry.
+fails closed to `RUN BASE` rather than throwing — never the first/nearest
+entry. #1361 (issue item 3): a too-short prefix, an ambiguous prefix, and a
+prefix matching nothing each get their OWN reason string ("too short to
+disambiguate", "ambiguous recorded run", "unknown recorded run") — they used
+to collapse to one shared "unknown recorded run" message, which read a
+genuine ambiguity as a plain no-match.
 
 **The ledger is no longer empty.** PR #1363 recorded the first real entry
 (sha `68a89342c5…`, 2026-09-21) from a sharded-vs-unsharded verification run.
@@ -373,7 +377,23 @@ into this repo):
     unpinned by every row above. `base` deletes an EXTRA_EDGES target
     (`setup.ts`) present at `recorded` → `RUN_BASE`, never a false `REUSE`
     from `base`'s missing entry "winning" on argument order over
-    `recorded`'s real one.
+    `recorded`'s real one. M9 alone pins only the `closureAtBase` half of
+    the union — `closureAtRecorded` alone passes every row up to and
+    including M9 (#1361: measured empirically by stubbing the union to each
+    half in turn).
+27a. #1361 mirror of row 27: `base` (a child of `recorded`) ADDS an
+    EXTRA_EDGES target absent at `recorded` → `RUN_BASE`, never a false
+    `REUSE` from a `closureAtRecorded`-only walk. This pins the OTHER half
+    of the union — together with row 27 it shows BOTH halves are
+    load-bearing, not just one (mutation-checked: stubbing the union to
+    `closureAtRecorded` alone reds only this row; stubbing it to
+    `closureAtBase` alone reds only row 27).
+27b. #1361: `withRefCheckout`'s add-failure path leaves no leaked
+    `sweep-closure-ref-*` temp directory when `git worktree add` itself
+    fails (a bad ref) — `mkdtempSync` runs before the `add` call, so a
+    failure there must clean up the directory nothing ever registered with
+    git. Mutation-checked: reverting the fix (an unguarded `add` call with
+    no surrounding try/catch) reds only this row.
 28. `diff`'s own checkout-independence (#1359/PR #1384), mirroring row 26
     for `reuse` (a closure member visible only from `base`/`head`, with a
     THIRD, divergent commit checked out) — built over its own disposable
