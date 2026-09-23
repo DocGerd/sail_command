@@ -284,11 +284,10 @@ test('#1126: zoom-stepped icon-ignore-placement restores 6 named harbor labels a
 // was MEASURED in, not assumed — the 7 as a forward regression guard that
 // they stay recovered, and the 1 as an honest record that this residual is
 // NARROWED, not closed.
-// #1155 attributed the `svendborg/places_subplace` residual: hiding
-// `sc-harbor-labels` does not restore it, hiding basemap `places_locality`
-// does — it is basemap-internal label collision (four co-located
-// `places_locality` labels), unreachable by #1126's `icon-ignore-placement`
-// lever, not a SailCommand defect.
+// #1155: hiding `sc-harbor-labels` does not restore it; hiding basemap
+// `places_locality` does — so the blocker is on that basemap layer, not a
+// seamark, and out of #1126's `icon-ignore-placement` reach. Mechanism (why
+// four `places_locality` features collide) not established.
 const BASEMAP_PAIRS_RECOVERED: Array<{ harborId: string; layer: string }> = [
   { harborId: 'aabenraa', layer: 'places_locality' },
   { harborId: 'aabenraa', layer: 'roads_labels_major' },
