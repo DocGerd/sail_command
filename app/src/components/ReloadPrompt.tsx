@@ -10,8 +10,7 @@ import { useT } from '../i18n';
 // persistent banner (offline, stale-forecast, ...). At narrow viewports the
 // toast ALONE can push that budget under `LEGEND_COLLAPSED_HEIGHT_PX`,
 // hiding the whole `<details class="depth-legend">` — #597 caveat included —
-// with zero user action (#871's own measured repro: `budgetPx` 62.556px with
-// the toast dismissed, `hidden: true` with it up).
+// with zero user action (#871's own measured repro).
 //
 // #909 (four failed placements from PR #908, retained on branch
 // `fix/toast-hides-depth-caveat`) proves this cannot be fixed by MOVING the
@@ -48,15 +47,14 @@ import { useT } from '../i18n';
 // `.route-layer-controls` is excluded from the VERTICAL target set and
 // instead cleared HORIZONTALLY (`--sc-toast-right`, narrowing the toast's
 // own right edge to sit left of it) whenever it exists — MEASURED
-// (844x390/740x360, plan loaded — `#208 "Major 3"`'s own repro sizes) that
-// a 44px accessible-touch-target dismiss button (#708) makes this toast's
-// OWN minimum height ~60px regardless of message length (the button, not
-// text wrapping, sets the flex row's height — a 220px-wide single-line
-// message measures the SAME 60px total as a wrapped two-line one), and at
-// those two viewports the vertical gap between `.route-layer-controls`'
-// bottom and `.app-bottom-sheet`'s top is narrower than that — 59.5px and
-// 46px respectively — so NO vertical position clears both, matching #909's
-// own structural finding one level deeper. Since `.route-layer-controls`
+// (`#208 "Major 3"`'s own repro sizes, plan loaded) that
+// the accessible-touch-target dismiss button (#708) makes this toast's OWN
+// minimum height fixed regardless of message length (the button, not text
+// wrapping, sets the flex row's height), and at those viewports the vertical
+// gap between `.route-layer-controls`' bottom and `.app-bottom-sheet`'s top
+// is narrower than the toast's own minimum height — so NO vertical position
+// clears both, matching #909's own structural finding one level deeper.
+// Since `.route-layer-controls`
 // sits at the TOP-RIGHT and `.map-stack-tl` at the TOP-LEFT (CLAUDE.md's
 // own #324 note: "top-LEFT of the map, so it can never collide with
 // RouteLayer's plan-gated cluster at the top-right"), separating this
@@ -124,11 +122,11 @@ function useToastAnchor(active: boolean): void {
     if (typeof ResizeObserver !== 'function') return;
 
     const GAP_PX = 8; // 0.5rem, matching .map-stack-tl's own gap tokens.
-    // MEASURED (debug pass on 280x568, before this constraint existed): a
-    // below-clusters-only anchor put a two-line DE toast at y=229.59-289.59
-    // while `.app-bottom-sheet`'s Tier-3 `.app-tabs` strip (SAME tier as
+    // MEASURED (debug pass, before this constraint existed): a
+    // below-clusters-only anchor put a two-line DE toast overlapping
+    // `.app-bottom-sheet`'s Tier-3 `.app-tabs` strip (SAME tier as
     // this toast's own `.banner-area` ancestor, app.css's tier-order
-    // comment) starts at y≈255.6 — the tab strip WON the same-tier paint/
+    // comment) — the tab strip WON the same-tier paint/
     // hit-test tie by DOM order (App.tsx renders it after `.banner-area`),
     // making the dismiss button itself un-clickable. So a below-clusters
     // anchor alone reproduces the shape of #909's finding one level lower:
@@ -144,13 +142,11 @@ function useToastAnchor(active: boolean): void {
     // map-surface cluster (Tier 2), rather than the other way round. In the
     // squeeze case this toast MAY still partially overlap the lower part of
     // `.map-stack-tl`'s content — a residual, not eliminated. MEASURED
-    // (#909, real Chromium, 2026-09-04) at `deepPortrait320` (320x568) and
-    // `wrapForcing280` (280x568), no plan: the depth checkbox stays fully
-    // clear (0px² overlap), but the compass button's bottom ~34 of its
-    // 44px height is covered (~1495px² overlap) and a real
-    // `locator.click({trial:true})` at its own centre point TIMES OUT — a
-    // genuine interactive block, not just visual overlap. Pinned by
-    // `layout.spec.ts`'s own `#909` guard (`hitState`).
+    // (#909, real Chromium) at the deepest narrow viewports, no plan: the
+    // depth checkbox stays fully clear, but the compass button's bottom edge
+    // is covered and a real `locator.click({trial:true})` at its own centre
+    // point TIMES OUT — a genuine interactive block, not just visual overlap.
+    // Pinned by `layout.spec.ts`'s own `#909` guard (`hitState`).
     const VERTICAL_TARGETS = ['.map-stack-tl', '.depth-legend > summary'];
 
     const recompute = () => {

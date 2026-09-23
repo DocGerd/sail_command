@@ -163,11 +163,7 @@ export class ReplanError extends Error {
  * the banner (App.tsx) and a future diagnostics record (#435, not built
  * here) can tell them apart. The remedy per key genuinely differs — see
  * App.tsx's RETRY_MAY_HELP_KEYS and CLAUDE.md's #433 bullet for the full
- * per-path reasoning: a retry hands the user a FRESH worker (every call site
- * disposes and clears the client before erroring out), which helps a crashed
- * worker or an undeserializable message, but cannot change the outcome of an
- * input-deterministic failure (the same solve hits the same limit or throw
- * again).
+ * per-path reasoning.
  *
  * #433 fix-wave (review Minor 1): 'worker-fatal' bundles TWO different
  * causes protocol.ts's catch(err) cannot tell apart — a deterministic

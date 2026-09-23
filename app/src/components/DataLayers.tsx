@@ -93,55 +93,23 @@ const DEPTH_LAYER = 'sc-depth';
 const DEPTH_HATCH_SOURCE = 'sc-depth-hatch';
 const DEPTH_HATCH_LAYER = 'sc-depth-hatch';
 // Debounce for rebuilding the hatch raster after safetyDepthM OR the #599
-// zoom band changes — the
-// mask is ~5.28M cells, so this must not run on every keystroke/tick of
-// whatever control edits the setting. 300ms: today's only editor
-// (SettingsPanel/PlannerPanel's NumberInput, via SAFETY_DEPTH_FIELD) commits
-// exclusively on blur (NumberInput.tsx: onCommit fires in handleBlur only),
-// so a burst of rebuilds is not reachable through the number field at all —
-// this debounce is cheap insurance against (a) a future continuous-drag
-// control, and (b) the one burst path that IS live today: BoatPicker's boat
-// radios select on arrow-key FOCUS, so arrowing through the list clamps
-// safetyDepthM up once per boat traversed, at key-repeat rate (see
-// BoatPicker.tsx's handleSelect comment). 300ms coalesces that while
-// staying imperceptible for a single deliberate blur-commit. MEASURED
-// (#492 review m6, in-browser Chromium against the real 2200x2400 mask,
-// createImageData+putImageData included — same method as the e2e suite):
-// three samples gave 28.3/28.7/28.5 ms for the hatch build vs 143.8/142.2/
-// 144.5 ms for buildDepthCanvas's own absolute-ramp build — same order of
-// magnitude, hatch ~5x cheaper (its LUT is a single boolean per byte, not
-// an RGBA interpolation). Either way the debounce, not the compute, is the
-// actual lag budget: today's only reachable path (a blur commit) always
-// pays this 300 ms before the safety cue updates, not the ~30 ms build
-// cost itself.
+// zoom band changes — the mask is ~5.28M cells, so this must not run on
+// every keystroke/tick of whatever control edits the setting. Today's only
+// editor (NumberInput, via SAFETY_DEPTH_FIELD) commits exclusively on blur,
+// so a burst of rebuilds is not reachable through it at all — this debounce
+// is cheap insurance against (a) a future continuous-drag control, and (b)
+// the one burst path that IS live today: BoatPicker's boat radios select on
+// arrow-key FOCUS, so arrowing through the list clamps safetyDepthM at
+// key-repeat rate (see BoatPicker.tsx's handleSelect comment). The debounce
+// dominates the lag budget, not the build cost itself.
 //
-// #599 RE-MEASURED, same method (in-browser Chromium, real 2200x2400 mask,
-// createImageData+putImageData included), 5 samples: 40.7 / 27.1 / 28.7 /
-// 35.3 / 34.4 ms — median 34.4, range 27-41. The 28.x figures above are
-// still reproducible but sit at the OPTIMISTIC end of today's spread, so
-// size anything against ~35-40 ms, not ~28.
-//
-// #599 also makes ZOOM a second trigger, and that is the one that could
-// turn this into a per-interaction cost. It is deliberately NOT a second
-// debounce; the band is folded into the SAME timer below, for two reasons.
-// (1) Both inputs feed the identical rebuild, so one timer means a
-// simultaneous change (zoom while a boat radio is clamping safetyDepthM)
-// costs ONE rebuild, where two independent timers would cost two.
-// (2) The trigger is the BAND, not the zoom, and hatchBandForZoom quantises
-// to whole zoom levels (#599 fix wave), so only SIX bands are reachable
-// across z9-z22 (FIVE before #648 added the z>=14 full-coverage wash band —
-// depthColor.ts's HATCH_WASH_BAND) and a gesture that stays inside one arms
-// no timer at all.
-// MEASURED, not predicted — an earlier revision of this comment asserted
-// "five distinct values / no timer at all" while selection was still
-// CONTINUOUS, where 15 bands are reachable and it was simply false: eight
-// wheel notches from z9 rebuilt 7-8 times. After quantisation the same eight
-// notches rebuild 1-4 times depending on notch size (2 at a 0.25 notch, 1 at
-// 0.125, 4 at a coarse 0.5). Band changes over a full z9->z22 sweep drop
-// from 14 to 4, all at integer crossings — 5 since #648, whose extra
-// crossing is z13->z14 and is likewise an integer one. (The notch
-// measurement above was taken from z9 and is untouched by #648, which
-// changes nothing below z14.)
+// #599 also makes ZOOM a second trigger, folded into the SAME timer below
+// rather than a second one, for two reasons. (1) Both inputs feed the
+// identical rebuild, so one timer means a simultaneous change (zoom while a
+// boat radio is clamping safetyDepthM) costs ONE rebuild, where two
+// independent timers would cost two. (2) The trigger is the BAND, not the
+// zoom, and hatchBandForZoom quantises to whole zoom levels (#599 fix
+// wave), so a gesture that stays inside one band arms no timer at all.
 // `zoomend` (not `zoom`) is the source, so a continuous pinch/wheel
 // gesture is already coalesced by MapLibre before this debounce sees it.
 const DEPTH_HATCH_DEBOUNCE_MS = 300;
@@ -407,17 +375,12 @@ function setupLayers(
   // which is the safe direction: a general navigability cue should never
   // outrank a specific, already-computed safety warning.
   //
-  // #492 review m9: this DOUBLES the depth overlay's retained memory —
-  // arithmetic, not measured (this environment has no device/GPU profiler
-  // to read GL texture memory back from): the canvas is 3025x3171 (the
-  // 3025x3120 mask, #295, with #1254's Mercator-spaced rows), so ONE RGBA
-  // canvas backing store is 3025*3171*4 = 38.37 MB, and CanvasSource.prepare()
-  // uploads it to an equally-sized GL texture — ~76.7 MB total for this
-  // canvas, on top of buildDepthCanvas's identical ~76.7 MB for the absolute
-  // ramp, so ~153 MB retained for the depth overlay alone once both layers
-  // exist. Not verified against a real mid-range device (none available here); the
-  // e2e suite elsewhere exercises depth+AIS+route together without a crash,
-  // which is weak evidence, not a memory profile. If this turns out to
+  // #492 review m9: this roughly DOUBLES the depth overlay's retained
+  // memory — two full-resolution RGBA canvases each get their own GL
+  // texture (CanvasSource.prepare()), not measured against a real
+  // mid-range device (none available here); the e2e suite elsewhere
+  // exercises depth+AIS+route together without a crash, which is weak
+  // evidence, not a memory profile. If this turns out to
   // matter, M8's screen-space fill-pattern alternative (the option #599 did
   // NOT take — see depthColor.ts's hatchBandForZoom comment) would also remove this
   // second full-resolution raster entirely — not attempted here, since the

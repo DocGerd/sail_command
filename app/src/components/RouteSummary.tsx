@@ -67,11 +67,10 @@ import { ShallowWarning } from './ShallowWarning';
  * `sc-depth-hatch`) does cover them, but nothing route-scoped did: a user
  * reading the results panel never learned that THEIR route crosses such water.
  *
- * WHY IT IS A QUIET <p> AND NOT A BANNER. Maintainer ruling on #455
- * (2026-08-20) plus its amendment: a bar of "> 50 % of non-relaxed plans makes
- * a bare presence notice wallpaper" was fixed BEFORE the trip rate was
- * measured, and the measurement tripped it — 61.5 % on shipped defaults
- * (`breeze`, 16/26), 82.1 % pooled (55/67). The ruling honours the bar by
+ * WHY IT IS A QUIET <p> AND NOT A BANNER. Maintainer ruling on #455 plus its
+ * amendment: a bar of "> 50 % of non-relaxed plans makes a bare presence
+ * notice wallpaper" was fixed BEFORE the trip rate was measured, and the
+ * measurement tripped it. The ruling honours the bar by
  * DEMOTING THE SURFACE rather than hiding data: the line renders on every
  * tripping route with no magnitude gate to defend, and it MUST state the
  * exposure figure ("≈0.3 nm" and "≈2 nm" are different situations), because a
@@ -316,8 +315,6 @@ export interface RouteSummaryProps {
 
 // Okabe-Ito colorblind-safe green/red, echoing the port/starboard nav-light
 // convention. Mirrored in RouteLayer.tsx's line-color paint expression.
-// #715: sourced from the shared lib/mapColors.ts module rather than a
-// second raw-literal declaration.
 const BOARD_COLOR: Record<Board, string> = { starboard: STARBOARD_COLOR, port: PORT_COLOR };
 
 function pointOfSailKey(twaDeg: number): MsgKey {
@@ -961,7 +958,7 @@ export default function RouteSummary({
                     return (
                       <tr key={i}>
                         <td>
-                          {/* #698 decision memo (2026-08-31): the wrapper is
+                          {/* #698 decision memo: the wrapper is
                             what makes the column's width `max(chip1, chip2)`
                             instead of their sum — the flex column lives on
                             THIS div, never on the <td> itself, since

@@ -94,13 +94,10 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
   ) => Promise<void>;
   // Lazily creates/inits the singleton RoutingClient (loading routing assets
   // first, if this is the first call), or returns the already-init'd one.
-  // Shared by run() and by replanWithVias (state/replan.ts's useViaReplan)
-  // so a via re-route through a plan that was *loaded* (PlansList), not
-  // just planned in this session, can still init a client on demand instead
-  // of requiring a prior run() in the same session — replans only ever need
-  // the plan's already-stored windGrid, so this never touches the network
-  // itself and stays available offline (the navigator.onLine gate lives
-  // only in run(), which is the one path that fetches a fresh forecast).
+  // Also exposed to state/replan.ts's useViaReplan — tested infrastructure
+  // with no production caller since #571 (see replan.ts's own comment) —
+  // also called, live, by state/reroute.ts's useLiveReroute (App.tsx wires
+  // the same ensureClient into both).
   // Resolves null on a failed load/init (mirrors run()'s own recovery: the
   // broken client is disposed and the singleton cleared so the next call
   // starts fresh); callers must treat a null result as a real failure, not
@@ -153,10 +150,10 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
   const pinRegions = deps.pinRegions ?? pinRegionsAfterSave;
 
   // Shared by run() below and by the ensureClient this hook returns
-  // (state/replan.ts's useViaReplan calls it directly, so a via-replan on a
-  // *loaded* plan can init a client on demand without a prior run() in this
-  // session). See the return type's own docstring for the offline-replan
-  // rationale and the failure-recovery contract.
+  // (also called by state/replan.ts's useViaReplan, unused in production —
+  // see that file's #571 comment) — also called, live, by state/reroute.ts's
+  // useLiveReroute (App.tsx wires the same ensureClient into both). See the
+  // return type's own docstring for the failure-recovery contract.
   const ensureClient = useCallback(async (): Promise<RoutingClient | null> => {
     try {
       // #432: the singleton may have been disposed by a caller that cannot
