@@ -22,7 +22,7 @@ merge to `main` from here.
   absence of open threads (CLAUDE.md's "Never state a CI check's state from
   your own tracking table"). Restate every `Closes #N` in the INTEGRATION
   PR's body — a member PR's own body does not fire auto-close on merge, only
-  commit trailers do (CLAUDE.md's "Closes #N COMMIT TRAILERS" note). Once
+  commit messages do (CLAUDE.md's "Closes #N COMMIT TRAILERS" note). Once
   merged, the batched member PRs read `merged: true` automatically — do not
   `gh pr close` them, it refuses with "already merged" (CLAUDE.md's #912
   measurement); verify by reading `.merged` back. **Serial single-PR merging
@@ -30,7 +30,34 @@ merge to `main` from here.
   up-to-date policy applies on `develop` too, so each serial merge
   staleifies every other open PR's base.
 
-## The loop (fallback: repeat per PR, serially)
+## The loop — batching path (default)
+
+1. **Confirm the candidate set is file-disjoint** (no two PRs touch the same
+   file). A PR that shares a changed file with another in the set is not
+   eligible here — merge it via the serial fallback below instead.
+2. **Build the integration branch**: branch off `origin/develop`, merge each
+   member PR's branch into it, push, and open ONE integration PR against
+   `develop`.
+3. **Restate every member `Closes #N` in the INTEGRATION PR's body** — a
+   member PR's own body does not fire auto-close on merge, only commit
+   messages do. Grep the commits and the integration PR body separately for
+   closing keywords.
+4. **Run reviews while CI runs** (`sail-reviewer`, plus `claim-auditor` for a
+   prose-heavy batch). Per the 2026-09-17 ruling, route non-safety prose
+   findings to follow-up issues rather than blocking the merge, at most 2 fix
+   waves per PR.
+5. **Arm a check-runs Monitor** on the integration PR head SHA (see below) —
+   don't delegate this to a watcher agent. Nudge yourself on green.
+6. **On green: run the pre-merge verification LAW** (below), and confirm zero
+   unresolved review threads AND a POSTED reviewer verdict — not just the
+   absence of open threads.
+7. **Merge** the integration PR with `gh pr merge <N> --merge --delete-branch`
+   (merge commit).
+8. **Verify each batched member PR reads `merged: true`**
+   (`gh api repos/OWNER/REPO/pulls/<member> --jq .merged`). Do NOT `gh pr
+   close` them — once merged, `gh pr close` refuses with "already merged".
+
+## The loop — serial fallback (repeat per PR)
 
 1. **Pick the next PR** and confirm its review threads are resolved.
 2. **Arm a check-runs Monitor** on the PR head SHA (see below) — don't delegate
