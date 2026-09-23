@@ -46,7 +46,10 @@ visual check of the actual built state before it ships.
    exactly how the two drifted apart once already (#287).
 2. Real-browser walkthrough of the key flows: **plan** → **harbor combobox** →
    the **Ergebnis card**, in BOTH wide and narrow layouts and BOTH light and
-   dark.
+   dark. If the walkthrough surfaces an anomaly, build and serve the
+   PREVIOUS release tag the same way before calling it a regression: a
+   defect already present there is not new; file it
+   separately (#1413).
 3. Present screenshots. **Wait for the user to explicitly approve.**
 
 **Why:** `deploy.yml` pushes whatever lands on `main` straight to
@@ -76,7 +79,10 @@ it cannot drift from the tracker. Do this on a topic branch into `develop`
   operator's DECLARATION of the intended UTC tag day, not a verified fact —
   **step 3's own checklist item re-checks it against the actual clock before
   step 4 merges this PR, while the heading is still amendable; that re-check
-  is what validates the declaration.** For each
+  is what validates the declaration.** If the tag push slips past UTC
+  midnight AFTER step 4 has merged, the heading is already frozen; the
+  maintainer may keep the merge-day date rather than re-dating through a
+  second release PR (exercised at the v0.40.0 cut). For each
   fragment file, read its category from the filename
   (`<number>.<category>.md`, optionally `<number>-<n>.<category>.md` to
   disambiguate a second fragment about the same issue/PR —
@@ -94,6 +100,9 @@ it cannot drift from the tracker. Do this on a topic branch into `develop`
   category, missing number) is invisible in the About dialog's preview too,
   and a fold step that only iterates "everything except README.md" would
   fold its raw filename as if it were valid instead of catching the typo.
+  At the fold, describe behaviour rather than quoting UI copy; any string
+  still quoted must match the shipped `dict.de.ts`/`dict.en.ts`, since a
+  later fix wave in the same PR can reword it (#1398).
   **Delete every folded fragment file** — leave only
   `changelog.d/README.md`. Update the two comparison links at the bottom: add
   `[X.Y.Z]: …/compare/vX.Y.(Z-1)...vX.Y.Z` and re-point `[Unreleased]` at
@@ -195,6 +204,11 @@ it cannot drift from the tracker. Do this on a topic branch into `develop`
   which is false whenever `compareRigs` returns `tie`/`moot` AND for both
   tier-C fleet boats, where `comparisonSuppressed` withholds the ★ entirely.
   Re-check every check whose expected outcome depends on the selected boat.
+- **Docs images** — regenerate the docs wind fixture
+  (`node app/scripts/gen-docs-wind-fixture.mjs`), recapture via
+  `docs/screenshots/capture.mjs` against a preview build of `develop`
+  (`SC_SCREENSHOT_URL`), and confirm the hero route is sail-dominant, not
+  motor-dominant (#1404).
 - **Milestone roll-forward** — per the convention already documented in
   CONTRIBUTING.md ("Labels & milestones"): close the shipped milestone BY
   HAND and move anything still open in it to the next one; the pending
