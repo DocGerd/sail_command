@@ -23,10 +23,9 @@ const DEFAULT_COUNT = 6;
 const DEFAULT_STEP_HOURS = 3;
 
 // #936: standard Beaufort-scale upper bounds in knots (WMO/Met Office knots
-// table — 0: <1, 1: 1-3, 2: 4-6, 3: 7-10, 4: 11-16, 5: 17-21, 6: 22-27,
-// 7: 28-33, 8: 34-40, 9: 41-47, 10: 48-55, 11: 56-63, 12: 64+). This is a
-// real, universal maritime convention, not an invented category scale — the
-// number it summarizes always comes from a real windGrid sample.
+// table). This is a real, universal maritime convention, not an invented
+// category scale — the number it summarizes always comes from a real
+// windGrid sample.
 // index i = force i's inclusive upper bound; a speed above the last entry is
 // force 12 (hurricane).
 const BEAUFORT_UPPER_BOUNDS_KN = [1, 3, 6, 10, 16, 21, 27, 33, 40, 47, 55, 63] as const;
