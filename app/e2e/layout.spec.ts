@@ -2292,6 +2292,10 @@ test('#871: the SW toast does not intercept .route-layer-controls with a plan lo
         // test creates its own page after startPreview() returned, so it
         // is not reached by that function's own `page` parameter.
         await assertCleanServiceWorkerState(page);
+        // #1410: seeded for the same reason as the no-plan guard above —
+        // without it the #1399a caveat banner stacks a second entry in
+        // `.banner-area` alongside the reload toast this test is about.
+        await seedFreshProfileDefaults(page);
         await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
         await mapReady(page);
         await page.locator('.reload-prompt').waitFor({ state: 'visible', timeout: 15_000 });

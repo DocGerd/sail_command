@@ -203,6 +203,10 @@ export const en = {
   // NOT immediately followed by "{index}" here either, for the same
   // getByRole substring-collision reason.
   'planner.via.insertAfter': 'Insert waypoint after point {index}',
+  // #1181: origin -> first-via gap. No {index} — always position 1, and
+  // checked against every existing planner.via.*/waypoints.* name for a
+  // getByRole substring collision (none found).
+  'planner.via.insertBeforeFirst': 'Insert waypoint before point 1',
   // #938: see dict.de.ts's matching comment — draft-only, two-tap confirm,
   // worded to avoid a getByRole substring collision with the sibling
   // add/remove buttons in the same scoped via-list region.

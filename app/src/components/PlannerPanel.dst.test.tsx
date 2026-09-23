@@ -78,6 +78,7 @@ function renderPanel(overrides: Overrides = {}) {
     onRemoveVia: vi.fn(),
     onReorderVia: vi.fn(),
     onInsertViaAfter: vi.fn(),
+    onInsertViaBeforeFirst: vi.fn(),
     // #829: keyboard-reachable coordinate entry — this file doesn't exercise
     // it, just needs the two new required props satisfied like every other
     // mock callback here.

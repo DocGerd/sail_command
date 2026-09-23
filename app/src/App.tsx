@@ -923,6 +923,17 @@ function AppShell() {
     [viaPoints, draftSegmentModes, destination, handleViaPointsChange],
   );
 
+  // #1181: origin -> first-via gap #1179 left uncovered — no row above the
+  // first via to hang an "insert before" action on. Mirrors
+  // handleInsertViaAfter's splice-at-N shape at N = 0, anchored on origin
+  // instead of a via row.
+  const handleInsertViaBeforeFirst = useCallback(() => {
+    const to = viaPoints[0];
+    if (!origin || !to) return;
+    const next = [segmentMidpoint(origin.point, to), ...viaPoints];
+    handleViaPointsChange(next, segmentModesAfterInsert(draftSegmentModes, 0));
+  }, [viaPoints, draftSegmentModes, origin, handleViaPointsChange]);
+
   // #829: keyboard-reachable equivalents of handleMapTap's 'via' branch above
   // — the identical `handleViaPointsChange([...viaPoints, p])` producer, just
   // fed a typed LatLon from PlannerPanel's coordinate-entry row instead of a
@@ -2016,6 +2027,7 @@ function AppShell() {
                   onRemoveVia={handleRemoveVia}
                   onReorderVia={handleReorderVia}
                   onInsertViaAfter={handleInsertViaAfter}
+                  onInsertViaBeforeFirst={handleInsertViaBeforeFirst}
                   onAddVia={handleAddViaByCoord}
                   onUpdateVia={handleUpdateViaByCoord}
                   onSelectSavedWaypoint={handleSelectSavedWaypoint}
