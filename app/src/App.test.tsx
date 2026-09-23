@@ -1707,6 +1707,53 @@ describe('#1171: keyboard-reachable insert-between-waypoints (App wiring)', () =
   });
 });
 
+// #1181: origin -> first-via gap #1179 left uncovered — no per-row control
+// has a "before" action to hang off the first via row. Same App-wiring
+// mutation-check shape as the #1171 block above: deleting either the
+// onInsertViaBeforeFirst prop wiring or the handler's own splice/midpoint
+// call reds the first test below.
+describe('#1181: keyboard-reachable insert-before-first-via (App wiring)', () => {
+  it('inserts a new via at index 0, at the great-circle midpoint of origin and the current first via, leaving it untouched', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    pickOriginAndDestination(); // ORIGIN_A {54.79, 9.43} -> DEST_A {54.85, 10.35}
+
+    const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
+    const latInput = within(viaSection).getByLabelText(de['planner.via.coord.latLabel']);
+    const lonInput = within(viaSection).getByLabelText(de['planner.via.coord.lonLabel']);
+    fireEvent.change(latInput, { target: { value: '54.85' } });
+    fireEvent.blur(latInput);
+    fireEvent.change(lonInput, { target: { value: '10.1' } });
+    fireEvent.blur(lonInput);
+    fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.coord.add'] }));
+
+    expect(within(viaSection).getAllByRole('listitem')).toHaveLength(1);
+
+    fireEvent.click(
+      within(viaSection).getByRole('button', { name: de['planner.via.insertBeforeFirst'] }),
+    );
+
+    const items = within(viaSection).getAllByRole('listitem');
+    expect(items).toHaveLength(2);
+    // Great-circle midpoint of ORIGIN_A (54.79,9.43) and (54.85,10.1),
+    // computed independently (Python's atan2-based spherical midpoint
+    // formula, not read off this app's own output).
+    expect(items[0]).toHaveTextContent('54.820°N 9.765°E'); // the new point
+    expect(items[1]).toHaveTextContent('54.850°N 10.100°E'); // untouched
+  });
+
+  it('the control is absent while the via list is empty — with an empty list "Add waypoint" already covers the sole gap', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    pickOriginAndDestination();
+
+    const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
+    expect(
+      within(viaSection).queryByRole('button', { name: de['planner.via.insertBeforeFirst'] }),
+    ).not.toBeInTheDocument();
+  });
+});
+
 // #845: "add as waypoint" from the seamark popover, driven end to end through
 // the REAL DataLayers component (never mocked) via the sc-seamarks
 // layer-scoped click handler mapTestHooks.layerClickHandlers exposes, and

@@ -118,6 +118,9 @@ export interface PlannerPanelProps {
   // midpoint of that row and whichever waypoint comes next in the chain
   // (App.tsx owns that computation and the destination it may need).
   onInsertViaAfter: (index: number) => void;
+  // #1181: origin -> first-via gap #1179 left uncovered. Same midpoint
+  // shape as onInsertViaAfter, anchored on origin instead of a via row.
+  onInsertViaBeforeFirst: () => void;
   // #829: keyboard-reachable equivalents of the map-tap 'via' path — same
   // producer shape as App.tsx's handleMapTap 'via' branch
   // (handleViaPointsChange([...viaPoints, p])), just fed a typed LatLon
@@ -254,6 +257,7 @@ export default function PlannerPanel({
   onRemoveVia,
   onReorderVia,
   onInsertViaAfter,
+  onInsertViaBeforeFirst,
   onAddVia,
   onUpdateVia,
   segmentModes,
@@ -1090,86 +1094,99 @@ export default function PlannerPanel({
           <h3 className="sc-section-title">{t('planner.via.label')}</h3>
           {segmentControl(0)}
           {viaPoints.length > 0 && (
-            <ol className="planner-via-list">
-              {viaPoints.map((v, i) => (
-                <li key={i}>
-                  <div className="planner-via-row">
-                    {/* #829: was a plain <span> — now a toggle button into the
+            <>
+              {/* #1181: origin -> first-via gap #1179's per-row "+" controls
+                leave uncovered — no row above the first via to hang an
+                "insert after" action on. */}
+              <Button
+                variant="ghost"
+                disabled={clearingVia}
+                onClick={onInsertViaBeforeFirst}
+                aria-label={t('planner.via.insertBeforeFirst')}
+              >
+                +
+              </Button>
+              <ol className="planner-via-list">
+                {viaPoints.map((v, i) => (
+                  <li key={i}>
+                    <div className="planner-via-row">
+                      {/* #829: was a plain <span> — now a toggle button into the
                       coordinate-entry row below, so repositioning (spike §2
                       row 2) reuses the SAME lat/lon fields rather than adding
                       a duplicate pair per row. aria-label folds the visible
                       coordinate text into the accessible name (WCAG 2.5.3)
                       rather than replacing it. */}
-                    <Button
-                      variant="ghost"
-                      className="planner-via-coord"
-                      aria-pressed={viaCoordMode.kind === 'update' && viaCoordMode.index === i}
-                      aria-label={t('planner.via.coord.edit', {
-                        index: i + 1,
-                        coord: formatLatLon(v),
-                      })}
-                      onClick={() => handleEditViaCoord(i)}
-                      // #938 review MINOR: consistent with the Clear-all
-                      // button's own `disabled={clearingVia}` below — the
-                      // drain still converges without this (each of its own
-                      // onRemoveVia(0) calls always sees a fresh array), but a
-                      // per-row action mid-drain is an inconsistent lockout
-                      // otherwise, letting a user edit/reorder/remove a point
-                      // that is about to disappear anyway.
-                      disabled={clearingVia}
-                    >
-                      {/* #846: DoD — a named waypoint shows its name instead
+                      <Button
+                        variant="ghost"
+                        className="planner-via-coord"
+                        aria-pressed={viaCoordMode.kind === 'update' && viaCoordMode.index === i}
+                        aria-label={t('planner.via.coord.edit', {
+                          index: i + 1,
+                          coord: formatLatLon(v),
+                        })}
+                        onClick={() => handleEditViaCoord(i)}
+                        // #938 review MINOR: consistent with the Clear-all
+                        // button's own `disabled={clearingVia}` below — the
+                        // drain still converges without this (each of its own
+                        // onRemoveVia(0) calls always sees a fresh array), but a
+                        // per-row action mid-drain is an inconsistent lockout
+                        // otherwise, letting a user edit/reorder/remove a point
+                        // that is about to disappear anyway.
+                        disabled={clearingVia}
+                      >
+                        {/* #846: DoD — a named waypoint shows its name instead
                         of formatLatLon(v); an unnamed one keeps the
                         coordinate text. The button's own aria-label above
                         still names the coordinates unconditionally, since
                         its accessible-name job is "identify the reposition
                         action", not restate the visible label. */}
-                      {v.name ?? formatLatLon(v)}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      disabled={i === 0 || clearingVia}
-                      onClick={() => onReorderVia(i, 'up')}
-                      aria-label={t('planner.via.moveUp', { index: i + 1 })}
-                    >
-                      ↑
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      disabled={i === viaPoints.length - 1 || clearingVia}
-                      onClick={() => onReorderVia(i, 'down')}
-                      aria-label={t('planner.via.moveDown', { index: i + 1 })}
-                    >
-                      ↓
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      disabled={clearingVia}
-                      onClick={() => onRemoveVia(i)}
-                      aria-label={t('planner.via.remove', { index: i + 1 })}
-                    >
-                      ×
-                    </Button>
-                    {/* #1171: keyboard equivalent of #850's drag-to-insert
+                        {v.name ?? formatLatLon(v)}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        disabled={i === 0 || clearingVia}
+                        onClick={() => onReorderVia(i, 'up')}
+                        aria-label={t('planner.via.moveUp', { index: i + 1 })}
+                      >
+                        ↑
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        disabled={i === viaPoints.length - 1 || clearingVia}
+                        onClick={() => onReorderVia(i, 'down')}
+                        aria-label={t('planner.via.moveDown', { index: i + 1 })}
+                      >
+                        ↓
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        disabled={clearingVia}
+                        onClick={() => onRemoveVia(i)}
+                        aria-label={t('planner.via.remove', { index: i + 1 })}
+                      >
+                        ×
+                      </Button>
+                      {/* #1171: keyboard equivalent of #850's drag-to-insert
                       gesture — "insert between waypoint N and N+1", N =
                       i + 1. Disabled whenever there is no NEXT waypoint to
                       take a midpoint against: the last row with no
                       destination chosen yet. A middle row always has a next
                       via point, so it is never disabled for that reason. */}
-                    <Button
-                      variant="ghost"
-                      disabled={clearingVia || (i === viaPoints.length - 1 && !destination)}
-                      onClick={() => onInsertViaAfter(i)}
-                      aria-label={t('planner.via.insertAfter', { index: i + 1 })}
-                    >
-                      +
-                    </Button>
-                  </div>
-                  {/* #885: the segment leaving this via point. */}
-                  {segmentControl(i + 1)}
-                </li>
-              ))}
-            </ol>
+                      <Button
+                        variant="ghost"
+                        disabled={clearingVia || (i === viaPoints.length - 1 && !destination)}
+                        onClick={() => onInsertViaAfter(i)}
+                        aria-label={t('planner.via.insertAfter', { index: i + 1 })}
+                      >
+                        +
+                      </Button>
+                    </div>
+                    {/* #885: the segment leaving this via point. */}
+                    {segmentControl(i + 1)}
+                  </li>
+                ))}
+              </ol>
+            </>
           )}
           {/* #938: abandon the whole draft in one action — only rendered
               while there is something to clear, and disabled mid-drain so a

@@ -218,6 +218,11 @@ export const de = {
   // avoidance the clearAll/coord.edit comments above already document for
   // this same scoped via-list region.
   'planner.via.insertAfter': 'Wegpunkt nach Punkt {index} einfügen',
+  // #1181: Ursprung -> erster Wegpunkt, die von #1179 offen gelassene
+  // Lücke. Kein {index} — immer Position 1, geprüft gegen jeden
+  // bestehenden planner.via.*/waypoints.*-Namen auf getByRole-Substring-
+  // Kollision (keine gefunden).
+  'planner.via.insertBeforeFirst': 'Wegpunkt vor Punkt 1 einfügen',
   // #938: abandon the whole draft in one action — draft-only, never the
   // persisted 'waypoints' store. Two-tap confirm (planner.via.clearAll ->
   // planner.via.clearAll.confirm), same convention as
