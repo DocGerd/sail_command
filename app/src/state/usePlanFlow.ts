@@ -95,7 +95,9 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
   // Lazily creates/inits the singleton RoutingClient (loading routing assets
   // first, if this is the first call), or returns the already-init'd one.
   // Also exposed to state/replan.ts's useViaReplan — tested infrastructure
-  // with no production caller since #571 (see replan.ts's own comment).
+  // with no production caller since #571 (see replan.ts's own comment) —
+  // also called, live, by state/reroute.ts's useLiveReroute (App.tsx wires
+  // the same ensureClient into both).
   // Resolves null on a failed load/init (mirrors run()'s own recovery: the
   // broken client is disposed and the singleton cleared so the next call
   // starts fresh); callers must treat a null result as a real failure, not
@@ -149,8 +151,9 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
 
   // Shared by run() below and by the ensureClient this hook returns
   // (also called by state/replan.ts's useViaReplan, unused in production —
-  // see that file's #571 comment). See the return type's own docstring for
-  // the failure-recovery contract.
+  // see that file's #571 comment) — also called, live, by state/reroute.ts's
+  // useLiveReroute (App.tsx wires the same ensureClient into both). See the
+  // return type's own docstring for the failure-recovery contract.
   const ensureClient = useCallback(async (): Promise<RoutingClient | null> => {
     try {
       // #432: the singleton may have been disposed by a caller that cannot
