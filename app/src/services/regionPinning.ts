@@ -244,10 +244,10 @@ export async function pinRegionsForPlan(plan: Plan): Promise<PinRegionsOutcome> 
     writeOutcome = await saveRegionPin(plan.id, (currentPlan) => ({
       planId: plan.id,
       // Recomputed from the plan row `saveRegionPin` reads INSIDE its own
-      // transaction, never from the `ids` computed above — #1233 Minor
-      // (replan.ts:369): two same-id pins racing (e.g. two quick via edits)
-      // must converge on the corridor the plan ACTUALLY has, regardless of
-      // which call's archive downloads happen to finish last.
+      // transaction, never from the `ids` computed above — #1233 Minor: two
+      // same-id pins racing must converge on the corridor the plan ACTUALLY
+      // has, regardless of which call's archive downloads happen to finish
+      // last.
       regionIds: requiredRegionIdsForPlan(currentPlan, manifest),
       pinnedAtMs: Date.now(),
     }));

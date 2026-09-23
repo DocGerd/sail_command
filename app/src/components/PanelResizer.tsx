@@ -110,7 +110,7 @@ export default function PanelResizer({
   // (confirmed live: a real Chromium session read `panelRef.current ===
   // null` inside a `useLayoutEffect` version of this hook, while
   // `.app-bottom-sheet`'s own `getBoundingClientRect()` already reported the
-  // correct ~637px — the DOM was right, the ref just hadn't been attached
+  // correct width — the DOM was right, the ref just hadn't been attached
   // yet at that point in the commit). Passive effects (`useEffect`) are
   // deferred until AFTER every layout effect and every ref attachment for
   // the WHOLE commit has completed, so they carry no such ordering
@@ -126,7 +126,7 @@ export default function PanelResizer({
   // Seeded from `min`, not `0` — `0` is out of range against
   // `aria-valuemin={min}` (320 by default), so a screen reader that reads
   // the separator's value before the first `ResizeObserver` callback fires
-  // (a real, if narrow, ~20ms window measured live) would see an invalid
+  // (a real, if narrow, window measured live) would see an invalid
   // value. `min` is always a legal value for the eventual real width to
   // clamp toward, so it is never itself misleading the way `0` was.
   const [widthPx, setWidthPx] = useState(min);
@@ -167,8 +167,8 @@ export default function PanelResizer({
   // React has committed the PREVIOUS step's re-render, so a second handler
   // invocation reading `widthPx` sees the SAME pre-step value and computes
   // the identical target, collapsing N rapid presses into one net step
-  // (measured live: two fast ArrowRights moved the panel by one 16px step,
-  // not two). `committedRef` is written SYNCHRONOUSLY by every commit path
+  // (measured live: two fast ArrowRights moved the panel by one step, not
+  // two). `committedRef` is written SYNCHRONOUSLY by every commit path
   // below (never by the ResizeObserver — a RO write racing a keyboard
   // commit could otherwise clobber a just-applied newer value with a
   // stale-by-one-tick DOM measurement, the same class of bug one step

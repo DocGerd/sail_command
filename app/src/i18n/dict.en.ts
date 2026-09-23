@@ -203,6 +203,10 @@ export const en = {
   // NOT immediately followed by "{index}" here either, for the same
   // getByRole substring-collision reason.
   'planner.via.insertAfter': 'Insert waypoint after point {index}',
+  // #1181: origin -> first-via gap. No {index} — always position 1, and
+  // checked against every existing planner.via.*/waypoints.* name for a
+  // getByRole substring collision (none found).
+  'planner.via.insertBeforeFirst': 'Insert waypoint before point 1',
   // #938: see dict.de.ts's matching comment — draft-only, two-tap confirm,
   // worded to avoid a getByRole substring collision with the sibling
   // add/remove buttons in the same scoped via-list region.
@@ -1060,7 +1064,7 @@ export const en = {
     'This plan was saved by a newer version of the app. This older version cannot read it. It is kept, not deleted.',
   'plansList.unreadable.damaged':
     'This plan cannot be opened — the saved record is incomplete or damaged. It is kept, not deleted.',
-  // #114: recalculate a saved plan with a FRESH forecast (unlike a via-replan,
+  // #114: recalculate a saved plan with a FRESH forecast (unlike live reroute,
   // which reuses the stored grid and stays offline-capable).
   'plansList.recalc': 'Recalculate',
   'plansList.recalc.saveNew': 'Recalculate as new plan',

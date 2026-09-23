@@ -15,8 +15,8 @@ import {
  * feeds usePlanFlow.run(), i.e. a full fresh run: new Open-Meteo fetch, both
  * rigs solved, saved as its own plan.
  *
- * Sharply distinct from state/replan.ts's replanWithVias: a via-replan reuses
- * the plan's STORED windGrid (offline-capable, same plan id, never refetches);
+ * Sharply distinct from state/reroute.ts's rerouteFromFix (live reroute),
+ * which reuses the plan's STORED windGrid (offline-capable, never refetches);
  * a recalculation is an explicit new online run against a fresh forecast.
  *
  * viaPoints/settings are copied, never aliased, so nothing downstream of the

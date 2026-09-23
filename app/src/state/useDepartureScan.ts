@@ -14,7 +14,7 @@ import type { NoRouteReason, PlanRequest, PlanResultOk, SailId, WindGrid } from 
 // docs/superpowers/specs/2026-09-04-departure-comparison-design.md.
 //
 // §2.2 — SCAN THE GENOA, AND ONLY THE GENOA. THIS IS MEASURED, NOT A
-// SHORTCUT. Measured 2026-09-04, real solver against the real committed
+// SHORTCUT. Measured, real solver against the real committed
 // mask/polars, a deliberately time-varying wind field: ranking departure
 // windows by a genoa-only scan produced a BYTE-IDENTICAL ordering, at every
 // position, to ranking by the true two-rig best (both routes tested, N=8).

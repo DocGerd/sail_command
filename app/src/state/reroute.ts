@@ -52,9 +52,10 @@ export function cloneWindGrid(grid: WindGrid): WindGrid {
  * the plan's destination, reusing the plan's *stored* wind grid — never
  * refetched (spec hard rule: a saved route always renders against the
  * forecast it was computed from; the fresh-forecast variant is #114's
- * recalculation and stays online-only there). This is the stored-grid
- * sibling of replanWithVias (state/replan.ts), with a new ORIGIN instead of
- * new vias; like a via-replan it stays fully offline-capable.
+ * recalculation and stays online-only there). Structurally the stored-grid
+ * sibling of replanWithVias (state/replan.ts, tested but with no production
+ * caller since #571) — this function IS the live path, and stays fully
+ * offline-capable for the same reason replanWithVias would have.
  *
  * Design resolutions (issue #115, recorded in the PR):
  * - Departure is `nowMs` (the moment the skipper asks). If the stored grid's

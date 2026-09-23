@@ -20,9 +20,9 @@ export interface PlansListProps {
   // Mirrors usePlanFlow.run()'s own navigator.onLine gate (which stays the
   // authoritative check): a recalculation fetches a FRESH forecast, so its
   // actions are disabled offline with honest messaging. Loading/deleting
-  // saved plans (and via-replans) stay offline-capable and are NOT gated.
+  // saved plans stay offline-capable and are NOT gated.
   online: boolean;
-  // True while a planning run or via-replan is already in flight — recalc
+  // True while a planning run or live reroute is already in flight — recalc
   // actions are disabled so a second run can't be queued (mirrors canPlan).
   busy: boolean;
   // Runs the full fresh planning flow (fresh Open-Meteo fetch, both rigs)
