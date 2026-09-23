@@ -52,8 +52,9 @@ import { useT } from '../i18n';
 // minimum height fixed regardless of message length (the button, not text
 // wrapping, sets the flex row's height), and at those viewports the vertical
 // gap between `.route-layer-controls`' bottom and `.app-bottom-sheet`'s top
-// is narrower than that — so NO vertical position clears both, matching
-// #909's own structural finding one level deeper. Since `.route-layer-controls`
+// is narrower than the toast's own minimum height — so NO vertical position
+// clears both, matching #909's own structural finding one level deeper.
+// Since `.route-layer-controls`
 // sits at the TOP-RIGHT and `.map-stack-tl` at the TOP-LEFT (CLAUDE.md's
 // own #324 note: "top-LEFT of the map, so it can never collide with
 // RouteLayer's plan-gated cluster at the top-right"), separating this
