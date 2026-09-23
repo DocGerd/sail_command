@@ -1064,7 +1064,7 @@ export const en = {
     'This plan was saved by a newer version of the app. This older version cannot read it. It is kept, not deleted.',
   'plansList.unreadable.damaged':
     'This plan cannot be opened — the saved record is incomplete or damaged. It is kept, not deleted.',
-  // #114: recalculate a saved plan with a FRESH forecast (unlike a via-replan,
+  // #114: recalculate a saved plan with a FRESH forecast (unlike live reroute,
   // which reuses the stored grid and stays offline-capable).
   'plansList.recalc': 'Recalculate',
   'plansList.recalc.saveNew': 'Recalculate as new plan',
