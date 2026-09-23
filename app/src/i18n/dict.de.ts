@@ -1323,9 +1323,7 @@ export const de = {
   // #1321/PR #1323 review Major 2: `findLowerSettingHint` only checks
   // `[defaultSafetyDepthM(boat), safetyDepthM)` — `OptionsPanel.tsx` lets a
   // user dial the safety depth down to `minSafetyDepthM(boat)` WITHOUT a
-  // boat switch, a range this hint never searches. So this must say ONLY
-  // what was checked ("at or above the recommended depth"), never a claim
-  // covering settings below it. Wording DECIDED by the maintainer
+  // boat switch, a range this hint never searches. Wording DECIDED by the maintainer
   // (coordinator addendum) to match sibling PR #1324.
   // #1329: gates above the LIVE setting are never searched; the claim over
   // them rests on monotonicity, pinned by test/harborReachabilityMonotone.test.ts.
