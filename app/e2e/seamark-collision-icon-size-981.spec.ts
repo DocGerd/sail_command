@@ -231,7 +231,9 @@ async function settledLabelPresent(page: Page, h: Harbor): Promise<boolean> {
   );
 }
 
-test('#1126: zoom-stepped icon-ignore-placement restores 6 named harbor labels at z12.5', async ({ page }) => {
+test('#1126: zoom-stepped icon-ignore-placement restores 6 named harbor labels at z12.5', async ({
+  page,
+}) => {
   test.setTimeout(120_000);
   const server = await startPreview(page);
   try {
@@ -281,10 +283,12 @@ test('#1126: zoom-stepped icon-ignore-placement restores 6 named harbor labels a
 // stays blocked. Each pair below is therefore pinned in the direction it
 // was MEASURED in, not assumed — the 7 as a forward regression guard that
 // they stay recovered, and the 1 as an honest record that this residual is
-// NARROWED, not closed. What still blocks `svendborg/places_subplace` was
-// NOT investigated: at z>=12 seamarks no longer enter the collision grid at
-// all, so whatever wins that slot is not a seamark, and attributing it
-// would need its own measurement.
+// NARROWED, not closed.
+// #1155 attributed the `svendborg/places_subplace` residual: hiding
+// `sc-harbor-labels` does not restore it, hiding basemap `places_locality`
+// does — it is basemap-internal label collision (four co-located
+// `places_locality` labels), unreachable by #1126's `icon-ignore-placement`
+// lever, not a SailCommand defect.
 const BASEMAP_PAIRS_RECOVERED: Array<{ harborId: string; layer: string }> = [
   { harborId: 'aabenraa', layer: 'places_locality' },
   { harborId: 'aabenraa', layer: 'roads_labels_major' },
@@ -363,11 +367,11 @@ test('#981: seamark z12-bucket collision growth vs. basemap symbol layers at z12
         absent,
         expectAbsent
           ? `${harborId}/${layer}: expected STILL BLOCKED (absent) at z${PROBE_ZOOM} — the one ` +
-            `#981 basemap pair #1126 did NOT recover. If this now reads present, the residual ` +
-            `narrowed further; re-measure and move it to BASEMAP_PAIRS_RECOVERED.`
+              `#981 basemap pair #1126 did NOT recover. If this now reads present, the residual ` +
+              `narrowed further; re-measure and move it to BASEMAP_PAIRS_RECOVERED.`
           : `${harborId}/${layer}: expected PRESENT (recovered) at z${PROBE_ZOOM} — #1126's ` +
-            `zoom-stepped icon-ignore-placement takes seamark boxes out of the collision grid ` +
-            `at z>=12; a regression here means they are blocking basemap symbols again.`,
+              `zoom-stepped icon-ignore-placement takes seamark boxes out of the collision grid ` +
+              `at z>=12; a regression here means they are blocking basemap symbols again.`,
       ).toBe(expectAbsent);
     }
   } finally {
