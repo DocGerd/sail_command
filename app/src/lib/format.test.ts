@@ -115,9 +115,9 @@ describe('formatLegNm', () => {
   // one-decimal formatNm output must render DIFFERENTLY at two decimals.
   it('distinguishes two legs that formatNm collapses to the same string', () => {
     expect(formatNm(0.5, 'en')).toBe('0.5 nm');
-    expect(formatNm(0.549, 'en')).toBe('0.5 nm'); // same as above under formatNm
+    expect(formatNm(0.549, 'en')).toBe('0.5 nm');
     expect(formatLegNm(0.5, 'en')).toBe('0.50 nm');
-    expect(formatLegNm(0.549, 'en')).toBe('0.55 nm'); // now distinct
+    expect(formatLegNm(0.549, 'en')).toBe('0.55 nm');
   });
 
   it('formats zero at two decimals, English locale', () => {
