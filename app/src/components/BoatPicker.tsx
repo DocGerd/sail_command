@@ -239,7 +239,7 @@ export function harborHintSuffix(
       ? t('boat.harbors.hintFoundShallow', { depth })
       : t('boat.harbors.hintFound', { depth });
   }
-  // #1321/orchestrator ruling 2026-09-17: the search floor is this boat's
+  // #1321/orchestrator ruling: the search floor is this boat's
   // DEFAULT safety depth, not its true minimum, and a user can already hold
   // a depth below that default without ever switching boats — so this must
   // never claim "at any setting this boat keeps"; it states only what the
@@ -264,7 +264,7 @@ export interface BoatPickerProps {
 }
 
 /**
- * The merged boat-switch announcement (maintainer ruling on #1292, 2026-09-17):
+ * The merged boat-switch announcement (maintainer ruling on #1292):
  * boat, then the raised depth if any, then any now-unreachable SELECTED
  * endpoint (#1325), then this boat's harbour access — ONE `role="status"`
  * message, never two. `clamp` carries BOTH endpoints (#1293's
@@ -556,7 +556,7 @@ function BoatOption({ boat, selected, onSelect, mask, harbors, liveDepthM }: Boa
           but the note is a citation that exists for every boat regardless).
           Catalogue data per spec F.3, same as `sail.polarProvenance.note`
           below — not an i18n key, so it renders as authored, verbatim.
-          #607 maintainer ruling (2026-08-25, DELIBERATE): this renders in
+          #607 maintainer ruling (DELIBERATE): this renders in
           the citation's ORIGINAL language regardless of the active UI
           language — paraphrasing a source citation per language is how a
           citation becomes wrong. Not a missing i18n key; do not re-file
@@ -594,7 +594,7 @@ function BoatOption({ boat, selected, onSelect, mask, harbors, liveDepthM }: Boa
           regardless, so this reaches exactly the SUMMARY text either way.
           `boat-option-harbors-slot` gives it `grid-column: 2` matching
           `.boat-option-keel`/`-draft-note`/`-polars` — omitting it left this
-          wrapper auto-placed into the narrow radio column (measured 2026-09-18,
+          wrapper auto-placed into the narrow radio column (measured,
           app.css's own comment on the rule). */}
       <div id={harborsId} className="boat-option-harbors-slot">
         {access === null ? (
@@ -649,7 +649,7 @@ function BoatOption({ boat, selected, onSelect, mask, harbors, liveDepthM }: Boa
                   it is provenance data (spec F.3 — the same reason sail
                   labels are catalogue strings), and paraphrasing a source
                   citation per language is how a citation becomes wrong.
-                  #607 maintainer ruling (2026-08-25, DELIBERATE): renders in
+                  #607 maintainer ruling (DELIBERATE): renders in
                   the citation's original language regardless of UI
                   language, by design — do not re-file this as an anomaly.
                   #707: `lang="en"` — same rationale as
