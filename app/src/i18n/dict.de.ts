@@ -130,8 +130,8 @@ export const de = {
   // dieses Boots, nicht an seinem tatsächlichen Minimum, und ein Nutzer kann
   // schon ohne Bootswechsel eine niedrigere Tiefe eingestellt haben, sodass
   // dieser Anspruch über das tatsächlich Geprüfte hinausgeht.
-  // #1329: the "or above" half is not searched; it rests on monotonicity
-  // pinned by test/harborReachabilityMonotone.test.ts.
+  // #1329: gates above the LIVE setting are never searched; the claim over
+  // them rests on monotonicity, pinned by test/harborReachabilityMonotone.test.ts.
   'boat.harbors.hintNotFound':
     'nicht erreichbar bei der für {boat} empfohlenen Sicherheitstiefe oder darüber',
   'boat.harbors.hintPending': 'wird noch geprüft',
@@ -1327,8 +1327,8 @@ export const de = {
   // what was checked ("at or above the recommended depth"), never a claim
   // covering settings below it. Wording DECIDED by the maintainer
   // (coordinator addendum) to match sibling PR #1324.
-  // #1329: the "or above" half is not searched; it rests on monotonicity
-  // pinned by test/harborReachabilityMonotone.test.ts.
+  // #1329: gates above the LIVE setting are never searched; the claim over
+  // them rests on monotonicity, pinned by test/harborReachabilityMonotone.test.ts.
   'harborPicker.boatUnreachableAtOrAboveDefault':
     'Nicht erreichbar bei der für {boat} empfohlenen Sicherheitstiefe oder darüber.',
 } as const;
