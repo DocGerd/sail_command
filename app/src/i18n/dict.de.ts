@@ -1061,7 +1061,7 @@ export const de = {
     'Dieser Plan wurde mit einer neueren Version der App gespeichert. Diese ältere Version kann ihn nicht lesen. Er bleibt gespeichert.',
   'plansList.unreadable.damaged':
     'Dieser Plan kann nicht geöffnet werden – der gespeicherte Datensatz ist unvollständig oder beschädigt. Er bleibt gespeichert.',
-  // #114: recalculate a saved plan with a FRESH forecast (unlike a via-replan,
+  // #114: recalculate a saved plan with a FRESH forecast (unlike live reroute,
   // which reuses the stored grid and stays offline-capable).
   'plansList.recalc': 'Neu berechnen',
   'plansList.recalc.saveNew': 'Als neuen Plan berechnen',

@@ -373,8 +373,8 @@ function AppShell() {
   const [settingsPersistenceError, clearSettingsPersistenceError] = useSettingsPersistenceError();
   const { planning, run, ensureClient, cancel } = usePlanFlow();
   // #115: manual "reroute from here" (Live view). Shares the same singleton
-  // RoutingClient via ensureClient and, like a via-replan, reuses the plan's
-  // STORED wind grid — never refetches, so it stays available offline.
+  // RoutingClient via ensureClient and reuses the plan's STORED wind grid —
+  // never refetches, so it stays available offline.
   const liveReroute = useLiveReroute(ensureClient);
   // #25 addendum: standalone "show my position" marker, decoupled from Live
   // View — subscribes to GPS whenever the setting is on, regardless of
@@ -1317,8 +1317,8 @@ function AppShell() {
       settings,
       // #54 / #572: the one production call site with no existing plan to
       // inherit from — every other constructor (recalcRequest,
-      // replanWithVias, rerouteFromFix) spreads/copies an existing
-      // request's own values instead, and MUST keep doing so: spec §I.3
+      // rerouteFromFix) spreads/copies an existing request's own values
+      // instead, and MUST keep doing so: spec §I.3
       // makes the boat a property of the plan, so a saved plan is re-solved
       // against the boat it was planned for, never against today's picker.
       // This is the only site that reads the LIVE selection.
@@ -1364,10 +1364,11 @@ function AppShell() {
 
   // #114: recalculate a saved plan with a FRESH forecast — seeds run() from
   // the plan's own stored request (origin/destination/vias/settings) with the
-  // editor's departure. Sharply distinct from the via-replan above, which
-  // reuses the stored grid and never refetches. Default mode saves a NEW
-  // plan under a derived name; the two-tap-confirmed 'replace' mode persists
-  // under the original id (overwriting it only if the run succeeds).
+  // editor's departure. Sharply distinct from live reroute (handleLiveReroute
+  // below), which reuses the stored grid and never refetches. Default mode
+  // saves a NEW plan under a derived name; the two-tap-confirmed 'replace'
+  // mode persists under the original id (overwriting it only if the run
+  // succeeds).
   const handleRecalculate = useCallback(
     (recalcPlan: Plan, departureMs: number, mode: RecalcMode): Promise<void> => {
       const req = recalcRequest(recalcPlan, departureMs);
