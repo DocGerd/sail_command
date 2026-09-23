@@ -782,7 +782,7 @@ describe('RouteSummary', () => {
   });
 
   it('renders the ten legs-table headers in order, with Shallow (#698) first', () => {
-    // #698 decision memo (2026-08-31): Shallow moved to column 1 of 10.
+    // #698 decision memo: Shallow moved to column 1 of 10.
     // Position after Type alone (an earlier #698 pass) could never satisfy
     // the phonePortrait DoD — the populated Shallow cell's two chips are
     // wider than the viewport at ANY position — so the memo sharpened the
@@ -1911,7 +1911,7 @@ describe('#493: cautious depth disclosure', () => {
 // The live defect was the DRAFT FIGURE — "2.1 m" printed for a 1.9 m hull in
 // the app's most severe depth copy — not a missing warning.
 //
-// PER-ASSERTION ATTRIBUTION, MEASURED 2026-08-18 by deleting each assertion
+// PER-ASSERTION ATTRIBUTION, MEASURED by deleting each assertion
 // alone under a mutation aimed at it (a multi-assertion pin can have a single
 // discriminating member — #516/PR #523):
 //   'salona IS severe'        catches `isSevere` forced FALSE (4 rows red in

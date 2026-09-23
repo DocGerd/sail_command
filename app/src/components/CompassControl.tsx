@@ -90,9 +90,9 @@ export default function CompassControl({ fix, showOwnship }: CompassControlProps
   const commandedBearingRef = useRef<number | null>(null);
 
   // Non-zero ONLY for the synchronous extent of our own map.easeTo() calls.
-  // `easeTo`'s first statement is `this._stop(false, options.easeId)`
-  // (maplibre-gl-dev.js:69468), which runs the INTERRUPTED ease's `_afterEase`
-  // inline — so any rotateend/moveend delivered inside this window describes
+  // `easeTo`'s first statement is `this._stop(false, options.easeId)`, which
+  // runs the INTERRUPTED ease's `_afterEase` inline — so any rotateend/moveend
+  // delivered inside this window describes
   // the camera we are REPLACING, not ours, and must not be reconciled against
   // our brand-new target.
   //
@@ -116,9 +116,9 @@ export default function CompassControl({ fix, showOwnship }: CompassControlProps
           duration: reducedMotionRef.current ? 0 : durationMs,
           // COMPASS_EASE_ID keeps one compass ease from cancelling the next
           // one's start/end bookkeeping: `_afterEase` suppresses the
-          // interrupted ease's rotateend/moveend only when the ids MATCH
-          // (maplibre-gl-dev.js:69671), so a chained follow ease or a fast
-          // double-tap emits no spurious settle at all. It does NOT help
+          // interrupted ease's rotateend/moveend only when the ids MATCH, so
+          // a chained follow ease or a fast double-tap emits no spurious
+          // settle at all. It does NOT help
           // against a foreign ease — the id will not match one we do not own —
           // which is why the settle path below reconciles against the camera
           // instead of trusting any single event (#203).
@@ -162,12 +162,12 @@ export default function CompassControl({ fix, showOwnship }: CompassControlProps
     // `originalEvent` onto the rotate events a USER caused, and onto nothing
     // else. Gesture rotation goes through HandlerManager, whose
     // `mergeHandlerResult` records `originalEvent: handlerResult.originalEvent
-    // || e` (:68533) and re-fires it on both `rotatestart` and every `rotate`
-    // (:68659-68677); MapLibre's own keyboard rotation calls
-    // `easeTo({ easeId: 'keyboardHandler', ... }, { originalEvent: e })`
-    // (:67349), so its frames carry it too; rotate inertia is
-    // `easeTo(inertialEase, { originalEvent: originalEndEvent })` (:68712) —
-    // the continuation of the user's flick, and correctly counted as theirs.
+    // || e` and re-fires it on both `rotatestart` and every `rotate`;
+    // MapLibre's own keyboard rotation calls `easeTo({ easeId:
+    // 'keyboardHandler', ... }, { originalEvent: e })`, so its frames carry it
+    // too; rotate inertia is `easeTo(inertialEase, { originalEvent:
+    // originalEndEvent })` — the continuation of the user's flick, and
+    // correctly counted as theirs.
     // A camera animation started by THIS app (or by RouteLayer's fitBounds)
     // passes no eventData at all, so its frames carry none.
     //
