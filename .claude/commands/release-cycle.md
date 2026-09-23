@@ -130,6 +130,10 @@ milestones section), not against the other agent's read. Worked example (v0.39.0
 EXTERNAL-only (waiting on an external decision or dependency), so the reconcile left the label off
 both and added a triage comment instead.
 
+If every candidate that could fill a thin milestone ranks below it, surface that at Gate 1 as its
+own decision — accept a smaller milestone, or promote below-rank items knowingly — never resolve
+it silently.
+
 ### 🛑 GATE 1 — present, then WAIT
 
 Present ONE scannable block: a table of proposed moves (issue → from → to → why), the resulting
@@ -160,6 +164,10 @@ merged result left that control unreachable once a plan existed, with the flag p
 and no in-app path back. Merge ORDER can also be a correctness constraint, not just
 conflict avoidance: #828 had merged #827's branch into its own history to test the fix, so the
 reverse order would have landed #827's changeset under #828's PR.
+
+A new always-visible UI element (banner, dialog, first-run prompt) changes every existing e2e
+spec's starting state: seed its dismissal in the shared e2e setup and add one fresh-profile
+spec, rather than discovering it as a red required check (#1405).
 
 Per task:
 - **ASSIGN THE ISSUE TO `DocGerd` THE MOMENT YOU DISPATCH ITS IMPLEMENTER** —
@@ -195,6 +203,9 @@ Per task:
   Either way, grep both copies before creating the PR:
   `git log origin/develop..HEAD | grep -iE '(clos(e|es|ed)?|fix(e[sd])?|resolve[sd]?)[[:space:]:(]*#[0-9]+'`
   and the same over the body. Post-merge, assert each issue's state in BOTH directions.
+  For a vague umbrella issue, file the chosen scoped slices as child issues first so each PR
+  has a real `Closes #<child>`, and close the umbrella by hand once those slices ship
+  (#1344 → #1398/#1399).
 - Add a `changelog.d/<issue>.<category>.md` fragment for every user-visible change. If an earlier
   fragment for the same issue is still pending, DECIDE whether it is still TRUE — do not
   reflexively leave it alone; both fold into the same section.
@@ -266,7 +277,9 @@ pass on the tree under test.
 The `/release` skill is `disable-model-invocation: true` — deliberately, because whatever merges
 to `main` goes live immediately, so its own header calls the runbook "user-only and human-gated
 by design". I therefore CANNOT invoke it. Ask me to type `/release` yourself, and while you wait
-read `.claude/skills/release/SKILL.md` and follow it literally. Its structure:
+read `.claude/skills/release/SKILL.md` and follow it literally. §2's walkthrough and §2b's docs
+sweep are independent — the sweep targets its own `develop` topic branch — so run them in
+parallel. Its structure:
 
 | Step | What |
 |---|---|
