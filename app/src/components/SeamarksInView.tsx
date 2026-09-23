@@ -25,17 +25,13 @@ import type { ViaPoint } from '../types';
 // also learns WHERE the mark is.
 //
 // PLACEMENT — the Plan panel, NOT `.data-layer-controls` (the spike's
-// recommendation). Measured 2026-09-02 against a real DOM injection: a third
-// `.data-layer-controls` row costs +51.6px at 375x667 and drops the depth
+// recommendation): a third `.data-layer-controls` row drops the depth
 // legend's reachability budget (`budgetPx`, DataLayers.tsx's own
-// useLayoutEffect) from 62.556px to 10.96px, under LEGEND_COLLAPSED_HEIGHT_PX
-// (44) — `hidden` on the whole `.depth-legend`, #597 safety caveat included,
-// at 375x667 and 360x740 collapsed and 390x844 expanded. The panel leaves
-// that budget byte-identical at all twelve viewports in both arms; its whole
-// price is panel scroll depth (+46px collapsed / +153px expanded at 375x667,
-// zero at desktopHd where the panel does not scroll), which is why the
+// useLayoutEffect) under LEGEND_COLLAPSED_HEIGHT_PX — `hidden` on the whole
+// `.depth-legend`, #597 safety caveat included. The panel leaves that budget
+// byte-identical; its whole price is panel scroll depth, which is why the
 // Disclosure defaults COLLAPSED. `seamarks.spec.ts`'s #830 guard pins the
-// three viewports where the chrome placement fails.
+// viewports where the chrome placement fails.
 //
 // WHY A PORTAL: `useMapInstance()` is a context only MapView's descendants
 // can read, and the panel is a sibling of MapView (App.tsx). LiveView.tsx
