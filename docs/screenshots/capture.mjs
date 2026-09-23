@@ -224,7 +224,11 @@ const PANEL_WIDTH_PX = 518;
 // hiding `.planner-guidance`'s departure-context paragraph and diffing
 // `.app-panel`'s scrollHeight against this flow's own value, then re-run at
 // successive heights until `scrollHeight === clientHeight` (first fit).
-const START_VIEW_HEIGHT_PX = 1507;
+// #1411: that bump landed exactly on first fit, with none of the margin
+// the earlier bumps above carried — any further legitimate content throws
+// in assertFitsViewport() instead of being absorbed. Restored a small
+// margin past first fit, matching this constant's own history.
+const START_VIEW_HEIGHT_PX = 1513;
 
 // #1088: the viewport-height constants above have been mis-measured THREE
 // times (#741; #716's BOAT_SELECTION_HEIGHT_PX going stale at #746; the
