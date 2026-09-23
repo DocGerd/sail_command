@@ -159,7 +159,7 @@ export function ShallowWarning({
   //    lib/useWideLayout.ts's single 1024 px breakpoint, never CSS-hidden, so
   //    a narrow layout does not carry a wide-only sentence in the
   //    accessibility tree either (#355's resizer set that precedent). Reason:
-  //    a real-browser pass on 2026-08-13 measured the German banner at 489 px
+  //    a real-browser pass measured the German banner at 489 px
   //    against a 418 px panel viewport at 390x844, putting ~71 px of a safety
   //    warning below the fold — a fourth sentence costs more than it gives on
   //    the likeliest on-deck device.

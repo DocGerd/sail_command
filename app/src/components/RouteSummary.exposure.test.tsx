@@ -348,7 +348,7 @@ describe('#516: ShallowWarning exposure sentence', () => {
   });
 
   it('drops the DEPTH remedy on a narrow layout but keeps the horizon remedy — #1308', async () => {
-    // #516 item 5: a real-browser pass on 2026-08-13 measured the German
+    // #516 item 5: a real-browser pass measured the German
     // banner overrunning the panel viewport at 390x844, so the depth-only
     // remedy stays wide-only. Mount-gated, not CSS-hidden — it must be ABSENT
     // from the DOM on narrow, so a screen reader there does not read a
@@ -465,7 +465,7 @@ describe('#516: ShallowWarning exposure sentence', () => {
     // there IS no lower setting and the advice stays suppressed. This half is
     // what makes the half above a comparison rather than a bare assertion.
     //
-    // PER-ASSERTION ATTRIBUTION, MEASURED 2026-08-18: the elan half is the
+    // PER-ASSERTION ATTRIBUTION, MEASURED: the elan half is the
     // SOLE discriminator for the stale-minimum defect (reverting the gate to
     // the literal 2.2 reds this row, and deleting that one assertion makes it
     // green again). The salona half's own suppression check is what catches
@@ -556,7 +556,7 @@ describe('#516 increment 2: ShallowWarning confinement sentence', () => {
 // #654: `request.viaPoints` cannot genuinely be absent from any record this
 // app itself wrote — `services/db.ts` (the only IndexedDB writer) postdates
 // the field's introducing commit, `eb2d7ee`, by ~3 hours (both predate
-// v0.1.0, git-verified 2026-08-25; see migratePlan.ts's `normaliseViaPoints`
+// v0.1.0, git-verified; see migratePlan.ts's `normaliseViaPoints`
 // for the full dated argument). This row instead defends a HAND-EDITED or
 // otherwise corrupted stored record. `confinedWithin`'s useMemo
 // (RouteSummary.tsx) used to spread and `.map()` that value unconditionally,
@@ -747,8 +747,7 @@ describe('#612: the marginal-depth notice on a route that did not relax', () => 
 
   it('is QUIET: no role="alert" and no banner treatment at a default gate', async () => {
     // The #455 ruling amendment honours its own wallpaper bar by demoting the
-    // SURFACE (measured trip rate 61.5% on shipped defaults), so this element
-    // must not be assertive in the ordinary case.
+    // SURFACE, so this element must not be assertive in the ordinary case.
     mockedLoad.mockResolvedValue(marginalMask());
     const container = await renderNonRelaxed([EXPOSURE_LEG]);
     const notice = container.querySelector('.marginal-depth-notice');
