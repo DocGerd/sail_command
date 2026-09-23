@@ -1671,6 +1671,7 @@ making design-level decisions; do not silently deviate.
   | v0.38.0 | 2026-09-21 | 46 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 18:13:01Z, two seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `35636876713` (created 18:12:19Z) -> tag `35636960636` (created 18:13:05Z) on `1eee618`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`** -- the within-run control. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-CDWho9-g.js` at ``about.version`,{version:`v0.38.0` `` with ZERO suffixed matches, so no back-merge remedy was owed. Release `isLatest: true`; tag object reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.39.0 | 2026-09-22 | 46 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 00:02:40Z, three seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `35670196932` (created 00:01:58Z) -> tag `35670256087` (created 00:02:44Z) on `d00ade9`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`** -- the within-run control. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-KRWTYwpO.js` at ``version:`v0.39.0` `` with ZERO suffixed matches, so no back-merge remedy was owed. Release `isLatest: true`; tag object `79a79ce` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.40.0 | 2026-09-23 | 19203 s | `success`, `steps=6` (MEASURED before the tag push, and the failure CALLED IN ADVANCE from it) | **`smoke-probe` FAILED** | merge-push `35798660532` -> tag `35820738607` on `6aa9019`. Tag run's `build` and `deploy` succeeded; its prod entry chunk `assets/index-BuOWjfH-.js` 404'd on all 10 attempts while both basemap Range probes passed on attempt 1. Back-merge `35822017063` (`aa8f5fb`) republished that same chunk, 200 on attempt 1; production then served ``version:`v0.40.0` `` with ZERO suffixed matches. Tag object `verified: true, reason: "valid"`. Names no MECHANISM. |
+  | v0.41.0 | 2026-09-23 | 60 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 20:08:20Z, five seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `35913837798` (created 20:07:26Z) -> tag `35913947081` (created 20:08:26Z) on `5b9cfaa`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-Ck0O4F5J.js` at ``version:`v0.41.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `verified: true, reason: "valid"`. Names no MECHANISM. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -2826,6 +2827,11 @@ making design-level decisions; do not silently deviate.
   enumerate `gh api
   repos/OWNER/REPO/actions/runs?head_sha=<sha>` and monitor each relevant run
   ID explicitly — never poll by check name alone.
+  The converse also happened, at the v0.41.0 cut: release PR #1436 read
+  `unstable` (i.e. mergeable) one minute after opening, while its own
+  `pull_request` CI run was still in progress, because the develop push run's
+  finished same-named `app`/`e2e` satisfied protection. Require BOTH: the PR's
+  own run completed green AND `mergeable_state` clean/unstable.
   TWO FAIL-OPEN WATCHER SHAPES, both shipped by the orchestrator in one
   session (2026-09-07, v0.24.0 cut), and both obeyed "don't match by name"
   while still reading SUCCESS for NOT-MEASURED-YET. (1) Counting check-runs
@@ -4203,7 +4209,7 @@ making design-level decisions; do not silently deviate.
   `cancelled` takes NO remedy at all: `usePlanFlow.run()` transitions
   straight to `idle` before `routingFailureKey` is ever called, so no banner
   renders — `error.routingCancelled` is a fallback for some other observer,
-  and the layer must not apologise for a user-initiated cancel. Do not glue
+  and the presentation layer must not apologise for a user-initiated cancel. Do not glue
   one remedy sentence onto all of them.
   NEVER infer a cause by matching a message string (the #282 label-as-control
   coupling in a new place), and keep `RoutingFailureKind` OUT of `types.ts`
@@ -4388,6 +4394,10 @@ making design-level decisions; do not silently deviate.
   is a different act — #724 measured one over CLAUDE.md as net-negative — so
   #1407 must run its comment sweep deletion-first, per-file and review-gated,
   never as a rewrite, since rephrasing a claim is how a new claim enters.
+  Measured over the v0.41.0 batches: one agent per directory returned partial
+  coverage every time, `docs/spikes/` yielded zero cuts across all 33 files,
+  and the routing batch (#1431) deleted safety caveats and was closed
+  unmerged. Size a batch by comment density, and claim-audit every batch.
 - Planning requires network; everything else must keep working offline. Any
   new feature that silently assumes connectivity is a bug.
 - The app is a passage-planning aid, not a navigation device — user-facing
