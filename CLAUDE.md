@@ -2827,10 +2827,9 @@ making design-level decisions; do not silently deviate.
   enumerate `gh api
   repos/OWNER/REPO/actions/runs?head_sha=<sha>` and monitor each relevant run
   ID explicitly — never poll by check name alone.
-  The converse also happened, at the v0.41.0 cut: release PR #1436 read
+  At the v0.41.0 cut, release PR #1436 read
   `unstable` (i.e. mergeable) one minute after opening, while its own
-  `pull_request` CI run was still in progress, because the develop push run's
-  finished same-named `app`/`e2e` satisfied protection. Require BOTH: the PR's
+  `pull_request` CI run was still in progress — the same configuration watcher (2) below recorded as `blocked`; what discriminates the two readings is UNESTABLISHED. Require BOTH: the PR's
   own run completed green AND `mergeable_state` clean/unstable.
   TWO FAIL-OPEN WATCHER SHAPES, both shipped by the orchestrator in one
   session (2026-09-07, v0.24.0 cut), and both obeyed "don't match by name"
@@ -4394,8 +4393,7 @@ making design-level decisions; do not silently deviate.
   is a different act — #724 measured one over CLAUDE.md as net-negative — so
   #1407 must run its comment sweep deletion-first, per-file and review-gated,
   never as a rewrite, since rephrasing a claim is how a new claim enters.
-  Measured over the v0.41.0 batches: one agent per directory returned partial
-  coverage every time, `docs/spikes/` yielded zero cuts across all 33 files,
+  Measured over the v0.41.0 batches: three of four directory batches returned partial coverage (components #1422/#1426-9, state/services #1424, routing #1431); `docs/spikes/` was read in full — 33 files, zero cuts;
   and the routing batch (#1431) deleted safety caveats and was closed
   unmerged. Size a batch by comment density, and claim-audit every batch.
 - Planning requires network; everything else must keep working offline. Any
