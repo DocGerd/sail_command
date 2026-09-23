@@ -158,7 +158,7 @@ export default function ScaleBar() {
   // The docked-readout lift is measured to its TOP EDGE (`host.offsetHeight -
   // el.offsetTop`), NOT its height: the two cards dock at different bottom
   // offsets of their own, so lifting by height alone left the bar overlapping
-  // the no-plan card by ~20 px (measured in the browser). offsetTop/
+  // the no-plan card (measured in the browser). offsetTop/
   // offsetHeight rather than getBoundingClientRect because the docked card is
   // absolutely positioned against this very host, which makes offsetTop
   // exactly "distance from the host's top".
