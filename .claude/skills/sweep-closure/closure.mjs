@@ -904,8 +904,7 @@ function findLedgerEntry(ledger, key) {
  * and it only gets a chance to run once the interrupted synchronous call
  * (`execFileSync`, or the fs reads inside `fn`) throws or returns and
  * control unwinds normally. Setting `process.exitCode` here (never calling
- * `process.exit()`, which would skip that unwind) makes the process exit
- * with the conventional 128+signum code once it does.
+ * `process.exit()`, which would skip that unwind) is what avoids that.
  */
 let interruptHandlersInstalled = false;
 function installInterruptHandlers() {
