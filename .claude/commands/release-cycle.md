@@ -130,7 +130,7 @@ milestones section), not against the other agent's read. Worked example (v0.39.0
 EXTERNAL-only (waiting on an external decision or dependency), so the reconcile left the label off
 both and added a triage comment instead.
 
-If every candidate that could fill a thin milestone ranks below it, surface that at Gate 1 as its
+If every candidate that could fill a thin milestone ranks below the allocation policy's normal bar, surface that at Gate 1 as its
 own decision — accept a smaller milestone, or promote below-rank items knowingly — never resolve
 it silently.
 
@@ -277,9 +277,7 @@ pass on the tree under test.
 The `/release` skill is `disable-model-invocation: true` — deliberately, because whatever merges
 to `main` goes live immediately, so its own header calls the runbook "user-only and human-gated
 by design". I therefore CANNOT invoke it. Ask me to type `/release` yourself, and while you wait
-read `.claude/skills/release/SKILL.md` and follow it literally. §2's walkthrough and §2b's docs
-sweep are independent — the sweep targets its own `develop` topic branch — so run them in
-parallel. Its structure:
+read `.claude/skills/release/SKILL.md` and follow it literally. Its structure:
 
 | Step | What |
 |---|---|

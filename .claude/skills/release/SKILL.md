@@ -48,7 +48,7 @@ visual check of the actual built state before it ships.
    the **Ergebnis card**, in BOTH wide and narrow layouts and BOTH light and
    dark. If the walkthrough surfaces an anomaly, build and serve the
    PREVIOUS release tag the same way before calling it a regression: a
-   defect already present there does not block the gate; file it
+   defect already present there is not new; file it
    separately (#1413).
 3. Present screenshots. **Wait for the user to explicitly approve.**
 
@@ -82,7 +82,7 @@ it cannot drift from the tracker. Do this on a topic branch into `develop`
   is what validates the declaration.** If the tag push slips past UTC
   midnight AFTER step 4 has merged, the heading is already frozen; the
   maintainer may keep the merge-day date rather than re-dating through a
-  second release PR (v0.40.0). For each
+  second release PR (exercised at the v0.40.0 cut). For each
   fragment file, read its category from the filename
   (`<number>.<category>.md`, optionally `<number>-<n>.<category>.md` to
   disambiguate a second fragment about the same issue/PR —
