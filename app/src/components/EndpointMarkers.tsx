@@ -76,7 +76,7 @@ export interface EndpointMarkersProps {
 // — an ODbL/CC-BY obligation this repo has already shipped a defect
 // against once (#771/PR #800). It cannot: `.maplibregl-marker` is
 // `position:absolute; z-index:auto` (CSS 2.1 Appendix E step 8, positioned
-// with z-index:auto — verified against maplibre-gl 6.6.0), while
+// with z-index:auto — verified against the installed maplibre-gl), while
 // `.maplibregl-ctrl-bottom-right`, which contains the attribution, carries
 // an explicit `z-index:2` (step 9, positioned with z-index set) — so the
 // attribution control always paints above a coincident marker regardless

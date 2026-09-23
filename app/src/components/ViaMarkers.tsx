@@ -280,8 +280,8 @@ export default function ViaMarkers({ viaPoints, replanning, onDragEnd }: ViaMark
 
   // #1198: this listens in the CAPTURE phase on the canvas container — the
   // exact element handler_manager.ts attaches its own, bubble-phase
-  // 'mousedown'/'touchstart' listeners to (confirmed against installed
-  // maplibre-gl 6.9.0's HandlerManager constructor: `this._el =
+  // 'mousedown'/'touchstart' listeners to (confirmed against the installed
+  // maplibre-gl's HandlerManager constructor: `this._el =
   // this._map.getCanvasContainer()`), so it always runs BEFORE MapLibre's
   // own dispatch for the same event. When the press point falls inside >=2
   // via roots (from `markersRef.current`, read fresh at event time — this
