@@ -582,7 +582,7 @@ describe('parseHemisphereCoord', () => {
       // gap: U+00A0 (a no-break space, as a marine GPS or a PDF paste may
       // render) between DM components — the parser's own comment asserts
       // ECMAScript `\s` already covers it, but nothing exercised it.
-      ['54 48.74', 'lat', 54.812333333],
+      ['54\u00a048.74', 'lat', 54.812333333],
       // gap: surrounding whitespace on a non-empty draft is trimmed, not
       // just rejected when the draft is ALL whitespace (line 386).
       ['  54.8  ', 'lat', 54.8],
