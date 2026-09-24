@@ -157,10 +157,26 @@ test('the cap message names the offending product, not just the limit', () => {
 // value against a hand-written expectation — every row above derives its
 // inputs FROM `MAX_TOTAL_WORKERS`, so mutating that constant (e.g. 24 -> 1000)
 // leaves them all green (the #388 SOLVER_LABELS class: a guard's data needs a
-// twin, not just its detection logic). This is the twin: it fails if the
-// constant ever drifts from the value README.md's "Sharding" section states.
-test('MAX_TOTAL_WORKERS is 24, matching README.md\'s stated 20-24 host guidance', () => {
+// twin, not just its detection logic). This pins the CONSTANT alone; it
+// cannot catch README.md drifting to a different number on its own (#1364 —
+// the row below is the twin that reads README.md).
+test('MAX_TOTAL_WORKERS is 24', () => {
   assert.equal(MAX_TOTAL_WORKERS, 24);
+});
+
+// #1364: the row the comment above used to (wrongly) claim already existed —
+// this one actually READS README.md's "Sharding" section, so it reds if
+// EITHER side drifts from the other: the code constant, or the number
+// README.md states for it.
+test('README.md\'s "Sharding" section states the same MAX_TOTAL_WORKERS value the code enforces', () => {
+  const readme = readFileSync(resolve(here, 'README.md'), 'utf8');
+  const m = readme.match(/MAX_TOTAL_WORKERS\s*=\s*(\d+)/);
+  assert.ok(m, 'expected README.md to state a literal "MAX_TOTAL_WORKERS = <n>" value');
+  assert.equal(
+    Number(m[1]),
+    MAX_TOTAL_WORKERS,
+    `README.md states MAX_TOTAL_WORKERS = ${m[1]}, code has ${MAX_TOTAL_WORKERS}`,
+  );
 });
 
 // --- output path layout -------------------------------------------------
@@ -303,7 +319,13 @@ for (const name of names) {
   const rows = {};
   for (const id of mine) rows[id] = { status: 'error', reason: \`fake-\${name}-\${id}\` };
   const base = \`\${name}.shard\${idx}of\${count}.limit\${limit}\`;
-  writeFileSync(resolve(outDir, \`\${base}.json\`), JSON.stringify(rows));
+  // #1364: malformed-json corrupts the FIRST arm's part file CONTENT for
+  // the targeted shard — a real disk-truncated/interrupted write — rather
+  // than omitting an arm entirely (that is the 'truncated' behavior above,
+  // renamed below because it never touches a part file's bytes).
+  const isMalformed = behavior === 'malformed-json' && idxStr === truncateShard && name === names[0];
+  const content = isMalformed ? '{not valid json' : JSON.stringify(rows);
+  writeFileSync(resolve(outDir, \`\${base}.json\`), content);
   writeFileSync(resolve(outDir, \`\${base}.timings.json\`), JSON.stringify({}));
 }
 process.exit(0);
@@ -368,7 +390,10 @@ test('integration: a shard that dies without writing anything -> exit non-zero, 
   assert.equal(existsSync(join(outDir, 'manifest.json')), false, 'a dead shard must never produce a manifest');
 });
 
-test('integration: one shard drops an arm (truncated part) -> exit non-zero, no manifest', () => {
+// #1364: renamed from "(truncated part)" — this row drops an ARM entirely
+// (one fewer part FILE gets written), it never truncates a part file's
+// bytes; the row below covers an actually-corrupted part file's content.
+test('integration: one shard drops an arm entirely -> exit non-zero, no manifest', () => {
   const { fakeNpmDir, armNamesFile, harbourIdsFile } = setupFakeNpm();
   const outDir = mkdtempSync(join(tmpdir(), 'sc-run-sharded-out-'));
   const result = runDriver(['--shards', '2', '--max-workers', '1', '--limit', '4', '--out', outDir], {
@@ -379,6 +404,24 @@ test('integration: one shard drops an arm (truncated part) -> exit non-zero, no 
   });
   assert.notEqual(result.status, 0, 'expected a non-zero exit when one shard drops an arm');
   assert.equal(existsSync(join(outDir, 'manifest.json')), false, 'an incomplete arm set must never produce a manifest');
+});
+
+// #1364: the row the name above USED to (wrongly) claim covered — one
+// shard's part file is present but its JSON CONTENT is malformed (a real
+// disk-truncated/interrupted write). `merge-shards.mjs`'s `JSON.parse`
+// throws uncaught on this, which is still a non-zero exit and no manifest,
+// but via a crash rather than the graceful arm-set-incomplete check above.
+test('integration: one shard writes a MALFORMED-JSON part file -> exit non-zero, no manifest', () => {
+  const { fakeNpmDir, armNamesFile, harbourIdsFile } = setupFakeNpm();
+  const outDir = mkdtempSync(join(tmpdir(), 'sc-run-sharded-out-'));
+  const result = runDriver(['--shards', '2', '--max-workers', '1', '--limit', '4', '--out', outDir], {
+    fakeNpmDir,
+    armNamesFile,
+    harbourIdsFile,
+    extraEnv: { FAKE_NPM_BEHAVIOR: 'malformed-json', FAKE_NPM_TRUNCATE_SHARD: '1' },
+  });
+  assert.notEqual(result.status, 0, 'expected a non-zero exit when a shard part file has malformed JSON');
+  assert.equal(existsSync(join(outDir, 'manifest.json')), false, 'a malformed part file must never produce a manifest');
 });
 
 test('integration: a non-empty --out is refused BEFORE anything is spawned (exit 2)', () => {

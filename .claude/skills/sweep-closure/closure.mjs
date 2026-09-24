@@ -845,6 +845,23 @@ function cmdDiff(root, base, head) {
 
 const LEDGER_REL_PATH = '.claude/skills/sweep-closure/recorded-runs.json';
 
+// #1358: the same 16-lowercase-hex-char prefix `run-sharded.mjs`'s
+// `sha256Prefix16` and `compare.mjs`'s own `sha(s)` both emit (SKILL.md's
+// "Recording an anchor" step 2). A value outside this shape can never have
+// come from either tool, so it is not a hash a real run could have written.
+const ARM_HASH_RE = /^[0-9a-f]{16}$/;
+
+/**
+ * Ledger entry `arms` values that do not match `ARM_HASH_RE` — an object,
+ * not a string; the wrong length; uppercase or non-hex characters. Never
+ * throws (the caller has already confirmed `arms` is a non-empty object).
+ */
+function malformedArmNames(arms) {
+  return Object.entries(arms)
+    .filter(([, v]) => typeof v !== 'string' || !ARM_HASH_RE.test(v))
+    .map(([name]) => name);
+}
+
 function ledgerPath(root) {
   return path.join(root, LEDGER_REL_PATH);
 }
@@ -996,6 +1013,15 @@ function computeReuseVerdict(root, recordedArg, baseArg) {
         reason: `ledger entry ${entry.sha} has no recorded artifact hashes ("arms" missing/empty)`,
       };
     }
+    const badArmNames = malformedArmNames(entry.arms);
+    if (badArmNames.length > 0) {
+      return {
+        verdict: 'RUN_BASE',
+        reason:
+          `ledger entry ${entry.sha} has malformed arm hash(es) (expected 16 lowercase hex chars): ` +
+          badArmNames.join(', '),
+      };
+    }
 
     // Resolve both refs to full SHAs up front — a `git rev-parse` failure
     // (recorded SHA no longer reachable, base ref unknown) is a git
@@ -1086,6 +1112,15 @@ function cmdReuse(root, recordedArg, baseArg) {
   console.log(`VERDICT: ${label} — ${result.reason}`);
   if (result.owed) {
     for (const { f } of result.owed) console.log(`  ${f}`);
+  }
+  if (result.verdict === 'REUSE') {
+    // #1358: name the actual hashes standing in for a fresh run, in the same
+    // `name.padEnd(20) hash` shape `run-sharded.mjs`'s own manifest print
+    // uses — a REUSE verdict with no visible hashes gave no way to tell
+    // which stored artifacts it was trusting.
+    for (const [name, hash] of Object.entries(result.entry.arms)) {
+      console.log(`  ${name.padEnd(20)} ${hash}`);
+    }
   }
   process.exitCode = result.verdict === 'REUSE' ? 0 : 1; // non-zero means "run base", mirrors `diff`'s OWED convention
 }
@@ -1330,7 +1365,7 @@ function runSelftest(root) {
     const writeLedger = (obj) => writeFileSync(ledgerFile, JSON.stringify(obj));
 
     // Happy path: closure untouched -> REUSE.
-    writeLedger({ runs: [{ sha: recordedSha, arms: { base1: 'deadbeef' } }] });
+    writeLedger({ runs: [{ sha: recordedSha, arms: { base1: 'deadbeef12345678' } }] });
     const rUntouched = computeReuseVerdict(reuseRepo, recordedSha, untouchedBaseSha);
     results.push(
       check('reuse: closure untouched between recorded and base -> REUSE', rUntouched.verdict === 'REUSE', rUntouched),
@@ -1361,7 +1396,7 @@ function runSelftest(root) {
 
     // Unknown recorded run: a syntactically valid, well-shaped ledger that
     // simply has no entry matching the SHA asked for -> RUN_BASE.
-    writeLedger({ runs: [{ sha: touchedBaseSha, arms: { base1: 'deadbeef' } }] });
+    writeLedger({ runs: [{ sha: touchedBaseSha, arms: { base1: 'deadbeef12345678' } }] });
     const rUnknown = computeReuseVerdict(reuseRepo, recordedSha, untouchedBaseSha);
     results.push(
       check(
@@ -1389,7 +1424,7 @@ function runSelftest(root) {
     // diff their shared ancestor against base, missing `recorded`'s OWN
     // closure edit (sweepArms.ts) entirely. Must fail closed on the ancestor
     // check before ever reaching that diff.
-    writeLedger({ runs: [{ sha: touchedBaseSha, arms: { base1: 'deadbeef' } }] });
+    writeLedger({ runs: [{ sha: touchedBaseSha, arms: { base1: 'deadbeef12345678' } }] });
     const rSideBranch = computeReuseVerdict(reuseRepo, touchedBaseSha, untouchedBaseSha);
     results.push(
       check(
@@ -1422,8 +1457,8 @@ function runSelftest(root) {
     // reason string now says "ambiguous", distinct from a genuine no-match.
     writeLedger({
       runs: [
-        { sha: 'aaaaaaaa1111111111111111111111111111aaaa', arms: { base1: 'deadbeef' } },
-        { sha: 'aaaaaaaa2222222222222222222222222222bbbb', arms: { base1: 'deadbeef' } },
+        { sha: 'aaaaaaaa1111111111111111111111111111aaaa', arms: { base1: 'deadbeef12345678' } },
+        { sha: 'aaaaaaaa2222222222222222222222222222bbbb', arms: { base1: 'deadbeef12345678' } },
       ],
     });
     const rAmbiguous = computeReuseVerdict(reuseRepo, 'aaaaaaaa', untouchedBaseSha);
@@ -1442,13 +1477,69 @@ function runSelftest(root) {
     // today — a shorter prefix risks colliding with a future ledger entry.
     // #1361: its own reason string ("too short"), distinct from both
     // "unknown" and "ambiguous".
-    writeLedger({ runs: [{ sha: recordedSha, arms: { base1: 'deadbeef' } }] });
+    writeLedger({ runs: [{ sha: recordedSha, arms: { base1: 'deadbeef12345678' } }] });
     const rShortPrefix = computeReuseVerdict(reuseRepo, recordedSha.slice(0, 6), untouchedBaseSha);
     results.push(
       check(
         'reuse: a SHA prefix shorter than 7 characters is refused -> RUN_BASE, reason says "too short"',
         rShortPrefix.verdict === 'RUN_BASE' && /too short to disambiguate/.test(rShortPrefix.reason),
         rShortPrefix,
+      ),
+    );
+
+    // #1358: an arm value the wrong LENGTH (8 hex chars, not 16) is
+    // rejected -> RUN_BASE, naming the offending arm. A regex checking only
+    // the character set (never the length) would pass this row.
+    writeLedger({ runs: [{ sha: recordedSha, arms: { base1: 'deadbeef' } }] });
+    const rShortArmHash = computeReuseVerdict(reuseRepo, recordedSha, untouchedBaseSha);
+    results.push(
+      check(
+        'reuse: an arm hash the wrong length (8 hex chars) -> RUN_BASE, names the arm',
+        rShortArmHash.verdict === 'RUN_BASE' &&
+          /malformed arm hash/.test(rShortArmHash.reason) &&
+          /base1/.test(rShortArmHash.reason),
+        rShortArmHash,
+      ),
+    );
+
+    // #1358: an arm value the right LENGTH but non-hex characters -> RUN_BASE.
+    // A regex checking only the length (never the character set) would pass
+    // this row. `base2` (not `base1`) confirms the reason names the ACTUAL
+    // offending arm rather than always the first key.
+    writeLedger({ runs: [{ sha: recordedSha, arms: { base1: 'deadbeef12345678', base2: 'zzzzzzzzzzzzzzzz' } }] });
+    const rNonHexArmHash = computeReuseVerdict(reuseRepo, recordedSha, untouchedBaseSha);
+    results.push(
+      check(
+        'reuse: an arm hash of the right length but non-hex characters -> RUN_BASE, names the arm (not a well-formed sibling)',
+        rNonHexArmHash.verdict === 'RUN_BASE' &&
+          /malformed arm hash/.test(rNonHexArmHash.reason) &&
+          /base2/.test(rNonHexArmHash.reason) &&
+          !/\bbase1\b/.test(rNonHexArmHash.reason),
+        rNonHexArmHash,
+      ),
+    );
+
+    // #1358: on a REUSE verdict, `cmdReuse` must print every reused arm's
+    // hash (never just the verdict line) — mutation-checked by reverting
+    // the print block, which reds only this row. Capture `console.log`
+    // rather than reading `result.entry.arms` directly, so the assertion
+    // covers the PRINT path `cmdReuse` actually exercises, not merely the
+    // data `computeReuseVerdict` already returned.
+    writeLedger({ runs: [{ sha: recordedSha, arms: { base1: 'deadbeef12345678', base2: 'cafebabe90123456' } }] });
+    const reuseLogLines = [];
+    const origConsoleLog = console.log;
+    console.log = (...args) => reuseLogLines.push(args.join(' '));
+    try {
+      cmdReuse(reuseRepo, recordedSha, untouchedBaseSha);
+    } finally {
+      console.log = origConsoleLog;
+    }
+    results.push(
+      check(
+        'reuse: cmdReuse prints every reused arm hash on a REUSE verdict',
+        reuseLogLines.some((l) => l.includes('base1') && l.includes('deadbeef12345678')) &&
+          reuseLogLines.some((l) => l.includes('base2') && l.includes('cafebabe90123456')),
+        { reuseLogLines },
       ),
     );
   } finally {
@@ -1503,7 +1594,7 @@ function runSelftest(root) {
     mkdirSync(ledgerDir2, { recursive: true });
     writeFileSync(
       path.join(ledgerDir2, 'recorded-runs.json'),
-      JSON.stringify({ runs: [{ sha: recorded3Sha, arms: { base1: 'deadbeef' } }] }),
+      JSON.stringify({ runs: [{ sha: recorded3Sha, arms: { base1: 'deadbeef12345678' } }] }),
     );
 
     const rCheckoutIndependent = computeReuseVerdict(blocker2Repo, recorded3Sha, base3Sha);
@@ -1549,7 +1640,7 @@ function runSelftest(root) {
     mkdirSync(ledgerDir3, { recursive: true });
     writeFileSync(
       path.join(ledgerDir3, 'recorded-runs.json'),
-      JSON.stringify({ runs: [{ sha: recordedSha, arms: { base1: 'deadbeef' } }] }),
+      JSON.stringify({ runs: [{ sha: recordedSha, arms: { base1: 'deadbeef12345678' } }] }),
     );
 
     const rMissingPrecedence = computeReuseVerdict(reuseMissingRepo, recordedSha, baseSha);
@@ -1595,7 +1686,7 @@ function runSelftest(root) {
     mkdirSync(ledgerDir4, { recursive: true });
     writeFileSync(
       path.join(ledgerDir4, 'recorded-runs.json'),
-      JSON.stringify({ runs: [{ sha: recordedSha, arms: { base1: 'deadbeef' } }] }),
+      JSON.stringify({ runs: [{ sha: recordedSha, arms: { base1: 'deadbeef12345678' } }] }),
     );
 
     const rAddedPrecedence = computeReuseVerdict(reuseAddedRepo, recordedSha, baseSha);
