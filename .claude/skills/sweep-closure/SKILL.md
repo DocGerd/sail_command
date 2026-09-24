@@ -120,9 +120,10 @@ not fix).
    `export const` (literal initializer: no call, operator, template or
    identifier reference), `export function`, `export interface` or
    `export type` declarations or comments, under names the old file never
-   mentions — and no file a sweep run loads (the walk plus tracked code under
-   `app/sweep`) mentions a new name, namespace/star-imports the module, or
-   performs a dynamic load it cannot resolve. Any other shape, including a
+   mentions — and no file a sweep run loads (the walk plus non-ignored code
+   under `app/sweep`) mentions a new name, namespace/star-imports the module
+   (resolved, or plausibly by basename), or performs a dynamic load it cannot
+   resolve. Any other shape, including a
    parse failure, is OWED. #941's `GENOA_SAIL_ID` append is the motivating
    case; an element appended to `BOATS` stays OWED.
 
@@ -425,23 +426,35 @@ into this repo):
     fork point that `head` (forked earlier) only edits → `OWED` via
     `base`'s own third unioned term; and `head` omitted reading the
     WORKING TREE rather than the committed `HEAD` ref.
-34–44. #944 additive-export rows on `classifyAdditiveExports`, fed real
+34–46. #944 additive-export rows on `classifyAdditiveExports`, fed real
     `git diff --no-index` output: an unreferenced `export const` with a
     literal initializer, and an unreferenced `export function`/`interface`/
     `type`, → NOT OWED; a changed existing export, a new name imported by a
     loadable file, a namespace import of the module, an unresolvable dynamic
-    import, an unparseable insertion, an element appended to `BOATS`, an
-    initializer that calls `BOATS.push`, a new name the old file already
-    mentions, and an export-shaped line inserted inside a template literal
-    → OWED.
-45–46. The same rule end to end through `computeDiffVerdict` in disposable
-    repos: an unreferenced additive export → NOT OWED; an `app/sweep` arm
-    file (outside the walk) that namespace-imports the module → OWED.
-    Mutation-checked per predicate; each reds its own row. Two predicates
-    are backstops with no isolating row: the top-level/boundary check
-    behind the statement parser (the `BOATS` row reds only with both
-    removed), and the old-file name check behind the pure-insertion check
-    on the changed-export row.
+    import, an `export let` the parser rejects, an insertion that leaves the
+    file unbalanced, an element appended to `BOATS`, an export-shaped line
+    inserted INSIDE `BOATS`, an initializer that calls `BOATS.push`, a new
+    name the old file already mentions, and an export-shaped line inserted
+    inside a template literal → OWED.
+47–50. Through `indexUniverse`/`computeDiffVerdict` in disposable repos: an
+    unreferenced additive export → NOT OWED end to end; an `app/sweep` arm
+    file (outside the walk) that namespace-imports the module → OWED; an
+    unresolved relative namespace import, or a bare one whose basename
+    matches the target (a possible path alias) → OWED, with an unrelated
+    bare one as the control; and, with `head` omitted, an UNTRACKED arm
+    file naming the new export → OWED.
+    Mutation-checked per predicate: disabling any one reds at least one of
+    these rows. Where a row's verdict is held by two predicates (the
+    changed-export row: pure-insertion and old-name checks; the unbalanced
+    row: lex guard and parser), disabling one reds it on its reason
+    assertion while the verdict stays OWED.
+
+Named residual: the lexer has no regex-literal state. A quote inside a
+regex literal can mislex a file; the whole-file balance check turns the
+common case into OWED, but it is not a proof. Any unresolvable dynamic load
+(`require()`, `import.meta.glob`, a non-literal `import()`) in a file a
+sweep run loads makes the additive rule OWED for every target — the safe
+direction, but a new such call under `app/sweep` silently disables the rule.
 
 **Neither `npm --prefix app run typecheck` nor `npm --prefix app run
 lint` cover this file at all** — the tsconfigs and `eslint src e2e sweep`

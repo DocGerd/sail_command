@@ -661,7 +661,8 @@ function indexUniverse(dir, closure) {
   const rels = new Set();
   for (const [rel, v] of closure) if (!v.missing && isCodeFile(rel)) rels.add(rel);
   const loaded = PATH_PREFIXES.filter((p) => p.loadedAtSweepTime).map((p) => p.prefix);
-  const listed = execFileSync('git', ['ls-files', '-z', '--', ...loaded], {
+  // --others: an untracked arm file in a working-tree run is still globbed by vitest.
+  const listed = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', ...loaded], {
     cwd: dir,
     encoding: 'utf8',
   });
@@ -674,7 +675,13 @@ function indexUniverse(dir, closure) {
     const refs = moduleRefs(text).map((r) => {
       if (r.spec === undefined) return r;
       const resolved = resolveSpecifier(abs, r.spec);
-      return { ...r, target: resolved ? path.relative(dir, resolved) : null };
+      if (resolved) return { ...r, target: path.relative(dir, resolved) };
+      if (r.kind !== 'namespace') return { ...r, target: null };
+      // An unresolved namespace import: relative means a missing file; bare
+      // may be a path alias, so judge it by basename like import(resolve()).
+      return /^[./]/.test(r.spec)
+        ? { kind: 'dynamic-unknown', why: `unresolved namespace import '${r.spec}'` }
+        : { kind: 'dynamic-basename', literal: r.spec };
     });
     files.set(rel, { text, refs });
   }
@@ -688,7 +695,7 @@ function depthOf(masked) {
     if (c === '(' || c === '[' || c === '{') depth++;
     else if (c === ')' || c === ']' || c === '}') {
       depth--;
-      if (depth < 0) throw new Error('unbalanced brackets before the insertion point');
+      if (depth < 0) throw new Error('unbalanced brackets');
     }
   }
   return depth;
@@ -806,6 +813,14 @@ function tokenRegex(name) {
  */
 function classifyAdditiveExports({ targetRel, oldContent, newContent, diffText, universes, exemptHunk = () => false }) {
   try {
+    // The lexer has no regex-literal state; a quote inside a regex usually
+    // leaves the file ending mid-string or unbalanced, which this rejects.
+    for (const [side, content] of [['old', oldContent], ['new', newContent]]) {
+      const lexed = lexMask(content);
+      if (lexed.state !== 'code' || depthOf(lexed.masked) !== 0) {
+        throw new Error(`the ${side} file does not lex to balanced top-level code`);
+      }
+    }
     const hunks = parseHunks(diffText);
     if (hunks.length === 0) throw new Error('no hunks in the diff');
     const oldStarts = buildLineStarts(oldContent);
@@ -2374,12 +2389,21 @@ export function boatById(id: string) {
       ),
     );
 
-    const a7 = additive(ADD_BASE + '\nexport const BROKEN = { a: 1;\n');
+    const a7 = additive(ADD_BASE + '\nexport let COUNTER = 0;\n');
     results.push(
       check(
-        '#944 additive: inserted text that does not parse -> OWED',
-        a7.verdict === 'OWED' && /has no terminating/.test(a7.reason),
+        '#944 additive: inserted text the parser does not accept (export let) -> OWED',
+        a7.verdict === 'OWED' && /unrecognised top-level statement/.test(a7.reason),
         a7,
+      ),
+    );
+
+    const a7b = additive(ADD_BASE + '\nexport const BROKEN = { a: 1;\n');
+    results.push(
+      check(
+        '#944 additive: inserted text that leaves the file unbalanced -> OWED',
+        a7b.verdict === 'OWED' && /does not lex to balanced top-level code/.test(a7b.reason),
+        a7b,
       ),
     );
 
@@ -2389,6 +2413,17 @@ export function boatById(id: string) {
         '#944 additive: an element appended to the BOATS array (a pure insertion) -> OWED',
         a8.verdict === 'OWED',
         a8,
+      ),
+    );
+
+    // Parses as a valid export on its own; only the top-level check sees it
+    // lands inside the BOATS array.
+    const a12 = additive(withReplacement(ADD_BASE, "  { id: 'a', draftM: 2.1 },\n", "  { id: 'a', draftM: 2.1 },\nexport const NESTED = 1;\n"));
+    results.push(
+      check(
+        '#944 additive: an export-shaped line inserted INSIDE the BOATS array -> OWED',
+        a12.verdict === 'OWED' && /not at module top level/.test(a12.reason),
+        a12,
       ),
     );
 
@@ -2484,6 +2519,80 @@ export function boatById(id: string) {
     );
   } finally {
     rmSync(addRepo, { recursive: true, force: true });
+  }
+
+  // Namespace imports indexUniverse cannot resolve: a missing relative file,
+  // and a bare specifier that may be a path alias for the target.
+  const unresolvedRepo = mkdtempSync(path.join(tmpdir(), 'sweep-closure-selftest-additive-unresolved-'));
+  try {
+    initClosureRepo(unresolvedRepo, 'export const ARMS = 1;\n');
+    const arm = path.join(unresolvedRepo, 'app', 'sweep', 'arm-z.test.ts');
+    const EXTRA_OLD = 'export const A = 1;\n';
+    const EXTRA_NEW = 'export const A = 1;\n\nexport const B = 2;\n';
+    const oldF = path.join(unresolvedRepo, 'old.ts');
+    const newF = path.join(unresolvedRepo, 'new.ts');
+    writeFileSync(oldF, EXTRA_OLD);
+    writeFileSync(newF, EXTRA_NEW);
+    const diffText = gitDiffNoIndex(oldF, newF);
+    const verdictWith = (armText) => {
+      writeFileSync(arm, armText);
+      const universe = indexUniverse(unresolvedRepo, computeClosure(unresolvedRepo));
+      universe.set('lib/extra.ts', { text: EXTRA_OLD, refs: [] });
+      return classifyAdditiveExports({
+        targetRel: 'lib/extra.ts',
+        oldContent: EXTRA_OLD,
+        newContent: EXTRA_NEW,
+        diffText,
+        universes: [universe],
+      });
+    };
+    const uRel = verdictWith("import * as x from '../../lib/missing';\n");
+    const uAlias = verdictWith("import * as x from '@/lib/extra';\n");
+    const uControl = verdictWith("import * as p from 'node:path';\n");
+    results.push(
+      check(
+        '#944 additive: an unresolved relative namespace import, or a bare one whose basename matches the target -> OWED (a bare unrelated one stays NOT_OWED)',
+        uRel.verdict === 'OWED' &&
+          /unresolved namespace import/.test(uRel.reason) &&
+          uAlias.verdict === 'OWED' &&
+          /may resolve to lib\/extra\.ts/.test(uAlias.reason) &&
+          uControl.verdict === 'NOT_OWED',
+        { uRel, uAlias, uControl },
+      ),
+    );
+  } finally {
+    rmSync(unresolvedRepo, { recursive: true, force: true });
+  }
+
+  // Working-tree mode: an UNTRACKED arm file names the new export. It is not
+  // in the diff, but vitest's glob would still load it.
+  const untrackedRepo = mkdtempSync(path.join(tmpdir(), 'sweep-closure-selftest-additive-untracked-'));
+  try {
+    const git = initClosureRepo(untrackedRepo, "import { A } from '../../lib/extra.ts';\nexport const ARMS = A;\n");
+    writeFileSync(path.join(untrackedRepo, 'lib', 'extra.ts'), 'export const A = 1;\n');
+    git(['add', '-A']);
+    git(['commit', '-q', '-m', 'base']);
+    const baseSha = git(['rev-parse', 'HEAD']).trim();
+    writeFileSync(path.join(untrackedRepo, 'lib', 'extra.ts'), 'export const A = 1;\n\nexport const B = 2;\n');
+    git(['add', 'lib/extra.ts']);
+    writeFileSync(
+      path.join(untrackedRepo, 'app', 'sweep', 'arm-u.test.ts'),
+      "import { B } from '../../lib/extra.ts';\nexport const U = B;\n",
+    );
+
+    const dUntracked = computeDiffVerdict(untrackedRepo, baseSha, undefined);
+    const hitUntracked = dUntracked.results.find((r) => r.f === 'lib/extra.ts');
+    results.push(
+      check(
+        '#944 diff: head omitted, an UNTRACKED app/sweep arm file names the new export -> OWED',
+        hitUntracked !== undefined &&
+          hitUntracked.verdict.verdict === 'OWED' &&
+          /arm-u\.test\.ts/.test(hitUntracked.verdict.reason),
+        { results: dUntracked.results },
+      ),
+    );
+  } finally {
+    rmSync(untrackedRepo, { recursive: true, force: true });
   }
 
   let failed = 0;
