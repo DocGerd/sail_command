@@ -49,8 +49,9 @@ export default defineConfig({
     // fixed constant: it holds on a machine with enough cores to run nine
     // workers concurrently and degrades toward the serial figure on a
     // smaller one. #653 added two more (`salona44-breeze`,
-    // `salona44-relaxation`, eleven total) — same reasoning applies with
-    // "nine" read as "eleven". MEASURED, not assumed, and the assumption
+    // `salona44-relaxation`, eleven total; #1334 added a twelfth,
+    // `motorless-short-horizon`) — same reasoning applies to every
+    // arm. MEASURED, not assumed, and the assumption
     // ("mirrors an existing wind field, so no new slowest-arm candidate")
     // was WRONG: under the concurrent load of PR #861's own sweep run 1
     // (contaminated timing — this machine was not otherwise idle),

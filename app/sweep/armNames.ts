@@ -55,4 +55,5 @@ export const ARM_NAMES = [
   'margin-extreme',
   'salona44-breeze',
   'salona44-relaxation',
+  'motorless-short-horizon',
 ] as const;
