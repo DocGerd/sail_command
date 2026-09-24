@@ -776,6 +776,7 @@ function parseExportStatements(text) {
       if (semi === -1) throw new Error(`export const ${name} has no terminating ';'`);
       const eq = findAtDepth0(masked, afterHead, (c, i) => c === '=' && masked[i + 1] !== '>' && i < semi);
       if (eq === -1 || eq > semi) throw new Error(`export const ${name} has no initializer`);
+      assertNoDepth0Newline(masked, afterHead, eq, `export const ${name} annotation`);
       const annotation = masked.slice(afterHead, eq).trim();
       if (annotation !== '' && !annotation.startsWith(':')) throw new Error(`export const ${name}: unsupported declarator`);
       if (findAtDepth0(masked.slice(0, semi), eq + 1, (c) => c === ',') !== -1) {
@@ -785,20 +786,34 @@ function parseExportStatements(text) {
       end = semi;
     } else if (fn !== undefined) {
       const stop = findAtDepth0(masked, afterHead, (c) => c === ';' || c === '{');
-      if (stop === -1) throw new Error(`export function ${name} has no body`);
-      end = masked[stop] === ';' ? stop : matchClose(masked, stop, '{', '}');
+      if (stop === -1 || masked[stop] !== '{') throw new Error(`export function ${name} has no body`);
+      assertNoDepth0Newline(masked, afterHead, stop, `export function ${name} signature`);
+      end = matchClose(masked, stop, '{', '}');
       if (end === -1) throw new Error(`export function ${name}: unbalanced body`);
     } else if (kw === 'interface') {
       const open = findAtDepth0(masked, afterHead, (c) => c === '{' || c === ';');
       if (open === -1 || masked[open] !== '{') throw new Error(`export interface ${name} has no body`);
+      assertNoDepth0Newline(masked, afterHead, open, `export interface ${name} header`);
       end = matchClose(masked, open, '{', '}');
       if (end === -1) throw new Error(`export interface ${name}: unbalanced body`);
     } else {
       end = findAtDepth0(masked, afterHead, (c) => c === ';');
       if (end === -1) throw new Error(`export type ${name} has no terminating ';'`);
+      assertNoDepth0Newline(masked, afterHead, end, `export type ${name}`);
     }
     names.push(name);
     pos = end + 1;
+  }
+}
+
+/**
+ * ASI can end a declaration at a newline and start an executable statement
+ * before the `;`/`{` this parser looks for; without a full parser, a depth-0
+ * newline inside a span means its boundary is unproven.
+ */
+function assertNoDepth0Newline(masked, from, to, what) {
+  if (findAtDepth0(masked.slice(0, to), from, (c) => c === '\n') !== -1) {
+    throw new Error(`${what} spans a depth-0 newline (statement boundary unproven)`);
   }
 }
 
@@ -2424,6 +2439,25 @@ export function boatById(id: string) {
         '#944 additive: an export-shaped line inserted INSIDE the BOATS array -> OWED',
         a12.verdict === 'OWED' && /not at module top level/.test(a12.reason),
         a12,
+      ),
+    );
+
+    // PR #1450 review: ASI ends the declaration at the newline, so the
+    // next line runs as its own statement.
+    const aTypeAsi = additive(ADD_BASE + '\nexport type ZzqT = number\nBOATS.pop()\n;\n');
+    results.push(
+      check(
+        '#944 additive: an export type whose span hides an ASI-separated statement (BOATS.pop()) -> OWED',
+        aTypeAsi.verdict === 'OWED' && /depth-0 newline/.test(aTypeAsi.reason),
+        aTypeAsi,
+      ),
+    );
+    const aFnAsi = additive(ADD_BASE + '\nexport function zzqF(): void\nBOATS.pop();\n');
+    results.push(
+      check(
+        '#944 additive: a bodyless export function followed by BOATS.pop(); -> OWED',
+        aFnAsi.verdict === 'OWED' && /has no body/.test(aFnAsi.reason),
+        aFnAsi,
       ),
     );
 

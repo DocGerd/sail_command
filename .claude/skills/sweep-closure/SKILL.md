@@ -426,7 +426,7 @@ into this repo):
     fork point that `head` (forked earlier) only edits → `OWED` via
     `base`'s own third unioned term; and `head` omitted reading the
     WORKING TREE rather than the committed `HEAD` ref.
-34–46. #944 additive-export rows on `classifyAdditiveExports`, fed real
+34–48. #944 additive-export rows on `classifyAdditiveExports`, fed real
     `git diff --no-index` output: an unreferenced `export const` with a
     literal initializer, and an unreferenced `export function`/`interface`/
     `type`, → NOT OWED; a changed existing export, a new name imported by a
@@ -435,8 +435,10 @@ into this repo):
     file unbalanced, an element appended to `BOATS`, an export-shaped line
     inserted INSIDE `BOATS`, an initializer that calls `BOATS.push`, a new
     name the old file already mentions, and an export-shaped line inserted
-    inside a template literal → OWED.
-47–50. Through `indexUniverse`/`computeDiffVerdict` in disposable repos: an
+    inside a template literal, plus the PR #1450 review's two ASI diffs (an
+    `export type` then `BOATS.pop()`, a bodyless `export function` then
+    `BOATS.pop();`) → OWED.
+49–52. Through `indexUniverse`/`computeDiffVerdict` in disposable repos: an
     unreferenced additive export → NOT OWED end to end; an `app/sweep` arm
     file (outside the walk) that namespace-imports the module → OWED; an
     unresolved relative namespace import, or a bare one whose basename
@@ -449,9 +451,15 @@ into this repo):
     row: lex guard and parser), disabling one reds it on its reason
     assertion while the verdict stays OWED.
 
-Named residual: the lexer has no regex-literal state. A quote inside a
-regex literal can mislex a file; the whole-file balance check turns the
-common case into OWED, but it is not a proof. Any unresolvable dynamic load
+Named residuals. (1) The lexer has no regex-literal state: a quote or
+backtick inside a regex (e.g. `/\`/` beside a multi-line template) can
+mislex a file; the whole-file balance check turns the common case into
+OWED, but it is not a proof. (2) The statement parser is not a full
+parser, so ASI can end a declaration early and run the next line
+(PR #1450 review: `export type T = number` then `BOATS.pop()`). A
+`type`/`interface`/`function`/`const`-annotation span containing a
+depth-0 newline, or a bodyless `export function`, is therefore OWED;
+other ASI shapes are not proven absent. Any unresolvable dynamic load
 (`require()`, `import.meta.glob`, a non-literal `import()`) in a file a
 sweep run loads makes the additive rule OWED for every target — the safe
 direction, but a new such call under `app/sweep` silently disables the rule.
