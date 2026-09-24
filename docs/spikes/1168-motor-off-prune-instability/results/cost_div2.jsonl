@@ -1,0 +1,8 @@
+{"id":"svendborg","rig":"genoa","div":2,"status":"ok","cause":null,"rings":78,"peak":63218,"truncatedRings":0,"expanded":1660621,"accepted":60748997,"costMin":521.1932506998697,"etaMin":518.1260145345052}
+{"id":"svendborg","rig":"fock","div":2,"status":"ok","cause":null,"rings":75,"peak":61654,"truncatedRings":0,"expanded":1593722,"accepted":58174780,"costMin":525.9463405192057,"etaMin":522.2516950602213}
+{"id":"rudkoebing","rig":"genoa","div":2,"status":"ok","cause":null,"rings":108,"peak":66347,"truncatedRings":0,"expanded":2337934,"accepted":84917791,"costMin":603.5033423909505,"etaMin":594.8658853678386}
+{"id":"rudkoebing","rig":"fock","div":2,"status":"ok","cause":null,"rings":109,"peak":55025,"truncatedRings":0,"expanded":2030000,"accepted":73365482,"costMin":607.8692248982748,"etaMin":599.3631030436198}
+{"id":"burgstaaken","rig":"genoa","div":2,"status":"ok","cause":null,"rings":106,"peak":62463,"truncatedRings":0,"expanded":2351791,"accepted":84927377,"costMin":639.5960483805338,"etaMin":636.050237532552}
+{"id":"burgstaaken","rig":"fock","div":2,"status":"ok","cause":null,"rings":110,"peak":57990,"truncatedRings":0,"expanded":2402480,"accepted":86108074,"costMin":643.0726367960611,"etaMin":640.0978180419922}
+{"id":"orth","rig":"genoa","div":2,"status":"ok","cause":null,"rings":94,"peak":61881,"truncatedRings":0,"expanded":1962473,"accepted":70924682,"costMin":590.1339869791667,"etaMin":586.3582954305014}
+{"id":"orth","rig":"fock","div":2,"status":"ok","cause":null,"rings":93,"peak":57859,"truncatedRings":0,"expanded":1786640,"accepted":64221103,"costMin":592.4381508260091,"etaMin":590.1577807413737}

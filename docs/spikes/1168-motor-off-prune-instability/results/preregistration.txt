@@ -1,0 +1,7 @@
+Pre-registered 2026-09-24 before reading m1/m2/m3 outputs.
+M1 salvage=true, genoa, 25 TWS x 2 snaps: every prod-dying row routes; every prod-routing row byte-identical (costMs, rings) because salvage fires only on an empty frontier with no best.
+M2 pareto (single real arrival must dominate): dying configs byte-identical to prod (same ring of death) since domSynthetic=0 on every dying ring; routing rows may move costMs.
+M3 CONFINED_PRUNE_DIV=4: dying set RELOCATES, not empty (>=1 dying row remains, and at least one row flips in each direction vs div 2).
+M4 retract (exclude stamps of nodes that expanded with produced==0): dying rows route; some routing rows move costMs.
+M4 defer (only stamps of nodes that expanded with produced>0): dying rows route; routing rows move more than retract.
+Falsifier for "dead-stamper seal" mechanism: if domAllDead share on dying rings is small (<50%), retract/defer will not rescue.

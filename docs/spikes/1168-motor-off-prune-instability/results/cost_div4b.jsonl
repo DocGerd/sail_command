@@ -1,0 +1,8 @@
+{"id":"burgstaaken","rig":"genoa","div":4,"status":"ok","cause":null,"rings":110,"peak":95333,"truncatedRings":4,"expanded":4176231,"accepted":137148956,"costMin":639.4594378255208,"etaMin":635.6347168782552}
+{"id":"burgstaaken","rig":"fock","div":4,"status":"ok","cause":null,"rings":112,"peak":91646,"truncatedRings":0,"expanded":3997424,"accepted":130485814,"costMin":643.1477290893555,"etaMin":639.3264304524739}
+{"id":"orth","rig":"genoa","div":4,"status":"ok","cause":null,"rings":98,"peak":95333,"truncatedRings":2,"expanded":3292919,"accepted":108793652,"costMin":590.0139940104167,"etaMin":586.2747722208659}
+{"id":"orth","rig":"fock","div":4,"status":"ok","cause":null,"rings":96,"peak":90806,"truncatedRings":0,"expanded":2980209,"accepted":97991725,"costMin":592.6364680623373,"etaMin":590.2684234375}
+{"id":"marstal","rig":"genoa","div":4,"status":"no-route","cause":"mask-blocked","rings":216,"peak":75744,"truncatedRings":0,"expanded":7443037,"accepted":251960495,"costMin":null,"etaMin":null}
+{"id":"marstal","rig":"fock","div":4,"status":"no-route","cause":"mask-blocked","rings":207,"peak":62130,"truncatedRings":0,"expanded":6173151,"accepted":207967404,"costMin":null,"etaMin":null}
+{"id":"soenderborg","rig":"genoa","div":4,"status":"ok","cause":null,"rings":42,"peak":5319,"truncatedRings":0,"expanded":132641,"accepted":4255032,"costMin":196.61842113850912,"etaMin":196.61842113850912}
+{"id":"soenderborg","rig":"fock","div":4,"status":"ok","cause":null,"rings":42,"peak":7243,"truncatedRings":0,"expanded":161859,"accepted":5233009,"costMin":197.62222862141928,"etaMin":195.58968164876302}

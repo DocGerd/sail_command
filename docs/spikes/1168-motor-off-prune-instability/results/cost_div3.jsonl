@@ -1,0 +1,4 @@
+{"id":"svendborg","rig":"genoa","div":3,"status":"ok","cause":null,"rings":83,"peak":79930,"truncatedRings":0,"expanded":2132400,"accepted":74839799,"costMin":521.3383077880859,"etaMin":517.9296698852539}
+{"id":"rudkoebing","rig":"genoa","div":3,"status":"ok","cause":null,"rings":113,"peak":80874,"truncatedRings":0,"expanded":3042498,"accepted":105878109,"costMin":602.190020719401,"etaMin":594.5418520060222}
+{"id":"burgstaaken","rig":"genoa","div":3,"status":"ok","cause":null,"rings":111,"peak":77223,"truncatedRings":0,"expanded":3191268,"accepted":109478270,"costMin":639.4475208740234,"etaMin":635.6532196533203}
+{"id":"orth","rig":"genoa","div":3,"status":"ok","cause":null,"rings":98,"peak":77908,"truncatedRings":0,"expanded":2541701,"accepted":87592394,"costMin":590.0152227945963,"etaMin":588.5542451782227}
