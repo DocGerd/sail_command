@@ -120,7 +120,7 @@ instead of here.
 - [1168-motor-off-prune-instability.md](1168-motor-off-prune-instability.md)
   — #1168: motor-off solves die on connected water by position within a prune
   key; at plan level a rig drops out as `unreachable` and the ★ goes to the
-  slower rig. Recommends a finer confined prune key (divisor 3) for motor-off
+  slower rig. Recommends a finer confined prune key (divisor 3 or 4) for motor-off
   solves only; salvage, dead-stamper retraction and Pareto stamps measured and
   rejected
 
