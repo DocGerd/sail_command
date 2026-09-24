@@ -472,6 +472,36 @@
 #     with `cd` and 544 contain a `;`, so the shapes are abundant and the
 #     change still buys nothing, because those commands are compounds that
 #     genuinely write.
+#   - #448 (2026-09-25): WIDENING git_readonly_ok() PAST show/log/diff TO
+#     status/rev-parse/ls-files/blame/describe — MEASURED AND REJECTED.
+#     Per-subcommand soundness first (issue #448's own ask): none of these
+#     five has a write-capable option the way `diff`'s `--output=` does — but
+#     two of the issue's OTHER candidates do and are excluded for that reason
+#     alone, before any yield measurement: `cat-file --filters` runs the
+#     path's configured clean/smudge filter, the same external-command class
+#     as `--textconv`/`--ext-diff` already disqualified on show/log/diff; and
+#     `ls-remote` accepts an `ext::<command>` transport / `--upload-pack=`
+#     argument that runs an arbitrary program with NO shell metacharacter
+#     involved, so WRITE_CAPABLE_CHARS cannot see it at all. Global options
+#     are unaffected by this widening either way: the second-word-position
+#     check already blocks `-C`/`-c`/`--git-dir=` for show/log/diff, and
+#     reuses unchanged. Alias risk is likewise unchanged by widening: the
+#     exemption matches the literal second token against a fixed name list,
+#     so a local `[alias]` shadowing one of these names is the same residual
+#     show/log/diff already carry, not a new one five more names open.
+#     YIELD, replayed through a copy of this script with only the five safe
+#     names added: corpus is this repo's own `~/.claude/projects/` session
+#     transcripts (6,444 real Bash commands, 75 files) — NOT #437's
+#     28,923-command corpus, unavailable to a worktree agent; ratios only,
+#     never absolute counts, against that one. `git`-first-word commands:
+#     345; of those, 17 name a protected path (1 already exempt via
+#     show/log/diff, 14 ask, 2 advisory). Through the widened copy: **1**
+#     newly exempt (a `git status && ... && git rev-parse ... && ls ...`
+#     compound), 13 ask, 2 advisory unchanged — diffed against the full
+#     345-row baseline, zero other rows moved. 1 of 17 (5.9%) is the same
+#     shape #437 already declined for `diff` (1 of a much larger corpus,
+#     "bought for 0.09% of the prompts ... doubt resolves to the SMALLER
+#     allowlist") — rejected on that precedent; no code change.
 #   - ACCEPTED RESIDUAL OVER-FIRES of the exemption (named so they read as
 #     decisions, not oversights): `!` is disqualified, so `test ! -f
 #     <protected>` — a legitimate read-only shape — still fires; `#` is
