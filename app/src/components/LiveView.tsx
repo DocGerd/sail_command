@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLang, useT } from '../i18n';
 import type { MsgKey } from '../i18n/dict.de';
@@ -29,20 +29,20 @@ import { liveSimDict } from '../dev/LiveSimulatorControls.dict';
 import Button from './Button';
 import type { LatLon, Leg, ManeuverKind } from '../types';
 
-// #143: dev/UAT-only Live-view simulator gate — a top-level literal `const`
-// (never re-evaluated per render) so a production build's minifier folds
-// every use site below to `false` and dead-code-eliminates
-// dev/liveSimulator.ts, dev/LiveSimulatorControls.tsx and its dict from the
-// prod bundle (#96; mirrors App.tsx's `__SC_UAT__ ?` pattern — see its
-// comment for why `&&` alone leaves a residue in a JSX child slot). NOT a
-// literal zero-byte diff against a pre-#143 build: `simActive` must be the
-// LEADING term of any `||`/ternary it joins; a NEW children-array sibling
-// (vs REPLACING an existing render value, as App.tsx's h1 slot does) always
-// costs a few bytes even fully folded; and once this constant is read from
-// enough distinct call sites the minifier keeps it as a real `var` rather
-// than inlining the literal at each site. See the PR body for the measured
-// entry-chunk delta and why it is accepted rather than chased further.
-const LIVE_SIM_GATE_OPEN = import.meta.env.DEV || __SC_UAT__;
+// #143: dev/UAT-only Live-view simulator gate — mirrors App.tsx's
+// `__SC_UAT__ ?` pattern (see its comment for why `&&` alone leaves a
+// residue in a JSX child slot). `simActive` must be the LEADING term of any
+// `||`/ternary it joins, and REPLACES an existing render value rather than
+// joining a new children-array sibling. Unlike an earlier version of this
+// gate, the literal `import.meta.env.DEV || __SC_UAT__` expression is
+// deliberately NOT hoisted into a shared module-level const: once a shared
+// const is read from enough distinct call sites the minifier keeps it as a
+// real `var` instead of inlining the literal at every site (measured on the
+// PR that added this comment). Each of `simActive`'s two computation sites
+// below (this component, and the route-feed effect) therefore re-states the
+// literal expression itself, so each one folds to `false` independently in
+// production and neither call site depends on a shared identifier's use
+// count elsewhere in the file.
 
 // #115 manual "reroute from here": wiring provided by App.tsx (which owns the
 // useLiveReroute hook — it needs usePlanFlow's ensureClient). `busy` disables
@@ -124,33 +124,34 @@ export default function LiveView({
   const [hintVisible, setHintVisible] = useState(false);
 
   const result = plan && rig ? activeRigResult(plan, rig) : null;
-  const legs = result?.legs ?? [];
+  // Memoised on `result`, not left as `result?.legs ?? []`: the `?? []`
+  // fallback is a fresh array literal on every render, which would make the
+  // route-feed effect below re-run every render (react-hooks/exhaustive-deps
+  // flags exactly this). `result.legs` itself is a stable reference across
+  // renders carrying the same result.
+  const legs = useMemo(() => result?.legs ?? [], [result]);
 
   // #143: whether the simulator is actually driving THIS session's fix, not
   // merely whether the gate is open. Read once per render, not memoised —
   // the query string is static for a page's lifetime here.
-  const simActive = LIVE_SIM_GATE_OPEN && isLiveSimRequested();
+  const simActive = (import.meta.env.DEV || __SC_UAT__) && isLiveSimRequested();
 
   // #1486 review: feeds the ACTIVE plan's leg polyline into the simulator so
   // 'track'/'drift' move along the real route (heading-to-steer/depth-caution
   // math is computed against `legs`, so a synthetic loop elsewhere produced a
   // false "crosses charted land" caution) — a leg vertex list (start of leg
   // 0, then each leg's end); `null` when there is no plan yet, which the
-  // controller reads as "fall back to the synthetic loop". Gated the same
-  // way as every other simulator reference in this file — see
-  // LIVE_SIM_GATE_OPEN's comment.
+  // controller reads as "fall back to the synthetic loop". Re-derives the
+  // gate itself (see the module comment above `simActive`'s declaration)
+  // instead of depending on the `simActive` variable, and `legs` is now a
+  // stable dependency via `useMemo` above — so `[legs]` is both correct and
+  // complete for react-hooks/exhaustive-deps, with no disable needed.
   useEffect(() => {
-    if (!simActive) return;
+    if (!((import.meta.env.DEV || __SC_UAT__) && isLiveSimRequested())) return;
     const controller = getLiveSimController();
     controller.setRoute(legs.length > 0 ? [legs[0].start, ...legs.map((l) => l.end)] : null);
     return () => controller.setRoute(null);
-    // `legs` is a fresh array every render (derived, not memoised — see the
-    // eslint warning this triggers at its declaration above) so this effect
-    // re-fires on every render while simActive — harmless here: `setRoute`
-    // is a plain call into a module-level singleton, never a React state
-    // setter, so a redundant call cannot create a render loop, only a no-op
-    // re-walk of an equal-content polyline.
-  }, [simActive, legs]);
+  }, [legs]);
 
   // Both 'denied' and 'unavailable' get the identical treatment (spec §4:
   // "App fully usable, no boat marker; hint shown once") — a zero-arg
@@ -550,8 +551,8 @@ export default function LiveView({
   // element there left a small residue in the prod entry chunk even fully
   // folded (a `null` placeholder still occupies that array slot); wrapping
   // at this single return-value site, the same shape App.tsx's h1 title
-  // slot uses, folds to `readout` with zero diff (see LIVE_SIM_GATE_OPEN's
-  // comment above for the measurement).
+  // slot uses, folds to `readout` with zero diff (see the module comment
+  // above `simActive`'s declaration).
   const withSim = simActive ? (
     <>
       {readout}
