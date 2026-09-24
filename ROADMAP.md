@@ -20,8 +20,9 @@ shipped.
 
 The `v0.43.0` cut (2026-09-24) worked the
 [`v0.43.0` milestone](https://github.com/DocGerd/sail_command/milestones):
-`realmask.repro.salona44`'s Flensburg→Marstal case, which ran at its CI
-timeout, is now within budget
+`realmask.repro.salona44`'s Flensburg→Marstal case, which intermittently
+hit its per-test timeout in CI, had that timeout raised, with no solver
+code changed
 ([#1460](https://github.com/DocGerd/sail_command/issues/1460)).
 
 A scoping spike for #1168's motor-off solve instability also shipped in
@@ -38,7 +39,7 @@ carries the narrow-layout MapLibre canvas paint gap under the top-left map
 chrome ([#1413](https://github.com/DocGerd/sail_command/issues/1413)) and
 measuring depth-overlay canvas memory on a real tablet
 ([#1281](https://github.com/DocGerd/sail_command/issues/1281)) — both
-waiting on the maintainer's real-tablet check — plus #1168's motor-off fix,
+waiting on a real-tablet check — plus #1168's motor-off fix,
 recommended by this cut's spike
 ([#1168](https://github.com/DocGerd/sail_command/issues/1168)). The
 milestone page is the only authoritative view, check it directly rather

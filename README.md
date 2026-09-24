@@ -242,12 +242,12 @@ data; the code license is covered in the [License](#license) section below.
   no hover phase in which to reach it. Touch has its own equivalent instead —
   tap the route line while "Add waypoint" is armed to insert at the tapped
   position ([#1170](https://github.com/DocGerd/sail_command/issues/1170)).
-  Keyboard users get a different equivalent: a per-row "insert waypoint after
-  this one" button in the via list, which inserts at the great-circle
-  midpoint of that gap rather than an arbitrary point, covering every gap
-  including origin-to-first-via
+  Keyboard users get a different equivalent: an insert button on each via
+  row plus one above the first via, each inserting at the great-circle
+  midpoint of its gap rather than an arbitrary point
   ([#1171](https://github.com/DocGerd/sail_command/issues/1171),
-  [#1181](https://github.com/DocGerd/sail_command/issues/1181)). The other
+  [#1181](https://github.com/DocGerd/sail_command/issues/1181)). A route with
+  no via point yet has none of these buttons. The other
   ways of adding a waypoint (typed coordinates, saved waypoints, plain map
   tap) are unaffected.
 - Map labels (place names) are set once at load time in the UI's active
