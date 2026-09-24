@@ -857,6 +857,74 @@ describe('#1233 Major 2 (offline/PWA review): in-flight archive fetch coalescing
 
     expect(archiveCalls).toBe(2);
   });
+
+  // #1246 residual (PR #1480 review 5311114321): the coalescing key was `url`
+  // alone, so a waiter for a DIFFERENT manifest entry sharing the same
+  // archive URL (e.g. two live manifests across an SW update) could accept a
+  // `true` verified against the OTHER entry's byte count. Two regions here
+  // deliberately share ONE archive path but declare DIFFERENT `bytes` —
+  // constructible because parseRegionManifest/requiredRegions key on `id`,
+  // never dedupe by `path`.
+  it('two concurrent pins for the SAME archive url but DIFFERENT manifest byte counts never share one verified result', async () => {
+    const sharedPath = `data/${REGION_ARCHIVE_PREFIX}shared.pmtiles.png`;
+    const sharedUrl = BASE + sharedPath;
+    const m: RegionManifest = {
+      core: manifest().core,
+      regions: [
+        { id: 'region-a', path: sharedPath, bytes: 1024, bbox: REGION_A_BBOX },
+        { id: 'region-x', path: sharedPath, bytes: 2048, bbox: REGION_B_BBOX },
+      ],
+    };
+    const { fake } = stubEnv({ manifest: m });
+    await seedManifestInCache(fake, m);
+
+    // Both concurrent fetches of the shared url are held open until BOTH
+    // callers have started, then released together with a body that only
+    // satisfies region-a's 1024 B — a waiter sharing region-a's in-flight
+    // result WITHOUT checking its own 2048 B requirement would incorrectly
+    // report region-x as pinned too.
+    let releaseArchiveFetch!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseArchiveFetch = resolve;
+    });
+    const fetchMock = vi.fn(async (input: string) => {
+      if (input === MANIFEST_URL) return new Response(JSON.stringify(m), { status: 200 });
+      if (String(input).startsWith(sharedUrl)) {
+        await gate;
+        return new Response(pmtilesBytes(1024), { status: 200 });
+      }
+      return new Response('', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const planA = makePlan('pA', [[leg()]]); // requires region-a only
+    const planX = makePlan('pX', [
+      [leg({ start: { lat: 60.5, lon: 20.5 }, end: { lat: 60.5, lon: 20.52 } })],
+    ]); // requires region-x only
+    await savePlan(planA);
+    await savePlan(planX);
+
+    const pendingA = pinRegionsForPlan(planA);
+    // Let planA's pinOneRegion reach and start its (gated) fetch — creating
+    // its in-flight entry — before planX starts.
+    await Promise.resolve();
+    await Promise.resolve();
+    const pendingX = pinRegionsForPlan(planX);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    releaseArchiveFetch();
+    const [outcomeA, outcomeX] = await Promise.all([pendingA, pendingX]);
+
+    expect(outcomeA).toEqual({ status: 'pinned', total: 1, pinned: 1 });
+    // planX's own 2048 B requirement is NEVER met by the served 1024 B body.
+    expect(outcomeX).toEqual({ status: 'pinned', total: 1, pinned: 0 });
+
+    const archiveFetches = fetchMock.mock.calls.filter((call: unknown[]) =>
+      String(call[0]).startsWith(sharedUrl),
+    );
+    expect(archiveFetches).toHaveLength(2);
+  });
 });
 
 // #295 (PWA review r4016341249): the chip's download size.
