@@ -35,7 +35,7 @@ vi.mock('../dev/liveSimulator', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../dev/liveSimulator')>();
   return { ...actual, isLiveSimRequested: vi.fn(() => false) };
 });
-import { isLiveSimRequested } from '../dev/liveSimulator';
+import { getLiveSimController, isLiveSimRequested } from '../dev/liveSimulator';
 import * as NavMaskModule from '../lib/mask';
 import { defaultBoatSnapshot } from '../types';
 import { PLAN_SCHEMA_VERSION } from '../types';
@@ -1049,6 +1049,28 @@ describe('LiveView', () => {
       fireEvent.click(button);
       expect(onReroute).not.toHaveBeenCalled();
       expect(document.querySelector('.live-sim-controls')).not.toBeNull();
+    });
+
+    it('#1486 review, wave 2: wires the active plan’s legs into the controller as a route (mount and unmount)', async () => {
+      vi.mocked(isLiveSimRequested).mockReturnValue(true);
+      const controller = getLiveSimController();
+      const setRoute = vi.spyOn(controller, 'setRoute');
+      const { wp } = fakeWatchPosition();
+      localStorage.setItem('sc-lang', 'en');
+      render(
+        <I18nProvider>
+          <AppStateProvider>
+            <TestSetPlan plan={TEST_PLAN} />
+            <LiveView watchPosition={wp} />
+          </AppStateProvider>
+        </I18nProvider>,
+      );
+
+      await screen.findByRole('button', { name: 'Start live view' });
+      expect(setRoute).toHaveBeenCalledWith([P0, P1, P2]);
+
+      cleanup();
+      expect(setRoute).toHaveBeenLastCalledWith(null);
     });
   });
 

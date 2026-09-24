@@ -23,7 +23,7 @@ import { formatDepthM } from '../lib/depthDisclosure';
 import { formatDriftMin, formatHeading, formatKn, formatNm, formatTime } from '../lib/format';
 import { claimGpsHintOnce } from '../lib/gpsHint';
 import { watchPosition as realWatchPosition, type GpsFix } from '../services/geolocation';
-import { getLiveSimController, isLiveSimRequested } from '../dev/liveSimulator';
+import { isLiveSimRequested } from '../dev/liveSimulator';
 import LiveSimulatorControls from '../dev/LiveSimulatorControls';
 import { liveSimDict } from '../dev/LiveSimulatorControls.dict';
 import Button from './Button';
@@ -136,22 +136,15 @@ export default function LiveView({
   // the query string is static for a page's lifetime here.
   const simActive = (import.meta.env.DEV || __SC_UAT__) && isLiveSimRequested();
 
-  // #1486 review: feeds the ACTIVE plan's leg polyline into the simulator so
-  // 'track'/'drift' move along the real route (heading-to-steer/depth-caution
-  // math is computed against `legs`, so a synthetic loop elsewhere produced a
-  // false "crosses charted land" caution) — a leg vertex list (start of leg
-  // 0, then each leg's end); `null` when there is no plan yet, which the
-  // controller reads as "fall back to the synthetic loop". Re-derives the
-  // gate itself (see the module comment above `simActive`'s declaration)
-  // instead of depending on the `simActive` variable, and `legs` is now a
-  // stable dependency via `useMemo` above — so `[legs]` is both correct and
-  // complete for react-hooks/exhaustive-deps, with no disable needed.
-  useEffect(() => {
-    if (!((import.meta.env.DEV || __SC_UAT__) && isLiveSimRequested())) return;
-    const controller = getLiveSimController();
-    controller.setRoute(legs.length > 0 ? [legs[0].start, ...legs.map((l) => l.end)] : null);
-    return () => controller.setRoute(null);
-  }, [legs]);
+  // #1486 review: `legs` feeds the simulator's route-following (see
+  // LiveSimulatorControls.tsx) so 'track'/'drift' move along the ACTIVE
+  // plan rather than a synthetic loop — wired as a PROP into
+  // `<LiveSimulatorControls>` at this component's single `simActive`
+  // ternary site (below), never via a standalone effect here: an effect
+  // declared in THIS component would be an unconditional hook call present
+  // in every build, where `<LiveSimulatorControls>` itself is a whole
+  // subtree that dead-code-eliminates out of the prod bundle when
+  // `simActive` folds to `false` (see the module comment above).
 
   // Both 'denied' and 'unavailable' get the identical treatment (spec §4:
   // "App fully usable, no boat marker; hint shown once") — a zero-arg
@@ -556,7 +549,7 @@ export default function LiveView({
   const withSim = simActive ? (
     <>
       {readout}
-      <LiveSimulatorControls />
+      <LiveSimulatorControls legs={legs} />
     </>
   ) : (
     readout
