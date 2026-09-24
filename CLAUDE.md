@@ -47,7 +47,7 @@ making design-level decisions; do not silently deviate.
   Silver is level ONE, not level two — reading it as level 2 mispredicts what
   a badge-form change will do, which happened 2026-09-08. The project reached
   `silver` that day when `access_continuity` was marked Met; `bus_factor`
-  stays Unmet, a SHOULD at silver and a MUST only at gold. Badge attainment
+  was then Unmet, a SHOULD at silver and a MUST only at gold. Badge attainment
   gets NO CHANGELOG entry — #217/#218/#219/#224/#168 all shipped without
   one — and README's badge is a live image needing no edit)
   (#217–#219, #224). **#224 deliberately DECLINED a DCO and a CLA** (Apache-2.0
@@ -545,14 +545,14 @@ making design-level decisions; do not silently deviate.
   longer merge silently. TWO of them since #1294: connected-when-expected, and
   accepted-when-a-boat's-own-gate-cannot-reach-it via
   `EXPECTED_UNREACHABLE_BY_BOAT` (exact in both directions; the real table is
-  EMPTY today, so its non-vacuity rests on a synthetic fixture). Everything else in `verify_mask.py`'s connectivity
+  EMPTY at `8102908`, so its non-vacuity rests on a synthetic fixture).
+  Everything else in `verify_mask.py`'s connectivity
   section stays Python-only, including a STALE `KNOWN_DISCONNECTED` entry,
   which
   that file's own SCOPE comment calls "the one with real teeth". Read that
-  comment before claiming either coverage or its absence. The
-  `protect-main` ruleset requires **`app` and `e2e` only** (read off the ruleset
-  API 2026-08-18), so a red `ruff` merges silently — it is not a gate, it is a
-  job someone has to look at. Run both after ANY `pipeline/**` change:
+  comment before claiming either coverage or its absence. A red `ruff` merges
+  silently (`protect-main`, under Deploy) — it is not a gate, it is a job
+  someone has to look at. Run both after ANY `pipeline/**` change:
   typecheck/lint/vitest are all JS-side and structurally cannot see Python
   (measured — #538's three E501s entered on Task 13's OWN commit and survived
   that task's review rounds AND the whole-branch review, because every gate any
@@ -574,7 +574,9 @@ making design-level decisions; do not silently deviate.
   cache is not carried across (observed at #1163) — so a worktree agent cannot
   inspect the cached raster's extent and must say so rather than infer it.
   `verify_mask.py` must exit 0: it flood-fill-checks
-  every harbor snap and has a documented KNOWN_DISCONNECTED allowlist (#9).
+  every harbor snap and has a documented KNOWN_DISCONNECTED allowlist (#9);
+  `harborKnownDisconnected.test.ts` pins its ids against `harbors.json`'s
+  `knownDisconnected` flags.
 - **CodeQL runs `security-and-quality` (#534) — and a PR CANNOT validate a suite
   change.** GitHub's `pull_request` analysis is DIFF-SCOPED (measured from the run
   logs: `Computing PR diff ranges…`, and `--extension-packs=codeql-action/pr-diff-range`
@@ -587,7 +589,7 @@ making design-level decisions; do not silently deviate.
   figure (the absolute counts drift on any `codeql-action`/query-pack bump
   with nothing here to catch it; `codeql.yml`'s own comment says the same).
   CodeQL is
-  NOT a required check (`protect-main` = `app`+`e2e`), so alerts accumulate
+  NOT a required check, so alerts accumulate
   silently — triage the post-merge push run. Dismissal comments are capped at
   **280 chars**, so a dismissal must point at a linked evidence record (#600).
 - **`code-scanning/alerts` returns Scorecard alerts ALONGSIDE CodeQL's, and
@@ -934,7 +936,7 @@ making design-level decisions; do not silently deviate.
   sets `pitch` jumps the camera. Construction is still the right place — but
   do not "correct" this to an absolute negative in either direction.
   Pitch is deliberately unreachable; don't re-enable it without re-auditing
-  for terrain/sky/3D layers and pitch readers (there are none today, #207).
+  for terrain/sky/3D layers and pitch readers (there were none at #207).
 - GPS-derived per-fix signals (`activeLegIndex` et al.) may only drive CHEAP
   idempotent consumers (RouteLayer's `setFilter`); any network/subscription
   effect keyed on them needs a settle gate (`useSettledValue`, 2 s, with a
@@ -984,12 +986,10 @@ making design-level decisions; do not silently deviate.
   guard is ease-source-SPECIFIC where `isEasing()` was ease-source-AGNOSTIC —
   a foreign, bearing-changing ease carrying no `originalEvent` would now demote
   where v5 did not. No producer exists in the app today
-  (`RouteLayer.tsx`'s only `map.fitBounds(` call as of 2026-08-26 — re-grep
-  before trusting "only" — ~:775, passes `duration: 0` and the current
-  bearing (line number moved :458 -> :656 -> :775 across the #378/#324
-  insertions earlier in the file and the 2026-08-26 audit — three anchors in
-  one lineage, which is why the SYMBOL is the identity here; re-check after any
-  future edit that adds lines above this call site); keyboard rotation and
+  (`RouteLayer.tsx`'s only `map.fitBounds(` call when audited 2026-08-26 —
+  re-grep before trusting "only" — passes `duration: 0` and the current
+  bearing; anchor on the symbol, its line number has moved repeatedly);
+  keyboard rotation and
   drag inertia always carry `originalEvent`;
   `resetNorth` has no call site; `bearingSnap: 0` makes MapLibre's internal
   snap unsatisfiable), and the gap is pinned by a regression test AND by
@@ -1321,9 +1321,10 @@ making design-level decisions; do not silently deviate.
   `layout.spec.ts` x6, `compass.spec.ts`) and NONE passes `exact`; most are
   layout/occlusion guards unrelated to depth, so the failure reads as a
   spurious regression in a distant file. CONSTRAIN THE NEW LABEL — adding
-  `exact: true` to eleven call sites is the worse fix. Still live and
-  unguarded: #681 (a hatch toggle whose natural German label contains that
-  substring) was deferred to v0.18.0. Same lesson as #7's "one anchor per
+  `exact: true` to eleven call sites is the worse fix. #681's hatch
+  toggle (whose natural German label contained that substring) shipped at
+  v0.18.0 (PR #828) as `Schraffur anzeigen`, avoiding it. Same lesson as #7's
+  "one anchor per
   accessible name", in a new place.
   **The remedy is COUNT-DEPENDENT.** At #844/PR #959 the collision was TWO
   sites and the new label was good German satisfying WCAG 2.5.3 (the
@@ -1346,9 +1347,8 @@ making design-level decisions; do not silently deviate.
   tabletPortrait 820x1180, phonePortrait 390x844) and `EDGE_VIEWPORTS` (the
   narrow/short stress cases #368's own residuals were measured against:
   narrowPortrait360, shortLandscape844/740/932, deepPortrait320,
-  partialPushBand375, wrapForcing280 — `shortLandscape932` (932x430, #231)
-  is the newest member and the one a stale copy of this list is most likely
-  to omit; COUNT the array's own keys rather than trusting any total stated
+  partialPushBand375, wrapForcing280 — COUNT the array's own keys rather than
+  trusting any total stated
   here, which drifts at the next addition). Specs must import and iterate these,
   never inline viewport literals — this repo already paid for the per-file
   version of that mistake once (nine hardcoded `testTimeout` literals,
@@ -1410,8 +1410,8 @@ making design-level decisions; do not silently deviate.
   `once('idle'` under `app/e2e/**/*.spec.ts` finds exactly four hits, ALL
   inside `//` comments describing this now-fixed historical race (two each
   in `labels.spec.ts` and `seamarks.spec.ts`) — ZERO live
-  `map.once('idle', ...)` synchronisation gates exist anywhere in the suite
-  today. `annotations.spec.ts` specifically was checked directly and does
+  `map.once('idle', ...)` synchronisation gates existed anywhere in the suite
+  at that date. `annotations.spec.ts` specifically was checked directly and does
   NOT share this defect (`labels.spec.ts`'s own prior claim that it "likely"
   did was false and has been corrected there). #376 tracked exactly this
   audit (state confirmed closed 2026-08-28).
@@ -1809,9 +1809,11 @@ making design-level decisions; do not silently deviate.
   owns it; rename is a trap, #127 spike) — and still interleaves all three
   refs' entries unchanged. `main` and `develop` are both guarded by the
   `protect-main` ruleset (#15 — one ruleset covering both branches via literal
-  refs): PR-only merges (merge commits, review threads resolved), required
-  checks `app` + `e2e` with strict up-to-date policy, no force pushes or
-  deletions.
+  refs, never `~DEFAULT_BRANCH`, which follows a default-branch flip and would
+  strand the non-default branch): PR-only merges (merge commits, review threads
+  resolved), required checks `app` + `e2e` ONLY (read off the ruleset API
+  2026-08-18) with strict up-to-date policy, no force pushes or deletions. A
+  red in any other check merges silently.
 - Post-deploy CDN smoke probe (#117, guards the #118 fix class): `deploy.yml`'s
   `smoke-probe` job probes BOTH deployments (prod site root AND `/uat/`) on
   EVERY run — a redeploy evicts prod's CDN edge Range objects even when zero
@@ -2023,11 +2025,7 @@ making design-level decisions; do not silently deviate.
   push-triggers on both, but is additionally `paths:`-gated (`pipeline/**`,
   `app/public/data/**`, its own two workflow files), so it does NOT run on
   every push — which costs nothing here precisely because it is ADVISORY and
-  was never a required check (see the Python-gates bullet above). The
-  single `protect-main`
-  ruleset targets both `main` and `develop` via literal refs (never
-  `~DEFAULT_BRANCH` — that follows a default-branch flip and would strand the
-  non-default branch) and requires `app`+`e2e` on each.
+  was never a required check (see the Python-gates bullet above).
 - **Changelog ritual (#131, fragments landed #189)**: feature PRs that change
   user-visible behavior no longer edit `CHANGELOG.md`'s `[Unreleased]` section
   directly — that was the original #131 ritual, and it conflicted whenever 2+
@@ -2104,7 +2102,8 @@ making design-level decisions; do not silently deviate.
   to tidy, and a cut folds every member. A brief saying "confirm the old
   fragment is UNTOUCHED" is what PRESERVES a false line — that instruction was
   the cause of PR #768's Major 1.
-  **#730 guards a fragment's LEADING heading; NOTHING guards the trailing
+  **`changelogFragmentShape.test.ts` (#730) guards a fragment's LEADING
+  heading; NOTHING guards the trailing
   `(#NNN).`** — every entry in every released section ends with the issue
   reference then a period, but 6 of the 13 v0.17.0 fragments deviated (four
   carried NO issue reference at all, two lacked the period) and nothing redded:
@@ -2167,14 +2166,11 @@ making design-level decisions; do not silently deviate.
   vice versa, so an agent can truthfully report "changed it to Refs" while the
   other copy still says `Closes` (#279: a stale `Closes #265` survived as the
   body's last line and closed it):
-  `git log origin/develop..HEAD | grep -iE
-  '(clos(e|es|ed)?|fix(e[sd])?|resolve[sd]?)[[:space:]:(]*#[0-9]+'`, plus the
-  same grep over the PR body itself. That pattern REPLACED an earlier
-  `'(clos|fix|resolv)[a-z]*[[:space:]]+#[0-9]+'` that was wrong in BOTH
-  directions (it missed `fix (#412` and `Closes: #321` — the colon form is a
-  real GitHub spelling — and false-POSITIVED on `fixture #99`); it still matches
-  `postfix #12`, which is the safe direction for a nudge, and it deliberately
-  drops the gerunds — `closing`/`fixing`/`resolving` are not GitHub keywords.
+  `git log origin/develop..HEAD | grep -iE "$(sed -n
+  "s/^CLOSING_KEYWORD_RE='\(.*\)'\$/\1/p"
+  .claude/hooks/closing-keyword-guard.sh)"`,
+  plus the same grep over the PR body itself. The pattern lives ONLY in that
+  hook; its `--selftest` pins every form it must match and skip.
   POST-MERGE, verify state in BOTH directions with
   `gh api repos/OWNER/REPO/issues/N --jq .state`: the auto-close is silent, and
   a deliberate `Refs #N` needs checking that N STAYED open just as carefully as
@@ -2187,7 +2183,7 @@ making design-level decisions; do not silently deviate.
   form is not a licence to write conventional-commit scopes around issue refs.
   SECOND observation, 2026-08-26: commit `09bc8af` (`fix(#702): scope the
   stacking-context tie claim…`), merged via PR #735 (`d8bcf58`), left #702
-  open at merge time (still open, milestone v0.16.0, as of 2026-08-26). Two
+  open at merge time (still open on 2026-08-26; closed 2026-09-01, v0.17.0). Two
   observations, same non-closing behaviour — still
   evidence, still not a licence: the check costs one API call, and a miss now
   cuts BOTH ways — the bracketed form silently strands a deliberately-deferred
@@ -2540,7 +2536,8 @@ making design-level decisions; do not silently deviate.
 - A SIXTH vacuity class: **the deliverable is STRUCTURAL, so no behavioural
   guard describes it.** When a refactor's product is a dependency direction or
   a module boundary, every behavioural guard passes with the fix ABSENT by
-  construction — not changing behaviour is the whole point. Measured on #463:
+  construction — not changing behaviour is the whole point. Measured on #463
+  (guard: `shallowWarningExtraction.test.ts`):
   a `ShallowWarning.tsx` containing only
   `export { ShallowWarning } from './RouteSummary';` is the EXACT NEGATION of
   the issue (the consumer still depends on the old module, through an
@@ -3277,7 +3274,8 @@ making design-level decisions; do not silently deviate.
   nine runtime symbol layers. Filed as #288, CLOSED as ANSWERED rather than
   fixed — its closing comment records the cause, states the residual
   explicitly, and asks for a fresh one-line issue if the `text-font` is to be
-  added. `sc-maneuver-labels` still ships without one. `labels.spec.ts` cannot
+  added. `sc-maneuver-labels` had none at `8102908` (2026-09-24).
+  `labels.spec.ts` cannot
   see this missing-fontstack case because that spec never plans a route. The missing-fontstack request
   itself is real in both environments, but its symptom differs: local `vite
   preview` returns the SPA fallback (HTTP 200, body starting `<!do`) for
@@ -3359,7 +3357,7 @@ making design-level decisions; do not silently deviate.
   it, already overlapped 488.1px²/495px² and already intercepted the click. The conclusion inverted — not "sticky reopens #64" but "#64 is
   already live" — and the proposed spec amendment was dropped. (A first fix attempt,
   a narrow-only horizontal inset, was found insufficient in round 2 and
-  reverted; #702 is deferred, not fixed (as of 2026-08-26).)
+  reverted; #702 was deferred on 2026-08-26 and closed at v0.17.0.)
   A negative finding is a claim about a COMPARISON — measure the control
   before reporting one, especially when it will change a spec.
 - **Two guards can share one structural blind spot.** `plan.spec.ts`'s #33
@@ -3480,12 +3478,14 @@ making design-level decisions; do not silently deviate.
   that section froze at the tag. The repo's "guard the rendering, not the data"
   rule lands one level deeper here: ask WHICH rendering surface the guard reads.
 - **A guard with an APERTURE needs something testing the aperture itself.**
-  #524's placeholder-parity guard extracted `/\{([a-zA-Z]+)\}/g` while `t()`'s
+  `i18nPlaceholderParity.test.ts` (#524) extracted `/\{([a-zA-Z]+)\}/g` while
+  `t()`'s
   `vars` accepts a broader `Record`, so tokens outside that aperture were
   invisible to the guard AND to its self-test — which only fed the extractor
   shapes it already handled. A self-test written from the same mental model as
-  the guard can never find the gap. The structural fix (shipped) is a THIRD
-  guard cross-checking a deliberately PERMISSIVE scan against the aperture.
+  the guard can never find the gap. That file gained a third check
+  cross-checking a
+  deliberately PERMISSIVE scan against the aperture.
 - **A structural argument beats a measurement when one is available.** "Could
   the depth hatch read as DEEPER and become a false signal?" is answerable only
   probabilistically by sampling views — but `HATCH_RGBA` is pure black, so
@@ -3626,7 +3626,7 @@ making design-level decisions; do not silently deviate.
   2026-08-09) — `capture.mjs` now polls the rig-comparison chip's TEXT instead
   of a boolean `getByText('★')`. #428 CLOSED at v0.25.0: `.github/workflows/
   docs-screenshots.yml`'s `capture` job now runs the script, but it is ADVISORY
-  (`protect-main` requires `app`+`e2e` only, so a red merges silently) and
+  (a red merges silently) and
   exit-code-only — it catches a crash or timeout (which is what #64's stale
   selectors caused, so that one WOULD be caught now), never a capture that
   COMPLETES and shows the wrong state, which is what the v0.10.0 fixture was.
@@ -3808,7 +3808,7 @@ making design-level decisions; do not silently deviate.
   attribute leaves `.focus()` on a descendant fully successful and the IDL
   property reads `undefined` (reproduced twice, #696). A unit test can pin the
   ATTRIBUTE's presence/absence transition only; focus-blocking needs a real
-  browser; as of 2026-08-31 no e2e spec covers the About dialog at all.
+  browser; no e2e spec covered the About dialog when checked 2026-08-31.
 - A FABRICATED citation is worse than a wrong number — it launders the claim
   as verified and stops the next reader from checking, compounding the
   CITATION HALO risk above. Two shipped in one PR this session: a comment
@@ -4519,7 +4519,7 @@ making design-level decisions; do not silently deviate.
   `WRITE_CAPABLE_CHARS` / `WRITE_CAPABLE_TOKENS` arrays plus the per-verb
   `grep_readonly_ok`/`sed_readonly_ok` disqualifiers, pinned by the hook's
   own selftest rows run in CI's ADVISORY `hook-selftests` job (not a required
-  check — `protect-main` requires `app`+`e2e` only). Loosenings MEASURED and
+  check). Loosenings MEASURED and
   REJECTED, do not re-propose (#404/#405): narrowing the Bash-arm protected
   path to `docs/superpowers/specs/` (silently allows moving the whole
   `docs/superpowers` tree — reds 13 selftest rows); adding `cd` to
@@ -5153,7 +5153,7 @@ making design-level decisions; do not silently deviate.
   `pull_request` events whose shared concurrency group can cancel the fresh
   run's jobs — cancel the stale-SHA run first (verify `.head_sha`), then
   `POST …/actions/runs/<id>/rerun` (#119). `mergeable_state: unstable` = only
-  OPTIONAL checks red — mergeable (required checks are `app`+`e2e` only);
+  OPTIONAL checks red — mergeable;
   scorecard (`.github/workflows/scorecard.yml`) push-triggers on `develop`
   ONLY — plus a weekly `schedule` and a `branch_protection_rule` trigger, both
   of which run on the default branch. #124 (`80cd5bf`, 2026-07-23) moved it OFF
