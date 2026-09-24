@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLang, useT } from '../i18n';
 import type { MsgKey } from '../i18n/dict.de';
@@ -124,12 +124,7 @@ export default function LiveView({
   const [hintVisible, setHintVisible] = useState(false);
 
   const result = plan && rig ? activeRigResult(plan, rig) : null;
-  // Memoised on `result`, not left as `result?.legs ?? []`: the `?? []`
-  // fallback is a fresh array literal on every render, which would make the
-  // route-feed effect below re-run every render (react-hooks/exhaustive-deps
-  // flags exactly this). `result.legs` itself is a stable reference across
-  // renders carrying the same result.
-  const legs = useMemo(() => result?.legs ?? [], [result]);
+  const legs = result?.legs ?? [];
 
   // #143: whether the simulator is actually driving THIS session's fix, not
   // merely whether the gate is open. Read once per render, not memoised —
