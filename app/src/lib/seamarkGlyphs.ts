@@ -192,8 +192,9 @@ export function classifySeamark(seamarkType: string): SeamarkFamily {
  * So this is NOT a pure danger-content ordering, and Tier 2 is where it
  * departs: a lighthouse and a fairway mark carry no danger information at all
  * (R1001 is explicit for safe water), yet both outrank the dense lateral
- * sequence because 6 and 23 in-area marks that anchor a landfall are what a
- * skipper reads at z8-z10, while an individual lateral out of 828 is not.
+ * sequence because the scarce marks that anchor a landfall are what a
+ * skipper reads at z8-z10, while an individual lateral out of the dense
+ * sequence is not — current per-family counts are re-measured below.
  * The tier boundary above them is the hard one: nothing may displace a
  * cardinal or isolated-danger mark, whatever its scale-appropriateness.
  *
@@ -222,10 +223,12 @@ export function classifySeamark(seamarkType: string): SeamarkFamily {
  * - `lightMajor` §2.7.1.1 — a lighthouse provides "a long or medium range
  *   light" and "a significant daymark"; R1001 §2.7 files it under "OTHER
  *   MARKS", outside the six MBS types (§1.2), but range is precisely what
- *   makes a mark usable at small scale. 6 in the forecast area.
+ *   makes a mark usable at small scale. Scarce in the forecast area (current
+ *   count re-measured below).
  * - `safeWater` §2.4.1.1 — indicates "channel entrance, port or estuary
  *   approach, landfall, or best point of passage under bridges": the decision
- *   points of a passage plan. 23 in the forecast area.
+ *   points of a passage plan. Scarce in the forecast area (current count
+ *   re-measured below).
  *   §2.4.1 is explicit that it "does not mark a danger", which is why it
  *   cannot enter Tier 1 — but the same on-deck reasoning that lifts a
  *   lighthouse above the dense sequence marks lifts a fairway mark too, and
@@ -241,7 +244,8 @@ export function classifySeamark(seamarkType: string): SeamarkFamily {
  * §2.1.1 has them "denote the port and starboard sides of channels" relative
  * to a conventional direction of buoyage, so a single lateral is one datum on
  * a channel edge described by many marks, whereas a cardinal or
- * isolated-danger mark is a complete instruction on its own. 828 in-area.
+ * isolated-danger mark is a complete instruction on its own. Dense in-area
+ * (current count re-measured below).
  *
  * TIER 4 — no danger information and not scarce:
  * - `lightMinor`: §2.7 again, but short-range and dense (107 in-area).

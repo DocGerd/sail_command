@@ -188,28 +188,29 @@ const processEnv = (globalThis as { process?: { env?: Record<string, string | un
 //      axis — CI-vs-local, validating the 120s base — and is silent on
 //      whether 8 itself has slack).
 //
-//   IMPORTANT COUPLING (PR #351 review N1): raising this multiplier is NOT
-//   free with respect to `.github/workflows/coverage.yml`'s job-level
-//   `timeout-minutes`, even though it is free with respect to CI runner
-//   cost. `invariants.property.test.ts`'s `solverTimeoutMs(900_000)` is the
-//   heaviest per-test ceiling in the suite; at this multiplier that is
-//   exactly `900_000 * 8 = 7_200_000ms = 120.0 min`. When this constant was
-//   first raised to 8, `coverage.yml`'s cap was ALSO 120 — making that
-//   per-test timer provably unable to ever fire (a per-test timer starts
-//   only once its OWN test starts, strictly after node boot/transform/
-//   collection consume time inside the step, so a budget numerically equal
-//   to the step cap is always reached by the step cap FIRST). That collapses
-//   the two failure surfaces this file's own header comment says must stay
-//   separate: a hang would surface as GitHub's generic job-timeout with no
-//   test named, instead of vitest's per-test timeout naming the offender.
-//   `coverage.yml`'s cap is 240 as of this comment specifically to leave
-//   headroom above this multiplier's heaviest product — see that file's own
-//   comment for the numeric derivation. THE RULE, so the next person who
-//   changes either number sees the coupling: `coverage.yml`'s
-//   `timeout-minutes` MUST stay strictly greater than
-//   `solverTimeoutMs(900_000)` (currently the largest base in the suite)
-//   PLUS the rest of the suite's wall time — raising this multiplier without
-//   re-checking that file's cap re-creates exactly the N1 defect.
+//   IMPORTANT COUPLING (PR #351 review N1): raising this multiplier is NOT free
+//   with respect to `.github/workflows/coverage.yml`'s job-level `timeout-
+//   minutes`, even though it is free with respect to CI runner cost.
+//   `invariants.property.test.ts`'s `solverTimeoutMs(900_000)` is among the
+//   heaviest per-test ceilings in the suite (grep `solverTimeoutMs(900_000)`
+//   under `app/src/routing` for the current tied set, rather than naming them
+//   here — it has grown since #1255); at this multiplier that is exactly
+//   `900_000 * 8 = 7_200_000ms = 120.0 min`. When this constant was first
+//   raised to 8, `coverage.yml`'s cap was ALSO 120 — making that per-test timer
+//   provably unable to ever fire (a per-test timer starts only once its OWN
+//   test starts, strictly after node boot/transform/collection consume time
+//   inside the step, so a budget numerically equal to the step cap is always
+//   reached by the step cap FIRST). That collapses the two failure surfaces
+//   this file's own header comment says must stay separate: a hang would
+//   surface as GitHub's generic job-timeout with no test named, instead of
+//   vitest's per-test timeout naming the offender. `coverage.yml`'s cap is 240
+//   as of this comment specifically to leave headroom above this multiplier's
+//   heaviest product — see that file's own comment for the numeric derivation.
+//   THE RULE, so the next person who changes either number sees the coupling:
+//   `coverage.yml`'s `timeout-minutes` MUST stay strictly greater than
+//   `solverTimeoutMs(900_000)` (currently the largest base in the suite) PLUS
+//   the rest of the suite's wall time — raising this multiplier without re-
+//   checking that file's cap re-creates exactly the N1 defect.
 //   `timeoutBudgetVsJobCap.test.ts` (this directory) asserts the inequality
 //   structurally so a future bump fails loudly instead of silently
 //   recreating the collision.
