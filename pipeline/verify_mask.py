@@ -429,29 +429,68 @@ for hid, reason in KNOWN_DISCONNECTED.items():
             "the entry claims it is disconnected at every gate and it is not; remove it"
         )
 
+
 # #1294: EXPECTED_UNREACHABLE_BY_BOAT structural validation - boat id and
 # harbour id must be real, and a harbour already boat-independently
 # KNOWN_DISCONNECTED needs no per-boat entry too. The stronger EXACTNESS
 # checks (does the boat actually fail to reach it, is a listed harbour still
 # genuinely unreachable) run per-boat below, where the effective gate is known.
-for _bid, _hids in EXPECTED_UNREACHABLE_BY_BOAT.items():
-    if _bid not in CATALOGUE_BOAT_IDS:
-        failures.append(
-            f"EXPECTED_UNREACHABLE_BY_BOAT lists boat '{_bid}', which is not in the catalogue "
-            "(polars-source.json) - remove the stale entry or add the boat"
-        )
-    for _hid in _hids:
-        if _hid not in DEEPEST_CONNECTING_GATE_M:
-            failures.append(
-                f"EXPECTED_UNREACHABLE_BY_BOAT['{_bid}'] lists '{_hid}', which is not a harbor in "
-                "harbors.json - remove the stale entry"
+#
+# Extracted to a pure function (#1318) so the three rejections are each
+# independently mutation-provable against a synthetic fixture, mirrored by
+# app/src/test/verifyMaskConnectivity.test.ts's TS twin.
+def structural_failures(
+    table: dict[str, list[str]],
+    catalogue_ids: set[str],
+    harbour_ids: set[str],
+    known_disconnected,
+) -> list[str]:
+    out: list[str] = []
+    for bid, hids in table.items():
+        if bid not in catalogue_ids:
+            out.append(
+                f"EXPECTED_UNREACHABLE_BY_BOAT lists boat '{bid}', which is not in the catalogue "
+                "(polars-source.json) - remove the stale entry or add the boat"
             )
-        elif _hid in KNOWN_DISCONNECTED:
-            failures.append(
-                f"EXPECTED_UNREACHABLE_BY_BOAT['{_bid}'] lists '{_hid}', which is already in "
-                "KNOWN_DISCONNECTED (disconnected at every gate, boat-independent) - remove the "
-                "redundant per-boat entry"
-            )
+        for hid in hids:
+            if hid not in harbour_ids:
+                out.append(
+                    f"EXPECTED_UNREACHABLE_BY_BOAT['{bid}'] lists '{hid}', which is not a harbor in "
+                    "harbors.json - remove the stale entry"
+                )
+            elif hid in known_disconnected:
+                out.append(
+                    f"EXPECTED_UNREACHABLE_BY_BOAT['{bid}'] lists '{hid}', which is already in "
+                    "KNOWN_DISCONNECTED (disconnected at every gate, boat-independent) - remove the "
+                    "redundant per-boat entry"
+                )
+    return out
+
+
+# Self-check, same style as GATE_DERIVATION_CASES: a synthetic fixture, never
+# the real (empty) EXPECTED_UNREACHABLE_BY_BOAT table, so each of the three
+# rejections is exercised independently of what today's table happens to hold.
+STRUCTURAL_CASES: list[tuple[str, dict[str, list[str]], set[str], set[str], set[str], int]] = [
+    ("accept", {"good-boat": ["good-harbor"]}, {"good-boat"}, {"good-harbor"}, set(), 0),
+    ("unknown boat", {"ghost-boat": ["good-harbor"]}, {"good-boat"}, {"good-harbor"}, set(), 1),
+    ("unknown harbour", {"good-boat": ["ghost-harbor"]}, {"good-boat"}, {"good-harbor"}, set(), 1),
+    ("known-disconnected overlap", {"good-boat": ["sunk-harbor"]}, {"good-boat"}, {"sunk-harbor"}, {"sunk-harbor"}, 1),
+]
+for _label, _table, _cat_ids, _harb_ids, _known, _want in STRUCTURAL_CASES:
+    _got = len(structural_failures(_table, _cat_ids, _harb_ids, _known))
+    # #613: was a bare `assert` (stripped under -O/PYTHONOPTIMIZE). Unconditional
+    # so a disabled rejection cannot silently pass its own self-check.
+    if _got != _want:
+        raise AssertionError(f"structural_failures[{_label}]: expected {_want} failure(s), got {_got}")
+
+failures.extend(
+    structural_failures(
+        EXPECTED_UNREACHABLE_BY_BOAT,
+        CATALOGUE_BOAT_IDS,
+        set(DEEPEST_CONNECTING_GATE_M),
+        KNOWN_DISCONNECTED,
+    )
+)
 
 # #652: harbors.json's `knownDisconnected` field (build_harbors.mjs, sourced
 # from this same KNOWN_DISCONNECTED dict) must name EXACTLY these ids - the

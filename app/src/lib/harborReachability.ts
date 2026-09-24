@@ -155,19 +155,18 @@ const BFS_DCOL = [0, 0, -1, 1] as const;
  * not exist there).
  */
 function floodFromSeed(mask: NavMask, gateM: number): FloodResult {
-  const { rows, cols, west, south, east, north } = mask.meta;
-  const latStep = (north - south) / rows;
-  const lonStep = (east - west) / cols;
+  const { rows, cols } = mask.meta;
+  const { lat: latAxis, lon: lonAxis } = mask.grid;
   const bits = new Uint8Array(Math.ceil((rows * cols) / 8));
   const probe: LatLon = { lat: 0, lon: 0 };
   const centerOf = (row: number, col: number): LatLon => {
-    probe.lat = south + (row + 0.5) * latStep;
-    probe.lon = west + (col + 0.5) * lonStep;
+    probe.lat = latAxis.centre(row);
+    probe.lon = lonAxis.centre(col);
     return probe;
   };
 
-  const seedRow = Math.floor((SEED_POINT.lat - south) / latStep);
-  const seedCol = Math.floor((SEED_POINT.lon - west) / lonStep);
+  const seedRow = latAxis.index(SEED_POINT.lat);
+  const seedCol = lonAxis.index(SEED_POINT.lon);
   if (
     seedRow < 0 ||
     seedRow >= rows ||
@@ -207,11 +206,9 @@ function floodFromSeed(mask: NavMask, gateM: number): FloodResult {
 }
 
 function cellIndexOf(mask: NavMask, p: LatLon): number | null {
-  const { rows, cols, west, south, east, north } = mask.meta;
-  const latStep = (north - south) / rows;
-  const lonStep = (east - west) / cols;
-  const row = Math.floor((p.lat - south) / latStep);
-  const col = Math.floor((p.lon - west) / lonStep);
+  const { rows, cols } = mask.meta;
+  const row = mask.grid.lat.index(p.lat);
+  const col = mask.grid.lon.index(p.lon);
   if (row < 0 || row >= rows || col < 0 || col >= cols) return null;
   return row * cols + col;
 }
