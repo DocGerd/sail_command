@@ -248,7 +248,8 @@ export function classifySeamark(seamarkType: string): SeamarkFamily {
  * (current count re-measured below).
  *
  * TIER 4 — no danger information and not scarce:
- * - `lightMinor`: §2.7 again, but short-range and dense (107 in-area).
+ * - `lightMinor`: §2.7 again, but short-range and dense (current count
+ *   re-measured below).
  * - `specialPurpose`: §2.5.1 — special marks "are not generally intended to
  *   mark channels or obstructions where the MBS provides suitable
  *   alternatives".
