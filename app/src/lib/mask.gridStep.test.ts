@@ -44,19 +44,23 @@ describe('#1259 exact mask grid step', () => {
     expectSharedCellsIdentical(maskGrid(BASE), maskGrid(NORTH_WIDENED), BASE.rows, BASE.cols);
   });
 
-  it('NavMask routes its cell lookups through the same grid', () => {
+  it('NavMask.snapToNavigable returns the exact-step centre under both extents', () => {
     const a = new NavMask(BASE, new Uint8Array(BASE.rows * BASE.cols).fill(200));
     const b = new NavMask(
       NORTH_WIDENED,
       new Uint8Array(NORTH_WIDENED.rows * NORTH_WIDENED.cols).fill(200),
     );
-    const p = { lat: 54.75, lon: 10.2 };
-    expect(a.snapToNavigable(p, 3)).toEqual(b.snapToNavigable(p, 3));
-    const snapped = a.snapToNavigable(p, 3);
-    expect(snapped).toEqual({
-      lat: a.grid.lat.centre(a.grid.lat.index(p.lat)),
-      lon: a.grid.lon.centre(a.grid.lon.index(p.lon)),
-    });
+    // Rows 1040/1115 and col 1036 are cells whose centre the pre-#1259
+    // quotient step moved by an ulp under both extents.
+    for (const [row, col] of [
+      [1040, 1036],
+      [1115, 1036],
+    ] as const) {
+      const expected = { lat: 54.3 + (row + 0.5) / 2400, lon: 9.4 + (col + 0.5) / 1375 };
+      const p = { lat: expected.lat + 1e-5, lon: expected.lon + 1e-5 };
+      expect(a.snapToNavigable(p, 3)).toEqual(expected);
+      expect(b.snapToNavigable(p, 3)).toEqual(expected);
+    }
   });
 
   it('derives integer cells-per-degree for the committed mask', () => {

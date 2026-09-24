@@ -47,7 +47,7 @@ import {
 // implied ETA, per the task brief.
 //
 // #1079 (2026-09-09) WIDENS this beyond the single Aeroeskoebing -> Soeby
-// / uniform-TWS-5.5 case above, along the two axes #1079's own body names:
+// / uniform-TWS-6 case above, along the two axes #1079's own body names:
 //
 //   (b) MORE ROUTES: 'Flensburg -> Glücksburg' (below) reproduces the SAME
 //       near-zero-cost shape at a DIFFERENT harbour pair, DIFFERENT wind
@@ -205,9 +205,12 @@ const SOEBY: LatLon = { lat: 54.9454, lon: 10.256 };
 
 describe('#847 weave ETA cost — reproduction + measurement', () => {
   it(
-    'Aeroeskoebing -> Soeby, TWS 5.5 / wdir 120 (genoa): reproduces a small-correction weave near the destination approach',
+    'Aeroeskoebing -> Soeby, TWS 6 / wdir 120 (genoa): reproduces a small-correction weave near the destination approach',
     { timeout: SOLVER_TEST_TIMEOUT_MS },
     () => {
+      // #1259: re-pinned from TWS 5.5, whose weave the exact mask grid step
+      // removed. At TWS 6 the same destination-approach weave occurs both
+      // before and after that change.
       const res = planRoute(
         {
           origin: AEROESKOEBING,
@@ -220,7 +223,7 @@ describe('#847 weave ETA cost — reproduction + measurement', () => {
           sailIds: ['genoa'],
           boat: defaultBoatSnapshot(),
         },
-        uniformWindGrid(5.5, 120),
+        uniformWindGrid(6, 120),
         SALONA_DEPS,
       ) as PlanResultOk;
       expect(res.status).toBe('ok');
@@ -277,8 +280,7 @@ describe('#847 weave ETA cost — reproduction + measurement', () => {
       // POSITIVE CONTROL for that assertion, using the SAME
       // `mask.segmentClearanceM` call: a `chordNavigable: true` reading is
       // worth nothing if the function can never return false. The real
-      // route took 67.6 min / 7.16 nm to thread from origin to
-      // destination -- a straight chord between them, through the very
+      // route threads from origin to destination -- a straight chord between them, through the very
       // island/shoal geometry the router routed AROUND, is exactly the
       // "infeasible baseline" shape #264 warns about, so it must read
       // BLOCKED here.
@@ -436,7 +438,7 @@ describe('#847 weave ETA cost — reproduction + measurement', () => {
       // beyond the harbours themselves), not the whole forecast domain --
       // the same technique `gen-docs-wind-fixture.mjs` uses so a gradient
       // is actually visible across a route this short (~13 km). Centered
-      // on the original case's own wind cell (TWS 5.5 / wdir 120) with a
+      // on the original case's own wind cell (TWS 6 / wdir 120) with a
       // deliberately modest spread (1 kn / 20 deg) across that span --
       // a physically plausible gradient over 13 km, not an exaggerated one.
       const LAT0 = 54.85;
@@ -447,7 +449,7 @@ describe('#847 weave ETA cost — reproduction + measurement', () => {
         const latFrac = Math.min(1, Math.max(0, (lat - LAT0) / (LAT1 - LAT0)));
         const lonFrac = Math.min(1, Math.max(0, (lon - LON0) / (LON1 - LON0)));
         return {
-          speedKn: 5.0 + 1.0 * lonFrac,
+          speedKn: 5.5 + 1.0 * lonFrac,
           dirFromDeg: (110 + 20 * latFrac) % 360,
         };
       });
@@ -545,12 +547,10 @@ describe('#847 weave ETA cost — reproduction + measurement', () => {
       console.log(
         `\nGelting-Mole: ${rig!.legs.length} legs, weave spans found: ${spans.length}.`,
       );
-      // #1303 re-pin: 0 at BASE, 1 at HEAD (18 legs -> 17). The finer approach
-      // grid moved this route, so it is no longer a zero-span route and cannot
-      // be the detector's non-vacuity control; that role moves to the case
-      // below, measured 0 spans at HEAD. Recorded rather than deleted, because
-      // "the general rule can ADD a weave span" is a real finding about #1303.
-      expect(spans).toHaveLength(1);
+      // #1303 moved this route from 0 spans to 1; #1259's exact mask grid step
+      // moves it back to 0. The non-vacuity control role stays with the
+      // Wackerballig case below.
+      expect(spans).toHaveLength(0);
     },
   );
 
