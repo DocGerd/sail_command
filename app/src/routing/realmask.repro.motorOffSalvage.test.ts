@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { planRoute, planRouteWithRecord } from './planRoute';
+import * as isochroneModule from './isochrone';
 import { solve } from './isochrone';
 import { Polar } from '../lib/polar';
 import { WindField } from '../lib/wind';
@@ -7,7 +8,7 @@ import { uniformGate } from '../lib/depthGate';
 import { uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS, defaultBoatSnapshot } from '../types';
 import type { LatLon, PlanRequest, PlanResult, PolarTable, Settings } from '../types';
-import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
+import { SOLVER_TEST_TIMEOUT_MS, solverTimeoutMs } from '../test/timeouts';
 import {
   mask,
   polarGenoa,
@@ -147,22 +148,28 @@ describe('#1136 planRoute pass 2 (real mask)', () => {
   // #1303 re-pin. At BASE these two rows carried the #1166 shape — pass 1 ok
   // with ONE sail failed — and pinned the routed sail's ETA
   // (1784159977571.5435 / 1784122896754.3152, both reproducing with the rule
-  // off). Under the confined-water grid BOTH sails route at both TWS, so that
-  // fixture no longer produces the #1166 shape and no real-mask fixture in
-  // this file does. `record.cause === null` pins a PRECONDITION of
-  // non-admission — that pass 1 did not fail — not non-admission itself:
-  // deleting clause 2 from `salvagePassAdmitted` leaves this row green (PR
+  // off). Under the confined-water grid BOTH sails route at both TWS, so THIS
+  // fixture no longer produces the #1166 shape (a different one now does,
+  // pinned separately below by #1327). `record.cause === null` pins a
+  // PRECONDITION of non-admission — that pass 1 did not fail — not
+  // non-admission itself: deleting clause 2 from `salvagePassAdmitted`
+  // leaves this row green (PR
   // #1322 review). Clause 2 is pinned directly by
   // `planRoute.motorOffSalvage.test.ts`'s truth table.
   //
-  // #1327: a TWS/direction sweep over this same Flensburg->Bagenkop route
-  // found no real-mask input reproducing the #1166 shape post-#1303. Per
-  // #1327's own accepted-alternative, unit-level truth-table coverage
-  // (`planRoute.motorOffSalvage.test.ts`) stands in for a real-mask fixture
-  // until one turns up.
+  // #1327: neither of these two ROWS produces the #1166 shape post-#1303 —
+  // a DIFFERENT real-mask input does (TWS 3.5, pinned separately below). The
+  // `solveSpy` call-count check here gives THIS row's non-admission
+  // real-mask teeth on `solve()` call count directly — but, since
+  // `pass1.status === 'error'` (clause 1) already fails on an `ok` plan
+  // regardless of clause 2's value, it exercises clause 1, not clause 2
+  // independently; clause 2 stays unit-covered only (PR #1322 review's
+  // solve-spy suggestion, folded in here to the extent this fixture can
+  // reach it).
   it.each([{ tws: 3 }, { tws: 8 }])(
     'TWS $tws: an ok plan is left as it was — pass 2 is not admitted',
     ({ tws }) => {
+      const solveSpy = vi.spyOn(isochroneModule, 'solve');
       const { result: res, record } = planRouteWithRecord(
         bagenkopRequest(),
         uniformWindGrid(tws, 0),
@@ -172,6 +179,60 @@ describe('#1136 planRoute pass 2 (real mask)', () => {
       expect(res.status).toBe('ok');
       if (res.status !== 'ok') return;
       expect(res.sails.every((s) => s.result !== null)).toBe(true);
+      // Pass 1 only: one solve per sail, no salvage replay.
+      expect(solveSpy).toHaveBeenCalledTimes(2);
+      solveSpy.mockRestore();
+    },
+  );
+
+  // #1327: TWS 3.5 (found by an exploratory bounded sweep) is a real-mask
+  // #1166 one-sail-failed shape surviving post-#1303 — pinned directly,
+  // closing the issue's primary ask ("find a real-mask input that still
+  // produces the one-sail-failed shape and pin it"). No `solveSpy` count
+  // pin here, unlike the two rows above: this row's failed sail is
+  // retriable under #243 (`needsUnpreferencedRetry`), so pass 1 itself
+  // legitimately re-solves both rigs at a second tier — a solve count
+  // fixed at 2 would be the WRONG invariant for this row.
+  it('#1327 TWS 3.5: real-mask #1166 one-sail-failed shape — genoa unreachable, fock routes', () => {
+    const { result: res, record } = planRouteWithRecord(
+      bagenkopRequest(),
+      uniformWindGrid(3.5, 0),
+      SALONA_DEPS,
+    );
+    expect(res.status).toBe('ok');
+    if (res.status !== 'ok') return;
+    const genoa = res.sails.find((s) => s.sailId === 'genoa')!;
+    const fock = res.sails.find((s) => s.sailId === 'fock')!;
+    expect(genoa.result).toBeNull();
+    expect(genoa.reason).toBe('unreachable');
+    expect(fock.result).not.toBeNull();
+    // Same containment claim as the two rows above: an `ok` plan (even one
+    // carrying a failed sail) is never admitted to pass 2 — `record.cause`
+    // pins the precondition (pass 1 did not fail overall) exactly as there.
+    expect(record.cause).toBeNull();
+  });
+
+  // #1327: bounded TWS sweep over the remaining points for a SECOND
+  // real-mask #1166 shape. Fails CLOSED on a find, and asserts the search
+  // actually ran (never an empty-search false negative). TWS 3.5 is pinned
+  // above rather than swept here.
+  it(
+    '#1327 TWS sweep finds no further real-mask one-sail-failed shape',
+    { timeout: solverTimeoutMs(600_000) },
+    () => {
+      const hits: string[] = [];
+      let examined = 0;
+      for (const tws of [2.2, 2.6, 5, 7, 10]) {
+        const res = planBagenkop(tws);
+        examined++;
+        if (res.status === 'ok' && res.sails.filter((s) => s.result === null).length === 1) {
+          hits.push(
+            `TWS ${tws}: ${res.sails.map((s) => `${s.sailId}=${s.result === null ? s.reason : 'ok'}`).join(', ')}`,
+          );
+        }
+      }
+      expect(examined).toBe(5);
+      expect(hits).toEqual([]);
     },
   );
 });
