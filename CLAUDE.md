@@ -258,8 +258,8 @@ making design-level decisions; do not silently deviate.
   `EXTRA_EDGES`. RUN `closure.mjs files` FOR THE MEMBER LIST — it is derived
   from the roots, no prose list here to drift. #944 (read a purely additive
   export as NOT OWED) was deferred after three review rounds each found a
-  fail-open in its hand-rolled lexer (ASI, `\r`/U+2028, `}` then `(`); a retry
-  needs a real parser. The closure is wider than the
+  fail-open in its hand-rolled lexer (ASI, `\r`/U+2028/U+2029, `}` then `(`);
+  its deferral comment recommends a real parser. The closure is wider than the
   obvious routing/mask/sweep/pipeline paths: it reaches the boat catalogue and
   `boatDepth`, `DEFAULT_SETTINGS` in `types.ts`, the shared test fixtures and
   timeouts, `setup.ts`, and the solver's `geo`/`polar`/`wind` helpers. One
@@ -335,15 +335,17 @@ making design-level decisions; do not silently deviate.
   when measured 2026-09-03 at `bca2561`, plus `motorless-short-horizon` since
   #1455. Count the ARMS entries in `sweepArms.ts`, not grep matches (its doc
   comment is a hit). Both statements are true and
-  correctly scoped, and `docs/spikes/354-mode-churn.md` carries both. A reader
+  correctly scoped; `docs/spikes/354-mode-churn.md` carries both, its mode set
+  as the three arms read at `84b049a2`, before #1455. A reader
   who carries the depth pair into a mode question under-counts — which
   happened in review on PR #867, pushed back on precisely because "the repo
   record names `becalmed` and `deep-becalmed` as the vacuous pair", i.e. this
   mis-transfer occurring in real time. Name the LEVER whenever you call an arm
-  vacuous. An arm that REACHES a failure class is still no detector when the
-  serialized `PlanResult` cannot differ: `motorless-short-horizon` hits the
-  #1301 class, yet a widened `salvagePassAdmitted` left it byte-identical
-  (#1455; #1456 tracks exposing the cause).
+  vacuous. An arm that REACHES a failure class can still be blind to a lever
+  acting on it: `motorless-short-horizon` hits the #1301 class, yet a widened
+  `salvagePassAdmitted` left it byte-identical, because pass 2 rescued 0 of 40
+  rows and a pass 2 that routes nothing returns pass 1 verbatim (#1455's
+  review; #1456 tracks serializing the record's failure cause).
   For a DEPTH-RELAXATION change the discriminating arms are the three
   #452 Marstal-origin ones (`margin-zero`, `relaxation-dense`,
   `margin-extreme`) — "the three new ones" was true until #653 added two
@@ -4304,7 +4306,8 @@ making design-level decisions; do not silently deviate.
   `planViaPoints.ts` returns `request.viaPoints` verbatim. Gap up to half a
   ~46 m cell diagonal when the drop was already navigable, up to `maxRadiusM =
   300` when it was not. Never write that the two coincide.
-- **#1259's integer grid step is edge-STABLE, not exact.** Widening the bbox
+- **#1259's integer cells-per-degree grid is edge-STABLE, not exact.**
+  Widening the bbox
   north/east no longer moves a cell, but `floor((v - origin) * cpd)` still
   rounds an on-boundary coordinate by float noise (Faaborg and Søby land one
   column short of the decimal answer; #1453's correction comment). Never
