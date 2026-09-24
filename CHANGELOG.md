@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- The chart grid used for routing, depth checks and harbour access now derives its cell size exactly instead of by division, which could drift by a tiny fraction whenever the charted area's edge moved. Some routes shift slightly as a result, and four harbours that sat exactly on a cell boundary (Aarøsund, Faaborg, Faldsled, Søby) now resolve to the correct cell (#1259).
+- The chart grid used for routing, depth checks and harbour access now positions its cells from a whole number of cells per degree instead of dividing the charted area's extent by its cell count, which left cell positions a tiny fraction off and let them shift whenever that extent changed. Some routes change as a result, some by taking a different path, and four harbours whose coordinates sit exactly on a cell boundary (Årøsund, Faaborg, Faldsled, Søby) now fall in the neighbouring cell (#1259).
 
 ## [0.41.0] - 2026-09-23
 

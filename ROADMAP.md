@@ -21,18 +21,19 @@ shipped.
 The `v0.42.0` cut (2026-09-24) worked the
 [`v0.42.0` milestone](https://github.com/DocGerd/sail_command/milestones):
 one user-visible fix — the chart grid used for routing, depth checks and
-harbour access now derives its cell size exactly instead of by division,
-which could drift by a tiny fraction whenever the charted area's edge moved;
-some routes shift slightly, and four harbours that sat exactly on a cell
-boundary now resolve to the correct one
+harbour access now positions its cells from a whole number of cells per
+degree instead of dividing the charted area's extent by its cell count;
+some routes change as a result, some by taking a different path, and four
+harbours sitting exactly on a cell boundary now fall in the neighbouring cell
 ([#1259](https://github.com/DocGerd/sail_command/issues/1259)) — plus six
 process/tooling and documentation fixes: JSDoc tidying in the mask module
 alongside that fix
-([#1265](https://github.com/DocGerd/sail_command/issues/1265)); an untested
-`verify_mask.py` structural-validation table now covered by test
+([#1265](https://github.com/DocGerd/sail_command/issues/1265)); the untested
+structural validation of `verify_mask.py`'s expected-unreachable table,
+now covered by test
 ([#1318](https://github.com/DocGerd/sail_command/issues/1318)); an unverified
-monotonicity assumption behind the "not reachable at the recommended depth"
-harbour-access hint, now pinned by test
+monotonicity assumption behind the harbour-access hint's claim about depth
+settings above the recommended one, now pinned by test
 ([#1329](https://github.com/DocGerd/sail_command/issues/1329)); attribution
 of a residual basemap label-collision case rather than a further fix
 ([#1155](https://github.com/DocGerd/sail_command/issues/1155)); hardening of
@@ -43,15 +44,17 @@ CLAUDE.md guard naming, a single `protect-main` authority, and dated
 self-staling claims
 ([#1177](https://github.com/DocGerd/sail_command/issues/1177)).
 
+Two further #1407 comment-sweep batches (PRs #1440 and #1441) also shipped
+in this cut; #1407 itself was moved to `Backlog` on 2026-09-24.
+
 ## Next — v0.43.0
 
 The [`v0.43.0` milestone](https://github.com/DocGerd/sail_command/milestones)
 carries a narrow-layout MapLibre canvas paint gap under the top-left map
 chrome ([#1413](https://github.com/DocGerd/sail_command/issues/1413)) and
 measuring depth-overlay canvas memory on a real tablet
-([#1281](https://github.com/DocGerd/sail_command/issues/1281)), alongside
-issues already triaged into it before this cut. The milestone page is the
-only authoritative view, check it directly rather than this file.
+([#1281](https://github.com/DocGerd/sail_command/issues/1281)). The milestone
+page is the only authoritative view, check it directly rather than this file.
 
 ## Themes for the next year
 
