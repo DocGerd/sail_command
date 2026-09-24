@@ -23,8 +23,8 @@
   from the issue title.**
 - **Update 2026-09-14:** #1136 was moved into milestone v0.34.0 for a design
   pass (maintainer ruling, #1136 comment 5668779060); it has since moved to
-  v0.35.0, the milestone §11's recommended fix targets. §11
-  designs a ladder-level gate and recommends funding #1136's fix for v0.35.0.
+  v0.35.0. §11 designs a ladder-level gate and recommends funding #1136's fix
+  for v0.35.0.
 
 > Read alongside the `#866` comment in `app/src/routing/isochrone.ts`'s
 > `if (!best)` branch, which already concedes that `'mask-blocked'` "cannot
@@ -709,7 +709,7 @@ Three grounds:
    and rescue nothing.
 3. **The trigger is not defect-specific** (hole 5) — it fires on genuine
    no-routes with the identical signature, a claim DEDUCED rather than
-   observed (§5, hole 5).
+   observed.
 
 What this spike **does** settle, and what makes the next attempt cheap:
 
@@ -1534,7 +1534,8 @@ horizon.
 ## 11. Design pass — ladder-level containment (2026-09-14, v0.34.0 cycle)
 
 Funded by the maintainer's 2026-09-14 ruling on #1136 (comment 5668779060).
-The FIX targets v0.35.0 and is not in this document. §5's prerequisite 1 (efficacy) is
+The FIX is PR #1243 (Implementation record below), not designed in this
+document. §5's prerequisite 1 (efficacy) is
 discharged by §10 and the #1136 efficacy-probe comment (2026-09-10); this
 section answers prerequisite 2, answers prerequisite 3 (its maintainer
 ruling on acceptable cause drift spans §11.7 Q4, ruled 2026-09-14, comment
@@ -1589,8 +1590,7 @@ ruling 2026-09-15, #1136 comment 5679649933, item 3).
    label, and the pre-relaxation deadline exit records no admissible cause;
 3. pass 1 ran at least one solving tier (1 or 3);
 4. `deadline?.expired()` is false. **Unstated: whether pass 2's replay
-   re-runs pass 1's own pre-relaxation `deadline?.expired()` exit** (the
-   same check clause 2 already excludes from an admissible cause) — this
+   re-runs pass 1's own pre-relaxation `deadline?.expired()` exit** — this
    design does not say;
 5. `s.motorEnabled` is `false` (§11.7 Q1, ruled 2026-09-14, comment
    5669891649; `s` is `req.settings` in `planRoute.ts`).
@@ -1679,8 +1679,8 @@ tests) are bounded only by the horizon. Set C's four relaxed-tier solves took
 `light-motorless` also uses; estimate HEAD-arm time from that before
 scheduling the sweep. A real 6-day forecast (`openMeteo.ts` `FORECAST_DAYS`)
 is longer, so real cost is likely higher (ARGUED, not measured). Worst case:
-the user waits out the rest of the 240 s budget and then gets today's error
-(amended — see Implementation record).
+the user waits out the rest of the shared `PLAN_BUDGET_MS` budget and then
+gets today's error (amended — see Implementation record).
 Ruled: §11.7 Q3 (spends the rest of the shared budget; amended — see
 Implementation record).
 
@@ -1756,8 +1756,8 @@ behaviour flips 0.2 kn or 25 m away. So the fix's tests pin SEVERAL inputs:
   red on `PlanResult` only where pass 2 would otherwise ROUTE, because a
   failed pass 2 returns pass 1 verbatim: clause 2 does not need a
   MIXED-cause plan — `solve()`'s `blockedDeaths >= calmDeaths` heuristic can
-  label a domination death `'calm-without-motor'` even when every sail's
-  cause is uniformly that label, so a uniform-cause plan that is really a
+  label a domination death `'calm-without-motor'`, so a plan whose every sail
+  ends that way and is really a
   salvage-rescuable domination death also reds clause 2's deletion (as does
   the narrower mixed case: tiers 1–2 first sail not
   `mask-blocked`, another sail a salvage-
@@ -1873,7 +1873,7 @@ for this design only; §8 still rejects the solve-level gate of §5.
    as designed, or also salvage the failed sail — at the cost of changing rig
    comparisons on plans that succeed today?
    **Ruled 2026-09-14** (comment 5669891649): left untouched, as designed.
-3. May a failing plan spend the rest of `PLAN_BUDGET_MS` (240 s) in pass 2
+3. May a failing plan spend the rest of `PLAN_BUDGET_MS` in pass 2
    before returning today's error, or does pass 2 get a sub-budget? #432 chose
    one shared deadline so the user's wait stays bounded however many tiers
    fire (`planRoute.ts`'s deadline doc comment).
@@ -1906,8 +1906,9 @@ for this design only; §8 still rejects the solve-level gate of §5.
    `budget-exhausted` one; a failed sail carries pass 1's recorded cause.
    **Orchestrator decision (5679649933, winner corrected by 5679853743):**
    within a pair, tier 2′ wins if it routed any sail, otherwise tier 1′
-   (today's `planRoute.ts` fallback: `if (tier2.some((r) => r.rigResult))
-   return assemble(tier2, null);`, at `33dbad2`); tier 2′ enters when some
+   (`planRoute.ts`'s fallback:
+   `if (tier2.some((r) => r.rigResult)) return assemble(tier2, null);`, at
+   `33dbad2`); tier 2′ enters when some
    sail lacks a result and pass 1 ran tier 2, never reading a pass-2 cause
    (§11.1). A tier 2′ that routed one sail while the other ended
    `budget-exhausted` is returned under this winner rule. The budget
