@@ -817,6 +817,16 @@ function assertNoDepth0Newline(masked, from, to, what) {
   }
 }
 
+function codePointName(ch) {
+  return `U+${ch.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}`;
+}
+
+/** Allowlist: printable ASCII 0x20-0x7E plus \n and \t; anything else throws. */
+function assertAsciiOnly(text, what) {
+  const bad = /[^\x20-\x7e\n\t]/u.exec(text);
+  if (bad) throw new Error(`${what} contains ${codePointName(bad[0])}, outside the ASCII allowlist`);
+}
+
 function tokenRegex(name) {
   return new RegExp(`(?<![\\w$])${name.replace(/\$/g, '\\$')}(?![\\w$])`);
 }
@@ -828,6 +838,19 @@ function tokenRegex(name) {
  */
 function classifyAdditiveExports({ targetRel, oldContent, newContent, diffText, universes, exemptHunk = () => false }) {
   try {
+    // PR #1450 review: the lexer models only `\n` as a line terminator.
+    // Inserted text must be printable ASCII plus \n/\t (an allowlist); the
+    // whole file must not contain a character the lexer does not model: a
+    // control character, U+2028/U+2029 or a BOM.
+    for (const h of parseHunks(diffText)) {
+      if (exemptHunk(h)) continue;
+      const inserted = newContent.split('\n').slice(h.newStart - 1, h.newStart - 1 + h.newCount).join('\n');
+      assertAsciiOnly(inserted, 'inserted text');
+    }
+    for (const [side, content] of [['old', oldContent], ['new', newContent]]) {
+      const bad = /[\x00-\x08\x0b-\x1f\x7f-\x9f\u2028\u2029\ufeff]/.exec(content);
+      if (bad) throw new Error(`the ${side} file contains ${codePointName(bad[0])}`);
+    }
     // The lexer has no regex-literal state; a quote inside a regex usually
     // leaves the file ending mid-string or unbalanced, which this rejects.
     for (const [side, content] of [['old', oldContent], ['new', newContent]]) {
@@ -2458,6 +2481,33 @@ export function boatById(id: string) {
         '#944 additive: a bodyless export function followed by BOATS.pop(); -> OWED',
         aFnAsi.verdict === 'OWED' && /has no body/.test(aFnAsi.reason),
         aFnAsi,
+      ),
+    );
+
+    // PR #1450 review: JS line terminators the lexer does not model, and a
+    // non-ASCII identifier. The inserted-text allowlist rejects each first.
+    const TERMINATOR_PROBES = [
+      ['U+000D', 'CR'],
+      ['U+2028', 'LINE SEPARATOR'],
+      ['U+2029', 'PARAGRAPH SEPARATOR'],
+    ];
+    for (const [cp, label] of TERMINATOR_PROBES) {
+      const ch = String.fromCodePoint(parseInt(cp.slice(2), 16));
+      const probe = additive(ADD_BASE + `\nexport type ZzqT = number${ch}BOATS.pop()${ch};\n`);
+      results.push(
+        check(
+          `#944 additive: export type then ${label} (${cp}) then BOATS.pop() -> OWED`,
+          probe.verdict === 'OWED' && new RegExp(`inserted text contains ${cp.replace('+', '\\+')}`).test(probe.reason),
+          probe,
+        ),
+      );
+    }
+    const aNonAscii = additive(ADD_BASE + '\nexport const \u03c6 = 1;\n');
+    results.push(
+      check(
+        '#944 additive: a non-ASCII identifier -> OWED',
+        aNonAscii.verdict === 'OWED' && /inserted text contains U\+03C6/.test(aNonAscii.reason),
+        aNonAscii,
       ),
     );
 

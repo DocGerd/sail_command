@@ -124,8 +124,8 @@ not fix).
    under `app/sweep`) mentions a new name, namespace/star-imports the module
    (resolved, or plausibly by basename), or performs a dynamic load it cannot
    resolve. Any other shape, including a
-   parse failure, is OWED. #941's `GENOA_SAIL_ID` append is the motivating
-   case; an element appended to `BOATS` stays OWED.
+   parse failure, is OWED. An element appended to `BOATS` stays OWED, and so
+   does #941's real diff, whose inserted comment contains `§` (U+00A7).
 
 ## Failure direction — stated explicitly, as this repo's guard-asymmetry
 convention requires for a NUDGE-class tool
@@ -426,7 +426,7 @@ into this repo):
     fork point that `head` (forked earlier) only edits → `OWED` via
     `base`'s own third unioned term; and `head` omitted reading the
     WORKING TREE rather than the committed `HEAD` ref.
-34–48. #944 additive-export rows on `classifyAdditiveExports`, fed real
+34–52. #944 additive-export rows on `classifyAdditiveExports`, fed real
     `git diff --no-index` output: an unreferenced `export const` with a
     literal initializer, and an unreferenced `export function`/`interface`/
     `type`, → NOT OWED; a changed existing export, a new name imported by a
@@ -437,8 +437,9 @@ into this repo):
     name the old file already mentions, and an export-shaped line inserted
     inside a template literal, plus the PR #1450 review's two ASI diffs (an
     `export type` then `BOATS.pop()`, a bodyless `export function` then
-    `BOATS.pop();`) → OWED.
-49–52. Through `indexUniverse`/`computeDiffVerdict` in disposable repos: an
+    `BOATS.pop();`) → OWED; `export type` then `BOATS.pop()` separated by
+    U+000D, U+2028 or U+2029, and a non-ASCII identifier → OWED.
+53–56. Through `indexUniverse`/`computeDiffVerdict` in disposable repos: an
     unreferenced additive export → NOT OWED end to end; an `app/sweep` arm
     file (outside the walk) that namespace-imports the module → OWED; an
     unresolved relative namespace import, or a bare one whose basename
@@ -459,7 +460,9 @@ parser, so ASI can end a declaration early and run the next line
 (PR #1450 review: `export type T = number` then `BOATS.pop()`). A
 `type`/`interface`/`function`/`const`-annotation span containing a
 depth-0 newline, or a bodyless `export function`, is therefore OWED;
-other ASI shapes are not proven absent. Any unresolvable dynamic load
+other ASI shapes are not proven absent. (3) Additive detection is
+ASCII-only: inserted text outside printable ASCII plus `\n`/`\t` is OWED,
+with the code point named. Any unresolvable dynamic load
 (`require()`, `import.meta.glob`, a non-literal `import()`) in a file a
 sweep run loads makes the additive rule OWED for every target — the safe
 direction, but a new such call under `app/sweep` silently disables the rule.
