@@ -19,6 +19,10 @@ The probes ran at `875b420`.
 - `probe-cost.test.ts` measures search cost on `breeze`, or on
   `light-motorless` with `SC_LM=1`.
 - `results/` holds the raw JSONL behind every table in the spike document.
+  Some files were produced before the `track` switch existed. With `track`
+  on, which is the default, the switch changes nothing, so every file matches
+  the committed patch. Turn `track` off only in `prod` mode: the other modes
+  compute dominance from the arrival lists it records.
 
 ## Run
 

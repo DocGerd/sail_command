@@ -17,8 +17,8 @@ spike; no solver code changed.
 
 - **Aperture.** Flensburg → Bagenkop, `motorEnabled: false`, gate 3.0 m,
   uniform wind from 0°, the issue's own configuration. Two origins:
-  `FLENSBURG` unsnapped, and `snapToNavigable(FLENSBURG, 3)` (24.7 m away).
-  The destination is always snapped.
+  `FLENSBURG` unsnapped, and `snapToNavigable(FLENSBURG, 3)`, 24.68 m away
+  at `875b420`. The destination is always snapped.
 - **Two levels.**
   - Bare `solve()`, Salona 45 genoa and fock at performance factor 1.0,
     the issue's convention. The fine battery covers TWS 2.00–4.00 in steps
@@ -30,7 +30,7 @@ spike; no solver code changed.
     factor 0.9, `comfortDepthM` 5, `DEFAULT_SETTINGS` motor off, TWS 3 from
     0°), Flensburg → all 40 harbours, genoa.
   - `breeze`: the same fidelity at 12 kn from 225° with the motor on, to six
-    long routes.
+    routes, four of them long.
 - **Tree.** `875b420` (the branch base). `isochrone.ts` changed since the
   2026-09-18 re-measurement: #1257's derived cap and #1259's
   cells-per-degree grid both landed in between.
@@ -43,8 +43,10 @@ spike; no solver code changed.
 - **Evidence type.** Deterministic only: status, cause, ring count, peak
   frontier, expanded nodes, `costMs` and ETA. No wall-clock figures
   (maintainer ruling, 2026-09-18). Expanded nodes stand in for search cost.
-- **Pre-registration.** Predictions for every candidate fix were written
-  before its output was read. Two of them failed: the finer grid was
+- **Pre-registration.** Predictions for salvage, Pareto stamps, divisor 4
+  and retraction were written before their output was read
+  (`results/preregistration.txt`). Divisor 3 was added afterwards and was
+  not pre-registered. Two predictions failed: the finer grid was
   predicted to move the dying set rather than empty it, and dead-stamper
   retraction was predicted to rescue.
 
@@ -178,21 +180,23 @@ grids:
 
 `light-motorless` aperture, 40 harbours, genoa (`results/lm_*.jsonl`):
 
-- Status counts are unchanged (34 routed at both divisors), but causes move.
+- At divisor 4, status counts are unchanged (34 routed), but causes move.
   `arnis` and `dyvig` go `horizon-exceeded` → `mask-blocked`, and `maasholm`
   goes the other way. `SolveFailureCause` gates relaxation, so this is a #282
   classification move.
-- Cost moves on 35 of 40 harbours. Four routes change family:
-  Rudkøbing −19.9 h, Svendborg −24.5 h, Troense −22.0 h and Kerteminde −6.6 h.
-  The coarser grid there found routes close to the horizon.
-- Expanded nodes: ×2.08 on the median harbour, ×3.94 at most. The largest
-  is 3.96 M, against 2.34 M at divisor 2.
+- At divisor 4 the result (cost or cause) moves on 35 of 40 harbours. Four
+  routes change family: Rudkøbing −19.9 h, Svendborg −24.5 h, Troense
+  −22.0 h and Kerteminde −6.6 h. The coarser grid there found routes close
+  to the horizon.
+- At divisor 4, expanded nodes rise ×2.08 on the median harbour and ×3.94 at
+  most. The largest is 3.96 M, against 2.34 M at divisor 2.
 - At divisor 3 the only cause that moves is `maasholm` (`mask-blocked` →
-  `horizon-exceeded`), and cost moves on 34 of 40 harbours. Only Kerteminde
-  changes family (−6.7 h); Rudkøbing, Svendborg and Troense do not. Expanded
-  nodes: ×1.42 on the median harbour, ×3.25 at most, and 3.03 M at the
-  largest. That divisor 4 finds the three faster families and divisor 3 does
-  not is #1333's point: a finer key is not a monotone improvement.
+  `horizon-exceeded`), and the result moves on 34 of 40 harbours. Only
+  Kerteminde changes family (−6.7 h); Rudkøbing, Svendborg and Troense do
+  not. Expanded nodes rise ×1.42 on the median harbour and ×3.25 at most,
+  3.03 M at the largest.
+- That divisor 4 finds the three faster families and divisor 3 does not is
+  #1333's point: a finer key is not a monotone improvement.
 
 `breeze` aperture, motor on (`results/cost_div*.jsonl`):
 
@@ -209,9 +213,10 @@ grids:
 - Divisor 3 stays under the cap (peaks 77 223–80 874), but uses most of the
   headroom #1257 sized: 1.18–1.23× remain, where #1257 recorded 1.48×.
 - The divisor 4 fock rows are ×1.38–1.67 with no truncation.
-- Divisor 2 peaks on these routes are within 20 of the #1257 derivation's
-  figures (62 482 Burgstaaken, 61 883 Orth), which serves as the cap-regime
-  control.
+- The cap-regime control: on the three Salona 45 solves #1257's derivation
+  records, divisor 2 peaks here are within 20 of its figures (Svendborg fock
+  61 654 against 61 653, Burgstaaken genoa 62 463 against 62 482, Orth genoa
+  61 881 against 61 883).
 
 ## Controls
 
@@ -264,7 +269,7 @@ pass 2 as the backstop.**
    1.8 min. Divisor 4 costs ×1.47–1.78 in expanded nodes and reopens cap
    truncation; divisor 3 avoids the truncation but still costs ×1.28–1.36
    and takes most of the cap headroom (§6). All of the deaths measured here
-   are motor-off. Scoping keeps every motor-on solve byte-identical by
+   are motor-off. Scoping would keep every motor-on solve byte-identical by
    construction, which turns the #282 sweep into a check on that scoping.
 3. **Prerequisites, before a PR merges:**
    - Re-derive the budget headroom for the heaviest motor-off arm. On
@@ -277,10 +282,15 @@ pass 2 as the backstop.**
      single-input pin cannot guard this.
 4. **Sweep cost.** `isochrone.ts` is in the #282 closure (`closure.mjs files`,
    via `planRoute.ts`), so a full BASE double-run plus BASE-vs-HEAD is owed.
-   - `light-motorless` discriminates: it is this probe's wind, and 34 of its
-     40 rows move at divisor 3.
-   - `motorless-short-horizon` discriminates too.
-   - `becalmed` and `deep-becalmed` are vacuous for this lever.
+   - `light-motorless` discriminates. It is this spike's wind, and the bare
+     tier-1 probe's result moves on 34 of 40 harbours at divisor 3. The arm
+     itself runs `planRoute()` with both rigs, so its own row count will
+     differ.
+   - `motorless-short-horizon` should discriminate too, as a motor-off arm.
+     It was not probed here.
+   - `becalmed` and `deep-becalmed` should be vacuous for this lever. This is
+     argued, not measured: a calm death happens before `visitedDominates` is
+     reached.
    - Every arm with the motor on is predicted byte-identical. A change there
      would falsify the scoping.
 
