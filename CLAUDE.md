@@ -545,14 +545,15 @@ making design-level decisions; do not silently deviate.
   longer merge silently. TWO of them since #1294: connected-when-expected, and
   accepted-when-a-boat's-own-gate-cannot-reach-it via
   `EXPECTED_UNREACHABLE_BY_BOAT` (exact in both directions; the real table is
-  EMPTY at `8102908`, so its non-vacuity rests on a synthetic fixture).
+  EMPTY at `8102908`, so its non-vacuity then rested on a synthetic fixture).
   Everything else in `verify_mask.py`'s connectivity
   section stays Python-only, including a STALE `KNOWN_DISCONNECTED` entry,
   which
   that file's own SCOPE comment calls "the one with real teeth". Read that
   comment before claiming either coverage or its absence. A red `ruff` merges
-  silently (`protect-main`, under Deploy) — it is not a gate, it is a job
-  someone has to look at. Run both after ANY `pipeline/**` change:
+  silently (`protect-main`; see the "Deploy — concurrency and environments"
+  bullet) — it is not a gate, it is a job someone has to look at. Run both
+  after ANY `pipeline/**` change:
   typecheck/lint/vitest are all JS-side and structurally cannot see Python
   (measured — #538's three E501s entered on Task 13's OWN commit and survived
   that task's review rounds AND the whole-branch review, because every gate any
@@ -1407,7 +1408,7 @@ making design-level decisions; do not silently deviate.
   stabilising after three reads (~820ms) — placement had been settled almost
   immediately all along. Whether any OTHER spec shares this defect is now
   SETTLED, not UNCONFIRMED (#618, 2026-08-28): a repo-wide grep for
-  `once('idle'` under `app/e2e/**/*.spec.ts` finds exactly four hits, ALL
+  `once('idle'` under `app/e2e/**/*.spec.ts` found exactly four hits, ALL
   inside `//` comments describing this now-fixed historical race (two each
   in `labels.spec.ts` and `seamarks.spec.ts`) — ZERO live
   `map.once('idle', ...)` synchronisation gates existed anywhere in the suite
@@ -2025,7 +2026,11 @@ making design-level decisions; do not silently deviate.
   push-triggers on both, but is additionally `paths:`-gated (`pipeline/**`,
   `app/public/data/**`, its own two workflow files), so it does NOT run on
   every push — which costs nothing here precisely because it is ADVISORY and
-  was never a required check (see the Python-gates bullet above).
+  was never a required check (see the Python-gates bullet above). The
+  single `protect-main`
+  ruleset targets both `main` and `develop` via literal refs (never
+  `~DEFAULT_BRANCH` — that follows a default-branch flip and would strand the
+  non-default branch) and requires `app`+`e2e` on each.
 - **Changelog ritual (#131, fragments landed #189)**: feature PRs that change
   user-visible behavior no longer edit `CHANGELOG.md`'s `[Unreleased]` section
   directly — that was the original #131 ritual, and it conflicted whenever 2+
@@ -2166,11 +2171,14 @@ making design-level decisions; do not silently deviate.
   vice versa, so an agent can truthfully report "changed it to Refs" while the
   other copy still says `Closes` (#279: a stale `Closes #265` survived as the
   body's last line and closed it):
-  `git log origin/develop..HEAD | grep -iE "$(sed -n
-  "s/^CLOSING_KEYWORD_RE='\(.*\)'\$/\1/p"
-  .claude/hooks/closing-keyword-guard.sh)"`,
-  plus the same grep over the PR body itself. The pattern lives ONLY in that
-  hook; its `--selftest` pins every form it must match and skip.
+  `git log origin/develop..HEAD | grep -iE
+  '(clos(e|es|ed)?|fix(e[sd])?|resolve[sd]?)[[:space:]:(]*#[0-9]+'`, plus the
+  same grep over the PR body itself. That pattern REPLACED an earlier
+  `'(clos|fix|resolv)[a-z]*[[:space:]]+#[0-9]+'` that was wrong in BOTH
+  directions (it missed `fix (#412` and `Closes: #321` — the colon form is a
+  real GitHub spelling — and false-POSITIVED on `fixture #99`); it still matches
+  `postfix #12`, which is the safe direction for a nudge, and it deliberately
+  drops the gerunds — `closing`/`fixing`/`resolving` are not GitHub keywords.
   POST-MERGE, verify state in BOTH directions with
   `gh api repos/OWNER/REPO/issues/N --jq .state`: the auto-close is silent, and
   a deliberate `Refs #N` needs checking that N STAYED open just as carefully as
@@ -3274,7 +3282,7 @@ making design-level decisions; do not silently deviate.
   nine runtime symbol layers. Filed as #288, CLOSED as ANSWERED rather than
   fixed — its closing comment records the cause, states the residual
   explicitly, and asks for a fresh one-line issue if the `text-font` is to be
-  added. `sc-maneuver-labels` had none at `8102908` (2026-09-24).
+  added. `sc-maneuver-labels` had none at `8102908`.
   `labels.spec.ts` cannot
   see this missing-fontstack case because that spec never plans a route. The missing-fontstack request
   itself is real in both environments, but its symptom differs: local `vite
