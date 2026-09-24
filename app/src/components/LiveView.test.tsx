@@ -26,6 +26,16 @@ import BoatMarker from './BoatMarker';
 // console.warn noise a rejection would add to every one of them.
 vi.mock('../services/assets', () => ({ loadRoutingAssets: vi.fn() }));
 import { loadRoutingAssets } from '../services/assets';
+// #143: `isLiveSimRequested` mocked (defaulting to false, matching the
+// gate-open-but-no-query-param state jsdom's default URL is in) so the
+// simulator-active tests below don't depend on manipulating jsdom's real
+// location — every other export (the real controller, scenario list, etc.)
+// passes through unmocked, so LiveSimulatorControls still renders for real.
+vi.mock('../dev/liveSimulator', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../dev/liveSimulator')>();
+  return { ...actual, isLiveSimRequested: vi.fn(() => false) };
+});
+import { isLiveSimRequested } from '../dev/liveSimulator';
 import * as NavMaskModule from '../lib/mask';
 import { defaultBoatSnapshot } from '../types';
 import { PLAN_SCHEMA_VERSION } from '../types';
@@ -987,6 +997,58 @@ describe('LiveView', () => {
       expect(button).toBeDisabled();
       fireEvent.click(button);
       expect(onReroute).not.toHaveBeenCalled();
+    });
+  });
+
+  // #143: the Live-view simulator must never open a path to savePlan (spike
+  // docs/spikes/749-live-view-demo-mode.md §7.2 precondition 2, shape 1) —
+  // the reroute action is disabled outright while the simulator drives this
+  // session's fix, with a distinct hint explaining why, regardless of
+  // whether a fix is present.
+  describe('#143 Live simulator disables the reroute action', () => {
+    it("has no effect when the gate is open but '?liveSim' is absent from the URL (the default test URL)", async () => {
+      const { wp, emitFix } = fakeWatchPosition();
+      const onReroute = vi.fn();
+      localStorage.setItem('sc-lang', 'en');
+      render(
+        <I18nProvider>
+          <AppStateProvider>
+            <TestSetPlan plan={TEST_PLAN} />
+            <LiveView watchPosition={wp} reroute={{ busy: false, rerouting: false, onReroute }} />
+          </AppStateProvider>
+        </I18nProvider>,
+      );
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
+      act(() => emitFix({ point: FIX_POINT, cogDeg: 90, sogKn: 5, accuracyM: 9 }));
+
+      expect(screen.getByRole('button', { name: 'Replan route from here' })).toBeEnabled();
+      expect(document.querySelector('.live-sim-controls')).toBeNull();
+    });
+
+    it("disables the action and renders the simulator panel when '?liveSim' IS requested — even with a real fix present", async () => {
+      vi.mocked(isLiveSimRequested).mockReturnValue(true);
+      const { wp, emitFix } = fakeWatchPosition();
+      const onReroute = vi.fn();
+      localStorage.setItem('sc-lang', 'en');
+      render(
+        <I18nProvider>
+          <AppStateProvider>
+            <TestSetPlan plan={TEST_PLAN} />
+            <LiveView watchPosition={wp} reroute={{ busy: false, rerouting: false, onReroute }} />
+          </AppStateProvider>
+        </I18nProvider>,
+      );
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
+      act(() => emitFix({ point: FIX_POINT, cogDeg: 90, sogKn: 5, accuracyM: 9 }));
+
+      const button = screen.getByRole('button', { name: 'Replan route from here' });
+      expect(button).toBeDisabled();
+      expect(screen.getByText(/live simulator is running/i)).toBeInTheDocument();
+      fireEvent.click(button);
+      expect(onReroute).not.toHaveBeenCalled();
+      expect(document.querySelector('.live-sim-controls')).not.toBeNull();
     });
   });
 

@@ -23,8 +23,30 @@ import { formatDepthM } from '../lib/depthDisclosure';
 import { formatDriftMin, formatHeading, formatKn, formatNm, formatTime } from '../lib/format';
 import { claimGpsHintOnce } from '../lib/gpsHint';
 import { watchPosition as realWatchPosition, type GpsFix } from '../services/geolocation';
+import { isLiveSimRequested } from '../dev/liveSimulator';
+import LiveSimulatorControls from '../dev/LiveSimulatorControls';
+import { liveSimDict } from '../dev/LiveSimulatorControls.dict';
 import Button from './Button';
 import type { LatLon, Leg, ManeuverKind } from '../types';
+
+// #143: dev/UAT-only Live-view simulator gate — a top-level literal `const`
+// (never re-evaluated per render) so a production build's minifier can
+// inline it and fold every use site below to `false`, dead-code-eliminating
+// dev/liveSimulator.ts, dev/LiveSimulatorControls.tsx and its dict from the
+// prod bundle (#96 byte-identity; mirrors App.tsx's `__SC_UAT__ ?` pattern
+// — see its comment for why `&&` alone leaves a residue in a JSX child
+// slot). Two things MEASURED empirically here, both load-bearing: `simActive`
+// must be the LEADING term of any `||` chain it joins (`simActive || fix ===
+// null || …`, not the reverse) — trailing it left a few extra bytes even
+// though the boolean value folds identically either way; and the ONE new
+// conditionally-rendered sibling below (the controls panel) cannot be
+// reduced to a zero-byte diff by ANY shape tried (ternary, `&&`, or an
+// imperative portal mount from an effect — the last of those measured
+// WORSE) — see the PR body for the exact byte count. A `null` placeholder
+// occupying one more slot in an existing children array is a structurally
+// different case from App.tsx's h1 title slot, which REPLACES a single
+// value rather than adding a new array entry.
+const LIVE_SIM_GATE_OPEN = import.meta.env.DEV || __SC_UAT__;
 
 // #115 manual "reroute from here": wiring provided by App.tsx (which owns the
 // useLiveReroute hook — it needs usePlanFlow's ensureClient). `busy` disables
@@ -107,6 +129,11 @@ export default function LiveView({
 
   const result = plan && rig ? activeRigResult(plan, rig) : null;
   const legs = result?.legs ?? [];
+
+  // #143: whether the simulator is actually driving THIS session's fix, not
+  // merely whether the gate is open. Read once per render, not memoised —
+  // the query string is static for a page's lifetime here.
+  const simActive = LIVE_SIM_GATE_OPEN && isLiveSimRequested();
 
   // Both 'denied' and 'unavailable' get the identical treatment (spec §4:
   // "App fully usable, no boat marker; hint shown once") — a zero-arg
@@ -467,12 +494,20 @@ export default function LiveView({
           a NEW routed plan (App.tsx wires it to useLiveReroute); only
           meaningful with a current GPS fix, so it is disabled (with an i18n
           hint) until tracking is on and a fix has arrived. It never starts
-          GPS itself. */}
+          GPS itself.
+
+          #143: ALSO disabled while the simulator is driving this session's
+          fix — spike docs/spikes/749-live-view-demo-mode.md §7.2
+          precondition 2, shape 1: a synthetic fix must never reach
+          savePlan, and disabling the action here (rather than substituting
+          a no-op/throwing writer, §2.1's rejected shape 3) keeps the UI
+          HONEST at the point of the action instead of lying at the point of
+          the result. */}
       {reroute && (
         <div className="live-view-reroute">
           <Button
             variant="secondary"
-            disabled={fix === null || reroute.busy}
+            disabled={simActive || fix === null || reroute.busy}
             aria-busy={reroute.rerouting}
             onClick={() => {
               if (fix) reroute.onReroute(fix.point);
@@ -481,11 +516,32 @@ export default function LiveView({
             {reroute.rerouting ? t('live.reroute.busy') : t('live.reroute.action')}
           </Button>
           <p className="live-view-reroute-hint">
-            {fix === null ? t('live.reroute.needFix') : t('live.reroute.hint')}
+            {simActive
+              ? liveSimDict[lang]['liveSim.reroute.disabled']
+              : fix === null
+                ? t('live.reroute.needFix')
+                : t('live.reroute.hint')}
           </p>
         </div>
       )}
     </div>
+  );
+
+  // #143: REPLACES the value below (readout -> withSim), never adds a new
+  // sibling into `readout`'s own children array — measured: appending
+  // `{simActive ? <LiveSimulatorControls /> : null}` as one more array
+  // element there left a small residue in the prod entry chunk even fully
+  // folded (a `null` placeholder still occupies that array slot); wrapping
+  // at this single return-value site, the same shape App.tsx's h1 title
+  // slot uses, folds to `readout` with zero diff (see LIVE_SIM_GATE_OPEN's
+  // comment above for the measurement).
+  const withSim = simActive ? (
+    <>
+      {readout}
+      <LiveSimulatorControls />
+    </>
+  ) : (
+    readout
   );
 
   // The readout is portaled into the panel column on wide (#31); on narrow it
@@ -502,5 +558,5 @@ export default function LiveView({
   // holds no text entry or long scroll worth preserving. Restoring focus in a
   // panelSlot-keyed effect was considered and rejected as focus-stealing for
   // no real benefit here.
-  return panelSlot ? createPortal(readout, panelSlot) : readout;
+  return panelSlot ? createPortal(withSim, panelSlot) : withSim;
 }
