@@ -1418,6 +1418,20 @@ function runSelftest(root) {
       ),
     );
 
+    // #1358 issue text: the ABSENT-"arms"-KEY case specifically (the entry
+    // has no `arms` property at all, not merely `{}`) -> RUN_BASE, the same
+    // as the empty-object row above. `!entry.arms` catches both shapes, but
+    // only the row above was pinned.
+    writeLedger({ runs: [{ sha: recordedSha }] });
+    const rMissingArmsKey = computeReuseVerdict(reuseRepo, recordedSha, untouchedBaseSha);
+    results.push(
+      check(
+        'reuse: ledger entry has NO "arms" key at all (not {}) -> RUN_BASE',
+        rMissingArmsKey.verdict === 'RUN_BASE' && /artifact hashes/.test(rMissingArmsKey.reason),
+        rMissingArmsKey,
+      ),
+    );
+
     // Blocker (PR #1352 review), side branch: `recorded`=touchedBaseSha and
     // `base`=untouchedBaseSha are SIBLING children of `recordedSha` — neither
     // is an ancestor of the other — so a plain `--merge-base` diff would

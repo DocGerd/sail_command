@@ -15,7 +15,7 @@
 // section (same caveat merge-shards.test.mjs states for itself).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, readFileSync, existsSync, chmodSync, copyFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -301,6 +301,12 @@ if (dieShard && idxStr === dieShard) {
   process.exit(1);
 }
 
+// #1364: 'slow' keeps this fake alive long enough for a test to deliver a
+// real SIGINT/SIGTERM to the DRIVER while a shard is still running.
+if (behavior === 'slow') {
+  await new Promise((r) => setTimeout(r, 5000));
+}
+
 const armNames = JSON.parse(readFileSync(armNamesFile, 'utf8'));
 const harbourIds = JSON.parse(readFileSync(harbourIdsFile, 'utf8'));
 // Mirrors sweepArms.ts's own split EXACTLY: LIMIT first, then
@@ -360,6 +366,25 @@ function runDriver(args, { fakeNpmDir, armNamesFile, harbourIdsFile, extraEnv = 
     },
   });
   return result;
+}
+
+/** Like `runDriver`, but ASYNC (`spawn`, not `spawnSync`) and returns the
+ * live child alongside a promise for its exit — needed to deliver a real
+ * signal to the driver while it is still running (#1364). */
+function spawnDriverAsync(args, { fakeNpmDir, armNamesFile, harbourIdsFile, extraEnv = {} }) {
+  const child = spawn(process.execPath, [RUN_SHARDED_PATH, ...args], {
+    cwd: REPO_ROOT,
+    env: {
+      ...process.env,
+      PATH: `${fakeNpmDir}:${process.env.PATH}`,
+      FAKE_NPM_ARM_NAMES_FILE: armNamesFile,
+      FAKE_NPM_HARBOUR_IDS_FILE: harbourIdsFile,
+      ...extraEnv,
+    },
+    stdio: 'ignore',
+  });
+  const exited = new Promise((res) => child.on('exit', (code, signal) => res({ code, signal })));
+  return { child, exited };
 }
 
 test('integration: every shard writing successfully -> exit 0 with a complete manifest', () => {
@@ -483,4 +508,29 @@ test('integration (#1363 Major 3): a space in the driver\'s own path still trigg
     `expected exit 2 (cap exceeded), got ${result.status}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
   );
   assert.match(result.stderr, /exceeds the documented cap/);
+});
+
+// #1364: SIGINT must exit 130 (the shell's own 128+signum convention),
+// distinct from SIGTERM's 143 -- both were hardcoded to 143 before the fix.
+// The fake npm's 'slow' behavior keeps a shard alive long enough for each
+// signal to reach the driver mid-run.
+test('integration (#1364): SIGINT exits 130, SIGTERM exits 143', async () => {
+  const { fakeNpmDir, armNamesFile, harbourIdsFile } = setupFakeNpm();
+
+  async function sendSignal(signal) {
+    const outDir = mkdtempSync(join(tmpdir(), 'sc-run-sharded-out-'));
+    const { child, exited } = spawnDriverAsync(
+      ['--shards', '1', '--max-workers', '1', '--out', outDir],
+      { fakeNpmDir, armNamesFile, harbourIdsFile, extraEnv: { FAKE_NPM_BEHAVIOR: 'slow' } },
+    );
+    await new Promise((r) => setTimeout(r, 500));
+    child.kill(signal);
+    return exited;
+  }
+
+  const sigint = await sendSignal('SIGINT');
+  assert.equal(sigint.code, 130, `expected SIGINT to exit 130, got ${sigint.code}`);
+
+  const sigterm = await sendSignal('SIGTERM');
+  assert.equal(sigterm.code, 143, `expected SIGTERM to exit 143, got ${sigterm.code}`);
 });
