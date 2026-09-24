@@ -23,29 +23,25 @@ import { formatDepthM } from '../lib/depthDisclosure';
 import { formatDriftMin, formatHeading, formatKn, formatNm, formatTime } from '../lib/format';
 import { claimGpsHintOnce } from '../lib/gpsHint';
 import { watchPosition as realWatchPosition, type GpsFix } from '../services/geolocation';
-import { isLiveSimRequested } from '../dev/liveSimulator';
+import { getLiveSimController, isLiveSimRequested } from '../dev/liveSimulator';
 import LiveSimulatorControls from '../dev/LiveSimulatorControls';
 import { liveSimDict } from '../dev/LiveSimulatorControls.dict';
 import Button from './Button';
 import type { LatLon, Leg, ManeuverKind } from '../types';
 
 // #143: dev/UAT-only Live-view simulator gate — a top-level literal `const`
-// (never re-evaluated per render) so a production build's minifier can
-// inline it and fold every use site below to `false`, dead-code-eliminating
+// (never re-evaluated per render) so a production build's minifier folds
+// every use site below to `false` and dead-code-eliminates
 // dev/liveSimulator.ts, dev/LiveSimulatorControls.tsx and its dict from the
-// prod bundle (#96 byte-identity; mirrors App.tsx's `__SC_UAT__ ?` pattern
-// — see its comment for why `&&` alone leaves a residue in a JSX child
-// slot). Two things MEASURED empirically here, both load-bearing: `simActive`
-// must be the LEADING term of any `||` chain it joins (`simActive || fix ===
-// null || …`, not the reverse) — trailing it left a few extra bytes even
-// though the boolean value folds identically either way; and the ONE new
-// conditionally-rendered sibling below (the controls panel) cannot be
-// reduced to a zero-byte diff by ANY shape tried (ternary, `&&`, or an
-// imperative portal mount from an effect — the last of those measured
-// WORSE) — see the PR body for the exact byte count. A `null` placeholder
-// occupying one more slot in an existing children array is a structurally
-// different case from App.tsx's h1 title slot, which REPLACES a single
-// value rather than adding a new array entry.
+// prod bundle (#96; mirrors App.tsx's `__SC_UAT__ ?` pattern — see its
+// comment for why `&&` alone leaves a residue in a JSX child slot). NOT a
+// literal zero-byte diff against a pre-#143 build: `simActive` must be the
+// LEADING term of any `||`/ternary it joins; a NEW children-array sibling
+// (vs REPLACING an existing render value, as App.tsx's h1 slot does) always
+// costs a few bytes even fully folded; and once this constant is read from
+// enough distinct call sites the minifier keeps it as a real `var` rather
+// than inlining the literal at each site. See the PR body for the measured
+// entry-chunk delta and why it is accepted rather than chased further.
 const LIVE_SIM_GATE_OPEN = import.meta.env.DEV || __SC_UAT__;
 
 // #115 manual "reroute from here": wiring provided by App.tsx (which owns the
@@ -134,6 +130,27 @@ export default function LiveView({
   // merely whether the gate is open. Read once per render, not memoised —
   // the query string is static for a page's lifetime here.
   const simActive = LIVE_SIM_GATE_OPEN && isLiveSimRequested();
+
+  // #1486 review: feeds the ACTIVE plan's leg polyline into the simulator so
+  // 'track'/'drift' move along the real route (heading-to-steer/depth-caution
+  // math is computed against `legs`, so a synthetic loop elsewhere produced a
+  // false "crosses charted land" caution) — a leg vertex list (start of leg
+  // 0, then each leg's end); `null` when there is no plan yet, which the
+  // controller reads as "fall back to the synthetic loop". Gated the same
+  // way as every other simulator reference in this file — see
+  // LIVE_SIM_GATE_OPEN's comment.
+  useEffect(() => {
+    if (!simActive) return;
+    const controller = getLiveSimController();
+    controller.setRoute(legs.length > 0 ? [legs[0].start, ...legs.map((l) => l.end)] : null);
+    return () => controller.setRoute(null);
+    // `legs` is a fresh array every render (derived, not memoised — see the
+    // eslint warning this triggers at its declaration above) so this effect
+    // re-fires on every render while simActive — harmless here: `setRoute`
+    // is a plain call into a module-level singleton, never a React state
+    // setter, so a redundant call cannot create a render loop, only a no-op
+    // re-walk of an equal-content polyline.
+  }, [simActive, legs]);
 
   // Both 'denied' and 'unavailable' get the identical treatment (spec §4:
   // "App fully usable, no boat marker; hint shown once") — a zero-arg

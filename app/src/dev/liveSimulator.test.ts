@@ -8,6 +8,7 @@ import {
   liveSimTrackLengthNm,
   subscribeLiveSim,
 } from './liveSimulator';
+import type { LatLon } from '../types';
 
 afterEach(() => {
   getLiveSimController().pause();
@@ -119,6 +120,76 @@ describe('computeLiveSimTick', () => {
     });
     expect(oneLapLater.fix?.point.lat).toBeCloseTo(start.fix!.point.lat, 6);
     expect(oneLapLater.fix?.point.lon).toBeCloseTo(start.fix!.point.lon, 6);
+  });
+});
+
+// #1486 review: LiveView's heading-to-steer/depth-caution math is computed
+// against the ACTIVE PLAN's `legs`, so a 'track' scenario following a route
+// unrelated to that plan produces false cautions (a real "bearing crosses
+// charted land" was observed against the old synthetic-loop-only behaviour).
+// Minimum perpendicular ("cross-track") distance from a point to the nearest
+// segment of a polyline, in degrees — a flat approximation, fine at the
+// sub-nm scale these fixes ever move; only used to assert "on the line".
+function crossTrackDeg(point: { lat: number; lon: number }, route: readonly LatLon[]): number {
+  let best = Infinity;
+  for (let i = 0; i < route.length - 1; i++) {
+    const a = route[i];
+    const b = route[i + 1];
+    const dx = b.lon - a.lon;
+    const dy = b.lat - a.lat;
+    const lenSq = dx * dx + dy * dy;
+    const t =
+      lenSq > 0
+        ? Math.max(0, Math.min(1, ((point.lon - a.lon) * dx + (point.lat - a.lat) * dy) / lenSq))
+        : 0;
+    const px = a.lon + t * dx;
+    const py = a.lat + t * dy;
+    const dist = Math.hypot(point.lon - px, point.lat - py);
+    if (dist < best) best = dist;
+  }
+  return best;
+}
+
+describe('#1486 review: track scenario follows the active plan route', () => {
+  const planRoute: LatLon[] = [
+    { lat: 54.79, lon: 9.43 }, // Flensburg
+    { lat: 54.83, lon: 9.7 }, // out toward the fjord mouth
+    { lat: 54.87, lon: 9.95 }, // Sønderborg direction — far from the synthetic loop
+  ];
+
+  it('fixes lie on the plan polyline (cross-track ~0) at several ticks', () => {
+    for (const tick of [0, 5, 20, 60, 150]) {
+      const result = computeLiveSimTick({
+        scenario: 'track',
+        speedMultiplier: 1,
+        tick,
+        startDistNm: 0,
+        routePoints: planRoute,
+      });
+      expect(result.fix).not.toBeNull();
+      expect(crossTrackDeg(result.fix!.point, planRoute)).toBeLessThan(1e-6);
+    }
+  });
+
+  it('mutation check: WITHOUT routePoints the fixes follow the synthetic loop instead and drift off the plan route', () => {
+    const result = computeLiveSimTick({
+      scenario: 'track',
+      // A larger multiplier than the "on route" test above so the fix has
+      // travelled well past both routes' shared starting point (Flensburg)
+      // by this tick — otherwise the two routes' early points sit too close
+      // together to discriminate the mutation.
+      speedMultiplier: 100,
+      tick: 60,
+      startDistNm: 0,
+      routePoints: null, // the pre-#1486 behaviour
+    });
+    expect(result.fix).not.toBeNull();
+    // The synthetic Flensburg-Fjord loop and this plan route diverge by more
+    // than a trivial rounding distance — this is the exact assertion the
+    // route-following test above would fail if the routePoints wiring were
+    // reverted (mutation-checked: deleting `routePoints` from the object
+    // above reproduces this same "off the line" reading in THAT test).
+    expect(crossTrackDeg(result.fix!.point, planRoute)).toBeGreaterThan(0.01);
   });
 });
 

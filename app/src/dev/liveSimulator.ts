@@ -140,8 +140,10 @@ export function liveSimTrackLengthNm(): number {
   return trackGeometry().totalNm;
 }
 
-function pointAtDistanceNm(distNm: number): { point: LatLon; cogDeg: number } {
-  const geo = trackGeometry();
+function pointAtDistanceNm(
+  distNm: number,
+  geo: TrackGeometry = trackGeometry(),
+): { point: LatLon; cogDeg: number } {
   const total = geo.totalNm;
   const lastSegment = geo.segmentNm.length - 1;
   if (total <= 0 || lastSegment < 0) {
@@ -196,15 +198,23 @@ export interface LiveSimTickParams {
   speedMultiplier: number;
   tick: number;
   startDistNm: number;
+  // #1486 review: when the active plan has a route, 'track'/'drift' follow
+  // ITS leg polyline instead of the synthetic Flensburg loop — a leg vertex
+  // list (start of leg 0, then each leg's end), the shape LiveView.tsx
+  // derives from `legs`. Absent or shorter than 2 points falls back to the
+  // synthetic loop (no plan yet).
+  routePoints?: readonly LatLon[] | null;
 }
 
 /**
  * Pure per-tick fix computation — no timers, no module-level mutable state —
- * so it is fully deterministic given its four inputs. The stateful driver
+ * so it is fully deterministic given its inputs. The stateful driver
  * (LiveSimController below) is the only thing that owns a clock.
  */
 export function computeLiveSimTick(params: LiveSimTickParams): LiveSimTickResult {
-  const { scenario, speedMultiplier, tick, startDistNm } = params;
+  const { scenario, speedMultiplier, tick, startDistNm, routePoints } = params;
+  const geo =
+    routePoints && routePoints.length >= 2 ? buildTrackGeometry(routePoints) : trackGeometry();
 
   if (scenario === 'dropout') {
     const cyclePos = tick % (DROPOUT_LIVE_TICKS + DROPOUT_DEAD_TICKS);
@@ -214,7 +224,7 @@ export function computeLiveSimTick(params: LiveSimTickParams): LiveSimTickResult
   }
 
   if (scenario === 'stop') {
-    const { point } = pointAtDistanceNm(startDistNm);
+    const { point } = pointAtDistanceNm(startDistNm, geo);
     return {
       fix: { point, cogDeg: null, sogKn: 0, accuracyM: NOMINAL_ACCURACY_M },
       errorKind: null,
@@ -224,7 +234,7 @@ export function computeLiveSimTick(params: LiveSimTickParams): LiveSimTickResult
   const elapsedSec = tick * (LIVE_SIM_TICK_MS / 1000) * speedMultiplier;
   const sogKn = Math.max(0, BASE_SOG_KN + jitterSogKn(tick));
   const elapsedNm = (elapsedSec / 3600) * sogKn;
-  const { point: trackPoint, cogDeg: baseCogDeg } = pointAtDistanceNm(startDistNm + elapsedNm);
+  const { point: trackPoint, cogDeg: baseCogDeg } = pointAtDistanceNm(startDistNm + elapsedNm, geo);
   const cogDeg = (baseCogDeg + jitterCogDeg(tick) + 360) % 360;
   const point = scenario === 'drift' ? applyDrift(trackPoint, cogDeg, tick) : trackPoint;
   const accuracyM = scenario === 'degraded-accuracy' ? DEGRADED_ACCURACY_M : NOMINAL_ACCURACY_M;
@@ -268,6 +278,7 @@ type StateListener = (state: LiveSimState) => void;
 class LiveSimController {
   private tick = 0;
   private startDistNm = 0;
+  private routePoints: readonly LatLon[] | null = null;
   private state: LiveSimState = {
     scenario: DEFAULT_SCENARIO,
     playing: true,
@@ -328,9 +339,26 @@ class LiveSimController {
 
   jumpToFraction(fraction: number): void {
     const clamped = Math.min(1, Math.max(0, fraction));
-    this.startDistNm = clamped * trackGeometry().totalNm;
+    this.startDistNm = clamped * this.activeGeometry().totalNm;
     this.tick = 0;
     this.emitCurrent();
+  }
+
+  // #1486 review: the 'track' scenario must follow the ACTIVE plan's leg
+  // polyline, not always the synthetic loop — set by LiveView.tsx whenever
+  // its `legs` change (points null/too-short = no plan, falls back). Does
+  // NOT reset tick/position: a plan swap while a simulator run is already
+  // moving should keep the same elapsed distance, re-walked against the new
+  // route, mirroring how a real GPS fix stream is unaffected by re-planning.
+  setRoute(points: readonly LatLon[] | null): void {
+    this.routePoints = points;
+    this.emitCurrent();
+  }
+
+  private activeGeometry(): TrackGeometry {
+    return this.routePoints && this.routePoints.length >= 2
+      ? buildTrackGeometry(this.routePoints)
+      : trackGeometry();
   }
 
   private setState(patch: Partial<LiveSimState>): void {
@@ -361,6 +389,7 @@ class LiveSimController {
       speedMultiplier: this.state.speedMultiplier,
       tick: this.tick,
       startDistNm: this.startDistNm,
+      routePoints: this.routePoints,
     });
     if (result.fix) {
       const fix = result.fix;
