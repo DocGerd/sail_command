@@ -213,26 +213,19 @@ describe('#1136 planRoute pass 2 (real mask)', () => {
   });
 
   // #1327: bounded TWS sweep over the remaining points for a SECOND
-  // real-mask #1166 shape. Fails CLOSED on a find, and asserts the search
-  // actually ran (never an empty-search false negative). TWS 3.5 is pinned
-  // above rather than swept here.
-  it(
-    '#1327 TWS sweep finds no further real-mask one-sail-failed shape',
-    { timeout: solverTimeoutMs(600_000) },
-    () => {
-      const hits: string[] = [];
-      let examined = 0;
-      for (const tws of [2.2, 2.6, 5, 7, 10]) {
-        const res = planBagenkop(tws);
-        examined++;
-        if (res.status === 'ok' && res.sails.filter((s) => s.result === null).length === 1) {
-          hits.push(
-            `TWS ${tws}: ${res.sails.map((s) => `${s.sailId}=${s.result === null ? s.reason : 'ok'}`).join(', ')}`,
-          );
-        }
-      }
-      expect(examined).toBe(5);
-      expect(hits).toEqual([]);
+  // real-mask #1166 shape. One row per TWS point (a stall names its own
+  // point rather than reporting a generic timeout on the whole sweep).
+  // Fails CLOSED on a find. TWS 3.5 is pinned above rather than swept here.
+  it.each([{ tws: 2.2 }, { tws: 2.6 }, { tws: 5 }, { tws: 7 }, { tws: 10 }])(
+    '#1327 TWS $tws: no real-mask one-sail-failed shape',
+    { timeout: solverTimeoutMs(300_000) },
+    ({ tws }) => {
+      const res = planBagenkop(tws);
+      const hit =
+        res.status === 'ok' && res.sails.filter((s) => s.result === null).length === 1
+          ? `TWS ${tws}: ${res.sails.map((s) => `${s.sailId}=${s.result === null ? s.reason : 'ok'}`).join(', ')}`
+          : null;
+      expect(hit).toBeNull();
     },
   );
 });

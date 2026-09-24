@@ -39,6 +39,21 @@ describe('#1320 structural guard: harborReachability test-only exports stay test
     }
   });
 
+  // #1320 review (Major): the non-vacuity check above only proves the
+  // DEFINING file was globbed — a glob narrowed to e.g. `../lib/*` still
+  // passes it. This asserts the glob still reaches known cross-directory
+  // needles, independent of the defining file, so a narrowing that drops a
+  // whole consumer directory reds here.
+  it('breadth: the glob still reaches components/, routing/, state/ and lib/', () => {
+    const paths = Object.keys(sourceFiles);
+    for (const dir of ['../components/', '../routing/', '../state/', '../lib/']) {
+      expect(
+        paths.some((p) => p.startsWith(dir)),
+        `expected at least one captured file under ${dir}`,
+      ).toBe(true);
+    }
+  });
+
   it('never lets FloodResult/floodHasCell leak into a non-test consumer', () => {
     const leaks = findLeaks();
     if (leaks.size > 0) {
