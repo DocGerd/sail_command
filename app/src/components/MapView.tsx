@@ -226,29 +226,42 @@ export default function MapView({
       // core href must be the IDENTICAL string (see basemapSource.ts's
       // key-drift warning).
       const pmtilesUrl = new URL(import.meta.env.BASE_URL + BASEMAP_PATH, location.href).href;
-      const controlled = 'serviceWorker' in navigator && navigator.serviceWorker.controller != null;
+      const baseHref = new URL(import.meta.env.BASE_URL, location.href).href;
+      let controlledNow =
+        'serviceWorker' in navigator && navigator.serviceWorker.controller != null;
+      // #1253: registered BEFORE the ensureBasemapProtocolSource await below,
+      // not after it — a claim landing mid-await (sw.ts's clientsClaim can
+      // fire at any point) was otherwise missed entirely, since nothing was
+      // listening yet, leaving regions disabled and strips blank until
+      // reload. `controlledNow` (mutated here, read below) is what feeds the
+      // FIRST basemapProtocol.configure call once the await resolves, so a
+      // claim during the gap enables regions on that first call rather than
+      // only via a second, later one. `once: true`: this ONE registration
+      // now also covers the original post-mount late-claim case — whichever
+      // happens first, the gap or after mount, fires it.
+      if (!controlledNow && 'serviceWorker' in navigator) {
+        handleControllerChange = () => {
+          if (cancelled || navigator.serviceWorker.controller == null) return;
+          controlledNow = true;
+          // `instance` does not exist yet if the claim landed during the
+          // gap — the post-await configure call below picks up
+          // `controlledNow` instead, so nothing is skipped either way.
+          if (instance) {
+            basemapProtocol.configure({ coreUrl: pmtilesUrl, baseHref, regionsEnabled: true });
+            instance.getSource<VectorTileSource>('protomaps')?.setUrl(BASEMAP_SOURCE_URL);
+          }
+        };
+        navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange, {
+          once: true,
+        });
+      }
       try {
-        await ensureBasemapProtocolSource(basemapProtocol, pmtilesUrl, controlled);
+        await ensureBasemapProtocolSource(basemapProtocol, pmtilesUrl, controlledNow);
         if (cancelled) return;
         // Regions only on SW-controlled pages: an uncontrolled page cannot
         // hold a pinned region, so it renders region areas blank (#1164
         // ruling 4) and skips the manifest fetch entirely.
-        const baseHref = new URL(import.meta.env.BASE_URL, location.href).href;
-        basemapProtocol.configure({ coreUrl: pmtilesUrl, baseHref, regionsEnabled: controlled });
-        // #295 (PWA review r4016341229): a fresh install claims the page
-        // mid-session (sw.ts's clientsClaim). Enable regions then and reload
-        // the source's TileJSON, whose bounds gate which tiles MapLibre asks
-        // for, so a strip pinned after the claim renders without a reload.
-        if (!controlled && 'serviceWorker' in navigator) {
-          handleControllerChange = () => {
-            if (cancelled || navigator.serviceWorker.controller == null) return;
-            basemapProtocol.configure({ coreUrl: pmtilesUrl, baseHref, regionsEnabled: true });
-            instance?.getSource<VectorTileSource>('protomaps')?.setUrl(BASEMAP_SOURCE_URL);
-          };
-          navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange, {
-            once: true,
-          });
-        }
+        basemapProtocol.configure({ coreUrl: pmtilesUrl, baseHref, regionsEnabled: controlledNow });
 
         // Label language is baked into the style at creation time; SailCommand's
         // language switch is rare enough that re-fetching/re-diffing the whole

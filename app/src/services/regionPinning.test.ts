@@ -1,11 +1,10 @@
 import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  REGION_FETCH_MIN_TIMEOUT_MS,
+  REGION_FETCH_STALL_MS,
   getRegionPinIntent,
   pinRegionsForPlan,
   regionDownloadBytes,
-  regionFetchTimeoutMs,
   regionReadiness,
 } from './regionPinning';
 import { __resetDbForTests, deletePlan, savePlan, saveRegionPin } from './db';
@@ -825,6 +824,39 @@ describe('#1233 Major 2 (offline/PWA review): in-flight archive fetch coalescing
     );
     expect(archiveFetches).toHaveLength(1);
   });
+
+  // #1246 residual (PR #1242 review r4009096166): the map entry's `.finally`
+  // must clear it on FAILURE too, or a later, SEPARATE (non-concurrent) pin
+  // for the same region would forever reuse the first attempt's resolved
+  // `false` instead of trying again.
+  it('a failed attempt clears the coalescing entry — a later, separate call re-fetches and can succeed', async () => {
+    const m = manifest();
+    const { fake } = stubEnv({ manifest: m });
+    await seedManifestInCache(fake, m);
+    const aUrl = BASE + m.regions[0].path;
+    let archiveCalls = 0;
+    const fetchMock = vi.fn(async (input: string) => {
+      if (input === MANIFEST_URL) return new Response(JSON.stringify(m), { status: 200 });
+      if (String(input).startsWith(aUrl)) {
+        archiveCalls += 1;
+        // FIRST attempt fails; every later one succeeds.
+        if (archiveCalls === 1) return new Response('nope', { status: 500 });
+        return new Response(pmtilesBytes(m.regions[0].bytes), { status: 200 });
+      }
+      return new Response('', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const plan1 = makePlan('p1', [[leg()]]);
+    await savePlan(plan1);
+    expect(await pinRegionsForPlan(plan1)).toEqual({ status: 'pinned', total: 1, pinned: 0 });
+
+    const plan2 = makePlan('p2', [[leg()]]);
+    await savePlan(plan2);
+    expect(await pinRegionsForPlan(plan2)).toEqual({ status: 'pinned', total: 1, pinned: 1 });
+
+    expect(archiveCalls).toBe(2);
+  });
 });
 
 // #295 (PWA review r4016341249): the chip's download size.
@@ -846,17 +878,12 @@ describe('regionDownloadBytes', () => {
   });
 });
 
-// #295 (PWA review r4016341243): a stalled archive download must settle so
-// the chip can offer a retry.
+// #295 (PWA review r4016341243) / #1253: a stalled archive download must
+// settle so the chip can offer a retry — but the watchdog is now a
+// NO-PROGRESS timer, not a whole-download deadline sized from the archive's
+// total bytes (see fetchAndCacheRegion's own comment for why).
 describe('region fetch deadline', () => {
-  it('scales with archive size at 256 kbit/s, floored at 60 s', () => {
-    // 12,603,919 B * 8 / 256,000 bit/s = 393.872468... s, rounded up to ms.
-    expect(regionFetchTimeoutMs(12_603_919)).toBe(393_873);
-    expect(regionFetchTimeoutMs(1024)).toBe(60_000);
-    expect(REGION_FETCH_MIN_TIMEOUT_MS).toBe(60_000);
-  });
-
-  it('aborts a stalled archive fetch at the deadline and reports it unpinned', async () => {
+  it('aborts a fetch that never even returns a response, at REGION_FETCH_STALL_MS', async () => {
     const m = manifest();
     const { fake, fetchMock } = stubEnv({ manifest: m });
     await seedManifestInCache(fake, m);
@@ -890,7 +917,7 @@ describe('region fetch deadline', () => {
         await Promise.resolve();
       }
       expect(fetchMock.mock.calls.some((c) => String(c[0]).startsWith(aUrl))).toBe(true);
-      vi.advanceTimersByTime(regionFetchTimeoutMs(m.regions[0].bytes) - 1);
+      vi.advanceTimersByTime(REGION_FETCH_STALL_MS - 1);
       expect(aborted).toBe(false);
       vi.advanceTimersByTime(1);
       expect(aborted).toBe(true);
@@ -899,5 +926,76 @@ describe('region fetch deadline', () => {
     }
     await pending;
     expect(outcome).toEqual({ status: 'pinned', total: 1, pinned: 0 });
+  });
+
+  it('a slow-but-moving download (every gap under the stall window) still completes, where the OLD whole-download deadline for this small archive would already have aborted it', async () => {
+    // region-a's fixture size is 1024 B, well under the old floor's 60 s
+    // minimum — so the old regionFetchTimeoutMs(1024) deadline was exactly
+    // REGION_FETCH_STALL_MS. Two gaps just under that, delivered
+    // sequentially, sum to ~2x it: the old whole-download deadline would
+    // have fired partway through the second gap; the new per-gap watchdog
+    // never sees a gap that long and lets it finish. The body is a hand-
+    // rolled `getReader().read()` (not a real ReadableStream/Response) so
+    // its only timing dependency is the SAME faked setTimeout the watchdog
+    // itself uses — fetchAndCacheRegion never reads anything else off `res`
+    // once past `res.ok`.
+    const m = manifest();
+    const { fake } = stubEnv({ manifest: m });
+    await seedManifestInCache(fake, m);
+    const plan = makePlan('p1', [[leg()]]);
+    await savePlan(plan);
+    const aUrl = BASE + m.regions[0].path;
+    const full = pmtilesBytes(m.regions[0].bytes);
+    const half = Math.ceil(full.length / 2);
+    const chunks = [full.slice(0, half), full.slice(half)];
+
+    const gapMs = REGION_FETCH_STALL_MS - 1000;
+    let chunkIndex = 0;
+    // The synthetic reader listens on `init.signal` exactly like a real
+    // ReadableStream would — required for this test to be a genuine
+    // discriminator: without it, fetchAndCacheRegion's abort() call would
+    // have no observable effect here and the test would pass regardless of
+    // whether progress actually re-arms the watchdog.
+    const fetchMock = vi.fn(async (input: string, init?: RequestInit) => {
+      if (input === MANIFEST_URL) return new Response(JSON.stringify(m), { status: 200 });
+      if (!String(input).startsWith(aUrl)) return new Response('', { status: 404 });
+      const signal = init?.signal;
+      return {
+        ok: true,
+        body: {
+          getReader: () => ({
+            read: () =>
+              new Promise((resolve, reject) => {
+                const onAbort = () => {
+                  clearTimeout(timer);
+                  reject(new DOMException('aborted', 'AbortError'));
+                };
+                const timer = setTimeout(() => {
+                  signal?.removeEventListener('abort', onAbort);
+                  if (chunkIndex < chunks.length) {
+                    resolve({ done: false, value: chunks[chunkIndex] });
+                    chunkIndex += 1;
+                  } else {
+                    resolve({ done: true, value: undefined });
+                  }
+                }, gapMs);
+                signal?.addEventListener('abort', onAbort, { once: true });
+              }),
+          }),
+        },
+      } as unknown as Response;
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    let outcome: Awaited<ReturnType<typeof pinRegionsForPlan>> | undefined;
+    const pending = pinRegionsForPlan(plan).then((o) => (outcome = o));
+    try {
+      await vi.advanceTimersByTimeAsync(3 * gapMs);
+    } finally {
+      vi.useRealTimers();
+    }
+    await pending;
+    expect(outcome).toEqual({ status: 'pinned', total: 1, pinned: 1 });
   });
 });
