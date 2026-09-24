@@ -1,0 +1,8 @@
+{"snap":"unsnap","tws":2.4,"rig":"genoa","motor":false,"pf":1,"status":"ok","cause":null,"rings":154,"peak":4237,"etaH":19.373461462605793,"costMs":69744461.26538086,"legs":107,"head":"14,31,29,17,12,39,102,128,154,193"}
+{"snap":"unsnap","tws":2.6,"rig":"genoa","motor":false,"pf":1,"status":"ok","cause":null,"rings":141,"peak":3280,"etaH":17.870637608100044,"costMs":64334295.389160156,"legs":90,"head":"11,34,28,15,12,34,82,113,149,166"}
+{"snap":"unsnap","tws":2.8,"rig":"genoa","motor":false,"pf":1,"status":"ok","cause":null,"rings":137,"peak":6000,"etaH":16.55304060248481,"costMs":59590946.16894531,"legs":86,"head":"14,34,33,13,9,42,93,129,167,194"}
+{"snap":"unsnap","tws":3,"rig":"genoa","motor":false,"pf":1,"status":"no-route","cause":"mask-blocked","rings":5,"peak":38,"etaH":null,"costMs":null,"legs":null,"head":"16,38,24,7,0"}
+{"snap":"snap","tws":2.4,"rig":"genoa","motor":false,"pf":1,"status":"ok","cause":null,"rings":150,"peak":3712,"etaH":19.312065080769855,"costMs":69523434.29077148,"legs":80,"head":"16,33,39,20,32,73,90,117,141,207"}
+{"snap":"snap","tws":2.6,"rig":"genoa","motor":false,"pf":1,"status":"ok","cause":null,"rings":148,"peak":5803,"etaH":17.863041259358724,"costMs":64306948.533691406,"legs":85,"head":"15,35,30,17,7,8,40,85,109,139"}
+{"snap":"snap","tws":2.8,"rig":"genoa","motor":false,"pf":1,"status":"no-route","cause":"mask-blocked","rings":6,"peak":34,"etaH":null,"costMs":null,"legs":null,"head":"13,34,32,12,2,0"}
+{"snap":"snap","tws":3,"rig":"genoa","motor":false,"pf":1,"status":"ok","cause":null,"rings":128,"peak":3820,"etaH":15.509248169962564,"costMs":55833293.411865234,"legs":60,"head":"13,38,30,11,8,35,100,138,177,272"}
