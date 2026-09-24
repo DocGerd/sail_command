@@ -1,5 +1,6 @@
 import type { LatLon, MaskMeta } from '../types';
 import { toRad } from './geo';
+import { maskGrid } from './mask';
 
 /**
  * #452 P3: the radius, in metres, around each snapped waypoint inside which
@@ -110,8 +111,7 @@ export function approachGate(
 ): DepthGate {
   if (!Number.isFinite(radiusM)) return uniformGate(Math.max(...gatesM));
 
-  const latStep = (meta.north - meta.south) / meta.rows;
-  const lonStep = (meta.east - meta.west) / meta.cols;
+  const { lat: latAxis, lon: lonAxis } = maskGrid(meta);
   const discs: Disc[] = [];
   let rowLo = Infinity;
   let rowHi = -Infinity;
@@ -122,11 +122,11 @@ export function approachGate(
   for (let i = 0; i < waypoints.length; i++) {
     const w = waypoints[i];
     const gateM = gatesM[i];
-    const row = Math.floor((w.lat - meta.south) / latStep);
-    const col = Math.floor((w.lon - meta.west) / lonStep);
+    const row = latAxis.index(w.lat);
+    const col = lonAxis.index(w.lon);
     // Same two conversions NavMask.snapToNavigable uses for its ring bound.
-    const rowRadius = radiusM / (M_PER_DEG * latStep);
-    const colRadius = radiusM / (M_PER_DEG * lonStep * Math.cos(toRad(w.lat)));
+    const rowRadius = radiusM / (M_PER_DEG * latAxis.stepDeg);
+    const colRadius = radiusM / (M_PER_DEG * lonAxis.stepDeg * Math.cos(toRad(w.lat)));
     const rowRadius2 = rowRadius * rowRadius;
     const colRadius2 = colRadius * colRadius;
     discs.push({

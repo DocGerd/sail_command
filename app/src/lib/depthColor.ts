@@ -22,7 +22,7 @@
 // that function's own doc comment for the full rationale.
 
 import type { MaskMeta } from '../types';
-import { cautiousDepthLowerBoundM } from './mask';
+import { cautiousDepthLowerBoundM, GridAxis } from './mask';
 
 const LAND = 0;
 const DEEP = 255;
@@ -89,12 +89,12 @@ function latFromMercatorY(y: number): number {
 export function depthCanvasRowMap(meta: Pick<MaskMeta, 'south' | 'north' | 'rows'>): Int32Array {
   const { south, north, rows } = meta;
   if (!(rows > 0) || !(north > south)) throw new Error(`unusable mask rows/bbox: ${rows}`);
-  const latStep = (north - south) / rows;
+  const axis = new GridAxis(south, north, rows);
   const yNorth = mercatorY(north);
   const span = mercatorY(south) - yNorth;
   let shortestRow = Infinity;
   for (let r = 0; r < rows; r++) {
-    const h = mercatorY(south + r * latStep) - mercatorY(south + (r + 1) * latStep);
+    const h = mercatorY(axis.edge(r)) - mercatorY(axis.edge(r + 1));
     if (h < shortestRow) shortestRow = h;
   }
   for (let outRows = Math.ceil(span / shortestRow); ; outRows++) {
@@ -103,7 +103,7 @@ export function depthCanvasRowMap(meta: Pick<MaskMeta, 'south' | 'north' | 'rows
     let covered = 0;
     for (let r = 0; r < outRows; r++) {
       const lat = latFromMercatorY(yNorth + ((r + 0.5) / outRows) * span);
-      const maskRow = Math.min(rows - 1, Math.max(0, Math.floor((lat - south) / latStep)));
+      const maskRow = Math.min(rows - 1, Math.max(0, axis.index(lat)));
       map[r] = maskRow;
       if (!seen[maskRow]) {
         seen[maskRow] = 1;

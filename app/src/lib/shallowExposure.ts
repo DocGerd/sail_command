@@ -23,7 +23,7 @@
 //    flagShallowLegs folds over BOTH rigs' legs. The two can legitimately
 //    disagree on the very same plan; that is not a bug in either.
 import { haversineNm } from './geo';
-import { MASK_TOLERANCE_M } from './mask';
+import { MASK_TOLERANCE_M, maskGrid } from './mask';
 import { DEFAULT_SETTINGS } from '../types';
 import type { LatLon, Leg, MaskMeta, Plan } from '../types';
 import type { NavMask } from './mask';
@@ -76,16 +76,15 @@ function walkLegCells(
   visit: (row: number, col: number, tEntry: number, tExit: number) => void,
 ): boolean {
   const meta = mask.meta;
-  const latStep = (meta.north - meta.south) / meta.rows;
-  const lonStep = (meta.east - meta.west) / meta.cols;
-  const x0 = (a.lon - meta.west) / lonStep;
-  const y0 = (a.lat - meta.south) / latStep;
-  const x1 = (b.lon - meta.west) / lonStep;
-  const y1 = (b.lat - meta.south) / latStep;
-  let cx = Math.floor(x0);
-  let cy = Math.floor(y0);
-  const ex = Math.floor(x1);
-  const ey = Math.floor(y1);
+  const { lat: latAxis, lon: lonAxis } = maskGrid(meta);
+  const x0 = lonAxis.coord(a.lon);
+  const y0 = latAxis.coord(a.lat);
+  const x1 = lonAxis.coord(b.lon);
+  const y1 = latAxis.coord(b.lat);
+  let cx = lonAxis.index(a.lon);
+  let cy = latAxis.index(a.lat);
+  const ex = lonAxis.index(b.lon);
+  const ey = latAxis.index(b.lat);
   const dx = x1 - x0;
   const dy = y1 - y0;
   const stepX = dx > 0 ? 1 : dx < 0 ? -1 : 0;
@@ -118,21 +117,16 @@ function walkLegCells(
 }
 
 /**
- * Cell-centre function for `meta`, precomputing `meta`'s grid steps once
- * rather than per visited cell. Centre = (south + (row + 0.5) * latStep,
- * west + (col + 0.5) * lonStep) — the +0.5 offset puts the probe maximally
+ * Cell-centre function for `meta`, deriving `meta`'s grid once rather than
+ * per visited cell. Centre = `GridAxis.centre` — the +0.5 offset puts the probe maximally
  * far from a cell boundary, so re-deriving (row, col) from that centre
  * through depthInfoM's own floor-based lookup cannot land on a neighbouring
  * cell. Shared by shallowFractionOfLeg and legConfinedWithin so both read
  * the identical centre for the identical (row, col).
  */
 function cellCenterFn(meta: MaskMeta): (row: number, col: number) => LatLon {
-  const latStep = (meta.north - meta.south) / meta.rows;
-  const lonStep = (meta.east - meta.west) / meta.cols;
-  return (row, col) => ({
-    lat: meta.south + (row + 0.5) * latStep,
-    lon: meta.west + (col + 0.5) * lonStep,
-  });
+  const { lat: latAxis, lon: lonAxis } = maskGrid(meta);
+  return (row, col) => ({ lat: latAxis.centre(row), lon: lonAxis.centre(col) });
 }
 
 /**

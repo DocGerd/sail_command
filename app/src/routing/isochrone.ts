@@ -402,20 +402,18 @@ export function pruneCellConfined(
   lonIdx: number,
   marginCells: number,
 ): boolean {
-  const { south, west, north, east, rows, cols } = mask.meta;
-  const latStep = (north - south) / rows;
-  const lonStep = (east - west) / cols;
-  const rowLo = Math.floor((latIdx * PRUNE_LAT - south) / latStep) - marginCells;
-  const rowHi = Math.floor(((latIdx + 1) * PRUNE_LAT - south) / latStep) + marginCells;
-  const colLo = Math.floor((lonIdx * PRUNE_LON - west) / lonStep) - marginCells;
-  const colHi = Math.floor(((lonIdx + 1) * PRUNE_LON - west) / lonStep) + marginCells;
+  const { lat: latAxis, lon: lonAxis } = mask.grid;
+  const rowLo = latAxis.index(latIdx * PRUNE_LAT) - marginCells;
+  const rowHi = latAxis.index((latIdx + 1) * PRUNE_LAT) + marginCells;
+  const colLo = lonAxis.index(lonIdx * PRUNE_LON) - marginCells;
+  const colHi = lonAxis.index((lonIdx + 1) * PRUNE_LON) + marginCells;
   for (let row = rowLo; row <= rowHi; row++) {
-    const lat = south + (row + 0.5) * latStep;
+    const lat = latAxis.centre(row);
     for (let col = colLo; col <= colHi; col++) {
       // A degenerate segment walks exactly this one cell, so this is the
       // per-cell gate test `segmentNavigable` already applies to every edge —
       // the same predicate the solver navigates by, never a second copy of it.
-      const p = { lat, lon: west + (col + 0.5) * lonStep };
+      const p = { lat, lon: lonAxis.centre(col) };
       if (!mask.segmentNavigable(p, p, gate)) return true;
     }
   }

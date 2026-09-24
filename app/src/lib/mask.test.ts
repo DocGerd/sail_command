@@ -77,13 +77,18 @@ describe('NavMask', () => {
   });
 
   it('isNavigable at the exact north/east edge is fail-closed (false) by design', () => {
-    // meta.north/meta.east are exclusive bounds: floor((edge - origin) / step)
-    // lands exactly on rows/cols, one past the last valid index, so the edge
-    // coordinate itself never falls inside any cell. Pinning this as
+    // meta.north/meta.east are exclusive bounds: GridAxis.index maps the edge
+    // to rows/cols, one past the last valid index, so the edge coordinate
+    // itself never falls inside any cell. Pinning this as
     // intentional (not a bug) so a future "fix" doesn't silently flip it.
     const m = makeMask(() => 200);
     expect(m.isNavigable({ lat: TEST_MASK_META.north, lon: 10 }, 3)).toBe(false);
     expect(m.isNavigable({ lat: 54.5, lon: TEST_MASK_META.east }, 3)).toBe(false);
+    // #1259: the segment walk shares that convention.
+    const inside = { lat: 54.5, lon: 10 };
+    expect(m.segmentNavigable(inside, inside, uniformGate(3))).toBe(true);
+    expect(m.segmentNavigable(inside, { lat: TEST_MASK_META.north, lon: 10 }, uniformGate(3))).toBe(false);
+    expect(m.segmentNavigable(inside, { lat: 54.5, lon: TEST_MASK_META.east }, uniformGate(3))).toBe(false);
   });
 
   it('snapToNavigable centered far outside the bbox returns null', () => {
