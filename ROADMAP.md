@@ -13,48 +13,37 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.42.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.43.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
-## Now — v0.42.0
+## Now — v0.43.0
 
-The `v0.42.0` cut (2026-09-24) worked the
-[`v0.42.0` milestone](https://github.com/DocGerd/sail_command/milestones):
-one user-visible fix — the chart grid used for routing, depth checks and
-harbour access now positions its cells from a whole number of cells per
-degree instead of dividing the charted area's extent by its cell count;
-some routes change as a result, some by taking a different path, and four
-harbours sitting exactly on a cell boundary now fall in the neighbouring cell
-([#1259](https://github.com/DocGerd/sail_command/issues/1259)) — plus six
-process/tooling and documentation fixes: JSDoc tidying in the mask module
-alongside that fix
-([#1265](https://github.com/DocGerd/sail_command/issues/1265)); the untested
-structural validation of `verify_mask.py`'s expected-unreachable table,
-now covered by test
-([#1318](https://github.com/DocGerd/sail_command/issues/1318)); an unverified
-monotonicity assumption behind the harbour-access hint's claim about depth
-settings above the recommended one, now pinned by test
-([#1329](https://github.com/DocGerd/sail_command/issues/1329)); attribution
-of a residual basemap label-collision case rather than a further fix
-([#1155](https://github.com/DocGerd/sail_command/issues/1155)); hardening of
-the `sweep-closure` skill's reuse path against worktree leaks, a misleading
-ambiguity message, and an unpinned closure union
-([#1361](https://github.com/DocGerd/sail_command/issues/1361)); and
-CLAUDE.md guard naming, a single `protect-main` authority, and dated
-self-staling claims
-([#1177](https://github.com/DocGerd/sail_command/issues/1177)).
+The `v0.43.0` cut (2026-09-24) worked the
+[`v0.43.0` milestone](https://github.com/DocGerd/sail_command/milestones):
+`realmask.repro.salona44`'s Flensburg→Marstal case, which intermittently
+hit its per-test timeout in CI, had that timeout raised, with no solver
+code changed
+([#1460](https://github.com/DocGerd/sail_command/issues/1460)).
 
-Two #1407 comment-sweep batches (PRs #1440 and #1441) also shipped
-in this cut; #1407 itself was moved to `Backlog` on 2026-09-24.
+A scoping spike for #1168's motor-off solve instability also shipped in
+this cut — mechanism identified and a fix recommended, no solver code
+changed
+([docs/spikes/1168-motor-off-prune-instability.md](docs/spikes/1168-motor-off-prune-instability.md));
+[#1168](https://github.com/DocGerd/sail_command/issues/1168) itself carries
+the fix into the next milestone.
 
-## Next — v0.43.0
+## Next — v0.44.0
 
-The [`v0.43.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-carries a narrow-layout MapLibre canvas paint gap under the top-left map
+The [`v0.44.0` milestone](https://github.com/DocGerd/sail_command/milestones)
+carries the narrow-layout MapLibre canvas paint gap under the top-left map
 chrome ([#1413](https://github.com/DocGerd/sail_command/issues/1413)) and
 measuring depth-overlay canvas memory on a real tablet
-([#1281](https://github.com/DocGerd/sail_command/issues/1281)). The milestone
-page is the only authoritative view, check it directly rather than this file.
+([#1281](https://github.com/DocGerd/sail_command/issues/1281)) — both
+waiting on a real-tablet check — plus #1168's motor-off fix,
+recommended by this cut's spike
+([#1168](https://github.com/DocGerd/sail_command/issues/1168)). The
+milestone page is the only authoritative view, check it directly rather
+than this file.
 
 ## Themes for the next year
 
