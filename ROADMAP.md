@@ -44,7 +44,7 @@ CLAUDE.md guard naming, a single `protect-main` authority, and dated
 self-staling claims
 ([#1177](https://github.com/DocGerd/sail_command/issues/1177)).
 
-Two further #1407 comment-sweep batches (PRs #1440 and #1441) also shipped
+Two #1407 comment-sweep batches (PRs #1440 and #1441) also shipped
 in this cut; #1407 itself was moved to `Backlog` on 2026-09-24.
 
 ## Next — v0.43.0
