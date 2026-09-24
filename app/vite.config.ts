@@ -762,6 +762,8 @@ export default defineConfig(({ command }) => ({
         // the previous name/short_name and omits `id` (unset before #96).
         name: isUat ? 'SailCommand UAT' : 'SailCommand',
         short_name: isUat ? 'SailCommand UAT' : 'SailCommand',
+        // Duplicated at index.html's <meta name="description"> and
+        // og:description — update all three together.
         description:
           'Offline-Törnplaner für zeitoptimale Segelrouten von der Flensburger Förde und Dänischen Südsee bis zum Kleinen Belt und Fehmarn. Kein Navigationsgerät.',
         lang: 'de',

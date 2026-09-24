@@ -211,6 +211,9 @@
   // mask so the scaled frontier cap is pinned against the SHIPPED domain, not
   // a hand-copied bounds literal — same reason as realmask.repro*.test.ts
   // above; its name doesn't match that glob, so it needs its own entry.
+  // boatSwitchHarborAccess.test.ts (#1393): reads the real shipped
+  // mask.bin/mask.meta.json/harbors.json via `node:fs` — same reason as
+  // harborReachability.test.ts above.
   "include": [
     "src/**/startPreviewSwAssertCallSites.test.ts",
     "src/**/isochrone.frontierCap.test.ts",
@@ -253,6 +256,7 @@
     "src/**/regionConstantsTwin.test.ts",
     "src/**/harborReachability*.test.ts",
     "src/**/BoatPicker.harborAccess.test.tsx",
+    "src/**/boatSwitchHarborAccess.test.ts",
     "sweep/**/*.ts"
   ]
 }

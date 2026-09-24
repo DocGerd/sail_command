@@ -837,6 +837,12 @@ async function readHazardRenderedSnapshot(
     const fadeHeld = map.style.tileManagers['sc-seamarks']._inViewTiles
       .getAllTiles()
       .some((t) => t.holdingForSymbolFade());
+    // `_placementDirty` is an internal maplibre-gl field (see ScTestMap's own
+    // comment above): if a future bump renames or removes it, `!undefined`
+    // reads as settled — fail loudly instead of treating that as settled.
+    if (typeof map._placementDirty !== 'boolean') {
+      throw new Error('map._placementDirty is not a boolean — maplibre-gl internals moved');
+    }
     const placementSettled = !map._placementDirty && !fadeHeld;
     const nw = map.project([region.lonMin, region.latMax]);
     const se = map.project([region.lonMax, region.latMin]);
