@@ -547,14 +547,15 @@ describe('#847 weave ETA cost — reproduction + measurement', () => {
       console.log(
         `\nGelting-Mole: ${rig!.legs.length} legs, weave spans found: ${spans.length}.`,
       );
-      // #1303 moved this route from 0 spans to 1; #1259's exact mask grid step
-      // moves it back to 0. The non-vacuity control role stays with the
-      // Wackerballig case below.
+      // #1303 briefly moved this route to 1 span; #1259's exact mask grid
+      // step returns it to 0, restoring its original negative-control role
+      // beside the Wackerballig case below.
       expect(spans).toHaveLength(0);
     },
   );
 
-  // #1303: the detector's NON-VACUITY control, replacing Gelting-Mole above.
+  // #1303: a second non-vacuity control, added while Gelting-Mole above
+  // briefly read 1 span.
   // Same origin, wind cell and rig, a neighbouring outer-fjord harbour; 0
   // spans measured at HEAD over 14 legs. Without a zero-span route in this
   // file, every "spans found" reading above could be the detector firing on
