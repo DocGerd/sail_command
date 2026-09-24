@@ -93,6 +93,24 @@ describe('#1329 harbour reachability is monotone in the safety depth (real mask)
     ).toBeNull();
   });
 
+  // #1444: the `ok`-only predicate's positive control, on a SYNTHETIC row —
+  // independent of the real mask, so a benign mask change cannot silently
+  // turn this control vacuous. `ok` at 30/32 with `shallow-approach` at 31
+  // is monotone under `reachable` (both terms reachable) but not under
+  // `s === 'ok'` alone.
+  it('#1444 detector keyed on `ok` alone fires on a synthetic ok/shallow-approach/ok row', () => {
+    expect(
+      firstMonotonicityViolation(
+        [
+          [30, 'ok'],
+          [31, 'shallow-approach'],
+          [32, 'ok'],
+        ],
+        (s) => s === 'ok',
+      ),
+    ).toBe(32);
+  });
+
   it(
     'every catalogue boat, every settable gate, every harbour: no reachable gate above an unreachable one',
     { timeout: solverTimeoutMs(300_000) },
@@ -109,13 +127,6 @@ describe('#1329 harbour reachability is monotone in the safety depth (real mask)
       // range, so an empty violation list is not an empty search.
       expect(rowsWithUnreachable).toBeGreaterThan(0);
       expect(violations).toEqual([]);
-
-      // Positive control on the REAL matrix: the same detector keyed on `ok`
-      // alone does fire, because `ok` ↔ `shallow-approach` is non-monotone.
-      const okOnly = [...rows].filter(
-        ([, row]) => firstMonotonicityViolation(row, (s) => s === 'ok') !== null,
-      );
-      expect(okOnly.length).toBeGreaterThan(0);
 
       // Every boat's recommended depth lies inside the measured range.
       for (const boat of BOATS) {

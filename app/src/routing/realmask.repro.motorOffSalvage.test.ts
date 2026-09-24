@@ -154,6 +154,12 @@ describe('#1136 planRoute pass 2 (real mask)', () => {
   // deleting clause 2 from `salvagePassAdmitted` leaves this row green (PR
   // #1322 review). Clause 2 is pinned directly by
   // `planRoute.motorOffSalvage.test.ts`'s truth table.
+  //
+  // #1327: a TWS/direction sweep over this same Flensburg->Bagenkop route
+  // found no real-mask input reproducing the #1166 shape post-#1303. Per
+  // #1327's own accepted-alternative, unit-level truth-table coverage
+  // (`planRoute.motorOffSalvage.test.ts`) stands in for a real-mask fixture
+  // until one turns up.
   it.each([{ tws: 3 }, { tws: 8 }])(
     'TWS $tws: an ok plan is left as it was — pass 2 is not admitted',
     ({ tws }) => {
