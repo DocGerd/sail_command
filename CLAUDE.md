@@ -1810,11 +1810,9 @@ making design-level decisions; do not silently deviate.
   owns it; rename is a trap, #127 spike) — and still interleaves all three
   refs' entries unchanged. `main` and `develop` are both guarded by the
   `protect-main` ruleset (#15 — one ruleset covering both branches via literal
-  refs, never `~DEFAULT_BRANCH`, which follows a default-branch flip and would
-  strand the non-default branch): PR-only merges (merge commits, review threads
+  refs): PR-only merges (merge commits, review threads
   resolved), required checks `app` + `e2e` ONLY (read off the ruleset API
-  2026-08-18) with strict up-to-date policy, no force pushes or deletions. A
-  red in any other check merges silently.
+  2026-08-18) with strict up-to-date policy, no force pushes or deletions.
 - Post-deploy CDN smoke probe (#117, guards the #118 fix class): `deploy.yml`'s
   `smoke-probe` job probes BOTH deployments (prod site root AND `/uat/`) on
   EVERY run — a redeploy evicts prod's CDN edge Range objects even when zero
