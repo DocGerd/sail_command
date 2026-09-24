@@ -1,0 +1,171 @@
+--- app/src/routing/isochrone.ts	2026-09-24 18:33:12.517848523 +0200
++++ app/src/routing/scratch1168iso.ts	2026-09-24 19:38:34.082180838 +0200
+@@ -484,7 +484,40 @@
+   return a.lat !== b.lat ? a.lat < b.lat : a.lon < b.lon;
+ }
+ 
++export interface Arrival {
++  costMs: number;
++  maneuvers: number;
++  ring: number;
++  lat: number;
++  lon: number;
++  node: object;
++}
++export const DIAG: {
++  mode: "prod" | "pareto" | "nodom" | "arrmin" | "retract" | "defer";
++  div: number;
++  track: boolean;
++  record: boolean;
++  rings: {
++    ring: number;
++    nodes: number;
++    accepted: number;
++    blocked: number;
++    dominated: number;
++    domSelf: number;
++    domFitted: number;
++    domSynthetic: number;
++    domPrevRingOnly: number;
++    domAllDead: number;
++    domUnknown: number;
++    minDistM: number[];
++    next: number;
++  }[];
++} = { mode: "prod", record: false, rings: [], div: 2, track: true };
++
+ export function solve(p: SolveParams): SolveResult {
++  const arrivals = new Map<string, Arrival[]>();
++  const producedOf = new Map<object, number>();
++  let ringNo = 0;
+   const { polar, wind, mask, settings, destination } = p;
+   const maxFrontier = p.maxFrontier ?? defaultMaxFrontier(mask.meta);
+   const horizonMs = wind.horizonMs();
+@@ -545,7 +578,7 @@
+     board: Board | null,
+   ): string => {
+     const coarse = pruneKey(lat, lon, kind, board);
+-    if (CONFINED_PRUNE_DIV === 1) return coarse;
++    if (DIAG.div === 1) return coarse;
+     const cell = `${Math.floor(lat / PRUNE_LAT)}:${Math.floor(lon / PRUNE_LON)}`;
+     let confined = confinedCells.get(cell);
+     if (confined === undefined) {
+@@ -560,7 +593,7 @@
+     }
+     if (!confined) return coarse;
+     const b = kind === 'motor' ? 'M' : board === 'port' ? 'P' : 'S';
+-    const k = CONFINED_PRUNE_DIV;
++    const k = DIAG.div;
+     // The `f` prefix keeps the two key spaces disjoint (a coarse key starts
+     // with a digit or `-`), so a coarse stamp can never dominate a fine-keyed
+     // node or the reverse.
+@@ -620,6 +653,21 @@
+     }
+ 
+     const byKey = new Map<string, Node>();
++    const rs = {
++      ring: ringNo,
++      nodes: frontier.length,
++      accepted: 0,
++      blocked: 0,
++      dominated: 0,
++      domSelf: 0,
++      domFitted: 0,
++      domSynthetic: 0,
++      domPrevRingOnly: 0,
++      domAllDead: 0,
++      domUnknown: 0,
++      minDistM: [] as number[],
++      next: 0,
++    };
+     let sinceDeadlineCheck = 0;
+     for (const node of frontier) {
+       // #1280 part B: the budget check, every DEADLINE_CHECK_NODES nodes. It
+@@ -788,6 +836,7 @@
+           }
+           if (fitted === null) {
+             sawBlocked = true;
++            rs.blocked++;
+             continue;
+           }
+           factor = fitted;
+@@ -848,13 +897,54 @@
+         }
+ 
+         const key = keyOf(child.lat, child.lon, child.kind, child.board);
++        rs.accepted++;
+         const seen = visited.get(key);
+-        if (seen !== undefined && visitedDominates(seen, child) && !skipDominance) continue;
++        const list = arrivals.get(key);
++        const doms = list
++          ? list.filter((a) => a.costMs <= child.costMs && a.maneuvers <= child.maneuvers)
++          : [];
++        let dominated: boolean;
++        const include = (a: Arrival): boolean => {
++          // Only expansions from COMPLETED rings count, so intra-ring order is irrelevant.
++          const done = a.ring <= ringNo - 2;
++          const pr = producedOf.get(a.node);
++          if (DIAG.mode === 'retract') return !(done && pr === 0);
++          if (DIAG.mode === 'defer') return done && pr !== undefined && pr > 0;
++          return true;
++        };
++        if (DIAG.mode === 'arrmin' || DIAG.mode === 'retract' || DIAG.mode === 'defer') {
++          let mc = Infinity;
++          let mm = Infinity;
++          for (const a of list ?? []) {
++            if (!include(a)) continue;
++            if (a.costMs < mc) mc = a.costMs;
++            if (a.maneuvers < mm) mm = a.maneuvers;
++          }
++          dominated = mc <= child.costMs && mm <= child.maneuvers;
++        } else if (DIAG.mode === 'pareto') dominated = doms.length > 0;
++        else if (DIAG.mode === 'nodom') dominated = false;
++        else dominated = seen !== undefined && visitedDominates(seen, child);
++        if (dominated && !skipDominance) {
++          rs.dominated++;
++          if (key === keyOf(node.lat, node.lon, node.kind, node.board)) rs.domSelf++;
++          if (stepMs < dtS * 1000) rs.domFitted++;
++          if (doms.length === 0) rs.domSynthetic++;
++          else {
++            if (doms.every((a) => a.ring === ringNo - 1)) rs.domPrevRingOnly++;
++            if (doms.some((a) => a.ring > ringNo - 2)) rs.domUnknown++;
++            else if (doms.every((a) => producedOf.get(a.node) === 0)) rs.domAllDead++;
++            let md = Infinity;
++            for (const a of doms) md = Math.min(md, haversineNm(a, child) * 1852);
++            rs.minDistM.push(Math.round(md));
++          }
++          continue;
++        }
+         const incumbent = byKey.get(key);
+         if (!incumbent || better(child, incumbent)) byKey.set(key, child);
+         produced++;
+       }
+ 
++      if (!skipDominance && DIAG.track) producedOf.set(node, produced);
+       if (produced === 0) {
+         if (sawBlocked) blockedDeaths++;
+         if (sawCalm && !sawBlocked) calmDeaths++;
+@@ -887,11 +977,21 @@
+     // cap, `next` === all byKey winners, so this is byte-identical to stamping
+     // every winner — the uncapped path (the common case, incl. every real-mask
+     // route whose frontier peaks below the cap) is unchanged.
+-    for (const n of next)
+-      stampVisited(visited, keyOf(n.lat, n.lon, n.kind, n.board), {
++    for (const n of next) {
++      const k = keyOf(n.lat, n.lon, n.kind, n.board);
++      stampVisited(visited, k, {
+         costMs: n.costMs,
+         maneuvers: n.maneuvers,
+       });
++      const a = { costMs: n.costMs, maneuvers: n.maneuvers, ring: ringNo, lat: n.lat, lon: n.lon, node: n };
++      const l = arrivals.get(k);
++      if (!DIAG.track) continue;
++      if (l) l.push(a);
++      else arrivals.set(k, [a]);
++    }
++    rs.next = next.length;
++    if (DIAG.record) DIAG.rings.push(rs);
++    ringNo++;
+     frontier = next;
+     tMs += dtS * 1000;
+     // Report the true frontier clock: substepped nodes lag the ring clock by

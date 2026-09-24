@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.43.0] - 2026-09-24
+
+### Changed
+
+- No user-visible changes in this release.
+
 ## [0.42.0] - 2026-09-24
 
 ### Fixed
@@ -1172,7 +1178,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.42.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.43.0...HEAD
+[0.43.0]: https://github.com/DocGerd/sail_command/compare/v0.42.0...v0.43.0
 [0.42.0]: https://github.com/DocGerd/sail_command/compare/v0.41.0...v0.42.0
 [0.41.0]: https://github.com/DocGerd/sail_command/compare/v0.40.0...v0.41.0
 [0.40.0]: https://github.com/DocGerd/sail_command/compare/v0.39.0...v0.40.0

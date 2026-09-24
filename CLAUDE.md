@@ -256,7 +256,10 @@ making design-level decisions; do not silently deviate.
   import walk cannot see — a new data asset, arm file or pipeline generator
   outside `PATH_PREFIXES`, or a runtime-constructed edge outside
   `EXTRA_EDGES`. RUN `closure.mjs files` FOR THE MEMBER LIST — it is derived
-  from the roots, no prose list here to drift. The closure is wider than the
+  from the roots, no prose list here to drift. #944 (read a purely additive
+  export as NOT OWED) was deferred after three review rounds each found a
+  fail-open in its hand-rolled lexer (ASI, `\r`/U+2028/U+2029, `}` then `(`);
+  its deferral comment recommends a real parser. The closure is wider than the
   obvious routing/mask/sweep/pipeline paths: it reaches the boat catalogue and
   `boatDepth`, `DEFAULT_SETTINGS` in `types.ts`, the shared test fixtures and
   timeouts, `setup.ts`, and the solver's `geo`/`polar`/`wind` helpers. One
@@ -327,17 +330,22 @@ making design-level decisions; do not silently deviate.
   mask change including a catastrophic one; never count them as evidence.
   **VACUITY IS LEVER-RELATIVE — an arm is never vacuous as a property of
   itself, only with respect to a LEVER.** That pair is the vacuous set for a
-  DEPTH lever. For a sail/motor MODE lever the set is a different THREE:
-  `light-motorless`, `becalmed` and `deep-becalmed`, the arms carrying
-  `motorEnabled: false` — re-measured 2026-09-03 at `bca2561`, exactly three
-  arm ENTRIES in `sweepArms.ts` set it (a fourth grep hit is that file's own
-  doc comment, so count entries, not matches). Both statements are true and
-  correctly scoped, and `docs/spikes/354-mode-churn.md` carries both. A reader
-  who carries the depth pair into a mode question under-counts by one — which
+  DEPTH lever. For a sail/motor MODE lever the set is the arms carrying
+  `motorEnabled: false`: `light-motorless`, `becalmed` and `deep-becalmed`
+  when measured 2026-09-03 at `bca2561`, plus `motorless-short-horizon` since
+  #1455. Count the ARMS entries in `sweepArms.ts`, not grep matches (its doc
+  comment is a hit). Both statements are true and
+  correctly scoped; `docs/spikes/354-mode-churn.md` carries both, its mode set
+  as the three arms read at `84b049a2`, before #1455. A reader
+  who carries the depth pair into a mode question under-counts — which
   happened in review on PR #867, pushed back on precisely because "the repo
   record names `becalmed` and `deep-becalmed` as the vacuous pair", i.e. this
   mis-transfer occurring in real time. Name the LEVER whenever you call an arm
-  vacuous.
+  vacuous. An arm that REACHES a failure class can still be blind to a lever
+  acting on it: `motorless-short-horizon` hits the #1301 class, yet a widened
+  `salvagePassAdmitted` left it byte-identical, because pass 2 rescued 0 of 40
+  rows and a pass 2 that routes nothing returns pass 1 verbatim (#1455's
+  review; #1456 tracks serializing the record's failure cause).
   For a DEPTH-RELAXATION change the discriminating arms are the three
   #452 Marstal-origin ones (`margin-zero`, `relaxation-dense`,
   `margin-extreme`) — "the three new ones" was true until #653 added two
@@ -1673,6 +1681,7 @@ making design-level decisions; do not silently deviate.
   | v0.39.0 | 2026-09-22 | 46 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 00:02:40Z, three seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `35670196932` (created 00:01:58Z) -> tag `35670256087` (created 00:02:44Z) on `d00ade9`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`** -- the within-run control. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-KRWTYwpO.js` at ``version:`v0.39.0` `` with ZERO suffixed matches, so no back-merge remedy was owed. Release `isLatest: true`; tag object `79a79ce` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.40.0 | 2026-09-23 | 19203 s | `success`, `steps=6` (MEASURED before the tag push, and the failure CALLED IN ADVANCE from it) | **`smoke-probe` FAILED** | merge-push `35798660532` -> tag `35820738607` on `6aa9019`. Tag run's `build` and `deploy` succeeded; its prod entry chunk `assets/index-BuOWjfH-.js` 404'd on all 10 attempts while both basemap Range probes passed on attempt 1. Back-merge `35822017063` (`aa8f5fb`) republished that same chunk, 200 on attempt 1; production then served ``version:`v0.40.0` `` with ZERO suffixed matches. Tag object `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.41.0 | 2026-09-23 | 60 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 20:08:20Z, five seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `35913837798` (created 20:07:26Z) -> tag `35913947081` (created 20:08:26Z) on `5b9cfaa`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-Ck0O4F5J.js` at ``version:`v0.41.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `verified: true, reason: "valid"`. Names no MECHANISM. |
+  | v0.42.0 | 2026-09-24 | 24 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 14:20:50Z, three seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `36012084391` (created 14:20:30Z) -> tag `36012136174` (created 14:20:54Z) on `3379f8a`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-TBNYpjtZ.js` at ``version:`v0.42.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `verified: true, reason: "valid"`. Names no MECHANISM. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -4297,6 +4306,12 @@ making design-level decisions; do not silently deviate.
   `planViaPoints.ts` returns `request.viaPoints` verbatim. Gap up to half a
   ~46 m cell diagonal when the drop was already navigable, up to `maxRadiusM =
   300` when it was not. Never write that the two coincide.
+- **#1259's integer cells-per-degree grid is edge-STABLE, not exact.**
+  Widening the bbox
+  north/east no longer moves a cell, but `floor((v - origin) * cpd)` still
+  rounds an on-boundary coordinate by float noise (Faaborg and Søby land one
+  column short of the decimal answer; #1453's correction comment). Never
+  write that cell positions are now "exact" or "correct".
 - `NavMask.segmentShallowestBelow` returns `null` for BOTH "no cell below the
   threshold" AND "the walk left the grid / tripped its iteration guard" — it
   cannot distinguish clear water from no coverage. Anything that renders a

@@ -117,8 +117,16 @@ instead of here.
   — #1330: the post-#1322 Fehmarn slowdown is `MAX_FRONTIER` truncation
   (already live at #1322's base, deepened by it), confirmed per ring on the
   `breeze` arm at three trees; resolved there on `develop` by #1257's derived cap
+- [1168-motor-off-prune-instability.md](1168-motor-off-prune-instability.md)
+  — #1168: motor-off solves die on connected water by position within a prune
+  key; at plan level a rig drops out as `unreachable` and the ★ goes to the
+  slower rig. Recommends a finer confined prune key (divisor 3 or 4) for motor-off
+  solves only; salvage, dead-stamper retraction and Pareto stamps measured and
+  rejected
 
-Three entries carry a same-named subdirectory of supporting artifacts rather
+Four entries carry a same-named subdirectory of supporting artifacts rather
 than being self-contained: `1022-whole-journey-ux/` (reference screenshots),
-`354-mode-churn/` (the reproduction test file and its measured output) and
-`1136-motor-off-solve-termination/` (the §11 probe scripts and results).
+`354-mode-churn/` (the reproduction test file and its measured output),
+`1136-motor-off-solve-termination/` (the §11 probe scripts and results) and
+`1168-motor-off-prune-instability/` (the instrumentation patch, probes and raw
+results).
