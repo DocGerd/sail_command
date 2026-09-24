@@ -44,18 +44,20 @@
  * 4. For each hit, default to **OWED** — this is a NUDGE-class tool, and per
  *    the repo's guard-asymmetry convention a nudge must fail OPEN (a false
  *    "owed" costs ~31 minutes of unnecessary solver time; a false "not owed"
- *    ships an unverified routing change). The only carve-out from that
- *    default is `app/src/data/boats.ts`'s `draftProvenance` field, because
- *    that specific exemption is STRUCTURALLY provable from the type system
- *    on disk today (see `classifyBoatsTs` below) rather than merely assumed.
+ *    ships an unverified routing change). Two carve-outs from that default,
+ *    each proven from the diff and the tree rather than assumed:
+ *    `app/src/data/boats.ts`'s `draftProvenance` field (see
+ *    `classifyBoatsTs`), and #944's purely additive, unreferenced exports on
+ *    an import-walk member (see `classifyAdditiveExports`).
  *
  * ## Failure direction — stated explicitly, per the issue's own request
  *
  * This tool is designed to OVER-REPORT, never under-report: every closure
- * hit is OWED by default, with exactly ONE modelled exception
+ * hit is OWED by default, with TWO modelled exceptions
  * (`app/src/data/boats.ts`'s `draftProvenance`/`DraftProvenance` blocks —
  * see `classifyBoatsTs`'s own doc comment for why that specific carve-out
- * is sound). It does NOT attempt full data-flow/taint analysis of every
+ * is sound — and #944's additive-export rule, which fails back to OWED on
+ * anything it cannot prove). It does NOT attempt full data-flow/taint analysis of every
  * field reachable from the closure — e.g. it does NOT model whether
  * `polarProvenance.note` (also present in `boats.ts`, also copied into
  * `BoatSnapshot`) can move a `PlanResult`; CLAUDE.md's own
@@ -73,9 +75,11 @@
  * NOT OWED, exit 0. `PATH_PREFIXES` closes that MEASURED gap, but is itself
  * hand-maintained data (see its own header comment) rather than something
  * re-derived — so the honest claim is "over-reports against the modelled
- * universe below", not an unconditional guarantee. Extending EITHER
- * `PATH_PREFIXES` or the `draftProvenance` exception needs the same
- * structural proof `classifyBoatsTs` gives, never a guess by analogy.
+ * universe below", not an unconditional guarantee. Extending
+ * `PATH_PREFIXES`, the `draftProvenance` exception or the additive-export
+ * rule needs the same structural proof, never a guess by analogy. The
+ * additive rule applies to `diff` only; `reuse` fails closed and keeps the
+ * `draftProvenance` exception alone.
  *
  * ## Usage
  *
@@ -185,6 +189,10 @@ const PATH_PREFIXES = [
       'makes every arm-*.test.ts file a REAL entry point (an edge INTO ' +
       'sweepArms.ts, invisible to a walk FROM it), and canonicalize.mjs / ' +
       "compare.mjs produce and compare the bytes a sweep run certifies",
+    // #944: code here is EXECUTED during a sweep run, so the additive-export
+    // rule must scan it for references. The other two prefixes are read or
+    // re-run by hand, never loaded — a change there is OWED on its own.
+    loadedAtSweepTime: true,
   },
   {
     prefix: 'app/public/data',
@@ -217,18 +225,18 @@ function matchesPrefix(rel) {
 // `import type {\n  A,\n  B,\n} from '...'` blocks: `[^'"()]` matches
 // newlines too (character classes do unless a literal \n is excluded), so
 // the non-greedy run to the first `from` correctly spans the whole clause.
-const FROM_RE = /(?:^|\n)[ \t]*(?:import|export)\b[^'"()]*?\bfrom\s*(['"])([^'"]+)\1/g;
+const FROM_RE = /(?:^|\n)[ \t]*(?:import|export)\b(?<clause>[^'"()]*?)\bfrom\s*(['"])(?<spec>[^'"]+)\2/g;
 // Bare side-effect imports: `import '...'` (no `from`).
-const BARE_RE = /(?:^|\n)[ \t]*import\s*(['"])([^'"]+)\1/g;
+const BARE_RE = /(?:^|\n)[ \t]*import\s*(['"])(?<spec>[^'"]+)\1/g;
 // Dynamic `import('...')`, wherever it appears.
-const DYNAMIC_RE = /\bimport\s*\(\s*(['"])([^'"]+)\1\s*\)/g;
+const DYNAMIC_RE = /\bimport\s*\(\s*(['"])(?<spec>[^'"]+)\1\s*\)/g;
 
 function extractSpecifiers(source) {
   const specs = new Set();
   for (const re of [FROM_RE, BARE_RE, DYNAMIC_RE]) {
     re.lastIndex = 0;
     let m;
-    while ((m = re.exec(source))) specs.add(m[2]);
+    while ((m = re.exec(source))) specs.add(m.groups.spec);
   }
   return specs;
 }
@@ -324,7 +332,7 @@ function closureInfo(visited, rel) {
 }
 
 // ---------------------------------------------------------------------------
-// The one modelled field-level exception: app/src/data/boats.ts's
+// The one modelled FIELD-level exception: app/src/data/boats.ts's
 // `draftProvenance` field / `DraftProvenance` type.
 //
 // WHY THIS IS SOUND (not a guess): `app/src/types.ts`'s `BoatSnapshot`
@@ -366,6 +374,11 @@ const BOATS_TS_PATH = 'app/src/data/boats.ts';
  * plain text", which cannot manufacture a false safe-block boundary.
  */
 function maskNonCode(source) {
+  return lexMask(source).masked;
+}
+
+/** `maskNonCode` plus the lexer state at the END of `source` ('code' | 'line' | 'block' | 'string'). */
+function lexMask(source) {
   const out = source.split('');
   const n = out.length;
   let i = 0;
@@ -440,7 +453,7 @@ function maskNonCode(source) {
     mask(i);
     i += 1;
   }
-  return out.join('');
+  return { masked: out.join(''), state };
 }
 
 function buildLineStarts(source) {
@@ -561,6 +574,301 @@ function classifyBoatsTs({ oldContent, newContent, diffText }) {
       'default fail-open verdict (see file header: this tool over-reports, never under-reports)',
     evidence: { unsafeHunks, oldBlocks, newBlocks },
   };
+}
+
+// ---------------------------------------------------------------------------
+// #944: additive-export rule. A change to an import-walk closure member is
+// NOT OWED when every hunk only INSERTS whole top-level `export` declarations
+// (or comments) that cannot run code at load time, under names the old file
+// never mentioned, and no file the sweep can load mentions those names or
+// reaches the module through a namespace/dynamic import. Anything it cannot
+// prove falls back to OWED — `classifyAdditiveExports` never throws.
+// ---------------------------------------------------------------------------
+
+const UNIVERSE_EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts', '.mjs', '.cjs', '.js', '.jsx'];
+
+function isCodeFile(rel) {
+  return UNIVERSE_EXTENSIONS.includes(path.extname(rel));
+}
+
+function isExtraEdgeTarget(rel) {
+  return Object.values(EXTRA_EDGES).some((edges) => edges.some((e) => e.target === rel));
+}
+
+/** Import-walk members only: prefix, root and runtime-edge files are loaded by mechanisms this rule does not model. */
+function additiveRuleApplies(rel, info) {
+  return (
+    info.kind === 'import' &&
+    matchesPrefix(rel) === undefined &&
+    !ROOTS.includes(rel) &&
+    !isExtraEdgeTarget(rel) &&
+    isCodeFile(rel)
+  );
+}
+
+function matchClose(masked, openIdx, open, close) {
+  let depth = 0;
+  for (let i = openIdx; i < masked.length; i++) {
+    if (masked[i] === open) depth++;
+    else if (masked[i] === close) {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+/**
+ * Every way `source` can reach another module. Kinds: 'named' (binds only
+ * listed names), 'namespace' (star import/re-export or a literal dynamic
+ * import — reaches every export), 'bare', 'dynamic-basename'
+ * (`import(resolve(x, 'lit'))`, target known only by basename) and
+ * 'dynamic-unknown' (a load this tool cannot resolve).
+ */
+function moduleRefs(source) {
+  const refs = [];
+  let m;
+  FROM_RE.lastIndex = 0;
+  while ((m = FROM_RE.exec(source))) {
+    refs.push({ kind: m.groups.clause.includes('*') ? 'namespace' : 'named', spec: m.groups.spec });
+  }
+  BARE_RE.lastIndex = 0;
+  while ((m = BARE_RE.exec(source))) refs.push({ kind: 'bare', spec: m.groups.spec });
+  const { masked, state } = lexMask(source);
+  if (state !== 'code') refs.push({ kind: 'dynamic-unknown', why: 'file ends inside a string or comment' });
+  const dyn = /\bimport\s*\(/g;
+  while ((m = dyn.exec(masked))) {
+    const open = m.index + m[0].length - 1;
+    const close = matchClose(masked, open, '(', ')');
+    const arg = close === -1 ? null : source.slice(open + 1, close);
+    const lit = arg === null ? null : /^\s*(['"])([^'"]+)\1\s*$/.exec(arg);
+    const viaResolve = arg === null ? null : /^\s*resolve\(\s*[A-Za-z_$][\w$]*\s*,\s*(['"])([^'"]+)\1\s*\)\s*$/.exec(arg);
+    if (lit) refs.push({ kind: 'namespace', spec: lit[2] });
+    else if (viaResolve) refs.push({ kind: 'dynamic-basename', literal: viaResolve[2] });
+    else refs.push({ kind: 'dynamic-unknown', why: 'import() with a non-literal argument' });
+  }
+  if (/\brequire\s*\(/.test(masked)) refs.push({ kind: 'dynamic-unknown', why: 'require()' });
+  if (/\bimport\.meta\.glob/.test(masked)) refs.push({ kind: 'dynamic-unknown', why: 'import.meta.glob' });
+  return refs;
+}
+
+/**
+ * Every code file a sweep run loads from `dir`'s tree: the import walk plus
+ * the tracked code under the `loadedAtSweepTime` PATH_PREFIXES (arm-*.test.ts
+ * are loaded by vitest's glob, never reached by the walk). rel -> { text, refs }.
+ */
+function indexUniverse(dir, closure) {
+  const rels = new Set();
+  for (const [rel, v] of closure) if (!v.missing && isCodeFile(rel)) rels.add(rel);
+  const loaded = PATH_PREFIXES.filter((p) => p.loadedAtSweepTime).map((p) => p.prefix);
+  const listed = execFileSync('git', ['ls-files', '-z', '--', ...loaded], {
+    cwd: dir,
+    encoding: 'utf8',
+  });
+  for (const rel of listed.split('\0')) if (rel && isCodeFile(rel)) rels.add(rel);
+  const files = new Map();
+  for (const rel of rels) {
+    const abs = path.join(dir, rel);
+    if (!isFile(abs)) continue;
+    const text = readFileSync(abs, 'utf8');
+    const refs = moduleRefs(text).map((r) => {
+      if (r.spec === undefined) return r;
+      const resolved = resolveSpecifier(abs, r.spec);
+      return { ...r, target: resolved ? path.relative(dir, resolved) : null };
+    });
+    files.set(rel, { text, refs });
+  }
+  return files;
+}
+
+/** Paren/bracket/brace depth over masked code; throws if it goes negative. */
+function depthOf(masked) {
+  let depth = 0;
+  for (const c of masked) {
+    if (c === '(' || c === '[' || c === '{') depth++;
+    else if (c === ')' || c === ']' || c === '}') {
+      depth--;
+      if (depth < 0) throw new Error('unbalanced brackets before the insertion point');
+    }
+  }
+  return depth;
+}
+
+/** Index of the first `ch` at bracket depth 0 in masked[from..], or -1. */
+function findAtDepth0(masked, from, predicate) {
+  let depth = 0;
+  for (let i = from; i < masked.length; i++) {
+    const c = masked[i];
+    if (depth === 0 && predicate(c, i)) return i;
+    if (c === '(' || c === '[' || c === '{') depth++;
+    else if (c === ')' || c === ']' || c === '}') {
+      depth--;
+      if (depth < 0) return -1;
+    }
+  }
+  return -1;
+}
+
+const RESERVED_NAMES = new Set([
+  'enum', 'type', 'interface', 'function', 'class', 'let', 'var', 'const', 'async',
+  'default', 'abstract', 'declare', 'namespace', 'module', 'await', 'yield',
+]);
+const EXPORT_HEAD_RE =
+  /^export\s+(?:(?<kw>const|interface|type)\s+|(?<fn>(?:async\s+)?function\s*\*?\s*))(?<name>[A-Za-z_$][\w$]*)(?![\w$])/;
+
+/**
+ * A `const` initializer must be a literal: strings, non-negative numbers,
+ * true/false/null/undefined, and arrays/objects of those, optionally
+ * `as const`. Rejects every call, property read, operator, identifier
+ * reference and template literal — the ways an initializer can run code or
+ * observe other bindings at load time.
+ */
+function assertLiteralInitializer(maskedInit, rawInit) {
+  if (rawInit.includes('`')) throw new Error('template literal in a const initializer');
+  const body = maskedInit.replace(/\bas\s+const\s*$/, '');
+  if (body.trim() === '') {
+    const rawBody = rawInit.replace(/\bas\s+const\s*$/, '').trim();
+    if (!/^(['"])[^\n]*\1$/.test(rawBody)) throw new Error('const initializer is empty');
+    return;
+  }
+  const tokenRe = /\s+|\d+(?:\.\d+)?(?:[eE]\d+)?|[A-Za-z_$][\w$]*|[[\]{},:]|[\s\S]/gy;
+  let m;
+  while ((m = tokenRe.exec(body))) {
+    const tok = m[0];
+    if (/^\s+$/.test(tok) || /^\d/.test(tok) || /^[[\]{},:]$/.test(tok)) continue;
+    if (/^[A-Za-z_$]/.test(tok)) {
+      if (['true', 'false', 'null', 'undefined'].includes(tok)) continue;
+      if (/^\s*:/.test(body.slice(tokenRe.lastIndex))) continue; // object key
+      throw new Error(`identifier '${tok}' in a const initializer`);
+    }
+    throw new Error(`'${tok}' in a const initializer`);
+  }
+}
+
+/**
+ * Parses an inserted fragment as a sequence of top-level `export const |
+ * function | interface | type` declarations (comments/blank lines allowed).
+ * Returns the declared names; throws on anything else.
+ */
+function parseExportStatements(text) {
+  const { masked, state } = lexMask(text);
+  if (state !== 'code') throw new Error('inserted text ends inside a string or comment');
+  const names = [];
+  let pos = 0;
+  for (;;) {
+    while (pos < masked.length && /\s/.test(masked[pos])) pos++;
+    if (pos >= masked.length) return names;
+    const head = EXPORT_HEAD_RE.exec(masked.slice(pos));
+    if (!head) throw new Error(`unrecognised top-level statement: ${JSON.stringify(text.slice(pos, pos + 40))}`);
+    const { kw, fn, name } = head.groups;
+    if (RESERVED_NAMES.has(name)) throw new Error(`unsupported declaration form 'export ${kw ?? 'function'} ${name}'`);
+    const afterHead = pos + head[0].length;
+    let end;
+    if (kw === 'const') {
+      const semi = findAtDepth0(masked, afterHead, (c) => c === ';');
+      if (semi === -1) throw new Error(`export const ${name} has no terminating ';'`);
+      const eq = findAtDepth0(masked, afterHead, (c, i) => c === '=' && masked[i + 1] !== '>' && i < semi);
+      if (eq === -1 || eq > semi) throw new Error(`export const ${name} has no initializer`);
+      const annotation = masked.slice(afterHead, eq).trim();
+      if (annotation !== '' && !annotation.startsWith(':')) throw new Error(`export const ${name}: unsupported declarator`);
+      if (findAtDepth0(masked.slice(0, semi), eq + 1, (c) => c === ',') !== -1) {
+        throw new Error(`export const ${name}: multiple declarators`);
+      }
+      assertLiteralInitializer(masked.slice(eq + 1, semi), text.slice(eq + 1, semi));
+      end = semi;
+    } else if (fn !== undefined) {
+      const stop = findAtDepth0(masked, afterHead, (c) => c === ';' || c === '{');
+      if (stop === -1) throw new Error(`export function ${name} has no body`);
+      end = masked[stop] === ';' ? stop : matchClose(masked, stop, '{', '}');
+      if (end === -1) throw new Error(`export function ${name}: unbalanced body`);
+    } else if (kw === 'interface') {
+      const open = findAtDepth0(masked, afterHead, (c) => c === '{' || c === ';');
+      if (open === -1 || masked[open] !== '{') throw new Error(`export interface ${name} has no body`);
+      end = matchClose(masked, open, '{', '}');
+      if (end === -1) throw new Error(`export interface ${name}: unbalanced body`);
+    } else {
+      end = findAtDepth0(masked, afterHead, (c) => c === ';');
+      if (end === -1) throw new Error(`export type ${name} has no terminating ';'`);
+    }
+    names.push(name);
+    pos = end + 1;
+  }
+}
+
+function tokenRegex(name) {
+  return new RegExp(`(?<![\\w$])${name.replace(/\$/g, '\\$')}(?![\\w$])`);
+}
+
+/**
+ * `universes`: one `indexUniverse` map per tree the diff touches.
+ * `exemptHunk`: hunks another modelled rule already cleared (boats.ts's
+ * draftProvenance spans). Never throws.
+ */
+function classifyAdditiveExports({ targetRel, oldContent, newContent, diffText, universes, exemptHunk = () => false }) {
+  try {
+    const hunks = parseHunks(diffText);
+    if (hunks.length === 0) throw new Error('no hunks in the diff');
+    const oldStarts = buildLineStarts(oldContent);
+    const newLines = newContent.split('\n');
+    const names = [];
+    for (const h of hunks) {
+      if (exemptHunk(h)) continue;
+      if (h.oldCount !== 0) throw new Error(`hunk -${h.oldStart},${h.oldCount} modifies or removes existing lines`);
+      const offset = h.oldStart === 0 ? 0 : h.oldStart < oldStarts.length ? oldStarts[h.oldStart] : oldContent.length;
+      const before = lexMask(oldContent.slice(0, offset));
+      if (before.state !== 'code') throw new Error(`insertion after line ${h.oldStart} is inside a string or comment`);
+      if (depthOf(before.masked) !== 0) throw new Error(`insertion after line ${h.oldStart} is not at module top level`);
+      const prev = before.masked.trimEnd().slice(-1);
+      if (prev !== '' && prev !== ';' && prev !== '}') {
+        throw new Error(`insertion after line ${h.oldStart} does not follow a statement boundary`);
+      }
+      names.push(...parseExportStatements(newLines.slice(h.newStart - 1, h.newStart - 1 + h.newCount).join('\n')));
+    }
+    if (new Set(names).size !== names.length) throw new Error('duplicate new export name');
+    for (const name of names) {
+      if (tokenRegex(name).test(oldContent)) throw new Error(`'${name}' already appears in the old file`);
+    }
+    if (names.length > 0) {
+      if (!Array.isArray(universes) || !universes.some((u) => u.has(targetRel))) {
+        throw new Error(`no loadable-file index contains ${targetRel} itself`);
+      }
+      const stem = path.basename(targetRel).replace(/\.[^.]+$/, '');
+      for (const universe of universes) {
+        for (const [rel, { text, refs }] of universe) {
+          if (rel === targetRel) continue;
+          for (const name of names) {
+            if (tokenRegex(name).test(text)) throw new Error(`'${name}' is referenced by ${rel}`);
+          }
+          for (const r of refs) {
+            if (r.kind === 'namespace' && r.target === targetRel) {
+              throw new Error(`${rel} reaches ${targetRel} through a namespace/star/dynamic import`);
+            }
+            if (r.kind === 'dynamic-unknown') throw new Error(`${rel} loads a module this tool cannot resolve (${r.why})`);
+            if (r.kind === 'dynamic-basename') {
+              const b = path.basename(r.literal);
+              const bStem = b.replace(/\.[^.]+$/, '');
+              if (/[/\\]$/.test(r.literal) || b === '.' || b === '..' || bStem === stem || bStem === 'index') {
+                throw new Error(`${rel} dynamically imports '${r.literal}', which may resolve to ${targetRel}`);
+              }
+            }
+          }
+        }
+      }
+    }
+    return {
+      verdict: 'NOT_OWED',
+      reason:
+        names.length > 0
+          ? `additive-only: new top-level export(s) ${names.join(', ')} with literal initializers, referenced by no file the sweep can load`
+          : 'additive-only: inserted text is comments/blank lines at module top level',
+      evidence: { names, hunks },
+    };
+  } catch (err) {
+    return {
+      verdict: 'OWED',
+      reason: `additive-export rule could not prove the change inert (${err.message}) — default fail-open verdict`,
+    };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -743,10 +1051,18 @@ function unionClosures(...maps) {
  */
 function computeClosureForDiff(root, base, head) {
   const mergeBase = mergeBaseCommit(root, base, head);
-  const closureAtMergeBase = withRefCheckout(root, mergeBase, (dir) => computeClosure(dir));
-  const closureAtHead = head ? withRefCheckout(root, head, (dir) => computeClosure(dir)) : computeClosure(root);
-  const closureAtBase = withRefCheckout(root, base, (dir) => computeClosure(dir));
-  return unionClosures(closureAtMergeBase, closureAtHead, closureAtBase);
+  // #944: index each tree's loadable files while its checkout still exists.
+  const scan = (dir) => {
+    const closure = computeClosure(dir);
+    return { closure, universe: indexUniverse(dir, closure) };
+  };
+  const atMergeBase = withRefCheckout(root, mergeBase, scan);
+  const atHead = head ? withRefCheckout(root, head, scan) : scan(root);
+  const atBase = withRefCheckout(root, base, scan);
+  return {
+    visited: unionClosures(atMergeBase.closure, atHead.closure, atBase.closure),
+    universes: [atMergeBase.universe, atHead.universe, atBase.universe],
+  };
 }
 
 /**
@@ -756,18 +1072,32 @@ function computeClosureForDiff(root, base, head) {
  * stand-in for it (#1359).
  */
 function computeDiffVerdict(root, base, head) {
-  const visited = computeClosureForDiff(root, base, head);
+  const { visited, universes } = computeClosureForDiff(root, base, head);
   const changed = changedFiles(root, base, head);
   const hits = changed.map((f) => ({ f, info: closureInfo(visited, f) })).filter((x) => x.info !== null);
 
   const results = hits.map(({ f, info }) => {
     let verdict;
-    if (f === BOATS_TS_PATH) {
-      const oldRef = mergeBaseCommit(root, base, head);
-      const oldContent = gitShow(root, oldRef, f);
-      const newContent = head ? gitShow(root, head, f) : readFileSync(path.join(root, f), 'utf8');
-      const diffText = gitDiffU0(root, base, head, f);
-      verdict = classifyBoatsTs({ oldContent, newContent, diffText });
+    if (additiveRuleApplies(f, info)) {
+      try {
+        const oldRef = mergeBaseCommit(root, base, head);
+        const oldContent = gitShow(root, oldRef, f);
+        const newContent = head ? gitShow(root, head, f) : readFileSync(path.join(root, f), 'utf8');
+        const diffText = gitDiffU0(root, base, head, f);
+        verdict = { verdict: 'OWED' };
+        let exemptHunk = () => false;
+        if (f === BOATS_TS_PATH) {
+          verdict = classifyBoatsTs({ oldContent, newContent, diffText });
+          const oldBlocks = findSafeBlocks(oldContent);
+          const newBlocks = findSafeBlocks(newContent);
+          exemptHunk = (h) => hunkIsSafe(h, oldBlocks, newBlocks);
+        }
+        if (verdict.verdict === 'OWED') {
+          verdict = classifyAdditiveExports({ targetRel: f, oldContent, newContent, diffText, universes, exemptHunk });
+        }
+      } catch (err) {
+        verdict = { verdict: 'OWED', reason: `could not read this file's change (${err.message}) — default fail-open verdict` };
+      }
     } else {
       verdict = {
         verdict: 'OWED',
@@ -1944,6 +2274,216 @@ function runSelftest(root) {
     );
   } finally {
     rmSync(m5Repo, { recursive: true, force: true });
+  }
+
+  // #944: additive-export rule. Pure rows run classifyAdditiveExports on real
+  // `git diff --no-index` output against a hand-built loadable-file index;
+  // the two real-git rows below go through computeDiffVerdict end to end.
+  const ADD_TARGET = 'app/src/lib/extra.ts';
+  const ADD_BASE = `import type { SailId } from './types';
+
+export const LIMIT = 3;
+
+export const BOATS = [
+  { id: 'a', draftM: 2.1 },
+];
+
+export function boatById(id: string) {
+  return BOATS.find((b) => b.id === id);
+}
+`;
+  const importer = (text) => [
+    'app/src/routing/planRoute.ts',
+    { text, refs: moduleRefs(text).map((r) => (r.spec !== undefined ? { ...r, target: ADD_TARGET } : r)) },
+  ];
+  const addUniverse = (importerText = "import { boatById } from '../lib/extra';\n") => [
+    new Map([[ADD_TARGET, { text: ADD_BASE, refs: [] }], importer(importerText)]),
+  ];
+  const addTmp = mkdtempSync(path.join(tmpdir(), 'sweep-closure-selftest-additive-'));
+  try {
+    const addOld = path.join(addTmp, 'old.ts');
+    writeFileSync(addOld, ADD_BASE);
+    let n = 0;
+    const additive = (newContent, universes = addUniverse()) => {
+      const f = path.join(addTmp, `new${n++}.ts`);
+      writeFileSync(f, newContent);
+      return classifyAdditiveExports({
+        targetRel: ADD_TARGET,
+        oldContent: ADD_BASE,
+        newContent,
+        diffText: gitDiffNoIndex(addOld, f),
+        universes,
+      });
+    };
+    const GENOA = ADD_BASE + "\n// The genoa sail id.\nexport const GENOA_SAIL_ID: SailId = 'genoa';\n";
+
+    const a1 = additive(GENOA);
+    results.push(
+      check(
+        '#944 additive: an appended, unreferenced export const with a literal initializer -> NOT_OWED',
+        a1.verdict === 'NOT_OWED' && a1.evidence.names.join() === 'GENOA_SAIL_ID',
+        a1,
+      ),
+    );
+
+    const a2 = additive(
+      ADD_BASE +
+        '\nexport function double(x: number): number {\n  return x * 2;\n}\n\nexport interface Extra {\n  readonly a: number;\n}\n\nexport type Pair = { a: 1; b: 2 };\n',
+    );
+    results.push(
+      check(
+        '#944 additive: appended export function / interface / type, unreferenced -> NOT_OWED',
+        a2.verdict === 'NOT_OWED' && a2.evidence.names.join() === 'double,Extra,Pair',
+        a2,
+      ),
+    );
+
+    const a3 = additive(withReplacement(ADD_BASE, 'export const LIMIT = 3;', 'export const LIMIT = 4;'));
+    results.push(
+      check(
+        '#944 additive: a CHANGED existing export -> OWED',
+        a3.verdict === 'OWED' && /modifies or removes existing lines/.test(a3.reason),
+        a3,
+      ),
+    );
+
+    const a4 = additive(GENOA, addUniverse("import { boatById, GENOA_SAIL_ID } from '../lib/extra';\n"));
+    results.push(
+      check(
+        '#944 additive: a loadable file imports the new export by name -> OWED',
+        a4.verdict === 'OWED' && /is referenced by app\/src\/routing\/planRoute\.ts/.test(a4.reason),
+        a4,
+      ),
+    );
+
+    const a5 = additive(GENOA, addUniverse("import * as extra from '../lib/extra';\n"));
+    results.push(
+      check(
+        '#944 additive: a loadable file namespace-imports the module (never names the export) -> OWED',
+        a5.verdict === 'OWED' && /namespace\/star\/dynamic import/.test(a5.reason),
+        a5,
+      ),
+    );
+
+    const a6 = additive(GENOA, addUniverse('const m = await import(somePath);\n'));
+    results.push(
+      check(
+        '#944 additive: a loadable file has an unresolvable dynamic import -> OWED',
+        a6.verdict === 'OWED' && /cannot resolve/.test(a6.reason),
+        a6,
+      ),
+    );
+
+    const a7 = additive(ADD_BASE + '\nexport const BROKEN = { a: 1;\n');
+    results.push(
+      check(
+        '#944 additive: inserted text that does not parse -> OWED',
+        a7.verdict === 'OWED' && /has no terminating/.test(a7.reason),
+        a7,
+      ),
+    );
+
+    const a8 = additive(withReplacement(ADD_BASE, "  { id: 'a', draftM: 2.1 },\n", "  { id: 'a', draftM: 2.1 },\n  { id: 'b', draftM: 1.9 },\n"));
+    results.push(
+      check(
+        '#944 additive: an element appended to the BOATS array (a pure insertion) -> OWED',
+        a8.verdict === 'OWED',
+        a8,
+      ),
+    );
+
+    const a9 = additive(ADD_BASE + "\nexport const EXTRA_COUNT = BOATS.push({ id: 'c', draftM: 1.8 });\n");
+    results.push(
+      check(
+        '#944 additive: a new export whose initializer runs code (BOATS.push) -> OWED',
+        a9.verdict === 'OWED' && /identifier 'BOATS'/.test(a9.reason),
+        a9,
+      ),
+    );
+
+    const a10 = additive(ADD_BASE + '\nexport function find(): void {}\n');
+    results.push(
+      check(
+        '#944 additive: a new name the old file already mentions (possible shadowing) -> OWED',
+        a10.verdict === 'OWED' && /already appears in the old file/.test(a10.reason),
+        a10,
+      ),
+    );
+
+    // The inserted line parses as an export, but lands inside a multi-line
+    // template literal, so it changes that string's value.
+    const TPL_OLD = 'export const MSG = `first\nsecond\n`;\n';
+    const tplOldFile = path.join(addTmp, 'tpl-old.ts');
+    writeFileSync(tplOldFile, TPL_OLD);
+    const tplNew = 'export const MSG = `first\nexport const X = 1;\nsecond\n`;\n';
+    const tplNewFile = path.join(addTmp, 'tpl-new.ts');
+    writeFileSync(tplNewFile, tplNew);
+    const a11 = classifyAdditiveExports({
+      targetRel: ADD_TARGET,
+      oldContent: TPL_OLD,
+      newContent: tplNew,
+      diffText: gitDiffNoIndex(tplOldFile, tplNewFile),
+      universes: [new Map([[ADD_TARGET, { text: TPL_OLD, refs: [] }]])],
+    });
+    results.push(
+      check(
+        '#944 additive: an export-shaped line inserted inside a multi-line template literal -> OWED',
+        a11.verdict === 'OWED' && /inside a string or comment/.test(a11.reason),
+        a11,
+      ),
+    );
+  } finally {
+    rmSync(addTmp, { recursive: true, force: true });
+  }
+
+  const addRepo = mkdtempSync(path.join(tmpdir(), 'sweep-closure-selftest-additive-git-'));
+  try {
+    const git = initClosureRepo(addRepo, "import { A } from '../../lib/extra.ts';\nexport const ARMS = A;\n");
+    writeFileSync(path.join(addRepo, 'lib', 'extra.ts'), 'export const A = 1;\n');
+    git(['add', '-A']);
+    git(['commit', '-q', '-m', 'base']);
+    const baseSha = git(['rev-parse', 'HEAD']).trim();
+    writeFileSync(path.join(addRepo, 'lib', 'extra.ts'), 'export const A = 1;\n\nexport const B = 2;\n');
+    git(['add', '-A']);
+    git(['commit', '-q', '-m', 'head appends B']);
+    const headSha = git(['rev-parse', 'HEAD']).trim();
+
+    const dNotOwed = computeDiffVerdict(addRepo, baseSha, headSha);
+    const hitNotOwed = dNotOwed.results.find((r) => r.f === 'lib/extra.ts');
+    results.push(
+      check(
+        '#944 diff: real-git additive export on an import-walk member, unreferenced -> NOT OWED end to end',
+        hitNotOwed !== undefined && hitNotOwed.verdict.verdict === 'NOT_OWED' && !dNotOwed.anyOwed,
+        { results: dNotOwed.results },
+      ),
+    );
+
+    // An arm file (loaded by vitest's glob, never reached by the walk) that
+    // namespace-imports the module, present on both sides of the diff.
+    git(['checkout', '-q', baseSha]);
+    writeFileSync(
+      path.join(addRepo, 'app', 'sweep', 'arm-x.test.ts'),
+      "import * as extra from '../../lib/extra.ts';\nexport const N = Object.keys(extra).length;\n",
+    );
+    git(['add', '-A']);
+    git(['commit', '-q', '-m', 'base with arm file']);
+    const armBaseSha = git(['rev-parse', 'HEAD']).trim();
+    writeFileSync(path.join(addRepo, 'lib', 'extra.ts'), 'export const A = 1;\n\nexport const B = 2;\n');
+    git(['add', '-A']);
+    git(['commit', '-q', '-m', 'head appends B']);
+    const armHeadSha = git(['rev-parse', 'HEAD']).trim();
+
+    const dArm = computeDiffVerdict(addRepo, armBaseSha, armHeadSha);
+    const hitArm = dArm.results.find((r) => r.f === 'lib/extra.ts');
+    results.push(
+      check(
+        '#944 diff: an app/sweep arm file (outside the import walk) namespace-imports the module -> OWED',
+        hitArm !== undefined && hitArm.verdict.verdict === 'OWED' && /arm-x\.test\.ts/.test(hitArm.verdict.reason),
+        { results: dArm.results },
+      ),
+    );
+  } finally {
+    rmSync(addRepo, { recursive: true, force: true });
   }
 
   let failed = 0;

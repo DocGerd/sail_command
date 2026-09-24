@@ -113,12 +113,25 @@ not fix).
    `PlanResult` never contains a boat snapshot in the first place, so nothing
    confined to that field can move a single compared byte.
 
+   The second exception (#944, `classifyAdditiveExports`, `diff` only) covers
+   an import-walk member outside every `PATH_PREFIXES` directory, root and
+   `EXTRA_EDGES` target. It is **NOT OWED** only when every hunk is a pure
+   insertion at module top level (inside no string or comment) of
+   `export const` (literal initializer: no call, operator, template or
+   identifier reference), `export function`, `export interface` or
+   `export type` declarations or comments, under names the old file never
+   mentions — and no file a sweep run loads (the walk plus tracked code under
+   `app/sweep`) mentions a new name, namespace/star-imports the module, or
+   performs a dynamic load it cannot resolve. Any other shape, including a
+   parse failure, is OWED. #941's `GENOA_SAIL_ID` append is the motivating
+   case; an element appended to `BOATS` stays OWED.
+
 ## Failure direction — stated explicitly, as this repo's guard-asymmetry
 convention requires for a NUDGE-class tool
 
 **This tool is designed to over-report, not under-report, against the
 UNIVERSE described in "Method" above (the import walk UNIONED with
-`PATH_PREFIXES`) — with exactly one modelled exception.** A false "owed"
+`PATH_PREFIXES`) — with two modelled exceptions (Method step 4).** A false "owed"
 costs an arm-set of unnecessary solver time; a false "not owed" ships an
 unverified routing change — those costs are not symmetric, so the tool is
 built to fail toward the expensive-but-safe side.
@@ -141,7 +154,8 @@ against the modelled universe", never as an unconditional guarantee.
 
 Concretely:
 
-- Any closure hit **outside** `app/src/data/boats.ts` is always OWED,
+- Apart from the #944 additive-export rule, any closure hit **outside**
+  `app/src/data/boats.ts` is always OWED,
   whether it came from the import walk or a `PATH_PREFIXES` match. No
   field-level modelling is attempted for `app/src/types.ts`,
   `app/src/routing/**`, `app/src/lib/**`, `app/sweep/**`,
@@ -193,8 +207,8 @@ recorded run touched the closure. `reuse <recorded> <base>` asks the SAME
 closure tool that question, instead of a hand-checked path list: look up
 `<recorded>` in the ledger below, diff it against `<base>` with the identical
 `diff` logic above (same `--merge-base --no-renames`, same `PATH_PREFIXES`
-union, same `draftProvenance` exception), and only report `REUSE` if that diff
-is clean.
+union, same `draftProvenance` exception — but NOT the #944 additive-export
+rule), and only report `REUSE` if that diff is clean.
 
 **Fails CLOSED, the opposite direction from `diff`.** `diff` over-reports
 OWED (safe: costs solver time). `reuse` under-reporting would be unsafe — a
@@ -411,6 +425,23 @@ into this repo):
     fork point that `head` (forked earlier) only edits → `OWED` via
     `base`'s own third unioned term; and `head` omitted reading the
     WORKING TREE rather than the committed `HEAD` ref.
+34–44. #944 additive-export rows on `classifyAdditiveExports`, fed real
+    `git diff --no-index` output: an unreferenced `export const` with a
+    literal initializer, and an unreferenced `export function`/`interface`/
+    `type`, → NOT OWED; a changed existing export, a new name imported by a
+    loadable file, a namespace import of the module, an unresolvable dynamic
+    import, an unparseable insertion, an element appended to `BOATS`, an
+    initializer that calls `BOATS.push`, a new name the old file already
+    mentions, and an export-shaped line inserted inside a template literal
+    → OWED.
+45–46. The same rule end to end through `computeDiffVerdict` in disposable
+    repos: an unreferenced additive export → NOT OWED; an `app/sweep` arm
+    file (outside the walk) that namespace-imports the module → OWED.
+    Mutation-checked per predicate; each reds its own row. Two predicates
+    are backstops with no isolating row: the top-level/boundary check
+    behind the statement parser (the `BOATS` row reds only with both
+    removed), and the old-file name check behind the pure-insertion check
+    on the changed-export row.
 
 **Neither `npm --prefix app run typecheck` nor `npm --prefix app run
 lint` cover this file at all** — the tsconfigs and `eslint src e2e sweep`
@@ -418,9 +449,8 @@ are scoped to `app/src`/`app/e2e`/`app/sweep`, and this skill lives under
 the repo-root `.claude/skills/`. A green `app` CI job carries NO signal
 about `closure.mjs`; treat `node --check` (syntax only) plus `selftest`
 (behaviour) as the real gates for this file, and re-run both by hand after
-any edit — this script is also **not** discovered by `ci.yml`'s
-`hook-selftests` job, which only scans top-level `*.sh` under
-`.claude/hooks/` and `.github/scripts/` (`-maxdepth 1`). Mutation-check any
+any edit. CI runs `selftest` through `.github/scripts/sweep-closure-selftest.sh`
+in the ADVISORY `hook-selftests` job (#836), so a red merges silently. Mutation-check any
 NEW hardcoded pin the same way (stub the array/behaviour it pins, confirm
 exactly that row reds) before trusting it.
 
