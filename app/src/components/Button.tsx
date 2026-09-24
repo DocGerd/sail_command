@@ -4,7 +4,7 @@ export type ButtonVariant = 'primary' | 'secondary' | 'ghost';
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
-  // #705: React 19.2.8 forwards `ref` as an ordinary prop at runtime — the
+  // #705: React 19 forwards `ref` as an ordinary prop at runtime — the
   // blocker was TypeScript's prop type, not React, so no `forwardRef` is
   // needed. Lets a parent (e.g. AboutDialog's open/close-focus management)
   // hold a ref to the rendered <button>.
