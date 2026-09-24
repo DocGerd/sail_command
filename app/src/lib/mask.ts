@@ -57,6 +57,80 @@ export function cautiousDepthLowerBoundM(shippedDepthM: number): number {
 }
 
 /**
+ * #1259: integer cells-per-degree of one mask axis. Throws unless
+ * `cells / (hi - lo)` is within 1e-9 of a positive integer.
+ */
+export function cellsPerDegree(lo: number, hi: number, cells: number): number {
+  const raw = cells / (hi - lo);
+  const cpd = Math.round(raw);
+  if (!Number.isFinite(raw) || !(cpd > 0) || Math.abs(raw - cpd) > 1e-9)
+    throw new Error(
+      `mask axis is not an integer cells-per-degree: ${cells} cells over [${lo}, ${hi}]`,
+    );
+  return cpd;
+}
+
+/**
+ * #1259: the ONE derivation of mask cell geometry along an axis. Positions
+ * are computed from `origin` and the integer {@link cellsPerDegree}, never
+ * from `(hi - lo) / cells`, so moving the far edge of the bbox leaves every
+ * existing cell's index and centre bit-identical.
+ */
+export class GridAxis {
+  readonly origin: number;
+  readonly end: number;
+  readonly cells: number;
+  readonly cpd: number;
+
+  constructor(lo: number, hi: number, cells: number) {
+    this.origin = lo;
+    this.end = hi;
+    this.cells = cells;
+    this.cpd = cellsPerDegree(lo, hi, cells);
+  }
+
+  /** Cell size in degrees. */
+  get stepDeg(): number {
+    return 1 / this.cpd;
+  }
+
+  /** Continuous cell coordinate: cell `i` spans `[i, i + 1)`. */
+  coord(v: number): number {
+    return (v - this.origin) * this.cpd;
+  }
+
+  /**
+   * Cell index containing `v`; may fall outside `[0, cells)`. `end` is an
+   * exclusive bound: `(end - origin) * cpd` can round just below `cells`, so
+   * the edge itself is mapped out of range explicitly.
+   */
+  index(v: number): number {
+    return v >= this.end ? this.cells : Math.floor(this.coord(v));
+  }
+
+  /** Coordinate of fractional cell position `i` (`edge(i + 0.5)` is the centre). */
+  edge(i: number): number {
+    return this.origin + i / this.cpd;
+  }
+
+  centre(i: number): number {
+    return this.edge(i + 0.5);
+  }
+}
+
+export interface MaskGrid {
+  readonly lat: GridAxis;
+  readonly lon: GridAxis;
+}
+
+export function maskGrid(meta: MaskMeta): MaskGrid {
+  return {
+    lat: new GridAxis(meta.south, meta.north, meta.rows),
+    lon: new GridAxis(meta.west, meta.east, meta.cols),
+  };
+}
+
+/**
  * #1256: BFS scratch for {@link NavMask.cellsConnected}, reused across calls
  * rather than allocated per call. At the #295 mask size (3025 x 3120 =
  * 9,438,000 cells) a fresh `Uint8Array` + `Int32Array` pair costs ~47 MB of
@@ -65,8 +139,8 @@ export function cautiousDepthLowerBoundM(shippedDepthM: number): number {
  * `connectedAt` pre-check); a plan that falls back to #53 relaxation makes
  * many, so a relaxation search costs AT MOST
  * `phase1Total * (1 + W) * (W - 1)` for W waypoints — `connectsWith`
- * early-returns on the first disconnected segment — on top of
- * `planRoute.ts`'s own pre-check loop. At defaults for a plain A->B plan
+ * early-returns on the first disconnected segment — on top of that
+ * pre-check. At defaults for a plain A->B plan that relaxes
  * (floor 2.1 -> `loDm` 21, requested 3.0 -> `hiDm` 29, `phase1Total` 4,
  * W = 2) that is already ~12, and it is quadratic in via-point count.
  *
@@ -116,21 +190,19 @@ const BFS_DCOL = new Int8Array([0, 0, -1, 1]);
 export class NavMask {
   readonly meta: MaskMeta;
   private data: Uint8Array;
-  private latStep: number;
-  private lonStep: number;
+  readonly grid: MaskGrid;
 
   constructor(meta: MaskMeta, data: Uint8Array) {
     if (data.length !== meta.rows * meta.cols)
       throw new Error(`mask data length ${data.length} != rows*cols ${meta.rows * meta.cols}`);
     this.meta = meta;
     this.data = data;
-    this.latStep = (meta.north - meta.south) / meta.rows;
-    this.lonStep = (meta.east - meta.west) / meta.cols;
+    this.grid = maskGrid(meta);
   }
 
   private cellOf(p: LatLon): { row: number; col: number } | null {
-    const row = Math.floor((p.lat - this.meta.south) / this.latStep);
-    const col = Math.floor((p.lon - this.meta.west) / this.lonStep);
+    const row = this.grid.lat.index(p.lat);
+    const col = this.grid.lon.index(p.lon);
     if (row < 0 || row >= this.meta.rows || col < 0 || col >= this.meta.cols) return null;
     return { row, col };
   }
@@ -141,13 +213,15 @@ export class NavMask {
    * point, exposed publicly so callers no longer need their own copy of the
    * bounds arithmetic. `cellOf`'s row/col range check reduces to `lat >=
    * south && lat < north && lon >= west && lon < east` once `north = south
-   * + rows*latStep` and `east = west + cols*lonStep` are substituted in —
-   * an identity over the REALS, not over IEEE754: two independent roundings
-   * sit between them (`latStep` is a rounded quotient, and `Math.floor((lat
-   * - south) / latStep)` rounds again), and MEASURED it is the SECOND that
-   * does the work — 473 of 533 observed disagreements occur on an axis
-   * where `south + rows*latStep === north` holds exactly. The two forms
-   * were measured bit-identical for every meta constructed anywhere in this
+   * + rows/cpd` and `east = west + cols/cpd` are substituted in — an
+   * identity over the REALS, not over IEEE754. The measurements below were
+   * taken on the pre-#1259 quotient step `(north - south) / rows`, not on
+   * the {@link GridAxis} form, and were not re-run: two roundings sat between
+   * them (the quotient, and `Math.floor((lat - south) / latStep)`), and it
+   * was the SECOND that did the work — 473 of 533 observed disagreements
+   * occurred on an axis where `south + rows*latStep === north` held
+   * exactly. The two forms were measured bit-identical for every meta
+   * constructed anywhere in this
    * repo — the committed mask.meta.json, TEST_MASK_META, mask.test.ts's
    * fineGridMeta and shallowExposure.test.ts's TIE_META — over ~3.25M
    * probes walking +/-100_000 ULP at each of the four edges and +/-2 ULP at
@@ -212,14 +286,15 @@ export class NavMask {
    */
   private walkCells(a: LatLon, b: LatLon, visit: (row: number, col: number) => boolean): boolean {
     // continuous grid coordinates (col-space x, row-space y)
-    const x0 = (a.lon - this.meta.west) / this.lonStep;
-    const y0 = (a.lat - this.meta.south) / this.latStep;
-    const x1 = (b.lon - this.meta.west) / this.lonStep;
-    const y1 = (b.lat - this.meta.south) / this.latStep;
-    let cx = Math.floor(x0);
-    let cy = Math.floor(y0);
-    const ex = Math.floor(x1);
-    const ey = Math.floor(y1);
+    const { lat, lon } = this.grid;
+    const x0 = lon.coord(a.lon);
+    const y0 = lat.coord(a.lat);
+    const x1 = lon.coord(b.lon);
+    const y1 = lat.coord(b.lat);
+    let cx = lon.index(a.lon);
+    let cy = lat.index(a.lat);
+    const ex = lon.index(b.lon);
+    const ey = lat.index(b.lat);
     const dx = x1 - x0;
     const dy = y1 - y0;
     const stepX = dx > 0 ? 1 : dx < 0 ? -1 : 0;
@@ -448,12 +523,10 @@ export class NavMask {
    */
   snapToNavigable(p: LatLon, safetyDepthM: number, maxRadiusM = 300): LatLon | null {
     const gate = uniformGate(safetyDepthM);
-    const start = {
-      row: Math.floor((p.lat - this.meta.south) / this.latStep),
-      col: Math.floor((p.lon - this.meta.west) / this.lonStep),
-    };
-    const cellLatM = 111_320 * this.latStep;
-    const cellLonM = 111_320 * this.lonStep * Math.cos(toRad(p.lat));
+    const { lat, lon } = this.grid;
+    const start = { row: lat.index(p.lat), col: lon.index(p.lon) };
+    const cellLatM = 111_320 * lat.stepDeg;
+    const cellLonM = 111_320 * lon.stepDeg * Math.cos(toRad(p.lat));
     const minCellStepM = Math.min(cellLatM, cellLonM);
     const maxRing = Math.ceil(maxRadiusM / minCellStepM) + 1;
     let best: { p: LatLon; d: number } | null = null;
@@ -469,10 +542,7 @@ export class NavMask {
           const row = start.row + dr;
           const col = start.col + dc;
           if (!this.cellNavigable(row, col, gate)) continue;
-          const center = {
-            lat: this.meta.south + (row + 0.5) * this.latStep,
-            lon: this.meta.west + (col + 0.5) * this.lonStep,
-          };
+          const center = { lat: lat.centre(row), lon: lon.centre(col) };
           const dM = haversineNm(p, center) / NM_PER_M;
           if (dM <= maxRadiusM && (!best || dM < best.d)) best = { p: center, d: dM };
         }
