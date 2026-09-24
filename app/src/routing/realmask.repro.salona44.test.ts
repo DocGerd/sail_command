@@ -138,15 +138,16 @@ describe('#653: Salona 44 real-mask coverage (second catalogue boat)', () => {
     expect(rig44!.durationMs).toBeLessThan(rig45!.durationMs);
   });
 
-  // Heavier case (~45 s per solve x2, same runtime class as
+  // Heavier case (same runtime class as
   // realmask.repro.issue20.marstalDefault.test.ts's own 'Flensburg -> Marstal at
   // DEFAULT_SETTINGS degrades gracefully with shallow warnings (#53)' case): the #53 relaxation path, for a SECOND
   // catalogue boat. This is the case the issue's own motivating concern
   // names directly — a defaultSafetyDepthM/relaxationFloorM mixup would be
-  // invisible without it.
+  // invisible without it. #1460 raised its own timeout base separately from
+  // the file-level default; see that issue for the CI evidence.
   it(
     'Flensburg -> Marstal at DEFAULT_SETTINGS with the Salona 44: identical relaxed depth gate to the Salona 45, different ETA (#53, second boat)',
-    { timeout: solverTimeoutMs(600_000) },
+    { timeout: solverTimeoutMs(900_000) },
     () => {
       const request = {
         origin: FLENSBURG,
