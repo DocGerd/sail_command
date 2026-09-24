@@ -18,9 +18,30 @@ grid = np.frombuffer((OUT / "mask.bin").read_bytes(), dtype=np.uint8).reshape(
 )  # row 0 = south
 
 
+def cells_per_degree(lo: float, hi: float, cells: int) -> int:
+    """#1458: mirrors app/src/lib/mask.ts's `cellsPerDegree` — the integer
+    cells-per-degree derivation #1259 moved the app onto, so a harbor snap
+    lands in the same cell here as it does in the app."""
+    raw = cells / (hi - lo)
+    cpd = round(raw)
+    if not (math.isfinite(raw) and cpd > 0 and abs(raw - cpd) <= 1e-9):
+        raise AssertionError(f"mask axis is not an integer cells-per-degree: {cells} cells over [{lo}, {hi}]")
+    return cpd
+
+
+LAT_CPD = cells_per_degree(meta["south"], meta["north"], meta["rows"])
+LON_CPD = cells_per_degree(meta["west"], meta["east"], meta["cols"])
+
+
+def axis_index(v: float, lo: float, hi: float, cells: int, cpd: int) -> int:
+    """Mirrors `GridAxis.index`: positions are computed from `origin` and the
+    integer cells-per-degree, never from `(hi - lo) / cells`."""
+    return cells if v >= hi else math.floor((v - lo) * cpd)
+
+
 def rc_of(lat: float, lon: float) -> tuple[int, int]:
-    row = int((lat - meta["south"]) / (meta["north"] - meta["south"]) * meta["rows"])
-    col = int((lon - meta["west"]) / (meta["east"] - meta["west"]) * meta["cols"])
+    row = axis_index(lat, meta["south"], meta["north"], meta["rows"], LAT_CPD)
+    col = axis_index(lon, meta["west"], meta["east"], meta["cols"], LON_CPD)
     # #613: was a bare `assert` - Python strips those under -O/PYTHONOPTIMIZE,
     # silently disabling this mask-grid-bounds check. `if not (...): raise` is
     # not affected by either flag.
