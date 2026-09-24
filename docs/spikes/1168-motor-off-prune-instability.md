@@ -2,7 +2,7 @@
 
 **Verdict: the instability is live on `develop` (`875b420`) and has a
 user-visible surface.** Seven of 25 Flensburg → Bagenkop motor-off plans
-show a failed rig that a finer search routes; five drop it as `unreachable`
+show a failed rig that divisor 4 routes; five drop it as `unreachable`
 on connected water, and three of those recommend the slower rig. The
 measured mechanism is position within a prune key. Children that fit only
 as a substep are dominated by cheaper arrivals 4–182 m away inside the same
@@ -49,7 +49,7 @@ spike; no solver code changed.
 - **Pre-registration.** Predictions for salvage, Pareto stamps and divisor 4
   were written before their output was read (`results/preregistration.txt`,
   whose header covers m1–m3). The same file carries the retraction and
-  `defer` predictions; `defer` is not reported here. Divisor 3 was added
+  `defer` predictions; `defer` was not run. Divisor 3 was added
   afterwards and was not pre-registered. Two predictions failed: the finer
   grid was predicted to move the dying set rather than empty it, and
   dead-stamper retraction was predicted to rescue.
@@ -98,7 +98,7 @@ Attribution on the dying rings, numbered from 0 (full dumps in
 | of those, fitted substeps (`dtS`/2..8) | 154 | 27 |
 | dominated by the parent's own key | 1 | 0 |
 | dominator stamped only in the previous ring | 5 | 0 |
-| every dominator stamped two or more rings earlier produced no children | 28 | 4 |
+| dominators all stamped two or more rings earlier, none of which produced children | 28 | 4 |
 | no single real arrival dominates (componentwise-minimum artefact) | 0 | 0 |
 | median / max distance to the nearest real dominator | 49 / 182 m | 31 / 99 m |
 
@@ -114,7 +114,8 @@ Attribution on the dying rings, numbered from 0 (full dumps in
 - The rule is sound only if two arrivals in one key are interchangeable. In a
   passage narrower than a key they are not. That is the #1303/#1305 rule, and
   #1322 narrowed it without closing it. On these rings it is not a dead-end
-  seal: most dominators did produce children (row above; retraction, §5).
+  seal: 140 of 173 and 23 of 27 dominated children have a dominator that did
+  produce children (§5, retraction).
 
 ### 4. Plan level: a rig drops out and the ★ goes to the slower rig
 
@@ -134,15 +135,15 @@ and sails):
   fails `beyond-horizon`. Divisor 4 routes both of those fock plans in 29.380
   and 26.330 h, and the TWS 2.0 genoa in 27.903 h
   against 38.127 h (`planalt_div4.jsonl`). So 7 of 25 plans show a failed rig
-  that a finer search routes. Whether those two share the §3 mechanism was not
+  that divisor 4 routes. Whether those two share the §3 mechanism was not
   attributed.
 - Three plans recommend fock while a working search routes genoa faster: at
   TWS 3.1, 3.5 and 3.6 the finer grid routes genoa in 16.739, 14.915 and
   14.460 h (§5).
-- The 2026-09-18 comment found no `unreachable` dropout on 2.0–3.4. It
-  sampled in steps of 0.2, so none of its points falls on 3.1 or 3.3. On its
-  eight points `plan.jsonl` matches its #1322 column to the printed
-  precision; `11fc282` was not re-run at 3.1 or 3.3.
+- At #1322 (`11fc282`) the 2026-09-18 comment found no `unreachable` dropout
+  on 2.0–3.4. It sampled in steps of 0.2, so none of its points falls on 3.1
+  or 3.3. On its eight points `plan.jsonl` matches its #1322 column to the
+  printed precision; `11fc282` was not re-run at 3.1 or 3.3.
 - #1136's pass 2 cannot reach these plans. `salvagePassAdmitted` requires
   pass 1 to have returned an error, and a plan with one routed rig is `ok`.
   This is the #1166 shape.
@@ -155,7 +156,7 @@ per rig). "Plan" is the 25-plan ladder.
 | candidate | bare deaths | ETA rises with TWS (adjacent pairs) | plan `unreachable` dropouts | notes |
 |---|---|---|---|---|
 | none (`develop`) | 32/164 | 0 | 5/25 | — |
-| salvage on every pass-1 solve | 0/164 | 15 (up to 53.5 min) | 0/25 | one false `beyond-horizon`; rescued ETAs up to 105.9 min slower than divisor 4 (102.3 than divisor 3) |
+| salvage on every pass-1 solve | 0/164 | 15 (up to 53.5 min) | 0/25 | 3/25 plans still fail a rig (fock `beyond-horizon` at TWS 2.0, 2.1 and, newly, 3.3); rescued ETAs up to 105.9 min slower than divisor 4 (102.3 than divisor 3) |
 | retract dead stampers | 9/9 re-die (genoa, coarse band) | — | — | reaches the path: death moves to rings 7–11 |
 | single-arrival (Pareto) stamps | 5/5 re-die at the same ring | — | — | predicted by the zero componentwise count in §3 |
 | confined grid, divisor 3 | 0/164 | 0 | not run | cheapest; see §6 |
@@ -169,7 +170,7 @@ Salvage (`results/planalt_salvage.jsonl`, `fine_salv_*.jsonl`):
   tier 1 once both rigs route, instead of falling back to the no-comfort
   tier 2.
 - It turns the TWS 3.3 fock dropout into a false `beyond-horizon`: the
-   hourly samples, 0–47 h. 
+  salvaged search limps until the forecast horizon, 47 h after departure here.
 - At TWS 3.5 it recommends fock at 15.623 h over a salvaged genoa at
   15.761 h. The finer grid routes that genoa in 14.915 h.
 
@@ -197,7 +198,7 @@ grids:
   change which tier runs. It can change the plan-level label (`unreachable`
   vs `beyond-horizon`) and `salvagePassAdmitted`, which admits only
   `mask-blocked`: a #282 classification move.
- rounded to 0.1 min, which hides 
+- At divisor 4 the result (cost or cause) moves on 36 of 40 harbours. Four
   routes change family: Rudkøbing −19.9 h, Svendborg −24.5 h, Troense
   −22.0 h and Kerteminde −6.6 h. The coarser grid there found routes close
   to the horizon.
@@ -230,8 +231,9 @@ grids:
   peaks at 66 347, above the 64 402 worst #1257 recorded. On the motor-off
   `light-motorless` probe divisor 3 peaks at 26 479.
 - The divisor 4 fock rows are ×1.38–1.67 with no truncation.
-- The cap-regime control: on the three Salona 45 solves #1257's derivation
-  records, divisor 2 peaks here are within 20 of its figures (Svendborg fock
+- The cap-regime control: on three of the Salona 45 solves #1257's
+  derivation names (`aeroeskoebing` was not run), divisor 2 peaks here are
+  within 20 of its figures (Svendborg fock
   61 654 against 61 653, Burgstaaken genoa 62 463 against 62 482, Orth genoa
   61 881 against 61 883).
 
@@ -280,8 +282,8 @@ pass 2 as the backstop.**
 
 1. **Why the grid rather than salvage.** It attacks the measured mechanism
    (§3). It removes the deaths and keeps ETA monotone, while salvage only
-   exchanges a status flip for ETA jumps of up to 53.5 min and a wrong ★
-   (§5).
+   exchanges a status flip for ETA jumps of up to 53.5 min and leaves the
+   TWS 3.5 ★ on the slower rig (§5).
 2. **Why only with the motor off.** On `breeze` the finer grid saves at most
    1.8 min. Divisor 4 costs ×1.47–1.78 in expanded nodes and reopens cap
    truncation; divisor 3 avoids the truncation but still costs ×1.28–1.36
@@ -293,9 +295,7 @@ pass 2 as the backstop.**
      `light-motorless` the heaviest solve (`dyvig`) rises from 2.34 M to
      3.03 M expanded nodes (×1.29) at divisor 3 (§6). This figure gates a
      decision, so the 2026-09-18 ruling allows timing it.
-   - Run the plan-level arm at divisor 3, which this spike did not. Divisor 3
-     is recommended over 4 because it removed the same bare-battery deaths at lower node cost
-     (§6), not because it was scored at plan level.
+   - Run the plan-level arm at divisor 3, which this spike did not.
    - Pin the fine battery at several inputs, not one. The issue itself says a
      single-input pin cannot guard this.
 4. **Sweep cost.** `isochrone.ts` is in the #282 closure (`closure.mjs files`,
@@ -316,10 +316,12 @@ pass 2 as the backstop.**
 
 - **Salvage on every pass-1 solve.** Rejected on measurement (§5). It is
   contained, byte-identical on every solve that routes today, and closes 4 of
-  5 dropouts. It leaves 15 ETA rises of up to 53.5 min, turns one dropout
+  the 5 `unreachable` dropouts; the TWS 2.0/2.1 fock still fails
+  `beyond-horizon`. It leaves 15 ETA rises of up to 53.5 min, turns one dropout
   into a false `beyond-horizon`, and leaves the TWS 3.5 ★ on the slower rig.
 - **Widen `salvagePassAdmitted` to the one-rig-dead case.** The same salvage
-   with one sail failed (#1166 shape) are **left untouched**". 
+  quality as above, plus #1136's ruling 2 (2026-09-14, the #1166 shape left
+  untouched), which it would reverse.
 - **Retract the stamps of nodes that produced nothing.** Rejected on
   measurement. 33 of 173 dominated children have only dead dominators (28
   from earlier rings, plus 5 whose only dominators are the dying ring's own
@@ -333,8 +335,8 @@ pass 2 as the backstop.**
   1.8 min on `breeze`. Divisor 4 reopens the #1330 truncation, and divisor 3
   leaves 1.18–1.23× cap headroom (§6). Revisit only together with a
   re-derived `FRONTIER_PER_PRUNE_CELL`.
-- **Divisor 4 for motor-off.** Not preferred yet, on cost alone. On
-  `light-motorless` it expands ×2.08 nodes on the median harbour against
+- **Divisor 4 for motor-off.** Not rejected; it costs more nodes. On
+  `light-motorless` it expands ×2.06 nodes on the median harbour against
   ×1.42 at divisor 3, and 3.96 M against 3.03 M at the largest. Neither
   truncates there (peaks 38 112 and 26 479 against the 95 333 cap). Its
   measured rescue is not smaller: it is the only divisor scored at plan level
@@ -345,9 +347,9 @@ pass 2 as the backstop.**
   Already rejected by #1136's spike (§9.1, §9.2). Nothing here reopens either.
   This spike does reopen that spike's §9.3 (a finer prune grid, rejected there
   as unmeasured) on measurement.
-- **Leave it.** The 2026-09-18 "no live user target" premise came from a
-  0.2-step aperture. At 0.1 the app shows `unreachable` on connected water
-  and recommends the slower rig (§4).
+- **Leave it.** The 2026-09-18 ruling's "no live user-facing target" premise
+  came from a 0.2-step aperture. At 0.1 the app shows `unreachable` on
+  connected water and recommends the slower rig (§4).
 
 ## Open questions
 
