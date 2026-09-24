@@ -93,8 +93,9 @@ const DEPTH_LAYER = 'sc-depth';
 const DEPTH_HATCH_SOURCE = 'sc-depth-hatch';
 const DEPTH_HATCH_LAYER = 'sc-depth-hatch';
 // Debounce for rebuilding the hatch raster after safetyDepthM OR the #599
-// zoom band changes — the mask is ~5.28M cells, so this must not run on
-// every keystroke/tick of whatever control edits the setting. Today's only
+// zoom band changes — the mask's cell count (see mask.meta.json's cols x
+// rows) is large enough that this must not run on every keystroke/tick of
+// whatever control edits the setting. Today's only
 // editor (NumberInput, via SAFETY_DEPTH_FIELD) commits exclusively on blur,
 // so a burst of rebuilds is not reachable through it at all — this debounce
 // is cheap insurance against (a) a future continuous-drag control, and (b)
@@ -112,6 +113,8 @@ const DEPTH_HATCH_LAYER = 'sc-depth-hatch';
 // wave), so a gesture that stays inside one band arms no timer at all.
 // `zoomend` (not `zoom`) is the source, so a continuous pinch/wheel
 // gesture is already coalesced by MapLibre before this debounce sees it.
+// The measured rebuild-count/build-cost history behind this timer lives in
+// PR #634 and #599, not here.
 const DEPTH_HATCH_DEBOUNCE_MS = 300;
 const HARBOR_SOURCE = 'sc-harbors';
 // Exported so App can hand MapView the same id its raw-tap gate queries: the
@@ -377,10 +380,10 @@ function setupLayers(
   //
   // #492 review m9: this roughly DOUBLES the depth overlay's retained
   // memory — two full-resolution RGBA canvases each get their own GL
-  // texture (CanvasSource.prepare()), not measured against a real
-  // mid-range device (none available here); the e2e suite elsewhere
+  // texture (CanvasSource.prepare()); the e2e suite elsewhere
   // exercises depth+AIS+route together without a crash, which is weak
-  // evidence, not a memory profile. If this turns out to
+  // evidence, not a memory profile. #1281 tracks a real-device follow-up
+  // measurement. If this turns out to
   // matter, M8's screen-space fill-pattern alternative (the option #599 did
   // NOT take — see depthColor.ts's hatchBandForZoom comment) would also remove this
   // second full-resolution raster entirely — not attempted here, since the

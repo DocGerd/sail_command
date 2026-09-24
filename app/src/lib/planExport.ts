@@ -158,6 +158,12 @@ export function isLegacyWindLattice(grid: {
 // non-covering grid is a malformed one (null, counted invalid). #295 ruling:
 // the ONE exception is the exact pre-#295 lattice, so old backups import and
 // stay viewable; replanning them is rejected, typed, by `RoutingClient.plan()`.
+// `isLegacyWindLattice` matches on GRID SHAPE only, not against the plan's
+// own route extent — a genuine pre-#295 backup's grid always covers its own
+// route (the app that wrote it enforced that), and a crafted file that spoofs
+// the legacy shape only degrades to WindField's edge-clamped lookup outside
+// the lattice, never a crash — the same accepted-residual shape as other
+// untrusted-import decode paths in this file.
 function decodeWindGrid(raw: unknown, maskBounds?: WindLatticeCoverageBounds): WindGrid | null {
   if (!isRecord(raw)) return null;
   const { lats, lons, timesMs, speedKn, dirFromDeg, gustKn, fetchedAtMs, model } = raw;
