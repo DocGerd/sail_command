@@ -34,7 +34,7 @@
         "salona44-relaxation": "131b52a92cd5b460",
         "short-horizon": "e7f9f2720447066e"
       },
-      "note": "v0.42.0 Sweep A HEAD (integration PR #1453), run on a closure-equivalent local tree (comment/test-only difference from this sha)"
+      "note": "v0.42.0 Sweep A HEAD (integration PR #1453), run on a closure-equivalent local tree (comment/test-only difference from this sha; equivalence checked in PR #1453 comment 5810849010)"
     }
   ]
 }

@@ -15,6 +15,7 @@ the three earlier motor-off arms. That class is visible only in
 `planRouteWithRecord`'s record; the serialised `PlanResult` shows those
 rows as plain `beyond-horizon`. Origin, TWS and direction come from the
 pre-measurement on the PR for #1334.
+Measured on this PR's review: widening `salvagePassAdmitted` to admit `horizon-exceeded` leaves this arm's output byte-identical (pass 2 runs and routes nothing), so for that lever the arm shows 0 rescues and cannot discriminate a widening by hash alone.
 
 Issue #282 makes this a **standing requirement**: the no-route cause is a
 control input, so any change to how `solve()` *classifies* a failure can move
