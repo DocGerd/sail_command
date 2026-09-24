@@ -13,39 +13,43 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.41.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.42.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
-## Now — v0.41.0
+## Now — v0.42.0
 
-The `v0.41.0` cut (2026-09-23) worked the
-[`v0.41.0` milestone](https://github.com/DocGerd/sail_command/milestones):
-one user-visible fix — keyboard-driven waypoint insertion now covers the
-origin-to-first-via gap #1179 left out
-([#1181](https://github.com/DocGerd/sail_command/issues/1181)) — plus four
-process/tooling and documentation fixes: a `capture.mjs` viewport-height
-constant with zero margin
-([#1411](https://github.com/DocGerd/sail_command/issues/1411)); a
-`layout.spec.ts` #871 test missing the caveat-banner seeding its sibling has
-([#1410](https://github.com/DocGerd/sail_command/issues/1410)); a numbered
-procedure for the `merge-train` skill's batching path
-([#1390](https://github.com/DocGerd/sail_command/issues/1390)); and stale
-comments describing the dead via-replan path as live
-([#1284](https://github.com/DocGerd/sail_command/issues/1284)). Part of the
-#1407 comment sweep (components, state, services) also shipped in this
-cut; the rest of #1407, and #1265, moved to `v0.42.0`.
+The `v0.42.0` cut (2026-09-24) worked the
+[`v0.42.0` milestone](https://github.com/DocGerd/sail_command/milestones):
+one user-visible fix — the chart grid used for routing, depth checks and
+harbour access now derives its cell size exactly instead of by division,
+which could drift by a tiny fraction whenever the charted area's edge moved;
+some routes shift slightly, and four harbours that sat exactly on a cell
+boundary now resolve to the correct one
+([#1259](https://github.com/DocGerd/sail_command/issues/1259)) — plus six
+process/tooling and documentation fixes: JSDoc tidying in the mask module
+alongside that fix
+([#1265](https://github.com/DocGerd/sail_command/issues/1265)); an untested
+`verify_mask.py` structural-validation table now covered by test
+([#1318](https://github.com/DocGerd/sail_command/issues/1318)); an unverified
+monotonicity assumption behind the "not reachable at the recommended depth"
+harbour-access hint, now pinned by test
+([#1329](https://github.com/DocGerd/sail_command/issues/1329)); attribution
+of a residual basemap label-collision case rather than a further fix
+([#1155](https://github.com/DocGerd/sail_command/issues/1155)); hardening of
+the `sweep-closure` skill's reuse path against worktree leaks, a misleading
+ambiguity message, and an unpinned closure union
+([#1361](https://github.com/DocGerd/sail_command/issues/1361)); and
+CLAUDE.md guard naming, a single `protect-main` authority, and dated
+self-staling claims
+([#1177](https://github.com/DocGerd/sail_command/issues/1177)).
 
-PR #1431, a #1407 sweep attempt, was closed unmerged; its audit residue is
-tracked as [#1434](https://github.com/DocGerd/sail_command/issues/1434). A
-second, unrelated audit residue was also filed:
-[#1430](https://github.com/DocGerd/sail_command/issues/1430).
-[#1209](https://github.com/DocGerd/sail_command/issues/1209) (a CLAUDE.md
-wording fix) stayed open through this cut and will land after it.
+## Next — v0.43.0
 
-## Next — v0.42.0
-
-The [`v0.42.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-carries the remainder of the #1407 comment sweep plus #1265, alongside
+The [`v0.43.0` milestone](https://github.com/DocGerd/sail_command/milestones)
+carries a narrow-layout MapLibre canvas paint gap under the top-left map
+chrome ([#1413](https://github.com/DocGerd/sail_command/issues/1413)) and
+measuring depth-overlay canvas memory on a real tablet
+([#1281](https://github.com/DocGerd/sail_command/issues/1281)), alongside
 issues already triaged into it before this cut. The milestone page is the
 only authoritative view, check it directly rather than this file.
 
