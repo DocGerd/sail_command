@@ -1,8 +1,8 @@
 /**
  * #282 ACCEPTANCE SWEEP — the shared engine.
  *
- * Every harbour in the shipped `harbors.json`, across eleven settings arms
- * (40 destinations x 11 = 440 plans since #295; 33 x 11 = 363 from #653), against the REAL committed
+ * Every harbour in the shipped `harbors.json`, across every settings arm in
+ * `armNames.ts` (README.md's opening line carries the counts), against the REAL committed
  * mask and polars. Every `PlanResult` is serialised deterministically so a
  * BASE run and a HEAD run can be compared byte-for-byte: #282's standing
  * requirement is that a change which is meant to be presentational moves NO
@@ -14,7 +14,8 @@
  * Flensburg/Marstal again for the two #653 `salona44-*` arms, which mirror
  * `breeze`/`relaxation-dense` for a SECOND catalogue boat rather than adding
  * new origins (see `Arm.boatId`'s own doc comment). All nine PRE-#653 arms
- * plan for `DEFAULT_BOAT_ID` (`salona-45`) exclusively.
+ * plan for `DEFAULT_BOAT_ID` (`salona-45`) exclusively. The #1334 arm
+ * `motorless-short-horizon` is Drejø-origin; see its entry below.
  *
  * DELIBERATELY OUTSIDE `app/src/`. `vite.config.ts`'s `test.include` is
  * `['src/**\/*.test.{ts,tsx}']`, so nothing here is collected by
@@ -88,7 +89,7 @@ function parseShard(raw: string): Shard {
 }
 // #1262 review Minor 3: read but NOT parsed here — `parseShard` is a
 // throwing validator, and calling it at module scope would crash
-// COLLECTION of all 11 arm files on a malformed value (`3/2`, `1of3`),
+// COLLECTION of every arm file on a malformed value (`3/2`, `1of3`),
 // exactly the "a thrown error at module scope reads as a collection crash
 // rather than an actionable message" trap `OUT_DIR`'s own comment two
 // paragraphs up already names. The authoritative, validated `SHARD` is
@@ -135,8 +136,9 @@ export interface Arm {
   /**
    * #452: origin harbour id, defaulting to `flensburg` when absent. Every
    * PRE-#452 arm omits this, so it resolves exactly as before — byte-identical
-   * to the recorded baseline. Only the three #452 relaxation arms below set
-   * it, because Flensburg is the wrong origin for what they need to
+   * to the recorded baseline. The three #452 relaxation arms below set it
+   * (and #1334's arm, for its own reason — see that entry), because
+   * Flensburg is the wrong origin for what they need to
    * demonstrate: a mask-connectivity probe over all 528 unique harbour pairs
    * in the pre-#295, 33-harbour `harbors.json` (33 choose 2 — the SAME 528
    * the file-level comment
@@ -460,6 +462,18 @@ export const ARMS: Record<(typeof ARM_NAMES)[number], Arm> = {
     wind: () => uniformWindGrid(12, 225),
     originId: 'marstal',
     boatId: 'salona-44-speedy-go',
+  },
+  // #1334: the only arm crossing motor-off with a short horizon, so plans can
+  // reach `horizon-exceeded` at the requested gate while every relaxed tier
+  // ends `mask-blocked` — the class #1136's `salvagePassAdmitted` leaves out
+  // (#1301). That class needs the relaxed approach disc to change the solve;
+  // TWS, direction and the Drejø origin were chosen by pre-measurement
+  // (PR for #1334), since the Flensburg origin produced none.
+  'motorless-short-horizon': {
+    label: 'motorless-short-horizon',
+    settings: { ...DEFAULT_SETTINGS, motorEnabled: false },
+    wind: () => uniformWindGrid(4, 90, { hours: 3 }),
+    originId: 'drejoe',
   },
 };
 

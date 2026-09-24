@@ -214,6 +214,41 @@ function readExpectedUnreachableByBoat(): Map<string, Set<string>> {
   return out;
 }
 
+/**
+ * #1318: the structural half of EXPECTED_UNREACHABLE_BY_BOAT validation —
+ * boat id and harbour id must be real, and a harbour already
+ * boat-independently KNOWN_DISCONNECTED needs no per-boat entry. Extracted
+ * to a pure function, mirroring pipeline/verify_mask.py's
+ * `structural_failures`, so STRUCTURAL_CASES below can drive it against a
+ * synthetic fixture rather than only the real (today empty) table.
+ */
+function structuralFailures(
+  table: Map<string, Set<string>>,
+  catalogueIds: Set<string>,
+  harbourIds: Set<string>,
+  knownDisconnected: Set<string>,
+): string[] {
+  const out: string[] = [];
+  for (const [bid, hids] of table) {
+    if (!catalogueIds.has(bid)) {
+      out.push(`EXPECTED_UNREACHABLE_BY_BOAT lists boat "${bid}", which is not in BOATS`);
+    }
+    for (const hid of hids) {
+      if (!harbourIds.has(hid)) {
+        out.push(
+          `EXPECTED_UNREACHABLE_BY_BOAT["${bid}"] lists "${hid}", which is not a harbor in harbors.json`,
+        );
+      } else if (knownDisconnected.has(hid)) {
+        out.push(
+          `EXPECTED_UNREACHABLE_BY_BOAT["${bid}"] lists "${hid}", which is already in KNOWN_DISCONNECTED ` +
+            '(disconnected at every gate, boat-independent) — remove the redundant per-boat entry',
+        );
+      }
+    }
+  }
+  return out;
+}
+
 // ---- Fast connectivity: one flood fill per distinct gate ----
 
 function cellOf(p: LatLon): { row: number; col: number } | null {
@@ -292,24 +327,21 @@ describe('#550: mask connectivity is a REQUIRED check (promoted from advisory ve
   const KNOWN_DISCONNECTED = readKnownDisconnected();
   const EXPECTED_UNREACHABLE_BY_BOAT = readExpectedUnreachableByBoat();
 
-  // #1294: every boat id this table names must be a real catalogue boat, and
-  // every harbour id must be a real harbour — the same parity KNOWN_DISCONNECTED
-  // and CONNECTIVITY_EXCEPTIONS_M get checked for on the Python side; mirrored
-  // here since this table's ACCEPT behaviour is wired into the REQUIRED loop
-  // below, unlike KNOWN_DISCONNECTED's own staleness check (Python-only, see
-  // this file's SCOPE comment).
-  for (const [bid, hids] of EXPECTED_UNREACHABLE_BY_BOAT) {
-    expect(
-      BOATS.some((b) => b.id === bid),
-      `EXPECTED_UNREACHABLE_BY_BOAT lists boat "${bid}", which is not in BOATS`,
-    ).toBe(true);
-    for (const hid of hids) {
-      expect(
-        harbors.some((h) => h.id === hid),
-        `EXPECTED_UNREACHABLE_BY_BOAT["${bid}"] lists "${hid}", which is not a harbor in harbors.json`,
-      ).toBe(true);
-    }
-  }
+  // #1294/#1318: every boat id this table names must be a real catalogue
+  // boat, every harbour id must be a real harbour, and a harbour already
+  // boat-independently KNOWN_DISCONNECTED needs no per-boat entry — the same
+  // parity KNOWN_DISCONNECTED and CONNECTIVITY_EXCEPTIONS_M get checked for
+  // on the Python side; mirrored here since this table's ACCEPT behaviour is
+  // wired into the REQUIRED loop below, unlike KNOWN_DISCONNECTED's own
+  // staleness check (Python-only, see this file's SCOPE comment).
+  expect(
+    structuralFailures(
+      EXPECTED_UNREACHABLE_BY_BOAT,
+      new Set(BOATS.map((b) => b.id)),
+      new Set(harbors.map((h) => h.id)),
+      KNOWN_DISCONNECTED,
+    ),
+  ).toEqual([]);
 
   // MINOR 5 (PR #568 review): module-describe-scoped, so it is shared by
   // EVERY test below — the required `it.each(BOATS)` loop, the guard-fires
@@ -559,6 +591,56 @@ describe('#550: mask connectivity is a REQUIRED check (promoted from advisory ve
         expect(failures[0]).toContain('stale entry');
       },
     );
+  });
+
+  // #1318: structuralFailures' three rejections, each proven independently
+  // against a synthetic fixture — mirrors pipeline/verify_mask.py's
+  // STRUCTURAL_CASES, never the real (today empty) EXPECTED_UNREACHABLE_BY_BOAT.
+  describe('structuralFailures (#1318, synthetic fixture)', () => {
+    it('ACCEPT: a real, non-known-disconnected boat/harbour pair clears the check', () => {
+      expect(
+        structuralFailures(
+          new Map([['good-boat', new Set(['good-harbor'])]]),
+          new Set(['good-boat']),
+          new Set(['good-harbor']),
+          new Set(),
+        ),
+      ).toEqual([]);
+    });
+
+    it('UNKNOWN-BOAT: a boat id absent from the catalogue is reported', () => {
+      const failures = structuralFailures(
+        new Map([['ghost-boat', new Set(['good-harbor'])]]),
+        new Set(['good-boat']),
+        new Set(['good-harbor']),
+        new Set(),
+      );
+      expect(failures.length).toBe(1);
+      expect(failures[0]).toContain('ghost-boat');
+    });
+
+    it('UNKNOWN-HARBOUR: a harbour id absent from harbors.json is reported', () => {
+      const failures = structuralFailures(
+        new Map([['good-boat', new Set(['ghost-harbor'])]]),
+        new Set(['good-boat']),
+        new Set(['good-harbor']),
+        new Set(),
+      );
+      expect(failures.length).toBe(1);
+      expect(failures[0]).toContain('ghost-harbor');
+    });
+
+    it('OVERLAP: a harbour already KNOWN_DISCONNECTED needs no per-boat entry', () => {
+      const failures = structuralFailures(
+        new Map([['good-boat', new Set(['sunk-harbor'])]]),
+        new Set(['good-boat']),
+        new Set(['sunk-harbor']),
+        new Set(['sunk-harbor']),
+      );
+      expect(failures.length).toBe(1);
+      expect(failures[0]).toContain('sunk-harbor');
+      expect(failures[0]).toContain('KNOWN_DISCONNECTED');
+    });
   });
 });
 

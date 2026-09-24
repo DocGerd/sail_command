@@ -1,10 +1,21 @@
 # #282 acceptance sweep
 
-All 40 harbours × 11 settings arms = **440 plans** (9 arms / 297 plans
+All 40 harbours × 12 settings arms = **480 plans** (9 arms / 297 plans
 through #452; #653 added the two `salona44-*` arms below; #295 grew the
-harbour list 33 -> 40, see "#295 sweep control" below), against the real
+harbour list 33 -> 40, see "#295 sweep control" below; #1334 added
+`motorless-short-horizon`), against the real
 committed mask and polars, with every `PlanResult` serialised for
 byte-for-byte comparison between two revisions.
+
+**#1334**: `motorless-short-horizon` is the only arm crossing
+`motorEnabled: false` with a short (`{ hours: 3 }`) forecast grid, so it
+can hold plans that hit `horizon-exceeded` at the requested gate while
+every relaxed tier ends `mask-blocked` — the class #1301 found zero of in
+the three earlier motor-off arms. That class is visible only in
+`planRouteWithRecord`'s record; the serialised `PlanResult` shows those
+rows as plain `beyond-horizon`. Origin, TWS and direction come from the
+pre-measurement on the PR for #1334.
+Measured on this PR's review: widening `salvagePassAdmitted` to admit `horizon-exceeded` leaves this arm's output byte-identical (pass 2 runs and routes nothing), so for that lever the arm shows 0 rescues and cannot discriminate a widening by hash alone.
 
 Issue #282 makes this a **standing requirement**: the no-route cause is a
 control input, so any change to how `solve()` *classifies* a failure can move
@@ -511,10 +522,10 @@ claim and the fail-closed paths against synthetic fixtures; it cannot
 substitute for the empirical BASE double-run above, which still needs a real
 solver run start to finish.
 
-**`--maxWorkers` cap.** Each shard invocation still runs all eleven arms in
+**`--maxWorkers` cap.** Each shard invocation still runs every arm in
 parallel within itself (`fileParallelism`'s one-worker-per-arm-file shape is
 unchanged), so `<count>` concurrent invocations multiply potential
-concurrency to up to `11 * <count>` solver workers. #1262's own estimate is
+concurrency to up to `<arms> * <count>` solver workers. #1262's own estimate is
 ~0.66 GB per solver worker — size `--maxWorkers` (passed after `--` to the
 underlying vitest invocation, as in the manual example above) so `<count> *
 --maxWorkers` stays around 20–24 on a 26 GB host, never uncapped. A cap that
@@ -551,9 +562,9 @@ and at HEAD").
 
 Everything in `sweepArms.ts` that shapes the input is part of the baseline's
 identity: the arm list and their wind fields, the `{ hours: 3 }` override on
-`short-horizon`, the settings deltas, **each arm's origin** (`Arm.originId`,
+`short-horizon` and `motorless-short-horizon`, the settings deltas, **each arm's origin** (`Arm.originId`,
 `harbors.json`'s `flensburg.snap` by default, `marstal.snap` for the three
-#452 relaxation arms — added #452, PR #488: a PRE-#452 baseline's implicit
+#452 relaxation arms, `drejoe.snap` for `motorless-short-horizon` — added #452, PR #488: a PRE-#452 baseline's implicit
 "the origin is always flensburg.snap" is no longer true of the file as a
 whole, only of arms that omit `originId`), **each arm's boat** (`Arm.boatId`,
 `DEFAULT_BOAT_ID`/`salona-45` by default, `salona-44-speedy-go` for the two

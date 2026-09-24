@@ -57,10 +57,10 @@ const REPO_ROOT = resolve(APP_DIR, '..');
 /**
  * README.md's "Sharding" section's own guidance: keep `<shards> *
  * --maxWorkers` around 20-24 on a 26 GB host, never uncapped — each shard
- * invocation still runs all eleven arms in parallel within itself
+ * invocation still runs every arm in parallel within itself
  * (`fileParallelism`'s one-worker-per-arm-file shape, unchanged per
  * invocation), so N concurrent invocations multiply potential concurrency
- * to up to `11 * N` solver workers before `--maxWorkers` narrows it. A cap
+ * to up to `<arms> * N` solver workers before `--maxWorkers` narrows it. A cap
  * too low costs wall time; one too high risks the host, the worse failure
  * (that section's own framing). Exported as ONE constant so the cap is
  * testable and has a single place to change if the host guidance changes.

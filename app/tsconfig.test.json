@@ -195,7 +195,8 @@
   // CORE_REGION_ID/REGION_ARCHIVE_FILENAME_RE/emitted-manifest-filename
   // literals stay in sync with basemapRegions.ts's exports — same reason and
   // pattern as regionManifest.test.ts above.
-  // harborReachability.test.ts (#1290): reads pipeline/verify_mask.py (its
+  // harborReachability*.test.ts (#1290; #1329's file reads only the mask and
+  // harbors): the #1290 file reads pipeline/verify_mask.py (its
   // SEED_LAT/SEED_LON literal) AND the real shipped mask.bin/mask.meta.json/
   // harbors.json via `node:fs`, to differentially test the #1290 per-boat
   // harbour-access derivation against NavMask.cellsConnected and against the
@@ -250,7 +251,7 @@
     "src/**/timeoutBudgetVsJobCap.test.ts",
     "src/**/regionManifest.test.ts",
     "src/**/regionConstantsTwin.test.ts",
-    "src/**/harborReachability.test.ts",
+    "src/**/harborReachability*.test.ts",
     "src/**/BoatPicker.harborAccess.test.tsx",
     "sweep/**/*.ts"
   ]

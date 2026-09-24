@@ -17,6 +17,24 @@
         "short-horizon": "fde10df45a51ca0c"
       },
       "note": "PR #1363 (#1338): sharded (4x6) vs unsharded arm-sets, sharded vs unsharded 440/440"
+    },
+    {
+      "sha": "6c3a651e5c99011ba4838d184fe7c54c20b65cee",
+      "date": "2026-09-24",
+      "arms": {
+        "becalmed": "bfa4e82d1b41a7ed",
+        "breeze": "a871b58dfc08d892",
+        "deep-becalmed": "9c56e946f1ebdd8e",
+        "light-motorless": "997fe2fa1fa6453f",
+        "margin-extreme": "a64a963f9f33b3e9",
+        "margin-zero": "588eee974c9fa78e",
+        "no-comfort": "6ab01b41d8d4c411",
+        "relaxation-dense": "b36eb45d8cd277ad",
+        "salona44-breeze": "a07e100f4e27e98e",
+        "salona44-relaxation": "131b52a92cd5b460",
+        "short-horizon": "e7f9f2720447066e"
+      },
+      "note": "v0.42.0 Sweep A HEAD (integration PR #1453), run on a closure-equivalent local tree (comment/test-only difference from this sha; equivalence checked in PR #1453 comment 5810849010)"
     }
   ]
 }

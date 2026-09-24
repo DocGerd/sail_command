@@ -361,7 +361,7 @@ describe('planFormDirty (#301)', () => {
       }>;
       delete oldShapedRequest.viaPoints;
       const plan = makePlan(oldShapedRequest as PlanRequest);
-      const form = matchingForm(); // form.viaPoints: [{ lat: 54.83, lon: 9.9 }]
+      const form = matchingForm();
 
       expect(() => planFormDirty(plan, form, true)).not.toThrow();
       expect(planFormDirty(plan, form, true)).toBe(true);

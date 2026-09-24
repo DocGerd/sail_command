@@ -13,6 +13,10 @@ ANY OF IT. Another Claude instance may share this working tree: never `git add -
 `git show --stat <sha>` before trusting a commit's file list, and re-check shared paths before any
 `git restore`/delete.
 
+Effort: an Opus 5.5 main session runs at medium. Before Phase 3 (the cut) and Phase 4 (the CLAUDE.md
+revision) ask me to switch to `/effort high`. Pin opus-tier subagents with the `opus` alias, never a
+version ID.
+
 Repo: SailCommand (`DocGerd/sail_command`), branch `develop`. Read `CLAUDE.md` as binding law —
 every trap named there has already cost this project a session.
 

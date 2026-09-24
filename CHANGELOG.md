@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.42.0] - 2026-09-24
+
+### Fixed
+
+- The chart grid used for routing, depth checks and harbour access now positions its cells from a whole number of cells per degree instead of dividing the charted area's extent by its cell count, so widening the charted area to the north or east no longer shifts existing cells. Switching methods moves some cell positions by a tiny fraction: some routes change as a result, some by taking a different path, and four harbours whose coordinates sit exactly on a cell boundary (Årøsund, Faaborg, Faldsled, Søby) now fall in the neighbouring cell (#1259).
+
 ## [0.41.0] - 2026-09-23
 
 ### Added
@@ -1166,7 +1172,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.41.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.42.0...HEAD
+[0.42.0]: https://github.com/DocGerd/sail_command/compare/v0.41.0...v0.42.0
 [0.41.0]: https://github.com/DocGerd/sail_command/compare/v0.40.0...v0.41.0
 [0.40.0]: https://github.com/DocGerd/sail_command/compare/v0.39.0...v0.40.0
 [0.39.0]: https://github.com/DocGerd/sail_command/compare/v0.38.0...v0.39.0
