@@ -244,9 +244,10 @@ data; the code license is covered in the [License](#license) section below.
   position ([#1170](https://github.com/DocGerd/sail_command/issues/1170)).
   Keyboard users get a different equivalent: a per-row "insert waypoint after
   this one" button in the via list, which inserts at the great-circle
-  midpoint of that gap rather than an arbitrary point, and does not cover the
-  gap between the origin and the first via point
-  ([#1171](https://github.com/DocGerd/sail_command/issues/1171)). The other
+  midpoint of that gap rather than an arbitrary point, covering every gap
+  including origin-to-first-via
+  ([#1171](https://github.com/DocGerd/sail_command/issues/1171),
+  [#1181](https://github.com/DocGerd/sail_command/issues/1181)). The other
   ways of adding a waypoint (typed coordinates, saved waypoints, plain map
   tap) are unaffected.
 - Map labels (place names) are set once at load time in the UI's active
