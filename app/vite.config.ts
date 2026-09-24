@@ -646,6 +646,8 @@ export const SLOW_TEST_FILES_FIRST = [
   // unmeasured post-split, so the entry is kept defensively rather than
   // dropped.
   'src/routing/relaxationTrade.differential.test.ts',
+  // #1329: one real-mask flood per settable gate.
+  'src/test/harborReachabilityMonotone.test.ts',
 ];
 
 // Extends BaseSequencer rather than reimplementing it: `sort` moves the files

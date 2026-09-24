@@ -69,8 +69,8 @@ function isFocusableToUser(el: HTMLElement): boolean {
     // catches it) and anything hidden via the `hidden` attribute (`[hidden]
     // { display: none }` is likewise a UA default). `visibility: hidden`/
     // `collapse` is opt-in via `checkVisibilityCSS` (off by default) —
-    // turned on here since the issue names it explicitly. Verified against
-    // MDN (2026-08-31): NEITHER the default NOR any option covers a
+    // turned on here since the issue names it explicitly. Per MDN, NEITHER
+    // the default NOR any option covers a
     // zero-SIZED box, so that's checked separately below via
     // `getClientRects()` — a real layout box in any browser that ships
     // `checkVisibility()` at all, and the issue's own suggested formula for
