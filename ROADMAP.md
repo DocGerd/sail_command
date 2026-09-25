@@ -30,13 +30,14 @@ offline map regions blank until reload, plus a stall watchdog on the
 region archive fetch
 ([#1253](https://github.com/DocGerd/sail_command/issues/1253),
 [#1246](https://github.com/DocGerd/sail_command/issues/1246), several
-items on each declined as out of that PR's file allowlist and left
-tracked) — plus process/tooling and documentation fixes: `pipeline/
+items on each declined as out of that PR's file allowlist and tracked
+in [#1483](https://github.com/DocGerd/sail_command/issues/1483)) — plus process/tooling and documentation fixes: `pipeline/
 verify_mask.py`'s harbour-snap cell derivation ported to match the app's
 integer cells-per-degree grid
 ([#1458](https://github.com/DocGerd/sail_command/issues/1458)); a
 via-coordinate accepted-format re-verification that found the field
-already covers every common GPS/almanac/PDF shape, so no additional
+already covers the common GPS/almanac/PDF shapes (a leading hemisphere
+letter, `N 54 48.74`, is still rejected), so no additional
 format hint was added
 ([#1400](https://github.com/DocGerd/sail_command/issues/1400)); a
 dev/UAT-only Live-view simulator harness, not shipped to production
@@ -45,8 +46,8 @@ test-hygiene cleanup across four issues
 ([#1444](https://github.com/DocGerd/sail_command/issues/1444),
 [#1320](https://github.com/DocGerd/sail_command/issues/1320),
 [#1327](https://github.com/DocGerd/sail_command/issues/1327),
-[#1451](https://github.com/DocGerd/sail_command/issues/1451)); spike-doc
-prose corrections
+[#1451](https://github.com/DocGerd/sail_command/issues/1451)); prose
+corrections in spike docs and test comments
 ([#1172](https://github.com/DocGerd/sail_command/issues/1172),
 [#1247](https://github.com/DocGerd/sail_command/issues/1247),
 [#1252](https://github.com/DocGerd/sail_command/issues/1252),
@@ -63,21 +64,22 @@ sweep-tooling hardening
 with the evidence recorded
 ([#448](https://github.com/DocGerd/sail_command/issues/448)).
 
-Three issues stayed open in the `v0.44.0` milestone and carry forward:
+Three issues were open at the cut and rolled forward into the `v0.45.0` milestone:
 measuring depth-overlay canvas memory on a real tablet
 ([#1281](https://github.com/DocGerd/sail_command/issues/1281)) and the
 narrow-layout MapLibre canvas paint gap under the top-left map chrome
 ([#1413](https://github.com/DocGerd/sail_command/issues/1413)), both
-waiting on a real-tablet check, plus a residual region-pinning item
-outside the #1480 fix's allowlist
-([#1255](https://github.com/DocGerd/sail_command/issues/1255)).
+waiting on a real-tablet check, plus the residual Minors from PR #1245's
+#295 coverage-extension review ([#1255](https://github.com/DocGerd/sail_command/issues/1255)) — unrelated to region
+pinning; that PR's own declined items are tracked separately in
+[#1483](https://github.com/DocGerd/sail_command/issues/1483) (Backlog).
 
 ## Next — v0.45.0
 
 The [`v0.45.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-is empty at this cut — nothing has been triaged into it yet. The milestone
-page is the only authoritative view, check it directly rather than this
-file.
+holds the three carried-forward issues named above and nothing else at
+this cut. The milestone page is the only authoritative view, check it
+directly rather than this file.
 
 ## Themes for the next year
 
