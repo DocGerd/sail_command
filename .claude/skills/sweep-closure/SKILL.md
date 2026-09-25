@@ -394,6 +394,7 @@ into this repo):
     failure there must clean up the directory nothing ever registered with
     git. Mutation-checked: reverting the fix (an unguarded `add` call with
     no surrounding try/catch) reds only this row.
+27c. #1358: `reuse`'s arm-hash SHAPE validation — three more rows: an arm hash the wrong length (8 hex chars) → `RUN_BASE`, naming the offending arm; a right-length but non-hex arm hash → `RUN_BASE`, naming the ACTUAL offending arm (`base2`, not `base1` — proving the reason names the real culprit, not always the first key); and `cmdReuse` prints every reused arm's hash on a REUSE verdict, captured via `console.log` rather than read off `result.entry.arms` directly, so the assertion covers the PRINT path itself.
 28. `diff`'s own checkout-independence (#1359/PR #1384), mirroring row 26
     for `reuse` (a closure member visible only from `base`/`head`, with a
     THIRD, divergent commit checked out) — built over its own disposable
