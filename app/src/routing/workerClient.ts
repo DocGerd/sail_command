@@ -97,9 +97,9 @@ export class RoutingError extends Error {
 // #432: the plan's WALL-CLOCK BUDGET, shipped to the worker in every plan
 // request and turned into a shared deadline there (routing/protocol.ts) that
 // every solve() of that plan checks at ring entry and every
-// DEADLINE_CHECK_NODES frontier nodes (isochrone.ts). Defined HERE, on the client,
-// and sent over the wire rather than duplicated worker-side, so there is
-// exactly one definition and no drift-guard test is needed to keep two in
+// DEADLINE_CHECK_NODES frontier nodes (isochrone.ts). Defined HERE, on the
+// client, and sent over the wire rather than duplicated worker-side, so there
+// is exactly one definition and no drift-guard test is needed to keep two in
 // step.
 //
 // The VALUE was originally the pre-#432 client deadline (120 s): #432 did
@@ -182,7 +182,7 @@ export const PLAN_TIMEOUT_GRACE_MS = 15_000;
 // of the existing margin to post its own honest budget-exhausted answer,
 // rather than a margin sized to any measured ring duration under contention
 // (no such figure is established). The total extra wait stays a small, fixed
-// addition (375 s -> 435 s at the default timeout) rather than unbounded.
+// addition rather than unbounded.
 export const PLAN_TIMEOUT_HARD_CAP_EXTRA_MS = 4 * PLAN_TIMEOUT_GRACE_MS;
 
 // Now purely a LIVENESS backstop, not the routing wall it used to be: with

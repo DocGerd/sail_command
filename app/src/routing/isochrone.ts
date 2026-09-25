@@ -217,15 +217,15 @@ const MAX_FRONTIER = 30_000;
  * one node per prune key, so its size SCALES with the domain's prune-cell
  * count, which is fixed in degrees (`PRUNE_LAT`/`PRUNE_LON`) and therefore
  * independent of mask RESOLUTION. Scales with, never bounded by — the true
- * ceiling is higher by a constant factor this rule deliberately ignores,
- * since a constant cancels out of a scaling law: three board suffixes per
- * cell (`P`/`S`/`M`), and the confined divisor squared in fine keys inside
- * every confined cell since #1322 (`CONFINED_PRUNE_DIV`, or
- * `MOTOR_OFF_CONFINED_PRUNE_DIV` since #1168). Scaling by mask cells would inflate the cap
- * on a mask refined over the same water (#245's rejected direction) where
- * nothing about the frontier changed. The two bases coincide exactly today —
- * #295 widened the domain at unchanged resolution, so both give 1.7875x the
- * pre-#295 mask.
+ * ceiling is higher by a constant factor this rule deliberately ignores, since
+ * a constant cancels out of a scaling law: three board suffixes per cell
+ * (`P`/`S`/`M`), and the confined divisor squared in fine keys inside every
+ * confined cell since #1322 (`CONFINED_PRUNE_DIV`, or
+ * `MOTOR_OFF_CONFINED_PRUNE_DIV` since #1168). Scaling by mask cells would
+ * inflate the cap on a mask refined over the same water (#245's rejected
+ * direction) where nothing about the frontier changed. The two bases coincide
+ * exactly today — #295 widened the domain at unchanged resolution, so both give
+ * 1.7875x the pre-#295 mask.
  *
  * Grid extent, never NAVIGABLE cells, although #1257 asks for the latter:
  * navigability is decided per query against a gate, so a navigable count
@@ -267,7 +267,7 @@ export function defaultMaxFrontier(meta: {
  * budget checks. Sized from a measured per-node cost recorded in commit
  * 0859518's message (no PR body carries it), so a batch sits orders of
  * magnitude below the 15 s client grace the old one-ring granularity
- * overshot, while the per-check cost is an increment and a compare.
+ * overshot, while the added per-node overhead is an increment and a compare.
  */
 export const DEADLINE_CHECK_NODES = 128;
 const EXTRA_TWAS = [45, 55, 65, 75, 85, 95, 105, 115, 125, 135, 145, 155, 165, 175];
@@ -351,19 +351,21 @@ export function edgeFactor(
 /**
  * #1303/#1305: how much finer the prune grid gets, per axis, inside CONFINED
  * water, for motor-on solves ({@link MOTOR_OFF_CONFINED_PRUNE_DIV} is the
- * motor-off twin). `1` disables the refinement and restores the pre-#1303
- * key exactly — the off switch every re-pin in this change was measured
- * against (the BASE control), not decoration. Typed `number` so that comparison typechecks.
+ * motor-off twin). `1` disables the refinement and restores the pre-#1303 key
+ * exactly — the off switch every re-pin in this change was measured against
+ * (the BASE control), not decoration. Typed `number` so that comparison
+ * typechecks.
  */
 const CONFINED_PRUNE_DIV: number = 2;
 /**
  * #1168: the confined divisor for a motor-off solve (`motorEnabled` false or
- * `forcedKind: 'sail'`). Without an engine, most full steps in a narrow are
- * blocked and the accepted children are substeps, which a cheaper arrival
- * elsewhere in the same key prunes — so the frontier can die on connected
- * water (`docs/spikes/1168-motor-off-prune-instability.md` §3). Motor-on
- * solves keep {@link CONFINED_PRUNE_DIV}, so they are byte-identical by
- * construction; the spike's §6 is why the finer grid is not applied to them.
+ * `forcedKind: 'sail'`). In a motor-off solve, most full steps in a narrow
+ * are blocked and the accepted children are substeps, which a cheaper
+ * arrival elsewhere in the same key prunes -- so the frontier can die on
+ * connected water (`docs/spikes/1168-motor-off-prune-instability.md` §3).
+ * Motor-on solves keep {@link CONFINED_PRUNE_DIV}, so they are byte-identical
+ * by construction; the spike's §6 is why the finer grid is not applied to
+ * them.
  */
 const MOTOR_OFF_CONFINED_PRUNE_DIV: number = 3;
 /**

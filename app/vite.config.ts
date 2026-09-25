@@ -648,6 +648,9 @@ export const SLOW_TEST_FILES_FIRST = [
   'src/routing/relaxationTrade.differential.test.ts',
   // #1329: one real-mask flood per settable gate.
   'src/test/harborReachabilityMonotone.test.ts',
+  // #1168: real-mask two-rig plans and bare solves. Appended so every earlier
+  // file keeps its shard rank.
+  'src/routing/realmask.repro.motorOffPrune.test.ts',
 ];
 
 // Extends BaseSequencer rather than reimplementing it: `sort` moves the files
