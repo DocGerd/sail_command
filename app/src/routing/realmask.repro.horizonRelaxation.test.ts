@@ -75,18 +75,18 @@ describe('#1258: a requested-gate horizon failure opens #53 relaxation (real mas
 
   // Control: a 24 h grid is unroutable at every gate, and the widened #1258
   // gate still runs tiers 3-4 on it.
-  // #1303 re-pin: the reported label moved from 'beyond-horizon' to
-  // 'unreachable'. Under the finer grid the relaxed tiers exhaust the mask
-  // rather than the horizon, so `relaxedPlanCause` folds a mask-level verdict
-  // — a LABEL change on an already-failing plan, not a routing one. With the
-  // rule off this row reds with `Received: "beyond-horizon"`. What the row
-  // still pins is that relaxation RAN and the plan stayed an error.
+  // The reported label is a property of the prune grid, not of this row's
+  // claim: #1303's divisor-2 grid moved it 'beyond-horizon' -> 'unreachable'
+  // (the relaxed tiers exhausted the mask), and #1168's motor-off divisor 3
+  // moves it back (they exhaust the horizon again). A LABEL change on an
+  // already-failing plan, not a routing one. What the row pins is that
+  // relaxation RAN and the plan stayed an error.
   it(
     'a 24 h forecast still fails after trying the relaxed gate',
     { timeout: solverTimeoutMs(600_000) },
     () => {
       const { result, record } = plan(FLENSBURG, 3, 24);
-      expect(result).toEqual({ status: 'error', reason: 'unreachable' });
+      expect(result).toEqual({ status: 'error', reason: 'beyond-horizon' });
       expect(record.tiers.some((t) => t.tier === 3)).toBe(true);
       // #1258's WIDENED arm is what opens relaxation here: the tier-1 causes
       // measured ['mask-blocked', 'horizon-exceeded'] fold to horizon-exceeded

@@ -170,15 +170,17 @@ Salvage (`results/planalt_salvage.jsonl`, `fine_salv_*.jsonl`):
   tier 1 once both rigs route, instead of falling back to the no-comfort
   tier 2.
 - It turns the TWS 3.3 fock dropout into a false `beyond-horizon`: the
-  salvaged search limps until the forecast horizon, 47 h after departure here.
+  salvaged search runs to the forecast horizon, 47 h after departure here,
+  while divisor 4 routes that fock in 16.483 h.
 - At TWS 3.5 it recommends fock at 15.623 h over a salvaged genoa at
   15.761 h. The finer grid routes that genoa in 14.915 h.
 
 The finer grid at divisor 4 (`results/planalt_div4.jsonl`):
 
 - Routes both rigs on all 25 plans, with ETA monotone in TWS on both rigs.
-- Changes at least one rig's ETA on every plan, mostly by minutes. At TWS 2.0 the genoa drops
-  from 38.1 h to 27.9 h and the fock routes (29.4 h) where it failed before.
+- Changes at least one rig's ETA on every plan, mostly by minutes. At TWS
+  2.0 the genoa drops from 38.1 h to 27.9 h and the fock routes (29.4 h)
+  where it failed before.
 
 ### 6. What the finer grid costs
 
@@ -242,15 +244,16 @@ grids:
 - **The copy is faithful.** With the patch applied and production behaviour
   selected, all 8 issue-table solves match production `solve()` in status,
   ring count, peak, `costMs` and ETA (`results/ctrl_prod.jsonl`,
-  `results/ctrl_final.jsonl`). Recomputing the stamp from the recorded arrivals also
-  matches production 8/8 (`arrmin`). The plan-level
-  mock, with no fix applied, reproduces the production `planRoute()` sweep
-  25/25 (`planalt_none` against `plan.jsonl`).
+  `results/ctrl_final.jsonl`). Recomputing the stamp from the recorded
+  arrivals also matches production 8/8 (`arrmin`). The plan-level mock, with
+  no fix applied, reproduces the production `planRoute()` sweep 25/25
+  (`planalt_none` against `plan.jsonl`).
 - **Order independence** was not re-tested. The #1136 spike's reverse-order
   control (§3.2) is the standing evidence.
 - **Counters fire.** The componentwise-minimum counter is 0 on the two dying
-  issue-table solves but reaches 1 871–19 265 on the six routing solves of the issue
-  table. The truncation counter reads 0 at divisor 2 and fires at divisor 4.
+  issue-table solves but reaches 1 871–19 265 on the six routing solves of
+  the issue table. The truncation counter reads 0 at divisor 2 and fires at
+  divisor 4.
 - **Sanity check, not a control.** Flensburg → Marstal at 3.0 m stays
   `mask-blocked` at divisor 4 (breeze aperture). The divisor changes only
   pruning, and every accepted edge still passes `edgeFactor`, so this could
@@ -287,9 +290,9 @@ pass 2 as the backstop.**
 2. **Why only with the motor off.** On `breeze` the finer grid saves at most
    1.8 min. Divisor 4 costs ×1.47–1.78 in expanded nodes and reopens cap
    truncation; divisor 3 avoids the truncation but still costs ×1.28–1.36
-   (§6). All of the deaths measured here
-   are motor-off. Scoping would keep every motor-on solve byte-identical by
-   construction, which turns the #282 sweep into a check on that scoping.
+   (§6). All of the deaths measured here are motor-off. Scoping would keep
+   every motor-on solve byte-identical by construction, which turns the #282
+   sweep into a check on that scoping.
 3. **Prerequisites, before a PR merges:**
    - Re-derive the budget headroom for the heaviest motor-off arm. On
      `light-motorless` the heaviest solve (`dyvig`) rises from 2.34 M to
@@ -326,8 +329,7 @@ pass 2 as the backstop.**
   measurement. 33 of 173 dominated children have only dead dominators (28
   from earlier rings, plus 5 whose only dominators are the dying ring's own
   frontier, none of which produced a child), and retraction rescued 0 of 9
-  dying genoa solves while provably
-  reaching the path.
+  dying genoa solves while provably reaching the path.
 - **Single-arrival (Pareto) stamps.** Rejected on measurement. There are zero
   componentwise-minimum dominators on the two attributed dying rings (§3), and
   all 5 dying configurations tested die at the same ring.
