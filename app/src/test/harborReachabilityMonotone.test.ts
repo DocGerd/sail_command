@@ -18,8 +18,10 @@ import { solverTimeoutMs } from './timeouts';
 // claim "not reachable at or above {boat}'s recommended safety depth", but
 // `findLowerSettingHint` only checks gates BELOW the live one. The claim about
 // deeper gates holds iff, per (boat, harbour), the reachable gates form a
-// prefix of the settable range. `ok` vs `shallow-approach` is itself
-// non-monotone on this mask; only the reachable/unreachable split is pinned.
+// prefix of the settable range. Only the reachable/unreachable split is
+// pinned below — `ok` vs `shallow-approach` individually is not claimed to
+// be monotone (see the #1444 synthetic control, which shows the detector
+// keyed on `ok` alone CAN fire, without asserting it does on this mask).
 const dataDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../public/data');
 const mask = new NavMask(
   JSON.parse(readFileSync(resolve(dataDir, 'mask.meta.json'), 'utf8')) as MaskMeta,
@@ -93,6 +95,24 @@ describe('#1329 harbour reachability is monotone in the safety depth (real mask)
     ).toBeNull();
   });
 
+  // #1444: the `ok`-only predicate's positive control, on a SYNTHETIC row —
+  // independent of the real mask, so a benign mask change cannot silently
+  // turn this control vacuous. `ok` at 30/32 with `shallow-approach` at 31
+  // is monotone under `reachable` (both terms reachable) but not under
+  // `s === 'ok'` alone.
+  it('#1444 detector keyed on `ok` alone fires on a synthetic ok/shallow-approach/ok row', () => {
+    expect(
+      firstMonotonicityViolation(
+        [
+          [30, 'ok'],
+          [31, 'shallow-approach'],
+          [32, 'ok'],
+        ],
+        (s) => s === 'ok',
+      ),
+    ).toBe(32);
+  });
+
   it(
     'every catalogue boat, every settable gate, every harbour: no reachable gate above an unreachable one',
     { timeout: solverTimeoutMs(300_000) },
@@ -109,13 +129,6 @@ describe('#1329 harbour reachability is monotone in the safety depth (real mask)
       // range, so an empty violation list is not an empty search.
       expect(rowsWithUnreachable).toBeGreaterThan(0);
       expect(violations).toEqual([]);
-
-      // Positive control on the REAL matrix: the same detector keyed on `ok`
-      // alone does fire, because `ok` ↔ `shallow-approach` is non-monotone.
-      const okOnly = [...rows].filter(
-        ([, row]) => firstMonotonicityViolation(row, (s) => s === 'ok') !== null,
-      );
-      expect(okOnly.length).toBeGreaterThan(0);
 
       // Every boat's recommended depth lies inside the measured range.
       for (const boat of BOATS) {
