@@ -12,9 +12,9 @@ import { mask, polarGenoa, SALONA_DEPS, FLENSBURG, BAGENKOP, T0 } from '../test/
 // #1168 against the real committed mask and polars: Flensburg -> Bagenkop,
 // motor off, 3.0 m, uniform wind from 0°. A BAND of adjacent inputs, per the
 // issue's own rule that a single-input pin cannot guard this. At the divisor-2
-// confined grid each row drops one rig as `unreachable` on water the other rig
-// crosses, and at 3.1/3.5/3.6 that leaves fock recommended over a faster genoa
-// (docs/spikes/1168-motor-off-prune-instability.md §4).
+// confined grid each planRoute row below drops one rig as `unreachable` on
+// water the other rig crosses, and at 3.1/3.5/3.6 that leaves fock recommended
+// over a faster genoa (docs/spikes/1168-motor-off-prune-instability.md §4).
 vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
 
 const SETTINGS = { ...DEFAULT_SETTINGS, safetyDepthM: 3, motorEnabled: false };
@@ -50,8 +50,8 @@ describe('#1168 motor-off confined prune grid (real mask)', () => {
   );
 
   // The issue's origin-shift arm is a bare-solve() property (planRoute snaps
-  // the origin itself). The spike's §1 pair: the raw and the snapped
-  // Flensburg origin, each at the TWS where it died at divisor 2.
+  // the origin itself). Spike §1's pair at TWS 2.8 and 3.0: at divisor 2 the
+  // raw origin died at 3.0 and the snapped one at 2.8; the other two routed.
   it.each([
     { origin: 'raw', tws: 3.0 },
     { origin: 'raw', tws: 2.8 },

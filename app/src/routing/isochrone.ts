@@ -361,7 +361,7 @@ const CONFINED_PRUNE_DIV: number = 2;
  * #1168: the confined divisor for a motor-off solve (`motorEnabled` false or
  * `forcedKind: 'sail'`). In a motor-off solve, most full steps in a narrow
  * are blocked and the accepted children are substeps, which a cheaper
- * arrival elsewhere in the same key prunes -- so the frontier can die on
+ * arrival elsewhere in the same key prunes — so the frontier can die on
  * connected water (`docs/spikes/1168-motor-off-prune-instability.md` §3).
  * Motor-on solves keep {@link CONFINED_PRUNE_DIV}, so they are byte-identical
  * by construction; the spike's §6 is why the finer grid is not applied to
