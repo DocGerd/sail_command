@@ -148,6 +148,8 @@
   // reads the real shipped mask.bin/mask.meta.json/harbors.json (and, for
   // #1290, pipeline/verify_mask.py) via `node:fs`, same reason and pattern as
   // verifyMaskConnectivity.test.ts above.
+  // boatSwitchHarborAccess.test.ts (#1393) is the same shape once more —
+  // reads the real shipped mask.bin/mask.meta.json/harbors.json via `node:fs`.
   "exclude": [
     "src/**/startPreviewSwAssertCallSites.test.ts",
     "src/**/basemapArchiveRoute.test.ts",
@@ -190,6 +192,7 @@
     "src/**/regionManifest.test.ts",
     "src/**/regionConstantsTwin.test.ts",
     "src/**/harborReachability*.test.ts",
-    "src/**/BoatPicker.harborAccess.test.tsx"
+    "src/**/BoatPicker.harborAccess.test.tsx",
+    "src/**/boatSwitchHarborAccess.test.ts"
   ]
 }

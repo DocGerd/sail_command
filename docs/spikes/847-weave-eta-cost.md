@@ -485,3 +485,14 @@ presentational artefacts) is unchanged. Measured on this branch against base
   weave span as well as remove one.
 - §2's reproducing case still reproduces (1 span), on a slightly different
   route: 13 legs / 67.6 min -> 10 legs / 67.2 min.
+
+## 7ter. What #1259 changed (2026-09-24)
+
+#1259's exact mask grid step removed the destination-approach weave §2 and
+§7b measured at TWS 5.5 (Ærøskøbing → Søby). `realmask.repro.weaveEta847.test.ts`
+was re-pinned to TWS 6 / wdir 120 (`a025076`, PR #1449): the same
+weave occurs at both BASE and HEAD, uniform and route-scoped gradient. §2,
+§7b and §7bis's own text (`uniformWindGrid(5.5, 120)`, TWS 5.5 figures, and
+§7bis's "§2's reproducing case still reproduces") is the historical TWS 5.5
+record and is UNCHANGED — each describes a case the harness no longer runs;
+read the harness itself for the current TWS 6 setup.

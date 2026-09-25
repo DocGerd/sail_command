@@ -34,8 +34,9 @@ const M_PER_NM = 1852;
  * DEFAULT_SETTINGS, `uniformWindGrid(12, 225)`, departure
  * `Date.UTC(2026, 6, 15, 6, 0, 0)` — sweepArms.ts's exact PlanDeps/
  * PlanRequest construction — then, per route, the count of hazard marks
- * (isHazardSeamark: cardinal + isolatedDanger, 127 of the 1,794 features
- * shipped before #295; the table was not re-run on the widened data) whose
+ * (isHazardSeamark: cardinal + isolatedDanger, counted against the
+ * pre-#295 seamarks.json; the table was not re-run on the widened data —
+ * see app/public/data/seamarks.json for the current feature count) whose
  * point-to-segment distance to any leg of the recommended rig fell under
  * each candidate:
  *
