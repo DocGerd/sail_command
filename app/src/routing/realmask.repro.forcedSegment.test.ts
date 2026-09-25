@@ -13,7 +13,16 @@ import {
   type WindGrid,
 } from '../types';
 import { solverTimeoutMs, SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
-import { FLENSBURG, GLUECKSBURG, MARSTAL, mask, SALONA_DEPS, T0 } from '../test/realmaskFixtures';
+import { uniformWindGrid } from '../test/fixtures';
+import {
+  BAGENKOP,
+  FLENSBURG,
+  GLUECKSBURG,
+  MARSTAL,
+  mask,
+  SALONA_DEPS,
+  T0,
+} from '../test/realmaskFixtures';
 
 // #885 §7: forced motor against the real committed mask and polars. Two vias
 // bracket the inner-fjord bend north of Flensburg (~1 km wide).
@@ -157,6 +166,49 @@ describe('#885 forced motor on the real mask', () => {
         const seg0 = segmentLegs(s.result!.legs, [r.snappedOrigin, via, r.snappedDestination], 0);
         expect(seg0.length).toBeGreaterThan(0);
         expect(seg0.every((l) => l.kind === 'motor' && l.forced === true)).toBe(true);
+      }
+    },
+  );
+});
+
+// #1495/#1168: isochrone.ts's `motorEnabled = forcedKind === 'sail' ? false :
+// settings.motorEnabled` routes a forced-sail segment through the SAME
+// motor-off confined-grid branch as `settings.motorEnabled: false` — so a
+// forced-sail plan at settings.motorEnabled TRUE should reproduce the #1168
+// pin (realmask.repro.motorOffPrune.test.ts) unchanged. Same route/TWS band,
+// same expectations; the only variable is HOW motor-off is reached.
+describe('#1495 forced-sail segment takes the #1168 motor-off confined prune grid', () => {
+  it.each([3.1, 3.3, 3.5, 3.6, 3.7])(
+    'TWS %s: forced-sail segment routes and genoa is recommended',
+    { timeout: solverTimeoutMs(300_000) },
+    (tws) => {
+      const res = planRoute(
+        {
+          origin: FLENSBURG,
+          destination: BAGENKOP,
+          viaPoints: [],
+          originHarborId: 'flensburg',
+          destinationHarborId: 'bagenkop',
+          departureMs: T0,
+          settings: DEFAULT_SETTINGS,
+          sailIds: ['genoa', 'fock'],
+          boat: defaultBoatSnapshot(),
+          segmentModes: ['sail'],
+        },
+        uniformWindGrid(tws, 0),
+        SALONA_DEPS,
+      );
+      expect(res.status).toBe('ok');
+      if (res.status !== 'ok') return;
+      expect(res.sails.map((s) => [s.sailId, s.result === null ? s.reason : 'ok'])).toEqual([
+        ['genoa', 'ok'],
+        ['fock', 'ok'],
+      ]);
+      expect(res.recommended).toBe('genoa');
+      for (const s of res.sails) {
+        const legs = s.result!.legs;
+        expect(legs.every((l) => l.kind === 'sail')).toBe(true);
+        expect(legs.every((l) => l.forced === true)).toBe(true);
       }
     },
   );
