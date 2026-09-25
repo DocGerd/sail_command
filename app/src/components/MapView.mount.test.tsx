@@ -186,6 +186,48 @@ describe('MapView async mount (#118 cancelled-flag window)', () => {
     }
   });
 
+  // #1253: the controllerchange listener must be attached BEFORE the
+  // ensureBasemapProtocolSource await, not after it — a claim landing while
+  // that preflight fetch is still pending was otherwise missed entirely
+  // (nothing listening yet), leaving regions disabled until reload.
+  it('#1253: a controllerchange landing mid-await (during the basemap preflight) still enables regions on the first configure call', async () => {
+    let resolveFetch: ((value: unknown) => void) | undefined;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        () =>
+          new Promise((resolve) => {
+            resolveFetch = resolve;
+          }),
+      ),
+    );
+    const sw = Object.assign(new EventTarget(), { controller: null as object | null });
+    Object.defineProperty(navigator, 'serviceWorker', { value: sw, configurable: true });
+    try {
+      const { unmount } = render(<MapView tapActive={false} onTap={() => {}} />);
+      await flushAsyncMount();
+      expect(resolveFetch).toBeDefined();
+
+      // The claim lands WHILE the preflight fetch above is still pending —
+      // exactly the #1253 race window.
+      sw.controller = {};
+      sw.dispatchEvent(new Event('controllerchange'));
+
+      resolveFetch?.(ok206());
+      await flushAsyncMount();
+
+      expect(protocolConfigure).toHaveBeenCalledTimes(1);
+      expect(protocolConfigure).toHaveBeenCalledWith({
+        coreUrl: 'http://localhost:3000/data/basemap.pmtiles.png',
+        baseHref: 'http://localhost:3000/',
+        regionsEnabled: true,
+      });
+      unmount();
+    } finally {
+      Reflect.deleteProperty(navigator, 'serviceWorker');
+    }
+  });
+
   it('#207: constructs with pitch locked flat (maxPitch: 0), not left to reset later', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(ok206()));
     render(<MapView tapActive={false} onTap={() => {}} />);

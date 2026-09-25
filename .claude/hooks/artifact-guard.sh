@@ -472,6 +472,17 @@
 #     with `cd` and 544 contain a `;`, so the shapes are abundant and the
 #     change still buys nothing, because those commands are compounds that
 #     genuinely write.
+#   - #448 (evaluated and REJECTED — see PR #1473 for the corpus and
+#     method): widening git_readonly_ok() past show/log/diff to also exempt
+#     status/rev-parse/ls-files/blame/describe. Two of the issue's other
+#     candidates are excluded on soundness alone, before any yield measure:
+#     `cat-file --filters` runs the path's configured smudge filter (the
+#     same external-command class `--textconv`/`--ext-diff` already
+#     disqualify on show/log/diff, under a different flag); `ls-remote`
+#     accepts an `ext::<command>` transport that runs an arbitrary program
+#     with no shell metacharacter involved, invisible to
+#     WRITE_CAPABLE_CHARS. The remaining five names' measured yield lost to
+#     the #437 "doubt resolves to the smaller allowlist" precedent.
 #   - ACCEPTED RESIDUAL OVER-FIRES of the exemption (named so they read as
 #     decisions, not oversights): `!` is disqualified, so `test ! -f
 #     <protected>` — a legitimate read-only shape — still fires; `#` is

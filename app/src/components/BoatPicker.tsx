@@ -297,7 +297,15 @@ interface ClampNotice {
  * 'known-disconnected': that state is boat-independent — it was already
  * unreachable before this switch too, per its own #652/#834 marker on the
  * endpoint row (§5.3) — so re-announcing it on every switch would be noise
- * about a fact the switch did not change. */
+ * about a fact the switch did not change.
+ *
+ * #1393: at a plain default-settings switch this clause does not fire
+ * against the currently shipped catalogue/mask — pinned by
+ * `app/src/test/boatSwitchHarborAccess.test.ts` (0 unreachable at both real
+ * default depths, for every boat) and
+ * `BoatPicker.harborAccess.test.tsx`'s #1325 describe block (4.0 m, well
+ * above either default, is the shallowest depth that reaches it) — a mask or
+ * catalogue change that flips this reds those tests. */
 function endpointUnreachableClause(
   harborId: string | null,
   endpointLabelKey: 'planner.origin.label' | 'planner.destination.label',

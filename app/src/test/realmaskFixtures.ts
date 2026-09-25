@@ -193,15 +193,16 @@ export function metresBetween(a: LatLon, b: LatLon): number {
   return 2 * R_EARTH_M * Math.asin(Math.sqrt(h));
 }
 
-const CELL_LAT_STEP = (maskMeta.north - maskMeta.south) / maskMeta.rows;
-const CELL_LON_STEP = (maskMeta.east - maskMeta.west) / maskMeta.cols;
-/** The cell CENTRE is what disc membership is defined on. */
+/**
+ * The cell CENTRE is what disc membership is defined on. #1451: routed
+ * through `mask.grid`'s exact integer-cells-per-degree axes (#1259) rather
+ * than a bbox-quotient step, so this fixture cannot drift from the
+ * production convention `mask.ts` itself uses.
+ */
 export function centreOf(p: LatLon): LatLon {
   return {
-    lat:
-      maskMeta.south + (Math.floor((p.lat - maskMeta.south) / CELL_LAT_STEP) + 0.5) * CELL_LAT_STEP,
-    lon:
-      maskMeta.west + (Math.floor((p.lon - maskMeta.west) / CELL_LON_STEP) + 0.5) * CELL_LON_STEP,
+    lat: mask.grid.lat.centre(mask.grid.lat.index(p.lat)),
+    lon: mask.grid.lon.centre(mask.grid.lon.index(p.lon)),
   };
 }
 

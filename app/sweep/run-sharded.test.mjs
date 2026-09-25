@@ -15,7 +15,7 @@
 // section (same caveat merge-shards.test.mjs states for itself).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, readFileSync, existsSync, chmodSync, copyFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -157,10 +157,26 @@ test('the cap message names the offending product, not just the limit', () => {
 // value against a hand-written expectation — every row above derives its
 // inputs FROM `MAX_TOTAL_WORKERS`, so mutating that constant (e.g. 24 -> 1000)
 // leaves them all green (the #388 SOLVER_LABELS class: a guard's data needs a
-// twin, not just its detection logic). This is the twin: it fails if the
-// constant ever drifts from the value README.md's "Sharding" section states.
-test('MAX_TOTAL_WORKERS is 24, matching README.md\'s stated 20-24 host guidance', () => {
+// twin, not just its detection logic). This pins the CONSTANT alone; it
+// cannot catch README.md drifting to a different number on its own (#1364 —
+// the row below is the twin that reads README.md).
+test('MAX_TOTAL_WORKERS is 24', () => {
   assert.equal(MAX_TOTAL_WORKERS, 24);
+});
+
+// #1364: the row the comment above used to (wrongly) claim already existed —
+// this one actually READS README.md's "Sharding" section, so it reds if
+// EITHER side drifts from the other: the code constant, or the number
+// README.md states for it.
+test('README.md\'s "Sharding" section states the same MAX_TOTAL_WORKERS value the code enforces', () => {
+  const readme = readFileSync(resolve(here, 'README.md'), 'utf8');
+  const m = readme.match(/MAX_TOTAL_WORKERS\s*=\s*(\d+)/);
+  assert.ok(m, 'expected README.md to state a literal "MAX_TOTAL_WORKERS = <n>" value');
+  assert.equal(
+    Number(m[1]),
+    MAX_TOTAL_WORKERS,
+    `README.md states MAX_TOTAL_WORKERS = ${m[1]}, code has ${MAX_TOTAL_WORKERS}`,
+  );
 });
 
 // --- output path layout -------------------------------------------------
@@ -285,6 +301,12 @@ if (dieShard && idxStr === dieShard) {
   process.exit(1);
 }
 
+// #1364: 'slow' keeps this fake alive long enough for a test to deliver a
+// real SIGINT/SIGTERM to the DRIVER while a shard is still running.
+if (behavior === 'slow') {
+  await new Promise((r) => setTimeout(r, 5000));
+}
+
 const armNames = JSON.parse(readFileSync(armNamesFile, 'utf8'));
 const harbourIds = JSON.parse(readFileSync(harbourIdsFile, 'utf8'));
 // Mirrors sweepArms.ts's own split EXACTLY: LIMIT first, then
@@ -303,7 +325,13 @@ for (const name of names) {
   const rows = {};
   for (const id of mine) rows[id] = { status: 'error', reason: \`fake-\${name}-\${id}\` };
   const base = \`\${name}.shard\${idx}of\${count}.limit\${limit}\`;
-  writeFileSync(resolve(outDir, \`\${base}.json\`), JSON.stringify(rows));
+  // #1364: malformed-json corrupts the FIRST arm's part file CONTENT for
+  // the targeted shard — a real disk-truncated/interrupted write — rather
+  // than omitting an arm entirely (that is the 'truncated' behavior above,
+  // renamed below because it never touches a part file's bytes).
+  const isMalformed = behavior === 'malformed-json' && idxStr === truncateShard && name === names[0];
+  const content = isMalformed ? '{not valid json' : JSON.stringify(rows);
+  writeFileSync(resolve(outDir, \`\${base}.json\`), content);
   writeFileSync(resolve(outDir, \`\${base}.timings.json\`), JSON.stringify({}));
 }
 process.exit(0);
@@ -340,6 +368,25 @@ function runDriver(args, { fakeNpmDir, armNamesFile, harbourIdsFile, extraEnv = 
   return result;
 }
 
+/** Like `runDriver`, but ASYNC (`spawn`, not `spawnSync`) and returns the
+ * live child alongside a promise for its exit — needed to deliver a real
+ * signal to the driver while it is still running (#1364). */
+function spawnDriverAsync(args, { fakeNpmDir, armNamesFile, harbourIdsFile, extraEnv = {} }) {
+  const child = spawn(process.execPath, [RUN_SHARDED_PATH, ...args], {
+    cwd: REPO_ROOT,
+    env: {
+      ...process.env,
+      PATH: `${fakeNpmDir}:${process.env.PATH}`,
+      FAKE_NPM_ARM_NAMES_FILE: armNamesFile,
+      FAKE_NPM_HARBOUR_IDS_FILE: harbourIdsFile,
+      ...extraEnv,
+    },
+    stdio: 'ignore',
+  });
+  const exited = new Promise((res) => child.on('exit', (code, signal) => res({ code, signal })));
+  return { child, exited };
+}
+
 test('integration: every shard writing successfully -> exit 0 with a complete manifest', () => {
   const { fakeNpmDir, armNamesFile, harbourIdsFile } = setupFakeNpm();
   const outDir = mkdtempSync(join(tmpdir(), 'sc-run-sharded-out-'));
@@ -368,7 +415,10 @@ test('integration: a shard that dies without writing anything -> exit non-zero, 
   assert.equal(existsSync(join(outDir, 'manifest.json')), false, 'a dead shard must never produce a manifest');
 });
 
-test('integration: one shard drops an arm (truncated part) -> exit non-zero, no manifest', () => {
+// #1364: renamed from "(truncated part)" — this row drops an ARM entirely
+// (one fewer part FILE gets written), it never truncates a part file's
+// bytes; the row below covers an actually-corrupted part file's content.
+test('integration: one shard drops an arm entirely -> exit non-zero, no manifest', () => {
   const { fakeNpmDir, armNamesFile, harbourIdsFile } = setupFakeNpm();
   const outDir = mkdtempSync(join(tmpdir(), 'sc-run-sharded-out-'));
   const result = runDriver(['--shards', '2', '--max-workers', '1', '--limit', '4', '--out', outDir], {
@@ -379,6 +429,24 @@ test('integration: one shard drops an arm (truncated part) -> exit non-zero, no 
   });
   assert.notEqual(result.status, 0, 'expected a non-zero exit when one shard drops an arm');
   assert.equal(existsSync(join(outDir, 'manifest.json')), false, 'an incomplete arm set must never produce a manifest');
+});
+
+// #1364: the row the name above USED to (wrongly) claim covered — one
+// shard's part file is present but its JSON CONTENT is malformed (a real
+// disk-truncated/interrupted write). `merge-shards.mjs`'s `JSON.parse`
+// throws uncaught on this, which is still a non-zero exit and no manifest,
+// but via a crash rather than the graceful arm-set-incomplete check above.
+test('integration: one shard writes a MALFORMED-JSON part file -> exit non-zero, no manifest', () => {
+  const { fakeNpmDir, armNamesFile, harbourIdsFile } = setupFakeNpm();
+  const outDir = mkdtempSync(join(tmpdir(), 'sc-run-sharded-out-'));
+  const result = runDriver(['--shards', '2', '--max-workers', '1', '--limit', '4', '--out', outDir], {
+    fakeNpmDir,
+    armNamesFile,
+    harbourIdsFile,
+    extraEnv: { FAKE_NPM_BEHAVIOR: 'malformed-json', FAKE_NPM_TRUNCATE_SHARD: '1' },
+  });
+  assert.notEqual(result.status, 0, 'expected a non-zero exit when a shard part file has malformed JSON');
+  assert.equal(existsSync(join(outDir, 'manifest.json')), false, 'a malformed part file must never produce a manifest');
 });
 
 test('integration: a non-empty --out is refused BEFORE anything is spawned (exit 2)', () => {
@@ -440,4 +508,29 @@ test('integration (#1363 Major 3): a space in the driver\'s own path still trigg
     `expected exit 2 (cap exceeded), got ${result.status}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
   );
   assert.match(result.stderr, /exceeds the documented cap/);
+});
+
+// #1364: SIGINT must exit 130 (the shell's own 128+signum convention),
+// distinct from SIGTERM's 143 -- both were hardcoded to 143 before the fix.
+// The fake npm's 'slow' behavior keeps a shard alive long enough for each
+// signal to reach the driver mid-run.
+test('integration (#1364): SIGINT exits 130, SIGTERM exits 143', async () => {
+  const { fakeNpmDir, armNamesFile, harbourIdsFile } = setupFakeNpm();
+
+  async function sendSignal(signal) {
+    const outDir = mkdtempSync(join(tmpdir(), 'sc-run-sharded-out-'));
+    const { child, exited } = spawnDriverAsync(
+      ['--shards', '1', '--max-workers', '1', '--out', outDir],
+      { fakeNpmDir, armNamesFile, harbourIdsFile, extraEnv: { FAKE_NPM_BEHAVIOR: 'slow' } },
+    );
+    await new Promise((r) => setTimeout(r, 500));
+    child.kill(signal);
+    return exited;
+  }
+
+  const sigint = await sendSignal('SIGINT');
+  assert.equal(sigint.code, 130, `expected SIGINT to exit 130, got ${sigint.code}`);
+
+  const sigterm = await sendSignal('SIGTERM');
+  assert.equal(sigterm.code, 143, `expected SIGTERM to exit 143, got ${sigterm.code}`);
 });
