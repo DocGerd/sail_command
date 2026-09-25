@@ -317,7 +317,7 @@ const FAMILY_RANK: Record<SeamarkFamily, number> = {
  *   used to carve two categories out to ALL as a declutter choice; #521
  *   reversed that (full reasoning in the ALL bullet below). The
  *   categories that were ALREADY Standard-tier before #521 are e.g.
- *   `leading` (64), `clearing` (3 — the *Gefahrenpeilung* this repo's own
+ *   `leading`, `clearing` (the *Gefahrenpeilung* this repo's own
  *   German-terminology notes name, #300), `no_entry`, `firing_danger_area`,
  *   `warning`, `yachting`, `recording`, `odas`, `recreation_zone`,
  *   `recreational`, `mooring`, `marine_farm`, `target`, `degaussing_range`,
