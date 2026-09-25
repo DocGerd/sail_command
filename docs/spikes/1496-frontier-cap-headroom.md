@@ -82,9 +82,7 @@ frontier size, cap 95,333, ALL 40 rows `truncatedRings: 0`.
 
 Highest peak over all 40: maasholm, 20,554 -- 4.64x headroom under the cap.
 Six `no-route`: arnis, dyvig, graasten, kappeln, maasholm, marstal --
-IDENTICAL to `lm_div3.jsonl`'s genoa `no-route` set. The prior raw-endpoint
-run's seventh dropout (augustenborg, fock-only) does not reproduce under the
-snapped construction: augustenborg routes `ok` here, matching genoa.
+IDENTICAL to `lm_div3.jsonl`'s genoa `no-route` set.
 
 ### Case B: #53 relaxation, tier 3 headroom (one harbour) — tier 2 and tier 4 not reached
 
@@ -110,15 +108,16 @@ ALSO returns null, the ladder falls straight to the `record.cause =
 'mask-blocked'` return (`:1032`) with `record.tiers` still empty and zero
 solves run. `lm_div3.jsonl`'s `horizon-exceeded` classification of these
 same three is not wrong — it is the correct `solve()`-level cause for a bare,
-disconnected search that runs to the horizon before giving up. What this
-answers is #1168's own Open question 3 ("[i]s the `maasholm` cause movement
-… benign? … Only a `planRoute`-level sweep row shows the effect" —
-`docs/spikes/1168-motor-off-prune-instability.md`, Open questions §3): in
-`planRoute()`, `connectedAt()` and `findRelaxedGate` both fail before any
-`solve()` call, so #1168 §6's cause-movement/pass-2-admission concern does
-not apply to these three inputs in production — no label change, no pass 2.
-Only marstal reaches tier 3, both rigs, peaks well under the cap (3.7% and
-5.6% of it), zero truncation.
+disconnected search that runs to the horizon before giving up. This answers
+#1168's Open question 3 for `maasholm` at the shipped divisor 3.
+`planRoute()` never calls `solve()` for it, because `connectedAt()` and
+`findRelaxedGate` both fail first. The same holds for dyvig and kappeln
+(Case B), and for arnis and graasten (not tabled here). So the solve-level
+cause move changes neither the label nor pass-2 admission in production.
+The divisor-4 half of that question is moot, since divisor 4 is not
+shipped.
+Only marstal reaches tier 3, both rigs, peaks well under the cap, zero
+truncation.
 
 ### Case C: #1136 salvage pass 2
 
@@ -140,8 +139,8 @@ true})`'s re-expansion ring, which skips dominance and is the ring most
 likely to widen the frontier) was not probed at the shipped divisor — #1168
 ran that shape at divisor 2 (`results/lm_salv.jsonl`, `fine_salv_*.jsonl`),
 not divisor 3. So: pass 2 is not admitted on any input tried here, and this
-spike measures no salvage headroom. Its truncation risk is unmeasured, not
-zero. The reachability gap itself is tracked in #1502 (the
+spike measures no salvage headroom. Its truncation risk is unmeasured (not
+shown to be zero). The reachability gap itself is tracked in #1502 (the
 `motorOffSalvage.test.ts` real-mask pass-2 rows no longer reach pass 2 at
 the shipped divisor), #1334 (no sweep arm combines motor-off with a short
 horizon, so salvage widening is untestable there) and #1456 (the sweep
@@ -165,10 +164,10 @@ cannot show whether pass 2 ran).
 No cap change owed. Every measured case (fock tier-1 across 40 harbours,
 tier-3 relaxation on marstal) shows real headroom (>=4.64x under the cap).
 #1136's salvage pass is not admitted on any input tried here, so this spike
-measures no salvage headroom; its truncation risk is unmeasured, not zero
-(#1334, #1456). If a future change makes relaxation or salvage fire on more
-real inputs, re-measure THOSE inputs specifically -- this spike's
-four-harbour population will not represent them.
+measures no salvage headroom; its truncation risk is unmeasured (not shown
+to be zero) (#1502, #1334, #1456). If a future change makes relaxation or
+salvage fire on more real inputs, re-measure THOSE inputs specifically --
+this spike's four-harbour population will not represent them.
 
 ## Considered and rejected
 
