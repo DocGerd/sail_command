@@ -273,9 +273,9 @@ making design-level decisions; do not silently deviate.
   already on develop and inside #1264's base; against the base tree the same
   run was 440/440. Compare to a run of the tree the branch forked from.
   **Never read a plan-budget share off sweep timings** — they depend on how
-  many runs shared the machine. At #1168 the sweep read 143 → 244 s where an
-  interleaved same-load A/B read 72 → 128 s (PR #1488's sweep comment); gate
-  a budget decision on the A/B.
+  many runs shared the machine. At #1168 an interleaved same-load A/B read
+  svendborg/light-motorless 72 → 128 s (PR #1488's sweep comment); gate a
+  budget decision on the A/B, never on the sweep's own contended timings.
   **Post-#295 an arm can outlive vitest's own per-arm timeout.** Six of 11
   arms exceeded `solverTimeoutMs(3_600_000)` at 4464-5086 s on 2026-09-16 —
   under no competing workload, the load being the sweep's own 11 parallel
