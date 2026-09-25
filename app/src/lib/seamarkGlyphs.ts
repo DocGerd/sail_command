@@ -310,19 +310,19 @@ const FAMILY_RANK: Record<SeamarkFamily, number> = {
  * - BASE (product floor, broader than IMO's Display Base — see above):
  *   `isolatedDanger`, `cardinal`, `lateral`, `safeWater`, `lightMajor`.
  * - STANDARD (default) adds: `lightMinor`, `unknown`, and — since the #521
- *   maintainer ruling (2026-08-21) — the ENTIRE `specialPurpose` family,
- *   all 703 (26 distinct raw category strings; measured, not assumed),
+ *   maintainer ruling (2026-08-21) — the ENTIRE `specialPurpose` family
+ *   (26 distinct raw category strings; measured, not assumed),
  *   every one of which is a point mark whatever it annotates. Appendix 2
  *   item 2.3's undivided AtoN group covers the whole family, and this app
  *   used to carve two categories out to ALL as a declutter choice; #521
- *   reversed that (full reasoning in the ALL bullet below). The 584
+ *   reversed that (full reasoning in the ALL bullet below). The
  *   categories that were ALREADY Standard-tier before #521 are e.g.
- *   `leading` (64), `clearing` (3 — the *Gefahrenpeilung* this repo's own
+ *   `leading`, `clearing` (the *Gefahrenpeilung* this repo's own
  *   German-terminology notes name, #300), `no_entry`, `firing_danger_area`,
  *   `warning`, `yachting`, `recording`, `odas`, `recreation_zone`,
  *   `recreational`, `mooring`, `marine_farm`, `target`, `degaussing_range`,
  *   `foul_ground`, `lanby`, `unknown_purpose`, `wave_recorder`, `notice`,
- *   and an untagged/`(none)` category (281 of 703, the plurality) — which
+ *   and an untagged/`(none)` category (the plurality) — which
  *   cannot be shown to be anything OTHER than Standard-tier AtoN content,
  *   so it defaults to the more visible tier, not the more hidden one, per
  *   the guard-asymmetry principle #513 F2 applies to `unknown`. `unknown`
@@ -979,8 +979,8 @@ const SPECIAL_X_WIDTH = 1.5;
 const SPECIAL_X_KEYLINE_WIDTH = 3;
 
 // #308: the X topmark got a near-white keyline underlay in #306, but the
-// BODY box did not — a `colour=black` special-purpose mark (133 of 703 in
-// the committed pull, S-57 CATSPM) is a solid INK-coloured rect on
+// BODY box did not — a `colour=black` special-purpose mark (S-57 CATSPM) is
+// a solid INK-coloured rect on
 // transparent canvas, which blends into the dark-theme basemap exactly as
 // the pre-#306 X did. Same fix as every other multi-band family here
 // (cardinal, isolated danger, lateral pillar/spar): a near-white
