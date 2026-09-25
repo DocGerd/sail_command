@@ -123,6 +123,10 @@ instead of here.
   slower rig. Recommends a finer confined prune key (divisor 3 or 4) for motor-off
   solves only; salvage, dead-stamper retraction and Pareto stamps measured and
   rejected
+- [1496-frontier-cap-headroom.md](1496-frontier-cap-headroom.md) — #1496:
+  frontier-cap headroom for fock tier-1, #53 relaxation and the #1136 salvage
+  pass at the shipped motor-off prune divisor. No truncation measured
+  anywhere; salvage never fires on any real-mask input tried
 
 Four entries carry a same-named subdirectory of supporting artifacts rather
 than being self-contained: `1022-whole-journey-ux/` (reference screenshots),
