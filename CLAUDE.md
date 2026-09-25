@@ -272,6 +272,10 @@ making design-level decisions; do not silently deviate.
   two PRs earlier, `light-motorless` read CHANGED — that change was #1136's,
   already on develop and inside #1264's base; against the base tree the same
   run was 440/440. Compare to a run of the tree the branch forked from.
+  **Never read a plan-budget share off sweep timings** — they depend on how
+  many runs shared the machine. At #1168 an interleaved same-load A/B read
+  svendborg/light-motorless 72 → 128 s (PR #1488's sweep comment); gate a
+  budget decision on the A/B, never on the sweep's own contended timings.
   **Post-#295 an arm can outlive vitest's own per-arm timeout.** Six of 11
   arms exceeded `solverTimeoutMs(3_600_000)` at 4464-5086 s on 2026-09-16 —
   under no competing workload, the load being the sweep's own 11 parallel
@@ -1683,6 +1687,7 @@ making design-level decisions; do not silently deviate.
   | v0.41.0 | 2026-09-23 | 60 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 20:08:20Z, five seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `35913837798` (created 20:07:26Z) -> tag `35913947081` (created 20:08:26Z) on `5b9cfaa`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-Ck0O4F5J.js` at ``version:`v0.41.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.42.0 | 2026-09-24 | 24 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 14:20:50Z, three seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `36012084391` (created 14:20:30Z) -> tag `36012136174` (created 14:20:54Z) on `3379f8a`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-TBNYpjtZ.js` at ``version:`v0.42.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.43.0 | 2026-09-24 | 55 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 21:17:29Z, two seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `36060419890` (created 21:16:38Z) -> tag `36060518654` (created 21:17:33Z) on `c1a1659`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `6648358384`, `ref: v0.43.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-C95qiaIC.js` at ``version:`v0.43.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `verified: true, reason: "valid"`. Names no MECHANISM. |
+  | v0.44.0 | 2026-09-25 | 37 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 08:14:55Z, two seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `36111835944` (created 08:14:22Z) -> tag `36111890610` (created 08:14:59Z) on `74ffbc9`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-DqikvvXE.js` at ``version:`v0.44.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `1342be8` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -2253,7 +2258,9 @@ making design-level decisions; do not silently deviate.
   one milestone each APPEND to `docs/spikes/README.md`, so a map treating each
   new doc as disjoint schedules a conflict it never records — measured at PR
   #1201, which came up `mergeable_state: dirty` for exactly that, both index
-  entries being the correct resolution.
+  entries being the correct resolution. A GLOB allowlist hides the same
+  collision: `app/src/routing/*.test.ts` let two v0.44.0 lanes edit one
+  realmask file. Derive every allowlist from the file→PR map.
 - **MAINTAINER RULING 2026-09-17: batch file-disjoint ready PRs into one
   integration PR BY DEFAULT, merge a PR the moment it is green, run reviews
   while CI runs, and turn non-safety prose findings into follow-up issues,
@@ -2263,6 +2270,8 @@ making design-level decisions; do not silently deviate.
   is the fallback for PRs that are not file-disjoint. Measured 2026-09-17 over
   25 merged PRs (#1218–#1279): the last-commit→merge tail (CI re-runs,
   re-syncs, and queue or idle waiting together) was 55% of summed PR lifetime.
+  Batch only members whose OWN `app`+`e2e` are green: #1487 inherited one
+  member's CI-only red and had to be rebuilt without it as #1489.
 - Multiple open PRs: develop in parallel, merge strictly serially — after each
   merge, re-sync the next branch from its base (`git merge origin/develop`, or
   `origin/main` for a hotfix/release PR) and let full CI (~10 min) re-run before
@@ -3483,6 +3492,10 @@ making design-level decisions; do not silently deviate.
   `"[object Blob]"` and failed on CI's Node 22.23.2 with `expected 416 to be 206`.
   Assert the body bytes; `vi.stubGlobal('Blob', NodeBlob)` in
   `basemapArchiveRoute.test.ts` is the fix shape (its comment has the mechanism).
+  Recurred at #1480: jsdom's global `Blob` has no `.stream()`, so seven tests
+  were red on CI and green in three local runs. Reproduce on CI's Node major by
+  running `node_modules/vitest/vitest.mjs run <file>` from `app/` with nvm's
+  Node 22 binary (`npx node@22` is unavailable on this machine).
 - **vitest's DEFAULT reporter suppresses console output from PASSING tests**, so
   a console-spy check run on a green suite is a FALSE NEGATIVE. Measured
   2026-09-04 with a control: a passing test logging a unique marker printed it
@@ -3752,7 +3765,9 @@ making design-level decisions; do not silently deviate.
   does either. Caught only because the reviewer re-derived the claim against the
   CURRENT WORLD STATE rather than against the diff. When the orchestrator mutates
   real state (labels, milestones, deploys, issue state), re-check any in-flight
-  PR prose that DESCRIBES that state.
+  PR prose that DESCRIBES that state. Recurred at the v0.44.0 cut: rolling
+  issues forward mid-sweep falsified two ROADMAP sentences. Roll milestones
+  before the sweep writer drafts.
 - **Rewording a citation needs THREE separate questions, not one**: is it still
   TRUE, is it still SAYING THE SAME THING, and is it still WORTH ITS PLACE. A
   sentence can pass the first and fail the other two — #595's rewrite replaced a
@@ -4446,7 +4461,8 @@ making design-level decisions; do not silently deviate.
   verdict as a prior. Measured at the v0.18.0 docs sweep — the auditor found
   dangling anaphors and a claim contradicted inside its own hunk, while the
   reviewer found an acceptance check UNREACHABLE from inside the runbook;
-  neither could have found the other's.
+  neither could have found the other's. It has no mutating tools, so brief it
+  to write a review JSON that the orchestrator posts.
 - If a session's OWN directives contradict that orchestrate-first mode, NAME the
   conflict in the FIRST response and ask which governs — never silently comply
   with either side. Silently obeying the restriction cost a full docs sweep plus

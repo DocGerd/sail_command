@@ -442,7 +442,9 @@ selected in §1.
       N/E for zero or positive. Type a trailing hemisphere letter into the
       field itself (e.g. "54.8N") and tab out: confirm it now COMMITS to
       the matching signed value (the hint stays "Hemisphere: N") rather
-      than being sanitized away. Then type a sign+letter conflict
+      than being sanitized away. Type a LEADING hemisphere letter into the
+      field instead (e.g. "N 54 48.74") and tab out: confirm it is also
+      accepted (#1482). Then type a sign+letter conflict
       ("-54.8N") or unreadable text ("nope") and tab out: confirm each is
       REJECTED with a visible message ("Couldn't read that as a
       coordinate — kept …") and the field reverts to its last committed
