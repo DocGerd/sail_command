@@ -186,6 +186,8 @@
   // `node:fs`/`node:path`/`node:url` to structurally guard the basemap
   // archive Range->206 route stays registered before precacheAndRoute() —
   // same reason and pattern as startPreviewSwAssertCallSites.test.ts above.
+  // regionPinning.test.ts: imports node:buffer's Blob to stub the jsdom/Node
+  // Blob divergence — same reason as basemapArchiveRoute.test.ts above.
   // regionManifest.test.ts (#1164): imports vite.config.ts (same reason as
   // subPathMeta.test.ts above) and builds real temp-directory fixtures via
   // `node:fs` to exercise the #1164 build-time region-manifest plugin's
@@ -218,6 +220,7 @@
     "src/**/startPreviewSwAssertCallSites.test.ts",
     "src/**/isochrone.frontierCap.test.ts",
     "src/**/basemapArchiveRoute.test.ts",
+    "src/**/regionPinning.test.ts",
     "src/**/windLatticeMaskCoverage.test.ts",
     "src/**/maxBoundsMaskCoverage.test.ts",
     "src/**/relaxationTrade.differential.test.ts",

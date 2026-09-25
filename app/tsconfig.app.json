@@ -141,6 +141,9 @@
   // more — reads app/vite.config.ts's raw source via `node:fs` to
   // structurally guard its private region constants against
   // basemapRegions.ts's exports.
+  // regionPinning.test.ts is the same shape once more — imports node:buffer's
+  // Blob to stub the jsdom/Node Blob divergence, same reason as
+  // basemapArchiveRoute.test.ts above.
   // harborReachability*.test.ts (#1290, #1329) is the same shape once more —
   // reads the real shipped mask.bin/mask.meta.json/harbors.json (and, for
   // #1290, pipeline/verify_mask.py) via `node:fs`, same reason and pattern as
@@ -150,6 +153,7 @@
   "exclude": [
     "src/**/startPreviewSwAssertCallSites.test.ts",
     "src/**/basemapArchiveRoute.test.ts",
+    "src/**/regionPinning.test.ts",
     "src/**/windLatticeMaskCoverage.test.ts",
     "src/**/maxBoundsMaskCoverage.test.ts",
     "src/**/relaxationTrade.differential.test.ts",
