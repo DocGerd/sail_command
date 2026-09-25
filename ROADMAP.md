@@ -13,73 +13,45 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.44.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.45.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
-## Now — v0.44.0
+## Now — v0.45.0
 
-The `v0.44.0` cut (2026-09-25) worked the
-[`v0.44.0` milestone](https://github.com/DocGerd/sail_command/milestones):
-two user-visible fixes (per `CHANGELOG.md`'s own `[0.44.0]` section) —
-#1168's motor-off solve fix, carrying the previous cut's spike
-recommendation into a finer confined-water prune grid for motor-off
-solves ([#1168](https://github.com/DocGerd/sail_command/issues/1168),
-`docs/spikes/1168-motor-off-prune-instability.md`), and a region-pinning
-fix closing a `controllerchange`-mid-await race that could leave pinned
-offline map regions blank until reload, plus a stall watchdog on the
-region archive fetch
-([#1253](https://github.com/DocGerd/sail_command/issues/1253),
-[#1246](https://github.com/DocGerd/sail_command/issues/1246), several
-items on each declined as out of that PR's file allowlist and tracked
-in [#1483](https://github.com/DocGerd/sail_command/issues/1483)) — plus process/tooling and documentation fixes: `pipeline/
-verify_mask.py`'s harbour-snap cell derivation ported to match the app's
-integer cells-per-degree grid
-([#1458](https://github.com/DocGerd/sail_command/issues/1458)); a
-via-coordinate accepted-format re-verification that found the field
-already covers the common GPS/almanac/PDF shapes (a leading hemisphere
-letter, `N 54 48.74`, is still rejected), so no additional
-format hint was added
-([#1400](https://github.com/DocGerd/sail_command/issues/1400)); a
-dev/UAT-only Live-view simulator harness, not shipped to production
-([#143](https://github.com/DocGerd/sail_command/issues/143)); routing
-test-hygiene cleanup across four issues
-([#1444](https://github.com/DocGerd/sail_command/issues/1444),
-[#1320](https://github.com/DocGerd/sail_command/issues/1320),
-[#1327](https://github.com/DocGerd/sail_command/issues/1327),
-[#1451](https://github.com/DocGerd/sail_command/issues/1451)); prose
-corrections in spike docs and test comments
-([#1172](https://github.com/DocGerd/sail_command/issues/1172),
-[#1247](https://github.com/DocGerd/sail_command/issues/1247),
-[#1252](https://github.com/DocGerd/sail_command/issues/1252),
-[#1228](https://github.com/DocGerd/sail_command/issues/1228),
-[#1452](https://github.com/DocGerd/sail_command/issues/1452)); a stale
-routing-comment correction
-([#1434](https://github.com/DocGerd/sail_command/issues/1434)); a
-`DataLayers.tsx` comment correction
-([#1430](https://github.com/DocGerd/sail_command/issues/1430)); and
-sweep-tooling hardening
-([#1358](https://github.com/DocGerd/sail_command/issues/1358),
-[#1364](https://github.com/DocGerd/sail_command/issues/1364)). A proposed
-`artifact-guard` read-only allowlist widening was evaluated and declined,
-with the evidence recorded
-([#448](https://github.com/DocGerd/sail_command/issues/448)).
+The `v0.45.0` cut (2026-09-25) worked the
+[`v0.45.0` milestone](https://github.com/DocGerd/sail_command/milestones):
+one user-visible fix (per `CHANGELOG.md`'s own `[0.45.0]` section) — via-point
+coordinate entry now accepts a leading hemisphere letter (e.g. `N 54 48.74`),
+not just trailing ([#1482](https://github.com/DocGerd/sail_command/issues/1482))
+— plus four process/tooling and test-hygiene fixes: a stale specialPurpose-ruling
+count in a seamark-glyph comment corrected after #295
+([#1485](https://github.com/DocGerd/sail_command/issues/1485)); `forcedKind:
+'sail'` pinned on the finer motor-off prune grid, a residual of #885/#1168
+([#1495](https://github.com/DocGerd/sail_command/issues/1495)); deterministic
+frontier-cap headroom added for the fock rig, the relaxation tiers, and the
+#1136 salvage pass
+([#1496](https://github.com/DocGerd/sail_command/issues/1496)); and the
+remaining residual Minors from PR #1245's #295 coverage-extension review
+([#1255](https://github.com/DocGerd/sail_command/issues/1255)). A duplicate
+of the already-shipped #1135 chain was closed and removed from the milestone
+([#1464](https://github.com/DocGerd/sail_command/issues/1464)). Every issue
+in the milestone shipped, so nothing rolled forward from `v0.45.0` itself;
+three real-tablet checks moved from `v0.44.0`'s carry-forward straight into
+`v0.46.0` instead
+([#1281](https://github.com/DocGerd/sail_command/issues/1281),
+[#1413](https://github.com/DocGerd/sail_command/issues/1413),
+[#1490](https://github.com/DocGerd/sail_command/issues/1490)).
 
-Three issues were open at the cut and rolled forward into the `v0.45.0` milestone:
-measuring depth-overlay canvas memory on a real tablet
-([#1281](https://github.com/DocGerd/sail_command/issues/1281)) and the
-narrow-layout MapLibre canvas paint gap under the top-left map chrome
-([#1413](https://github.com/DocGerd/sail_command/issues/1413)), both
-waiting on a real-tablet check, plus the residual Minors from PR #1245's
-#295 coverage-extension review ([#1255](https://github.com/DocGerd/sail_command/issues/1255)) — unrelated to region
-pinning; that PR's own declined items are tracked separately in
-[#1483](https://github.com/DocGerd/sail_command/issues/1483) (Backlog).
+## Next — v0.46.0
 
-## Next — v0.45.0
-
-The [`v0.45.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-holds the three carried-forward issues named above and nothing else at
-this cut. The milestone page is the only authoritative view, check it
-directly rather than this file.
+The [`v0.46.0` milestone](https://github.com/DocGerd/sail_command/milestones)
+carries the three real-tablet checks named above plus region-pinning's
+declined residual ([#1483](https://github.com/DocGerd/sail_command/issues/1483))
+and routing-sweep follow-ups
+([#1360](https://github.com/DocGerd/sail_command/issues/1360),
+[#1350](https://github.com/DocGerd/sail_command/issues/1350),
+[#1334](https://github.com/DocGerd/sail_command/issues/1334)). The milestone
+page is the only authoritative view, check it directly rather than this file.
 
 ## Themes for the next year
 
