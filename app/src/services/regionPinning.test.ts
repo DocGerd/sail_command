@@ -1,4 +1,5 @@
 import 'fake-indexeddb/auto';
+import { Blob as NodeBlob } from 'node:buffer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   REGION_FETCH_STALL_MS,
@@ -247,6 +248,10 @@ function stubEnv(
 beforeEach(async () => {
   await __resetDbForTests();
   resetCorridorAreaWarning();
+  // jsdom's Blob differs from Node's native Blob (basemapArchiveRoute.test.ts
+  // has the precedent); readBodyWithStallWatchdog's `new Blob(chunks)` needs
+  // the native one. Per-test (not beforeAll): afterEach unstubs every test.
+  vi.stubGlobal('Blob', NodeBlob);
 });
 
 afterEach(() => {
