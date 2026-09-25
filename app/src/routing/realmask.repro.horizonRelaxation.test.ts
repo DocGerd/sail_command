@@ -42,9 +42,11 @@ function plan(origin: LatLon, tws: number, hours = 48) {
 describe('#1258: a requested-gate horizon failure opens #53 relaxation (real mask)', () => {
   // #1303: this row pinned #1258's relaxed-tier route until the confined-water
   // grid let the genoa reach Troense inside the 48 h horizon at the requested
-  // gate. It is now a drift sentinel for that change: with the rule off
-  // (CONFINED_PRUNE_DIV = 1) it reds on `expected 'horizon-exceeded' to be
-  // null`, which is the BASE behaviour this row used to assert.
+  // gate. It is now a drift sentinel for that change: measured when
+  // CONFINED_PRUNE_DIV still governed motor-off solves, setting it to 1 redded
+  // this row on `expected 'horizon-exceeded' to be null`, the BASE behaviour
+  // this row used to assert. Since #1168 the motor-off lever is
+  // MOTOR_OFF_CONFINED_PRUNE_DIV.
   it(
     '#1303: Flensburg harbour snap, TWS 3: genoa routes at the requested gate without relaxing',
     { timeout: solverTimeoutMs(600_000) },
@@ -75,18 +77,20 @@ describe('#1258: a requested-gate horizon failure opens #53 relaxation (real mas
 
   // Control: a 24 h grid is unroutable at every gate, and the widened #1258
   // gate still runs tiers 3-4 on it.
-  // #1303 re-pin: the reported label moved from 'beyond-horizon' to
-  // 'unreachable'. Under the finer grid the relaxed tiers exhaust the mask
-  // rather than the horizon, so `relaxedPlanCause` folds a mask-level verdict
-  // — a LABEL change on an already-failing plan, not a routing one. With the
-  // rule off this row reds with `Received: "beyond-horizon"`. What the row
-  // still pins is that relaxation RAN and the plan stayed an error.
+  // The reported label is a property of the prune grid, not of this row's
+  // claim. It folds genoa's requested-gate tier-2 cause with the tier-4
+  // causes (`relaxedPlanCause`; `combineFailureCause` prefers
+  // 'horizon-exceeded'): at #1303's divisor 2 all of those were
+  // 'mask-blocked' ('unreachable'); at #1168's motor-off divisor 3 genoa's
+  // tier-2 and tier-4 solves reach the horizon ('beyond-horizon'). The cause
+  // also gates #1136's pass 2, admitted only on 'mask-blocked'. What the row
+  // pins is that relaxation RAN and the plan stayed an error.
   it(
     'a 24 h forecast still fails after trying the relaxed gate',
     { timeout: solverTimeoutMs(600_000) },
     () => {
       const { result, record } = plan(FLENSBURG, 3, 24);
-      expect(result).toEqual({ status: 'error', reason: 'unreachable' });
+      expect(result).toEqual({ status: 'error', reason: 'beyond-horizon' });
       expect(record.tiers.some((t) => t.tier === 3)).toBe(true);
       // #1258's WIDENED arm is what opens relaxation here: the tier-1 causes
       // measured ['mask-blocked', 'horizon-exceeded'] fold to horizon-exceeded
