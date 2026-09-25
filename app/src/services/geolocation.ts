@@ -1,4 +1,5 @@
 import type { LatLon } from '../types';
+import { isLiveSimRequested, subscribeLiveSim } from '../dev/liveSimulator';
 
 export interface GpsFix {
   point: LatLon;
@@ -25,11 +26,30 @@ function mapErrorKind(err: GeolocationPositionError): GpsErrorKind {
  * than null for a stationary fix — see the inline comment below), and
  * collapses the DOM's three-way error code into the two kinds the UI
  * distinguishes. Returns an unsubscribe function.
+ *
+ * #143: this is the ONE export both GPS consumers (LiveView.tsx's prop
+ * default and useOwnshipGps.ts's param default) fall back to, so gating the
+ * simulator substitution HERE — rather than in either consumer — is what
+ * drives both seams from one source without a new prop on either (spike
+ * docs/spikes/749-live-view-demo-mode.md §7.2 precondition 1). The leading
+ * `if` is a fold-exact STATEMENT, not a wrapped second function: splitting
+ * the real logic into its own function left a small permanent residue in
+ * the production entry chunk even after full dead-code elimination of the
+ * simulator (measured — see the PR body), because the wrapper call itself
+ * is a structural change. An early-return `if` whose condition is the same
+ * build-time-literal `import.meta.env.DEV || __SC_UAT__` folds to nothing
+ * at all in a production build and dead-code-eliminates
+ * dev/liveSimulator.ts entirely (#96 byte-identity; mirrors App.tsx's
+ * `__SC_UAT__ ?` pattern).
  */
 export function watchPosition(
   onFix: (fix: GpsFix) => void,
   onError: (kind: GpsErrorKind) => void,
 ): () => void {
+  if ((import.meta.env.DEV || __SC_UAT__) && isLiveSimRequested()) {
+    return subscribeLiveSim(onFix, onError);
+  }
+
   if (!('geolocation' in navigator) || !navigator.geolocation) {
     onError('unavailable');
     return () => {};
