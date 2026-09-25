@@ -1682,6 +1682,7 @@ making design-level decisions; do not silently deviate.
   | v0.40.0 | 2026-09-23 | 19203 s | `success`, `steps=6` (MEASURED before the tag push, and the failure CALLED IN ADVANCE from it) | **`smoke-probe` FAILED** | merge-push `35798660532` -> tag `35820738607` on `6aa9019`. Tag run's `build` and `deploy` succeeded; its prod entry chunk `assets/index-BuOWjfH-.js` 404'd on all 10 attempts while both basemap Range probes passed on attempt 1. Back-merge `35822017063` (`aa8f5fb`) republished that same chunk, 200 on attempt 1; production then served ``version:`v0.40.0` `` with ZERO suffixed matches. Tag object `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.41.0 | 2026-09-23 | 60 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 20:08:20Z, five seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `35913837798` (created 20:07:26Z) -> tag `35913947081` (created 20:08:26Z) on `5b9cfaa`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-Ck0O4F5J.js` at ``version:`v0.41.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.42.0 | 2026-09-24 | 24 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 14:20:50Z, three seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `36012084391` (created 14:20:30Z) -> tag `36012136174` (created 14:20:54Z) on `3379f8a`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-TBNYpjtZ.js` at ``version:`v0.42.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `verified: true, reason: "valid"`. Names no MECHANISM. |
+  | v0.43.0 | 2026-09-24 | 55 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 21:17:29Z, two seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `36060419890` (created 21:16:38Z) -> tag `36060518654` (created 21:17:33Z) on `c1a1659`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `6648358384`, `ref: v0.43.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-C95qiaIC.js` at ``version:`v0.43.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `verified: true, reason: "valid"`. Names no MECHANISM. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -3086,6 +3087,11 @@ making design-level decisions; do not silently deviate.
   paste it UNEDITED, then SUBSTRING-MATCH it against the file on disk and
   report the match per block.** Verifying the claim at source and then
   rewriting the sentence is what keeps producing a fresh variant.
+  **A substring match proves PRESENCE, not SELECTION**: at PR #1465 wave 1,
+  three replies read "Adopted verbatim at e828ea8; substring-matched on disk."
+  while each committed line was a fragment of the review's EXPLANATION, not its
+  single-line inline-code replacement. Also print the edited lines in context
+  and check the sentence reads complete.
 - **Supplied replacement text goes STALE when the passage it patches moves — a
   precondition the adopt-verbatim rule above does not state.** Measured
   2026-09-02 on PR #852: a reviewer's fenced block targeted the #803 bullet as
@@ -4137,7 +4143,9 @@ making design-level decisions; do not silently deviate.
   of land or sub-gate water, so the mechanism is unchanged in open water and at
   the coarse/fine boundary. Its own comment records the measured refutation of
   any monotonicity claim: the fine node set is NOT a superset, capped or not
-  (#1333).
+  (#1333). The motor-off instance is measured in
+  `docs/spikes/1168-motor-off-prune-instability.md` (#1168): a TWS sweep at
+  0.1 kn steps found rig dropouts between the points a 0.2 kn sweep sampled.
 - **The forecast horizon is the FIXED end of the stored grid** (`wind.ts`
   `horizonMs()`), so a later departure leaves LESS forecast — never advise
   it; `app/src/i18n/beyondHorizonRemedyCopy.test.ts` guards only the two
@@ -4886,7 +4894,12 @@ making design-level decisions; do not silently deviate.
   deviation under an explicit "Deviations from the brief" heading, the
   orchestrator verified it against the three tags, and SKILL.md itself was
   corrected in `33f0f8f`. That is the loop working, and it is why this bullet
-  asks for the pushback rather than merely tolerating it.
+  asks for the pushback rather than merely tolerating it. Read SEVERAL tags,
+  never only the last: a later sweep rolls an earlier one's drift forward, so
+  recent tags agree on it. The v0.41.0 sweep (`9024323`) left
+  `CONTRIBUTING.md`'s two milestone bullets one release behind, the v0.42.0
+  sweep rolled from that stale text, and at v0.43.0 a reviewer passed it by
+  matching `v0.42.0`; `v0.38.0`–`v0.40.0` showed the real shape (PR #1467).
 - Every self-review here posts as `COMMENTED`, not `APPROVED` — GitHub rejects
   approving your own PR and the `gh` token owns them all. That is expected, not
   a bypass: `protect-main` requires `app` + `e2e` and RESOLVED THREADS, never a

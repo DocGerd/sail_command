@@ -202,7 +202,9 @@ function trackChild(child) {
 }
 
 function installSignalForwarding() {
-  const forward = (signal) => () => {
+  // #1364: the shell's own 128+signum convention (130 for SIGINT, 143 for
+  // SIGTERM) — SIGTERM's 143 was previously hardcoded for BOTH signals.
+  const forward = (signal, exitCode) => () => {
     for (const child of LIVE_CHILDREN) {
       try {
         process.kill(-child.pid, signal);
@@ -210,10 +212,10 @@ function installSignalForwarding() {
         child.kill(signal);
       }
     }
-    process.exit(143);
+    process.exit(exitCode);
   };
-  process.on('SIGINT', forward('SIGINT'));
-  process.on('SIGTERM', forward('SIGTERM'));
+  process.on('SIGINT', forward('SIGINT', 130));
+  process.on('SIGTERM', forward('SIGTERM', 143));
 }
 
 function runShard(spec) {

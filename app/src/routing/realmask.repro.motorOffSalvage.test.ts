@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { planRoute, planRouteWithRecord } from './planRoute';
+import * as isochroneModule from './isochrone';
 import { solve } from './isochrone';
 import { Polar } from '../lib/polar';
 import { WindField } from '../lib/wind';
@@ -7,7 +8,7 @@ import { uniformGate } from '../lib/depthGate';
 import { uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS, defaultBoatSnapshot } from '../types';
 import type { LatLon, PlanRequest, PlanResult, PolarTable, Settings } from '../types';
-import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
+import { SOLVER_TEST_TIMEOUT_MS, solverTimeoutMs } from '../test/timeouts';
 import {
   mask,
   polarGenoa,
@@ -147,16 +148,27 @@ describe('#1136 planRoute pass 2 (real mask)', () => {
   // #1303 re-pin. At BASE these two rows carried the #1166 shape — pass 1 ok
   // with ONE sail failed — and pinned the routed sail's ETA
   // (1784159977571.5435 / 1784122896754.3152, both reproducing with the rule
-  // off). Under the confined-water grid BOTH sails route at both TWS, so that
-  // fixture no longer produces the #1166 shape and no real-mask fixture in
-  // this file does. `record.cause === null` pins a PRECONDITION of
-  // non-admission — that pass 1 did not fail — not non-admission itself:
-  // deleting clause 2 from `salvagePassAdmitted` leaves this row green (PR
+  // off). Under the confined-water grid BOTH sails route at both TWS, so THIS
+  // fixture no longer produces the #1166 shape, and since #1168 no probed
+  // Bagenkop input does (see the #1327 rows below). `record.cause === null`
+  // pins a PRECONDITION of non-admission — that pass 1 did not fail — not
+  // non-admission itself: deleting clause 2 from `salvagePassAdmitted`
+  // leaves this row green (PR
   // #1322 review). Clause 2 is pinned directly by
   // `planRoute.motorOffSalvage.test.ts`'s truth table.
+  //
+  // #1327: neither of these two ROWS produces the #1166 shape post-#1303.
+  // The `solveSpy` call-count check here gives THIS row's non-admission
+  // real-mask teeth on `solve()` call count directly — but, since
+  // `pass1.status === 'error'` (clause 1) already fails on an `ok` plan
+  // regardless of clause 2's value, it exercises clause 1, not clause 2
+  // independently; clause 2 stays unit-covered only (PR #1322 review's
+  // solve-spy suggestion, folded in here to the extent this fixture can
+  // reach it).
   it.each([{ tws: 3 }, { tws: 8 }])(
     'TWS $tws: an ok plan is left as it was — pass 2 is not admitted',
     ({ tws }) => {
+      const solveSpy = vi.spyOn(isochroneModule, 'solve');
       const { result: res, record } = planRouteWithRecord(
         bagenkopRequest(),
         uniformWindGrid(tws, 0),
@@ -166,6 +178,42 @@ describe('#1136 planRoute pass 2 (real mask)', () => {
       expect(res.status).toBe('ok');
       if (res.status !== 'ok') return;
       expect(res.sails.every((s) => s.result !== null)).toBe(true);
+      // Pass 1 only: one solve per sail, no salvage replay.
+      expect(solveSpy).toHaveBeenCalledTimes(2);
+      solveSpy.mockRestore();
+    },
+  );
+
+  // #1327: TWS 3.5 was this file's real-mask #1166 one-sail-failed fixture
+  // (genoa unreachable, fock routed) until #1168's motor-off divisor 3 let
+  // genoa route there; no other probed Bagenkop TWS reproduces the shape
+  // (#1168's PR). The row now pins that both rigs route, with the same
+  // containment precondition as the rows above.
+  it('#1327 TWS 3.5: both rigs route since #1168', () => {
+    const { result: res, record } = planRouteWithRecord(
+      bagenkopRequest(),
+      uniformWindGrid(3.5, 0),
+      SALONA_DEPS,
+    );
+    expect(res.status).toBe('ok');
+    if (res.status !== 'ok') return;
+    expect(res.sails.every((s) => s.result !== null)).toBe(true);
+    expect(record.cause).toBeNull();
+  });
+
+  // #1327: bounded TWS sweep for a real-mask #1166 shape. One row per TWS
+  // point (a stall names its own point rather than reporting a generic
+  // timeout on the whole sweep). Fails CLOSED on a find.
+  it.each([{ tws: 2.2 }, { tws: 2.6 }, { tws: 5 }, { tws: 7 }, { tws: 10 }])(
+    '#1327 TWS $tws: no real-mask one-sail-failed shape',
+    { timeout: solverTimeoutMs(300_000) },
+    ({ tws }) => {
+      const res = planBagenkop(tws);
+      const hit =
+        res.status === 'ok' && res.sails.filter((s) => s.result === null).length === 1
+          ? `TWS ${tws}: ${res.sails.map((s) => `${s.sailId}=${s.result === null ? s.reason : 'ok'}`).join(', ')}`
+          : null;
+      expect(hit).toBeNull();
     },
   );
 });

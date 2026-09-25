@@ -96,9 +96,10 @@ export class RoutingError extends Error {
 
 // #432: the plan's WALL-CLOCK BUDGET, shipped to the worker in every plan
 // request and turned into a shared deadline there (routing/protocol.ts) that
-// every solve() of that plan checks per ring. Defined HERE, on the client,
-// and sent over the wire rather than duplicated worker-side, so there is
-// exactly one definition and no drift-guard test is needed to keep two in
+// every solve() of that plan checks at ring entry and every
+// DEADLINE_CHECK_NODES frontier nodes (isochrone.ts). Defined HERE, on the
+// client, and sent over the wire rather than duplicated worker-side, so there
+// is exactly one definition and no drift-guard test is needed to keep two in
 // step.
 //
 // The VALUE was originally the pre-#432 client deadline (120 s): #432 did
@@ -141,8 +142,10 @@ export const PLAN_BUDGET_MS = 360_000;
 // How much longer the CLIENT waits than the budget it handed the worker. The
 // solver must always win this race: it is the side that produces the honest,
 // specific "budget exceeded" answer, while this deadline can only ever say
-// "no reply". Sized to cover, in order: the worker's abort granularity of one
-// isochrone ring — worst ring MEASURED at 1045 ms (author, 132 rings) and
+// "no reply". Sized at #432, when the worker's abort granularity was one
+// isochrone ring (DEADLINE_CHECK_NODES frontier nodes since #1280; figures
+// from PR #453's body and review), to cover, in order: that granularity —
+// worst ring MEASURED at 1045 ms (author, 132 rings) and
 // 1270 ms (reviewer, 144 rings) on the two machines above, so these are the
 // fastest observations anyone has taken and a LOWER BOUND on what a slow
 // device does; the 15 s margin is chosen to stay comfortable several
@@ -163,26 +166,23 @@ export const PLAN_TIMEOUT_GRACE_MS = 15_000;
 // have answered — observed at exactly budget+grace (255 s) with Genoa done
 // at 109 s and Fock still solving. armLiveness() below re-arms the liveness
 // timer to PLAN_TIMEOUT_GRACE_MS on every progress/probe message the worker
-// posts (isochrone.ts posts one `progress` per RING — the same granularity
-// its own deadline check runs at — so a normally-progressing solve re-arms
-// far more often than once per this window), so the client only times out on
-// a worker that has gone SILENT for a full grace window, not merely slow.
+// posts (isochrone.ts posts one `progress` per RING, so a
+// normally-progressing solve re-arms far more often than once per this
+// window), so the client only times out on a worker that has gone SILENT for
+// a full grace window, not merely slow.
 //
-// This alone does not close the single-super-long-ring case (no progress
-// posts until that ring finishes) — pairing a mid-ring deadline check into
-// isochrone.ts is tracked separately, out of scope here.
+// A single super-long ring still posts no progress until it finishes; the
+// worker's own mid-ring deadline check (isochrone.ts, every
+// DEADLINE_CHECK_NODES nodes, #1280 part B) is what ends it with the typed
+// budget failure.
 //
-// HARD_CAP_EXTRA bounds the other direction: a worker that posts progress
-// forever (whether a bug, or simply the case the #1280 comment scopes OUT —
-// one ring so long it straddles the worker's own PLAN_BUDGET_MS deadline
-// check, which only runs at ring ENTRY) must still not hold the client open
-// indefinitely. Four grace windows (60 s) gives that one straddling ring
-// several multiples of the existing per-ring margin to finish and post its
-// own honest budget-exhausted answer, rather than a margin sized to any
-// measured ring duration under contention (no such figure is established —
-// see the mid-ring check tracked separately for that case). The total extra
-// wait stays a small, fixed addition (375 s -> 435 s at the default
-// timeout) rather than unbounded.
+// HARD_CAP_EXTRA bounds the other direction: a worker that keeps posting
+// progress past the soft deadline must still not hold the client open
+// indefinitely. Four grace windows (60 s) give the worker several multiples
+// of the existing margin to post its own honest budget-exhausted answer,
+// rather than a margin sized to any measured ring duration under contention
+// (no such figure is established). The total extra wait stays a small, fixed
+// addition rather than unbounded.
 export const PLAN_TIMEOUT_HARD_CAP_EXTRA_MS = 4 * PLAN_TIMEOUT_GRACE_MS;
 
 // Now purely a LIVENESS backstop, not the routing wall it used to be: with

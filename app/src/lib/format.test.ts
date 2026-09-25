@@ -50,6 +50,7 @@ import {
   parseHemisphereCoord,
   resolveHemisphereCoordCommit,
 } from './format';
+import type { CoordAxis } from './format';
 
 describe('formatNm', () => {
   it('formats with one decimal and unit suffix, English locale', () => {
@@ -547,6 +548,46 @@ describe('parseHemisphereCoord', () => {
     it('rejects an overflowing minutes or seconds position (regex-length-capped, not the finiteness guard)', () => {
       expect(parseHemisphereCoord(`54 ${'9'.repeat(400)}.74`, 'lat')).toBeNull();
       expect(parseHemisphereCoord(`54 48 ${'9'.repeat(400)}`, 'lat')).toBeNull();
+    });
+  });
+
+  // #1400: consolidated accepted-format table. Every shape here already has
+  // an individual pin elsewhere in this describe block, EXCEPT the five rows
+  // marked below, which close gaps the individual pins left open (a negative
+  // DM/DMS magnitude, a comma fraction in SECONDS rather than minutes, a
+  // U+00A0 separator, a lon-axis DMS carrying a hemisphere letter, and
+  // trimmed surrounding whitespace on a non-empty draft).
+  describe('accepted-format table (#1400)', () => {
+    it.each<[string, CoordAxis, number]>([
+      ['54.8', 'lat', 54.8],
+      ['54.8N', 'lat', 54.8],
+      ['54.8S', 'lat', -54.8],
+      ['54.8°', 'lat', 54.8],
+      ['54.8° N', 'lat', 54.8],
+      ['54,8', 'lat', 54.8],
+      ["54° 48.74'", 'lat', 54.812333333],
+      ["9° 25.5' E", 'lon', 9.425],
+      ['54° 48\' 44"', 'lat', 54.812222222],
+      ['54° 48′ 44″', 'lat', 54.812222222],
+      // gap: DMS with a hemisphere letter on the LON axis — every prior DMS
+      // pin (lines 437, 441) exercises 'lat' only.
+      ['9° 25\' 30" E', 'lon', 9.425],
+      // gap: a negative DM/DMS magnitude — the only prior negative-sign DM
+      // pin ('-0 0') is zero either way, so it cannot show the sign was
+      // actually APPLIED to a nonzero magnitude.
+      ['-54 48.74', 'lat', -54.812333333],
+      // gap: a decimal SECONDS fraction using the comma separator — only
+      // the minutes position's comma form is pinned (line 445).
+      ['54° 48\' 44,4"', 'lat', 54.812333333],
+      // gap: U+00A0 (a no-break space, as a marine GPS or a PDF paste may
+      // render) between DM components — the parser's own comment asserts
+      // ECMAScript `\s` already covers it, but nothing exercised it.
+      ['54\u00a048.74', 'lat', 54.812333333],
+      // gap: surrounding whitespace on a non-empty draft is trimmed, not
+      // just rejected when the draft is ALL whitespace (line 386).
+      ['  54.8  ', 'lat', 54.8],
+    ])('%s (%s) -> %f', (draft, axis, expected) => {
+      expect(parseHemisphereCoord(draft, axis)).toBeCloseTo(expected, 6);
     });
   });
 });

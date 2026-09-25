@@ -80,7 +80,7 @@ describe('#930 R3: P3 disc-vs-global relaxation trade (shipped findRelaxedGate, 
     // not move with the constant it guards. Measured: at 1000 m Marstal's
     // pinch falls outside its disc, so a 2.1 m floor loses the route while a
     // 1.9 m floor relaxes further, to a 1.9 m detour, against global's 2.3 m.
-    // The different-depth half needs a catalogue boat with a 1.9 m floor.
+    // The different-depth half needs a catalogue boat with a floor at or below 1.9 m.
     const TIGHT_RADIUS_M = 1000;
     const rows = RELAXATION_TRADE_DEPTH_CASES.flatMap((c) =>
       measureRelaxationTrade(

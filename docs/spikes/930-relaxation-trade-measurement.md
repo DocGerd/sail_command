@@ -3,10 +3,11 @@
 ## Recommendation
 
 Keep `APPROACH_RADIUS_M = 1852`. On every Marstal- and Flensburg-origin
-harbour pair, at each catalogue boat's default gate and floor, the shipped
-per-disc search returned the same `usedDepthM` as the global search: no deeper
-relaxation, no lost route. Keep the per-pair equality assertion as the tripwire
-for a mask, harbour or boat change that makes the trade bite on that population.
+harbour pair, and the `[X, Marstal]` mirror, at each catalogue boat's default
+gate and floor, the shipped per-disc search returned the same `usedDepthM` as
+the global search: no deeper relaxation, no lost route. Keep the per-pair
+equality assertion as the tripwire for a mask, harbour or boat change that
+makes the trade bite on that population.
 
 Harness: `app/src/routing/relaxationTrade.differential.test.ts`. It calls the
 SHIPPED `findRelaxedGate` twice per pair on the real `mask.bin`, changing only
@@ -55,7 +56,7 @@ Origin populations: 56 discriminating of 128 pair-runs (72 equal by
 construction). Mirror: 54 discriminating of 64.
 
 Asserted: the "pairs equal" column and at least one relevant pair relaxing;
-the other cells, "no snap failed" and the next line are `--reporter=verbose` output.
+the other cells, "no snap failed" and the next sentence are `--reporter=verbose` output.
 The 5 `KNOWN_DISCONNECTED` harbours are null under both radii in every case.
 Every relaxing pair in this population involves Marstal. Without the snap,
 Flensburg→Augustenborg reads as relaxing at 2.8 m: its raw snap sits at 2.8 m,
@@ -84,7 +85,7 @@ the boat catalogue, so 2.1 m floor only): 0 `usedDepthM` worse, 0 ok→error.
 | mutation | BASE | HEAD |
 |---|---|---|
 | `APPROACH_RADIUS_M` 1852→1000 (`depthGate.ts`) | differential GREEN; only the old control (`moved + newlyBlocked > 0`) reds | 6 of 6 equality rows RED, incl. `[elan-444-piranja] origin marstal aeroeskoebing: local usedDepthM 1.9 != global 2.3` |
-| drop `cos(lat)` from `colRadius` | 3/3 green | 10/10 green: the equality cliff moves from 1060 m (unequal at 1059 m) to 1408 m, still below 1852 m (bisection in the [PR #1222 mechanism review](https://github.com/DocGerd/sail_command/pull/1222#pullrequestreview-5201691781)) |
+| drop `cos(lat)` from `colRadius` | 3/3 green | 10/10 green: on Marstal→Flensburg/Ærøskøbing/Faaborg, the equality cliff moves from 1060 m (unequal at 1059 m) to 1408 m, still below 1852 m (bisection in the [PR #1222 mechanism review](https://github.com/DocGerd/sail_command/pull/1222#pullrequestreview-5201691781)) |
 | tripwire made tautological (`toBe(r.localUsedDepthM)`) | n/a | both controls RED, 8 others green |
 
 The first row's BASE column is the defect this change fixes: the trade biting on every
@@ -94,14 +95,14 @@ relaxing pair left the differential assertion green.
 
 - A future mask, harbour or boat could create a pinch outside every disc. The
   equality assertion reds if that pinch changes `usedDepthM` on a pair of this
-  population; before this change the harness could not (its assertions were
-  structural only).
+  population; before this change the harness could not (its per-pair
+  assertions were structural only).
 - Phase-2 ascent order is measured only on this population: the `[X, Marstal]`
   mirror is asserted equal above; other orders are not.
 
 ## Considered and rejected
 
-- **Route (b), a proof from the code:** not available. The code yields only
+- **A proof from the code alone:** not available. The code yields only
   local <= global and "local relaxes => global relaxes"; the synthetic
   control is a counterexample to equality.
 - **Plan-level differential via `vi.mock` of `depthGate`:** rejected, it
