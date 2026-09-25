@@ -297,6 +297,11 @@ pipeline/.venv/bin/python pipeline/verify_mask.py    # sanity probes: must print
 `verify_mask.py` checks known water/land points plus every harbor snap point
 (≥ 2.2 m). Both must pass before committing a rebuilt `mask.bin`.
 
+`build_mask.py`'s `DTM_PATH` carries the bbox in its filename, so widening the
+mask bbox orphans the previously-cached raster in `pipeline/data-src/` under
+its old name — the next build re-downloads under the new one rather than
+reusing the stale extent (#1255).
+
 ### `basemap.pmtiles.png` — regional basemap
 
 **Hook-protected binary — regenerate, never hand-edit.**
