@@ -193,13 +193,33 @@ const DECIMAL_DEGREES_RE = /^(-?\d+(?:[.,]\d+)?)\s*°?\s*([A-Za-z])?$/;
 const DM_DMS_RE =
   /^(-?\d+)\s*°?\s*(\d{1,2})(?:[.,](\d+))?\s*['′]?\s*(?:(\d{1,2})(?:[.,](\d+))?\s*["″]?\s*)?([A-Za-z])?$/;
 
+// #1482: a marine GPS or almanac commonly writes the hemisphere letter
+// BEFORE the number too ("N 54° 48.74'"), not only after. Stripped off
+// before either shape regex runs, since both regexes anchor their own
+// numeric-or-sign start (`-?\d+`) and would simply fail to match with a
+// leading letter still attached. Only the FIRST character is inspected —
+// a numeric/sign draft never starts with a letter, so this cannot
+// misfire on a plain "54.8".
+const LEADING_HEMISPHERE_LETTER_RE = /^([A-Za-z])\s*(.*)$/;
+
+function splitLeadingHemisphereLetter(trimmed: string): {
+  letter: string | undefined;
+  rest: string;
+} {
+  const match = LEADING_HEMISPHERE_LETTER_RE.exec(trimmed);
+  if (match === null) return { letter: undefined, rest: trimmed };
+  return { letter: match[1], rest: match[2] as string };
+}
+
 /**
- * #886 residual 1 (extended by #1005): parses a lat/lon TEXT entry that may
- * carry a trailing hemisphere letter (N/S for `axis: 'lat'`, E/W for `axis:
- * 'lon'`) — the convention `formatLatLon` above already RENDERS
- * ("54.789°N"), but which no input in this app previously accepted. Charts
- * and almanacs write the hemisphere letter; a captain transcribing one back
- * needs to type it in, not just read it.
+ * #886 residual 1 (extended by #1005, #1482): parses a lat/lon TEXT entry
+ * that may carry a hemisphere letter (N/S for `axis: 'lat'`, E/W for `axis:
+ * 'lon'`) either LEADING or TRAILING the number — the convention
+ * `formatLatLon` above already RENDERS the trailing form ("54.789°N"), but
+ * a marine GPS or almanac just as commonly writes it leading ("N 54.789°").
+ * A draft carrying BOTH is rejected rather than picking one, the same
+ * "don't guess a self-contradictory convention" policy `applyHemisphereSign`
+ * already applies to a sign+letter conflict.
  *
  * Accepts THREE input shapes, tried in order: plain decimal degrees
  * (`DECIMAL_DEGREES_RE`); degrees + decimal minutes ("54° 48.74'"); and
@@ -215,23 +235,29 @@ export function parseHemisphereCoord(draft: string, axis: CoordAxis): number | n
   const trimmed = draft.trim();
   if (trimmed === '') return null;
 
-  const decimalMatch = DECIMAL_DEGREES_RE.exec(trimmed);
+  const { letter: leadingLetterRaw, rest } = splitLeadingHemisphereLetter(trimmed);
+
+  const decimalMatch = DECIMAL_DEGREES_RE.exec(rest);
   if (decimalMatch) {
     const numPart = (decimalMatch[1] as string).replace(',', '.');
-    const letterRaw = decimalMatch[2];
+    const trailingLetterRaw = decimalMatch[2];
+    if (leadingLetterRaw !== undefined && trailingLetterRaw !== undefined) return null;
+    const letterRaw = leadingLetterRaw ?? trailingLetterRaw;
     const magnitude = finiteMagnitudeOrNull(Number(numPart.replace('-', '')));
     if (magnitude === null) return null;
     return applyHemisphereSign(magnitude, numPart.startsWith('-'), letterRaw, axis);
   }
 
-  const dmsMatch = DM_DMS_RE.exec(trimmed);
+  const dmsMatch = DM_DMS_RE.exec(rest);
   if (dmsMatch) {
     const degPart = dmsMatch[1] as string;
     const minInt = Number(dmsMatch[2]);
     const minFrac = dmsMatch[3];
     const secInt = dmsMatch[4];
     const secFrac = dmsMatch[5];
-    const letterRaw = dmsMatch[6];
+    const trailingLetterRaw = dmsMatch[6];
+    if (leadingLetterRaw !== undefined && trailingLetterRaw !== undefined) return null;
+    const letterRaw = leadingLetterRaw ?? trailingLetterRaw;
 
     if (minFrac !== undefined && secInt !== undefined) return null;
     if (minInt >= 60) return null;

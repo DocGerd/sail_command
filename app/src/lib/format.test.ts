@@ -551,6 +551,64 @@ describe('parseHemisphereCoord', () => {
     });
   });
 
+  // #1482: a hemisphere letter BEFORE the number, mirroring the existing
+  // trailing form exactly (same letter set, same case-insensitivity, same
+  // axis-mismatch/sign-conflict rejections).
+  describe('leading hemisphere letter (#1482)', () => {
+    it('accepts a leading letter on plain decimal degrees', () => {
+      expect(parseHemisphereCoord('N54.8', 'lat')).toBe(54.8);
+      expect(parseHemisphereCoord('S54.8', 'lat')).toBe(-54.8);
+      expect(parseHemisphereCoord('E10.1', 'lon')).toBe(10.1);
+      expect(parseHemisphereCoord('W10.1', 'lon')).toBe(-10.1);
+    });
+
+    it('accepts a leading letter with a space, matching the issue example', () => {
+      expect(parseHemisphereCoord('N 54.8', 'lat')).toBe(54.8);
+    });
+
+    it('accepts a leading letter with no space', () => {
+      expect(parseHemisphereCoord('N54.8', 'lat')).toBe(54.8);
+    });
+
+    it('is case-insensitive on a leading letter', () => {
+      expect(parseHemisphereCoord('s 54.8', 'lat')).toBe(-54.8);
+    });
+
+    it('accepts a leading letter on degrees + decimal minutes', () => {
+      expect(parseHemisphereCoord("N 54° 48.74'", 'lat')).toBeCloseTo(54.812333333, 8);
+      expect(parseHemisphereCoord("E 9° 25.5'", 'lon')).toBeCloseTo(9.425, 9);
+    });
+
+    it('accepts a leading letter on degrees + minutes + seconds', () => {
+      expect(parseHemisphereCoord('N 54° 48\' 44.4"', 'lat')).toBeCloseTo(54.812333333, 8);
+    });
+
+    // The issue's own example, taken from the title verbatim.
+    it('accepts the issue-title example "N 54 48.74"', () => {
+      expect(parseHemisphereCoord('N 54 48.74', 'lat')).toBeCloseTo(54.812333333, 8);
+    });
+
+    // MUTATION CHECK (non-vacuity): with the leading-letter <> trailing-letter
+    // conflict guard removed, this row returns whichever branch's `??`
+    // resolves first (the leading letter) instead of `null` — see the
+    // report for the measured red/green transition.
+    it('rejects both a leading AND a trailing letter on the same draft', () => {
+      expect(parseHemisphereCoord('N54.8N', 'lat')).toBeNull();
+      expect(parseHemisphereCoord('N 54.8 S', 'lat')).toBeNull();
+      expect(parseHemisphereCoord("N 54° 48.74' N", 'lat')).toBeNull();
+    });
+
+    it('rejects a leading letter that belongs to the OTHER axis', () => {
+      expect(parseHemisphereCoord('E54.8', 'lat')).toBeNull();
+      expect(parseHemisphereCoord('N10.1', 'lon')).toBeNull();
+    });
+
+    it('rejects a leading letter combined with an explicit sign, same as the trailing form', () => {
+      expect(parseHemisphereCoord('N-54.8', 'lat')).toBeNull();
+      expect(parseHemisphereCoord('N -54.8', 'lat')).toBeNull();
+    });
+  });
+
   // #1400: consolidated accepted-format table. Every shape here already has
   // an individual pin elsewhere in this describe block, EXCEPT the five rows
   // marked below, which close gaps the individual pins left open (a negative
