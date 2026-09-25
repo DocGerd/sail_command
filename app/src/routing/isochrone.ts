@@ -350,9 +350,10 @@ export function edgeFactor(
 
 /**
  * #1303/#1305: how much finer the prune grid gets, per axis, inside CONFINED
- * water. `1` disables the refinement and restores the pre-#1303 key exactly —
- * the off switch every re-pin in this change was measured against (the BASE
- * control), not decoration. Typed `number` so that comparison typechecks.
+ * water, for motor-on solves ({@link MOTOR_OFF_CONFINED_PRUNE_DIV} is the
+ * motor-off twin). `1` disables the refinement and restores the pre-#1303
+ * key exactly — the off switch every re-pin in this change was measured
+ * against (the BASE control), not decoration. Typed `number` so that comparison typechecks.
  */
 const CONFINED_PRUNE_DIV: number = 2;
 /**
@@ -393,9 +394,10 @@ const CONFINEMENT_MARGIN_CELLS = 1;
  * survive induction: once the fine run's frontier differs, its extra children
  * fall into the same FINE sub-cells as the coarse winners and can beat them
  * under `better()`, evicting them — the #1303 shape turned on the refinement
- * itself. Measured on Flensburg -> Bagenkop, `motorEnabled: false`, TWS 3.0
- * unsnapped (#1168's comment 5727667435): ring 4 has 7 fine nodes to the
- * coarse run's 3, ring 5 has ZERO fine to the coarse run's 3, and the route
+ * itself. Measured at divisor 2 on Flensburg -> Bagenkop,
+ * `motorEnabled: false`, TWS 3.0 unsnapped (#1168's comment 5727667435):
+ * ring 4 has 7 fine nodes to the coarse run's 3, ring 5 has ZERO fine to the
+ * coarse run's 3, and the route
  * goes `mask-blocked` where it routed before — at a peak frontier of 38
  * against a 30 000 cap, so truncation is not involved. An earlier revision of
  * this comment claimed the uncapped regime was safe; it is refuted, not
