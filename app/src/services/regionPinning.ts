@@ -31,8 +31,8 @@
 //     "permanently stuck" (a 404 or a short body), so it would be the
 //     false-comfort direction (PWA review r4008640274). The chip's
 //     "saving" state is not that: it comes from pinAfterSave.ts's
-//     in-memory record of a live pin promise, which REGION_FETCH_FLOOR_KBPS
-//     below bounds so a stalled download settles as failed.
+//     in-memory record of a live pin promise, which REGION_FETCH_STALL_MS
+//     below bounds so a stalled (no-progress) download settles as failed.
 //   - A cached archive whose stored byte length disagrees with the
 //     manifest's: not counted as present — see #118 CLAUDE.md rule "read
 //     the decoded blob size, never Content-Length" for why the length is
@@ -286,21 +286,41 @@ async function isPmtilesBlob(blob: Blob): Promise<boolean> {
 // archive URL shares ONE in-flight fetch/verify/cache.put instead of each
 // starting its own — a bulk plan import, or two plans whose corridors share
 // a region, would otherwise fire one full multi-MB download PER PLAN. Keyed
-// by the CANONICAL (search-less) url, so it is stable across every
+// by the CANONICAL (search-less) url PLUS the manifest's expected byte
+// length (#1246: url alone let a waiter across a SW update with two live
+// manifests accept a `true` verified against the OTHER manifest's size —
+// harmless in practice since isArchivePresent re-checks length on the next
+// regionReadiness call, but not exact), so it is stable across every
 // `?pin=<token>` cache-busting attempt below. Cleared once the attempt
 // settles (success OR failure) so a LATER, separate pin — after this one is
 // fully done — starts fresh rather than replaying a stale result forever.
 const inFlightRegionFetches = new Map<string, Promise<boolean>>();
 
+function coalescingKey(url: string, bytes: number): string {
+  return `${url}::${bytes}`;
+}
+
 async function pinOneRegion(entry: RegionManifestEntry): Promise<boolean> {
-  if (await isArchivePresent(entry)) return true;
   const url = archiveUrl(entry);
-  const existing = inFlightRegionFetches.get(url);
+  const key = coalescingKey(url, entry.bytes);
+  // #1246: checked BEFORE the async isArchivePresent read below, not only
+  // after it — an attempt already in flight when THIS call starts is caught
+  // immediately, closing the gap where isArchivePresent's own await could
+  // straddle that in-flight attempt's completion (it finishes and removes
+  // itself from the Map while this call is still awaiting, so a check placed
+  // only after the await would find neither and start a redundant download).
+  const before = inFlightRegionFetches.get(key);
+  if (before) return before;
+  if (await isArchivePresent(entry)) return true;
+  // Re-checked: #1233 Major 2's coalescing depends on this SECOND check — a
+  // sibling call may have started (and set) an attempt while THIS call was
+  // itself awaiting isArchivePresent above.
+  const existing = inFlightRegionFetches.get(key);
   if (existing) return existing;
   const attempt = fetchAndCacheRegion(entry, url).finally(() => {
-    inFlightRegionFetches.delete(url);
+    inFlightRegionFetches.delete(key);
   });
-  inFlightRegionFetches.set(url, attempt);
+  inFlightRegionFetches.set(key, attempt);
   return attempt;
 }
 
@@ -335,11 +355,21 @@ async function pinOneRegion(entry: RegionManifestEntry): Promise<boolean> {
  * verified replacement exists, and is never left absent.
  */
 async function fetchAndCacheRegion(entry: RegionManifestEntry, url: string): Promise<boolean> {
-  // #295 (PWA review r4016341243): without a deadline a stalled body keeps
-  // the chip at "saving" forever, with retry hidden. Aborting resolves false,
-  // which the chip shows as failed with retry offered.
+  // #1253: a NO-PROGRESS watchdog, not a whole-download deadline — the old
+  // deadline was sized for the archive's TOTAL bytes at a fixed floor
+  // throughput, so a link steadily BELOW that rate could never finish: every
+  // retry re-downloaded the whole body before the fixed deadline fired
+  // again. Resetting the timer on every received chunk instead lets a
+  // slow-but-still-moving link run to completion, while a genuine stall
+  // (#295's original motivation — the chip must not sit at "saving" forever)
+  // still fails quickly.
   const deadline = new AbortController();
-  const timer = setTimeout(() => deadline.abort(), regionFetchTimeoutMs(entry.bytes));
+  let stallTimer: ReturnType<typeof setTimeout> | undefined;
+  const armStall = () => {
+    if (stallTimer !== undefined) clearTimeout(stallTimer);
+    stallTimer = setTimeout(() => deadline.abort(), REGION_FETCH_STALL_MS);
+  };
+  armStall();
   try {
     // `cache: 'no-store'` (PWA review Minor r4008640259): region archive
     // paths are unhashed, so without it an HTTP-cached copy from a PREVIOUS
@@ -353,7 +383,11 @@ async function fetchAndCacheRegion(entry: RegionManifestEntry, url: string): Pro
       signal: deadline.signal,
     });
     if (!res.ok) return false;
-    const blob = await res.blob();
+    // Headers arrived: the watchdog is re-armed before reading the body so
+    // a slow TTFB does not eat into the first chunk's own allowance.
+    armStall();
+    const blob = await readBodyWithStallWatchdog(res, armStall);
+    if (blob === null) return false;
     // PMTiles magic check (same review): cheap, and mirrors
     // basemapSource.ts's own #118 preflight — reject a body that isn't
     // actually a PMTiles archive before it is ever cached.
@@ -369,25 +403,46 @@ async function fetchAndCacheRegion(entry: RegionManifestEntry, url: string): Pro
   } catch {
     return false;
   } finally {
-    clearTimeout(timer);
+    if (stallTimer !== undefined) clearTimeout(stallTimer);
   }
 }
 
 /**
- * Slowest link a region download is allowed to take, in kbit/s. 256 kbit/s
- * is a degraded 3G link; the committed north strip (12,603,919 B) then needs
- * ~394 s. Slower than that, failing and offering a retry beats "saving…"
- * with no end.
+ * Reads `res`'s body into a Blob, calling `onChunk` after every chunk
+ * actually received so the caller's stall watchdog stays armed. Falls back
+ * to a plain `res.blob()` when the environment exposes no readable stream —
+ * the body is then already buffered whole by the fetch implementation, so
+ * there is no per-chunk progress signal to arm on regardless.
  */
-export const REGION_FETCH_FLOOR_KBPS = 256;
-/** Floor for small archives, so latency alone never trips the deadline. */
-export const REGION_FETCH_MIN_TIMEOUT_MS = 60_000;
-
-/** Whole-download deadline for an archive of `bytes`, at REGION_FETCH_FLOOR_KBPS. */
-export function regionFetchTimeoutMs(bytes: number): number {
-  const atFloorMs = ((bytes * 8) / (REGION_FETCH_FLOOR_KBPS * 1000)) * 1000;
-  return Math.max(REGION_FETCH_MIN_TIMEOUT_MS, Math.ceil(atFloorMs));
+async function readBodyWithStallWatchdog(res: Response, onChunk: () => void): Promise<Blob | null> {
+  if (!res.body) return res.blob();
+  const reader = res.body.getReader();
+  const chunks: Uint8Array<ArrayBuffer>[] = [];
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      // Copied (not just re-wrapped) so the element type is a plain
+      // ArrayBuffer-backed Uint8Array — the DOM lib types reader.read()'s
+      // value as ArrayBufferLike-backed, which BlobPart rejects.
+      chunks.push(new Uint8Array(value));
+      onChunk();
+    }
+    return new Blob(chunks);
+  } catch {
+    return null;
+  }
 }
+
+/**
+ * Longest gap allowed between two received chunks of a region archive
+ * download before it counts as stalled — see fetchAndCacheRegion's own
+ * comment for why this replaced a whole-download deadline. Chosen so a
+ * genuine stall (#295's original motivation) still fails within roughly the
+ * old floor's per-chunk cadence, while a slow-but-moving link is never
+ * penalised for its total size.
+ */
+export const REGION_FETCH_STALL_MS = 60_000;
 
 export type RegionReadinessReason =
   // The manifest could not be read from CacheStorage at all — "uncertain",
@@ -406,8 +461,17 @@ export type RegionReadiness =
   | { readonly state: 'ready'; readonly done: number; readonly total: number }
   | { readonly state: 'not-ready'; readonly reason: RegionReadinessReason };
 
+export interface RegionReadinessAndBytes {
+  readonly readiness: RegionReadiness;
+  /** Total bytes the plan's required lazy regions add up to; null when unknown. */
+  readonly bytes: number | null;
+}
+
 /**
- * Network-free offline-readiness check for `plan`. Reads the manifest from
+ * Network-free offline-readiness check for `plan`, combined with the total
+ * download size — one manifest read, one corridor computation and one
+ * isArchivePresent pass, rather than useRegionReadiness.ts running that same
+ * work twice (#1253 residual from PR #1249). Reads the manifest from
  * CacheStorage only (readManifestFromCache — never `fetch`) and checks each
  * required archive's presence+byte-length in CacheStorage only
  * (isArchivePresent — also never `fetch`), so this function makes zero
@@ -417,41 +481,47 @@ export type RegionReadiness =
  *
  * `total === 0` (a plan whose corridor needs no lazy region — e.g. the
  * shipped v0.34.0 single-region deployment, where every plan is trivially
- * ready) reports 'ready' with `done: 0`: the core archive is precached
- * unconditionally, so there is nothing left to wait for.
+ * ready) reports 'ready' with `done: 0` and `bytes: 0`: the core archive is
+ * precached unconditionally, so there is nothing left to wait for.
  */
-export async function regionReadiness(plan: Plan): Promise<RegionReadiness> {
+export async function regionReadinessAndBytes(plan: Plan): Promise<RegionReadinessAndBytes> {
   const manifest = await readManifestFromCache();
   if (manifest === null) {
-    return { state: 'not-ready', reason: 'manifest-unavailable' };
+    return { readiness: { state: 'not-ready', reason: 'manifest-unavailable' }, bytes: null };
   }
 
   const ids = requiredRegionIdsForPlan(plan, manifest);
   if (ids.length === 0) {
-    return { state: 'ready', done: 0, total: 0 };
+    return { readiness: { state: 'ready', done: 0, total: 0 }, bytes: 0 };
   }
 
   const entries = resolveEntries(manifest, ids);
 
   let done = 0;
+  let bytes = 0;
   for (const entry of entries) {
+    bytes += entry.bytes;
     if (await isArchivePresent(entry)) done += 1;
   }
 
-  if (done === entries.length) return { state: 'ready', done, total: entries.length };
-  return { state: 'not-ready', reason: 'pending' };
+  const readiness: RegionReadiness =
+    done === entries.length
+      ? { state: 'ready', done, total: entries.length }
+      : { state: 'not-ready', reason: 'pending' };
+  return { readiness, bytes };
+}
+
+/** Readiness alone — see regionReadinessAndBytes for what this shares. */
+export async function regionReadiness(plan: Plan): Promise<RegionReadiness> {
+  return (await regionReadinessAndBytes(plan)).readiness;
 }
 
 /**
- * Total byte size of the lazy region archives `plan` requires, from the
- * cached manifest only (network-free, like regionReadiness). 0 when none is
- * required; null when the manifest cannot be read. Shown on the #295 chip.
+ * Total byte size of the lazy region archives `plan` requires — see
+ * regionReadinessAndBytes for what this shares. Shown on the #295 chip.
  */
 export async function regionDownloadBytes(plan: Plan): Promise<number | null> {
-  const manifest = await readManifestFromCache();
-  if (manifest === null) return null;
-  const entries = resolveEntries(manifest, requiredRegionIdsForPlan(plan, manifest));
-  return entries.reduce((sum, e) => sum + e.bytes, 0);
+  return (await regionReadinessAndBytes(plan)).bytes;
 }
 
 // Re-exported so a future call site (and this file's own tests) can name

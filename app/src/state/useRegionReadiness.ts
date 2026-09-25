@@ -14,9 +14,9 @@ import {
   type PinActivity,
 } from '../services/pinAfterSave';
 import {
-  regionDownloadBytes,
-  regionReadiness,
+  regionReadinessAndBytes,
   type RegionReadiness,
+  type RegionReadinessAndBytes,
 } from '../services/regionPinning';
 
 export type RegionReadinessStatus =
@@ -86,15 +86,14 @@ export function useRegionReadiness(plan: Plan): RegionReadinessView {
   // while the chip stayed mounted).
   useEffect(() => {
     let cancelled = false;
-    void Promise.all([
-      regionReadiness(plan).catch((): RegionReadiness => ({
-        state: 'not-ready',
-        reason: 'manifest-unavailable',
-      })),
-      regionDownloadBytes(plan).catch(() => null),
-    ]).then(([readiness, bytes]) => {
-      if (!cancelled) setResult({ plan, activity, readiness, bytes });
-    });
+    void regionReadinessAndBytes(plan)
+      .catch((): RegionReadinessAndBytes => ({
+        readiness: { state: 'not-ready', reason: 'manifest-unavailable' },
+        bytes: null,
+      }))
+      .then(({ readiness, bytes }) => {
+        if (!cancelled) setResult({ plan, activity, readiness, bytes });
+      });
     return () => {
       cancelled = true;
     };
