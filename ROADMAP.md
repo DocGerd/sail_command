@@ -36,8 +36,7 @@ remaining residual Minors from PR #1245's #295 coverage-extension review
 of the already-shipped #1135 chain was closed and removed from the milestone
 ([#1464](https://github.com/DocGerd/sail_command/issues/1464)). Every issue
 in the milestone shipped, so nothing rolled forward from `v0.45.0` itself;
-three real-tablet checks moved from `v0.44.0`'s carry-forward straight into
-`v0.46.0` instead
+three real-tablet checks moved into `v0.46.0` instead
 ([#1281](https://github.com/DocGerd/sail_command/issues/1281),
 [#1413](https://github.com/DocGerd/sail_command/issues/1413),
 [#1490](https://github.com/DocGerd/sail_command/issues/1490)).
@@ -45,13 +44,8 @@ three real-tablet checks moved from `v0.44.0`'s carry-forward straight into
 ## Next — v0.46.0
 
 The [`v0.46.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-carries the three real-tablet checks named above plus region-pinning's
-declined residual ([#1483](https://github.com/DocGerd/sail_command/issues/1483))
-and routing-sweep follow-ups
-([#1360](https://github.com/DocGerd/sail_command/issues/1360),
-[#1350](https://github.com/DocGerd/sail_command/issues/1350),
-[#1334](https://github.com/DocGerd/sail_command/issues/1334)). The milestone
-page is the only authoritative view, check it directly rather than this file.
+carries the three real-tablet checks named above. The milestone page is the
+only authoritative view, check it directly rather than this file.
 
 ## Themes for the next year
 
