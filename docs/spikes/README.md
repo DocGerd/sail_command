@@ -127,10 +127,14 @@ instead of here.
   frontier-cap headroom for fock tier-1, #53 relaxation and the #1136 salvage
   pass at the shipped motor-off prune divisor. No truncation measured
   anywhere; salvage never fires on any real-mask input tried
+- [1360-aaroesund-relaxation-cost.md](1360-aaroesund-relaxation-cost.md) —
+  #1360: the post-#1322 `salona44-relaxation/aaroesund` +16.5 min is also
+  `MAX_FRONTIER` truncation, measured through the relaxation ladder at three
+  trees; resolved on `develop` by #1257's derived cap
 
-Four entries carry a same-named subdirectory of supporting artifacts rather
+Five entries carry a same-named subdirectory of supporting artifacts rather
 than being self-contained: `1022-whole-journey-ux/` (reference screenshots),
 `354-mode-churn/` (the reproduction test file and its measured output),
-`1136-motor-off-solve-termination/` (the §11 probe scripts and results) and
+`1136-motor-off-solve-termination/` (the §11 probe scripts and results),
 `1168-motor-off-prune-instability/` (the instrumentation patch, probes and raw
-results).
+results) and `1360-aaroesund-relaxation-cost/` (the probe and its results).
