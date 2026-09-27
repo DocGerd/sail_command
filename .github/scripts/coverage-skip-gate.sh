@@ -87,8 +87,8 @@
 # always sets it), not a legitimate uncertain input, and mirrors
 # classify-docs-only.sh's identical assertion for the same reason.
 #
-# Production usage (invoked by coverage.yml's `gate` job as its first
-# step - EVENT_NAME/CURRENT_SHA/REPO come from `github.*` context, GH_TOKEN
+# Production usage (invoked by coverage.yml's `gate` job, after checkout -
+# EVENT_NAME/CURRENT_SHA/REPO come from `github.*` context, GH_TOKEN
 # from `secrets.GITHUB_TOKEN`):
 #   EVENT_NAME=schedule CURRENT_SHA=<sha> REPO=owner/repo \
 #   GITHUB_OUTPUT=... GH_TOKEN=... .github/scripts/coverage-skip-gate.sh

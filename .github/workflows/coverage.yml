@@ -18,20 +18,18 @@ name: Coverage
 # covered by the next nightly run rather than needing its own trigger.
 #
 # #1504: the unsharded `test:coverage` step hit its 240-min cap on three
-# consecutive nights, 09-25/26/27 (runs 36109170070/36227333708/
-# 36305102911), immediately after three GREEN nights, 09-22/23/24 (runs
-# 35700811730/35833197574/35970316715) — a correlation with the #1488 merge
-# landing at the boundary, not an established cause; see #1504 for the
-# job-log audit. Across all six nights, `realmask.repro.confinedDominance.
-# test.ts` was consistently the single largest file, 1.4-1.9x the
-# next-heaviest. Rather than raising the cap toward the GitHub-hosted job
+# nights running, 09-25/26/27 (runs 36109170070/36227333708/36305102911),
+# after three green nights, 09-22/23/24 (runs 35700811730/35833197574/
+# 35970316715). The first cap-hit run's head is `d91ab4c`; the develop range
+# `1e50ede..d91ab4c` (16 merges) landed between the last green head and it.
+# No cause is established. Rather than raising the cap toward the GitHub-hosted job
 # ceiling (360 min), this workflow now SHARDS the coverage run across
 # `coverage-shard` matrix jobs using vitest's own `--shard=i/N`
 # (the same sequencer ci.yml's `app-shard` already relies on,
 # `SlowFileFirstSequencer` in app/vite.config.ts, which round-robins the
 # SLOW_TEST_FILES_FIRST files across shards by array position) plus
-# `--reporter=blob` (vitest 4's per-shard coverage+test blob report,
-# `.vitest-reports/blob-<i>-<N>.json`), and a `coverage-merge` job that
+# `--reporter=blob` (vitest 4's per-shard coverage+test blob report, written
+# to `coverage-blobs/`), and a `coverage-merge` job that
 # downloads every shard's blob and runs `vitest run --merge-reports` to
 # combine them into the final coverage report + lcov upload. This is
 # standard Vitest sharded-coverage support (@vitest/coverage-v8's
@@ -104,15 +102,12 @@ jobs:
     name: coverage-shard (${{ matrix.shard }}/${{ strategy.job-total }})
     needs: gate
     runs-on: ubuntu-latest
-    # #1504 DERIVATION (see app/src/test/timeoutBudgetVsJobCap.test.ts for
-    # the guard keeping these two numbers, and the sufficient-bound
-    # arithmetic, in sync): the STEP cap must stay strictly greater than the
-    # largest `solverTimeoutMs(...)` product in the suite (900_000ms *
-    # COVERAGE_MULTIPLIER_WHEN_ENABLED(8) = 120 min) PLUS the measured
-    # WORST SHARD's own wall time (82.6 min, shard 2, run 36333125953) =
-    # 202.6 min minimum; 260/280 (step/job) leaves ~57/77 min margin. There
-    # is no PR-latency cost to over-provisioning a nightly, and a
-    # non-required check that times out goes permanently red and gets
+    # #1504 DERIVATION: the STEP cap must stay strictly greater than the
+    # largest `solverTimeoutMs(...)` product in the suite under coverage PLUS
+    # a measured per-shard wall time. app/src/test/timeoutBudgetVsJobCap.test.ts
+    # reads both caps from this file and owns that measurement and the
+    # arithmetic. There is no PR-latency cost to over-provisioning a nightly,
+    # and a non-required check that times out goes permanently red and gets
     # ignored, so this stays loose rather than fitted tight to the
     # measurement.
     timeout-minutes: 280
@@ -143,15 +138,11 @@ jobs:
         # `jobs.coverage-shard`, step `id: test-coverage`) — keep both in
         # sync (#359's documented coupling).
         #
-        # `--outputFile.blob=` overrides the blob reporter's own default path
-        # (`.vitest-reports/blob-<i>-<N>.json`, a DOT-prefixed directory)
-        # explicitly to `coverage-blobs/blob-<i>.json`: on a real dispatch
-        # (run 36333125953) every shard's `test:coverage (shard)` step wrote
-        # its blob to `.vitest-reports/` (confirmed in that job's own log:
-        # "blob report written to …/app/.vitest-reports/blob-N-8.json") yet
-        # the very next `Upload coverage blob` step reported "No files were
-        # found with the provided path: app/.vitest-reports" for every shard.
-        # Root cause unconfirmed; a non-dot output directory avoids it.
+        # `--outputFile.blob=` moves the blob out of the reporter's default
+        # `.vitest-reports/`: the pinned upload-artifact defaults
+        # `include-hidden-files` to false, which skips files inside a
+        # dot-prefixed folder (its README, "Uploading Hidden Files"), so every
+        # shard's upload failed on run 36333125953.
         timeout-minutes: 260
       - name: Upload coverage blob (${{ matrix.shard }})
         if: env.SKIP != 'true'

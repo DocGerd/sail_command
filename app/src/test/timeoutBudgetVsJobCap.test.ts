@@ -84,10 +84,10 @@ import { COVERAGE_MULTIPLIER_WHEN_ENABLED } from './timeouts';
 // either failure mode still fails CLOSED (see `stepCapMinutes` below).
 //
 // #357 replaces the NECESSARY-only comparison (heaviest single test alone)
-// with the SUFFICIENT one `coverage.yml`'s own derivation comment states:
-// `heaviest test's ceiling + REST OF THE SUITE'S wall time (+ start-up
-// margin, folded into the constant below) < binding cap`. The rest-of-
-// suite figure cannot be computed from source the way the multiplier or
+// with a SUFFICIENT one:
+// `heaviest test's ceiling + SLOWEST MEASURED SHARD's wall time (+ start-up
+// margin, folded into the constant below) < binding cap`. That
+// figure cannot be computed from source the way the multiplier or
 // the per-test ceiling can — it is an empirical CI wall-clock measurement —
 // so it is a DECLARED, DATED constant (`SUITE_WALL_TIME_MS_AT_8X` below),
 // exactly like `JOB_CAP_MINUTES` used to be, with a staleness check that
@@ -211,27 +211,21 @@ function bindingCapMinutes(workflow: WorkflowFile): number {
   return Math.min(jobCapMinutes(workflow), stepCapMinutes(workflow));
 }
 
-// #357: the SUFFICIENT rule `coverage.yml`'s own derivation comment states —
-// `heaviest test's ceiling + rest-of-suite wall time (+ start-up margin) <
+// #357: the SUFFICIENT rule —
+// `heaviest test's ceiling + slowest measured shard's wall time (+ start-up margin) <
 // binding cap` — needs a real measured suite wall time at the SHIPPED
 // coverage multiplier. That number cannot be derived from source (it's a CI
 // wall-clock fact, not a property of the code), so it is DECLARED, exactly
 // like `JOB_CAP_MINUTES` used to be, and DATED so staleness is checkable.
 //
 // #1504: this constant was 42m46s (2026-08-03, CI run 30833176564) and went
-// stale WITHOUT tripping the age check below (55 days old at the 09-25/26/27
-// step-cap failures, well under the 200-day window) — the age check alone
-// cannot catch a wall-time change that isn't a calendar-staleness fact.
+// stale without tripping the age check below — the age check cannot catch a
+// wall-time change that is not a calendar-staleness fact.
 //
-// Re-keyed to `coverage-shard`: this is now the measured WORST SHARD's own
-// wall time, not a whole-suite figure — shard 2, run 36333125953
-// (2026-09-27), whose `test:coverage (shard)` step ran 16:25:06Z ->
-// 17:47:44Z = 4958s. This INCLUDES the heaviest test's own actual (not
-// ceiling) run time, which is fine — it makes the sum a slight over-count,
-// i.e. MORE conservative than the true sufficient bound, never less. See
-// coverage.yml's own derivation comment for the same figure and its cap
-// arithmetic; update both together at the next re-measurement.
-const SUITE_WALL_TIME_MS_AT_SHIPPED_MULTIPLIER = 4_958_000;
+// Re-keyed to `coverage-shard`: the slowest shard's `test:coverage (shard)`
+// step, the maximum observed over runs 36333125953 and 36339359816 (shard 2
+// both times). Re-measure and update SUITE_WALL_TIME_MEASURED_AT together.
+const SUITE_WALL_TIME_MS_AT_SHIPPED_MULTIPLIER = 6_290_000;
 const SUITE_WALL_TIME_MEASURED_AT = '2026-09-27';
 // How long a wall-time measurement may go untouched before this guard
 // refuses to trust it further. #357's own "why this is not simply closed"
@@ -301,7 +295,7 @@ describe('#342/#359/#357 structural guard: coverage.yml job cap vs. timeouts.ts 
     }
   });
 
-  it('the heaviest test PLUS the rest of the suite fits under the binding cap (sufficient, #357)', () => {
+  it('the heaviest test PLUS the slowest measured shard fits under the binding cap (sufficient, #357)', () => {
     const largestBaseMs = largestSolverTimeoutBaseMs();
     expect(largestBaseMs).toBeGreaterThan(0);
 
@@ -317,7 +311,7 @@ describe('#342/#359/#357 structural guard: coverage.yml job cap vs. timeouts.ts 
           `wall time ${SUITE_WALL_TIME_MS_AT_SHIPPED_MULTIPLIER}ms = ${sufficientMs}ms = ` +
           `${sufficientMs / 60_000} min) is not strictly less than the binding cap read from ` +
           `coverage.yml (${capMinutes} min = ${capMs}ms). Passing the NECESSARY check above while ` +
-          `failing this one means the cap only works if the rest of the suite runs near-instantly — ` +
+          `failing this one means the cap only works if the slowest shard runs near-instantly — ` +
           `exactly the gap #357 exists to close. Raise coverage.yml's timeout-minutes.`,
       );
     }
