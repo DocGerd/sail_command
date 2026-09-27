@@ -4,18 +4,27 @@ All 40 harbours × 12 settings arms = **480 plans** (9 arms / 297 plans
 through #452; #653 added the two `salona44-*` arms below; #295 grew the
 harbour list 33 -> 40, see "#295 sweep control" below; #1334 added
 `motorless-short-horizon`), against the real
-committed mask and polars, with every `PlanResult` serialised for
-byte-for-byte comparison between two revisions.
+committed mask and polars, with every `PlanResult`, its pass-1 record and its
+pass-2 outcome serialised for byte-for-byte comparison between two revisions.
+
+**Row shape (#1456).** Each row is the `PlanResult` followed by two appended
+keys from `planRouteWithRecord`: `record` — pass 1's `{ cause, tiers: [{ tier,
+usedDepthM, causes }] }`, without `TierRecord`'s `gate` and `comfortDepthM` —
+and `pass2`, one of `not-admitted`, `admitted-no-route` or `rescued`. Every
+per-arm prefix recorded in this file before #1456 is of the old shape. Because
+the `PlanResult` keys come first, deleting `record` and `pass2` recovers a
+pre-#1456 row byte for byte. Compare across that boundary with
+`node app/sweep/compare.mjs --strip-planning-record <base> <head>`, which
+deletes both keys from every HEAD row and fails closed if a HEAD row lacks
+either or a BASE row has one.
 
 **#1334**: `motorless-short-horizon` is the only arm crossing
-`motorEnabled: false` with a short (`{ hours: 3 }`) forecast grid, so it
-can hold plans that hit `horizon-exceeded` at the requested gate while
-every relaxed tier ends `mask-blocked` — the class #1301 found zero of in
-the three earlier motor-off arms. That class is visible only in
-`planRouteWithRecord`'s record; the serialised `PlanResult` shows those
-rows as plain `beyond-horizon`. Origin, TWS and direction come from the
-pre-measurement on the PR for #1334.
-Measured on this PR's review: widening `salvagePassAdmitted` to admit `horizon-exceeded` leaves this arm's output byte-identical (pass 2 runs and routes nothing), so for that lever the arm shows 0 rescues and cannot discriminate a widening by hash alone.
+`motorEnabled: false` with a short (`{ hours: 3 }`) forecast grid. Origin,
+TWS and direction come from the pre-measurement on the PR for #1334. On this
+arm at #1456's tree, widening `salvagePassAdmitted` to admit
+`horizon-exceeded` moves `pass2` on every row it newly admits while every
+`PlanResult` stays byte-identical, so the arm's hash detects that widening
+(measured on PR #1511).
 
 Issue #282 makes this a **standing requirement**: the no-route cause is a
 control input, so any change to how `solve()` *classifies* a failure can move
@@ -109,7 +118,8 @@ reproducible at current develop (predates at least #1322's
 This supersedes the earlier partial control (PR #488 review measured only
 `margin-zero`, and this file used to record `relaxation-dense` and
 `margin-extreme` as UNMEASURED). The "no `deadline` argument passed"
-structural argument — `runArm` never budgets `planRoute()`, so #432's
+structural argument — `runArm` never budgets `planRoute()` (since #1456,
+`planRouteWithRecord()`), so #432's
 wall-clock `PLAN_BUDGET_MS` never engages and nothing time-dependent feeds the
 solver — is now corroborated empirically for all nine arms rather than argued
 for seven of them.
@@ -553,10 +563,10 @@ and the other two aren't needed to RUN the harness. Merge each side's shards
 with THAT SIDE's own `merge-shards.mjs` — it reads `harbors.json` and
 `armNames.ts` relative to its own file location, not the shard directory —
 so a BASE run's shards get merged by the overlaid BASE-tree copy, a HEAD
-run's by HEAD's own copy. This is the same portability `sweepArms.ts`'s own
-header already documents for the arm-definition file itself ("imports
-nothing that exists on only one side of a refactor … runs unchanged at BASE
-and at HEAD").
+run's by HEAD's own copy. `sweepArms.ts`'s own header states the limit of
+that portability for the arm-definition file itself ("Imports nothing from
+the #282 classification refactor … its rows match HEAD's shape only at a
+BASE at or after #1456").
 
 ## The baseline is defined by these parameters
 
@@ -570,8 +580,9 @@ whole, only of arms that omit `originId`), **each arm's boat** (`Arm.boatId`,
 `DEFAULT_BOAT_ID`/`salona-45` by default, `salona-44-speedy-go` for the two
 #653 arms — same shape as `originId`: a PRE-#653 baseline's implicit "the
 boat is always DEFAULT_BOAT_ID" is no longer true of the file as a whole,
-only of arms that omit `boatId`), `T0`, and `serialize()`'s replacer and
-1-space indent. Change any one of them and previously recorded output is no
+only of arms that omit `boatId`), `T0`, the row shape (`PlanResult` plus
+`record` and `pass2`, #1456), and `serialize()`'s replacer and 1-space
+indent. Change any one of them and previously recorded output is no
 longer comparable. **Add an arm rather than editing one.**
 
 ## Recorded baseline — 2026-08-07, PR #450 (`dbcd519`)
