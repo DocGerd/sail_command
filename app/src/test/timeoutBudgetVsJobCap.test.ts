@@ -119,7 +119,15 @@ const COVERAGE_WORKFLOW_PATH = resolve(
   '../../../.github/workflows/coverage.yml',
 );
 
-const COVERAGE_JOB_ID = 'coverage';
+// #1504: coverage.yml split the single `coverage` job into a `gate` job,
+// an N-way `coverage-shard` matrix, and a `coverage-merge` job (per-test
+// timers only ever run inside `coverage-shard`, so that is the job this
+// guard's coupling is about now — `coverage-merge` runs no tests and has
+// no per-test-timeout exposure to guard). The matrix means the YAML source
+// still has exactly ONE `timeout-minutes`/`steps` definition for this job
+// id (matrix legs are runtime instantiations of one job template), so the
+// addressed-lookup shape below is unchanged by the rename.
+const COVERAGE_JOB_ID = 'coverage-shard';
 const COVERAGE_STEP_ID = 'test-coverage';
 
 // Loose structural types for exactly the fields this guard reads — not a
@@ -210,16 +218,29 @@ function bindingCapMinutes(workflow: WorkflowFile): number {
 // wall-clock fact, not a property of the code), so it is DECLARED, exactly
 // like `JOB_CAP_MINUTES` used to be, and DATED so staleness is checkable.
 //
-// Source: CI run 30833176564, landed 2026-08-03T16:39:46Z -> 17:22:32Z =
-// 42m46s = 2,566,000ms, the completed run #357's own issue body names as
-// "the real number to derive from once this is picked up" — measured at the
-// 8x multiplier this file's `COVERAGE_MULTIPLIER_WHEN_ENABLED` still ships
-// today (re-confirmed: unchanged since that run). This INCLUDES the
+// #1504: this constant was 42m46s (2026-08-03, CI run 30833176564) and went
+// stale WITHOUT tripping the age check below — the suite grew enough that
+// the real unsharded wall time reached 227-240 min while this guard still
+// trusted a 42m46s figure, which is why the "sufficient" check kept passing
+// through three consecutive nights that actually blew the job cap. Staleness
+// here is a SUITE-GROWTH fact, not only a calendar one; the age check alone
+// cannot catch it.
+//
+// Re-measured against `coverage-shard`: no per-shard wall time exists yet
+// (this PR is what introduces sharding), so this constant conservatively
+// reuses the last known-GREEN UNSHARDED full-suite wall time as a supremum
+// for "rest of any one shard" — a shard is a subset of the suite, so its
+// wall time cannot exceed what the whole suite took on equivalent hardware.
+// Source: CI run 35970316715 (job 107538230486), 2026-09-24T07:34:28Z ->
+// completed with `Duration 7098.96s` in the job's own vitest summary line —
+// 217 files, 3624 tests, 94.47% statements, head 1e50ede. This INCLUDES the
 // heaviest test's own actual (not ceiling) run time, which is fine — it
 // makes the sum a slight over-count of "heaviest ceiling + everything
 // else", i.e. MORE conservative than the true sufficient bound, never less.
-const SUITE_WALL_TIME_MS_AT_SHIPPED_MULTIPLIER = 42 * 60_000 + 46_000;
-const SUITE_WALL_TIME_MEASURED_AT = '2026-08-03';
+// Replace with a genuine per-shard measurement once the sharded workflow
+// has run for real and re-date this comment and constant together.
+const SUITE_WALL_TIME_MS_AT_SHIPPED_MULTIPLIER = 7_098_960;
+const SUITE_WALL_TIME_MEASURED_AT = '2026-09-24';
 // How long a wall-time measurement may go untouched before this guard
 // refuses to trust it further. #357's own "why this is not simply closed"
 // warns that an un-monitored constant rots in the FAIL-OPEN direction as the

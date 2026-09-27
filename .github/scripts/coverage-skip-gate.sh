@@ -176,14 +176,14 @@ decide_run_coverage() {
 }
 
 # ---- job classifier (no I/O - pure JSON string in, boolean out) ----
-# Takes ONE job object (the shape `gh api .../actions/runs/{id}/jobs --jq
-# '.jobs[] | select(.name=="coverage")'` returns) and decides whether its
-# `test:coverage` step actually EXECUTED (conclusion "success") rather than
-# being gated off by this very script on a skip night (conclusion
-# "skipped"). Matches the step by substring/case-insensitive `test:coverage`
-# rather than an exact name so it also matches the default GitHub-generated
-# step name ("Run npm run test:coverage") that every run BEFORE this fix
-# already carries - no discontinuity at the point this script was deployed.
+# Takes ONE job object (the shape `_fetch_job_for_run` below returns - a
+# `coverage-shard` matrix leg since #1504's sharding, formerly the single
+# `coverage` job) and decides whether its `test:coverage` step actually
+# EXECUTED (conclusion "success") rather than being gated off by this very
+# script on a skip night (conclusion "skipped"). Matches the step by
+# substring/case-insensitive `test:coverage` rather than an exact name so it
+# also matches the default GitHub-generated step name ("Run npm run
+# test:coverage (shard)") regardless of the exact wording appended to it.
 is_real_measurement_job() {
   local job_json="$1"
   local step_conclusion
@@ -207,8 +207,13 @@ _fetch_runs_list() {
 
 _fetch_job_for_run() {
   local repo="$1" run_id="$2"
+  # #1504: matrix job runtime names are "coverage-shard (i/N)" - match by
+  # PREFIX (any one leg) rather than a full name, since N can change and
+  # every leg is gated by the same `gate` job output, so any one leg's
+  # `test:coverage` step conclusion answers "was this a real measurement
+  # night" identically to any other.
   gh api "repos/${repo}/actions/runs/${run_id}/jobs" \
-    --jq '[.jobs[] | select(.name == "coverage")][0] // empty'
+    --jq '[.jobs[] | select(.name | startswith("coverage-shard"))][0] // empty'
 }
 
 # ---- the walk-back lookup (I/O via the two functions above only) ----

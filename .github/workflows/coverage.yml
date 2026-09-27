@@ -10,29 +10,32 @@ name: Coverage
 #
 # Trigger: NIGHTLY (`schedule`) + `workflow_dispatch`, deliberately not
 # `pull_request`/`push`. #319 asks for a REPORTING step, not a gate, and the
-# full v8-instrumented suite is a multi-hundred-second run even locally
-# (measured ~983-1029s / ~16-17 min, CLAUDE.md's coverage bullet) — nightly
-# gets that cost off every PR's critical path entirely, at zero PR runner
-# time, rather than trying to fit it inside the ~2.1-2.5x CI already adds on
-# top. `paths:` is deliberately absent — meaningless for a schedule (there is
-# no diff to filter), and NOT scoping to `app/**` also means a PR touching
-# only this workflow file still gets covered by the next nightly run rather
-# than needing its own trigger.
+# full v8-instrumented suite is a multi-hundred-minute run (per-file audit
+# in #1504's PR body) — nightly gets that cost off every PR's critical path
+# entirely, at zero PR runner time. `paths:` is deliberately absent —
+# meaningless for a schedule (there is no diff to filter), and NOT scoping
+# to `app/**` also means a PR touching only this workflow file still gets
+# covered by the next nightly run rather than needing its own trigger.
 #
-# #342's root cause for why per-PR was never attempted here: THREE earlier
-# dispatch runs on a per-PR-shaped trigger each failed for a different
-# reason — run 30807548075 hit a job-level `timeout-minutes: 20` cap at
-# 20.22 min; runs 30810112565 and 30815617721 (42.6 min each) then blew the
-# solver-heavy tests' OWN per-test `vi.setConfig`/`timeout` budgets under v8
-# instrumentation, which no job-level timeout could ever have fixed — two
-# independent failure surfaces, not one (see app/src/test/timeouts.ts and
-# app/src/test/timeoutGuard.test.ts, the durable fix: a single coverage-aware
-# timeout constant every solver-heavy test file imports, plus a structural
-# guard that fails loudly if a file reintroduces a hardcoded literal instead
-# of importing it). With that fix in place a genuinely PASSING run is
-# expected to land near the ~983-1029s dev-machine measurement times
-# whatever additional penalty this runner class adds — cheap to over-provision
-# on a nightly with nothing waiting on it.
+# #1504: the routing closure (`src/routing/realmask.repro.*.test.ts` and
+# neighbours) grew enough test files that the whole suite, run as ONE
+# unsharded job, started missing the 240-min `test:coverage` step cap
+# (227/228/240-capped min across three consecutive nights; the last GREEN
+# full run — 09-24, run 35970316715 — still needed 7099s = 118.3 min, and a
+# single file, `realmask.repro.confinedDominance.test.ts`, accounted for
+# 3692-8159s of that by itself depending on runner contention). Rather than
+# raising the cap toward the GitHub-hosted job ceiling (360 min — no margin
+# left once the suite grows further), this workflow now SHARDS the coverage
+# run across `coverage-shard` matrix jobs using vitest's own `--shard=i/N`
+# (the same sequencer ci.yml's `app-shard` already relies on,
+# `SlowFileFirstSequencer` in app/vite.config.ts, which round-robins the
+# SLOW_TEST_FILES_FIRST files across shards by array position) plus
+# `--reporter=blob` (vitest 4's per-shard coverage+test blob report,
+# `.vitest-reports/blob-<i>-<N>.json`), and a `coverage-merge` job that
+# downloads every shard's blob and runs `vitest run --merge-reports` to
+# combine them into the final coverage report + lcov upload. This is
+# standard Vitest sharded-coverage support (@vitest/coverage-v8's
+# `mergeReports`), not a bespoke mechanism.
 on:
   schedule:
     # 02:17 UTC daily — deliberately off the hour and staggered from the
@@ -56,18 +59,16 @@ concurrency:
   group: coverage-${{ github.ref }}
   cancel-in-progress: false
 jobs:
-  coverage:
+  # #1504: the skip-gate decision now lives in its own job (mirroring
+  # ci.yml's `changes` job) so every `coverage-shard` matrix leg and the
+  # `coverage-merge` job can read ONE decision via `needs.gate.outputs`
+  # instead of each re-running (and each independently re-querying the
+  # GitHub API for) the #879 gate.
+  gate:
     runs-on: ubuntu-latest
-    # #882: the JOB had no cap (360-min default) — only the `test:coverage`
-    # STEP below carries one (240 min). A wedge in checkout/setup/npm-ci/the
-    # Codecov upload, outside that step, was previously unbounded. This must
-    # stay strictly greater than the step cap plus margin for those other
-    # steps: measured 2026-09-03 via the Actions API, the JOB's own max is
-    # 6116s (~101.9 min, n=29) — well under the step cap already, so this is
-    # sized off the step cap (240) plus headroom for the surrounding steps,
-    # not off today's measurement.
-    timeout-minutes: 260
-    defaults: { run: { working-directory: app } }
+    timeout-minutes: 5
+    outputs:
+      run_coverage: ${{ steps.gate.outputs.run_coverage }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # #879: 7 of 29 sampled nights re-measured a byte-identical `develop`
@@ -78,72 +79,120 @@ jobs:
       # POLARITY: the safe default is RUN, never skip - see
       # `.github/scripts/coverage-skip-gate.sh`'s own header for the full
       # decision table and why every ambiguous input resolves to run=true.
-      # `working-directory: app` (this job's `defaults` above) is harmless
-      # here - the script takes no repo-relative paths, only `gh api` calls -
-      # so it is NOT overridden the way `ci.yml`'s `hook-selftests` job must
-      # override its own working-directory for a cwd-sensitive hook.
       - name: Decide whether tonight's run is needed (#879)
         id: gate
-        working-directory: ${{ github.workspace }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EVENT_NAME: ${{ github.event_name }}
           CURRENT_SHA: ${{ github.sha }}
           REPO: ${{ github.repository }}
         run: bash .github/scripts/coverage-skip-gate.sh
+  # #1504: vitest across N runners, sharded the same way ci.yml's
+  # `app-shard` already is. `SlowFileFirstSequencer.shard()`
+  # (app/vite.config.ts) spreads SLOW_TEST_FILES_FIRST round-robin across
+  # `--shard=i/N`; every other file splits by BaseSequencer's path hash.
+  # `--coverage.thresholds.statements=0` is REQUIRED on every shard run:
+  # @vitest/coverage-v8's `generateReports` checks thresholds on EVERY
+  # report generation regardless of `allTestsRun`, and a single shard only
+  # ever exercises a FRACTION of the source tree, so the real 80% threshold
+  # (app/vite.config.ts) would fail almost every shard even when the suite
+  # as a whole is well covered. The real threshold is enforced once, in
+  # `coverage-merge`, against the MERGED coverage map (where
+  # `allTestsRun: true`) — not skipped, just deferred to where it is
+  # meaningful.
+  coverage-shard:
+    name: coverage-shard (${{ matrix.shard }}/${{ strategy.job-total }})
+    needs: gate
+    runs-on: ubuntu-latest
+    # #1504 DERIVATION (mirrors the retired single-job comment this replaces
+    # — see `app/src/test/timeoutBudgetVsJobCap.test.ts` for the guard that
+    # keeps these two numbers, and the sufficient-bound arithmetic, in
+    # sync): the STEP cap must stay strictly greater than the largest
+    # `solverTimeoutMs(...)` product in the suite (900_000ms *
+    # COVERAGE_MULTIPLIER_WHEN_ENABLED(8) = 120 min) PLUS a conservative
+    # rest-of-shard wall-time allowance. No per-shard wall time has been
+    # measured yet (this is the fix that introduces sharding), so the
+    # allowance conservatively reuses the last known-GREEN UNSHARDED full
+    # suite's measured wall time (7099s = 118.3 min, run 35970316715,
+    # 2026-09-24) as a supremum: any one shard's subset of the suite cannot
+    # take longer than the whole suite did on equivalent hardware. 120 +
+    # 118.3 = 238.3 min minimum; 260/280 (step/job) leaves ~22/42 min of
+    # additional margin on top of that supremum, which is itself already
+    # conservative — real per-shard wall time is expected far below this
+    # (the audited worst single file, confinedDominance, alone accounted
+    # for 62-136 min depending on contention). There is no PR-latency cost
+    # to over-provisioning a nightly, so this stays loose rather than
+    # fitted to a real per-shard measurement that doesn't exist yet.
+    timeout-minutes: 280
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    defaults: { run: { working-directory: app } }
+    env:
+      SKIP: ${{ needs.gate.outputs.run_coverage == 'false' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.SKIP != 'true'
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        if: steps.gate.outputs.run_coverage != 'false'
+        if: env.SKIP != 'true'
         with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
       - run: npm ci
-        if: steps.gate.outputs.run_coverage != 'false'
-      - run: npm run test:coverage
+        if: env.SKIP != 'true'
+      - name: Run npm run test:coverage (shard)
         id: test-coverage
-        if: steps.gate.outputs.run_coverage != 'false'
-        # DERIVATION (PR #351 review N1 — this cap was raised 120 -> 240
-        # after `app/src/test/timeouts.ts`'s coverage multiplier was raised
-        # 4 -> 8, which made the OLD 120-minute cap collide with the
-        # heaviest per-test budget in the suite):
-        #
-        #   `invariants.property.test.ts`'s solverTimeoutMs(900_000), the
-        #   largest base in the suite, is 900_000 * 8 = 7_200_000ms =
-        #   EXACTLY 120.0 min under coverage. A per-test timer starts only
-        #   once its OWN test starts — strictly after this step's node
-        #   boot/transform/collection already consumed time — so a per-test
-        #   budget numerically equal to the step cap can NEVER fire before
-        #   the step cap does, regardless of scheduling. That collapses the
-        #   two failure surfaces `timeouts.ts` says must stay separate: a
-        #   hang would surface as GitHub's generic job-timeout with no test
-        #   named, instead of vitest naming the offender.
-        #
-        #   RULE, so the next multiplier or base change re-checks this:
-        #   this cap MUST stay strictly greater than the largest
-        #   `solverTimeoutMs(...)` product in the suite (currently 120 min,
-        #   `solverTimeoutMs(900_000)`) PLUS the rest of the suite's wall
-        #   time, with margin for step-startup overhead. 120 + ~45 min
-        #   (measured: the completed coverage run, 30829788656, ran the
-        #   whole suite in 40m56s at the PRIOR 4x multiplier) = ~165 min
-        #   minimum; 240 is the next natural round number above that,
-        #   leaving real margin rather than a number sized to today's exact
-        #   minimum.
-        #
-        #   There is no PR-latency cost to over-provisioning a nightly, so
-        #   this stays deliberately loose rather than fitted to today's
-        #   measurement — a non-required check that times out goes
-        #   permanently red and gets ignored, silently defeating the whole
-        #   point of #319 (a check nobody reads is worse than no check).
-        #
-        #   TWIN COMMENT (PR #351 round 5, orchestrator decision — this repo's
-        #   twin-search rule, CLAUDE.md, for a fact stated in two artifacts):
-        #   `app/src/test/timeoutBudgetVsJobCap.test.ts`'s `JOB_CAP_MINUTES`
-        #   constant (currently 240) MUST equal this number. That guard used
-        #   to READ this file directly and VERIFY the two stayed in sync;
-        #   after four regex-parsing fail-opens across two review rounds it
-        #   was simplified to a declared constant instead — the coupling is
-        #   now DOCUMENTED, not verified, so changing ONE of these two
-        #   numbers without the other is a SILENT drift. #359 tracks
-        #   restoring verified coupling with a real YAML parse. If you change
-        #   this number, change `JOB_CAP_MINUTES` too.
-        timeout-minutes: 240
+        if: env.SKIP != 'true'
+        run: >-
+          npm run test:coverage -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+          --reporter=blob --coverage.thresholds.statements=0
+        # See the job-level comment above for the derivation. Twin comment:
+        # `app/src/test/timeoutBudgetVsJobCap.test.ts`'s `JOB_CAP_MINUTES`
+        # constant MUST equal this number — change both together (#359's
+        # documented coupling, unchanged by #1504's restructure beyond the
+        # job id it addresses).
+        timeout-minutes: 260
+      - name: Upload coverage blob (${{ matrix.shard }})
+        if: env.SKIP != 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-blob-${{ matrix.shard }}
+          path: app/.vitest-reports
+          retention-days: 1
+          if-no-files-found: error
+  # #1504: reads every shard's blob (test results + raw v8 coverage) and
+  # merges them via vitest's own `--merge-reports`, which regenerates the
+  # configured reporters (text-summary/text/lcov, app/vite.config.ts) and
+  # re-checks the real 80% threshold against the FULL merged coverage map
+  # (`allTestsRun: true` there, unlike any individual shard). Runs no
+  # tests itself, so it carries none of the per-test-timeout exposure the
+  # `coverage-shard` job does — its cap is sized for
+  # download+merge+report+upload only.
+  coverage-merge:
+    needs: [gate, coverage-shard]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults: { run: { working-directory: app } }
+    env:
+      SKIP: ${{ needs.gate.outputs.run_coverage == 'false' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.SKIP != 'true'
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: env.SKIP != 'true'
+        with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
+      - run: npm ci
+        if: env.SKIP != 'true'
+      - name: Download coverage blobs
+        if: env.SKIP != 'true'
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          pattern: coverage-blob-*
+          path: app/.vitest-reports
+          merge-multiple: true
+      - name: Merge shard coverage reports
+        id: merge-coverage
+        if: env.SKIP != 'true'
+        run: npm run test:coverage -- --merge-reports
       # #346: upload the lcov report (app/vite.config.ts's coverage.reporter
       # now includes 'lcov') to Codecov for the README badge. Deliberately
       # NOT added to the required `app`/`e2e` jobs in ci.yml — this step lives
@@ -161,17 +210,17 @@ jobs:
       # VISIBILITY — a silent upload failure (missing/expired CODECOV_TOKEN, a
       # Codecov outage) leaves the README badge stale with no signal at all,
       # where a red job at least surfaces it. Stated plainly because this file
-      # argues the other way in the `timeout-minutes: 240` comment above:
+      # argues the other way in the `timeout-minutes: 280` comment above:
       # a permanently-red non-required check DOES get ignored. If this step
       # ever starts failing chronically, fix or remove it — do not flip this
       # to `false`.
       - name: Upload coverage to Codecov
         # #879: skipping must not upload a stale report over a fresh badge -
-        # same gate as `npm ci`/`test:coverage` above. When skipped there is
-        # no `app/coverage/lcov.info` from THIS run anyway (the step above
-        # didn't run), so gating here is belt-and-braces against uploading a
-        # leftover file from actions/cache or a prior job attempt.
-        if: steps.gate.outputs.run_coverage != 'false'
+        # same gate as `npm ci`/the merge step above. When skipped there is
+        # no `app/coverage/lcov.info` from THIS run anyway, so gating here is
+        # belt-and-braces against uploading a leftover file from
+        # actions/cache or a prior job attempt.
+        if: env.SKIP != 'true'
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           files: app/coverage/lcov.info
