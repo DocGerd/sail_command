@@ -2429,7 +2429,7 @@ making design-level decisions; do not silently deviate.
   spread into 5 code sites — verify wording against code before reusing it in
   briefs, comments, or commit messages. A NEW issue can be stale at filing:
   #1464 (filed 2026-09-24) copied #573's pre-#1135 wording, so it asked for a
-  feature already shipped, and two triage agents promoted it. A code-first
+  feature already shipped. A code-first
   design step caught it before any implementation.
 - Review must probe the ISSUE'S GOAL at extremes, not just design compliance:
   the unclipped barb ribbon was implemented and unit-test-pinned exactly as
@@ -2886,9 +2886,6 @@ making design-level decisions; do not silently deviate.
   started", so a monitor on it burns its budget and reports a false timeout.
   Find the run by `?branch=` or `check-runs`, THEN monitor
   `actions/runs/<id>/jobs`. Foreground-test any poll query before arming it.
-  `?branch=` does NOT find a TAG-triggered run: at the v0.45.0 cut
-  `deploy.yml/runs?branch=v0.45.0` came back empty while `?head_sha=` listed
-  that run with `head_branch: v0.45.0`. Find a tag run by `head_sha`.
   THE DUPLICATION FOLLOWS FROM THE FAST-FORWARD ALONE, not from a no-op —
   measured again at v0.17.0 (2026-09-01, PR #815), where the TAG run SUCCEEDED
   and the MERGE-push run was the cancelled one, the mirror of the v0.15.0 case
