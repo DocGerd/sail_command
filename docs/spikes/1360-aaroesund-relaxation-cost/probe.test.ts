@@ -38,7 +38,8 @@ vi.mock("../src/routing/isochrone", async (importOriginal) => {
             : Number(H.cap);
       const mask = p.mask as { meta: unknown };
       // Default cap per tree: 30 000 constant at 36d86a7/16c7c6b
-      // (`p.maxFrontier ?? MAX_FRONTIER`), defaultMaxFrontier(meta) on develop.
+      // (`p.maxFrontier ?? MAX_FRONTIER`), defaultMaxFrontier(meta) at
+      // `a4c0ad3` (post-#1257).
       const countCap =
         cap ??
         (typeof orig.defaultMaxFrontier === "function"

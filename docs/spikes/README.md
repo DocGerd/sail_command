@@ -128,9 +128,10 @@ instead of here.
   pass at the shipped motor-off prune divisor. No truncation measured
   anywhere; salvage never fires on any real-mask input tried
 - [1360-aaroesund-relaxation-cost.md](1360-aaroesund-relaxation-cost.md) —
-  #1360: the post-#1322 `salona44-relaxation/aaroesund` +16.5 min is also
-  `MAX_FRONTIER` truncation, measured through the relaxation ladder at three
-  trees; resolved on `develop` by #1257's derived cap
+  #1360: the post-#1322 `salona44-relaxation/aaroesund` +16.5 min is, like
+  #1330's Fehmarn rows, `MAX_FRONTIER` truncation, measured through the
+  relaxation ladder at three trees; resolved by #1257's derived cap (measured
+  at `a4c0ad3`)
 
 Five entries carry a same-named subdirectory of supporting artifacts rather
 than being self-contained: `1022-whole-journey-ux/` (reference screenshots),
