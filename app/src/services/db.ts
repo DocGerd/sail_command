@@ -492,7 +492,7 @@ export async function deleteWaypoint(id: string): Promise<void> {
 // a 'plan-gone' outcome into a 'saved' one for any row this store can hold;
 // kept for structural parity with deletePlan and against a future change to
 // either constraint. Zero discriminating test evidence, stated rather than
-// claimed (db.test.ts's own comment on this function says so).
+// claimed.
 //
 // item 4 — every await between opening this transaction and `pins.put` must
 // resolve an IndexedDB request (the `idb` library's promise wrapping), never
