@@ -20,7 +20,7 @@ shipped.
 
 The `v0.46.0` cut (2026-09-28) worked the
 [`v0.46.0` milestone](https://github.com/DocGerd/sail_command/milestones):
-one user-visible fix (per `CHANGELOG.md`'s own `[0.46.0]` section) — when the service worker first takes control while a plan is shown, every other saved plan now has its offline map regions pinned too, not only that plan, alongside five internal region-pinning residuals from #1253/#1246
+one user-visible fix (per `CHANGELOG.md`'s own `[0.46.0]` section) — when the service worker first takes control while a plan is shown on the Routes tab, every other saved plan now has its offline map regions pinned too, not only that plan, alongside five internal region-pinning residuals from #1253/#1246
 ([#1483](https://github.com/DocGerd/sail_command/issues/1483)) — plus five further issues with no user-visible surface: sweep rows now serialize pass 1's
 planning record and the pass-2 salvage outcome
 ([#1456](https://github.com/DocGerd/sail_command/issues/1456)), which lets the `motorless-short-horizon` arm detect the salvage-admission widening measured on PR #1511
