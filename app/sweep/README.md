@@ -19,17 +19,12 @@ deletes both keys from every HEAD row and fails closed if a HEAD row lacks
 either or a BASE row has one.
 
 **#1334**: `motorless-short-horizon` is the only arm crossing
-`motorEnabled: false` with a short (`{ hours: 3 }`) forecast grid, so it
-can hold plans that hit `horizon-exceeded` at the requested gate while
-every relaxed tier ends `mask-blocked` — the class #1301 found zero of in
-the three earlier motor-off arms. The `PlanResult` shows those rows as
-plain `beyond-horizon`; the row's `record.cause` (`horizon-exceeded`) and
-every relaxed tier's `causes` (all `mask-blocked`) identify the class. Origin,
-TWS and direction come from the pre-measurement on the PR for #1334.
-Widening `salvagePassAdmitted` to admit `horizon-exceeded` routes nothing on
-this arm (#1455's review), so before #1456 its output stayed byte-identical
-under that widening. The admitted rows' `pass2` now moves from `not-admitted`
-to `admitted-no-route`, so the arm's hash discriminates it.
+`motorEnabled: false` with a short (`{ hours: 3 }`) forecast grid. Origin,
+TWS and direction come from the pre-measurement on the PR for #1334. On this
+arm at #1456's tree, widening `salvagePassAdmitted` to admit
+`horizon-exceeded` moves `pass2` on every row it newly admits while every
+`PlanResult` stays byte-identical, so the arm's hash detects that widening
+(measured on PR #1511).
 
 Issue #282 makes this a **standing requirement**: the no-route cause is a
 control input, so any change to how `solve()` *classifies* a failure can move
