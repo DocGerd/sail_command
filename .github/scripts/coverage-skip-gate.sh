@@ -87,7 +87,7 @@
 # always sets it), not a legitimate uncertain input, and mirrors
 # classify-docs-only.sh's identical assertion for the same reason.
 #
-# Production usage (invoked by coverage.yml's `coverage` job as its first
+# Production usage (invoked by coverage.yml's `gate` job as its first
 # step - EVENT_NAME/CURRENT_SHA/REPO come from `github.*` context, GH_TOKEN
 # from `secrets.GITHUB_TOKEN`):
 #   EVENT_NAME=schedule CURRENT_SHA=<sha> REPO=owner/repo \
@@ -182,8 +182,9 @@ decide_run_coverage() {
 # EXECUTED (conclusion "success") rather than being gated off by this very
 # script on a skip night (conclusion "skipped"). Matches the step by
 # substring/case-insensitive `test:coverage` rather than an exact name so it
-# also matches the default GitHub-generated step name ("Run npm run
-# test:coverage (shard)") regardless of the exact wording appended to it.
+# also matches the step's explicit name ("Run npm run test:coverage
+# (shard)", coverage.yml's own `name:` on that step) regardless of exactly
+# what wording is appended to it.
 is_real_measurement_job() {
   local job_json="$1"
   local step_conclusion

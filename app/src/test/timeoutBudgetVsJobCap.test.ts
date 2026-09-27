@@ -162,7 +162,7 @@ function coverageJob(workflow: WorkflowFile): WorkflowJob {
   return job as WorkflowJob;
 }
 
-/** Addressed lookup of `jobs.coverage['timeout-minutes']` (the JOB-level cap). */
+/** Addressed lookup of `jobs.coverage-shard['timeout-minutes']` (the JOB-level cap). */
 function jobCapMinutes(workflow: WorkflowFile): number {
   const value = coverageJob(workflow)['timeout-minutes'];
   if (typeof value !== 'number') {
@@ -177,7 +177,7 @@ function jobCapMinutes(workflow: WorkflowFile): number {
 /**
  * Addressed lookup of the `test:coverage` step's OWN `timeout-minutes` (the
  * STEP-level cap) — found by its stable `id: test-coverage` within
- * `jobs.coverage.steps` specifically (never a whole-file scan). Requires
+ * `jobs.coverage-shard.steps` specifically (never a whole-file scan). Requires
  * EXACTLY ONE step carrying that id so a missing or duplicated id fails
  * closed rather than picking "the first match" (#359's documented
  * instance-4 defect) — GitHub Actions itself treats a duplicate step id as
@@ -219,28 +219,20 @@ function bindingCapMinutes(workflow: WorkflowFile): number {
 // like `JOB_CAP_MINUTES` used to be, and DATED so staleness is checkable.
 //
 // #1504: this constant was 42m46s (2026-08-03, CI run 30833176564) and went
-// stale WITHOUT tripping the age check below — the suite grew enough that
-// the real unsharded wall time reached 227-240 min while this guard still
-// trusted a 42m46s figure, which is why the "sufficient" check kept passing
-// through three consecutive nights that actually blew the job cap. Staleness
-// here is a SUITE-GROWTH fact, not only a calendar one; the age check alone
-// cannot catch it.
+// stale WITHOUT tripping the age check below (55 days old at the 09-25/26/27
+// step-cap failures, well under the 200-day window) — the age check alone
+// cannot catch a wall-time change that isn't a calendar-staleness fact.
 //
-// Re-measured against `coverage-shard`: no per-shard wall time exists yet
-// (this PR is what introduces sharding), so this constant conservatively
-// reuses the last known-GREEN UNSHARDED full-suite wall time as a supremum
-// for "rest of any one shard" — a shard is a subset of the suite, so its
-// wall time cannot exceed what the whole suite took on equivalent hardware.
-// Source: CI run 35970316715 (job 107538230486), 2026-09-24T07:34:28Z ->
-// completed with `Duration 7098.96s` in the job's own vitest summary line —
-// 217 files, 3624 tests, 94.47% statements, head 1e50ede. This INCLUDES the
-// heaviest test's own actual (not ceiling) run time, which is fine — it
-// makes the sum a slight over-count of "heaviest ceiling + everything
-// else", i.e. MORE conservative than the true sufficient bound, never less.
-// Replace with a genuine per-shard measurement once the sharded workflow
-// has run for real and re-date this comment and constant together.
-const SUITE_WALL_TIME_MS_AT_SHIPPED_MULTIPLIER = 7_098_960;
-const SUITE_WALL_TIME_MEASURED_AT = '2026-09-24';
+// Re-keyed to `coverage-shard`: this is now the measured WORST SHARD's own
+// wall time, not a whole-suite figure — shard 2, run 36333125953
+// (2026-09-27), whose `test:coverage (shard)` step ran 16:25:06Z ->
+// 17:47:44Z = 4958s. This INCLUDES the heaviest test's own actual (not
+// ceiling) run time, which is fine — it makes the sum a slight over-count,
+// i.e. MORE conservative than the true sufficient bound, never less. See
+// coverage.yml's own derivation comment for the same figure and its cap
+// arithmetic; update both together at the next re-measurement.
+const SUITE_WALL_TIME_MS_AT_SHIPPED_MULTIPLIER = 4_958_000;
+const SUITE_WALL_TIME_MEASURED_AT = '2026-09-27';
 // How long a wall-time measurement may go untouched before this guard
 // refuses to trust it further. #357's own "why this is not simply closed"
 // warns that an un-monitored constant rots in the FAIL-OPEN direction as the
@@ -321,7 +313,7 @@ describe('#342/#359/#357 structural guard: coverage.yml job cap vs. timeouts.ts 
 
     if (sufficientMs >= capMs) {
       throw new Error(
-        `The SUFFICIENT bound (heaviest per-test ceiling ${worstCaseMs}ms + measured rest-of-suite ` +
+        `The SUFFICIENT bound (heaviest per-test ceiling ${worstCaseMs}ms + measured worst-shard ` +
           `wall time ${SUITE_WALL_TIME_MS_AT_SHIPPED_MULTIPLIER}ms = ${sufficientMs}ms = ` +
           `${sufficientMs / 60_000} min) is not strictly less than the binding cap read from ` +
           `coverage.yml (${capMinutes} min = ${capMs}ms). Passing the NECESSARY check above while ` +
@@ -341,7 +333,7 @@ describe('#342/#359/#357 structural guard: coverage.yml job cap vs. timeouts.ts 
           `${SUITE_WALL_TIME_MEASURED_AT} (${ageDays.toFixed(1)} days ago), past this guard's ` +
           `${SUITE_WALL_TIME_MAX_AGE_DAYS}-day trust window. #357's own warning: an unmonitored ` +
           `wall-time constant rots FAIL-OPEN as the suite grows, silently permitting a cap that is ` +
-          `no longer sufficient. Re-measure a real coverage-run wall time at the CURRENT ` +
+          `no longer sufficient. Re-measure a real per-shard wall time at the CURRENT ` +
           `COVERAGE_MULTIPLIER_WHEN_ENABLED, update the constant and SUITE_WALL_TIME_MEASURED_AT ` +
           `together, and cite the run id/timestamps the way the constant's own comment does.`,
       );
