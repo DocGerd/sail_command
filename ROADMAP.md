@@ -42,23 +42,24 @@ there at the spike's base
 ([#1360](https://github.com/DocGerd/sail_command/issues/1360),
 `docs/spikes/1360-aaroesund-relaxation-cost.md`).
 
-Four issues were open at the cut and rolled forward into `v0.47.0`: three
+Five issues were open at the cut and rolled forward into `v0.47.0`: three
 that wait on a real-tablet session
 ([#1281](https://github.com/DocGerd/sail_command/issues/1281),
 [#1413](https://github.com/DocGerd/sail_command/issues/1413),
-[#1490](https://github.com/DocGerd/sail_command/issues/1490)), and the
+[#1490](https://github.com/DocGerd/sail_command/issues/1490)); the
 per-rig plan budget versus parallel rig solving question, whose spike is
-merged and awaits a maintainer ruling ([#1350](https://github.com/DocGerd/sail_command/issues/1350),
-`docs/spikes/1350-per-rig-budget-vs-parallel-rigs.md`).
+merged and awaits a maintainer ruling
+([#1350](https://github.com/DocGerd/sail_command/issues/1350),
+`docs/spikes/1350-per-rig-budget-vs-parallel-rigs.md`); and plotter-style
+depth contours, whose blocking design questions have a maintainer ruling but
+no merged spec yet
+([#629](https://github.com/DocGerd/sail_command/issues/629)).
 
 ## Next — v0.47.0
 
 The [`v0.47.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-carries the four carried-forward issues named above plus plotter-style depth
-contours, whose blocking design questions have a maintainer ruling but no
-merged spec yet ([#629](https://github.com/DocGerd/sail_command/issues/629)). The
-milestone page is the only authoritative view, check it directly rather than
-this file.
+carries the five carried-forward issues named above. The milestone page is
+the only authoritative view, check it directly rather than this file.
 
 ## Themes for the next year
 
