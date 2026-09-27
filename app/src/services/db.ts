@@ -469,6 +469,40 @@ export async function deleteWaypoint(id: string): Promise<void> {
 // `put` (not `add`), same as before: a repeat pin request for the same plan
 // overwrites its prior intent record rather than throwing on a duplicate
 // keyPath.
+//
+// #1483 (residuals from PR #1480's review, #1246 items 1/4/6):
+//
+// item 1 — the row is now read through `migratePlan`, mirroring getPlan's
+// own read boundary, instead of being handed to `buildRecord` raw. Before
+// this, a pre-#54 stored record's raw `result.genoa`/`result.fock` quartet
+// (no `result.sails`) would have reached `buildRecord` unmigrated, and
+// regionPinning.ts's `requiredRegionIdsForPlan` reads `plan.result.sails` —
+// a legacy or foreign row would have silently computed the wrong (or zero)
+// region ids. A row `migratePlan` refuses is as unpinnable as a deleted
+// one, so it reports 'plan-gone' too.
+//
+// item 6 — mirrors deletePlan's own `displayIdOfKey` cursor fallback above
+// (see that function's comment for the mechanism and its residual): the
+// direct `plans.get(planId)` above only finds a row whose REAL primary key
+// equals the string `planId`; a row keyed by a non-string value needs the
+// same fallback scan deletePlan already has. Because this store's keyPath
+// is 'id', the fallback can only ever MATCH a row whose own `id` field is
+// that same non-string key — which `migratePlan` unconditionally refuses
+// (`typeof id !== 'string'`) — so this fallback is provably unable to turn
+// a 'plan-gone' outcome into a 'saved' one for any row this store can hold;
+// kept for structural parity with deletePlan and against a future change to
+// either constraint. Zero discriminating test evidence, stated rather than
+// claimed (db.test.ts's own comment on this function says so).
+//
+// item 4 — every await between opening this transaction and `pins.put` must
+// resolve an IndexedDB request (the `idb` library's promise wrapping), never
+// a macrotask (`fetch`, `setTimeout`, …): IndexedDB auto-commits a
+// transaction once control returns to the browser's event loop, so any
+// other await here would let 'plans' and 'pins' commit as two separate,
+// non-atomic transactions instead of the single one this function's header
+// comment above relies on. `buildRecord`'s signature is deliberately
+// synchronous (returns `RegionPinRecord`, never a `Promise`) for exactly
+// this reason — do not widen it.
 export async function saveRegionPin(
   planId: string,
   buildRecord: (plan: Plan) => RegionPinRecord,
@@ -476,8 +510,19 @@ export async function saveRegionPin(
   const tx = (await db()).transaction(['plans', 'pins'], 'readwrite');
   const plans = tx.objectStore('plans');
   const pins = tx.objectStore('pins');
-  const plan = await plans.get(planId);
-  if (plan === undefined) {
+  let raw: unknown = await plans.get(planId);
+  if (raw === undefined) {
+    let cursor = await plans.openCursor();
+    while (cursor) {
+      if (displayIdOfKey(cursor.key) === planId) {
+        raw = cursor.value;
+        break;
+      }
+      cursor = await cursor.continue();
+    }
+  }
+  const plan = raw === undefined ? null : migratePlan(raw);
+  if (plan === null) {
     await tx.done;
     return 'plan-gone';
   }
