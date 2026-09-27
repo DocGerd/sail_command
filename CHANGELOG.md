@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- A saved plan whose offline-map readiness chip was never opened this session now gets pinned automatically too, the first time the service worker takes control — previously only the currently-open plan's regions were pinned (#1483).
+- When the service worker first takes control while a plan is shown on the Routes tab, every other saved plan now gets its offline map regions pinned too — previously only the plan on screen was pinned (#1483).
 
 ## [0.45.0] - 2026-09-25
 

@@ -20,15 +20,10 @@ shipped.
 
 The `v0.46.0` cut (2026-09-28) worked the
 [`v0.46.0` milestone](https://github.com/DocGerd/sail_command/milestones):
-one user-visible fix (per `CHANGELOG.md`'s own `[0.46.0]` section) — every
-saved plan now has its offline map regions pinned when the service worker
-takes control, not only the plan open at the time, alongside five internal
-region-pinning residuals from #1253/#1246
-([#1483](https://github.com/DocGerd/sail_command/issues/1483)) — plus five
-process/tooling and routing-test fixes: sweep rows now serialize pass 1's
+one user-visible fix (per `CHANGELOG.md`'s own `[0.46.0]` section) — when the service worker first takes control while a plan is shown, every other saved plan now has its offline map regions pinned too, not only that plan, alongside five internal region-pinning residuals from #1253/#1246
+([#1483](https://github.com/DocGerd/sail_command/issues/1483)) — plus five further issues with no user-visible surface: sweep rows now serialize pass 1's
 planning record and the pass-2 salvage outcome
-([#1456](https://github.com/DocGerd/sail_command/issues/1456)), which lets
-the `motorless-short-horizon` arm detect a salvage-admission widening
+([#1456](https://github.com/DocGerd/sail_command/issues/1456)), which lets the `motorless-short-horizon` arm detect the salvage-admission widening measured on PR #1511
 ([#1334](https://github.com/DocGerd/sail_command/issues/1334));
 the motor-off salvage real-mask rows re-pointed at inputs that reach pass 2,
 since no real-mask input was found that pass 2 rescues
@@ -47,12 +42,10 @@ that wait on a real-tablet session
 ([#1281](https://github.com/DocGerd/sail_command/issues/1281),
 [#1413](https://github.com/DocGerd/sail_command/issues/1413),
 [#1490](https://github.com/DocGerd/sail_command/issues/1490)); the
-per-rig plan budget versus parallel rig solving question, whose spike is
-merged and awaits a maintainer ruling
+per-rig plan budget versus parallel rig solving question, whose spike merged at this cut with its §6 ruling still open
 ([#1350](https://github.com/DocGerd/sail_command/issues/1350),
 `docs/spikes/1350-per-rig-budget-vs-parallel-rigs.md`); and plotter-style
-depth contours, whose blocking design questions have a maintainer ruling but
-no merged spec yet
+depth contours, whose four code-blocking design questions were ruled on 2026-09-27, with no spec merged by the cut
 ([#629](https://github.com/DocGerd/sail_command/issues/629)).
 
 ## Next — v0.47.0
@@ -211,8 +204,7 @@ settings; its four residuals did not close with it
 `v0.30.0` cut;
 [#930](https://github.com/DocGerd/sail_command/issues/930) closed at the
 `v0.34.0` cut, its harness made able to fail; and
-[#932](https://github.com/DocGerd/sail_command/issues/932) remains open in
-`Icebox`.
+[#932](https://github.com/DocGerd/sail_command/issues/932) remains open (in `Backlog` at the `v0.46.0` cut).
 
 The `v0.20.0` cut addressed sixteen items in this area, out of eighteen
 issues total that milestone closed. The largest strand cut what continuous
@@ -713,7 +705,7 @@ never done:
 - Wind barbs along the route at passage time — at each position, the wind
   expected when the boat will actually be there — as a second sampling mode
   beside today's single-slider-hour field
-  ([#293](https://github.com/DocGerd/sail_command/issues/293)).
+  ([#293](https://github.com/DocGerd/sail_command/issues/293)), closed as not planned on 2026-09-17.
 - The five harbors that remain disconnected from the routable mask
   ([#9](https://github.com/DocGerd/sail_command/issues/9)). This one is
   **blocked on physics, not effort**: at the mask's ~46 m cell size the
