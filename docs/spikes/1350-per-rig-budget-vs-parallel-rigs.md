@@ -7,10 +7,11 @@
   (§6) before anything is built.
 
 **Verdict: of the two options #1350 names, only parallel rig solving
-shortens the user's wait; a per-rig budget only changes which rig gets cut.
-Build parallel solving, in the tier-barrier shape of §4, if and when #1490's
-tablet measurement shows the worst plan approaching `PLAN_BUDGET_MS`. Until
-then keep the shared 360 s deadline (#1331's ruling).**
+shortens the user's wait; a per-rig budget either changes which rig gets cut
+or lengthens the worst-case wait (§5). Build parallel solving, in the
+tier-barrier shape of §4, if a tablet measurement of the worst known route
+approaches `PLAN_BUDGET_MS`; #1490 measures a different plan (§3, §6 Q1).
+Until then keep the shared 360 s deadline (#1331's ruling).**
 
 ## 1. Today's shape
 
@@ -20,8 +21,9 @@ then keep the shared 360 s deadline (#1331's ruling).**
   `PLAN_BUDGET_MS = 360_000` (~:140).
 - `runAll` maps over `req.sailIds` synchronously, one rig after the other
   (`planRoute.ts`, ~:628, and the `#340/#54 NAMED COUPLING` comment above
-  it). The deadline is shared by up to 4 tiers × 2 rigs × N segments
-  (`planRoute`'s doc comment, ~:424).
+  it). The deadline is shared by pass 1's up to 4 tiers × 2 rigs × N
+  segments (`planRoute`'s doc comment, ~:424), plus any #1136 pass-2
+  replays (next bullet).
 - #1136 pass 2 re-runs `runAll` per recorded tier under `pass2Deadline`:
   the shared deadline or `PASS2_BUDGET_MS = 60_000` from pass 2's start,
   whichever expires first (~:805, ~:62).
@@ -30,8 +32,9 @@ then keep the shared 360 s deadline (#1331's ruling).**
 
 So the user waits for the SUM of every rig solve of every tier that fires.
 The per-rig figures on record at the shipped #1257 cap (#1331 comment
-5728660679): Flensburg → Burgstaaken, tier 1, synthetic uniform 12 kn /
-225°, idle box, machine not recorded — genoa 127.9 s + fock 144.0 s =
+5728660679): Flensburg → Burgstaaken, Salona 45, tier 1, bare `solve()` per
+rig, synthetic uniform 12 kn / 225°, idle box, machine not recorded,
+measured for PR #1335 (2026-09-18) — genoa 127.9 s + fock 144.0 s =
 271.9 s.
 
 ## 2. The deciding axis: the user's wait
@@ -40,11 +43,11 @@ The per-rig figures on record at the shipped #1257 cap (#1331 comment
 |---|---|---|---|
 | Shared deadline (today) | sum of rigs | budget | 271.9 s (sum) |
 | Per-rig budget | sum of rigs | sum of per-rig budgets | 271.9 s (sum) |
-| Parallel rigs | max of rigs | budget | 144.0 s (max) |
+| Parallel rigs | per-tier max, summed | budget | 144.0 s (tier 1 max) |
 
 The parallel row is arithmetic on #1331's per-rig figures and assumes two
 concurrent solves each run at single-solve speed. That assumption is not
-verified for the reference tablet (cores, thermal behaviour; §6 Q2).
+verified on any machine, the reference tablet included (§6 Q2).
 
 `planRoute`'s #432 doc comment (~:424) records why the budget is one object
 per plan: a per-`solve()` budget "would bound each piece while leaving the
@@ -54,9 +57,12 @@ granularity; §5 applies the argument per variant.
 
 ## 3. Recommendation
 
-Parallel rig solving, tier by tier (§4), gated on #1490. #1490's first ask
-already reads "if it approaches the budget, weigh #1350"; this spike
-supplies that weighing so the gate needs no second investigation.
+Parallel rig solving, tier by tier (§4), gated on a tablet measurement of
+the worst known route, which #1331's ruling comment names as Flensburg →
+Burgstaaken. #1490's first ask ("if it approaches the budget, weigh #1350")
+covers a different plan, the light-motorless Flensburg → Svendborg
+motor-off plan, so it does not by itself trigger this. No tablet figure for
+Burgstaaken appears in #1331, #1350, #1490 or spike 1147.
 
 `comparisonComplete` improves under parallel solving (both rigs start at
 the same instant, so the second rig is no longer starved by the first) but
@@ -92,8 +98,8 @@ What moves:
 3. **Cancel.** `terminate()` is the only interrupt (`workerClient.ts`'s
    `'cancelled'` comment); `cancel()` must terminate both workers.
 4. **Liveness.** `armLiveness` (~:402) re-arms per pending plan on any
-   progress; with two workers, a silent one must not hide behind a chatty
-   one.
+   progress or probe message; with two workers, a silent one must not hide
+   behind a chatty one.
 5. **Progress readout.** `usePlanFlow.ts`'s `PlanningState` `'routing'`
    comment says the "sail N of 2" readout is honest because rigs solve
    sequentially, and `planRoute.test.ts`'s `'#340/#54: solve order matches
@@ -101,7 +107,8 @@ What moves:
 6. **Pass 2.** `replayWithSalvage` (~:811) calls `runAll` per tier, so it
    parallelises the same way, still under `pass2Deadline`.
 7. **Singleton.** `usePlanFlow.ts`'s `clientRef` (~:138) is one client
-   shared by three consumers (`state/replan.ts`'s dispose comment).
+   shared through `ensureClient` by several consumers, e.g.
+   `DepartureCompare.tsx`'s `useDepartureScan` and `useDepartureConfirm`.
 
 **Memory, per extra worker.** Its own `NavMask` over a transferred copy of
 the mask (`usePlanFlow.ts` `.slice(0)`, ~:179; `mask.bin` is 9,438,000
@@ -124,24 +131,27 @@ worker. Per-solve solver heap is not measured here.
   - *360 s each, per rig across tiers:* up to 2× today's worst-case wait.
   - *360 s each, per rig per tier:* tiers × rigs × 360 s (8× today's at 4
     tiers); the #432 objection in full.
-  Its one real effect, guaranteeing the second rig a share, is delivered
+  Its one benefit, guaranteeing the second rig a share, is delivered
   by parallel solving without lengthening the wait.
 - **Two independent `planRoute` calls, one sail each.** Each worker would
   run its own ladder, so the two rigs could return results from different
   tiers or relaxed gates, which `compareRigs` would then rank. Breaks every
   pair-level decision in §4.
 - **Ladder on the main thread.** `connectedAt` and `findRelaxedGate` run
-  synchronous `cellsConnected` BFS passes over the full mask, several per
+  synchronous `cellsConnected` BFS passes, several per
   relaxation (`mask.ts`'s #1256 comment); on the main thread they block the
   UI.
-- **Building now, before #1490.** #1331 already raised the budget; whether
-  a tablet approaches it is #1490's open measurement. Building first would
-  pay the §4 costs for an unquantified benefit.
+- **Building now.** #1331 already raised the budget; no tablet figure for
+  the worst known route is on record (§3), and #1490's open measurement
+  covers a different plan. Building first would pay the §4 costs for an
+  unquantified benefit.
 
 ## 6. Questions for the maintainer
 
-1. Does #1350 wait for #1490's tablet measurement, and what fraction of
-   `PLAN_BUDGET_MS` triggers it?
+1. Does #1350 wait for a tablet measurement of Flensburg → Burgstaaken,
+   and what fraction of `PLAN_BUDGET_MS` triggers it? #1490 measures the
+   Flensburg → Svendborg motor-off plan instead, and its body gives no
+   per-rig split, so it cannot show the rig asymmetry §2 depends on.
 2. Does the reference tablet run two solver workers concurrently at close
    to single-solve speed, and can it hold a second worker's mask and wind
    copies? Neither is established in any file read here.
