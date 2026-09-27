@@ -24,16 +24,16 @@
  * See `README.md` in this directory for how to run it.
  *
  * BASELINE PARAMETERS ARE LOAD-BEARING. Every constant below — the arm list,
- * each arm's wind field, `T0`, the origin, and the serializer — defines what a
- * stored baseline means. Change any one and previously-recorded output is no
- * longer comparable, which silently destroys the only evidence a future
- * classification change has to argue against. Add a new arm rather than
- * editing an existing one.
+ * each arm's wind field, `T0`, the origin, and the serializer — plus the row
+ * shape `runArm` writes (#1456) defines what a stored baseline means. Change
+ * any one and previously-recorded output is no longer comparable, which
+ * silently destroys the only evidence a future classification change has to
+ * argue against. Add a new arm rather than editing an existing one.
  *
- * Imports nothing that exists on only one side of a refactor (no
- * `SolveFailureCause`, no `NO_ROUTE_LABEL_OF_CAUSE`), so the identical file
- * runs unchanged at BASE and at HEAD — for any BASE at or after #1456, which
- * added `planRouteWithRecord`'s `pass2` to every row (README.md, "Row shape").
+ * Imports nothing from the #282 classification refactor (no
+ * `SolveFailureCause`, no `NO_ROUTE_LABEL_OF_CAUSE`). It reads
+ * `planRouteWithRecord`'s `pass2`, so its rows match HEAD's shape only at a
+ * BASE at or after #1456 (README.md, "Row shape").
  */
 import { expect, it } from 'vitest';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
@@ -588,7 +588,7 @@ export function runArm(label: (typeof ARM_NAMES)[number]): void {
         );
         // #1456: the PlanResult keys first, so stripping `record` and `pass2`
         // recovers a pre-#1456 row byte for byte. Never serialize `gate`: an
-        // ApproachGate carries its discs.
+        // ApproachGate carries its discs. `comfortDepthM` is left out too.
         rows[h.id] = {
           ...planned.result,
           record: {

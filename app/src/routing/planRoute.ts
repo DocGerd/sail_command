@@ -454,7 +454,10 @@ export function planRoute(
  */
 export type Pass2Outcome = 'not-admitted' | 'admitted-no-route' | 'rescued';
 
-/** #1136: `planRoute`'s result (after any pass 2) plus pass 1's record. */
+/**
+ * #1136: `planRoute`'s result (after any pass 2) plus pass 1's record and
+ * (#1456) the pass-2 outcome.
+ */
 export function planRouteWithRecord(
   req: PlanRequest,
   windGrid: WindGrid,
