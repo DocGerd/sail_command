@@ -166,7 +166,7 @@ describe('#1136 planRoute pass 2 (real mask)', () => {
       // Pass 2 actually ran: one plain solve per sail per recorded tier, then
       // salvage solves.
       expect(plain).toBe(record.tiers.length * 2);
-      expect(salvaged).toBeGreaterThan(0);
+      expect(salvaged).toBe(record.tiers.length * 2);
     },
   );
 
