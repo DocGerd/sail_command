@@ -29,17 +29,18 @@ then keep the shared 360 s deadline (#1331's ruling).**
   `budget-exhausted` (`assemble`, ~:752).
 
 So the user waits for the SUM of every rig solve of every tier that fires.
-The one per-rig figure on record (#1331 comment 5728660679): Flensburg →
-Burgstaaken, tier 1, synthetic uniform 12 kn / 225°, idle box, machine not
-recorded, #1257 cap — genoa 127.9 s + fock 144.0 s = 271.9 s.
+The per-rig figures on record at the shipped #1257 cap (#1331 comment
+5728660679): Flensburg → Burgstaaken, tier 1, synthetic uniform 12 kn /
+225°, idle box, machine not recorded — genoa 127.9 s + fock 144.0 s =
+271.9 s.
 
 ## 2. The deciding axis: the user's wait
 
-| | Worst-case wait | On the #1331 route |
-|---|---|---|
-| Shared deadline (today) | budget | 271.9 s (sum) |
-| Per-rig budget | sum of per-rig budgets | 271.9 s (sum) |
-| Parallel rigs | max of the rigs | 144.0 s (max) |
+| | Wait for a plan that fits | Worst-case bound | On the #1331 route |
+|---|---|---|---|
+| Shared deadline (today) | sum of rigs | budget | 271.9 s (sum) |
+| Per-rig budget | sum of rigs | sum of per-rig budgets | 271.9 s (sum) |
+| Parallel rigs | max of rigs | budget | 144.0 s (max) |
 
 The parallel row is arithmetic on #1331's per-rig figures and assumes two
 concurrent solves each run at single-solve speed. That assumption is not
@@ -81,11 +82,11 @@ What moves:
 
 1. **Sync callers.** `planRoute` is synchronous; the routing unit tests
    call it directly and `app/sweep/sweepArms.ts` imports it. One ladder
-   can serve both if it is expressed as a sequence of "solve these rigs at this gate" steps, run
-   inline by a sync driver and dispatched to workers by an async one. A
-   second hand-written ladder would be a duplicated algorithm to keep in
-   step. `planRoute.ts` is in the #282 closure (`closure.mjs files`), so
-   the refactor owes a sweep.
+   can serve both if it is expressed as a sequence of "solve these rigs
+   at this gate" steps, run inline by a sync driver and dispatched to
+   workers by an async one. A second hand-written ladder would be a
+   duplicated algorithm to keep in step. `planRoute.ts` is in the #282
+   closure (`closure.mjs files`), so the refactor owes a sweep.
 2. **Deadline start.** `protocol.ts` measures `Date.now() - startedAtMs`
    from its own handler start; two workers need one shared start instant.
 3. **Cancel.** `terminate()` is the only interrupt (`workerClient.ts`'s
@@ -130,8 +131,9 @@ worker. Per-solve solver heap is not measured here.
   tiers or relaxed gates, which `compareRigs` would then rank. Breaks every
   pair-level decision in §4.
 - **Ladder on the main thread.** `connectedAt` and `findRelaxedGate` run
-  `cellsConnected` BFS over the full mask; on the main thread that blocks
-  the UI and allocates the ~47 MB scratch there.
+  synchronous `cellsConnected` BFS passes over the full mask, several per
+  relaxation (`mask.ts`'s #1256 comment); on the main thread they block the
+  UI.
 - **Building now, before #1490.** #1331 already raised the budget; whether
   a tablet approaches it is #1490's open measurement. Building first would
   pay the §4 costs for an unquantified benefit.
