@@ -4,18 +4,29 @@ All 40 harbours × 12 settings arms = **480 plans** (9 arms / 297 plans
 through #452; #653 added the two `salona44-*` arms below; #295 grew the
 harbour list 33 -> 40, see "#295 sweep control" below; #1334 added
 `motorless-short-horizon`), against the real
-committed mask and polars, with every `PlanResult` serialised for
-byte-for-byte comparison between two revisions.
+committed mask and polars, with every `PlanResult` and its planning record
+serialised for byte-for-byte comparison between two revisions.
+
+**Row shape (#1456).** Each row is the `PlanResult` followed by two appended
+keys from `planRouteWithRecord`: `record` — pass 1's `{ cause, tiers: [{ tier,
+usedDepthM, causes }] }`, never `gate` — and `pass2`, one of `not-admitted`,
+`admitted-no-route` or `rescued`. Because the `PlanResult` keys come first,
+deleting `record` and `pass2` and re-serialising with `serialize()` recovers a
+pre-#1456 row byte for byte; compare across that boundary only after that
+strip (command on #1456's PR).
 
 **#1334**: `motorless-short-horizon` is the only arm crossing
 `motorEnabled: false` with a short (`{ hours: 3 }`) forecast grid, so it
 can hold plans that hit `horizon-exceeded` at the requested gate while
 every relaxed tier ends `mask-blocked` — the class #1301 found zero of in
-the three earlier motor-off arms. That class is visible only in
-`planRouteWithRecord`'s record; the serialised `PlanResult` shows those
-rows as plain `beyond-horizon`. Origin, TWS and direction come from the
-pre-measurement on the PR for #1334.
-Measured on this PR's review: widening `salvagePassAdmitted` to admit `horizon-exceeded` leaves this arm's output byte-identical (pass 2 runs and routes nothing), so for that lever the arm shows 0 rescues and cannot discriminate a widening by hash alone.
+the three earlier motor-off arms. The `PlanResult` shows those rows as
+plain `beyond-horizon`; the row's `record.cause` (`horizon-exceeded`) and its
+last relaxed tier's `causes` (all `mask-blocked`) identify the class. Origin,
+TWS and direction come from the pre-measurement on the PR for #1334.
+Widening `salvagePassAdmitted` to admit `horizon-exceeded` routes nothing on
+this arm (#1455's review), so before #1456 its output stayed byte-identical
+under that widening. The admitted rows' `pass2` now moves from `not-admitted`
+to `admitted-no-route`, so the arm's hash discriminates it.
 
 Issue #282 makes this a **standing requirement**: the no-route cause is a
 control input, so any change to how `solve()` *classifies* a failure can move
