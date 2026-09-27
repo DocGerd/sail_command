@@ -171,8 +171,8 @@ describe('#1136 planRoute pass 2 (real mask)', () => {
   );
 
   // #1502: these were this file's "a motor-off plan that died now routes"
-  // pass-2 rows (every sail died before #1136, measured at 33dbad2). Since
-  // #1303/#1168 both rigs route at tier 1, so they pin that instead.
+  // pass-2 rows (every sail died before #1136, measured at 33dbad2). Both
+  // rigs now route at tier 1 (#1502 PR), so they pin that instead.
   it.each([{ tws: 2.0 }, { tws: 2.4 }, { tws: 2.8 }])(
     'TWS $tws: both rigs route at tier 1, pass 2 not admitted',
     ({ tws }) => {
