@@ -127,6 +127,10 @@ instead of here.
   frontier-cap headroom for fock tier-1, #53 relaxation and the #1136 salvage
   pass at the shipped motor-off prune divisor. No truncation measured
   anywhere; salvage never fires on any real-mask input tried
+- [1350-per-rig-budget-vs-parallel-rigs.md](1350-per-rig-budget-vs-parallel-rigs.md)
+  — #1350: per-rig plan budget vs parallel rig solving. Only parallel
+  solving shortens the wait; recommends a tier-barrier coordinator, gated on
+  #1490's tablet measurement; per-rig budget rejected in all four variants
 
 Four entries carry a same-named subdirectory of supporting artifacts rather
 than being self-contained: `1022-whole-journey-ux/` (reference screenshots),
