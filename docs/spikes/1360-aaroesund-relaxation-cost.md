@@ -19,15 +19,17 @@ this row comes from #53 relaxation, so the probe runs the whole ladder through
   `T0`, Marstal → Aarøsund, under the sweep's jsdom + `setup.ts` config.
 - **Trees.** `git archive` extracts of `36d86a7` (the #1322 sweep's BASE, its
   merge-base), `16c7c6b` (the #1322 sweep's HEAD, wave 1; pre-#1257) and
-  `a4c0ad3` (`develop`). `mask.bin`, `mask.meta.json`, `harbors.json` and all
-  polars are byte-identical across the three (sha256).
+  `a4c0ad3` (develop at this spike's base). `mask.bin`, `mask.meta.json`,
+  `harbors.json` and all polars are byte-identical across the three (sha256).
 - **Counter.** The counter needs no solver edit: `vi.mock` wraps `solve()`
   to override `maxFrontier` and to count rings whose post-cap `frontierSize`
   (reported by `onProgress`) equals the cap in force — 1330's counter.
 - **Evidence type.** Deterministic only: ring counts, peaks, ETA, cost, legs,
   distance. No wall-clock figures.
 - **Artifacts.** `1360-aaroesund-relaxation-cost/`: the probe, its config and
-  `results.json` (every run, per solve).
+  `results.json` (every run, per solve). The `basecost-*` runs came from an
+  uncommitted patched copy of `36d86a7`, and no table cell uses their cost
+  fields.
 
 ## Results
 
@@ -77,23 +79,23 @@ comfort penalty. Within one tree and tier, cost moves with ETA in every row.
 
 ## Controls
 
-- **The counter fires on this route.** On the `develop` tree at
+- **The counter fires on this route.** On the `a4c0ad3` tree at
   `maxFrontier: 30 000`: 21 (genoa) and 22 (fock) truncated rings, ETA 350.85
   and 352.01.
-- **Negative control.** At `develop`'s default cap there are 0 truncated
+- **Negative control.** At `a4c0ad3`'s default cap there are 0 truncated
   rings, and the result is identical in every recorded field to the uncapped
   run.
-- **Not reproduced: `develop` at 30 000 ≠ HEAD's default row** (genoa 350.85
-  vs 361.27). Unlike 1330's Fehmarn case, `develop` differs from `16c7c6b` on
+- **Not reproduced: `a4c0ad3` at 30 000 ≠ HEAD's default row** (genoa 350.85
+  vs 361.27). Unlike 1330's Fehmarn case, `a4c0ad3` differs from `16c7c6b` on
   this route by more than the cap value; the other routing changes in
   `16c7c6b..a4c0ad3` are not attributed here. The within-tree comparisons
   above (HEAD capped vs HEAD uncapped) carry the attribution instead.
 
 ## Recommendation
 
-Close #1360. The mechanism is the one #1330 confirmed for Fehmarn, and the
-shipped cap removes it on this route. This peak (64 230) sits under the
-64 402 worst case behind the headroom residual in
+Close #1360. The mechanism is the one 1330 confirmed on the `breeze` Fehmarn
+solves, and the shipped cap removes it on this route. This peak (64 230) sits
+under the 64 402 worst case behind the headroom residual in
 `1330-fehmarn-frontier-truncation.md`, which stays as stated there.
 
 ## Considered and rejected
@@ -107,5 +109,5 @@ shipped cap removes it on this route. This peak (64 230) sits under the
   name a mechanism.
 - **Treating the ladder change as the cause.** HEAD uncapped reports the
   tier-3 route and matches BASE within a minute; only the cap moves it.
-- **Attributing `develop`'s 30 000-cap difference to a specific commit.** Not
+- **Attributing `a4c0ad3`'s 30 000-cap difference to a specific commit.** Not
   needed for the verdict, and would take a bisect over non-cap changes.
