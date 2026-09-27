@@ -17,6 +17,7 @@ import {
   type RegionManifest,
 } from '../lib/basemapRegions';
 import { resetCorridorAreaWarning } from '../lib/routeCorridor';
+import { defaultBoatSnapshot, PLAN_SCHEMA_VERSION } from '../types';
 import type { Leg, Plan, PlanResultOk, RigResult } from '../types';
 
 // #1225 fix wave (PWA review r4008640266): saveRegionPin's failure path is
@@ -184,10 +185,11 @@ function rigResult(legs: Leg[]): RigResult {
   };
 }
 
-/** Minimal Plan fixture — only `id` and `result.sails[].result.legs` are
- * read by the module under test, so every other field is irrelevant to it
- * (same `as unknown as Plan` convention db.test.ts uses for records that
- * don't need to exercise the full Plan shape). */
+/** #1483: MUST be a real, migratable Plan — saveRegionPin now routes the
+ * stored row through migratePlan (#1246 item 1), which refuses the previous
+ * `{ id, result }` placeholder outright (no `request` at all). Only `id` and
+ * `result.sails[].result.legs` vary across call sites; everything else is a
+ * fixed valid shape (same convention db.test.ts uses). */
 function makePlan(id: string, legsPerSail: Leg[][]): Plan {
   const result: PlanResultOk = {
     status: 'ok',
@@ -201,7 +203,35 @@ function makePlan(id: string, legsPerSail: Leg[][]): Plan {
     snappedOrigin: { lat: 54.65, lon: 10.0 },
     snappedDestination: { lat: 54.65, lon: 10.02 },
   };
-  return { id, result } as unknown as Plan;
+  return {
+    id,
+    name: id,
+    createdAtMs: 1,
+    schemaVersion: PLAN_SCHEMA_VERSION,
+    request: {
+      origin: { lat: 54.65, lon: 10.0 },
+      destination: { lat: 54.65, lon: 10.02 },
+      viaPoints: [],
+      originHarborId: null,
+      destinationHarborId: null,
+      departureMs: 1,
+      settings: {
+        safetyDepthM: 3.0,
+        depthComfortMarginM: 2.0,
+        motorSpeedKn: 6.5,
+        motorThresholdKn: 2.5,
+        sailPreferenceKn: 2.8,
+        maneuverPenaltyS: 45,
+        performanceFactor: 0.9,
+        motorEnabled: true,
+        showOwnship: false,
+      },
+      sailIds: ['genoa'],
+      boat: defaultBoatSnapshot(),
+    },
+    windGrid: {},
+    result,
+  } as unknown as Plan;
 }
 
 function seedManifestInCache(fake: FakeCacheStorage, m: RegionManifest): Promise<void> {

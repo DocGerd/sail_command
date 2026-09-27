@@ -1,14 +1,28 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { Plan } from '../types';
+import type { PlanSummary } from '../services/db';
 import type { RegionReadiness, RegionReadinessAndBytes } from '../services/regionPinning';
 import { pinRegionsForPlan, regionReadinessAndBytes } from '../services/regionPinning';
 import { __resetPinActivityForTests, createPinAfterSave } from '../services/pinAfterSave';
-import { readinessStatus, useRegionReadiness } from './useRegionReadiness';
+import { getPlan, listPlans } from '../services/db';
+import {
+  __resetRegionReadinessBatchForTests,
+  readinessStatus,
+  useRegionReadiness,
+} from './useRegionReadiness';
 
 vi.mock('../services/regionPinning', () => ({
   regionReadinessAndBytes: vi.fn(),
   pinRegionsForPlan: vi.fn(),
+}));
+
+// #1483 (#1253 item 2): the batched-pin-on-first-control path reads the
+// saved-plan list; every test gets an empty one by default via beforeEach
+// below, so this mock never touches a real IndexedDB.
+vi.mock('../services/db', () => ({
+  listPlans: vi.fn(),
+  getPlan: vi.fn(),
 }));
 
 // #1253: the hook now calls ONE combined function instead of regionReadiness
@@ -60,7 +74,10 @@ describe('readinessStatus (#295)', () => {
 describe('useRegionReadiness (#295)', () => {
   beforeEach(() => {
     __resetPinActivityForTests();
+    __resetRegionReadinessBatchForTests();
     setController({});
+    vi.mocked(listPlans).mockResolvedValue([]);
+    vi.mocked(getPlan).mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -68,6 +85,8 @@ describe('useRegionReadiness (#295)', () => {
     Reflect.deleteProperty(navigator, 'connection');
     vi.mocked(regionReadinessAndBytes).mockReset();
     vi.mocked(pinRegionsForPlan).mockReset();
+    vi.mocked(listPlans).mockReset();
+    vi.mocked(getPlan).mockReset();
   });
 
   it('starts as "checking", then reports the checked readiness', async () => {
@@ -172,6 +191,50 @@ describe('useRegionReadiness (#295)', () => {
     await waitFor(() => expect(pinRegionsForPlan).toHaveBeenCalledTimes(1));
     expect(pinRegionsForPlan).toHaveBeenCalledWith(p);
     expect(vi.mocked(regionReadinessAndBytes).mock.calls.length).toBeGreaterThan(checksBefore);
+  });
+
+  // #1483 (#1253 item 2): the SW taking control must pin EVERY saved plan,
+  // not only the one this hook instance is mounted for. Before this, a
+  // saved plan with no currently-mounted chip never got an automatic pin
+  // at all.
+  it('the service worker taking control also pins every OTHER saved plan, batched, once', async () => {
+    vi.mocked(regionReadinessAndBytes).mockResolvedValue(
+      combined({ state: 'not-ready', reason: 'manifest-unavailable' }),
+    );
+    vi.mocked(pinRegionsForPlan).mockResolvedValue({ status: 'pinned', total: 1, pinned: 1 });
+    setController(null);
+    const mounted = plan('mounted-plan');
+    const other = plan('other-plan');
+    const summaries: PlanSummary[] = [
+      {
+        kind: 'ok',
+        id: 'mounted-plan',
+        name: 'm',
+        createdAtMs: 2,
+        departureMs: 1,
+        recommended: 'genoa',
+        etaMs: 1,
+      },
+      {
+        kind: 'ok',
+        id: 'other-plan',
+        name: 'o',
+        createdAtMs: 1,
+        departureMs: 1,
+        recommended: 'genoa',
+        etaMs: 1,
+      },
+    ];
+    vi.mocked(listPlans).mockResolvedValue(summaries);
+    vi.mocked(getPlan).mockImplementation(async (id) =>
+      id === 'mounted-plan' ? mounted : id === 'other-plan' ? other : undefined,
+    );
+
+    renderHook(() => useRegionReadiness(mounted));
+    act(() => claimPage());
+
+    await waitFor(() => expect(pinRegionsForPlan).toHaveBeenCalledWith(other));
+    expect(pinRegionsForPlan).toHaveBeenCalledWith(mounted);
   });
 
   it('under Save-Data the service worker taking control re-checks but downloads nothing', async () => {
