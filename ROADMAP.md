@@ -13,39 +13,46 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.45.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.46.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
-## Now — v0.45.0
+## Now — v0.46.0
 
-The `v0.45.0` cut (2026-09-25) worked the
-[`v0.45.0` milestone](https://github.com/DocGerd/sail_command/milestones):
-one user-visible fix (per `CHANGELOG.md`'s own `[0.45.0]` section) — via-point
-coordinate entry now accepts a leading hemisphere letter (e.g. `N 54 48.74`),
-not just trailing ([#1482](https://github.com/DocGerd/sail_command/issues/1482))
-— plus four process/tooling and test-hygiene fixes: a stale specialPurpose-ruling
-count in a seamark-glyph comment corrected after #295
-([#1485](https://github.com/DocGerd/sail_command/issues/1485)); `forcedKind:
-'sail'` pinned on the finer motor-off prune grid, a residual of #885/#1168
-([#1495](https://github.com/DocGerd/sail_command/issues/1495)); deterministic
-frontier-cap headroom added for the fock rig, the relaxation tiers, and the
-#1136 salvage pass
-([#1496](https://github.com/DocGerd/sail_command/issues/1496)); and the
-remaining residual Minors from PR #1245's #295 coverage-extension review
-([#1255](https://github.com/DocGerd/sail_command/issues/1255)). A duplicate
-of the already-shipped #1135 chain was closed and removed from the milestone
-([#1464](https://github.com/DocGerd/sail_command/issues/1464)). Every issue
-in the milestone shipped, so nothing rolled forward from `v0.45.0` itself;
-three real-tablet checks moved into `v0.46.0` instead
+The `v0.46.0` cut (2026-09-28) worked the
+[`v0.46.0` milestone](https://github.com/DocGerd/sail_command/milestones):
+one user-visible fix (per `CHANGELOG.md`'s own `[0.46.0]` section) — when the service worker first takes control while a plan is shown on the Routes tab, every other saved plan now has its offline map regions pinned too, not only that plan, alongside five internal region-pinning residuals from #1253/#1246
+([#1483](https://github.com/DocGerd/sail_command/issues/1483)) — plus five further issues with no user-visible surface: sweep rows now serialize pass 1's
+planning record and the pass-2 salvage outcome
+([#1456](https://github.com/DocGerd/sail_command/issues/1456)), which lets the `motorless-short-horizon` arm detect the salvage-admission widening measured on PR #1511
+([#1334](https://github.com/DocGerd/sail_command/issues/1334));
+the motor-off salvage real-mask rows re-pointed at inputs that reach pass 2,
+since no real-mask input was found that pass 2 rescues
+([#1502](https://github.com/DocGerd/sail_command/issues/1502)); the
+nightly coverage run sharded across parallel jobs and merged afterwards,
+after its single test step hit its time cap three nights running
+([#1504](https://github.com/DocGerd/sail_command/issues/1504)); and a spike
+finding that `salona44-relaxation`/Aarøsund's +16.5 min after #1322 was
+frontier truncation, and that #1257's per-mask derived cap does not bind
+there at the spike's base
+([#1360](https://github.com/DocGerd/sail_command/issues/1360),
+`docs/spikes/1360-aaroesund-relaxation-cost.md`).
+
+Five issues were open at the cut and rolled forward into `v0.47.0`: three
+that wait on a real-tablet session
 ([#1281](https://github.com/DocGerd/sail_command/issues/1281),
 [#1413](https://github.com/DocGerd/sail_command/issues/1413),
-[#1490](https://github.com/DocGerd/sail_command/issues/1490)).
+[#1490](https://github.com/DocGerd/sail_command/issues/1490)); the
+per-rig plan budget versus parallel rig solving question, whose spike merged at this cut with its §6 ruling still open
+([#1350](https://github.com/DocGerd/sail_command/issues/1350),
+`docs/spikes/1350-per-rig-budget-vs-parallel-rigs.md`); and plotter-style
+depth contours, whose four code-blocking design questions were ruled on 2026-09-27, with no spec merged by the cut
+([#629](https://github.com/DocGerd/sail_command/issues/629)).
 
-## Next — v0.46.0
+## Next — v0.47.0
 
-The [`v0.46.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-carries the three real-tablet checks named above. The milestone page is the
-only authoritative view, check it directly rather than this file.
+The [`v0.47.0` milestone](https://github.com/DocGerd/sail_command/milestones)
+carries the five carried-forward issues named above. The milestone page is
+the only authoritative view, check it directly rather than this file.
 
 ## Themes for the next year
 
@@ -197,8 +204,7 @@ settings; its four residuals did not close with it
 `v0.30.0` cut;
 [#930](https://github.com/DocGerd/sail_command/issues/930) closed at the
 `v0.34.0` cut, its harness made able to fail; and
-[#932](https://github.com/DocGerd/sail_command/issues/932) remains open in
-`Icebox`.
+[#932](https://github.com/DocGerd/sail_command/issues/932) remains open (in `Backlog` at the `v0.46.0` cut).
 
 The `v0.20.0` cut addressed sixteen items in this area, out of eighteen
 issues total that milestone closed. The largest strand cut what continuous
@@ -699,7 +705,7 @@ never done:
 - Wind barbs along the route at passage time — at each position, the wind
   expected when the boat will actually be there — as a second sampling mode
   beside today's single-slider-hour field
-  ([#293](https://github.com/DocGerd/sail_command/issues/293)).
+  ([#293](https://github.com/DocGerd/sail_command/issues/293)), closed as not planned on 2026-09-17.
 - The five harbors that remain disconnected from the routable mask
   ([#9](https://github.com/DocGerd/sail_command/issues/9)). This one is
   **blocked on physics, not effort**: at the mask's ~46 m cell size the
