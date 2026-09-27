@@ -84,10 +84,10 @@ import { COVERAGE_MULTIPLIER_WHEN_ENABLED } from './timeouts';
 // either failure mode still fails CLOSED (see `stepCapMinutes` below).
 //
 // #357 replaces the NECESSARY-only comparison (heaviest single test alone)
-// with the SUFFICIENT one `coverage.yml`'s own derivation comment states:
-// `heaviest test's ceiling + REST OF THE SUITE'S wall time (+ start-up
-// margin, folded into the constant below) < binding cap`. The rest-of-
-// suite figure cannot be computed from source the way the multiplier or
+// with a SUFFICIENT one:
+// `heaviest test's ceiling + SLOWEST MEASURED SHARD's wall time (+ start-up
+// margin, folded into the constant below) < binding cap`. That
+// figure cannot be computed from source the way the multiplier or
 // the per-test ceiling can — it is an empirical CI wall-clock measurement —
 // so it is a DECLARED, DATED constant (`SUITE_WALL_TIME_MS_AT_8X` below),
 // exactly like `JOB_CAP_MINUTES` used to be, with a staleness check that
@@ -119,7 +119,15 @@ const COVERAGE_WORKFLOW_PATH = resolve(
   '../../../.github/workflows/coverage.yml',
 );
 
-const COVERAGE_JOB_ID = 'coverage';
+// #1504: coverage.yml split the single `coverage` job into a `gate` job,
+// an N-way `coverage-shard` matrix, and a `coverage-merge` job (per-test
+// timers only ever run inside `coverage-shard`, so that is the job this
+// guard's coupling is about now — `coverage-merge` runs no tests and has
+// no per-test-timeout exposure to guard). The matrix means the YAML source
+// still has exactly ONE `timeout-minutes`/`steps` definition for this job
+// id (matrix legs are runtime instantiations of one job template), so the
+// addressed-lookup shape below is unchanged by the rename.
+const COVERAGE_JOB_ID = 'coverage-shard';
 const COVERAGE_STEP_ID = 'test-coverage';
 
 // Loose structural types for exactly the fields this guard reads — not a
@@ -154,7 +162,7 @@ function coverageJob(workflow: WorkflowFile): WorkflowJob {
   return job as WorkflowJob;
 }
 
-/** Addressed lookup of `jobs.coverage['timeout-minutes']` (the JOB-level cap). */
+/** Addressed lookup of `jobs.coverage-shard['timeout-minutes']` (the JOB-level cap). */
 function jobCapMinutes(workflow: WorkflowFile): number {
   const value = coverageJob(workflow)['timeout-minutes'];
   if (typeof value !== 'number') {
@@ -169,7 +177,7 @@ function jobCapMinutes(workflow: WorkflowFile): number {
 /**
  * Addressed lookup of the `test:coverage` step's OWN `timeout-minutes` (the
  * STEP-level cap) — found by its stable `id: test-coverage` within
- * `jobs.coverage.steps` specifically (never a whole-file scan). Requires
+ * `jobs.coverage-shard.steps` specifically (never a whole-file scan). Requires
  * EXACTLY ONE step carrying that id so a missing or duplicated id fails
  * closed rather than picking "the first match" (#359's documented
  * instance-4 defect) — GitHub Actions itself treats a duplicate step id as
@@ -203,23 +211,22 @@ function bindingCapMinutes(workflow: WorkflowFile): number {
   return Math.min(jobCapMinutes(workflow), stepCapMinutes(workflow));
 }
 
-// #357: the SUFFICIENT rule `coverage.yml`'s own derivation comment states —
-// `heaviest test's ceiling + rest-of-suite wall time (+ start-up margin) <
+// #357: the SUFFICIENT rule —
+// `heaviest test's ceiling + slowest measured shard's wall time (+ start-up margin) <
 // binding cap` — needs a real measured suite wall time at the SHIPPED
 // coverage multiplier. That number cannot be derived from source (it's a CI
 // wall-clock fact, not a property of the code), so it is DECLARED, exactly
 // like `JOB_CAP_MINUTES` used to be, and DATED so staleness is checkable.
 //
-// Source: CI run 30833176564, landed 2026-08-03T16:39:46Z -> 17:22:32Z =
-// 42m46s = 2,566,000ms, the completed run #357's own issue body names as
-// "the real number to derive from once this is picked up" — measured at the
-// 8x multiplier this file's `COVERAGE_MULTIPLIER_WHEN_ENABLED` still ships
-// today (re-confirmed: unchanged since that run). This INCLUDES the
-// heaviest test's own actual (not ceiling) run time, which is fine — it
-// makes the sum a slight over-count of "heaviest ceiling + everything
-// else", i.e. MORE conservative than the true sufficient bound, never less.
-const SUITE_WALL_TIME_MS_AT_SHIPPED_MULTIPLIER = 42 * 60_000 + 46_000;
-const SUITE_WALL_TIME_MEASURED_AT = '2026-08-03';
+// #1504: this constant was 42m46s (2026-08-03, CI run 30833176564) and went
+// stale without tripping the age check below — the age check cannot catch a
+// wall-time change that is not a calendar-staleness fact.
+//
+// Re-keyed to `coverage-shard`: the slowest shard's `test:coverage (shard)`
+// step, the maximum observed over runs 36333125953 and 36339359816 (shard 2
+// both times). Re-measure and update SUITE_WALL_TIME_MEASURED_AT together.
+const SUITE_WALL_TIME_MS_AT_SHIPPED_MULTIPLIER = 6_290_000;
+const SUITE_WALL_TIME_MEASURED_AT = '2026-09-27';
 // How long a wall-time measurement may go untouched before this guard
 // refuses to trust it further. #357's own "why this is not simply closed"
 // warns that an un-monitored constant rots in the FAIL-OPEN direction as the
@@ -288,7 +295,7 @@ describe('#342/#359/#357 structural guard: coverage.yml job cap vs. timeouts.ts 
     }
   });
 
-  it('the heaviest test PLUS the rest of the suite fits under the binding cap (sufficient, #357)', () => {
+  it('the heaviest test PLUS the slowest measured shard fits under the binding cap (sufficient, #357)', () => {
     const largestBaseMs = largestSolverTimeoutBaseMs();
     expect(largestBaseMs).toBeGreaterThan(0);
 
@@ -300,11 +307,11 @@ describe('#342/#359/#357 structural guard: coverage.yml job cap vs. timeouts.ts 
 
     if (sufficientMs >= capMs) {
       throw new Error(
-        `The SUFFICIENT bound (heaviest per-test ceiling ${worstCaseMs}ms + measured rest-of-suite ` +
+        `The SUFFICIENT bound (heaviest per-test ceiling ${worstCaseMs}ms + measured worst-shard ` +
           `wall time ${SUITE_WALL_TIME_MS_AT_SHIPPED_MULTIPLIER}ms = ${sufficientMs}ms = ` +
           `${sufficientMs / 60_000} min) is not strictly less than the binding cap read from ` +
           `coverage.yml (${capMinutes} min = ${capMs}ms). Passing the NECESSARY check above while ` +
-          `failing this one means the cap only works if the rest of the suite runs near-instantly — ` +
+          `failing this one means the cap only works if the slowest shard runs near-instantly — ` +
           `exactly the gap #357 exists to close. Raise coverage.yml's timeout-minutes.`,
       );
     }
@@ -320,7 +327,7 @@ describe('#342/#359/#357 structural guard: coverage.yml job cap vs. timeouts.ts 
           `${SUITE_WALL_TIME_MEASURED_AT} (${ageDays.toFixed(1)} days ago), past this guard's ` +
           `${SUITE_WALL_TIME_MAX_AGE_DAYS}-day trust window. #357's own warning: an unmonitored ` +
           `wall-time constant rots FAIL-OPEN as the suite grows, silently permitting a cap that is ` +
-          `no longer sufficient. Re-measure a real coverage-run wall time at the CURRENT ` +
+          `no longer sufficient. Re-measure a real per-shard wall time at the CURRENT ` +
           `COVERAGE_MULTIPLIER_WHEN_ENABLED, update the constant and SUITE_WALL_TIME_MEASURED_AT ` +
           `together, and cite the run id/timestamps the way the constant's own comment does.`,
       );
