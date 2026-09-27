@@ -447,6 +447,13 @@ export function planRoute(
   return planRouteWithRecord(req, windGrid, deps, onProgress, onProbe, deadline).result;
 }
 
+/**
+ * #1456: what pass 2 did. `not-admitted` covers every return that bypasses
+ * `finish` as well as a `salvagePassAdmitted` refusal; `admitted-no-route`
+ * means pass 2 ran and `planRoute` returned pass 1 verbatim.
+ */
+export type Pass2Outcome = 'not-admitted' | 'admitted-no-route' | 'rescued';
+
 /** #1136: `planRoute`'s result (after any pass 2) plus pass 1's record. */
 export function planRouteWithRecord(
   req: PlanRequest,
@@ -455,14 +462,17 @@ export function planRouteWithRecord(
   onProgress?: RigProgress,
   onProbe?: ProbeProgress,
   deadline?: PlanDeadline,
-): { result: PlanResult; record: Pass1Record } {
+): { result: PlanResult; record: Pass1Record; pass2: Pass2Outcome } {
   const record: Pass1Record = { tiers: [], cause: null };
-  const result = runLadder(record, req, windGrid, deps, onProgress, onProbe, deadline);
-  return { result, record };
+  // A sibling of `record`, not a member: `Pass1Record` describes pass 1 only.
+  const outcome: { pass2: Pass2Outcome } = { pass2: 'not-admitted' };
+  const result = runLadder(record, outcome, req, windGrid, deps, onProgress, onProbe, deadline);
+  return { result, record, pass2: outcome.pass2 };
 }
 
 function runLadder(
   record: Pass1Record,
+  outcome: { pass2: Pass2Outcome },
   req: PlanRequest,
   windGrid: WindGrid,
   deps: PlanDeps,
@@ -842,8 +852,12 @@ function runLadder(
   };
   // Every pass-1 return after the ladder starts goes through here. Pass 2
   // routing nothing, for any cause, returns pass 1 verbatim (ruling 4).
-  const finish = (pass1: PlanResult): PlanResult =>
-    salvagePassAdmitted(pass1, record, s, deadline) ? (replayWithSalvage() ?? pass1) : pass1;
+  const finish = (pass1: PlanResult): PlanResult => {
+    if (!salvagePassAdmitted(pass1, record, s, deadline)) return pass1;
+    const rescued = replayWithSalvage();
+    outcome.pass2 = rescued === null ? 'admitted-no-route' : 'rescued';
+    return rescued ?? pass1;
+  };
   if (connectedAt(requestedGate)) {
     // #243 tier 1: requested gate, preference on — the happy path, nothing
     // extra paid.

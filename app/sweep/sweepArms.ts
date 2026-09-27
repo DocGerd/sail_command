@@ -32,14 +32,15 @@
  *
  * Imports nothing that exists on only one side of a refactor (no
  * `SolveFailureCause`, no `NO_ROUTE_LABEL_OF_CAUSE`), so the identical file
- * runs unchanged at BASE and at HEAD.
+ * runs unchanged at BASE and at HEAD — for any BASE at or after #1456, which
+ * added `planRouteWithRecord`'s `pass2` to every row (README.md, "Row shape").
  */
 import { expect, it } from 'vitest';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { NavMask } from '../src/lib/mask';
-import { planRoute } from '../src/routing/planRoute';
+import { planRouteWithRecord } from '../src/routing/planRoute';
 import { uniformWindGrid } from '../src/test/fixtures';
 import { boatById, DEFAULT_BOAT_ID, polarKey, type BoatId } from '../src/data/boats';
 import { boatSnapshot, DEFAULT_SETTINGS } from '../src/types';
@@ -560,7 +561,7 @@ export function runArm(label: (typeof ARM_NAMES)[number]): void {
       const timings: Record<string, number> = {};
       for (const h of dests) {
         const t = Date.now();
-        rows[h.id] = planRoute(
+        const planned = planRouteWithRecord(
           {
             origin: origin.snap,
             destination: h.snap,
@@ -585,6 +586,21 @@ export function runArm(label: (typeof ARM_NAMES)[number]): void {
           windGrid,
           { polars, boat, mask },
         );
+        // #1456: the PlanResult keys first, so stripping `record` and `pass2`
+        // recovers a pre-#1456 row byte for byte. Never serialize `gate`: an
+        // ApproachGate carries its discs.
+        rows[h.id] = {
+          ...planned.result,
+          record: {
+            cause: planned.record.cause,
+            tiers: planned.record.tiers.map(({ tier, usedDepthM, causes }) => ({
+              tier,
+              usedDepthM,
+              causes,
+            })),
+          },
+          pass2: planned.pass2,
+        };
         timings[h.id] = Date.now() - t;
       }
       const base = armFileBase(label, SHARD, LIMIT);
