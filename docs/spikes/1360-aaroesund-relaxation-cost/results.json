@@ -1,0 +1,624 @@
+{
+ "basecost-default": {
+  "cap": "default",
+  "dest": "aaroesund",
+  "status": "ok",
+  "recommended": "genoa",
+  "shallowUsedDepthM": 2.3,
+  "sails": [
+   {
+    "sailId": "genoa",
+    "durationMin": 344.7291610473633,
+    "distanceNm": 43.150664827656385,
+    "legs": 16,
+    "motorLegs": 3,
+    "maneuvers": 2,
+    "motorNm": 3.385416666666835
+   },
+   {
+    "sailId": "fock",
+    "durationMin": 344.75154814046226,
+    "distanceNm": 42.92835918938751,
+    "legs": 14,
+    "motorLegs": 3,
+    "maneuvers": 2,
+    "motorNm": 3.3854166666670378
+   }
+  ],
+  "tiers": [
+   {
+    "tier": 3,
+    "usedDepthM": 2.3,
+    "comfortDepthM": 5,
+    "causes": [
+     "mask-blocked",
+     null
+    ]
+   },
+   {
+    "tier": 4,
+    "usedDepthM": 2.3,
+    "comfortDepthM": null,
+    "causes": [
+     null,
+     null
+    ]
+   }
+  ],
+  "solves": [
+   {
+    "idx": 0,
+    "countCap": 30000,
+    "comfortDepthM": 5,
+    "salvage": false,
+    "rings": 6,
+    "peak": 7,
+    "trunc": 0,
+    "firstTrunc": null,
+    "lastTrunc": null,
+    "status": "no-route",
+    "cause": "mask-blocked",
+    "etaMs": null,
+    "costMs": null,
+    "legs": null,
+    "etaMin": null,
+    "costMin": null
+   },
+   {
+    "idx": 1,
+    "countCap": 30000,
+    "comfortDepthM": 5,
+    "salvage": false,
+    "rings": 66,
+    "peak": 30000,
+    "trunc": 6,
+    "firstTrunc": 29,
+    "lastTrunc": 34,
+    "status": "ok",
+    "cause": null,
+    "etaMs": 1784116377862.8926,
+    "costMs": 1784116911097.324,
+    "legs": 20,
+    "etaMin": 352.96438154296874,
+    "costMin": 361.85162206624346
+   },
+   {
+    "idx": 2,
+    "countCap": 30000,
+    "comfortDepthM": null,
+    "salvage": false,
+    "rings": 61,
+    "peak": 30000,
+    "trunc": 7,
+    "firstTrunc": 25,
+    "lastTrunc": 31,
+    "status": "ok",
+    "cause": null,
+    "etaMs": 1784115883749.6628,
+    "costMs": 1784115883749.6628,
+    "legs": 20,
+    "etaMin": 344.7291610473633,
+    "costMin": 344.7291610473633
+   },
+   {
+    "idx": 3,
+    "countCap": 30000,
+    "comfortDepthM": null,
+    "salvage": false,
+    "rings": 58,
+    "peak": 30000,
+    "trunc": 6,
+    "firstTrunc": 25,
+    "lastTrunc": 30,
+    "status": "ok",
+    "cause": null,
+    "etaMs": 1784115885092.8884,
+    "costMs": 1784115885092.8884,
+    "legs": 17,
+    "etaMin": 344.75154814046226,
+    "costMin": 344.75154814046226
+   }
+  ]
+ },
+ "basecost-inf": {
+  "cap": "inf",
+  "dest": "aaroesund",
+  "status": "ok",
+  "recommended": "genoa",
+  "shallowUsedDepthM": 2.3,
+  "sails": [
+   {
+    "sailId": "genoa",
+    "durationMin": 344.7291610473633,
+    "distanceNm": 43.150664827656385,
+    "legs": 16,
+    "motorLegs": 3,
+    "maneuvers": 2,
+    "motorNm": 3.385416666666835
+   },
+   {
+    "sailId": "fock",
+    "durationMin": 344.75154814046226,
+    "distanceNm": 42.92835918938751,
+    "legs": 14,
+    "motorLegs": 3,
+    "maneuvers": 2,
+    "motorNm": 3.3854166666670378
+   }
+  ],
+  "tiers": [
+   {
+    "tier": 3,
+    "usedDepthM": 2.3,
+    "comfortDepthM": 5,
+    "causes": [
+     "mask-blocked",
+     null
+    ]
+   },
+   {
+    "tier": 4,
+    "usedDepthM": 2.3,
+    "comfortDepthM": null,
+    "causes": [
+     null,
+     null
+    ]
+   }
+  ],
+  "solves": [
+   {
+    "idx": 0,
+    "countCap": 9007199254740991,
+    "comfortDepthM": 5,
+    "salvage": false,
+    "rings": 6,
+    "peak": 7,
+    "trunc": 0,
+    "firstTrunc": null,
+    "lastTrunc": null,
+    "status": "no-route",
+    "cause": "mask-blocked",
+    "etaMs": null,
+    "costMs": null,
+    "legs": null,
+    "etaMin": null,
+    "costMin": null
+   },
+   {
+    "idx": 1,
+    "countCap": 9007199254740991,
+    "comfortDepthM": 5,
+    "salvage": false,
+    "rings": 62,
+    "peak": 34851,
+    "trunc": 0,
+    "firstTrunc": null,
+    "lastTrunc": null,
+    "status": "ok",
+    "cause": null,
+    "etaMs": 1784116380021.269,
+    "costMs": 1784116915339.0337,
+    "legs": 23,
+    "etaMin": 353.00035448404947,
+    "costMin": 361.9223172281901
+   },
+   {
+    "idx": 2,
+    "countCap": 9007199254740991,
+    "comfortDepthM": null,
+    "salvage": false,
+    "rings": 61,
+    "peak": 36033,
+    "trunc": 0,
+    "firstTrunc": null,
+    "lastTrunc": null,
+    "status": "ok",
+    "cause": null,
+    "etaMs": 1784115883749.6628,
+    "costMs": 1784115883749.6628,
+    "legs": 20,
+    "etaMin": 344.7291610473633,
+    "costMin": 344.7291610473633
+   },
+   {
+    "idx": 3,
+    "countCap": 9007199254740991,
+    "comfortDepthM": null,
+    "salvage": false,
+    "rings": 57,
+    "peak": 35012,
+    "trunc": 0,
+    "firstTrunc": null,
+    "lastTrunc": null,
+    "status": "ok",
+    "cause": null,
+    "etaMs": 1784115885092.8884,
+    "costMs": 1784115885092.8884,
+    "legs": 17,
+    "etaMin": 344.75154814046226,
+    "costMin": 344.75154814046226
+   }
+  ]
+ },
+ "head-default": {
+  "cap": "default",
+  "dest": "aaroesund",
+  "status": "ok",
+  "recommended": "genoa",
+  "shallowUsedDepthM": 2.3,
+  "sails": [
+   {
+    "sailId": "genoa",
+    "durationMin": 361.26923238525393,
+    "distanceNm": 44.39773468719935,
+    "legs": 22,
+    "motorLegs": 2,
+    "maneuvers": 2,
+    "motorNm": 3.2499999999993743
+   },
+   {
+    "sailId": "fock",
+    "durationMin": 351.5966163777669,
+    "distanceNm": 43.47111683279387,
+    "legs": 22,
+    "motorLegs": 2,
+    "maneuvers": 2,
+    "motorNm": 3.2499999999991833
+   }
+  ],
+  "tiers": [
+   {
+    "tier": 3,
+    "usedDepthM": 2.3,
+    "comfortDepthM": 5,
+    "causes": [
+     null,
+     null
+    ]
+   }
+  ],
+  "solves": [
+   {
+    "idx": 0,
+    "countCap": 30000,
+    "comfortDepthM": 5,
+    "salvage": false,
+    "rings": 68,
+    "peak": 30000,
+    "trunc": 22,
+    "firstTrunc": 20,
+    "lastTrunc": 41,
+    "status": "ok",
+    "cause": null,
+    "etaMs": 1784116876153.943,
+    "costMs": 1784117258208.3784,
+    "legs": 33,
+    "etaMin": 361.26923238525393,
+    "costMin": 367.63680630696615
+   },
+   {
+    "idx": 1,
+    "countCap": 30000,
+    "comfortDepthM": 5,
+    "salvage": false,
+    "rings": 67,
+    "peak": 30000,
+    "trunc": 22,
+    "firstTrunc": 20,
+    "lastTrunc": 41,
+    "status": "ok",
+    "cause": null,
+    "etaMs": 1784116295796.9827,
+    "costMs": 1784116732747.8752,
+    "legs": 30,
+    "etaMin": 351.5966163777669,
+    "costMin": 358.879131254069
+   }
+  ]
+ },
+ "head-inf": {
+  "cap": "inf",
+  "dest": "aaroesund",
+  "status": "ok",
+  "recommended": "genoa",
+  "shallowUsedDepthM": 2.3,
+  "sails": [
+   {
+    "sailId": "genoa",
+    "durationMin": 344.5187996785482,
+    "distanceNm": 42.99705503247796,
+    "legs": 11,
+    "motorLegs": 2,
+    "maneuvers": 2,
+    "motorNm": 3.2499999999993743
+   },
+   {
+    "sailId": "fock",
+    "durationMin": 345.43362837727864,
+    "distanceNm": 42.93609153035762,
+    "legs": 12,
+    "motorLegs": 2,
+    "maneuvers": 2,
+    "motorNm": 3.2499999999991833
+   }
+  ],
+  "tiers": [
+   {
+    "tier": 3,
+    "usedDepthM": 2.3,
+    "comfortDepthM": 5,
+    "causes": [
+     null,
+     null
+    ]
+   }
+  ],
+  "solves": [
+   {
+    "idx": 0,
+    "countCap": 9007199254740991,
+    "comfortDepthM": 5,
+    "salvage": false,
+    "rings": 60,
+    "peak": 64141,
+    "trunc": 0,
+    "firstTrunc": null,
+    "lastTrunc": null,
+    "status": "ok",
+    "cause": null,
+    "etaMs": 1784115871127.9807,
+    "costMs": 1784116232104.8474,
+    "legs": 19,
+    "etaMin": 344.5187996785482,
+    "costMin": 350.53508079020185
+   },
+   {
+    "idx": 1,
+    "countCap": 9007199254740991,
+    "comfortDepthM": 5,
+    "salvage": false,
+    "rings": 64,
+    "peak": 64229,
+    "trunc": 0,
+    "firstTrunc": null,
+    "lastTrunc": null,
+    "status": "ok",
+    "cause": null,
+    "etaMs": 1784115926017.7026,
+    "costMs": 1784116320327.9028,
+    "legs": 19,
+    "etaMin": 345.43362837727864,
+    "costMin": 352.0054650472005
+   }
+  ]
+ },
+ "dev-default": {
+  "cap": "default",
+  "dest": "aaroesund",
+  "status": "ok",
+  "recommended": "genoa",
+  "shallowUsedDepthM": 2.3,
+  "sails": [
+   {
+    "sailId": "genoa",
+    "durationMin": 344.3878969197591,
+    "distanceNm": 42.982434671258225,
+    "legs": 13,
+    "motorLegs": 2,
+    "maneuvers": 2,
+    "motorNm": 3.2499999999993743
+   },
+   {
+    "sailId": "fock",
+    "durationMin": 345.75618741048174,
+    "distanceNm": 42.96998515947016,
+    "legs": 12,
+    "motorLegs": 2,
+    "maneuvers": 2,
+    "motorNm": 3.2499999999991833
+   }
+  ],
+  "tiers": [
+   {
+    "tier": 3,
+    "usedDepthM": 2.3,
+    "comfortDepthM": 5,
+    "causes": [
+     null,
+     null
+    ]
+   }
+  ],
+  "solves": [
+   {
+    "idx": 0,
+    "countCap": 95333,
+    "comfortDepthM": 5,
+    "salvage": false,
+    "rings": 57,
+    "peak": 64230,
+    "trunc": 0,
+    "firstTrunc": null,
+    "lastTrunc": null,
+    "status": "ok",
+    "cause": null,
+    "etaMs": 1784115863273.8152,
+    "costMs": 1784116252838.3164,
+    "legs": 25,
+    "etaMin": 344.3878969197591,
+    "costMin": 350.88063860677084
+   },
+   {
+    "idx": 1,
+    "countCap": 95333,
+    "comfortDepthM": 5,
+    "salvage": false,
+    "rings": 62,
+    "peak": 64078,
+    "trunc": 0,
+    "firstTrunc": null,
+    "lastTrunc": null,
+    "status": "ok",
+    "cause": null,
+    "etaMs": 1784115945371.2446,
+    "costMs": 1784116329712.9993,
+    "legs": 21,
+    "etaMin": 345.75618741048174,
+    "costMin": 352.1618833211263
+   }
+  ]
+ },
+ "dev-inf": {
+  "cap": "inf",
+  "dest": "aaroesund",
+  "status": "ok",
+  "recommended": "genoa",
+  "shallowUsedDepthM": 2.3,
+  "sails": [
+   {
+    "sailId": "genoa",
+    "durationMin": 344.3878969197591,
+    "distanceNm": 42.982434671258225,
+    "legs": 13,
+    "motorLegs": 2,
+    "maneuvers": 2,
+    "motorNm": 3.2499999999993743
+   },
+   {
+    "sailId": "fock",
+    "durationMin": 345.75618741048174,
+    "distanceNm": 42.96998515947016,
+    "legs": 12,
+    "motorLegs": 2,
+    "maneuvers": 2,
+    "motorNm": 3.2499999999991833
+   }
+  ],
+  "tiers": [
+   {
+    "tier": 3,
+    "usedDepthM": 2.3,
+    "comfortDepthM": 5,
+    "causes": [
+     null,
+     null
+    ]
+   }
+  ],
+  "solves": [
+   {
+    "idx": 0,
+    "countCap": 9007199254740991,
+    "comfortDepthM": 5,
+    "salvage": false,
+    "rings": 57,
+    "peak": 64230,
+    "trunc": 0,
+    "firstTrunc": null,
+    "lastTrunc": null,
+    "status": "ok",
+    "cause": null,
+    "etaMs": 1784115863273.8152,
+    "costMs": 1784116252838.3164,
+    "legs": 25,
+    "etaMin": 344.3878969197591,
+    "costMin": 350.88063860677084
+   },
+   {
+    "idx": 1,
+    "countCap": 9007199254740991,
+    "comfortDepthM": 5,
+    "salvage": false,
+    "rings": 62,
+    "peak": 64078,
+    "trunc": 0,
+    "firstTrunc": null,
+    "lastTrunc": null,
+    "status": "ok",
+    "cause": null,
+    "etaMs": 1784115945371.2446,
+    "costMs": 1784116329712.9993,
+    "legs": 21,
+    "etaMin": 345.75618741048174,
+    "costMin": 352.1618833211263
+   }
+  ]
+ },
+ "dev-cap30k": {
+  "cap": "30000",
+  "dest": "aaroesund",
+  "status": "ok",
+  "recommended": "genoa",
+  "shallowUsedDepthM": 2.3,
+  "sails": [
+   {
+    "sailId": "genoa",
+    "durationMin": 350.8505015258789,
+    "distanceNm": 43.55680671703734,
+    "legs": 21,
+    "motorLegs": 2,
+    "maneuvers": 2,
+    "motorNm": 3.2499999999993743
+   },
+   {
+    "sailId": "fock",
+    "durationMin": 352.01266592203774,
+    "distanceNm": 43.525283758895085,
+    "legs": 23,
+    "motorLegs": 2,
+    "maneuvers": 2,
+    "motorNm": 3.2499999999991833
+   }
+  ],
+  "tiers": [
+   {
+    "tier": 3,
+    "usedDepthM": 2.3,
+    "comfortDepthM": 5,
+    "causes": [
+     null,
+     null
+    ]
+   }
+  ],
+  "solves": [
+   {
+    "idx": 0,
+    "countCap": 30000,
+    "comfortDepthM": 5,
+    "salvage": false,
+    "rings": 66,
+    "peak": 30000,
+    "trunc": 21,
+    "firstTrunc": 20,
+    "lastTrunc": 40,
+    "status": "ok",
+    "cause": null,
+    "etaMs": 1784116251030.0916,
+    "costMs": 1784116686393.6917,
+    "legs": 32,
+    "etaMin": 350.8505015258789,
+    "costMin": 358.1065615275065
+   },
+   {
+    "idx": 1,
+    "countCap": 30000,
+    "comfortDepthM": 5,
+    "salvage": false,
+    "rings": 67,
+    "peak": 30000,
+    "trunc": 22,
+    "firstTrunc": 20,
+    "lastTrunc": 41,
+    "status": "ok",
+    "cause": null,
+    "etaMs": 1784116320759.9553,
+    "costMs": 1784116750967.5913,
+    "legs": 28,
+    "etaMin": 352.01266592203774,
+    "costMin": 359.1827931884766
+   }
+  ]
+ }
+}
