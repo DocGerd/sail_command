@@ -9,7 +9,7 @@
 **Verdict: of the two options #1350 names, only parallel rig solving
 shortens the user's wait; a per-rig budget either changes which rig gets cut
 or lengthens the worst-case wait (§5). Build parallel solving, in the
-tier-barrier shape of §4, if a tablet measurement of the worst known route
+tier-barrier shape of §4, if a tablet measurement of Flensburg → Burgstaaken
 approaches `PLAN_BUDGET_MS`; #1490 measures a different plan (§3, §6 Q1).
 Until then keep the shared 360 s deadline (#1331's ruling).**
 
@@ -34,7 +34,7 @@ So the user waits for the SUM of every rig solve of every tier that fires.
 The per-rig figures on record at the shipped #1257 cap (#1331 comment
 5728660679): Flensburg → Burgstaaken, Salona 45, tier 1, bare `solve()` per
 rig, synthetic uniform 12 kn / 225°, idle box, machine not recorded,
-measured for PR #1335 (2026-09-18) — genoa 127.9 s + fock 144.0 s =
+measured for PR #1335 — genoa 127.9 s + fock 144.0 s =
 271.9 s.
 
 ## 2. The deciding axis: the user's wait
@@ -142,16 +142,17 @@ worker. Per-solve solver heap is not measured here.
   relaxation (`mask.ts`'s #1256 comment); on the main thread they block the
   UI.
 - **Building now.** #1331 already raised the budget; no tablet figure for
-  the worst known route is on record (§3), and #1490's open measurement
-  covers a different plan. Building first would pay the §4 costs for an
-  unquantified benefit.
+  Flensburg → Burgstaaken appears in the sources §3 names, and #1490's open
+  measurement covers a different plan. Building first would pay the §4 costs
+  for an unquantified benefit.
 
 ## 6. Questions for the maintainer
 
 1. Does #1350 wait for a tablet measurement of Flensburg → Burgstaaken,
    and what fraction of `PLAN_BUDGET_MS` triggers it? #1490 measures the
-   Flensburg → Svendborg motor-off plan instead, and its body gives no
-   per-rig split, so it cannot show the rig asymmetry §2 depends on.
+   Flensburg → Svendborg motor-off plan instead, and its ask requests no
+   per-rig split, so as specified it would not give the per-rig times §2's
+   per-tier max needs.
 2. Does the reference tablet run two solver workers concurrently at close
    to single-solve speed, and can it hold a second worker's mask and wind
    copies? Neither is established in any file read here.

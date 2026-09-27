@@ -126,7 +126,7 @@ instead of here.
 - [1350-per-rig-budget-vs-parallel-rigs.md](1350-per-rig-budget-vs-parallel-rigs.md)
   — #1350: per-rig plan budget vs parallel rig solving. Only parallel
   solving shortens the wait; recommends a tier-barrier coordinator, gated on
-  a tablet measurement of the worst known route; per-rig budget rejected in
+  a tablet measurement of Flensburg → Burgstaaken; per-rig budget rejected in
   all four variants
 - [1496-frontier-cap-headroom.md](1496-frontier-cap-headroom.md) — #1496:
   frontier-cap headroom for fock tier-1, #53 relaxation and the #1136 salvage
