@@ -151,10 +151,10 @@ making design-level decisions; do not silently deviate.
   `coverage-shard` matrix → `coverage-merge`, which enforces the 80%
   threshold on the merged map. `timeoutBudgetVsJobCap.test.ts` reads the
   shard job's step and job caps from the YAML by addressed lookup (#359);
-  read the caps there, never here. PR #1510 set its suite-wall constant to
-  the max OBSERVED shard, not a bound: the first per-shard figure was
-  exceeded by the next dispatch. The shard blob reports live in a non-dot
-  directory because `actions/upload-artifact@v7.0.1` defaults
+  read the caps there, never here. PR #1510 set that test's suite-wall
+  constant to the max OBSERVED shard, not a bound: the first per-shard
+  figure was exceeded by the next dispatch. The shard blob reports live
+  in a non-dot directory because `actions/upload-artifact@v7.0.1` defaults
   `include-hidden-files: false`: the default `.vitest-reports/` upload failed
   on every shard with `No files were found`, an error that never names the
   hidden-file default (run 36333125953).
