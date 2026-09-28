@@ -302,6 +302,15 @@ mask bbox orphans the previously-cached raster in `pipeline/data-src/` under
 its old name — the next build re-downloads under the new one rather than
 reusing the stale extent (#1255).
 
+### `contours.json` — vector depth contours (#629)
+
+**Generated, never hand-edited.** `build_contours.py` traces cautious-reading
+level lines (`levelsM`) plus the no-data edge from `mask.bin`/`mask.meta.json`
+into a GeoJSON `FeatureCollection`; its `maskSha256` ties the asset to the
+exact mask it was built from
+(`app/src/test/contoursAsset.test.ts` fails closed on drift). Regenerate after
+every `mask` run: `npm --prefix pipeline run contours`.
+
 ### `basemap.pmtiles.png` — regional basemap
 
 **Hook-protected binary — regenerate, never hand-edit.**

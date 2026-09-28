@@ -9,6 +9,7 @@
     "harbors": "node build_harbors.mjs",
     "seamarks": "node build_seamarks.mjs",
     "mask": "./.venv/bin/python build_mask.py && ./.venv/bin/python verify_mask.py",
+    "contours": "./.venv/bin/python build_contours.py",
     "icons": "node build_icons.mjs"
   },
   "devDependencies": {
