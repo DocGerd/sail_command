@@ -15,3 +15,9 @@ select = ["E", "F", "I", "UP", "W"]
 
 [tool.ruff.lint.isort]
 known-first-party = []
+
+[tool.pytest.ini_options]
+# #1503: rootdir is this file's directory, so "." puts pipeline/ itself on
+# sys.path — needed since build_mask.py is a bare script, not a package.
+testpaths = ["tests"]
+pythonpath = ["."]

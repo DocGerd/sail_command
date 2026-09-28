@@ -5,11 +5,9 @@
 // branch resolves to a non-ready status (CLAUDE.md's guard-asymmetry rule).
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { Plan } from '../types';
-import { getPlan, listPlans } from '../services/db';
 import {
   canPinRegions,
   pinActivityFor,
-  pinImportedPlans,
   pinRegionsOnControl,
   pinRegionsOnRetry,
   subscribePinActivity,
@@ -20,38 +18,6 @@ import {
   type RegionReadiness,
   type RegionReadinessAndBytes,
 } from '../services/regionPinning';
-
-// #1483 (#1253 item 2 residual): the per-hook effect below pins only the
-// ONE plan a mounted readiness chip happens to be instantiated for — a
-// saved plan whose chip nobody has opened this session never gets an
-// automatic pin at all, even once a service worker starts controlling the
-// page. This batches every saved plan through the SAME first-control
-// transition instead, module-level (not per-hook) so several simultaneously
-// mounted chips fire it only ONCE. Deliberately reuses `pinImportedPlans`
-// (its own SW/Save-Data gates, ONE aggregated warning, and — via
-// regionPinning.ts's `pinOneRegion` — coalesced archive fetches) rather
-// than a bespoke loop, and deliberately does NOT suppress the per-hook call
-// beside it: both can target the SAME plan, and that coalescing is what
-// makes the overlap safe rather than wasteful.
-let batchPinnedThisSession = false;
-
-/** Test-only: forget the once-per-session batch-pin flag. */
-export function __resetRegionReadinessBatchForTests(): void {
-  batchPinnedThisSession = false;
-}
-
-async function pinAllSavedPlansOnce(): Promise<void> {
-  if (batchPinnedThisSession) return;
-  batchPinnedThisSession = true;
-  const summaries = await listPlans().catch(() => []);
-  const plans: Plan[] = [];
-  for (const s of summaries) {
-    if (s.kind !== 'ok') continue; // migratePlan already refused this row; nothing to pin.
-    const p = await getPlan(s.id).catch(() => undefined);
-    if (p !== undefined) plans.push(p);
-  }
-  pinImportedPlans(plans);
-}
 
 export type RegionReadinessStatus =
   /** Not yet checked for this plan — shown as not ready. */
@@ -154,7 +120,6 @@ export function useRegionReadiness(plan: Plan): RegionReadinessView {
     const was = wasControlled.current;
     wasControlled.current = controlled;
     if (!was && controlled) {
-      void pinAllSavedPlansOnce();
       if (pinActivityFor(plan.id) === undefined && status !== 'ready') {
         pinRegionsOnControl(plan);
       }
