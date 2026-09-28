@@ -147,16 +147,16 @@ making design-level decisions; do not silently deviate.
   2026-09-08 re-measure moved READERS 8 -> 9 and the TOTAL 13 -> 14, both
   accounted for by one file: `test/toastCompensationTwin.test.ts`, added
   2026-09-05 and itself a `readFileSync` reader. And
-  `.github/workflows/coverage.yml` carries TWO `timeout-minutes` settings at
-  different levels: a STEP-level `240` on the `test:coverage` step, and (since
-  #882) a JOB-level `260` set strictly higher so the job outlives that step's
-  cap plus margin. NEITHER is guarded, and the STEP value is the one
-  `timeoutBudgetVsJobCap.test.ts` means: it DECLARES `JOB_CAP_MINUTES = 240`
-  rather than reading it (PR #351 removed the read after four fail-opens), so
-  the two are kept in sync by a twin comment only, and #359 tracks restoring a
-  real read. The JOB-level `260` never had such a coupling either — #359's
-  Option A already covers both, by addressed lookup rather than a
-  whole-file scan.
+  `.github/workflows/coverage.yml` is SHARDED since #1504: `gate` → an
+  8-way `coverage-shard` matrix → `coverage-merge`, which enforces the 80%
+  threshold on the merged map. `timeoutBudgetVsJobCap.test.ts` reads the
+  shard job's step and job caps from the YAML by addressed lookup (#359);
+  read the caps there, never here. Its suite-wall constant is the max
+  OBSERVED shard over named runs, not a bound: the first measured value was
+  exceeded by the very next run (PR #1510). The blobs live in a non-dot
+  directory because `actions/upload-artifact` defaults
+  `include-hidden-files: false`, so a `.vitest-reports/` upload silently
+  found nothing.
 ## Commands
 - App (run from repo root): `npm --prefix app run typecheck` / `lint` / `test` /
   `build` / `dev`. CI runs lint+typecheck in `app-static`, concurrently with the test shards
@@ -345,11 +345,12 @@ making design-level decisions; do not silently deviate.
   happened in review on PR #867, pushed back on precisely because "the repo
   record names `becalmed` and `deep-becalmed` as the vacuous pair", i.e. this
   mis-transfer occurring in real time. Name the LEVER whenever you call an arm
-  vacuous. An arm that REACHES a failure class can still be blind to a lever
-  acting on it: `motorless-short-horizon` hits the #1301 class, yet a widened
-  `salvagePassAdmitted` left it byte-identical, because pass 2 rescued 0 of 40
-  rows and a pass 2 that routes nothing returns pass 1 verbatim (#1455's
-  review; #1456 tracks serializing the record's failure cause).
+  vacuous. An arm can be blind to a lever acting on it: a widened
+  `salvagePassAdmitted` left `motorless-short-horizon`'s PlanResults
+  byte-identical, because a pass 2 that routes nothing returns pass 1
+  verbatim (#1455's review). Since #1456 each row also serializes `record`
+  and `pass2`, so the arm's hash detects that widening (PR #1511); diff
+  across that row-shape change with `compare.mjs --strip-planning-record`.
   For a DEPTH-RELAXATION change the discriminating arms are the three
   #452 Marstal-origin ones (`margin-zero`, `relaxation-dense`,
   `margin-extreme`) — "the three new ones" was true until #653 added two
@@ -1689,6 +1690,7 @@ making design-level decisions; do not silently deviate.
   | v0.43.0 | 2026-09-24 | 55 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 21:17:29Z, two seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `36060419890` (created 21:16:38Z) -> tag `36060518654` (created 21:17:33Z) on `c1a1659`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `6648358384`, `ref: v0.43.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-C95qiaIC.js` at ``version:`v0.43.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.44.0 | 2026-09-25 | 37 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 08:14:55Z, two seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `36111835944` (created 08:14:22Z) -> tag `36111890610` (created 08:14:59Z) on `74ffbc9`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-DqikvvXE.js` at ``version:`v0.44.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `1342be8` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.45.0 | 2026-09-25 | 28 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 13:40:24Z, three seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `36142398672` (created 13:40:00Z) -> tag `36142450204` (created 13:40:28Z) on `a1126b4`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `6662080548`, `ref: v0.45.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-eHAbyik6.js` at ``version:`v0.45.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `3481aea` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
+  | v0.46.0 | 2026-09-28 | 52 s | read as **NO `deploy` JOB CREATED YET** at 07:50:23Z, immediately before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `36393772153` (created 07:49:35Z) -> tag `36393852888` (created 07:50:27Z) on `aa6ea4b`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-DsQbd86w.js` at ``version:`v0.46.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag reported `verified: true, reason: "valid"`. Names no MECHANISM. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -3195,7 +3197,10 @@ making design-level decisions; do not silently deviate.
   it is making a claim of its own: the reviewer is explaining, the
   orchestrator is relaying, the implementer is complying — so no one's own
   verification step covers it. Verify a finding's CAUSE separately from the
-  finding, or relay the finding WITHOUT the cause. The bullet above already
+  finding, or relay the finding WITHOUT the cause. The orchestrator is a
+  source too: at v0.46.0 a brief's "correlation only" fact (PR #1488's merge
+  headed the first capped coverage run) became a stated cause in two PRs;
+  relay a correlation as a commit range, never a PR name. The bullet above already
   names the shape where a correction invents a DERIVATION the source denies;
   this is its INHERITED twin, and inheritance is the harder one to notice,
   because the derivation arrives already attributed to someone else.
@@ -4747,6 +4752,12 @@ making design-level decisions; do not silently deviate.
   your own bookkeeping. A full SHA in an agent REPORT is a claim too: at the
   v0.39.0 cycle two implementers padded a real 7-char prefix into a 40-char SHA
   that did not exist; merge only by `pulls/N --jq .head.sha` read fresh.
+  "Pre-existing on develop" is a claim about the BASE: measure the base
+  before accepting it. At #1513 four TS2578 errors so attributed were the
+  PR's own. A filtered test run proves only its filter: enumerate every test
+  reaching the changed function (`grep -rln <symbol> app/src
+  --include='*.test.*'`). #1513's filter skipped `regionPinning.test.ts`,
+  which went red in CI after two approvals.
 - **Parallel subagents share ONE session scratchpad** (Claude Code 2.1.278;
   a harness property). A fixed commit-message filename there raced: one
   commit got a sibling's `Closes #N` (caught before push, v0.39.0 cycle).
