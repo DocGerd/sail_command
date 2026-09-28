@@ -842,3 +842,44 @@ describe('#1258 cause fold after a requested-gate horizon failure', () => {
     expect(result).toEqual({ status: 'error', reason: 'beyond-horizon' });
   });
 });
+
+describe('#1456 pass-2 outcome', () => {
+  it('not-admitted: the #1301 class, whose only failing clause is the plan cause', () => {
+    // Pass 2 would route here; only `record.cause === 'horizon-exceeded'` keeps
+    // it out, so widening `salvagePassAdmitted` to that cause moves this row.
+    script({
+      'p1:req:c5:genoa': fail('horizon-exceeded'),
+      'p1:req:c5:fock': fail('horizon-exceeded'),
+      'p1:req:none:genoa': fail('horizon-exceeded'),
+      'p1:req:none:fock': fail('horizon-exceeded'),
+      ...P1_REL_BLOCKED,
+      'p2:req:c5:genoa': ok(31),
+      'p2:req:c5:fock': ok(32),
+    });
+    relaxMock.mockReturnValue(RELAXED);
+    const { result, pass2 } = plan(MOTOR_OFF);
+    expect(pass2).toBe('not-admitted');
+    expect(result).toEqual({ status: 'error', reason: 'beyond-horizon' });
+  });
+
+  it('admitted-no-route: pass 2 ran and returned pass 1 verbatim', () => {
+    script({ ...P1_REQ_BLOCKED, ...P2_REQ_NONE });
+    const { result, pass2 } = plan(MOTOR_OFF);
+    expect(pass2).toBe('admitted-no-route');
+    expect(pass2Keys()).toHaveLength(4);
+    expect(result).toEqual({ status: 'error', reason: 'unreachable' });
+  });
+
+  it('rescued: pass 2 routed a sail', () => {
+    script({
+      ...P1_REQ_BLOCKED,
+      'p2:req:c5:genoa': ok(41),
+      'p2:req:c5:fock': fail('horizon-exceeded'),
+      'p2:req:none:genoa': fail('horizon-exceeded'),
+      'p2:req:none:fock': fail('horizon-exceeded'),
+    });
+    const { result, pass2 } = plan(MOTOR_OFF);
+    expect(pass2).toBe('rescued');
+    expect(distanceOf(result, 'genoa')).toBe(41);
+  });
+});

@@ -24,22 +24,23 @@
  * See `README.md` in this directory for how to run it.
  *
  * BASELINE PARAMETERS ARE LOAD-BEARING. Every constant below — the arm list,
- * each arm's wind field, `T0`, the origin, and the serializer — defines what a
- * stored baseline means. Change any one and previously-recorded output is no
- * longer comparable, which silently destroys the only evidence a future
- * classification change has to argue against. Add a new arm rather than
- * editing an existing one.
+ * each arm's wind field, `T0`, the origin, and the serializer — plus the row
+ * shape `runArm` writes (#1456) defines what a stored baseline means. Change
+ * any one and previously-recorded output is no longer comparable, which
+ * silently destroys the only evidence a future classification change has to
+ * argue against. Add a new arm rather than editing an existing one.
  *
- * Imports nothing that exists on only one side of a refactor (no
- * `SolveFailureCause`, no `NO_ROUTE_LABEL_OF_CAUSE`), so the identical file
- * runs unchanged at BASE and at HEAD.
+ * Imports nothing from the #282 classification refactor (no
+ * `SolveFailureCause`, no `NO_ROUTE_LABEL_OF_CAUSE`). It reads
+ * `planRouteWithRecord`'s `pass2`, so its rows match HEAD's shape only at a
+ * BASE at or after #1456 (README.md, "Row shape").
  */
 import { expect, it } from 'vitest';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { NavMask } from '../src/lib/mask';
-import { planRoute } from '../src/routing/planRoute';
+import { planRouteWithRecord } from '../src/routing/planRoute';
 import { uniformWindGrid } from '../src/test/fixtures';
 import { boatById, DEFAULT_BOAT_ID, polarKey, type BoatId } from '../src/data/boats';
 import { boatSnapshot, DEFAULT_SETTINGS } from '../src/types';
@@ -560,7 +561,7 @@ export function runArm(label: (typeof ARM_NAMES)[number]): void {
       const timings: Record<string, number> = {};
       for (const h of dests) {
         const t = Date.now();
-        rows[h.id] = planRoute(
+        const planned = planRouteWithRecord(
           {
             origin: origin.snap,
             destination: h.snap,
@@ -585,6 +586,21 @@ export function runArm(label: (typeof ARM_NAMES)[number]): void {
           windGrid,
           { polars, boat, mask },
         );
+        // #1456: the PlanResult keys first, so stripping `record` and `pass2`
+        // recovers a pre-#1456 row byte for byte. Never serialize `gate`: an
+        // ApproachGate carries its discs. `comfortDepthM` is left out too.
+        rows[h.id] = {
+          ...planned.result,
+          record: {
+            cause: planned.record.cause,
+            tiers: planned.record.tiers.map(({ tier, usedDepthM, causes }) => ({
+              tier,
+              usedDepthM,
+              causes,
+            })),
+          },
+          pass2: planned.pass2,
+        };
         timings[h.id] = Date.now() - t;
       }
       const base = armFileBase(label, SHARD, LIMIT);

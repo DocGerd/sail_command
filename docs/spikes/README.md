@@ -123,14 +123,24 @@ instead of here.
   slower rig. Recommends a finer confined prune key (divisor 3 or 4) for motor-off
   solves only; salvage, dead-stamper retraction and Pareto stamps measured and
   rejected
+- [1350-per-rig-budget-vs-parallel-rigs.md](1350-per-rig-budget-vs-parallel-rigs.md)
+  — #1350: per-rig plan budget vs parallel rig solving. Only parallel
+  solving shortens the wait; recommends a tier-barrier coordinator, gated on
+  a tablet measurement of Flensburg → Burgstaaken; per-rig budget rejected in
+  all four variants
 - [1496-frontier-cap-headroom.md](1496-frontier-cap-headroom.md) — #1496:
   frontier-cap headroom for fock tier-1, #53 relaxation and the #1136 salvage
   pass at the shipped motor-off prune divisor. No truncation measured
   anywhere; salvage never fires on any real-mask input tried
+- [1360-aaroesund-relaxation-cost.md](1360-aaroesund-relaxation-cost.md) —
+  #1360: the post-#1322 `salona44-relaxation/aaroesund` +16.5 min is, like
+  the `breeze` Fehmarn solves 1330 measured, `MAX_FRONTIER` truncation,
+  measured through the relaxation ladder at three trees; resolved by #1257's
+  derived cap (measured at `a4c0ad3`)
 
-Four entries carry a same-named subdirectory of supporting artifacts rather
+Five entries carry a same-named subdirectory of supporting artifacts rather
 than being self-contained: `1022-whole-journey-ux/` (reference screenshots),
 `354-mode-churn/` (the reproduction test file and its measured output),
-`1136-motor-off-solve-termination/` (the §11 probe scripts and results) and
+`1136-motor-off-solve-termination/` (the §11 probe scripts and results),
 `1168-motor-off-prune-instability/` (the instrumentation patch, probes and raw
-results).
+results) and `1360-aaroesund-relaxation-cost/` (the probe and its results).

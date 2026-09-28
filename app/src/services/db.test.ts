@@ -670,13 +670,58 @@ describe('IndexedDB persistence', () => {
   // real IndexedDB key) must remove the plan's pin record in the SAME
   // transaction, not leave it orphaned.
   it("deletePlan removes the plan's pin record (direct-match path)", async () => {
+    // #1483: a real, migratable Plan — saveRegionPin routes the stored row
+    // through migratePlan (#1246 item 1), which refuses a
+    // `request: {}, result: {}` placeholder.
     const plan = {
       id: 'has-a-pin',
       name: 'Has A Pin',
       createdAtMs: 1000,
-      request: {},
+      schemaVersion: PLAN_SCHEMA_VERSION,
+      request: {
+        origin: { lat: 54.3, lon: 9.4 },
+        destination: { lat: 55.0, lon: 10.0 },
+        viaPoints: [],
+        originHarborId: null,
+        destinationHarborId: null,
+        departureMs: 1,
+        settings: {
+          safetyDepthM: 3.0,
+          depthComfortMarginM: 2.0,
+          motorSpeedKn: 6.5,
+          motorThresholdKn: 2.5,
+          sailPreferenceKn: 2.8,
+          maneuverPenaltyS: 45,
+          performanceFactor: 0.9,
+          motorEnabled: true,
+          showOwnship: false,
+        },
+        sailIds: ['genoa'],
+        boat: defaultBoatSnapshot(),
+      },
       windGrid: {},
-      result: {},
+      result: {
+        status: 'ok',
+        sails: [
+          {
+            sailId: 'genoa',
+            result: {
+              sailId: 'genoa',
+              legs: [],
+              etaMs: 1,
+              durationMs: 1,
+              distanceNm: 1,
+              maneuverCount: 0,
+              motorDistanceNm: 0,
+            },
+            reason: null,
+          },
+        ],
+        recommended: 'genoa',
+        comparisonComplete: true,
+        snappedOrigin: { lat: 54.3, lon: 9.4 },
+        snappedDestination: { lat: 55.0, lon: 10.0 },
+      },
     } as unknown as Plan;
     await savePlan(plan);
     const pin: RegionPinRecord = {
@@ -1409,13 +1454,58 @@ describe('#1164 T4: v2 -> v3 migration adds the pins store additively', () => {
     // `d.createObjectStore('settings')` or the waypoints store creation on a
     // database where they already exist would throw — getting past this
     // call at all already rules that out.
+    // #1483: a real, migratable Plan — saveRegionPin now routes the stored
+    // row through migratePlan (#1246 item 1), which refuses this shape's
+    // old `request: {}, result: {}` placeholder outright.
     await savePlan({
       id: 'plan-migration-1',
       name: 'Migration',
       createdAtMs: 1,
-      request: {},
+      schemaVersion: PLAN_SCHEMA_VERSION,
+      request: {
+        origin: { lat: 54.3, lon: 9.4 },
+        destination: { lat: 55.0, lon: 10.0 },
+        viaPoints: [],
+        originHarborId: null,
+        destinationHarborId: null,
+        departureMs: 1,
+        settings: {
+          safetyDepthM: 3.0,
+          depthComfortMarginM: 2.0,
+          motorSpeedKn: 6.5,
+          motorThresholdKn: 2.5,
+          sailPreferenceKn: 2.8,
+          maneuverPenaltyS: 45,
+          performanceFactor: 0.9,
+          motorEnabled: true,
+          showOwnship: false,
+        },
+        sailIds: ['genoa'],
+        boat: defaultBoatSnapshot(),
+      },
       windGrid: {},
-      result: {},
+      result: {
+        status: 'ok',
+        sails: [
+          {
+            sailId: 'genoa',
+            result: {
+              sailId: 'genoa',
+              legs: [],
+              etaMs: 1,
+              durationMs: 1,
+              distanceNm: 1,
+              maneuverCount: 0,
+              motorDistanceNm: 0,
+            },
+            reason: null,
+          },
+        ],
+        recommended: 'genoa',
+        comparisonComplete: true,
+        snappedOrigin: { lat: 54.3, lon: 9.4 },
+        snappedDestination: { lat: 55.0, lon: 10.0 },
+      },
     } as unknown as Plan);
     const record: RegionPinRecord = {
       planId: 'plan-migration-1',
@@ -1438,14 +1528,61 @@ describe('#1164 T4: region pin intent persistence (services/db.ts)', () => {
     await __resetDbForTests();
   });
 
+  // #1483: MUST be a real, migratable Plan — saveRegionPin now routes the
+  // stored row through migratePlan (#1246 item 1), which refuses a
+  // `request: {}, result: {}` placeholder outright (no `result.status`).
+  // Using such a placeholder here would turn every 'saved' expectation
+  // below into 'plan-gone'.
   function minimalPlan(id: string): Plan {
     return {
       id,
       name: id,
       createdAtMs: 1,
-      request: {},
+      schemaVersion: PLAN_SCHEMA_VERSION,
+      request: {
+        origin: { lat: 54.3, lon: 9.4 },
+        destination: { lat: 55.0, lon: 10.0 },
+        viaPoints: [],
+        originHarborId: null,
+        destinationHarborId: null,
+        departureMs: 1,
+        settings: {
+          safetyDepthM: 3.0,
+          depthComfortMarginM: 2.0,
+          motorSpeedKn: 6.5,
+          motorThresholdKn: 2.5,
+          sailPreferenceKn: 2.8,
+          maneuverPenaltyS: 45,
+          performanceFactor: 0.9,
+          motorEnabled: true,
+          showOwnship: false,
+        },
+        sailIds: ['genoa'],
+        boat: defaultBoatSnapshot(),
+      },
       windGrid: {},
-      result: {},
+      result: {
+        status: 'ok',
+        sails: [
+          {
+            sailId: 'genoa',
+            result: {
+              sailId: 'genoa',
+              legs: [],
+              etaMs: 1,
+              durationMs: 1,
+              distanceNm: 1,
+              maneuverCount: 0,
+              motorDistanceNm: 0,
+            },
+            reason: null,
+          },
+        ],
+        recommended: 'genoa',
+        comparisonComplete: true,
+        snappedOrigin: { lat: 54.3, lon: 9.4 },
+        snappedDestination: { lat: 55.0, lon: 10.0 },
+      },
     } as unknown as Plan;
   }
 
@@ -1507,5 +1644,91 @@ describe('#1164 T4: region pin intent persistence (services/db.ts)', () => {
     expect(outcome).toBe('plan-gone');
     expect(buildRecord).not.toHaveBeenCalled();
     expect(await getRegionPin('never-saved')).toBeUndefined();
+  });
+
+  // #1483 (#1246 item 1): `buildRecord` must receive the MIGRATED plan, not
+  // the raw stored row. A pre-#54 record's raw shape has NO `result.sails`
+  // at all (the legacy quartet is `result.genoa`/`result.fock`) — if the
+  // raw row reached buildRecord unmigrated, this assertion would see
+  // `undefined` instead of a normalised two-entry array.
+  it('buildRecord receives the MIGRATED plan for a pre-#54 legacy-shape stored row', async () => {
+    const legacy = {
+      id: 'legacy-pin',
+      name: 'Legacy',
+      createdAtMs: 1,
+      request: {
+        origin: { lat: 54.0, lon: 9.0 },
+        destination: { lat: 55.0, lon: 10.0 },
+        viaPoints: [],
+        originHarborId: null,
+        destinationHarborId: null,
+        departureMs: 1000,
+        settings: {
+          safetyDepthM: 3.0,
+          depthComfortMarginM: 2.0,
+          motorSpeedKn: 6.5,
+          motorThresholdKn: 2.5,
+          sailPreferenceKn: 2.8,
+          maneuverPenaltyS: 45,
+          performanceFactor: 0.9,
+          motorEnabled: true,
+          showOwnship: false,
+        },
+      },
+      windGrid: {},
+      result: {
+        status: 'ok',
+        genoa: {
+          rig: 'genoa',
+          legs: [],
+          etaMs: 4000,
+          durationMs: 3000,
+          distanceNm: 10,
+          maneuverCount: 0,
+          motorDistanceNm: 0,
+        },
+        fock: null,
+        genoaReason: null,
+        fockReason: 'unreachable',
+        recommended: 'genoa',
+        snappedOrigin: { lat: 54.0, lon: 9.0 },
+        snappedDestination: { lat: 55.0, lon: 10.0 },
+      },
+    } as unknown as Plan;
+    await savePlan(legacy);
+
+    let seen: Plan | undefined;
+    const outcome = await saveRegionPin('legacy-pin', (plan) => {
+      seen = plan;
+      return { planId: 'legacy-pin', regionIds: [], pinnedAtMs: 1 };
+    });
+
+    expect(outcome).toBe('saved');
+    expect(seen?.schemaVersion).toBe(PLAN_SCHEMA_VERSION);
+    expect(seen?.result.sails.map((s) => s.sailId)).toEqual(['genoa', 'fock']);
+    expect(seen?.request.boat.id).toBe('salona-45');
+  });
+
+  // #1483 (#1246 item 1): a row migratePlan refuses (here: a future-schema
+  // record this build cannot read) is exactly as unpinnable as a deleted
+  // one — no write, and buildRecord never runs on garbage data.
+  it("a row migratePlan refuses (a newer schemaVersion) writes NO record and returns 'plan-gone'", async () => {
+    const fromTheFuture = {
+      id: 'future-plan',
+      name: 'From the future',
+      createdAtMs: 1,
+      schemaVersion: PLAN_SCHEMA_VERSION + 1,
+      request: {},
+      windGrid: {},
+      result: {},
+    } as unknown as Plan;
+    await savePlan(fromTheFuture);
+    const buildRecord = vi.fn(() => ({ planId: 'future-plan', regionIds: [], pinnedAtMs: 1 }));
+
+    const outcome = await saveRegionPin('future-plan', buildRecord);
+
+    expect(outcome).toBe('plan-gone');
+    expect(buildRecord).not.toHaveBeenCalled();
+    expect(await getRegionPin('future-plan')).toBeUndefined();
   });
 });
