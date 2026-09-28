@@ -887,13 +887,13 @@ not committed; their rows are transcribed in §4.1 and §4.2.
 ## 11. Addendum 2026-09-28 — R4 re-checked against `develop @ 6ff19f2`
 
 **Historical §3.2/§0 findings above are unchanged and are NOT rewritten by
-this addendum.** #1259's exact-cells-per-degree grid (`app/src/lib/mask.ts`)
-and commit `a025076` (PR #1449) both landed on `develop` after the `84b049a2`
-measurement base and moved the mask grid under R4. #1449's own message
-records that the #847 weave repro at Ærøskøbing→Søby, TWS 5.5, no longer
-reproduces post-#1259 and was re-pinned to TWS 6 — raising #1484: does the
-`354` spike's own TWS 5.5 / wdir 120 R4 citation still reproduce a mode
-change?
+this addendum.** Between `84b049a2` and `develop @ 6ff19f2` (1372 commits,
+including #295's mask widen and ~25 isochrone.ts/planRoute.ts changes), R4's
+exact leg/mode-run breakdown moved; which change(s) moved it was not
+bisected. #1449's own message records that the #847 weave repro at
+Ærøskøbing→Søby, TWS 5.5, no longer reproduces post-#1259 and was re-pinned
+to TWS 6 — raising #1484: does the `354` spike's own TWS 5.5 / wdir 120 R4
+citation still reproduce a mode change?
 
 Re-ran `354-mode-churn/scratch354.test.ts` byte-identically (sha256
 unchanged from §0) at `develop @ 6ff19f2` via
@@ -901,7 +901,7 @@ unchanged from §0) at `develop @ 6ff19f2` via
 (from `app/`), copied temporarily into `app/sweep/` and deleted afterward —
 not committed. No shim was needed; the driver's `84b049a2`-era API (mask/
 polar loading, `serialize()` reuse, spy-based pre-merge leg recovery) still
-matches current `mask.ts`/`sweepArms.ts`, and #1456's `record`/`pass2`
+matches `mask.ts`/`sweepArms.ts` at `6ff19f2`, and #1456's `record`/`pass2`
 fields are absent from `PlanResult` on every one of the six routes here (no
 salvage pass fires), so they do not affect this driver's output. Two runs,
 byte-identical fingerprints (driver's own double-run control:
@@ -909,29 +909,26 @@ byte-identical fingerprints (driver's own double-run control:
 
 **Answer: R4 at TWS 5.5 / wdir 120 still reproduces a 3-mode-change
 sandwich on both rigs — status `ok`, `chordNavigable: false`, unchanged from
-§3.2 — but the exact leg/mode-run breakdown has moved under the grid
-change and no longer matches the `84b049a2` table byte-for-byte:**
+§3.2 — but the exact leg/mode-run breakdown has moved and no longer
+matches the `84b049a2` table byte-for-byte:**
 
-| Sail | modeChanges | mode runs (legs) — `84b049a2` | mode runs (legs) — now | legs | mmJoints | msmTriples | motor % (time) | ETA min | legs fingerprint |
+| Sail | modeChanges | mode runs (legs) — `84b049a2` | mode runs (legs) — `6ff19f2` | legs | mmJoints | msmTriples | motor % (time) | ETA min | legs fingerprint |
 |---|---|---|---|---|---|---|---|---|---|
 | genoa | 3 (unchanged) | `S(1) M(1) S(2) M(9)` | `S(1) M(1) S(1) M(7)` | 13 → 10 | 2 → 1 | 0 → 1 | 92.6 (unchanged) | 67.6 (unchanged) | `5172f17…` → `2f12cac…` |
 | fock | 3 (unchanged) | `S(1) M(1) S(3) M(10)` | `S(1) M(1) S(2) M(9)` | 15 → 13 | 2 → 0 | 0 → 0 | 90.9 → 89.0 | 68.4 (unchanged) | `41c8a98…` → `481da35…` |
 
 Motor share and ETA are close to or identical to the `84b049a2` figures
 (genoa's are byte-identical); leg count, mmJoints, msmTriples and the
-mode-run string moved on both rigs — the grid change altered the route
-geometry under the same wind cell, not merely the fingerprint. Fingerprints
-differ from `84b049a2` on both rigs, as expected for a different mask grid.
+mode-run string moved on both rigs. Fingerprints differ from `84b049a2` on
+both rigs.
 
-Optional per the issue's ask, TWS 6 / wdir 120 (the case #1449 re-pinned
-`weaveEta847.test.ts` to) was **not** re-run here — §3.2's R4 is the only
-case this addendum was asked to check, and re-deriving a second citation
-belongs to whatever re-checks the `weaveEta847` pairing specifically.
+TWS 6 / wdir 120 (the case #1449 re-pinned `weaveEta847.test.ts` to) was
+**not** re-run here — §3.2's R4 is the only case this addendum was asked to
+check, and re-deriving a second citation belongs to whatever re-checks the
+`weaveEta847` pairing specifically.
 
 **Conclusion for #1484: no rewrite of §3.2/§3.5/§6's historical numbers.**
 The R4 citation still describes a reproducing case (3 mode changes, both
 rigs, `ok`) — the spike's qualitative claim holds — but a reader relying on
 the exact `84b049a2` mode-run strings for R4 should treat them as
 BASE-tree-specific, per §0's own scoping, not as current `develop` behaviour.
-The lever-relative vacuous-arm framing recorded at `84b049a2` (§3.2's own
-control/probe distinctions) is unaffected and is not restated here.
