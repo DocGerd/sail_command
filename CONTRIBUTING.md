@@ -229,9 +229,9 @@ labels on **pull requests** are applied automatically from changed paths by
 
 **Milestones**
 
-- `v0.47.0` — the milestone now being filled; it closes when the release PR
+- `v0.48.0` — the milestone now being filled; it closes when the release PR
   merges and the tag is pushed.
-- `v0.48.0` — the next MINOR release, opened fresh at the `v0.46.0` cut per
+- `v0.49.0` — the next MINOR release, opened fresh at the `v0.47.0` cut per
   the roll-forward convention below.
 - `Backlog` — accepted, not yet scheduled into a release.
 - `Icebox` — deferred / maybe-never; revisit opportunistically.

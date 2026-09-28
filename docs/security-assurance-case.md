@@ -326,9 +326,7 @@ pull-request-only merges (merge commits only), required `app` + `e2e` checks
 under a strict up-to-date policy, mandatory review-thread resolution, no force
 pushes, no deletions. CI's `app` job runs a leaked-home-path guard → lint →
 typecheck → a sweep canonicalization guard → unit/property tests → build →
-a third-party notices drift guard. `pipeline/`'s Python is separately linted and
-formatted with ruff in `.github/workflows/python-lint.yml` (job `ruff`) — an
-optional check, not part of `protect-main`'s required `app` + `e2e` set.
+a third-party notices drift guard. `pipeline/`'s Python is separately linted and formatted with ruff, and tested with pytest, in `.github/workflows/python-lint.yml` (jobs `ruff` and `pytest`) — optional checks, not part of `protect-main`'s required `app` + `e2e` set.
 `verify-mask.yml` (`Mask integrity`) is likewise advisory rather than required;
 the connectivity assertion it exists to protect was moved into the required
 `app` suite for that reason

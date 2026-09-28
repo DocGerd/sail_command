@@ -23,24 +23,25 @@ The `v0.47.0` cut (2026-09-28) worked the
 two user-visible changes (per `CHANGELOG.md`'s own `[0.47.0]` section) —
 plotter-style depth contours, drawn on the cautious depth reading and
 toggled from the depth legend, default off
-([#629](https://github.com/DocGerd/sail_command/issues/629)), and offline
-map regions for saved plans now get pinned the first time the service
-worker takes control regardless of which tab is open
+([#629](https://github.com/DocGerd/sail_command/issues/629)), and the one-time
+pin of every saved plan's offline map regions at first service-worker control
+no longer depending on the Routes tab being open
 ([#1518](https://github.com/DocGerd/sail_command/issues/1518)) — plus four
-issues with no user-visible surface: a failing coverage shard now uploads
-its blob so the failing test can be identified
+issues with no user-visible surface: a failing coverage shard's blob upload is
+no longer skipped, so the failing test can be identified (not yet exercised)
 ([#1527](https://github.com/DocGerd/sail_command/issues/1527));
 `compare.mjs`'s `--strip-planning-record` fail-closed guard gained a
 committed test
 ([#1514](https://github.com/DocGerd/sail_command/issues/1514)); `pipeline/`
 gained a pytest harness, its first test covering `check_dtm_covers`
 ([#1503](https://github.com/DocGerd/sail_command/issues/1503)); and the
-`354-mode-churn` spike's TWS 5.5/wdir 120 Ærøskøbing citation was checked
-against its post-#1259 re-pin and recorded as still reproducing
+`354-mode-churn` spike's TWS 5.5/wdir 120 Ærøskøbing citation was re-run on
+the post-#1259 grid, which had re-pinned #847's neighbouring repro to TWS 6,
+and recorded as still reproducing
 ([#1484](https://github.com/DocGerd/sail_command/issues/1484)).
 
-Four issues that wait on a real-tablet session or a design ruling from a
-different milestone were moved to `Backlog` this cut, not carried forward
+Four issues that wait on a real-tablet session were moved to `Backlog` this
+cut, not carried forward
 into `v0.48.0`:
 ([#1281](https://github.com/DocGerd/sail_command/issues/1281),
 [#1413](https://github.com/DocGerd/sail_command/issues/1413),
