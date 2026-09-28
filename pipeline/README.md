@@ -31,6 +31,17 @@ pipeline/.venv/bin/ruff format --check pipeline/   # what CI runs; drop --check 
 JS/TS style is ESLint (`app/eslint.config.js`), enforced by the `app`
 required check.
 
+## Tests (#1503)
+
+pytest, configured in `pyproject.toml`'s `[tool.pytest.ini_options]`. CI runs
+it in `.github/workflows/python-lint.yml`'s `pytest` job — like `ruff`,
+OPTIONAL, not part of `protect-main`'s required checks. Run locally:
+
+```
+pipeline/.venv/bin/pip install -r pipeline/requirements-dev.txt
+pipeline/.venv/bin/python -m pytest pipeline/
+```
+
 ## Assets
 
 ### `polars/<boat-id>-<sail-id>.json` — boat-speed polars
