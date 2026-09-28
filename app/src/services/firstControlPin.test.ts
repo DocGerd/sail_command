@@ -180,16 +180,19 @@ describe('armBatchPinOnFirstControl (#1518)', () => {
 
   it('arming is idempotent — a second call never adds a second listener', async () => {
     const sw = stubSw(false);
+    const addEventListener = vi.spyOn(sw, 'addEventListener');
     const { armBatchPinOnFirstControl } = await loadModule();
-    const { listPlans, getPlan } = await import('./db');
-    const { pinImportedPlans } = await import('./pinAfterSave');
-    vi.mocked(listPlans).mockResolvedValue([]);
-    vi.mocked(getPlan).mockResolvedValue(undefined);
 
     armBatchPinOnFirstControl();
     armBatchPinOnFirstControl();
-    sw.controller = {};
-    sw.dispatchEvent(new Event('controllerchange'));
-    await vi.waitFor(() => expect(pinImportedPlans).toHaveBeenCalledTimes(1));
+
+    // Assert on the REGISTRATION itself, not on pinAllSavedPlansOnce's own
+    // effect — that dedups via a SEPARATE flag (batchPinnedThisSession) and
+    // would absorb a duplicate listener firing, making an outcome-only
+    // assertion here vacuous for the `armed` guard specifically.
+    const controllerchangeCalls = addEventListener.mock.calls.filter(
+      ([type]) => type === 'controllerchange',
+    );
+    expect(controllerchangeCalls).toHaveLength(1);
   });
 });
