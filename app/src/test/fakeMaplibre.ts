@@ -205,26 +205,50 @@ export function makeFakeMap({ styleLoaded = true }: { styleLoaded?: boolean } = 
       const anchorsSeededBasemapLayer =
         beforeId !== undefined && styleLayers.some((l) => l.id === beforeId);
       if (beforeId !== undefined && at === -1 && !anchorsSeededBasemapLayer) return;
+      // #629 review Blocker 2: a layer anchored under a SEEDED basemap layer
+      // sits at the BOTTOM of the real style (every basemap layer sits
+      // below every app layer), never appended to the top of `layerOrder`
+      // like an ordinary unanchored add — `at === -1` alone conflated the
+      // two. `insertAt` places it after any layer ALREADY anchored to the
+      // SAME seeded id (so a later same-anchor add still ends up above an
+      // earlier one, same rule as an ordinary beforeId), and ahead of
+      // everything else.
+      const insertAt =
+        at === -1 && anchorsSeededBasemapLayer
+          ? layerOrder.filter((id) => layers.get(id)?.beforeId === beforeId).length
+          : at;
       layers.set(layer.id, beforeId === undefined ? layer : { ...layer, beforeId });
-      if (at === -1) layerOrder.push(layer.id);
-      else layerOrder.splice(at, 0, layer.id);
+      if (insertAt === -1) layerOrder.push(layer.id);
+      else layerOrder.splice(insertAt, 0, layer.id);
     }),
     getLayer: (id: string) => layers.get(id),
     styleLayers,
     // #629: real MapLibre's `getStyle().layers` reflects the WHOLE live
     // style — basemap layers plus everything since added. Seeded
     // `styleLayers` entries stand in for the basemap ones (loaded before
-    // any component's own setup runs), followed by this component's own
-    // additions in insertion order.
-    getStyle: () => ({
-      layers: [
-        ...styleLayers,
-        ...layerOrder.map((id) => {
+    // any component's own setup runs). A layer anchored UNDER a seeded
+    // entry (its own recorded `beforeId` matches that entry's id) sits
+    // BEFORE it in the returned array — same "before means lower" rule
+    // `addLayer`'s own `insertAt` above encodes — everything else (not
+    // anchored to any seeded entry) follows all of `styleLayers`.
+    getStyle: () => {
+      const claimed = new Set<string>();
+      const result: Array<{ id: string; type: string }> = [];
+      for (const sl of styleLayers) {
+        for (const id of layerOrder.filter((lid) => layers.get(lid)?.beforeId === sl.id)) {
+          claimed.add(id);
           const l = layers.get(id);
-          return { id, type: l?.type ?? 'unknown' };
-        }),
-      ],
-    }),
+          result.push({ id, type: l?.type ?? 'unknown' });
+        }
+        result.push(sl);
+      }
+      for (const id of layerOrder) {
+        if (claimed.has(id)) continue;
+        const l = layers.get(id);
+        result.push({ id, type: l?.type ?? 'unknown' });
+      }
+      return { layers: result };
+    },
     // #599: DataLayers reads the live zoom to pick the depth hatch's stripe
     // band (depthColor.ts's hatchBandForZoom), from inside buildHatchCanvas.
     //

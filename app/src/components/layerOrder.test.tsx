@@ -143,8 +143,11 @@ vi.mock('../services/assets', () => ({
 // paint over routine marks while hazard stays topmost). See
 // DataLayers.tsx's own #1154 comments at each addLayer call site.
 const OVERLAYS_BELOW_AIS = [
+  'sc-contour-labels',
   'sc-depth',
   'sc-depth-hatch',
+  'sc-contour-nodata',
+  'sc-contour-lines',
   'sc-harbor-points',
   'sc-harbor-labels-below-12',
   'sc-seamarks',
@@ -187,6 +190,7 @@ beforeEach(async () => {
 describe('AIS/overlay layer order across setup timings (#160)', () => {
   it('assets resolve BEFORE AisLayer mounts: overlays sit below the AIS stack', async () => {
     const map = makeFakeMap();
+    map.styleLayers.push({ id: 'basemap-first-symbol', type: 'symbol' });
     hoisted.map = map;
     renderDataLayers();
     await settleDataLayers(map);
@@ -196,6 +200,7 @@ describe('AIS/overlay layer order across setup timings (#160)', () => {
 
   it('AisLayer mounts BEFORE assets resolve: overlays still slot in below the AIS stack', async () => {
     const map = makeFakeMap();
+    map.styleLayers.push({ id: 'basemap-first-symbol', type: 'symbol' });
     hoisted.map = map;
     render(<AisLayer targets={[]} />);
     renderDataLayers();
@@ -205,6 +210,7 @@ describe('AIS/overlay layer order across setup timings (#160)', () => {
 
   it('with the route stack present, assets-then-AIS keeps both stacks below it', async () => {
     const map = makeFakeMap();
+    map.styleLayers.push({ id: 'basemap-first-symbol', type: 'symbol' });
     map.addLayer({ id: ROUTE_BOTTOM, type: 'line' });
     hoisted.map = map;
     renderDataLayers();
@@ -215,6 +221,7 @@ describe('AIS/overlay layer order across setup timings (#160)', () => {
 
   it('with the route stack present, AIS-then-assets keeps both stacks below it', async () => {
     const map = makeFakeMap();
+    map.styleLayers.push({ id: 'basemap-first-symbol', type: 'symbol' });
     map.addLayer({ id: ROUTE_BOTTOM, type: 'line' });
     hoisted.map = map;
     render(<AisLayer targets={[]} />);
@@ -230,6 +237,7 @@ describe('fakeMaplibre addLayer beforeId parity', () => {
     // WITHOUT a getLayer guard must therefore fail presence/order pins here
     // rather than silently landing as an append.
     const map = makeFakeMap();
+    map.styleLayers.push({ id: 'basemap-first-symbol', type: 'symbol' });
     map.addLayer({ id: 'orphan', type: 'line' }, 'missing-anchor');
     expect(map.layerOrder).toEqual([]);
     expect(map.layers.has('orphan')).toBe(false);
@@ -241,6 +249,7 @@ describe('AIS/overlay layer order after a style reload (#160 x #153)', () => {
   // order (= mount order), so both mount orders are pinned.
   it('DataLayers hook registered first: the re-add restores the order', async () => {
     const map = makeFakeMap();
+    map.styleLayers.push({ id: 'basemap-first-symbol', type: 'symbol' });
     hoisted.map = map;
     renderDataLayers();
     await settleDataLayers(map);
@@ -253,6 +262,7 @@ describe('AIS/overlay layer order after a style reload (#160 x #153)', () => {
 
   it('AisLayer hook registered first: the re-add restores the order', async () => {
     const map = makeFakeMap();
+    map.styleLayers.push({ id: 'basemap-first-symbol', type: 'symbol' });
     hoisted.map = map;
     render(<AisLayer targets={[]} />);
     renderDataLayers();

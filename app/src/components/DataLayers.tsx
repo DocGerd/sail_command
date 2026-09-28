@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Popup } from 'maplibre-gl';
 import type {
   CanvasSource,
@@ -48,7 +48,6 @@ import {
   getContoursFetchState,
   loadContoursAsset,
   subscribeContoursFetchState,
-  type ContoursFetchState,
 } from '../lib/contours';
 
 import { ROUTE_STACK_BOTTOM_LAYER } from './RouteLayer';
@@ -348,7 +347,7 @@ const HARBOR_LABEL_PAINT: NonNullable<SymbolLayerSpecification['paint']> = {
 // style carries no symbol layer at all, which never happens for the real
 // basemap but keeps this safe for a synthetic test style.
 function findFirstBasemapSymbolLayerId(map: MaplibreMap): string | undefined {
-  return map.getStyle()?.layers?.find((l) => l.type === 'symbol')?.id;
+  return map.getStyle()?.layers?.find((l) => l.type === 'symbol' && !l.id.startsWith('sc-'))?.id;
 }
 
 function setupLayers(
@@ -738,10 +737,13 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
   // contours.ts's module-level subscription (the boolean above already
   // cross-instance-syncs through usePersistedToggle's own listener
   // registry) — both surfaces must show the SAME fetch/error state.
-  const [contoursFetchState, setContoursFetchState] = useState<ContoursFetchState>(() =>
-    getContoursFetchState(),
+  // #629 review Minor: useSyncExternalStore (not useState+useEffect) closes
+  // a real gap — a passive effect subscribes only after paint, so a
+  // fetch-state change landing between render and that effect was missed.
+  const contoursFetchState = useSyncExternalStore(
+    subscribeContoursFetchState,
+    getContoursFetchState,
   );
-  useEffect(() => subscribeContoursFetchState(setContoursFetchState), []);
   // #598 review round 3: whether `.depth-legend` has enough room to render
   // reachably at all — computed in the `useLayoutEffect` below (not
   // persisted; this is pure layout, recomputed every time the geometry it

@@ -900,9 +900,10 @@ describe('#629 depth contours', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  // Mutation: dropping contours.ts's `if (cachedAsset) return
-  // Promise.resolve(cachedAsset)` short-circuit reds the final assertion —
-  // the second and third clicks would each re-fetch.
+  // Mutation: removing ALL three caching layers — the effect's
+  // getCachedContourAsset() short-circuit, loadContoursAsset's cachedAsset
+  // return, and cachedPromise's retention on success — reds the final
+  // assertion. Any one alone is masked by the other two.
   it('fetches only on the first enable, and reuses the cache across toggle-off/on', async () => {
     const map = makeFakeMap();
     const fetchMock = fetchContoursOk();

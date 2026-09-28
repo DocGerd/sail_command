@@ -1,8 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { useT } from '../i18n';
 import { usePersistedToggle } from '../lib/usePersistedToggle';
 import { getContoursFetchState, subscribeContoursFetchState } from '../lib/contours';
-import type { ContoursFetchState } from '../lib/contours';
 
 // Collapsible map legend for the route overlay, mounted inside
 // `.route-layer-controls` (only while a plan is active). Default-collapsed —
@@ -115,10 +114,14 @@ export default function RouteLegend() {
   // the fetch/error state via contours.ts's own subscription (that
   // module's own comment carries the full rationale).
   const [contoursVisible, setContoursVisible] = usePersistedToggle('sc-contours-visible', false);
-  const [contoursFetchState, setContoursFetchState] = useState<ContoursFetchState>(() =>
-    getContoursFetchState(),
+  // #629 review Minor: useSyncExternalStore, same rationale as
+  // DataLayers.tsx's own copy — a passive effect subscribes only after
+  // paint, missing a fetch-state change landing between render and that
+  // effect.
+  const contoursFetchState = useSyncExternalStore(
+    subscribeContoursFetchState,
+    getContoursFetchState,
   );
-  useEffect(() => subscribeContoursFetchState(setContoursFetchState), []);
   // #813 fix-wave MAJOR 1: see this file's own comment above `isWideAtMount`
   // for the full derivation. Lazy initializer -> read once at mount, never
   // re-read.

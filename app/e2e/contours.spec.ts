@@ -10,7 +10,7 @@ import { startPreview, mapReady } from './helpers';
 
 interface Sc629TestMap {
   jumpTo(options: { center: [number, number]; zoom: number }): unknown;
-  queryRenderedFeatures(options: { layers: string[] }): Array<{ properties: unknown }>;
+  queryRenderedFeatures(options: { layers: string[] }): Array<{ properties: { name?: unknown } }>;
 }
 
 // Wackerballig's own approach — reused from datalayers.spec.ts's #599/#648
@@ -33,6 +33,22 @@ async function renderedFeatureCount(page: Page, layer: string): Promise<number> 
       (window as unknown as { __scE2eMap: Sc629TestMap }).__scE2eMap.queryRenderedFeatures({
         layers: [l],
       }).length,
+    layer,
+  );
+}
+
+// Sorted `name` array — the SAME identity-comparison basis labels.spec.ts's
+// own settledPlacedLabels uses, so a same-count SWAP (a contour label
+// displacing one basemap label while another takes its place) is caught,
+// not just a count.
+async function renderedFeatureNames(page: Page, layer: string): Promise<string[]> {
+  return page.evaluate(
+    (l) =>
+      (window as unknown as { __scE2eMap: Sc629TestMap }).__scE2eMap
+        .queryRenderedFeatures({ layers: [l] })
+        .map((f) => f.properties.name)
+        .filter((name): name is string => typeof name === 'string')
+        .sort(),
     layer,
   );
 }
@@ -69,6 +85,35 @@ async function settledFeatureCount(page: Page, layer: string, label: string): Pr
   );
 }
 
+// Same settle shape as settledFeatureCount above, over the sorted NAME array
+// instead of a count — a same-count swap (labels.spec.ts's own identity-
+// comparison rationale) would pass a count-only settle but not this one.
+async function settledFeatureNames(page: Page, layer: string, label: string): Promise<string[]> {
+  const history: string[][] = [];
+  const recent: string[][] = [];
+  const first = await renderedFeatureNames(page, layer);
+  history.push(first);
+  recent.push(first);
+  for (let extra = 1; extra <= SETTLE_MAX_READS; extra++) {
+    await page.waitForTimeout(SETTLE_POLL_INTERVAL_MS);
+    const next = await renderedFeatureNames(page, layer);
+    history.push(next);
+    recent.push(next);
+    if (recent.length > SETTLE_STABLE_READS_REQUIRED) recent.shift();
+    if (
+      recent.length === SETTLE_STABLE_READS_REQUIRED &&
+      recent.every((r) => JSON.stringify(r) === JSON.stringify(recent[0]))
+    ) {
+      return next;
+    }
+  }
+  throw new Error(
+    `[${label}] ${layer} label set never stabilized across ${history.length} reads ` +
+      `(${SETTLE_POLL_INTERVAL_MS}ms apart, ${SETTLE_STABLE_READS_REQUIRED} consecutive matches required); ` +
+      `reads seen: ${JSON.stringify(history)}`,
+  );
+}
+
 test('depth contours (#629): fresh profile has them off, toggling on draws lines/labels and never breaks the base depth toggle or basemap labels', async ({
   page,
 }) => {
@@ -95,23 +140,60 @@ test('depth contours (#629): fresh profile has them off, toggling on draws lines
     await mapReady(page);
     await jumpToContourView(page);
 
-    // No contour features rendered while the toggle is off — the source was
-    // never even fetched (fresh profile).
-    expect(await renderedFeatureCount(page, 'sc-contour-lines')).toBe(0);
+    // Settled BEFORE toggling contours on — the basemap-label identity this
+    // test compares against once contours are on. `not.toBeChecked()` above
+    // already pins default-off; the ex-toggle absence read this replaced
+    // was unsettled (read right after jumpTo, before anything had rendered)
+    // and reads 0 whether contours are on or off, so it proved nothing.
+    const namesBeforeContours = await settledFeatureNames(
+      page,
+      'places_locality',
+      'places_locality (before contours)',
+    );
 
     await contoursToggle.check();
     await expect(contoursToggle).toBeChecked();
 
+    await expect
+      .poll(() => renderedFeatureCount(page, 'sc-contour-lines'), {
+        timeout: 30_000,
+        message: 'sc-contour-lines rendered feature count after toggle-on',
+      })
+      .toBeGreaterThan(0);
     const lineCount = await settledFeatureCount(page, 'sc-contour-lines', 'sc-contour-lines');
     expect(lineCount).toBeGreaterThan(0);
+    await expect
+      .poll(() => renderedFeatureCount(page, 'sc-contour-labels'), {
+        timeout: 30_000,
+        message: 'sc-contour-labels rendered feature count after toggle-on',
+      })
+      .toBeGreaterThan(0);
     const labelCount = await settledFeatureCount(page, 'sc-contour-labels', 'sc-contour-labels');
     expect(labelCount).toBeGreaterThan(0);
 
     // #629 maintainer ruling: contour labels must yield to basemap labels,
-    // never displace them — places_locality still places at least one label
-    // at this view (the same signal labels.spec.ts's own #320 guard reads).
-    const localityCount = await settledFeatureCount(page, 'places_locality', 'places_locality');
-    expect(localityCount).toBeGreaterThan(0);
+    // never displace them — the placed places_locality NAME SET is
+    // unchanged by turning contours on (an identity comparison, the same
+    // basis labels.spec.ts's own #320 guard uses, catches a same-count
+    // swap a bare `> 0` cannot).
+    const namesAfterContours = await settledFeatureNames(
+      page,
+      'places_locality',
+      'places_locality (after contours)',
+    );
+    expect(namesAfterContours).toEqual(namesBeforeContours);
+
+    // Positive control for the toggle-off half: unchecking removes the
+    // rendered contour features again (the pair of ends `settledFeatureCount`
+    // alone, from the ON side, could not show).
+    await contoursToggle.uncheck();
+    await expect(contoursToggle).not.toBeChecked();
+    await expect
+      .poll(() => renderedFeatureCount(page, 'sc-contour-lines'), {
+        timeout: 30_000,
+        message: 'sc-contour-lines rendered feature count after toggle-off',
+      })
+      .toBe(0);
   } finally {
     server.kill();
   }
