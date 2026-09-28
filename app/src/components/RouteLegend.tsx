@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useT } from '../i18n';
 import { usePersistedToggle } from '../lib/usePersistedToggle';
+import { getContoursFetchState, subscribeContoursFetchState } from '../lib/contours';
+import type { ContoursFetchState } from '../lib/contours';
 
 // Collapsible map legend for the route overlay, mounted inside
 // `.route-layer-controls` (only while a plan is active). Default-collapsed —
@@ -108,6 +110,15 @@ export default function RouteLegend() {
   const t = useT();
   const [hatchVisible, setHatchVisible] = usePersistedToggle('sc-depth-hatch-visible', true);
   const [depthVisible] = usePersistedToggle('sc-depth-visible', true);
+  // #629: same toggle+error state DataLayers.tsx owns — the boolean
+  // cross-instance-syncs via usePersistedToggle's own listener registry,
+  // the fetch/error state via contours.ts's own subscription (that
+  // module's own comment carries the full rationale).
+  const [contoursVisible, setContoursVisible] = usePersistedToggle('sc-contours-visible', false);
+  const [contoursFetchState, setContoursFetchState] = useState<ContoursFetchState>(() =>
+    getContoursFetchState(),
+  );
+  useEffect(() => subscribeContoursFetchState(setContoursFetchState), []);
   // #813 fix-wave MAJOR 1: see this file's own comment above `isWideAtMount`
   // for the full derivation. Lazy initializer -> read once at mount, never
   // re-read.
@@ -154,6 +165,36 @@ export default function RouteLegend() {
             independent of the hatch toggle's own state). */}
         {depthVisible && hatchVisible && <p>{t('map.depth.legend.basis')}</p>}
         <p>{t('map.depth.legend.caveat')}</p>
+        {/* #629: same control, same keys, same shared error state as
+            DataLayers.tsx's own copy — see that file's own #629 comment for
+            the full derivation (Q7 independent toggle, the residual when
+            this disclosure itself is collapsed/unreachable). */}
+        <label className="depth-legend-row">
+          <input
+            type="checkbox"
+            checked={contoursVisible}
+            onChange={(e) => setContoursVisible(e.target.checked)}
+          />
+          {t('map.depth.legend.contoursToggle')}
+        </label>
+        {contoursVisible && (
+          <>
+            <p className="depth-legend-row">
+              <span
+                className="depth-legend-swatch depth-legend-swatch-contour"
+                aria-hidden="true"
+              />
+              {t('map.depth.legend.contourLinesLabel')}
+            </p>
+            <p className="depth-legend-row">
+              <span className="depth-legend-swatch depth-legend-swatch-nodata" aria-hidden="true" />
+              {t('map.depth.legend.contourNoDataLabel')}
+            </p>
+            {contoursFetchState.status === 'error' && (
+              <p className="depth-legend-error">{t('map.depth.legend.contoursError')}</p>
+            )}
+          </>
+        )}
       </div>
       <ul>
         <li>

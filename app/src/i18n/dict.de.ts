@@ -840,6 +840,18 @@ export const de = {
   // water renders as ordinary basemap blue, not anything land-coloured.
   'map.depth.legend.caveat':
     'Unvermessenes und trockenfallendes Wasser trägt ebenfalls keine Schraffur und ist durch nichts gekennzeichnet, sieht also aus wie gewöhnliches Wasser. Fehlende Schraffur ist keine Garantie, dass das Wasser unbedenklich ist — es kann sich schlicht um eine Stelle ohne Daten handeln.',
+  // #629: Tiefenlinien — eigener, standardmäßig AUS-Schalter (Q7), in
+  // derselben Legende wie der Schraffur-Schalter. Bewusst OHNE
+  // "Wassertiefen" als Teilstring (siehe dict.en.ts für die volle
+  // Begründung, gleiche Playwright-Falle wie beim Schraffur-Schalter).
+  'map.depth.legend.contoursToggle': 'Tiefenlinien',
+  // Zeilentexte laut Spec §4, wortgleich übernommen.
+  'map.depth.legend.contourLinesLabel':
+    'Tiefenlinien: vorsichtige Lesart, 0,9 m unter dem Kartenwert',
+  'map.depth.legend.contourNoDataLabel': 'Grenze der Tiefendaten',
+  // #629: nicht blockierender Fehlertext bei fehlgeschlagenem Abruf von
+  // contours.json — kein automatischer Wiederholungsversuch (Spec §3).
+  'map.depth.legend.contoursError': 'Tiefenlinien konnten nicht geladen werden.',
   // Seezeichen-Overlay (#7) — standardmäßig AUS, Opt-in.
   'map.seamarks.toggle': 'Seezeichen',
   // #1020: accessible name for the map-picked origin/destination markers

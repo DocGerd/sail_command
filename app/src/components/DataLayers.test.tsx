@@ -7,6 +7,7 @@ import RouteLegend from './RouteLegend';
 import { makeFakeMap, simulateStyleReload } from '../test/fakeMaplibre';
 import { AppStateProvider, useActivePlan, useSettings } from '../state/AppState';
 import { __resetDbForTests } from '../services/db';
+import { __resetContoursForTests, type ContourAsset } from '../lib/contours';
 import { de } from '../i18n/dict.de';
 import { en } from '../i18n/dict.en';
 import type { MsgKey } from '../i18n/dict.de';
@@ -148,6 +149,7 @@ beforeEach(async () => {
   // safetyDepthM.
   await __resetDbForTests();
   localStorage.clear();
+  __resetContoursForTests();
   // #232: no test relies on a stale popup call surviving into it (every test
   // that asserts on popupCalls fires its own click first), but reset it
   // anyway so a future test can't silently inherit a previous one's popup.
@@ -839,5 +841,138 @@ describe('SEAMARKS_LAYER click handler (#232 items 3-4)', () => {
     // (different) coordinates.
     expect(popupCalls.lastLngLat).toBe(TAP_LNGLAT);
     expect(popupCalls.lastContainer?.textContent).toContain(de['seamark.value.type.buoy_lateral']);
+  });
+});
+
+// #629: local literals — same convention as DEPTH_LAYER/DEPTH_HATCH_LAYER
+// above (production keeps these constants module-private).
+const CONTOURS_SOURCE = 'sc-contours';
+const CONTOUR_LINES_LAYER = 'sc-contour-lines';
+const CONTOUR_NODATA_LAYER = 'sc-contour-nodata';
+const CONTOUR_LABELS_LAYER = 'sc-contour-labels';
+
+const CONTOUR_FIXTURE: ContourAsset = {
+  type: 'FeatureCollection',
+  maskSha256: 'deadbeef',
+  basis: 'cautious',
+  toleranceM: 0.9,
+  levelsM: [2, 3, 5, 10, 15, 20],
+  features: [
+    {
+      type: 'Feature',
+      properties: { kind: 'contour', levelM: 5 },
+      geometry: {
+        type: 'MultiLineString',
+        coordinates: [
+          [
+            [9.5, 54.5],
+            [9.6, 54.5],
+          ],
+        ],
+      },
+    },
+  ],
+};
+
+function fetchContoursOk() {
+  return vi.fn((url: string) => {
+    void url; // recorded on mock.calls for the callers that assert on it
+    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(CONTOUR_FIXTURE) });
+  });
+}
+
+describe('#629 depth contours', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  // Mutation: defaulting `usePersistedToggle('sc-contours-visible', true)`
+  // reds the checkbox assertion; a stray fetch on mount reds the last one.
+  it('defaults OFF: checkbox unchecked, all three layers hidden, no fetch on mount', async () => {
+    const map = makeFakeMap();
+    const fetchMock = fetchContoursOk();
+    vi.stubGlobal('fetch', fetchMock);
+    const { getByRole } = await renderAndSettle(map);
+    expect(getByRole('checkbox', { name: 'Tiefenlinien' })).not.toBeChecked();
+    expect(map.layers.get(CONTOUR_LINES_LAYER)?.layout?.visibility).toBe('none');
+    expect(map.layers.get(CONTOUR_NODATA_LAYER)?.layout?.visibility).toBe('none');
+    expect(map.layers.get(CONTOUR_LABELS_LAYER)?.layout?.visibility).toBe('none');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  // Mutation: dropping contours.ts's `if (cachedAsset) return
+  // Promise.resolve(cachedAsset)` short-circuit reds the final assertion —
+  // the second and third clicks would each re-fetch.
+  it('fetches only on the first enable, and reuses the cache across toggle-off/on', async () => {
+    const map = makeFakeMap();
+    const fetchMock = fetchContoursOk();
+    vi.stubGlobal('fetch', fetchMock);
+    const { getByRole } = await renderAndSettle(map);
+    const toggle = getByRole('checkbox', { name: 'Tiefenlinien' });
+    fireEvent.click(toggle);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(fetchMock.mock.calls[0]?.[0]).toContain('data/contours.json');
+    await waitFor(() =>
+      expect(map.layers.get(CONTOUR_LINES_LAYER)?.layout?.visibility).toBe('visible'),
+    );
+    expect(sourceData(map, CONTOURS_SOURCE).features).toHaveLength(1);
+    fireEvent.click(toggle); // off
+    expect(map.layers.get(CONTOUR_LINES_LAYER)?.layout?.visibility).toBe('none');
+    fireEvent.click(toggle); // on again
+    expect(map.layers.get(CONTOUR_LINES_LAYER)?.layout?.visibility).toBe('visible');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  // Mutation: anchoring the labels layer at `beforeId` (the same anchor as
+  // the two line layers, i.e. the TOP of the depth stack) instead of the
+  // result of findFirstBasemapSymbolLayerId reds this test — beforeId would
+  // read the depth stack's own anchor rather than the seeded basemap id.
+  it("anchors sc-contour-labels below the style's first basemap symbol layer, found at setup", async () => {
+    const map = makeFakeMap();
+    // Stands in for a basemap symbol layer already present in the style
+    // before this component's own setup runs (fakeMaplibre.ts's own #629
+    // comment on `styleLayers`).
+    map.styleLayers.push({ id: 'basemap-water-labels', type: 'symbol' });
+    vi.stubGlobal('fetch', fetchContoursOk());
+    await renderAndSettle(map);
+    expect(map.layers.get(CONTOUR_LABELS_LAYER)?.beforeId).toBe('basemap-water-labels');
+  });
+
+  // Mutation: reverting RouteLegend.tsx's own `contoursFetchState` to a
+  // local-only `useState` (dropping `subscribeContoursFetchState`) reds the
+  // FINAL assertion only — DataLayers' own copy still shows the error, but
+  // RouteLegend's independent state never learns of it.
+  it('shows a shared, non-blocking error on fetch failure — both legend copies agree', async () => {
+    const map = makeFakeMap();
+    hoisted.map = map;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: false, status: 500, json: async () => ({}) })),
+    );
+    const { container } = render(
+      <AppStateProvider>
+        <DataLayers onHarborPick={() => {}} />
+        <RouteLegend />
+      </AppStateProvider>,
+    );
+    await waitFor(() => {
+      expect(map.sources.get('sc-harbors')?.setData.mock.calls.length).toBeGreaterThan(0);
+    });
+    // Two "Tiefenlinien" checkboxes are mounted at once here (DataLayers'
+    // own copy and RouteLegend's) — scope to DataLayers' surface, matching
+    // the #681 x #813 sync tests' own `.depth-legend-body`/
+    // `.route-legend-depth` disambiguation. [0] is the hatch toggle (DOM
+    // order), [1] is contours.
+    const dataLayersCheckbox = container.querySelectorAll(
+      '.depth-legend-body input[type="checkbox"]',
+    )[1] as HTMLInputElement;
+    fireEvent.click(dataLayersCheckbox);
+    await waitFor(() => {
+      expect(container.querySelector('.depth-legend-body .depth-legend-error')).not.toBeNull();
+    });
+    // The layers never appear on a failed fetch — never a partial render.
+    expect(map.layers.get(CONTOUR_LINES_LAYER)?.layout?.visibility).toBe('visible'); // toggle stays on
+    expect(sourceData(map, CONTOURS_SOURCE).features).toHaveLength(0); // but never populated
+    expect(container.querySelector('.route-legend-depth .depth-legend-error')).not.toBeNull();
   });
 });

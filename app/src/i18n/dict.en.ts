@@ -951,6 +951,17 @@ export const en = {
   // anchored on symbol names, not line numbers.)
   'map.depth.legend.caveat':
     'Unsurveyed and drying water carries no hatching either, and nothing else marks it, so it looks like ordinary water. Absence of hatching is not a guarantee the water is clear — it may simply be a place with no data.',
+  // #629: depth contours — its own default-OFF toggle (Q7), living in the
+  // same legend body as the hatch toggle above. Deliberately does NOT
+  // contain "Water depths" — same Playwright getByRole-substring trap
+  // CLAUDE.md documents for the hatch toggle.
+  'map.depth.legend.contoursToggle': 'Depth contours',
+  // Spec §4's exact wording.
+  'map.depth.legend.contourLinesLabel':
+    'Depth contours: cautious reading, 0.9 m below the charted value',
+  'map.depth.legend.contourNoDataLabel': 'Edge of depth data',
+  // #629: inline, non-blocking — no automatic retry loop (spec §3).
+  'map.depth.legend.contoursError': 'Depth contours could not be loaded.',
   // Seamarks / aids-to-navigation overlay (#7) — default OFF, opt-in.
   'map.seamarks.toggle': 'Seamarks',
   // #1020: accessible name for the map-picked origin/destination markers

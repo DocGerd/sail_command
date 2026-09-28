@@ -1262,6 +1262,37 @@ select {
   );
 }
 
+/* #629: two line swatches for the depth-contour legend rows, reusing
+   `.depth-legend-swatch`'s layout (flex/width) via the compound selector
+   (CLAUDE.md's single-class-modifier-loses-to-a-later-base-rule caution) —
+   the base rule's hatch background is overridden below, since these two
+   are plain lines, not a hatch pattern. `--sc-ink` mirrors
+   DataLayers.tsx's INK_COLOR (mapColors.ts is the source of truth; app.css
+   cannot import it, so this is the established --sc-* twin, same as every
+   other map-colour swatch in this file). */
+.depth-legend-swatch.depth-legend-swatch-contour {
+  height: 3px;
+  border-radius: 2px;
+  background-color: var(--sc-ink);
+  background-image: none;
+  opacity: 0.55;
+}
+
+.depth-legend-swatch.depth-legend-swatch-nodata {
+  height: 3px;
+  border-radius: 2px;
+  background-color: transparent;
+  background-image: repeating-linear-gradient(to right, var(--sc-ink) 0 3px, transparent 3px 6px);
+  opacity: 0.6;
+}
+
+/* #629: inline, non-blocking fetch-failure string — same visual family as
+   the shallow-warning copy (muted, not an alert region: the contour overlay
+   failing to load is not a safety condition, unlike #597's caveat above). */
+.depth-legend-error {
+  color: var(--sc-depth-warning-fg);
+}
+
 /* NAMED COUPLING: `top: calc(var(--sc-app-header-height) + 8px)` (61px + 8px
    = 69px, #1013) clears the narrow-layout .app-header where
    it overlays the map — SHORT LANDSCAPE only since #909, whose block at the

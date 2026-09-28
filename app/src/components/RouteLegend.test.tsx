@@ -210,3 +210,35 @@ describe('#681 x #813: hatch checkbox disabled mirror (RouteLegend surface)', ()
     expect(checkbox.disabled).toBe(false);
   });
 });
+
+// #629: this surface's own copy of the contour toggle — DataLayers.test.tsx
+// covers the map-layer wiring and the cross-surface sync; this file's own
+// contract is that the control is reachable and NOT tied to depthVisible.
+describe('#629: depth-contour toggle (RouteLegend surface)', () => {
+  // Mutation: adding a `disabled={!depthVisible}` mirror to this checkbox
+  // (the #384 shape the hatch toggle correctly uses) reds this test — Q7
+  // says the contour toggle is independent.
+  it('defaults OFF, and is never disabled by the base depth-overlay flag', () => {
+    localStorage.setItem('sc-depth-visible', '0');
+    const { container } = renderLegend();
+    const details = container.querySelector('details.route-legend') as HTMLDetailsElement;
+    details.open = true;
+    // [0] is the hatch toggle (DOM order), [1] is contours.
+    const checkbox = container.querySelectorAll(
+      '.route-legend-depth input[type="checkbox"]',
+    )[1] as HTMLInputElement;
+    expect(checkbox.checked).toBe(false);
+    expect(checkbox.disabled).toBe(false);
+    expect(container.querySelector('.route-legend-depth')?.textContent).toContain(
+      en['map.depth.legend.contoursToggle'],
+    );
+  });
+
+  it('its accessible name never contains "Water depths" (Playwright getByRole substring trap)', () => {
+    const { container } = renderLegend();
+    const details = container.querySelector('details.route-legend') as HTMLDetailsElement;
+    details.open = true;
+    expect(en['map.depth.legend.contoursToggle']).not.toContain('Water depths');
+    expect(container.textContent).toContain(en['map.depth.legend.contoursToggle']);
+  });
+});
