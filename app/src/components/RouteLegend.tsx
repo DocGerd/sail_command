@@ -170,8 +170,10 @@ export default function RouteLegend() {
         <p>{t('map.depth.legend.caveat')}</p>
         {/* #629: same control, same keys, same shared error state as
             DataLayers.tsx's own copy — see that file's own #629 comment for
-            the full derivation (Q7 independent toggle, the residual when
-            this disclosure itself is collapsed/unreachable). */}
+            the full invariant (a control to turn contours off is always
+            reachable while they render). This surface has no hidden gate of
+            its own — RouteLegend only mounts with a plan active, the branch
+            `contoursEffectivelyVisible` treats as always-reachable. */}
         <label className="depth-legend-row">
           <input
             type="checkbox"

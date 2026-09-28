@@ -964,12 +964,21 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
     return () => window.clearTimeout(timer);
   }, [map, styleEpoch, assets, safetyDepthM, hatchBandKey, depthVisible, hatchVisible]);
 
+  // #629 maintainer ruling: contours render only while their OWN off-switch
+  // is reachable. With no plan, `.depth-legend` (and the toggle inside it)
+  // can be `legendHidden`; with a plan, RouteLegend's copy has no hidden
+  // gate, so the term is plan-scoped. The persisted preference itself is
+  // untouched — contours resume once the legend does.
+  const contoursEffectivelyVisible = contoursVisible && !(plan === null && legendHidden);
+
   // #629: fetch the contour asset the FIRST time the toggle turns on (spec
   // §3), and re-populate an empty source after a style reload (#153, the
   // styleEpoch dependency) if it was already fetched — contours.ts's module
-  // cache means the second case never re-fetches over the network.
+  // cache means the second case never re-fetches over the network. Gated on
+  // EFFECTIVE visibility, not the raw toggle: no fetch while the off-switch
+  // is unreachable.
   useEffect(() => {
-    if (!map || styleEpoch === 0 || !contoursVisible) return;
+    if (!map || styleEpoch === 0 || !contoursEffectivelyVisible) return;
     let cancelled = false;
     const source = () => map.getSource(CONTOURS_SOURCE) as GeoJSONSource | undefined;
     const already = getCachedContourAsset();
@@ -989,18 +998,18 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
     return () => {
       cancelled = true;
     };
-  }, [map, styleEpoch, contoursVisible]);
+  }, [map, styleEpoch, contoursEffectivelyVisible]);
 
   // #629: visibility sync for all three contour layers, same
   // "hidden/default at creation, synced by an effect" convention as every
-  // other opt-in layer above.
+  // other opt-in layer above — driven by EFFECTIVE visibility (see above).
   useEffect(() => {
     if (!map || styleEpoch === 0) return;
-    const visibility = contoursVisible ? 'visible' : 'none';
+    const visibility = contoursEffectivelyVisible ? 'visible' : 'none';
     for (const id of [CONTOUR_LINES_LAYER, CONTOUR_NODATA_LAYER, CONTOUR_LABELS_LAYER]) {
       if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visibility);
     }
-  }, [map, styleEpoch, contoursVisible]);
+  }, [map, styleEpoch, contoursEffectivelyVisible]);
 
   // Seamark glyphs (#7) — registered/set once per assets load, independent of
   // the visibility toggle (so the layer is ready to paint the instant the
@@ -1574,18 +1583,11 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
                 the maintainer ruling on #629 places it here, the #681
                 hatch-toggle precedent, not as a third `.data-layer-controls`
                 row (same layout-budget cost this file already documents for
-                the hatch toggle above). Residual, same shape and same
-                direction as the hatch toggle's own residual comment: while
-                `legendHidden` is true or the `<details>` is collapsed, this
-                checkbox is unreachable too — if the user had already turned
-                contours ON, they stay on with no visible OFF control until
-                the viewport changes or the page reloads. Unlike the hatch
-                toggle (which fails toward MORE caution by defaulting true),
-                this fails toward an overlay the user cannot immediately
-                dismiss — a UX residual, not a safety one: contours carry no
-                warning semantics, so an un-dismissable overlay costs screen
-                real estate, never a missed hazard. Not tied to
-                `depthVisible`/`hatchVisible` (Q7: independent). */}
+                the hatch toggle above). Invariant: whenever contours render,
+                a control to turn them off is reachable — `contoursEffectivelyVisible`
+                above enforces it by hiding the layers themselves alongside
+                this checkbox. Not tied to `depthVisible`/`hatchVisible`
+                (Q7: independent). */}
             <label className="depth-legend-row">
               <input
                 type="checkbox"
