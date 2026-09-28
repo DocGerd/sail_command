@@ -73,6 +73,13 @@ results table at the bottom, and note it in the box below the check.
       content moves into "Display options" → "Legend" ("Legende") instead —
       the two never render at once (#813); see the "Display options" check
       below.
+- [ ] **Depth contours (in the same Legend disclosure).** A "Depth contours"
+      / "Tiefenlinien" checkbox, default OFF, sits alongside the hatch
+      checkbox. Tick it: labelled contour lines at 2-20 m draw over the
+      depth colours, on the cautious reading, with a dashed edge where the
+      depth data ends. Untick it: the lines leave the map; the checkbox
+      itself stays available regardless of the "Water depths" toggle's
+      state (#629).
 - [ ] Confirm the wind forecast is current: plan any route for a near-term
       departure (e.g. the next full hour) and confirm the stale-forecast
       notice (§2.8) does NOT appear — if it does, stop and re-check
