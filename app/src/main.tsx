@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { I18nProvider } from './i18n';
 import { initSwRecovery } from './services/swRecovery';
+import { armBatchPinOnFirstControl } from './services/firstControlPin';
 import { scheduleGlyphWarmup } from './services/glyphWarmup';
 import App from './App.tsx';
 import './app.css';
@@ -18,6 +19,11 @@ void navigator.storage?.persist?.();
 // erroring. Module-scope (not an effect): must run exactly once per page
 // load, immune to StrictMode double-invocation.
 initSwRecovery();
+
+// #1518: arm the batch region pin for the first SW control, module-scope
+// like initSwRecovery — regardless of which tab/view is mounted at that
+// moment (useRegionReadiness's chip-scoped pin only covers its own plan).
+armBatchPinOnFirstControl();
 
 // #28: background glyph warm-up — fire-and-forget; it self-defers until
 // the SW controls the page and the app is idle, skips silently when
