@@ -4,7 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { CONTOUR_LEVELS_M, type ContourAsset, type ContourFeature } from '../lib/contours';
-import { MASK_TOLERANCE_M, cautiousDepthLowerBoundM, cellsPerDegree } from '../lib/mask';
+import { MASK_TOLERANCE_M, cautiousDepthLowerBoundM, maskGrid } from '../lib/mask';
 import type { MaskMeta } from '../types';
 
 // #629 §5/§6: pipeline/build_contours.py's output is a generated asset with
@@ -21,8 +21,7 @@ const contours = JSON.parse(
   readFileSync(resolve(dataDir, 'contours.json'), 'utf8'),
 ) as ContourAsset;
 
-const LAT_CPD = cellsPerDegree(maskMeta.south, maskMeta.north, maskMeta.rows);
-const LON_CPD = cellsPerDegree(maskMeta.west, maskMeta.east, maskMeta.cols);
+const GRID = maskGrid(maskMeta); // replaces LAT_CPD / LON_CPD
 
 function byteAt(row: number, col: number): number {
   return maskBytes[row * maskMeta.cols + col];
@@ -74,8 +73,8 @@ function sampleStride<T>(items: readonly T[], maxSamples: number): T[] {
  */
 function vertexIndex(p: Point): { row: number; col: number } {
   return {
-    row: Math.round((p[1] - maskMeta.south) * LAT_CPD),
-    col: Math.round((p[0] - maskMeta.west) * LON_CPD),
+    row: Math.round(GRID.lat.coord(p[1])),
+    col: Math.round(GRID.lon.coord(p[0])),
   };
 }
 
@@ -179,5 +178,81 @@ describe('#629 differential: pipeline cell classification vs cautiousDepthLowerB
         ).toBe(1);
       }
     }
+  });
+});
+
+/** Unit cell edges a polyline set covers, keyed `H:<vertexRow>:<col>` / `V:<vertexCol>:<row>`. */
+function unitEdgeKeys(feature: ContourFeature): string[] {
+  const keys: string[] = [];
+  for (const seg of segmentsOf(feature)) {
+    const v0 = vertexIndex(seg.p0);
+    const v1 = vertexIndex(seg.p1);
+    if (v0.row === v1.row) {
+      for (let c = Math.min(v0.col, v1.col); c < Math.max(v0.col, v1.col); c++)
+        keys.push(`H:${v0.row}:${c}`);
+    } else {
+      for (let r = Math.min(v0.row, v1.row); r < Math.max(v0.row, v1.row); r++)
+        keys.push(`V:${v0.col}:${r}`);
+    }
+  }
+  return keys;
+}
+
+/** Every edge §2 says a feature must carry, derived from mask.bin alone. */
+function expectedEdgeKeys(
+  isEdge: (b0: number, b1: number) => boolean,
+  boundary: boolean,
+): Set<string> {
+  const { rows, cols } = maskMeta;
+  const out = new Set<string>();
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++) {
+      const b = byteAt(r, c);
+      if (r + 1 < rows && isEdge(b, byteAt(r + 1, c))) out.add(`H:${r + 1}:${c}`);
+      if (c + 1 < cols && isEdge(b, byteAt(r, c + 1))) out.add(`V:${c + 1}:${r}`);
+      if (boundary && b !== 0) {
+        if (r === 0) out.add(`H:0:${c}`);
+        if (r === rows - 1) out.add(`H:${rows}:${c}`);
+        if (c === 0) out.add(`V:0:${r}`);
+        if (c === cols - 1) out.add(`V:${cols}:${r}`);
+      }
+    }
+  return out;
+}
+
+function expectExactEdgeSet(feature: ContourFeature, expected: Set<string>): void {
+  const got = unitEdgeKeys(feature);
+  const gotSet = new Set(got);
+  expect(got.length, 'an edge was emitted twice').toBe(gotSet.size);
+  expect(expected.size, 'expected edge set is empty').toBeGreaterThan(0);
+  const missing = [...expected].filter((k) => !gotSet.has(k));
+  const extra = [...gotSet].filter((k) => !expected.has(k));
+  expect(missing.slice(0, 5), `${missing.length} qualifying edges missing`).toEqual([]);
+  expect(extra.slice(0, 5), `${extra.length} unexpected edges`).toEqual([]);
+}
+
+describe('#629 completeness: every qualifying edge is emitted exactly once', () => {
+  for (const levelM of CONTOUR_LEVELS_M) {
+    it(`level ${levelM} m`, () => {
+      const feature = contours.features.find(
+        (f) => f.properties.kind === 'contour' && f.properties.levelM === levelM,
+      )!;
+      expectExactEdgeSet(
+        feature,
+        expectedEdgeKeys(
+          (b0, b1) =>
+            b0 !== 0 && b1 !== 0 && atOrAboveLevel(b0, levelM) !== atOrAboveLevel(b1, levelM),
+          false,
+        ),
+      );
+    });
+  }
+
+  it('no-data edge', () => {
+    const feature = contours.features.find((f) => f.properties.kind === 'no-data')!;
+    expectExactEdgeSet(
+      feature,
+      expectedEdgeKeys((b0, b1) => (b0 === 0) !== (b1 === 0), true),
+    );
   });
 });

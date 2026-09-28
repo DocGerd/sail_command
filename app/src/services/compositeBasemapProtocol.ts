@@ -250,14 +250,22 @@ export class CompositeBasemapProtocol {
   };
 }
 
-/** Mirrors pmtiles' `Protocol.tilev4` tile branch for one archive. */
+/**
+ * Mirrors pmtiles' `Protocol.tilev4` tile branch for one archive. pmtiles'
+ * own `tilev4` returns `{ data: null }` for a missing non-vector tile, which
+ * maplibre-gl 6.11 no longer type-accepts (`AddProtocolResponseData` dropped
+ * `null`) — but maplibre's `makeRequest` (util/ajax.ts) already substitutes
+ * `new ArrayBuffer(0)` for any falsy `data` on an `arrayBuffer`-type request
+ * (which is what this app's vector-tile fetches always are), so `null` and
+ * an explicit empty `ArrayBuffer` are runtime-equivalent on that path.
+ */
 async function readTile(
   archive: BasemapArchive,
   z: number,
   x: number,
   y: number,
   signal: AbortSignal,
-): Promise<GetResourceResponse<Uint8Array | null>> {
+): Promise<GetResourceResponse<Uint8Array | ArrayBuffer>> {
   const resp = await archive.getZxy(z, x, y, signal);
   signal.throwIfAborted();
   if (resp) {
@@ -268,7 +276,7 @@ async function readTile(
   }
   const header: Header = await archive.getHeader();
   if (header.tileType === TileType.Mvt || header.tileType === TileType.Mlt) return EMPTY_TILE();
-  return { data: null };
+  return { data: new ArrayBuffer(0) };
 }
 
 /** The app's single registered instance (MapView registers `tile`). */
