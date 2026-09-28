@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.47.0] - 2026-09-28
+
+### Added
+
+- Depth contour lines at 2, 3, 5, 10, 15 and 20 m, drawn on the cautious depth reading with numeric level labels and a dashed edge where depth data ends; toggled from the depth legend, default off (#629).
+
+### Fixed
+
+- Pinning every saved plan's offline map regions when the service worker first takes control no longer depends on the Routes tab being open (#1518).
+
 ## [0.46.0] - 2026-09-28
 
 ### Fixed
@@ -1197,7 +1207,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.46.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.47.0...HEAD
+[0.47.0]: https://github.com/DocGerd/sail_command/compare/v0.46.0...v0.47.0
 [0.46.0]: https://github.com/DocGerd/sail_command/compare/v0.45.0...v0.46.0
 [0.45.0]: https://github.com/DocGerd/sail_command/compare/v0.44.0...v0.45.0
 [0.44.0]: https://github.com/DocGerd/sail_command/compare/v0.43.0...v0.44.0
