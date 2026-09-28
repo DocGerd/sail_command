@@ -13,6 +13,7 @@ on:
       - 'pipeline/pyproject.toml'
       - '.github/workflows/python-lint.yml'
       - '.github/workflows/python-lint-requirements.txt'
+      - '.github/workflows/python-test-requirements.txt'
   push:
     branches: [main, develop]
     paths:
@@ -20,6 +21,7 @@ on:
       - 'pipeline/pyproject.toml'
       - '.github/workflows/python-lint.yml'
       - '.github/workflows/python-lint-requirements.txt'
+      - '.github/workflows/python-test-requirements.txt'
 permissions:
   contents: read
 jobs:
@@ -38,3 +40,15 @@ jobs:
       - run: pip install --require-hashes -r "$GITHUB_WORKSPACE/.github/workflows/python-lint-requirements.txt"
       - run: ruff check .
       - run: ruff format --check .
+  pytest:
+    # #1503: advisory, same as `ruff` above — not a `protect-main` required
+    # check, so this job name must never become `app` or `e2e`.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults: { run: { working-directory: pipeline } }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with: { python-version: '3.12' }
+      - run: pip install --require-hashes -r "$GITHUB_WORKSPACE/.github/workflows/python-test-requirements.txt"
+      - run: python -m pytest .
