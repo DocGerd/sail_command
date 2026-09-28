@@ -206,3 +206,26 @@ export function canonicalizeArmFile(plansByHarbour) {
   for (const k of Object.keys(plansByHarbour)) out[k] = canonicalizePlan(plansByHarbour[k]);
   return out;
 }
+
+// #1456, moved here (was module-private in compare.mjs) by #1514 so it can
+// be tested directly — compare.mjs runs its CLI at module load and cannot
+// itself be `import`ed for a unit test.
+export const PLANNING_RECORD_KEYS = ['record', 'pass2'];
+// Returns the HEAD arm object with both keys removed from every row, or throws
+// if a row lacks either key or a BASE row already has one.
+export function stripPlanningRecord(arm, base, head) {
+  for (const [k, row] of Object.entries(base)) {
+    const found = PLANNING_RECORD_KEYS.filter((f) => Object.hasOwn(row, f));
+    if (found.length)
+      throw new Error(`ARM ${arm}: BASE row ${k} already carries ${found.join(', ')}`);
+  }
+  return Object.fromEntries(
+    Object.entries(head).map(([k, row]) => {
+      const missing = PLANNING_RECORD_KEYS.filter((f) => !Object.hasOwn(row, f));
+      if (missing.length) throw new Error(`ARM ${arm}: HEAD row ${k} lacks ${missing.join(', ')}`);
+      const rest = { ...row };
+      for (const f of PLANNING_RECORD_KEYS) delete rest[f];
+      return [k, rest];
+    }),
+  );
+}
