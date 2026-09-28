@@ -16,6 +16,7 @@ import {
   SALONA_DEPS,
   FLENSBURG,
   BAGENKOP,
+  DREJOE,
   T0,
 } from '../test/realmaskFixtures';
 
@@ -72,9 +73,11 @@ function planBagenkop(tws: number): PlanResult {
   return planRoute(bagenkopRequest(), uniformWindGrid(tws, 0), SALONA_DEPS);
 }
 
+// #1502: every input in this block now also routes UNSALVAGED (probed on the
+// #1502 PR), so these rows pin that a salvaged solve still routes and
+// terminates, not that salvage rescues anything.
 describe('#1136 solve-level salvage (real mask)', () => {
   // Spike §11.1 set D: plan fidelity (performanceFactor 0.9, comfort 5 / none).
-  // Unsalvaged, 8 of these 12 solves die; salvaged, all route.
   const setD = [2.8, 3, 8].flatMap((tws) =>
     RIGS.flatMap(([rig, table]) =>
       [5, undefined].map((comfortDepthM) => ({ tws, rig, table, comfortDepthM })),
@@ -95,15 +98,11 @@ describe('#1136 solve-level salvage (real mask)', () => {
   );
 
   // The band pinned in §3.2's convention (unsnapped origin, performanceFactor
-  // 1.0). Unsalvaged the genoa dies at 2.4 and 2.8 and routes at 2.6 and 3.0
-  // (#1168); salvaged, all four route. Measured at this change's HEAD.
-  it.each([2.4, 2.6, 2.8, 3.0])(
-    'unsnapped, genoa, TWS %s: routes across the non-monotonic band',
-    (tws) => {
-      const r = solveSalvaged({ origin: FLENSBURG, tws, table: polarGenoa, performanceFactor: 1 });
-      expect(r.status).toBe('ok');
-    },
-  );
+  // 1.0).
+  it.each([2.4, 2.6, 2.8, 3.0])('unsnapped, genoa, TWS %s: routes across the §3.2 band', (tws) => {
+    const r = solveSalvaged({ origin: FLENSBURG, tws, table: polarGenoa, performanceFactor: 1 });
+    expect(r.status).toBe('ok');
+  });
 
   // What matters here is that a salvaged solve TERMINATES (spike §11.2) rather
   // than re-expanding forever. #1303 re-pin: at BASE (CONFINED_PRUNE_DIV = 1)
@@ -122,26 +121,77 @@ describe('#1136 solve-level salvage (real mask)', () => {
   });
 });
 
+// Schleimünde's `snap` in harbors.json (id `schleimuende`).
+const SCHLEIMUENDE: LatLon = { lat: 54.673, lon: 10.037 };
+
 describe('#1136 planRoute pass 2 (real mask)', () => {
-  // Before #1136 all three returned error 'unreachable' (measured at the
-  // change's base, 33dbad2).
-  // #1303 re-pin of the failed sail's LABEL only. At BASE every pass-1 sail
-  // died mask-blocked on all three rows; under the confined-water grid the
-  // TWS 2 row's failing sail reaches the horizon instead, so it reports
-  // 'beyond-horizon'. The claim the row makes — a failed sail carries PASS
-  // ONE's cause, never a pass-2 one — is unchanged; only which pass-1 cause
-  // this input produces moved, so the expected label is now per row.
+  // #1502: the `motorless-short-horizon` sweep arm's rows for these two
+  // destinations (app/sweep/sweepArms.ts) admit pass 2, which replays every
+  // tier with salvage on and routes nothing, so `planRoute` returns pass 1
+  // verbatim. No real-mask input found yields 'rescued' (#1502 PR).
   it.each([
-    { tws: 2.0, failedReason: 'beyond-horizon' },
-    { tws: 2.4, failedReason: 'unreachable' },
-    { tws: 2.8, failedReason: 'unreachable' },
-  ])('TWS $tws: a motor-off plan that died now routes', ({ tws, failedReason }) => {
-    const res = planBagenkop(tws);
-    expect(res.status).toBe('ok');
-    if (res.status !== 'ok') return;
-    expect(res.sails.some((s) => s.result !== null)).toBe(true);
-    for (const s of res.sails) if (s.result === null) expect(s.reason).toBe(failedReason);
-  });
+    { dest: 'flensburg', to: FLENSBURG },
+    { dest: 'schleimuende', to: SCHLEIMUENDE },
+  ])(
+    '#1502 Drejø -> $dest, motor off, 3 h horizon: pass 2 admitted, routes nothing',
+    ({ dest, to }) => {
+      const solveSpy = vi.spyOn(isochroneModule, 'solve');
+      const {
+        result: res,
+        record,
+        pass2,
+      } = planRouteWithRecord(
+        {
+          origin: DREJOE,
+          destination: to,
+          viaPoints: [],
+          originHarborId: 'drejoe',
+          destinationHarborId: dest,
+          departureMs: T0,
+          settings: { ...DEFAULT_SETTINGS, motorEnabled: false },
+          sailIds: ['genoa', 'fock'],
+          boat: defaultBoatSnapshot(),
+        },
+        uniformWindGrid(4, 90, { hours: 3 }),
+        SALONA_DEPS,
+      );
+      const salvaged = solveSpy.mock.calls.filter(([o]) => o.salvage === true).length;
+      const plain = solveSpy.mock.calls.length - salvaged;
+      solveSpy.mockRestore();
+      // Preconditions: the input still has the admitted shape.
+      expect(record.cause).toBe('mask-blocked');
+      expect(record.tiers.length).toBeGreaterThan(0);
+      expect(res.status).toBe('error');
+      expect(pass2).toBe('admitted-no-route');
+      // Pass 2 actually ran: one plain solve per sail per recorded tier, then
+      // salvage solves.
+      expect(plain).toBe(record.tiers.length * 2);
+      expect(salvaged).toBe(record.tiers.length * 2);
+    },
+  );
+
+  // #1502: these were this file's "a motor-off plan that died now routes"
+  // pass-2 rows (every sail died before #1136, measured at 33dbad2). Both
+  // rigs now route at tier 1 (#1502 PR), so they pin that instead.
+  it.each([{ tws: 2.0 }, { tws: 2.4 }, { tws: 2.8 }])(
+    'TWS $tws: both rigs route at tier 1, pass 2 not admitted',
+    ({ tws }) => {
+      const solveSpy = vi.spyOn(isochroneModule, 'solve');
+      const {
+        result: res,
+        record,
+        pass2,
+      } = planRouteWithRecord(bagenkopRequest(), uniformWindGrid(tws, 0), SALONA_DEPS);
+      const calls = solveSpy.mock.calls.length;
+      solveSpy.mockRestore();
+      expect(res.status).toBe('ok');
+      if (res.status !== 'ok') return;
+      expect(res.sails.every((s) => s.result !== null)).toBe(true);
+      expect(record.tiers.map((t) => t.tier)).toEqual([1]);
+      expect(pass2).toBe('not-admitted');
+      expect(calls).toBe(2);
+    },
+  );
 
   // Containment: an ok pass 1 is never admitted to pass 2 (ruling 2).
   //

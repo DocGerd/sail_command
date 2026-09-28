@@ -182,10 +182,17 @@ export function pinImportedPlans(
   if (plans.length === 0 || !serviceWorkerControlsPage() || saveDataRequested()) return;
   void (async () => {
     const outcomes = await Promise.allSettled(plans.map((p) => trackedPin(p, pin)));
+    // #1483 (#1246 item 5 design decision, stated here for maintainer veto):
+    // a 'plan-gone' outcome does NOT count toward the aggregate failure —
+    // the plan was deleted mid-import, so there was nothing left to pin,
+    // not a pin that was attempted and failed. Mirrors activityAfter's own
+    // treatment of the per-plan case a few lines up, which already forgets
+    // rather than fails a deleted plan's activity record.
     const failed = outcomes.filter(
       (o) =>
         o.status === 'rejected' ||
         (o.status === 'fulfilled' &&
+          o.value.status !== 'plan-gone' &&
           (o.value.status !== 'pinned' || o.value.pinned < o.value.total)),
     ).length;
     if (failed > 0) {

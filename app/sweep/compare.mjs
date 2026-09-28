@@ -62,6 +62,12 @@
  * the per-plan compare — order-independent — reports every plan identical).
  *
 
+ * #1456: `--strip-planning-record` (ORDER-SENSITIVE: dirA a pre-#1456 BASE,
+ * dirB HEAD) deletes each HEAD row's `record` and `pass2` and compares the
+ * rest. It fails closed unless every HEAD row carries both keys and no BASE row
+ * carries either, so a strip that matched nothing cannot read as identical.
+ * The digest line re-serialises the stripped HEAD file with `serialize()`.
+ *
  * #295: `--harbour-superset` (ORDER-SENSITIVE: dirA BASE, dirB HEAD) relaxes
  * only the per-arm harbour-set check, for a change that ADDS harbours: every
  * BASE harbour must exist in HEAD, shared harbours are compared byte-for-byte
@@ -88,6 +94,7 @@ import {
   withoutRigRecommendation,
   classifyRigVerdictChange,
 } from './canonicalize.mjs';
+import { serialize } from './serialize.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const { ARM_NAMES } = await import(resolve(here, 'armNames.ts'));
@@ -99,21 +106,45 @@ const canonical = rawArgs.includes('--canonical');
 const rigVerdictChange = rawArgs.includes('--rig-verdict-change');
 // #295: ORDER-SENSITIVE too — dirA BASE, dirB HEAD.
 const harbourSuperset = rawArgs.includes('--harbour-superset');
-const [a, b] = rawArgs.filter(
-  (x) => x !== '--canonical' && x !== '--rig-verdict-change' && x !== '--harbour-superset',
-);
+// #1456: ORDER-SENSITIVE — dirA a pre-#1456 BASE, dirB HEAD.
+const stripRecord = rawArgs.includes('--strip-planning-record');
+const MODE_FLAGS = [
+  '--canonical',
+  '--rig-verdict-change',
+  '--harbour-superset',
+  '--strip-planning-record',
+];
+const [a, b] = rawArgs.filter((x) => !MODE_FLAGS.includes(x));
 if (!a || !b) {
   console.error(
-    'usage: node compare.mjs [--canonical | --rig-verdict-change | --harbour-superset] <dirA> <dirB>\n' +
-      '  --rig-verdict-change and --harbour-superset are ORDER-SENSITIVE: <dirA> BASE, <dirB> HEAD',
+    'usage: node compare.mjs [--canonical | --rig-verdict-change | --harbour-superset |\n' +
+      '                         --strip-planning-record] <dirA> <dirB>\n' +
+      '  every mode flag except --canonical is ORDER-SENSITIVE: <dirA> BASE, <dirB> HEAD',
   );
   process.exit(2);
 }
-if ([canonical, rigVerdictChange, harbourSuperset].filter(Boolean).length > 1) {
-  console.error(
-    'FAIL: --canonical, --rig-verdict-change and --harbour-superset are different claims; pass one',
-  );
+if ([canonical, rigVerdictChange, harbourSuperset, stripRecord].filter(Boolean).length > 1) {
+  console.error(`FAIL: ${MODE_FLAGS.join(', ')} are different claims; pass one`);
   process.exit(2);
+}
+const PLANNING_RECORD_KEYS = ['record', 'pass2'];
+// Returns the HEAD arm object with both keys removed from every row, or throws
+// if a row lacks either key or a BASE row already has one.
+function stripPlanningRecord(arm, base, head) {
+  for (const [k, row] of Object.entries(base)) {
+    const found = PLANNING_RECORD_KEYS.filter((f) => Object.hasOwn(row, f));
+    if (found.length)
+      throw new Error(`ARM ${arm}: BASE row ${k} already carries ${found.join(', ')}`);
+  }
+  return Object.fromEntries(
+    Object.entries(head).map(([k, row]) => {
+      const missing = PLANNING_RECORD_KEYS.filter((f) => !Object.hasOwn(row, f));
+      if (missing.length) throw new Error(`ARM ${arm}: HEAD row ${k} lacks ${missing.join(', ')}`);
+      const rest = { ...row };
+      for (const f of PLANNING_RECORD_KEYS) delete rest[f];
+      return [k, rest];
+    }),
+  );
 }
 
 const armsOf = (d) =>
@@ -161,7 +192,15 @@ for (const arm of arms) {
   const fa = readFileSync(`${a}/${arm}.json`, 'utf8');
   const fb = readFileSync(`${b}/${arm}.json`, 'utf8');
   const ja = JSON.parse(fa);
-  const jb = JSON.parse(fb);
+  let jb = JSON.parse(fb);
+  if (stripRecord) {
+    try {
+      jb = stripPlanningRecord(arm, ja, jb);
+    } catch (e) {
+      console.error(`FAIL: ${e.message}`);
+      process.exit(1);
+    }
+  }
   const keys = Object.keys(ja).sort();
   if (harbourSuperset) {
     const missing = keys.filter((k) => !Object.hasOwn(jb, k));
@@ -242,7 +281,9 @@ for (const arm of arms) {
       ? JSON.stringify(canonB)
       : harbourSuperset
         ? sharedInOwnOrder(jb)
-        : fb;
+        : stripRecord
+          ? serialize(jb)
+          : fb;
   console.log(
     `arm ${arm.padEnd(16)} ${keys.length} plans  sha A=${sha(digestA)} B=${sha(digestB)} ${
       digestA === digestB ? 'IDENTICAL' : '*** DIFFERS ***'
@@ -253,7 +294,9 @@ for (const arm of arms) {
           ? ' (rig-verdict-change)'
           : harbourSuperset
             ? ' (harbour-superset, shared harbours)'
-            : ''
+            : stripRecord
+              ? ' (planning record stripped)'
+              : ''
     }`,
   );
 }
@@ -262,7 +305,13 @@ for (const arm of arms) {
 // RESIDUAL header comment above): makes a SC_SWEEP_LIMIT-truncated run
 // visible in the summary instead of reading identically to a full one.
 const harboursPerArm = arms.length > 0 ? total / arms.length : 0;
-const modeWord = canonical ? 'canonically' : rigVerdictChange ? 'verdict-elided' : 'byte';
+const modeWord = canonical
+  ? 'canonically'
+  : rigVerdictChange
+    ? 'verdict-elided'
+    : stripRecord
+      ? 'record-stripped'
+      : 'byte';
 console.log(
   `\n${same}/${total} plans ${modeWord}-identical across ${arms.length} arms x ${harboursPerArm} harbours/arm`,
 );

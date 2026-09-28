@@ -245,6 +245,22 @@ describe('pinImportedPlans (#1233 Major 2)', () => {
     expect(warn).toHaveBeenCalledTimes(1);
   });
 
+  // #1483 (#1246 item 5 design decision): a 'plan-gone' outcome is NOT a
+  // pinning failure — the plan was deleted mid-import, so there was
+  // nothing left to pin. Mirrors activityAfter's own per-plan treatment a
+  // few lines above (a 'plan-gone' clears the activity record rather than
+  // marking it 'failed').
+  it("a 'plan-gone' outcome does NOT count toward the aggregate failure warning", async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const pin = vi
+      .fn<(p: Plan) => Promise<PinRegionsOutcome>>()
+      .mockResolvedValueOnce(PINNED)
+      .mockResolvedValueOnce({ status: 'plan-gone', total: 1, pinned: 0 });
+    pinImportedPlans([PLAN_A, PLAN_B], pin);
+    await settle();
+    expect(warn).not.toHaveBeenCalled();
+  });
+
   it('a rejected pin() counts as a failure for the aggregate, and does not throw', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const pin = vi.fn().mockRejectedValue(new Error('boom'));
