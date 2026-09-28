@@ -145,7 +145,10 @@ jobs:
         # shard's upload failed on run 36333125953.
         timeout-minutes: 260
       - name: Upload coverage blob (${{ matrix.shard }})
-        if: env.SKIP != 'true'
+        # #1527: a status function is required or the implicit success()
+        # still applies, skipping this step (and losing the blob) whenever
+        # the test step above fails. Gate on .outcome, never .conclusion.
+        if: ${{ !cancelled() && env.SKIP != 'true' && steps.test-coverage.outcome != 'skipped' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage-blob-${{ matrix.shard }}
