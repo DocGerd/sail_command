@@ -1,7 +1,7 @@
 # Depth contours (#629) — design
 
 Status: approved by the maintainer 2026-09-28, with the amendments from PR #1522's review.
-Source: issue #629 (the measurement write-up); the maintainer ruling comment on it dated 2026-09-27 (Q1, Q2, Q4, Q5); and this document's approval (Q3, Q7, architecture).
+Source: issue #629 (the measurement write-up); the maintainer ruling comment on it dated 2026-09-27 (Q1, Q2, Q4, Q5); the maintainer rulings of 2026-09-28 recorded at https://github.com/DocGerd/sail_command/issues/629#issuecomment-5873587510 (contour-label anchor, outer-boundary edge, toggle placement); and this document's approval (Q3, Q7, architecture).
 
 ## 1. Decisions on record
 
@@ -40,7 +40,7 @@ Output: a GeoJSON `FeatureCollection` of `LineString`/`MultiLineString` features
 
 The build must report feature, vertex and byte counts, raw and gzipped. Figures quoted in #629 were measured on the pre-#295 5.28 M-cell mask and are not reused. At `6ff19f2` the mask is 3025 × 3120 = 9,438,000 cells. If the gzipped size exceeds 2 MB, stop and bring it back to the maintainer before shipping.
 
-Delivery: `globPatterns` already precaches `.json` under `data/`, so no service-worker or Vite config change is needed. Precaching means the first service-worker install, and every install after the file changes, downloads it whether or not contours are ever shown; that is the price of offline use. The 2 MB gate bounds the gzipped transfer; the build must also report the raw size against `PRECACHE_MAX_FILE_SIZE_BYTES` (`app/vite.config.ts`), above which the file is silently left out of the precache. Only the map source is loaded on demand (§3). The runtime fetch is outside `loadRoutingAssets()`'s `Promise.all`, so a failure here cannot empty the harbour list or break online routing; like every precached file, it does share the service-worker install, which fails as a whole if any entry fails.
+Delivery: `globPatterns` already precaches `.json` under `data/`, so no service-worker or Vite config change is needed. Precaching means the first service-worker install, and every install after the file changes, downloads it whether or not contours are ever shown; that is the price of offline use. The 2 MB gate bounds the gzipped transfer; the build must also report the raw size against `PRECACHE_MAX_FILE_SIZE_BYTES` (`app/vite.config.ts`), above which the file is left out of the precache with only a build-log warning, not a build failure. Only the map source is loaded on demand (§3). The runtime fetch is outside `loadRoutingAssets()`'s `Promise.all`, so a failure here cannot empty the harbour list or break online routing; like every precached file, it does share the service-worker install, which fails as a whole if any entry fails.
 
 ## 3. Rendering
 
@@ -51,8 +51,8 @@ Delivery: `globPatterns` already precaches `.json` under `data/`, so no service-
   - `sc-contour-nodata`: dashed neutral grey line.
   - `sc-contour-labels`: `symbol-placement: 'line'`, `text-field` is the level in metres as a bare number (the chart convention), `text-font: ['Noto Sans Regular']`, a halo, and collision on (`text-allow-overlap: false`, `text-ignore-placement: false`).
 - `sc-contour-lines` and `sc-contour-nodata` are anchored at the same `beforeId` as `sc-depth`.
-- `sc-contour-labels` is anchored directly below the first basemap `symbol` layer in style order, found from the loaded style at setup, not hard-coded. Placement runs top-down, so basemap labels are placed first and win collisions; a contour label is the first to be culled (maintainer ruling 2026-09-28). This puts the labels beneath `sc-depth`'s shading and beneath the contour lines. The implementation checks label legibility in a browser in both themes, and stops and reports if they are not legible.
-- Toggle: a new checkbox in the data-layer controls, `usePersistedToggle('sc-contours-visible', false)`, default off. The label is "Tiefenlinien" / "Depth contours" through the i18n dictionary. It must not contain the substring "Wassertiefen": Playwright's `getByRole` matches names by substring, and existing e2e locators use that string without `exact`.
+- `sc-contour-labels` is anchored directly below the first basemap `symbol` layer in style order, found from the loaded style at setup, not hard-coded. Placement runs top-down, so basemap labels are placed first and win collisions; a contour label is the first to be culled (maintainer ruling 2026-09-28). The anchor puts the labels beneath every layer the app adds, including `sc-depth`'s shading, the `sc-depth-hatch` overlay (on by default, and when on it covers the shallow side of every 2 m line at any allowed gate) and the contour lines. The implementation checks label legibility in a browser with depth shading and hatch both on, including at z14 and above where the hatch is a full wash, and stops and reports if the labels are not legible.
+- Toggle: a checkbox inside the depth legend, following the #681 hatch-toggle precedent: in DataLayers' `.depth-legend-body` when no plan is active, and in `RouteLegend`'s depth section when one is (maintainer ruling 2026-09-28). It uses `usePersistedToggle('sc-contours-visible', false)`, default off. The label is "Tiefenlinien" / "Depth contours" through the i18n dictionary. It must not contain the substring "Wassertiefen": Playwright's `getByRole` matches names by substring, and existing e2e locators use that string without `exact`.
 - Fetch failure: the layers stay absent, and the toggle shows an inline, non-blocking error string. There is no retry loop.
 
 ## 4. Legend
@@ -69,13 +69,14 @@ It does not claim chart authority.
 |---|---|
 | `contours.json` `maskSha256` equals sha256 of `mask.bin` (TS, `readFileSync`) | the mask is rebuilt without regenerating contours |
 | `toleranceM` equals `MASK_TOLERANCE_M`, and `levelsM` equals the renderer's level list | the basis drifts between Python and TS |
-| Differential: for sampled level-line segments, the two adjacent cells classify on opposite sides of the level through TS `cautiousDepthLowerBoundM`; for sampled no-data segments, exactly one side is byte 0, or the segment lies on the mask's outer boundary with a non-zero cell inside | the pipeline's integer rule diverges from the app's formula |
+| Differential: for sampled level-line segments, the two adjacent cells classify on opposite sides of the level through TS `cautiousDepthLowerBoundM`; for sampled no-data segments, either the segment is interior and its two adjacent cells are one byte-0 and one non-zero, or it lies on the mask's outer boundary and its one adjacent cell is non-zero | the pipeline's integer rule diverges from the app's formula |
+| unit: `sc-contour-labels` is added with `beforeId` equal to the style's first basemap `symbol` layer | the labels-yield anchor regresses |
 | e2e: fresh profile has the toggle off and no contour features; toggling on renders level lines and at least one label at a fixed view; `getByRole` locators for "Wassertiefen" still resolve uniquely | rendering or default state regresses, or the label collides |
 
-Each guard gets a mutation check, run at BASE and HEAD: the stale-hash mutant, the tolerance mutant, an off-by-one in the pipeline threshold, and a toggle default of `true`. Run ruff on the new script by hand, since `Python lint` is advisory. The stylesheet (if touched) is read with `readFileSync`, never `?raw`.
+Each guard gets a mutation check, run at BASE and HEAD: the stale-hash mutant, the tolerance mutant, an off-by-one in the pipeline threshold, boundary edges traced for byte-0 cells too, and a toggle default of `true`. Run ruff on the new script by hand, since `Python lint` is advisory. The stylesheet (if touched) is read with `readFileSync`, never `?raw`.
 
 ## 6. Delivery constraints
 
 - The #282 sweep closure's path prefixes include `pipeline/` and `app/public/data/`, so a sweep is owed. Verify with `closure.mjs diff`. The baseline is a BASE double-run at the branch's own merge-base with `develop`, unless `closure.mjs reuse <recorded-sha> <merge-base>` returns REUSE for an entry in `.claude/skills/sweep-closure/recorded-runs.json`. Routes cannot move (nothing in the solve reads the new file), so every arm must hash-match BASE.
 - It is a user-visible feature, so it ships a `changelog.d/629.added.md` fragment.
-- Screenshots: the new toggle row appears in `.data-layer-controls` in all three README images, so regenerate them with `docs/screenshots/capture.mjs`.
+- Screenshots: the toggle sits inside the depth legend, so `.data-layer-controls` is unchanged; regenerate a README image with `docs/screenshots/capture.mjs` only if it shows the legend body.
