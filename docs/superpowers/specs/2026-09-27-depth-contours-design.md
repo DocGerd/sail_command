@@ -1,6 +1,6 @@
 # Depth contours (#629) — design
 
-Status: approved in conversation 2026-09-27; this document awaits maintainer review.
+Status: approved by the maintainer 2026-09-28, with the §2 delivery and §6 baseline amendments.
 Source: issue #629 (the measurement write-up) and the maintainer ruling comment on it dated 2026-09-27.
 
 ## 1. Decisions on record
@@ -40,7 +40,7 @@ Output: a GeoJSON `FeatureCollection` of `LineString`/`MultiLineString` features
 
 The build must report feature, vertex and byte counts, raw and gzipped. Figures quoted in #629 were measured on the pre-#295 5.28 M-cell mask and are not reused. The current mask is 9,438,000 cells. If the gzipped size exceeds 2 MB, stop and bring it back to the maintainer before shipping.
 
-Delivery: `globPatterns` already precaches `.json` under `data/`, so no service-worker or Vite config change is needed. The file is fetched lazily (§3) and is outside `loadRoutingAssets()`'s `Promise.all`, so a failure here cannot empty the harbour list or break routing.
+Delivery: `globPatterns` already precaches `.json` under `data/`, so no service-worker or Vite config change is needed. Precaching means every service-worker install downloads the file whether or not contours are ever shown; that is the price of offline use, and the 2 MB gate above bounds it. Only the map source is loaded on demand (§3). The file is outside `loadRoutingAssets()`'s `Promise.all`, so a failure here cannot empty the harbour list or break routing.
 
 ## 3. Rendering
 
@@ -75,6 +75,6 @@ Each guard gets a mutation check, run at BASE and HEAD: the stale-hash mutant, t
 
 ## 6. Delivery constraints
 
-- The #282 sweep closure's path prefixes include `pipeline/` and `app/public/data/`, so a sweep is owed. Verify with `closure.mjs diff`. Branch from `a4c0ad3` so T1's BASE double-run at that commit (v0.46.0 cycle) serves as the baseline; only a HEAD run is then needed. Routes cannot move (nothing in the solve reads the new file), so every arm must hash-match BASE.
+- The #282 sweep closure's path prefixes include `pipeline/` and `app/public/data/`, so a sweep is owed. Verify with `closure.mjs diff`. The baseline is the branch's own merge-base with `develop`, never an older recorded run. Run `closure.mjs reuse` against the recorded `a4c0ad3` BASE run and that merge-base; reuse it only if the tool says so, otherwise run BASE at the merge-base. Routes cannot move (nothing in the solve reads the new file), so every arm must hash-match BASE.
 - It is a user-visible feature, so it ships a `changelog.d/629.added.md` fragment.
 - Screenshots: the toggle is off by default, so no docs image changes.
