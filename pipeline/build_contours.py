@@ -60,7 +60,7 @@ def level_edges(grid: np.ndarray, level_m: int) -> tuple[np.ndarray, np.ndarray]
     cell below it (design doc §2, "Level lines")."""
     rows, cols = grid.shape
     nz = grid != 0
-    above = grid >= (10 * level_m + 9)
+    above = grid >= (10 * level_m + round(TOLERANCE_M * 10))
     los, his = [], []
 
     # Horizontal: between row r and r+1, at column c.
