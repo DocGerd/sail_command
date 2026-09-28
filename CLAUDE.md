@@ -147,16 +147,17 @@ making design-level decisions; do not silently deviate.
   2026-09-08 re-measure moved READERS 8 -> 9 and the TOTAL 13 -> 14, both
   accounted for by one file: `test/toastCompensationTwin.test.ts`, added
   2026-09-05 and itself a `readFileSync` reader. And
-  `.github/workflows/coverage.yml` is SHARDED since #1504: `gate` → an
-  8-way `coverage-shard` matrix → `coverage-merge`, which enforces the 80%
+  `.github/workflows/coverage.yml` is SHARDED since #1504: `gate` → a
+  `coverage-shard` matrix → `coverage-merge`, which enforces the 80%
   threshold on the merged map. `timeoutBudgetVsJobCap.test.ts` reads the
   shard job's step and job caps from the YAML by addressed lookup (#359);
-  read the caps there, never here. Its suite-wall constant is the max
-  OBSERVED shard over named runs, not a bound: the first measured value was
-  exceeded by the very next run (PR #1510). The blobs live in a non-dot
-  directory because `actions/upload-artifact` defaults
-  `include-hidden-files: false`, so a `.vitest-reports/` upload silently
-  found nothing.
+  read the caps there, never here. PR #1510 set its suite-wall constant to
+  the max OBSERVED shard, not a bound: the first per-shard figure was
+  exceeded by the next dispatch. The shard blob reports live in a non-dot
+  directory because `actions/upload-artifact@v7.0.1` defaults
+  `include-hidden-files: false`: the default `.vitest-reports/` upload failed
+  on every shard with `No files were found`, an error that never names the
+  hidden-file default (run 36333125953).
 ## Commands
 - App (run from repo root): `npm --prefix app run typecheck` / `lint` / `test` /
   `build` / `dev`. CI runs lint+typecheck in `app-static`, concurrently with the test shards
@@ -187,8 +188,9 @@ making design-level decisions; do not silently deviate.
   "(0 test)" — cost three failed coverage measurements this session. Always
   use `run`, never `exec`, for anything that depends on `app/`'s config.
 - Statement coverage baseline and trailing test/file count: read both off the
-  LATEST nightly `Coverage` run's own head SHA and the conclusion of its step
-  running `npm run test:coverage` — never hand-add, infer, or carry a prior
+  LATEST nightly `Coverage` run's own head SHA and its `coverage-merge` job's
+  `Merge shard coverage reports` step (a `coverage-shard` step prints one
+  shard's figures only) — never hand-add, infer, or carry a prior
   run's figure forward.
   The earlier **2160 tests / 146 files** (2026-08-24
   at `39bbcd6`, the v0.13.1 cut) was +24 over v0.13.0 = 12 plain `it(` cases plus
@@ -197,7 +199,7 @@ making design-level decisions; do not silently deviate.
   contradiction, so a test COUNT can never be derived by grepping `it(`).
   `.github/scripts/coverage-skip-gate.sh` can skip an unchanged tree, so a
   nightly run existing is not by itself evidence a fresh figure was produced;
-  check the step conclusion, not just the run. Three rules for quoting any
+  check that step's conclusion, not just the run. Three rules for quoting any
   count/duration pair here: **counts are load-independent, durations are
   not** (never quote a duration measured under load, and re-measure both
   halves rather than infer either from the other); **a COUNT carries its
@@ -309,7 +311,8 @@ making design-level decisions; do not silently deviate.
   self double-run only proves a run deterministic against itself. EXERCISED
   2026-09-09 at #1141: all 11 arms matched `app/sweep/README.md`'s recorded
   #653 table, so the practice is proven rather than proposed — read the
-  prefixes THERE, never from here.
+  prefixes THERE, never from here. Prefixes recorded there before #1456 are
+  of the old row shape, so a current run cannot match them byte for byte.
   **Under contention a vitest wrapper timeout is NOT a failed arm.** Two
   BASE runs each logged `salona44-relaxation` "timed out in 3600000ms" under
   four-way load while that arm's JSON was byte-identical across all four run
@@ -3197,13 +3200,14 @@ making design-level decisions; do not silently deviate.
   it is making a claim of its own: the reviewer is explaining, the
   orchestrator is relaying, the implementer is complying — so no one's own
   verification step covers it. Verify a finding's CAUSE separately from the
-  finding, or relay the finding WITHOUT the cause. The orchestrator is a
-  source too: at v0.46.0 a brief's "correlation only" fact (PR #1488's merge
-  headed the first capped coverage run) became a stated cause in two PRs;
-  relay a correlation as a commit range, never a PR name. The bullet above already
+  finding, or relay the finding WITHOUT the cause. The bullet above already
   names the shape where a correction invents a DERIVATION the source denies;
   this is its INHERITED twin, and inheritance is the harder one to notice,
   because the derivation arrives already attributed to someone else.
+  A disclaimer does not stop a named PR reading as the cause: at PR #1510 a
+  review's "correlation, not a cause" note naming PR #1488's merge, relayed
+  into the artifact, singled out one of the 16 merges in `1e50ede..d91ab4c`.
+  Relay a correlation as a commit range, never a PR name.
 - **The successor chain, measured again at full length on a CLAUDE.md PR: PR
   #852 (the v0.18.0 learnings) took FIVE review rounds, and every fix wave put
   a defect inside the previous round's fix** — the commit record says so in
@@ -4754,9 +4758,10 @@ making design-level decisions; do not silently deviate.
   that did not exist; merge only by `pulls/N --jq .head.sha` read fresh.
   "Pre-existing on develop" is a claim about the BASE: measure the base
   before accepting it. At #1513 four TS2578 errors so attributed were the
-  PR's own. A filtered test run proves only its filter: enumerate every test
-  reaching the changed function (`grep -rln <symbol> app/src
-  --include='*.test.*'`). #1513's filter skipped `regionPinning.test.ts`,
+  PR's own. A filtered test run proves only its filter: list the tests
+  naming the changed symbol (`grep -rln <symbol> app/src
+  --include='*.test.*'`) as a floor, since a test reaching it through a
+  caller does not name it. #1513's filter skipped `regionPinning.test.ts`,
   which went red in CI after two approvals.
 - **Parallel subagents share ONE session scratchpad** (Claude Code 2.1.278;
   a harness property). A fixed commit-message filename there raced: one
