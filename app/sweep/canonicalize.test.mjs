@@ -13,6 +13,7 @@ import {
   canonicalizeArmFile,
   withoutRigRecommendation,
   classifyRigVerdictChange,
+  stripPlanningRecord,
 } from './canonicalize.mjs';
 import { ARM_NAMES } from './armNames.ts';
 
@@ -531,4 +532,57 @@ test('#295: --harbour-superset with another mode is refused as a different claim
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// ---------------------------------------------------------------------------
+// #1514 — stripPlanningRecord (#1456), moved out of compare.mjs's module
+// scope so it can be pinned directly. Both fail-closed directions plus the
+// one path that actually strips.
+const okRow = { status: 'ok', genoa: { rig: 'genoa', etaMs: 1, legs: [] } };
+
+test('#1514: a BASE row carrying record throws', () => {
+  const base = { alpha: { ...okRow, record: {} } };
+  const head = { alpha: { ...okRow, record: {}, pass2: {} } };
+  assert.throws(
+    () => stripPlanningRecord('light', base, head),
+    /ARM light: BASE row alpha already carries record/,
+  );
+});
+
+test('#1514: a BASE row carrying pass2 throws', () => {
+  const base = { alpha: { ...okRow, pass2: {} } };
+  const head = { alpha: { ...okRow, record: {}, pass2: {} } };
+  assert.throws(
+    () => stripPlanningRecord('light', base, head),
+    /ARM light: BASE row alpha already carries pass2/,
+  );
+});
+
+test('#1514: a HEAD row lacking pass2 throws', () => {
+  const base = { alpha: okRow };
+  const head = { alpha: { ...okRow, record: {} } };
+  assert.throws(
+    () => stripPlanningRecord('light', base, head),
+    /ARM light: HEAD row alpha lacks pass2/,
+  );
+});
+
+test('#1514: a HEAD row lacking record throws', () => {
+  const base = { alpha: okRow };
+  const head = { alpha: { ...okRow, pass2: {} } };
+  assert.throws(
+    () => stripPlanningRecord('light', base, head),
+    /ARM light: HEAD row alpha lacks record/,
+  );
+});
+
+test('#1514: a matching pair strips both keys and leaves every other field deep-equal', () => {
+  const base = { alpha: okRow };
+  const head = {
+    alpha: { ...okRow, record: { visited: 12 }, pass2: { salvaged: 0 } },
+  };
+  const stripped = stripPlanningRecord('light', base, head);
+  assert.deepStrictEqual(stripped, { alpha: okRow });
+  assert.ok(!Object.hasOwn(stripped.alpha, 'record'));
+  assert.ok(!Object.hasOwn(stripped.alpha, 'pass2'));
 });
