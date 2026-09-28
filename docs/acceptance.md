@@ -69,10 +69,17 @@ results table at the bottom, and note it in the box below the check.
       from elsewhere is rejected with "A point lies outside the covered
       area" and the route is **not** cleared. Then repeat this check. Once
       a route IS planned (the normal state for the rest of this runbook,
-      starting with the very next check), this legend disappears and its
+      starting with the wind-forecast check below), this legend disappears and its
       content moves into "Display options" → "Legend" ("Legende") instead —
       the two never render at once (#813); see the "Display options" check
       below.
+- [ ] **Depth contours (in the pre-route Legend from the previous check).** A "Depth contours"
+      / "Tiefenlinien" checkbox, default OFF, sits alongside the hatch
+      checkbox. Tick it: labelled contour lines at 2, 3, 5, 10, 15 and 20 m draw over the
+      depth colours, on the cautious reading, with a dashed edge where the
+      depth data ends. Untick it: the lines leave the map; the checkbox
+      itself stays available regardless of the "Water depths" toggle's
+      state (#629).
 - [ ] Confirm the wind forecast is current: plan any route for a near-term
       departure (e.g. the next full hour) and confirm the stale-forecast
       notice (§2.8) does NOT appear — if it does, stop and re-check
@@ -197,7 +204,7 @@ results table at the bottom, and note it in the box below the check.
       cluster together (#628). Once a route is planned, its own nested
       "Legend" ("Legende") disclosure also carries the depth-hatch section —
       the hatch swatch, the basis sentence, the #597 unsurveyed-water
-      caveat, and the "Show hatch overlay" toggle — that lived in the
+      caveat, and the "Show hatch overlay" toggle, plus the "Depth contours" toggle (#629) — that lived in the
       separate pre-plan Legend above before a route existed (#813). Check
       this nested disclosure's OWN resting state before opening it
       yourself: on narrow layouts it now starts OPEN by default (a

@@ -37,6 +37,10 @@ pipeline/data-src
 pipeline/.venv
 pipeline/bin
 
+# Python test artifacts (#1503)
+__pycache__
+.pytest_cache
+
 # Local/session files
 .claude/settings.local.json
 .claude/worktrees

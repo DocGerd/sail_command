@@ -219,6 +219,10 @@
   // boatSwitchHarborAccess.test.ts (#1393): reads the real shipped
   // mask.bin/mask.meta.json/harbors.json via `node:fs` — same reason as
   // harborReachability.test.ts above.
+  // contoursAsset.test.ts (#629): reads the real shipped
+  // mask.bin/mask.meta.json/contours.json via `node:fs`/`node:crypto` to
+  // tie the generated contours asset to the mask it was built from — same
+  // reason and pattern as maskTolerance.test.ts above.
   "include": [
     "src/**/startPreviewSwAssertCallSites.test.ts",
     "src/**/isochrone.frontierCap.test.ts",
@@ -264,6 +268,7 @@
     "src/**/harborReachability*.test.ts",
     "src/**/BoatPicker.harborAccess.test.tsx",
     "src/**/boatSwitchHarborAccess.test.ts",
+    "src/**/contoursAsset.test.ts",
     "sweep/**/*.ts"
   ]
 }

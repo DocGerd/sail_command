@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Popup } from 'maplibre-gl';
 import type {
   CanvasSource,
@@ -43,6 +43,12 @@ import { installStyleSetup } from '../lib/styleReload';
 import { usePersistedToggle } from '../lib/usePersistedToggle';
 import { usePersistedNumber } from '../lib/usePersistedNumber';
 import { LEGEND_COLLAPSED_HEIGHT_PX } from '../lib/depthLegendGate';
+import {
+  getCachedContourAsset,
+  getContoursFetchState,
+  loadContoursAsset,
+  subscribeContoursFetchState,
+} from '../lib/contours';
 
 import { ROUTE_STACK_BOTTOM_LAYER } from './RouteLayer';
 import { AIS_STACK_BOTTOM_LAYER } from './AisLayer';
@@ -116,6 +122,13 @@ const DEPTH_HATCH_LAYER = 'sc-depth-hatch';
 // The measured rebuild-count/build-cost history behind this timer lives in
 // PR #634 and #599, not here.
 const DEPTH_HATCH_DEBOUNCE_MS = 300;
+// #629: depth contours — source empty at creation, populated on first
+// toggle-on (below); both line layers share sc-depth's beforeId, the label
+// layer is anchored separately (see findFirstBasemapSymbolLayerId).
+const CONTOURS_SOURCE = 'sc-contours';
+const CONTOUR_LINES_LAYER = 'sc-contour-lines';
+const CONTOUR_NODATA_LAYER = 'sc-contour-nodata';
+const CONTOUR_LABELS_LAYER = 'sc-contour-labels';
 const HARBOR_SOURCE = 'sc-harbors';
 // Exported so App can hand MapView the same id its raw-tap gate queries: the
 // 'sc-harbor-points' literal lives in one place in production source. (The
@@ -323,6 +336,20 @@ const HARBOR_LABEL_PAINT: NonNullable<SymbolLayerSpecification['paint']> = {
   'text-halo-width': 1.2,
 };
 
+// #629: sc-contour-labels must yield to basemap labels (maintainer ruling
+// 2026-09-28) — anchored directly below the FIRST basemap symbol layer in
+// style order, found from the loaded style at setup time, never hardcoded
+// (the basemap's own layer ids are protomaps-internal and not this app's to
+// name). Placement runs top-down (CLAUDE.md), so a layer stacked above wins
+// both placement priority and paint order — anchoring below the first
+// basemap symbol layer puts every basemap label ahead of a contour label in
+// the shared collision index. Returns undefined (append on top) if the
+// style carries no symbol layer at all, which never happens for the real
+// basemap but keeps this safe for a synthetic test style.
+function findFirstBasemapSymbolLayerId(map: MaplibreMap): string | undefined {
+  return map.getStyle()?.layers?.find((l) => l.type === 'symbol' && !l.id.startsWith('sc-'))?.id;
+}
+
 function setupLayers(
   map: MaplibreMap,
   meta: MaskMeta,
@@ -439,6 +466,87 @@ function setupLayers(
         beforeId,
       );
     }
+  }
+  // #629: depth contours. Source starts empty — populated by the fetch
+  // effect below, the first time the toggle turns on — so no network
+  // request happens on ordinary style setup. Both line layers share the
+  // SAME beforeId as DEPTH_LAYER/DEPTH_HATCH_LAYER above (spec §3), so they
+  // paint above the depth ramp/hatch and below the AIS/route stack via the
+  // same anchor. Hidden at creation, same "default off, synced by an
+  // effect" convention as every other opt-in layer here (Q7: default off).
+  if (!map.getSource(CONTOURS_SOURCE)) {
+    map.addSource(CONTOURS_SOURCE, {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] },
+    });
+    map.addLayer(
+      {
+        id: CONTOUR_NODATA_LAYER,
+        type: 'line',
+        source: CONTOURS_SOURCE,
+        filter: ['==', ['get', 'kind'], 'no-data'],
+        layout: { visibility: 'none' },
+        paint: {
+          'line-color': INK_COLOR,
+          'line-width': 1,
+          'line-dasharray': [2, 2],
+          'line-opacity': 0.6,
+        },
+      },
+      beforeId,
+    );
+    map.addLayer(
+      {
+        id: CONTOUR_LINES_LAYER,
+        type: 'line',
+        source: CONTOURS_SOURCE,
+        filter: ['==', ['get', 'kind'], 'contour'],
+        layout: { visibility: 'none' },
+        paint: {
+          // Every Okabe-Ito colour in mapColors.ts's locked palette is
+          // already claimed by a distinct semantic (starboard/port/via/
+          // boat/origin/destination) — reusing INK_COLOR keeps contour
+          // lines from colliding with any of them, and matches the
+          // conventional dark-neutral rendering of depth contours on a
+          // paper chart.
+          'line-color': INK_COLOR,
+          'line-opacity': 0.55,
+          // Spec §3: "slightly heavier for levelM <= 3".
+          'line-width': ['case', ['<=', ['get', 'levelM'], 3], 1.4, 0.8],
+        },
+      },
+      beforeId,
+    );
+    // #629 maintainer ruling: anchored below the first basemap symbol
+    // layer, found HERE at setup time — not hardcoded, and not reusing
+    // `beforeId` above (that anchor is the AIS/route/depth stack's own
+    // position, unrelated to label placement priority).
+    map.addLayer(
+      {
+        id: CONTOUR_LABELS_LAYER,
+        type: 'symbol',
+        source: CONTOURS_SOURCE,
+        filter: ['==', ['get', 'kind'], 'contour'],
+        layout: {
+          visibility: 'none',
+          'symbol-placement': 'line',
+          'text-field': ['to-string', ['get', 'levelM']],
+          // Explicit stack (HARBOR_LABEL_LAYOUT's own comment above): must
+          // exist under basemap-assets/fonts/, MapLibre's implicit default
+          // does not.
+          'text-font': ['Noto Sans Regular'],
+          'text-size': 10,
+          'text-allow-overlap': false,
+          'text-ignore-placement': false,
+        },
+        paint: {
+          'text-color': INK_COLOR,
+          'text-halo-color': HALO_COLOR,
+          'text-halo-width': 1.2,
+        },
+      },
+      findFirstBasemapSymbolLayerId(map),
+    );
   }
   if (!map.getSource(HARBOR_SOURCE)) {
     map.addSource(HARBOR_SOURCE, {
@@ -621,6 +729,21 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
   // legend body's OWN scrollport — see the return JSX below for the full,
   // precisely-stated derivation.
   const [hatchVisible, setHatchVisible] = usePersistedToggle('sc-depth-hatch-visible', true);
+  // #629 Q7: its own persisted toggle, default OFF — independent of
+  // depthVisible/hatchVisible (no `disabled` mirror): a user may want
+  // contour lines with the ramp/hatch off, or vice versa.
+  const [contoursVisible, setContoursVisible] = usePersistedToggle('sc-contours-visible', false);
+  // Shared with RouteLegend.tsx's own copy of this control via
+  // contours.ts's module-level subscription (the boolean above already
+  // cross-instance-syncs through usePersistedToggle's own listener
+  // registry) — both surfaces must show the SAME fetch/error state.
+  // #629 review Minor: useSyncExternalStore (not useState+useEffect) closes
+  // a real gap — a passive effect subscribes only after paint, so a
+  // fetch-state change landing between render and that effect was missed.
+  const contoursFetchState = useSyncExternalStore(
+    subscribeContoursFetchState,
+    getContoursFetchState,
+  );
   // #598 review round 3: whether `.depth-legend` has enough room to render
   // reachably at all — computed in the `useLayoutEffect` below (not
   // persisted; this is pure layout, recomputed every time the geometry it
@@ -840,6 +963,53 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
     }, DEPTH_HATCH_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
   }, [map, styleEpoch, assets, safetyDepthM, hatchBandKey, depthVisible, hatchVisible]);
+
+  // #629 maintainer ruling: contours render only while their OWN off-switch
+  // is reachable. With no plan, `.depth-legend` (and the toggle inside it)
+  // can be `legendHidden`; with a plan, RouteLegend's copy has no hidden
+  // gate, so the term is plan-scoped. The persisted preference itself is
+  // untouched — contours resume once the legend does.
+  const contoursEffectivelyVisible = contoursVisible && !(plan === null && legendHidden);
+
+  // #629: fetch the contour asset the FIRST time the toggle turns on (spec
+  // §3), and re-populate an empty source after a style reload (#153, the
+  // styleEpoch dependency) if it was already fetched — contours.ts's module
+  // cache means the second case never re-fetches over the network. Gated on
+  // EFFECTIVE visibility, not the raw toggle: no fetch while the off-switch
+  // is unreachable.
+  useEffect(() => {
+    if (!map || styleEpoch === 0 || !contoursEffectivelyVisible) return;
+    let cancelled = false;
+    const source = () => map.getSource(CONTOURS_SOURCE) as GeoJSONSource | undefined;
+    const already = getCachedContourAsset();
+    if (already) {
+      source()?.setData(already);
+      return;
+    }
+    void loadContoursAsset()
+      .then((asset) => {
+        if (!cancelled) source()?.setData(asset);
+      })
+      .catch(() => {
+        // Spec §3: no retry loop — the layers stay absent; the error string
+        // is read from contoursFetchState (subscribed above) by the
+        // checkbox rows below.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [map, styleEpoch, contoursEffectivelyVisible]);
+
+  // #629: visibility sync for all three contour layers, same
+  // "hidden/default at creation, synced by an effect" convention as every
+  // other opt-in layer above — driven by EFFECTIVE visibility (see above).
+  useEffect(() => {
+    if (!map || styleEpoch === 0) return;
+    const visibility = contoursEffectivelyVisible ? 'visible' : 'none';
+    for (const id of [CONTOUR_LINES_LAYER, CONTOUR_NODATA_LAYER, CONTOUR_LABELS_LAYER]) {
+      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visibility);
+    }
+  }, [map, styleEpoch, contoursEffectivelyVisible]);
 
   // Seamark glyphs (#7) — registered/set once per assets load, independent of
   // the visibility toggle (so the layer is ready to paint the instant the
@@ -1409,6 +1579,44 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
                 state). */}
             {depthVisible && hatchVisible && <p>{t('map.depth.legend.basis')}</p>}
             <p>{t('map.depth.legend.caveat')}</p>
+            {/* #629: its own toggle (Q7), inside this same disclosure body —
+                the maintainer ruling on #629 places it here, the #681
+                hatch-toggle precedent, not as a third `.data-layer-controls`
+                row (same layout-budget cost this file already documents for
+                the hatch toggle above). Invariant: whenever contours render,
+                a control to turn them off is reachable — `contoursEffectivelyVisible`
+                above enforces it by hiding the layers themselves alongside
+                this checkbox. Not tied to `depthVisible`/`hatchVisible`
+                (Q7: independent). */}
+            <label className="depth-legend-row">
+              <input
+                type="checkbox"
+                checked={contoursVisible}
+                onChange={(e) => setContoursVisible(e.target.checked)}
+              />
+              {t('map.depth.legend.contoursToggle')}
+            </label>
+            {contoursVisible && (
+              <>
+                <p className="depth-legend-row">
+                  <span
+                    className="depth-legend-swatch depth-legend-swatch-contour"
+                    aria-hidden="true"
+                  />
+                  {t('map.depth.legend.contourLinesLabel')}
+                </p>
+                <p className="depth-legend-row">
+                  <span
+                    className="depth-legend-swatch depth-legend-swatch-nodata"
+                    aria-hidden="true"
+                  />
+                  {t('map.depth.legend.contourNoDataLabel')}
+                </p>
+                {contoursFetchState.status === 'error' && (
+                  <p className="depth-legend-error">{t('map.depth.legend.contoursError')}</p>
+                )}
+              </>
+            )}
           </div>
         </details>
       )}
