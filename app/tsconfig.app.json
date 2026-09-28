@@ -150,6 +150,9 @@
   // verifyMaskConnectivity.test.ts above.
   // boatSwitchHarborAccess.test.ts (#1393) is the same shape once more —
   // reads the real shipped mask.bin/mask.meta.json/harbors.json via `node:fs`.
+  // contoursAsset.test.ts (#629) is the same shape once more — reads the
+  // real shipped mask.bin/mask.meta.json/contours.json via `node:fs`/
+  // `node:crypto`.
   "exclude": [
     "src/**/startPreviewSwAssertCallSites.test.ts",
     "src/**/basemapArchiveRoute.test.ts",
@@ -194,6 +197,7 @@
     "src/**/regionBoundsVsMask.test.ts",
     "src/**/harborReachability*.test.ts",
     "src/**/BoatPicker.harborAccess.test.tsx",
-    "src/**/boatSwitchHarborAccess.test.ts"
+    "src/**/boatSwitchHarborAccess.test.ts",
+    "src/**/contoursAsset.test.ts"
   ]
 }

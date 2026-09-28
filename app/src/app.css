@@ -1262,6 +1262,41 @@ select {
   );
 }
 
+/* #629: two line swatches for the depth-contour legend rows, reusing
+   `.depth-legend-swatch`'s layout (flex/width) via the compound selector
+   (CLAUDE.md's single-class-modifier-loses-to-a-later-base-rule caution).
+   `--sc-ink` mirrors DataLayers.tsx's INK_COLOR (mapColors.ts is the
+   source of truth; app.css cannot import it, so this is the established
+   --sc-* twin, same as every other map-colour swatch in this file).
+   #629 review Minor: `--sc-ink` is theme-invariant, so a plain ink line at
+   low opacity nears invisible on dark legend chrome. Keeps the base rule's
+   own water `background-color` (same backdrop the hatch swatch above
+   uses) and draws the line as a centred, non-repeating band instead of
+   overriding the background colour — legible in both themes, same as the
+   map's own hatch. */
+.depth-legend-swatch.depth-legend-swatch-contour {
+  background-image: linear-gradient(var(--sc-ink), var(--sc-ink));
+  background-size: 100% 2px;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.depth-legend-swatch.depth-legend-swatch-nodata {
+  background-image: repeating-linear-gradient(to right, var(--sc-ink) 0 3px, transparent 3px 6px);
+  background-size: 100% 2px;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+/* #629 review Major: --sc-depth-warning-fg is a BORDER/WASH colour only
+   (this file's own token block above) — 2.18:1 as text, far under WCAG
+   1.4.3. --sc-banner-error-fg is the theme-aware error-text token, and
+   using it also stops overloading the amber hazard semantic on a fetch
+   failure, which is not a safety condition (unlike #597's caveat above). */
+.depth-legend-error {
+  color: var(--sc-banner-error-fg);
+}
+
 /* NAMED COUPLING: `top: calc(var(--sc-app-header-height) + 8px)` (61px + 8px
    = 69px, #1013) clears the narrow-layout .app-header where
    it overlays the map — SHORT LANDSCAPE only since #909, whose block at the

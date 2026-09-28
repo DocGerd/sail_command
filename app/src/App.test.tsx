@@ -334,6 +334,9 @@ vi.mock('maplibre-gl', () => {
     getLayer(id?: string) {
       return typeof id === 'string' && this._addedLayers.has(id) ? { id } : undefined;
     }
+    getStyle() {
+      return { layers: [...this._addedLayers].map((id) => ({ id, type: 'unknown' })) };
+    }
     // Faithful stand-in for MapView.handleClick's per-layer hit gate: reports
     // a feature only when the click point matches something a test placed
     // there (mapTestHooks.harborHitFeatures / routeHitFeatures) AND the
