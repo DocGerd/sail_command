@@ -257,9 +257,10 @@ making design-level decisions; do not silently deviate.
   accepting one, check whether the changed file is a RUNTIME input the
   import walk cannot see — a new data asset, arm file or pipeline generator
   outside `PATH_PREFIXES`, or a runtime-constructed edge outside
-  `EXTRA_EDGES`. Run `closure.mjs diff <merge-base> <head>` before merging
-  any PR, never trust an agent's "not in the closure": #1549 merged on one
-  and its sweep was paid after the merge. RUN `closure.mjs files` FOR THE MEMBER LIST — it is derived
+  `EXTRA_EDGES`. Run `closure.mjs diff <merge-base> <head>` before merging any
+  PR: an agent's "not in the closure" is a claim, not a verdict. #1549 merged
+  before its sweep, which ledger entry `266d99e` records as paid afterwards.
+  RUN `closure.mjs files` FOR THE MEMBER LIST — it is derived
   from the roots, no prose list here to drift. #944 (read a purely additive
   export as NOT OWED) was deferred after three review rounds each found a
   fail-open in its hand-rolled lexer (ASI, `\r`/U+2028/U+2029, `}` then `(`);
@@ -4658,8 +4659,6 @@ making design-level decisions; do not silently deviate.
   file warns about, caught in review of the very PR that added it.
 - The destructive-git guard pattern-matches `-f` anywhere in a compound command:
   never combine `gh api -f …` with `git push` in one Bash call — split them.
-  The bare word `push` in any text (a comment body, a heredoc) beside `-f` is
-  enough; no `git push` is needed (v0.48.0). Use `--input` JSON instead.
   Its `+`-refspec rule fires on space-then-`+` anywhere once the bare word
   `push` appears — a jq `"push"` literal counts, no `git` needed — so
   `date +%s` beside a push was denied at the v0.47.0 cut (guard v6). Use a
