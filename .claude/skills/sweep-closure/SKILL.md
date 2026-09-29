@@ -271,7 +271,13 @@ changes at every anchor recording.
 1. Record the exact commit SHA the arms actually ran on, and pick one that
    lands on `develop` — `reuse`'s own ancestor check (`git merge-base
    --is-ancestor <recorded> <base>`) requires the recorded `sha` to be an
-   ancestor of (or equal to) any later `<base>` it is asked about.
+   ancestor of (or equal to) any later `<base>` it is asked about. An entry
+   whose `sha` is a PR head that itself edits `app/sweep/**` is evidence only,
+   not a reuse anchor: commits landing after the run can edit `app/sweep/**`
+   again, so `reuse` answers `RUN BASE` against the merge and every later base
+   (`945f7ab` against its own merge commit `a1e5d48`, after `0515940` and
+   `87448bd`). Anchor on a BASE run recorded on a `develop` commit after the
+   merge (`7f7cb66`, whose arm hashes equal the `945f7ab` entry's).
 2. Take each arm's hash from `run-sharded.mjs`'s `manifest.json` `arms`
    field (or the unsharded equivalent, `compare.mjs`'s own
    `sha256(raw).slice(0,16)` convention — both are the same 16-hex-char

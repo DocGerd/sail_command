@@ -81,11 +81,17 @@ holding user-named saved waypoints — an id, name, and lat/lon; object store
 `planId`, the required region ids, and a timestamp — the actual offline-ready
 state lives in CacheStorage and is re-derived on every read, #1164) and a
 small amount of
-`localStorage` (session snapshot, UI toggles, and the selected boat id — which
-determines the draft and hence the derived safety depth gate, so it is
-validated against the catalogue on every read) behind wrappers that tolerate
-private-mode failures. There are no cookies and no analytics, telemetry, or
-tracking of any kind.
+`localStorage`. Every access goes through the wrappers in
+`app/src/lib/storage.ts` (`safeGetItem`, `safeSetItem`, `safeRemoveItem`),
+which tolerate private-mode failures, and no other non-test source file calls
+`localStorage` directly. Keys are built from constants, some per boat or per
+deployment, so this document does not list them; enumerate call sites with
+`grep -rnE 'safe(Get|Set|Remove)Item|usePersisted(Toggle|Number)' app/src`.
+The selected boat id is stored there; it determines the draft and hence the
+derived safety depth gate, so it is validated against the catalogue on every
+read. The AIS key is not stored there; it is a `Settings` field held in the
+IndexedDB `settings` store. There are no cookies and no analytics, telemetry,
+or tracking of any kind.
 
 ## 3. Trust boundaries
 
