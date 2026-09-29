@@ -298,11 +298,11 @@ function edgeKeyCells(key: string): [Cell, Cell] {
       ];
 }
 
-// #1540: level lines are smoothed by shortcutting the staircase. The cautious
-// guarantee is that no point of a smoothed level-L line lies on the shallow
-// side of the edges it was traced from — every point stays in the closure of
-// the cells at or above L, classified here by cautiousDepthLowerBoundM, never
-// by the pipeline.
+// Level lines are smoothed (#1540) by shortcutting the staircase, never by
+// moving it: a line keeps a subsequence of its own staircase vertices, and a
+// chord is taken only if it and every shorter chord from the same start stay
+// in the closure of the at-or-above-L cells.
+// Cells are classified here by cautiousDepthLowerBoundM, never by the pipeline.
 describe('#1540 smoothed level lines stay on the deep side of their staircase', () => {
   for (const levelM of CONTOUR_LEVELS_M) {
     it(`level ${levelM} m: every segment lies in the closure of the at-or-above-level cells`, () => {
@@ -335,7 +335,7 @@ describe('#1540 smoothed level lines stay on the deep side of their staircase', 
       );
     });
 
-    it(`level ${levelM} m: every vertex is a vertex of its own staircase`, () => {
+    it(`level ${levelM} m: every vertex is a vertex of the level's staircase`, () => {
       const vertices = new Set<string>();
       for (const key of qualifyingLevelEdges(levelM)) {
         const [kind, fixed, along] = key.split(':') as [string, string, string];
@@ -363,6 +363,126 @@ describe('#1540 smoothed level lines stay on the deep side of their staircase', 
         edgeKeyCells(key).every((cell) => !touched.has(cellKey(cell))),
       );
       expect(missing.slice(0, 5), `${missing.length} qualifying edges not covered`).toEqual([]);
+    });
+  }
+});
+
+type LatticeSegment = readonly [r0: number, c0: number, r1: number, c1: number];
+
+// Odd numerators over a large power of two make a sample landing on a segment
+// unlikely; the ties assertion fails closed if one does.
+const SCALE = 1 << 20;
+const SAMPLE_X = 523_229;
+const SAMPLE_Y = 460_001;
+
+function deepCells(levelM: number): Uint8Array {
+  const lut = new Uint8Array(256);
+  for (let b = 0; b < 256; b++) lut[b] = atOrAboveLevel(b, levelM) ? 1 : 0;
+  const out = new Uint8Array(maskMeta.rows * maskMeta.cols);
+  for (let i = 0; i < out.length; i++) out[i] = lut[maskBytes[i]!]!;
+  return out;
+}
+
+/** Vertical unit edges between a deep cell and a byte-0 or out-of-grid neighbour. */
+function closingSegments(deep: Uint8Array): LatticeSegment[] {
+  const { rows, cols } = maskMeta;
+  const segs: LatticeSegment[] = [];
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c <= cols; c++) {
+      const leftDeep = c > 0 && deep[r * cols + c - 1] === 1;
+      const rightDeep = c < cols && deep[r * cols + c] === 1;
+      const leftZero = c === 0 || byteAt(r, c - 1) === 0;
+      const rightZero = c === cols || byteAt(r, c) === 0;
+      if ((leftDeep && rightZero) || (rightDeep && leftZero)) segs.push([r, c, r + 1, c]);
+    }
+  return segs;
+}
+
+/**
+ * Even-odd interior of a segment set, sampled at one non-lattice point per
+ * cell, (col + SAMPLE_X / SCALE, row + SAMPLE_Y / SCALE). Scanline crossings are compared in exact
+ * integer arithmetic; a sample lying exactly on a segment counts as a tie.
+ */
+function evenOddInterior(segs: readonly LatticeSegment[]): { inside: Uint8Array; ties: number } {
+  const { rows, cols } = maskMeta;
+  const toggles = new Uint8Array(rows * (cols + 1));
+  let ties = 0;
+  for (const [r0, c0, r1, c1] of segs) {
+    if (r0 === r1) continue;
+    const [ya, xa, yb, xb] = r0 < r1 ? [r0, c0, r1, c1] : [r1, c1, r0, c0];
+    const dy = yb - ya;
+    const dx = xb - xa;
+    for (let r = ya; r < yb; r++) {
+      const num = SCALE * xa * dy + (SCALE * (r - ya) + SAMPLE_Y) * dx - SAMPLE_X * dy;
+      const den = SCALE * dy;
+      if (num % den === 0) ties++;
+      const first = Math.min(cols, Math.max(0, Math.floor(num / den) + 1));
+      toggles[r * (cols + 1) + first]! ^= 1;
+    }
+  }
+  const inside = new Uint8Array(rows * cols);
+  for (let r = 0; r < rows; r++) {
+    let parity = 0;
+    for (let c = 0; c < cols; c++) {
+      parity ^= toggles[r * (cols + 1) + c]!;
+      inside[r * cols + c] = parity;
+    }
+  }
+  return { inside, ties };
+}
+
+function compareToDeep(inside: Uint8Array, deep: Uint8Array) {
+  let shownDeepButShallow = 0;
+  let shownShallowButDeep = 0;
+  let deepCount = 0;
+  const examples: string[] = [];
+  for (let i = 0; i < deep.length; i++) {
+    deepCount += deep[i]!;
+    if (inside[i] === 1 && deep[i] === 0) {
+      shownDeepButShallow++;
+      if (examples.length < 5)
+        examples.push(`${Math.floor(i / maskMeta.cols)}:${i % maskMeta.cols}`);
+    }
+    if (inside[i] === 0 && deep[i] === 1) shownShallowButDeep++;
+  }
+  return { shownDeepButShallow, shownShallowButDeep, deepCount, examples };
+}
+
+// #1540: the region a level's lines enclose, closed by the deep cells' own
+// no-data and grid edges, must lie inside the at-or-above-level cells. This
+// is a point-in-polygon model independent of the pipeline's chord test.
+describe('#1540 region: the area shown at or above a level is a subset of those cells', () => {
+  for (const levelM of CONTOUR_LEVELS_M) {
+    it(`level ${levelM} m: control — the unsmoothed staircase encloses exactly the deep set`, () => {
+      const deep = deepCells(levelM);
+      const staircase: LatticeSegment[] = [...qualifyingLevelEdges(levelM)]
+        .filter((key) => key.startsWith('V:'))
+        .map((key) => {
+          const [, fixed, along] = key.split(':').map(Number) as [number, number, number];
+          return [along, fixed, along + 1, fixed];
+        });
+      const { inside, ties } = evenOddInterior([...staircase, ...closingSegments(deep)]);
+      const cmp = compareToDeep(inside, deep);
+      expect(ties, 'sample point on a segment').toBe(0);
+      expect(cmp.deepCount, 'no deep cells at this level').toBeGreaterThan(0);
+      expect(cmp.shownDeepButShallow, 'control: shown deep but shallow').toBe(0);
+      expect(cmp.shownShallowButDeep, 'control: shown shallow but deep').toBe(0);
+    });
+
+    it(`level ${levelM} m: the smoothed lines never show a shallow cell as deep`, () => {
+      const deep = deepCells(levelM);
+      const smoothed: LatticeSegment[] = segmentsOf(levelFeature(levelM)).map((seg) => {
+        const a = vertexIndex(seg.p0);
+        const b = vertexIndex(seg.p1);
+        return [a.row, a.col, b.row, b.col];
+      });
+      const { inside, ties } = evenOddInterior([...smoothed, ...closingSegments(deep)]);
+      const cmp = compareToDeep(inside, deep);
+      expect(ties, 'sample point on a segment').toBe(0);
+      expect(
+        cmp.examples,
+        `${cmp.shownDeepButShallow} shallow cells shown at or above ${levelM} m`,
+      ).toEqual([]);
     });
   }
 });

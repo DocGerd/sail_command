@@ -12,11 +12,11 @@ cell is at or above level L iff b >= 10*L + 9; b = 255 (>= 25.4 m cautious
 case is needed.
 
 Level lines are smoothed (#1540) by shortcutting the staircase, never by
-moving it: a line keeps a subsequence of its own staircase vertices, joined by
-chords that stay in the closure of the at-or-above-L cells, so no point of a
-smoothed line lies on the shallow side of the edges it was traced from. The
-no-data edge is left as traced. app/src/test/contoursAsset.test.ts re-checks
-the same predicate against mask.bin.
+moving it: a line keeps a subsequence of its own staircase vertices, and a
+chord is taken only if it and every shorter chord from the same start stay in
+the closure of the at-or-above-L cells. The no-data edge is left as traced.
+app/src/test/contoursAsset.test.ts re-checks the same predicate against
+mask.bin.
 """
 
 import hashlib
