@@ -16,6 +16,7 @@ import RouteLayer, {
 } from './RouteLayer';
 import { SAVED_WAYPOINT_LAYER } from './SavedWaypointsLayer';
 import { I18nProvider } from '../i18n';
+import { de } from '../i18n/dict.de';
 import { makeFakeMap, simulateStyleReload } from '../test/fakeMaplibre';
 import { TEST_MASK_META, uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS, type Leg, type Plan } from '../types';
@@ -1588,6 +1589,40 @@ describe('RouteLayer #1170: tap the route line to insert a waypoint while armed'
     expect(map.layers.get(ROUTE_HIT_LAYER)?.layout?.visibility).toBe('none');
   });
 });
+describe('RouteLayer forced-leg legend note (#1251)', () => {
+  const note = () => screen.queryByText(de['route.legs.forcedNote']);
+  const withForcedLeg = (base: Plan, sailId: 'genoa' | 'fock'): Plan => ({
+    ...base,
+    result: {
+      ...base.result,
+      sails: base.result.sails.map((s) =>
+        s.sailId === sailId && s.result !== null
+          ? {
+              ...s,
+              result: {
+                ...s.result,
+                legs: s.result.legs.map((l) => ({ ...l, forced: true as const })),
+              },
+            }
+          : s,
+      ),
+    },
+  });
+
+  it('shows the note only when the displayed rig has a forced leg', () => {
+    renderRouteLayerWithPlan(makeFakeMap(), makePlan());
+    expect(note()).toBeNull();
+    cleanup();
+    renderRouteLayerWithPlan(makeFakeMap(), withForcedLeg(makePlan(), 'genoa'));
+    expect(note()).not.toBeNull();
+  });
+
+  it('does not show it for a forced leg only on the rig the map does not mark', () => {
+    renderRouteLayerWithPlan(makeFakeMap(), withForcedLeg(makeBothRigsPlan(), 'fock'), 'genoa');
+    expect(note()).toBeNull();
+  });
+});
+
 // #1541: the hatch and contour toggles are top-level rows of "Anzeigeoptionen",
 // next to the annotations/barbs/alt-rig rows, and no longer live in the legend.
 describe('RouteLayer depth-overlay rows (#1541)', () => {

@@ -4522,7 +4522,7 @@ describe('#885: segment modes (App wiring)', () => {
     fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
 
     expect(
-      await screen.findByText(de['error.segmentModesMergeConflict'].replaceAll('{index}', '1')),
+      await screen.findByText(de['error.segmentModesMergeConflict'].replaceAll('{waypoint}', '1')),
     ).toBeInTheDocument();
     expect(screen.queryByText(de['banner.viaTooClose'])).not.toBeInTheDocument();
     expect(routingMock.calls.length).toBe(0);

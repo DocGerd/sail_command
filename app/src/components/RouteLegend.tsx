@@ -31,7 +31,7 @@ function isWideAtMount(): boolean {
 // and the #CC79A7 via marker (ViaMarkers.tsx). The alt-rig entry (#324) mirrors
 // sc-route-alt-{sail,motor}'s dashed/reduced-opacity paint — shown
 // unconditionally like the others, not gated on the toggle's own state.
-export default function RouteLegend() {
+export default function RouteLegend({ hasForcedLeg }: { hasForcedLeg: boolean }) {
   const t = useT();
   // Readers only: DataLayers.tsx applies these flags to the map, and the
   // rows that change them live in RouteLayer.
@@ -104,6 +104,7 @@ export default function RouteLegend() {
           {t('route.legend.altRig')}
         </li>
       </ul>
+      {hasForcedLeg && <p>{t('route.legs.forcedNote')}</p>}
     </details>
   );
 }

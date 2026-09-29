@@ -64,11 +64,13 @@ export function dedupeViaPoints(
   return { kept, keptIndices, droppedCount: viaPoints.length - kept.length };
 }
 
+export type MessageVars = Record<string, string | number>;
+
 export type SegmentModesMerge =
   | { kind: 'ok'; segmentModes: (SegmentMode | null)[] }
-  // A merged run whose segments do not all carry the same mode. `viaIndex` is
-  // the input index of the first via dedupe drops inside that run.
-  | { kind: 'conflict'; viaIndex: number }
+  // Runs whose segments do not all carry the same mode. `viaIndices` are the
+  // input indices, ascending, of every via dedupe drops inside those runs.
+  | { kind: 'conflict'; viaIndices: number[] }
   // The input modes do not match the input via list (a producer defect).
   | { kind: 'invalid' };
 
@@ -91,20 +93,47 @@ export function mergeSegmentModes(
   // Waypoint indices of the survivors in [origin, ...vias, destination].
   const bounds = [0, ...keptIndices.map((k) => k + 1), viaCount + 1];
   const merged: (SegmentMode | null)[] = [];
+  const viaIndices: number[] = [];
   for (let j = 0; j < bounds.length - 1; j++) {
     const mode = segmentModes[bounds[j]];
+    let mixed = false;
     for (let i = bounds[j] + 1; i < bounds[j + 1]; i++) {
-      // Waypoint bounds[j] + 1 is the first dropped via: input index bounds[j].
-      if (segmentModes[i] !== mode) return { kind: 'conflict', viaIndex: bounds[j] };
+      if (segmentModes[i] !== mode) mixed = true;
+    }
+    if (mixed) {
+      // Waypoints bounds[j] + 1 .. bounds[j + 1] - 1 are the run's dropped vias.
+      for (let w = bounds[j] + 1; w < bounds[j + 1]; w++) viaIndices.push(w - 1);
     }
     merged.push(mode);
   }
+  if (viaIndices.length > 0) return { kind: 'conflict', viaIndices };
   return { kind: 'ok', segmentModes: merged };
 }
 
 export type RequestIntake<R> =
-  | { kind: 'ok'; request: R }
-  | { kind: 'error'; messageKey: MsgKey; messageVars?: Record<string, number> };
+  { kind: 'ok'; request: R } | { kind: 'error'; messageKey: MsgKey; messageVars?: MessageVars };
+
+// Waypoint numbers are 1-based. The list joiner ("and"/"und") lives in the
+// dictionary, so only the leading numbers are joined here.
+function mergeConflictError(viaIndices: readonly number[]): {
+  kind: 'error';
+  messageKey: MsgKey;
+  messageVars: MessageVars;
+} {
+  const numbers = viaIndices.map((i) => i + 1);
+  if (numbers.length === 1) {
+    return {
+      kind: 'error',
+      messageKey: 'error.segmentModesMergeConflict',
+      messageVars: { waypoint: numbers[0] },
+    };
+  }
+  return {
+    kind: 'error',
+    messageKey: 'error.segmentModesMergeConflictMany',
+    messageVars: { head: numbers.slice(0, -1).join(', '), last: numbers[numbers.length - 1] },
+  };
+}
 
 /**
  * #885: pre-planning intake. Applies the ~60 m via dedupe to a whole request,
@@ -117,13 +146,7 @@ export function dedupeRequestVias<R extends PlanRequest>(req: R): RequestIntake<
   const { kept, keptIndices } = dedupeViaPoints(req.origin, req.viaPoints, req.destination);
   if (req.segmentModes === undefined) return { kind: 'ok', request: { ...req, viaPoints: kept } };
   const merge = mergeSegmentModes(req.segmentModes, req.viaPoints.length, keptIndices);
-  if (merge.kind === 'conflict') {
-    return {
-      kind: 'error',
-      messageKey: 'error.segmentModesMergeConflict',
-      messageVars: { index: merge.viaIndex + 1 },
-    };
-  }
+  if (merge.kind === 'conflict') return mergeConflictError(merge.viaIndices);
   if (merge.kind === 'invalid') {
     return { kind: 'error', messageKey: NO_ROUTE_MESSAGE_KEY['segment-modes-invalid'] };
   }
@@ -142,9 +165,9 @@ export function dedupeRequestVias<R extends PlanRequest>(req: R): RequestIntake<
 // IndexedDB boundary.
 export class ReplanError extends Error {
   readonly messageKey: MsgKey;
-  readonly messageVars: Record<string, number> | undefined;
+  readonly messageVars: MessageVars | undefined;
 
-  constructor(messageKey: MsgKey, message: string, messageVars?: Record<string, number>) {
+  constructor(messageKey: MsgKey, message: string, messageVars?: MessageVars) {
     super(message);
     this.name = 'ReplanError';
     this.messageKey = messageKey;
