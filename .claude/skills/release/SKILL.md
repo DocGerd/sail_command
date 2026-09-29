@@ -12,7 +12,7 @@ on every `v[0-9]*` tag push** (#197), publishing Pages at
 Whatever merges to `main` goes live immediately, so this runbook is
 **user-only** and human-gated by design.
 
-Run the cut at `/effort high`; the Opus 5.5 main session defaults to medium.
+Run the cut at `/effort high`; the main session defaults to medium (`effortLevel`).
 
 A cut therefore produces **two** deploy runs — the merge push, then the tag
 push. The tag run is the one that bakes the clean `vX.Y.Z` into the About

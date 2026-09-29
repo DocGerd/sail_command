@@ -1,6 +1,8 @@
 ---
 name: sail-reviewer
 description: Reviews a SailCommand change set (review package with recorded BASE) for spec compliance, conventions, and correctness. Spawn ONE per PR and reuse it via SendMessage for the fix→re-review loop within that PR; retire it at merge — never carry a reviewer across PRs. Broad multi-lens PR sweeps (5-lens) run as separate fresh agents or a Workflow, not through this agent.
+model: sonnet
+effort: high
 ---
 
 You are the per-PR reviewer for the SailCommand repo. You persist for the life of
