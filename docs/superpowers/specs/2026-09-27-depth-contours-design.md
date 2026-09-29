@@ -1,7 +1,7 @@
 # Depth contours (#629) — design
 
 Status: approved by the maintainer 2026-09-28, with the amendments from PR #1522's review.
-Source: issue #629 (the measurement write-up); the maintainer ruling comment on it dated 2026-09-27 (Q1, Q2, Q4, Q5); the maintainer rulings of 2026-09-28 recorded at https://github.com/DocGerd/sail_command/issues/629#issuecomment-5873587510 (contour-label anchor, outer-boundary edge, toggle placement); and this document's approval (Q3, Q7, architecture).
+Source: issue #629 (the measurement write-up); the maintainer ruling comment on it dated 2026-09-27 (Q1, Q2, Q4, Q5); the maintainer rulings of 2026-09-28 recorded at https://github.com/DocGerd/sail_command/issues/629#issuecomment-5873587510 (contour-label anchor, outer-boundary edge; its toggle-placement ruling is superseded, §3); and this document's approval (Q3, Q7, architecture).
 
 ## 1. Decisions on record
 
@@ -15,7 +15,7 @@ Source: issue #629 (the measurement write-up); the maintainer ruling comment on 
 | Q7 | Toggle | Its own persisted toggle, default off. |
 | — | Architecture | Build-time: a pipeline script writes a committed asset (issue §D2). |
 
-Q10 smoothing shipped in v0.48.0 (#1540; §2). Deferred: Q11 datum surfacing, per-level colour. Q12 (#599 raster zoom degradation) does not apply to vector lines. Q13 is answered by §2's measurement requirement.
+Q10 smoothing landed in #1540 (§2). Deferred: Q11 datum surfacing, per-level colour.
 
 ## 2. Data product
 
@@ -29,9 +29,9 @@ Cell classification, exact in integers. With mask byte `b`:
 Byte 254 is never emitted by the mask build; the rule covers it anyway.
 
 Geometry:
-- **Level lines.** For each level, trace every shared cell edge between a cell at or above `L` and a non-zero cell below it. Merge the segments into polylines. Level lines are shortcut greedily over their own staircase vertices; a chord is accepted only if it and every shorter chord from the same start stay in the closure of the at-or-above-L cells and it touches a cell beside every edge it skips (#1540). Guarantee, pinned by the region guard in `contoursAsset.test.ts`: the region a line set shows as at-or-above L is a subset of the at-or-above-L cells, and every line point is in their closure. The no-data edge is unsmoothed; corners pointing into deep water stay square.
+- **Level lines.** For each level, trace every shared cell edge between a cell at or above `L` and a non-zero cell below it. Merge the segments into polylines. Level lines are shortcut greedily over their own staircase vertices; a chord is accepted only if it and every shorter chord from the same start stay in the closure of the at-or-above-L cells and it touches a cell beside every edge it skips (#1540). Guarantees, pinned jointly by the "#1540 region" rows and the "#1540 smoothed level lines" closure rows in `contoursAsset.test.ts`: the region a line set shows as at-or-above L, closed by the no-data and grid edges, is a subset of the at-or-above-L cells, and every line segment lies in the closure of those cells. The no-data edge is unsmoothed. Corners that point into deep water stay square where a shortcut would cross a shallow cell (shoal tips, one-cell shoals); along a diagonal run of steps a line passes straight through them.
 - **No-data edge.** Trace every cell edge between a byte-0 cell and a non-zero cell, and every outer-boundary edge of a non-zero cell, once, as a separate feature. Level lines therefore end where they meet this edge, which is visible, instead of stopping silently.
-- The two geometries never share an edge: a level line only ever separates two non-zero cells.
+- Before smoothing the two geometries share no edge: a traced level edge only ever separates two non-zero cells. A smoothed chord can lie along a deep-cell/byte-0 edge, so a level line may overlap the no-data edge for a few unit edges (measured on the asset #1549 merged).
 
 Output: a GeoJSON `FeatureCollection` of `LineString`/`MultiLineString` features.
 - Properties: `{ "kind": "contour", "levelM": L }` or `{ "kind": "no-data" }`.
@@ -69,7 +69,7 @@ It does not claim chart authority.
 |---|---|
 | `contours.json` `maskSha256` equals sha256 of `mask.bin` (TS, `readFileSync`) | the mask is rebuilt without regenerating contours |
 | `toleranceM` equals `MASK_TOLERANCE_M`, and `levelsM` equals the renderer's level list | the basis drifts between Python and TS |
-| Differential: for sampled level-line segments, the two adjacent cells classify on opposite sides of the level through TS `cautiousDepthLowerBoundM`; for sampled no-data segments, either the segment is interior and its two adjacent cells are one byte-0 and one non-zero, or it lies on the mask's outer boundary and its one adjacent cell is non-zero | the pipeline's integer rule diverges from the app's formula |
+| Level lines: per level, every segment lies in the closure of the at-or-above-L cells, every vertex is a vertex of the level's staircase, and every qualifying staircase edge borders a cell a segment touches (cells classified through TS `cautiousDepthLowerBoundM`). No-data: for sampled segments, either the segment is interior and its two adjacent cells are one byte-0 and one non-zero, or it lies on the mask's outer boundary and its one adjacent cell is non-zero | the pipeline's integer rule or its smoothing diverges from the app's formula |
 | unit: `sc-contour-labels` is added with `beforeId` equal to the style's first basemap `symbol` layer | the labels-yield anchor regresses |
 | e2e: fresh profile has the toggle off and no contour features; toggling on renders level lines and at least one label at a fixed view; `getByRole` locators for "Wassertiefen" still resolve uniquely | rendering or default state regresses, or the label collides |
 
@@ -79,4 +79,4 @@ Each guard gets a mutation check, run at BASE and HEAD: the stale-hash mutant, t
 
 - The #282 sweep closure's path prefixes include `pipeline/` and `app/public/data/`, so a sweep is owed. Verify with `closure.mjs diff`. The baseline is a BASE double-run at the branch's own merge-base with `develop`, unless `closure.mjs reuse <recorded-sha> <merge-base>` returns REUSE for an entry in `.claude/skills/sweep-closure/recorded-runs.json`. Routes cannot move (nothing in the solve reads the new file), so every arm must hash-match BASE.
 - It is a user-visible feature, so it ships a `changelog.d/629.added.md` fragment.
-- Screenshots: since #1541 the toggle sits in "Anzeigeoptionen", so regenerate the README images with `docs/screenshots/capture.mjs` at the next release sweep.
+- Screenshots: #1541 moves the toggle into "Anzeigeoptionen", so regenerate the README images with `docs/screenshots/capture.mjs` at the next release sweep.
