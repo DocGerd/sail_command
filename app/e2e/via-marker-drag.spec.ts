@@ -49,6 +49,13 @@ async function planRoute(page: Page, serverUrl: string): Promise<void> {
   const planButton = page.getByRole('button', { name: 'Route planen' });
   await planButton.click();
   await expect(planButton).toBeEnabled({ timeout: 60_000 });
+  // #1541: the open "Anzeigeoptionen" cluster gained two rows and now reaches
+  // the map coordinates these drags target; collapse it (IDL `open`, never
+  // `getAttribute`) so nothing but the map sits under them.
+  const options = page.locator('details.route-layer-controls-disclosure');
+  if (await options.evaluate((el) => (el as HTMLDetailsElement).open)) {
+    await options.locator('> summary').click();
+  }
 }
 
 /** Adds a via point through the #829 keyboard-reachable coordinate-entry
