@@ -820,6 +820,39 @@ export default function RouteLayer({
     el.addEventListener('toggle', onNativeToggle, true);
     return () => el.removeEventListener('toggle', onNativeToggle, true);
   }, [plan]);
+  // #1541: while via points are being edited the open cluster covers the map
+  // centre, so it collapses and the state from before the edit comes back
+  // afterwards. A restored state that differs from the layout default counts
+  // as a user choice, so a later resize does not re-seed it.
+  const viaEditing = viaReplanning || viaArmed;
+  const [editCollapsed, setEditCollapsed] = useState(false);
+  const [openOverride, setOpenOverride] = useState<boolean | null>(null);
+  const openBeforeEditRef = useRef<boolean | null>(null);
+  const isWideRef = useRef(isWide);
+  useEffect(() => {
+    isWideRef.current = isWide;
+  }, [isWide]);
+  useEffect(() => {
+    if (viaEditing) {
+      const details = controlsRef.current?.querySelector<HTMLDetailsElement>(
+        'details.route-layer-controls-disclosure',
+      );
+      openBeforeEditRef.current = details ? details.open : null;
+      // The pre-edit `open` is only readable from the committed DOM.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setEditCollapsed(true);
+      return;
+    }
+    const before = openBeforeEditRef.current;
+    openBeforeEditRef.current = null;
+    setEditCollapsed(false);
+    if (before !== null && (before !== isWideRef.current || userToggledDisclosureRef.current)) {
+      userToggledDisclosureRef.current = true;
+      setOpenOverride(before);
+    } else {
+      setOpenOverride(null);
+    }
+  }, [viaEditing]);
   // #63: both overlays default ON (a skipper wants the wind and the numbers
   // without hunting for checkboxes) and persist an explicit choice across
   // reloads. The toggles below stay as the clean-chart escape hatch.
@@ -1388,9 +1421,9 @@ export default function RouteLayer({
           this Disclosure on an unresponded `isWide` change (see that state's
           own comment above) — do not remove the key thinking it is inert. */}
       <Disclosure
-        key={disclosureKey}
+        key={editCollapsed ? `${disclosureKey}-edit` : disclosureKey}
         className="route-layer-controls-disclosure"
-        defaultOpen={isWide}
+        defaultOpen={editCollapsed ? false : (openOverride ?? isWide)}
         summary={t('route.controls.summary')}
       >
         {/* #297: user-invoked "fit route to view" — see this component's own

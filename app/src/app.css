@@ -805,6 +805,9 @@ select {
 .data-layer-controls {
   flex: 1 1 auto;
   min-height: 2.75rem;
+  /* Written by DataLayers.tsx so an open disclosure scrolls rather than
+     costing `.depth-legend` its room. */
+  max-height: var(--sc-depth-controls-max, none);
   overflow-y: auto;
 }
 
@@ -966,11 +969,12 @@ select {
      being unavailable, matching `useBannerHeight.ts`'s own jsdom/legacy
      guard). Per this repo's guard-asymmetry convention (the same call as
      `useBannerHeight.ts`'s own non-zero fallback): biased ABOVE the
-     plan-active two-checkbox-row cluster (46px + 0.35rem gap + 46px +
-     0.5rem*2 padding = 113.6px) rather than exactly matching it, because
-     the two failure directions are not equivalent — landing a FEW px too
-     low costs nothing but a small gap, landing too HIGH risks the legend
-     rendering under/over the compass. */
+     collapsed disclosure, the state the legend sits under on narrow (44px
+     summary + 0.5rem*2 padding), because the two failure directions are not
+     equivalent — landing a FEW px too low costs nothing but a small gap,
+     landing too HIGH risks the legend rendering under/over the compass. An
+     open disclosure is taller than this fallback, so without `ResizeObserver`
+     the pill would land inside it. */
   top: calc(var(--sc-depth-controls-height, 130px) + 60px);
   /* #598 review round 3 (Major 1 + Minor 1): a CSS-only `max-height: max(0px,
      calc(...))` + `overflow: hidden` clip was tried here and REJECTED, twice
@@ -1763,7 +1767,7 @@ select {
    `orientation: landscape` + a height ceiling is what actually distinguishes
    a short landscape phone (where the column layout is the problem) from a
    tall narrow-PORTRAIT phone (`narrowPortrait360`, `deepPortrait320`,
-   `partialPushBand375`, `wrapForcing280` in EDGE_VIEWPORTS — all width <
+   `shortPortrait375`, `wrapForcing280` in EDGE_VIEWPORTS — all width <
    height, all comfortably taller than they are wide) — those still want the
    space-efficient COLUMN layout the base rule already gives them; flipping
    them to a row would spend their scarce WIDTH instead of their (comparatively

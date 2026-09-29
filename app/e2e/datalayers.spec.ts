@@ -278,14 +278,11 @@ test('depth-hatch legend (#598) is reachable pre-plan, default-collapsed, and ca
 
 // #681/#1541: independent hazard-hatch toggle, a top-level row of DataLayers'
 // "Anzeigeoptionen" disclosure (no plan). That disclosure sits inside
-// `.data-layer-controls`, so what it costs `.depth-legend`'s reachability
-// budget is its OWN height: collapsed it is shorter than the two plain rows it
-// replaced, open it is taller. The guard therefore runs with the disclosure
-// OPEN — the worse state — at 820x1180 (`tabletPortrait`), the narrow-layout
-// end of the >= 820 CSS px design floor. Below that floor the open disclosure
-// can hide the legend (`legendHidden`, DataLayers.tsx); that is the accepted
-// phone-width trade-off, and the collapsed default at 375x667 is what
-// seamarks.spec.ts's #830 guard keeps pinning. The `toBeVisible()` on the
+// `.data-layer-controls`; DataLayers.tsx caps its height so an open disclosure
+// scrolls instead of costing `.depth-legend` its room. The guard runs with the
+// disclosure OPEN — the worse state — at 820x1180 (`tabletPortrait`), the
+// narrow-layout end of the >= 820 CSS px design floor; the banner-laden case
+// is pinned by the fresh-profile guard below. The `toBeVisible()` on the
 // caveat proves the binary `legendHidden` gate never fired, not the caveat's
 // position inside `.depth-legend-body`'s scrollport. The pixel assertions
 // prove the control has a REAL, independent map effect (a DOM-only assertion
@@ -380,6 +377,44 @@ test('hazard-hatch toggle (#681) sits in Anzeigeoptionen, is independent of the 
     await expect(hatchToggle).not.toBeDisabled();
     await expect(hatchToggle).not.toBeChecked();
   } finally {
+    server.kill();
+  }
+});
+
+// #1541 review Major 2: the guard above seeds the first-load banner away. A
+// fresh profile that goes offline carries at least two banners, which is the
+// state this app meets on deck, and there the open disclosure used to push the
+// legend under its room. DataLayers.tsx now caps the cluster so it scrolls
+// instead; this pins the #597 caveat staying reachable at the 820 floor.
+test('#597 legend stays reachable at 820x1180 with the disclosure open, the first-load banner up and offline', async ({
+  browser,
+}) => {
+  const server = await startPreview();
+  const context = await browser.newContext({
+    storageState: { cookies: [], origins: [] },
+    viewport: STANDARD_VIEWPORTS.tabletPortrait,
+  });
+  try {
+    const page = await context.newPage();
+    await page.goto(server.url);
+    await mapReady(page);
+    await expect(page.locator('.banner-area .banner-info:not(.reload-prompt)')).toBeVisible();
+    await context.setOffline(true);
+    await expect(page.locator('.banner-message', { hasText: 'Planung deaktiviert' })).toBeVisible();
+    // Positive control: the state under test really carries several banners.
+    expect(await page.locator('.banner-area .banner').count()).toBeGreaterThanOrEqual(2);
+
+    await openDataLayerOptions(page);
+    const legend = page.locator('details.depth-legend');
+    await expect
+      .poll(() => legend.evaluate((el) => (el as HTMLElement).hidden), {
+        message: '.depth-legend read hidden with Anzeigeoptionen open under two banners',
+      })
+      .toBe(false);
+    await page.getByText('Legende', { exact: true }).click();
+    await expect(page.getByText('Fehlende Schraffur ist keine Garantie')).toBeVisible();
+  } finally {
+    await context.close();
     server.kill();
   }
 });

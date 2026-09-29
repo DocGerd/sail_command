@@ -457,7 +457,7 @@ const AIS_STATUS_NARROW_VIEWPORTS: Record<string, Viewport> = {
   tabletPortrait: STANDARD_VIEWPORTS.tabletPortrait,
   narrowPortrait360: EDGE_VIEWPORTS.narrowPortrait360,
   deepPortrait320: EDGE_VIEWPORTS.deepPortrait320,
-  partialPushBand375: EDGE_VIEWPORTS.partialPushBand375,
+  shortPortrait375: EDGE_VIEWPORTS.shortPortrait375,
   wrapForcing280: EDGE_VIEWPORTS.wrapForcing280,
 };
 for (const [label, viewport] of Object.entries(AIS_STATUS_NARROW_VIEWPORTS)) {
@@ -1331,7 +1331,7 @@ test('#628 review Major 1: the controls cluster can be expanded at 390px without
 // Disclosure.tsx), so the cluster stops obstructing the chart on mobile —
 // the issue's own measured obstruction was 33.8%/35.4% of VIEWPORT HEIGHT at
 // 390x844/375x667 respectively, both reused as viewport entries below
-// (`phonePortrait`, `partialPushBand375`). Default-open state is
+// (`phonePortrait`, `shortPortrait375`). Default-open state is
 // layout-dependent (RouteLayer.tsx's own comment, not persisted): collapsed
 // on narrow (<1024px — exactly where the obstruction was measured), open on
 // wide (side-panel layouts have room to spare, matching the pre-#628
@@ -1354,7 +1354,7 @@ test('#628 review Major 1: the controls cluster can be expanded at 390px without
 // breakpoint — this loop does not).
 const NARROW_COLLAPSE_VIEWPORTS: Record<string, Viewport> = {
   phonePortrait: STANDARD_VIEWPORTS.phonePortrait,
-  partialPushBand375: EDGE_VIEWPORTS.partialPushBand375,
+  shortPortrait375: EDGE_VIEWPORTS.shortPortrait375,
 };
 for (const [label, viewport] of Object.entries(NARROW_COLLAPSE_VIEWPORTS)) {
   test(`#628: the map-overlay controls cluster starts collapsed and recovers map area on narrow layouts (${label}, ${viewport.width}x${viewport.height})`, async ({
@@ -1522,7 +1522,7 @@ test('#628 review Major 3: rotating from a wide to a narrow layout auto-collapse
 //
 // Deliberately only the three LANDSCAPE entries of EDGE_VIEWPORTS, not the
 // whole matrix: the PORTRAIT entries (`narrowPortrait360`, `deepPortrait320`,
-// `partialPushBand375`, `wrapForcing280`) are untouched by this fix — their
+// `shortPortrait375`, `wrapForcing280`) are untouched by this fix — their
 // `.map-stack-tl` stays the base COLUMN layout, which is the space-efficient
 // choice for a tall-narrow viewport (see the media query's own comment) —
 // and two of them (`deepPortrait320`, `wrapForcing280`) suppress ScaleBar for

@@ -1628,3 +1628,78 @@ describe('RouteLayer depth-overlay rows (#1541)', () => {
     }
   });
 });
+
+// #1541 review Major 1: the open cluster covers the map while via points are
+// edited (draft differs from the committed route, or a tap-insert is armed),
+// so it collapses for the edit and the earlier state returns afterwards.
+describe('RouteLayer options cluster during via editing (#1541)', () => {
+  function renderEditable(edit: { viaReplanning?: boolean; viaArmed?: boolean } = {}) {
+    hoisted.map = makeFakeMap();
+    const plan = makePlan();
+    const element = (e: { viaReplanning?: boolean; viaArmed?: boolean }) => (
+      <RouteLayer
+        plan={plan}
+        rig="genoa"
+        activeLegIndex={null}
+        draftViaPoints={[]}
+        viaReplanning={e.viaReplanning ?? false}
+        onViaDragEnd={async () => true}
+        onRouteLineInsert={() => {}}
+        viaArmed={e.viaArmed ?? false}
+        onArmedRouteTapInsert={() => {}}
+      />
+    );
+    const utils = render(element(edit));
+    const details = () =>
+      utils.container.querySelector<HTMLDetailsElement>('details.route-layer-controls-disclosure')!;
+    return { details, setEdit: (e: typeof edit) => utils.rerender(element(e)) };
+  }
+
+  // Mutation: deleting the viaEditing effect leaves the cluster open in the
+  // edit state (reds the collapse assertions); dropping the restore leaves it
+  // closed afterwards (reds the last assertion).
+  it('collapses when editing starts and restores the layout default when it ends', () => {
+    setMatchMedia(true);
+    const { details, setEdit } = renderEditable();
+    expect(details().open).toBe(true);
+    setEdit({ viaReplanning: true });
+    expect(details().open).toBe(false);
+    setEdit({});
+    expect(details().open).toBe(true);
+  });
+
+  it('restores a state the user opened by hand (narrow default is closed)', () => {
+    setMatchMedia(false);
+    const { details, setEdit } = renderEditable();
+    expect(details().open).toBe(false);
+    fireEvent.click(details().querySelector('summary')!);
+    expect(details().open).toBe(true);
+    setEdit({ viaReplanning: true });
+    expect(details().open).toBe(false);
+    setEdit({});
+    expect(details().open).toBe(true);
+  });
+
+  it('keeps a cluster the user closed by hand closed after editing (wide default is open)', () => {
+    setMatchMedia(true);
+    const { details, setEdit } = renderEditable();
+    fireEvent.click(details().querySelector('summary')!);
+    expect(details().open).toBe(false);
+    setEdit({ viaReplanning: true });
+    setEdit({});
+    expect(details().open).toBe(false);
+  });
+
+  it('collapses for an armed tap-insert too, and starts collapsed when mounted mid-edit', () => {
+    setMatchMedia(true);
+    const armed = renderEditable();
+    armed.setEdit({ viaArmed: true });
+    expect(armed.details().open).toBe(false);
+    armed.setEdit({});
+    expect(armed.details().open).toBe(true);
+    cleanup();
+
+    const midEdit = renderEditable({ viaReplanning: true });
+    expect(midEdit.details().open).toBe(false);
+  });
+});

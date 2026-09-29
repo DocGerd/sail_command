@@ -54,15 +54,17 @@ results table at the bottom, and note it in the box below the check.
       Below it and the compass, open the collapsed **Legend** ("Legende")
       disclosure: it explains the cautious-reading hatch and states that
       unsurveyed/drying water carries no hatching (#598/#597), and holds no
-      checkbox. With the hatch off, or "Water depths" off, the "Cautious-reading
-      hatch" swatch row and the basis sentence leave the legend while the
-      unsurveyed-water caveat stays (#839). In short landscape, and in any
-      narrow layout with too little height left below the compass (a
-      phone-width screen with Display options open, for one) — this legend is deliberately
-      not rendered at all here, by design and not a missing control (in that
-      specific combination, short landscape with no route planned, neither
-      this legend nor the plan-active one below is shown; that is expected,
-      not a "never neither" violation).
+      checkbox. With the hatch off, or "Water depths" off, the
+      "Cautious-reading hatch" swatch row and the basis sentence leave the
+      legend while the unsurveyed-water caveat stays (#839). Opening
+      Display options never hides the Legend: the rows scroll inside their
+      own box instead. In short landscape, and in any narrow layout with too
+      little height left below the compass even with Display options
+      collapsed, the Legend is deliberately not rendered at all, by design
+      and not a missing control (in that specific combination, short
+      landscape with no route planned, neither this legend nor the
+      plan-active one below is shown; that is expected, not a "never
+      neither" violation).
       **If a route is already showing** — this browser restores the last
       session's plan on load (#113), so opening the app is not guaranteed to
       start with none — clear it with **Export GPX** (route summary)

@@ -70,6 +70,8 @@ import type { Harbor, LatLon, MaskMeta, SeamarkProperties, ViaPoint } from '../t
  * the same corner. `app.css`'s #909 comment carries the margin table.
  */
 export const MAP_CHROME_TOP_PX = 8;
+// Twin of `.data-layer-controls`' vertical padding (0.5rem each side, app.css).
+const CLUSTER_PADDING_PX = 16;
 
 // Always-mounted host for the plan-independent map data layers (#38 harbor
 // markers, #39 depth overlay). Deliberately a SIBLING of RouteLayer, not part
@@ -1245,6 +1247,11 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
     // renders 61px, not the 3rem the constant assumed (MEASURED 2026-09-05
     // on a real preview build, all 12 STANDARD+EDGE viewports).
     const mapAreaEl = document.querySelector<HTMLElement>('.map-area');
+    const setControlsMax = (px: number | null) =>
+      document.documentElement.style.setProperty(
+        '--sc-depth-controls-max',
+        px === null ? 'none' : `${px}px`,
+      );
     const recompute = () => {
       document.documentElement.style.setProperty(
         '--sc-depth-controls-height',
@@ -1264,6 +1271,7 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
       // Wide layout: no sheet-overlay ceiling exists at all (app.css's own
       // wide-layout comment on `.depth-legend-body`) — always reachable.
       if (window.matchMedia('(min-width: 1024px)').matches) {
+        setControlsMax(null);
         setLegendHidden(false);
         return;
       }
@@ -1277,6 +1285,7 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
       // class's scarce height budget on the compass and the two PRIMARY
       // toggles; the legend simply does not fit there and says so.
       if (window.matchMedia(SHORT_LANDSCAPE_QUERY).matches) {
+        setControlsMax(null);
         setLegendHidden(true);
         return;
       }
@@ -1335,18 +1344,17 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
         mapAreaEl !== null &&
         getComputedStyle(mapAreaEl).getPropertyValue('--sc-map-grid-rows').trim() === '1';
       const bannerHeightPx = bannerEl ? bannerEl.getBoundingClientRect().height : 0;
+      // Room for the controls cluster plus the legend below it.
       const budgetPx = gridRows
         ? mapRowPx -
           MAP_CHROME_TOP_PX -
           (window.innerHeight * 0.55 - toastHeightPx) -
           8 - // 0.5rem, the gap this cluster leaves above the sheet
-          el.getBoundingClientRect().height -
           60 // gap + compass + gap, matching `.depth-legend`'s own `top`
         : window.innerHeight -
           (56 + bannerHeightPx) - // 3.5rem + banner: the pre-#909 clearance push
           window.innerHeight * 0.55 -
           8 - // 0.5rem
-          el.getBoundingClientRect().height -
           60;
       // #641: TWINNED to `app.css`'s `.depth-legend > summary { min-height:
       // 44px }` — the legend's whole COLLAPSED box, since #638's chrome
@@ -1355,7 +1363,19 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
       // two together (both the number AND the zero-vertical-padding property
       // that makes the number the right one); read that file's header before
       // changing either side.
-      setLegendHidden(budgetPx < LEGEND_COLLAPSED_HEIGHT_PX);
+      //
+      // An open disclosure must not cost the legend its room: cap the cluster
+      // so the legend still fits and let the rows scroll. Applied only when
+      // the cap leaves the collapsed summary row intact (otherwise the legend
+      // is hidden regardless) and only while a legend exists to protect.
+      const maxControlsPx = budgetPx - LEGEND_COLLAPSED_HEIGHT_PX;
+      setControlsMax(
+        document.querySelector('.depth-legend') !== null &&
+          maxControlsPx >= LEGEND_COLLAPSED_HEIGHT_PX + CLUSTER_PADDING_PX
+          ? maxControlsPx
+          : null,
+      );
+      setLegendHidden(budgetPx - el.getBoundingClientRect().height < LEGEND_COLLAPSED_HEIGHT_PX);
     };
     const ro = new ResizeObserver(recompute);
     ro.observe(el);
@@ -1382,6 +1402,7 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
     recompute();
     return () => {
       ro.disconnect();
+      document.documentElement.style.removeProperty('--sc-depth-controls-max');
       window.removeEventListener('resize', recompute);
     };
   }, []);

@@ -1122,12 +1122,6 @@ test('#208 review "Major 2" / #368: the offline banner and .map-stack-tl no long
 // outrank the passive, Tier-0 scale bar, so honest suppression here is the
 // accepted answer — pinned explicitly rather than left as an undisclosed
 // side effect of the #368 push.
-// #1541: the collapsed "Anzeigeoptionen" is shorter than the two plain rows it
-// replaced, which moved this band to shorter viewports (375x667 no longer
-// flips). The height was re-found by sweeping it at 375 wide, banner absent
-// vs present; keep it mid-band, where the banner is what tips suppression.
-const PARTIAL_PUSH_BAND = { width: EDGE_VIEWPORTS.partialPushBand375.width, height: 560 };
-
 test('#368 fix-wave: partial-push band (375 wide) — the options summary clears the banner, scale bar honestly suppresses', async ({
   page,
 }) => {
@@ -1159,8 +1153,14 @@ test('#368 fix-wave: partial-push band (375 wide) — the options summary clears
       .click({ timeout: 5_000 })
       .catch(() => {});
 
-    await page.setViewportSize(PARTIAL_PUSH_BAND);
+    await page.setViewportSize(EDGE_VIEWPORTS.partialPushBand375);
     await page.getByRole('tab', { name: 'Planen' }).click();
+
+    // Mid-band means the bar is visible BEFORE the banner: the banner is what
+    // tips suppression, and a drifted height fails here rather than passing.
+    await expect
+      .poll(() => page.locator('.scale-bar').getAttribute('class'), { timeout: 10_000 })
+      .not.toMatch(/\bscale-bar-suppressed\b/);
 
     await page.context().setOffline(true);
     const banner = page.locator('.banner-message', { hasText: 'Planung deaktiviert' });
