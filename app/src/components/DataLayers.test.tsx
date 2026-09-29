@@ -1071,6 +1071,9 @@ describe('#629 depth contours', () => {
 // the short-circuit branch with no geometry mocking.
 describe('#1541: contour layers follow the toggle alone, whatever the legend state', () => {
   class FakeResizeObserver {
+    constructor(cb?: ResizeObserverCallback) {
+      void cb;
+    }
     observe() {}
     unobserve() {}
     disconnect() {}

@@ -35,6 +35,9 @@ import PanelResizer from './PanelResizer';
 // ONGOING resize, so the fake never needs to invoke its callback.
 class FakeResizeObserver {
   observed: Element | null = null;
+  constructor(cb?: ResizeObserverCallback) {
+    void cb;
+  }
   observe(el: Element) {
     this.observed = el;
   }
