@@ -126,31 +126,6 @@ describe('#629 contours.json is tied to the shipped mask', () => {
 });
 
 describe('#629 differential: pipeline cell classification vs cautiousDepthLowerBoundM', () => {
-  for (const levelM of CONTOUR_LEVELS_M) {
-    it(`level ${levelM} m: sampled segments separate above/below cells`, () => {
-      const feature = contours.features.find(
-        (f) => f.properties.kind === 'contour' && f.properties.levelM === levelM,
-      );
-      expect(feature, `no contour feature for level ${levelM} m`).toBeDefined();
-      const samples = sampleStride(segmentsOf(feature!), MAX_SAMPLES_PER_FEATURE);
-      expect(samples.length, `zero sampled segments for level ${levelM} m`).toBeGreaterThan(0);
-      for (const seg of samples) {
-        const { a, b } = cellsAcross(seg);
-        expect(a, 'level-line edge must be strictly interior').not.toBeNull();
-        expect(b, 'level-line edge must be strictly interior').not.toBeNull();
-        const byteA = byteAt(a!.row, a!.col);
-        const byteB = byteAt(b!.row, b!.col);
-        expect(byteA, 'level line must separate two non-zero (water) cells').not.toBe(0);
-        expect(byteB, 'level line must separate two non-zero (water) cells').not.toBe(0);
-        const aboveA = atOrAboveLevel(byteA, levelM);
-        const aboveB = atOrAboveLevel(byteB, levelM);
-        expect(aboveA, 'segment must separate above/below, not two same-side cells').not.toBe(
-          aboveB,
-        );
-      }
-    });
-  }
-
   it('no-data edge: sampled segments separate byte-0 from non-zero, or sit on the outer boundary of a non-zero cell', () => {
     const feature = contours.features.find((f) => f.properties.kind === 'no-data');
     expect(feature, 'no no-data feature').toBeDefined();
@@ -231,23 +206,7 @@ function expectExactEdgeSet(feature: ContourFeature, expected: Set<string>): voi
   expect(extra.slice(0, 5), `${extra.length} unexpected edges`).toEqual([]);
 }
 
-describe('#629 completeness: every qualifying edge is emitted exactly once', () => {
-  for (const levelM of CONTOUR_LEVELS_M) {
-    it(`level ${levelM} m`, () => {
-      const feature = contours.features.find(
-        (f) => f.properties.kind === 'contour' && f.properties.levelM === levelM,
-      )!;
-      expectExactEdgeSet(
-        feature,
-        expectedEdgeKeys(
-          (b0, b1) =>
-            b0 !== 0 && b1 !== 0 && atOrAboveLevel(b0, levelM) !== atOrAboveLevel(b1, levelM),
-          false,
-        ),
-      );
-    });
-  }
-
+describe('#629 completeness: every qualifying no-data edge is emitted exactly once', () => {
   it('no-data edge', () => {
     const feature = contours.features.find((f) => f.properties.kind === 'no-data')!;
     expectExactEdgeSet(
@@ -255,4 +214,275 @@ describe('#629 completeness: every qualifying edge is emitted exactly once', () 
       expectedEdgeKeys((b0, b1) => (b0 === 0) !== (b1 === 0), true),
     );
   });
+});
+
+type Cell = readonly [row: number, col: number];
+
+/** Floor/ceil of a / b for integers a >= 0, b > 0 — exact, no float division. */
+function floorDiv(a: number, b: number): number {
+  return (a - (a % b)) / b;
+}
+function ceilDiv(a: number, b: number): number {
+  return floorDiv(a + b - 1, b);
+}
+
+/**
+ * Mirrors pipeline/build_contours.py's chord_cells: for an axis-aligned
+ * segment, the cell pair beside each unit edge it lies on; otherwise every
+ * cell whose open interior the open segment crosses. Exact in integers,
+ * which is sound because smoothed vertices stay on the vertex lattice
+ * (vertexIndex's own caveat).
+ */
+function chordCells(seg: Segment): { axis: boolean; cells: Cell[] } {
+  const v0 = vertexIndex(seg.p0);
+  const v1 = vertexIndex(seg.p1);
+  const cells: Cell[] = [];
+  if (v0.row === v1.row) {
+    for (let c = Math.min(v0.col, v1.col); c < Math.max(v0.col, v1.col); c++)
+      cells.push([v0.row - 1, c], [v0.row, c]);
+    return { axis: true, cells };
+  }
+  if (v0.col === v1.col) {
+    for (let r = Math.min(v0.row, v1.row); r < Math.max(v0.row, v1.row); r++)
+      cells.push([r, v0.col - 1], [r, v0.col]);
+    return { axis: true, cells };
+  }
+  const [a, b] = v0.col < v1.col ? [v0, v1] : [v1, v0];
+  const dc = b.col - a.col;
+  const dr = b.row - a.row;
+  for (let c = a.col; c < b.col; c++) {
+    const ya = a.row * dc + dr * (c - a.col);
+    const yb = a.row * dc + dr * (c + 1 - a.col);
+    for (let r = floorDiv(Math.min(ya, yb), dc); r < ceilDiv(Math.max(ya, yb), dc); r++)
+      cells.push([r, c]);
+  }
+  return { axis: false, cells };
+}
+
+function inGrid([r, c]: Cell): boolean {
+  return r >= 0 && r < maskMeta.rows && c >= 0 && c < maskMeta.cols;
+}
+
+function cellKey([r, c]: Cell): number {
+  return (r + 1) * (maskMeta.cols + 2) + (c + 1);
+}
+
+function levelFeature(levelM: number): ContourFeature {
+  const feature = contours.features.find(
+    (f) => f.properties.kind === 'contour' && f.properties.levelM === levelM,
+  );
+  expect(feature, `no contour feature for level ${levelM} m`).toBeDefined();
+  return feature!;
+}
+
+function qualifyingLevelEdges(levelM: number): Set<string> {
+  return expectedEdgeKeys(
+    (b0, b1) => b0 !== 0 && b1 !== 0 && atOrAboveLevel(b0, levelM) !== atOrAboveLevel(b1, levelM),
+    false,
+  );
+}
+
+/** The two cells an `H:`/`V:` unit-edge key separates. */
+function edgeKeyCells(key: string): [Cell, Cell] {
+  const [kind, fixed, along] = key.split(':') as [string, string, string];
+  const f = Number(fixed);
+  const a = Number(along);
+  return kind === 'H'
+    ? [
+        [f - 1, a],
+        [f, a],
+      ]
+    : [
+        [a, f - 1],
+        [a, f],
+      ];
+}
+
+// Level lines are smoothed (#1540) by shortcutting the staircase, never by
+// moving it: a line keeps a subsequence of its own staircase vertices, and a
+// chord is taken only if it and every shorter chord from the same start stay
+// in the closure of the at-or-above-L cells.
+// Cells are classified here by cautiousDepthLowerBoundM, never by the pipeline.
+describe('#1540 smoothed level lines stay on the deep side of their staircase', () => {
+  for (const levelM of CONTOUR_LEVELS_M) {
+    it(`level ${levelM} m: every segment lies in the closure of the at-or-above-level cells`, () => {
+      const deep = (cell: Cell): boolean =>
+        inGrid(cell) && atOrAboveLevel(byteAt(cell[0], cell[1]), levelM);
+      const segs = segmentsOf(levelFeature(levelM));
+      const violations: string[] = [];
+      let diagonal = 0;
+      for (const seg of segs) {
+        const { axis, cells } = chordCells(seg);
+        if (axis) {
+          for (let k = 0; k < cells.length; k += 2)
+            if (!deep(cells[k]!) && !deep(cells[k + 1]!))
+              violations.push(`${JSON.stringify(seg)} lies on an edge with no deep cell beside it`);
+        } else {
+          diagonal++;
+          const shallow = cells.filter((cell) => !deep(cell));
+          if (shallow.length > 0)
+            violations.push(
+              `${JSON.stringify(seg)} crosses shallow cells ${JSON.stringify(shallow)}`,
+            );
+        }
+      }
+      expect(
+        diagonal,
+        'no smoothed (non-axis) segment — the guard would be vacuous',
+      ).toBeGreaterThan(0);
+      expect(violations.slice(0, 5), `${violations.length} segments on the shallow side`).toEqual(
+        [],
+      );
+    });
+
+    it(`level ${levelM} m: every vertex is a vertex of the level's staircase`, () => {
+      const vertices = new Set<string>();
+      for (const key of qualifyingLevelEdges(levelM)) {
+        const [kind, fixed, along] = key.split(':') as [string, string, string];
+        const f = Number(fixed);
+        const a = Number(along);
+        const ends = kind === 'H' ? [`${f}:${a}`, `${f}:${a + 1}`] : [`${a}:${f}`, `${a + 1}:${f}`];
+        ends.forEach((v) => vertices.add(v));
+      }
+      const stray: string[] = [];
+      for (const line of levelFeature(levelM).geometry.coordinates)
+        for (const p of line) {
+          const { row, col } = vertexIndex([p[0]!, p[1]!]);
+          if (!vertices.has(`${row}:${col}`)) stray.push(`${row}:${col}`);
+        }
+      expect(stray.slice(0, 5), `${stray.length} vertices off the staircase`).toEqual([]);
+    });
+
+    it(`level ${levelM} m: every qualifying edge borders a cell a smoothed segment touches`, () => {
+      const touched = new Set<number>();
+      for (const seg of segmentsOf(levelFeature(levelM)))
+        for (const cell of chordCells(seg).cells) touched.add(cellKey(cell));
+      const expected = qualifyingLevelEdges(levelM);
+      expect(expected.size, 'expected edge set is empty').toBeGreaterThan(0);
+      const missing = [...expected].filter((key) =>
+        edgeKeyCells(key).every((cell) => !touched.has(cellKey(cell))),
+      );
+      expect(missing.slice(0, 5), `${missing.length} qualifying edges not covered`).toEqual([]);
+    });
+  }
+});
+
+type LatticeSegment = readonly [r0: number, c0: number, r1: number, c1: number];
+
+// Odd numerators over a large power of two make a sample landing on a segment
+// unlikely; the ties assertion fails closed if one does.
+const SCALE = 1 << 20;
+const SAMPLE_X = 523_229;
+const SAMPLE_Y = 460_001;
+
+function deepCells(levelM: number): Uint8Array {
+  const lut = new Uint8Array(256);
+  for (let b = 0; b < 256; b++) lut[b] = atOrAboveLevel(b, levelM) ? 1 : 0;
+  const out = new Uint8Array(maskMeta.rows * maskMeta.cols);
+  for (let i = 0; i < out.length; i++) out[i] = lut[maskBytes[i]!]!;
+  return out;
+}
+
+/** Vertical unit edges between a deep cell and a byte-0 or out-of-grid neighbour. */
+function closingSegments(deep: Uint8Array): LatticeSegment[] {
+  const { rows, cols } = maskMeta;
+  const segs: LatticeSegment[] = [];
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c <= cols; c++) {
+      const leftDeep = c > 0 && deep[r * cols + c - 1] === 1;
+      const rightDeep = c < cols && deep[r * cols + c] === 1;
+      const leftZero = c === 0 || byteAt(r, c - 1) === 0;
+      const rightZero = c === cols || byteAt(r, c) === 0;
+      if ((leftDeep && rightZero) || (rightDeep && leftZero)) segs.push([r, c, r + 1, c]);
+    }
+  return segs;
+}
+
+/**
+ * Even-odd interior of a segment set, sampled at one non-lattice point per
+ * cell, (col + SAMPLE_X / SCALE, row + SAMPLE_Y / SCALE). Scanline crossings are compared in exact
+ * integer arithmetic; a sample lying exactly on a segment counts as a tie.
+ */
+function evenOddInterior(segs: readonly LatticeSegment[]): { inside: Uint8Array; ties: number } {
+  const { rows, cols } = maskMeta;
+  const toggles = new Uint8Array(rows * (cols + 1));
+  let ties = 0;
+  for (const [r0, c0, r1, c1] of segs) {
+    if (r0 === r1) continue;
+    const [ya, xa, yb, xb] = r0 < r1 ? [r0, c0, r1, c1] : [r1, c1, r0, c0];
+    const dy = yb - ya;
+    const dx = xb - xa;
+    for (let r = ya; r < yb; r++) {
+      const num = SCALE * xa * dy + (SCALE * (r - ya) + SAMPLE_Y) * dx - SAMPLE_X * dy;
+      const den = SCALE * dy;
+      if (num % den === 0) ties++;
+      const first = Math.min(cols, Math.max(0, Math.floor(num / den) + 1));
+      toggles[r * (cols + 1) + first]! ^= 1;
+    }
+  }
+  const inside = new Uint8Array(rows * cols);
+  for (let r = 0; r < rows; r++) {
+    let parity = 0;
+    for (let c = 0; c < cols; c++) {
+      parity ^= toggles[r * (cols + 1) + c]!;
+      inside[r * cols + c] = parity;
+    }
+  }
+  return { inside, ties };
+}
+
+function compareToDeep(inside: Uint8Array, deep: Uint8Array) {
+  let shownDeepButShallow = 0;
+  let shownShallowButDeep = 0;
+  let deepCount = 0;
+  const examples: string[] = [];
+  for (let i = 0; i < deep.length; i++) {
+    deepCount += deep[i]!;
+    if (inside[i] === 1 && deep[i] === 0) {
+      shownDeepButShallow++;
+      if (examples.length < 5)
+        examples.push(`${Math.floor(i / maskMeta.cols)}:${i % maskMeta.cols}`);
+    }
+    if (inside[i] === 0 && deep[i] === 1) shownShallowButDeep++;
+  }
+  return { shownDeepButShallow, shownShallowButDeep, deepCount, examples };
+}
+
+// #1540: the region a level's lines enclose, closed by the deep cells' own
+// no-data and grid edges, must lie inside the at-or-above-level cells. This
+// is a point-in-polygon model independent of the pipeline's chord test.
+describe('#1540 region: the area shown at or above a level is a subset of those cells', () => {
+  for (const levelM of CONTOUR_LEVELS_M) {
+    it(`level ${levelM} m: control — the unsmoothed staircase encloses exactly the deep set`, () => {
+      const deep = deepCells(levelM);
+      const staircase: LatticeSegment[] = [...qualifyingLevelEdges(levelM)]
+        .filter((key) => key.startsWith('V:'))
+        .map((key) => {
+          const [, fixed, along] = key.split(':').map(Number) as [number, number, number];
+          return [along, fixed, along + 1, fixed];
+        });
+      const { inside, ties } = evenOddInterior([...staircase, ...closingSegments(deep)]);
+      const cmp = compareToDeep(inside, deep);
+      expect(ties, 'sample point on a segment').toBe(0);
+      expect(cmp.deepCount, 'no deep cells at this level').toBeGreaterThan(0);
+      expect(cmp.shownDeepButShallow, 'control: shown deep but shallow').toBe(0);
+      expect(cmp.shownShallowButDeep, 'control: shown shallow but deep').toBe(0);
+    });
+
+    it(`level ${levelM} m: the smoothed lines never show a shallow cell as deep`, () => {
+      const deep = deepCells(levelM);
+      const smoothed: LatticeSegment[] = segmentsOf(levelFeature(levelM)).map((seg) => {
+        const a = vertexIndex(seg.p0);
+        const b = vertexIndex(seg.p1);
+        return [a.row, a.col, b.row, b.col];
+      });
+      const { inside, ties } = evenOddInterior([...smoothed, ...closingSegments(deep)]);
+      const cmp = compareToDeep(inside, deep);
+      expect(ties, 'sample point on a segment').toBe(0);
+      expect(
+        cmp.examples,
+        `${cmp.shownDeepButShallow} shallow cells shown at or above ${levelM} m`,
+      ).toEqual([]);
+    });
+  }
 });
