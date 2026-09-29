@@ -14,7 +14,7 @@ import { canPinRegions, pinImportedPlans, pinOutcomeDone, saveDataRequested } fr
 import { pinRegionsForPlan } from './regionPinning';
 
 // #1533: the flag means the batch once fully succeeded, not that the regions
-// are present now (only the chip's retry repairs a cleared CacheStorage). Keys
+// are present now. Keys
 // are scoped by the region cache name (deployment slug + cache version), so
 // /uat/ and prod do not share them and a REGION_CACHE_VERSION bump re-runs it.
 const KEY_SUFFIX = `@${regionCacheName(import.meta.env.BASE_URL)}`;
@@ -72,7 +72,7 @@ async function pinAllSaved(): Promise<boolean> {
 
 export async function pinAllSavedPlansOnce(): Promise<void> {
   if (batchPinnedThisSession) return;
-  if (!canPinRegions() || saveDataRequested()) return;
+  if (!canPinRegions() || saveDataRequested() || navigator.onLine === false) return;
   batchPinnedThisSession = true;
   if (await pinAllSaved()) {
     safeSetItem(BACKFILL_DONE_KEY, '1');

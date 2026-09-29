@@ -478,6 +478,22 @@ describe('attempt cap and idle deferral (#1533)', () => {
     await vi.waitFor(() => expect(pinImportedPlans).toHaveBeenCalledTimes(1));
   });
 
+  it('an offline launch reads nothing and counts no failure; a later online launch runs', async () => {
+    const first = await oneLoad(FAILED);
+    vi.stubGlobal('navigator', { serviceWorker: navigator.serviceWorker, onLine: false });
+    first.armBatchPinOnFirstControl();
+    await settle();
+
+    expect(first.listPlans).not.toHaveBeenCalled();
+    expect(localStorage.getItem(first.BACKFILL_FAILURES_KEY)).toBeNull();
+    expect(flagSet(first.BACKFILL_DONE_KEY)).toBe(false);
+
+    const online = await oneLoad(FULL);
+    online.armBatchPinOnFirstControl();
+
+    await vi.waitFor(() => expect(flagSet(online.BACKFILL_DONE_KEY)).toBe(true));
+  });
+
   it('defers the controlled-at-arm backfill until the browser is idle', async () => {
     let idle: (() => void) | undefined;
     const requestIdleCallback = vi.fn((cb: () => void) => {
