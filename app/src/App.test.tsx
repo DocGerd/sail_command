@@ -4547,7 +4547,7 @@ describe('#885: segment modes (App wiring)', () => {
       );
     }
 
-    // Only the 15 m stretch is marked motor; the merged ~33 nm segment is Auto.
+    // Only the 15 m stretch is marked motor; the merged segment is Auto.
     const waypoint1 = de['planner.segment.waypoint'].replace('{index}', '1');
     fireEvent.click(
       within(segmentGroup(1, de['planner.origin.label'], waypoint1)).getByRole('button', {
