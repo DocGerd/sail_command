@@ -83,15 +83,18 @@ state lives in CacheStorage and is re-derived on every read, #1164) and a
 small amount of
 `localStorage`. Every access goes through the wrappers in
 `app/src/lib/storage.ts` (`safeGetItem`, `safeSetItem`, `safeRemoveItem`),
-which tolerate private-mode failures, and no other non-test source file calls
-`localStorage` directly. Keys are built from constants, some per boat or per
-deployment, so this document does not list them; enumerate call sites with
+which tolerate private-mode failures, and no other non-test file under
+`app/src` calls `localStorage` directly. Keys are built from constants, some
+per boat or per deployment, so this document does not list them; enumerate call
+sites with
 `grep -rnE 'safe(Get|Set|Remove)Item|usePersisted(Toggle|Number)' app/src`.
-The selected boat id is stored there; it determines the draft and hence the
-derived safety depth gate, so it is validated against the catalogue on every
-read. The AIS key is not stored there; it is a `Settings` field held in the
-IndexedDB `settings` store. There are no cookies and no analytics, telemetry,
-or tracking of any kind.
+The selected boat id is stored in `localStorage`; it determines the draft and hence the derived safety depth gate, so it is validated against the
+catalogue on every read. The AIS key is not stored in `localStorage`; it is a
+`Settings` field held in the IndexedDB `settings` store. The only
+`sessionStorage` use under `app/src` is one flag,
+`sailcommand-sw-recovery-reloaded` (`app/src/services/swRecovery.ts`), set to
+`1` before a one-shot page reload so that recovery cannot loop. There are no
+cookies and no analytics, telemetry, or tracking of any kind.
 
 ## 3. Trust boundaries
 
