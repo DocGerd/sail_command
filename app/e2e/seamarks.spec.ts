@@ -1265,8 +1265,8 @@ interface LegendGuardRow {
 
 const LEGEND_GUARD_ROWS: LegendGuardRow[] = [
   {
-    label: 'partialPushBand375 (375x667), list collapsed',
-    viewport: EDGE_VIEWPORTS.partialPushBand375,
+    label: 'shortPortrait375 (375x667), list collapsed',
+    viewport: EDGE_VIEWPORTS.shortPortrait375,
     listExpanded: false,
   },
   {

@@ -41,25 +41,30 @@ results table at the bottom, and note it in the box below the check.
       states what the two inputs do: departure time picks which forecast
       hours the route uses, safety depth decides which water counts as too
       shallow.
-- [ ] **Depth-hatch legend (before a route is planned).** With no route
-      showing yet, below the "Water depths" / "Seamarks" toggles and the
-      compass, open the collapsed **Legend** ("Legende") disclosure and
-      confirm it explains the cautious-reading hatch, states that
-      unsurveyed/drying water carries no hatching (#598/#597), and offers a
-      "Show hatch overlay" / "Schraffur anzeigen" checkbox that switches the
-      hatch off independently of the "Water depths" toggle itself, without
-      touching the depth-colour ramp (#681). Untick that checkbox: the
+- [ ] **Depth-hatch legend and display options (before a route is planned).**
+      With no route showing yet, the top-left map cluster is one **Display
+      options** ("Anzeigeoptionen") disclosure — open by default on a wide
+      screen, collapsed on a narrow one — holding four checkboxes:
+      "Water depths" / "Wassertiefen", "Seamarks" / "Seezeichen", "Show hatch
+      overlay" / "Schraffur anzeigen" and "Depth contours" / "Tiefenlinien"
+      (#1541). Open it, then untick "Show hatch overlay": the hatch leaves the
+      map without touching the depth-colour ramp, independently of the "Water
+      depths" toggle (#681). Untick "Water depths": the ramp goes, and the
+      hatch checkbox stays shown but disabled (#839). Tick both back on.
+      Below it and the compass, open the collapsed **Legend** ("Legende")
+      disclosure: it explains the cautious-reading hatch and states that
+      unsurveyed/drying water carries no hatching (#598/#597), and holds no
+      checkbox. With the hatch off, or "Water depths" off, the
       "Cautious-reading hatch" swatch row and the basis sentence leave the
-      legend while the checkbox itself and the unsurveyed-water caveat stay
-      — and the same two rows leave it while the "Water depths" toggle is
-      off, since the hatch is absent from the map in either case; in that
-      state the hatch checkbox is still shown but disabled (#839). Tick
-      both back on before continuing. In short landscape, and in any
-      narrow layout with too little height left below the compass, this
-      legend is deliberately not rendered at all here — by design, not a
-      missing control (in that specific combination, short landscape with no
-      route planned, neither this legend nor the plan-active one below
-      is shown; that is expected, not a "never neither" violation).
+      legend while the unsurveyed-water caveat stays (#839). Opening
+      Display options never hides the Legend: the rows scroll inside their
+      own box instead. In short landscape, and in any narrow layout with too
+      little height left below the compass even with Display options
+      collapsed, the Legend is deliberately not rendered at all, by design
+      and not a missing control (in that specific combination, short
+      landscape with no route planned, neither this legend nor the
+      plan-active one below is shown; that is expected, not a "never
+      neither" violation).
       **If a route is already showing** — this browser restores the last
       session's plan on load (#113), so opening the app is not guaranteed to
       start with none — clear it with **Export GPX** (route summary)
@@ -69,17 +74,19 @@ results table at the bottom, and note it in the box below the check.
       from elsewhere is rejected with "A point lies outside the covered
       area" and the route is **not** cleared. Then repeat this check. Once
       a route IS planned (the normal state for the rest of this runbook,
-      starting with the wind-forecast check below), this legend disappears and its
-      content moves into "Display options" → "Legend" ("Legende") instead —
-      the two never render at once (#813); see the "Display options" check
-      below.
-- [ ] **Depth contours (in the pre-route Legend from the previous check).** A "Depth contours"
-      / "Tiefenlinien" checkbox, default OFF, sits alongside the hatch
-      checkbox. Tick it: labelled contour lines at 2, 3, 5, 10, 15 and 20 m draw over the
-      depth colours, on the cautious reading, with a dashed edge where the
-      depth data ends. Untick it: the lines leave the map; the checkbox
-      itself stays available regardless of the "Water depths" toggle's
-      state (#629).
+      starting with the wind-forecast check below), the four-checkbox
+      disclosure gives way to the plain "Water depths" / "Seamarks" rows, the
+      hatch and contour checkboxes move into the route's own "Display
+      options", and this legend's content moves into "Display options" →
+      "Legend" ("Legende") — the two legends never render at once (#813); see
+      the "Display options" check below.
+- [ ] **Depth contours (in the pre-route Display options from the previous
+      check).** Tick "Depth contours" / "Tiefenlinien" (default OFF):
+      labelled contour lines at 2, 3, 5, 10, 15 and 20 m draw over the depth
+      colours, on the cautious reading, with a dashed edge where the depth
+      data ends, and the Legend gains two swatch rows explaining them.
+      Untick it: the lines leave the map; the checkbox stays available
+      regardless of the "Water depths" toggle's state (#629).
 - [ ] Confirm the wind forecast is current: plan any route for a near-term
       departure (e.g. the next full hour) and confirm the stale-forecast
       notice (§2.8) does NOT appear — if it does, stop and re-check
@@ -201,20 +208,22 @@ results table at the bottom, and note it in the box below the check.
       "Display options" control instead of always covering part of the
       chart. On a narrow/mobile-width screen it starts collapsed; on a wide
       screen it starts open. Toggling the control shows/hides the whole
-      cluster together (#628). Once a route is planned, its own nested
-      "Legend" ("Legende") disclosure also carries the depth-hatch section —
-      the hatch swatch, the basis sentence, the #597 unsurveyed-water
-      caveat, and the "Show hatch overlay" toggle, plus the "Depth contours" toggle (#629) — that lived in the
-      separate pre-plan Legend above before a route existed (#813). Check
+      cluster together (#628). Once a route is planned, "Show hatch overlay"
+      and "Depth contours" are top-level checkboxes of that same control,
+      beside the times/speeds, wind-barb and other-rig toggles (#1541), and its
+      own nested "Legend" ("Legende") disclosure also carries the depth-hatch
+      section — the hatch swatch, the basis sentence and the #597
+      unsurveyed-water caveat, and no checkbox — that lived in the separate
+      pre-plan Legend above before a route existed (#813). Check
       this nested disclosure's OWN resting state before opening it
       yourself: on narrow layouts it now starts OPEN by default (a
       different default from "Display options" itself, above), while on
       wide layouts it starts closed, unchanged from before #813. Confirm
       the default for **the width you are testing at**, and that toggling
       it by hand still works. The "Show hatch overlay" toggle behaves here
-      as in the pre-plan legend: unticked, the hatch swatch row and the
-      basis sentence leave this nested legend too, while the toggle and the
-      #597 caveat stay (#839). (To see the other default you must resize
+      as before the route: unticked, the hatch swatch row and the basis
+      sentence leave this nested legend too, while the #597 caveat stays
+      (#839). (To see the other default you must resize
       *and reload* — the default is seeded once when the route overlay
       mounts, and once you have toggled "Display options" by hand a
       resize alone will not re-seed it.)

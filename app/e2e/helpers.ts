@@ -7,7 +7,7 @@ import { spawn } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const APP_DIR = resolve(__dirname, '..');
@@ -104,7 +104,11 @@ export const EDGE_VIEWPORTS = {
   // "#231: ScaleBar is not suppressed" test.
   shortLandscape932: { width: 932, height: 430 },
   deepPortrait320: { width: 320, height: 568 },
-  partialPushBand375: { width: 375, height: 667 },
+  shortPortrait375: { width: 375, height: 667 },
+  // The height at which one banner flips ScaleBar suppression with the
+  // collapsed "Anzeigeoptionen" (#368's partial-push band, re-found by #1541);
+  // compass.spec.ts pins both sides of the flip.
+  partialPushBand375x560: { width: 375, height: 560 },
   wrapForcing280: { width: 280, height: 568 },
 } as const satisfies Record<string, Viewport>;
 
@@ -1077,4 +1081,19 @@ export function bannerHeightVar(page: Page): Promise<string> {
   return page.evaluate(() =>
     getComputedStyle(document.documentElement).getPropertyValue('--sc-banner-height').trim(),
   );
+}
+
+// #1541: DataLayers' no-plan "Anzeigeoptionen" disclosure starts collapsed
+// below the wide breakpoint, so a spec that clicks one of its rows there has to
+// open it first. Reads the IDL `open` property (never `getAttribute`, which
+// cannot tell present from absent for a boolean attribute).
+export function dataLayerOptionsSummary(page: Page): Locator {
+  return page.locator('details.data-layer-controls-disclosure > summary');
+}
+
+export async function openDataLayerOptions(page: Page): Promise<void> {
+  const details = page.locator('details.data-layer-controls-disclosure');
+  const isOpen = () => details.evaluate((el) => (el as HTMLDetailsElement).open);
+  if (!(await isOpen())) await details.locator('summary').click();
+  await expect.poll(isOpen, { message: 'Anzeigeoptionen did not open' }).toBe(true);
 }
