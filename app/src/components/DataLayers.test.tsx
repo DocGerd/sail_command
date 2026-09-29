@@ -3,10 +3,10 @@ import { useEffect } from 'react';
 import { act, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import DataLayers, { HARBOR_CIRCLE_LAYER, SEAMARKS_LAYER } from './DataLayers';
-import RouteLegend from './RouteLegend';
 import { makeFakeMap, simulateStyleReload } from '../test/fakeMaplibre';
 import { AppStateProvider, useActivePlan, useSettings } from '../state/AppState';
 import { __resetDbForTests } from '../services/db';
+import { usePersistedToggle } from '../lib/usePersistedToggle';
 import { __resetContoursForTests, type ContourAsset } from '../lib/contours';
 import { de } from '../i18n/dict.de';
 import { en } from '../i18n/dict.en';
@@ -395,6 +395,125 @@ describe('#813 legend consolidation: DataLayers suppresses .depth-legend once a 
   });
 });
 
+// #1541: the no-plan "Anzeigeoptionen" disclosure owned by DataLayers.
+function stubWideLayout(wide: boolean) {
+  let changeListener: (() => void) | null = null;
+  const mql = {
+    matches: wide,
+    media: '(min-width: 1024px)',
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn((event: string, cb: () => void) => {
+      if (event === 'change') changeListener = cb;
+    }),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  };
+  window.matchMedia = vi.fn().mockReturnValue(mql) as unknown as typeof window.matchMedia;
+  return {
+    setMatches(next: boolean) {
+      mql.matches = next;
+      changeListener?.();
+    },
+  };
+}
+
+describe('#1541 unified display options (DataLayers, no plan)', () => {
+  const originalMatchMedia = window.matchMedia;
+
+  afterEach(() => {
+    window.matchMedia = originalMatchMedia;
+    if (!originalMatchMedia) delete (window as { matchMedia?: unknown }).matchMedia;
+  });
+
+  function checkboxNames(root: ParentNode): string[] {
+    return Array.from(root.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')).map(
+      (el) => el.closest('label')?.textContent?.trim() ?? '',
+    );
+  }
+
+  // Mutation: dropping any row, or moving one back into `.depth-legend-body`,
+  // reds the exact-list assertion; the legend assertion reds on any input
+  // left in (or re-added to) the legend.
+  it('holds exactly Wassertiefen, Seezeichen, Schraffur and Tiefenlinien, and the legend holds no toggle', () => {
+    const { container } = renderDataLayers();
+    const disclosure = container.querySelector('details.data-layer-controls-disclosure');
+    expect(disclosure).not.toBeNull();
+    expect(disclosure?.querySelector('summary')?.textContent).toBe(de['route.controls.summary']);
+    expect(checkboxNames(disclosure as HTMLElement)).toEqual([
+      de['map.depth.toggle'],
+      de['map.seamarks.toggle'],
+      de['map.depth.legend.hatchToggle'],
+      de['map.depth.legend.contoursToggle'],
+    ]);
+    expect(container.querySelectorAll('.depth-legend input')).toHaveLength(0);
+    // The #597 caveat stays in the legend, independent of the rows above.
+    expect(container.querySelector('.depth-legend-body')?.textContent).toContain(
+      de['map.depth.legend.caveat'],
+    );
+  });
+
+  // Mutation: gating the disclosure on nothing (rendering it with a plan
+  // too) reds the first two assertions — RouteLayer's own "Anzeigeoptionen"
+  // would then share a name with it. Dropping the plain rows reds the last.
+  it('gives way to the two plain rows once a plan exists, so no second "Anzeigeoptionen" appears', () => {
+    const { container, rerender } = render(
+      <AppStateProvider>
+        <TestSetPlan plan={null} />
+        <DataLayers onHarborPick={() => {}} />
+      </AppStateProvider>,
+    );
+    expect(container.querySelector('details.data-layer-controls-disclosure')).not.toBeNull();
+    rerender(
+      <AppStateProvider>
+        <TestSetPlan plan={minimalPlan()} />
+        <DataLayers onHarborPick={() => {}} />
+      </AppStateProvider>,
+    );
+    expect(container.querySelector('details.data-layer-controls-disclosure')).toBeNull();
+    expect(container.textContent).not.toContain(de['route.controls.summary']);
+    expect(checkboxNames(container.querySelector('.data-layer-controls') as HTMLElement)).toEqual([
+      de['map.depth.toggle'],
+      de['map.seamarks.toggle'],
+    ]);
+  });
+
+  // Mutation: a fixed `defaultOpen` (true or false) reds one of the two legs.
+  it('opens by default on wide layouts and starts collapsed on narrow ones', () => {
+    stubWideLayout(true);
+    const wide = renderDataLayers();
+    expect(
+      wide.container.querySelector<HTMLDetailsElement>('details.data-layer-controls-disclosure')
+        ?.open,
+    ).toBe(true);
+    wide.unmount();
+
+    stubWideLayout(false);
+    const narrow = renderDataLayers();
+    expect(
+      narrow.container.querySelector<HTMLDetailsElement>('details.data-layer-controls-disclosure')
+        ?.open,
+    ).toBe(false);
+  });
+
+  it('follows a layout change until the user toggles it, then keeps the user choice', () => {
+    const mm = stubWideLayout(true);
+    const { container } = renderDataLayers();
+    const details = () =>
+      container.querySelector<HTMLDetailsElement>('details.data-layer-controls-disclosure')!;
+    expect(details().open).toBe(true);
+    act(() => mm.setMatches(false));
+    expect(details().open).toBe(false);
+
+    fireEvent.click(details().querySelector('summary')!);
+    expect(details().open).toBe(true);
+    act(() => mm.setMatches(true));
+    act(() => mm.setMatches(false));
+    expect(details().open).toBe(true);
+  });
+});
+
 describe('DataLayers style reload (#153)', () => {
   it('re-adds sources/layers and repaints current data and visibility', async () => {
     localStorage.setItem('sc-seamarks-visible', '1');
@@ -666,34 +785,22 @@ describe('#681 independent hazard-hatch toggle', () => {
   });
 });
 
-// #681 x #813 Blocker fix: RouteLegend.tsx's folded-in checkbox and
-// DataLayers.tsx's own `.depth-legend` checkbox read the SAME
-// `usePersistedToggle` keys, which now cross-instance-syncs (usePersistedToggle's
-// own #681 x #813 comment — the boolean sibling of #353 PR2's mechanism for
-// usePersistedNumber). Production is BELIEVED to never mount both surfaces at
-// once: `useActivePlan()` types `plan` as `Plan | null` with no `undefined`,
-// so DataLayers' `plan === null` and RouteLayer's `!plan`
-// (`RouteLayer.tsx:897`) are exact complements. Only HALF of that is pinned
-// **directly** by a test — the '#813 legend consolidation' describe block
-// above asserts the DataLayers half (`.depth-legend` present/absent as
-// `plan` changes);
-// the RouteLayer half (`if (!plan) return null`, which is what stops
-// RouteLegend mounting pre-plan) is pinned only indirectly —
-// `App.test.tsx`'s `renders the always-mounted depth toggle (ON by
-// default, #63) with no plan active` asserts the plan-gated cluster is
-// absent without a plan, and two `RouteLayer.test.tsx` `#628` tests mount
-// with `plan={null}`; no test names `RouteLegend` itself.
-// (`RouteLegend.test.tsx` renders `<RouteLegend />` directly, with no plan
-// gate.) This block renders both
-// UNCONDITIONALLY, on purpose, to isolate the SYNC wiring from that mounting
-// decision (which is why it does not need that mounting invariant to be
-// pinned at all to be trustworthy):
-// the composition bug the review caught was that ticking the
-// checkbox on ONE surface left DataLayers.tsx's own React state (the one its
-// layer-visibility effect actually reads) stale until a future remount,
-// which a mounting-gate test alone can never see, since it never has both
-// checkboxes live at once to compare.
-describe('#681 x #813: hazard-hatch toggle stays synced across BOTH legend surfaces', () => {
+// #681 x #813 Blocker fix, re-homed by #1541: with a plan active the hatch row
+// lives in RouteLayer, a SEPARATE `usePersistedToggle` instance on the same
+// key, while DataLayers stays the component that applies the flag to the map.
+// The probe below stands in for that second instance, so the wiring under test
+// is DataLayers' side of the sync without mounting RouteLayer's map machinery
+// (RouteLayer.test.tsx pins that ITS row writes the same key).
+function HatchFlagProbe() {
+  const [visible, setVisible] = usePersistedToggle('sc-depth-hatch-visible', true);
+  return (
+    <button type="button" data-value={String(visible)} onClick={() => setVisible(!visible)}>
+      hatchFlagProbe
+    </button>
+  );
+}
+
+describe('#681 x #1541: the hatch flag stays synced across two hook instances', () => {
   const originalGetContext = HTMLCanvasElement.prototype.getContext;
 
   beforeEach(() => {
@@ -711,65 +818,45 @@ describe('#681 x #813: hazard-hatch toggle stays synced across BOTH legend surfa
     HTMLCanvasElement.prototype.getContext = originalGetContext;
   });
 
-  // Mutation: reverting usePersistedToggle.ts to its pre-#681 form (no
-  // listenersByKey registry, `set()` only calls its own `setValue`) reds
-  // this test — `dataLayersCheckbox.checked` stays `true` and the layer
-  // stays `'visible'` after clicking the RouteLegend checkbox, because
-  // DataLayers.tsx's OWN hook instance never learns of the change.
-  it('ticking the RouteLegend checkbox updates the map layer that DataLayers itself owns', async () => {
+  async function renderWithProbe() {
     const map = makeFakeMap();
     hoisted.map = map;
-    const { container } = render(
+    const utils = render(
       <AppStateProvider>
         <DataLayers onHarborPick={() => {}} />
-        <RouteLegend />
+        <HatchFlagProbe />
       </AppStateProvider>,
     );
     await waitFor(() => {
       expect(map.sources.get(HARBOR_SOURCE)?.setData.mock.calls.length).toBeGreaterThan(0);
     });
-    const routeLegendCheckbox = container.querySelector(
-      '.route-legend-depth input[type="checkbox"]',
-    ) as HTMLInputElement;
-    const dataLayersCheckbox = container.querySelector(
-      '.depth-legend-body input[type="checkbox"]',
-    ) as HTMLInputElement;
-    expect(routeLegendCheckbox.checked).toBe(true);
-    expect(dataLayersCheckbox.checked).toBe(true);
+    return { map, ...utils };
+  }
+
+  // Mutation: reverting usePersistedToggle.ts to its pre-#681 form (no
+  // listenersByKey registry, `set()` only calls its own `setValue`) reds this
+  // test — DataLayers' own checkbox stays checked and the layer stays
+  // 'visible' after the probe flips the flag, because DataLayers' hook
+  // instance never learns of the change.
+  it("another instance flipping the flag updates the map layer DataLayers owns and DataLayers' own checkbox", async () => {
+    const { map, getByText, getByRole } = await renderWithProbe();
+    expect(getByRole('checkbox', { name: 'Schraffur anzeigen' })).toBeChecked();
     expect(map.layers.get(DEPTH_HATCH_LAYER)?.layout?.visibility).toBe('visible');
 
-    fireEvent.click(routeLegendCheckbox);
+    fireEvent.click(getByText('hatchFlagProbe'));
 
-    expect(dataLayersCheckbox.checked).toBe(false);
+    expect(getByRole('checkbox', { name: 'Schraffur anzeigen' })).not.toBeChecked();
     expect(map.layers.get(DEPTH_HATCH_LAYER)?.layout?.visibility).toBe('none');
     // The base ramp must stay unaffected — this is still the composite
     // depthVisible && hatchVisible condition, not a shared flag.
     expect(map.layers.get(DEPTH_LAYER)?.layout?.visibility).toBe('visible');
   });
 
-  // Same mutation as above reds this test too — sync is not directional.
-  it("ticking DataLayers' own checkbox updates RouteLegend's checkbox", async () => {
-    const map = makeFakeMap();
-    hoisted.map = map;
-    const { container } = render(
-      <AppStateProvider>
-        <DataLayers onHarborPick={() => {}} />
-        <RouteLegend />
-      </AppStateProvider>,
-    );
-    await waitFor(() => {
-      expect(map.sources.get(HARBOR_SOURCE)?.setData.mock.calls.length).toBeGreaterThan(0);
-    });
-    const routeLegendCheckbox = container.querySelector(
-      '.route-legend-depth input[type="checkbox"]',
-    ) as HTMLInputElement;
-    const dataLayersCheckbox = container.querySelector(
-      '.depth-legend-body input[type="checkbox"]',
-    ) as HTMLInputElement;
-
-    fireEvent.click(dataLayersCheckbox);
-
-    expect(routeLegendCheckbox.checked).toBe(false);
+  // Same mutation reds this test too — the sync is not directional.
+  it("ticking DataLayers' own checkbox updates the other instance", async () => {
+    const { getByText, getByRole } = await renderWithProbe();
+    fireEvent.click(getByRole('checkbox', { name: 'Schraffur anzeigen' }));
+    expect(getByText('hatchFlagProbe').getAttribute('data-value')).toBe('false');
   });
 });
 
@@ -939,54 +1026,50 @@ describe('#629 depth contours', () => {
     expect(map.layers.get(CONTOUR_LABELS_LAYER)?.beforeId).toBe('basemap-water-labels');
   });
 
-  // Mutation: reverting RouteLegend.tsx's own `contoursFetchState` to a
-  // local-only `useState` (dropping `subscribeContoursFetchState`) reds the
-  // FINAL assertion only — DataLayers' own copy still shows the error, but
-  // RouteLegend's independent state never learns of it.
-  it('shows a shared, non-blocking error on fetch failure — both legend copies agree', async () => {
+  // Mutation: moving the error paragraph back into `.depth-legend-body` (or
+  // dropping it) reds this test — it must sit beside the toggle that caused
+  // it, inside the always-reachable `.data-layer-controls`.
+  it('shows a non-blocking error beside the toggle on fetch failure, and never populates the source', async () => {
     const map = makeFakeMap();
     hoisted.map = map;
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => ({ ok: false, status: 500, json: async () => ({}) })),
     );
-    const { container } = render(
-      <AppStateProvider>
-        <DataLayers onHarborPick={() => {}} />
-        <RouteLegend />
-      </AppStateProvider>,
-    );
+    const { container, getByRole } = await renderAndSettle(map);
+    expect(container.querySelector('.depth-legend-error')).toBeNull();
+    fireEvent.click(getByRole('checkbox', { name: 'Tiefenlinien' }));
     await waitFor(() => {
-      expect(map.sources.get('sc-harbors')?.setData.mock.calls.length).toBeGreaterThan(0);
+      expect(container.querySelector('.data-layer-controls .depth-legend-error')).not.toBeNull();
     });
-    // Two "Tiefenlinien" checkboxes are mounted at once here (DataLayers'
-    // own copy and RouteLegend's) — scope to DataLayers' surface, matching
-    // the #681 x #813 sync tests' own `.depth-legend-body`/
-    // `.route-legend-depth` disambiguation. [0] is the hatch toggle (DOM
-    // order), [1] is contours.
-    const dataLayersCheckbox = container.querySelectorAll(
-      '.depth-legend-body input[type="checkbox"]',
-    )[1] as HTMLInputElement;
-    fireEvent.click(dataLayersCheckbox);
-    await waitFor(() => {
-      expect(container.querySelector('.depth-legend-body .depth-legend-error')).not.toBeNull();
-    });
+    expect(container.querySelector('.depth-legend-body .depth-legend-error')).toBeNull();
     // The layers never appear on a failed fetch — never a partial render.
     expect(map.layers.get(CONTOUR_LINES_LAYER)?.layout?.visibility).toBe('visible'); // toggle stays on
     expect(sourceData(map, CONTOURS_SOURCE).features).toHaveLength(0); // but never populated
-    expect(container.querySelector('.route-legend-depth .depth-legend-error')).not.toBeNull();
+  });
+
+  // The legend explains the lines only while they are on the map.
+  it('lists the contour swatches in the legend only while the toggle is on', async () => {
+    const map = makeFakeMap();
+    vi.stubGlobal('fetch', fetchContoursOk());
+    const { container, getByRole, queryByText } = await renderAndSettle(map);
+    expect(queryByText(de['map.depth.legend.contourLinesLabel'])).toBeNull();
+    fireEvent.click(getByRole('checkbox', { name: 'Tiefenlinien' }));
+    expect(
+      container.querySelector('.depth-legend-body .depth-legend-swatch-contour'),
+    ).not.toBeNull();
+    expect(queryByText(de['map.depth.legend.contourLinesLabel'])).toBeInTheDocument();
   });
 });
 
-// #629 maintainer ruling: contours render only while a control to turn them
-// off is reachable. `legendHidden` (DataLayers' own #598 reachability gate)
-// normally stays false in jsdom, because the computing effect early-returns
-// on `typeof ResizeObserver !== 'function'` (see that effect's own "jsdom
-// guard" comment) — a minimal stub, scoped to this block only, is what makes
-// it reachable at all. Stubbing `window.matchMedia` to answer the
-// SHORT_LANDSCAPE_QUERY sends `legendHidden` down the effect's short-circuit
-// branch directly, with no geometry mocking needed.
-describe('#629 maintainer ruling: contour effective visibility follows toggle reachability', () => {
+// #1541: contours no longer carry a reachability gate. Their toggle lives in
+// `.data-layer-controls` (no plan) or RouteLayer's disclosure (plan), neither
+// of which `legendHidden` can hide. `legendHidden` normally stays false in
+// jsdom, because the computing effect early-returns on
+// `typeof ResizeObserver !== 'function'`; a minimal stub, scoped to this
+// block, plus a `matchMedia` answer for SHORT_LANDSCAPE_QUERY sends it down
+// the short-circuit branch with no geometry mocking.
+describe('#1541: contour layers follow the toggle alone, whatever the legend state', () => {
   class FakeResizeObserver {
     observe() {}
     unobserve() {}
@@ -1002,6 +1085,7 @@ describe('#629 maintainer ruling: contour effective visibility follows toggle re
   afterEach(() => {
     window.matchMedia = originalMatchMedia;
     (window as unknown as { ResizeObserver?: unknown }).ResizeObserver = originalResizeObserver;
+    vi.unstubAllGlobals();
   });
 
   function stubReachability(shortLandscape: boolean) {
@@ -1018,49 +1102,42 @@ describe('#629 maintainer ruling: contour effective visibility follows toggle re
     })) as unknown as typeof window.matchMedia;
   }
 
-  // Mutation: reverting `contoursEffectivelyVisible` to bare `contoursVisible`
-  // (dropping `&& !(plan === null && legendHidden)`) reds this test —
-  // `map.layers.get(CONTOUR_LINES_LAYER)?.layout?.visibility` reads
-  // `'visible'` instead of `'none'`, and fetchMock IS called.
-  it('legendHidden true, no plan: turning the toggle on leaves the contour layers hidden and fetches nothing', async () => {
+  // Mutation: restoring `&& !(plan === null && legendHidden)` on the
+  // contour visibility term reds this test — the layers stay 'none' and the
+  // fetch never fires. The `hidden` assertion is the positive control that
+  // the stub really put the legend into the hidden state.
+  it('legend hidden, no plan: turning the toggle on still renders the contour layers and fetches', async () => {
     stubReachability(true);
     const map = makeFakeMap();
     const fetchMock = fetchContoursOk();
     vi.stubGlobal('fetch', fetchMock);
-    const { container } = await renderAndSettle(map);
-    // `hidden` correctly removes `.depth-legend` from the accessibility tree
-    // here (unlike a merely-collapsed `<details>`), so getByRole cannot see
-    // this checkbox — that IS the state under test. querySelector bypasses
-    // the a11y-tree exclusion, same technique the #681 x #813 sync tests use.
-    const toggle = container.querySelectorAll(
-      '.depth-legend-body input[type="checkbox"]',
-    )[1] as HTMLInputElement; // [0] is the hatch toggle (DOM order), [1] is contours
-    fireEvent.click(toggle);
-    await waitFor(() => expect(toggle.checked).toBe(true));
-    expect(map.layers.get(CONTOUR_LINES_LAYER)?.layout?.visibility).toBe('none');
-    expect(map.layers.get(CONTOUR_NODATA_LAYER)?.layout?.visibility).toBe('none');
-    expect(map.layers.get(CONTOUR_LABELS_LAYER)?.layout?.visibility).toBe('none');
-    expect(fetchMock).not.toHaveBeenCalled();
+    const { container, getByRole } = await renderAndSettle(map);
+    expect(container.querySelector<HTMLElement>('details.depth-legend')?.hidden).toBe(true);
+    fireEvent.click(getByRole('checkbox', { name: 'Tiefenlinien' }));
+    await waitFor(() =>
+      expect(map.layers.get(CONTOUR_LINES_LAYER)?.layout?.visibility).toBe('visible'),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('legendHidden false, no plan: turning the toggle on renders the contour layers', async () => {
+  it('legend not hidden, no plan: turning the toggle on renders the contour layers', async () => {
     stubReachability(false);
     const map = makeFakeMap();
     vi.stubGlobal('fetch', fetchContoursOk());
-    const { getByRole } = await renderAndSettle(map);
-    const toggle = getByRole('checkbox', { name: 'Tiefenlinien' });
-    fireEvent.click(toggle);
+    const { container, getByRole } = await renderAndSettle(map);
+    expect(container.querySelector<HTMLElement>('details.depth-legend')?.hidden).toBe(false);
+    fireEvent.click(getByRole('checkbox', { name: 'Tiefenlinien' }));
     await waitFor(() =>
       expect(map.layers.get(CONTOUR_LINES_LAYER)?.layout?.visibility).toBe('visible'),
     );
   });
 
-  it('with a plan active, the contour layers render regardless of legendHidden', async () => {
-    stubReachability(true); // would hide them with no plan — must not here
+  it('with a plan active, the persisted flag alone renders the contour layers', async () => {
+    stubReachability(true);
     const map = makeFakeMap();
     hoisted.map = map;
     vi.stubGlobal('fetch', fetchContoursOk());
-    localStorage.setItem('sc-contours-visible', '1'); // DataLayers' own toggle JSX doesn't render with a plan active
+    localStorage.setItem('sc-contours-visible', '1'); // the row is RouteLayer's once a plan exists
     render(
       <AppStateProvider>
         <TestSetPlan plan={minimalPlan()} />

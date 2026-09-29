@@ -20,6 +20,7 @@ import { makeFakeMap, simulateStyleReload } from '../test/fakeMaplibre';
 import { TEST_MASK_META, uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS, type Leg, type Plan } from '../types';
 import { defaultBoatSnapshot } from '../types';
+import { __resetContoursForTests, loadContoursAsset } from '../lib/contours';
 import { PLAN_SCHEMA_VERSION } from '../types';
 
 // #153: RouteLayer's style-reload re-add against the shared fake map (jsdom
@@ -1560,5 +1561,145 @@ describe('RouteLayer #1170: tap the route line to insert a waypoint while armed'
       />,
     );
     expect(map.layers.get(ROUTE_HIT_LAYER)?.layout?.visibility).toBe('none');
+  });
+});
+// #1541: the hatch and contour toggles are top-level rows of "Anzeigeoptionen",
+// next to the annotations/barbs/alt-rig rows, and no longer live in the legend.
+describe('RouteLayer depth-overlay rows (#1541)', () => {
+  const OPTIONS = 'details.route-layer-controls-disclosure > .sc-disclosure-body';
+
+  function rowLabels(): string[] {
+    return Array.from(document.querySelectorAll(`${OPTIONS} > label`)).map(
+      (el) => el.textContent?.trim() ?? '',
+    );
+  }
+
+  // Mutation: nesting either row back inside `.route-legend` (or dropping it)
+  // reds the exact-membership assertion and the legend-has-no-input one.
+  it('places Schraffur and Tiefenlinien directly in the options body, and none in the legend', () => {
+    renderRouteLayer(makeFakeMap(), null);
+    const labels = rowLabels();
+    expect(labels).toContain('Schraffur anzeigen');
+    expect(labels).toContain('Tiefenlinien');
+    expect(document.querySelectorAll('details.route-legend input')).toHaveLength(0);
+  });
+
+  // Mutation: dropping `disabled={!depthVisible}` from the hatch row reds the
+  // first assertion; adding the same mirror to the contours row reds the
+  // second (contours stay independent of the depth toggle).
+  it('disables the hatch row while the depth overlay is off, but never the contours row', () => {
+    localStorage.setItem('sc-depth-visible', '0');
+    renderRouteLayer(makeFakeMap(), null);
+    expect(screen.getByRole('checkbox', { name: 'Schraffur anzeigen' })).toBeDisabled();
+    expect(screen.getByRole('checkbox', { name: 'Tiefenlinien' })).not.toBeDisabled();
+  });
+
+  // Mutation: pointing a row at a different storage key reds it — the keys
+  // are what DataLayers reads to drive the map layers.
+  it('writes the persisted flags DataLayers reads', () => {
+    renderRouteLayer(makeFakeMap(), null);
+    expect(screen.getByRole('checkbox', { name: 'Schraffur anzeigen' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Tiefenlinien' })).not.toBeChecked();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Schraffur anzeigen' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Tiefenlinien' }));
+    expect(localStorage.getItem('sc-depth-hatch-visible')).toBe('0');
+    expect(localStorage.getItem('sc-contours-visible')).toBe('1');
+  });
+
+  // Mutation: dropping the error paragraph, or moving it into the legend,
+  // reds this test. The state is the module-level contours fetch state
+  // DataLayers drives; here it is set by a real failing load.
+  it('shows the shared contour fetch error beside the toggle', async () => {
+    __resetContoursForTests();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: false, status: 500, json: async () => ({}) })),
+    );
+    try {
+      renderRouteLayer(makeFakeMap(), null);
+      expect(document.querySelector(`${OPTIONS} > .depth-legend-error`)).toBeNull();
+      await act(async () => {
+        await loadContoursAsset().catch(() => {});
+      });
+      expect(document.querySelector(`${OPTIONS} > .depth-legend-error`)).not.toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+      __resetContoursForTests();
+    }
+  });
+});
+
+// #1541 review Major 1: the open cluster covers the map while via points are
+// edited (draft differs from the committed route, or a tap-insert is armed),
+// so it collapses for the edit and the earlier state returns afterwards.
+describe('RouteLayer options cluster during via editing (#1541)', () => {
+  function renderEditable(edit: { viaReplanning?: boolean; viaArmed?: boolean } = {}) {
+    hoisted.map = makeFakeMap();
+    const plan = makePlan();
+    const element = (e: { viaReplanning?: boolean; viaArmed?: boolean }) => (
+      <RouteLayer
+        plan={plan}
+        rig="genoa"
+        activeLegIndex={null}
+        draftViaPoints={[]}
+        viaReplanning={e.viaReplanning ?? false}
+        onViaDragEnd={async () => true}
+        onRouteLineInsert={() => {}}
+        viaArmed={e.viaArmed ?? false}
+        onArmedRouteTapInsert={() => {}}
+      />
+    );
+    const utils = render(element(edit));
+    const details = () =>
+      utils.container.querySelector<HTMLDetailsElement>('details.route-layer-controls-disclosure')!;
+    return { details, setEdit: (e: typeof edit) => utils.rerender(element(e)) };
+  }
+
+  // Mutation: deleting the viaEditing effect leaves the cluster open in the
+  // edit state (reds the collapse assertions); dropping the restore leaves it
+  // closed afterwards (reds the last assertion).
+  it('collapses when editing starts and restores the layout default when it ends', () => {
+    setMatchMedia(true);
+    const { details, setEdit } = renderEditable();
+    expect(details().open).toBe(true);
+    setEdit({ viaReplanning: true });
+    expect(details().open).toBe(false);
+    setEdit({});
+    expect(details().open).toBe(true);
+  });
+
+  it('restores a state the user opened by hand (narrow default is closed)', () => {
+    setMatchMedia(false);
+    const { details, setEdit } = renderEditable();
+    expect(details().open).toBe(false);
+    fireEvent.click(details().querySelector('summary')!);
+    expect(details().open).toBe(true);
+    setEdit({ viaReplanning: true });
+    expect(details().open).toBe(false);
+    setEdit({});
+    expect(details().open).toBe(true);
+  });
+
+  it('keeps a cluster the user closed by hand closed after editing (wide default is open)', () => {
+    setMatchMedia(true);
+    const { details, setEdit } = renderEditable();
+    fireEvent.click(details().querySelector('summary')!);
+    expect(details().open).toBe(false);
+    setEdit({ viaReplanning: true });
+    setEdit({});
+    expect(details().open).toBe(false);
+  });
+
+  it('collapses for an armed tap-insert too, and starts collapsed when mounted mid-edit', () => {
+    setMatchMedia(true);
+    const armed = renderEditable();
+    armed.setEdit({ viaArmed: true });
+    expect(armed.details().open).toBe(false);
+    armed.setEdit({});
+    expect(armed.details().open).toBe(true);
+    cleanup();
+
+    const midEdit = renderEditable({ viaReplanning: true });
+    expect(midEdit.details().open).toBe(false);
   });
 });

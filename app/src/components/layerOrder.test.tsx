@@ -273,3 +273,58 @@ describe('AIS/overlay layer order after a style reload (#160 x #153)', () => {
     expect(map.layerOrder).toEqual(OVERLAYS_BELOW_AIS);
   });
 });
+// #1537: the fake's `layerOrder` (app layers) and `getStyle().layers` (seeded
+// + app layers) are derived from ONE replay of the recorded placements, so
+// they must agree wherever the older two-model version diverged: several
+// seeded anchors, and a layer anchored under another anchored layer. Layers
+// are added directly, not through a component, so only the fake is under test.
+describe('fakeMaplibre layer-order model agrees with getStyle (#1537)', () => {
+  const appIds = (map: ReturnType<typeof makeFakeMap>) => {
+    const seeded = new Set(map.styleLayers.map((l) => l.id));
+    return map.getStyle().layers.flatMap((l) => (seeded.has(l.id) ? [] : [l.id]));
+  };
+
+  // Mutation: the pre-#1537 split model places B below A here (each seeded
+  // anchor was inserted at the bottom independently), reddening both
+  // assertions.
+  it('places layers anchored to two different seeded layers in seeded order', () => {
+    const map = makeFakeMap();
+    map.styleLayers.push({ id: 'S1', type: 'symbol' }, { id: 'S2', type: 'symbol' });
+    map.addLayer({ id: 'A', type: 'line' }, 'S1');
+    map.addLayer({ id: 'B', type: 'line' }, 'S2');
+    expect(map.getStyle().layers.map((l) => l.id)).toEqual(['A', 'S1', 'B', 'S2']);
+    expect(map.layerOrder).toEqual(['A', 'B']);
+  });
+
+  // Mutation: the pre-#1537 getStyle left C at the top of the stack, above
+  // the seeded layer, while `layerOrder` had it directly below A.
+  it('places a layer anchored under another anchored layer directly below it', () => {
+    const map = makeFakeMap();
+    map.styleLayers.push({ id: 'S1', type: 'symbol' });
+    map.addLayer({ id: 'A', type: 'line' }, 'S1');
+    map.addLayer({ id: 'C', type: 'line' }, 'A');
+    map.addLayer({ id: 'TOP', type: 'line' });
+    expect(map.getStyle().layers.map((l) => l.id)).toEqual(['C', 'A', 'S1', 'TOP']);
+    expect(map.layerOrder).toEqual(['C', 'A', 'TOP']);
+  });
+
+  it('keeps layerOrder equal to the app-layer subsequence of getStyle through remove and re-add', () => {
+    const map = makeFakeMap();
+    map.styleLayers.push({ id: 'S1', type: 'symbol' }, { id: 'S2', type: 'symbol' });
+    map.addLayer({ id: 'A', type: 'line' }, 'S1');
+    map.addLayer({ id: 'B', type: 'line' }, 'S2');
+    map.addLayer({ id: 'C', type: 'line' }, 'A');
+    map.removeLayer('A');
+    expect(map.layerOrder).toEqual(appIds(map));
+    map.addLayer({ id: 'A', type: 'line' }, 'S2');
+    expect(map.layerOrder).toEqual(appIds(map));
+    expect(map.layerOrder).toEqual(['C', 'B', 'A']);
+  });
+
+  it('still drops a layer whose beforeId names neither an added nor a seeded layer', () => {
+    const map = makeFakeMap();
+    map.addLayer({ id: 'A', type: 'line' }, 'missing');
+    expect(map.getLayer('A')).toBeUndefined();
+    expect(map.layerOrder).toEqual([]);
+  });
+});

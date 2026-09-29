@@ -43,9 +43,8 @@ export interface ContourAsset extends FeatureCollection<
 // or block routing (spec §2's "Delivery" paragraph).
 //
 // Shared module-level state, not component state: the toggle is offered
-// from TWO complementary surfaces (DataLayers.tsx's `.depth-legend`,
-// RouteLegend.tsx's folded-in `.route-legend-depth`, mirroring the #681
-// hatch-toggle precedent) and both must show the SAME fetch/error state —
+// from TWO surfaces (DataLayers.tsx's "Anzeigeoptionen" without a plan,
+// RouteLayer.tsx's with one) and both must show the SAME fetch/error state —
 // the boolean itself already cross-instance-syncs via usePersistedToggle's
 // own listener registry; this is that mechanism's sibling for the
 // transient (non-persisted) fetch outcome.
