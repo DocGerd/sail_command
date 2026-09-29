@@ -387,28 +387,28 @@ describe('persisted backfill flag (#1533)', () => {
   it('a flag write failure does not throw', async () => {
     stubSw(true);
     const { armBatchPinOnFirstControl, pinRegionsForPlan, BACKFILL_DONE_KEY } = await twoPlans();
-    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new Error('quota');
     });
 
     armBatchPinOnFirstControl();
 
     await vi.waitFor(() => expect(pinRegionsForPlan).toHaveBeenCalledTimes(2));
-    await new Promise((r) => setTimeout(r, 0));
-    expect(flagSet(BACKFILL_DONE_KEY)).toBe(false);
+    await vi.waitFor(() => expect(setItem).toHaveBeenCalledWith(BACKFILL_DONE_KEY, '1'));
+    await settle();
   });
 
   it('a flag write failure leaves the batch promise resolved, not rejected', async () => {
     stubSw(true);
     const { pinAllSavedPlansOnce, pinRegionsForPlan, BACKFILL_DONE_KEY } = await twoPlans();
-    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new Error('quota');
     });
 
     await expect(pinAllSavedPlansOnce()).resolves.toBeUndefined();
 
     expect(pinRegionsForPlan).toHaveBeenCalledTimes(2);
-    expect(flagSet(BACKFILL_DONE_KEY)).toBe(false);
+    expect(setItem).toHaveBeenCalledWith(BACKFILL_DONE_KEY, '1');
   });
 
   it('the key is scoped per deployment (prod vs /uat/ share one origin)', async () => {
@@ -574,6 +574,29 @@ describe('retired backfill key pruning (#1550)', () => {
 
     for (const k of UAT_STALE) expect(localStorage.getItem(k), k).toBeNull();
     for (const k of PROD_STALE) expect(localStorage.getItem(k), k).not.toBeNull();
+  });
+
+  it('prunes on an already-controlled page whose batch is skipped', async () => {
+    localStorage.setItem(PROD_STALE[0]!, '1');
+    vi.stubEnv('BASE_URL', '/sail_command/');
+    stubSw(true);
+    const mod = await loadModule();
+    localStorage.setItem(mod.BACKFILL_DONE_KEY, '1');
+
+    mod.armBatchPinOnFirstControl();
+
+    expect(localStorage.getItem(PROD_STALE[0]!)).toBeNull();
+  });
+
+  it('prunes when the browser has no service worker', async () => {
+    localStorage.setItem(PROD_STALE[0]!, '1');
+    vi.stubEnv('BASE_URL', '/sail_command/');
+    vi.stubGlobal('navigator', {});
+    const mod = await loadModule();
+
+    mod.armBatchPinOnFirstControl();
+
+    expect(localStorage.getItem(PROD_STALE[0]!)).toBeNull();
   });
 
   it('an enumeration that throws is harmless', async () => {

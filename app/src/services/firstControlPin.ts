@@ -33,7 +33,7 @@ export function __resetFirstControlPinForTests(): void {
   batchPinnedThisSession = false;
 }
 
-/** Removes this deployment's flag/count keys of retired cache versions; other deployments' keys stay. */
+/** Removes this deployment's flag/count keys of any non-current cache version (older or newer); other deployments' keys stay. */
 function pruneRetiredBackfillKeys(): void {
   for (const key of safeKeys()) {
     const prefix = [BACKFILL_DONE_PREFIX, BACKFILL_FAILURES_PREFIX].find((p) => key.startsWith(p));
