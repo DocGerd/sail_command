@@ -10,6 +10,13 @@ no-data; for b in 1..254 the cautious depth in tenths is max(0, b - 9), so a
 cell is at or above level L iff b >= 10*L + 9; b = 255 (>= 25.4 m cautious
 24.5 m) satisfies that inequality for every shipped level, so no special
 case is needed.
+
+Level lines are smoothed (#1540) by shortcutting the staircase, never by
+moving it: a line keeps a subsequence of its own staircase vertices, joined by
+chords that stay in the closure of the at-or-above-L cells, so no point of a
+smoothed line lies on the shallow side of the edges it was traced from. The
+no-data edge is left as traced. app/src/test/contoursAsset.test.ts re-checks
+the same predicate against mask.bin.
 """
 
 import hashlib
@@ -131,8 +138,10 @@ def trace_polylines(lo: np.ndarray, hi: np.ndarray) -> list[list[int]]:
     """Decompose an undirected multigraph of vertex-id edges into maximal
     edge-disjoint trails (vertex-id sequences). Every edge is consumed
     exactly once; a closed ring comes back as a path whose first and last
-    ids match. Deterministic: adjacency lists are sorted and walked
-    smallest-neighbour-first, and start vertices are visited in sorted order."""
+    ids match. Odd-degree vertices are tried as starts first, so an open line
+    is not split at an interior vertex (a seam smoothing cannot cross).
+    Deterministic: adjacency lists are sorted and walked smallest-neighbour-first,
+    and start vertices are visited in sorted order within each group."""
     adj: dict[int, list[int]] = defaultdict(list)
     for u, v in zip(lo.tolist(), hi.tolist()):
         adj[u].append(v)
@@ -141,7 +150,8 @@ def trace_polylines(lo: np.ndarray, hi: np.ndarray) -> list[list[int]]:
         lst.sort()
 
     paths: list[list[int]] = []
-    for start in sorted(adj.keys()):
+    starts = sorted(adj.keys(), key=lambda v: (len(adj[v]) % 2 == 0, v))
+    for start in starts:
         while adj[start]:
             path = [start]
             cur = start
@@ -155,9 +165,8 @@ def trace_polylines(lo: np.ndarray, hi: np.ndarray) -> list[list[int]]:
 
 
 def simplify_collinear(points: list[tuple[int, int]]) -> list[tuple[int, int]]:
-    """Merge consecutive staircase vertices that fall on the same straight
-    run — lossless (grid edges are axis-aligned unit steps, so "collinear"
-    reduces to "same direction as the previous step"), never smoothing."""
+    """Drop vertices that sit on a straight continuation of the previous
+    segment — lossless: the drawn point set is unchanged."""
     if len(points) < 3:
         return points
     out = [points[0]]
@@ -167,10 +176,120 @@ def simplify_collinear(points: list[tuple[int, int]]) -> list[tuple[int, int]]:
         nxt = points[i + 1]
         d1 = (cur[0] - prev[0], cur[1] - prev[1])
         d2 = (nxt[0] - cur[0], nxt[1] - cur[1])
-        if d1 == d2:
+        if d1[0] * d2[1] - d1[1] * d2[0] == 0 and d1[0] * d2[0] + d1[1] * d2[1] > 0:
             continue
         out.append(cur)
     out.append(points[-1])
+    return out
+
+
+def _ceil_div(a: int, b: int) -> int:
+    return -((-a) // b)
+
+
+def chord_cells(p: tuple[int, int], q: tuple[int, int]) -> tuple[bool, list[tuple[int, int]]]:
+    """Cells a chord between two lattice vertices (row, col) touches.
+
+    Axis-aligned chord: returns (True, cells on either side of each unit edge
+    it lies on). Otherwise: (False, cells whose open interior the open chord
+    crosses), exact in integers. Cells may lie outside the grid."""
+    (r0, c0), (r1, c1) = p, q
+    if r0 == r1:
+        cells = []
+        for c in range(min(c0, c1), max(c0, c1)):
+            cells.append((r0 - 1, c))
+            cells.append((r0, c))
+        return True, cells
+    if c0 == c1:
+        cells = []
+        for r in range(min(r0, r1), max(r0, r1)):
+            cells.append((r, c0 - 1))
+            cells.append((r, c0))
+        return True, cells
+    if c0 > c1:
+        (r0, c0), (r1, c1) = (r1, c1), (r0, c0)
+    dc, dr = c1 - c0, r1 - r0
+    cells = []
+    for c in range(c0, c1):
+        # Row at column x is r0 + dr * (x - c0) / dc; scaled by dc.
+        ya = r0 * dc + dr * (c - c0)
+        yb = r0 * dc + dr * (c + 1 - c0)
+        lo, hi = min(ya, yb), max(ya, yb)
+        for r in range(lo // dc, _ceil_div(hi, dc)):
+            cells.append((r, c))
+    return False, cells
+
+
+def edge_cells(p: tuple[int, int], q: tuple[int, int]) -> tuple[tuple[int, int], tuple[int, int]]:
+    """The two cells a unit staircase edge separates."""
+    (r0, c0), (r1, c1) = p, q
+    if r0 == r1:
+        c = min(c0, c1)
+        return (r0 - 1, c), (r0, c)
+    r = min(r0, r1)
+    return (r, c0 - 1), (r, c0)
+
+
+class DeepGrid:
+    """At-or-above-level classification with out-of-grid cells counted as
+    not deep."""
+
+    def __init__(self, grid: np.ndarray, level_m: int) -> None:
+        self.rows, self.cols = grid.shape
+        self.flags = (grid >= (10 * level_m + round(TOLERANCE_M * 10))).tobytes()
+
+    def __call__(self, cell: tuple[int, int]) -> bool:
+        r, c = cell
+        return 0 <= r < self.rows and 0 <= c < self.cols and self.flags[r * self.cols + c] == 1
+
+
+def chord_ok(trail: list[tuple[int, int]], i: int, j: int, deep: DeepGrid) -> bool:
+    """Whether trail[i]..trail[j] may be replaced by one chord.
+
+    Safety: every crossed cell is deep; an axis-aligned chord needs a deep
+    cell beside every unit edge it lies on. Either way the chord stays in the
+    closure of the deep cells. Fidelity: every skipped staircase edge borders
+    a cell the chord touches, which keeps the chord within about a cell of
+    its source and stops it bridging a deep inlet."""
+    p, q = trail[i], trail[j]
+    if p == q:
+        return False
+    axis, cells = chord_cells(p, q)
+    if axis:
+        for k in range(0, len(cells), 2):
+            if not (deep(cells[k]) or deep(cells[k + 1])):
+                return False
+    elif not all(deep(cell) for cell in cells):
+        return False
+    touched = set(cells)
+    for k in range(i, j):
+        a, b = edge_cells(trail[k], trail[k + 1])
+        if a not in touched and b not in touched:
+            return False
+    return True
+
+
+def smooth_trail(trail: list[tuple[int, int]], deep: DeepGrid) -> list[tuple[int, int]]:
+    """Greedy longest-chord shortcut of one staircase trail (see module doc)."""
+    n = len(trail)
+    if n >= 4 and trail[0] == trail[-1]:
+        # Start a ring at a vertex no chord can skip, so the seam is not an
+        # artificial corner.
+        ring = trail[:-1]
+        m = len(ring)
+        for k in range(m):
+            window = [ring[(k - 1) % m], ring[k], ring[(k + 1) % m]]
+            if not chord_ok(window, 0, 2, deep):
+                trail = ring[k:] + ring[:k] + [ring[k]]
+                break
+    out = [trail[0]]
+    i = 0
+    while i < n - 1:
+        j = i + 1
+        while j + 1 < n and chord_ok(trail, i, j + 1, deep):
+            j += 1
+        out.append(trail[j])
+        i = j
     return out
 
 
@@ -187,12 +306,15 @@ def build_feature(
     lat_cpd: int,
     lon_cpd: int,
     cols: int,
+    deep: DeepGrid | None,
 ) -> tuple[dict, int]:
     paths = trace_polylines(lo, hi)
     coord_paths = []
     vertex_count = 0
     for path in paths:
         decoded = [divmod(v, cols + 1) for v in path]  # (row, col)
+        if deep is not None:
+            decoded = smooth_trail(decoded, deep)
         simplified = simplify_collinear(decoded)
         vertex_count += len(simplified)
         coord_paths.append(
@@ -219,13 +341,15 @@ def main() -> None:
     total_vertices = 0
     for level in LEVELS_M:
         lo, hi = level_edges(grid, level)
-        feature, vc = build_feature(lo, hi, {"kind": "contour", "levelM": level}, meta, lat_cpd, lon_cpd, cols)
+        feature, vc = build_feature(
+            lo, hi, {"kind": "contour", "levelM": level}, meta, lat_cpd, lon_cpd, cols, DeepGrid(grid, level)
+        )
         features.append(feature)
         total_vertices += vc
         print(f"level {level} m: {len(feature['geometry']['coordinates'])} lines, {vc} vertices")
 
     lo, hi = nodata_edges(grid)
-    feature, vc = build_feature(lo, hi, {"kind": "no-data"}, meta, lat_cpd, lon_cpd, cols)
+    feature, vc = build_feature(lo, hi, {"kind": "no-data"}, meta, lat_cpd, lon_cpd, cols, None)
     features.append(feature)
     total_vertices += vc
     print(f"no-data: {len(feature['geometry']['coordinates'])} lines, {vc} vertices")
