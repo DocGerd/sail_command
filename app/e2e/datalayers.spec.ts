@@ -396,6 +396,7 @@ test('#597 legend stays reachable at 820x1180 with the disclosure open, the firs
   });
   try {
     const page = await context.newPage();
+    await assertCleanServiceWorkerState(page);
     await page.goto(server.url);
     await mapReady(page);
     await expect(page.locator('.banner-area .banner-info:not(.reload-prompt)')).toBeVisible();
