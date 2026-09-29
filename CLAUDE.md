@@ -257,7 +257,10 @@ making design-level decisions; do not silently deviate.
   accepting one, check whether the changed file is a RUNTIME input the
   import walk cannot see — a new data asset, arm file or pipeline generator
   outside `PATH_PREFIXES`, or a runtime-constructed edge outside
-  `EXTRA_EDGES`. RUN `closure.mjs files` FOR THE MEMBER LIST — it is derived
+  `EXTRA_EDGES`. Run `closure.mjs diff <merge-base> <head>` before merging any
+  PR: an agent's "not in the closure" is a claim, not a verdict. #1549 merged
+  before its sweep, which ledger entry `266d99e` records as paid afterwards.
+  RUN `closure.mjs files` FOR THE MEMBER LIST — it is derived
   from the roots, no prose list here to drift. #944 (read a purely additive
   export as NOT OWED) was deferred after three review rounds each found a
   fail-open in its hand-rolled lexer (ASI, `\r`/U+2028/U+2029, `}` then `(`);
@@ -1364,7 +1367,7 @@ making design-level decisions; do not silently deviate.
   tabletPortrait 820x1180, phonePortrait 390x844) and `EDGE_VIEWPORTS` (the
   narrow/short stress cases #368's own residuals were measured against:
   narrowPortrait360, shortLandscape844/740/932, deepPortrait320,
-  partialPushBand375, wrapForcing280 — COUNT the array's own keys rather than
+  shortPortrait375, partialPushBand375x560, wrapForcing280 — COUNT the array's own keys rather than
   trusting any total stated
   here, which drifts at the next addition). Specs must import and iterate these,
   never inline viewport literals — this repo already paid for the per-file
@@ -1695,6 +1698,7 @@ making design-level decisions; do not silently deviate.
   | v0.45.0 | 2026-09-25 | 28 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 13:40:24Z, three seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `36142398672` (created 13:40:00Z) -> tag `36142450204` (created 13:40:28Z) on `a1126b4`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `6662080548`, `ref: v0.45.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-eHAbyik6.js` at ``version:`v0.45.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `3481aea` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.46.0 | 2026-09-28 | 52 s | read as **NO `deploy` JOB CREATED YET** at 07:50:23Z, immediately before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `36393772153` (created 07:49:35Z) -> tag `36393852888` (created 07:50:27Z) on `aa6ea4b`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-DsQbd86w.js` at ``version:`v0.46.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.47.0 | 2026-09-28 | 90 s | read as **`waiting`/`null`, `steps: 0`** at 20:40:09Z — a CREATED job (its Pages object `6720074808` created 20:40:08Z), misread at the time as the table's "not-yet-started" reading; the job then ran and ended `cancelled` mid-`deploy-pages`, its Pages object `error` | **`smoke-probe` FAILED** | merge-push `36480663285` (created 20:38:44Z) -> tag `36480835418` (created 20:40:14Z) on `675d496`. Tag run's `build` and `deploy` succeeded; its prod entry chunk `assets/index-4WXmwSG8.js` 404'd on 10/10 attempts while both basemap Range probes passed on attempt 1. Prod meanwhile served the MERGE run's `assets/index-CiWNpvuP.js` at ``version:`v0.46.0-45-g675d4969` `` (read ~20:48Z), as the v0.19.0 row records. Back-merge `36484307367` (`450f938`) republished `index-4WXmwSG8.js`; production then served ``version:`v0.47.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag `verified: true, reason: "valid"`. Post-hoc gate state matches v0.12.0's and v0.19.0's; the outcome matches v0.19.0's. Names no MECHANISM. |
+  | v0.48.0 | 2026-09-29 | 30 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 15:49:25Z, two seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `36593066651` (created 15:48:59Z) -> tag `36593127818` (created 15:49:29Z) on `2f28e53`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `6739184153`, `ref: v0.48.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-BWFAAx2G.js` at ``version:`v0.48.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `341cdcb` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
