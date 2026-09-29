@@ -16,11 +16,11 @@ afterEach(() => {
   delete (window as { matchMedia?: unknown }).matchMedia;
 });
 
-function renderLegend() {
+function renderLegend(hasForcedLeg = false) {
   localStorage.setItem('sc-lang', 'en');
   return render(
     <I18nProvider>
-      <RouteLegend />
+      <RouteLegend hasForcedLeg={hasForcedLeg} />
     </I18nProvider>,
   );
 }
@@ -44,6 +44,14 @@ function stubMatchMedia(matches: boolean) {
 }
 
 describe('RouteLegend', () => {
+  it('explains the map * mark only when a leg is forced (#1251)', () => {
+    const { unmount } = renderLegend(true);
+    expect(screen.getByText(en['route.legs.forcedNote'])).toBeInTheDocument();
+    unmount();
+    renderLegend(false);
+    expect(screen.queryByText(en['route.legs.forcedNote'])).not.toBeInTheDocument();
+  });
+
   // #813 fix-wave MAJOR 1: jsdom has no `matchMedia` (src/test/setup.ts does
   // not stub it globally), and isWideAtMount()'s own `typeof
   // window.matchMedia === 'function'` guard is to default to the NARROW

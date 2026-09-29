@@ -1518,7 +1518,7 @@ export default function RouteLayer({
             <span>{formatSliderTime(tMs, hourOptions, lang, nowMs)}</span>
           </div>
         )}
-        <RouteLegend />
+        <RouteLegend hasForcedLeg={result?.legs.some((l) => l.forced === true) ?? false} />
       </Disclosure>
     </div>
   );
