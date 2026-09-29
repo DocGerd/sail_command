@@ -14,9 +14,10 @@ case is needed.
 Level lines are smoothed (#1540) by shortcutting the staircase, never by
 moving it: a line keeps a subsequence of its own staircase vertices, and a
 chord is taken only if it and every shorter chord from the same start stay in
-the closure of the at-or-above-L cells. The no-data edge is left as traced.
-app/src/test/contoursAsset.test.ts re-checks the same predicate against
-mask.bin.
+the closure of the at-or-above-L cells. app/src/test/contoursAsset.test.ts
+checks the result against mask.bin: every segment stays in that closure, and
+the area the lines enclose lies within the at-or-above-L cells. The no-data
+edge is left as traced.
 """
 
 import hashlib
