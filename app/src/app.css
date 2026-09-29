@@ -808,35 +808,19 @@ select {
   overflow-y: auto;
 }
 
-/* #706: map-chrome checkboxes (Wassertiefen/Seezeichen toggles here, plus
-   the annotations/wind-barbs/alt-rig toggles inside
-   `.route-layer-controls-disclosure`'s body below) had no `accent-color`,
-   so their tick fill rendered in the browser/OS default accent — a
-   different blue from every other accented control in the app — and no
-   `:focus-visible` ring at all. `.boat-option-radio` is the only prior
-   `accent-color` use in this file; this reuses the same token.
-   #681 added a THIRD member, `.depth-legend-body input[type='checkbox']`
-   (the independent hatch toggle) — it is not a `.data-layer-controls`
-   descendant (DataLayers.tsx's own #681 comment on the return JSX explains
-   why: a third row there costs the legend its reachability budget), so it
-   needs the same accent-color/focus-visible pair spelled out for its own
-   selector rather than inheriting either existing one.
-   #681 x #813 added a FOURTH, `.route-legend-depth input[type='checkbox']`
-   — the SAME control's complementary copy, folded into RouteLegend.tsx once
-   a plan is active (that component's own #681 x #813 comment). Neither of
-   these two new members is a descendant of the other three ancestors, so
-   each needs its own selector in both rules below. */
+/* #706: map-chrome checkboxes (the `.data-layer-controls` rows and those inside
+   `.route-layer-controls-disclosure`'s body) had no `accent-color`, so their
+   tick fill rendered in the browser/OS default accent — a different blue from
+   every other accented control in the app — and no `:focus-visible` ring at
+   all. `.boat-option-radio` is the only prior `accent-color` use in this
+   file; this reuses the same token. */
 .data-layer-controls input[type='checkbox'],
-.route-layer-controls-disclosure input[type='checkbox'],
-.depth-legend-body input[type='checkbox'],
-.route-legend-depth input[type='checkbox'] {
+.route-layer-controls-disclosure input[type='checkbox'] {
   accent-color: var(--sc-accent);
 }
 
 .data-layer-controls input[type='checkbox']:focus-visible,
-.route-layer-controls-disclosure input[type='checkbox']:focus-visible,
-.depth-legend-body input[type='checkbox']:focus-visible,
-.route-legend-depth input[type='checkbox']:focus-visible {
+.route-layer-controls-disclosure input[type='checkbox']:focus-visible {
   outline: 2px solid var(--sc-accent);
   outline-offset: 2px;
 }
@@ -982,7 +966,7 @@ select {
      being unavailable, matching `useBannerHeight.ts`'s own jsdom/legacy
      guard). Per this repo's guard-asymmetry convention (the same call as
      `useBannerHeight.ts`'s own non-zero fallback): biased ABOVE the
-     measured two-checkbox-row baseline (46px + 0.35rem gap + 46px +
+     plan-active two-checkbox-row cluster (46px + 0.35rem gap + 46px +
      0.5rem*2 padding = 113.6px) rather than exactly matching it, because
      the two failure directions are not equivalent — landing a FEW px too
      low costs nothing but a small gap, landing too HIGH risks the legend
@@ -1272,8 +1256,8 @@ select {
    low opacity nears invisible on dark legend chrome. Keeps the base rule's
    own water `background-color` (same backdrop the hatch swatch above
    uses) and draws the line as a centred, non-repeating band instead of
-   overriding the background colour — legible in both themes, same as the
-   map's own hatch. */
+   overriding the background colour. Ink and backdrop are both literals
+   that do not change with the theme. */
 .depth-legend-swatch.depth-legend-swatch-contour {
   background-image: linear-gradient(var(--sc-ink), var(--sc-ink));
   background-size: 100% 2px;
@@ -1440,12 +1424,14 @@ select {
    jsdom, never by reading this rule — jsdom's `backgroundColor` and
    `border-color` don't resolve `var()`, but `border-style`/`border-width`/
    `padding` are plain lengths and DO discriminate. */
-.sc-disclosure.route-layer-controls-disclosure {
+.sc-disclosure.route-layer-controls-disclosure,
+.sc-disclosure.data-layer-controls-disclosure {
   border: none;
   padding: 0;
 }
 
-.route-layer-controls-disclosure > .sc-disclosure-summary {
+.route-layer-controls-disclosure > .sc-disclosure-summary,
+.data-layer-controls-disclosure > .sc-disclosure-summary {
   font-weight: 400;
 }
 
@@ -1464,7 +1450,8 @@ select {
    `max-height` resolves to 315.80px, so without this the expanded cluster
    clipped and scrolled internally where it should have fit. Width
    unchanged (this padding was never horizontal). */
-.route-layer-controls-disclosure > .sc-disclosure-body {
+.route-layer-controls-disclosure > .sc-disclosure-body,
+.data-layer-controls-disclosure > .sc-disclosure-body {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
@@ -1849,6 +1836,13 @@ select {
     min-height: 0;
     overflow-y: visible;
     padding: 0.35rem 0.5rem;
+  }
+
+  /* #1541: the disclosure's summary is a 44px touch target, the compass's own
+     height; the row's vertical padding on top would make the toggles the tall
+     side again and re-spend the margin #231 bought back. */
+  .data-layer-controls.data-layer-controls-disclosed {
+    padding-block: 0;
   }
 
   /* MEASURED (#231): the base `input, select { min-height: 40px }` rule (top

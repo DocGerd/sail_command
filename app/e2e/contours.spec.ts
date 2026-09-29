@@ -1,9 +1,9 @@
 import { test, expect, type Page } from '@playwright/test';
 import { startPreview, mapReady } from './helpers';
 
-// #629 depth contours — reachable pre-plan (same always-mounted
-// `.depth-legend` cluster the hatch toggle uses, #598/#681), default OFF,
-// fetched on first enable, and drawn/labelled at a real zoom. Self-contained
+// #629 depth contours — reachable pre-plan (a row of DataLayers' "Anzeigeoptionen"
+// disclosure since #1541, open by default at this spec's wide viewport),
+// default OFF, fetched on first enable, and drawn/labelled at a real zoom. Self-contained
 // per this file's own convention (every page.evaluate() callback is
 // re-parsed in the browser realm, sharing no closure with any other spec —
 // see datalayers.spec.ts's #682 test comment for the same statement).
@@ -122,8 +122,6 @@ test('depth contours (#629): fresh profile has them off, toggling on draws lines
     await page.goto(server.url);
 
     // #629 Q7: default OFF for a fresh profile.
-    const summary = page.getByText('Legende', { exact: true });
-    await summary.click();
     const contoursToggle = page.getByRole('checkbox', { name: 'Tiefenlinien' });
     await expect(contoursToggle).toBeVisible();
     await expect(contoursToggle).not.toBeChecked();
@@ -150,6 +148,9 @@ test('depth contours (#629): fresh profile has them off, toggling on draws lines
       'places_locality',
       'places_locality (before contours)',
     );
+    // Non-vacuity: the identity comparison below proves nothing over two
+    // empty reads.
+    expect(namesBeforeContours.length).toBeGreaterThan(0);
 
     await contoursToggle.check();
     await expect(contoursToggle).toBeChecked();

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { LngLatBounds, Map as MaplibreMap, Marker } from 'maplibre-gl';
 import type { GeoJSONSource, MapLayerMouseEvent, MapMouseEvent } from 'maplibre-gl';
 import { useMapInstance } from './MapView';
@@ -14,6 +14,7 @@ import {
 } from '../lib/routeGeoJson';
 import { installStyleSetup } from '../lib/styleReload';
 import { usePersistedToggle } from '../lib/usePersistedToggle';
+import { getContoursFetchState, subscribeContoursFetchState } from '../lib/contours';
 import { useWideLayout } from '../lib/useWideLayout';
 import { registerBarbImages } from '../lib/windBarbs';
 import {
@@ -830,6 +831,15 @@ export default function RouteLayer({
   // #324: map-only overlay of the OTHER rig's route, default OFF (settled
   // design — showing two routes by default clutters harbour-approach zoom).
   const [altRigVisible, setAltRigVisible] = usePersistedToggle('sc-alt-rig-visible', false);
+  // Depth-overlay rows (#1541): DataLayers.tsx applies these flags to the map;
+  // the persisted-toggle registry keeps both components in step.
+  const [depthVisible] = usePersistedToggle('sc-depth-visible', true);
+  const [hatchVisible, setHatchVisible] = usePersistedToggle('sc-depth-hatch-visible', true);
+  const [contoursVisible, setContoursVisible] = usePersistedToggle('sc-contours-visible', false);
+  const contoursFetchState = useSyncExternalStore(
+    subscribeContoursFetchState,
+    getContoursFetchState,
+  );
   // Real land/depth mask for barb land-culling — loaded once, best-effort.
   // A plain Uint8Array VIEW over the module-cached buffer (never a copy, never
   // transferred, never mutated). null until it resolves; sampling skips
@@ -1435,6 +1445,26 @@ export default function RouteLayer({
           <p id="route-alt-rig-note" className="route-alt-rig-note">
             {t('route.altRig.unavailable')}
           </p>
+        )}
+        <label>
+          <input
+            type="checkbox"
+            checked={hatchVisible}
+            disabled={!depthVisible}
+            onChange={(e) => setHatchVisible(e.target.checked)}
+          />
+          {t('map.depth.legend.hatchToggle')}
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={contoursVisible}
+            onChange={(e) => setContoursVisible(e.target.checked)}
+          />
+          {t('map.depth.legend.contoursToggle')}
+        </label>
+        {contoursFetchState.status === 'error' && (
+          <p className="depth-legend-error">{t('map.depth.legend.contoursError')}</p>
         )}
         {hourOptions.length > 1 && (
           <div className="route-layer-time-slider">

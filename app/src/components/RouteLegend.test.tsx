@@ -153,15 +153,14 @@ describe('#813: folded-in #598 depth-hatch legend', () => {
   // the same contract `usePersistedToggle` itself uses (this component never
   // reads Settings context for either flag) — same technique the disabled-
   // mirror describe block below already uses.
-  it('#839: hides the hatch label and basis copy while the hatch toggle is off, but keeps the checkbox and #597 caveat reachable', () => {
+  it('#839: hides the hatch label and basis copy while the hatch toggle is off, but keeps the #597 caveat', () => {
     localStorage.setItem('sc-depth-hatch-visible', '0');
-    const { container, getByText, queryByText, getByRole } = renderLegend();
+    const { container, getByText, queryByText } = renderLegend();
     const details = container.querySelector('details.route-legend') as HTMLDetailsElement;
     details.open = true;
     expect(queryByText(en['map.depth.legend.hatchLabel'])).toBeNull();
     expect(queryByText(en['map.depth.legend.basis'])).toBeNull();
     expect(getByText(en['map.depth.legend.caveat'])).toBeInTheDocument();
-    expect(getByRole('checkbox', { name: en['map.depth.legend.hatchToggle'] })).not.toBeChecked();
   });
 
   // Complementary term of the SAME composite (CLAUDE.md's "ask per TERM, not
@@ -177,68 +176,30 @@ describe('#813: folded-in #598 depth-hatch legend', () => {
   });
 });
 
-// #681 x #813 review Major: RouteLegend.tsx's own hatch checkbox carries the
-// SAME `disabled={!depthVisible}` mirror as DataLayers.tsx's copy (the #384
-// defect class — a control must not offer to change a layer that
-// depthVisible=false already keeps invisible regardless), but nothing
-// exercised it on THIS surface: the two DataLayers.test.tsx cross-surface
-// sync tests assert `checked` and layer visibility, never `.disabled`, and
-// no test here touched the checkbox at all. Reads/writes `sc-depth-visible`
-// directly via localStorage — the same contract `usePersistedToggle` itself
-// uses — rather than needing AppStateProvider/DataLayers, since this
-// component never reads Settings context for that flag.
-describe('#681 x #813: hatch checkbox disabled mirror (RouteLegend surface)', () => {
-  it('disables the hatch checkbox when the base depth-overlay flag is off', () => {
-    localStorage.setItem('sc-depth-visible', '0');
+// #1541: the hatch and contour toggles are top-level rows of RouteLayer's
+// "Anzeigeoptionen" (RouteLayer.test.tsx pins those); this legend keeps the
+// explanations and swatches only.
+describe('#1541: the legend holds explanations, not toggles', () => {
+  // Mutation: re-adding either checkbox to the depth section reds this test.
+  it('contains no input at all', () => {
     const { container } = renderLegend();
     const details = container.querySelector('details.route-legend') as HTMLDetailsElement;
     details.open = true;
-    const checkbox = container.querySelector(
-      '.route-legend-depth input[type="checkbox"]',
-    ) as HTMLInputElement;
-    expect(checkbox.disabled).toBe(true);
+    expect(container.querySelectorAll('input')).toHaveLength(0);
   });
 
-  it('enables the hatch checkbox when the base depth-overlay flag is on', () => {
-    localStorage.setItem('sc-depth-visible', '1');
-    const { container } = renderLegend();
-    const details = container.querySelector('details.route-legend') as HTMLDetailsElement;
-    details.open = true;
-    const checkbox = container.querySelector(
-      '.route-legend-depth input[type="checkbox"]',
-    ) as HTMLInputElement;
-    expect(checkbox.disabled).toBe(false);
-  });
-});
+  // Mutation: dropping the `contoursVisible` gate reds the first assertion;
+  // dropping the swatch rows reds the second.
+  it('lists the contour swatches only while the persisted contour flag is on', () => {
+    const off = renderLegend();
+    expect(off.queryByText(en['map.depth.legend.contourLinesLabel'])).toBeNull();
+    off.unmount();
 
-// #629: this surface's own copy of the contour toggle — DataLayers.test.tsx
-// covers the map-layer wiring and the cross-surface sync; this file's own
-// contract is that the control is reachable and NOT tied to depthVisible.
-describe('#629: depth-contour toggle (RouteLegend surface)', () => {
-  // Mutation: adding a `disabled={!depthVisible}` mirror to this checkbox
-  // (the #384 shape the hatch toggle correctly uses) reds this test — Q7
-  // says the contour toggle is independent.
-  it('defaults OFF, and is never disabled by the base depth-overlay flag', () => {
-    localStorage.setItem('sc-depth-visible', '0');
-    const { container } = renderLegend();
-    const details = container.querySelector('details.route-legend') as HTMLDetailsElement;
-    details.open = true;
-    // [0] is the hatch toggle (DOM order), [1] is contours.
-    const checkbox = container.querySelectorAll(
-      '.route-legend-depth input[type="checkbox"]',
-    )[1] as HTMLInputElement;
-    expect(checkbox.checked).toBe(false);
-    expect(checkbox.disabled).toBe(false);
-    expect(container.querySelector('.route-legend-depth')?.textContent).toContain(
-      en['map.depth.legend.contoursToggle'],
-    );
-  });
-
-  it('its accessible name never contains "Water depths" (Playwright getByRole substring trap)', () => {
-    const { container } = renderLegend();
-    const details = container.querySelector('details.route-legend') as HTMLDetailsElement;
-    details.open = true;
-    expect(en['map.depth.legend.contoursToggle']).not.toContain('Water depths');
-    expect(container.textContent).toContain(en['map.depth.legend.contoursToggle']);
+    localStorage.setItem('sc-contours-visible', '1');
+    const on = renderLegend();
+    expect(on.getByText(en['map.depth.legend.contourLinesLabel'])).toBeInTheDocument();
+    expect(on.getByText(en['map.depth.legend.contourNoDataLabel'])).toBeInTheDocument();
+    expect(on.container.querySelector('.depth-legend-swatch-contour')).not.toBeNull();
+    expect(on.container.querySelector('.depth-legend-swatch-nodata')).not.toBeNull();
   });
 });
