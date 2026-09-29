@@ -13,30 +13,29 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.48.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.49.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
-## Now — v0.48.0
+## Now — v0.49.0
 
-The `v0.48.0` cut (2026-09-29) worked the
-[`v0.48.0` milestone](https://github.com/DocGerd/sail_command/milestones):
-three user-visible changes (per `CHANGELOG.md`'s own `[0.48.0]` section) —
-depth contours drawn as smoothed lines that only ever shift toward deeper
-water ([#1540](https://github.com/DocGerd/sail_command/issues/1540)), the hatch and depth-contour toggles moving out of the map
-legend into the display-options control ([#1541](https://github.com/DocGerd/sail_command/issues/1541)), and saved plans' offline
-map regions being backfilled on a page already under service-worker control
-([#1533](https://github.com/DocGerd/sail_command/issues/1533)) — plus two issues with no user-visible surface: test, test-fake and
-comment follow-ups from the contours review ([#1537](https://github.com/DocGerd/sail_command/issues/1537)) and an explicit
-constructor parameter on the zero-argument `ResizeObserver` test fixtures
-behind the CodeQL false-positive alerts
-([#1545](https://github.com/DocGerd/sail_command/issues/1545)).
+The `v0.49.0` cut (2026-09-30) worked the
+[`v0.49.0` milestone](https://github.com/DocGerd/sail_command/milestones):
+four user-visible changes (per `CHANGELOG.md`'s own `[0.49.0]` section) — the
+map legend explaining the `*` forced-segment mark and the segment-mode merge
+refusal naming every waypoint to fix ([#1251](https://github.com/DocGerd/sail_command/issues/1251)), the scale bar re-measuring
+when the map options panel is opened or closed by hand ([#1552](https://github.com/DocGerd/sail_command/issues/1552)), a
+segment-mode-only change no longer collapsing that panel ([#1553](https://github.com/DocGerd/sail_command/issues/1553)), and the
+depth and seamark checkboxes lining up with their labels once a route is
+loaded ([#1558](https://github.com/DocGerd/sail_command/issues/1558)) — plus four issues with no user-visible surface: follow-ups
+to the offline-map-region backfill shipped in `v0.48.0` ([#1550](https://github.com/DocGerd/sail_command/issues/1550)), a rule in place of an incomplete
+`localStorage` key list in the security assurance case ([#1560](https://github.com/DocGerd/sail_command/issues/1560)), a note in
+the sweep-closure skill on ledger entries recorded at a PR head ([#1515](https://github.com/DocGerd/sail_command/issues/1515)),
+and [#1454](https://github.com/DocGerd/sail_command/issues/1454), closed as already resolved by PR #1488 (`v0.44.0`) and verified
+with the sweep harness, with no code change in this cut.
 
-`ScaleBar` not re-measuring when the display-options control is opened by
-hand ([#1552](https://github.com/DocGerd/sail_command/issues/1552)) was filed during the cycle and left in `Backlog`.
+## Next — v0.50.0
 
-## Next — v0.49.0
-
-The [`v0.49.0` milestone](https://github.com/DocGerd/sail_command/milestones)
+The [`v0.50.0` milestone](https://github.com/DocGerd/sail_command/milestones)
 is empty as of this cut. The milestone page is
 the only authoritative view, check it directly rather than this file.
 
