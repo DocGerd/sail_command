@@ -272,7 +272,8 @@ def chord_ok(trail: list[tuple[int, int]], i: int, j: int, deep: DeepGrid) -> bo
 def smooth_trail(trail: list[tuple[int, int]], deep: DeepGrid) -> list[tuple[int, int]]:
     """Greedy longest-chord shortcut of one staircase trail (see module doc)."""
     n = len(trail)
-    if n >= 4 and trail[0] == trail[-1]:
+    closed = n >= 4 and trail[0] == trail[-1]
+    if closed:
         # Start a ring at a vertex no chord can skip, so the seam is not an
         # artificial corner.
         ring = trail[:-1]
@@ -290,7 +291,14 @@ def smooth_trail(trail: list[tuple[int, int]], deep: DeepGrid) -> list[tuple[int
             j += 1
         out.append(trail[j])
         i = j
+    if closed and (len(set(simplify_collinear(out))) < 4 or _twice_area(out) == 0):
+        # A small ring would collapse to a tick or a sliver; keep it as traced.
+        return trail
     return out
+
+
+def _twice_area(ring: list[tuple[int, int]]) -> int:
+    return sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(ring, ring[1:]))
 
 
 def _round5(x: float) -> float:

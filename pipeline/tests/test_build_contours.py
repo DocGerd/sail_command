@@ -62,6 +62,15 @@ def test_one_cell_shoal_keeps_its_square():
     assert smoothed(g) == [[(2, 2), (2, 3), (3, 3), (3, 2), (2, 2)]]
 
 
+def test_small_deep_pockets_keep_their_traced_ring():
+    for size in (1, 2):
+        g = np.full((6, 6), SHALLOW, np.uint8)
+        g[2 : 2 + size, 2 : 2 + size] = DEEP
+        (line,) = smoothed(g)
+        assert sorted(set(line)) == [(2, 2), (2, 2 + size), (2 + size, 2), (2 + size, 2 + size)]
+        assert len(line) == 5
+
+
 def test_one_cell_deep_channel_mouth_is_not_bridged():
     g = np.full((9, 9), SHALLOW, np.uint8)
     g[:2, :] = DEEP
