@@ -15,7 +15,7 @@ Source: issue #629 (the measurement write-up); the maintainer ruling comment on 
 | Q7 | Toggle | Its own persisted toggle, default off. |
 | — | Architecture | Build-time: a pipeline script writes a committed asset (issue §D2). |
 
-Q10 smoothing landed in #1540 (§2). Deferred: Q11 datum surfacing, per-level colour.
+Q10 smoothing landed in #1540 (§2). Deferred: Q11 datum surfacing, per-level colour. Q12 (#599 raster zoom degradation) does not apply to vector lines. Q13 is answered by §2's measurement requirement.
 
 ## 2. Data product
 
@@ -29,9 +29,9 @@ Cell classification, exact in integers. With mask byte `b`:
 Byte 254 is never emitted by the mask build; the rule covers it anyway.
 
 Geometry:
-- **Level lines.** For each level, trace every shared cell edge between a cell at or above `L` and a non-zero cell below it. Merge the segments into polylines. Level lines are shortcut greedily over their own staircase vertices; a chord is accepted only if it and every shorter chord from the same start stay in the closure of the at-or-above-L cells and it touches a cell beside every edge it skips (#1540). Guarantees, pinned jointly by the "#1540 region" rows and the "#1540 smoothed level lines" closure rows in `contoursAsset.test.ts`: the region a line set shows as at-or-above L, closed by the no-data and grid edges, is a subset of the at-or-above-L cells, and every line segment lies in the closure of those cells. The no-data edge is unsmoothed. Corners that point into deep water stay square where a shortcut would cross a shallow cell (shoal tips, one-cell shoals); along a diagonal run of steps a line passes straight through them.
+- **Level lines.** For each level, trace every shared cell edge between a cell at or above `L` and a non-zero cell below it. Merge the segments into polylines. Level lines are shortcut greedily over their own staircase vertices; a chord is accepted only if it and every shorter chord from the same start stay in the closure of the at-or-above-L cells and it touches a cell beside every edge it skips (#1540). Guarantees, pinned jointly by the "#1540 region" rows and the "#1540 smoothed level lines" closure rows in `contoursAsset.test.ts`: the region a line set shows as at-or-above L, closed by the deep cells' own no-data and grid edges, is a subset of the at-or-above-L cells, and every line segment lies in the closure of those cells. The no-data edge is unsmoothed. Corners that point into deep water stay square where a shortcut would cross a shallow cell (shoal tips, one-cell shoals); along a diagonal run of steps a line passes straight through them.
 - **No-data edge.** Trace every cell edge between a byte-0 cell and a non-zero cell, and every outer-boundary edge of a non-zero cell, once, as a separate feature. Level lines therefore end where they meet this edge, which is visible, instead of stopping silently.
-- Before smoothing the two geometries share no edge: a traced level edge only ever separates two non-zero cells. A smoothed chord can lie along a deep-cell/byte-0 edge, so a level line may overlap the no-data edge for a few unit edges (measured on the asset #1549 merged).
+- Before smoothing the two geometries share no edge: a traced level edge only ever separates two non-zero cells. A smoothed chord can lie along a deep-cell/byte-0 edge, so a level line may overlap the no-data edge (measured on the asset #1549 merged, axis-aligned unit edges: 18, 26, 12, 1, 0 and 0 at 2, 3, 5, 10, 15 and 20 m).
 
 Output: a GeoJSON `FeatureCollection` of `LineString`/`MultiLineString` features.
 - Properties: `{ "kind": "contour", "levelM": L }` or `{ "kind": "no-data" }`.
@@ -69,11 +69,11 @@ It does not claim chart authority.
 |---|---|
 | `contours.json` `maskSha256` equals sha256 of `mask.bin` (TS, `readFileSync`) | the mask is rebuilt without regenerating contours |
 | `toleranceM` equals `MASK_TOLERANCE_M`, and `levelsM` equals the renderer's level list | the basis drifts between Python and TS |
-| Level lines: per level, every segment lies in the closure of the at-or-above-L cells, every vertex is a vertex of the level's staircase, and every qualifying staircase edge borders a cell a segment touches (cells classified through TS `cautiousDepthLowerBoundM`). No-data: for sampled segments, either the segment is interior and its two adjacent cells are one byte-0 and one non-zero, or it lies on the mask's outer boundary and its one adjacent cell is non-zero | the pipeline's integer rule or its smoothing diverges from the app's formula |
+| Level lines: per level, every segment lies in the closure of the at-or-above-L cells, every vertex is a vertex of the level's staircase, every qualifying staircase edge borders a cell a segment touches, and the area the lines enclose, closed by the deep cells' own no-data and grid edges, contains no below-L cell (the "#1540 region" rows; cells classified through TS `cautiousDepthLowerBoundM`). No-data: for sampled segments, either the segment is interior and its two adjacent cells are one byte-0 and one non-zero, or it lies on the mask's outer boundary and its one adjacent cell is non-zero | the pipeline's integer rule or its smoothing diverges from the app's formula |
 | unit: `sc-contour-labels` is added with `beforeId` equal to the style's first basemap `symbol` layer | the labels-yield anchor regresses |
 | e2e: fresh profile has the toggle off and no contour features; toggling on renders level lines and at least one label at a fixed view; `getByRole` locators for "Wassertiefen" still resolve uniquely | rendering or default state regresses, or the label collides |
 
-Each guard gets a mutation check, run at BASE and HEAD: the stale-hash mutant, the tolerance mutant, an off-by-one in the pipeline threshold, boundary edges traced for byte-0 cells too, and a toggle default of `true`. Run ruff on the new script by hand, since `Python lint` is advisory. The stylesheet (if touched) is read with `readFileSync`, never `?raw`.
+Each guard gets a mutation check, run at BASE and HEAD: the stale-hash mutant, the tolerance mutant, an off-by-one in the pipeline threshold, a chord accepted across a shallow cell, boundary edges traced for byte-0 cells too, and a toggle default of `true`. Run ruff on the new script by hand, since `Python lint` is advisory. The stylesheet (if touched) is read with `readFileSync`, never `?raw`.
 
 ## 6. Delivery constraints
 
