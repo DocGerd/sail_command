@@ -1406,6 +1406,14 @@ select {
   min-height: 44px;
 }
 
+/* #1558: the plan-loaded rows sit outside the disclosure. Alignment only, no
+   44px floor, so `.map-stack-tl`'s height (which ScaleBar measures) is unchanged. */
+.data-layer-controls > label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
 /* #628: the toggle/slider/legend cluster above collapses behind ONE
    Disclosure (Disclosure.tsx), so it can stop obstructing the chart on
    mobile — default-collapsed on narrow layouts, default-open on wide

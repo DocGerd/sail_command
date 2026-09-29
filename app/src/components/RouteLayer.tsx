@@ -56,11 +56,14 @@ export interface RouteLayerProps {
   // on the map immediately, before the next Plan-route press applies it.
   draftViaPoints: LatLon[];
   // No longer means "a replan is in flight" (#571 redesign removed the
-  // auto-replan-on-edit path) — it now means "the draft differs from the
-  // committed plan.request.viaPoints", i.e. there is an unapplied edit.
+  // auto-replan-on-edit path) — it now means "the draft via list or segment
+  // modes differ from the committed plan.request", i.e. there is an unapplied edit.
   // PROP NAME kept as `viaReplanning` — see ViaMarkers.tsx's own comment on
   // its identically-named, identically-repurposed prop.
   viaReplanning: boolean;
+  // The via-list-only subset of `viaReplanning`. Drives the options cluster's
+  // auto-collapse; a segment-mode-only change does not set it.
+  viaPointsEditing: boolean;
   onViaDragEnd: (index: number, next: LatLon) => Promise<boolean>;
   // #850: drag-the-route-line-to-insert-a-waypoint. Fired once, on the
   // drag's release, with the released point — never live/streaming while
@@ -735,6 +738,7 @@ export default function RouteLayer({
   activeLegIndex,
   draftViaPoints,
   viaReplanning,
+  viaPointsEditing,
   onViaDragEnd,
   onRouteLineInsert,
   viaArmed,
@@ -824,7 +828,7 @@ export default function RouteLayer({
   // centre, so it collapses and the state from before the edit comes back
   // afterwards. A restored state that differs from the layout default counts
   // as a user choice, so a later resize does not re-seed it.
-  const viaEditing = viaReplanning || viaArmed;
+  const viaEditing = viaPointsEditing || viaArmed;
   const [editCollapsed, setEditCollapsed] = useState(false);
   const [openOverride, setOpenOverride] = useState<boolean | null>(null);
   const openBeforeEditRef = useRef<boolean | null>(null);

@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
-import { MAP_CHROME_TOP_PX } from '../components/DataLayers';
+import { CLUSTER_PADDING_PX, MAP_CHROME_TOP_PX } from '../components/DataLayers';
 
 // #909: the compensated sheet cap `55vh - var(--sc-toast-height, 0px)` is
 // encoded in FOUR places and no compiler spans them:
@@ -198,5 +198,29 @@ describe('#909 (d1): the short-landscape exclusion is scoped in ONE place', () =
       '`DataLayers.tsx` no longer reads `--sc-map-grid-rows`. If this was replaced by a `matchMedia` ' +
         'call, the short-landscape media query now exists in TWO artifacts no compiler spans',
     ).toBe(true);
+  });
+});
+
+describe('#1553: CLUSTER_PADDING_PX has a stylesheet twin', () => {
+  // The base rule shared by both map-chrome clusters. Short-landscape and
+  // disclosed-state overrides also name `.data-layer-controls` but are not the
+  // twin, so the grouped selector list is what identifies the base block.
+  const baseBlocks = Array.from(FLAT_CSS.matchAll(/([^{}]+)\{([^{}]*)\}/g)).filter((m) => {
+    const members = m[1]!.split(',').map((x) => x.trim());
+    return members.includes('.route-layer-controls') && members.includes('.data-layer-controls');
+  });
+
+  it('finds exactly one grouped base block for the clusters', () => {
+    expect(baseBlocks.length).toBe(1);
+  });
+
+  it('its single-value padding equals CLUSTER_PADDING_PX on the vertical axis', () => {
+    const m = baseBlocks[0]?.[2]?.match(/(?:^|;)\s*padding: ([0-9.]+)rem\s*(?:;|$)/);
+    expect(
+      m,
+      'the grouped `.route-layer-controls, .data-layer-controls` block no longer declares a ' +
+        'single-value rem `padding` — this guard cannot check the twin and fails closed',
+    ).not.toBeNull();
+    expect(Number(m![1]) * 2 * 16).toBe(CLUSTER_PADDING_PX);
   });
 });
