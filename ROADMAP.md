@@ -27,10 +27,10 @@ when the map options panel is opened or closed by hand ([#1552](https://github.c
 segment-mode-only change no longer collapsing that panel ([#1553](https://github.com/DocGerd/sail_command/issues/1553)), and the
 depth and seamark checkboxes lining up with their labels once a route is
 loaded ([#1558](https://github.com/DocGerd/sail_command/issues/1558)) — plus four issues with no user-visible surface: follow-ups
-to the region-pin backfill ([#1550](https://github.com/DocGerd/sail_command/issues/1550)), a rule in place of an incomplete
+to the offline-map-region backfill shipped in `v0.48.0` ([#1550](https://github.com/DocGerd/sail_command/issues/1550)), a rule in place of an incomplete
 `localStorage` key list in the security assurance case ([#1560](https://github.com/DocGerd/sail_command/issues/1560)), a note in
 the sweep-closure skill on ledger entries recorded at a PR head ([#1515](https://github.com/DocGerd/sail_command/issues/1515)),
-and [#1454](https://github.com/DocGerd/sail_command/issues/1454), closed as already resolved by an earlier change and verified
+and [#1454](https://github.com/DocGerd/sail_command/issues/1454), closed as already resolved by PR #1488 (`v0.44.0`) and verified
 with the sweep harness, with no code change in this cut.
 
 ## Next — v0.50.0
