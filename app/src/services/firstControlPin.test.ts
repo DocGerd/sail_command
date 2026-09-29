@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Plan } from '../types';
 import type { PlanSummary } from './db';
 import type { PinRegionsOutcome } from './regionPinning';
+import { BACKFILL_MAX_FAILURES } from './firstControlPin';
 
 // firstControlPin keeps its "batch pinned this session" and "armed" flags
 // at module scope, so each test re-imports a fresh module instance
@@ -11,7 +12,8 @@ vi.mock('./db', () => ({
   listPlans: vi.fn(),
   getPlan: vi.fn(),
 }));
-vi.mock('./pinAfterSave', () => ({
+vi.mock('./pinAfterSave', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./pinAfterSave')>()),
   pinImportedPlans: vi.fn(),
   canPinRegions: vi.fn(),
   saveDataRequested: vi.fn(),
@@ -51,7 +53,7 @@ async function loadModule() {
   const { pinImportedPlans, canPinRegions, saveDataRequested } = await import('./pinAfterSave');
   const { pinRegionsForPlan } = await import('./regionPinning');
   const { listPlans, getPlan } = await import('./db');
-  // Mirrors the real pinImportedPlans: fire-and-forget, one pin call per plan.
+  // Models only one `pin` call per plan; the real one also gates and tracks activity.
   vi.mocked(pinImportedPlans).mockImplementation((plans, pin) => {
     void Promise.allSettled(plans.map((p) => pin?.(p)));
   });
@@ -66,6 +68,7 @@ const flagSet = (key: string) => localStorage.getItem(key) === '1';
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
+  vi.stubGlobal('requestIdleCallback', (cb: () => void) => cb());
 });
 
 afterEach(() => {
@@ -132,8 +135,8 @@ describe('armBatchPinOnFirstControl (#1518)', () => {
     const { armBatchPinOnFirstControl } = await loadModule();
     const { listPlans, getPlan } = await import('./db');
     const { pinImportedPlans } = await import('./pinAfterSave');
-    vi.mocked(listPlans).mockResolvedValue([]);
-    vi.mocked(getPlan).mockResolvedValue(undefined);
+    vi.mocked(listPlans).mockResolvedValue([okSummary('a')]);
+    vi.mocked(getPlan).mockResolvedValue(plan('a'));
 
     armBatchPinOnFirstControl();
     sw.controller = {};
@@ -147,11 +150,12 @@ describe('armBatchPinOnFirstControl (#1518)', () => {
   });
 
   it("pinAllSavedPlansOnce's own once-flag survives being called directly a second time", async () => {
-    stubSw(false);
+    stubSw(true);
     const { pinAllSavedPlansOnce } = await loadModule();
-    const { listPlans } = await import('./db');
+    const { listPlans, getPlan } = await import('./db');
     const { pinImportedPlans } = await import('./pinAfterSave');
-    vi.mocked(listPlans).mockResolvedValue([]);
+    vi.mocked(listPlans).mockResolvedValue([okSummary('a')]);
+    vi.mocked(getPlan).mockResolvedValue(plan('a'));
 
     await pinAllSavedPlansOnce();
     await pinAllSavedPlansOnce();
@@ -160,44 +164,32 @@ describe('armBatchPinOnFirstControl (#1518)', () => {
     expect(pinImportedPlans).toHaveBeenCalledTimes(1);
   });
 
-  it('is suppressed by Save-Data, same as every other automatic pin path', async () => {
+  it('Save-Data skips the batch before reading any saved plan', async () => {
     const sw = stubSw(false);
-    Object.defineProperty(globalThis.navigator, 'connection', {
-      value: { saveData: true },
-      configurable: true,
-    });
-    const { armBatchPinOnFirstControl } = await loadModule();
-    const { listPlans, getPlan } = await import('./db');
-    const { pinImportedPlans } = await import('./pinAfterSave');
-    vi.mocked(listPlans).mockResolvedValue([
-      {
-        kind: 'ok',
-        id: 'p1',
-        name: 'p',
-        createdAtMs: 1,
-        departureMs: 1,
-        recommended: 'genoa',
-        etaMs: 1,
-      },
-    ]);
+    const { armBatchPinOnFirstControl, saveDataRequested, listPlans, getPlan, pinImportedPlans } =
+      await loadModule();
+    vi.mocked(saveDataRequested).mockReturnValue(true);
+    vi.mocked(listPlans).mockResolvedValue([okSummary('p1')]);
     vi.mocked(getPlan).mockResolvedValue(plan('p1'));
 
     armBatchPinOnFirstControl();
     sw.controller = {};
     sw.dispatchEvent(new Event('controllerchange'));
-    await vi.waitFor(() => expect(pinImportedPlans).toHaveBeenCalledTimes(1));
+    await new Promise((r) => setTimeout(r, 0));
 
-    // pinAllSavedPlansOnce always fetches the saved-plan list (it does not
-    // itself gate on Save-Data); the real pinImportedPlans is what
-    // suppresses under Save-Data (pinAfterSave.ts), covered by
-    // pinAfterSave.test.ts. Here the mock stands in for that function, so
-    // this asserts only that the batch reaches it with the real plan list —
-    // see pinAfterSave.test.ts for the Save-Data suppression itself.
-    expect(pinImportedPlans).toHaveBeenCalledWith(
-      [expect.objectContaining({ id: 'p1' })],
-      expect.any(Function),
-    );
-    expect(listPlans).toHaveBeenCalledTimes(1);
+    expect(listPlans).not.toHaveBeenCalled();
+    expect(getPlan).not.toHaveBeenCalled();
+    expect(pinImportedPlans).not.toHaveBeenCalled();
+  });
+
+  it('an uncontrolled page skips the batch before reading any saved plan', async () => {
+    stubSw(false);
+    const { pinAllSavedPlansOnce, listPlans, pinImportedPlans } = await loadModule();
+
+    await pinAllSavedPlansOnce();
+
+    expect(listPlans).not.toHaveBeenCalled();
+    expect(pinImportedPlans).not.toHaveBeenCalled();
   });
 
   it('stays dormant with no service worker in the environment', async () => {
@@ -372,17 +364,23 @@ describe('persisted backfill flag (#1533)', () => {
       expect(flagSet(BACKFILL_DONE_KEY)).toBe(false);
     });
 
-    it('Save-Data suppresses the pin and leaves the flag unset so a later load retries', async () => {
+    it('Save-Data leaves the flag and the failure count untouched so a later load retries', async () => {
       stubSw(true);
-      const { armBatchPinOnFirstControl, saveDataRequested, listPlans, BACKFILL_DONE_KEY } =
-        await twoPlans();
+      const {
+        armBatchPinOnFirstControl,
+        saveDataRequested,
+        listPlans,
+        BACKFILL_DONE_KEY,
+        BACKFILL_FAILURES_KEY,
+      } = await twoPlans();
       vi.mocked(saveDataRequested).mockReturnValue(true);
 
       armBatchPinOnFirstControl();
-
-      await vi.waitFor(() => expect(listPlans).toHaveBeenCalledTimes(1));
       await settle();
+
+      expect(listPlans).not.toHaveBeenCalled();
       expect(flagSet(BACKFILL_DONE_KEY)).toBe(false);
+      expect(localStorage.getItem(BACKFILL_FAILURES_KEY)).toBeNull();
     });
   });
 
@@ -405,5 +403,97 @@ describe('persisted backfill flag (#1533)', () => {
     const uat = (await loadModule()).BACKFILL_DONE_KEY;
 
     expect(uat).not.toBe(prod);
+  });
+});
+
+describe('attempt cap and idle deferral (#1533)', () => {
+  const settle = () => new Promise((r) => setTimeout(r, 0));
+  const oneLoad = async (outcome: PinRegionsOutcome) => {
+    stubSw(true);
+    const m = await loadModule();
+    vi.mocked(m.listPlans).mockResolvedValue([okSummary('a')]);
+    vi.mocked(m.getPlan).mockResolvedValue(plan('a'));
+    vi.mocked(m.pinRegionsForPlan).mockResolvedValue(outcome);
+    return m;
+  };
+  const FAILED: PinRegionsOutcome = { status: 'manifest-unavailable' };
+
+  it('stops the startup backfill after the capped number of failed loads', async () => {
+    for (let i = 1; i <= BACKFILL_MAX_FAILURES; i++) {
+      const { armBatchPinOnFirstControl, BACKFILL_FAILURES_KEY } = await oneLoad(FAILED);
+      armBatchPinOnFirstControl();
+      await vi.waitFor(() => expect(localStorage.getItem(BACKFILL_FAILURES_KEY)).toBe(String(i)));
+    }
+
+    const { armBatchPinOnFirstControl, listPlans, pinImportedPlans, BACKFILL_DONE_KEY } =
+      await oneLoad(FULL);
+    vi.mocked(listPlans).mockClear();
+    vi.mocked(pinImportedPlans).mockClear();
+    armBatchPinOnFirstControl();
+    await settle();
+
+    expect(listPlans).not.toHaveBeenCalled();
+    expect(pinImportedPlans).not.toHaveBeenCalled();
+    expect(flagSet(BACKFILL_DONE_KEY)).toBe(false);
+  });
+
+  it('still runs below the cap, and success sets the flag and clears the count', async () => {
+    const { armBatchPinOnFirstControl, BACKFILL_DONE_KEY, BACKFILL_FAILURES_KEY } =
+      await oneLoad(FULL);
+    localStorage.setItem(BACKFILL_FAILURES_KEY, String(BACKFILL_MAX_FAILURES - 1));
+
+    armBatchPinOnFirstControl();
+
+    await vi.waitFor(() => expect(flagSet(BACKFILL_DONE_KEY)).toBe(true));
+    expect(localStorage.getItem(BACKFILL_FAILURES_KEY)).toBeNull();
+  });
+
+  it('a corrupt count stops the backfill', async () => {
+    const { armBatchPinOnFirstControl, listPlans, BACKFILL_FAILURES_KEY } = await oneLoad(FULL);
+    localStorage.setItem(BACKFILL_FAILURES_KEY, 'garbage');
+
+    armBatchPinOnFirstControl();
+    await settle();
+
+    expect(listPlans).not.toHaveBeenCalled();
+  });
+
+  it('the first-controllerchange path ignores the cap', async () => {
+    const sw = stubSw(false);
+    const {
+      armBatchPinOnFirstControl,
+      pinImportedPlans,
+      listPlans,
+      getPlan,
+      BACKFILL_FAILURES_KEY,
+    } = await loadModule();
+    vi.mocked(listPlans).mockResolvedValue([okSummary('a')]);
+    vi.mocked(getPlan).mockResolvedValue(plan('a'));
+    localStorage.setItem(BACKFILL_FAILURES_KEY, String(BACKFILL_MAX_FAILURES));
+
+    armBatchPinOnFirstControl();
+    sw.controller = {};
+    sw.dispatchEvent(new Event('controllerchange'));
+
+    await vi.waitFor(() => expect(pinImportedPlans).toHaveBeenCalledTimes(1));
+  });
+
+  it('defers the controlled-at-arm backfill until the browser is idle', async () => {
+    let idle: (() => void) | undefined;
+    const requestIdleCallback = vi.fn((cb: () => void) => {
+      idle = cb;
+    });
+    vi.stubGlobal('requestIdleCallback', requestIdleCallback);
+    const { armBatchPinOnFirstControl, listPlans } = await oneLoad(FULL);
+
+    armBatchPinOnFirstControl();
+    await settle();
+    expect(listPlans).not.toHaveBeenCalled();
+    expect(requestIdleCallback).toHaveBeenCalledWith(expect.any(Function), {
+      timeout: expect.any(Number),
+    });
+
+    idle?.();
+    await vi.waitFor(() => expect(listPlans).toHaveBeenCalledTimes(1));
   });
 });
