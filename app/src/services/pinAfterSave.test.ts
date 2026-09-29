@@ -4,6 +4,7 @@ import {
   createPinAfterSave,
   pinActivityFor,
   pinImportedPlans,
+  pinOutcomeDone,
   subscribePinActivity,
   pinRegionsAfterDepartureConfirm,
   pinRegionsAfterReplan,
@@ -386,5 +387,18 @@ describe('pin activity (#295)', () => {
     await settle();
     expect(pinActivityFor('a')).toBeUndefined();
     expect(pinActivityFor('b')).toBe('failed');
+  });
+});
+
+describe('pinOutcomeDone (#1533)', () => {
+  it.each<[PinRegionsOutcome, boolean]>([
+    [{ status: 'pinned', total: 2, pinned: 2 }, true],
+    [{ status: 'pinned', total: 0, pinned: 0 }, true],
+    [{ status: 'plan-gone', total: 2, pinned: 0 }, true],
+    [{ status: 'pinned', total: 2, pinned: 1 }, false],
+    [{ status: 'pin-record-failed', total: 2, pinned: 2 }, false],
+    [{ status: 'manifest-unavailable' }, false],
+  ])('%j -> %s', (outcome, done) => {
+    expect(pinOutcomeDone(outcome)).toBe(done);
   });
 });

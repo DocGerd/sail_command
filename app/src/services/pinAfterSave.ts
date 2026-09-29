@@ -64,6 +64,14 @@ export function __resetPinActivityForTests(): void {
   latestAttempt.clear();
 }
 
+/** True when nothing is left to pin: every archive verified, or the plan was deleted meanwhile. */
+export function pinOutcomeDone(outcome: PinRegionsOutcome): boolean {
+  return (
+    outcome.status === 'plan-gone' ||
+    (outcome.status === 'pinned' && outcome.pinned === outcome.total)
+  );
+}
+
 /**
  * Classifies a settled pin. Only a full pin clears the record, and only a
  * deleted plan ('plan-gone') forgets it; every other value, including one
@@ -72,9 +80,7 @@ export function __resetPinActivityForTests(): void {
  */
 function activityAfter(outcome: unknown): PinActivity | undefined {
   if (typeof outcome === 'object' && outcome !== null && 'status' in outcome) {
-    const o = outcome as PinRegionsOutcome;
-    if (o.status === 'plan-gone') return undefined;
-    if (o.status === 'pinned' && o.pinned === o.total) return undefined;
+    if (pinOutcomeDone(outcome as PinRegionsOutcome)) return undefined;
   }
   return 'failed';
 }
@@ -189,11 +195,7 @@ export function pinImportedPlans(
     // treatment of the per-plan case a few lines up, which already forgets
     // rather than fails a deleted plan's activity record.
     const failed = outcomes.filter(
-      (o) =>
-        o.status === 'rejected' ||
-        (o.status === 'fulfilled' &&
-          o.value.status !== 'plan-gone' &&
-          (o.value.status !== 'pinned' || o.value.pinned < o.value.total)),
+      (o) => o.status === 'rejected' || !pinOutcomeDone(o.value),
     ).length;
     if (failed > 0) {
       console.warn(
