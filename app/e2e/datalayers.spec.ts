@@ -1356,3 +1356,47 @@ test('#682: hazard seamarks (cardinal/isolated-danger) paint above routine ones 
     server.kill();
   }
 });
+
+// #1541: the base `input { min-height: 40px }` rule makes each checkbox a 40px
+// box, and a block `<label>` sets its text on that box's baseline, 15px below
+// the tick.
+for (const [name, viewport] of [
+  ['tabletPortrait', STANDARD_VIEWPORTS.tabletPortrait],
+  ['tabletLandscape', STANDARD_VIEWPORTS.tabletLandscape],
+] as const) {
+  test(`#1541: each Anzeigeoptionen checkbox shares a line with its label text at ${name}`, async ({
+    page,
+  }) => {
+    const server = await startPreview(page);
+    try {
+      await page.setViewportSize(viewport);
+      await page.goto(server.url);
+      await mapReady(page);
+      await openDataLayerOptions(page);
+
+      const labels = page.locator('.data-layer-controls-disclosure label');
+      await expect.poll(() => labels.count()).toBeGreaterThanOrEqual(4);
+      await expect
+        .poll(() =>
+          labels.evaluateAll((els) =>
+            els.flatMap((label) => {
+              const box = label.querySelector('input[type="checkbox"]')!.getBoundingClientRect();
+              const textNode = Array.from(label.childNodes).find(
+                (n) => n.nodeType === Node.TEXT_NODE && n.textContent!.trim() !== '',
+              )!;
+              const range = document.createRange();
+              range.selectNodeContents(textNode);
+              const text = range.getBoundingClientRect();
+              const offset = text.top + text.height / 2 - (box.top + box.height / 2);
+              return Math.abs(offset) <= 2
+                ? []
+                : [`${label.textContent!.trim()}: ${offset.toFixed(1)}px`];
+            }),
+          ),
+        )
+        .toEqual([]);
+    } finally {
+      server.kill();
+    }
+  });
+}
