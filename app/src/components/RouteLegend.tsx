@@ -104,7 +104,7 @@ export default function RouteLegend({ hasForcedLeg }: { hasForcedLeg: boolean })
           {t('route.legend.altRig')}
         </li>
       </ul>
-      {hasForcedLeg && <p>{t('route.legs.forcedNote')}</p>}
+      {hasForcedLeg && <p className="route-legs-note">{t('route.legs.forcedNote')}</p>}
     </details>
   );
 }
