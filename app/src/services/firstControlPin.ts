@@ -7,9 +7,10 @@
 // that: it listens for the FIRST controllerchange regardless of what is
 // mounted.
 import type { Plan } from '../types';
-import { regionCacheName } from '../lib/basemapRegions';
-import { safeGetItem, safeRemoveItem, safeSetItem } from '../lib/storage';
+import { isRetiredRegionCache, regionCacheName } from '../lib/basemapRegions';
+import { safeGetItem, safeKeys, safeRemoveItem, safeSetItem } from '../lib/storage';
 import { getPlan, listPlans } from './db';
+import { whenIdle } from './glyphWarmup';
 import { canPinRegions, pinImportedPlans, pinOutcomeDone, saveDataRequested } from './pinAfterSave';
 import { pinRegionsForPlan } from './regionPinning';
 
@@ -17,9 +18,11 @@ import { pinRegionsForPlan } from './regionPinning';
 // are present now. Keys
 // are scoped by the region cache name (deployment slug + cache version), so
 // /uat/ and prod do not share them and a REGION_CACHE_VERSION bump re-runs it.
-const KEY_SUFFIX = `@${regionCacheName(import.meta.env.BASE_URL)}`;
-export const BACKFILL_DONE_KEY = `sc-region-pin-backfill${KEY_SUFFIX}`;
-export const BACKFILL_FAILURES_KEY = `sc-region-pin-backfill-failures${KEY_SUFFIX}`;
+const BACKFILL_DONE_PREFIX = 'sc-region-pin-backfill@';
+const BACKFILL_FAILURES_PREFIX = 'sc-region-pin-backfill-failures@';
+const CACHE_NAME = regionCacheName(import.meta.env.BASE_URL);
+export const BACKFILL_DONE_KEY = `${BACKFILL_DONE_PREFIX}${CACHE_NAME}`;
+export const BACKFILL_FAILURES_KEY = `${BACKFILL_FAILURES_PREFIX}${CACHE_NAME}`;
 /** Failed attempts after which the startup backfill stops; the chip's retry still works. */
 export const BACKFILL_MAX_FAILURES = 3;
 
@@ -28,6 +31,19 @@ let batchPinnedThisSession = false;
 /** Test-only: forget the once-per-session batch-pin flag. */
 export function __resetFirstControlPinForTests(): void {
   batchPinnedThisSession = false;
+}
+
+/** Removes this deployment's flag/count keys of retired cache versions; other deployments' keys stay. */
+function pruneRetiredBackfillKeys(): void {
+  for (const key of safeKeys()) {
+    const prefix = [BACKFILL_DONE_PREFIX, BACKFILL_FAILURES_PREFIX].find((p) => key.startsWith(p));
+    if (
+      prefix !== undefined &&
+      isRetiredRegionCache(key.slice(prefix.length), import.meta.env.BASE_URL)
+    ) {
+      safeRemoveItem(key);
+    }
+  }
 }
 
 const failedAttempts = (): number => Number(safeGetItem(BACKFILL_FAILURES_KEY) ?? 0);
@@ -82,16 +98,6 @@ export async function pinAllSavedPlansOnce(): Promise<void> {
   }
 }
 
-function whenIdle(): Promise<void> {
-  return new Promise((resolve) => {
-    if ('requestIdleCallback' in window) {
-      window.requestIdleCallback(() => resolve(), { timeout: 5_000 });
-    } else {
-      setTimeout(resolve, 1_000);
-    }
-  });
-}
-
 let armed = false;
 
 /**
@@ -103,6 +109,7 @@ let armed = false;
 export function armBatchPinOnFirstControl(): void {
   if (armed) return;
   armed = true;
+  pruneRetiredBackfillKeys();
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
   if (navigator.serviceWorker.controller) {
     // `<` is false for a corrupt (NaN) count, so a bad value stops the backfill.

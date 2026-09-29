@@ -386,7 +386,7 @@ describe('persisted backfill flag (#1533)', () => {
 
   it('a flag write failure does not throw', async () => {
     stubSw(true);
-    const { armBatchPinOnFirstControl, pinRegionsForPlan } = await twoPlans();
+    const { armBatchPinOnFirstControl, pinRegionsForPlan, BACKFILL_DONE_KEY } = await twoPlans();
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new Error('quota');
     });
@@ -394,6 +394,21 @@ describe('persisted backfill flag (#1533)', () => {
     armBatchPinOnFirstControl();
 
     await vi.waitFor(() => expect(pinRegionsForPlan).toHaveBeenCalledTimes(2));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(flagSet(BACKFILL_DONE_KEY)).toBe(false);
+  });
+
+  it('a flag write failure leaves the batch promise resolved, not rejected', async () => {
+    stubSw(true);
+    const { pinAllSavedPlansOnce, pinRegionsForPlan, BACKFILL_DONE_KEY } = await twoPlans();
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('quota');
+    });
+
+    await expect(pinAllSavedPlansOnce()).resolves.toBeUndefined();
+
+    expect(pinRegionsForPlan).toHaveBeenCalledTimes(2);
+    expect(flagSet(BACKFILL_DONE_KEY)).toBe(false);
   });
 
   it('the key is scoped per deployment (prod vs /uat/ share one origin)', async () => {
@@ -511,5 +526,64 @@ describe('attempt cap and idle deferral (#1533)', () => {
 
     idle?.();
     await vi.waitFor(() => expect(listPlans).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe('retired backfill key pruning (#1550)', () => {
+  const PROD_STALE = [
+    'sc-region-pin-backfill@sailcommand-regions-sail_command@v0',
+    'sc-region-pin-backfill-failures@sailcommand-regions-sail_command@v0',
+  ];
+  const UAT_STALE = [
+    'sc-region-pin-backfill@sailcommand-regions-sail_command-uat@v0',
+    'sc-region-pin-backfill-failures@sailcommand-regions-sail_command-uat@v0',
+  ];
+
+  const armProd = async () => {
+    vi.stubEnv('BASE_URL', '/sail_command/');
+    stubSw(false);
+    const mod = await loadModule();
+    mod.armBatchPinOnFirstControl();
+    return mod;
+  };
+
+  it("removes this deployment's stale-version keys and keeps the current, other-deployment and unrelated ones", async () => {
+    const unrelated = 'sc-lang';
+    for (const k of [...PROD_STALE, ...UAT_STALE, unrelated]) localStorage.setItem(k, '1');
+    vi.stubEnv('BASE_URL', '/sail_command/');
+    stubSw(false);
+    const mod = await loadModule();
+    localStorage.setItem(mod.BACKFILL_DONE_KEY, '1');
+    localStorage.setItem(mod.BACKFILL_FAILURES_KEY, '2');
+
+    mod.armBatchPinOnFirstControl();
+
+    for (const k of PROD_STALE) expect(localStorage.getItem(k), k).toBeNull();
+    for (const k of [...UAT_STALE, unrelated, mod.BACKFILL_DONE_KEY, mod.BACKFILL_FAILURES_KEY]) {
+      expect(localStorage.getItem(k), k).not.toBeNull();
+    }
+  });
+
+  it('under /uat/ prod keys survive and uat stale keys go', async () => {
+    for (const k of [...PROD_STALE, ...UAT_STALE]) localStorage.setItem(k, '1');
+    vi.stubEnv('BASE_URL', '/sail_command/uat/');
+    stubSw(false);
+    const mod = await loadModule();
+
+    mod.armBatchPinOnFirstControl();
+
+    for (const k of UAT_STALE) expect(localStorage.getItem(k), k).toBeNull();
+    for (const k of PROD_STALE) expect(localStorage.getItem(k), k).not.toBeNull();
+  });
+
+  it('an enumeration that throws is harmless', async () => {
+    vi.spyOn(Storage.prototype, 'key').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    localStorage.setItem(PROD_STALE[0]!, '1');
+
+    await expect(armProd()).resolves.toBeDefined();
+
+    expect(localStorage.getItem(PROD_STALE[0]!)).not.toBeNull();
   });
 });
