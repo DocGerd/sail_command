@@ -1488,12 +1488,12 @@ function AppShell() {
   // it renders nothing without an active plan.
   // #654: plan.request.viaPoints read through the shared accessor —
   // defends a hand-edited/corrupted stored record; see planViaPoints.ts.
+  const viaDraftReady = plan !== null && origin !== null && destination !== null;
+  const viaPointsEdited =
+    viaDraftReady && viaPointsDiffer(draftViaPoints, planViaPoints(plan.request));
   const viaDraftStale =
-    plan !== null &&
-    origin !== null &&
-    destination !== null &&
-    (viaPointsDiffer(draftViaPoints, planViaPoints(plan.request)) ||
-      segmentModesDiffer(draftSegmentModes, plan.request.segmentModes));
+    viaPointsEdited ||
+    (viaDraftReady && segmentModesDiffer(draftSegmentModes, plan.request.segmentModes));
   // #299 fix (PR #486 review): the cross-tab staleness BANNER (.banner-area,
   // below) intentionally uses this NARROWER signal instead of `formDirty` —
   // see routingSettingsDirty's own comment in lib/planForm.ts for why (in
@@ -1602,6 +1602,7 @@ function AppShell() {
             activeLegIndex={activeLegIndex}
             draftViaPoints={draftViaPoints}
             viaReplanning={viaDraftStale}
+            viaPointsEditing={viaPointsEdited}
             onViaDragEnd={handleViaDragEnd}
             onRouteLineInsert={handleRouteLineInsert}
             viaArmed={tapTarget === 'via'}

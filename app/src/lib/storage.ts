@@ -33,3 +33,17 @@ export function safeRemoveItem(key: string): void {
     // Best-effort, matching safeGetItem/safeSetItem's degrade-silently contract.
   }
 }
+
+/** Snapshot of every stored key; empty when storage is inaccessible. */
+export function safeKeys(): string[] {
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key !== null) keys.push(key);
+    }
+    return keys;
+  } catch {
+    return [];
+  }
+}

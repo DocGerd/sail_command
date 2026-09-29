@@ -442,7 +442,9 @@ export const de = {
   'error.noRoute.segmentModesInvalid':
     'Interner Fehler: Die Abschnittsvorgaben passen nicht zu den Wegpunkten. Vorgaben neu wählen und erneut planen.',
   'error.segmentModesMergeConflict':
-    'Wegpunkt {index} liegt zu nah am Nachbarn, und die Abschnitte, die dadurch zusammengelegt würden, haben unterschiedliche Vorgaben (Auto, Motor, Segel). Wegpunkt {index} entfernen oder verschieben oder den Abschnitten dieselbe Vorgabe geben.',
+    'Wegpunkt {waypoint} liegt zu nah am Nachbarn, und die Abschnitte, die dadurch zusammengelegt würden, haben unterschiedliche Vorgaben (Auto, Motor, Segel). Wegpunkt {waypoint} entfernen oder verschieben oder den Abschnitten dieselbe Vorgabe geben.',
+  'error.segmentModesMergeConflictMany':
+    'Die Wegpunkte {head} und {last} liegen zu nah an ihren Nachbarn, und die Abschnitte, die dadurch zusammengelegt würden, haben unterschiedliche Vorgaben (Auto, Motor, Segel). Wegpunkte {head} und {last} entfernen oder verschieben oder den Abschnitten dieselbe Vorgabe geben.',
   'error.replanStaleWind':
     'Die gespeicherte Windvorhersage deckt die Abfahrtszeit dieses Plans nicht mehr ab. Route neu planen, um eine aktuelle Vorhersage zu laden.',
   'error.replanInit':
