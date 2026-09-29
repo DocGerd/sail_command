@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Plans saved before the service worker first took control now download their offline map regions on the next load, per deployment, retrying on later loads (up to three failed attempts) until all are stored (#1533).
+- Plans saved before the service worker first took control now download their offline map regions on the next load while online with data-saver off, per deployment, retrying on later loads (up to three failed attempts) until all are stored (#1533).
 
 ## [0.47.0] - 2026-09-28
 

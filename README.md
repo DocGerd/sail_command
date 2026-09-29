@@ -76,11 +76,12 @@ installs as a standalone icon and works fully offline after the first visit
   whose cautious, worst-case reading falls below your safety depth; the
   overlay is on by default and can be toggled off, the hatch can be
   switched off independently of it, and optional depth contour lines can be
-  switched on. Those toggles sit in the map's display-options control — top
-  left before a route is planned, beside the route's other display toggles
-  once one exists. A legend explains what the hatch does and does not mark —
-  below the map's layer controls (collapsed by default) before a route is
-  planned, and folded into the route legend once one is.
+  switched on. The hatch and contour toggles sit in the map's display-options
+  control — top left before a route is planned, beside the route's other
+  display toggles once one exists. A legend explains what the hatch does and
+  does not mark —
+  below the map's layer controls (the legend itself is collapsed by default)
+  before a route is planned, and folded into the route legend once one is.
 - **Waypoints**: route through a specific point in between by arming **Add
   waypoint** and then tapping the map, tapping a seamark or a saved
   waypoint, or typing coordinates directly — cancel arming any time with the

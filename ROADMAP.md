@@ -32,12 +32,12 @@ behind the CodeQL false-positive alerts
 ([#1545](https://github.com/DocGerd/sail_command/issues/1545)).
 
 `ScaleBar` not re-measuring when the display-options control is opened by
-hand ([#1552](https://github.com/DocGerd/sail_command/issues/1552)) was filed during the cycle and sits in `Backlog`.
+hand ([#1552](https://github.com/DocGerd/sail_command/issues/1552)) was filed during the cycle and left in `Backlog`.
 
 ## Next — v0.49.0
 
 The [`v0.49.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-is empty as of this cut and its scope is not decided. The milestone page is
+is empty as of this cut. The milestone page is
 the only authoritative view, check it directly rather than this file.
 
 ## Themes for the next year
