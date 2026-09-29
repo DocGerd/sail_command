@@ -15,8 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- The map scale bar now re-measures when the map options panel is opened or closed by hand, so it no longer overlaps the panel (#1552).
-- Changing only a segment's motor/sail mode on a loaded route no longer collapses the map options panel (#1553).
+- The map scale bar now hides or moves when the map options panel is opened or closed by hand, instead of overlapping it (#1552).
+- Changing only a segment's motor/sail mode on a loaded route no longer collapses the map options panel or resets its legend (#1553).
 - With a route loaded, the depth and seamark checkboxes on the map line up with their labels (#1558).
 
 ## [0.48.0] - 2026-09-29
