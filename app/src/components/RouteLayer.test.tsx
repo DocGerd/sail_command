@@ -269,6 +269,7 @@ function renderRouteLayer(map: ReturnType<typeof makeFakeMap>, activeLegIndex: n
       activeLegIndex={activeLegIndex}
       draftViaPoints={[]}
       viaReplanning={false}
+      viaPointsEditing={false}
       onViaDragEnd={async () => true}
       onRouteLineInsert={() => {}}
       viaArmed={false}
@@ -290,6 +291,7 @@ function renderRouteLayerWithPlan(
       activeLegIndex={null}
       draftViaPoints={plan.request.viaPoints}
       viaReplanning={false}
+      viaPointsEditing={false}
       onViaDragEnd={async () => true}
       onRouteLineInsert={() => {}}
       viaArmed={false}
@@ -454,6 +456,7 @@ describe('RouteLayer fit-to-view button (#297)', () => {
       activeLegIndex: null,
       draftViaPoints: [],
       viaReplanning: false,
+      viaPointsEditing: false,
       onViaDragEnd: async () => true,
       onRouteLineInsert: () => {},
       viaArmed: false,
@@ -679,6 +682,7 @@ describe('RouteLayer style reload (#153)', () => {
         activeLegIndex={2}
         draftViaPoints={[]}
         viaReplanning={false}
+        viaPointsEditing={false}
         onViaDragEnd={async () => true}
         onRouteLineInsert={() => {}}
         viaArmed={false}
@@ -779,6 +783,7 @@ describe('RouteLayer wind-barb slider aria-valuetext (#292, #373 fix-wave)', () 
           activeLegIndex={null}
           draftViaPoints={[]}
           viaReplanning={false}
+          viaPointsEditing={false}
           onViaDragEnd={async () => true}
           onRouteLineInsert={() => {}}
           viaArmed={false}
@@ -875,6 +880,7 @@ describe('RouteLayer collapsible controls cluster (#628)', () => {
         activeLegIndex={null}
         draftViaPoints={[]}
         viaReplanning
+        viaPointsEditing={false}
         onViaDragEnd={async () => true}
         onRouteLineInsert={() => {}}
         viaArmed={false}
@@ -962,6 +968,7 @@ describe('RouteLayer collapsible controls cluster (#628)', () => {
         activeLegIndex={null}
         draftViaPoints={[]}
         viaReplanning={false}
+        viaPointsEditing={false}
         onViaDragEnd={async () => true}
         onRouteLineInsert={() => {}}
         viaArmed={false}
@@ -977,6 +984,7 @@ describe('RouteLayer collapsible controls cluster (#628)', () => {
         activeLegIndex={null}
         draftViaPoints={[]}
         viaReplanning={false}
+        viaPointsEditing={false}
         onViaDragEnd={async () => true}
         onRouteLineInsert={() => {}}
         viaArmed={false}
@@ -1020,6 +1028,7 @@ describe('RouteLayer collapsible controls cluster (#628)', () => {
         activeLegIndex={null}
         draftViaPoints={[]}
         viaReplanning={false}
+        viaPointsEditing={false}
         onViaDragEnd={async () => true}
         onRouteLineInsert={() => {}}
         viaArmed={false}
@@ -1043,6 +1052,7 @@ describe('RouteLayer collapsible controls cluster (#628)', () => {
         activeLegIndex={null}
         draftViaPoints={[]}
         viaReplanning={false}
+        viaPointsEditing={false}
         onViaDragEnd={async () => true}
         onRouteLineInsert={() => {}}
         viaArmed={false}
@@ -1058,6 +1068,7 @@ describe('RouteLayer collapsible controls cluster (#628)', () => {
         activeLegIndex={null}
         draftViaPoints={[]}
         viaReplanning={false}
+        viaPointsEditing={false}
         onViaDragEnd={async () => true}
         onRouteLineInsert={() => {}}
         viaArmed={false}
@@ -1179,6 +1190,7 @@ describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
         activeLegIndex={null}
         draftViaPoints={[]}
         viaReplanning={false}
+        viaPointsEditing={false}
         onViaDragEnd={async () => true}
         onRouteLineInsert={() => {}}
         viaArmed={false}
@@ -1221,6 +1233,7 @@ describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
         activeLegIndex={null}
         draftViaPoints={[]}
         viaReplanning={false}
+        viaPointsEditing={false}
         onViaDragEnd={async () => true}
         onRouteLineInsert={() => {}}
         viaArmed={false}
@@ -1244,6 +1257,7 @@ describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
         activeLegIndex={null}
         draftViaPoints={[{ lat: 54.75, lon: 10.2 }]}
         viaReplanning={false}
+        viaPointsEditing={false}
         onViaDragEnd={async () => true}
         onRouteLineInsert={() => {}}
         viaArmed={false}
@@ -1270,6 +1284,7 @@ describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
         activeLegIndex={null}
         draftViaPoints={[]}
         viaReplanning={false}
+        viaPointsEditing={false}
         onViaDragEnd={async () => true}
         onRouteLineInsert={onRouteLineInsert}
         viaArmed={false}
@@ -1308,6 +1323,7 @@ describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
         activeLegIndex={null}
         draftViaPoints={[]}
         viaReplanning={false}
+        viaPointsEditing={false}
         onViaDragEnd={async () => true}
         onRouteLineInsert={() => {}}
         viaArmed={false}
@@ -1328,6 +1344,7 @@ describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
         activeLegIndex={null}
         draftViaPoints={[]}
         viaReplanning={false}
+        viaPointsEditing={false}
         onViaDragEnd={async () => true}
         onRouteLineInsert={() => {}}
         viaArmed={false}
@@ -1352,6 +1369,7 @@ describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
         activeLegIndex={null}
         draftViaPoints={[]}
         viaReplanning={false}
+        viaPointsEditing={false}
         onViaDragEnd={async () => true}
         onRouteLineInsert={() => {}}
         viaArmed={false}
@@ -1371,6 +1389,7 @@ describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
         activeLegIndex={null}
         draftViaPoints={[]}
         viaReplanning={false}
+        viaPointsEditing={false}
         onViaDragEnd={async () => true}
         onRouteLineInsert={() => {}}
         viaArmed={false}
@@ -1427,6 +1446,7 @@ describe('RouteLayer #1170: tap the route line to insert a waypoint while armed'
         activeLegIndex={null}
         draftViaPoints={[]}
         viaReplanning={false}
+        viaPointsEditing={false}
         onViaDragEnd={async () => true}
         onRouteLineInsert={() => {}}
         viaArmed={true}
@@ -1457,6 +1477,7 @@ describe('RouteLayer #1170: tap the route line to insert a waypoint while armed'
         activeLegIndex={null}
         draftViaPoints={[]}
         viaReplanning={false}
+        viaPointsEditing={false}
         onViaDragEnd={async () => true}
         onRouteLineInsert={() => {}}
         viaArmed={false}
@@ -1487,6 +1508,7 @@ describe('RouteLayer #1170: tap the route line to insert a waypoint while armed'
         activeLegIndex={null}
         draftViaPoints={[]}
         viaReplanning={false}
+        viaPointsEditing={false}
         onViaDragEnd={async () => true}
         onRouteLineInsert={() => {}}
         viaArmed={true}
@@ -1517,6 +1539,7 @@ describe('RouteLayer #1170: tap the route line to insert a waypoint while armed'
         activeLegIndex={null}
         draftViaPoints={[]}
         viaReplanning={false}
+        viaPointsEditing={false}
         onViaDragEnd={async () => true}
         onRouteLineInsert={() => {}}
         viaArmed={false}
@@ -1535,6 +1558,7 @@ describe('RouteLayer #1170: tap the route line to insert a waypoint while armed'
         activeLegIndex={null}
         draftViaPoints={[]}
         viaReplanning={false}
+        viaPointsEditing={false}
         onViaDragEnd={async () => true}
         onRouteLineInsert={() => {}}
         viaArmed={true}
@@ -1554,6 +1578,7 @@ describe('RouteLayer #1170: tap the route line to insert a waypoint while armed'
         activeLegIndex={null}
         draftViaPoints={[]}
         viaReplanning={false}
+        viaPointsEditing={false}
         onViaDragEnd={async () => true}
         onRouteLineInsert={() => {}}
         viaArmed={true}
@@ -1633,16 +1658,18 @@ describe('RouteLayer depth-overlay rows (#1541)', () => {
 // edited (draft differs from the committed route, or a tap-insert is armed),
 // so it collapses for the edit and the earlier state returns afterwards.
 describe('RouteLayer options cluster during via editing (#1541)', () => {
-  function renderEditable(edit: { viaReplanning?: boolean; viaArmed?: boolean } = {}) {
+  type Edit = { viaReplanning?: boolean; viaPointsEditing?: boolean; viaArmed?: boolean };
+  function renderEditable(edit: Edit = {}) {
     hoisted.map = makeFakeMap();
     const plan = makePlan();
-    const element = (e: { viaReplanning?: boolean; viaArmed?: boolean }) => (
+    const element = (e: Edit) => (
       <RouteLayer
         plan={plan}
         rig="genoa"
         activeLegIndex={null}
         draftViaPoints={[]}
         viaReplanning={e.viaReplanning ?? false}
+        viaPointsEditing={e.viaPointsEditing ?? false}
         onViaDragEnd={async () => true}
         onRouteLineInsert={() => {}}
         viaArmed={e.viaArmed ?? false}
@@ -1662,7 +1689,7 @@ describe('RouteLayer options cluster during via editing (#1541)', () => {
     setMatchMedia(true);
     const { details, setEdit } = renderEditable();
     expect(details().open).toBe(true);
-    setEdit({ viaReplanning: true });
+    setEdit({ viaReplanning: true, viaPointsEditing: true });
     expect(details().open).toBe(false);
     setEdit({});
     expect(details().open).toBe(true);
@@ -1674,7 +1701,7 @@ describe('RouteLayer options cluster during via editing (#1541)', () => {
     expect(details().open).toBe(false);
     fireEvent.click(details().querySelector('summary')!);
     expect(details().open).toBe(true);
-    setEdit({ viaReplanning: true });
+    setEdit({ viaReplanning: true, viaPointsEditing: true });
     expect(details().open).toBe(false);
     setEdit({});
     expect(details().open).toBe(true);
@@ -1685,7 +1712,7 @@ describe('RouteLayer options cluster during via editing (#1541)', () => {
     const { details, setEdit } = renderEditable();
     fireEvent.click(details().querySelector('summary')!);
     expect(details().open).toBe(false);
-    setEdit({ viaReplanning: true });
+    setEdit({ viaReplanning: true, viaPointsEditing: true });
     setEdit({});
     expect(details().open).toBe(false);
   });
@@ -1699,7 +1726,21 @@ describe('RouteLayer options cluster during via editing (#1541)', () => {
     expect(armed.details().open).toBe(true);
     cleanup();
 
-    const midEdit = renderEditable({ viaReplanning: true });
+    const midEdit = renderEditable({ viaReplanning: true, viaPointsEditing: true });
     expect(midEdit.details().open).toBe(false);
+  });
+  // Mutation: driving the collapse from `viaReplanning` instead of
+  // `viaPointsEditing` collapses here and remounts the nested Legende.
+  it('a segment-mode-only stale draft neither collapses the cluster nor resets Legende', () => {
+    setMatchMedia(true);
+    const { details, setEdit } = renderEditable();
+    const legend = () => details().querySelector<HTMLDetailsElement>('details.route-legend')!;
+    legend().open = true;
+    setEdit({ viaReplanning: true });
+    expect(details().open).toBe(true);
+    expect(legend().open).toBe(true);
+    setEdit({});
+    expect(details().open).toBe(true);
+    expect(legend().open).toBe(true);
   });
 });

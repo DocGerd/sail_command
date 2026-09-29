@@ -520,6 +520,41 @@ describe('ScaleBar', () => {
     sheet.remove();
   });
 
+  it('re-measures when .map-stack-tl itself resizes, e.g. its disclosure opened (#1552)', async () => {
+    const sheet = stubSheet(400);
+    const { container } = render(<ScaleBar />);
+    stubHost(container);
+    Object.defineProperty(bar(), 'offsetHeight', { value: 30, configurable: true });
+    const stack = await act(async () => {
+      return stubMapStack(container, 56, 165);
+    });
+    expect(bar().className).not.toContain('scale-bar-suppressed');
+
+    // Geometry grows with no DOM mutation and no banner/sheet resize.
+    Object.defineProperty(stack, 'offsetHeight', { value: 300, configurable: true });
+    expect(bar().className).not.toContain('scale-bar-suppressed');
+
+    await act(async () => {
+      roFor(stack).fire(300);
+    });
+    // ceiling = 667 - 30 - (56 + 300) - 8 = 273 < floor (408).
+    expect(bar().className).toContain('scale-bar-suppressed');
+    sheet.remove();
+  });
+
+  it('disconnects the .map-stack-tl observer on unmount (#1552)', async () => {
+    const sheet = stubSheet(400);
+    const { container, unmount } = render(<ScaleBar />);
+    stubHost(container);
+    const stack = await act(async () => {
+      return stubMapStack(container, 56, 165);
+    });
+    const observer = roFor(stack);
+    unmount();
+    expect(observer.disconnected).toBe(true);
+    sheet.remove();
+  });
+
   it('unregisters its map listeners on unmount', () => {
     const { unmount } = render(<ScaleBar />);
     const registered = map.on.mock.calls.map((c) => c[0]);

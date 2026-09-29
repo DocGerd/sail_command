@@ -61,6 +61,9 @@ export interface RouteLayerProps {
   // PROP NAME kept as `viaReplanning` — see ViaMarkers.tsx's own comment on
   // its identically-named, identically-repurposed prop.
   viaReplanning: boolean;
+  // The via LIST alone differs from the committed plan. Drives the options
+  // cluster's auto-collapse; a segment-mode-only change does not set it.
+  viaPointsEditing: boolean;
   onViaDragEnd: (index: number, next: LatLon) => Promise<boolean>;
   // #850: drag-the-route-line-to-insert-a-waypoint. Fired once, on the
   // drag's release, with the released point — never live/streaming while
@@ -735,6 +738,7 @@ export default function RouteLayer({
   activeLegIndex,
   draftViaPoints,
   viaReplanning,
+  viaPointsEditing,
   onViaDragEnd,
   onRouteLineInsert,
   viaArmed,
@@ -824,7 +828,7 @@ export default function RouteLayer({
   // centre, so it collapses and the state from before the edit comes back
   // afterwards. A restored state that differs from the layout default counts
   // as a user choice, so a later resize does not re-seed it.
-  const viaEditing = viaReplanning || viaArmed;
+  const viaEditing = viaPointsEditing || viaArmed;
   const [editCollapsed, setEditCollapsed] = useState(false);
   const [openOverride, setOpenOverride] = useState<boolean | null>(null);
   const openBeforeEditRef = useRef<boolean | null>(null);
