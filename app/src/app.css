@@ -1398,7 +1398,8 @@ select {
 
 /* Touch targets: each toggle row is a ≥44 px hit area (gloved-hand cockpit
    use) — padding grows the label, the checkbox stays its native size. */
-.route-layer-controls label {
+.route-layer-controls label,
+.data-layer-controls-disclosure label {
   display: flex;
   align-items: center;
   gap: 0.4rem;
