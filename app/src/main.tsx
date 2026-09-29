@@ -20,9 +20,10 @@ void navigator.storage?.persist?.();
 // load, immune to StrictMode double-invocation.
 initSwRecovery();
 
-// #1518: arm the batch region pin for the first SW control, module-scope
-// like initSwRecovery — regardless of which tab/view is mounted at that
-// moment (useRegionReadiness's chip-scoped pin only covers its own plan).
+// #1518: arm the batch region pin, module-scope like initSwRecovery —
+// regardless of which tab/view is mounted (useRegionReadiness's chip-scoped
+// pin only covers its own plan). It fires on the first SW control, or at idle
+// on an already-controlled page until the persisted backfill flag is set (#1533).
 armBatchPinOnFirstControl();
 
 // #28: background glyph warm-up — fire-and-forget; it self-defers until
