@@ -1,7 +1,7 @@
 # Depth contours (#629) — design
 
 Status: approved by the maintainer 2026-09-28, with the amendments from PR #1522's review.
-Source: issue #629 (the measurement write-up); the maintainer ruling comment on it dated 2026-09-27 (Q1, Q2, Q4, Q5); the maintainer rulings of 2026-09-28 recorded at https://github.com/DocGerd/sail_command/issues/629#issuecomment-5873587510 (contour-label anchor, outer-boundary edge, toggle placement); and this document's approval (Q3, Q7, architecture).
+Source: issue #629 (the measurement write-up); the maintainer ruling comment on it dated 2026-09-27 (Q1, Q2, Q4, Q5); the maintainer rulings of 2026-09-28 recorded at https://github.com/DocGerd/sail_command/issues/629#issuecomment-5873587510 (contour-label anchor, outer-boundary edge; its toggle-placement ruling is superseded, §3); and this document's approval (Q3, Q7, architecture).
 
 ## 1. Decisions on record
 
@@ -15,7 +15,7 @@ Source: issue #629 (the measurement write-up); the maintainer ruling comment on 
 | Q7 | Toggle | Its own persisted toggle, default off. |
 | — | Architecture | Build-time: a pipeline script writes a committed asset (issue §D2). |
 
-Deferred: Q10 smoothing, Q11 datum surfacing, per-level colour. Q12 (#599 raster zoom degradation) does not apply to vector lines. Q13 is answered by §2's measurement requirement.
+Q10 smoothing landed in #1540 (§2). Deferred: Q11 datum surfacing, per-level colour. Q12 (#599 raster zoom degradation) does not apply to vector lines. Q13 is answered by §2's measurement requirement.
 
 ## 2. Data product
 
@@ -29,9 +29,9 @@ Cell classification, exact in integers. With mask byte `b`:
 Byte 254 is never emitted by the mask build; the rule covers it anyway.
 
 Geometry:
-- **Level lines.** For each level, trace every shared cell edge between a cell at or above `L` and a non-zero cell below it. Merge the segments into polylines. The result is a staircase on the ~46 m grid, deliberately unsmoothed: any smoothing would move part of a cautious line into shallower water.
+- **Level lines.** For each level, trace every shared cell edge between a cell at or above `L` and a non-zero cell below it. Merge the segments into polylines. Level lines are shortcut greedily over their own staircase vertices; a chord is accepted only if it and every shorter chord from the same start stay in the closure of the at-or-above-L cells and it touches a cell beside every edge it skips (#1540). Guarantees, pinned jointly by the "#1540 region" rows and the "#1540 smoothed level lines" closure rows in `contoursAsset.test.ts`: the region a line set shows as at-or-above L, closed by the deep cells' own no-data and grid edges, is a subset of the at-or-above-L cells, and every line segment lies in the closure of those cells. The no-data edge is unsmoothed. Corners that point into deep water stay square where a shortcut would cross a shallow cell (shoal tips, one-cell shoals); along a diagonal run of steps a line passes straight through them.
 - **No-data edge.** Trace every cell edge between a byte-0 cell and a non-zero cell, and every outer-boundary edge of a non-zero cell, once, as a separate feature. Level lines therefore end where they meet this edge, which is visible, instead of stopping silently.
-- The two geometries never share an edge: a level line only ever separates two non-zero cells.
+- Before smoothing the two geometries share no edge: a traced level edge only ever separates two non-zero cells. A smoothed chord can lie along a deep-cell/byte-0 edge, so a level line may overlap the no-data edge (measured on the asset #1549 merged, axis-aligned unit edges: 18, 26, 12, 1, 0 and 0 at 2, 3, 5, 10, 15 and 20 m).
 
 Output: a GeoJSON `FeatureCollection` of `LineString`/`MultiLineString` features.
 - Properties: `{ "kind": "contour", "levelM": L }` or `{ "kind": "no-data" }`.
@@ -52,7 +52,7 @@ Delivery: `globPatterns` already precaches `.json` under `data/`, so no service-
   - `sc-contour-labels`: `symbol-placement: 'line'`, `text-field` is the level in metres as a bare number (the chart convention), `text-font: ['Noto Sans Regular']`, a halo, and collision on (`text-allow-overlap: false`, `text-ignore-placement: false`).
 - `sc-contour-lines` and `sc-contour-nodata` are anchored at the same `beforeId` as `sc-depth`.
 - `sc-contour-labels` is anchored directly below the first basemap `symbol` layer in style order, found from the loaded style at setup, not hard-coded. Placement runs top-down, so basemap labels are placed first and win collisions; a contour label is the first to be culled (maintainer ruling 2026-09-28). The anchor puts the labels beneath every layer the app adds, including `sc-depth`'s shading, the `sc-depth-hatch` overlay (on by default, and when on it covers the shallow side of every 2 m line at any allowed gate) and the contour lines. The implementation checks label legibility in a browser with depth shading and hatch both on, including at z14 and above where the hatch is a full wash, and stops and reports if the labels are not legible.
-- Toggle: a checkbox inside the depth legend, following the #681 hatch-toggle precedent: in DataLayers' `.depth-legend-body` when no plan is active, and in `RouteLegend`'s depth section when one is (maintainer ruling 2026-09-28). It uses `usePersistedToggle('sc-contours-visible', false)`, default off. The label is "Tiefenlinien" / "Depth contours" through the i18n dictionary. It must not contain the substring "Wassertiefen": Playwright's `getByRole` matches names by substring, and existing e2e locators use that string without `exact`.
+- Toggle: a top-level row of "Anzeigeoptionen", beside the hatch toggle (maintainer ruling on #1541, 2026-09-29, superseding the 2026-09-28 legend placement): with no plan, in DataLayers' own "Anzeigeoptionen" disclosure alongside Wassertiefen and Seezeichen; with a plan, in `RouteLayer`'s "Anzeigeoptionen". It uses `usePersistedToggle('sc-contours-visible', false)`, default off. The label is "Tiefenlinien" / "Depth contours" through the i18n dictionary. It must not contain the substring "Wassertiefen": Playwright's `getByRole` matches names by substring, and existing e2e locators use that string without `exact`.
 - Fetch failure: the layers stay absent, and the toggle shows an inline, non-blocking error string. There is no retry loop.
 
 ## 4. Legend
@@ -69,14 +69,14 @@ It does not claim chart authority.
 |---|---|
 | `contours.json` `maskSha256` equals sha256 of `mask.bin` (TS, `readFileSync`) | the mask is rebuilt without regenerating contours |
 | `toleranceM` equals `MASK_TOLERANCE_M`, and `levelsM` equals the renderer's level list | the basis drifts between Python and TS |
-| Differential: for sampled level-line segments, the two adjacent cells classify on opposite sides of the level through TS `cautiousDepthLowerBoundM`; for sampled no-data segments, either the segment is interior and its two adjacent cells are one byte-0 and one non-zero, or it lies on the mask's outer boundary and its one adjacent cell is non-zero | the pipeline's integer rule diverges from the app's formula |
+| Level lines: per level, every segment lies in the closure of the at-or-above-L cells, every vertex is a vertex of the level's staircase, every qualifying staircase edge borders a cell a segment touches, and the area the lines enclose, closed by the deep cells' own no-data and grid edges, contains no below-L cell (the "#1540 region" rows; cells classified through TS `cautiousDepthLowerBoundM`). No-data: for sampled segments, either the segment is interior and its two adjacent cells are one byte-0 and one non-zero, or it lies on the mask's outer boundary and its one adjacent cell is non-zero | the pipeline's integer rule or its smoothing diverges from the app's formula |
 | unit: `sc-contour-labels` is added with `beforeId` equal to the style's first basemap `symbol` layer | the labels-yield anchor regresses |
 | e2e: fresh profile has the toggle off and no contour features; toggling on renders level lines and at least one label at a fixed view; `getByRole` locators for "Wassertiefen" still resolve uniquely | rendering or default state regresses, or the label collides |
 
-Each guard gets a mutation check, run at BASE and HEAD: the stale-hash mutant, the tolerance mutant, an off-by-one in the pipeline threshold, boundary edges traced for byte-0 cells too, and a toggle default of `true`. Run ruff on the new script by hand, since `Python lint` is advisory. The stylesheet (if touched) is read with `readFileSync`, never `?raw`.
+Each guard gets a mutation check, run at BASE and HEAD: the stale-hash mutant, the tolerance mutant, an off-by-one in the pipeline threshold, a chord accepted across a shallow cell, boundary edges traced for byte-0 cells too, and a toggle default of `true`. Run ruff on the new script by hand, since `Python lint` is advisory. The stylesheet (if touched) is read with `readFileSync`, never `?raw`.
 
 ## 6. Delivery constraints
 
 - The #282 sweep closure's path prefixes include `pipeline/` and `app/public/data/`, so a sweep is owed. Verify with `closure.mjs diff`. The baseline is a BASE double-run at the branch's own merge-base with `develop`, unless `closure.mjs reuse <recorded-sha> <merge-base>` returns REUSE for an entry in `.claude/skills/sweep-closure/recorded-runs.json`. Routes cannot move (nothing in the solve reads the new file), so every arm must hash-match BASE.
 - It is a user-visible feature, so it ships a `changelog.d/629.added.md` fragment.
-- Screenshots: the toggle sits inside the depth legend, so `.data-layer-controls` is unchanged; regenerate a README image with `docs/screenshots/capture.mjs` only if it shows the legend body.
+- Screenshots: #1541 moves the toggle into "Anzeigeoptionen", so regenerate the README images with `docs/screenshots/capture.mjs` at the next release sweep.
