@@ -5,6 +5,8 @@ import {
   bannerHeightVar,
   assertCleanServiceWorkerState,
   seedFreshProfileDefaults,
+  dataLayerOptionsSummary,
+  openDataLayerOptions,
   STANDARD_VIEWPORTS,
   EDGE_VIEWPORTS,
   type Viewport,
@@ -295,6 +297,9 @@ test('responsive layout: side panel on wide screens, bottom sheet on narrow', as
 // height (`lib/useBannerHeight.ts`) instead of estimating it from viewport
 // height, rather than touching either element's z-index.
 //
+// #1541: the tappable member probed below is now the cluster's "Anzeigeoptionen"
+// summary (the checkboxes sit inside that disclosure, collapsed on narrow).
+//
 // Runs the SAME single-banner hit-test across BOTH the standard device
 // matrix (helpers.ts's `STANDARD_VIEWPORTS` — maintainer requirement: every
 // layout-sensitive spec covers desktop 4K/HD, tablet landscape/portrait, and
@@ -328,7 +333,7 @@ const SINGLE_BANNER_VIEWPORTS: Record<string, Viewport> = {
   shortLandscape740: EDGE_VIEWPORTS.shortLandscape740,
 };
 for (const [label, viewport] of Object.entries(SINGLE_BANNER_VIEWPORTS)) {
-  test(`#368: offline banner no longer intercepts the depth checkbox (${label}, ${viewport.width}x${viewport.height})`, async ({
+  test(`#368: offline banner no longer intercepts the display-options summary (${label}, ${viewport.width}x${viewport.height})`, async ({
     page,
   }) => {
     const server = await startPreview(page);
@@ -336,7 +341,7 @@ for (const [label, viewport] of Object.entries(SINGLE_BANNER_VIEWPORTS)) {
       await page.setViewportSize(viewport);
       await page.goto(server.url);
 
-      const depthToggle = page.getByRole('checkbox', { name: 'Wassertiefen' });
+      const depthToggle = dataLayerOptionsSummary(page);
       await expect(depthToggle).toBeVisible();
 
       // Let the basemap finish loading BEFORE cutting the network: unlike
@@ -391,7 +396,7 @@ for (const [label, viewport] of Object.entries(SINGLE_BANNER_VIEWPORTS)) {
       // read taken before the `--sc-banner-height` push settles.
       await expect
         .poll(() => settledHitDescription(page, depthToggle), { timeout: 10_000 })
-        .toMatch(/^INPUT\b/);
+        .toMatch(/^SUMMARY\b/);
 
       // DoD's own phrasing: measured overlap between the two clusters is 0.
       // A second, independent signal from the same fix (top offset moved,
@@ -452,7 +457,7 @@ const AIS_STATUS_NARROW_VIEWPORTS: Record<string, Viewport> = {
   tabletPortrait: STANDARD_VIEWPORTS.tabletPortrait,
   narrowPortrait360: EDGE_VIEWPORTS.narrowPortrait360,
   deepPortrait320: EDGE_VIEWPORTS.deepPortrait320,
-  partialPushBand375: EDGE_VIEWPORTS.partialPushBand375,
+  shortPortrait375: EDGE_VIEWPORTS.shortPortrait375,
   wrapForcing280: EDGE_VIEWPORTS.wrapForcing280,
 };
 for (const [label, viewport] of Object.entries(AIS_STATUS_NARROW_VIEWPORTS)) {
@@ -565,7 +570,7 @@ for (const [label, viewport] of Object.entries(APP_HEADER_SHORT_LANDSCAPE_VIEWPO
 // push (app.css, `--sc-banner-height`) always leaves a fixed ~8px margin
 // below whatever `.banner-area` actually renders, regardless of how many
 // banners are stacked — see that rule's own derivation comment.
-test('#368: two stacked banners at 320x568 (previously measured broken) no longer intercept the depth checkbox', async ({
+test('#368: two stacked banners at 320x568 (previously measured broken) no longer intercept the display-options summary', async ({
   page,
 }) => {
   const server = await startPreview(page);
@@ -573,7 +578,7 @@ test('#368: two stacked banners at 320x568 (previously measured broken) no longe
     await page.setViewportSize(EDGE_VIEWPORTS.deepPortrait320);
     await page.goto(server.url);
 
-    const depthToggle = page.getByRole('checkbox', { name: 'Wassertiefen' });
+    const depthToggle = dataLayerOptionsSummary(page);
     await expect(depthToggle).toBeVisible();
     await mapReady(page);
 
@@ -595,7 +600,7 @@ test('#368: two stacked banners at 320x568 (previously measured broken) no longe
     // `--sc-banner-height` push settles.
     await expect
       .poll(() => settledHitDescription(page, depthToggle), { timeout: 10_000 })
-      .toMatch(/^INPUT\b/);
+      .toMatch(/^SUMMARY\b/);
 
     // #992: the OVERLAP poll below is now structurally guaranteed too at
     // deepPortrait320 -- app.css's #909 grid block puts `.banner-area` and
@@ -635,7 +640,7 @@ test('#368: two stacked banners at 320x568 (previously measured broken) no longe
 // third banner stacking on top never widened the push at all. A measured
 // `--sc-banner-height` has no such blind spot: it is `.banner-area`'s real
 // rendered height regardless of how many children produced it.
-test('#368: three simultaneous banners at 390x844 do not intercept the depth checkbox', async ({
+test('#368: three simultaneous banners at 390x844 do not intercept the display-options summary', async ({
   page,
 }) => {
   const server = await startPreview(page);
@@ -643,7 +648,7 @@ test('#368: three simultaneous banners at 390x844 do not intercept the depth che
     await page.setViewportSize(STANDARD_VIEWPORTS.phonePortrait);
     await page.goto(server.url);
 
-    const depthToggle = page.getByRole('checkbox', { name: 'Wassertiefen' });
+    const depthToggle = dataLayerOptionsSummary(page);
     await expect(depthToggle).toBeVisible();
     await mapReady(page);
 
@@ -669,7 +674,7 @@ test('#368: three simultaneous banners at 390x844 do not intercept the depth che
     // `--sc-banner-height` push settles.
     await expect
       .poll(() => settledHitDescription(page, depthToggle), { timeout: 10_000 })
-      .toMatch(/^INPUT\b/);
+      .toMatch(/^SUMMARY\b/);
 
     // #992: the OVERLAP poll below is now structurally guaranteed too at
     // phonePortrait -- app.css's #909 grid block puts `.banner-area` and
@@ -710,7 +715,7 @@ test('#368: three simultaneous banners at 390x844 do not intercept the depth che
 // width) rather than faking the DOM shape: the offline banner's own DE copy
 // is long enough to wrap for real at that width, confirmed below by
 // asserting the banner's OWN rendered height, not just the fix's outcome.
-test('#368: a banner that wraps to two lines (280px width) does not intercept the depth checkbox', async ({
+test('#368: a banner that wraps to two lines (280px width) does not intercept the display-options summary', async ({
   page,
 }) => {
   const server = await startPreview(page);
@@ -718,7 +723,7 @@ test('#368: a banner that wraps to two lines (280px width) does not intercept th
     await page.setViewportSize(EDGE_VIEWPORTS.wrapForcing280);
     await page.goto(server.url);
 
-    const depthToggle = page.getByRole('checkbox', { name: 'Wassertiefen' });
+    const depthToggle = dataLayerOptionsSummary(page);
     await expect(depthToggle).toBeVisible();
     await mapReady(page);
 
@@ -753,7 +758,7 @@ test('#368: a banner that wraps to two lines (280px width) does not intercept th
     // `--sc-banner-height` push settles.
     await expect
       .poll(() => settledHitDescription(page, depthToggle), { timeout: 10_000 })
-      .toMatch(/^INPUT\b/);
+      .toMatch(/^SUMMARY\b/);
 
     // #992: the OVERLAP poll below is now structurally guaranteed too at
     // wrapForcing280 -- app.css's #909 grid block puts `.banner-area` and
@@ -882,8 +887,7 @@ test('#299: the stale-route banner (a Boat-tab settings change) does not interce
     await page.setViewportSize(EDGE_VIEWPORTS.deepPortrait320);
     await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
 
-    const depthToggle = page.getByRole('checkbox', { name: 'Wassertiefen' });
-    await expect(depthToggle).toBeVisible();
+    await expect(dataLayerOptionsSummary(page)).toBeVisible();
     await mapReady(page);
 
     // Dismiss the incidental SW "offline ready" toast so the stale-route
@@ -918,6 +922,11 @@ test('#299: the stale-route banner (a Boat-tab settings change) does not interce
     // scenario (a setting changed from a non-Plan surface).
     await page.getByRole('tab', { name: 'Boot' }).click();
     await page.getByLabel('Motor aktiviert').click();
+
+    // A plan exists by now, so DataLayers renders the plain rows (#1541): the
+    // checkbox is the control the banner must not cover.
+    const depthToggle = page.getByRole('checkbox', { name: 'Wassertiefen' });
+    await expect(depthToggle).toBeVisible();
 
     const staleBanner = page.locator('.banner-message', {
       hasText: 'Zeigt die zuvor berechnete Route',
@@ -1322,7 +1331,7 @@ test('#628 review Major 1: the controls cluster can be expanded at 390px without
 // Disclosure.tsx), so the cluster stops obstructing the chart on mobile —
 // the issue's own measured obstruction was 33.8%/35.4% of VIEWPORT HEIGHT at
 // 390x844/375x667 respectively, both reused as viewport entries below
-// (`phonePortrait`, `partialPushBand375`). Default-open state is
+// (`phonePortrait`, `shortPortrait375`). Default-open state is
 // layout-dependent (RouteLayer.tsx's own comment, not persisted): collapsed
 // on narrow (<1024px — exactly where the obstruction was measured), open on
 // wide (side-panel layouts have room to spare, matching the pre-#628
@@ -1345,7 +1354,7 @@ test('#628 review Major 1: the controls cluster can be expanded at 390px without
 // breakpoint — this loop does not).
 const NARROW_COLLAPSE_VIEWPORTS: Record<string, Viewport> = {
   phonePortrait: STANDARD_VIEWPORTS.phonePortrait,
-  partialPushBand375: EDGE_VIEWPORTS.partialPushBand375,
+  shortPortrait375: EDGE_VIEWPORTS.shortPortrait375,
 };
 for (const [label, viewport] of Object.entries(NARROW_COLLAPSE_VIEWPORTS)) {
   test(`#628: the map-overlay controls cluster starts collapsed and recovers map area on narrow layouts (${label}, ${viewport.width}x${viewport.height})`, async ({
@@ -1513,7 +1522,7 @@ test('#628 review Major 3: rotating from a wide to a narrow layout auto-collapse
 //
 // Deliberately only the three LANDSCAPE entries of EDGE_VIEWPORTS, not the
 // whole matrix: the PORTRAIT entries (`narrowPortrait360`, `deepPortrait320`,
-// `partialPushBand375`, `wrapForcing280`) are untouched by this fix — their
+// `shortPortrait375`, `wrapForcing280`) are untouched by this fix — their
 // `.map-stack-tl` stays the base COLUMN layout, which is the space-efficient
 // choice for a tall-narrow viewport (see the media query's own comment) —
 // and two of them (`deepPortrait320`, `wrapForcing280`) suppress ScaleBar for
@@ -1550,12 +1559,12 @@ for (const [label, viewport] of Object.entries(SHORT_LANDSCAPE_VIEWPORTS)) {
 
       const scaleBar = page.locator('.scale-bar');
       const mapStack = page.locator('.map-stack-tl');
+      const optionsSummary = dataLayerOptionsSummary(page);
       const depthToggle = page.getByRole('checkbox', { name: 'Wassertiefen' });
       const seamarksToggle = page.getByRole('checkbox', { name: 'Seezeichen' });
       const compassBtn = page.locator('.compass-btn');
 
-      await expect(depthToggle).toBeVisible();
-      await expect(seamarksToggle).toBeVisible();
+      await expect(optionsSummary).toBeVisible();
       await expect(compassBtn).toBeVisible();
 
       // The compaction reflows `.map-stack-tl` into a single short row; the
@@ -1591,11 +1600,16 @@ for (const [label, viewport] of Object.entries(SHORT_LANDSCAPE_VIEWPORTS)) {
         })
         .not.toBe('');
 
-      // Both toggles remain real, tappable checkboxes, not just visible —
-      // the compaction touches this row's own layout (row instead of
-      // column, a trimmed padding, a smaller `min-height` on the checkbox
+      // #1541: the toggles sit in the collapsed "Anzeigeoptionen" disclosure.
+      // Both remain real, tappable checkboxes once it is opened, not just
+      // visible — the compaction touches this row's own layout (row instead
+      // of column, a trimmed padding, a smaller `min-height` on the checkbox
       // itself), so a regression here would be a control rendered but
-      // unclickable.
+      // unclickable. Opened AFTER the ScaleBar/compass checks, which describe
+      // the collapsed default.
+      await openDataLayerOptions(page);
+      await expect(depthToggle).toBeVisible();
+      await expect(seamarksToggle).toBeVisible();
       const before = await depthToggle.isChecked();
       await depthToggle.click();
       await expect(depthToggle).toBeChecked({ checked: !before });
@@ -2530,6 +2544,9 @@ test('#942: the SW toast never grows wider than the viewport at wrapForcing280 w
 // they run, so this scenario is excluded from their coverage by
 // construction; this guard is the only thing that sees it.
 //
+// #1541: the depth-ramp checkbox now sits inside the "Anzeigeoptionen"
+// disclosure, so the summary stands in for it as the probed control.
+//
 // THIS GUARD USED TO PIN THE DEFECT. Its compass assertion read
 // `.toMatch(/^blocked by toast: /)` — a deliberate pin on #871's documented
 // residual, MEASURED at the time as the compass's bottom ~34 of its 44px
@@ -2585,7 +2602,7 @@ function hitState(target: Locator, toastSelector: string): Promise<string> {
   }, toastSelector);
 }
 
-test("#909: with the SW toast up, .map-stack-tl's depth checkbox AND its compass are both clear and clickable", async ({
+test("#909: with the SW toast up, .map-stack-tl's display-options summary AND its compass are both clear and clickable", async ({
   browser,
 }) => {
   const server = await startPreview();
@@ -2607,9 +2624,7 @@ test("#909: with the SW toast up, .map-stack-tl's depth checkbox AND its compass
         await page.locator('.reload-prompt').waitFor({ state: 'visible', timeout: 15_000 });
 
         const compass = page.locator('.compass-btn');
-        const depthCheckbox = page.getByRole('checkbox', {
-          name: 'Wassertiefen',
-        });
+        const depthCheckbox = dataLayerOptionsSummary(page);
         const msg = `${label} (${viewport.width}x${viewport.height})`;
 
         // Geometry is RE-READ inside `hitState` on every poll tick (never
@@ -2617,7 +2632,7 @@ test("#909: with the SW toast up, .map-stack-tl's depth checkbox AND its compass
         await expect
           .poll(() => hitState(depthCheckbox, '.reload-prompt'), {
             timeout: 10_000,
-            message: `${msg}: depth checkbox`,
+            message: `${msg}: display-options summary`,
           })
           .toBe('clear');
 
@@ -2730,9 +2745,7 @@ for (const state of ['toast only', 'toast + offline banner'] as const) {
 
           const msg = `${label} (${viewport.width}x${viewport.height}) / ${state}`;
           const compass = page.locator('.compass-btn');
-          const depthCheckbox = page.getByRole('checkbox', {
-            name: 'Wassertiefen',
-          });
+          const depthCheckbox = dataLayerOptionsSummary(page);
 
           await expect
             .poll(() => hitState(compass, '.reload-prompt'), {
@@ -2743,7 +2756,7 @@ for (const state of ['toast only', 'toast + offline banner'] as const) {
           await expect
             .poll(() => hitState(depthCheckbox, '.reload-prompt'), {
               timeout: 10_000,
-              message: `${msg}: depth checkbox`,
+              message: `${msg}: display-options summary`,
             })
             .toBe('clear');
 

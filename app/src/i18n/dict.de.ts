@@ -821,12 +821,11 @@ export const de = {
   // eine vorsichtige Lesart, kein Flachwasser-Indikator).
   'map.depth.legend.title': 'Legende',
   'map.depth.legend.hatchLabel': 'Schraffur: vorsichtige Lesart',
-  // #681: independent an/aus-Schalter für die Schraffur allein (siehe
-  // dict.en.ts für die volle Begründung, warum dies HIER in der
-  // Legende sitzt statt als dritte Zeile in .data-layer-controls). Bewusst
-  // OHNE das Wort "Wassertiefen" — Playwright matcht getByRole(name:)
-  // per Teilstring, und elf bestehende Locator-Stellen spellen genau
-  // diesen String für den separaten Tiefen-Schalter.
+  // #681: independent an/aus-Schalter für die Schraffur allein; seit #1541
+  // eine Zeile der Anzeigeoptionen. Bewusst OHNE das Wort "Wassertiefen" —
+  // Playwright matcht getByRole(name:) per Teilstring, und elf bestehende
+  // Locator-Stellen spellen genau diesen String für den separaten
+  // Tiefen-Schalter.
   'map.depth.legend.hatchToggle': 'Schraffur anzeigen',
   // PR #625 self-review Minor 3: the final clause's "sie" (feminine) bound to
   // "die Schraffur"/"die Farbe" — no reading reached the intended referent,
@@ -840,10 +839,9 @@ export const de = {
   // water renders as ordinary basemap blue, not anything land-coloured.
   'map.depth.legend.caveat':
     'Unvermessenes und trockenfallendes Wasser trägt ebenfalls keine Schraffur und ist durch nichts gekennzeichnet, sieht also aus wie gewöhnliches Wasser. Fehlende Schraffur ist keine Garantie, dass das Wasser unbedenklich ist — es kann sich schlicht um eine Stelle ohne Daten handeln.',
-  // #629: Tiefenlinien — eigener, standardmäßig AUS-Schalter (Q7), in
-  // derselben Legende wie der Schraffur-Schalter. Bewusst OHNE
-  // "Wassertiefen" als Teilstring (siehe dict.en.ts für die volle
-  // Begründung, gleiche Playwright-Falle wie beim Schraffur-Schalter).
+  // #629: Tiefenlinien — eigener, standardmäßig AUS-Schalter (Q7); seit
+  // #1541 eine Zeile der Anzeigeoptionen. Bewusst OHNE "Wassertiefen" als
+  // Teilstring (gleiche Playwright-Falle wie beim Schraffur-Schalter).
   'map.depth.legend.contoursToggle': 'Tiefenlinien',
   // Zeilentexte laut Spec §4, wortgleich übernommen.
   'map.depth.legend.contourLinesLabel':

@@ -1,5 +1,12 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
-import { startPreview, mapReady, EDGE_VIEWPORTS, assertCleanServiceWorkerState } from './helpers';
+import {
+  startPreview,
+  mapReady,
+  EDGE_VIEWPORTS,
+  STANDARD_VIEWPORTS,
+  assertCleanServiceWorkerState,
+  openDataLayerOptions,
+} from './helpers';
 
 // #38/#39 always-mounted map data layers. What this asserts (and why it's
 // not theater): the depth toggle must exist BEFORE any plan (the whole point
@@ -204,10 +211,9 @@ test('depth-hatch legend (#598) is reachable pre-plan, default-collapsed, and ca
 
     // Present with no plan, alongside the depth toggle — same always-mounted
     // cluster, same reason (#598's own maintainer ruling: reachable without
-    // an active plan). #681 gave the hatch its OWN opt-in (a checkbox inside
-    // this legend's body, asserted separately below) — this line is still
-    // about the BASE depth-ramp checkbox's own pre-plan reachability, not
-    // about the hatch specifically, and is unaffected by that addition.
+    // an active plan). This line is about the BASE depth-ramp checkbox's own
+    // pre-plan reachability; the hatch toggle is asserted in the #681 test
+    // below.
     await expect(page.getByRole('checkbox', { name: 'Wassertiefen' })).toBeVisible();
     await expect(page.locator('.route-layer-controls')).toHaveCount(0);
     // #813: the complementary half of the plan.spec.ts guard — with no plan,
@@ -270,72 +276,62 @@ test('depth-hatch legend (#598) is reachable pre-plan, default-collapsed, and ca
   }
 });
 
-// #681: independent hazard-hatch toggle. The whole reason this control lives
-// INSIDE the legend's disclosure body rather than as a third
-// `.data-layer-controls` checkbox row is that a third row measures +51.59px
-// at 375x667 (EDGE_VIEWPORTS.partialPushBand375 — the exact viewport #681's
-// own issue thread measured the hazard against — re-measured against a real
-// DOM injection during review; an earlier +49px figure here was a stale
-// citation) and drops `.depth-legend`'s reachability budget (62.556px ->
-// 10.96px) under LEGEND_COLLAPSED_HEIGHT_PX (44), which hides the WHOLE
-// legend — `#597` caveat included — behind the `hidden` attribute:
-// `display: none`, out of the accessibility tree entirely.
-//
-// This test proves what placing the control HERE instead actually preserves,
-// stated precisely rather than as "the caveat stays reachable": the binary
-// `legendHidden` gate never fires (asserted below via the caveat paragraph
-// staying `toBeVisible()`, i.e. present, non-empty and not inside a closed
-// `<details>`) — it does NOT prove the caveat sits inside the legend body's
-// own scrollport at this viewport. `.depth-legend-body` is a pre-existing
-// 16px-tall scrollport over ~1150-1200px of content at 375x667 (present on
-// `develop` before this PR), and review measured that this addition moves
-// the caveat's own scroll offset by ~52px further from the top (709.8px ->
-// 762.2px) — comparable to the +51.59px the rejected third-row alternative
-// would have cost, just in a RECOVERABLE dimension (a scroll offset) rather
-// than an UNRECOVERABLE one (`display: none`). `toBeVisible()` is the right
-// instrument for the gate claim and the wrong one for an in-viewport claim;
-// this test makes only the gate claim. It also proves the control has a
-// REAL, independent pixel effect (a DOM-only assertion would pass a checkbox
-// wired to nothing).
-test('hazard-hatch toggle (#681) is independent of the base depth toggle, defaults ON, and never hides the #597 caveat at 375x667', async ({
+// #681/#1541: independent hazard-hatch toggle, a top-level row of DataLayers'
+// "Anzeigeoptionen" disclosure (no plan). That disclosure sits inside
+// `.data-layer-controls`; DataLayers.tsx caps its height so an open disclosure
+// scrolls instead of costing `.depth-legend` its room. The guard runs with the
+// disclosure OPEN — the worse state — at 820x1180 (`tabletPortrait`), the
+// narrow-layout end of the >= 820 CSS px design floor; the banner-laden case
+// is pinned by the fresh-profile guard below. The `toBeVisible()` on the
+// caveat proves the binary `legendHidden` gate never fired, not the caveat's
+// position inside `.depth-legend-body`'s scrollport. The pixel assertions
+// prove the control has a REAL, independent map effect (a DOM-only assertion
+// would pass a checkbox wired to nothing).
+test('hazard-hatch toggle (#681) sits in Anzeigeoptionen, is independent of the base depth toggle, defaults ON, and never hides the #597 caveat with the disclosure open at 820x1180', async ({
   page,
 }) => {
   const server = await startPreview(page);
   try {
-    await page.setViewportSize(EDGE_VIEWPORTS.partialPushBand375);
+    await page.setViewportSize(STANDARD_VIEWPORTS.tabletPortrait);
     await page.goto(server.url);
     await mapReady(page);
 
-    // Same idiom as the "#598 ... never overlaps the tab strip" test above:
-    // a `preview` build's SW "offline ready" toast, if still up, pushes
-    // `.map-stack-tl` down via `--sc-banner-clear-top` and can land the
-    // COLLAPSED summary's click target behind the bottom sheet's own tab
-    // strip at this exact narrow viewport — a real, previously-measured
-    // defect class, not a flake to paper over with a longer timeout.
+    // A `preview` build's SW "offline ready" toast, if still up, pushes
+    // `.map-stack-tl` down via `--sc-banner-clear-top` — a real,
+    // previously-measured defect class, not a flake to paper over with a
+    // longer timeout.
     await page
       .locator('.reload-prompt .banner-dismiss')
       .click({ timeout: 5_000 })
       .catch(() => {});
 
+    // Narrow layout: the disclosure starts collapsed and hides its rows.
+    await expect(page.locator('details.data-layer-controls-disclosure')).toHaveJSProperty(
+      'open',
+      false,
+    );
+    await openDataLayerOptions(page);
+
     const depthToggle = page.getByRole('checkbox', { name: 'Wassertiefen' });
     await expect(depthToggle).toBeVisible();
     await expect(depthToggle).toBeChecked();
 
-    // Same reachable-pre-plan, default-collapsed legend as the test above —
-    // open it to reach the new control, which lives in its body.
-    const summary = page.getByText('Legende', { exact: true });
-    await expect(summary).toBeVisible();
-    await summary.click();
     const hatchToggle = page.getByRole('checkbox', { name: 'Schraffur anzeigen' });
     await expect(hatchToggle).toBeVisible();
     // #455's disclosure basis: a fresh profile must see the hatch, the same
     // fail-open default as the base ramp's own #63 toggle.
     await expect(hatchToggle).toBeChecked();
 
-    // The #597 caveat paragraph stays present (the `legendHidden` gate never
-    // fires) with the new control also present — see this test's own header
-    // comment for exactly what this assertion does and does not establish
-    // about the caveat's position inside `.depth-legend-body`'s scrollport.
+    // The legend no longer carries any toggle: it stays reachable, open, and
+    // holds the #597 caveat with the disclosure open.
+    const legend = page.locator('details.depth-legend');
+    await expect
+      .poll(() => legend.evaluate((el) => (el as HTMLElement).hidden), {
+        message: '.depth-legend read hidden with Anzeigeoptionen open',
+      })
+      .toBe(false);
+    await expect(legend.locator('input')).toHaveCount(0);
+    await page.getByText('Legende', { exact: true }).click();
     await expect(
       page.getByText(
         'Unvermessenes und trockenfallendes Wasser trägt ebenfalls keine Schraffur und ist durch nichts gekennzeichnet, sieht also aus wie gewöhnliches Wasser.',
@@ -381,6 +377,45 @@ test('hazard-hatch toggle (#681) is independent of the base depth toggle, defaul
     await expect(hatchToggle).not.toBeDisabled();
     await expect(hatchToggle).not.toBeChecked();
   } finally {
+    server.kill();
+  }
+});
+
+// #1541 review Major 2: the guard above seeds the first-load banner away. A
+// fresh profile that goes offline carries at least two banners, which is the
+// state this app meets on deck, and there the open disclosure used to push the
+// legend under its room. DataLayers.tsx now caps the cluster so it scrolls
+// instead; this pins the #597 caveat staying reachable at the 820 floor.
+test('#597 legend stays reachable at 820x1180 with the disclosure open, the first-load banner up and offline', async ({
+  browser,
+}) => {
+  const server = await startPreview();
+  const context = await browser.newContext({
+    storageState: { cookies: [], origins: [] },
+    viewport: STANDARD_VIEWPORTS.tabletPortrait,
+  });
+  try {
+    const page = await context.newPage();
+    await assertCleanServiceWorkerState(page);
+    await page.goto(server.url);
+    await mapReady(page);
+    await expect(page.locator('.banner-area .banner-info:not(.reload-prompt)')).toBeVisible();
+    await context.setOffline(true);
+    await expect(page.locator('.banner-message', { hasText: 'Planung deaktiviert' })).toBeVisible();
+    // Positive control: the state under test really carries several banners.
+    expect(await page.locator('.banner-area .banner').count()).toBeGreaterThanOrEqual(2);
+
+    await openDataLayerOptions(page);
+    const legend = page.locator('details.depth-legend');
+    await expect
+      .poll(() => legend.evaluate((el) => (el as HTMLElement).hidden), {
+        message: '.depth-legend read hidden with Anzeigeoptionen open under two banners',
+      })
+      .toBe(false);
+    await page.getByText('Legende', { exact: true }).click();
+    await expect(page.getByText('Fehlende Schraffur ist keine Garantie')).toBeVisible();
+  } finally {
+    await context.close();
     server.kill();
   }
 });
@@ -1321,3 +1356,47 @@ test('#682: hazard seamarks (cardinal/isolated-danger) paint above routine ones 
     server.kill();
   }
 });
+
+// #1541: the base `input { min-height: 40px }` rule makes each checkbox a 40px
+// box, and a block `<label>` sets its text on that box's baseline, 15px below
+// the tick.
+for (const [name, viewport] of [
+  ['tabletPortrait', STANDARD_VIEWPORTS.tabletPortrait],
+  ['tabletLandscape', STANDARD_VIEWPORTS.tabletLandscape],
+] as const) {
+  test(`#1541: each Anzeigeoptionen checkbox shares a line with its label text at ${name}`, async ({
+    page,
+  }) => {
+    const server = await startPreview(page);
+    try {
+      await page.setViewportSize(viewport);
+      await page.goto(server.url);
+      await mapReady(page);
+      await openDataLayerOptions(page);
+
+      const labels = page.locator('.data-layer-controls-disclosure label');
+      await expect.poll(() => labels.count()).toBeGreaterThanOrEqual(4);
+      await expect
+        .poll(() =>
+          labels.evaluateAll((els) =>
+            els.flatMap((label) => {
+              const box = label.querySelector('input[type="checkbox"]')!.getBoundingClientRect();
+              const textNode = Array.from(label.childNodes).find(
+                (n) => n.nodeType === Node.TEXT_NODE && n.textContent!.trim() !== '',
+              )!;
+              const range = document.createRange();
+              range.selectNodeContents(textNode);
+              const text = range.getBoundingClientRect();
+              const offset = text.top + text.height / 2 - (box.top + box.height / 2);
+              return Math.abs(offset) <= 2
+                ? []
+                : [`${label.textContent!.trim()}: ${offset.toFixed(1)}px`];
+            }),
+          ),
+        )
+        .toEqual([]);
+    } finally {
+      server.kill();
+    }
+  });
+}

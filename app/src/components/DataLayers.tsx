@@ -42,6 +42,8 @@ import {
 import { installStyleSetup } from '../lib/styleReload';
 import { usePersistedToggle } from '../lib/usePersistedToggle';
 import { usePersistedNumber } from '../lib/usePersistedNumber';
+import { useWideLayout } from '../lib/useWideLayout';
+import Disclosure from './Disclosure';
 import { LEGEND_COLLAPSED_HEIGHT_PX } from '../lib/depthLegendGate';
 import {
   getCachedContourAsset,
@@ -68,6 +70,8 @@ import type { Harbor, LatLon, MaskMeta, SeamarkProperties, ViaPoint } from '../t
  * the same corner. `app.css`'s #909 comment carries the margin table.
  */
 export const MAP_CHROME_TOP_PX = 8;
+// Twin of `.data-layer-controls`' vertical padding (0.5rem each side, app.css).
+const CLUSTER_PADDING_PX = 16;
 
 // Always-mounted host for the plan-independent map data layers (#38 harbor
 // markers, #39 depth overlay). Deliberately a SIBLING of RouteLayer, not part
@@ -431,12 +435,8 @@ function setupLayers(
           id: DEPTH_HATCH_LAYER,
           type: 'raster',
           source: DEPTH_HATCH_SOURCE,
-          // Hidden at creation, same convention as DEPTH_LAYER — the
-          // depthVisible/hatchVisible sync effect applies the current state
-          // before any paint. #681: the hatch DOES now have its own
-          // independent toggle (hatchVisible, in the depth-legend body
-          // below) — this comment previously said it did not; see that
-          // effect's own #681 comment for the composite condition.
+          // Hidden at creation, same convention as DEPTH_LAYER; the
+          // depthVisible/hatchVisible sync effect applies the real state.
           layout: { visibility: 'none' },
           paint: {
             'raster-fade-duration': 0,
@@ -693,53 +693,21 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
   // the value reaches the map.
   const [settings] = useSettings();
   const { safetyDepthM } = settings;
-  // #813: whether an active plan exists — the consolidated-legend gate.
-  // RouteLayer.tsx (plan-gated, `if (!plan) return null`) mounts its own
-  // RouteLegend once a plan exists, which now ALSO carries the #598
-  // depth-hatch entries folded in under their own sub-heading (see
-  // RouteLegend.tsx's own #813 comment for the full rationale). So this
-  // component's `.depth-legend` disclosure below must render ONLY while
-  // plan===null — otherwise the app would show TWO "Legende"/"Legend"
-  // disclosures again, the exact defect #813 exists to fix. The two are
-  // COMPLEMENTARY, never both mounted: whichever is absent, the other one
-  // is what carries the #597 safety caveat forward WHEN IT RENDERS. That
-  // is narrower than "reachable in every state" (#842): this component's
-  // OWN `.depth-legend` is additionally gated by the `legendHidden` state
-  // set in the measurement effect below, which hides it — `hidden`, out of
-  // the accessibility tree — in short landscape and in a narrow column too
-  // cramped for `LEGEND_COLLAPSED_HEIGHT_PX`. In those states, with
-  // plan===null, neither legend carries the caveat at all.
+  // With a plan, RouteLegend is the sole "Legende" surface and RouteLayer's
+  // "Anzeigeoptionen" owns the hatch and contour rows; with none, this
+  // component's `.depth-legend` and unified disclosure below take over.
   const { plan } = useActivePlan();
   // #63: default ON, persisted — mirrors RouteLayer's barbs/annotations
   // toggles. An explicit "off" survives reloads; a fresh profile sees depth.
   const [depthVisible, setDepthVisible] = usePersistedToggle('sc-depth-visible', true);
-  // #681: a SECOND, independent persisted toggle for the hazard-hatch overlay
-  // alone — same fail-open-by-default reasoning as depthVisible above, and
-  // load-bearing here specifically: #455 (mask optimism, ~10,746 gate-crossing
-  // cells) was closed on the basis that #492's per-cell hatch already
-  // discloses exactly that criterion, so `defaultValue: true` is what keeps a
-  // fresh profile seeing today's disclosure. This does NOT get its own row in
-  // `.data-layer-controls` (see the return JSX below) — a third checkbox row
-  // there measures +51.59px at 375x667 (re-measured against a real DOM
-  // injection during review) and drops the `.depth-legend` reachability
-  // budget from 62.556px to 10.96px, under `LEGEND_COLLAPSED_HEIGHT_PX` (44)
-  // — hiding the WHOLE legend, `#597` caveat included, behind `hidden`. What
-  // rendering the toggle inside `.depth-legend-body` instead preserves is
-  // that binary reachability gate, not the caveat's position inside the
-  // legend body's OWN scrollport — see the return JSX below for the full,
-  // precisely-stated derivation.
+  // Independent of depthVisible; defaults ON because #455 was closed on the
+  // basis that the per-cell hatch discloses the gate-crossing cells.
   const [hatchVisible, setHatchVisible] = usePersistedToggle('sc-depth-hatch-visible', true);
-  // #629 Q7: its own persisted toggle, default OFF — independent of
-  // depthVisible/hatchVisible (no `disabled` mirror): a user may want
-  // contour lines with the ramp/hatch off, or vice versa.
+  // Independent of depthVisible/hatchVisible (no `disabled` mirror).
   const [contoursVisible, setContoursVisible] = usePersistedToggle('sc-contours-visible', false);
-  // Shared with RouteLegend.tsx's own copy of this control via
-  // contours.ts's module-level subscription (the boolean above already
-  // cross-instance-syncs through usePersistedToggle's own listener
-  // registry) — both surfaces must show the SAME fetch/error state.
-  // #629 review Minor: useSyncExternalStore (not useState+useEffect) closes
-  // a real gap — a passive effect subscribes only after paint, so a
-  // fetch-state change landing between render and that effect was missed.
+  // Shared with RouteLayer.tsx's copy of the row via contours.ts's
+  // module-level subscription. useSyncExternalStore, not useState+useEffect:
+  // a passive effect subscribes after paint and can miss a state change.
   const contoursFetchState = useSyncExternalStore(
     subscribeContoursFetchState,
     getContoursFetchState,
@@ -964,21 +932,15 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
     return () => window.clearTimeout(timer);
   }, [map, styleEpoch, assets, safetyDepthM, hatchBandKey, depthVisible, hatchVisible]);
 
-  // #629 maintainer ruling: contours render only while their OWN off-switch
-  // is reachable. With no plan, `.depth-legend` (and the toggle inside it)
-  // can be `legendHidden`; with a plan, RouteLegend's copy has no hidden
-  // gate, so the term is plan-scoped. The persisted preference itself is
-  // untouched — contours resume once the legend does.
-  const contoursEffectivelyVisible = contoursVisible && !(plan === null && legendHidden);
-
   // #629: fetch the contour asset the FIRST time the toggle turns on (spec
   // §3), and re-populate an empty source after a style reload (#153, the
   // styleEpoch dependency) if it was already fetched — contours.ts's module
-  // cache means the second case never re-fetches over the network. Gated on
-  // EFFECTIVE visibility, not the raw toggle: no fetch while the off-switch
-  // is unreachable.
+  // cache means the second case never re-fetches over the network. The
+  // toggle lives in `.data-layer-controls` (no plan) or RouteLayer's
+  // disclosure (plan), neither of which is ever `hidden`, so contours need
+  // no reachability gate.
   useEffect(() => {
-    if (!map || styleEpoch === 0 || !contoursEffectivelyVisible) return;
+    if (!map || styleEpoch === 0 || !contoursVisible) return;
     let cancelled = false;
     const source = () => map.getSource(CONTOURS_SOURCE) as GeoJSONSource | undefined;
     const already = getCachedContourAsset();
@@ -998,18 +960,18 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
     return () => {
       cancelled = true;
     };
-  }, [map, styleEpoch, contoursEffectivelyVisible]);
+  }, [map, styleEpoch, contoursVisible]);
 
   // #629: visibility sync for all three contour layers, same
-  // "hidden/default at creation, synced by an effect" convention as every
-  // other opt-in layer above — driven by EFFECTIVE visibility (see above).
+  // "hidden at creation, synced by an effect" convention as every other
+  // opt-in layer above.
   useEffect(() => {
     if (!map || styleEpoch === 0) return;
-    const visibility = contoursEffectivelyVisible ? 'visible' : 'none';
+    const visibility = contoursVisible ? 'visible' : 'none';
     for (const id of [CONTOUR_LINES_LAYER, CONTOUR_NODATA_LAYER, CONTOUR_LABELS_LAYER]) {
       if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visibility);
     }
-  }, [map, styleEpoch, contoursEffectivelyVisible]);
+  }, [map, styleEpoch, contoursVisible]);
 
   // Seamark glyphs (#7) — registered/set once per assets load, independent of
   // the visibility toggle (so the layer is ready to paint the instant the
@@ -1285,6 +1247,11 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
     // renders 61px, not the 3rem the constant assumed (MEASURED 2026-09-05
     // on a real preview build, all 12 STANDARD+EDGE viewports).
     const mapAreaEl = document.querySelector<HTMLElement>('.map-area');
+    const setControlsMax = (px: number | null) =>
+      document.documentElement.style.setProperty(
+        '--sc-depth-controls-max',
+        px === null ? 'none' : `${px}px`,
+      );
     const recompute = () => {
       document.documentElement.style.setProperty(
         '--sc-depth-controls-height',
@@ -1304,6 +1271,7 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
       // Wide layout: no sheet-overlay ceiling exists at all (app.css's own
       // wide-layout comment on `.depth-legend-body`) — always reachable.
       if (window.matchMedia('(min-width: 1024px)').matches) {
+        setControlsMax(null);
         setLegendHidden(false);
         return;
       }
@@ -1317,6 +1285,7 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
       // class's scarce height budget on the compass and the two PRIMARY
       // toggles; the legend simply does not fit there and says so.
       if (window.matchMedia(SHORT_LANDSCAPE_QUERY).matches) {
+        setControlsMax(null);
         setLegendHidden(true);
         return;
       }
@@ -1375,18 +1344,17 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
         mapAreaEl !== null &&
         getComputedStyle(mapAreaEl).getPropertyValue('--sc-map-grid-rows').trim() === '1';
       const bannerHeightPx = bannerEl ? bannerEl.getBoundingClientRect().height : 0;
+      // Room for the controls cluster plus the legend below it.
       const budgetPx = gridRows
         ? mapRowPx -
           MAP_CHROME_TOP_PX -
           (window.innerHeight * 0.55 - toastHeightPx) -
           8 - // 0.5rem, the gap this cluster leaves above the sheet
-          el.getBoundingClientRect().height -
           60 // gap + compass + gap, matching `.depth-legend`'s own `top`
         : window.innerHeight -
           (56 + bannerHeightPx) - // 3.5rem + banner: the pre-#909 clearance push
           window.innerHeight * 0.55 -
           8 - // 0.5rem
-          el.getBoundingClientRect().height -
           60;
       // #641: TWINNED to `app.css`'s `.depth-legend > summary { min-height:
       // 44px }` — the legend's whole COLLAPSED box, since #638's chrome
@@ -1395,7 +1363,19 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
       // two together (both the number AND the zero-vertical-padding property
       // that makes the number the right one); read that file's header before
       // changing either side.
-      setLegendHidden(budgetPx < LEGEND_COLLAPSED_HEIGHT_PX);
+      //
+      // An open disclosure must not cost the legend its room: cap the cluster
+      // so the legend still fits and let the rows scroll. Applied only when
+      // the cap leaves the collapsed summary row intact (otherwise the legend
+      // is hidden regardless) and only while a legend exists to protect.
+      const maxControlsPx = budgetPx - LEGEND_COLLAPSED_HEIGHT_PX;
+      setControlsMax(
+        document.querySelector('.depth-legend') !== null &&
+          maxControlsPx >= LEGEND_COLLAPSED_HEIGHT_PX + CLUSTER_PADDING_PX
+          ? maxControlsPx
+          : null,
+      );
+      setLegendHidden(budgetPx - el.getBoundingClientRect().height < LEGEND_COLLAPSED_HEIGHT_PX);
     };
     const ro = new ResizeObserver(recompute);
     ro.observe(el);
@@ -1422,148 +1402,83 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
     recompute();
     return () => {
       ro.disconnect();
+      document.documentElement.style.removeProperty('--sc-depth-controls-max');
       window.removeEventListener('resize', recompute);
     };
   }, []);
 
+  // Default-open on wide, collapsed on narrow where the cluster covers the
+  // chart. `Disclosure` seeds `defaultOpen` once, so the key re-seeds it on a
+  // layout change unless the user has toggled it since. The seed follows
+  // `isWide` during render, not in an effect: `ScaleBar` measures
+  // `.map-stack-tl` in the same commit `isWide` flips, and an effect-driven
+  // collapse would land after that read and leave the bar suppressed.
+  const isWide = useWideLayout();
+  const controlsRef = useRef<HTMLDivElement | null>(null);
+  const [userToggled, setUserToggled] = useState(false);
+  const [seededWide, setSeededWide] = useState(isWide);
+  if (plan !== null && userToggled) setUserToggled(false);
+  if (!userToggled && seededWide !== isWide) setSeededWide(isWide);
+  const disclosureKey = seededWide ? 'wide' : 'narrow';
+  useEffect(() => {
+    const el = controlsRef.current;
+    if (!el) return;
+    // A summary click, not the native `toggle` event: browsers also queue
+    // `toggle` for a `<details>` created already open, which would latch as
+    // a user choice.
+    const onSummaryClick = (e: Event) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('.data-layer-controls-disclosure > summary')) setUserToggled(true);
+    };
+    el.addEventListener('click', onSummaryClick, true);
+    return () => el.removeEventListener('click', onSummaryClick, true);
+  }, []);
+
+  const depthRow = (
+    <label>
+      <input
+        type="checkbox"
+        checked={depthVisible}
+        onChange={(e) => setDepthVisible(e.target.checked)}
+      />
+      {t('map.depth.toggle')}
+    </label>
+  );
+  const seamarksRow = (
+    <label>
+      <input
+        type="checkbox"
+        checked={seamarksVisible}
+        onChange={(e) => setSeamarksVisible(e.target.checked)}
+      />
+      {t('map.seamarks.toggle')}
+    </label>
+  );
+
   // Always-mounted control cluster — top-LEFT of the map, so it can never
   // collide with RouteLayer's plan-gated cluster at the top-right (app.css).
+  // The wrapper persists across plan states because the measurement effect
+  // above observes it.
   return (
     <>
-      <div className="data-layer-controls">
-        <label>
-          <input
-            type="checkbox"
-            checked={depthVisible}
-            onChange={(e) => setDepthVisible(e.target.checked)}
-          />
-          {t('map.depth.toggle')}
-        </label>
-        <label>
-          <input
-            type="checkbox"
-            checked={seamarksVisible}
-            onChange={(e) => setSeamarksVisible(e.target.checked)}
-          />
-          {t('map.seamarks.toggle')}
-        </label>
-      </div>
-      {/* #598 review follow-up: a SIBLING of `.data-layer-controls`, not a
-          child of it — a Fragment return with two roots, so App.tsx's
-          `<div className="map-stack-tl"><DataLayers/><CompassControl/>
-          </div>` places this as a THIRD `.map-stack-tl` child. Two prior
-          shapes were tried and rejected, in order:
-            1. Nested inside `.data-layer-controls`, full 44px touch target
-               — pushed `.map-stack-tl`'s own measured height +49px at
-               375x667 (166px -> 215px), suppressing ScaleBar (a REAL e2e
-               regression, `compass.spec.ts`'s #208 test).
-            2. Nested, shrunk to a 20px row to buy back that height — passed
-               the layout tests but landed a SUB-MINIMUM touch target
-               (WCAG 2.5.8 requires >=24x24 CSS px; this is a control meant
-               to be tapped on a boat, one-handed, in motion).
-          This third shape spends neither: taken OUT of
-          `.data-layer-controls`'s flex flow entirely (so it costs
-          `.map-stack-tl` ZERO measured height, structurally, not by a tuned
-          number) via `position: absolute` in app.css, positioned BELOW the
-          compass. `.map-stack-tl` already has `position: absolute` itself
-          (app.css) — already a valid containing block, no extra wrapper —
-          and sets no `overflow`, so an over-height legend can extend past
-          its own box unclipped, same as the compass already can (that
-          rule's own comment). Reading order stays sensible either way:
-          toggles, then this legend, then the compass.
-          #598 review round 3: `hidden={legendHidden}` (native HTML
-          attribute, set by the `useLayoutEffect` above) is what actually
-          decides reachability now — `display: none`, out of the
-          accessibility tree, unfocusable, all at once. See that effect's
-          own comment for the full derivation across all three layout
-          modes; app.css's `.depth-legend` comment records why a CSS-only
-          `max-height` clip was tried first and rejected.
-
-          #813: this whole `<details>` is now ADDITIONALLY gated on
-          `plan === null` (the `useActivePlan()` read above) — never
-          rendered at all once a plan is active, because RouteLegend.tsx's
-          own `.route-legend` disclosure takes over as the SOLE
-          "Legende"/"Legend" surface at that point, folding this content in
-          under its own sub-heading. Consolidating this WAY — suppressing
-          the free-floating pill rather than the panel-gated one — is what
-          keeps the #597 caveat's disclosure mounted with NO plan at all
-          (the state RouteLegend can't cover, since RouteLayer.tsx returns
-          null before ever mounting it): the alternative direction (fold
-          this content INTO RouteLegend and never touch this component)
-          would silently make the caveat unreachable until a route is
-          planned, the exact "two individually-correct fixes silence the
-          complement of two conditions" trap CLAUDE.md's Working-style
-          section warns about.
-
-          #681 x #813: the independent hatch toggle (below, inside the
-          body) rides along with this `plan === null` gate rather than
-          needing one of its own — it is a CHILD of this `<details>`, so it
-          is reachable in exactly the same states this whole disclosure is.
-          The COMPLEMENTARY copy folded into RouteLegend.tsx's
-          `.route-legend-depth` (its own #681 comment) carries an identical
-          checkbox wired to the SAME `usePersistedToggle` keys
-          (`sc-depth-hatch-visible`, `sc-depth-visible`), which is what keeps
-          the control itself reachable once a plan exists — this component
-          stays the always-mounted layer-visibility driver in EITHER
-          state, but is no longer the only place the control is offered. */}
-      {plan === null && (
-        <details className="depth-legend" hidden={legendHidden}>
-          <summary>{t('map.depth.legend.title')}</summary>
-          <div className="depth-legend-body">
-            {/* #839: `hatchLabel` (with its swatch) describes the hatch CUE
-                itself, so it must not be offered once that cue is off the
-                map — #681's own DoD bullet ("The hatch legend is not offered
-                while the hatch is off") that shipped without this guard.
-                Gated on the SAME `depthVisible && hatchVisible` composite the
-                layer-visibility effect above already applies (the #384
-                defect-class shape), never `hatchVisible` alone: the hatch is
-                equally absent from the map when the whole depth overlay is
-                off. The toggle checkbox below stays unconditional so the
-                user can still turn the hatch back on. */}
-            {depthVisible && hatchVisible && (
-              <p className="depth-legend-row">
-                <span className="depth-legend-swatch" aria-hidden="true" />
-                {t('map.depth.legend.hatchLabel')}
-              </p>
-            )}
-            {/* #681: the independent hatch toggle lives HERE, inside the
-                legend's own disclosure body — not as a third `.data-layer-
-                controls` row (deferred v0.18.0 investigation; see #681's own
-                issue thread) and not on `.depth-legend`'s own always-visible
-                summary either. A third `.data-layer-controls` row measures
-                +51.59px at 375x667 (re-measured against a real DOM
-                injection, not read off a comment — the earlier +49px figure
-                this comment quoted was itself a stale citation) and drops
-                the legend's reachability budget (`budgetPx`, the
-                useLayoutEffect above) from 62.556px to 10.96px, under
-                LEGEND_COLLAPSED_HEIGHT_PX (44) — hiding the whole legend,
-                `#597` caveat included, behind the `hidden` attribute:
-                `display: none`, out of the accessibility tree entirely.
-                Placing it HERE instead costs `.data-layer-controls` (and
-                therefore `budgetPx`) exactly zero, so that binary
-                reachability gate is unaffected either way (verified
-                byte-identical before/after this change). That is NOT the
-                same claim as "the caveat is easy to reach" — this
-                `.depth-legend-body` scrollport is a pre-existing 16px
-                window over ~1150-1200px of content at this viewport
-                (present on `develop` before this PR), and this addition
-                measurably adds ~52px of scroll depth ABOVE the caveat
-                inside that already-cramped window. What is preserved is
-                the binary `legendHidden` gate, not the caveat's in-
-                scrollport position — a scroll offset is recoverable by the
-                user; a `display: none` legend is not, which is why this
-                placement is still the right call, not because it is free.
-                Residual, and it fails the SAFE direction: while
-                `legendHidden` is true (the legend itself unreachable) or the
-                `<details>` is simply collapsed, this checkbox is unreachable
-                too — but `hatchVisible` still defaults `true` (#455's
-                disclosure basis), so an unreachable toggle means the hatch
-                stays ON, never that it silently vanishes.
-                `disabled={!depthVisible}` mirrors the composite condition the
-                visibility effect above applies — the #384 defect class: the
-                control must not offer to change a layer that
-                `depthVisible=false` already keeps invisible regardless. */}
-            <label className="depth-legend-row">
+      <div
+        className={
+          plan === null
+            ? 'data-layer-controls data-layer-controls-disclosed'
+            : 'data-layer-controls'
+        }
+        ref={controlsRef}
+      >
+        {plan === null ? (
+          <Disclosure
+            key={disclosureKey}
+            className="data-layer-controls-disclosure"
+            defaultOpen={disclosureKey === 'wide'}
+            summary={t('route.controls.summary')}
+          >
+            {depthRow}
+            {seamarksRow}
+            <label>
               <input
                 type="checkbox"
                 checked={hatchVisible}
@@ -1572,23 +1487,7 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
               />
               {t('map.depth.legend.hatchToggle')}
             </label>
-            {/* #839: same composite guard as the hatchLabel row above — the
-                "diagonal hatching flags..." sentence describes the hatch cue
-                specifically, unlike the #597 caveat below (a mask-coverage
-                gap that exists independent of the hatch toggle's own
-                state). */}
-            {depthVisible && hatchVisible && <p>{t('map.depth.legend.basis')}</p>}
-            <p>{t('map.depth.legend.caveat')}</p>
-            {/* #629: its own toggle (Q7), inside this same disclosure body —
-                the maintainer ruling on #629 places it here, the #681
-                hatch-toggle precedent, not as a third `.data-layer-controls`
-                row (same layout-budget cost this file already documents for
-                the hatch toggle above). Invariant: whenever contours render,
-                a control to turn them off is reachable — `contoursEffectivelyVisible`
-                above enforces it by hiding the layers themselves alongside
-                this checkbox. Not tied to `depthVisible`/`hatchVisible`
-                (Q7: independent). */}
-            <label className="depth-legend-row">
+            <label>
               <input
                 type="checkbox"
                 checked={contoursVisible}
@@ -1596,6 +1495,37 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
               />
               {t('map.depth.legend.contoursToggle')}
             </label>
+            {contoursFetchState.status === 'error' && (
+              <p className="depth-legend-error">{t('map.depth.legend.contoursError')}</p>
+            )}
+          </Disclosure>
+        ) : (
+          <>
+            {depthRow}
+            {seamarksRow}
+          </>
+        )}
+      </div>
+      {/* A SIBLING of `.data-layer-controls`, taken out of its flex flow
+          (`position: absolute`, app.css) so it costs `.map-stack-tl` no
+          measured height. `hidden` (set by the layout effect above) is what
+          decides reachability. Rendered only without a plan: with one,
+          RouteLegend is the sole "Legende" surface and carries the #597
+          caveat. */}
+      {plan === null && (
+        <details className="depth-legend" hidden={legendHidden}>
+          <summary>{t('map.depth.legend.title')}</summary>
+          <div className="depth-legend-body">
+            {/* #839: hatch entries only while the hatch is on the map, the
+                same `depthVisible && hatchVisible` composite as the layer. */}
+            {depthVisible && hatchVisible && (
+              <p className="depth-legend-row">
+                <span className="depth-legend-swatch" aria-hidden="true" />
+                {t('map.depth.legend.hatchLabel')}
+              </p>
+            )}
+            {depthVisible && hatchVisible && <p>{t('map.depth.legend.basis')}</p>}
+            <p>{t('map.depth.legend.caveat')}</p>
             {contoursVisible && (
               <>
                 <p className="depth-legend-row">
@@ -1612,9 +1542,6 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
                   />
                   {t('map.depth.legend.contourNoDataLabel')}
                 </p>
-                {contoursFetchState.status === 'error' && (
-                  <p className="depth-legend-error">{t('map.depth.legend.contoursError')}</p>
-                )}
               </>
             )}
           </div>

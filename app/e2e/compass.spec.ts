@@ -1,5 +1,5 @@
 import { test, expect, type BrowserContext, type CDPSession, type Page } from '@playwright/test';
-import { startPreview, mapReady, bannerHeightVar } from './helpers';
+import { startPreview, mapReady, bannerHeightVar, EDGE_VIEWPORTS } from './helpers';
 
 // #155 map orientation chrome: the north arrow / track-up toggle and the
 // nautical scale bar, against the REAL MapLibre camera (jsdom has none, so
@@ -1122,7 +1122,7 @@ test('#208 review "Major 2" / #368: the offline banner and .map-stack-tl no long
 // outrank the passive, Tier-0 scale bar, so honest suppression here is the
 // accepted answer — pinned explicitly rather than left as an undisclosed
 // side effect of the #368 push.
-test('#368 fix-wave: partial-push band (375x667) — checkbox clears the banner, scale bar honestly suppresses', async ({
+test('#368 fix-wave: partial-push band (375 wide) — the options summary clears the banner, scale bar honestly suppresses', async ({
   page,
 }) => {
   const server = await startPreview(page);
@@ -1153,8 +1153,14 @@ test('#368 fix-wave: partial-push band (375x667) — checkbox clears the banner,
       .click({ timeout: 5_000 })
       .catch(() => {});
 
-    await page.setViewportSize({ width: 375, height: 667 });
+    await page.setViewportSize(EDGE_VIEWPORTS.partialPushBand375x560);
     await page.getByRole('tab', { name: 'Planen' }).click();
+
+    // Mid-band means the bar is visible BEFORE the banner: the banner is what
+    // tips suppression, and a drifted height fails here rather than passing.
+    await expect
+      .poll(() => page.locator('.scale-bar').getAttribute('class'), { timeout: 10_000 })
+      .not.toMatch(/\bscale-bar-suppressed\b/);
 
     await page.context().setOffline(true);
     const banner = page.locator('.banner-message', { hasText: 'Planung deaktiviert' });
@@ -1176,7 +1182,10 @@ test('#368 fix-wave: partial-push band (375x667) — checkbox clears the banner,
     // actually ran instead of assuming it.
     await expect(page.locator('.banner-area .banner')).toHaveCount(1);
 
-    const depthToggle = page.getByRole('checkbox', { name: 'Wassertiefen' });
+    // #1541: below the wide breakpoint the no-plan toggles sit in the
+    // collapsed "Anzeigeoptionen" disclosure, so its summary is the control a
+    // tap must reach here.
+    const depthToggle = page.locator('details.data-layer-controls-disclosure > summary');
     // #412: this was the MORE exposed of the two `#368` guards named in the
     // issue — a single, un-polled `boundingBox()` read on each side feeding
     // an IMMEDIATE one-shot `toBe(0)`, with zero settle tolerance for a

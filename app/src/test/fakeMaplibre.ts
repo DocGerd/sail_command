@@ -72,17 +72,18 @@ export function makeFakeMap({ styleLoaded = true }: { styleLoaded?: boolean } = 
   const layers = new Map<string, FakeLayer>();
   // #160: insertion-order model of the style's layer array, bottom → top.
   // MapLibre's addLayer(layer, beforeId) inserts the layer immediately BELOW
-  // beforeId; with no beforeId it appends on top. The `layers` Map alone only
-  // records each layer's beforeId at add time — ordering tests pin the exact
-  // final stack against this array instead.
+  // beforeId; with no beforeId it appends on top. `stack` is the whole style
+  // (seeded and app layers); `layerOrder` (app layers only) and `getStyle()`
+  // are both derived from it, so the two cannot disagree.
   const layerOrder: string[] = [];
+  let stack: string[] = [];
   // #629: mutable, test-seeded basemap-layer stand-ins for `getStyle()`
   // below — a real style already carries basemap layers (protomaps) BEFORE
   // any layer component's own setup runs, which this fake otherwise has no
-  // way to model (its `layers`/`layerOrder` only ever track THIS
-  // component's own addLayer calls). A test seeds one via
+  // way to model. A test seeds one via
   // `fakeMap.styleLayers.push({ id: 'basemap-x', type: 'symbol' })` before
   // triggering setup, to exercise findFirstBasemapSymbolLayerId's anchor.
+  // Seeded layers sit at the bottom, in array order.
   const styleLayers: Array<{ id: string; type: string }> = [];
   const images = new Set<string>();
   const listeners = new Map<string, Set<Handler>>();
@@ -121,6 +122,23 @@ export function makeFakeMap({ styleLoaded = true }: { styleLoaded?: boolean } = 
   const delegated: DelegatedRegistration[] = [];
   const sameLayerSet = (a: string[], b: string[]): boolean =>
     a.length === b.length && a.every((id) => b.includes(id));
+  const isSeeded = (id: string): boolean => styleLayers.some((l) => l.id === id);
+  const isLive = (id: string): boolean => isSeeded(id) || layers.has(id);
+  // Drops entries cleared by removeLayer or a style reload, admits seeded
+  // layers pushed since the last call (each just above the highest seeded
+  // layer already in the stack, i.e. in the basemap region), and republishes
+  // `layerOrder`.
+  const reconcile = (): void => {
+    stack = stack.filter(isLive);
+    let lastSeeded = stack.reduce((acc, id, i) => (isSeeded(id) ? i : acc), -1);
+    for (const { id } of styleLayers) {
+      if (stack.includes(id)) continue;
+      stack.splice(lastSeeded + 1, 0, id);
+      lastSeeded += 1;
+    }
+    layerOrder.length = 0;
+    layerOrder.push(...stack.filter((id) => !isSeeded(id)));
+  };
   return {
     sources,
     layers,
@@ -192,62 +210,33 @@ export function makeFakeMap({ styleLoaded = true }: { styleLoaded?: boolean } = 
     }),
     getSource: (id: string) => sources.get(id),
     addLayer: vi.fn((layer: FakeLayer, beforeId?: string) => {
-      const at = beforeId === undefined ? -1 : layerOrder.indexOf(beforeId);
       // A beforeId that names a MISSING layer is not an append: real MapLibre
       // fires an ErrorEvent and DROPS the layer (Style#addLayer returns
       // without adding). Mirror the observable half so an unguarded anchor
-      // turns presence/order assertions red instead of silently passing.
-      // #629: a beforeId can also name a SEEDED `styleLayers` entry (a
-      // basemap layer that pre-exists in the real style but was never
-      // itself added via this fake's own addLayer, so it has no position in
-      // `layerOrder`) — that is a VALID anchor too, just one this fake
-      // cannot place a precise index for; record it and append.
-      const anchorsSeededBasemapLayer =
-        beforeId !== undefined && styleLayers.some((l) => l.id === beforeId);
-      if (beforeId !== undefined && at === -1 && !anchorsSeededBasemapLayer) return;
-      // #629 review Blocker 2: a layer anchored under a SEEDED basemap layer
-      // sits at the BOTTOM of the real style (every basemap layer sits
-      // below every app layer), never appended to the top of `layerOrder`
-      // like an ordinary unanchored add — `at === -1` alone conflated the
-      // two. `insertAt` places it after any layer ALREADY anchored to the
-      // SAME seeded id (so a later same-anchor add still ends up above an
-      // earlier one, same rule as an ordinary beforeId), and ahead of
-      // everything else.
-      const insertAt =
-        at === -1 && anchorsSeededBasemapLayer
-          ? layerOrder.filter((id) => layers.get(id)?.beforeId === beforeId).length
-          : at;
+      // turns presence/order assertions red instead of silently passing. A
+      // seeded `styleLayers` entry is a valid anchor.
+      reconcile();
+      if (beforeId !== undefined && !isLive(beforeId)) return;
+      stack = stack.filter((id) => id !== layer.id);
+      const at = beforeId === undefined ? -1 : stack.indexOf(beforeId);
+      if (at === -1) stack.push(layer.id);
+      else stack.splice(at, 0, layer.id);
       layers.set(layer.id, beforeId === undefined ? layer : { ...layer, beforeId });
-      if (insertAt === -1) layerOrder.push(layer.id);
-      else layerOrder.splice(insertAt, 0, layer.id);
+      reconcile();
     }),
     getLayer: (id: string) => layers.get(id),
     styleLayers,
     // #629: real MapLibre's `getStyle().layers` reflects the WHOLE live
-    // style — basemap layers plus everything since added. Seeded
-    // `styleLayers` entries stand in for the basemap ones (loaded before
-    // any component's own setup runs). A layer anchored UNDER a seeded
-    // entry (its own recorded `beforeId` matches that entry's id) sits
-    // BEFORE it in the returned array — same "before means lower" rule
-    // `addLayer`'s own `insertAt` above encodes — everything else (not
-    // anchored to any seeded entry) follows all of `styleLayers`.
+    // style — seeded basemap layers plus everything since added, in stack
+    // order.
     getStyle: () => {
-      const claimed = new Set<string>();
-      const result: Array<{ id: string; type: string }> = [];
-      for (const sl of styleLayers) {
-        for (const id of layerOrder.filter((lid) => layers.get(lid)?.beforeId === sl.id)) {
-          claimed.add(id);
-          const l = layers.get(id);
-          result.push({ id, type: l?.type ?? 'unknown' });
-        }
-        result.push(sl);
-      }
-      for (const id of layerOrder) {
-        if (claimed.has(id)) continue;
-        const l = layers.get(id);
-        result.push({ id, type: l?.type ?? 'unknown' });
-      }
-      return { layers: result };
+      reconcile();
+      return {
+        layers: stack.map((id) => {
+          const seeded = styleLayers.find((l) => l.id === id);
+          return seeded ?? { id, type: layers.get(id)?.type ?? 'unknown' };
+        }),
+      };
     },
     // #599: DataLayers reads the live zoom to pick the depth hatch's stripe
     // band (depthColor.ts's hatchBandForZoom), from inside buildHatchCanvas.
@@ -270,8 +259,7 @@ export function makeFakeMap({ styleLoaded = true }: { styleLoaded?: boolean } = 
     getZoom: vi.fn(() => 9),
     removeLayer: vi.fn((id: string) => {
       layers.delete(id);
-      const at = layerOrder.indexOf(id);
-      if (at !== -1) layerOrder.splice(at, 1);
+      reconcile();
     }),
     removeSource: vi.fn((id: string) => {
       sources.delete(id);

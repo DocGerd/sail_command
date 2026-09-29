@@ -12,18 +12,13 @@ import { safeGetItem, safeSetItem } from './storage';
 
 // #681 x #813: cross-instance live sync, the boolean sibling of
 // `usePersistedNumber.ts`'s own mechanism (#353 PR2) — same shape, same
-// module comment there for the full rationale, ported here because #681's
-// composition fix hit the IDENTICAL requirement one level down: the hazard-
-// hatch toggle is now offered from TWO complementary surfaces
-// (DataLayers.tsx's own `.depth-legend`, and RouteLegend.tsx's folded-in
-// `.route-legend-depth`, reachable once a plan exists) for the SAME two
-// keys (`sc-depth-hatch-visible` and
-// `sc-depth-visible`, the latter needed for the `disabled` mirror), while
-// DataLayers.tsx itself stays mounted and driving the map layer in BOTH
-// states. Without this, checking the box in RouteLegend would write
-// localStorage correctly but DataLayers.tsx's OWN `hatchVisible` state
-// (the one its layer-visibility effect actually reads) would only pick up
-// the change on a future remount — the exact gap #353 PR2 closed for
+// module comment there for the full rationale. The hatch and contour toggles
+// are offered from two surfaces (DataLayers.tsx's "Anzeigeoptionen" without a
+// plan, RouteLayer.tsx's with one) for the SAME keys, while DataLayers.tsx
+// stays mounted and drives the map layers in BOTH states. Without this, a tick
+// in RouteLayer would write localStorage but DataLayers.tsx's OWN state (the
+// one its layer-visibility effect reads) would only catch up on a future
+// remount — the exact gap #353 PR2 closed for
 // `usePersistedNumber`. Keyed by the storage key so unrelated keys never
 // cross-notify; every mounted instance for a key is notified on any set()
 // call for that key, itself included.

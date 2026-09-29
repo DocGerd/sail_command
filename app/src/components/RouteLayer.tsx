@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { LngLatBounds, Map as MaplibreMap, Marker } from 'maplibre-gl';
 import type { GeoJSONSource, MapLayerMouseEvent, MapMouseEvent } from 'maplibre-gl';
 import { useMapInstance } from './MapView';
@@ -14,6 +14,7 @@ import {
 } from '../lib/routeGeoJson';
 import { installStyleSetup } from '../lib/styleReload';
 import { usePersistedToggle } from '../lib/usePersistedToggle';
+import { getContoursFetchState, subscribeContoursFetchState } from '../lib/contours';
 import { useWideLayout } from '../lib/useWideLayout';
 import { registerBarbImages } from '../lib/windBarbs';
 import {
@@ -819,6 +820,39 @@ export default function RouteLayer({
     el.addEventListener('toggle', onNativeToggle, true);
     return () => el.removeEventListener('toggle', onNativeToggle, true);
   }, [plan]);
+  // #1541: while via points are being edited the open cluster covers the map
+  // centre, so it collapses and the state from before the edit comes back
+  // afterwards. A restored state that differs from the layout default counts
+  // as a user choice, so a later resize does not re-seed it.
+  const viaEditing = viaReplanning || viaArmed;
+  const [editCollapsed, setEditCollapsed] = useState(false);
+  const [openOverride, setOpenOverride] = useState<boolean | null>(null);
+  const openBeforeEditRef = useRef<boolean | null>(null);
+  const isWideRef = useRef(isWide);
+  useEffect(() => {
+    isWideRef.current = isWide;
+  }, [isWide]);
+  useEffect(() => {
+    if (viaEditing) {
+      const details = controlsRef.current?.querySelector<HTMLDetailsElement>(
+        'details.route-layer-controls-disclosure',
+      );
+      openBeforeEditRef.current = details ? details.open : null;
+      // The pre-edit `open` is only readable from the committed DOM.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setEditCollapsed(true);
+      return;
+    }
+    const before = openBeforeEditRef.current;
+    openBeforeEditRef.current = null;
+    setEditCollapsed(false);
+    if (before !== null && (before !== isWideRef.current || userToggledDisclosureRef.current)) {
+      userToggledDisclosureRef.current = true;
+      setOpenOverride(before);
+    } else {
+      setOpenOverride(null);
+    }
+  }, [viaEditing]);
   // #63: both overlays default ON (a skipper wants the wind and the numbers
   // without hunting for checkboxes) and persist an explicit choice across
   // reloads. The toggles below stay as the clean-chart escape hatch.
@@ -830,6 +864,15 @@ export default function RouteLayer({
   // #324: map-only overlay of the OTHER rig's route, default OFF (settled
   // design — showing two routes by default clutters harbour-approach zoom).
   const [altRigVisible, setAltRigVisible] = usePersistedToggle('sc-alt-rig-visible', false);
+  // Depth-overlay rows (#1541): DataLayers.tsx applies these flags to the map;
+  // the persisted-toggle registry keeps both components in step.
+  const [depthVisible] = usePersistedToggle('sc-depth-visible', true);
+  const [hatchVisible, setHatchVisible] = usePersistedToggle('sc-depth-hatch-visible', true);
+  const [contoursVisible, setContoursVisible] = usePersistedToggle('sc-contours-visible', false);
+  const contoursFetchState = useSyncExternalStore(
+    subscribeContoursFetchState,
+    getContoursFetchState,
+  );
   // Real land/depth mask for barb land-culling — loaded once, best-effort.
   // A plain Uint8Array VIEW over the module-cached buffer (never a copy, never
   // transferred, never mutated). null until it resolves; sampling skips
@@ -1378,9 +1421,9 @@ export default function RouteLayer({
           this Disclosure on an unresponded `isWide` change (see that state's
           own comment above) — do not remove the key thinking it is inert. */}
       <Disclosure
-        key={disclosureKey}
+        key={editCollapsed ? `${disclosureKey}-edit` : disclosureKey}
         className="route-layer-controls-disclosure"
-        defaultOpen={isWide}
+        defaultOpen={editCollapsed ? false : (openOverride ?? isWide)}
         summary={t('route.controls.summary')}
       >
         {/* #297: user-invoked "fit route to view" — see this component's own
@@ -1435,6 +1478,26 @@ export default function RouteLayer({
           <p id="route-alt-rig-note" className="route-alt-rig-note">
             {t('route.altRig.unavailable')}
           </p>
+        )}
+        <label>
+          <input
+            type="checkbox"
+            checked={hatchVisible}
+            disabled={!depthVisible}
+            onChange={(e) => setHatchVisible(e.target.checked)}
+          />
+          {t('map.depth.legend.hatchToggle')}
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={contoursVisible}
+            onChange={(e) => setContoursVisible(e.target.checked)}
+          />
+          {t('map.depth.legend.contoursToggle')}
+        </label>
+        {contoursFetchState.status === 'error' && (
+          <p className="depth-legend-error">{t('map.depth.legend.contoursError')}</p>
         )}
         {hourOptions.length > 1 && (
           <div className="route-layer-time-slider">

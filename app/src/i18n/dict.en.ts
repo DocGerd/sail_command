@@ -914,20 +914,13 @@ export const en = {
   // constant if a numeric citation is ever needed here.
   'map.depth.legend.title': 'Legend',
   'map.depth.legend.hatchLabel': 'Cautious-reading hatch',
-  // #681: an independent on/off switch for the hatch overlay ALONE, living
-  // inside this legend's own disclosure body rather than as a third
-  // `.data-layer-controls` checkbox row — see DataLayers.tsx's own #681
-  // comment on the return JSX for the full layout-budget derivation (a third
-  // row there measures +51.59px at 375x667 and drops the legend's
-  // reachability budget under LEGEND_COLLAPSED_HEIGHT_PX, hiding the WHOLE
-  // legend — `#597` caveat included — behind `display: none`; rendering the
-  // toggle here instead preserves that binary gate, not the caveat's
-  // position inside the legend body's own scrollport). Deliberately
-  // does NOT contain "Water depths"/"Wassertiefen" or any other existing
-  // checkbox's accessible name as a substring — Playwright's getByRole
-  // matches `name` by SUBSTRING unless `exact: true`, and eleven live
-  // locators across three specs spell the depth-ramp toggle's OWN name
-  // with no `exact` at all (CLAUDE.md's own #681 finding).
+  // #681: an independent on/off switch for the hatch overlay ALONE; a row of
+  // the "Display options" disclosure since #1541. Deliberately does NOT
+  // contain "Water depths" or any other existing checkbox's accessible name
+  // as a substring — Playwright's getByRole matches `name` by SUBSTRING
+  // unless `exact: true`, and eleven live locators across three specs spell
+  // the depth-ramp toggle's OWN name with no `exact` at all (CLAUDE.md's own
+  // #681 finding).
   'map.depth.legend.hatchToggle': 'Show hatch overlay',
   'map.depth.legend.basis':
     'Diagonal hatching flags water where the more cautious of the two depth readings behind the colour overlay could fall below your safety depth — even where the shown colour still looks clear. It can flag water that turns out to be deep enough; that trade-off is deliberate, so the hatching favours over-warning rather than looking clear when it might not be.',
@@ -951,10 +944,10 @@ export const en = {
   // anchored on symbol names, not line numbers.)
   'map.depth.legend.caveat':
     'Unsurveyed and drying water carries no hatching either, and nothing else marks it, so it looks like ordinary water. Absence of hatching is not a guarantee the water is clear — it may simply be a place with no data.',
-  // #629: depth contours — its own default-OFF toggle (Q7), living in the
-  // same legend body as the hatch toggle above. Deliberately does NOT
-  // contain "Water depths" — same Playwright getByRole-substring trap
-  // CLAUDE.md documents for the hatch toggle.
+  // #629: depth contours — its own default-OFF toggle (Q7), a row of the
+  // "Display options" disclosure since #1541. Deliberately does NOT contain
+  // "Water depths" — same Playwright getByRole-substring trap CLAUDE.md
+  // documents for the hatch toggle.
   'map.depth.legend.contoursToggle': 'Depth contours',
   // Spec §4's exact wording.
   'map.depth.legend.contourLinesLabel':

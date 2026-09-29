@@ -1694,6 +1694,7 @@ making design-level decisions; do not silently deviate.
   | v0.44.0 | 2026-09-25 | 37 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 08:14:55Z, two seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `36111835944` (created 08:14:22Z) -> tag `36111890610` (created 08:14:59Z) on `74ffbc9`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-DqikvvXE.js` at ``version:`v0.44.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `1342be8` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.45.0 | 2026-09-25 | 28 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 13:40:24Z, three seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `36142398672` (created 13:40:00Z) -> tag `36142450204` (created 13:40:28Z) on `a1126b4`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `6662080548`, `ref: v0.45.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-eHAbyik6.js` at ``version:`v0.45.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `3481aea` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.46.0 | 2026-09-28 | 52 s | read as **NO `deploy` JOB CREATED YET** at 07:50:23Z, immediately before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `36393772153` (created 07:49:35Z) -> tag `36393852888` (created 07:50:27Z) on `aa6ea4b`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-DsQbd86w.js` at ``version:`v0.46.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag reported `verified: true, reason: "valid"`. Names no MECHANISM. |
+  | v0.47.0 | 2026-09-28 | 90 s | read as **`waiting`/`null`, `steps: 0`** at 20:40:09Z — a CREATED job (its Pages object `6720074808` created 20:40:08Z), misread at the time as the table's "not-yet-started" reading; the job then ran and ended `cancelled` mid-`deploy-pages`, its Pages object `error` | **`smoke-probe` FAILED** | merge-push `36480663285` (created 20:38:44Z) -> tag `36480835418` (created 20:40:14Z) on `675d496`. Tag run's `build` and `deploy` succeeded; its prod entry chunk `assets/index-4WXmwSG8.js` 404'd on 10/10 attempts while both basemap Range probes passed on attempt 1. Prod meanwhile served the MERGE run's `assets/index-CiWNpvuP.js` at ``version:`v0.46.0-45-g675d4969` `` (read ~20:48Z), as the v0.19.0 row records. Back-merge `36484307367` (`450f938`) republished `index-4WXmwSG8.js`; production then served ``version:`v0.47.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag `verified: true, reason: "valid"`. Post-hoc gate state matches v0.12.0's and v0.19.0's; the outcome matches v0.19.0's. Names no MECHANISM. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -1711,7 +1712,10 @@ making design-level decisions; do not silently deviate.
   no-op, so proceed straight to the back-merge (step 6) rather than
   re-running the tag deploy. Every other reading (`queued`/`null`,
   `in_progress`/`null`, no `deploy` line at all, terminal `failure`) is a
-  non-answer — the job is still a coin in the air.
+  non-answer — the job is still a coin in the air. `waiting` with `steps: 0`
+  is one of them: the job exists but has not started, so the rows'
+  "not-yet-started" label does NOT cover it — that label means NO `deploy`
+  job listed at all, the only not-yet-created reading (misread at v0.47.0).
   **The gate's answers differ in DURABILITY.** `success` is permanent — a
   job cannot un-succeed. "Not yet created" is a snapshot of a race still
   running, so read the gate IMMEDIATELY before `git push origin <tag>`, not
@@ -4651,6 +4655,12 @@ making design-level decisions; do not silently deviate.
   file warns about, caught in review of the very PR that added it.
 - The destructive-git guard pattern-matches `-f` anywhere in a compound command:
   never combine `gh api -f …` with `git push` in one Bash call — split them.
+  Its `+`-refspec rule fires on space-then-`+` anywhere once the bare word
+  `push` appears — a jq `"push"` literal counts, no `git` needed — so
+  `date +%s` beside a push was denied at the v0.47.0 cut (guard v6). Use a
+  `+`-free spelling (`printf '%(%s)T' -1`, `date -u -Is`); `bash <script>`
+  passes only because the guard then checks nothing in the script, the push
+  included.
   MEASURED 2026-08-28, a NEW trigger for the same whole-JSON-as-haystack class:
   a `git push` was blocked "Force-push blocked" with no `-f`/`--force` anywhere
   in the command — the agent's own Bash tool `description` field carried the
@@ -4762,7 +4772,11 @@ making design-level decisions; do not silently deviate.
   naming the changed symbol (`grep -rln <symbol> app/src
   --include='*.test.*'`) as a floor, since a test reaching it through a
   caller does not name it. #1513's filter skipped `regionPinning.test.ts`,
-  which went red in CI after two approvals.
+  which went red in CI after two approvals. A new maplibre `Map` method
+  call also needs every `vi.mock('maplibre-gl'` factory that defines its
+  own `Map` — most mock only `Popup`/`Marker` and take the map from
+  `fakeMaplibre.ts`: #1536's `getStyle()` call reached `App.test.tsx`'s own
+  `FakeMap` and redded 102 of its tests, which its filter skipped.
 - **Parallel subagents share ONE session scratchpad** (Claude Code 2.1.278;
   a harness property). A fixed commit-message filename there raced: one
   commit got a sibling's `Closes #N` (caught before push, v0.39.0 cycle).

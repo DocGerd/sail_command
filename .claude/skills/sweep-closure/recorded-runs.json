@@ -54,6 +54,44 @@
         "short-horizon": "d59c3bc92fedca6f"
       },
       "note": "PR #1511 (#1456) HEAD, sharded 3x2; first entry in the #1456 row shape (PlanResult + record + pass2). compare.mjs --strip-planning-record against a BASE x2 at a4c0ad3 (the two byte-identical) read 480/480 identical; details in PR #1511."
+    },
+    {
+      "sha": "7f7cb669e0d784f687d0d521315d17430a6f1533",
+      "date": "2026-09-28",
+      "arms": {
+        "becalmed": "010fc532b0bcb93f",
+        "breeze": "e1526f073bb6b977",
+        "deep-becalmed": "4cf8886bdcdf4c93",
+        "light-motorless": "7c49037ae9277c91",
+        "margin-extreme": "de00df8754161c8f",
+        "margin-zero": "95d9a8fae07f42d2",
+        "motorless-short-horizon": "87a382b77ce7bec4",
+        "no-comfort": "6e11fe0c8e4375d3",
+        "relaxation-dense": "db9e245e43962f6b",
+        "salona44-breeze": "2dfb1a3ba37e7484",
+        "salona44-relaxation": "6c99f57e2f10d7f6",
+        "short-horizon": "d59c3bc92fedca6f"
+      },
+      "note": "PR #1534 BASE double-run at 7f7cb66 (develop, merge of integration PR #1535): base1 vs base2 480/480 byte-identical across 12 arms x 40 harbours, also byte-identical to HEAD 3b344c3 and to the prior ledger entry (945f7ba); details in PR #1534 comment 5876790100"
+    },
+    {
+      "sha": "266d99e022baff0420717f97001f84f706b2860e",
+      "date": "2026-09-29",
+      "arms": {
+        "becalmed": "010fc532b0bcb93f",
+        "breeze": "e1526f073bb6b977",
+        "deep-becalmed": "4cf8886bdcdf4c93",
+        "light-motorless": "7c49037ae9277c91",
+        "margin-extreme": "de00df8754161c8f",
+        "margin-zero": "95d9a8fae07f42d2",
+        "motorless-short-horizon": "87a382b77ce7bec4",
+        "no-comfort": "6e11fe0c8e4375d3",
+        "relaxation-dense": "db9e245e43962f6b",
+        "salona44-breeze": "2dfb1a3ba37e7484",
+        "salona44-relaxation": "6c99f57e2f10d7f6",
+        "short-horizon": "d59c3bc92fedca6f"
+      },
+      "note": "PR #1549 (#1540) sweep: BASE b678c9f vs HEAD 266d99e, sharded 3x4; 480/480 byte-identical across 12 arms x 40 harbours; BASE and HEAD arm hashes also match the 7f7cb66 ledger entry on all 12 arms"
     }
   ]
 }
