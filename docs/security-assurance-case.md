@@ -88,13 +88,15 @@ which tolerate private-mode failures, and no other non-test file under
 per boat or per deployment, so this document does not list them; enumerate call
 sites with
 `grep -rnE 'safe(Get|Set|Remove)Item|usePersisted(Toggle|Number)' app/src`.
-The selected boat id is stored in `localStorage`; it determines the draft and hence the derived safety depth gate, so it is validated against the
+The selected boat id is stored in `localStorage`; it determines the draft and
+hence the derived safety depth gate, so it is validated against the
 catalogue on every read. The AIS key is not stored in `localStorage`; it is a
-`Settings` field held in the IndexedDB `settings` store. The only
-`sessionStorage` use under `app/src` is one flag,
-`sailcommand-sw-recovery-reloaded` (`app/src/services/swRecovery.ts`), set to
-`1` before a one-shot page reload so that recovery cannot loop. There are no
-cookies and no analytics, telemetry, or tracking of any kind.
+`Settings` field held in the IndexedDB `settings` store. Non-test
+`sessionStorage` use under `app/src` (enumerate with
+`grep -rn sessionStorage app/src`) is one flag in
+`app/src/services/swRecovery.ts` that keeps the one-shot reload recovering a
+broken first-load basemap from looping. There are
+no cookies and no analytics, telemetry, or tracking of any kind.
 
 ## 3. Trust boundaries
 

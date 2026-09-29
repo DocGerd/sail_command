@@ -272,10 +272,10 @@ changes at every anchor recording.
    lands on `develop` — `reuse`'s own ancestor check (`git merge-base
    --is-ancestor <recorded> <base>`) requires the recorded `sha` to be an
    ancestor of (or equal to) any later `<base>` it is asked about. An entry
-   recorded before its PR's last commit anchors nothing once a later commit
-   changes a closure file, since `reuse` compares the recorded SHA to the
-   base: `945f7ab`, recorded mid-PR, reads `RUN BASE` against its merge commit
-   `a1e5d48` after `0515940`. Record the anchor on the merged tree.
+   whose `sha` predates its PR's last commit anchors nothing once a later
+   commit changes a closure file, since `reuse` compares the recorded SHA to
+   the base: `945f7ab`, recorded mid-PR, reads `RUN BASE` against its merge
+   commit `a1e5d48` after `0515940`. Record the anchor on the merged tree.
 2. Take each arm's hash from `run-sharded.mjs`'s `manifest.json` `arms`
    field (or the unsharded equivalent, `compare.mjs`'s own
    `sha256(raw).slice(0,16)` convention — both are the same 16-hex-char
