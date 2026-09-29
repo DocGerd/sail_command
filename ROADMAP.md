@@ -13,46 +13,32 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.47.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.48.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
-## Now — v0.47.0
+## Now — v0.48.0
 
-The `v0.47.0` cut (2026-09-28) worked the
-[`v0.47.0` milestone](https://github.com/DocGerd/sail_command/milestones):
-two user-visible changes (per `CHANGELOG.md`'s own `[0.47.0]` section) —
-plotter-style depth contours, drawn on the cautious depth reading and
-toggled from the depth legend, default off
-([#629](https://github.com/DocGerd/sail_command/issues/629)), and the one-time
-pin of every saved plan's offline map regions at first service-worker control
-no longer depending on the Routes tab being open
-([#1518](https://github.com/DocGerd/sail_command/issues/1518)) — plus four
-issues with no user-visible surface: a failing coverage shard's blob upload is
-no longer skipped, so the failing test can be identified (not yet exercised)
-([#1527](https://github.com/DocGerd/sail_command/issues/1527));
-`compare.mjs`'s `--strip-planning-record` fail-closed guard gained a
-committed test
-([#1514](https://github.com/DocGerd/sail_command/issues/1514)); `pipeline/`
-gained a pytest harness, its first test covering `check_dtm_covers`
-([#1503](https://github.com/DocGerd/sail_command/issues/1503)); and the
-`354-mode-churn` spike's TWS 5.5/wdir 120 Ærøskøbing citation was re-run on
-the post-#1259 grid, which had re-pinned #847's neighbouring repro to TWS 6,
-and recorded as still reproducing
-([#1484](https://github.com/DocGerd/sail_command/issues/1484)).
+The `v0.48.0` cut (2026-09-29) worked the
+[`v0.48.0` milestone](https://github.com/DocGerd/sail_command/milestones):
+three user-visible changes (per `CHANGELOG.md`'s own `[0.48.0]` section) —
+depth contours drawn as smoothed lines that only ever shift toward deeper
+water ([#1540](https://github.com/DocGerd/sail_command/issues/1540)), the hatch and depth-contour toggles moving out of the map
+legend into the display-options control ([#1541](https://github.com/DocGerd/sail_command/issues/1541)), and saved plans' offline
+map regions being backfilled on a page already under service-worker control
+([#1533](https://github.com/DocGerd/sail_command/issues/1533)) — plus two issues with no user-visible surface: test, test-fake and
+comment follow-ups from the contours review ([#1537](https://github.com/DocGerd/sail_command/issues/1537)) and an explicit
+constructor parameter on the zero-argument `ResizeObserver` test fixtures
+behind the CodeQL false-positive alerts
+([#1545](https://github.com/DocGerd/sail_command/issues/1545)).
 
-Four issues that wait on a real-tablet session were moved to `Backlog` this
-cut, not carried forward
-into `v0.48.0`:
-([#1281](https://github.com/DocGerd/sail_command/issues/1281),
-[#1413](https://github.com/DocGerd/sail_command/issues/1413),
-[#1490](https://github.com/DocGerd/sail_command/issues/1490),
-[#1350](https://github.com/DocGerd/sail_command/issues/1350)).
+`ScaleBar` not re-measuring when the display-options control is opened by
+hand ([#1552](https://github.com/DocGerd/sail_command/issues/1552)) was filed during the cycle and sits in `Backlog`.
 
-## Next — v0.48.0
+## Next — v0.49.0
 
-The [`v0.48.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-is empty as of this cut. The milestone page is the only authoritative view,
-check it directly rather than this file.
+The [`v0.49.0` milestone](https://github.com/DocGerd/sail_command/milestones)
+is empty as of this cut and its scope is not decided. The milestone page is
+the only authoritative view, check it directly rather than this file.
 
 ## Themes for the next year
 

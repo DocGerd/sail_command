@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.48.0] - 2026-09-29
+
+### Changed
+
+- Depth contours are drawn as smoothed lines instead of a cell-by-cell staircase. Smoothing only ever shifts a line toward deeper water, so a contour still never shows water as deeper than its cautious reading (#1540).
+- The hatch and depth-contour toggles moved out of the map legend into the display-options control: before a route is planned, one collapsible control at the top left (open on wide screens, collapsed on narrow ones) holds the water-depth, seamark, hatch and contour toggles, and once a route exists the hatch and contour toggles sit beside the route's other display toggles; the legend keeps only the explanations (#1541).
+
+### Fixed
+
+- Plans saved before the service worker first took control now download their offline map regions on the next load, per deployment, retrying on later loads (up to three failed attempts) until all are stored (#1533).
+
 ## [0.47.0] - 2026-09-28
 
 ### Added
@@ -1207,7 +1218,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.47.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.48.0...HEAD
+[0.48.0]: https://github.com/DocGerd/sail_command/compare/v0.47.0...v0.48.0
 [0.47.0]: https://github.com/DocGerd/sail_command/compare/v0.46.0...v0.47.0
 [0.46.0]: https://github.com/DocGerd/sail_command/compare/v0.45.0...v0.46.0
 [0.45.0]: https://github.com/DocGerd/sail_command/compare/v0.44.0...v0.45.0
