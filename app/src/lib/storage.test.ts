@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { safeGetItem, safeSetItem } from './storage';
+import { safeGetItem, safeKeys, safeSetItem } from './storage';
 
 describe('safeGetItem/safeSetItem', () => {
   afterEach(() => {
@@ -28,5 +28,26 @@ describe('safeGetItem/safeSetItem', () => {
       throw new DOMException('quota exceeded', 'QuotaExceededError');
     });
     expect(safeSetItem('k', 'v')).toBe(false);
+  });
+});
+
+describe('safeKeys', () => {
+  afterEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  it('lists every stored key', () => {
+    localStorage.setItem('a', '1');
+    localStorage.setItem('b', '2');
+    expect(safeKeys().sort()).toEqual(['a', 'b']);
+  });
+
+  it('returns an empty list when enumeration throws', () => {
+    localStorage.setItem('a', '1');
+    vi.spyOn(Storage.prototype, 'key').mockImplementation(() => {
+      throw new DOMException('blocked', 'SecurityError');
+    });
+    expect(safeKeys()).toEqual([]);
   });
 });
