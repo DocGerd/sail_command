@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Plan } from '../types';
 import type { PlanSummary } from './db';
+import type { PinRegionsOutcome } from './regionPinning';
 
 // firstControlPin keeps its "batch pinned this session" and "armed" flags
 // at module scope, so each test re-imports a fresh module instance
@@ -12,9 +13,26 @@ vi.mock('./db', () => ({
 }));
 vi.mock('./pinAfterSave', () => ({
   pinImportedPlans: vi.fn(),
+  canPinRegions: vi.fn(),
+  saveDataRequested: vi.fn(),
+}));
+vi.mock('./regionPinning', () => ({
+  pinRegionsForPlan: vi.fn(),
 }));
 
 const plan = (id: string): Plan => ({ id, createdAtMs: 1 }) as unknown as Plan;
+
+const okSummary = (id: string): PlanSummary => ({
+  kind: 'ok',
+  id,
+  name: id,
+  createdAtMs: 1,
+  departureMs: 1,
+  recommended: 'genoa',
+  etaMs: 1,
+});
+
+const FULL: PinRegionsOutcome = { status: 'pinned', total: 2, pinned: 2 };
 
 class FakeSwContainer extends EventTarget {
   controller: object | null = null;
@@ -29,15 +47,30 @@ function stubSw(controlled: boolean): FakeSwContainer {
 
 async function loadModule() {
   vi.resetModules();
-  return await import('./firstControlPin');
+  const mod = await import('./firstControlPin');
+  const { pinImportedPlans, canPinRegions, saveDataRequested } = await import('./pinAfterSave');
+  const { pinRegionsForPlan } = await import('./regionPinning');
+  const { listPlans, getPlan } = await import('./db');
+  // Mirrors the real pinImportedPlans: fire-and-forget, one pin call per plan.
+  vi.mocked(pinImportedPlans).mockImplementation((plans, pin) => {
+    void Promise.allSettled(plans.map((p) => pin?.(p)));
+  });
+  vi.mocked(canPinRegions).mockImplementation(() => navigator.serviceWorker?.controller != null);
+  vi.mocked(saveDataRequested).mockReturnValue(false);
+  vi.mocked(pinRegionsForPlan).mockResolvedValue(FULL);
+  return { ...mod, pinImportedPlans, saveDataRequested, pinRegionsForPlan, listPlans, getPlan };
 }
+
+const flagSet = (key: string) => localStorage.getItem(key) === '1';
 
 beforeEach(() => {
   vi.clearAllMocks();
+  localStorage.clear();
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
 
@@ -78,25 +111,20 @@ describe('armBatchPinOnFirstControl (#1518)', () => {
 
     expect(getPlan).toHaveBeenCalledWith('ok-plan');
     expect(getPlan).not.toHaveBeenCalledWith('bad-plan');
-    expect(pinImportedPlans).toHaveBeenCalledWith([okPlan]);
+    expect(pinImportedPlans).toHaveBeenCalledWith([okPlan], expect.any(Function));
   });
 
-  it('never arms when the page is already controlled at arm time', async () => {
+  it('does not listen for controllerchange when already controlled at arm time', async () => {
     const sw = stubSw(true);
-    const { armBatchPinOnFirstControl } = await loadModule();
-    const { pinImportedPlans } = await import('./pinAfterSave');
-    const { listPlans } = await import('./db');
+    const addEventListener = vi.spyOn(sw, 'addEventListener');
+    const { armBatchPinOnFirstControl, listPlans } = await loadModule();
     vi.mocked(listPlans).mockResolvedValue([]);
 
     armBatchPinOnFirstControl();
-    sw.dispatchEvent(new Event('controllerchange')); // e.g. a SKIP_WAITING update
 
-    // Assert on listPlans (the FIRST thing pinAllSavedPlansOnce touches),
-    // not only on pinImportedPlans — a listener that fired and then threw
-    // partway through would also leave pinImportedPlans uncalled, which
-    // would be zero evidence for THIS guard specifically.
-    expect(listPlans).not.toHaveBeenCalled();
-    expect(pinImportedPlans).not.toHaveBeenCalled();
+    expect(
+      addEventListener.mock.calls.filter(([type]) => type === 'controllerchange'),
+    ).toHaveLength(0);
   });
 
   it('runs once per session even across repeated controllerchange events', async () => {
@@ -165,7 +193,10 @@ describe('armBatchPinOnFirstControl (#1518)', () => {
     // pinAfterSave.test.ts. Here the mock stands in for that function, so
     // this asserts only that the batch reaches it with the real plan list —
     // see pinAfterSave.test.ts for the Save-Data suppression itself.
-    expect(pinImportedPlans).toHaveBeenCalledWith([expect.objectContaining({ id: 'p1' })]);
+    expect(pinImportedPlans).toHaveBeenCalledWith(
+      [expect.objectContaining({ id: 'p1' })],
+      expect.any(Function),
+    );
     expect(listPlans).toHaveBeenCalledTimes(1);
   });
 
@@ -194,5 +225,185 @@ describe('armBatchPinOnFirstControl (#1518)', () => {
       ([type]) => type === 'controllerchange',
     );
     expect(controllerchangeCalls).toHaveLength(1);
+  });
+});
+
+describe('persisted backfill flag (#1533)', () => {
+  const twoPlans = async () => {
+    const m = await loadModule();
+    vi.mocked(m.listPlans).mockResolvedValue([okSummary('a'), okSummary('b')]);
+    vi.mocked(m.getPlan).mockImplementation(async (id) => plan(id));
+    return m;
+  };
+  const settle = () => new Promise((r) => setTimeout(r, 0));
+
+  it('already-controlled page with the flag absent runs the batch, then sets the flag', async () => {
+    stubSw(true);
+    const { armBatchPinOnFirstControl, pinImportedPlans, BACKFILL_DONE_KEY } = await twoPlans();
+
+    armBatchPinOnFirstControl();
+
+    await vi.waitFor(() => expect(flagSet(BACKFILL_DONE_KEY)).toBe(true));
+    expect(pinImportedPlans).toHaveBeenCalledTimes(1);
+    expect(pinImportedPlans).toHaveBeenCalledWith(
+      [expect.objectContaining({ id: 'a' }), expect.objectContaining({ id: 'b' })],
+      expect.any(Function),
+    );
+  });
+
+  it('already-controlled page with the flag present skips the batch entirely', async () => {
+    stubSw(true);
+    const { armBatchPinOnFirstControl, listPlans, pinImportedPlans, BACKFILL_DONE_KEY } =
+      await twoPlans();
+    localStorage.setItem(BACKFILL_DONE_KEY, '1');
+
+    armBatchPinOnFirstControl();
+    await settle();
+
+    expect(listPlans).not.toHaveBeenCalled();
+    expect(pinImportedPlans).not.toHaveBeenCalled();
+  });
+
+  it('the first-controllerchange path still runs the batch when the flag is already set', async () => {
+    const sw = stubSw(false);
+    const { armBatchPinOnFirstControl, pinImportedPlans, BACKFILL_DONE_KEY } = await twoPlans();
+    localStorage.setItem(BACKFILL_DONE_KEY, '1');
+
+    armBatchPinOnFirstControl();
+    sw.controller = {};
+    sw.dispatchEvent(new Event('controllerchange'));
+
+    await vi.waitFor(() => expect(pinImportedPlans).toHaveBeenCalledTimes(1));
+  });
+
+  it('the first-controllerchange batch also sets the flag on success', async () => {
+    const sw = stubSw(false);
+    const { armBatchPinOnFirstControl, BACKFILL_DONE_KEY } = await twoPlans();
+
+    armBatchPinOnFirstControl();
+    sw.controller = {};
+    sw.dispatchEvent(new Event('controllerchange'));
+
+    await vi.waitFor(() => expect(flagSet(BACKFILL_DONE_KEY)).toBe(true));
+  });
+
+  it('a saved-plan-less profile still completes the backfill', async () => {
+    stubSw(true);
+    const { armBatchPinOnFirstControl, listPlans, BACKFILL_DONE_KEY } = await loadModule();
+    vi.mocked(listPlans).mockResolvedValue([]);
+
+    armBatchPinOnFirstControl();
+
+    await vi.waitFor(() => expect(flagSet(BACKFILL_DONE_KEY)).toBe(true));
+  });
+
+  describe('a failed batch leaves the flag unset', () => {
+    const outcomes: [string, () => Promise<PinRegionsOutcome>][] = [
+      ['a partial pin', async () => ({ status: 'pinned', total: 2, pinned: 1 })],
+      ['manifest-unavailable', async () => ({ status: 'manifest-unavailable' })],
+      ['pin-record-failed', async () => ({ status: 'pin-record-failed', total: 2, pinned: 2 })],
+      ['a rejected pin', async () => Promise.reject(new Error('network'))],
+    ];
+    it.each(outcomes)('%s', async (_name, outcome) => {
+      stubSw(true);
+      const { armBatchPinOnFirstControl, pinRegionsForPlan, BACKFILL_DONE_KEY } = await twoPlans();
+      vi.mocked(pinRegionsForPlan).mockImplementation(outcome);
+
+      armBatchPinOnFirstControl();
+
+      await vi.waitFor(() => expect(pinRegionsForPlan).toHaveBeenCalledTimes(2));
+      await settle();
+      expect(flagSet(BACKFILL_DONE_KEY)).toBe(false);
+    });
+
+    it('one failing plan among successes', async () => {
+      stubSw(true);
+      const { armBatchPinOnFirstControl, pinRegionsForPlan, BACKFILL_DONE_KEY } = await twoPlans();
+      vi.mocked(pinRegionsForPlan).mockImplementation(async (p) =>
+        p.id === 'a' ? FULL : { status: 'manifest-unavailable' },
+      );
+
+      armBatchPinOnFirstControl();
+
+      await vi.waitFor(() => expect(pinRegionsForPlan).toHaveBeenCalledTimes(2));
+      await settle();
+      expect(flagSet(BACKFILL_DONE_KEY)).toBe(false);
+    });
+
+    it('a plan deleted mid-batch does not count as a failure', async () => {
+      stubSw(true);
+      const { armBatchPinOnFirstControl, pinRegionsForPlan, BACKFILL_DONE_KEY } = await twoPlans();
+      vi.mocked(pinRegionsForPlan).mockImplementation(async (p) =>
+        p.id === 'a' ? FULL : { status: 'plan-gone', total: 2, pinned: 0 },
+      );
+
+      armBatchPinOnFirstControl();
+
+      await vi.waitFor(() => expect(flagSet(BACKFILL_DONE_KEY)).toBe(true));
+    });
+
+    it('listPlans rejecting', async () => {
+      stubSw(true);
+      const { armBatchPinOnFirstControl, listPlans, pinImportedPlans, BACKFILL_DONE_KEY } =
+        await loadModule();
+      vi.mocked(listPlans).mockRejectedValue(new Error('idb'));
+
+      armBatchPinOnFirstControl();
+
+      await vi.waitFor(() => expect(listPlans).toHaveBeenCalledTimes(1));
+      await settle();
+      expect(pinImportedPlans).not.toHaveBeenCalled();
+      expect(flagSet(BACKFILL_DONE_KEY)).toBe(false);
+    });
+
+    it('getPlan rejecting for one plan still pins the rest but leaves the flag unset', async () => {
+      stubSw(true);
+      const { armBatchPinOnFirstControl, getPlan, pinRegionsForPlan, BACKFILL_DONE_KEY } =
+        await twoPlans();
+      vi.mocked(getPlan).mockImplementation(async (id) => {
+        if (id === 'a') throw new Error('idb');
+        return plan(id);
+      });
+
+      armBatchPinOnFirstControl();
+
+      await vi.waitFor(() => expect(pinRegionsForPlan).toHaveBeenCalledTimes(1));
+      await settle();
+      expect(flagSet(BACKFILL_DONE_KEY)).toBe(false);
+    });
+
+    it('Save-Data suppresses the pin and leaves the flag unset so a later load retries', async () => {
+      stubSw(true);
+      const { armBatchPinOnFirstControl, saveDataRequested, listPlans, BACKFILL_DONE_KEY } =
+        await twoPlans();
+      vi.mocked(saveDataRequested).mockReturnValue(true);
+
+      armBatchPinOnFirstControl();
+
+      await vi.waitFor(() => expect(listPlans).toHaveBeenCalledTimes(1));
+      await settle();
+      expect(flagSet(BACKFILL_DONE_KEY)).toBe(false);
+    });
+  });
+
+  it('a flag write failure does not throw', async () => {
+    stubSw(true);
+    const { armBatchPinOnFirstControl, pinRegionsForPlan } = await twoPlans();
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('quota');
+    });
+
+    armBatchPinOnFirstControl();
+
+    await vi.waitFor(() => expect(pinRegionsForPlan).toHaveBeenCalledTimes(2));
+  });
+
+  it('the key is scoped per deployment (prod vs /uat/ share one origin)', async () => {
+    vi.stubEnv('BASE_URL', '/sail_command/');
+    const prod = (await loadModule()).BACKFILL_DONE_KEY;
+    vi.stubEnv('BASE_URL', '/sail_command/uat/');
+    const uat = (await loadModule()).BACKFILL_DONE_KEY;
+
+    expect(uat).not.toBe(prod);
   });
 });
