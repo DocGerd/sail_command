@@ -117,6 +117,27 @@ const OK_RESULT: PlanResultOk = {
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
+// For a row that expects run() to refuse before routing: never awaits run()
+// itself, so a regression that lets it reach a worker that never answers fails
+// the assertions instead of hanging inside act() and breaking later rows.
+async function runExpectingRefusal(
+  result: { current: ReturnType<typeof usePlanFlow> },
+  req: Parameters<ReturnType<typeof usePlanFlow>['run']>[0],
+  name: string,
+) {
+  let pending!: Promise<void>;
+  await act(async () => {
+    pending = result.current.run(req, name);
+    await flush();
+  });
+  onTestFinished(async () => {
+    await act(async () => {
+      result.current.cancel();
+      await pending;
+    });
+  });
+}
+
 function findPosted<T extends WorkerRequest['type']>(
   posted: WorkerRequest[],
   type: T,
@@ -832,13 +853,11 @@ describe('usePlanFlow', () => {
         }),
       { wrapper: AppStateProvider },
     );
-    await act(async () => {
-      await result.current.run(req, 'Conflict');
-    });
+    await runExpectingRefusal(result, req, 'Conflict');
     expect(result.current.planning).toEqual({
       phase: 'error',
       messageKey: 'error.segmentModesMergeConflict',
-      messageVars: { index: 2 },
+      messageVars: { waypoint: 2 },
     });
     expect(fetchWind).not.toHaveBeenCalled();
     expect(w.posted.some((m) => (m as { type?: string }).type === 'plan')).toBe(false);
@@ -862,9 +881,7 @@ describe('usePlanFlow', () => {
         }),
       { wrapper: AppStateProvider },
     );
-    await act(async () => {
-      await result.current.run(req, 'Motor off');
-    });
+    await runExpectingRefusal(result, req, 'Motor off');
     expect(result.current.planning).toEqual({
       phase: 'error',
       messageKey: 'error.noRoute.segmentModeConflict',

@@ -313,8 +313,28 @@ export default function ScaleBar() {
       sheetRo.observe(sheetEl);
     }
 
+    // `.map-stack-tl` changes size when its Anzeigeoptionen disclosure is
+    // toggled, which nothing else here observes.
+    let stackRo: ResizeObserver | null = null;
+    let stackEl: HTMLElement | null = null;
+    const rewireStack = () => {
+      const el = host.querySelector<HTMLElement>('.map-stack-tl');
+      if (el === stackEl) return;
+      stackRo?.disconnect();
+      stackRo = null;
+      stackEl = el;
+      if (el && canObserveResize) {
+        stackRo = new ResizeObserver(() => apply());
+        stackRo.observe(el);
+      }
+    };
+
     rewireLive();
-    const mo = new MutationObserver(rewireLive);
+    rewireStack();
+    const mo = new MutationObserver(() => {
+      rewireLive();
+      rewireStack();
+    });
     mo.observe(host, { childList: true });
 
     // #368: `.map-stack-tl` can reposition at runtime (app.css's banner-
@@ -349,6 +369,7 @@ export default function ScaleBar() {
 
     return () => {
       mo.disconnect();
+      stackRo?.disconnect();
       liveRo?.disconnect();
       sheetRo?.disconnect();
       barRo?.disconnect();

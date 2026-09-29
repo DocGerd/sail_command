@@ -430,7 +430,9 @@ export const en = {
   'error.noRoute.segmentModesInvalid':
     'Internal error: the segment settings do not match the waypoints. Re-select the segment modes and plan again.',
   'error.segmentModesMergeConflict':
-    'Waypoint {index} is too close to a neighbor, and the segments it would merge have different modes (Auto, Motor, Sail). Remove or move waypoint {index}, or give those segments the same mode.',
+    'Waypoint {waypoint} is too close to a neighbor, and the segments it would merge have different modes (Auto, Motor, Sail). Remove or move waypoint {waypoint}, or give those segments the same mode.',
+  'error.segmentModesMergeConflictMany':
+    'Waypoints {head} and {last} are too close to their neighbors, and the segments they would merge have different modes (Auto, Motor, Sail). Remove or move waypoints {head} and {last}, or give those segments the same mode.',
   'error.replanStaleWind':
     "This plan's stored wind forecast no longer covers its departure time. Plan the route again to load a current forecast.",
   'error.replanInit':

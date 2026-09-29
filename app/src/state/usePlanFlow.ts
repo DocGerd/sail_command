@@ -11,6 +11,7 @@ import {
   failureLeavesWorkerHealthy,
   ROUTING_FAILURE_MESSAGE_KEY,
   routingFailureKey,
+  type MessageVars,
 } from './replan';
 import type { MsgKey } from '../i18n/dict.de';
 import {
@@ -44,8 +45,8 @@ export type PlanningState =
   // UI shows the probe phase instead of a stalled routing bar; the relaxed
   // re-solve transitions back to 'routing'.
   | { phase: 'probing-depth' }
-  // #885: `messageVars` fills a key's placeholders (the merge refusal names a waypoint).
-  | { phase: 'error'; messageKey: MsgKey; messageVars?: Record<string, number> };
+  // #885: `messageVars` fills a key's placeholders (the merge refusal names its waypoints).
+  | { phase: 'error'; messageKey: MsgKey; messageVars?: MessageVars };
 
 export interface PlanFlowDeps {
   fetchWind?: typeof fetchWindGrid;

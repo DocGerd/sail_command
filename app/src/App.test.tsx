@@ -4522,9 +4522,44 @@ describe('#885: segment modes (App wiring)', () => {
     fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
 
     expect(
-      await screen.findByText(de['error.segmentModesMergeConflict'].replaceAll('{index}', '1')),
+      await screen.findByText(de['error.segmentModesMergeConflict'].replaceAll('{waypoint}', '1')),
     ).toBeInTheDocument();
     expect(screen.queryByText(de['banner.viaTooClose'])).not.toBeInTheDocument();
+    expect(routingMock.calls.length).toBe(0);
+  });
+
+  it('a mixed-mode dedupe merge of two waypoints is refused naming both, through the real dict', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    pickOriginAndDestination();
+
+    // A via ~15 m from the origin: dedupe drops it, merging O->via and via->D.
+    const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
+    const latInput = within(viaSection).getByLabelText(de['planner.via.coord.latLabel']);
+    const lonInput = within(viaSection).getByLabelText(de['planner.via.coord.lonLabel']);
+    for (const dLat of [0.0001, 0.0002]) {
+      fireEvent.change(latInput, { target: { value: String(ORIGIN_A.lat + dLat) } });
+      fireEvent.blur(latInput);
+      fireEvent.change(lonInput, { target: { value: String(ORIGIN_A.lon + 0.0001) } });
+      fireEvent.blur(lonInput);
+      fireEvent.click(
+        within(viaSection).getByRole('button', { name: de['planner.via.coord.add'] }),
+      );
+    }
+
+    // Only the 15 m stretch is marked motor; the merged segment is Auto.
+    const waypoint1 = de['planner.segment.waypoint'].replace('{index}', '1');
+    fireEvent.click(
+      within(segmentGroup(1, de['planner.origin.label'], waypoint1)).getByRole('button', {
+        name: de['planner.segment.motor'],
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+
+    const refusal = await screen.findByText(
+      de['error.segmentModesMergeConflictMany'].replaceAll('{head}', '1').replaceAll('{last}', '2'),
+    );
+    expect(refusal.textContent).not.toMatch(/[{}]/);
     expect(routingMock.calls.length).toBe(0);
   });
 });
