@@ -56,13 +56,13 @@ export interface RouteLayerProps {
   // on the map immediately, before the next Plan-route press applies it.
   draftViaPoints: LatLon[];
   // No longer means "a replan is in flight" (#571 redesign removed the
-  // auto-replan-on-edit path) — it now means "the draft differs from the
-  // committed plan.request.viaPoints", i.e. there is an unapplied edit.
+  // auto-replan-on-edit path) — it now means "the draft via list or segment
+  // modes differ from the committed plan.request", i.e. there is an unapplied edit.
   // PROP NAME kept as `viaReplanning` — see ViaMarkers.tsx's own comment on
   // its identically-named, identically-repurposed prop.
   viaReplanning: boolean;
-  // The via LIST alone differs from the committed plan. Drives the options
-  // cluster's auto-collapse; a segment-mode-only change does not set it.
+  // The via-list-only subset of `viaReplanning`. Drives the options cluster's
+  // auto-collapse; a segment-mode-only change does not set it.
   viaPointsEditing: boolean;
   onViaDragEnd: (index: number, next: LatLon) => Promise<boolean>;
   // #850: drag-the-route-line-to-insert-a-waypoint. Fired once, on the

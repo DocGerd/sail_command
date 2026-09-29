@@ -1655,7 +1655,7 @@ describe('RouteLayer depth-overlay rows (#1541)', () => {
 });
 
 // #1541 review Major 1: the open cluster covers the map while via points are
-// edited (draft differs from the committed route, or a tap-insert is armed),
+// edited (the draft via list differs from the committed route, or a tap-insert is armed),
 // so it collapses for the edit and the earlier state returns afterwards.
 describe('RouteLayer options cluster during via editing (#1541)', () => {
   type Edit = { viaReplanning?: boolean; viaPointsEditing?: boolean; viaArmed?: boolean };
