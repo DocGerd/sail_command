@@ -1153,7 +1153,7 @@ test('#368 fix-wave: partial-push band (375 wide) — the options summary clears
       .click({ timeout: 5_000 })
       .catch(() => {});
 
-    await page.setViewportSize(EDGE_VIEWPORTS.partialPushBand375);
+    await page.setViewportSize(EDGE_VIEWPORTS.partialPushBand375x560);
     await page.getByRole('tab', { name: 'Planen' }).click();
 
     // Mid-band means the bar is visible BEFORE the banner: the banner is what

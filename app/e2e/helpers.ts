@@ -108,7 +108,7 @@ export const EDGE_VIEWPORTS = {
   // The height at which one banner flips ScaleBar suppression with the
   // collapsed "Anzeigeoptionen" (#368's partial-push band, re-found by #1541);
   // compass.spec.ts pins both sides of the flip.
-  partialPushBand375: { width: 375, height: 560 },
+  partialPushBand375x560: { width: 375, height: 560 },
   wrapForcing280: { width: 280, height: 568 },
 } as const satisfies Record<string, Viewport>;
 
