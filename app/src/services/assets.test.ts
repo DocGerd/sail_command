@@ -84,6 +84,7 @@ describe('loadRoutingAssets', () => {
   });
 
   afterEach(() => {
+    vi.doUnmock('../data/boats');
     vi.unstubAllGlobals();
   });
 
@@ -117,6 +118,41 @@ describe('loadRoutingAssets', () => {
     for (const call of mock.mock.calls) {
       expect(String(call[0])).toContain(import.meta.env.BASE_URL);
     }
+  });
+
+  // #567: sister ships point several polarAssets at one file. The mocked
+  // catalogue makes the sharing independent of which real boats borrow.
+  it('fetches a shared polarAsset once and hands both boats the same table', async () => {
+    const sail = (asset: string) => ({
+      id: 'genoa',
+      label: 'Genoa',
+      polarAsset: asset,
+      polarProvenance: { tier: 'estimated', note: 'n' },
+    });
+    vi.doMock('../data/boats', async () => {
+      const actual = await vi.importActual<typeof import('../data/boats')>('../data/boats');
+      return {
+        ...actual,
+        BOATS: [
+          { id: 'donor', sails: [sail('data/polars/donor-genoa.json')] },
+          { id: 'sister', sails: [sail('data/polars/donor-genoa.json')] },
+          { id: 'other', sails: [sail('data/polars/other-genoa.json')] },
+        ],
+      };
+    });
+    const mock = fetchMock();
+    vi.stubGlobal('fetch', mock);
+
+    const { loadRoutingAssets } = await import('./assets');
+    const assets = await loadRoutingAssets();
+
+    const polarFetches = mock.mock.calls.filter((c) => String(c[0]).includes('/data/polars/'));
+    expect(polarFetches.map((c) => String(c[0]).split('/').pop()).sort()).toEqual([
+      'donor-genoa.json',
+      'other-genoa.json',
+    ]);
+    expect(assets.polars['sister/genoa']).toBe(assets.polars['donor/genoa']);
+    expect(assets.polars['other/genoa']).not.toBe(assets.polars['donor/genoa']);
   });
 
   it('module-caches: a second call does not re-fetch and returns the same object', async () => {

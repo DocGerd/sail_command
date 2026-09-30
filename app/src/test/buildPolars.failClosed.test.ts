@@ -1086,3 +1086,90 @@ describe('#54 spec N.6: tier-C estimated polars fail closed (E1-E8)', () => {
     },
   );
 });
+
+// ---- #567: a sister ship borrows its donor's polar tables ----
+//
+// `polarsFrom` entries emit no files and carry no tables of their own, so each
+// row builds the donor's REAL source plus a synthetic borrower. The positive
+// row is the control that licenses the abort rows below it.
+describe('#567: polarsFrom (sister-ship polar sharing) fails closed', () => {
+  const SISTER = 'sister-boat';
+
+  function withBorrower(extra: Record<string, unknown> = {}) {
+    const src = freshSource();
+    const borrower = { id: SISTER, name: 'Sister Boat', draftM: 2.4, polarsFrom: TIER_C, ...extra };
+    src.boats.push(borrower as unknown as (typeof src.boats)[number]);
+    return { src, borrower };
+  }
+
+  it('builds, and emits exactly the donor-owned files and none of the borrower’s', () => {
+    const { src } = withBorrower();
+    const r = run(src);
+    expect(r.ok, r.output).toBe(true);
+    const files = writtenFiles(r.outDir);
+    expect(files).toEqual(readdirSync(SHIPPED).sort());
+    expect(files.length).toBeGreaterThan(0);
+    expect(files.filter((f) => f.startsWith(SISTER))).toEqual([]);
+    expect(r.output).not.toContain(SISTER);
+  });
+
+  it('aborts when polarsFrom is not a string', () => {
+    const r = run(withBorrower({ polarsFrom: 7 }).src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain('polarsFrom must be a boat id string');
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
+  it('aborts when polarsFrom names a boat that is not in the file', () => {
+    const r = run(withBorrower({ polarsFrom: 'no-such-boat' }).src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain('is not a boat in this file');
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
+  it('aborts when a boat borrows from itself', () => {
+    const r = run(withBorrower({ polarsFrom: SISTER }).src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain('names the boat itself');
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
+  it('aborts on a chain: the donor is itself a borrower', () => {
+    const { src } = withBorrower();
+    src.boats.push({ id: 'grand-sister', name: 'G', draftM: 2.5, polarsFrom: SISTER } as never);
+    const r = run(src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain('chains are not allowed');
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
+  it.each(['tws', 'twa', 'beat', 'gybe', 'sails', 'validation'])(
+    'aborts when a borrower also carries %s',
+    (key) => {
+      const donor = freshSource().boats.find((b) => b.id === TIER_C) as unknown as Record<
+        string,
+        unknown
+      >;
+      const r = run(withBorrower({ [key]: donor[key] }).src);
+      expect(r.ok).toBe(false);
+      expect(r.output).toContain(`carries ${key} beside polarsFrom`);
+      expect(allWrittenFiles(r)).toEqual([]);
+    },
+  );
+
+  it.each([undefined, 0, -1, '2.4'])('aborts when a borrower’s draftM is %o', (draftM) => {
+    const r = run(withBorrower({ draftM }).src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain('draftM missing or not a positive number');
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
+  it('aborts when a tier-C sail names a borrower as its estimator base', () => {
+    const { src } = withBorrower();
+    src.boats.find((b) => b.id === TIER_C)!.sails['fock']!.estimator!.baseBoatId = SISTER;
+    const r = run(src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain('is not a boat/sail in this file');
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+});

@@ -41,19 +41,23 @@ function fetchBuffer(path: string): Promise<ArrayBuffer> {
 const POLAR_SPECS = BOATS.flatMap((b) =>
   b.sails.map((s) => ({ key: polarKey(b.id, s.id), asset: s.polarAsset })),
 );
+// Sister ships share a polar asset (#567): each file is fetched once.
+const POLAR_ASSETS = [...new Set(POLAR_SPECS.map((p) => p.asset))];
 
 /** Fetched once, module-cached; BASE_URL-relative. */
 export function loadRoutingAssets(): Promise<RoutingAssets> {
   cached ??= Promise.all([
     fetchJson<MaskMeta>('data/mask.meta.json'),
     fetchBuffer('data/mask.bin'),
-    Promise.all(POLAR_SPECS.map((p) => fetchJson<PolarTable>(p.asset))),
+    Promise.all(POLAR_ASSETS.map((a) => fetchJson<PolarTable>(a))),
     fetchJson<Harbor[]>('data/harbors.json'),
     fetchJson<SeamarkFeatureCollection>('data/seamarks.json'),
   ]).then(([maskMeta, maskBuffer, polarTables, harbors, seamarks]) => ({
     maskMeta,
     maskBuffer,
-    polars: Object.fromEntries(POLAR_SPECS.map((p, i) => [p.key, polarTables[i]])),
+    polars: Object.fromEntries(
+      POLAR_SPECS.map((p) => [p.key, polarTables[POLAR_ASSETS.indexOf(p.asset)]!]),
+    ),
     harbors,
     seamarks,
   }));
