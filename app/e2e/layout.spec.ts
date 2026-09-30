@@ -40,7 +40,7 @@ function overlapArea(a: Box, b: Box): number {
   return width * height;
 }
 
-/** `TAGNAME.class.list` at a viewport point — describes WHAT got hit, not just whether. `(offscreen)` plus the ancestors' scrollTop when the point lies outside the viewport (#1606). */
+/** `TAGNAME.class.list` at a viewport point — describes WHAT got hit, not just whether. `(offscreen)` plus scrollTop of shell, document, panel, map area and map stack when the point lies outside the viewport (#1606). */
 function elementDescriptionAt(page: Page, x: number, y: number): Promise<string> {
   return page.evaluate(
     ([px, py]) => {
@@ -49,7 +49,9 @@ function elementDescriptionAt(page: Page, x: number, y: number): Promise<string>
         const shell = top(document.querySelector('.app-shell'));
         const doc = top(document.scrollingElement);
         const panel = top(document.querySelector('.app-panel'));
-        return `(offscreen) scroll shell=${shell} doc=${doc} panel=${panel}`;
+        const area = top(document.querySelector('.map-area'));
+        const stack = top(document.querySelector('.map-stack-tl'));
+        return `(offscreen) scroll shell=${shell} doc=${doc} panel=${panel} area=${area} stack=${stack}`;
       }
       const el = document.elementFromPoint(px, py);
       if (!el) return '(none)';
