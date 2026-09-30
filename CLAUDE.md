@@ -2322,8 +2322,9 @@ making design-level decisions; do not silently deviate.
   #956/#958/#959 -- #957 is an issue, not a PR) went onto one integration
   branch as PR #962, and merged as 21 commits over 27 files in ONE CI cycle
   instead of six.
-- **`gh pr merge --delete-branch` on a PR that another open PR uses as its
-  BASE closed that stacked PR instead of retargeting it** (#1567/#1568,
+- **Merging a PR whose branch is another open PR's BASE closed that stacked PR
+  instead of retargeting it** — the repo has `delete_branch_on_merge` on, so
+  the base branch goes with or without `--delete-branch` (#1567/#1568,
   v0.49.0). Recovery, measured there: recreate the ref at the merged head,
   reopen, retarget to `develop`, delete the ref. Retargeting the stacked PR
   BEFORE merging its base should avoid it; that order is untested.
