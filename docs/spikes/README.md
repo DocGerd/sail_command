@@ -139,7 +139,7 @@ instead of here.
   derived cap (measured at `a4c0ad3`)
 - [1240-grosser-belt-coverage.md](1240-grosser-belt-coverage.md) — #1240:
   full Großer Belt coverage. The belt's water already ends inside the
-  mask's east edge and the missing part is north of 55.6°N; go on far-shore harbours in
+  mask's east edge for 55.3-55.55°N and the missing part is north of 55.6°N; go on far-shore harbours in
   the current box, no-go on a north extension until a harbour north of 55.6°N
   is named and three measurements (§7.2) are in
 

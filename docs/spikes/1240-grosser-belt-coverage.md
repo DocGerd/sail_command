@@ -6,8 +6,8 @@
   was rebuilt.
 - **Verdict:** **The issue's premise points the wrong way: the belt's water
   already ends inside the mask's east edge, and what is cut off is its
-  northern part.** The strait runs north-south, its water ends by 11.22°E,
-  0.38° short of the 11.6°E edge, and it is truncated by the 55.6°N edge
+  northern part.** The strait runs north-south, its water ends by 11.22°E
+  for 55.3-55.55°N, 0.38° short of the 11.6°E edge, and it is truncated by the 55.6°N edge
   (§1). Extending "east" buys none of the belt. Two slices follow: **A**,
   curate harbours on the belt's far side whose snap cells lie inside the
   existing box, which changes no
@@ -49,7 +49,7 @@ dropped from the middle rows):
   box edge, not a shore.
 - **East:** for 55.3-55.55°N the mask has no water cell at all between 11.3°E and the 11.6°E edge (byte 0 is land or unsurveyed per `mask.meta.json`), and the easternmost water cell of every row in that band is at or west of 11.22°E, so nothing of the strait lies east of it.
 - **East edge, elsewhere:** at 11.6°E water is open over 54.852–55.189°N and
-  54.3–54.663°N.
+  54.3–54.644°N.
 - Region archives: `region-north` covers 9.4–11.0°E × 55.304–55.6°N and
   `region-east` covers 11.03–11.6°E × 54.3–55.6°N (PMTiles headers), so the
   basemap over the whole belt below 55.6°N is already lazily available.
@@ -214,7 +214,7 @@ one live call in the implementing PR settles it.
 ### 7.1 Slice A — GO: far-shore harbours inside the existing box
 
 Curate harbours on the belt's far side whose snap cells lie in
-54.3–55.6°N × 9.4–11.6°E (the belt's water does, §1), so Fyn-to-Zealand
+54.3–55.6°N × 9.4–11.6°E so Fyn-to-Zealand
 crossings become plannable. Which harbours qualify is unverified until their
 OSM coordinates are read.
 
@@ -222,7 +222,7 @@ OSM coordinates are read.
   basemap regions (§1) or stored plans (§5).
 - **Owed:** `harbors-source.json` and German notes, `build_harbors.mjs`,
   `verify_mask.py` and `verifyMaskConnectivity.test.ts` (which runs every
-  catalogue boat in the required `app` check), changelog fragment, the harbour-count prose (pipeline/README.md, app/sweep/README.md), and the covered-area copy in both dicts (with their quotes in `PlannerPanel.test.tsx` and `app/e2e/plan.spec.ts`).
+  catalogue boat in the required `app` check), changelog fragment, the harbour-count prose (pipeline/README.md, app/sweep/README.md), and the covered-area copy in both dicts (with their quotes in `PlannerPanel.test.tsx`, `app/e2e/plan.spec.ts` and `docs/acceptance.md`).
 - **#282 sweep is OWED.** `app/public/data` and `pipeline` are
   `PATH_PREFIXES` in `closure.mjs`, and the arm-set is every arm name times
   every harbour, so it grows with each row. Confirm with
@@ -258,7 +258,7 @@ raised frontier cap in §3 may move plans that never enter the strip).
 
 | Option | Why it lost |
 |---|---|
-| **Extend the mask east of 11.6°E** | The belt's water ends by 11.22°E (§1), so east of 11.6°E adds none of it; the Zealand shore's position is unverified (`1163-295-coverage-scoping.md` §5, §8). |
+| **Extend the mask east of 11.6°E** | The belt's water ends by 11.22°E for 55.3-55.55°N (§1), so east of 11.6°E adds none of it; the Zealand shore's position was recorded as unverified in #1163 (`1163-295-coverage-scoping.md` §5, §8). |
 | **Widen the core basemap archive** | #296 ruled against a widened monolith. The core is precached bytes with 14,741,251 B of headroom, and rebuilding it invites tileset drift (§6). |
 | **Coarsen the grid to fit** | Reopens #245's `TOLERANCE_M` re-derivation for the whole existing grid (branch (a) of #1163 §2.1, rejected in its §8). |
 | **A belt-only mask (not full width)** | The mask is one rectangle (§2). A belt-only basemap archive is possible but leaves blank tiles under mask water at the west end of the strip, so it was not preferred. |
