@@ -1699,6 +1699,7 @@ making design-level decisions; do not silently deviate.
   | v0.46.0 | 2026-09-28 | 52 s | read as **NO `deploy` JOB CREATED YET** at 07:50:23Z, immediately before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `36393772153` (created 07:49:35Z) -> tag `36393852888` (created 07:50:27Z) on `aa6ea4b`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-DsQbd86w.js` at ``version:`v0.46.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.47.0 | 2026-09-28 | 90 s | read as **`waiting`/`null`, `steps: 0`** at 20:40:09Z — a CREATED job (its Pages object `6720074808` created 20:40:08Z), misread at the time as the table's "not-yet-started" reading; the job then ran and ended `cancelled` mid-`deploy-pages`, its Pages object `error` | **`smoke-probe` FAILED** | merge-push `36480663285` (created 20:38:44Z) -> tag `36480835418` (created 20:40:14Z) on `675d496`. Tag run's `build` and `deploy` succeeded; its prod entry chunk `assets/index-4WXmwSG8.js` 404'd on 10/10 attempts while both basemap Range probes passed on attempt 1. Prod meanwhile served the MERGE run's `assets/index-CiWNpvuP.js` at ``version:`v0.46.0-45-g675d4969` `` (read ~20:48Z), as the v0.19.0 row records. Back-merge `36484307367` (`450f938`) republished `index-4WXmwSG8.js`; production then served ``version:`v0.47.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag `verified: true, reason: "valid"`. Post-hoc gate state matches v0.12.0's and v0.19.0's; the outcome matches v0.19.0's. Names no MECHANISM. |
   | v0.48.0 | 2026-09-29 | 30 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 15:49:25Z, two seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `36593066651` (created 15:48:59Z) -> tag `36593127818` (created 15:49:29Z) on `2f28e53`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `6739184153`, `ref: v0.48.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-BWFAAx2G.js` at ``version:`v0.48.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `341cdcb` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
+  | v0.49.0 | 2026-09-30 | 50 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 02:46:41Z, three seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `36661333446` (created 02:45:55Z) -> tag `36661398666` (created 02:46:45Z) on `2893841`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `6750305736`, `ref: v0.49.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-Coo8t4Jc.js` at ``version:`v0.49.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `378b082` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -2286,6 +2287,10 @@ making design-level decisions; do not silently deviate.
   re-syncs, and queue or idle waiting together) was 55% of summed PR lifetime.
   Batch only members whose OWN `app`+`e2e` are green: #1487 inherited one
   member's CI-only red and had to be rebuilt without it as #1489.
+- **`gh pr merge --delete-branch` on a PR that another open PR uses as its
+  BASE closes that stacked PR instead of retargeting it** (measured at
+  #1567/#1568, v0.49.0). PATCH the stacked PR's `base` to `develop` first;
+  recovery is recreate the ref at the merged head, reopen, retarget, delete.
 - Multiple open PRs: develop in parallel, merge strictly serially — after each
   merge, re-sync the next branch from its base (`git merge origin/develop`, or
   `origin/main` for a hotfix/release PR) and let full CI (~10 min) re-run before
@@ -4483,7 +4488,9 @@ making design-level decisions; do not silently deviate.
   dangling anaphors and a claim contradicted inside its own hunk, while the
   reviewer found an acceptance check UNREACHABLE from inside the runbook;
   neither could have found the other's. It has no mutating tools, so brief it
-  to write a review JSON that the orchestrator posts.
+  to write a review JSON that the orchestrator posts. Brief it to stay narrow
+  and finish: in the v0.49.0 cycle two audits without that instruction ran for
+  hours, while two briefed with it returned in minutes.
 - If a session's OWN directives contradict that orchestrate-first mode, NAME the
   conflict in the FIRST response and ask which governs — never silently comply
   with either side. Silently obeying the restriction cost a full docs sweep plus
