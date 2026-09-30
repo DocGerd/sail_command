@@ -595,6 +595,27 @@ describe('#54 migratePlan: records it refuses, so they can be listed as unreadab
     expect(migratePlan(raw)).toBeNull();
   });
 
+  // A hollow polarProvenance reaches boatSnapshot()'s `.tier` read in
+  // recalc/replan/reroute. Tier rows carry a valid note, note rows a valid tier.
+  it.each([
+    ['an empty object', {}],
+    ['a tier outside PolarTier', { tier: 'bogus', note: 'n' }],
+    ['a prototype-name tier', { tier: 'toString', note: 'n' }],
+    ['an array tier that coerces to a member', { tier: ['modelled'], note: 'n' }],
+    ['null', null],
+    ['a missing note', { tier: 'modelled' }],
+    ['a non-string note', { tier: 'modelled', note: 42 }],
+  ])('refuses a stored sail whose polarProvenance is %s', (_label, polarProvenance) => {
+    const raw = legacyPlan();
+    (raw.request as Record<string, unknown>).boat = {
+      id: 'gone-45',
+      name: 'Gone 45',
+      draftM: 2.4,
+      sails: [{ id: 'genoa', label: 'Genoa 150 %', polarProvenance }],
+    };
+    expect(migratePlan(raw)).toBeNull();
+  });
+
   it.each(['snappedOrigin', 'snappedDestination'])('refuses a record missing %s', (field) => {
     const raw = legacyPlan();
     delete (raw.result as Record<string, unknown>)[field];

@@ -1155,3 +1155,60 @@ describe('#1541: contour layers follow the toggle alone, whatever the legend sta
     );
   });
 });
+
+describe('#1581: the scroll cue follows content-only changes', () => {
+  const originalResizeObserver = (window as unknown as { ResizeObserver?: unknown }).ResizeObserver;
+  const originalMatchMedia = window.matchMedia;
+
+  afterEach(() => {
+    window.matchMedia = originalMatchMedia;
+    (window as unknown as { ResizeObserver?: unknown }).ResizeObserver = originalResizeObserver;
+    vi.unstubAllGlobals();
+  });
+
+  // Mutation: deleting the MutationObserver leaves the attribute false after
+  // the error row appears, since the fake ResizeObserver never fires and no
+  // scroll event is dispatched.
+  it('marks the cluster overflowing when the error row appears while scrolled to the end', async () => {
+    (window as unknown as { ResizeObserver: unknown }).ResizeObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    };
+    // Wide layout: `measure` takes its no-geometry branch.
+    window.matchMedia = vi.fn((query: string) => ({
+      matches: query === '(min-width: 1024px)',
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })) as unknown as typeof window.matchMedia;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: false, status: 500, json: async () => ({}) })),
+    );
+    const map = makeFakeMap();
+    const { container, getByRole } = await renderAndSettle(map);
+    const el = container.querySelector<HTMLElement>('.data-layer-controls');
+    if (el === null) throw new Error('cluster not rendered');
+    let contentHeight = 200;
+    Object.defineProperty(el, 'scrollHeight', { configurable: true, get: () => contentHeight });
+    Object.defineProperty(el, 'clientHeight', { configurable: true, get: () => 100 });
+    Object.defineProperty(el, 'scrollTop', { configurable: true, get: () => 100 });
+    // Scrolled to the end: nothing below the fold.
+    fireEvent.scroll(el);
+    expect(el.hasAttribute('data-overflowing')).toBe(false);
+    // The error row adds height below the fold; neither size nor scrollTop moves.
+    contentHeight = 260;
+    fireEvent.click(getByRole('checkbox', { name: 'Tiefenlinien' }));
+    await waitFor(() => {
+      expect(el.querySelector('.depth-legend-error')).not.toBeNull();
+    });
+    await waitFor(() => {
+      expect(el.hasAttribute('data-overflowing')).toBe(true);
+    });
+  });
+});
