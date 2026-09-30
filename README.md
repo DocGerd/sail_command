@@ -13,9 +13,7 @@
 SailCommand plans time-optimal sailing routes from the Flensburg Fjord and
 Danish South Sea to the Little Belt, the western Great Belt approach and
 Fehmarn, using real hourly wind forecasts and an isochrone
-router that accounts for tacks and gybes. It ships polar tables for three
-boats — a Salona 45, a Salona 44 (SPEEDY GO!) and an Elan Impression 444
-(PIRANJA) — and routes for whichever one you pick. It runs entirely in the
+router that accounts for tacks and gybes. It ships three sets of polar tables and covers four boats — a Salona 45, a Salona 44 (SPEEDY GO!), an Elan Impression 444 (PIRANJA) and a Salona 44 on the deep keel (EASY GO!, which shares SPEEDY GO!'s polar tables) — and routes for whichever one you pick. It runs entirely in the
 browser, installs as an offline-capable app on Android, and needs no account
 or backend.
 
@@ -49,7 +47,7 @@ disclosure); every boat also carries a note on where its stated draft comes
 from, and — where the draft is the model's standard keel rather than that
 hull's own papers — an additional disclosure saying so:
 
-![Boat tab: the three boats with draft, polar-provenance tier and draft source note, and the assumed-keel disclosure on the two fleet boats](docs/screenshots/boat-selection.png)
+![Boat tab: the boats with draft, polar-provenance tier and draft source note, and the assumed-keel disclosure on the fleet boats](docs/screenshots/boat-selection.png)
 
 ## Install on Android
 
@@ -60,9 +58,10 @@ installs as a standalone icon and works fully offline after the first visit
 
 ## What it does
 
-- Pick the boat you are planning for on the **Boat** tab. Three ship today:
-  the Salona 45 (2.1 m draft), the Salona 44 *SPEEDY GO!* (2.1 m) and the
-  Elan Impression 444 *PIRANJA* (1.9 m). Each carries its own draft, polar
+- Pick the boat you are planning for on the **Boat** tab. Four ship today:
+  the Salona 45 (2.1 m draft), the Salona 44 *SPEEDY GO!* (2.1 m), the
+  Elan Impression 444 *PIRANJA* (1.9 m) and the Salona 44 *EASY GO!* on the
+  deep keel (2.59 m). Each carries its own draft, polar
   tables and foresail inventory; the picker states how good each sail's polar
   data is — *certificate*, *modelled* or *estimated* — and, where the draft is
   the model's standard keel rather than that hull's own papers, says so. The
@@ -93,7 +92,7 @@ installs as a standalone icon and works fully offline after the first visit
 - The router fetches hourly wind, then computes the fastest sailable route
   twice — once per foresail of the selected boat — and recommends the faster
   (marked ★). Where the two tables cannot honestly be ranked it says so
-  instead of naming a winner: on the two fleet boats both tables are
+  instead of naming a winner: on the three fleet boats both tables are
   *estimated* and differ only by a documented overlay ramp rather than by
   anything about the hull, so no faster sail is claimed. It says so again when
   the search ran out of time before both sails were compared. Tacks and gybes
@@ -101,9 +100,10 @@ installs as a standalone icon and works fully offline after the first visit
   afterwards.
 - Land and depth are respected against a configurable safety depth, whose
   default is the selected boat's draft plus the depth mask's 0.9 m tolerance
-  — 3.0 m for the 2.1 m-draft Salona 45 and Salona 44, 2.8 m for the 1.9 m
-  Elan Impression 444. Switching to a deeper-drafted boat raises the safety
-  depth to that boat's minimum and says so; it never lowers a depth you chose
+  — 3.0 m for the 2.1 m-draft Salona 45 and Salona 44 *SPEEDY GO!*, 2.8 m
+  for the 1.9 m Elan Impression 444, 3.5 m for the 2.59 m *EASY GO!*.
+  Switching to a deeper-drafted boat raises the safety
+  depth to that boat's default and says so; it never lowers a depth you chose
   yourself. Legs where sailing speed would be too low switch to a clearly
   marked motor leg (gray-dashed on the map).
 - Saved plans, including the wind grid they were computed from, persist
@@ -174,9 +174,10 @@ map area is already saved and what downloading it would cost.
 - **Boat polars (Salona 45)**: estimate derived from the ORC International
   2026 certificate for Salona 45 "Miles Ahead" (AUT 035/26), with downwind
   angles corrected to white-sails-only (non-spinnaker) performance.
-- **Boat polars (Salona 44 SPEEDY GO!, Elan Impression 444 PIRANJA)**:
-  **estimated, not measured**. No ORC/IRC certificate and no published VPP
-  was obtained for either hull, so each table is the Salona 45's
+- **Boat polars (Salona 44 SPEEDY GO!, Elan Impression 444 PIRANJA, Salona 44
+  EASY GO!)**: **estimated, not measured**. No ORC/IRC certificate and no
+  published VPP was obtained for any of these hulls (EASY GO! shares SPEEDY
+  GO!'s table), so each table is the Salona 45's
   certificate-anchored jib table scaled by one uniform hull scalar — the
   square root of the two hulls' sail-area/displacement ratios
   (figures from [sailboatdata.com](https://sailboatdata.com/)), with the
@@ -228,14 +229,16 @@ data; the code license is covered in the [License](#license) section below.
   wind only: gusts are not accounted for, which biases it toward
   under-reefing
   ([#325](https://github.com/DocGerd/sail_command/issues/325)).
-- Two of the three boats — the Salona 44 *SPEEDY GO!* and the Elan Impression
-  444 *PIRANJA* — carry **estimated** polar tables scaled from the Salona 45's
-  certificate rather than measured data, and their drafts are the model's
-  published keel rather than that hull's own papers; the app states both, per
-  boat, on the Boat tab. Because their two foresail tables differ only by a
-  documented overlay ramp, no faster-sail recommendation is made for them.
-  Deeper-drafted fleet boats are not in the catalogue yet: they can no longer
-  reach every harbor. The origin/destination pickers and the Boat tab mark a
+- Three of the four boats — the Salona 44 *SPEEDY GO!*, the Elan Impression
+  444 *PIRANJA* and the Salona 44 *EASY GO!* — carry **estimated** polar
+  tables scaled from the Salona 45's certificate rather than measured data,
+  and their drafts come from published keel figures rather than that hull's
+  own papers; the app states both, per boat, on the Boat tab. *EASY GO!*
+  shares *SPEEDY GO!*'s estimate, which has no keel term, so its deeper keel
+  is not modelled in the speeds. Because their two foresail tables differ only
+  by a documented overlay ramp, no faster-sail recommendation is made for
+  them. A deeper-drafted boat such as *EASY GO!* cannot reach every harbor
+  at its own default safety depth. The origin/destination pickers and the Boat tab mark a
   harbor's access for the selected boat and safety depth — not reachable at
   or above the boat's recommended depth, only via a shallower approach, or a
   lower setting that may route it
@@ -309,7 +312,7 @@ flowchart LR
   subgraph pipeline ["Build time — pipeline/ (run on demand, never at app runtime)"]
     EMOD["EMODnet bathymetry (DTM 2024)"] --> MASK["build_mask.py → mask.bin (packed ~46 m cells, quantized depth)"]
     OSMLP["OSM land polygons"] --> MASK
-    ORC["ORC cert Salona 45"] --> POLARS["build_polars.mjs + estimate_polars.mjs → polars/*-{genoa,fock}.json (3 boats)"]
+    ORC["ORC cert Salona 45"] --> POLARS["build_polars.mjs + estimate_polars.mjs → polars/*-{genoa,fock}.json (one set per polar source)"]
     SBD["sail area / displacement (sailboatdata) — fleet boats"] --> POLARS
     CUR["curated harbor list"] --> HARB["build_harbors.mjs → harbors.json"]
     PROTO["Protomaps extract"] --> PMT["basemap.pmtiles.png"]

@@ -6,6 +6,7 @@
 Flensburg fleet models. §N states the scope, the estimator, the honesty surface and the accepted
 costs, and classifies every §L row. Read §N before acting on §G.3 rule 2, §J OQ-7, §K's "reduces to
 today", §L's `[OQ-7]` row, or §M.2 — each is changed or retired by it.
+**Amended 2026-09-30 — see §O.** EASY GO! ships as a fourth catalogue entry at tier C (maintainer ruling, #1575). Read §O before acting on §N's EASY GO! text.
 **Relationship:** addendum to `2026-07-14-sail-command-design.md` (the source-of-truth design). Where the two conflict, this addendum wins. On everything else — the isochrone algorithm, the maneuver penalty, the #53 relaxation *structure*, #243's comfort preference, #254's sail-speed floor, #282's reason decoupling, #432's budget — the source spec and its existing addenda are unchanged.
 
 The source spec fixes one boat — a Salona 45 with exactly two rigs — in six places, and the constants that fall out of that choice (`BOAT_DRAFT_M = 2.1`, `DEFAULT_SETTINGS.safetyDepthM = 3.0`) are load-bearing for a **safety** property established by PR #476 (#455) that #54 does not mention at all. This addendum supersedes those six places and specifies the generalisation: the data model, the safety invariant, the solver run budget, the persistence migration, and the polar-provenance rule that turns out to be the feature's real constraint. It does **not** design the settings/planner UI surface, which is a separate workstream.
@@ -141,6 +142,8 @@ defaultSafetyDepthM(b)  =  ceilToDecimetre(d_b + T)
 
 Per §J OQ-1 the UI minimum becomes `d_b + 0.1`, so its floor is `d_b − 0.8` for every boat — a fixed 0.8 m below the hull, unchanged in character from today.
 
+*Amended 2026-09-30 (#1575):* the UI minimum is `ceil₁₀(d_b + 0.1)` (`minSafetyDepthM`), so for a draft off a decimetre its floor is at most 0.8 m under the hull, not exactly 0.8 m. For EASY GO! (2.59 m) that is 2.7 m, a floor of 1.8 m, 0.79 m under the hull. The same applies to §C.5's "Deepest supportable draft" and to §J OQ-1.
+
 ### C.4 #53 relaxation makes the *effective* gate the one that matters — and it fires at DEFAULT settings
 
 This is the interaction that most changes the risk picture, and neither #54 nor #452 states it.
@@ -150,6 +153,8 @@ The floor is `G_effective − T`, and `G_effective` is **not** the user's `safet
 **(a) The relaxation floor MUST become the selected boat's draft.** Left as the constant `BOAT_DRAFT_M = 2.1` (`relaxedDepth.ts ~:9`), relaxation would relax a **2.30 m** boat to a 2.1 m gate — 0.2 m shallower than its keel before the mask tolerance is even applied, conservative floor 1.2 m, i.e. **1.1 m under the hull** — while the `shallow` banner reports the relaxation as if it were the Salona's. The single most dangerous shortcut available in this feature, and a one-line-looking change that is not a rename.
 
 **(b) The violation is exactly `T` deep at the floor, for every boat, always.** Setting the relaxation floor to the draft makes its conservative floor `d_b − T` by definition — 0.9 m under the hull, invariant across the fleet, neither worse for a deeper boat nor better for a shallower one. It is disclosed today (every such leg is `shallow`-flagged and bannered by #53) and stays disclosed. **It is #452 territory, not #54's to fix** — but #54 must not deepen it, and (a) is what prevents that.
+
+*Amended 2026-09-30 (#1575):* for a draft off a decimetre the relaxation floor is `ceil₁₀(d_b)`, so the violation is at most `T`, not exactly `T`. EASY GO! (2.59 m, floor 2.6 m) reaches a conservative floor of 1.7 m, 0.89 m under the hull (§O). The same applies to §C.5's 'Deepest supportable draft' (relaxation floor `ceil₁₀(d) − 0.9`) and to §C.8's arithmetic-precision paragraph, where Math.round breaks 'at most `T`', not 'exactly `T`'.
 
 **(c) A useful structural consequence — which DEPENDS on §C.8's ceiling rule.** With the relaxation floor quantised as `ceil₁₀(d_b)` and the default gate as `ceil₁₀(d_b + T)`, the window `[ceil₁₀(d_b), ceil₁₀(d_b + T))` is **exactly `T` wide for every boat** — nine decimetre candidates at `T = 0.9`, identical to today's `[2.1, 3.0)` — because `T` is itself a whole number of decimetres. Under `Math.round` it is not: a 1.73 m draft gives a 0.97 m window and **ten** candidates, a 2.25 m draft 0.95 m. Probe counts and #53's progress reporting are unchanged for every boat **only under the ceiling rule**.
 
@@ -175,6 +180,8 @@ They coincide wherever `draft + 0.9` lands exactly on a decimetre and diverge wh
 | Bavaria Cruiser 51 | KARIBU | 2.25 | **3.2** | −0.15 | **−0.20 breach** | unstated |
 | Beneteau First 47.7 | SKIATHOS, SUNRISE | 2.30 | **3.2** | −0.20 | **−0.20 breach** | no (Atlantic/Med) |
 | Grand Soleil 46 | MARIN | 2.30 | **3.2** | −0.20 | **−0.20 breach** | **yes** |
+
+*Amended 2026-09-30 (#1575):* the Salona 44 row's 2.10 m is the standard keel. EASY GO! carries the deep keel (found 2026-08-18, §N.2) and ships at 2.59 m, gate 3.5 m (§M.8, §O).
 
 **Three models breach today's default gate**, and **Grand Soleil 46 is explicitly Flensburg-based** — the breach is not confined to boats that would be deprioritised on location grounds anyway. A per-boat default is therefore not a tidiness improvement: without it, three of nine models ship a silent below-hull exposure of exactly the class #455 closed.
 
@@ -235,6 +242,7 @@ The generalised guard must assert:
 - **R3 — the invariant as a corollary.** For every boat, `defaultSafetyDepthM(b) − T ≥ b.draftM`. Reds if anyone hand-types a default.
 - **R4 — the relaxation floor is per-boat.** For every boat, the relaxation search floor equals `b.draftM`, not a module constant. This is §C.4(a) and the assertion that would catch a 2.30 m boat relaxing to 2.1 m. **The single highest-value row in this table.**
 - **R5 — the disclosure twin.** For the selected boat, the About-dialog copy states that boat's own numbers: `T`, its derived default gate, its draft, and its relaxation floor `b.draftM − T` (today 0.9 / 3.0 / 2.1 / **1.2**). The existing test already checks all four via `containsMeasurement(text, …, 'en'|'de')` in **both** dictionaries (`~:120-132`); keep both languages. Per §J OQ-2 the copy is parameterised by the **selected** boat, never a catalogue-wide worst case.
+- *Amended 2026-09-30 (#1575), R4 and R5:* EASY GO!'s 2.59 m is the first catalogue draft off a decimetre. R4's search floor is `ceil₁₀(b.draftM)` = 2.6 m, not `b.draftM`; R5's floor is `relaxationFloorM(b) − T` = 1.7 m, not `b.draftM − T` = 1.69 m. `depthMaskCaveatVars` (`app/src/lib/depthDisclosure.ts`) already uses `relaxationFloorM(b) − T`. §C.4(c).
 - **R6 — the reduces-to-today anchor.** The Salona 45 row still reads `draftM 2.1`, `default 3.0`, `floor 2.1`, `relaxation floor 1.2`, as literals. Catches a refactor that generalises the arithmetic *wrongly* even when R2–R5 are self-consistent.
 - **R7 — range sanity.** For every boat, `b.draftM + T ≤ SAFETY_DEPTH_FIELD.max`, else the derived default sits outside its own input's range and the setting is silently unreachable.
 - **R8 — zero-margin visibility.** Report (not fail) every boat whose `defaultSafetyDepthM(b) − T − b.draftM` is 0.0, so §C.5's Oceanis 473 / Salona 44 cases are visible rather than merely passing.
@@ -332,6 +340,8 @@ BoatDef {
 }
 ```
 
+*Amended 2026-09-30 (#567, #1575):* a sister ship may borrow its donor's tables through `polarsFrom` in `pipeline/polars-source.json`. A borrower has no table of its own, so its `polarAsset` names the donor's file. EASY GO! borrows SPEEDY GO!'s, and its `polarProvenance.note`s are byte-identical to the donor's (§O). This realises §J OQ-4's "sister ships sharing a polar asset".
+
 **Deliberately NOT per-boat, and why** — write this into the type's comment so nobody "completes" it later:
 
 - `motorThresholdKn` (2.5) — a seaworthiness floor, a statement about *water* (steerage in a seaway), not about the hull. Stays global; #254's arithmetic depends on it surviving underneath the `Math.max`.
@@ -394,8 +404,11 @@ Keep the model even though release 1 **shipped** no tier-C boat: it is the gate 
 ## H. Pipeline changes
 
 - **`build_polars.mjs` generalises per boat.** Its plausibility bound (`if (!(v > 0 && v < 12))`, `~:28`) and its sanity anchors (`Math.abs(at(90, 16) - 8.86) > 0.6` and `at(52, 12) < 6.5 || at(52, 12) > 8.5`, `~:41-42`) are Salona-45-specific magic numbers and must become per-boat entries. **A boat added without its own anchors must fail the build**, never inherit the Salona's — an anchor that silently validates the wrong hull is worse than no anchor.
+
+  *Amended 2026-09-30 (#567, #1575):* a `polarsFrom` borrower carries no table and so no anchors. EASY GO! ships on SPEEDY GO!'s table, validated by SPEEDY GO!'s anchors (maintainer ruling). The rule still binds every boat with a table of its own; see §N.6's note.
 - **Output naming must carry the boat id** (§F.1's collision).
 - **`polars-source.json` becomes per boat**, each carrying `boat`, its sail keys and a `polarProvenance` tier + source string per sail (§G). **This must fail closed, and today it does not.** The sail set is enumerated *twice* in `build_polars.mjs` and neither list derives from the other: the loop `for (const rig of ['genoa', 'fock'])` (`~:45`) and a separate hardcoded `SOURCE_NOTES` object (`~:9-21`). Read 2026-08-14: a sail present in the loop but missing from `SOURCE_NOTES` ships an asset with **no `source` key at all** — `JSON.stringify` drops an `undefined` value rather than emitting it, so the provenance note is silently ABSENT rather than visibly wrong, with no throw and no warning. Deriving the loop from the data removes the second list entirely; a sail declared with no provenance must then throw and name itself, exactly as the missing-anchors rule above requires.
+  *Amended 2026-09-30 (#567, #1575):* a `polarsFrom` borrower carries none of these; see §K's note.
 - **`verify_mask.py` gains a per-boat connectivity scan** (§C.6) and a **snap-cell margin report**: each harbour's snap-cell depth minus its gate, flagging anything under 0.2 m. Two harbours currently pass at exactly **0.0 m** (`aabenraa` 3.0 vs 3.0, `augustenborg` 2.8 vs 2.8 — #455 §3.4, reviving #245 §2.3's never-built recommendation) and a binary gate cannot see them. With per-boat gates this becomes acute.
 - **No mask regeneration** (§C.9).
 
@@ -475,7 +488,7 @@ The only open question. #54 itself says *"confirm which models are actually stat
   **And the sweep is BLIND to the `PlanResultOk` rename specifically — do not accept it as evidence for that step.** `compare.mjs` compares plans as `JSON.stringify(ja[k]) === JSON.stringify(jb[k])` plus a whole-file sha256 (`~:83-107`), with no field awareness, so renaming `genoa`/`fock`/`genoaReason`/`fockReason` to a per-sail list makes **every** `status: 'ok'` row differ whether or not a route moved. Worse, it fails in the reassuring direction: `PlanResultError` (`app/src/types.ts ~:235-238`) carries no sail fields at all, so the all-error `becalmed` and `deep-becalmed` arms — already documented as vacuous safety evidence, 33/33 errors each — stay byte-identical through any such rename and would report **IDENTICAL**, reading as partial green. A byte comparator can certify *no change*; it cannot certify a *deliberate* one. The rename step therefore needs a **canonicalise-then-compare** control — map both BASE and HEAD plans into one shape, then compare — and the sequencing consequence is that §C.4a's per-boat floor and §C.8's guard should land **before** the rename, while the byte comparator is still sound.
 - **The safety invariant is guarded, per boat.** §C.8's R0–R8 pass; R1's non-vacuity twin is mutation-checked in both directions; **R4** reds under a mutation that restores a module constant; R6's Salona literals still read 2.1 / 3.0 / 2.1 / 1.2. **Also honest:** with a one-entry catalogue, R2/R3/R8 iterate a single row and cannot fail differently from R6, so R1's hand-written expected list (`['salona-45']`) and its discriminating experiment are what stand between *those* rows and vacuity in release 1 — run that experiment, do not assume it. R5 and R7 do retain independent failure modes even at one boat: R5 reads the two i18n dictionaries, so a copy edit reds it without touching the catalogue, and R7 reads `SAFETY_DEPTH_FIELD.max`, so a range change reds it the same way.
 - **`verify_mask.py` exits 0 at every catalogue boat's derived gate**, and its report names each boat's connected / exception / disconnected harbour sets plus each harbour's snap-cell margin.
-- **Per-boat polar validation fails closed**: a boat added without its own sanity anchors, or without a `polarProvenance` tier, fails the pipeline build rather than inheriting the Salona's.
+- **Per-boat polar validation fails closed**: a boat added without its own sanity anchors, or without a `polarProvenance` tier, fails the pipeline build rather than inheriting the Salona's. *Amended 2026-09-30 (#1575):* a `polarsFrom` borrower declares no anchors, no sails and no tier in `polars-source.json`, and still builds; EASY GO! ships so (§N.6's note). Its tier is enforced by the catalogue type and by `app/src/test/polarProvenance.test.ts`, which ties it to the donor's source, not by the pipeline build.
 - **Saved plans survive.** A pre-#54 plan opens, renders identically, exports GPX identically, and reports the Salona 45. A plan whose boat has left the catalogue still opens and renders; only re-planning is unavailable and the UI says so. An unmigratable record is **listed as unreadable, never skipped and never deleted**.
 - **Budget exhaustion mid-comparison yields a partial result**, each incomplete sail carrying `search-budget-exceeded`, with the UI stating the comparison was incomplete — never a one-sail "recommendation" presented as a comparison.
 - **de/en `MsgKey` parity** for every new string; sail and boat names are catalogue data, not dictionary keys. The depth disclosure states the selected boat's four numbers in **both** dictionaries (§C.8 R5).
@@ -533,7 +546,7 @@ Stated explicitly so a future reader does not mistake silence for a decision.
 
 7. **§N.3's estimator accuracy figures come from outside this repository, and the two sources disagree.** The amendment publishes *"a median RMS around 3 % and a median worst cell around 8–10 %"*, and that band is what licenses the shipped copy *"typically within a few percent, up to about ten percent in individual conditions"*. **Method**, so a successor can re-derive rather than trust: an oracle study — for each target hull, choose the single scalar that best fits its known polar to the reference, then measure the residual. It is therefore a **ceiling on what any uniform scalar can achieve**, not a measurement of this estimator, and not a measurement against a real boat. Two independent passes reported median RMS **2.91 %** (n = 390) and **3.44 %** (n = 644), with median worst-cell **8.12 %** and **10.03 %**; a k-nearest-neighbour alternative's headline **2.55 %** did **not** reproduce and is treated as unverified. **The population behind those `n` values was not recorded** — whether they count hulls, hull-pairs or polar cells is unknown, and neither is the corpus they were drawn from. That is a real hole in this entry's re-derivability and it is stated rather than papered over: the figures license only the wide worded band, and anyone wanting a decimal must redo the corpus work and record its population. The published band is deliberately wide enough to be true under every figure any pass reported — do not narrow it to a decimal without redoing the corpus work and owning it. Both passes agree the residual is polar *shape*, which no scalar corrects.
 
-8. **The Salona 44's deep-keel depth comes from outside this repository, and the sources do not agree.** Brochure-level listings give ~2.44 m; the operator's tech sheet for EASY GO! gives **2.55 m** (sources spread 2.55–2.59 m). §N.2 and §L row 13's worked case use **2.55 m**, the fleet's own figure — the ~2.44 m listing is recorded here only so a future reader meeting it knows it was seen and not chosen. §C.5's keel-variant paragraph lists variants for the First 47.7, Oceanis 473 and Elan 444 only. The related per-vessel keel identifications in §N.2 — PIRANJA standard 1.90 m, SPEEDY GO! standard 2.10 m, EASY GO! deep 2.55 m — come from the operator's published tech sheets, which is stronger than a model-level default and weaker than the hull's own papers. §M.1's re-verification rule applies to all of them.
+8. **The Salona 44's deep-keel depth comes from outside this repository, and the sources do not agree.** Brochure-level listings give ~2.44 m; the operator's tech sheet for EASY GO! gives **2.55 m** (sources spread 2.55–2.59 m). §N.2 and §L row 13's worked case use **2.55 m**, the fleet's own figure — the ~2.44 m listing is recorded here only so a future reader meeting it knows it was seen and not chosen. §C.5's keel-variant paragraph lists variants for the First 47.7, Oceanis 473 and Elan 444 only. The related per-vessel keel identifications in §N.2 — PIRANJA standard 1.90 m, SPEEDY GO! standard 2.10 m, EASY GO! deep 2.55 m — come from the operator's published tech sheets, which is stronger than a model-level default and weaker than the hull's own papers. §M.1's re-verification rule applies to all of them. **Amended 2026-09-30 (maintainer ruling, #1575):** EASY GO! ships at **2.59 m**. The operator source for 2.55 m is its per-vessel page (https://skipperteam.de/toerns/yachten/salona-44-easy-go, read 2026-09-30, not archived). 2.59 m is not an operator figure: it is Cruising World's model review (https://www.cruisingworld.com/salona-44/), the racing-keel draft. The deeper figure is taken. Both derive the same gate (3.5 m) and relaxation floor (2.6 m). EASY GO!'s 2.55 m draft figures above and in §N.1, §N.2 and §N.7 are the pre-ruling record.
 
 ---
 
@@ -574,6 +587,8 @@ PIRANJA (vessel), SPEEDY GO! (vessel) — not two models. EASY GO! becomes a fou
 
 **The property that makes this scope safe:** no catalogue boat's gate exceeds today's 3.0 m, so no
 harbour becomes unreachable for any boat and no new connectivity ceiling is crossed.
+
+**Amended 2026-09-30 (maintainer ruling, #1575):** EASY GO! ships as the fourth catalogue entry, tier C, at 2.59 m (gate 3.5 m); the ⏸ row and its 2.55 m are the 2026-08-18 record. This paragraph's property no longer holds for the catalogue: at its 3.5 m default EASY GO! reads `augustenborg` and `marstal` unreachable in-app. §O.
 
 ### N.2 Drafts — an accepted deviation from §M.1, and it must be disclosed
 
@@ -637,6 +652,8 @@ optional, so a fleet entry without it is a type error rather than a silent omiss
 
 **Retiring this deviation** needs one confirmed keel per hull from the hull's own papers
 (§G.3 rule 4 — ask the operator).
+
+**Amended 2026-09-30 (maintainer ruling, #1575):** EASY GO! is no longer deferred. It ships its deep keel at 2.59 m (§M.8). This section's accepted cost covers the operator's per-vessel page (2.55 m, https://skipperteam.de/toerns/yachten/salona-44-easy-go, read 2026-09-30); taking Cruising World's model-review racing-keel figure (2.59 m, https://www.cruisingworld.com/salona-44/) is a conservative step beyond it, accepted by this ruling. EASY GO!'s `draftProvenance.note` carries the sister-ship and deep-keel caveat. "to defer the vessel" above is the 2026-08-18 record. §O.
 
 ### N.3 The estimator — `salona45-uniform-scalar-v1`
 
@@ -790,6 +807,8 @@ begins, not discovered at build time.
 | E7 | Estimated speeds must be **reproducible**: re-running the estimator from the committed inputs reproduces the committed `speeds` byte-for-byte — **including the second sail's `base × ramp` step**, so both committed tables are reproducible from the committed inputs. Perturb one input and the build reds. |
 | E8 | Every existing structural check is retained unchanged. |
 
+**Amended 2026-09-30 (maintainer ruling, #1575):** EASY GO! ships with no anchors of its own. It is a `polarsFrom` borrower (#567) and routes on SPEEDY GO!'s table, validated by SPEEDY GO!'s anchors. None of those names EASY GO!'s deep-keel hull, so E3's "for that hull" is not met for it, and "a boat with none does not ship" does not apply to a borrower. An accepted cost of the ruling; §O.
+
 **A `("marstal", 2.8): 2.0` entry in `verify_mask.py`'s `CONNECTIVITY_EXCEPTIONS_M` is a
 prerequisite of the Elan 444's catalogue PR.** MEASURED 2026-08-18, control first: with the
 unmodified `polars-source.json` the script exits 0; adding `elan-444` at `draftM 1.90` (derived gate
@@ -883,6 +902,7 @@ versioned section at the cut, so the fragment must be re-scoped or held back wit
   the Boat tab (#1292). So what still blocks these two hulls is the polar sourcing below, plus
   draft sourcing — §N.2 and §M item 8 for EASY GO!, §M item 1's §C.5 caveat for MARIN — no
   longer the missing presentation.
+  **Amended 2026-09-30 (maintainer ruling, #1575):** EASY GO! is no longer deferred. It ships at tier C, 2.59 m, gate 3.5 m, sharing SPEEDY GO!'s tables (§O); MARIN stays deferred. Three claims above are now false for EASY GO!: the `shallow-approach` `marstal` "every catalogue boat already carries" (EASY GO! reads it unreachable); "neither deferred hull is in `BOATS`"; and its consequence "no committed test pins these two rows", since `app/src/test/harborReachability.test.ts`'s `EXPECTED_ACCESS` now pins EASY GO!'s row. The eleven exact-snap failures at 3.5 m are listed in `pipeline/verify_mask.py`'s `EXPECTED_UNREACHABLE_BY_BOAT`; a snap-aware check is #1584.
 - **The other six models.** Not Flensburg-stated; two of them (2.25 m, 2.30 m) also cross 3.2 m.
 - **Tier B for any fleet model.** Blocked on three items, none of which is a research question:
   donor-hull identity per keel, a reproducible white-sail downwind correction (the shipped `fock`
@@ -919,13 +939,14 @@ versioned section at the cut, so the fragment must be re-scoped or held back wit
   same per-boat fill inside the REQUIRED `app` check. No shipped boat reaches its own default
   gate with a harbour unreachable beyond those five — `marstal` at every catalogue gate, and
   `augustenborg` at 3.0 m, only under a documented exception.
+  **Amended 2026-09-30 (maintainer ruling, #1575):** four catalogue boats, not three, and `EXPECTED_UNREACHABLE_BY_BOAT` is no longer empty: it lists the eleven harbours EASY GO! fails at its 3.5 m gate under the exact-snap predicate. So one shipped boat now reaches its default gate with harbours unreachable beyond the five — in-app, `augustenborg` and `marstal` for EASY GO!.
 - **§G.3 rule 2** ("*not designed here*") is now designed, by §N.4–N.6.
 - **§K's release-1 acceptance** ("*reduces to today*") no longer describes the catalogue. It
   remains the correct statement for the **Salona 45 row** and must be re-scoped, not deleted:
   with three catalogue entries, R2/R3/R8 stop being vacuous. It does **not** follow that the sweep
   exercises a second gate: `app/sweep/sweepArms.ts` builds every arm from
   `boatById(DEFAULT_BOAT_ID)`, so growing the catalogue changes no arm. That needs a per-boat arm,
-  which this amendment does not specify.
+  which this amendment does not specify. *Amended 2026-09-30 (#1575):* four entries; no EASY GO! sweep arm this cycle (maintainer ruling). Separately, and older: since #653 an arm may name its own `boatId` (`app/sweep/sweepArms.ts`), so "every arm" above is stale.
 - **Three code assertions enforce OQ-7 and now contradict it**: `app/src/data/boats.test.ts`'s
   *"release 1 ships exactly the Salona 45"* and *"ships no estimated-tier sail in release 1
   (OQ-7)"*, and `app/src/test/maskTolerance.test.ts` R1's `EXPECTED_BOAT_IDS = ['salona-45']`. All
@@ -951,4 +972,18 @@ Explicitly **not** breached: *`[OQ-3]` generalise `RigRecommendation` to N-way*.
 are defined.
 
 All remaining rows are in force, untouched.
+
+---
+
+## O. Amendment 2026-09-30 — EASY GO! ships at tier C (#1575)
+
+**Status:** maintainer ruling 2026-09-30 (v0.50.0 triage). #1575 splits EASY GO! out of #573, which keeps the certificate work. This supersedes EASY GO!'s deferral in §N.1, §N.2 and §N.7. It also exempts a `polarsFrom` borrower from §N.6's own-anchors rule (the note there) and re-classifies three of §N.9's §L rows (below). It also takes EASY GO!'s draft a conservative step beyond §N.2's operator-sheet source (Entry, below). Every other §N decision stands.
+
+- **Entry.** The fourth catalogue entry, tier C, with no certificate. Draft **2.59 m** (§M.8): the operator's per-vessel page lists 2.55 m (https://skipperteam.de/toerns/yachten/salona-44-easy-go, read 2026-09-30); Cruising World's model review gives 2.59 m for the racing keel (https://www.cruisingworld.com/salona-44/); the deeper figure is taken. Neither is from the hull's own papers. §N.2's accepted cost covers the operator figure; 2.59 m is a conservative step beyond it, accepted by this ruling.
+- **Depth.** Default gate `ceil₁₀(2.59 + 0.9)` = **3.5 m**, a third distinct default gate beside 2.8 m and 3.0 m. Relaxation floor `ceil₁₀(2.59)` = **2.6 m**. `gate − T` = 2.6 m ≥ 2.59 m, so §C.3's inequality (R3) holds; the equality §C.2 records does not hold for this boat, and §C.4(b), R4 and R5 read the ceiling form (notes there).
+- **Polars.** Shares SPEEDY GO!'s tables and sanity anchors through `polarsFrom` (#567), which realises §J OQ-4's sister-ship sharing. Its `polarProvenance.note`s are byte-identical to the donor's; the sister-ship and deep-keel caveat lives in its own `draftProvenance.note` (§N.5's keel sentence). The shared table carries no keel difference (§N.3: the estimator cannot fix a wrong keel). Tier C, so the comparison is `not-compared` (§N.4). Anchor rules: the notes in §H and §N.6.
+- **Defaults.** `Genoa`/`Jib` labels and the 6.5 kn / 45 s motor and manoeuvre defaults, the same literals as SPEEDY GO!'s (6.5/45 are the app's unresearched defaults on every fleet entry).
+- **Harbours.** Eleven harbours fail `verify_mask.py`'s exact-snap check at 3.5 m and are listed in `EXPECTED_UNREACHABLE_BY_BOAT`; a snap-aware check is #1584. In-app at defaults, `augustenborg` and `marstal` read unreachable — correct routing, disclosed by the per-boat marker (§C.6).
+- **Sweep.** No EASY GO! arm this cycle.
+- **§L rows.** Engaged by this boat and in force: *treat a harbour dropping out as a defect*, *refine the mask for deeper boats*, *ship the fleet at today's 3.0 m default*. *Reuse the Salona 45's anchors* is not breached by its letter (the shared anchors are SPEEDY GO!'s), but its reasoning — an anchor validating a different hull — is engaged and accepted by this ruling. OQ-6 stays open. This ruling answers only its "which vessels ship" half, and only for EASY GO!, whose certificate half stays with #573.
 </content>

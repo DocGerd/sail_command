@@ -1979,6 +1979,18 @@ describe('#539: the shallow banner follows the PLAN’s boat, not a module const
     // pins only encode what the right answer looks like.
     expect(lead?.textContent).not.toContain('2.1 m');
   });
+
+  // #1575: a draft prints to two decimals. usedDepthM 3.3 -> cautious 2.4,
+  // below EASY GO!'s 2.59 m; a one-decimal draft would print 2.6 m.
+  it('prints EASY GO!’s 2.59 m draft to two decimals in the severe lead', () => {
+    const { container } = renderSummary({
+      plan: planFor(boatSnapshot(boatById('salona-44-easy-go')), 3.3),
+    });
+    const lead = container.querySelector('.shallow-warning--severe .shallow-warning__lead');
+    expect(lead).not.toBeNull();
+    expect(lead?.textContent).toContain('as low as 2.4 m');
+    expect(lead?.textContent).toContain("below this boat's 2.59 m draft");
+  });
 });
 
 // #615: the advisory seamark-proximity notice — a bare <p> sibling of

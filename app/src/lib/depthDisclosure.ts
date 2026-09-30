@@ -60,6 +60,22 @@ export function formatDepthM(value: number, lang: Lang, fractionDigits = 1): str
 }
 
 /**
+ * A boat's DRAFT, up to two decimals ("2,1", "1,9", "2,59") — `formatDepthM`'s
+ * single decimal would show a 2.59 m keel as 2.6 m. Rounds UP to 0.01 m, with
+ * the same 1e-9 nudge as `ceilToDecimetre`: a draft must never read shallower
+ * than it is, and every catalogue draft is already exact at two decimals, so
+ * the rule only ever bites on a finer stored value. Draft only — a WATER depth
+ * must still never read deeper than provable, which is why `formatDepthM`
+ * stays separate.
+ */
+export function formatDraftM(value: number, lang: Lang): string {
+  return new Intl.NumberFormat(LOCALES[lang], {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 2,
+  }).format(Math.ceil(value * 100 - 1e-9) / 100);
+}
+
+/**
  * The four numbers spec §C.8 R5 requires the disclosure to state, plus the
  * boat's own name so a reader can see WHICH boat they apply to.
  *
@@ -72,16 +88,15 @@ export function formatDepthM(value: number, lang: Lang, fractionDigits = 1): str
  * The copy says the default gate is set so its floor never falls below the
  * draft, which is `defaultSafetyDepthM(b) - T >= b.draftM` — true for every
  * boat by construction (spec §C.3, pinned as R3). It deliberately does not
- * claim the two are EQUAL: they are for all three catalogue boats today, but a
- * draft the ceiling rounds up (2.25 m -> a 3.2 m gate -> a 2.3 m floor) breaks
- * that equality while leaving the inequality intact.
+ * claim the two are EQUAL: EASY GO!'s 2.59 m draft (3.5 m gate, 2.6 m floor)
+ * already breaks that equality while leaving the inequality intact.
  */
 export function depthMaskCaveatVars(b: BoatDef, lang: Lang): Record<string, string> {
   return {
     boat: b.name,
     tolerance: formatDepthM(MASK_TOLERANCE_M, lang),
     gate: formatDepthM(defaultSafetyDepthM(b), lang),
-    draft: formatDepthM(b.draftM, lang),
+    draft: formatDraftM(b.draftM, lang),
     floor: formatDepthM(relaxationFloorM(b) - MASK_TOLERANCE_M, lang),
   };
 }

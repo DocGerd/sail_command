@@ -777,6 +777,29 @@ describe('#612: the marginal-depth notice on a route that did not relax', () => 
     expect(text).toContain("at this setting that reading can fall below this boat's 2.1 m draft");
   });
 
+  // #1575: a draft prints to two decimals in this notice too. Gate 3.4 m gives
+  // a cautious floor of 2.5 m, under EASY GO!'s 2.59 m (a one-decimal draft
+  // would print 2.6 m).
+  it('prints EASY GO!’s 2.59 m draft to two decimals when the gate’s floor falls under it', async () => {
+    mockedLoad.mockResolvedValue(marginalMask());
+    localStorage.setItem('sc-lang', 'en');
+    const base = makeNonRelaxedPlan([EXPOSURE_LEG], 3.4);
+    const plan: Plan = {
+      ...base,
+      request: { ...base.request, boat: boatSnapshot(boatById('salona-44-easy-go')) },
+    };
+    const { container } = render(
+      <I18nProvider>
+        <RouteSummary plan={plan} rig="genoa" onRigChange={vi.fn()} />
+      </I18nProvider>,
+    );
+    await waitFor(() => expect(mockedLoad).toHaveBeenCalled());
+    await act(async () => {});
+    const notice = container.querySelector('.marginal-depth-notice');
+    expect(notice?.className).toContain('marginal-depth-notice--severe');
+    expect(notice?.textContent).toContain("can fall below this boat's 2.59 m draft");
+  });
+
   it('never borrows the relaxed copy, which is false on this route in both clauses', async () => {
     // route.shallow.detail says "so this route was planned at a reduced
     // X m instead" — nothing was reduced. route.shallow.exposure measures

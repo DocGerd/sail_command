@@ -414,6 +414,39 @@ function requireSailDerivations(boat) {
   }
 }
 
+/**
+ * #567. A sister ship (same hull model, different keel) declares `polarsFrom:
+ * <boat-id>` instead of carrying tables: it shares the donor's shipped assets
+ * and its own `draftM` still feeds `verify_mask.py`'s per-boat gate scan. It
+ * emits no files, so nothing can drift between two copies of one table.
+ */
+const TABLE_KEYS = ['tws', 'twa', 'beat', 'gybe', 'sails', 'validation'];
+
+function requireBorrower(boat, boatsById) {
+  const id = boat.id;
+  requireField(
+    typeof boat.polarsFrom === 'string' && boat.polarsFrom.length > 0,
+    `${id}: polarsFrom must be a boat id string, got ${JSON.stringify(boat.polarsFrom)}`,
+  );
+  requireField(boat.polarsFrom !== id, `${id}: polarsFrom names the boat itself`);
+  const donor = boatsById.get(boat.polarsFrom);
+  requireField(donor != null, `${id}: polarsFrom ${JSON.stringify(boat.polarsFrom)} is not a boat in this file`);
+  requireField(
+    donor.polarsFrom === undefined,
+    `${id}: polarsFrom ${JSON.stringify(boat.polarsFrom)} is itself a borrower — chains are not allowed`,
+  );
+  for (const key of TABLE_KEYS) {
+    requireField(
+      boat[key] === undefined,
+      `${id}: carries ${key} beside polarsFrom — a borrower shares the donor's tables and never declares its own`,
+    );
+  }
+  requireField(
+    typeof boat.draftM === 'number' && Number.isFinite(boat.draftM) && boat.draftM > 0,
+    `${id}: draftM missing or not a positive number — a borrower's draft is per hull`,
+  );
+}
+
 requireField(Array.isArray(src.boats) && src.boats.length > 0, 'no boats');
 
 // Two passes on purpose: EVERY boat and sail is validated before ANYTHING is
@@ -451,6 +484,10 @@ for (const boat of src.boats) {
   requireField(!seenBoatIds.has(id), `duplicate boat id: ${id}`);
   seenBoatIds.add(id);
   requireField(typeof boat.name === 'string' && boat.name.length > 0, `${id}: name missing`);
+  if (Object.hasOwn(boat, 'polarsFrom')) {
+    requireBorrower(boat, boatsById);
+    continue;
+  }
   requireNumbers(`${id}: tws`, boat.tws);
   requireInterpolable(`${id}: tws`, boat.tws);
   requireAscending(`${id}: tws`, boat.tws);

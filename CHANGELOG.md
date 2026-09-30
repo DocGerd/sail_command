@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.50.0] - 2026-09-30
+
+### Added
+
+- Salona 44 "EASY GO!" (deep keel, 2.59 m draft) joins the boat catalogue with estimated polar tables shared with SPEEDY GO!; its 3.5 m default safety depth leaves some harbours unreachable, which the harbour markers and the boat-switch announcement flag, and drafts now show up to two decimals (#1575).
+
+### Fixed
+
+- On layouts below 820 px, the height-capped open "Anzeigeoptionen" ("Display options") list now shows a fade at its bottom edge while rows are out of view (#1564).
+
 ## [0.49.0] - 2026-09-30
 
 ### Changed
@@ -1230,7 +1240,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.49.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.50.0...HEAD
+[0.50.0]: https://github.com/DocGerd/sail_command/compare/v0.49.0...v0.50.0
 [0.49.0]: https://github.com/DocGerd/sail_command/compare/v0.48.0...v0.49.0
 [0.48.0]: https://github.com/DocGerd/sail_command/compare/v0.47.0...v0.48.0
 [0.47.0]: https://github.com/DocGerd/sail_command/compare/v0.46.0...v0.47.0

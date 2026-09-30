@@ -30,15 +30,28 @@ interface SourceSail {
   readonly provenance: { readonly tier: string; readonly note: string };
   readonly speeds: number[][];
 }
+// #567: a sister ship declares `polarsFrom: <donor id>` and carries no sails;
+// its polar tables, note and shipped `boat` name are the donor's.
 interface SourceBoat {
   readonly id: string;
   readonly name: string;
-  readonly sails: Record<string, SourceSail>;
+  readonly polarsFrom?: string;
+  readonly sails?: Record<string, SourceSail>;
 }
 
 const source = JSON.parse(readFileSync(join(REPO, 'pipeline', 'polars-source.json'), 'utf8')) as {
   boats: SourceBoat[];
 };
+
+function donorOf(boatId: string): SourceBoat {
+  const srcBoat = source.boats.find((b) => b.id === boatId);
+  expect(srcBoat, `no boat ${boatId} in polars-source.json`).toBeDefined();
+  if (srcBoat!.polarsFrom === undefined) return srcBoat!;
+  const donor = source.boats.find((b) => b.id === srcBoat!.polarsFrom);
+  expect(donor, `${boatId} borrows from unknown ${srcBoat!.polarsFrom}`).toBeDefined();
+  expect(donor!.polarsFrom, `${boatId}: borrower chain`).toBeUndefined();
+  return donor!;
+}
 
 describe('polar provenance is consistent across catalogue, pipeline source and shipped asset', () => {
   it('reads a pipeline source with at least one boat (fail closed)', () => {
@@ -56,11 +69,11 @@ describe('polar provenance is consistent across catalogue, pipeline source and s
           const srcBoat = source.boats.find((b) => b.id === boat.id);
           expect(srcBoat, `no boat ${boat.id} in polars-source.json`).toBeDefined();
           expect(srcBoat!.name).toBe(boat.name);
-          expect(Object.keys(srcBoat!.sails)).toContain(sail.id);
+          expect(Object.keys(donorOf(boat.id).sails!)).toContain(sail.id);
         });
 
         it('carries the same provenance tier and note as the pipeline source', () => {
-          const srcSail = source.boats.find((b) => b.id === boat.id)!.sails[sail.id];
+          const srcSail = donorOf(boat.id).sails![sail.id]!;
           expect(srcSail.provenance.tier).toBe(sail.polarProvenance.tier);
           expect(srcSail.provenance.note).toBe(sail.polarProvenance.note);
         });
@@ -71,6 +84,12 @@ describe('polar provenance is consistent across catalogue, pipeline source and s
           expect(existsSync(join(PUBLIC_DIR, sail.polarAsset)), sail.polarAsset).toBe(true);
         });
 
+        // The sharing invariant: a boat's asset is its own file unless the
+        // source declares it a borrower, and then it is exactly the donor's.
+        it('points polarAsset at its own file, or exactly at its declared donor’s', () => {
+          expect(sail.polarAsset).toBe(`data/polars/${donorOf(boat.id).id}-${sail.id}.json`);
+        });
+
         it('shipped asset identifies this boat and sail and repeats the note', () => {
           const table = JSON.parse(
             readFileSync(join(PUBLIC_DIR, sail.polarAsset), 'utf8'),
@@ -79,7 +98,9 @@ describe('polar provenance is consistent across catalogue, pipeline source and s
           // reads it at runtime, so a table filed under the wrong sail id
           // would mislabel every route this app recommends.
           expect(table.rig).toBe(sail.id);
-          expect(table.boat).toBe(boat.name);
+          // The shipped `boat` field names the boat the table was built for,
+          // which for a borrower is the donor.
+          expect(table.boat).toBe(donorOf(boat.id).name);
           expect(table.source).toBe(sail.polarProvenance.note);
         });
       });
@@ -89,10 +110,21 @@ describe('polar provenance is consistent across catalogue, pipeline source and s
   it('every sail the pipeline declares is claimed by a catalogue polarAsset', () => {
     const claimed = new Set(BOATS.flatMap((b) => b.sails.map((s) => s.polarAsset)));
     const declared = source.boats.flatMap((b) =>
-      Object.keys(b.sails).map((sailId) => `data/polars/${b.id}-${sailId}.json`),
+      Object.keys(b.sails ?? {}).map((sailId) => `data/polars/${b.id}-${sailId}.json`),
     );
     // Every table the pipeline builds must be reachable from the catalogue —
     // an unclaimed one is a table the app can never load.
     for (const asset of declared) expect([...claimed]).toContain(asset);
+  });
+
+  it('a borrower carries no tables of its own and shares its donor’s sail set', () => {
+    const borrowers = source.boats.filter((b) => b.polarsFrom !== undefined);
+    expect(borrowers.map((b) => b.id)).toEqual(['salona-44-easy-go']);
+    for (const b of borrowers) {
+      expect(b.sails, `${b.id} declares sails beside polarsFrom`).toBeUndefined();
+      const own = BOATS.find((x) => x.id === b.id)!.sails.map((x) => x.id);
+      const donor = BOATS.find((x) => x.id === b.polarsFrom)!.sails.map((x) => x.id);
+      expect(own).toEqual(donor);
+    }
   });
 });

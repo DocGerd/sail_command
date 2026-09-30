@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useT, useLang } from '../i18n';
 import { formatNm, formatTime } from '../lib/format';
 import { APPROACH_RADIUS_M } from '../lib/depthGate';
-import { formatDepthM } from '../lib/depthDisclosure';
+import { formatDepthM, formatDraftM } from '../lib/depthDisclosure';
 import { cautiousDepthLowerBoundM, MASK_TOLERANCE_M } from '../lib/mask';
 import { planViaPoints } from '../lib/planViaPoints';
 import { roundExposureNm, shallowConfinedWithinM, shallowExposureNm } from '../lib/shallowExposure';
@@ -220,7 +220,7 @@ export function ShallowWarning({
   // the two conventions again.
   const leadText = t(isSevere ? 'route.shallow.leadSevere' : 'route.shallow.lead', {
     cautious: cautiousM,
-    draft: formatDepthM(draftM, lang),
+    draft: formatDraftM(draftM, lang),
   });
   // #703/#516 increment 1's exposure figure and this plan's own usedDepthM
   // BOTH need to be visible without interaction (PR #763 review Blocker 2:
@@ -257,8 +257,9 @@ export function ShallowWarning({
   // so the below-draft case started EXPANDED. That never discriminated.
   // Three facts compose, each re-read for #788 rather than taken on trust:
   // `defaultSafetyDepthM(b) = ceilToDecimetre(b.draftM + MASK_TOLERANCE_M)`
-  // (lib/boatDepth.ts), which for all three catalogue drafts (2.1/2.1/1.9)
-  // makes `gate - MASK_TOLERANCE_M` the draft EXACTLY; a relaxed gate is at
+  // (lib/boatDepth.ts), which for the 2.1/2.1/1.9 m drafts makes
+  // `gate - MASK_TOLERANCE_M` the draft EXACTLY, and for EASY GO!'s 2.59 m draft
+  // (gate 3.5) reads 2.6, not below it; a relaxed gate is at
   // least a decimetre under the requested one (routing/relaxedDepth.ts:124,
   // `hiDm = Math.ceil(requestedDepthM * 10 - 1e-9) - 1`); and this banner
   // mounts only on a relaxed route at all (types.ts on `PlanResultOk.shallow`:
