@@ -1253,7 +1253,7 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
         '--sc-depth-controls-max',
         px === null ? 'none' : `${px}px`,
       );
-    const recompute = () => {
+    const measure = () => {
       document.documentElement.style.setProperty(
         '--sc-depth-controls-height',
         `${el.getBoundingClientRect().height}px`,
@@ -1378,6 +1378,14 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
       );
       setLegendHidden(budgetPx - el.getBoundingClientRect().height < LEGEND_COLLAPSED_HEIGHT_PX);
     };
+    // Rows still below the fold; read after `measure` so scrollHeight sees the
+    // cap it just published.
+    const markOverflow = () =>
+      el.toggleAttribute('data-overflowing', el.scrollHeight - el.scrollTop - el.clientHeight > 1);
+    const recompute = () => {
+      measure();
+      markOverflow();
+    };
     const ro = new ResizeObserver(recompute);
     ro.observe(el);
     // `.banner-area` independently changes the SAME budget (a banner can
@@ -1397,6 +1405,7 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
     // `.banner-area` size change) also moves the budget — `window.innerHeight`
     // and the media queries above both depend on it directly.
     window.addEventListener('resize', recompute);
+    el.addEventListener('scroll', markOverflow, { passive: true });
     // Same reasoning as useBannerHeight.ts's own first-callback comment: the
     // initial ResizeObserver callback is queued for a later frame, not
     // delivered synchronously, so measure once immediately too.
@@ -1405,6 +1414,7 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
       ro.disconnect();
       document.documentElement.style.removeProperty('--sc-depth-controls-max');
       window.removeEventListener('resize', recompute);
+      el.removeEventListener('scroll', markOverflow);
     };
   }, []);
 
