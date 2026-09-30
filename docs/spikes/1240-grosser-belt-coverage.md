@@ -30,12 +30,7 @@ Companions: [`1163-295-coverage-scoping.md`](1163-295-coverage-scoping.md)
 - **Estimates** are marked as such. `pipeline/data-src/` is empty in a new
   worktree, so nothing that needs the EMODnet raster, the Protomaps build or
   Overpass was measured.
-- Place coordinates for Korsør, Skælskør, Kalundborg and Samsø are from
-  general knowledge. **`git grep` finds none of them in the repo** (outside
-  #1163's prose), and `seamarks.json` carries no names (properties are
-  `seamarkType`, `category`, `colour`), so no committed file can anchor them.
-  The harbours that define "full" must be fixed from OSM at implementation
-  time.
+- The harbour set must be fixed from OSM data at implementation time.
 
 ## 1. Where the bound is
 
@@ -71,12 +66,8 @@ width and brings Jutland's east coast and everything else in that band with
 it. Harbour curation and the water-fraction gate apply to the whole strip,
 not to the belt alone.
 
-Harbour candidates (names from general knowledge, coordinates unverified):
-
-- **Inside the current box:** Korsør and Skælskør, on the Zealand shore.
-  `harbors.json`'s only harbours east of Nyborg (10.7975°E) are Fehmarn's
-  Orth and Burgstaaken (about 54.4°N).
-- **North of 55.6°N:** Kalundborg and Samsø's harbours.
+`harbors.json`'s only harbours east of Nyborg (10.7975°E) are Fehmarn's
+Orth and Burgstaaken (about 54.4°N).
 
 Each new harbour follows `pipeline-refresh`: `harbors-source.json` row, a
 mandatory German note for every non-null English note, snap on the real
@@ -234,7 +225,7 @@ one live call in the implementing PR settles it.
 ### 7.1 Slice A — GO: far-shore harbours inside the existing box
 
 Curate the harbours on the Zealand shore that already lie in 54.3–55.6°N ×
-9.4–11.6°E (Korsør and Skælskør are the candidates, §2), so Fyn-to-Zealand
+9.4–11.6°E, so Fyn-to-Zealand
 crossings become plannable.
 
 - **No changes to:** mask area, wind lattice, `MAX_BOUNDS`, `DATA_AREA`,
