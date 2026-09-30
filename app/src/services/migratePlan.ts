@@ -1,4 +1,5 @@
 import { BOATS, boatById, DEFAULT_BOAT_ID } from '../data/boats';
+import { POLAR_TIER_LABEL_KEY } from '../lib/boatProvenance';
 import { NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
 import {
   boatSnapshot,
@@ -498,7 +499,15 @@ function migrateBoat(
   for (const sail of stored.sails) {
     if (!isRecord(sail)) return null;
     if (typeof sail.id !== 'string' || typeof sail.label !== 'string') return null;
-    if (!isRecord(sail.polarProvenance)) return null;
+    const provenance = sail.polarProvenance;
+    if (!isRecord(provenance)) return null;
+    // PolarTier has no runtime value; this Record is exhaustive over it at compile time.
+    if (
+      typeof provenance.tier !== 'string' ||
+      !Object.hasOwn(POLAR_TIER_LABEL_KEY, provenance.tier)
+    )
+      return null;
+    if (typeof provenance.note !== 'string') return null;
   }
   return stored as unknown as BoatSnapshot;
 }
