@@ -1,11 +1,4 @@
-import {
-  test,
-  expect,
-  type Browser,
-  type BrowserContext,
-  type Locator,
-  type Page,
-} from '@playwright/test';
+import { test, expect, type BrowserContext, type Locator, type Page } from '@playwright/test';
 import {
   startPreview,
   mapReady,
@@ -430,23 +423,16 @@ test('#597 legend stays reachable at 820x1180 with the disclosure open, the firs
 // #1564: a capped open Anzeigeoptionen cluster below 820 px shows a scroll cue
 // while rows sit below the fold. The resolved background is read in a real
 // browser: jsdom evaluates neither media queries nor gradients.
-async function offlineBannerLadenPage(
-  browser: Browser,
-  viewport: { width: number; height: number },
+async function goOfflineWithBanners(
+  page: Page,
+  context: BrowserContext,
   serverUrl: string,
-): Promise<{ page: Page; context: BrowserContext }> {
-  const context = await browser.newContext({
-    storageState: { cookies: [], origins: [] },
-    viewport,
-  });
-  const page = await context.newPage();
-  await assertCleanServiceWorkerState(page);
+): Promise<void> {
   await page.goto(serverUrl);
   await mapReady(page);
   await expect(page.locator('.banner-area .banner-info:not(.reload-prompt)')).toBeVisible();
   await context.setOffline(true);
   await expect(page.locator('.banner-message', { hasText: 'Planung deaktiviert' })).toBeVisible();
-  return { page, context };
 }
 
 const controlsCue = (page: Page) =>
@@ -459,11 +445,13 @@ test('#1564: the capped open Anzeigeoptionen cluster shows a scroll cue at 390x8
   browser,
 }) => {
   const server = await startPreview();
-  const { page, context } = await offlineBannerLadenPage(
-    browser,
-    STANDARD_VIEWPORTS.phonePortrait,
-    server.url,
-  );
+  const context = await browser.newContext({
+    storageState: { cookies: [], origins: [] },
+    viewport: STANDARD_VIEWPORTS.phonePortrait,
+  });
+  const page = await context.newPage();
+  await assertCleanServiceWorkerState(page);
+  await goOfflineWithBanners(page, context, server.url);
   try {
     await expect
       .poll(() => controlsCue(page), { message: 'cue while the disclosure is closed' })
@@ -500,11 +488,13 @@ for (const name of ['desktop4k', 'desktopHd', 'tabletLandscape', 'tabletPortrait
     browser,
   }) => {
     const server = await startPreview();
-    const { page, context } = await offlineBannerLadenPage(
-      browser,
-      STANDARD_VIEWPORTS[name],
-      server.url,
-    );
+    const context = await browser.newContext({
+      storageState: { cookies: [], origins: [] },
+      viewport: STANDARD_VIEWPORTS[name],
+    });
+    const page = await context.newPage();
+    await assertCleanServiceWorkerState(page);
+    await goOfflineWithBanners(page, context, server.url);
     try {
       await openDataLayerOptions(page);
       const legend = page.locator('details.depth-legend');
