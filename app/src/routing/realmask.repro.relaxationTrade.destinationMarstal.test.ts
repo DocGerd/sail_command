@@ -7,7 +7,18 @@ import {
   relaxationTradeSnappedPairs,
   expectRelaxationTradeRadiusInvariant,
   expectRelaxationTradeSubsetConsistency,
+  expectRelaxationTradeStranded,
+  relaxationTradeFixedReachableAtFloor,
+  relaxationTradeCasePartition,
+  polars,
+  FLENSBURG,
+  MARSTAL,
+  T0,
 } from '../test/realmaskFixtures';
+import { planRoute } from './planRoute';
+import { uniformWindGrid } from '../test/fixtures';
+import { boatById, sailIdsOf } from '../data/boats';
+import { DEFAULT_SETTINGS, boatSnapshot } from '../types';
 import { solverTimeoutMs } from '../test/timeouts';
 
 // #1261: split out of relaxationTrade.differential.test.ts (~728 s CI total
@@ -36,6 +47,39 @@ vi.setConfig({ testTimeout: solverTimeoutMs(300_000) });
 const POPULATIONS = [{ name: 'destination marstal', fixedId: 'marstal', reversed: true }] as const;
 
 describe('#930 R3: P3 disc-vs-global relaxation trade (shipped findRelaxedGate, real mask)', () => {
+  // #1575: both sides of the partition must exist, or the stranded pin (or the
+  // measurement it replaces) would be vacuous; and a stranded case surfaces as
+  // the typed `error`/`unreachable` result, not a silent success.
+  describe('stranded vs relaxable depth cases', () => {
+    const { relaxable, stranded } = relaxationTradeCasePartition('marstal');
+
+    it('partitions the catalogue depth cases: at least one relaxes and at least one cannot', () => {
+      expect(relaxable.length, 'cases where Marstal can relax').toBeGreaterThan(0);
+      expect(stranded.length, 'cases where Marstal is cut off at the floor').toBeGreaterThan(0);
+    });
+
+    it.each(stranded)('boats $boatIds: planRoute returns the typed unreachable error', (c) => {
+      const boat = boatById(c.boatIds[0] as Parameters<typeof boatById>[0]);
+      const res = planRoute(
+        {
+          origin: FLENSBURG,
+          destination: MARSTAL,
+          viaPoints: [],
+          originHarborId: 'flensburg',
+          destinationHarborId: 'marstal',
+          departureMs: T0,
+          settings: { ...DEFAULT_SETTINGS, safetyDepthM: c.requestedM },
+          sailIds: [...sailIdsOf(boat)],
+          boat: boatSnapshot(boat),
+        },
+        uniformWindGrid(12, 270),
+        { polars, boat, mask },
+      );
+      expect(res.status).toBe('error');
+      expect(res).toMatchObject({ reason: 'unreachable' });
+    });
+  });
+
   describe.each(RELAXATION_TRADE_DEPTH_CASES)(
     'boats $boatIds (gate $requestedM m, floor $floorM m)',
     (c) => {
@@ -49,6 +93,14 @@ describe('#930 R3: P3 disc-vs-global relaxation trade (shipped findRelaxedGate, 
 
         const rows = measureRelaxationTrade(mask, pairs, c.requestedM, c.floorM, APPROACH_RADIUS_M);
         const label = `[${c.boatIds.join(',')}] ${pop.name}`;
+
+        // #1575: a boat whose relaxation floor is deeper than Marstal's deepest
+        // connecting gate cannot reach it at all — nothing CAN relax, which is
+        // the accepted outcome, so it is pinned here rather than measured.
+        if (!relaxationTradeFixedReachableAtFloor(pop.fixedId, c.requestedM, c.floorM)) {
+          expectRelaxationTradeStranded(rows, label);
+          return;
+        }
 
         // LICENCE: equality over pairs where nothing relaxes proves nothing, so
         // at least one relevant pair must actually relax.
