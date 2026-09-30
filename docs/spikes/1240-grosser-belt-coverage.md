@@ -8,7 +8,7 @@
   already inside the mask, and what is cut off is its northern half.** The
   strait runs north-south, the mask's east edge (11.6°E) lies beyond the
   Zealand shore, and the strait is truncated by the 55.6°N edge (§1).
-  Extending "east" buys nothing. Two slices follow: **A**, curate the
+  Extending "east" buys none of the belt. Two slices follow: **A**, curate the
   harbours on the belt's far shore inside the existing box, which changes no
   area, wind lattice, basemap or stored plan (§7.1); and **B**, a north
   extension of the whole mask width, which is moderate in bytes but breaks
@@ -180,8 +180,10 @@ extension, exactly as pre-#295 plans did:
   (`RoutingClient.plan()`, copy key `error.windGridCoverage`).
 - **Backup import is stricter:** `decodeWindGrid` rejects a non-covering grid
   unless `isLegacyWindLattice` matches, and that helper is hardcoded to the
-  pre-#295 11 × 17 shape. Without a second admitted shape, every v0.35+ backup
-  fails to import. The fix is a list of admitted legacy lattices, not a
+  pre-#295 11 × 17 shape. `SettingsPanel.tsx` passes `DATA_AREA` to
+  `parseExportFile`, so the check is live. Without a second admitted shape,
+  every plan in a v0.35+ backup is rejected at import (counted invalid, the
+  rest of the file still imports). The fix is a list of admitted legacy lattices, not a
   looser predicate.
 - Recalculate and a fresh Plan-route fetch a new forecast and are unaffected.
 - #295's precedent: no migration pre-1.0, and a BREAKING-CHANGE changelog
@@ -203,12 +205,16 @@ one live call in the implementing PR settles it.
   only. Core headroom is 41,943,040 − 27,201,789 = 14,741,251 B, and the core
   is untouched by a north extension. The cost is the per-plan download the
   readiness chip shows (#295).
-- **A third region composes.** `selectTileArchive` serves core-overlapping
-  tiles from the core, otherwise the first overlapping region in manifest
-  order (sorted by id). A seam tile straddling 55.6°N stays with the existing
-  regions, so a new strip snaps to the first z13 boundary past the seam as
-  `pipeline/README.md` describes. `verify_region_split.py` must then be run
-  with all regions against a single whole-box extract.
+- **A third region composes, if its seam is snapped.** `selectTileArchive`
+  serves core-overlapping tiles from the core, otherwise the first
+  overlapping region in manifest order, and the manifest is sorted by id, so
+  a new id such as `belt` would win any tile it overlaps. `overlaps` is
+  strict, so a new strip whose south edge sits at or past the first z13 tile
+  boundary at 55.6°N (the snap `pipeline/README.md` describes) never
+  overlaps `north` or `east`. The existing archives already hold the
+  straddling tiles whole (`pmtiles extract --bbox` keeps whole tiles), so
+  they serve every seam tile whatever the id. `verify_region_split.py` must
+  then be run with all regions against a single whole-box extract.
 - **Size (estimate).** Byte density: core 17.0, `region-east` 12.5,
   `region-north` 26.6 MB/deg² (archive bytes over header bbox area). A
   full-width strip is 0.44 deg² to 55.8°N and 0.88 deg² to 56.0°N, giving
@@ -256,8 +262,10 @@ Preconditions that would flip it to go:
    Protomaps build (§6).
 3. One live Open-Meteo call at the new point count (§5).
 4. **The one measurement that gates go/no-go:** a Flensburg-to-north-belt plan
-   against `PLAN_BUDGET_MS` (360 s). The Flensburg-to-Burgstaaken tablet
-   measurement in #1350 and #1490 is a different route. Per the 2026-09-18
+   against `PLAN_BUDGET_MS` (360 s). #1350's tablet measurement gates on
+   Flensburg-to-Burgstaaken and #1490 measures another plan (per
+   `1350-per-rig-budget-vs-parallel-rigs.md`); neither is a north-belt
+   route. Per the 2026-09-18
    ruling this is a budget-gating measurement, not a routine timing.
 
 If it goes: full mask width, one new lazy region, a second admitted legacy
