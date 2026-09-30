@@ -511,10 +511,8 @@ describe('#550: mask connectivity is a REQUIRED check (promoted from advisory ve
     ]);
   });
 
-  // #1584: the picker's own classifier is the oracle for the snap. A harbour
-  // is unreachable at the gate exactly when the picker reads it
-  // `shallow-approach` or `unreachable` (`ok` needs snap + flood to succeed).
-  // Runs at the boat's derived gate with no pipeline exception, as the picker does.
+  // #1584: cross-checks this file's snap-aware flood against `computeHarborAccess`
+  // (no pipeline exception); both call the same `snapToNavigable`.
   it.each(BOATS)(
     '$id: gate-unreachable set matches the picker (snap-aware, no exceptions)',
     { timeout: solverTimeoutMs(300_000) },

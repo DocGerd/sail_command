@@ -429,49 +429,114 @@ def snap_cell(byte_grid: np.ndarray, lat: float, lon: float, gate_m: float) -> t
     return best
 
 
-def _snap_cell_bruteforce(byte_grid: np.ndarray, lat: float, lon: float, gate_m: float) -> tuple[int, int] | None:
-    """Independent of snap_cell's ring bound and early break: every cell in a
-    window well past the radius, nearest within range wins (first in row-major
-    order on a tie)."""
+def _snap_cell_reference(
+    byte_grid: np.ndarray,
+    lat: float,
+    lon: float,
+    gate_m: float,
+    early_break: bool = True,
+    ties_last: bool = False,
+) -> tuple[int, int] | None:
+    """The app's rule (`snapToNavigable`), restated without snap_cell's loop: list
+    every cell within the ring bound, keep each ring's best (nearest, then first in
+    scan order), then walk the rings outward and stop at the first whose inner edge
+    is already farther than the best so far. That walk is NOT true-nearest: ring k
+    can hold a cell only (k - 0.5) cells away. `early_break=False` and
+    `ties_last=True` are the two mutants the self-check below must tell apart."""
     row0, col0 = rc_of(lat, lon)
-    reach = 12
-    best: tuple[int, int] | None = None
-    best_d = 0.0
-    for r in range(row0 - reach, row0 + reach + 1):
-        for c in range(col0 - reach, col0 + reach + 1):
+    step_m = min(111_320 / LAT_CPD, 111_320 / LON_CPD * math.cos(math.radians(lat)))
+    max_ring = math.ceil(SNAP_MAX_RADIUS_M / step_m) + 1
+    per_ring: dict[int, list[tuple[float, int, int]]] = {}
+    for dr in range(-max_ring, max_ring + 1):
+        for dc in range(-max_ring, max_ring + 1):
+            r, c = row0 + dr, col0 + dc
+            if not (0 <= r < byte_grid.shape[0] and 0 <= c < byte_grid.shape[1]):
+                continue
             b = int(byte_grid[r, c])
-            if b == 0 or b / 10.0 < gate_m:
+            if b == 0 or (25.4 if b == 255 else b / 10.0) < gate_m:
                 continue
             d_m = (
                 haversine_nm(lat, lon, meta["south"] + (r + 0.5) / LAT_CPD, meta["west"] + (c + 0.5) / LON_CPD)
                 / NM_PER_M
             )
-            if d_m <= SNAP_MAX_RADIUS_M and (best is None or d_m < best_d):
-                best, best_d = (r, c), d_m
-    return best
+            if d_m <= SNAP_MAX_RADIUS_M:
+                per_ring.setdefault(max(abs(dr), abs(dc)), []).append((d_m, dr, dc))
+    sign = -1 if ties_last else 1
+    best: tuple[float, int, int] | None = None
+    for ring in sorted(per_ring):
+        if early_break and best is not None and ring * step_m > best[0]:
+            break
+        ring_best = min(per_ring[ring], key=lambda t: (t[0], sign * t[1], sign * t[2]))
+        if best is None or ring_best[0] < best[0] or (ties_last and ring_best[0] == best[0]):
+            best = ring_best
+    return None if best is None else (row0 + best[1], col0 + best[2])
 
 
-# Self-check on a synthetic all-land grid seeded with a few navigable cells near
-# a real harbor snap: the ring walk must agree with the exhaustive scan, including
-# the radius cut-off and a nearer cell sitting in a farther ring.
-_probe_lat, _probe_lon = harbors[0]["snap"]["lat"], harbors[0]["snap"]["lon"]
-_probe_r, _probe_c = rc_of(_probe_lat, _probe_lon)
+# Self-check of snap_cell against _snap_cell_reference on a synthetic all-land
+# grid seeded with a few navigable cells, probed at sub-cell positions around
+# every harbor and on exact cell centres, corners and edge midpoints (where
+# mirrored cells tie on distance). The positive controls prove the cases reach
+# what each mutant would break: a snap, a None, a nearer cell hidden behind the
+# early break, and a distance tie.
 _snap_rng = np.random.default_rng(1584)
-_snap_hits = 0
-for _ in range(200):
-    _synthetic = np.zeros_like(grid)
-    for _r, _c in _snap_rng.integers(-9, 10, size=(int(_snap_rng.integers(0, 4)), 2)):
-        _synthetic[_probe_r + _r, _probe_c + _c] = 40
-    _want = _snap_cell_bruteforce(_synthetic, _probe_lat, _probe_lon, 3.0)
-    _snap_hits += _want is not None
-    if snap_cell(_synthetic, _probe_lat, _probe_lon, 3.0) != _want:
-        raise AssertionError("snap_cell disagrees with the exhaustive scan on a synthetic grid")
-# Positive control: the cases above must include both a snap and a None.
-if not 0 < _snap_hits < 200:
-    raise AssertionError(f"snap_cell self-check is vacuous: {_snap_hits}/200 cases found a cell")
+_snap_grid = np.zeros_like(grid)
+_snap_cases = {"snap": 0, "none": 0, "early_break": 0, "tie": 0}
 
-# Deepest gate at which each harbor still reaches open water, or None if it
-# never does. Spec C.6 asks the verify script's output to carry a per-harbor
+
+def _snap_selfcheck_case(lat: float, lon: float, cells: list[tuple[int, int]]) -> None:
+    for r, c in cells:
+        _snap_grid[r, c] = 40
+    try:
+        got = snap_cell(_snap_grid, lat, lon, 3.0)
+        want = _snap_cell_reference(_snap_grid, lat, lon, 3.0)
+        if got != want:
+            raise AssertionError(f"snap_cell {got} != the app's rule {want} at ({lat}, {lon}), cells {cells}")
+        _snap_cases["snap" if want is not None else "none"] += 1
+        if want != _snap_cell_reference(_snap_grid, lat, lon, 3.0, early_break=False):
+            _snap_cases["early_break"] += 1
+        if want != _snap_cell_reference(_snap_grid, lat, lon, 3.0, ties_last=True):
+            _snap_cases["tie"] += 1
+    finally:
+        for r, c in cells:
+            _snap_grid[r, c] = 0
+
+
+def _axis_edge(i: float, lo: float, cpd: int) -> float:
+    return lo + i / cpd
+
+
+for _h in harbors:
+    _r0, _c0 = rc_of(_h["snap"]["lat"], _h["snap"]["lon"])
+    if not (20 <= _r0 < meta["rows"] - 20 and 20 <= _c0 < meta["cols"] - 20):
+        raise AssertionError(f"snap_cell self-check window leaves the grid at harbor {_h['id']}")
+    for _ in range(40):
+        _lat = _axis_edge(_r0 + _snap_rng.random(), meta["south"], LAT_CPD)
+        _lon = _axis_edge(_c0 + _snap_rng.random(), meta["west"], LON_CPD)
+        _cells = {
+            (_r0 + int(a), _c0 + int(b)) for a, b in _snap_rng.integers(-9, 10, size=(int(_snap_rng.integers(0, 5)), 2))
+        }
+        _snap_selfcheck_case(_lat, _lon, sorted(_cells))
+    # (lat offset, lon offset) in cells: centre, corner, and the two edge midpoints.
+    for _lat_off, _lon_off in ((0.5, 0.5), (0.0, 0.0), (0.0, 0.5), (0.5, 0.0)):
+        for _ in range(10):
+            _a, _b = (int(v) for v in _snap_rng.integers(0, 7, size=2))
+            _rows = {_r0 - 1 - _a, _r0 + _a} if _lat_off == 0.0 else {_r0 - _a, _r0 + _a}
+            _cols = {_c0 - 1 - _b, _c0 + _b} if _lon_off == 0.0 else {_c0 - _b, _c0 + _b}
+            _snap_selfcheck_case(
+                _axis_edge(_r0 + _lat_off, meta["south"], LAT_CPD),
+                _axis_edge(_c0 + _lon_off, meta["west"], LON_CPD),
+                sorted((r, c) for r in _rows for c in _cols),
+            )
+for _name, _count in _snap_cases.items():
+    if _count == 0:
+        raise AssertionError(f"snap_cell self-check never exercised '{_name}': {_snap_cases}")
+print(f"snap_cell self-check vs the app's rule: {_snap_cases}")
+
+# Deepest gate at which each harbor's EXACT snap cell still reaches open water,
+# or None if it never does. Deliberately not snap-aware (#1584): it backs the
+# KNOWN_DISCONNECTED claim "disconnected at every gate", and the snapped cell
+# changes with the gate, so snap-aware connectivity is not monotone in it.
+# Spec C.6 asks the verify script's output to carry a per-harbor
 # navigable-gate figure so a boat picker can mark unreachable harbors per boat
 # instead of failing at plan time with snap-failed-destination.
 #
@@ -527,18 +592,6 @@ DEEPEST_CONNECTING_GATE_M: dict[str, float | None] = {
 def snap_connected_at(hid: str, gate_m: float) -> bool:
     """#1584: does the cell the app snaps this harbor to at `gate_m` reach open water."""
     return SNAP_CONNECTED[(hid, dm(gate_m))][1]
-
-
-def connected_at(hid: str, gate_m: float) -> bool:
-    """Exact-snap-cell connectivity, answered from the sweep above, not by labelling again.
-
-    Same predicate as before the sweep existed - harbor and seed in one
-    non-zero component - restated through monotonicity. A harbor connected at
-    its deepest gate is connected at every shallower one, so `<=` against that
-    number IS the connectivity test.
-    """
-    deepest_dm = DEEPEST_CONNECTING_GATE_DM[hid]
-    return deepest_dm is not None and dm(gate_m) <= deepest_dm
 
 
 print(f"mask tolerance: TOLERANCE_M = {TOLERANCE_M} m (read from build_mask.py)")
@@ -757,12 +810,12 @@ for b in CATALOGUE_BOATS:
 
 # Boat-independent, so printed once: what each harbor's connectivity ceiling
 # actually is, rather than only whether it clears today's gates.
-print("\ndeepest gate at which each harbor still reaches open water:")
+print("\ndeepest gate at which each harbor's EXACT snap cell still reaches open water (not the app's 300 m snap):")
 for h in harbors:
     hid = h["id"]
     deepest = DEEPEST_CONNECTING_GATE_M[hid]
     shown = "none" if deepest is None else f"{deepest:.1f} m"
-    print(f"  {hid:16} {shown:>7}  (snap cell {harbor_snap_depth_m[hid]:.1f} m)")
+    print(f"  {hid:16} {shown:>7}  (exact snap cell {harbor_snap_depth_m[hid]:.1f} m)")
 
 if failures:
     print("\n".join(failures))
