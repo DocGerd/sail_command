@@ -137,6 +137,11 @@ instead of here.
   the `breeze` Fehmarn solves 1330 measured, `MAX_FRONTIER` truncation,
   measured through the relaxation ladder at three trees; resolved by #1257's
   derived cap (measured at `a4c0ad3`)
+- [1240-grosser-belt-coverage.md](1240-grosser-belt-coverage.md) — #1240:
+  full Großer Belt coverage. The belt's east shore is already inside the
+  mask and the missing part is north of 55.6°N; go on far-shore harbours in
+  the current box, no-go on a north extension until a harbour north of 55.6°N
+  is named
 
 Five entries carry a same-named subdirectory of supporting artifacts rather
 than being self-contained: `1022-whole-journey-ux/` (reference screenshots),
