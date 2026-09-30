@@ -501,7 +501,7 @@ function migrateBoat(
     if (typeof sail.id !== 'string' || typeof sail.label !== 'string') return null;
     const provenance = sail.polarProvenance;
     if (!isRecord(provenance)) return null;
-    // POLAR_TIER_LABEL_KEY is Record<PolarTier, _>, so its own keys are the tier set.
+    // PolarTier has no runtime value; this Record is exhaustive over it at compile time.
     if (
       typeof provenance.tier !== 'string' ||
       !Object.hasOwn(POLAR_TIER_LABEL_KEY, provenance.tier)
