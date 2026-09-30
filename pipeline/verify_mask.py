@@ -355,7 +355,7 @@ KNOWN_DISCONNECTED: dict[str, str] = {
 EXPECTED_UNREACHABLE_BY_BOAT: dict[str, list[str]] = {
     # EASY GO! (#1575, 2.59 m draft, gate 3.5 m). Exact-snap-cell verdicts, as
     # for every boat here. The picker snaps within 300 m, so it reads seven of
-    # these as reachable; a snap-aware predicate is a follow-up.
+    # these as reachable; a snap-aware predicate is tracked in #1584.
     "salona-44-easy-go": [
         "aabenraa",
         "augustenborg",

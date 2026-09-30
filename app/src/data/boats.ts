@@ -335,11 +335,11 @@ export const BOATS = [
       keel: 'deep racing keel',
       hullVerified: false,
       note:
-        'Deep (racing) keel, 2.59 m. Sources put this hull between 2.55 m and 2.59 m; the ' +
-        'deeper figure is used so the derived depth gate is not too shallow. No tech sheet is ' +
-        'on file (multi-boat design spec, §N.2 and §M.8) and the figure was not checked against ' +
-        'the hull’s own papers. Its polar table is the estimate for its sister ship SPEEDY GO!, ' +
-        'which has no keel term, so the deeper keel is not modelled in the speeds.',
+        'Deep (racing) keel, 2.59 m. The operator’s tech sheet gives 2.55 m (multi-boat design ' +
+        'spec, §M.8; the sheet itself is not on file) and other sources go to 2.59 m; the deeper ' +
+        'figure is used so the derived depth gate is not too shallow. The figure was not checked ' +
+        'against the hull’s own papers. Its polar table is the estimate for its sister ship ' +
+        'SPEEDY GO!, which has no keel term, so the deeper keel is not modelled in the speeds.',
     },
     motorSpeedKn: 6.5,
     maneuverPenaltyS: 45,

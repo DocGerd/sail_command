@@ -105,7 +105,7 @@ installs as a standalone icon and works fully offline after the first visit
   — 3.0 m for the 2.1 m-draft Salona 45 and Salona 44 *SPEEDY GO!*, 2.8 m
   for the 1.9 m Elan Impression 444, 3.5 m for the 2.59 m *EASY GO!*.
   Switching to a deeper-drafted boat raises the safety
-  depth to that boat's minimum and says so; it never lowers a depth you chose
+  depth to that boat's default and says so; it never lowers a depth you chose
   yourself. Legs where sailing speed would be too low switch to a clearly
   marked motor leg (gray-dashed on the map).
 - Saved plans, including the wind grid they were computed from, persist
