@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { AppStateProvider, useActivePlan } from '../state/AppState';
 import { I18nProvider } from '../i18n';
@@ -546,6 +546,27 @@ describe('PlansList recalculate (#114)', () => {
       expect(screen.queryByRole('button', { name: /From The Future/ })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Recalculate' })).not.toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Delete plan' })).toBeInTheDocument();
+    });
+
+    it('the two-tap delete removes the unreadable record from IndexedDB and leaves readable rows', async () => {
+      await savePlan(makePlan({ id: 'p1', createdAtMs: 1000, name: 'Readable' }));
+      await saveUnreadable('p2', 2000, 'From The Future');
+      expect((await db.listPlans()).map((p) => p.id)).toContain('p2');
+
+      const { container } = renderList();
+
+      await screen.findByText('From The Future');
+      const row = container.querySelector<HTMLElement>('.plans-list-row-unreadable');
+      expect(row).not.toBeNull();
+      fireEvent.click(within(row as HTMLElement).getByRole('button', { name: 'Delete plan' }));
+      fireEvent.click(
+        await within(row as HTMLElement).findByRole('button', { name: 'Confirm delete' }),
+      );
+
+      await waitFor(() => {
+        expect(screen.queryByText('From The Future')).not.toBeInTheDocument();
+      });
+      expect((await db.listPlans()).map((p) => p.id)).toEqual(['p1']);
     });
 
     it('survives a listing — the row is a placeholder, never a delete', async () => {
