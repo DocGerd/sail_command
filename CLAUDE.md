@@ -2287,10 +2287,6 @@ making design-level decisions; do not silently deviate.
   re-syncs, and queue or idle waiting together) was 55% of summed PR lifetime.
   Batch only members whose OWN `app`+`e2e` are green: #1487 inherited one
   member's CI-only red and had to be rebuilt without it as #1489.
-- **`gh pr merge --delete-branch` on a PR that another open PR uses as its
-  BASE closes that stacked PR instead of retargeting it** (measured at
-  #1567/#1568, v0.49.0). PATCH the stacked PR's `base` to `develop` first;
-  recovery is recreate the ref at the merged head, reopen, retarget, delete.
 - Multiple open PRs: develop in parallel, merge strictly serially — after each
   merge, re-sync the next branch from its base (`git merge origin/develop`, or
   `origin/main` for a hotfix/release PR) and let full CI (~10 min) re-run before
@@ -2326,6 +2322,11 @@ making design-level decisions; do not silently deviate.
   #956/#958/#959 -- #957 is an issue, not a PR) went onto one integration
   branch as PR #962, and merged as 21 commits over 27 files in ONE CI cycle
   instead of six.
+- **`gh pr merge --delete-branch` on a PR that another open PR uses as its
+  BASE closed that stacked PR instead of retargeting it** (#1567/#1568,
+  v0.49.0). Recovery, measured there: recreate the ref at the merged head,
+  reopen, retarget to `develop`, delete the ref. Retargeting the stacked PR
+  BEFORE merging its base should avoid it; that order is untested.
 
 ## Verification lessons (hard-won)
 
@@ -4488,9 +4489,7 @@ making design-level decisions; do not silently deviate.
   dangling anaphors and a claim contradicted inside its own hunk, while the
   reviewer found an acceptance check UNREACHABLE from inside the runbook;
   neither could have found the other's. It has no mutating tools, so brief it
-  to write a review JSON that the orchestrator posts. Brief it to stay narrow
-  and finish: in the v0.49.0 cycle two audits without that instruction ran for
-  hours, while two briefed with it returned in minutes.
+  to write a review JSON that the orchestrator posts.
 - If a session's OWN directives contradict that orchestrate-first mode, NAME the
   conflict in the FIRST response and ask which governs — never silently comply
   with either side. Silently obeying the restriction cost a full docs sweep plus
