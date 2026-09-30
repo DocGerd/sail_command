@@ -299,6 +299,9 @@ function edgeKeyCells(key: string): [Cell, Cell] {
       ];
 }
 
+// Coverage instrumentation pushes these past vitest's default budget.
+const MASK_WALK_TEST_TIMEOUT_MS = solverTimeoutMs(15_000);
+
 // Level lines are smoothed (#1540) by shortcutting the staircase, never by
 // moving it: a line keeps a subsequence of its own staircase vertices, and a
 // chord is taken only if it and every shorter chord from the same start stay
@@ -306,65 +309,80 @@ function edgeKeyCells(key: string): [Cell, Cell] {
 // Cells are classified here by cautiousDepthLowerBoundM, never by the pipeline.
 describe('#1540 smoothed level lines stay on the deep side of their staircase', () => {
   for (const levelM of CONTOUR_LEVELS_M) {
-    it(`level ${levelM} m: every segment lies in the closure of the at-or-above-level cells`, () => {
-      const deep = (cell: Cell): boolean =>
-        inGrid(cell) && atOrAboveLevel(byteAt(cell[0], cell[1]), levelM);
-      const segs = segmentsOf(levelFeature(levelM));
-      const violations: string[] = [];
-      let diagonal = 0;
-      for (const seg of segs) {
-        const { axis, cells } = chordCells(seg);
-        if (axis) {
-          for (let k = 0; k < cells.length; k += 2)
-            if (!deep(cells[k]!) && !deep(cells[k + 1]!))
-              violations.push(`${JSON.stringify(seg)} lies on an edge with no deep cell beside it`);
-        } else {
-          diagonal++;
-          const shallow = cells.filter((cell) => !deep(cell));
-          if (shallow.length > 0)
-            violations.push(
-              `${JSON.stringify(seg)} crosses shallow cells ${JSON.stringify(shallow)}`,
-            );
+    it(
+      `level ${levelM} m: every segment lies in the closure of the at-or-above-level cells`,
+      { timeout: MASK_WALK_TEST_TIMEOUT_MS },
+      () => {
+        const deep = (cell: Cell): boolean =>
+          inGrid(cell) && atOrAboveLevel(byteAt(cell[0], cell[1]), levelM);
+        const segs = segmentsOf(levelFeature(levelM));
+        const violations: string[] = [];
+        let diagonal = 0;
+        for (const seg of segs) {
+          const { axis, cells } = chordCells(seg);
+          if (axis) {
+            for (let k = 0; k < cells.length; k += 2)
+              if (!deep(cells[k]!) && !deep(cells[k + 1]!))
+                violations.push(
+                  `${JSON.stringify(seg)} lies on an edge with no deep cell beside it`,
+                );
+          } else {
+            diagonal++;
+            const shallow = cells.filter((cell) => !deep(cell));
+            if (shallow.length > 0)
+              violations.push(
+                `${JSON.stringify(seg)} crosses shallow cells ${JSON.stringify(shallow)}`,
+              );
+          }
         }
-      }
-      expect(
-        diagonal,
-        'no smoothed (non-axis) segment — the guard would be vacuous',
-      ).toBeGreaterThan(0);
-      expect(violations.slice(0, 5), `${violations.length} segments on the shallow side`).toEqual(
-        [],
-      );
-    });
+        expect(
+          diagonal,
+          'no smoothed (non-axis) segment — the guard would be vacuous',
+        ).toBeGreaterThan(0);
+        expect(violations.slice(0, 5), `${violations.length} segments on the shallow side`).toEqual(
+          [],
+        );
+      },
+    );
 
-    it(`level ${levelM} m: every vertex is a vertex of the level's staircase`, () => {
-      const vertices = new Set<string>();
-      for (const key of qualifyingLevelEdges(levelM)) {
-        const [kind, fixed, along] = key.split(':') as [string, string, string];
-        const f = Number(fixed);
-        const a = Number(along);
-        const ends = kind === 'H' ? [`${f}:${a}`, `${f}:${a + 1}`] : [`${a}:${f}`, `${a + 1}:${f}`];
-        ends.forEach((v) => vertices.add(v));
-      }
-      const stray: string[] = [];
-      for (const line of levelFeature(levelM).geometry.coordinates)
-        for (const p of line) {
-          const { row, col } = vertexIndex([p[0]!, p[1]!]);
-          if (!vertices.has(`${row}:${col}`)) stray.push(`${row}:${col}`);
+    it(
+      `level ${levelM} m: every vertex is a vertex of the level's staircase`,
+      { timeout: MASK_WALK_TEST_TIMEOUT_MS },
+      () => {
+        const vertices = new Set<string>();
+        for (const key of qualifyingLevelEdges(levelM)) {
+          const [kind, fixed, along] = key.split(':') as [string, string, string];
+          const f = Number(fixed);
+          const a = Number(along);
+          const ends =
+            kind === 'H' ? [`${f}:${a}`, `${f}:${a + 1}`] : [`${a}:${f}`, `${a + 1}:${f}`];
+          ends.forEach((v) => vertices.add(v));
         }
-      expect(stray.slice(0, 5), `${stray.length} vertices off the staircase`).toEqual([]);
-    });
+        const stray: string[] = [];
+        for (const line of levelFeature(levelM).geometry.coordinates)
+          for (const p of line) {
+            const { row, col } = vertexIndex([p[0]!, p[1]!]);
+            if (!vertices.has(`${row}:${col}`)) stray.push(`${row}:${col}`);
+          }
+        expect(stray.slice(0, 5), `${stray.length} vertices off the staircase`).toEqual([]);
+      },
+    );
 
-    it(`level ${levelM} m: every qualifying edge borders a cell a smoothed segment touches`, () => {
-      const touched = new Set<number>();
-      for (const seg of segmentsOf(levelFeature(levelM)))
-        for (const cell of chordCells(seg).cells) touched.add(cellKey(cell));
-      const expected = qualifyingLevelEdges(levelM);
-      expect(expected.size, 'expected edge set is empty').toBeGreaterThan(0);
-      const missing = [...expected].filter((key) =>
-        edgeKeyCells(key).every((cell) => !touched.has(cellKey(cell))),
-      );
-      expect(missing.slice(0, 5), `${missing.length} qualifying edges not covered`).toEqual([]);
-    });
+    it(
+      `level ${levelM} m: every qualifying edge borders a cell a smoothed segment touches`,
+      { timeout: MASK_WALK_TEST_TIMEOUT_MS },
+      () => {
+        const touched = new Set<number>();
+        for (const seg of segmentsOf(levelFeature(levelM)))
+          for (const cell of chordCells(seg).cells) touched.add(cellKey(cell));
+        const expected = qualifyingLevelEdges(levelM);
+        expect(expected.size, 'expected edge set is empty').toBeGreaterThan(0);
+        const missing = [...expected].filter((key) =>
+          edgeKeyCells(key).every((cell) => !touched.has(cellKey(cell))),
+        );
+        expect(missing.slice(0, 5), `${missing.length} qualifying edges not covered`).toEqual([]);
+      },
+    );
   }
 });
 
@@ -449,9 +467,6 @@ function compareToDeep(inside: Uint8Array, deep: Uint8Array) {
   return { shownDeepButShallow, shownShallowButDeep, deepCount, examples };
 }
 
-// Coverage instrumentation pushes these past vitest's default budget.
-const REGION_TEST_TIMEOUT_MS = solverTimeoutMs(15_000);
-
 // #1540: the region a level's lines enclose, closed by the deep cells' own
 // no-data and grid edges, must lie inside the at-or-above-level cells. This
 // is a point-in-polygon model independent of the pipeline's chord test.
@@ -459,7 +474,7 @@ describe('#1540 region: the area shown at or above a level is a subset of those 
   for (const levelM of CONTOUR_LEVELS_M) {
     it(
       `level ${levelM} m: control — the unsmoothed staircase encloses exactly the deep set`,
-      { timeout: REGION_TEST_TIMEOUT_MS },
+      { timeout: MASK_WALK_TEST_TIMEOUT_MS },
       () => {
         const deep = deepCells(levelM);
         const staircase: LatticeSegment[] = [...qualifyingLevelEdges(levelM)]
@@ -479,7 +494,7 @@ describe('#1540 region: the area shown at or above a level is a subset of those 
 
     it(
       `level ${levelM} m: the smoothed lines never show a shallow cell as deep`,
-      { timeout: REGION_TEST_TIMEOUT_MS },
+      { timeout: MASK_WALK_TEST_TIMEOUT_MS },
       () => {
         const deep = deepCells(levelM);
         const smoothed: LatticeSegment[] = segmentsOf(levelFeature(levelM)).map((seg) => {
