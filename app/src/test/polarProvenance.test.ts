@@ -119,6 +119,7 @@ describe('polar provenance is consistent across catalogue, pipeline source and s
 
   it('a borrower carries no tables of its own and shares its donor’s sail set', () => {
     const borrowers = source.boats.filter((b) => b.polarsFrom !== undefined);
+    expect(borrowers.map((b) => b.id)).toEqual(['salona-44-easy-go']);
     for (const b of borrowers) {
       expect(b.sails, `${b.id} declares sails beside polarsFrom`).toBeUndefined();
       const own = BOATS.find((x) => x.id === b.id)!.sails.map((x) => x.id);

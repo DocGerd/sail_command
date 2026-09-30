@@ -282,6 +282,12 @@
           ]
         }
       }
+    },
+    {
+      "id": "salona-44-easy-go",
+      "name": "Salona 44 (EASY GO!)",
+      "draftM": 2.59,
+      "polarsFrom": "salona-44-speedy-go"
     }
   ]
 }

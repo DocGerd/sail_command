@@ -170,6 +170,7 @@ GATE_DERIVATION_CASES: list[tuple[float, float]] = [
     (1.73, 2.7),
     (2.15, 3.1),
     (3.20, 4.1),
+    (2.59, 3.5),
 ]
 for _draft_m, _gate_m in GATE_DERIVATION_CASES:
     _got = default_gate_m(_draft_m)
@@ -349,9 +350,26 @@ KNOWN_DISCONNECTED: dict[str, str] = {
 # directions enforced in the per-boat loop) - a harbour genuinely unreachable
 # for a boat that is NOT listed here fails as an undocumented regression, and
 # a LISTED harbour that turns out reachable at that boat's gate fails as a
-# stale entry. So today's empty table is not a loophole: it commits every
-# catalogue boat to reaching every harbour it does today.
-EXPECTED_UNREACHABLE_BY_BOAT: dict[str, list[str]] = {}
+# stale entry. So an omitted boat is not a loophole: it commits that boat to
+# reaching every harbour it does today.
+EXPECTED_UNREACHABLE_BY_BOAT: dict[str, list[str]] = {
+    # EASY GO! (#1575, 2.59 m draft, gate 3.5 m). Exact-snap-cell verdicts, as
+    # for every boat here. The picker snaps within 300 m, so it reads seven of
+    # these as reachable; a snap-aware predicate is a follow-up.
+    "salona-44-easy-go": [
+        "aabenraa",
+        "augustenborg",
+        "burgstaaken",
+        "faldsled",
+        "fynshav",
+        "kolding",
+        "langballigau",
+        "marstal",
+        "nyborg",
+        "orth",
+        "rudkoebing",
+    ],
+}
 
 # Flag any harbor whose snap cell clears its own gate by less than this. A
 # binary gate cannot see a harbor that passes with nothing to spare, and two

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { BOATS, boatById, DEFAULT_BOAT_ID, DEFAULT_SAIL_IDS, type BoatDef } from './boats';
+import { defaultSafetyDepthM, minSafetyDepthM, relaxationFloorM } from '../lib/boatDepth';
 
 describe('boat catalogue', () => {
   // RETIRED ASSERTION 1 of 3 (#54 spec N.8) — was:
@@ -19,21 +20,22 @@ describe('boat catalogue', () => {
   // is a safety-critical record — it carries the draft that derives the mask
   // gate and the #53 relaxation floor — so membership stays pinned, only the
   // expected list moves.
-  const EXPECTED_BOAT_IDS = ['salona-45', 'salona-44-speedy-go', 'elan-444-piranja'];
+  const EXPECTED_BOAT_IDS = [
+    'salona-45',
+    'salona-44-speedy-go',
+    'elan-444-piranja',
+    'salona-44-easy-go',
+  ];
 
   it('ships exactly the catalogue spec N.1 authorises, in order', () => {
     expect(BOATS.map((b) => b.id)).toEqual(EXPECTED_BOAT_IDS);
   });
 
-  // Spec N.1 defers these two BY NAME, each because its derived gate drops
-  // harbours the picker cannot yet grey out (spec N.7). They are the entries
-  // most likely to be added by someone reading the spec's fleet table in §C.5
-  // without reaching §N.7, so name them rather than trust the list above to
-  // convey it. EASY GO! is the sharp case: it is a Salona 44 like SPEEDY GO!
-  // and a DIFFERENT HULL, 0.45 m deeper.
-  it('does not ship the two vessels spec N.7 defers', () => {
+  // Spec N.7 still defers the Grand Soleil 46 by name (EASY GO! shipped at
+  // #1575); name it rather than trust the list above to convey it.
+  it('does not ship the Grand Soleil spec N.7 defers', () => {
     const names = BOATS.map((b) => b.name).join(' | ');
-    expect(names).not.toContain('EASY GO!');
+    expect(names).toContain('EASY GO!');
     expect(names).not.toContain('Grand Soleil');
   });
 
@@ -149,6 +151,9 @@ describe('boat catalogue', () => {
       'salona-44-speedy-go/fock': 'estimated',
       'elan-444-piranja/genoa': 'estimated',
       'elan-444-piranja/fock': 'estimated',
+      // #1575: tier C by sharing SPEEDY GO!'s estimated tables (#567).
+      'salona-44-easy-go/genoa': 'estimated',
+      'salona-44-easy-go/fock': 'estimated',
     });
   });
 
@@ -176,8 +181,8 @@ describe('boat catalogue', () => {
       expect(b.draftProvenance.keel.length, `${b.id}`).toBeGreaterThan(0);
       expect(b.draftProvenance.note.length, `${b.id}`).toBeGreaterThan(0);
     }
-    // The two fleet vessels are explicitly NOT hull-verified: their drafts are
-    // the operator's published per-vessel tech sheets, which spec N.2 accepts
+    // The fleet vessels are explicitly NOT hull-verified: their drafts are
+    // per-vessel published figures, which spec N.2 accepts
     // as a cost rather than treating as satisfied (spec M.1 still asks for the
     // hull's own papers). Asserted per boat, not as a count, so a future entry
     // silently flipping to `true` without evidence reds here.
@@ -185,6 +190,7 @@ describe('boat catalogue', () => {
       'salona-45': true,
       'salona-44-speedy-go': false,
       'elan-444-piranja': false,
+      'salona-44-easy-go': false,
     });
     // BLOCKER 1's keeper on THIS side of the boundary. `draftProvenance` is a
     // REQUIRED BoatDef field, so a fleet entry that omits it is a type error —
@@ -212,6 +218,19 @@ describe('boat catalogue', () => {
 
   it('the Elan Impression 444 states its 1.90 m standard-keel draft', () => {
     expect(boatById('elan-444-piranja').draftM).toBe(1.9);
+  });
+
+  // #1575. The deeper of the 2.55-2.59 m source spread, as its own literal.
+  // The three derived depths are hand-written pins against the real functions:
+  // a draft edit moves the gate, the relaxation floor and the UI minimum.
+  it('EASY GO! states its 2.59 m deep-keel draft and derives 3.5 / 2.6 / 2.7 m', () => {
+    const b = boatById('salona-44-easy-go');
+    expect(b.draftM).toBe(2.59);
+    expect(defaultSafetyDepthM(b)).toBe(3.5);
+    expect(relaxationFloorM(b)).toBe(2.6);
+    expect(minSafetyDepthM(b)).toBe(2.7);
+    expect(b.draftProvenance.hullVerified).toBe(false);
+    expect(b.draftProvenance.note).toContain('No tech sheet is on file');
   });
 
   it('defaults to the Salona 45', () => {

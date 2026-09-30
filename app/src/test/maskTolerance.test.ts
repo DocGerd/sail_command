@@ -95,11 +95,23 @@ function measurement(value: number, locale: 'en' | 'de'): string {
   return `${locale === 'de' ? s.replace('.', ',') : s} m`;
 }
 
+// A DRAFT renders with up to two decimals ("2.1", "1.9", "2.59"): one decimal
+// would show EASY GO!'s 2.59 m keel as 2.6 m. Hand-written twin of
+// depthDisclosure.ts's formatDraftM, not an import of it.
+function draftMeasurement(value: number, locale: 'en' | 'de'): string {
+  let s = value.toFixed(2);
+  if (s.endsWith('0')) s = s.slice(0, -1);
+  return `${locale === 'de' ? s.replace('.', ',') : s} m`;
+}
+
 // Word-boundary-safe containment: `(?<!\d)`/`(?!\d)` stop "2.1 m" from
 // spuriously matching inside a longer number like "12.1 m" or "2.15 m" —
 // unlikely in this copy today, but the check should not depend on that.
 function containsMeasurement(text: string, value: number, locale: 'en' | 'de'): boolean {
-  const formatted = measurement(value, locale);
+  return containsText(text, measurement(value, locale));
+}
+
+function containsText(text: string, formatted: string): boolean {
   const escaped = formatted.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return new RegExp(String.raw`(?<!\d)${escaped}(?!\d)`).test(text);
 }
@@ -167,6 +179,7 @@ describe('#455: pipeline/build_mask.py TOLERANCE_M / disclosure cross-artifact g
   //     salona-45            2.1 →  3.0 / 2.1 / 1.2
   //     salona-44-speedy-go  2.1 →  3.0 / 2.1 / 1.2
   //     elan-444-piranja     1.9 →  2.8 / 1.9 / 1.0
+  //     salona-44-easy-go    2.59 → 3.5 / 2.59 / 1.7
   //
   // DISCRIMINATING EXPERIMENT, recorded so it is re-run rather than re-argued.
   // MEASURED 2026-08-18, each perturbation applied ALONE:
@@ -207,6 +220,8 @@ describe('#455: pipeline/build_mask.py TOLERANCE_M / disclosure cross-artifact g
       'salona-45': { gate: 3.0, draft: 2.1, floor: 1.2 },
       'salona-44-speedy-go': { gate: 3.0, draft: 2.1, floor: 1.2 },
       'elan-444-piranja': { gate: 2.8, draft: 1.9, floor: 1.0 },
+      // 2.59 → gate ceil(34.9) = 3.5; floor = ceil(2.59) − 0.9 = 2.6 − 0.9.
+      'salona-44-easy-go': { gate: 3.5, draft: 2.59, floor: 1.7 },
     };
 
     // Mirrors i18n/index.tsx's `t()` substitution. Deliberately a second
@@ -246,7 +261,10 @@ describe('#455: pipeline/build_mask.py TOLERANCE_M / disclosure cross-artifact g
           expect(text, 'the copy must name the boat whose numbers it states').toContain(boat.name);
           expect(containsMeasurement(text, toleranceM, lang), 'tolerance bound').toBe(true);
           expect(containsMeasurement(text, expected.gate, lang), 'derived default gate').toBe(true);
-          expect(containsMeasurement(text, expected.draft, lang), "this boat's draft").toBe(true);
+          expect(
+            containsText(text, draftMeasurement(expected.draft, lang)),
+            "this boat's draft",
+          ).toBe(true);
           expect(containsMeasurement(text, expected.floor, lang), 'relaxation floor').toBe(true);
         });
       }
@@ -351,7 +369,7 @@ describe('#54: per-boat catalogue generalises the #455 drift guard (spec C.8)', 
   // The retirement makes this block STRONGER, and it is worth naming exactly
   // how — the obvious answer is wrong. The header above records that at a
   // one-boat catalogue R2, R3 and R8 "iterate a single row and cannot fail
-  // differently from R6". Three boats carry two DISTINCT drafts (2.1 and 1.9),
+  // differently from R6". Three boats carried two DISTINCT drafts (2.1 and 1.9),
   // and what that buys is measured, not assumed:
   //
   //   MEASURED 2026-08-18, hardcoding defaultSafetyDepthM to `return 3.0`
@@ -368,12 +386,17 @@ describe('#54: per-boat catalogue generalises the #455 drift guard (spec C.8)', 
   // claim is false and was written here before it was run: it does NOT make
   // this block sensitive to the QUANTISER. Replacing ceilToDecimetre with
   // Math.round reds 5 rows and NOT ONE of them is in this describe block —
-  // every catalogue draft puts (draft + T) * 10 exactly on a whole decimetre
-  // (30.0, 30.0, 28.0), where ceil and round agree. Detecting a wrong
+  // every catalogue draft puts (draft + T) * 10 where ceil and round agree
+  // (30.0, 30.0, 28.0, and EASY GO!'s 34.9). Detecting a wrong
   // quantiser still belongs entirely to the SYNTHETIC probes in
   // boatDepth.test.ts (1.73, 2.25) and to verify_mask.py's
   // GATE_DERIVATION_CASES. Do not add a catalogue boat expecting to cover it.
-  const EXPECTED_BOAT_IDS = ['salona-45', 'salona-44-speedy-go', 'elan-444-piranja'];
+  const EXPECTED_BOAT_IDS = [
+    'salona-45',
+    'salona-44-speedy-go',
+    'elan-444-piranja',
+    'salona-44-easy-go',
+  ];
 
   it('R1: the catalogue matches the hand-written expected list', () => {
     expect(BOATS.map((b) => b.id)).toEqual(EXPECTED_BOAT_IDS);

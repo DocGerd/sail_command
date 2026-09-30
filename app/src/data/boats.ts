@@ -32,10 +32,9 @@ export interface SailDef {
  * spec N.2 requires this on the picker beside the provenance tier, never buried
  * in a JSON field. The hazard is measured, not hypothetical: EASY GO! and
  * SPEEDY GO! are the same model and were briefed as one 2.10 m pair, and EASY
- * GO! turns out to be the 2.55 m deep-keel hull. Shipping it on the model
- * default would have understated a real vessel's draft by 0.45 m and handed it
- * a gate 0.5 m too shallow, in the one field everything in spec C hangs on.
- * That vessel is deferred (spec N.7) rather than routed on an assumed hull.
+ * GO! turns out to be a deep-keel hull. Shipping it on the model default
+ * would have understated a real vessel's draft by about 0.5 m and handed it a
+ * gate 0.5 m too shallow, in the one field everything in spec C hangs on.
  *
  * NOT PERSISTED, and that is a known gap rather than an oversight (spec N.5):
  * `BoatSnapshot` carries `draftM` but no draft provenance, so a re-opened saved
@@ -124,14 +123,11 @@ const FOCK_NOTE =
 // containing a tier-C sail to `not-compared` rather than rank the two. That
 // suppression lives in the routing layer and is NOT implemented here.
 //
-// Both new gates derive to <= 3.0 m (1.90 m -> 2.8 m, 2.10 m -> 3.0 m), so no
-// harbour becomes unreachable for any boat and no new connectivity ceiling is
-// crossed — verified by a real pipeline/verify_mask.py run at all three gates,
-// 28/33 harbours at each. Deeper fleet boats (Grand Soleil 46 at 2.30 m, EASY
-// GO! at 2.55 m) DO drop harbours and are deferred until the picker can grey
-// them out (spec N.7); do not add them here.
+// PIRANJA and SPEEDY GO! derive gates <= 3.0 m. The deeper hulls drop harbours,
+// which the picker marks per harbour (#1135); EASY GO! (below) is the first
+// such entry, the Grand Soleil 46 is still deferred (spec N.7).
 //
-// `motorSpeedKn` and `maneuverPenaltyS` on the two fleet entries are the app's
+// `motorSpeedKn` and `maneuverPenaltyS` on the fleet entries are the app's
 // EXISTING defaults carried over unresearched, not per-hull figures — spec F.2
 // makes them per-boat defaults but requires no research, and none was done.
 // Named so the coincidence is not read as a finding. The one published datum
@@ -207,7 +203,7 @@ export const BOATS = [
       // derived against (TOLERANCE_M = 0.9 was CHOSEN so that 3.0 - 0.9 lands
       // exactly on it). Marked hull-verified: this is a model-level reference
       // entry with no individual vessel behind it, so there is no hull whose
-      // papers could disagree — unlike the two fleet entries below.
+      // papers could disagree — unlike the fleet entries below.
       hullVerified: true,
       note:
         "The app's reference boat: a boat model, not one individual vessel, so there is no " +
@@ -234,8 +230,8 @@ export const BOATS = [
   },
   {
     // Spec N.1. One entry per named VESSEL (OQ-4), and the id says so: EASY
-    // GO! is the SAME MODEL and a DIFFERENT HULL (2.55 m deep keel, spec N.2)
-    // and will land as `salona-44-easy-go`. A model-shaped `salona-44` would
+    // GO! is the SAME MODEL and a DIFFERENT HULL (deep keel, spec N.2) and is
+    // `salona-44-easy-go`. A model-shaped `salona-44` would
     // have read as the class while permanently denoting one hull — and the id
     // is persisted inside every plan's boat snapshot and drives the polar
     // asset filenames, so it is cheap to get right now and effectively
@@ -246,15 +242,9 @@ export const BOATS = [
     // safety error" that spec L rejected the keel-variant picker over,
     // arriving through the sister-ship door instead.
     //
-    // KNOWN CONFLICT, tracked as #567 rather than left in a PR body: OQ-4 says
-    // sister ships SHARE a polar asset, and that is not expressible today —
-    // verifyMaskBoatGate.test.ts requires the catalogue and pipeline boat-id
-    // sets to be identical in both directions (for the stronger spec C.6
-    // reason that no boat may ship without a verify_mask.py run at its own
-    // derived gate), so a per-vessel entry implies a per-vessel polar file.
-    // Harmless while no sister pair is in scope; a real conflict the moment
-    // EASY GO! lands, because the two hulls would then carry duplicate tables
-    // that can drift apart silently.
+    // OQ-4's sister-ship sharing: EASY GO! borrows this boat's polar assets
+    // (`polarsFrom` in pipeline/polars-source.json, #567) while keeping its own
+    // catalogue entry and its own verify_mask.py gate scan.
     id: 'salona-44-speedy-go',
     name: 'Salona 44 (SPEEDY GO!)',
     // Its own literal, deliberately. Spec L has a row on exactly this: 2.10 m
@@ -269,7 +259,7 @@ export const BOATS = [
       note:
         'Standard keel, 2.10 m, from the operator’s published tech sheet for this vessel ' +
         '(built 2014). Not checked against the hull’s own papers. Its sister ship EASY GO! ' +
-        'is the same model on the 2.55 m deep keel, which is why the keel is stated per vessel ' +
+        'is the same model on a deeper keel, which is why the keel is stated per vessel ' +
         'rather than per model.',
     },
     motorSpeedKn: 6.5,
@@ -326,6 +316,45 @@ export const BOATS = [
         label: 'Jib',
         polarAsset: 'data/polars/elan-444-piranja-fock.json',
         polarProvenance: { tier: 'estimated', note: ELAN_FOCK_NOTE },
+      },
+    ],
+  },
+  {
+    // #1575, tier C like SPEEDY GO! and PIRANJA. Same model as SPEEDY GO! on
+    // the deep keel: polar assets and sanity anchors are SPEEDY GO!'s
+    // (`polarsFrom`, #567), so `polarAsset` points at its files and the two
+    // polar notes are byte-identical to its notes. The estimate has no keel
+    // term, so the deeper hull is not modelled in the speeds.
+    id: 'salona-44-easy-go',
+    name: 'Salona 44 (EASY GO!)',
+    // Sources spread 2.55-2.59 m (spec §M.8) and
+    // the deeper figure is taken, since a draft too shallow is the unsafe
+    // direction. Its own literal, never SPEEDY GO!'s 2.10 m.
+    draftM: 2.59,
+    draftProvenance: {
+      keel: 'deep racing keel',
+      hullVerified: false,
+      note:
+        'Deep (racing) keel, 2.59 m. Sources put this hull between 2.55 m and 2.59 m; the ' +
+        'deeper figure is used so the derived depth gate is not too shallow. No tech sheet is ' +
+        'on file (multi-boat design spec, §N.2 and §M.8) and the figure was not checked against ' +
+        'the hull’s own papers. Its polar table is the estimate for its sister ship SPEEDY GO!, ' +
+        'which has no keel term, so the deeper keel is not modelled in the speeds.',
+    },
+    motorSpeedKn: 6.5,
+    maneuverPenaltyS: 45,
+    sails: [
+      {
+        id: 'genoa',
+        label: 'Genoa',
+        polarAsset: 'data/polars/salona-44-speedy-go-genoa.json',
+        polarProvenance: { tier: 'estimated', note: S44_GENOA_NOTE },
+      },
+      {
+        id: 'fock',
+        label: 'Jib',
+        polarAsset: 'data/polars/salona-44-speedy-go-fock.json',
+        polarProvenance: { tier: 'estimated', note: S44_FOCK_NOTE },
       },
     ],
   },
@@ -401,7 +430,7 @@ export function sailIdsOf(boat: BoatDef): readonly SailId[] {
 // boat through `sailIdsOf(boat)`.
 //
 // This says DEFAULT boat, and since #54's spec-N amendment that is no longer
-// the same thing as "the only boat" — the catalogue now holds three. The
+// the same thing as "the only boat" — the catalogue holds several. The
 // earlier note here read "today there is exactly one boat, so this and
 // boatById(DEFAULT_BOAT_ID).sails name the same set"; that equivalence is gone
 // and the DEFAULT_BOAT_ID lookup is now load-bearing rather than incidental.

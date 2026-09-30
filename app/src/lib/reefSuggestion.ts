@@ -30,12 +30,12 @@
 // new wind sampling of its own, so there is no clock to get wrong.
 //
 // BOAT-SPECIFIC CONFIDENCE. Only the Salona 45 is `hullVerified`, with
-// certificate-anchored polars; the other two catalogue boats are tier-C
+// certificate-anchored polars; the other catalogue boats are tier-C
 // polar estimates. The THRESHOLDS themselves are NOT derived from any boat's
 // polar at all — they are generic seamanship guidance for a monohull in this
-// fleet's size class (all three boats are 44-45 ft cruising yachts), which is
-// why the same threshold set and the same caveat apply identically to all
-// three boats, unlike the two-rig ★ comparison (which IS suppressed for
+// fleet's size class (the catalogue boats are 44-45 ft cruising yachts), which is
+// why the same threshold set and the same caveat apply identically to every
+// boat, unlike the two-rig ★ comparison (which IS suppressed for
 // tier-C boats because it depends on the polar itself, #54). But the AWS
 // ESTIMATE fed into those thresholds is NOT polar-independent: it consumes
 // `leg.speedKn`, which the router derived from the boat's own polar. A 1 kn

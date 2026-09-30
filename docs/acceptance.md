@@ -94,16 +94,17 @@ results table at the bottom, and note it in the box below the check.
       timestamp anywhere; the notice's own hour count (§2.8) is the only
       fetch-to-departure figure it ever prints.
 - [ ] **Boat selection.** Open the **Boat** tab → "Boat selection" and confirm the
-      catalogue offers all three boats — Salona 45, Salona 44 (SPEEDY GO!),
-      Elan Impression 444 (PIRANJA) — each showing its draft (2.1 / 2.1 /
-      1.9 m: the first two genuinely share a draft, it is not a duplicated
-      entry) and a "Polar data & provenance" disclosure whose tier chip reads
-      Certificate or Modelled for the Salona 45 and Estimated for both fleet
-      boats. Every boat — the Salona 45 included — also shows a note saying
-      where its stated draft comes from, set off by its own left border;
-      only the two fleet boats carry the assumed-keel caveat above it, and
-      on those two the border is what keeps the two notes from reading as
-      one run-on paragraph (#701). Pick the boat for this run and record it
+      catalogue offers all four boats — Salona 45, Salona 44 (SPEEDY GO!),
+      Elan Impression 444 (PIRANJA), Salona 44 (EASY GO!) — each showing its
+      draft (2.1 / 2.1 / 1.9 / 2.59 m: the first two genuinely share a
+      draft, it is not a duplicated entry) and a "Polar data & provenance"
+      disclosure whose tier chip reads Certificate or Modelled for the
+      Salona 45 and Estimated for the three fleet boats (EASY GO! shares
+      SPEEDY GO!'s estimated tables). Every boat — the Salona 45 included —
+      also shows a note saying where its stated draft comes from, set off by
+      its own left border; only the three fleet boats carry the assumed-keel
+      caveat above it, and on those three the border is what keeps the two
+      notes from reading as one run-on paragraph (#701). Pick the boat for this run and record it
       in §5.
 - [ ] **Per-boat harbour access disclosure and boat-switch announcement
       (#1291/#1292/#1293).** Still on the Boat tab, each boat's own card
@@ -173,7 +174,8 @@ results table at the bottom, and note it in the box below the check.
       appear on Arnis/Kappeln/etc. — those already carry the stronger
       known-disconnected note instead. With a fleet boat selected (SPEEDY
       GO! or PIRANJA) and the safety-depth field set to that boat's own
-      default (2.8 m for PIRANJA, 3.0 m for SPEEDY GO! — selecting the
+      default (2.8 m for PIRANJA, 3.0 m for SPEEDY GO!; EASY GO!'s 3.5 m
+      gate reads Marstal as not reachable instead — selecting the
       boat alone does not get you there, since spec C.7's clamp only ever
       raises the live setting, never lowers it), search "Marstal" as
       either origin or destination: its option carries a second line,
@@ -337,7 +339,8 @@ selected in §1.
       tripped on 61.5 % of non-relaxed plans at shipped defaults in the #455
       measurement. It never appears together with the relaxed-route shallow
       banner. If you lower the safety depth below the boat's own default
-      gate (draft + 0.9 m: 3.0 m for either Salona, 2.8 m for the Elan) and
+      gate (draft + 0.9 m: 3.0 m for the Salona 45 and SPEEDY GO!, 2.8 m for
+      the Elan, 3.5 m for EASY GO!) and
       re-plan, the same line renders in a stronger, assertive form — it
       opens with "Caution:" and closes with "— at this setting that reading
       can fall below this boat's … m draft". Also correct behaviour, and

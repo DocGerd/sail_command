@@ -364,14 +364,16 @@ await page.screenshot({ path: 'docs/screenshots/start-view.png' });
 // fixed via `.boat-option-harbors-slot` in app.css. The residual 150.1px
 // this constant now absorbs is legitimate added content (three collapsed
 // summary rows this feature introduces), not a layout bug.
-// 1380px covers it with ~50px to spare, enough for all three
-// catalogue boats (name, draft, polar-provenance tier, draft-source note,
-// the #1292 harbour-access summary, and — on the two non-hullVerified
-// boats — the assumed-keel disclosure) plus the #746 MMSI field and its
+// RE-MEASURED for #1575 (EASY GO!, a fourth card; content growth, not a
+// layout bug), same flow: the card bottom moved 1330.1 -> 1581.7px.
+// 1640px covers it with ~58px to spare, enough for every catalogue boat
+// (name, draft, polar-provenance tier, draft-source note, the #1292
+// harbour-access summary, and — on the non-hullVerified boats — the
+// assumed-keel disclosure) plus the #746 MMSI field and its
 // help text, to render with no internal scroll. Boat-tab-only, for the
 // same reason the 1000px start-view bump above is start-view-only: nothing
 // else needs this much vertical room.
-const BOAT_SELECTION_HEIGHT_PX = 1380;
+const BOAT_SELECTION_HEIGHT_PX = 1640;
 await page.setViewportSize({ width: 1280, height: BOAT_SELECTION_HEIGHT_PX });
 await page.getByRole('tab', { name: 'Boat' }).click();
 // Static, no plan/network dependency (unlike plan-route.png below), so a

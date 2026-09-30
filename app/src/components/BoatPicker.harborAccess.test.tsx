@@ -229,9 +229,9 @@ describe('#1292 announcement: ONE merged live region, in order', () => {
 describe('#1325 (#1135 §5.4): endpoint-unreachable clause in the switch announcement', () => {
   // MEASURED against the real committed mask (computeHarborAccess, not
   // re-quoted here): every catalogue boat reads augustenborg AND
-  // burgstaaken 'unreachable' at 4.0 m — a DEFAULT-gate switch never does
-  // (harborReachability.test.ts's own "0 unreachable" row), so 4.0 m is
-  // what exercises this clause. Neither boat below clamps at 4.0 m (both
+  // burgstaaken 'unreachable' at 4.0 m. A default switch among the boats
+  // gated <= 3.0 m never reaches it (boatSwitchHarborAccess.test.ts), so 4.0 m
+  // exercises this clause for them. Neither boat below clamps at 4.0 m (both
   // defaults sit well under it), so these four tests isolate the new
   // clause from the existing clamp-ordering ones above.
   it('announces a selected ORIGIN that becomes unreachable for the new boat', async () => {
