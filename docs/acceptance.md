@@ -422,9 +422,10 @@ selected in §1.
       than from a broken control, and is a PASS: the default gate is
       exactly draft + 0.9 m and a relaxed route's used depth is at least a
       decimetre below the gate, so the cautious reading is always below the
-      draft. To see the shorter sentence, raise the safety depth well
+      draft. To see the shorter sentence, raise the safety depth
       above the boat's default
-      (e.g. 3.5 m on a Salona) and re-plan; if the router then relaxes only
+      (e.g. 4.0 m, above every catalogue boat's default gate — the highest
+      is EASY GO!'s 3.5 m) and re-plan; if the router then relaxes only
       part-way — to a used depth still at or above the boat's own default
       gate — the shorter wording is what you get.
       NOTE — on PIRANJA, §1's boat pick does NOT leave you at that boat's
