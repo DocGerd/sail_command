@@ -6,7 +6,7 @@
 // site across RouteSummary.tsx/LiveView.tsx/BoatPicker.tsx/DepthProfile.tsx
 // now goes through.
 import { describe, it, expect } from 'vitest';
-import { formatDepthM, depthMaskCaveatVars } from './depthDisclosure';
+import { formatDepthM, formatDraftM, depthMaskCaveatVars } from './depthDisclosure';
 import { boatById } from '../data/boats';
 
 describe('formatDepthM', () => {
@@ -45,6 +45,35 @@ describe('formatDepthM', () => {
   });
 });
 
+// #1575: a DRAFT shows up to two decimals and never rounds DOWN (a draft must
+// not read shallower than it is); formatDepthM's one decimal would show the
+// 2.59 m keel as 2.6 m.
+describe('formatDraftM', () => {
+  it.each([
+    [2.1, '2.1', '2,1'],
+    [1.9, '1.9', '1,9'],
+    [3, '3.0', '3,0'],
+    // 2.2 * 100 is 220.00000000000003: without the nudge it would ceil to 2.21.
+    [2.2, '2.2', '2,2'],
+    [2.55, '2.55', '2,55'],
+    [2.59, '2.59', '2,59'],
+  ])('renders %s as the exact value at up to two decimals', (draft, en, de) => {
+    expect(formatDraftM(draft, 'en')).toBe(en);
+    expect(formatDraftM(draft, 'de')).toBe(de);
+  });
+
+  // Rounds UP to 0.01; the third-decimal inputs are chosen so that
+  // round-to-nearest would give the other answer in each pair.
+  it.each([
+    [2.501, '2.51'],
+    [2.504, '2.51'],
+    [2.589, '2.59'],
+    [2.591, '2.6'],
+  ])('rounds %s UP to two decimals, never down', (draft, en) => {
+    expect(formatDraftM(draft, 'en')).toBe(en);
+  });
+});
+
 describe('depthMaskCaveatVars', () => {
   // Regression check: extending formatDepthM's signature with a defaulted
   // third parameter must not change this existing, unrelated caller's
@@ -59,5 +88,12 @@ describe('depthMaskCaveatVars', () => {
     for (const key of ['tolerance', 'gate', 'draft', 'floor'] as const) {
       expect(vars[key]).toMatch(/^\d+,\d$/);
     }
+  });
+
+  it('renders EASY GO!’s 2.59 m draft to two decimals beside one-decimal depths', () => {
+    const vars = depthMaskCaveatVars(boatById('salona-44-easy-go'), 'de');
+    expect(vars.draft).toBe('2,59');
+    expect(vars.gate).toBe('3,5');
+    expect(vars.floor).toBe('1,7');
   });
 });

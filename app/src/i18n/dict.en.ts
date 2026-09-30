@@ -1177,8 +1177,8 @@ export const en = {
   // its own draft, {floor} its #53 relaxation floor's cautious reading
   // (draft − tolerance), never the UI-minimum floor. The gate clause claims
   // only that the floor never falls BELOW the draft — an inequality true for
-  // every boat by construction (spec C.3); the two coincide for all three
-  // catalogue boats today but a ceiling-rounded draft would separate them.
+  // every boat by construction (spec C.3); the two coincide for the 2.1 and
+  // 1.9 m boats but a ceiling-rounded draft (EASY GO!'s 2.59 m) separates them.
   'about.caveats.depthMask':
     'Depth values blend two readings of the same EMODnet bathymetry data: the smoothed reading is used only where it agrees with the more cautious one to within {tolerance} m, so the depth value the app uses is never more than {tolerance} m deeper than the cautious reading — that bounds the source data, not the real seabed. A cell the router plans through at safety depth G has a cautious reading of at least G − {tolerance} m. The default safety depth for the {boat} is {gate} m, set so that this floor never falls below its {draft} m draft — but it can be as little as {floor} m where a route falls back to a shallower depth to stay connected, flagged on the resulting route.',
   'about.dataSize':

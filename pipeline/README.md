@@ -93,6 +93,17 @@ and boat `a` with sail `b-c` are two legal, distinct, non-duplicate ids that
 resolve to the same `a-b-c.json`. Neither check subsumes the other: two boats
 sharing an id with disjoint sail sets collide on no filename at all.
 
+#### Sister ships — `polarsFrom` (#567)
+
+A vessel of the same hull model on a different keel declares
+`{ "id", "name", "draftM", "polarsFrom": "<donor boat id>" }` and nothing
+else. It emits no polar files: the catalogue points its `polarAsset`s at the
+donor's, and the donor's sanity anchors validate the shared table. Its own
+`draftM` still drives `verify_mask.py`'s gate scan. The build aborts on a
+non-string or unknown `polarsFrom`, a self-reference, a borrower as donor, any
+table key (`tws`, `twa`, `beat`, `gybe`, `sails`, `validation`) beside
+`polarsFrom`, and a missing `draftM`. A borrower cannot be an estimator base.
+
 #### Estimated (tier C) tables — `estimate_polars.mjs`
 
 No ORC/IRC certificate and no published VPP was obtainable for any Skipperteam

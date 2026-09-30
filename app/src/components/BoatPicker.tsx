@@ -5,7 +5,7 @@ import { type Lang, useLang, useT } from '../i18n';
 import { clampSettingsToBoat } from '../lib/boatSettings';
 import { defaultSafetyDepthM } from '../lib/boatDepth';
 import { POLAR_TIER_LABEL_KEY, weakestPolarTier } from '../lib/boatProvenance';
-import { formatDepthM } from '../lib/depthDisclosure';
+import { formatDepthM, formatDraftM } from '../lib/depthDisclosure';
 import {
   computeHarborAccess,
   findLowerSettingHint,
@@ -84,7 +84,7 @@ function scheduleIdle(work: () => void): { cancel: () => void } {
  * already mounted, and lazily even then — §9's cost note ("a per-hull
  * classification is ~1 s… compute off the main thread or in idle slices")
  * is why a non-selected row does not compute at all until an idle tick, so
- * three boats don't pay their worst-case cost in the same render.
+ * the boats don't pay their worst-case cost in the same render.
  * `computeHarborAccess` is itself memoised per (mask, harbors, boat.id,
  * depth), so calling it again on every render of the eager path is cheap
  * after the first.
@@ -299,13 +299,12 @@ interface ClampNotice {
  * endpoint row (§5.3) — so re-announcing it on every switch would be noise
  * about a fact the switch did not change.
  *
- * #1393: at a plain default-settings switch this clause does not fire
- * against the currently shipped catalogue/mask — pinned by
- * `app/src/test/boatSwitchHarborAccess.test.ts` (0 unreachable at both real
- * default depths, for every boat) and
- * `BoatPicker.harborAccess.test.tsx`'s #1325 describe block (4.0 m, well
- * above either default, is the shallowest depth that reaches it) — a mask or
- * catalogue change that flips this reds those tests. */
+ * #1393/#1575: at a plain default-settings switch this clause fires only for
+ * a switch INTO EASY GO!, whose 3.5 m default gate leaves augustenborg and
+ * marstal unreachable — pinned by `app/src/test/boatSwitchHarborAccess.test.ts`
+ * and end to end by `app/e2e/harbor-access-markers.spec.ts`. Among the boats
+ * gated <= 3.0 m it never fires; `BoatPicker.harborAccess.test.tsx`'s #1325
+ * describe block covers the clause's wording at 4.0 m. */
 function endpointUnreachableClause(
   harborId: string | null,
   endpointLabelKey: 'planner.origin.label' | 'planner.destination.label',
@@ -513,7 +512,7 @@ function BoatOption({ boat, selected, onSelect, mask, harbors, liveDepthM }: Boa
         <span className="boat-option-name">{boat.name}</span>
         <span className="boat-option-facts">
           <span className="boat-option-draft tabular-nums">
-            {t('boat.draft', { depth: formatDepthM(boat.draftM, lang) })}
+            {t('boat.draft', { depth: formatDraftM(boat.draftM, lang) })}
           </span>
           {/* The tier word alone ("Estimated") does not say what is estimated,
               so the accessible name spells the subject out while the visible
@@ -588,7 +587,7 @@ function BoatOption({ boat, selected, onSelect, mask, harbors, liveDepthM }: Boa
       {/* #1292 (#1135 §5.1/§13 item 3): per-boat harbour access. THREE render
           states, in this order: PENDING while `mask`/`harbors` haven't
           loaded yet, or — for a non-selected boat — before its own deferred
-          derivation has run (§9: computing all three boats synchronously up
+          derivation has run (§9: computing every boat synchronously up
           front could cost ~1s each, so a non-selected row's own
           `computeHarborAccess` call is deferred to an idle tick); a ONE-LINE
           no-disclosure summary when nothing beyond `known-disconnected` is
@@ -735,7 +734,7 @@ export default function BoatPicker({
   // the DOM mutation but BEFORE that paint, closing the flash while still
   // seeing the real (post-commit, non-empty) box `useEffect` did. REASONED,
   // NOT MEASURED: this rests on React's documented effect-timing contract,
-  // not on an observed flash — the real catalogue has only 3 boats, so the
+  // not on an observed flash — the real catalogue is small, so the
   // notice already sits fully in view with nothing to visibly scroll past,
   // and no tool available here captures frame-level paint timing to show
   // the difference on a card that DOES overflow.

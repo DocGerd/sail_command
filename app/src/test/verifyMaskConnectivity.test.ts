@@ -175,8 +175,8 @@ function readKnownDisconnected(): Set<string> {
  * out of the Python source, same twin idiom as `readConnectivityExceptions`/
  * `readKnownDisconnected` above.
  *
- * UNLIKE those two, an EMPTY table is the legitimate today's-catalogue
- * state (#1294's own issue text), so `.size > 0` cannot guard against a
+ * UNLIKE those two, an EMPTY table is a legitimate state (it was until
+ * #1575, per #1294's own issue text), so `.size > 0` cannot guard against a
  * silently-broken entry regex here. Instead every top-level `"boat-id":
  * [...]` entry is stripped from the captured block; whatever is left over
  * (after dropping blank lines and `#` comments) must be empty, or this
@@ -220,7 +220,7 @@ function readExpectedUnreachableByBoat(): Map<string, Set<string>> {
  * boat-independently KNOWN_DISCONNECTED needs no per-boat entry. Extracted
  * to a pure function, mirroring pipeline/verify_mask.py's
  * `structural_failures`, so STRUCTURAL_CASES below can drive it against a
- * synthetic fixture rather than only the real (today empty) table.
+ * synthetic fixture rather than only the real table.
  */
 function structuralFailures(
   table: Map<string, Set<string>>,
@@ -369,10 +369,10 @@ describe('#550: mask connectivity is a REQUIRED check (promoted from advisory ve
    * one string per failing harbor; an empty array is the pass case.
    *
    * `expectedUnreachable` defaults to this boat's real, file-read entries
-   * (empty for every catalogue boat today) but can be overridden — the
+   * (only EASY GO! has any) but can be overridden — the
    * verifyMaskExpectedUnreachable describe block below does exactly that,
    * with a synthetic deep-draft boat, to exercise the ACCEPT and MISSING
-   * directions this real table cannot reach while it is empty.
+   * directions independently of the real table.
    */
   function connectivityFailures(
     boat: BoatDef,
@@ -423,11 +423,13 @@ describe('#550: mask connectivity is a REQUIRED check (promoted from advisory ve
     // measured first divergence and is used here) so an 8-conn substitution
     // reds this block again. RE-VERIFIED after #564/#565 grew the catalogue
     // to three boats across two gates (3.0 m, 2.8 m): the required
-    // `it.each(BOATS)` loop below still does NOT catch the 8-conn mutation on
+    // `it.each(BOATS)` loop below still did NOT catch the 8-conn mutation on
     // its own — 2.8 m (and the 2.0 m marstal exception gate it uses) is not a
     // divergence point on this mask either, so it stayed 3/3 green under the
-    // same mutation that reds these three rows. These three rows remain the
-    // ONLY thing standing between an 8-conn regression and a silent pass.
+    // same mutation that reds these three rows. #1575's 3.5 m gate changes
+    // that: rudkoebing's first-divergence gate is 3.5 m and EASY GO! lists it
+    // as expected-unreachable, so the 8-conn mutation turns that entry stale
+    // and reds the EASY GO! loop row too (4 failed: these three plus it).
     const SAMPLE: ReadonlyArray<readonly [string, number]> = [
       ['flensburg', 3.0],
       ['aabenraa', 3.0],
@@ -474,6 +476,29 @@ describe('#550: mask connectivity is a REQUIRED check (promoted from advisory ve
       expect(connectivityFailures(boat)).toEqual([]);
     },
   );
+
+  // #1575: the real table's content, pinned by a hand-written twin. Exactness
+  // in both directions is already enforced by the `it.each(BOATS)` loop above;
+  // this row names WHAT the table holds, so emptying or widening it is a
+  // reviewed edit rather than a silent one. These are the exact-snap-cell
+  // verdicts (`verify_mask.py`), stricter than the picker's snap-within-300 m
+  // states (`harborReachability.test.ts`'s EXPECTED_ACCESS).
+  it('the real table lists exactly EASY GO!’s eleven exact-snap unreachable harbours', () => {
+    expect([...EXPECTED_UNREACHABLE_BY_BOAT.keys()]).toEqual(['salona-44-easy-go']);
+    expect([...EXPECTED_UNREACHABLE_BY_BOAT.get('salona-44-easy-go')!].sort()).toEqual([
+      'aabenraa',
+      'augustenborg',
+      'burgstaaken',
+      'faldsled',
+      'fynshav',
+      'kolding',
+      'langballigau',
+      'marstal',
+      'nyborg',
+      'orth',
+      'rudkoebing',
+    ]);
+  });
 
   // "Prove the guard can fail" (CLAUDE.md): a fixture boat drafted deep
   // enough to strand most of the fleet — never added to BOATS — is reported
@@ -530,13 +555,12 @@ describe('#550: mask connectivity is a REQUIRED check (promoted from advisory ve
     },
   );
 
-  // #1294 (spec 1135 §13 item 5): today's real EXPECTED_UNREACHABLE_BY_BOAT
-  // table is EMPTY (no catalogue boat's gate strands anything), so the
-  // ACCEPT and MISSING-entry directions are DEAD CODE against it — these
-  // tests exercise `connectivityFailures`'s second parameter directly, with
-  // the SAME 7.1 m fixture boat's real stranded-harbour population, to prove
-  // the mechanism the real table will lean on once #573 lands a deep hull.
-  describe("EXPECTED_UNREACHABLE_BY_BOAT exactness (uses connectivityFailures' override parameter, not the real empty table)", () => {
+  // #1294 (spec 1135 §13 item 5): the real EXPECTED_UNREACHABLE_BY_BOAT
+  // table lists only EASY GO!'s exact-snap set (#1575), so these tests
+  // exercise `connectivityFailures`'s second parameter directly, with the
+  // SAME 7.1 m fixture boat's real stranded-harbour population, to prove the
+  // mechanism in isolation from that table.
+  describe("EXPECTED_UNREACHABLE_BY_BOAT exactness (uses connectivityFailures' override parameter, not the real table)", () => {
     // The exact set of harbours FIXTURE_DEEP_DRAFT_BOAT cannot reach, derived
     // the same way the REQUIRED loop above does (empty override — no table
     // entry can hide a failure here) — never hand-listed, so a harbour-list
@@ -595,7 +619,7 @@ describe('#550: mask connectivity is a REQUIRED check (promoted from advisory ve
 
   // #1318: structuralFailures' three rejections, each proven independently
   // against a synthetic fixture — mirrors pipeline/verify_mask.py's
-  // STRUCTURAL_CASES, never the real (today empty) EXPECTED_UNREACHABLE_BY_BOAT.
+  // STRUCTURAL_CASES, never the real EXPECTED_UNREACHABLE_BY_BOAT.
   describe('structuralFailures (#1318, synthetic fixture)', () => {
     it('ACCEPT: a real, non-known-disconnected boat/harbour pair clears the check', () => {
       expect(

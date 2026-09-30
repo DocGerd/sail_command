@@ -9,7 +9,7 @@ import {
   formatTime,
 } from '../lib/format';
 import { toGpx } from '../lib/gpx';
-import { formatDepthM } from '../lib/depthDisclosure';
+import { formatDepthM, formatDraftM } from '../lib/depthDisclosure';
 import { cautiousDepthLowerBoundM, MASK_TOLERANCE_M, type NavMask } from '../lib/mask';
 import { PORT_COLOR, STARBOARD_COLOR } from '../lib/mapColors';
 import {
@@ -185,7 +185,7 @@ export function MarginalDepthNotice({ plan, legs }: { plan: Plan; legs?: Leg[] |
         // {draft} slot exactly — both places the same number appears now
         // resolve the German decimal-comma question the SAME way, together.
         requested: formatDepthM(gateM, lang),
-        draft: formatDepthM(draftM, lang),
+        draft: formatDraftM(draftM, lang),
       })}
     </p>
   );
