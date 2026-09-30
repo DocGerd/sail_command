@@ -70,8 +70,9 @@ import type { Harbor, LatLon, MaskMeta, SeamarkProperties, ViaPoint } from '../t
  * the same corner. `app.css`'s #909 comment carries the margin table.
  */
 export const MAP_CHROME_TOP_PX = 8;
-// Twin of `.data-layer-controls`' vertical padding (0.5rem each side, app.css).
-const CLUSTER_PADDING_PX = 16;
+// Twin of `.data-layer-controls`' vertical padding (0.5rem each side, app.css);
+// pinned by `app/src/test/toastCompensationTwin.test.ts`.
+export const CLUSTER_PADDING_PX = 16;
 
 // Always-mounted host for the plan-independent map data layers (#38 harbor
 // markers, #39 depth overlay). Deliberately a SIBLING of RouteLayer, not part

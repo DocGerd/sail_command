@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.49.0] - 2026-09-30
+
+### Changed
+
+- The map legend now explains the `*` forced-segment mark whenever the route has one, and the refusal for segment modes that cannot merge names every waypoint you need to fix (#1251).
+
+### Fixed
+
+- The map scale bar now hides or moves when the map options panel is opened or closed by hand, instead of overlapping it (#1552).
+- Changing only a segment's motor/sail mode on a loaded route no longer collapses the map options panel or resets its legend (#1553).
+- With a route loaded, the depth and seamark checkboxes on the map line up with their labels (#1558).
+
 ## [0.48.0] - 2026-09-29
 
 ### Changed
@@ -1218,7 +1230,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.48.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.49.0...HEAD
+[0.49.0]: https://github.com/DocGerd/sail_command/compare/v0.48.0...v0.49.0
 [0.48.0]: https://github.com/DocGerd/sail_command/compare/v0.47.0...v0.48.0
 [0.47.0]: https://github.com/DocGerd/sail_command/compare/v0.46.0...v0.47.0
 [0.46.0]: https://github.com/DocGerd/sail_command/compare/v0.45.0...v0.46.0

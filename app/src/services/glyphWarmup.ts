@@ -53,7 +53,7 @@ function whenControlled(): Promise<void> {
   });
 }
 
-function whenIdle(): Promise<void> {
+export function whenIdle(): Promise<void> {
   return new Promise((resolve) => {
     if ('requestIdleCallback' in window) {
       // The timeout caps how long first-load work (map style parse, asset

@@ -50,7 +50,7 @@ describe('#1232 dedupe-merge mode rule', () => {
   });
 
   // Each refused row would force (extend) or clear (free) ~2 km of water that
-  // no one marked. The first dropped via of the run is d1, input index 1.
+  // no one marked. The run's dropped vias are d1 and d2, input indices 1 and 2.
   it.each<[string, Modes]>([
     ['a mode on the first (40 m) member only', [null, 'motor', null, null, 'sail']],
     ['a mode on the middle (80 m) member only', [null, null, 'sail', null, null]],
@@ -58,7 +58,7 @@ describe('#1232 dedupe-merge mode rule', () => {
     ['two of three members marked', [null, 'motor', 'motor', null, null]],
     ['motor beside sail', [null, 'motor', null, 'sail', null]],
   ])('consecutive drops, %s: refused', (_n, modes) => {
-    expect(merged(RUN, modes)).toEqual({ kind: 'conflict', viaIndex: 1 });
+    expect(merged(RUN, modes)).toEqual({ kind: 'conflict', viaIndices: [1, 2] });
   });
 
   it.each<[string, Modes, Modes]>([
@@ -79,7 +79,7 @@ describe('#1232 dedupe-merge mode rule', () => {
     ['mode on the 2 m member only', [null, null, 'sail', null]],
     ['mode on the 59 m member only', [null, 'motor', null, null]],
   ])('59 m / 61 m, %s: refused', (_n, modes) => {
-    expect(merged(SHORT, modes)).toEqual({ kind: 'conflict', viaIndex: 1 });
+    expect(merged(SHORT, modes)).toEqual({ kind: 'conflict', viaIndices: [1] });
   });
 
   it('59 m / 61 m, equal modes merge', () => {
@@ -97,11 +97,11 @@ describe('#1232 dedupe-merge mode rule', () => {
     expect(dedupeViaPoints(O, [P, L1, L2], D).keptIndices).toEqual([0]);
     expect(merged([P, L1, L2], [null, 'motor', null, null])).toEqual({
       kind: 'conflict',
-      viaIndex: 1,
+      viaIndices: [1, 2],
     });
     expect(merged([P, L1, L2], [null, null, null, 'sail'])).toEqual({
       kind: 'conflict',
-      viaIndex: 1,
+      viaIndices: [1, 2],
     });
     expect(merged([P, L1, L2], [null, 'sail', 'sail', 'sail'])).toEqual({
       kind: 'ok',
@@ -114,7 +114,7 @@ describe('#1232 dedupe-merge mode rule', () => {
     expect(dedupeViaPoints(O, vias, D).keptIndices).toEqual([0]);
     expect(merged(vias, ['motor', null, null, 'sail', null])).toEqual({
       kind: 'conflict',
-      viaIndex: 1,
+      viaIndices: [1, 2, 3],
     });
     expect(merged(vias, ['motor', 'sail', 'sail', 'sail', 'sail'])).toEqual({
       kind: 'ok',
@@ -122,13 +122,22 @@ describe('#1232 dedupe-merge mode rule', () => {
     });
   });
 
-  it('names the first dropped via of the conflicting run, not of an earlier one', () => {
+  it('names the dropped vias of the conflicting run only, not of an equal-mode run', () => {
     // [P, d1, d2, N] plus a trailing pop L1: two runs, P..N (equal) and N..D.
     const vias = [P, d1, d2, N, L1];
     expect(dedupeViaPoints(O, vias, D).keptIndices).toEqual([0, 3]);
     expect(merged(vias, [null, 'motor', 'motor', 'motor', 'sail', null])).toEqual({
       kind: 'conflict',
-      viaIndex: 4,
+      viaIndices: [4],
+    });
+  });
+
+  it('names the dropped vias of every conflicting run, ascending', () => {
+    // Runs P..N (mixed, drops d1 d2) and N..D (mixed, drops L1).
+    const vias = [P, d1, d2, N, L1];
+    expect(merged(vias, [null, 'motor', null, null, 'sail', null])).toEqual({
+      kind: 'conflict',
+      viaIndices: [1, 2, 4],
     });
   });
 
@@ -173,14 +182,44 @@ describe('#885 dedupeRequestVias', () => {
     expect(r).toMatchObject({ kind: 'ok', request: { segmentModes: [null, 'sail', null] } });
   });
 
-  it('maps a conflict to its message key, naming the dropped waypoint (1-based)', () => {
+  it('maps a one-waypoint conflict to its message key, naming the waypoint (1-based)', () => {
     expect(dedupeRequestVias({ ...baseRequest, segmentModes: [null, 'sail', null, null] })).toEqual(
       {
         kind: 'error',
         messageKey: 'error.segmentModesMergeConflict',
-        messageVars: { index: 2 },
+        messageVars: { waypoint: 2 },
       },
     );
+  });
+
+  it('names EVERY dropped waypoint of the run: [P, d1, d2, N] with d1, d2 near P', () => {
+    const p2 = m(P, 0, 40);
+    const p3 = m(P, 180, 40);
+    expect(
+      dedupeRequestVias({
+        ...baseRequest,
+        viaPoints: [P, p2, p3, N],
+        segmentModes: [null, 'motor', null, null, null],
+      }),
+    ).toEqual({
+      kind: 'error',
+      messageKey: 'error.segmentModesMergeConflictMany',
+      messageVars: { head: '2', last: 3 },
+    });
+  });
+
+  it('joins three or more waypoints as a head list plus the last', () => {
+    const vias = [P, m(P, 0, 20), m(P, 90, 20), m(P, 180, 20), N];
+    expect(
+      dedupeRequestVias({
+        ...baseRequest,
+        viaPoints: vias,
+        segmentModes: [null, null, 'sail', null, null, null],
+      }),
+    ).toMatchObject({
+      messageKey: 'error.segmentModesMergeConflictMany',
+      messageVars: { head: '2, 3', last: 4 },
+    });
   });
 
   // Review 5210460022's refuted shapes, each of which the previous rule
@@ -194,7 +233,7 @@ describe('#885 dedupeRequestVias', () => {
   const refusedAt = (index: number) => ({
     kind: 'error',
     messageKey: 'error.segmentModesMergeConflict',
-    messageVars: { index },
+    messageVars: { waypoint: index },
   });
 
   it("R6's own flow: O->D motor, append A and A' 20 m away, set A'->D to Auto", () => {
@@ -294,7 +333,7 @@ describe('#885 replanWithVias segment modes', () => {
     expect(err).toBeInstanceOf(ReplanError);
     expect(err).toMatchObject({
       messageKey: 'error.segmentModesMergeConflict',
-      messageVars: { index: 2 },
+      messageVars: { waypoint: 2 },
     });
     expect(client.plan).not.toHaveBeenCalled();
   });

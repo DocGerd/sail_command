@@ -1357,9 +1357,26 @@ test('#682: hazard seamarks (cardinal/isolated-danger) paint above routine ones 
   }
 });
 
-// #1541: the base `input { min-height: 40px }` rule makes each checkbox a 40px
-// box, and a block `<label>` sets its text on that box's baseline, 15px below
-// the tick.
+// #1541/#1558: the base `input { min-height }` rule makes each checkbox taller
+// than its label's line, and a block `<label>` sets its text on that box's
+// baseline, below the tick. The rows must be flex-centred both inside the
+// Anzeigeoptionen disclosure (no plan) and as plain rows (plan loaded).
+function labelOffsets(labels: Locator): Promise<string[]> {
+  return labels.evaluateAll((els) =>
+    els.flatMap((label) => {
+      const box = label.querySelector('input[type="checkbox"]')!.getBoundingClientRect();
+      const textNode = Array.from(label.childNodes).find(
+        (n) => n.nodeType === Node.TEXT_NODE && n.textContent!.trim() !== '',
+      )!;
+      const range = document.createRange();
+      range.selectNodeContents(textNode);
+      const text = range.getBoundingClientRect();
+      const offset = text.top + text.height / 2 - (box.top + box.height / 2);
+      return Math.abs(offset) <= 2 ? [] : [`${label.textContent!.trim()}: ${offset.toFixed(1)}px`];
+    }),
+  );
+}
+
 for (const [name, viewport] of [
   ['tabletPortrait', STANDARD_VIEWPORTS.tabletPortrait],
   ['tabletLandscape', STANDARD_VIEWPORTS.tabletLandscape],
@@ -1376,25 +1393,43 @@ for (const [name, viewport] of [
 
       const labels = page.locator('.data-layer-controls-disclosure label');
       await expect.poll(() => labels.count()).toBeGreaterThanOrEqual(4);
-      await expect
-        .poll(() =>
-          labels.evaluateAll((els) =>
-            els.flatMap((label) => {
-              const box = label.querySelector('input[type="checkbox"]')!.getBoundingClientRect();
-              const textNode = Array.from(label.childNodes).find(
-                (n) => n.nodeType === Node.TEXT_NODE && n.textContent!.trim() !== '',
-              )!;
-              const range = document.createRange();
-              range.selectNodeContents(textNode);
-              const text = range.getBoundingClientRect();
-              const offset = text.top + text.height / 2 - (box.top + box.height / 2);
-              return Math.abs(offset) <= 2
-                ? []
-                : [`${label.textContent!.trim()}: ${offset.toFixed(1)}px`];
-            }),
-          ),
-        )
-        .toEqual([]);
+      await expect.poll(() => labelOffsets(labels)).toEqual([]);
+    } finally {
+      server.kill();
+    }
+  });
+
+  test(`#1558: each plan-loaded map-layer checkbox shares a line with its label text at ${name}`, async ({
+    page,
+  }) => {
+    const server = await startPreview(page);
+    try {
+      await page.setViewportSize(viewport);
+      await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
+      await mapReady(page);
+
+      await page.getByRole('tab', { name: 'Planen' }).click();
+      const originSection = page.getByRole('region', { name: 'Start' });
+      await originSection.getByRole('combobox').fill('Langballigau');
+      const originResults = originSection.getByRole('option');
+      await expect(originResults).toHaveCount(1);
+      await originResults.first().click();
+
+      const destSection = page.getByRole('region', { name: 'Ziel' });
+      await destSection.getByRole('combobox').fill('Sønderborg');
+      const destResults = destSection.getByRole('option');
+      await expect(destResults).toHaveCount(1);
+      await destResults.first().click();
+
+      const planButton = page.getByRole('button', { name: 'Route planen' });
+      await planButton.click();
+      await expect(planButton).toBeEnabled({ timeout: 60_000 });
+
+      // With a plan the rows are direct children of the cluster, outside any disclosure.
+      await expect(page.locator('.data-layer-controls-disclosure')).toHaveCount(0);
+      const labels = page.locator('.data-layer-controls > label');
+      await expect.poll(() => labels.count()).toBe(2);
+      await expect.poll(() => labelOffsets(labels)).toEqual([]);
     } finally {
       server.kill();
     }
