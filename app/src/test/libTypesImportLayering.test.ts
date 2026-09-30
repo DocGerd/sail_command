@@ -1,9 +1,10 @@
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 // #1602: these lib modules may import `../types` as types only, so a value
-// import cannot pull `types.ts` (and `DEFAULT_SETTINGS`) into them.
-// `sourceStrip`'s stripper masks string contents, which would hide the module
-// specifier, so comments are removed here with strings left intact.
+// import cannot pull `types.ts` (and `DEFAULT_SETTINGS`) into them. The tsconfigs
+// set `verbatimModuleSyntax`, under which only `import type` / `export type`
+// is elided: `import { type A }` still emits `import {} from '../types'`.
 // `?raw` is only vacuous for `.css`; each read is asserted non-empty below.
 const LIB_FILES = ['mask.ts', 'geo.ts', 'depthGate.ts', 'boatDepth.ts'] as const;
 const libSources = import.meta.glob<string>(
@@ -11,74 +12,65 @@ const libSources = import.meta.glob<string>(
   { query: '?raw', import: 'default', eager: true },
 );
 
-function stripComments(source: string): string {
-  let out = '';
-  let quote: string | null = null;
-  let i = 0;
-  while (i < source.length) {
-    const c = source[i]!;
-    if (quote !== null) {
-      out += c;
-      if (c === '\\') {
-        out += source[i + 1] ?? '';
-        i += 2;
-        continue;
-      }
-      if (c === quote) quote = null;
-      i += 1;
-    } else if (c === '"' || c === "'" || c === '`') {
-      quote = c;
-      out += c;
-      i += 1;
-    } else if (c === '/' && source[i + 1] === '/') {
-      while (i < source.length && source[i] !== '\n') i += 1;
-    } else if (c === '/' && source[i + 1] === '*') {
-      const end = source.indexOf('*/', i + 2);
-      i = end === -1 ? source.length : end + 2;
-      out += ' ';
-    } else {
-      out += c;
-      i += 1;
-    }
+const TYPES_TARGET = 'src/types';
+
+function normalizePath(path: string): string {
+  const out: string[] = [];
+  for (const seg of path.split('/')) {
+    if (seg === '' || seg === '.') continue;
+    if (seg === '..') out.pop();
+    else out.push(seg);
   }
-  return out;
+  return out.join('/');
 }
 
-const TYPES_SPECIFIER = /^\.\.\/types(\.[jt]s)?$/;
-
-function isTypeOnlyClause(clause: string): boolean {
-  const c = clause.trim();
-  if (/^type\s+from$/.test(c)) return false;
-  if (/^type(\s+[A-Za-z_$*]|\s*\{)/.test(c)) return true;
-  const braces = /\{([^}]*)\}/.exec(c);
-  if (braces === null || c.replace(braces[0], '').replace(/[\s,]/g, '') !== '') return false;
-  const names = braces[1]!
-    .split(',')
-    .map((s) => s.trim())
-    .filter((s) => s !== '');
+function resolvesToTypes(specifier: string, fileName: string): boolean {
+  if (!specifier.startsWith('.') && !specifier.startsWith('/')) return false;
+  const dir = fileName.split('/').slice(0, -1).join('/');
+  const resolved = normalizePath(specifier.startsWith('/') ? specifier : `${dir}/${specifier}`);
   return (
-    names.length > 0 &&
-    names.every((s) => /^type\s+/.test(s) && !/^type\s+as\s+[A-Za-z_$]+$/.test(s))
+    resolved === TYPES_TARGET ||
+    resolved === `${TYPES_TARGET}/index` ||
+    resolved.startsWith(`${TYPES_TARGET}.`)
   );
 }
 
-/** Returns one description per import/export of `../types` that can carry a value. */
-function findTypesValueImports(source: string): string[] {
-  const code = stripComments(source);
+/** One description per import/export of `src/types` that is not `import type`/`export type`. */
+function findTypesValueImports(source: string, fileName = 'src/lib/x.ts'): string[] {
+  const sf = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const hits: string[] = [];
-  const specifier = `(?<q>['"\`])(?<path>[^'"\`]*)\\k<q>`;
-  const fromForm = new RegExp(`\\b(?:import|export)\\b([^;'"\`]*?)\\bfrom\\s*${specifier}`, 'g');
-  for (const m of code.matchAll(fromForm)) {
-    if (TYPES_SPECIFIER.test(m.groups!.path!) && !isTypeOnlyClause(m[1]!)) hits.push(m[0].trim());
-  }
-  const sideEffect = new RegExp(`\\bimport\\s*${specifier}`, 'g');
-  for (const m of code.matchAll(sideEffect)) {
-    if (TYPES_SPECIFIER.test(m.groups!.path!)) hits.push(m[0].trim());
-  }
-  const dynamic = new RegExp(`\\b(?:import|require)\\s*\\(\\s*${specifier}`, 'g');
-  for (const m of code.matchAll(dynamic)) {
-    if (TYPES_SPECIFIER.test(m.groups!.path!)) hits.push(m[0].trim());
-  }
+  const flag = (node: ts.Node) => hits.push(node.getText(sf));
+  const visit = (node: ts.Node): void => {
+    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
+      if (resolvesToTypes(node.moduleSpecifier.text, fileName) && !node.importClause?.isTypeOnly) {
+        flag(node);
+      }
+    } else if (
+      ts.isExportDeclaration(node) &&
+      node.moduleSpecifier !== undefined &&
+      ts.isStringLiteral(node.moduleSpecifier)
+    ) {
+      if (resolvesToTypes(node.moduleSpecifier.text, fileName) && !node.isTypeOnly) flag(node);
+    } else if (
+      ts.isImportEqualsDeclaration(node) &&
+      ts.isExternalModuleReference(node.moduleReference) &&
+      ts.isStringLiteral(node.moduleReference.expression)
+    ) {
+      if (resolvesToTypes(node.moduleReference.expression.text, fileName) && !node.isTypeOnly) {
+        flag(node);
+      }
+    } else if (ts.isCallExpression(node)) {
+      const arg = node.arguments[0];
+      const callsModule =
+        node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+        (ts.isIdentifier(node.expression) && node.expression.text === 'require');
+      if (callsModule && arg !== undefined && ts.isStringLiteralLike(arg)) {
+        if (resolvesToTypes(arg.text, fileName)) flag(node);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
   return hits;
 }
 
@@ -88,8 +80,10 @@ describe('#1602: lib/{mask,geo,depthGate,boatDepth} import ../types as types onl
       const source = libSources[`../lib/${file}`];
       expect(source).toBeTypeOf('string');
       expect(source!.length).toBeGreaterThan(0);
-      expect(source).toContain('export');
-      expect(findTypesValueImports(source!)).toEqual([]);
+      const fileName = `src/lib/${file}`;
+      const parsed = ts.createSourceFile(fileName, source!, ts.ScriptTarget.Latest, true);
+      expect(parsed.statements.length).toBeGreaterThan(0);
+      expect(findTypesValueImports(source!, fileName)).toEqual([]);
     });
   }
 
@@ -97,6 +91,7 @@ describe('#1602: lib/{mask,geo,depthGate,boatDepth} import ../types as types onl
     const VALUE_FORMS: Record<string, string> = {
       'named value': `import { DEFAULT_SETTINGS } from '../types';`,
       'default value': `import Types from "../types";`,
+      'inline type only': `import { type LatLon } from '../types';`,
       'default plus inline type': `import Types, { type LatLon } from '../types';`,
       'inline type plus value': `import { type LatLon, DEFAULT_SETTINGS } from '../types';`,
       namespace: `import * as T from '../types';`,
@@ -104,20 +99,29 @@ describe('#1602: lib/{mask,geo,depthGate,boatDepth} import ../types as types onl
       'side effect double quote': `import "../types";`,
       'named re-export': `export { DEFAULT_SETTINGS } from '../types';`,
       'star re-export': `export * from '../types';`,
-      'backtick specifier': 'import { DEFAULT_SETTINGS } from `../types`;',
+      'backtick dynamic specifier': 'const t = await import(`../types`);',
       'multi-line': `import {\n  type LatLon,\n  DEFAULT_SETTINGS,\n} from\n  '../types';`,
       'explicit extension': `import { DEFAULT_SETTINGS } from '../types.ts';`,
       'dynamic import': `const t = await import('../types');`,
       'renamed value named type': `import { type as alias } from '../types';`,
+      'dot-slash-dot-dot': `import { DEFAULT_SETTINGS } from './../types';`,
+      'indirect dot-dot': `import { DEFAULT_SETTINGS } from '../lib/../types';`,
+      'vite absolute': `import { DEFAULT_SETTINGS } from '/src/types';`,
+      'index form': `import { DEFAULT_SETTINGS } from '../types/index';`,
+      'require call': `const t = require('../types');`,
+      'import equals require': `import t = require('../types');`,
+      'regex literal before value import': `const re = /[/*]/;\nimport { DEFAULT_SETTINGS } from '../types';\n/** doc */`,
+      'semicolon-less': `export type X = { a: 1 }\nimport { DEFAULT_SETTINGS } from '../types'`,
       'empty braces': `import {} from '../types';`,
       'after a type import': `import type { LatLon } from '../types';\nimport { DEFAULT_SETTINGS } from '../types';`,
     };
     const TYPE_ONLY_FORMS: Record<string, string> = {
       'import type': `import type { LatLon, MaskMeta } from '../types';`,
       'import type double quote': `import type { LatLon } from "../types";`,
+      'dot-slash-dot-dot type': `import type { LatLon } from './../types';`,
+      'typeof import type position': `type T = typeof import('../types');`,
       'import type default': `import type Types from '../types';`,
       'import type namespace': `import type * as T from '../types';`,
-      'all inline types': `import { type LatLon, type MaskMeta } from '../types';`,
       'multi-line type': `import type {\n  LatLon,\n  MaskMeta,\n} from\n  '../types';`,
       'type re-export': `export type { LatLon } from '../types';`,
       'other module value import': `import { something } from '../other';`,
