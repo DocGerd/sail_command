@@ -141,7 +141,7 @@ instead of here.
   full Großer Belt coverage. The belt's east shore is already inside the
   mask and the missing part is north of 55.6°N; go on far-shore harbours in
   the current box, no-go on a north extension until a harbour north of 55.6°N
-  is named
+  is named and three measurements (§7.2) are in
 
 Five entries carry a same-named subdirectory of supporting artifacts rather
 than being self-contained: `1022-whole-journey-ux/` (reference screenshots),

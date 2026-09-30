@@ -1,19 +1,18 @@
 # Spike #1240 — extending coverage over the full Großer Belt
 
-- **Issue:** #1240 (deferred from #295; `priority: low`, milestone v0.50.0)
-- **Date:** 2026-09-30. **Merge-base:** `4d2d138`.
+- **Issue:** #1240 (deferred from #295).
+- **Date:** 2026-09-30. Measured at `4d2d138`.
 - **Status:** Recommendation only. No pipeline command was run and no asset
   was rebuilt.
-- **Verdict:** **The issue's premise is inverted: the belt's eastern shore is
-  already inside the mask, and what is cut off is its northern half.** The
+- **Verdict:** **The issue's premise points the wrong way: the belt's eastern shore is
+  already inside the mask, and what is cut off is its northern part.** The
   strait runs north-south, the mask's east edge (11.6°E) lies beyond the
   Zealand shore, and the strait is truncated by the 55.6°N edge (§1).
   Extending "east" buys none of the belt. Two slices follow: **A**, curate the
   harbours on the belt's far shore inside the existing box, which changes no
   area, wind lattice, basemap or stored plan (§7.1); and **B**, a north
-  extension of the whole mask width, which is moderate in bytes but breaks
-  every stored plan's replan path and needs three measurements first (§7.2).
-  **Go on A. B is no-go until a named harbour north of 55.6°N justifies it.**
+  extension of the whole mask width, which is moderate in precached bytes but breaks, for every plan saved before it, the replan paths that reuse the stored wind grid and needs three measurements first (§7.2).
+  **Go on A. B is no-go until a named harbour north of 55.6°N and the three measurements of §7.2 justify it.**
 
 Companions: [`1163-295-coverage-scoping.md`](1163-295-coverage-scoping.md)
 (the coupled-site method this reuses, and the §5 question this answers),
@@ -45,13 +44,11 @@ dropped from the middle rows):
 | 55.3 | 10.85–11.20 |
 | 55.25 | 10.80–11.17 |
 
-- **North:** at the north row the strait is still 0.499° wide, about 32 km
-  at `P ≈ 64312 m/deg` (`pipeline/README.md`). It is open water cut by the
+- **North:** at the north row the strait is still 0.499° wide, about 31.5 km at ≈63,036 m/deg at 55.6°N (same series as `pipeline/README.md`'s P). It is open water cut by the
   box edge, not a shore.
-- **East:** for 55.3–55.55°N no water run wider than 3 cells lies between
-  11.3°E and the 11.6°E edge, so the Zealand shore is inside the box.
+- **East:** for 55.3-55.55°N the mask has no water cell at all between 11.3°E and the 11.6°E edge (byte 0 is land or unsurveyed per `mask.meta.json`), and the strait's water ends at 11.14-11.21°E, so nothing of the strait lies east of it.
 - **East edge, elsewhere:** at 11.6°E water is open over 54.852–55.189°N and
-  54.3–54.663°N. Those spans are not the belt (§8 rejects following them).
+  54.3–54.663°N. §8 rejects following them.
 - Region archives: `region-north` covers 9.4–11.0°E × 55.304–55.6°N and
   `region-east` covers 11.03–11.6°E × 54.3–55.6°N (PMTiles headers), so the
   basemap over the whole belt below 55.6°N is already lazily available.
@@ -71,9 +68,7 @@ Orth and Burgstaaken (about 54.4°N).
 
 Each new harbour follows `pipeline-refresh`: `harbors-source.json` row, a
 mandatory German note for every non-null English note, snap on the real
-fairway, then `verify_mask.py`. #245 recorded that harbours sitting exactly on
-their gate disconnect, so expect a `KNOWN_DISCONNECTED` or
-`CONNECTIVITY_EXCEPTIONS_M` outcome for some; that is unmeasured.
+fairway, then `verify_mask.py`. Some new harbours may fail `verify_mask.py`'s 2.2 m snap check or connectivity gate and need a snap move or a `KNOWN_DISCONNECTED` / `CONNECTIVITY_EXCEPTIONS_M` entry; that is unmeasured.
 
 ## 3. Cost of a north extension
 
@@ -87,13 +82,14 @@ rows, and rows append after the existing bytes because row 0 is south.
 | Cells = `mask.bin` bytes | 9,438,000 | 10,890,000 (×1.154) | 12,342,000 (×1.308) |
 | `defaultMaxFrontier` (0.2 × prune cells) | 95,333 | 110,000 | 124,667 |
 | BFS scratch, resident (5 B/cell) | 47.2 MB | 54.5 MB | 61.7 MB |
+| Depth + hatch canvases, resident (2 × RGBA, `depthCanvasRowMap` rows, `DataLayers.tsx`) | see `depthColor.ts`'s comment | grows with mask cells | grows with mask cells |
 | Wind lattice points (lats × 23) | 322 | 368 | 414 |
 | Wind grid, 3 × Float32 × 144 h | 556,416 B | 635,904 B | 715,392 B |
 
 - **Frontier cap** derives from the domain in degrees over `PRUNE_LAT` 0.002
   and `PRUNE_LON` 0.003 (476,667 prune cells today) in
   `defaultMaxFrontier`, so it rises for **every** plan, not only new ones.
-  #1496 measured no truncation at the current cap.
+  #1496 measured no truncation on the apertures it probed; the population maximum is unmeasured (`defaultMaxFrontier`'s comment).
 - **BFS scratch** is `Uint8Array` + `Int32Array` sized to the largest grid
   seen (#1256, `mask.ts`); the 5 B/cell is from that comment.
 - **Water fraction** is 0.488 today against the `0.45 < frac < 0.85` gate in
@@ -111,10 +107,7 @@ rows, and rows append after the existing bytes because row 0 is south.
 - **Boundary cells:** the #295 addendum recorded that cells on the old edge
   changed by −1.0 to +0.8 m because the old download was clipped to the old
   box. Expect the same class of change on the 55.6°N row; measurement owed.
-- **Raster cache trap:** `build_mask.py`'s `fetch()` is existence-only and
-  `WCS_URL` bakes the bbox in. Delete `pipeline/data-src/emodnet_dtm.tif` and
-  nothing else before the first run (#1163 §4). Whether EMODnet's WCS covers
-  the extended box was not checked.
+- **Raster cache:** since #295 the cached DTM's filename carries the bbox (`DTM_PATH`), so a changed `NORTH` fetches a new raster, and `check_dtm_covers()` fails closed on a cached file that does not cover the bbox. Whether EMODnet's WCS covers the extended box was not checked.
 
 ## 4. Coupled sites
 
@@ -136,12 +129,10 @@ sites, and its #295 fixes have landed; this is what a north edge moves now.
 
 **Guarded twins (fail loudly if missed):** `gpx.parse.test.ts`
 (`DATA_AREA` vs `mask.meta.json`), `windLatticeMaskCoverage.test.ts`,
-`maxBoundsMaskCoverage.test.ts`, and `contoursAsset.test.ts`.
+`maxBoundsMaskCoverage.test.ts`, `contoursAsset.test.ts` and `openMeteo.test.ts` (hand-written `LATS`/`LONS` arrays, fail closed by design). `gpx.parse.test.ts` also hardcodes 55.9°N as out-of-area, so it reds at a 56.0°N edge.
 
 **Unguarded twins (fail silently or late):**
 
-- `openMeteo.test.ts` hand-written `LATS`/`LONS` arrays (fail closed, by
-  design).
 - `app/scripts/gen-wind-fixture.mjs` `N_LATS` and
   `gen-docs-wind-fixture.mjs` `N_POINTS_LAT`: `fetchWindGrid` rejects a
   fixture whose length differs from `LATS.length × LONS.length`, so e2e and
@@ -153,8 +144,7 @@ sites, and its #295 fixes have landed; this is what a north edge moves now.
   55.8 / 56.0°N. Cosmetic per #1163 §1.1. `MASK_CELL_M` is unaffected, since
   the longitude step is unchanged.
 
-**Prose:** the covered-area copy in `dict.de.ts` and `dict.en.ts` (two
-strings naming "western Great Belt approach") and its three
+**Prose:** the covered-area copy in `dict.de.ts` and `dict.en.ts` (two keys, four strings, naming the western Great Belt approach) and its three
 `PlannerPanel.test.tsx` quotes, `docs/acceptance.md`, `vite.config.ts`'s
 manifest description, README, `pipeline/README.md`, the `pipeline-refresh`
 skill's bbox line, ROADMAP's "no unbounded expansion" bullet, and the spec's
@@ -173,7 +163,7 @@ extension, exactly as pre-#295 plans did:
   unless `isLegacyWindLattice` matches, and that helper is hardcoded to the
   pre-#295 11 × 17 shape. `SettingsPanel.tsx` passes `DATA_AREA` to
   `parseExportFile`, so the check is live. Without a second admitted shape,
-  every plan in a v0.35+ backup is rejected at import (counted invalid, the
+  every plan saved on the 14 x 23 lattice (v0.35.0 onward) is rejected at import (counted invalid, the
   rest of the file still imports). The fix is a list of admitted legacy lattices, not a
   looser predicate.
 - Recalculate and a fresh Plan-route fetch a new forecast and are unaffected.
@@ -202,9 +192,7 @@ one live call in the implementing PR settles it.
   a new id such as `belt` would win any tile it overlaps. `overlaps` is
   strict, so a new strip whose south edge sits at or past the first z13 tile
   boundary at 55.6°N (the snap `pipeline/README.md` describes) never
-  overlaps `north` or `east`. The existing archives already hold the
-  straddling tiles whole (`pmtiles extract --bbox` keeps whole tiles), so
-  they serve every seam tile whatever the id. `verify_region_split.py` must
+  overlaps `north` or `east` at z13 (lower zooms use larger tiles that do overlap, and there `belt` wins by manifest order; it holds those tiles whole, so the served bytes are complete, provided all archives come from one tileset build, §6 drift). `verify_region_split.py` must
   then be run with all regions against a single whole-box extract.
 - **Size (estimate).** Byte density: core 17.0, `region-east` 12.5,
   `region-north` 26.6 MB/deg² (archive bytes over header bbox area). A
@@ -232,7 +220,7 @@ crossings become plannable.
   basemap regions (`region-east` covers the shore) or stored plans (§5).
 - **Owed:** `harbors-source.json` and German notes, `build_harbors.mjs`,
   `verify_mask.py` and `verifyMaskConnectivity.test.ts` (which runs every
-  catalogue boat in the required `app` check).
+  catalogue boat in the required `app` check), changelog fragment, the harbour-count prose (pipeline/README.md, app/sweep/README.md), and the covered-area copy in both dicts (with the PlannerPanel.test.tsx quotes).
 - **#282 sweep is OWED.** `app/public/data` and `pipeline` are
   `PATH_PREFIXES` in `closure.mjs`, and the arm-set is every arm name times
   every harbour, so it grows with each row. Confirm with
@@ -240,7 +228,7 @@ crossings become plannable.
 - **Spec:** the addendum's "Great Belt. Western approach only" line needs a
   main-session amendment.
 - **Risk:** whether these harbours snap to cells at or above 2.2 m at 46 m
-  resolution is unmeasured. That risk is the reason for the gate.
+  resolution is unmeasured. Some far-shore harbours may end up `KNOWN_DISCONNECTED`; Slice A's yield is unknown until the OSM coordinates are read.
 
 ### 7.2 Slice B — NO-GO now: a north extension to a harbour-defined bound
 
@@ -268,12 +256,12 @@ raised frontier cap in §3 may move plans that never enter the strip).
 
 | Option | Why it lost |
 |---|---|
-| **Extend the mask east of 11.6°E** | The belt's Zealand shore is inside 11.6°E (§1). The water still open at the east edge (54.852–55.189°N) is not the belt. |
+| **Extend the mask east of 11.6°E** | The belt's Zealand shore is inside 11.6°E (§1). |
 | **Widen the core basemap archive** | #296 ruled against a widened monolith. The core is precached bytes with 14,741,251 B of headroom, and rebuilding it invites tileset drift (§6). |
 | **Coarsen the grid to fit** | Reopens #245's `TOLERANCE_M` re-derivation for the whole existing grid (branch (a) of #1163 §2.1, rejected in its §8). |
 | **A belt-only mask (not full width)** | The mask is one rectangle (§2). A belt-only basemap archive is possible but leaves blank tiles under mask water at the west end of the strip, so it was not preferred. |
 | **Relax `wind-grid-coverage` to the plan's own extent** | Reopens the #1178 silent-clamp hazard to spare stored plans a typed error. Pre-1.0 precedent (#295) accepts the break. |
-| **Ship B without a named harbour** | `priority: low` and a breaking stored-plan change, for water no curated harbour can start or end in. |
+| **Ship B without a named harbour** | A breaking stored-plan change, for water no curated harbour can start or end in. |
 
 ## 9. Follow-ups
 
