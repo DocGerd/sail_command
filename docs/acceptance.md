@@ -121,10 +121,11 @@ results table at the bottom, and note it in the box below the check.
       the disclosure on a boat with ≥1 affected harbour (SPEEDY GO! and
       PIRANJA both affect Marstal at their own default depth): it lists the
       harbour under "Only via a shallower approach: …" ("Nur über eine
-      flachere Zufahrt: …") — the only wording reachable here: no real
-      catalogue boat is ever `unreachable` for any harbour at its own
-      default gate, so "Not reachable: …" ("Nicht erreichbar: …") cannot
-      be observed under this setup. Whichever of the three states is
+      flachere Zufahrt: …") — the only wording reachable on those two:
+      neither is ever `unreachable` for any harbour at its own default
+      gate, so "Not reachable: …" ("Nicht erreichbar: …") cannot be
+      observed there. EASY GO!'s 3.5 m default gate does reach it (Marstal
+      and Augustenborg, #1575). Whichever of the three states is
       showing (pending, one-line summary, or the disclosure) is chained
       into that boat's own radio's `aria-describedby`, alongside its
       existing keel/draft-
@@ -273,12 +274,12 @@ selected in §1.
     ETA and the chip reads "Faster: …". No ★ is shown when the two ETAs fall
     within 60 s ("… effectively tied …") or the passage runs entirely under
     engine ("Rig does not matter here …").
-  - **SPEEDY GO! or PIRANJA** — both their sails are tier Estimated, so the
-    comparison is withheld: **no ★ on either tab**, and the chip now names the
+  - **SPEEDY GO!, PIRANJA or EASY GO!** — both their sails are tier
+    Estimated, so the comparison is withheld: **no ★ on either tab**, and the chip now names the
     reason — "The sails were not compared for this passage — …'s polar data
     is not certificate-verified (tier: Estimated), so no faster rig is
     claimed" (#1398), where `…` is the plan's own boat name. A missing ★ on
-    these two boats is the designed outcome, not a defect — their two tables
+    these three boats is the designed outcome, not a defect — their two tables
     differ by the Salona 45's overlay ramp, which carries no information
     about the hull.
   - **Any boat, if the chip reads "The search ran out of time before
