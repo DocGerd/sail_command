@@ -254,7 +254,8 @@ CATALOGUE_BOAT_IDS = {b["id"] for b in CATALOGUE_BOATS}
 # grid - that was exactly issue #6 (14/44 harbors, incl. Flensburg, stranded
 # in disconnected pockets despite passing the per-cell probe). This gate
 # 4-connected-flood-fills the navigable cells from a fixed open-water seed
-# and asserts every harbor snap's cell is reachable. 4-connectivity (not 8)
+# and asserts every harbor's snapped cell (#1584, app semantics: nearest
+# navigable cell within 300 m) is reachable. 4-connectivity (not 8)
 # is deliberate: a diagonal-only "connection" through a single pinched corner
 # is not something a 4.2 m-beam boat can reliably thread, and this pipeline's
 # rule is to never overstate navigability.
@@ -280,9 +281,8 @@ SEED_LAT, SEED_LON = 54.8455, 9.5216  # open Flensburg Fjord water
 # was reviewed for. A boat whose derived gate has no entry here therefore gets
 # no exception at all, which is what forces the evidence at its catalogue PR.
 CONNECTIVITY_EXCEPTIONS_M: dict[tuple[str, float], float] = {
-    # "Buoyed fairway up Augustenborg Fjord, approx 3 m in the upper
-    # reaches." Reconnects at gate <= 2.8 m; matches the approx-3 m note.
-    ("augustenborg", 3.0): 2.8,
+    # Judged snap-aware (#1584): augustenborg's former 3.0 m entry was dropped, its
+    # snapped cell reaches open water at 3.0 m unaided.
     # "Buoyed approaches approx 3.2 m (N and W), 4.5 m from S; parts of the
     # yacht basin only approx 2 m." Reconnects at gate <= 2.3 m; 2.0 m is
     # the harbor's own documented figure for its shallowest reach and keeps
@@ -353,20 +353,13 @@ KNOWN_DISCONNECTED: dict[str, str] = {
 # stale entry. So an omitted boat is not a loophole: it commits that boat to
 # reaching every harbour it does today.
 EXPECTED_UNREACHABLE_BY_BOAT: dict[str, list[str]] = {
-    # EASY GO! (#1575, 2.59 m draft, gate 3.5 m). Exact-snap-cell verdicts, as
-    # for every boat here. The picker snaps within 300 m, so it reads seven of
-    # these as reachable; a snap-aware predicate is tracked in #1584.
+    # EASY GO! (#1575, 2.59 m draft, gate 3.5 m). Snap-aware verdicts (#1584):
+    # the picker reads augustenborg and marstal unreachable and faldsled and
+    # rudkoebing shallow-approach (reachable only through a relaxed approach).
     "salona-44-easy-go": [
-        "aabenraa",
         "augustenborg",
-        "burgstaaken",
         "faldsled",
-        "fynshav",
-        "kolding",
-        "langballigau",
         "marstal",
-        "nyborg",
-        "orth",
         "rudkoebing",
     ],
 }
@@ -382,6 +375,100 @@ _depth_grid = np.where(grid == 255, 25.4, np.where(grid == 0, 0.0, grid / 10.0))
 seed_row, seed_col = rc_of(SEED_LAT, SEED_LON)
 harbor_rc = {h["id"]: rc_of(h["snap"]["lat"], h["snap"]["lon"]) for h in harbors}
 harbor_snap_depth_m = {h["id"]: depth_m(h["snap"]["lat"], h["snap"]["lon"]) for h in harbors}
+
+# #1584: the app does not test a harbor's exact snap cell - `planRoute` and the
+# picker first move it to the nearest navigable cell centre within 300 m
+# (app/src/lib/mask.ts `snapToNavigable`, same ring walk, tie-break and
+# distance formula), and only that cell must reach open water. Twin of that
+# method; app/src/test/verifyMaskConnectivity.test.ts calls the real one.
+SNAP_MAX_RADIUS_M = 300
+EARTH_RADIUS_NM = 3440.065  # app/src/lib/geo.ts
+NM_PER_M = 1 / 1852  # app/src/lib/mask.ts
+
+
+def haversine_nm(a_lat: float, a_lon: float, b_lat: float, b_lon: float) -> float:
+    d_lat = math.radians(b_lat - a_lat)
+    d_lon = math.radians(b_lon - a_lon)
+    s = (
+        math.sin(d_lat / 2) ** 2
+        + math.cos(math.radians(a_lat)) * math.cos(math.radians(b_lat)) * math.sin(d_lon / 2) ** 2
+    )
+    return 2 * EARTH_RADIUS_NM * math.asin(math.sqrt(s))
+
+
+def snap_cell(byte_grid: np.ndarray, lat: float, lon: float, gate_m: float) -> tuple[int, int] | None:
+    """Nearest cell with byte != 0 and depth >= gate_m whose centre is within
+    SNAP_MAX_RADIUS_M of (lat, lon); None when there is none. Ties keep the
+    first cell in row-major ring order, as the app does."""
+    rows, cols = byte_grid.shape
+    row0, col0 = rc_of(lat, lon)
+    cell_lat_m = 111_320 / LAT_CPD
+    cell_lon_m = 111_320 / LON_CPD * math.cos(math.radians(lat))
+    min_step_m = min(cell_lat_m, cell_lon_m)
+    max_ring = math.ceil(SNAP_MAX_RADIUS_M / min_step_m) + 1
+    best: tuple[int, int] | None = None
+    best_d = 0.0
+    for ring in range(max_ring + 1):
+        if best is not None and ring * min_step_m > best_d:
+            break
+        for dr in range(-ring, ring + 1):
+            for dc in range(-ring, ring + 1):
+                if max(abs(dr), abs(dc)) != ring:
+                    continue
+                r, c = row0 + dr, col0 + dc
+                if not (0 <= r < rows and 0 <= c < cols):
+                    continue
+                b = int(byte_grid[r, c])
+                if b == 0 or (25.4 if b == 255 else b / 10.0) < gate_m:
+                    continue
+                centre_lat = meta["south"] + (r + 0.5) / LAT_CPD
+                centre_lon = meta["west"] + (c + 0.5) / LON_CPD
+                d_m = haversine_nm(lat, lon, centre_lat, centre_lon) / NM_PER_M
+                if d_m <= SNAP_MAX_RADIUS_M and (best is None or d_m < best_d):
+                    best, best_d = (r, c), d_m
+    return best
+
+
+def _snap_cell_bruteforce(byte_grid: np.ndarray, lat: float, lon: float, gate_m: float) -> tuple[int, int] | None:
+    """Independent of snap_cell's ring bound and early break: every cell in a
+    window well past the radius, nearest within range wins (first in row-major
+    order on a tie)."""
+    row0, col0 = rc_of(lat, lon)
+    reach = 12
+    best: tuple[int, int] | None = None
+    best_d = 0.0
+    for r in range(row0 - reach, row0 + reach + 1):
+        for c in range(col0 - reach, col0 + reach + 1):
+            b = int(byte_grid[r, c])
+            if b == 0 or b / 10.0 < gate_m:
+                continue
+            d_m = (
+                haversine_nm(lat, lon, meta["south"] + (r + 0.5) / LAT_CPD, meta["west"] + (c + 0.5) / LON_CPD)
+                / NM_PER_M
+            )
+            if d_m <= SNAP_MAX_RADIUS_M and (best is None or d_m < best_d):
+                best, best_d = (r, c), d_m
+    return best
+
+
+# Self-check on a synthetic all-land grid seeded with a few navigable cells near
+# a real harbor snap: the ring walk must agree with the exhaustive scan, including
+# the radius cut-off and a nearer cell sitting in a farther ring.
+_probe_lat, _probe_lon = harbors[0]["snap"]["lat"], harbors[0]["snap"]["lon"]
+_probe_r, _probe_c = rc_of(_probe_lat, _probe_lon)
+_snap_rng = np.random.default_rng(1584)
+_snap_hits = 0
+for _ in range(200):
+    _synthetic = np.zeros_like(grid)
+    for _r, _c in _snap_rng.integers(-9, 10, size=(int(_snap_rng.integers(0, 4)), 2)):
+        _synthetic[_probe_r + _r, _probe_c + _c] = 40
+    _want = _snap_cell_bruteforce(_synthetic, _probe_lat, _probe_lon, 3.0)
+    _snap_hits += _want is not None
+    if snap_cell(_synthetic, _probe_lat, _probe_lon, 3.0) != _want:
+        raise AssertionError("snap_cell disagrees with the exhaustive scan on a synthetic grid")
+# Positive control: the cases above must include both a snap and a None.
+if not 0 < _snap_hits < 200:
+    raise AssertionError(f"snap_cell self-check is vacuous: {_snap_hits}/200 cases found a cell")
 
 # Deepest gate at which each harbor still reaches open water, or None if it
 # never does. Spec C.6 asks the verify script's output to carry a per-harbor
@@ -406,10 +493,22 @@ harbor_snap_depth_m = {h["id"]: depth_m(h["snap"]["lat"], h["snap"]["lon"]) for 
 SWEEP_TOP_DM = max([dm(d) for d in harbor_snap_depth_m.values()] + sorted(CATALOGUE_GATE_DM))
 DEEPEST_CONNECTING_GATE_DM: dict[str, int | None] = {h["id"]: None for h in harbors}
 SEED_COMPONENT_CELLS: dict[int, int] = {}  # only at the gates a catalogue boat derives
+# #1584: the snap-aware verdict per harbor at each gate a boat derives or an
+# exception grants: (snapped cell, in the seed component). None = no navigable
+# cell within SNAP_MAX_RADIUS_M.
+SNAP_GATES_DM = CATALOGUE_GATE_DM | {dm(v) for v in CONNECTIVITY_EXCEPTIONS_M.values()}
+SNAP_CONNECTED: dict[tuple[str, int], tuple[tuple[int, int] | None, bool]] = {}
 _unresolved = set(DEEPEST_CONNECTING_GATE_DM)
 for _gate_dm in range(SWEEP_TOP_DM, 0, -1):
     _labeled, _ = ndimage.label(_depth_grid >= _gate_dm / 10.0, structure=FOUR_CONNECTIVITY)
     _seed_label = int(_labeled[seed_row, seed_col])
+    if _gate_dm in SNAP_GATES_DM:
+        for _h in harbors:
+            _cell = snap_cell(grid, _h["snap"]["lat"], _h["snap"]["lon"], _gate_dm / 10.0)
+            SNAP_CONNECTED[(_h["id"], _gate_dm)] = (
+                _cell,
+                _cell is not None and _seed_label != 0 and int(_labeled[_cell]) == _seed_label,
+            )
     if _gate_dm in CATALOGUE_GATE_DM:
         SEED_COMPONENT_CELLS[_gate_dm] = int((_labeled == _seed_label).sum()) if _seed_label else 0
     if _seed_label:
@@ -425,8 +524,13 @@ DEEPEST_CONNECTING_GATE_M: dict[str, float | None] = {
 }
 
 
+def snap_connected_at(hid: str, gate_m: float) -> bool:
+    """#1584: does the cell the app snaps this harbor to at `gate_m` reach open water."""
+    return SNAP_CONNECTED[(hid, dm(gate_m))][1]
+
+
 def connected_at(hid: str, gate_m: float) -> bool:
-    """Answered from the sweep above, not by labelling again.
+    """Exact-snap-cell connectivity, answered from the sweep above, not by labelling again.
 
     Same predicate as before the sweep existed - harbor and seed in one
     non-zero component - restated through monotonicity. A harbor connected at
@@ -573,13 +677,13 @@ for b in CATALOGUE_BOATS:
             # which would silently allow an undocumented depth exception.
             if "approachNote" not in h:
                 raise AssertionError(f"CONNECTIVITY_EXCEPTIONS_M[({hid}, {gate_m})] has no approachNote to justify it")
-            if connected_at(hid, gate_m):
+            if snap_connected_at(hid, gate_m):
                 failures.append(
                     f"EXCEPTION {hid} is not needed at gate {gate_m} m - it reaches open water unaided; "
                     "remove the stale entry"
                 )
         effective_gate_m = exception_m if exception_m is not None else gate_m
-        connected = connected_at(hid, effective_gate_m)
+        connected = snap_connected_at(hid, effective_gate_m)
 
         if connected:
             status = "OK"
@@ -633,8 +737,12 @@ for b in CATALOGUE_BOATS:
     # failed - the margin is a property of the bathymetry, and #245 measured
     # that refining the grid DISCONNECTS these two rather than helping them
     # (aabenraa at 23 m, augustenborg additionally at 12 m).
+    snapped_depth_m = {
+        hid: float(_depth_grid[cell]) if (cell := SNAP_CONNECTED[(hid, dm(eff))][0]) is not None else 0.0
+        for hid, eff, _, _ in connectivity_report
+    }
     margins = [
-        (hid, harbor_snap_depth_m[hid], eff, round(harbor_snap_depth_m[hid] - eff, 1))
+        (hid, snapped_depth_m[hid], eff, round(snapped_depth_m[hid] - eff, 1))
         for hid, eff, _, status in connectivity_report
         if status not in ("KNOWN", "EXPECT")
     ]

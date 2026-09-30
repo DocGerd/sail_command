@@ -7,6 +7,7 @@ import { NavMask } from '../lib/mask';
 import { APPROACH_RADIUS_M, approachGate, uniformGate, type DepthGate } from '../lib/depthGate';
 import { BOATS, type BoatDef } from '../data/boats';
 import { defaultSafetyDepthM } from '../lib/boatDepth';
+import { computeHarborAccess, type HarborWithReachability } from '../lib/harborReachability';
 import { makeMask, TEST_MASK_META } from './fixtures';
 import { solverTimeoutMs } from './timeouts';
 import type { LatLon, MaskMeta } from '../types';
@@ -25,6 +26,11 @@ import type { LatLon, MaskMeta } from '../types';
 // their own header: a probe-sequence differential for `NavMask.cellsConnected`
 // and its scratch-reuse guards. They are here because this file already loads
 // the real mask; the scope note below governs the #550 block only.
+//
+// #1584: a harbour's verdict is for the cell the APP snaps it to — the real
+// `NavMask.snapToNavigable` (nearest navigable cell centre within 300 m at the
+// gate), not its exact snap cell. pipeline/verify_mask.py's `snap_cell` is the
+// Python twin of that method; both check the same EXPECTED_UNREACHABLE table.
 //
 // SCOPE, deliberately narrow — the harbour-reachability assertion, now TWO
 // of them since #1294: connected-when-expected (the original #550 promotion)
@@ -99,6 +105,10 @@ interface HarborFixture {
 const harbors = JSON.parse(
   readFileSync(resolve(dataDir, 'harbors.json'), 'utf8'),
 ) as HarborFixture[];
+
+const pickerHarbors = JSON.parse(
+  readFileSync(resolve(dataDir, 'harbors.json'), 'utf8'),
+) as HarborWithReachability[];
 
 // ---- Config read out of pipeline/verify_mask.py's own source ----
 
@@ -311,6 +321,13 @@ function connectedAtGate(reachable: Uint8Array, p: LatLon): boolean {
   return c !== null && reachable[c.row * maskMeta.cols + c.col] === 1;
 }
 
+/** #1584: the app's own snap, then the flood-fill lookup; no navigable cell
+ * within 300 m reads as unreachable, as in the picker. */
+function snapAwareConnected(reachable: Uint8Array, p: LatLon, gateM: number): boolean {
+  const snapped = mask.snapToNavigable(p, gateM);
+  return snapped !== null && connectedAtGate(reachable, snapped);
+}
+
 describe('#550: mask connectivity is a REQUIRED check (promoted from advisory verify-mask.yml)', () => {
   // MINOR 4 (PR #568 review): an emptied harbors.json would otherwise make
   // BOTH the required loop below and the guard-fires proof pass vacuously
@@ -385,7 +402,7 @@ describe('#550: mask connectivity is a REQUIRED check (promoted from advisory ve
     for (const h of harbors) {
       const exceptionM = EXCEPTIONS.get(`${h.id}@${gateDm}`);
       const effectiveGateM = exceptionM ?? gateM;
-      const connected = connectedAtGate(reachableAt(effectiveGateM), h.snap);
+      const connected = snapAwareConnected(reachableAt(effectiveGateM), h.snap, effectiveGateM);
       if (!connected && !KNOWN_DISCONNECTED.has(h.id) && !expectedUnreachable.has(h.id)) {
         failures.push(
           `${boat.id}: harbor ${h.id} not reachable from open water at gate ${effectiveGateM} m ` +
@@ -480,25 +497,47 @@ describe('#550: mask connectivity is a REQUIRED check (promoted from advisory ve
   // #1575: the real table's content, pinned by a hand-written twin. Exactness
   // in both directions is already enforced by the `it.each(BOATS)` loop above;
   // this row names WHAT the table holds, so emptying or widening it is a
-  // reviewed edit rather than a silent one. These are the exact-snap-cell
-  // verdicts (`verify_mask.py`), stricter than the picker's snap-within-300 m
-  // states (`harborReachability.test.ts`'s EXPECTED_ACCESS).
-  it('the real table lists exactly EASY GO!’s eleven exact-snap unreachable harbours', () => {
+  // reviewed edit rather than a silent one. Faldsled and rudkoebing read
+  // `shallow-approach` in the picker (`harborReachability.test.ts`'s
+  // EXPECTED_ACCESS): not reachable at the gate, reachable through a relaxed
+  // approach.
+  it('the real table lists exactly EASY GO!’s four snap-aware unreachable harbours', () => {
     expect([...EXPECTED_UNREACHABLE_BY_BOAT.keys()]).toEqual(['salona-44-easy-go']);
     expect([...EXPECTED_UNREACHABLE_BY_BOAT.get('salona-44-easy-go')!].sort()).toEqual([
-      'aabenraa',
       'augustenborg',
-      'burgstaaken',
       'faldsled',
-      'fynshav',
-      'kolding',
-      'langballigau',
       'marstal',
-      'nyborg',
-      'orth',
       'rudkoebing',
     ]);
   });
+
+  // #1584: the picker's own classifier is the oracle for the snap. A harbour
+  // is unreachable at the gate exactly when the picker reads it
+  // `shallow-approach` or `unreachable` (`ok` needs snap + flood to succeed).
+  // Runs at the boat's derived gate with no pipeline exception, as the picker does.
+  it.each(BOATS)(
+    '$id: gate-unreachable set matches the picker (snap-aware, no exceptions)',
+    { timeout: solverTimeoutMs(300_000) },
+    (boat) => {
+      const gateM = defaultSafetyDepthM(boat);
+      const access = computeHarborAccess(mask, pickerHarbors, boat, gateM);
+      const reachable = reachableAt(gateM);
+      const mine = harbors
+        .filter(
+          (h) => !KNOWN_DISCONNECTED.has(h.id) && !snapAwareConnected(reachable, h.snap, gateM),
+        )
+        .map((h) => h.id)
+        .sort();
+      const picker = harbors
+        .filter((h) => {
+          const st = access.get(h.id);
+          return st === 'shallow-approach' || st === 'unreachable';
+        })
+        .map((h) => h.id)
+        .sort();
+      expect(mine).toEqual(picker);
+    },
+  );
 
   // "Prove the guard can fail" (CLAUDE.md): a fixture boat drafted deep
   // enough to strand most of the fleet — never added to BOATS — is reported
@@ -556,7 +595,7 @@ describe('#550: mask connectivity is a REQUIRED check (promoted from advisory ve
   );
 
   // #1294 (spec 1135 §13 item 5): the real EXPECTED_UNREACHABLE_BY_BOAT
-  // table lists only EASY GO!'s exact-snap set (#1575), so these tests
+  // table lists only EASY GO!'s snap-aware set (#1575/#1584), so these tests
   // exercise `connectivityFailures`'s second parameter directly, with the
   // SAME 7.1 m fixture boat's real stranded-harbour population, to prove the
   // mechanism in isolation from that table.
