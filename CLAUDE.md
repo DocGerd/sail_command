@@ -5,15 +5,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project
 
 SailCommand — an offline-capable PWA that plans time-optimal sailing routes
-for a four-boat Flensburg catalogue (Salona 45; Salona 44 "SPEEDY GO!"; Elan
-Impression 444 "PIRANJA"; Salona 44 "EASY GO!" — drafts 2.1/2.1/1.9/2.59 m,
-so THREE distinct default depth gates, 3.0/2.8/3.5 m)
+for a Flensburg boat catalogue (read the boats, their drafts and their
+distinct default depth gates off `app/src/data/boats.ts`'s `BOATS` and
+`defaultSafetyDepthM`, never from a count here)
 in the Flensburg Fjord / Danish South Sea area (54.3–55.6°N, 9.4–11.6°E
 since #295 — read the live bounds off `app/public/data/mask.meta.json`),
 using hourly Open-Meteo wind forecasts and an isochrone router that prices
 tacks/gybes as time penalties. Only the Salona 45 is `hullVerified` with
-certificate-anchored polars; the other three are tier-C estimates (EASY GO!
-borrows SPEEDY GO!'s tables via `polarsFrom`, #567/#1575), which
+certificate-anchored polars; the rest are tier-C estimates (a sister ship may borrow its donor's tables via `polarsFrom`, #567/#1575), which
 SUPPRESSES their two-rig ★ comparison — a behavioural difference that has
 already put stale claims into user-facing docs (#54, shipped v0.12.0).
 
@@ -2421,9 +2420,10 @@ making design-level decisions; do not silently deviate.
   enumerate with `git ls-files`, never restate it. Since #1336 CI's
   `app-shard` SKIPS them unless `classify-realmask.sh` sees a routing-closure
   or supplement path, so run them locally on a routing change.
-  `realmaskFixtures.ts`'s `RELAXATION_TRADE_DEPTH_CASES` derives its cases
-  from `BOATS`, so a new boat changes those populations; a boat whose floor
-  exceeds Marstal's deepest connecting gate is pinned as stranded
+  `realmaskFixtures.ts`'s `RELAXATION_TRADE_DEPTH_CASES` derives one case per
+  distinct (default gate, relaxation floor) pair in `BOATS`, so a boat with a
+  new pair adds a case to every relaxation-trade population; a case whose
+  floor exceeds Marstal's deepest connecting gate is pinned as stranded
   (`relaxationTradeCasePartition`, #1575).
 - Flensburg→Marstal fails the RAW 3.0 m gate but ROUTES ANYWAY at DEFAULT
   settings — `planRoute()` returns `status: 'ok'` with shallow warnings at
@@ -3231,10 +3231,11 @@ making design-level decisions; do not silently deviate.
   review's "correlation, not a cause" note naming PR #1488's merge, relayed
   into the artifact, singled out one of the 16 merges in `1e50ede..d91ab4c`.
   Relay a correlation as a commit range, never a PR name.
-  A question put to the maintainer relays too: "no tech-sheet URL is
-  recorded" asked as "there is no tech sheet" drew a ruling that shipped into
-  #1580's draft note and the spec until the operator's page was fetched.
-  Quote the finding's own words in the question.
+  A question put to the maintainer relays too: a design finding's "No
+  tech-sheet URL is recorded" became "no tech sheet" in the question, and
+  the resulting "No tech sheet is on file" reached #1580's draft note and
+  #1583's spec text; each PR's review caught it against spec §M.8 before
+  merge. Quote the finding's own words in the question.
 - **The successor chain, measured again at full length on a CLAUDE.md PR: PR
   #852 (the v0.18.0 learnings) took FIVE review rounds, and every fix wave put
   a defect inside the previous round's fix** — the commit record says so in
@@ -4008,9 +4009,9 @@ making design-level decisions; do not silently deviate.
   DISCLOSED source-data limit — the residual itself is tracked in NO issue.
 - **Every per-boat depth lever is on the GATE side, and the gates differ**
   (#54/#539, `app/src/lib/boatDepth.ts`). `defaultSafetyDepthM(b)` is
-  `ceilToDecimetre(b.draftM + MASK_TOLERANCE_M)` — so `gate - T = draft`
-  EXACTLY, ZERO margin, for every decimetre draft (2.1/1.9 m); EASY GO!'s
-  2.59 m gives `gate - T` = 2.6 m — while
+  `ceilToDecimetre(b.draftM + MASK_TOLERANCE_M)` — so `gate - T` is
+  `ceilToDecimetre(draft)`: the draft EXACTLY, ZERO margin, for a decimetre
+  draft, the next decimetre up otherwise, never below — while
   `relaxationFloorM(b)` is `ceilToDecimetre(b.draftM)`, NO tolerance added.
   So at every boat's OWN default gate, #53 relaxation reaches
   `relaxationFloorM(b) - T` — exactly `draft - T` for a decimetre draft
@@ -4018,7 +4019,7 @@ making design-level decisions; do not silently deviate.
   other — with no user action: below-draft at DEFAULTS is REAL. State it in
   TWO branches or it is false — those cases are
   DISCLOSED (a relaxed route sets `shallow` and `isSevere` fires), and the
-  UNDISCLOSED residual (non-relaxed gate-crossers) bottoms out AT the hull,
+  UNDISCLOSED residual (non-relaxed gate-crossers) bottoms out at `ceilToDecimetre(draft)` — AT the hull for a decimetre draft —
   never below. NEVER write "below-draft requires a user-lowered gate": the
   app's own `about.caveats.depthMask` string contradicts it. T cannot be
   per-boat — one mask, one blend, one constant. `BOAT_DRAFT_M`
@@ -4803,7 +4804,8 @@ making design-level decisions; do not silently deviate.
   `FakeMap` and redded 102 of its tests, which its filter skipped.
   An `app/e2e` spec edit can red the unit `app` check:
   `startPreviewSwAssertCallSites.test.ts` (#976) fails any test body calling
-  bare `startPreview()` without `assertCleanServiceWorkerState(page)` (#1578).
+  bare `startPreview()` without `assertCleanServiceWorkerState(page)` unless
+  its `EXEMPT_SITES` lists the site (#1578).
 - **Parallel subagents share ONE session scratchpad** (Claude Code 2.1.278;
   a harness property). A fixed commit-message filename there raced: one
   commit got a sibling's `Closes #N` (caught before push, v0.39.0 cycle).
