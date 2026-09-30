@@ -476,9 +476,16 @@ test('#1564: the capped open Anzeigeoptionen cluster shows a scroll cue at 390x8
       })
       .toBe(true);
     const { image } = await controlsCue(page);
-    expect(image, 'resolved background-image of the overflowing cluster').toContain(
-      'linear-gradient',
+    expect(image, 'resolved background-image of the overflowing cluster').toMatch(
+      /linear-gradient\(to top,/,
     );
+
+    await page.locator('.data-layer-controls').evaluate((el) => {
+      el.scrollTop = el.scrollHeight;
+    });
+    await expect
+      .poll(() => controlsCue(page), { message: 'cue after scrolling to the end' })
+      .toEqual({ overflowing: false, image: 'none' });
   } finally {
     await context.close();
     server.kill();
@@ -489,7 +496,7 @@ test('#1564: the capped open Anzeigeoptionen cluster shows a scroll cue at 390x8
 // the (absent) cue must stay as before, including at tabletPortrait where the
 // cluster overflows by a few px.
 for (const name of ['desktop4k', 'desktopHd', 'tabletLandscape', 'tabletPortrait'] as const) {
-  test(`#1564: no scroll cue and an unchanged cap and legend at ${name} with the disclosure open, offline`, async ({
+  test(`#1564: no scroll cue, a reachable legend and a cap of the same kind at ${name} with the disclosure open, offline`, async ({
     browser,
   }) => {
     const server = await startPreview();
