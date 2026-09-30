@@ -5,13 +5,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project
 
 SailCommand — an offline-capable PWA that plans time-optimal sailing routes
-for a three-boat Flensburg fleet (Salona 45; Salona 44 "SPEEDY GO!"; Elan
-Impression 444 "PIRANJA" — drafts 2.1/2.1/1.9 m, so TWO distinct depth gates)
+for a Flensburg boat catalogue (read the boats, their drafts and their
+distinct default depth gates off `app/src/data/boats.ts`'s `BOATS` and
+`defaultSafetyDepthM`, never from a count here)
 in the Flensburg Fjord / Danish South Sea area (54.3–55.6°N, 9.4–11.6°E
 since #295 — read the live bounds off `app/public/data/mask.meta.json`),
 using hourly Open-Meteo wind forecasts and an isochrone router that prices
 tacks/gybes as time penalties. Only the Salona 45 is `hullVerified` with
-certificate-anchored polars; the other two are tier-C estimates, which
+certificate-anchored polars; the rest are tier-C estimates (a sister ship may borrow its donor's tables via `polarsFrom`, #567/#1575), which
 SUPPRESSES their two-rig ★ comparison — a behavioural difference that has
 already put stale claims into user-facing docs (#54, shipped v0.12.0).
 
@@ -583,8 +584,9 @@ making design-level decisions; do not silently deviate.
   0.16.3) — the `node_modules`-vs-lockfile trap in a second language, so a
   local pass is evidence, not proof.
 - Pipeline: `npm --prefix pipeline run
-  polars|estimate|harbors|seamarks|mask|icons` (`estimate` = `estimate_polars.mjs`, the tier-C scalar estimator for the two
-  non-`hullVerified` boats). The basemap has NO npm script —
+  polars|estimate|harbors|seamarks|mask|icons` (`estimate` = `estimate_polars.mjs`, the tier-C scalar estimator for the
+  non-`hullVerified` boats with tables of their own; a `polarsFrom` borrower
+  has none). The basemap has NO npm script —
   `pipeline/extract_basemap.sh [YYYYMMDD]`; per-asset detail and the
   never-hand-edit-a-generated-file rule are in `pipeline/README.md`. (mask needs
   `pipeline/.venv` — `python3 -m venv .venv && .venv/bin/pip install -r
@@ -1700,6 +1702,7 @@ making design-level decisions; do not silently deviate.
   | v0.47.0 | 2026-09-28 | 90 s | read as **`waiting`/`null`, `steps: 0`** at 20:40:09Z — a CREATED job (its Pages object `6720074808` created 20:40:08Z), misread at the time as the table's "not-yet-started" reading; the job then ran and ended `cancelled` mid-`deploy-pages`, its Pages object `error` | **`smoke-probe` FAILED** | merge-push `36480663285` (created 20:38:44Z) -> tag `36480835418` (created 20:40:14Z) on `675d496`. Tag run's `build` and `deploy` succeeded; its prod entry chunk `assets/index-4WXmwSG8.js` 404'd on 10/10 attempts while both basemap Range probes passed on attempt 1. Prod meanwhile served the MERGE run's `assets/index-CiWNpvuP.js` at ``version:`v0.46.0-45-g675d4969` `` (read ~20:48Z), as the v0.19.0 row records. Back-merge `36484307367` (`450f938`) republished `index-4WXmwSG8.js`; production then served ``version:`v0.47.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag `verified: true, reason: "valid"`. Post-hoc gate state matches v0.12.0's and v0.19.0's; the outcome matches v0.19.0's. Names no MECHANISM. |
   | v0.48.0 | 2026-09-29 | 30 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 15:49:25Z, two seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `36593066651` (created 15:48:59Z) -> tag `36593127818` (created 15:49:29Z) on `2f28e53`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `6739184153`, `ref: v0.48.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-BWFAAx2G.js` at ``version:`v0.48.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `341cdcb` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.49.0 | 2026-09-30 | 50 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 02:46:41Z, three seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `36661333446` (created 02:45:55Z) -> tag `36661398666` (created 02:46:45Z) on `2893841`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `6750305736`, `ref: v0.49.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-Coo8t4Jc.js` at ``version:`v0.49.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `378b082` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
+  | v0.50.0 | 2026-09-30 | 41 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 11:59:49Z, three seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `36711901243` (created 11:59:12Z) -> tag `36711967788` (created 11:59:53Z) on `eae74a6`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `6758804243`, `ref: v0.50.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-RmdOSV93.js` at ``version:`v0.50.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `59b0d3d` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -2417,6 +2420,11 @@ making design-level decisions; do not silently deviate.
   enumerate with `git ls-files`, never restate it. Since #1336 CI's
   `app-shard` SKIPS them unless `classify-realmask.sh` sees a routing-closure
   or supplement path, so run them locally on a routing change.
+  `realmaskFixtures.ts`'s `RELAXATION_TRADE_DEPTH_CASES` derives one case per
+  distinct (default gate, relaxation floor) pair in `BOATS`, so a boat with a
+  new pair adds a case to every relaxation-trade population; a case whose
+  floor exceeds Marstal's deepest connecting gate is pinned as stranded
+  (`relaxationTradeCasePartition`, #1575).
 - Flensburg→Marstal fails the RAW 3.0 m gate but ROUTES ANYWAY at DEFAULT
   settings — `planRoute()` returns `status: 'ok'` with shallow warnings at
   `requestedDepthM 3.0` / `usedDepthM ≈ 2.3`, as the `realmask.repro.*`
@@ -3223,6 +3231,11 @@ making design-level decisions; do not silently deviate.
   review's "correlation, not a cause" note naming PR #1488's merge, relayed
   into the artifact, singled out one of the 16 merges in `1e50ede..d91ab4c`.
   Relay a correlation as a commit range, never a PR name.
+  A question put to the maintainer relays too: a design finding's "No
+  tech-sheet URL is recorded" became "no tech sheet" in the question, and
+  the resulting "No tech sheet is on file" reached #1580's draft note and
+  #1583's spec text; each PR's review caught it against spec §M.8 before
+  merge. Quote the finding's own words in the question.
 - **The successor chain, measured again at full length on a CLAUDE.md PR: PR
   #852 (the v0.18.0 learnings) took FIVE review rounds, and every fix wave put
   a defect inside the previous round's fix** — the commit record says so in
@@ -3994,10 +4007,11 @@ making design-level decisions; do not silently deviate.
   2026-08-20 on a deliberately narrowed basis (#492's per-cell hatch already
   discloses exactly this criterion), so the mask optimism is now an ACCEPTED,
   DISCLOSED source-data limit — the residual itself is tracked in NO issue.
-- **Every per-boat depth lever is on the GATE side, and the two gates differ**
+- **Every per-boat depth lever is on the GATE side, and the gates differ**
   (#54/#539, `app/src/lib/boatDepth.ts`). `defaultSafetyDepthM(b)` is
-  `ceilToDecimetre(b.draftM + MASK_TOLERANCE_M)` — so `gate - T = draft`
-  EXACTLY, ZERO margin, for all three catalogue boats — while
+  `ceilToDecimetre(b.draftM + MASK_TOLERANCE_M)` — so `gate - T` is
+  `ceilToDecimetre(draft)`: the draft EXACTLY, ZERO margin, for a decimetre
+  draft, the next decimetre up otherwise, never below — while
   `relaxationFloorM(b)` is `ceilToDecimetre(b.draftM)`, NO tolerance added.
   So at every boat's OWN default gate, #53 relaxation reaches
   `relaxationFloorM(b) - T` — exactly `draft - T` for a decimetre draft
@@ -4005,7 +4019,7 @@ making design-level decisions; do not silently deviate.
   other — with no user action: below-draft at DEFAULTS is REAL. State it in
   TWO branches or it is false — those cases are
   DISCLOSED (a relaxed route sets `shallow` and `isSevere` fires), and the
-  UNDISCLOSED residual (non-relaxed gate-crossers) bottoms out AT the hull,
+  UNDISCLOSED residual (non-relaxed gate-crossers) bottoms out at `ceilToDecimetre(draft)` — AT the hull for a decimetre draft —
   never below. NEVER write "below-draft requires a user-lowered gate": the
   app's own `about.caveats.depthMask` string contradicts it. T cannot be
   per-boat — one mask, one blend, one constant. `BOAT_DRAFT_M`
@@ -4788,6 +4802,10 @@ making design-level decisions; do not silently deviate.
   own `Map` — most mock only `Popup`/`Marker` and take the map from
   `fakeMaplibre.ts`: #1536's `getStyle()` call reached `App.test.tsx`'s own
   `FakeMap` and redded 102 of its tests, which its filter skipped.
+  An `app/e2e` spec edit can red the unit `app` check:
+  `startPreviewSwAssertCallSites.test.ts` (#976) fails any test body calling
+  bare `startPreview()` without `assertCleanServiceWorkerState(page)` unless
+  its `EXEMPT_SITES` lists the site (#1578).
 - **Parallel subagents share ONE session scratchpad** (Claude Code 2.1.278;
   a harness property). A fixed commit-message filename there raced: one
   commit got a sibling's `Closes #N` (caught before push, v0.39.0 cycle).
