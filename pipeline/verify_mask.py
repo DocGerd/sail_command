@@ -439,7 +439,7 @@ def _snap_cell_reference(
 ) -> tuple[int, int] | None:
     """The app's rule (`snapToNavigable`), restated without snap_cell's loop: list
     every cell within the ring bound, keep each ring's best (nearest, then first in
-    scan order), then walk the rings outward and stop at the first whose inner edge
+    scan order), then walk the rings outward and stop at the first whose `ring * step`
     is already farther than the best so far. That walk is NOT true-nearest: ring k
     can hold a cell only (k - 0.5) cells away. `early_break=False` and
     `ties_last=True` are the two mutants the self-check below must tell apart."""
