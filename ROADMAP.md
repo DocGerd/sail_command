@@ -102,7 +102,7 @@ transfer to a fork automatically).
 
 ### Routing depth
 
-The largest open product questions. Both were unscheduled — in `Backlog`, accepted but not yet scheduled into a release — at the `v0.50.0` cut; the issue's milestone field is the current fact:
+The largest open product questions. Both were unscheduled — in `Backlog`, accepted but not yet scheduled into a release — at the `v0.50.0` cut; each issue's milestone field is the current fact:
 
 - Currents, tides, and sea state (waves) in the isochrone cost
   ([#18](https://github.com/DocGerd/sail_command/issues/18)) — a design spec

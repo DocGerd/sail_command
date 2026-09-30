@@ -61,8 +61,8 @@ installs as a standalone icon and works fully offline after the first visit
 - Pick the boat you are planning for on the **Boat** tab. Four ship today:
   the Salona 45 (2.1 m draft), the Salona 44 *SPEEDY GO!* (2.1 m), the
   Elan Impression 444 *PIRANJA* (1.9 m) and the Salona 44 *EASY GO!* on the
-  deep keel (2.59 m). Each carries its own draft, polar
-  tables and foresail inventory; the picker states how good each sail's polar
+  deep keel (2.59 m). Each carries its own draft and foresail inventory and a
+  polar table set (*EASY GO!* reuses *SPEEDY GO!*'s); the picker states how good each sail's polar
   data is — *certificate*, *modelled* or *estimated* — and, where the draft is
   the model's standard keel rather than that hull's own papers, says so. The
   choice is remembered on this device.
