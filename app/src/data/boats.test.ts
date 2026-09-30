@@ -230,7 +230,7 @@ describe('boat catalogue', () => {
     expect(relaxationFloorM(b)).toBe(2.6);
     expect(minSafetyDepthM(b)).toBe(2.7);
     expect(b.draftProvenance.hullVerified).toBe(false);
-    expect(b.draftProvenance.note).toContain('the sheet itself is not on file');
+    expect(b.draftProvenance.note).toContain('The operator’s page for this boat gives 2.55 m');
   });
 
   it('defaults to the Salona 45', () => {

@@ -327,7 +327,7 @@ export const BOATS = [
     // term, so the deeper hull is not modelled in the speeds.
     id: 'salona-44-easy-go',
     name: 'Salona 44 (EASY GO!)',
-    // Sources spread 2.55-2.59 m (spec §M.8) and
+    // The operator's page gives 2.55 m, a Salona 44 racing-keel review 2.59 m;
     // the deeper figure is taken, since a draft too shallow is the unsafe
     // direction. Its own literal, never SPEEDY GO!'s 2.10 m.
     draftM: 2.59,
@@ -335,9 +335,9 @@ export const BOATS = [
       keel: 'deep racing keel',
       hullVerified: false,
       note:
-        'Deep (racing) keel, 2.59 m. The operator’s tech sheet gives 2.55 m (multi-boat design ' +
-        'spec, §M.8; the sheet itself is not on file) and other sources go to 2.59 m; the deeper ' +
-        'figure is used so the derived depth gate is not too shallow. The figure was not checked ' +
+        'Deep (racing) keel, 2.59 m. The operator’s page for this boat gives 2.55 m and a ' +
+        'published review of the Salona 44 gives 2.59 m for its racing keel; the deeper figure ' +
+        'is used so the derived depth gate is not too shallow. The figure was not checked ' +
         'against the hull’s own papers. Its polar table is the estimate for its sister ship ' +
         'SPEEDY GO!, which has no keel term, so the deeper keel is not modelled in the speeds.',
     },
