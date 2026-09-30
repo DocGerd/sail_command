@@ -121,10 +121,10 @@ results table at the bottom, and note it in the box below the check.
       the disclosure on a boat with ≥1 affected harbour (SPEEDY GO! and
       PIRANJA both affect Marstal at their own default depth): it lists the
       harbour under "Only via a shallower approach: …" ("Nur über eine
-      flachere Zufahrt: …") — the only wording reachable here: no real
-      catalogue boat is ever `unreachable` for any harbour at its own
-      default gate, so "Not reachable: …" ("Nicht erreichbar: …") cannot
-      be observed under this setup. Whichever of the three states is
+      flachere Zufahrt: …") — the only wording reachable on those two:
+      neither is ever `unreachable` for any harbour at its own default
+      gate, so "Not reachable: …" ("Nicht erreichbar: …") cannot be
+      observed there. EASY GO!'s 3.5 m default gate does produce it: Augustenborg and Marstal read "Not reachable: …" there (#1575). Whichever of the three states is
       showing (pending, one-line summary, or the disclosure) is chained
       into that boat's own radio's `aria-describedby`, alongside its
       existing keel/draft-
@@ -140,8 +140,7 @@ results table at the bottom, and note it in the box below the check.
       Restore the safety depth and boat afterward.
 - [ ] **Endpoint-unreachable clause on boat switch (#1325).** Select an
       origin AND a destination harbour (a harbour pick — search or harbour marker — not an open-water tap), then
-      switch boats while both stay selected. No boat reads any harbour `unreachable`
-      at its own default depth (`harborReachability.test.ts`), so pick
+      switch boats while both stay selected. The Salona 45, SPEEDY GO! and PIRANJA read no harbour `unreachable` at their own default depth (`harborReachability.test.ts`; EASY GO!'s 3.5 m gate is the exception), so pick
       Augustenborg as origin and Burgstaaken as destination, set the safety
       depth on the Boat tab to 4.0 m, and switch from SPEEDY GO! to
       Salona 45 — both read `unreachable` there
@@ -153,8 +152,8 @@ results table at the bottom, and note it in the box below the check.
       flagged known-disconnected (that marker is boat-independent, so the
       switch did not change it). Restore the safety depth, boats, and
       selection afterward.
-- [ ] **At least one fleet boat is exercised.** Run §2 or §3 under SPEEDY GO!
-      or PIRANJA, so the suppressed rig comparison in §2.5 is actually
+- [ ] **At least one fleet boat is exercised.** Run §2 or §3 under SPEEDY GO!, PIRANJA or EASY GO!,
+      so the suppressed rig comparison in §2.5 is actually
       reached; a pass made entirely on the Salona 45 never exercises it.
 - [ ] **Known-disconnected harbors flagged in search.** In the harbor
       search, look up Arnis, Kappeln, Maasholm, Dyvig, or Gråsten — each
@@ -273,12 +272,12 @@ selected in §1.
     ETA and the chip reads "Faster: …". No ★ is shown when the two ETAs fall
     within 60 s ("… effectively tied …") or the passage runs entirely under
     engine ("Rig does not matter here …").
-  - **SPEEDY GO! or PIRANJA** — both their sails are tier Estimated, so the
-    comparison is withheld: **no ★ on either tab**, and the chip now names the
+  - **SPEEDY GO!, PIRANJA or EASY GO!** — both their sails are tier
+    Estimated, so the comparison is withheld: **no ★ on either tab**, and the chip now names the
     reason — "The sails were not compared for this passage — …'s polar data
     is not certificate-verified (tier: Estimated), so no faster rig is
     claimed" (#1398), where `…` is the plan's own boat name. A missing ★ on
-    these two boats is the designed outcome, not a defect — their two tables
+    these three boats is the designed outcome, not a defect — their two tables
     differ by the Salona 45's overlay ramp, which carries no information
     about the hull.
   - **Any boat, if the chip reads "The search ran out of time before

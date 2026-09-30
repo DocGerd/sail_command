@@ -13,9 +13,7 @@
 SailCommand plans time-optimal sailing routes from the Flensburg Fjord and
 Danish South Sea to the Little Belt, the western Great Belt approach and
 Fehmarn, using real hourly wind forecasts and an isochrone
-router that accounts for tacks and gybes. It ships polar tables for three
-boats — a Salona 45, a Salona 44 (SPEEDY GO!) and an Elan Impression 444
-(PIRANJA) — and routes for whichever one you pick. It runs entirely in the
+router that accounts for tacks and gybes. It ships three sets of polar tables and covers four boats — a Salona 45, a Salona 44 (SPEEDY GO!), an Elan Impression 444 (PIRANJA) and a Salona 44 on the deep keel (EASY GO!, which shares SPEEDY GO!'s polar tables) — and routes for whichever one you pick. It runs entirely in the
 browser, installs as an offline-capable app on Android, and needs no account
 or backend.
 
@@ -176,9 +174,10 @@ map area is already saved and what downloading it would cost.
 - **Boat polars (Salona 45)**: estimate derived from the ORC International
   2026 certificate for Salona 45 "Miles Ahead" (AUT 035/26), with downwind
   angles corrected to white-sails-only (non-spinnaker) performance.
-- **Boat polars (Salona 44 SPEEDY GO!, Elan Impression 444 PIRANJA)**:
-  **estimated, not measured**. No ORC/IRC certificate and no published VPP
-  was obtained for either hull, so each table is the Salona 45's
+- **Boat polars (Salona 44 SPEEDY GO!, Elan Impression 444 PIRANJA, Salona 44
+  EASY GO!)**: **estimated, not measured**. No ORC/IRC certificate and no
+  published VPP was obtained for any of these hulls (EASY GO! shares SPEEDY
+  GO!'s table), so each table is the Salona 45's
   certificate-anchored jib table scaled by one uniform hull scalar — the
   square root of the two hulls' sail-area/displacement ratios
   (figures from [sailboatdata.com](https://sailboatdata.com/)), with the
