@@ -499,8 +499,9 @@ export class NavMask {
   }
 
   /**
-   * Expanding ring search; returns center of nearest navigable cell within
-   * maxRadiusM.
+   * Expanding ring search; returns the centre of the nearest navigable cell it
+   * finds within maxRadiusM. Not guaranteed the true nearest: the stop bound
+   * below ignores that `p` can sit off its own cell's centre (#1605).
    *
    * #452: stays SCALAR at the REQUESTED gate and takes no {@link DepthGate} —
    * snapping is not relaxable (spike §1.4), and the relaxation discs are
@@ -519,8 +520,9 @@ export class NavMask {
     for (let ring = 0; ring <= maxRing; ring++) {
       // Cells can be non-square (lat vs lon extent), so a farther ring can
       // still hold a nearer cell than a closer ring (lon-offset hits vs.
-      // lat-offset hits). Only stop once no unscanned ring could possibly
-      // beat the current best.
+      // lat-offset hits). Stop once ring * minCellStepM exceeds the best
+      // distance; ring distance is measured from the start cell's centre, not
+      // from `p`, so the next ring may still hold a slightly nearer cell.
       if (best && ring * minCellStepM > best.d) break;
       for (let dr = -ring; dr <= ring; dr++) {
         for (let dc = -ring; dc <= ring; dc++) {
