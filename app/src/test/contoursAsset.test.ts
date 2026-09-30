@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { CONTOUR_LEVELS_M, type ContourAsset, type ContourFeature } from '../lib/contours';
 import { MASK_TOLERANCE_M, cautiousDepthLowerBoundM, maskGrid } from '../lib/mask';
 import type { MaskMeta } from '../types';
+import { solverTimeoutMs } from './timeouts';
 
 // #629 §5/§6: pipeline/build_contours.py's output is a generated asset with
 // no compiler spanning its Python producer and this TypeScript consumer.
@@ -448,41 +449,52 @@ function compareToDeep(inside: Uint8Array, deep: Uint8Array) {
   return { shownDeepButShallow, shownShallowButDeep, deepCount, examples };
 }
 
+// Coverage instrumentation pushes these past vitest's default budget.
+const REGION_TEST_TIMEOUT_MS = solverTimeoutMs(15_000);
+
 // #1540: the region a level's lines enclose, closed by the deep cells' own
 // no-data and grid edges, must lie inside the at-or-above-level cells. This
 // is a point-in-polygon model independent of the pipeline's chord test.
 describe('#1540 region: the area shown at or above a level is a subset of those cells', () => {
   for (const levelM of CONTOUR_LEVELS_M) {
-    it(`level ${levelM} m: control — the unsmoothed staircase encloses exactly the deep set`, () => {
-      const deep = deepCells(levelM);
-      const staircase: LatticeSegment[] = [...qualifyingLevelEdges(levelM)]
-        .filter((key) => key.startsWith('V:'))
-        .map((key) => {
-          const [, fixed, along] = key.split(':').map(Number) as [number, number, number];
-          return [along, fixed, along + 1, fixed];
-        });
-      const { inside, ties } = evenOddInterior([...staircase, ...closingSegments(deep)]);
-      const cmp = compareToDeep(inside, deep);
-      expect(ties, 'sample point on a segment').toBe(0);
-      expect(cmp.deepCount, 'no deep cells at this level').toBeGreaterThan(0);
-      expect(cmp.shownDeepButShallow, 'control: shown deep but shallow').toBe(0);
-      expect(cmp.shownShallowButDeep, 'control: shown shallow but deep').toBe(0);
-    });
+    it(
+      `level ${levelM} m: control — the unsmoothed staircase encloses exactly the deep set`,
+      { timeout: REGION_TEST_TIMEOUT_MS },
+      () => {
+        const deep = deepCells(levelM);
+        const staircase: LatticeSegment[] = [...qualifyingLevelEdges(levelM)]
+          .filter((key) => key.startsWith('V:'))
+          .map((key) => {
+            const [, fixed, along] = key.split(':').map(Number) as [number, number, number];
+            return [along, fixed, along + 1, fixed];
+          });
+        const { inside, ties } = evenOddInterior([...staircase, ...closingSegments(deep)]);
+        const cmp = compareToDeep(inside, deep);
+        expect(ties, 'sample point on a segment').toBe(0);
+        expect(cmp.deepCount, 'no deep cells at this level').toBeGreaterThan(0);
+        expect(cmp.shownDeepButShallow, 'control: shown deep but shallow').toBe(0);
+        expect(cmp.shownShallowButDeep, 'control: shown shallow but deep').toBe(0);
+      },
+    );
 
-    it(`level ${levelM} m: the smoothed lines never show a shallow cell as deep`, () => {
-      const deep = deepCells(levelM);
-      const smoothed: LatticeSegment[] = segmentsOf(levelFeature(levelM)).map((seg) => {
-        const a = vertexIndex(seg.p0);
-        const b = vertexIndex(seg.p1);
-        return [a.row, a.col, b.row, b.col];
-      });
-      const { inside, ties } = evenOddInterior([...smoothed, ...closingSegments(deep)]);
-      const cmp = compareToDeep(inside, deep);
-      expect(ties, 'sample point on a segment').toBe(0);
-      expect(
-        cmp.examples,
-        `${cmp.shownDeepButShallow} shallow cells shown at or above ${levelM} m`,
-      ).toEqual([]);
-    });
+    it(
+      `level ${levelM} m: the smoothed lines never show a shallow cell as deep`,
+      { timeout: REGION_TEST_TIMEOUT_MS },
+      () => {
+        const deep = deepCells(levelM);
+        const smoothed: LatticeSegment[] = segmentsOf(levelFeature(levelM)).map((seg) => {
+          const a = vertexIndex(seg.p0);
+          const b = vertexIndex(seg.p1);
+          return [a.row, a.col, b.row, b.col];
+        });
+        const { inside, ties } = evenOddInterior([...smoothed, ...closingSegments(deep)]);
+        const cmp = compareToDeep(inside, deep);
+        expect(ties, 'sample point on a segment').toBe(0);
+        expect(
+          cmp.examples,
+          `${cmp.shownDeepButShallow} shallow cells shown at or above ${levelM} m`,
+        ).toEqual([]);
+      },
+    );
   }
 });
