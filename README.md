@@ -13,10 +13,7 @@
 SailCommand plans time-optimal sailing routes from the Flensburg Fjord and
 Danish South Sea to the Little Belt, the western Great Belt approach and
 Fehmarn, using real hourly wind forecasts and an isochrone
-router that accounts for tacks and gybes. It ships polar tables for four
-boats — a Salona 45, a Salona 44 (SPEEDY GO!), an Elan Impression 444
-(PIRANJA) and a Salona 44 on the deep keel (EASY GO!) — and routes for
-whichever one you pick. It runs entirely in the
+router that accounts for tacks and gybes. It ships three sets of polar tables and covers four boats — a Salona 45, a Salona 44 (SPEEDY GO!), an Elan Impression 444 (PIRANJA) and a Salona 44 on the deep keel (EASY GO!, which shares SPEEDY GO!'s polar tables) — and routes for whichever one you pick. It runs entirely in the
 browser, installs as an offline-capable app on Android, and needs no account
 or backend.
 
