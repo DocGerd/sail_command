@@ -91,12 +91,13 @@ sites with
 The selected boat id is stored in `localStorage`; it determines the draft and
 hence the derived safety depth gate, so it is validated against the
 catalogue on every read. The AIS key is not stored in `localStorage`; it is a
-`Settings` field held in the IndexedDB `settings` store. Non-test
-`sessionStorage` use under `app/src` (enumerate with
-`grep -rn sessionStorage app/src`) is one flag in
-`app/src/services/swRecovery.ts` that keeps the one-shot reload recovering a
-broken first-load basemap from looping. There are
-no cookies and no analytics, telemetry, or tracking of any kind.
+`Settings` field held in the IndexedDB `settings` store. The only
+non-test `sessionStorage` calls under `app/src` (enumerate with
+`grep -rnE 'sessionStorage\.' app/src --exclude='*.test.*'`) are the read and
+write of the `sailcommand-sw-recovery-reloaded` flag in
+`app/src/services/swRecovery.ts`, which keeps the one-shot reload recovering a
+broken first-load basemap from looping. There are no cookies and no analytics,
+telemetry, or tracking of any kind.
 
 ## 3. Trust boundaries
 
