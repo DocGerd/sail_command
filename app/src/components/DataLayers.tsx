@@ -1253,7 +1253,7 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
         '--sc-depth-controls-max',
         px === null ? 'none' : `${px}px`,
       );
-    const recompute = () => {
+    const measure = () => {
       document.documentElement.style.setProperty(
         '--sc-depth-controls-height',
         `${el.getBoundingClientRect().height}px`,
@@ -1377,6 +1377,11 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
           : null,
       );
       setLegendHidden(budgetPx - el.getBoundingClientRect().height < LEGEND_COLLAPSED_HEIGHT_PX);
+    };
+    // Read after `measure` so scrollHeight sees the cap it just published.
+    const recompute = () => {
+      measure();
+      el.toggleAttribute('data-overflowing', el.scrollHeight > el.clientHeight);
     };
     const ro = new ResizeObserver(recompute);
     ro.observe(el);

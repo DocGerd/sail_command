@@ -1,4 +1,11 @@
-import { test, expect, type Locator, type Page } from '@playwright/test';
+import {
+  test,
+  expect,
+  type Browser,
+  type BrowserContext,
+  type Locator,
+  type Page,
+} from '@playwright/test';
 import {
   startPreview,
   mapReady,
@@ -419,6 +426,110 @@ test('#597 legend stays reachable at 820x1180 with the disclosure open, the firs
     server.kill();
   }
 });
+
+// #1564: a capped open Anzeigeoptionen cluster below 820 px shows a scroll cue
+// while rows sit below the fold. The resolved background is read in a real
+// browser: jsdom evaluates neither media queries nor gradients.
+async function offlineBannerLadenPage(
+  browser: Browser,
+  viewport: { width: number; height: number },
+  serverUrl: string,
+): Promise<{ page: Page; context: BrowserContext }> {
+  const context = await browser.newContext({
+    storageState: { cookies: [], origins: [] },
+    viewport,
+  });
+  const page = await context.newPage();
+  await assertCleanServiceWorkerState(page);
+  await page.goto(serverUrl);
+  await mapReady(page);
+  await expect(page.locator('.banner-area .banner-info:not(.reload-prompt)')).toBeVisible();
+  await context.setOffline(true);
+  await expect(page.locator('.banner-message', { hasText: 'Planung deaktiviert' })).toBeVisible();
+  return { page, context };
+}
+
+const controlsCue = (page: Page) =>
+  page.locator('.data-layer-controls').evaluate((el) => ({
+    overflowing: el.hasAttribute('data-overflowing'),
+    image: getComputedStyle(el).backgroundImage,
+  }));
+
+test('#1564: the capped open Anzeigeoptionen cluster shows a scroll cue at 390x844, and no cue while closed', async ({
+  browser,
+}) => {
+  const server = await startPreview();
+  const { page, context } = await offlineBannerLadenPage(
+    browser,
+    STANDARD_VIEWPORTS.phonePortrait,
+    server.url,
+  );
+  try {
+    await expect
+      .poll(() => controlsCue(page), { message: 'cue while the disclosure is closed' })
+      .toEqual({ overflowing: false, image: 'none' });
+
+    await openDataLayerOptions(page);
+    await expect
+      .poll(async () => (await controlsCue(page)).overflowing, {
+        message: 'data-overflowing never set with the cluster capped below its content',
+      })
+      .toBe(true);
+    const { image } = await controlsCue(page);
+    expect(image, 'resolved background-image of the overflowing cluster').toContain(
+      'linear-gradient',
+    );
+  } finally {
+    await context.close();
+    server.kill();
+  }
+});
+
+// The cue is scoped to < 820 px: at and above it the cap, `legendHidden` and
+// the (absent) cue must stay as before, including at tabletPortrait where the
+// cluster overflows by a few px.
+for (const name of ['desktop4k', 'desktopHd', 'tabletLandscape', 'tabletPortrait'] as const) {
+  test(`#1564: no scroll cue and an unchanged cap and legend at ${name} with the disclosure open, offline`, async ({
+    browser,
+  }) => {
+    const server = await startPreview();
+    const { page, context } = await offlineBannerLadenPage(
+      browser,
+      STANDARD_VIEWPORTS[name],
+      server.url,
+    );
+    try {
+      await openDataLayerOptions(page);
+      const legend = page.locator('details.depth-legend');
+      await expect
+        .poll(() => legend.evaluate((el) => (el as HTMLElement).hidden), {
+          message: `.depth-legend hidden at ${name}`,
+        })
+        .toBe(false);
+      const cap = await page.evaluate(() =>
+        document.documentElement.style.getPropertyValue('--sc-depth-controls-max'),
+      );
+      if (STANDARD_VIEWPORTS[name].width >= 1024) {
+        expect(cap, `--sc-depth-controls-max at ${name}`).toBe('none');
+      } else {
+        expect(Number.isFinite(parseFloat(cap)), `--sc-depth-controls-max at ${name}: ${cap}`).toBe(
+          true,
+        );
+      }
+      if (name === 'tabletPortrait') {
+        await expect
+          .poll(async () => (await controlsCue(page)).overflowing, {
+            message: 'positive control: tabletPortrait offline overflows',
+          })
+          .toBe(true);
+      }
+      expect((await controlsCue(page)).image, `background-image at ${name}`).toBe('none');
+    } finally {
+      await context.close();
+      server.kill();
+    }
+  });
+}
 
 // #598 review round 3, Major 2 + Minor 1: the touch-target poll above only
 // exercises ONE viewport, where the legend is always reachable — it cannot

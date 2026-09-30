@@ -811,6 +811,23 @@ select {
   overflow-y: auto;
 }
 
+/* Scroll cue: DataLayers.tsx sets `data-overflowing` while the capped cluster
+   has rows below the fold. The `local` cover hides the shadow at the end of
+   the scroll. */
+@media (max-width: 819.98px) {
+  .data-layer-controls[data-overflowing] {
+    background:
+      linear-gradient(
+          color-mix(in srgb, var(--sc-bg) 90%, transparent),
+          color-mix(in srgb, var(--sc-bg) 90%, transparent)
+        )
+        local bottom / 100% 1.5rem no-repeat,
+      linear-gradient(to top, color-mix(in srgb, var(--sc-fg) 25%, transparent), transparent) scroll
+        bottom / 100% 1.25rem no-repeat,
+      color-mix(in srgb, var(--sc-bg) 90%, transparent);
+  }
+}
+
 /* #706: map-chrome checkboxes (the `.data-layer-controls` rows and those inside
    `.route-layer-controls-disclosure`'s body) had no `accent-color`, so their
    tick fill rendered in the browser/OS default accent — a different blue from
