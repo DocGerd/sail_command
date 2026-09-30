@@ -48,7 +48,7 @@ function fetchMock(overrides: Partial<Record<string, () => Response>> = {}) {
     if (overrides.polarFock && url.includes('salona-45-fock.json'))
       return Promise.resolve(overrides.polarFock());
     if (url.includes('salona-45-fock.json')) return Promise.resolve(jsonResponse(FOCK));
-    // #54 spec N: the two tier-C fleet boats' four tables. Served generically
+    // #54 spec N: the tier-C fleet boats' tables. Served generically
     // and AFTER the salona-45 branches above, so the reference boat's two
     // overridable fixtures keep their identity (the assertions below still
     // distinguish TEST_POLAR from FOCK by value) while a new catalogue boat
@@ -67,9 +67,8 @@ function fetchMock(overrides: Partial<Record<string, () => Response>> = {}) {
 }
 
 // One fetch per shipped asset: mask.meta.json + mask.bin + harbors.json +
-// seamarks.json, plus one per catalogue boat x sail. #54 spec N took the
-// catalogue from one boat to three, so the polar half went 2 -> 6 and this
-// went 6 -> 10. HAND-WRITTEN, deliberately not derived from BOATS: these three
+// seamarks.json, plus one per distinct polar file (six: EASY GO! shares
+// SPEEDY GO!'s two, #567). HAND-WRITTEN, deliberately not derived from BOATS: these three
 // assertions exist to catch a DUPLICATE or extra fetch (the module-cache rows
 // below are the point), and a count computed from the same array the fetch
 // manifest is built from could never fail (#388).
@@ -84,6 +83,7 @@ describe('loadRoutingAssets', () => {
   });
 
   afterEach(() => {
+    vi.doUnmock('../data/boats');
     vi.unstubAllGlobals();
   });
 
@@ -103,6 +103,8 @@ describe('loadRoutingAssets', () => {
     expect(Object.keys(assets.polars).sort()).toEqual([
       'elan-444-piranja/fock',
       'elan-444-piranja/genoa',
+      'salona-44-easy-go/fock',
+      'salona-44-easy-go/genoa',
       'salona-44-speedy-go/fock',
       'salona-44-speedy-go/genoa',
       'salona-45/fock',
@@ -110,6 +112,11 @@ describe('loadRoutingAssets', () => {
     ]);
     expect(assets.polars['salona-45/genoa']).toEqual(TEST_POLAR);
     expect(assets.polars['salona-45/fock']).toEqual(FOCK);
+    // #567: a sister ship holds its donor's very table, not a second copy.
+    expect(assets.polars['salona-44-easy-go/genoa']).toBe(
+      assets.polars['salona-44-speedy-go/genoa'],
+    );
+    expect(assets.polars['salona-44-easy-go/fock']).toBe(assets.polars['salona-44-speedy-go/fock']);
     expect(assets.harbors).toEqual(HARBORS);
     expect(assets.seamarks).toEqual(SEAMARKS);
     expect(new Uint8Array(assets.maskBuffer)).toEqual(new Uint8Array(maskArrayBuffer()));
@@ -117,6 +124,41 @@ describe('loadRoutingAssets', () => {
     for (const call of mock.mock.calls) {
       expect(String(call[0])).toContain(import.meta.env.BASE_URL);
     }
+  });
+
+  // #567: sister ships point several polarAssets at one file. The mocked
+  // catalogue makes the sharing independent of which real boats borrow.
+  it('fetches a shared polarAsset once and hands both boats the same table', async () => {
+    const sail = (asset: string) => ({
+      id: 'genoa',
+      label: 'Genoa',
+      polarAsset: asset,
+      polarProvenance: { tier: 'estimated', note: 'n' },
+    });
+    vi.doMock('../data/boats', async () => {
+      const actual = await vi.importActual<typeof import('../data/boats')>('../data/boats');
+      return {
+        ...actual,
+        BOATS: [
+          { id: 'donor', sails: [sail('data/polars/donor-genoa.json')] },
+          { id: 'sister', sails: [sail('data/polars/donor-genoa.json')] },
+          { id: 'other', sails: [sail('data/polars/other-genoa.json')] },
+        ],
+      };
+    });
+    const mock = fetchMock();
+    vi.stubGlobal('fetch', mock);
+
+    const { loadRoutingAssets } = await import('./assets');
+    const assets = await loadRoutingAssets();
+
+    const polarFetches = mock.mock.calls.filter((c) => String(c[0]).includes('/data/polars/'));
+    expect(polarFetches.map((c) => String(c[0]).split('/').pop()).sort()).toEqual([
+      'donor-genoa.json',
+      'other-genoa.json',
+    ]);
+    expect(assets.polars['sister/genoa']).toBe(assets.polars['donor/genoa']);
+    expect(assets.polars['other/genoa']).not.toBe(assets.polars['donor/genoa']);
   });
 
   it('module-caches: a second call does not re-fetch and returns the same object', async () => {

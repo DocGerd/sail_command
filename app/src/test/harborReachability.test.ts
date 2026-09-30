@@ -71,20 +71,78 @@ describe('#1290 harborReachability', () => {
   // that half's own evidence (PR #1316 fix-wave 1 Minor: this comment
   // previously over-claimed "two independent implementations… not a
   // self-consistency tautology" for the whole state, not just the fill).
+  //
+  // Hand-written per boat, never derived from BOATS. The three shallower boats
+  // (gates 2.8/3.0 m) reach every harbour at their own default; EASY GO!'s
+  // 3.5 m gate is the one that reaches the `unreachable` branch, which is why
+  // a default boat switch CAN now announce an unreachable endpoint (#1575).
+  const EXPECTED_ACCESS: Record<
+    string,
+    {
+      ok: number;
+      shallow: number;
+      unreachable: number;
+      knownDisconnected: number;
+      named: Record<string, string>;
+    }
+  > = {
+    'salona-45': {
+      ok: 34,
+      shallow: 1,
+      unreachable: 0,
+      knownDisconnected: 5,
+      named: { marstal: 'shallow-approach' },
+    },
+    'salona-44-speedy-go': {
+      ok: 34,
+      shallow: 1,
+      unreachable: 0,
+      knownDisconnected: 5,
+      named: { marstal: 'shallow-approach' },
+    },
+    'elan-444-piranja': {
+      ok: 34,
+      shallow: 1,
+      unreachable: 0,
+      knownDisconnected: 5,
+      named: { marstal: 'shallow-approach' },
+    },
+    'salona-44-easy-go': {
+      ok: 31,
+      shallow: 2,
+      unreachable: 2,
+      knownDisconnected: 5,
+      named: {
+        faldsled: 'shallow-approach',
+        rudkoebing: 'shallow-approach',
+        augustenborg: 'unreachable',
+        marstal: 'unreachable',
+      },
+    },
+  };
+
+  it('the expected-access table names every catalogue boat and reaches `unreachable` (non-vacuity)', () => {
+    expect(Object.keys(EXPECTED_ACCESS).sort()).toEqual(BOATS.map((b) => b.id).sort());
+    expect(Object.values(EXPECTED_ACCESS).some((e) => e.unreachable > 0)).toBe(true);
+  });
+
   it.each(BOATS)(
-    '$id: 34 ok, marstal shallow-approach, 0 unreachable, 5 known-disconnected',
+    '$id: per-state harbour counts at its own default gate',
     { timeout: solverTimeoutMs(300_000) },
     (boat) => {
+      const expected = EXPECTED_ACCESS[boat.id]!;
       const g = defaultSafetyDepthM(boat);
       const result = computeHarborAccess(mask, harbors, boat, g);
       expect(result.size).toBe(harbors.length);
       const byState = { ok: 0, 'shallow-approach': 0, unreachable: 0, 'known-disconnected': 0 };
       for (const state of result.values()) byState[state]++;
-      expect(byState.ok).toBe(34);
-      expect(byState['shallow-approach']).toBe(1);
-      expect(byState.unreachable).toBe(0);
-      expect(byState['known-disconnected']).toBe(5);
-      expect(result.get('marstal')).toBe('shallow-approach');
+      expect(byState.ok).toBe(expected.ok);
+      expect(byState['shallow-approach']).toBe(expected.shallow);
+      expect(byState.unreachable).toBe(expected.unreachable);
+      expect(byState['known-disconnected']).toBe(expected.knownDisconnected);
+      for (const [hid, state] of Object.entries(expected.named)) {
+        expect(result.get(hid), hid).toBe(state);
+      }
     },
   );
 
@@ -103,10 +161,10 @@ describe('#1290 harborReachability', () => {
     },
   );
 
-  // ---- §3's EASY GO! row (draft 2.55 m, deferred boat, #573) ----
-  // A synthetic BoatDef reproduces §3's measured composition for the one
-  // catalogue boat whose gate is deep enough to reach the unreachable
-  // branch at all — the three REAL catalogue boats never do (row above).
+  // ---- §3's EASY GO! row, synthetic 2.55 m draft ----
+  // Same gate and states as the real 2.59 m catalogue entry asserted above;
+  // kept so §3's own measured composition stays reproduced independently of
+  // the catalogue.
   it(
     'synthetic 2.55 m draft: 31 ok, 2 shallow-approach, 2 unreachable, 5 known-disconnected',
     { timeout: solverTimeoutMs(300_000) },
@@ -133,14 +191,13 @@ describe('#1290 harborReachability', () => {
   // the PRODUCTION per-pair BFS #53's relaxation retry itself calls — over a
   // UNIFORM gate. This is the differential-testing rule for a duplicated
   // algorithm (CLAUDE.md): proven equivalent by running both, not trusted by
-  // reading. Runs over all three catalogue boats' own default gates so both
-  // gate values (2.8 m, 3.0 m) get covered.
+  // reading. Runs over every catalogue boat's own default gate.
   //
-  // PR #1316 fix-wave 1 Major 1: NONE of these three gates is a verified
-  // 4- vs 8-connectivity divergence point on this mask, so this block alone
-  // cannot catch a broken neighbourhood (measured: substituting an
-  // 8-neighbourhood here left all three rows GREEN). See the DIVERGENCE
-  // block below, which is what actually closes that gap.
+  // PR #1316 fix-wave 1 Major 1: the 2.8 and 3.0 m gates the catalogue then
+  // had are not verified 4- vs 8-connectivity divergence points on this mask,
+  // so those rows alone could not catch a broken neighbourhood (measured:
+  // substituting an 8-neighbourhood left all three rows GREEN). See the
+  // DIVERGENCE block below, which is what actually closes that gap.
   it.each(BOATS)(
     '$id: flood membership agrees with NavMask.cellsConnected for every harbour',
     { timeout: solverTimeoutMs(300_000) },

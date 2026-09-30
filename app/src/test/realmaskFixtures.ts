@@ -9,6 +9,7 @@ import { solve } from '../routing/isochrone';
 import { findRelaxedGate } from '../routing/relaxedDepth';
 import { uniformWindGrid } from './fixtures';
 import { uniformGate } from '../lib/depthGate';
+import { SEED_POINT } from '../lib/harborReachability';
 import { defaultSafetyDepthM, relaxationFloorM } from '../lib/boatDepth';
 import { BOATS, boatById, DEFAULT_BOAT_ID, polarKey } from '../data/boats';
 import type {
@@ -76,6 +77,10 @@ export const polars: Record<string, PolarTable> = {
   [polarKey('deep-test', 'fock')]: polarFock,
   [polarKey('salona-44-speedy-go', 'genoa')]: polarGenoa44,
   [polarKey('salona-44-speedy-go', 'fock')]: polarFock44,
+  // #1575: EASY GO! borrows SPEEDY GO!'s tables (`polarsFrom`, #567) — the
+  // same objects, as `loadRoutingAssets` hands them out.
+  [polarKey('salona-44-easy-go', 'genoa')]: polarGenoa44,
+  [polarKey('salona-44-easy-go', 'fock')]: polarFock44,
 };
 
 export const SALONA_DEPS = { polars, boat: boatById(DEFAULT_BOAT_ID), mask };
@@ -456,5 +461,59 @@ export function expectRelaxationTradeSubsetConsistency(
     expect(r.localUsedDepthM, `${label} ${r.id}: local <= global`).toBeLessThanOrEqual(
       r.globalUsedDepthM as number,
     );
+  }
+}
+
+/**
+ * Whether the fixed harbour's snapped cell (snapped at the requested gate, as
+ * `planRoute` does) is 4-connected to open water at a UNIFORM `floorM` — the
+ * deepest gate relaxation may reach. Derived from the mask, never a hardcoded
+ * depth: a boat whose floor is deeper than the harbour's deepest connecting
+ * gate genuinely cannot reach it, so no pair involving it can relax.
+ */
+export function relaxationTradeFixedReachableAtFloor(
+  fixedId: string,
+  requestedM: number,
+  floorM: number,
+): boolean {
+  const snap = relaxationTradeSnapAt(relaxationTradeHarbor(fixedId), requestedM);
+  return snap !== null && mask.cellsConnected(SEED_POINT, snap, uniformGate(floorM));
+}
+
+/** The depth cases split by whether the fixed harbour can relax at all. */
+export function relaxationTradeCasePartition(fixedId: string): {
+  relaxable: RelaxationTradeDepthCase[];
+  stranded: RelaxationTradeDepthCase[];
+} {
+  const relaxable: RelaxationTradeDepthCase[] = [];
+  const stranded: RelaxationTradeDepthCase[] = [];
+  for (const c of RELAXATION_TRADE_DEPTH_CASES) {
+    (relaxationTradeFixedReachableAtFloor(fixedId, c.requestedM, c.floorM)
+      ? relaxable
+      : stranded
+    ).push(c);
+  }
+  return { relaxable, stranded };
+}
+
+/**
+ * The stranded-case pin: with the fixed harbour cut off at the floor, NO pair
+ * relaxes at either radius (`findRelaxedGate` returns null), which `planRoute`
+ * turns into the typed `error`/`unreachable` result.
+ */
+export function expectRelaxationTradeStranded(
+  rows: readonly RelaxationTradeRow[],
+  label: string,
+): void {
+  expect(rows.length, `${label}: empty population — nothing measured`).toBeGreaterThan(0);
+  for (const r of rows) {
+    expect(
+      r.globalUsedDepthM,
+      `${label} ${r.id}: global search relaxed a stranded harbour`,
+    ).toBeNull();
+    expect(
+      r.localUsedDepthM,
+      `${label} ${r.id}: shipped radius relaxed a stranded harbour`,
+    ).toBeNull();
   }
 }

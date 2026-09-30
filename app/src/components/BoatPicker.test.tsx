@@ -82,16 +82,21 @@ describe('#54 BoatPicker against the shipped catalogue', () => {
     // one boat's draft into every row reds here. The Salona 44 shares the
     // Salona 45's 2.1 m, so the scoping is doing real work even between two
     // boats whose values coincide.
+    // Hand-written per boat, never derived from the catalogue: a draft shows
+    // up to two decimals (EASY GO!'s 2.59 m must not read 2.6 m), which a
+    // `toFixed(1)` twin would have re-created in the expectation.
+    const EXPECTED_DRAFT_TEXT: Record<string, string> = {
+      'salona-45': 'Draft 2.1 m',
+      'salona-44-speedy-go': 'Draft 2.1 m',
+      'elan-444-piranja': 'Draft 1.9 m',
+      'salona-44-easy-go': 'Draft 2.59 m',
+    };
+    expect(Object.keys(EXPECTED_DRAFT_TEXT).sort()).toEqual(BOATS.map((b) => b.id).sort());
     for (const boat of BOATS) {
       const option = within(optionFor(boat.id));
-      expect(option.getByText(`Draft ${boat.draftM.toFixed(1)} m`)).toBeInTheDocument();
+      expect(option.getByText(EXPECTED_DRAFT_TEXT[boat.id]!)).toBeInTheDocument();
       expect(option.getByText(boat.name)).toBeInTheDocument();
     }
-    // One hardcoded anchor beside the derived loop, the maskTolerance R6
-    // idiom: the loop above takes its expected string from the same catalogue
-    // the component reads, so it cannot catch an arithmetic or formatting
-    // change that moves both together. This literal can.
-    expect(within(optionFor('salona-45')).getByText('Draft 2.1 m')).toBeInTheDocument();
   });
 
   it('shows the WEAKEST of the boat’s per-sail provenance tiers, not the strongest', () => {

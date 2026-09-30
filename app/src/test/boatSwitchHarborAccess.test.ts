@@ -1,26 +1,29 @@
-// #1393. `harborReachability.test.ts`'s own it.each(BOATS) row already pins
-// "0 unreachable" for every catalogue boat AT ITS OWN default depth (2.8 m
-// Elan, 3.0 m both Salonas). That leaves one combo a plain default-settings
-// boat switch can still reach untested: `clampSettingsToBoat` never lowers
-// the gate (spec C.7), so switching a Salona (3.0 m) -> Elan (2.8 m default)
-// leaves the live depth at 3.0 m — Elan evaluated at the OTHER boat's
-// default, not its own. This file closes that gap: every catalogue boat at
-// BOTH real default depths, plus a cross-boat identity check at each depth.
+// #1393, rescoped by #1575. Two facts about a plain default-settings boat
+// switch, both pinned against the real committed mask and harbours.
 //
-// Together with `BoatPicker.harborAccess.test.tsx`'s #1325 describe block
-// (which measures 4.0 m — an artificially raised depth well above either
-// real default — as the shallowest depth that exercises the endpoint-
-// unreachable clause at all), this pins that the #1325 clause structurally
-// cannot fire from a plain boat switch at default settings among the three
-// shipped catalogue boats.
+// (1) Among the boats whose own default gate is <= 3.0 m (Salona 45, SPEEDY
+// GO!, PIRANJA), a switch never produces `unreachable`, and all of them read
+// identical per-harbour access at each such depth. `clampSettingsToBoat` never
+// lowers the gate (spec C.7), so a Salona (3.0 m) -> Elan (2.8 m default)
+// switch leaves the live depth at 3.0 m.
+//
+// (2) EASY GO! (2.59 m draft, 3.5 m default gate) BREAKS the old "a default
+// switch never announces an unreachable endpoint" invariant on purpose: the
+// clamp raises a switch INTO it to 3.5 m, where augustenborg and marstal read
+// `unreachable`, so the #1325 endpoint-unreachable announcement is reachable
+// from a plain default switch. `BoatPicker.harborAccess.test.tsx`'s #1325
+// block pins the announcement's wording; `app/e2e/harbor-access-markers.spec.ts`
+// pins it end to end.
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { NavMask } from '../lib/mask';
-import { BOATS } from '../data/boats';
+import { BOATS, boatById, type BoatDef } from '../data/boats';
 import { defaultSafetyDepthM } from '../lib/boatDepth';
+import { clampSettingsToBoat } from '../lib/boatSettings';
 import { computeHarborAccess, type HarborWithReachability } from '../lib/harborReachability';
+import { DEFAULT_SETTINGS } from '../types';
 import type { MaskMeta } from '../types';
 import { solverTimeoutMs } from './timeouts';
 
@@ -32,32 +35,42 @@ const harbors = JSON.parse(
   readFileSync(resolve(dataDir, 'harbors.json'), 'utf8'),
 ) as HarborWithReachability[];
 
-// The only two depths a plain default-settings switch among the three
-// shipped boats can ever produce: each boat's own defaultSafetyDepthM,
-// derived here (never hardcoded) so a catalogue draft change updates this
-// set automatically rather than silently narrowing what gets checked.
-const REAL_DEFAULT_DEPTHS = [...new Set(BOATS.map((b) => defaultSafetyDepthM(b)))];
+const SHALLOW_GATE_MAX_M = 3.0;
+const EASY_GO = boatById('salona-44-easy-go');
 
-const CASES = BOATS.flatMap((boat) => REAL_DEFAULT_DEPTHS.map((depth) => ({ boat, depth })));
+// Derived (never hardcoded) so a catalogue draft change updates the sets
+// rather than silently narrowing what gets checked.
+const SHALLOW_BOATS = BOATS.filter((b) => defaultSafetyDepthM(b) <= SHALLOW_GATE_MAX_M);
+const SHALLOW_DEPTHS = [...new Set(SHALLOW_BOATS.map((b) => defaultSafetyDepthM(b)))];
+const CASES = SHALLOW_BOATS.flatMap((boat) => SHALLOW_DEPTHS.map((depth) => ({ boat, depth })));
 
-describe('#1393: boat switch at default settings never reaches unreachable', () => {
+function unreachableAt(boat: BoatDef, depth: number): string[] {
+  return [...computeHarborAccess(mask, harbors, boat, depth).entries()]
+    .filter(([, state]) => state === 'unreachable')
+    .map(([id]) => id)
+    .sort();
+}
+
+describe('#1393: a default switch among the boats gated <= 3.0 m never reaches unreachable', () => {
+  it('the scoped sets are non-empty and exclude EASY GO! (non-vacuity)', () => {
+    expect(SHALLOW_BOATS.length).toBeGreaterThan(1);
+    expect(SHALLOW_DEPTHS.length).toBeGreaterThan(1);
+    expect(SHALLOW_BOATS.map((b) => b.id)).not.toContain(EASY_GO.id);
+  });
+
   it.each(CASES)(
     '$boat.id at depth $depth: 0 unreachable',
     { timeout: solverTimeoutMs(300_000) },
     ({ boat, depth }) => {
-      const result = computeHarborAccess(mask, harbors, boat, depth);
-      const unreachable = [...result.entries()]
-        .filter(([, state]) => state === 'unreachable')
-        .map(([id]) => id);
-      expect(unreachable).toEqual([]);
+      expect(unreachableAt(boat, depth)).toEqual([]);
     },
   );
 
-  it.each(REAL_DEFAULT_DEPTHS)(
-    'at depth %s m, every catalogue boat reads the same per-harbour access',
+  it.each(SHALLOW_DEPTHS)(
+    'at depth %s m, every boat gated <= 3.0 m reads the same per-harbour access',
     { timeout: solverTimeoutMs(300_000) },
     (depth) => {
-      const maps = BOATS.map((boat) => computeHarborAccess(mask, harbors, boat, depth));
+      const maps = SHALLOW_BOATS.map((boat) => computeHarborAccess(mask, harbors, boat, depth));
       for (const harbor of harbors) {
         const states = maps.map((m) => m.get(harbor.id));
         expect(
@@ -65,6 +78,38 @@ describe('#1393: boat switch at default settings never reaches unreachable', () 
           `${harbor.id}: ${states.join(', ')}`,
         ).toBe(true);
       }
+    },
+  );
+});
+
+describe('#1575: a default switch INTO EASY GO! can reach unreachable, and only there', () => {
+  it('EASY GO! at its own default gate reads exactly augustenborg and marstal unreachable', () => {
+    const gate = defaultSafetyDepthM(EASY_GO);
+    expect(gate).toBe(3.5);
+    const unreachable = unreachableAt(EASY_GO, gate);
+    expect(unreachable.length).toBeGreaterThan(0);
+    expect(unreachable).toEqual(['augustenborg', 'marstal']);
+  });
+
+  it.each(SHALLOW_BOATS)(
+    'a switch from $id at its default depth is clamped UP to EASY GO!’s 3.5 m gate',
+    (from) => {
+      const stored = { ...DEFAULT_SETTINGS, safetyDepthM: defaultSafetyDepthM(from) };
+      const { settings, clamped } = clampSettingsToBoat(stored, EASY_GO);
+      expect(clamped).toBe(true);
+      expect(settings.safetyDepthM).toBe(3.5);
+    },
+  );
+
+  it.each(SHALLOW_BOATS)(
+    'switching back from EASY GO! keeps 3.5 m, where $id reads only augustenborg unreachable',
+    { timeout: solverTimeoutMs(300_000) },
+    (to) => {
+      const stored = { ...DEFAULT_SETTINGS, safetyDepthM: 3.5 };
+      const { settings, clamped } = clampSettingsToBoat(stored, to);
+      expect(clamped).toBe(false);
+      expect(settings.safetyDepthM).toBe(3.5);
+      expect(unreachableAt(to, settings.safetyDepthM)).toEqual(['augustenborg']);
     },
   );
 });

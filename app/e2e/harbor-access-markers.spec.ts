@@ -15,13 +15,11 @@ import { startPreview } from './helpers';
 //   - "Arnis": one of the 5 #9 KNOWN_DISCONNECTED harbours — boat/gate
 //     independent, so it is the pre-existing #652/#834 disclosure, kept
 //     working through this task's refactor of its render path.
-//   - "Marstal": the ONE harbour every catalogue boat reads as
-//     'shallow-approach' at its OWN default safety depth
-//     (harborReachability.test.ts's own `it.each(BOATS)` pin: "34 ok,
-//     marstal shallow-approach, 0 unreachable, 5 known-disconnected") — the
-//     only per-boat state reachable at DEFAULT settings, so it is the one
-//     real-data case an e2e spec can hit without also raising the safety
-//     depth via the Options panel.
+//   - "Marstal": 'shallow-approach' for every catalogue boat gated <= 3.0 m
+//     at its OWN default safety depth (harborReachability.test.ts's
+//     EXPECTED_ACCESS table) — reachable at DEFAULT settings without raising
+//     the safety depth via the Options panel. EASY GO!'s 3.5 m gate reads it
+//     'unreachable' instead; the second test below covers that.
 test('#1291: per-boat harbour access markers render for a non-default boat, in the picker and on the selected-endpoint row', async ({
   page,
 }) => {
@@ -77,6 +75,69 @@ test('#1291: per-boat harbour access markers render for a non-default boat, in t
       destSection.getByText(
         'Mit Salona 44 (SPEEDY GO!) nur über eine flachere Zufahrt – Tiefenwarnung.',
       ),
+    ).toBeVisible();
+  } finally {
+    server.kill();
+  }
+});
+
+// #1575: the real `unreachable` state, reached by a plain default-settings
+// boat switch. EASY GO!'s 3.5 m gate leaves Marstal and Augustenborg
+// unreachable, so switching into it from SPEEDY GO! with Marstal selected must
+// raise the depth, announce the endpoint as unreachable and mark it on the
+// collapsed row.
+test('#1575: switching to EASY GO! announces an unreachable destination and marks it', async ({
+  page,
+}) => {
+  const server = await startPreview(page);
+  try {
+    await page.goto(server.url);
+
+    await page.getByRole('tab', { name: 'Boot' }).click();
+    await page.getByRole('radio', { name: /SPEEDY GO!/ }).click();
+    await expect(page.getByRole('radio', { name: /SPEEDY GO!/ })).toBeChecked();
+
+    await page.getByRole('tab', { name: 'Planen' }).click();
+    const destSection = page.getByRole('region', { name: 'Ziel' });
+    await destSection.getByRole('combobox').fill('Marstal');
+    await expect(destSection.getByRole('option')).toHaveCount(1);
+    await destSection.getByRole('option').first().click();
+    await expect(
+      destSection.getByText(
+        'Mit Salona 44 (SPEEDY GO!) nur über eine flachere Zufahrt – Tiefenwarnung.',
+      ),
+    ).toBeVisible();
+
+    await page.getByRole('tab', { name: 'Boot' }).click();
+    await page.getByRole('radio', { name: /EASY GO!/ }).click();
+    await expect(page.getByRole('radio', { name: /EASY GO!/ })).toBeChecked();
+    const notice = page.locator('.boat-picker-notice', {
+      hasText: 'Salona 44 (EASY GO!) ausgewählt.',
+    });
+    await expect(notice).toContainText(
+      'Sicherheitstiefe auf 3,5 m angehoben – Standardwert für Salona 44 (EASY GO!).',
+    );
+    await expect(notice).toContainText(
+      'Ziel Marstal ist mit Salona 44 (EASY GO!) nicht erreichbar.',
+    );
+
+    await page.getByRole('tab', { name: 'Planen' }).click();
+    await expect(
+      destSection.getByText(
+        'Mit Salona 44 (EASY GO!) bei 3,5 m Sicherheitstiefe nicht erreichbar.',
+      ),
+    ).toBeVisible();
+
+    // The snap-failure branch: Augustenborg has no navigable cell within the
+    // snap radius at 3.5 m.
+    const originSection = page.getByRole('region', { name: 'Start' });
+    await originSection.getByRole('combobox').fill('Augustenborg');
+    await expect(originSection.getByRole('option')).toHaveCount(1);
+    await expect(
+      originSection
+        .getByRole('option')
+        .first()
+        .getByText('Mit Salona 44 (EASY GO!) bei 3,5 m Sicherheitstiefe nicht erreichbar.'),
     ).toBeVisible();
   } finally {
     server.kill();
