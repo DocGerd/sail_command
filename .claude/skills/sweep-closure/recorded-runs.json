@@ -110,7 +110,7 @@
         "salona44-relaxation": "a8a9381c150e27c2",
         "short-horizon": "67629a697d3521eb"
       },
-      "note": "PR #1625 sweep: HEAD 5e73e48 vs BASE e537083 with --harbour-superset over 46 harbours; 480/480 shared plans byte-identical across 12 arms; BASE arm hashes matched the 266d99e ledger entry on all 12 arms; evidence PR #1625 comment 5935429743"
+      "note": "PR #1625 sweep: HEAD 5e73e48 (46 harbours) vs BASE e537083 (40 harbours), compare.mjs --harbour-superset; 480/480 shared plans byte-identical across 12 arms x 40 harbours; BASE arm hashes matched the 266d99e ledger entry on all 12 arms; evidence PR #1625 comment 5935429743"
     }
   ]
 }

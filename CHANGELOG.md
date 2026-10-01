@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Snapping the origin, destination or a waypoint to navigable water now picks the nearest navigable cell; previously the search could stop at a farther one (#1609).
-- The map's display-options cluster now shows a scroll cue while its expanded rows, including the legend, are cut off below the fold at narrow widths (#1615).
+- With a route on the map, the "Display options" cluster now also shows a scroll cue while its expanded rows, including the legend, are cut off below the fold at narrow widths (#1615).
 
 ## [0.51.0] - 2026-10-01
 

@@ -22,13 +22,13 @@ The `v0.52.0` cut (2026-10-01) worked the
 [`v0.52.0` milestone](https://github.com/DocGerd/sail_command/milestones):
 three user-visible changes (per `CHANGELOG.md`'s own `[0.52.0]` section) — six
 harbours around the Great Belt and Langelandsbælt ([#1585](https://github.com/DocGerd/sail_command/issues/1585)), origin, destination and waypoint snapping
-that picks the true nearest navigable cell ([#1609](https://github.com/DocGerd/sail_command/issues/1609)), and a scroll cue on the
-map's display-options cluster when its expanded rows are cut off at narrow
+that picks the true nearest navigable cell ([#1609](https://github.com/DocGerd/sail_command/issues/1609)), and, with a route on the map, a scroll
+cue on the "Display options" cluster when its expanded rows are cut off at narrow
 widths ([#1615](https://github.com/DocGerd/sail_command/issues/1615)) — plus one issue with no user-visible surface: a logged
 unreadable-record path in `getPlan`, a scoped comment claim and a dangling
 sweep-README pointer ([#553](https://github.com/DocGerd/sail_command/issues/553)). The #1585 ruling is recorded as a dated
-amendment in the design spec; its wording follow-up is
-[#1624](https://github.com/DocGerd/sail_command/issues/1624), in `Backlog`.
+amendment in the design spec; its wording follow-up,
+[#1624](https://github.com/DocGerd/sail_command/issues/1624), was filed into `Backlog` at this cut.
 
 ## Next — v0.53.0
 
