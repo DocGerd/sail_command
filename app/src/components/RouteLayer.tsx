@@ -824,6 +824,30 @@ export default function RouteLayer({
     el.addEventListener('toggle', onNativeToggle, true);
     return () => el.removeEventListener('toggle', onNativeToggle, true);
   }, [plan]);
+  // Scroll cue (#1615): rows still below the fold; app.css styles
+  // `data-overflowing`. `toggle` and the observers cover content changes that
+  // move neither size nor `scrollTop` of the capped cluster.
+  useEffect(() => {
+    const el = controlsRef.current;
+    if (!el) return;
+    const markOverflow = () =>
+      el.toggleAttribute('data-overflowing', el.scrollHeight - el.scrollTop - el.clientHeight > 1);
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(markOverflow) : null;
+    ro?.observe(el);
+    const mo = new MutationObserver(markOverflow);
+    mo.observe(el, { childList: true, subtree: true });
+    window.addEventListener('resize', markOverflow);
+    el.addEventListener('scroll', markOverflow, { passive: true });
+    el.addEventListener('toggle', markOverflow, true);
+    markOverflow();
+    return () => {
+      ro?.disconnect();
+      mo.disconnect();
+      window.removeEventListener('resize', markOverflow);
+      el.removeEventListener('scroll', markOverflow);
+      el.removeEventListener('toggle', markOverflow, true);
+    };
+  }, [plan]);
   // #1541: while via points are being edited the open cluster covers the map
   // centre, so it collapses and the state from before the edit comes back
   // afterwards. A restored state that differs from the layout default counts
