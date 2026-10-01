@@ -1,9 +1,9 @@
 # #282 acceptance sweep
 
-All 40 harbours × 12 settings arms = **480 plans** (9 arms / 297 plans
+Every harbour × every arm in `armNames.ts` (9 arms / 297 plans
 through #452; #653 added the two `salona44-*` arms below; #295 grew the
 harbour list 33 -> 40, see "#295 sweep control" below; #1334 added
-`motorless-short-horizon`), against the real
+`motorless-short-horizon`; #1585 grew the list to 46), against the real
 committed mask and polars, with every `PlanResult`, its pass-1 record and its
 pass-2 outcome serialised for byte-for-byte comparison between two revisions.
 
@@ -417,9 +417,9 @@ touched).
 **The byte comparator is BLIND to a `PlanResultOk` rename in the reassuring
 direction on `becalmed` and `deep-becalmed`.** Every plan in those two arms
 is `PlanResultError` (`error/calm-motor-off`, `error/unreachable`, or on
-`deep-becalmed` also `error/snap-failed-destination` — see the outcome table
-above) — and `PlanResultError` carries no sail fields at all (`{ status:
-'error', reason }`, untouched by the Task 9 rename). So a byte compare of
+`deep-becalmed` also `error/snap-failed-destination`) — and `PlanResultError`
+carries no sail fields at all (`{ status: 'error', reason }`, untouched by the
+Task 9 rename). So a byte compare of
 those two arms alone stays byte-identical straight through the rename and
 reports IDENTICAL, whether or not the rename broke anything on the other
 seven arms. Never treat a byte-mode green on `becalmed`/`deep-becalmed` as

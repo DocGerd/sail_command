@@ -398,8 +398,9 @@ def haversine_nm(a_lat: float, a_lon: float, b_lat: float, b_lon: float) -> floa
 
 def snap_cell(byte_grid: np.ndarray, lat: float, lon: float, gate_m: float) -> tuple[int, int] | None:
     """Nearest cell with byte != 0 and depth >= gate_m whose centre is within
-    SNAP_MAX_RADIUS_M of (lat, lon); None when there is none. Ties keep the
-    first cell in row-major ring order, as the app does."""
+    SNAP_MAX_RADIUS_M of (lat, lon); None when there is none. Every ring up to
+    max_ring is scanned, so the result is the true nearest. Ties keep the first
+    cell in ring, then row-major order, as the app does."""
     rows, cols = byte_grid.shape
     row0, col0 = rc_of(lat, lon)
     cell_lat_m = 111_320 / LAT_CPD
@@ -409,8 +410,6 @@ def snap_cell(byte_grid: np.ndarray, lat: float, lon: float, gate_m: float) -> t
     best: tuple[int, int] | None = None
     best_d = 0.0
     for ring in range(max_ring + 1):
-        if best is not None and ring * min_step_m > best_d:
-            break
         for dr in range(-ring, ring + 1):
             for dc in range(-ring, ring + 1):
                 if max(abs(dr), abs(dc)) != ring:
@@ -434,21 +433,20 @@ def _snap_cell_reference(
     lat: float,
     lon: float,
     gate_m: float,
-    early_break: bool = True,
+    early_break: bool = False,
     ties_last: bool = False,
 ) -> tuple[int, int] | None:
-    """The app's rule (`snapToNavigable`), restated without snap_cell's loop: list
-    every cell within the ring bound, keep each ring's best (nearest, then first in
-    scan order), then walk the rings outward and stop at the first whose `ring * step`
-    is already farther than the best so far. That walk is NOT true-nearest: ring k
-    can hold a cell only (k - 0.5) cells away. `early_break=False` and
-    `ties_last=True` are the two mutants the self-check below must tell apart."""
+    """True-nearest oracle, independent of snap_cell's ring walk and ring bound:
+    every cell in a window well past the radius, nearest within range wins, ties
+    to the first in ring then row-major order. `early_break=True` restates the
+    pre-#1609 walk (stop at the first ring whose `ring * step` exceeds the best
+    so far) and `ties_last=True` flips the tie-break; they are the two mutants
+    the self-check below must tell apart from the real rule."""
     row0, col0 = rc_of(lat, lon)
-    step_m = min(111_320 / LAT_CPD, 111_320 / LON_CPD * math.cos(math.radians(lat)))
-    max_ring = math.ceil(SNAP_MAX_RADIUS_M / step_m) + 1
-    per_ring: dict[int, list[tuple[float, int, int]]] = {}
-    for dr in range(-max_ring, max_ring + 1):
-        for dc in range(-max_ring, max_ring + 1):
+    reach = 12
+    cands: list[tuple[float, int, int, int]] = []
+    for dr in range(-reach, reach + 1):
+        for dc in range(-reach, reach + 1):
             r, c = row0 + dr, col0 + dc
             if not (0 <= r < byte_grid.shape[0] and 0 <= c < byte_grid.shape[1]):
                 continue
@@ -460,24 +458,28 @@ def _snap_cell_reference(
                 / NM_PER_M
             )
             if d_m <= SNAP_MAX_RADIUS_M:
-                per_ring.setdefault(max(abs(dr), abs(dc)), []).append((d_m, dr, dc))
+                cands.append((d_m, max(abs(dr), abs(dc)), dr, dc))
     sign = -1 if ties_last else 1
-    best: tuple[float, int, int] | None = None
-    for ring in sorted(per_ring):
-        if early_break and best is not None and ring * step_m > best[0]:
-            break
-        ring_best = min(per_ring[ring], key=lambda t: (t[0], sign * t[1], sign * t[2]))
-        if best is None or ring_best[0] < best[0] or (ties_last and ring_best[0] == best[0]):
-            best = ring_best
-    return None if best is None else (row0 + best[1], col0 + best[2])
+    if early_break:
+        step_m = min(111_320 / LAT_CPD, 111_320 / LON_CPD * math.cos(math.radians(lat)))
+        best: tuple[float, int, int, int] | None = None
+        for ring in sorted({t[1] for t in cands}):
+            if best is not None and ring * step_m > best[0]:
+                break
+            ring_best = min((t for t in cands if t[1] == ring), key=lambda t: (t[0], t[2], t[3]))
+            if best is None or ring_best[0] < best[0]:
+                best = ring_best
+    else:
+        best = min(cands, key=lambda t: (t[0], sign * t[1], sign * t[2], sign * t[3]), default=None)
+    return None if best is None else (row0 + best[2], col0 + best[3])
 
 
 # Self-check of snap_cell against _snap_cell_reference on a synthetic all-land
 # grid seeded with a few navigable cells, probed at sub-cell positions around
 # every harbor and on exact cell centres, corners and edge midpoints (where
 # mirrored cells tie on distance). The positive controls prove the cases reach
-# what each mutant would break: a snap, a None, a nearer cell hidden behind the
-# early break, and a distance tie.
+# what each mutant would break: a snap, a None, a nearer cell in a farther ring
+# that the pre-#1609 early break would skip, and a distance tie.
 _snap_rng = np.random.default_rng(1584)
 _snap_grid = np.zeros_like(grid)
 _snap_cases = {"snap": 0, "none": 0, "early_break": 0, "tie": 0}
@@ -490,9 +492,9 @@ def _snap_selfcheck_case(lat: float, lon: float, cells: list[tuple[int, int]]) -
         got = snap_cell(_snap_grid, lat, lon, 3.0)
         want = _snap_cell_reference(_snap_grid, lat, lon, 3.0)
         if got != want:
-            raise AssertionError(f"snap_cell {got} != the app's rule {want} at ({lat}, {lon}), cells {cells}")
+            raise AssertionError(f"snap_cell {got} != the true nearest {want} at ({lat}, {lon}), cells {cells}")
         _snap_cases["snap" if want is not None else "none"] += 1
-        if want != _snap_cell_reference(_snap_grid, lat, lon, 3.0, early_break=False):
+        if want != _snap_cell_reference(_snap_grid, lat, lon, 3.0, early_break=True):
             _snap_cases["early_break"] += 1
         if want != _snap_cell_reference(_snap_grid, lat, lon, 3.0, ties_last=True):
             _snap_cases["tie"] += 1
@@ -530,7 +532,7 @@ for _h in harbors:
 for _name, _count in _snap_cases.items():
     if _count == 0:
         raise AssertionError(f"snap_cell self-check never exercised '{_name}': {_snap_cases}")
-print(f"snap_cell self-check vs the app's rule: {_snap_cases}")
+print(f"snap_cell self-check vs the true-nearest oracle: {_snap_cases}")
 
 # Deepest gate at which each harbor's EXACT snap cell still reaches open water,
 # or None if it never does. Deliberately not snap-aware (#1584): it backs the
@@ -664,7 +666,7 @@ def structural_failures(
 
 
 # Self-check, same style as GATE_DERIVATION_CASES: a synthetic fixture, never
-# the real (empty) EXPECTED_UNREACHABLE_BY_BOAT table, so each of the three
+# the real EXPECTED_UNREACHABLE_BY_BOAT table, so each of the three
 # rejections is exercised independently of what today's table happens to hold.
 STRUCTURAL_CASES: list[tuple[str, dict[str, list[str]], set[str], set[str], set[str], int]] = [
     ("accept", {"good-boat": ["good-harbor"]}, {"good-boat"}, {"good-harbor"}, set(), 0),

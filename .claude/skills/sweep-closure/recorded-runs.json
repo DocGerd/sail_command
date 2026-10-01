@@ -92,6 +92,25 @@
         "short-horizon": "d59c3bc92fedca6f"
       },
       "note": "PR #1549 (#1540) sweep: BASE b678c9f vs HEAD 266d99e, sharded 3x4; 480/480 byte-identical across 12 arms x 40 harbours; BASE and HEAD arm hashes also match the 7f7cb66 ledger entry on all 12 arms"
+    },
+    {
+      "sha": "5e73e48e92576a2385dadebced1a3ee65c66989b",
+      "date": "2026-10-01",
+      "arms": {
+        "becalmed": "c6bec0c0bc3e37aa",
+        "breeze": "371c6c33398899e4",
+        "deep-becalmed": "3d14baed4e5a9d23",
+        "light-motorless": "8f3d0dd18cf8deb1",
+        "margin-extreme": "47d36f1dc6c58828",
+        "margin-zero": "cf8c1c1982737beb",
+        "motorless-short-horizon": "c3ecd01d0436af70",
+        "no-comfort": "f837902117228130",
+        "relaxation-dense": "35234b44fa04d09e",
+        "salona44-breeze": "f339f6a36f5768f3",
+        "salona44-relaxation": "a8a9381c150e27c2",
+        "short-horizon": "67629a697d3521eb"
+      },
+      "note": "PR #1625 sweep: HEAD 5e73e48 (46 harbours) vs BASE e537083 (40 harbours), compare.mjs --harbour-superset; 480/480 shared plans byte-identical across 12 arms x 40 harbours; BASE arm hashes matched the 266d99e ledger entry on all 12 arms; evidence PR #1625 comment 5935429743"
     }
   ]
 }

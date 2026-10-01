@@ -30,7 +30,7 @@ export interface DraftedBoat {
  * The 1e-9 nudge is not decoration. MEASURED 2026-08-14 in node: for draftM 3.2,
  * `3.2 + 0.9` is `4.1000000000000005` and `× 10` is `41.00000000000001`, so a
  * bare Math.ceil quantises to 4.2 m — a whole decimetre of gate the boat never
- * asked for. `3.7` is the same case; they are the only two in [1.00, 4.00].
+ * asked for. `3.7` is the same case; for `draft + 0.9`, the only two in [1.00, 4.00].
  * The nudge absorbs it. Note `2.1 * 10` is EXACTLY 21 and is NOT an example of
  * the problem — do not cite it as one.
  */

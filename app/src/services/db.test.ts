@@ -1004,6 +1004,23 @@ describe('#54 lazy plan migration at the read boundary', () => {
     ]);
   });
 
+  it.each([
+    ['newer-version', { ...legacyRecord('log-1', 1000), schemaVersion: 999 }],
+    ['damaged', { ...legacyRecord('log-1', 1000), request: undefined }],
+  ])(
+    'getPlan logs the id and %s cause of an unreadable record, still returning undefined',
+    async (cause, record) => {
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      await savePlan(record as unknown as Plan);
+      expect(await getPlan('log-1')).toBeUndefined();
+      expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+      expect(consoleErrorSpy.mock.calls[0]?.[0]).toBe(
+        `getPlan: unreadable plan record log-1 (${cause})`,
+      );
+      consoleErrorSpy.mockRestore();
+    },
+  );
+
   it('getPlan reports an unreadable record as absent and leaves it in the store', async () => {
     const future = { ...legacyRecord('future-1', 1000), schemaVersion: 999 } as unknown as Plan;
     await savePlan(future);

@@ -185,11 +185,11 @@ first's.
 
 ### `harbors.json` — curated harbor list
 
-40 harbors in the Flensburg Fjord, Danish South Sea, Little Belt, western
-Great Belt approach and Fehmarn area, each with a
+Curated harbors in the Flensburg Fjord, Danish South Sea, Little Belt, southern
+Great Belt and Fehmarn area, each with a
 navigable snap point (`snap.lat`/`snap.lon`) validated against `mask.bin`
 (depth ≥ 2.2 m — see below) and, where needed, a de/en approach note: a
-draft caveat for a 2.1 m-draft boat, or (for harbors added at #295) a
+draft caveat for a 2.1 m-draft boat, or (for harbors added at #295 and #1585) a
 depth-data caveat when the snap sits off the harbor.
 
 The #295 caveat is written when the snap cell is more than ~3 mask cells
@@ -212,6 +212,12 @@ the 3.0 m gate; those notes are derived from the mask, not from pilot books. Har
 *never* adequately deep (e.g. Ristinge) are excluded outright rather than
 included with a misleadingly "safe" snap point.
 
+#1585's six harbors (2026-10-01) used a different rule: among cells connected to the
+Flensburg seed at the 3.5 m gate within 300 m of the OSM marina feature, the deepest one
+at most 30 m farther from the feature than the nearest, nearest on ties. Their notes follow
+the ~140 m criterion above; Lohals (85 m) has none. Selection and per-harbor distances:
+PR #1623's body.
+
 Regenerate:
 
 ```
@@ -223,8 +229,8 @@ lat/lon, English approach note) and `pipeline/harbors-notes-de.json` (German
 translation, required for every non-null English note) to change the data.
 **Snap points must be re-validated against the current `mask.bin` after any
 edit to either source file or after any mask rebuild** — run
-`pipeline/.venv/bin/python pipeline/verify_mask.py`, which checks all 40
-snap points. If a rebuild moves a snap point's cell below 2.2 m, move the
+`pipeline/.venv/bin/python pipeline/verify_mask.py`, which checks every
+snap point. If a rebuild moves a snap point's cell below 2.2 m, move the
 coordinate further out along the harbor's real approach fairway (checked
 against OSM) rather than weakening the threshold or fudging the mask.
 
@@ -311,7 +317,7 @@ Regenerate:
 
 ```
 pipeline/.venv/bin/python pipeline/build_mask.py     # first run downloads ~887 MiB / ~930 MB (measured 2026-08-26: 930,179,378 bytes), cached in pipeline/data-src/ (gitignored) after
-pipeline/.venv/bin/python pipeline/verify_mask.py    # sanity probes: must print "all probes OK (8 water, 7 land, 40 harbor snaps)"
+pipeline/.venv/bin/python pipeline/verify_mask.py    # sanity probes: must print "all probes OK (8 water, 7 land, <N> harbor snaps)"
 ```
 
 `build_mask.py` asserts the overall water fraction is between 0.45 and 0.85

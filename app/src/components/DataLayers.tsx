@@ -606,7 +606,7 @@ function setupLayers(
         source: SEAMARKS_SOURCE,
         layout: {
           // ~2,900 points is dense enough that unculled icons would pile up
-          // at low zoom (unlike the 40 harbor markers). #144: the culling is
+          // at low zoom (unlike the harbor markers). #144: the culling is
           // priority-ordered (symbol-sort-key) with a z>=12 tap-safety
           // overlap valve and a zoom size taper — expressions pinned in
           // seamarkGeoJson.test.ts, rationale on SEAMARKS_LAYOUT itself.
