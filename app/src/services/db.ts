@@ -205,7 +205,7 @@ function displayIdOfKey(key: unknown): string {
 // doc comment) — used only as a fallback, so a record whose stored `id`
 // really IS a usable string (the overwhelmingly common case, including a
 // genuinely empty-string id) is unaffected.
-function unreadableRow(raw: unknown, key?: unknown): PlanSummary {
+function unreadableRow(raw: unknown, key?: unknown): Extract<PlanSummary, { kind: 'unreadable' }> {
   const storedId = readString(raw, 'id');
   return {
     kind: 'unreadable',
@@ -360,7 +360,11 @@ export async function getPlan(id: string): Promise<Plan | undefined> {
   // Unreadable: `undefined` (the same answer as "no such plan") rather than a
   // throw, so every existing caller degrades to its own not-found path. The
   // record itself is left untouched — never deleted, never overwritten.
-  return plan ?? undefined;
+  if (plan === null) {
+    console.error(`getPlan: unreadable plan record ${id} (${unreadableRow(raw).reason})`);
+    return undefined;
+  }
+  return plan;
 }
 
 // #551 review round 2 (Minor 1, self-review — explicitly "in scope, not

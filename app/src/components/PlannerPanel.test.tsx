@@ -1351,7 +1351,7 @@ describe('PlannerPanel', () => {
         expect(props.onAddVia).not.toHaveBeenCalled();
         expect(
           screen.getByText(
-            'The coordinates lie outside the covered area (Flensburg Fjord, Danish South Sea, Little Belt, western Great Belt approach, Fehmarn).',
+            'The coordinates lie outside the covered area (Flensburg Fjord, Danish South Sea, Little Belt, southern Great Belt, Fehmarn).',
           ),
         ).toBeInTheDocument();
       });
@@ -1383,7 +1383,7 @@ describe('PlannerPanel', () => {
         expect(screen.getByText('Corrected to 90 (allowed range -90–90)')).toBeInTheDocument();
         expect(
           screen.getByText(
-            'The coordinates lie outside the covered area (Flensburg Fjord, Danish South Sea, Little Belt, western Great Belt approach, Fehmarn).',
+            'The coordinates lie outside the covered area (Flensburg Fjord, Danish South Sea, Little Belt, southern Great Belt, Fehmarn).',
           ),
         ).toBeInTheDocument();
       });
@@ -1425,7 +1425,7 @@ describe('PlannerPanel', () => {
         expect(props.onUpdateVia).not.toHaveBeenCalled();
         expect(
           screen.getByText(
-            'The coordinates lie outside the covered area (Flensburg Fjord, Danish South Sea, Little Belt, western Great Belt approach, Fehmarn).',
+            'The coordinates lie outside the covered area (Flensburg Fjord, Danish South Sea, Little Belt, southern Great Belt, Fehmarn).',
           ),
         ).toBeInTheDocument();
       });
