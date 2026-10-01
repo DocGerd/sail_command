@@ -207,8 +207,11 @@ function expectExactEdgeSet(feature: ContourFeature, expected: Set<string>): voi
   expect(extra.slice(0, 5), `${extra.length} unexpected edges`).toEqual([]);
 }
 
+// Coverage instrumentation pushes these past vitest's default budget.
+const MASK_WALK_TEST_TIMEOUT_MS = solverTimeoutMs(15_000);
+
 describe('#629 completeness: every qualifying no-data edge is emitted exactly once', () => {
-  it('no-data edge', () => {
+  it('no-data edge', { timeout: MASK_WALK_TEST_TIMEOUT_MS }, () => {
     const feature = contours.features.find((f) => f.properties.kind === 'no-data')!;
     expectExactEdgeSet(
       feature,
@@ -298,9 +301,6 @@ function edgeKeyCells(key: string): [Cell, Cell] {
         [a, f],
       ];
 }
-
-// Coverage instrumentation pushes these past vitest's default budget.
-const MASK_WALK_TEST_TIMEOUT_MS = solverTimeoutMs(15_000);
 
 // Level lines are smoothed (#1540) by shortcutting the staircase, never by
 // moving it: a line keeps a subsequence of its own staircase vertices, and a
