@@ -280,10 +280,11 @@ making design-level decisions; do not silently deviate.
   does not spread-override it while touching none of the obvious paths —
   which is why the list form of this rule was wrong (measured 2026-08-13 on
   #518 vs #513/#522/#523: none of their 22 files is in the closure).
-  **Across a harbour-set change, compare with `compare.mjs --harbour-superset
-  <BASE> <HEAD>`**: shared rows are byte-compared and new rows counted.
-  `SC_SWEEP_LIMIT` cannot select the old subset, because new ids interleave in
-  `harbors.json` (#1625).
+  **Across a change that ADDS harbours, compare with `compare.mjs
+  --harbour-superset <BASE> <HEAD>`** (#295): shared rows are byte-compared and
+  new rows counted; a removed or renamed id still fails. `SC_SWEEP_LIMIT`
+  cannot select the old subset, because new ids interleave in `harbors.json`
+  (#1625).
   **A sweep's BASELINE is the branch's own base tree, not the last RECORDED
   baseline.** Measured at #1264 (2026-09-16): against the baseline recorded
   two PRs earlier, `light-motorless` read CHANGED — that change was #1136's,
@@ -1715,7 +1716,7 @@ making design-level decisions; do not silently deviate.
   | v0.49.0 | 2026-09-30 | 50 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 02:46:41Z, three seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `36661333446` (created 02:45:55Z) -> tag `36661398666` (created 02:46:45Z) on `2893841`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `6750305736`, `ref: v0.49.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-Coo8t4Jc.js` at ``version:`v0.49.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `378b082` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.50.0 | 2026-09-30 | 41 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 11:59:49Z, three seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `36711901243` (created 11:59:12Z) -> tag `36711967788` (created 11:59:53Z) on `eae74a6`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `6758804243`, `ref: v0.50.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-RmdOSV93.js` at ``version:`v0.50.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `59b0d3d` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.51.0 | 2026-10-01 | 134 s | `success`, `steps=6` (merge `deploy` terminal at 10:35:54Z, 30 s before the tag run was created; MEASURED before the tag push, and the failure CALLED IN ADVANCE from it) | **`smoke-probe` FAILED** | merge-push `36849951320` -> tag `36850181856` on `5882230`. Tag run's `build` and `deploy` succeeded; its prod entry chunk `assets/index-DOFkuFiz.js` 404'd on 10/10 attempts (to 10:42:37Z) while the basemap Range probes passed on attempt 1. Back-merge `36853610947` (`48d2277`) republished that same chunk, 200; production then served ``version:`v0.51.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `1a48b9f` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
-  | v0.52.0 | 2026-10-01 | 40 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 18:17:28Z, three seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `36905648432` (created 18:16:50Z) -> tag `36905730015` (created 18:17:30Z) on `375bbe6`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `6791900881`, `ref: v0.52.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-ATArQ6An.js` at ``version:`v0.52.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `b26deb1` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
+  | v0.52.0 | 2026-10-01 | 40 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 18:17:28Z, immediately before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `36905648432` (created 18:16:50Z) -> tag `36905730015` (created 18:17:30Z) on `375bbe6`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `6791900881`, `ref: v0.52.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-ATArQ6An.js` at ``version:`v0.52.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `b26deb1` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -4383,10 +4384,10 @@ making design-level decisions; do not silently deviate.
   into a separate local array and never mutates `req.viaPoints`, and
   `planViaPoints.ts` returns `request.viaPoints` verbatim. Gap up to half a
   ~46 m cell diagonal when the drop was already navigable, up to `maxRadiusM =
-  300` when it was not. Never write that the two coincide. Since #1609 it scans every ring to
-  `maxRing`, so it returns the true nearest navigable cell; before that, an
-  early stop missed it (#1605). `verify_mask.py`'s `snap_cell` twins it
-  (#1584), so changing the walk owes a sweep AND the twin.
+  300` when it was not. Never write that the two coincide. Since #1609 it
+  scans every ring to `maxRing`, so it returns the true nearest navigable cell;
+  before that, an early stop missed it (#1605). `verify_mask.py`'s `snap_cell`
+  twins it (#1584), so changing the walk owes a sweep AND the twin.
 - **#1259's integer cells-per-degree grid is edge-STABLE, not exact.**
   Widening the bbox
   north/east no longer moves a cell, but `floor((v - origin) * cpd)` still
@@ -4718,9 +4719,11 @@ making design-level decisions; do not silently deviate.
   global/personal, unversioned, shared across concurrent sessions) — NOT
   covered by #216, which is the notices-regen and nudge hooks; #233
   audited this guard specifically and declined to touch it. It also fails
-  CLOSED on any git-bearing command over 8,192 bytes ("could not verify this
-  git command is safe"; hit four times on 2026-10-01): put the content in a file
-  and pass `-F`/`--body-file`/`--input`. The heredoc-prose
+  CLOSED when the JSON-escaped command exceeds its `MAX_CMD` (8,192 in guard
+  v6): all four hits on 2026-10-01 were heredoc FILE WRITES whose body merely
+  mentioned git, none a git call. Write such content with the Write tool; an
+  agent without one can split the heredoc into appends under the cap. The
+  heredoc-prose
   case was OBSERVED again 2026-08-07 and its grep half reproduced: a
   `cat > file <<'EOF'` whose body merely LISTED dangerous git subcommands as
   prose — no git command invoked — was denied, and feeding that exact
@@ -4830,9 +4833,10 @@ making design-level decisions; do not silently deviate.
   commit got a sibling's `Closes #N` (caught before push, v0.39.0 cycle).
   Brief a unique filename and `cat` it before `git commit -F`.
 - **A foreground Bash that outlives its `timeout` is MOVED to the background,
-  not killed, and that task is then killed ~28 min after the move whatever
-  timeout the call set** (two measurements, 2026-10-01, Claude Code 2.1.287; a
-  harness property). Detach or split anything longer, e.g. the realmask suite.
+  not killed; the move notice says it is stopped after 30m there** (stopped
+  ~28 min after the move twice, 2026-10-01, Claude Code 2.1.286). Both victims
+  were poll loops whose `run_in_background` producer, given `timeout: 600000`,
+  had been killed: give the producer a long `timeout`, not the waiter.
 - **Forbid implementers the full test suite outright; CI is the authority.**
   MEASURED: 3 of 5 sonnet implementers independently backgrounded the ~8.3 min
   suite and then ended their turn "waiting on the background run" — a message
@@ -5166,10 +5170,6 @@ making design-level decisions; do not silently deviate.
   plain heredoc write to a path outside the worktree. Broader than the compound-command
   trigger above; hit independently by two worktree agents on 2026-09-09. Remedy: write the
   message with the `Write` tool, then a single plain `git commit -F <file>`.
-  Also refused on 2.1.287 (2026-10-01): `timeout -k 30 1500 npm …`, a bare
-  `timeout … node`, and a `gh … --jq '[…]'` array filter. So the global
-  `timeout -k` rule cannot be followed inside a worktree agent; drop the
-  `timeout` wrapper there and rely on the tool's own timeout.
 - **`gh pr merge` is SERVER-SIDE, so your local checkout never moves.** Seven
   PRs merged over ~4 h left the main tree at the pre-milestone commit. Harmless
   while every check names an explicit ref (`origin/develop`,
