@@ -158,11 +158,12 @@ making design-level decisions; do not silently deviate.
   in a non-dot directory because `actions/upload-artifact@v7.0.1` defaults
   `include-hidden-files: false`: the default `.vitest-reports/` upload failed
   on every shard with `No files were found`, an error that never names the
-  hidden-file default (run 36333125953). A red shard's job log names no test
-  (it ends `Process completed with exit code 1` after the blob write); download
-  that shard's `coverage-blob-N` artifact and parse its flatted JSON. A real-mask
-  test with no `solverTimeoutMs` budget passes per-PR and times out only under
-  coverage (#1587, #1612).
+  hidden-file default (run 36333125953). A red shard's test step names no test
+  (its output ends with the blob-write line, then `Process completed with exit
+  code 1`); download that shard's `coverage-blob-N` artifact (kept only for
+  `coverage.yml`'s `retention-days`) and parse its flatted JSON. An unbudgeted
+  real-mask test (no `solverTimeoutMs`) can pass per-PR and time out only under
+  coverage (#1587 via PR #1592, #1612).
 ## Commands
 - App (run from repo root): `npm --prefix app run typecheck` / `lint` / `test` /
   `build` / `dev`. CI runs lint+typecheck in `app-static`, concurrently with the test shards
@@ -270,7 +271,7 @@ making design-level decisions; do not silently deviate.
   export as NOT OWED) was deferred after three review rounds each found a
   fail-open in its hand-rolled lexer (ASI, `\r`/U+2028/U+2029, `}` then `(`);
   its deferral comment recommends a real parser; `app/src/test/libTypesImportLayering.test.ts`
-  (#1602) is the in-repo `ts.createSourceFile` precedent, adopted after its own
+  (#1602) adopted `ts.createSourceFile`, the first in-repo use, after its own
   hand-rolled stripper failed open on a regex literal. The closure is wider than the
   obvious routing/mask/sweep/pipeline paths: it reaches the boat catalogue and
   `boatDepth`, `DEFAULT_SETTINGS` in `types.ts`, the shared test fixtures and
