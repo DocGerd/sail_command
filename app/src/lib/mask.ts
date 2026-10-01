@@ -519,9 +519,8 @@ export class NavMask {
     const maxRing = Math.ceil(maxRadiusM / minCellStepM) + 1;
     let best: { p: LatLon; d: number } | null = null;
     for (let ring = 0; ring <= maxRing; ring++) {
-      // No early exit: a farther ring can hold a nearer cell (`p` is off the
-      // start cell's centre, cells are non-square, and the ring bound is not
-      // haversine), so only exhausting the rings is exact (#1609).
+      // No early exit (#1609): a farther ring can hold a nearer cell, and
+      // scanning every ring is the simple exact form.
       for (let dr = -ring; dr <= ring; dr++) {
         for (let dc = -ring; dc <= ring; dc++) {
           if (Math.max(Math.abs(dr), Math.abs(dc)) !== ring) continue;

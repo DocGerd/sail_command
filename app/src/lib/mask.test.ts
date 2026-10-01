@@ -107,7 +107,7 @@ describe('NavMask', () => {
     const centreOf = ([r, c]: [number, number]) => ({ lat: lat.centre(r), lon: lon.centre(c) });
     // Control: the ring-2 cell alone is what the first ring hit would return.
     expect(build([ring2]).snapToNavigable(p, 3.0)).toEqual(centreOf(ring2));
-    // The ring-3 cell is about 15 m nearer, and a walk that stops at ring 2 never sees it.
+    // The ring-3 cell is nearer, but a walk that stops at ring 2 never sees it.
     expect(build([ring2, ring3]).snapToNavigable(p, 3.0)).toEqual(centreOf(ring3));
   });
 
