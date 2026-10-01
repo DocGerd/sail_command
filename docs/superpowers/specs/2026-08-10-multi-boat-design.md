@@ -941,7 +941,7 @@ versioned section at the cut, so the fragment must be re-scoped or held back wit
   gate with a harbour unreachable beyond those five — `marstal` at every catalogue gate, and
   `augustenborg` at 3.0 m, only under a documented exception.
   **Amended 2026-09-30 (maintainer ruling, #1575):** four catalogue boats, not three, and `EXPECTED_UNREACHABLE_BY_BOAT` is no longer empty: it lists the eleven harbours EASY GO! fails at its 3.5 m gate under the exact-snap predicate. So one shipped boat now reaches its default gate with harbours unreachable beyond the five — in-app, `augustenborg` and `marstal` for EASY GO!.
-  **Amended 2026-10-01 (#1584):** the per-boat loop now judges the cell the app snaps each harbour to, so EASY GO!'s list is four harbours, not eleven. The `(augustenborg, 3.0)` exception is gone: that snapped cell reaches open water at 3.0 m unaided. `marstal` is the only harbour a `CONNECTIVITY_EXCEPTIONS_M` row still lowers.
+  **Amended 2026-10-01 (#1584):** the per-boat loop now judges the cell the app snaps each harbour to, so EASY GO!'s list is four harbours, not eleven. The `(augustenborg, 3.0)` exception is gone: augustenborg's snapped cell reaches open water at 3.0 m unaided. `marstal` is the only harbour a `CONNECTIVITY_EXCEPTIONS_M` row still lowers.
 - **§G.3 rule 2** ("*not designed here*") is now designed, by §N.4–N.6.
 - **§K's release-1 acceptance** ("*reduces to today*") no longer describes the catalogue. It
   remains the correct statement for the **Salona 45 row** and must be re-scoped, not deleted:
@@ -986,7 +986,7 @@ All remaining rows are in force, untouched.
 - **Polars.** Shares SPEEDY GO!'s tables and sanity anchors through `polarsFrom` (#567), which realises §J OQ-4's sister-ship sharing. Its `polarProvenance.note`s are byte-identical to the donor's; the sister-ship and deep-keel caveat lives in its own `draftProvenance.note` (§N.5's keel sentence). The shared table carries no keel difference (§N.3: the estimator cannot fix a wrong keel). Tier C, so the comparison is `not-compared` (§N.4). Anchor rules: the notes in §H and §N.6.
 - **Defaults.** `Genoa`/`Jib` labels and the 6.5 kn / 45 s motor and manoeuvre defaults, the same literals as SPEEDY GO!'s (6.5/45 are the app's unresearched defaults on every fleet entry).
 - **Harbours.** Eleven harbours fail `verify_mask.py`'s exact-snap check at 3.5 m and are listed in `EXPECTED_UNREACHABLE_BY_BOAT`; a snap-aware check is #1584. In-app at defaults, `augustenborg` and `marstal` read unreachable — correct routing, disclosed by the per-boat marker (§C.6).
-  **Amended 2026-10-01 (#1584):** the check is now snap-aware and lists four harbours; `faldsled` and `rudkoebing` among them read `shallow-approach` in-app.
+  **Amended 2026-10-01 (#1584):** the check is now snap-aware and lists four harbours; `faldsled` and `rudkoebing` among them read `shallow-approach` in-app (reachable only through a relaxed approach).
 - **Sweep.** No EASY GO! arm this cycle.
 - **§L rows.** Engaged by this boat and in force: *treat a harbour dropping out as a defect*, *refine the mask for deeper boats*, *ship the fleet at today's 3.0 m default*. *Reuse the Salona 45's anchors* is not breached by its letter (the shared anchors are SPEEDY GO!'s), but its reasoning — an anchor validating a different hull — is engaged and accepted by this ruling. OQ-6 stays open. This ruling answers only its "which vessels ship" half, and only for EASY GO!, whose certificate half stays with #573.
 </content>
