@@ -1779,3 +1779,35 @@ describe('RouteLayer options cluster during via editing (#1541)', () => {
     expect(legend().open).toBe(true);
   });
 });
+
+describe('#1615: the capped controls cluster shows a scroll cue', () => {
+  function stubGeometry() {
+    const { container } = renderRouteLayerWithPlan(makeFakeMap(), makePlan());
+    const el = container.querySelector<HTMLElement>('.route-layer-controls');
+    if (el === null) throw new Error('cluster not rendered');
+    const geometry = { scrollHeight: 100, clientHeight: 100, scrollTop: 0 };
+    for (const key of Object.keys(geometry) as (keyof typeof geometry)[]) {
+      Object.defineProperty(el, key, { configurable: true, get: () => geometry[key] });
+    }
+    return { el, geometry };
+  }
+
+  // Mutation: dropping the `toggle` listener leaves the attribute false after
+  // the disclosure opens, since a capped cluster changes neither size nor scrollTop.
+  it('follows the disclosure opening, scrolling and scrolling back to the end', () => {
+    const { el, geometry } = stubGeometry();
+    expect(el.hasAttribute('data-overflowing')).toBe(false);
+
+    geometry.scrollHeight = 300;
+    el.querySelector('details.route-layer-controls-disclosure')!.dispatchEvent(new Event('toggle'));
+    expect(el.hasAttribute('data-overflowing')).toBe(true);
+
+    geometry.scrollTop = 200;
+    fireEvent.scroll(el);
+    expect(el.hasAttribute('data-overflowing')).toBe(false);
+
+    geometry.scrollTop = 150;
+    fireEvent.scroll(el);
+    expect(el.hasAttribute('data-overflowing')).toBe(true);
+  });
+});
