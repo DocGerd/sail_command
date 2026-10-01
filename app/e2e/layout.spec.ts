@@ -3020,3 +3020,64 @@ for (const [label, viewport] of Object.entries(SHORT_LANDSCAPE_VIEWPORTS)) {
     }
   });
 }
+
+// #1615: the capped, scrollable Anzeigeoptionen cluster must carry a scroll
+// cue while rows sit below the fold. jsdom has no layout, so the real
+// overflow is only reachable here.
+test('#1615: the expanded route-layer controls cluster shows a scroll cue at 820x1180', async ({
+  page,
+}) => {
+  const server = await startPreview(page);
+  try {
+    await page.setViewportSize(STANDARD_VIEWPORTS.tabletPortrait);
+    await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
+
+    await page.getByRole('tab', { name: 'Planen' }).click();
+    const originSection = page.getByRole('region', { name: 'Start' });
+    await originSection.getByRole('combobox').fill('Langballigau');
+    await originSection.getByRole('option').first().click();
+    const destSection = page.getByRole('region', { name: 'Ziel' });
+    await destSection.getByRole('combobox').fill('Sønderborg');
+    await destSection.getByRole('option').first().click();
+    const planButton = page.getByRole('button', { name: 'Route planen' });
+    await planButton.click();
+    await expect(planButton).toBeEnabled({ timeout: 60_000 });
+
+    const routeControls = page.locator('.route-layer-controls');
+    await expect(routeControls).toBeVisible();
+    const cue = () =>
+      routeControls.evaluate((el) => ({
+        overflowing: el.hasAttribute('data-overflowing'),
+        belowFold: el.scrollHeight - el.scrollTop - el.clientHeight,
+        image: getComputedStyle(el).backgroundImage,
+      }));
+
+    await expect
+      .poll(async () => (await cue()).overflowing, {
+        message: 'cue while the disclosure is closed',
+      })
+      .toBe(false);
+
+    const disclosure = routeControls.locator('details.route-layer-controls-disclosure');
+    await disclosure.locator('> summary').click();
+    await expect(disclosure).toHaveJSProperty('open', true);
+
+    await expect
+      .poll(cue, {
+        message: 'data-overflowing never set with the cluster capped below its content',
+      })
+      .toMatchObject({ overflowing: true });
+    const open = await cue();
+    expect(open.belowFold, 'rows below the fold').toBeGreaterThan(1);
+    expect(open.image).toMatch(/linear-gradient\(to top,/);
+
+    await routeControls.evaluate((el) => {
+      el.scrollTop = el.scrollHeight;
+    });
+    await expect
+      .poll(cue, { message: 'cue after scrolling to the end' })
+      .toMatchObject({ overflowing: false, image: 'none' });
+  } finally {
+    server.kill();
+  }
+});
