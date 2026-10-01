@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.51.0] - 2026-10-01
+
+### Fixed
+
+- The Anzeigeoptionen scroll cue now updates when rows appear or disappear while the capped cluster is scrolled to the end, such as the contour-line error row (#1581).
+
 ## [0.50.0] - 2026-09-30
 
 ### Added
@@ -1240,7 +1246,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.50.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.51.0...HEAD
+[0.51.0]: https://github.com/DocGerd/sail_command/compare/v0.50.0...v0.51.0
 [0.50.0]: https://github.com/DocGerd/sail_command/compare/v0.49.0...v0.50.0
 [0.49.0]: https://github.com/DocGerd/sail_command/compare/v0.48.0...v0.49.0
 [0.48.0]: https://github.com/DocGerd/sail_command/compare/v0.47.0...v0.48.0

@@ -4,12 +4,13 @@
 - **Date:** 2026-09-30. Measured at `4d2d138`.
 - **Status:** Recommendation only. No pipeline command was run and no asset
   was rebuilt.
-- **Verdict:** **The issue's premise points the wrong way: the belt's eastern shore is
-  already inside the mask, and what is cut off is its northern part.** The
-  strait runs north-south, the mask's east edge (11.6°E) lies beyond the
-  Zealand shore, and the strait is truncated by the 55.6°N edge (§1).
-  Extending "east" buys none of the belt. Two slices follow: **A**, curate the
-  harbours on the belt's far shore inside the existing box, which changes no
+- **Verdict:** **The issue's premise points the wrong way: the belt's water
+  already ends inside the mask's east edge, and what is cut off is its
+  northern part.** The strait runs north-south, its water ends by 11.22°E
+  for 55.3-55.55°N, 0.38° short of the 11.6°E edge, and it is truncated by the 55.6°N edge
+  (§1). Extending "east" buys none of the belt. Two slices follow: **A**,
+  curate harbours on the belt's far side whose snap cells lie inside the
+  existing box, which changes no
   area, wind lattice, basemap or stored plan (§7.1); and **B**, a north
   extension of the whole mask width, which is moderate in precached bytes but breaks, for every plan saved before it, the replan paths that reuse the stored wind grid and needs three measurements first (§7.2).
   **Go on A. B is no-go until a named harbour north of 55.6°N and the three measurements of §7.2 justify it.**
@@ -46,9 +47,9 @@ dropped from the middle rows):
 
 - **North:** at the north row the strait is still 0.499° wide, about 31.5 km at ≈63,036 m/deg at 55.6°N (same series as `pipeline/README.md`'s P). It is open water cut by the
   box edge, not a shore.
-- **East:** for 55.3-55.55°N the mask has no water cell at all between 11.3°E and the 11.6°E edge (byte 0 is land or unsurveyed per `mask.meta.json`), and the strait's water ends at 11.14-11.21°E, so nothing of the strait lies east of it.
+- **East:** for 55.3-55.55°N the mask has no water cell at all between 11.3°E and the 11.6°E edge (byte 0 is land or unsurveyed per `mask.meta.json`), and the easternmost water cell of every row in that band is at or west of 11.22°E, so nothing of the strait lies east of it.
 - **East edge, elsewhere:** at 11.6°E water is open over 54.852–55.189°N and
-  54.3–54.663°N. §8 rejects following them.
+  54.3–54.644°N.
 - Region archives: `region-north` covers 9.4–11.0°E × 55.304–55.6°N and
   `region-east` covers 11.03–11.6°E × 54.3–55.6°N (PMTiles headers), so the
   basemap over the whole belt below 55.6°N is already lazily available.
@@ -82,14 +83,14 @@ rows, and rows append after the existing bytes because row 0 is south.
 | Cells = `mask.bin` bytes | 9,438,000 | 10,890,000 (×1.154) | 12,342,000 (×1.308) |
 | `defaultMaxFrontier` (0.2 × prune cells) | 95,333 | 110,000 | 124,667 |
 | BFS scratch, resident (5 B/cell) | 47.2 MB | 54.5 MB | 61.7 MB |
-| Depth + hatch canvases, resident (2 × RGBA, `depthCanvasRowMap` rows, `DataLayers.tsx`) | see `depthColor.ts`'s comment | grows with mask cells | grows with mask cells |
+| Depth + hatch canvases, resident (2 × RGBA, `depthCanvasRowMap` rows, `DataLayers.tsx`) | 3025 × 3171 × 4 B each (rows per `depthColor.ts`'s comment) | grows with mask cells | grows with mask cells |
 | Wind lattice points (lats × 23) | 322 | 368 | 414 |
 | Wind grid, 3 × Float32 × 144 h | 556,416 B | 635,904 B | 715,392 B |
 
 - **Frontier cap** derives from the domain in degrees over `PRUNE_LAT` 0.002
   and `PRUNE_LON` 0.003 (476,667 prune cells today) in
   `defaultMaxFrontier`, so it rises for **every** plan, not only new ones.
-  #1496 measured no truncation on the apertures it probed; the population maximum is unmeasured (`defaultMaxFrontier`'s comment).
+  #1496 measured no truncation on the apertures it probed; the population maximum is unmeasured (`FRONTIER_PER_PRUNE_CELL`'s derivation comment in `isochrone.ts`).
 - **BFS scratch** is `Uint8Array` + `Int32Array` sized to the largest grid
   seen (#1256, `mask.ts`); the 5 B/cell is from that comment.
 - **Water fraction** is 0.488 today against the `0.45 < frac < 0.85` gate in
@@ -144,8 +145,8 @@ sites, and its #295 fixes have landed; this is what a north edge moves now.
   55.8 / 56.0°N. Cosmetic per #1163 §1.1. `MASK_CELL_M` is unaffected, since
   the longitude step is unchanged.
 
-**Prose:** the covered-area copy in `dict.de.ts` and `dict.en.ts` (two keys, four strings, naming the western Great Belt approach) and its three
-`PlannerPanel.test.tsx` quotes, `docs/acceptance.md`, `vite.config.ts`'s
+**Prose:** the covered-area copy in `dict.de.ts` and `dict.en.ts` (two keys, four strings, naming the western Great Belt approach) and their
+quotes (three English in `PlannerPanel.test.tsx`, one German in `app/e2e/plan.spec.ts`), `docs/acceptance.md`, `vite.config.ts`'s
 manifest description, README, `pipeline/README.md`, the `pipeline-refresh`
 skill's bbox line, ROADMAP's "no unbounded expansion" bullet, and the spec's
 Area row and Great Belt line. The spec edit is a main-session act.
@@ -212,15 +213,16 @@ one live call in the implementing PR settles it.
 
 ### 7.1 Slice A — GO: far-shore harbours inside the existing box
 
-Curate the harbours on the Zealand shore that already lie in 54.3–55.6°N ×
-9.4–11.6°E, so Fyn-to-Zealand
-crossings become plannable.
+Curate harbours on the belt's far side whose snap cells lie in
+54.3–55.6°N × 9.4–11.6°E so Fyn-to-Zealand
+crossings become plannable. Which harbours qualify is unverified until their
+OSM coordinates are read.
 
 - **No changes to:** mask area, wind lattice, `MAX_BOUNDS`, `DATA_AREA`,
-  basemap regions (`region-east` covers the shore) or stored plans (§5).
+  basemap regions (§1) or stored plans (§5).
 - **Owed:** `harbors-source.json` and German notes, `build_harbors.mjs`,
   `verify_mask.py` and `verifyMaskConnectivity.test.ts` (which runs every
-  catalogue boat in the required `app` check), changelog fragment, the harbour-count prose (pipeline/README.md, app/sweep/README.md), and the covered-area copy in both dicts (with the PlannerPanel.test.tsx quotes).
+  catalogue boat in the required `app` check), changelog fragment, the harbour-count prose (pipeline/README.md, app/sweep/README.md), and the covered-area copy in both dicts (with their quotes in `PlannerPanel.test.tsx`, `app/e2e/plan.spec.ts` and `docs/acceptance.md`).
 - **#282 sweep is OWED.** `app/public/data` and `pipeline` are
   `PATH_PREFIXES` in `closure.mjs`, and the arm-set is every arm name times
   every harbour, so it grows with each row. Confirm with
@@ -240,7 +242,7 @@ Preconditions that would flip it to go:
 2. A trial region extract plus a tileset-version check on the newest
    Protomaps build (§6).
 3. One live Open-Meteo call at the new point count (§5).
-4. **The one measurement that gates go/no-go:** a Flensburg-to-north-belt plan
+4. **The budget measurement:** a Flensburg-to-north-belt plan
    against `PLAN_BUDGET_MS` (360 s). #1350's tablet measurement gates on
    Flensburg-to-Burgstaaken and #1490 measures another plan (per
    `1350-per-rig-budget-vs-parallel-rigs.md`); neither is a north-belt
@@ -256,7 +258,7 @@ raised frontier cap in §3 may move plans that never enter the strip).
 
 | Option | Why it lost |
 |---|---|
-| **Extend the mask east of 11.6°E** | The belt's Zealand shore is inside 11.6°E (§1). |
+| **Extend the mask east of 11.6°E** | The belt's water ends by 11.22°E for 55.3-55.55°N (§1), so east of 11.6°E adds none of it; the Zealand shore's position was recorded as unverified in #1163 (`1163-295-coverage-scoping.md` §5, §8). |
 | **Widen the core basemap archive** | #296 ruled against a widened monolith. The core is precached bytes with 14,741,251 B of headroom, and rebuilding it invites tileset drift (§6). |
 | **Coarsen the grid to fit** | Reopens #245's `TOLERANCE_M` re-derivation for the whole existing grid (branch (a) of #1163 §2.1, rejected in its §8). |
 | **A belt-only mask (not full width)** | The mask is one rectangle (§2). A belt-only basemap archive is possible but leaves blank tiles under mask water at the west end of the strip, so it was not preferred. |

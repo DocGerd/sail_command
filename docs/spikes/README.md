@@ -138,8 +138,8 @@ instead of here.
   measured through the relaxation ladder at three trees; resolved by #1257's
   derived cap (measured at `a4c0ad3`)
 - [1240-grosser-belt-coverage.md](1240-grosser-belt-coverage.md) — #1240:
-  full Großer Belt coverage. The belt's east shore is already inside the
-  mask and the missing part is north of 55.6°N; go on far-shore harbours in
+  full Großer Belt coverage. The belt's water already ends inside the
+  mask's east edge for 55.3-55.55°N and the missing part is north of 55.6°N; go on far-shore harbours in
   the current box, no-go on a north extension until a harbour north of 55.6°N
   is named and three measurements (§7.2) are in
 
