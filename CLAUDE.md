@@ -158,7 +158,11 @@ making design-level decisions; do not silently deviate.
   in a non-dot directory because `actions/upload-artifact@v7.0.1` defaults
   `include-hidden-files: false`: the default `.vitest-reports/` upload failed
   on every shard with `No files were found`, an error that never names the
-  hidden-file default (run 36333125953).
+  hidden-file default (run 36333125953). A red shard's job log names no test
+  (it ends `Process completed with exit code 1` after the blob write); download
+  that shard's `coverage-blob-N` artifact and parse its flatted JSON. A real-mask
+  test with no `solverTimeoutMs` budget passes per-PR and times out only under
+  coverage (#1587, #1612).
 ## Commands
 - App (run from repo root): `npm --prefix app run typecheck` / `lint` / `test` /
   `build` / `dev`. CI runs lint+typecheck in `app-static`, concurrently with the test shards
@@ -265,7 +269,9 @@ making design-level decisions; do not silently deviate.
   from the roots, no prose list here to drift. #944 (read a purely additive
   export as NOT OWED) was deferred after three review rounds each found a
   fail-open in its hand-rolled lexer (ASI, `\r`/U+2028/U+2029, `}` then `(`);
-  its deferral comment recommends a real parser. The closure is wider than the
+  its deferral comment recommends a real parser; `app/src/test/libTypesImportLayering.test.ts`
+  (#1602) is the in-repo `ts.createSourceFile` precedent, adopted after its own
+  hand-rolled stripper failed open on a regex literal. The closure is wider than the
   obvious routing/mask/sweep/pipeline paths: it reaches the boat catalogue and
   `boatDepth`, `DEFAULT_SETTINGS` in `types.ts`, the shared test fixtures and
   timeouts, `setup.ts`, and the solver's `geo`/`polar`/`wind` helpers. One
@@ -1703,6 +1709,7 @@ making design-level decisions; do not silently deviate.
   | v0.48.0 | 2026-09-29 | 30 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 15:49:25Z, two seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `36593066651` (created 15:48:59Z) -> tag `36593127818` (created 15:49:29Z) on `2f28e53`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `6739184153`, `ref: v0.48.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-BWFAAx2G.js` at ``version:`v0.48.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `341cdcb` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.49.0 | 2026-09-30 | 50 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 02:46:41Z, three seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `36661333446` (created 02:45:55Z) -> tag `36661398666` (created 02:46:45Z) on `2893841`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `6750305736`, `ref: v0.49.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-Coo8t4Jc.js` at ``version:`v0.49.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `378b082` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.50.0 | 2026-09-30 | 41 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 11:59:49Z, three seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `36711901243` (created 11:59:12Z) -> tag `36711967788` (created 11:59:53Z) on `eae74a6`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `6758804243`, `ref: v0.50.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-RmdOSV93.js` at ``version:`v0.50.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `59b0d3d` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
+  | v0.51.0 | 2026-10-01 | 134 s | `success`, `steps=6` (merge `deploy` terminal at 10:35:54Z, 30 s before the tag run was created; MEASURED before the tag push, and the failure CALLED IN ADVANCE from it) | **`smoke-probe` FAILED** | merge-push `36849951320` -> tag `36850181856` on `5882230`. Tag run's `build` and `deploy` succeeded; its prod entry chunk `assets/index-DOFkuFiz.js` 404'd on 10/10 attempts (to 10:42:37Z) while the basemap Range probes passed on attempt 1. Back-merge `36853610947` (`48d2277`) republished that same chunk, 200; production then served ``version:`v0.51.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `1a48b9f` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -4370,7 +4377,10 @@ making design-level decisions; do not silently deviate.
   into a separate local array and never mutates `req.viaPoints`, and
   `planViaPoints.ts` returns `request.viaPoints` verbatim. Gap up to half a
   ~46 m cell diagonal when the drop was already navigable, up to `maxRadiusM =
-  300` when it was not. Never write that the two coincide.
+  300` when it was not. Never write that the two coincide. Nor is it the TRUE
+  nearest cell: its stop bound has two measured miss causes, named in its own
+  comment (#1605). `verify_mask.py`'s `snap_cell` twins it (#1584), so changing
+  the walk owes a sweep AND the twin (#1609).
 - **#1259's integer cells-per-degree grid is edge-STABLE, not exact.**
   Widening the bbox
   north/east no longer moves a cell, but `floor((v - origin) * cpd)` still
