@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.52.0] - 2026-10-01
+
+### Added
+
+- Added six harbours: Korsør, Reersø and Mullerup on the Zealand shore of the Great Belt, Lohals and Spodsbjerg on Langeland, and Tårs on Lolland (#1585).
+
+### Fixed
+
+- Snapping the origin, destination or a waypoint to navigable water now picks the nearest navigable cell; previously the search could stop at a farther one (#1609).
+- With a route on the map, the "Display options" cluster now also shows a scroll cue while its expanded rows, including the legend, are cut off below the fold at narrow widths (#1615).
+
 ## [0.51.0] - 2026-10-01
 
 ### Fixed
@@ -1246,7 +1257,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.51.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.52.0...HEAD
+[0.52.0]: https://github.com/DocGerd/sail_command/compare/v0.51.0...v0.52.0
 [0.51.0]: https://github.com/DocGerd/sail_command/compare/v0.50.0...v0.51.0
 [0.50.0]: https://github.com/DocGerd/sail_command/compare/v0.49.0...v0.50.0
 [0.49.0]: https://github.com/DocGerd/sail_command/compare/v0.48.0...v0.49.0

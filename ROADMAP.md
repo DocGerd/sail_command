@@ -13,31 +13,28 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.51.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.52.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
-## Now — v0.51.0
+## Now — v0.52.0
 
-The `v0.51.0` cut (2026-10-01) worked the
-[`v0.51.0` milestone](https://github.com/DocGerd/sail_command/milestones):
-one user-visible change (per `CHANGELOG.md`'s own `[0.51.0]` section) — the
-display-options scroll cue updating when rows appear or disappear while the
-list is scrolled to the end ([#1581](https://github.com/DocGerd/sail_command/issues/1581)) — plus nine issues with no
-user-visible surface: a snap-aware per-boat reachability check in
-`pipeline/verify_mask.py` and its TS twin `verifyMaskConnectivity.test.ts` ([#1584](https://github.com/DocGerd/sail_command/issues/1584)), stricter validation of a stored boat
-snapshot's polar provenance ([#1599](https://github.com/DocGerd/sail_command/issues/1599)), a guard that four `lib/` modules import `../types` type-only
-([#1602](https://github.com/DocGerd/sail_command/issues/1602)), a `PlansList` test for deleting an unreadable plan row
-([#1598](https://github.com/DocGerd/sail_command/issues/1598)), a corrected `snapToNavigable` comment ([#1605](https://github.com/DocGerd/sail_command/issues/1605)), coverage-run
-timeout budgets for tests ([#1587](https://github.com/DocGerd/sail_command/issues/1587), [#1612](https://github.com/DocGerd/sail_command/issues/1612)), and documentation
-residuals from the `v0.50.0` sweep and the `#1240` spike ([#1588](https://github.com/DocGerd/sail_command/issues/1588),
-[#1582](https://github.com/DocGerd/sail_command/issues/1582)).
+The `v0.52.0` cut (2026-10-01) worked the
+[`v0.52.0` milestone](https://github.com/DocGerd/sail_command/milestones):
+three user-visible changes (per `CHANGELOG.md`'s own `[0.52.0]` section) — six
+harbours around the Great Belt and Langelandsbælt ([#1585](https://github.com/DocGerd/sail_command/issues/1585)), origin, destination and waypoint snapping
+that picks the true nearest navigable cell ([#1609](https://github.com/DocGerd/sail_command/issues/1609)), and, with a route on the map, a scroll
+cue on the "Display options" cluster when its expanded rows are cut off at narrow
+widths ([#1615](https://github.com/DocGerd/sail_command/issues/1615)) — plus one issue with no user-visible surface: a logged
+unreadable-record path in `getPlan`, a scoped comment claim and a dangling
+sweep-README pointer ([#553](https://github.com/DocGerd/sail_command/issues/553)). The #1585 ruling is recorded as a dated
+amendment in the design spec; its wording follow-up,
+[#1624](https://github.com/DocGerd/sail_command/issues/1624), was filed into `Backlog` at this cut.
 
-## Next — v0.52.0
+## Next — v0.53.0
 
-The [`v0.52.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-holds one issue as of this cut: the remaining self-resolving OpenSSF Scorecard
-findings ([#72](https://github.com/DocGerd/sail_command/issues/72)). The milestone page is the only authoritative view, check it
-directly rather than this file.
+The [`v0.53.0` milestone](https://github.com/DocGerd/sail_command/milestones)
+was empty as of this cut and will be filled from `Backlog`. The milestone page
+is the only authoritative view, check it directly rather than this file.
 
 ## Themes for the next year
 
@@ -101,7 +98,7 @@ transfer to a fork automatically).
 
 ### Routing depth
 
-The largest open product questions. Both were unscheduled — in `Backlog`, accepted but not yet scheduled into a release — at the `v0.51.0` cut; each issue's milestone field is the current fact:
+The largest open product questions. Both were unscheduled — in `Backlog`, accepted but not yet scheduled into a release — at the `v0.52.0` cut; each issue's milestone field is the current fact:
 
 - Currents, tides, and sea state (waves) in the isochrone cost
   ([#18](https://github.com/DocGerd/sail_command/issues/18)) — a design spec
