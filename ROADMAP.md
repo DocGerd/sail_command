@@ -13,29 +13,28 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.50.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.51.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
-## Now — v0.50.0
+## Now — v0.51.0
 
-The `v0.50.0` cut (2026-09-30) worked the
-[`v0.50.0` milestone](https://github.com/DocGerd/sail_command/milestones):
-two user-visible changes (per `CHANGELOG.md`'s own `[0.50.0]` section) — the
-Salona 44 *EASY GO!* (deep keel, 2.59 m draft) joining the boat catalogue as an
-estimated-polar boat, with its 3.5 m default safety depth flagging the
-harbours it cannot reach ([#1575](https://github.com/DocGerd/sail_command/issues/1575)), and a scroll cue on the height-capped open
-display-options list below 820 px ([#1564](https://github.com/DocGerd/sail_command/issues/1564)) — plus two issues with no
-user-visible surface: sister-ship polar sharing in the pipeline, which *EASY
-GO!* uses ([#567](https://github.com/DocGerd/sail_command/issues/567)), and a tidied sentence in the security assurance case
-([#1570](https://github.com/DocGerd/sail_command/issues/1570)).
+The `v0.51.0` cut (2026-10-01) worked the
+[`v0.51.0` milestone](https://github.com/DocGerd/sail_command/milestones):
+one user-visible change (per `CHANGELOG.md`'s own `[0.51.0]` section) — the
+display-options scroll cue updating when rows appear or disappear while the
+list is scrolled to the end ([#1581](https://github.com/DocGerd/sail_command/issues/1581)) — plus nine issues with no
+user-visible surface: a snap-aware per-boat reachability check in
+`pipeline/verify_mask.py` and its TS twin `verifyMaskConnectivity.test.ts` ([#1584](https://github.com/DocGerd/sail_command/issues/1584)), stricter validation of a stored boat
+snapshot's polar provenance ([#1599](https://github.com/DocGerd/sail_command/issues/1599)), a guard that four `lib/` modules import `../types` type-only
+([#1602](https://github.com/DocGerd/sail_command/issues/1602)), a `PlansList` test for deleting an unreadable plan row
+([#1598](https://github.com/DocGerd/sail_command/issues/1598)), a corrected `snapToNavigable` comment ([#1605](https://github.com/DocGerd/sail_command/issues/1605)), coverage-run
+timeout budgets for tests ([#1587](https://github.com/DocGerd/sail_command/issues/1587), [#1612](https://github.com/DocGerd/sail_command/issues/1612)), and documentation
+residuals from the `v0.50.0` sweep and the `#1240` spike ([#1588](https://github.com/DocGerd/sail_command/issues/1588),
+[#1582](https://github.com/DocGerd/sail_command/issues/1582)).
 
-The `#1240` spike (PR #1577) shipped a recommendation only, in
-`docs/spikes/1240-grosser-belt-coverage.md`; [#1240](https://github.com/DocGerd/sail_command/issues/1240) itself moved to
-`Backlog`.
+## Next — v0.52.0
 
-## Next — v0.51.0
-
-The [`v0.51.0` milestone](https://github.com/DocGerd/sail_command/milestones)
+The [`v0.52.0` milestone](https://github.com/DocGerd/sail_command/milestones)
 holds one issue as of this cut: the remaining self-resolving OpenSSF Scorecard
 findings ([#72](https://github.com/DocGerd/sail_command/issues/72)). The milestone page is the only authoritative view, check it
 directly rather than this file.
@@ -102,7 +101,7 @@ transfer to a fork automatically).
 
 ### Routing depth
 
-The largest open product questions. Both were unscheduled — in `Backlog`, accepted but not yet scheduled into a release — at the `v0.50.0` cut; each issue's milestone field is the current fact:
+The largest open product questions. Both were unscheduled — in `Backlog`, accepted but not yet scheduled into a release — at the `v0.51.0` cut; each issue's milestone field is the current fact:
 
 - Currents, tides, and sea state (waves) in the isochrone cost
   ([#18](https://github.com/DocGerd/sail_command/issues/18)) — a design spec
