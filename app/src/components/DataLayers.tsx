@@ -1406,12 +1406,17 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
     // and the media queries above both depend on it directly.
     window.addEventListener('resize', recompute);
     el.addEventListener('scroll', markOverflow, { passive: true });
+    // A content-only change in a capped, scrolled-to-end cluster moves neither
+    // its size nor `scrollTop`, so nothing above fires for it.
+    const mo = new MutationObserver(markOverflow);
+    mo.observe(el, { childList: true, subtree: true });
     // Same reasoning as useBannerHeight.ts's own first-callback comment: the
     // initial ResizeObserver callback is queued for a later frame, not
     // delivered synchronously, so measure once immediately too.
     recompute();
     return () => {
       ro.disconnect();
+      mo.disconnect();
       document.documentElement.style.removeProperty('--sc-depth-controls-max');
       window.removeEventListener('resize', recompute);
       el.removeEventListener('scroll', markOverflow);
