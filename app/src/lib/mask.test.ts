@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { makeMask, TEST_MASK_META } from '../test/fixtures';
-import { cautiousDepthLowerBoundM, MASK_TOLERANCE_M } from './mask';
+import { cautiousDepthLowerBoundM, maskGrid, MASK_TOLERANCE_M, NavMask } from './mask';
 import { APPROACH_RADIUS_M, approachGate, uniformGate } from './depthGate';
 
 const CELL_LAT = (TEST_MASK_META.north - TEST_MASK_META.south) / TEST_MASK_META.rows; // 0.005
@@ -89,6 +89,26 @@ describe('NavMask', () => {
     expect(m.segmentNavigable(inside, inside, uniformGate(3))).toBe(true);
     expect(m.segmentNavigable(inside, { lat: TEST_MASK_META.north, lon: 10 }, uniformGate(3))).toBe(false);
     expect(m.segmentNavigable(inside, { lat: 54.5, lon: TEST_MASK_META.east }, uniformGate(3))).toBe(false);
+  });
+
+  it('#1609: snapToNavigable returns the true nearest cell, not the first ring hit', () => {
+    const meta = { west: 9.4, south: 54.3, east: 11.0, north: 55.3, cols: 2200, rows: 2400 };
+    const { lat, lon } = maskGrid(meta);
+    const [row0, col0] = [1000, 800];
+    const build = (cells: Array<[number, number]>) => {
+      const bytes = new Uint8Array(meta.rows * meta.cols);
+      for (const [r, c] of cells) bytes[r * meta.cols + c] = 200;
+      return new NavMask(meta, bytes);
+    };
+    // 0.05 cells into the start cell, so ring-3 cells can sit nearer than a ring-2 one.
+    const p = { lat: 54.3 + (row0 + 0.05) / 2400, lon: 9.4 + (col0 + 0.05) / 1375 };
+    const ring2: [number, number] = [row0 + 2, col0 - 2];
+    const ring3: [number, number] = [row0 - 3, col0];
+    const centreOf = ([r, c]: [number, number]) => ({ lat: lat.centre(r), lon: lon.centre(c) });
+    // Control: the ring-2 cell alone is what the first ring hit would return.
+    expect(build([ring2]).snapToNavigable(p, 3.0)).toEqual(centreOf(ring2));
+    // The ring-3 cell is nearer, but a walk that stops at ring 2 never sees it.
+    expect(build([ring2, ring3]).snapToNavigable(p, 3.0)).toEqual(centreOf(ring3));
   });
 
   it('snapToNavigable centered far outside the bbox returns null', () => {
