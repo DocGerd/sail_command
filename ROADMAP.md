@@ -24,8 +24,8 @@ one user-visible change (per `CHANGELOG.md`'s own `[0.51.0]` section) — the
 display-options scroll cue updating when rows appear or disappear while the
 list is scrolled to the end ([#1581](https://github.com/DocGerd/sail_command/issues/1581)) — plus nine issues with no
 user-visible surface: a snap-aware per-boat reachability check in
-`pipeline/verify_mask.py` ([#1584](https://github.com/DocGerd/sail_command/issues/1584)), stricter validation of a stored boat
-snapshot's polar provenance ([#1599](https://github.com/DocGerd/sail_command/issues/1599)), a type-only-import guard for `lib/`
+`pipeline/verify_mask.py` and its TS twin `verifyMaskConnectivity.test.ts` ([#1584](https://github.com/DocGerd/sail_command/issues/1584)), stricter validation of a stored boat
+snapshot's polar provenance ([#1599](https://github.com/DocGerd/sail_command/issues/1599)), a guard that four `lib/` modules import `../types` type-only
 ([#1602](https://github.com/DocGerd/sail_command/issues/1602)), a `PlansList` test for deleting an unreadable plan row
 ([#1598](https://github.com/DocGerd/sail_command/issues/1598)), a corrected `snapToNavigable` comment ([#1605](https://github.com/DocGerd/sail_command/issues/1605)), coverage-run
 timeout budgets for tests ([#1587](https://github.com/DocGerd/sail_command/issues/1587), [#1612](https://github.com/DocGerd/sail_command/issues/1612)), and documentation
