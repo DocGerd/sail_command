@@ -417,8 +417,8 @@ touched).
 **The byte comparator is BLIND to a `PlanResultOk` rename in the reassuring
 direction on `becalmed` and `deep-becalmed`.** Every plan in those two arms
 is `PlanResultError` (`error/calm-motor-off`, `error/unreachable`, or on
-`deep-becalmed` also `error/snap-failed-destination` — see the outcome table
-above) — and `PlanResultError` carries no sail fields at all (`{ status:
+`deep-becalmed` also `error/snap-failed-destination` — see the outcome
+distribution above) — and `PlanResultError` carries no sail fields at all (`{ status:
 'error', reason }`, untouched by the Task 9 rename). So a byte compare of
 those two arms alone stays byte-identical straight through the rename and
 reports IDENTICAL, whether or not the rename broke anything on the other

@@ -360,7 +360,13 @@ export async function getPlan(id: string): Promise<Plan | undefined> {
   // Unreadable: `undefined` (the same answer as "no such plan") rather than a
   // throw, so every existing caller degrades to its own not-found path. The
   // record itself is left untouched — never deleted, never overwritten.
-  return plan ?? undefined;
+  if (plan === null) {
+    const row = unreadableRow(raw);
+    const cause = row.kind === 'unreadable' ? row.reason : 'damaged';
+    console.error(`getPlan: unreadable plan record ${id} (${cause})`);
+    return undefined;
+  }
+  return plan;
 }
 
 // #551 review round 2 (Minor 1, self-review — explicitly "in scope, not
