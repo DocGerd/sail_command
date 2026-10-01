@@ -886,7 +886,7 @@ versioned section at the cut, so the fragment must be re-scoped or held back wit
   **Re-measured 2026-09-17, and both of this bullet's original claims — the per-gate
   harbour counts and the missing presentation — are superseded.** Those counts applied an
   exact-snap-cell predicate to a 33-harbour, pre-#295 mask. The snap-aware measurement — real `snapToNavigable` with its 300 m search
-  and one-disc relaxation, over the 40 harbours `app/public/data/harbors.json` now carries —
+  and one-disc relaxation, over the 40 harbours `app/public/data/harbors.json` carried on 2026-09-17 —
   gives MARIN (2.30 m, gate 3.2 m) **33 ok with `faldsled` and `marstal` shallow-approach and
   none unreachable**, and EASY GO! (2.55 m, gate 3.5 m) **31 ok, `faldsled` and `rudkoebing`
   shallow-approach, `augustenborg` and `marstal` unreachable**. Against the post-#295 mask the
@@ -929,7 +929,7 @@ versioned section at the cut, so the fragment must be re-scoped or held back wit
   guessable, and it retires §M.2's "unmeasured" status while leaving §L's mask-refinement row
   untouched.
   **Superseded as a reachability statement, 2026-09-17.** That run predates #295, so it covers
-  **33** harbours against today's 40, and its predicate is the exact snap cell rather than what
+  **33** harbours against the 40 of 2026-09-17, and its predicate is the exact snap cell rather than what
   the app does. Read the per-gate sets above as a record of what the 2026-08-18 run reported,
   never as today's reachability: §N.7 carries the snap-aware 40-harbour figures, and for the
   three CATALOGUE boats the committed authority is `pipeline/verify_mask.py`'s per-boat
