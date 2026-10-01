@@ -499,10 +499,10 @@ export class NavMask {
   }
 
   /**
-   * Expanding ring search; returns the centre of the nearest navigable cell it
-   * finds within maxRadiusM. Not guaranteed the true nearest: the stop bound
-   * below measures rings from the start cell's centre rather than from `p`,
-   * and in 111_320 m/deg while distances are haversine (#1605).
+   * Returns the centre of the nearest navigable cell within maxRadiusM. Every
+   * ring up to `maxRing` is scanned, so the result is the true nearest; ties
+   * keep the first cell in ring, then row-major order. Twin: `snap_cell` in
+   * pipeline/verify_mask.py.
    *
    * #452: stays SCALAR at the REQUESTED gate and takes no {@link DepthGate} —
    * snapping is not relaxable (spike §1.4), and the relaxation discs are
@@ -519,13 +519,9 @@ export class NavMask {
     const maxRing = Math.ceil(maxRadiusM / minCellStepM) + 1;
     let best: { p: LatLon; d: number } | null = null;
     for (let ring = 0; ring <= maxRing; ring++) {
-      // Cells can be non-square (lat vs lon extent), so a farther ring can
-      // still hold a nearer cell than a closer ring (lon-offset hits vs.
-      // lat-offset hits). Stop once ring * minCellStepM exceeds the best
-      // distance. That bound is measured from the start cell's centre, not
-      // from `p`, and in 111_320 m/deg against a haversine best.d, so the
-      // break ring may still hold a slightly nearer cell.
-      if (best && ring * minCellStepM > best.d) break;
+      // No early exit: a farther ring can hold a nearer cell (`p` is off the
+      // start cell's centre, cells are non-square, and the ring bound is not
+      // haversine), so only exhausting the rings is exact (#1609).
       for (let dr = -ring; dr <= ring; dr++) {
         for (let dc = -ring; dc <= ring; dc++) {
           if (Math.max(Math.abs(dr), Math.abs(dc)) !== ring) continue;
