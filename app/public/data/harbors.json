@@ -392,6 +392,23 @@
   }
  },
  {
+  "id": "korsoer",
+  "names": {
+   "de": "Korsør",
+   "da": "Korsør",
+   "en": "Korsør"
+  },
+  "country": "DK",
+  "snap": {
+   "lat": 55.32896,
+   "lon": 11.12545
+  },
+  "approachNote": {
+   "de": "Der Start- bzw. Zielpunkt der Route liegt vor dem Hafen in Wasser, das die Tiefendaten als befahrbar ausweisen; die letzte Anfahrt bilden die Tiefendaten nicht ab – dem gekennzeichneten Fahrwasser folgen und die Seekarte prüfen.",
+   "en": "Route start/end point lies off the harbor in water the depth data shows as navigable; the depth data does not resolve the final approach - follow the marked channel and check the chart."
+  }
+ },
+ {
   "id": "langballigau",
   "names": {
    "de": "Langballigau",
@@ -406,6 +423,23 @@
   "approachNote": {
    "de": "Einfahrt auf ca. 2,5–3 m ausgebaggert, versandet jedoch; Ostwind kann den Wasserstand um 0,5 m oder mehr senken; bei Niedrigwasser grenzwertig.",
    "en": "Entrance dredged approx 2.5-3 m but silts; easterly winds can lower the level 0.5 m+; marginal at low water."
+  }
+ },
+ {
+  "id": "lohals",
+  "names": {
+   "de": "Lohals",
+   "da": "Lohals",
+   "en": "Lohals"
+  },
+  "country": "DK",
+  "snap": {
+   "lat": 55.13354,
+   "lon": 10.9
+  },
+  "approachNote": {
+   "de": "Der Start- bzw. Zielpunkt der Route liegt vor dem Hafen in Wasser, das die Tiefendaten als befahrbar ausweisen; die letzte Anfahrt bilden die Tiefendaten nicht ab – dem gekennzeichneten Fahrwasser folgen und die Seekarte prüfen.",
+   "en": "Route start/end point lies off the harbor in water the depth data shows as navigable; the depth data does not resolve the final approach - follow the marked channel and check the chart."
   }
  },
  {
@@ -491,6 +525,23 @@
   }
  },
  {
+  "id": "mullerup",
+  "names": {
+   "de": "Mullerup",
+   "da": "Mullerup",
+   "en": "Mullerup"
+  },
+  "country": "DK",
+  "snap": {
+   "lat": 55.49396,
+   "lon": 11.17127
+  },
+  "approachNote": {
+   "de": "Der Start- bzw. Zielpunkt der Route liegt vor dem Hafen in Wasser, das die Tiefendaten als befahrbar ausweisen; die letzte Anfahrt bilden die Tiefendaten nicht ab – dem gekennzeichneten Fahrwasser folgen und die Seekarte prüfen.",
+   "en": "Route start/end point lies off the harbor in water the depth data shows as navigable; the depth data does not resolve the final approach - follow the marked channel and check the chart."
+  }
+ },
+ {
   "id": "nyborg",
   "names": {
    "de": "Nyborg",
@@ -531,6 +582,23 @@
   "snap": {
    "lat": 54.4394,
    "lon": 11.052
+  },
+  "approachNote": {
+   "de": "Der Start- bzw. Zielpunkt der Route liegt vor dem Hafen in Wasser, das die Tiefendaten als befahrbar ausweisen; die letzte Anfahrt bilden die Tiefendaten nicht ab – dem gekennzeichneten Fahrwasser folgen und die Seekarte prüfen.",
+   "en": "Route start/end point lies off the harbor in water the depth data shows as navigable; the depth data does not resolve the final approach - follow the marked channel and check the chart."
+  }
+ },
+ {
+  "id": "reersoe",
+  "names": {
+   "de": "Reersø",
+   "da": "Reersø",
+   "en": "Reersø"
+  },
+  "country": "DK",
+  "snap": {
+   "lat": 55.51604,
+   "lon": 11.12182
   },
   "approachNote": {
    "de": "Der Start- bzw. Zielpunkt der Route liegt vor dem Hafen in Wasser, das die Tiefendaten als befahrbar ausweisen; die letzte Anfahrt bilden die Tiefendaten nicht ab – dem gekennzeichneten Fahrwasser folgen und die Seekarte prüfen.",
@@ -602,6 +670,23 @@
   }
  },
  {
+  "id": "spodsbjerg",
+  "names": {
+   "de": "Spodsbjerg",
+   "da": "Spodsbjerg",
+   "en": "Spodsbjerg"
+  },
+  "country": "DK",
+  "snap": {
+   "lat": 54.93229,
+   "lon": 10.836
+  },
+  "approachNote": {
+   "de": "Der Start- bzw. Zielpunkt der Route liegt vor dem Hafen in Wasser, das die Tiefendaten als befahrbar ausweisen; die letzte Anfahrt bilden die Tiefendaten nicht ab – dem gekennzeichneten Fahrwasser folgen und die Seekarte prüfen.",
+   "en": "Route start/end point lies off the harbor in water the depth data shows as navigable; the depth data does not resolve the final approach - follow the marked channel and check the chart."
+  }
+ },
+ {
   "id": "svendborg",
   "names": {
    "de": "Svendborg",
@@ -616,6 +701,23 @@
   "approachNote": {
    "de": "Tiefes Wasser, aber starke kenternde Strömung (bis ca. 2,5 kn) im Svendborg Sund.",
    "en": "Deep water but strong reversing current (up to ~2.5 kn) in Svendborg Sund."
+  }
+ },
+ {
+  "id": "taars",
+  "names": {
+   "de": "Tårs",
+   "da": "Tårs",
+   "en": "Tårs"
+  },
+  "country": "DK",
+  "snap": {
+   "lat": 54.87562,
+   "lon": 11.02218
+  },
+  "approachNote": {
+   "de": "Der Start- bzw. Zielpunkt der Route liegt vor dem Hafen in Wasser, das die Tiefendaten als befahrbar ausweisen; die letzte Anfahrt bilden die Tiefendaten nicht ab – dem gekennzeichneten Fahrwasser folgen und die Seekarte prüfen.",
+   "en": "Route start/end point lies off the harbor in water the depth data shows as navigable; the depth data does not resolve the final approach - follow the marked channel and check the chart."
   }
  },
  {

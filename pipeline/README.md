@@ -185,11 +185,11 @@ first's.
 
 ### `harbors.json` — curated harbor list
 
-40 harbors in the Flensburg Fjord, Danish South Sea, Little Belt, western
-Great Belt approach and Fehmarn area, each with a
+Curated harbors in the Flensburg Fjord, Danish South Sea, Little Belt, southern
+Great Belt and Fehmarn area, each with a
 navigable snap point (`snap.lat`/`snap.lon`) validated against `mask.bin`
 (depth ≥ 2.2 m — see below) and, where needed, a de/en approach note: a
-draft caveat for a 2.1 m-draft boat, or (for harbors added at #295) a
+draft caveat for a 2.1 m-draft boat, or (for harbors added at #295 and #1585) a
 depth-data caveat when the snap sits off the harbor.
 
 The #295 caveat is written when the snap cell is more than ~3 mask cells
@@ -311,7 +311,7 @@ Regenerate:
 
 ```
 pipeline/.venv/bin/python pipeline/build_mask.py     # first run downloads ~887 MiB / ~930 MB (measured 2026-08-26: 930,179,378 bytes), cached in pipeline/data-src/ (gitignored) after
-pipeline/.venv/bin/python pipeline/verify_mask.py    # sanity probes: must print "all probes OK (8 water, 7 land, 40 harbor snaps)"
+pipeline/.venv/bin/python pipeline/verify_mask.py    # sanity probes: must print "all probes OK (8 water, 7 land, <N> harbor snaps)"
 ```
 
 `build_mask.py` asserts the overall water fraction is between 0.45 and 0.85

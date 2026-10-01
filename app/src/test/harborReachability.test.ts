@@ -87,28 +87,28 @@ describe('#1290 harborReachability', () => {
     }
   > = {
     'salona-45': {
-      ok: 34,
+      ok: 40,
       shallow: 1,
       unreachable: 0,
       knownDisconnected: 5,
       named: { marstal: 'shallow-approach' },
     },
     'salona-44-speedy-go': {
-      ok: 34,
+      ok: 40,
       shallow: 1,
       unreachable: 0,
       knownDisconnected: 5,
       named: { marstal: 'shallow-approach' },
     },
     'elan-444-piranja': {
-      ok: 34,
+      ok: 40,
       shallow: 1,
       unreachable: 0,
       knownDisconnected: 5,
       named: { marstal: 'shallow-approach' },
     },
     'salona-44-easy-go': {
-      ok: 31,
+      ok: 37,
       shallow: 2,
       unreachable: 2,
       knownDisconnected: 5,
@@ -166,7 +166,7 @@ describe('#1290 harborReachability', () => {
   // kept so §3's own measured composition stays reproduced independently of
   // the catalogue.
   it(
-    'synthetic 2.55 m draft: 31 ok, 2 shallow-approach, 2 unreachable, 5 known-disconnected',
+    'synthetic 2.55 m draft: 37 ok, 2 shallow-approach, 2 unreachable, 5 known-disconnected',
     { timeout: solverTimeoutMs(300_000) },
     () => {
       const g = defaultSafetyDepthM(synthetic);
@@ -174,7 +174,7 @@ describe('#1290 harborReachability', () => {
       const result = computeHarborAccess(mask, harbors, synthetic, g);
       const byState = { ok: 0, 'shallow-approach': 0, unreachable: 0, 'known-disconnected': 0 };
       for (const state of result.values()) byState[state]++;
-      expect(byState.ok).toBe(31);
+      expect(byState.ok).toBe(37);
       expect(byState['shallow-approach']).toBe(2);
       expect(byState.unreachable).toBe(2);
       expect(byState['known-disconnected']).toBe(5);

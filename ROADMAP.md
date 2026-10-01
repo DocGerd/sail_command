@@ -728,8 +728,8 @@ implementing one of them will be declined on principle
   that is the whole delivery model.
 - **No open-ended or unbounded map-area expansion.** The committed mask,
   harbor list and seamarks cover 54.3–55.6°N, 9.4–11.6°E (Flensburg Fjord and
-  the Danish South Sea to the Little Belt, Fehmarn and the Great Belt's
-  western approach); the basemap covers the same box, as an eager core over
+  the Danish South Sea to the Little Belt, Fehmarn and the southern Great
+  Belt); the basemap covers the same box, as an eager core over
   54.3–55.3°N, 9.4–11.0°E plus two lazily-fetched region archives over the
   extension. Growing that footprint is a real data-pipeline
   and app-size cost, not a toggle. That bounded extension is

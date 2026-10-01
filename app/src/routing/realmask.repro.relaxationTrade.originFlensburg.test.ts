@@ -45,7 +45,7 @@ describe('#930 R3: P3 disc-vs-global relaxation trade (shipped findRelaxedGate, 
           c.requestedM,
           pop.reversed,
         );
-        expect(pairs.length + snapFailed.length, 'harbour pairs per fixed origin').toBe(39);
+        expect(pairs.length + snapFailed.length, 'harbour pairs per fixed origin').toBe(45);
 
         const rows = measureRelaxationTrade(mask, pairs, c.requestedM, c.floorM, APPROACH_RADIUS_M);
         const label = `[${c.boatIds.join(',')}] ${pop.name}`;
