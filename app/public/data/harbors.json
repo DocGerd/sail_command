@@ -436,10 +436,6 @@
   "snap": {
    "lat": 55.13354,
    "lon": 10.9
-  },
-  "approachNote": {
-   "de": "Der Start- bzw. Zielpunkt der Route liegt vor dem Hafen in Wasser, das die Tiefendaten als befahrbar ausweisen; die letzte Anfahrt bilden die Tiefendaten nicht ab – dem gekennzeichneten Fahrwasser folgen und die Seekarte prüfen.",
-   "en": "Route start/end point lies off the harbor in water the depth data shows as navigable; the depth data does not resolve the final approach - follow the marked channel and check the chart."
   }
  },
  {
@@ -537,8 +533,8 @@
    "lon": 11.17127
   },
   "approachNote": {
-   "de": "Der Start- bzw. Zielpunkt der Route liegt vor dem Hafen in Wasser, das die Tiefendaten als befahrbar ausweisen; die letzte Anfahrt bilden die Tiefendaten nicht ab – dem gekennzeichneten Fahrwasser folgen und die Seekarte prüfen.",
-   "en": "Route start/end point lies off the harbor in water the depth data shows as navigable; the depth data does not resolve the final approach - follow the marked channel and check the chart."
+   "de": "Der Start- bzw. Zielpunkt der Route liegt vor dem Hafen in Wasser, das die Tiefendaten als befahrbar ausweisen; die letzte Anfahrt bilden die Tiefendaten nicht ab – die Seekarte prüfen.",
+   "en": "Route start/end point lies off the harbor in water the depth data shows as navigable; the depth data does not resolve the final approach - check the chart."
   }
  },
  {
@@ -601,8 +597,8 @@
    "lon": 11.12182
   },
   "approachNote": {
-   "de": "Der Start- bzw. Zielpunkt der Route liegt vor dem Hafen in Wasser, das die Tiefendaten als befahrbar ausweisen; die letzte Anfahrt bilden die Tiefendaten nicht ab – dem gekennzeichneten Fahrwasser folgen und die Seekarte prüfen.",
-   "en": "Route start/end point lies off the harbor in water the depth data shows as navigable; the depth data does not resolve the final approach - follow the marked channel and check the chart."
+   "de": "Der Start- bzw. Zielpunkt der Route liegt vor dem Hafen in Wasser, das die Tiefendaten als befahrbar ausweisen; die letzte Anfahrt bilden die Tiefendaten nicht ab – die Seekarte prüfen.",
+   "en": "Route start/end point lies off the harbor in water the depth data shows as navigable; the depth data does not resolve the final approach - check the chart."
   }
  },
  {
@@ -682,8 +678,8 @@
    "lon": 10.836
   },
   "approachNote": {
-   "de": "Der Start- bzw. Zielpunkt der Route liegt vor dem Hafen in Wasser, das die Tiefendaten als befahrbar ausweisen; die letzte Anfahrt bilden die Tiefendaten nicht ab – dem gekennzeichneten Fahrwasser folgen und die Seekarte prüfen.",
-   "en": "Route start/end point lies off the harbor in water the depth data shows as navigable; the depth data does not resolve the final approach - follow the marked channel and check the chart."
+   "de": "Der Start- bzw. Zielpunkt der Route liegt vor dem Hafen in Wasser, das die Tiefendaten als befahrbar ausweisen; die letzte Anfahrt bilden die Tiefendaten nicht ab – die Seekarte prüfen.",
+   "en": "Route start/end point lies off the harbor in water the depth data shows as navigable; the depth data does not resolve the final approach - check the chart."
   }
  },
  {
