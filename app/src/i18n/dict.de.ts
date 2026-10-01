@@ -275,7 +275,7 @@ export const de = {
   'planner.via.coord.update': 'Koordinaten aktualisieren',
   'planner.via.coord.edit': 'Koordinaten bearbeiten (Punkt {index}): {coord}',
   'planner.via.coord.outOfRegion':
-    'Die Koordinaten liegen außerhalb des abgedeckten Seegebiets (Flensburger Förde, Dänische Südsee, Kleiner Belt, westliche Zufahrt zum Großen Belt, Fehmarn).',
+    'Die Koordinaten liegen außerhalb des abgedeckten Seegebiets (Flensburger Förde, Dänische Südsee, Kleiner Belt, südlicher Großer Belt, Fehmarn).',
   // #886 residual 1: see dict.en.ts's matching comment.
   'planner.via.coord.invalidEntry':
     'Eingabe konnte nicht als Koordinate gelesen werden – {value} beibehalten',
@@ -319,7 +319,7 @@ export const de = {
     'Die GPX-Datei enthält keine zwei verwendbaren Punkte (Start und Ziel).',
   'planner.import.error.badCoord': 'Die GPX-Datei enthält ungültige Koordinaten.',
   'planner.import.error.outOfBounds':
-    'Ein Punkt liegt außerhalb des abgedeckten Seegebiets (Flensburger Förde, Dänische Südsee, Kleiner Belt, westliche Zufahrt zum Großen Belt, Fehmarn).',
+    'Ein Punkt liegt außerhalb des abgedeckten Seegebiets (Flensburger Förde, Dänische Südsee, Kleiner Belt, südlicher Großer Belt, Fehmarn).',
   'planner.import.error.tooLarge': 'Die GPX-Datei ist zu groß für den Import.',
   'planner.import.error.failed': 'GPX-Datei konnte nicht gelesen werden.',
   'planner.import.notice.trackReduced':

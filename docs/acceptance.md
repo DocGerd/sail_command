@@ -482,7 +482,7 @@ selected in §1.
       press "Update coordinates", and confirm the marker moves. Coordinates
       outside the covered area are refused with "The coordinates lie
       outside the covered area (Flensburg Fjord, Danish South Sea, Little
-      Belt, western Great Belt approach, Fehmarn)." and
+      Belt, southern Great Belt, Fehmarn)." and
       nothing is added. Re-plan through the point and confirm 2.1 still
       holds, then remove it ("Remove waypoint N") and re-plan before §3
       (#829).

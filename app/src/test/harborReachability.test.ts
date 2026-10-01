@@ -63,7 +63,7 @@ describe('#1290 harborReachability', () => {
   });
 
   // ---- §3's own table, reproduced independently ----
-  // The design doc's §3 measured these exact counts with a SEPARATE plain-JS
+  // The design doc's §3 measured the pre-#1585 counts (34/34/34/31 ok at 40 harbours) with a SEPARATE plain-JS
   // scratch port (never committed) reading the mask's raw bytes directly, and
   // its own §3 text flags that port's snap/disc halves as uncontrolled beyond
   // the marstal row. Matching its counts here is corroboration for the FILL,
@@ -71,6 +71,8 @@ describe('#1290 harborReachability', () => {
   // that half's own evidence (PR #1316 fix-wave 1 Minor: this comment
   // previously over-claimed "two independent implementations… not a
   // self-consistency tautology" for the whole state, not just the fill).
+  // #1585 added six harbours, each `ok` for every catalogue boat, so each `ok` pin is
+  // §3's figure + 6.
   //
   // Hand-written per boat, never derived from BOATS. The three shallower boats
   // (gates 2.8/3.0 m) reach every harbour at their own default; EASY GO!'s
@@ -87,28 +89,28 @@ describe('#1290 harborReachability', () => {
     }
   > = {
     'salona-45': {
-      ok: 34,
+      ok: 40,
       shallow: 1,
       unreachable: 0,
       knownDisconnected: 5,
       named: { marstal: 'shallow-approach' },
     },
     'salona-44-speedy-go': {
-      ok: 34,
+      ok: 40,
       shallow: 1,
       unreachable: 0,
       knownDisconnected: 5,
       named: { marstal: 'shallow-approach' },
     },
     'elan-444-piranja': {
-      ok: 34,
+      ok: 40,
       shallow: 1,
       unreachable: 0,
       knownDisconnected: 5,
       named: { marstal: 'shallow-approach' },
     },
     'salona-44-easy-go': {
-      ok: 31,
+      ok: 37,
       shallow: 2,
       unreachable: 2,
       knownDisconnected: 5,
@@ -163,10 +165,10 @@ describe('#1290 harborReachability', () => {
 
   // ---- §3's EASY GO! row, synthetic 2.55 m draft ----
   // Same gate and states as the real 2.59 m catalogue entry asserted above;
-  // kept so §3's own measured composition stays reproduced independently of
+  // kept so §3's measured composition, plus #1585's six `ok` harbours, stays reproduced independently of
   // the catalogue.
   it(
-    'synthetic 2.55 m draft: 31 ok, 2 shallow-approach, 2 unreachable, 5 known-disconnected',
+    'synthetic 2.55 m draft: 37 ok, 2 shallow-approach, 2 unreachable, 5 known-disconnected',
     { timeout: solverTimeoutMs(300_000) },
     () => {
       const g = defaultSafetyDepthM(synthetic);
@@ -174,7 +176,7 @@ describe('#1290 harborReachability', () => {
       const result = computeHarborAccess(mask, harbors, synthetic, g);
       const byState = { ok: 0, 'shallow-approach': 0, unreachable: 0, 'known-disconnected': 0 };
       for (const state of result.values()) byState[state]++;
-      expect(byState.ok).toBe(31);
+      expect(byState.ok).toBe(37);
       expect(byState['shallow-approach']).toBe(2);
       expect(byState.unreachable).toBe(2);
       expect(byState['known-disconnected']).toBe(5);
