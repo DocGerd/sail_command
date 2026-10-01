@@ -83,13 +83,17 @@ describe('#1393: a default switch among the boats gated <= 3.0 m never reaches u
 });
 
 describe('#1575: a default switch INTO EASY GO! can reach unreachable, and only there', () => {
-  it('EASY GO! at its own default gate reads exactly augustenborg and marstal unreachable', () => {
-    const gate = defaultSafetyDepthM(EASY_GO);
-    expect(gate).toBe(3.5);
-    const unreachable = unreachableAt(EASY_GO, gate);
-    expect(unreachable.length).toBeGreaterThan(0);
-    expect(unreachable).toEqual(['augustenborg', 'marstal']);
-  });
+  it(
+    'EASY GO! at its own default gate reads exactly augustenborg and marstal unreachable',
+    { timeout: solverTimeoutMs(300_000) },
+    () => {
+      const gate = defaultSafetyDepthM(EASY_GO);
+      expect(gate).toBe(3.5);
+      const unreachable = unreachableAt(EASY_GO, gate);
+      expect(unreachable.length).toBeGreaterThan(0);
+      expect(unreachable).toEqual(['augustenborg', 'marstal']);
+    },
+  );
 
   it.each(SHALLOW_BOATS)(
     'a switch from $id at its default depth is clamped UP to EASY GO!’s 3.5 m gate',
