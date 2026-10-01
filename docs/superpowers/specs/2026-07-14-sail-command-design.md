@@ -26,7 +26,7 @@ Android as an offline-capable PWA.
 | Offline scope | Planning requires internet; following/viewing planned routes fully offline (route + wind used + map data persisted) |
 | Sail choice | Router evaluates both rigs (main+genoa, main+fock) and recommends the faster; routes with recommendation |
 | Live guidance | GPS position + active leg, heading to steer, distance to next maneuver, ETA. No live re-routing in v1 |
-| Area | 54.3–55.6°N, 9.4–11.6°E (Flensburg Fjord, Als, Schlei, Kiel Bight, Ærø, Fyn archipelago to Svendborg/Faaborg, Little Belt to Kolding/Middelfart, Fehmarn, Great Belt western approach only). Amended by the 2026-09-15 coverage addendum (#295) — was "54.3–55.3°N, 9.4–11.0°E … southern Little Belt" |
+| Area | 54.3–55.6°N, 9.4–11.6°E (Flensburg Fjord, Als, Schlei, Kiel Bight, Ærø, Fyn archipelago to Svendborg/Faaborg, Little Belt to Kolding/Middelfart, Fehmarn, Great Belt south of 55.6°N including its far shore). Amended by the 2026-09-15 coverage addendum (#295) and #1585 — was "54.3–55.3°N, 9.4–11.0°E … southern Little Belt" |
 | Engine | Configurable motoring speed (default 6.5 kn); router may plan engine legs where sailing would be slower than motoring by more than the sail preference margin (default 2.8 kn), and always below the motor threshold (default 2.5 kn), clearly marked. Amended by `2026-07-30-motor-decision-rule-design.md` (#254) — was "motor fallback … when sailing speed < threshold" |
 | Language | German + English, UI toggle |
 | Hosting | GitHub Pages via GitHub Actions (static site, HTTPS) |
@@ -440,8 +440,10 @@ Maintainer rulings on #295 (2026-09-15); evidence and coupled sites in
   cells are byte-identical; 1,044 cells on the old north row and east column
   change by between −1.0 m and +0.8 m, because the old build resampled them from a download
   clipped to the old bbox (review 5210504886 on PR #1245).
-- **Great Belt.** Western approach only. Extending east across the full Great
-  Belt is deferred to #1240.
+- **Great Belt.** The mask stops at 55.6°N. Inside it the harbour list covers
+  the western approach and, since #1585 (maintainer ruling 2026-10-01), the far
+  shore: Korsør, Reersø, Mullerup, Lohals, plus Spodsbjerg and Tårs on the
+  Langelandsbælt. Coverage north of 55.6°N stays deferred to #1240.
 - **Basemap.** The existing basemap stays the core archive; the extension ships
   as a separately-named region archive (#296's ruling, on the #1164 mechanism),
   not a widened single file. Mask, harbours and seamarks ship first; the region
