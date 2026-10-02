@@ -47,6 +47,24 @@ describe('fitPadding (#1626)', () => {
     expect(p).toEqual({ top: 48, right: 48, bottom: 605, left: 155 });
   });
 
+  it('weighs a claim against the room its axis has left, not the full extent', () => {
+    const square: Box = { left: 0, top: 0, right: 1000, bottom: 1000 };
+    const p = fitPadding(square, [
+      { left: 0, top: 600, right: 1000, bottom: 1000 },
+      { left: 0, top: 0, right: 300, bottom: 290 },
+    ]);
+    expect(p).toEqual({ top: 48, right: 48, bottom: 416, left: 316 });
+  });
+
+  it('charges a claim only for what it adds to an already loaded edge', () => {
+    const square: Box = { left: 0, top: 0, right: 1000, bottom: 1000 };
+    const p = fitPadding(square, [
+      { left: 0, top: 600, right: 1000, bottom: 1000 },
+      { left: 0, top: 700, right: 300, bottom: 1000 },
+    ]);
+    expect(p).toEqual({ top: 48, right: 48, bottom: 416, left: 48 });
+  });
+
   it('ignores chrome outside the map', () => {
     expect(fitPadding(MAP, [{ left: 1000, top: 0, right: 1400, bottom: 800 }])).toEqual({
       top: 48,

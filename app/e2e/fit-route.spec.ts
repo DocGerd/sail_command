@@ -224,6 +224,7 @@ async function endpointState(page: Page, role: 'origin' | 'destination'): Promis
   }, role);
 }
 
+// `requireClear = false` checks visibility only: the narrow button path leaves no free map.
 async function expectEndpointsClearOfChrome(page: Page, requireClear = true): Promise<void> {
   for (const role of ['destination', 'origin'] as const) {
     await expect
