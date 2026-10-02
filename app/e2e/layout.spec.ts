@@ -930,6 +930,11 @@ test('#299: the stale-route banner (a Boat-tab settings change) does not interce
     // Dirty a routing-relevant setting from the Boat tab — the exact #299
     // scenario (a setting changed from a non-Plan surface).
     await page.getByRole('tab', { name: 'Boot' }).click();
+    // #1606: an `.sr-only` control escaping the panel's scrollport made the
+    // overflow:hidden shell scrollable, so the click's scroll-into-view moved it.
+    await expect
+      .poll(() => page.locator('.app-shell').evaluate((el) => el.scrollHeight - el.clientHeight))
+      .toBe(0);
     await page.getByLabel('Motor aktiviert').click();
 
     // A plan exists by now, so DataLayers renders the plain rows (#1541): the
