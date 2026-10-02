@@ -1524,3 +1524,104 @@ for (const [name, viewport] of Object.entries(COMPASS_TABSTRIP_VIEWPORTS)) {
     }
   });
 }
+
+const flexDirectionOfStack = (page: Page) =>
+  page.evaluate(() => getComputedStyle(document.querySelector('.map-stack-tl')!).flexDirection);
+
+// Each media term and the toast exclusion must hold the column on its own.
+const COMPASS_ROW_BOUNDS = [
+  { width: 359, height: 640, expected: 'row' },
+  { width: 359, height: 641, expected: 'column' },
+  { width: 360, height: 568, expected: 'column' },
+] as const;
+
+for (const { width, height, expected } of COMPASS_ROW_BOUNDS) {
+  test(`#1596: the compass row layout is ${expected} at ${width}x${height} with the caveat banner up`, async ({
+    browser,
+  }) => {
+    const server = await startPreview();
+    const context = await browser.newContext({
+      viewport: { width, height },
+      storageState: { cookies: [], origins: [] },
+    });
+    try {
+      const page = await context.newPage();
+      await assertCleanServiceWorkerState(page);
+      await page.goto(server.url);
+      await expect(page.locator('.banner-area .banner-info:not(.reload-prompt)')).toBeVisible();
+      await expect.poll(() => flexDirectionOfStack(page), { timeout: 10_000 }).toBe(expected);
+    } finally {
+      await context.close();
+      server.kill();
+    }
+  });
+}
+
+test('#1596: a toast alone does not flip the compass to the row layout', async ({ page }) => {
+  const server = await startPreview(page);
+  try {
+    await page.setViewportSize(EDGE_VIEWPORTS.deepPortrait320);
+    await page.goto(server.url);
+    await expect(page.locator('.banner-area .reload-prompt')).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator('.banner-area .banner')).toHaveCount(1);
+    await expect.poll(() => flexDirectionOfStack(page), { timeout: 10_000 }).toBe('column');
+  } finally {
+    server.kill();
+  }
+});
+
+// The route cluster is mounted only with a plan; the row layout would put the
+// compass under it.
+const COMPASS_PLAN_VIEWPORTS = {
+  deepPortrait320: EDGE_VIEWPORTS.deepPortrait320,
+  wrapForcing280: EDGE_VIEWPORTS.wrapForcing280,
+  portrait320x640: { width: 320, height: 640 },
+};
+
+for (const [name, viewport] of Object.entries(COMPASS_PLAN_VIEWPORTS)) {
+  test(`#1596: with a plan loaded and the caveat banner up the compass stays clear of the route controls at ${name}`, async ({
+    browser,
+  }) => {
+    const server = await startPreview();
+    const context = await browser.newContext({
+      viewport,
+      storageState: { cookies: [], origins: [] },
+    });
+    try {
+      const page = await context.newPage();
+      await assertCleanServiceWorkerState(page);
+      await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
+      await expect(page.locator('.banner-area .banner-info:not(.reload-prompt)')).toBeVisible();
+
+      await page.getByRole('button', { name: 'English anzeigen' }).click();
+      await page.getByRole('tab', { name: 'Plan' }).click();
+      const originSection = page.getByRole('region', { name: 'Origin' });
+      await originSection.getByRole('combobox').fill('Langballigau');
+      await originSection.getByRole('option').first().click();
+      const destSection = page.getByRole('region', { name: 'Destination' });
+      await destSection.getByRole('combobox').fill('Sønderborg');
+      await destSection.getByRole('option').first().click();
+      const planButton = page.getByRole('button', { name: 'Plan route' });
+      await planButton.click();
+      await expect(planButton).toBeEnabled({ timeout: 60_000 });
+      await expect(page.locator('.route-layer-controls')).toBeVisible();
+
+      await expect
+        .poll(
+          () =>
+            page.evaluate(() => {
+              const c = document.querySelector('.compass-control')!.getBoundingClientRect();
+              const r = document.querySelector('.route-layer-controls')!.getBoundingClientRect();
+              const w = Math.max(0, Math.min(c.right, r.right) - Math.max(c.left, r.left));
+              const h = Math.max(0, Math.min(c.bottom, r.bottom) - Math.max(c.top, r.top));
+              return w * h;
+            }),
+          { timeout: 10_000 },
+        )
+        .toBe(0);
+    } finally {
+      await context.close();
+      server.kill();
+    }
+  });
+}
