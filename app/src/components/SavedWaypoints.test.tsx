@@ -135,8 +135,7 @@ describe('SavedWaypoints (#848)', () => {
   });
 
   describe('#1631: no state update or notify after unmount', () => {
-    // React reads `window.event` on every setState, including on an unmounted
-    // fiber (where it throws once jsdom has torn the window down).
+    // React reads `window.event` on every setState, including on an unmounted fiber.
     let windowEventReads = 0;
     let savedDescriptor: PropertyDescriptor | undefined;
     beforeEach(() => {
@@ -155,12 +154,14 @@ describe('SavedWaypoints (#848)', () => {
       else Reflect.deleteProperty(window, 'event');
     });
 
-    function renderStrict() {
+    const WP: db.SavedWaypoint = { id: 'wp-1', name: 'W', lat: 1, lon: 1, createdAtMs: 1 };
+
+    function renderStrict(viaPoints: readonly ViaPoint[] = []) {
       localStorage.setItem('sc-lang', 'en');
       return render(
         <StrictMode>
           <I18nProvider>
-            <SavedWaypoints viaPoints={[]} onSelect={vi.fn()} />
+            <SavedWaypoints viaPoints={viaPoints} onSelect={vi.fn()} />
           </I18nProvider>
         </StrictMode>,
       );
@@ -211,6 +212,8 @@ describe('SavedWaypoints (#848)', () => {
       vi.spyOn(db, 'listWaypoints').mockRejectedValue(new Error('boom'));
       renderStrict();
       expect(await screen.findByRole('alert')).toHaveTextContent(/failed/i);
+      // Positive control: a mounted setState is visible to the window.event counter.
+      expect(windowEventReads).toBeGreaterThan(0);
     });
 
     it('a mounted component still notifies after the read resolves', async () => {
@@ -219,9 +222,50 @@ describe('SavedWaypoints (#848)', () => {
       await vi.waitFor(() => expect(notify).toHaveBeenCalled());
     });
 
+    it('a save that rejects after unmount sets no state', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      let reject!: (e: unknown) => void;
+      vi.spyOn(db, 'saveWaypoint').mockReturnValue(
+        new Promise((_, rej) => {
+          reject = rej;
+        }),
+      );
+      vi.spyOn(db, 'listWaypoints').mockResolvedValue([]);
+      const { unmount } = renderStrict([{ lat: 54.5, lon: 9.5, name: 'Test' }]);
+      fireEvent.click(await screen.findByRole('button', { name: /Save Test as a waypoint/i }));
+      await flush();
+      unmount();
+      windowEventReads = 0;
+      reject(new Error('late'));
+      await flush();
+      expect(windowEventReads).toBe(0);
+    });
+
+    it('a delete that resolves after unmount sets no state and does not notify', async () => {
+      vi.spyOn(db, 'listWaypoints').mockResolvedValue([WP]);
+      const notify = vi.spyOn(savedWaypointsHook, 'notifySavedWaypointsChanged');
+      let resolve!: () => void;
+      vi.spyOn(db, 'deleteWaypoint').mockReturnValue(
+        new Promise((res) => {
+          resolve = res;
+        }),
+      );
+      const { unmount } = renderStrict();
+      fireEvent.click(await screen.findByRole('button', { name: 'Delete waypoint' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm delete' }));
+      await flush();
+      unmount();
+      notify.mockClear();
+      windowEventReads = 0;
+      resolve();
+      await flush();
+      expect(windowEventReads).toBe(0);
+      expect(notify).not.toHaveBeenCalled();
+    });
+
     it('a delete that rejects after unmount sets no state', async () => {
       vi.spyOn(console, 'error').mockImplementation(() => {});
-      await db.saveWaypoint({ id: 'wp-x', name: 'X', lat: 1, lon: 1, createdAtMs: 1 });
+      vi.spyOn(db, 'listWaypoints').mockResolvedValue([WP]);
       let reject!: (e: unknown) => void;
       vi.spyOn(db, 'deleteWaypoint').mockReturnValue(
         new Promise((_, rej) => {
@@ -231,6 +275,7 @@ describe('SavedWaypoints (#848)', () => {
       const { unmount } = renderStrict();
       fireEvent.click(await screen.findByRole('button', { name: 'Delete waypoint' }));
       fireEvent.click(screen.getByRole('button', { name: 'Confirm delete' }));
+      await flush();
       unmount();
       windowEventReads = 0;
       reject(new Error('late'));
