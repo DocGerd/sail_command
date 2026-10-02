@@ -587,8 +587,9 @@ select {
    where an overscrolled nested box rubber-bands the fixed page (and the map
    behind it) on iOS Safari. `overscroll-behavior` appeared zero times in this
    stylesheet before this line. */
+/* Containing block for .sr-only descendants, so they cannot overflow .app-shell (#1606). */
 .app-panel {
-  position: relative; /* containing block for `.sr-only` descendants: otherwise they escape the scrollport and make the overflow:hidden shell scrollable (#1606) */
+  position: relative;
   overflow-y: auto;
   overscroll-behavior-y: contain;
   padding: 0.75rem;

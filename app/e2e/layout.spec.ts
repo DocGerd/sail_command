@@ -981,6 +981,32 @@ test('#299: the stale-route banner (a Boat-tab settings change) does not interce
   }
 });
 
+// #1606: an `.sr-only` input escaping `.app-panel`'s scrollport made
+// `.app-shell` scrollable. Boat tab only: the Plan tab's import input sits at
+// the panel top, inside the shell, so it cannot overflow it.
+for (const [label, viewport] of Object.entries(STANDARD_VIEWPORTS)) {
+  test(`#1606: .app-shell is not scrollable on the Boat tab (${label}, ${viewport.width}x${viewport.height})`, async ({
+    page,
+  }) => {
+    const server = await startPreview(page);
+    try {
+      await page.setViewportSize(viewport);
+      await page.goto(server.url);
+      await mapReady(page);
+      await page.getByRole('tab', { name: 'Boot' }).click();
+      await expect(page.getByRole('tab', { name: 'Boot' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      await expect
+        .poll(() => page.locator('.app-shell').evaluate((el) => el.scrollHeight - el.clientHeight))
+        .toBe(0);
+    } finally {
+      server.kill();
+    }
+  });
+}
+
 // #277: pins #276's fix for #205 (the narrow-width overlap between
 // `.data-layer-controls`, top-left, and `.route-layer-controls`, top-right)
 // against regression. That fix is a `max-width: calc(100% - 9.5rem)` bound on
