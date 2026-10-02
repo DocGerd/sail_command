@@ -411,6 +411,7 @@ describe('RouteLayer fit padding (#1626)', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    document.querySelectorAll('.map-stack-tl, .app-bottom-sheet').forEach((el) => el.remove());
   });
 
   function stubLayout(map: ReturnType<typeof makeFakeMap>) {
@@ -421,15 +422,22 @@ describe('RouteLayer fit padding (#1626)', () => {
     ) {
       if (this === mapEl) return rect(0, 0, 1000, 800);
       if (this.classList.contains('route-layer-controls')) return rect(760, 12, 992, 470);
+      if (this.classList.contains('map-stack-tl')) return rect(8, 12, 140, 300);
+      if (this.classList.contains('app-bottom-sheet')) return rect(0, 600, 1000, 800);
       return rect(0, 0, 0, 0);
     });
+    for (const cls of ['map-stack-tl', 'app-bottom-sheet']) {
+      const el = document.createElement('div');
+      el.className = cls;
+      document.body.appendChild(el);
+    }
   }
 
-  it('pads the right edge past the top-right controls on the initial fit and on the button', () => {
+  it('pads past the controls, the top-left stack and the bottom sheet on the initial fit and on the button', () => {
     const map = makeFakeMap();
     stubLayout(map);
     renderRouteLayer(map, null);
-    const expected = { top: 48, right: 256, bottom: 48, left: 48 };
+    const expected = { top: 48, right: 256, bottom: 216, left: 156 };
     expect(map.fitBounds.mock.calls[0][1]).toMatchObject({ padding: expected, duration: 0 });
 
     map.fitBounds.mockClear();

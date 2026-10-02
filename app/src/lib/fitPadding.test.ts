@@ -32,17 +32,40 @@ describe('fitPadding (#1626)', () => {
     expect(fitPadding(MAP, [{ left: 0, top: 0, right: 1000, bottom: 60 }]).top).toBe(76);
   });
 
-  it('ignores chrome outside the map and clips chrome that overhangs it', () => {
-    expect(fitPadding(MAP, [{ left: 1000, top: 0, right: 1400, bottom: 800 }]).right).toBe(48);
-    expect(fitPadding(MAP, [{ left: 900, top: 0, right: 1400, bottom: 800 }]).right).toBe(116);
+  it('lets a full-width box taller than wide claim only the bottom, never a side', () => {
+    const phone: Box = { left: 0, top: 0, right: 390, bottom: 844 };
+    const p = fitPadding(phone, [{ left: 0, top: 380, right: 390, bottom: 844 }]);
+    expect(p).toEqual({ top: 48, right: 48, bottom: 480, left: 48 });
   });
 
-  it('caps each axis so the route keeps room', () => {
-    const p = fitPadding(MAP, [
+  it('sends a second box to the axis a first one has not loaded', () => {
+    const tablet: Box = { left: 0, top: 121, right: 820, bottom: 1180 };
+    const p = fitPadding(tablet, [
+      { left: 8, top: 129, right: 139, bottom: 295 },
+      { left: 0, top: 591, right: 820, bottom: 1180 },
+    ]);
+    expect(p).toEqual({ top: 48, right: 48, bottom: 605, left: 155 });
+  });
+
+  it('ignores chrome outside the map', () => {
+    expect(fitPadding(MAP, [{ left: 1000, top: 0, right: 1400, bottom: 800 }])).toEqual({
+      top: 48,
+      right: 48,
+      bottom: 48,
+      left: 48,
+    });
+  });
+
+  it('caps an axis without pushing either edge below the base', () => {
+    const both = fitPadding(MAP, [
       { left: 0, top: 0, right: 450, bottom: 800 },
       { left: 550, top: 0, right: 1000, bottom: 800 },
     ]);
-    expect(p.left + p.right).toBeCloseTo(700, 6);
-    expect(p.left).toBeCloseTo(p.right, 6);
+    expect(both.left + both.right).toBeCloseTo(700, 6);
+    expect(both.left).toBeCloseTo(both.right, 6);
+
+    const lone = fitPadding(MAP, [{ left: 0, top: 0, right: 900, bottom: 800 }]);
+    expect(lone.right).toBe(48);
+    expect(lone.left).toBeCloseTo(652, 6);
   });
 });
