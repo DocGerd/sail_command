@@ -442,9 +442,13 @@ Maintainer rulings on #295 (2026-09-15); evidence and coupled sites in
   clipped to the old bbox (review 5210504886 on PR #1245).
 - **Great Belt.** Western approach only. Extending east across the full Great
   Belt is deferred to #1240.
-  *Amendment (2026-10-01, #1585, maintainer ruling):* superseded in part —
-  #1585 adds Korsør, Reersø and Mullerup on Zealand, Lohals and Spodsbjerg on
-  Langeland, and Tårs on Lolland to the harbour list. Coverage north of 55.6°N
+  *Amendment (2026-10-01, #1585, maintainer ruling):* "Western approach only"
+  is superseded — #1585 adds Korsør, Reersø and Mullerup on Zealand, Lohals and
+  Spodsbjerg on Langeland, and Tårs on Lolland to the harbour list. The
+  "extending east" premise was already retired on 2026-09-30, when #1240 was
+  retitled to coverage north of 55.6°N: for 55.3–55.55°N the belt's water ends
+  at or west of 11.22°E, inside the mask's 11.6°E east edge
+  (`docs/spikes/1240-grosser-belt-coverage.md` §1). Coverage north of 55.6°N
   stays deferred to #1240.
 - **Basemap.** The existing basemap stays the core archive; the extension ships
   as a separately-named region archive (#296's ruling, on the #1164 mechanism),
