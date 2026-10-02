@@ -212,7 +212,17 @@ describe('SavedWaypoints (#848)', () => {
       vi.spyOn(db, 'listWaypoints').mockRejectedValue(new Error('boom'));
       renderStrict();
       expect(await screen.findByRole('alert')).toHaveTextContent(/failed/i);
-      // Positive control: a mounted setState is visible to the window.event counter.
+    });
+
+    it('a mounted setState raises the window.event read count (control)', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      vi.spyOn(db, 'listWaypoints').mockResolvedValue([]);
+      vi.spyOn(db, 'saveWaypoint').mockRejectedValue(new Error('boom'));
+      renderStrict([{ lat: 54.5, lon: 9.5, name: 'Test' }]);
+      await flush();
+      windowEventReads = 0;
+      fireEvent.click(screen.getByRole('button', { name: /Save Test as a waypoint/i }));
+      expect(await screen.findByRole('alert')).toBeInTheDocument();
       expect(windowEventReads).toBeGreaterThan(0);
     });
 
