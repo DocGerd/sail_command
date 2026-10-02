@@ -733,11 +733,13 @@ making design-level decisions; do not silently deviate.
   source order are the two halves of the same failure; read both.
 - **A non-positioned `overflow: auto` box does not clip an absolute
   descendant** — the containing block is the nearest POSITIONED ancestor. The
-  Boat tab's `.sr-only` backup-import input escaped `.app-panel` to
-  `.app-bottom-sheet` and made the `overflow: hidden` `.app-shell` scrollable
-  from code, so a focus or a click's scroll-into-view shifted the whole app
-  (#1606; `overflow: hidden`
-  clips but does not stop programmatic scroll). Fixed by `.app-panel {
+  Boat tab's `.sr-only` backup-import input escaped `.app-panel` to its
+  nearest positioned ancestor (`.app-bottom-sheet` below 1024px, `.app-shell`
+  at wide, where the sheet is static) and made the `overflow: hidden`
+  `.app-shell` scrollable from code, so focusing it shifted the whole app (CI
+  logged the shell scrolled 198 px during the #299 click flow, trigger not
+  reproduced; #1606). `overflow: hidden` clips but does not stop programmatic
+  scroll. Fixed by `.app-panel {
   position: relative }`; `layout.spec.ts`'s `#1606` tests pin shell
   `scrollHeight == clientHeight` on the Boat tab across `STANDARD_VIEWPORTS`.
 - **`position: sticky` resolves its offset against the scrollport's CONTENT
@@ -1307,10 +1309,11 @@ making design-level decisions; do not silently deviate.
   be initialised in the setup**, with a one-line comment naming StrictMode (a
   bare `= true` reads as redundant and is exactly the line a later tidy-up
   deletes), and the guard for it must render under `<StrictMode>` -- a test
-  without that wrapper passes with the whole class live. A late update after unmount
-  is SILENT too: react-dom 19.3.0 has no "unmounted component" state-update
-  warning, so `SavedWaypoints.test.tsx` detects one by counting `window.event`
-  reads, which `resolveUpdatePriority` makes on every update (#1631).
+  without that wrapper passes with the whole class live. A late update after
+  unmount is SILENT too: react-dom 19.3.0 has no "unmounted component"
+  state-update warning, so `SavedWaypoints.test.tsx` detects one by counting
+  `window.event` reads, which `resolveUpdatePriority` makes only when no
+  update priority is set, as for a late promise settle (#1631).
 - **Honest offline testing**: Playwright's `setOffline(true)` does NOT block
   service-worker fetches (Playwright #2311) — the offline spec kills the
   preview server instead. Never "simplify" that away.
@@ -5328,7 +5331,7 @@ making design-level decisions; do not silently deviate.
   `startPreview()`'s #803 build-identity check REFUSED that foreign build rather than
   silently measuring it — the guard worked; the scheduling was the error.
   Reviewers that run e2e count too: at v0.53.0 two reviewers' runs were
-  refused by #803 while implementers held 4173.
+  refused by #803 while another worktree's preview held 4173.
   The dirty wind fixture (see E2E section) also blocks `git worktree remove`
   — restore before removing; never `--force`.
 - IDE/LSP diagnostics emit bogus cannot-find-module bursts when worktrees
