@@ -1,9 +1,11 @@
 import 'fake-indexeddb/auto';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { StrictMode } from 'react';
+import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { I18nProvider } from '../i18n';
 import { __resetDbForTests, listWaypoints } from '../services/db';
 import * as db from '../services/db';
+import * as savedWaypointsHook from '../lib/useSavedWaypoints';
 import type { ViaPoint } from '../types';
 import SavedWaypoints, { type SavedWaypointsProps } from './SavedWaypoints';
 
@@ -130,5 +132,165 @@ describe('SavedWaypoints (#848)', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/failed/i);
     expect(screen.queryByText('Test', { selector: '.waypoints-name' })).not.toBeInTheDocument();
+  });
+
+  describe('#1631: no state update or notify after unmount', () => {
+    // React reads `window.event` on every setState, including on an unmounted fiber.
+    let windowEventReads = 0;
+    let savedDescriptor: PropertyDescriptor | undefined;
+    beforeEach(() => {
+      windowEventReads = 0;
+      savedDescriptor = Object.getOwnPropertyDescriptor(window, 'event');
+      Object.defineProperty(window, 'event', {
+        configurable: true,
+        get() {
+          windowEventReads += 1;
+          return undefined;
+        },
+      });
+    });
+    afterEach(() => {
+      if (savedDescriptor) Object.defineProperty(window, 'event', savedDescriptor);
+      else Reflect.deleteProperty(window, 'event');
+    });
+
+    const WP: db.SavedWaypoint = { id: 'wp-1', name: 'W', lat: 1, lon: 1, createdAtMs: 1 };
+
+    function renderStrict(viaPoints: readonly ViaPoint[] = []) {
+      localStorage.setItem('sc-lang', 'en');
+      return render(
+        <StrictMode>
+          <I18nProvider>
+            <SavedWaypoints viaPoints={viaPoints} onSelect={vi.fn()} />
+          </I18nProvider>
+        </StrictMode>,
+      );
+    }
+
+    async function flush() {
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+    }
+
+    it('a read that rejects after unmount sets no state', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      let reject!: (e: unknown) => void;
+      vi.spyOn(db, 'listWaypoints').mockReturnValue(
+        new Promise((_, rej) => {
+          reject = rej;
+        }),
+      );
+      const { unmount } = renderStrict();
+      unmount();
+      windowEventReads = 0;
+      reject(new Error('late'));
+      await flush();
+      expect(windowEventReads).toBe(0);
+    });
+
+    it('a read that resolves after unmount sets no state and does not notify', async () => {
+      const notify = vi.spyOn(savedWaypointsHook, 'notifySavedWaypointsChanged');
+      let resolve!: (v: db.SavedWaypoint[]) => void;
+      vi.spyOn(db, 'listWaypoints').mockReturnValue(
+        new Promise((res) => {
+          resolve = res;
+        }),
+      );
+      const { unmount } = renderStrict();
+      unmount();
+      windowEventReads = 0;
+      resolve([]);
+      await flush();
+      expect(windowEventReads).toBe(0);
+      expect(notify).not.toHaveBeenCalled();
+    });
+
+    it('a mounted component still shows the error when the read rejects (StrictMode latch)', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      vi.spyOn(db, 'listWaypoints').mockRejectedValue(new Error('boom'));
+      renderStrict();
+      expect(await screen.findByRole('alert')).toHaveTextContent(/failed/i);
+    });
+
+    it('a mounted setState raises the window.event read count (control)', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      vi.spyOn(db, 'listWaypoints').mockResolvedValue([]);
+      vi.spyOn(db, 'saveWaypoint').mockRejectedValue(new Error('boom'));
+      renderStrict([{ lat: 54.5, lon: 9.5, name: 'Test' }]);
+      await flush();
+      windowEventReads = 0;
+      fireEvent.click(screen.getByRole('button', { name: /Save Test as a waypoint/i }));
+      expect(await screen.findByRole('alert')).toBeInTheDocument();
+      expect(windowEventReads).toBeGreaterThan(0);
+    });
+
+    it('a mounted component still notifies after the read resolves', async () => {
+      const notify = vi.spyOn(savedWaypointsHook, 'notifySavedWaypointsChanged');
+      renderStrict();
+      await vi.waitFor(() => expect(notify).toHaveBeenCalled());
+    });
+
+    it('a save that rejects after unmount sets no state', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      let reject!: (e: unknown) => void;
+      vi.spyOn(db, 'saveWaypoint').mockReturnValue(
+        new Promise((_, rej) => {
+          reject = rej;
+        }),
+      );
+      vi.spyOn(db, 'listWaypoints').mockResolvedValue([]);
+      const { unmount } = renderStrict([{ lat: 54.5, lon: 9.5, name: 'Test' }]);
+      fireEvent.click(await screen.findByRole('button', { name: /Save Test as a waypoint/i }));
+      await flush();
+      unmount();
+      windowEventReads = 0;
+      reject(new Error('late'));
+      await flush();
+      expect(windowEventReads).toBe(0);
+    });
+
+    it('a delete that resolves after unmount sets no state and does not notify', async () => {
+      vi.spyOn(db, 'listWaypoints').mockResolvedValue([WP]);
+      const notify = vi.spyOn(savedWaypointsHook, 'notifySavedWaypointsChanged');
+      let resolve!: () => void;
+      vi.spyOn(db, 'deleteWaypoint').mockReturnValue(
+        new Promise((res) => {
+          resolve = res;
+        }),
+      );
+      const { unmount } = renderStrict();
+      fireEvent.click(await screen.findByRole('button', { name: 'Delete waypoint' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm delete' }));
+      await flush();
+      unmount();
+      notify.mockClear();
+      windowEventReads = 0;
+      resolve();
+      await flush();
+      expect(windowEventReads).toBe(0);
+      expect(notify).not.toHaveBeenCalled();
+    });
+
+    it('a delete that rejects after unmount sets no state', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      vi.spyOn(db, 'listWaypoints').mockResolvedValue([WP]);
+      let reject!: (e: unknown) => void;
+      vi.spyOn(db, 'deleteWaypoint').mockReturnValue(
+        new Promise((_, rej) => {
+          reject = rej;
+        }),
+      );
+      const { unmount } = renderStrict();
+      fireEvent.click(await screen.findByRole('button', { name: 'Delete waypoint' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm delete' }));
+      await flush();
+      unmount();
+      windowEventReads = 0;
+      reject(new Error('late'));
+      await flush();
+      expect(windowEventReads).toBe(0);
+    });
   });
 });

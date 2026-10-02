@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.53.0] - 2026-10-02
+
+### Fixed
+
+- On very narrow, short portrait screens with a banner up and no route planned, the compass no longer sits under the tab strip (#1596).
+- Focusing the hidden backup-import field no longer scrolls the whole app off-screen (#1606).
+- On wide screens, the route fit now leaves room for the map controls, so the destination marker is no longer hidden under them (#1626).
+
 ## [0.52.0] - 2026-10-01
 
 ### Added
@@ -1257,7 +1265,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.52.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.53.0...HEAD
+[0.53.0]: https://github.com/DocGerd/sail_command/compare/v0.52.0...v0.53.0
 [0.52.0]: https://github.com/DocGerd/sail_command/compare/v0.51.0...v0.52.0
 [0.51.0]: https://github.com/DocGerd/sail_command/compare/v0.50.0...v0.51.0
 [0.50.0]: https://github.com/DocGerd/sail_command/compare/v0.49.0...v0.50.0

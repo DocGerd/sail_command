@@ -13,6 +13,7 @@ import {
   routePointFeatures,
 } from '../lib/routeGeoJson';
 import { installStyleSetup } from '../lib/styleReload';
+import { fitPadding, type Box } from '../lib/fitPadding';
 import { usePersistedToggle } from '../lib/usePersistedToggle';
 import { getContoursFetchState, subscribeContoursFetchState } from '../lib/contours';
 import { useWideLayout } from '../lib/useWideLayout';
@@ -568,6 +569,24 @@ function setupLayers(map: MaplibreMap): void {
   }
 }
 
+// Overlays that sit on the map and cover part of it (#1626).
+const MAP_CHROME_SELECTOR = '.route-layer-controls, .map-stack-tl, .app-bottom-sheet';
+
+function rectOf(el: Element): Box {
+  const { left, top, right, bottom } = el.getBoundingClientRect();
+  return { left, top, right, bottom };
+}
+
+// The canvas container itself has no layout size; its parent is the sized map.
+function mapBox(map: MaplibreMap): Box {
+  const el = map.getCanvasContainer().parentElement;
+  return el ? rectOf(el) : { left: 0, top: 0, right: 0, bottom: 0 };
+}
+
+function measureChrome(): Box[] {
+  return Array.from(document.querySelectorAll(MAP_CHROME_SELECTOR), rectOf);
+}
+
 // #297: fits the map to a set of legs, preserving the current bearing.
 // SHARED by the auto-fit-on-plan-change effect below AND the manual "fit
 // route to view" button — the ONLY two callers of RouteLayer's fitBounds, so
@@ -590,7 +609,11 @@ function fitToLegs(map: MaplibreMap, legs: Leg[]) {
   // bearing", it means "rotate to north". See the call site below for the
   // full rationale (unchanged from the pre-#297 auto-fit effect this was
   // extracted from).
-  map.fitBounds(bounds, { padding: 48, duration: 0, bearing: map.getBearing() });
+  map.fitBounds(bounds, {
+    padding: fitPadding(mapBox(map), measureChrome()),
+    duration: 0,
+    bearing: map.getBearing(),
+  });
 }
 
 // #850: grab-handle hover tolerance for the drag-the-route-line gesture, in

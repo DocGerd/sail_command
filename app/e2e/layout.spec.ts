@@ -930,6 +930,11 @@ test('#299: the stale-route banner (a Boat-tab settings change) does not interce
     // Dirty a routing-relevant setting from the Boat tab — the exact #299
     // scenario (a setting changed from a non-Plan surface).
     await page.getByRole('tab', { name: 'Boot' }).click();
+    // #1606: an `.sr-only` control escaping the panel's scrollport made the
+    // overflow:hidden shell scrollable, so the click's scroll-into-view moved it.
+    await expect
+      .poll(() => page.locator('.app-shell').evaluate((el) => el.scrollHeight - el.clientHeight))
+      .toBe(0);
     await page.getByLabel('Motor aktiviert').click();
 
     // A plan exists by now, so DataLayers renders the plain rows (#1541): the
@@ -975,6 +980,32 @@ test('#299: the stale-route banner (a Boat-tab settings change) does not interce
     server.kill();
   }
 });
+
+// #1606: an `.sr-only` input escaping `.app-panel`'s scrollport made
+// `.app-shell` scrollable. Boat tab only: the Plan tab's import input sits at
+// the panel top, inside the shell, so it cannot overflow it.
+for (const [label, viewport] of Object.entries(STANDARD_VIEWPORTS)) {
+  test(`#1606: .app-shell is not scrollable on the Boat tab (${label}, ${viewport.width}x${viewport.height})`, async ({
+    page,
+  }) => {
+    const server = await startPreview(page);
+    try {
+      await page.setViewportSize(viewport);
+      await page.goto(server.url);
+      await mapReady(page);
+      await page.getByRole('tab', { name: 'Boot' }).click();
+      await expect(page.getByRole('tab', { name: 'Boot' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      await expect
+        .poll(() => page.locator('.app-shell').evaluate((el) => el.scrollHeight - el.clientHeight))
+        .toBe(0);
+    } finally {
+      server.kill();
+    }
+  });
+}
 
 // #277: pins #276's fix for #205 (the narrow-width overlap between
 // `.data-layer-controls`, top-left, and `.route-layer-controls`, top-right)

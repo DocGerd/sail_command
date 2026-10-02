@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { deleteWaypoint, listWaypoints, saveWaypoint, type SavedWaypoint } from '../services/db';
 import { useT } from '../i18n';
 import type { MsgKey } from '../i18n/dict.de';
@@ -41,10 +41,12 @@ export default function SavedWaypoints({ viaPoints, onSelect }: SavedWaypointsPr
   // two-tap semantics as PlansList.tsx's pendingDeleteId.
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [error, setError] = useState<MsgKey | null>(null);
+  const mountedRef = useRef(false);
 
   const refresh = useCallback(() => {
     void listWaypoints()
       .then((next) => {
+        if (!mountedRef.current) return;
         setItems(next);
         // #924: this picker is the ONLY writer of the `waypoints` store, so
         // it is also the only place that can tell the map layer the store
@@ -57,12 +59,17 @@ export default function SavedWaypoints({ viaPoints, onSelect }: SavedWaypointsPr
       })
       .catch((err: unknown) => {
         console.error(err);
-        setError('waypoints.actionError');
+        if (mountedRef.current) setError('waypoints.actionError');
       });
   }, []);
 
   useEffect(() => {
+    // Set in setup, not only cleared in cleanup: StrictMode's remount would latch it false.
+    mountedRef.current = true;
     refresh();
+    return () => {
+      mountedRef.current = false;
+    };
   }, [refresh]);
 
   const handleSave = useCallback(
@@ -81,10 +88,12 @@ export default function SavedWaypoints({ viaPoints, onSelect }: SavedWaypointsPr
         createdAtMs: Date.now(),
       };
       void saveWaypoint(w)
-        .then(refresh)
+        .then(() => {
+          if (mountedRef.current) refresh();
+        })
         .catch((err: unknown) => {
           console.error(err);
-          setError('waypoints.actionError');
+          if (mountedRef.current) setError('waypoints.actionError');
         });
     },
     [refresh],
@@ -103,11 +112,13 @@ export default function SavedWaypoints({ viaPoints, onSelect }: SavedWaypointsPr
       // delete while the first is still in flight.
       void deleteWaypoint(id)
         .then(() => {
+          if (!mountedRef.current) return;
           setPendingDeleteId(null);
           refresh();
         })
         .catch((err: unknown) => {
           console.error(err);
+          if (!mountedRef.current) return;
           setPendingDeleteId(null);
           setError('waypoints.actionError');
         });

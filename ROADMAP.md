@@ -13,28 +13,31 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.52.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.53.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
-## Now — v0.52.0
+## Now — v0.53.0
 
-The `v0.52.0` cut (2026-10-01) worked the
-[`v0.52.0` milestone](https://github.com/DocGerd/sail_command/milestones):
-three user-visible changes (per `CHANGELOG.md`'s own `[0.52.0]` section) — six
-harbours around the Great Belt and Langelandsbælt ([#1585](https://github.com/DocGerd/sail_command/issues/1585)), origin, destination and waypoint snapping
-that picks the true nearest navigable cell ([#1609](https://github.com/DocGerd/sail_command/issues/1609)), and, with a route on the map, a scroll
-cue on the "Display options" cluster when its expanded rows are cut off at narrow
-widths ([#1615](https://github.com/DocGerd/sail_command/issues/1615)) — plus one issue with no user-visible surface: a logged
-unreadable-record path in `getPlan`, a scoped comment claim and a dangling
-sweep-README pointer ([#553](https://github.com/DocGerd/sail_command/issues/553)). The #1585 ruling is recorded as a dated
-amendment in the design spec; its wording follow-up,
-[#1624](https://github.com/DocGerd/sail_command/issues/1624), was filed into `Backlog` at this cut.
+The `v0.53.0` cut (2026-10-02) worked the
+[`v0.53.0` milestone](https://github.com/DocGerd/sail_command/milestones):
+three user-visible changes (per `CHANGELOG.md`'s own `[0.53.0]` section), all
+under Fixed — the compass no longer sitting under the tab strip on very narrow,
+short portrait screens with a banner up and no route planned ([#1596](https://github.com/DocGerd/sail_command/issues/1596)),
+the hidden backup-import field no longer scrolling the whole app off-screen on
+focus ([#1606](https://github.com/DocGerd/sail_command/issues/1606)), and, on wide screens, the route fit leaving room for the map controls so the destination marker is no longer hidden under them ([#1626](https://github.com/DocGerd/sail_command/issues/1626)) — plus two issues with no
+user-visible surface: an unguarded state update after unmount in the saved-waypoints list that failed a test run at teardown ([#1631](https://github.com/DocGerd/sail_command/issues/1631)) and the date and
+supersession wording of the #1585 spec amendment ([#1624](https://github.com/DocGerd/sail_command/issues/1624)). Four residuals were
+filed: the compass overlaps the tab strip at two layouts the #1596 fix does not
+cover ([#1637](https://github.com/DocGerd/sail_command/issues/1637), [#1638](https://github.com/DocGerd/sail_command/issues/1638), both in `Backlog`), the route fit can leave the
+start marker under the bottom sheet at 820x1180 ([#1639](https://github.com/DocGerd/sail_command/issues/1639), in `v0.54.0`), and endpoint labels can still run under the map controls ([#1641](https://github.com/DocGerd/sail_command/issues/1641), in `Backlog`).
 
-## Next — v0.53.0
+## Next — v0.54.0
 
-The [`v0.53.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-was empty as of this cut and will be filled from `Backlog`. The milestone page
-is the only authoritative view, check it directly rather than this file.
+The [`v0.54.0` milestone](https://github.com/DocGerd/sail_command/milestones)
+holds three issues as of this cut: the remaining self-resolving OpenSSF
+Scorecard findings ([#72](https://github.com/DocGerd/sail_command/issues/72)), a data-evaluation spike for currents and waves
+([#18](https://github.com/DocGerd/sail_command/issues/18)) that changes no routing, and the #1639 route-fit residual. The milestone page is the only
+authoritative view, check it directly rather than this file.
 
 ## Themes for the next year
 
@@ -98,7 +101,7 @@ transfer to a fork automatically).
 
 ### Routing depth
 
-The largest open product questions. Both were unscheduled — in `Backlog`, accepted but not yet scheduled into a release — at the `v0.52.0` cut; each issue's milestone field is the current fact:
+The largest open product questions. At the `v0.53.0` cut the multi-day item was unscheduled, in `Backlog`, and the currents item was scoped into `v0.54.0` as a data-evaluation spike only, with the full feature still design-gated; each issue's milestone field is the current fact:
 
 - Currents, tides, and sea state (waves) in the isochrone cost
   ([#18](https://github.com/DocGerd/sail_command/issues/18)) — a design spec
