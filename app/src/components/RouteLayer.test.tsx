@@ -403,6 +403,49 @@ describe('RouteLayer fit-to-route (#155)', () => {
   });
 });
 
+// #1626: the fit pads for the chrome measured at fit time. jsdom lays nothing
+// out, so the rects are stubbed per element.
+describe('RouteLayer fit padding (#1626)', () => {
+  const rect = (left: number, top: number, right: number, bottom: number) =>
+    ({ left, top, right, bottom, width: right - left, height: bottom - top }) as DOMRect;
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function stubLayout(map: ReturnType<typeof makeFakeMap>) {
+    const mapEl = document.createElement('div');
+    mapEl.appendChild(map.getCanvasContainer());
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: Element,
+    ) {
+      if (this === mapEl) return rect(0, 0, 1000, 800);
+      if (this.classList.contains('route-layer-controls')) return rect(760, 12, 992, 470);
+      return rect(0, 0, 0, 0);
+    });
+  }
+
+  it('pads the right edge past the top-right controls on the initial fit and on the button', () => {
+    const map = makeFakeMap();
+    stubLayout(map);
+    renderRouteLayer(map, null);
+    const expected = { top: 48, right: 256, bottom: 48, left: 48 };
+    expect(map.fitBounds.mock.calls[0][1]).toMatchObject({ padding: expected, duration: 0 });
+
+    map.fitBounds.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'Route einpassen' }));
+    expect(map.fitBounds.mock.calls[0][1]).toMatchObject({ padding: expected, duration: 0 });
+  });
+
+  it('falls back to the uniform padding when nothing is measurable', () => {
+    const map = makeFakeMap();
+    renderRouteLayer(map, null);
+    expect(map.fitBounds.mock.calls[0][1]).toMatchObject({
+      padding: { top: 48, right: 48, bottom: 48, left: 48 },
+    });
+  });
+});
+
 // #297: user-invoked "fit route to view" — the issue's own recommended
 // alternative to a permanent overview mini-map (closing with "an action, not
 // a widget" was the issue's own stated acceptable outcome; the maintainer
