@@ -97,15 +97,8 @@ async function waitForStableCamera(
   );
 }
 
-/**
- * Plans Langballigau -> Sønderborg on the deterministic wind-sw12 fixture —
- * the same route `route-alt-rig.spec.ts` and `annotations.spec.ts` use,
- * already known to produce a real multi-leg route on this wind. Opens
- * `.route-layer-controls-disclosure` if the current viewport starts it
- * collapsed (#628: narrow viewports default closed) and returns the "Route
- * einpassen" button once it is enabled.
- */
-async function planAndGetFitButton(page: Page, serverUrl: string) {
+/** Plans Langballigau -> Sønderborg on the deterministic wind-sw12 fixture. */
+async function planRoute(page: Page, serverUrl: string): Promise<void> {
   await page.goto(`${serverUrl}?windFixture=test-fixtures/wind-sw12.json`);
   await page.getByRole('tab', { name: 'Planen' }).click();
   const origin = page.getByRole('region', { name: 'Start' });
@@ -119,6 +112,18 @@ async function planAndGetFitButton(page: Page, serverUrl: string) {
   const planButton = page.getByRole('button', { name: 'Route planen' });
   await planButton.click();
   await expect(planButton).toBeEnabled({ timeout: 60_000 });
+}
+
+/**
+ * Plans Langballigau -> Sønderborg on the deterministic wind-sw12 fixture —
+ * the same route `route-alt-rig.spec.ts` and `annotations.spec.ts` use,
+ * already known to produce a real multi-leg route on this wind. Opens
+ * `.route-layer-controls-disclosure` if the current viewport starts it
+ * collapsed (#628: narrow viewports default closed) and returns the "Route
+ * einpassen" button once it is enabled.
+ */
+async function planAndGetFitButton(page: Page, serverUrl: string) {
+  await planRoute(page, serverUrl);
 
   // Deliberately reads the real `.open` IDL PROPERTY via evaluate(), never
   // `getAttribute('open')` — that returns the empty string when the
@@ -139,13 +144,15 @@ async function planAndGetFitButton(page: Page, serverUrl: string) {
 test.describe('#1102: fit-route-to-view against a real MapLibre camera', () => {
   // Both the wide (disclosure open by default) and narrow (disclosure
   // closed by default, #628) code paths — the two viewports the #1100
-  // review manually verified against, made durable.
+  // review manually verified against, made durable. `refitFirst` marks the
+  // viewport where opening the disclosure changes the chrome the fit pads
+  // for, so the button is only comparable to a fit made after that.
   const viewports = {
-    tabletLandscape: STANDARD_VIEWPORTS.tabletLandscape,
-    phonePortrait: STANDARD_VIEWPORTS.phonePortrait,
+    tabletLandscape: { viewport: STANDARD_VIEWPORTS.tabletLandscape, refitFirst: false },
+    phonePortrait: { viewport: STANDARD_VIEWPORTS.phonePortrait, refitFirst: true },
   };
 
-  for (const [name, viewport] of Object.entries(viewports)) {
+  for (const [name, { viewport, refitFirst }] of Object.entries(viewports)) {
     test(`clicking "Route einpassen" returns the camera to the route bounds (${name})`, async ({
       page,
     }) => {
@@ -154,8 +161,7 @@ test.describe('#1102: fit-route-to-view against a real MapLibre camera', () => {
       try {
         const fitButton = await planAndGetFitButton(page, server.url);
 
-        // The state the auto-fit effect reached when the plan first
-        // appeared — this is the target the button's OWN fit must reproduce.
+        if (refitFirst) await fitButton.click();
         const fitted = await waitForStableCamera(page);
 
         // Move the camera away. MAX_BOUNDS (MapView.tsx) clamps this request
@@ -181,6 +187,117 @@ test.describe('#1102: fit-route-to-view against a real MapLibre camera', () => {
         await expect
           .poll(() => readCamera(page), { timeout: 30_000, intervals: [200] })
           .toEqual(fitted);
+      } finally {
+        server.kill();
+      }
+    });
+  }
+});
+
+// #1626: the fit must keep the route's endpoints visible and out from under
+// the map chrome. Overlap alone also holds for a marker pushed off the map.
+interface EndpointState {
+  overlapPx: number;
+  insideMap: boolean;
+}
+
+async function endpointState(page: Page, role: 'origin' | 'destination'): Promise<EndpointState> {
+  return page.evaluate((r) => {
+    const marker = document.querySelector(`.sc-endpoint-marker-${r}`);
+    const canvas = document.querySelector('.maplibregl-canvas');
+    if (!marker || !canvas) return { overlapPx: -1, insideMap: false };
+    const m = marker.getBoundingClientRect();
+    const map = canvas.getBoundingClientRect();
+    let worst = 0;
+    const chrome = document.querySelectorAll(
+      '.route-layer-controls, .map-stack-tl, .app-bottom-sheet',
+    );
+    for (let i = 0; i < chrome.length; i++) {
+      const c = chrome[i]!.getBoundingClientRect();
+      const w = Math.min(m.right, c.right) - Math.max(m.left, c.left);
+      const h = Math.min(m.bottom, c.bottom) - Math.max(m.top, c.top);
+      if (w > 0 && h > 0) worst = Math.max(worst, w * h);
+    }
+    const insideMap =
+      m.left >= map.left && m.right <= map.right && m.top >= map.top && m.bottom <= map.bottom;
+    return { overlapPx: Math.round(worst), insideMap };
+  }, role);
+}
+
+// `requireClear = false` checks visibility only: the narrow button path leaves no free map.
+async function expectEndpointsClearOfChrome(page: Page, requireClear = true): Promise<void> {
+  for (const role of ['destination', 'origin'] as const) {
+    await expect
+      .poll(
+        async () => {
+          const state = await endpointState(page, role);
+          return requireClear ? state : { ...state, overlapPx: 0 };
+        },
+        { timeout: 30_000 },
+      )
+      .toEqual({ overlapPx: 0, insideMap: true });
+  }
+}
+
+test.describe('#1626: fit pads for map chrome', () => {
+  // Controls start expanded here, so both the auto-fit and the button fit run
+  // against the full-size cluster.
+  const wide = {
+    desktopHd: STANDARD_VIEWPORTS.desktopHd,
+    tabletLandscape: STANDARD_VIEWPORTS.tabletLandscape,
+  };
+
+  for (const [name, viewport] of Object.entries(wide)) {
+    test(`endpoints stay clear of the chrome after the auto-fit and "Route einpassen" (${name})`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(viewport);
+      const server = await startPreview(page);
+      try {
+        await planRoute(page, server.url);
+        await waitForStableCamera(page);
+        await expectEndpointsClearOfChrome(page);
+
+        await page.getByRole('button', { name: 'Route einpassen' }).click();
+        await waitForStableCamera(page);
+        await expectEndpointsClearOfChrome(page);
+      } finally {
+        server.kill();
+      }
+    });
+  }
+
+  // Controls start collapsed at narrow widths (#628), so the auto-fit is
+  // measured against the collapsed cluster and the bottom sheet.
+  const narrow = {
+    tabletPortrait: STANDARD_VIEWPORTS.tabletPortrait,
+    phonePortrait: STANDARD_VIEWPORTS.phonePortrait,
+  };
+
+  for (const [name, viewport] of Object.entries(narrow)) {
+    test(`endpoints stay clear of the chrome after the auto-fit (${name})`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      const server = await startPreview(page);
+      try {
+        await planRoute(page, server.url);
+        await waitForStableCamera(page);
+        await expectEndpointsClearOfChrome(page);
+      } finally {
+        server.kill();
+      }
+    });
+
+    // Reaching the button opens the disclosure, and the expanded cluster plus
+    // the sheet leave no free map rect at these widths, so only visibility
+    // can be required here, not clearance.
+    test(`endpoints stay on the map after "Route einpassen" (${name})`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      const server = await startPreview(page);
+      try {
+        const fitButton = await planAndGetFitButton(page, server.url);
+        await fitButton.click();
+        await waitForStableCamera(page);
+        await expectEndpointsClearOfChrome(page, false);
       } finally {
         server.kill();
       }
