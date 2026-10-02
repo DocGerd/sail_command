@@ -731,6 +731,17 @@ making design-level decisions; do not silently deviate.
   border instead of 1x1. Complement of the source-order cascade bullet below
   (a single-class modifier losing to a later base rule) — specificity and
   source order are the two halves of the same failure; read both.
+- **A non-positioned `overflow: auto` box does not clip an absolute
+  descendant** — the containing block is the nearest POSITIONED ancestor. The
+  Boat tab's `.sr-only` backup-import input escaped `.app-panel` to its
+  nearest positioned ancestor (`.app-bottom-sheet` below 1024px, `.app-shell`
+  at wide, where the sheet is static) and made the `overflow: hidden`
+  `.app-shell` scrollable from code, so focusing it shifted the whole app (CI
+  logged the shell scrolled 198 px during the #299 click flow, trigger not
+  reproduced; #1606). `overflow: hidden` clips but does not stop programmatic
+  scroll. Fixed by `.app-panel {
+  position: relative }`; `layout.spec.ts`'s `#1606` tests pin shell
+  `scrollHeight == clientHeight` on the Boat tab across `STANDARD_VIEWPORTS`.
 - **`position: sticky` resolves its offset against the scrollport's CONTENT
   box; `scrollIntoView({ block: 'end' })` lands at the PADDING box.** With
   `.app-panel { padding: 0.75rem }` the two rest positions differ by
@@ -1298,7 +1309,11 @@ making design-level decisions; do not silently deviate.
   be initialised in the setup**, with a one-line comment naming StrictMode (a
   bare `= true` reads as redundant and is exactly the line a later tidy-up
   deletes), and the guard for it must render under `<StrictMode>` -- a test
-  without that wrapper passes with the whole class live.
+  without that wrapper passes with the whole class live. A late update after
+  unmount is SILENT too: react-dom 19.3.0 has no "unmounted component"
+  state-update warning, so `SavedWaypoints.test.tsx` detects one by counting
+  `window.event` reads, which `resolveUpdatePriority` makes only when no
+  update priority is set, as for a late promise settle (#1631).
 - **Honest offline testing**: Playwright's `setOffline(true)` does NOT block
   service-worker fetches (Playwright #2311) — the offline spec kills the
   preview server instead. Never "simplify" that away.
@@ -1717,6 +1732,7 @@ making design-level decisions; do not silently deviate.
   | v0.50.0 | 2026-09-30 | 41 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 11:59:49Z, three seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `36711901243` (created 11:59:12Z) -> tag `36711967788` (created 11:59:53Z) on `eae74a6`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `6758804243`, `ref: v0.50.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-RmdOSV93.js` at ``version:`v0.50.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `59b0d3d` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.51.0 | 2026-10-01 | 134 s | `success`, `steps=6` (merge `deploy` terminal at 10:35:54Z, 30 s before the tag run was created; MEASURED before the tag push, and the failure CALLED IN ADVANCE from it) | **`smoke-probe` FAILED** | merge-push `36849951320` -> tag `36850181856` on `5882230`. Tag run's `build` and `deploy` succeeded; its prod entry chunk `assets/index-DOFkuFiz.js` 404'd on 10/10 attempts (to 10:42:37Z) while the basemap Range probes passed on attempt 1. Back-merge `36853610947` (`48d2277`) republished that same chunk, 200; production then served ``version:`v0.51.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `1a48b9f` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.52.0 | 2026-10-01 | 40 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 18:17:28Z, immediately before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `36905648432` (created 18:16:50Z) -> tag `36905730015` (created 18:17:30Z) on `375bbe6`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `6791900881`, `ref: v0.52.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-ATArQ6An.js` at ``version:`v0.52.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `b26deb1` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
+  | v0.53.0 | 2026-10-02 | 33 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 15:23:28Z, two seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `37026578473` (created 15:22:59Z) -> tag `37026644660` (created 15:23:32Z) on `8a89880`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `6811904931`, `ref: v0.53.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-CMmK6ICi.js` at ``version:`v0.53.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `60efdb3` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -5314,6 +5330,8 @@ making design-level decisions; do not silently deviate.
   FOREIGN build already bound to 4173 and killed the listener by port PID to unblock itself.
   `startPreview()`'s #803 build-identity check REFUSED that foreign build rather than
   silently measuring it — the guard worked; the scheduling was the error.
+  Reviewers that run e2e count too: at v0.53.0 two reviewers' runs were
+  refused by #803 while another worktree's preview held 4173.
   The dirty wind fixture (see E2E section) also blocks `git worktree remove`
   — restore before removing; never `--force`.
 - IDE/LSP diagnostics emit bogus cannot-find-module bursts when worktrees
