@@ -24,13 +24,12 @@ three user-visible changes (per `CHANGELOG.md`'s own `[0.53.0]` section), all
 under Fixed — the compass no longer sitting under the tab strip on very narrow,
 short portrait screens with a banner up and no route planned ([#1596](https://github.com/DocGerd/sail_command/issues/1596)),
 the hidden backup-import field no longer scrolling the whole app off-screen on
-focus ([#1606](https://github.com/DocGerd/sail_command/issues/1606)), and the route fit leaving room for the map controls so the
-destination is no longer hidden under them ([#1626](https://github.com/DocGerd/sail_command/issues/1626)) — plus two issues with no
+focus ([#1606](https://github.com/DocGerd/sail_command/issues/1606)), and, on wide screens, the route fit leaving room for the map controls so the destination is no longer hidden under them ([#1626](https://github.com/DocGerd/sail_command/issues/1626)) — plus two issues with no
 user-visible surface: an unguarded state update after unmount in the saved-waypoints list that failed a test run at teardown ([#1631](https://github.com/DocGerd/sail_command/issues/1631)) and the date and
-supersession wording of the #1585 spec amendment ([#1624](https://github.com/DocGerd/sail_command/issues/1624)). Three residuals were
+supersession wording of the #1585 spec amendment ([#1624](https://github.com/DocGerd/sail_command/issues/1624)). Four residuals were
 filed: the compass overlaps the tab strip at two layouts the #1596 fix does not
 cover ([#1637](https://github.com/DocGerd/sail_command/issues/1637), [#1638](https://github.com/DocGerd/sail_command/issues/1638), both in `Backlog`), and the route fit can leave the
-start marker under the bottom sheet at 820x1180 ([#1639](https://github.com/DocGerd/sail_command/issues/1639), in `v0.54.0`).
+start marker under the bottom sheet at 820x1180 ([#1639](https://github.com/DocGerd/sail_command/issues/1639), in `v0.54.0`), and endpoint labels can still run under the map controls ([#1641](https://github.com/DocGerd/sail_command/issues/1641), in `Backlog`).
 
 ## Next — v0.54.0
 

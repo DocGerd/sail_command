@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - On very narrow, short portrait screens with a banner up and no route planned, the compass no longer sits under the tab strip (#1596).
 - Focusing the hidden backup-import field no longer scrolls the whole app off-screen (#1606).
-- The route fit now leaves room for the map controls, so the destination is no longer hidden under them (#1626).
+- On wide screens, the route fit now leaves room for the map controls, so the destination is no longer hidden under them (#1626).
 
 ## [0.52.0] - 2026-10-01
 
