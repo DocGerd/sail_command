@@ -1,5 +1,12 @@
 import { test, expect, type BrowserContext, type CDPSession, type Page } from '@playwright/test';
-import { startPreview, mapReady, bannerHeightVar, EDGE_VIEWPORTS } from './helpers';
+import {
+  startPreview,
+  mapReady,
+  bannerHeightVar,
+  assertCleanServiceWorkerState,
+  EDGE_VIEWPORTS,
+  STANDARD_VIEWPORTS,
+} from './helpers';
 
 // #155 map orientation chrome: the north arrow / track-up toggle and the
 // nautical scale bar, against the REAL MapLibre camera (jsdom has none, so
@@ -1465,3 +1472,55 @@ test('#208 review "Major 3": .route-layer-controls (interactive) stays clear of 
     server.kill();
   }
 });
+
+// #1596: with the first-run caveat banner up, the compass must stay clear of
+// the tab strip and be the topmost element at its own centre. The two sub-360
+// edge viewports are the ones the fix targets; the standard set pins that
+// nothing else moves. Needs an undismissed profile, which the config seeds
+// away for every other spec.
+const COMPASS_TABSTRIP_VIEWPORTS = {
+  deepPortrait320: EDGE_VIEWPORTS.deepPortrait320,
+  wrapForcing280: EDGE_VIEWPORTS.wrapForcing280,
+  ...STANDARD_VIEWPORTS,
+};
+
+for (const [name, viewport] of Object.entries(COMPASS_TABSTRIP_VIEWPORTS)) {
+  test(`#1596: with the caveat banner up the compass clears the tab strip at ${name}`, async ({
+    browser,
+  }) => {
+    const server = await startPreview();
+    const context = await browser.newContext({
+      viewport,
+      storageState: { cookies: [], origins: [] },
+    });
+    try {
+      const page = await context.newPage();
+      await assertCleanServiceWorkerState(page);
+      await page.goto(server.url);
+      await expect(page.locator('.banner-area .banner-info:not(.reload-prompt)')).toBeVisible();
+
+      // Geometry is re-sampled on every tick: the push settles after the
+      // banner mounts, so a frozen box could read either consistent state.
+      await expect
+        .poll(
+          () =>
+            page.evaluate(() => {
+              const c = document.querySelector('.compass-control')!.getBoundingClientRect();
+              const t = document.querySelector('.app-tabs')!.getBoundingClientRect();
+              const w = Math.max(0, Math.min(c.right, t.right) - Math.max(c.left, t.left));
+              const h = Math.max(0, Math.min(c.bottom, t.bottom) - Math.max(c.top, t.top));
+              const top = document.elementsFromPoint(c.left + c.width / 2, c.top + c.height / 2)[0];
+              return {
+                overlapPx2: w * h,
+                topmostInCompass: top != null && !!top.closest('.compass-control'),
+              };
+            }),
+          { timeout: 10_000 },
+        )
+        .toEqual({ overlapPx2: 0, topmostInCompass: true });
+    } finally {
+      await context.close();
+      server.kill();
+    }
+  });
+}

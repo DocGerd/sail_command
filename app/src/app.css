@@ -5089,3 +5089,24 @@ select {
     );
   }
 }
+
+/* #1596: with a non-toast banner up on a sub-360px-wide phone the map row
+   above the sheet is too short for the toggles AND the compass stacked, and
+   `.data-layer-controls`' 2.75rem floor pushes the compass under the Tier 3
+   tab strip. Seating the compass beside the toggles, as short landscape
+   already does, spends the scarce width instead of the scarce height and
+   moves the Tier 2 compass rather than raising its z-index. The toast is
+   excluded because the sheet cap above already hands its height back.
+   `align-items: stretch` lets the toggles take the row height clamped by the
+   cluster's `max-height`, so an open disclosure scrolls instead of reaching
+   the tab strip. Flat MQ3 query on purpose, like the #909 block. */
+@media (max-width: 359.98px) and (max-height: 640px) and (orientation: portrait) {
+  .app-shell:has(.banner-area .banner:not(.reload-prompt)) .map-stack-tl {
+    flex-direction: row;
+    align-items: stretch;
+  }
+
+  .app-shell:has(.banner-area .banner:not(.reload-prompt)) .compass-control {
+    align-self: flex-start;
+  }
+}
