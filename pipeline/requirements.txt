@@ -1,5 +1,5 @@
-rasterio==1.5.1
-geopandas==1.1.4
+rasterio==1.5.2
+geopandas==1.2.0
 shapely==2.1.2
 pyogrio==0.13.0
 numpy==2.5.3
