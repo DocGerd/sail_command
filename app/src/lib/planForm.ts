@@ -2,6 +2,7 @@ import type { Lang } from '../i18n';
 import { formatLatLon } from './format';
 import { nextFullHourMs } from '../components/PlannerPanel';
 import { planViaPoints } from './planViaPoints';
+import type { SailId } from '../data/boats';
 import {
   DEFAULT_SETTINGS,
   type Harbor,
@@ -94,6 +95,8 @@ export interface PlanFormSnapshot {
   // departure/settings already could.
   viaPoints: LatLon[];
   segmentModes?: readonly (SegmentMode | null)[];
+  /** Headsails aboard now (#1661); compared with `plan.request.sailIds` as a set. */
+  headsailIds?: readonly SailId[];
 }
 
 /**
@@ -204,9 +207,21 @@ export const ROUTING_RELEVANT_SETTINGS_KEYS = [
  * (always backfilled at load — see state/AppState.tsx) would carry a real
  * number against the plan's `undefined`.
  */
-export function routingSettingsDirty(plan: Plan, formSettings: Settings): boolean {
+export function routingSettingsDirty(
+  plan: Plan,
+  formSettings: Settings,
+  aboard?: readonly SailId[],
+): boolean {
   const planSettings: Settings = { ...DEFAULT_SETTINGS, ...plan.request.settings };
-  return ROUTING_RELEVANT_SETTINGS_KEYS.some((key) => formSettings[key] !== planSettings[key]);
+  if (ROUTING_RELEVANT_SETTINGS_KEYS.some((key) => formSettings[key] !== planSettings[key])) {
+    return true;
+  }
+  return aboard !== undefined && !sameSailSet(plan.request.sailIds, aboard);
+}
+
+/** Set equality by content: order and array identity are irrelevant (#1661). */
+function sameSailSet(a: readonly SailId[], b: readonly SailId[]): boolean {
+  return a.every((id) => b.includes(id)) && b.every((id) => a.includes(id));
 }
 
 /**
@@ -274,5 +289,5 @@ export function planFormDirty(
   // #885: a mode-only edit dirties the form too.
   if (segmentModesDiffer(form.segmentModes, req.segmentModes)) return true;
 
-  return routingSettingsDirty(plan, form.settings);
+  return routingSettingsDirty(plan, form.settings, form.headsailIds);
 }

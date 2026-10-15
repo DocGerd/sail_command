@@ -34,12 +34,14 @@ import {
 } from '../lib/gpx';
 import { activeRigResult, rigComparisonSuppressedByTier } from '../lib/plan';
 import { routingSettingsDirty } from '../lib/planForm';
+import { usePersistedSailInventory } from '../lib/sailInventory';
+import { isCatalogueBoatId } from '../lib/usePersistedBoatId';
 import { renderRigVerdict, resultSummary, sailLabelKey } from '../lib/resultSummary';
 import { useRecentHarbors } from '../lib/useRecentHarbors';
 import { formatDepthM } from '../lib/depthDisclosure';
 import HarborPicker, { harborAccessCopy } from './HarborPicker';
 import { commitSetting, safetyDepthFieldFor } from './OptionsPanel';
-import type { BoatDef } from '../data/boats';
+import { DEFAULT_BOAT_ID, type BoatDef } from '../data/boats';
 import NumberInput, { formatBound, useClampCorrection } from './NumberInput';
 import Card from './Card';
 import Field from './Field';
@@ -281,6 +283,9 @@ export default function PlannerPanel({
   onOpenBoatSettings,
 }: PlannerPanelProps) {
   const t = useT();
+  const [sailInventory] = usePersistedSailInventory(
+    isCatalogueBoatId(boat.id) ? boat.id : DEFAULT_BOAT_ID,
+  );
   // #885 §6: waypoint i of [origin, ...vias, destination], for segment labels.
   const waypointLabel = (i: number): string =>
     i === 0
@@ -795,7 +800,9 @@ export default function PlannerPanel({
   // `settingsDirty` is the settings-only subset the Banner announces. See the
   // `staleSuffix` comment below for why the difference between the two is
   // exactly what this live region needs.
-  const settingsDirty = plan ? routingSettingsDirty(plan, settings) : false;
+  const settingsDirty = plan
+    ? routingSettingsDirty(plan, settings, sailInventory.headsailIds)
+    : false;
 
   // #983: the completion announcement ("Route calculated — arrival …")
   // used to live HERE, gated on this component being mounted (`tab ===
