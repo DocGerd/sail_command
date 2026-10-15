@@ -258,33 +258,30 @@ describe('derive_orc_polars.mjs — EASY GO! fock (orc-ns-cert-rows-v1)', () => 
 
   it.each([
     [
-      'GybeAngle at 8 kn below R135',
+      'GybeAngle at 8 kn below R135 puts R135 outside its window',
       (a: Record<string, number[]>) => (a.GybeAngle![2] = 130),
       /R135.*\b8 kn/,
     ],
     [
-      'GybeAngle at 24 kn below R135',
+      'GybeAngle at 24 kn below R135 puts R135 outside its window',
       (a: Record<string, number[]>) => (a.GybeAngle![8] = 134.9),
       /R135.*\b24 kn/,
     ],
     [
-      'BeatAngle at 4 kn above R52',
+      'BeatAngle at 4 kn above R52 puts R52 outside its window',
       (a: Record<string, number[]>) => (a.BeatAngle![0] = 52.5),
       /R52.*\b4 kn/,
     ],
     [
-      'BeatAngle at 4 kn equal to R52',
+      'BeatAngle at 4 kn exactly on R52 duplicates a PCHIP knot',
       (a: Record<string, number[]>) => (a.BeatAngle![0] = 52),
       /ascend/,
     ],
-  ])(
-    'fails closed when a planted %s leaves a used R row out of its window',
-    (_name, plant, message) => {
-      const r = run(['--check', '--sources', scratchSources((rec) => plant(rec.Allowances))]);
-      expect(r.ok, r.output).toBe(false);
-      expect(r.output).toMatch(message);
-    },
-  );
+  ])('fails closed when a planted %s', (_name, plant, message) => {
+    const r = run(['--check', '--sources', scratchSources((rec) => plant(rec.Allowances))]);
+    expect(r.ok, r.output).toBe(false);
+    expect(r.output).toMatch(message);
+  });
 
   it('rows below the beat angle taper as V_b x TWA / beat angle and never beat the certificate VMG (P.10 item 8)', () => {
     let checked = 0;
