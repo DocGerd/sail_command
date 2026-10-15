@@ -2602,7 +2602,7 @@ describe('PlannerPanel', () => {
       });
       const chip = container.querySelector('.chip-faster-rig');
       expect(chip?.textContent).toBe(
-        'The search ran out of time before comparing both sails, so no faster rig is claimed',
+        'The search ran out of time before comparing both sails, so no faster rig is claimed. Leave one sail ashore to plan with a single sail',
       );
     });
 
@@ -2617,7 +2617,7 @@ describe('PlannerPanel', () => {
       });
       const chip = container.querySelector('.chip-faster-rig');
       expect(chip?.textContent).not.toBe(
-        'The search ran out of time before comparing both sails, so no faster rig is claimed',
+        'The search ran out of time before comparing both sails, so no faster rig is claimed. Leave one sail ashore to plan with a single sail',
       );
     });
   });
