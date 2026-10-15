@@ -25,6 +25,9 @@ instead of here.
 
 ## Index
 
+- [18-currents-source-quality-gate.md](18-currents-source-quality-gate.md) —
+  #18: quality gate for a current source in the isochrone cost; no candidate
+  passes, nothing built
 - [243-depth-comfort-margin.md](243-depth-comfort-margin.md) — #243: routing
   crosses shallow water when a deeper route was free.
 - [244-buoyed-fairways.md](244-buoyed-fairways.md) — #244: when must routing
