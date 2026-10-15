@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   cpSync,
   existsSync,
@@ -12,7 +13,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, it, expect, afterAll } from 'vitest';
+import { describe, it, expect, afterAll, beforeAll } from 'vitest';
 
 // #54 Task 12 / spec H: pipeline/build_polars.mjs must FAIL CLOSED. A boat
 // added without its own sanity anchors or plausibility bound, or a sail
@@ -83,6 +84,9 @@ const SCRIPT = join(REPO, 'pipeline', 'build_polars.mjs');
 // unresolved import — which would make every "it aborts" row below pass for
 // entirely the wrong reason.
 const ESTIMATOR = join(REPO, 'pipeline', 'estimate_polars.mjs');
+// Spec §P.6: D5 runs the ORC generator in-process, on the committed sources.
+const GENERATOR = join(REPO, 'pipeline', 'derive_orc_polars.mjs');
+const ORC_SOURCES = join(REPO, 'pipeline', 'orc-sources');
 const SOURCE = join(REPO, 'pipeline', 'polars-source.json');
 const SHIPPED = join(REPO, 'app', 'public', 'data', 'polars');
 
@@ -101,7 +105,9 @@ const TIER_C2 = 'elan-444-piranja';
 const PLANTED = new Set([
   join('pipeline', 'build_polars.mjs'),
   join('pipeline', 'estimate_polars.mjs'),
+  join('pipeline', 'derive_orc_polars.mjs'),
   join('pipeline', 'polars-source.json'),
+  ...readdirSync(ORC_SOURCES).map((f) => join('pipeline', 'orc-sources', f)),
 ]);
 
 const scratchRoots: string[] = [];
@@ -117,13 +123,19 @@ interface RunResult {
   readonly root: string;
 }
 
-/** Run the real generator against `source` in a throwaway tree. */
-function run(source: unknown): RunResult {
+/**
+ * Run the real generator against `source` in a throwaway tree. `editSources`
+ * may rewrite files in the scratch `orc-sources/` copy before the build runs.
+ */
+function run(source: unknown, editSources?: (orcSourcesDir: string) => void): RunResult {
   const root = mkdtempSync(join(tmpdir(), 'sc-polars-'));
   scratchRoots.push(root);
   mkdirSync(join(root, 'pipeline'), { recursive: true });
   cpSync(SCRIPT, join(root, 'pipeline', 'build_polars.mjs'));
   cpSync(ESTIMATOR, join(root, 'pipeline', 'estimate_polars.mjs'));
+  cpSync(GENERATOR, join(root, 'pipeline', 'derive_orc_polars.mjs'));
+  cpSync(ORC_SOURCES, join(root, 'pipeline', 'orc-sources'), { recursive: true });
+  editSources?.(join(root, 'pipeline', 'orc-sources'));
   writeFileSync(join(root, 'pipeline', 'polars-source.json'), JSON.stringify(source));
   const outDir = join(root, 'app', 'public', 'data', 'polars');
   try {
@@ -178,6 +190,15 @@ function freshSource(): {
           uncertaintyPct?: number;
           ramp?: { boatId?: string; fromSailId?: string; toSailId?: string };
           inputs?: Record<string, { value?: number; source?: string } | undefined>;
+        };
+        /** Spec §P.6. Loose for the same reason as `estimator`. */
+        derivation?: {
+          method?: string;
+          fromSailId?: string;
+          uncertaintyPct?: number;
+          ramp?: { boatId?: string; fromSailId?: string; toSailId?: string; clampMin?: number };
+          donor?: Record<string, unknown>;
+          sources?: { path?: string; sha256?: string }[];
         };
         speeds: number[][];
       }
@@ -1171,5 +1192,325 @@ describe('#567: polarsFrom (sister-ship polar sharing) fails closed', () => {
     expect(r.ok).toBe(false);
     expect(r.output).toContain('is not a boat/sail in this file');
     expect(allWrittenFiles(r)).toEqual([]);
+  });
+});
+
+// ---- #1660 spec §P.6: the `derivation` block, rules D1-D8 ----
+//
+// Until EASY GO!'s cutover the committed source carries no derivation block,
+// so each row swaps in the generator's own `--emit-boat` record by id;
+// mutating the committed source alone would reach none of these rules. Rows
+// assert the build-side `spec P.6 Dn` marker: the generator refuses several of
+// the same states in its own words, and only the marker says which layer did.
+describe('#1660 spec §P.6: derivation blocks fail closed (D1-D8)', () => {
+  const EASY_GO = 'salona-44-easy-go';
+  const CERT_FILE = 'orc-ns-tur-santa-anastasia-2026.json';
+  const REF_NO = '04590004MKR';
+  type Source = ReturnType<typeof freshSource>;
+  type Boat = Source['boats'][number];
+  let emitted: Boat;
+
+  beforeAll(() => {
+    emitted = JSON.parse(
+      execFileSync('node', [GENERATOR, '--emit-boat', EASY_GO], { encoding: 'utf8' }),
+    ) as Boat;
+  });
+
+  function withEasyGo(): { src: Source; boat: Boat } {
+    const src = freshSource();
+    const boat = structuredClone(emitted);
+    const i = src.boats.findIndex((b) => b.id === EASY_GO);
+    expect(i, `${EASY_GO} missing from polars-source.json`).toBeGreaterThanOrEqual(0);
+    src.boats[i] = boat;
+    return { src, boat };
+  }
+
+  const sha256 = (data: string): string => createHash('sha256').update(data).digest('hex');
+
+  /** Edit the scratch certificate and re-pin its hash, so D3 stays satisfied. */
+  function editCert(boat: Boat, edit: (text: string) => string) {
+    return (dir: string) => {
+      const file = join(dir, CERT_FILE);
+      const before = readFileSync(file, 'utf8');
+      const after = edit(before);
+      expect(after).not.toBe(before);
+      writeFileSync(file, after);
+      boat.sails['fock']!.derivation!.sources![0]!.sha256 = sha256(after);
+    };
+  }
+
+  function expectAbort(r: RunResult, ...needles: string[]) {
+    expect(r.ok, r.output).toBe(false);
+    for (const n of needles) expect(r.output).toContain(n);
+    expect(allWrittenFiles(r)).toEqual([]);
+  }
+
+  // CONTROL, and the widened-E1 row: the genoa is tier C with a ramp
+  // derivation and no estimator block, so E1 must accept it and E5/E6/E7 must
+  // skip it.
+  it('builds the committed assets unchanged plus EASY GO!’s two tables (control)', () => {
+    const { src, boat } = withEasyGo();
+    expect(boat.sails['genoa']!.provenance!.tier).toBe('estimated');
+    for (const sail of Object.values(boat.sails)) {
+      expect(sail.derivation).toBeDefined();
+      expect(sail.estimator).toBeUndefined();
+    }
+    const r = run(src);
+    expect(r.ok, r.output).toBe(true);
+    const shipped = readdirSync(SHIPPED);
+    expect(writtenFiles(r.outDir)).toEqual(
+      [...new Set([...shipped, `${EASY_GO}-fock.json`, `${EASY_GO}-genoa.json`])].sort(),
+    );
+    for (const f of shipped)
+      expect(readFileSync(join(r.outDir, f)), f).toEqual(readFileSync(join(SHIPPED, f)));
+  });
+
+  it('D1: aborts when the certificate method is declared tier certificate', () => {
+    const { src, boat } = withEasyGo();
+    boat.sails['fock']!.provenance!.tier = 'certificate';
+    expectAbort(run(src), `${EASY_GO}/fock`, 'spec P.6 D1');
+  });
+
+  it('D1: aborts when the ramp method is declared tier modelled', () => {
+    const { src, boat } = withEasyGo();
+    boat.sails['genoa']!.provenance!.tier = 'modelled';
+    expectAbort(run(src), `${EASY_GO}/genoa`, 'spec P.6 D1');
+  });
+
+  it.each([12, undefined])('D1: aborts when the ramp’s uncertaintyPct is %o', (pct) => {
+    const { src, boat } = withEasyGo();
+    const der = boat.sails['genoa']!.derivation!;
+    if (pct === undefined) delete der.uncertaintyPct;
+    else der.uncertaintyPct = pct;
+    expectAbort(run(src), `${EASY_GO}/genoa`, 'spec P.6 D1');
+  });
+
+  it('D1: aborts when one sail carries both an estimator and a derivation block', () => {
+    const { src, boat } = withEasyGo();
+    boat.sails['genoa']!.estimator = structuredClone(
+      src.boats.find((b) => b.id === TIER_C)!.sails['genoa']!.estimator!,
+    );
+    expectAbort(run(src), `${EASY_GO}/genoa`, 'both an estimator block and a derivation block');
+  });
+
+  it('E1 (widened): a tier-C sail is admitted by a RAMP derivation only, not a certificate one', () => {
+    const { src, boat } = withEasyGo();
+    boat.sails['fock']!.provenance!.tier = 'estimated';
+    expectAbort(run(src), `${EASY_GO}/fock`, 'spec N.6 E1');
+  });
+
+  it.each(['orc-made-up-v1', ...Object.getOwnPropertyNames(Object.prototype)])(
+    'D2: aborts on derivation method %o',
+    (method) => {
+      const { src, boat } = withEasyGo();
+      boat.sails['fock']!.derivation!.method = method;
+      expectAbort(run(src), `${EASY_GO}/fock`, 'spec P.6 D2');
+    },
+  );
+
+  it('D2: aborts when the derivation block is null', () => {
+    const { src, boat } = withEasyGo();
+    (boat.sails['fock'] as { derivation: unknown }).derivation = null;
+    expectAbort(run(src), `${EASY_GO}/fock`, 'spec P.6 D2');
+  });
+
+  it('D3: aborts on a source path that does not exist', () => {
+    const { src, boat } = withEasyGo();
+    boat.sails['fock']!.derivation!.sources![0]!.path = 'orc-sources/no-such-file.json';
+    expectAbort(run(src), `${EASY_GO}/fock`, 'spec P.6 D3');
+  });
+
+  // Both resolve to the real certificate, so its hash still matches: only the
+  // path rule can refuse them.
+  it.each([`orc-sources/../orc-sources/${CERT_FILE}`, `../pipeline/orc-sources/${CERT_FILE}`])(
+    'D3: aborts on source path %o, which escapes the orc-sources/ form',
+    (path) => {
+      const { src, boat } = withEasyGo();
+      boat.sails['fock']!.derivation!.sources![0]!.path = path;
+      expectAbort(run(src), `${EASY_GO}/fock`, 'spec P.6 D3', 'directly under orc-sources/');
+    },
+  );
+
+  it('D3: aborts when the certificate method lists no source', () => {
+    const { src, boat } = withEasyGo();
+    boat.sails['fock']!.derivation!.sources = [];
+    expectAbort(run(src), `${EASY_GO}/fock`, 'spec P.6 D3');
+  });
+
+  it('D4: aborts when the certificate method lists two sources', () => {
+    const { src, boat } = withEasyGo();
+    const sources = boat.sails['fock']!.derivation!.sources!;
+    sources.push(structuredClone(sources[0]!));
+    expectAbort(run(src), `${EASY_GO}/fock`, 'spec P.6 D4', 'exactly one certificate');
+  });
+
+  // P.10 item 3. `Builder` feeds no table and no donor field, so only the hash
+  // can see this byte.
+  it('D3: aborts when one byte of the committed record changes without its sha256', () => {
+    const { src } = withEasyGo();
+    const r = run(src, (dir) => {
+      const file = join(dir, CERT_FILE);
+      const before = readFileSync(file, 'utf8');
+      const after = before.replace('"Builder": "Salona"', '"Builder": "Salonb"');
+      expect(after.length).toBe(before.length);
+      expect(after).not.toBe(before);
+      writeFileSync(file, after);
+    });
+    expectAbort(r, `${EASY_GO}/fock`, 'spec P.6 D3', 'sha256');
+  });
+
+  // The generator's --check reads neither hash, so D3 alone owns both.
+  it('D3: aborts when the declared source sha256 is zeroed', () => {
+    const { src, boat } = withEasyGo();
+    boat.sails['fock']!.derivation!.sources![0]!.sha256 = '0'.repeat(64);
+    expectAbort(run(src), `${EASY_GO}/fock`, 'spec P.6 D3', 'sha256');
+  });
+
+  it('D3: aborts when the certificate envelope’s responseSha256 is zeroed', () => {
+    const { src, boat } = withEasyGo();
+    const r = run(
+      src,
+      editCert(boat, (text) => {
+        const env = JSON.parse(text) as Record<string, unknown>;
+        env['responseSha256'] = '0'.repeat(64);
+        return JSON.stringify(env, null, 2);
+      }),
+    );
+    expectAbort(r, `${EASY_GO}/fock`, 'spec P.6 D3', 'responseSha256');
+  });
+
+  it.each(['url', 'retrievedAt', 'responseSha256'])(
+    'D3: aborts when the certificate envelope lacks %s',
+    (field) => {
+      const { src, boat } = withEasyGo();
+      const r = run(
+        src,
+        editCert(boat, (text) => {
+          const env = JSON.parse(text) as Record<string, unknown>;
+          delete env[field];
+          return JSON.stringify(env, null, 2);
+        }),
+      );
+      expectAbort(r, `${EASY_GO}/fock`, 'spec P.6 D3', field);
+    },
+  );
+
+  it.each([
+    ['relation', 'same-model'],
+    ['kind', 'orc-polargraph'],
+    ['refNo', 'X0000000000'],
+    ['measuredDraftM', 2.5],
+    ['areaJibM2', 50],
+    ['areaMainM2', 60],
+  ])('D4: aborts when donor.%s is %o', (field, value) => {
+    const { src, boat } = withEasyGo();
+    boat.sails['fock']!.derivation!.donor![field] = value;
+    expectAbort(run(src), `${EASY_GO}/fock`, 'spec P.6 D4', field);
+  });
+
+  it.each(['yacht', 'sailNo'])('D4: aborts when donor.%s is missing', (field) => {
+    const { src, boat } = withEasyGo();
+    delete boat.sails['fock']!.derivation!.donor![field];
+    expectAbort(run(src), `${EASY_GO}/fock`, 'spec P.6 D4', field);
+  });
+
+  it.each([
+    ['ramp.boatId', 'no-such-boat'],
+    ['ramp.fromSailId', 'staysail'],
+    ['ramp.toSailId', 'spinnaker'],
+    ['fromSailId', 'staysail'],
+  ])('D4: aborts when the genoa’s %s names %o', (field, value) => {
+    const { src, boat } = withEasyGo();
+    const der = boat.sails['genoa']!.derivation!;
+    if (field === 'fromSailId') der.fromSailId = value;
+    else (der.ramp as Record<string, string>)[field.slice('ramp.'.length)] = value;
+    expectAbort(run(src), `${EASY_GO}/genoa`, 'spec P.6 D4', value);
+  });
+
+  // P.10 item 2, first half.
+  it('D5: aborts when a certificate cell moves (hash re-pinned)', () => {
+    const { src, boat } = withEasyGo();
+    const r = run(
+      src,
+      editCert(boat, (text) => {
+        const env = JSON.parse(text) as { record: { Allowances: Record<string, number[]> } };
+        env.record.Allowances['R90']![3] = 450;
+        return JSON.stringify(env, null, 2);
+      }),
+    );
+    expectAbort(r, 'spec P.6 D5', `${EASY_GO}/fock`);
+  });
+
+  // P.10 item 2, second half. The 20 kn column is the last one validate()'s
+  // monotonicity check compares, so +0.01 there reaches D5 alone.
+  it.each(['fock', 'genoa'])('D5: aborts when a committed %s speeds cell is edited', (sailId) => {
+    const { src, boat } = withEasyGo();
+    const row = boat.sails[sailId]!.speeds[boat.twa.indexOf(90)]!;
+    row[boat.tws.indexOf(20)] = Math.round((row[boat.tws.indexOf(20)]! + 0.01) * 100) / 100;
+    expectAbort(run(src), 'spec P.6 D5', `${EASY_GO}/${sailId}`);
+  });
+
+  it('D5: aborts when a committed beat angle is edited', () => {
+    const { src, boat } = withEasyGo();
+    (boat.beat as { angle: number[] }).angle[0]! += 0.1;
+    expectAbort(run(src), 'spec P.6 D5', 'beat');
+  });
+
+  it.each([
+    ['fock', 'sister hull', 'sister boat'],
+    ['fock', REF_NO, 'X0000000000'],
+    ['genoa', 'ESTIMATED', 'Estimated'],
+    ['genoa', 'ramp', 'step'],
+  ])('D6: aborts when the %s note loses %o', (sailId, token, replacement) => {
+    const { src, boat } = withEasyGo();
+    const prov = boat.sails[sailId]!.provenance!;
+    expect(prov.note).toContain(token);
+    prov.note = prov.note!.replaceAll(token, replacement);
+    expectAbort(run(src), `${EASY_GO}/${sailId}`, 'spec P.6 D6', token);
+  });
+
+  // P.10 item 5. EASY GO! has no estimator sail, so E4 cannot see this.
+  it('D7: aborts when another boat’s anchor is pasted onto EASY GO!', () => {
+    const { src, boat } = withEasyGo();
+    const speedyAnchor = src.boats.find((b) => b.id === TIER_C)!.validation!.anchors![2]!;
+    boat.validation!.anchors!.push(structuredClone(speedyAnchor));
+    expectAbort(run(src), EASY_GO, TIER_C, 'spec P.6 D7');
+  });
+
+  it('D7: does NOT abort when the numbers match another boat’s anchor but the source differs', () => {
+    const { src, boat } = withEasyGo();
+    const speedyAnchor = src.boats.find((b) => b.id === TIER_C)!.validation!.anchors![2]!;
+    boat.validation!.anchors!.push({
+      ...structuredClone(speedyAnchor),
+      source: 'An independent published figure for this hull.',
+    });
+    const r = run(src);
+    expect(r.ok, r.output).toBe(true);
+  });
+
+  it.each([CERT_FILE, REF_NO])('D7: aborts when an anchor source cites %o', (cited) => {
+    const { src, boat } = withEasyGo();
+    boat.validation!.anchors!.push({
+      label: 'cites the donor',
+      twa: 52,
+      tws: 12,
+      minKn: 7,
+      maxKn: 9,
+      source: `Read off ${cited}.`,
+    });
+    expectAbort(run(src), EASY_GO, 'spec P.6 D7', cited);
+  });
+
+  it('D8: the plausibility bound still bites on a derived boat', () => {
+    const { src, boat } = withEasyGo();
+    boat.validation!.maxSpeedKn = 5;
+    expectAbort(run(src), `${EASY_GO}/`, 'implausible');
+  });
+
+  it('D8: the anchor band still bites on a derived boat', () => {
+    const { src, boat } = withEasyGo();
+    const a = boat.validation!.anchors![0]!;
+    a.maxKn = a.minKn;
+    expectAbort(run(src), a.label);
   });
 });
