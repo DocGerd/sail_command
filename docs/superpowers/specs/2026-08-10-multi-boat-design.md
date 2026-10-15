@@ -1066,7 +1066,7 @@ New `pipeline/derive_orc_polars.mjs` (method `orc-ns-cert-rows-v1`) takes its ce
 | 150, 165, 180 | `DW` cell |
 | 70, 80, 100; 35/40/45 at TWA ≥ `θb` | PCHIP (SciPy/MATLAB-style Fritsch–Butland slopes) through `{θb→V_b, 52, 60, 75, 90, 110, 120, 135, 150, 165, 180}` (`R75` a knot only) |
 | 35/40/45 at TWA < `θb` | `V_b × TWA/θb`, `Polar.speedKn`'s own below-table shape. `θb` = 47.2° at TWS 4, 37.7° at 20. |
-| TWS 25 | the 24 kn column **held**; between 20 and 24 kn the app reads up to 1.76 % below the certificate (largest at R120; R110: 10.36 vs 10.52), the conservative side |
+| TWS 25 | the 24 kn column **held**; between 20 and 24 kn the app reads up to 1.76 % below the certificate (largest at R120: 10.36 vs 10.55), the conservative side except R35 (+0.35 %, below the beat angle) |
 
 **Build asserts (P.10):** TWS-monotone in columns 4–20 (the certificate's 24 kn at TWA 35 is below its 20 kn); no grid row below `θb` beats the certificate's `Beat` VMG (grid rows only; runtime beat VMG through `Polar` is 0.989–1.000 × certificate); every cell `< maxSpeedKn`.
 
@@ -1191,9 +1191,9 @@ Same PR, outside the spec:
 4. D6: `sister hull` deleted from the `boats.ts` fock note alone reds `polarProvenance.test`; from all three, D6.
 5. D7: SPEEDY GO!'s anchor pasted onto EASY GO! reds; E4 alone does not.
 6. `salona-44-easy-go-{fock,genoa}.json` are 15 × 9; `beat`/`gybe` = certificate (24 kn in column 25); cells > 0 and `< 12`; TWS-monotone in 4–20.
-7. Rows 52/60/90/110/120/135 = `round2(3600/R)`, rows 150/165/180 = `round2(3600/DW)`, columns 4–20. Mutation: row 150 on `R150` reds at TWS 4/6/8. A planted `GybeAngle` below a used `R` row aborts the generator.
+7. Rows 52/60/90/110/120/135 = `round2(3600/R)`, rows 150/165/180 = `round2(3600/DW)`, columns 4–20. Mutation: row 150 on `R150` reds at every TWS column except 10 kn. A planted `GybeAngle` below a used `R` row aborts the generator.
 8. Every grid TWA < `BeatAngle`: `speed × cos(TWA) ≤ 3600/Beat`. Through `Polar.speedKn`, the best VMG over a 0.1° sweep is in `[0.98, 1.005] × 3600/Beat`. Mutation: no taper reds.
-9. Vs the committed polargraph excerpt (77 Jib cells): each delta within 0.5 pt of the committed delta; envelope in [−10 %, +10 %]. Mutation: +20 % on 90°/10 kn reds both.
+9. Vs the committed polargraph excerpt (77 Jib cells): each delta within 0.5 pt of the committed delta; envelope in [−10 %, +10 %]. Mutation: +20 % on 90°/10 kn trips the P.3 monotone assert first; with that assert removed, it reds both.
 10. Headsail anchors (polargraph Jib about ±10 %, rounded to 0.05 kn): A1 52°/12 `[7.3, 8.9]`; A2 90°/8 `[6.8, 8.35]`; A3 135°/10 `[5.5, 6.8]`; A4 180°/12 `[5.4, 6.6]`. Polargraph 8.10/7.56/6.14/6.00; fock 7.92/7.27/6.60/5.88; genoa 7.96/7.48/6.70/5.94. They catch an index or unit slip, not this boat's error. A3 leaves 0.05 kn over the genoa against the exact bound: a > ~1.5 % genoa rise at 10 kn re-derives A3.
 11. Genoa ≥ fock everywhere; equal at 16/20/25 kn (all rows) and 14 kn (rows 35–120); strictly greater at 4–12 kn and at 14 kn rows 135–180; 56 cells identical. Mutation: no clamp puts nine 25 kn cells below the fock.
 12. `boatById('salona-44-easy-go').sails` is exactly `genoa` (`estimated`), `fock` (`modelled`); notes pass D6 and #595; no `downwindSails` in phase 1.
