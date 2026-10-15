@@ -124,7 +124,16 @@ function scratchSources(mutate?: (rec: CertRecord) => void): string {
  * A scratch pipeline/ whose polars-source.json commits `easyGo` in place of the
  * borrower block, so --check has a committed record to reproduce.
  */
-function scratchPipeline(easyGo: unknown, mutate?: (rec: CertRecord) => void): string {
+interface SourceBoat {
+  id: string;
+  sails?: Record<string, { derivation?: unknown }>;
+}
+
+function scratchPipeline(
+  easyGo: unknown,
+  mutate?: (rec: CertRecord) => void,
+  editBoats?: (boats: SourceBoat[]) => void,
+): string {
   const root = mkdtempSync(join(tmpdir(), 'sc-orc-'));
   scratchRoots.push(root);
   const dir = join(root, 'pipeline');
@@ -133,9 +142,10 @@ function scratchPipeline(easyGo: unknown, mutate?: (rec: CertRecord) => void): s
   cpSync(join(PIPELINE, 'estimate_polars.mjs'), join(dir, 'estimate_polars.mjs'));
   cpSync(SOURCES, join(dir, 'orc-sources'), { recursive: true });
   const src = JSON.parse(readFileSync(join(PIPELINE, 'polars-source.json'), 'utf8')) as {
-    boats: { id: string }[];
+    boats: SourceBoat[];
   };
-  src.boats = src.boats.map((b) => (b.id === 'salona-44-easy-go' ? (easyGo as { id: string }) : b));
+  src.boats = src.boats.map((b) => (b.id === 'salona-44-easy-go' ? (easyGo as SourceBoat) : b));
+  editBoats?.(src.boats);
   writeFileSync(join(dir, 'polars-source.json'), JSON.stringify(src));
   if (mutate) {
     const file = join(dir, 'orc-sources', CERT_FILE);
@@ -474,6 +484,13 @@ describe('derive_orc_polars.mjs — EASY GO! genoa (orc-jib-genoa-ramp-v1)', () 
   });
 });
 
+describe('derive_orc_polars.mjs — genoa/jib bound (cross-cutting decision 3, §S D1/D4)', () => {
+  it('max genoa/jib is at most 1.054 after rounding', () => {
+    const ratios = fock.flatMap((row, i) => row.map((v, j) => genoa[i]![j]! / v));
+    expect(Math.max(...ratios)).toBeLessThanOrEqual(1.054);
+  });
+});
+
 describe('derive_orc_polars.mjs — emitted record (spec §P.1, §P.6)', () => {
   it('names the donor record and the committed source hash', () => {
     expect(boat.id).toBe('salona-44-easy-go');
@@ -517,11 +534,66 @@ describe('derive_orc_polars.mjs — emitted record (spec §P.1, §P.6)', () => {
 });
 
 describe('derive_orc_polars.mjs --check against a committed record (spec §P.6 D5)', () => {
+  type EditableBoat = Omit<EmittedBoat, 'sails'> & {
+    sails: Record<'genoa' | 'fock', { derivation: { method: string }; speeds: number[][] }>;
+  };
+  const editableBoat = (): EditableBoat => structuredClone(boat) as unknown as EditableBoat;
+
   it('reproduces the emitted record byte for byte (control)', () => {
     const r = run(['--check'], scratchPipeline(structuredClone(boat)));
     expect(r.ok, r.output).toBe(true);
     expect(r.output).toContain('salona-44-easy-go/fock reproduces');
     expect(r.output).toContain('salona-44-easy-go/genoa reproduces');
+    expect(r.output).not.toContain('derived salona-44-easy-go');
+  });
+
+  it('reds when both methods are misspelled and a jib cell is off (fail closed, not skipped)', () => {
+    const edited = editableBoat();
+    edited.sails.fock.derivation.method = 'orc-ns-cert-rows-v2';
+    edited.sails.genoa.derivation.method = 'orc-jib-genoa-ramp-v2';
+    edited.sails.fock.speeds[3]![4] = 9.5;
+    const r = run(['--check'], scratchPipeline(edited));
+    expect(r.ok, r.output).toBe(false);
+    expect(r.output).toMatch(
+      /NOT REPRODUCIBLE salona-44-easy-go\/fock: derivation.method "orc-ns-cert-rows-v2" is not orc-ns-cert-rows-v1/,
+    );
+    expect(r.output).toMatch(
+      /NOT REPRODUCIBLE salona-44-easy-go\/genoa: derivation.method "orc-jib-genoa-ramp-v2" is not orc-jib-genoa-ramp-v1/,
+    );
+  });
+
+  it('reds when only the genoa’s method is misspelled', () => {
+    const edited = editableBoat();
+    edited.sails.genoa.derivation.method = 'orc-jib-genoa-ramp-v2';
+    edited.sails.genoa.speeds[0]![0] = 9.99;
+    const r = run(['--check'], scratchPipeline(edited));
+    expect(r.ok, r.output).toBe(false);
+    expect(r.output).toMatch(/NOT REPRODUCIBLE salona-44-easy-go\/genoa: derivation.method/);
+  });
+
+  it('reds when a sail carries the other template sail’s known method', () => {
+    const edited = editableBoat();
+    edited.sails.fock.derivation.method = 'orc-jib-genoa-ramp-v1';
+    const r = run(['--check'], scratchPipeline(edited));
+    expect(r.ok, r.output).toBe(false);
+    expect(r.output).toMatch(
+      /NOT REPRODUCIBLE salona-44-easy-go\/fock: derivation.method "orc-jib-genoa-ramp-v1" is not orc-ns-cert-rows-v1/,
+    );
+  });
+
+  it('reds on an unknown derivation method on any other boat’s sail', () => {
+    const r = run(
+      ['--check'],
+      scratchPipeline(structuredClone(boat), undefined, (boats) => {
+        boats.find((b) => b.id === 'salona-44-speedy-go')!.sails!.fock!.derivation = {
+          method: 'bogus',
+        };
+      }),
+    );
+    expect(r.ok, r.output).toBe(false);
+    expect(r.output).toMatch(
+      /NOT REPRODUCIBLE salona-44-speedy-go\/fock: unknown derivation method "bogus"/,
+    );
   });
 
   it('reds naming the jib when a committed speeds cell is changed', () => {
@@ -546,8 +618,8 @@ describe('derive_orc_polars.mjs --check against a committed record (spec §P.6 D
     const edited = structuredClone(boat) as unknown as {
       sails: Record<string, { derivation?: unknown }>;
     };
-    delete edited.sails.fock!.derivation;
-    delete edited.sails.genoa!.derivation;
+    delete edited.sails.fock.derivation;
+    delete edited.sails.genoa.derivation;
     const r = run(['--check'], scratchPipeline(edited));
     expect(r.ok, r.output).toBe(false);
     expect(r.output).toMatch(/salona-44-easy-go\/fock: declares no derivation block/);

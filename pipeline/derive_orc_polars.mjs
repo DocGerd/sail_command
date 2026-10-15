@@ -345,24 +345,42 @@ export function emitBoat(src, boatId, { sourcesDir = SOURCES_DIR } = {}) {
   return { id, name, draftM, validation, tws, twa, beat: angles.beat, gybe: angles.gybe, sails };
 }
 
-/** D5's comparison: every committed sail with a known derivation method, reproduced byte for byte. */
+/** D5's comparison over the COMMITTED record: every derivation method known (and the template's), tables byte for byte. */
 export function reproductionFailures(src, { sourcesDir = SOURCES_DIR } = {}) {
   const out = [];
   for (const boat of src.boats) {
-    if (Object.hasOwn(TEMPLATES, boat.id) && boat.polarsFrom === undefined)
-      for (const sailId of Object.keys(TEMPLATES[boat.id].sails))
-        if (boat.sails?.[sailId]?.derivation == null)
-          out.push({ boatId: boat.id, sailId, detail: 'declares no derivation block' });
+    const template = Object.hasOwn(TEMPLATES, boat.id) && boat.polarsFrom === undefined ? TEMPLATES[boat.id] : null;
+    const reported = new Set();
+    const push = (sailId, detail) => {
+      reported.add(sailId);
+      out.push({ boatId: boat.id, sailId, detail });
+    };
+    for (const [sailId, t] of Object.entries(template?.sails ?? {})) {
+      const want = t.derivation?.method ?? CERT_METHOD;
+      const der = boat.sails?.[sailId]?.derivation;
+      if (der == null) push(sailId, 'declares no derivation block');
+      else if (der.method !== want) push(sailId, `derivation.method ${JSON.stringify(der.method)} is not ${want}`);
+    }
     for (const [sailId, sail] of Object.entries(boat.sails ?? {})) {
-      if (!DERIVATION_METHODS.includes(sail?.derivation?.method)) continue;
-      const got = derivedSail(src, boat, sailId, { sourcesDir });
+      if (sail?.derivation == null || reported.has(sailId)) continue;
+      if (!DERIVATION_METHODS.includes(sail.derivation.method)) {
+        push(sailId, `unknown derivation method ${JSON.stringify(sail.derivation.method)}`);
+        continue;
+      }
+      let got;
+      try {
+        got = derivedSail(src, boat, sailId, { sourcesDir });
+      } catch (e) {
+        push(sailId, e.message);
+        continue;
+      }
       for (const [key, committed, derived] of [
         ['speeds', sail.speeds, got.speeds],
         ['beat', boat.beat, got.beat],
         ['gybe', boat.gybe, got.gybe],
       ])
         if (JSON.stringify(committed) !== JSON.stringify(derived))
-          out.push({ boatId: boat.id, sailId, detail: `committed ${key} differs from the derivation` });
+          push(sailId, `committed ${key} differs from the derivation`);
     }
   }
   return out;
@@ -410,14 +428,14 @@ function main(argv) {
   }
 
   for (const boatId of Object.keys(TEMPLATES)) {
+    const committed = src.boats.find((b) => b.id === boatId);
+    if (committed !== undefined && committed.polarsFrom === undefined) continue;
     const boat = emitBoat(src, boatId, { sourcesDir });
     for (const [sailId, sail] of Object.entries(boat.sails))
       process.stdout.write(
         `derived ${boatId}/${sailId} (${sail.derivation.method}, ${boat.twa.length}x${boat.tws.length}): build asserts pass\n`,
       );
-    const committed = src.boats.find((b) => b.id === boatId);
-    if (committed?.polarsFrom !== undefined)
-      process.stdout.write(`${boatId}: polarsFrom borrower in polars-source.json; no committed table to reproduce\n`);
+    process.stdout.write(`${boatId}: no committed tables in polars-source.json to reproduce\n`);
   }
   const failures = reproductionFailures(src, { sourcesDir });
   for (const f of failures) process.stderr.write(`NOT REPRODUCIBLE ${f.boatId}/${f.sailId}: ${f.detail}\n`);
