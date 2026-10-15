@@ -364,6 +364,7 @@ function baseProps(overrides: Overrides = {}) {
     // the SELECTED boat. This default keeps every pre-existing row on the
     // catalogue default boat, i.e. the 2.2 m floor they already assert.
     boat: boatById(DEFAULT_BOAT_ID),
+    boatId: DEFAULT_BOAT_ID,
     canPlan: true,
     planDisabledReason: null,
     online: true,
@@ -2047,6 +2048,35 @@ describe('PlannerPanel', () => {
       expect(link).toBeInTheDocument();
       fireEvent.click(link);
       expect(props.onOpenBoatSettings).toHaveBeenCalledTimes(1);
+    });
+
+    it('#1661: the sails-aboard line lists every headsail in catalogue order and opens the Boat tab', () => {
+      const props = renderPanel();
+      const btn = screen.getByRole('button', { name: 'Sails aboard: Genoa, Fock' });
+      fireEvent.click(btn);
+      expect(props.onOpenBoatSettings).toHaveBeenCalledTimes(1);
+    });
+
+    it('#1661: the sails-aboard line follows the stored inventory', () => {
+      const boat = boatById(DEFAULT_BOAT_ID);
+      const only = boat.sails[1]!.id;
+      localStorage.setItem(
+        `sc-sail-inventory-${DEFAULT_BOAT_ID}`,
+        JSON.stringify({ v: 1, aboard: [only], hoisted: null }),
+      );
+      renderPanel();
+      expect(screen.getByRole('button', { name: 'Sails aboard: Fock' })).toBeInTheDocument();
+    });
+
+    it('#1661: the German sails-aboard name does not collide with the boat-settings link', () => {
+      localStorage.setItem('sc-lang', 'de');
+      render(
+        <I18nProvider>
+          <PlannerPanel {...baseProps()} />
+        </I18nProvider>,
+      );
+      expect(screen.getByRole('button', { name: /^Segel an Bord: / })).toBeInTheDocument();
+      expect(screen.getAllByRole('button', { name: /Weitere Boot-Einstellungen/ })).toHaveLength(1);
     });
   });
 

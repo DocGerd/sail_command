@@ -1,6 +1,15 @@
 import 'fake-indexeddb/auto';
 import { StrictMode } from 'react';
-import { act, render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
+import {
+  act,
+  render,
+  renderHook,
+  screen,
+  fireEvent,
+  waitFor,
+  cleanup,
+  within,
+} from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import App, {
   droppedViaLabels,
@@ -34,6 +43,7 @@ import {
 import type { HarborWithReachability } from './lib/harborReachability';
 import { boatSnapshot, defaultBoatSnapshot } from './types';
 import { boatById, sailIdsOf } from './data/boats';
+import { sailInventoryStorageKey, usePersistedSailInventory } from './lib/sailInventory';
 import { PLAN_SCHEMA_VERSION } from './types';
 
 // jsdom has no WebGL/canvas backend, so MapLibre GL is mocked wholesale here
@@ -4561,5 +4571,62 @@ describe('#885: segment modes (App wiring)', () => {
     );
     expect(refusal.textContent).not.toMatch(/[{}]/);
     expect(routingMock.calls.length).toBe(0);
+  });
+});
+
+describe('#1661: sails aboard on the new-plan request', () => {
+  const KEY = sailInventoryStorageKey('salona-45');
+
+  async function planOnce() {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    pickOriginAndDestination();
+    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+    await waitFor(() => expect(routingMock.calls.length).toBe(1));
+  }
+
+  it('at default inventory the request equals the pre-inventory path, by value', async () => {
+    await planOnce();
+    const { request } = routingMock.calls[0];
+    const salona = boatById('salona-45');
+    expect(request.sailIds).toEqual(sailIdsOf(salona));
+    expect(request.sailIds).toEqual(['genoa', 'fock']);
+    expect(request.boat.sails.map((s) => s.id)).toEqual(['genoa', 'fock']);
+    expect(request.boat).toEqual(boatSnapshot(salona));
+    expect(request.boat).toEqual(defaultBoatSnapshot());
+  });
+
+  it('a stored one-sail inventory narrows both sailIds and the boat snapshot', async () => {
+    localStorage.setItem(KEY, JSON.stringify({ v: 1, aboard: ['genoa'], hoisted: null }));
+    await planOnce();
+    const { request } = routingMock.calls[0];
+    expect(request.sailIds).toEqual(['genoa']);
+    expect(request.boat.sails.map((s) => s.id)).toEqual(['genoa']);
+  });
+
+  it('an aboard edit after planning marks the plan stale once, and restoring the set clears it', async () => {
+    await planOnce();
+    routingMock.calls[0].resolve(okPlanResult(10));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled(),
+    );
+    await flushPlanFormSync();
+    expect(screen.queryByText(de['planner.result.stale'])).not.toBeInTheDocument();
+
+    const { result } = renderHook(() => usePersistedSailInventory('salona-45'));
+    act(() => result.current[1].setHeadsails(['genoa']));
+
+    // Chip (formDirty) plus App-level Banner (settingsDirty): two visible copies;
+    // the panel live region folds only formDirty && !settingsDirty, so it is silent.
+    expect(await screen.findAllByText(de['planner.result.stale'])).toHaveLength(2);
+    const staleStatusRegions = screen
+      .getAllByRole('status')
+      .filter((el) => el.textContent?.includes(de['planner.result.stale']));
+    expect(staleStatusRegions).toHaveLength(0);
+
+    act(() => result.current[1].setHeadsails(['fock', 'genoa']));
+    await waitFor(() =>
+      expect(screen.queryByText(de['planner.result.stale'])).not.toBeInTheDocument(),
+    );
   });
 });
