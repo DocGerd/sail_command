@@ -1487,6 +1487,11 @@ export default function PlannerPanel({
           hunting for the comfort margin right next to safety depth (where it
           used to be) could reasonably conclude it was removed. */}
       <Button variant="ghost" className="planner-boat-settings-link" onClick={onOpenBoatSettings}>
+        {t('planner.sailsAboard', {
+          sails: sailInventory.headsailIds.map((id) => t(sailLabelKey(id))).join(', '),
+        })}
+      </Button>
+      <Button variant="ghost" className="planner-boat-settings-link" onClick={onOpenBoatSettings}>
         {t('planner.safetyDepth.boatLink')} <span aria-hidden="true">→</span>
       </Button>
 
