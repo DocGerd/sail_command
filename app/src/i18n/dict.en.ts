@@ -59,16 +59,16 @@ export const en = {
   'boat.section.title': 'Boat selection',
   'boat.picker.label': 'Select boat',
   'boat.draft': 'Draft {depth} m',
-  // #746: the own-vessel MMSI, per boat. Kept separate from the AIS API key's
-  // copy (options.ais.help) on purpose — the key is an account credential and
-  // IS transmitted; this identifies a vessel and never is. Each half must keep
-  // the sentence that is true of its own field.
   // #1661: aboard-sail control (Boat tab) and its planner line.
-  'boat.sailsAboard.group': 'Aboard sails',
+  'boat.sailsAboard.group': 'Sails aboard',
   'boat.sailsAboard.both': 'Both',
   'boat.sailsAboard.hint': 'At least one sail must stay aboard.',
   'planner.sailsAboard': 'Sails aboard: {sails}',
   'route.singleSail': 'Planned with {sail} only',
+  // #746: the own-vessel MMSI, per boat. Kept separate from the AIS API key's
+  // copy (options.ais.help) on purpose — the key is an account credential and
+  // IS transmitted; this identifies a vessel and never is. Each half must keep
+  // the sentence that is true of its own field.
   'boat.mmsi.label': "This boat's MMSI (optional)",
   'boat.mmsi.help':
     'Used only to filter this boat out of the AIS traffic display, so your own vessel is not shown as surrounding traffic. Stored on this device, per boat, and never transmitted.',
@@ -505,7 +505,7 @@ export const en = {
   // "the reported comparison did not finish", not "nothing anywhere in this
   // plan's search was cut short".
   'route.comparisonIncomplete':
-    'The search ran out of time before comparing both sails, so no faster rig is claimed. Leave one sail ashore to plan with a single sail',
+    'The search ran out of time before comparing both sails, so no faster rig is claimed. Deselect a sail under “Sails aboard” (Boat tab) to plan with a single sail',
   // #1166: a SECOND, more specific 'not-compared' cause, distinct from
   // rigNotCompared (N=1, N>=3 or tier-C suppression, all with zero solve
   // failures) and from comparisonIncomplete above (a truncated SEARCH).
@@ -1293,7 +1293,7 @@ export const en = {
   'departureScan.help':
     'Scans several departure times for this route (each computed on the genoa alone) and lists them by arrival and motor share.',
   'departureScan.helpGeneric':
-    'Scans several departure times for this route (each computed on a single sail) and lists them by arrival and motor share.',
+    'Scans several departure times for this route (each computed on {sail} alone) and lists them by arrival and motor share.',
   'departureScan.count.label': 'Number of windows',
   'departureScan.step.label': 'Step',
   'departureScan.step.option': '{hours} h',

@@ -61,16 +61,16 @@ export const de = {
   'boat.section.title': 'Bootsauswahl',
   'boat.picker.label': 'Boot auswählen',
   'boat.draft': 'Tiefgang {depth} m',
-  // #746: die eigene MMSI, pro Boot. Bewusst getrennt vom Text zum
-  // AIS-Schlüssel (options.ais.help) — der Schlüssel ist eine Kontokennung und
-  // WIRD übertragen, die MMSI kennzeichnet ein Schiff und wird es nie. Jede
-  // Hälfte behält den Satz, der für ihr eigenes Feld gilt.
   // #1661: aboard-sail control (Boat tab) and its planner line.
-  'boat.sailsAboard.group': 'Mitgeführte Segel',
+  'boat.sailsAboard.group': 'Segel an Bord',
   'boat.sailsAboard.both': 'Beide',
   'boat.sailsAboard.hint': 'Mindestens ein Segel muss an Bord bleiben.',
   'planner.sailsAboard': 'Segel an Bord: {sails}',
   'route.singleSail': 'Nur mit {sail} geplant',
+  // #746: die eigene MMSI, pro Boot. Bewusst getrennt vom Text zum
+  // AIS-Schlüssel (options.ais.help) — der Schlüssel ist eine Kontokennung und
+  // WIRD übertragen, die MMSI kennzeichnet ein Schiff und wird es nie. Jede
+  // Hälfte behält den Satz, der für ihr eigenes Feld gilt.
   'boat.mmsi.label': 'MMSI dieses Boots (optional)',
   'boat.mmsi.help':
     'Dient nur dazu, dieses Boot aus der AIS-Verkehrsanzeige herauszufiltern, damit das eigene Schiff nicht als umgebender Verkehr erscheint. Wird pro Boot nur auf diesem Gerät gespeichert und niemals übertragen.',
@@ -505,7 +505,7 @@ export const de = {
   // PlanResultOk.comparisonComplete is false; see dict.en.ts for the derived
   // MsgKey helper (resultVerdictKey in lib/resultSummary.ts).
   'route.comparisonIncomplete':
-    'Die Suche wurde durch Zeitüberschreitung abgebrochen, bevor beide Segel verglichen werden konnten — es wird kein schnelleres Rigg angegeben. Lassen Sie ein Segel an Land, um mit einem einzelnen Segel zu planen',
+    'Die Suche wurde durch Zeitüberschreitung abgebrochen, bevor beide Segel verglichen werden konnten — es wird kein schnelleres Rigg angegeben. Unter „Segel an Bord“ (Boot) ein Segel abwählen, um mit einem einzelnen Segel zu planen',
   // #1166: zweite, spezifischere "not-compared"-Ursache, siehe dict.en.ts
   // für die volle Begründung — genau zwei Segel angefordert, genau eines
   // fand keine Route, während das andere gelöst wurde.
@@ -1283,7 +1283,7 @@ export const de = {
   'departureScan.help':
     'Sucht mehrere Abfahrtszeiten für diese Route ab (jeweils nur mit der Genua berechnet) und listet sie nach Ankunft und Motoranteil auf.',
   'departureScan.helpGeneric':
-    'Sucht mehrere Abfahrtszeiten für diese Route ab (jeweils mit einem einzelnen Segel berechnet) und listet sie nach Ankunft und Motoranteil auf.',
+    'Sucht mehrere Abfahrtszeiten für diese Route ab (jeweils nur mit {sail} berechnet) und listet sie nach Ankunft und Motoranteil auf.',
   'departureScan.count.label': 'Anzahl Fenster',
   'departureScan.step.label': 'Schrittweite',
   'departureScan.step.option': '{hours} Std.',
