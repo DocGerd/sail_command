@@ -995,7 +995,6 @@ All remaining rows are in force, untouched.
   **Amended 2026-10-01 (#1584):** the check is now snap-aware and lists four harbours; `faldsled` and `rudkoebing` among them read `shallow-approach` in-app (reachable only through a relaxed approach).
 - **Sweep.** No EASY GO! arm this cycle. *2026-10-15:* §P adds none either; §S.6 adds EASY GO! router arms post-trip.
 - **§L rows.** Engaged by this boat and in force: *treat a harbour dropping out as a defect*, *refine the mask for deeper boats*, *ship the fleet at today's 3.0 m default*. *Reuse the Salona 45's anchors* is not breached by its letter (the shared anchors are SPEEDY GO!'s), but its reasoning — an anchor validating a different hull — is engaged and accepted by this ruling. OQ-6 stays open. This ruling answers only its "which vessels ship" half, and only for EASY GO!, whose certificate half stays with #573.
-</content>
 
 ## Amendment 2026-10-15 — EASY GO!'s own polars, the sail inventory, en-route sail changes (§P, §R, §S)
 
@@ -1005,7 +1004,7 @@ All remaining rows are in force, untouched.
 
 1. **Spinnaker slot.** A downwind sail lives in `BoatDef.downwindSails`, never in `sails[]`, and is never a standalone solve or results tab. Its table is the builder's ORC VPP symmetric-spinnaker table, verbatim, rows TWA ≥ 110° (§P.5).
 2. **Lineage field: `derivedFrom`** (§R.3), everywhere; an `origin` union was considered and is not adopted. Pipeline twin: `derivation.fromSailId`. Source-document identity: `derivation.sources` (§P.6).
-3. **One derived-pair rule for router and advisory: decide with a larger margin and a label** (user decision 2026-10-15). A change between two headsails where one is `derivedFrom` the other is planned (§S) or hinted (§S.11) only when the estimated gain beats the penalties plus `U` plus `OVERLAY_BOUND` (§S D4). Change points and the ETA are labelled "estimated (genoa derived from jib)" (§S D13). The router runs with the estimated genoa aboard. The whole-route ★ stays tier-keyed (§N.4), so EASY GO!'s ★ stays suppressed. Suppressing derived pairs was considered and rejected (S.9).
+3. **One derived-pair rule for router and advisory: decide with a larger margin and a label** (user decision 2026-10-15). A change between two headsails where one is `derivedFrom` the other is planned (§S) or hinted (§S.11) only when the estimated gain beats the penalties plus `U` plus `OVERLAY_BOUND` (§S D4). Change points and the ETA are labelled "estimated (genoa derived from jib)" (§S D13). The router runs with the estimated genoa aboard. The whole-route ★ stays tier-keyed (§N.4), so EASY GO!'s ★ stays suppressed. Suppressing derived pairs was considered and rejected (S.9). On the shipped EASY GO! tables no genoa↔jib swap clears that margin (genoa/jib ≤ 1.053, §S D1/D4), so in practice the router plans only spinnaker set and douse until OQ-S1 is decided.
 4. **Defaults — user-editable operational values, not polar-derived:** genoa↔fock swap 900 s; spinnaker set 300 s, douse 300 s, pole gybe 120 s, each the same while motoring; spinnaker max TWS 18 kn; genoa change-down limit 18 kn TWS.
 5. **Unchanged:** `motorSpeedKn` 6.5 kn, `maneuverPenaltyS` 45 s. Currents stay out (`docs/spikes/18-currents-source-quality-gate.md`).
 
@@ -1013,7 +1012,7 @@ All remaining rows are in force, untouched.
 
 ## P. EASY GO! gets its own tables
 
-Supersedes §O's *Polars* bullet, §N.6's EASY GO! anchor exemption, §M.6's endpoint claim and EASY GO!'s build year in §N.2. §N.7's tier-B blockers for EASY GO!'s `fock`: P.8. Every other §N/§O decision stands, including §N.4's suppression.
+Supersedes §O's *Polars* bullet, §N.6's EASY GO! anchor exemption, §M.6's endpoint claim and EASY GO!'s build year in §N.2. §N.7's tier-B blockers for EASY GO!'s `fock`: (1) and (2) in §N.7's 2026-10-15 amendment, (3) the licence in P.8. Every other §N/§O decision stands, including §N.4's suppression.
 
 ### P.0 Objective
 
@@ -1429,7 +1428,7 @@ Plan **one route on which the foresail may change en route**, with the changes i
 | `(s, a)` → `b` | `spinnaker-douse`, `headsail-swap` |
 | `b` → `(s, a)` | `headsail-swap`, `spinnaker-set` |
 
-No swap under the kite (OQ-4), no `(s, a) → (s, b)`. Step-identical sequences tie exactly; `better()`'s tie-breaks pick one.
+No swap under the kite (OQ-S4), no `(s, a) → (s, b)`. Step-identical sequences tie exactly; `better()`'s tie-breaks pick one.
 
 **D3 — Penalties.** `lib/sailChangePenalty.ts`: `SailChangeType`, `DEFAULT_SAIL_CHANGE_PENALTY_S = {headsail-swap: 900, spinnaker-set: 300, spinnaker-douse: 300, pole-gybe: 120}`, persisted per type via `usePersistedNumber` (localStorage, `null` = default, #355), edited in minutes with `NumberInput` beside the aboard control; snapshotted by value into the request (§I.3), not `Settings`. Same cost from a motor node. A value may be 0 (ties then broken by D7's fewer-changes rule). A board change under kite charges `pole-gybe` instead of `maneuverPenaltyS` via `effS`, inheriting today's near-destination drop.
 
@@ -1445,7 +1444,7 @@ No swap under the kite (OQ-4), no `(s, a) → (s, b)`. Step-identical sequences 
 
 **D7 — Prune and dominance.** `pruneKey`/`keyOf` gain a state suffix after the board letter (`'O'` for a change node inheriting `'start'`). `B` in state `j` is dropped if `A` in the same cell, kind and board, state `i ≠ j`, has `A.costMs + P(i→j) < B.costMs` (strict, so `A`'s own change nodes survive) and `A.maneuvers ≤ B.maneuvers`. `better()` gains a last tie-break: fewer change steps.
 
-**D8 — Held first.** With the router on, the whole ladder (tiers, #243 retry, #53 relaxation, #1136 pass 2) runs on `[hoistedSailId]` only. On `ok`, one sail-plan solve at that tier's gate and comfort (`salvage` if pass 2 rescued), under the remaining deadline. A cut or failed sail plan returns the held plan with `outcome`; "held null, plan ok" is unrepresentable, so `recommended` and `migrateResult`'s invariant hold. Residual: a request only a non-hoisted headsail routes today becomes a no-route (OQ-10). `ShallowInfo` from the presented route; `rigRecommendation` `not-compared`; §L `[OQ-3]` not breached.
+**D8 — Held first.** With the router on, the whole ladder (tiers, #243 retry, #53 relaxation, #1136 pass 2) runs on `[hoistedSailId]` only. On `ok`, one sail-plan solve at that tier's gate and comfort (`salvage` if pass 2 rescued), under the remaining deadline. A cut or failed sail plan returns the held plan with `outcome`; "held null, plan ok" is unrepresentable, so `recommended` and `migrateResult`'s invariant hold. Residual: a request only a non-hoisted headsail routes today becomes a no-route (OQ-S10). `ShallowInfo` from the presented route; `rigRecommendation` `not-compared`; §L `[OQ-3]` not breached.
 
 **D9 — Validation before any solve.** With `sailChange` present, refuse with new pre-solve `NoRouteReason` `'sail-change-invalid'` when: `hoistedSailId` absent; aboard set has duplicates or a sail not on the boat (`Object.hasOwn`/`find`, never `in`); a kite lacks a table or limits; a penalty is negative or non-finite. Precedent `segment-modes-invalid` (#885); no new `SolveFailureCause`, `RoutingFailureKind` untouched. An `estimated` sail is not refused (user decision 2026-10-15); D4's margin and D13's label carry its uncertainty.
 
@@ -1455,7 +1454,7 @@ No swap under the kite (OQ-4), no `(s, a) → (s, b)`. Step-identical sequences 
 
 **D12 — Merges never cross a change** (`sailId` change or `sailChangeAtStart`); `tryMerge` refuses a kite merge whose joint TWA fails D5.
 
-**D13 — Honesty.** Every sail-plan surface carries the weakest tier among the sails used (`boat.polarTier.*`). A plan whose change points involve a derived table labels those change points and the ETA with new key `route.sailPlan.derived`: "estimated ({sail} derived from {base})", for EASY GO! "estimated (genoa derived from jib)". The plan states that wind-strength change-down is not modelled by the polars; how the genoa's operational limit (§R D3, 18 kn TWS) enters — gate or suggestion line — is OQ-9. The ETA carries `route.eta.indicative`, a **new** key (§N.5 names it; the dictionaries lack it). §N.5's wording ban applies.
+**D13 — Honesty.** Every sail-plan surface carries the weakest tier among the sails used (`boat.polarTier.*`). A plan whose change points involve a derived table labels those change points and the ETA with new key `route.sailPlan.derived`: "estimated ({sail} derived from {base})", for EASY GO! "estimated (genoa derived from jib)". The plan states that wind-strength change-down is not modelled by the polars; how the genoa's operational limit (§R D3, 18 kn TWS) enters — gate or suggestion line — is OQ-S9. The ETA carries `route.eta.indicative`, a **new** key (§N.5 names it; the dictionaries lack it). §N.5's wording ban applies.
 
 **D14 — Reroutes start in the planned state.** `rerouteFromFix` gains `departureState` (`sailId`, plus `riggedSailId` under kite) from the active leg and copies `sailChange` explicitly. Under kite the held baseline is the rigged headsail from `departureMs + P(douse)`, the douse marked on its first leg.
 
@@ -1484,7 +1483,7 @@ export type SailPlanOutcome = 'search' | 'held-tie' | 'held-worse' | 'search-cut
 
 **Solver.** `SolveParams.sailStates?: {states, hoisted, finalSegment, u, speed(state, twa, tws): number | null, gybeAngleDeg, penaltyMs, steps}`; absent ⇒ byte-identical. `Node` gains `sail`, `changeSteps`, `change`; the `ok` arm gains `arrivalState`; `backtrack` folds change nodes into the next leg's mark. `PlanDeps` gains a separate `downwindPolars`; `polarKeys` covers `sailIds ∪ downwindSailIds`.
 
-**Persistence.** `migrateResult` must carry and validate `sailPlan` (its annotated literal silently strips unknown optional fields). Plans with `sailPlan` are stamped `schemaVersion: 2` at every write site, others 1; the reader's maximum becomes 2, `PLAN_SCHEMA_VERSION` stays 1 (#538, §I.2); older builds list v2 unreadable. `planExport.ts`: OQ-5. No IndexedDB bump.
+**Persistence.** `migrateResult` must carry and validate `sailPlan` (its annotated literal silently strips unknown optional fields). Plans with `sailPlan` are stamped `schemaVersion: 2` at every write site, others 1; the reader's maximum becomes 2, `PLAN_SCHEMA_VERSION` stays 1 (#538, §I.2); older builds list v2 unreadable. `planExport.ts`: OQ-S5. No IndexedDB bump.
 
 ### S.5 Output on deck (≥ 820 CSS px, de/en)
 
@@ -1562,14 +1561,14 @@ Survivors ≈ `S` × one solve's, so `R = (held + sail plan)/(persail genoa + fo
 
 ### S.10 Open questions
 
-- **OQ-1:** on EASY GO!'s current tables D1 drops every genoa↔fock swap (ratio ≤ 1.053 < 1 + U), so the router acts only on spinnaker set and douse there; a gate-form change-down limit (OQ-9) is the one mechanism that would make a swap pay.
-- **OQ-3:** `U`, the 60 s band and G1's 20 % are judgements.
-- **OQ-4:** swapping the rigged headsail under the kite.
-- **OQ-5:** export — change points as GPX `<wpt>`, `planExport` version.
-- **OQ-6:** Live override of the set sail.
-- **OQ-7:** the router for other boats (Salona 45: its genoa is a derived overlay, so D4's margin applies).
-- **OQ-9:** how the genoa change-down limit enters the plan (gate or suggestion); the kite's AWS ceiling (§R OQ-R7).
-- **OQ-10 (maintainer):** hoisted-only ladder residual (D8). Alternative: on held no-route, run today's per-sail path, router off.
+- **OQ-S1:** on EASY GO!'s current tables D1 drops every genoa↔fock swap (ratio ≤ 1.053 < 1 + U), so the router acts only on spinnaker set and douse there; a gate-form change-down limit (OQ-S9) is the one mechanism that would make a swap pay.
+- **OQ-S3:** `U`, the 60 s band and G1's 20 % are judgements.
+- **OQ-S4:** swapping the rigged headsail under the kite.
+- **OQ-S5:** export — change points as GPX `<wpt>`, `planExport` version.
+- **OQ-S6:** Live override of the set sail.
+- **OQ-S7:** the router for other boats (Salona 45: its genoa is a derived overlay, so D4's margin applies).
+- **OQ-S9:** how the genoa change-down limit enters the plan (gate or suggestion); the kite's AWS ceiling (§R OQ-R7).
+- **OQ-S10 (maintainer):** hoisted-only ladder residual (D8). Alternative: on held no-route, run today's per-sail path, router off.
 
 ### S.11 Router-off view: crossover advisory
 

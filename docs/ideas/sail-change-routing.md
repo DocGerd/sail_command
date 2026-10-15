@@ -47,8 +47,8 @@ How might we plan EASY GO!'s passage with the sails actually aboard, choosing wh
 
 ## Open questions
 
-- On EASY GO!'s current tables no genoa↔jib swap pays (§S OQ-1); would a gate-form change-down limit be the intended trigger?
-- Does the genoa change-down limit act as a gate or as a suggestion (§S OQ-9)? What is the spinnaker's AWS ceiling (§R OQ-R7)?
+- On EASY GO!'s current tables no genoa↔jib swap pays (§S OQ-S1); would a gate-form change-down limit be the intended trigger?
+- Does the genoa change-down limit act as a gate or as a suggestion (§S OQ-S9)? What is the spinnaker's AWS ceiling (§R OQ-R7)?
 - Is the spinnaker actually aboard EASY GO!, and what is its area (§P.12)?
 - What will ORC reply on redistribution (§P.12)?
 - SPEEDY GO!'s "built 2014" has no supporting source (§P.12).
