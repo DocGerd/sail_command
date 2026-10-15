@@ -263,6 +263,30 @@ describe('usePersistedSailInventory', () => {
     expect(result.current[0].headsailIds).toEqual([SECOND]);
   });
 
+  it('moves its subscription to the new boat’s key on a boat switch', () => {
+    const KEY_B = sailInventoryStorageKey(ID_B);
+    const baselineA = __sailInventoryListenerCountForKey(KEY_A);
+    const baselineB = __sailInventoryListenerCountForKey(KEY_B);
+    const { result, rerender } = renderHook(({ id }) => usePersistedSailInventory(id), {
+      initialProps: { id: ID_A },
+    });
+    expect(__sailInventoryListenerCountForKey(KEY_A)).toBe(baselineA + 1);
+
+    rerender({ id: ID_B });
+    expect(__sailInventoryListenerCountForKey(KEY_A)).toBe(baselineA);
+    expect(__sailInventoryListenerCountForKey(KEY_B)).toBe(baselineB + 1);
+
+    const other = renderHook(() => usePersistedSailInventory(ID_B));
+    const secondB = sailIdsOf(BOAT_B)[1]!;
+    act(() => other.result.current[1].setHeadsails([secondB]));
+    expect(result.current[0].headsailIds).toEqual([secondB]);
+
+    // Boat A's key no longer reaches the switched instance.
+    const stale = renderHook(() => usePersistedSailInventory(ID_A));
+    act(() => stale.result.current[1].setHeadsails([SECOND]));
+    expect(result.current[0].headsailIds).toEqual([secondB]);
+  });
+
   it('degrades to session-only when localStorage throws on every access', () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new Error('SecurityError');

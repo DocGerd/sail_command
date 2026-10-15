@@ -50,7 +50,7 @@ function parseInventory(boatId: BoatId, raw: string | null): SailInventory {
   } catch {
     return defaultInventory(boatId);
   }
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+  if (typeof parsed !== 'object' || parsed === null) {
     return defaultInventory(boatId);
   }
   const record = parsed as Record<string, unknown>;
