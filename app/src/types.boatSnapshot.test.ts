@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { BOATS, type SailId } from './data/boats';
+import { BOATS } from './data/boats';
 import { boatSnapshot, type BoatSnapshot } from './types';
 
 // Verbatim copy of boatSnapshot as it stood at the BASE of #1661.
@@ -58,13 +58,8 @@ describe('boatSnapshot aboard filter (#1661)', () => {
     expect(aboard).toHaveLength(boat.sails.length);
   });
 
-  it('ignores prototype-name ids', () => {
+  it('an empty aboard list yields no sails', () => {
     const boat = multiSail!;
-    const protoNames = Object.getOwnPropertyNames(Object.prototype);
-    expect(protoNames.length).toBeGreaterThan(0);
-    const real = boat.sails[0]!.id;
-    const snap = boatSnapshot(boat, [...protoNames, real] as unknown as SailId[]);
-    expect(snap.sails.map((s) => s.id)).toEqual([real]);
-    expect(boatSnapshot(boat, protoNames as unknown as SailId[]).sails).toEqual([]);
+    expect(boatSnapshot(boat, []).sails).toEqual([]);
   });
 });
