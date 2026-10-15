@@ -264,6 +264,7 @@ export default function DepartureCompare({
     setConfirmed(null);
     void scan({
       base: { ...plan.request },
+      aboardSailIds: plan.request.sailIds,
       windGrid: plan.windGrid,
       stepHours,
       count,
@@ -280,10 +281,11 @@ export default function DepartureCompare({
       // (tab switched away) or after the active plan has moved on (a
       // different confirm, recalc, or reroute already superseded it).
       if (!mountedRef.current || activePlanIdentityRef.current !== identity || !updated) return;
+      const genoaAboard = plan.request.sailIds.includes(GENOA_SAIL_ID);
       const rec = rigRecommendationOf(updated.result);
       setConfirmed({
         departureMs,
-        disagreeingRig: rec.kind === 'decided' && rec.rig !== GENOA_SAIL_ID ? rec.rig : null,
+        disagreeingRig: genoaAboard && rec.kind === 'decided' && rec.rig !== GENOA_SAIL_ID ? rec.rig : null,
       });
       onConfirmed(updated);
     });

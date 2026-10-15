@@ -158,6 +158,7 @@ describe('DepartureCompare', () => {
       uniformWindGrid(12, 0, { t0Ms: DEPARTURE_MS - 3_600_000, hours: 96 }),
     );
     expect(req.base.departureMs).toBe(DEPARTURE_MS);
+    expect(req.aboardSailIds).toEqual(['genoa', 'fock']);
   });
 
   it('while scanning: shows the phase readout and a cancel button, hides the controls', () => {
@@ -403,6 +404,26 @@ describe('DepartureCompare', () => {
 
       fireEvent.click(screen.getByRole('button', { name: 'Diese Abfahrt übernehmen' }));
       expect(await screen.findByText(/empfiehlt hier Fock/)).toBeInTheDocument();
+    });
+
+    it('genoa ashore: a confirmed result deciding another rig names no disagreement', async () => {
+      const plan = makePlan();
+      const ashore: Plan = { ...plan, request: { ...plan.request, sailIds: ['fock'] } };
+      stubHook({
+        candidates: [{ departureMs: DEPARTURE_MS, outcome: { kind: 'ok', result: OK_RESULT } }],
+      });
+      const updated: Plan = {
+        ...ashore,
+        createdAtMs: ashore.createdAtMs + 1,
+        result: twoRigResult('fock'),
+      };
+      const onConfirmed = vi.fn();
+      stubConfirmHook({}, vi.fn().mockResolvedValue(updated));
+      renderCompare(ashore, onConfirmed);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Diese Abfahrt übernehmen' }));
+      await waitFor(() => expect(onConfirmed).toHaveBeenCalledWith(updated));
+      expect(screen.queryByText(/empfiehlt/)).not.toBeInTheDocument();
     });
 
     it('a confirm error renders as an inline alert scoped to that candidate', () => {
