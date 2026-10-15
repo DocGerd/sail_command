@@ -1308,6 +1308,7 @@ export const de = {
   // shortcut) and replaces the active plan.
   'departureScan.confirm.action': 'Diese Abfahrt übernehmen',
   'departureScan.confirm.confirming': 'Vollständige Berechnung mit beiden Riggs läuft …',
+  'departureScan.confirm.confirmingOneSail': 'Vollständige Berechnung läuft …',
   'departureScan.confirm.done': 'Plan übernommen.',
   // §2.2's "worth surfacing rather than silently accepting" residual: the
   // full two-rig solve favoured a different rig than the genoa the scan
