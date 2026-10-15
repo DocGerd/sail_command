@@ -3,21 +3,28 @@
 - **Issue:** #18 (routing: currents/tides and sea state)
 - **Date:** 2026-10-15
 - **Status:** Decision / Recommendation
-- **Verdict:** **The gate FAILS. Build nothing.** No source reviewed passes all
-  six criteria in §1, and the one with the fewest failures (DMI DKSS) fails on
-  validated skill, horizon, reliability and terms of use. Currents stay out of
-  the cost function. This narrows, and does not replace, the 2026-07-22 waves
-  spec §2, which ruled currents out on Open-Meteo resolution grounds alone.
+- **Verdict:** **The gate FAILS. Build nothing.** Every candidate fails G1
+  (validated skill in the straits). The best browser path, DMI DKSS (CORS,
+  CC BY 4.0, no key), also fails G2 (horizon); its operational blockers are in
+  §4. Currents stay out of the cost function.
 
-Maintainer decision (binding): gate fails, spike doc only, no code.
+Maintainer decision, 2026-10-15: spike doc, no build.
+
+This supplements the 2026-07-22 waves spec §2 (same outcome, wider grounds:
+skill, horizon, access) and does not replace it. That section is headed "do
+not revisit under this issue"; this spike is the maintainer-sanctioned
+exception. The spec's "real 1-3 kn tidal streams" wording is not carried
+forward: §2 below finds the flow wind-dominated, from pilot-book text only.
 
 ## 0. Provenance
 
 Research date 2026-10-15. "Measured" means a request or parse run that day
 against the live endpoint or downloaded file. Each figure carries its filter.
-Every source page was re-downloaded with `curl` and re-read verbatim in a
-separate verification pass; claims that failed verification are corrected
-below, not carried. Bbox is 54.3-55.6 N, 9.4-11.6 E. Where the research says
+Every source page cited for a figure was re-downloaded with `curl` and
+re-read verbatim in a separate verification pass; claims that failed
+verification are corrected below, not carried. Two exceptions: the Havnelods
+copyright notice (§2) and the Limfjord DMI validation (§4) rest on search
+snippets. Bbox is 54.3-55.6 N, 9.4-11.6 E. Where the research says
 UNVERIFIED, this document says UNVERIFIED.
 
 ## 1. The quality gate
@@ -27,15 +34,14 @@ A current source may enter the isochrone cost only if it passes **all** of:
 | # | Criterion | Pass condition |
 |---|---|---|
 | G1 | Validated skill | Published validation against observed currents in the narrow straits the fleet uses: Als Sund, Lillebælt, Storebælt, Flensburg Fjord. |
-| G2 | Horizon | Covers the 6-day wind horizon, or the tail without current is disclosed and the plan degrades explicitly. |
+| G2 | Horizon | The source natively covers the 6-day wind horizon. A shorter horizon fails G2; a disclosed no-current tail is a mitigation to design (§6), not a pass. |
 | G3 | Licence | Compatible with an open-source PWA: reuse and redistribution allowed with attribution the app can show. |
 | G4 | Browser access | CORS-readable from the browser, or a no-backend static repack (scheduled CI job publishing static assets). |
 | G5 | Offline packability | Storable with the plan (IndexedDB, single-digit MB) and never re-fetched, as wind is. |
 | G6 | Coverage | Resolves the inner-fjord and harbour cells the router starts and ends in, or the gap is handled by a disclosed rule. |
 
-Rationale for G1 first: a wrong current is worse than none (the "never
-overstate" principle that rejected bilinear depth resampling). Straits are
-where currents matter and where grids are coarsest, so skill there decides.
+Rationale for G1 first: a wrong current is worse than none. Straits are where
+currents matter and where grids are coarsest, so skill there decides.
 
 ## 2. Ground truth: why a forecast, not an atlas
 
@@ -53,17 +59,19 @@ Source: https://www.danskehavnelods.dk/Havnelodsen/harbours/ and `/bridges/`
 pages (ids in `/data/havne.js`, `/data/broer.js`). Figures are pilot-book
 "indtil" values, not measurements. The text is © Geodatastyrelsen, not
 redistributable (read via a search snippet, medium confidence): use it as a
-validation reference only. A harmonic atlas therefore misses the dominant
-signal, and any routing input has to be a forecast.
+validation reference only. Wind-driven flow can dominate in these straits; an
+astronomical atlas covers only the settled-weather part (Svendborgsund turns
+every 6 h in calm weather, with a 0.3-0.5 m high/low water difference). A
+routing input would have to be a forecast.
 
 ## 3. Candidates scored against the gate
 
 | Source | G1 skill | G2 horizon | G3 licence | G4 access | G5 offline | G6 coverage |
 |---|---|---|---|---|---|---|
-| DMI DKSS (HBM), EDR API | fail: none published for the straits | fail: 120 h | pass: CC BY 4.0 | partial: CORS `*`, 429s, `/grib` deprecated | pass for data, terms limit refresh | partial |
+| DMI DKSS (HBM), EDR API | fail: none published for the straits | fail: 120 h (tail disclosure would be needed) | pass: CC BY 4.0 | partial: CORS `*`, 429s, `/grib` deprecated | pass for data, terms limit refresh | partial |
 | BSH GRIB "Oberfläche für Segler" | fail: none found | fail: 3 d | pass: CC BY 4.0 | fail in browser; CI repack only | partial: CI JPEG2000 decode | partial |
 | CMEMS BAL PHY 003_006 | fail: r = 0.03-0.08 | pass: 6 d / 10 d | partial: Copernicus licence | partial: CORS `*` Zarr, whole-Baltic chunks | fail in browser; CI repack only | fail |
-| Open-Meteo marine (SMOC) | fail | pass | partial: free API non-commercial | pass | pass | fail |
+| Open-Meteo marine (SMOC) | fail: none published | UNVERIFIED for currents | partial: free API non-commercial | pass: CORS `*` (measured) | UNVERIFIED | fail |
 | BSH Gezeitenstrom atlas | n/a: astronomical only | n/a | pass: GeoNutzV | pass: CORS `*` | pass | partial |
 | Havnelods | reference only | n/a | fail: © Geodatastyrelsen | n/a | n/a | n/a |
 
@@ -100,9 +108,10 @@ and https://www.dmi.dk/friedata/dokumentation/forecast-data-edr-api.
 - **Coverage (G6).** Null on 1.11 % of navigable cells (mask depth byte >= 30,
   every 3rd mask cell, 472,711 cells, nearest-node rounding). The first
   sweep's 1.3 % (6,204) did not reproduce. Harbours more than 0.8 nm from a
-  wet cell: Flensburg 0.86, Kappeln 0.88, Maasholm 1.71. Als Sund is one
-  0.5 nm cell across a channel of roughly 0.1-0.2 nm, so the value is a cell
-  average, not the jet.
+  wet cell: Flensburg 0.86, Kappeln 0.88, Maasholm 1.71. Als Sund is
+  narrower than the 0.5 nm cell (width not measured; the research's
+  0.1-0.2 nm is an unsourced estimate), so the value is a cell average, not
+  the jet.
 - **Verdict.** Best browser path, still fails G1 and G2. §4 lists the
   operational blockers.
 
@@ -134,19 +143,20 @@ QUID: https://documentation.marine.copernicus.eu/QUID/CMEMS-BAL-QUID-003-006.pdf
 
 - NEMO 4.2.1, 1 nm (measured 1.0 nm lat, 0.96 nm lon at 55 N), 15-min surface
   currents. "00Z production proving a 10 days forecast and from a 12Z
-  production providing a 6 days forecast" (the only source covering G2).
+  production providing a 6 days forecast" (the only candidate with a
+  documented horizon covering G2).
 - **Skill (G1), the only published figures found for the region.** V202411
   hindcast at the shallowest mooring level, not the surface: Fehmarn Belt
   (10 m): bias 0.23 m/s, cRMSD 0.24 m/s, **r = 0.08**; LT Kiel (1 m): bias
   -0.08 m/s, cRMSD 0.13 m/s, **r = 0.03**. QUID overall: "a large variation
   between the measurements and the hindcast in both current velocity and
-  direction". Four moorings in the summary. Nothing for Als Sund, Lillebælt
+  direction". Four moorings in the summary table (seven in the QUID text). Nothing for Als Sund, Lillebælt
   or Storebælt.
 - Access: ARCO Zarr is public with `access-control-allow-origin: *`, no
   credentials. Chunks are `[2, 774, 763]`, so every time step downloads the
   whole Baltic: measured 1,125,036 B (u) + 1,156,392 B (v) per 30 min. Not
-  browser-practical; about 0.3 MB/day if pre-subset in CI (derived, 3,072 wet
-  cells in the bbox). The fill value is `fill_value` -999.0 in `.zarray`, not
+  browser-practical; about 0.3 MB/day if pre-subset in CI (derived: hourly, int16,
+  3,072 wet cells in the bbox). The fill value is `fill_value` -999.0 in `.zarray`, not
   `_FillValue`; a reader keying on the latter sees a false 0 % null.
 - Licence: free of charge, credit must be "clearly visible on the home page
   ... or at least on the page allowing to access to the products"
@@ -163,8 +173,12 @@ https://open-meteo.com/en/docs/marine-weather-api.
   navigation".
 - Re-probed with `cell_selection=sea`: Middelfart narrows (55.506 N, 9.735 E)
   returns the cell at 55.375 N, 9.708 E, about 14.6 km south; Als Sund at
-  Sønderborg returns Sønderborg Bugt. Same-day maxima 0.4-1.1 km/h against
-  the pilot's 0-3 kn routine and up to 5-6 kn.
+  Sønderborg returns Sønderborg Bugt. Same-day (2026-10-15) maxima: Als Sund
+  cell 0.4 km/h (0.2 kn), Lillebælt cell 0.9 km/h (0.5 kn), against the
+  pilot's 0-3 kn routine and up to 5-6 kn.
+- CORS `access-control-allow-origin: *` (measured). The research documents no
+  current-forecast length for this API; the waves spec states a 16-day marine
+  horizon for wave fields.
 - Data CC BY 4.0, but the free API is non-commercial only (under
   10,000 calls/day). `marine-api.` would be a new CSP `connect-src` host.
 - Fails G1 and G6. This is the basis of the waves spec §2.
@@ -177,8 +191,8 @@ https://gdi.bsh.de/mapservice_gs/Gezeitenstrom_Daten/wms (GetCapabilities).
   11,930 points in the bbox, CORS `*`, GeoNutzV, one static JSON is enough.
 - The speed unit is **UNVERIFIED** (the info sheet names none; sample values
   0.029-0.303 look like m/s, an inference only).
-- Astronomical only, so it misses the wind-driven signal that dominates (§2).
-  Not a routing input.
+- Astronomical only, so it misses the wind-driven part of the flow (§2). Not a
+  routing input.
 
 ### 3.6 Havnelods
 
@@ -190,34 +204,38 @@ sources.
 
 - **Route on DMI DKSS through the browser (rejected).**
   - **Terms of use.** "Applications for mobile units may not update with data
-    via DMI's web services when the application is not active." Background
-    refresh or service-worker prefetch of currents breaches this
-    (https://www.dmi.dk/friedata/dokumentation/terms-of-use). A fetch made
-    while the app is in use is allowed; a CI-published static asset avoids the
-    clause.
+    via DMI's web services when the application is not active." The page
+    also says "continuous updating of the application with data via DMI's web
+    service must be avoided"
+    (https://www.dmi.dk/friedata/dokumentation/terms-of-use). Inference, not
+    stated by DMI: background refresh or service-worker prefetch would breach
+    this, a fetch while the app is in use probably would not, and a
+    CI-published static asset would avoid the clause. Whether an installed PWA
+    counts as an "application for mobile units" is undecided.
   - **Horizon.** 120 h per run against a 6-day wind horizon.
   - **Reliability.** HTTP 429 "Server is busy" with no `Retry-After`: 6 of 8
     cube requests in one session, 6 of 7 in an independent re-run, even at 3 s
     spacing. Cause unknown (looks like a global busy signal, unverified).
-    Registration is gone, so a key is no route to a better quota. Latency was
+    No key is offered, so no quota upgrade path was found. Latency was
     28.3 s once and 2.4 s once (two samples).
-  - **Deprecation.** The EDR `/grib` endpoint (whole-domain files) is removed
-    on 2026-11-01.
-  - **Als Sund.** One 0.5 nm cell across a channel of 0.1-0.2 nm; only
+  - **Deprecation.** DMI's EDR page announces removal of the `/grib`
+    endpoint (whole-domain files) on 2026-11-01 (read 2026-10-15).
+  - **Als Sund.** Narrower than one 0.5 nm cell (width not measured); only
     Lillebælt has a sub-0.2 nm nest.
   - **Skill.** No published validation in the straits. DMI HBM ADCP validation
     found only for the Limfjord (secondary, search result only).
 - **Use CMEMS skill as a proxy for DKSS/BSH (rejected as evidence).**
-  r = 0.03-0.08 is for a different model at two moorings (one at the bbox
-  edge). It shows the problem is hard, not that DKSS is poor, and it is no
+  r = 0.03-0.08 is for a different model at two moorings. It shows the problem is hard, not that DKSS is poor, and it is no
   licence to assume DKSS is good.
 - **Hybrid DKSS plus CMEMS tail (rejected).** Two models with different skill
   stitched at +120 h; CMEMS needs a CI repack and misses the fjords.
 - **CI repack of BSH or DKSS as a static asset (deferred, not rejected).** It
-  fits "no backend" and the DMI terms, and passes G4. It does not fix G1, G2 or
+  fits "no backend" and would pass G4; compatibility with the DMI terms is
+  UNVERIFIED (§6). It does not fix G1, G2 or
   G6, and the assets go stale between runs. Revisit only if G1 clears.
 - **Open-Meteo marine currents (rejected).** §3.4.
-- **Tidal atlas as a routing term (rejected).** Wrong physics for these waters.
+- **Tidal atlas as a routing term (rejected).** It omits the wind-driven
+  part of the flow (§2).
 - **Zero or nearest-wet current on null cells (rejected as a mitigation).**
   Silent extrapolation into Flensburg harbour (0.86 nm from the nearest DKSS
   wet cell, land in BSH's mask) would be overstated precision.
