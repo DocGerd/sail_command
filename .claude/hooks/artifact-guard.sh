@@ -26,6 +26,10 @@
 #                    carrying no permissionDecision at all. See "TWO OUTCOMES
 #                    FOR A NON-EXEMPT HIT" in DESIGN below for the ruling, the
 #                    measurement and why the two halves differ.
+#   SC_SPEC_GATE=advisory (exact value, personal opt-in) downgrades every
+#   spec-path `ask` on BOTH arms to a non-blocking advisory; anything else
+#   keeps the ask. The plans/-directory-destruction ask is not a spec ask and
+#   is unchanged.
 #
 # ---------------------------------------------------------------------------
 # INTENT (the acceptance criterion #274 asks be stated next to the guard):
@@ -2186,6 +2190,17 @@ bash_plans_advisory() {
   echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"artifact-guard ADVISORY (no prompt, nothing to approve): this command names docs/superpowers/plans/, which tracks implementation plans (#405) and no longer blocks unattended runs (#1021, 2026-09-07 maintainer ruling). docs/superpowers/specs/ remains the blocking ask - CLAUDE.md treats it as the user-approved source of truth; plans/ is working-doc territory agents legitimately churn mid-task, so it has no generator to cite and this is not a build-output advisory. This guard matches the path STRING only, never shell syntax, so it cannot tell your read from a write - that judgement is yours. A command mixing this path with docs/superpowers/specs/ or any other docs/superpowers/ path still asks."}}'
 }
 
+# SC_SPEC_GATE=advisory: personal opt-in that turns the spec-path asks into
+# advisories. Exact match only, so unset or any other value fails closed.
+spec_gate_is_advisory() {
+  [ "${SC_SPEC_GATE-}" = "advisory" ]
+}
+
+# $1 is a bare ASCII label, never user input (JSON-safe by construction).
+spec_gate_advisory() {
+  echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"artifact-guard ADVISORY (no prompt, nothing to approve): this would normally ask because it touches '"$1"', but SC_SPEC_GATE=advisory downgraded the spec gate to this advisory. docs/superpowers/specs/ is still the user-approved source of truth and CLAUDE.md forbids silently deviating from it. This guard matches the path STRING only, so it cannot tell your read from a write."}}'
+}
+
 readonly_verbs_sentence() {
   local out="" v
   for v in "${READONLY_VERBS[@]}"; do
@@ -2382,7 +2397,8 @@ if [ "${1:-}" = "--selftest" ]; then
   # JSON string and the row would be answered by the "could not parse tool
   # input" fallback instead of exercising the boundary check at all.
   # (#1273) 338 -> 379: +41 rows in the #1273 pipeline block.
-  EXPECTED_CASES=379
+  # SC_SPEC_GATE block: 379 -> 444, +65 (8 payloads x 8 env states, +1 plans/ dir row).
+  EXPECTED_CASES=444
 
   # (#309 fix-wave m1, moved here by #404 so decide()/decide_exempt() below
   # can use it too - they now drive the production entry point through it
@@ -2437,6 +2453,10 @@ if [ "${1:-}" = "--selftest" ]; then
     echo "SELFTEST FAIL [liveness]: \$SELF ($SELF) is not an executable regular file - every row below would read an empty/failed response as 'allow' and pass vacuously. Aborting before running the battery."
     exit 1
   fi
+
+  # An ambient SC_SPEC_GATE (e.g. a maintainer's local settings env) must not
+  # turn every spec-ask row below into an advisory; the rows that need it set it.
+  unset SC_SPEC_GATE
 
   # json_escape STR - escapes STR for embedding as a JSON string literal, so
   # decide()/decide_exempt() below can build a synthetic tool_input payload
@@ -3823,6 +3843,36 @@ if [ "${1:-}" = "--selftest" ]; then
   # pure predicate.
   wrapper_check advisory "artifact-guard ADVISORY" "verb-scoped disqualifier (sed -i) still fires through the wrapper" '{"tool_name":"Bash","tool_input":{"command":"sed -i s/x/y/ app/public/data/mask.bin"}}'
 
+  # SC_SPEC_GATE: only the exact value `advisory` downgrades a spec-path ask;
+  # unset and every near-miss keep it. Payloads cover the Bash arm (plain,
+  # mixed plans+specs, tree-level, `..`) and the Edit/Write arm (all three ask
+  # arms). Each is `ask` by default, so a stuck-on switch reds the near-miss rows.
+  sg_payloads=(
+    'Bash specs write|mentions spec path|{"tool_name":"Bash","tool_input":{"command":"cp /tmp/f docs/superpowers/specs/x.md"}}'
+    'Bash mixed plans+specs|mentions spec path|{"tool_name":"Bash","tool_input":{"command":"cp docs/superpowers/plans/a.md docs/superpowers/specs/b.md"}}'
+    'Bash tree-level|mentions spec path|{"tool_name":"Bash","tool_input":{"command":"mv docs/superpowers /tmp/x"}}'
+    'Bash .. traversal|mentions spec path|{"tool_name":"Bash","tool_input":{"command":"cp /tmp/f docs/superpowers/plans/../specs/x.md"}}'
+    'Edit specs|source of truth|{"tool_name":"Edit","tool_input":{"file_path":"docs/superpowers/specs/foo.md"}}'
+    'Write specs|source of truth|{"tool_name":"Write","tool_input":{"file_path":"docs/superpowers/specs/foo.md"}}'
+    'Edit .. traversal|traversal segment|{"tool_name":"Edit","tool_input":{"file_path":"docs/superpowers/plans/../specs/foo.md"}}'
+    'Edit catch-all|guarded as a whole|{"tool_name":"Edit","tool_input":{"file_path":"docs/superpowers/notes.md"}}'
+  )
+  for sg_row in "${sg_payloads[@]}"; do
+    sg_desc=${sg_row%%|*}; sg_rest=${sg_row#*|}
+    sg_reason=${sg_rest%%|*}; sg_json=${sg_rest#*|}
+    unset SC_SPEC_GATE
+    wrapper_check ask "$sg_reason" "SC_SPEC_GATE unset: $sg_desc asks" "$sg_json"
+    for sg_val in Advisory "advisory " ADVISORY off 1 ""; do
+      export SC_SPEC_GATE="$sg_val"
+      wrapper_check ask "$sg_reason" "SC_SPEC_GATE=[$sg_val]: $sg_desc still asks" "$sg_json"
+    done
+    export SC_SPEC_GATE=advisory
+    wrapper_check advisory "SC_SPEC_GATE=advisory" "SC_SPEC_GATE=advisory: $sg_desc downgrades to an advisory" "$sg_json"
+  done
+  # The plans/-directory destruction ask is not a spec ask and survives the switch.
+  wrapper_check ask "DIRECTORY itself" "SC_SPEC_GATE=advisory: rm of the plans/ directory still asks" '{"tool_name":"Bash","tool_input":{"command":"rm -rf docs/superpowers/plans/"}}'
+  unset SC_SPEC_GATE
+
   # TWIN CHECK (#388 review, Finding 2): the user-facing reason string claims
   # to name the exempt set exhaustively. It is DERIVED from READONLY_VERBS,
   # so it cannot drift by hand — but a future refactor could break the
@@ -3998,6 +4048,10 @@ if [ "$tn" = "Bash" ]; then
       fi
       exit 0
     fi
+    if spec_gate_is_advisory; then
+      spec_gate_advisory "spec path $p"
+      exit 0
+    fi
     echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Bash command mentions spec path '"$p"' (docs/superpowers/ is the user-approved source-of-truth spec/plan tree, matched here together with its ancestor; CLAUDE.md makes changing it a MAIN-SESSION act, which is what this prompt enforces). This is the ONLY protected family that still prompts, docs/superpowers/plans/ excepted (#1021 - a plans-confined write advises instead, same as the build outputs below) - the committed build outputs (app/public/{data,icons,brand}/, THIRD-PARTY-NOTICES.txt, .pmtiles) now get a non-blocking advisory instead, since a drifted artifact can be regenerated and a rewritten spec cannot. This guard checks whether the path STRING appears anywhere in the Bash command; it does NOT parse shell syntax to work out whether the command is really a write. The one exception is a command PROVEN read-only - a single simple command whose first word is a no-write verb ('"$(readonly_verbs_sentence)"') with no pipe, separator, substitution, expansion or escape anywhere in it, and no redirect other than the inert ones (the fd-dups and the /dev/null discards, which write no file and are stripped before that check) - which is suppressed silently. Since #1273 a pipeline or |/;/&&/|| sequence is also suppressed when EVERY segment is such a read-only command (echo, git show/log/diff and a GET-only gh api are allowed as segments too), with no redirect, substitution or unquoted metachar anywhere, up to a smaller length limit. Two of those verbs, grep and sed, do have a write surface and so carry an ADDITIONAL per-verb condition (#530): grep must name none of the ugrep options the Claude Code shim intercepts, and sed must use only -n/-E/-r-class read-only flags with a single bare p/d/q/=/n/N script command under at most one address. The exemption also applies only up to a length limit, so that a very large input cannot stall this hook past its time budget and have the resulting silence read as approval. This command is not that, so it asks: it uses a verb outside that set, fails one of those two per-verb conditions, contains a write-capable construct, or is longer than that limit. Confirm intent before proceeding."}}'
   fi
   exit 0
@@ -4038,10 +4092,18 @@ case "$f" in
     # Mirrors the Bash arm's identical ".." guard in
     # bash_hits_spec_gated_path() - see that function's own comment for the
     # KNOWN RESIDUAL (escaped/split ".." spellings) neither guard closes.
-    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"This path names docs/superpowers/ alongside a \"..\" traversal segment - this guard matches the path STRING only and cannot normalise it, so it cannot tell whether the traversal escapes into docs/superpowers/specs/ or elsewhere in the tree. Confirm the user wants this change before editing."}}'
+    if spec_gate_is_advisory; then
+      spec_gate_advisory "a docs/superpowers path with a traversal segment"
+    else
+      echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"This path names docs/superpowers/ alongside a \"..\" traversal segment - this guard matches the path STRING only and cannot normalise it, so it cannot tell whether the traversal escapes into docs/superpowers/specs/ or elsewhere in the tree. Confirm the user wants this change before editing."}}'
+    fi
     ;;
   *docs/superpowers/specs/*)
-    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"docs/superpowers/specs/ is the user-approved source of truth - CLAUDE.md forbids silently deviating from it. Confirm the user wants the spec itself changed before editing."}}'
+    if spec_gate_is_advisory; then
+      spec_gate_advisory "docs/superpowers/specs/"
+    else
+      echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"docs/superpowers/specs/ is the user-approved source of truth - CLAUDE.md forbids silently deviating from it. Confirm the user wants the spec itself changed before editing."}}'
+    fi
     ;;
   *docs/superpowers/plans/*)
     # #405: this arm used to not exist at all, so an Edit/Write to a file
@@ -4086,6 +4148,10 @@ case "$f" in
     # restructured into (path, decision) pairs, which changes the Bash arm's
     # own data and is squarely against #405's "the Bash arm is left
     # UNCHANGED".
-    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"docs/superpowers/ is the user-approved spec/plan tree and is guarded as a whole (#405/#421) - CLAUDE.md forbids silently deviating from docs/superpowers/specs/, and the same caution applies to the rest of the tree. Confirm the user wants this file changed before editing."}}'
+    if spec_gate_is_advisory; then
+      spec_gate_advisory "docs/superpowers/"
+    else
+      echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"docs/superpowers/ is the user-approved spec/plan tree and is guarded as a whole (#405/#421) - CLAUDE.md forbids silently deviating from docs/superpowers/specs/, and the same caution applies to the rest of the tree. Confirm the user wants this file changed before editing."}}'
+    fi
     ;;
 esac

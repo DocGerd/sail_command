@@ -5074,7 +5074,9 @@ making design-level decisions; do not silently deviate.
   string-level check cannot see — cwd + bare filename, variable or
   programmatic path construction, quote-splitting — enumerated in the hook's
   own "KNOWN SILENT-ALLOW PATHS" comment; read that, not this, for the
-  current list.
+  current list. The maintainer can silence the spec prompts locally with
+  `SC_SPEC_GATE=advisory` in gitignored `.claude/settings.local.json`'s `env`
+  (personal; exact value only, anything else keeps the ask).
 - `.superpowers/` (SDD ledger) is gitignored — append session records
   directly, no PR needed.
 - **Claude Code config placement**: shared config is COMMITTED — `.mcp.json`
