@@ -1,4 +1,4 @@
-import { BOATS, boatById, DEFAULT_BOAT_ID } from '../data/boats';
+import { BOATS, boatById, DEFAULT_BOAT_ID, MAX_HEADSAILS } from '../data/boats';
 import { POLAR_TIER_LABEL_KEY } from '../lib/boatProvenance';
 import { NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
 import {
@@ -598,6 +598,8 @@ function migrateRequest(
   const storedSailIdsAreValid =
     Array.isArray(request.sailIds) &&
     request.sailIds.length > 0 &&
+    // Over the cap = not a list this build could have written: take the fallback.
+    request.sailIds.length <= MAX_HEADSAILS &&
     request.sailIds.every((s) => typeof s === 'string') &&
     request.sailIds.every((s) => sailIsSafe(s as string));
   // The FALLBACK reconstruction: catalogue-filtered ONLY for a modern-shape
