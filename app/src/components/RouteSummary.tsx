@@ -574,6 +574,8 @@ export default function RouteSummary({
   // (every plan solves exactly the same two sails req.sailIds always
   // carries) and correctly generalises if that ever changes.
   const sailTabs = plan.result.sails.map((s) => s.sailId);
+  // Spec R (N = 1): nothing to compare, so no tablist and no verdict chip.
+  const singleSail = sailTabs.length === 1;
 
   // #704: roving-tabindex focus targets for the rig tablist, keyed by
   // SailId. A ref, not state — moving focus must not itself trigger a
@@ -647,60 +649,64 @@ export default function RouteSummary({
           arrow key did anything. aria-controls on every tab points at the
           ONE tabpanel below (RIG_TABPANEL_ID; only one panel ever renders),
           whose aria-labelledby tracks the currently active rig's tab id. */}
-      <div
-        role="tablist"
-        aria-label={t('route.rigTabs')}
-        className="rig-tabs"
-        onKeyDown={handleRigTabsKeyDown}
-      >
-        {sailTabs.map((r) => (
-          <button
-            key={r}
-            id={rigTabId(r)}
-            type="button"
-            role="tab"
-            aria-selected={rig === r}
-            aria-controls={RIG_TABPANEL_ID}
-            tabIndex={rig === r ? 0 : -1}
-            ref={(el) => {
-              rigTabRefs.current[r] = el;
-            }}
-            onClick={() => {
-              if (r !== rig) onRigChange(r);
-            }}
-          >
-            {t(sailLabelKey(r))}
-            {rigRecommendation.kind === 'decided' && rigRecommendation.rig === r && (
-              <span aria-label={t('route.recommended')} title={t('route.recommended')}>
-                {' '}
-                ★
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
+      {!singleSail && (
+        <div
+          role="tablist"
+          aria-label={t('route.rigTabs')}
+          className="rig-tabs"
+          onKeyDown={handleRigTabsKeyDown}
+        >
+          {sailTabs.map((r) => (
+            <button
+              key={r}
+              id={rigTabId(r)}
+              type="button"
+              role="tab"
+              aria-selected={rig === r}
+              aria-controls={RIG_TABPANEL_ID}
+              tabIndex={rig === r ? 0 : -1}
+              ref={(el) => {
+                rigTabRefs.current[r] = el;
+              }}
+              onClick={() => {
+                if (r !== rig) onRigChange(r);
+              }}
+            >
+              {t(sailLabelKey(r))}
+              {rigRecommendation.kind === 'decided' && rigRecommendation.rig === r && (
+                <span aria-label={t('route.recommended')} title={t('route.recommended')}>
+                  {' '}
+                  ★
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Additive rig-comparison chip (the ★ on the tab stays for a 'decided'
           comparison — e2e depends on it). #259: an ETA tie or an all-motor
           comparison must not silently badge one rig as recommended — say so
           honestly instead of picking a winner. */}
       <Chip className="chip-faster-rig">
-        {rigRecommendation.kind === 'decided'
-          ? t('route.fasterRig', { rig: t(sailLabelKey(rigRecommendation.rig)) })
-          : // #1398b: name the tier-C reason instead of the generic
-            // "not compared" sentence — only when tier is WHY, per
-            // rigComparisonSuppressedByTier's own precedence comment.
-            rigComparisonSuppressedByTier(plan)
-            ? t('route.rigNotComparedEstimated', {
-                boat: plan.request.boat.name,
-                tier: t('boat.polarTier.estimated'),
-              })
-            : renderRigVerdict(
-                rigRecommendation.kind,
-                plan.result.comparisonComplete,
-                plan.result.sails,
-                t,
-              )}
+        {singleSail
+          ? renderRigVerdict('not-compared', plan.result.comparisonComplete, plan.result.sails, t)
+          : rigRecommendation.kind === 'decided'
+            ? t('route.fasterRig', { rig: t(sailLabelKey(rigRecommendation.rig)) })
+            : // #1398b: name the tier-C reason instead of the generic
+              // "not compared" sentence — only when tier is WHY, per
+              // rigComparisonSuppressedByTier's own precedence comment.
+              rigComparisonSuppressedByTier(plan)
+              ? t('route.rigNotComparedEstimated', {
+                  boat: plan.request.boat.name,
+                  tier: t('boat.polarTier.estimated'),
+                })
+              : renderRigVerdict(
+                  rigRecommendation.kind,
+                  plan.result.comparisonComplete,
+                  plan.result.sails,
+                  t,
+                )}
       </Chip>
 
       <OfflineMapStatus key={`${plan.id}-${plan.createdAtMs}`} plan={plan} />
@@ -795,7 +801,11 @@ export default function RouteSummary({
           aria-labelledby tracks the currently active rig's tab id; every
           tab's aria-controls points at this one id since only one panel is
           ever rendered at a time. */}
-      <div role="tabpanel" id={RIG_TABPANEL_ID} aria-labelledby={rigTabId(rig)}>
+      <div
+        {...(singleSail
+          ? {}
+          : { role: 'tabpanel', id: RIG_TABPANEL_ID, 'aria-labelledby': rigTabId(rig) })}
+      >
         {!result || !summary ? (
           <p className="inline-alert" role="alert">
             {/* #662: this branch renders ONLY for a SAVED plan (`plan` is a
