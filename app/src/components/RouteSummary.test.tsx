@@ -304,12 +304,51 @@ describe('RouteSummary', () => {
     const { container } = renderSummary({ plan, rig: gone });
 
     // The interpolated site: `String(undefined)` is what got substituted.
-    expect(container.textContent).toContain(`Faster: ${en['route.rig.unknown']}`);
-    // The bare-lookup sites: an empty accessible name is invisible to
-    // `toContain`, so assert the tab's own name directly.
-    expect(screen.getByRole('tab').textContent).toContain(en['route.rig.unknown']);
+    expect(container.textContent).toContain(`Planned with ${en['route.rig.unknown']} only`);
     // Belt and braces across every surface this card renders.
     expect(container.textContent).not.toContain('undefined');
+  });
+
+  describe('R8: one requested sail', () => {
+    function oneSailPlan() {
+      const plan = makePlan({ rigRecommendation: { kind: 'not-compared' } });
+      plan.result = {
+        ...plan.result,
+        sails: [{ sailId: 'genoa', result: GENOA_RESULT, reason: null }],
+      };
+      return plan;
+    }
+
+    it('shows route.singleSail in place of the verdict chip', () => {
+      renderSummary({ plan: oneSailPlan(), rig: 'genoa' });
+      expect(screen.getByText('Planned with Genoa only')).toBeInTheDocument();
+      expect(screen.queryByText(en['route.rigNotCompared'])).not.toBeInTheDocument();
+    });
+
+    it('renders no rig tablist, tab or tabpanel', () => {
+      renderSummary({ plan: oneSailPlan(), rig: 'genoa' });
+      expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+      expect(screen.queryByRole('tab')).not.toBeInTheDocument();
+      expect(screen.queryByRole('tabpanel')).not.toBeInTheDocument();
+    });
+
+    it('wins over route.comparisonIncomplete', () => {
+      const plan = oneSailPlan();
+      plan.result = { ...plan.result, comparisonComplete: false };
+      renderSummary({ plan, rig: 'genoa' });
+      expect(screen.getByText('Planned with Genoa only')).toBeInTheDocument();
+      expect(screen.queryByText(en['route.comparisonIncomplete'])).not.toBeInTheDocument();
+    });
+
+    it('German copy', () => {
+      localStorage.setItem('sc-lang', 'de');
+      render(
+        <I18nProvider>
+          <RouteSummary plan={oneSailPlan()} rig="genoa" onRigChange={vi.fn()} />
+        </I18nProvider>,
+      );
+      expect(screen.getByText(/^Nur mit .* geplant$/)).toBeInTheDocument();
+    });
   });
 
   it('shows a ★ badge on the recommended tab and not on the other', () => {
@@ -401,18 +440,15 @@ describe('RouteSummary', () => {
   // real result: the presence check pins the whole honest sentence, and
   // the absence check names the exact hazard (a duplicated sail name)
   // explicitly, independent of what the correct sentence happens to say.
-  it('#578 review Minor 5: a tie verdict with only ONE usable sail id renders the honest fallback, never a self-tie', () => {
+  it('#578 review Minor 5 / R8: a stored tie verdict with only ONE sail renders the single-sail sentence, never a self-tie', () => {
     const plan = makePlan({ rigRecommendation: { kind: 'tie' } });
     plan.result = {
       ...plan.result,
       sails: [{ sailId: 'genoa', result: GENOA_RESULT, reason: null }],
     };
     renderSummary({ plan, rig: 'genoa' });
-    expect(
-      screen.getByText(
-        `Genoa and ${en['route.rig.unknown']} are effectively tied for this passage`,
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByText('Planned with Genoa only')).toBeInTheDocument();
+    expect(screen.queryByText(/effectively tied/)).not.toBeInTheDocument();
     // Names the exact hazard (a duplicated sail name) explicitly — see the
     // block comment above for why this is kept alongside the presence
     // check rather than instead of it.

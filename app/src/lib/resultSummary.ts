@@ -214,6 +214,7 @@ export function resultVerdictKey(
   comparisonComplete: boolean,
   sails?: readonly SailResult[],
 ): MsgKey {
+  if (sails?.length === 1) return 'route.singleSail';
   if (kind === 'not-compared' && !comparisonComplete) {
     return 'route.comparisonIncomplete';
   }
@@ -288,6 +289,9 @@ export function renderRigVerdict(
   t: (key: MsgKey, vars?: Record<string, string | number>) => string,
 ): string {
   const key = resultVerdictKey(kind, comparisonComplete, sails);
+  if (key === 'route.singleSail') {
+    return t(key, { sail: t(sailLabelKey(sails[0]?.sailId ?? 'unknown')) });
+  }
   if (key === 'route.rigTie') {
     const [a, b] = tiedSailIds(sails.map((s) => s.sailId));
     return t(key, { sailA: t(sailLabelKey(a)), sailB: t(sailLabelKey(b)) });

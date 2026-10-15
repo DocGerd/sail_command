@@ -16,6 +16,7 @@ import {
   averageSpeedKn,
   resultSummary,
   resultVerdictKey,
+  renderRigVerdict,
   rigRecommendationOf,
   sailLabelKey,
 } from './resultSummary';
@@ -246,8 +247,20 @@ describe('resultVerdictKey (#1166 one-sail-failed)', () => {
     );
   });
 
-  it('N=1 (one requested sail, that one failed): the length!==2 gate excludes it from the one-failed key', () => {
-    expect(resultVerdictKey('not-compared', true, [failed])).toBe('route.rigNotCompared');
+  it('N=1 (one requested sail, that one failed): reports route.singleSail, not the one-failed key', () => {
+    expect(resultVerdictKey('not-compared', true, [failed])).toBe('route.singleSail');
+  });
+
+  it('N=1 wins over comparisonComplete false and over tie/moot', () => {
+    expect(resultVerdictKey('not-compared', false, [solved])).toBe('route.singleSail');
+    expect(resultVerdictKey('tie', true, [solved])).toBe('route.singleSail');
+    expect(resultVerdictKey('moot', true, [solved])).toBe('route.singleSail');
+  });
+
+  it('renderRigVerdict names the lone sail, in de and en', () => {
+    const tEn = (k: keyof typeof en, v?: Record<string, string | number>) =>
+      (en[k] as string).replace('{sail}', String(v?.sail ?? ''));
+    expect(renderRigVerdict('not-compared', true, [solved], tEn)).toBe('Planned with Genoa only');
   });
 
   it('N>=3 with one failure: the length!==2 gate excludes it from the one-failed key', () => {
