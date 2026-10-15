@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { useDepartureScan, type DepartureScanRequest } from './useDepartureScan';
+import { scanSailIdsFor, useDepartureScan, type DepartureScanRequest } from './useDepartureScan';
 import type { ReplanClient } from './replan';
 import { GENOA_SAIL_ID } from '../data/boats';
 import { RoutingError } from '../routing/workerClient';
@@ -132,6 +132,10 @@ describe('useDepartureScan', () => {
     for (const call of plan.mock.calls) {
       expect((call[0] as PlanRequest).sailIds).toEqual([FOCK_SAIL_ID]);
     }
+  });
+
+  it('empty aboard set fails closed: requests no sail, never an unaboard genoa', () => {
+    expect(scanSailIdsFor([])).toEqual([]);
   });
 
   it('genoa aboard but not first: still scans the genoa alone', async () => {
