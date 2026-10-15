@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -82,9 +82,9 @@ const salona45 = (
 const round2 = (x: number): number => Math.round(x * 100) / 100;
 const deg = (a: number): number => (a * Math.PI) / 180;
 
-function run(args: string[]): { ok: boolean; output: string } {
+function run(args: string[], script = GEN): { ok: boolean; output: string } {
   try {
-    const stdout = execFileSync('node', [GEN, ...args], {
+    const stdout = execFileSync('node', [script, ...args], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -118,6 +118,32 @@ function scratchSources(mutate?: (rec: CertRecord) => void): string {
     writeFileSync(join(dir, CERT_FILE), JSON.stringify(env));
   }
   return dir;
+}
+
+/**
+ * A scratch pipeline/ whose polars-source.json commits `easyGo` in place of the
+ * borrower block, so --check has a committed record to reproduce.
+ */
+function scratchPipeline(easyGo: unknown, mutate?: (rec: CertRecord) => void): string {
+  const root = mkdtempSync(join(tmpdir(), 'sc-orc-'));
+  scratchRoots.push(root);
+  const dir = join(root, 'pipeline');
+  mkdirSync(dir);
+  cpSync(GEN, join(dir, 'derive_orc_polars.mjs'));
+  cpSync(join(PIPELINE, 'estimate_polars.mjs'), join(dir, 'estimate_polars.mjs'));
+  cpSync(SOURCES, join(dir, 'orc-sources'), { recursive: true });
+  const src = JSON.parse(readFileSync(join(PIPELINE, 'polars-source.json'), 'utf8')) as {
+    boats: { id: string }[];
+  };
+  src.boats = src.boats.map((b) => (b.id === 'salona-44-easy-go' ? (easyGo as { id: string }) : b));
+  writeFileSync(join(dir, 'polars-source.json'), JSON.stringify(src));
+  if (mutate) {
+    const file = join(dir, 'orc-sources', CERT_FILE);
+    const env = JSON.parse(readFileSync(file, 'utf8')) as { record: CertRecord };
+    mutate(env.record);
+    writeFileSync(file, JSON.stringify(env));
+  }
+  return join(dir, 'derive_orc_polars.mjs');
 }
 
 let boat: EmittedBoat;
@@ -311,40 +337,53 @@ describe('derive_orc_polars.mjs — EASY GO! fock (orc-ns-cert-rows-v1)', () => 
       expect(fock[boat.twa.indexOf(Number(twa))], `row ${twa}`).toEqual(row);
   });
 
-  it('against the polargraph Jib: each of 77 deltas within 0.5 pt of the committed delta, all within ±10 % (P.10 item 9)', () => {
-    const committed: Record<number, number[]> = {
-      52: [-1.38, -2.02, -2.08, -2.22, -2.75, -3.18, -3.36],
-      60: [-2.1, -2.74, -3.48, -3.9, -3.58, -3.64, -3.58],
-      70: [-3.09, -3.31, -4.12, -4.49, -4.47, -3.96, -3.88],
-      80: [-4.26, -3.93, -4.45, -4.69, -4.95, -5.12, -4.35],
-      90: [-4.78, -3.84, -3.76, -3.91, -3.87, -4.46, -4.81],
-      110: [-5.2, -3.63, -1.05, -0.97, -0.7, 0.22, 0.83],
-      120: [-0.98, 1.45, 2.25, 2.32, 1.33, 1.62, 3.33],
-      135: [9.0, 7.93, 7.49, 6.0, 4.57, 2.68, 2.91],
-      150: [3.75, 3.73, 3.24, 2.18, 0.97, -0.13, -1.83],
-      165: [-2.79, -1.88, -1.72, -1.47, -1.59, -1.45, -2.21],
-      180: [-3.49, -2.64, -2.34, -2.0, -2.06, -1.87, -2.57],
-    };
-    let shared = 0;
-    for (const [c, w] of polargraph.tws.entries())
-      for (const cell of polargraph.jib[String(w)]!) {
-        if (cell.tag !== '' || !boat.twa.includes(cell.twa)) continue;
-        shared++;
-        const delta = (at(fock, cell.twa, w) / cell.btv - 1) * 100;
-        expect(Math.abs(delta - committed[cell.twa]![c]!), `${cell.twa}/${w}`).toBeLessThanOrEqual(
-          0.5,
-        );
-        expect(Math.abs(delta), `${cell.twa}/${w}`).toBeLessThanOrEqual(10);
-      }
-    expect(shared).toBe(77);
+  const committedDelta: Record<number, number[]> = {
+    52: [-1.38, -2.02, -2.08, -2.22, -2.75, -3.18, -3.36],
+    60: [-2.1, -2.74, -3.48, -3.9, -3.58, -3.64, -3.58],
+    70: [-3.09, -3.31, -4.12, -4.49, -4.47, -3.96, -3.88],
+    80: [-4.26, -3.93, -4.45, -4.69, -4.95, -5.12, -4.35],
+    90: [-4.78, -3.84, -3.76, -3.91, -3.87, -4.46, -4.81],
+    110: [-5.2, -3.63, -1.05, -0.97, -0.7, 0.22, 0.83],
+    120: [-0.98, 1.45, 2.25, 2.32, 1.33, 1.62, 3.33],
+    135: [9.0, 7.93, 7.49, 6.0, 4.57, 2.68, 2.91],
+    150: [3.75, 3.73, 3.24, 2.18, 0.97, -0.13, -1.83],
+    165: [-2.79, -1.88, -1.72, -1.47, -1.59, -1.45, -2.21],
+    180: [-3.49, -2.64, -2.34, -2.0, -2.06, -1.87, -2.57],
+  };
+
+  /** Percent delta of the jib against every shared polargraph Jib cell. */
+  function polargraphDeltas(): { twa: number; tws: number; col: number; delta: number }[] {
+    const out: { twa: number; tws: number; col: number; delta: number }[] = [];
+    for (const [col, tws] of polargraph.tws.entries())
+      for (const cell of polargraph.jib[String(tws)]!)
+        if (cell.tag === '' && boat.twa.includes(cell.twa))
+          out.push({
+            twa: cell.twa,
+            tws,
+            col,
+            delta: (at(fock, cell.twa, tws) / cell.btv - 1) * 100,
+          });
+    return out;
+  }
+
+  it('against the polargraph Jib, each of 77 deltas is within 0.5 pt of the committed delta (P.10 item 9)', () => {
+    const off = polargraphDeltas()
+      .filter((d) => Math.abs(d.delta - committedDelta[d.twa]![d.col]!) > 0.5)
+      .map((d) => `${d.twa}/${d.tws}: ${d.delta.toFixed(2)}`);
+    expect(off).toEqual([]);
+  });
+
+  it('against the polargraph Jib, all 77 deltas lie within ±10 % (P.10 item 9)', () => {
+    const deltas = polargraphDeltas();
+    expect(deltas).toHaveLength(77);
+    const out = deltas
+      .filter((d) => Math.abs(d.delta) > 10)
+      .map((d) => `${d.twa}/${d.tws}: ${d.delta.toFixed(2)}`);
+    expect(out).toEqual([]);
   });
 
   it('the jib note’s polargraph range and the ceiling source’s peak match the table', () => {
-    const deltas: number[] = [];
-    for (const w of polargraph.tws)
-      for (const cell of polargraph.jib[String(w)]!)
-        if (cell.tag === '' && boat.twa.includes(cell.twa))
-          deltas.push((at(fock, cell.twa, w) / cell.btv - 1) * 100);
+    const deltas = polargraphDeltas().map((d) => d.delta);
     const lo = Math.round(Math.min(...deltas));
     const hi = Math.round(Math.max(...deltas));
     expect(boat.sails.fock.provenance.note).toContain(`differs by ${lo}% to +${hi}% per cell`);
@@ -477,5 +516,43 @@ describe('derive_orc_polars.mjs — emitted record (spec §P.1, §P.6)', () => {
       ramp: { boatId: 'salona-45', fromSailId: 'fock', toSailId: 'genoa', clampMin: 1 },
       uncertaintyPct: 10,
     });
+  });
+});
+
+describe('derive_orc_polars.mjs --check against a committed record (spec §P.6 D5)', () => {
+  it('reproduces the emitted record byte for byte (control)', () => {
+    const r = run(['--check'], scratchPipeline(structuredClone(boat)));
+    expect(r.ok, r.output).toBe(true);
+    expect(r.output).toContain('salona-44-easy-go/fock reproduces');
+    expect(r.output).toContain('salona-44-easy-go/genoa reproduces');
+  });
+
+  it('reds naming the jib when a committed speeds cell is changed', () => {
+    const edited = structuredClone(boat);
+    edited.sails.fock.speeds[7]![3] = 7.95;
+    const r = run(['--check'], scratchPipeline(edited));
+    expect(r.ok, r.output).toBe(false);
+    expect(r.output).toMatch(/NOT REPRODUCIBLE salona-44-easy-go\/fock: committed speeds/);
+  });
+
+  it('reds naming the jib and the genoa when a certificate cell moves', () => {
+    const r = run(
+      ['--check'],
+      scratchPipeline(structuredClone(boat), (rec) => (rec.Allowances.R90![3] = 450)),
+    );
+    expect(r.ok, r.output).toBe(false);
+    expect(r.output).toMatch(/NOT REPRODUCIBLE salona-44-easy-go\/fock: committed speeds/);
+    expect(r.output).toMatch(/NOT REPRODUCIBLE salona-44-easy-go\/genoa: committed speeds/);
+  });
+
+  it('reds when the committed record carries tables without derivation blocks', () => {
+    const edited = structuredClone(boat) as unknown as {
+      sails: Record<string, { derivation?: unknown }>;
+    };
+    delete edited.sails.fock!.derivation;
+    delete edited.sails.genoa!.derivation;
+    const r = run(['--check'], scratchPipeline(edited));
+    expect(r.ok, r.output).toBe(false);
+    expect(r.output).toMatch(/salona-44-easy-go\/fock: declares no derivation block/);
   });
 });
