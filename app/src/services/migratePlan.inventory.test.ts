@@ -89,15 +89,110 @@ describe('#1661 migratePlan: aboard inventory, pre-trip scope', () => {
     expect(migrated!.request.sailIds).toEqual(at);
   });
 
-  it('a record without the new fields reads without gaining any', () => {
+  it('a record without the new fields reads exactly as the pre-R10 function read it', () => {
+    // Literal captured by running migratePlan at e3ca6c86 (before this change) on this fixture.
+    const BASE_OUTPUT = {
+      id: 'p1',
+      name: 'p1',
+      createdAtMs: 1700000000000,
+      schemaVersion: 1,
+      request: {
+        origin: { lat: 54.79, lon: 9.43 },
+        destination: { lat: 54.85, lon: 10.51 },
+        viaPoints: [],
+        departureMs: 1700003600000,
+        settings: {
+          safetyDepthM: 3,
+          depthComfortMarginM: 2,
+          motorSpeedKn: 6.5,
+          motorThresholdKn: 2.5,
+          sailPreferenceKn: 2.8,
+          maneuverPenaltyS: 45,
+          performanceFactor: 0.9,
+          motorEnabled: true,
+          showOwnship: false,
+        },
+        boat: {
+          id: 'gone-45',
+          name: 'Gone 45',
+          draftM: 2.4,
+          sails: [
+            { id: 's0', label: 's0', polarProvenance: { tier: 'estimated', note: 'n' } },
+            { id: 's1', label: 's1', polarProvenance: { tier: 'estimated', note: 'n' } },
+          ],
+        },
+        sailIds: ['s0', 's1'],
+      },
+      windGrid: { lats: [54], lons: [9], timesMs: [1000] },
+      result: {
+        status: 'ok',
+        sails: [
+          {
+            sailId: 's0',
+            result: {
+              legs: [
+                {
+                  kind: 'motor',
+                  board: null,
+                  start: { lat: 54.79, lon: 9.43 },
+                  end: { lat: 54.85, lon: 10.51 },
+                  startTimeMs: 1700003600000,
+                  endTimeMs: 1700007200000,
+                  headingDeg: 90,
+                  twsKn: 8,
+                  speedKn: 6.5,
+                  distanceNm: 12.5,
+                  maneuverAtStart: null,
+                },
+              ],
+              etaMs: 2000000,
+              durationMs: 3600000,
+              distanceNm: 12.5,
+              maneuverCount: 2,
+              motorDistanceNm: 1.5,
+              sailId: 's0',
+            },
+            reason: null,
+          },
+          {
+            sailId: 's1',
+            result: {
+              legs: [
+                {
+                  kind: 'motor',
+                  board: null,
+                  start: { lat: 54.79, lon: 9.43 },
+                  end: { lat: 54.85, lon: 10.51 },
+                  startTimeMs: 1700003600000,
+                  endTimeMs: 1700007200000,
+                  headingDeg: 90,
+                  twsKn: 8,
+                  speedKn: 6.5,
+                  distanceNm: 12.5,
+                  maneuverAtStart: null,
+                },
+              ],
+              etaMs: 2000001,
+              durationMs: 3600000,
+              distanceNm: 12.5,
+              maneuverCount: 2,
+              motorDistanceNm: 1.5,
+              sailId: 's1',
+            },
+            reason: null,
+          },
+        ],
+        recommended: 's0',
+        comparisonComplete: true,
+        snappedOrigin: { lat: 54.79, lon: 9.43 },
+        snappedDestination: { lat: 54.85, lon: 10.51 },
+      },
+    };
     const raw = modernPlan(['s0', 's1'], ['s0', 's1']);
     const before = JSON.stringify(raw);
-    const migrated = migratePlan(raw)!;
+    const migrated = migratePlan(raw);
     expect(JSON.stringify(raw)).toBe(before);
-    expect(Object.hasOwn(migrated.request, 'hoistedSailId')).toBe(false);
-    expect(Object.hasOwn(migrated.request, 'downwindSailIds')).toBe(false);
-    expect(migrated.request.sailIds).toEqual(['s0', 's1']);
-    expect(migratePlan(migrated)).toEqual(migrated);
+    expect(JSON.parse(JSON.stringify(migrated))).toEqual(BASE_OUTPUT);
   });
 
   it('a one-sail plan round-trips', () => {
@@ -108,7 +203,7 @@ describe('#1661 migratePlan: aboard inventory, pre-trip scope', () => {
     expect(migratePlan(migrated)).toEqual(migrated);
   });
 
-  it('an unreadable record is returned as null (listed), never skipped or thrown', () => {
+  it('smoke: an unreadable record makes migratePlan return null rather than throw (listing: db.test.ts:452)', () => {
     const noRecommended = modernPlan(['s0'], ['s0']);
     noRecommended.result.recommended = 's9';
     expect(migratePlan(noRecommended)).toBeNull();
