@@ -3,8 +3,9 @@
 - **Issue:** #18 (routing: currents/tides and sea state)
 - **Date:** 2026-10-15
 - **Status:** Decision / Recommendation
-- **Verdict:** **The gate FAILS. Build nothing.** Every candidate fails G1
-  (validated skill in the straits). The best browser path, DMI DKSS (CORS,
+- **Verdict:** **The gate FAILS. Build nothing.** Every forecast
+  candidate (DKSS, BSH GRIB, CMEMS, Open-Meteo) fails G1 (validated skill in
+  the straits). The best browser path, DMI DKSS (CORS,
   CC BY 4.0, no key), also fails G2 (horizon); its operational blockers are in
   §4. Currents stay out of the cost function.
 
@@ -13,8 +14,9 @@ Maintainer decision, 2026-10-15: spike doc, no build.
 This supplements the 2026-07-22 waves spec §2 (same outcome, wider grounds:
 skill, horizon, access) and does not replace it. That section is headed "do
 not revisit under this issue"; this spike is the maintainer-sanctioned
-exception. The spec's "real 1-3 kn tidal streams" wording is not carried
-forward: §2 below finds the flow wind-dominated, from pilot-book text only.
+exception ([#18 comment of 2026-10-02](https://github.com/DocGerd/sail_command/issues/18#issuecomment-5949283989)). The spec's "real 1-3 kn tidal streams" wording is not carried
+forward: §2 below says only that wind-driven flow can dominate in these
+straits, from pilot-book text.
 
 ## 0. Provenance
 
@@ -108,10 +110,8 @@ and https://www.dmi.dk/friedata/dokumentation/forecast-data-edr-api.
 - **Coverage (G6).** Null on 1.11 % of navigable cells (mask depth byte >= 30,
   every 3rd mask cell, 472,711 cells, nearest-node rounding). The first
   sweep's 1.3 % (6,204) did not reproduce. Harbours more than 0.8 nm from a
-  wet cell: Flensburg 0.86, Kappeln 0.88, Maasholm 1.71. Als Sund is
-  narrower than the 0.5 nm cell (width not measured; the research's
-  0.1-0.2 nm is an unsourced estimate), so the value is a cell average, not
-  the jet.
+  wet cell: Flensburg 0.86, Kappeln 0.88, Maasholm 1.71. Als Sund is one
+  cell wide in the BSH sea mask (§3.2); DKSS IDW shares that grid.
 - **Verdict.** Best browser path, still fails G1 and G2. §4 lists the
   operational blockers.
 
@@ -215,13 +215,12 @@ sources.
   - **Horizon.** 120 h per run against a 6-day wind horizon.
   - **Reliability.** HTTP 429 "Server is busy" with no `Retry-After`: 6 of 8
     cube requests in one session, 6 of 7 in an independent re-run, even at 3 s
-    spacing. Cause unknown (looks like a global busy signal, unverified).
-    No key is offered, so no quota upgrade path was found. Latency was
+    spacing. Cause unknown (looks like a global busy signal, unverified). Latency was
     28.3 s once and 2.4 s once (two samples).
   - **Deprecation.** DMI's EDR page announces removal of the `/grib`
     endpoint (whole-domain files) on 2026-11-01 (read 2026-10-15).
-  - **Als Sund.** Narrower than one 0.5 nm cell (width not measured); only
-    Lillebælt has a sub-0.2 nm nest.
+  - **Als Sund.** One cell wide in the sea mask; only Lillebælt has a
+    sub-0.2 nm nest.
   - **Skill.** No published validation in the straits. DMI HBM ADCP validation
     found only for the Limfjord (secondary, search result only).
 - **Use CMEMS skill as a proxy for DKSS/BSH (rejected as evidence).**
@@ -242,7 +241,8 @@ sources.
 
 ## 5. Recommendation
 
-**Do not build a current term.** The gate fails at G1 for every candidate:
+**Do not build a current term.** The gate fails at G1 for every forecast candidate (DKSS, BSH GRIB, CMEMS,
+Open-Meteo):
 there is no published validation in Als Sund, Lillebælt, Storebælt or
 Flensburg Fjord for BSH, DMI or CMEMS, and the only published numbers
 (CMEMS r = 0.03-0.08 at two moorings) are poor. Honest omission beats
