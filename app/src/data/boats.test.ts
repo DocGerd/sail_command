@@ -151,27 +151,31 @@ describe('boat catalogue', () => {
       'salona-44-speedy-go/fock': 'estimated',
       'elan-444-piranja/genoa': 'estimated',
       'elan-444-piranja/fock': 'estimated',
-      // #1575: tier C by sharing SPEEDY GO!'s estimated tables (#567).
+      // #1575, own tables since spec P: the jib is anchored on a sister hull's
+      // ORC certificate, the genoa is the jib times the Salona 45's ramp.
       'salona-44-easy-go/genoa': 'estimated',
-      'salona-44-easy-go/fock': 'estimated',
+      'salona-44-easy-go/fock': 'modelled',
     });
   });
 
   // Spec N.4's consequence, stated at the catalogue level because this is the
-  // INPUT the routing layer's suppression reads. `assemble` must resolve any
-  // sail set containing a tier-C sail to `not-compared` (spec N.6 E6); that
-  // rule is enforced in the routing layer and is NOT in this branch's scope,
-  // so this row pins only the half the catalogue owns — that each tier-C boat
-  // presents a set which is entirely tier C, giving the suppression rule an
-  // unambiguous input rather than a mixed one it would have to reason about.
-  it('a tier-C boat is tier C in EVERY sail, never a mixed set', () => {
+  // INPUT the routing layer's suppression reads. A tier-C boat presents a set
+  // that is entirely tier C, so the suppression rule gets an unambiguous input.
+  // The one deliberate exception (spec P.9, amended): a mixed set is allowed
+  // only where the estimated sail is the jib times a ramp (D1), which
+  // polarProvenance.test checks against `derivation.fromSailId`. This row pins
+  // WHICH boats are mixed; `comparisonSuppressed` is `some`, so they still
+  // suppress.
+  const MIXED_TIER_BOATS = ['salona-44-easy-go'];
+  it('a tier-C boat is tier C in EVERY sail, except the mixed-tier allowlist', () => {
+    const mixed: string[] = [];
     for (const b of BOATS) {
       const tiers = b.sails.map((s) => s.polarProvenance.tier);
       if (!tiers.includes('estimated')) continue;
-      expect(tiers, `${b.id} mixes estimated and non-estimated sails`).toEqual(
-        tiers.map(() => 'estimated'),
-      );
+      if (tiers.every((t) => t === 'estimated')) continue;
+      mixed.push(b.id);
     }
+    expect(mixed).toEqual(MIXED_TIER_BOATS);
   });
 
   // Spec N.2's required disclosure. The picker renders this, so the DATA has
@@ -230,7 +234,9 @@ describe('boat catalogue', () => {
     expect(relaxationFloorM(b)).toBe(2.6);
     expect(minSafetyDepthM(b)).toBe(2.7);
     expect(b.draftProvenance.hullVerified).toBe(false);
-    expect(b.draftProvenance.note).toContain('The operator’s page for this boat gives 2.55 m');
+    expect(b.draftProvenance.note).toContain('the operator’s page for this boat gives 2.55 m');
+    expect(b.draftProvenance.note).toContain('2.55 m gives the same 3.5 m gate');
+    expect(b.draftProvenance.note).toContain('a sister hull measured at 2.415 m');
   });
 
   it('defaults to the Salona 45', () => {

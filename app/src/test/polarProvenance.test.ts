@@ -50,8 +50,8 @@ const source = JSON.parse(readFileSync(join(REPO, 'pipeline', 'polars-source.jso
 };
 
 // Spec P.6/P.9 (#1660). Pure over a source-shaped value so the synthetic
-// fixtures below can show each rule fires; the real source is vacuous until
-// EASY GO! carries its own derivation blocks. Method ids and tiers mirror
+// fixtures below can show each rule fires, and the rows over the real catalogue
+// assert their own inputs are non-empty (EASY GO! carries the blocks). Method ids and tiers mirror
 // build_polars.mjs's DERIVATION_TIER; token matching is case-SENSITIVE, as D6.
 const CERT_METHOD = 'orc-ns-cert-rows-v1';
 const RAMP_METHOD = 'orc-jib-genoa-ramp-v1';
@@ -281,9 +281,11 @@ describe('polar provenance is consistent across catalogue, pipeline source and s
     });
 
     it('the catalogue’s mixed-tier boats resolve to a same-boat ramp base in the pipeline source', () => {
+      const mixedBoats: string[] = [];
       for (const boat of BOATS) {
         const tiers = boat.sails.map((s) => s.polarProvenance.tier);
         if (!(tiers.includes('estimated') && tiers.some((t) => t !== 'estimated'))) continue;
+        mixedBoats.push(boat.id);
         const sails = donorOf(boat.id).sails!;
         for (const s of boat.sails.filter((x) => x.polarProvenance.tier === 'estimated')) {
           const from = sails[s.id]!.derivation?.fromSailId;
@@ -291,14 +293,24 @@ describe('polar provenance is consistent across catalogue, pipeline source and s
           expect(boat.sails.map((x) => x.id), `${boat.id}/${s.id}`).toContain(from);
         }
       }
+      // Non-vacuity: the loop above checks nothing if no catalogue boat is mixed.
+      expect(mixedBoats).toEqual(['salona-44-easy-go']);
     });
 
     it('the catalogue notes of derived sails carry the D6 tokens', () => {
+      const checked: Record<string, string[]> = {};
       for (const boat of BOATS)
         for (const s of boat.sails) {
           const srcSail = donorOf(boat.id).sails![s.id]!;
+          const tokens = noteTokens(srcSail);
+          if (tokens.length > 0) checked[`${boat.id}/${s.id}`] = tokens;
           expect(missingTokens(srcSail, s.polarProvenance.note), `${boat.id}/${s.id}`).toEqual([]);
         }
+      // Non-vacuity: a non-empty token list is what makes the loop above test anything.
+      expect(checked).toEqual({
+        'salona-44-easy-go/fock': ['sister hull', '04590004MKR'],
+        'salona-44-easy-go/genoa': ['ESTIMATED', 'ramp'],
+      });
     });
   });
 
@@ -314,7 +326,10 @@ describe('polar provenance is consistent across catalogue, pipeline source and s
 
   it('a borrower carries no tables of its own and shares its donor’s sail set', () => {
     const borrowers = source.boats.filter((b) => b.polarsFrom !== undefined);
-    expect(borrowers.map((b) => b.id)).toEqual(['salona-44-easy-go']);
+    // EASY GO! left `polarsFrom` for its own tables (spec P.9), so no catalogue
+    // boat borrows today and the loop below is vacuous. The live control for
+    // the sharing mechanism is buildPolars.failClosed.test.ts's #567 fixtures.
+    expect(borrowers.map((b) => b.id)).toEqual([]);
     for (const b of borrowers) {
       expect(b.sails, `${b.id} declares sails beside polarsFrom`).toBeUndefined();
       const own = BOATS.find((x) => x.id === b.id)!.sails.map((x) => x.id);
