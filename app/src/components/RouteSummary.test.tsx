@@ -483,7 +483,7 @@ describe('RouteSummary', () => {
     expect(within(tablist).queryAllByLabelText('Recommended')).toHaveLength(0);
     expect(
       screen.getByText(
-        'The search ran out of time before comparing both sails, so no faster rig is claimed',
+        'The search ran out of time before comparing both sails, so no faster rig is claimed. Deselect a sail under “Sails aboard” (Boat tab) to plan with a single sail',
       ),
     ).toBeInTheDocument();
     // The generic sentence must NOT also render.
@@ -505,7 +505,7 @@ describe('RouteSummary', () => {
     renderSummary({ plan, rig: 'genoa' });
     expect(
       screen.queryByText(
-        'The search ran out of time before comparing both sails, so no faster rig is claimed',
+        'The search ran out of time before comparing both sails, so no faster rig is claimed. Deselect a sail under “Sails aboard” (Boat tab) to plan with a single sail',
       ),
     ).not.toBeInTheDocument();
   });
@@ -521,7 +521,7 @@ describe('RouteSummary', () => {
     ).toBeInTheDocument();
     expect(
       screen.queryByText(
-        'The search ran out of time before comparing both sails, so no faster rig is claimed',
+        'The search ran out of time before comparing both sails, so no faster rig is claimed. Deselect a sail under “Sails aboard” (Boat tab) to plan with a single sail',
       ),
     ).not.toBeInTheDocument();
   });

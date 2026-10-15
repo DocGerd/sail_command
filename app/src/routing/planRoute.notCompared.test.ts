@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { planRoute, type PlanDeps } from './planRoute';
 import { openWaterMask, TEST_POLAR, testPlanDeps, uniformWindGrid } from '../test/fixtures';
-import { polarKey, type BoatDef, type PolarTier } from '../data/boats';
+import { MAX_HEADSAILS, polarKey, type BoatDef, type PolarTier } from '../data/boats';
 import {
   DEFAULT_SETTINGS,
   defaultBoatSnapshot,
@@ -177,23 +177,26 @@ describe('#553 assemble: not-compared', () => {
     expect(r.recommended).toBe('genoa');
   });
 
-  // The cap is 2 (spec §J OQ-3) and stays 2. This row pins that exceeding it
-  // yields NO verdict rather than an arbitrary one — the pre-#553 code fell
-  // straight through the `sails.length === 2` gate and stamped `decided` on
-  // whichever sail happened to be first in the list.
-  it('three sails requested -> not-compared, and no N-way ranking is invented', () => {
+  // The cap is 2 (spec §J OQ-3, §R D11). Beyond it `planRoute` throws rather
+  // than invent a verdict: no N-way ranking is defined (§R.4 is design only),
+  // and a third solve does not fit `PLAN_BUDGET_MS` (§R.6). The pre-#553 code
+  // stamped `decided` on whichever sail came first; the pre-#1661 code solved
+  // all three and returned `not-compared`.
+  it('more than MAX_HEADSAILS sails requested -> throws, no N-way ranking is invented', () => {
     const boat = boatWith('certificate', ['genoa', 'fock', 'storm']);
     const deps = depsFor(boat, { genoa: TEST_POLAR, fock: SLOW, storm: SLOWER });
-    const r = ok(
-      planRoute(
-        { ...BASE_REQ, sailIds: ['genoa', 'fock', 'storm'] as readonly SailId[] },
-        uniformWindGrid(12, 0),
-        deps,
-      ),
+    const req = { ...BASE_REQ, sailIds: ['genoa', 'fock', 'storm'] as readonly SailId[] };
+    expect(() => planRoute(req, uniformWindGrid(12, 0), deps)).toThrow(
+      `#1661: 3 headsails requested, MAX_HEADSAILS is ${MAX_HEADSAILS}`,
     );
-    expect(r.sails.filter((s) => s.result !== null)).toHaveLength(3);
-    expect(r.rigRecommendation).toEqual({ kind: 'not-compared' });
-    expect(recommendedHasResult(r)).toBe(true);
+  });
+
+  it('exactly MAX_HEADSAILS sails does not throw', () => {
+    const boat = boatWith('certificate', ['genoa', 'fock']);
+    const deps = depsFor(boat, { genoa: TEST_POLAR, fock: SLOW });
+    const r = ok(planRoute(BASE_REQ, uniformWindGrid(12, 0), deps));
+    expect(BASE_REQ.sailIds).toHaveLength(MAX_HEADSAILS);
+    expect(r.rigRecommendation).toEqual({ kind: 'decided', rig: 'genoa' });
   });
 
   // §N.4's tier-C suppression. Paired DELIBERATELY with the control below it:

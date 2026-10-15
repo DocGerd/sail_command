@@ -131,9 +131,9 @@ function candidateCard(
 
   const { outcome } = candidate;
   if (outcome.kind === 'ok') {
-    // §2.2: genoa-only by design (useDepartureScan.ts's GENOA_SCAN_SAIL_IDS)
-    // — recommendedResult() is safe here because a genoa-only request always
-    // resolves `recommended` to the scanned genoa sail when it produced a
+    // §2.2: single-sail by design (useDepartureScan.ts's scanSailIdsFor)
+    // — recommendedResult() is safe here because a one-sail request always
+    // resolves `recommended` to the scanned sail when it produced a
     // route (PlanResultOk guarantees the recommended sail's result is
     // non-null).
     const rig = recommendedResult(outcome.result);
@@ -264,13 +264,14 @@ export default function DepartureCompare({
     setConfirmed(null);
     void scan({
       base: { ...plan.request },
+      aboardSailIds: plan.request.sailIds,
       windGrid: plan.windGrid,
       stepHours,
       count,
     });
   };
 
-  // #937: never generalises the scan's own genoa-only rig choice (§2.2) —
+  // #937: never generalises the scan's own single-sail rig choice (§2.2) —
   // this re-solves with `plan.request.sailIds` unchanged (useDepartureConfirm.ts).
   const handleConfirm = (departureMs: number) => {
     setConfirmed(null);
@@ -280,10 +281,12 @@ export default function DepartureCompare({
       // (tab switched away) or after the active plan has moved on (a
       // different confirm, recalc, or reroute already superseded it).
       if (!mountedRef.current || activePlanIdentityRef.current !== identity || !updated) return;
+      const genoaAboard = plan.request.sailIds.includes(GENOA_SAIL_ID);
       const rec = rigRecommendationOf(updated.result);
       setConfirmed({
         departureMs,
-        disagreeingRig: rec.kind === 'decided' && rec.rig !== GENOA_SAIL_ID ? rec.rig : null,
+        disagreeingRig:
+          genoaAboard && rec.kind === 'decided' && rec.rig !== GENOA_SAIL_ID ? rec.rig : null,
       });
       onConfirmed(updated);
     });

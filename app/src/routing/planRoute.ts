@@ -20,7 +20,7 @@ import { solve, type SolveDeadline, type SolveFailureCause } from './isochrone';
 import { mergeCollinearLegs } from './postprocess';
 import { APPROACH_RADIUS_M, uniformGate, type DepthGate } from '../lib/depthGate';
 import { findRelaxedGate, type ProbeProgress } from './relaxedDepth';
-import { polarKey, type BoatDef } from '../data/boats';
+import { MAX_HEADSAILS, polarKey, type BoatDef } from '../data/boats';
 import { relaxationFloorM } from '../lib/boatDepth';
 
 export interface PlanDeps {
@@ -466,6 +466,11 @@ export function planRouteWithRecord(
   onProbe?: ProbeProgress,
   deadline?: PlanDeadline,
 ): { result: PlanResult; record: Pass1Record; pass2: Pass2Outcome } {
+  if (req.sailIds.length > MAX_HEADSAILS) {
+    throw new Error(
+      `#1661: ${req.sailIds.length} headsails requested, MAX_HEADSAILS is ${MAX_HEADSAILS}`,
+    );
+  }
   const record: Pass1Record = { tiers: [], cause: null };
   // A sibling of `record`, not a member: `Pass1Record` describes pass 1 only.
   const outcome: { pass2: Pass2Outcome } = { pass2: 'not-admitted' };
