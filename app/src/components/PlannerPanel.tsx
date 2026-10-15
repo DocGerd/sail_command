@@ -35,13 +35,12 @@ import {
 import { activeRigResult, rigComparisonSuppressedByTier } from '../lib/plan';
 import { routingSettingsDirty } from '../lib/planForm';
 import { usePersistedSailInventory } from '../lib/sailInventory';
-import { isCatalogueBoatId } from '../lib/usePersistedBoatId';
 import { renderRigVerdict, resultSummary, sailLabelKey } from '../lib/resultSummary';
 import { useRecentHarbors } from '../lib/useRecentHarbors';
 import { formatDepthM } from '../lib/depthDisclosure';
 import HarborPicker, { harborAccessCopy } from './HarborPicker';
 import { commitSetting, safetyDepthFieldFor } from './OptionsPanel';
-import { DEFAULT_BOAT_ID, type BoatDef } from '../data/boats';
+import type { BoatDef, BoatId } from '../data/boats';
 import NumberInput, { formatBound, useClampCorrection } from './NumberInput';
 import Card from './Card';
 import Field from './Field';
@@ -153,6 +152,8 @@ export interface PlannerPanelProps {
   // safety-depth bounds. The picker itself lives on the Boat tab
   // (SettingsPanel/BoatPicker); this panel never changes the selection.
   boat: BoatDef;
+  // The catalogue id App keys the sail inventory on, so both dirty terms read the same one.
+  boatId: BoatId;
   canPlan: boolean;
   // §3.5: the ONE reason the Plan button (and thus this whole form) is
   // disabled — exactly two possible values today: `error.offline` (nothing
@@ -270,6 +271,7 @@ export default function PlannerPanel({
   settings,
   onSettingsChange,
   boat,
+  boatId,
   canPlan,
   planDisabledReason,
   online,
@@ -283,9 +285,7 @@ export default function PlannerPanel({
   onOpenBoatSettings,
 }: PlannerPanelProps) {
   const t = useT();
-  const [sailInventory] = usePersistedSailInventory(
-    isCatalogueBoatId(boat.id) ? boat.id : DEFAULT_BOAT_ID,
-  );
+  const [sailInventory] = usePersistedSailInventory(boatId);
   // #885 §6: waypoint i of [origin, ...vias, destination], for segment labels.
   const waypointLabel = (i: number): string =>
     i === 0
