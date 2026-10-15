@@ -96,7 +96,7 @@ function derivationProblems(boats: readonly SourceBoat[]): string[] {
       }
       if (mixed && tier === 'estimated') {
         const from = der?.fromSailId;
-        const base = from === undefined ? undefined : sails[from];
+        const base = from !== undefined && Object.hasOwn(sails, from) ? sails[from] : undefined;
         if (der?.method !== RAMP_METHOD || base === undefined || base.provenance.tier === 'estimated')
           problems.push(`${name}: mixed-tier boat, estimated sail does not ramp off a same-boat sail`);
       }
@@ -278,6 +278,15 @@ describe('polar provenance is consistent across catalogue, pipeline source and s
         expect(mutate(fn), label).toContain(
           'x-boat/genoa: mixed-tier boat, estimated sail does not ramp off a same-boat sail',
         );
+    });
+
+    it('a prototype-name fromSailId yields a problem, never a throw', () => {
+      for (const from of Object.getOwnPropertyNames(Object.prototype)) {
+        const p = mutate((b) => put(sailOf(b, 'genoa').derivation!, { fromSailId: from }));
+        expect(p, from).toContain(
+          'x-boat/genoa: mixed-tier boat, estimated sail does not ramp off a same-boat sail',
+        );
+      }
     });
 
     it('the catalogue’s mixed-tier boats resolve to a same-boat ramp base in the pipeline source', () => {
