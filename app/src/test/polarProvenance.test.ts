@@ -28,7 +28,13 @@ const PUBLIC_DIR = join(REPO, 'app', 'public');
 
 interface SourceSail {
   readonly provenance: { readonly tier: string; readonly note: string };
-  readonly speeds: number[][];
+  readonly speeds?: number[][];
+  readonly estimator?: unknown;
+  readonly derivation?: {
+    readonly method?: string;
+    readonly fromSailId?: string;
+    readonly donor?: { readonly refNo?: string };
+  };
 }
 // #567: a sister ship declares `polarsFrom: <donor id>` and carries no sails;
 // its polar tables, note and shipped `boat` name are the donor's.
@@ -42,6 +48,62 @@ interface SourceBoat {
 const source = JSON.parse(readFileSync(join(REPO, 'pipeline', 'polars-source.json'), 'utf8')) as {
   boats: SourceBoat[];
 };
+
+// Spec P.6/P.9 (#1660). Pure over a source-shaped value so the synthetic
+// fixtures below can show each rule fires; the real source is vacuous until
+// EASY GO! carries its own derivation blocks. Method ids and tiers mirror
+// build_polars.mjs's DERIVATION_TIER; token matching is case-SENSITIVE, as D6.
+const CERT_METHOD = 'orc-ns-cert-rows-v1';
+const RAMP_METHOD = 'orc-jib-genoa-ramp-v1';
+const METHOD_TIER: Record<string, string> = {
+  [CERT_METHOD]: 'modelled',
+  [RAMP_METHOD]: 'estimated',
+};
+const REFERENCE_BOAT_ID = 'salona-45';
+
+function noteTokens(sail: SourceSail): string[] {
+  const der = sail.derivation;
+  if (der?.method === RAMP_METHOD) return ['ESTIMATED', 'ramp'];
+  if (der?.method === CERT_METHOD) return ['sister hull', der.donor?.refNo ?? '\0missing refNo'];
+  return [];
+}
+
+function missingTokens(sail: SourceSail, note: string): string[] {
+  return noteTokens(sail).filter((t) => !note.includes(t));
+}
+
+function derivationProblems(boats: readonly SourceBoat[]): string[] {
+  const problems: string[] = [];
+  for (const boat of boats) {
+    const sails = boat.sails ?? {};
+    const tiers = Object.values(sails).map((s) => s.provenance.tier);
+    const mixed = tiers.includes('estimated') && tiers.some((t) => t !== 'estimated');
+    for (const [sailId, sail] of Object.entries(sails)) {
+      const name = `${boat.id}/${sailId}`;
+      const tier = sail.provenance.tier;
+      const der = sail.derivation;
+      const required =
+        boat.id !== REFERENCE_BOAT_ID &&
+        (tier === 'modelled' || (tier === 'estimated' && sail.estimator === undefined));
+      if (required && der === undefined) problems.push(`${name}: no derivation block`);
+      if (der !== undefined) {
+        const method = der.method ?? '';
+        if (!Object.hasOwn(METHOD_TIER, method)) problems.push(`${name}: unknown method ${method}`);
+        else if (METHOD_TIER[method] !== tier)
+          problems.push(`${name}: ${method} fixes tier ${METHOD_TIER[method]}, sail is ${tier}`);
+        for (const t of missingTokens(sail, sail.provenance.note))
+          problems.push(`${name}: note lacks ${JSON.stringify(t)} (D6)`);
+      }
+      if (mixed && tier === 'estimated') {
+        const from = der?.fromSailId;
+        const base = from === undefined ? undefined : sails[from];
+        if (der?.method !== RAMP_METHOD || base === undefined || base.provenance.tier === 'estimated')
+          problems.push(`${name}: mixed-tier boat, estimated sail does not ramp off a same-boat sail`);
+      }
+    }
+  }
+  return problems;
+}
 
 function donorOf(boatId: string): SourceBoat {
   const srcBoat = source.boats.find((b) => b.id === boatId);
@@ -106,6 +168,139 @@ describe('polar provenance is consistent across catalogue, pipeline source and s
       });
     }
   }
+
+  describe('derivation blocks (spec P.6 D1/D6, P.9, amended mixed-tier rule)', () => {
+    const goodBoats = (): SourceBoat[] => [
+      {
+        id: 'salona-45',
+        name: 'Salona 45',
+        sails: {
+          fock: { provenance: { tier: 'certificate', note: 'cert' } },
+          genoa: { provenance: { tier: 'modelled', note: 'overlay' } },
+        },
+      },
+      {
+        id: 'x-boat',
+        name: 'X',
+        sails: {
+          fock: {
+            provenance: { tier: 'modelled', note: 'from a sister hull, refNo 04590004MKR' },
+            derivation: { method: CERT_METHOD, donor: { refNo: '04590004MKR' } },
+          },
+          genoa: {
+            provenance: { tier: 'estimated', note: 'ESTIMATED via the genoa ramp' },
+            derivation: { method: RAMP_METHOD, fromSailId: 'fock' },
+          },
+        },
+      },
+    ];
+    const mutate = (fn: (b: SourceBoat[]) => void): string[] => {
+      const b = goodBoats();
+      fn(b);
+      return derivationProblems(b);
+    };
+    const sailOf = (b: SourceBoat[], id: string): SourceSail => b[1]!.sails![id]!;
+    // `readonly` fields are overwritten through this cast only in the fixtures.
+    const put = (s: object, patch: Record<string, unknown>) => Object.assign(s, patch);
+
+    it('control: the well-formed fixture raises no problem', () => {
+      expect(derivationProblems(goodBoats())).toEqual([]);
+    });
+
+    it('the committed catalogue source raises no problem', () => {
+      expect(derivationProblems(source.boats)).toEqual([]);
+    });
+
+    it('requires a derivation block on a non-Salona-45 modelled sail', () => {
+      expect(mutate((b) => delete (sailOf(b, 'fock') as { derivation?: unknown }).derivation)).toEqual([
+        'x-boat/fock: no derivation block',
+      ]);
+    });
+
+    it('requires a derivation block on an estimated sail with no estimator block', () => {
+      expect(mutate((b) => delete (sailOf(b, 'genoa') as { derivation?: unknown }).derivation)).toContain(
+        'x-boat/genoa: no derivation block',
+      );
+    });
+
+    it('does not require one on an estimator-derived estimated sail, nor on the Salona 45', () => {
+      const b45 = goodBoats();
+      const p = mutate((b) => {
+        const g = sailOf(b, 'genoa');
+        delete (g as { derivation?: unknown }).derivation;
+        put(g, { estimator: {} });
+      });
+      expect(p, 'estimator-derived genoa').toEqual([
+        'x-boat/genoa: mixed-tier boat, estimated sail does not ramp off a same-boat sail',
+      ]);
+      expect(derivationProblems([b45[0]!]), 'Salona 45 exempt').toEqual([]);
+    });
+
+    it('rejects an unknown method, including an Object.prototype name', () => {
+      for (const method of ['nope', ...Object.getOwnPropertyNames(Object.prototype)]) {
+        const p = mutate((b) => put(sailOf(b, 'fock').derivation!, { method }));
+        expect(p, method).toContain(`x-boat/fock: unknown method ${method}`);
+      }
+    });
+
+    it('rejects a method whose fixed tier disagrees with the sail', () => {
+      const p = mutate((b) => put(sailOf(b, 'fock').derivation!, { method: RAMP_METHOD }));
+      expect(p).toContain('x-boat/fock: orc-jib-genoa-ramp-v1 fixes tier estimated, sail is modelled');
+    });
+
+    it('D6: a certificate-method note needs `sister hull` and the refNo, case-sensitively', () => {
+      for (const note of ['from a Sister Hull, refNo 04590004MKR', 'from a sister hull', 'sister hull 04590004mkr']) {
+        const p = mutate((b) => put(sailOf(b, 'fock'), { provenance: { tier: 'modelled', note } }));
+        expect(p.filter((x) => x.includes('(D6)')), note).toHaveLength(1);
+      }
+    });
+
+    it('D6: a ramp note needs `ESTIMATED` and `ramp`, case-sensitively', () => {
+      for (const note of ['estimated via the genoa ramp', 'ESTIMATED via the genoa Ramp', 'ESTIMATED only']) {
+        const p = mutate((b) => put(sailOf(b, 'genoa'), { provenance: { tier: 'estimated', note } }));
+        expect(p.filter((x) => x.includes('(D6)')), note).toHaveLength(1);
+      }
+    });
+
+    it('mixed tiers are allowed only where the estimated sail ramps off a same-boat non-estimated sail', () => {
+      const cases: Record<string, (b: SourceBoat[]) => void> = {
+        'fromSailId names no sail of the boat': (b) =>
+          put(sailOf(b, 'genoa').derivation!, { fromSailId: 'spinnaker' }),
+        'fromSailId is the sail itself': (b) => put(sailOf(b, 'genoa').derivation!, { fromSailId: 'genoa' }),
+        'fromSailId names another estimated sail': (b) => {
+          b[1]!.sails!.extra = { provenance: { tier: 'estimated', note: 'e' }, estimator: {} };
+          put(sailOf(b, 'genoa').derivation!, { fromSailId: 'extra' });
+        },
+        'the method is not the ramp': (b) => put(sailOf(b, 'genoa').derivation!, { method: 'nope' }),
+        'fromSailId is absent': (b) => delete (sailOf(b, 'genoa').derivation as { fromSailId?: string }).fromSailId,
+      };
+      for (const [label, fn] of Object.entries(cases))
+        expect(mutate(fn), label).toContain(
+          'x-boat/genoa: mixed-tier boat, estimated sail does not ramp off a same-boat sail',
+        );
+    });
+
+    it('the catalogue’s mixed-tier boats resolve to a same-boat ramp base in the pipeline source', () => {
+      for (const boat of BOATS) {
+        const tiers = boat.sails.map((s) => s.polarProvenance.tier);
+        if (!(tiers.includes('estimated') && tiers.some((t) => t !== 'estimated'))) continue;
+        const sails = donorOf(boat.id).sails!;
+        for (const s of boat.sails.filter((x) => x.polarProvenance.tier === 'estimated')) {
+          const from = sails[s.id]!.derivation?.fromSailId;
+          expect(from, `${boat.id}/${s.id} derivation.fromSailId`).toBeDefined();
+          expect(boat.sails.map((x) => x.id), `${boat.id}/${s.id}`).toContain(from);
+        }
+      }
+    });
+
+    it('the catalogue notes of derived sails carry the D6 tokens', () => {
+      for (const boat of BOATS)
+        for (const s of boat.sails) {
+          const srcSail = donorOf(boat.id).sails![s.id]!;
+          expect(missingTokens(srcSail, s.polarProvenance.note), `${boat.id}/${s.id}`).toEqual([]);
+        }
+    });
+  });
 
   it('every sail the pipeline declares is claimed by a catalogue polarAsset', () => {
     const claimed = new Set(BOATS.flatMap((b) => b.sails.map((s) => s.polarAsset)));
