@@ -5074,7 +5074,7 @@ making design-level decisions; do not silently deviate.
   string-level check cannot see — cwd + bare filename, variable or
   programmatic path construction, quote-splitting — enumerated in the hook's
   own "KNOWN SILENT-ALLOW PATHS" comment; read that, not this, for the
-  current list.
+  current list. Personal opt-out: `SC_SPEC_GATE=advisory` in the hook's environment downgrades these spec asks to advisories, subagent spec writes included. That a settings-file `env` entry reaches the hook is documented, not yet measured here.
 - `.superpowers/` (SDD ledger) is gitignored — append session records
   directly, no PR needed.
 - **Claude Code config placement**: shared config is COMMITTED — `.mcp.json`
