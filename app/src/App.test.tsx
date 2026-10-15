@@ -4591,6 +4591,7 @@ describe('#1661: sails aboard on the new-plan request', () => {
     const salona = boatById('salona-45');
     expect(request.sailIds).toEqual(sailIdsOf(salona));
     expect(request.sailIds).toEqual(['genoa', 'fock']);
+    expect(request.boat.sails.map((s) => s.id)).toEqual(['genoa', 'fock']);
     expect(request.boat).toEqual(boatSnapshot(salona));
     expect(request.boat).toEqual(defaultBoatSnapshot());
   });

@@ -2044,6 +2044,7 @@ function AppShell() {
                   settings={settings}
                   onSettingsChange={setSettings}
                   boat={boat}
+                  boatId={boatId}
                   canPlan={canPlan}
                   planDisabledReason={planDisabledReason}
                   online={online}

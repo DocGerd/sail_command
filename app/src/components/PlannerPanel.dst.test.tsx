@@ -93,6 +93,7 @@ function renderPanel(overrides: Overrides = {}) {
     // the SELECTED boat. This default keeps every pre-existing row on the
     // catalogue default boat, i.e. the 2.2 m floor they already assert.
     boat: boatById(DEFAULT_BOAT_ID),
+    boatId: DEFAULT_BOAT_ID,
     canPlan: true,
     planDisabledReason: null,
     online: true,
