@@ -1481,16 +1481,17 @@ export default function PlannerPanel({
         </Field>
       </div>
 
-      {/* #299: a discoverable route from safety depth to the depth comfort
-          margin (and the rest of the boat settings) now that the two "depth"
-          controls live on two different surfaces — without this, a user
-          hunting for the comfort margin right next to safety depth (where it
-          used to be) could reasonably conclude it was removed. */}
       <Button variant="ghost" className="planner-boat-settings-link" onClick={onOpenBoatSettings}>
         {t('planner.sailsAboard', {
           sails: sailInventory.headsailIds.map((id) => t(sailLabelKey(id))).join(', '),
         })}
       </Button>
+
+      {/* #299: a discoverable route from safety depth to the depth comfort
+          margin (and the rest of the boat settings) now that the two "depth"
+          controls live on two different surfaces — without this, a user
+          hunting for the comfort margin right next to safety depth (where it
+          used to be) could reasonably conclude it was removed. */}
       <Button variant="ghost" className="planner-boat-settings-link" onClick={onOpenBoatSettings}>
         {t('planner.safetyDepth.boatLink')} <span aria-hidden="true">→</span>
       </Button>
