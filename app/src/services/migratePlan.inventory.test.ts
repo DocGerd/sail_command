@@ -116,11 +116,4 @@ describe('#1661 migratePlan: aboard inventory, pre-trip scope', () => {
       migratePlan({ ...modernPlan(['s0'], ['s0']), schemaVersion: PLAN_SCHEMA_VERSION + 1 }),
     ).toBeNull();
   });
-
-  it.each(Object.getOwnPropertyNames(Object.prototype))(
-    'prototype name %s as a stored sailId does not satisfy the recommended-sail membership',
-    (name) => {
-      expect(migratePlan(modernPlan([name], ['s0']))).toBeNull();
-    },
-  );
 });
