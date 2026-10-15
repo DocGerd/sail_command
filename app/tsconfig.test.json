@@ -250,6 +250,7 @@
     "src/**/boatPickerNoticeLiveRegion.test.ts",
     "src/**/polarProvenance.test.ts",
     "src/**/buildPolars.failClosed.test.ts",
+    "src/**/deriveOrcPolars.test.ts",
     "src/**/verifyMaskBoatGate.test.ts",
     "src/**/verifyMaskConnectivity.test.ts",
     "src/**/sweepSailIds.test.ts",
