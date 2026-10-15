@@ -257,7 +257,7 @@ describe('resultVerdictKey (#1166 one-sail-failed)', () => {
     expect(resultVerdictKey('moot', true, [solved])).toBe('route.singleSail');
   });
 
-  it('renderRigVerdict names the lone sail, in de and en', () => {
+  it('renderRigVerdict names the lone sail', () => {
     const tEn = (k: keyof typeof en, v?: Record<string, string | number>) =>
       (en[k] as string).replace('{sail}', String(v?.sail ?? ''));
     expect(renderRigVerdict('not-compared', true, [solved], tEn)).toBe('Planned with Genoa only');
