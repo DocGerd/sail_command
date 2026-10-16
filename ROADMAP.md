@@ -26,7 +26,7 @@ headsails ([#1661](https://github.com/DocGerd/sail_command/issues/1661)), and
 EASY GO! planning on its own polar tables, a modelled jib from a sister hull's
 ORC certificate and an estimated genoa
 ([#1660](https://github.com/DocGerd/sail_command/issues/1660)) — plus the
-currents and waves data-evaluation spike
+currents data-evaluation spike
 ([#18](https://github.com/DocGerd/sail_command/issues/18), closed as answered),
 which changes no routing: no candidate current source passed its quality gate
 (`docs/spikes/18-currents-source-quality-gate.md`). The route-fit residual
@@ -37,10 +37,12 @@ moved on to `v0.55.0`.
 ## Next — v0.55.0
 
 The [`v0.55.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-holds two issues as of this cut: the remaining self-resolving OpenSSF
-Scorecard findings ([#72](https://github.com/DocGerd/sail_command/issues/72))
-and the route-fit start marker under the bottom sheet at 820x1180
-([#1639](https://github.com/DocGerd/sail_command/issues/1639)). The milestone
+holds three issues as of this cut: the remaining self-resolving OpenSSF
+Scorecard findings ([#72](https://github.com/DocGerd/sail_command/issues/72)),
+the route-fit start marker under the bottom sheet at 820x1180
+([#1639](https://github.com/DocGerd/sail_command/issues/1639)), and the
+dev-dependency bump `fast-uri` >= 3.1.8
+([#1695](https://github.com/DocGerd/sail_command/issues/1695)). The milestone
 page is the only authoritative view, check it directly rather than this file.
 
 ## Themes for the next year
@@ -111,12 +113,13 @@ The largest open product questions. The currents spike
 isochrone cost; the multi-day item was unscheduled, in `Backlog`, at that cut.
 Each issue's milestone field is the current fact:
 
-- Currents, tides, and sea state (waves) in the isochrone cost — the design
+- Currents, tides, and sea state (waves) in the isochrone cost
+  ([#18](https://github.com/DocGerd/sail_command/issues/18)) — the design
   spec is `docs/superpowers/specs/2026-07-22-waves-routing-design.md` and the
   source evaluation is `docs/spikes/18-currents-source-quality-gate.md`. It
   would be the single biggest change to routing accuracy the project could
   make, and also the biggest: it touches the data pipeline, the solver, and
-  the UI. No source currently clears the gate, so nothing is scheduled.
+  the UI. No current source clears the quality gate, and no part of this is scheduled; wave effects are in scope of the waves spec, whose §2 rules out currents/tides only.
 - Multi-day trip planning with overnight stops and arrival-window checks
   ([#19](https://github.com/DocGerd/sail_command/issues/19)), which is bounded
   by the ~6-day forecast horizon.
@@ -133,8 +136,8 @@ scheduled.
 
 Note the tension with "Out of scope (v1)" in [`README.md`](README.md): currents,
 tides, waves, and multi-day passages were excluded from v1 and remain excluded
-from the shipped app. Their presence here means the exclusion is being
-revisited, not that it has been lifted.
+from the shipped app. Their presence here records what was investigated, not a commitment: the
+exclusion has not been lifted and no part of it is scheduled.
 
 ### Live view and on-board use
 
