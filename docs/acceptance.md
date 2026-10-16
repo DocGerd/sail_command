@@ -98,10 +98,11 @@ results table at the bottom, and note it in the box below the check.
       Elan Impression 444 (PIRANJA), Salona 44 (EASY GO!) — each showing its
       draft (2.1 / 2.1 / 1.9 / 2.59 m: the first two genuinely share a
       draft, it is not a duplicated entry) and a "Polar data & provenance"
-      disclosure whose tier chip reads Certificate or Modelled for the
-      Salona 45 and Estimated for SPEEDY GO! and PIRANJA; EASY GO! shows Modelled
-      for its jib (a sister hull's ORC certificate) and Estimated for its genoa,
-      with its own tables. Every boat — the Salona 45 included —
+      disclosure whose tier chip shows the weakest tier across the boat's
+      tables: Certificate or Modelled for the Salona 45, Estimated for the
+      three fleet boats. The per-sail tiers sit inside the disclosure: EASY GO!
+      reads Modelled for its jib (a sister hull's ORC certificate) and
+      Estimated for its genoa, with its own tables. Every boat — the Salona 45 included —
       also shows a note saying where its stated draft comes from, set off by
       its own left border; only the three fleet boats carry the assumed-keel
       caveat above it, and on those three the border is what keeps the two
@@ -278,7 +279,9 @@ selected in §1.
     genoa, so the comparison is withheld: **no ★ on either tab**, and the chip now names the
     reason — "The sails were not compared for this passage — …'s polar data
     is not certificate-verified (tier: Estimated), so no faster rig is
-    claimed" (#1398), where `…` is the plan's own boat name. A missing ★ on
+    claimed" (#1398), where `…` is the plan's own boat name. With only one
+    headsail aboard ("Sails aboard" on the Boat tab) there are no rig tabs
+    and no comparison at all ("Planned with … only"). A missing ★ on
     these three boats is the designed outcome, not a defect — their two tables
     differ by the Salona 45's overlay ramp, which carries no information
     about the hull.

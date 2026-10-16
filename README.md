@@ -92,8 +92,8 @@ installs as a standalone icon and works fully offline after the first visit
 - The router fetches hourly wind, then computes the fastest sailable route
   twice — once per foresail of the selected boat — and recommends the faster
   (marked ★). Where the two tables cannot honestly be ranked it says so
-  instead of naming a winner: on the three fleet boats both tables are
-  *estimated* and differ only by a documented overlay ramp rather than by
+  instead of naming a winner: on the three fleet boats the genoa table is
+  *estimated* and differs from the jib only by a documented overlay ramp rather than by
   anything about the hull, so no faster sail is claimed. It says so again when
   the search ran out of time before both sails were compared. Tacks and gybes
   are priced as a time penalty inside the routing cost, not bolted on
@@ -177,8 +177,7 @@ map area is already saved and what downloading it would cost.
 - **Boat polars (Salona 44 EASY GO!)**: its jib is **modelled**, anchored on
   an ORC certificate of a *sister* hull, not of this boat, and its genoa is
   **estimated**, derived from that jib by a documented overlay ramp. Both
-  notes are shown verbatim on the Boat tab. It no longer borrows SPEEDY GO!'s
-  tables.
+  notes are shown verbatim on the Boat tab.
 - **Boat polars (Salona 44 SPEEDY GO!, Elan Impression 444 PIRANJA)**:
   **estimated, not measured**. No ORC/IRC certificate and no
   published VPP was obtained for these hulls, so each table is the Salona 45's
@@ -241,8 +240,8 @@ data; the code license is covered in the [License](#license) section below.
   boat, on the Boat tab. Because each boat's two foresail tables differ only
   by a documented overlay ramp, no faster-sail recommendation is made for
   them. The **Sails aboard** control on the Boat tab (Both | Genoa | Jib)
-  says which headsails the boat carries; a plan with one headsail shows no
-  rig comparison. A deeper-drafted boat such as *EASY GO!* cannot reach every harbor
+  lets you plan with only one of the boat's headsails; a plan with one
+  headsail shows no rig comparison. A deeper-drafted boat such as *EASY GO!* cannot reach every harbor
   at its own default safety depth. The origin/destination pickers and the Boat tab mark a
   harbor's access for the selected boat and safety depth — not reachable at
   or above the boat's recommended depth, only via a shallower approach, or a
