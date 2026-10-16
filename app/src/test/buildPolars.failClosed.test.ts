@@ -382,7 +382,8 @@ describe('#54 Task 12: build_polars.mjs fails closed', () => {
     const b = JSON.parse(JSON.stringify(src.boats[0]));
     a.id = 'a-b';
     a.name = 'Boat A-B';
-    a.sails = { c: a.sails.genoa };
+    // The certificate table: a modelled one would trip spec P.9 first.
+    a.sails = { c: a.sails.fock };
     b.id = 'a';
     b.name = 'Boat A';
     b.sails = { 'b-c': b.sails.fock };
@@ -1308,6 +1309,12 @@ describe('#1660 spec §P.6: derivation blocks fail closed (D1-D8)', () => {
     },
   );
 
+  it('D2: aborts on a non-string method that coerces to a known one', () => {
+    const { src, boat } = withEasyGo();
+    (boat.sails['fock']!.derivation as { method: unknown }).method = ['orc-ns-cert-rows-v1'];
+    expectAbort(run(src), `${EASY_GO}/fock`, 'spec P.6 D2');
+  });
+
   it('D2: aborts when the derivation block is null', () => {
     const { src, boat } = withEasyGo();
     (boat.sails['fock'] as { derivation: unknown }).derivation = null;
@@ -1359,6 +1366,12 @@ describe('#1660 spec §P.6: derivation blocks fail closed (D1-D8)', () => {
     expectAbort(r, `${EASY_GO}/fock`, 'spec P.6 D3', 'sha256');
   });
 
+  it('D3: aborts when the declared source sha256 is missing', () => {
+    const { src, boat } = withEasyGo();
+    delete boat.sails['fock']!.derivation!.sources![0]!.sha256;
+    expectAbort(run(src), `${EASY_GO}/fock`, 'spec P.6 D3', 'sha256');
+  });
+
   // The generator's --check reads neither hash, so D3 alone owns both.
   it('D3: aborts when the declared source sha256 is zeroed', () => {
     const { src, boat } = withEasyGo();
@@ -1402,6 +1415,8 @@ describe('#1660 spec §P.6: derivation blocks fail closed (D1-D8)', () => {
     ['measuredDraftM', 2.5],
     ['areaJibM2', 50],
     ['areaMainM2', 60],
+    ['yacht', 'SOME OTHER BOAT'],
+    ['sailNo', 'GER 1'],
   ])('D4: aborts when donor.%s is %o', (field, value) => {
     const { src, boat } = withEasyGo();
     boat.sails['fock']!.derivation!.donor![field] = value;
@@ -1427,6 +1442,32 @@ describe('#1660 spec §P.6: derivation blocks fail closed (D1-D8)', () => {
     expectAbort(run(src), `${EASY_GO}/genoa`, 'spec P.6 D4', value);
   });
 
+  // The review's reproduction: a ramp off an estimated pair is an estimate of an estimate.
+  it.each([TIER_C, TIER_C2])(
+    'D4: aborts when the genoa ramps off %s’s estimated tables',
+    (rampBoatId) => {
+      const { src, boat } = withEasyGo();
+      boat.sails['genoa']!.derivation!.ramp!.boatId = rampBoatId;
+      expectAbort(run(src), `${EASY_GO}/genoa`, 'spec P.6 D4', 'itself estimated');
+    },
+  );
+
+  it.each([
+    ['Family', 'ORC'],
+    ['Class', 'Salona 45'],
+  ])('D4: aborts when the certificate record’s %s is %o', (field, value) => {
+    const { src, boat } = withEasyGo();
+    const r = run(
+      src,
+      editCert(boat, (text) => {
+        const env = JSON.parse(text) as { record: Record<string, unknown> };
+        env.record[field] = value;
+        return JSON.stringify(env, null, 2);
+      }),
+    );
+    expectAbort(r, `${EASY_GO}/fock`, 'spec P.6 D4', field);
+  });
+
   // P.10 item 2, first half.
   it('D5: aborts when a certificate cell moves (hash re-pinned)', () => {
     const { src, boat } = withEasyGo();
@@ -1450,14 +1491,16 @@ describe('#1660 spec §P.6: derivation blocks fail closed (D1-D8)', () => {
     expectAbort(run(src), 'spec P.6 D5', `${EASY_GO}/${sailId}`);
   });
 
-  it('D5: aborts when a committed beat angle is edited', () => {
+  it.each(['beat', 'gybe'] as const)('D5: aborts when a committed %s angle is edited', (field) => {
     const { src, boat } = withEasyGo();
-    (boat.beat as { angle: number[] }).angle[0]! += 0.1;
-    expectAbort(run(src), 'spec P.6 D5', 'beat');
+    (boat[field] as { angle: number[] }).angle[0]! += 0.1;
+    expectAbort(run(src), 'spec P.6 D5', `committed ${field}`);
   });
 
+  // The tier-B disclosure is the headline's uppercase SISTER HULL; the
+  // lowercase phrase belongs to the polargraph cross-check sentence.
   it.each([
-    ['fock', 'sister hull', 'sister boat'],
+    ['fock', 'SISTER HULL', 'sister hull'],
     ['fock', REF_NO, 'X0000000000'],
     ['genoa', 'ESTIMATED', 'Estimated'],
     ['genoa', 'ramp', 'step'],
@@ -1467,6 +1510,50 @@ describe('#1660 spec §P.6: derivation blocks fail closed (D1-D8)', () => {
     expect(prov.note).toContain(token);
     prov.note = prov.note!.replaceAll(token, replacement);
     expectAbort(run(src), `${EASY_GO}/${sailId}`, 'spec P.6 D6', token);
+  });
+
+  // The review's reproduction.
+  it('D6: aborts when the jib note claims this boat’s own ORC certificate', () => {
+    const { src, boat } = withEasyGo();
+    const prov = boat.sails['fock']!.provenance!;
+    const claim = "anchored on a SISTER HULL's ORC certificate";
+    expect(prov.note).toContain(claim);
+    prov.note = prov.note!.replace(claim, "anchored on this boat's own ORC certificate");
+    expectAbort(run(src), `${EASY_GO}/fock`, 'spec P.6 D6', 'own ORC certificate');
+  });
+
+  it('D6: aborts on an own-certificate claim in any case, with SISTER HULL still present', () => {
+    const { src, boat } = withEasyGo();
+    const prov = boat.sails['fock']!.provenance!;
+    prov.note = `${prov.note!} Checked against this boat's OWN certificate.`;
+    expectAbort(run(src), `${EASY_GO}/fock`, 'spec P.6 D6', 'own certificate');
+  });
+
+  it('D6: the own-certificate claim is refused on a modelled note with no derivation block too', () => {
+    const src = freshSource();
+    const prov = src.boats.find((b) => b.id === 'salona-45')!.sails['genoa']!.provenance!;
+    expect(prov.tier).toBe('modelled');
+    prov.note = `${prov.note!} Read off its own ORC certificate.`;
+    expectAbort(run(src), 'salona-45/genoa', 'spec P.6 D6', 'own ORC certificate');
+  });
+
+  // Spec P.9's derivation-block requirement, owned by the build.
+  it('P.9: aborts on a modelled sail without a derivation block on a non-reference boat', () => {
+    const { src, boat } = withEasyGo();
+    boat.sails['code0'] = {
+      provenance: { tier: 'modelled', note: 'A modelled table with no derivation.' },
+      speeds: structuredClone(boat.sails['genoa']!.speeds),
+    };
+    expectAbort(run(src), `${EASY_GO}/code0`, 'spec P.9');
+  });
+
+  it('P.9: aborts when estimated sails are retiered to modelled and their estimators dropped', () => {
+    const src = freshSource();
+    for (const sail of Object.values(src.boats.find((b) => b.id === TIER_C)!.sails)) {
+      sail.provenance!.tier = 'modelled';
+      delete sail.estimator;
+    }
+    expectAbort(run(src), `${TIER_C}/`, 'spec P.9');
   });
 
   // P.10 item 5. EASY GO! has no estimator sail, so E4 cannot see this.
@@ -1488,7 +1575,8 @@ describe('#1660 spec §P.6: derivation blocks fail closed (D1-D8)', () => {
     expect(r.ok, r.output).toBe(true);
   });
 
-  it.each([CERT_FILE, REF_NO])('D7: aborts when an anchor source cites %o', (cited) => {
+  // The review's reproduction: a citation by yacht and sail number.
+  it('D7: aborts when an anchor cites the certificate by its yacht and sail number', () => {
     const { src, boat } = withEasyGo();
     boat.validation!.anchors!.push({
       label: 'cites the donor',
@@ -1496,10 +1584,26 @@ describe('#1660 spec §P.6: derivation blocks fail closed (D1-D8)', () => {
       tws: 12,
       minKn: 7,
       maxKn: 9,
-      source: `Read off ${cited}.`,
+      source: 'ORC Non-Spinnaker certificate 2026 of SANTA ANASTASIA (CRO 1938): R52 at 12 kn.',
     });
-    expectAbort(run(src), EASY_GO, 'spec P.6 D7', cited);
+    expectAbort(run(src), EASY_GO, 'spec P.6 D7');
   });
+
+  it.each([CERT_FILE, REF_NO, 'SANTA ANASTASIA', 'CRO 1938'])(
+    'D7: aborts when an anchor source cites %o',
+    (cited) => {
+      const { src, boat } = withEasyGo();
+      boat.validation!.anchors!.push({
+        label: 'cites the donor',
+        twa: 52,
+        tws: 12,
+        minKn: 7,
+        maxKn: 9,
+        source: `Read off ${cited}.`,
+      });
+      expectAbort(run(src), EASY_GO, 'spec P.6 D7', cited);
+    },
+  );
 
   it('D8: the plausibility bound still bites on a derived boat', () => {
     const { src, boat } = withEasyGo();
