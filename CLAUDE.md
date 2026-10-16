@@ -2164,8 +2164,9 @@ making design-level decisions; do not silently deviate.
   + `711.fixed.md`, leaving the released section two entries short of the
   milestone; it was caught at the ship gate by a human, by nothing else.
   Re-check `changelog.d/` immediately BEFORE pushing the tag, not only at the
-  sweep — with `git ls-tree --name-only <tag> changelog.d/`, since a bare
-  `ls` reads the stale local checkout and lists already-folded fragments.
+  sweep — with `git ls-tree --name-only <tag> changelog.d/` (trailing slash
+  required): a bare `ls` reads the checked-out branch, which a server-side
+  `gh pr merge` leaves stale (v0.54.0: it listed already-folded fragments).
   **A second fragment for an already-fragmented issue needs a DECISION, not a
   default.** While the earlier fragment is still PENDING, both fold into the
   SAME release section — so the test is "does the earlier one still state
@@ -4481,8 +4482,9 @@ making design-level decisions; do not silently deviate.
   considered-and-rejected alternatives in-code — read them before changing one.
 - Open-Meteo is called directly from the browser (CORS is open, no API key).
   There is deliberately **no backend** — do not introduce one. "Wind forecast
-  broken" triage: `curl` `api.open-meteo.com/v1/forecast` directly next to a
-  control site first — a provider 503 needs no code change (2026-10-16).
+  broken" triage: `curl` the forecast API with the app's own query
+  (`services/openMeteo.ts`) next to a control site first — a bare
+  `/v1/forecast` call cannot see a model-specific failure.
 - **AIS (#25) is BYOK and must stay inert without a key**: no `aisApiKey` → no
   client, ZERO sockets (the network-free e2e suite depends on this; never add
   a default key or eager connect). aisstream.io signals an invalid key as bare
