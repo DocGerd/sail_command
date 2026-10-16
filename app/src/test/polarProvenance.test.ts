@@ -60,16 +60,22 @@ const METHOD_TIER: Record<string, string> = {
   [RAMP_METHOD]: 'estimated',
 };
 const REFERENCE_BOAT_ID = 'salona-45';
+const CERT_NOTE_TOKEN = 'SISTER HULL';
+const OWN_CERTIFICATE_CLAIMS = ['own ORC certificate', 'own certificate'];
 
 function noteTokens(sail: SourceSail): string[] {
   const der = sail.derivation;
   if (der?.method === RAMP_METHOD) return ['ESTIMATED', 'ramp'];
-  if (der?.method === CERT_METHOD) return ['sister hull', der.donor?.refNo ?? '\0missing refNo'];
+  if (der?.method === CERT_METHOD) return [CERT_NOTE_TOKEN, der.donor?.refNo ?? '\0missing refNo'];
   return [];
 }
 
 function missingTokens(sail: SourceSail, note: string): string[] {
   return noteTokens(sail).filter((t) => !note.includes(t));
+}
+
+function ownCertificateClaims(note: string): string[] {
+  return OWN_CERTIFICATE_CLAIMS.filter((c) => note.toLowerCase().includes(c.toLowerCase()));
 }
 
 function derivationProblems(boats: readonly SourceBoat[]): string[] {
@@ -86,6 +92,9 @@ function derivationProblems(boats: readonly SourceBoat[]): string[] {
         boat.id !== REFERENCE_BOAT_ID &&
         (tier === 'modelled' || (tier === 'estimated' && sail.estimator === undefined));
       if (required && der === undefined) problems.push(`${name}: no derivation block`);
+      if (tier === 'modelled')
+        for (const c of ownCertificateClaims(sail.provenance.note))
+          problems.push(`${name}: modelled note claims ${JSON.stringify(c)} (D6)`);
       if (der !== undefined) {
         const method = der.method ?? '';
         if (!Object.hasOwn(METHOD_TIER, method)) problems.push(`${name}: unknown method ${method}`);
@@ -184,7 +193,7 @@ describe('polar provenance is consistent across catalogue, pipeline source and s
         name: 'X',
         sails: {
           fock: {
-            provenance: { tier: 'modelled', note: 'from a sister hull, refNo 04590004MKR' },
+            provenance: { tier: 'modelled', note: 'from a SISTER HULL, refNo 04590004MKR' },
             derivation: { method: CERT_METHOD, donor: { refNo: '04590004MKR' } },
           },
           genoa: {
@@ -248,11 +257,27 @@ describe('polar provenance is consistent across catalogue, pipeline source and s
       expect(p).toContain('x-boat/fock: orc-jib-genoa-ramp-v1 fixes tier estimated, sail is modelled');
     });
 
-    it('D6: a certificate-method note needs `sister hull` and the refNo, case-sensitively', () => {
-      for (const note of ['from a Sister Hull, refNo 04590004MKR', 'from a sister hull', 'sister hull 04590004mkr']) {
+    it('D6: a certificate-method note needs `SISTER HULL` and the refNo, case-sensitively', () => {
+      for (const note of ['from a sister hull, refNo 04590004MKR', 'from a Sister Hull, refNo 04590004MKR', 'from a SISTER HULL', 'SISTER HULL 04590004mkr']) {
         const p = mutate((b) => put(sailOf(b, 'fock'), { provenance: { tier: 'modelled', note } }));
         expect(p.filter((x) => x.includes('(D6)')), note).toHaveLength(1);
       }
+    });
+
+    it('D6: a modelled note never claims this boat’s certificate, matched case-insensitively', () => {
+      for (const claim of ['own ORC certificate', 'own certificate'])
+        for (const spelled of [claim, claim.toUpperCase(), claim.toLowerCase()]) {
+          const note = `from a SISTER HULL, refNo 04590004MKR; the ${spelled} backs this`;
+          const p = mutate((b) => put(sailOf(b, 'fock'), { provenance: { tier: 'modelled', note } }));
+          expect(p, spelled).toEqual([`x-boat/fock: modelled note claims ${JSON.stringify(claim)} (D6)`]);
+        }
+    });
+
+    it('D6: the negative claims also bind the Salona 45 modelled sail', () => {
+      const p = mutate((b) =>
+        put(b[0]!.sails!.genoa!, { provenance: { tier: 'modelled', note: 'overlay on the own certificate' } }),
+      );
+      expect(p).toEqual(['salona-45/genoa: modelled note claims "own certificate" (D6)']);
     });
 
     it('D6: a ramp note needs `ESTIMATED` and `ramp`, case-sensitively', () => {
@@ -314,6 +339,8 @@ describe('polar provenance is consistent across catalogue, pipeline source and s
           const tokens = noteTokens(srcSail);
           if (tokens.length > 0) checked[`${boat.id}/${s.id}`] = tokens;
           expect(missingTokens(srcSail, s.polarProvenance.note), `${boat.id}/${s.id}`).toEqual([]);
+          if (s.polarProvenance.tier === 'modelled')
+            expect(ownCertificateClaims(s.polarProvenance.note), `${boat.id}/${s.id}`).toEqual([]);
         }
       // Non-vacuity: a non-empty token list is what makes the loop above test anything.
       expect(checked).toEqual({
