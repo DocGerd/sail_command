@@ -1527,7 +1527,11 @@ export default function RouteLayer({
             null AT THE SAME TIME. */}
         {!altToggleAvailable && (
           <p id="route-alt-rig-note" className="route-alt-rig-note">
-            {t('route.altRig.unavailable')}
+            {t(
+              plan?.request.sailIds.length === 1
+                ? 'route.altRig.singleSail'
+                : 'route.altRig.unavailable',
+            )}
           </p>
         )}
         <label>

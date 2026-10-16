@@ -882,6 +882,7 @@ export const en = {
   'route.annotations.toggle': 'Times & speeds',
   'route.altRig.toggle': 'Show other rig',
   'route.altRig.unavailable': 'Only one rig found a route',
+  'route.altRig.singleSail': 'Only one headsail planned',
   // #628: summary label for the Disclosure wrapping the whole map-overlay
   // controls cluster (annotation/barb/alt-rig toggles, forecast slider,
   // legend) — collapsible so it stops obstructing the chart on mobile.

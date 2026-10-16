@@ -800,6 +800,7 @@ export const de = {
   'route.annotations.toggle': 'Zeiten & Geschwindigkeiten',
   'route.altRig.toggle': 'Anderes Rigg anzeigen',
   'route.altRig.unavailable': 'Nur ein Rigg hat eine Route gefunden',
+  'route.altRig.singleSail': 'Nur ein Vorsegel geplant',
   // #628: summary label for the Disclosure wrapping the whole map-overlay
   // controls cluster (annotation/barb/alt-rig toggles, forecast slider,
   // legend) — collapsible so it stops obstructing the chart on mobile.
