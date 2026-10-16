@@ -12,8 +12,10 @@ in the Flensburg Fjord / Danish South Sea area (54.3–55.6°N, 9.4–11.6°E
 since #295 — read the live bounds off `app/public/data/mask.meta.json`),
 using hourly Open-Meteo wind forecasts and an isochrone router that prices
 tacks/gybes as time penalties. Only the Salona 45 is `hullVerified` with
-certificate-anchored polars; the rest are tier-C estimates (a sister ship may borrow its donor's tables via `polarsFrom`, #567/#1575), which
-SUPPRESSES their two-rig ★ comparison — a behavioural difference that has
+certificate-anchored polars; EASY GO! has a tier-B jib from a sister hull's ORC
+certificate and a tier-C genoa derived from it (#1660); the rest are tier-C
+estimates (a sister ship may borrow its donor's tables via `polarsFrom`, #567).
+Any tier-C sail on a boat SUPPRESSES its two-rig ★ comparison — a behavioural difference that has
 already put stale claims into user-facing docs (#54, shipped v0.12.0).
 
 **Source of truth:** `docs/superpowers/specs/2026-07-14-sail-command-design.md`
@@ -5074,7 +5076,7 @@ making design-level decisions; do not silently deviate.
   string-level check cannot see — cwd + bare filename, variable or
   programmatic path construction, quote-splitting — enumerated in the hook's
   own "KNOWN SILENT-ALLOW PATHS" comment; read that, not this, for the
-  current list. Personal opt-out: `SC_SPEC_GATE=advisory` in the hook's environment downgrades these spec asks to advisories, subagent spec writes included. That a settings-file `env` entry reaches the hook is documented, not yet measured here.
+  current list. Personal opt-out: `SC_SPEC_GATE=advisory` in the hook's environment downgrades these spec asks to advisories, subagent spec writes included. A `.claude/settings.local.json` `env` entry reaches the hook from the next session start (measured 2026-10-15).
 - `.superpowers/` (SDD ledger) is gitignored — append session records
   directly, no PR needed.
 - **Claude Code config placement**: shared config is COMMITTED — `.mcp.json`

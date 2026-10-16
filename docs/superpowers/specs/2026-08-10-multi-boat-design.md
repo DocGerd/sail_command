@@ -1134,9 +1134,9 @@ Axes `twa [110,120,135,150,165,180]` × `tws [6,8,10,12,14,16,20]`; gybe angles 
 | D1 | Method fixes tier: both sister-hull methods ⇒ exactly `modelled`; the ramp ⇒ exactly `estimated` with `uncertaintyPct` 10 (judgement). E1 forward widens to "an `estimator` block **or** a ramp derivation"; E1's converse stands (`modelled` + ramp, or both blocks, aborts). E5/E6 skip a ramp. Sails with neither block untouched. |
 | D2 | `method` is a known id (`Object.hasOwn`). |
 | D3 | Every `sources[].path` exists under `pipeline/orc-sources/` with matching sha256; `retrievedAt`, `url` and (certificate) `responseSha256` present. |
-| D4 | `orc-cert`: complete, `relation === 'sister-hull'`, record `RefNo/Draft/Area_Jib/Area_Main` = donor block. `orc-polargraph`: `sailNo`, `issued`, PDF hash = envelope. A `ramp` names an existing boat and sails. |
+| D4 | `orc-cert`: complete, `relation === 'sister-hull'`, record `RefNo/Draft/Area_Jib/Area_Main` = donor block. `orc-polargraph`: `sailNo`, `issued`, PDF hash = envelope. A `ramp` names an existing boat and sails, its base is a sail of the same boat, and its base is not an `estimated` table (no estimate of an estimate, §N.3). |
 | D5 | Reproducibility (E7 analogue): re-running the generator reproduces `speeds`, `beat`, `gybe` (phase 2: `valid`, `twa`, `tws`) byte for byte; the genoa recomputes its `fock`. |
-| D6 | Note tokens: cert method — `sister hull` + `refNo`; spinnaker — `sister hull` + `sailNo`; ramp — `ESTIMATED` + `ramp`. |
+| D6 | Note tokens (case-sensitive): cert method — `SISTER HULL` + `refNo`, and no `modelled` note may contain `own ORC certificate` or `own certificate` (case-insensitive) (PR #1676); spinnaker — `sister hull` + `sailNo`; ramp — `ESTIMATED` + `ramp`. |
 | D7 | No anchor `source` cites the same sail's `derivation.sources`; no anchor repeats another boat's `(twa, tws, minKn, maxKn, source)` (E4 generalised; E4 walks only estimated sails today). |
 | D8 | Existing structural checks unchanged. |
 
@@ -1188,7 +1188,7 @@ Same PR, outside the spec:
 1. `derive_orc_polars.mjs --check` exits 0, naming each table.
 2. D5: a certificate `Allowances` cell changed in a scratch `orc-sources/` (hash updated) reds naming `salona-44-easy-go/fock`; a committed `speeds` cell changed instead also reds.
 3. D3: one byte of the committed record changed without `sha256` reds.
-4. D6: `sister hull` deleted from the `boats.ts` fock note alone reds `polarProvenance.test`; from all three, D6.
+4. D6: `SISTER HULL` deleted from the `boats.ts` fock note alone reds `polarProvenance.test`; from all three, D6.
 5. D7: SPEEDY GO!'s anchor pasted onto EASY GO! reds; E4 alone does not.
 6. `salona-44-easy-go-{fock,genoa}.json` are 15 × 9; `beat`/`gybe` = certificate (24 kn in column 25); cells > 0 and `< 12`; TWS-monotone in 4–20.
 7. Rows 52/60/90/110/120/135 = `round2(3600/R)`, rows 150/165/180 = `round2(3600/DW)`, columns 4–20. Mutation: row 150 on `R150` reds at every TWS column except 10 kn. A planted `GybeAngle` below a used `R` row aborts the generator.
