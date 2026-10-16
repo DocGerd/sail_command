@@ -183,6 +183,46 @@ Output filenames carry the boat id (spec F.1): the previous `polar-<sail>.json`
 had no boat identifier, so a second boat's tables would have overwritten the
 first's.
 
+#### Derived tables — the `derivation` block, `derive_orc_polars.mjs`, `orc-sources/`
+
+A sail may carry a `derivation` block instead of an `estimator` block
+(multi-boat spec §P.6). `method` fixes the tier:
+
+- `orc-ns-cert-rows-v1` — `modelled`. A jib table from one sister hull's ORC
+  certificate record (`donor`, `sources`).
+- `orc-jib-genoa-ramp-v1` — `estimated`, `uncertaintyPct` 10. The genoa is the
+  same boat's `fromSailId` table times the Salona 45's genoa/fock ramp, clamped
+  at `clampMin` (`ramp`).
+
+Inputs, and only these:
+
+- **Cell values** come from `pipeline/orc-sources/*.json`, hand-authored raw
+  captures (each with `url`, `retrievedAt`, `responseSha256`).
+  `orc-sources/README.md` holds the **re-fetch protocol**; nothing in that
+  directory is written by a script.
+- **The `tws`/`twa` grid and the ramp** come from the Salona 45 record in
+  `polars-source.json`.
+- No network at build time.
+
+```
+node pipeline/derive_orc_polars.mjs --check                # also runs inside build_polars.mjs
+node pipeline/derive_orc_polars.mjs --emit-boat <boat-id>  # prints the boat block; writes nothing
+```
+
+Paste the emitted block into `polars-source.json` with `sed`/`python3`, never
+`Edit`/`Write` (the prettier hook reflows the file). `build_polars.mjs` then
+enforces rules **D1–D8** (spec §P.6): method known and tier-consistent, each
+`sources[].path` present under `orc-sources/` with a matching `sha256`, donor
+fields equal to the record, committed `speeds`/`beat`/`gybe` reproduced byte
+for byte, note tokens present (case-sensitive: `sister hull` plus the `refNo`;
+`ESTIMATED` plus `ramp`), and no anchor citing a source its own boat's table
+was derived from.
+
+`app/src/test/polarProvenance.test.ts` mirrors the presence, tier and token
+rules against the catalogue. It alone carries the amended mixed-tier rule (an
+estimated sail on a mixed-tier boat must ramp off a same-boat sail that is not
+estimated); `build_polars.mjs` does not enforce it.
+
 ### `harbors.json` — curated harbor list
 
 Curated harbors in the Flensburg Fjord, Danish South Sea, Little Belt, southern

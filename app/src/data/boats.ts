@@ -187,6 +187,36 @@ const ELAN_FOCK_NOTE =
   'boat with particular caution. Flat-water racing VPP - tune with the performance factor. NOT ' +
   'race-calibrated, and never measured against this boat.';
 
+const EASY_GO_GENOA_NOTE =
+  "Tier C, ESTIMATED - this boat's jib table (see the jib note: a sister hull's certificate, " +
+  "not this boat's) multiplied cell-by-cell by the Salona 45's documented genoa overlay ramp, " +
+  'i.e. its genoa table divided by its jib table, never below 1 (about +4-5% at 4 kn, +3-4% at ' +
+  '6, +2-3% at 8, +1-2% at 10, nothing from 16 kn). The ramp was set for a smaller genoa/jib ' +
+  "step than the 61.10 m2 furling genoa the builder lists for the Salona 44 (this boat's own " +
+  'headsail areas are not known), so the light-air gain may be understated; from 16 kn the ' +
+  "genoa is credited with the jib's speed, which assumes it is depowered optimally and may be " +
+  "too high. The difference between this boat's two tables is therefore a function of THAT " +
+  'RAMP, not of this hull, and carries no information about it - which is why the sail ' +
+  'comparison is withheld rather than presented as a finding. Below about 8 kn the table ' +
+  'decides between sailing and motoring, so a leg may be motored that would sail, or the ' +
+  'reverse. Same grid and angles, and the same uncertainty, as the jib table. Flat-water ' +
+  'racing VPP - tune with the performance factor. NOT race-calibrated, and never measured ' +
+  'against this boat.';
+
+const EASY_GO_FOCK_NOTE =
+  "Tier B, MODELLED - this boat's own table, anchored on a SISTER HULL's ORC certificate, not " +
+  'on a certificate of this boat. Source: ORC Non-Spinnaker certificate 2026 for the Salona 44 ' +
+  'SANTA ANASTASIA (CRO 1938, RefNo 04590004MKR), issued 2026-04-22, retrieved 2026-10-15; ' +
+  'deep keel (inferred from its ORC-measured draft of 2.415 m, the certificate has no keel ' +
+  "field). It is that hull's white-sail polar in its 41.66 m2 jib configuration, read onto the " +
+  "app grid; this boat's own jib area, loading and keel are unknown, and the sign of the " +
+  "resulting error is unknown. Against the builder's ORC VPP 1.11 jib polar for another Salona " +
+  '44 sister hull (2010, CRO 2009) the table differs by -5% to +9% per cell; that compares two ' +
+  'sister-hull VPP runs and is not an error bound for this boat. Below about 8 kn the table ' +
+  'decides between sailing and motoring, so a leg may be motored that would sail, or the ' +
+  'reverse. Flat-water racing VPP - tune with the performance factor. NOT race-calibrated, and ' +
+  'never measured against this boat.';
+
 export const BOATS = [
   {
     id: 'salona-45',
@@ -242,9 +272,7 @@ export const BOATS = [
     // safety error" that spec L rejected the keel-variant picker over,
     // arriving through the sister-ship door instead.
     //
-    // OQ-4's sister-ship sharing: EASY GO! borrows this boat's polar assets
-    // (`polarsFrom` in pipeline/polars-source.json, #567) while keeping its own
-    // catalogue entry and its own verify_mask.py gate scan.
+    // OQ-4: EASY GO! keeps its own catalogue entry and its own verify_mask.py gate scan.
     id: 'salona-44-speedy-go',
     name: 'Salona 44 (SPEEDY GO!)',
     // Its own literal, deliberately. Spec L has a row on exactly this: 2.10 m
@@ -320,11 +348,9 @@ export const BOATS = [
     ],
   },
   {
-    // #1575, tier C like SPEEDY GO! and PIRANJA. Same model as SPEEDY GO! on
-    // the deep keel: polar assets and sanity anchors are SPEEDY GO!'s
-    // (`polarsFrom`, #567), so `polarAsset` points at its files and the two
-    // polar notes are byte-identical to its notes. The estimate has no keel
-    // term, so the deeper hull is not modelled in the speeds.
+    // #1575. The jib (`fock`) is tier B, anchored on a sister hull's ORC
+    // certificate; the genoa is tier C, ramped off that jib. Own tables since
+    // the EASY GO! cutover (spec P), so the boat is a mixed-tier set.
     id: 'salona-44-easy-go',
     name: 'Salona 44 (EASY GO!)',
     // The operator's page gives 2.55 m, a Salona 44 racing-keel review 2.59 m;
@@ -335,11 +361,15 @@ export const BOATS = [
       keel: 'deep racing keel',
       hullVerified: false,
       note:
-        'Deep (racing) keel, 2.59 m. The operator’s page for this boat gives 2.55 m and a ' +
-        'published review of the Salona 44 gives 2.59 m for its racing keel; the deeper figure ' +
-        'is used so the derived depth gate is not too shallow. The figure was not checked ' +
-        'against the hull’s own papers. Its polar table is the estimate for its sister ship ' +
-        'SPEEDY GO!, which has no keel term, so the deeper keel is not modelled in the speeds.',
+        "Deep (racing) keel, 2.59 m. Sources disagree: the builder's technical data lists 2.10 / " +
+        '2.55 m for the two keels, the operator’s page for this boat gives 2.55 m, and a published ' +
+        'review 2.59 m, whose own imperial figure (8 ft 4 in) reads 2.54 m; six ORC-measured Salona ' +
+        '44 hulls of the deeper-keel group read 2.415-2.441 m. ORC drafts are measured at the ' +
+        "certificate's measurement displacement (9,300 kg for the donor, against 10,578 kg sailing), " +
+        'so the setting should not be lowered toward them. The deeper figure is used so the derived ' +
+        'depth gate is not too shallow; 2.55 m gives the same 3.5 m gate. Not checked against the ' +
+        "hull's own papers. The polar tables come from a sister hull measured at 2.415 m, so the " +
+        'speeds carry no keel term for this boat.',
     },
     motorSpeedKn: 6.5,
     maneuverPenaltyS: 45,
@@ -347,14 +377,14 @@ export const BOATS = [
       {
         id: 'genoa',
         label: 'Genoa',
-        polarAsset: 'data/polars/salona-44-speedy-go-genoa.json',
-        polarProvenance: { tier: 'estimated', note: S44_GENOA_NOTE },
+        polarAsset: 'data/polars/salona-44-easy-go-genoa.json',
+        polarProvenance: { tier: 'estimated', note: EASY_GO_GENOA_NOTE },
       },
       {
         id: 'fock',
         label: 'Jib',
-        polarAsset: 'data/polars/salona-44-speedy-go-fock.json',
-        polarProvenance: { tier: 'estimated', note: S44_FOCK_NOTE },
+        polarAsset: 'data/polars/salona-44-easy-go-fock.json',
+        polarProvenance: { tier: 'modelled', note: EASY_GO_FOCK_NOTE },
       },
     ],
   },
