@@ -78,7 +78,7 @@ import { usePersistedToggle } from './lib/usePersistedToggle';
 import { PANEL_MIN_WIDTH_PX, panelMaxWidthPx } from './lib/panelWidth';
 import { formatLatLon } from './lib/format';
 import { resolveHarborPickTarget } from './lib/harborGeoJson';
-import { boatById, sailIdsOf } from './data/boats';
+import { boatById } from './data/boats';
 import {
   emptySegmentModes,
   nearestViaInsertIndex,
@@ -91,6 +91,7 @@ import {
 } from './lib/viaInsertion';
 import { usePersistedBoatId } from './lib/usePersistedBoatId';
 import { usePersistedOwnMmsi } from './lib/ownMmsi';
+import { usePersistedSailInventory } from './lib/sailInventory';
 // #834: same widening PlannerPanel.tsx's own `harbors` prop already carries —
 // see that module's comment for why this lives outside the `app/sweep/`
 // closure rather than on `Harbor` in `types.ts`.
@@ -362,6 +363,7 @@ function AppShell() {
   // same key, which is what the hook's listener registry exists for: typing an
   // MMSI on the Boat tab must reach the overlay without a remount.
   const [ownMmsi] = usePersistedOwnMmsi(boatId);
+  const [sailInventory] = usePersistedSailInventory(boatId);
   const { plan, rig, setRig, activeLegIndex, setPlan } = useActivePlan();
   // #554: resolve the active rig's route ONCE here — AisTraffic takes the
   // already-resolved corridor route rather than re-deriving it from plan+rig
@@ -1325,7 +1327,7 @@ function AppShell() {
       //
       // Both fields come from the same `boat`, so the sails a plan compares
       // and the hull it is solved against can never name different boats.
-      sailIds: sailIdsOf(boat),
+      sailIds: sailInventory.headsailIds,
       // #54 spec §I.3: denormalised by value, so the saved plan can be
       // rendered without the catalogue.
       //
@@ -1336,7 +1338,7 @@ function AppShell() {
       // boat's plan on the wrong hull while the picker, the tier chip, the
       // keel sentence and the safety-depth field all described the boat the
       // user actually picked.
-      boat: boatSnapshot(boat),
+      boat: boatSnapshot(boat, sailInventory.headsailIds),
       // #885: omitted when nothing is forced, so such plans store exactly as before.
       ...requestSegmentModes(draftSegmentModes),
     };
@@ -1358,6 +1360,7 @@ function AppShell() {
     viaPoints,
     draftSegmentModes,
     boat,
+    sailInventory.headsailIds,
     lang,
     t,
   ]);
@@ -1467,6 +1470,7 @@ function AppShell() {
             viaPoints,
             segmentModes: draftSegmentModes,
             settings,
+            headsailIds: sailInventory.headsailIds,
           },
           harbors.length > 0,
         )
@@ -1509,7 +1513,9 @@ function AppShell() {
   // predicate itself (it already receives `plan`/`settings` as props) and
   // folds the stale sentence only for `formDirty && !settingsDirty` — the
   // complement this Banner cannot see.
-  const settingsDirty = plan ? routingSettingsDirty(plan, settings) : false;
+  const settingsDirty = plan
+    ? routingSettingsDirty(plan, settings, sailInventory.headsailIds)
+    : false;
 
   // #834: the harbor picker discloses a #652 known-disconnected harbor BEFORE
   // a solve (`HarborPicker.tsx`'s option row) and, since commit `d173be0`
@@ -2038,6 +2044,7 @@ function AppShell() {
                   settings={settings}
                   onSettingsChange={setSettings}
                   boat={boat}
+                  boatId={boatId}
                   canPlan={canPlan}
                   planDisabledReason={planDisabledReason}
                   online={online}

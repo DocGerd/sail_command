@@ -9,7 +9,7 @@ import { recommendedResult } from '../types';
 import { formatDateTime, formatDuration, formatHeading, formatNm } from '../lib/format';
 import { WindField } from '../lib/wind';
 import { GENOA_SAIL_ID } from '../data/boats';
-import { useDepartureScan, type DepartureCandidate } from '../state/useDepartureScan';
+import { scanSailIdsFor, useDepartureScan, type DepartureCandidate } from '../state/useDepartureScan';
 import { useDepartureConfirm } from '../state/useDepartureConfirm';
 import Card from './Card';
 import Field from './Field';
@@ -260,6 +260,8 @@ export default function DepartureCompare({
 
   if (!plan || !windField) return null;
 
+  const scanSailId = scanSailIdsFor(plan.request.sailIds)[0];
+
   const handleScan = () => {
     setConfirmed(null);
     void scan({
@@ -302,7 +304,11 @@ export default function DepartureCompare({
 
   return (
     <Card title={t('departureScan.title')} className="departure-compare">
-      <p className="sc-field-help">{t('departureScan.help')}</p>
+      <p className="sc-field-help">
+        {scanSailId === undefined || scanSailId === GENOA_SAIL_ID
+          ? t('departureScan.help')
+          : t('departureScan.helpGeneric', { sail: t(sailLabelKey(scanSailId)) })}
+      </p>
       {!state.scanning && (
         <div className="departure-compare-controls">
           <Field label={t('departureScan.count.label')} htmlFor={countId}>
@@ -382,7 +388,13 @@ export default function DepartureCompare({
                   {candidate.outcome.kind === 'ok' &&
                     (confirmState.confirming &&
                     confirmState.departureMs === candidate.departureMs ? (
-                      <p role="status">{t('departureScan.confirm.confirming')}</p>
+                      <p role="status">
+                        {t(
+                          plan.request.sailIds.length === 1
+                            ? 'departureScan.confirm.confirmingOneSail'
+                            : 'departureScan.confirm.confirming',
+                        )}
+                      </p>
                     ) : (
                       <Button
                         variant="primary"

@@ -199,6 +199,7 @@ async function renderPanelWithPlan() {
         settings={DEFAULT_SETTINGS}
         onSettingsChange={vi.fn()}
         boat={boatById(DEFAULT_BOAT_ID)}
+        boatId={DEFAULT_BOAT_ID}
         canPlan={true}
         planDisabledReason={null}
         online={true}

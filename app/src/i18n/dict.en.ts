@@ -1310,6 +1310,7 @@ export const en = {
   // #937 (part c): see dict.de.ts's matching comment.
   'departureScan.confirm.action': 'Use this departure',
   'departureScan.confirm.confirming': 'Running the full two-rig solve …',
+  'departureScan.confirm.confirmingOneSail': 'Running the full solve …',
   'departureScan.confirm.done': 'Plan updated.',
   'departureScan.confirm.done.disagreement':
     'Plan updated — the full solve favours {rig} here, not the genoa this window was ranked by.',
