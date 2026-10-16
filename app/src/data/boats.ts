@@ -393,6 +393,9 @@ export const BOATS = [
 export type BoatId = (typeof BOATS)[number]['id'];
 export type SailId = (typeof BOATS)[number]['sails'][number]['id'];
 
+/** Spec R.6/D11: the compared headsails per plan; a third solve exceeds `PLAN_BUDGET_MS`. */
+export const MAX_HEADSAILS = 2;
+
 export const DEFAULT_BOAT_ID: BoatId = 'salona-45';
 
 export function boatById(id: BoatId): BoatDef {

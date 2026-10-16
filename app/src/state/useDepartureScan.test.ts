@@ -1,7 +1,8 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { useDepartureScan, type DepartureScanRequest } from './useDepartureScan';
+import { scanSailIdsFor, useDepartureScan, type DepartureScanRequest } from './useDepartureScan';
 import type { ReplanClient } from './replan';
+import { GENOA_SAIL_ID } from '../data/boats';
 import { RoutingError } from '../routing/workerClient';
 import { uniformWindGrid } from '../test/fixtures';
 import {
@@ -11,8 +12,10 @@ import {
   type PlanRequest,
   type PlanResultOk,
   type PlanResultError,
+  type SailId,
 } from '../types';
 
+const FOCK_SAIL_ID: SailId = 'fock';
 const ORIGIN: LatLon = { lat: 54.75, lon: 10.0 };
 const DESTINATION: LatLon = { lat: 54.75, lon: 10.4 };
 const DEPARTURE_MS = Date.UTC(2026, 6, 15, 8, 0, 0);
@@ -63,6 +66,7 @@ const NO_ROUTE_RESULT: PlanResultError = { status: 'error', reason: 'beyond-hori
 function makeRequest(overrides: Partial<DepartureScanRequest> = {}): DepartureScanRequest {
   return {
     base: makeBase(),
+    aboardSailIds: [GENOA_SAIL_ID, FOCK_SAIL_ID],
     windGrid: uniformWindGrid(12, 0, { t0Ms: DEPARTURE_MS - 3_600_000, hours: 96 }),
     stepHours: 3,
     count: 4,
@@ -113,6 +117,39 @@ describe('useDepartureScan', () => {
       const req = call[0] as PlanRequest;
       expect(req.sailIds).toEqual(['genoa']);
     }
+  });
+
+  it('genoa ashore: every candidate solves the first aboard sail instead', async () => {
+    const plan = vi.fn().mockResolvedValue(okResult(10));
+    const client: ReplanClient = { plan };
+    const { result } = renderHook(() => useDepartureScan(() => Promise.resolve(client)));
+
+    await act(async () => {
+      await result.current.scan(makeRequest({ aboardSailIds: [FOCK_SAIL_ID], count: 2 }));
+    });
+
+    expect(plan).toHaveBeenCalledTimes(2);
+    for (const call of plan.mock.calls) {
+      expect((call[0] as PlanRequest).sailIds).toEqual([FOCK_SAIL_ID]);
+    }
+  });
+
+  it('empty aboard set fails closed: requests no sail, never an unaboard genoa', () => {
+    expect(scanSailIdsFor([])).toEqual([]);
+  });
+
+  it('genoa aboard but not first: still scans the genoa alone', async () => {
+    const plan = vi.fn().mockResolvedValue(okResult(10));
+    const client: ReplanClient = { plan };
+    const { result } = renderHook(() => useDepartureScan(() => Promise.resolve(client)));
+
+    await act(async () => {
+      await result.current.scan(
+        makeRequest({ aboardSailIds: [FOCK_SAIL_ID, GENOA_SAIL_ID], count: 1 }),
+      );
+    });
+
+    expect((plan.mock.calls[0]?.[0] as PlanRequest).sailIds).toEqual([GENOA_SAIL_ID]);
   });
 
   it('steps departureMs forward by stepHours from the base departure, one candidate per hour offset', async () => {

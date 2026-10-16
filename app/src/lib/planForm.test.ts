@@ -5,6 +5,7 @@ import {
   pickedPointMoved,
   pickedPointsOfPlan,
   planFormDirty,
+  routingSettingsDirty,
   viaPointsDiffer,
   type PlanFormSnapshot,
 } from './planForm';
@@ -500,4 +501,37 @@ describe('planFormDirty (#301)', () => {
   //     figure and a file-scoped one are not comparable.
   // If a count is ever needed here again, MEASURE it and state its filter;
   // never derive one from another count.
+});
+
+describe('sails aboard (#1661, R.3)', () => {
+  const settings = { ...ORIGINAL_REQUEST.settings };
+
+  it('routingSettingsDirty: same set in another order, fresh array, is NOT dirty', () => {
+    expect(routingSettingsDirty(makePlan(), settings, ['fock', 'genoa'])).toBe(false);
+  });
+
+  it('routingSettingsDirty: a smaller aboard set is dirty', () => {
+    expect(routingSettingsDirty(makePlan(), settings, ['genoa'])).toBe(true);
+  });
+
+  it('routingSettingsDirty: a plan solved on one sail is dirty once both are aboard', () => {
+    const plan = makePlan({ ...ORIGINAL_REQUEST, sailIds: ['genoa'] });
+    expect(routingSettingsDirty(plan, settings, ['genoa', 'fock'])).toBe(true);
+    expect(routingSettingsDirty(plan, settings, ['genoa'])).toBe(false);
+  });
+
+  it('routingSettingsDirty: omitting the aboard set compares settings only', () => {
+    expect(routingSettingsDirty(makePlan(), settings)).toBe(false);
+  });
+
+  it('planFormDirty: an aboard edit alone dirties the form, and so does the settings-only signal', () => {
+    const form: PlanFormSnapshot = { ...matchingForm(), headsailIds: ['genoa'] };
+    expect(planFormDirty(makePlan(), form, true)).toBe(true);
+    expect(routingSettingsDirty(makePlan(), form.settings, form.headsailIds)).toBe(true);
+  });
+
+  it('planFormDirty: the full aboard set in a different order is NOT dirty', () => {
+    const form: PlanFormSnapshot = { ...matchingForm(), headsailIds: ['fock', 'genoa'] };
+    expect(planFormDirty(makePlan(), form, true)).toBe(false);
+  });
 });

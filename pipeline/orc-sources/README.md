@@ -16,6 +16,9 @@ Envelope: `url`, `retrievedAt`, `responseSha256`, `responseBytes`. For the ORC f
 records); the committed file holds one record, so its own bytes differ. For the
 polargraph it is the hash of the source PDF, which is not committed (© ORC 2010).
 
+The polargraph cells were transcribed from the PDF's extracted text, decimal
+commas converted to points, and cross-checked against `pdftotext -layout`.
+
 ## Re-fetch protocol
 
 1. `GET` the `url`; for the polargraph fetch the Wayback PDF.

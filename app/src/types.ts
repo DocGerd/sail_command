@@ -256,16 +256,19 @@ export interface BoatSnapshot {
 // viaPoints/settings). The parameter is the SNAPSHOT shape, not BoatDef, so
 // one function serves both directions: a catalogue BoatDef is structurally
 // assignable to it, and an existing snapshot can be re-copied.
-export function boatSnapshot(boat: BoatSnapshot): BoatSnapshot {
+// `aboard` keeps only those sails, in catalogue order; omitted = all sails.
+export function boatSnapshot(boat: BoatSnapshot, aboard?: readonly SailId[]): BoatSnapshot {
   return {
     id: boat.id,
     name: boat.name,
     draftM: boat.draftM,
-    sails: boat.sails.map((s) => ({
-      id: s.id,
-      label: s.label,
-      polarProvenance: { tier: s.polarProvenance.tier, note: s.polarProvenance.note },
-    })),
+    sails: boat.sails
+      .filter((s) => aboard === undefined || aboard.some((a) => a === s.id))
+      .map((s) => ({
+        id: s.id,
+        label: s.label,
+        polarProvenance: { tier: s.polarProvenance.tier, note: s.polarProvenance.note },
+      })),
   };
 }
 

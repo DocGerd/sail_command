@@ -15,7 +15,10 @@ import DepartureCompare from './DepartureCompare';
 import { useDepartureScan, type DepartureScanState } from '../state/useDepartureScan';
 import { useDepartureConfirm, type DepartureConfirmState } from '../state/useDepartureConfirm';
 
-vi.mock('../state/useDepartureScan', () => ({ useDepartureScan: vi.fn() }));
+vi.mock('../state/useDepartureScan', async (importActual) => ({
+  ...(await importActual<typeof import('../state/useDepartureScan')>()),
+  useDepartureScan: vi.fn(),
+}));
 vi.mock('../state/useDepartureConfirm', () => ({ useDepartureConfirm: vi.fn() }));
 
 const ORIGIN: LatLon = { lat: 54.75, lon: 10.0 };
@@ -158,6 +161,7 @@ describe('DepartureCompare', () => {
       uniformWindGrid(12, 0, { t0Ms: DEPARTURE_MS - 3_600_000, hours: 96 }),
     );
     expect(req.base.departureMs).toBe(DEPARTURE_MS);
+    expect(req.aboardSailIds).toEqual(['genoa', 'fock']);
   });
 
   it('while scanning: shows the phase readout and a cancel button, hides the controls', () => {
@@ -269,6 +273,21 @@ describe('DepartureCompare', () => {
     expect(screen.getByText(/Abgebrochen/)).toBeInTheDocument();
   });
 
+  describe('scan help text', () => {
+    it('genoa aboard: shows the genoa-specific help', () => {
+      stubHook({});
+      renderCompare(makePlan());
+      expect(screen.getByText(/jeweils nur mit der Genua berechnet/)).toBeInTheDocument();
+    });
+
+    it('genoa ashore: names the sail actually scanned', () => {
+      stubHook({});
+      const plan = makePlan();
+      renderCompare({ ...plan, request: { ...plan.request, sailIds: ['fock'] } });
+      expect(screen.getByText(/jeweils nur mit Fock berechnet/)).toBeInTheDocument();
+    });
+  });
+
   describe('#937 confirm action', () => {
     // A two-rig result — unlike OK_RESULT above (the SCAN's own genoa-only
     // shape) — is what the real confirm solve returns.
@@ -357,6 +376,18 @@ describe('DepartureCompare', () => {
       expect(siblingButton).toBeDisabled();
     });
 
+    it('one-sail plan: the confirming readout does not claim a two-rig solve', () => {
+      stubHook({
+        candidates: [{ departureMs: DEPARTURE_MS, outcome: { kind: 'ok', result: OK_RESULT } }],
+      });
+      stubConfirmHook({ confirming: true, departureMs: DEPARTURE_MS });
+      const plan = makePlan();
+      renderCompare({ ...plan, request: { ...plan.request, sailIds: ['fock'] } });
+
+      expect(screen.getByText('Vollständige Berechnung läuft …')).toBeInTheDocument();
+      expect(screen.queryByText(/beiden Riggs/)).not.toBeInTheDocument();
+    });
+
     it('a successful confirm calls onConfirmed and shows a plain success notice when the comparison agrees with genoa', async () => {
       const plan = makePlan();
       const candidateMs = DEPARTURE_MS;
@@ -403,6 +434,26 @@ describe('DepartureCompare', () => {
 
       fireEvent.click(screen.getByRole('button', { name: 'Diese Abfahrt übernehmen' }));
       expect(await screen.findByText(/empfiehlt hier Fock/)).toBeInTheDocument();
+    });
+
+    it('genoa ashore: a confirmed result deciding another rig names no disagreement', async () => {
+      const plan = makePlan();
+      const ashore: Plan = { ...plan, request: { ...plan.request, sailIds: ['fock'] } };
+      stubHook({
+        candidates: [{ departureMs: DEPARTURE_MS, outcome: { kind: 'ok', result: OK_RESULT } }],
+      });
+      const updated: Plan = {
+        ...ashore,
+        createdAtMs: ashore.createdAtMs + 1,
+        result: twoRigResult('fock'),
+      };
+      const onConfirmed = vi.fn();
+      stubConfirmHook({}, vi.fn().mockResolvedValue(updated));
+      renderCompare(ashore, onConfirmed);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Diese Abfahrt übernehmen' }));
+      await waitFor(() => expect(onConfirmed).toHaveBeenCalledWith(updated));
+      expect(screen.queryByText(/empfiehlt/)).not.toBeInTheDocument();
     });
 
     it('a confirm error renders as an inline alert scoped to that candidate', () => {

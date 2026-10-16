@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Settings } from '../types';
-import { BOATS, boatById, type BoatDef, type BoatId } from '../data/boats';
+import { BOATS, boatById, sailIdsOf, type BoatDef, type BoatId } from '../data/boats';
 import { type Lang, useLang, useT } from '../i18n';
 import { clampSettingsToBoat } from '../lib/boatSettings';
 import { defaultSafetyDepthM } from '../lib/boatDepth';
@@ -16,12 +16,14 @@ import {
 import type { NavMask } from '../lib/mask';
 import { isValidMmsi } from '../lib/mmsi';
 import { usePersistedOwnMmsi } from '../lib/ownMmsi';
+import { usePersistedSailInventory } from '../lib/sailInventory';
 import { useNavMask } from '../state/useNavMask';
 import { loadRoutingAssets } from '../services/assets';
 import Card from './Card';
 import Chip from './Chip';
 import Disclosure from './Disclosure';
 import Field from './Field';
+import SailAboardControl from './SailAboardControl';
 
 type TFunction = ReturnType<typeof useT>;
 
@@ -712,6 +714,8 @@ export default function BoatPicker({
   const [storedMmsi, setOwnMmsi] = usePersistedOwnMmsi(boatId);
   const mmsi = storedMmsi ?? '';
   const mmsiInvalid = mmsi !== '' && !isValidMmsi(mmsi);
+  // #1661: the aboard headsails, per boat; the control hides itself for a boat with one.
+  const [sailInventory, sailInventoryActions] = usePersistedSailInventory(boatId);
 
   // #699: a clamping switch scrolls the notice into view — without this, the
   // announcement can render below the Boat card's ~18-20 rows of boat
@@ -862,6 +866,11 @@ export default function BoatPicker({
           {t('boat.mmsi.invalid')}
         </p>
       )}
+      <SailAboardControl
+        catalogueIds={sailIdsOf(boatById(boatId))}
+        aboard={sailInventory.headsailIds}
+        onChange={sailInventoryActions.setHeadsails}
+      />
     </Card>
   );
 }

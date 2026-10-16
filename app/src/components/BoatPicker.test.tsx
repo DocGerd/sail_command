@@ -390,3 +390,52 @@ describe('BoatPicker — per-boat own MMSI (#746)', () => {
     expect(renderFor('salona-44-speedy-go')).toHaveValue('');
   });
 });
+
+// #1661: the aboard-headsail control, wired to the per-boat inventory.
+describe('BoatPicker — sails aboard (#1661)', () => {
+  function renderFor(boatId: (typeof BOATS)[number]['id']) {
+    localStorage.setItem('sc-lang', 'en');
+    render(
+      <I18nProvider>
+        <BoatPicker
+          boatId={boatId}
+          onBoatIdChange={vi.fn()}
+          settings={DEFAULT_SETTINGS}
+          onSettingsChange={vi.fn()}
+          originHarborId={null}
+          destinationHarborId={null}
+        />
+      </I18nProvider>,
+    );
+    return screen.getByRole('group', { name: 'Sails aboard' });
+  }
+
+  it('starts with Both pressed and persists a single-sail choice under the boat’s own key', () => {
+    const group = renderFor('salona-45');
+    expect(within(group).getByRole('button', { name: 'Both' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    fireEvent.click(within(group).getByRole('button', { name: 'Fock' }));
+    expect(within(group).getByRole('button', { name: 'Fock' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(JSON.parse(localStorage.getItem('sc-sail-inventory-salona-45') ?? 'null')).toMatchObject(
+      { aboard: ['fock'] },
+    );
+    expect(localStorage.getItem('sc-sail-inventory-salona-44-speedy-go')).toBeNull();
+  });
+
+  it('shows boat B’s own inventory, never boat A’s', () => {
+    localStorage.setItem(
+      'sc-sail-inventory-salona-45',
+      JSON.stringify({ v: 1, aboard: ['genoa'], hoisted: null }),
+    );
+    const group = renderFor('salona-44-speedy-go');
+    expect(within(group).getByRole('button', { name: 'Both' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+  });
+});

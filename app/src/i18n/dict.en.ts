@@ -59,6 +59,12 @@ export const en = {
   'boat.section.title': 'Boat selection',
   'boat.picker.label': 'Select boat',
   'boat.draft': 'Draft {depth} m',
+  // #1661: aboard-sail control (Boat tab) and its planner line.
+  'boat.sailsAboard.group': 'Sails aboard',
+  'boat.sailsAboard.both': 'Both',
+  'boat.sailsAboard.hint': 'At least one sail must stay aboard.',
+  'planner.sailsAboard': 'Sails aboard: {sails}',
+  'route.singleSail': 'Planned with {sail} only',
   // #746: the own-vessel MMSI, per boat. Kept separate from the AIS API key's
   // copy (options.ais.help) on purpose — the key is an account credential and
   // IS transmitted; this identifies a vessel and never is. Each half must keep
@@ -499,7 +505,7 @@ export const en = {
   // "the reported comparison did not finish", not "nothing anywhere in this
   // plan's search was cut short".
   'route.comparisonIncomplete':
-    'The search ran out of time before comparing both sails, so no faster rig is claimed',
+    'The search ran out of time before comparing both sails, so no faster rig is claimed. Deselect a sail under “Sails aboard” (Boat tab) to plan with a single sail',
   // #1166: a SECOND, more specific 'not-compared' cause, distinct from
   // rigNotCompared (N=1, N>=3 or tier-C suppression, all with zero solve
   // failures) and from comparisonIncomplete above (a truncated SEARCH).
@@ -1286,6 +1292,8 @@ export const en = {
   'departureScan.title': 'Compare departure times',
   'departureScan.help':
     'Scans several departure times for this route (each computed on the genoa alone) and lists them by arrival and motor share.',
+  'departureScan.helpGeneric':
+    'Scans several departure times for this route (each computed on {sail} alone) and lists them by arrival and motor share.',
   'departureScan.count.label': 'Number of windows',
   'departureScan.step.label': 'Step',
   'departureScan.step.option': '{hours} h',
@@ -1302,6 +1310,7 @@ export const en = {
   // #937 (part c): see dict.de.ts's matching comment.
   'departureScan.confirm.action': 'Use this departure',
   'departureScan.confirm.confirming': 'Running the full two-rig solve …',
+  'departureScan.confirm.confirmingOneSail': 'Running the full solve …',
   'departureScan.confirm.done': 'Plan updated.',
   'departureScan.confirm.done.disagreement':
     'Plan updated — the full solve favours {rig} here, not the genoa this window was ranked by.',
