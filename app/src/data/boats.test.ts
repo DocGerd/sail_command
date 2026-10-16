@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { BOATS, boatById, DEFAULT_BOAT_ID, DEFAULT_SAIL_IDS, type BoatDef } from './boats';
+import {
+  BOATS,
+  boatById,
+  DEFAULT_BOAT_ID,
+  DEFAULT_SAIL_IDS,
+  MAX_HEADSAILS,
+  type BoatDef,
+} from './boats';
 import { defaultSafetyDepthM, minSafetyDepthM, relaxationFloorM } from '../lib/boatDepth';
 
 describe('boat catalogue', () => {
@@ -151,27 +158,31 @@ describe('boat catalogue', () => {
       'salona-44-speedy-go/fock': 'estimated',
       'elan-444-piranja/genoa': 'estimated',
       'elan-444-piranja/fock': 'estimated',
-      // #1575: tier C by sharing SPEEDY GO!'s estimated tables (#567).
+      // #1575, own tables since spec P: the jib is anchored on a sister hull's
+      // ORC certificate, the genoa is the jib times the Salona 45's ramp.
       'salona-44-easy-go/genoa': 'estimated',
-      'salona-44-easy-go/fock': 'estimated',
+      'salona-44-easy-go/fock': 'modelled',
     });
   });
 
   // Spec N.4's consequence, stated at the catalogue level because this is the
-  // INPUT the routing layer's suppression reads. `assemble` must resolve any
-  // sail set containing a tier-C sail to `not-compared` (spec N.6 E6); that
-  // rule is enforced in the routing layer and is NOT in this branch's scope,
-  // so this row pins only the half the catalogue owns — that each tier-C boat
-  // presents a set which is entirely tier C, giving the suppression rule an
-  // unambiguous input rather than a mixed one it would have to reason about.
-  it('a tier-C boat is tier C in EVERY sail, never a mixed set', () => {
+  // INPUT the routing layer's suppression reads. A tier-C boat presents a set
+  // that is entirely tier C, so the suppression rule gets an unambiguous input.
+  // The one deliberate exception (spec P.9, amended): a mixed set is allowed
+  // only where the estimated sail ramps off a same-boat sail (D1), which
+  // polarProvenance.test checks against `derivation.fromSailId`. This row pins
+  // WHICH boats are mixed; `comparisonSuppressed` is `some`, so they still
+  // suppress.
+  const MIXED_TIER_BOATS = ['salona-44-easy-go'];
+  it('a tier-C boat is tier C in EVERY sail, except the mixed-tier allowlist', () => {
+    const mixed: string[] = [];
     for (const b of BOATS) {
       const tiers = b.sails.map((s) => s.polarProvenance.tier);
       if (!tiers.includes('estimated')) continue;
-      expect(tiers, `${b.id} mixes estimated and non-estimated sails`).toEqual(
-        tiers.map(() => 'estimated'),
-      );
+      if (tiers.every((t) => t === 'estimated')) continue;
+      mixed.push(b.id);
     }
+    expect(mixed).toEqual(MIXED_TIER_BOATS);
   });
 
   // Spec N.2's required disclosure. The picker renders this, so the DATA has
@@ -230,7 +241,9 @@ describe('boat catalogue', () => {
     expect(relaxationFloorM(b)).toBe(2.6);
     expect(minSafetyDepthM(b)).toBe(2.7);
     expect(b.draftProvenance.hullVerified).toBe(false);
-    expect(b.draftProvenance.note).toContain('The operator’s page for this boat gives 2.55 m');
+    expect(b.draftProvenance.note).toContain('the operator’s page for this boat gives 2.55 m');
+    expect(b.draftProvenance.note).toContain('2.55 m gives the same 3.5 m gate');
+    expect(b.draftProvenance.note).toContain('a sister hull measured at 2.415 m');
   });
 
   it('defaults to the Salona 45', () => {
@@ -367,5 +380,74 @@ describe('#595: rendered notes carry no internal register', () => {
         expect(note, `${id} matched ${pattern} in rendered note: "${note}"`).not.toMatch(pattern);
       }
     }
+  });
+});
+
+describe('#1661: headsail inventory guards (spec R.6, A4, A5)', () => {
+  const POLAR_ASSETS = import.meta.glob<string>('../../public/data/polars/*.json', {
+    query: '?raw',
+    import: 'default',
+    eager: true,
+  });
+
+  const headsailCountViolations = (boats: readonly Pick<BoatDef, 'id' | 'sails'>[]) =>
+    boats.filter((b) => b.sails.length < 1 || b.sails.length > MAX_HEADSAILS).map((b) => b.id);
+
+  const isDownwindAsset = (json: unknown): boolean =>
+    typeof json === 'object' &&
+    json !== null &&
+    (Object.hasOwn(json, 'valid') || (json as { kind?: unknown }).kind === 'downwind');
+
+  const sail = (id: string) => ({
+    id,
+    label: id,
+    polarAsset: '',
+    polarProvenance: { tier: 'modelled' as const, note: 'fixture' },
+  });
+
+  it('MAX_HEADSAILS is 2', () => {
+    expect(MAX_HEADSAILS).toBe(2);
+  });
+
+  it('every catalogue boat carries 1..MAX_HEADSAILS headsails', () => {
+    expect(BOATS.length).toBeGreaterThan(0);
+    expect(headsailCountViolations(BOATS)).toEqual([]);
+  });
+
+  it('CONTROL: the count check flags zero and more than MAX_HEADSAILS sails', () => {
+    const fake = (id: string, n: number) => ({
+      id,
+      sails: Array.from({ length: n }, (_, i) => sail(`s${i}`)),
+    });
+    const boats = [
+      fake('none', 0),
+      fake('one', 1),
+      fake('max', MAX_HEADSAILS),
+      fake('over', MAX_HEADSAILS + 1),
+    ];
+    expect(headsailCountViolations(boats)).toEqual(['none', 'over']);
+  });
+
+  it('A4: no sails[] polar asset carries downwind markers (`valid`, kind downwind)', () => {
+    const assets = BOATS.flatMap((b) =>
+      b.sails.map((s) => ({ boat: b.id, sail: s.id, path: s.polarAsset })),
+    );
+    expect(assets.length).toBeGreaterThan(0);
+    for (const a of assets) {
+      const key = `../../public/${a.path}`;
+      expect(Object.hasOwn(POLAR_ASSETS, key), `${key} not found by the glob`).toBe(true);
+      const json: unknown = JSON.parse(POLAR_ASSETS[key]);
+      expect(
+        isDownwindAsset(json),
+        `${a.boat}/${a.sail} (${a.path}) looks like a downwind asset`,
+      ).toBe(false);
+    }
+  });
+
+  it('CONTROL: the downwind predicate matches `valid` and kind downwind, not a headsail table', () => {
+    expect(isDownwindAsset({ valid: { twaMin: 110 } })).toBe(true);
+    expect(isDownwindAsset({ kind: 'downwind' })).toBe(true);
+    expect(isDownwindAsset({ rig: 'genoa', speeds: [] })).toBe(false);
+    expect(isDownwindAsset(null)).toBe(false);
   });
 });

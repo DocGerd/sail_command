@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.54.0] - 2026-10-16
+
+### Added
+
+- On the Boat tab you can choose which headsails are aboard, so plans use only those (#1661).
+
+### Changed
+
+- EASY GO! now plans on its own polar tables instead of SPEEDY GO!'s: the jib comes from a sister hull's ORC certificate and the genoa is estimated from it. Saved EASY GO! plans keep their old polar notes (#1660).
+
 ## [0.53.0] - 2026-10-02
 
 ### Fixed
@@ -1265,7 +1275,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.53.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.54.0...HEAD
+[0.54.0]: https://github.com/DocGerd/sail_command/compare/v0.53.0...v0.54.0
 [0.53.0]: https://github.com/DocGerd/sail_command/compare/v0.52.0...v0.53.0
 [0.52.0]: https://github.com/DocGerd/sail_command/compare/v0.51.0...v0.52.0
 [0.51.0]: https://github.com/DocGerd/sail_command/compare/v0.50.0...v0.51.0

@@ -287,7 +287,118 @@
       "id": "salona-44-easy-go",
       "name": "Salona 44 (EASY GO!)",
       "draftM": 2.59,
-      "polarsFrom": "salona-44-speedy-go"
+      "validation": {
+        "maxSpeedKn": 12,
+        "maxSpeedKnSource": "judgement - one knot above the 11 kn reaching figure of a model sea trial (25 kn wind); the ORC certificate peaks at 10.55 kn in the held 24 kn column",
+        "anchors": [
+          {
+            "label": "upwind",
+            "twa": 52,
+            "tws": 12,
+            "minKn": 7.3,
+            "maxKn": 8.9,
+            "source": "Builder-published ORC VPP 1.11 polar of a Salona 44 sister hull (CRO 2009, issued 8.12.2010): Jib 8.10 kn at TWA 52 / TWS 12. Band about +/-10%, rounded to 0.05 kn; it catches an index or unit slip, not this boat's error."
+          },
+          {
+            "label": "beam reach",
+            "twa": 90,
+            "tws": 8,
+            "minKn": 6.8,
+            "maxKn": 8.35,
+            "source": "Builder-published ORC VPP 1.11 polar of a Salona 44 sister hull (CRO 2009, issued 8.12.2010): Jib 7.56 kn at TWA 90 / TWS 8. Band about +/-10%, rounded to 0.05 kn; it catches an index or unit slip, not this boat's error."
+          },
+          {
+            "label": "broad reach",
+            "twa": 135,
+            "tws": 10,
+            "minKn": 5.5,
+            "maxKn": 6.8,
+            "source": "Builder-published ORC VPP 1.11 polar of a Salona 44 sister hull (CRO 2009, issued 8.12.2010): Jib 6.14 kn at TWA 135 / TWS 10. Band about +/-10%, rounded to 0.05 kn; it catches an index or unit slip, not this boat's error."
+          },
+          {
+            "label": "run",
+            "twa": 180,
+            "tws": 12,
+            "minKn": 5.4,
+            "maxKn": 6.6,
+            "source": "Builder-published ORC VPP 1.11 polar of a Salona 44 sister hull (CRO 2009, issued 8.12.2010): Jib 6.00 kn at TWA 180 / TWS 12. Band about +/-10%, rounded to 0.05 kn; it catches an index or unit slip, not this boat's error."
+          }
+        ]
+      },
+      "tws": [4, 6, 8, 10, 12, 14, 16, 20, 25],
+      "twa": [35, 40, 45, 52, 60, 70, 80, 90, 100, 110, 120, 135, 150, 165, 180],
+      "beat": { "tws": [4, 6, 8, 10, 12, 14, 16, 20, 25], "angle": [47.2, 44.2, 41.8, 40, 38.8, 38.1, 37.8, 37.7, 38.9] },
+      "gybe": { "tws": [4, 6, 8, 10, 12, 14, 16, 20, 25], "angle": [141.7, 144.2, 146.1, 174.8, 179.3, 179.8, 179.8, 180, 180] },
+      "sails": {
+        "genoa": {
+          "provenance": {
+            "tier": "estimated",
+            "note": "Tier C, ESTIMATED - this boat's jib table (see the jib note: a sister hull's certificate, not this boat's) multiplied cell-by-cell by the Salona 45's documented genoa overlay ramp, i.e. its genoa table divided by its jib table, never below 1 (about +4-5% at 4 kn, +3-4% at 6, +2-3% at 8, +1-2% at 10, nothing from 16 kn). The ramp was set for a smaller genoa/jib step than the 61.10 m2 furling genoa the builder lists for the Salona 44 (this boat's own headsail areas are not known), so the light-air gain may be understated; from 16 kn the genoa is credited with the jib's speed, which assumes it is depowered optimally and may be too high. The difference between this boat's two tables is therefore a function of THAT RAMP, not of this hull, and carries no information about it - which is why the sail comparison is withheld rather than presented as a finding. Below about 8 kn the table decides between sailing and motoring, so a leg may be motored that would sail, or the reverse. Same grid and angles, and the same uncertainty, as the jib table. Flat-water racing VPP - tune with the performance factor. NOT race-calibrated, and never measured against this boat."
+          },
+          "derivation": {
+            "method": "orc-jib-genoa-ramp-v1",
+            "fromSailId": "fock",
+            "ramp": { "boatId": "salona-45", "fromSailId": "fock", "toSailId": "genoa", "clampMin": 1 },
+            "uncertaintyPct": 10
+          },
+          "speeds": [
+            [2.96, 4.26, 5.27, 5.99, 6.46, 6.7, 6.85, 6.96, 6.84],
+            [3.36, 4.86, 6.02, 6.85, 7.26, 7.44, 7.56, 7.67, 7.68],
+            [3.8, 5.44, 6.55, 7.24, 7.61, 7.78, 7.89, 8, 8.01],
+            [4.29, 5.93, 7.01, 7.63, 7.96, 8.12, 8.23, 8.35, 8.38],
+            [4.64, 6.3, 7.33, 7.87, 8.18, 8.35, 8.47, 8.61, 8.67],
+            [4.9, 6.53, 7.51, 8.03, 8.33, 8.54, 8.73, 8.93, 9.03],
+            [4.91, 6.55, 7.55, 8.07, 8.38, 8.64, 8.9, 9.23, 9.41],
+            [4.8, 6.43, 7.48, 8.06, 8.39, 8.69, 8.99, 9.49, 9.81],
+            [4.51, 6.13, 7.23, 7.92, 8.33, 8.65, 8.98, 9.65, 10.24],
+            [4.04, 5.64, 6.77, 7.63, 8.18, 8.56, 8.95, 9.73, 10.52],
+            [3.61, 5.21, 6.42, 7.35, 7.98, 8.4, 8.8, 9.62, 10.55],
+            [3.01, 4.49, 5.69, 6.7, 7.49, 8.05, 8.43, 9.21, 10.08],
+            [2.46, 3.71, 4.82, 5.82, 6.64, 7.33, 7.84, 8.59, 9.32],
+            [2.15, 3.24, 4.26, 5.22, 6.09, 6.86, 7.49, 8.42, 9.16],
+            [2.07, 3.14, 4.14, 5.08, 5.94, 6.7, 7.36, 8.33, 9.07]
+          ]
+        },
+        "fock": {
+          "provenance": {
+            "tier": "modelled",
+            "note": "Tier B, MODELLED - this boat's own table, anchored on a SISTER HULL's ORC certificate, not on a certificate of this boat. Source: ORC Non-Spinnaker certificate 2026 for the Salona 44 SANTA ANASTASIA (CRO 1938, RefNo 04590004MKR), issued 2026-04-22, retrieved 2026-10-15; deep keel (inferred from its ORC-measured draft of 2.415 m, the certificate has no keel field). It is that hull's white-sail polar in its 41.66 m2 jib configuration, read onto the app grid; this boat's own jib area, loading and keel are unknown, and the sign of the resulting error is unknown. Against the builder's ORC VPP 1.11 jib polar for another Salona 44 sister hull (2010, CRO 2009) the table differs by -5% to +9% per cell; that compares two sister-hull VPP runs and is not an error bound for this boat. Below about 8 kn the table decides between sailing and motoring, so a leg may be motored that would sail, or the reverse. Flat-water racing VPP - tune with the performance factor. NOT race-calibrated, and never measured against this boat."
+          },
+          "derivation": {
+            "method": "orc-ns-cert-rows-v1",
+            "donor": {
+              "kind": "orc-cert",
+              "relation": "sister-hull",
+              "refNo": "04590004MKR",
+              "yacht": "SANTA ANASTASIA",
+              "sailNo": "CRO 1938",
+              "measuredDraftM": 2.415,
+              "areaJibM2": 41.66,
+              "areaMainM2": 58.48
+            },
+            "sources": [
+              { "path": "orc-sources/orc-ns-tur-santa-anastasia-2026.json", "sha256": "5a4e92a20d8cca03aec4ce2376c2ba641dc3e3518e0b22682e3b9bf7db95fa39" }
+            ]
+          },
+          "speeds": [
+            [2.81, 4.09, 5.11, 5.9, 6.43, 6.7, 6.85, 6.96, 6.84],
+            [3.21, 4.67, 5.84, 6.75, 7.22, 7.44, 7.56, 7.67, 7.68],
+            [3.62, 5.23, 6.36, 7.13, 7.57, 7.78, 7.89, 8, 8.01],
+            [4.08, 5.7, 6.8, 7.52, 7.92, 8.12, 8.23, 8.35, 8.38],
+            [4.42, 6.05, 7.11, 7.76, 8.14, 8.35, 8.47, 8.61, 8.67],
+            [4.66, 6.27, 7.3, 7.92, 8.29, 8.54, 8.73, 8.93, 9.03],
+            [4.68, 6.29, 7.33, 7.95, 8.34, 8.64, 8.9, 9.23, 9.41],
+            [4.57, 6.18, 7.27, 7.94, 8.35, 8.69, 8.99, 9.49, 9.81],
+            [4.3, 5.89, 7.02, 7.81, 8.29, 8.65, 8.98, 9.65, 10.24],
+            [3.89, 5.47, 6.64, 7.56, 8.14, 8.56, 8.95, 9.73, 10.52],
+            [3.46, 5.06, 6.3, 7.28, 7.95, 8.4, 8.8, 9.62, 10.55],
+            [2.9, 4.36, 5.58, 6.6, 7.42, 8.01, 8.43, 9.21, 10.08],
+            [2.37, 3.6, 4.73, 5.73, 6.57, 7.29, 7.84, 8.59, 9.32],
+            [2.07, 3.14, 4.18, 5.15, 6.03, 6.82, 7.49, 8.42, 9.16],
+            [2, 3.04, 4.05, 5.01, 5.88, 6.67, 7.36, 8.33, 9.07]
+          ]
+        }
+      }
     }
   ]
 }

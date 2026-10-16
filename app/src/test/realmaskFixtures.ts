@@ -66,6 +66,13 @@ const polarFock44 = JSON.parse(
   readFileSync(resolve(dataDir, 'polars', 'salona-44-speedy-go-fock.json'), 'utf8'),
 ) as PolarTable;
 
+const polarGenoaEasyGo = JSON.parse(
+  readFileSync(resolve(dataDir, 'polars', 'salona-44-easy-go-genoa.json'), 'utf8'),
+) as PolarTable;
+const polarFockEasyGo = JSON.parse(
+  readFileSync(resolve(dataDir, 'polars', 'salona-44-easy-go-fock.json'), 'utf8'),
+) as PolarTable;
+
 // #54: PlanDeps carries polars keyed `${boatId}/${sailId}` instead of two
 // named fields. `deep-test` is the hypothetical 2.30 m boat the spec C.4(a)
 // safety rows plan with — it is deliberately absent from BOATS, so its keys
@@ -77,10 +84,9 @@ export const polars: Record<string, PolarTable> = {
   [polarKey('deep-test', 'fock')]: polarFock,
   [polarKey('salona-44-speedy-go', 'genoa')]: polarGenoa44,
   [polarKey('salona-44-speedy-go', 'fock')]: polarFock44,
-  // #1575: EASY GO! borrows SPEEDY GO!'s tables (`polarsFrom`, #567) — the
-  // same objects, as `loadRoutingAssets` hands them out.
-  [polarKey('salona-44-easy-go', 'genoa')]: polarGenoa44,
-  [polarKey('salona-44-easy-go', 'fock')]: polarFock44,
+  // #1575/#1660: EASY GO! plans on its own two assets, as `loadRoutingAssets` hands them out.
+  [polarKey('salona-44-easy-go', 'genoa')]: polarGenoaEasyGo,
+  [polarKey('salona-44-easy-go', 'fock')]: polarFockEasyGo,
 };
 
 export const SALONA_DEPS = { polars, boat: boatById(DEFAULT_BOAT_ID), mask };

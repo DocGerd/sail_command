@@ -135,7 +135,8 @@ describe('SavedWaypoints (#848)', () => {
   });
 
   describe('#1631: no state update or notify after unmount', () => {
-    // React reads `window.event` on every setState, including on an unmounted fiber.
+    // React reads `window.event` for a setState with no update priority set
+    // (e.g. a late promise settle), including on an unmounted fiber.
     let windowEventReads = 0;
     let savedDescriptor: PropertyDescriptor | undefined;
     beforeEach(() => {

@@ -228,7 +228,7 @@ const PANEL_WIDTH_PX = 518;
 // the earlier bumps above carried — any further legitimate content throws
 // in assertFitsViewport() instead of being absorbed. Restored a small
 // margin past first fit, matching this constant's own history.
-const START_VIEW_HEIGHT_PX = 1513;
+const START_VIEW_HEIGHT_PX = 1563;
 
 // #1088: the viewport-height constants above have been mis-measured THREE
 // times (#741; #716's BOAT_SELECTION_HEIGHT_PX going stale at #746; the
@@ -373,7 +373,7 @@ await page.screenshot({ path: 'docs/screenshots/start-view.png' });
 // help text, to render with no internal scroll. Boat-tab-only, for the
 // same reason the 1000px start-view bump above is start-view-only: nothing
 // else needs this much vertical room.
-const BOAT_SELECTION_HEIGHT_PX = 1640;
+const BOAT_SELECTION_HEIGHT_PX = 1782;
 await page.setViewportSize({ width: 1280, height: BOAT_SELECTION_HEIGHT_PX });
 await page.getByRole('tab', { name: 'Boat' }).click();
 // Static, no plan/network dependency (unlike plan-route.png below), so a

@@ -61,6 +61,12 @@ export const de = {
   'boat.section.title': 'Bootsauswahl',
   'boat.picker.label': 'Boot auswählen',
   'boat.draft': 'Tiefgang {depth} m',
+  // #1661: aboard-sail control (Boat tab) and its planner line.
+  'boat.sailsAboard.group': 'Segel an Bord',
+  'boat.sailsAboard.both': 'Beide',
+  'boat.sailsAboard.hint': 'Mindestens ein Segel muss an Bord bleiben.',
+  'planner.sailsAboard': 'Segel an Bord: {sails}',
+  'route.singleSail': 'Nur mit {sail} geplant',
   // #746: die eigene MMSI, pro Boot. Bewusst getrennt vom Text zum
   // AIS-Schlüssel (options.ais.help) — der Schlüssel ist eine Kontokennung und
   // WIRD übertragen, die MMSI kennzeichnet ein Schiff und wird es nie. Jede
@@ -499,7 +505,7 @@ export const de = {
   // PlanResultOk.comparisonComplete is false; see dict.en.ts for the derived
   // MsgKey helper (resultVerdictKey in lib/resultSummary.ts).
   'route.comparisonIncomplete':
-    'Die Suche wurde durch Zeitüberschreitung abgebrochen, bevor beide Segel verglichen werden konnten — es wird kein schnelleres Rigg angegeben',
+    'Die Suche wurde durch Zeitüberschreitung abgebrochen, bevor beide Segel verglichen werden konnten — es wird kein schnelleres Rigg angegeben. Unter „Segel an Bord“ (Boot) ein Segel abwählen, um mit einem einzelnen Segel zu planen',
   // #1166: zweite, spezifischere "not-compared"-Ursache, siehe dict.en.ts
   // für die volle Begründung — genau zwei Segel angefordert, genau eines
   // fand keine Route, während das andere gelöst wurde.
@@ -794,6 +800,7 @@ export const de = {
   'route.annotations.toggle': 'Zeiten & Geschwindigkeiten',
   'route.altRig.toggle': 'Anderes Rigg anzeigen',
   'route.altRig.unavailable': 'Nur ein Rigg hat eine Route gefunden',
+  'route.altRig.singleSail': 'Nur ein Vorsegel geplant',
   // #628: summary label for the Disclosure wrapping the whole map-overlay
   // controls cluster (annotation/barb/alt-rig toggles, forecast slider,
   // legend) — collapsible so it stops obstructing the chart on mobile.
@@ -1276,6 +1283,8 @@ export const de = {
   'departureScan.title': 'Abfahrtszeiten vergleichen',
   'departureScan.help':
     'Sucht mehrere Abfahrtszeiten für diese Route ab (jeweils nur mit der Genua berechnet) und listet sie nach Ankunft und Motoranteil auf.',
+  'departureScan.helpGeneric':
+    'Sucht mehrere Abfahrtszeiten für diese Route ab (jeweils nur mit {sail} berechnet) und listet sie nach Ankunft und Motoranteil auf.',
   'departureScan.count.label': 'Anzahl Fenster',
   'departureScan.step.label': 'Schrittweite',
   'departureScan.step.option': '{hours} Std.',
@@ -1300,6 +1309,7 @@ export const de = {
   // shortcut) and replaces the active plan.
   'departureScan.confirm.action': 'Diese Abfahrt übernehmen',
   'departureScan.confirm.confirming': 'Vollständige Berechnung mit beiden Riggs läuft …',
+  'departureScan.confirm.confirmingOneSail': 'Vollständige Berechnung läuft …',
   'departureScan.confirm.done': 'Plan übernommen.',
   // §2.2's "worth surfacing rather than silently accepting" residual: the
   // full two-rig solve favoured a different rig than the genoa the scan

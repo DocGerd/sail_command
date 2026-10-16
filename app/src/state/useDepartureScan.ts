@@ -29,8 +29,19 @@ import type { NoRouteReason, PlanRequest, PlanResultOk, SailId, WindGrid } from 
 // comment there explains why the id lives there rather than as a bare
 // literal here) — this array wraps it as `readonly SailId[]` purely because
 // that is the shape `PlanRequest.sailIds` and `client.plan()` expect; it
-// selects nothing on its own.
+// selects nothing on its own. Used only while the genoa is aboard, see
+// scanSailIdsFor().
 const GENOA_SCAN_SAIL_IDS: readonly SailId[] = [GENOA_SAIL_ID];
+
+// Multi-boat spec §R.3: the §2.2 measurement covers the genoa only, so the
+// genoa is scanned whenever it is aboard; with it ashore the scan solves the
+// first aboard sail instead (the measurement does not cover that case). An
+// empty list fails closed: no sail is requested rather than an unaboard genoa.
+export function scanSailIdsFor(aboardSailIds: readonly SailId[]): readonly SailId[] {
+  if (aboardSailIds.includes(GENOA_SAIL_ID)) return GENOA_SCAN_SAIL_IDS;
+  const first = aboardSailIds[0];
+  return first === undefined ? [] : [first];
+}
 
 export type DepartureCandidateOutcome =
   | { kind: 'ok'; result: PlanResultOk }
@@ -84,6 +95,9 @@ export interface DepartureScanRequest {
   // (exactOptionalPropertyTypes) — callers should build this via object
   // destructuring instead (see DepartureCompare.tsx).
   base: Omit<PlanRequest, 'sailIds'>;
+  // The plan's own `sailIds` (the aboard set); decides which sail each
+  // candidate solves, see scanSailIdsFor().
+  aboardSailIds: readonly SailId[];
   // §2.3: the plan's own STORED wind grid, never refetched — one grid,
   // re-sliced at N offsets, matching the plan-level "wind grids are stored
   // with each plan" rule (CLAUDE.md Domain rules). A candidate whose ETA
@@ -95,7 +109,7 @@ export interface DepartureScanRequest {
 }
 
 /**
- * #356 part (a): explicit, cancellable genoa-only departure-time scan.
+ * #356 part (a): explicit, cancellable departure-time scan (genoa when aboard).
  * Takes `ensureClient` (usePlanFlow.ts's own exposed function, the same
  * pattern state/replan.ts's useViaReplan and state/reroute.ts's
  * useLiveReroute already use) rather than a client value, so a scan works
@@ -142,6 +156,7 @@ export function useDepartureScan(ensureClient: () => Promise<ReplanClient | null
       cancelRef.current = false;
 
       const total = req.count;
+      const scanSailIds = scanSailIdsFor(req.aboardSailIds);
       setState({ scanning: true, index: 0, total, candidates: [], error: null, cancelled: false });
 
       const client = await ensureClient();
@@ -170,7 +185,7 @@ export function useDepartureScan(ensureClient: () => Promise<ReplanClient | null
         const candidateReq: PlanRequest = {
           ...req.base,
           departureMs,
-          sailIds: GENOA_SCAN_SAIL_IDS,
+          sailIds: scanSailIds,
         };
 
         setState((s) => ({ ...s, index: i + 1 }));
