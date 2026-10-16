@@ -14,7 +14,7 @@ using hourly Open-Meteo wind forecasts and an isochrone router that prices
 tacks/gybes as time penalties. Only the Salona 45 is `hullVerified` with
 certificate-anchored polars; EASY GO! has a tier-B jib from a sister hull's ORC
 certificate and a tier-C genoa derived from it (#1660); the rest are tier-C
-estimates (a sister ship may borrow its donor's tables via `polarsFrom`, #567).
+estimates (a sister ship may borrow its donor's tables via `polarsFrom`, #567/#1575).
 Any tier-C sail on a boat SUPPRESSES its two-rig ★ comparison — a behavioural difference that has
 already put stale claims into user-facing docs (#54, shipped v0.12.0).
 
