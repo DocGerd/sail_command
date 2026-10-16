@@ -436,7 +436,20 @@ function requireSailDerivations(boat) {
 const DERIVATION_TIER = { [CERT_METHOD]: 'modelled', [GENOA_RAMP_METHOD]: 'estimated' };
 const RAMP_UNCERTAINTY_PCT = 10;
 const SOURCE_PATH_RE = /^orc-sources\/[A-Za-z0-9._-]+\.json$/;
-const DONOR_RECORD_FIELDS = { refNo: 'RefNo', measuredDraftM: 'Draft', areaJibM2: 'Area_Jib', areaMainM2: 'Area_Main' };
+const DONOR_RECORD_FIELDS = {
+  refNo: 'RefNo',
+  yacht: 'YachtName',
+  sailNo: 'SailNo',
+  measuredDraftM: 'Draft',
+  areaJibM2: 'Area_Jib',
+  areaMainM2: 'Area_Main',
+};
+/** The ORC certificate family each certificate method reads. */
+const CERT_FAMILY = { [CERT_METHOD]: 'NS' };
+/** D6, negative: a tier-B note never claims a certificate of this boat. Matched case-insensitively. */
+const OWN_CERTIFICATE_CLAIMS = ['own ORC certificate', 'own certificate'];
+/** Spec P.9: the one boat whose modelled table predates the derivation block. */
+const REFERENCE_BOAT_ID = 'salona-45';
 
 /** D3: each source is a committed file under orc-sources/, byte-identical to its declared hash. */
 function readDerivationSources(name, der) {
@@ -471,8 +484,8 @@ function readDerivationSources(name, der) {
   });
 }
 
-/** D4 for the certificate method: a complete sister-hull donor that matches its record. */
-function requireCertDonor(name, der, envelopes) {
+/** D4 for the certificate method: a sister-hull donor that matches its record, of this boat's class. */
+function requireCertDonor(name, der, envelopes, boat) {
   const donor = der.donor;
   requireField(donor != null && typeof donor === 'object', `${name}: derivation.donor missing (spec P.6 D4)`);
   requireField(
@@ -483,12 +496,6 @@ function requireCertDonor(name, der, envelopes) {
     donor.relation === 'sister-hull',
     `${name}: donor.relation is ${JSON.stringify(donor.relation)}, not 'sister-hull' (spec P.6 D4)`,
   );
-  // The other four fields are held to the certificate record below.
-  for (const key of ['yacht', 'sailNo'])
-    requireField(
-      typeof donor[key] === 'string' && donor[key].length > 0,
-      `${name}: donor.${key} missing (spec P.6 D4)`,
-    );
   requireField(
     envelopes.length === 1,
     `${name}: ${CERT_METHOD} reads exactly one certificate, got ${envelopes.length} sources (spec P.6 D4)`,
@@ -500,6 +507,19 @@ function requireCertDonor(name, der, envelopes) {
       `${name}: donor.${key} ${JSON.stringify(donor[key])} is not the certificate's ${field} ` +
         `${JSON.stringify(record?.[field])} (spec P.6 D4)`,
     );
+  requireField(
+    record.Family === CERT_FAMILY[der.method],
+    `${name}: ${der.method} reads Family ${CERT_FAMILY[der.method]} certificates, but the record's Family is ` +
+      `${JSON.stringify(record.Family)} (spec P.6 D4)`,
+  );
+  requireField(
+    typeof record.Class === 'string' &&
+      record.Class.length > 0 &&
+      (boat.name === record.Class || boat.name.startsWith(`${record.Class} (`)),
+    `${name}: a sister-hull donor must be of this boat's class, but the record's Class ` +
+      `${JSON.stringify(record.Class)} does not name ${JSON.stringify(boat.name)} (spec P.6 D4)`,
+  );
+  return record;
 }
 
 /** D4 for the ramp method: the base sail is another sail of this boat, the ramp a real boat's sails. */
@@ -515,19 +535,29 @@ function requireRampTargets(name, sailId, der, boat, boatsById) {
     rampBoat?.sails != null && typeof rampBoat.sails === 'object',
     `${name}: derivation.ramp.boatId ${JSON.stringify(ramp.boatId)} is not a boat with tables in this file (spec P.6 D4)`,
   );
-  for (const key of ['fromSailId', 'toSailId'])
+  for (const key of ['fromSailId', 'toSailId']) {
     requireField(
       typeof ramp[key] === 'string' && Object.hasOwn(rampBoat.sails, ramp[key]),
       `${name}: derivation.ramp.${key} ${JSON.stringify(ramp[key])} is not a sail of ${ramp.boatId} (spec P.6 D4)`,
     );
+    // E1/E6's "never an estimate of an estimate", on the ramp path.
+    requireField(
+      rampBoat.sails[ramp[key]]?.provenance?.tier !== 'estimated',
+      `${name}: derivation.ramp.${key} ${ramp.boatId}/${ramp[key]} is itself estimated — a ramp comes from ` +
+        'measured or modelled tables (spec P.6 D4)',
+    );
+  }
 }
 
-/** D1-D4 and D6 for one sail carrying a `derivation` block. */
+/**
+ * D1-D4 and D6 for one sail carrying a `derivation` block. Returns what an
+ * anchor citing this sail's declared sources would name, for D7.
+ */
 function requireDerivationBlock(name, sailId, sail, boat, boatsById) {
   const der = sail.derivation;
   requireField(der != null && typeof der === 'object', `${name}: derivation is not an object (spec P.6 D2)`);
   requireField(
-    Object.hasOwn(DERIVATION_TIER, der.method),
+    typeof der.method === 'string' && Object.hasOwn(DERIVATION_TIER, der.method),
     `${name}: derivation.method ${JSON.stringify(der.method)} is not one of ` +
       `${Object.keys(DERIVATION_TIER).join('/')} (spec P.6 D2)`,
   );
@@ -537,6 +567,7 @@ function requireDerivationBlock(name, sailId, sail, boat, boatsById) {
       `${JSON.stringify(sail.provenance.tier)} (spec P.6 D1)`,
   );
   let tokens;
+  let cited = [];
   if (der.method === GENOA_RAMP_METHOD) {
     requireField(
       der.uncertaintyPct === RAMP_UNCERTAINTY_PCT,
@@ -546,24 +577,31 @@ function requireDerivationBlock(name, sailId, sail, boat, boatsById) {
     requireRampTargets(name, sailId, der, boat, boatsById);
     tokens = ['ESTIMATED', 'ramp'];
   } else {
-    requireCertDonor(name, der, readDerivationSources(name, der));
-    tokens = ['sister hull', der.donor.refNo];
+    const record = requireCertDonor(name, der, readDerivationSources(name, der), boat);
+    tokens = ['SISTER HULL', der.donor.refNo];
+    cited = [...der.sources.map((s) => basename(s.path)), record.RefNo, record.YachtName, record.SailNo];
   }
   for (const t of tokens)
     requireField(
       sail.provenance.note.includes(t),
       `${name}: provenance note lacks ${JSON.stringify(t)}, which ${der.method} requires (spec P.6 D6)`,
     );
+  return cited;
 }
 
-/** D7, first half: an anchor never cites a source its own boat's tables were derived from. */
-function requireAnchorsIndependentOfDerivations(boat) {
-  const cited = Object.values(boat.sails)
-    .filter((s) => s.derivation != null)
-    .flatMap((s) => [
-      ...(s.derivation.sources ?? []).map((x) => basename(x.path)),
-      ...(s.derivation.donor?.refNo != null ? [s.derivation.donor.refNo] : []),
-    ]);
+/** D6, negative, for every modelled note: run before the positive tokens so the claim itself is named. */
+function requireNoOwnCertificateClaim(name, sail) {
+  const note = sail.provenance.note.toLowerCase();
+  for (const claim of OWN_CERTIFICATE_CLAIMS)
+    requireField(
+      !note.includes(claim.toLowerCase()),
+      `${name}: a modelled note must not claim this boat's certificate, but it says ${JSON.stringify(claim)} ` +
+        '(spec P.6 D6)',
+    );
+}
+
+/** D7, first half: an anchor never names a declared source of its own boat's derived tables. */
+function requireAnchorsIndependentOfDerivations(boat, cited) {
   for (const a of boat.validation.anchors)
     for (const c of cited)
       requireField(
@@ -726,6 +764,7 @@ for (const boat of src.boats) {
   // undefined value), so the note went silently missing rather than visibly
   // wrong; it now throws below.
   const sailIds = Object.keys(boat.sails ?? {});
+  const cited = [];
   requireField(sailIds.length > 0, `${id}: no sails`);
 
   for (const sailId of sailIds) {
@@ -747,7 +786,15 @@ for (const boat of src.boats) {
       `${name}: provenance note missing`,
     );
     requireEstimatorBlock(name, sail, boatsById);
-    if (Object.hasOwn(sail, 'derivation')) requireDerivationBlock(name, sailId, sail, boat, boatsById);
+    if (sail.provenance.tier === 'modelled') {
+      requireNoOwnCertificateClaim(name, sail);
+      requireField(
+        id === REFERENCE_BOAT_ID || Object.hasOwn(sail, 'derivation'),
+        `${name}: a modelled table on any boat but ${REFERENCE_BOAT_ID} needs a derivation block (spec P.9)`,
+      );
+    }
+    if (Object.hasOwn(sail, 'derivation'))
+      cited.push(...requireDerivationBlock(name, sailId, sail, boat, boatsById));
     requireField(Array.isArray(sail.speeds), `${name}: speeds missing`);
     validate(name, sail.speeds, boat);
 
@@ -773,7 +820,7 @@ for (const boat of src.boats) {
   // Boat-level, so they run after every sail of this boat has been seen.
   requireSailDerivations(boat);
   requireOwnAnchors(boat, boatsById);
-  requireAnchorsIndependentOfDerivations(boat);
+  requireAnchorsIndependentOfDerivations(boat, cited);
 }
 
 // After the loop so E4 reports first where both apply.
