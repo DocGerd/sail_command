@@ -162,7 +162,7 @@ describe('boat catalogue', () => {
   // INPUT the routing layer's suppression reads. A tier-C boat presents a set
   // that is entirely tier C, so the suppression rule gets an unambiguous input.
   // The one deliberate exception (spec P.9, amended): a mixed set is allowed
-  // only where the estimated sail is the jib times a ramp (D1), which
+  // only where the estimated sail ramps off a same-boat sail (D1), which
   // polarProvenance.test checks against `derivation.fromSailId`. This row pins
   // WHICH boats are mixed; `comparisonSuppressed` is `some`, so they still
   // suppress.

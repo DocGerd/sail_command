@@ -344,7 +344,7 @@ describe('polar provenance is consistent across catalogue, pipeline source and s
         }
       // Non-vacuity: a non-empty token list is what makes the loop above test anything.
       expect(checked).toEqual({
-        'salona-44-easy-go/fock': ['sister hull', '04590004MKR'],
+        'salona-44-easy-go/fock': ['SISTER HULL', '04590004MKR'],
         'salona-44-easy-go/genoa': ['ESTIMATED', 'ramp'],
       });
     });
