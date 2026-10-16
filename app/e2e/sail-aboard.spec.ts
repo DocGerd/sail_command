@@ -98,7 +98,7 @@ for (const lang of ['de', 'en'] as const) {
     test.describe(`#1661 sails aboard control at ${viewportName} (${lang})`, () => {
       test.use({ viewport: STANDARD_VIEWPORTS[viewportName] });
 
-      test('the planner line opens the Boat tab; the control has 44px targets, never goes empty and does not overflow', async ({
+      test('the planner line opens the Boat tab; the control has 44px targets, a re-click on the pressed sail is a no-op and it does not overflow', async ({
         page,
       }) => {
         await seedLang(page, lang);
@@ -129,7 +129,7 @@ for (const lang of ['de', 'en'] as const) {
 
           await group.getByRole('button', { name: c.fock, exact: true }).click();
           await expectPressed(page, c, c.fock);
-          // Choosing what is already chosen must not empty the set.
+          // A re-click on the pressed sail is a no-op; the never-empty guarantee lives in the unit tests.
           await group.getByRole('button', { name: c.fock, exact: true }).click();
           await expectPressed(page, c, c.fock);
 
