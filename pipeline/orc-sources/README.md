@@ -2,7 +2,9 @@
 
 Raw ORC / VPP source captures behind EASY GO!'s own polar tables
 (multi-boat spec §P.2, §P.8). Hand-authored: no script writes this directory.
-The generator `pipeline/derive_orc_polars.mjs` reads only these files.
+The generator `pipeline/derive_orc_polars.mjs` reads its source data only from
+these files; the grid and the genoa ramp come from the Salona 45 record in
+`polars-source.json`.
 
 | File | Content |
 |---|---|

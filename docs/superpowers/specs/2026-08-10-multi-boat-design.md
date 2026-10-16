@@ -1004,7 +1004,7 @@ All remaining rows are in force, untouched.
 
 1. **Spinnaker slot.** A downwind sail lives in `BoatDef.downwindSails`, never in `sails[]`, and is never a standalone solve or results tab. Its table is the builder's ORC VPP symmetric-spinnaker table, verbatim, rows TWA ≥ 110° (§P.5).
 2. **Lineage field: `derivedFrom`** (§R.3), everywhere; an `origin` union was considered and is not adopted. Pipeline twin: `derivation.fromSailId`. Source-document identity: `derivation.sources` (§P.6).
-3. **One derived-pair rule for router and advisory: decide with a larger margin and a label** (user decision 2026-10-15). A change between two headsails where one is `derivedFrom` the other is planned (§S) or hinted (§S.11) only when the estimated gain beats the penalties plus `U` plus `OVERLAY_BOUND` (§S D4). Change points and the ETA are labelled "estimated (genoa derived from jib)" (§S D13). The router runs with the estimated genoa aboard. The whole-route ★ stays tier-keyed (§N.4), so EASY GO!'s ★ stays suppressed. Suppressing derived pairs was considered and rejected (S.9). On the shipped EASY GO! tables no genoa↔jib swap clears that margin (genoa/jib ≤ 1.053, §S D1/D4), so in practice the router plans only spinnaker set and douse until OQ-S1 is decided.
+3. **One derived-pair rule for router and advisory: decide with a larger margin and a label** (user decision 2026-10-15). A change between two headsails where one is `derivedFrom` the other is planned (§S) or hinted (§S.11) only when the estimated gain beats the penalties plus `U` plus `OVERLAY_BOUND` (§S D4). Change points and the ETA are labelled "estimated (genoa derived from jib)" (§S D13). The router runs with the estimated genoa aboard. The whole-route ★ stays tier-keyed (§N.4), so EASY GO!'s ★ stays suppressed. Suppressing derived pairs was considered and rejected (S.9). On the shipped EASY GO! tables no genoa↔jib swap clears that margin (genoa/jib ≤ 1.054, §S D1/D4), so in practice the router plans only spinnaker set and douse until OQ-S1 is decided.
 4. **Defaults — user-editable operational values, not polar-derived:** genoa↔fock swap 900 s; spinnaker set 300 s, douse 300 s, pole gybe 120 s, each the same while motoring; spinnaker max TWS 18 kn; genoa change-down limit 18 kn TWS.
 5. **Unchanged:** `motorSpeedKn` 6.5 kn, `maneuverPenaltyS` 45 s. Currents stay out (`docs/spikes/18-currents-source-quality-gate.md`).
 
@@ -1044,7 +1044,7 @@ The genoa is tier C by the user's ruling and §N.4's definition, so existing sup
 | File | Content |
 |---|---|
 | `orc-ns-tur-santa-anastasia-2026.json` | `{url (…CountryId=TUR&Family=NS&ext=json), retrievedAt: "2026-10-15", responseSha256: "df23fe3f5300f73f8ff8999e64f7d0924f0505b4ebbb03fe39d00dd5595dcc1f", responseBytes: 204885, record}`. One record: the response holds 15 owners' records, two with a third party's phone number. |
-| `orc-club-cro-calanthe-2026.json` | Same envelope, CRO 1914 Calanthe (RefNo `03620004H9R`, CLUB), response sha256 `64a3b85b24bc2b1e4a6e661b90c024ab0b37655bd3c7b28c76bd21c473faa0c3`, 1,343,165 bytes. Spinnaker anchor evidence; lists `Area_Sym` 142.59 and `Area_Asym` 142.74 m². |
+| `orc-club-cro-calanthe-2026.json` | Same envelope, CRO 1914 Calanthe (RefNo `03620004H9R`, CLUB), response sha256 `64a3b85b24bc2b1e4a6e661b90c024ab0b37655bd3c7b28c76bd21c473faa0c3`, 1,343,165 bytes. Phase 2 only: not committed pre-trip (maintainer decision 2026-10-15). Spinnaker anchor evidence; lists `Area_Sym` 142.59 and `Area_Asym` 142.74 m². |
 | `orc-vpp111-salona44-cro2009-polargraph.json` | Jib and Symmetric Spinnaker tables, TWS 6/8/10/12/14/16/20, per cell `{twa, btv, vmg, aws, awa, heel, reef, flat}` plus `(b)`/`(r)` rows, parsed via `pdftotext -layout`. Envelope: `https://web.archive.org/web/20110708161459/http://www.salonayachts.com:80/documents/Salona%2044%20polargraph.pdf`, PDF sha256 `06473140eacd5d3271a9a7a3428a775031e1dbf29be99f2481e6071a3c55acf3` (660,970 bytes), headers `Sail No: CRO 2009`, `Issued On: 8.12.2010 - VPP 1.11`. The PDF (© ORC 2010) is not committed. |
 | `README.md` | Retrieval and re-fetch protocol, current-year caveat, licence basis (P.8). |
 
@@ -1052,7 +1052,7 @@ Unknown, recorded: CRO 2009's keel; the polargraph's kite area, and whether its 
 
 ### P.3 `fock` — derivation
 
-New `pipeline/derive_orc_polars.mjs` (method `orc-ns-cert-rows-v1`) reads only `pipeline/orc-sources/*` and rounds with `estimate_polars.mjs`'s `round2`. Grid = the Salona 45's, TWS `[4,6,8,10,12,14,16,20,25]` × TWA `[35,40,45,52,60,70,80,90,100,110,120,135,150,165,180]`, so the genoa ramp applies cell by cell.
+New `pipeline/derive_orc_polars.mjs` (method `orc-ns-cert-rows-v1`) takes its cell values only from `pipeline/orc-sources/*` (the grid and the genoa ramp come from `polars-source.json`'s Salona 45 entry) and rounds with `estimate_polars.mjs`'s `round2`. Grid = the Salona 45's, TWS `[4,6,8,10,12,14,16,20,25]` × TWA `[35,40,45,52,60,70,80,90,100,110,120,135,150,165,180]`, so the genoa ramp applies cell by cell.
 
 **Allowance families** (s/nm at `WindSpeeds` `[4,6,8,10,12,14,16,20,24]`), not interchangeable:
 - `R<twa>` is straight-line only while `BeatAngle ≤ twa ≤ GybeAngle`; beyond `GybeAngle` it is a gybing VMC: `R150 = Run × cos 30°` in **856 of 856** such cells (816 in the Croatian ORC-family response, 40 in the Turkish Non-Spinnaker response; 2,323 of 2,323 if the Turkish all-family response is used).
@@ -1064,9 +1064,9 @@ New `pipeline/derive_orc_polars.mjs` (method `orc-ns-cert-rows-v1`) reads only `
 |---|---|
 | 52, 60, 90, 110, 120, 135 | `R` cell |
 | 150, 165, 180 | `DW` cell |
-| 70, 80, 100; 35/40/45 at TWA ≥ `θb` | Fritsch–Carlson PCHIP through `{θb→V_b, 52, 60, 75, 90, 110, 120, 135, 150, 165, 180}` (`R75` a knot only) |
+| 70, 80, 100; 35/40/45 at TWA ≥ `θb` | PCHIP (SciPy/MATLAB-style Fritsch–Butland slopes) through `{θb→V_b, 52, 60, 75, 90, 110, 120, 135, 150, 165, 180}` (`R75` a knot only) |
 | 35/40/45 at TWA < `θb` | `V_b × TWA/θb`, `Polar.speedKn`'s own below-table shape. `θb` = 47.2° at TWS 4, 37.7° at 20. |
-| TWS 25 | the 24 kn column **held**; between 20 and 24 kn the app reads ≤ ~1.5 % below the certificate (R110: 10.36 vs 10.52), the conservative side |
+| TWS 25 | the 24 kn column **held**; between 20 and 24 kn the app reads up to 1.76 % below the certificate (largest at R120: 10.36 vs 10.55), the conservative side except R35 (+0.35 %, below the beat angle) |
 
 **Build asserts (P.10):** TWS-monotone in columns 4–20 (the certificate's 24 kn at TWA 35 is below its 20 kn); no grid row below `θb` beats the certificate's `Beat` VMG (grid rows only; runtime beat VMG through `Polar` is 0.989–1.000 × certificate); every cell `< maxSpeedKn`.
 
@@ -1191,9 +1191,9 @@ Same PR, outside the spec:
 4. D6: `sister hull` deleted from the `boats.ts` fock note alone reds `polarProvenance.test`; from all three, D6.
 5. D7: SPEEDY GO!'s anchor pasted onto EASY GO! reds; E4 alone does not.
 6. `salona-44-easy-go-{fock,genoa}.json` are 15 × 9; `beat`/`gybe` = certificate (24 kn in column 25); cells > 0 and `< 12`; TWS-monotone in 4–20.
-7. Rows 52/60/90/110/120/135 = `round2(3600/R)`, rows 150/165/180 = `round2(3600/DW)`, columns 4–20. Mutation: row 150 on `R150` reds at TWS 4/6/8. A planted `GybeAngle` below a used `R` row aborts the generator.
+7. Rows 52/60/90/110/120/135 = `round2(3600/R)`, rows 150/165/180 = `round2(3600/DW)`, columns 4–20. Mutation: row 150 on `R150` reds at every TWS column except 10 kn. A planted `GybeAngle` below a used `R` row aborts the generator.
 8. Every grid TWA < `BeatAngle`: `speed × cos(TWA) ≤ 3600/Beat`. Through `Polar.speedKn`, the best VMG over a 0.1° sweep is in `[0.98, 1.005] × 3600/Beat`. Mutation: no taper reds.
-9. Vs the committed polargraph excerpt (77 Jib cells): each delta within 0.5 pt of the committed delta; envelope in [−10 %, +10 %]. Mutation: +20 % on 90°/10 kn reds both.
+9. Vs the committed polargraph excerpt (77 Jib cells): each delta within 0.5 pt of the committed delta; envelope in [−10 %, +10 %]. Mutation: +20 % on 90°/10 kn trips the P.3 monotone assert first; with that assert removed, it reds both.
 10. Headsail anchors (polargraph Jib about ±10 %, rounded to 0.05 kn): A1 52°/12 `[7.3, 8.9]`; A2 90°/8 `[6.8, 8.35]`; A3 135°/10 `[5.5, 6.8]`; A4 180°/12 `[5.4, 6.6]`. Polargraph 8.10/7.56/6.14/6.00; fock 7.92/7.27/6.60/5.88; genoa 7.96/7.48/6.70/5.94. They catch an index or unit slip, not this boat's error. A3 leaves 0.05 kn over the genoa against the exact bound: a > ~1.5 % genoa rise at 10 kn re-derives A3.
 11. Genoa ≥ fock everywhere; equal at 16/20/25 kn (all rows) and 14 kn (rows 35–120); strictly greater at 4–12 kn and at 14 kn rows 135–180; 56 cells identical. Mutation: no clamp puts nine 25 kn cells below the fock.
 12. `boatById('salona-44-easy-go').sails` is exactly `genoa` (`estimated`), `fock` (`modelled`); notes pass D6 and #595; no `downwindSails` in phase 1.
@@ -1416,7 +1416,7 @@ Plan **one route on which the foresail may change en route**, with the changes i
 
 ### S.3 Decisions
 
-**D1 — Sail state is node state:** `(foresail, rigged headsail)`; under kite, `rigged` is the headsail it was set from, and a douse returns to the furler. No "nothing set" state. **Dropped at request build:** a non-hoisted headsail `b` (with its kite twins) when no cell where both are usable has `v_b > (1 + U)·v_h`: any path through `b` is then matched at lower cost by the same path in `h`. `S` = kept states. On EASY GO! the genoa/fock ratio never exceeds 1.053 (P.4), below `1 + U`, so `S = 2` for either hoisted headsail (it and its kite twin; `S = 1` without the spinnaker). Consequence: on EASY GO!'s current tables no genoa↔fock swap can pay, so none is planned; the swap mechanism is live for any pair whose ratio exceeds `1 + U`.
+**D1 — Sail state is node state:** `(foresail, rigged headsail)`; under kite, `rigged` is the headsail it was set from, and a douse returns to the furler. No "nothing set" state. **Dropped at request build:** a non-hoisted headsail `b` (with its kite twins) when no cell where both are usable has `v_b > (1 + U)·v_h`: any path through `b` is then matched at lower cost by the same path in `h`. `S` = kept states. On EASY GO! the genoa/fock ratio never exceeds 1.054 (1.0534, P.4), below `1 + U`, so `S = 2` for either hoisted headsail (it and its kite twin; `S = 1` without the spinnaker). Consequence: on EASY GO!'s current tables no genoa↔fock swap can pay, so none is planned; the swap mechanism is live for any pair whose ratio exceeds `1 + U`.
 
 **D2 — A change is a stationary transition.** From state `i`, for each kept `j ≠ i`, emit a change node at the same position with `tMs` and `costMs` += `P(i→j)`, carrying `change: {from, to, steps}`. It inherits `kind/board/twaSigned/headingDeg` only for the next tack test, moves next ring, emits no change edges, obeys the horizon guard. Exact for any `dtS`; `costMs ≥ tMs` holds (#243).
 
@@ -1433,7 +1433,7 @@ No swap under the kite (OQ-S4), no `(s, a) → (s, b)`. Step-identical sequences
 **D3 — Penalties.** `lib/sailChangePenalty.ts`: `SailChangeType`, `DEFAULT_SAIL_CHANGE_PENALTY_S = {headsail-swap: 900, spinnaker-set: 300, spinnaker-douse: 300, pole-gybe: 120}`, persisted per type via `usePersistedNumber` (localStorage, `null` = default, #355), edited in minutes with `NumberInput` beside the aboard control; snapshotted by value into the request (§I.3), not `Settings`. Same cost from a motor node. A value may be 0 (ties then broken by D7's fewer-changes rule). A board change under kite charges `pole-gybe` instead of `maneuverPenaltyS` via `effS`, inheriting today's near-destination drop.
 
 **D4 — Margin `U`, ranking-only.**
-- *Value:* one per plan: the maximum, over every aboard pair before D1's drop, of the pair's basis value (S.11.3: 0.03 same-document, 0.06 cross-document) plus `OVERLAY_BOUND` if either table is `derivedFrom` the other. `OVERLAY_BOUND` is the derived table's largest cell ratio over its base, minus 1, on the shipped tables (EASY GO!: 1.053 − 1, P.4). One aboard sail ⇒ `U = 0`. EASY GO! with all three aboard: genoa↔spinnaker is cross-document with a derived table, so `U ≈ 0.11`; with the genoa ashore, `U = 0.06`. `U` is uniform because a per-state value subsidises a change between two away states.
+- *Value:* one per plan: the maximum, over every aboard pair before D1's drop, of the pair's basis value (S.11.3: 0.03 same-document, 0.06 cross-document) plus `OVERLAY_BOUND` if either table is `derivedFrom` the other. `OVERLAY_BOUND` is the derived table's largest cell ratio over its base, minus 1, on the shipped tables (EASY GO!: 1.0534 − 1, P.4). One aboard sail ⇒ `U = 0`. EASY GO! with all three aboard: genoa↔spinnaker is cross-document with a derived table, so `U ≈ 0.11`; with the genoa ashore, `U = 0.06`. `U` is uniform because a per-state value subsidises a change between two away states.
 - *Search:* while a thread's foresail differs from the hoisted, `U·Δt` is added to `costMs` only (sail steps, direct-arrival travel term, capture hop; not motor steps). An excursion pays only if its saving exceeds `P_in + P_out + U·T_away`.
 - *Assembly, true clock:* present the sail plan iff `sailChangeCount > 0`, `etaHeld − etaPlan ≥ RIG_TIE_BAND_MS`, and its ranking cost (`Σ segments (costMs − segment departureMs)`, carried by `RunOut`) ≤ held's.
 - *Outcome (persisted):* `'search'` (presented), `'held-tie'`, `'held-worse'` (#1333), `'search-cut'`, `'search-failed'`.
@@ -1512,7 +1512,7 @@ export type SailPlanOutcome = 'search' | 'held-tie' | 'held-worse' | 'search-cut
 | light | same rule at its `T_b`; sets(light) ≥ sets(breeze) | as breeze, or fewer |
 | breeze, light, pos | I1–I7 every row | any: blocker |
 | breeze, light | `'held-worse'` ≤ 5 % of rows (judgement) | above: investigate |
-| breeze, light, pos | 0 genoa↔fock swaps (D1: ratio ≤ 1.053 < 1 + U) | any swap: D1's drop or `U` is wrong |
+| breeze, light, pos | 0 genoa↔fock swaps (D1: ratio ≤ 1.054 < 1 + U) | any swap: D1's drop or `U` is wrong |
 | node ratio `R` | ≈ 1.5 where no ring capped | `R > 1.8` |
 
 **Invariants** (every sail-plan row and unit tests): **I1** every kite leg passes D5's gate at step-start samples and merge joints (a non-uniform unit case pins that the next step is gated); **I2** no motor leg has a kite `sailId`; **I3** the last leg is a headsail; **I4** consecutive legs differ in `sailId` iff the later is marked; **I5** marked duration ≥ `penaltyMs`; **I6** legs contiguous, ending at `etaMs`; **I7** marked `speedKn = distanceNm/(duration − penaltyMs)`. **Limitation:** uniform wind only, so changes follow course changes, never wind shifts.
@@ -1561,7 +1561,7 @@ Survivors ≈ `S` × one solve's, so `R = (held + sail plan)/(persail genoa + fo
 
 ### S.10 Open questions
 
-- **OQ-S1:** on EASY GO!'s current tables D1 drops every genoa↔fock swap (ratio ≤ 1.053 < 1 + U), so the router acts only on spinnaker set and douse there; a gate-form change-down limit (OQ-S9) is the one mechanism that would make a swap pay.
+- **OQ-S1:** on EASY GO!'s current tables D1 drops every genoa↔fock swap (ratio ≤ 1.054 < 1 + U), so the router acts only on spinnaker set and douse there; a gate-form change-down limit (OQ-S9) is the one mechanism that would make a swap pay.
 - **OQ-S3:** `U`, the 60 s band and G1's 20 % are judgements.
 - **OQ-S4:** swapping the rigged headsail under the kite.
 - **OQ-S5:** export — change points as GPX `<wpt>`, `planExport` version.
