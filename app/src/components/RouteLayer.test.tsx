@@ -556,6 +556,17 @@ describe('RouteLayer alt-rig overlay (#324)', () => {
     expect(sourceData(map, 'sc-route-alt').features).toHaveLength(0);
   });
 
+  it('says only one headsail was planned (not a failure) when the plan requested a single sail (#1661)', () => {
+    const map = makeFakeMap();
+    const base = makePlan();
+    renderRouteLayerWithPlan(map, { ...base, request: { ...base.request, sailIds: ['fock'] } });
+    const toggle = screen.getByRole('checkbox', { name: 'Anderes Rigg anzeigen' });
+    expect(toggle).toBeDisabled();
+    const note = screen.getByText('Nur ein Vorsegel geplant');
+    expect(toggle).toHaveAttribute('aria-describedby', note.id);
+    expect(screen.queryByText('Nur ein Rigg hat eine Route gefunden')).toBeNull();
+  });
+
   // PR #384 review (r3713944428): pre-fix, `disabled={!altResult}` only
   // checked the OTHER rig's result — so selecting a PRIMARY rig with no
   // route of its own (genoa here, via RouteSummary's ungated tabs) left the
