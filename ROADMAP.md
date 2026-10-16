@@ -37,12 +37,15 @@ moved on to `v0.55.0`.
 ## Next — v0.55.0
 
 The [`v0.55.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-holds three issues as of this cut: the remaining self-resolving OpenSSF
+holds four issues as of this cut: the remaining self-resolving OpenSSF
 Scorecard findings ([#72](https://github.com/DocGerd/sail_command/issues/72)),
 the route-fit start marker under the bottom sheet at 820x1180
-([#1639](https://github.com/DocGerd/sail_command/issues/1639)), and the
+([#1639](https://github.com/DocGerd/sail_command/issues/1639)), the
 dev-dependency bump `fast-uri` >= 3.1.8
-([#1695](https://github.com/DocGerd/sail_command/issues/1695)). The milestone
+([#1695](https://github.com/DocGerd/sail_command/issues/1695)), and
+re-deriving the assurance-case SAST row and this file's #72 wording against
+live Scorecard alert #7
+([#1696](https://github.com/DocGerd/sail_command/issues/1696)). The milestone
 page is the only authoritative view, check it directly rather than this file.
 
 ## Themes for the next year
@@ -119,7 +122,9 @@ Each issue's milestone field is the current fact:
   source evaluation is `docs/spikes/18-currents-source-quality-gate.md`. It
   would be the single biggest change to routing accuracy the project could
   make, and also the biggest: it touches the data pipeline, the solver, and
-  the UI. No current source clears the quality gate, and no part of this is scheduled; wave effects are in scope of the waves spec, whose §2 rules out currents/tides only.
+  the UI. No evaluated current source passed the quality gate, and no part of
+  this is scheduled; wave effects are in scope of the waves spec, whose §2
+  rules out currents/tides only.
 - Multi-day trip planning with overnight stops and arrival-window checks
   ([#19](https://github.com/DocGerd/sail_command/issues/19)), which is bounded
   by the ~6-day forecast horizon.
@@ -136,8 +141,8 @@ scheduled.
 
 Note the tension with "Out of scope (v1)" in [`README.md`](README.md): currents,
 tides, waves, and multi-day passages were excluded from v1 and remain excluded
-from the shipped app. Their presence here records what was investigated, not a commitment: the
-exclusion has not been lifted and no part of it is scheduled.
+from the shipped app. Their presence here marks them as open questions, not
+commitments: the v1 exclusion still holds and none of them is scheduled.
 
 ### Live view and on-board use
 
