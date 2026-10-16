@@ -34,12 +34,13 @@ import {
 } from '../lib/gpx';
 import { activeRigResult, rigComparisonSuppressedByTier } from '../lib/plan';
 import { routingSettingsDirty } from '../lib/planForm';
+import { usePersistedSailInventory } from '../lib/sailInventory';
 import { renderRigVerdict, resultSummary, sailLabelKey } from '../lib/resultSummary';
 import { useRecentHarbors } from '../lib/useRecentHarbors';
 import { formatDepthM } from '../lib/depthDisclosure';
 import HarborPicker, { harborAccessCopy } from './HarborPicker';
 import { commitSetting, safetyDepthFieldFor } from './OptionsPanel';
-import type { BoatDef } from '../data/boats';
+import type { BoatDef, BoatId } from '../data/boats';
 import NumberInput, { formatBound, useClampCorrection } from './NumberInput';
 import Card from './Card';
 import Field from './Field';
@@ -151,6 +152,8 @@ export interface PlannerPanelProps {
   // safety-depth bounds. The picker itself lives on the Boat tab
   // (SettingsPanel/BoatPicker); this panel never changes the selection.
   boat: BoatDef;
+  // The catalogue id App keys the sail inventory on, so both dirty terms read the same one.
+  boatId: BoatId;
   canPlan: boolean;
   // §3.5: the ONE reason the Plan button (and thus this whole form) is
   // disabled — exactly two possible values today: `error.offline` (nothing
@@ -268,6 +271,7 @@ export default function PlannerPanel({
   settings,
   onSettingsChange,
   boat,
+  boatId,
   canPlan,
   planDisabledReason,
   online,
@@ -281,6 +285,7 @@ export default function PlannerPanel({
   onOpenBoatSettings,
 }: PlannerPanelProps) {
   const t = useT();
+  const [sailInventory] = usePersistedSailInventory(boatId);
   // #885 §6: waypoint i of [origin, ...vias, destination], for segment labels.
   const waypointLabel = (i: number): string =>
     i === 0
@@ -795,7 +800,9 @@ export default function PlannerPanel({
   // `settingsDirty` is the settings-only subset the Banner announces. See the
   // `staleSuffix` comment below for why the difference between the two is
   // exactly what this live region needs.
-  const settingsDirty = plan ? routingSettingsDirty(plan, settings) : false;
+  const settingsDirty = plan
+    ? routingSettingsDirty(plan, settings, sailInventory.headsailIds)
+    : false;
 
   // #983: the completion announcement ("Route calculated — arrival …")
   // used to live HERE, gated on this component being mounted (`tab ===
@@ -1473,6 +1480,12 @@ export default function PlannerPanel({
           </p>
         </Field>
       </div>
+
+      <Button variant="ghost" className="planner-boat-settings-link" onClick={onOpenBoatSettings}>
+        {t('planner.sailsAboard', {
+          sails: sailInventory.headsailIds.map((id) => t(sailLabelKey(id))).join(', '),
+        })}
+      </Button>
 
       {/* #299: a discoverable route from safety depth to the depth comfort
           margin (and the rest of the boat settings) now that the two "depth"

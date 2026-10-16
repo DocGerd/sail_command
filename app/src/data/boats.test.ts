@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { BOATS, boatById, DEFAULT_BOAT_ID, DEFAULT_SAIL_IDS, type BoatDef } from './boats';
+import {
+  BOATS,
+  boatById,
+  DEFAULT_BOAT_ID,
+  DEFAULT_SAIL_IDS,
+  MAX_HEADSAILS,
+  type BoatDef,
+} from './boats';
 import { defaultSafetyDepthM, minSafetyDepthM, relaxationFloorM } from '../lib/boatDepth';
 
 describe('boat catalogue', () => {
@@ -373,5 +380,74 @@ describe('#595: rendered notes carry no internal register', () => {
         expect(note, `${id} matched ${pattern} in rendered note: "${note}"`).not.toMatch(pattern);
       }
     }
+  });
+});
+
+describe('#1661: headsail inventory guards (spec R.6, A4, A5)', () => {
+  const POLAR_ASSETS = import.meta.glob<string>('../../public/data/polars/*.json', {
+    query: '?raw',
+    import: 'default',
+    eager: true,
+  });
+
+  const headsailCountViolations = (boats: readonly Pick<BoatDef, 'id' | 'sails'>[]) =>
+    boats.filter((b) => b.sails.length < 1 || b.sails.length > MAX_HEADSAILS).map((b) => b.id);
+
+  const isDownwindAsset = (json: unknown): boolean =>
+    typeof json === 'object' &&
+    json !== null &&
+    (Object.hasOwn(json, 'valid') || (json as { kind?: unknown }).kind === 'downwind');
+
+  const sail = (id: string) => ({
+    id,
+    label: id,
+    polarAsset: '',
+    polarProvenance: { tier: 'modelled' as const, note: 'fixture' },
+  });
+
+  it('MAX_HEADSAILS is 2', () => {
+    expect(MAX_HEADSAILS).toBe(2);
+  });
+
+  it('every catalogue boat carries 1..MAX_HEADSAILS headsails', () => {
+    expect(BOATS.length).toBeGreaterThan(0);
+    expect(headsailCountViolations(BOATS)).toEqual([]);
+  });
+
+  it('CONTROL: the count check flags zero and more than MAX_HEADSAILS sails', () => {
+    const fake = (id: string, n: number) => ({
+      id,
+      sails: Array.from({ length: n }, (_, i) => sail(`s${i}`)),
+    });
+    const boats = [
+      fake('none', 0),
+      fake('one', 1),
+      fake('max', MAX_HEADSAILS),
+      fake('over', MAX_HEADSAILS + 1),
+    ];
+    expect(headsailCountViolations(boats)).toEqual(['none', 'over']);
+  });
+
+  it('A4: no sails[] polar asset carries downwind markers (`valid`, kind downwind)', () => {
+    const assets = BOATS.flatMap((b) =>
+      b.sails.map((s) => ({ boat: b.id, sail: s.id, path: s.polarAsset })),
+    );
+    expect(assets.length).toBeGreaterThan(0);
+    for (const a of assets) {
+      const key = `../../public/${a.path}`;
+      expect(Object.hasOwn(POLAR_ASSETS, key), `${key} not found by the glob`).toBe(true);
+      const json: unknown = JSON.parse(POLAR_ASSETS[key]);
+      expect(
+        isDownwindAsset(json),
+        `${a.boat}/${a.sail} (${a.path}) looks like a downwind asset`,
+      ).toBe(false);
+    }
+  });
+
+  it('CONTROL: the downwind predicate matches `valid` and kind downwind, not a headsail table', () => {
+    expect(isDownwindAsset({ valid: { twaMin: 110 } })).toBe(true);
+    expect(isDownwindAsset({ kind: 'downwind' })).toBe(true);
+    expect(isDownwindAsset({ rig: 'genoa', speeds: [] })).toBe(false);
+    expect(isDownwindAsset(null)).toBe(false);
   });
 });

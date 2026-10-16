@@ -161,7 +161,7 @@ export function rigVerdictKey(kind: Exclude<RigRecommendation['kind'], 'decided'
  * three not-compared causes: N=1 (one requested sail) and N>=3 both fail it
  * outright (`assemble()`'s own guard only ever calls `compareRigs` — and so
  * only ever reaches the 'not-compared' fallback at all with two-vs-not-two
- * sails, per `tiedSailIds`'s own doc comment above), and a tier-C
+ * sails), and a tier-C
  * suppression (#553 spec §N.4) withholds the comparison while BOTH sails
  * still solved, so it has zero null results and also fails the
  * `filter(... === null).length === 1` check. Budget exhaustion is handled
@@ -214,6 +214,7 @@ export function resultVerdictKey(
   comparisonComplete: boolean,
   sails?: readonly SailResult[],
 ): MsgKey {
+  if (sails?.length === 1) return 'route.singleSail';
   if (kind === 'not-compared' && !comparisonComplete) {
     return 'route.comparisonIncomplete';
   }
@@ -221,42 +222,6 @@ export function resultVerdictKey(
     return 'route.rigOneFailed';
   }
   return rigVerdictKey(kind);
-}
-
-/**
- * #578: the two sail ids `route.rigTie`'s `{sailA}`/`{sailB}` slots should
- * name. `{kind:'tie'}`'s sole producer is `compareRigs` (`planRoute.ts`),
- * and `assemble()`'s own guard (`planRoute.ts`, the
- * `!comparisonSuppressed && sails.length === 2 && a.rigResult && b.rigResult`
- * check immediately before it calls `compareRigs`) establishes that a
- * FRESHLY SOLVED plan cannot produce a 'tie' verdict with fewer than two
- * compared sails — so `sailIds` (the plan's own `plan.result.sails` in
- * solve order — the #340/#54 guarantee) always carries two entries right
- * after a live solve.
- *
- * #578 review Minor C: that guard says nothing about a plan loaded from
- * STORAGE. `migratePlan.ts` passes a stored `rigRecommendation` through with
- * a bare cast and never correlates it with the stored `sails` array's
- * length — MEASURED (review round 2): a throwaway probe fed it a
- * one-sail record with `rigRecommendation: {kind:'tie'}` and it came
- * through unchanged. #578 review Minor E: the fallback below is reachable
- * from a stored record: nothing in the current code writes one
- * (`assemble()` won't), but nothing at the read boundary rejects one
- * either. The worrying door is shut, though — `migrateSails` fails closed
- * on a damaged sail, so "two stored, one dropped on read" cannot happen;
- * what remains is a hand-edited or corrupted store, a foreign writer, or a
- * future build. `RouteSummary.test.tsx`'s "#578 review Minor 5" row pins
- * exactly this case.
- */
-function tiedSailIds(sailIds: readonly SailId[]): [string, string] {
-  // #578 review Minor 5: NOT `sailIds[1] ?? sailIds[0]` — that would render
-  // "Genoa and Genoa are effectively tied", a self-tie that reads as a
-  // genuine (if odd) result rather than a degraded one. Per this repo's
-  // guard-asymmetry rule a fallback must fail OBVIOUSLY wrong, not
-  // plausibly right: `'unknown'` resolves through `sailLabelKey`'s own
-  // `?? 'route.rig.unknown'` fallback, so a caller reaching this branch sees
-  // "Unknown sail" rather than a fabricated second name.
-  return [sailIds[0] ?? 'unknown', sailIds[1] ?? 'unknown'];
 }
 
 /**
@@ -288,9 +253,16 @@ export function renderRigVerdict(
   t: (key: MsgKey, vars?: Record<string, string | number>) => string,
 ): string {
   const key = resultVerdictKey(kind, comparisonComplete, sails);
+  if (key === 'route.singleSail') {
+    return t(key, { sail: t(sailLabelKey(sails[0]?.sailId ?? 'unknown')) });
+  }
   if (key === 'route.rigTie') {
-    const [a, b] = tiedSailIds(sails.map((s) => s.sailId));
-    return t(key, { sailA: t(sailLabelKey(a)), sailB: t(sailLabelKey(b)) });
+    // A stored tie can carry any number of sails; only exactly two can be named.
+    const [a, b] = sails.map((s) => s.sailId);
+    if (sails.length === 2 && a !== undefined && b !== undefined) {
+      return t(key, { sailA: t(sailLabelKey(a)), sailB: t(sailLabelKey(b)) });
+    }
+    return t('route.rigNotCompared');
   }
   if (key === 'route.rigOneFailed') {
     // resultVerdictKey only returns this key when partiallyFailedSail(sails)
