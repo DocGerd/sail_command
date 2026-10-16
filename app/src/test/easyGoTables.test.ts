@@ -9,6 +9,8 @@ import { I18nProvider } from '../i18n';
 import { BOATS, boatById, polarKey } from '../data/boats';
 import { weakestPolarTier } from '../lib/boatProvenance';
 import { recalcRequest } from '../lib/recalc';
+import { rigComparisonSuppressedByTier } from '../lib/plan';
+import { en } from '../i18n/dict.en';
 import { planRoute } from '../routing/planRoute';
 import {
   DEFAULT_SETTINGS,
@@ -115,22 +117,22 @@ describe('P.10 item 13: not-compared on the loaded assets', () => {
 });
 
 describe('P.10 item 14: pre-amendment snapshot, recalculated', () => {
-  // Before the cutover both sails sat at the donor's tier, so a plan saved then
-  // carries a snapshot with no estimated sail.
+  // EASY GO! shipped both sails `estimated` before the cutover, so that is what
+  // a saved plan's snapshot carries.
   const oldBoat = boatSnapshot({
     ...EASY_GO,
     sails: EASY_GO.sails.map((s) => ({
       ...s,
-      polarProvenance: { ...s.polarProvenance, tier: 'modelled' as const },
+      polarProvenance: { ...s.polarProvenance, tier: 'estimated' as const },
     })),
   });
   const saved = { request: { ...REQ, boat: oldBoat } } as unknown as Plan;
 
-  it('the fixture is pre-amendment (no estimated sail in the snapshot)', () => {
-    expect(oldBoat.sails.some((s) => s.polarProvenance.tier === 'estimated')).toBe(false);
-  });
-
-  it('recalculation against the catalogue boat yields not-compared and the estimated label', () => {
+  it('recalculated run uses the own polar assets and renders the estimated not-compared copy', () => {
+    expect(EASY_GO.sails.map((s) => s.polarAsset)).toEqual([
+      'data/polars/salona-44-easy-go-genoa.json',
+      'data/polars/salona-44-easy-go-fock.json',
+    ]);
     const req = recalcRequest(saved, REQ.departureMs);
     const r = planRoute(req, uniformWindGrid(12, 0), {
       polars: loadedPolars(),
@@ -140,7 +142,9 @@ describe('P.10 item 14: pre-amendment snapshot, recalculated', () => {
     expect(r.status).toBe('ok');
     if (r.status !== 'ok') return;
     expect(r.rigRecommendation?.kind).toBe('not-compared');
-    expect(weakestPolarTier(EASY_GO)).toBe('estimated');
+    const recalculated = { request: req, result: r } as unknown as Plan;
+    expect(rigComparisonSuppressedByTier(recalculated)).toBe(true);
+    expect(en['route.rigNotComparedEstimated']).toContain('{tier}');
   });
 });
 
