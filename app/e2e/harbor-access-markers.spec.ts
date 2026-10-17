@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { startPreview } from './helpers';
 
 // #1291 (design docs/spikes/1135-boat-picker-gate-design.md §5.2/§5.3):
@@ -145,35 +145,93 @@ test('#1575: switching to EASY GO! announces an unreachable destination and mark
     server.kill();
   }
 });
+// #1721: a real-solver plan; pass 1 fails, pass 2 solves from the handover.
+const HANDOVER_PLAN_TEST_TIMEOUT_MS = 180_000;
+const HANDOVER_PLAN_WAIT_MS = 120_000;
 
-// #1721: the failure banner for the same stranded harbour, driven through the
-// real solver: no hedge, and it names harbour, boat, draft and the checked gate range.
-test('#1721: planning EASY GO! from Marstal shows the data-attributed no-route message', async ({
+async function planEasyGoMarstalToBagenkop(page: Page, safetyDepthM?: string): Promise<void> {
+  await page.getByRole('tab', { name: 'Boot' }).click();
+  await page.getByRole('radio', { name: /EASY GO!/ }).click();
+  await expect(page.getByRole('radio', { name: /EASY GO!/ })).toBeChecked();
+
+  await page.getByRole('tab', { name: 'Planen' }).click();
+  if (safetyDepthM !== undefined) {
+    const safetyDepth = page.getByLabel('Sicherheitstiefe (m)');
+    await safetyDepth.fill(safetyDepthM);
+    await safetyDepth.blur();
+  }
+  const originSection = page.getByRole('region', { name: 'Start' });
+  await originSection.getByRole('combobox').fill('Marstal');
+  await originSection.getByRole('option').first().click();
+  const destSection = page.getByRole('region', { name: 'Ziel' });
+  await destSection.getByRole('combobox').fill('Bagenkop');
+  await destSection.getByRole('option').first().click();
+
+  await page.getByRole('button', { name: 'Route planen' }).click();
+}
+
+interface HandoverTestMap {
+  getSource(
+    id: string,
+  ): { getData(): Promise<{ features?: { geometry: { type: string } }[] }> } | undefined;
+}
+
+test('#1721: planning EASY GO! from Marstal starts at a handover point and discloses the approach', async ({
   page,
 }) => {
+  test.setTimeout(HANDOVER_PLAN_TEST_TIMEOUT_MS);
   const server = await startPreview(page);
   try {
     await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
+    await planEasyGoMarstalToBagenkop(page);
 
-    await page.getByRole('tab', { name: 'Boot' }).click();
-    await page.getByRole('radio', { name: /EASY GO!/ }).click();
-    await expect(page.getByRole('radio', { name: /EASY GO!/ })).toBeChecked();
+    const notice = page.locator('.harbor-handover-notice').filter({ visible: true }).first();
+    await expect(notice).toContainText('Hafenansteuerung nicht berechnet', {
+      timeout: HANDOVER_PLAN_WAIT_MS,
+    });
+    await expect(notice).toContainText(
+      'Start: Das Tiefenraster der App (~46-m-Zellen, schmale ausgebaggerte Rinnen können darin fehlen) findet für Salona 44 (EASY GO!) bei 3,5 m Sicherheitstiefe keine Verbindung aus dem Hafen.',
+    );
+    await expect(page.getByRole('alert').filter({ hasText: 'Keine Route' })).toHaveCount(0);
 
-    await page.getByRole('tab', { name: 'Planen' }).click();
-    const originSection = page.getByRole('region', { name: 'Start' });
-    await originSection.getByRole('combobox').fill('Marstal');
-    await originSection.getByRole('option').first().click();
-    const destSection = page.getByRole('region', { name: 'Ziel' });
-    await destSection.getByRole('combobox').fill('Assens');
-    await destSection.getByRole('option').first().click();
+    await expect(
+      page
+        .locator('.route-legend')
+        .getByText('Hafenansteuerung – nicht berechnet, nicht tiefengeprüft'),
+    ).toHaveCount(1);
 
-    await page.getByRole('button', { name: 'Route planen' }).click();
+    await expect
+      .poll(() =>
+        page.evaluate(async () => {
+          const map = (window as unknown as { __scMap?: HandoverTestMap }).__scMap;
+          const data = await map?.getSource('sc-harbor-handover')?.getData();
+          if (!data) return 'no-source';
+          return (data.features ?? []).map((f) => f.geometry.type).join(',');
+        }),
+      )
+      .toBe('LineString,Point');
+  } finally {
+    server.kill();
+  }
+});
+
+// #1721: above 4.8 m no grid-connected cell lies within 1 nm of Marstal, so no
+// handover exists and the plan fails with the #1723 range message.
+test('#1721: with no handover in reach, planning EASY GO! from Marstal names the checked gate range', async ({
+  page,
+}) => {
+  test.setTimeout(HANDOVER_PLAN_TEST_TIMEOUT_MS);
+  const server = await startPreview(page);
+  try {
+    await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
+    await planEasyGoMarstalToBagenkop(page, '4.9');
+
     const banner = page.getByRole('alert').filter({ hasText: 'Keine Route' });
     await expect(banner).toContainText(
-      'Keine Route mit Salona 44 (EASY GO!) (Tiefgang 2,59 m): Das Tiefenraster der App (~46-m-Zellen, schmale ausgebaggerte Rinnen können darin fehlen) findet bei keiner Sicherheitstiefe von 2,7 m bis 3,5 m eine Verbindung von oder nach Marstal.',
-      { timeout: 60_000 },
+      'Keine Route mit Salona 44 (EASY GO!) (Tiefgang 2,59 m): Das Tiefenraster der App (~46-m-Zellen, schmale ausgebaggerte Rinnen können darin fehlen) findet bei keiner Sicherheitstiefe von 2,7 m bis 4,9 m eine Verbindung von oder nach Marstal.',
+      { timeout: HANDOVER_PLAN_WAIT_MS },
     );
-    await expect(banner).not.toContainText('zu früh aufgegeben');
+    await expect(page.locator('.harbor-handover-notice')).toHaveCount(0);
   } finally {
     server.kill();
   }
