@@ -4,7 +4,8 @@ import { I18nProvider } from '../i18n';
 import { en } from '../i18n/dict.en';
 import { de } from '../i18n/dict.de';
 import { uniformWindGrid } from '../test/fixtures';
-import { formatDateTime, formatTime } from '../lib/format';
+import { formatDateTime, formatLatLon, formatTime, formatWeekdayTime } from '../lib/format';
+import { nextPassageDepartureMs } from '../lib/planForm';
 import { MASK_TOLERANCE_M } from '../lib/mask';
 import { BOAT_DRAFT_M } from '../routing/relaxedDepth';
 import {
@@ -17,6 +18,7 @@ import {
   type SailResult,
 } from '../types';
 import RouteSummary from './RouteSummary';
+import type { NextPassageProps } from './NextPassageAction';
 import { boatSnapshot, defaultBoatSnapshot } from '../types';
 import { boatById } from '../data/boats';
 import { PLAN_SCHEMA_VERSION } from '../types';
@@ -227,7 +229,12 @@ function makePlan(
 }
 
 function renderSummary(
-  overrides: { plan?: Plan; rig?: SailId; onRigChange?: (r: SailId) => void } = {},
+  overrides: {
+    plan?: Plan;
+    rig?: SailId;
+    onRigChange?: (r: SailId) => void;
+    nextPassage?: NextPassageProps;
+  } = {},
 ): { plan: Plan; rig: SailId; onRigChange: (r: SailId) => void; container: HTMLElement } {
   localStorage.setItem('sc-lang', 'en');
   const plan = overrides.plan ?? makePlan();
@@ -235,7 +242,12 @@ function renderSummary(
   const onRigChange = overrides.onRigChange ?? vi.fn();
   const { container } = render(
     <I18nProvider>
-      <RouteSummary plan={plan} rig={rig} onRigChange={onRigChange} />
+      <RouteSummary
+        plan={plan}
+        rig={rig}
+        onRigChange={onRigChange}
+        {...(overrides.nextPassage ? { nextPassage: overrides.nextPassage } : {})}
+      />
     </I18nProvider>,
   );
   return { plan, rig, onRigChange, container };
@@ -2216,5 +2228,60 @@ describe('#615: seamark-proximity notice', () => {
     expect(de['route.seamarks.proximity.plural']).toContain('{count}');
     expect(en['route.seamarks.proximity']).not.toContain('{count}');
     expect(de['route.seamarks.proximity']).not.toContain('{count}');
+  });
+});
+
+describe('#1707 next-passage action', () => {
+  const nextPassage = (): NextPassageProps => ({
+    harbors: [],
+    disabled: false,
+    onNextPassage: vi.fn(),
+  });
+
+  it('is placed outside the rig tabpanel', () => {
+    renderSummary({ nextPassage: nextPassage() });
+    expect(screen.getByRole('tabpanel')).not.toContainElement(
+      screen.getByRole('button', { name: 'Plan next passage' }),
+    );
+  });
+
+  it('is offered on a rig tab whose own rig found no route', () => {
+    const plan = makePlan();
+    setSail(plan, 'fock', { result: null });
+    renderSummary({ plan, rig: 'fock', nextPassage: nextPassage() });
+    expect(screen.getByRole('button', { name: 'Plan next passage' })).toBeInTheDocument();
+  });
+
+  it('refreshes its preview for a replaced plan under a moved clock', () => {
+    localStorage.setItem('sc-lang', 'en');
+    const props = nextPassage();
+    const ui = (plan: Plan) => (
+      <I18nProvider>
+        <RouteSummary plan={plan} rig="genoa" onRigChange={vi.fn()} nextPassage={props} />
+      </I18nProvider>
+    );
+    const first = makePlan();
+    const { rerender } = render(ui(first));
+    const destinationLabel = formatLatLon({ lat: 54.85, lon: 10.52 });
+    const departureOf = (nowMs: number) =>
+      formatWeekdayTime(nextPassageDepartureMs(GENOA_RESULT.etaMs, nowMs), 'en');
+    const button = () => screen.getByRole('button', { name: 'Plan next passage' });
+    expect(button()).toHaveAccessibleDescription(
+      `Start ${destinationLabel} · Departure ${departureOf(DEPARTURE_MS)}`,
+    );
+
+    const later = DEPARTURE_MS + 3 * 86_400_000;
+    vi.spyOn(Date, 'now').mockReturnValue(later);
+    rerender(ui({ ...first, createdAtMs: first.createdAtMs + 1 }));
+
+    expect(departureOf(later)).not.toBe(departureOf(DEPARTURE_MS));
+    expect(button()).toHaveAccessibleDescription(
+      `Start ${destinationLabel} · Departure ${departureOf(later)}`,
+    );
+  });
+
+  it('is omitted without the prop', () => {
+    renderSummary();
+    expect(screen.queryByRole('button', { name: 'Plan next passage' })).toBeNull();
   });
 });

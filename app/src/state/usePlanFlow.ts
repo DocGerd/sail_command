@@ -6,6 +6,7 @@ import { loadRoutingAssets } from '../services/assets';
 import { RoutingClient, RoutingError } from '../routing/workerClient';
 import { useActivePlan } from './AppState';
 import { noRouteMessageKey } from '../lib/plan';
+import { windGridReaches } from '../lib/planForm';
 import {
   dedupeRequestVias,
   failureLeavesWorkerHealthy,
@@ -84,6 +85,8 @@ function mapWindError(err: unknown): MsgKey {
 // planner runs non-destructive.
 export interface RunOptions {
   replacePlanId?: string;
+  /** #1707: a fallback, never an override. Used offline, or when the forecast service is unreachable (network failure or persistent server error). */
+  storedWindGrid?: WindGrid;
 }
 
 export function usePlanFlow(deps: PlanFlowDeps = {}): {
@@ -222,7 +225,11 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
       // (state/replan.ts) are deliberately NOT gated this way: they reuse a
       // plan's already-stored windGrid and never touch the network, so they
       // must keep working offline.
-      if (!navigator.onLine) {
+      const stored =
+        opts.storedWindGrid && windGridReaches(opts.storedWindGrid, req.departureMs)
+          ? opts.storedWindGrid
+          : null;
+      if (!navigator.onLine && stored === null) {
         transition({ phase: 'error', messageKey: 'error.offline' });
         return;
       }
@@ -269,11 +276,20 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
       // the key entirely rather than pass `{ fixtureUrl: undefined }`.
       const fixtureUrl = new URLSearchParams(location.search).get('windFixture') ?? undefined;
       let windGrid: WindGrid;
-      try {
-        windGrid = await fetchWind(fixtureUrl ? { fixtureUrl } : {});
-      } catch (err) {
-        transition({ phase: 'error', messageKey: mapWindError(err) });
-        return;
+      if (!navigator.onLine && stored !== null) {
+        windGrid = stored;
+      } else {
+        try {
+          windGrid = await fetchWind(fixtureUrl ? { fixtureUrl } : {});
+        } catch (err) {
+          // Only an unreachable forecast service (network failure or persistent server error) may fall back; a rate limit or bad payload must not plan on an old forecast.
+          if (stored !== null && err instanceof OpenMeteoError && err.kind === 'offline') {
+            windGrid = stored;
+          } else {
+            transition({ phase: 'error', messageKey: mapWindError(err) });
+            return;
+          }
+        }
       }
       // #1193: nothing was posted to a worker yet (there may not even BE one)
       // — client.cancel() has nothing to reach here, so this checkpoint is

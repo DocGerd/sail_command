@@ -48,6 +48,7 @@ import Button from './Button';
 import Chip from './Chip';
 import Skeleton from './Skeleton';
 import Disclosure from './Disclosure';
+import NextPassageAction, { type NextPassageProps } from './NextPassageAction';
 import SegmentModeControl from './SegmentModeControl';
 // #848: the saved-waypoint picker — panel-only per design spec §2.7. This
 // import + the one render call below is the "minimal entry point" the task
@@ -198,6 +199,12 @@ export interface PlannerPanelProps {
   // the dedicated Boat tab, which now hosts the depth comfort margin and the
   // rest of the boat/propulsion/AIS settings — switches App.tsx's active tab.
   onOpenBoatSettings: () => void;
+  /** #1707: the one-tap seed for the next passage, shown in the compact result card. */
+  nextPassage?: NextPassageProps;
+  /** #1707: offline notice for a seeded next passage; a plain line, never an alert. */
+  nextPassageGuidance?: string | null;
+  pendingDestinationFocus?: boolean;
+  onDestinationFocused?: () => void;
 }
 
 /**
@@ -283,6 +290,10 @@ export default function PlannerPanel({
   formDirty,
   onViewDetails,
   onOpenBoatSettings,
+  nextPassage,
+  nextPassageGuidance,
+  pendingDestinationFocus,
+  onDestinationFocused,
 }: PlannerPanelProps) {
   const t = useT();
   const [sailInventory] = usePersistedSailInventory(boatId);
@@ -375,6 +386,16 @@ export default function PlannerPanel({
     // Change buttons instead carry a `data-focus-target` unique per endpoint.
     document.querySelector<HTMLButtonElement>(`[data-focus-target="${target}-change"]`)?.focus();
   });
+
+  // #1707: driven by the parent so one mechanism serves a mount from the Routes tab and an already-open picker.
+  const destinationSectionRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!pendingDestinationFocus) return;
+    destinationSectionRef.current
+      ?.querySelector<HTMLInputElement>('input[role="combobox"]')
+      ?.focus();
+    onDestinationFocused?.();
+  }, [pendingDestinationFocus, onDestinationFocused]);
 
   // #829: keyboard-reachable via-point coordinate entry (spike §3.1/§5.1).
   // ONE coordinate-entry row serves both "Add a new via point" and "Update
@@ -1022,7 +1043,11 @@ export default function PlannerPanel({
           </Button>
         </section>
 
-        <section aria-label={t('planner.destination.label')} className="planner-endpoint">
+        <section
+          aria-label={t('planner.destination.label')}
+          className="planner-endpoint"
+          ref={destinationSectionRef}
+        >
           <h3 className="sc-section-title">{t('planner.destination.label')}</h3>
           {destination && !editingDestination ? (
             <div className="planner-endpoint-selected">
@@ -1529,6 +1554,7 @@ export default function PlannerPanel({
             </p>
           )
         )}
+        {nextPassageGuidance && <p className="planner-guidance">{nextPassageGuidance}</p>}
       </div>
 
       {/* ONE persistent live region (aria-atomic): in-flight status while
@@ -1692,6 +1718,14 @@ export default function PlannerPanel({
               >
                 {t('planner.result.details')} <span aria-hidden="true">→</span>
               </Button>
+              {plan && nextPassage && (
+                <NextPassageAction
+                  key={`${plan.id}-${plan.createdAtMs}`}
+                  plan={plan}
+                  rig={rig}
+                  {...nextPassage}
+                />
+              )}
             </>
           )}
         </Card>
