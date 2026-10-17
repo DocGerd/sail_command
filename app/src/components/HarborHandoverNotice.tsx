@@ -3,7 +3,7 @@ import { formatDepthM } from '../lib/depthDisclosure';
 import { formatNm } from '../lib/format';
 import { HARBOR_HANDOVER_NOTICE_CLASS, harborHandoverLines } from '../lib/harborHandover';
 import { requestedGateM } from '../lib/shallowExposure';
-import type { Plan } from '../types';
+import type { Plan, RigResult } from '../types';
 
 /**
  * #1721: states, for a plan routed from/to a handover point, that the striped
@@ -11,11 +11,12 @@ import type { Plan } from '../types';
  * a labelled `<section>` would collide with the `region` locators, and nothing
  * here is an alert (the plan is valid, the approach is disclosed).
  */
-export function HarborHandoverNotice({ plan }: { plan: Plan }) {
+export function HarborHandoverNotice({ plan, result }: { plan: Plan; result: RigResult | null }) {
   const t = useT();
   const [lang] = useLang();
   const lines = harborHandoverLines(plan);
-  if (lines.length === 0) return null;
+  // Same gate as the map stripe and the legend row: no active-rig route, no approach to disclose.
+  if (result === null || lines.length === 0) return null;
   const depth = formatDepthM(requestedGateM(plan), lang);
   return (
     <div className={HARBOR_HANDOVER_NOTICE_CLASS}>

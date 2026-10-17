@@ -777,6 +777,8 @@ export default function RouteSummary({
         />
       )}
 
+      <HarborHandoverNotice plan={plan} result={result} />
+
       {/* #612: the complement of the banner above — a quiet route-scoped line
           for a route that did NOT relax and so has no `shallow` block to
           render a banner from. Rendered UNCONDITIONALLY here: the
@@ -786,8 +788,6 @@ export default function RouteSummary({
           the plan-level banner above — the walk uses the ACTIVE rig's own
           legs, so the two rig tabs can legitimately show different figures (or
           one show none), which is the honest per-rig answer. */}
-      {/* #1721: sits with the depth surfaces because it qualifies them. */}
-      <HarborHandoverNotice plan={plan} />
       <MarginalDepthNotice plan={plan} legs={result?.legs ?? null} />
 
       {/* #1398a: the third, affirmative state — MUTUALLY EXCLUSIVE with the
@@ -796,8 +796,8 @@ export default function RouteSummary({
           as MarginalDepthNotice: the gate lives inside the component. */}
       <DepthClearNotice plan={plan} legs={result?.legs ?? null} />
 
-      {/* #615: the advisory seamark-proximity line, a SIBLING of the two
-          depth surfaces above and, like MarginalDepthNotice, rendered
+      {/* #615: the advisory seamark-proximity line, a SIBLING of
+          MarginalDepthNotice and DepthClearNotice above and, like MarginalDepthNotice, rendered
           UNCONDITIONALLY — the unresolved / no-legs / zero gate lives inside
           the component. Per-rig for the same reason: the count is over the
           ACTIVE rig's own legs, so the two rig tabs can honestly differ. */}

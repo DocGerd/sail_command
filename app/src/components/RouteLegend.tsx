@@ -30,7 +30,7 @@ function isWideAtMount(): boolean {
 // and the #5b5b5b dashed motor line (RouteLayer.tsx), the white maneuver circle,
 // and the #CC79A7 via marker (ViaMarkers.tsx). The alt-rig entry (#324) mirrors
 // sc-route-alt-{sail,motor}'s dashed/reduced-opacity paint — shown
-// unconditionally like the others, not gated on the toggle's own state.
+// unconditionally, not gated on the toggle's own state.
 export default function RouteLegend({
   hasForcedLeg,
   hasHandover,

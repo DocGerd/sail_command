@@ -958,6 +958,7 @@ describe('#1721 migratePlan: the harborHandovers flag', () => {
     ['an empty object', {}],
     ['null', null],
     ['a string', 'origin'],
+    ['an own undefined value', undefined],
   ])('refuses the record when the flag is %s', (_name, value) => {
     expect(migratePlan(withFlag(value))).toBeNull();
   });

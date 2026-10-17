@@ -1715,6 +1715,7 @@ export default function PlannerPanel({
               plan={plan}
             />
           )}
+          {plan && <HarborHandoverNotice plan={plan} result={result} />}
           {/* #612: the complement of the banner above, for a route that did NOT
               relax — same shared component and copy as RouteSummary's own, so
               the quiet marginal-depth line can never drift between the first
@@ -1722,10 +1723,9 @@ export default function PlannerPanel({
               not-relaxed / mask-loaded / non-zero-exposure gate lives inside
               the component itself; the `plan &&` here is the same TYPE-LEVEL
               requirement as the banner's above. */}
-          {plan && <HarborHandoverNotice plan={plan} />}
           {plan && <MarginalDepthNotice plan={plan} legs={result?.legs ?? null} />}
           {/* #1398a: the third, affirmative state, mutually exclusive with
-              the two above by construction (depthExposureState, shared in
+              the banner and MarginalDepthNotice above by construction (depthExposureState, shared in
               RouteSummary.tsx). Same `plan &&` type-level requirement. */}
           {plan && <DepthClearNotice plan={plan} legs={result?.legs ?? null} />}
           {summary && (

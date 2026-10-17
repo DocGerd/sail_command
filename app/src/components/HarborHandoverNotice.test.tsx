@@ -12,6 +12,7 @@ import {
   defaultBoatSnapshot,
   type LatLon,
   type Plan,
+  type RigResult,
 } from '../types';
 import { HarborHandoverNotice } from './HarborHandoverNotice';
 
@@ -57,11 +58,21 @@ function makePlan(flags: HarborHandoverEnds | null, snap: HarborHandoverEnds = f
   };
 }
 
-function renderNotice(plan: Plan, lang: 'de' | 'en') {
+const RIG_RESULT: RigResult = {
+  sailId: 'genoa',
+  legs: [],
+  etaMs: 0,
+  durationMs: 0,
+  distanceNm: 0,
+  maneuverCount: 0,
+  motorDistanceNm: 0,
+};
+
+function renderNotice(plan: Plan, lang: 'de' | 'en', result: RigResult | null = RIG_RESULT) {
   localStorage.setItem('sc-lang', lang);
   return render(
     <I18nProvider>
-      <HarborHandoverNotice plan={plan} />
+      <HarborHandoverNotice plan={plan} result={result} />
     </I18nProvider>,
   );
 }
@@ -121,6 +132,12 @@ describe('HarborHandoverNotice (#1721)', () => {
   it('discloses a plan whose stored flag was stripped but whose snap is far off the harbour', () => {
     const { container } = renderNotice(makePlan(null, { origin: true }), 'en');
     expect(container.querySelector('.harbor-handover-notice')).not.toBeNull();
+  });
+
+  it('renders nothing while the active rig has no route, like the stripe and legend row', () => {
+    const plan = makePlan({ origin: true });
+    const { container } = renderNotice(plan, 'en', null);
+    expect(container.querySelector('.harbor-handover-notice')).toBeNull();
   });
 
   it('is a plain always-visible block: no alert role, no labelled region', () => {

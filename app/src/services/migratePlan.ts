@@ -374,7 +374,9 @@ function migrateResult(result: Record<string, unknown>): PlanResultOk | null {
 
   // #1721: a present-but-malformed flag makes the record unreadable; an absent one stays absent.
   const harborHandovers = Object.hasOwn(result, 'harborHandovers')
-    ? parseHarborHandovers(result.harborHandovers)
+    ? result.harborHandovers === undefined
+      ? 'malformed'
+      : parseHarborHandovers(result.harborHandovers)
     : null;
   if (harborHandovers === 'malformed') return null;
 
