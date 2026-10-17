@@ -402,6 +402,20 @@ export function computeHarborAccess(
 }
 
 /**
+ * #1721: one harbour's state at one gate, sharing `computeHarborAccess`'s
+ * per-gate flood but skipping the other harbours' classification. Identical to
+ * `computeHarborAccess(...).get(harbor.id)`.
+ */
+export function harborAccessAt(
+  mask: NavMask,
+  harbor: HarborWithReachability,
+  boat: BoatDef,
+  safetyDepthM: number,
+): HarborAccessState {
+  return harborStateAt(mask, harbor, boat, safetyDepthM, floodAtGate(mask, safetyDepthM));
+}
+
+/**
  * Default per-call step (flood) budget for {@link findLowerSettingHint}. 12
  * steps costs roughly 2 s worst case on this repo's own measured ~150-200 ms
  * per uncached flood (PR #1316) — down from the UNBOUNDED search's measured

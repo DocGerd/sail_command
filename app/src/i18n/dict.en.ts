@@ -14,6 +14,12 @@ export const en = {
   // #652: see dict.de.ts's comment on this key — same copy, same reasoning.
   'harborPicker.knownDisconnected':
     'Not reachable by the router at any depth setting — a limit of the depth data, not a statement about the water.',
+  // #1721: per-boat counterpart of the above. Attributed to the depth grid, not the
+  // harbour: the real charted approach may be deeper than the grid shows.
+  'harborPicker.boatUnreachableAcrossRange':
+    "The app's depth data finds no connection for {boat} at any safety depth from {min} m to {max} m.",
+  'error.harborUnreachableAcrossRange':
+    "No route with {boat} (draft {draft} m): the app's depth grid (~46 m cells, which can miss narrow dredged channels) finds no connection to or from {harbor} at any safety depth from {min} m to {max} m. No setting in that range helps. Check the official chart or harbour guide.",
   'options.safetyDepth.label': 'Safety depth (m)',
   // #699: the allowed range used to hang only off the field's native
   // min/max attributes, with no visible or screen-reader-accessible text —
