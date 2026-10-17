@@ -4,8 +4,7 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
-    # No `paths:` filter: Scorecard's SAST check counts commits whose PR head has
-    # no CodeQL run, so a filter skipping prose-only PRs lowers that score (#72).
+    # No `paths:` filter: CodeQL runs on every PR (#72).
   schedule:
     - cron: '23 4 * * 1' # weekly, Monday 04:23 UTC
 permissions:
