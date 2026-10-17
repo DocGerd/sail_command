@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto';
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
-import { usePlanFlow } from './usePlanFlow';
+import { usePlanFlow, type PlanFlowDeps } from './usePlanFlow';
 import { useViaReplan } from './replan';
 import { AppStateProvider, useActivePlan } from './AppState';
 import {
@@ -1490,5 +1490,137 @@ describe('#1164 T6: region pinning after a successful save', () => {
     expect(result.current.flow.planning).toEqual({ phase: 'idle' });
     expect(result.current.active.plan).toBe(save.mock.calls[0][0]);
     expect(warn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('#1707 stored-grid fallback', () => {
+  beforeEach(async () => {
+    await __resetDbForTests();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const reaching = () => uniformWindGrid(12, 0, { t0Ms: REQ.departureMs - 3_600_000, hours: 48 });
+  const tooShort = () =>
+    uniformWindGrid(12, 0, { t0Ms: REQ.departureMs - 10 * 3_600_000, hours: 2 });
+
+  function setup(fetchWind: NonNullable<PlanFlowDeps['fetchWind']>) {
+    const w = fakeWorker();
+    const save = vi.fn<(plan: Plan) => Promise<void>>().mockResolvedValue(undefined);
+    vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
+    const hook = renderHook(
+      () => ({
+        flow: usePlanFlow({
+          fetchWind,
+          save,
+          makeClient: () => new RoutingClient(() => w as unknown as Worker),
+        }),
+        active: useActivePlan(),
+      }),
+      { wrapper: AppStateProvider },
+    );
+    return { w, save, ...hook };
+  }
+
+  async function runToResult(h: ReturnType<typeof setup>, storedWindGrid: WindGrid) {
+    let pending!: Promise<void>;
+    await act(async () => {
+      pending = h.result.current.flow.run(REQ, 'Next', { storedWindGrid });
+      await flush();
+    });
+    const planMsg = findPosted(h.w.posted, 'plan');
+    await act(async () => {
+      h.w.emit({ type: 'result', id: planMsg.id, result: OK_RESULT });
+      await pending;
+    });
+    return planMsg.windGrid;
+  }
+
+  it('offline: plans on the stored grid without fetching, saved under a fresh id', async () => {
+    vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false);
+    const fetchWind = vi.fn<NonNullable<PlanFlowDeps['fetchWind']>>();
+    const stored = reaching();
+    const h = setup(fetchWind);
+
+    const posted = await runToResult(h, stored);
+
+    expect(fetchWind).not.toHaveBeenCalled();
+    expect(posted).toBe(stored);
+    expect(h.save).toHaveBeenCalledTimes(1);
+    const saved = h.save.mock.calls[0][0];
+    expect(saved.windGrid).toBe(stored);
+    expect(typeof saved.id).toBe('string');
+    expect(h.result.current.flow.planning).toEqual({ phase: 'idle' });
+  });
+
+  it('offline: a stored grid that ends before the departure is refused with error.offline', async () => {
+    vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false);
+    const fetchWind = vi.fn<NonNullable<PlanFlowDeps['fetchWind']>>();
+    const h = setup(fetchWind);
+
+    await act(async () => {
+      await h.result.current.flow.run(REQ, 'Next', { storedWindGrid: tooShort() });
+    });
+
+    expect(fetchWind).not.toHaveBeenCalled();
+    expect(h.w.posted.some((m) => m.type === 'plan')).toBe(false);
+    expect(h.result.current.flow.planning).toEqual({ phase: 'error', messageKey: 'error.offline' });
+  });
+
+  it('online: a network-failed fetch falls back to the stored grid', async () => {
+    const fetchWind = vi
+      .fn<NonNullable<PlanFlowDeps['fetchWind']>>()
+      .mockRejectedValue(new OpenMeteoError('offline', 'network failure'));
+    const stored = reaching();
+    const h = setup(fetchWind);
+
+    const posted = await runToResult(h, stored);
+
+    expect(fetchWind).toHaveBeenCalledTimes(1);
+    expect(posted).toBe(stored);
+  });
+
+  it.each<[OpenMeteoErrorKind, MsgKey]>([
+    ['rate-limited', 'error.rateLimited'],
+    ['http', 'error.windService'],
+    ['malformed', 'error.windService'],
+  ])('online: a %s failure does not fall back', async (kind, messageKey) => {
+    const fetchWind = vi
+      .fn<NonNullable<PlanFlowDeps['fetchWind']>>()
+      .mockRejectedValue(new OpenMeteoError(kind, 'boom'));
+    const h = setup(fetchWind);
+
+    await act(async () => {
+      await h.result.current.flow.run(REQ, 'Next', { storedWindGrid: reaching() });
+    });
+
+    expect(h.result.current.flow.planning).toEqual({ phase: 'error', messageKey });
+    expect(h.w.posted.some((m) => m.type === 'plan')).toBe(false);
+  });
+
+  it('online: a network-failed fetch with a too-short stored grid keeps error.offline', async () => {
+    const fetchWind = vi
+      .fn<NonNullable<PlanFlowDeps['fetchWind']>>()
+      .mockRejectedValue(new OpenMeteoError('offline', 'network failure'));
+    const h = setup(fetchWind);
+
+    await act(async () => {
+      await h.result.current.flow.run(REQ, 'Next', { storedWindGrid: tooShort() });
+    });
+
+    expect(h.result.current.flow.planning).toEqual({ phase: 'error', messageKey: 'error.offline' });
+    expect(h.w.posted.some((m) => m.type === 'plan')).toBe(false);
+  });
+
+  it('online: a successful fetch wins over the stored grid', async () => {
+    const fetched = uniformWindGrid(9, 90, { t0Ms: REQ.departureMs - 3_600_000, hours: 48 });
+    const fetchWind = vi.fn<NonNullable<PlanFlowDeps['fetchWind']>>().mockResolvedValue(fetched);
+    const h = setup(fetchWind);
+
+    const posted = await runToResult(h, reaching());
+
+    expect(posted).toBe(fetched);
   });
 });

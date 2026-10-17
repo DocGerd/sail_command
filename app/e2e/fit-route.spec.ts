@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { startPreview, STANDARD_VIEWPORTS } from './helpers';
+import { bannerHeightVar, startPreview, STANDARD_VIEWPORTS } from './helpers';
 
 // #1102 (residual of #297/PR #1100): the "fit route to view" action
 // (`route.fitToView`, `.route-layer-controls`) has three unit tests in
@@ -97,16 +97,21 @@ async function waitForStableCamera(
   );
 }
 
-/** Plans Langballigau -> Sønderborg on the deterministic wind-sw12 fixture. */
-async function planRoute(page: Page, serverUrl: string): Promise<void> {
+/** Plans a route on the deterministic wind-sw12 fixture (default Langballigau -> Sønderborg). */
+async function planRoute(
+  page: Page,
+  serverUrl: string,
+  from = 'Langballigau',
+  to = 'Sønderborg',
+): Promise<void> {
   await page.goto(`${serverUrl}?windFixture=test-fixtures/wind-sw12.json`);
   await page.getByRole('tab', { name: 'Planen' }).click();
   const origin = page.getByRole('region', { name: 'Start' });
-  await origin.getByRole('combobox').fill('Langballigau');
+  await origin.getByRole('combobox').fill(from);
   await expect(origin.getByRole('option')).toHaveCount(1);
   await origin.getByRole('option').first().click();
   const dest = page.getByRole('region', { name: 'Ziel' });
-  await dest.getByRole('combobox').fill('Sønderborg');
+  await dest.getByRole('combobox').fill(to);
   await expect(dest.getByRole('option')).toHaveCount(1);
   await dest.getByRole('option').first().click();
   const planButton = page.getByRole('button', { name: 'Route planen' });
@@ -298,6 +303,171 @@ test.describe('#1626: fit pads for map chrome', () => {
         await fitButton.click();
         await waitForStableCamera(page);
         await expectEndpointsClearOfChrome(page, false);
+      } finally {
+        server.kill();
+      }
+    });
+  }
+});
+
+// #1639: chrome that resizes after the auto-fit must re-pad it. The offline-ready
+// toast closing grows both the map and the bottom sheet at tabletPortrait.
+async function startMarkerGapToSheet(page: Page): Promise<number | null> {
+  return page.evaluate(() => {
+    const marker = document.querySelector('.sc-endpoint-marker-origin');
+    const sheet = document.querySelector('.app-bottom-sheet');
+    if (!marker || !sheet) return null;
+    return Math.round(sheet.getBoundingClientRect().top - marker.getBoundingClientRect().bottom);
+  });
+}
+
+test.describe('#1639: start marker clear of the bottom sheet (tabletPortrait)', () => {
+  // Control, green without the re-fit: the first fit is already right when the toast stays up.
+  test('control: auto-fit on a height-limited route, toast still showing', async ({ page }) => {
+    await page.setViewportSize(STANDARD_VIEWPORTS.tabletPortrait);
+    const server = await startPreview(page);
+    try {
+      await planRoute(page, server.url, 'Flensburg', 'Sønderborg');
+      await waitForStableCamera(page);
+      await expect
+        .poll(() => startMarkerGapToSheet(page), { timeout: 30_000 })
+        .toBeGreaterThanOrEqual(0);
+      await expectEndpointsClearOfChrome(page);
+    } finally {
+      server.kill();
+    }
+  });
+
+  test('after the offline-ready toast is dismissed following the plan', async ({ page }) => {
+    await page.setViewportSize(STANDARD_VIEWPORTS.tabletPortrait);
+    const server = await startPreview(page);
+    try {
+      await planRoute(page, server.url, 'Flensburg', 'Sønderborg');
+      await waitForStableCamera(page);
+      await page.locator('.banner-area').getByRole('button', { name: 'Schließen' }).click();
+      await expect(page.locator('.banner-area .banner')).toHaveCount(0);
+      await expect.poll(() => bannerHeightVar(page), { timeout: 30_000 }).toBe('0px');
+      await waitForStableCamera(page);
+      await expect
+        .poll(() => startMarkerGapToSheet(page), { timeout: 30_000 })
+        .toBeGreaterThanOrEqual(0);
+    } finally {
+      server.kill();
+    }
+  });
+});
+
+// Switching to the Live tab shrinks the sheet while the docked readout takes its place.
+test.describe('#1639: start marker clear of the Live readout (tabletPortrait)', () => {
+  test.use({
+    permissions: ['geolocation'],
+    geolocation: { latitude: 54.8237, longitude: 9.6524, accuracy: 5 },
+  });
+
+  test('after starting the Live view', async ({ page }) => {
+    await page.setViewportSize(STANDARD_VIEWPORTS.tabletPortrait);
+    const server = await startPreview(page);
+    try {
+      await planRoute(page, server.url, 'Flensburg', 'Sønderborg');
+      await waitForStableCamera(page);
+      await page.getByRole('tab', { name: 'Live' }).click();
+      await page.getByRole('button', { name: 'Live-Ansicht' }).click();
+      await expect(page.locator('.live-view-data')).toBeVisible({ timeout: 30_000 });
+      await waitForStableCamera(page);
+      await expect
+        .poll(
+          () =>
+            page.evaluate(() => {
+              const marker = document.querySelector('.sc-endpoint-marker-origin');
+              const live = document.querySelector('.live-view');
+              if (!marker || !live) return null;
+              const m = marker.getBoundingClientRect();
+              const l = live.getBoundingClientRect();
+              const w = Math.min(m.right, l.right) - Math.max(m.left, l.left);
+              const h = Math.min(m.bottom, l.bottom) - Math.max(m.top, l.top);
+              return w > 0 && h > 0 ? Math.round(w * h) : 0;
+            }),
+          { timeout: 30_000 },
+        )
+        .toBe(0);
+    } finally {
+      server.kill();
+    }
+  });
+});
+// #1641: the DOM endpoint labels hang off the markers and must clear the chrome too.
+interface LabelState {
+  overlapPx: number;
+  insideMap: boolean;
+}
+
+async function labelState(page: Page, role: 'origin' | 'destination'): Promise<LabelState> {
+  return page.evaluate((r) => {
+    const label = document.querySelector(`.sc-endpoint-marker-${r} .sc-endpoint-marker-label`);
+    const canvas = document.querySelector('.maplibregl-canvas');
+    if (!label || !canvas) return { overlapPx: -1, insideMap: false };
+    const l = label.getBoundingClientRect();
+    const map = canvas.getBoundingClientRect();
+    let worst = 0;
+    const chrome = document.querySelectorAll(
+      '.route-layer-controls, .map-stack-tl, .app-bottom-sheet, .live-view',
+    );
+    for (let i = 0; i < chrome.length; i++) {
+      const c = chrome[i]!.getBoundingClientRect();
+      const w = Math.min(l.right, c.right) - Math.max(l.left, c.left);
+      const h = Math.min(l.bottom, c.bottom) - Math.max(l.top, c.top);
+      if (w > 0 && h > 0) worst = Math.max(worst, w * h);
+    }
+    const insideMap =
+      l.left >= map.left && l.right <= map.right && l.top >= map.top && l.bottom <= map.bottom;
+    return { overlapPx: Math.round(worst), insideMap };
+  }, role);
+}
+
+async function expectLabelsClear(page: Page): Promise<void> {
+  for (const role of ['destination', 'origin'] as const) {
+    await expect
+      .poll(() => labelState(page, role), { timeout: 30_000 })
+      .toEqual({ overlapPx: 0, insideMap: true });
+  }
+}
+
+test.describe('#1641: endpoint labels clear of the chrome after the auto-fit', () => {
+  const viewports = {
+    tabletPortrait: STANDARD_VIEWPORTS.tabletPortrait,
+    desktopHd: STANDARD_VIEWPORTS.desktopHd,
+  };
+
+  for (const [name, viewport] of Object.entries(viewports)) {
+    test(`labels of both endpoints stay clear of the chrome (${name})`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      const server = await startPreview(page);
+      try {
+        await planRoute(page, server.url);
+        await waitForStableCamera(page);
+        await expectLabelsClear(page);
+      } finally {
+        server.kill();
+      }
+    });
+
+    // The restored plan arrives before its endpoint markers are rebuilt.
+    test(`labels stay clear after a session restore (${name})`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      const server = await startPreview(page);
+      try {
+        await planRoute(page, server.url);
+        // PlansList reads IndexedDB once, on mount: let the save settle first.
+        await page.getByRole('tab', { name: 'Routen' }).click();
+        await expect(page.locator('.plans-list-row')).toHaveCount(1);
+        await page.goto(server.url);
+        await expect(page.getByRole('tab', { name: 'Routen' })).toHaveAttribute(
+          'aria-selected',
+          'true',
+        );
+        await expect(page.locator('.sc-endpoint-marker-label')).toHaveCount(2, { timeout: 60_000 });
+        await waitForStableCamera(page);
+        await expectLabelsClear(page);
       } finally {
         server.kill();
       }

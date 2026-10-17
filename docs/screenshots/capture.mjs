@@ -373,7 +373,7 @@ await page.screenshot({ path: 'docs/screenshots/start-view.png' });
 // help text, to render with no internal scroll. Boat-tab-only, for the
 // same reason the 1000px start-view bump above is start-view-only: nothing
 // else needs this much vertical room.
-const BOAT_SELECTION_HEIGHT_PX = 1782;
+const BOAT_SELECTION_HEIGHT_PX = 1850;
 await page.setViewportSize({ width: 1280, height: BOAT_SELECTION_HEIGHT_PX });
 await page.getByRole('tab', { name: 'Boat' }).click();
 // Static, no plan/network dependency (unlike plan-route.png below), so a

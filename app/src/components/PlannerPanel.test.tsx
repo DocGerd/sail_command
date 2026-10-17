@@ -51,7 +51,13 @@ import {
   type SailId,
   type Settings,
 } from '../types';
-import PlannerPanel, { nextFullHourMs, type PlannerStatus, type TapTarget } from './PlannerPanel';
+import PlannerPanel, {
+  harborToPickedPoint,
+  nextFullHourMs,
+  type PlannerStatus,
+  type TapTarget,
+} from './PlannerPanel';
+import type { NextPassageProps } from './NextPassageAction';
 import { boatById, DEFAULT_BOAT_ID, type BoatDef } from '../data/boats';
 import { boatSnapshot, defaultBoatSnapshot } from '../types';
 import { PLAN_SCHEMA_VERSION } from '../types';
@@ -330,6 +336,10 @@ interface Overrides {
   formDirty?: boolean;
   onViewDetails?: () => void;
   onOpenBoatSettings?: () => void;
+  nextPassage?: NextPassageProps;
+  nextPassageGuidance?: string | null;
+  pendingDestinationFocus?: boolean;
+  onDestinationFocused?: () => void;
 }
 
 function baseProps(overrides: Overrides = {}) {
@@ -2821,5 +2831,48 @@ describe('#848: saved-waypoint picker wiring inside PlannerPanel', () => {
       lon: 10.0,
       name: 'Kalkgrund',
     });
+  });
+});
+
+describe('#1707 next passage in the compact result card', () => {
+  it('offers the action and reports a click', () => {
+    const onNextPassage = vi.fn();
+    renderPanel({
+      plan: makePlan(),
+      rig: 'genoa',
+      nextPassage: { harbors: HARBORS, disabled: false, onNextPassage },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Plan next passage' }));
+    expect(onNextPassage).toHaveBeenCalledTimes(1);
+  });
+
+  it('omits the action without the prop', () => {
+    renderPanel({ plan: makePlan(), rig: 'genoa' });
+    expect(screen.queryByRole('button', { name: 'Plan next passage' })).toBeNull();
+  });
+
+  it('a pending destination focus lands on the Destination combobox and is reported', () => {
+    const onDestinationFocused = vi.fn();
+    renderPanel({
+      origin: harborToPickedPoint(HARBORS[0], 'en'),
+      destination: null,
+      pendingDestinationFocus: true,
+      onDestinationFocused,
+    });
+    expect(document.activeElement).toBe(
+      within(screen.getByRole('region', { name: 'Destination' })).getByRole('combobox'),
+    );
+    expect(onDestinationFocused).toHaveBeenCalled();
+  });
+
+  it('renders the next-passage guidance as a non-alert line', () => {
+    renderPanel({ nextPassageGuidance: 'Offline — stored forecast note' });
+    const line = screen.getByText('Offline — stored forecast note');
+    expect(line.closest('[role="alert"]')).toBeNull();
+  });
+
+  it('nothing moves focus while no focus is pending', () => {
+    renderPanel({ origin: harborToPickedPoint(HARBORS[0], 'en'), destination: null });
+    expect(document.activeElement).toBe(document.body);
   });
 });

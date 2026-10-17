@@ -350,6 +350,9 @@ making design-level decisions; do not silently deviate.
   still collects zero files from `app/sweep/`), and `compare.mjs`
   now fails closed on FEWER arms than expected, with the expectation derived
   from the arm definitions rather than a hardcoded count.
+  A positive control whose lever trips a GUARD (v0.54.0: `MAX_HEADSAILS = 1`
+  threw in every arm) proves the arms reach the lever, not that `compare.mjs`
+  flags divergent output; that needs a non-throwing lever.
   **`becalmed` and `deep-becalmed` remain VACUOUS as safety evidence** —
   ZERO routes (33/33 errors each), so their byte-identity would survive any
   mask change including a catastrophic one; never count them as evidence.
@@ -640,7 +643,10 @@ making design-level decisions; do not silently deviate.
   cleared by PR #855); the other was `MaintainedID`, keyed to repository age
   ("created within the last 90 days"). Triage by TOOL before triaging by
   severity: a Scorecard "high" is a project-practice score, not a code
-  finding, and no source file will explain it.
+  finding, and no source file will explain it. Scorecard `VulnerabilitiesID`
+  stays open after Dependabot AUTO-DISMISSES the same advisory, so a zero
+  open-Dependabot count is not "no known vulnerable dependency" (v0.54.0,
+  #1695): read open `code-scanning/alerts` too.
 - `ci.yml`'s THIRD job `hook-selftests` (advisory, not required) DISCOVERS every
   TOP-LEVEL `*.sh` in `.claude/hooks/` and `.github/scripts/` (`-maxdepth 1`,
   deliberately non-recursive, so a nested script is a conscious addition and
@@ -1735,6 +1741,7 @@ making design-level decisions; do not silently deviate.
   | v0.51.0 | 2026-10-01 | 134 s | `success`, `steps=6` (merge `deploy` terminal at 10:35:54Z, 30 s before the tag run was created; MEASURED before the tag push, and the failure CALLED IN ADVANCE from it) | **`smoke-probe` FAILED** | merge-push `36849951320` -> tag `36850181856` on `5882230`. Tag run's `build` and `deploy` succeeded; its prod entry chunk `assets/index-DOFkuFiz.js` 404'd on 10/10 attempts (to 10:42:37Z) while the basemap Range probes passed on attempt 1. Back-merge `36853610947` (`48d2277`) republished that same chunk, 200; production then served ``version:`v0.51.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `1a48b9f` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.52.0 | 2026-10-01 | 40 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 18:17:28Z, immediately before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `36905648432` (created 18:16:50Z) -> tag `36905730015` (created 18:17:30Z) on `375bbe6`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `6791900881`, `ref: v0.52.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-ATArQ6An.js` at ``version:`v0.52.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `b26deb1` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.53.0 | 2026-10-02 | 33 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 15:23:28Z, two seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `37026578473` (created 15:22:59Z) -> tag `37026644660` (created 15:23:32Z) on `8a89880`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `6811904931`, `ref: v0.53.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-CMmK6ICi.js` at ``version:`v0.53.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `60efdb3` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
+  | v0.54.0 | 2026-10-16 | 19 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 12:56:56Z, one second before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `38904122078` (created 12:56:42Z) -> tag `38904158337` (created 12:57:01Z) on `90c3aa8`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `7119559177`, `ref: v0.54.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-1sx02wBm.js` at ``version:`v0.54.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `a2350f0` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -2156,8 +2163,10 @@ making design-level decisions; do not silently deviate.
   `584dc28`): PR #717 merged after PR #693's sweep and dropped `707.fixed.md`
   + `711.fixed.md`, leaving the released section two entries short of the
   milestone; it was caught at the ship gate by a human, by nothing else.
-  Re-`ls changelog.d/` immediately BEFORE pushing the tag, not only at the
-  sweep.
+  Re-check `changelog.d/` immediately BEFORE pushing the tag, not only at the
+  sweep — with `git ls-tree --name-only <tag> changelog.d/` (trailing slash
+  required): a bare `ls` reads the checked-out branch, which a server-side
+  `gh pr merge` leaves stale (v0.54.0: it listed already-folded fragments).
   **A second fragment for an already-fragmented issue needs a DECISION, not a
   default.** While the earlier fragment is still PENDING, both fold into the
   SAME release section — so the test is "does the earlier one still state
@@ -3840,7 +3849,9 @@ making design-level decisions; do not silently deviate.
   real state (labels, milestones, deploys, issue state), re-check any in-flight
   PR prose that DESCRIBES that state. Recurred at the v0.44.0 cut: rolling
   issues forward mid-sweep falsified two ROADMAP sentences. Roll milestones
-  before the sweep writer drafts.
+  before the sweep writer drafts. Filing an issue INTO the next milestone
+  mid-sweep is the same act (v0.54.0: #1695 and #1696 each staled the
+  `## Next` list).
 - **Rewording a citation needs THREE separate questions, not one**: is it still
   TRUE, is it still SAYING THE SAME THING, and is it still WORTH ITS PLACE. A
   sentence can pass the first and fail the other two — #595's rewrite replaced a
@@ -4470,7 +4481,10 @@ making design-level decisions; do not silently deviate.
   bearing/area noun sit in the category row. Every disputed value carries its
   considered-and-rejected alternatives in-code — read them before changing one.
 - Open-Meteo is called directly from the browser (CORS is open, no API key).
-  There is deliberately **no backend** — do not introduce one.
+  There is deliberately **no backend** — do not introduce one. "Wind forecast
+  broken" triage: `curl` the forecast API with the app's own query
+  (`services/openMeteo.ts`) next to a control site first — a bare
+  `/v1/forecast` call cannot see a model-specific failure.
 - **AIS (#25) is BYOK and must stay inert without a key**: no `aisApiKey` → no
   client, ZERO sockets (the network-free e2e suite depends on this; never add
   a default key or eager connect). aisstream.io signals an invalid key as bare
