@@ -454,6 +454,254 @@ describe('RouteLayer fit padding (#1626)', () => {
   });
 });
 
+// #1639: chrome that resizes after the auto-fit re-pads the fit until the user
+// moves the camera. jsdom has no ResizeObserver, so the callbacks are captured.
+describe('RouteLayer re-fit after a layout change (#1639)', () => {
+  const rect = (left: number, top: number, right: number, bottom: number) =>
+    ({
+      left,
+      top,
+      right,
+      bottom,
+      width: right - left,
+      height: bottom - top,
+    }) as DOMRect;
+  const observers: Array<{
+    cb: () => void;
+    targets: Element[];
+    disconnect: ReturnType<typeof vi.fn>;
+    unobserve: ReturnType<typeof vi.fn>;
+  }> = [];
+  let sheetTop = 600;
+  let liveTop = 500;
+  let moving = false;
+  let mapEl: HTMLElement;
+
+  beforeEach(() => {
+    sheetTop = 600;
+    liveTop = 500;
+    moving = false;
+    observers.length = 0;
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        targets: Element[] = [];
+        disconnect = vi.fn();
+        unobserve = vi.fn();
+        constructor(cb: () => void) {
+          observers.push({
+            cb,
+            targets: this.targets,
+            disconnect: this.disconnect,
+            unobserve: this.unobserve,
+          });
+        }
+        observe(el: Element) {
+          this.targets.push(el);
+        }
+      },
+    );
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    document.querySelectorAll('.app-bottom-sheet, .live-view').forEach((el) => el.remove());
+  });
+
+  function mount(cls: string) {
+    const el = document.createElement('div');
+    el.className = cls;
+    document.body.appendChild(el);
+    return el;
+  }
+  function setup() {
+    const map = Object.assign(makeFakeMap(), {
+      isMoving: vi.fn(() => moving),
+      resize: vi.fn(),
+    });
+    mapEl = document.createElement('div');
+    mapEl.appendChild(map.getCanvasContainer());
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: Element,
+    ) {
+      if (this === mapEl) return rect(0, 0, 1000, 800);
+      if (this.classList.contains('app-bottom-sheet')) return rect(0, sheetTop, 1000, 800);
+      if (this.classList.contains('live-view')) return rect(0, liveTop, 1000, 800);
+      return rect(0, 0, 0, 0);
+    });
+    mount('app-bottom-sheet');
+    renderRouteLayer(map, null);
+    return map;
+  }
+  const resize = () => act(() => observers.forEach((o) => o.cb()));
+  const movestartHandler = (map: ReturnType<typeof makeFakeMap>) =>
+    map.on.mock.calls.find((c: unknown[]) => c[0] === 'movestart')![1] as (e: unknown) => void;
+  const userMove = (map: ReturnType<typeof makeFakeMap>) =>
+    movestartHandler(map)({ originalEvent: {} });
+
+  it('re-fits with fresh padding when the sheet grows, keeping bearing and duration 0', () => {
+    const map = setup();
+    map.setBearing(135);
+    expect(map.fitBounds.mock.calls[0][1]).toMatchObject({
+      padding: { bottom: 216 },
+    });
+    map.fitBounds.mockClear();
+    sheetTop = 531;
+    resize();
+    expect(map.resize).toHaveBeenCalled();
+    expect(map.fitBounds).toHaveBeenCalledTimes(1);
+    expect(map.fitBounds.mock.calls[0][1]).toMatchObject({
+      padding: { bottom: 285 },
+      duration: 0,
+      bearing: 135,
+    });
+  });
+
+  it('does not re-fit when nothing it pads for changed', () => {
+    const map = setup();
+    map.fitBounds.mockClear();
+    resize();
+    expect(map.fitBounds).not.toHaveBeenCalled();
+  });
+
+  it('stops re-fitting once the user has moved the camera', () => {
+    const map = setup();
+    userMove(map);
+    map.fitBounds.mockClear();
+    sheetTop = 531;
+    resize();
+    expect(map.fitBounds).not.toHaveBeenCalled();
+  });
+
+  it('keeps re-fitting after a programmatic move, which carries no originalEvent', () => {
+    const map = setup();
+    movestartHandler(map)({});
+    map.fitBounds.mockClear();
+    sheetTop = 531;
+    resize();
+    expect(map.fitBounds).toHaveBeenCalledTimes(1);
+  });
+
+  it('"Route einpassen" re-arms the re-fit after a user move', () => {
+    const map = setup();
+    userMove(map);
+    fireEvent.click(screen.getByRole('button', { name: 'Route einpassen' }));
+    map.fitBounds.mockClear();
+    sheetTop = 531;
+    resize();
+    expect(map.fitBounds).toHaveBeenCalledTimes(1);
+  });
+
+  it('observes the map box and the sheet, and the Live readout once it mounts', () => {
+    setup();
+    const targets = () => observers.flatMap((o) => o.targets);
+    expect(targets()).toContain(mapEl);
+    expect(targets().some((el) => el.classList.contains('app-bottom-sheet'))).toBe(true);
+    expect(targets().some((el) => el.classList.contains('live-view'))).toBe(false);
+    const live = mount('live-view');
+    resize();
+    expect(targets()).toContain(live);
+  });
+
+  it('pads for the Live readout', () => {
+    const map = setup();
+    mount('live-view');
+    map.fitBounds.mockClear();
+    resize();
+    expect(map.fitBounds.mock.calls[0][1]).toMatchObject({
+      padding: { bottom: 316 },
+    });
+  });
+
+  function mountLive() {
+    const live = mount('live-view');
+    const data = document.createElement('div');
+    data.className = 'live-view-data';
+    live.appendChild(data);
+    return live;
+  }
+
+  it('fits once on entering the started Live view, padded for the readout', () => {
+    const map = setup();
+    map.fitBounds.mockClear();
+    mountLive();
+    resize();
+    expect(map.fitBounds).toHaveBeenCalledTimes(1);
+    expect(map.fitBounds.mock.calls[0][1]).toMatchObject({ padding: { bottom: 316 } });
+  });
+
+  it('does not re-fit while the Live view is active, however the readout resizes', () => {
+    const map = setup();
+    mountLive();
+    resize();
+    map.fitBounds.mockClear();
+    liveTop = 400;
+    resize();
+    expect(map.fitBounds).not.toHaveBeenCalled();
+  });
+
+  it('resumes re-fitting after the Live view ends', () => {
+    const map = setup();
+    const live = mountLive();
+    resize();
+    live.remove();
+    map.fitBounds.mockClear();
+    resize();
+    expect(map.fitBounds).toHaveBeenCalledTimes(1);
+  });
+
+  it('fits once more when the Live view is entered again', () => {
+    const map = setup();
+    mountLive();
+    resize();
+    document.querySelectorAll('.live-view').forEach((el) => el.remove());
+    resize();
+    mountLive();
+    map.fitBounds.mockClear();
+    resize();
+    expect(map.fitBounds).toHaveBeenCalledTimes(1);
+  });
+
+  it('touches neither the camera nor the map size on a callback that changed nothing', () => {
+    const map = setup();
+    map.fitBounds.mockClear();
+    map.resize.mockClear();
+    resize();
+    expect(map.fitBounds).not.toHaveBeenCalled();
+    expect(map.resize).not.toHaveBeenCalled();
+  });
+
+  it('stops observing a target that left the document', () => {
+    setup();
+    const live = mount('live-view');
+    resize();
+    live.remove();
+    resize();
+    expect(observers.some((o) => o.unobserve.mock.calls.some((c) => c[0] === live))).toBe(true);
+  });
+
+  it('defers the re-fit while the camera is moving, then applies it on moveend', () => {
+    const map = setup();
+    map.fitBounds.mockClear();
+    sheetTop = 531;
+    moving = true;
+    resize();
+    expect(map.fitBounds).not.toHaveBeenCalled();
+    moving = false;
+    map.fire('moveend');
+    expect(map.fitBounds).toHaveBeenCalledTimes(1);
+  });
+
+  it('disconnects its observer and removes its movestart listener on unmount', () => {
+    const map = setup();
+    const handler = movestartHandler(map);
+    cleanup();
+    expect(observers.length).toBeGreaterThan(0);
+    expect(observers.every((o) => o.disconnect.mock.calls.length > 0)).toBe(true);
+    expect(map.off).toHaveBeenCalledWith('movestart', handler);
+  });
+});
+
 // #297: user-invoked "fit route to view" — the issue's own recommended
 // alternative to a permanent overview mini-map (closing with "an action, not
 // a widget" was the issue's own stated acceptable outcome; the maintainer
