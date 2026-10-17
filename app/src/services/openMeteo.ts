@@ -8,6 +8,8 @@ const RETRY_DELAYS_MS = [1000, 4000];
 const REQUEST_TIMEOUT_MS = 15_000;
 const RATE_LIMIT_BASE_DELAY_MS = 1000;
 const RATE_LIMIT_WAIT_BUDGET_MS = 30_000;
+const RATE_LIMIT_MAX_RETRIES = 4;
+const RATE_LIMIT_BODY_TIMEOUT_MS = 2000;
 export const GRID_CACHE_TTL_MS = 10 * 60_000;
 
 export type OpenMeteoErrorKind = 'offline' | 'rate-limited' | 'http' | 'malformed';
@@ -89,12 +91,25 @@ type RateLimitClass = 'transient' | 'quota' | 'unknown';
 // checked first so a daily/hourly reason can never be read as transient.
 async function classifyRateLimit(res: Response): Promise<{ cls: RateLimitClass; reason: string }> {
   let reason = '';
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const body: unknown = await res.json();
+    // The request timeout ends at the headers, so the body read needs its own.
+    const text = await Promise.race([
+      res.text(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error('429 body timed out')),
+          RATE_LIMIT_BODY_TIMEOUT_MS,
+        );
+      }),
+    ]);
+    const body: unknown = JSON.parse(text);
     const r = (body as { reason?: unknown } | null)?.reason;
     if (typeof r === 'string') reason = r;
   } catch {
-    // Unparseable body stays 'unknown'.
+    // Unreadable body stays 'unknown'.
+  } finally {
+    clearTimeout(timer);
   }
   const lower = reason.toLowerCase();
   if (/hourly|daily|monthly|tomorrow/.test(lower)) return { cls: 'quota', reason };
@@ -105,15 +120,16 @@ async function classifyRateLimit(res: Response): Promise<{ cls: RateLimitClass; 
 function retryAfterMs(res: Response): number | null {
   const raw = res.headers.get('Retry-After');
   if (raw === null || raw.trim() === '') return null;
-  const secs = Number(raw);
-  if (Number.isFinite(secs) && secs >= 0) return Math.round(secs * 1000);
+  if (/^\d+$/.test(raw.trim())) return Number(raw) * 1000;
+  // Date.parse accepts bare numbers like "-1" as years, so require letters.
+  if (!/[a-z]/i.test(raw)) return null;
   const at = Date.parse(raw);
   return Number.isNaN(at) ? null : Math.max(0, at - Date.now());
 }
 
 async function fetchWithRetry(url: string, fetchFn: typeof fetch): Promise<Response> {
   let rateLimitAttempts = 0;
-  let rateLimitWaitedMs = 0;
+  const startedAtMs = Date.now();
   for (let attempt = 0; ; attempt++) {
     let res: Response;
     try {
@@ -139,10 +155,14 @@ async function fetchWithRetry(url: string, fetchFn: typeof fetch): Promise<Respo
         `Open-Meteo rate limit reached: ${reason}`,
       );
       if (cls === 'unknown') throw limited;
-      const wait = retryAfterMs(res) ?? jittered(RATE_LIMIT_BASE_DELAY_MS * 2 ** rateLimitAttempts);
-      if (rateLimitWaitedMs + wait > RATE_LIMIT_WAIT_BUDGET_MS) throw limited;
+      if (rateLimitAttempts >= RATE_LIMIT_MAX_RETRIES) throw limited;
+      // Retry-After may lengthen the backoff but never shorten it to zero.
+      const wait = Math.max(
+        retryAfterMs(res) ?? 0,
+        jittered(RATE_LIMIT_BASE_DELAY_MS * 2 ** rateLimitAttempts),
+      );
+      if (Date.now() - startedAtMs + wait > RATE_LIMIT_WAIT_BUDGET_MS) throw limited;
       rateLimitAttempts++;
-      rateLimitWaitedMs += wait;
       await sleep(wait);
       attempt--; // 429 backoff does not consume the 5xx/network retry allowance
       continue;
@@ -260,8 +280,7 @@ function cloneGrid(g: WindGrid): WindGrid {
 
 // fetchFn is part of the identity so an injected fetch never reads a grid
 // fetched through another one.
-let cache: { url: string; fetchFn: typeof fetch; grid: WindGrid; storedAtMs: number } | null =
-  null;
+let cache: { url: string; fetchFn: typeof fetch; grid: WindGrid; storedAtMs: number } | null = null;
 const inFlight = new Map<string, { fetchFn: typeof fetch; promise: Promise<WindGrid> }>();
 
 export function clearWindGridCache(): void {

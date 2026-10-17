@@ -426,6 +426,62 @@ describe('openMeteo', () => {
       expect(mockFetch).toHaveBeenCalledTimes(5);
     });
 
+    it.each([
+      ['0', '0'],
+      ['-1', '-1'],
+      ['a past HTTP date', 'Wed, 21 Oct 2015 07:28:00 GMT'],
+      ['a fractional value', '0.5'],
+    ])('bounds retries when Retry-After is %s', async (_label, header) => {
+      vi.useFakeTimers();
+      vi.spyOn(Math, 'random').mockReturnValue(1);
+      const mockFetch = vi
+        .fn()
+        .mockImplementation(async () =>
+          limited('Too many concurrent requests', { 'Retry-After': header }),
+        );
+      const done = fetchWindGrid({ fetchFn: asFetch(mockFetch) }).catch((e: unknown) => e);
+
+      await vi.advanceTimersByTimeAsync(60_000);
+      const err = await done;
+      expect((err as OpenMeteoError).kind).toBe('rate-limited');
+      expect(mockFetch).toHaveBeenCalledTimes(5);
+    });
+
+    it('counts request time against the wait budget', async () => {
+      vi.useFakeTimers();
+      vi.spyOn(Math, 'random').mockReturnValue(1);
+      const mockFetch = vi.fn().mockImplementation(
+        () =>
+          new Promise<Response>((resolve) => {
+            setTimeout(() => resolve(limited('Too many concurrent requests')), 10_000);
+          }),
+      );
+      const done = fetchWindGrid({ fetchFn: asFetch(mockFetch) }).catch((e: unknown) => e);
+
+      await vi.advanceTimersByTimeAsync(60_000);
+      const err = await done;
+      expect((err as OpenMeteoError).kind).toBe('rate-limited');
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+    });
+
+    it('treats a 429 body that never arrives as an unrecognised reason', async () => {
+      vi.useFakeTimers();
+      const stalled = {
+        ok: false,
+        status: 429,
+        headers: new Headers(),
+        text: () => new Promise<string>(() => {}),
+        json: () => new Promise<unknown>(() => {}),
+      };
+      const mockFetch = vi.fn().mockResolvedValue(stalled);
+      const done = fetchWindGrid({ fetchFn: asFetch(mockFetch) }).catch((e: unknown) => e);
+
+      await vi.advanceTimersByTimeAsync(2000);
+      const err = await done;
+      expect((err as OpenMeteoError).kind).toBe('rate-limited');
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
     it('does not spend the 5xx retry allowance on 429 backoff', async () => {
       vi.useFakeTimers();
       vi.spyOn(Math, 'random').mockReturnValue(1);
