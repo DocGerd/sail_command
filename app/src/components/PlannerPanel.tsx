@@ -1718,7 +1718,14 @@ export default function PlannerPanel({
               >
                 {t('planner.result.details')} <span aria-hidden="true">→</span>
               </Button>
-              {plan && nextPassage && <NextPassageAction plan={plan} rig={rig} {...nextPassage} />}
+              {plan && nextPassage && (
+                <NextPassageAction
+                  key={`${plan.id}-${plan.createdAtMs}`}
+                  plan={plan}
+                  rig={rig}
+                  {...nextPassage}
+                />
+              )}
             </>
           )}
         </Card>

@@ -603,12 +603,8 @@ describe('#1707 next-passage seed gate', () => {
     harborId: 'marstal',
     label: 'Marstal',
   };
-  const seed: NextPassageSeedState = {
-    sourcePlanId: 'plan-1',
-    sourceName: 'Flensburg → Marstal',
-    origin: marstal,
-    windGrid: grid,
-  };
+  const seed: NextPassageSeedState = { sourcePlanId: 'plan-1', origin: marstal };
+  const activePlan: Plan = { ...makePlan(), windGrid: grid };
   it('is active only for its own plan and an unmoved start', () => {
     expect(activeNextPassageSeed(seed, 'plan-1', { ...marstal })).toBe(seed);
     expect(activeNextPassageSeed(seed, 'plan-2', marstal)).toBeNull();
@@ -624,18 +620,30 @@ describe('#1707 next-passage seed gate', () => {
     expect(windGridReaches({ ...grid, timesMs: [] }, at(17, 0))).toBe(false);
   });
   it('offline with a reaching grid names the source and its fetch time', () =>
-    expect(nextPassageOffline(false, seed, at(18, 10))).toEqual({
+    expect(nextPassageOffline(false, seed, activePlan, at(18, 10))).toEqual({
       kind: 'stored',
       sourceName: 'Flensburg → Marstal',
       fetchedAtMs: at(17, 0),
     }));
   it('offline with a short grid reports its last hour', () =>
-    expect(nextPassageOffline(false, seed, at(19, 10))).toEqual({
+    expect(nextPassageOffline(false, seed, activePlan, at(19, 10))).toEqual({
       kind: 'too-short',
       untilMs: at(18, 23),
     }));
-  it('online, or without a seed, there is no offline state', () => {
-    expect(nextPassageOffline(true, seed, at(18, 10))).toBeNull();
-    expect(nextPassageOffline(false, null, at(18, 10))).toBeNull();
+  it('online, or without a seed or an active plan, there is no offline state', () => {
+    expect(nextPassageOffline(true, seed, activePlan, at(18, 10))).toBeNull();
+    expect(nextPassageOffline(false, null, activePlan, at(18, 10))).toBeNull();
+    expect(nextPassageOffline(false, seed, null, at(18, 10))).toBeNull();
+  });
+  it('reads the grid of the plan it is given, not a copy taken at seed time', () => {
+    const replaced: Plan = {
+      ...activePlan,
+      windGrid: uniformWindGrid(12, 225, { t0Ms: at(18, 0), hours: 96 }),
+    };
+    expect(nextPassageOffline(false, seed, replaced, at(21, 10))).toEqual({
+      kind: 'stored',
+      sourceName: 'Flensburg → Marstal',
+      fetchedAtMs: at(18, 0),
+    });
   });
 });

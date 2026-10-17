@@ -4,7 +4,8 @@ import { I18nProvider } from '../i18n';
 import { en } from '../i18n/dict.en';
 import { de } from '../i18n/dict.de';
 import { uniformWindGrid } from '../test/fixtures';
-import { formatDateTime, formatTime } from '../lib/format';
+import { formatDateTime, formatLatLon, formatTime, formatWeekdayTime } from '../lib/format';
+import { nextPassageDepartureMs } from '../lib/planForm';
 import { MASK_TOLERANCE_M } from '../lib/mask';
 import { BOAT_DRAFT_M } from '../routing/relaxedDepth';
 import {
@@ -2249,6 +2250,34 @@ describe('#1707 next-passage action', () => {
     setSail(plan, 'fock', { result: null });
     renderSummary({ plan, rig: 'fock', nextPassage: nextPassage() });
     expect(screen.getByRole('button', { name: 'Plan next passage' })).toBeInTheDocument();
+  });
+
+  it('refreshes its preview for a replaced plan under a moved clock', () => {
+    localStorage.setItem('sc-lang', 'en');
+    const props = nextPassage();
+    const ui = (plan: Plan) => (
+      <I18nProvider>
+        <RouteSummary plan={plan} rig="genoa" onRigChange={vi.fn()} nextPassage={props} />
+      </I18nProvider>
+    );
+    const first = makePlan();
+    const { rerender } = render(ui(first));
+    const destinationLabel = formatLatLon({ lat: 54.85, lon: 10.52 });
+    const departureOf = (nowMs: number) =>
+      formatWeekdayTime(nextPassageDepartureMs(GENOA_RESULT.etaMs, nowMs), 'en');
+    const button = () => screen.getByRole('button', { name: 'Plan next passage' });
+    expect(button()).toHaveAccessibleDescription(
+      `Start ${destinationLabel} · Departure ${departureOf(DEPARTURE_MS)}`,
+    );
+
+    const later = DEPARTURE_MS + 3 * 86_400_000;
+    vi.spyOn(Date, 'now').mockReturnValue(later);
+    rerender(ui({ ...first, createdAtMs: first.createdAtMs + 1 }));
+
+    expect(departureOf(later)).not.toBe(departureOf(DEPARTURE_MS));
+    expect(button()).toHaveAccessibleDescription(
+      `Start ${destinationLabel} · Departure ${departureOf(later)}`,
+    );
   });
 
   it('is omitted without the prop', () => {

@@ -1104,7 +1104,14 @@ export default function RouteSummary({
           </>
         )}
       </div>
-      {nextPassage && <NextPassageAction plan={plan} rig={rig} {...nextPassage} />}
+      {nextPassage && (
+        <NextPassageAction
+          key={`${plan.id}-${plan.createdAtMs}`}
+          plan={plan}
+          rig={rig}
+          {...nextPassage}
+        />
+      )}
     </Card>
   );
 }

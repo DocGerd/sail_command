@@ -85,7 +85,7 @@ function mapWindError(err: unknown): MsgKey {
 // planner runs non-destructive.
 export interface RunOptions {
   replacePlanId?: string;
-  /** #1707: a fallback, never an override. Used offline, or when the fetch fails for a network reason. */
+  /** #1707: a fallback, never an override. Used offline, or when the forecast service is unreachable (network failure or persistent server error). */
   storedWindGrid?: WindGrid;
 }
 
@@ -282,7 +282,7 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
         try {
           windGrid = await fetchWind(fixtureUrl ? { fixtureUrl } : {});
         } catch (err) {
-          // Only a network-level failure may fall back; a rate limit or bad payload must not plan on an old forecast.
+          // Only an unreachable forecast service (network failure or persistent server error) may fall back; a rate limit or bad payload must not plan on an old forecast.
           if (stored !== null && err instanceof OpenMeteoError && err.kind === 'offline') {
             windGrid = stored;
           } else {

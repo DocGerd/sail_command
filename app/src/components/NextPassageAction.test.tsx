@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { I18nProvider } from '../i18n';
 import { uniformWindGrid } from '../test/fixtures';
@@ -20,7 +20,7 @@ const MARSTAL: Harbor = {
 
 const ETA_MS = new Date(2026, 9, 17, 17, 0).getTime();
 
-function makePlan(routed: boolean): Plan {
+function makePlan(routed: boolean, etaMs = ETA_MS): Plan {
   const request = {
     origin: { lat: 54.795, lon: 9.435 },
     destination: MARSTAL.snap,
@@ -48,7 +48,7 @@ function makePlan(routed: boolean): Plan {
             ? {
                 sailId: 'genoa',
                 legs: [],
-                etaMs: ETA_MS,
+                etaMs,
                 durationMs: 3_600_000,
                 distanceNm: 10,
                 maneuverCount: 0,
@@ -83,7 +83,7 @@ function renderAction(plan: Plan, disabled: boolean, onNextPassage = vi.fn()) {
 }
 
 beforeEach(() => {
-  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
   vi.setSystemTime(new Date(2026, 9, 17, 12, 0));
 });
 
@@ -99,6 +99,20 @@ describe('#1707 NextPassageAction', () => {
     expect(screen.getByRole('button', { name: 'Plan next passage' })).toHaveAccessibleDescription(
       'Start Marstal · Departure Sun 10:00',
     );
+  });
+
+  it('refreshes the preview when the clock passes the previewed departure', () => {
+    vi.setSystemTime(new Date(2026, 9, 17, 9, 30));
+    renderAction(makePlan(true, new Date(2026, 9, 17, 9, 0).getTime()), false);
+    const button = screen.getByRole('button', { name: 'Plan next passage' });
+    expect(button).toHaveAccessibleDescription('Start Marstal · Departure Sat 10:00');
+
+    vi.setSystemTime(new Date(2026, 9, 17, 10, 30));
+    act(() => {
+      vi.advanceTimersByTime(60_000);
+    });
+
+    expect(button).toHaveAccessibleDescription('Start Marstal · Departure Sun 10:00');
   });
 
   it('honours disabled and reports a click otherwise', () => {

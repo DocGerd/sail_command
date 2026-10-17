@@ -4863,6 +4863,26 @@ describe('#1707 next passage', () => {
       expect(screen.getByText(de['banner.offline'])).toBeInTheDocument();
     });
 
+    it('after a recalculate-replace of the source plan, the gate uses the replaced grid', async () => {
+      const plan = await seeded(2);
+      fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+      fireEvent.click(await screen.findByRole('button', { name: de['plansList.recalc'] }));
+      fireEvent.click(screen.getByRole('button', { name: de['plansList.recalc.replace'] }));
+      fireEvent.click(screen.getByRole('button', { name: de['plansList.recalc.confirmReplace'] }));
+      await waitFor(() => expect(routingMock.calls).toHaveLength(1));
+      routingMock.calls[0].resolve(okPlanResult(12));
+      await waitFor(async () =>
+        expect((await db.getPlan(plan.id))?.windGrid.timesMs.length).toBeGreaterThan(2),
+      );
+
+      fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+      goOffline();
+      pickDestination(FLENSBURG.names.de);
+
+      expect(await screen.findByText(de['banner.offlineNextPassage'])).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled();
+    });
+
     it('online, a network-failed fetch falls back to the stored grid', async () => {
       const plan = await seeded(8 * 24);
       pickDestination(FLENSBURG.names.de);

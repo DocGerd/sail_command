@@ -116,12 +116,13 @@ export function windGridReaches(grid: WindGrid, departureMs: number): boolean {
   return grid.timesMs.length > 0 && grid.timesMs[grid.timesMs.length - 1] >= departureMs;
 }
 
-/** Ephemeral (never persisted): the source plan's forecast, usable offline for the seeded start only. */
+/**
+ * Ephemeral (never persisted). Holds no forecast: an active seed implies the
+ * source plan is the active plan, whose current grid is the one to reuse.
+ */
 export interface NextPassageSeedState {
   sourcePlanId: string;
-  sourceName: string;
   origin: PickedPoint;
-  windGrid: WindGrid;
 }
 
 /** The seed counts only while its own plan is active and the start is unmoved. */
@@ -138,19 +139,19 @@ export type NextPassageOffline =
   | { kind: 'stored'; sourceName: string; fetchedAtMs: number }
   | { kind: 'too-short'; untilMs: number };
 
+/** `activePlan` is the plan the (active) seed was made from. */
 export function nextPassageOffline(
   online: boolean,
   seed: NextPassageSeedState | null,
+  activePlan: Plan | null,
   departureMs: number,
 ): NextPassageOffline | null {
-  if (online || seed === null) return null;
-  if (windGridReaches(seed.windGrid, departureMs)) {
-    return { kind: 'stored', sourceName: seed.sourceName, fetchedAtMs: seed.windGrid.fetchedAtMs };
+  if (online || seed === null || activePlan === null) return null;
+  const grid = activePlan.windGrid;
+  if (windGridReaches(grid, departureMs)) {
+    return { kind: 'stored', sourceName: activePlan.name, fetchedAtMs: grid.fetchedAtMs };
   }
-  return {
-    kind: 'too-short',
-    untilMs: seed.windGrid.timesMs[seed.windGrid.timesMs.length - 1] ?? 0,
-  };
+  return { kind: 'too-short', untilMs: grid.timesMs[grid.timesMs.length - 1] ?? 0 };
 }
 
 /** The form snapshot planFormDirty compares against a plan's own request. */

@@ -1363,10 +1363,11 @@ function AppShell() {
     void run(
       request,
       `${origin.label} → ${destination.label}`,
-      activeSeed ? { storedWindGrid: activeSeed.windGrid } : {},
+      activeSeed && plan ? { storedWindGrid: cloneWindGrid(plan.windGrid) } : {},
     );
   }, [
     activeSeed,
+    plan,
     origin,
     destination,
     departureMs,
@@ -1391,12 +1392,7 @@ function AppShell() {
     setDraftSegmentModes(emptySegmentModes(0));
     setTapTarget(null);
     setDepartureMs(seed.departureMs);
-    setNextPassageSeed({
-      sourcePlanId: plan.id,
-      sourceName: plan.name,
-      origin: seed.origin,
-      windGrid: cloneWindGrid(plan.windGrid),
-    });
+    setNextPassageSeed({ sourcePlanId: plan.id, origin: seed.origin });
     setPendingDestinationFocus(true);
   }, [plan, rig, harbors, lang]);
 
@@ -1464,7 +1460,7 @@ function AppShell() {
   // for it to be "in flight" with.
   const runBusy =
     !(planning.phase === 'idle' || planning.phase === 'error') || liveReroute.state.rerouting;
-  const offlineSeed = nextPassageOffline(online, activeSeed, departureMs);
+  const offlineSeed = nextPassageOffline(online, activeSeed, plan, departureMs);
   const seedPlannableOffline = offlineSeed?.kind === 'stored';
   const canPlan =
     origin !== null && destination !== null && (online || seedPlannableOffline) && !runBusy;

@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { useLang, useT } from '../i18n';
 import { formatWeekdayTime } from '../lib/format';
 import { seedNextPassage } from '../lib/planForm';
@@ -12,6 +12,9 @@ export interface NextPassageProps {
   onNextPassage: () => void;
 }
 
+// Keeps the preview in step with the departure the tap will seed.
+const NOW_REFRESH_MS = 60_000;
+
 export default function NextPassageAction({
   plan,
   rig,
@@ -22,7 +25,11 @@ export default function NextPassageAction({
   const t = useT();
   const [lang] = useLang();
   const previewId = useId();
-  const [nowMs] = useState(() => Date.now());
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), NOW_REFRESH_MS);
+    return () => clearInterval(id);
+  }, []);
   const seed = seedNextPassage(plan, rig, harbors, lang, nowMs);
   if (seed === null) return null;
   return (
