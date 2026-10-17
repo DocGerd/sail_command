@@ -99,8 +99,8 @@ import { usePersistedSailInventory } from './lib/sailInventory';
 // #834: same widening PlannerPanel.tsx's own `harbors` prop already carries —
 // see that module's comment for why this lives outside the `app/sweep/`
 // closure rather than on `Harbor` in `types.ts`.
-import { computeHarborAccess, type HarborWithReachability } from './lib/harborReachability';
-import { minSafetyDepthM } from './lib/boatDepth';
+import type { HarborWithReachability } from './lib/harborReachability';
+import { unreachableBand, type UnreachableBand } from './components/HarborPicker';
 import { formatDepthM, formatDraftM } from './lib/depthDisclosure';
 import { useNavMask } from './state/useNavMask';
 import type { MsgKey } from './i18n/dict.de';
@@ -1587,25 +1587,64 @@ function AppShell() {
     harbors.find((h) => h.id === destination.harborId)?.knownDisconnected === true;
 
   // #1721: an `unreachable` no-route against a harbour the depth grid cannot
-  // connect even at the boat's lowest allowed gate gets an exact message
-  // instead of the heuristic-search hedge. Derived only while that error shows.
+  // connect at any 0.1 m gate in the boat's allowed range gets a data-attributed
+  // message instead of the heuristic-search hedge. The boat, endpoints and gate
+  // are captured when the error is raised; if any differs now, the banner keeps
+  // the generic text. Written during render, React's documented derive-from-
+  // props pattern.
   const navMask = useNavMask();
-  const unreachableHarbor = useMemo(() => {
+  const originHarborId = origin?.source === 'harbor' ? origin.harborId : null;
+  const destinationHarborId = destination?.source === 'harbor' ? destination.harborId : null;
+  const liveErrorCtx = {
+    boatId,
+    originHarborId,
+    destinationHarborId,
+    gateM: settings.safetyDepthM,
+  };
+  const [errorCtx, setErrorCtx] = useState<{
+    planning: typeof planning;
+    ctx: typeof liveErrorCtx;
+  } | null>(null);
+  if (planning.phase === 'error' && errorCtx?.planning !== planning) {
+    setErrorCtx({ planning, ctx: liveErrorCtx });
+  }
+  const unreachableHarbors = useMemo(() => {
     if (planning.phase !== 'error' || planning.messageKey !== 'error.noRoute.unreachable') {
       return null;
     }
-    if (!navMask) return null;
-    const lowestGateM = minSafetyDepthM(boat);
-    const candidates = [origin, destination].flatMap((ep) => {
-      if (ep?.source !== 'harbor') return [];
-      const harbor = harbors.find((h) => h.id === ep.harborId);
-      return harbor && harbor.knownDisconnected !== true ? [harbor] : [];
-    });
-    if (candidates.length === 0) return null;
-    const access = computeHarborAccess(navMask, harbors, boat, lowestGateM);
-    const harbor = candidates.find((h) => access.get(h.id) === 'unreachable');
-    return harbor ? { harbor, lowestGateM } : null;
-  }, [planning, navMask, boat, origin, destination, harbors]);
+    const c = errorCtx?.ctx;
+    if (!navMask || errorCtx?.planning !== planning || !c) return null;
+    if (
+      c.boatId !== boatId ||
+      c.originHarborId !== originHarborId ||
+      c.destinationHarborId !== destinationHarborId ||
+      c.gateM !== settings.safetyDepthM
+    ) {
+      return null;
+    }
+    const names: string[] = [];
+    let band: UnreachableBand | null = null;
+    for (const id of [originHarborId, destinationHarborId]) {
+      const harbor = id === null ? undefined : harbors.find((h) => h.id === id);
+      if (!harbor || harbor.knownDisconnected === true) continue;
+      const harborBand = unreachableBand(navMask, harbors, boat, harbor.id, c.gateM);
+      if (!harborBand) continue;
+      band = harborBand;
+      if (!names.includes(harbor.names[lang])) names.push(harbor.names[lang]);
+    }
+    return band ? { names, band } : null;
+  }, [
+    planning,
+    errorCtx,
+    navMask,
+    boat,
+    boatId,
+    originHarborId,
+    destinationHarborId,
+    settings.safetyDepthM,
+    harbors,
+    lang,
+  ]);
 
   return (
     <div className="app-shell" ref={shellRef}>
@@ -1922,12 +1961,15 @@ function AppShell() {
             {planning.messageKey === 'error.noRoute.unreachable' &&
             (originKnownDisconnected || destinationKnownDisconnected)
               ? t('harborPicker.knownDisconnected')
-              : unreachableHarbor
-                ? t('error.harborUnreachableAnySetting', {
-                    harbor: unreachableHarbor.harbor.names[lang],
+              : unreachableHarbors
+                ? t('error.harborUnreachableAcrossRange', {
+                    harbor: new Intl.ListFormat(lang, { type: 'conjunction' }).format(
+                      unreachableHarbors.names,
+                    ),
                     boat: boat.name,
                     draft: formatDraftM(boat.draftM, lang),
-                    depth: formatDepthM(unreachableHarbor.lowestGateM, lang),
+                    min: formatDepthM(unreachableHarbors.band.minM, lang),
+                    max: formatDepthM(unreachableHarbors.band.maxM, lang),
                   })
                 : t(planning.messageKey, planning.messageVars)}
           </Banner>
@@ -2103,6 +2145,7 @@ function AppShell() {
               <>
                 <PlannerPanel
                   harbors={harbors}
+                  navMask={navMask}
                   origin={origin}
                   destination={destination}
                   onPickOrigin={handlePickOrigin}

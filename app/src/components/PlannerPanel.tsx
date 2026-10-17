@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import type {
   Harbor,
   LatLon,
@@ -38,8 +38,8 @@ import { usePersistedSailInventory } from '../lib/sailInventory';
 import { renderRigVerdict, resultSummary, sailLabelKey } from '../lib/resultSummary';
 import { useRecentHarbors } from '../lib/useRecentHarbors';
 import { formatDepthM } from '../lib/depthDisclosure';
-import { minSafetyDepthM } from '../lib/boatDepth';
-import HarborPicker, { harborAccessCopy } from './HarborPicker';
+import HarborPicker, { harborAccessCopy, unreachableBand } from './HarborPicker';
+import type { NavMask } from '../lib/mask';
 import { commitSetting, safetyDepthFieldFor } from './OptionsPanel';
 import type { BoatDef, BoatId } from '../data/boats';
 import NumberInput, { formatBound, useClampCorrection } from './NumberInput';
@@ -83,6 +83,8 @@ export type PlannerStatus =
 
 export interface PlannerPanelProps {
   harbors: HarborWithReachability[];
+  // #1721: App's mask, so both share one flood cache; falls back to its own.
+  navMask?: NavMask | null;
   origin: PickedPoint | null;
   destination: PickedPoint | null;
   onPickOrigin: (p: PickedPoint) => void;
@@ -256,6 +258,7 @@ export function isInViaDataArea(p: LatLon): boolean {
 
 export default function PlannerPanel({
   harbors,
+  navMask,
   origin,
   destination,
   onPickOrigin,
@@ -327,19 +330,18 @@ export default function PlannerPanel({
   // simply doesn't render yet (harborAccessCopy's own "not yet computed"
   // no-op) — never a false "reachable"/"unreachable" claim before the mask
   // is known.
-  const mask = useNavMask();
+  const ownMask = useNavMask();
+  const mask = navMask ?? ownMask;
   const harborAccess = useMemo(
     () => (mask ? computeHarborAccess(mask, harbors, boat, settings.safetyDepthM) : null),
     [mask, harbors, boat, settings.safetyDepthM],
   );
-  // #1721: the same map at the boat's lowest allowed gate, only derived when
-  // some harbour is unreachable at the live gate (one extra flood otherwise).
-  const harborAccessLowest = useMemo(() => {
-    if (!mask || !harborAccess) return null;
-    let anyUnreachable = false;
-    for (const state of harborAccess.values()) if (state === 'unreachable') anyUnreachable = true;
-    return anyUnreachable ? computeHarborAccess(mask, harbors, boat, minSafetyDepthM(boat)) : null;
-  }, [mask, harbors, boat, harborAccess]);
+  // #1721: the gate band over which a harbour is unreachable; scans only when asked.
+  const unreachableBandOf = useCallback(
+    (harborId: string) =>
+      mask ? unreachableBand(mask, harbors, boat, harborId, settings.safetyDepthM) : null,
+    [mask, harbors, boat, settings.safetyDepthM],
+  );
   // #539 item 2: bounds follow the SELECTED boat (spec J OQ-1's
   // `draftM + 0.1`). Same derivation the Boat tab's own render of this field
   // uses, so the two surfaces still clamp identically.
@@ -784,9 +786,9 @@ export default function PlannerPanel({
       boat,
       settings.safetyDepthM,
       lang,
-      harborAccessLowest?.get(originHarbor.id),
+      access === 'unreachable' ? unreachableBandOf(originHarbor.id) : null,
     );
-  }, [originHarbor, harborAccess, harborAccessLowest, mask, boat, settings.safetyDepthM, lang]);
+  }, [originHarbor, harborAccess, unreachableBandOf, mask, boat, settings.safetyDepthM, lang]);
   const destinationAccessLines = useMemo(() => {
     if (!destinationHarbor) return [];
     const access =
@@ -802,17 +804,9 @@ export default function PlannerPanel({
       boat,
       settings.safetyDepthM,
       lang,
-      harborAccessLowest?.get(destinationHarbor.id),
+      access === 'unreachable' ? unreachableBandOf(destinationHarbor.id) : null,
     );
-  }, [
-    destinationHarbor,
-    harborAccess,
-    harborAccessLowest,
-    mask,
-    boat,
-    settings.safetyDepthM,
-    lang,
-  ]);
+  }, [destinationHarbor, harborAccess, unreachableBandOf, mask, boat, settings.safetyDepthM, lang]);
 
   // The active rig's result + its single-source display fields — used by the
   // compact Ergebnis strip below and the completion announcement.
@@ -1024,7 +1018,7 @@ export default function PlannerPanel({
               boat={boat}
               safetyDepthM={settings.safetyDepthM}
               harborAccess={harborAccess}
-              harborAccessLowest={harborAccessLowest}
+              unreachableBandOf={unreachableBandOf}
               mask={mask}
               // #737: true only when this mount was caused by the Change
               // button above (see HarborPicker's own `autoFocus` doc comment
@@ -1116,7 +1110,7 @@ export default function PlannerPanel({
               boat={boat}
               safetyDepthM={settings.safetyDepthM}
               harborAccess={harborAccess}
-              harborAccessLowest={harborAccessLowest}
+              unreachableBandOf={unreachableBandOf}
               mask={mask}
               // #737: see the matching comment on the origin HarborPicker above.
               autoFocus={editingDestination}

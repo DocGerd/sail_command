@@ -11,6 +11,7 @@ import type { Harbor } from '../types';
 import { useLang, useT, type Lang } from '../i18n';
 import type { MsgKey } from '../i18n/dict.de';
 import {
+  computeHarborAccess,
   findLowerSettingHint,
   type HarborAccessByHarbor,
   type HarborAccessState,
@@ -20,7 +21,7 @@ import {
 import type { NavMask } from '../lib/mask';
 import type { BoatDef } from '../data/boats';
 import { formatDepthM } from '../lib/depthDisclosure';
-import { minSafetyDepthM } from '../lib/boatDepth';
+import { defaultSafetyDepthM, minSafetyDepthM } from '../lib/boatDepth';
 
 // #652: `knownDisconnected` is a build-generated field (pipeline/
 // build_harbors.mjs, sourced from pipeline/verify_mask.py's
@@ -76,8 +77,8 @@ export interface HarborPickerProps {
   // endpoint row (§5.3) — computing it once per (mask, harbors, boat, gate)
   // via `computeHarborAccess`'s own memoisation, never per option render.
   harborAccess?: HarborAccessByHarbor | null;
-  // #1721: the same map at the boat's lowest allowed gate (`minSafetyDepthM`).
-  harborAccessLowest?: HarborAccessByHarbor | null;
+  // #1721: the checked gate range over which a harbour is unreachable, or null.
+  unreachableBandOf?: (harborId: string) => UnreachableBand | null;
   mask?: NavMask | null;
 }
 
@@ -131,7 +132,7 @@ export function harborAccessCopy(
   boat: BoatDef | undefined,
   safetyDepthM: number | undefined,
   lang: Lang,
-  lowestState?: HarborAccessState,
+  band?: UnreachableBand | null,
 ): { key: MsgKey; vars?: Record<string, string | number> }[] {
   if (state === 'known-disconnected') return [{ key: 'harborPicker.knownDisconnected' }];
   if (!boat || safetyDepthM === undefined) return [];
@@ -139,13 +140,16 @@ export function harborAccessCopy(
     return [{ key: 'harborPicker.boatShallow', vars: { boat: boat.name } }];
   }
   if (state === 'unreachable') {
-    // #1721: also unreachable at the boat's lowest allowed gate, and no lower
-    // setting reached it, so no allowed setting helps.
-    if (lowestState === 'unreachable' && hint?.kind !== 'found') {
+    // #1721: unreachable at every 0.1 m gate in `band` (see unreachableBand).
+    if (band) {
       return [
         {
-          key: 'harborPicker.boatUnreachableAnySetting',
-          vars: { boat: boat.name, depth: formatDepthM(minSafetyDepthM(boat), lang) },
+          key: 'harborPicker.boatUnreachableAcrossRange',
+          vars: {
+            boat: boat.name,
+            min: formatDepthM(band.minM, lang),
+            max: formatDepthM(band.maxM, lang),
+          },
         },
       ];
     }
@@ -171,6 +175,50 @@ export function harborAccessCopy(
     return lines;
   }
   return [];
+}
+
+/** Gates (m) over which a harbour was checked and found unreachable. */
+export interface UnreachableBand {
+  readonly minM: number;
+  readonly maxM: number;
+}
+
+const bandCache = new WeakMap<NavMask, Map<string, UnreachableBand | null>>();
+
+/**
+ * #1721: the band `[minSafetyDepthM, max(defaultSafetyDepthM, liveGateM)]` when
+ * the harbour reads `unreachable` at EVERY 0.1 m gate in it, else null. The
+ * state is not monotone in the gate, so every step is checked. Cached per
+ * (mask, boat, harbour, band top); each gate costs one memoised
+ * `computeHarborAccess`.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function unreachableBand(
+  mask: NavMask,
+  harbors: readonly HarborWithReachability[],
+  boat: BoatDef,
+  harborId: string,
+  liveGateM: number,
+): UnreachableBand | null {
+  const minDm = Math.round(minSafetyDepthM(boat) * 10);
+  const maxDm = Math.max(minDm, Math.round(Math.max(defaultSafetyDepthM(boat), liveGateM) * 10));
+  const key = `${boat.id}|${harborId}|${maxDm}`;
+  let perMask = bandCache.get(mask);
+  if (!perMask) {
+    perMask = new Map();
+    bandCache.set(mask, perMask);
+  }
+  const hit = perMask.get(key);
+  if (hit !== undefined) return hit;
+  let result: UnreachableBand | null = { minM: minDm / 10, maxM: maxDm / 10 };
+  for (let dm = minDm; dm <= maxDm; dm++) {
+    if (computeHarborAccess(mask, harbors, boat, dm / 10).get(harborId) !== 'unreachable') {
+      result = null;
+      break;
+    }
+  }
+  perMask.set(key, result);
+  return result;
 }
 
 /** §5.2: the per-option access state, `known-disconnected` derived from
@@ -283,7 +331,7 @@ export default function HarborPicker({
   boat,
   safetyDepthM,
   harborAccess,
-  harborAccessLowest,
+  unreachableBandOf,
   mask,
 }: HarborPickerProps) {
   const [query, setQuery] = useState('');
@@ -460,7 +508,7 @@ export default function HarborPicker({
               boat,
               safetyDepthM,
               lang,
-              harborAccessLowest?.get(h.id),
+              access === 'unreachable' ? unreachableBandOf?.(h.id) : null,
             );
             return (
               <li

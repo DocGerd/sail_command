@@ -551,25 +551,48 @@ const MARSTAL_TEST: Harbor = {
   country: 'DK',
   snap: { lat: 54.8579, lon: 10.528 },
 };
+// #1721: sits in a 3.0 m pocket wider than the relaxation disc, so it is
+// unreachable at 3.5 m and reachable at 3.0 m and below.
+const GATED_TEST: Harbor = {
+  id: 'gated-test',
+  names: { de: 'Gatehafen', da: 'Gatehavn', en: 'Gate Harbour' },
+  country: 'DK',
+  snap: { lat: 55.0, lon: 10.3 },
+};
+// #1721: a second walled-in harbour, to show the banner follows the FAILED plan's endpoints.
+const WALLED_TEST: Harbor = {
+  id: 'walled-test',
+  names: { de: 'Mauerhafen', da: 'Murhavn', en: 'Wall Harbour' },
+  country: 'DK',
+  snap: { lat: 54.6, lon: 10.0 },
+};
 const HARBORS: Harbor[] = [
   FLENSBURG,
   RELABEL_HARBOR,
   withKnownDisconnectedFlag(ARNIS_TEST),
   MARSTAL_TEST,
+  GATED_TEST,
+  WALLED_TEST,
 ];
 
 // Deep water everywhere (so a pick like FLENSBURG is reachable) except a land
-// block over MARSTAL_TEST. Cells are 0.002 degrees (500 per degree) so a
+// block over MARSTAL_TEST and the 3.0 m pocket around GATED_TEST. Cells are 0.002 degrees (500 per degree) so a
 // harbour's snap lands within snapToNavigable's 300 m radius of a cell centre.
 const TEST_WATER_MASK_META = { ...TEST_MASK_META, cols: 800, rows: 500 };
 
 function testMaskBytes() {
   const { rows, cols, south, west } = TEST_WATER_MASK_META;
   const bytes = new Uint8Array(rows * cols).fill(255);
-  const row = Math.floor((MARSTAL_TEST.snap.lat - south) * 500);
-  const col = Math.floor((MARSTAL_TEST.snap.lon - west) * 500);
-  for (let r = row - 4; r <= row + 4; r++)
-    for (let c = col - 4; c <= col + 4; c++) bytes[r * cols + c] = 0;
+  for (const { snap } of [MARSTAL_TEST, WALLED_TEST]) {
+    const row = Math.floor((snap.lat - south) * 500);
+    const col = Math.floor((snap.lon - west) * 500);
+    for (let r = row - 4; r <= row + 4; r++)
+      for (let c = col - 4; c <= col + 4; c++) bytes[r * cols + c] = 0;
+  }
+  const gRow = Math.floor((GATED_TEST.snap.lat - south) * 500);
+  const gCol = Math.floor((GATED_TEST.snap.lon - west) * 500);
+  for (let r = gRow - 40; r <= gRow + 40; r++)
+    for (let c = gCol - 40; c <= gCol + 40; c++) bytes[r * cols + c] = 30;
   return bytes;
 }
 
@@ -2590,12 +2613,16 @@ describe('banner surfacing (PR self-review fix wave)', () => {
   });
 
   // #1721: an `unreachable` no-route against a harbour the depth grid cannot
-  // connect even at the boat's lowest allowed gate must not carry the
+  // connect at any gate of the boat's allowed range must not carry the
   // heuristic-search hedge. MARSTAL_TEST is walled in by the shared test mask.
   async function planEasyGoToHarbor(harbor: Harbor) {
     localStorage.setItem('sc-boat-id', 'salona-44-easy-go');
     renderApp();
     await screen.findByRole('heading', { name: 'SailCommand' });
+    // EASY GO!'s own default gate; a persisted boat id alone leaves the shared 3.0 m.
+    const gate = screen.getByLabelText(de['options.safetyDepth.label']);
+    fireEvent.change(gate, { target: { value: '3.5' } });
+    fireEvent.blur(gate);
 
     const originSection = screen.getByRole('region', { name: de['planner.origin.label'] });
     fireEvent.click(within(originSection).getByRole('button', { name: de['planner.pickOnMap'] }));
@@ -2615,13 +2642,12 @@ describe('banner surfacing (PR self-review fix wave)', () => {
     return screen.findByRole('alert');
   }
 
-  it('#1721: the no-route banner names harbour, boat, draft and lowest gate, without the "gave up too soon" hedge', async () => {
+  const MARSTAL_EASY_GO_BANNER =
+    'Keine Route mit Salona 44 (EASY GO!) (Tiefgang 2,59 m): Das Tiefenraster der App (~46-m-Zellen, schmale ausgebaggerte Rinnen können darin fehlen) findet bei keiner Sicherheitstiefe zwischen 2,7 m und 3,5 m eine Verbindung von oder nach Marstal. Keine Einstellung in diesem Bereich hilft. Amtliche Seekarte oder Hafenhandbuch prüfen.';
+
+  it('#1721: the no-route banner names harbour, boat, draft and the checked gate range, without the "gave up too soon" hedge', async () => {
     const alertBanner = await planEasyGoToHarbor(MARSTAL_TEST);
-    expect(
-      within(alertBanner).getByText(
-        'Keine Route mit Salona 44 (EASY GO!) (Tiefgang 2,59 m): Das Tiefenraster der App (~46-m-Zellen, schmale ausgebaggerte Rinnen können darin fehlen) findet keine Verbindung zu oder von Marstal, selbst bei der niedrigsten für dieses Boot zulässigen Sicherheitstiefe (2,7 m). Keine zulässige Einstellung ändert das. Seekarte oder Hafenhandbuch prüfen.',
-      ),
-    ).toBeInTheDocument();
+    expect(within(alertBanner).getByText(MARSTAL_EASY_GO_BANNER)).toBeInTheDocument();
     expect(
       within(alertBanner).queryByText(de['error.noRoute.unreachable']),
     ).not.toBeInTheDocument();
@@ -2632,6 +2658,55 @@ describe('banner surfacing (PR self-review fix wave)', () => {
   it('#1721: the same boat keeps the generic message for a harbour the depth grid does connect', async () => {
     const alertBanner = await planEasyGoToHarbor(FLENSBURG);
     expect(within(alertBanner).getByText(de['error.noRoute.unreachable'])).toBeInTheDocument();
+  });
+
+  // Depth-graded: unreachable at the live 3.5 m gate (the picker row says so)
+  // but reachable at 3.0 m, so the scan must reach below the live gate and the
+  // result depends on its gate argument.
+  it('#1721: keeps the generic message when a lower allowed gate reaches the harbour', async () => {
+    const alertBanner = await planEasyGoToHarbor(GATED_TEST);
+    const destSection = screen.getByRole('region', { name: de['planner.destination.label'] });
+    expect(
+      within(destSection).getByText(
+        'Mit Salona 44 (EASY GO!) bei 3,5 m Sicherheitstiefe nicht erreichbar.',
+      ),
+    ).toBeInTheDocument();
+    expect(within(alertBanner).getByText(de['error.noRoute.unreachable'])).toBeInTheDocument();
+  });
+
+  // The failed plan's boat, endpoints and gate are what the banner describes.
+  it('#1721: falls back to the generic message once the boat differs from the failed plan', async () => {
+    const alertBanner = await planEasyGoToHarbor(MARSTAL_TEST);
+    expect(within(alertBanner).getByText(MARSTAL_EASY_GO_BANNER)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.boat'] }));
+    fireEvent.click(screen.getByRole('radio', { name: /SPEEDY GO!/ }));
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+    // Restore the failed plan's gate so only the boat differs.
+    const gate = screen.getByLabelText(de['options.safetyDepth.label']);
+    fireEvent.change(gate, { target: { value: '3.5' } });
+    fireEvent.blur(gate);
+    expect(gate).toHaveValue(3.5);
+
+    const after = screen.getByRole('alert');
+    expect(within(after).getByText(de['error.noRoute.unreachable'])).toBeInTheDocument();
+  });
+
+  it('#1721: falls back to the generic message once an endpoint differs from the failed plan', async () => {
+    const alertBanner = await planEasyGoToHarbor(MARSTAL_TEST);
+    expect(within(alertBanner).getByText(MARSTAL_EASY_GO_BANNER)).toBeInTheDocument();
+
+    const destSection = screen.getByRole('region', { name: de['planner.destination.label'] });
+    fireEvent.click(within(destSection).getByRole('button', { name: de['planner.change'] }));
+    fireEvent.change(within(destSection).getByRole('combobox'), {
+      target: { value: WALLED_TEST.names.de },
+    });
+    fireEvent.click(
+      within(destSection).getByRole('option', { name: harborOptionName(WALLED_TEST.names.de) }),
+    );
+
+    const after = screen.getByRole('alert');
+    expect(within(after).getByText(de['error.noRoute.unreachable'])).toBeInTheDocument();
   });
 
   // Round-2 review Finding B: no test exercised "origin/destination IS

@@ -14,14 +14,14 @@ vi.mock('../lib/harborReachability', async (importOriginal) => {
 });
 import HarborPicker, {
   harborAccessCopy,
+  unreachableBand,
   normalizeHarborSearch,
   rankHarbors,
   type HarborWithReachability,
 } from './HarborPicker';
 import { findLowerSettingHint, type LowerSettingHintOutcome } from '../lib/harborReachability';
 import { BOATS } from '../data/boats';
-import { minSafetyDepthM } from '../lib/boatDepth';
-import { formatDepthM } from '../lib/depthDisclosure';
+import { NavMask } from '../lib/mask';
 import type { Harbor } from '../types';
 
 // Mirrors real data shapes from app/public/data/harbors.json: a harbor whose
@@ -456,29 +456,71 @@ describe('harborAccessCopy (#1291/§13 item 2 precedence table)', () => {
     ]);
   });
 
-  // #1721: unreachable at the boat's lowest allowed gate too, so no allowed
-  // setting helps. Replaces both the live-gate line and the hint lines.
-  it('#1721: unreachable at the lowest gate too collapses to the any-setting line with minSafetyDepthM', () => {
+  // #1721: a checked unreachable band replaces both the live-gate line and the
+  // hint lines, and names the range it covers.
+  it('#1721: an unreachable band collapses to the range line naming min and max', () => {
     const hint: LowerSettingHintOutcome = { kind: 'not-found' };
-    expect(harborAccessCopy('unreachable', hint, boat, 3.5, 'en', 'unreachable')).toEqual([
+    expect(
+      harborAccessCopy('unreachable', hint, boat, 3.5, 'en', { minM: 2.2, maxM: 3.5 }),
+    ).toEqual([
       {
-        key: 'harborPicker.boatUnreachableAnySetting',
-        vars: { boat: boat.name, depth: formatDepthM(minSafetyDepthM(boat), 'en') },
+        key: 'harborPicker.boatUnreachableAcrossRange',
+        vars: { boat: boat.name, min: '2.2', max: '3.5' },
       },
     ]);
   });
 
-  it('#1721: a lower setting that DOES reach it, or a reachable lowest gate, keeps the ordinary lines', () => {
-    const found: LowerSettingHintOutcome = { kind: 'found', hint: { depthM: 3.2, state: 'ok' } };
-    expect(harborAccessCopy('unreachable', found, boat, 3.5, 'en', 'unreachable')[0]?.key).toBe(
-      'harborPicker.boatUnreachable',
-    );
-    expect(harborAccessCopy('unreachable', null, boat, 3.5, 'en', 'ok')[0]?.key).toBe(
+  it('#1721: without a band the ordinary lines stay', () => {
+    expect(harborAccessCopy('unreachable', null, boat, 3.5, 'en', null)[0]?.key).toBe(
       'harborPicker.boatUnreachable',
     );
     expect(harborAccessCopy('unreachable', null, boat, 3.5, 'en')[0]?.key).toBe(
       'harborPicker.boatUnreachable',
     );
+  });
+});
+
+// #1721: the band scan against a real NavMask. Open water everywhere except a
+// pocket of POCKET_DEPTH_DM-decimetre cells (wider than the 1852 m relaxation
+// disc) around the harbour, so reachability depends on the gate.
+describe('unreachableBand (#1721)', () => {
+  const easyGo = BOATS.find((b) => b.id === 'salona-44-easy-go')!; // min 2.7, default 3.5
+  const POCKET: Harbor = {
+    id: 'pocket',
+    names: { de: 'Tasche', da: 'Tasche', en: 'Pocket' },
+    country: 'DK',
+    snap: { lat: 55.0, lon: 10.3 },
+  };
+  const meta = { west: 9.4, south: 54.3, east: 11.0, north: 55.3, cols: 800, rows: 500 };
+  function maskWithPocket(depthDm: number) {
+    const data = new Uint8Array(meta.rows * meta.cols).fill(255);
+    const row = Math.floor((POCKET.snap.lat - meta.south) * 500);
+    const col = Math.floor((POCKET.snap.lon - meta.west) * 500);
+    for (let r = row - 40; r <= row + 40; r++)
+      for (let c = col - 40; c <= col + 40; c++) data[r * meta.cols + c] = depthDm;
+    return new NavMask(meta, data);
+  }
+
+  it('covers [min, max(default, live)] when the harbour is unreachable at every gate', () => {
+    const mask = maskWithPocket(20); // 2.0 m: below every allowed gate
+    expect(unreachableBand(mask, [POCKET], easyGo, 'pocket', 3.5)).toEqual({
+      minM: 2.7,
+      maxM: 3.5,
+    });
+    expect(unreachableBand(mask, [POCKET], easyGo, 'pocket', 4.2)).toEqual({
+      minM: 2.7,
+      maxM: 4.2,
+    });
+    // A live gate below the default still scans up to the default.
+    expect(unreachableBand(mask, [POCKET], easyGo, 'pocket', 3.0)).toEqual({
+      minM: 2.7,
+      maxM: 3.5,
+    });
+  });
+
+  it('is null when a lower allowed gate reaches the harbour, though the live gate does not', () => {
+    const mask = maskWithPocket(30); // 3.0 m: reachable at gates <= 3.0, not at 3.5
+    expect(unreachableBand(mask, [POCKET], easyGo, 'pocket', 3.5)).toBeNull();
   });
 });
 
@@ -521,7 +563,7 @@ describe('HarborPicker option row: #1291 per-boat access markers', () => {
     ).toBeInTheDocument();
   });
 
-  it('#1721: shows the any-setting line when the harbour is also unreachable at the lowest gate', () => {
+  it('#1721: shows the range line when the harbour is unreachable across the checked band', () => {
     localStorage.setItem('sc-lang', 'en');
     vi.mocked(findLowerSettingHint).mockReturnValue({ kind: 'not-found' });
     render(
@@ -533,7 +575,7 @@ describe('HarborPicker option row: #1291 per-boat access markers', () => {
           boat={boat}
           safetyDepthM={3.5}
           harborAccess={new Map([['aabenraa', 'unreachable']])}
-          harborAccessLowest={new Map([['aabenraa', 'unreachable']])}
+          unreachableBandOf={(id) => (id === 'aabenraa' ? { minM: 2.2, maxM: 3.5 } : null)}
           mask={FAKE_MASK}
         />
       </I18nProvider>,
@@ -542,7 +584,7 @@ describe('HarborPicker option row: #1291 per-boat access markers', () => {
     const option = screen.getByRole('option', { name: /Aabenraa/ });
     expect(
       within(option).getByText(
-        `Even at the lowest safety depth ${boat.name} allows (${formatDepthM(minSafetyDepthM(boat), 'en')} m), the app's depth data finds no connection here — no allowed setting helps.`,
+        `The app's depth data finds no connection for ${boat.name} at any safety depth from 2.2 m to 3.5 m.`,
       ),
     ).toBeInTheDocument();
     expect(within(option).queryByText(/Not reachable with/)).not.toBeInTheDocument();

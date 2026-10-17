@@ -16,10 +16,10 @@ export const de = {
   'harborPicker.knownDisconnected':
     'Vom Routenplaner bei keiner Tiefeneinstellung erreichbar – eine Grenze der Tiefendaten, keine Aussage über das Fahrwasser.',
   // #1721: siehe die englische Fassung.
-  'harborPicker.boatUnreachableAnySetting':
-    'Selbst bei der niedrigsten für {boat} zulässigen Sicherheitstiefe ({depth} m) findet die Tiefendatenbasis der App hier keine Verbindung – keine zulässige Einstellung hilft.',
-  'error.harborUnreachableAnySetting':
-    'Keine Route mit {boat} (Tiefgang {draft} m): Das Tiefenraster der App (~46-m-Zellen, schmale ausgebaggerte Rinnen können darin fehlen) findet keine Verbindung zu oder von {harbor}, selbst bei der niedrigsten für dieses Boot zulässigen Sicherheitstiefe ({depth} m). Keine zulässige Einstellung ändert das. Seekarte oder Hafenhandbuch prüfen.',
+  'harborPicker.boatUnreachableAcrossRange':
+    'Die Tiefendatenbasis der App findet für {boat} bei keiner Sicherheitstiefe zwischen {min} m und {max} m eine Verbindung.',
+  'error.harborUnreachableAcrossRange':
+    'Keine Route mit {boat} (Tiefgang {draft} m): Das Tiefenraster der App (~46-m-Zellen, schmale ausgebaggerte Rinnen können darin fehlen) findet bei keiner Sicherheitstiefe zwischen {min} m und {max} m eine Verbindung von oder nach {harbor}. Keine Einstellung in diesem Bereich hilft. Amtliche Seekarte oder Hafenhandbuch prüfen.',
   'options.safetyDepth.label': 'Sicherheitstiefe (m)',
   // #699: der zulässige Bereich hing bislang nur als natives min/max-Attribut
   // am Feld, ohne sichtbaren oder für Screenreader zugänglichen Text — ein

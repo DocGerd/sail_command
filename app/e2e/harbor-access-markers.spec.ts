@@ -81,10 +81,10 @@ test('#1291: per-boat harbour access markers render for a non-default boat, in t
   }
 });
 
-// #1721: unreachable at the live 3.5 m gate AND at EASY GO!'s lowest allowed
-// gate (2.7 m), so the picker states that no allowed setting helps.
+// #1721: unreachable at every 0.1 m gate from EASY GO!'s lowest allowed (2.7 m)
+// to its live 3.5 m, so the picker shows the range line.
 const EASY_GO_ANY_SETTING_LINE =
-  'Selbst bei der niedrigsten für Salona 44 (EASY GO!) zulässigen Sicherheitstiefe (2,7 m) findet die Tiefendatenbasis der App hier keine Verbindung – keine zulässige Einstellung hilft.';
+  'Die Tiefendatenbasis der App findet für Salona 44 (EASY GO!) bei keiner Sicherheitstiefe zwischen 2,7 m und 3,5 m eine Verbindung.';
 
 // #1575: the real `unreachable` state, reached by a plain default-settings
 // boat switch. EASY GO!'s 3.5 m gate leaves Marstal and Augustenborg
@@ -147,7 +147,7 @@ test('#1575: switching to EASY GO! announces an unreachable destination and mark
 });
 
 // #1721: the failure banner for the same stranded harbour, driven through the
-// real solver: no hedge, and it names harbour, boat, draft and lowest gate.
+// real solver: no hedge, and it names harbour, boat, draft and the checked gate range.
 test('#1721: planning EASY GO! from Marstal shows the data-attributed no-route message', async ({
   page,
 }) => {
@@ -170,7 +170,7 @@ test('#1721: planning EASY GO! from Marstal shows the data-attributed no-route m
     await page.getByRole('button', { name: 'Route planen' }).click();
     const banner = page.getByRole('alert').filter({ hasText: 'Keine Route' });
     await expect(banner).toContainText(
-      'Keine Route mit Salona 44 (EASY GO!) (Tiefgang 2,59 m): Das Tiefenraster der App (~46-m-Zellen, schmale ausgebaggerte Rinnen können darin fehlen) findet keine Verbindung zu oder von Marstal, selbst bei der niedrigsten für dieses Boot zulässigen Sicherheitstiefe (2,7 m).',
+      'Keine Route mit Salona 44 (EASY GO!) (Tiefgang 2,59 m): Das Tiefenraster der App (~46-m-Zellen, schmale ausgebaggerte Rinnen können darin fehlen) findet bei keiner Sicherheitstiefe zwischen 2,7 m und 3,5 m eine Verbindung von oder nach Marstal.',
       { timeout: 60_000 },
     );
     await expect(banner).not.toContainText('zu früh aufgegeben');
