@@ -596,8 +596,8 @@ function measureChrome(): Box[] {
 // test's expected array). No-ops on an empty leg list (a plan whose active
 // rig failed to solve) rather than calling fitBounds with an empty/invalid
 // bounds object.
-function fitToLegs(map: MaplibreMap, legs: Leg[]) {
-  if (legs.length === 0) return;
+function fitToLegs(map: MaplibreMap, legs: Leg[]): string | null {
+  if (legs.length === 0) return null;
   const bounds = new LngLatBounds();
   for (const leg of legs) {
     bounds.extend([leg.start.lon, leg.start.lat]);
@@ -609,11 +609,16 @@ function fitToLegs(map: MaplibreMap, legs: Leg[]) {
   // bearing", it means "rotate to north". See the call site below for the
   // full rationale (unchanged from the pre-#297 auto-fit effect this was
   // extracted from).
-  map.fitBounds(bounds, {
-    padding: fitPadding(mapBox(map), measureChrome()),
-    duration: 0,
-    bearing: map.getBearing(),
-  });
+  const box = mapBox(map);
+  const padding = fitPadding(box, measureChrome());
+  map.fitBounds(bounds, { padding, duration: 0, bearing: map.getBearing() });
+  return JSON.stringify([box, padding]);
+}
+
+// What a fit would measure now; equal to a fit's return value when nothing moved.
+function fitLayoutKey(map: MaplibreMap): string {
+  const box = mapBox(map);
+  return JSON.stringify([box, fitPadding(box, measureChrome())]);
 }
 
 // #850: grab-handle hover tolerance for the drag-the-route-line gesture, in
@@ -1104,11 +1109,43 @@ export default function RouteLayer({
   // switch (both rigs cover roughly the same area) or barb-slider tick.
   // Bounds construction + the #155 bearing-preservation rationale now live in
   // the shared `fitToLegs` helper above (#297).
+  const autoFitKeyRef = useRef<string | null>(null);
+  const legsRef = useRef<Leg[]>([]);
+  useEffect(() => {
+    legsRef.current = result?.legs ?? [];
+  });
   useEffect(() => {
     if (!map || !result) return;
-    fitToLegs(map, result.legs);
+    autoFitKeyRef.current = fitToLegs(map, result.legs);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fit on plan identity, not the (recreated) result object
   }, [map, plan?.id]);
+
+  // #1639: chrome that resizes after the auto-fit (the offline-ready toast
+  // closing grows the map and the sheet) leaves the route under it. Re-fit
+  // until the user moves the camera; only a user gesture carries `originalEvent`.
+  useEffect(() => {
+    if (!map) return;
+    const release = (e: { originalEvent?: unknown }) => {
+      if (e.originalEvent !== undefined) autoFitKeyRef.current = null;
+    };
+    map.on('movestart', release);
+    const refit = () => {
+      if (autoFitKeyRef.current === null || fitLayoutKey(map) === autoFitKeyRef.current) return;
+      autoFitKeyRef.current = fitToLegs(map, legsRef.current);
+    };
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver === 'function') {
+      ro = new ResizeObserver(refit);
+      const mapEl = map.getCanvasContainer().parentElement;
+      if (mapEl) ro.observe(mapEl);
+      const sheet = document.querySelector('.app-bottom-sheet');
+      if (sheet) ro.observe(sheet);
+    }
+    return () => {
+      map.off('movestart', release);
+      ro?.disconnect();
+    };
+  }, [map]);
 
   // #297: user-invoked "fit route to view" action — the issue's own
   // recommended alternative to a permanent overview mini-map (see the issue

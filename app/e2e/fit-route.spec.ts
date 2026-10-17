@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { startPreview, STANDARD_VIEWPORTS } from './helpers';
+import { bannerHeightVar, startPreview, STANDARD_VIEWPORTS } from './helpers';
 
 // #1102 (residual of #297/PR #1100): the "fit route to view" action
 // (`route.fitToView`, `.route-layer-controls`) has three unit tests in
@@ -97,16 +97,21 @@ async function waitForStableCamera(
   );
 }
 
-/** Plans Langballigau -> Sønderborg on the deterministic wind-sw12 fixture. */
-async function planRoute(page: Page, serverUrl: string): Promise<void> {
+/** Plans a route on the deterministic wind-sw12 fixture (default Langballigau -> Sønderborg). */
+async function planRoute(
+  page: Page,
+  serverUrl: string,
+  from = 'Langballigau',
+  to = 'Sønderborg',
+): Promise<void> {
   await page.goto(`${serverUrl}?windFixture=test-fixtures/wind-sw12.json`);
   await page.getByRole('tab', { name: 'Planen' }).click();
   const origin = page.getByRole('region', { name: 'Start' });
-  await origin.getByRole('combobox').fill('Langballigau');
+  await origin.getByRole('combobox').fill(from);
   await expect(origin.getByRole('option')).toHaveCount(1);
   await origin.getByRole('option').first().click();
   const dest = page.getByRole('region', { name: 'Ziel' });
-  await dest.getByRole('combobox').fill('Sønderborg');
+  await dest.getByRole('combobox').fill(to);
   await expect(dest.getByRole('option')).toHaveCount(1);
   await dest.getByRole('option').first().click();
   const planButton = page.getByRole('button', { name: 'Route planen' });
@@ -303,4 +308,50 @@ test.describe('#1626: fit pads for map chrome', () => {
       }
     });
   }
+});
+
+// #1639: chrome that resizes after the auto-fit must re-pad it. The offline-ready
+// toast closing grows both the map and the bottom sheet at tabletPortrait.
+async function startMarkerGapToSheet(page: Page): Promise<number | null> {
+  return page.evaluate(() => {
+    const marker = document.querySelector('.sc-endpoint-marker-origin');
+    const sheet = document.querySelector('.app-bottom-sheet');
+    if (!marker || !sheet) return null;
+    return Math.round(sheet.getBoundingClientRect().top - marker.getBoundingClientRect().bottom);
+  });
+}
+
+test.describe('#1639: start marker clear of the bottom sheet (tabletPortrait)', () => {
+  test('after the auto-fit on a height-limited route', async ({ page }) => {
+    await page.setViewportSize(STANDARD_VIEWPORTS.tabletPortrait);
+    const server = await startPreview(page);
+    try {
+      await planRoute(page, server.url, 'Flensburg', 'Sønderborg');
+      await waitForStableCamera(page);
+      await expect
+        .poll(() => startMarkerGapToSheet(page), { timeout: 30_000 })
+        .toBeGreaterThanOrEqual(0);
+      await expectEndpointsClearOfChrome(page);
+    } finally {
+      server.kill();
+    }
+  });
+
+  test('after the offline-ready toast is dismissed following the plan', async ({ page }) => {
+    await page.setViewportSize(STANDARD_VIEWPORTS.tabletPortrait);
+    const server = await startPreview(page);
+    try {
+      await planRoute(page, server.url, 'Flensburg', 'Sønderborg');
+      await waitForStableCamera(page);
+      await page.locator('.banner-area').getByRole('button', { name: 'Schließen' }).click();
+      await expect(page.locator('.banner-area .banner')).toHaveCount(0);
+      await expect.poll(() => bannerHeightVar(page), { timeout: 30_000 }).toBe('0px');
+      await waitForStableCamera(page);
+      await expect
+        .poll(() => startMarkerGapToSheet(page), { timeout: 30_000 })
+        .toBeGreaterThanOrEqual(0);
+    } finally {
+      server.kill();
+    }
+  });
 });

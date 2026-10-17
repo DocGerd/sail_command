@@ -454,6 +454,97 @@ describe('RouteLayer fit padding (#1626)', () => {
   });
 });
 
+// #1639: chrome that resizes after the auto-fit re-pads the fit until the user
+// moves the camera. jsdom has no ResizeObserver, so the callbacks are captured.
+describe('RouteLayer re-fit after a layout change (#1639)', () => {
+  const rect = (left: number, top: number, right: number, bottom: number) =>
+    ({ left, top, right, bottom, width: right - left, height: bottom - top }) as DOMRect;
+  const observers: Array<{ cb: () => void; disconnect: ReturnType<typeof vi.fn> }> = [];
+  let sheetTop = 600;
+
+  beforeEach(() => {
+    sheetTop = 600;
+    observers.length = 0;
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        disconnect = vi.fn();
+        constructor(cb: () => void) {
+          observers.push({ cb, disconnect: this.disconnect });
+        }
+        observe() {}
+        unobserve() {}
+      },
+    );
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    document.querySelectorAll('.app-bottom-sheet').forEach((el) => el.remove());
+  });
+
+  function setup() {
+    const map = makeFakeMap();
+    const mapEl = document.createElement('div');
+    mapEl.appendChild(map.getCanvasContainer());
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: Element,
+    ) {
+      if (this === mapEl) return rect(0, 0, 1000, 800);
+      if (this.classList.contains('app-bottom-sheet')) return rect(0, sheetTop, 1000, 800);
+      return rect(0, 0, 0, 0);
+    });
+    const sheet = document.createElement('div');
+    sheet.className = 'app-bottom-sheet';
+    document.body.appendChild(sheet);
+    renderRouteLayer(map, null);
+    return map;
+  }
+  const resize = () => act(() => observers.forEach((o) => o.cb()));
+  const userMove = (map: ReturnType<typeof makeFakeMap>) => {
+    const call = map.on.mock.calls.find((c: unknown[]) => c[0] === 'movestart');
+    (call![1] as (e: unknown) => void)({ originalEvent: {} });
+  };
+
+  it('re-fits with fresh padding when the sheet grows, keeping bearing and duration 0', () => {
+    const map = setup();
+    map.setBearing(135);
+    expect(map.fitBounds.mock.calls[0][1]).toMatchObject({ padding: { bottom: 216 } });
+    map.fitBounds.mockClear();
+    sheetTop = 531;
+    resize();
+    expect(map.fitBounds).toHaveBeenCalledTimes(1);
+    expect(map.fitBounds.mock.calls[0][1]).toMatchObject({
+      padding: { bottom: 285 },
+      duration: 0,
+      bearing: 135,
+    });
+  });
+
+  it('does not re-fit when nothing it pads for changed', () => {
+    const map = setup();
+    map.fitBounds.mockClear();
+    resize();
+    expect(map.fitBounds).not.toHaveBeenCalled();
+  });
+
+  it('stops re-fitting once the user has moved the camera', () => {
+    const map = setup();
+    userMove(map);
+    map.fitBounds.mockClear();
+    sheetTop = 531;
+    resize();
+    expect(map.fitBounds).not.toHaveBeenCalled();
+  });
+
+  it('disconnects its observer on unmount', () => {
+    setup();
+    cleanup();
+    expect(observers.length).toBeGreaterThan(0);
+    expect(observers.every((o) => o.disconnect.mock.calls.length > 0)).toBe(true);
+  });
+});
+
 // #297: user-invoked "fit route to view" — the issue's own recommended
 // alternative to a permanent overview mini-map (closing with "an action, not
 // a widget" was the issue's own stated acceptable outcome; the maintainer
