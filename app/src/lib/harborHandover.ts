@@ -4,8 +4,7 @@ import { haversineNm } from './geo';
 // #1721: a plan routed from/to a handover point in grid-connected water because
 // the depth grid cannot connect the harbour itself. The flag rides on the
 // result as an optional key outside `types.ts` (which sits in the #282 sweep
-// closure); this module owns its shape and `migratePlan` carries it through
-// `parseHarborHandovers`. Geometry is never stored: the harbour end is `plan.request.<end>`, the handover end is
+// closure); this module owns its shape. Geometry is never stored: the harbour end is `plan.request.<end>`, the handover end is
 // `plan.result.snapped<End>`.
 
 export type HarborHandoverEnds = { readonly origin?: true; readonly destination?: true };

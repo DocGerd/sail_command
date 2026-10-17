@@ -818,7 +818,7 @@ export const de = {
   'live.handover':
     'Zwischen Hafen und Übergabepunkt (gestreifte Linie) ist die Route nicht berechnet; dort nach Seekarte und Betonnung steuern. Kursanzeige und ETA folgen nur der berechneten Route.',
   'harborPicker.boatHandover':
-    '{boat}: Das Tiefenraster erreicht diesen Hafen nur bis zu einem Übergabepunkt {dist} davor; die Ansteuerung von dort wird nicht berechnet.',
+    '{boat}: Der nächste Übergabepunkt, den das Tiefenraster verbindet, liegt {dist} vor diesem Hafen; die Hafenansteuerung wird nicht berechnet.',
   'route.exportGpx': 'GPX exportieren',
   'route.windBarbs.toggle': 'Windpfeile anzeigen',
   'route.windBarbs.timeSlider': 'Vorhersagezeitpunkt',

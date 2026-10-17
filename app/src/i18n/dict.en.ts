@@ -899,9 +899,9 @@ export const en = {
     "Every stretch below your safety depth lies within {radius} of the computed route's start or end, or of your waypoints.",
   'planner.result.announceHandover': 'Harbour approach not computed.',
   'live.handover':
-    'Between the harbour and the handover point (striped line) the route is not computed; steer by chart and buoyage there. The heading readout and ETA follow the computed route only.',
+    'Between harbour and handover point (striped line) the route is not computed; steer by chart and buoyage there. The heading readout and ETA follow the computed route only.',
   'harborPicker.boatHandover':
-    '{boat}: the depth grid reaches this harbour only to a handover point {dist} off it; the approach from there is not computed.',
+    '{boat}: the nearest handover point the depth grid connects lies {dist} off this harbour; the harbour approach is not computed.',
   'route.exportGpx': 'Export GPX',
   'route.windBarbs.toggle': 'Show wind barbs',
   'route.windBarbs.timeSlider': 'Forecast time',
