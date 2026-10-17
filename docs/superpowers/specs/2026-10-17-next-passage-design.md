@@ -32,12 +32,12 @@ planned offline from the forecast already stored with that route.
 
 ## Spec amendment: narrow offline-planning exception
 
-The 2026-07-14 design (§1 "Offline scope", §4 "Offline / Open-Meteo unreachable") and the UI
+The 2026-07-14 design (§2 "Offline scope", §4 "Offline / Open-Meteo unreachable") and the UI
 addendum §3.5 say planning requires internet. Amended: offline planning is allowed ONLY for a next
 passage seeded by this action, ONLY while the seeded start is unchanged, and ONLY when the source
 route's stored grid reaches the chosen departure. Every other offline plan attempt stays disabled
 with today's message. The reused grid keeps its original fetch time, so the existing stale-forecast
-warning (fetch → departure gap > 12 h) applies by its own rule; the offline guidance line always
+warning (fetch → departure gap > 12 h) applies by its own rule; the plannable offline guidance line
 names the source route and that fetch time.
 
 ## Constraints
