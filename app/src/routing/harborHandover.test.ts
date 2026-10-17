@@ -141,6 +141,14 @@ describe('#1721 planWithHarborHandover gate', () => {
     expect(plan).toHaveBeenCalledTimes(1);
   });
 
+  it('returns the first pass when the other eligible end has no handover', () => {
+    const r1 = errorResult();
+    const plan = spy(r1, okResult());
+    const req = request({ destination: centre(B), destinationHarborId: 'b' });
+    expect(run(req, plan)).toBe(r1);
+    expect(plan).toHaveBeenCalledTimes(1);
+  });
+
   it('returns the first pass when the deadline has expired', () => {
     const r1 = errorResult();
     const plan = spy(r1, okResult());
