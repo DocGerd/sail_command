@@ -37,8 +37,8 @@ moved on to `v0.55.0`.
 ## Next — v0.55.0
 
 The [`v0.55.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-holds four issues as of this cut: the remaining self-resolving OpenSSF
-Scorecard findings ([#72](https://github.com/DocGerd/sail_command/issues/72)),
+holds four issues as of this cut: the open OpenSSF Scorecard `SAST`
+alert ([#72](https://github.com/DocGerd/sail_command/issues/72)),
 the route-fit start marker under the bottom sheet at 820x1180
 ([#1639](https://github.com/DocGerd/sail_command/issues/1639)), the
 dev-dependency bump `fast-uri` >= 3.1.8
@@ -92,7 +92,7 @@ verified — a tagger-identity attribution gap fixed going forward from
 OpenSSF criterion cares about the signing mechanism and its documentation,
 not that badge.) Remaining:
 
-- Tracking the remaining self-resolving OpenSSF Scorecard findings
+- Tracking the open OpenSSF Scorecard `SAST` alert
   ([#72](https://github.com/DocGerd/sail_command/issues/72)).
 
 The Silver criterion `access_continuity` was previously described here as
@@ -214,7 +214,7 @@ CodeQL gained a concurrency group so a superseded pull-request head stops
 being analysed to completion, CodeQL's pull-request analysis now runs only
 where its `paths:` filter admits the changed paths, so a prose-only
 documentation pull request skips it while a changelog-only one still
-triggers it, the nightly coverage run skips an unchanged tree, and every
+triggers it (that filter has since been removed), the nightly coverage run skips an unchanged tree, and every
 previously uncapped job gained a `timeout-minutes`
 ([#875](https://github.com/DocGerd/sail_command/issues/875),
 [#877](https://github.com/DocGerd/sail_command/issues/877),
