@@ -291,6 +291,8 @@ export const en = {
   // gap-fill for the previously reasonless online-but-incomplete state).
   'planner.disabled.pickEndpoints': 'Select a start and destination.',
   'planner.result.details': 'View details',
+  'planner.nextPassage.action': 'Plan next passage',
+  'planner.nextPassage.preview': 'Start {harbor} · Departure {departure}',
   // Swapped into the planner's live status region on plan completion — a
   // stable, atomic summary announced once per new plan (never on slider/
   // via-edit re-renders).
@@ -1199,6 +1201,12 @@ export const en = {
   'about.sources.seamarks':
     'Seamarks: © OpenStreetMap contributors (ODbL), seamark data as of 22 July 2026 — a point-in-time extract, not continuously verified',
   'banner.offline': 'Offline — planning disabled. Saved routes remain available.',
+  'banner.offlineNextPassage':
+    'Offline — only the next passage can be planned, from the stored forecast',
+  'planner.nextPassage.offlineStored':
+    'Offline — uses the stored forecast from "{name}" (fetched {fetched}).',
+  'planner.nextPassage.offlineTooShort':
+    'Offline — the stored forecast only reaches {until}; this departure needs a connection.',
   'banner.mapError': 'Map data could not be loaded — the display may be incomplete.',
   'banner.persistenceError': 'Settings could not be saved.',
   'banner.dismiss': 'Dismiss',

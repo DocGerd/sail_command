@@ -304,6 +304,8 @@ export const de = {
   // gap-fill for the previously reasonless online-but-incomplete state).
   'planner.disabled.pickEndpoints': 'Start und Ziel wählen.',
   'planner.result.details': 'Details ansehen',
+  'planner.nextPassage.action': 'Nächste Passage planen',
+  'planner.nextPassage.preview': 'Start {harbor} · Abfahrt {departure}',
   // Swapped into the planner's live status region on plan completion — a
   // stable, atomic summary announced once per new plan (never on slider/
   // via-edit re-renders).
@@ -1183,6 +1185,12 @@ export const de = {
   'about.sources.seamarks':
     'Seezeichen: © OpenStreetMap-Mitwirkende (ODbL), Stand der Seezeichendaten: 22. Juli 2026 — Zeitpunkt-Extrakt, nicht laufend überprüft',
   'banner.offline': 'Offline — Planung deaktiviert. Gespeicherte Routen bleiben verfügbar.',
+  'banner.offlineNextPassage':
+    'Offline — nur die nächste Passage mit gespeicherter Vorhersage planbar',
+  'planner.nextPassage.offlineStored':
+    'Offline — nutzt die gespeicherte Vorhersage von „{name}“ (abgerufen {fetched}).',
+  'planner.nextPassage.offlineTooShort':
+    'Offline — die gespeicherte Vorhersage reicht nur bis {until}; für diese Abfahrt ist eine Verbindung nötig.',
   'banner.mapError': 'Kartendaten konnten nicht geladen werden — Anzeige evtl. unvollständig.',
   'banner.persistenceError': 'Einstellungen konnten nicht gespeichert werden.',
   'banner.dismiss': 'Schließen',

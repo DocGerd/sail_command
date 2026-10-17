@@ -1,12 +1,18 @@
 import { describe, it, expect } from 'vitest';
 import {
   ROUTING_RELEVANT_SETTINGS_KEYS,
+  activeNextPassageSeed,
   departureSeedMs,
+  nextPassageDepartureMs,
+  nextPassageOffline,
   pickedPointMoved,
   pickedPointsOfPlan,
   planFormDirty,
   routingSettingsDirty,
+  seedNextPassage,
   viaPointsDiffer,
+  windGridReaches,
+  type NextPassageSeedState,
   type PlanFormSnapshot,
 } from './planForm';
 import { nextFullHourMs } from '../components/PlannerPanel';
@@ -533,5 +539,111 @@ describe('sails aboard (#1661, R.3)', () => {
   it('planFormDirty: the full aboard set in a different order is NOT dirty', () => {
     const form: PlanFormSnapshot = { ...matchingForm(), headsailIds: ['fock', 'genoa'] };
     expect(planFormDirty(makePlan(), form, true)).toBe(false);
+  });
+});
+
+const at = (d: number, h: number, mi = 0) => new Date(2026, 9, d, h, mi).getTime();
+const withGenoaEta = (etaMs: number): Plan => {
+  const p = makePlan();
+  return {
+    ...p,
+    result: {
+      ...p.result,
+      sails: p.result.sails.map((s) => (s.result ? { ...s, result: { ...s.result, etaMs } } : s)),
+    },
+  };
+};
+
+describe('#1707 nextPassageDepartureMs', () => {
+  it('an ETA just after midnight departs 10:00 that morning', () =>
+    expect(nextPassageDepartureMs(at(17, 0, 30), at(16, 20))).toBe(at(17, 10)));
+  it('an evening ETA departs 10:00 the next morning', () =>
+    expect(nextPassageDepartureMs(at(17, 17), at(17, 12))).toBe(at(18, 10)));
+  it('is strictly after: exactly 10:00 rolls to the next day', () => {
+    expect(nextPassageDepartureMs(at(17, 10), at(17, 6))).toBe(at(18, 10));
+    expect(nextPassageDepartureMs(at(17, 10) - 1, at(17, 6))).toBe(at(17, 10));
+  });
+  it('a long-past ETA departs at the next future 10:00', () => {
+    expect(nextPassageDepartureMs(at(14, 15), at(17, 8))).toBe(at(17, 10));
+    expect(nextPassageDepartureMs(at(14, 15), at(17, 11))).toBe(at(18, 10));
+  });
+});
+
+describe('#1707 seedNextPassage', () => {
+  it('starts at the destination harbour, after the displayed rig ETA', () =>
+    expect(seedNextPassage(withGenoaEta(at(17, 17)), 'genoa', HARBORS, 'de', at(17, 12))).toEqual({
+      origin: { source: 'harbor', point: MARSTAL.snap, harborId: 'marstal', label: 'Marstal' },
+      departureMs: at(18, 10),
+    }));
+  it("falls back to the other rig's ETA when the displayed rig has no route", () =>
+    expect(
+      seedNextPassage(withGenoaEta(at(17, 17)), 'fock', HARBORS, 'de', at(17, 12))?.departureMs,
+    ).toBe(at(18, 10)));
+  it('falls back to a tap point when the harbour is not in the list', () =>
+    expect(seedNextPassage(makePlan(), 'genoa', [], 'de', at(17, 12))?.origin).toEqual({
+      source: 'tap',
+      point: ORIGINAL_REQUEST.destination,
+      label: formatLatLon(ORIGINAL_REQUEST.destination),
+    }));
+  it('returns null when no rig has a route', () => {
+    const p = makePlan();
+    const none = {
+      ...p,
+      result: { ...p.result, sails: p.result.sails.map((s) => ({ ...s, result: null })) },
+    };
+    expect(seedNextPassage(none, 'genoa', HARBORS, 'de', at(17, 12))).toBeNull();
+  });
+});
+
+describe('#1707 next-passage seed gate', () => {
+  const grid = uniformWindGrid(12, 225, { t0Ms: at(17, 0), hours: 48 });
+  const marstal: PickedPoint = {
+    source: 'harbor',
+    point: MARSTAL.snap,
+    harborId: 'marstal',
+    label: 'Marstal',
+  };
+  const seed: NextPassageSeedState = { sourcePlanId: 'plan-1', origin: marstal };
+  const activePlan: Plan = { ...makePlan(), windGrid: grid };
+  it('is active only for its own plan and an unmoved start', () => {
+    expect(activeNextPassageSeed(seed, 'plan-1', { ...marstal })).toBe(seed);
+    expect(activeNextPassageSeed(seed, 'plan-2', marstal)).toBeNull();
+    expect(activeNextPassageSeed(seed, null, marstal)).toBeNull();
+    expect(
+      activeNextPassageSeed(seed, 'plan-1', { source: 'tap', point: FLENSBURG.snap, label: 'x' }),
+    ).toBeNull();
+    expect(activeNextPassageSeed(null, 'plan-1', marstal)).toBeNull();
+  });
+  it('reaches a departure up to and including its last hour', () => {
+    expect(windGridReaches(grid, at(18, 23))).toBe(true);
+    expect(windGridReaches(grid, at(18, 23) + 1)).toBe(false);
+    expect(windGridReaches({ ...grid, timesMs: [] }, at(17, 0))).toBe(false);
+  });
+  it('offline with a reaching grid names the source and its fetch time', () =>
+    expect(nextPassageOffline(false, seed, activePlan, at(18, 10))).toEqual({
+      kind: 'stored',
+      sourceName: 'Flensburg → Marstal',
+      fetchedAtMs: at(17, 0),
+    }));
+  it('offline with a short grid reports its last hour', () =>
+    expect(nextPassageOffline(false, seed, activePlan, at(19, 10))).toEqual({
+      kind: 'too-short',
+      untilMs: at(18, 23),
+    }));
+  it('online, or without a seed or an active plan, there is no offline state', () => {
+    expect(nextPassageOffline(true, seed, activePlan, at(18, 10))).toBeNull();
+    expect(nextPassageOffline(false, null, activePlan, at(18, 10))).toBeNull();
+    expect(nextPassageOffline(false, seed, null, at(18, 10))).toBeNull();
+  });
+  it('reads the grid of the plan it is given, not a copy taken at seed time', () => {
+    const replaced: Plan = {
+      ...activePlan,
+      windGrid: uniformWindGrid(12, 225, { t0Ms: at(18, 0), hours: 96 }),
+    };
+    expect(nextPassageOffline(false, seed, replaced, at(21, 10))).toEqual({
+      kind: 'stored',
+      sourceName: 'Flensburg → Marstal',
+      fetchedAtMs: at(18, 0),
+    });
   });
 });

@@ -377,6 +377,11 @@ export function formatTime(ms: number, lang: Lang): string {
   }).format(ms);
 }
 
+export function formatWeekdayTime(ms: number, lang: Lang): string {
+  const weekday = new Intl.DateTimeFormat(LOCALES[lang], { weekday: 'short' }).format(ms);
+  return `${weekday} ${formatTime(ms, lang)}`;
+}
+
 /**
  * Local CIVIL-day index for `ms`: the local Y/M/D read off `ms`, re-anchored
  * to a UTC midnight of the same Y/M/D and divided into whole days. Two

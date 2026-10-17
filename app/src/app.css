@@ -3854,6 +3854,13 @@ select {
   align-self: flex-start;
 }
 
+.next-passage {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+}
+
 /* Focus indicator when "Details ansehen" moves focus to the Ergebnis heading
    (heading is tabIndex -1, so :focus only ever fires from that programmatic
    jump). */

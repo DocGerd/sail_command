@@ -53,6 +53,7 @@ import Card from './Card';
 import Chip from './Chip';
 import Button from './Button';
 import Disclosure from './Disclosure';
+import NextPassageAction, { type NextPassageProps } from './NextPassageAction';
 import { ShallowWarning } from './ShallowWarning';
 
 /**
@@ -311,6 +312,8 @@ export interface RouteSummaryProps {
   // #64 phase 3: focus target for the Plan-tab "Details ansehen" link — App
   // forwards it onto the Ergebnis card heading (tabIndex -1, focused on jump).
   resultHeadingRef?: Ref<HTMLHeadingElement>;
+  /** #1707: offered outside the rig tabpanel, whichever rig tab is shown. */
+  nextPassage?: NextPassageProps;
 }
 
 // Okabe-Ito colorblind-safe green/red, echoing the port/starboard nav-light
@@ -550,6 +553,7 @@ export default function RouteSummary({
   rig,
   onRigChange,
   resultHeadingRef,
+  nextPassage,
 }: RouteSummaryProps) {
   const t = useT();
   const [lang] = useLang();
@@ -1100,6 +1104,14 @@ export default function RouteSummary({
           </>
         )}
       </div>
+      {nextPassage && (
+        <NextPassageAction
+          key={`${plan.id}-${plan.createdAtMs}`}
+          plan={plan}
+          rig={rig}
+          {...nextPassage}
+        />
+      )}
     </Card>
   );
 }
