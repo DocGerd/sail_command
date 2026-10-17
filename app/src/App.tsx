@@ -17,7 +17,7 @@ import {
 } from './state/AppState';
 import { usePlanFlow, type PlanningState as FlowPlanningState } from './state/usePlanFlow';
 import { dedupeRequestVias, dedupeViaPoints } from './state/replan';
-import { useLiveReroute } from './state/reroute';
+import { cloneWindGrid, useLiveReroute } from './state/reroute';
 import { useOwnshipGps } from './state/useOwnshipGps';
 import { useSessionRestore } from './state/useSessionRestore';
 import { loadRoutingAssets } from './services/assets';
@@ -68,15 +68,19 @@ import {
   pickedPointsOfPlan,
   planFormDirty,
   routingSettingsDirty,
+  activeNextPassageSeed,
+  nextPassageOffline,
+  seedNextPassage,
   segmentModesDiffer,
   viaPointsDiffer,
+  type NextPassageSeedState,
 } from './lib/planForm';
 import { useWideLayout } from './lib/useWideLayout';
 import { useBannerHeight } from './lib/useBannerHeight';
 import { usePersistedNumber } from './lib/usePersistedNumber';
 import { usePersistedToggle } from './lib/usePersistedToggle';
 import { PANEL_MIN_WIDTH_PX, panelMaxWidthPx } from './lib/panelWidth';
-import { formatLatLon } from './lib/format';
+import { formatLatLon, formatWeekdayTime } from './lib/format';
 import { resolveHarborPickTarget } from './lib/harborGeoJson';
 import { boatById } from './data/boats';
 import {
@@ -654,6 +658,12 @@ function AppShell() {
   // as a coordinate pick. 'via' extends the same machinery (E8): all of the
   // above disarm paths apply to it unchanged.
   const [tapTarget, setTapTarget] = useState<TapTarget | null>(null);
+
+  // #1707: ephemeral; validity is derived (activeNextPassageSeed), never stored.
+  const [nextPassageSeed, setNextPassageSeed] = useState<NextPassageSeedState | null>(null);
+  const activeSeed = activeNextPassageSeed(nextPassageSeed, plan?.id ?? null, origin);
+  const [pendingDestinationFocus, setPendingDestinationFocus] = useState(false);
+  const handleDestinationFocused = useCallback(() => setPendingDestinationFocus(false), []);
 
   // #571 redesign REMOVED the Phase-E clobber-guard `planIdRef` that used to
   // live here: it existed ONLY to protect the two via-replan resolution
@@ -1350,8 +1360,14 @@ function AppShell() {
         ? { count: 0, named: false, labels: '' }
         : droppedViaLabels(origin.point, viaPoints, destination.point, lang, t),
     );
-    void run(request, `${origin.label} → ${destination.label}`);
+    void run(
+      request,
+      `${origin.label} → ${destination.label}`,
+      activeSeed && plan ? { storedWindGrid: cloneWindGrid(plan.windGrid) } : {},
+    );
   }, [
+    activeSeed,
+    plan,
     origin,
     destination,
     departureMs,
@@ -1364,6 +1380,21 @@ function AppShell() {
     lang,
     t,
   ]);
+
+  // #1707: never touches the active plan; the new plan comes only from run().
+  const handleNextPassage = useCallback(() => {
+    if (!plan) return;
+    const seed = seedNextPassage(plan, rig, harbors, lang, Date.now());
+    if (!seed) return;
+    setOrigin(seed.origin);
+    setDestination(null);
+    setDraftViaPoints([]);
+    setDraftSegmentModes(emptySegmentModes(0));
+    setTapTarget(null);
+    setDepartureMs(seed.departureMs);
+    setNextPassageSeed({ sourcePlanId: plan.id, origin: seed.origin });
+    setPendingDestinationFocus(true);
+  }, [plan, rig, harbors, lang]);
 
   // #114: recalculate a saved plan with a FRESH forecast — seeds run() from
   // the plan's own stored request (origin/destination/vias/settings) with the
@@ -1429,18 +1460,34 @@ function AppShell() {
   // for it to be "in flight" with.
   const runBusy =
     !(planning.phase === 'idle' || planning.phase === 'error') || liveReroute.state.rerouting;
-  const canPlan = origin !== null && destination !== null && online && !runBusy;
+  const offlineSeed = nextPassageOffline(online, activeSeed, plan, departureMs);
+  const seedPlannableOffline = offlineSeed?.kind === 'stored';
+  const canPlan =
+    origin !== null && destination !== null && (online || seedPlannableOffline) && !runBusy;
+  const nextPassageGuidance =
+    offlineSeed === null
+      ? null
+      : offlineSeed.kind === 'stored'
+        ? t('planner.nextPassage.offlineStored', {
+            name: offlineSeed.sourceName,
+            fetched: formatWeekdayTime(offlineSeed.fetchedAtMs, lang),
+          })
+        : t('planner.nextPassage.offlineTooShort', {
+            until: formatWeekdayTime(offlineSeed.untilMs, lang),
+          });
+  const nextPassageDisabled = runBusy || harbors.length === 0;
   // §3.5: the primary button always states WHY it's disabled. Offline is the
   // most blocking (nothing can be planned), then a missing endpoint. When both
   // endpoints are set and online, the button is enabled — reason is null.
   // #571 redesign REVERTED a via-replanning-in-flight branch that used to sit
   // here: a via edit no longer disables anything (see `runBusy` above), so
   // this reason is back to exactly the two pre-#571 cases.
-  const planDisabledReason = !online
-    ? t('error.offline')
-    : origin === null || destination === null
-      ? t('planner.disabled.pickEndpoints')
-      : null;
+  const planDisabledReason =
+    !online && !seedPlannableOffline
+      ? t('error.offline')
+      : origin === null || destination === null
+        ? t('planner.disabled.pickEndpoints')
+        : null;
 
   const plannerStatus = toPlannerStatus(planning, t);
   const stale = plan !== null && isStaleForecast(plan);
@@ -1768,7 +1815,11 @@ function AppShell() {
             {t('app.disclaimer')}
           </Banner>
         )}
-        {!online && <Banner kind="warning">{t('banner.offline')}</Banner>}
+        {!online && (
+          <Banner kind="warning">
+            {t(seedPlannableOffline ? 'banner.offlineNextPassage' : 'banner.offline')}
+          </Banner>
+        )}
         {mapError && (
           <Banner kind="error" onDismiss={handleDismissMapError} dismissLabel={t('banner.dismiss')}>
             {t('banner.mapError')}
@@ -2056,6 +2107,14 @@ function AppShell() {
                   formDirty={formDirty}
                   onViewDetails={handleViewDetails}
                   onOpenBoatSettings={handleOpenBoatSettings}
+                  nextPassage={{
+                    harbors,
+                    disabled: nextPassageDisabled,
+                    onNextPassage: handleNextPassage,
+                  }}
+                  nextPassageGuidance={nextPassageGuidance}
+                  pendingDestinationFocus={pendingDestinationFocus}
+                  onDestinationFocused={handleDestinationFocused}
                 />
                 {/* #356 part (a): "Compare departure times" — its own card
                     below the main planner form, gated internally on `plan`
@@ -2104,6 +2163,14 @@ function AppShell() {
                     rig={rig}
                     onRigChange={setRig}
                     resultHeadingRef={routeResultHeadingRef}
+                    nextPassage={{
+                      harbors,
+                      disabled: nextPassageDisabled,
+                      onNextPassage: () => {
+                        handleNextPassage();
+                        handleTabChange('plan');
+                      },
+                    }}
                   />
                 )}
                 {plan && rig && (

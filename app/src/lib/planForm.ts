@@ -2,6 +2,7 @@ import type { Lang } from '../i18n';
 import { formatLatLon } from './format';
 import { nextFullHourMs } from '../components/PlannerPanel';
 import { planViaPoints } from './planViaPoints';
+import { activeRigResult } from './plan';
 import type { SailId } from '../data/boats';
 import {
   DEFAULT_SETTINGS,
@@ -11,6 +12,7 @@ import {
   type Plan,
   type SegmentMode,
   type Settings,
+  type WindGrid,
 } from '../types';
 
 /**
@@ -79,6 +81,77 @@ export function pickedPointsOfPlan(
  */
 export function departureSeedMs(plan: Plan, nowMs: number = Date.now()): number {
   return plan.request.departureMs > nowMs ? plan.request.departureMs : nextFullHourMs(nowMs);
+}
+
+/** First local 10:00 strictly after both the ETA and now. Calendar math, never +24 h: DST days are 23/25 h. */
+export function nextPassageDepartureMs(etaMs: number, nowMs: number): number {
+  const d = new Date(Math.max(etaMs, nowMs));
+  const base = d.getTime();
+  d.setHours(10, 0, 0, 0);
+  if (d.getTime() <= base) {
+    d.setDate(d.getDate() + 1);
+    d.setHours(10, 0, 0, 0);
+  }
+  return d.getTime();
+}
+
+/** #1707: the form seed for planning the passage after `plan`; null when no rig found a route. */
+export function seedNextPassage(
+  plan: Plan,
+  rig: SailId | null,
+  harbors: Harbor[],
+  lang: Lang,
+  nowMs: number,
+): { origin: PickedPoint; departureMs: number } | null {
+  const shown = rig === null ? null : activeRigResult(plan, rig);
+  const result = shown ?? plan.result.sails.find((s) => s.result !== null)?.result ?? null;
+  if (result === null) return null;
+  return {
+    origin: pickedPointsOfPlan(plan, harbors, lang).destination,
+    departureMs: nextPassageDepartureMs(result.etaMs, nowMs),
+  };
+}
+
+export function windGridReaches(grid: WindGrid, departureMs: number): boolean {
+  return grid.timesMs.length > 0 && grid.timesMs[grid.timesMs.length - 1] >= departureMs;
+}
+
+/**
+ * Ephemeral (never persisted). Holds no forecast: an active seed implies the
+ * source plan is the active plan, whose current grid is the one to reuse.
+ */
+export interface NextPassageSeedState {
+  sourcePlanId: string;
+  origin: PickedPoint;
+}
+
+/** The seed counts only while its own plan is active and the start is unmoved. */
+export function activeNextPassageSeed(
+  seed: NextPassageSeedState | null,
+  activePlanId: string | null,
+  origin: PickedPoint | null,
+): NextPassageSeedState | null {
+  if (seed === null || activePlanId !== seed.sourcePlanId) return null;
+  return pickedPointMoved(origin, seed.origin) ? null : seed;
+}
+
+export type NextPassageOffline =
+  | { kind: 'stored'; sourceName: string; fetchedAtMs: number }
+  | { kind: 'too-short'; untilMs: number };
+
+/** `activePlan` is the plan the (active) seed was made from. */
+export function nextPassageOffline(
+  online: boolean,
+  seed: NextPassageSeedState | null,
+  activePlan: Plan | null,
+  departureMs: number,
+): NextPassageOffline | null {
+  if (online || seed === null || activePlan === null) return null;
+  const grid = activePlan.windGrid;
+  if (windGridReaches(grid, departureMs)) {
+    return { kind: 'stored', sourceName: activePlan.name, fetchedAtMs: grid.fetchedAtMs };
+  }
+  return { kind: 'too-short', untilMs: grid.timesMs[grid.timesMs.length - 1] ?? 0 };
 }
 
 /** The form snapshot planFormDirty compares against a plan's own request. */

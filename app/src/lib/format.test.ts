@@ -47,6 +47,7 @@ import {
   formatDriftMin,
   formatLatLon,
   formatSliderTime,
+  formatWeekdayTime,
   parseHemisphereCoord,
   resolveHemisphereCoordCommit,
 } from './format';
@@ -905,4 +906,10 @@ describe('formatDateTime', () => {
     const ms = new Date(2026, 0, 5, 9, 5).getTime();
     expect(formatDateTime(ms, 'en')).toBe('05/01/2026, 09:05');
   });
+});
+
+it('#1707: formatWeekdayTime pairs the short weekday with the 24 h time', () => {
+  const sat10 = new Date(2026, 9, 17, 10, 0).getTime();
+  expect(formatWeekdayTime(sat10, 'de')).toBe('Sa 10:00');
+  expect(formatWeekdayTime(sat10, 'en')).toBe('Sat 10:00');
 });
