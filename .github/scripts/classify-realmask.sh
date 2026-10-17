@@ -45,6 +45,8 @@ CLOSURE_MJS=".claude/skills/sweep-closure/closure.mjs"
 is_supplement_path() {
   case "$1" in
     app/src/routing/realmask.repro.*) return 0 ;;
+    app/src/routing/harborHandover.ts) return 0 ;;
+    app/src/lib/harborHandover.ts) return 0 ;;
     app/src/test/realmaskFixtures.ts) return 0 ;;
     app/vite.config.ts) return 0 ;;
     app/package.json) return 0 ;;
@@ -266,7 +268,7 @@ EOF
     rm -f "$out" "$sum" "$log"
   }
 
-  EXPECTED_CASES=37
+  EXPECTED_CASES=39
   echo "=== classify-realmask.sh: ${EXPECTED_CASES} adversarial cases (bash -e) ==="
 
   # ---------- 1 non-PR event ----------
@@ -531,6 +533,15 @@ EOF
   git rm -q 'app/src/lib/q"t.ts'
   H=$(commit_with delquoted)
   run "35 deletion under app/ with a quoted filename (-z)" true pull_request "$B" "$H" "deleted path under app/"
+
+  # ---------- 36/37 #1721: the handover modules the realmask suite imports ----------
+  r=$(mkrepo); cd "$r"; B=$(git rev-parse HEAD)
+  echo x >> app/src/routing/harborHandover.ts; H=$(commit_with supp13)
+  run "36 supplement: app/src/routing/harborHandover.ts" true pull_request "$B" "$H" "supplement path: app/src/routing/harborHandover.ts"
+
+  r=$(mkrepo); cd "$r"; B=$(git rev-parse HEAD)
+  echo x >> app/src/lib/harborHandover.ts; H=$(commit_with supp14)
+  run "37 supplement: app/src/lib/harborHandover.ts" true pull_request "$B" "$H" "supplement path: app/src/lib/harborHandover.ts"
 
   echo
   echo "PASS=$PASS FAIL=$FAIL"

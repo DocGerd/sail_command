@@ -5,14 +5,18 @@ import { fileURLToPath } from 'node:url';
 import { NavMask } from '../lib/mask';
 import { uniformGate, APPROACH_RADIUS_M } from '../lib/depthGate';
 import { findRelaxedGate } from '../routing/relaxedDepth';
-import { BOATS, type BoatDef } from '../data/boats';
-import { defaultSafetyDepthM, relaxationFloorM } from '../lib/boatDepth';
+import { BOATS, boatById, type BoatDef } from '../data/boats';
+import { defaultSafetyDepthM, minSafetyDepthM, relaxationFloorM } from '../lib/boatDepth';
+import { haversineNm } from '../lib/geo';
 import { openWaterMask } from './fixtures';
 import { solverTimeoutMs } from './timeouts';
 import {
   computeHarborAccess,
+  findHarborHandover,
+  findHarborHandoverFor,
   findLowerSettingHint,
   floodHasCell,
+  harborEndpointPocketed,
   SEED_POINT,
   type FloodResult,
   type HarborWithReachability,
@@ -587,4 +591,125 @@ describe('#1290 harborReachability', () => {
     };
     expect(floodHasCell(wrongBitsLength, mask, validIdx)).toBe(false);
   });
+});
+
+describe('#1721 harbour handover on the real mask', () => {
+  const EASY_GO = boatById('salona-44-easy-go');
+  const snapOf = (id: string) => harbors.find((h) => h.id === id)!.snap;
+  const metres = (a: { lat: number; lon: number }, b: { lat: number; lon: number }) =>
+    haversineNm(a, b) * 1852;
+
+  it(
+    'pocketed iff the picker reads unreachable, at the pinned harbours',
+    { timeout: solverTimeoutMs(300_000) },
+    () => {
+      expect(harborEndpointPocketed(mask, snapOf('marstal'), EASY_GO, 3.5)).toBe(true);
+      expect(harborEndpointPocketed(mask, snapOf('augustenborg'), EASY_GO, 3.5)).toBe(true);
+      expect(harborEndpointPocketed(mask, snapOf('faldsled'), EASY_GO, 3.5)).toBe(false);
+      expect(harborEndpointPocketed(mask, snapOf('bagenkop'), EASY_GO, 3.5)).toBe(false);
+    },
+  );
+
+  // Literal pins from the shipped function, searched at the REQUESTED gate.
+  it.each([
+    {
+      id: 'marstal',
+      boat: EASY_GO,
+      gateM: 3.5,
+      at: { lat: 54.84770833333333, lon: 10.541454545454545 },
+      m: 1423.4,
+    },
+    // A lower requested gate picks a nearer, different cell: no default-gate lift.
+    {
+      id: 'marstal',
+      boat: EASY_GO,
+      gateM: 2.7,
+      at: { lat: 54.861041666666665, lon: 10.523272727272728 },
+      m: 462.1,
+    },
+    {
+      id: 'augustenborg',
+      boat: EASY_GO,
+      gateM: 3.5,
+      at: { lat: 54.94354166666666, lon: 9.835272727272727 },
+      m: 988.3,
+    },
+    // Not the nearer candidate whose line crosses a 0.1 m cell.
+    {
+      id: 'burgstaaken',
+      boat: boatById('salona-45'),
+      gateM: 4.0,
+      at: { lat: 54.40270833333333, lon: 11.197454545454546 },
+      m: 812.8,
+    },
+  ])(
+    '$id at $gateM m: handover $m m off',
+    { timeout: solverTimeoutMs(300_000) },
+    ({ id, boat, gateM, at, m }) => {
+      const p = snapOf(id);
+      const h = findHarborHandoverFor(mask, p, boat, gateM);
+      expect(h).toEqual(at);
+      expect(metres(p, h!)).toBeCloseTo(m, 1);
+    },
+  );
+
+  it(
+    'never finds a handover for the known-disconnected harbours',
+    { timeout: solverTimeoutMs(300_000) },
+    () => {
+      const kd = harbors.filter((h) => h.knownDisconnected === true);
+      expect(kd.length).toBe(5);
+      const found: string[] = [];
+      for (const h of kd) {
+        const gates = new Set<number>([40]);
+        for (const b of BOATS) {
+          for (
+            let dm = Math.round(minSafetyDepthM(b) * 10);
+            dm <= Math.round(defaultSafetyDepthM(b) * 10);
+            dm++
+          ) {
+            gates.add(dm);
+          }
+        }
+        for (const dm of gates) {
+          if (findHarborHandover(mask, h.snap, dm / 10) !== null) found.push(`${h.id}@${dm / 10}`);
+        }
+      }
+      expect(found).toEqual([]);
+    },
+  );
+
+  // The handover copy says the grid reads parts of the striped line shallower
+  // than the gate. Pinned for every handover a catalogue boat can produce at
+  // its own range of gates.
+  it(
+    'every produced handover line crosses a cell below the gate',
+    { timeout: solverTimeoutMs(600_000) },
+    () => {
+      const produced: string[] = [];
+      for (const boat of BOATS) {
+        for (
+          let dm = Math.round(minSafetyDepthM(boat) * 10);
+          dm <= Math.round(defaultSafetyDepthM(boat) * 10);
+          dm++
+        ) {
+          const gateM = dm / 10;
+          for (const h of harbors) {
+            if (h.knownDisconnected === true) continue;
+            if (!harborEndpointPocketed(mask, h.snap, boat, gateM)) continue;
+            const handover = findHarborHandoverFor(mask, h.snap, boat, gateM);
+            if (handover === null) continue;
+            const label = `${boat.id} ${h.id}@${gateM}`;
+            produced.push(label);
+            // segmentShallowestBelow's null also means "left the grid".
+            expect(mask.inBounds(h.snap), label).toBe(true);
+            expect(mask.inBounds(handover), label).toBe(true);
+            expect(mask.segmentShallowestBelow(h.snap, handover, gateM), label).not.toBeNull();
+          }
+        }
+      }
+      expect(produced).toContain('salona-44-easy-go marstal@3.5');
+      expect(produced).toContain('salona-44-easy-go augustenborg@3.5');
+    },
+  );
 });
