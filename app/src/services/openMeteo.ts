@@ -6,6 +6,12 @@ const LATS = Array.from({ length: 14 }, (_, i) => Number((54.3 + i * 0.1).toFixe
 const LONS = Array.from({ length: 23 }, (_, i) => Number((9.4 + i * 0.1).toFixed(1)));
 const RETRY_DELAYS_MS = [1000, 4000];
 const REQUEST_TIMEOUT_MS = 15_000;
+const RATE_LIMIT_BASE_DELAY_MS = 1000;
+const RATE_LIMIT_WAIT_BUDGET_MS = 30_000;
+const RATE_LIMIT_MAX_RETRIES = 4;
+const RATE_LIMIT_BODY_TIMEOUT_MS = 2000;
+const OVERALL_RETRY_BUDGET_MS = 45_000;
+export const GRID_CACHE_TTL_MS = 10 * 60_000;
 
 export type OpenMeteoErrorKind = 'offline' | 'rate-limited' | 'http' | 'malformed';
 
@@ -70,7 +76,69 @@ function fetchWithTimeout(url: string, fetchFn: typeof fetch): Promise<Response>
   });
 }
 
+// Equal jitter: the delay never exceeds `ms`, so a caller advancing by the base
+// delay always covers it.
+function jittered(ms: number): number {
+  return Math.round(ms * (0.5 + Math.random() * 0.5));
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+// The request timeout ends at the headers, so a body read needs its own timer.
+async function readTextWithTimeout(res: Response, ms: number): Promise<string> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      res.text(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          res.body?.cancel().catch(() => {});
+          reject(new OpenMeteoError('offline', `response body timed out after ${ms}ms`));
+        }, ms);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+type RateLimitClass = 'transient' | 'quota' | 'unknown';
+
+// Open-Meteo states the limit in the 429 body's `reason`. Quota wording is
+// checked first so a daily/hourly reason can never be read as transient.
+async function classifyRateLimit(res: Response): Promise<{ cls: RateLimitClass; reason: string }> {
+  let reason = '';
+  try {
+    const text = await readTextWithTimeout(res, RATE_LIMIT_BODY_TIMEOUT_MS);
+    const body: unknown = JSON.parse(text);
+    const r = (body as { reason?: unknown } | null)?.reason;
+    if (typeof r === 'string') reason = r;
+  } catch {
+    // Unreadable body stays 'unknown'.
+  }
+  const lower = reason.toLowerCase();
+  if (/hourly|daily|monthly|tomorrow/.test(lower)) return { cls: 'quota', reason };
+  if (/minutely|concurrent/.test(lower)) return { cls: 'transient', reason };
+  return { cls: 'unknown', reason };
+}
+
+function retryAfterMs(res: Response): number | null {
+  const raw = res.headers.get('Retry-After');
+  if (raw === null || raw.trim() === '') return null;
+  if (/^\d+$/.test(raw.trim())) return Number(raw) * 1000;
+  // Date.parse accepts bare numbers like "-1" as years, so require letters.
+  if (!/[a-z]/i.test(raw)) return null;
+  const at = Date.parse(raw);
+  return Number.isNaN(at) ? null : Math.max(0, at - Date.now());
+}
+
 async function fetchWithRetry(url: string, fetchFn: typeof fetch): Promise<Response> {
+  let rateLimitAttempts = 0;
+  const startedAtMs = Date.now();
+  const withinBudget = (waitMs: number) =>
+    Date.now() - startedAtMs + waitMs <= OVERALL_RETRY_BUDGET_MS;
   for (let attempt = 0; ; attempt++) {
     let res: Response;
     try {
@@ -79,17 +147,42 @@ async function fetchWithRetry(url: string, fetchFn: typeof fetch): Promise<Respo
       // failure — same branch, same retry/backoff, same 'offline' on exhaustion.
       res = await fetchWithTimeout(url, fetchFn);
     } catch (err) {
-      if (attempt >= RETRY_DELAYS_MS.length)
+      const delay = jittered(RETRY_DELAYS_MS[attempt] ?? 0);
+      if (attempt >= RETRY_DELAYS_MS.length || !withinBudget(delay))
         throw new OpenMeteoError('offline', `network failure: ${String(err)}`);
-      await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt]));
+      await sleep(delay);
       continue;
     }
     if (res.ok) return res;
-    if (res.status === 429)
-      throw new OpenMeteoError('rate-limited', 'Open-Meteo minutely limit reached');
-    if (res.status >= 500 && attempt < RETRY_DELAYS_MS.length) {
-      await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt]));
+    if (res.status === 429) {
+      const { cls, reason } = await classifyRateLimit(res);
+      // 'rate-limited' copy says to wait a moment, which is false for an
+      // hourly/daily quota, so those surface as 'http'.
+      if (cls === 'quota')
+        throw new OpenMeteoError('http', `Open-Meteo quota exhausted: ${reason}`);
+      const limited = new OpenMeteoError(
+        'rate-limited',
+        `Open-Meteo rate limit reached: ${reason}`,
+      );
+      if (cls === 'unknown') throw limited;
+      if (rateLimitAttempts >= RATE_LIMIT_MAX_RETRIES) throw limited;
+      // Retry-After may lengthen the backoff but never shorten it to zero.
+      const wait = Math.max(
+        retryAfterMs(res) ?? 0,
+        jittered(RATE_LIMIT_BASE_DELAY_MS * 2 ** rateLimitAttempts),
+      );
+      if (Date.now() - startedAtMs + wait > RATE_LIMIT_WAIT_BUDGET_MS) throw limited;
+      rateLimitAttempts++;
+      await sleep(wait);
+      attempt--; // 429 backoff does not consume the 5xx/network retry allowance
       continue;
+    }
+    if (res.status >= 500 && attempt < RETRY_DELAYS_MS.length) {
+      const delay = jittered(RETRY_DELAYS_MS[attempt]!);
+      if (withinBudget(delay)) {
+        await sleep(delay);
+        continue;
+      }
     }
     // 5xx exhausted its retries maps to 'offline' (not 'http'): a persistently
     // failing server reads to the user as "can't reach the forecast service"
@@ -100,15 +193,18 @@ async function fetchWithRetry(url: string, fetchFn: typeof fetch): Promise<Respo
   }
 }
 
-export async function fetchWindGrid(opts?: {
-  fetchFn?: typeof fetch;
-  fixtureUrl?: string;
-}): Promise<WindGrid> {
-  const fetchFn = opts?.fetchFn ?? fetch;
-  const res = await fetchWithRetry(opts?.fixtureUrl ?? buildUrl(), fetchFn);
+async function loadWindGrid(url: string, fetchFn: typeof fetch): Promise<WindGrid> {
+  const res = await fetchWithRetry(url, fetchFn);
   let data: unknown;
+  let text: string;
   try {
-    data = await res.json();
+    text = await readTextWithTimeout(res, REQUEST_TIMEOUT_MS);
+  } catch (err) {
+    if (err instanceof OpenMeteoError) throw err;
+    throw new OpenMeteoError('malformed', 'response body could not be read');
+  }
+  try {
+    data = JSON.parse(text);
   } catch {
     throw new OpenMeteoError('malformed', 'response body is not valid JSON');
   }
@@ -145,9 +241,10 @@ export async function fetchWindGrid(opts?: {
       if (!Array.isArray(h?.wind_speed_10m)) missing.push('wind_speed_10m');
       if (!Array.isArray(h?.wind_direction_10m)) missing.push('wind_direction_10m');
       if (!Array.isArray(h?.wind_gusts_10m)) missing.push('wind_gusts_10m');
-      const msg = missing.length > 0
-        ? `point ${p} missing hourly.${missing.join(', hourly.')}`
-        : `ragged hourly arrays at point ${p}`;
+      const msg =
+        missing.length > 0
+          ? `point ${p} missing hourly.${missing.join(', hourly.')}`
+          : `ragged hourly arrays at point ${p}`;
       throw new OpenMeteoError('malformed', msg);
     }
     for (let t = 0; t < nT; t++) {
@@ -158,11 +255,20 @@ export async function fetchWindGrid(opts?: {
       // null/undefined/string elements must not silently become 0 (calm) —
       // a fake calm can flip a leg from sail to motor. Reject at the source.
       if (!Number.isFinite(speed))
-        throw new OpenMeteoError('malformed', `point ${p} hour ${t}: wind_speed_10m is not a finite number`);
+        throw new OpenMeteoError(
+          'malformed',
+          `point ${p} hour ${t}: wind_speed_10m is not a finite number`,
+        );
       if (!Number.isFinite(dir))
-        throw new OpenMeteoError('malformed', `point ${p} hour ${t}: wind_direction_10m is not a finite number`);
+        throw new OpenMeteoError(
+          'malformed',
+          `point ${p} hour ${t}: wind_direction_10m is not a finite number`,
+        );
       if (!Number.isFinite(gust))
-        throw new OpenMeteoError('malformed', `point ${p} hour ${t}: wind_gusts_10m is not a finite number`);
+        throw new OpenMeteoError(
+          'malformed',
+          `point ${p} hour ${t}: wind_gusts_10m is not a finite number`,
+        );
       speedKn[k] = speed;
       dirFromDeg[k] = dir;
       gustKn[k] = gust;
@@ -178,4 +284,55 @@ export async function fetchWindGrid(opts?: {
     fetchedAtMs: Date.now(),
     model: 'icon_seamless',
   };
+}
+
+function cloneGrid(g: WindGrid): WindGrid {
+  return {
+    ...g,
+    lats: [...g.lats],
+    lons: [...g.lons],
+    timesMs: [...g.timesMs],
+    speedKn: g.speedKn.slice(),
+    dirFromDeg: g.dirFromDeg.slice(),
+    gustKn: g.gustKn.slice(),
+  };
+}
+
+// fetchFn is part of the identity so an injected fetch never reads a grid
+// fetched through another one.
+let cache: { url: string; fetchFn: typeof fetch; grid: WindGrid; storedAtMs: number } | null = null;
+const inFlight = new Map<string, { fetchFn: typeof fetch; promise: Promise<WindGrid> }>();
+
+export function clearWindGridCache(): void {
+  cache = null;
+  inFlight.clear();
+}
+
+export async function fetchWindGrid(opts?: {
+  fetchFn?: typeof fetch;
+  fixtureUrl?: string;
+}): Promise<WindGrid> {
+  const fetchFn = opts?.fetchFn ?? fetch;
+  if (opts?.fixtureUrl !== undefined) return loadWindGrid(opts.fixtureUrl, fetchFn);
+
+  const url = buildUrl();
+  if (cache && cache.url === url && cache.fetchFn === fetchFn) {
+    const age = Date.now() - cache.storedAtMs;
+    if (age >= 0 && age < GRID_CACHE_TTL_MS) return cloneGrid(cache.grid);
+  }
+  let pending = inFlight.get(url);
+  if (!pending || pending.fetchFn !== fetchFn) {
+    const promise = loadWindGrid(url, fetchFn).then((grid) => {
+      cache = { url, fetchFn, grid, storedAtMs: Date.now() };
+      return grid;
+    });
+    const created = { fetchFn, promise };
+    pending = created;
+    inFlight.set(url, created);
+    const release = () => {
+      if (inFlight.get(url) === created) inFlight.delete(url);
+    };
+    promise.then(release, release);
+  }
+  return cloneGrid(await pending.promise);
 }
