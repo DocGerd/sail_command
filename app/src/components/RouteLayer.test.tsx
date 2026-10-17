@@ -454,6 +454,53 @@ describe('RouteLayer fit padding (#1626)', () => {
   });
 });
 
+// #1641: the fit pads for the endpoint labels hanging off the markers.
+describe('RouteLayer fit padding for endpoint labels (#1641)', () => {
+  const rect = (left: number, top: number, right: number, bottom: number) =>
+    ({ left, top, right, bottom, width: right - left, height: bottom - top }) as DOMRect;
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    document.querySelectorAll('.sc-endpoint-marker').forEach((el) => el.remove());
+  });
+
+  function stubLabel(map: ReturnType<typeof makeFakeMap>, label: DOMRect) {
+    const mapEl = document.createElement('div');
+    mapEl.appendChild(map.getCanvasContainer());
+    const marker = document.createElement('div');
+    marker.className = 'sc-endpoint-marker sc-endpoint-marker-origin';
+    const labelEl = document.createElement('span');
+    labelEl.className = 'sc-endpoint-marker-label';
+    marker.appendChild(labelEl);
+    document.body.appendChild(marker);
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: Element,
+    ) {
+      if (this === mapEl) return rect(0, 0, 1000, 800);
+      if (this === marker) return rect(290, 265, 310, 285);
+      if (this === labelEl) return label;
+      return rect(0, 0, 0, 0);
+    });
+  }
+
+  it('grows the padding on the edge a label pokes past, from the second fit on', () => {
+    const map = makeFakeMap();
+    stubLabel(map, rect(-40, 289, 80, 305));
+    renderRouteLayer(map, null);
+    const lefts = map.fitBounds.mock.calls.map((c) => c[1].padding.left as number);
+    expect(lefts[0]).toBe(48);
+    expect(lefts[1]).toBeCloseTo(96, 6);
+    expect(lefts.length).toBe(3);
+  });
+
+  it('fits once when the label sits inside the room', () => {
+    const map = makeFakeMap();
+    stubLabel(map, rect(20, 289, 100, 305));
+    renderRouteLayer(map, null);
+    expect(map.fitBounds).toHaveBeenCalledTimes(1);
+  });
+});
+
 // #1639: chrome that resizes after the auto-fit re-pads the fit until the user
 // moves the camera. jsdom has no ResizeObserver, so the callbacks are captured.
 describe('RouteLayer re-fit after a layout change (#1639)', () => {

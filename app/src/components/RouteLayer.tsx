@@ -13,7 +13,7 @@ import {
   routePointFeatures,
 } from '../lib/routeGeoJson';
 import { installStyleSetup } from '../lib/styleReload';
-import { fitPadding, type Box } from '../lib/fitPadding';
+import { fitPadding, labelOverhang, type Box, type FitPadding } from '../lib/fitPadding';
 import { usePersistedToggle } from '../lib/usePersistedToggle';
 import { getContoursFetchState, subscribeContoursFetchState } from '../lib/contours';
 import { useWideLayout } from '../lib/useWideLayout';
@@ -589,6 +589,54 @@ function measureChrome(): Box[] {
   return Array.from(document.querySelectorAll(MAP_CHROME_SELECTOR), rectOf);
 }
 
+// #1641: the endpoint labels hang off their marker; a fit that only pads the
+// marker points leaves them under the chrome or off the map. Each label is kept
+// as the route end it hangs off plus its offsets from the marker, so it can be
+// re-projected after every camera move.
+interface EndpointLabel {
+  at: [number, number];
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+const MAX_LABEL_PASSES = 3;
+
+// The anchor is the route end, not the marker's own screen position: unprojecting
+// that is too coarse when the camera is zoomed far out.
+function measureEndpointLabels(legs: readonly Leg[]): EndpointLabel[] {
+  const first = legs[0];
+  const last = legs[legs.length - 1];
+  if (!first || !last) return [];
+  const ends = [
+    { role: 'origin', at: [first.start.lon, first.start.lat] as [number, number] },
+    { role: 'destination', at: [last.end.lon, last.end.lat] as [number, number] },
+  ];
+  const out: EndpointLabel[] = [];
+  for (const { role, at } of ends) {
+    const marker = document.querySelector(`.sc-endpoint-marker-${role}`);
+    const label = marker?.querySelector('.sc-endpoint-marker-label');
+    if (!marker || !label) continue;
+    const m = rectOf(marker);
+    const l = rectOf(label);
+    if (!(l.right > l.left && l.bottom > l.top)) continue;
+    const x = (m.left + m.right) / 2;
+    const y = (m.top + m.bottom) / 2;
+    out.push({ at, left: x - l.left, right: l.right - x, top: y - l.top, bottom: l.bottom - y });
+  }
+  return out;
+}
+
+function projectedLabelRects(map: MaplibreMap, box: Box, labels: readonly EndpointLabel[]): Box[] {
+  return labels.map((l) => {
+    const p = map.project(l.at);
+    const x = box.left + p.x;
+    const y = box.top + p.y;
+    return { left: x - l.left, right: x + l.right, top: y - l.top, bottom: y + l.bottom };
+  });
+}
+
 // #297: fits the map to a set of legs, preserving the current bearing.
 // SHARED by the auto-fit-on-plan-change effect below AND the manual "fit
 // route to view" button — the ONLY two callers of RouteLayer's fitBounds, so
@@ -612,9 +660,25 @@ function fitToLegs(map: MaplibreMap, legs: Leg[]): string | null {
   // full rationale (unchanged from the pre-#297 auto-fit effect this was
   // extracted from).
   const box = mapBox(map);
-  const padding = fitPadding(box, measureChrome());
-  map.fitBounds(bounds, { padding, duration: 0, bearing: map.getBearing() });
-  return JSON.stringify([box, padding]);
+  const chrome = measureChrome();
+  const labels = measureEndpointLabels(legs);
+  let extra: FitPadding = { top: 0, right: 0, bottom: 0, left: 0 };
+  for (let pass = 0; pass < MAX_LABEL_PASSES; pass++) {
+    map.fitBounds(bounds, {
+      padding: fitPadding(box, chrome, extra),
+      duration: 0,
+      bearing: map.getBearing(),
+    });
+    const over = labelOverhang(box, chrome, projectedLabelRects(map, box, labels));
+    if (Math.max(over.top, over.right, over.bottom, over.left) < 1) break;
+    extra = {
+      top: extra.top + Math.max(0, over.top),
+      right: extra.right + Math.max(0, over.right),
+      bottom: extra.bottom + Math.max(0, over.bottom),
+      left: extra.left + Math.max(0, over.left),
+    };
+  }
+  return fitLayoutKey(map);
 }
 
 // What a fit would measure now; equal to a fit's return value when nothing moved.

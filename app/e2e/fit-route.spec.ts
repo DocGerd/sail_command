@@ -395,3 +395,56 @@ test.describe('#1639: start marker clear of the Live readout (tabletPortrait)', 
     }
   });
 });
+// #1641: the DOM endpoint labels hang off the markers and must clear the chrome too.
+interface LabelState {
+  overlapPx: number;
+  insideMap: boolean;
+}
+
+async function labelState(page: Page, role: 'origin' | 'destination'): Promise<LabelState> {
+  return page.evaluate((r) => {
+    const label = document.querySelector(`.sc-endpoint-marker-${r} .sc-endpoint-marker-label`);
+    const canvas = document.querySelector('.maplibregl-canvas');
+    if (!label || !canvas) return { overlapPx: -1, insideMap: false };
+    const l = label.getBoundingClientRect();
+    const map = canvas.getBoundingClientRect();
+    let worst = 0;
+    const chrome = document.querySelectorAll(
+      '.route-layer-controls, .map-stack-tl, .app-bottom-sheet, .live-view',
+    );
+    for (let i = 0; i < chrome.length; i++) {
+      const c = chrome[i]!.getBoundingClientRect();
+      const w = Math.min(l.right, c.right) - Math.max(l.left, c.left);
+      const h = Math.min(l.bottom, c.bottom) - Math.max(l.top, c.top);
+      if (w > 0 && h > 0) worst = Math.max(worst, w * h);
+    }
+    const insideMap =
+      l.left >= map.left && l.right <= map.right && l.top >= map.top && l.bottom <= map.bottom;
+    return { overlapPx: Math.round(worst), insideMap };
+  }, role);
+}
+
+test.describe('#1641: endpoint labels clear of the chrome after the auto-fit', () => {
+  const viewports = {
+    tabletPortrait: STANDARD_VIEWPORTS.tabletPortrait,
+    desktopHd: STANDARD_VIEWPORTS.desktopHd,
+  };
+
+  for (const [name, viewport] of Object.entries(viewports)) {
+    test(`labels of both endpoints stay clear of the chrome (${name})`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      const server = await startPreview(page);
+      try {
+        await planRoute(page, server.url);
+        await waitForStableCamera(page);
+        for (const role of ['destination', 'origin'] as const) {
+          await expect
+            .poll(() => labelState(page, role), { timeout: 30_000 })
+            .toEqual({ overlapPx: 0, insideMap: true });
+        }
+      } finally {
+        server.kill();
+      }
+    });
+  }
+});

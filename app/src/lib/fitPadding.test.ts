@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FIT_PADDING_BASE_PX, fitPadding, type Box } from './fitPadding';
+import { FIT_PADDING_BASE_PX, fitPadding, labelOverhang, type Box } from './fitPadding';
 
 const MAP: Box = { left: 0, top: 0, right: 1000, bottom: 800 };
 
@@ -85,5 +85,45 @@ describe('fitPadding (#1626)', () => {
     const lone = fitPadding(MAP, [{ left: 0, top: 0, right: 900, bottom: 800 }]);
     expect(lone.right).toBe(48);
     expect(lone.left).toBeCloseTo(652, 6);
+  });
+});
+
+describe('label overhang (#1641)', () => {
+  const NONE = { top: 0, right: 0, bottom: 0, left: 0 };
+  const rectAt = (left: number, top: number, right: number, bottom: number): Box => ({
+    left,
+    top,
+    right,
+    bottom,
+  });
+
+  it('adds extra padding on top of the chrome claims', () => {
+    const chrome = [{ left: 760, top: 12, right: 992, bottom: 470 }];
+    const base = fitPadding(MAP, chrome);
+    expect(fitPadding(MAP, chrome, { ...NONE, right: 30, bottom: 5 })).toEqual({
+      ...base,
+      right: base.right + 30,
+      bottom: base.bottom + 5,
+    });
+  });
+
+  it('measures a label against the map edge where no chrome claims it', () => {
+    expect(labelOverhang(MAP, [], [rectAt(-40, 100, 80, 116)])).toEqual({ ...NONE, left: 48 });
+  });
+
+  it('measures a label against the chrome edge that claimed the side', () => {
+    const chrome = [{ left: 760, top: 12, right: 992, bottom: 470 }];
+    // The controls start 240 px from the right edge.
+    expect(labelOverhang(MAP, chrome, [rectAt(500, 600, 740, 616)])).toEqual(NONE);
+    expect(labelOverhang(MAP, chrome, [rectAt(500, 600, 780, 616)])).toEqual({
+      ...NONE,
+      right: 28,
+    });
+  });
+
+  it('reports nothing for labels inside the room, or an unmeasurable map', () => {
+    expect(labelOverhang(MAP, [], [rectAt(100, 100, 200, 120)])).toEqual(NONE);
+    const zero: Box = { left: 0, top: 0, right: 0, bottom: 0 };
+    expect(labelOverhang(zero, [], [rectAt(-5, -5, 5, 5)])).toEqual(NONE);
   });
 });
