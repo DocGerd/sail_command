@@ -454,26 +454,51 @@ describe('RouteLayer fit padding (#1626)', () => {
   });
 });
 
+// requestAnimationFrame queue the fit re-check coalesces into; flushed by hand.
+let frames: Array<FrameRequestCallback | null> = [];
+function stubFrames() {
+  vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => frames.push(cb));
+  vi.stubGlobal('cancelAnimationFrame', (id: number) => {
+    frames[id - 1] = null;
+  });
+}
+function flushFrames() {
+  const due = frames;
+  frames = [];
+  due.forEach((cb) => cb?.(0));
+}
+
 // #1641: the fit pads for the endpoint labels hanging off the markers.
 describe('RouteLayer fit padding for endpoint labels (#1641)', () => {
   const rect = (left: number, top: number, right: number, bottom: number) =>
     ({ left, top, right, bottom, width: right - left, height: bottom - top }) as DOMRect;
   // Non-zero origin, so the box offset is load-bearing in the projection.
   const MAP_RECT = rect(200, 100, 1200, 900);
-  // Origin marker centre at (510, 490); the label spans 340 px either side of it.
-  const MARKER_RECT = rect(500, 480, 520, 500);
-  const WIDE_LABEL = rect(170, 504, 850, 520);
+  // Where followCamera() puts the origin at the base padding: map (200, 400).
+  const ORIGIN_MARKER = rect(390, 490, 410, 510);
+  // The label spans 340 px either side of the marker centre.
+  const WIDE_LABEL = rect(60, 514, 740, 530);
 
   type Pad = { top: number; right: number; bottom: number; left: number };
 
+  let markerRect = ORIGIN_MARKER;
+  let labelRect = WIDE_LABEL;
+
+  beforeEach(() => {
+    frames = [];
+    stubFrames();
+    markerRect = ORIGIN_MARKER;
+    labelRect = WIDE_LABEL;
+  });
   afterEach(() => {
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
     document.querySelectorAll('.sc-endpoint-marker, .label-test-map').forEach((el) => el.remove());
   });
 
-  function setup(label: DOMRect) {
+  function setup() {
     const mapEl = document.createElement('div');
-    const map = Object.assign(makeFakeMap(), { isMoving: () => false, resize: vi.fn() });
+    const map = Object.assign(makeFakeMap(), { isMoving: vi.fn(() => false), resize: vi.fn() });
     mapEl.className = 'label-test-map';
     mapEl.appendChild(map.getCanvasContainer());
     document.body.appendChild(mapEl);
@@ -481,8 +506,8 @@ describe('RouteLayer fit padding for endpoint labels (#1641)', () => {
       this: Element,
     ) {
       if (this === mapEl) return MAP_RECT;
-      if (this.classList.contains('sc-endpoint-marker')) return MARKER_RECT;
-      if (this.classList.contains('sc-endpoint-marker-label')) return label;
+      if (this.classList.contains('sc-endpoint-marker')) return markerRect;
+      if (this.classList.contains('sc-endpoint-marker-label')) return labelRect;
       return rect(0, 0, 0, 0);
     });
     return map;
@@ -516,8 +541,17 @@ describe('RouteLayer fit padding for endpoint labels (#1641)', () => {
     return calls;
   }
 
+  // A mutation of the marker container, delivered to the observer and its frame.
+  async function mutateContainer(map: ReturnType<typeof makeFakeMap>, child: Element) {
+    await act(async () => {
+      map.getCanvasContainer().appendChild(child);
+      await Promise.resolve();
+      flushFrames();
+    });
+  }
+
   it('accumulates the padding across passes until the label is clear', () => {
-    const map = setup(WIDE_LABEL);
+    const map = setup();
     const calls = followCamera(map);
     document.body.appendChild(makeMarker());
     renderRouteLayer(map, null);
@@ -528,7 +562,8 @@ describe('RouteLayer fit padding for endpoint labels (#1641)', () => {
   });
 
   it('fits once when the label sits inside the room', () => {
-    const map = setup(rect(410, 504, 610, 520));
+    labelRect = rect(300, 514, 500, 530);
+    const map = setup();
     const calls = followCamera(map);
     document.body.appendChild(makeMarker());
     renderRouteLayer(map, null);
@@ -536,28 +571,56 @@ describe('RouteLayer fit padding for endpoint labels (#1641)', () => {
   });
 
   it('anchors the label at the picked point, not the snapped route end', () => {
-    const map = setup(WIDE_LABEL);
+    // The fake projects lon 10.1 to map (350, 275), 10.0 to (300, 275).
+    markerRect = rect(540, 365, 560, 385);
+    labelRect = rect(150, 389, 750, 405);
+    const map = setup();
     document.body.appendChild(makeMarker());
     const plan = makePlan();
-    // The fake projects lon 10.0 to x = 300 (label 40 px off the map edge), 10.1 to x = 350.
     plan.request.origin = { lat: 54.75, lon: 10.1 };
     renderRouteLayerWithPlan(map, plan);
-    expect(map.fitBounds).toHaveBeenCalledTimes(1);
+    expect(map.fitBounds).toHaveBeenCalledTimes(3);
   });
 
   it('re-fits for the label when its marker mounts after the plan was fitted', async () => {
-    const map = setup(WIDE_LABEL);
+    const map = setup();
     const calls = followCamera(map);
     renderRouteLayer(map, null);
     expect(calls).toHaveLength(1);
     expect(calls[0]!.left).toBe(48);
 
-    await act(async () => {
-      map.getCanvasContainer().appendChild(makeMarker());
-      await Promise.resolve();
-    });
+    await mutateContainer(map, makeMarker());
     expect(calls.length).toBeGreaterThan(1);
     expect(calls[calls.length - 1]!.left).toBeGreaterThan(48);
+  });
+
+  it('ignores a marker that moved off the plan end, as when the form diverges from the plan', async () => {
+    const map = setup();
+    const calls = followCamera(map);
+    document.body.appendChild(makeMarker());
+    renderRouteLayer(map, null);
+    expect(calls).toHaveLength(3);
+
+    markerRect = rect(640, 490, 660, 510);
+    labelRect = rect(600, 514, 700, 530);
+    await mutateContainer(map, document.createElement('div'));
+    expect(calls).toHaveLength(3);
+  });
+
+  it('measures once for a burst of marker rebuilds within a frame', async () => {
+    const map = setup();
+    followCamera(map);
+    renderRouteLayer(map, null);
+    map.isMoving.mockClear();
+
+    await act(async () => {
+      for (let i = 0; i < 3; i++) {
+        map.getCanvasContainer().appendChild(document.createElement('div'));
+        await Promise.resolve();
+      }
+      flushFrames();
+    });
+    expect(map.isMoving).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -589,6 +652,8 @@ describe('RouteLayer re-fit after a layout change (#1639)', () => {
     liveTop = 500;
     moving = false;
     observers.length = 0;
+    frames = [];
+    stubFrames();
     vi.stubGlobal(
       'ResizeObserver',
       class {
@@ -640,7 +705,11 @@ describe('RouteLayer re-fit after a layout change (#1639)', () => {
     renderRouteLayer(map, null);
     return map;
   }
-  const resize = () => act(() => observers.forEach((o) => o.cb()));
+  const resize = () =>
+    act(() => {
+      observers.forEach((o) => o.cb());
+      flushFrames();
+    });
   const movestartHandler = (map: ReturnType<typeof makeFakeMap>) =>
     map.on.mock.calls.find((c: unknown[]) => c[0] === 'movestart')![1] as (e: unknown) => void;
   const userMove = (map: ReturnType<typeof makeFakeMap>) =>

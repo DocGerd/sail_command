@@ -602,8 +602,13 @@ interface LabelOffsets {
 
 const MAX_LABEL_PASSES = 3;
 
-function measureLabelOffsets(): LabelOffsets[] {
+// The markers are built from the planner form, which can diverge from the plan
+// being fitted; a label counts only while its marker still sits on the plan end.
+const MARKER_MATCH_PX = 3;
+
+function measureLabelOffsets(map: MaplibreMap, box: Box, ends: FitEnds | null): LabelOffsets[] {
   const out: LabelOffsets[] = [];
+  if (ends === null) return out;
   for (const role of ['origin', 'destination'] as const) {
     const marker = document.querySelector(`.sc-endpoint-marker-${role}`);
     const label = marker?.querySelector('.sc-endpoint-marker-label');
@@ -613,6 +618,9 @@ function measureLabelOffsets(): LabelOffsets[] {
     if (!(l.right > l.left && l.bottom > l.top)) continue;
     const x = (m.left + m.right) / 2;
     const y = (m.top + m.bottom) / 2;
+    const at = map.project([ends[role].lon, ends[role].lat]);
+    if (Math.abs(x - (box.left + at.x)) > MARKER_MATCH_PX) continue;
+    if (Math.abs(y - (box.top + at.y)) > MARKER_MATCH_PX) continue;
     const tenth = (v: number) => Math.round(v * 10) / 10;
     out.push({
       role,
@@ -680,7 +688,7 @@ function nextExtra(
 // test's expected array). No-ops on an empty leg list (a plan whose active
 // rig failed to solve) rather than calling fitBounds with an empty/invalid
 // bounds object.
-function fitToLegs(map: MaplibreMap, legs: Leg[], ends: FitEnds | null): string | null {
+function fitToLegs(map: MaplibreMap, legs: Leg[], ends: FitEnds | null): FitState | null {
   if (legs.length === 0) return null;
   const bounds = new LngLatBounds();
   for (const leg of legs) {
@@ -695,7 +703,7 @@ function fitToLegs(map: MaplibreMap, legs: Leg[], ends: FitEnds | null): string 
   // extracted from).
   const box = mapBox(map);
   const chrome = measureChrome();
-  const labels = ends === null ? [] : measureLabelOffsets();
+  const labels = measureLabelOffsets(map, box, ends);
   let extra: FitPadding = { top: 0, right: 0, bottom: 0, left: 0 };
   let prev: { over: FitPadding; delta: FitPadding } | null = null;
   for (let pass = 0; pass < MAX_LABEL_PASSES; pass++) {
@@ -711,13 +719,33 @@ function fitToLegs(map: MaplibreMap, legs: Leg[], ends: FitEnds | null): string 
     prev = { over, delta: step.delta };
     extra = step.extra;
   }
-  return fitLayoutKey(map);
+  return { layout: fitLayoutKey(map), labels };
 }
 
-// What a fit would measure now; equal to a fit's return value when nothing moved.
+// What a fit measured: the map and chrome geometry, and the labels it padded for.
+interface FitState {
+  layout: string;
+  labels: LabelOffsets[];
+}
+
 function fitLayoutKey(map: MaplibreMap): string {
   const box = mapBox(map);
-  return JSON.stringify([box, fitPadding(box, measureChrome()), measureLabelOffsets()]);
+  return JSON.stringify([box, fitPadding(box, measureChrome())]);
+}
+
+// A role whose label no longer matches is ignored rather than re-fitted for.
+function fitIsCurrent(map: MaplibreMap, ends: FitEnds | null, state: FitState): boolean {
+  if (fitLayoutKey(map) !== state.layout) return false;
+  return measureLabelOffsets(map, mapBox(map), ends).every((now) =>
+    state.labels.some(
+      (then) =>
+        then.role === now.role &&
+        then.left === now.left &&
+        then.right === now.right &&
+        then.top === now.top &&
+        then.bottom === now.bottom,
+    ),
+  );
 }
 
 // #850: grab-handle hover tolerance for the drag-the-route-line gesture, in
@@ -1208,7 +1236,7 @@ export default function RouteLayer({
   // switch (both rigs cover roughly the same area) or barb-slider tick.
   // Bounds construction + the #155 bearing-preservation rationale now live in
   // the shared `fitToLegs` helper above (#297).
-  const autoFitKeyRef = useRef<string | null>(null);
+  const autoFitKeyRef = useRef<FitState | null>(null);
   const legsRef = useRef<Leg[]>([]);
   const endsRef = useRef<FitEnds | null>(null);
   useEffect(() => {
@@ -1253,22 +1281,32 @@ export default function RouteLayer({
     };
     // The readout's height follows its hints, so a started Live view is fitted once, on entry.
     let liveWasActive = false;
-    const refit = () => {
-      if (disposed || autoFitKeyRef.current === null) return;
+    const runRefit = () => {
+      const state = autoFitKeyRef.current;
+      if (disposed || state === null) return;
       watch();
       // A fit stops a running ease, which would demote the compass.
       if (map.isMoving()) {
-        map.once('moveend', refit);
+        map.once('moveend', runRefit);
         return;
       }
       const liveActive = document.querySelector('.live-view-data') !== null;
       const enteringLive = liveActive && !liveWasActive;
       liveWasActive = liveActive;
       if (liveActive && !enteringLive) return;
-      if (fitLayoutKey(map) === autoFitKeyRef.current) return;
+      if (fitIsCurrent(map, endsRef.current, state)) return;
       // MapLibre resizes its transform in a throttled observer of its own.
       map.resize();
       autoFitKeyRef.current = fitToLegs(map, legsRef.current, endsRef.current);
+    };
+    // Every App render rebuilds the endpoint markers, so observer callbacks burst.
+    let frame: number | null = null;
+    const refit = () => {
+      if (disposed || frame !== null) return;
+      frame = requestAnimationFrame(() => {
+        frame = null;
+        runRefit();
+      });
     };
     // Markers are rebuilt by a parent effect after the plan's own fit, so a label
     // mounting is what re-fits for it.
@@ -1282,6 +1320,7 @@ export default function RouteLayer({
     }
     return () => {
       disposed = true;
+      if (frame !== null) cancelAnimationFrame(frame);
       map.off('movestart', release);
       mo?.disconnect();
       ro?.disconnect();
