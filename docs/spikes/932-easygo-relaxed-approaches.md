@@ -2,7 +2,9 @@
 
 ## Recommendation
 
-Close #932 as answered. No code change.
+#932's three questions are answered for the six measured plans. The locality
+property is not guaranteed by the router: a seventh plan breaks it with a
+corner clip outside both discs (§1). The fix is tracked in #1705.
 
 The issue's premise, that Marstal is the only harbour whose approach relaxes,
 no longer holds. At EASY GO!'s default gate (3.5 m), Faldsled and Rudkøbing
@@ -87,6 +89,31 @@ Controls, all 12 rig rows:
   with the farthest cell 8548–8707 m (Faaborg side) or 13 707 m (Svendborg
   side) away. The anchors are not interchangeable.
 
+The 3-decimal nm columns cannot detect a corner clip; the farthest-cell column
+is the one that discriminates. On the six plans above, every farthest cell is
+under 1852 m.
+
+### Counterexample: Faldsled → Faaborg at margin 0
+
+This plan was found in PR #1704's review and reproduced with this doc's
+instruments.
+
+- It relaxes like the others: a single tier-3 `ApproachGate`, discs 3.1 / 3.4.
+- The fock leg at index 3 is a 1.354 nm motor leg that fails
+  `segmentNavigable` against that gate. It clips cell (1992, 988), charted
+  3.4 m with `gateAtCell` 3.5 m. The cell lies 2671 m from Faldsled and
+  8828 m from Faaborg, outside both discs.
+- The leg's exposure beyond the disc is 1.2e-5 nm, which reads 0.000 in the
+  table's format. The farthest cell is 2671 m, and `shallowConfinedWithinM` at
+  1852 m reads `false`.
+- The leg is flagged `shallow` (min 3.4 m) on a relaxed plan, under a 2.59 m
+  draft. That is not a grounding hazard, but the locality guarantee does not
+  hold.
+- The genoa result has no leg that fails the gate.
+- The review traced the leg to `backtrack`'s collinear merge (`isochrone.ts`,
+  `prev.end = end`). Nothing checks the merged chord against the gate. Tracked
+  in #1705.
+
 ## 2. The disclosure stack mounts
 
 - Relaxed: on all six EASY GO! plans `record.tiers` holds a single tier-3
@@ -132,7 +159,11 @@ Two methods, each over `harbors.json` (46) × `BOATS` (4) = 184 rows:
   where that fails, `findRelaxedGate([seed, harbour], G, APPROACH_RADIUS_M,
   floor)`, and the same call with radius `Infinity` (the global search).
 
-(a) and (b) disagree on 0 of 184 rows. Five pairs relax:
+(a) and (b) disagree on 0 of 184 rows. 21 of those rows agree by
+construction: 20 are known-disconnected, a flag both sides read from
+`harbors.json`, and 1 is snap-failed (augustenborg), which maps to picker
+`unreachable`. The independent check therefore covers 163 rows. Five pairs
+relax:
 
 | Boat | Draft | Gate / floor | ok | Relaxing (P3 / global gate) | Unreachable | Known-disconnected |
 |---|---|---|---|---|---|---|
@@ -164,18 +195,20 @@ open, but it now has non-Marstal subjects.
 
 - Other routes. Measured: one wind field, one departure, the four routes
   above, no via points.
-- Margin 0 for the inbound routes. Margin 0 was run on the two outbound routes
-  only.
+- Margin 0 on Rudkøbing → Svendborg. That plan was run only in the review,
+  where no leg failed the gate.
+- Uniform-gate plans. Whether a plan that did not relax can emit a chord that
+  fails its own gate was not measured.
 - Robustness to a mask rebuild. The 214 m margin on the farthest Faldsled cell
   was measured on this mask only.
 
 ## Considered and rejected
 
-- **A committed real-mask regression row** for these plans: out of scope for
-  this docs-only brief. A maintainer may still file it; Svendborg → Rudkøbing
-  is the cheaper fixture.
-- **A new `app/sweep/` arm:** excluded by the brief. A sweep also compares plan
-  bytes, which says nothing about disc confinement.
+- **A committed real-mask regression row** for these plans: not added, because
+  this PR is docs-only (#932 re-scoped). A maintainer may still file it;
+  Svendborg → Rudkøbing is the cheaper fixture.
+- **A new `app/sweep/` arm:** a sweep compares plan bytes, which says nothing
+  about disc confinement.
 - **A hand-written exposure walk:** rejected under CLAUDE.md's
   duplicated-traversal rule. The facade reuses the shipped walk.
 - **Severity from the formula alone:** rejected as the only evidence. The real
@@ -183,9 +216,5 @@ open, but it now has non-Marstal subjects.
 
 ## Stale records found
 
-- CLAUDE.md says `EXPECTED_UNREACHABLE_BY_BOAT` was "EMPTY at `8102908`". That
-  was true then (`{}` in `git show 8102908:pipeline/verify_mask.py`), but the
-  line is now outdated: the table lists four EASY GO! harbours (augustenborg,
-  faldsled, marstal, rudkoebing).
 - The issue's "33-harbour catalogue" and its triage comment's 40 are both
   stale. `harbors.json` has 46 entries.
