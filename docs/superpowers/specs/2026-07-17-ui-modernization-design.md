@@ -131,7 +131,8 @@ only on the map.
 - **Empty / first-run:** a short onboarding line in the panel ("Wähle Start und Ziel, um eine
   Route zu planen") instead of a bare form; the primary button reads disabled-with-reason.
 - **Loading:** a skeleton on the Ergebnis card while the worker solves (the router runs twice
-  — genoa and fock). Planning requires network, so this is also where a first-run
+  — genoa and fock). Planning requires network (except a seeded next passage, see
+  `2026-10-17-next-passage-design.md`), so this is also where a first-run
   network-needed hint lives.
 - **Error:** clear, actionable inline messaging distinguishing *offline / no network*,
   *no route found within constraints*, and *unexpected failure* — no silent failures, no

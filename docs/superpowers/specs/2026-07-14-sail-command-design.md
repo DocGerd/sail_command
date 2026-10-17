@@ -23,7 +23,7 @@ Android as an offline-capable PWA.
 | Obstacles | Land **and** depth aware; safety depth configurable, default 3.0 m (draft 2.1 m); depth beyond the gate is a *preference*, not just a gate — comfort margin default 2.0 m (#243) |
 | Departure time | Selectable within forecast horizon (~6 days) |
 | Port entry | Searchable curated harbor list **plus** tap-anywhere on map |
-| Offline scope | Planning requires internet; following/viewing planned routes fully offline (route + wind used + map data persisted) |
+| Offline scope | Planning requires internet; following/viewing planned routes fully offline (route + wind used + map data persisted). Amended by `2026-10-17-next-passage-design.md` (#19 slice 1): a next passage seeded from a planned route may be planned offline from that route's stored forecast |
 | Sail choice | Router evaluates both rigs (main+genoa, main+fock) and recommends the faster; routes with recommendation |
 | Live guidance | GPS position + active leg, heading to steer, distance to next maneuver, ETA. No live re-routing in v1 |
 | Area | 54.3–55.6°N, 9.4–11.6°E (Flensburg Fjord, Als, Schlei, Kiel Bight, Ærø, Fyn archipelago to Svendborg/Faaborg, Little Belt to Kolding/Middelfart, Fehmarn, Great Belt south of 55.6°N (#1585's harbour additions per the 2026-09-15 addendum's Great Belt bullet)). Amended by the 2026-09-15 coverage addendum (#295) — was "54.3–55.3°N, 9.4–11.0°E … southern Little Belt" |
@@ -150,7 +150,7 @@ Android install via browser "Add to Home Screen".
 
 | Condition | Behavior |
 |---|---|
-| Offline / Open-Meteo unreachable | Planning disabled with clear message; saved plans fully usable |
+| Offline / Open-Meteo unreachable | Planning disabled with clear message; saved plans fully usable. Exception: a seeded next passage (`2026-10-17-next-passage-design.md`) |
 | API transient error | Retry with backoff, then user-visible error |
 | No route found (calm + motor off / unreachable / beyond horizon) | Explicit message with reason |
 | GPS denied or unavailable | App fully usable, no boat marker; hint shown once |

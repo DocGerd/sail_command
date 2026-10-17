@@ -570,7 +570,9 @@ function setupLayers(map: MaplibreMap): void {
 }
 
 // Overlays that sit on the map and cover part of it (#1626).
-const MAP_CHROME_SELECTOR = '.route-layer-controls, .map-stack-tl, .app-bottom-sheet';
+const MAP_CHROME_SELECTOR = '.route-layer-controls, .map-stack-tl, .app-bottom-sheet, .live-view';
+
+const RESIZE_WATCHED_SELECTOR = '.app-bottom-sheet, .live-view';
 
 function rectOf(el: Element): Box {
   const { left, top, right, bottom } = el.getBoundingClientRect();
@@ -596,8 +598,8 @@ function measureChrome(): Box[] {
 // test's expected array). No-ops on an empty leg list (a plan whose active
 // rig failed to solve) rather than calling fitBounds with an empty/invalid
 // bounds object.
-function fitToLegs(map: MaplibreMap, legs: Leg[]) {
-  if (legs.length === 0) return;
+function fitToLegs(map: MaplibreMap, legs: Leg[]): string | null {
+  if (legs.length === 0) return null;
   const bounds = new LngLatBounds();
   for (const leg of legs) {
     bounds.extend([leg.start.lon, leg.start.lat]);
@@ -609,11 +611,16 @@ function fitToLegs(map: MaplibreMap, legs: Leg[]) {
   // bearing", it means "rotate to north". See the call site below for the
   // full rationale (unchanged from the pre-#297 auto-fit effect this was
   // extracted from).
-  map.fitBounds(bounds, {
-    padding: fitPadding(mapBox(map), measureChrome()),
-    duration: 0,
-    bearing: map.getBearing(),
-  });
+  const box = mapBox(map);
+  const padding = fitPadding(box, measureChrome());
+  map.fitBounds(bounds, { padding, duration: 0, bearing: map.getBearing() });
+  return JSON.stringify([box, padding]);
+}
+
+// What a fit would measure now; equal to a fit's return value when nothing moved.
+function fitLayoutKey(map: MaplibreMap): string {
+  const box = mapBox(map);
+  return JSON.stringify([box, fitPadding(box, measureChrome())]);
 }
 
 // #850: grab-handle hover tolerance for the drag-the-route-line gesture, in
@@ -1104,11 +1111,73 @@ export default function RouteLayer({
   // switch (both rigs cover roughly the same area) or barb-slider tick.
   // Bounds construction + the #155 bearing-preservation rationale now live in
   // the shared `fitToLegs` helper above (#297).
+  const autoFitKeyRef = useRef<string | null>(null);
+  const legsRef = useRef<Leg[]>([]);
+  useEffect(() => {
+    legsRef.current = result?.legs ?? [];
+  });
   useEffect(() => {
     if (!map || !result) return;
-    fitToLegs(map, result.legs);
+    autoFitKeyRef.current = fitToLegs(map, result.legs);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fit on plan identity, not the (recreated) result object
   }, [map, plan?.id]);
+
+  // #1639: chrome that resizes after the auto-fit (the offline-ready toast
+  // closing grows the map and the sheet) leaves the route under it. Re-fit
+  // until the user moves the camera; only a user gesture carries `originalEvent`.
+  useEffect(() => {
+    if (!map) return;
+    const release = (e: { originalEvent?: unknown }) => {
+      if (e.originalEvent !== undefined) autoFitKeyRef.current = null;
+    };
+    map.on('movestart', release);
+    let disposed = false;
+    let ro: ResizeObserver | null = null;
+    // `.live-view` mounts with the Live tab, so targets are re-collected per callback.
+    const watched = new Set<Element>();
+    const watch = () => {
+      watched.forEach((el) => {
+        if (el.isConnected) return;
+        ro?.unobserve(el);
+        watched.delete(el);
+      });
+      document.querySelectorAll(RESIZE_WATCHED_SELECTOR).forEach((el) => {
+        if (watched.has(el)) return;
+        watched.add(el);
+        ro?.observe(el);
+      });
+    };
+    // The readout's height follows its hints, so a started Live view is fitted once, on entry.
+    let liveWasActive = false;
+    const refit = () => {
+      if (disposed || autoFitKeyRef.current === null) return;
+      watch();
+      // A fit stops a running ease, which would demote the compass.
+      if (map.isMoving()) {
+        map.once('moveend', refit);
+        return;
+      }
+      const liveActive = document.querySelector('.live-view-data') !== null;
+      const enteringLive = liveActive && !liveWasActive;
+      liveWasActive = liveActive;
+      if (liveActive && !enteringLive) return;
+      if (fitLayoutKey(map) === autoFitKeyRef.current) return;
+      // MapLibre resizes its transform in a throttled observer of its own.
+      map.resize();
+      autoFitKeyRef.current = fitToLegs(map, legsRef.current);
+    };
+    if (typeof ResizeObserver === 'function') {
+      ro = new ResizeObserver(refit);
+      const mapEl = map.getCanvasContainer().parentElement;
+      if (mapEl) ro.observe(mapEl);
+      watch();
+    }
+    return () => {
+      disposed = true;
+      map.off('movestart', release);
+      ro?.disconnect();
+    };
+  }, [map]);
 
   // #297: user-invoked "fit route to view" action — the issue's own
   // recommended alternative to a permanent overview mini-map (see the issue
@@ -1127,7 +1196,7 @@ export default function RouteLayer({
   const canFitRoute = result !== null && result.legs.length > 0;
   const handleFitToView = () => {
     if (!map || !result) return;
-    fitToLegs(map, result.legs);
+    autoFitKeyRef.current = fitToLegs(map, result.legs);
   };
 
   // Forecast hours spanning departure->ETA — the slider's snap points.
