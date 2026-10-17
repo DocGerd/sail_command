@@ -20,6 +20,7 @@ import {
 import type { NavMask } from '../lib/mask';
 import type { BoatDef } from '../data/boats';
 import { formatDepthM } from '../lib/depthDisclosure';
+import { minSafetyDepthM } from '../lib/boatDepth';
 
 // #652: `knownDisconnected` is a build-generated field (pipeline/
 // build_harbors.mjs, sourced from pipeline/verify_mask.py's
@@ -75,6 +76,8 @@ export interface HarborPickerProps {
   // endpoint row (§5.3) — computing it once per (mask, harbors, boat, gate)
   // via `computeHarborAccess`'s own memoisation, never per option render.
   harborAccess?: HarborAccessByHarbor | null;
+  // #1721: the same map at the boat's lowest allowed gate (`minSafetyDepthM`).
+  harborAccessLowest?: HarborAccessByHarbor | null;
   mask?: NavMask | null;
 }
 
@@ -128,6 +131,7 @@ export function harborAccessCopy(
   boat: BoatDef | undefined,
   safetyDepthM: number | undefined,
   lang: Lang,
+  lowestState?: HarborAccessState,
 ): { key: MsgKey; vars?: Record<string, string | number> }[] {
   if (state === 'known-disconnected') return [{ key: 'harborPicker.knownDisconnected' }];
   if (!boat || safetyDepthM === undefined) return [];
@@ -135,6 +139,16 @@ export function harborAccessCopy(
     return [{ key: 'harborPicker.boatShallow', vars: { boat: boat.name } }];
   }
   if (state === 'unreachable') {
+    // #1721: also unreachable at the boat's lowest allowed gate, and no lower
+    // setting reached it, so no allowed setting helps.
+    if (lowestState === 'unreachable' && hint?.kind !== 'found') {
+      return [
+        {
+          key: 'harborPicker.boatUnreachableAnySetting',
+          vars: { boat: boat.name, depth: formatDepthM(minSafetyDepthM(boat), lang) },
+        },
+      ];
+    }
     const lines: { key: MsgKey; vars?: Record<string, string | number> }[] = [
       {
         key: 'harborPicker.boatUnreachable',
@@ -269,6 +283,7 @@ export default function HarborPicker({
   boat,
   safetyDepthM,
   harborAccess,
+  harborAccessLowest,
   mask,
 }: HarborPickerProps) {
   const [query, setQuery] = useState('');
@@ -439,7 +454,14 @@ export default function HarborPicker({
               access === 'unreachable' && mask && boat && safetyDepthM !== undefined
                 ? findLowerSettingHint(mask, h, boat, safetyDepthM)
                 : null;
-            const accessLines = harborAccessCopy(access, hint, boat, safetyDepthM, lang);
+            const accessLines = harborAccessCopy(
+              access,
+              hint,
+              boat,
+              safetyDepthM,
+              lang,
+              harborAccessLowest?.get(h.id),
+            );
             return (
               <li
                 key={h.id}

@@ -99,7 +99,10 @@ import { usePersistedSailInventory } from './lib/sailInventory';
 // #834: same widening PlannerPanel.tsx's own `harbors` prop already carries —
 // see that module's comment for why this lives outside the `app/sweep/`
 // closure rather than on `Harbor` in `types.ts`.
-import type { HarborWithReachability } from './lib/harborReachability';
+import { computeHarborAccess, type HarborWithReachability } from './lib/harborReachability';
+import { minSafetyDepthM } from './lib/boatDepth';
+import { formatDepthM, formatDraftM } from './lib/depthDisclosure';
+import { useNavMask } from './state/useNavMask';
 import type { MsgKey } from './i18n/dict.de';
 import type { Tab } from './lib/sessionSnapshot';
 import {
@@ -1583,6 +1586,27 @@ function AppShell() {
     destination?.source === 'harbor' &&
     harbors.find((h) => h.id === destination.harborId)?.knownDisconnected === true;
 
+  // #1721: an `unreachable` no-route against a harbour the depth grid cannot
+  // connect even at the boat's lowest allowed gate gets an exact message
+  // instead of the heuristic-search hedge. Derived only while that error shows.
+  const navMask = useNavMask();
+  const unreachableHarbor = useMemo(() => {
+    if (planning.phase !== 'error' || planning.messageKey !== 'error.noRoute.unreachable') {
+      return null;
+    }
+    if (!navMask) return null;
+    const lowestGateM = minSafetyDepthM(boat);
+    const candidates = [origin, destination].flatMap((ep) => {
+      if (ep?.source !== 'harbor') return [];
+      const harbor = harbors.find((h) => h.id === ep.harborId);
+      return harbor && harbor.knownDisconnected !== true ? [harbor] : [];
+    });
+    if (candidates.length === 0) return null;
+    const access = computeHarborAccess(navMask, harbors, boat, lowestGateM);
+    const harbor = candidates.find((h) => access.get(h.id) === 'unreachable');
+    return harbor ? { harbor, lowestGateM } : null;
+  }, [planning, navMask, boat, origin, destination, harbors]);
+
   return (
     <div className="app-shell" ref={shellRef}>
       {/* The map. At WIDE it is the right-hand grid column; since #909 it is
@@ -1898,7 +1922,14 @@ function AppShell() {
             {planning.messageKey === 'error.noRoute.unreachable' &&
             (originKnownDisconnected || destinationKnownDisconnected)
               ? t('harborPicker.knownDisconnected')
-              : t(planning.messageKey, planning.messageVars)}
+              : unreachableHarbor
+                ? t('error.harborUnreachableAnySetting', {
+                    harbor: unreachableHarbor.harbor.names[lang],
+                    boat: boat.name,
+                    draft: formatDraftM(boat.draftM, lang),
+                    depth: formatDepthM(unreachableHarbor.lowestGateM, lang),
+                  })
+                : t(planning.messageKey, planning.messageVars)}
           </Banner>
         )}
         {tapTarget && (

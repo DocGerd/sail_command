@@ -20,6 +20,8 @@ import HarborPicker, {
 } from './HarborPicker';
 import { findLowerSettingHint, type LowerSettingHintOutcome } from '../lib/harborReachability';
 import { BOATS } from '../data/boats';
+import { minSafetyDepthM } from '../lib/boatDepth';
+import { formatDepthM } from '../lib/depthDisclosure';
 import type { Harbor } from '../types';
 
 // Mirrors real data shapes from app/public/data/harbors.json: a harbor whose
@@ -453,6 +455,31 @@ describe('harborAccessCopy (#1291/§13 item 2 precedence table)', () => {
       { key: 'harborPicker.boatUnreachable', vars: { boat: boat.name, depth: '3.5' } },
     ]);
   });
+
+  // #1721: unreachable at the boat's lowest allowed gate too, so no allowed
+  // setting helps. Replaces both the live-gate line and the hint lines.
+  it('#1721: unreachable at the lowest gate too collapses to the any-setting line with minSafetyDepthM', () => {
+    const hint: LowerSettingHintOutcome = { kind: 'not-found' };
+    expect(harborAccessCopy('unreachable', hint, boat, 3.5, 'en', 'unreachable')).toEqual([
+      {
+        key: 'harborPicker.boatUnreachableAnySetting',
+        vars: { boat: boat.name, depth: formatDepthM(minSafetyDepthM(boat), 'en') },
+      },
+    ]);
+  });
+
+  it('#1721: a lower setting that DOES reach it, or a reachable lowest gate, keeps the ordinary lines', () => {
+    const found: LowerSettingHintOutcome = { kind: 'found', hint: { depthM: 3.2, state: 'ok' } };
+    expect(harborAccessCopy('unreachable', found, boat, 3.5, 'en', 'unreachable')[0]?.key).toBe(
+      'harborPicker.boatUnreachable',
+    );
+    expect(harborAccessCopy('unreachable', null, boat, 3.5, 'en', 'ok')[0]?.key).toBe(
+      'harborPicker.boatUnreachable',
+    );
+    expect(harborAccessCopy('unreachable', null, boat, 3.5, 'en')[0]?.key).toBe(
+      'harborPicker.boatUnreachable',
+    );
+  });
 });
 
 // #1291: HarborPicker's OWN wiring around harborAccessCopy — deriving the
@@ -492,6 +519,33 @@ describe('HarborPicker option row: #1291 per-boat access markers', () => {
         `Not reachable at or above ${boat.name}'s recommended safety depth.`,
       ),
     ).toBeInTheDocument();
+  });
+
+  it('#1721: shows the any-setting line when the harbour is also unreachable at the lowest gate', () => {
+    localStorage.setItem('sc-lang', 'en');
+    vi.mocked(findLowerSettingHint).mockReturnValue({ kind: 'not-found' });
+    render(
+      <I18nProvider>
+        <HarborPicker
+          harbors={HARBORS}
+          recentIds={[]}
+          onSelect={vi.fn()}
+          boat={boat}
+          safetyDepthM={3.5}
+          harborAccess={new Map([['aabenraa', 'unreachable']])}
+          harborAccessLowest={new Map([['aabenraa', 'unreachable']])}
+          mask={FAKE_MASK}
+        />
+      </I18nProvider>,
+    );
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'aabenraa' } });
+    const option = screen.getByRole('option', { name: /Aabenraa/ });
+    expect(
+      within(option).getByText(
+        `Even at the lowest safety depth ${boat.name} allows (${formatDepthM(minSafetyDepthM(boat), 'en')} m), the app's depth data finds no connection here — no allowed setting helps.`,
+      ),
+    ).toBeInTheDocument();
+    expect(within(option).queryByText(/Not reachable with/)).not.toBeInTheDocument();
   });
 
   it('shows the shallow-approach line for that state, with no hint search', () => {

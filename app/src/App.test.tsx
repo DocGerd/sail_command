@@ -543,7 +543,35 @@ const ARNIS_TEST: Harbor = {
   snap: { lat: 54.6254, lon: 9.9316 },
 };
 
-const HARBORS: Harbor[] = [FLENSBURG, RELABEL_HARBOR, withKnownDisconnectedFlag(ARNIS_TEST)];
+// #1721: Marstal's real snap. The shared test mask below walls it in with land,
+// so it is unreachable for every boat at every gate.
+const MARSTAL_TEST: Harbor = {
+  id: 'marstal',
+  names: { de: 'Marstal', da: 'Marstal', en: 'Marstal' },
+  country: 'DK',
+  snap: { lat: 54.8579, lon: 10.528 },
+};
+const HARBORS: Harbor[] = [
+  FLENSBURG,
+  RELABEL_HARBOR,
+  withKnownDisconnectedFlag(ARNIS_TEST),
+  MARSTAL_TEST,
+];
+
+// Deep water everywhere (so a pick like FLENSBURG is reachable) except a land
+// block over MARSTAL_TEST. Cells are 0.002 degrees (500 per degree) so a
+// harbour's snap lands within snapToNavigable's 300 m radius of a cell centre.
+const TEST_WATER_MASK_META = { ...TEST_MASK_META, cols: 800, rows: 500 };
+
+function testMaskBytes() {
+  const { rows, cols, south, west } = TEST_WATER_MASK_META;
+  const bytes = new Uint8Array(rows * cols).fill(255);
+  const row = Math.floor((MARSTAL_TEST.snap.lat - south) * 500);
+  const col = Math.floor((MARSTAL_TEST.snap.lon - west) * 500);
+  for (let r = row - 4; r <= row + 4; r++)
+    for (let c = col - 4; c <= col + 4; c++) bytes[r * cols + c] = 0;
+  return bytes;
+}
 
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), { status: 200 });
@@ -552,10 +580,9 @@ function jsonResponse(body: unknown): Response {
 function fetchMock() {
   return vi.fn((input: RequestInfo | URL) => {
     const url = String(input);
-    if (url.includes('mask.meta.json')) return Promise.resolve(jsonResponse(TEST_MASK_META));
+    if (url.includes('mask.meta.json')) return Promise.resolve(jsonResponse(TEST_WATER_MASK_META));
     if (url.includes('mask.bin')) {
-      const buf = new ArrayBuffer(TEST_MASK_META.rows * TEST_MASK_META.cols);
-      return Promise.resolve(new Response(buf, { status: 200 }));
+      return Promise.resolve(new Response(testMaskBytes(), { status: 200 }));
     }
     if (url.includes('salona-45-genoa.json')) return Promise.resolve(jsonResponse(TEST_POLAR));
     if (url.includes('salona-45-fock.json')) return Promise.resolve(jsonResponse(FOCK));
@@ -2560,6 +2587,51 @@ describe('banner surfacing (PR self-review fix wave)', () => {
 
     const alertBanner = await screen.findByRole('alert');
     expect(within(alertBanner).getByText(de['harborPicker.knownDisconnected'])).toBeInTheDocument();
+  });
+
+  // #1721: an `unreachable` no-route against a harbour the depth grid cannot
+  // connect even at the boat's lowest allowed gate must not carry the
+  // heuristic-search hedge. MARSTAL_TEST is walled in by the shared test mask.
+  async function planEasyGoToHarbor(harbor: Harbor) {
+    localStorage.setItem('sc-boat-id', 'salona-44-easy-go');
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    const originSection = screen.getByRole('region', { name: de['planner.origin.label'] });
+    fireEvent.click(within(originSection).getByRole('button', { name: de['planner.pickOnMap'] }));
+    simulateMapClick(ORIGIN_A.lat, ORIGIN_A.lon);
+
+    const destSection = screen.getByRole('region', { name: de['planner.destination.label'] });
+    fireEvent.change(within(destSection).getByRole('combobox'), {
+      target: { value: harbor.names.de },
+    });
+    fireEvent.click(
+      within(destSection).getByRole('option', { name: harborOptionName(harbor.names.de) }),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+    await waitFor(() => expect(routingMock.calls.length).toBe(1));
+    routingMock.calls[0].resolve({ status: 'error', reason: 'unreachable' });
+    return screen.findByRole('alert');
+  }
+
+  it('#1721: the no-route banner names harbour, boat, draft and lowest gate, without the "gave up too soon" hedge', async () => {
+    const alertBanner = await planEasyGoToHarbor(MARSTAL_TEST);
+    expect(
+      within(alertBanner).getByText(
+        'Keine Route mit Salona 44 (EASY GO!) (Tiefgang 2,59 m): Das Tiefenraster der App (~46-m-Zellen, schmale ausgebaggerte Rinnen können darin fehlen) findet keine Verbindung zu oder von Marstal, selbst bei der niedrigsten für dieses Boot zulässigen Sicherheitstiefe (2,7 m). Keine zulässige Einstellung ändert das. Seekarte oder Hafenhandbuch prüfen.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(alertBanner).queryByText(de['error.noRoute.unreachable']),
+    ).not.toBeInTheDocument();
+  });
+
+  // Control: same boat, same failure reason, but the harbour IS connected in
+  // the depth grid, so the generic message stays.
+  it('#1721: the same boat keeps the generic message for a harbour the depth grid does connect', async () => {
+    const alertBanner = await planEasyGoToHarbor(FLENSBURG);
+    expect(within(alertBanner).getByText(de['error.noRoute.unreachable'])).toBeInTheDocument();
   });
 
   // Round-2 review Finding B: no test exercised "origin/destination IS

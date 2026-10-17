@@ -2700,6 +2700,8 @@ describe('#1291 per-boat harbour access markers on the selected-endpoint row', (
         ['marstal', 'ok'],
       ]),
     );
+    // #1721: the second call is the lowest-gate map; reachable there keeps the ordinary lines.
+    vi.mocked(computeHarborAccess).mockReturnValueOnce(new Map([['flensburg', 'ok']]));
     vi.mocked(findLowerSettingHint).mockReturnValueOnce({ kind: 'not-found' });
 
     renderPanel({
@@ -2729,6 +2731,7 @@ describe('#1291 per-boat harbour access markers on the selected-endpoint row', (
   it('shows only the "found" lower-setting line when the hint search succeeds — never the #1321 line too', () => {
     vi.mocked(useNavMask).mockReturnValue({} as never);
     vi.mocked(computeHarborAccess).mockReturnValueOnce(new Map([['marstal', 'unreachable']]));
+    vi.mocked(computeHarborAccess).mockReturnValueOnce(new Map([['marstal', 'ok']]));
     // PR #1323 review Major 1: depthM here is realistic (>= the boat's own
     // default) — the fixed `harborAccessCopy` keys on `state` alone, never
     // on a depth comparison (see HarborPicker.test.tsx's own mutation-aimed
@@ -2754,6 +2757,30 @@ describe('#1291 per-boat harbour access markers on the selected-endpoint row', (
     expect(
       within(destinationSection).queryByText(/Not reachable at or above/),
     ).not.toBeInTheDocument();
+  });
+
+  it('#1721: shows the any-setting line on the selected row when the harbour is also unreachable at the lowest gate', () => {
+    vi.mocked(useNavMask).mockReturnValue({} as never);
+    vi.mocked(computeHarborAccess).mockReturnValueOnce(new Map([['marstal', 'unreachable']]));
+    vi.mocked(computeHarborAccess).mockReturnValueOnce(new Map([['marstal', 'unreachable']]));
+    vi.mocked(findLowerSettingHint).mockReturnValueOnce({ kind: 'not-found' });
+
+    renderPanel({
+      boat: { ...boatById(DEFAULT_BOAT_ID), name: 'SPEEDY GO!' },
+      destination: {
+        source: 'harbor',
+        point: MARSTAL.snap,
+        harborId: MARSTAL.id,
+        label: 'Marstal',
+      },
+    });
+    const destinationSection = screen.getByRole('region', { name: 'Destination' });
+    expect(
+      within(destinationSection).getByText(
+        "Even at the lowest safety depth SPEEDY GO! allows (2.2 m), the app's depth data finds no connection here — no allowed setting helps.",
+      ),
+    ).toBeInTheDocument();
+    expect(within(destinationSection).queryByText(/Not reachable with/)).not.toBeInTheDocument();
   });
 
   it('renders no per-boat marker for an ok harbor', () => {

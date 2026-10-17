@@ -81,6 +81,11 @@ test('#1291: per-boat harbour access markers render for a non-default boat, in t
   }
 });
 
+// #1721: unreachable at the live 3.5 m gate AND at EASY GO!'s lowest allowed
+// gate (2.7 m), so the picker states that no allowed setting helps.
+const EASY_GO_ANY_SETTING_LINE =
+  'Selbst bei der niedrigsten für Salona 44 (EASY GO!) zulässigen Sicherheitstiefe (2,7 m) findet die Tiefendatenbasis der App hier keine Verbindung – keine zulässige Einstellung hilft.';
+
 // #1575: the real `unreachable` state, reached by a plain default-settings
 // boat switch. EASY GO!'s 3.5 m gate leaves Marstal and Augustenborg
 // unreachable, so switching into it from SPEEDY GO! with Marstal selected must
@@ -122,23 +127,53 @@ test('#1575: switching to EASY GO! announces an unreachable destination and mark
     );
 
     await page.getByRole('tab', { name: 'Planen' }).click();
-    await expect(
-      destSection.getByText(
-        'Mit Salona 44 (EASY GO!) bei 3,5 m Sicherheitstiefe nicht erreichbar.',
-      ),
-    ).toBeVisible();
+    await expect(destSection.getByText(EASY_GO_ANY_SETTING_LINE)).toBeVisible();
 
     // The snap-failure branch: Augustenborg has no navigable cell within the
     // snap radius at 3.5 m.
     const originSection = page.getByRole('region', { name: 'Start' });
     await originSection.getByRole('combobox').fill('Augustenborg');
     await expect(originSection.getByRole('option')).toHaveCount(1);
+    // Reachable at the lowest gate, so only the live-gate line applies.
     await expect(
       originSection
         .getByRole('option')
         .first()
         .getByText('Mit Salona 44 (EASY GO!) bei 3,5 m Sicherheitstiefe nicht erreichbar.'),
     ).toBeVisible();
+  } finally {
+    server.kill();
+  }
+});
+
+// #1721: the failure banner for the same stranded harbour, driven through the
+// real solver: no hedge, and it names harbour, boat, draft and lowest gate.
+test('#1721: planning EASY GO! from Marstal shows the data-attributed no-route message', async ({
+  page,
+}) => {
+  const server = await startPreview(page);
+  try {
+    await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
+
+    await page.getByRole('tab', { name: 'Boot' }).click();
+    await page.getByRole('radio', { name: /EASY GO!/ }).click();
+    await expect(page.getByRole('radio', { name: /EASY GO!/ })).toBeChecked();
+
+    await page.getByRole('tab', { name: 'Planen' }).click();
+    const originSection = page.getByRole('region', { name: 'Start' });
+    await originSection.getByRole('combobox').fill('Marstal');
+    await originSection.getByRole('option').first().click();
+    const destSection = page.getByRole('region', { name: 'Ziel' });
+    await destSection.getByRole('combobox').fill('Assens');
+    await destSection.getByRole('option').first().click();
+
+    await page.getByRole('button', { name: 'Route planen' }).click();
+    const banner = page.getByRole('alert').filter({ hasText: 'Keine Route' });
+    await expect(banner).toContainText(
+      'Keine Route mit Salona 44 (EASY GO!) (Tiefgang 2,59 m): Das Tiefenraster der App (~46-m-Zellen, schmale ausgebaggerte Rinnen können darin fehlen) findet keine Verbindung zu oder von Marstal, selbst bei der niedrigsten für dieses Boot zulässigen Sicherheitstiefe (2,7 m).',
+      { timeout: 60_000 },
+    );
+    await expect(banner).not.toContainText('zu früh aufgegeben');
   } finally {
     server.kill();
   }
