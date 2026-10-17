@@ -28,7 +28,7 @@ import { fetchWindGrid, OpenMeteoError } from './services/openMeteo';
 import { __resetDbForTests } from './services/db';
 import * as db from './services/db';
 import { TEST_MASK_META, TEST_POLAR, uniformWindGrid } from './test/fixtures';
-import { formatLatLon, formatNm, toLocalInputValue } from './lib/format';
+import { formatLatLon, formatNm, formatWeekdayTime, toLocalInputValue } from './lib/format';
 import { staleForecastGapHours } from './lib/plan';
 import {
   DEFAULT_SETTINGS,
@@ -4764,5 +4764,129 @@ describe('#1707 next passage', () => {
     cleanup();
     const freshDb = await import('./services/db');
     await Promise.all([db.__resetDbForTests(), freshDb.__resetDbForTests()]);
+  });
+
+  describe('offline planning from the stored forecast', () => {
+    const fill = (msg: string, vars: Record<string, string>) =>
+      Object.entries(vars).reduce((m, [k, v]) => m.replaceAll(`{${k}}`, v), msg);
+
+    function goOffline() {
+      vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false);
+      fireEvent(window, new Event('offline'));
+    }
+
+    function pickDestination(name: string) {
+      const dest = screen.getByRole('region', { name: de['planner.destination.label'] });
+      fireEvent.change(within(dest).getByRole('combobox'), { target: { value: name } });
+      fireEvent.click(within(dest).getByRole('option', { name: harborOptionName(name) }));
+    }
+
+    async function seeded(gridHours: number) {
+      const plan = sourcePlan('next-offline');
+      plan.windGrid = uniformWindGrid(10, 250, {
+        t0Ms: plan.windGrid.fetchedAtMs,
+        hours: gridHours,
+      });
+      await loadSource(plan);
+      fireEvent.click(screen.getByRole('button', { name: NEXT_ACTION }));
+      return plan;
+    }
+
+    it('reaching grid: qualified banner, plan enabled once a destination is picked, stored grid used', async () => {
+      const plan = await seeded(8 * 24);
+      const t0 = plan.windGrid.fetchedAtMs;
+      goOffline();
+
+      expect(await screen.findByText(de['banner.offlineNextPassage'])).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          fill(de['planner.nextPassage.offlineStored'], {
+            name: plan.name,
+            fetched: formatWeekdayTime(t0, 'de'),
+          }),
+        ),
+      ).toBeInTheDocument();
+
+      pickDestination(FLENSBURG.names.de);
+      expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled();
+      expect(screen.queryByText(de['error.offline'])).not.toBeInTheDocument();
+
+      vi.mocked(fetchWindGrid).mockClear();
+      fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+      await waitFor(() => expect(routingMock.calls).toHaveLength(1));
+      expect(fetchWindGrid).not.toHaveBeenCalled();
+      routingMock.calls[0].resolve(okPlanResult(12));
+
+      await waitFor(async () => expect(await db.listPlans()).toHaveLength(2));
+      const saved = (await db.listPlans()).find((p) => p.id !== plan.id);
+      const created = await db.getPlan(saved!.id);
+      expect(created?.windGrid.fetchedAtMs).toBe(t0);
+      // The seed ends once the new plan is active.
+      expect(await screen.findByText(de['banner.offline'])).toBeInTheDocument();
+    });
+
+    it("grid ending before the departure: disabled with today's message and the too-short line", async () => {
+      const plan = await seeded(2);
+      const last = plan.windGrid.timesMs[plan.windGrid.timesMs.length - 1];
+      goOffline();
+      pickDestination(FLENSBURG.names.de);
+
+      expect(await screen.findByText(de['banner.offline'])).toBeInTheDocument();
+      expect(screen.queryByText(de['banner.offlineNextPassage'])).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeDisabled();
+      expect(screen.getByText(de['error.offline'])).toBeInTheDocument();
+      const line = screen.getByText(
+        fill(de['planner.nextPassage.offlineTooShort'], {
+          until: formatWeekdayTime(last, 'de'),
+        }),
+      );
+      expect(line.closest('[role="alert"]')).toBeNull();
+    });
+
+    it("the start edited after seeding: today's offline behaviour returns", async () => {
+      await seeded(8 * 24);
+      goOffline();
+      expect(await screen.findByText(de['banner.offlineNextPassage'])).toBeInTheDocument();
+
+      const start = screen.getByRole('region', { name: de['planner.origin.label'] });
+      fireEvent.click(within(start).getByRole('button', { name: de['planner.change'] }));
+      fireEvent.change(within(start).getByRole('combobox'), {
+        target: { value: FLENSBURG.names.de },
+      });
+      fireEvent.click(
+        within(start).getByRole('option', { name: harborOptionName(FLENSBURG.names.de) }),
+      );
+      pickDestination(RELABEL_HARBOR.names.de);
+
+      expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeDisabled();
+      expect(screen.getByText(de['error.offline'])).toBeInTheDocument();
+      expect(screen.getByText(de['banner.offline'])).toBeInTheDocument();
+    });
+
+    it('online, a network-failed fetch falls back to the stored grid', async () => {
+      const plan = await seeded(8 * 24);
+      pickDestination(FLENSBURG.names.de);
+      vi.mocked(fetchWindGrid).mockRejectedValueOnce(
+        new OpenMeteoError('offline', 'network failure'),
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+      await waitFor(() => expect(routingMock.calls).toHaveLength(1));
+      routingMock.calls[0].resolve(okPlanResult(12));
+
+      await waitFor(async () => expect(await db.listPlans()).toHaveLength(2));
+      const saved = (await db.listPlans()).find((p) => p.id !== plan.id);
+      expect((await db.getPlan(saved!.id))?.windGrid.fetchedAtMs).toBe(plan.windGrid.fetchedAtMs);
+    });
+
+    it('without a seed: unchanged', async () => {
+      await loadSource(sourcePlan('next-no-seed'));
+      goOffline();
+
+      expect(await screen.findByText(de['banner.offline'])).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeDisabled();
+      expect(screen.getByText(de['error.offline'])).toBeInTheDocument();
+      expect(screen.queryByText(/gespeicherte Vorhersage/)).not.toBeInTheDocument();
+    });
   });
 });

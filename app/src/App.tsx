@@ -68,6 +68,8 @@ import {
   pickedPointsOfPlan,
   planFormDirty,
   routingSettingsDirty,
+  activeNextPassageSeed,
+  nextPassageOffline,
   seedNextPassage,
   segmentModesDiffer,
   viaPointsDiffer,
@@ -78,7 +80,7 @@ import { useBannerHeight } from './lib/useBannerHeight';
 import { usePersistedNumber } from './lib/usePersistedNumber';
 import { usePersistedToggle } from './lib/usePersistedToggle';
 import { PANEL_MIN_WIDTH_PX, panelMaxWidthPx } from './lib/panelWidth';
-import { formatLatLon } from './lib/format';
+import { formatLatLon, formatWeekdayTime } from './lib/format';
 import { resolveHarborPickTarget } from './lib/harborGeoJson';
 import { boatById } from './data/boats';
 import {
@@ -658,7 +660,8 @@ function AppShell() {
   const [tapTarget, setTapTarget] = useState<TapTarget | null>(null);
 
   // #1707: ephemeral; validity is derived (activeNextPassageSeed), never stored.
-  const [, setNextPassageSeed] = useState<NextPassageSeedState | null>(null);
+  const [nextPassageSeed, setNextPassageSeed] = useState<NextPassageSeedState | null>(null);
+  const activeSeed = activeNextPassageSeed(nextPassageSeed, plan?.id ?? null, origin);
   const [pendingDestinationFocus, setPendingDestinationFocus] = useState(false);
   const handleDestinationFocused = useCallback(() => setPendingDestinationFocus(false), []);
 
@@ -1357,8 +1360,13 @@ function AppShell() {
         ? { count: 0, named: false, labels: '' }
         : droppedViaLabels(origin.point, viaPoints, destination.point, lang, t),
     );
-    void run(request, `${origin.label} → ${destination.label}`);
+    void run(
+      request,
+      `${origin.label} → ${destination.label}`,
+      activeSeed ? { storedWindGrid: activeSeed.windGrid } : {},
+    );
   }, [
+    activeSeed,
     origin,
     destination,
     departureMs,
@@ -1456,7 +1464,21 @@ function AppShell() {
   // for it to be "in flight" with.
   const runBusy =
     !(planning.phase === 'idle' || planning.phase === 'error') || liveReroute.state.rerouting;
-  const canPlan = origin !== null && destination !== null && online && !runBusy;
+  const offlineSeed = nextPassageOffline(online, activeSeed, departureMs);
+  const seedPlannableOffline = offlineSeed?.kind === 'stored';
+  const canPlan =
+    origin !== null && destination !== null && (online || seedPlannableOffline) && !runBusy;
+  const nextPassageGuidance =
+    offlineSeed === null
+      ? null
+      : offlineSeed.kind === 'stored'
+        ? t('planner.nextPassage.offlineStored', {
+            name: offlineSeed.sourceName,
+            fetched: formatWeekdayTime(offlineSeed.fetchedAtMs, lang),
+          })
+        : t('planner.nextPassage.offlineTooShort', {
+            until: formatWeekdayTime(offlineSeed.untilMs, lang),
+          });
   const nextPassageDisabled = runBusy || harbors.length === 0;
   // §3.5: the primary button always states WHY it's disabled. Offline is the
   // most blocking (nothing can be planned), then a missing endpoint. When both
@@ -1464,11 +1486,12 @@ function AppShell() {
   // #571 redesign REVERTED a via-replanning-in-flight branch that used to sit
   // here: a via edit no longer disables anything (see `runBusy` above), so
   // this reason is back to exactly the two pre-#571 cases.
-  const planDisabledReason = !online
-    ? t('error.offline')
-    : origin === null || destination === null
-      ? t('planner.disabled.pickEndpoints')
-      : null;
+  const planDisabledReason =
+    !online && !seedPlannableOffline
+      ? t('error.offline')
+      : origin === null || destination === null
+        ? t('planner.disabled.pickEndpoints')
+        : null;
 
   const plannerStatus = toPlannerStatus(planning, t);
   const stale = plan !== null && isStaleForecast(plan);
@@ -1796,7 +1819,11 @@ function AppShell() {
             {t('app.disclaimer')}
           </Banner>
         )}
-        {!online && <Banner kind="warning">{t('banner.offline')}</Banner>}
+        {!online && (
+          <Banner kind="warning">
+            {t(seedPlannableOffline ? 'banner.offlineNextPassage' : 'banner.offline')}
+          </Banner>
+        )}
         {mapError && (
           <Banner kind="error" onDismiss={handleDismissMapError} dismissLabel={t('banner.dismiss')}>
             {t('banner.mapError')}
@@ -2089,6 +2116,7 @@ function AppShell() {
                     disabled: nextPassageDisabled,
                     onNextPassage: handleNextPassage,
                   }}
+                  nextPassageGuidance={nextPassageGuidance}
                   pendingDestinationFocus={pendingDestinationFocus}
                   onDestinationFocused={handleDestinationFocused}
                 />

@@ -337,6 +337,7 @@ interface Overrides {
   onViewDetails?: () => void;
   onOpenBoatSettings?: () => void;
   nextPassage?: NextPassageProps;
+  nextPassageGuidance?: string | null;
   pendingDestinationFocus?: boolean;
   onDestinationFocused?: () => void;
 }
@@ -2862,6 +2863,12 @@ describe('#1707 next passage in the compact result card', () => {
       within(screen.getByRole('region', { name: 'Destination' })).getByRole('combobox'),
     );
     expect(onDestinationFocused).toHaveBeenCalled();
+  });
+
+  it('renders the next-passage guidance as a non-alert line', () => {
+    renderPanel({ nextPassageGuidance: 'Offline — stored forecast note' });
+    const line = screen.getByText('Offline — stored forecast note');
+    expect(line.closest('[role="alert"]')).toBeNull();
   });
 
   it('nothing moves focus while no focus is pending', () => {

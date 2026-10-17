@@ -201,6 +201,8 @@ export interface PlannerPanelProps {
   onOpenBoatSettings: () => void;
   /** #1707: the one-tap seed for the next passage, shown in the compact result card. */
   nextPassage?: NextPassageProps;
+  /** #1707: offline notice for a seeded next passage; a plain line, never an alert. */
+  nextPassageGuidance?: string | null;
   pendingDestinationFocus?: boolean;
   onDestinationFocused?: () => void;
 }
@@ -289,6 +291,7 @@ export default function PlannerPanel({
   onViewDetails,
   onOpenBoatSettings,
   nextPassage,
+  nextPassageGuidance,
   pendingDestinationFocus,
   onDestinationFocused,
 }: PlannerPanelProps) {
@@ -1551,6 +1554,7 @@ export default function PlannerPanel({
             </p>
           )
         )}
+        {nextPassageGuidance && <p className="planner-guidance">{nextPassageGuidance}</p>}
       </div>
 
       {/* ONE persistent live region (aria-atomic): in-flight status while
