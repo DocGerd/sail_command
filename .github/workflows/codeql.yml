@@ -4,7 +4,7 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
-    # No `paths:` filter: CodeQL runs on every PR (#72).
+    # No `paths:` filter (#72).
   schedule:
     - cron: '23 4 * * 1' # weekly, Monday 04:23 UTC
 permissions:

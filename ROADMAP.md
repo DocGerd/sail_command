@@ -211,10 +211,10 @@ issues total that milestone closed. The largest strand cut what continuous
 integration spends: the `app` job gained a skip for its expensive steps on
 a docs-only change and on a push whose tree a previous run already tested,
 CodeQL gained a concurrency group so a superseded pull-request head stops
-being analysed to completion, CodeQL's pull-request analysis ran only
-where its `paths:` filter admitted the changed paths, so a prose-only
-documentation pull request skipped it while a changelog-only one still
-triggered it (a filter later removed in #72), the nightly coverage run skips an unchanged tree, and every
+being analysed to completion, CodeQL's pull-request analysis now runs only
+where its `paths:` filter admits the changed paths, so a prose-only
+documentation pull request skips it while a changelog-only one still
+triggers it (that filter has since been removed), the nightly coverage run skips an unchanged tree, and every
 previously uncapped job gained a `timeout-minutes`
 ([#875](https://github.com/DocGerd/sail_command/issues/875),
 [#877](https://github.com/DocGerd/sail_command/issues/877),
