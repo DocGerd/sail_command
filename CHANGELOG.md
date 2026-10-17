@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.55.0] - 2026-10-17
+
+### Added
+
+- Plan the next passage from any planned route in one tap: it starts at that route's destination and departs at the next 10:00 after arrival, and offline it can be planned from the route's stored forecast (#1707).
+
+### Fixed
+
+- The route fit is re-applied when the map or bottom sheet resizes after the auto-fit, such as when the offline-ready notice closes, so the start marker no longer ends up under the sheet (#1639).
+- The route fit leaves room for the start and destination labels, including for a restored or loaded plan, so they no longer run under the map controls or off the map edge (#1641).
+- Wind forecast requests now wait and retry when Open-Meteo is briefly overloaded, stop immediately on an hourly or daily limit, and reuse a recently loaded forecast for the same area instead of fetching it again (#1712).
+
 ## [0.54.0] - 2026-10-16
 
 ### Added
@@ -1275,7 +1287,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.54.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.55.0...HEAD
+[0.55.0]: https://github.com/DocGerd/sail_command/compare/v0.54.0...v0.55.0
 [0.54.0]: https://github.com/DocGerd/sail_command/compare/v0.53.0...v0.54.0
 [0.53.0]: https://github.com/DocGerd/sail_command/compare/v0.52.0...v0.53.0
 [0.52.0]: https://github.com/DocGerd/sail_command/compare/v0.51.0...v0.52.0
