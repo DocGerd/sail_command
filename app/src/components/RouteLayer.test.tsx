@@ -838,6 +838,19 @@ describe('RouteLayer re-fit after a layout change (#1639)', () => {
     expect(map.fitBounds.mock.calls[0][1]).toMatchObject({ padding: { bottom: 316 } });
   });
 
+  it('still fits on entering Live when a marker rebuild gets its check in first', async () => {
+    const map = setup();
+    map.fitBounds.mockClear();
+    mountLive();
+    await act(async () => {
+      map.getCanvasContainer().appendChild(document.createElement('div'));
+      await Promise.resolve();
+      flushFrames();
+    });
+    resize();
+    expect(map.fitBounds).toHaveBeenCalledTimes(1);
+  });
+
   it('does not re-fit while the Live view is active, however the readout resizes', () => {
     const map = setup();
     mountLive();

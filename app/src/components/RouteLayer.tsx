@@ -1300,7 +1300,7 @@ export default function RouteLayer({
       const enteringLive = liveActive && !liveWasActive;
       liveWasActive = liveActive;
       if (liveActive && !enteringLive) return;
-      if (fitIsCurrent(map, endsRef.current, state, labelsOnly)) return;
+      if (fitIsCurrent(map, endsRef.current, state, labelsOnly && !enteringLive)) return;
       // MapLibre resizes its transform in a throttled observer of its own.
       map.resize();
       autoFitKeyRef.current = fitToLegs(map, legsRef.current, endsRef.current);
