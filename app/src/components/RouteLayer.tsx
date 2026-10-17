@@ -1134,9 +1134,21 @@ export default function RouteLayer({
     let disposed = false;
     let ro: ResizeObserver | null = null;
     // `.live-view` mounts with the Live tab, so targets are re-collected per callback.
+    const watched = new Set<Element>();
     const watch = () => {
-      document.querySelectorAll(RESIZE_WATCHED_SELECTOR).forEach((el) => ro?.observe(el));
+      watched.forEach((el) => {
+        if (el.isConnected) return;
+        ro?.unobserve(el);
+        watched.delete(el);
+      });
+      document.querySelectorAll(RESIZE_WATCHED_SELECTOR).forEach((el) => {
+        if (watched.has(el)) return;
+        watched.add(el);
+        ro?.observe(el);
+      });
     };
+    // The readout's height follows its hints, so a started Live view is fitted once, on entry.
+    let liveWasActive = false;
     const refit = () => {
       if (disposed || autoFitKeyRef.current === null) return;
       watch();
@@ -1145,9 +1157,13 @@ export default function RouteLayer({
         map.once('moveend', refit);
         return;
       }
+      const liveActive = document.querySelector('.live-view-data') !== null;
+      const enteringLive = liveActive && !liveWasActive;
+      liveWasActive = liveActive;
+      if (liveActive && !enteringLive) return;
+      if (fitLayoutKey(map) === autoFitKeyRef.current) return;
       // MapLibre resizes its transform in a throttled observer of its own.
       map.resize();
-      if (fitLayoutKey(map) === autoFitKeyRef.current) return;
       autoFitKeyRef.current = fitToLegs(map, legsRef.current);
     };
     if (typeof ResizeObserver === 'function') {

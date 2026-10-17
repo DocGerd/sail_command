@@ -470,6 +470,7 @@ describe('RouteLayer re-fit after a layout change (#1639)', () => {
     cb: () => void;
     targets: Element[];
     disconnect: ReturnType<typeof vi.fn>;
+    unobserve: ReturnType<typeof vi.fn>;
   }> = [];
   let sheetTop = 600;
   let liveTop = 500;
@@ -486,17 +487,18 @@ describe('RouteLayer re-fit after a layout change (#1639)', () => {
       class {
         targets: Element[] = [];
         disconnect = vi.fn();
+        unobserve = vi.fn();
         constructor(cb: () => void) {
           observers.push({
             cb,
             targets: this.targets,
             disconnect: this.disconnect,
+            unobserve: this.unobserve,
           });
         }
         observe(el: Element) {
           this.targets.push(el);
         }
-        unobserve() {}
       },
     );
   });
@@ -609,6 +611,73 @@ describe('RouteLayer re-fit after a layout change (#1639)', () => {
     expect(map.fitBounds.mock.calls[0][1]).toMatchObject({
       padding: { bottom: 316 },
     });
+  });
+
+  function mountLive() {
+    const live = mount('live-view');
+    const data = document.createElement('div');
+    data.className = 'live-view-data';
+    live.appendChild(data);
+    return live;
+  }
+
+  it('fits once on entering the started Live view, padded for the readout', () => {
+    const map = setup();
+    map.fitBounds.mockClear();
+    mountLive();
+    resize();
+    expect(map.fitBounds).toHaveBeenCalledTimes(1);
+    expect(map.fitBounds.mock.calls[0][1]).toMatchObject({ padding: { bottom: 316 } });
+  });
+
+  it('does not re-fit while the Live view is active, however the readout resizes', () => {
+    const map = setup();
+    mountLive();
+    resize();
+    map.fitBounds.mockClear();
+    liveTop = 400;
+    resize();
+    expect(map.fitBounds).not.toHaveBeenCalled();
+  });
+
+  it('resumes re-fitting after the Live view ends', () => {
+    const map = setup();
+    const live = mountLive();
+    resize();
+    live.remove();
+    map.fitBounds.mockClear();
+    resize();
+    expect(map.fitBounds).toHaveBeenCalledTimes(1);
+  });
+
+  it('fits once more when the Live view is entered again', () => {
+    const map = setup();
+    mountLive();
+    resize();
+    document.querySelectorAll('.live-view').forEach((el) => el.remove());
+    resize();
+    mountLive();
+    map.fitBounds.mockClear();
+    resize();
+    expect(map.fitBounds).toHaveBeenCalledTimes(1);
+  });
+
+  it('touches neither the camera nor the map size on a callback that changed nothing', () => {
+    const map = setup();
+    map.fitBounds.mockClear();
+    map.resize.mockClear();
+    resize();
+    expect(map.fitBounds).not.toHaveBeenCalled();
+    expect(map.resize).not.toHaveBeenCalled();
+  });
+
+  it('stops observing a target that left the document', () => {
+    setup();
+    const live = mount('live-view');
+    resize();
+    live.remove();
+    resize();
+    expect(observers.some((o) => o.unobserve.mock.calls.some((c) => c[0] === live))).toBe(true);
   });
 
   it('defers the re-fit while the camera is moving, then applies it on moveend', () => {
