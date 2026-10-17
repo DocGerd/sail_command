@@ -570,7 +570,9 @@ function setupLayers(map: MaplibreMap): void {
 }
 
 // Overlays that sit on the map and cover part of it (#1626).
-const MAP_CHROME_SELECTOR = '.route-layer-controls, .map-stack-tl, .app-bottom-sheet';
+const MAP_CHROME_SELECTOR = '.route-layer-controls, .map-stack-tl, .app-bottom-sheet, .live-view';
+
+const RESIZE_WATCHED_SELECTOR = '.app-bottom-sheet, .live-view';
 
 function rectOf(el: Element): Box {
   const { left, top, right, bottom } = el.getBoundingClientRect();
@@ -1129,19 +1131,33 @@ export default function RouteLayer({
       if (e.originalEvent !== undefined) autoFitKeyRef.current = null;
     };
     map.on('movestart', release);
+    let disposed = false;
+    let ro: ResizeObserver | null = null;
+    // `.live-view` mounts with the Live tab, so targets are re-collected per callback.
+    const watch = () => {
+      document.querySelectorAll(RESIZE_WATCHED_SELECTOR).forEach((el) => ro?.observe(el));
+    };
     const refit = () => {
-      if (autoFitKeyRef.current === null || fitLayoutKey(map) === autoFitKeyRef.current) return;
+      if (disposed || autoFitKeyRef.current === null) return;
+      watch();
+      // A fit stops a running ease, which would demote the compass.
+      if (map.isMoving()) {
+        map.once('moveend', refit);
+        return;
+      }
+      // MapLibre resizes its transform in a throttled observer of its own.
+      map.resize();
+      if (fitLayoutKey(map) === autoFitKeyRef.current) return;
       autoFitKeyRef.current = fitToLegs(map, legsRef.current);
     };
-    let ro: ResizeObserver | null = null;
     if (typeof ResizeObserver === 'function') {
       ro = new ResizeObserver(refit);
       const mapEl = map.getCanvasContainer().parentElement;
       if (mapEl) ro.observe(mapEl);
-      const sheet = document.querySelector('.app-bottom-sheet');
-      if (sheet) ro.observe(sheet);
+      watch();
     }
     return () => {
+      disposed = true;
       map.off('movestart', release);
       ro?.disconnect();
     };
@@ -1164,7 +1180,7 @@ export default function RouteLayer({
   const canFitRoute = result !== null && result.legs.length > 0;
   const handleFitToView = () => {
     if (!map || !result) return;
-    fitToLegs(map, result.legs);
+    autoFitKeyRef.current = fitToLegs(map, result.legs);
   };
 
   // Forecast hours spanning departure->ETA — the slider's snap points.

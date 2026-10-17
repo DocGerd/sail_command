@@ -322,7 +322,8 @@ async function startMarkerGapToSheet(page: Page): Promise<number | null> {
 }
 
 test.describe('#1639: start marker clear of the bottom sheet (tabletPortrait)', () => {
-  test('after the auto-fit on a height-limited route', async ({ page }) => {
+  // Control, green without the re-fit: the first fit is already right when the toast stays up.
+  test('control: auto-fit on a height-limited route, toast still showing', async ({ page }) => {
     await page.setViewportSize(STANDARD_VIEWPORTS.tabletPortrait);
     const server = await startPreview(page);
     try {
@@ -350,6 +351,45 @@ test.describe('#1639: start marker clear of the bottom sheet (tabletPortrait)', 
       await expect
         .poll(() => startMarkerGapToSheet(page), { timeout: 30_000 })
         .toBeGreaterThanOrEqual(0);
+    } finally {
+      server.kill();
+    }
+  });
+});
+
+// Switching to the Live tab shrinks the sheet while the docked readout takes its place.
+test.describe('#1639: start marker clear of the Live readout (tabletPortrait)', () => {
+  test.use({
+    permissions: ['geolocation'],
+    geolocation: { latitude: 54.8237, longitude: 9.6524, accuracy: 5 },
+  });
+
+  test('after starting the Live view', async ({ page }) => {
+    await page.setViewportSize(STANDARD_VIEWPORTS.tabletPortrait);
+    const server = await startPreview(page);
+    try {
+      await planRoute(page, server.url, 'Flensburg', 'Sønderborg');
+      await waitForStableCamera(page);
+      await page.getByRole('tab', { name: 'Live' }).click();
+      await page.getByRole('button', { name: 'Live-Ansicht' }).click();
+      await expect(page.locator('.live-view-data')).toBeVisible({ timeout: 30_000 });
+      await waitForStableCamera(page);
+      await expect
+        .poll(
+          () =>
+            page.evaluate(() => {
+              const marker = document.querySelector('.sc-endpoint-marker-origin');
+              const live = document.querySelector('.live-view');
+              if (!marker || !live) return null;
+              const m = marker.getBoundingClientRect();
+              const l = live.getBoundingClientRect();
+              const w = Math.min(m.right, l.right) - Math.max(m.left, l.left);
+              const h = Math.min(m.bottom, l.bottom) - Math.max(m.top, l.top);
+              return w > 0 && h > 0 ? Math.round(w * h) : 0;
+            }),
+          { timeout: 30_000 },
+        )
+        .toBe(0);
     } finally {
       server.kill();
     }
