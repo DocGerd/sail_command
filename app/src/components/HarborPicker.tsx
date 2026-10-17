@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useId,
   useLayoutEffect,
@@ -11,8 +12,8 @@ import type { Harbor } from '../types';
 import { useLang, useT, type Lang } from '../i18n';
 import type { MsgKey } from '../i18n/dict.de';
 import {
-  computeHarborAccess,
   findLowerSettingHint,
+  harborAccessAt,
   type HarborAccessByHarbor,
   type HarborAccessState,
   type HarborWithReachability,
@@ -183,15 +184,72 @@ export interface UnreachableBand {
   readonly maxM: number;
 }
 
-const bandCache = new WeakMap<NavMask, Map<string, UnreachableBand | null>>();
+interface BandScan {
+  readonly minDm: number;
+  readonly maxDm: number;
+  dm: number;
+  result: UnreachableBand | null | undefined;
+}
+
+const bandScans = new WeakMap<NavMask, Map<string, BandScan>>();
+
+function bandScanOf(mask: NavMask, boat: BoatDef, harborId: string, liveGateM: number): BandScan {
+  const minDm = Math.round(minSafetyDepthM(boat) * 10);
+  const maxDm = Math.max(minDm, Math.round(Math.max(defaultSafetyDepthM(boat), liveGateM) * 10));
+  const key = `${boat.id}|${harborId}|${maxDm}`;
+  let perMask = bandScans.get(mask);
+  if (!perMask) {
+    perMask = new Map();
+    bandScans.set(mask, perMask);
+  }
+  let scan = perMask.get(key);
+  if (!scan) {
+    scan = { minDm, maxDm, dm: minDm, result: undefined };
+    perMask.set(key, scan);
+  }
+  return scan;
+}
 
 /**
  * #1721: the band `[minSafetyDepthM, max(defaultSafetyDepthM, liveGateM)]` when
- * the harbour reads `unreachable` at EVERY 0.1 m gate in it, else null. The
- * state is not monotone in the gate, so every step is checked. Cached per
- * (mask, boat, harbour, band top); each gate costs one memoised
- * `computeHarborAccess`.
+ * the harbour reads `unreachable` at EVERY 0.1 m gate in it, else null;
+ * undefined while the scan is unfinished. The state is not monotone in the
+ * gate, so every step is checked, one flood per gate (shared with
+ * `computeHarborAccess`), and the scan stops at the first reachable gate.
  */
+// eslint-disable-next-line react-refresh/only-export-components
+export function peekUnreachableBand(
+  mask: NavMask,
+  boat: BoatDef,
+  harborId: string,
+  liveGateM: number,
+): UnreachableBand | null | undefined {
+  return bandScanOf(mask, boat, harborId, liveGateM).result;
+}
+
+/** Checks one more gate of the scan; returns the result once it is known. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function stepUnreachableBand(
+  mask: NavMask,
+  harbors: readonly HarborWithReachability[],
+  boat: BoatDef,
+  harborId: string,
+  liveGateM: number,
+): UnreachableBand | null | undefined {
+  const scan = bandScanOf(mask, boat, harborId, liveGateM);
+  if (scan.result !== undefined) return scan.result;
+  const harbor = harbors.find((h) => h.id === harborId);
+  if (!harbor || harborAccessAt(mask, harbor, boat, scan.dm / 10) !== 'unreachable') {
+    scan.result = null;
+  } else if (scan.dm >= scan.maxDm) {
+    scan.result = { minM: scan.minDm / 10, maxM: scan.maxDm / 10 };
+  } else {
+    scan.dm++;
+  }
+  return scan.result;
+}
+
+/** The whole scan at once; tests and callers off the render path. */
 // eslint-disable-next-line react-refresh/only-export-components
 export function unreachableBand(
   mask: NavMask,
@@ -200,25 +258,58 @@ export function unreachableBand(
   harborId: string,
   liveGateM: number,
 ): UnreachableBand | null {
-  const minDm = Math.round(minSafetyDepthM(boat) * 10);
-  const maxDm = Math.max(minDm, Math.round(Math.max(defaultSafetyDepthM(boat), liveGateM) * 10));
-  const key = `${boat.id}|${harborId}|${maxDm}`;
-  let perMask = bandCache.get(mask);
-  if (!perMask) {
-    perMask = new Map();
-    bandCache.set(mask, perMask);
-  }
-  const hit = perMask.get(key);
-  if (hit !== undefined) return hit;
-  let result: UnreachableBand | null = { minM: minDm / 10, maxM: maxDm / 10 };
-  for (let dm = minDm; dm <= maxDm; dm++) {
-    if (computeHarborAccess(mask, harbors, boat, dm / 10).get(harborId) !== 'unreachable') {
-      result = null;
-      break;
-    }
-  }
-  perMask.set(key, result);
+  let result = peekUnreachableBand(mask, boat, harborId, liveGateM);
+  while (result === undefined)
+    result = stepUnreachableBand(mask, harbors, boat, harborId, liveGateM);
   return result;
+}
+
+/**
+ * Scans the given harbours one gate per macrotask, so no render waits on a
+ * flood. The returned lookup yields null until a scan has finished; its
+ * identity changes whenever one does.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function useUnreachableBandOf(
+  mask: NavMask | null,
+  harbors: readonly HarborWithReachability[],
+  boat: BoatDef,
+  liveGateM: number,
+  harborIds: readonly string[],
+): (harborId: string) => UnreachableBand | null {
+  const [finished, setFinished] = useState(0);
+  const idsKey = harborIds.join('|');
+  useEffect(() => {
+    if (!mask || idsKey === '') return;
+    const ids = idsKey.split('|');
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const step = () => {
+      if (cancelled) return;
+      const id = ids.find((x) => peekUnreachableBand(mask, boat, x, liveGateM) === undefined);
+      if (id === undefined) {
+        // Another hook instance may have finished these scans: refresh the lookup.
+        setFinished((n) => n + 1);
+        return;
+      }
+      if (stepUnreachableBand(mask, harbors, boat, id, liveGateM) !== undefined) {
+        setFinished((n) => n + 1);
+      }
+      timer = setTimeout(step, 0);
+    };
+    timer = setTimeout(step, 0);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [mask, harbors, boat, liveGateM, idsKey]);
+  return useCallback(
+    (harborId: string) =>
+      mask ? (peekUnreachableBand(mask, boat, harborId, liveGateM) ?? null) : null,
+    // `finished` re-keys the lookup so consumers recompute when a scan completes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [mask, boat, liveGateM, finished],
+  );
 }
 
 /** §5.2: the per-option access state, `known-disconnected` derived from

@@ -19,7 +19,13 @@ import HarborPicker, {
   rankHarbors,
   type HarborWithReachability,
 } from './HarborPicker';
-import { findLowerSettingHint, type LowerSettingHintOutcome } from '../lib/harborReachability';
+import {
+  computeHarborAccess,
+  findLowerSettingHint,
+  harborAccessAt,
+  SEED_POINT,
+  type LowerSettingHintOutcome,
+} from '../lib/harborReachability';
 import { BOATS } from '../data/boats';
 import { NavMask } from '../lib/mask';
 import type { Harbor } from '../types';
@@ -521,6 +527,90 @@ describe('unreachableBand (#1721)', () => {
   it('is null when a lower allowed gate reaches the harbour, though the live gate does not', () => {
     const mask = maskWithPocket(30); // 3.0 m: reachable at gates <= 3.0, not at 3.5
     expect(unreachableBand(mask, [POCKET], easyGo, 'pocket', 3.5)).toBeNull();
+  });
+
+  // Land ring (radius 6 cells) around a deep island (radius 2): the snap
+  // succeeds but the flood never reaches it, so each such harbour costs a
+  // pairwise cellsConnected BFS per gate in a full catalogue classification.
+  function island(id: string, lat: number, lon: number): Harbor {
+    return { id, names: { de: id, da: id, en: id }, country: 'DK', snap: { lat, lon } };
+  }
+  const ISLANDS = [0, 1, 2, 3, 4].map((i) => island(`island${i}`, 54.5 + i * 0.05, 10.5));
+  const REACHABLE = island('open', 54.4, 9.6);
+  // Deep cell inside a 3.0 m ring: 'shallow-approach' while the live gate exceeds the ring.
+  const SHALLOW = island('shallow', 54.75, 10.5);
+  function maskWithIslands() {
+    const data = new Uint8Array(meta.rows * meta.cols).fill(255);
+    for (const h of ISLANDS) {
+      const row = Math.floor((h.snap.lat - meta.south) * 500);
+      const col = Math.floor((h.snap.lon - meta.west) * 500);
+      for (let r = row - 6; r <= row + 6; r++)
+        for (let c = col - 6; c <= col + 6; c++)
+          data[r * meta.cols + c] = Math.max(Math.abs(r - row), Math.abs(c - col)) <= 2 ? 255 : 0;
+    }
+    const row = Math.floor((SHALLOW.snap.lat - meta.south) * 500);
+    const col = Math.floor((SHALLOW.snap.lon - meta.west) * 500);
+    for (let r = row - 5; r <= row + 5; r++)
+      for (let c = col - 5; c <= col + 5; c++)
+        data[r * meta.cols + c] = Math.max(Math.abs(r - row), Math.abs(c - col)) <= 1 ? 255 : 30;
+    return new NavMask(meta, data);
+  }
+  const ALL = [...ISLANDS, REACHABLE, SHALLOW, POCKET];
+
+  it('harborAccessAt agrees with computeHarborAccess for every harbour at every gate of the band', () => {
+    const mask = maskWithPocket(30);
+    const states = new Set<string>();
+    for (let dm = 27; dm <= 35; dm++) {
+      const full = computeHarborAccess(mask, ALL, easyGo, dm / 10);
+      for (const h of ALL) {
+        const single = harborAccessAt(mask, h, easyGo, dm / 10);
+        states.add(single);
+        expect(single, `${h.id} @ ${dm / 10}`).toBe(full.get(h.id));
+      }
+    }
+    const islands = maskWithIslands();
+    for (let dm = 27; dm <= 35; dm++) {
+      const full = computeHarborAccess(islands, ALL, easyGo, dm / 10);
+      for (const h of ALL) {
+        const single = harborAccessAt(islands, h, easyGo, dm / 10);
+        states.add(single);
+        expect(single, `${h.id} @ ${dm / 10}`).toBe(full.get(h.id));
+      }
+    }
+    // The comparison is exercised on every reachable state, not only one.
+    expect([...states].sort()).toEqual(['ok', 'shallow-approach', 'unreachable']);
+  });
+
+  // One flood starts with exactly one isNavigable() call on the seed cell.
+  function countFloods(mask: NavMask) {
+    const seedRow = mask.grid.lat.index(SEED_POINT.lat);
+    const seedCol = mask.grid.lon.index(SEED_POINT.lon);
+    const seedLat = mask.grid.lat.centre(seedRow);
+    const seedLon = mask.grid.lon.centre(seedCol);
+    let floods = 0;
+    const real = mask.isNavigable.bind(mask);
+    vi.spyOn(mask, 'isNavigable').mockImplementation((p, g) => {
+      if (p.lat === seedLat && p.lon === seedLon) floods++;
+      return real(p, g);
+    });
+    return () => floods;
+  }
+
+  it('scans one flood per gate and classifies only the target harbour', () => {
+    const mask = maskWithIslands();
+    const floods = countFloods(mask);
+    const connected = vi.spyOn(mask, 'cellsConnected');
+    expect(unreachableBand(mask, ALL, easyGo, 'island0', 3.5)).toEqual({ minM: 2.7, maxM: 3.5 });
+    expect(floods()).toBe(9);
+    // One pairwise BFS per gate for the target; a full classification would add the other four islands.
+    expect(connected.mock.calls.length).toBeLessThanOrEqual(9);
+  });
+
+  it('stops at the first reachable gate', () => {
+    const mask = maskWithPocket(30); // reachable from 2.7 m
+    const floods = countFloods(mask);
+    expect(unreachableBand(mask, ALL, easyGo, 'pocket', 3.5)).toBeNull();
+    expect(floods()).toBe(1);
   });
 });
 

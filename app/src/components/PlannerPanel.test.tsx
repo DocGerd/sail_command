@@ -3,7 +3,7 @@
 // describe block at the bottom of this file. Placed first per every other
 // file in this repo that touches services/db.ts.
 import 'fake-indexeddb/auto';
-import { render, screen, fireEvent, within, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, within, cleanup, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 // #1291: real `useNavMask` never resolves a non-null mask synchronously in
 // jsdom (no `loadRoutingAssets` mock in this file, so its fetch rejects and
@@ -27,6 +27,7 @@ vi.mock('../lib/harborReachability', async (importOriginal) => {
   return {
     ...actual,
     computeHarborAccess: vi.fn(actual.computeHarborAccess),
+    harborAccessAt: vi.fn(actual.harborAccessAt),
     findLowerSettingHint: vi.fn(actual.findLowerSettingHint),
   };
 });
@@ -61,7 +62,11 @@ import type { NextPassageProps } from './NextPassageAction';
 import { boatById, DEFAULT_BOAT_ID, type BoatDef } from '../data/boats';
 import { boatSnapshot, defaultBoatSnapshot } from '../types';
 import { PLAN_SCHEMA_VERSION } from '../types';
-import { computeHarborAccess, findLowerSettingHint } from '../lib/harborReachability';
+import {
+  computeHarborAccess,
+  findLowerSettingHint,
+  harborAccessAt,
+} from '../lib/harborReachability';
 import type { HarborWithReachability } from '../lib/harborReachability';
 import { useNavMask } from '../state/useNavMask';
 
@@ -2691,6 +2696,7 @@ describe('#1291 per-boat harbour access markers on the selected-endpoint row', (
   afterEach(() => {
     vi.mocked(useNavMask).mockReturnValue(null);
     vi.mocked(computeHarborAccess).mockReset();
+    vi.mocked(harborAccessAt).mockReset();
   });
 
   it('shows the boat-scoped "not reachable" line plus the #1321-scoped hint line, never an unscoped "any depth" claim', () => {
@@ -2701,8 +2707,8 @@ describe('#1291 per-boat harbour access markers on the selected-endpoint row', (
         ['marstal', 'ok'],
       ]),
     );
-    // #1721: the band scan's first call (lowest gate); reachable there keeps the ordinary lines.
-    vi.mocked(computeHarborAccess).mockReturnValueOnce(new Map([['flensburg', 'ok']]));
+    // #1721: reachable at the band's first gate keeps the ordinary lines.
+    vi.mocked(harborAccessAt).mockReturnValue('ok');
     vi.mocked(findLowerSettingHint).mockReturnValueOnce({ kind: 'not-found' });
 
     renderPanel({
@@ -2732,7 +2738,7 @@ describe('#1291 per-boat harbour access markers on the selected-endpoint row', (
   it('shows only the "found" lower-setting line when the hint search succeeds — never the #1321 line too', () => {
     vi.mocked(useNavMask).mockReturnValue({} as never);
     vi.mocked(computeHarborAccess).mockReturnValueOnce(new Map([['marstal', 'unreachable']]));
-    vi.mocked(computeHarborAccess).mockReturnValueOnce(new Map([['marstal', 'ok']]));
+    vi.mocked(harborAccessAt).mockReturnValue('ok');
     // PR #1323 review Major 1: depthM here is realistic (>= the boat's own
     // default) — the fixed `harborAccessCopy` keys on `state` alone, never
     // on a depth comparison (see HarborPicker.test.tsx's own mutation-aimed
@@ -2767,9 +2773,10 @@ describe('#1291 per-boat harbour access markers on the selected-endpoint row', (
     label: 'Marstal',
   };
 
-  it('#1721: shows the range line when the harbour is unreachable at every gate of [min, max(default, live)], scanning each 0.1 m', () => {
+  it('#1721: shows the range line when the harbour is unreachable at every gate of [min, max(default, live)], scanning each 0.1 m', async () => {
     vi.mocked(useNavMask).mockReturnValue({} as never);
     vi.mocked(computeHarborAccess).mockImplementation(() => new Map([['marstal', 'unreachable']]));
+    vi.mocked(harborAccessAt).mockReturnValue('unreachable');
     vi.mocked(findLowerSettingHint).mockReturnValueOnce({ kind: 'not-found' });
 
     renderPanel({
@@ -2778,25 +2785,31 @@ describe('#1291 per-boat harbour access markers on the selected-endpoint row', (
     });
     const destinationSection = screen.getByRole('region', { name: 'Destination' });
     expect(
-      within(destinationSection).getByText(
+      await within(destinationSection).findByText(
         "The app's depth data finds no connection for SPEEDY GO! at any safety depth from 2.2 m to 3.0 m.",
       ),
     ).toBeInTheDocument();
     expect(within(destinationSection).queryByText(/Not reachable with/)).not.toBeInTheDocument();
-    const gates = new Set(vi.mocked(computeHarborAccess).mock.calls.map((c) => c[3]));
-    expect([...gates].sort()).toEqual([2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 3.0]);
+    const calls = vi.mocked(harborAccessAt).mock.calls;
+    expect(calls.map((c) => c[3])).toEqual([2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 3.0]);
+    expect(new Set(calls.map((c) => c[1].id))).toEqual(new Set(['marstal']));
   });
 
-  it('#1721: keeps the ordinary lines when a lower allowed gate reaches the harbour', () => {
+  it('#1721: keeps the ordinary lines when a lower allowed gate reaches the harbour, and stops scanning there', async () => {
     vi.mocked(useNavMask).mockReturnValue({} as never);
-    vi.mocked(computeHarborAccess).mockImplementation(
-      (_mask, _harbors, _boat, gateM) => new Map([['marstal', gateM < 2.5 ? 'ok' : 'unreachable']]),
+    vi.mocked(computeHarborAccess).mockImplementation(() => new Map([['marstal', 'unreachable']]));
+    vi.mocked(harborAccessAt).mockImplementation((_mask, _harbor, _boat, gateM) =>
+      gateM < 2.5 ? 'ok' : 'unreachable',
     );
     vi.mocked(findLowerSettingHint).mockReturnValueOnce({ kind: 'not-found' });
 
     renderPanel({
       boat: { ...boatById(DEFAULT_BOAT_ID), name: 'SPEEDY GO!' },
       destination: marstalDestination,
+    });
+    await waitFor(() => expect(harborAccessAt).toHaveBeenCalled());
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
     });
     const destinationSection = screen.getByRole('region', { name: 'Destination' });
     expect(
@@ -2805,6 +2818,8 @@ describe('#1291 per-boat harbour access markers on the selected-endpoint row', (
     expect(
       within(destinationSection).queryByText(/at any safety depth from/),
     ).not.toBeInTheDocument();
+    // The lowest gate is already reachable, so the scan ends after one flood.
+    expect(vi.mocked(harborAccessAt).mock.calls.map((c) => c[3])).toEqual([2.2]);
   });
 
   it('renders no per-boat marker for an ok harbor', () => {

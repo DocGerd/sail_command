@@ -84,7 +84,7 @@ test('#1291: per-boat harbour access markers render for a non-default boat, in t
 // #1721: unreachable at every 0.1 m gate from EASY GO!'s lowest allowed (2.7 m)
 // to its live 3.5 m, so the picker shows the range line.
 const EASY_GO_ANY_SETTING_LINE =
-  'Die Tiefendatenbasis der App findet für Salona 44 (EASY GO!) bei keiner Sicherheitstiefe zwischen 2,7 m und 3,5 m eine Verbindung.';
+  'Die Tiefendaten der App ergeben für Salona 44 (EASY GO!) bei keiner Sicherheitstiefe von 2,7 m bis 3,5 m eine Verbindung.';
 
 // #1575: the real `unreachable` state, reached by a plain default-settings
 // boat switch. EASY GO!'s 3.5 m gate leaves Marstal and Augustenborg
@@ -170,7 +170,7 @@ test('#1721: planning EASY GO! from Marstal shows the data-attributed no-route m
     await page.getByRole('button', { name: 'Route planen' }).click();
     const banner = page.getByRole('alert').filter({ hasText: 'Keine Route' });
     await expect(banner).toContainText(
-      'Keine Route mit Salona 44 (EASY GO!) (Tiefgang 2,59 m): Das Tiefenraster der App (~46-m-Zellen, schmale ausgebaggerte Rinnen können darin fehlen) findet bei keiner Sicherheitstiefe zwischen 2,7 m und 3,5 m eine Verbindung von oder nach Marstal.',
+      'Keine Route mit Salona 44 (EASY GO!) (Tiefgang 2,59 m): Das Tiefenraster der App (~46-m-Zellen, schmale ausgebaggerte Rinnen können darin fehlen) findet bei keiner Sicherheitstiefe von 2,7 m bis 3,5 m eine Verbindung von oder nach Marstal.',
       { timeout: 60_000 },
     );
     await expect(banner).not.toContainText('zu früh aufgegeben');

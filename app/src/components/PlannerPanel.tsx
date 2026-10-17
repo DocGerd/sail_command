@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import type {
   Harbor,
   LatLon,
@@ -38,7 +38,7 @@ import { usePersistedSailInventory } from '../lib/sailInventory';
 import { renderRigVerdict, resultSummary, sailLabelKey } from '../lib/resultSummary';
 import { useRecentHarbors } from '../lib/useRecentHarbors';
 import { formatDepthM } from '../lib/depthDisclosure';
-import HarborPicker, { harborAccessCopy, unreachableBand } from './HarborPicker';
+import HarborPicker, { harborAccessCopy, useUnreachableBandOf } from './HarborPicker';
 import type { NavMask } from '../lib/mask';
 import { commitSetting, safetyDepthFieldFor } from './OptionsPanel';
 import type { BoatDef, BoatId } from '../data/boats';
@@ -336,11 +336,21 @@ export default function PlannerPanel({
     () => (mask ? computeHarborAccess(mask, harbors, boat, settings.safetyDepthM) : null),
     [mask, harbors, boat, settings.safetyDepthM],
   );
-  // #1721: the gate band over which a harbour is unreachable; scans only when asked.
-  const unreachableBandOf = useCallback(
-    (harborId: string) =>
-      mask ? unreachableBand(mask, harbors, boat, harborId, settings.safetyDepthM) : null,
-    [mask, harbors, boat, settings.safetyDepthM],
+  // #1721: scans, off the render path, the gate band over which each harbour
+  // unreachable at the live gate stays unreachable.
+  const unreachableIds = useMemo(
+    () =>
+      harborAccess
+        ? [...harborAccess].flatMap(([id, state]) => (state === 'unreachable' ? [id] : []))
+        : [],
+    [harborAccess],
+  );
+  const unreachableBandOf = useUnreachableBandOf(
+    mask,
+    harbors,
+    boat,
+    settings.safetyDepthM,
+    unreachableIds,
   );
   // #539 item 2: bounds follow the SELECTED boat (spec J OQ-1's
   // `draftM + 0.1`). Same derivation the Boat tab's own render of this field
