@@ -4630,3 +4630,139 @@ describe('#1661: sails aboard on the new-plan request', () => {
     );
   });
 });
+
+describe('#1707 next passage', () => {
+  const NEXT_ACTION = de['planner.nextPassage.action'];
+
+  function sourcePlan(id = 'next-source', viaPoints: { lat: number; lon: number }[] = []): Plan {
+    const now = Date.now();
+    return {
+      id,
+      name: 'Seed Source',
+      createdAtMs: now - 60_000,
+      schemaVersion: PLAN_SCHEMA_VERSION,
+      request: {
+        origin: FLENSBURG.snap,
+        destination: RELABEL_HARBOR.snap,
+        viaPoints,
+        originHarborId: FLENSBURG.id,
+        destinationHarborId: RELABEL_HARBOR.id,
+        departureMs: now + 3_600_000,
+        settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
+      },
+      windGrid: uniformWindGrid(10, 250, { t0Ms: now - 3_600_000, hours: 48 }),
+      result: okPlanResult(33),
+    };
+  }
+
+  // Leaves the app on the Plan tab with the plan active and its form synced.
+  async function loadSource(plan: Plan) {
+    await db.savePlan(plan);
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(plan.name) }));
+    await waitFor(() => expect(screen.getByText(formatNm(33, 'de'))).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+    const start = screen.getByRole('region', { name: de['planner.origin.label'] });
+    await waitFor(() => expect(within(start).getByText('Flensburg')).toBeInTheDocument());
+  }
+
+  function expectSeeded() {
+    const start = screen.getByRole('region', { name: de['planner.origin.label'] });
+    expect(within(start).getByText('Relabelburg')).toBeInTheDocument();
+    const dest = screen.getByRole('region', { name: de['planner.destination.label'] });
+    expect(document.activeElement).toBe(within(dest).getByRole('combobox'));
+    const departure = screen.getByLabelText(de['planner.departure.label']) as HTMLInputElement;
+    expect(departure.value).toMatch(/T10:00$/);
+    expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeDisabled();
+    expect(screen.getByText(de['planner.disabled.pickEndpoints'])).toBeInTheDocument();
+  }
+
+  it('Routes card: seeds start = destination harbour, clears destination, switches to Plan, focuses Ziel', async () => {
+    await loadSource(sourcePlan());
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+    fireEvent.click(screen.getByRole('button', { name: NEXT_ACTION }));
+
+    expect(screen.getByRole('tab', { name: de['nav.plan'] })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expectSeeded();
+  });
+
+  it('Plan card: same seed; the source plan stays active and is not modified', async () => {
+    const plan = sourcePlan();
+    await loadSource(plan);
+    const storedBefore = await db.getPlan(plan.id);
+    fireEvent.click(screen.getByRole('button', { name: NEXT_ACTION }));
+
+    expectSeeded();
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+    expect(screen.getByText(formatNm(33, 'de'))).toBeInTheDocument();
+    expect(await db.listPlans()).toHaveLength(1);
+    expect(await db.getPlan(plan.id)).toEqual(storedBefore);
+  });
+
+  it('clears via points and segment modes', async () => {
+    await loadSource(sourcePlan('next-vias', [VIA_A]));
+    const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
+    await waitFor(() => expect(viaSection.querySelectorAll('.planner-via-row')).toHaveLength(1));
+
+    fireEvent.click(screen.getByRole('button', { name: NEXT_ACTION }));
+
+    expect(viaSection.querySelectorAll('.planner-via-row')).toHaveLength(0);
+  });
+
+  it('is disabled while a plan run is in flight', async () => {
+    await loadSource(sourcePlan());
+    expect(screen.getByRole('button', { name: NEXT_ACTION })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+    await waitFor(() => expect(routingMock.calls).toHaveLength(1));
+
+    expect(screen.getByRole('button', { name: NEXT_ACTION })).toBeDisabled();
+  });
+
+  it('is disabled until the harbour list has loaded', async () => {
+    let resolveHarbors!: (r: Response) => void;
+    const harborsPromise = new Promise<Response>((res) => {
+      resolveHarbors = res;
+    });
+    const base = fetchMock();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) =>
+        String(input).includes('harbors.json') ? harborsPromise : base(input),
+      ),
+    );
+    const plan = sourcePlan('next-late-harbors');
+    await db.savePlan(plan);
+    localStorage.setItem('sc-session', `{"v":1,"planId":"${plan.id}","tab":"plan","rig":"genoa"}`);
+
+    // A fresh module graph, because services/assets.ts caches the harbour list for the page's lifetime.
+    vi.resetModules();
+    const { default: FreshApp } = await import('./App');
+    render(
+      <I18nProvider>
+        <FreshApp />
+      </I18nProvider>,
+    );
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    const action = await screen.findByRole('button', { name: NEXT_ACTION });
+    expect(action).toBeDisabled();
+
+    await act(async () => {
+      resolveHarbors(jsonResponse(HARBORS));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(screen.getByRole('button', { name: NEXT_ACTION })).toBeEnabled());
+
+    // Both module graphs hold an IndexedDB connection that would block the next test's reset.
+    cleanup();
+    const freshDb = await import('./services/db');
+    await Promise.all([db.__resetDbForTests(), freshDb.__resetDbForTests()]);
+  });
+});

@@ -201,6 +201,8 @@ export interface PlannerPanelProps {
   onOpenBoatSettings: () => void;
   /** #1707: the one-tap seed for the next passage, shown in the compact result card. */
   nextPassage?: NextPassageProps;
+  pendingDestinationFocus?: boolean;
+  onDestinationFocused?: () => void;
 }
 
 /**
@@ -287,6 +289,8 @@ export default function PlannerPanel({
   onViewDetails,
   onOpenBoatSettings,
   nextPassage,
+  pendingDestinationFocus,
+  onDestinationFocused,
 }: PlannerPanelProps) {
   const t = useT();
   const [sailInventory] = usePersistedSailInventory(boatId);
@@ -379,6 +383,16 @@ export default function PlannerPanel({
     // Change buttons instead carry a `data-focus-target` unique per endpoint.
     document.querySelector<HTMLButtonElement>(`[data-focus-target="${target}-change"]`)?.focus();
   });
+
+  // #1707: driven by the parent so one mechanism serves a mount from the Routes tab and an already-open picker.
+  const destinationSectionRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!pendingDestinationFocus) return;
+    destinationSectionRef.current
+      ?.querySelector<HTMLInputElement>('input[role="combobox"]')
+      ?.focus();
+    onDestinationFocused?.();
+  }, [pendingDestinationFocus, onDestinationFocused]);
 
   // #829: keyboard-reachable via-point coordinate entry (spike §3.1/§5.1).
   // ONE coordinate-entry row serves both "Add a new via point" and "Update
@@ -1026,7 +1040,11 @@ export default function PlannerPanel({
           </Button>
         </section>
 
-        <section aria-label={t('planner.destination.label')} className="planner-endpoint">
+        <section
+          aria-label={t('planner.destination.label')}
+          className="planner-endpoint"
+          ref={destinationSectionRef}
+        >
           <h3 className="sc-section-title">{t('planner.destination.label')}</h3>
           {destination && !editingDestination ? (
             <div className="planner-endpoint-selected">

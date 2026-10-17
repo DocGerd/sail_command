@@ -51,7 +51,12 @@ import {
   type SailId,
   type Settings,
 } from '../types';
-import PlannerPanel, { nextFullHourMs, type PlannerStatus, type TapTarget } from './PlannerPanel';
+import PlannerPanel, {
+  harborToPickedPoint,
+  nextFullHourMs,
+  type PlannerStatus,
+  type TapTarget,
+} from './PlannerPanel';
 import type { NextPassageProps } from './NextPassageAction';
 import { boatById, DEFAULT_BOAT_ID, type BoatDef } from '../data/boats';
 import { boatSnapshot, defaultBoatSnapshot } from '../types';
@@ -332,6 +337,8 @@ interface Overrides {
   onViewDetails?: () => void;
   onOpenBoatSettings?: () => void;
   nextPassage?: NextPassageProps;
+  pendingDestinationFocus?: boolean;
+  onDestinationFocused?: () => void;
 }
 
 function baseProps(overrides: Overrides = {}) {
@@ -2841,5 +2848,24 @@ describe('#1707 next passage in the compact result card', () => {
   it('omits the action without the prop', () => {
     renderPanel({ plan: makePlan(), rig: 'genoa' });
     expect(screen.queryByRole('button', { name: 'Plan next passage' })).toBeNull();
+  });
+
+  it('a pending destination focus lands on the Destination combobox and is reported', () => {
+    const onDestinationFocused = vi.fn();
+    renderPanel({
+      origin: harborToPickedPoint(HARBORS[0], 'en'),
+      destination: null,
+      pendingDestinationFocus: true,
+      onDestinationFocused,
+    });
+    expect(document.activeElement).toBe(
+      within(screen.getByRole('region', { name: 'Destination' })).getByRole('combobox'),
+    );
+    expect(onDestinationFocused).toHaveBeenCalled();
+  });
+
+  it('nothing moves focus while no focus is pending', () => {
+    renderPanel({ origin: harborToPickedPoint(HARBORS[0], 'en'), destination: null });
+    expect(document.activeElement).toBe(document.body);
   });
 });
