@@ -600,7 +600,7 @@ Do this part on an actual Android phone with Chrome.
       travel. (Airplane mode may need to be off for GPS depending on device
       — note which mode this was run in.)
 - [ ] **4.5 Next passage offline (#1707).** In airplane mode, open a saved
-      plan and press "Plan next passage". The banner reads "Offline — only
+      plan and press "Plan next passage". Pick a destination. If the stored forecast reaches the departure, the banner reads "Offline — only
       the next passage can be planned, from the stored forecast" ("Offline —
       nur die nächste Passage mit gespeicherter Vorhersage planbar"). If the
       stored forecast reaches the seeded departure, planning completes and the

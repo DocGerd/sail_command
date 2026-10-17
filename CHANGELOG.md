@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Plan the next passage from any planned route in one tap: it starts at that route's destination and departs at the first 10:00 after arrival, and offline it can be planned from the route's stored forecast (#1707).
+- Plan the next passage from any planned route in one tap: it starts at that route's destination and departs at the next 10:00 after arrival, and offline it can be planned from the route's stored forecast (#1707).
 
 ### Fixed
 

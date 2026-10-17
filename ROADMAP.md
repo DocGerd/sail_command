@@ -93,8 +93,7 @@ OpenSSF criterion cares about the signing mechanism and its documentation,
 not that badge.) The Scorecard tracking issue
 ([#72](https://github.com/DocGerd/sail_command/issues/72)) closed at the
 `v0.55.0` cut after CodeQL began running on every pull request to `main` and
-`develop`; Scorecard's `SAST` alert #7 still read open then, its 30-commit
-window holding earlier prose-only commits. No other item in this theme is
+`develop`; Scorecard's `SAST` alert #7 still read open then. No other item in this theme is
 tracked.
 
 The Silver criterion `access_continuity` was previously described here as
