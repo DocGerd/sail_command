@@ -109,6 +109,10 @@ installs as a standalone icon and works fully offline after the first visit
 - Saved plans, including the wind grid they were computed from, persist
   offline in the browser — a saved route always re-renders against the
   forecast it was planned with, never a re-fetched one.
+- **Next passage**: any planned route offers "Plan next passage", which seeds
+  the planner with that route's destination as the start and the first 10:00
+  after arrival as the departure; you pick the next destination
+  ([#1707](https://github.com/DocGerd/sail_command/issues/1707)).
 - The chart carries a north arrow and a nautical scale bar: tapping the arrow
   switches between north-up and course-up (course-up follows the GPS course
   while under way, holding the last course if the fix drops out), and the
@@ -125,7 +129,9 @@ installs as a standalone icon and works fully offline after the first visit
   vessels in view" list covering the vessels in the current map view. Off by default and fully inert without a key; your own vessel
   is filtered out by MMSI.
 
-Planning a new route requires an internet connection (wind forecast fetch);
+Planning a new route requires an internet connection (wind forecast fetch),
+except the **next passage** from a planned route, which reuses that route's
+stored forecast offline for as long as it reaches the departure;
 everything else — viewing/loading saved plans, the map, live GPS guidance —
 works fully offline once the app has been loaded once, except that the map's
 northern and eastern extension needs its region archive saved first (see

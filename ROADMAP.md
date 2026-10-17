@@ -13,40 +13,40 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.54.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.55.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
-## Now — v0.54.0
+## Now — v0.55.0
 
-The `v0.54.0` cut (2026-10-16) worked the
-[`v0.54.0` milestone](https://github.com/DocGerd/sail_command/milestones):
-two user-visible changes (per `CHANGELOG.md`'s own `[0.54.0]` section) — the
-Boat tab's **Sails aboard** control for planning with only some of a boat's
-headsails ([#1661](https://github.com/DocGerd/sail_command/issues/1661)), and
-EASY GO! planning on its own polar tables, a modelled jib from a sister hull's
-ORC certificate and an estimated genoa
-([#1660](https://github.com/DocGerd/sail_command/issues/1660)) — plus the
-currents data-evaluation spike
-([#18](https://github.com/DocGerd/sail_command/issues/18), closed as answered),
-which changes no routing: no candidate current source passed its quality gate
-(`docs/spikes/18-currents-source-quality-gate.md`). The route-fit residual
-([#1639](https://github.com/DocGerd/sail_command/issues/1639)) and the
-Scorecard findings ([#72](https://github.com/DocGerd/sail_command/issues/72))
-moved on to `v0.55.0`.
+The `v0.55.0` cut (2026-10-17) closed eight issues from the
+[`v0.55.0` milestone](https://github.com/DocGerd/sail_command/milestones),
+four of them user-visible (per `CHANGELOG.md`'s own `[0.55.0]` section):
+planning the next passage from any planned route in one tap, including
+offline from the route's stored forecast ([#1707](https://github.com/DocGerd/sail_command/issues/1707), slice 1 of
+[#19](https://github.com/DocGerd/sail_command/issues/19)); two route-fit fixes, one for the start marker under the bottom sheet
+after a resize ([#1639](https://github.com/DocGerd/sail_command/issues/1639)) and one for the start and destination labels
+running under the map controls ([#1641](https://github.com/DocGerd/sail_command/issues/1641)); and wind forecast requests that
+back off and retry when Open-Meteo is overloaded and reuse a recent forecast
+([#1712](https://github.com/DocGerd/sail_command/issues/1712)). The rest changed no user-visible behaviour: the `fast-uri`
+dev-dependency bump ([#1695](https://github.com/DocGerd/sail_command/issues/1695)), CodeQL running on every pull request
+together with the Scorecard tracking and assurance-case wording
+([#72](https://github.com/DocGerd/sail_command/issues/72), [#1696](https://github.com/DocGerd/sail_command/issues/1696)), and the spike measuring EASY GO!'s relaxed approaches
+to Faldsled and Rudkøbing ([#932](https://github.com/DocGerd/sail_command/issues/932)).
 
-## Next — v0.55.0
+## Next — v0.56.0
 
-The [`v0.55.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-holds four issues as of this cut: the open OpenSSF Scorecard `SAST`
-alert ([#72](https://github.com/DocGerd/sail_command/issues/72)),
-the route-fit start marker under the bottom sheet at 820x1180
-([#1639](https://github.com/DocGerd/sail_command/issues/1639)), the
-dev-dependency bump `fast-uri` >= 3.1.8
-([#1695](https://github.com/DocGerd/sail_command/issues/1695)), and
-re-deriving the assurance-case SAST row and this file's #72 wording against
-live Scorecard alert #7
-([#1696](https://github.com/DocGerd/sail_command/issues/1696)). The milestone
-page is the only authoritative view, check it directly rather than this file.
+The [`v0.56.0` milestone](https://github.com/DocGerd/sail_command/milestones)
+holds eight issues as of this cut. Routing: the backtrack collinear merge
+emitting a leg never re-checked against the depth gate ([#1705](https://github.com/DocGerd/sail_command/issues/1705)), the two-rig
+★ for tier-C boats flagged as estimate-based ([#1716](https://github.com/DocGerd/sail_command/issues/1716)), and multi-day trip
+records with undo for the next passage ([#1708](https://github.com/DocGerd/sail_command/issues/1708)). Wind: a labelled MET
+Norway fallback provider ([#1713](https://github.com/DocGerd/sail_command/issues/1713)). Map and route fit: the start label
+about 3 px under the sheet after a reload at 820x1180 ([#1717](https://github.com/DocGerd/sail_command/issues/1717)), the end
+marker under the expanded display-options panel at the same size
+([#1702](https://github.com/DocGerd/sail_command/issues/1702)), and a re-fit still possible during Live after an earlier map
+gesture ([#1710](https://github.com/DocGerd/sail_command/issues/1710)). Next passage: the preview lagging the tap after device
+sleep near 10:00 ([#1711](https://github.com/DocGerd/sail_command/issues/1711)). The milestone page is the only authoritative
+view, check it directly rather than this file.
 
 ## Themes for the next year
 
@@ -90,10 +90,12 @@ itself still shows GitHub's "Verified" badge as `no_user` rather than
 verified — a tagger-identity attribution gap fixed going forward from
 `v0.8.1`, not a signature problem; see the `v0.8.1` CHANGELOG entry. The
 OpenSSF criterion cares about the signing mechanism and its documentation,
-not that badge.) Remaining:
-
-- Tracking the open OpenSSF Scorecard `SAST` alert
-  ([#72](https://github.com/DocGerd/sail_command/issues/72)).
+not that badge.) The Scorecard tracking issue
+([#72](https://github.com/DocGerd/sail_command/issues/72)) closed at the
+`v0.55.0` cut after CodeQL began running on every pull request to `main` and
+`develop`; Scorecard's `SAST` alert #7 still read open then, its 30-commit
+window holding earlier prose-only commits. No other item in this theme is
+tracked.
 
 The Silver criterion `access_continuity` was previously described here as
 unclosable by any change in this repository, requiring a second person with
@@ -113,7 +115,8 @@ transfer to a fork automatically).
 The largest open product questions. The currents spike
 ([#18](https://github.com/DocGerd/sail_command/issues/18)) closed at the
 `v0.54.0` cut with the quality gate failed, so currents stay out of the
-isochrone cost; the multi-day item was unscheduled, in `Backlog`, at that cut.
+isochrone cost. The multi-day item stayed in `Backlog` at that cut; slice 1
+of it, planning the next passage from a planned route, shipped at `v0.55.0`.
 Each issue's milestone field is the current fact:
 
 - Currents, tides, and sea state (waves) in the isochrone cost
@@ -204,7 +207,8 @@ settings; its four residuals did not close with it
 `v0.30.0` cut;
 [#930](https://github.com/DocGerd/sail_command/issues/930) closed at the
 `v0.34.0` cut, its harness made able to fail; and
-[#932](https://github.com/DocGerd/sail_command/issues/932) remains open (in `Backlog` at the `v0.46.0` cut).
+[#932](https://github.com/DocGerd/sail_command/issues/932) closed at the
+`v0.55.0` cut as a spike document (`docs/spikes/932-easygo-relaxed-approaches.md`).
 
 The `v0.20.0` cut addressed sixteen items in this area, out of eighteen
 issues total that milestone closed. The largest strand cut what continuous

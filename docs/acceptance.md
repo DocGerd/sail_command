@@ -539,6 +539,21 @@ selected in §1.
       cancelling a recalculate) is left exactly as it was, never replaced by
       completion copy for the cancelled attempt. Press "Plan route" again
       and confirm a fresh solve starts and completes normally.
+- [ ] **2.19 Next passage seeds the planner (#1707).** With the §2 plan
+      displayed, the result card shows "Plan next passage" ("Nächste Passage
+      planen") with a line beneath naming the start harbour (this route's
+      destination) and a departure. Press it: the planner's origin becomes that
+      destination, the destination field takes focus and is empty, via points
+      are cleared, and the departure is the first 10:00 local after this route's arrival (and
+      after now). Pick a destination and press "Plan route": a new plan is
+      saved beside the first, which is left untouched. Restore Flensburg →
+      Marstal before §3.
+- [ ] **2.20 Route fit keeps endpoint labels clear (#1639, #1641).** With a
+      plan displayed, the start and destination labels sit fully on the map,
+      clear of the map controls and the bottom sheet. Reload with the plan
+      restored, resize the window, or dismiss the offline-ready notice: the
+      route is fitted again and the labels stay clear. A label at or under a
+      control or the sheet is a defect.
 
 **Result:** Pass / Fail / Partial — notes: ___________________________
 
@@ -584,6 +599,13 @@ Do this part on an actual Android phone with Chrome.
       updates, and it behaves sensibly relative to the actual direction of
       travel. (Airplane mode may need to be off for GPS depending on device
       — note which mode this was run in.)
+- [ ] **4.5 Next passage offline (#1707).** In airplane mode, open a saved
+      plan and press "Plan next passage". The banner reads "Offline — only
+      the next passage can be planned, from the stored forecast" ("Offline —
+      nur die nächste Passage mit gespeicherter Vorhersage planbar"). If the
+      stored forecast reaches the seeded departure, planning completes and the
+      planner names the plan it reused; if it ends first, the planner says the
+      departure needs a connection. Both are correct, so note which was seen.
 
 **Result:** Pass / Fail / Partial — notes: ___________________________
 
