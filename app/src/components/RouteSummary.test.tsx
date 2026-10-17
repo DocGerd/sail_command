@@ -17,6 +17,7 @@ import {
   type SailResult,
 } from '../types';
 import RouteSummary from './RouteSummary';
+import type { NextPassageProps } from './NextPassageAction';
 import { boatSnapshot, defaultBoatSnapshot } from '../types';
 import { boatById } from '../data/boats';
 import { PLAN_SCHEMA_VERSION } from '../types';
@@ -227,7 +228,12 @@ function makePlan(
 }
 
 function renderSummary(
-  overrides: { plan?: Plan; rig?: SailId; onRigChange?: (r: SailId) => void } = {},
+  overrides: {
+    plan?: Plan;
+    rig?: SailId;
+    onRigChange?: (r: SailId) => void;
+    nextPassage?: NextPassageProps;
+  } = {},
 ): { plan: Plan; rig: SailId; onRigChange: (r: SailId) => void; container: HTMLElement } {
   localStorage.setItem('sc-lang', 'en');
   const plan = overrides.plan ?? makePlan();
@@ -235,7 +241,12 @@ function renderSummary(
   const onRigChange = overrides.onRigChange ?? vi.fn();
   const { container } = render(
     <I18nProvider>
-      <RouteSummary plan={plan} rig={rig} onRigChange={onRigChange} />
+      <RouteSummary
+        plan={plan}
+        rig={rig}
+        onRigChange={onRigChange}
+        {...(overrides.nextPassage ? { nextPassage: overrides.nextPassage } : {})}
+      />
     </I18nProvider>,
   );
   return { plan, rig, onRigChange, container };
@@ -2216,5 +2227,32 @@ describe('#615: seamark-proximity notice', () => {
     expect(de['route.seamarks.proximity.plural']).toContain('{count}');
     expect(en['route.seamarks.proximity']).not.toContain('{count}');
     expect(de['route.seamarks.proximity']).not.toContain('{count}');
+  });
+});
+
+describe('#1707 next-passage action', () => {
+  const nextPassage = (): NextPassageProps => ({
+    harbors: [],
+    disabled: false,
+    onNextPassage: vi.fn(),
+  });
+
+  it('is placed outside the rig tabpanel', () => {
+    renderSummary({ nextPassage: nextPassage() });
+    expect(screen.getByRole('tabpanel')).not.toContainElement(
+      screen.getByRole('button', { name: 'Plan next passage' }),
+    );
+  });
+
+  it('is offered on a rig tab whose own rig found no route', () => {
+    const plan = makePlan();
+    setSail(plan, 'fock', { result: null });
+    renderSummary({ plan, rig: 'fock', nextPassage: nextPassage() });
+    expect(screen.getByRole('button', { name: 'Plan next passage' })).toBeInTheDocument();
+  });
+
+  it('is omitted without the prop', () => {
+    renderSummary();
+    expect(screen.queryByRole('button', { name: 'Plan next passage' })).toBeNull();
   });
 });

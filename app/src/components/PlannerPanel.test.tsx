@@ -52,6 +52,7 @@ import {
   type Settings,
 } from '../types';
 import PlannerPanel, { nextFullHourMs, type PlannerStatus, type TapTarget } from './PlannerPanel';
+import type { NextPassageProps } from './NextPassageAction';
 import { boatById, DEFAULT_BOAT_ID, type BoatDef } from '../data/boats';
 import { boatSnapshot, defaultBoatSnapshot } from '../types';
 import { PLAN_SCHEMA_VERSION } from '../types';
@@ -330,6 +331,7 @@ interface Overrides {
   formDirty?: boolean;
   onViewDetails?: () => void;
   onOpenBoatSettings?: () => void;
+  nextPassage?: NextPassageProps;
 }
 
 function baseProps(overrides: Overrides = {}) {
@@ -2821,5 +2823,23 @@ describe('#848: saved-waypoint picker wiring inside PlannerPanel', () => {
       lon: 10.0,
       name: 'Kalkgrund',
     });
+  });
+});
+
+describe('#1707 next passage in the compact result card', () => {
+  it('offers the action and reports a click', () => {
+    const onNextPassage = vi.fn();
+    renderPanel({
+      plan: makePlan(),
+      rig: 'genoa',
+      nextPassage: { harbors: HARBORS, disabled: false, onNextPassage },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Plan next passage' }));
+    expect(onNextPassage).toHaveBeenCalledTimes(1);
+  });
+
+  it('omits the action without the prop', () => {
+    renderPanel({ plan: makePlan(), rig: 'genoa' });
+    expect(screen.queryByRole('button', { name: 'Plan next passage' })).toBeNull();
   });
 });

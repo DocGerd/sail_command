@@ -48,6 +48,7 @@ import Button from './Button';
 import Chip from './Chip';
 import Skeleton from './Skeleton';
 import Disclosure from './Disclosure';
+import NextPassageAction, { type NextPassageProps } from './NextPassageAction';
 import SegmentModeControl from './SegmentModeControl';
 // #848: the saved-waypoint picker — panel-only per design spec §2.7. This
 // import + the one render call below is the "minimal entry point" the task
@@ -198,6 +199,8 @@ export interface PlannerPanelProps {
   // the dedicated Boat tab, which now hosts the depth comfort margin and the
   // rest of the boat/propulsion/AIS settings — switches App.tsx's active tab.
   onOpenBoatSettings: () => void;
+  /** #1707: the one-tap seed for the next passage, shown in the compact result card. */
+  nextPassage?: NextPassageProps;
 }
 
 /**
@@ -283,6 +286,7 @@ export default function PlannerPanel({
   formDirty,
   onViewDetails,
   onOpenBoatSettings,
+  nextPassage,
 }: PlannerPanelProps) {
   const t = useT();
   const [sailInventory] = usePersistedSailInventory(boatId);
@@ -1692,6 +1696,7 @@ export default function PlannerPanel({
               >
                 {t('planner.result.details')} <span aria-hidden="true">→</span>
               </Button>
+              {plan && nextPassage && <NextPassageAction plan={plan} rig={rig} {...nextPassage} />}
             </>
           )}
         </Card>

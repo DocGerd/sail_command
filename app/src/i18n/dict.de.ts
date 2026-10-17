@@ -304,6 +304,8 @@ export const de = {
   // gap-fill for the previously reasonless online-but-incomplete state).
   'planner.disabled.pickEndpoints': 'Start und Ziel wählen.',
   'planner.result.details': 'Details ansehen',
+  'planner.nextPassage.action': 'Nächste Passage planen',
+  'planner.nextPassage.preview': 'Start {harbor} · Abfahrt {departure}',
   // Swapped into the planner's live status region on plan completion — a
   // stable, atomic summary announced once per new plan (never on slider/
   // via-edit re-renders).
