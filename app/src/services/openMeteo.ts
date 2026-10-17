@@ -10,6 +10,7 @@ const RATE_LIMIT_BASE_DELAY_MS = 1000;
 const RATE_LIMIT_WAIT_BUDGET_MS = 30_000;
 const RATE_LIMIT_MAX_RETRIES = 4;
 const RATE_LIMIT_BODY_TIMEOUT_MS = 2000;
+const OVERALL_RETRY_BUDGET_MS = 45_000;
 export const GRID_CACHE_TTL_MS = 10 * 60_000;
 
 export type OpenMeteoErrorKind = 'offline' | 'rate-limited' | 'http' | 'malformed';
@@ -85,31 +86,37 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+// The request timeout ends at the headers, so a body read needs its own timer.
+async function readTextWithTimeout(res: Response, ms: number): Promise<string> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      res.text(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          res.body?.cancel().catch(() => {});
+          reject(new OpenMeteoError('offline', `response body timed out after ${ms}ms`));
+        }, ms);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 type RateLimitClass = 'transient' | 'quota' | 'unknown';
 
 // Open-Meteo states the limit in the 429 body's `reason`. Quota wording is
 // checked first so a daily/hourly reason can never be read as transient.
 async function classifyRateLimit(res: Response): Promise<{ cls: RateLimitClass; reason: string }> {
   let reason = '';
-  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    // The request timeout ends at the headers, so the body read needs its own.
-    const text = await Promise.race([
-      res.text(),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () => reject(new Error('429 body timed out')),
-          RATE_LIMIT_BODY_TIMEOUT_MS,
-        );
-      }),
-    ]);
+    const text = await readTextWithTimeout(res, RATE_LIMIT_BODY_TIMEOUT_MS);
     const body: unknown = JSON.parse(text);
     const r = (body as { reason?: unknown } | null)?.reason;
     if (typeof r === 'string') reason = r;
   } catch {
     // Unreadable body stays 'unknown'.
-  } finally {
-    clearTimeout(timer);
   }
   const lower = reason.toLowerCase();
   if (/hourly|daily|monthly|tomorrow/.test(lower)) return { cls: 'quota', reason };
@@ -130,6 +137,8 @@ function retryAfterMs(res: Response): number | null {
 async function fetchWithRetry(url: string, fetchFn: typeof fetch): Promise<Response> {
   let rateLimitAttempts = 0;
   const startedAtMs = Date.now();
+  const withinBudget = (waitMs: number) =>
+    Date.now() - startedAtMs + waitMs <= OVERALL_RETRY_BUDGET_MS;
   for (let attempt = 0; ; attempt++) {
     let res: Response;
     try {
@@ -138,9 +147,10 @@ async function fetchWithRetry(url: string, fetchFn: typeof fetch): Promise<Respo
       // failure — same branch, same retry/backoff, same 'offline' on exhaustion.
       res = await fetchWithTimeout(url, fetchFn);
     } catch (err) {
-      if (attempt >= RETRY_DELAYS_MS.length)
+      const delay = jittered(RETRY_DELAYS_MS[attempt] ?? 0);
+      if (attempt >= RETRY_DELAYS_MS.length || !withinBudget(delay))
         throw new OpenMeteoError('offline', `network failure: ${String(err)}`);
-      await sleep(jittered(RETRY_DELAYS_MS[attempt]!));
+      await sleep(delay);
       continue;
     }
     if (res.ok) return res;
@@ -168,8 +178,11 @@ async function fetchWithRetry(url: string, fetchFn: typeof fetch): Promise<Respo
       continue;
     }
     if (res.status >= 500 && attempt < RETRY_DELAYS_MS.length) {
-      await sleep(jittered(RETRY_DELAYS_MS[attempt]!));
-      continue;
+      const delay = jittered(RETRY_DELAYS_MS[attempt]!);
+      if (withinBudget(delay)) {
+        await sleep(delay);
+        continue;
+      }
     }
     // 5xx exhausted its retries maps to 'offline' (not 'http'): a persistently
     // failing server reads to the user as "can't reach the forecast service"
@@ -183,8 +196,15 @@ async function fetchWithRetry(url: string, fetchFn: typeof fetch): Promise<Respo
 async function loadWindGrid(url: string, fetchFn: typeof fetch): Promise<WindGrid> {
   const res = await fetchWithRetry(url, fetchFn);
   let data: unknown;
+  let text: string;
   try {
-    data = await res.json();
+    text = await readTextWithTimeout(res, REQUEST_TIMEOUT_MS);
+  } catch (err) {
+    if (err instanceof OpenMeteoError) throw err;
+    throw new OpenMeteoError('malformed', 'response body could not be read');
+  }
+  try {
+    data = JSON.parse(text);
   } catch {
     throw new OpenMeteoError('malformed', 'response body is not valid JSON');
   }
