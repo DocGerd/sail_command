@@ -483,8 +483,10 @@ describe('RouteLayer fit padding for endpoint labels (#1641)', () => {
 
   let markerRect = ORIGIN_MARKER;
   let labelRect = WIDE_LABEL;
+  let sheetTop = 700;
 
   beforeEach(() => {
+    sheetTop = 700;
     frames = [];
     stubFrames();
     markerRect = ORIGIN_MARKER;
@@ -493,7 +495,9 @@ describe('RouteLayer fit padding for endpoint labels (#1641)', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
-    document.querySelectorAll('.sc-endpoint-marker, .label-test-map').forEach((el) => el.remove());
+    document
+      .querySelectorAll('.sc-endpoint-marker, .label-test-map, .app-bottom-sheet')
+      .forEach((el) => el.remove());
   });
 
   function setup() {
@@ -506,6 +510,7 @@ describe('RouteLayer fit padding for endpoint labels (#1641)', () => {
       this: Element,
     ) {
       if (this === mapEl) return MAP_RECT;
+      if (this.classList.contains('app-bottom-sheet')) return rect(200, sheetTop, 1200, 900);
       if (this.classList.contains('sc-endpoint-marker')) return markerRect;
       if (this.classList.contains('sc-endpoint-marker-label')) return labelRect;
       return rect(0, 0, 0, 0);
@@ -603,8 +608,35 @@ describe('RouteLayer fit padding for endpoint labels (#1641)', () => {
 
     markerRect = rect(640, 490, 660, 510);
     labelRect = rect(600, 514, 700, 530);
-    await mutateContainer(map, document.createElement('div'));
+    await mutateContainer(map, makeMarker());
     expect(calls).toHaveLength(3);
+  });
+
+  it('re-fits for a mounting marker but not for other container children, which leaves chrome drift to the resize observer', async () => {
+    const map = setup();
+    const calls = followCamera(map);
+    const sheet = document.createElement('div');
+    sheet.className = 'app-bottom-sheet';
+    document.body.appendChild(sheet);
+    renderRouteLayer(map, null);
+    expect(calls).toHaveLength(1);
+
+    // The sheet's padding moved the camera, and the marker moves with it.
+    markerRect = rect(390, 406, 410, 426);
+    sheetTop = 500;
+    await mutateContainer(map, document.createElement('div'));
+    expect(calls).toHaveLength(1);
+    await mutateContainer(map, makeMarker());
+    expect(calls.length).toBeGreaterThan(1);
+
+    // A rebuilt marker with the same label leaves later chrome drift alone too.
+    const fitted = calls.length;
+    const pad = calls[calls.length - 1]!;
+    const y = 100 + 400 + (pad.top - pad.bottom) / 2;
+    markerRect = rect(390, y - 10, 410, y + 10);
+    sheetTop = 300;
+    await mutateContainer(map, makeMarker());
+    expect(calls).toHaveLength(fitted);
   });
 
   it('measures once for a burst of marker rebuilds within a frame', async () => {
@@ -615,7 +647,7 @@ describe('RouteLayer fit padding for endpoint labels (#1641)', () => {
 
     await act(async () => {
       for (let i = 0; i < 3; i++) {
-        map.getCanvasContainer().appendChild(document.createElement('div'));
+        map.getCanvasContainer().appendChild(makeMarker());
         await Promise.resolve();
       }
       flushFrames();

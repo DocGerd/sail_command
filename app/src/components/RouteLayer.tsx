@@ -572,7 +572,7 @@ function setupLayers(map: MaplibreMap): void {
 // Overlays that sit on the map and cover part of it (#1626).
 const MAP_CHROME_SELECTOR = '.route-layer-controls, .map-stack-tl, .app-bottom-sheet, .live-view';
 
-const RESIZE_WATCHED_SELECTOR = '.app-bottom-sheet, .live-view, .sc-endpoint-marker-label';
+const RESIZE_WATCHED_SELECTOR = '.app-bottom-sheet, .live-view';
 
 function rectOf(el: Element): Box {
   const { left, top, right, bottom } = el.getBoundingClientRect();
@@ -734,8 +734,14 @@ function fitLayoutKey(map: MaplibreMap): string {
 }
 
 // A role whose label no longer matches is ignored rather than re-fitted for.
-function fitIsCurrent(map: MaplibreMap, ends: FitEnds | null, state: FitState): boolean {
-  if (fitLayoutKey(map) !== state.layout) return false;
+// `labelsOnly` skips the chrome comparison, for checks that marker churn triggers.
+function fitIsCurrent(
+  map: MaplibreMap,
+  ends: FitEnds | null,
+  state: FitState,
+  labelsOnly: boolean,
+): boolean {
+  if (!labelsOnly && fitLayoutKey(map) !== state.layout) return false;
   return measureLabelOffsets(map, mapBox(map), ends).every((now) =>
     state.labels.some(
       (then) =>
@@ -1281,39 +1287,45 @@ export default function RouteLayer({
     };
     // The readout's height follows its hints, so a started Live view is fitted once, on entry.
     let liveWasActive = false;
-    const runRefit = () => {
+    const runRefit = (labelsOnly: boolean) => {
       const state = autoFitKeyRef.current;
       if (disposed || state === null) return;
       watch();
       // A fit stops a running ease, which would demote the compass.
       if (map.isMoving()) {
-        map.once('moveend', runRefit);
+        map.once('moveend', () => runRefit(labelsOnly));
         return;
       }
       const liveActive = document.querySelector('.live-view-data') !== null;
       const enteringLive = liveActive && !liveWasActive;
       liveWasActive = liveActive;
       if (liveActive && !enteringLive) return;
-      if (fitIsCurrent(map, endsRef.current, state)) return;
+      if (fitIsCurrent(map, endsRef.current, state, labelsOnly)) return;
       // MapLibre resizes its transform in a throttled observer of its own.
       map.resize();
       autoFitKeyRef.current = fitToLegs(map, legsRef.current, endsRef.current);
     };
     // Every App render rebuilds the endpoint markers, so observer callbacks burst.
     let frame: number | null = null;
-    const refit = () => {
-      if (disposed || frame !== null) return;
+    let layoutChanged = false;
+    const refit = (layout: boolean) => {
+      if (disposed) return;
+      layoutChanged ||= layout;
+      if (frame !== null) return;
       frame = requestAnimationFrame(() => {
         frame = null;
-        runRefit();
+        const full = layoutChanged;
+        layoutChanged = false;
+        runRefit(!full);
       });
     };
-    // Markers are rebuilt by a parent effect after the plan's own fit, so a label
-    // mounting is what re-fits for it.
-    const mo = typeof MutationObserver === 'function' ? new MutationObserver(refit) : null;
+    // Markers are rebuilt by a parent effect after the plan's own fit, so a marker
+    // mounting is what re-fits for its label. Layout drift is the resize observer's.
+    const mo =
+      typeof MutationObserver === 'function' ? new MutationObserver(() => refit(false)) : null;
     mo?.observe(map.getCanvasContainer(), { childList: true });
     if (typeof ResizeObserver === 'function') {
-      ro = new ResizeObserver(refit);
+      ro = new ResizeObserver(() => refit(true));
       const mapEl = map.getCanvasContainer().parentElement;
       if (mapEl) ro.observe(mapEl);
       watch();
