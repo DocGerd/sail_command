@@ -107,7 +107,7 @@ instruments.
   table's format. The farthest cell is 2671 m, and `shallowConfinedWithinM` at
   1852 m reads `false`.
 - The leg is flagged `shallow` (min 3.4 m) on a relaxed plan, under a 2.59 m
-  draft. The leg is flagged `shallow` (min 3.4 m); the clip is about 2 cm of that cell. The locality guarantee does not hold.
+  draft. The clip is about 2 cm of that cell. The locality guarantee does not hold.
 - The genoa result has no leg that fails the gate.
 - The review traced the leg to `backtrack`'s collinear merge (`isochrone.ts`,
   `prev.end = end`). This merged chord was never validated against the gate. Tracked
