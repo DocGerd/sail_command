@@ -31,6 +31,7 @@ import { TEST_MASK_META, TEST_POLAR, uniformWindGrid } from './test/fixtures';
 import { solverTimeoutMs } from './test/timeouts';
 import { formatLatLon, formatNm, formatWeekdayTime, toLocalInputValue } from './lib/format';
 import { staleForecastGapHours } from './lib/plan';
+import { withHarborHandover } from './lib/harborHandover';
 import {
   DEFAULT_SETTINGS,
   type Harbor,
@@ -4485,6 +4486,34 @@ describe('#983: recalculate completion announced regardless of active tab', () =
       'aria-selected',
       'true',
     );
+  });
+
+  it('#1721: the completion announcement names an uncomputed harbour approach, and only then', async () => {
+    await db.savePlan(savedPlan('p1', 21));
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    await startRecalculateAndReplace();
+    // okPlanResult's snapped ends differ from this plan's request by more than a
+    // snap can, which the reader would itself count as a handover.
+    routingMock.calls[0].resolve({
+      ...okPlanResult(57),
+      snappedOrigin: { lat: 54.79, lon: 9.43 },
+      snappedDestination: { lat: 54.85, lon: 10.35 },
+    });
+    await waitFor(() => expect(announceRegion()).toHaveTextContent(announcePrefix));
+    expect(announceRegion()).not.toHaveTextContent(de['planner.result.announceHandover']);
+  });
+
+  it('#1721: a plan routed via a handover point is announced with the harbour-approach clause', async () => {
+    await db.savePlan(savedPlan('p1', 21));
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    await startRecalculateAndReplace();
+    routingMock.calls[0].resolve(withHarborHandover(okPlanResult(59), { origin: true }));
+    await waitFor(() => expect(announceRegion()).toHaveTextContent(announcePrefix));
+    expect(announceRegion()).toHaveTextContent(de['planner.result.announceHandover']);
   });
 
   it('#983 TRANSITION: announced when the recalculate completes on the Boat tab', async () => {

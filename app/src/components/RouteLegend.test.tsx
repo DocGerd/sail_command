@@ -16,11 +16,11 @@ afterEach(() => {
   delete (window as { matchMedia?: unknown }).matchMedia;
 });
 
-function renderLegend(hasForcedLeg = false) {
+function renderLegend(hasForcedLeg = false, hasHandover = false) {
   localStorage.setItem('sc-lang', 'en');
   return render(
     <I18nProvider>
-      <RouteLegend hasForcedLeg={hasForcedLeg} />
+      <RouteLegend hasForcedLeg={hasForcedLeg} hasHandover={hasHandover} />
     </I18nProvider>,
   );
 }
@@ -50,6 +50,14 @@ describe('RouteLegend', () => {
     unmount();
     renderLegend(false);
     expect(screen.queryByText(en['route.legs.forcedNote'])).not.toBeInTheDocument();
+  });
+
+  it('lists the harbour-approach row only when a plan has a handover (#1721)', () => {
+    const { unmount } = renderLegend(false, true);
+    expect(screen.getByText(en['route.legend.handover'])).toBeInTheDocument();
+    unmount();
+    renderLegend(false, false);
+    expect(screen.queryByText(en['route.legend.handover'])).not.toBeInTheDocument();
   });
 
   // #813 fix-wave MAJOR 1: jsdom has no `matchMedia` (src/test/setup.ts does

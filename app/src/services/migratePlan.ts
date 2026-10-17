@@ -1,6 +1,7 @@
 import { BOATS, boatById, DEFAULT_BOAT_ID, MAX_HEADSAILS } from '../data/boats';
 import { POLAR_TIER_LABEL_KEY } from '../lib/boatProvenance';
 import { NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
+import { parseHarborHandovers, type PlanResultWithHandover } from '../lib/harborHandover';
 import {
   boatSnapshot,
   PLAN_SCHEMA_VERSION,
@@ -371,6 +372,12 @@ function migrateResult(result: Record<string, unknown>): PlanResultOk | null {
   const sails = migrateSails(result);
   if (sails === null) return null;
 
+  // #1721: a present-but-malformed flag makes the record unreadable; an absent one stays absent.
+  const harborHandovers = Object.hasOwn(result, 'harborHandovers')
+    ? parseHarborHandovers(result.harborHandovers)
+    : null;
+  if (harborHandovers === 'malformed') return null;
+
   // recommendedResult()'s invariant, enforced at the read boundary: status
   // 'ok' guarantees the recommended sail has a non-null result. A record that
   // violates it is unreadable, never a plan handed to the UI with an ETA the
@@ -418,7 +425,7 @@ function migrateResult(result: Record<string, unknown>): PlanResultOk | null {
   //
   // exactOptionalPropertyTypes: carry an absent optional as an absent KEY,
   // never as `undefined`.
-  const out: PlanResultOk = {
+  const out: PlanResultWithHandover = {
     status: 'ok',
     sails,
     recommended: recommended as SailId,
@@ -465,6 +472,7 @@ function migrateResult(result: Record<string, unknown>): PlanResultOk | null {
         : {}),
     snappedOrigin: result.snappedOrigin as unknown as PlanResultOk['snappedOrigin'],
     snappedDestination: result.snappedDestination as unknown as PlanResultOk['snappedDestination'],
+    ...(harborHandovers !== null ? { harborHandovers } : {}),
   };
   return out;
 }

@@ -4,6 +4,7 @@ import { formatNm, formatTime } from '../lib/format';
 import { APPROACH_RADIUS_M } from '../lib/depthGate';
 import { formatDepthM, formatDraftM } from '../lib/depthDisclosure';
 import { cautiousDepthLowerBoundM, MASK_TOLERANCE_M } from '../lib/mask';
+import { harborHandoverEndsOf } from '../lib/harborHandover';
 import { planViaPoints } from '../lib/planViaPoints';
 import { roundExposureNm, shallowConfinedWithinM, shallowExposureNm } from '../lib/shallowExposure';
 import { useWideLayout } from '../lib/useWideLayout';
@@ -353,9 +354,14 @@ export function ShallowWarning({
               not strand an anaphoric reference. */}
           {showConfined && (
             <>
-              {t('route.shallow.confined', {
-                radius: formatNm(APPROACH_RADIUS_M / 1852, lang),
-              })}{' '}
+              {t(
+                harborHandoverEndsOf(plan) !== null
+                  ? 'route.shallow.confinedHandover'
+                  : 'route.shallow.confined',
+                {
+                  radius: formatNm(APPROACH_RADIUS_M / 1852, lang),
+                },
+              )}{' '}
             </>
           )}
           {t('route.shallow.detail', {

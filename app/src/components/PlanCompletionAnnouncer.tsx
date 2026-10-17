@@ -12,6 +12,8 @@ export interface PlanCompletionAnnouncerProps {
   // PlannerPanel's superseded `planAnnounceKey`). `null` whenever `result`
   // is null.
   resultKey: string | null;
+  // #1721: the completed plan routes via an uncomputed harbour approach.
+  handover: boolean;
 }
 
 // #983: ONE app-level `role="status"` region that announces a plan's
@@ -52,6 +54,7 @@ export interface PlanCompletionAnnouncerProps {
 export default function PlanCompletionAnnouncer({
   result,
   resultKey,
+  handover,
 }: PlanCompletionAnnouncerProps) {
   const t = useT();
   const [lang] = useLang();
@@ -64,19 +67,21 @@ export default function PlanCompletionAnnouncer({
   // PlannerPanel's own region (`planner.result.announce`) has the identical
   // limitation, so this is not a regression introduced here.
   const [announcedResult, setAnnouncedResult] = useState<RigResult | null>(null);
+  const [announcedHandover, setAnnouncedHandover] = useState(false);
 
   useEffect(() => {
     if (!result || !resultKey || resultKey === lastAnnouncedKeyRef.current) return;
     lastAnnouncedKeyRef.current = resultKey;
     setAnnouncedResult(result);
-  }, [result, resultKey]);
+    setAnnouncedHandover(handover);
+  }, [result, resultKey, handover]);
 
   const announcement = announcedResult
     ? t('planner.result.announce', {
         arrival: formatDateTime(announcedResult.etaMs, lang),
         duration: formatDuration(announcedResult.durationMs),
         distance: formatNm(announcedResult.distanceNm, lang),
-      })
+      }) + (announcedHandover ? ` ${t('planner.result.announceHandover')}` : '')
     : '';
 
   return (

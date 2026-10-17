@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { migratePlan, validRigRecommendation } from './migratePlan';
+import { harborHandoverEndsOf } from '../lib/harborHandover';
 import { DEFAULT_SETTINGS, PLAN_SCHEMA_VERSION, defaultBoatSnapshot } from '../types';
 
 // The one leg literal in this file: legacyRigResult spreads it, and the
@@ -923,5 +924,48 @@ describe('#846 migratePlan: a via point name survives the load path', () => {
     ];
     const migrated = migratePlan(raw);
     expect(migrated!.request.viaPoints).toEqual([{ lat: 54.83, lon: 9.9, name: 'Kalkgrund' }]);
+  });
+});
+
+describe('#1721 migratePlan: the harborHandovers flag', () => {
+  function withFlag(value: unknown): Record<string, unknown> {
+    const raw = migratePlan(legacyPlan())! as unknown as Record<string, unknown>;
+    (raw.result as Record<string, unknown>).harborHandovers = value;
+    return raw;
+  }
+
+  it('carries a valid flag through a round trip', () => {
+    const migrated = migratePlan(withFlag({ origin: true, destination: true }));
+    expect(migrated).not.toBeNull();
+    expect(harborHandoverEndsOf(migrated!)).toEqual({ origin: true, destination: true });
+    expect(Object.hasOwn(migrated!.result, 'harborHandovers')).toBe(true);
+    expect(migratePlan(migrated)!.result).toEqual(migrated!.result);
+  });
+
+  it('keeps a single-end flag single-ended', () => {
+    const migrated = migratePlan(withFlag({ destination: true }))!;
+    expect(harborHandoverEndsOf(migrated)).toEqual({ destination: true });
+  });
+
+  it('leaves an absent flag absent', () => {
+    const migrated = migratePlan(legacyPlan())!;
+    expect(Object.hasOwn(migrated.result, 'harborHandovers')).toBe(false);
+  });
+
+  it.each([
+    ['a non-true value', { origin: false }],
+    ['an unknown key', { origin: true, via: true }],
+    ['an empty object', {}],
+    ['null', null],
+    ['a string', 'origin'],
+  ])('refuses the record when the flag is %s', (_name, value) => {
+    expect(migratePlan(withFlag(value))).toBeNull();
+  });
+
+  it('refuses every Object.prototype member name as a flag key', () => {
+    for (const name of Object.getOwnPropertyNames(Object.prototype)) {
+      const value = JSON.parse(JSON.stringify({ [name]: true })) as unknown;
+      expect(migratePlan(withFlag(value)), name).toBeNull();
+    }
   });
 });

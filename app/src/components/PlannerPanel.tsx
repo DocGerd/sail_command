@@ -66,6 +66,7 @@ import { ShallowWarning } from './ShallowWarning';
 // #1398a: the third, affirmative state — shares depthExposureState with
 // MarginalDepthNotice so the two stay mutually exclusive here too.
 import { DepthClearNotice, MarginalDepthNotice } from './RouteSummary';
+import { HarborHandoverNotice } from './HarborHandoverNotice';
 
 export type TapTarget = 'origin' | 'destination' | 'via';
 
@@ -1721,6 +1722,7 @@ export default function PlannerPanel({
               not-relaxed / mask-loaded / non-zero-exposure gate lives inside
               the component itself; the `plan &&` here is the same TYPE-LEVEL
               requirement as the banner's above. */}
+          {plan && <HarborHandoverNotice plan={plan} />}
           {plan && <MarginalDepthNotice plan={plan} legs={result?.legs ?? null} />}
           {/* #1398a: the third, affirmative state, mutually exclusive with
               the two above by construction (depthExposureState, shared in

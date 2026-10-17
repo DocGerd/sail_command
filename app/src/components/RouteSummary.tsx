@@ -55,6 +55,8 @@ import Button from './Button';
 import Disclosure from './Disclosure';
 import NextPassageAction, { type NextPassageProps } from './NextPassageAction';
 import { ShallowWarning } from './ShallowWarning';
+import { HarborHandoverNotice } from './HarborHandoverNotice';
+import { harborHandoverEndsOf } from '../lib/harborHandover';
 
 /**
  * #612 (the implementation half of #455): the route-scoped MARGINAL-depth
@@ -233,11 +235,11 @@ export function DepthClearNotice({ plan, legs }: { plan: Plan; legs?: Leg[] | nu
     [relaxed, legs, mask, gateM],
   );
   if (!clear) return null;
-  return (
-    <p className="depth-clear-notice">
-      {t('route.marginal.clear', { requested: formatDepthM(gateM, lang) })}
-    </p>
-  );
+  // #1721: the walk covers the computed legs only, so a plan with an uncomputed
+  // harbour approach must not claim the whole route is clear.
+  const key =
+    harborHandoverEndsOf(plan) !== null ? 'route.marginal.clearComputed' : 'route.marginal.clear';
+  return <p className="depth-clear-notice">{t(key, { requested: formatDepthM(gateM, lang) })}</p>;
 }
 
 /**
@@ -784,6 +786,8 @@ export default function RouteSummary({
           the plan-level banner above — the walk uses the ACTIVE rig's own
           legs, so the two rig tabs can legitimately show different figures (or
           one show none), which is the honest per-rig answer. */}
+      {/* #1721: sits with the depth surfaces because it qualifies them. */}
+      <HarborHandoverNotice plan={plan} />
       <MarginalDepthNotice plan={plan} legs={result?.legs ?? null} />
 
       {/* #1398a: the third, affirmative state — MUTUALLY EXCLUSIVE with the

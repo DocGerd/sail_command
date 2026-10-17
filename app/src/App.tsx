@@ -60,6 +60,7 @@ import ReloadPrompt from './components/ReloadPrompt';
 import UatBadge from './components/UatBadge';
 import PanelResizer from './components/PanelResizer';
 import { activeRigResult, isStaleForecast, staleForecastGapHours } from './lib/plan';
+import { harborHandoverEndsOf } from './lib/harborHandover';
 import { recalcRequest } from './lib/recalc';
 import { planViaPoints } from './lib/planViaPoints';
 import {
@@ -441,11 +442,16 @@ function AppShell() {
   const [completionAnnouncement, setCompletionAnnouncement] = useState<{
     result: RigResult;
     key: string;
+    handover: boolean;
   } | null>(null);
   const announceCompletion = useCallback((p: Plan, r: SailId) => {
     const res = activeRigResult(p, r);
     if (!res) return;
-    setCompletionAnnouncement({ result: res, key: `${p.id}-${p.createdAtMs}` });
+    setCompletionAnnouncement({
+      result: res,
+      key: `${p.id}-${p.createdAtMs}`,
+      handover: harborHandoverEndsOf(p) !== null,
+    });
   }, []);
   const prevPlanningPhaseRef = useRef(planning.phase);
   // #1193: which `plan` object was active when the CURRENT busy period
@@ -2342,6 +2348,7 @@ function AppShell() {
       <PlanCompletionAnnouncer
         result={completionAnnouncement?.result ?? null}
         resultKey={completionAnnouncement?.key ?? null}
+        handover={completionAnnouncement?.handover ?? false}
       />
       <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} boat={boat} />
     </div>
