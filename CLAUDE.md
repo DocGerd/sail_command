@@ -4155,8 +4155,8 @@ making design-level decisions; do not silently deviate.
   maneuver time penalty (default 45 s) inside the isochrone cost. Don't add a
   post-hoc "tack reducer" that can violate wind/depth constraints; the only
   allowed post-processing is merging near-collinear legs with re-validation.
-  `isochrone.ts`'s `backtrack` collinear merge does NOT re-validate its merged
-  chord — a known violation, tracked in #1705.
+  `backtrack`'s own step merge (not the `postprocess.ts` pass above) merged
+  chords without re-validating at #1705's filing.
 - **The router runs twice per plan** (genoa polar, fock polar) and recommends
   the faster rig. Both results are user-visible.
 - **Second rig, on the map too, not just in the results panel** (#324): the
@@ -4478,9 +4478,9 @@ making design-level decisions; do not silently deviate.
   broken" triage: `curl` the forecast API with the app's own query
   (`services/openMeteo.ts`) next to a control site first — a bare
   `/v1/forecast` call cannot see a model-specific failure.
-  This machine shares the maintainer's IP: during an outage a hung full-grid
-  probe drew `429 "Too many concurrent requests"` and blocked their UAT check
-  (2026-10-17). Probe with one tiny single-point request, never the app's grid.
+  This machine likely shares the maintainer's IP: a hung full-grid probe drew
+  `429 "Too many concurrent requests"` during the 2026-10-17 outage, which can
+  also block their browser. Probe with one tiny single-point request, never the app's grid.
 - **AIS (#25) is BYOK and must stay inert without a key**: no `aisApiKey` → no
   client, ZERO sockets (the network-free e2e suite depends on this; never add
   a default key or eager connect). aisstream.io signals an invalid key as bare
