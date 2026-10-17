@@ -505,19 +505,9 @@ making design-level decisions; do not silently deviate.
   DIFFERENT condition, an unchanged-tree skip-retest check, which is not the
   docs-only classifier and must not be described as one. Read the cost
   figures off #877, never off this sentence.
-  **Two senses of "docs-only" now coexist in this repo and a sentence must
-  say which it means.** `classify-docs-only.sh`'s arm treats `docs/*`
-  WHOLESALE, while `codeql.yml`'s `paths:` excludes `docs/**` and then
-  RE-INCLUDES `docs/**/*.{ts,tsx,js,jsx,mjs,py}` — four tracked files match
-  (`docs/screenshots/capture.mjs` and three `docs/spikes/354-mode-churn/**`
-  specs), so a #132 sweep touching `capture.mjs` is "docs-only" to the
-  classifier while CodeQL runs on it. The converse edge is just as live:
-  `CHANGELOG.md` and `changelog.d/**` are deliberately absent from codeql's
-  exclusions, so a changelog-only PR TRIGGERS CodeQL — verified empirically
-  at the v0.20.0 sweep, where a docs-only branch carried `Analyze
-  (javascript-typescript)` and `Analyze (python)` from an `event=pull_request`
-  run. Prefer "prose-only" or "whose changed paths its `paths:` filter admits"
-  over a bare "docs-only" whenever the sentence is about CodeQL.
+  **CodeQL has run on every PR to `main`/`develop` since PR #1701 (#72)
+  removed `codeql.yml`'s pull-request `paths:` filter**, so "docs-only" now
+  has one sense: `classify-docs-only.sh`'s.
   The globs are ONE star: in a bash `case`, `*` matches `/`, so nested paths
   do match (selftest case 10 pins it). Measured on a real
   `CLAUDE.md`-only PR (#343): `e2e` reported success in 6 s with
@@ -1742,6 +1732,7 @@ making design-level decisions; do not silently deviate.
   | v0.52.0 | 2026-10-01 | 40 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 18:17:28Z, immediately before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `36905648432` (created 18:16:50Z) -> tag `36905730015` (created 18:17:30Z) on `375bbe6`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `6791900881`, `ref: v0.52.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-ATArQ6An.js` at ``version:`v0.52.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `b26deb1` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.53.0 | 2026-10-02 | 33 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 15:23:28Z, two seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `37026578473` (created 15:22:59Z) -> tag `37026644660` (created 15:23:32Z) on `8a89880`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `6811904931`, `ref: v0.53.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-CMmK6ICi.js` at ``version:`v0.53.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `60efdb3` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.54.0 | 2026-10-16 | 19 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 12:56:56Z, one second before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `38904122078` (created 12:56:42Z) -> tag `38904158337` (created 12:57:01Z) on `90c3aa8`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `7119559177`, `ref: v0.54.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-1sx02wBm.js` at ``version:`v0.54.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `a2350f0` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
+  | v0.55.0 | 2026-10-17 | 61 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 16:52:56Z, two seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `39051266888` (created 16:51:58Z) -> tag `39051339241` (created 16:52:59Z) on `0ddfaffc`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `7142795156`, `ref: v0.55.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-BQy7uiJ9.js` at ``version:`v0.55.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object reported `verified: true, reason: "valid"`. Names no MECHANISM. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -4164,6 +4155,8 @@ making design-level decisions; do not silently deviate.
   maneuver time penalty (default 45 s) inside the isochrone cost. Don't add a
   post-hoc "tack reducer" that can violate wind/depth constraints; the only
   allowed post-processing is merging near-collinear legs with re-validation.
+  `backtrack`'s own step merge (not the `postprocess.ts` pass above) merged
+  chords without re-validating at #1705's filing.
 - **The router runs twice per plan** (genoa polar, fock polar) and recommends
   the faster rig. Both results are user-visible.
 - **Second rig, on the map too, not just in the results panel** (#324): the
@@ -4485,6 +4478,9 @@ making design-level decisions; do not silently deviate.
   broken" triage: `curl` the forecast API with the app's own query
   (`services/openMeteo.ts`) next to a control site first — a bare
   `/v1/forecast` call cannot see a model-specific failure.
+  This machine likely shares the maintainer's IP: a hung full-grid probe drew
+  `429 "Too many concurrent requests"` during the 2026-10-17 outage, which can
+  also block their browser. Probe with one tiny single-point request, never the app's grid.
 - **AIS (#25) is BYOK and must stay inert without a key**: no `aisApiKey` → no
   client, ZERO sockets (the network-free e2e suite depends on this; never add
   a default key or eager connect). aisstream.io signals an invalid key as bare
