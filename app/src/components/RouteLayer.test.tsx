@@ -458,46 +458,106 @@ describe('RouteLayer fit padding (#1626)', () => {
 describe('RouteLayer fit padding for endpoint labels (#1641)', () => {
   const rect = (left: number, top: number, right: number, bottom: number) =>
     ({ left, top, right, bottom, width: right - left, height: bottom - top }) as DOMRect;
+  // Non-zero origin, so the box offset is load-bearing in the projection.
+  const MAP_RECT = rect(200, 100, 1200, 900);
+  // Origin marker centre at (510, 490); the label spans 340 px either side of it.
+  const MARKER_RECT = rect(500, 480, 520, 500);
+  const WIDE_LABEL = rect(170, 504, 850, 520);
+
+  type Pad = { top: number; right: number; bottom: number; left: number };
 
   afterEach(() => {
     vi.restoreAllMocks();
-    document.querySelectorAll('.sc-endpoint-marker').forEach((el) => el.remove());
+    document.querySelectorAll('.sc-endpoint-marker, .label-test-map').forEach((el) => el.remove());
   });
 
-  function stubLabel(map: ReturnType<typeof makeFakeMap>, label: DOMRect) {
+  function setup(label: DOMRect) {
     const mapEl = document.createElement('div');
+    const map = Object.assign(makeFakeMap(), { isMoving: () => false, resize: vi.fn() });
+    mapEl.className = 'label-test-map';
     mapEl.appendChild(map.getCanvasContainer());
+    document.body.appendChild(mapEl);
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: Element,
+    ) {
+      if (this === mapEl) return MAP_RECT;
+      if (this.classList.contains('sc-endpoint-marker')) return MARKER_RECT;
+      if (this.classList.contains('sc-endpoint-marker-label')) return label;
+      return rect(0, 0, 0, 0);
+    });
+    return map;
+  }
+
+  function makeMarker() {
     const marker = document.createElement('div');
     marker.className = 'sc-endpoint-marker sc-endpoint-marker-origin';
     const labelEl = document.createElement('span');
     labelEl.className = 'sc-endpoint-marker-label';
     marker.appendChild(labelEl);
-    document.body.appendChild(marker);
-    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (
-      this: Element,
-    ) {
-      if (this === mapEl) return rect(0, 0, 1000, 800);
-      if (this === marker) return rect(290, 265, 310, 285);
-      if (this === labelEl) return label;
-      return rect(0, 0, 0, 0);
-    });
+    return marker;
   }
 
-  it('grows the padding on the edge a label pokes past, from the second fit on', () => {
-    const map = makeFakeMap();
-    stubLabel(map, rect(-40, 289, 80, 305));
+  // The camera sets the zoom on the vertical axis, so horizontally maplibre only
+  // centres the route in the padded box: the content moves by (left - right) / 2.
+  function followCamera(map: ReturnType<typeof makeFakeMap>) {
+    const calls: Pad[] = [];
+    let pad: Pad = { top: 48, right: 48, bottom: 48, left: 48 };
+    const fitBounds = vi.fn((_bounds: unknown, o: { padding: Pad }) => {
+      pad = o.padding;
+      calls.push(o.padding);
+    });
+    Object.assign(map, {
+      fitBounds,
+      project: ([lon, lat]: [number, number]) => ({
+        x: 500 + (pad.left - pad.right) / 2 + (lon - 10.2) * 1500,
+        y: 400 + (pad.top - pad.bottom) / 2 + (54.75 - lat) * 1500,
+      }),
+    });
+    return calls;
+  }
+
+  it('accumulates the padding across passes until the label is clear', () => {
+    const map = setup(WIDE_LABEL);
+    const calls = followCamera(map);
+    document.body.appendChild(makeMarker());
     renderRouteLayer(map, null);
-    const lefts = map.fitBounds.mock.calls.map((c) => c[1].padding.left as number);
-    expect(lefts[0]).toBe(48);
-    expect(lefts[1]).toBeCloseTo(96, 6);
-    expect(lefts.length).toBe(3);
+    expect(calls).toHaveLength(3);
+    [48, 196, 344].forEach((left, i) => expect(calls[i]!.left).toBeCloseTo(left, 6));
+    const originX = map.project([10.0, 54.75]).x;
+    expect(originX - 340).toBeGreaterThanOrEqual(7);
   });
 
   it('fits once when the label sits inside the room', () => {
-    const map = makeFakeMap();
-    stubLabel(map, rect(20, 289, 100, 305));
+    const map = setup(rect(410, 504, 610, 520));
+    const calls = followCamera(map);
+    document.body.appendChild(makeMarker());
     renderRouteLayer(map, null);
+    expect(calls).toHaveLength(1);
+  });
+
+  it('anchors the label at the picked point, not the snapped route end', () => {
+    const map = setup(WIDE_LABEL);
+    document.body.appendChild(makeMarker());
+    const plan = makePlan();
+    // The fake projects lon 10.0 to x = 300 (label 40 px off the map edge), 10.1 to x = 350.
+    plan.request.origin = { lat: 54.75, lon: 10.1 };
+    renderRouteLayerWithPlan(map, plan);
     expect(map.fitBounds).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-fits for the label when its marker mounts after the plan was fitted', async () => {
+    const map = setup(WIDE_LABEL);
+    const calls = followCamera(map);
+    renderRouteLayer(map, null);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.left).toBe(48);
+
+    await act(async () => {
+      map.getCanvasContainer().appendChild(makeMarker());
+      await Promise.resolve();
+    });
+    expect(calls.length).toBeGreaterThan(1);
+    expect(calls[calls.length - 1]!.left).toBeGreaterThan(48);
   });
 });
 

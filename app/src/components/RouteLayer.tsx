@@ -572,7 +572,7 @@ function setupLayers(map: MaplibreMap): void {
 // Overlays that sit on the map and cover part of it (#1626).
 const MAP_CHROME_SELECTOR = '.route-layer-controls, .map-stack-tl, .app-bottom-sheet, .live-view';
 
-const RESIZE_WATCHED_SELECTOR = '.app-bottom-sheet, .live-view';
+const RESIZE_WATCHED_SELECTOR = '.app-bottom-sheet, .live-view, .sc-endpoint-marker-label';
 
 function rectOf(el: Element): Box {
   const { left, top, right, bottom } = el.getBoundingClientRect();
@@ -590,11 +590,10 @@ function measureChrome(): Box[] {
 }
 
 // #1641: the endpoint labels hang off their marker; a fit that only pads the
-// marker points leaves them under the chrome or off the map. Each label is kept
-// as the route end it hangs off plus its offsets from the marker, so it can be
-// re-projected after every camera move.
-interface EndpointLabel {
-  at: [number, number];
+// marker points leaves them under the chrome or off the map. A label is kept as
+// its marker's offsets so it can be re-projected after every camera move.
+interface LabelOffsets {
+  role: 'origin' | 'destination';
   left: number;
   right: number;
   top: number;
@@ -603,18 +602,9 @@ interface EndpointLabel {
 
 const MAX_LABEL_PASSES = 3;
 
-// The anchor is the route end, not the marker's own screen position: unprojecting
-// that is too coarse when the camera is zoomed far out.
-function measureEndpointLabels(legs: readonly Leg[]): EndpointLabel[] {
-  const first = legs[0];
-  const last = legs[legs.length - 1];
-  if (!first || !last) return [];
-  const ends = [
-    { role: 'origin', at: [first.start.lon, first.start.lat] as [number, number] },
-    { role: 'destination', at: [last.end.lon, last.end.lat] as [number, number] },
-  ];
-  const out: EndpointLabel[] = [];
-  for (const { role, at } of ends) {
+function measureLabelOffsets(): LabelOffsets[] {
+  const out: LabelOffsets[] = [];
+  for (const role of ['origin', 'destination'] as const) {
     const marker = document.querySelector(`.sc-endpoint-marker-${role}`);
     const label = marker?.querySelector('.sc-endpoint-marker-label');
     if (!marker || !label) continue;
@@ -623,18 +613,62 @@ function measureEndpointLabels(legs: readonly Leg[]): EndpointLabel[] {
     if (!(l.right > l.left && l.bottom > l.top)) continue;
     const x = (m.left + m.right) / 2;
     const y = (m.top + m.bottom) / 2;
-    out.push({ at, left: x - l.left, right: l.right - x, top: y - l.top, bottom: l.bottom - y });
+    const tenth = (v: number) => Math.round(v * 10) / 10;
+    out.push({
+      role,
+      left: tenth(x - l.left),
+      right: tenth(l.right - x),
+      top: tenth(y - l.top),
+      bottom: tenth(l.bottom - y),
+    });
   }
   return out;
 }
 
-function projectedLabelRects(map: MaplibreMap, box: Box, labels: readonly EndpointLabel[]): Box[] {
+// Labels sit on the picked points, which is where the markers render; the
+// route ends are snapped to a navigable cell and can differ by several pixels.
+function projectedLabelRects(
+  map: MaplibreMap,
+  box: Box,
+  labels: readonly LabelOffsets[],
+  ends: FitEnds,
+): Box[] {
   return labels.map((l) => {
-    const p = map.project(l.at);
+    const at = ends[l.role];
+    const p = map.project([at.lon, at.lat]);
     const x = box.left + p.x;
     const y = box.top + p.y;
     return { left: x - l.left, right: x + l.right, top: y - l.top, bottom: y + l.bottom };
   });
+}
+
+interface FitEnds {
+  origin: LatLon;
+  destination: LatLon;
+}
+
+const EDGES = ['top', 'right', 'bottom', 'left'] as const;
+
+// The camera moves a label by only a fraction of the padding added on an edge
+// (half, on the axis that does not set the zoom), so the step is scaled by the
+// fraction the previous step achieved.
+function nextExtra(
+  extra: FitPadding,
+  over: FitPadding,
+  prev: { over: FitPadding; delta: FitPadding } | null,
+): { extra: FitPadding; delta: FitPadding } {
+  const next = { ...extra };
+  const delta = { top: 0, right: 0, bottom: 0, left: 0 };
+  for (const edge of EDGES) {
+    if (over[edge] < 1) continue;
+    let gain = 1;
+    if (prev !== null && prev.delta[edge] > 0) {
+      gain = Math.min(1, Math.max(0.25, (prev.over[edge] - over[edge]) / prev.delta[edge]));
+    }
+    delta[edge] = over[edge] / gain;
+    next[edge] += delta[edge];
+  }
+  return { extra: next, delta };
 }
 
 // #297: fits the map to a set of legs, preserving the current bearing.
@@ -646,7 +680,7 @@ function projectedLabelRects(map: MaplibreMap, box: Box, labels: readonly Endpoi
 // test's expected array). No-ops on an empty leg list (a plan whose active
 // rig failed to solve) rather than calling fitBounds with an empty/invalid
 // bounds object.
-function fitToLegs(map: MaplibreMap, legs: Leg[]): string | null {
+function fitToLegs(map: MaplibreMap, legs: Leg[], ends: FitEnds | null): string | null {
   if (legs.length === 0) return null;
   const bounds = new LngLatBounds();
   for (const leg of legs) {
@@ -661,22 +695,21 @@ function fitToLegs(map: MaplibreMap, legs: Leg[]): string | null {
   // extracted from).
   const box = mapBox(map);
   const chrome = measureChrome();
-  const labels = measureEndpointLabels(legs);
+  const labels = ends === null ? [] : measureLabelOffsets();
   let extra: FitPadding = { top: 0, right: 0, bottom: 0, left: 0 };
+  let prev: { over: FitPadding; delta: FitPadding } | null = null;
   for (let pass = 0; pass < MAX_LABEL_PASSES; pass++) {
     map.fitBounds(bounds, {
       padding: fitPadding(box, chrome, extra),
       duration: 0,
       bearing: map.getBearing(),
     });
-    const over = labelOverhang(box, chrome, projectedLabelRects(map, box, labels));
+    if (ends === null || labels.length === 0) break;
+    const over = labelOverhang(box, chrome, projectedLabelRects(map, box, labels, ends));
     if (Math.max(over.top, over.right, over.bottom, over.left) < 1) break;
-    extra = {
-      top: extra.top + Math.max(0, over.top),
-      right: extra.right + Math.max(0, over.right),
-      bottom: extra.bottom + Math.max(0, over.bottom),
-      left: extra.left + Math.max(0, over.left),
-    };
+    const step = nextExtra(extra, over, prev);
+    prev = { over, delta: step.delta };
+    extra = step.extra;
   }
   return fitLayoutKey(map);
 }
@@ -684,7 +717,7 @@ function fitToLegs(map: MaplibreMap, legs: Leg[]): string | null {
 // What a fit would measure now; equal to a fit's return value when nothing moved.
 function fitLayoutKey(map: MaplibreMap): string {
   const box = mapBox(map);
-  return JSON.stringify([box, fitPadding(box, measureChrome())]);
+  return JSON.stringify([box, fitPadding(box, measureChrome()), measureLabelOffsets()]);
 }
 
 // #850: grab-handle hover tolerance for the drag-the-route-line gesture, in
@@ -1177,12 +1210,19 @@ export default function RouteLayer({
   // the shared `fitToLegs` helper above (#297).
   const autoFitKeyRef = useRef<string | null>(null);
   const legsRef = useRef<Leg[]>([]);
+  const endsRef = useRef<FitEnds | null>(null);
   useEffect(() => {
     legsRef.current = result?.legs ?? [];
+    endsRef.current = plan
+      ? { origin: plan.request.origin, destination: plan.request.destination }
+      : null;
   });
   useEffect(() => {
-    if (!map || !result) return;
-    autoFitKeyRef.current = fitToLegs(map, result.legs);
+    if (!map || !result || !plan) return;
+    autoFitKeyRef.current = fitToLegs(map, result.legs, {
+      origin: plan.request.origin,
+      destination: plan.request.destination,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fit on plan identity, not the (recreated) result object
   }, [map, plan?.id]);
 
@@ -1228,8 +1268,12 @@ export default function RouteLayer({
       if (fitLayoutKey(map) === autoFitKeyRef.current) return;
       // MapLibre resizes its transform in a throttled observer of its own.
       map.resize();
-      autoFitKeyRef.current = fitToLegs(map, legsRef.current);
+      autoFitKeyRef.current = fitToLegs(map, legsRef.current, endsRef.current);
     };
+    // Markers are rebuilt by a parent effect after the plan's own fit, so a label
+    // mounting is what re-fits for it.
+    const mo = typeof MutationObserver === 'function' ? new MutationObserver(refit) : null;
+    mo?.observe(map.getCanvasContainer(), { childList: true });
     if (typeof ResizeObserver === 'function') {
       ro = new ResizeObserver(refit);
       const mapEl = map.getCanvasContainer().parentElement;
@@ -1239,6 +1283,7 @@ export default function RouteLayer({
     return () => {
       disposed = true;
       map.off('movestart', release);
+      mo?.disconnect();
       ro?.disconnect();
     };
   }, [map]);
@@ -1259,8 +1304,11 @@ export default function RouteLayer({
   // solve failed) or, defensively, an empty leg list.
   const canFitRoute = result !== null && result.legs.length > 0;
   const handleFitToView = () => {
-    if (!map || !result) return;
-    autoFitKeyRef.current = fitToLegs(map, result.legs);
+    if (!map || !result || !plan) return;
+    autoFitKeyRef.current = fitToLegs(map, result.legs, {
+      origin: plan.request.origin,
+      destination: plan.request.destination,
+    });
   };
 
   // Forecast hours spanning departure->ETA — the slider's snap points.

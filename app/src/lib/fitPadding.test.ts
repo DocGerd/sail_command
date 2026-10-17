@@ -100,10 +100,26 @@ describe('label overhang (#1641)', () => {
   it('adds extra padding on top of the chrome claims', () => {
     const chrome = [{ left: 760, top: 12, right: 992, bottom: 470 }];
     const base = fitPadding(MAP, chrome);
-    expect(fitPadding(MAP, chrome, { ...NONE, right: 30, bottom: 5 })).toEqual({
-      ...base,
+    expect(fitPadding(MAP, chrome, { top: 7, right: 30, bottom: 5, left: 11 })).toEqual({
+      top: base.top + 7,
       right: base.right + 30,
       bottom: base.bottom + 5,
+      left: base.left + 11,
+    });
+  });
+
+  it('measures a label against the top and bottom map edges', () => {
+    expect(labelOverhang(MAP, [], [rectAt(100, -20, 200, -4)])).toEqual({ ...NONE, top: 28 });
+    expect(labelOverhang(MAP, [], [rectAt(100, 790, 200, 806)])).toEqual({ ...NONE, bottom: 14 });
+  });
+
+  it('measures a label against the chrome that claimed the bottom edge', () => {
+    // The sheet starts 200 px above the bottom edge.
+    const sheet = [{ left: 0, top: 600, right: 1000, bottom: 800 }];
+    expect(labelOverhang(MAP, sheet, [rectAt(100, 560, 200, 576)])).toEqual(NONE);
+    expect(labelOverhang(MAP, sheet, [rectAt(100, 590, 200, 606)])).toEqual({
+      ...NONE,
+      bottom: 14,
     });
   });
 

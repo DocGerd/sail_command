@@ -424,6 +424,14 @@ async function labelState(page: Page, role: 'origin' | 'destination'): Promise<L
   }, role);
 }
 
+async function expectLabelsClear(page: Page): Promise<void> {
+  for (const role of ['destination', 'origin'] as const) {
+    await expect
+      .poll(() => labelState(page, role), { timeout: 30_000 })
+      .toEqual({ overlapPx: 0, insideMap: true });
+  }
+}
+
 test.describe('#1641: endpoint labels clear of the chrome after the auto-fit', () => {
   const viewports = {
     tabletPortrait: STANDARD_VIEWPORTS.tabletPortrait,
@@ -437,11 +445,29 @@ test.describe('#1641: endpoint labels clear of the chrome after the auto-fit', (
       try {
         await planRoute(page, server.url);
         await waitForStableCamera(page);
-        for (const role of ['destination', 'origin'] as const) {
-          await expect
-            .poll(() => labelState(page, role), { timeout: 30_000 })
-            .toEqual({ overlapPx: 0, insideMap: true });
-        }
+        await expectLabelsClear(page);
+      } finally {
+        server.kill();
+      }
+    });
+
+    // The restored plan arrives before its endpoint markers are rebuilt.
+    test(`labels stay clear after a session restore (${name})`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      const server = await startPreview(page);
+      try {
+        await planRoute(page, server.url);
+        // PlansList reads IndexedDB once, on mount: let the save settle first.
+        await page.getByRole('tab', { name: 'Routen' }).click();
+        await expect(page.locator('.plans-list-row')).toHaveCount(1);
+        await page.goto(server.url);
+        await expect(page.getByRole('tab', { name: 'Routen' })).toHaveAttribute(
+          'aria-selected',
+          'true',
+        );
+        await expect(page.locator('.sc-endpoint-marker-label')).toHaveCount(2, { timeout: 60_000 });
+        await waitForStableCamera(page);
+        await expectLabelsClear(page);
       } finally {
         server.kill();
       }
