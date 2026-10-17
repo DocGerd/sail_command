@@ -13,7 +13,7 @@ reach open water only through #53/#452 relaxation, as `pipeline/verify_mask.py`'
 two harbours, the three properties the issue asks about all hold:
 
 1. No sub-gate water beyond the relaxed harbour's `APPROACH_RADIUS_M` disc:
-   0.000 nm on all 12 rig results (§1).
+   farthest sub-gate cell under 1852 m on all 12 rig results (§1).
 2. Every plan relaxed and carries a `shallow` block, and `RouteSummary` mounts
    the shallow banner (§2).
 3. `isSevere` fires on every plan. At EASY GO!'s default gate this follows
@@ -37,10 +37,10 @@ does not re-derive the issue's 27-of-528 harbour-pair figure.
   `DEFAULT_SETTINGS` with `safetyDepthM = defaultSafetyDepthM(boat)` = 3.5 m
   (floor `relaxationFloorM` = 2.6 m), uniform 12 kn / 270° wind at the
   fixtures' `T0`, both rigs. Routes: Faaborg ↔ Faldsled and Svendborg ↔
-  Rudkøbing at `depthComfortMarginM` 2.0, plus both outbound routes at margin
+  Rudkøbing at `depthComfortMarginM` 2.0, plus both routes at margin
   0. On the Marstal passage, margin 0 was the only setting where the #452
   locality check had teeth (`realmask.repro.issue20.marstalMargin0.test.ts`'s
-  header).
+  header). The counterexample (Faldsled → Faaborg) and Rudkøbing → Svendborg, both at margin 0, were run during review at the PR head `12ca9a4`.
 - **Exposure instruments.** All use the shipped `lib/shallowExposure.ts` walk:
   - total sub-gate exposure: `shallowExposureNm(legs, mask, 3.5)`;
   - exposure beyond a disc: the same call on a mask facade whose
@@ -71,7 +71,7 @@ genoa / fock.
 | Rudkøbing → Svendborg | 2.0 | 3.4, 3.4 | 0.031 / 0.031 | 0.000 / 0.000 | 278 / 278 |
 
 - Field variant: 0.000 nm outside the relaxed gate field on all 12 rig rows.
-  This variant has no control of its own; the controls below apply to the
+  This variant has no control of its own (except the counterexample below, which reads 1.2e-5 nm); the controls below apply to the
   haversine facade.
 - The unrelaxed waypoint's disc (Faaborg or Svendborg) still carries 3.4 m,
   because phase 2 of `findRelaxedGate` ascends only to one decimetre below the
@@ -103,15 +103,14 @@ instruments.
   `segmentNavigable` against that gate. It clips cell (1992, 988), charted
   3.4 m with `gateAtCell` 3.5 m. The cell lies 2671 m from Faldsled and
   8828 m from Faaborg, outside both discs.
-- The leg's exposure beyond the disc is 1.2e-5 nm, which reads 0.000 in the
+- The leg's sub-gate exposure is 1.2e-5 nm, which reads 0.000 in the
   table's format. The farthest cell is 2671 m, and `shallowConfinedWithinM` at
   1852 m reads `false`.
 - The leg is flagged `shallow` (min 3.4 m) on a relaxed plan, under a 2.59 m
-  draft. That is not a grounding hazard, but the locality guarantee does not
-  hold.
+  draft. The leg is flagged `shallow` (min 3.4 m); the clip is about 2 cm of that cell. The locality guarantee does not hold.
 - The genoa result has no leg that fails the gate.
 - The review traced the leg to `backtrack`'s collinear merge (`isochrone.ts`,
-  `prev.end = end`). Nothing checks the merged chord against the gate. Tracked
+  `prev.end = end`). This merged chord was never validated against the gate. Tracked
   in #1705.
 
 ## 2. The disclosure stack mounts
