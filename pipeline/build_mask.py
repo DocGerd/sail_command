@@ -8,6 +8,7 @@ Row 0 = SOUTH edge (the app's convention; numpy arrays are north-first, so flip 
 """
 
 import json
+import math
 import pathlib
 import sys
 import urllib.request
@@ -53,6 +54,7 @@ DTM_PATH = SRC / f"emodnet_dtm_{WEST}_{SOUTH}_{EAST}_{NORTH}.tif"
 # excluding it from the land mask. Discovered while debugging verify_mask.py
 # probe failures at every Schlei-side harbor (Kappeln, Arnis, Maasholm).
 SCHLEI_RELATION_ID = 2340930
+CHARTED_CHANNELS_PATH = HERE / "charted-channels.json"
 SCHLEI_URL = f"https://nominatim.openstreetmap.org/lookup?osm_ids=R{SCHLEI_RELATION_ID}&format=jsonv2&polygon_geojson=1"
 
 
@@ -85,6 +87,75 @@ def check_dtm_covers(bounds, res: tuple[float, float]) -> None:
             f"{DTM_PATH.name}: raster extent {tuple(bounds)} does not cover the mask bbox "
             f"{(WEST, SOUTH, EAST, NORTH)}; delete the cached file and re-run"
         )
+
+
+def channel_cells(
+    points: list[tuple[float, float]],
+    west: float = WEST,
+    south: float = SOUTH,
+    east: float = EAST,
+    north: float = NORTH,
+    cols: int = COLS,
+    rows: int = ROWS,
+) -> list[tuple[int, int]]:
+    """4-connected (row, col) run through the (lat, lon) points; row 0 = south.
+
+    Grid traversal, so consecutive cells share an edge and a diagonal step
+    never skips a corner cell.
+    """
+    dx, dy = (east - west) / cols, (north - south) / rows
+    uv = [((lon - west) / dx, (lat - south) / dy) for lat, lon in points]
+    cells: list[tuple[int, int]] = []
+    for (u0, v0), (u1, v1) in zip(uv, uv[1:], strict=False):
+        x, y = math.floor(u0), math.floor(v0)
+        x_end, y_end = math.floor(u1), math.floor(v1)
+        step_x, step_y = (1 if u1 > u0 else -1), (1 if v1 > v0 else -1)
+        t_x = ((x + (step_x > 0)) - u0) / (u1 - u0) if u1 != u0 else math.inf
+        t_y = ((y + (step_y > 0)) - v0) / (v1 - v0) if v1 != v0 else math.inf
+        d_x = abs(1 / (u1 - u0)) if u1 != u0 else math.inf
+        d_y = abs(1 / (v1 - v0)) if v1 != v0 else math.inf
+        run = [(y, x)]
+        while (y, x) != (y_end, x_end):
+            if t_x <= t_y:
+                x += step_x
+                t_x += d_x
+            else:
+                y += step_y
+                t_y += d_y
+            run.append((y, x))
+        for cell in run:
+            if not cells or cells[-1] != cell:
+                cells.append(cell)
+    return cells
+
+
+def raise_charted_channels(
+    code: np.ndarray,
+    channels: list[dict],
+    west: float = WEST,
+    south: float = SOUTH,
+    east: float = EAST,
+    north: float = NORTH,
+) -> list[tuple[int, int, int, int]]:
+    """Raise `code` (row 0 = south) to each channel's charted depth along its centreline.
+
+    Raise-only: a cell already at or above the charted depth is untouched, and
+    no cell off the centreline is. A centreline cell that is land/unknown
+    (code 0) means the centreline is wrong, so it raises instead of turning
+    land into water. Returns (row, col, before, after) for every raised cell.
+    """
+    changed: list[tuple[int, int, int, int]] = []
+    for ch in channels:
+        want = int(math.floor(ch["depthM"] * 10 + 1e-9))
+        points = [(p["lat"], p["lon"]) for p in ch["centreline"]]
+        for row, col in channel_cells(points, west, south, east, north, code.shape[1], code.shape[0]):
+            before = int(code[row, col])
+            if before == 0:
+                raise ValueError(f"charted channel {ch['id']}: centreline cell ({row}, {col}) is land/unknown")
+            if before < want:
+                code[row, col] = want
+                changed.append((row, col, before, want))
+    return changed
 
 
 def main() -> None:
@@ -329,6 +400,14 @@ def main() -> None:
         raise AssertionError("implausible land/water split - inspect inputs")
 
     code_south_first = np.flipud(code)  # app convention: row 0 = south
+    channels = json.loads(CHARTED_CHANNELS_PATH.read_text())["channels"]
+    raised = raise_charted_channels(code_south_first, channels)
+    print(f"charted channels: raised {len(raised)} cells")
+    for row, col, before, after in raised:
+        print(
+            f"  row {row} col {col} lat {SOUTH + (row + 0.5) * (NORTH - SOUTH) / ROWS:.5f}"
+            f" lon {WEST + (col + 0.5) * (EAST - WEST) / COLS:.5f}: {before / 10:.1f} -> {after / 10:.1f} m"
+        )
     (OUT).mkdir(parents=True, exist_ok=True)
     (OUT / "mask.bin").write_bytes(code_south_first.tobytes())
     meta = {

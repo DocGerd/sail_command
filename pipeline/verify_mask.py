@@ -283,33 +283,10 @@ SEED_LAT, SEED_LON = 54.8455, 9.5216  # open Flensburg Fjord water
 CONNECTIVITY_EXCEPTIONS_M: dict[tuple[str, float], float] = {
     # Judged snap-aware (#1584): augustenborg's former 3.0 m entry was dropped, its
     # snapped cell reaches open water at 3.0 m unaided.
-    # "Buoyed approaches approx 3.2 m (N and W), 4.5 m from S; parts of the
-    # yacht basin only approx 2 m." Reconnects at gate <= 2.3 m; 2.0 m is
-    # the harbor's own documented figure for its shallowest reach and keeps
-    # a safety margin below the measured 2.3 m threshold.
-    ("marstal", 3.0): 2.0,
-    # #54 spec N.6, for the Elan Impression 444 (draft 1.90 m -> derived gate
-    # 2.8 m). Same harbor, same approachNote, same 2.0 m figure as the 3.0 m
-    # entry above - a SEPARATE row because this table is keyed by (harbor, boat
-    # gate) on purpose: an exception justified against one gate says nothing
-    # about another, and a boat whose gate has no entry gets no exception at
-    # all. That is the forcing function working as designed, and this is the
-    # evidence it forced.
-    #
-    # The evidence is satisfied A FORTIORI by the entry above rather than by a
-    # fresh investigation: dropping a 2.8 m gate to 2.0 m is a 0.8 m relaxation
-    # against the 1.0 m already reviewed at 3.0 m (PR #8), so it is the STRICTLY
-    # SMALLER concession. Marstal reconnects at <= 2.3 m either way - MEASURED
-    # by this script's own descending sweep, which prints "marstal 2.3 m" in the
-    # deepest-connecting-gate table, so the threshold is re-derived on every run
-    # rather than remembered here.
-    #
-    # Control, run before this entry existed: with the Elan in the catalogue and
-    # this row absent, the script exits 1 with "CONNECTIVITY marstal snap
-    # (54.8579,10.528) not reachable from open water at gate depth 2.8 m (boat
-    # elan-444, derived gate 2.8 m)". augustenborg needs no 2.8 m entry - it
-    # reaches open water at exactly 2.8 m unaided, at 0.0 m of margin.
-    ("marstal", 2.8): 2.0,
+    # Marstal's former 3.0 m and 2.8 m entries (2.0 m, from the approachNote's
+    # "parts of the yacht basin only approx 2 m") were removed at #1721: the
+    # charted-channels.json correction connects it unaided, and this script
+    # fails a stale entry.
 }
 
 # Harbors investigated and confirmed disconnected at every gate depth this
@@ -354,12 +331,12 @@ KNOWN_DISCONNECTED: dict[str, str] = {
 # reaching every harbour it does today.
 EXPECTED_UNREACHABLE_BY_BOAT: dict[str, list[str]] = {
     # EASY GO! (#1575, 2.59 m draft, gate 3.5 m). Snap-aware verdicts (#1584):
-    # the picker reads augustenborg and marstal unreachable and faldsled and
-    # rudkoebing shallow-approach (reachable only through a relaxed approach).
+    # the picker reads augustenborg unreachable and faldsled and rudkoebing
+    # shallow-approach (reachable only through a relaxed approach). Marstal
+    # left at #1721 (charted-channels.json).
     "salona-44-easy-go": [
         "augustenborg",
         "faldsled",
-        "marstal",
         "rudkoebing",
     ],
 }

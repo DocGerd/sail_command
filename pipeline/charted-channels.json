@@ -1,0 +1,142 @@
+{
+ "$comment": "Hand-authored. Read by build_mask.py, which raises (never lowers) the mask depth along each centreline. seamarkIndex is the feature's position in app/public/data/seamarks.json when authored; lat/lon identify the mark if that file is regenerated. A point is the midpoint of its marks; the two single-mark points have no charted partner in seamarks.json and use the mark position.",
+ "channels": [
+  {
+   "id": "marstal-soendre-loeb",
+   "harbour": "marstal",
+   "depthM": 4.0,
+   "depthBasis": "Channel-edge figure (ca. 4.0 m), deliberately below the charted 4.4 m / 4.5 m centre depths.",
+   "source": {
+    "publisher": "Geodatastyrelsen, Den danske Havnelods",
+    "title": "Marstal Havn",
+    "url": "https://www.danskehavnelods.dk/Havnelodsen/harbours/d96c2a64-e555-4b0a-a012-7ada240eecd5.html",
+    "textDate": "09-06-2026",
+    "planDate": "05-07-2023",
+    "plan": "LFTMASTL.jpg, 1:8000",
+    "quote": "…fra S gennem Marstal Søndre Løb (4,4 m)… dybden 4,5 m kun til stede i en bredde på 20 m i rendens midte. Uden for dette område aftager dybden til ca. 4,0 m ved rendens kanter."
+   },
+   "caveats": [
+    "The channel silts up; it was re-dredged in February 2026 (Ærø Kommune notice: https://aeroehavne.com/dansk/nyheder-om-havnene/oprensning-af-sand-fra-soendre-loeb-i-marts).",
+    "Wind-driven water level varies by about ±1.2 m.",
+    "The source does not state a datum; mean water level is assumed.",
+    "The channel is narrower than one ~46 m mask cell, so the 4.0 m applies to the cell run along the buoy line, not to the cell's whole area."
+   ],
+   "centreline": [
+    {
+     "lat": 54.8561158,
+     "lon": 10.5274952,
+     "marks": [
+      {
+       "seamarkIndex": 257,
+       "lat": 54.8565401,
+       "lon": 10.5268583,
+       "category": "port"
+      },
+      {
+       "seamarkIndex": 254,
+       "lat": 54.8556916,
+       "lon": 10.5281321,
+       "category": "starboard"
+      }
+     ]
+    },
+    {
+     "lat": 54.8548942,
+     "lon": 10.5304742,
+     "marks": [
+      {
+       "seamarkIndex": 255,
+       "lat": 54.8548942,
+       "lon": 10.5304742,
+       "category": "port"
+      }
+     ]
+    },
+    {
+     "lat": 54.8532083,
+     "lon": 10.5329597,
+     "marks": [
+      {
+       "seamarkIndex": 1890,
+       "lat": 54.8532083,
+       "lon": 10.5329597,
+       "category": "port"
+      }
+     ]
+    },
+    {
+     "lat": 54.8512982,
+     "lon": 10.5353996,
+     "marks": [
+      {
+       "seamarkIndex": 279,
+       "lat": 54.8512082,
+       "lon": 10.5350253,
+       "category": "starboard"
+      },
+      {
+       "seamarkIndex": 283,
+       "lat": 54.8513881,
+       "lon": 10.535774,
+       "category": "port"
+      }
+     ]
+    },
+    {
+     "lat": 54.8492908,
+     "lon": 10.5383166,
+     "marks": [
+      {
+       "seamarkIndex": 280,
+       "lat": 54.8491946,
+       "lon": 10.538004,
+       "category": "starboard"
+      },
+      {
+       "seamarkIndex": 285,
+       "lat": 54.849387,
+       "lon": 10.5386292,
+       "category": "port"
+      }
+     ]
+    },
+    {
+     "lat": 54.8477597,
+     "lon": 10.5405334,
+     "marks": [
+      {
+       "seamarkIndex": 281,
+       "lat": 54.8476222,
+       "lon": 10.5402937,
+       "category": "starboard"
+      },
+      {
+       "seamarkIndex": 284,
+       "lat": 54.8478971,
+       "lon": 10.540773,
+       "category": "port"
+      }
+     ]
+    },
+    {
+     "lat": 54.8453897,
+     "lon": 10.5439557,
+     "marks": [
+      {
+       "seamarkIndex": 282,
+       "lat": 54.8452318,
+       "lon": 10.5436038,
+       "category": "starboard"
+      },
+      {
+       "seamarkIndex": 306,
+       "lat": 54.8455476,
+       "lon": 10.5443076,
+       "category": "port"
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
