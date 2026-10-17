@@ -84,6 +84,10 @@ instead of here.
   shipped `findRelaxedGate` on the real mask — equal to the global search on
   every Marstal- and Flensburg-origin harbour pair, and the `[X, Marstal]`
   mirror, at each catalogue boat's own gate/floor
+- [932-easygo-relaxed-approaches.md](932-easygo-relaxed-approaches.md) —
+  #932: EASY GO!'s relaxed approaches to Faldsled and Rudkøbing. Sub-gate
+  water stays inside the relaxed harbour's disc, the shallow banner mounts and
+  reads severe; five (boat, harbour) pairs relax, not Marstal alone
 - [1022-whole-journey-ux.md](1022-whole-journey-ux.md) — #1022: the whole
   client journey, as a design exercise (reference screenshots in
   `1022-whole-journey-ux/`)
