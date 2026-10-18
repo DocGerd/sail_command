@@ -89,6 +89,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   localStorage.clear();
   vi.useRealTimers();
 });
@@ -139,8 +140,6 @@ describe('#1707 NextPassageAction', () => {
     const removed = remove.mock.calls.filter(([type]) => type === 'visibilitychange');
     expect(removed).toHaveLength(1);
     expect(removed[0]?.[1]).toBe(added[0]?.[1]);
-    add.mockRestore();
-    remove.mockRestore();
   });
 
   it('honours disabled and reports a click otherwise', () => {

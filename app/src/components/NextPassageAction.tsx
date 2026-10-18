@@ -28,14 +28,11 @@ export default function NextPassageAction({
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
     const refresh = () => setNowMs(Date.now());
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible') refresh();
-    };
     const id = setInterval(refresh, NOW_REFRESH_MS);
-    document.addEventListener('visibilitychange', onVisibility);
+    document.addEventListener('visibilitychange', refresh);
     return () => {
       clearInterval(id);
-      document.removeEventListener('visibilitychange', onVisibility);
+      document.removeEventListener('visibilitychange', refresh);
     };
   }, []);
   const seed = seedNextPassage(plan, rig, harbors, lang, nowMs);
