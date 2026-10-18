@@ -6,11 +6,13 @@ import { uniformWindGrid } from '../test/fixtures';
 import {
   DEFAULT_SETTINGS,
   PLAN_SCHEMA_VERSION,
+  boatSnapshot,
   defaultBoatSnapshot,
   type LatLon,
   type Plan,
   type PlanResultOk,
 } from '../types';
+import { boatById } from '../data/boats';
 import DepartureCompare from './DepartureCompare';
 import { useDepartureScan, type DepartureScanState } from '../state/useDepartureScan';
 import { useDepartureConfirm, type DepartureConfirmState } from '../state/useDepartureConfirm';
@@ -434,6 +436,30 @@ describe('DepartureCompare', () => {
 
       fireEvent.click(screen.getByRole('button', { name: 'Diese Abfahrt übernehmen' }));
       expect(await screen.findByText(/empfiehlt hier Fock/)).toBeInTheDocument();
+    });
+
+    // Spec T.4: the same disagreement on an estimate-based plan says so; the
+    // Salona 45 row above is the control for the plain key.
+    it('#1716: a disagreement on a tier-C boat is worded as indicative', async () => {
+      const plan = makePlan();
+      stubHook({
+        candidates: [{ departureMs: DEPARTURE_MS, outcome: { kind: 'ok', result: OK_RESULT } }],
+      });
+      const updated: Plan = {
+        ...plan,
+        createdAtMs: plan.createdAtMs + 1,
+        request: { ...plan.request, boat: boatSnapshot(boatById('salona-44-speedy-go')) },
+        result: twoRigResult('fock'),
+      };
+      stubConfirmHook({}, vi.fn().mockResolvedValue(updated));
+      renderCompare(plan);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Diese Abfahrt übernehmen' }));
+      expect(
+        await screen.findByText(
+          'Plan übernommen — die vollständige Berechnung empfiehlt hier Fock (Anhaltswert, aus geschätzten Polardaten), nicht die Genua, mit der dieses Fenster eingestuft wurde.',
+        ),
+      ).toBeInTheDocument();
     });
 
     it('genoa ashore: a confirmed result deciding another rig names no disagreement', async () => {

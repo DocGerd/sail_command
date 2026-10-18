@@ -282,7 +282,11 @@ export default function PlansList({ online, busy, onRecalculate }: PlansListProp
                 <span className="plans-list-eta">
                   {t('route.totals.eta')} {formatDateTime(p.etaMs, lang)}
                 </span>
-                <span className="chip chip-rig">{t(sailLabelKey(p.recommended))}</span>
+                <span className="chip chip-rig">
+                  {p.estimateBased
+                    ? t('plansList.rigEstimated', { rig: t(sailLabelKey(p.recommended)) })
+                    : t(sailLabelKey(p.recommended))}
+                </span>
               </button>
               <Button
                 variant="ghost"

@@ -9,7 +9,7 @@ import { I18nProvider } from '../i18n';
 import { BOATS, boatById, polarKey } from '../data/boats';
 import { weakestPolarTier } from '../lib/boatProvenance';
 import { recalcRequest } from '../lib/recalc';
-import { rigComparisonSuppressedByTier } from '../lib/plan';
+import { rigComparisonSuppressedByTier, rigEstimateBased } from '../lib/plan';
 import { en } from '../i18n/dict.en';
 import { planRoute } from '../routing/planRoute';
 import {
@@ -97,22 +97,35 @@ describe('P.10 item 12: EASY GO! catalogue entry', () => {
   });
 });
 
-describe('P.10 item 13: not-compared on the loaded assets', () => {
+describe('P.10 item 13 (spec T.8.1): EASY GO! compares on the loaded assets', () => {
   it('weakestPolarTier reads estimated', () => {
     expect(weakestPolarTier(EASY_GO)).toBe('estimated');
   });
 
-  it('planRoute solves both sails and returns not-compared', () => {
-    const r = planRoute(REQ, uniformWindGrid(12, 0), {
+  const solve = (twsKn: number) =>
+    planRoute(REQ, uniformWindGrid(twsKn, 0), {
       polars: loadedPolars(),
       boat: EASY_GO,
       mask: openWaterMask(),
     });
+
+  // The ramp is +0.5% at TWS 12 on a beam reach (spec P.4), i.e. under a minute
+  // over this ~2 h route: inside RIG_TIE_BAND_MS.
+  it('TWS 12: both sails solve and the ramp-only gap is a tie', () => {
+    const r = solve(12);
     expect(r.status).toBe('ok');
     if (r.status !== 'ok') return;
-    expect(r.sails).toHaveLength(2);
     expect(r.sails.every((s) => s.result !== null)).toBe(true);
-    expect(r.rigRecommendation?.kind).toBe('not-compared');
+    expect(r.rigRecommendation).toEqual({ kind: 'tie' });
+  });
+
+  // +3-4% at TWS 6 (spec P.4) is several minutes over this route, and the
+  // genoa table is >= the jib everywhere, so the genoa wins.
+  it('TWS 6: the ramp gap is decided for the genoa', () => {
+    const r = solve(6);
+    expect(r.status).toBe('ok');
+    if (r.status !== 'ok') return;
+    expect(r.rigRecommendation).toEqual({ kind: 'decided', rig: 'genoa' });
   });
 });
 
@@ -128,7 +141,7 @@ describe('P.10 item 14: pre-amendment snapshot, recalculated', () => {
   });
   const saved = { request: { ...REQ, boat: oldBoat } } as unknown as Plan;
 
-  it('recalculated run uses the own polar assets and renders the estimated not-compared copy', () => {
+  it('recalculated run uses the own polar assets and carries the flagged verdict', () => {
     expect(EASY_GO.sails.map((s) => s.polarAsset)).toEqual([
       'data/polars/salona-44-easy-go-genoa.json',
       'data/polars/salona-44-easy-go-fock.json',
@@ -141,9 +154,28 @@ describe('P.10 item 14: pre-amendment snapshot, recalculated', () => {
     });
     expect(r.status).toBe('ok');
     if (r.status !== 'ok') return;
-    expect(r.rigRecommendation?.kind).toBe('not-compared');
     const recalculated = { request: req, result: r } as unknown as Plan;
-    expect(rigComparisonSuppressedByTier(recalculated)).toBe(true);
+    expect(r.rigRecommendation?.kind).toBe('tie');
+    expect(rigEstimateBased(recalculated)).toBe(true);
+    expect(rigComparisonSuppressedByTier(recalculated)).toBe(false);
+  });
+
+  // Spec T.5: the stored not-compared record is not re-derived by the view.
+  it('a stored not-compared record keeps the estimated not-compared sentence', () => {
+    const legacy = {
+      request: { ...REQ, boat: oldBoat },
+      result: {
+        status: 'ok',
+        comparisonComplete: true,
+        rigRecommendation: { kind: 'not-compared' },
+        sails: [
+          { sailId: 'genoa', result: {}, reason: null },
+          { sailId: 'fock', result: {}, reason: null },
+        ],
+      },
+    } as unknown as Plan;
+    expect(rigComparisonSuppressedByTier(legacy)).toBe(true);
+    expect(rigEstimateBased(legacy)).toBe(false);
     expect(en['route.rigNotComparedEstimated']).toContain('{tier}');
   });
 });

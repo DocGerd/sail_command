@@ -435,6 +435,22 @@ describe('RouteSummary', () => {
         { sailId: unknown, result: { ...GENOA_RESULT, sailId: unknown }, reason: null },
       ],
     };
+    // The snapshot declares the stored sail at certificate tier: an absent one
+    // would count as estimated and flag the verdict (spec T.3).
+    plan.request = {
+      ...plan.request,
+      boat: {
+        ...plan.request.boat,
+        sails: [
+          ...plan.request.boat.sails,
+          {
+            id: unknown,
+            label: 'Code 0',
+            polarProvenance: { tier: 'certificate', note: 'test fixture' },
+          },
+        ],
+      },
+    };
     renderSummary({ plan, rig: 'genoa' });
     expect(
       screen.getByText(
@@ -593,6 +609,98 @@ describe('RouteSummary', () => {
     const plan = makePlan({ rigRecommendation: { kind: 'not-compared' } });
     renderSummary({ plan, rig: 'genoa' });
     expect(screen.getByText(en['route.rigNotCompared'])).toBeInTheDocument();
+  });
+
+  // Spec T.4/T.8.4: every flagged verdict surface on RouteSummary. The Salona
+  // 45 rows (existing, plain keys) are the control for the tier-C rows.
+  describe('#1716: estimate-based verdict', () => {
+    const tierCPlan = (rigRecommendation: RigRecommendation): Plan => {
+      const base = makePlan({ rigRecommendation });
+      return {
+        ...base,
+        request: { ...base.request, boat: boatSnapshot(boatById('salona-44-speedy-go')) },
+      };
+    };
+    const tier = (dict: typeof en | typeof de) => dict['boat.polarTier.estimated'];
+
+    it('decided: the chip says it is indicative; the tab star keeps its glyph and flags itself in its name and title', () => {
+      renderSummary({ plan: tierCPlan({ kind: 'decided', rig: 'fock' }), rig: 'genoa' });
+      expect(
+        screen.getByText(
+          en['route.fasterRigEstimated'].replace('{rig}', 'Fock').replace('{tier}', tier(en)),
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Faster: Fock')).not.toBeInTheDocument();
+      const star = within(screen.getByRole('tab', { name: /Fock/ })).getByLabelText(
+        en['route.recommendedEstimated'],
+      );
+      expect(star).toHaveAttribute('title', en['route.recommendedEstimated']);
+      expect(star.textContent?.trim()).toBe('★');
+    });
+
+    it('decided on the Salona 45: plain chip, plain star name, same visible glyph', () => {
+      renderSummary({
+        plan: makePlan({ rigRecommendation: { kind: 'decided', rig: 'fock' } }),
+        rig: 'genoa',
+      });
+      const star = within(screen.getByRole('tab', { name: /Fock/ })).getByLabelText(
+        en['route.recommended'],
+      );
+      expect(star.textContent?.trim()).toBe('★');
+      expect(screen.getByText('Faster: Fock')).toBeInTheDocument();
+      expect(screen.queryByText(/indicative only/)).not.toBeInTheDocument();
+    });
+
+    it('tie: the chip says it is indicative', () => {
+      renderSummary({ plan: tierCPlan({ kind: 'tie' }), rig: 'genoa' });
+      expect(
+        screen.getByText(
+          en['route.rigTieEstimated']
+            .replace('{sailA}', 'Genoa')
+            .replace('{sailB}', 'Fock')
+            .replace('{tier}', tier(en)),
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText('Genoa and Fock are effectively tied for this passage'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('moot is not flagged', () => {
+      renderSummary({ plan: tierCPlan({ kind: 'moot' }), rig: 'genoa' });
+      expect(screen.getByText(en['route.rigMoot'])).toBeInTheDocument();
+    });
+
+    it('de: the decided chip and the star name use the German keys', () => {
+      localStorage.setItem('sc-lang', 'de');
+      const plan = tierCPlan({ kind: 'decided', rig: 'fock' });
+      render(
+        <I18nProvider>
+          <RouteSummary plan={plan} rig="genoa" onRigChange={vi.fn()} />
+        </I18nProvider>,
+      );
+      expect(
+        screen.getByText(
+          de['route.fasterRigEstimated']
+            .replace('{rig}', de['route.rig.fock'])
+            .replace('{tier}', tier(de)),
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText(de['route.recommendedEstimated'])).toBeInTheDocument();
+    });
+
+    // Spec T.5/T.8.5: a record stored before the amendment keeps its
+    // not-compared verdict; the recalculated record carries the flagged one.
+    it('legacy record: stored not-compared renders the estimated not-compared sentence', () => {
+      renderSummary({ plan: tierCPlan({ kind: 'not-compared' }), rig: 'genoa' });
+      expect(
+        screen.getByText(
+          en['route.rigNotComparedEstimated']
+            .replace('{boat}', boatById('salona-44-speedy-go').name)
+            .replace('{tier}', tier(en)),
+        ),
+      ).toBeInTheDocument();
+    });
   });
 
   it('#259: a decided comparison for fock badges the fock tab, not genoa', () => {

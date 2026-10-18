@@ -155,7 +155,7 @@ results table at the bottom, and note it in the box below the check.
       switch did not change it). Restore the safety depth, boats, and
       selection afterward.
 - [ ] **At least one fleet boat is exercised.** Run §2 or §3 under SPEEDY GO!, PIRANJA or EASY GO!,
-      so the suppressed rig comparison in §2.5 is actually
+      so the estimate-flagged rig verdict in §2.5 is actually
       reached; a pass made entirely on the Salona 45 never exercises it.
 - [ ] **Known-disconnected harbors flagged in search.** In the harbor
       search, look up Arnis, Kappeln, Maasholm, Dyvig, or Gråsten — each
@@ -263,8 +263,8 @@ selected in §1.
 - [ ] **2.4 Tack pattern is plausible.** Where the leg is upwind, the number
       of tacks is bounded and sensible for the distance/angle (not a
       zig-zag spam of many short tacks).
-- [ ] **2.5 Both sails shown with their own ETAs, and the rig verdict matches
-      the boat's polar tier.** Both of the boat's sails appear as tabs
+- [ ] **2.5 Both sails shown with their own ETAs, and the rig verdict is
+      flagged when a sail's polar data is estimated.** Both of the boat's sails appear as tabs
       ("Genoa" / "Fock"), each with its own ETA. Which verdict sits below them
       depends on the selected boat, and every outcome listed here is correct
       behaviour — record it as a PASS:
@@ -276,15 +276,16 @@ selected in §1.
     engine ("Rig does not matter here …").
   - **SPEEDY GO!, PIRANJA or EASY GO!** — SPEEDY GO! and PIRANJA have both
     sails at tier Estimated and EASY GO! a Modelled jib with an Estimated
-    genoa, so the comparison is withheld: **no ★ on either tab**, and the chip now names the
-    reason — "The sails were not compared for this passage — …'s polar data
-    is not certificate-verified (tier: Estimated), so no faster rig is
-    claimed" (#1398), where `…` is the plan's own boat name. With only one
-    headsail aboard ("Sails aboard" on the Boat tab) there are no rig tabs
-    and no comparison at all ("Planned with … only"). A missing ★ on
-    these three boats is the designed outcome, not a defect — their two tables
-    differ by the Salona 45's overlay ramp, which carries no information
-    about the hull.
+    genoa, so the comparison runs and its verdict is flagged as an estimate:
+    the chip reads "Faster: … — indicative only, from estimated polar data
+    (tier: Estimated)" (or "… are effectively tied … — indicative only …"),
+    and the ★ on the winning tab looks the same as on the Salona 45 but its
+    accessible name and tooltip read "Recommended (indicative, estimated polar
+    data)" (#1716). An all-motor passage reads "Rig does not matter here …"
+    without the flag. A saved plan from before this change keeps its old
+    "The sails were not compared …" sentence until it is recalculated. With
+    only one headsail aboard ("Sails aboard" on the Boat tab) there are no rig
+    tabs and no comparison at all ("Planned with … only").
   - **Any boat, if the chip reads "The search ran out of time before
     comparing both sails, so no faster rig is claimed"** — the plan's search
     hit its wall-clock budget before both sails finished. No ★ is shown, and
@@ -568,7 +569,7 @@ apply here too, with the same expected outcomes.
 - [ ] **3.2** Rounds Broager Land / Kegnæs sanely.
 - [ ] **3.3** Tack pattern plausible (bounded, no zig-zag spam).
 - [ ] **3.4** Both sails shown with their own ETAs, and the rig verdict
-      matches the boat's polar tier (expected outcomes per boat in §2.5).
+      matches the expected outcome for the boat (see §2.5).
 - [ ] **3.5** Motor legs (if any) gray-dashed and listed.
 - [ ] **3.6** ETA plausible (~5–7 kn average).
 
