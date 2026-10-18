@@ -14,7 +14,8 @@ export type PlanFn = typeof planRoute;
 /**
  * #1721: plans as `planRoute` does; only when that fails for a harbour pick the
  * grid cannot connect at the requested gate does it re-plan from/to the
- * handover point facing the adjacent route point and flag the substituted ends.
+ * handover point on the side leading by water to the adjacent route point and
+ * flag the substituted ends.
  * Gates on status and harbour state only, never on the failure reason (#282).
  */
 export function planWithHarborHandover(

@@ -7,6 +7,7 @@ import { boatById, sailIdsOf } from '../data/boats';
 import { DEFAULT_SETTINGS, boatSnapshot, type LatLon, type PlanResultOk } from '../types';
 import { defaultSafetyDepthM } from '../lib/boatDepth';
 import type { PlanResultWithHandover } from '../lib/harborHandover';
+import { findHarborHandover } from '../lib/harborReachability';
 import { solverTimeoutMs } from '../test/timeouts';
 
 vi.setConfig({ testTimeout: solverTimeoutMs(900_000) });
@@ -16,7 +17,10 @@ vi.setConfig({ testTimeout: solverTimeoutMs(900_000) });
 const SOUTH_EXIT: LatLon = { lat: 54.8445, lon: 10.544 };
 // At this gate the northern basin joins the seed flood only via Svendborgsund,
 // and its cells are nearer Marstal than the south exit.
-const LOWERED_GATE = 3.3;
+const NORTH_BASIN_GATE = 3.3;
+// East of Marstal, reached from the northern basin without the Svendborgsund detour.
+const EAST: LatLon = { lat: 54.8579, lon: 10.6147 };
+const FLENSBURG: LatLon = { lat: 54.798, lon: 9.4335 };
 
 const KD = new Set(['arnis', 'dyvig', 'graasten', 'kappeln', 'maasholm']);
 const WIND = uniformWindGrid(12, 225);
@@ -69,7 +73,7 @@ function expectSouthExit(r: ReturnType<typeof planFromMarstal>, maxNm: number) {
 }
 
 describe('#1734 Marstal handover exits toward the adjacent route point (EASY GO!)', () => {
-  for (const gateM of [defaultSafetyDepthM(boat), LOWERED_GATE]) {
+  for (const gateM of [defaultSafetyDepthM(boat), NORTH_BASIN_GATE]) {
     it(`Marstal → point just south, no via (gate ${gateM})`, () => {
       expectSouthExit(planFromMarstal(gateM, { p: SOUTH_EXIT, id: null }, []), 1);
     });
@@ -81,5 +85,29 @@ describe('#1734 Marstal handover exits toward the adjacent route point (EASY GO!
 
   it('Marstal → Bagenkop via a point just south (gate 3.0)', () => {
     expectSouthExit(planFromMarstal(3.0, { p: BAGENKOP, id: 'bagenkop' }, [SOUTH_EXIT]), 10);
+  });
+
+  it(`Marstal → a point east keeps the northern exit (gate ${NORTH_BASIN_GATE})`, () => {
+    const r = planFromMarstal(NORTH_BASIN_GATE, { p: EAST, id: null }, []);
+    expect(r.handover.lat).toBeGreaterThan(MARSTAL.lat);
+    for (const rig of r.rigs) expect(rig.distanceNm).toBeLessThan(6);
+  });
+
+  it(`Marstal → Flensburg exits south (gate ${NORTH_BASIN_GATE})`, () => {
+    const r = planFromMarstal(NORTH_BASIN_GATE, { p: FLENSBURG, id: 'flensburg' }, []);
+    expect(r.handover.lat).toBeLessThan(MARSTAL.lat);
+    for (const rig of r.rigs) expect(rig.distanceNm).toBeLessThan(55);
+  });
+
+  it('the handover search follows the adjacent point by water, not by bearing', () => {
+    const north = findHarborHandover(mask, MARSTAL, 2.7)!;
+    expect(north.lat).toBeGreaterThan(MARSTAL.lat);
+    expect(findHarborHandover(mask, MARSTAL, 2.7, undefined, EAST)).toEqual(north);
+    expect(findHarborHandover(mask, MARSTAL, 2.7, undefined, SOUTH_EXIT)!.lat).toBeLessThan(
+      MARSTAL.lat,
+    );
+    expect(findHarborHandover(mask, MARSTAL, 2.7, undefined, FLENSBURG)!.lat).toBeLessThan(
+      MARSTAL.lat,
+    );
   });
 });

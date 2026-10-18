@@ -368,9 +368,10 @@ export const HANDOVER_LINE_MIN_M = 0.5;
  * ties go to the lower row-major index. `null` when none exists.
  *
  * #1734: with `toward` (the adjacent route point), the qualifying cells are
- * grouped by flood connectivity inside the disc and the nearest one is taken
- * from the group nearest `toward`, so a basin that joins open water only
- * outside the disc is not chosen over the exit facing the route.
+ * grouped by flood connectivity inside the disc, and the result is the cell
+ * nearest `p` within the group nearest `toward` by water (straight-line when
+ * `toward` is outside the flood). The router always passes `toward`; the
+ * nearest-cell form without it is what a single group reduces to.
  */
 export function findHarborHandover(
   mask: NavMask,
@@ -433,13 +434,13 @@ export function findHarborHandover(
     (row - row0 + maxRing) * side + (col - col0 + maxRing);
   const cluster = new Int32Array(side * side).fill(-1);
   const pick: (typeof passing)[number][] = [];
-  const towardM: number[] = [];
+  const towardNm: number[] = [];
   for (const c of passing) {
     let id = cluster[localOf(c.row, c.col)];
     if (id === -1) {
       id = pick.length;
       pick.push(c);
-      towardM.push(Infinity);
+      towardNm.push(Infinity);
       const stack = [c.row, c.col];
       cluster[localOf(c.row, c.col)] = id;
       while (stack.length > 0) {
@@ -455,13 +456,60 @@ export function findHarborHandover(
         }
       }
     }
-    towardM[id] = Math.min(towardM[id], haversineNm(toward, c.centre));
+    towardNm[id] = Math.min(towardNm[id], haversineNm(toward, c.centre));
   }
-  let best = -1;
-  for (let id = 0; id < pick.length; id++) {
-    if (best === -1 || towardM[id] < towardM[best]) best = id;
+  if (pick.length <= 1) return pick[0]?.centre ?? null;
+
+  const byWater = clusterReachedFirst(mask, flood, toward, (row, col) =>
+    Math.abs(row - row0) > maxRing || Math.abs(col - col0) > maxRing
+      ? -1
+      : cluster[localOf(row, col)],
+  );
+  if (byWater !== -1) return pick[byWater].centre;
+  let best = 0;
+  for (let id = 1; id < pick.length; id++) {
+    if (towardNm[id] < towardNm[best]) best = id;
   }
-  return best === -1 ? null : pick[best].centre;
+  return pick[best].centre;
+}
+
+/**
+ * BFS over `flood` from `toward`'s cell; the id `clusterAt` returns for the
+ * first labelled cell reached, or -1 when `toward` is outside the flood or no
+ * labelled cell is reached.
+ */
+function clusterReachedFirst(
+  mask: NavMask,
+  flood: FloodResult,
+  toward: LatLon,
+  clusterAt: (row: number, col: number) => number,
+): number {
+  const { rows, cols } = mask.meta;
+  const start = cellIndexOf(mask, toward);
+  if (start === null || !floodHasCell(flood, mask, start)) return -1;
+  const seen = new Uint8Array(Math.ceil((rows * cols) / 8));
+  const queue = new Int32Array(rows * cols);
+  let head = 0;
+  let tail = 0;
+  setBit(seen, start);
+  queue[tail++] = start;
+  while (head < tail) {
+    const idx = queue[head++];
+    const row = (idx / cols) | 0;
+    const col = idx - row * cols;
+    const id = clusterAt(row, col);
+    if (id !== -1) return id;
+    for (let k = 0; k < 4; k++) {
+      const nr = row + BFS_DROW[k];
+      const nc = col + BFS_DCOL[k];
+      if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
+      const nIdx = nr * cols + nc;
+      if (hasBit(seen, nIdx) || !floodHasCell(flood, mask, nIdx)) continue;
+      setBit(seen, nIdx);
+      queue[tail++] = nIdx;
+    }
+  }
+  return -1;
 }
 
 /**
