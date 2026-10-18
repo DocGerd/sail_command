@@ -49,6 +49,7 @@ describe('worker protocol handler', () => {
       maskMeta: TEST_MASK_META,
       maskBuffer: openWaterBuffer(),
       polars: TEST_POLARS,
+      knownDisconnectedHarborIds: [],
     });
     expect(out).toEqual([{ type: 'ready' }]);
 
@@ -95,6 +96,7 @@ describe('worker protocol handler', () => {
       maskMeta: TEST_MASK_META,
       maskBuffer: data.buffer,
       polars: TEST_POLARS,
+      knownDisconnectedHarborIds: [],
     });
     handle({
       type: 'plan',
@@ -154,6 +156,7 @@ describe('worker protocol handler', () => {
       maskMeta: TEST_MASK_META,
       maskBuffer: openWaterBuffer(),
       polars: TEST_POLARS,
+      knownDisconnectedHarborIds: [],
     });
     const badWindGrid = { ...uniformWindGrid(12, 0), speedKn: new Float32Array(1) }; // mismatched length
     handle({
@@ -192,6 +195,7 @@ describe('worker protocol handler: fatal.stack population (#433 review Minor 2)'
       maskMeta: TEST_MASK_META,
       maskBuffer: openWaterBuffer(),
       polars: TEST_POLARS,
+      knownDisconnectedHarborIds: [],
     });
     handle({
       type: 'plan',
@@ -280,6 +284,7 @@ describe('#432 worker plan budget', () => {
       maskMeta: TEST_MASK_META,
       maskBuffer: openWaterBuffer(),
       polars: TEST_POLARS,
+      knownDisconnectedHarborIds: [],
     });
     handle({
       type: 'plan',
@@ -348,5 +353,67 @@ describe('#432 worker plan budget', () => {
     expect(result.status).toBe('error');
     if (result.status !== 'error') return;
     expect(result.reason).toBe('search-budget-exceeded');
+  });
+});
+// #1721: the worker plans through the handover wrapper, and init carries the
+// known-disconnected ids it must never substitute.
+describe('worker protocol handler: harbour handover (#1721)', () => {
+  // A one-cell 1.0 m ring around a 20 m harbour cell: the grid connects
+  // nothing out of it at 3.0 m, and the relaxation floor (2.1 m) cannot open it.
+  const POCKET = { row: 100, col: 200 };
+  const cellCentre = (row: number, col: number) => ({
+    lat: TEST_MASK_META.south + (row + 0.5) / 200,
+    lon: TEST_MASK_META.west + (col + 0.5) / 200,
+  });
+
+  function planFromPocket(knownDisconnectedHarborIds: readonly string[]) {
+    const data = new Uint8Array(TEST_MASK_META.rows * TEST_MASK_META.cols);
+    for (let r = 0; r < TEST_MASK_META.rows; r++)
+      for (let c = 0; c < TEST_MASK_META.cols; c++) {
+        const d = Math.max(Math.abs(r - POCKET.row), Math.abs(c - POCKET.col));
+        data[r * TEST_MASK_META.cols + c] = d === 1 ? 10 : 200;
+      }
+    const out: WorkerResponse[] = [];
+    const handle = createHandler((m) => out.push(m));
+    handle({
+      type: 'init',
+      maskMeta: TEST_MASK_META,
+      maskBuffer: data.buffer,
+      polars: TEST_POLARS,
+      knownDisconnectedHarborIds,
+    });
+    handle({
+      type: 'plan',
+      boatId: DEFAULT_BOAT_ID,
+      polarKeys: ALL_POLAR_KEYS,
+      id: 'h1',
+      request: {
+        origin: cellCentre(POCKET.row, POCKET.col),
+        destination: cellCentre(POCKET.row, 280),
+        viaPoints: [],
+        originHarborId: 'pocket',
+        destinationHarborId: null,
+        departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
+        settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
+      },
+      windGrid: uniformWindGrid(12, 0),
+    });
+    const msg = out.find((m) => m.type === 'result');
+    if (!msg || msg.type !== 'result') throw new Error('expected a result message');
+    return msg.result;
+  }
+
+  it('returns a flagged result for a pocketed harbour origin', () => {
+    const result = planFromPocket([]);
+    expect(result.status).toBe('ok');
+    expect(result).toMatchObject({ harborHandovers: { origin: true } });
+  });
+
+  it('a known-disconnected id from init keeps the pocket an error', () => {
+    const result = planFromPocket(['pocket']);
+    expect(result.status).toBe('error');
+    expect(Object.hasOwn(result, 'harborHandovers')).toBe(false);
   });
 });
