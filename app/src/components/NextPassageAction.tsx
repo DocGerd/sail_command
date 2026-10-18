@@ -27,8 +27,13 @@ export default function NextPassageAction({
   const previewId = useId();
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
-    const id = setInterval(() => setNowMs(Date.now()), NOW_REFRESH_MS);
-    return () => clearInterval(id);
+    const refresh = () => setNowMs(Date.now());
+    const id = setInterval(refresh, NOW_REFRESH_MS);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', refresh);
+    };
   }, []);
   const seed = seedNextPassage(plan, rig, harbors, lang, nowMs);
   if (seed === null) return null;

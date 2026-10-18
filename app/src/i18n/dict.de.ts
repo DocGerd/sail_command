@@ -20,6 +20,10 @@ export const de = {
     'Die Tiefendaten der App ergeben für {boat} bei keiner Sicherheitstiefe von {min} m bis {max} m eine Verbindung.',
   'error.harborUnreachableAcrossRange':
     'Keine Route mit {boat} (Tiefgang {draft} m): Das Tiefenraster der App (~46-m-Zellen, schmale ausgebaggerte Rinnen können darin fehlen) findet bei keiner Sicherheitstiefe von {min} m bis {max} m eine Verbindung von oder nach {harbor}. Keine Einstellung in diesem Bereich hilft. Amtliche Seekarte oder Hafenhandbuch prüfen.',
+  // #1725: Zwischenstand, solange der Bereichs-Scan läuft.
+  'harborPicker.boatUnreachableChecking': 'Weitere Sicherheitstiefen für {boat} werden geprüft …',
+  'error.noRoute.unreachableChecking':
+    'Keine Route gefunden. Es wird geprüft, ob die Tiefendaten der App für {boat} bei weiteren Sicherheitstiefen eine Verbindung ergeben …',
   'options.safetyDepth.label': 'Sicherheitstiefe (m)',
   // #699: der zulässige Bereich hing bislang nur als natives min/max-Attribut
   // am Feld, ohne sichtbaren oder für Screenreader zugänglichen Text — ein

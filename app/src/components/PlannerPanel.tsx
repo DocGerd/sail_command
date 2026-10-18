@@ -22,7 +22,6 @@ import {
   findLowerSettingHint,
   type HarborWithReachability,
 } from '../lib/harborReachability';
-import { useNavMask } from '../state/useNavMask';
 import { FORECAST_DAYS } from '../services/openMeteo';
 import { formatLatLon, resolveHemisphereCoordCommit, toLocalInputValue } from '../lib/format';
 import {
@@ -84,7 +83,7 @@ export type PlannerStatus =
 
 export interface PlannerPanelProps {
   harbors: HarborWithReachability[];
-  // #1721: App's mask, so both share one flood cache; falls back to its own.
+  // #1721: App's mask, shared so the flood cache has one owner. Null until loaded.
   navMask?: NavMask | null;
   origin: PickedPoint | null;
   destination: PickedPoint | null;
@@ -326,13 +325,12 @@ export default function PlannerPanel({
   // §5.2's own scoping ("Computed for the SELECTED boat at
   // settings.safetyDepthM"). `computeHarborAccess` itself memoises on
   // `(mask, harbors, boat.id, gate-decimetre)`, so this `useMemo` mainly
-  // avoids re-deriving on renders that touch neither. `useNavMask()` is
+  // avoids re-deriving on renders that touch neither. `navMask` is
   // `null` until the routing assets resolve, in which case every marker
   // simply doesn't render yet (harborAccessCopy's own "not yet computed"
   // no-op) — never a false "reachable"/"unreachable" claim before the mask
   // is known.
-  const ownMask = useNavMask();
-  const mask = navMask ?? ownMask;
+  const mask = navMask ?? null;
   const harborAccess = useMemo(
     () => (mask ? computeHarborAccess(mask, harbors, boat, settings.safetyDepthM) : null),
     [mask, harbors, boat, settings.safetyDepthM],
