@@ -10,6 +10,11 @@ process.env.TZ = 'Europe/Berlin';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import RouteLayer, {
+  HANDOVER_CASING_LAYER,
+  HANDOVER_RING_CASING_LAYER,
+  HANDOVER_RING_LAYER,
+  HANDOVER_SOURCE,
+  HANDOVER_STRIPE_LAYER,
   HIGHLIGHT_LAYER,
   ROUTE_HIT_LAYER,
   ROUTE_STACK_BOTTOM_LAYER,
@@ -23,6 +28,8 @@ import { DEFAULT_SETTINGS, type Leg, type Plan } from '../types';
 import { defaultBoatSnapshot } from '../types';
 import { __resetContoursForTests, loadContoursAsset } from '../lib/contours';
 import { PLAN_SCHEMA_VERSION } from '../types';
+import { destinationPoint } from '../lib/geo';
+import { withHarborHandover } from '../lib/harborHandover';
 
 // #153: RouteLayer's style-reload re-add against the shared fake map (jsdom
 // has no MapLibre runtime — the BoatMarker.test.tsx approach; the component's
@@ -81,7 +88,8 @@ vi.mock('maplibre-gl', () => ({
     }
   },
   LngLatBounds: class {
-    extend() {
+    extend(point: [number, number]) {
+      hoisted.boundsPoints.push(point);
       return this;
     }
   },
@@ -113,6 +121,7 @@ interface RecordedRouteLayerMarker {
 const hoisted = vi.hoisted(() => ({
   map: null as unknown,
   createdMarkers: [] as RecordedRouteLayerMarker[],
+  boundsPoints: [] as [number, number][],
 }));
 vi.mock('./MapView', () => ({ useMapInstance: () => hoisted.map }));
 
@@ -261,11 +270,27 @@ function makeOtherRigOnlyPlan(): Plan {
   };
 }
 
-function renderRouteLayer(map: ReturnType<typeof makeFakeMap>, activeLegIndex: number | null) {
+// #1721: the harbour sits 0.5 nm south of the first leg's start, which is the
+// handover point (snappedOrigin).
+const HARBOUR = destinationPoint(LEG.start, 180, 0.5);
+function makeHandoverPlan(): Plan {
+  const base = makePlan();
+  return {
+    ...base,
+    request: { ...base.request, origin: HARBOUR, originHarborId: 'x' },
+    result: withHarborHandover(base.result, { origin: true }),
+  };
+}
+
+function renderRouteLayer(
+  map: ReturnType<typeof makeFakeMap>,
+  activeLegIndex: number | null,
+  plan: Plan = makePlan(),
+) {
   hoisted.map = map;
   return render(
     <RouteLayer
-      plan={makePlan()}
+      plan={plan}
       rig="genoa"
       activeLegIndex={activeLegIndex}
       draftViaPoints={[]}
@@ -315,6 +340,7 @@ function sourceData(map: ReturnType<typeof makeFakeMap>, id: string): GeoJSON.Fe
 beforeEach(() => {
   localStorage.clear();
   hoisted.createdMarkers.length = 0;
+  hoisted.boundsPoints.length = 0;
 });
 
 describe('RouteLayer setup', () => {
@@ -718,7 +744,7 @@ describe('RouteLayer re-fit after a layout change (#1639)', () => {
     document.body.appendChild(el);
     return el;
   }
-  function setup() {
+  function setup(plan?: Plan) {
     const map = Object.assign(makeFakeMap(), {
       isMoving: vi.fn(() => moving),
       resize: vi.fn(),
@@ -734,7 +760,7 @@ describe('RouteLayer re-fit after a layout change (#1639)', () => {
       return rect(0, 0, 0, 0);
     });
     mount('app-bottom-sheet');
-    renderRouteLayer(map, null);
+    renderRouteLayer(map, null, plan);
     return map;
   }
   const resize = () =>
@@ -763,6 +789,16 @@ describe('RouteLayer re-fit after a layout change (#1639)', () => {
       duration: 0,
       bearing: 135,
     });
+  });
+
+  it('keeps the uncomputed harbour end in the bounds of a re-fit (#1721)', () => {
+    const map = setup(makeHandoverPlan());
+    map.fitBounds.mockClear();
+    hoisted.boundsPoints.length = 0;
+    sheetTop = 531;
+    resize();
+    expect(map.fitBounds).toHaveBeenCalledTimes(1);
+    expect(hoisted.boundsPoints).toContainEqual([HARBOUR.lon, HARBOUR.lat]);
   });
 
   it('does not re-fit when nothing it pads for changed', () => {
@@ -2340,5 +2376,150 @@ describe('#1615: the capped controls cluster shows a scroll cue', () => {
     geometry.scrollTop = 150;
     fireEvent.scroll(el);
     expect(el.hasAttribute('data-overflowing')).toBe(true);
+  });
+});
+
+// #1721: the uncomputed harbour approach is its own source and four layers.
+describe('RouteLayer harbour handover (#1721)', () => {
+  const HANDOVER_LAYERS = [
+    HANDOVER_CASING_LAYER,
+    HANDOVER_STRIPE_LAYER,
+    HANDOVER_RING_CASING_LAYER,
+    HANDOVER_RING_LAYER,
+  ];
+
+  it('creates the source and four layers, all anchored below the highlight layer', () => {
+    const map = makeFakeMap();
+    renderRouteLayerWithPlan(map, makeHandoverPlan());
+    expect(map.sources.has(HANDOVER_SOURCE)).toBe(true);
+    for (const id of HANDOVER_LAYERS) {
+      expect(map.layers.get(id)?.source, id).toBe(HANDOVER_SOURCE);
+      expect(map.layers.get(id)?.beforeId, id).toBe(HIGHLIGHT_LAYER);
+    }
+    const idx = (id: string) => map.layerOrder.indexOf(id);
+    expect(idx(HANDOVER_CASING_LAYER)).toBeLessThan(idx(HANDOVER_STRIPE_LAYER));
+    expect(idx(HANDOVER_STRIPE_LAYER)).toBeLessThan(idx(HANDOVER_RING_CASING_LAYER));
+    expect(idx(HANDOVER_RING_CASING_LAYER)).toBeLessThan(idx(HANDOVER_RING_LAYER));
+    expect(idx(HANDOVER_RING_LAYER)).toBeLessThan(idx(HIGHLIGHT_LAYER));
+    expect(idx('sc-route-alt-motor')).toBeLessThan(idx(HANDOVER_CASING_LAYER));
+  });
+
+  it('paints black/white stripes and a hollow ring with the shared ink and halo colours', () => {
+    const map = makeFakeMap();
+    renderRouteLayerWithPlan(map, makeHandoverPlan());
+    expect(map.layers.get(HANDOVER_CASING_LAYER)?.paint).toMatchObject({
+      'line-color': '#FFFFFF',
+      'line-width': 5.5,
+    });
+    expect(map.layers.get(HANDOVER_CASING_LAYER)?.paint?.['line-dasharray']).toBeUndefined();
+    expect(map.layers.get(HANDOVER_STRIPE_LAYER)?.paint).toMatchObject({
+      'line-color': '#1A1A1A',
+      'line-width': 3.5,
+      'line-dasharray': [1, 1],
+    });
+    expect(map.layers.get(HANDOVER_RING_LAYER)?.paint).toMatchObject({
+      'circle-opacity': 0,
+      'circle-stroke-color': '#1A1A1A',
+      'circle-stroke-width': 2.5,
+    });
+    expect(map.layers.get(HANDOVER_RING_CASING_LAYER)?.paint).toMatchObject({
+      'circle-opacity': 0,
+      'circle-stroke-color': '#FFFFFF',
+      'circle-stroke-width': 5,
+    });
+    expect(map.layers.get(HANDOVER_STRIPE_LAYER)?.filter).toEqual([
+      '==',
+      ['geometry-type'],
+      'LineString',
+    ]);
+    expect(map.layers.get(HANDOVER_RING_LAYER)?.filter).toEqual(['==', ['geometry-type'], 'Point']);
+  });
+
+  it('is empty for a plan without a handover', () => {
+    const map = makeFakeMap();
+    renderRouteLayerWithPlan(map, makePlan());
+    expect(sourceData(map, HANDOVER_SOURCE).features).toEqual([]);
+  });
+
+  it('draws harbour -> handover as a LineString and the handover as a Point', () => {
+    const map = makeFakeMap();
+    const plan = makeHandoverPlan();
+    renderRouteLayerWithPlan(map, plan);
+    const { features } = sourceData(map, HANDOVER_SOURCE);
+    const line = features.filter((f) => f.geometry.type === 'LineString');
+    const points = features.filter((f) => f.geometry.type === 'Point');
+    expect(line).toHaveLength(1);
+    expect(points).toHaveLength(1);
+    expect(line[0]?.geometry).toEqual({
+      type: 'LineString',
+      coordinates: [
+        [HARBOUR.lon, HARBOUR.lat],
+        [plan.result.snappedOrigin.lon, plan.result.snappedOrigin.lat],
+      ],
+    });
+    expect(points[0]?.geometry).toEqual({
+      type: 'Point',
+      coordinates: [plan.result.snappedOrigin.lon, plan.result.snappedOrigin.lat],
+    });
+  });
+
+  it('is empty while the active rig has no route', () => {
+    const map = makeFakeMap();
+    renderRouteLayerWithPlan(map, makeHandoverPlan(), 'fock');
+    expect(sourceData(map, HANDOVER_SOURCE).features).toEqual([]);
+  });
+
+  it('never enters the route source or its hit layer', () => {
+    const map = makeFakeMap();
+    renderRouteLayerWithPlan(map, makeHandoverPlan());
+    const route = sourceData(map, 'sc-route');
+    expect(route.features).toHaveLength(1);
+    expect(route.features.every((f) => f.geometry.type === 'LineString')).toBe(true);
+    expect(route.features[0]?.geometry).toEqual({
+      type: 'LineString',
+      coordinates: [
+        [LEG.start.lon, LEG.start.lat],
+        [LEG.end.lon, LEG.end.lat],
+      ],
+    });
+    expect(map.layers.get(ROUTE_HIT_LAYER)?.source).toBe('sc-route');
+    for (const id of HANDOVER_LAYERS) {
+      expect(map.layers.get(id)?.source, id).not.toBe('sc-route');
+    }
+  });
+
+  it('re-adds the layers and repaints the connector after a style reload', () => {
+    const map = makeFakeMap();
+    renderRouteLayerWithPlan(map, makeHandoverPlan());
+    act(() => {
+      simulateStyleReload(map);
+    });
+    for (const id of HANDOVER_LAYERS) expect(map.layers.has(id), id).toBe(true);
+    expect(sourceData(map, HANDOVER_SOURCE).features).toHaveLength(2);
+  });
+
+  it('fits the camera to include the harbour end, which no leg covers', () => {
+    const map = makeFakeMap();
+    renderRouteLayerWithPlan(map, makeHandoverPlan());
+    expect(hoisted.boundsPoints).toContainEqual([HARBOUR.lon, HARBOUR.lat]);
+    expect(map.fitBounds).toHaveBeenCalledTimes(1);
+  });
+
+  it('fits to the legs alone when there is no handover', () => {
+    const map = makeFakeMap();
+    renderRouteLayerWithPlan(map, makePlan());
+    expect(hoisted.boundsPoints).toEqual([
+      [LEG.start.lon, LEG.start.lat],
+      [LEG.end.lon, LEG.end.lat],
+    ]);
+  });
+
+  it('adds the legend row only with a handover', () => {
+    const map = makeFakeMap();
+    const { unmount } = renderRouteLayerWithPlan(map, makeHandoverPlan());
+    expect(screen.queryByText(de['route.legend.handover'])).not.toBeNull();
+    unmount();
+    renderRouteLayerWithPlan(makeFakeMap(), makePlan());
+    expect(screen.queryByText(de['route.legend.handover'])).toBeNull();
   });
 });

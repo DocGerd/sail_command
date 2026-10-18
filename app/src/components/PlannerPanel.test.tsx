@@ -39,6 +39,7 @@ import { MAX_GPX_FILE_BYTES } from '../lib/gpx';
 import { FORECAST_DAYS } from '../services/openMeteo';
 import { saveWaypoint, listWaypoints, __resetDbForTests } from '../services/db';
 import { openWaterMask, uniformWindGrid } from '../test/fixtures';
+import { withHarborHandover } from '../lib/harborHandover';
 import {
   DEFAULT_SETTINGS,
   type Harbor,
@@ -2373,6 +2374,31 @@ describe('PlannerPanel', () => {
       expect(
         screen.queryByText(en['route.marginal.clear'].replace('{requested}', '3.0')),
       ).not.toBeInTheDocument();
+    });
+
+    // #1721: this strip's own mount of the harbour-approach notice, and its
+    // computed-route wording of the clear line.
+    it('shows the harbour-approach notice and the computed-route clear line for a handover plan (#1721)', () => {
+      vi.mocked(useNavMask).mockReturnValue(openWaterMask());
+      const base = makePlan();
+      const plan: Plan = { ...base, result: withHarborHandover(base.result, { origin: true }) };
+      const { container } = renderPanelReturningContainer({ plan, rig: 'genoa' });
+      expect(container.querySelector('.harbor-handover-notice')).not.toBeNull();
+      expect(
+        screen.getByText(en['route.marginal.clearComputed'].replace('{requested}', '3.0')),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText(en['route.marginal.clear'].replace('{requested}', '3.0')),
+      ).not.toBeInTheDocument();
+    });
+
+    it('shows neither for an ordinary plan (#1721 control)', () => {
+      vi.mocked(useNavMask).mockReturnValue(openWaterMask());
+      const { container } = renderPanelReturningContainer({ plan: makePlan(), rig: 'genoa' });
+      expect(container.querySelector('.harbor-handover-notice')).toBeNull();
+      expect(
+        screen.getByText(en['route.marginal.clear'].replace('{requested}', '3.0')),
+      ).toBeInTheDocument();
     });
   });
 

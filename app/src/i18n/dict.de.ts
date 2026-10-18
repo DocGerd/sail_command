@@ -808,7 +808,7 @@ export const de = {
   'route.handover.destination':
     'Ziel: Das Tiefenraster der App (~46-m-Zellen, schmale ausgebaggerte Rinnen können darin fehlen) findet für {boat} bei {depth} m Sicherheitstiefe keine Verbindung in den Hafen. Die berechnete Route endet an einem Übergabepunkt (○) {dist} vor dem Hafen, in Wasser, das das Raster bei dieser Tiefe verbindet. Ankunftszeit, Dauer und Distanz enden am Übergabepunkt.',
   'route.handover.body':
-    'Die gestreifte Linie zwischen Hafen und Übergabepunkt ist keine Route. Das Tiefenraster liest Teile davon flacher als die eingestellte Sicherheitstiefe, und sie ist nicht auf Tiefe oder Hindernisse geprüft. Sie zählt nicht zu Distanz, Zeiten, Tiefenprofil oder Tiefenhinweisen und ist nicht Teil der GPX-Route; Kursanzeige und ETA im Live-Modus folgen nur der berechneten Route. Die Ansteuerung nach amtlicher Seekarte, Betonnung und Hafenhandbuch fahren – der Betonnung folgen, nicht dieser Linie.',
+    'Eine gestreifte Linie zwischen Hafen und Übergabepunkt ist keine Route. Das Tiefenraster liest Teile davon flacher als die eingestellte Sicherheitstiefe, und sie ist nicht auf Tiefe oder Hindernisse geprüft. Sie zählt nicht zu Distanz, Zeiten, Tiefenprofil oder Tiefenhinweisen und ist nicht Teil der GPX-Route; Kursanzeige und ETA im Live-Modus folgen nur der berechneten Route. Die Ansteuerung nach amtlicher Seekarte, Betonnung und Hafenhandbuch fahren – der Betonnung folgen, nicht dieser Linie.',
   'route.legend.handover': 'Hafenansteuerung – nicht berechnet, nicht tiefengeprüft',
   'route.marginal.clearComputed':
     'Auf der berechneten Route liegt kein Wasser laut Kartentiefen unter der eingestellten Sicherheitstiefe von {requested} m (nur Tiefendaten geprüft). Die gestreifte Hafenansteuerung ist nicht enthalten.',
@@ -816,9 +816,9 @@ export const de = {
     'Jeder Abschnitt unterhalb der eingestellten Sicherheitstiefe liegt im Umkreis von {radius} um Anfang oder Ende der berechneten Route oder um Wegpunkte.',
   'planner.result.announceHandover': 'Hafenansteuerung nicht berechnet.',
   'live.handover':
-    'Die Hafenansteuerung dieses Plans ist nicht berechnet (gestreifte Linie). Bis zum Übergabepunkt nach Seekarte und Betonnung steuern; Kursanzeige und ETA folgen nur der berechneten Route.',
+    'Zwischen Hafen und Übergabepunkt (gestreifte Linie) ist die Route nicht berechnet; dort nach Seekarte und Betonnung steuern. Kursanzeige und ETA folgen nur der berechneten Route.',
   'harborPicker.boatHandover':
-    '{boat}: Pläne beginnen oder enden an einem Übergabepunkt {dist} vor diesem Hafen; die Hafenansteuerung wird nicht berechnet.',
+    '{boat}: Der nächste Übergabepunkt, den das Tiefenraster verbindet, liegt {dist} vor diesem Hafen; die Hafenansteuerung wird nicht berechnet.',
   'route.exportGpx': 'GPX exportieren',
   'route.windBarbs.toggle': 'Windpfeile anzeigen',
   'route.windBarbs.timeSlider': 'Vorhersagezeitpunkt',

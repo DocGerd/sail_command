@@ -4,8 +4,7 @@ import { haversineNm } from './geo';
 // #1721: a plan routed from/to a handover point in grid-connected water because
 // the depth grid cannot connect the harbour itself. The flag rides on the
 // result as an optional key outside `types.ts` (which sits in the #282 sweep
-// closure); this module is its only writer and only reader. Geometry is never
-// stored: the harbour end is `plan.request.<end>`, the handover end is
+// closure); this module owns its shape. Geometry is never stored: the harbour end is `plan.request.<end>`, the handover end is
 // `plan.result.snapped<End>`.
 
 export type HarborHandoverEnds = { readonly origin?: true; readonly destination?: true };
@@ -28,7 +27,7 @@ export const SNAP_RADIUS_M = 300;
 /** Twin of `state/replan.ts`'s `DEDUPE_THRESHOLD_NM` (not imported: that module pulls in React). */
 export const VIA_HANDOVER_CLEARANCE_NM = 60 / 1852;
 
-/** DOM class of the results-panel notice; the e2e specs and `app.css` depend on it. */
+/** DOM class of the results-panel notice; `app.css` depends on it. */
 export const HARBOR_HANDOVER_NOTICE_CLASS = 'harbor-handover-notice';
 
 const M_PER_NM = 1852;

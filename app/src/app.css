@@ -2595,6 +2595,15 @@ select {
   background: repeating-linear-gradient(to right, #757575 0 3px, transparent 3px 6px);
 }
 
+/* #1721: the uncomputed harbour approach (sc-harbor-handover-*): INK stripes
+   over a HALO casing, mirroring the map's black/white dashes. */
+.route-legend-handover {
+  width: 1.25rem;
+  height: 5px;
+  background: repeating-linear-gradient(to right, var(--sc-ink) 0 4px, var(--sc-halo) 4px 8px);
+  border: 1px solid var(--sc-ink);
+}
+
 .sc-boat-marker {
   pointer-events: none;
 }
@@ -3173,6 +3182,28 @@ select {
   color: var(--sc-banner-info-fg);
   font-size: 0.85rem;
   font-weight: 400;
+}
+
+/* #1721: the uncomputed harbour approach. Same quiet shape as the depth
+   notices above; the --sc-depth-warning-* family because the approach is the
+   stretch the depth grid cannot vouch for. A plain <div>, never role="alert". */
+.harbor-handover-notice {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.35rem 0 0.35rem 0.55rem;
+  border-left: 2px solid var(--sc-depth-warning-fg);
+  color: var(--sc-depth-warning-text);
+  font-size: 0.85rem;
+  font-weight: 400;
+}
+
+.harbor-handover-notice p {
+  margin: 0;
+}
+
+.harbor-handover-notice .harbor-handover-notice__title {
+  font-weight: 600;
 }
 
 /* #452 gap 3: per-leg shallow marker in the legs table — same
