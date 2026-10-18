@@ -283,13 +283,13 @@ SEED_LAT, SEED_LON = 54.8455, 9.5216  # open Flensburg Fjord water
 CONNECTIVITY_EXCEPTIONS_M: dict[tuple[str, float], float] = {
     # Judged snap-aware (#1584): augustenborg's former 3.0 m entry was dropped, its
     # snapped cell reaches open water at 3.0 m unaided.
-    # "Buoyed approaches approx 3.2 m (N and W), 4.5 m from S; parts of the
-    # yacht basin only approx 2 m." Reconnects at gate <= 2.3 m; 2.0 m is
-    # the harbor's own documented figure for its shallowest reach and keeps
-    # a safety margin below the measured 2.3 m threshold.
+    # Reconnects at gate <= 2.3 m: the mask bottleneck is the S-channel buoy-gate
+    # cells about 1 km SE of the snap (#1728). 2.0 m is a self-check value below
+    # that threshold, not a depth a boat must clear; Havnelods charts the
+    # approaches at 3.2 m (N and W) and the dredged S channel at 4.4 m.
     ("marstal", 3.0): 2.0,
     # #54 spec N.6, for the Elan Impression 444 (draft 1.90 m -> derived gate
-    # 2.8 m). Same harbor, same approachNote, same 2.0 m figure as the 3.0 m
+    # 2.8 m). Same harbor and same 2.0 m self-check value as the 3.0 m
     # entry above - a SEPARATE row because this table is keyed by (harbor, boat
     # gate) on purpose: an exception justified against one gate says nothing
     # about another, and a boat whose gate has no entry gets no exception at
@@ -340,14 +340,15 @@ KNOWN_DISCONNECTED: dict[str, str] = {
 # KNOWN_DISCONNECTED above means "unreachable at EVERY gate this mask can
 # express" - a data limitation, boat-independent. This table is the
 # boat-SPECIFIC counterpart: a harbour that a shallower boat reaches fine but
-# THIS boat's own derived gate cuts off, because the boat's draft genuinely
-# cannot get there - not a data defect. Prerequisite for #573 landing a
+# THIS boat's own derived gate cuts off, because the mask shows less depth than
+# that gate. Whether the mask under-reads a charted approach is a separate
+# question (marstal, #1728). Prerequisite for #573 landing a
 # deep-draft hull without every one of its stranded harbours reading as a
 # mask regression.
 #
 # Keyed by BOAT id (not by gate, unlike CONNECTIVITY_EXCEPTIONS_M): an entry
 # says nothing about any other boat. Checked for EXACTNESS below (both
-# directions enforced in the per-boat loop) - a harbour genuinely unreachable
+# directions enforced in the per-boat loop) - a harbour unreachable at the mask
 # for a boat that is NOT listed here fails as an undocumented regression, and
 # a LISTED harbour that turns out reachable at that boat's gate fails as a
 # stale entry. So an omitted boat is not a loophole: it commits that boat to
