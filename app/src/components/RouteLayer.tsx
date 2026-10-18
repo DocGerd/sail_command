@@ -30,6 +30,7 @@ import {
 } from '../lib/mapColors';
 import { NavMask } from '../lib/mask';
 import { requestedGateM } from '../lib/shallowExposure';
+import { harborHandoverLines, type HarborHandoverLine } from '../lib/harborHandover';
 import { loadRoutingAssets } from '../services/assets';
 import ViaMarkers from './ViaMarkers';
 import RouteLegend from './RouteLegend';
@@ -108,6 +109,13 @@ const ROUTE_SOURCE = 'sc-route';
 // see the effects and setupLayers comment below).
 const ROUTE_ALT_SOURCE = 'sc-route-alt';
 const ALT_ROUTE_LAYERS = ['sc-route-alt-sail', 'sc-route-alt-motor'] as const;
+// #1721: the uncomputed harbour approach. Its own source, so it can never reach
+// ROUTE_SOURCE's hit layer, drag, speed labels or shallow casing.
+export const HANDOVER_SOURCE = 'sc-harbor-handover';
+export const HANDOVER_CASING_LAYER = 'sc-harbor-handover-casing';
+export const HANDOVER_STRIPE_LAYER = 'sc-harbor-handover-stripe';
+export const HANDOVER_RING_CASING_LAYER = 'sc-harbor-handover-ring-casing';
+export const HANDOVER_RING_LAYER = 'sc-harbor-handover-ring';
 const MANEUVER_SOURCE = 'sc-maneuvers';
 const BARB_SOURCE = 'sc-barbs';
 // #378: the three annotation symbol layers below (sc-eta-primary,
@@ -133,6 +141,30 @@ const BARB_SOURCE = 'sc-barbs';
 // together (heading dots stay on — they're tiny and minzoom-gated).
 const ANNOTATION_LAYERS = ['sc-eta-primary', 'sc-eta-secondary', 'sc-leg-speed'] as const;
 const EMPTY_FC = { type: 'FeatureCollection' as const, features: [] };
+
+function handoverFeatureCollection(lines: readonly HarborHandoverLine[]) {
+  return {
+    type: 'FeatureCollection' as const,
+    features: lines.flatMap((l) => [
+      {
+        type: 'Feature' as const,
+        properties: { end: l.end },
+        geometry: {
+          type: 'LineString' as const,
+          coordinates: [
+            [l.harbour.lon, l.harbour.lat],
+            [l.handover.lon, l.handover.lat],
+          ],
+        },
+      },
+      {
+        type: 'Feature' as const,
+        properties: { end: l.end },
+        geometry: { type: 'Point' as const, coordinates: [l.handover.lon, l.handover.lat] },
+      },
+    ]),
+  };
+}
 // The active-leg halo. Translucent, and (since #68) painted ABOVE the shallow
 // casing so a leg that is both shallow and active keeps BOTH signals — the
 // yellow "you are here" wash on top, the orange shallow casing showing through
@@ -380,6 +412,68 @@ function setupLayers(map: MaplibreMap): void {
           'line-color': MOTOR_COLOR,
           'line-dasharray': [1, 1.5],
           'line-opacity': 0.45,
+        },
+      },
+      HIGHLIGHT_LAYER,
+    );
+  }
+  if (!map.getSource(HANDOVER_SOURCE)) {
+    map.addSource(HANDOVER_SOURCE, {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] },
+    });
+    // Black/white stripes (halo casing under an INK dashed line) and a hollow
+    // ring at the handover point: unlike the grey motor dashes, the coloured
+    // alt-rig dashes and the filled manoeuvre circles. No symbol layer, so the
+    // label collision index is untouched.
+    map.addLayer(
+      {
+        id: HANDOVER_CASING_LAYER,
+        type: 'line',
+        source: HANDOVER_SOURCE,
+        filter: ['==', ['geometry-type'], 'LineString'],
+        layout: { 'line-cap': 'butt', 'line-join': 'round' },
+        paint: { 'line-width': 5.5, 'line-color': HALO_COLOR },
+      },
+      HIGHLIGHT_LAYER,
+    );
+    map.addLayer(
+      {
+        id: HANDOVER_STRIPE_LAYER,
+        type: 'line',
+        source: HANDOVER_SOURCE,
+        filter: ['==', ['geometry-type'], 'LineString'],
+        layout: { 'line-cap': 'butt', 'line-join': 'round' },
+        paint: { 'line-width': 3.5, 'line-color': INK_COLOR, 'line-dasharray': [1, 1] },
+      },
+      HIGHLIGHT_LAYER,
+    );
+    map.addLayer(
+      {
+        id: HANDOVER_RING_CASING_LAYER,
+        type: 'circle',
+        source: HANDOVER_SOURCE,
+        filter: ['==', ['geometry-type'], 'Point'],
+        paint: {
+          'circle-radius': 7,
+          'circle-opacity': 0,
+          'circle-stroke-width': 5,
+          'circle-stroke-color': HALO_COLOR,
+        },
+      },
+      HIGHLIGHT_LAYER,
+    );
+    map.addLayer(
+      {
+        id: HANDOVER_RING_LAYER,
+        type: 'circle',
+        source: HANDOVER_SOURCE,
+        filter: ['==', ['geometry-type'], 'Point'],
+        paint: {
+          'circle-radius': 7,
+          'circle-opacity': 0,
+          'circle-stroke-width': 2.5,
+          'circle-stroke-color': INK_COLOR,
         },
       },
       HIGHLIGHT_LAYER,
@@ -688,13 +782,19 @@ function nextExtra(
 // test's expected array). No-ops on an empty leg list (a plan whose active
 // rig failed to solve) rather than calling fitBounds with an empty/invalid
 // bounds object.
-function fitToLegs(map: MaplibreMap, legs: Leg[], ends: FitEnds | null): FitState | null {
+function fitToLegs(
+  map: MaplibreMap,
+  legs: Leg[],
+  ends: FitEnds | null,
+  extraPoints: readonly LatLon[],
+): FitState | null {
   if (legs.length === 0) return null;
   const bounds = new LngLatBounds();
   for (const leg of legs) {
     bounds.extend([leg.start.lon, leg.start.lat]);
     bounds.extend([leg.end.lon, leg.end.lat]);
   }
+  for (const p of extraPoints) bounds.extend([p.lon, p.lat]);
   // #155: `bearing` MUST be passed explicitly. cameraForBounds computes
   // `options?.bearing || 0`, and _fitInternal merges the caller's options on
   // top of that camera — so omitting it does not mean "keep the current
@@ -1109,6 +1209,8 @@ export default function RouteLayer({
   // the dashed, reduced-opacity "other rig" track — a composition inversion,
   // not a double-draw.
   const altToggleAvailable = Boolean(result) && Boolean(altResult);
+  // #1721: the uncomputed harbour approach, derived from the plan (never stored).
+  const handoverLines = useMemo(() => (plan ? harborHandoverLines(plan) : []), [plan]);
 
   // Counts completed setup passes for the current map instance: 0 = sources/
   // layers don't exist yet; 1 once the style is first ready; +1 after every
@@ -1221,6 +1323,13 @@ export default function RouteLayer({
     (map.getSource(ROUTE_ALT_SOURCE) as GeoJSONSource | undefined)?.setData(altData);
   }, [map, styleEpoch, altResult, lang]);
 
+  // #1721: drawn only while the active rig has a route, like the route itself.
+  useEffect(() => {
+    if (!map || styleEpoch === 0) return;
+    const data = result ? handoverFeatureCollection(handoverLines) : EMPTY_FC;
+    (map.getSource(HANDOVER_SOURCE) as GeoJSONSource | undefined)?.setData(data);
+  }, [map, styleEpoch, result, handoverLines]);
+
   // Maneuver letter labels are language-dependent: W/H (de), T/G (en).
   useEffect(() => {
     if (!map || styleEpoch === 0 || !map.getLayer('sc-maneuver-labels')) return;
@@ -1245,18 +1354,22 @@ export default function RouteLayer({
   const autoFitKeyRef = useRef<FitState | null>(null);
   const legsRef = useRef<Leg[]>([]);
   const endsRef = useRef<FitEnds | null>(null);
+  const extraPointsRef = useRef<LatLon[]>([]);
   useEffect(() => {
     legsRef.current = result?.legs ?? [];
     endsRef.current = plan
       ? { origin: plan.request.origin, destination: plan.request.destination }
       : null;
+    extraPointsRef.current = handoverLines.map((l) => l.harbour);
   });
   useEffect(() => {
     if (!map || !result || !plan) return;
-    autoFitKeyRef.current = fitToLegs(map, result.legs, {
-      origin: plan.request.origin,
-      destination: plan.request.destination,
-    });
+    autoFitKeyRef.current = fitToLegs(
+      map,
+      result.legs,
+      { origin: plan.request.origin, destination: plan.request.destination },
+      handoverLines.map((l) => l.harbour),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fit on plan identity, not the (recreated) result object
   }, [map, plan?.id]);
 
@@ -1303,7 +1416,12 @@ export default function RouteLayer({
       if (fitIsCurrent(map, endsRef.current, state, labelsOnly && !enteringLive)) return;
       // MapLibre resizes its transform in a throttled observer of its own.
       map.resize();
-      autoFitKeyRef.current = fitToLegs(map, legsRef.current, endsRef.current);
+      autoFitKeyRef.current = fitToLegs(
+        map,
+        legsRef.current,
+        endsRef.current,
+        extraPointsRef.current,
+      );
     };
     // Every App render rebuilds the endpoint markers, so observer callbacks burst.
     let frame: number | null = null;
@@ -1356,10 +1474,12 @@ export default function RouteLayer({
   const canFitRoute = result !== null && result.legs.length > 0;
   const handleFitToView = () => {
     if (!map || !result || !plan) return;
-    autoFitKeyRef.current = fitToLegs(map, result.legs, {
-      origin: plan.request.origin,
-      destination: plan.request.destination,
-    });
+    autoFitKeyRef.current = fitToLegs(
+      map,
+      result.legs,
+      { origin: plan.request.origin, destination: plan.request.destination },
+      handoverLines.map((l) => l.harbour),
+    );
   };
 
   // Forecast hours spanning departure->ETA — the slider's snap points.
@@ -1801,7 +1921,10 @@ export default function RouteLayer({
             <span>{formatSliderTime(tMs, hourOptions, lang, nowMs)}</span>
           </div>
         )}
-        <RouteLegend hasForcedLeg={result?.legs.some((l) => l.forced === true) ?? false} />
+        <RouteLegend
+          hasForcedLeg={result?.legs.some((l) => l.forced === true) ?? false}
+          hasHandover={result !== null && handoverLines.length > 0}
+        />
       </Disclosure>
     </div>
   );

@@ -66,6 +66,7 @@ import { ShallowWarning } from './ShallowWarning';
 // #1398a: the third, affirmative state — shares depthExposureState with
 // MarginalDepthNotice so the two stay mutually exclusive here too.
 import { DepthClearNotice, MarginalDepthNotice } from './RouteSummary';
+import { HarborHandoverNotice } from './HarborHandoverNotice';
 
 export type TapTarget = 'origin' | 'destination' | 'via';
 
@@ -1714,6 +1715,7 @@ export default function PlannerPanel({
               plan={plan}
             />
           )}
+          {plan && <HarborHandoverNotice plan={plan} result={result} />}
           {/* #612: the complement of the banner above, for a route that did NOT
               relax — same shared component and copy as RouteSummary's own, so
               the quiet marginal-depth line can never drift between the first
@@ -1723,7 +1725,7 @@ export default function PlannerPanel({
               requirement as the banner's above. */}
           {plan && <MarginalDepthNotice plan={plan} legs={result?.legs ?? null} />}
           {/* #1398a: the third, affirmative state, mutually exclusive with
-              the two above by construction (depthExposureState, shared in
+              the banner and MarginalDepthNotice above by construction (depthExposureState, shared in
               RouteSummary.tsx). Same `plan &&` type-level requirement. */}
           {plan && <DepthClearNotice plan={plan} legs={result?.legs ?? null} />}
           {summary && (

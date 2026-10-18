@@ -884,6 +884,24 @@ export const en = {
   // #324: map-only overlay of the rig NOT currently shown as the primary
   // route (dashed, reduced opacity — see RouteLayer.tsx's setupLayers).
   'route.legend.altRig': 'Other rig (dashed)',
+  // #1721: harbour handover (plotter-style approach not computed by the router).
+  'route.handover.title': 'Harbour approach not computed',
+  'route.handover.origin':
+    "Start: the app's depth grid (~46 m cells, which can miss narrow dredged channels) finds no connection out of the harbour for {boat} at a {depth} m safety depth. The computed route starts at a handover point (○) {dist} away, in water the grid connects at that depth. The departure time applies at the handover point.",
+  'route.handover.destination':
+    "Destination: the app's depth grid (~46 m cells, which can miss narrow dredged channels) finds no connection into the harbour for {boat} at a {depth} m safety depth. The computed route ends at a handover point (○) {dist} off the harbour, in water the grid connects at that depth. Arrival time, duration and distance end at the handover point.",
+  'route.handover.body':
+    'A striped line between harbour and handover point is not a route. The depth grid reads parts of the line shallower than your safety depth. The line is not checked for depth or obstructions. It is not counted in distance, times, the depth profile or the depth notices, and it is not part of the GPX route; live heading and ETA follow the computed route only. Navigate the approach by the official chart, the buoyage and the harbour guide — follow the buoyage, not this line.',
+  'route.legend.handover': 'Harbour approach — not computed, not depth-checked',
+  'route.marginal.clearComputed':
+    'No charted water on the computed route falls below your safety depth of {requested} m (depth data only). The striped harbour approach is not included.',
+  'route.shallow.confinedHandover':
+    "Every stretch below your safety depth lies within {radius} of the computed route's start or end, or of your waypoints.",
+  'planner.result.announceHandover': 'Harbour approach not computed.',
+  'live.handover':
+    'Between harbour and handover point (striped line) the route is not computed; steer by chart and buoyage there. The heading readout and ETA follow the computed route only.',
+  'harborPicker.boatHandover':
+    '{boat}: the nearest handover point the depth grid connects lies {dist} off this harbour; the harbour approach is not computed.',
   'route.exportGpx': 'Export GPX',
   'route.windBarbs.toggle': 'Show wind barbs',
   'route.windBarbs.timeSlider': 'Forecast time',

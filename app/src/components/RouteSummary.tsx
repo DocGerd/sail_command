@@ -55,6 +55,8 @@ import Button from './Button';
 import Disclosure from './Disclosure';
 import NextPassageAction, { type NextPassageProps } from './NextPassageAction';
 import { ShallowWarning } from './ShallowWarning';
+import { HarborHandoverNotice } from './HarborHandoverNotice';
+import { harborHandoverEndsOf } from '../lib/harborHandover';
 
 /**
  * #612 (the implementation half of #455): the route-scoped MARGINAL-depth
@@ -233,11 +235,11 @@ export function DepthClearNotice({ plan, legs }: { plan: Plan; legs?: Leg[] | nu
     [relaxed, legs, mask, gateM],
   );
   if (!clear) return null;
-  return (
-    <p className="depth-clear-notice">
-      {t('route.marginal.clear', { requested: formatDepthM(gateM, lang) })}
-    </p>
-  );
+  // #1721: the walk covers the computed legs only, so a plan with an uncomputed
+  // harbour approach must not claim the whole route is clear.
+  const key =
+    harborHandoverEndsOf(plan) !== null ? 'route.marginal.clearComputed' : 'route.marginal.clear';
+  return <p className="depth-clear-notice">{t(key, { requested: formatDepthM(gateM, lang) })}</p>;
 }
 
 /**
@@ -775,6 +777,8 @@ export default function RouteSummary({
         />
       )}
 
+      <HarborHandoverNotice plan={plan} result={result} />
+
       {/* #612: the complement of the banner above — a quiet route-scoped line
           for a route that did NOT relax and so has no `shallow` block to
           render a banner from. Rendered UNCONDITIONALLY here: the
@@ -792,8 +796,8 @@ export default function RouteSummary({
           as MarginalDepthNotice: the gate lives inside the component. */}
       <DepthClearNotice plan={plan} legs={result?.legs ?? null} />
 
-      {/* #615: the advisory seamark-proximity line, a SIBLING of the two
-          depth surfaces above and, like MarginalDepthNotice, rendered
+      {/* #615: the advisory seamark-proximity line, a SIBLING of
+          MarginalDepthNotice and DepthClearNotice above and, like MarginalDepthNotice, rendered
           UNCONDITIONALLY — the unresolved / no-legs / zero gate lives inside
           the component. Per-rig for the same reason: the count is over the
           ACTIVE rig's own legs, so the two rig tabs can honestly differ. */}
