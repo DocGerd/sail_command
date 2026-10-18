@@ -149,6 +149,12 @@ const routingMock = vi.hoisted(() => ({
   }[],
 }));
 
+// Pass-through spy, so the #1725 tests can stall a gate.
+vi.mock('./lib/harborReachability', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./lib/harborReachability')>();
+  return { ...actual, harborAccessAt: vi.fn(actual.harborAccessAt) };
+});
+
 // Controllable-resolution-timing fake for the E8 gate fix wave's clobber-
 // guard test below: a real RoutingClient talks to a Worker (no jsdom
 // runtime); this fake instead queues every plan() call in routingMock.calls
@@ -163,10 +169,6 @@ const routingMock = vi.hoisted(() => ({
 // "Right-hand side of 'instanceof' is not callable" the first time any test
 // here drove a rejected plan() through App.tsx, which none did until
 // cancel() made that reachable.
-vi.mock('./lib/harborReachability', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./lib/harborReachability')>();
-  return { ...actual, harborAccessAt: vi.fn(actual.harborAccessAt) };
-});
 vi.mock('./routing/workerClient', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./routing/workerClient')>();
   return {
@@ -2783,7 +2785,7 @@ describe('banner surfacing (PR self-review fix wave)', () => {
     ).toBeInTheDocument();
   });
 
-  // #1725: the scans over the small test mask finish in microseconds, so the
+  // #1725: the scans over the small test mask finish before the first assertion, so the
   // listed harbours' per-gate check busy-waits to hold the scan open.
   function slowBandScan(harborIds: string[], ms: number) {
     const real = vi.mocked(harborAccessAt).getMockImplementation();

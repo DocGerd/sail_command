@@ -1645,6 +1645,7 @@ function AppShell() {
     for (const id of bannerIdsKey === '' ? [] : bannerIdsKey.split('|')) {
       const harborBand = bannerBandOf(id);
       const harbor = harbors.find((h) => h.id === id);
+      // One unfinished endpoint holds the whole banner; `continue` would name only the finished one.
       if (harborBand === 'pending') return 'pending' as const;
       if (!harborBand || !harbor) continue;
       band = harborBand;

@@ -279,8 +279,9 @@ export function unreachableBand(
 
 /**
  * Scans the given harbours one gate per macrotask, so no render waits on a
- * flood. The returned lookup yields 'pending' until a scan has finished (null
- * without a mask); its identity changes whenever one does.
+ * flood. The returned lookup yields 'pending' for any id without a finished scan,
+ * so ask only about ids in `harborIds` (null without a mask); its identity
+ * changes whenever a scan finishes.
  */
 // eslint-disable-next-line react-refresh/only-export-components
 export function useUnreachableBandOf(

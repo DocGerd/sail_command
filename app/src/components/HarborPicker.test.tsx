@@ -630,7 +630,7 @@ describe('unreachableBand (#1721)', { timeout: solverTimeoutMs(20_000) }, () => 
 });
 
 // #1725: the scan hook against a stubbed per-gate classifier, one gate per
-// macrotask, so each tick below is exactly one step.
+// macrotask, roughly one step per tick; assertions use slack, not exact counts.
 describe('useUnreachableBandOf (#1725)', () => {
   const easyGo = BOATS.find((b) => b.id === 'salona-44-easy-go')!; // gates 2.7 .. 3.5
   const harbor = (id: string): Harbor => ({
