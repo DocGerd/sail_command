@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { backtrack } from './isochrone';
-import { uniformGate } from '../lib/depthGate';
+import { approachGate, APPROACH_RADIUS_M, gateFloorM, uniformGate } from '../lib/depthGate';
 import { initialBearingDeg, normalizeDeg180 } from '../lib/geo';
 import { makeMask } from '../test/fixtures';
 import type { MaskMeta } from '../types';
@@ -8,17 +8,21 @@ import type { MaskMeta } from '../types';
 // #1705: backtrack's collinear merge must not emit a chord the gate rejects.
 const META: MaskMeta = { west: 9.9, south: 54.7, east: 10.1, north: 54.8, cols: 256, rows: 128 };
 const CELL = 0.00078125;
-const GATE = uniformGate(3);
+
+// 3.5 m requested outside the disc, 2.6 m inside it; the disc is far from the scenario.
+const FAR = { lat: META.south + 10.5 * CELL, lon: META.west + 5.5 * CELL };
+const GATE = approachGate(META, [FAR], 3.5, [2.6], APPROACH_RADIUS_M);
 
 type Chain = Parameters<typeof backtrack>[0];
 
 /**
  * A -> B -> C eastward, B bent north of the A-C chord so the two headings
  * differ by ~0.45 deg. The chord runs ~1 m south of a row boundary; the cells
- * under its midpoint are land, which both sub-steps clear by rising into the
- * next row first.
+ * under its midpoint are 3.0 m deep: below the requested 3.5 m gate outside the
+ * disc, yet at or above the field's 2.6 m floor, so only the per-cell gate rejects
+ * them. Both sub-steps clear them by rising into the next row first.
  */
-function scenario() {
+function scenario(blockerByte = 30) {
   const row = 64;
   const boundaryLat = META.south + (row + 1) * CELL;
   const lat0 = boundaryLat - 9e-6;
@@ -27,25 +31,27 @@ function scenario() {
   const A = { lat: lat0, lon: lonAt(midCol - 40) };
   const C = { lat: lat0, lon: lonAt(midCol + 40) };
   const B = { lat: lat0 + 7.07e-5, lon: lonAt(midCol) };
-  const mask = makeMask((r, c) => (r === row && Math.abs(c - midCol) <= 1 ? 0 : 200), META);
+  const mask = makeMask(
+    (r, c) => (r === row && Math.abs(c - midCol) <= 1 ? blockerByte : 200),
+    META,
+  );
 
-  const node = (p: { lat: number; lon: number }, parent: Chain | null, tMs: number): Chain =>
-    ({
-      lat: p.lat,
-      lon: p.lon,
-      tMs,
-      costMs: tMs,
-      kind: parent === null ? 'start' : 'motor',
-      board: null,
-      headingDeg: parent === null ? 0 : initialBearingDeg(parent, p),
-      twaSigned: NaN,
-      stepSpeedKn: 6,
-      twsKn: 5,
-      maneuverAtStart: null,
-      maneuvers: 0,
-      distToDestNm: 0,
-      parent,
-    }) as Chain;
+  const node = (p: { lat: number; lon: number }, parent: Chain | null, tMs: number): Chain => ({
+    lat: p.lat,
+    lon: p.lon,
+    tMs,
+    costMs: tMs,
+    kind: parent === null ? 'start' : 'motor',
+    board: null,
+    headingDeg: parent === null ? 0 : initialBearingDeg(parent, p),
+    twaSigned: NaN,
+    stepSpeedKn: 6,
+    twsKn: 5,
+    maneuverAtStart: null,
+    maneuvers: 0,
+    distToDestNm: 0,
+    parent,
+  });
   const start = node(A, null, 0);
   const b = node(B, start, 600_000);
   const c = node(C, b, 1_200_000);
@@ -58,6 +64,7 @@ describe('backtrack collinear merge (#1705)', () => {
     expect(mask.segmentNavigable(A, B, GATE)).toBe(true);
     expect(mask.segmentNavigable(B, C, GATE)).toBe(true);
     expect(mask.segmentNavigable(A, C, GATE)).toBe(false);
+    expect(mask.segmentNavigable(A, C, uniformGate(gateFloorM(GATE)))).toBe(true);
     const diff = Math.abs(normalizeDeg180(b.headingDeg - c.headingDeg));
     expect(diff).toBeGreaterThan(0.4);
     expect(diff).toBeLessThan(0.5);
@@ -70,6 +77,11 @@ describe('backtrack collinear merge (#1705)', () => {
       [A, B],
       [B, C],
     ]);
+  });
+
+  it('also keeps the steps separate when the blocker is land', () => {
+    const { c, mask } = scenario(0);
+    expect(backtrack(c, 0, mask, GATE)).toHaveLength(2);
   });
 
   it('still merges collinear steps whose chord passes the gate', () => {
