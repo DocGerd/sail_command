@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { act, render, renderHook, screen, fireEvent, within } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { I18nProvider } from '../i18n';
 // #1291: `findLowerSettingHint` is the one call HarborPicker makes into
@@ -10,11 +10,16 @@ import { I18nProvider } from '../i18n';
 // call site and is unaffected.
 vi.mock('../lib/harborReachability', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/harborReachability')>();
-  return { ...actual, findLowerSettingHint: vi.fn(actual.findLowerSettingHint) };
+  return {
+    ...actual,
+    findLowerSettingHint: vi.fn(actual.findLowerSettingHint),
+    harborAccessAt: vi.fn(actual.harborAccessAt),
+  };
 });
 import HarborPicker, {
   harborAccessCopy,
   unreachableBand,
+  useUnreachableBandOf,
   normalizeHarborSearch,
   rankHarbors,
   type HarborWithReachability,
@@ -29,6 +34,7 @@ import {
 import { BOATS } from '../data/boats';
 import { NavMask } from '../lib/mask';
 import type { Harbor } from '../types';
+import { solverTimeoutMs } from '../test/timeouts';
 
 // Mirrors real data shapes from app/public/data/harbors.json: a harbor whose
 // three names are identical and contain 'æ'/'ø' (diacritic search target), a
@@ -476,6 +482,14 @@ describe('harborAccessCopy (#1291/§13 item 2 precedence table)', () => {
     ]);
   });
 
+  it('#1725: a pending scan keeps the factual line and adds the checking line, with no hint line', () => {
+    const hint: LowerSettingHintOutcome = { kind: 'found', hint: { depthM: 3.2, state: 'ok' } };
+    expect(harborAccessCopy('unreachable', hint, boat, 3.5, 'en', 'pending')).toEqual([
+      { key: 'harborPicker.boatUnreachable', vars: { boat: boat.name, depth: '3.5' } },
+      { key: 'harborPicker.boatUnreachableChecking', vars: { boat: boat.name } },
+    ]);
+  });
+
   it('#1721: without a band the ordinary lines stay', () => {
     expect(harborAccessCopy('unreachable', null, boat, 3.5, 'en', null)[0]?.key).toBe(
       'harborPicker.boatUnreachable',
@@ -489,7 +503,8 @@ describe('harborAccessCopy (#1291/§13 item 2 precedence table)', () => {
 // #1721: the band scan against a real NavMask. Open water everywhere except a
 // pocket of POCKET_DEPTH_DM-decimetre cells (wider than the 1852 m relaxation
 // disc) around the harbour, so reachability depends on the gate.
-describe('unreachableBand (#1721)', () => {
+// Flood fills over synthetic masks: instrumented runs need the scaled budget.
+describe('unreachableBand (#1721)', { timeout: solverTimeoutMs(20_000) }, () => {
   const easyGo = BOATS.find((b) => b.id === 'salona-44-easy-go')!; // min 2.7, default 3.5
   const POCKET: Harbor = {
     id: 'pocket',
@@ -614,6 +629,106 @@ describe('unreachableBand (#1721)', () => {
   });
 });
 
+// #1725: the scan hook against a stubbed per-gate classifier, one gate per
+// macrotask, so each tick below is exactly one step.
+describe('useUnreachableBandOf (#1725)', () => {
+  const easyGo = BOATS.find((b) => b.id === 'salona-44-easy-go')!; // gates 2.7 .. 3.5
+  const harbor = (id: string): Harbor => ({
+    id,
+    names: { de: id, da: id, en: id },
+    country: 'DK',
+    snap: { lat: 55, lon: 10 },
+  });
+  const HARBOURS = [harbor('a'), harbor('b')];
+  const tick = () =>
+    act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+  const ticks = async (n: number) => {
+    for (let i = 0; i < n; i++) await tick();
+  };
+  const callsFor = (id: string) =>
+    vi.mocked(harborAccessAt).mock.calls.filter((c) => c[1].id === id).length;
+
+  afterEach(() => {
+    vi.mocked(harborAccessAt).mockReset();
+  });
+
+  it('is pending until the scan finishes, then yields the band', async () => {
+    vi.mocked(harborAccessAt).mockReturnValue('unreachable');
+    const mask = {} as NavMask;
+    const { result } = renderHook(() => useUnreachableBandOf(mask, HARBOURS, easyGo, 3.5, ['a']));
+    expect(result.current('a')).toBe('pending');
+    await ticks(3);
+    expect(result.current('a')).toBe('pending');
+    await ticks(12);
+    expect(result.current('a')).toEqual({ minM: 2.7, maxM: 3.5 });
+  });
+
+  it('settles to null, not pending, when a gate reaches the harbour', async () => {
+    vi.mocked(harborAccessAt).mockReturnValue('ok');
+    const mask = {} as NavMask;
+    const { result } = renderHook(() => useUnreachableBandOf(mask, HARBOURS, easyGo, 3.5, ['a']));
+    expect(result.current('a')).toBe('pending');
+    await ticks(4);
+    expect(result.current('a')).toBeNull();
+  });
+
+  it('is null without a mask', () => {
+    const { result } = renderHook(() => useUnreachableBandOf(null, HARBOURS, easyGo, 3.5, ['a']));
+    expect(result.current('a')).toBeNull();
+  });
+
+  it('stops scanning a harbour that leaves the list mid-scan', async () => {
+    vi.mocked(harborAccessAt).mockReturnValue('unreachable');
+    const mask = {} as NavMask;
+    const { result, rerender } = renderHook(
+      ({ ids }) => useUnreachableBandOf(mask, HARBOURS, easyGo, 3.5, ids),
+      { initialProps: { ids: ['a'] } },
+    );
+    await ticks(3);
+    const before = callsFor('a');
+    expect(before).toBeGreaterThan(0);
+    expect(before).toBeLessThan(9);
+    rerender({ ids: ['b'] });
+    await ticks(14);
+    expect(callsFor('a')).toBe(before);
+    expect(result.current('a')).toBe('pending');
+    expect(result.current('b')).toEqual({ minM: 2.7, maxM: 3.5 });
+  });
+
+  it('stops scanning after unmount', async () => {
+    vi.mocked(harborAccessAt).mockReturnValue('unreachable');
+    const mask = {} as NavMask;
+    const { unmount } = renderHook(() => useUnreachableBandOf(mask, HARBOURS, easyGo, 3.5, ['a']));
+    await ticks(3);
+    const before = callsFor('a');
+    expect(before).toBeGreaterThan(0);
+    unmount();
+    await ticks(14);
+    expect(callsFor('a')).toBe(before);
+  });
+
+  it('rescans from the first gate when the mask changes mid-scan', async () => {
+    const maskA = {} as NavMask;
+    const maskB = {} as NavMask;
+    // maskB reaches the harbour at the lowest gate only.
+    vi.mocked(harborAccessAt).mockImplementation((mask, _h, _b, gateM) =>
+      mask === maskB && gateM === 2.7 ? 'ok' : 'unreachable',
+    );
+    const { result, rerender } = renderHook(
+      ({ mask }) => useUnreachableBandOf(mask, HARBOURS, easyGo, 3.5, ['a']),
+      { initialProps: { mask: maskA } },
+    );
+    await ticks(4);
+    expect(result.current('a')).toBe('pending');
+    rerender({ mask: maskB });
+    await ticks(14);
+    expect(result.current('a')).toBeNull();
+    expect(vi.mocked(harborAccessAt).mock.calls.find((c) => c[0] === maskB)?.[3]).toBe(2.7);
+  });
+});
+
 // #1291: HarborPicker's OWN wiring around harborAccessCopy — deriving the
 // per-option access state from the caller-supplied `harborAccess` map and
 // calling `findLowerSettingHint` (mocked above) for the unreachable case.
@@ -678,6 +793,33 @@ describe('HarborPicker option row: #1291 per-boat access markers', () => {
       ),
     ).toBeInTheDocument();
     expect(within(option).queryByText(/Not reachable with/)).not.toBeInTheDocument();
+  });
+
+  it('#1725: shows the checking line, not the hint lines, while the band scan is pending', () => {
+    localStorage.setItem('sc-lang', 'en');
+    vi.mocked(findLowerSettingHint).mockReturnValue({ kind: 'not-found' });
+    render(
+      <I18nProvider>
+        <HarborPicker
+          harbors={HARBORS}
+          recentIds={[]}
+          onSelect={vi.fn()}
+          boat={boat}
+          safetyDepthM={3.5}
+          harborAccess={new Map([['aabenraa', 'unreachable']])}
+          unreachableBandOf={() => 'pending'}
+          mask={FAKE_MASK}
+        />
+      </I18nProvider>,
+    );
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'aabenraa' } });
+    const option = screen.getByRole('option', { name: /Aabenraa/ });
+    expect(
+      within(option).getByText(`Checking other safety depths for ${boat.name}…`),
+    ).toBeInTheDocument();
+    expect(within(option).getByText(/Not reachable with/)).toBeInTheDocument();
+    expect(within(option).queryByText(/Not reachable at or above/)).not.toBeInTheDocument();
+    expect(within(option).queryByText(/at any safety depth from/)).not.toBeInTheDocument();
   });
 
   it('shows the shallow-approach line for that state, with no hint search', () => {

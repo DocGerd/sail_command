@@ -78,8 +78,9 @@ export interface HarborPickerProps {
   // endpoint row (§5.3) — computing it once per (mask, harbors, boat, gate)
   // via `computeHarborAccess`'s own memoisation, never per option render.
   harborAccess?: HarborAccessByHarbor | null;
-  // #1721: the checked gate range over which a harbour is unreachable, or null.
-  unreachableBandOf?: (harborId: string) => UnreachableBand | null;
+  // #1721: the checked gate range over which a harbour is unreachable, null
+  // when it is not, or 'pending' while that scan is unfinished.
+  unreachableBandOf?: (harborId: string) => BandLookup;
   mask?: NavMask | null;
 }
 
@@ -133,7 +134,7 @@ export function harborAccessCopy(
   boat: BoatDef | undefined,
   safetyDepthM: number | undefined,
   lang: Lang,
-  band?: UnreachableBand | null,
+  band?: BandLookup,
 ): { key: MsgKey; vars?: Record<string, string | number> }[] {
   if (state === 'known-disconnected') return [{ key: 'harborPicker.knownDisconnected' }];
   if (!boat || safetyDepthM === undefined) return [];
@@ -142,6 +143,15 @@ export function harborAccessCopy(
   }
   if (state === 'unreachable') {
     // #1721: unreachable at every 0.1 m gate in `band` (see unreachableBand).
+    if (band === 'pending') {
+      return [
+        {
+          key: 'harborPicker.boatUnreachable',
+          vars: { boat: boat.name, depth: formatDepthM(safetyDepthM, lang) },
+        },
+        { key: 'harborPicker.boatUnreachableChecking', vars: { boat: boat.name } },
+      ];
+    }
     if (band) {
       return [
         {
@@ -183,6 +193,9 @@ export interface UnreachableBand {
   readonly minM: number;
   readonly maxM: number;
 }
+
+/** A band scan's state: the band, null when a gate reaches the harbour, 'pending' while scanning. */
+export type BandLookup = UnreachableBand | 'pending' | null;
 
 interface BandScan {
   readonly minDm: number;
@@ -266,8 +279,8 @@ export function unreachableBand(
 
 /**
  * Scans the given harbours one gate per macrotask, so no render waits on a
- * flood. The returned lookup yields null until a scan has finished; its
- * identity changes whenever one does.
+ * flood. The returned lookup yields 'pending' until a scan has finished (null
+ * without a mask); its identity changes whenever one does.
  */
 // eslint-disable-next-line react-refresh/only-export-components
 export function useUnreachableBandOf(
@@ -276,7 +289,7 @@ export function useUnreachableBandOf(
   boat: BoatDef,
   liveGateM: number,
   harborIds: readonly string[],
-): (harborId: string) => UnreachableBand | null {
+): (harborId: string) => BandLookup {
   const [finished, setFinished] = useState(0);
   const idsKey = harborIds.join('|');
   useEffect(() => {
@@ -304,8 +317,11 @@ export function useUnreachableBandOf(
     };
   }, [mask, harbors, boat, liveGateM, idsKey]);
   return useCallback(
-    (harborId: string) =>
-      mask ? (peekUnreachableBand(mask, boat, harborId, liveGateM) ?? null) : null,
+    (harborId: string): BandLookup => {
+      if (!mask) return null;
+      const band = peekUnreachableBand(mask, boat, harborId, liveGateM);
+      return band === undefined ? 'pending' : band;
+    },
     // `finished` re-keys the lookup so consumers recompute when a scan completes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [mask, boat, liveGateM, finished],
