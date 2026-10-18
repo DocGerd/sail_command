@@ -289,7 +289,9 @@ gate. **Aabenraa connects. Marstal does not.**
 - **Marstal reconnects only at ≤ 1.8 m**, against its current
   `CONNECTIVITY_EXCEPTIONS_M` entry of **2.0 m** — a 0.2 m shortfall, on a
   harbour whose own source text (quoted in `verify_mask.py`) says *"parts of
-  the yacht basin only approx 2 m"*.
+  the yacht basin only approx 2 m"* (that figure, reused as a self-check
+  value below the shipped mask's 2.3 m bottleneck — not a depth a boat must
+  clear; #1721).
 - `Augustenborg` reconnects at ≤ 3.0 m, comfortably inside its 2.8 m exception.
 - None of the five `KNOWN_DISCONNECTED` harbours reconnects, so no entry goes
   stale.
