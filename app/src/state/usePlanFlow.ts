@@ -185,7 +185,7 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
           // #54: cloned, never transferred — the whole catalogue's polars,
           // sent once so every later plan only names keys.
           polars: assets.polars,
-          knownDisconnectedHarborIds: ((assets.harbors ?? []) as HarborWithReachability[])
+          knownDisconnectedHarborIds: (assets.harbors as HarborWithReachability[])
             .filter((h) => h.knownDisconnected === true)
             .map((h) => h.id),
         });
