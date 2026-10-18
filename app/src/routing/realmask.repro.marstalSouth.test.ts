@@ -4,7 +4,14 @@ import { planWithHarborHandover } from './harborHandover';
 import { mask, polars, sailResult, MARSTAL, BAGENKOP, T0 } from '../test/realmaskFixtures';
 import { uniformWindGrid } from '../test/fixtures';
 import { boatById, sailIdsOf } from '../data/boats';
-import { DEFAULT_SETTINGS, boatSnapshot, type LatLon, type PlanResultOk } from '../types';
+import {
+  DEFAULT_SETTINGS,
+  boatSnapshot,
+  type LatLon,
+  type PlanRequest,
+  type PlanResult,
+  type PlanResultOk,
+} from '../types';
 import { defaultSafetyDepthM } from '../lib/boatDepth';
 import type { PlanResultWithHandover } from '../lib/harborHandover';
 import { findHarborHandover } from '../lib/harborReachability';
@@ -21,6 +28,12 @@ const NORTH_BASIN_GATE = 3.3;
 // East of Marstal, reached from the northern basin without the Svendborgsund detour.
 const EAST: LatLon = { lat: 54.8579, lon: 10.6147 };
 const FLENSBURG: LatLon = { lat: 54.798, lon: 9.4335 };
+const AABENRAA: LatLon = { lat: 55.0345, lon: 9.427 };
+const AUGUSTENBORG: LatLon = { lat: 54.9412, lon: 9.8502 };
+// Shallower than the gate itself; planRoute snaps it into the flood east of Marstal.
+const NEAR_SHORE_EAST: LatLon = { lat: 54.84892, lon: 10.62162 };
+// Inland Langeland, south-east of Marstal: no navigable cell within the snap radius.
+const LANGELAND_INLAND: LatLon = { lat: 54.78, lon: 10.72 };
 
 const KD = new Set(['arnis', 'dyvig', 'graasten', 'kappeln', 'maasholm']);
 const WIND = uniformWindGrid(12, 225);
@@ -72,6 +85,42 @@ function expectSouthExit(r: ReturnType<typeof planFromMarstal>, maxNm: number) {
   }
 }
 
+/** The ends `planWithHarborHandover` substitutes, read off a stub planner (no solve). */
+function substitutedEnds(
+  gateM: number,
+  from: { p: LatLon; id: string },
+  to: { p: LatLon; id: string },
+  viaPoints: LatLon[],
+) {
+  const requests: PlanRequest[] = [];
+  const stub = (req: PlanRequest): PlanResult => {
+    requests.push(req);
+    return { status: 'error', reason: 'unreachable' };
+  };
+  planWithHarborHandover(
+    {
+      origin: from.p,
+      destination: to.p,
+      viaPoints,
+      originHarborId: from.id,
+      destinationHarborId: to.id,
+      departureMs: T0,
+      settings: { ...DEFAULT_SETTINGS, safetyDepthM: gateM },
+      sailIds: [...sailIdsOf(boat)],
+      boat: boatSnapshot(boat),
+    },
+    WIND,
+    { polars, boat, mask },
+    undefined,
+    undefined,
+    undefined,
+    KD,
+    stub,
+  );
+  expect(requests).toHaveLength(2);
+  return { origin: requests[1].origin, destination: requests[1].destination };
+}
+
 describe('#1734 Marstal handover exits toward the adjacent route point (EASY GO!)', () => {
   for (const gateM of [defaultSafetyDepthM(boat), NORTH_BASIN_GATE]) {
     it(`Marstal → point just south, no via (gate ${gateM})`, () => {
@@ -109,5 +158,46 @@ describe('#1734 Marstal handover exits toward the adjacent route point (EASY GO!
     expect(findHarborHandover(mask, MARSTAL, 2.7, undefined, FLENSBURG)!.lat).toBeLessThan(
       MARSTAL.lat,
     );
+    expect(
+      findHarborHandover(mask, MARSTAL, NORTH_BASIN_GATE, undefined, AABENRAA)!.lat,
+    ).toBeLessThan(MARSTAL.lat);
+  });
+
+  it('falls back to straight-line ranking when the adjacent point snaps to nothing', () => {
+    expect(mask.snapToNavigable(LANGELAND_INLAND, NORTH_BASIN_GATE)).toBeNull();
+    expect(
+      findHarborHandover(mask, MARSTAL, NORTH_BASIN_GATE, undefined, LANGELAND_INLAND)!.lat,
+    ).toBeLessThan(MARSTAL.lat);
+  });
+
+  it('faces the first via point at the origin and the last via point at the destination', () => {
+    const marstal = { p: MARSTAL, id: 'marstal' };
+    const flensburg = { p: FLENSBURG, id: 'flensburg' };
+    const g = NORTH_BASIN_GATE;
+    expect(substitutedEnds(g, marstal, flensburg, [EAST]).origin.lat).toBeGreaterThan(MARSTAL.lat);
+    expect(substitutedEnds(g, flensburg, marstal, [EAST]).destination.lat).toBeGreaterThan(
+      MARSTAL.lat,
+    );
+    expect(substitutedEnds(g, flensburg, marstal, []).destination.lat).toBeLessThan(MARSTAL.lat);
+  });
+
+  it('with both ends pocketed, each end faces the other end handover', () => {
+    const marstal = { p: MARSTAL, id: 'marstal' };
+    const augustenborg = { p: AUGUSTENBORG, id: 'augustenborg' };
+    const g = NORTH_BASIN_GATE;
+    expect(substitutedEnds(g, marstal, augustenborg, []).origin.lat).toBeLessThan(MARSTAL.lat);
+    expect(substitutedEnds(g, augustenborg, marstal, []).destination.lat).toBeLessThan(MARSTAL.lat);
+  });
+
+  it(`Marstal → Aabenraa exits south (gate ${NORTH_BASIN_GATE})`, () => {
+    const r = planFromMarstal(NORTH_BASIN_GATE, { p: AABENRAA, id: 'aabenraa' }, []);
+    expect(r.handover.lat).toBeLessThan(MARSTAL.lat);
+    for (const rig of r.rigs) expect(rig.distanceNm).toBeLessThan(55);
+  });
+
+  it(`Marstal → a near-shore point east keeps the northern exit (gate ${NORTH_BASIN_GATE})`, () => {
+    const r = planFromMarstal(NORTH_BASIN_GATE, { p: NEAR_SHORE_EAST, id: null }, []);
+    expect(r.handover.lat).toBeGreaterThan(MARSTAL.lat);
+    for (const rig of r.rigs) expect(rig.distanceNm).toBeLessThan(6);
   });
 });

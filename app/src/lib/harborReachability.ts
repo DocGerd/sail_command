@@ -369,8 +369,9 @@ export const HANDOVER_LINE_MIN_M = 0.5;
  *
  * #1734: with `toward` (the adjacent route point), the qualifying cells are
  * grouped by flood connectivity inside the disc, and the result is the cell
- * nearest `p` within the group nearest `toward` by water (straight-line when
- * `toward` is outside the flood). The router always passes `toward`; the
+ * nearest `p` within the group nearest `toward` by water, starting from
+ * `toward` snapped as `planRoute` snaps it (straight-line when that is outside
+ * the flood). The router always passes `toward`; the
  * nearest-cell form without it is what a single group reduces to.
  */
 export function findHarborHandover(
@@ -460,7 +461,8 @@ export function findHarborHandover(
   }
   if (pick.length <= 1) return pick[0]?.centre ?? null;
 
-  const byWater = clusterReachedFirst(mask, flood, toward, (row, col) =>
+  const start = mask.snapToNavigable(toward, gateM) ?? toward;
+  const byWater = clusterReachedFirst(mask, flood, start, (row, col) =>
     Math.abs(row - row0) > maxRing || Math.abs(col - col0) > maxRing
       ? -1
       : cluster[localOf(row, col)],
@@ -472,6 +474,11 @@ export function findHarborHandover(
   }
   return pick[best].centre;
 }
+
+/** Grow-only scratch for {@link clusterReachedFirst}, stamped per call like `NavMask`'s #1256 BFS. */
+let reachSeen = new Uint8Array(0);
+let reachQueue = new Int32Array(0);
+let reachGeneration = 0;
 
 /**
  * BFS over `flood` from `toward`'s cell; the id `clusterAt` returns for the
@@ -487,11 +494,20 @@ function clusterReachedFirst(
   const { rows, cols } = mask.meta;
   const start = cellIndexOf(mask, toward);
   if (start === null || !floodHasCell(flood, mask, start)) return -1;
-  const seen = new Uint8Array(Math.ceil((rows * cols) / 8));
-  const queue = new Int32Array(rows * cols);
+  if (reachSeen.length < rows * cols) {
+    reachSeen = new Uint8Array(rows * cols);
+    reachQueue = new Int32Array(rows * cols);
+    reachGeneration = 0;
+  } else if (reachGeneration >= 255) {
+    reachSeen.fill(0);
+    reachGeneration = 0;
+  }
+  const gen = ++reachGeneration;
+  const seen = reachSeen;
+  const queue = reachQueue;
   let head = 0;
   let tail = 0;
-  setBit(seen, start);
+  seen[start] = gen;
   queue[tail++] = start;
   while (head < tail) {
     const idx = queue[head++];
@@ -504,8 +520,8 @@ function clusterReachedFirst(
       const nc = col + BFS_DCOL[k];
       if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
       const nIdx = nr * cols + nc;
-      if (hasBit(seen, nIdx) || !floodHasCell(flood, mask, nIdx)) continue;
-      setBit(seen, nIdx);
+      if (seen[nIdx] === gen || !floodHasCell(flood, mask, nIdx)) continue;
+      seen[nIdx] = gen;
       queue[tail++] = nIdx;
     }
   }
