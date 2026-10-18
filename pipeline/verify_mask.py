@@ -289,13 +289,7 @@ CONNECTIVITY_EXCEPTIONS_M: dict[tuple[str, float], float] = {
     # all. That is the forcing function working as designed, and this is the
     # evidence it forced.
     #
-    # The evidence is satisfied A FORTIORI by the entry above rather than by a
-    # fresh investigation: dropping a 2.8 m gate to 2.0 m is a 0.8 m relaxation
-    # against the 1.0 m already reviewed at 3.0 m (PR #8), so it is the STRICTLY
-    # SMALLER concession. Marstal reconnects at <= 2.3 m either way - MEASURED
-    # by this script's own descending sweep, which prints "marstal 2.3 m" in the
-    # deepest-connecting-gate table, so the threshold is re-derived on every run
-    # rather than remembered here.
+    # same self-check value, below the 2.3 m sweep threshold
     #
     # Control, run before this entry existed: with the Elan in the catalogue and
     # this row absent, the script exits 1 with "CONNECTIVITY marstal snap
