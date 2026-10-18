@@ -203,7 +203,7 @@ export function classifyRigVerdictChange(planA, planB) {
 }
 
 /**
- * #1716 / spec §T.7 — the fourth comparison mode's two halves, mirroring #553's.
+ * #1716 / spec §T.7 — this comparison mode's two halves, mirroring #553's.
  *
  * The permitted change is the reverse of #553's: a plan whose BASE verdict was
  * `not-compared` (an estimated sail aboard) gets the comparison its two solved

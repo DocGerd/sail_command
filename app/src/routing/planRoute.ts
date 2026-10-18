@@ -656,9 +656,6 @@ function runLadder(
    * is derived in the view (`rigEstimateBased`). The one withholding left is
    * fail-closed: a requested sail the boat does not declare has no provenance
    * to qualify a verdict with.
-   *
-   * `some` rather than `!every`: `[].every(...)` is VACUOUSLY TRUE, so the
-   * negated form would report an EMPTY request as suppressed.
    */
   const comparisonSuppressed = req.sailIds.some(
     (id) => deps.boat.sails.find((s) => s.id === id) === undefined,

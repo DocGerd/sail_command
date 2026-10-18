@@ -359,9 +359,9 @@ if (verdictViolations.length) {
   for (const v of verdictViolations) console.log('  ' + v);
 }
 if (diffs.length) {
-  // Label names what was actually compared: only --rig-verdict-change elides
-  // the verdict, so an unconditional "elided" label would misdescribe byte and
-  // canonical mode, whose diffs include it.
+  // Label names what was actually compared: each eliding mode names its own
+  // elision, so an unconditional "elided" label would misdescribe byte and
+  // canonical mode, whose diffs include the verdict.
   console.log(
     estimatedVerdict
       ? '\nDIFFERING PLANS (with rigRecommendation and recommended elided):'

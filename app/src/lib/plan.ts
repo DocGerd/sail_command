@@ -122,10 +122,8 @@ export function forecastAgeNowHours(plan: Plan, nowMs: number): number {
  * is absent — pre-#259 PlanResultOk literals across the test suite (and any
  * plan solved before this field existed) never set it, and a bare
  * `recommended: SailId` is exactly what those literals always meant. Exported so
- * both display surfaces (lib/resultSummary.ts's resultSummary(), and RouteSummary
- * directly for the plan-level tab star that renders even when the active
- * rig's own result is null) resolve it identically — see that file's banner on
- * why the two must never drift.
+ * every consumer resolves it identically; the banner in lib/resultSummary.ts
+ * says why the display surfaces must not drift.
  */
 export function rigRecommendationOf(result: PlanResultOk): RigRecommendation {
   return result.rigRecommendation ?? { kind: 'decided', rig: result.recommended };

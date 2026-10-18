@@ -142,10 +142,10 @@ export function rigVerdictKey(kind: Exclude<RigRecommendation['kind'], 'decided'
  * `app/sweep/` acceptance sweep is owed.
  *
  * The `sails.length === 2` gate is what keeps this from firing on the other
- * three not-compared causes: N=1 (one requested sail) and N>=3 both fail it
- * outright (`assemble()`'s own guard only ever calls `compareRigs` — and so
- * only ever reaches the 'not-compared' fallback at all with two-vs-not-two
- * sails), and an undeclared requested sail withholds the comparison while
+ * other not-compared causes: N=1 (one requested sail) fails it outright
+ * (`assemble()`'s own guard only ever calls `compareRigs` — and so only ever
+ * reaches the 'not-compared' fallback at all with two-vs-not-two sails), and
+ * an undeclared requested sail withholds the comparison while
  * BOTH sails still solved, so it has zero null results and also fails the
  * `filter(... === null).length === 1` check. Budget exhaustion is handled
  * upstream of this helper — `resultVerdictKey` checks `comparisonComplete`
@@ -162,7 +162,7 @@ function partiallyFailedSail(sails: readonly SailResult[]): SailResult | null {
  * #540 spec §E.3: the MsgKey a display surface should render for a
  * non-'decided' verdict, given ALSO whether the plan's comparison finished.
  *
- * `rigVerdictKey` alone maps every 'not-compared' cause — N=1, N>=3, one
+ * `rigVerdictKey` alone maps every 'not-compared' cause — N=1, one
  * sail failing, an undeclared sail, AND budget exhaustion — onto the single
  * generic `route.rigNotCompared`. That collapses "there was nothing to
  * compare" and "we ran out of time before finishing the comparison" into

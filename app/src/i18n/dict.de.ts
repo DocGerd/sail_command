@@ -498,7 +498,7 @@ export const de = {
   'route.rigMoot': 'Riggwahl spielt hier keine Rolle — die Passage läuft durchgehend unter Motor',
   // #553 / spec §N.4: schwächere Aussage als rigTie oben — dort ist ein
   // Vergleich gelaufen und endete unentschieden, hier hat gar keiner
-  // stattgefunden. Siehe dict.en.ts für die drei auslösenden Fälle.
+  // stattgefunden. Siehe dict.en.ts für die auslösenden Fälle.
   'route.rigNotCompared':
     'Die Segel wurden für diese Passage nicht verglichen — es wird kein schnelleres Rigg angegeben',
   // #1398b (spike 1022 §8): siehe dict.en.ts — nennt den Tier-C-Grund; seit

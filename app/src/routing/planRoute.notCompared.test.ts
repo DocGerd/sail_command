@@ -24,10 +24,9 @@ vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
  * WHAT THIS FILE GUARDS, stated as the hazard rather than as the fix: before
  * this change `assemble` stamped `{ kind: 'decided' }` on EVERY path that did
  * not call `compareRigs`, so an unmade comparison was reported as a verdict.
- * Three cases reach that path — N = 1, N >= 3 (the comparison is capped at 2,
- * so there is no verdict to give), and two-sails-one-solved, which is
- * reachable in production TODAY. A fourth is a requested sail the boat does
- * not declare (fail closed). Spec §T.2 retired the provenance-tier clause: an
+ * Two cases reach that path — N = 1 and two-sails-one-solved, which is
+ * reachable in production TODAY. A third is a requested sail the boat does
+ * not declare (fail closed). N >= 3 throws before `assemble`. Spec §T.2 retired the provenance-tier clause: an
  * estimated sail no longer withholds the comparison, and the rows below pin
  * that for every tier mix.
  *
@@ -39,12 +38,9 @@ vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
  * reason" already constructs the two-sails-one-solved state and asserts only
  * the per-sail `reason`s — it never looks at `rigRecommendation`.
  *
- * EACH ROW IS INDIVIDUALLY LOAD-BEARING, verified by deleting them one at a
- * time (numbers in the PR report): the four `not-compared` rows red under
- * different mutations, and the two CONTROL rows are what stop the whole file
- * from being satisfiable by a `return { kind: 'not-compared' }` that never
- * compares anything. Without those controls a blanket suppression would pass
- * every remaining assertion here.
+ * The `not-compared` rows red under different mutations, and the DECIDES and
+ * CONTROL rows are what stop the whole file from being satisfiable by a
+ * `return { kind: 'not-compared' }` that never compares anything.
  */
 
 /** Uniformly 12% slower than TEST_POLAR, so `compareRigs` decides rather than ties. */

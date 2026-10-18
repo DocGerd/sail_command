@@ -569,7 +569,7 @@ apply here too, with the same expected outcomes.
 - [ ] **3.2** Rounds Broager Land / Kegnæs sanely.
 - [ ] **3.3** Tack pattern plausible (bounded, no zig-zag spam).
 - [ ] **3.4** Both sails shown with their own ETAs, and the rig verdict
-      matches the boat's polar tier (expected outcomes per boat in §2.5).
+      matches the expected outcome for the boat (see §2.5).
 - [ ] **3.5** Motor legs (if any) gray-dashed and listed.
 - [ ] **3.6** ETA plausible (~5–7 kn average).
 

@@ -91,8 +91,8 @@ installs as a standalone icon and works fully offline after the first visit
   a new waypoint at the point where you release it.
 - The router fetches hourly wind, then computes the fastest sailable route
   twice — once per foresail of the selected boat — and recommends the faster
-  (marked ★). Where a sail's table is *estimated* the verdict says it is
-  indicative only: on the three fleet boats the genoa table differs from the
+  (marked ★). Where a sail's table is *estimated* a faster-sail or tie
+  verdict says it is indicative only: on the three fleet boats the genoa table differs from the
   jib only by a documented overlay ramp rather than by anything about the
   hull, so a faster-sail verdict there reflects that ramp. Where the two
   cannot be ranked at all it says so instead of naming a winner, for

@@ -591,7 +591,7 @@ test('#1514: a matching pair strips both keys and leaves every other field deep-
 });
 
 // ---------------------------------------------------------------------------
-// #1716 / spec T.7 — the fourth comparison mode (--estimated-verdict-unsuppressed).
+// #1716 / spec T.7 — the comparison mode (--estimated-verdict-unsuppressed).
 //
 // Reverse of #553's: not-compared -> decided|tie|moot on a row with two solved
 // sails, in an arm whose boat has an estimated sail. Every expectation below is

@@ -1048,7 +1048,7 @@ describe('#54 spec N.6: tier-C estimated polars fail closed (E1-E8)', () => {
   });
 
   // Scaling one estimate from another puts §G.2's "estimate of an estimate"
-  // into the ETA itself, rather than into the comparison §N.4 suppresses.
+  // into the ETA itself, rather than into the comparison.
   it('MAJOR 4: aborts when the scaled base is another ESTIMATED table', () => {
     const src = freshSource();
     const est = src.boats.find((b) => b.id === TIER_C)!.sails['fock']!.estimator!;
@@ -1080,8 +1080,8 @@ describe('#54 spec N.6: tier-C estimated polars fail closed (E1-E8)', () => {
   });
 
   // The ramp must come from the DONOR hull. Any other boat's ramp is not the
-  // documented overlay §N.4 authorises, and §N.4's argument for suppressing
-  // the comparison depends on knowing which ramp it is.
+  // documented overlay §N.4 authorises, and §N.4's argument depends on
+  // knowing which ramp it is.
   it('MAJOR 4: aborts when the ramp comes from a boat other than the donor', () => {
     const src = freshSource();
     src.boats.find((b) => b.id === TIER_C)!.sails['genoa']!.estimator!.ramp!.boatId = TIER_C2;

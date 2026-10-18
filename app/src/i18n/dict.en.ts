@@ -489,8 +489,7 @@ export const en = {
   // #553 / spec §N.4: strictly WEAKER than rigTie above, and the distinction
   // is the whole point — 'tie' reports the outcome of a comparison that ran,
   // this reports that no comparison ran at all. Reached when only one sail
-  // found a route, when the plan requested a number of sails the capped-at-2
-  // comparison has no verdict for, or when a requested sail is undeclared.
+  // found a route or when a requested sail is undeclared.
   // Says no faster rig is CLAIMED rather than that the sails are equal,
   // because that is the honest difference.
   'route.rigNotCompared':
@@ -525,7 +524,7 @@ export const en = {
   'route.comparisonIncomplete':
     'The search ran out of time before comparing both sails, so no faster rig is claimed. Deselect a sail under “Sails aboard” (Boat tab) to plan with a single sail',
   // #1166: a SECOND, more specific 'not-compared' cause, distinct from
-  // rigNotCompared (N=1, N>=3 or tier-C suppression, all with zero solve
+  // rigNotCompared (the generic bucket, with zero solve
   // failures) and from comparisonIncomplete above (a truncated SEARCH).
   // Here exactly two sails were requested and exactly ONE of them found no
   // route at all — its `result` is null — while the other solved. Before
