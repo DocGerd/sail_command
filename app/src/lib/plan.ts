@@ -1,6 +1,13 @@
 import type { MsgKey } from '../i18n/dict.de';
-import { rigRecommendationOf } from './resultSummary';
-import type { NoRouteReason, Plan, PlanRequest, RigResult, SailId } from '../types';
+import type {
+  NoRouteReason,
+  Plan,
+  PlanRequest,
+  PlanResultOk,
+  RigRecommendation,
+  RigResult,
+  SailId,
+} from '../types';
 
 // Spec §4: "Stale forecast (fetch → departure gap > 12 h)" — strictly
 // greater, so a plan departing exactly 12 h after its wind was fetched is
@@ -107,6 +114,21 @@ export function isForecastStaleNow(plan: Plan, nowMs: number): boolean {
 
 export function forecastAgeNowHours(plan: Plan, nowMs: number): number {
   return Math.round((nowMs - plan.windGrid.fetchedAtMs) / 3_600_000);
+}
+
+/**
+ * #259: the honest rig comparison for a plan. Falls back to a plain
+ * 'decided' pick of the recorded `recommended` rig when `rigRecommendation`
+ * is absent — pre-#259 PlanResultOk literals across the test suite (and any
+ * plan solved before this field existed) never set it, and a bare
+ * `recommended: SailId` is exactly what those literals always meant. Exported so
+ * both display surfaces (lib/resultSummary.ts's resultSummary(), and RouteSummary
+ * directly for the plan-level tab star that renders even when the active
+ * rig's own result is null) resolve it identically — see that file's banner on
+ * why the two must never drift.
+ */
+export function rigRecommendationOf(result: PlanResultOk): RigRecommendation {
+  return result.rigRecommendation ?? { kind: 'decided', rig: result.recommended };
 }
 
 // Spec §T.5: reached by legacy records only. A plan stored before §T keeps

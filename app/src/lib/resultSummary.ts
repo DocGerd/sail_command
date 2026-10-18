@@ -4,15 +4,8 @@
 // two never drift. Pure: reads the in-memory plan + the active rig's result
 // only (no re-fetch, no wind-grid sampling, offline-safe).
 import type { MsgKey } from '../i18n/dict.de';
-import type {
-  Plan,
-  PlanResultOk,
-  RigResult,
-  RigRecommendation,
-  SailId,
-  SailResult,
-} from '../types';
-import { rigEstimateBased } from './plan';
+import type { Plan, RigResult, RigRecommendation, SailId, SailResult } from '../types';
+import { rigEstimateBased, rigRecommendationOf } from './plan';
 import { formatDateTime, formatDuration, formatKn, formatNm, type Lang } from './format';
 
 // SailId -> its display label key. Shared so RouteSummary and the planner
@@ -88,20 +81,7 @@ export interface ResultSummary {
   motorPct: number;
 }
 
-/**
- * #259: the honest rig comparison for a plan. Falls back to a plain
- * 'decided' pick of the recorded `recommended` rig when `rigRecommendation`
- * is absent — pre-#259 PlanResultOk literals across the test suite (and any
- * plan solved before this field existed) never set it, and a bare
- * `recommended: SailId` is exactly what those literals always meant. Exported so
- * both display surfaces (this file's resultSummary() below, and RouteSummary
- * directly for the plan-level tab star that renders even when the active
- * rig's own result is null) resolve it identically — see the file banner on
- * why the two must never drift.
- */
-export function rigRecommendationOf(result: PlanResultOk): RigRecommendation {
-  return result.rigRecommendation ?? { kind: 'decided', rig: result.recommended };
-}
+export { rigRecommendationOf };
 
 /**
  * #553 / spec §N.4: the MsgKey each `RigRecommendation.kind` renders as.
