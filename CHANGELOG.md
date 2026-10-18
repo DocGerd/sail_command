@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- The handover point for a harbour the depth grid cannot connect is now taken on the side that leads by water to the next route point, so a plan from Marstal with EASY GO! at a safety depth of 2.7–3.3 m no longer detours round Ærø; when both ends are such harbours and there is no via point, each end faces the other's handover point (#1734).
+- The handover point for a harbour the depth grid cannot connect is now taken on the side that leads by water to the adjacent route point, so a plan from or to Marstal with EASY GO! at a safety depth of 2.7–3.3 m no longer detours round Ærø; when both ends are such harbours and there is no via point, each end faces the other's handover point (#1734).
 
 ## [0.55.1] - 2026-10-18
 
