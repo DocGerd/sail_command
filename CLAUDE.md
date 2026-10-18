@@ -4120,6 +4120,7 @@ making design-level decisions; do not silently deviate.
   `app/sweep/` baseline stays comparable and NO #282 sweep is owed. The
   measured conservative reading (1.80 m on Flensburg->Marstal) still needs
   shipped data; the bound renders 1.40 m there — pessimistic, never optimistic.
+- **The #1721 harbour handover wraps `planRoute`, outside it.** `routing/harborHandover.ts`'s `planWithHarborHandover` is called only from `protocol.ts`, while `app/sweep/` calls `planRouteWithRecord` directly — so the #282 sweep is BLIND to handover changes and never owes one for them; their evidence is `realmask.repro.harborHandover.test.ts`.
 - **Buoyed fairways are DECLINED as a routing input** (#244,
   `docs/spikes/244-buoyed-fairways.md`). `seamark:type=fairway` does not
   exist in-region at all; the 258 `waterway=fairway` ways that do exist
