@@ -925,7 +925,7 @@ versioned section at the cut, so the fragment must be re-scoped or held back wit
   verdict is proposed — and must then be paired with a check that the two tables are **not a
   deterministic function of one another**, because perfectly correlated perturbations would make
   §M.4 report *"uncertainty does not dominate"* for a comparison that is vacuous rather than noisy.~~
-  The criterion measures noise; that defect is vacuity.
+  ~~The criterion measures noise; that defect is vacuity.~~
   *Amended 2026-10-17 (§T.6):* a tier-C `decided` verdict now ships, flagged as estimate-based. Both prerequisites are
   **waived by ruling, not satisfied**: the deterministic-dependence check by the 2026-10-17 ruling (it would fail for
   all three tier-C genoas, each its jib × the Salona 45 ramp), and §M.4's measurement for tier C by maintainer decision (2026-10-18, §T.10).
