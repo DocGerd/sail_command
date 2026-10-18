@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.55.2] - 2026-10-18
+
+### Fixed
+
+- The handover point for a harbour the depth grid cannot connect is now taken on the side that leads by water to the next route point, so a plan from Marstal with EASY GO! at a safety depth of 2.7–3.3 m no longer detours round Ærø; when both ends are such harbours and there is no via point, each end faces the other's handover point (#1734).
+
 ## [0.55.1] - 2026-10-18
 
 ### Fixed
@@ -1293,7 +1299,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.55.1...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.55.2...HEAD
+[0.55.2]: https://github.com/DocGerd/sail_command/compare/v0.55.1...v0.55.2
 [0.55.1]: https://github.com/DocGerd/sail_command/compare/v0.55.0...v0.55.1
 [0.55.0]: https://github.com/DocGerd/sail_command/compare/v0.54.0...v0.55.0
 [0.54.0]: https://github.com/DocGerd/sail_command/compare/v0.53.0...v0.54.0

@@ -13,12 +13,19 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.55.1**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.55.2**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
-## Now — v0.55.1
+## Now — v0.55.2
 
-The `v0.55.1` cut (2026-10-18) was a PATCH release for one user-visible fix
+The `v0.55.2` cut (2026-10-18) was a PATCH release for one user-visible fix
+([#1734](https://github.com/DocGerd/sail_command/issues/1734)): the handover
+point for a harbour the depth grid cannot connect is now taken on the side that
+leads by water to the route's next point, so a plan from Marstal with EASY GO!
+at a lowered safety depth no longer detours round Ærø. It followed `v0.55.1`
+the same day.
+
+The preceding `v0.55.1` cut (2026-10-18) was a PATCH release for one user-visible fix
 ([#1721](https://github.com/DocGerd/sail_command/issues/1721)): a boat can now be planned to or from a picked harbour the depth grid cannot connect to open water at the chosen safety depth, such as EASY GO! at Marstal, unless the harbour is flagged as not reachable at any depth setting. The route starts or ends
 at a handover point up to 1 nm off the harbour, and the approach is drawn as a
 striped line marked as not computed and not depth-checked. Where the grid connects a harbour at no safety depth in the boat's range, the harbour picker and a failed plan's no-route message name that range. It followed `v0.55.0` the day before.
