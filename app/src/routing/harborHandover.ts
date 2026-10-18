@@ -14,8 +14,8 @@ export type PlanFn = typeof planRoute;
 /**
  * #1721: plans as `planRoute` does; only when that fails for a harbour pick the
  * grid cannot connect at the requested gate does it re-plan from/to the
- * nearest handover point and flag the substituted ends. Gates on status and
- * harbour state only, never on the failure reason (#282).
+ * handover point facing the adjacent route point and flag the substituted ends.
+ * Gates on status and harbour state only, never on the failure reason (#282).
  */
 export function planWithHarborHandover(
   req: PlanRequest,
@@ -38,7 +38,11 @@ export function planWithHarborHandover(
     if (id === null || knownDisconnectedIds.has(id)) continue;
     const p = req[end];
     if (!harborEndpointPocketed(deps.mask, p, deps.boat, gateM)) continue;
-    const h = findHarborHandoverFor(deps.mask, p, deps.boat, gateM);
+    const toward =
+      end === 'origin'
+        ? (req.viaPoints[0] ?? req.destination)
+        : (req.viaPoints[req.viaPoints.length - 1] ?? req.origin);
+    const h = findHarborHandoverFor(deps.mask, p, deps.boat, gateM, toward);
     if (h === null) return r1;
     ends[end] = h;
   }

@@ -366,12 +366,18 @@ export const HANDOVER_LINE_MIN_M = 0.5;
  * cell of the seed flood at `gateM` (it and all 8 neighbours flooded) and whose
  * straight line from `p` passes {@link HANDOVER_LINE_MIN_M}. Exact distance
  * ties go to the lower row-major index. `null` when none exists.
+ *
+ * #1734: with `toward` (the adjacent route point), the qualifying cells are
+ * grouped by flood connectivity inside the disc and the nearest one is taken
+ * from the group nearest `toward`, so a basin that joins open water only
+ * outside the disc is not chosen over the exit facing the route.
  */
 export function findHarborHandover(
   mask: NavMask,
   p: LatLon,
   gateM: number,
   maxRadiusM: number = APPROACH_RADIUS_M,
+  toward?: LatLon,
 ): LatLon | null {
   const flood = floodAtGate(mask, gateM);
   const { rows, cols } = mask.meta;
@@ -381,6 +387,14 @@ export function findHarborHandover(
   const cellLatM = 111_320 * lat.stepDeg;
   const cellLonM = 111_320 * lon.stepDeg * Math.cos(toRad(p.lat));
   const maxRing = Math.ceil(maxRadiusM / Math.min(cellLatM, cellLonM)) + 1;
+
+  const inDisc = (row: number, col: number): boolean =>
+    row >= 0 &&
+    row < rows &&
+    col >= 0 &&
+    col < cols &&
+    floodHasCell(flood, mask, row * cols + col) &&
+    haversineNm(p, { lat: lat.centre(row), lon: lon.centre(col) }) * 1852 <= maxRadiusM;
 
   const interior = (row: number, col: number): boolean => {
     for (let dr = -1; dr <= 1; dr++) {
@@ -394,22 +408,60 @@ export function findHarborHandover(
     return true;
   };
 
-  const candidates: { centre: LatLon; dM: number; idx: number }[] = [];
+  const candidates: { centre: LatLon; dM: number; idx: number; row: number; col: number }[] = [];
   for (let row = row0 - maxRing; row <= row0 + maxRing; row++) {
     for (let col = col0 - maxRing; col <= col0 + maxRing; col++) {
       if (row < 0 || row >= rows || col < 0 || col >= cols) continue;
       if (!interior(row, col)) continue;
       const centre = { lat: lat.centre(row), lon: lon.centre(col) };
       const dM = haversineNm(p, centre) * 1852;
-      if (dM <= maxRadiusM) candidates.push({ centre, dM, idx: row * cols + col });
+      if (dM <= maxRadiusM) candidates.push({ centre, dM, idx: row * cols + col, row, col });
     }
   }
   candidates.sort((a, b) => a.dM - b.dM || a.idx - b.idx);
   const lineGate = uniformGate(HANDOVER_LINE_MIN_M);
-  for (const c of candidates) {
-    if (mask.segmentNavigable(p, c.centre, lineGate)) return c.centre;
+  if (toward === undefined) {
+    for (const c of candidates) {
+      if (mask.segmentNavigable(p, c.centre, lineGate)) return c.centre;
+    }
+    return null;
   }
-  return null;
+
+  const passing = candidates.filter((c) => mask.segmentNavigable(p, c.centre, lineGate));
+  const side = 2 * maxRing + 1;
+  const localOf = (row: number, col: number) =>
+    (row - row0 + maxRing) * side + (col - col0 + maxRing);
+  const cluster = new Int32Array(side * side).fill(-1);
+  const pick: (typeof passing)[number][] = [];
+  const towardM: number[] = [];
+  for (const c of passing) {
+    let id = cluster[localOf(c.row, c.col)];
+    if (id === -1) {
+      id = pick.length;
+      pick.push(c);
+      towardM.push(Infinity);
+      const stack = [c.row, c.col];
+      cluster[localOf(c.row, c.col)] = id;
+      while (stack.length > 0) {
+        const col = stack.pop()!;
+        const row = stack.pop()!;
+        for (let k = 0; k < 4; k++) {
+          const r = row + BFS_DROW[k];
+          const cc = col + BFS_DCOL[k];
+          if (Math.abs(r - row0) > maxRing || Math.abs(cc - col0) > maxRing) continue;
+          if (cluster[localOf(r, cc)] !== -1 || !inDisc(r, cc)) continue;
+          cluster[localOf(r, cc)] = id;
+          stack.push(r, cc);
+        }
+      }
+    }
+    towardM[id] = Math.min(towardM[id], haversineNm(toward, c.centre));
+  }
+  let best = -1;
+  for (let id = 0; id < pick.length; id++) {
+    if (best === -1 || towardM[id] < towardM[best]) best = id;
+  }
+  return best === -1 ? null : pick[best].centre;
 }
 
 /**
@@ -421,8 +473,9 @@ export function findHarborHandoverFor(
   p: LatLon,
   _boat: BoatDef,
   gateM: number,
+  toward?: LatLon,
 ): LatLon | null {
-  return findHarborHandover(mask, p, gateM);
+  return findHarborHandover(mask, p, gateM, APPROACH_RADIUS_M, toward);
 }
 
 /**
