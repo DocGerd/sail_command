@@ -362,17 +362,15 @@ export function harborEndpointPocketed(
 export const HANDOVER_LINE_MIN_M = 0.5;
 
 /**
- * #1721: the nearest cell centre to `p` within `maxRadiusM` that is an interior
- * cell of the seed flood at `gateM` (it and all 8 neighbours flooded) and whose
- * straight line from `p` passes {@link HANDOVER_LINE_MIN_M}. Exact distance
- * ties go to the lower row-major index. `null` when none exists.
- *
- * #1734: with `toward` (the adjacent route point), the qualifying cells are
- * grouped by flood connectivity inside the disc, and the result is the cell
- * nearest `p` within the group nearest `toward` by water, starting from
- * `toward` snapped as `planRoute` snaps it (straight-line when that is outside
- * the flood). The router always passes `toward`; the
- * nearest-cell form without it is what a single group reduces to.
+ * #1721/#1734: the handover cell centre for `p`. Candidates lie within
+ * `maxRadiusM`, are interior cells of the seed flood at `gateM` (it and all 8
+ * neighbours flooded), and their straight line from `p` passes
+ * {@link HANDOVER_LINE_MIN_M}. Candidates are grouped by flood connectivity
+ * inside the disc; the result is the candidate nearest `p` within the group
+ * nearest `toward` (the adjacent route point) by water, starting from `toward`
+ * snapped as `planRoute` snaps it (straight-line when that is outside the
+ * flood). Without `toward` it is the nearest candidate. Exact distance ties go
+ * to the lower row-major index. `null` when none exists.
  */
 export function findHarborHandover(
   mask: NavMask,

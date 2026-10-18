@@ -1,15 +1,10 @@
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { planRoute } from './planRoute';
 import { planWithHarborHandover } from './harborHandover';
-import {
-  mask,
-  polars,
-  expectLegsNavigable,
-  sailResult,
-  MARSTAL,
-  BAGENKOP,
-  T0,
-} from '../test/realmaskFixtures';
+import { mask, polars, expectLegsNavigable, sailResult, T0 } from '../test/realmaskFixtures';
 import { uniformWindGrid } from '../test/fixtures';
 import { boatById, sailIdsOf, DEFAULT_BOAT_ID } from '../data/boats';
 import { DEFAULT_SETTINGS, boatSnapshot, type LatLon, type PlanResultOk } from '../types';
@@ -20,10 +15,33 @@ import { solverTimeoutMs } from '../test/timeouts';
 
 vi.setConfig({ testTimeout: solverTimeoutMs(300_000) });
 
-const ASSENS: LatLon = { lat: 55.2621, lon: 9.8778 };
-const AUGUSTENBORG: LatLon = { lat: 54.9412, lon: 9.8502 };
-const HOERUPHAV: LatLon = { lat: 54.9037, lon: 9.888 };
-const KD = new Set(['arnis', 'dyvig', 'graasten', 'kappeln', 'maasholm']);
+interface HarborRow {
+  id: string;
+  snap: LatLon;
+  knownDisconnected?: boolean;
+}
+
+const harborRows = JSON.parse(
+  readFileSync(
+    resolve(dirname(fileURLToPath(import.meta.url)), '../../public/data/harbors.json'),
+    'utf8',
+  ),
+) as HarborRow[];
+
+function harbor(id: string): { p: LatLon; id: string } {
+  const h = harborRows.find((x) => x.id === id);
+  if (!h) throw new Error(`fixture drift: '${id}' missing from harbors.json`);
+  return { p: h.snap, id };
+}
+
+const MARSTAL = harbor('marstal');
+const BAGENKOP = harbor('bagenkop');
+const ASSENS = harbor('assens');
+const AUGUSTENBORG = harbor('augustenborg');
+const HOERUPHAV = harbor('hoeruphav');
+const KD: ReadonlySet<string> = new Set(
+  harborRows.filter((h) => h.knownDisconnected === true).map((h) => h.id),
+);
 const WIND = uniformWindGrid(12, 225);
 const metresBetween = (a: LatLon, b: LatLon) => haversineNm(a, b) * 1852;
 
@@ -85,41 +103,30 @@ function expectRescued(
 
 describe('#1721 harbour handover on the real mask (each boat at its default gate)', () => {
   it('Marstal → Assens routes from a handover off Marstal', () => {
-    const r = plan('salona-44-easy-go', { p: MARSTAL, id: 'marstal' }, { p: ASSENS, id: 'assens' });
+    const r = plan('salona-44-easy-go', MARSTAL, ASSENS);
     const ok = expectRescued(r, 'origin', 1423.4);
     expect(ok.shallow).toBeUndefined();
   });
 
   it('Marstal → Bagenkop routes from a handover off Marstal', () => {
-    const r = plan(
-      'salona-44-easy-go',
-      { p: MARSTAL, id: 'marstal' },
-      { p: BAGENKOP, id: 'bagenkop' },
-    );
+    const r = plan('salona-44-easy-go', MARSTAL, BAGENKOP);
     const ok = expectRescued(r, 'origin', 1423.4);
     expect(ok.shallow).toBeUndefined();
   });
 
   it('Bagenkop → Marstal routes to a handover off Marstal', () => {
-    const r = plan(
-      'salona-44-easy-go',
-      { p: BAGENKOP, id: 'bagenkop' },
-      { p: MARSTAL, id: 'marstal' },
-    );
-    expectRescued(r, 'destination', 1423.4);
+    const r = plan('salona-44-easy-go', BAGENKOP, MARSTAL);
+    const ok = expectRescued(r, 'destination', 1423.4);
+    expect(ok.shallow).toBeUndefined();
   });
 
   it('Augustenborg → Høruphav routes from a handover off Augustenborg', () => {
-    const r = plan(
-      'salona-44-easy-go',
-      { p: AUGUSTENBORG, id: 'augustenborg' },
-      { p: HOERUPHAV, id: 'hoeruphav' },
-    );
+    const r = plan('salona-44-easy-go', AUGUSTENBORG, HOERUPHAV);
     expectRescued(r, 'origin', 988.3);
   });
 
   it('a plan that routes today is returned as the identical object after one call', () => {
-    const r = plan(DEFAULT_BOAT_ID, { p: MARSTAL, id: 'marstal' }, { p: BAGENKOP, id: 'bagenkop' });
+    const r = plan(DEFAULT_BOAT_ID, MARSTAL, BAGENKOP);
     expect(r.result.status).toBe('ok');
     expect(r.spy).toHaveBeenCalledTimes(1);
     expect(r.result).toBe(r.spy.mock.results[0].value);
