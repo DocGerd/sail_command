@@ -34,7 +34,7 @@ import type { LatLon, MaskMeta } from '../types';
 //
 // SCOPE, deliberately narrow — the harbour-reachability assertion, now TWO
 // of them since #1294: connected-when-expected (the original #550 promotion)
-// AND accepted-when-a-boat's-own-gate-genuinely-cannot-reach-it, via
+// AND accepted-when-a-boat's-own-gate-cannot-reach-it-in-the-mask, via
 // EXPECTED_UNREACHABLE_BY_BOAT (both directions — accept and stale — are
 // wired into connectivityFailures() below, since #1294 needs this REQUIRED
 // check to accept a real per-boat gap, not merely record one). Everything
@@ -181,7 +181,7 @@ function readKnownDisconnected(): Set<string> {
 /**
  * #1294 (spec 1135 §13 item 5): `EXPECTED_UNREACHABLE_BY_BOAT` in
  * verify_mask.py, keyed boat id -> harbour ids that boat's own derived gate
- * cuts off (not a data defect — see that dict's own comment). Read directly
+ * cuts off in the mask (a draft limit or a grid limit). Read directly
  * out of the Python source, same twin idiom as `readConnectivityExceptions`/
  * `readKnownDisconnected` above.
  *

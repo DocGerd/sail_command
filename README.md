@@ -247,7 +247,7 @@ data; the code license is covered in the [License](#license) section below.
   by a documented overlay ramp, no faster-sail recommendation is made for
   them. The **Sails aboard** control on the Boat tab (Both | Genoa | Jib)
   lets you plan with only one of the boat's headsails; a plan with one
-  headsail shows no rig comparison. A deeper-drafted boat such as *EASY GO!* cannot reach every harbor
+  headsail shows no rig comparison. A deeper-drafted boat such as *EASY GO!* has harbours the depth data cannot connect
   at its own default safety depth. The origin/destination pickers and the Boat tab mark a
   harbor's access for the selected boat and safety depth — not reachable at
   or above the boat's recommended depth, only via a shallower approach, or a

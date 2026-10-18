@@ -95,8 +95,9 @@ describe('#930 R3: P3 disc-vs-global relaxation trade (shipped findRelaxedGate, 
         const label = `[${c.boatIds.join(',')}] ${pop.name}`;
 
         // #1575: a boat whose relaxation floor is deeper than Marstal's deepest
-        // connecting gate cannot reach it at all — nothing CAN relax, which is
-        // the accepted outcome, so it is pinned here rather than measured.
+        // connecting gate is cut off from Marstal in the mask — nothing CAN
+        // relax; accepted and pinned, and says nothing about the charted
+        // approaches (#1721).
         if (!relaxationTradeFixedReachableAtFloor(pop.fixedId, c.requestedM, c.floorM)) {
           expectRelaxationTradeStranded(rows, label);
           return;

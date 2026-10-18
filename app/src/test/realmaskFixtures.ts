@@ -475,7 +475,8 @@ export function expectRelaxationTradeSubsetConsistency(
  * `planRoute` does) is 4-connected to open water at a UNIFORM `floorM` — the
  * deepest gate relaxation may reach. Derived from the mask, never a hardcoded
  * depth: a boat whose floor is deeper than the harbour's deepest connecting
- * gate genuinely cannot reach it, so no pair involving it can relax.
+ * gate is cut off in the mask (the grid's bottleneck, not necessarily the
+ * charted depth), so no pair involving it can relax.
  */
 export function relaxationTradeFixedReachableAtFloor(
   fixedId: string,
