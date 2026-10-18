@@ -1,7 +1,8 @@
 import type { MaskMeta, PlanRequest, PlanResult, PolarTable, SailId, WindGrid } from '../types';
 import { NavMask } from '../lib/mask';
 import { boatById, type BoatId } from '../data/boats';
-import { planRoute, type PlanDeps } from './planRoute';
+import type { PlanDeps } from './planRoute';
+import { planWithHarborHandover } from './harborHandover';
 
 export type WorkerRequest =
   | {
@@ -16,6 +17,8 @@ export type WorkerRequest =
        * keeps "init once, plan many" true for a multi-boat catalogue.
        */
       polars: Readonly<Record<string, PolarTable>>;
+      /** #1721: harbour ids the handover wrapper must never substitute. */
+      knownDisconnectedHarborIds: readonly string[];
     }
   | {
       type: 'plan';
@@ -86,13 +89,18 @@ export type WorkerResponse =
   | { type: 'fatal'; id: string | null; message: string; stack?: string };
 
 export function createHandler(post: (r: WorkerResponse) => void): (req: WorkerRequest) => void {
-  let state: { mask: NavMask; polars: Readonly<Record<string, PolarTable>> } | null = null;
+  let state: {
+    mask: NavMask;
+    polars: Readonly<Record<string, PolarTable>>;
+    knownDisconnectedIds: ReadonlySet<string>;
+  } | null = null;
   return (req) => {
     try {
       if (req.type === 'init') {
         state = {
           mask: new NavMask(req.maskMeta, new Uint8Array(req.maskBuffer)),
           polars: req.polars,
+          knownDisconnectedIds: new Set(req.knownDisconnectedHarborIds),
         };
         post({ type: 'ready' });
         return;
@@ -130,7 +138,7 @@ export function createHandler(post: (r: WorkerResponse) => void): (req: WorkerRe
         if (table !== undefined) polars[key] = table;
       }
       const deps: PlanDeps = { polars, boat: boatById(req.boatId), mask: state.mask };
-      const result = planRoute(
+      const result = planWithHarborHandover(
         req.request,
         req.windGrid,
         deps,
@@ -152,6 +160,7 @@ export function createHandler(post: (r: WorkerResponse) => void): (req: WorkerRe
             total: p.total,
           }),
         deadline,
+        state.knownDisconnectedIds,
       );
       post({ type: 'result', id: req.id, result });
     } catch (err) {
