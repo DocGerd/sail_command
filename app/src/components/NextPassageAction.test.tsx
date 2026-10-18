@@ -115,6 +115,34 @@ describe('#1707 NextPassageAction', () => {
     expect(button).toHaveAccessibleDescription('Start Marstal · Departure Sun 10:00');
   });
 
+  it('#1711: refreshes the preview when the page becomes visible again', () => {
+    vi.setSystemTime(new Date(2026, 9, 17, 9, 30));
+    renderAction(makePlan(true, new Date(2026, 9, 17, 9, 0).getTime()), false);
+    const button = screen.getByRole('button', { name: 'Plan next passage' });
+    expect(button).toHaveAccessibleDescription('Start Marstal · Departure Sat 10:00');
+
+    vi.setSystemTime(new Date(2026, 9, 17, 10, 30));
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    expect(button).toHaveAccessibleDescription('Start Marstal · Departure Sun 10:00');
+  });
+
+  it('#1711: removes the visibilitychange listener on unmount', () => {
+    const add = vi.spyOn(document, 'addEventListener');
+    const remove = vi.spyOn(document, 'removeEventListener');
+    const { unmount } = renderAction(makePlan(true), false);
+    const added = add.mock.calls.filter(([type]) => type === 'visibilitychange');
+    expect(added).toHaveLength(1);
+    unmount();
+    const removed = remove.mock.calls.filter(([type]) => type === 'visibilitychange');
+    expect(removed).toHaveLength(1);
+    expect(removed[0]?.[1]).toBe(added[0]?.[1]);
+    add.mockRestore();
+    remove.mockRestore();
+  });
+
   it('honours disabled and reports a click otherwise', () => {
     const { onNextPassage, unmount } = renderAction(makePlan(true), true);
     expect(screen.getByRole('button', { name: 'Plan next passage' })).toBeDisabled();
