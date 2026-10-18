@@ -169,7 +169,7 @@ relax:
 | Salona 45 | 2.1 | 3.0 / 2.1 | 40 | marstal (2.3 / 2.3) | — | 5 |
 | Salona 44 SPEEDY GO! | 2.1 | 3.0 / 2.1 | 40 | marstal (2.3 / 2.3) | — | 5 |
 | Elan 444 PIRANJA | 1.9 | 2.8 / 1.9 | 40 | marstal (2.3 / 2.3) | — | 5 |
-| Salona 44 EASY GO! | 2.59 | 3.5 / 2.6 | 37 | faldsled (3.1 / 3.1), rudkoebing (3.4 / 3.4) | marstal (mask bottleneck 2.3 m < floor 2.6 m) | 5 |
+| Salona 44 EASY GO! | 2.59 | 3.5 / 2.6 | 37 | faldsled (3.1 / 3.1), rudkoebing (3.4 / 3.4) | augustenborg (no navigable snap within 300 m), marstal (mask bottleneck 2.3 m < floor 2.6 m) | 5 |
 
 Marstal's 2.3 m is the grid bottleneck at the S-channel buoy-gate cells; EASY GO!'s
 floor (2.6 m) exceeds it, the only binding constraint. Havnelods charts N/W 3.2 m,
