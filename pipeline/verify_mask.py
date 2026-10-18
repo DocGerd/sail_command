@@ -261,19 +261,12 @@ CATALOGUE_BOAT_IDS = {b["id"] for b in CATALOGUE_BOATS}
 # rule is to never overstate navigability.
 SEED_LAT, SEED_LON = 54.8455, 9.5216  # open Flensburg Fjord water
 
-# Per-harbor override for a gate depth below a boat's derived gate, used ONLY
-# when the harbor's own approachNote documents a genuinely shallower
-# approach that the DTM/rasterization can't resolve as deep enough even at the
-# current 46 m cell size - never by fudging the bathymetry. The checks below
-# only verify that an approachNote *exists*; they can't verify the note's text
-# actually supports the chosen number, so treat every entry here as a
-# manual-review item at PR time, cited in the comment next to it (see PR #8,
+# Per-harbor override for a gate depth below a boat's derived gate. Each value
+# is a self-check value below the script's own measured reconnection threshold
+# (printed by the descending sweep), cited in the comment next to it. The checks
+# below only verify that an approachNote *exists*, so treat every entry as a
+# manual-review item at PR time (see PR #8,
 # github.com/DocGerd/sail_command/pull/8, for the full investigation).
-# Values were derived by scanning gate depths against the regenerated mask
-# to find the threshold at which each harbor's snap cell actually reconnects
-# to open water, then rounded down from that measured threshold to match
-# the harbor's own documented figure, so the exception is never more
-# permissive than the source text.
 #
 # #54 spec C.6: keyed by (harbor id, THE BOAT GATE IT WAS JUSTIFIED AGAINST).
 # An exception justified against a 3.0 m gate says nothing about a 3.2 m one -
@@ -342,7 +335,7 @@ KNOWN_DISCONNECTED: dict[str, str] = {
 # boat-SPECIFIC counterpart: a harbour that a shallower boat reaches fine but
 # THIS boat's own derived gate cuts off, because the mask shows less depth than
 # that gate. Whether the mask under-reads a charted approach is a separate
-# question (marstal, #1728). Prerequisite for #573 landing a
+# question (marstal, #1755). Prerequisite for #573 landing a
 # deep-draft hull without every one of its stranded harbours reading as a
 # mask regression.
 #
@@ -633,7 +626,7 @@ for hid, reason in KNOWN_DISCONNECTED.items():
 # harbour id must be real, and a harbour already boat-independently
 # KNOWN_DISCONNECTED needs no per-boat entry too. The stronger EXACTNESS
 # checks (does the boat actually fail to reach it, is a listed harbour still
-# genuinely unreachable) run per-boat below, where the effective gate is known.
+# unreachable) run per-boat below, where the effective gate is known.
 #
 # Extracted to a pure function (#1318) so the three rejections are each
 # independently mutation-provable against a synthetic fixture, mirrored by
@@ -761,16 +754,16 @@ for b in CATALOGUE_BOATS:
         elif hid in KNOWN_DISCONNECTED:
             status = "KNOWN"
         elif hid in expected_unreachable:
-            # #1294 EXACTNESS, accept direction: a per-boat expected gap, not
-            # a data defect - this is the only status EXPECTED_UNREACHABLE_BY_BOAT
-            # entries can produce without an accompanying failure.
+            # #1294 EXACTNESS, accept direction: a per-boat expected gap - this is
+            # the only status EXPECTED_UNREACHABLE_BY_BOAT entries can produce
+            # without an accompanying failure.
             status = "EXPECT"
         else:
             status = "FAIL"
             failures.append(
                 f"CONNECTIVITY {hid} snap ({h['snap']['lat']},{h['snap']['lon']}) not reachable from open "
                 f"water at gate depth {effective_gate_m} m (boat {b['id']}, derived gate {gate_m} m) - "
-                "add an EXPECTED_UNREACHABLE_BY_BOAT entry if this boat's draft genuinely cannot reach it"
+                "add an EXPECTED_UNREACHABLE_BY_BOAT entry if the mask cannot connect it at this boat's gate"
             )
         connectivity_report.append((hid, effective_gate_m, exception_m is not None, status))
 
