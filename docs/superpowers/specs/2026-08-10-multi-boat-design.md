@@ -8,7 +8,7 @@ costs, and classifies every §L row. Read §N before acting on §G.3 rule 2, §J
 today", §L's `[OQ-7]` row, or §M.2 — each is changed or retired by it.
 **Amended 2026-09-30 — see §O.** EASY GO! ships as a fourth catalogue entry at tier C (maintainer ruling, #1575). Read §O before acting on §N's EASY GO! text.
 **Amended 2026-10-15 — see §P, §R, §S.** EASY GO! gets its own tables (jib tier B from a sister hull's ORC certificate, genoa tier C); the user picks the aboard headsails, capped at 2; a spinnaker is specified as en-route-only data (phase 2, with §S); en-route sail changes are designed for after the trip, including genoa↔jib swaps decided with a larger margin and labelled as derived. Read them before acting on §B's spinnaker exclusion, §E, §J OQ-3, §M.6, §M.8, §N.2, §N.6, §N.7 or §O.
-**Amended 2026-10-17 — see §T.** Maintainer ruling (#1716): the two-sail comparison runs for tier-C and mixed-tier boats too, and its ★ is flagged as estimate-based; follow-ups decided 2026-10-18. Read §T before acting on §G.3 rule 2, §L's `[OQ-7]` row, §M.4, §N.4–§N.7, cross-cutting decision 3, §P.0/§P.4/§P.7/§P.9/§P.10, §R.2 D10, §R.4 or §R.5.
+**Amended 2026-10-17 — see §T.** Maintainer ruling (#1716): the two-sail comparison runs for tier-C and mixed-tier boats too, and its ★ is flagged as estimate-based; follow-ups decided 2026-10-18. Read §T before acting on §G.3 rule 2, §J OQ-7, §L's `[OQ-7]` row, §M.4, §N.4, §N.5, §N.6 E6, §N.7, §O's Polars bullet, cross-cutting decision 3, the §P intro, §P.0, §P.4, §P.7, §P.9, §P.10, §P.11, §R.2 D10, §R.4, §R.5 or §R.13 A2.
 **Relationship:** addendum to `2026-07-14-sail-command-design.md` (the source-of-truth design). Where the two conflict, this addendum wins. On everything else — the isochrone algorithm, the maneuver penalty, the #53 relaxation *structure*, #243's comfort preference, #254's sail-speed floor, #282's reason decoupling, #432's budget — the source spec and its existing addenda are unchanged.
 
 The source spec fixes one boat — a Salona 45 with exactly two rigs — in six places, and the constants that fall out of that choice (`BOAT_DRAFT_M = 2.1`, `DEFAULT_SETTINGS.safetyDepthM = 3.0`) are load-bearing for a **safety** property established by PR #476 (#455) that #54 does not mention at all. This addendum supersedes those six places and specifies the generalisation: the data model, the safety invariant, the solver run budget, the persistence migration, and the polar-provenance rule that turns out to be the feature's real constraint. It does **not** design the settings/planner UI surface, which is a separate workstream.
@@ -544,7 +544,7 @@ Stated explicitly so a future reader does not mistake silence for a decision.
 1. **Every fleet draft in §C.5 comes from outside this repository.** The repo contains exactly one draft (`BOAT_DRAFT_M = 2.1`) and no fleet data of any kind. The figures were cross-checked against a second manufacturer source each, but they are **inputs to be re-verified per hull** — and per keel variant — before any boat ships. §C's arithmetic is correct whatever they turn out to be.
 2. ~~**The connectivity ceiling above 3.0 m.**~~ **MEASURED 2026-08-18 — see §N.8, and read §N.8's 2026-09-17 supersession note before quoting any figure from it: that run covered 33 pre-#295 harbours on an exact-snap predicate, and §N.7 carries the snap-aware 40-harbour numbers.** `verify_mask.py` already reports the deepest gate at which each harbour reaches open water; the run resolves 2.8 / 3.0 / 3.2 / 3.4 m and is what made §N.1's scope selectable. The original text, for the record: `verify_mask.py` has only ever run at 3.0 m (plus two lower per-harbour exceptions); how many harbours survive a 3.2 m gate — the gate all three deepest models need — is unmeasured; §C.6's Marstal worked example is derived from the script's own comment, not from a run.
 3. **Whether `app/sweep/` shows any regression from the solve-order plumbing change.** No sweep was run for this document, and per §K it could only show absence of regression at one boat.
-4. **Whether polar uncertainty dominates `RIG_TIE_BAND_MS`** (§G.2). The band was sized against solver noise and never against polar error. Unmeasured, and it decides whether an estimated-polar boat may ever present a `decided` recommendation unqualified — and, per §N.7, running it must be paired with a check that the two tables are not a deterministic function of one another, or it reports "does not dominate" for a comparison that is vacuous rather than noisy. *Amended 2026-10-17 (§T.6):* never measured, and waived for tier C by maintainer ruling (2026-10-18); tier-C `decided` verdicts ship flagged as estimate-based.
+4. **Whether polar uncertainty dominates `RIG_TIE_BAND_MS`** (§G.2). The band was sized against solver noise and never against polar error. Unmeasured, and it decides whether an estimated-polar boat may ever present a `decided` recommendation unqualified — and, per §N.7, running it must be paired with a check that the two tables are not a deterministic function of one another, or it reports "does not dominate" for a comparison that is vacuous rather than noisy. *Amended 2026-10-17 (§T.6):* never measured, and waived for tier C by maintainer decision (2026-10-18, §T.10); tier-C `decided` verdicts ship flagged as estimate-based.
 5. **The `VersionError` behaviour in §I.2 is derived** from IndexedDB's origin-scoping and `db()`'s promise caching, not observed in a browser here. It is standard platform behaviour and the code path reads plainly, but the decision against a version bump rests on it.
 6. **Whether ORC certificates exist for the fleet.** A targeted database search returned nothing for all nine models — **weak** evidence, a negative search result rather than an absence proof. §G.3 rule 4 recommends asking the operator directly before treating tier C as the only option; this is the substance of the open OQ-6. **Re-tested 2026-08-18 and the negative is now better characterised, though still not an absence proof:** ~~ORC's machine-readable endpoint serves CertType 2+3 only, which excludes every Non-Spinnaker certificate — i.e. exactly the white-sail configuration this app needs. So the corpus that was searched could not have contained a usable certificate even if one exists.~~ **Corrected 2026-10-15 (§P.2):** the endpoint does serve Non-Spinnaker certificates: `…WPub.dll?action=DownRMS&CountryId=<NatAuth>&Family=NS&ext=json` returns them (e.g. `CountryId=TUR`: the Salona 44 SANTA ANASTASIA). It serves current-year certificates only. No 2026 ORC, NS or DH certificate for EASY GO! or SPEEDY GO! was found by name under the national authorities scanned; that is still not an absence proof, since older certificates are invisible. Record counts are snapshots, never quoted as exact. `data.orc.org`'s own certificate lookup is form/JS-driven and was not reachable programmatically; a human searching that UI remains the cheapest test.
 
@@ -735,11 +735,11 @@ difference itself**, not merely omit the ranking (§N.5). *2026-10-17:* the app 
 requirement carries over as verdict copy saying the ranking rests on estimated data (§T.4), with the ramp explanation
 in the genoa notes (§P.7).
 
-**§L's `[OQ-7]` clause R-b (*"the comparison would be an estimate of an estimate"*) is answered by
-suppression, not by removal** — the earlier one-sail option would have removed the claim outright
+**§L's `[OQ-7]` clause R-b (*"the comparison would be an estimate of an estimate"*) ~~is answered by
+suppression, not by removal~~** *(2026-10-17, §T: no longer suppressed; R-b is an accepted cost)* — the earlier one-sail option would have removed the claim outright
 and was not taken. Clause R-a (*"a stronger claim than the app makes anywhere else"*) is **partly
 answered and partly an accepted cost**: labelled at plan time, framed as indicative, banded, and
-with the strongest sub-claim withdrawn — but the ETA remains a speed claim about the boat the user
+~~with the strongest sub-claim withdrawn~~ *(2026-10-17, §T: the faster-sail claim is shown, flagged)* — but the ETA remains a speed claim about the boat the user
 is sailing, derived from a table nobody measured against that hull. No label converts it into a
 measurement. That residue is the cost of the overrule.
 
@@ -919,16 +919,16 @@ versioned section at the cut, so the fragment must be re-scoped or held back wit
   note's 23-boat ratio study coefficients are **not in this repository**), and licence/ToU for
   redistributing certificate-derived tables in a public app.
   *Amended 2026-10-15 (§P), EASY GO!'s `fock` only:* (1) donor identity: a named hull, ORC-measured draft recorded, deep keel inferred from that draft (the certificate has no keel field); (2) discharged, the donor is a Non-Spinnaker certificate; (3) proceeds for the derived tables on the Salona 45 precedent (ORC certificate AUT 035/26: values plus a note); the committed source records go beyond that precedent and rest on the maintainer's acceptance. Not a release gate; ORC's reply is open (§P.12). The genoa stays tier C (§N.4), so the deterministic-pair check never applies to it.
-- **§M.4's tie-band measurement.** **Discharged by construction here, not waived**: it gates
+- **§M.4's tie-band measurement.** ~~**Discharged by construction here, not waived**~~: it gates
   whether an estimated-polar boat may present a **`decided` verdict**, and a boat presenting
-  `not-compared` presents none. It becomes a hard prerequisite again the moment a tier-C `decided`
+  `not-compared` presents none. ~~It becomes a hard prerequisite again the moment a tier-C `decided`
   verdict is proposed — and must then be paired with a check that the two tables are **not a
   deterministic function of one another**, because perfectly correlated perturbations would make
-  §M.4 report *"uncertainty does not dominate"* for a comparison that is vacuous rather than noisy.
+  §M.4 report *"uncertainty does not dominate"* for a comparison that is vacuous rather than noisy.~~
   The criterion measures noise; that defect is vacuity.
   *Amended 2026-10-17 (§T.6):* a tier-C `decided` verdict now ships, flagged as estimate-based. Both prerequisites are
   **waived by ruling, not satisfied**: the deterministic-dependence check by the 2026-10-17 ruling (it would fail for
-  all three tier-C genoas, each its jib × the Salona 45 ramp), and §M.4's measurement for tier C by the maintainer, 2026-10-18.
+  all three tier-C genoas, each its jib × the Salona 45 ramp), and §M.4's measurement for tier C by maintainer decision (2026-10-18, §T.10).
 
 ### N.8 Corrections to earlier sections
 
@@ -1029,7 +1029,7 @@ Supersedes §O's *Polars* bullet, §N.6's EASY GO! anchor exemption, §M.6's end
 | `genoa` | C `estimated` (§N.4) | `fock` × Salona 45 genoa/fock ratio, clamped at 1 | 1 — pre-trip |
 | `spinnaker` | B `modelled` | symmetric kite with pole, **en route only**, TWA 110–180°, TWS 6–20 kn | 2 — with §S |
 
-The genoa is tier C by the user's ruling and §N.4's definition, so ~~existing suppression,~~ boat chip and §N.5 surface cover EASY GO! with no new code or string. *2026-10-17 (§T):* its comparison runs and is flagged; with the clamp the genoa is never slower than the jib in any cell, so the ★ is expected to name the genoa or read `tie` (a jib ★ would be a search artefact, #1303 class). Phase 2 waits for §S, because nothing else reads a spinnaker table. `polarProvenance.test`'s "every declared sail is claimed" row: an unconsumed table would red that row once P.9 extends it to `downwindSails`.
+The genoa is tier C by the user's ruling and §N.4's definition, so ~~existing suppression,~~ boat chip and §N.5 surface cover EASY GO! ~~with no new code or string~~. *2026-10-17 (§T):* its comparison runs and is flagged (§T.4 adds the strings); with the clamp the genoa is never slower than the jib in any cell, so the ★ is expected to name the genoa or read `tie`/`moot` (a jib ★ would be a search artefact, #1303 class). Phase 2 waits for §S, because nothing else reads a spinnaker table. `polarProvenance.test`'s "every declared sail is claimed" row: an unconsumed table would red that row once P.9 extends it to `downwindSails`.
 
 ### P.1 Decisions
 
@@ -1190,7 +1190,7 @@ Same PR, outside the spec:
 | boats.test.ts EASY GO! draft row | its toContain('The operator’s page for this boat gives 2.55 m') pin must match the reworded note; amended deliberately, never deleted |
 | `realmaskFixtures.ts` | EASY GO! keys point at its own two assets; comment rewritten (closure file, covered by the owed sweep) |
 | Sweep (#282) | `app/public/data/**`, `pipeline/**`, `boats.ts` are in the closure: OWED. Prediction, posted before the run: every arm byte-identical BASE vs HEAD (no arm names EASY GO!; `PlanRequest` untouched). Falsifier: any arm hash moves. No duration quoted. **Fallback:** sweep or CI not green by ~19 Oct ⇒ this does not ship; EASY GO! stays on SPEEDY GO!'s tables. |
-| Persisted plans | `recalc`/`replan`/`reroute` reuse the stored snapshot while the worker solves with `boatById` (`protocol.ts`): a recalculated pre-amendment plan uses the new tables with its old notes. **Accepted 2026-10-15:** no snapshot refresh (#538 hazard). Tier and verdict still agree (`not-compared`, estimated label); only note text differs. *2026-10-17 (§T.5):* a recalculated pre-§T plan gets the flagged verdict while its snapshot note still says "withheld"; accepted on the same precedent (maintainer, 2026-10-18). |
+| Persisted plans | `recalc`/`replan`/`reroute` reuse the stored snapshot while the worker solves with `boatById` (`protocol.ts`): a recalculated pre-amendment plan uses the new tables with its old notes. **Accepted 2026-10-15:** no snapshot refresh (#538 hazard). ~~Tier and verdict still agree (`not-compared`, estimated label); only note text differs.~~ *2026-10-17 (§T.5):* a recalculated pre-§T plan gets the flagged verdict while its snapshot note still says the comparison is withheld; accepted on the same precedent (§T.10). |
 
 ### P.10 Acceptance
 
@@ -1206,7 +1206,7 @@ Same PR, outside the spec:
 10. Headsail anchors (polargraph Jib about ±10 %, rounded to 0.05 kn): A1 52°/12 `[7.3, 8.9]`; A2 90°/8 `[6.8, 8.35]`; A3 135°/10 `[5.5, 6.8]`; A4 180°/12 `[5.4, 6.6]`. Polargraph 8.10/7.56/6.14/6.00; fock 7.92/7.27/6.60/5.88; genoa 7.96/7.48/6.70/5.94. They catch an index or unit slip, not this boat's error. A3 leaves 0.05 kn over the genoa against the exact bound: a > ~1.5 % genoa rise at 10 kn re-derives A3.
 11. Genoa ≥ fock everywhere; equal at 16/20/25 kn (all rows) and 14 kn (rows 35–120); strictly greater at 4–12 kn and at 14 kn rows 135–180; 56 cells identical. Mutation: no clamp puts nine 25 kn cells below the fock.
 12. `boatById('salona-44-easy-go').sails` is exactly `genoa` (`estimated`), `fock` (`modelled`); notes pass D6 and #595; no `downwindSails` in phase 1.
-13. ~~`planRoute` for EASY GO! is `not-compared`~~ *(superseded by §T.8 row 1)*, `weakestPolarTier` reads `estimated`, no UI string added.
+13. ~~`planRoute` for EASY GO! is `not-compared`~~ *(superseded by §T.8 row 1)*, `weakestPolarTier` reads `estimated`, ~~no UI string added~~ *(§T.4 adds strings)*.
 14. A pre-amendment-snapshot fixture, recalculated, renders ~~`not-compared`~~ the flagged verdict (§T) and the estimated label; assert the loaded polar asset path, not the snapshot.
 15. The picker renders the new notes at ≥ 820 px without horizontal overflow.
 16. Sweep: all arms byte-identical BASE vs HEAD.
@@ -1302,7 +1302,7 @@ export function usePersistedSailInventory(boatId: BoatId): [SailInventory, { set
 3. Any requested sail unrouted ⇒ `not-compared`, as `route.rigOneFailed` at N = 2; a failure can be a false `unreachable` (`docs/spikes/1168-motor-off-prune-instability.md`).
 4. Else `compareSails(all)`: all all-motor ⇒ `moot`; `f` = least `etaMs` (solve order on ties); `T` = others within `RIG_TIE_BAND_MS` of `f`; `T` empty ⇒ `decided(f)`, else `tie` with `among = [f, …T]` only if shorter than the full set.
 
-`recommended` = `f`, or for `not-compared` the first routed sail. **N = 2 reduction:** rule 4 equals `compareRigs` and never emits `among`; rules 1–3 select `not-compared` exactly when today's gate fails (after §T: undeclared, unrouted or budget-cut). S3 also: `tie.among?`; `validRigRecommendation` keeps `among` only as a ≥ 2 string array of routed sails, else degrades to `not-compared` (#578); `renderRigVerdict` never names a failed sail; `sailLabelKey` via `Object.hasOwn`.
+`recommended` = `f`, or for `not-compared` the first routed sail. **N = 2 reduction:** rule 4 equals `compareRigs` and never emits `among`; rules 1–3 select `not-compared` exactly when today's gate fails. S3 also: `tie.among?`; `validRigRecommendation` keeps `among` only as a ≥ 2 string array of routed sails, else degrades to `not-compared` (#578); `renderRigVerdict` never names a failed sail; `sailLabelKey` via `Object.hasOwn`.
 
 ### R.5 What EASY GO! shows
 
@@ -1353,7 +1353,7 @@ Nothing but a whole-route headsail may enter `sails[]`, in any build. D2's types
 ### R.13 Acceptance
 
 - **A1 (S3)** `compareSails([a, b])` = `compareRigs`'s pinned literals; property test against a frozen copy of today's `compareRigs` (#50).
-- **A2 (S3)** hand-derived N = 3 table (cap raised in test): decided; strict-subset tie (`among`); all tied (no `among`); moot; one no-route ⇒ `not-compared`; pass-2 budget cut ⇒ `not-compared`, `comparisonComplete: false`; any tier C ⇒ verdict computed and flagged (§T). Renders never name a failed sail; `sailLabelKey` over every `Object.getOwnPropertyNames(Object.prototype)` member → `route.rig.unknown`.
+- **A2 (S3)** hand-derived N = 3 table (cap raised in test): decided; strict-subset tie (`among`); all tied (no `among`); moot; one no-route ⇒ `not-compared`; pass-2 budget cut ⇒ `not-compared`, `comparisonComplete: false`; any tier C ⇒ the verdict is computed exactly as for tier A/B (the flag is §T.3's, view-side). Renders never name a failed sail; `sailLabelKey` over every `Object.getOwnPropertyNames(Object.prototype)` member → `route.rig.unknown`.
 - **A3 Identity.** Per boat at default inventory, request = a fixture from today's path. S4: `derivedFrom` exactly where the catalogue declares it; `boatSnapshot` idempotent; a boat with no downwind sail aboard yields the same request as without the sail.
 - **A4 Containment.** Scan rows (S1): `sails[]` assets lack `valid` and `kind: 'downwind'`; `downwindSails` assets have both. Type row (S4): `@ts-expect-error` — a downwind id is not a `SailId`. Mutation at BASE and HEAD: a downwind asset moved into `sails[]` reds exactly the scan row.
 - **A5 Catalogue.** `boats.test.ts` fails on 0 or > `MAX_HEADSAILS` headsails (S1), and (S4) on a `derivedFrom` naming no same-boat `sails[]` entry. S4 twin in `polarProvenance.test.ts` per R.3's mapping, each case mutation-checked.
@@ -1630,13 +1630,13 @@ Shows where another aboard sail beats the displayed headsail's route by more tha
 
 ## T. Amendment 2026-10-17 — the tier-C comparison is shown, flagged as estimate-based (#1716)
 
-**Status:** maintainer ruling 2026-10-17 (#1716), quoted: *"compare rigs and show the ★ also when a sail's polars are tier C (`estimated`), flagged as based on estimates — overruling the suppression in … §N.4 (also E6, §S D10, and the §N.7 deterministic-dependence prerequisite)."* "§S D10" there means §R.2 D10; §S D10 is unrelated and unchanged. The follow-up questions were decided by the maintainer on 2026-10-18 (T.10). Every other §N/§O/§P/§R/§S decision stands.
+**Status:** maintainer ruling 2026-10-17 (#1716), quoted: *"compare rigs and show the ★ also when a sail's polars are tier C (`estimated`), flagged as based on estimates — overruling the suppression in … §N.4 (also E6, §S D10, and the §N.7 deterministic-dependence prerequisite)."* "§S D10" there means §R.2 D10; §S D10 is unrelated and unchanged. The ruling is in #1716's issue body; the follow-up decisions of 2026-10-18 are in https://github.com/DocGerd/sail_command/issues/1716#issuecomment-6255142304 (T.10). Every other §N/§O/§P/§R/§S decision stands.
 
 ### T.1 What changes for the user
 SPEEDY GO! and PIRANJA (both sails C) and EASY GO! (jib B, genoa C) get a ★ and a faster/tie/moot verdict, like the Salona 45. A `decided` or `tie` verdict on these boats says it is an estimate. The Salona 45 is unchanged: it has no estimated sail, and OQ-R2 stays separate.
 
 ### T.2 Verdict
-`comparisonSuppressed` keeps only its fail-closed clause: a requested sail the boat does not declare. `compareRigs` is unchanged. `RIG_TIE_BAND_MS` stays at 60 s for estimate-based verdicts too (maintainer, 2026-10-18). All other `not-compared` causes stay: one sail requested, more than two (the §R.4 throw), one sail unrouted, a budget cut. `recommended` follows the verdict as it does for the Salona 45 today: the decided sail, or the earlier ETA on `tie`/`moot`. A tier-C plan's `recommended` can therefore move from the first solved sail to the other.
+`comparisonSuppressed` keeps only its fail-closed clause: a requested sail the boat does not declare. `compareRigs` is unchanged. `RIG_TIE_BAND_MS` stays at 60 s for estimate-based verdicts too (maintainer, 2026-10-18). All other `not-compared` causes stay: one sail requested, or a requested sail unrouted (a budget-cut sail is one). N ≥ 3 is a `worker-fatal` throw (§R.4), not a verdict. `recommended` follows the verdict as it does for the Salona 45 today: the decided sail, or the earlier ETA on `tie`/`moot`. A tier-C plan's `recommended` can therefore move from the first solved sail to the other.
 
 ### T.3 The flag
 `rigEstimateBased(plan): boolean` in `lib/plan.ts` is the single source for every surface. It is true iff `rigRecommendationOf(plan.result).kind` is `decided` or `tie` and at least one compared sail (`plan.result.sails[].sailId`) is `estimated` in `plan.request.boat.sails[].polarProvenance.tier`. A compared sail absent from the snapshot also counts, so the check fails closed. It reads only the by-value snapshot (§I.3), never the catalogue.
@@ -1663,7 +1663,7 @@ Decided by the maintainer, 2026-10-18:
 - The tab ★ keeps its plain glyph and carries the flag only in its accessible name and `title`.
 - The plans-list chip is flagged through a derived `PlanSummary` boolean, computed in `summarizePlanRecord`. This is a list-row shape, not persisted.
 
-`moot` keeps `route.rigMoot` and is not flagged. Both `renderRigVerdict` and the `decided` branch route through `rigEstimateBased`, so no surface can render `route.fasterRig` or `route.rigTie` for a flagged plan.
+`moot` keeps `route.rigMoot` and is not flagged. `renderRigVerdict` takes no plan today, so it gains an `estimateBased: boolean` parameter and `ResultSummary` an `estimateBased` field; callers fill both from `rigEstimateBased(plan)`, so no surface renders `route.fasterRig` or `route.rigTie` for a flagged plan.
 
 The ramp explanation stays in each tier-C genoa's `polarProvenance.note` (§P.7 wording, applied to all three). A UI string asserting "ramp" would be false for a future tier-C pair estimated independently, while "estimated" is true by definition (§G.3 row C).
 
@@ -1678,21 +1678,21 @@ Both are **waived by ruling, not satisfied**:
 The estimate flag is the substitute disclosure. §M.4 stays unmeasured.
 
 ### T.7 Sweep (owed)
-`planRoute.ts`, `boats.ts` and `app/public/data/polars/*` are in the #282 closure; confirm with `closure.mjs diff <merge-base> <head>`. The arms naming a tier-C boat are `salona44-breeze` and `salona44-relaxation`, both `salona-44-speedy-go`. No arm names PIRANJA or EASY GO!, so their verdict change goes unswept (§P.12 Q6).
+`planRoute.ts`, `boats.ts` and `app/public/data/polars/*` are in the #282 closure; confirm with `closure.mjs diff <merge-base> <head>`. The arms naming a tier-C boat are `salona44-breeze` and `salona44-relaxation`, both `salona-44-speedy-go`. No arm names PIRANJA or EASY GO!, so their verdict change goes unswept.
 
 **Pre-registered:**
 - Every other arm is byte-identical BASE vs HEAD.
 - In the two `salona44-*` arms, rows with fewer than two solved sails are byte-identical.
 - Rows with two solved sails differ only in `rigRecommendation` (`not-compared` to `decided`, `tie` or `moot`) and possibly `recommended`.
 - The genoa-note edits move no byte: rows serialise neither `request` nor a polar `source`.
-- At those arms' uniform 12 kn wind the §P.4 ramp is ≥ 0, so no `decided` naming the jib is expected. A jib ★ there would be a prune artefact (#1303) to investigate, not proof of a code defect.
+- At those arms' uniform 12 kn wind SPEEDY GO!'s genoa is ≥ its jib in every cell (its unclamped §N.4 ramp falls below 1 only at 25 kn), so no `decided` naming the jib is expected. A jib ★ there would be a prune artefact (#1303) to investigate, not proof of a code defect.
 
 **Required implementation item — a new `compare.mjs` mode.** Working name `--estimated-verdict-unsuppressed`; ORDER-SENSITIVE: BASE, then HEAD. Today `--rig-verdict-change` admits only `decided` → `not-compared` with fewer than two solved, and `canonicalize.mjs` refuses the reverse. The new mode makes two assertions, mirroring #553:
 1. Every row compares equal with `rigRecommendation` **and** `recommended` elided.
 2. Every changed row:
    - is in an arm of the allowed set;
    - went from `not-compared` to `decided`, `tie` or `moot`, with exactly two non-null results and `comparisonComplete: true`;
-   - has a HEAD verdict and `recommended` equal to a re-derivation from the row's own two `RigResult`s: all-motor ⇒ `moot`; `|Δeta| < RIG_TIE_BAND_MS` ⇒ `tie`; else the earlier ETA.
+   - has a HEAD verdict and `recommended` equal to a re-derivation from the row's own two `RigResult`s: all-motor ⇒ `moot`; `|Δeta| < RIG_TIE_BAND_MS` ⇒ `tie`; else `decided` on the earlier ETA. `recommended` = the decided sail, else the earlier ETA, `sails[0]` on equality.
 
 Rows carry no `request.boat`, so the allowed arm set comes from an import-free export (the `armNames.ts` pattern), pinned by a vitest row against `sweepArms.ts` `boatId` × `boats.ts` tiers. The 60 s twin is pinned against `planRoute.ts`.
 
@@ -1724,7 +1724,7 @@ Positive controls, in `canonicalize.test.mjs`:
 | Refreshing snapshot notes on recalculation | #538 hazard; maintainer, 2026-10-18: accept the stale note (§P.9 precedent). |
 
 ### T.10 Decisions of 2026-10-18 (formerly open)
-All by the maintainer, 2026-10-18:
+Recorded at https://github.com/DocGerd/sail_command/issues/1716#issuecomment-6255142304:
 - Tie band: keep 60 s (T.2).
 - §M.4: waived for tier C (T.6).
 - Plans-list chip: flagged (T.4).
