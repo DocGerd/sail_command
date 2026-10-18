@@ -74,6 +74,7 @@ const INIT_ASSETS = {
     [polarKey('salona-45', 'genoa')]: TEST_POLAR,
     [polarKey('salona-45', 'fock')]: FOCK,
   },
+  knownDisconnectedHarborIds: [],
 };
 
 const PLAN_REQUEST: PlanRequest = {

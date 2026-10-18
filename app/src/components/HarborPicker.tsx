@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useId,
   useLayoutEffect,
@@ -12,6 +13,7 @@ import { useLang, useT, type Lang } from '../i18n';
 import type { MsgKey } from '../i18n/dict.de';
 import {
   findLowerSettingHint,
+  harborAccessAt,
   type HarborAccessByHarbor,
   type HarborAccessState,
   type HarborWithReachability,
@@ -20,6 +22,7 @@ import {
 import type { NavMask } from '../lib/mask';
 import type { BoatDef } from '../data/boats';
 import { formatDepthM } from '../lib/depthDisclosure';
+import { defaultSafetyDepthM, minSafetyDepthM } from '../lib/boatDepth';
 
 // #652: `knownDisconnected` is a build-generated field (pipeline/
 // build_harbors.mjs, sourced from pipeline/verify_mask.py's
@@ -75,6 +78,8 @@ export interface HarborPickerProps {
   // endpoint row (§5.3) — computing it once per (mask, harbors, boat, gate)
   // via `computeHarborAccess`'s own memoisation, never per option render.
   harborAccess?: HarborAccessByHarbor | null;
+  // #1721: the checked gate range over which a harbour is unreachable, or null.
+  unreachableBandOf?: (harborId: string) => UnreachableBand | null;
   mask?: NavMask | null;
 }
 
@@ -128,6 +133,7 @@ export function harborAccessCopy(
   boat: BoatDef | undefined,
   safetyDepthM: number | undefined,
   lang: Lang,
+  band?: UnreachableBand | null,
 ): { key: MsgKey; vars?: Record<string, string | number> }[] {
   if (state === 'known-disconnected') return [{ key: 'harborPicker.knownDisconnected' }];
   if (!boat || safetyDepthM === undefined) return [];
@@ -135,6 +141,19 @@ export function harborAccessCopy(
     return [{ key: 'harborPicker.boatShallow', vars: { boat: boat.name } }];
   }
   if (state === 'unreachable') {
+    // #1721: unreachable at every 0.1 m gate in `band` (see unreachableBand).
+    if (band) {
+      return [
+        {
+          key: 'harborPicker.boatUnreachableAcrossRange',
+          vars: {
+            boat: boat.name,
+            min: formatDepthM(band.minM, lang),
+            max: formatDepthM(band.maxM, lang),
+          },
+        },
+      ];
+    }
     const lines: { key: MsgKey; vars?: Record<string, string | number> }[] = [
       {
         key: 'harborPicker.boatUnreachable',
@@ -157,6 +176,140 @@ export function harborAccessCopy(
     return lines;
   }
   return [];
+}
+
+/** Gates (m) over which a harbour was checked and found unreachable. */
+export interface UnreachableBand {
+  readonly minM: number;
+  readonly maxM: number;
+}
+
+interface BandScan {
+  readonly minDm: number;
+  readonly maxDm: number;
+  dm: number;
+  result: UnreachableBand | null | undefined;
+}
+
+const bandScans = new WeakMap<NavMask, Map<string, BandScan>>();
+
+function bandScanOf(mask: NavMask, boat: BoatDef, harborId: string, liveGateM: number): BandScan {
+  const minDm = Math.round(minSafetyDepthM(boat) * 10);
+  const maxDm = Math.max(minDm, Math.round(Math.max(defaultSafetyDepthM(boat), liveGateM) * 10));
+  const key = `${boat.id}|${harborId}|${maxDm}`;
+  let perMask = bandScans.get(mask);
+  if (!perMask) {
+    perMask = new Map();
+    bandScans.set(mask, perMask);
+  }
+  let scan = perMask.get(key);
+  if (!scan) {
+    scan = { minDm, maxDm, dm: minDm, result: undefined };
+    perMask.set(key, scan);
+  }
+  return scan;
+}
+
+/**
+ * #1721: the band `[minSafetyDepthM, max(defaultSafetyDepthM, liveGateM)]` when
+ * the harbour reads `unreachable` at EVERY 0.1 m gate in it, else null;
+ * undefined while the scan is unfinished. The state is not monotone in the
+ * gate, so every step is checked, one flood per gate (shared with
+ * `computeHarborAccess`), and the scan stops at the first reachable gate.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function peekUnreachableBand(
+  mask: NavMask,
+  boat: BoatDef,
+  harborId: string,
+  liveGateM: number,
+): UnreachableBand | null | undefined {
+  return bandScanOf(mask, boat, harborId, liveGateM).result;
+}
+
+/** Checks one more gate of the scan; returns the result once it is known. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function stepUnreachableBand(
+  mask: NavMask,
+  harbors: readonly HarborWithReachability[],
+  boat: BoatDef,
+  harborId: string,
+  liveGateM: number,
+): UnreachableBand | null | undefined {
+  const scan = bandScanOf(mask, boat, harborId, liveGateM);
+  if (scan.result !== undefined) return scan.result;
+  const harbor = harbors.find((h) => h.id === harborId);
+  if (!harbor || harborAccessAt(mask, harbor, boat, scan.dm / 10) !== 'unreachable') {
+    scan.result = null;
+  } else if (scan.dm >= scan.maxDm) {
+    scan.result = { minM: scan.minDm / 10, maxM: scan.maxDm / 10 };
+  } else {
+    scan.dm++;
+  }
+  return scan.result;
+}
+
+/** The whole scan at once; tests and callers off the render path. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function unreachableBand(
+  mask: NavMask,
+  harbors: readonly HarborWithReachability[],
+  boat: BoatDef,
+  harborId: string,
+  liveGateM: number,
+): UnreachableBand | null {
+  let result = peekUnreachableBand(mask, boat, harborId, liveGateM);
+  while (result === undefined)
+    result = stepUnreachableBand(mask, harbors, boat, harborId, liveGateM);
+  return result;
+}
+
+/**
+ * Scans the given harbours one gate per macrotask, so no render waits on a
+ * flood. The returned lookup yields null until a scan has finished; its
+ * identity changes whenever one does.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function useUnreachableBandOf(
+  mask: NavMask | null,
+  harbors: readonly HarborWithReachability[],
+  boat: BoatDef,
+  liveGateM: number,
+  harborIds: readonly string[],
+): (harborId: string) => UnreachableBand | null {
+  const [finished, setFinished] = useState(0);
+  const idsKey = harborIds.join('|');
+  useEffect(() => {
+    if (!mask || idsKey === '') return;
+    const ids = idsKey.split('|');
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const step = () => {
+      if (cancelled) return;
+      const id = ids.find((x) => peekUnreachableBand(mask, boat, x, liveGateM) === undefined);
+      if (id === undefined) {
+        // Another hook instance may have finished these scans: refresh the lookup.
+        setFinished((n) => n + 1);
+        return;
+      }
+      if (stepUnreachableBand(mask, harbors, boat, id, liveGateM) !== undefined) {
+        setFinished((n) => n + 1);
+      }
+      timer = setTimeout(step, 0);
+    };
+    timer = setTimeout(step, 0);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [mask, harbors, boat, liveGateM, idsKey]);
+  return useCallback(
+    (harborId: string) =>
+      mask ? (peekUnreachableBand(mask, boat, harborId, liveGateM) ?? null) : null,
+    // `finished` re-keys the lookup so consumers recompute when a scan completes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [mask, boat, liveGateM, finished],
+  );
 }
 
 /** §5.2: the per-option access state, `known-disconnected` derived from
@@ -269,6 +422,7 @@ export default function HarborPicker({
   boat,
   safetyDepthM,
   harborAccess,
+  unreachableBandOf,
   mask,
 }: HarborPickerProps) {
   const [query, setQuery] = useState('');
@@ -439,7 +593,14 @@ export default function HarborPicker({
               access === 'unreachable' && mask && boat && safetyDepthM !== undefined
                 ? findLowerSettingHint(mask, h, boat, safetyDepthM)
                 : null;
-            const accessLines = harborAccessCopy(access, hint, boat, safetyDepthM, lang);
+            const accessLines = harborAccessCopy(
+              access,
+              hint,
+              boat,
+              safetyDepthM,
+              lang,
+              access === 'unreachable' ? unreachableBandOf?.(h.id) : null,
+            );
             return (
               <li
                 key={h.id}

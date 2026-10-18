@@ -20,6 +20,9 @@ import RouteSummary from './RouteSummary';
 import { boatById, DEFAULT_BOAT_ID, polarKey } from '../data/boats';
 import { boatSnapshot, defaultBoatSnapshot } from '../types';
 import { PLAN_SCHEMA_VERSION } from '../types';
+import { withHarborHandover, type HarborHandoverEnds } from '../lib/harborHandover';
+import { en } from '../i18n/dict.en';
+import { de } from '../i18n/dict.de';
 
 const mockedLoad = vi.mocked(loadRoutingAssets);
 
@@ -1150,5 +1153,96 @@ describe('#651: legs-table marker for a MARGINAL (non-relaxed) leg', () => {
     expect(row?.querySelector('.chip-shallow-cautious')?.textContent).toBe(
       'cautious: as low as 2.1 m',
     );
+  });
+});
+
+// #1721: a plan routed from/to a handover point. The depth walks cover the
+// computed legs only, so the "clear" line and the confinement sentence must say
+// so. Flags only (the snaps stay on the harbour), which is enough for the
+// copy branches: the flag is what selects them.
+function withHandover(plan: Plan, ends: HarborHandoverEnds): Plan {
+  return { ...plan, result: withHarborHandover(plan.result, ends) };
+}
+
+async function renderPlan(plan: Plan, lang: 'de' | 'en' = 'en') {
+  localStorage.setItem('sc-lang', lang);
+  const { container } = render(
+    <I18nProvider>
+      <RouteSummary plan={plan} rig="genoa" onRigChange={vi.fn()} />
+    </I18nProvider>,
+  );
+  await waitFor(() => expect(mockedLoad).toHaveBeenCalled());
+  await act(async () => {});
+  return container;
+}
+
+describe('#1721: depth copy on a plan with a harbour handover', () => {
+  it('says the CLEAR line covers the computed route, never the whole route', async () => {
+    mockedLoad.mockResolvedValue(deepMask());
+    const container = await renderPlan(
+      withHandover(makeNonRelaxedPlan([EXPOSURE_LEG]), { origin: true }),
+    );
+    const notice = container.querySelector('.depth-clear-notice');
+    expect(notice?.textContent).toBe(
+      en['route.marginal.clearComputed'].replace('{requested}', '3.0'),
+    );
+    expect(container.textContent).not.toContain(
+      en['route.marginal.clear'].replace('{requested}', '3.0'),
+    );
+  });
+
+  it('keeps the unqualified CLEAR line on a plan without a handover (control)', async () => {
+    mockedLoad.mockResolvedValue(deepMask());
+    const container = await renderPlan(makeNonRelaxedPlan([EXPOSURE_LEG]));
+    expect(container.querySelector('.depth-clear-notice')?.textContent).toBe(
+      en['route.marginal.clear'].replace('{requested}', '3.0'),
+    );
+    expect(container.textContent).not.toContain(en['route.marginal.clearComputed'].slice(0, 40));
+  });
+
+  it('renders the German computed-route line', async () => {
+    mockedLoad.mockResolvedValue(deepMask());
+    const container = await renderPlan(
+      withHandover(makeNonRelaxedPlan([EXPOSURE_LEG]), { destination: true }),
+      'de',
+    );
+    expect(container.querySelector('.depth-clear-notice')?.textContent).toBe(
+      de['route.marginal.clearComputed'].replace('{requested}', '3,0'),
+    );
+  });
+
+  it('mounts the harbour-approach notice in the results card, and not without a handover', async () => {
+    mockedLoad.mockResolvedValue(deepMask());
+    const withNotice = await renderPlan(
+      withHandover(makeNonRelaxedPlan([EXPOSURE_LEG]), { origin: true }),
+    );
+    expect(withNotice.querySelector('.harbor-handover-notice')?.textContent).toContain(
+      en['route.handover.title'],
+    );
+    cleanup();
+    const without = await renderPlan(makeNonRelaxedPlan([EXPOSURE_LEG]));
+    expect(without.querySelector('.harbor-handover-notice')).toBeNull();
+  });
+
+  it('uses the handover confinement wording on a relaxed plan whose shallow cells are confined', async () => {
+    mockedLoad.mockResolvedValue(confinedShallowMask());
+    const container = await renderPlan(withHandover(makePlan([EXPOSURE_LEG]), { origin: true }));
+    await waitFor(() => {
+      expect(container.querySelector('.shallow-warning__detail')?.textContent).toMatch(/nm/);
+    });
+    const text = container.querySelector('.shallow-warning__detail')?.textContent ?? '';
+    expect(text).toContain(en['route.shallow.confinedHandover'].replace('{radius}', '1.0 nm'));
+    expect(text).not.toContain('of your origin, destination or waypoints');
+  });
+
+  it('keeps the ordinary confinement wording without a handover (control)', async () => {
+    mockedLoad.mockResolvedValue(confinedShallowMask());
+    const container = await renderPlan(makePlan([EXPOSURE_LEG]));
+    await waitFor(() => {
+      expect(container.querySelector('.shallow-warning__detail')?.textContent).toMatch(/nm/);
+    });
+    const text = container.querySelector('.shallow-warning__detail')?.textContent ?? '';
+    expect(text).toContain(en['route.shallow.confined'].replace('{radius}', '1.0 nm'));
+    expect(text).not.toContain('computed route');
   });
 });

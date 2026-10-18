@@ -44,10 +44,10 @@ function status(): HTMLElement {
   return el as HTMLElement;
 }
 
-function renderAnnouncer(result: RigResult | null, resultKey: string | null) {
+function renderAnnouncer(result: RigResult | null, resultKey: string | null, handover = false) {
   return render(
     <I18nProvider>
-      <PlanCompletionAnnouncer result={result} resultKey={resultKey} />
+      <PlanCompletionAnnouncer result={result} resultKey={resultKey} handover={handover} />
     </I18nProvider>,
   );
 }
@@ -72,6 +72,24 @@ describe('PlanCompletionAnnouncer (#983)', () => {
     );
   });
 
+  // #1721: the handover clause is appended to the same atomic sentence.
+  it('appends the harbour-approach clause only for a plan with a handover (#1721)', () => {
+    localStorage.setItem('sc-lang', 'en');
+    const { unmount } = renderAnnouncer(makeResult(), 'plan-1-1000', true);
+    expect(status()).toHaveTextContent(
+      'Route calculated — arrival 15/07/2026, 15:00, duration 5 h 00 min, 21.5 nm. Harbour approach not computed.',
+    );
+    unmount();
+    renderAnnouncer(makeResult(), 'plan-1-1000', false);
+    expect(status()).not.toHaveTextContent('Harbour approach not computed');
+  });
+
+  it('announces the clause in German too (#1721)', () => {
+    localStorage.setItem('sc-lang', 'de');
+    renderAnnouncer(makeResult(), 'plan-1-1000', true);
+    expect(status()).toHaveTextContent('Hafenansteuerung nicht berechnet.');
+  });
+
   // #983 TRANSITION test: a same-key re-render carrying DIFFERENT result
   // content (as a same-id/same-createdAtMs re-render could in principle
   // produce) must NOT re-announce — the announced text stays frozen at the
@@ -87,7 +105,11 @@ describe('PlanCompletionAnnouncer (#983)', () => {
 
     rerender(
       <I18nProvider>
-        <PlanCompletionAnnouncer result={makeResult({ distanceNm: 30 })} resultKey="plan-1-1000" />
+        <PlanCompletionAnnouncer
+          result={makeResult({ distanceNm: 30 })}
+          resultKey="plan-1-1000"
+          handover={false}
+        />
       </I18nProvider>,
     );
     expect(status()).toHaveTextContent('21.5 nm');
@@ -105,7 +127,11 @@ describe('PlanCompletionAnnouncer (#983)', () => {
 
     rerender(
       <I18nProvider>
-        <PlanCompletionAnnouncer result={makeResult({ distanceNm: 30 })} resultKey="plan-1-1001" />
+        <PlanCompletionAnnouncer
+          result={makeResult({ distanceNm: 30 })}
+          resultKey="plan-1-1001"
+          handover={false}
+        />
       </I18nProvider>,
     );
     expect(status()).toHaveTextContent('30.0 nm');
@@ -116,7 +142,7 @@ describe('PlanCompletionAnnouncer (#983)', () => {
     render(
       <StrictMode>
         <I18nProvider>
-          <PlanCompletionAnnouncer result={makeResult()} resultKey="plan-1-1000" />
+          <PlanCompletionAnnouncer result={makeResult()} resultKey="plan-1-1000" handover={false} />
         </I18nProvider>
       </StrictMode>,
     );

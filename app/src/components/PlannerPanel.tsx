@@ -38,7 +38,8 @@ import { usePersistedSailInventory } from '../lib/sailInventory';
 import { renderRigVerdict, resultSummary, sailLabelKey } from '../lib/resultSummary';
 import { useRecentHarbors } from '../lib/useRecentHarbors';
 import { formatDepthM } from '../lib/depthDisclosure';
-import HarborPicker, { harborAccessCopy } from './HarborPicker';
+import HarborPicker, { harborAccessCopy, useUnreachableBandOf } from './HarborPicker';
+import type { NavMask } from '../lib/mask';
 import { commitSetting, safetyDepthFieldFor } from './OptionsPanel';
 import type { BoatDef, BoatId } from '../data/boats';
 import NumberInput, { formatBound, useClampCorrection } from './NumberInput';
@@ -65,6 +66,7 @@ import { ShallowWarning } from './ShallowWarning';
 // #1398a: the third, affirmative state — shares depthExposureState with
 // MarginalDepthNotice so the two stay mutually exclusive here too.
 import { DepthClearNotice, MarginalDepthNotice } from './RouteSummary';
+import { HarborHandoverNotice } from './HarborHandoverNotice';
 
 export type TapTarget = 'origin' | 'destination' | 'via';
 
@@ -82,6 +84,8 @@ export type PlannerStatus =
 
 export interface PlannerPanelProps {
   harbors: HarborWithReachability[];
+  // #1721: App's mask, so both share one flood cache; falls back to its own.
+  navMask?: NavMask | null;
   origin: PickedPoint | null;
   destination: PickedPoint | null;
   onPickOrigin: (p: PickedPoint) => void;
@@ -255,6 +259,7 @@ export function isInViaDataArea(p: LatLon): boolean {
 
 export default function PlannerPanel({
   harbors,
+  navMask,
   origin,
   destination,
   onPickOrigin,
@@ -326,10 +331,27 @@ export default function PlannerPanel({
   // simply doesn't render yet (harborAccessCopy's own "not yet computed"
   // no-op) — never a false "reachable"/"unreachable" claim before the mask
   // is known.
-  const mask = useNavMask();
+  const ownMask = useNavMask();
+  const mask = navMask ?? ownMask;
   const harborAccess = useMemo(
     () => (mask ? computeHarborAccess(mask, harbors, boat, settings.safetyDepthM) : null),
     [mask, harbors, boat, settings.safetyDepthM],
+  );
+  // #1721: scans, off the render path, the gate band over which each harbour
+  // unreachable at the live gate stays unreachable.
+  const unreachableIds = useMemo(
+    () =>
+      harborAccess
+        ? [...harborAccess].flatMap(([id, state]) => (state === 'unreachable' ? [id] : []))
+        : [],
+    [harborAccess],
+  );
+  const unreachableBandOf = useUnreachableBandOf(
+    mask,
+    harbors,
+    boat,
+    settings.safetyDepthM,
+    unreachableIds,
   );
   // #539 item 2: bounds follow the SELECTED boat (spec J OQ-1's
   // `draftM + 0.1`). Same derivation the Boat tab's own render of this field
@@ -769,8 +791,15 @@ export default function PlannerPanel({
       access === 'unreachable' && mask
         ? findLowerSettingHint(mask, originHarbor, boat, settings.safetyDepthM)
         : null;
-    return harborAccessCopy(access, hint, boat, settings.safetyDepthM, lang);
-  }, [originHarbor, harborAccess, mask, boat, settings.safetyDepthM, lang]);
+    return harborAccessCopy(
+      access,
+      hint,
+      boat,
+      settings.safetyDepthM,
+      lang,
+      access === 'unreachable' ? unreachableBandOf(originHarbor.id) : null,
+    );
+  }, [originHarbor, harborAccess, unreachableBandOf, mask, boat, settings.safetyDepthM, lang]);
   const destinationAccessLines = useMemo(() => {
     if (!destinationHarbor) return [];
     const access =
@@ -780,8 +809,15 @@ export default function PlannerPanel({
       access === 'unreachable' && mask
         ? findLowerSettingHint(mask, destinationHarbor, boat, settings.safetyDepthM)
         : null;
-    return harborAccessCopy(access, hint, boat, settings.safetyDepthM, lang);
-  }, [destinationHarbor, harborAccess, mask, boat, settings.safetyDepthM, lang]);
+    return harborAccessCopy(
+      access,
+      hint,
+      boat,
+      settings.safetyDepthM,
+      lang,
+      access === 'unreachable' ? unreachableBandOf(destinationHarbor.id) : null,
+    );
+  }, [destinationHarbor, harborAccess, unreachableBandOf, mask, boat, settings.safetyDepthM, lang]);
 
   // The active rig's result + its single-source display fields — used by the
   // compact Ergebnis strip below and the completion announcement.
@@ -993,6 +1029,7 @@ export default function PlannerPanel({
               boat={boat}
               safetyDepthM={settings.safetyDepthM}
               harborAccess={harborAccess}
+              unreachableBandOf={unreachableBandOf}
               mask={mask}
               // #737: true only when this mount was caused by the Change
               // button above (see HarborPicker's own `autoFocus` doc comment
@@ -1084,6 +1121,7 @@ export default function PlannerPanel({
               boat={boat}
               safetyDepthM={settings.safetyDepthM}
               harborAccess={harborAccess}
+              unreachableBandOf={unreachableBandOf}
               mask={mask}
               // #737: see the matching comment on the origin HarborPicker above.
               autoFocus={editingDestination}
@@ -1677,6 +1715,7 @@ export default function PlannerPanel({
               plan={plan}
             />
           )}
+          {plan && <HarborHandoverNotice plan={plan} result={result} />}
           {/* #612: the complement of the banner above, for a route that did NOT
               relax — same shared component and copy as RouteSummary's own, so
               the quiet marginal-depth line can never drift between the first
@@ -1686,7 +1725,7 @@ export default function PlannerPanel({
               requirement as the banner's above. */}
           {plan && <MarginalDepthNotice plan={plan} legs={result?.legs ?? null} />}
           {/* #1398a: the third, affirmative state, mutually exclusive with
-              the two above by construction (depthExposureState, shared in
+              the banner and MarginalDepthNotice above by construction (depthExposureState, shared in
               RouteSummary.tsx). Same `plan &&` type-level requirement. */}
           {plan && <DepthClearNotice plan={plan} legs={result?.legs ?? null} />}
           {summary && (

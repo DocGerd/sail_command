@@ -1,7 +1,8 @@
 import type { Harbor, LatLon } from '../types';
 import type { BoatDef } from '../data/boats';
 import { NavMask } from './mask';
-import { approachGate, APPROACH_RADIUS_M } from './depthGate';
+import { approachGate, uniformGate, APPROACH_RADIUS_M } from './depthGate';
+import { haversineNm, toRad } from './geo';
 import { relaxationFloorM, defaultSafetyDepthM } from './boatDepth';
 
 // #834: promoted out of HarborPicker.tsx, which is where #652 first added
@@ -319,8 +320,17 @@ function harborStateAt(
   flood: FloodResult,
 ): HarborAccessState {
   if (harbor.knownDisconnected === true) return 'known-disconnected';
+  return endpointStateAt(mask, harbor.snap, boat, safetyDepthM, flood);
+}
 
-  const snapped = mask.snapToNavigable(harbor.snap, safetyDepthM);
+function endpointStateAt(
+  mask: NavMask,
+  p: LatLon,
+  boat: BoatDef,
+  safetyDepthM: number,
+  flood: FloodResult,
+): 'ok' | 'shallow-approach' | 'unreachable' {
+  const snapped = mask.snapToNavigable(p, safetyDepthM);
   if (!snapped) return 'unreachable';
 
   const idx = cellIndexOf(mask, snapped);
@@ -329,6 +339,90 @@ function harborStateAt(
   return shallowApproachConnected(mask, snapped, safetyDepthM, relaxationFloorM(boat))
     ? 'shallow-approach'
     : 'unreachable';
+}
+
+/**
+ * #1721: true iff `p` reads `unreachable` at `gateM` — the point-level body of
+ * the picker's classification, with no known-disconnected check (the caller
+ * owns that).
+ */
+export function harborEndpointPocketed(
+  mask: NavMask,
+  p: LatLon,
+  boat: BoatDef,
+  gateM: number,
+): boolean {
+  return endpointStateAt(mask, p, boat, gateM, floodAtGate(mask, gateM)) === 'unreachable';
+}
+
+/**
+ * Drawing filter for the harbour-to-handover line, not a depth claim: rejects
+ * lines over land, no-data cells or near-dry readings.
+ */
+export const HANDOVER_LINE_MIN_M = 0.5;
+
+/**
+ * #1721: the nearest cell centre to `p` within `maxRadiusM` that is an interior
+ * cell of the seed flood at `gateM` (it and all 8 neighbours flooded) and whose
+ * straight line from `p` passes {@link HANDOVER_LINE_MIN_M}. Exact distance
+ * ties go to the lower row-major index. `null` when none exists.
+ */
+export function findHarborHandover(
+  mask: NavMask,
+  p: LatLon,
+  gateM: number,
+  maxRadiusM: number = APPROACH_RADIUS_M,
+): LatLon | null {
+  const flood = floodAtGate(mask, gateM);
+  const { rows, cols } = mask.meta;
+  const { lat, lon } = mask.grid;
+  const row0 = lat.index(p.lat);
+  const col0 = lon.index(p.lon);
+  const cellLatM = 111_320 * lat.stepDeg;
+  const cellLonM = 111_320 * lon.stepDeg * Math.cos(toRad(p.lat));
+  const maxRing = Math.ceil(maxRadiusM / Math.min(cellLatM, cellLonM)) + 1;
+
+  const interior = (row: number, col: number): boolean => {
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dc = -1; dc <= 1; dc++) {
+        const r = row + dr;
+        const c = col + dc;
+        if (r < 0 || r >= rows || c < 0 || c >= cols) return false;
+        if (!floodHasCell(flood, mask, r * cols + c)) return false;
+      }
+    }
+    return true;
+  };
+
+  const candidates: { centre: LatLon; dM: number; idx: number }[] = [];
+  for (let row = row0 - maxRing; row <= row0 + maxRing; row++) {
+    for (let col = col0 - maxRing; col <= col0 + maxRing; col++) {
+      if (row < 0 || row >= rows || col < 0 || col >= cols) continue;
+      if (!interior(row, col)) continue;
+      const centre = { lat: lat.centre(row), lon: lon.centre(col) };
+      const dM = haversineNm(p, centre) * 1852;
+      if (dM <= maxRadiusM) candidates.push({ centre, dM, idx: row * cols + col });
+    }
+  }
+  candidates.sort((a, b) => a.dM - b.dM || a.idx - b.idx);
+  const lineGate = uniformGate(HANDOVER_LINE_MIN_M);
+  for (const c of candidates) {
+    if (mask.segmentNavigable(p, c.centre, lineGate)) return c.centre;
+  }
+  return null;
+}
+
+/**
+ * #1721: the handover for `p`, searched at the requested gate only (maintainer
+ * ruling). Every caller goes through this helper.
+ */
+export function findHarborHandoverFor(
+  mask: NavMask,
+  p: LatLon,
+  _boat: BoatDef,
+  gateM: number,
+): LatLon | null {
+  return findHarborHandover(mask, p, gateM);
 }
 
 /**
@@ -399,6 +493,20 @@ export function computeHarborAccess(
   }
   cache.set(cacheKey, out);
   return out;
+}
+
+/**
+ * #1721: one harbour's state at one gate, sharing `computeHarborAccess`'s
+ * per-gate flood but skipping the other harbours' classification. Identical to
+ * `computeHarborAccess(...).get(harbor.id)`.
+ */
+export function harborAccessAt(
+  mask: NavMask,
+  harbor: HarborWithReachability,
+  boat: BoatDef,
+  safetyDepthM: number,
+): HarborAccessState {
+  return harborStateAt(mask, harbor, boat, safetyDepthM, floodAtGate(mask, safetyDepthM));
 }
 
 /**

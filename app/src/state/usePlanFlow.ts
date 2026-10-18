@@ -7,6 +7,7 @@ import { RoutingClient, RoutingError } from '../routing/workerClient';
 import { useActivePlan } from './AppState';
 import { noRouteMessageKey } from '../lib/plan';
 import { windGridReaches } from '../lib/planForm';
+import type { HarborWithReachability } from '../lib/harborReachability';
 import {
   dedupeRequestVias,
   failureLeavesWorkerHealthy,
@@ -184,6 +185,9 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
           // #54: cloned, never transferred — the whole catalogue's polars,
           // sent once so every later plan only names keys.
           polars: assets.polars,
+          knownDisconnectedHarborIds: ((assets.harbors ?? []) as HarborWithReachability[])
+            .filter((h) => h.knownDisconnected === true)
+            .map((h) => h.id),
         });
       }
       await readyRef.current;

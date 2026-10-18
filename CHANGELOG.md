@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.55.1] - 2026-10-18
+
+### Fixed
+
+- Planning a boat to or from a picked harbour that the app's depth grid cannot connect to open water at the chosen safety depth now plans from or to a handover point up to 1 nm off the harbour, in water the grid connects, and shows the harbour approach as a striped line marked as not computed and not depth-checked; distance and times cover the computed route only. Harbours flagged as not reachable at any depth setting are excluded. Where the grid cannot connect a harbour at any safety depth from the boat's lowest setting up to its default (or the current setting, if higher), the harbour picker shows that range before planning, and a plan that then fails as unreachable names the harbour, boat, draft and that range in the no-route message (#1721).
+
 ## [0.55.0] - 2026-10-17
 
 ### Added
@@ -1287,7 +1293,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.55.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.55.1...HEAD
+[0.55.1]: https://github.com/DocGerd/sail_command/compare/v0.55.0...v0.55.1
 [0.55.0]: https://github.com/DocGerd/sail_command/compare/v0.54.0...v0.55.0
 [0.54.0]: https://github.com/DocGerd/sail_command/compare/v0.53.0...v0.54.0
 [0.53.0]: https://github.com/DocGerd/sail_command/compare/v0.52.0...v0.53.0
