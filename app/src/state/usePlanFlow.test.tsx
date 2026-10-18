@@ -45,7 +45,22 @@ const ASSETS_FIXTURE: assetsModule.RoutingAssets = {
     [polarKey(DEFAULT_BOAT_ID, 'genoa')]: TEST_POLAR,
     [polarKey(DEFAULT_BOAT_ID, 'fock')]: FOCK_POLAR,
   },
-  harbors: [],
+  // #1721: one known-disconnected harbour, so the init assertion is not vacuous.
+  harbors: [
+    {
+      id: 'open-harbour',
+      names: { de: 'Offen', da: 'Åben', en: 'Open' },
+      country: 'DK',
+      snap: { lat: 54.7525, lon: 10.0025 },
+    },
+    {
+      id: 'kd-harbour',
+      names: { de: 'Getrennt', da: 'Afskåret', en: 'Cut off' },
+      country: 'DE',
+      snap: { lat: 54.7525, lon: 10.3025 },
+      knownDisconnected: true,
+    } as assetsModule.RoutingAssets['harbors'][number],
+  ],
   seamarks: { type: 'FeatureCollection', features: [] },
 };
 
@@ -213,6 +228,7 @@ describe('usePlanFlow', () => {
     // (ASSETS_FIXTURE.maskBuffer here) must stay intact.
     expect(initMsg.maskBuffer).not.toBe(ASSETS_FIXTURE.maskBuffer);
     expect(new Uint8Array(initMsg.maskBuffer)).toEqual(new Uint8Array(ASSETS_FIXTURE.maskBuffer));
+    expect(initMsg.knownDisconnectedHarborIds).toEqual(['kd-harbour']);
 
     const planMsg = findPosted(w.posted, 'plan');
     expect(planMsg.windGrid).toBe(windGrid);
