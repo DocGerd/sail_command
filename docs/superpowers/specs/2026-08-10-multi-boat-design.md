@@ -1685,7 +1685,7 @@ The estimate flag is the substitute disclosure. §M.4 stays unmeasured.
 - In the two `salona44-*` arms, rows with fewer than two solved sails are byte-identical.
 - Rows with two solved sails differ only in `rigRecommendation` (`not-compared` to `decided`, `tie` or `moot`) and possibly `recommended`.
 - The genoa-note edits move no byte: rows serialise neither `request` nor a polar `source`.
-- At those arms' uniform 12 kn wind SPEEDY GO!'s genoa is ≥ its jib in every cell (its unclamped §N.4 ramp falls below 1 only at 25 kn), so no `decided` naming the jib is expected. A jib ★ there would be a prune artefact (#1303) to investigate, not proof of a code defect.
+- At those arms' uniform 12 kn wind SPEEDY GO!'s genoa is ≥ its jib in every cell (its unclamped §N.4 ramp falls below 1 only at 25 kn), yet a `decided` naming the jib can still occur where the genoa solve returns a longer route, a prune artefact (#1303) and not a code defect. Re-derived from the BASE rows in PR #1756's review: 2 such rows in `salona44-relaxation`.
 
 **Required implementation item — a new `compare.mjs` mode.** Working name `--estimated-verdict-unsuppressed`; ORDER-SENSITIVE: BASE, then HEAD. Today `--rig-verdict-change` admits only `decided` → `not-compared` with fewer than two solved, and `canonicalize.mjs` refuses the reverse. The new mode makes two assertions, mirroring #553:
 1. Every row compares equal with `rigRecommendation` **and** `recommended` elided.
