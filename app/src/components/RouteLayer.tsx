@@ -1402,7 +1402,12 @@ export default function RouteLayer({
     let liveWasActive = false;
     const runRefit = (labelsOnly: boolean) => {
       const state = autoFitKeyRef.current;
-      if (disposed || state === null) return;
+      if (disposed) return;
+      if (state === null) {
+        // Entering Live while released must still count, or a later re-arm fits again mid-Live.
+        liveWasActive = document.querySelector('.live-view-data') !== null;
+        return;
+      }
       watch();
       // A fit stops a running ease, which would demote the compass.
       if (map.isMoving()) {
@@ -1474,6 +1479,17 @@ export default function RouteLayer({
   const canFitRoute = result !== null && result.legs.length > 0;
   const handleFitToView = () => {
     if (!map || !result || !plan) return;
+    // The open cluster covers most of a narrow map, so no padding clears it:
+    // close it before measuring, and keep keyboard focus on the summary.
+    if (!isWide) {
+      const details = controlsRef.current?.querySelector<HTMLDetailsElement>(
+        'details.route-layer-controls-disclosure',
+      );
+      if (details?.open) {
+        details.open = false;
+        details.querySelector('summary')?.focus();
+      }
+    }
     autoFitKeyRef.current = fitToLegs(
       map,
       result.legs,
