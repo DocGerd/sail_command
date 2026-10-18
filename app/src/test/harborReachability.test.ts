@@ -634,7 +634,7 @@ describe('#1721 harbour handover on the real mask', () => {
       at: { lat: 54.94354166666666, lon: 9.835272727272727 },
       m: 988.3,
     },
-    // Not the nearer candidate whose line crosses a 0.1 m cell.
+    // Nearer interior cells exist; each line crosses land or sub-0.5 m water.
     {
       id: 'burgstaaken',
       boat: boatById('salona-45'),
@@ -650,6 +650,20 @@ describe('#1721 harbour handover on the real mask', () => {
       const h = findHarborHandoverFor(mask, p, boat, gateM);
       expect(h).toEqual(at);
       expect(metres(p, h!)).toBeCloseTo(m, 1);
+    },
+  );
+
+  // The 1852 m bound: the farthest Marstal handover still inside it, then none.
+  it(
+    'EASY GO! Marstal: a handover at 4.8 m, none within 1 nm at 4.9 m',
+    { timeout: solverTimeoutMs(300_000) },
+    () => {
+      const p = snapOf('marstal');
+      const offM = (gateM: number) => {
+        const h = findHarborHandover(mask, p, gateM);
+        return h === null ? null : Math.round(metres(p, h) * 10) / 10;
+      };
+      expect([offM(4.8), offM(4.9)]).toEqual([1809, null]);
     },
   );
 
@@ -680,8 +694,8 @@ describe('#1721 harbour handover on the real mask', () => {
   );
 
   // The handover copy says the grid reads parts of the striped line shallower
-  // than the gate. Pinned for every handover a catalogue boat can produce at
-  // its own range of gates.
+  // than the gate. Pinned for every handover a catalogue boat produces from its
+  // lowest safety depth up to its default gate.
   it(
     'every produced handover line crosses a cell below the gate',
     { timeout: solverTimeoutMs(600_000) },

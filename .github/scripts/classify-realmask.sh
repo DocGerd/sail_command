@@ -42,6 +42,10 @@ CLOSURE_MJS=".claude/skills/sweep-closure/closure.mjs"
 # here so the gate does not depend on sweepArms.ts continuing to import them.
 # The last three entries exist because a change to the gate or to its own
 # oracle must run what it gates.
+# Known gap (#1721): lib/harborReachability.ts holds the handover search but is
+# deliberately absent, because selftest rows 7 and 22 use it as the
+# out-of-closure control. An edit there does not run the realmask suite; the
+# always-run real-mask pins in test/harborReachability.test.ts cover it.
 is_supplement_path() {
   case "$1" in
     app/src/routing/realmask.repro.*) return 0 ;;

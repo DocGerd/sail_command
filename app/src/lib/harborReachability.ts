@@ -413,8 +413,8 @@ export function findHarborHandover(
 }
 
 /**
- * #1721: the handover the worker and the picker use for `p` at the requested
- * gate. One shared helper so the two can never disagree.
+ * #1721: the handover for `p`, searched at the requested gate only (maintainer
+ * ruling). Every caller goes through this helper.
  */
 export function findHarborHandoverFor(
   mask: NavMask,

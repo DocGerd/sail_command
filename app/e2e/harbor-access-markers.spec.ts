@@ -215,8 +215,8 @@ test('#1721: planning EASY GO! from Marstal starts at a handover point and discl
   }
 });
 
-// #1721: above 4.8 m no grid-connected cell lies within 1 nm of Marstal, so no
-// handover exists and the plan fails with the #1723 range message.
+// #1721: at this gate no handover point exists within 1 nm of Marstal, so the
+// plan fails and the #1723 range message appears.
 test('#1721: with no handover in reach, planning EASY GO! from Marstal names the checked gate range', async ({
   page,
 }) => {

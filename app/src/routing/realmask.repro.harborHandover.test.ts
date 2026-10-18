@@ -83,7 +83,7 @@ function expectRescued(
   return ok;
 }
 
-describe('#1721 harbour handover on the real mask (EASY GO! at its default gate)', () => {
+describe('#1721 harbour handover on the real mask (each boat at its default gate)', () => {
   it('Marstal → Assens routes from a handover off Marstal', () => {
     const r = plan('salona-44-easy-go', { p: MARSTAL, id: 'marstal' }, { p: ASSENS, id: 'assens' });
     const ok = expectRescued(r, 'origin', 1423.4);

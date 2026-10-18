@@ -8,6 +8,7 @@ import {
   uniformWindGrid,
 } from '../test/fixtures';
 import { findHarborHandover } from '../lib/harborReachability';
+import { assertNonVacuousStrip, stripCommentsAndStrings } from '../test/sourceStrip';
 import {
   DEFAULT_SETTINGS,
   defaultBoatSnapshot,
@@ -51,7 +52,9 @@ function centre(c: { row: number; col: number }): LatLon {
 const deps = testPlanDeps(mask, { genoa: TEST_POLAR, fock: { ...TEST_POLAR, rig: 'fock' } });
 const wind = uniformWindGrid(12, 270);
 const GATE = DEFAULT_SETTINGS.safetyDepthM;
-const HANDOVER_A = findHarborHandover(mask, centre(A), GATE)!;
+// Hand-derived: cells two out border the ring, so the nearest interior cells
+// are three columns out; the western one is nearer by float rounding.
+const HANDOVER_A = centre({ row: A.row, col: A.col - 3 });
 
 function request(over: Partial<PlanRequest> = {}): PlanRequest {
   return {
@@ -94,8 +97,8 @@ function run(req: PlanRequest, plan: PlanFn, kd = NONE, deadline?: PlanDeadline)
 }
 
 describe('#1721 planWithHarborHandover gate', () => {
-  it('fixture: A has a handover, B has none', () => {
-    expect(HANDOVER_A).not.toBeNull();
+  it('fixture: A has the hand-derived handover, B has none', () => {
+    expect(findHarborHandover(mask, centre(A), GATE)).toEqual(HANDOVER_A);
     expect(findHarborHandover(mask, centre(B), GATE)).toBeNull();
   });
 
@@ -196,5 +199,41 @@ describe('#1721 planWithHarborHandover gate', () => {
     const expired = vi.fn<() => boolean>().mockReturnValueOnce(false).mockReturnValue(true);
     expect(run(request(), plan, NONE, { expired })).toBe(r2);
     expect(plan).toHaveBeenCalledTimes(2);
+  });
+});
+
+// A power-of-two cell step makes the two cells three columns either side of the
+// harbour exactly equidistant, so only the tie rule picks between them.
+describe('#1721 findHarborHandover tie-break', () => {
+  const TIE_META = { west: 9.25, south: 54.5, east: 10.5, north: 55.28125, cols: 320, rows: 200 };
+  const P = { row: 100, col: 200 };
+  const tieCentre = (row: number, col: number): LatLon => ({
+    lat: TIE_META.south + (row + 0.5) / 256,
+    lon: TIE_META.west + (col + 0.5) / 256,
+  });
+  const tieMask = makeMask((row, col) => (cheb(P, row, col) === 1 ? 10 : 200), TIE_META);
+
+  it('an exact distance tie goes to the lower row-major index', () => {
+    expect(findHarborHandover(tieMask, tieCentre(P.row, P.col), GATE)).toEqual(
+      tieCentre(P.row, P.col - 3),
+    );
+  });
+});
+
+describe('#1721 the gate never reads a failure label (#282)', () => {
+  const source = import.meta.glob<string>('./harborHandover.ts', {
+    query: '?raw',
+    import: 'default',
+    eager: true,
+  })['./harborHandover.ts']!;
+
+  it('no `.reason` read in the wrapper code', () => {
+    const code = stripCommentsAndStrings(source);
+    assertNonVacuousStrip(code, 'r1.status', 'routing/harborHandover.ts');
+    expect(code.match(/\.\s*reason\b/g) ?? []).toEqual([]);
+  });
+
+  it('the scan detects a `.reason` read (positive control)', () => {
+    expect(stripCommentsAndStrings("if (r1.reason !== 'x') return r1;")).toMatch(/\.\s*reason\b/);
   });
 });
