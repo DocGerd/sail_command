@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Planning a boat to or from a harbour that the app's depth grid cannot connect to open water at the chosen safety depth now plans from or to a handover point up to 1 nm off the harbour, in water the grid connects, and shows the harbour approach as a striped line marked as not computed and not depth-checked; distance and times cover the computed route only. When no such point exists and the grid cannot connect the harbour at any safety depth from the boat's lowest setting up to its default (or the current setting, if higher), the no-route message names the harbour, boat, draft and that range, and the harbour picker shows the same range before planning (#1721).
+- Planning a boat to or from a picked harbour that the app's depth grid cannot connect to open water at the chosen safety depth now plans from or to a handover point up to 1 nm off the harbour, in water the grid connects, and shows the harbour approach as a striped line marked as not computed and not depth-checked; distance and times cover the computed route only. Harbours flagged as not reachable at any depth setting are excluded. Where the grid cannot connect a harbour at any safety depth from the boat's lowest setting up to its default (or the current setting, if higher), the harbour picker shows that range before planning, and a plan that then fails as unreachable names the harbour, boat, draft and that range in the no-route message (#1721).
 
 ## [0.55.0] - 2026-10-17
 

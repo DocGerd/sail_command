@@ -19,13 +19,9 @@ shipped.
 ## Now — v0.55.1
 
 The `v0.55.1` cut (2026-10-18) was a PATCH release for one user-visible fix
-([#1721](https://github.com/DocGerd/sail_command/issues/1721)): a boat can now
-be planned to or from a harbour the depth grid cannot connect to open water at
-the chosen safety depth, such as EASY GO! at Marstal. The route starts or ends
+([#1721](https://github.com/DocGerd/sail_command/issues/1721)): a boat can now be planned to or from a picked harbour the depth grid cannot connect to open water at the chosen safety depth, such as EASY GO! at Marstal, unless the harbour is flagged as not reachable at any depth setting. The route starts or ends
 at a handover point up to 1 nm off the harbour, and the approach is drawn as a
-striped line marked as not computed and not depth-checked. Where no handover
-point exists, the no-route message and the harbour picker name the depth range
-tried. It followed `v0.55.0` the day before.
+striped line marked as not computed and not depth-checked. Where the grid connects a harbour at no safety depth in the boat's range, the harbour picker and a failed plan's no-route message name that range. It followed `v0.55.0` the day before.
 
 The preceding `v0.55.0` cut (2026-10-17) closed eight issues from the
 [`v0.55.0` milestone](https://github.com/DocGerd/sail_command/milestones),
@@ -45,7 +41,7 @@ to Faldsled and Rudkøbing ([#932](https://github.com/DocGerd/sail_command/issue
 ## Next — v0.56.0
 
 The [`v0.56.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-holds eight issues as of this cut. Routing: the backtrack collinear merge
+holds thirteen issues as of this cut, eight of them already there at the `v0.55.0` cut. Routing: the backtrack collinear merge
 emitting a leg never re-checked against the depth gate ([#1705](https://github.com/DocGerd/sail_command/issues/1705)), the two-rig
 ★ for tier-C boats flagged as estimate-based ([#1716](https://github.com/DocGerd/sail_command/issues/1716)), and multi-day trip
 records with undo for the next passage ([#1708](https://github.com/DocGerd/sail_command/issues/1708)). Wind: a labelled MET
@@ -54,7 +50,7 @@ about 3 px under the sheet after a reload at 820x1180 ([#1717](https://github.co
 marker under the expanded display-options panel at the same size
 ([#1702](https://github.com/DocGerd/sail_command/issues/1702)), and a re-fit still possible during Live after an earlier map
 gesture ([#1710](https://github.com/DocGerd/sail_command/issues/1710)). Next passage: the preview lagging the tap after device
-sleep near 10:00 ([#1711](https://github.com/DocGerd/sail_command/issues/1711)). The milestone page is the only authoritative
+sleep near 10:00 ([#1711](https://github.com/DocGerd/sail_command/issues/1711)). The other five are follow-ups filed during the #1721 work: test and comment cleanups ([#1724](https://github.com/DocGerd/sail_command/issues/1724), [#1725](https://github.com/DocGerd/sail_command/issues/1725), [#1728](https://github.com/DocGerd/sail_command/issues/1728), [#1729](https://github.com/DocGerd/sail_command/issues/1729)) and a plan.spec re-plan test that flakes across a full hour ([#1731](https://github.com/DocGerd/sail_command/issues/1731)). The milestone page is the only authoritative
 view, check it directly rather than this file.
 
 ## Themes for the next year
