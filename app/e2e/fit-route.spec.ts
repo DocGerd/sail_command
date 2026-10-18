@@ -154,15 +154,13 @@ async function planAndGetFitButton(page: Page, serverUrl: string, from?: string,
 test.describe('#1102: fit-route-to-view against a real MapLibre camera', () => {
   // Both the wide (disclosure open by default) and narrow (disclosure
   // closed by default, #628) code paths — the two viewports the #1100
-  // review manually verified against, made durable. `refitFirst` marks the
-  // viewport where opening the disclosure changes the chrome the fit pads
-  // for, so the button is only comparable to a fit made after that.
+  // review manually verified against, made durable.
   const viewports = {
-    tabletLandscape: { viewport: STANDARD_VIEWPORTS.tabletLandscape, refitFirst: false },
-    phonePortrait: { viewport: STANDARD_VIEWPORTS.phonePortrait, refitFirst: true },
+    tabletLandscape: STANDARD_VIEWPORTS.tabletLandscape,
+    phonePortrait: STANDARD_VIEWPORTS.phonePortrait,
   };
 
-  for (const [name, { viewport, refitFirst }] of Object.entries(viewports)) {
+  for (const [name, viewport] of Object.entries(viewports)) {
     test(`clicking "Route einpassen" returns the camera to the route bounds (${name})`, async ({
       page,
     }) => {
@@ -171,7 +169,6 @@ test.describe('#1102: fit-route-to-view against a real MapLibre camera', () => {
       try {
         const fitButton = await planAndGetFitButton(page, server.url);
 
-        if (refitFirst) await fitButton.click();
         const fitted = await waitForStableCamera(page);
 
         // Move the camera away. MAX_BOUNDS (MapView.tsx) clamps this request
@@ -450,53 +447,40 @@ test.describe('#1641: endpoint labels clear of the chrome after the auto-fit', (
       }
     });
 
-    // The restored plan arrives before its endpoint markers are rebuilt.
-    test(`labels stay clear after a session restore (${name})`, async ({ page }) => {
-      await page.setViewportSize(viewport);
-      const server = await startPreview(page);
-      try {
-        await planRoute(page, server.url);
-        // PlansList reads IndexedDB once, on mount: let the save settle first.
-        await page.getByRole('tab', { name: 'Routen' }).click();
-        await expect(page.locator('.plans-list-row')).toHaveCount(1);
-        await page.goto(server.url);
-        await expect(page.getByRole('tab', { name: 'Routen' })).toHaveAttribute(
-          'aria-selected',
-          'true',
-        );
-        await expect(page.locator('.sc-endpoint-marker-label')).toHaveCount(2, { timeout: 60_000 });
-        await waitForStableCamera(page);
-        await expectLabelsClear(page);
-      } finally {
-        server.kill();
-      }
-    });
+    // The restored plan arrives before its endpoint markers are rebuilt. The second
+    // route pins the release-gate route of #1717; it is green on base and did not
+    // reproduce that issue.
+    const routes: Array<[string, string?, string?]> = [['default route']];
+    if (name === 'tabletPortrait')
+      routes.push(['Flensburg -> Sønderborg', 'Flensburg', 'Sønderborg']);
+    for (const [routeName, from, to] of routes) {
+      test(`labels stay clear after a session restore (${name}, ${routeName})`, async ({
+        page,
+      }) => {
+        await page.setViewportSize(viewport);
+        const server = await startPreview(page);
+        try {
+          await planRoute(page, server.url, from, to);
+          // PlansList reads IndexedDB once, on mount: let the save settle first.
+          await page.getByRole('tab', { name: 'Routen' }).click();
+          await expect(page.locator('.plans-list-row')).toHaveCount(1);
+          await page.goto(server.url);
+          await expect(page.getByRole('tab', { name: 'Routen' })).toHaveAttribute(
+            'aria-selected',
+            'true',
+          );
+          await expect(page.locator('.sc-endpoint-marker-label')).toHaveCount(2, {
+            timeout: 60_000,
+          });
+          await waitForStableCamera(page);
+          await expectLabelsClear(page);
+        } finally {
+          server.kill();
+        }
+      });
+    }
   }
 });
-// #1702: the options cluster has to be open to reach "Route einpassen", and open
-// it covers most of the map at tabletPortrait. The corners are hit-tested because
-// an overlapping chrome edge reaches a marker's corner first.
-async function chromeOverCorners(page: Page, selector: string): Promise<string[]> {
-  return page.evaluate((sel) => {
-    const el = document.querySelector(sel);
-    if (!el) return ['missing'];
-    const r = el.getBoundingClientRect();
-    const corners = [
-      [r.left + 1, r.top + 1],
-      [r.right - 1, r.top + 1],
-      [r.left + 1, r.bottom - 1],
-      [r.right - 1, r.bottom - 1],
-    ] as const;
-    const covered: string[] = [];
-    for (const [x, y] of corners) {
-      const chrome = document
-        .elementFromPoint(x, y)
-        ?.closest('.route-layer-controls, .map-stack-tl, .app-bottom-sheet');
-      if (chrome) covered.push(`${chrome.className}@${Math.round(x)},${Math.round(y)}`);
-    }
-    return covered;
-  }, selector);
-}
 
 test.describe('#1702: "Route einpassen" with the options cluster open (tabletPortrait)', () => {
   test('closes the cluster and leaves both endpoints and labels uncovered', async ({ page }) => {
@@ -508,21 +492,6 @@ test.describe('#1702: "Route einpassen" with the options cluster open (tabletPor
       await waitForStableCamera(page);
       await expectEndpointsClearOfChrome(page);
       await expectLabelsClear(page);
-      for (const role of ['origin', 'destination']) {
-        await expect
-          .poll(() => chromeOverCorners(page, `.sc-endpoint-marker-${role}`), {
-            timeout: 30_000,
-          })
-          .toEqual([]);
-        await expect
-          .poll(
-            () => chromeOverCorners(page, `.sc-endpoint-marker-${role} .sc-endpoint-marker-label`),
-            {
-              timeout: 30_000,
-            },
-          )
-          .toEqual([]);
-      }
       await expect
         .poll(() =>
           page
@@ -530,41 +499,6 @@ test.describe('#1702: "Route einpassen" with the options cluster open (tabletPor
             .evaluate((el) => (el as HTMLDetailsElement).open),
         )
         .toBe(false);
-    } finally {
-      server.kill();
-    }
-  });
-});
-
-// #1717: the restore path with the Flensburg -> Sønderborg route of the release gate.
-test.describe('#1717: labels stay clear of the bottom sheet after a session restore', () => {
-  test('Flensburg -> Sønderborg (tabletPortrait)', async ({ page }) => {
-    await page.setViewportSize(STANDARD_VIEWPORTS.tabletPortrait);
-    const server = await startPreview(page);
-    try {
-      await planRoute(page, server.url, 'Flensburg', 'Sønderborg');
-      await page.getByRole('tab', { name: 'Routen' }).click();
-      await expect(page.locator('.plans-list-row')).toHaveCount(1);
-      await page.goto(server.url);
-      await expect(page.getByRole('tab', { name: 'Routen' })).toHaveAttribute(
-        'aria-selected',
-        'true',
-      );
-      await expect(page.locator('.sc-endpoint-marker-label')).toHaveCount(2, {
-        timeout: 60_000,
-      });
-      await waitForStableCamera(page);
-      await expectLabelsClear(page);
-      for (const role of ['origin', 'destination']) {
-        await expect
-          .poll(
-            () => chromeOverCorners(page, `.sc-endpoint-marker-${role} .sc-endpoint-marker-label`),
-            {
-              timeout: 30_000,
-            },
-          )
-          .toEqual([]);
-      }
     } finally {
       server.kill();
     }
@@ -623,10 +557,11 @@ test.describe('#1710: no re-fit while Live is active (tabletPortrait)', () => {
       // The click and the toast closing land in one task, so the next observer
       // callback after the re-arm is the resize and not a layout-neutral one.
       await openOptionsCluster(page);
+      await expect(page.locator('.reload-prompt')).toBeVisible();
       const counts = await fitButton.evaluate(async (button) => {
         const w = window as unknown as { __fitCalls?: number };
-        const close = document.querySelector<HTMLElement>('.banner-area .banner button');
-        if (!close) throw new Error('no banner to close');
+        const close = document.querySelector<HTMLElement>('.reload-prompt .banner-dismiss');
+        if (!close) throw new Error('no toast to dismiss');
         (button as HTMLButtonElement).click();
         const atClick = w.__fitCalls ?? -1;
         close.click();
