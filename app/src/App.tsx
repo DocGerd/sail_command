@@ -1645,6 +1645,8 @@ function AppShell() {
     for (const id of bannerIdsKey === '' ? [] : bannerIdsKey.split('|')) {
       const harborBand = bannerBandOf(id);
       const harbor = harbors.find((h) => h.id === id);
+      // One unfinished endpoint holds the whole banner; `continue` would name only the finished one.
+      if (harborBand === 'pending') return 'pending' as const;
       if (!harborBand || !harbor) continue;
       band = harborBand;
       if (!names.includes(harbor.names[lang])) names.push(harbor.names[lang]);
@@ -1967,17 +1969,19 @@ function AppShell() {
             {planning.messageKey === 'error.noRoute.unreachable' &&
             (originKnownDisconnected || destinationKnownDisconnected)
               ? t('harborPicker.knownDisconnected')
-              : unreachableHarbors
-                ? t('error.harborUnreachableAcrossRange', {
-                    harbor: new Intl.ListFormat(lang, { type: 'conjunction' }).format(
-                      unreachableHarbors.names,
-                    ),
-                    boat: boat.name,
-                    draft: formatDraftM(boat.draftM, lang),
-                    min: formatDepthM(unreachableHarbors.band.minM, lang),
-                    max: formatDepthM(unreachableHarbors.band.maxM, lang),
-                  })
-                : t(planning.messageKey, planning.messageVars)}
+              : unreachableHarbors === 'pending'
+                ? t('error.noRoute.unreachableChecking', { boat: boat.name })
+                : unreachableHarbors
+                  ? t('error.harborUnreachableAcrossRange', {
+                      harbor: new Intl.ListFormat(lang, { type: 'conjunction' }).format(
+                        unreachableHarbors.names,
+                      ),
+                      boat: boat.name,
+                      draft: formatDraftM(boat.draftM, lang),
+                      min: formatDepthM(unreachableHarbors.band.minM, lang),
+                      max: formatDepthM(unreachableHarbors.band.maxM, lang),
+                    })
+                  : t(planning.messageKey, planning.messageVars)}
           </Banner>
         )}
         {tapTarget && (

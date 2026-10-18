@@ -20,6 +20,10 @@ export const en = {
     "The app's depth data finds no connection for {boat} at any safety depth from {min} m to {max} m.",
   'error.harborUnreachableAcrossRange':
     "No route with {boat} (draft {draft} m): the app's depth grid (~46 m cells, which can miss narrow dredged channels) finds no connection to or from {harbor} at any safety depth from {min} m to {max} m. No setting in that range helps. Check the official chart or harbour guide.",
+  // #1725: shown while the band scan is still running.
+  'harborPicker.boatUnreachableChecking': 'Checking other safety depths for {boat}…',
+  'error.noRoute.unreachableChecking':
+    "No route found. Checking whether the app's depth data connects the harbour for {boat} at other safety depths…",
   'options.safetyDepth.label': 'Safety depth (m)',
   // #699: the allowed range used to hang only off the field's native
   // min/max attributes, with no visible or screen-reader-accessible text —
