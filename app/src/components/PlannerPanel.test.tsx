@@ -2196,6 +2196,51 @@ describe('PlannerPanel', () => {
     });
   });
 
+  // Spec T.4: the Ergebnis strip's own call sites for the flagged verdicts; the
+  // Salona 45 row is the control.
+  describe('#1716: estimate-based verdict chip wiring', () => {
+    function makeTierCPlan(rigRecommendation: RigRecommendation): Plan {
+      const plan = makePlan({ rigRecommendation });
+      setSail(plan, 'fock', { result: { ...GENOA_RESULT, sailId: 'fock' }, reason: null });
+      return {
+        ...plan,
+        request: { ...plan.request, boat: boatSnapshot(boatById('salona-44-speedy-go')) },
+      };
+    }
+
+    it('decided: says the faster rig is indicative', () => {
+      renderPanel({ plan: makeTierCPlan({ kind: 'decided', rig: 'fock' }), rig: 'genoa' });
+      expect(
+        screen.getByText(
+          en['route.fasterRigEstimated']
+            .replace('{rig}', 'Fock')
+            .replace('{tier}', en['boat.polarTier.estimated']),
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Faster: Fock')).not.toBeInTheDocument();
+    });
+
+    it('tie: says the tie is indicative', () => {
+      renderPanel({ plan: makeTierCPlan({ kind: 'tie' }), rig: 'genoa' });
+      expect(
+        screen.getByText(
+          en['route.rigTieEstimated']
+            .replace('{sailA}', 'Genoa')
+            .replace('{sailB}', 'Fock')
+            .replace('{tier}', en['boat.polarTier.estimated']),
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('decided on the Salona 45 stays plain', () => {
+      const plan = makePlan({ rigRecommendation: { kind: 'decided', rig: 'fock' } });
+      setSail(plan, 'fock', { result: { ...GENOA_RESULT, sailId: 'fock' }, reason: null });
+      renderPanel({ plan, rig: 'genoa' });
+      expect(screen.getByText('Faster: Fock')).toBeInTheDocument();
+      expect(screen.queryByText(/indicative only/)).not.toBeInTheDocument();
+    });
+  });
+
   // #452: the shallow-water warning + the effective (relaxed) depth must be
   // visible on THIS strip — the first surface a user sees a result on —
   // without switching to the Routes tab. Distinct requested/used/minGate

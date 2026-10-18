@@ -414,6 +414,28 @@ touched).
   `canonicalize.test.mjs`, including a row asserting that **byte mode fails
   on the very pair this mode passes**.
 
+- **Estimated-verdict mode (`--estimated-verdict-unsuppressed`)** —
+  `node app/sweep/compare.mjs --estimated-verdict-unsuppressed <BASE> <HEAD>`.
+  The reverse of the mode above, for #1716 / spec §T: a plan with an estimated
+  sail aboard goes from `not-compared` to a real verdict. Two assertions:
+
+  1. every plan compares equal with `rigRecommendation` **and** `recommended`
+     deleted from both sides, and
+  2. every plan whose verdict or `recommended` moved is in an arm of
+     `estimateBasedArms.ts`, went `not-compared` -> `decided`/`tie`/`moot` with
+     two solved sails and `comparisonComplete: true`, and carries the verdict
+     and `recommended` re-derived from its own two results (all-motor -> moot;
+     gap under the tie band -> tie; else the earlier ETA, `sails[0]` on
+     equality). A `recommended` change under an unchanged verdict is refused.
+
+  **ORDER-SENSITIVE** (`<dirA>` BASE), refused alongside the other modes, and
+  it exits non-zero when it observes no verdict change at all. The allowed arms
+  and the tie-band twin live in `estimateBasedArms.ts`; `src/test/
+  estimateBasedArms.test.ts` holds them to `sweepArms.ts` x `boats.ts` and to
+  `planRoute.ts`. Pinned in `canonicalize.test.mjs`, including the refusals for
+  a HEAD naming the slower sail, a change in a Salona 45 arm, and byte mode
+  failing on the pair this mode passes.
+
 **The byte comparator is BLIND to a `PlanResultOk` rename in the reassuring
 direction on `becalmed` and `deep-becalmed`.** Every plan in those two arms
 is `PlanResultError` (`error/calm-motor-off`, `error/unreachable`, or on

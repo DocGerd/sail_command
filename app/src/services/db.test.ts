@@ -18,7 +18,8 @@ import {
   type RegionPinRecord,
 } from './db';
 import type { Plan, Settings, WindGrid } from '../types';
-import { defaultBoatSnapshot } from '../types';
+import { boatSnapshot, defaultBoatSnapshot } from '../types';
+import { boatById } from '../data/boats';
 import { PLAN_SCHEMA_VERSION } from '../types';
 
 describe('IndexedDB persistence', () => {
@@ -361,6 +362,7 @@ describe('IndexedDB persistence', () => {
       createdAtMs: 2000,
       departureMs: 2000,
       recommended: 'fock',
+      estimateBased: false,
       etaMs: 5000,
     });
     expect(summaries[1]).toEqual({
@@ -370,6 +372,7 @@ describe('IndexedDB persistence', () => {
       createdAtMs: 1000,
       departureMs: 1000,
       recommended: 'genoa',
+      estimateBased: false,
       etaMs: 4000,
     });
   });
@@ -999,9 +1002,28 @@ describe('#54 lazy plan migration at the read boundary', () => {
         createdAtMs: 1000,
         departureMs: 1000,
         recommended: 'genoa',
+        estimateBased: false,
         etaMs: 4000,
       },
     ]);
+  });
+
+  // Spec T.4: the plans-list flag is derived per row from the stored snapshot.
+  it('#1716: listPlans flags a decided plan whose snapshot carries an estimated sail', async () => {
+    await savePlan(legacyRecord('legacy-1', 1000));
+    const migrated = (await getPlan('legacy-1'))!;
+    await savePlan({
+      ...migrated,
+      id: 'tier-c',
+      request: { ...migrated.request, boat: boatSnapshot(boatById('salona-44-speedy-go')) },
+      result: { ...migrated.result, rigRecommendation: { kind: 'decided', rig: 'genoa' } },
+    });
+    const flags = Object.fromEntries(
+      (await listPlans()).flatMap((row) =>
+        row.kind === 'ok' ? [[row.id, row.estimateBased]] : [],
+      ),
+    );
+    expect(flags).toEqual({ 'legacy-1': false, 'tier-c': true });
   });
 
   it.each([

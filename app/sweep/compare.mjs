@@ -75,6 +75,14 @@
  * distribution but never compared. The digest covers shared harbours only, in
  * each side's own key order. Refused alongside the other two modes.
  *
+ * #1716: `--estimated-verdict-unsuppressed` (ORDER-SENSITIVE: dirA BASE, dirB
+ * HEAD) certifies spec §T's one routing change: a plan with an estimated sail
+ * aboard goes from `not-compared` to a real verdict. It compares every row with
+ * `rigRecommendation` and `recommended` elided, then requires each changed row
+ * to be in an arm of `estimateBasedArms.ts` and to carry the verdict and
+ * `recommended` re-derived from its own two results. It fails closed on zero
+ * observed changes, so a run that never reached the lever cannot read as clean.
+ *
  * NAMED RESIDUAL (PR #488 review): this only checks that BOTH SIDES agree on
  * which arms exist and which harbours each arm covers — it has no idea that
  * a real run always covers every harbour in `harbors.json`, so it cannot distinguish a
@@ -93,6 +101,8 @@ import {
   canonicalizeArmFile,
   withoutRigRecommendation,
   classifyRigVerdictChange,
+  withoutVerdictAndRecommended,
+  classifyEstimatedVerdictChange,
   stripPlanningRecord,
 } from './canonicalize.mjs';
 import { serialize } from './serialize.ts';
@@ -109,22 +119,29 @@ const rigVerdictChange = rawArgs.includes('--rig-verdict-change');
 const harbourSuperset = rawArgs.includes('--harbour-superset');
 // #1456: ORDER-SENSITIVE — dirA a pre-#1456 BASE, dirB HEAD.
 const stripRecord = rawArgs.includes('--strip-planning-record');
+// #1716: ORDER-SENSITIVE — dirA BASE, dirB HEAD.
+const estimatedVerdict = rawArgs.includes('--estimated-verdict-unsuppressed');
 const MODE_FLAGS = [
   '--canonical',
   '--rig-verdict-change',
   '--harbour-superset',
   '--strip-planning-record',
+  '--estimated-verdict-unsuppressed',
 ];
 const [a, b] = rawArgs.filter((x) => !MODE_FLAGS.includes(x));
 if (!a || !b) {
   console.error(
     'usage: node compare.mjs [--canonical | --rig-verdict-change | --harbour-superset |\n' +
-      '                         --strip-planning-record] <dirA> <dirB>\n' +
+      '                         --strip-planning-record | --estimated-verdict-unsuppressed]\n' +
+      '                        <dirA> <dirB>\n' +
       '  every mode flag except --canonical is ORDER-SENSITIVE: <dirA> BASE, <dirB> HEAD',
   );
   process.exit(2);
 }
-if ([canonical, rigVerdictChange, harbourSuperset, stripRecord].filter(Boolean).length > 1) {
+if (
+  [canonical, rigVerdictChange, harbourSuperset, stripRecord, estimatedVerdict].filter(Boolean)
+    .length > 1
+) {
   console.error(`FAIL: ${MODE_FLAGS.join(', ')} are different claims; pass one`);
   process.exit(2);
 }
@@ -163,6 +180,8 @@ const outcomes = {};
 // #553 MAJOR 4: half 2's bookkeeping (unused unless --rig-verdict-change).
 let verdictChanges = 0;
 const verdictViolations = [];
+// #1716: how many rows moved, by new verdict kind.
+const estimatedChanges = {};
 // #295: HEAD-only rows under --harbour-superset (counted, never compared).
 let headOnlyTotal = 0;
 const headOnlyOutcomes = {};
@@ -208,16 +227,20 @@ for (const arm of arms) {
   for (const k of keys) {
     total++;
     // #553 MAJOR 4 half 1: everything EXCEPT the verdict must be identical.
-    const va = rigVerdictChange
-      ? withoutRigRecommendation(ja[k])
-      : canonical
-        ? canonA[k]
-        : ja[k];
-    const vb = rigVerdictChange
-      ? withoutRigRecommendation(jb[k])
-      : canonical
-        ? canonB[k]
-        : jb[k];
+    const va = estimatedVerdict
+      ? withoutVerdictAndRecommended(ja[k])
+      : rigVerdictChange
+        ? withoutRigRecommendation(ja[k])
+        : canonical
+          ? canonA[k]
+          : ja[k];
+    const vb = estimatedVerdict
+      ? withoutVerdictAndRecommended(jb[k])
+      : rigVerdictChange
+        ? withoutRigRecommendation(jb[k])
+        : canonical
+          ? canonB[k]
+          : jb[k];
     const sa = JSON.stringify(va);
     const sb = JSON.stringify(vb);
     if (sa === sb) same++;
@@ -231,6 +254,15 @@ for (const arm of arms) {
     if (rigVerdictChange) {
       const verdict = classifyRigVerdictChange(ja[k], jb[k]);
       if (verdict !== null) {
+        verdictChanges++;
+        if (!verdict.ok) verdictViolations.push(`${arm}/${k}  ${verdict.why}`);
+      }
+    }
+    if (estimatedVerdict) {
+      const verdict = classifyEstimatedVerdictChange(arm, ja[k], jb[k]);
+      if (verdict !== null) {
+        const kind = jb[k]?.rigRecommendation?.kind ?? 'none';
+        estimatedChanges[kind] = (estimatedChanges[kind] ?? 0) + 1;
         verdictChanges++;
         if (!verdict.ok) verdictViolations.push(`${arm}/${k}  ${verdict.why}`);
       }
@@ -249,35 +281,41 @@ for (const arm of arms) {
           .map((k) => [k, j[k]]),
       ),
     );
-  const digestA = rigVerdictChange
-    ? JSON.stringify(Object.fromEntries(keys.map((k) => [k, withoutRigRecommendation(ja[k])])))
-    : canonical
-      ? JSON.stringify(canonA)
-      : harbourSuperset
-        ? sharedInOwnOrder(ja)
-        : fa;
-  const digestB = rigVerdictChange
-    ? JSON.stringify(Object.fromEntries(keys.map((k) => [k, withoutRigRecommendation(jb[k])])))
-    : canonical
-      ? JSON.stringify(canonB)
-      : harbourSuperset
-        ? sharedInOwnOrder(jb)
-        : stripRecord
-          ? serialize(jb)
-          : fb;
+  const digestA = estimatedVerdict
+    ? JSON.stringify(Object.fromEntries(keys.map((k) => [k, withoutVerdictAndRecommended(ja[k])])))
+    : rigVerdictChange
+      ? JSON.stringify(Object.fromEntries(keys.map((k) => [k, withoutRigRecommendation(ja[k])])))
+      : canonical
+        ? JSON.stringify(canonA)
+        : harbourSuperset
+          ? sharedInOwnOrder(ja)
+          : fa;
+  const digestB = estimatedVerdict
+    ? JSON.stringify(Object.fromEntries(keys.map((k) => [k, withoutVerdictAndRecommended(jb[k])])))
+    : rigVerdictChange
+      ? JSON.stringify(Object.fromEntries(keys.map((k) => [k, withoutRigRecommendation(jb[k])])))
+      : canonical
+        ? JSON.stringify(canonB)
+        : harbourSuperset
+          ? sharedInOwnOrder(jb)
+          : stripRecord
+            ? serialize(jb)
+            : fb;
   console.log(
     `arm ${arm.padEnd(16)} ${keys.length} plans  sha A=${sha(digestA)} B=${sha(digestB)} ${
       digestA === digestB ? 'IDENTICAL' : '*** DIFFERS ***'
     }${
       canonical
         ? ' (canonical)'
-        : rigVerdictChange
-          ? ' (rig-verdict-change)'
-          : harbourSuperset
-            ? ' (harbour-superset, shared harbours)'
-            : stripRecord
-              ? ' (planning record stripped)'
-              : ''
+        : estimatedVerdict
+          ? ' (estimated-verdict-unsuppressed)'
+          : rigVerdictChange
+            ? ' (rig-verdict-change)'
+            : harbourSuperset
+              ? ' (harbour-superset, shared harbours)'
+              : stripRecord
+                ? ' (planning record stripped)'
+                : ''
     }`,
   );
 }
@@ -288,7 +326,7 @@ for (const arm of arms) {
 const harboursPerArm = arms.length > 0 ? total / arms.length : 0;
 const modeWord = canonical
   ? 'canonically'
-  : rigVerdictChange
+  : rigVerdictChange || estimatedVerdict
     ? 'verdict-elided'
     : stripRecord
       ? 'record-stripped'
@@ -307,6 +345,15 @@ if (rigVerdictChange) {
     `#553 verdict changes: ${verdictChanges} (all must be decided -> not-compared on a plan with <2 solved sails)`,
   );
 }
+if (estimatedVerdict) {
+  console.log(
+    `#1716 verdict changes: ${verdictChanges} ${JSON.stringify(estimatedChanges)} (all must be not-compared -> decided|tie|moot in an estimate-based arm, re-derived from the row's own results)`,
+  );
+  if (verdictChanges === 0) {
+    console.log('FAIL: zero verdict changes observed — the mode never reached the lever');
+    process.exit(1);
+  }
+}
 if (verdictViolations.length) {
   console.log('\nDISALLOWED VERDICT CHANGES:');
   for (const v of verdictViolations) console.log('  ' + v);
@@ -316,9 +363,11 @@ if (diffs.length) {
   // the verdict, so an unconditional "elided" label would misdescribe byte and
   // canonical mode, whose diffs include it.
   console.log(
-    rigVerdictChange
-      ? '\nDIFFERING PLANS (with rigRecommendation elided):'
-      : '\nDIFFERING PLANS:',
+    estimatedVerdict
+      ? '\nDIFFERING PLANS (with rigRecommendation and recommended elided):'
+      : rigVerdictChange
+        ? '\nDIFFERING PLANS (with rigRecommendation elided):'
+        : '\nDIFFERING PLANS:',
   );
   for (const d of diffs) console.log('  ' + d);
 }

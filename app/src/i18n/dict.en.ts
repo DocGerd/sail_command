@@ -466,6 +466,16 @@ export const en = {
   'route.rigTabs': 'Rig comparison',
   'route.recommended': 'Recommended',
   'route.fasterRig': 'Faster: {rig}',
+  // #1716 spec §T.4: estimate-based verdict copy. {tier} is always
+  // boat.polarTier.estimated.
+  'route.fasterRigEstimated':
+    'Faster: {rig} — indicative only, from estimated polar data (tier: {tier})',
+  'route.rigTieEstimated':
+    '{sailA} and {sailB} are effectively tied for this passage — indicative only, from estimated polar data (tier: {tier})',
+  'route.recommendedEstimated': 'Recommended (indicative, estimated polar data)',
+  'departureScan.confirm.done.disagreementEstimated':
+    'Plan updated — the full solve favours {rig} here (indicative, from estimated polar data), not the genoa this window was ranked by.',
+  'plansList.rigEstimated': '{rig} (estimate)',
   // #259: honest copy for the two cases where badging one rig as
   // "recommended" would be misleading — an ETA tie (too close to call) and
   // an all-motor route (the polar never drove a leg, so rig choice is moot).
@@ -480,15 +490,15 @@ export const en = {
   // is the whole point — 'tie' reports the outcome of a comparison that ran,
   // this reports that no comparison ran at all. Reached when only one sail
   // found a route, when the plan requested a number of sails the capped-at-2
-  // comparison has no verdict for, or when the boat's polars are estimated
-  // (tier C), where the two tables differ by a documented overlay ramp rather
-  // than by anything about the hull. Says no faster rig is CLAIMED rather
-  // than that the sails are equal, because that is the honest difference.
+  // comparison has no verdict for, or when a requested sail is undeclared.
+  // Says no faster rig is CLAIMED rather than that the sails are equal,
+  // because that is the honest difference.
   'route.rigNotCompared':
     'The sails were not compared for this passage, so no faster rig is claimed',
   // #1398b (spike 1022 §8): names the tier-C reason for the SAME
-  // 'not-compared' verdict the generic route.rigNotCompared reports — never
-  // shown for the comparisonIncomplete or rigOneFailed causes (see
+  // 'not-compared' verdict the generic route.rigNotCompared reports. Since
+  // spec §T it is reached by legacy records only, and never for the
+  // comparisonIncomplete or rigOneFailed causes (see
   // rigComparisonSuppressedByTier, lib/plan.ts). {tier} is interpolated
   // from `t('boat.polarTier.estimated')` at the call site, never a hardcoded
   // word here, so a future reword of that label cannot drift the two apart.

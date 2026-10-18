@@ -3,7 +3,7 @@ import { useLang, useT } from '../i18n';
 import type { MsgKey } from '../i18n/dict.de';
 import type { LatLon, Plan, PlanRequest, PlanResultOk, SailId } from '../types';
 import type { ReplanClient } from '../state/replan';
-import { noRouteMessageKey } from '../lib/plan';
+import { noRouteMessageKey, rigEstimateBased } from '../lib/plan';
 import { motorSplit, rigRecommendationOf, sailLabelKey } from '../lib/resultSummary';
 import { recommendedResult } from '../types';
 import { formatDateTime, formatDuration, formatHeading, formatNm } from '../lib/format';
@@ -199,8 +199,7 @@ function candidateCard(
  * (the issue's own "worth surfacing rather than silently accepting" —
  * disagreement is evidence §2.2's measured aperture may be too narrow, not
  * something to hide), and a plan whose comparison is not 'decided' (tie,
- * moot, or a tier-C boat's not-compared) is never claimed as a disagreement
- * either way — no rig is named unless the router itself named one.
+ * moot, or not-compared) is never claimed as a disagreement either way — no rig is named unless the router itself named one.
  */
 export default function DepartureCompare({
   plan,
@@ -224,6 +223,7 @@ export default function DepartureCompare({
     // 'moot'/'not-compared' (nothing to disagree WITH there; claiming a rig
     // in that case would be the same unearned ★ the brief warns against).
     disagreeingRig: SailId | null;
+    estimateBased: boolean;
   } | null>(null);
   const countId = useId();
   const stepId = useId();
@@ -289,6 +289,7 @@ export default function DepartureCompare({
         departureMs,
         disagreeingRig:
           genoaAboard && rec.kind === 'decided' && rec.rig !== GENOA_SAIL_ID ? rec.rig : null,
+        estimateBased: rigEstimateBased(updated),
       });
       onConfirmed(updated);
     });
@@ -412,9 +413,12 @@ export default function DepartureCompare({
                   {confirmed?.departureMs === candidate.departureMs && (
                     <p role="status">
                       {confirmed.disagreeingRig
-                        ? t('departureScan.confirm.done.disagreement', {
-                            rig: t(sailLabelKey(confirmed.disagreeingRig)),
-                          })
+                        ? t(
+                            confirmed.estimateBased
+                              ? 'departureScan.confirm.done.disagreementEstimated'
+                              : 'departureScan.confirm.done.disagreement',
+                            { rig: t(sailLabelKey(confirmed.disagreeingRig)) },
+                          )
                         : t('departureScan.confirm.done')}
                     </p>
                   )}

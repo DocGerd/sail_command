@@ -194,9 +194,7 @@ export interface RigResult {
 // OUTCOME of a comparison that did run. `assemble` (routing/planRoute.ts)
 // returns it whenever `compareRigs` was not called: fewer than two sails
 // produced a result, more than two were requested (the cap is 2, so no N-way
-// verdict is defined), or the boat's polars are tier C, where the second
-// table is the first times a documented overlay ramp so their difference is a
-// function of the ramp rather than of the hull.
+// verdict is defined), or a requested sail is not declared by the boat.
 //
 // NOT the N-way generalisation §L rejects (`[OQ-3] Generalise
 // RigRecommendation to N-way now`) — spec §N.9 says so explicitly. The cap

@@ -13,9 +13,12 @@ import {
   canonicalizeArmFile,
   withoutRigRecommendation,
   classifyRigVerdictChange,
+  withoutVerdictAndRecommended,
+  classifyEstimatedVerdictChange,
   stripPlanningRecord,
 } from './canonicalize.mjs';
 import { ARM_NAMES } from './armNames.ts';
+import { ESTIMATE_BASED_ARM_NAMES, RIG_TIE_BAND_MS_TWIN } from './estimateBasedArms.ts';
 
 // Fixture pair is asymmetric in EVERY way Task 9's rename actually is: the
 // OUTER container (named genoa/fock fields vs a sails list), the NESTED key
@@ -585,4 +588,373 @@ test('#1514: a matching pair strips both keys and leaves every other field deep-
   assert.deepStrictEqual(stripped, { alpha: okRow });
   assert.ok(!Object.hasOwn(stripped.alpha, 'record'));
   assert.ok(!Object.hasOwn(stripped.alpha, 'pass2'));
+});
+
+// ---------------------------------------------------------------------------
+// #1716 / spec T.7 — the fourth comparison mode (--estimated-verdict-unsuppressed).
+//
+// Reverse of #553's: not-compared -> decided|tie|moot on a row with two solved
+// sails, in an arm whose boat has an estimated sail. Every expectation below is
+// hand-derived from compareRigs: all-motor -> moot; |dEta| < 60 s -> tie; else
+// the earlier ETA wins; `recommended` is the winner, else the earlier ETA,
+// sails[0] on equality.
+// ---------------------------------------------------------------------------
+
+const EST_ARM = 'salona44-breeze';
+const S45_ARM = 'breeze';
+const motorLegs = [{ kind: 'motor' }];
+const sailLegs = [{ kind: 'sail' }];
+
+/** A two-sail row, genoa then fock (solve order), with chosen ETAs and legs. */
+function estRow(
+  verdict,
+  recommended,
+  { etaG, etaF, legsG = sailLegs, legsF = sailLegs, ...extra } = {},
+) {
+  return {
+    status: 'ok',
+    comparisonComplete: true,
+    recommended,
+    sails: [
+      { sailId: 'genoa', result: { sailId: 'genoa', etaMs: etaG, legs: legsG }, reason: null },
+      { sailId: 'fock', result: { sailId: 'fock', etaMs: etaF, legs: legsF }, reason: null },
+    ],
+    ...(verdict ? { rigRecommendation: verdict } : {}),
+    ...extra,
+  };
+}
+
+const NOT_COMPARED = { kind: 'not-compared' };
+// 120 s apart: outside the 60 s band, so the earlier ETA wins.
+const FAR = { etaG: 1_000_000, etaF: 1_120_000 };
+const NEAR = { etaG: 1_000_000, etaF: 1_030_000 };
+
+test('#1716: the tie-band twin is 60 s', () => {
+  assert.equal(RIG_TIE_BAND_MS_TWIN, 60_000);
+});
+
+test('#1716: the allowed arms are exactly the two salona44 arms and exist in armNames', () => {
+  assert.deepEqual([...ESTIMATE_BASED_ARM_NAMES], ['salona44-breeze', 'salona44-relaxation']);
+  for (const arm of ESTIMATE_BASED_ARM_NAMES) assert.ok(ARM_NAMES.includes(arm), arm);
+});
+
+test('#1716: withoutVerdictAndRecommended strips both fields and keeps everything else', () => {
+  const a = withoutVerdictAndRecommended(estRow(NOT_COMPARED, 'genoa', FAR));
+  const b = withoutVerdictAndRecommended(estRow({ kind: 'decided', rig: 'genoa' }, 'fock', FAR));
+  assert.equal(JSON.stringify(a), JSON.stringify(b));
+  assert.equal('rigRecommendation' in a, false);
+  assert.equal('recommended' in a, false);
+  assert.equal(a.sails.length, 2);
+});
+
+test('#1716: unchanged verdict and recommended classify as null', () => {
+  const row = estRow(NOT_COMPARED, 'genoa', FAR);
+  assert.equal(classifyEstimatedVerdictChange(EST_ARM, row, row), null);
+});
+
+test('#1716: not-compared -> decided on the earlier-ETA sail is PERMITTED (genoa first, fock first)', () => {
+  const base = estRow(NOT_COMPARED, 'genoa', FAR);
+  const genoaWins = estRow({ kind: 'decided', rig: 'genoa' }, 'genoa', FAR);
+  assert.equal(classifyEstimatedVerdictChange(EST_ARM, base, genoaWins).ok, true);
+  const fockFaster = { etaG: 1_120_000, etaF: 1_000_000 };
+  const baseF = estRow(NOT_COMPARED, 'genoa', fockFaster);
+  const fockWins = estRow({ kind: 'decided', rig: 'fock' }, 'fock', fockFaster);
+  const v = classifyEstimatedVerdictChange(EST_ARM, baseF, fockWins);
+  assert.equal(v.ok, true);
+  assert.match(v.why, /not-compared -> decided \(fock\)/);
+});
+
+test('#1716: a HEAD naming the SLOWER sail is REFUSED (positive control)', () => {
+  const base = estRow(NOT_COMPARED, 'genoa', FAR);
+  const slower = estRow({ kind: 'decided', rig: 'fock' }, 'fock', FAR);
+  const v = classifyEstimatedVerdictChange(EST_ARM, base, slower);
+  assert.equal(v.ok, false);
+  assert.match(v.why, /re-derived/);
+});
+
+test('#1716: a correct verdict with the wrong `recommended` is REFUSED', () => {
+  const base = estRow(NOT_COMPARED, 'genoa', FAR);
+  const head = estRow({ kind: 'decided', rig: 'genoa' }, 'fock', FAR);
+  const v = classifyEstimatedVerdictChange(EST_ARM, base, head);
+  assert.equal(v.ok, false);
+  assert.match(v.why, /recommended/);
+});
+
+test('#1716: not-compared -> tie inside the band recommends the earlier ETA; equal ETAs recommend sails[0]', () => {
+  const base = estRow(NOT_COMPARED, 'genoa', NEAR);
+  assert.equal(
+    classifyEstimatedVerdictChange(EST_ARM, base, estRow({ kind: 'tie' }, 'genoa', NEAR)).ok,
+    true,
+  );
+  const fockEarlier = { etaG: 1_030_000, etaF: 1_000_000 };
+  assert.equal(
+    classifyEstimatedVerdictChange(
+      EST_ARM,
+      estRow(NOT_COMPARED, 'genoa', fockEarlier),
+      estRow({ kind: 'tie' }, 'fock', fockEarlier),
+    ).ok,
+    true,
+  );
+  const equal = { etaG: 1_000_000, etaF: 1_000_000 };
+  assert.equal(
+    classifyEstimatedVerdictChange(
+      EST_ARM,
+      estRow(NOT_COMPARED, 'genoa', equal),
+      estRow({ kind: 'tie' }, 'genoa', equal),
+    ).ok,
+    true,
+  );
+  assert.equal(
+    classifyEstimatedVerdictChange(
+      EST_ARM,
+      estRow(NOT_COMPARED, 'genoa', equal),
+      estRow({ kind: 'tie' }, 'fock', equal),
+    ).ok,
+    false,
+  );
+});
+
+test('#1716: the tie band is strict at the twin value: a gap of exactly 60 s is decided, not tie', () => {
+  const edge = { etaG: 1_000_000, etaF: 1_000_000 + RIG_TIE_BAND_MS_TWIN };
+  const base = estRow(NOT_COMPARED, 'genoa', edge);
+  assert.equal(
+    classifyEstimatedVerdictChange(
+      EST_ARM,
+      base,
+      estRow({ kind: 'decided', rig: 'genoa' }, 'genoa', edge),
+    ).ok,
+    true,
+  );
+  assert.equal(
+    classifyEstimatedVerdictChange(EST_ARM, base, estRow({ kind: 'tie' }, 'genoa', edge)).ok,
+    false,
+  );
+});
+
+test('#1716: a tie claimed outside the band, and a decision claimed inside it, are REFUSED', () => {
+  assert.equal(
+    classifyEstimatedVerdictChange(
+      EST_ARM,
+      estRow(NOT_COMPARED, 'genoa', FAR),
+      estRow({ kind: 'tie' }, 'genoa', FAR),
+    ).ok,
+    false,
+  );
+  assert.equal(
+    classifyEstimatedVerdictChange(
+      EST_ARM,
+      estRow(NOT_COMPARED, 'genoa', NEAR),
+      estRow({ kind: 'decided', rig: 'genoa' }, 'genoa', NEAR),
+    ).ok,
+    false,
+  );
+});
+
+test('#1716: moot needs BOTH results all-motor', () => {
+  const both = { ...FAR, legsG: motorLegs, legsF: motorLegs };
+  assert.equal(
+    classifyEstimatedVerdictChange(
+      EST_ARM,
+      estRow(NOT_COMPARED, 'genoa', both),
+      estRow({ kind: 'moot' }, 'genoa', both),
+    ).ok,
+    true,
+  );
+  const one = { ...FAR, legsG: motorLegs, legsF: sailLegs };
+  assert.equal(
+    classifyEstimatedVerdictChange(
+      EST_ARM,
+      estRow(NOT_COMPARED, 'genoa', one),
+      estRow({ kind: 'moot' }, 'genoa', one),
+    ).ok,
+    false,
+  );
+});
+
+test('#1716: a change in a Salona 45 arm is REFUSED (positive control)', () => {
+  const base = estRow(NOT_COMPARED, 'genoa', FAR);
+  const head = estRow({ kind: 'decided', rig: 'genoa' }, 'genoa', FAR);
+  assert.equal(classifyEstimatedVerdictChange(EST_ARM, base, head).ok, true);
+  const v = classifyEstimatedVerdictChange(S45_ARM, base, head);
+  assert.equal(v.ok, false);
+  assert.match(v.why, /no estimated sail/);
+});
+
+test('#1716: only not-compared may become a verdict; a reverse or sideways change is REFUSED', () => {
+  const decided = estRow({ kind: 'decided', rig: 'genoa' }, 'genoa', FAR);
+  assert.equal(
+    classifyEstimatedVerdictChange(EST_ARM, decided, estRow(NOT_COMPARED, 'genoa', FAR)).ok,
+    false,
+  );
+  assert.equal(
+    classifyEstimatedVerdictChange(EST_ARM, estRow({ kind: 'tie' }, 'genoa', NEAR), decided).ok,
+    false,
+  );
+});
+
+test('#1716: HEAD must hold exactly two solved sails and a complete comparison', () => {
+  const base = estRow(NOT_COMPARED, 'genoa', FAR);
+  const head = estRow({ kind: 'decided', rig: 'genoa' }, 'genoa', FAR);
+  const oneSolved = {
+    ...head,
+    sails: [head.sails[0], { ...head.sails[1], result: null, reason: 'unreachable' }],
+  };
+  assert.equal(classifyEstimatedVerdictChange(EST_ARM, base, oneSolved).ok, false);
+  const incomplete = { ...head, comparisonComplete: false };
+  assert.equal(classifyEstimatedVerdictChange(EST_ARM, base, incomplete).ok, false);
+  const threeSails = {
+    ...head,
+    sails: [...head.sails, { sailId: 'storm', result: null, reason: null }],
+  };
+  assert.equal(classifyEstimatedVerdictChange(EST_ARM, base, threeSails).ok, false);
+});
+
+test('#1716: `recommended` moving under an UNCHANGED verdict is REFUSED', () => {
+  const oneSolved = (rec) => ({
+    ...estRow(NOT_COMPARED, rec, FAR),
+    sails: [
+      { sailId: 'genoa', result: null, reason: 'unreachable' },
+      { sailId: 'fock', result: { sailId: 'fock', etaMs: 5, legs: sailLegs }, reason: null },
+    ],
+  });
+  const v = classifyEstimatedVerdictChange(EST_ARM, oneSolved('fock'), oneSolved('genoa'));
+  assert.equal(v.ok, false);
+  assert.match(v.why, /verdict unchanged/);
+});
+
+/** Fixture dir: allowed arms carry `allowed`, every other arm carries `other`. */
+function writeEstimatedDir(allowed, other) {
+  const dir = mkdtempSync(join(tmpdir(), 'sweep-1716-'));
+  for (const arm of ARM_NAMES) {
+    const row = ESTIMATE_BASED_ARM_NAMES.includes(arm) ? allowed : other;
+    writeFileSync(join(dir, `${arm}.json`), JSON.stringify({ alpha: row }, null, 1));
+  }
+  return dir;
+}
+
+const BASE_ROW = estRow(NOT_COMPARED, 'genoa', FAR);
+const HEAD_ROW = estRow({ kind: 'decided', rig: 'genoa' }, 'genoa', FAR);
+
+function runEstimated(base, head) {
+  return execFileSync('node', [compareMjs, '--estimated-verdict-unsuppressed', base, head], {
+    encoding: 'utf8',
+    stdio: 'pipe',
+  });
+}
+
+test('#1716 END TO END: exits 0 on the permitted change in the estimate-based arms, where BYTE mode fails', () => {
+  const base = writeEstimatedDir(BASE_ROW, BASE_ROW);
+  const head = writeEstimatedDir(HEAD_ROW, BASE_ROW);
+  try {
+    assert.throws(() =>
+      execFileSync('node', [compareMjs, base, head], { encoding: 'utf8', stdio: 'pipe' }),
+    );
+    const out = runEstimated(base, head);
+    assert.match(out, /verdict-elided-identical/);
+    assert.match(
+      out,
+      new RegExp(
+        `#1716 verdict changes: ${ESTIMATE_BASED_ARM_NAMES.length} \\{"decided":${ESTIMATE_BASED_ARM_NAMES.length}\\}`,
+      ),
+    );
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+    rmSync(head, { recursive: true, force: true });
+  }
+});
+
+test('#1716 END TO END: exits NON-ZERO when a Salona 45 arm also changes', () => {
+  const base = writeEstimatedDir(BASE_ROW, BASE_ROW);
+  const head = writeEstimatedDir(HEAD_ROW, HEAD_ROW);
+  try {
+    assert.throws(
+      () => runEstimated(base, head),
+      (err) => {
+        assert.equal(err.status, 1);
+        assert.match(err.stdout, /DISALLOWED VERDICT CHANGES/);
+        assert.match(err.stdout, /no estimated sail/);
+        return true;
+      },
+    );
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+    rmSync(head, { recursive: true, force: true });
+  }
+});
+
+test('#1716 END TO END: exits NON-ZERO when HEAD names the slower sail', () => {
+  const base = writeEstimatedDir(BASE_ROW, BASE_ROW);
+  const head = writeEstimatedDir(estRow({ kind: 'decided', rig: 'fock' }, 'fock', FAR), BASE_ROW);
+  try {
+    assert.throws(
+      () => runEstimated(base, head),
+      (err) => {
+        assert.equal(err.status, 1);
+        assert.match(err.stdout, /re-derived/);
+        return true;
+      },
+    );
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+    rmSync(head, { recursive: true, force: true });
+  }
+});
+
+test('#1716 END TO END: still fails on a NON-verdict difference (it is not a blanket ignore)', () => {
+  const base = writeEstimatedDir(BASE_ROW, BASE_ROW);
+  const head = writeEstimatedDir({ ...HEAD_ROW, snappedOrigin: { lat: 1, lon: 2 } }, BASE_ROW);
+  try {
+    assert.throws(
+      () => runEstimated(base, head),
+      (err) => {
+        assert.equal(err.status, 1);
+        assert.match(
+          err.stdout,
+          /DIFFERING PLANS \(with rigRecommendation and recommended elided\)/,
+        );
+        return true;
+      },
+    );
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+    rmSync(head, { recursive: true, force: true });
+  }
+});
+
+test('#1716 END TO END: fails closed when no verdict changed anywhere', () => {
+  const base = writeEstimatedDir(BASE_ROW, BASE_ROW);
+  const head = writeEstimatedDir(BASE_ROW, BASE_ROW);
+  try {
+    assert.throws(
+      () => runEstimated(base, head),
+      (err) => {
+        assert.equal(err.status, 1);
+        assert.match(err.stdout, /zero verdict changes/);
+        return true;
+      },
+    );
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+    rmSync(head, { recursive: true, force: true });
+  }
+});
+
+test('#1716: the mode is refused alongside --rig-verdict-change', () => {
+  const dir = writeEstimatedDir(BASE_ROW, BASE_ROW);
+  try {
+    assert.throws(
+      () =>
+        execFileSync(
+          'node',
+          [compareMjs, '--estimated-verdict-unsuppressed', '--rig-verdict-change', dir, dir],
+          { encoding: 'utf8', stdio: 'pipe' },
+        ),
+      (err) => {
+        assert.equal(err.status, 2);
+        return true;
+      },
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

@@ -55,6 +55,7 @@
  * fresh copy) but is worth stating as an explicit contract rather than an
  * accident of how compare.mjs happens to call it.
  */
+import { ESTIMATE_BASED_ARM_NAMES, RIG_TIE_BAND_MS_TWIN } from './estimateBasedArms.ts';
 
 /**
  * Normalises one RigResult: `rig` (pre-rename) or `sailId` (post-rename)
@@ -199,6 +200,105 @@ export function classifyRigVerdictChange(planA, planB) {
     };
   }
   return { ok: true, why: `decided/${ra.rig} -> not-compared (${solved} solved)` };
+}
+
+/**
+ * #1716 / spec §T.7 — the fourth comparison mode's two halves, mirroring #553's.
+ *
+ * The permitted change is the reverse of #553's: a plan whose BASE verdict was
+ * `not-compared` (an estimated sail aboard) gets the comparison its two solved
+ * sails always allowed. Half 1 elides `rigRecommendation` AND `recommended`
+ * (the latter may move from the first solved sail to the earlier ETA); half 2
+ * re-derives both from the row's own two results, so a HEAD naming the slower
+ * sail fails. ORDER-SENSITIVE: <dirA> BASE, <dirB> HEAD.
+ */
+
+/** Half 1's subject: the plan with `rigRecommendation` and `recommended` removed. */
+export function withoutVerdictAndRecommended(plan) {
+  if (plan == null || plan.status !== 'ok') return canonicalizePlan(plan);
+  const { rigRecommendation: _rr, recommended: _rec, ...rest } = canonicalizePlan(plan);
+  return rest;
+}
+
+const isAllMotor = (result) => (result.legs ?? []).every((leg) => leg.kind === 'motor');
+
+/** `compareRigs` + `assemble`'s `recommended`, re-derived from two solved results in solve order. */
+function rederiveVerdict(a, b) {
+  const earlier = a.etaMs <= b.etaMs ? a.sailId : b.sailId;
+  if (isAllMotor(a) && isAllMotor(b)) return { verdict: { kind: 'moot' }, recommended: earlier };
+  if (Math.abs(a.etaMs - b.etaMs) < RIG_TIE_BAND_MS_TWIN) {
+    return { verdict: { kind: 'tie' }, recommended: earlier };
+  }
+  const rig = a.etaMs < b.etaMs ? a.sailId : b.sailId;
+  return { verdict: { kind: 'decided', rig }, recommended: rig };
+}
+
+/**
+ * Half 2: is this plan's BASE -> HEAD change one #1716 permits?
+ *
+ * `null` when neither the verdict nor `recommended` moved. Otherwise
+ * `{ ok, why }`; permitted means ALL of:
+ *   - the arm is in `ESTIMATE_BASED_ARM_NAMES`,
+ *   - BASE was `not-compared` and HEAD is `decided`, `tie` or `moot`,
+ *   - HEAD has exactly two sails, both solved, and `comparisonComplete: true`,
+ *   - HEAD's verdict and `recommended` equal the re-derivation from those two
+ *     results, read in the row's own `sails` order (the solve order; the
+ *     canonical form sorts by id and would not do).
+ * A `recommended` change under an UNCHANGED verdict is refused outright.
+ */
+export function classifyEstimatedVerdictChange(arm, planA, planB) {
+  const ca = canonicalizePlan(planA);
+  const cb = canonicalizePlan(planB);
+  const ra = ca == null ? null : (ca.rigRecommendation ?? null);
+  const rb = cb == null ? null : (cb.rigRecommendation ?? null);
+  const verdictSame = JSON.stringify(ra) === JSON.stringify(rb);
+  const recSame =
+    (ca == null ? undefined : ca.recommended) === (cb == null ? undefined : cb.recommended);
+  if (verdictSame && recSame) return null;
+  if (verdictSame) {
+    return {
+      ok: false,
+      why: `recommended moved ${ca.recommended} -> ${cb.recommended} with the verdict unchanged (${JSON.stringify(rb)})`,
+    };
+  }
+  if (!ESTIMATE_BASED_ARM_NAMES.includes(arm)) {
+    return { ok: false, why: `verdict changed in arm ${arm}, which has no estimated sail` };
+  }
+  if (!ra || ra.kind !== 'not-compared') {
+    return { ok: false, why: `BASE verdict was ${JSON.stringify(ra)}, expected 'not-compared'` };
+  }
+  if (!rb || !['decided', 'tie', 'moot'].includes(rb.kind)) {
+    return {
+      ok: false,
+      why: `HEAD verdict is ${JSON.stringify(rb)}, expected decided, tie or moot`,
+    };
+  }
+  if (cb.comparisonComplete !== true) {
+    return { ok: false, why: 'HEAD compared a plan whose comparison is not complete' };
+  }
+  const rowSails = planB.sails ?? cb.sails;
+  const solved = rowSails.filter((x) => x.result != null);
+  if (rowSails.length !== 2 || solved.length !== 2) {
+    return {
+      ok: false,
+      why: `HEAD compared ${solved.length} solved of ${rowSails.length} sails, expected 2 of 2`,
+    };
+  }
+  const [x, y] = solved.map((r) => ({ ...r.result, sailId: r.result.sailId ?? r.sailId }));
+  const want = rederiveVerdict(x, y);
+  if (JSON.stringify(rb) !== JSON.stringify(want.verdict)) {
+    return {
+      ok: false,
+      why: `HEAD verdict ${JSON.stringify(rb)} != re-derived ${JSON.stringify(want.verdict)}`,
+    };
+  }
+  if (cb.recommended !== want.recommended) {
+    return {
+      ok: false,
+      why: `HEAD recommended ${cb.recommended} != re-derived ${want.recommended}`,
+    };
+  }
+  return { ok: true, why: `not-compared -> ${rb.kind} (${cb.recommended})` };
 }
 
 export function canonicalizeArmFile(plansByHarbour) {

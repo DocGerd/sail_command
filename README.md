@@ -91,11 +91,13 @@ installs as a standalone icon and works fully offline after the first visit
   a new waypoint at the point where you release it.
 - The router fetches hourly wind, then computes the fastest sailable route
   twice — once per foresail of the selected boat — and recommends the faster
-  (marked ★). Where the two tables cannot honestly be ranked it says so
-  instead of naming a winner: on the three fleet boats the genoa table is
-  *estimated* and differs from the jib only by a documented overlay ramp rather than by
-  anything about the hull, so no faster sail is claimed. It says so again when
-  the search ran out of time before both sails were compared. Tacks and gybes
+  (marked ★). Where a sail's table is *estimated* the verdict says it is
+  indicative only: on the three fleet boats the genoa table differs from the
+  jib only by a documented overlay ramp rather than by anything about the
+  hull, so a faster-sail verdict there reflects that ramp. Where the two
+  cannot be ranked at all it says so instead of naming a winner, for
+  example when the search ran out of time before both sails were compared.
+  Tacks and gybes
   are priced as a time penalty inside the routing cost, not bolted on
   afterwards.
 - Land and depth are respected against a configurable safety depth, whose
@@ -244,8 +246,8 @@ data; the code license is covered in the [License](#license) section below.
   certificate and an estimated genoa. All three have drafts from published
   keel figures rather than that hull's own papers; the app states both, per
   boat, on the Boat tab. Because each boat's two foresail tables differ only
-  by a documented overlay ramp, no faster-sail recommendation is made for
-  them. The **Sails aboard** control on the Boat tab (Both | Genoa | Jib)
+  by a documented overlay ramp, their faster-sail verdict is shown as
+  indicative only. The **Sails aboard** control on the Boat tab (Both | Genoa | Jib)
   lets you plan with only one of the boat's headsails; a plan with one
   headsail shows no rig comparison. A deeper-drafted boat such as *EASY GO!* has harbors the depth data cannot connect
   at its own default safety depth. The origin/destination pickers and the Boat tab mark a
