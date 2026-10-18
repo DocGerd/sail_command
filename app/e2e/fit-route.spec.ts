@@ -119,17 +119,8 @@ async function planRoute(
   await expect(planButton).toBeEnabled({ timeout: 60_000 });
 }
 
-/**
- * Plans Langballigau -> Sønderborg on the deterministic wind-sw12 fixture —
- * the same route `route-alt-rig.spec.ts` and `annotations.spec.ts` use,
- * already known to produce a real multi-leg route on this wind. Opens
- * `.route-layer-controls-disclosure` if the current viewport starts it
- * collapsed (#628: narrow viewports default closed) and returns the "Route
- * einpassen" button once it is enabled.
- */
-async function planAndGetFitButton(page: Page, serverUrl: string) {
-  await planRoute(page, serverUrl);
-
+/** Opens the options cluster if closed; a fit closes it again at narrow widths (#1702). */
+async function openOptionsCluster(page: Page): Promise<void> {
   // Deliberately reads the real `.open` IDL PROPERTY via evaluate(), never
   // `getAttribute('open')` — that returns the empty string when the
   // attribute IS present, which is falsy in JS, so `!getAttribute('open')`
@@ -140,6 +131,20 @@ async function planAndGetFitButton(page: Page, serverUrl: string) {
   if (!isDisclosureOpen) {
     await disclosure.locator('> summary').click();
   }
+}
+
+/**
+ * Plans Langballigau -> Sønderborg on the deterministic wind-sw12 fixture —
+ * the same route `route-alt-rig.spec.ts` and `annotations.spec.ts` use,
+ * already known to produce a real multi-leg route on this wind. Opens
+ * `.route-layer-controls-disclosure` if the current viewport starts it
+ * collapsed (#628: narrow viewports default closed) and returns the "Route
+ * einpassen" button once it is enabled.
+ */
+async function planAndGetFitButton(page: Page, serverUrl: string, from?: string, to?: string) {
+  await planRoute(page, serverUrl, from, to);
+
+  await openOptionsCluster(page);
 
   const fitButton = page.getByRole('button', { name: 'Route einpassen' });
   await expect(fitButton).toBeEnabled({ timeout: 60_000 });
@@ -149,15 +154,13 @@ async function planAndGetFitButton(page: Page, serverUrl: string) {
 test.describe('#1102: fit-route-to-view against a real MapLibre camera', () => {
   // Both the wide (disclosure open by default) and narrow (disclosure
   // closed by default, #628) code paths — the two viewports the #1100
-  // review manually verified against, made durable. `refitFirst` marks the
-  // viewport where opening the disclosure changes the chrome the fit pads
-  // for, so the button is only comparable to a fit made after that.
+  // review manually verified against, made durable.
   const viewports = {
-    tabletLandscape: { viewport: STANDARD_VIEWPORTS.tabletLandscape, refitFirst: false },
-    phonePortrait: { viewport: STANDARD_VIEWPORTS.phonePortrait, refitFirst: true },
+    tabletLandscape: STANDARD_VIEWPORTS.tabletLandscape,
+    phonePortrait: STANDARD_VIEWPORTS.phonePortrait,
   };
 
-  for (const [name, { viewport, refitFirst }] of Object.entries(viewports)) {
+  for (const [name, viewport] of Object.entries(viewports)) {
     test(`clicking "Route einpassen" returns the camera to the route bounds (${name})`, async ({
       page,
     }) => {
@@ -166,7 +169,6 @@ test.describe('#1102: fit-route-to-view against a real MapLibre camera', () => {
       try {
         const fitButton = await planAndGetFitButton(page, server.url);
 
-        if (refitFirst) await fitButton.click();
         const fitted = await waitForStableCamera(page);
 
         // Move the camera away. MAX_BOUNDS (MapView.tsx) clamps this request
@@ -185,6 +187,7 @@ test.describe('#1102: fit-route-to-view against a real MapLibre camera', () => {
         const panned = await readCamera(page);
         expect(panned, 'sanity: the jump must leave the fitted camera').not.toEqual(fitted);
 
+        await openOptionsCluster(page);
         await fitButton.click();
 
         // Poll the ACTUAL camera, not a boolean — a CI failure here names
@@ -229,17 +232,10 @@ async function endpointState(page: Page, role: 'origin' | 'destination'): Promis
   }, role);
 }
 
-// `requireClear = false` checks visibility only: the narrow button path leaves no free map.
-async function expectEndpointsClearOfChrome(page: Page, requireClear = true): Promise<void> {
+async function expectEndpointsClearOfChrome(page: Page): Promise<void> {
   for (const role of ['destination', 'origin'] as const) {
     await expect
-      .poll(
-        async () => {
-          const state = await endpointState(page, role);
-          return requireClear ? state : { ...state, overlapPx: 0 };
-        },
-        { timeout: 30_000 },
-      )
+      .poll(() => endpointState(page, role), { timeout: 30_000 })
       .toEqual({ overlapPx: 0, insideMap: true });
   }
 }
@@ -292,17 +288,17 @@ test.describe('#1626: fit pads for map chrome', () => {
       }
     });
 
-    // Reaching the button opens the disclosure, and the expanded cluster plus
-    // the sheet leave no free map rect at these widths, so only visibility
-    // can be required here, not clearance.
-    test(`endpoints stay on the map after "Route einpassen" (${name})`, async ({ page }) => {
+    // Reaching the button opens the disclosure; the fit closes it again (#1702).
+    test(`endpoints stay clear of the chrome after "Route einpassen" (${name})`, async ({
+      page,
+    }) => {
       await page.setViewportSize(viewport);
       const server = await startPreview(page);
       try {
         const fitButton = await planAndGetFitButton(page, server.url);
         await fitButton.click();
         await waitForStableCamera(page);
-        await expectEndpointsClearOfChrome(page, false);
+        await expectEndpointsClearOfChrome(page);
       } finally {
         server.kill();
       }
@@ -451,26 +447,138 @@ test.describe('#1641: endpoint labels clear of the chrome after the auto-fit', (
       }
     });
 
-    // The restored plan arrives before its endpoint markers are rebuilt.
-    test(`labels stay clear after a session restore (${name})`, async ({ page }) => {
-      await page.setViewportSize(viewport);
-      const server = await startPreview(page);
-      try {
-        await planRoute(page, server.url);
-        // PlansList reads IndexedDB once, on mount: let the save settle first.
-        await page.getByRole('tab', { name: 'Routen' }).click();
-        await expect(page.locator('.plans-list-row')).toHaveCount(1);
-        await page.goto(server.url);
-        await expect(page.getByRole('tab', { name: 'Routen' })).toHaveAttribute(
-          'aria-selected',
-          'true',
-        );
-        await expect(page.locator('.sc-endpoint-marker-label')).toHaveCount(2, { timeout: 60_000 });
-        await waitForStableCamera(page);
-        await expectLabelsClear(page);
-      } finally {
-        server.kill();
-      }
-    });
+    // The restored plan arrives before its endpoint markers are rebuilt. The second
+    // route pins the release-gate route of #1717; it is green on base and did not
+    // reproduce that issue.
+    const routes: Array<[string, string?, string?]> = [['default route']];
+    if (name === 'tabletPortrait')
+      routes.push(['Flensburg -> Sønderborg', 'Flensburg', 'Sønderborg']);
+    for (const [routeName, from, to] of routes) {
+      test(`labels stay clear after a session restore (${name}, ${routeName})`, async ({
+        page,
+      }) => {
+        await page.setViewportSize(viewport);
+        const server = await startPreview(page);
+        try {
+          await planRoute(page, server.url, from, to);
+          // PlansList reads IndexedDB once, on mount: let the save settle first.
+          await page.getByRole('tab', { name: 'Routen' }).click();
+          await expect(page.locator('.plans-list-row')).toHaveCount(1);
+          await page.goto(server.url);
+          await expect(page.getByRole('tab', { name: 'Routen' })).toHaveAttribute(
+            'aria-selected',
+            'true',
+          );
+          await expect(page.locator('.sc-endpoint-marker-label')).toHaveCount(2, {
+            timeout: 60_000,
+          });
+          await waitForStableCamera(page);
+          await expectLabelsClear(page);
+        } finally {
+          server.kill();
+        }
+      });
+    }
   }
+});
+
+test.describe('#1702: "Route einpassen" with the options cluster open (tabletPortrait)', () => {
+  test('closes the cluster and leaves both endpoints and labels uncovered', async ({ page }) => {
+    await page.setViewportSize(STANDARD_VIEWPORTS.tabletPortrait);
+    const server = await startPreview(page);
+    try {
+      const fitButton = await planAndGetFitButton(page, server.url, 'Flensburg', 'Sønderborg');
+      await fitButton.click();
+      await waitForStableCamera(page);
+      await expectEndpointsClearOfChrome(page);
+      await expectLabelsClear(page);
+      await expect
+        .poll(() =>
+          page
+            .locator('details.route-layer-controls-disclosure')
+            .evaluate((el) => (el as HTMLDetailsElement).open),
+        )
+        .toBe(false);
+    } finally {
+      server.kill();
+    }
+  });
+});
+
+// #1710: the chart is fitted once on entering Live and never while it is active.
+test.describe('#1710: no re-fit while Live is active (tabletPortrait)', () => {
+  test.use({
+    permissions: ['geolocation'],
+    geolocation: { latitude: 54.8237, longitude: 9.6524, accuracy: 5 },
+  });
+
+  test('"Route einpassen" after a user move before Live does not arm another entry fit', async ({
+    page,
+  }) => {
+    await page.setViewportSize(STANDARD_VIEWPORTS.tabletPortrait);
+    const server = await startPreview(page);
+    try {
+      const fitButton = await planAndGetFitButton(page, server.url, 'Flensburg', 'Sønderborg');
+      // The open cluster covers the drag point.
+      await page.locator('details.route-layer-controls-disclosure > summary').click();
+      const fitted = await waitForStableCamera(page);
+
+      // A real drag on empty water: only a user gesture releases the auto-fit.
+      const dragFrom = { x: 700, y: 520 };
+      await page.mouse.move(dragFrom.x, dragFrom.y);
+      await page.mouse.down();
+      await page.mouse.move(dragFrom.x - 60, dragFrom.y + 20, { steps: 6 });
+      await page.mouse.up();
+      const moved = await waitForStableCamera(page);
+      expect(moved, 'sanity: the drag must leave the fitted camera').not.toEqual(fitted);
+
+      await page.getByRole('tab', { name: 'Live' }).click();
+      await page.getByRole('button', { name: 'Live-Ansicht' }).click();
+      await expect(page.locator('.live-view-data')).toBeVisible({
+        timeout: 30_000,
+      });
+      await waitForStableCamera(page);
+
+      await page.evaluate(() => {
+        const w = window as unknown as {
+          __scMap?: { fitBounds: (...args: unknown[]) => unknown };
+          __fitCalls?: number;
+        };
+        const map = w.__scMap;
+        if (!map) throw new Error('window.__scMap is not set');
+        w.__fitCalls = 0;
+        const original = map.fitBounds.bind(map);
+        map.fitBounds = (...args: unknown[]) => {
+          w.__fitCalls = (w.__fitCalls ?? 0) + 1;
+          return original(...args);
+        };
+      });
+
+      // The click and the toast closing land in one task, so the next observer
+      // callback after the re-arm is the resize and not a layout-neutral one.
+      await openOptionsCluster(page);
+      await expect(page.locator('.reload-prompt')).toBeVisible();
+      const counts = await fitButton.evaluate(async (button) => {
+        const w = window as unknown as { __fitCalls?: number };
+        const close = document.querySelector<HTMLElement>('.reload-prompt .banner-dismiss');
+        if (!close) throw new Error('no toast to dismiss');
+        (button as HTMLButtonElement).click();
+        const atClick = w.__fitCalls ?? -1;
+        close.click();
+        // Observer callback, then the frame it schedules the re-fit on.
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          ),
+        );
+        return { atClick, after: w.__fitCalls ?? -1 };
+      });
+      expect(counts.atClick, 'positive control: the counter sees the button fit').toBeGreaterThan(
+        0,
+      );
+      expect(counts.after).toBe(counts.atClick);
+    } finally {
+      server.kill();
+    }
+  });
 });

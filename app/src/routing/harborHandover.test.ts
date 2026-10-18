@@ -227,13 +227,24 @@ describe('#1721 the gate never reads a failure label (#282)', () => {
     eager: true,
   })['./harborHandover.ts']!;
 
-  it('no `.reason` read in the wrapper code', () => {
+  const READ_IN_CODE = /\breason\b/g;
+  const QUOTED_KEY = /['"`]reason['"`]/g;
+
+  it('no `reason` read in the wrapper code', () => {
     const code = stripCommentsAndStrings(source);
     assertNonVacuousStrip(code, 'r1.status', 'routing/harborHandover.ts');
-    expect(code.match(/\.\s*reason\b/g) ?? []).toEqual([]);
+    expect(code.match(READ_IN_CODE) ?? []).toEqual([]);
+    expect(source.match(QUOTED_KEY) ?? []).toEqual([]);
   });
 
-  it('the scan detects a `.reason` read (positive control)', () => {
-    expect(stripCommentsAndStrings("if (r1.reason !== 'x') return r1;")).toMatch(/\.\s*reason\b/);
+  it.each([
+    ['member read', "if (r1.reason !== 'x') return r1;"],
+    ['destructured read', 'const { reason } = r1;'],
+  ])('the code scan detects a %s (positive control)', (_name, src) => {
+    expect(stripCommentsAndStrings(src).match(READ_IN_CODE)).not.toBeNull();
+  });
+
+  it('the raw scan detects a quoted `reason` key (positive control)', () => {
+    expect("const k = r1['reason'];".match(QUOTED_KEY)).not.toBeNull();
   });
 });

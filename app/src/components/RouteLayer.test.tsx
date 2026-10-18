@@ -897,6 +897,18 @@ describe('RouteLayer re-fit after a layout change (#1639)', () => {
     expect(map.fitBounds).not.toHaveBeenCalled();
   });
 
+  it('does not re-fit during Live after "Route einpassen" re-arms a latch released before Live started', () => {
+    const map = setup();
+    userMove(map);
+    mountLive();
+    resize();
+    fireEvent.click(screen.getByRole('button', { name: 'Route einpassen' }));
+    map.fitBounds.mockClear();
+    liveTop = 400;
+    resize();
+    expect(map.fitBounds).not.toHaveBeenCalled();
+  });
+
   it('resumes re-fitting after the Live view ends', () => {
     const map = setup();
     const live = mountLive();
@@ -983,6 +995,40 @@ describe('RouteLayer fit-to-view button (#297)', () => {
     fireEvent.click(button);
     expect(map.fitBounds).toHaveBeenCalledTimes(1);
     expect(map.fitBounds.mock.calls[0][1]).toMatchObject({ bearing: 135 });
+  });
+
+  describe('closes the options cluster before fitting at narrow widths (#1702)', () => {
+    const openedDetails = (container: HTMLElement) => {
+      const details = container.querySelector<HTMLDetailsElement>(
+        'details.route-layer-controls-disclosure',
+      )!;
+      details.open = true;
+      return details;
+    };
+
+    it('closes the cluster, fits against the closed layout and focuses the summary', () => {
+      const map = makeFakeMap();
+      const { container } = renderRouteLayer(map, null);
+      const details = openedDetails(container);
+      const openAtFit: boolean[] = [];
+      map.fitBounds.mockImplementation(() => {
+        openAtFit.push(details.open);
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Route einpassen' }));
+      expect(openAtFit).toEqual([false]);
+      expect(details.open).toBe(false);
+      expect(document.activeElement).toBe(details.querySelector('summary'));
+    });
+
+    it('leaves the cluster open on wide layouts', () => {
+      setMatchMedia(true);
+      const map = makeFakeMap();
+      const { container } = renderRouteLayer(map, null);
+      const details = openedDetails(container);
+      fireEvent.click(screen.getByRole('button', { name: 'Route einpassen' }));
+      expect(details.open).toBe(true);
+      expect(map.fitBounds).toHaveBeenCalled();
+    });
   });
 
   // PR #384 review's fixture, reused: genoa (the rig displayed as PRIMARY

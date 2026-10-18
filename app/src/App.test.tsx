@@ -42,7 +42,7 @@ import {
   type PlanResultOk,
   type PolarTable,
 } from './types';
-import type { HarborWithReachability } from './lib/harborReachability';
+import { harborAccessAt, type HarborWithReachability } from './lib/harborReachability';
 import { boatSnapshot, defaultBoatSnapshot } from './types';
 import { boatById, sailIdsOf } from './data/boats';
 import { sailInventoryStorageKey, usePersistedSailInventory } from './lib/sailInventory';
@@ -148,6 +148,12 @@ const routingMock = vi.hoisted(() => ({
     reject: (e: unknown) => void;
   }[],
 }));
+
+// Pass-through spy, so the #1725 tests can stall a gate.
+vi.mock('./lib/harborReachability', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./lib/harborReachability')>();
+  return { ...actual, harborAccessAt: vi.fn(actual.harborAccessAt) };
+});
 
 // Controllable-resolution-timing fake for the E8 gate fix wave's clobber-
 // guard test below: a real RoutingClient talks to a Worker (no jsdom
@@ -819,6 +825,7 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  vi.mocked(harborAccessAt).mockReset();
   localStorage.clear();
 });
 
@@ -2583,7 +2590,10 @@ describe('banner surfacing (PR self-review fix wave)', () => {
     routingMock.calls[0].resolve({ status: 'error', reason: 'unreachable' });
 
     const alertBanner = await screen.findByRole('alert');
-    expect(within(alertBanner).getByText(de['error.noRoute.unreachable'])).toBeInTheDocument();
+    // #1725: the generic text follows the first (checking) render of the band scan.
+    expect(
+      await within(alertBanner).findByText(de['error.noRoute.unreachable']),
+    ).toBeInTheDocument();
     expect(
       within(alertBanner).queryByText(de['harborPicker.knownDisconnected']),
     ).not.toBeInTheDocument();
@@ -2773,6 +2783,91 @@ describe('banner surfacing (PR self-review fix wave)', () => {
         BAND_TIMEOUT,
       ),
     ).toBeInTheDocument();
+  });
+
+  // #1725: the scans over the small test mask finish before the first assertion, so the
+  // listed harbours' per-gate check busy-waits to hold the scan open.
+  function slowBandScan(harborIds: string[], ms: number) {
+    const real = vi.mocked(harborAccessAt).getMockImplementation();
+    if (!real) throw new Error('harborAccessAt spy has no implementation');
+    vi.mocked(harborAccessAt).mockImplementation((mask, harbor, boat, gateM) => {
+      if (harborIds.includes(harbor.id)) {
+        const end = Date.now() + ms;
+        while (Date.now() < end);
+      }
+      return real(mask, harbor, boat, gateM);
+    });
+  }
+  const CHECKING_BANNER = de['error.noRoute.unreachableChecking'].replace(
+    '{boat}',
+    'Salona 44 (EASY GO!)',
+  );
+
+  it('#1725: the no-route banner shows the checking text while the scan runs, then the range text', async () => {
+    slowBandScan([MARSTAL_TEST.id], 30);
+    const alertBanner = await planEasyGoToHarbor(MARSTAL_TEST);
+    expect(within(alertBanner).getByText(CHECKING_BANNER)).toBeInTheDocument();
+    expect(
+      within(alertBanner).queryByText(de['error.noRoute.unreachable']),
+    ).not.toBeInTheDocument();
+    expect(
+      await within(alertBanner).findByText(MARSTAL_EASY_GO_BANNER, {}, BAND_TIMEOUT),
+    ).toBeInTheDocument();
+    expect(within(alertBanner).queryByText(CHECKING_BANNER)).not.toBeInTheDocument();
+  });
+
+  // One endpoint's scan is done and the other's is not: the banner must not
+  // name only the finished harbour. The banner only re-reads the scans when
+  // its inputs change, so the language switch forces the read at that moment.
+  it('#1725: with two endpoints, the banner stays on the checking text until both scans have finished', async () => {
+    slowBandScan([WALLED_TEST.id], 60);
+    await planEasyGoToHarbor(WALLED_TEST, MARSTAL_TEST);
+    await waitFor(() =>
+      expect(vi.mocked(harborAccessAt).mock.calls.some((c) => c[1].id === WALLED_TEST.id)).toBe(
+        true,
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: de['nav.langToggle'] }));
+    const alertBanner = screen.getByRole('alert');
+    expect(
+      within(alertBanner).getByText(
+        en['error.noRoute.unreachableChecking'].replace('{boat}', 'Salona 44 (EASY GO!)'),
+      ),
+    ).toBeInTheDocument();
+    expect(within(alertBanner).queryByText(/connection to or from/)).not.toBeInTheDocument();
+    expect(
+      await within(alertBanner).findByText(
+        /connection to or from Marstal and Wall Harbour at any/,
+        {},
+        BAND_TIMEOUT,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  // The endpoint changes while the failed plan's scan is still running: the
+  // banner returns to the generic text at once and no later scan result
+  // brings back the checking or range text.
+  it('#1725: an endpoint changed mid-scan returns the banner to the generic text and it stays there', async () => {
+    slowBandScan([MARSTAL_TEST.id], 40);
+    const alertBanner = await planEasyGoToHarbor(MARSTAL_TEST);
+    expect(within(alertBanner).getByText(CHECKING_BANNER)).toBeInTheDocument();
+
+    const destSection = screen.getByRole('region', { name: de['planner.destination.label'] });
+    fireEvent.click(within(destSection).getByRole('button', { name: de['planner.change'] }));
+    fireEvent.change(within(destSection).getByRole('combobox'), {
+      target: { value: WALLED_TEST.names.de },
+    });
+    fireEvent.click(
+      within(destSection).getByRole('option', { name: harborOptionName(WALLED_TEST.names.de) }),
+    );
+
+    const after = screen.getByRole('alert');
+    expect(within(after).getByText(de['error.noRoute.unreachable'])).toBeInTheDocument();
+    await settleBandScans();
+    const settled = screen.getByRole('alert');
+    expect(within(settled).getByText(de['error.noRoute.unreachable'])).toBeInTheDocument();
+    expect(within(settled).queryByText(CHECKING_BANNER)).not.toBeInTheDocument();
+    expect(within(settled).queryByText(MARSTAL_EASY_GO_BANNER)).not.toBeInTheDocument();
   });
 
   // The banner describes the request handlePlan sent, not the state when the
