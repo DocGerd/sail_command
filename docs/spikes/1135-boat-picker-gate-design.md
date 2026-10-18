@@ -138,7 +138,7 @@ cannot stand in for it on a Worker (#1147). Treat as a relative cost only.
 
 | Option | Verdict |
 |---|---|
-| **A1. Selectable, with harbour-access disclosure** | **Recommended.** A 2.55 m hull that cannot enter Marstal is still the boat the user is sailing. |
+| **A1. Selectable, with harbour-access disclosure** | **Recommended.** A 2.55 m hull that the mask cannot connect to Marstal is still the boat the user is sailing. |
 | A2. Greyed-out, unselectable | Rejected — §6. |
 | A3. No boat-side change (harbour marking only) | Rejected — §6. |
 
