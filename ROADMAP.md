@@ -41,7 +41,7 @@ to Faldsled and Rudkøbing ([#932](https://github.com/DocGerd/sail_command/issue
 ## Next — v0.56.0
 
 The [`v0.56.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-holds thirteen issues as of this cut, eight of them already there at the `v0.55.0` cut. Routing: the backtrack collinear merge
+holds fourteen issues as of this cut, eight of them already there at the `v0.55.0` cut. Routing: the backtrack collinear merge
 emitting a leg never re-checked against the depth gate ([#1705](https://github.com/DocGerd/sail_command/issues/1705)), the two-rig
 ★ for tier-C boats flagged as estimate-based ([#1716](https://github.com/DocGerd/sail_command/issues/1716)), and multi-day trip
 records with undo for the next passage ([#1708](https://github.com/DocGerd/sail_command/issues/1708)). Wind: a labelled MET
@@ -50,7 +50,7 @@ about 3 px under the sheet after a reload at 820x1180 ([#1717](https://github.co
 marker under the expanded display-options panel at the same size
 ([#1702](https://github.com/DocGerd/sail_command/issues/1702)), and a re-fit still possible during Live after an earlier map
 gesture ([#1710](https://github.com/DocGerd/sail_command/issues/1710)). Next passage: the preview lagging the tap after device
-sleep near 10:00 ([#1711](https://github.com/DocGerd/sail_command/issues/1711)). The other five are follow-ups filed during the #1721 work: PlannerPanel building a second depth grid ([#1724](https://github.com/DocGerd/sail_command/issues/1724)), a pending state for the unreachable-range scan ([#1725](https://github.com/DocGerd/sail_command/issues/1725)), the Marstal 2.0 m basin wording in pipeline comments and the harbour note ([#1728](https://github.com/DocGerd/sail_command/issues/1728)), test nits in the handover engine ([#1729](https://github.com/DocGerd/sail_command/issues/1729)), and a plan.spec re-plan test that flakes across a full hour ([#1731](https://github.com/DocGerd/sail_command/issues/1731)). The milestone page is the only authoritative
+sleep near 10:00 ([#1711](https://github.com/DocGerd/sail_command/issues/1711)). The other six are follow-ups: five filed during the #1721 work: PlannerPanel building a second depth grid ([#1724](https://github.com/DocGerd/sail_command/issues/1724)), a pending state for the unreachable-range scan ([#1725](https://github.com/DocGerd/sail_command/issues/1725)), the Marstal 2.0 m basin wording in pipeline comments and the harbour note ([#1728](https://github.com/DocGerd/sail_command/issues/1728)), test nits in the handover engine ([#1729](https://github.com/DocGerd/sail_command/issues/1729)), and a plan.spec re-plan test that flakes across a full hour ([#1731](https://github.com/DocGerd/sail_command/issues/1731)); the sixth, filed at the `v0.55.1` cut, is the high-priority Marstal harbour handover detour around Ærø ([#1734](https://github.com/DocGerd/sail_command/issues/1734)). The milestone page is the only authoritative
 view, check it directly rather than this file.
 
 ## Themes for the next year
