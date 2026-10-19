@@ -17,8 +17,8 @@ certificate and a tier-C genoa derived from it (#1660); the rest are tier-C
 estimates (a sister ship may borrow its donor's tables via `polarsFrom`, #567/#1575).
 Since #1716 (v0.56.0) the two-rig ★ comparison runs at every tier and a verdict over an
 estimated sail is flagged (`lib/plan.ts`'s `rigEstimateBased`); only an undeclared requested
-sail still withholds it (`planRoute.ts`'s `comparisonSuppressed`). The earlier tier-C
-suppression put stale claims into user-facing docs twice (#54, then this file until v0.56.0).
+sail still withholds it for new plans (`planRoute.ts`'s `comparisonSuppressed`). The earlier
+tier-C suppression put stale claims into user-facing docs (#54).
 
 **Source of truth:** `docs/superpowers/specs/2026-07-14-sail-command-design.md`
 (user-approved), plus `2026-08-10-multi-boat-design.md` for anything touching
@@ -593,7 +593,7 @@ making design-level decisions; do not silently deviate.
   0.16.3) — the `node_modules`-vs-lockfile trap in a second language, so a
   local pass is evidence, not proof. `pipeline/requirements*.txt` carry no
   ruff, so a fresh worktree's venv had none at PR #1752; install CI's pin with
-  `pip install --require-hashes -r .github/workflows/python-lint-requirements.txt`.
+  `./pipeline/.venv/bin/pip install --require-hashes -r .github/workflows/python-lint-requirements.txt`.
 - Pipeline: `npm --prefix pipeline run
   polars|estimate|harbors|seamarks|mask|icons` (`estimate` = `estimate_polars.mjs`, the tier-C scalar estimator for the
   non-`hullVerified` boats with tables of their own; a `polarsFrom` borrower
@@ -1230,7 +1230,7 @@ making design-level decisions; do not silently deviate.
   healthy jobs reach `success` BEFORE cancelling, so `rerun --failed` re-runs
   only the wedged job instead of all of them.
 - **A spec that plans at the default departure races the hour boundary**
-  (#1731): fill an explicit departure; reproduce with `page.clock.install` at
+  (#1731): fill an explicit departure; reproduce with a page clock pinned near
   hh:59:58 — a pass at any other minute is a miss, not evidence.
 - **Any e2e test of the departure `datetime-local` MUST mock the clock.** The
   app's `max` is `now + FORECAST_DAYS * 86_400_000` (`FORECAST_DAYS = 6`,
@@ -2477,8 +2477,8 @@ making design-level decisions; do not silently deviate.
   mask-unreachability (or, since #1258, a requested-gate horizon overrun) —
   **independent of `depthComfortMarginM`**, which is
   #243's soft comfort PREFERENCE (`planRoute.ts`'s only production use of
-  it, ~:353) and does not gate relaxation at all; `planRoute.ts`'s own
-  "Unaffected by #243" comment (~:661) says so.
+  it) and does not gate relaxation at all; `planRoute.ts`'s own
+  "Unaffected by #243" comment says so.
   Set `depthComfortMarginM: 0` and it still routes. The older "routes only at
   ≤ 2.3 m" phrasing is true of the GATE and MISLEADING about what a user
   experiences; it misdirected a live production triage for two rounds
@@ -4041,7 +4041,7 @@ making design-level decisions; do not silently deviate.
   suggests, so 0.85 looks safe and strands Marstal permanently. Do NOT
   reach for the spike's 1.8 m figure here: it is measured against Marstal's
   OWN 2.0 m `CONNECTIVITY_EXCEPTIONS_M` harbour gate (`verify_mask.py`; a
-  self-check value, not a charted depth, since #1728), not
+  self-check value, not a charted depth, #1728), not
   the 2.1 m boat draft, and it belongs to Direction 3 (the pure
   `Resampling.max` rebuild, §4.3) rather than this Direction 4 T-sweep — two
   different quantities and two different experiments, both of whose numbers
@@ -4170,7 +4170,7 @@ making design-level decisions; do not silently deviate.
   post-hoc "tack reducer" that can violate wind/depth constraints; the only
   allowed post-processing is merging near-collinear legs with re-validation.
   `backtrack`'s own step merge checks `segmentNavigable` on the merged chord
-  since #1705; unlike `postprocess.ts` it skips the comfort check (#1754).
+  since #1705; at that fix it did not apply `postprocess.ts`'s comfort check (#1754).
 - **The router runs twice per plan** (genoa polar, fock polar) and recommends
   the faster rig. Both results are user-visible.
 - **Second rig, on the map too, not just in the results panel** (#324): the
