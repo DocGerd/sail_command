@@ -48,7 +48,6 @@ export function planWithHarborHandover(
     ends[end] = h;
   }
   if (ends.origin !== undefined && ends.destination !== undefined && req.viaPoints.length === 0) {
-    // Each raw end lies outside the flood, so face the other end's handover instead.
     const { origin, destination } = ends;
     ends.origin =
       findHarborHandoverFor(deps.mask, req.origin, deps.boat, gateM, destination) ?? origin;

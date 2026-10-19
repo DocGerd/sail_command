@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { planRoute, type PlanDeps } from './planRoute';
 import { openWaterMask, TEST_POLAR, testPlanDeps, uniformWindGrid } from '../test/fixtures';
-import { MAX_HEADSAILS, polarKey, type BoatDef, type PolarTier } from '../data/boats';
+import { boatById, MAX_HEADSAILS, polarKey, type BoatDef, type PolarTier } from '../data/boats';
 import {
   DEFAULT_SETTINGS,
+  boatSnapshot,
   defaultBoatSnapshot,
   type PlanRequest,
   type PlanResultOk,
@@ -23,14 +24,11 @@ vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
  * WHAT THIS FILE GUARDS, stated as the hazard rather than as the fix: before
  * this change `assemble` stamped `{ kind: 'decided' }` on EVERY path that did
  * not call `compareRigs`, so an unmade comparison was reported as a verdict.
- * Three cases reach that path — N = 1, N >= 3 (the comparison is capped at 2,
- * so there is no verdict to give), and two-sails-one-solved, which is
- * reachable in production TODAY. A fourth is added by §N.4: a tier-C
- * ('estimated') sail IN THE COMPARED SET, whose table differs from its
- * partner's by a documented overlay ramp rather than by anything about the
- * hull. That scope is the COMPARED set (`req.sailIds`), not the boat's whole
- * sail set — a third, uncompared estimated sail says nothing about a
- * certificate-vs-certificate comparison, and the row below pins that.
+ * Two cases reach that path — N = 1 and two-sails-one-solved, which is
+ * reachable in production TODAY. A third is a requested sail the boat does
+ * not declare (fail closed). N >= 3 throws before `assemble`. Spec §T.2 retired the provenance-tier clause: an
+ * estimated sail no longer withholds the comparison, and the rows below pin
+ * that for every tier mix.
  *
  * Nothing in the pre-existing suite could see any of this: 354 tests across
  * planRoute / resultSummary / RouteSummary / PlannerPanel / migratePlan /
@@ -40,12 +38,9 @@ vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
  * reason" already constructs the two-sails-one-solved state and asserts only
  * the per-sail `reason`s — it never looks at `rigRecommendation`.
  *
- * EACH ROW IS INDIVIDUALLY LOAD-BEARING, verified by deleting them one at a
- * time (numbers in the PR report): the four `not-compared` rows red under
- * different mutations, and the two CONTROL rows are what stop the whole file
- * from being satisfiable by a `return { kind: 'not-compared' }` that never
- * compares anything. Without those controls a blanket suppression would pass
- * every remaining assertion here.
+ * The `not-compared` rows red under different mutations, and the DECIDES and
+ * CONTROL rows are what stop the whole file from being satisfiable by a
+ * `return { kind: 'not-compared' }` that never compares anything.
  */
 
 /** Uniformly 12% slower than TEST_POLAR, so `compareRigs` decides rather than ties. */
@@ -199,38 +194,60 @@ describe('#553 assemble: not-compared', () => {
     expect(r.rigRecommendation).toEqual({ kind: 'decided', rig: 'genoa' });
   });
 
-  // §N.4's tier-C suppression. Paired DELIBERATELY with the control below it:
-  // the two rows differ in EXACTLY ONE input (the provenance tier), same mask,
-  // same polars, same request, same draft — so the difference in verdict is
-  // attributable to the tier and to nothing else. A tier-C row on its own
-  // would not establish that; it could be failing to compare for any reason.
-  it('tier-C boat, both sails solve -> not-compared (the comparison is WITHHELD)', () => {
+  // Spec §T.2: the comparison runs for an estimated pair. Paired with the
+  // control below it: the two rows differ in EXACTLY ONE input (the tier).
+  it('tier-C boat, both sails solve -> DECIDES (spec T.2)', () => {
     const boat = boatWith('estimated', ['genoa', 'fock']);
     const deps = depsFor(boat, { genoa: TEST_POLAR, fock: SLOW });
     const r = ok(planRoute(BASE_REQ, uniformWindGrid(12, 0), deps));
-    // Premise: both really did solve, so a comparison was AVAILABLE and is
-    // being declined rather than being impossible.
     expect(r.sails.filter((s) => s.result !== null)).toHaveLength(2);
-    expect(r.rigRecommendation).toEqual({ kind: 'not-compared' });
-    expect(recommendedHasResult(r)).toBe(true);
+    expect(r.rigRecommendation).toEqual({ kind: 'decided', rig: 'genoa' });
+    expect(r.recommended).toBe('genoa');
   });
 
   // CONTROL 2 for the row above — same boat shape, same tables, tier flipped.
-  it('CONTROL: the SAME boat at modelled tier DOES decide (isolates the tier)', () => {
+  it('CONTROL: the SAME boat at modelled tier decides identically', () => {
     const boat = boatWith('modelled', ['genoa', 'fock']);
     const deps = depsFor(boat, { genoa: TEST_POLAR, fock: SLOW });
     const r = ok(planRoute(BASE_REQ, uniformWindGrid(12, 0), deps));
     expect(r.rigRecommendation).toEqual({ kind: 'decided', rig: 'genoa' });
   });
 
-  // MAJOR 1 (review): THE row that discriminates the two readings of §N.4's
-  // scope. Under the reviewed-and-rejected `deps.boat.sails` scope this boat
-  // suppressed, because it declares an estimated storm jib — even though the
-  // storm jib is not in `req.sailIds` and takes no part in the comparison.
-  // Two certificate tables compared against each other is a sound finding and
-  // must be reported; §E.1 ("the user picks which two to compare") is what
-  // makes this reachable rather than hypothetical.
-  it('three-sail boat: an UNCOMPARED estimated sail does not suppress the comparison', () => {
+  // Spec §T.8.1: the three shipped estimate-based boats. SLOW is 12% below
+  // TEST_POLAR in every cell, so the faster table's sail wins wherever it
+  // sits, and two identical tables are inside the tie band by construction.
+  describe.each(['salona-44-speedy-go', 'elan-444-piranja', 'salona-44-easy-go'] as const)(
+    '#1716: %s',
+    (boatId) => {
+      const boat = boatById(boatId);
+      const first: SailId = 'genoa';
+      const second: SailId = 'fock';
+      const req: PlanRequest = {
+        ...BASE_REQ,
+        boat: boatSnapshot(boat),
+        sailIds: [first, second],
+      };
+      const solve = (a: PolarTable, b: PolarTable) =>
+        ok(planRoute(req, uniformWindGrid(12, 0), depsFor(boat, { [first]: a, [second]: b })));
+
+      it('decides the second sail when its table is faster', () => {
+        const r = solve(SLOW, TEST_POLAR);
+        expect(r.comparisonComplete).toBe(true);
+        expect(r.rigRecommendation).toEqual({ kind: 'decided', rig: second });
+        expect(r.recommended).toBe(second);
+      });
+
+      it('ties on identical tables and recommends the first-solved sail', () => {
+        const r = solve(TEST_POLAR, TEST_POLAR);
+        expect(r.rigRecommendation).toEqual({ kind: 'tie' });
+        expect(r.recommended).toBe(first);
+      });
+    },
+  );
+
+  // A boat declaring a third, uncompared sail still compares the requested
+  // two; §E.1 ("the user picks which two to compare") makes this reachable.
+  it('three-sail boat: an UNCOMPARED sail does not affect the comparison', () => {
     const boat: BoatDef = {
       ...boatWith('certificate', ['genoa', 'fock', 'storm']),
       sails: [
@@ -248,10 +265,10 @@ describe('#553 assemble: not-compared', () => {
     expect(r.rigRecommendation).toEqual({ kind: 'decided', rig: 'genoa' });
   });
 
-  // Pins the `sail === undefined` term that scoping to the request introduced:
-  // the lookup can now MISS, and a miss must suppress rather than permit.
-  // An unresolvable provenance is not a certificate.
-  it('a requested sail the boat does not declare suppresses (fail closed)', () => {
+  // Pins the `sail === undefined` clause, the only one left in
+  // `comparisonSuppressed`: a requested sail the boat does not declare has no
+  // provenance to qualify a verdict with, so it withholds the comparison.
+  it('a requested sail the boat does not declare is not compared (fail closed)', () => {
     const boat = boatWith('certificate', ['genoa']);
     // A polar IS supplied for `ghost`, so the solve succeeds and the plan
     // reaches `assemble` with two results — otherwise `polarFor` would throw
@@ -268,10 +285,8 @@ describe('#553 assemble: not-compared', () => {
     expect(r.rigRecommendation).toEqual({ kind: 'not-compared' });
   });
 
-  // A MIXED-tier boat is suppressed too, and that is the intended reading of
-  // §N.4 rather than an accident of using `some`: comparing a certificate
-  // table against an estimated one is not a finding about the hull either.
-  it('mixed-tier boat (one certificate sail, one estimated) -> not-compared', () => {
+  // Mixed tier is compared too (spec §T.1: EASY GO!, jib B / genoa C).
+  it('mixed-tier boat (one certificate sail, one estimated) -> DECIDES', () => {
     const boat: BoatDef = {
       ...boatWith('certificate', ['genoa', 'fock']),
       sails: [
@@ -281,6 +296,6 @@ describe('#553 assemble: not-compared', () => {
     };
     const deps = depsFor(boat, { genoa: TEST_POLAR, fock: SLOW });
     const r = ok(planRoute(BASE_REQ, uniformWindGrid(12, 0), deps));
-    expect(r.rigRecommendation).toEqual({ kind: 'not-compared' });
+    expect(r.rigRecommendation).toEqual({ kind: 'decided', rig: 'genoa' });
   });
 });

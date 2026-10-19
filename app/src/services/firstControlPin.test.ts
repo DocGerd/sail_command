@@ -31,6 +31,7 @@ const okSummary = (id: string): PlanSummary => ({
   createdAtMs: 1,
   departureMs: 1,
   recommended: 'genoa',
+  estimateBased: false,
   etaMs: 1,
 });
 
@@ -93,6 +94,7 @@ describe('armBatchPinOnFirstControl (#1518)', () => {
         createdAtMs: 1,
         departureMs: 1,
         recommended: 'genoa',
+        estimateBased: false,
         etaMs: 1,
       },
       // A row migratePlan already refused — must never be fetched or pinned.

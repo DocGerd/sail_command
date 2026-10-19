@@ -1734,6 +1734,7 @@ making design-level decisions; do not silently deviate.
   | v0.54.0 | 2026-10-16 | 19 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 12:56:56Z, one second before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `38904122078` (created 12:56:42Z) -> tag `38904158337` (created 12:57:01Z) on `90c3aa8`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `7119559177`, `ref: v0.54.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-1sx02wBm.js` at ``version:`v0.54.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `a2350f0` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.55.0 | 2026-10-17 | 61 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 16:52:56Z, two seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `39051266888` (created 16:51:58Z) -> tag `39051339241` (created 16:52:59Z) on `0ddfaffc`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `7142795156`, `ref: v0.55.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-BQy7uiJ9.js` at ``version:`v0.55.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.55.1 | 2026-10-18 | 36 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 09:29:56Z, two seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `39115526159` (created 09:29:23Z) -> tag `39115563800` (created 09:29:59Z) on `cae3f5d`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `7152678386`, `ref: v0.55.1`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-CrJweXxq.js` at ``version:`v0.55.1` `` with ZERO suffixed matches. Release `isLatest: true`; tag object reported `verified: true, reason: "valid"`. Names no MECHANISM. |
+  | v0.55.2 | 2026-10-18 | 39 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 18:45:51Z, immediately before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `39155603832` (created 18:45:16Z) -> tag `39155657198` (created 18:45:55Z) on `0b0e419`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `7159063112`, `ref: v0.55.2`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-CdYs7uY6.js` at ``version:`v0.55.2` `` with ZERO suffixed matches. Release `isLatest: true`; tag object reported `verified: true, reason: "valid"`. Names no MECHANISM. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -4483,6 +4484,7 @@ making design-level decisions; do not silently deviate.
   This machine likely shares the maintainer's IP: a hung full-grid probe drew
   `429 "Too many concurrent requests"` during the 2026-10-17 outage, which can
   also block their browser. Probe with one tiny single-point request, never the app's grid.
+  A release-gate walkthrough plans offline too: run `gen-wind-fixture.mjs`, then load `?windFixture=test-fixtures/wind-sw12.json`.
 - **AIS (#25) is BYOK and must stay inert without a key**: no `aisApiKey` → no
   client, ZERO sockets (the network-free e2e suite depends on this; never add
   a default key or eager connect). aisstream.io signals an invalid key as bare
@@ -4959,7 +4961,8 @@ making design-level decisions; do not silently deviate.
   its report is unsatisfiable.
   Worktree cleanup ritual: agent runs `find app/node_modules -delete`
   (`rm -rf` is permission-blocked even in the main session; `find -delete` is
-  allowed), then the main session runs `git worktree remove` — force-free. Parallel
+  allowed), then the main session runs `git worktree remove` — force-free. A worktree
+  locked by THIS session's own pid needs `git worktree unlock` first, still force-free. Parallel
   implementers: assign distinct dev ports; retry e2e on EADDRINUSE — but note
   the #803 port-squat case never RAISES one (the probe succeeds because someone
   else already answers 200), so retrying cannot reach it; the shared

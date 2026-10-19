@@ -11,7 +11,8 @@ import { DEFAULT_SETTINGS, type Plan, type SailId, type WindGrid } from '../type
 import PlansList, { type PlansListProps } from './PlansList';
 import { de } from '../i18n/dict.de';
 import { en } from '../i18n/dict.en';
-import { defaultBoatSnapshot } from '../types';
+import { boatSnapshot, defaultBoatSnapshot } from '../types';
+import { boatById } from '../data/boats';
 import { PLAN_SCHEMA_VERSION } from '../types';
 
 function makePlan(overrides: {
@@ -131,6 +132,25 @@ describe('PlansList', () => {
     expect(rows[0]).toHaveTextContent('Newer');
     expect(rows[1]).toHaveTextContent('Older');
     expect(rows[0]).toHaveTextContent('Genoa');
+  });
+
+  // Spec T.4: the row chip is flagged from the stored snapshot; the Salona 45
+  // row is the control.
+  it('#1716: flags the recommended-rig chip of an estimate-based plan', async () => {
+    const tierC = makePlan({ id: 'tc', createdAtMs: 2000, name: 'TierC' });
+    await savePlan({
+      ...tierC,
+      request: { ...tierC.request, boat: boatSnapshot(boatById('salona-44-speedy-go')) },
+      result: { ...tierC.result, rigRecommendation: { kind: 'decided', rig: 'genoa' } },
+    });
+    await savePlan(makePlan({ id: 's45', createdAtMs: 1000, name: 'Salona45' }));
+
+    renderList();
+
+    const rows = await screen.findAllByRole('button', { name: /TierC|Salona45/ });
+    expect(rows[0]).toHaveTextContent(en['plansList.rigEstimated'].replace('{rig}', 'Genoa'));
+    expect(rows[1]).not.toHaveTextContent('(estimate)');
+    expect(rows[1]).toHaveTextContent('Genoa');
   });
 
   it('shows the departure time on the card, distinct from created and ETA', async () => {

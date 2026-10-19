@@ -652,46 +652,14 @@ function runLadder(
     req.sailIds.map((sailId) => run(sailId, polarFor(sailId), settings, gate, comfort, pass2));
 
   /**
-   * #553 / spec §N.4: a comparison involving a tier-C ('estimated') sail is
-   * WITHHELD, not computed and then hidden. Per §N.3/§N.6-E6, the estimator
-   * derives a tier-C boat's SECOND table as its own base table times the
-   * Salona 45's documented overlay ramp, so the difference between its two
-   * tables is a function of THE RAMP, not of the hull — deterministic,
-   * repeatable, and carrying zero information about that boat. In the spec's
-   * words: "it is not a noisy finding; it is not a finding." (No tier-C boat
-   * is in the catalogue yet — this is the estimator's contract that the first
-   * one must satisfy, not an observed property of shipped data.)
-   *
-   * Computed once per plan HERE and consumed by `assemble` below, so the
-   * suppression is decided in the ROUTING layer and reaches every consumer
-   * through the `PlanResult` type — never in the view. A view-level check
-   * would be a data accident: `PlanResult` is persisted and re-rendered (and
-   * exported), so a verdict suppressed at one render site is a verdict that
-   * still exists in the record and resurfaces at the next one.
-   *
-   * Scoped to `req.sailIds` — the COMPARED set, not the boat's whole sail
-   * set. §N.4's justification is that the difference between the two COMPARED
-   * tables is a function of the overlay ramp rather than of the hull, and
-   * that argument says nothing about a third, uncompared sail: a boat with
-   * two certificate sails and an estimated storm jib has a perfectly sound
-   * certificate-vs-certificate comparison, and withholding it would lose the
-   * feature's headline capability for no epistemic reason. §E.1 anticipates
-   * the divergence explicitly ("The boat may carry any number of foresails;
-   * the user picks which two to compare"), so it goes live with the first
-   * three-sail boat rather than being permanently dead. A MIXED-tier
-   * comparison — one certificate sail against one estimated one — still
-   * suppresses, because both sails are in the compared set.
-   *
-   * `some` rather than `!every`: `[].every(...)` is VACUOUSLY TRUE, so the
-   * negated form would report an EMPTY request as suppressed. `[].some(...)`
-   * is false.
+   * Spec §T.2: the comparison runs at every provenance tier; the estimate flag
+   * is derived in the view (`rigEstimateBased`). The one withholding left is
+   * fail-closed: a requested sail the boat does not declare has no provenance
+   * to qualify a verdict with.
    */
-  const comparisonSuppressed = req.sailIds.some((id) => {
-    const sail = deps.boat.sails.find((s) => s.id === id);
-    // Fail CLOSED on a sail the boat does not declare: an unresolvable
-    // provenance is not a certificate.
-    return sail === undefined || sail.polarProvenance.tier === 'estimated';
-  });
+  const comparisonSuppressed = req.sailIds.some(
+    (id) => deps.boat.sails.find((s) => s.id === id) === undefined,
+  );
 
   const assemble = (
     sails: readonly RunOut[],

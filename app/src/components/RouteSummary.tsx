@@ -19,10 +19,12 @@ import {
   isStaleForecast,
   noRouteMessageKey,
   rigComparisonSuppressedByTier,
+  rigEstimateBased,
   staleForecastGapHours,
 } from '../lib/plan';
 import {
   renderRigVerdict,
+  renderFasterRig,
   resultSummary,
   rigRecommendationOf,
   sailLabelKey,
@@ -574,6 +576,9 @@ export default function RouteSummary({
   // correctly when viewing a tab whose own rig failed to solve (star/chip
   // render unconditionally below, matching the pre-#259 architecture).
   const rigRecommendation = rigRecommendationOf(plan.result);
+  // Spec §T: one flag for the chip and the tab ★ so they cannot disagree.
+  const estimateBased = rigEstimateBased(plan);
+  const recommendedLabel = t(estimateBased ? 'route.recommendedEstimated' : 'route.recommended');
   // #54: the tab list is every sail THIS plan actually requested (plan is a
   // required prop, so this is always available) — replaces the old
   // module-level RIGS two-element array literal. Byte-identical today
@@ -680,7 +685,7 @@ export default function RouteSummary({
             >
               {t(sailLabelKey(r))}
               {rigRecommendation.kind === 'decided' && rigRecommendation.rig === r && (
-                <span aria-label={t('route.recommended')} title={t('route.recommended')}>
+                <span aria-label={recommendedLabel} title={recommendedLabel}>
                   {' '}
                   ★
                 </span>
@@ -696,12 +701,17 @@ export default function RouteSummary({
           honestly instead of picking a winner. */}
       <Chip className="chip-faster-rig">
         {singleSail
-          ? renderRigVerdict('not-compared', plan.result.comparisonComplete, plan.result.sails, t)
+          ? renderRigVerdict(
+              'not-compared',
+              plan.result.comparisonComplete,
+              plan.result.sails,
+              estimateBased,
+              t,
+            )
           : rigRecommendation.kind === 'decided'
-            ? t('route.fasterRig', { rig: t(sailLabelKey(rigRecommendation.rig)) })
-            : // #1398b: name the tier-C reason instead of the generic
-              // "not compared" sentence — only when tier is WHY, per
-              // rigComparisonSuppressedByTier's own precedence comment.
+            ? renderFasterRig(rigRecommendation.rig, estimateBased, t)
+            : // Legacy records only (spec §T.5): stored `not-compared` with
+              // both sails solved and an estimated sail aboard.
               rigComparisonSuppressedByTier(plan)
               ? t('route.rigNotComparedEstimated', {
                   boat: plan.request.boat.name,
@@ -711,6 +721,7 @@ export default function RouteSummary({
                   rigRecommendation.kind,
                   plan.result.comparisonComplete,
                   plan.result.sails,
+                  estimateBased,
                   t,
                 )}
       </Chip>

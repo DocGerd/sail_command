@@ -152,7 +152,7 @@ test('plans a route: harbor search -> rig comparison -> saved under Routen', asy
     const fasterRigChip = page.locator('.route-summary .chip-faster-rig');
     await expect(fasterRigChip).toBeVisible();
     const chipText = ((await fasterRigChip.textContent()) ?? '').trim();
-    const stars = rigTabs.getByLabel('Empfohlen');
+    const stars = rigTabs.getByLabel('Empfohlen', { exact: true });
     const decided = /^Schneller: (Genua|Fock)$/.exec(chipText);
     if (!decided) {
       throw new Error(
@@ -169,7 +169,7 @@ test('plans a route: harbor search -> rig comparison -> saved under Routen', asy
       `chip reads "${chipText}", so exactly one rig tab must carry the Empfohlen badge`,
     ).toHaveCount(1);
     await expect(
-      (winner === 'Genua' ? genoaTab : fockTab).getByLabel('Empfohlen'),
+      (winner === 'Genua' ? genoaTab : fockTab).getByLabel('Empfohlen', { exact: true }),
       `chip names ${winner}, so the Empfohlen badge must sit on the ${winner} tab`,
     ).toHaveCount(1);
 
@@ -241,6 +241,17 @@ test('plans a route: harbor search -> rig comparison -> saved under Routen', asy
   }
 });
 
+function nextFullHourPlus(hours: number): Date {
+  const d = new Date();
+  d.setHours(d.getHours() + 1 + hours, 0, 0, 0);
+  return d;
+}
+
+function localDatetimeValue(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 // #301: re-plan from the Plan view. Loading/planning prefills the form from
 // the active plan; editing an input afterward (here: departure) marks the
 // displayed route stale (a second Chip in the Ergebnis card); re-running
@@ -264,6 +275,12 @@ test('re-plan from the Plan view: editing after a completed plan shows the stale
     await destSection.getByRole('combobox').fill('Sønderborg');
     await destSection.getByRole('option').first().click();
 
+    // Explicit departure, at least 2 h ahead (#1731): the form default is the
+    // next full hour, which a plan crossing the hour leaves in the past, and
+    // the post-plan sync then moves it and the form reads stale at once.
+    const departureInput = page.getByLabel('Abfahrt');
+    await departureInput.fill(localDatetimeValue(nextFullHourPlus(2)));
+
     const planButton = page.getByRole('button', { name: 'Route planen' });
     await planButton.click();
     await expect(planButton).toBeEnabled({ timeout: 60_000 });
@@ -278,14 +295,10 @@ test('re-plan from the Plan view: editing after a completed plan shows the stale
     // Edit the departure — the ONE form input this flow touches — to a value
     // a few hours after whatever the form currently shows (still comfortably
     // inside the datetime-local's [now, now + forecast horizon] bounds).
-    const departureInput = page.getByLabel('Abfahrt');
     const originalValue = await departureInput.inputValue();
     const [datePart, timePart] = originalValue.split('T');
     const original = new Date(`${datePart}T${timePart}:00`);
-    const edited = new Date(original.getTime() + 3 * 3_600_000);
-    const pad = (n: number) => String(n).padStart(2, '0');
-    const editedValue = `${edited.getFullYear()}-${pad(edited.getMonth() + 1)}-${pad(edited.getDate())}T${pad(edited.getHours())}:${pad(edited.getMinutes())}`;
-    await departureInput.fill(editedValue);
+    await departureInput.fill(localDatetimeValue(new Date(original.getTime() + 3 * 3_600_000)));
 
     // The chip appears (folded into the SAME Ergebnis card the faster-rig
     // chip already lives in) once the form has drifted from the displayed

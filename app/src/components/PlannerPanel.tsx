@@ -22,7 +22,6 @@ import {
   findLowerSettingHint,
   type HarborWithReachability,
 } from '../lib/harborReachability';
-import { useNavMask } from '../state/useNavMask';
 import { FORECAST_DAYS } from '../services/openMeteo';
 import { formatLatLon, resolveHemisphereCoordCommit, toLocalInputValue } from '../lib/format';
 import {
@@ -35,7 +34,7 @@ import {
 import { activeRigResult, rigComparisonSuppressedByTier } from '../lib/plan';
 import { routingSettingsDirty } from '../lib/planForm';
 import { usePersistedSailInventory } from '../lib/sailInventory';
-import { renderRigVerdict, resultSummary, sailLabelKey } from '../lib/resultSummary';
+import { renderFasterRig, renderRigVerdict, resultSummary, sailLabelKey } from '../lib/resultSummary';
 import { useRecentHarbors } from '../lib/useRecentHarbors';
 import { formatDepthM } from '../lib/depthDisclosure';
 import HarborPicker, { harborAccessCopy, useUnreachableBandOf } from './HarborPicker';
@@ -84,7 +83,7 @@ export type PlannerStatus =
 
 export interface PlannerPanelProps {
   harbors: HarborWithReachability[];
-  // #1721: App's mask, so both share one flood cache; falls back to its own.
+  // #1721: App's mask, shared so the flood cache has one owner. Null until loaded.
   navMask?: NavMask | null;
   origin: PickedPoint | null;
   destination: PickedPoint | null;
@@ -326,13 +325,12 @@ export default function PlannerPanel({
   // §5.2's own scoping ("Computed for the SELECTED boat at
   // settings.safetyDepthM"). `computeHarborAccess` itself memoises on
   // `(mask, harbors, boat.id, gate-decimetre)`, so this `useMemo` mainly
-  // avoids re-deriving on renders that touch neither. `useNavMask()` is
+  // avoids re-deriving on renders that touch neither. `navMask` is
   // `null` until the routing assets resolve, in which case every marker
   // simply doesn't render yet (harborAccessCopy's own "not yet computed"
   // no-op) — never a false "reachable"/"unreachable" claim before the mask
   // is known.
-  const ownMask = useNavMask();
-  const mask = navMask ?? ownMask;
+  const mask = navMask ?? null;
   const harborAccess = useMemo(
     () => (mask ? computeHarborAccess(mask, harbors, boat, settings.safetyDepthM) : null),
     [mask, harbors, boat, settings.safetyDepthM],
@@ -1646,11 +1644,8 @@ export default function PlannerPanel({
                   user sees a result on). */}
               <Chip className="chip-faster-rig">
                 {summary.rigRecommendation.kind === 'decided'
-                  ? t('route.fasterRig', { rig: t(sailLabelKey(summary.rigRecommendation.rig)) })
-                  : // #1398b: mirrors RouteSummary's own tier-C override —
-                    // see rigComparisonSuppressedByTier's comment (lib/plan.ts)
-                    // for why this cannot fire on the comparisonIncomplete or
-                    // rigOneFailed causes.
+                  ? renderFasterRig(summary.rigRecommendation.rig, summary.estimateBased, t)
+                  : // Legacy records only (spec §T.5); mirrors RouteSummary.
                     plan && rigComparisonSuppressedByTier(plan)
                     ? t('route.rigNotComparedEstimated', {
                         boat: plan.request.boat.name,
@@ -1660,6 +1655,7 @@ export default function PlannerPanel({
                         summary.rigRecommendation.kind,
                         comparisonComplete,
                         comparedSails,
+                        summary.estimateBased,
                         t,
                       )}
               </Chip>

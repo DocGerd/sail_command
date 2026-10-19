@@ -20,6 +20,10 @@ export const de = {
     'Die Tiefendaten der App ergeben für {boat} bei keiner Sicherheitstiefe von {min} m bis {max} m eine Verbindung.',
   'error.harborUnreachableAcrossRange':
     'Keine Route mit {boat} (Tiefgang {draft} m): Das Tiefenraster der App (~46-m-Zellen, schmale ausgebaggerte Rinnen können darin fehlen) findet bei keiner Sicherheitstiefe von {min} m bis {max} m eine Verbindung von oder nach {harbor}. Keine Einstellung in diesem Bereich hilft. Amtliche Seekarte oder Hafenhandbuch prüfen.',
+  // #1725: Zwischenstand, solange der Bereichs-Scan läuft.
+  'harborPicker.boatUnreachableChecking': 'Weitere Sicherheitstiefen für {boat} werden geprüft …',
+  'error.noRoute.unreachableChecking':
+    'Keine Route gefunden. Es wird geprüft, ob die Tiefendaten der App für {boat} bei weiteren Sicherheitstiefen eine Verbindung ergeben …',
   'options.safetyDepth.label': 'Sicherheitstiefe (m)',
   // #699: der zulässige Bereich hing bislang nur als natives min/max-Attribut
   // am Feld, ohne sichtbaren oder für Screenreader zugänglichen Text — ein
@@ -477,6 +481,15 @@ export const de = {
   'route.rigTabs': 'Riggvergleich',
   'route.recommended': 'Empfohlen',
   'route.fasterRig': 'Schneller: {rig}',
+  // #1716 spec §T.4: see dict.en.ts's matching block.
+  'route.fasterRigEstimated':
+    'Schneller: {rig} — nur ein Anhaltswert, aus geschätzten Polardaten (Stufe: {tier})',
+  'route.rigTieEstimated':
+    '{sailA} und {sailB} liegen für diese Passage praktisch gleichauf — nur ein Anhaltswert, aus geschätzten Polardaten (Stufe: {tier})',
+  'route.recommendedEstimated': 'Empfohlen (Anhaltswert, geschätzte Polardaten)',
+  'departureScan.confirm.done.disagreementEstimated':
+    'Plan übernommen — die vollständige Berechnung empfiehlt hier {rig} (Anhaltswert, aus geschätzten Polardaten), nicht die Genua, mit der dieses Fenster eingestuft wurde.',
+  'plansList.rigEstimated': '{rig} (geschätzt)',
   // #259: honest copy for the two cases where badging one rig as
   // "recommended" would be misleading — an ETA tie (too close to call) and
   // an all-motor route (the polar never drove a leg, so rig choice is moot).
@@ -489,12 +502,13 @@ export const de = {
   'route.rigMoot': 'Riggwahl spielt hier keine Rolle — die Passage läuft durchgehend unter Motor',
   // #553 / spec §N.4: schwächere Aussage als rigTie oben — dort ist ein
   // Vergleich gelaufen und endete unentschieden, hier hat gar keiner
-  // stattgefunden. Siehe dict.en.ts für die drei auslösenden Fälle.
+  // stattgefunden. Siehe dict.en.ts für die auslösenden Fälle.
   'route.rigNotCompared':
     'Die Segel wurden für diese Passage nicht verglichen — es wird kein schnelleres Rigg angegeben',
-  // #1398b (spike 1022 §8): siehe dict.en.ts — nennt den Tier-C-Grund,
-  // niemals bei comparisonIncomplete/rigOneFailed
-  // (rigComparisonSuppressedByTier, lib/plan.ts). {tier} kommt von
+  // #1398b (spike 1022 §8): siehe dict.en.ts — nennt den Tier-C-Grund; seit
+  // Spec §T nur noch für ältere Datensätze, niemals bei
+  // comparisonIncomplete/rigOneFailed (rigComparisonSuppressedByTier,
+  // lib/plan.ts). {tier} kommt von
   // `t('boat.polarTier.estimated')` an der Aufrufstelle, kein fest
   // verdrahtetes Wort hier.
   // #1405 review (MAJOR): {tier} in eine Label-Position verschoben
