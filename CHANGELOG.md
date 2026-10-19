@@ -11,14 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- The two-sail comparison now also runs for SPEEDY GO!, PIRANJA and EASY GO!; because a sail's polar data is estimated, its faster-sail verdict, the saved-plan chip and the tab ★ are marked as an indicative estimate. Saved plans from before this release keep their not-compared notice until recalculated (#1716).
+- The two-sail comparison now also runs for SPEEDY GO!, PIRANJA and EASY GO!; because a sail's polar data is estimated, its faster-sail verdict and saved-plan chip are marked as an indicative estimate (the tab ★ in its label and tooltip). Saved plans from before this release keep their not-compared notice until recalculated (#1716).
 - While the safety-depth range check for an unreachable harbour is still running, the picker and the no-route banner show a checking line instead of the generic hedge text (#1725).
 
 ### Fixed
 
 - "Route einpassen" closes the Anzeigeoptionen panel on narrow layouts before fitting, so the end marker and its label no longer end up underneath it (#1702).
 - Straight runs of route steps are no longer merged into one leg when that leg would cut across a shallow corner the steps themselves avoided (#1705).
-- While Live is active, the chart is no longer fitted a second time after the map was moved before starting Live and "Route einpassen" was pressed, or after a reroute fitted the route (#1710).
+- While Live is active, the chart is no longer fitted a second time after you moved the map before starting Live and then pressed "Route einpassen" or a reroute fitted the route (#1710).
 - The next-passage preview refreshes the moment the page becomes visible again instead of up to a minute later (#1711).
 - Marstal's harbour note gives the Havnelods approach and marina depths instead of saying parts of the yacht basin are only about 2 m (#1728).
 
