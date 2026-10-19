@@ -34,7 +34,7 @@ import {
 import { activeRigResult, rigComparisonSuppressedByTier } from '../lib/plan';
 import { routingSettingsDirty } from '../lib/planForm';
 import { usePersistedSailInventory } from '../lib/sailInventory';
-import { renderRigVerdict, resultSummary, sailLabelKey } from '../lib/resultSummary';
+import { renderFasterRig, renderRigVerdict, resultSummary, sailLabelKey } from '../lib/resultSummary';
 import { useRecentHarbors } from '../lib/useRecentHarbors';
 import { formatDepthM } from '../lib/depthDisclosure';
 import HarborPicker, { harborAccessCopy, useUnreachableBandOf } from './HarborPicker';
@@ -1644,11 +1644,8 @@ export default function PlannerPanel({
                   user sees a result on). */}
               <Chip className="chip-faster-rig">
                 {summary.rigRecommendation.kind === 'decided'
-                  ? t('route.fasterRig', { rig: t(sailLabelKey(summary.rigRecommendation.rig)) })
-                  : // #1398b: mirrors RouteSummary's own tier-C override —
-                    // see rigComparisonSuppressedByTier's comment (lib/plan.ts)
-                    // for why this cannot fire on the comparisonIncomplete or
-                    // rigOneFailed causes.
+                  ? renderFasterRig(summary.rigRecommendation.rig, summary.estimateBased, t)
+                  : // Legacy records only (spec §T.5); mirrors RouteSummary.
                     plan && rigComparisonSuppressedByTier(plan)
                     ? t('route.rigNotComparedEstimated', {
                         boat: plan.request.boat.name,
@@ -1658,6 +1655,7 @@ export default function PlannerPanel({
                         summary.rigRecommendation.kind,
                         comparisonComplete,
                         comparedSails,
+                        summary.estimateBased,
                         t,
                       )}
               </Chip>

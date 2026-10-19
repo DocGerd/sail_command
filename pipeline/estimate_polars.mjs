@@ -55,9 +55,8 @@
  * boat's OWN base table multiplied by the base boat's documented genoa overlay
  * ramp. The difference between the two tables is therefore a function of THE
  * RAMP, NOT THE HULL — deterministic, repeatable, and carrying zero information
- * about that boat. That is why the sail comparison is suppressed by type
- * (`not-compared`) rather than presented as a noisy finding: it is not a noisy
- * finding, it is not a finding.
+ * about that boat. That is why the app flags a verdict between the two tables
+ * as estimate-based (spec T) rather than presenting it as a measured finding.
  *
  * The ramp is applied to the ROUNDED base table, which is what "the boat's own
  * base table x the ramp" literally says and what E7 re-runs. It is NOT the same

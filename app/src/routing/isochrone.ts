@@ -956,13 +956,14 @@ export function solve(p: SolveParams): SolveResult {
   }
   return {
     status: 'ok',
-    legs: backtrack(best.last, p.departureMs),
+    legs: backtrack(best.last, p.departureMs, mask, gate),
     etaMs: best.etaMs,
     costMs: best.costMs,
   };
 }
 
-function backtrack(last: Node, departureMs: number): Leg[] {
+/** Exported for tests only. */
+export function backtrack(last: Node, departureMs: number, mask: NavMask, gate: DepthGate): Leg[] {
   const chain: Node[] = [];
   for (let n: Node | null = last; n && n.kind !== 'start'; n = n.parent) chain.unshift(n);
   const legs: Leg[] = [];
@@ -972,14 +973,16 @@ function backtrack(last: Node, departureMs: number): Leg[] {
     const end = { lat: n.lat, lon: n.lon };
     const distanceNm = haversineNm(start, end);
     const prev = legs[legs.length - 1];
-    // Merges the solver's own per-step bookkeeping within already-validated steps;
-    // this is NOT the CLAUDE.md-governed collinear merge pass (postprocess.ts), which re-validates.
+    // Merges the solver's own per-step bookkeeping, but only where the merged chord
+    // itself passes the gate: the sub-steps' validity does not imply the chord's (#1705).
+    // This is NOT the CLAUDE.md-governed collinear merge pass (postprocess.ts).
     const collinear =
       prev &&
       prev.kind === n.kind &&
       prev.board === n.board &&
       n.maneuverAtStart === null &&
-      Math.abs(normalizeDeg180(prev.headingDeg - n.headingDeg)) < 0.5;
+      Math.abs(normalizeDeg180(prev.headingDeg - n.headingDeg)) < 0.5 &&
+      mask.segmentNavigable(prev.start, end, gate);
     if (collinear) {
       prev.end = end;
       prev.endTimeMs = n.tMs;

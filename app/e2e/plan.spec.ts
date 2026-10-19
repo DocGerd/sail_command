@@ -152,7 +152,7 @@ test('plans a route: harbor search -> rig comparison -> saved under Routen', asy
     const fasterRigChip = page.locator('.route-summary .chip-faster-rig');
     await expect(fasterRigChip).toBeVisible();
     const chipText = ((await fasterRigChip.textContent()) ?? '').trim();
-    const stars = rigTabs.getByLabel('Empfohlen');
+    const stars = rigTabs.getByLabel('Empfohlen', { exact: true });
     const decided = /^Schneller: (Genua|Fock)$/.exec(chipText);
     if (!decided) {
       throw new Error(
@@ -169,7 +169,7 @@ test('plans a route: harbor search -> rig comparison -> saved under Routen', asy
       `chip reads "${chipText}", so exactly one rig tab must carry the Empfohlen badge`,
     ).toHaveCount(1);
     await expect(
-      (winner === 'Genua' ? genoaTab : fockTab).getByLabel('Empfohlen'),
+      (winner === 'Genua' ? genoaTab : fockTab).getByLabel('Empfohlen', { exact: true }),
       `chip names ${winner}, so the Empfohlen badge must sit on the ${winner} tab`,
     ).toHaveCount(1);
 

@@ -6,6 +6,7 @@ import {
   type SailId,
   type Settings,
 } from '../types';
+import { rigEstimateBased } from '../lib/plan';
 import { migratePlan } from './migratePlan';
 
 // #848: a user-authored, named, reusable place (spec §2.3 —
@@ -118,6 +119,8 @@ export type PlanSummary =
       createdAtMs: number;
       departureMs: number;
       recommended: SailId;
+      // Spec §T.4: derived per row, never persisted.
+      estimateBased: boolean;
       etaMs: number;
     }
   | {
@@ -234,6 +237,7 @@ export function summarizePlanRecord(raw: unknown, key?: unknown): PlanSummary {
     createdAtMs: plan.createdAtMs,
     departureMs: plan.request.departureMs,
     recommended: plan.result.recommended,
+    estimateBased: rigEstimateBased(plan),
     etaMs: recommendedResult(plan.result).etaMs,
   };
 }

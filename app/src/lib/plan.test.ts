@@ -7,6 +7,7 @@ import {
   NO_ROUTE_MESSAGE_KEY,
   noRouteMessageKey,
   rigComparisonSuppressedByTier,
+  rigEstimateBased,
   staleForecastGapHours,
 } from './plan';
 
@@ -196,9 +197,9 @@ describe('forecastAgeNowHours', () => {
   });
 });
 
-// #1398b: the tier-C chip-text predicate — each row isolates ONE of the
-// four guard clauses as the deciding factor, per CLAUDE.md's "ask per TERM"
-// rule, rather than one row per scenario.
+// #1398b: the legacy-record chip-text predicate (spec T.5) — each row isolates
+// ONE of the four guard clauses as the deciding factor, per CLAUDE.md's "ask
+// per TERM" rule, rather than one row per scenario.
 describe('rigComparisonSuppressedByTier', () => {
   const genoaResult: RigResult = {
     sailId: 'genoa',
@@ -290,5 +291,82 @@ describe('rigComparisonSuppressedByTier', () => {
         }),
       ),
     ).toBe(false);
+  });
+});
+
+// Spec T.3/T.8.3: one row per (verdict kind x boat shape) cell.
+describe('#1716 rigEstimateBased', () => {
+  const result = (sailId: 'genoa' | 'fock'): RigResult => ({
+    sailId,
+    legs: [],
+    etaMs: 0,
+    durationMs: 0,
+    distanceNm: 5,
+    maneuverCount: 0,
+    motorDistanceNm: 0,
+  });
+  const salona45 = defaultBoatSnapshot();
+  const tierC = boatSnapshot(boatById('salona-44-speedy-go'));
+  const mixed = boatSnapshot(boatById('salona-44-easy-go'));
+  const fockMissing = { ...salona45, sails: salona45.sails.filter((x) => x.id !== 'fock') };
+  const withUncomparedEstimated = {
+    ...salona45,
+    sails: [
+      ...salona45.sails,
+      {
+        id: 'storm',
+        label: 'Storm',
+        polarProvenance: { tier: 'estimated' as const, note: 'test fixture' },
+      },
+    ],
+  };
+
+  const planWith = (
+    rigRecommendation: Plan['result']['rigRecommendation'],
+    boat: ReturnType<typeof boatSnapshot>,
+  ): Plan => {
+    const base = makePlan(Date.UTC(2026, 6, 15, 8, 0, 0), Date.UTC(2026, 6, 15, 6, 0, 0));
+    return {
+      ...base,
+      request: { ...base.request, boat },
+      result: {
+        ...base.result,
+        comparisonComplete: true,
+        sails: [
+          { sailId: 'genoa', result: result('genoa'), reason: null },
+          { sailId: 'fock', result: result('fock'), reason: null },
+        ],
+        ...(rigRecommendation ? { rigRecommendation } : {}),
+      },
+    };
+  };
+
+  const kinds = {
+    decided: { kind: 'decided', rig: 'genoa' },
+    tie: { kind: 'tie' },
+    moot: { kind: 'moot' },
+    'not-compared': { kind: 'not-compared' },
+  } as const;
+  const boats = {
+    'Salona 45': [salona45, false],
+    'tier C': [tierC, true],
+    mixed: [mixed, true],
+    'compared sail absent from the snapshot': [fockMissing, true],
+  } as const;
+
+  describe.each(Object.entries(kinds))('verdict %s', (kindName, recommendation) => {
+    it.each(Object.entries(boats))('%s', (_boatName, [boat, estimated]) => {
+      const flagged = kindName === 'decided' || kindName === 'tie';
+      expect(rigEstimateBased(planWith(recommendation, boat))).toBe(flagged && estimated);
+    });
+  });
+
+  it('an uncompared estimated sail in the snapshot does not flag the verdict', () => {
+    expect(rigEstimateBased(planWith(kinds.decided, withUncomparedEstimated))).toBe(false);
+  });
+
+  it('a record without rigRecommendation reads as decided (legacy fallback)', () => {
+    expect(rigEstimateBased(planWith(undefined, tierC))).toBe(true);
+    expect(rigEstimateBased(planWith(undefined, salona45))).toBe(false);
   });
 });

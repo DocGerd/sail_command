@@ -9,7 +9,7 @@ How might we plan EASY GO!'s passage with the sails actually aboard, choosing wh
 ## Direction
 
 **Pre-trip release (~19 Oct): data and inventory only.**
-- **EASY GO!'s own tables (§P).** The jib is tier B, from a sister hull's ORC Non-Spinnaker certificate. The genoa is tier C (the jib × the Salona 45 ramp), so the ★ stays suppressed and no new UI is needed.
+- **EASY GO!'s own tables (§P).** The jib is tier B, from a sister hull's ORC Non-Spinnaker certificate. The genoa is tier C (the jib × the Salona 45 ramp), so its ★ is flagged as estimate-based (§T) and no new UI is needed.
 - **Licence.** The derived tables follow the Salona 45 precedent (AUT 035/26); the committed ORC source records go beyond it and rest on the maintainer's acceptance. ORC is asked in parallel. It is not a gate.
 - **Sail inventory (§R).** The user picks the aboard headsails, at most 2 (`MAX_HEADSAILS`). One aboard gives a one-sail plan.
 
@@ -30,7 +30,7 @@ How might we plan EASY GO!'s passage with the sails actually aboard, choosing wh
 
 ## Key assumptions, and what settled them
 
-- **Estimated-sail crossovers are noise.** Settled: the whole-route ★ stays suppressed for tier-C pairs (§N.4); a change between derived pairs needs the larger `OVERLAY_BOUND` margin and carries a derived label (the amendment's cross-cutting decision 3).
+- **Estimated-sail crossovers are noise.** Settled: the whole-route ★ is shown for tier-C pairs, flagged as estimate-based (§T); a change between derived pairs needs the larger `OVERLAY_BOUND` margin and carries a derived label (the amendment's cross-cutting decision 3).
 - **A penalty as lost time models a change.** Kept, with the crew's minutes as defaults.
 - **N× state fits the budget.** To be measured by node counts on the sweep arms, not wall time. The node ratio is predicted at ≈ 1.5. The worst routes are predicted to end `search-cut`, which shows the held plan.
 - **A spinnaker reads "unusable" outside its range, never 0 kn.** Settled by `DownwindPolar.speedKnOrNull` returning `null`, and by gating candidates before any speed is read.

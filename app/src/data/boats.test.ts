@@ -165,14 +165,11 @@ describe('boat catalogue', () => {
     });
   });
 
-  // Spec N.4's consequence, stated at the catalogue level because this is the
-  // INPUT the routing layer's suppression reads. A tier-C boat presents a set
-  // that is entirely tier C, so the suppression rule gets an unambiguous input.
+  // A tier-C boat presents a set that is entirely tier C.
   // The one deliberate exception (spec P.9, amended): a mixed set is allowed
   // only where the estimated sail ramps off a same-boat sail (D1), which
   // polarProvenance.test checks against `derivation.fromSailId`. This row pins
-  // WHICH boats are mixed; `comparisonSuppressed` is `some`, so they still
-  // suppress.
+  // WHICH boats are mixed.
   const MIXED_TIER_BOATS = ['salona-44-easy-go'];
   it('a tier-C boat is tier C in EVERY sail, except the mixed-tier allowlist', () => {
     const mixed: string[] = [];

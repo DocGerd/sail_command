@@ -233,7 +233,7 @@ function requireEstimatorBlock(name, sail, boatsById) {
   // happily from either, while the hand-written note still claims
   // "certificate-anchored"), and scaling from another ESTIMATED table, which
   // puts G.2's "estimate of an estimate" into the ETA itself rather than into
-  // the comparison N.4 suppresses. Which table it came from and whether that
+  // the comparison. Which table it came from and whether that
   // table is a certificate are the two most load-bearing facts about the
   // derivation, and until now they were prose only.
   if (est.method === SCALAR_METHOD) {
@@ -414,10 +414,9 @@ function requireSailDerivations(boat) {
     );
     // MAJOR 4: the ramp must come from the DONOR hull — the same boat the base
     // table was scaled from. A ramp taken from anywhere else is not "the
-    // Salona 45's documented overlay ramp" that N.4 authorises, and N.4's whole
-    // argument for suppressing the comparison (the difference between the two
-    // tables is a function of THE RAMP, not the hull) depends on knowing which
-    // ramp it is.
+    // Salona 45's documented overlay ramp" that N.4 authorises, and N.4's
+    // argument (the difference between the two tables is a function of THE
+    // RAMP, not the hull) depends on knowing which ramp it is.
     const donorId = boat.sails[baseSailId].estimator.baseBoatId;
     requireField(
       est.ramp.boatId === donorId,

@@ -115,13 +115,11 @@ const FOCK_NOTE =
 // four things it structurally cannot do live in pipeline/estimate_polars.mjs's
 // header; pipeline/build_polars.mjs's E1–E8 make every step fail closed.
 //
-// The consequence that matters most here is a TYPE-level one (spec N.4): the
-// second sail of a tier-C boat is its own base table times the Salona 45's
-// documented overlay ramp, so the difference between a tier-C boat's two
-// tables is a function of THE RAMP, NOT THE HULL. It is not a noisy finding,
-// it is not a finding — which is why `assemble` must resolve any sail set
-// containing a tier-C sail to `not-compared` rather than rank the two. That
-// suppression lives in the routing layer and is NOT implemented here.
+// The second sail of a tier-C boat is its own base table times the Salona 45's
+// documented overlay ramp, so the difference between its two tables is a
+// function of THE RAMP, NOT THE HULL. The comparison still runs and its
+// verdict is flagged as estimate-based (spec T); the ramp explanation lives
+// in each genoa note below.
 //
 // PIRANJA and SPEEDY GO! derive gates <= 3.0 m. The deeper hulls drop harbours,
 // which the picker marks per harbour (#1135); EASY GO! (below) is the first
@@ -139,8 +137,8 @@ const S44_GENOA_NOTE =
   "multiplied cell-by-cell by the Salona 45's documented genoa overlay ramp, i.e. its genoa " +
   'table divided by its jib table (+3-5% light-air upwind/reach, 0 at 14-20 kn, -2% upwind at ' +
   "25 kn). The difference between this boat's two tables is therefore a function of THAT RAMP, " +
-  'not of this hull, and carries no information about it - which is why the sail comparison is ' +
-  'withheld rather than presented as a finding. Same inherited grid and angles, and the same ' +
+  'not of this hull, and carries no information about it - so a genoa-versus-jib ranking for ' +
+  'this boat reflects the ramp and is shown only as an estimate. Same inherited grid and angles, and the same ' +
   'uncertainty, as the jib table. Flat-water racing VPP - tune with the performance factor. NOT ' +
   'race-calibrated, and never measured against this boat.';
 
@@ -161,8 +159,8 @@ const ELAN_GENOA_NOTE =
   "multiplied cell-by-cell by the Salona 45's documented genoa overlay ramp, i.e. its genoa " +
   'table divided by its jib table (+3-5% light-air upwind/reach, 0 at 14-20 kn, -2% upwind at ' +
   "25 kn). The difference between this boat's two tables is therefore a function of THAT RAMP, " +
-  'not of this hull, and carries no information about it - which is why the sail comparison is ' +
-  'withheld rather than presented as a finding. Same inherited grid and angles, and the same ' +
+  'not of this hull, and carries no information about it - so a genoa-versus-jib ranking for ' +
+  'this boat reflects the ramp and is shown only as an estimate. Same inherited grid and angles, and the same ' +
   'uncertainty, as the jib table. Flat-water racing VPP - tune with the performance factor. NOT ' +
   'race-calibrated, and never measured against this boat.';
 
@@ -196,8 +194,8 @@ const EASY_GO_GENOA_NOTE =
   'headsail areas are not known), so the light-air gain may be understated; from 16 kn the ' +
   "genoa is credited with the jib's speed, which assumes it is depowered optimally and may be " +
   "too high. The difference between this boat's two tables is therefore a function of THAT " +
-  'RAMP, not of this hull, and carries no information about it - which is why the sail ' +
-  'comparison is withheld rather than presented as a finding. Below about 8 kn the table ' +
+  'RAMP, not of this hull, and carries no information about it - so a genoa-versus-jib ranking ' +
+  'for this boat reflects the ramp and is shown only as an estimate. Below about 8 kn the table ' +
   'decides between sailing and motoring, so a leg may be motored that would sail, or the ' +
   'reverse. Same grid and angles, and the same uncertainty, as the jib table. Flat-water ' +
   'racing VPP - tune with the performance factor. NOT race-calibrated, and never measured ' +

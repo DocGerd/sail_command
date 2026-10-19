@@ -1,5 +1,13 @@
 import type { MsgKey } from '../i18n/dict.de';
-import type { NoRouteReason, Plan, PlanRequest, RigResult, SailId } from '../types';
+import type {
+  NoRouteReason,
+  Plan,
+  PlanRequest,
+  PlanResultOk,
+  RigRecommendation,
+  RigResult,
+  SailId,
+} from '../types';
 
 // Spec §4: "Stale forecast (fetch → departure gap > 12 h)" — strictly
 // greater, so a plan departing exactly 12 h after its wind was fetched is
@@ -108,26 +116,40 @@ export function forecastAgeNowHours(plan: Plan, nowMs: number): number {
   return Math.round((nowMs - plan.windGrid.fetchedAtMs) / 3_600_000);
 }
 
-// #1398b (spike 1022 §8, "route.rigNotCompared" unexplained): true exactly
-// when planRoute.ts's `comparisonSuppressed` (assemble()'s
-// `!comparisonSuppressed && sails.length === 2 && a.rigResult && b.rigResult`
-// guard) is WHY `RigRecommendation.kind` reads 'not-compared' — not one of
-// the two other causes lib/resultSummary.ts's `resultVerdictKey` already
-// gives more specific copy: a truncated search
-// (`!comparisonComplete` -> route.comparisonIncomplete) or a single solver
-// failure among exactly two requested sails (`partiallyFailedSail` ->
-// route.rigOneFailed). Requiring BOTH sails to carry a non-null `result` is
-// what excludes those two without re-deriving resultVerdictKey's own
-// precedence here (`lib/resultSummary.ts` is out of this change's file
-// scope) — a tier-C suppression fires with both results present, since
-// assemble()'s guard tests `comparisonSuppressed` before either result is
-// inspected. `plan.request.boat` is the by-value snapshot (never a
-// catalogue lookup — the boat may have left it), and `BoatSnapshot.sails[]`
-// carries `polarProvenance` per #54 spec §I.3, so no field is added here.
+/**
+ * #259: the honest rig comparison for a plan. Falls back to a plain
+ * 'decided' pick of the recorded `recommended` rig when `rigRecommendation`
+ * is absent — pre-#259 PlanResultOk literals across the test suite (and any
+ * plan solved before this field existed) never set it, and a bare
+ * `recommended: SailId` is exactly what those literals always meant. Exported so
+ * every consumer resolves it identically; the banner in lib/resultSummary.ts
+ * says why the display surfaces must not drift.
+ */
+export function rigRecommendationOf(result: PlanResultOk): RigRecommendation {
+  return result.rigRecommendation ?? { kind: 'decided', rig: result.recommended };
+}
+
+// Spec §T.5: reached by legacy records only. A plan stored before §T keeps
+// `not-compared` although both sails solved and its snapshot carries an
+// estimated one; the view never re-derives a verdict. The complete,
+// exactly-two-sails, both-solved conditions keep it off the other
+// `not-compared` causes, which `resultVerdictKey` words more specifically.
 export function rigComparisonSuppressedByTier(plan: Plan): boolean {
   if (plan.result.rigRecommendation?.kind !== 'not-compared') return false;
   if (!plan.result.comparisonComplete) return false;
   if (plan.result.sails.length !== 2) return false;
   if (plan.result.sails.some((s) => s.result === null)) return false;
   return plan.request.boat.sails.some((s) => s.polarProvenance.tier === 'estimated');
+}
+
+// Spec §T.3: the one source of the "indicative, estimate-based" flag for every
+// surface. Reads only the by-value boat snapshot, never the catalogue. A
+// compared sail missing from the snapshot counts as estimated (fail closed).
+export function rigEstimateBased(plan: Plan): boolean {
+  const kind = rigRecommendationOf(plan.result).kind;
+  if (kind !== 'decided' && kind !== 'tie') return false;
+  return plan.result.sails.some((compared) => {
+    const declared = plan.request.boat.sails.find((s) => s.id === compared.sailId);
+    return declared === undefined || declared.polarProvenance.tier === 'estimated';
+  });
 }

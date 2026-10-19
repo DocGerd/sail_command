@@ -8,7 +8,7 @@ import {
   type SailResult,
 } from '../types';
 import { uniformWindGrid } from '../test/fixtures';
-import { BOATS } from '../data/boats';
+import { BOATS, boatById } from '../data/boats';
 import { de } from '../i18n/dict.de';
 import { en } from '../i18n/dict.en';
 import { formatDateTime } from './format';
@@ -16,11 +16,12 @@ import {
   averageSpeedKn,
   resultSummary,
   resultVerdictKey,
+  renderFasterRig,
   renderRigVerdict,
   rigRecommendationOf,
   sailLabelKey,
 } from './resultSummary';
-import { defaultBoatSnapshot } from '../types';
+import { boatSnapshot, defaultBoatSnapshot } from '../types';
 import { PLAN_SCHEMA_VERSION } from '../types';
 
 const DEPARTURE_MS = Date.UTC(2026, 6, 15, 8, 0, 0);
@@ -260,7 +261,9 @@ describe('resultVerdictKey (#1166 one-sail-failed)', () => {
   it('renderRigVerdict names the lone sail', () => {
     const tEn = (k: keyof typeof en, v?: Record<string, string | number>) =>
       (en[k] as string).replace('{sail}', String(v?.sail ?? ''));
-    expect(renderRigVerdict('not-compared', true, [solved], tEn)).toBe('Planned with Genoa only');
+    expect(renderRigVerdict('not-compared', true, [solved], false, tEn)).toBe(
+      'Planned with Genoa only',
+    );
   });
 
   it('N>=3 with one failure: the length!==2 gate excludes it from the one-failed key', () => {
@@ -305,5 +308,49 @@ describe('sailLabelKey (#54)', () => {
   it('both dictionaries define the fallback key', () => {
     expect(de[sailLabelKey('code0')]).toBeTruthy();
     expect(en[sailLabelKey('code0')]).toBeTruthy();
+  });
+});
+
+describe('#1716 estimate-based verdict text', () => {
+  const t = (key: keyof typeof en, vars?: Record<string, string | number>) =>
+    Object.entries(vars ?? {}).reduce(
+      (text, [name, value]) => text.replace(`{${name}}`, String(value)),
+      en[key] as string,
+    );
+  const sails: SailResult[] = [
+    { sailId: 'genoa', result: rigResult({}), reason: null },
+    { sailId: 'fock', result: rigResult({ sailId: 'fock' }), reason: null },
+  ];
+
+  it('renderFasterRig picks the flagged key only for an estimate-based verdict', () => {
+    expect(renderFasterRig('fock', false, t)).toBe('Faster: Fock');
+    expect(renderFasterRig('fock', true, t)).toBe(
+      'Faster: Fock — indicative only, from estimated polar data (tier: Estimated)',
+    );
+  });
+
+  it('renderRigVerdict words a tie as indicative only when flagged', () => {
+    expect(renderRigVerdict('tie', true, sails, false, t)).toBe(
+      'Genoa and Fock are effectively tied for this passage',
+    );
+    expect(renderRigVerdict('tie', true, sails, true, t)).toBe(
+      'Genoa and Fock are effectively tied for this passage — indicative only, from estimated polar data (tier: Estimated)',
+    );
+  });
+
+  it('renderRigVerdict ignores the flag for moot and not-compared', () => {
+    expect(renderRigVerdict('moot', true, sails, true, t)).toBe(en['route.rigMoot']);
+    expect(renderRigVerdict('not-compared', true, sails, true, t)).toBe(en['route.rigNotCompared']);
+  });
+
+  it('resultSummary carries the plan-level flag', () => {
+    const plan = makePlan('genoa', { kind: 'decided', rig: 'genoa' });
+    const salona45 = { ...plan, result: { ...plan.result, sails } };
+    expect(resultSummary(salona45, rigResult({}), 'en').estimateBased).toBe(false);
+    const tierC = {
+      ...salona45,
+      request: { ...plan.request, boat: boatSnapshot(boatById('salona-44-speedy-go')) },
+    };
+    expect(resultSummary(tierC, rigResult({}), 'en').estimateBased).toBe(true);
   });
 });

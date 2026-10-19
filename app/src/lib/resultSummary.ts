@@ -4,14 +4,8 @@
 // two never drift. Pure: reads the in-memory plan + the active rig's result
 // only (no re-fetch, no wind-grid sampling, offline-safe).
 import type { MsgKey } from '../i18n/dict.de';
-import type {
-  Plan,
-  PlanResultOk,
-  RigResult,
-  RigRecommendation,
-  SailId,
-  SailResult,
-} from '../types';
+import type { Plan, RigResult, RigRecommendation, SailId, SailResult } from '../types';
+import { rigEstimateBased, rigRecommendationOf } from './plan';
 import { formatDateTime, formatDuration, formatKn, formatNm, type Lang } from './format';
 
 // SailId -> its display label key. Shared so RouteSummary and the planner
@@ -75,6 +69,9 @@ export interface ResultSummary {
   // site (`kind === 'decided' ? rig : <fallback>`) rather than re-adding an
   // unqualified field here.
   rigRecommendation: RigRecommendation;
+  // Spec §T.3: `rigEstimateBased(plan)`; true makes every surface word a
+  // 'decided' or 'tie' verdict as indicative.
+  estimateBased: boolean;
   // Sail/motor split (motor legs are first-class per the source spec).
   sailNm: number;
   motorNm: number;
@@ -84,20 +81,7 @@ export interface ResultSummary {
   motorPct: number;
 }
 
-/**
- * #259: the honest rig comparison for a plan. Falls back to a plain
- * 'decided' pick of the recorded `recommended` rig when `rigRecommendation`
- * is absent — pre-#259 PlanResultOk literals across the test suite (and any
- * plan solved before this field existed) never set it, and a bare
- * `recommended: SailId` is exactly what those literals always meant. Exported so
- * both display surfaces (this file's resultSummary() below, and RouteSummary
- * directly for the plan-level tab star that renders even when the active
- * rig's own result is null) resolve it identically — see the file banner on
- * why the two must never drift.
- */
-export function rigRecommendationOf(result: PlanResultOk): RigRecommendation {
-  return result.rigRecommendation ?? { kind: 'decided', rig: result.recommended };
-}
+export { rigRecommendationOf };
 
 /**
  * #553 / spec §N.4: the MsgKey each `RigRecommendation.kind` renders as.
@@ -158,12 +142,11 @@ export function rigVerdictKey(kind: Exclude<RigRecommendation['kind'], 'decided'
  * `app/sweep/` acceptance sweep is owed.
  *
  * The `sails.length === 2` gate is what keeps this from firing on the other
- * three not-compared causes: N=1 (one requested sail) and N>=3 both fail it
- * outright (`assemble()`'s own guard only ever calls `compareRigs` — and so
- * only ever reaches the 'not-compared' fallback at all with two-vs-not-two
- * sails), and a tier-C
- * suppression (#553 spec §N.4) withholds the comparison while BOTH sails
- * still solved, so it has zero null results and also fails the
+ * other not-compared causes: N=1 (one requested sail) fails it outright
+ * (`assemble()`'s own guard only ever calls `compareRigs` — and so only ever
+ * reaches the 'not-compared' fallback at all with two-vs-not-two sails), and
+ * an undeclared requested sail withholds the comparison while
+ * BOTH sails still solved, so it has zero null results and also fails the
  * `filter(... === null).length === 1` check. Budget exhaustion is handled
  * upstream of this helper — `resultVerdictKey` checks `comparisonComplete`
  * FIRST, so a budget-truncated sail (whose own `result` is also null) never
@@ -179,8 +162,8 @@ function partiallyFailedSail(sails: readonly SailResult[]): SailResult | null {
  * #540 spec §E.3: the MsgKey a display surface should render for a
  * non-'decided' verdict, given ALSO whether the plan's comparison finished.
  *
- * `rigVerdictKey` alone maps every 'not-compared' cause — N=1, N>=3, one
- * sail failing, tier-C suppression, AND budget exhaustion — onto the single
+ * `rigVerdictKey` alone maps every 'not-compared' cause — N=1, one
+ * sail failing, an undeclared sail, AND budget exhaustion — onto the single
  * generic `route.rigNotCompared`. That collapses "there was nothing to
  * compare" and "we ran out of time before finishing the comparison" into
  * one sentence, which is exactly the misread spec §E.3 exists to prevent: a
@@ -250,6 +233,7 @@ export function renderRigVerdict(
   kind: Exclude<RigRecommendation['kind'], 'decided'>,
   comparisonComplete: boolean,
   sails: readonly SailResult[],
+  estimateBased: boolean,
   t: (key: MsgKey, vars?: Record<string, string | number>) => string,
 ): string {
   const key = resultVerdictKey(kind, comparisonComplete, sails);
@@ -260,7 +244,10 @@ export function renderRigVerdict(
     // A stored tie can carry any number of sails; only exactly two can be named.
     const [a, b] = sails.map((s) => s.sailId);
     if (sails.length === 2 && a !== undefined && b !== undefined) {
-      return t(key, { sailA: t(sailLabelKey(a)), sailB: t(sailLabelKey(b)) });
+      const sailNames = { sailA: t(sailLabelKey(a)), sailB: t(sailLabelKey(b)) };
+      return estimateBased
+        ? t('route.rigTieEstimated', { ...sailNames, tier: t('boat.polarTier.estimated') })
+        : t(key, sailNames);
     }
     return t('route.rigNotCompared');
   }
@@ -280,6 +267,22 @@ export function renderRigVerdict(
     return t('route.rigNotCompared');
   }
   return t(key);
+}
+
+/**
+ * Spec §T.4: the 'decided' chip text. `renderRigVerdict` excludes 'decided',
+ * so this is the one place `route.fasterRig`/`route.fasterRigEstimated` is
+ * chosen.
+ */
+export function renderFasterRig(
+  rig: SailId,
+  estimateBased: boolean,
+  t: (key: MsgKey, vars?: Record<string, string | number>) => string,
+): string {
+  const vars = { rig: t(sailLabelKey(rig)) };
+  return estimateBased
+    ? t('route.fasterRigEstimated', { ...vars, tier: t('boat.polarTier.estimated') })
+    : t('route.fasterRig', vars);
 }
 
 /** Average speed in knots over the whole passage; 0 for a zero-duration result. */
@@ -328,6 +331,7 @@ export function resultSummary(plan: Plan, result: RigResult, lang: Lang): Result
     avgSpeedKn,
     avgSpeedText: formatKn(avgSpeedKn, lang),
     rigRecommendation,
+    estimateBased: rigEstimateBased(plan),
     ...split,
   };
 }

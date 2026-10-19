@@ -203,8 +203,9 @@ it cannot drift from the tracker. Do this on a topic branch into `develop`
 - **`docs/acceptance.md`** — added at the same cut, and the sharper case: a
   stale check here does not merely misinform, it makes a tester file a bug
   against correct behaviour. §2.5/§3.4 asserted the faster rig is starred,
-  which is false whenever `compareRigs` returns `tie`/`moot` AND for both
-  tier-C fleet boats, where `comparisonSuppressed` withholds the ★ entirely.
+  which is false whenever `compareRigs` returns `tie`/`moot`, and was false
+  for the tier-C fleet boats until #1716, when `comparisonSuppressed` stopped
+  withholding the ★.
   Re-check every check whose expected outcome depends on the selected boat.
 - **Docs images** — regenerate the docs wind fixture
   (`node app/scripts/gen-docs-wind-fixture.mjs`), recapture via
