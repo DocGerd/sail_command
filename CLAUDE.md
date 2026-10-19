@@ -15,8 +15,10 @@ tacks/gybes as time penalties. Only the Salona 45 is `hullVerified` with
 certificate-anchored polars; EASY GO! has a tier-B jib from a sister hull's ORC
 certificate and a tier-C genoa derived from it (#1660); the rest are tier-C
 estimates (a sister ship may borrow its donor's tables via `polarsFrom`, #567/#1575).
-Any tier-C sail on a boat SUPPRESSES its two-rig ★ comparison — a behavioural difference that has
-already put stale claims into user-facing docs (#54, shipped v0.12.0).
+Since #1716 (v0.56.0) the two-rig ★ comparison runs at every tier and a verdict over an
+estimated sail is flagged (`lib/plan.ts`'s `rigEstimateBased`); only an undeclared requested
+sail still withholds it (`planRoute.ts`'s `comparisonSuppressed`). The earlier tier-C
+suppression put stale claims into user-facing docs twice (#54, then this file until v0.56.0).
 
 **Source of truth:** `docs/superpowers/specs/2026-07-14-sail-command-design.md`
 (user-approved), plus `2026-08-10-multi-boat-design.md` for anything touching
@@ -589,7 +591,9 @@ making design-level decisions; do not silently deviate.
   pipeline/`. That venv carries its OWN ruff, unpinned against CI's hash-pinned
   `python-lint-requirements.txt` (measured 2026-08-18: venv 0.16.2 vs CI
   0.16.3) — the `node_modules`-vs-lockfile trap in a second language, so a
-  local pass is evidence, not proof.
+  local pass is evidence, not proof. `pipeline/requirements*.txt` carry no
+  ruff, so a fresh worktree's venv had none at PR #1752; install CI's pin with
+  `pip install --require-hashes -r .github/workflows/python-lint-requirements.txt`.
 - Pipeline: `npm --prefix pipeline run
   polars|estimate|harbors|seamarks|mask|icons` (`estimate` = `estimate_polars.mjs`, the tier-C scalar estimator for the
   non-`hullVerified` boats with tables of their own; a `polarsFrom` borrower
@@ -1225,6 +1229,9 @@ making design-level decisions; do not silently deviate.
   find the in-flight same-ref run before investigating the new one. Let the
   healthy jobs reach `success` BEFORE cancelling, so `rerun --failed` re-runs
   only the wedged job instead of all of them.
+- **A spec that plans at the default departure races the hour boundary**
+  (#1731): fill an explicit departure; reproduce with `page.clock.install` at
+  hh:59:58 — a pass at any other minute is a miss, not evidence.
 - **Any e2e test of the departure `datetime-local` MUST mock the clock.** The
   app's `max` is `now + FORECAST_DAYS * 86_400_000` (`FORECAST_DAYS = 6`,
   `services/openMeteo.ts`), and Chromium makes the month/year segments INERT when
@@ -1735,6 +1742,7 @@ making design-level decisions; do not silently deviate.
   | v0.55.0 | 2026-10-17 | 61 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 16:52:56Z, two seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `39051266888` (created 16:51:58Z) -> tag `39051339241` (created 16:52:59Z) on `0ddfaffc`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `7142795156`, `ref: v0.55.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-BQy7uiJ9.js` at ``version:`v0.55.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.55.1 | 2026-10-18 | 36 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 09:29:56Z, two seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `39115526159` (created 09:29:23Z) -> tag `39115563800` (created 09:29:59Z) on `cae3f5d`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `7152678386`, `ref: v0.55.1`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-CrJweXxq.js` at ``version:`v0.55.1` `` with ZERO suffixed matches. Release `isLatest: true`; tag object reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.55.2 | 2026-10-18 | 39 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 18:45:51Z, immediately before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `39155603832` (created 18:45:16Z) -> tag `39155657198` (created 18:45:55Z) on `0b0e419`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `7159063112`, `ref: v0.55.2`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-CdYs7uY6.js` at ``version:`v0.55.2` `` with ZERO suffixed matches. Release `isLatest: true`; tag object reported `verified: true, reason: "valid"`. Names no MECHANISM. |
+  | v0.56.0 | 2026-10-19 | 25 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 08:21:18Z, three seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `39222126524` (created 08:20:56Z) -> tag `39222174944` (created 08:21:21Z) on `607a4c8`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `7169026595`, `ref: v0.56.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-DMwoztuW.js` at ``version:`v0.56.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object reported `verified: true, reason: "valid"`. Names no MECHANISM. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -2465,7 +2473,7 @@ making design-level decisions; do not silently deviate.
   DEFAULT_SETTINGS case asserts (that file was split at #878 — grep the
   siblings rather than trusting a filename or a count here). The mechanism is #53's relaxation tier, which
   fires on `depthRelaxationMayHelp(cause)` (defined and called in
-  `planRoute.ts`, ~:254 / ~:687) whenever the failure cause is
+  `planRoute.ts`) whenever the failure cause is
   mask-unreachability (or, since #1258, a requested-gate horizon overrun) —
   **independent of `depthComfortMarginM`**, which is
   #243's soft comfort PREFERENCE (`planRoute.ts`'s only production use of
@@ -3862,6 +3870,8 @@ making design-level decisions; do not silently deviate.
   shipped — `boats.test.ts` asserts non-vacuity on `collectRenderedNotes()`
   instead, leaving an empty `internalOnly` as the legitimate all-clear
   (#595/PR #657).
+- **STRIKING a sentence orphans the next line's anaphora too**: #1748's fix
+  wave struck the only referent of "that defect"; re-read what follows a strike.
 - **MOVING text is not a no-op, and it fails in TWO distinct ways** (#493,
   PR #504). RE-SEQUENCING breaks ANAPHORA: the restructured shallow banner's
   lead opened "a more cautious reading of THAT SAME depth data" / "Lesart
@@ -4030,7 +4040,8 @@ making design-level decisions; do not silently deviate.
   disconnects, reconnects from 0.88) — NOT the 0.8 a 0.1-sampled table
   suggests, so 0.85 looks safe and strands Marstal permanently. Do NOT
   reach for the spike's 1.8 m figure here: it is measured against Marstal's
-  OWN 2.0 m `CONNECTIVITY_EXCEPTIONS_M` harbour gate (`verify_mask.py`), not
+  OWN 2.0 m `CONNECTIVITY_EXCEPTIONS_M` harbour gate (`verify_mask.py`; a
+  self-check value, not a charted depth, since #1728), not
   the 2.1 m boat draft, and it belongs to Direction 3 (the pure
   `Resampling.max` rebuild, §4.3) rather than this Direction 4 T-sweep — two
   different quantities and two different experiments, both of whose numbers
@@ -4158,8 +4169,8 @@ making design-level decisions; do not silently deviate.
   maneuver time penalty (default 45 s) inside the isochrone cost. Don't add a
   post-hoc "tack reducer" that can violate wind/depth constraints; the only
   allowed post-processing is merging near-collinear legs with re-validation.
-  `backtrack`'s own step merge (not the `postprocess.ts` pass above) merged
-  chords without re-validating at #1705's filing.
+  `backtrack`'s own step merge checks `segmentNavigable` on the merged chord
+  since #1705; unlike `postprocess.ts` it skips the comfort check (#1754).
 - **The router runs twice per plan** (genoa polar, fock polar) and recommends
   the faster rig. Both results are user-visible.
 - **Second rig, on the map too, not just in the results panel** (#324): the
@@ -5075,6 +5086,9 @@ making design-level decisions; do not silently deviate.
   write-then-revert leaves NO trace in `git status` (only mtimes), so never
   assert a tree is exclusively an agent's own unless you created it for them,
   and tell workers to diff-before-stage regardless of any such assurance.
+- Post an in-session maintainer ruling as an issue comment BEFORE a spec or doc
+  attributes it, then cite it: #1748 credited decisions to the maintainer while
+  #1716 had no record, a claim-audit Major fixed by posting one.
 - Spec edits (`docs/superpowers/specs/`) go through the main session only (the
   ask-gate hook must prompt the user) — never through subagents. The hook DOES
   match Bash appends: `bash_hits_protected_path` substring-matches the RAW
