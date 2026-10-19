@@ -13,52 +13,44 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.55.2**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.56.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
-## Now — v0.55.2
+## Now — v0.56.0
 
-The `v0.55.2` cut (2026-10-18) was a PATCH release for one user-visible fix
-([#1734](https://github.com/DocGerd/sail_command/issues/1734)): the handover
-point for a harbour the depth grid cannot connect is now taken on the side that
-leads by water to the adjacent route point, so a plan from or to Marstal with EASY GO!
-at a lowered safety depth no longer detours round Ærø. It followed `v0.55.1`
-the same day.
+The `v0.56.0` cut (2026-10-19) closed thirteen issues from the
+[`v0.56.0` milestone](https://github.com/DocGerd/sail_command/milestones),
+seven of them user-visible (per `CHANGELOG.md`'s own `[0.56.0]` section): the
+two-sail comparison for SPEEDY GO!, PIRANJA and EASY GO!, flagged as an
+indicative estimate ([#1716](https://github.com/DocGerd/sail_command/issues/1716)); a checking line while the unreachable-harbour
+depth-range scan runs ([#1725](https://github.com/DocGerd/sail_command/issues/1725)); Marstal's harbour note giving the
+Havnelods approach and marina depths ([#1728](https://github.com/DocGerd/sail_command/issues/1728)); the backtrack collinear
+merge no longer cutting across a shallow corner ([#1705](https://github.com/DocGerd/sail_command/issues/1705)); the next-passage
+preview refreshing when the page becomes visible ([#1711](https://github.com/DocGerd/sail_command/issues/1711)); and two
+route-fit fixes, the end marker under the display-options panel
+([#1702](https://github.com/DocGerd/sail_command/issues/1702)) and a second re-fit during Live ([#1710](https://github.com/DocGerd/sail_command/issues/1710)). Five changed no
+user-visible behaviour: PlannerPanel building a second depth grid
+([#1724](https://github.com/DocGerd/sail_command/issues/1724)), test and prose nits in the handover engine
+([#1729](https://github.com/DocGerd/sail_command/issues/1729), [#1738](https://github.com/DocGerd/sail_command/issues/1738)), the plan.spec re-plan flake ([#1731](https://github.com/DocGerd/sail_command/issues/1731)) and the
+HarborPicker coverage timeout ([#1739](https://github.com/DocGerd/sail_command/issues/1739)). The start label under the sheet
+after a reload at 820x1180 ([#1717](https://github.com/DocGerd/sail_command/issues/1717)) was closed as not reproduced. Multi-day
+trip records ([#1708](https://github.com/DocGerd/sail_command/issues/1708)) and the MET Norway fallback provider ([#1713](https://github.com/DocGerd/sail_command/issues/1713))
+moved on to `v0.57.0`.
 
-The preceding `v0.55.1` cut (2026-10-18) was a PATCH release for one user-visible fix
-([#1721](https://github.com/DocGerd/sail_command/issues/1721)): a boat can now be planned to or from a picked harbour the depth grid cannot connect to open water at the chosen safety depth, such as EASY GO! at Marstal, unless the harbour is flagged as not reachable at any depth setting. The route starts or ends
-at a handover point up to 1 nm off the harbour, and the approach is drawn as a
-striped line marked as not computed and not depth-checked. Where the grid connects a harbour at no safety depth in the boat's range, the harbour picker and a failed plan's no-route message name that range. It followed `v0.55.0` the day before.
+## Next — v0.57.0
 
-The preceding `v0.55.0` cut (2026-10-17) closed eight issues from the
-[`v0.55.0` milestone](https://github.com/DocGerd/sail_command/milestones),
-four of them user-visible (per `CHANGELOG.md`'s own `[0.55.0]` section):
-planning the next passage from any planned route in one tap, including
-offline from the route's stored forecast ([#1707](https://github.com/DocGerd/sail_command/issues/1707), slice 1 of
-[#19](https://github.com/DocGerd/sail_command/issues/19)); two route-fit fixes, one for the start marker under the bottom sheet
-after a resize ([#1639](https://github.com/DocGerd/sail_command/issues/1639)) and one for the start and destination labels
-running under the map controls ([#1641](https://github.com/DocGerd/sail_command/issues/1641)); and wind forecast requests that
-back off and retry when Open-Meteo is overloaded and reuse a recent forecast
-([#1712](https://github.com/DocGerd/sail_command/issues/1712)). The rest changed no user-visible behaviour: the `fast-uri`
-dev-dependency bump ([#1695](https://github.com/DocGerd/sail_command/issues/1695)), CodeQL running on every pull request
-together with the Scorecard tracking and assurance-case wording
-([#72](https://github.com/DocGerd/sail_command/issues/72), [#1696](https://github.com/DocGerd/sail_command/issues/1696)), and the spike measuring EASY GO!'s relaxed approaches
-to Faldsled and Rudkøbing ([#932](https://github.com/DocGerd/sail_command/issues/932)).
-
-## Next — v0.56.0
-
-The [`v0.56.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-holds fourteen issues as of this cut, eight of them already there at the `v0.55.0` cut. Routing: the backtrack collinear merge
-emitting a leg never re-checked against the depth gate ([#1705](https://github.com/DocGerd/sail_command/issues/1705)), the two-rig
-★ for tier-C boats flagged as estimate-based ([#1716](https://github.com/DocGerd/sail_command/issues/1716)), and multi-day trip
-records with undo for the next passage ([#1708](https://github.com/DocGerd/sail_command/issues/1708)). Wind: a labelled MET
-Norway fallback provider ([#1713](https://github.com/DocGerd/sail_command/issues/1713)). Map and route fit: the start label
-about 3 px under the sheet after a reload at 820x1180 ([#1717](https://github.com/DocGerd/sail_command/issues/1717)), the end
-marker under the expanded display-options panel at the same size
-([#1702](https://github.com/DocGerd/sail_command/issues/1702)), and a re-fit still possible during Live after an earlier map
-gesture ([#1710](https://github.com/DocGerd/sail_command/issues/1710)). Next passage: the preview lagging the tap after device
-sleep near 10:00 ([#1711](https://github.com/DocGerd/sail_command/issues/1711)). The other six are follow-ups: five filed during the #1721 work: PlannerPanel building a second depth grid ([#1724](https://github.com/DocGerd/sail_command/issues/1724)), a pending state for the unreachable-range scan ([#1725](https://github.com/DocGerd/sail_command/issues/1725)), the Marstal 2.0 m basin wording in pipeline comments and the harbour note ([#1728](https://github.com/DocGerd/sail_command/issues/1728)), test nits in the handover engine ([#1729](https://github.com/DocGerd/sail_command/issues/1729)), and a plan.spec re-plan test that flakes across a full hour ([#1731](https://github.com/DocGerd/sail_command/issues/1731)); the sixth, filed with the `v0.55.2` fix, is its prose nits ([#1738](https://github.com/DocGerd/sail_command/issues/1738)). The milestone page is the only authoritative
-view, check it directly rather than this file.
+The [`v0.57.0` milestone](https://github.com/DocGerd/sail_command/milestones)
+holds seven issues as of this cut. Two are the items moved from `v0.56.0`:
+multi-day trip records with undo for the next passage ([#1708](https://github.com/DocGerd/sail_command/issues/1708)) and a
+labelled MET Norway wind fallback provider ([#1713](https://github.com/DocGerd/sail_command/issues/1713)). Five are follow-ups
+filed during `v0.56.0`: the backtrack collinear merge skipping the depth-comfort
+check that postprocess applies ([#1754](https://github.com/DocGerd/sail_command/issues/1754)), no test pinning that `solve()`
+hands its own gate to `backtrack()` ([#1753](https://github.com/DocGerd/sail_command/issues/1753)), the Live re-fit latch
+check running before `watch()` ([#1751](https://github.com/DocGerd/sail_command/issues/1751)), unreachable-band scans running in
+map order rather than selected or visible harbours first ([#1749](https://github.com/DocGerd/sail_command/issues/1749)), and
+the saved-waypoints e2e losing its cluster pixel to the post-plan fit
+([#1758](https://github.com/DocGerd/sail_command/issues/1758)). The milestone page is the only authoritative view, check it
+directly rather than this file.
 
 ## Themes for the next year
 
