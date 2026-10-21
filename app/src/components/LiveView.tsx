@@ -380,10 +380,7 @@ export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: 
         }
       : null;
   const xteSide =
-    progress &&
-    progress.xte.clamped === null &&
-    progress.xte.side !== null &&
-    progress.xte.distanceNm >= XTE_SIDE_DEADBAND_NM
+    progress && progress.xte.side !== null && progress.xte.distanceNm >= XTE_SIDE_DEADBAND_NM
       ? progress.xte.side
       : null;
 

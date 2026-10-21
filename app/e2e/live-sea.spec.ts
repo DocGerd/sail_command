@@ -217,9 +217,9 @@ test('motion: a moving fix drives COG, SOG, heading-to-steer and ETA', async ({
         .toBeLessThanOrEqual(1);
 
     // 3 m/s = 5.83 kn.
-    await expect(cog).toHaveText('090°', { timeout: 30_000 });
+    await expect(cog).toHaveText('090°T', { timeout: 30_000 });
     await expect(sog).toHaveText('5,8 kn');
-    await expect(hts).toHaveText(/^\d{3}°$/);
+    await expect(hts).toHaveText(/^\d{3}°T$/);
     await expectHeadingToSteer(FIX_ORIGIN);
     const htsAtOrigin = await hts.textContent();
     await expect(eta).toContainText('Voraussichtliche Ankunft');
@@ -228,7 +228,7 @@ test('motion: a moving fix drives COG, SOG, heading-to-steer and ETA', async ({
 
     // 2.5 m/s = 4.86 kn.
     await setMovingFix(cdp, { ...FIX_FJORD_MOUTH, heading: 45, speed: 2.5 });
-    await expect(cog).toHaveText('045°', { timeout: 30_000 });
+    await expect(cog).toHaveText('045°T', { timeout: 30_000 });
     await expect(sog).toHaveText('4,9 kn');
     await expect.poll(async () => hts.textContent(), { timeout: 30_000 }).not.toBe(htsAtOrigin);
     await expect.poll(async () => eta.textContent(), { timeout: 30_000 }).not.toBe(etaAtOrigin);
@@ -236,7 +236,7 @@ test('motion: a moving fix drives COG, SOG, heading-to-steer and ETA', async ({
 
     // 4.1 m/s = 7.97 kn; heading wraps through north (355).
     await setMovingFix(cdp, { ...FIX_OFF_SOENDERBORG, heading: 355, speed: 4.1 });
-    await expect(cog).toHaveText('355°', { timeout: 30_000 });
+    await expect(cog).toHaveText('355°T', { timeout: 30_000 });
     await expect(sog).toHaveText('8,0 kn');
     await expectHeadingToSteer(FIX_OFF_SOENDERBORG);
 
@@ -336,7 +336,7 @@ for (const [name, viewport] of Object.entries(TABLET_VIEWPORTS)) {
 
       const rerouteButton = page.getByRole('button', { name: 'Route ab hier neu planen' });
       await expect(rerouteButton).toBeEnabled({ timeout: 30_000 });
-      await expect(page.locator('.live-view-cogsog dd').nth(0)).toHaveText('045°', {
+      await expect(page.locator('.live-view-cogsog dd').nth(0)).toHaveText('045°T', {
         timeout: 30_000,
       });
 
@@ -450,7 +450,8 @@ for (const { label, viewport } of STATE_VIEWPORTS) {
         const rerouteHint = page.locator('.live-view-reroute-hint');
 
         // Fresh.
-        await expect(cog).toHaveText('090°', { timeout: 30_000 });
+        await expect(cog).toHaveText('090°T', { timeout: 30_000 });
+        await expect(page.locator('.live-view-progress')).toBeVisible();
         await expect(sog).toHaveText('5,8 kn');
         await expect(staleChip).toHaveCount(0);
         await expect(lostBlock).toHaveCount(0);
@@ -465,9 +466,9 @@ for (const { label, viewport } of STATE_VIEWPORTS) {
           .toBeGreaterThanOrEqual(10);
         expect(await staleAgeS(page)).toBeLessThan(30);
         await expect(data).toHaveCSS('opacity', '0.6');
-        await expect(cog).toHaveText('090°');
+        await expect(cog).toHaveText('090°T');
         await expect(sog).toHaveText('5,8 kn');
-        await expect(hts).toHaveText(/^\d{3}°$/);
+        await expect(hts).toHaveText(/^\d{3}°T$/);
         await expect(lostBlock).toHaveCount(0);
         await expectTopmost('stale badge', staleChip);
 
@@ -481,6 +482,7 @@ for (const { label, viewport } of STATE_VIEWPORTS) {
         await expect(hts).toHaveCount(0);
         await expect(page.locator('.live-view-cogsog')).toHaveCount(0);
         await expect(eta).toHaveCount(0);
+        await expect(page.locator('.live-view-progress')).toHaveCount(0);
         await expect(rerouteButton).toBeDisabled();
         await expect(rerouteHint).toContainText('Kein GPS-Signal');
         await expect(page.locator('.live-view-gps--denied')).toHaveCount(0);
@@ -493,12 +495,12 @@ for (const { label, viewport } of STATE_VIEWPORTS) {
           heading: 45,
           speed: 2.5,
         });
-        await expect(cog).toHaveText('045°', { timeout: 30_000 });
+        await expect(cog).toHaveText('045°T', { timeout: 30_000 });
         await expect(sog).toHaveText('4,9 kn');
         await expect(lostBlock).toHaveCount(0);
         await expect(staleChip).toHaveCount(0);
         await expect(data).toHaveCSS('opacity', '1');
-        await expect(hts).toHaveText(/^\d{3}°$/);
+        await expect(hts).toHaveText(/^\d{3}°T$/);
         await expect(eta).toContainText('Voraussichtliche Ankunft');
         await expect(rerouteButton).toBeEnabled();
         await expect(rerouteHint).not.toContainText('Kein GPS-Signal');
@@ -528,6 +530,7 @@ for (const { label, viewport } of STATE_VIEWPORTS) {
           await expect(page.locator('.live-view-gps--lost')).toHaveCount(0);
           await expect(page.locator('.live-view-gps--waiting')).toHaveCount(0);
           await expect(page.locator('.live-view-hts-value')).toHaveCount(0);
+          await expect(page.locator('.live-view-progress')).toHaveCount(0);
 
           const rerouteButton = page.getByRole('button', {
             name: 'Route ab hier neu planen',
@@ -576,7 +579,7 @@ for (const { label, viewport } of STATE_VIEWPORTS) {
           speed: 3,
         });
         const cog = page.locator('.live-view-cogsog dd').nth(0);
-        await expect(cog).toHaveText('090°', { timeout: 30_000 });
+        await expect(cog).toHaveText('090°T', { timeout: 30_000 });
         await expect(rerouteButton).toBeEnabled();
         expect(await watchCount()).toBeGreaterThan(0);
 
@@ -606,7 +609,7 @@ for (const { label, viewport } of STATE_VIEWPORTS) {
         await resumeButton.click();
         await expect(liveToggle).toHaveAttribute('aria-pressed', 'true');
         await expect(resume).toHaveCount(0);
-        await expect(cog).toHaveText('045°', { timeout: 30_000 });
+        await expect(cog).toHaveText('045°T', { timeout: 30_000 });
         await expect(rerouteButton).toBeEnabled();
         expect(await watchCount()).toBeGreaterThan(0);
       } finally {
@@ -632,7 +635,7 @@ test('permission revoked mid-watch flips fresh to denied, and re-granting recove
     });
     const cog = page.locator('.live-view-cogsog dd').nth(0);
     const denied = page.locator('.live-view-gps--denied');
-    await expect(cog).toHaveText('090°', { timeout: 30_000 });
+    await expect(cog).toHaveText('090°T', { timeout: 30_000 });
 
     await context.clearPermissions();
     await expect(denied).toBeVisible({ timeout: 30_000 });
@@ -643,7 +646,7 @@ test('permission revoked mid-watch flips fresh to denied, and re-granting recove
 
     await context.grantPermissions(['geolocation']);
     await setMovingFix(cdp, { ...FIX_FJORD_MOUTH, heading: 45, speed: 2.5 });
-    await expect(cog).toHaveText('045°', { timeout: 30_000 });
+    await expect(cog).toHaveText('045°T', { timeout: 30_000 });
     await expect(denied).toHaveCount(0);
     await expect(rerouteButton).toBeEnabled();
   } finally {
