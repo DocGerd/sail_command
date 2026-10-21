@@ -18,7 +18,7 @@ import {
   type RegionPinRecord,
 } from './db';
 import type { Plan, Settings, WindGrid } from '../types';
-import { boatSnapshot, defaultBoatSnapshot } from '../types';
+import { boatSnapshot, DEFAULT_SETTINGS, defaultBoatSnapshot } from '../types';
 import { boatById } from '../data/boats';
 import { PLAN_SCHEMA_VERSION } from '../types';
 
@@ -1769,5 +1769,64 @@ describe('#1164 T4: region pin intent persistence (services/db.ts)', () => {
     expect(outcome).toBe('plan-gone');
     expect(buildRecord).not.toHaveBeenCalled();
     expect(await getRegionPin('future-plan')).toBeUndefined();
+  });
+});
+// SECURITY.md: the AIS key never leaves the device except to aisstream.io, so
+// no stored plan may carry it in its request.settings snapshot.
+describe('savePlan strips the AIS API key from the stored request settings', () => {
+  const KEY = 'ais-secret-0123456789';
+  beforeEach(async () => {
+    await __resetDbForTests();
+  });
+
+  function planWith(settings: unknown, id = 'ais-plan'): Plan {
+    return {
+      id,
+      name: 'key test',
+      createdAtMs: 1000,
+      schemaVersion: PLAN_SCHEMA_VERSION,
+      request: { settings, boat: defaultBoatSnapshot() },
+    } as unknown as Plan;
+  }
+  async function storedRecord(id: string): Promise<unknown> {
+    const conn = await openDB('sailcommand');
+    try {
+      return await conn.get('plans', id);
+    } finally {
+      conn.close();
+    }
+  }
+  const settingsOf = (rec: unknown) =>
+    (rec as { request: { settings: Record<string, unknown> } }).request.settings;
+
+  it('stores a plan built like rerouteFromFix (DEFAULT_SETTINGS spread over a key-bearing snapshot) without the key', async () => {
+    const original = planWith({ ...DEFAULT_SETTINGS, aisApiKey: KEY });
+    const rerouted = planWith(
+      { ...DEFAULT_SETTINGS, ...original.request.settings },
+      'ais-rerouted',
+    );
+    expect(rerouted.request.settings.aisApiKey).toBe(KEY);
+
+    await savePlan(rerouted);
+
+    const stored = await storedRecord('ais-rerouted');
+    expect(Object.hasOwn(settingsOf(stored), 'aisApiKey')).toBe(false);
+    expect(JSON.stringify(stored)).not.toContain(KEY);
+    expect(settingsOf(stored).safetyDepthM).toBe(DEFAULT_SETTINGS.safetyDepthM);
+    // The caller's in-memory plan keeps its settings untouched.
+    expect(rerouted.request.settings.aisApiKey).toBe(KEY);
+  });
+
+  it('leaves a plan without a key untouched', async () => {
+    await savePlan(planWith({ ...DEFAULT_SETTINGS }));
+    expect(settingsOf(await storedRecord('ais-plan'))).toEqual(DEFAULT_SETTINGS);
+  });
+
+  it.each([
+    ['absent settings', undefined],
+    ['null settings', null],
+  ])('still saves a record with %s', async (_label, settings) => {
+    await savePlan(planWith(settings));
+    expect(await storedRecord('ais-plan')).toBeDefined();
   });
 });
