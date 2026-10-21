@@ -625,6 +625,8 @@ making design-level decisions; do not silently deviate.
   NOT a required check, so alerts accumulate
   silently — triage the post-merge push run. Dismissal comments are capped at
   **280 chars**, so a dismissal must point at a linked evidence record (#600).
+  Moving the flagged code re-opens a dismissed alert under a NEW number
+  (#13 -> #52, #15 -> #51 after #1793): re-dismiss citing the original.
 - **`code-scanning/alerts` returns Scorecard alerts ALONGSIDE CodeQL's, and
   they look alike until you read `.tool.name`.** Measured 2026-09-02: both
   alerts open that day were `tool.name: Scorecard`, each with `rule.severity`
@@ -1743,6 +1745,7 @@ making design-level decisions; do not silently deviate.
   | v0.55.1 | 2026-10-18 | 36 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 09:29:56Z, two seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `39115526159` (created 09:29:23Z) -> tag `39115563800` (created 09:29:59Z) on `cae3f5d`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `7152678386`, `ref: v0.55.1`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-CrJweXxq.js` at ``version:`v0.55.1` `` with ZERO suffixed matches. Release `isLatest: true`; tag object reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.55.2 | 2026-10-18 | 39 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 18:45:51Z, immediately before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `39155603832` (created 18:45:16Z) -> tag `39155657198` (created 18:45:55Z) on `0b0e419`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `7159063112`, `ref: v0.55.2`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-CdYs7uY6.js` at ``version:`v0.55.2` `` with ZERO suffixed matches. Release `isLatest: true`; tag object reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.56.0 | 2026-10-19 | 25 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 08:21:18Z, three seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `39222126524` (created 08:20:56Z) -> tag `39222174944` (created 08:21:21Z) on `607a4c8`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `7169026595`, `ref: v0.56.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-DMwoztuW.js` at ``version:`v0.56.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object reported `verified: true, reason: "valid"`. Names no MECHANISM. |
+  | v0.57.0 | 2026-10-21 | 61 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 15:59:04Z, ten seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `39630498595` (created 15:58:13Z) -> tag `39630650653` (created 15:59:14Z) on `fb4fa6d`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `7230717657`, `ref: v0.57.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-jOtH7t_r.js` at ``version:`v0.57.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `30177e5` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -2006,7 +2009,9 @@ making design-level decisions; do not silently deviate.
   skill" is UNEXECUTABLE, not merely discouraged: ask the maintainer to type
   `/release`, and read `SKILL.md` directly for the steps cited elsewhere in
   this file — §2b, §5a, §5b, §5c and step 6, the back-merge that is also the
-  #398 no-op remedy.
+  #398 no-op remedy. A `/release` typed while a turn is running arrives as
+  plain text and the skill does not load; end the turn and have it retyped
+  (v0.57.0; an active `/goal` stop hook needed a background wait to leave a gap).
 - **`.claude/commands/release-cycle.md` provides `/release-cycle`** (#816, PR
   #817, merged 2026-09-01) — a six-phase (0–5) wrapper for a whole cycle:
   state discovery, approval-gated milestone re-triage, implementing the
@@ -2741,7 +2746,10 @@ making design-level decisions; do not silently deviate.
 - **A duplicated ALGORITHM must be proven equivalent by DIFFERENTIAL
   TESTING, never by reading.** `shallowExposureNm` re-implements `NavMask`'s
   private `walkCells` DDA, deliberately, to keep `PlanResult` byte-identical
-  so no #282 sweep is owed. A duplicated TRAVERSAL fails as a subtly wrong
+  so no #282 sweep is owed. Since #1778 `segmentNavigable`/`segmentClearanceM`
+  carry their own closure-free copies too, pinned against `walkCells` by
+  `mask.walkers.test.ts`; the geo/polar/wind/candidate hoists from the same
+  change are pinned against verbatim BASE copies the same way. A duplicated TRAVERSAL fails as a subtly wrong
   safety NUMBER with no signal at all.
   Method that worked (#516/PR #523): a facade carrying the real `meta` plus a
   recording `depthInfoM` captures the shipped walk's visited-cell sequence,
@@ -4172,7 +4180,12 @@ making design-level decisions; do not silently deviate.
   `backtrack`'s own step merge checks `segmentNavigable` on the merged chord
   since #1705; at that fix it did not apply `postprocess.ts`'s comfort check (#1754).
 - **The router runs twice per plan** (genoa polar, fock polar) and recommends
-  the faster rig. Both results are user-visible.
+  the faster rig. Both results are user-visible. Since #1793 the two rigs can
+  solve in parallel: `workerClient.ts` spawns a solve-only sibling worker
+  (`defaultPoolSize()`) joined to the ladder worker by a `MessageChannel`, and
+  `planRoute.ts`'s ladder is one generator with a sync driver (sweep, tests)
+  and an async one. Results are pool-size independent only for plans without
+  a budget cut; the #282 sweep sees the sync driver only.
 - **Second rig, on the map too, not just in the results panel** (#324): the
   rig NOT currently shown as primary can be overlaid on `RouteLayer.tsx`'s
   map as `sc-route-alt-sail`/`sc-route-alt-motor` — map-only (no
@@ -4196,12 +4209,11 @@ making design-level decisions; do not silently deviate.
   result is null: `!altResult` alone is not enough, since `result` can be
   null while the complement's `altResult` stays truthy, which would draw the
   ONLY real route as the dashed "other rig" track.
-- **Planner progress is phase-based, not a percentage** (#340): a phase
-  readout ("sail N of 2 (Sail)") derived from `PlanRequest.sailIds`, IN SOLVE
-  ORDER, is the single source of truth (`types.ts`) — never a hardcoded rig
-  order. Coupling enforced by `planRoute.test.ts`'s
-  `'#340/#54: solve order matches request.sailIds'` guard, non-vacuous by
-  construction.
+- **Planner progress is phase-based, not a percentage** (#340): since #1793
+  (v0.57.0) the routing phase reads "all sails", because the rigs may solve
+  concurrently; the old "sail N of 2" readout is gone. The sync driver's solve
+  order still follows `PlanRequest.sailIds`, pinned by `planRoute.test.ts`'s
+  `'#340/#54: solve order matches request.sailIds'` guard.
 - **Motor legs are first-class**: planned where sailing speed falls below the
   SAIL-SPEED FLOOR `max(motorThresholdKn, motorSpeedKn - sailPreferenceKn)`
   (defaults 2.5 / 6.5 / 2.8 → floor 3.7 kn), run at motor speed, always flagged
