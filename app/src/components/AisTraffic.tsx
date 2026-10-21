@@ -29,6 +29,7 @@ const AIS_CORRIDOR_LEG_SETTLE_MS = 2000;
 const STATUS_KEY: Record<Exclude<AisStatus, 'live'>, MsgKey> = {
   off: 'ais.status.off',
   connecting: 'ais.status.connecting',
+  noTraffic: 'ais.status.noTraffic',
   offline: 'ais.status.offline',
   keyError: 'ais.status.keyError',
 };

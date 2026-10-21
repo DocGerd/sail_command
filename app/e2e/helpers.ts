@@ -1097,3 +1097,17 @@ export async function openDataLayerOptions(page: Page): Promise<void> {
   if (!(await isOpen())) await details.locator('summary').click();
   await expect.poll(isOpen, { message: 'Anzeigeoptionen did not open' }).toBe(true);
 }
+
+// Departure helpers for specs that must plan with an explicit departure: the
+// form default is the next full hour, which a plan crossing the hour boundary
+// leaves in the past (#1731).
+export function nextFullHourPlus(hours: number): Date {
+  const d = new Date();
+  d.setHours(d.getHours() + 1 + hours, 0, 0, 0);
+  return d;
+}
+
+export function localDatetimeValue(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}

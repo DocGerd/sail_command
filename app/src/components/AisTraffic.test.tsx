@@ -269,6 +269,12 @@ describe('AisStatusChip', () => {
     expect(screen.getByText('AIS connecting…')).toBeInTheDocument();
   });
 
+  it('renders connected-without-traffic distinctly from connecting', () => {
+    renderChip('noTraffic');
+    expect(screen.getByText('AIS connected · no traffic in view')).toBeInTheDocument();
+    expect(screen.queryByText('AIS connecting…')).not.toBeInTheDocument();
+  });
+
   it('renders the live state with the target count', () => {
     renderChip('live', { targetCount: 7 });
     expect(screen.getByText('AIS live · 7 vessels')).toBeInTheDocument();

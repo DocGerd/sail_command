@@ -1403,12 +1403,13 @@ export default function RouteLayer({
     const runRefit = (labelsOnly: boolean) => {
       const state = autoFitKeyRef.current;
       if (disposed) return;
+      // Before the latch check, so a Live readout mounted while released is observed too.
+      watch();
       if (state === null) {
         // Entering Live while released must still count, or a later re-arm fits again mid-Live.
         liveWasActive = document.querySelector('.live-view-data') !== null;
         return;
       }
-      watch();
       // A fit stops a running ease, which would demote the compass.
       if (map.isMoving()) {
         map.once('moveend', () => runRefit(labelsOnly));

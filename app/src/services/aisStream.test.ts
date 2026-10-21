@@ -1,6 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   AIS_AUTH_STABLE_MS,
+  AIS_MESSAGE_TYPES,
+  AIS_NO_TRAFFIC_MS,
+  AIS_SILENCE_RECONNECT_MS,
   AIS_STREAM_URL,
   AisStreamClient,
   boundingBoxListsEqual,
@@ -39,7 +42,13 @@ describe('buildSubscription', () => {
           [55.0, 10.1],
         ],
       ],
-      FilterMessageTypes: ['PositionReport', 'ShipStaticData'],
+      FilterMessageTypes: [
+        'PositionReport',
+        'ShipStaticData',
+        'StandardClassBPositionReport',
+        'ExtendedClassBPositionReport',
+        'StaticDataReport',
+      ],
     });
   });
 
@@ -47,7 +56,13 @@ describe('buildSubscription', () => {
     expect(buildSubscription('KEY', [BOX_A, BOX_B])).toEqual({
       APIKey: 'KEY',
       BoundingBoxes: [BOX_A, BOX_B],
-      FilterMessageTypes: ['PositionReport', 'ShipStaticData'],
+      FilterMessageTypes: [
+        'PositionReport',
+        'ShipStaticData',
+        'StandardClassBPositionReport',
+        'ExtendedClassBPositionReport',
+        'StaticDataReport',
+      ],
     });
   });
 });
@@ -151,6 +166,92 @@ describe('parseAisMessage', () => {
     });
   });
 
+  it('parses a StandardClassBPositionReport and maps its sentinels', () => {
+    const body = { Latitude: 54.8, Longitude: 9.5, Sog: 4.1, Cog: 200.5, TrueHeading: 511 };
+    const raw = JSON.stringify({
+      MessageType: 'StandardClassBPositionReport',
+      MetaData: { MMSI: 211000111, ShipName: 'KLEINER FISCH ' },
+      Message: { StandardClassBPositionReport: body },
+    });
+    expect(parseAisMessage(raw)).toEqual({
+      kind: 'position',
+      mmsi: '211000111',
+      lat: 54.8,
+      lon: 9.5,
+      sogKn: 4.1,
+      cogDeg: 200.5,
+      name: 'KLEINER FISCH',
+    });
+  });
+
+  it('parses an ExtendedClassBPositionReport and prefers its own Name over MetaData', () => {
+    const raw = JSON.stringify({
+      MessageType: 'ExtendedClassBPositionReport',
+      MetaData: { MMSI: 211000222, ShipName: 'META' },
+      Message: {
+        ExtendedClassBPositionReport: {
+          Latitude: 54.9,
+          Longitude: 9.6,
+          Sog: 102.3,
+          Cog: 360,
+          TrueHeading: 87,
+          Name: 'OWN NAME ',
+          Type: 37,
+        },
+      },
+    });
+    expect(parseAisMessage(raw)).toEqual({
+      kind: 'position',
+      mmsi: '211000222',
+      lat: 54.9,
+      lon: 9.6,
+      headingDeg: 87,
+      name: 'OWN NAME',
+    });
+  });
+
+  it('returns null for a Class B position without coordinates or without its body', () => {
+    const noCoords = JSON.stringify({
+      MessageType: 'StandardClassBPositionReport',
+      MetaData: { MMSI: 1 },
+      Message: { StandardClassBPositionReport: { Sog: 3 } },
+    });
+    const noBody = JSON.stringify({
+      MessageType: 'ExtendedClassBPositionReport',
+      MetaData: { MMSI: 1 },
+      Message: { StandardClassBPositionReport: { Latitude: 1, Longitude: 2 } },
+    });
+    expect(parseAisMessage(noCoords)).toBeNull();
+    expect(parseAisMessage(noBody)).toBeNull();
+  });
+
+  it('parses a StaticDataReport part A as a name and part B as a ship type', () => {
+    const partA = JSON.stringify({
+      MessageType: 'StaticDataReport',
+      MetaData: { MMSI: 211000333 },
+      Message: {
+        StaticDataReport: {
+          PartNumber: false,
+          ReportA: { Valid: true, Name: 'SEGELFEE  ' },
+          ReportB: { Valid: false, ShipType: 0, CallSign: '' },
+        },
+      },
+    });
+    const partB = JSON.stringify({
+      MessageType: 'StaticDataReport',
+      MetaData: { MMSI: 211000333 },
+      Message: {
+        StaticDataReport: {
+          PartNumber: true,
+          ReportA: { Valid: false, Name: '' },
+          ReportB: { Valid: true, ShipType: 37 },
+        },
+      },
+    });
+    expect(parseAisMessage(partA)).toEqual({ kind: 'static', mmsi: '211000333', name: 'SEGELFEE' });
+    expect(parseAisMessage(partB)).toEqual({ kind: 'static', mmsi: '211000333', shipType: 37 });
+  });
+
   it('maps an aisstream error frame to a kind:error message', () => {
     expect(parseAisMessage(JSON.stringify({ error: 'Invalid API Key' }))).toEqual({
       kind: 'error',
@@ -164,7 +265,7 @@ describe('parseAisMessage', () => {
 
   it('returns null for an unknown MessageType', () => {
     const raw = JSON.stringify({
-      MessageType: 'StaticDataReport',
+      MessageType: 'BaseStationReport',
       MetaData: { MMSI: 1 },
       Message: {},
     });
@@ -232,12 +333,22 @@ function fakeSocket() {
  * separately from the reconnect timers so the reconnect-delay pins stay exact.
  */
 function fakeTimers() {
-  const scheduled: { fn: () => void; ms: number; cleared: boolean }[] = [];
-  const reconnects = () => scheduled.filter((s) => s.ms !== AIS_AUTH_STABLE_MS);
+  const scheduled: { fn: () => void; ms: number; cleared: boolean; liveness: boolean }[] = [];
+  let inLivenessFire = false;
+  // The first liveness timer is the one armed on open (delay AIS_NO_TRAFFIC_MS,
+  // which no backoff at random() = 0.5 equals); re-arms are tagged by being
+  // scheduled from inside fireLiveness with a delay above any early backoff.
+  const reconnects = () => scheduled.filter((s) => s.ms !== AIS_AUTH_STABLE_MS && !s.liveness);
   const stability = () => scheduled.filter((s) => s.ms === AIS_AUTH_STABLE_MS && !s.cleared);
+  const liveness = () => scheduled.filter((s) => s.liveness && !s.cleared);
   return {
     setTimer: (fn: () => void, ms: number): number => {
-      scheduled.push({ fn, ms, cleared: false });
+      scheduled.push({
+        fn,
+        ms,
+        cleared: false,
+        liveness: ms === AIS_NO_TRAFFIC_MS || (inLivenessFire && ms >= 10_000),
+      });
       return scheduled.length; // 1-based id
     },
     clearTimer: (id: number) => {
@@ -256,12 +367,26 @@ function fakeTimers() {
     },
     /** Auth-stability timers armed but neither fired nor cleared (leak probe). */
     pendingStability: () => stability().length,
+    /** Fire the pending liveness timer. */
+    fireLiveness: () => {
+      const l = liveness();
+      const t = l[l.length - 1];
+      t.cleared = true;
+      inLivenessFire = true;
+      try {
+        t.fn();
+      } finally {
+        inLivenessFire = false;
+      }
+    },
+    pendingLivenessMs: () => liveness().map((s) => s.ms),
   };
 }
 
-function makeClient() {
+function makeClient(opts: { keyProven?: boolean; onKeyProven?: () => void } = {}) {
   const fs = fakeSocket();
   const timers = fakeTimers();
+  const clock = { t: 0 };
   const statuses: AisClientStatus[] = [];
   const messages: ParsedAisData[] = [];
   const client = new AisStreamClient(
@@ -269,8 +394,11 @@ function makeClient() {
     {
       onMessage: (m) => messages.push(m),
       onStatus: (s) => statuses.push(s),
+      ...(opts.onKeyProven ? { onKeyProven: opts.onKeyProven } : {}),
     },
     {
+      ...(opts.keyProven !== undefined ? { keyProven: opts.keyProven } : {}),
+      now: () => clock.t,
       socketFactory: (url, handlers) => {
         expect(url).toBe(AIS_STREAM_URL);
         fs.bind(handlers);
@@ -281,7 +409,7 @@ function makeClient() {
       clearTimer: timers.clearTimer,
     },
   );
-  return { client, fs, timers, statuses, messages };
+  return { client, fs, timers, statuses, messages, clock };
 }
 
 const POSITION_RAW = JSON.stringify({
@@ -536,5 +664,165 @@ describe('AisStreamClient', () => {
     client.stop();
     expect(fs.socket.close).toHaveBeenCalledTimes(1);
     expect(statuses[statuses.length - 1]).toBe('closed');
+  });
+  it('subscribes to the Class B message types alongside the Class A ones', () => {
+    expect([...AIS_MESSAGE_TYPES]).toEqual([
+      'PositionReport',
+      'ShipStaticData',
+      'StandardClassBPositionReport',
+      'ExtendedClassBPositionReport',
+      'StaticDataReport',
+    ]);
+  });
+
+  it('keeps the silence reconnect threshold above the auth-stability window', () => {
+    expect(AIS_SILENCE_RECONNECT_MS).toBeGreaterThan(AIS_AUTH_STABLE_MS);
+    expect(AIS_NO_TRAFFIC_MS).toBeLessThan(AIS_SILENCE_RECONNECT_MS);
+  });
+
+  describe('inbound-silence watchdog', () => {
+    it('reports noTraffic on a quiet open socket without reconnecting', () => {
+      const { client, fs, timers, statuses, clock } = makeClient();
+      client.start([BBOX]);
+      fs.open();
+      expect(timers.pendingLivenessMs()).toEqual([AIS_NO_TRAFFIC_MS]);
+      clock.t = AIS_NO_TRAFFIC_MS;
+      timers.fireLiveness();
+      expect(statuses).toEqual(['connecting', 'noTraffic']);
+      expect(fs.socket.close).not.toHaveBeenCalled();
+      expect(timers.delays()).toEqual([]);
+      expect(timers.pendingLivenessMs()).toEqual([AIS_SILENCE_RECONNECT_MS - AIS_NO_TRAFFIC_MS]);
+    });
+
+    it('returns to live when traffic resumes after noTraffic', () => {
+      const { client, fs, timers, statuses, clock } = makeClient();
+      client.start([BBOX]);
+      fs.open();
+      clock.t = AIS_NO_TRAFFIC_MS;
+      timers.fireLiveness();
+      clock.t = AIS_NO_TRAFFIC_MS + 1_000;
+      fs.message(POSITION_RAW);
+      expect(statuses).toEqual(['connecting', 'noTraffic', 'live']);
+      expect(timers.pendingLivenessMs()).toEqual([AIS_NO_TRAFFIC_MS]);
+      clock.t += AIS_NO_TRAFFIC_MS;
+      timers.fireLiveness();
+      expect(statuses).toEqual(['connecting', 'noTraffic', 'live', 'noTraffic']);
+    });
+
+    it('treats a socket silent past the reconnect threshold as stale and reconnects with backoff', () => {
+      const { client, fs, timers, statuses, clock } = makeClient();
+      client.start([BBOX]);
+      fs.open();
+      timers.fireStability(); // key proven: this is a quiet sea, not a wrong key
+      clock.t = AIS_NO_TRAFFIC_MS;
+      timers.fireLiveness();
+      clock.t = AIS_SILENCE_RECONNECT_MS;
+      timers.fireLiveness();
+      expect(fs.socket.close).toHaveBeenCalledTimes(1);
+      expect(timers.delays()).toEqual([500]); // attempt 1, random 0.5
+      expect(statuses).toEqual(['connecting', 'noTraffic']);
+      timers.fireLast();
+      expect(statuses).toEqual(['connecting', 'noTraffic', 'connecting']);
+    });
+
+    it('does not reconnect while frames keep arriving: the idle clock restarts per frame', () => {
+      const { client, fs, timers, clock } = makeClient();
+      client.start([BBOX]);
+      fs.open();
+      clock.t = AIS_SILENCE_RECONNECT_MS - 1_000;
+      fs.message(POSITION_RAW);
+      clock.t = AIS_SILENCE_RECONNECT_MS;
+      timers.fireLiveness();
+      expect(fs.socket.close).not.toHaveBeenCalled();
+      expect(timers.delays()).toEqual([]);
+      expect(timers.pendingLivenessMs()).toEqual([AIS_NO_TRAFFIC_MS - 1_000]);
+    });
+
+    it('counts an unparseable frame as proof of life', () => {
+      const { client, fs, timers, clock } = makeClient();
+      client.start([BBOX]);
+      fs.open();
+      clock.t = AIS_SILENCE_RECONNECT_MS - 1_000;
+      fs.message('not json{');
+      clock.t = AIS_SILENCE_RECONNECT_MS;
+      timers.fireLiveness();
+      expect(fs.socket.close).not.toHaveBeenCalled();
+    });
+
+    it('a silence reconnect never counts toward keyError even when the stability timer fired late', () => {
+      const { client, fs, timers, statuses, clock } = makeClient();
+      client.start([BBOX]);
+      for (let i = 0; i < 3; i++) {
+        fs.open();
+        clock.t += AIS_SILENCE_RECONNECT_MS;
+        timers.fireLiveness(); // no fireStability(): the key is still unproven here
+        timers.fireLast();
+      }
+      expect(statuses).not.toContain('keyError');
+    });
+
+    it('a silence reconnect never counts toward keyError', () => {
+      const { client, fs, timers, statuses, clock } = makeClient();
+      client.start([BBOX]);
+      for (let i = 0; i < 4; i++) {
+        fs.open();
+        timers.fireStability();
+        clock.t += AIS_SILENCE_RECONNECT_MS;
+        timers.fireLiveness();
+        timers.fireLast();
+      }
+      expect(statuses).not.toContain('keyError');
+    });
+
+    it('stop() clears the liveness timer', () => {
+      const { client, fs, timers } = makeClient();
+      client.start([BBOX]);
+      fs.open();
+      client.stop();
+      expect(timers.pendingLivenessMs()).toEqual([]);
+    });
+  });
+
+  describe('key proof', () => {
+    it('reports the proof once, on the first delivered message', () => {
+      const onKeyProven = vi.fn();
+      const { client, fs } = makeClient({ onKeyProven });
+      client.start([BBOX]);
+      fs.open();
+      fs.message(POSITION_RAW);
+      fs.message(POSITION_RAW);
+      expect(onKeyProven).toHaveBeenCalledTimes(1);
+    });
+
+    it('reports the proof when a connection survives the stability window', () => {
+      const onKeyProven = vi.fn();
+      const { client, fs, timers } = makeClient({ onKeyProven });
+      client.start([BBOX]);
+      fs.open();
+      timers.fireStability();
+      expect(onKeyProven).toHaveBeenCalledTimes(1);
+    });
+
+    it('a client seeded with a proven key never promotes silent closes to keyError', () => {
+      const { client, fs, timers, statuses } = makeClient({ keyProven: true });
+      client.start([BBOX]);
+      for (let i = 0; i < 4; i++) {
+        fs.open();
+        fs.remoteClose();
+        timers.fireLast();
+      }
+      expect(statuses).not.toContain('keyError');
+    });
+
+    it('an unseeded client still promotes three silent subscribed closes to keyError', () => {
+      const { client, fs, timers, statuses } = makeClient();
+      client.start([BBOX]);
+      for (let i = 0; i < 3; i++) {
+        fs.open();
+        fs.remoteClose();
+        if (i < 2) timers.fireLast();
+      }
+      expect(statuses).toContain('keyError');
+    });
   });
 });
