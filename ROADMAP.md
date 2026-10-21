@@ -18,19 +18,21 @@ shipped.
 
 ## Now — v0.57.0
 
-The `v0.57.0` cut (2026-10-21) closed two issues from the
+The `v0.57.0` cut (2026-10-21) closed three issues from the
 [`v0.57.0` milestone](https://github.com/DocGerd/sail_command/milestones),
-both with an entry in `CHANGELOG.md`'s own `[0.57.0]` section: planning
+all with an entry in `CHANGELOG.md`'s own `[0.57.0]` section: planning
 progress updates no longer re-rendering the app when the readout is unchanged
-([#1779](https://github.com/DocGerd/sail_command/issues/1779)), and the harbour reachability check and the depth layer allocating
-less memory ([#1780](https://github.com/DocGerd/sail_command/issues/1780)). The byte-identical solver hot-path speedups
-([#1778](https://github.com/DocGerd/sail_command/issues/1778)) did not make the cut and moved on to `v0.58.0`.
+([#1779](https://github.com/DocGerd/sail_command/issues/1779)), the harbour reachability check and the depth layer allocating
+less memory ([#1780](https://github.com/DocGerd/sail_command/issues/1780)), and byte-identical solver hot-path speedups so
+planning does less work per step with unchanged routes ([#1778](https://github.com/DocGerd/sail_command/issues/1778)). The release
+also solves the two sails at the same time on devices with at least three CPU
+cores ([#1350](https://github.com/DocGerd/sail_command/issues/1350), still open at this cut).
 
 ## Next — v0.58.0
 
 The [`v0.58.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-holds eight issues as of this cut. One is the solver hot-path speedups moved
-from `v0.57.0` ([#1778](https://github.com/DocGerd/sail_command/issues/1778)). Two have been carried since `v0.56.0`:
+holds eight issues as of this cut. One is the review residuals from the
+parallel-rig solve ([#1794](https://github.com/DocGerd/sail_command/issues/1794)). Two have been carried since `v0.56.0`:
 multi-day trip records with undo for the next passage ([#1708](https://github.com/DocGerd/sail_command/issues/1708)) and a
 labelled MET Norway wind fallback provider ([#1713](https://github.com/DocGerd/sail_command/issues/1713)). Five are follow-ups
 filed during `v0.56.0`: the backtrack collinear merge skipping the depth-comfort

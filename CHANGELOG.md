@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.57.0] - 2026-10-21
+
+### Changed
+
+- Route planning solves the two sails at the same time on devices with at least three CPU cores, and the progress readout now refers to all sails instead of "sail N of 2" (#1350).
+- Route planning does less solver work per step; planned routes are unchanged (#1778).
+- Planning progress updates no longer re-render the app when the progress readout is unchanged (#1779).
+- The harbour reachability check no longer allocates a full-chart-size queue per depth gate, and the depth layer skips a redundant hatch repaint at startup (#1780).
+
 ## [0.56.0] - 2026-10-19
 
 ### Changed
@@ -1314,7 +1323,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.56.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.57.0...HEAD
+[0.57.0]: https://github.com/DocGerd/sail_command/compare/v0.56.0...v0.57.0
 [0.56.0]: https://github.com/DocGerd/sail_command/compare/v0.55.2...v0.56.0
 [0.55.2]: https://github.com/DocGerd/sail_command/compare/v0.55.1...v0.55.2
 [0.55.1]: https://github.com/DocGerd/sail_command/compare/v0.55.0...v0.55.1

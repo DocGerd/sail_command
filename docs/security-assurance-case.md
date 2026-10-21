@@ -54,7 +54,7 @@ app. Users never execute this code and never contact these sources.
 `verify_mask.py` must exit 0 before a rebuilt mask is committed.
 
 **Runtime — `app/` (a static PWA).** React + MapLibre GL in the browser, with
-the isochrone router in a Web Worker, persistence in IndexedDB, and a Workbox
+the isochrone router in Web Workers, persistence in IndexedDB, and a Workbox
 service worker for offline use. It is served as static files from GitHub Pages.
 There is no server component of any kind.
 
@@ -353,7 +353,7 @@ Type-level invariants carry a real share of the load: TypeScript `strict` with
 `exactOptionalPropertyTypes`, a discriminated `Leg` union that makes an invalid
 leg unrepresentable rather than merely unlikely, and CI running lint and
 typecheck *before* tests so a type error fails fast. Layered caps (file size
-*and* element count on GPX) are used where one bound could be bypassed. The
+*and* element count on GPX) are used where one bound could be bypassed. Each
 routing worker's per-plan polar map is built with `Object.create(null)` and
 read back with `Object.hasOwn`
 ([#601](https://github.com/DocGerd/sail_command/issues/601)) even though the
@@ -381,11 +381,11 @@ place to occur, not that it was judged unlikely.
 | **A09 Logging and monitoring failures** | Accepted, documented | There is deliberately no telemetry — a privacy choice that means client-side attacks cannot be observed centrally. Repository-side monitoring exists (CodeQL, Dependabot, Scorecard, deploy smoke probe). For a client-only app with no user data on any server, the privacy benefit is judged to outweigh the lost visibility |
 | **A10 Server-side request forgery** | N/A by architecture | No server. The two outbound endpoints are compile-time constants; no user input ever forms a request URL |
 | CWE-20 Improper input validation | Countered | See [§5.1](#51-input-validation-tb2-tb3-tb4) |
-| CWE-400 / CWE-1333 Resource exhaustion, ReDoS | Countered | GPX size and element-count caps applied before traversal; via-point cap; the solver runs in a Web Worker so a long solve cannot freeze the UI thread; the solver itself now enforces a per-plan wall-clock budget (`PLAN_BUDGET_MS`), so an adversarial or pathological input cannot make it spin unbounded either ([#432](https://github.com/DocGerd/sail_command/issues/432)); no user-supplied input is compiled into a regular expression |
+| CWE-400 / CWE-1333 Resource exhaustion, ReDoS | Countered | GPX size and element-count caps applied before traversal; via-point cap; the solver runs in Web Workers so a long solve cannot freeze the UI thread; the solver itself now enforces a per-plan wall-clock budget (`PLAN_BUDGET_MS`), so an adversarial or pathological input cannot make it spin unbounded either ([#432](https://github.com/DocGerd/sail_command/issues/432)); no user-supplied input is compiled into a regular expression |
 | CWE-352 CSRF | N/A by architecture | No cookies, no session, no state-changing server endpoint |
 | CWE-522 Insufficiently protected credentials | Accepted, documented | The optional AIS key is stored as entered in IndexedDB. Local encryption would be theatre (the key material would live beside it); the honest control is that the key is user-supplied, revocable, and never leaves the device except to aisstream.io itself |
 | CWE-798 Hard-coded credentials | Countered | No credentials in the repository; secret scanning with push protection is enabled; the AIS overlay has no default key by design |
-| CWE-1321 Prototype pollution | Countered | The per-plan polar map built inside the routing worker (from a message that crosses the worker's own postMessage boundary) uses `Object.create(null)` rather than `{}` (`app/src/routing/protocol.ts`), and the fail-closed lookup that consumes it uses `Object.hasOwn` rather than a prototype-chain `=== undefined` check (`app/src/routing/planRoute.ts`) — closing a residual the [#600](https://github.com/DocGerd/sail_command/issues/600) dismissal analysis of CodeQL alert #15 (`js/remote-property-injection`) identified as unreachable-but-worth-hardening, shipped as defense in depth in [#601](https://github.com/DocGerd/sail_command/issues/601). Injection was already two layers unreachable (only the creating realm can post to the dedicated worker; the write target is a fresh per-plan object that dies with the plan), so this is hardening, not a fix for a live bug |
+| CWE-1321 Prototype pollution | Countered | The per-plan polar map built inside each routing worker (from a message that crosses that worker's own postMessage boundary) uses `Object.create(null)` rather than `{}` (`app/src/routing/protocol.ts`), and the fail-closed lookup that consumes it uses `Object.hasOwn` rather than a prototype-chain `=== undefined` check (`app/src/routing/planRoute.ts`) — closing a residual the [#600](https://github.com/DocGerd/sail_command/issues/600) dismissal analysis of CodeQL alert #15 (`js/remote-property-injection`) identified as unreachable-but-worth-hardening, shipped as defense in depth in [#601](https://github.com/DocGerd/sail_command/issues/601). Injection was already two layers unreachable (only the creating realm can post to the dedicated worker; the write target is a fresh per-plan object that dies with the plan), so this is hardening, not a fix for a live bug |
 
 ## 7. Known gaps and accepted risk
 
