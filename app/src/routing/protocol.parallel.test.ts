@@ -14,7 +14,7 @@ import {
   type PolarTable,
   type SailId,
 } from '../types';
-import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
+import { SOLVER_TEST_TIMEOUT_MS, solverTimeoutMs } from '../test/timeouts';
 
 vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
 
@@ -120,7 +120,9 @@ function pooled(mask: () => ArrayBuffer) {
   const settled = async (id: string): Promise<WorkerResponse> => {
     const terminal = (m: WorkerResponse) =>
       (m.type === 'result' || m.type === 'fatal') && m.id === id;
-    await vi.waitFor(() => expect(ladderOut.some(terminal)).toBe(true), { timeout: 60_000 });
+    await vi.waitFor(() => expect(ladderOut.some(terminal)).toBe(true), {
+      timeout: solverTimeoutMs(60_000),
+    });
     return ladderOut.find(terminal)!;
   };
   return { ladderOut, solverOut, handle, settled };
