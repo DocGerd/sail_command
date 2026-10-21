@@ -200,6 +200,29 @@ export function solveRig(
   return { sailId, rigResult, cause: null };
 }
 
+/** The fail-closed per-sail polar lookup (#54, #601); see the comments inside. */
+export function polarLookup(
+  polars: Readonly<Record<string, PolarTable>>,
+  boatId: string,
+): (sailId: SailId) => PolarTable {
+  return (sailId) => {
+    const key = polarKey(boatId, sailId);
+    // #601: Object.hasOwn, not a `!== undefined` chain lookup. `in` and a
+    // bare property read both walk the PROTOTYPE CHAIN, so a key that
+    // happened to collide with an Object.prototype member name (toString,
+    // constructor, hasOwnProperty, ...) would silently resolve to an
+    // INHERITED function instead of tripping this fail-closed throw — every
+    // `Object.getOwnPropertyNames(Object.prototype)` member passes a bare
+    // `!== undefined` check. Unreachable today (every real key is
+    // `${boatId}/${sailId}` via polarKey() above, so it always contains a
+    // literal "/", which none of those 12 names do), but the guard is
+    // written to test what it means to test rather than lean on that shape
+    // holding forever.
+    if (!Object.hasOwn(polars, key)) throw new Error(`#54: no polar table for ${key}`);
+    return polars[key];
+  };
+}
+
 /** The sync driver's step runner: rigs one after the other, in `sailIds` order. */
 export function runStepSync(step: RigStep, onProgress?: RigProgress): RunOut[] {
   const { ctx } = step;
@@ -711,22 +734,7 @@ function* runLadder(
   // builds an ordinary `{}` object literal instead, so `deps.polars` is NOT
   // always null-prototype. Object.hasOwn below is what makes the guard
   // correct regardless of which shape a given caller passed.
-  const polarFor = (sailId: SailId): PolarTable => {
-    const key = polarKey(deps.boat.id, sailId);
-    // #601: Object.hasOwn, not a `!== undefined` chain lookup. `in` and a
-    // bare property read both walk the PROTOTYPE CHAIN, so a key that
-    // happened to collide with an Object.prototype member name (toString,
-    // constructor, hasOwnProperty, ...) would silently resolve to an
-    // INHERITED function instead of tripping this fail-closed throw — every
-    // `Object.getOwnPropertyNames(Object.prototype)` member passes a bare
-    // `!== undefined` check. Unreachable today (every real key is
-    // `${boatId}/${sailId}` via polarKey() above, so it always contains a
-    // literal "/", which none of those 12 names do), but the guard is
-    // written to test what it means to test rather than lean on that shape
-    // holding forever.
-    if (!Object.hasOwn(deps.polars, key)) throw new Error(`#54: no polar table for ${key}`);
-    return deps.polars[key];
-  };
+  const polarFor = polarLookup(deps.polars, deps.boat.id);
   const ctx: RigContext = {
     waypoints,
     departureMs: req.departureMs,
