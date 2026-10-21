@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLang, useT } from '../i18n';
 import type { MsgKey } from '../i18n/dict.de';
@@ -298,6 +298,26 @@ export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: 
   const depthCheck: HeadingDepthCheck =
     hold.key === holdKey ? hold.hold.shown : { state: 'unavailable' };
 
+  // Narrow layout: the card is docked in the map area while the bottom sheet
+  // (tab strip plus whatever panel content sits under it, e.g. the AIS list)
+  // is a sibling of unknown height. Dock above the sheet's measured top so the
+  // sheet never covers the card; the CSS fallback over-pushes if this never runs.
+  const cardRef = useRef<HTMLDivElement>(null);
+  const cardMounted = Boolean(plan && result && legs.length > 0);
+  useLayoutEffect(() => {
+    const card = cardRef.current;
+    const sheet = document.querySelector<HTMLElement>('.app-bottom-sheet');
+    if (!card || !sheet || panelSlot || typeof ResizeObserver === 'undefined') return;
+    const sync = () => card.style.setProperty('--live-sheet-h', `${sheet.offsetHeight}px`);
+    sync();
+    const observer = new ResizeObserver(sync);
+    observer.observe(sheet);
+    return () => {
+      observer.disconnect();
+      card.style.removeProperty('--live-sheet-h');
+    };
+  }, [panelSlot, cardMounted]);
+
   // `!plan` is redundant with `!result` (result is derived from plan) — it is
   // here purely so TypeScript narrows `plan` for the caution note below, which
   // must render its safety depth WITHOUT a `safetyDepthM !== null` guard: a
@@ -354,7 +374,7 @@ export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: 
   };
 
   const readout = (
-    <div className="live-view">
+    <div className="live-view" ref={cardRef}>
       {/* #700: the sighted equivalent of aria-pressed — routed through the
           Button primitive so the pressed/on state reuses the SAME accent
           fill `.app-tabs button[aria-selected='true']`/`.rig-tabs` already

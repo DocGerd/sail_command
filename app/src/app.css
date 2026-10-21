@@ -605,8 +605,8 @@ select {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: var(--sc-tabbar-h);
-  max-height: calc(55vh - var(--sc-tabbar-h));
+  bottom: var(--live-sheet-h, calc(var(--sc-tabbar-h) + 6rem));
+  max-height: calc(55vh - var(--live-sheet-h, calc(var(--sc-tabbar-h) + 6rem)));
   overflow-y: auto;
   background: var(--sc-bg);
   border-top: 1px solid var(--sc-border);

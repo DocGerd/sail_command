@@ -414,6 +414,77 @@ describe('LiveView', () => {
     expect(screen.queryByText(/projected eta/i)).not.toBeInTheDocument();
   });
 
+  describe('docking above the bottom sheet (narrow layout)', () => {
+    let sheet: HTMLElement;
+    let sheetHeight = 123;
+    let resize: (() => void) | null = null;
+    const disconnect = vi.fn();
+
+    beforeEach(() => {
+      sheetHeight = 123;
+      resize = null;
+      sheet = document.createElement('div');
+      sheet.className = 'app-bottom-sheet';
+      Object.defineProperty(sheet, 'offsetHeight', { get: () => sheetHeight });
+      document.body.appendChild(sheet);
+      vi.stubGlobal(
+        'ResizeObserver',
+        class {
+          constructor(cb: () => void) {
+            resize = cb;
+          }
+          observe() {}
+          disconnect = disconnect;
+        },
+      );
+    });
+    afterEach(() => {
+      sheet.remove();
+      vi.unstubAllGlobals();
+      disconnect.mockClear();
+    });
+
+    const card = () => document.querySelector<HTMLElement>('.live-view');
+
+    it('publishes the measured sheet height on the card and follows later resizes', async () => {
+      const { wp } = fakeWatchPosition();
+      renderLive(wp, TEST_PLAN);
+      await screen.findByRole('button', { name: 'Start live view' });
+      expect(card()?.style.getPropertyValue('--live-sheet-h')).toBe('123px');
+      sheetHeight = 200;
+      act(() => resize?.());
+      expect(card()?.style.getPropertyValue('--live-sheet-h')).toBe('200px');
+    });
+
+    it('stops observing on unmount', async () => {
+      const { wp } = fakeWatchPosition();
+      const { unmount } = renderLive(wp, TEST_PLAN);
+      await screen.findByRole('button', { name: 'Start live view' });
+      unmount();
+      expect(disconnect).toHaveBeenCalled();
+    });
+
+    it('does not measure when the readout is portaled into the wide panel column', async () => {
+      const slot = document.createElement('div');
+      document.body.appendChild(slot);
+      localStorage.setItem('sc-lang', 'en');
+      const { wp } = fakeWatchPosition();
+      render(
+        <I18nProvider>
+          <AppStateProvider>
+            <TestSetPlan plan={TEST_PLAN} />
+            <LiveViewHost watchPosition={wp} panelSlot={slot} />
+          </AppStateProvider>
+        </I18nProvider>,
+      );
+      await screen.findByRole('button', { name: 'Start live view' });
+      expect(
+        slot.querySelector<HTMLElement>('.live-view')?.style.getPropertyValue('--live-sheet-h'),
+      ).toBe('');
+      slot.remove();
+    });
+  });
+
   describe('GPS states (#1802)', () => {
     const REROUTE_NAME = 'Replan route from here';
     const goodFix = (accuracyM = 9): GpsFix => ({
