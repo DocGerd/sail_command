@@ -22,8 +22,7 @@ The `v0.58.0` cut (2026-10-21) readied Live mode for a first sail on an Android 
 Live and the boat marker now share one GPS source with waiting, stale, lost and
 denied states, and reroute is disabled without a usable fix
 ([#1800](https://github.com/DocGerd/sail_command/issues/1800)). The Live card shows each of those states, a resume prompt after a reload or crash ([#1802](https://github.com/DocGerd/sail_command/issues/1802)); the screen is kept awake while tracking, with an indicator and a toggle to release it ([#1801](https://github.com/DocGerd/sail_command/issues/1801)). It also shows leg N of M, distance to go and the
-cross-track distance ([#1803](https://github.com/DocGerd/sail_command/issues/1803)). The AIS key is no longer saved in plans or
-backup exports ([#1799](https://github.com/DocGerd/sail_command/issues/1799)), and AIS shows Class B vessels and tells a quiet sea
+cross-track distance ([#1803](https://github.com/DocGerd/sail_command/issues/1803)). Plans saved from now on and backup exports no longer carry the AIS key ([#1799](https://github.com/DocGerd/sail_command/issues/1799)), and AIS shows Class B vessels and tells a quiet sea
 from a dead connection ([#1804](https://github.com/DocGerd/sail_command/issues/1804)). The Live re-fit latch now observes the readout
 before its check ([#1751](https://github.com/DocGerd/sail_command/issues/1751)), and the sea-condition e2e coverage for these states
 ([#1805](https://github.com/DocGerd/sail_command/issues/1805)) changed no user-visible behaviour. The glanceable UX pass
