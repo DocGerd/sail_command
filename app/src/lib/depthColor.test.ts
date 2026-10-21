@@ -450,14 +450,13 @@ describe('hatchBandForZoom (#599)', () => {
     // directory, and the lookup fails CLOSED so a glob that stops matching
     // reds instead of silently passing.
     const src = DATA_LAYERS_SOURCE;
-    const calls = src.split('buildNavigabilityHatchImageData(').slice(1);
-    expect(calls.length, 'expected DataLayers.tsx to still call the hatch builder').toBe(2);
+    const parts = src.split('buildNavigabilityHatchImageData(');
+    expect(parts.length - 1, 'expected DataLayers.tsx to still call the hatch builder').toBe(2);
     // Each site reads the live zoom once into `band`, which feeds both the
-    // builder and the repaint-skip key.
-    const bandReads = src.split('const band = hatchBandForZoom(map.getZoom());').length - 1;
-    expect(bandReads).toBeGreaterThanOrEqual(2);
-    for (const call of calls) {
-      expect(call.slice(0, 400)).toMatch(/\bband,\s*\)/);
+    // builder and the repaint-skip key; the read must sit right before ITS call.
+    for (let i = 0; i < parts.length - 1; i++) {
+      expect(parts[i].slice(-400)).toContain('const band = hatchBandForZoom(map.getZoom());');
+      expect(parts[i + 1].slice(0, 400)).toMatch(/\bband,\s*\)/);
     }
   });
 });
