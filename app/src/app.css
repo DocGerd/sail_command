@@ -654,8 +654,13 @@ select {
   font-weight: 700;
 }
 
-.live-view-gps-stale {
+.chip.live-view-gps-stale {
   margin: 0.5rem 0;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  background: var(--sc-banner-warning-bg);
+  color: var(--sc-banner-warning-fg);
 }
 
 /* Resume prompt after a reload, crash or tab switch: the card's most prominent element. */
@@ -685,6 +690,12 @@ select {
 .live-view-wake {
   margin: 0.5rem 0;
   font-size: 0.85rem;
+}
+
+.live-view-wake label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .live-view-wake-status {

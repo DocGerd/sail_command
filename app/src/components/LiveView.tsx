@@ -457,7 +457,7 @@ export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: 
               type="checkbox"
               checked={wakeLockOn}
               onChange={(e) => setWakeLockOn(e.target.checked)}
-            />{' '}
+            />
             {t('live.wake.toggle')}
           </label>
           {active && (
