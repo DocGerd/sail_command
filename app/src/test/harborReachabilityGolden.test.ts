@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { NavMask } from '../lib/mask';
 import { buildDepthImageData, depthCanvasRowMap } from '../lib/depthColor';
-import { floodFromSeed } from '../lib/harborReachability';
+import { floodFromSeed, type FloodQueueTrace } from '../lib/harborReachability';
 import type { MaskMeta } from '../types';
 import { solverTimeoutMs } from './timeouts';
 
@@ -29,9 +29,28 @@ describe('floodFromSeed golden bitsets on the committed mask', () => {
   it.each(FLOOD_GOLDEN_SHA256)(
     'gate %s m',
     (gateM, expected) => {
-      const flood = floodFromSeed(mask, gateM);
+      const trace: FloodQueueTrace = {};
+      const flood = floodFromSeed(mask, gateM, trace);
+      expect(trace.peakCapacity).toBeLessThan(maskMeta.rows * maskMeta.cols);
       expect(flood.rows).toBe(maskMeta.rows);
       expect(flood.cols).toBe(maskMeta.cols);
+      expect(createHash('sha256').update(flood.bits).digest('hex')).toBe(expected);
+    },
+    solverTimeoutMs(60_000),
+  );
+
+  // The production start capacity is never outgrown on the committed mask, so
+  // the doubling path is forced with a tiny start.
+  it.each(FLOOD_GOLDEN_SHA256)(
+    'gate %s m with a forced-growth queue',
+    (gateM, expected) => {
+      const reference: FloodQueueTrace = { recordOrder: true };
+      floodFromSeed(mask, gateM, reference);
+      const trace: FloodQueueTrace = { initialCapacity: 1 << 6, recordOrder: true };
+      const flood = floodFromSeed(mask, gateM, trace);
+      expect(trace.peakCapacity).toBeGreaterThan(1 << 6);
+      expect(reference.orderHash).toBeDefined();
+      expect(trace.orderHash).toBe(reference.orderHash);
       expect(createHash('sha256').update(flood.bits).digest('hex')).toBe(expected);
     },
     solverTimeoutMs(60_000),
