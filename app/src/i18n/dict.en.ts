@@ -1166,8 +1166,8 @@ export const en = {
   'live.dtg.route.label': 'To go, route',
   'live.xte.label': 'Off track',
   'live.xte.value': '{distance} {side}',
-  'live.xte.port': 'port',
-  'live.xte.starboard': 'starboard',
+  'live.xte.port': 'port of track',
+  'live.xte.starboard': 'starboard of track',
   // #251: the heading-to-steer is a bearing to the active waypoint, not a
   // depth-validated course. Never claims the course is safe.
   'live.hts.depthCaution':

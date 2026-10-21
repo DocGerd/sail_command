@@ -1160,8 +1160,8 @@ export const de = {
   'live.dtg.route.label': 'Rest, Route',
   'live.xte.label': 'Querablage',
   'live.xte.value': '{distance} {side}',
-  'live.xte.port': 'Backbord',
-  'live.xte.starboard': 'Steuerbord',
+  'live.xte.port': 'Backbord der Route',
+  'live.xte.starboard': 'Steuerbord der Route',
   // #251: der Steuerkurs ist eine Peilung zum aktiven Wegpunkt, kein
   // tiefengeprüfter Kurs. Behauptet nie, der Kurs sei sicher.
   'live.hts.depthCaution':

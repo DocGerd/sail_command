@@ -380,7 +380,10 @@ export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: 
         }
       : null;
   const xteSide =
-    progress && progress.xte.side !== null && progress.xte.distanceNm >= XTE_SIDE_DEADBAND_NM
+    progress &&
+    progress.xte.clamped === null &&
+    progress.xte.side !== null &&
+    progress.xte.distanceNm >= XTE_SIDE_DEADBAND_NM
       ? progress.xte.side
       : null;
 
@@ -601,7 +604,7 @@ export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: 
                   </div>
                   <div>
                     <dt>{t('live.dtg.leg.label')}</dt>
-                    <dd className="tabular-nums">{formatNm(progress.toGo.legNm, lang)}</dd>
+                    <dd className="tabular-nums">{formatLegNm(progress.toGo.legNm, lang)}</dd>
                   </div>
                   <div>
                     <dt>{t('live.dtg.route.label')}</dt>
@@ -610,12 +613,14 @@ export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: 
                   <div>
                     <dt>{t('live.xte.label')}</dt>
                     <dd className="tabular-nums">
-                      {xteSide === null
-                        ? formatLegNm(progress.xte.distanceNm, lang)
-                        : t('live.xte.value', {
-                            distance: formatLegNm(progress.xte.distanceNm, lang),
-                            side: t(xteSide === 'port' ? 'live.xte.port' : 'live.xte.starboard'),
-                          })}
+                      {progress.xte.clamped !== null
+                        ? '—'
+                        : xteSide === null
+                          ? formatLegNm(progress.xte.distanceNm, lang)
+                          : t('live.xte.value', {
+                              distance: formatLegNm(progress.xte.distanceNm, lang),
+                              side: t(xteSide === 'port' ? 'live.xte.port' : 'live.xte.starboard'),
+                            })}
                     </dd>
                   </div>
                 </dl>

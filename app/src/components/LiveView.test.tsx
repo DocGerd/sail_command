@@ -1699,15 +1699,15 @@ describe('LiveView', () => {
       // 2 nm into leg 0 (of 5), 0.12 nm north of it: port when travelling east.
       emit(emitFix, destinationPoint(FIX_POINT, 0, 0.12));
       expect(rowOf('Leg')).toHaveTextContent('1 of 2');
-      expect(rowOf('To go, leg')).toHaveTextContent('3.0 nm');
+      expect(rowOf('To go, leg')).toHaveTextContent('3.00 nm');
       expect(rowOf('To go, route')).toHaveTextContent('8.0 nm');
-      expect(rowOf('Off track')).toHaveTextContent('0.12 nm port');
+      expect(rowOf('Off track')).toHaveTextContent('0.12 nm port of track');
     });
 
     it('names the starboard side for a fix south of the track', async () => {
       const { emitFix } = await start();
       emit(emitFix, destinationPoint(FIX_POINT, 180, 0.12));
-      expect(rowOf('Off track')).toHaveTextContent('0.12 nm starboard');
+      expect(rowOf('Off track')).toHaveTextContent('0.12 nm starboard of track');
     });
 
     it('German labels, decimal comma and side words', async () => {
@@ -1724,9 +1724,9 @@ describe('LiveView', () => {
       fireEvent.click(await screen.findByRole('button', { name: 'Live-Ansicht starten' }));
       emit(emitFix, destinationPoint(FIX_POINT, 0, 0.12));
       expect(rowOf('Etappe')).toHaveTextContent('1 von 2');
-      expect(rowOf('Rest, Etappe')).toHaveTextContent('3,0 nm');
+      expect(rowOf('Rest, Etappe')).toHaveTextContent('3,00 nm');
       expect(rowOf('Rest, Route')).toHaveTextContent('8,0 nm');
-      expect(rowOf('Querablage')).toHaveTextContent('0,12 nm Backbord');
+      expect(rowOf('Querablage')).toHaveTextContent('0,12 nm Backbord der Route');
     });
 
     it('labels the heading-to-steer and COG readouts as true', async () => {
@@ -1741,7 +1741,15 @@ describe('LiveView', () => {
       emit(emitFix, destinationPoint(FIX_POINT, 0, XTE_SIDE_DEADBAND_NM * 0.9));
       expect(rowOf('Off track').textContent).toBe('0.01 nm');
       emit(emitFix, destinationPoint(FIX_POINT, 0, 0.02));
-      expect(rowOf('Off track').textContent).toBe('0.02 nm port');
+      expect(rowOf('Off track').textContent).toBe('0.02 nm port of track');
+    });
+
+    it('shows a dash, never a side or an endpoint distance, when the fix is beyond the end of the last leg', async () => {
+      const { emitFix } = await start();
+      emit(emitFix, destinationPoint(P0, 90, 11));
+      expect(rowOf('Off track').textContent).toBe('—');
+      emit(emitFix, destinationPoint(P0, 90, -1));
+      expect(rowOf('Off track').textContent).toBe('—');
     });
 
     it('hysteresis: noise around a joint keeps the leg, for the readout and the shared highlight alike', async () => {
@@ -1779,6 +1787,67 @@ describe('LiveView', () => {
 
       rerender(ui(REROUTED_PLAN));
       // Nearest leg for the held fix, not the stale index.
+      expect(await screen.findByText('1 of 2')).toBeInTheDocument();
+      expect(screen.getByTestId('shared-active-leg')).toHaveTextContent('0');
+    });
+
+    it('a recalculation that keeps the plan id but changes createdAtMs resets the hysteresis', async () => {
+      const { wp, emitFix } = fakeWatchPosition();
+      localStorage.setItem('sc-lang', 'en');
+      const ui = (plan: Plan) => (
+        <I18nProvider>
+          <AppStateProvider>
+            <TestSetPlan plan={plan} />
+            <ActiveLegProbe />
+            <LiveViewHost watchPosition={wp} />
+          </AppStateProvider>
+        </I18nProvider>
+      );
+      const { rerender } = render(ui(TEST_PLAN));
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
+      emit(emitFix, destinationPoint(P0, 90, 7));
+      emit(emitFix, destinationPoint(P0, 90, 4.99));
+      expect(screen.getByTestId('shared-active-leg')).toHaveTextContent('1');
+
+      rerender(ui({ ...TEST_PLAN, createdAtMs: TEST_PLAN.createdAtMs + 1 }));
+      expect(await screen.findByText('1 of 2')).toBeInTheDocument();
+      expect(screen.getByTestId('shared-active-leg')).toHaveTextContent('0');
+    });
+
+    it('switching the rig resets the hysteresis', async () => {
+      const { wp, emitFix } = fakeWatchPosition();
+      localStorage.setItem('sc-lang', 'en');
+      const genoa = TEST_PLAN.result.sails[0];
+      const bothRigs: Plan = {
+        ...TEST_PLAN,
+        result: {
+          ...TEST_PLAN.result,
+          sails: [
+            genoa,
+            { ...genoa, sailId: 'fock', result: { ...genoa.result!, sailId: 'fock' } },
+          ],
+        },
+      };
+      function SwitchRig() {
+        const { setRig } = useActivePlan();
+        return <button onClick={() => setRig('fock')}>switch rig</button>;
+      }
+      render(
+        <I18nProvider>
+          <AppStateProvider>
+            <TestSetPlan plan={bothRigs} />
+            <ActiveLegProbe />
+            <SwitchRig />
+            <LiveViewHost watchPosition={wp} />
+          </AppStateProvider>
+        </I18nProvider>,
+      );
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
+      emit(emitFix, destinationPoint(P0, 90, 7));
+      emit(emitFix, destinationPoint(P0, 90, 4.99));
+      expect(screen.getByTestId('shared-active-leg')).toHaveTextContent('1');
+
+      fireEvent.click(screen.getByRole('button', { name: 'switch rig' }));
       expect(await screen.findByText('1 of 2')).toBeInTheDocument();
       expect(screen.getByTestId('shared-active-leg')).toHaveTextContent('0');
     });
