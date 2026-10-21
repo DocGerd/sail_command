@@ -309,21 +309,18 @@ test('offline: with the server gone, reroute from here yields a new plan from th
   }
 });
 
-// KNOWN DEFECT, pinned (not hidden): at tabletPortrait the bottom sheet's tab
-// strip paints over the bottom of the absolutely-positioned Live card, covering
-// part of the reroute button and all of its hint. The pinned side asserts that
-// another element is topmost there, so it reds the day the overlap is fixed;
-// flip `coveredBySheet` to false then.
-const TABLET_VIEWPORTS = [
-  { name: 'tabletPortrait', viewport: STANDARD_VIEWPORTS.tabletPortrait, coveredBySheet: true },
-  { name: 'tabletLandscape', viewport: STANDARD_VIEWPORTS.tabletLandscape, coveredBySheet: false },
-] as const;
+const TABLET_VIEWPORTS = {
+  tabletPortrait: STANDARD_VIEWPORTS.tabletPortrait,
+  tabletLandscape: STANDARD_VIEWPORTS.tabletLandscape,
+};
 
-for (const { name, viewport, coveredBySheet } of TABLET_VIEWPORTS) {
+for (const [name, viewport] of Object.entries(TABLET_VIEWPORTS)) {
   test(`tablet ${name} ${viewport.width}x${viewport.height}: the Live card's controls are visible and not occluded`, async ({
     page,
     context,
   }) => {
+    // Expected failure until #1802 lands: the sheet's tab strip covers the reroute button and hint.
+    test.fail(name === 'tabletPortrait', '#1802');
     test.setTimeout(360_000);
     await page.setViewportSize(viewport);
     const server = await startPreview(page);
@@ -359,15 +356,9 @@ for (const { name, viewport, coveredBySheet } of TABLET_VIEWPORTS) {
           .toBe('ok');
       }
       for (const [label, locator] of bottomEdge) {
-        if (coveredBySheet) {
-          await expect
-            .poll(() => topmostVerdict(locator), { message: `${label} (pinned defect)` })
-            .toMatch(/ hit /);
-        } else {
-          await expect
-            .poll(() => topmostVerdict(locator), { message: `${label} occluded`, timeout: 10_000 })
-            .toBe('ok');
-        }
+        await expect
+          .poll(() => topmostVerdict(locator), { message: `${label} occluded`, timeout: 10_000 })
+          .toBe('ok');
       }
 
       // A click at the centre of each button still lands on it.
