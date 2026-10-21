@@ -1,5 +1,5 @@
 import type { PlanRequest, PlanResult, SailId, WindGrid } from '../types';
-import type { WorkerRequest, WorkerResponse } from './protocol';
+import type { SolverInitRequest, WorkerRequest, WorkerResponse } from './protocol';
 import { BOATS, polarKey, type BoatId } from '../data/boats';
 import { windGridCoversBounds, type WindLatticeCoverageBounds } from '../lib/wind';
 
@@ -284,10 +284,25 @@ interface PendingEntry {
   // #1280: absolute Date.now()-based ceiling this entry's liveness timer may
   // never be re-armed past, set once at plan() call time. See armLiveness().
   hardDeadlineAtMs: number;
+  // Parallel path: rig solves in flight, keyed by the ladder's per-solve id.
+  active: Map<number, { sailId: SailId; lastSeenMs: number }>;
+  finished: Set<number>;
+}
+
+/**
+ * Ladder worker plus at most one sibling solve worker: two rigs is the most
+ * that can run concurrently. One core's worth of headroom stays free.
+ */
+function defaultPoolSize(): number {
+  const cores = typeof navigator === 'undefined' ? 1 : (navigator.hardwareConcurrency ?? 1);
+  return Math.max(1, Math.min(2, cores - 1));
 }
 
 export class RoutingClient {
   private worker: Worker;
+  // The sibling solve worker, when the pool has one.
+  private solver: Worker | null = null;
+  private readyPending: number;
   private ready: Promise<void>;
   private readyResolve!: () => void;
   private readyReject!: (e: Error) => void;
@@ -310,10 +325,26 @@ export class RoutingClient {
   // throttle state: last-forwarded timestamp per `${id}:${sailId}`, at most 1 progress callback per 100 ms per sail
   private lastProgressAt = new Map<string, number>();
 
-  constructor(workerFactory?: () => Worker) {
+  /**
+   * `workerFactory` builds the ladder worker. With no `options.solverFactory`
+   * and no explicit `poolSize`, a supplied factory means a single worker (the
+   * tests' fakes) and an absent one sizes the pool from the hardware.
+   * `poolSize` 1 is the single-worker path exactly.
+   */
+  constructor(
+    workerFactory?: () => Worker,
+    options: { solverFactory?: () => Worker; poolSize?: number } = {},
+  ) {
     this.worker = workerFactory
       ? workerFactory()
       : new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+    const poolSize = options.poolSize ?? (workerFactory ? 1 : defaultPoolSize());
+    if (poolSize >= 2) {
+      this.solver = options.solverFactory
+        ? options.solverFactory()
+        : new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+    }
+    this.readyPending = this.solver ? 2 : 1;
     this.ready = new Promise((res, rej) => {
       this.readyResolve = res;
       this.readyReject = rej;
@@ -321,11 +352,13 @@ export class RoutingClient {
     // Swallow unhandled-rejection warnings when disposed before anyone awaits
     // init(); init() still returns `this.ready` directly, so callers observe it.
     this.ready.catch(() => {});
-    this.worker.onmessage = (e: MessageEvent<WorkerResponse>) => this.handle(e.data);
-    this.worker.onerror = (e) =>
-      this.failAll(new RoutingError('worker-error', e.message || 'worker error'));
-    this.worker.onmessageerror = () =>
-      this.failAll(new RoutingError('messageerror', 'worker message could not be deserialized'));
+    for (const w of [this.worker, ...(this.solver ? [this.solver] : [])]) {
+      w.onmessage = (e: MessageEvent<WorkerResponse>) => this.handle(e.data);
+      w.onerror = (e) =>
+        this.failAll(new RoutingError('worker-error', e.message || 'worker error'));
+      w.onmessageerror = () =>
+        this.failAll(new RoutingError('messageerror', 'worker message could not be deserialized'));
+    }
   }
 
   // #433: `stack` (protocol.ts's `fatal.stack`, populated at the real throw
@@ -342,8 +375,27 @@ export class RoutingClient {
   }
 
   private handle(msg: WorkerResponse) {
-    if (msg.type === 'ready') this.readyResolve();
-    else if (msg.type === 'progress') {
+    if (msg.type === 'ready') {
+      if (--this.readyPending === 0) this.readyResolve();
+    } else if (msg.type === 'sailStart') {
+      const entry = this.pending.get(msg.id);
+      if (!entry || entry.finished.has(msg.solveId)) return;
+      entry.active.set(msg.solveId, { sailId: msg.sailId, lastSeenMs: Date.now() });
+      this.armLiveness(msg.id, PLAN_TIMEOUT_GRACE_MS);
+    } else if (msg.type === 'sailDone') {
+      const entry = this.pending.get(msg.id);
+      if (!entry) return;
+      // The two workers' messages race: a done can beat its start.
+      entry.active.delete(msg.solveId);
+      entry.finished.add(msg.solveId);
+      this.armLiveness(msg.id, PLAN_TIMEOUT_GRACE_MS);
+    } else if (msg.type === 'progress') {
+      const entry = this.pending.get(msg.id);
+      if (entry) {
+        const now = Date.now();
+        for (const rig of entry.active.values())
+          if (rig.sailId === msg.sailId) rig.lastSeenMs = now;
+      }
       // #1280: re-arm on every RECEIVED progress message, independent of the
       // 100 ms UI-forwarding throttle just below — a throttled message is
       // still proof the worker is alive.
@@ -404,9 +456,18 @@ export class RoutingClient {
     if (!entry) return;
     clearTimeout(entry.timer);
     const now = Date.now();
+    // Parallel path: the window runs from the STALEST mid-solve rig's last
+    // sign of life, so a chatty rig cannot keep a silent one's clock reset.
+    // With no rig in flight (single worker, probes, between steps) the
+    // anchor is now and this is the plain window.
+    let anchorMs = now;
+    for (const rig of entry.active.values()) anchorMs = Math.min(anchorMs, rig.lastSeenMs);
     const delay = Math.max(
       0,
-      Math.min(Math.max(entry.softDeadlineAtMs - now, windowMs), entry.hardDeadlineAtMs - now),
+      Math.min(
+        Math.max(entry.softDeadlineAtMs - now, windowMs - (now - anchorMs)),
+        entry.hardDeadlineAtMs - now,
+      ),
     );
     entry.timer = setTimeout(() => {
       this.settle(id, (e) => e.reject(new RoutingError('timeout', 'routing timed out')));
@@ -426,7 +487,28 @@ export class RoutingClient {
   init(assets: Omit<Extract<WorkerRequest, { type: 'init' }>, 'type'>): Promise<void> {
     const { west, south, east, north } = assets.maskMeta;
     this.maskBounds = { west, south, east, north };
-    this.worker.postMessage({ type: 'init', ...assets }, [assets.maskBuffer]);
+    if (this.solver) {
+      // The sibling gets its own mask copy, taken before the original is
+      // transferred; the wind grid is never shared between workers.
+      const solverMask = assets.maskBuffer.slice(0);
+      const channel = new MessageChannel();
+      this.worker.postMessage({ type: 'init', ...assets, solverPort: channel.port1 }, [
+        assets.maskBuffer,
+        channel.port1,
+      ]);
+      this.solver.postMessage(
+        {
+          type: 'init-solver',
+          maskMeta: assets.maskMeta,
+          maskBuffer: solverMask,
+          polars: assets.polars,
+          port: channel.port2,
+        } satisfies SolverInitRequest,
+        [solverMask, channel.port2],
+      );
+    } else {
+      this.worker.postMessage({ type: 'init', ...assets }, [assets.maskBuffer]);
+    }
     return this.ready;
   }
 
@@ -505,7 +587,15 @@ export class RoutingClient {
       // here (omitted args), but the map's value type declares them as
       // optional-if-present, not optional-or-undefined — so an absent
       // callback must omit its key entirely rather than set it to undefined.
-      const entry: PendingEntry = { resolve, reject, timer, softDeadlineAtMs, hardDeadlineAtMs };
+      const entry: PendingEntry = {
+        resolve,
+        reject,
+        timer,
+        softDeadlineAtMs,
+        hardDeadlineAtMs,
+        active: new Map(),
+        finished: new Set(),
+      };
       if (onProgress) entry.onProgress = onProgress;
       if (onProbe) entry.onProbe = onProbe;
       this.pending.set(id, entry);
@@ -552,6 +642,7 @@ export class RoutingClient {
     this.disposed = true;
     this.failAll(new RoutingError(kind, message));
     this.worker.terminate();
+    this.solver?.terminate();
   }
 
   dispose() {

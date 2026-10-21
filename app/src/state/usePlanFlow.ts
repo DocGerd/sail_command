@@ -29,17 +29,15 @@ import {
 export type PlanningState =
   | { phase: 'idle' }
   | { phase: 'fetching-wind' }
-  // #340/#54: `sailId` is the only progress signal — the router runs
-  // req.sailIds SEQUENTIALLY (routing/planRoute.ts's `runAll` maps over
-  // them, one synchronous `run()` call per element, no interleaving), so
-  // "which sail is currently solving" is an honest, bounded phase indicator
-  // — unlike the removed simulatedToMs/FORECAST_HORIZON_MS percentage, which
-  // capped around 5% and reset to 0 at every sail switch (#340). `index`/
-  // `total` are computed HERE (from the same `req.sailIds` the solve order
-  // itself follows), not read from a module constant — §E.3 deleted the old
-  // `RIG_ORDER` for exactly this reason: the request's own ordered list is
-  // the one source of truth. PlannerPanel.tsx's "sail N of 2" phase readout
-  // renders these two fields directly.
+  // #340/#54: `sailId` is the only progress signal. With a pool size of 1 the
+  // router solves req.sailIds SEQUENTIALLY (planRoute.ts's sync driver runs
+  // one `solveRig()` per element in order), so `sailId` names the solving
+  // sail; with a sibling worker the rigs solve CONCURRENTLY and `sailId`
+  // follows whichever rig reported last, so it is not a stable phase
+  // indicator. `index`/`total` are computed HERE (from the same `req.sailIds`
+  // the solve order follows), not read from a module constant — §E.3 deleted
+  // the old `RIG_ORDER` for exactly this reason. PlannerPanel.tsx's status
+  // line names the phase only, never a rig or an index.
   // #1136: `secondPass` (present only when true) marks the salvage re-run.
   | { phase: 'routing'; sailId: SailId; index: number; total: number; secondPass?: true }
   // #53: the worker is probing relaxed depth gates (mask connectivity BFS)

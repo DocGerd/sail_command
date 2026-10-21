@@ -336,14 +336,11 @@ export const en = {
   'planner.import.notice.multipleTracks':
     'Multiple tracks in the file — only the first was imported.',
   'planner.status.fetching': 'Fetching wind forecast…',
-  // #340/#54: phase readout, not a percentage — the router solves
-  // request.sailIds SEQUENTIALLY, so "sail {index} of {total}" is honest and
-  // bounded, unlike the removed percentage (capped ~5%, reset to 0 at every
-  // sail switch).
-  'planner.status.routingSail': 'Calculating route… sail {index} of {total} ({sail})',
+  // #340/#54: phase readout, not a percentage. The rigs may solve
+  // concurrently, so it names the phase rather than a rig or an index.
+  'planner.status.routingSail': 'Calculating route for all sails…',
   // #1136: the motor-off salvage re-run after a failed first search
-  'planner.status.routingSailSecondPass':
-    'No route found — second search pass… sail {index} of {total} ({sail})',
+  'planner.status.routingSailSecondPass': 'No route found — second search pass for all sails…',
   // #53: relaxed-depth probe phase after an unreachable requested-depth solve
   'planner.status.probing': 'No route at the set safety depth — probing reduced depth gates…',
   'error.offline': 'Wind forecast service is unreachable. Check your connection and try again.',
