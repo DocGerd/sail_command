@@ -388,10 +388,11 @@ export class NavMask {
    * Minimum charted depth over every cell the a→b segment touches, or null
    * exactly when {@link segmentNavigable} would report false (any touched
    * cell below its own cell's gate, land, or out of bounds). Same traversal
-   * and per-cell gate check as `segmentNavigable`, so the cells visited and
-   * the abort condition match it; `mask.walkers.test.ts` pins both walkers
-   * against `walkCells`. Used by #243's depth comfort preference to price a
-   * segment's clearance beyond the hard gate.
+   * and per-cell decision as `segmentNavigable` for any non-NaN gate; a NaN
+   * gate fails every cell there but only land here (see `navigableTable`).
+   * `mask.walkers.test.ts` pins both walkers against `walkCells`. Used by
+   * #243's depth comfort preference to price a segment's clearance beyond
+   * the hard gate.
    *
    * UNLIKE {@link segmentShallowestBelow}, deep-capped cells (byte 255)
    * count as a finite 25.4 m in the minimum here, NOT excluded —

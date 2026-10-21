@@ -104,7 +104,7 @@ describe('NavMask closure-free walkers vs the walkCells originals', () => {
     ['NaN start', mixed, { lat: NaN, lon: NaN }, pointAt(40.5, 60.5)],
     ['NaN end', mixed, pointAt(40.5, 60.5), { lat: 54.5, lon: NaN }],
     ['infinite end', mixed, pointAt(40.5, 60.5), { lat: Infinity, lon: 10 }],
-    // Never moves, so only the iteration guard ends it.
+    // Never moves, so with an accepted start cell only the iteration guard ends it.
     ['stuck walk', allWater, pointAt(50.5, 50.5), { lat: pointAt(50.5, 50.5).lat, lon: NaN }],
     ['exact ties, ascending', tieMixed, tiePoint(10), tiePoint(60)],
     ['exact ties, descending', tieMixed, tiePoint(60), tiePoint(10)],
@@ -208,8 +208,8 @@ describe('NavMask walkers across an approach gate bounding-box edge', () => {
 });
 
 describe('NavMask walkers on approach-gate edge cases gateAtCell decides', () => {
-  // Power-of-two grid: a radius of whole cells is exact, so each bbox edge
-  // cell lies ON the ellipse and gateAtCell relaxes it.
+  // Power-of-two grid: a whole-cell radius along an axis is exact, so the bbox
+  // edge cell on the disc's own row or column lies ON the ellipse and relaxes.
   const step = 1 / 128;
   const w = { lat: TIE_META.south + 100.5 * step, lon: TIE_META.west + 160.5 * step };
   const at = (row: number, col: number): LatLon => ({

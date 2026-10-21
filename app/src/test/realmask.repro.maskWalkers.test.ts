@@ -19,8 +19,8 @@ import type { LatLon } from '../types';
 // committed mask. Synthetic shapes and exact ties live in
 // lib/mask.walkers.test.ts. The name keeps it in the `node:fs` tsconfig
 // program. It sits outside routing/ on purpose: CI's realmask exclude does
-// not reach it, so it runs on every PR, and from routing/ classify-realmask.sh's
-// drift check would flag its maskWalkerOracle.ts import.
+// not reach it, so it runs whenever the unit suite does, and from routing/
+// classify-realmask.sh's drift check would flag its maskWalkerOracle.ts import.
 vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
 
 function gatesFor(a: LatLon, b: LatLon): DepthGate[] {
