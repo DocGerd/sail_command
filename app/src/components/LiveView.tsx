@@ -20,12 +20,20 @@ import {
 import type { NavMask } from '../lib/mask';
 import { useNavMask } from '../state/useNavMask';
 import { formatDepthM } from '../lib/depthDisclosure';
-import { formatDriftMin, formatHeading, formatKn, formatNm, formatTime } from '../lib/format';
+import {
+  formatDriftMin,
+  formatHeading,
+  formatKn,
+  formatLatLon,
+  formatNm,
+  formatTime,
+} from '../lib/format';
 import type { GpsSource } from '../state/useGpsSource';
 import { isLiveSimRequested } from '../dev/liveSimulator';
 import LiveSimulatorControls from '../dev/LiveSimulatorControls';
 import { liveSimDict } from '../dev/LiveSimulatorControls.dict';
 import Button from './Button';
+import Chip from './Chip';
 import type { LatLon, Leg, ManeuverKind } from '../types';
 
 // #143: dev/UAT-only Live-view simulator gate — mirrors App.tsx's
@@ -115,11 +123,11 @@ export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: 
   // Readouts show only while tracking is on and the fix is usable: a fix
   // cached from the ownship watch, or a lost/denied one, must not read as live.
   const usable = active && (gps.state === 'fresh' || gps.state === 'stale');
+  const stale = active && gps.state === 'stale';
   const fix = usable ? gps.fix : null;
   // Receipt time of `fix` (not render time): projectedEtaMs's drift must
   // reflect when the fix arrived.
   const fixAtMs = usable ? gps.fixAtMs : null;
-  const { hintVisible, dismissHint } = gps;
 
   useEffect(() => {
     onTrackingChange?.(active);
@@ -324,6 +332,27 @@ export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: 
     setActive(!active);
   };
 
+  const rr = gps.reroute;
+  const rerouteReason = (): string => {
+    if (simActive) return liveSimDict[lang]['liveSim.reroute.disabled'];
+    if (!active) return t('live.reroute.needFix');
+    switch (rr.reason) {
+      case 'waiting':
+        return t('live.reroute.reason.waiting');
+      case 'lost':
+        return t('live.reroute.reason.lost');
+      case 'denied':
+        return t('live.reroute.reason.denied');
+      case 'accuracy':
+        return t('live.reroute.reason.accuracy', {
+          accuracy: rr.accuracyM !== null ? String(Math.round(rr.accuracyM)) : '—',
+          threshold: String(rr.thresholdM),
+        });
+      case null:
+        return t('live.reroute.hint');
+    }
+  };
+
   const readout = (
     <div className="live-view">
       {/* #700: the sighted equivalent of aria-pressed — routed through the
@@ -338,17 +367,36 @@ export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: 
         {active ? t('live.toggle.stop') : t('live.toggle')}
       </Button>
 
-      {hintVisible && (
-        <div role="status" className="live-view-gps-hint">
-          <p>{t('live.gpsHint')}</p>
-          <Button variant="ghost" onClick={dismissHint}>
-            {t('live.gpsHint.dismiss')}
-          </Button>
+      {active && gps.state === 'waiting' && (
+        <p role="status" className="live-view-gps live-view-gps--waiting">
+          {t('live.gps.waiting')}
+        </p>
+      )}
+      {stale && (
+        <Chip className="live-view-gps-stale">{t('live.gps.stale', { age: gps.ageS ?? 0 })}</Chip>
+      )}
+      {active && gps.state === 'lost' && (
+        <div role="status" className="live-view-gps live-view-gps--lost">
+          <p className="live-view-gps-title">{t('live.gps.lost')}</p>
+          {gps.fix !== null && gps.fixAtMs !== null && (
+            <p>
+              {t('live.gps.lost.last', {
+                time: formatTime(gps.fixAtMs, lang),
+                position: formatLatLon(gps.fix.point),
+              })}
+            </p>
+          )}
+        </div>
+      )}
+      {active && gps.state === 'denied' && (
+        <div role="status" className="live-view-gps live-view-gps--denied">
+          <p className="live-view-gps-title">{t('live.gps.denied')}</p>
+          <p>{t('live.gps.denied.hint')}</p>
         </div>
       )}
 
       {steerable && (
-        <div className="live-view-data">
+        <div className={stale ? 'live-view-data live-view-data--stale' : 'live-view-data'}>
           <div
             className={
               depthCheck.state === 'caution'
@@ -452,20 +500,17 @@ export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: 
         <div className="live-view-reroute">
           <Button
             variant="secondary"
-            disabled={simActive || fix === null || !gps.reroute.allowed || reroute.busy}
+            disabled={simActive || fix === null || !rr.allowed || reroute.busy}
             aria-busy={reroute.rerouting}
+            aria-describedby="live-reroute-reason"
             onClick={() => {
               if (fix) reroute.onReroute(fix.point);
             }}
           >
             {reroute.rerouting ? t('live.reroute.busy') : t('live.reroute.action')}
           </Button>
-          <p className="live-view-reroute-hint">
-            {simActive
-              ? liveSimDict[lang]['liveSim.reroute.disabled']
-              : fix === null
-                ? t('live.reroute.needFix')
-                : t('live.reroute.hint')}
+          <p id="live-reroute-reason" className="live-view-reroute-hint">
+            {rerouteReason()}
           </p>
         </div>
       )}

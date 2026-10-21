@@ -1738,7 +1738,7 @@ function AppShell() {
               itself no longer renders a marker (see its #25 comment), so this
               is the single place BoatMarker ever renders — no dedupe logic
               needed beyond that. */}
-          <OwnshipMarker fix={ownshipFix} />
+          <OwnshipMarker fix={ownshipFix} stale={gps.state === 'lost' || gps.state === 'denied'} />
           {/* LiveView must live inside MapView's subtree: useMapInstance()
               (its BoatMarker child calls it) reads the map instance off a
               React context that MapView provides, and only descendants of

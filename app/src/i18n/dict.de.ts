@@ -1164,7 +1164,20 @@ export const de = {
   'live.hts.depthUnchecked': 'Tiefe nicht geprüft',
   'live.gpsHint':
     'Standortzugriff ist nicht verfügbar, daher kann die Bootsposition nicht auf der Karte angezeigt werden. Planung und die gespeicherte Route funktionieren weiterhin uneingeschränkt — dies ist eine Törnplanungshilfe, kein Navigationsgerät.',
-  'live.gpsHint.dismiss': 'Verstanden',
+  'live.gps.waiting': 'Warte auf GPS-Position…',
+  'live.gps.stale': 'Veraltet, {age} s alt',
+  'live.gps.lost': 'GPS-Signal verloren',
+  'live.gps.lost.last':
+    'Letzte Position {time}: {position}. Anzeigen sind ausgeblendet, bis eine neue Position vorliegt.',
+  'live.gps.denied': 'Standortzugriff ist gesperrt',
+  'live.gps.denied.hint':
+    'Standortzugriff für diese Seite (oder die installierte App) in den Browser- oder Geräteeinstellungen erlauben und hierher zurückkehren. Ändert sich nichts, Live-Ansicht beenden und neu starten.',
+  'live.reroute.reason.waiting': 'Warte auf GPS-Position.',
+  'live.reroute.reason.lost':
+    'Kein GPS-Signal — Neuplanung nicht möglich, bis eine neue Position vorliegt.',
+  'live.reroute.reason.denied': 'Standortzugriff gesperrt — Neuplanung nicht möglich.',
+  'live.reroute.reason.accuracy':
+    'GPS-Genauigkeit von {accuracy} m ist schlechter als die Grenze von {threshold} m für die Neuplanung.',
   // #361: siehe englisches Dict für den Hintergrund.
   'live.ownship.marker': 'Aktuelle Bootsposition',
   // #115: manueller "Route ab hier"-Neuplan — Planungssprache, keine

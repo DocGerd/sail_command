@@ -1170,7 +1170,18 @@ export const en = {
   'live.hts.depthUnchecked': 'Depth not checked',
   'live.gpsHint':
     "Location access isn't available, so the boat position can't be shown on the map. Planning and the saved route still work fully — this is a passage-planning aid, not a navigation device.",
-  'live.gpsHint.dismiss': 'Got it',
+  'live.gps.waiting': 'Waiting for GPS fix…',
+  'live.gps.stale': 'Stale, {age} s old',
+  'live.gps.lost': 'GPS signal lost',
+  'live.gps.lost.last': 'Last fix {time} at {position}. Readings are hidden until a new fix arrives.',
+  'live.gps.denied': 'Location access is blocked',
+  'live.gps.denied.hint':
+    'Allow location for this site (or the installed app) in your browser or device settings, then return here. If nothing changes, stop and start the live view again.',
+  'live.reroute.reason.waiting': 'Waiting for a GPS fix.',
+  'live.reroute.reason.lost': 'No GPS signal — replanning is unavailable until a new fix arrives.',
+  'live.reroute.reason.denied': 'Location access is blocked — replanning is unavailable.',
+  'live.reroute.reason.accuracy':
+    'GPS accuracy of {accuracy} m is worse than the {threshold} m limit for replanning.',
   // #361: maplibre-gl 6.1.0 stopped supplying a default aria-label/role for
   // markers built with a custom `element` — BoatMarker must set its own,
   // like ViaMarkers already does, independent of library defaults.
