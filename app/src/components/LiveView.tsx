@@ -1,15 +1,17 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLang, useT } from '../i18n';
 import type { MsgKey } from '../i18n/dict.de';
 import { useActivePlan } from '../state/AppState';
 import { activeRigResult } from '../lib/plan';
+import { distanceToNextManeuverNm, headingToSteerDeg, projectedEtaMs } from '../lib/live';
 import {
-  activeLegIndex as computeActiveLegIndex,
-  distanceToNextManeuverNm,
-  headingToSteerDeg,
-  projectedEtaMs,
-} from '../lib/live';
+  crossTrack,
+  distanceToGoNm,
+  formatTrueHeading,
+  legPosition,
+  stepActiveLeg,
+} from '../lib/liveMetrics';
 import {
   advanceHold,
   checkHeadingDepth,
@@ -20,12 +22,24 @@ import {
 import type { NavMask } from '../lib/mask';
 import { useNavMask } from '../state/useNavMask';
 import { formatDepthM } from '../lib/depthDisclosure';
-import { formatDriftMin, formatHeading, formatKn, formatNm, formatTime } from '../lib/format';
+import {
+  formatDriftMin,
+  formatKn,
+  formatLatLon,
+  formatLegNm,
+  formatNm,
+  formatTime,
+} from '../lib/format';
+import { harborHandoverLines } from '../lib/harborHandover';
+import { safeGetItem, safeSetItem } from '../lib/storage';
+import { usePersistedToggle } from '../lib/usePersistedToggle';
 import type { GpsSource } from '../state/useGpsSource';
+import { useWakeLock } from '../state/useWakeLock';
 import { isLiveSimRequested } from '../dev/liveSimulator';
 import LiveSimulatorControls from '../dev/LiveSimulatorControls';
 import { liveSimDict } from '../dev/LiveSimulatorControls.dict';
 import Button from './Button';
+import Chip from './Chip';
 import type { LatLon, Leg, ManeuverKind } from '../types';
 
 // #143: dev/UAT-only Live-view simulator gate — mirrors App.tsx's
@@ -71,6 +85,15 @@ export interface LiveViewProps {
   reroute?: LiveRerouteControls | null;
 }
 
+// Set when the user starts tracking, cleared only by an explicit Stop, so a
+// reload, crash, app kill or tab switch leaves the resume prompt behind.
+const WAS_TRACKING_KEY = 'sc-live-was-tracking';
+const WAKE_LOCK_KEY = 'sc-live-wake-lock';
+
+// Below this the cross-track distance is shown without a side, so the side
+// cannot flip on GPS noise while the boat is on the line.
+export const XTE_SIDE_DEADBAND_NM = 0.01;
+
 const MANEUVER_LABEL_KEY: Record<ManeuverKind, MsgKey> = {
   tack: 'route.maneuver.tack',
   gybe: 'route.maneuver.gybe',
@@ -112,14 +135,17 @@ export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: 
   const [lang] = useLang();
   const { plan, rig, setActiveLegIndex } = useActivePlan();
   const [active, setActive] = useState(false);
+  const [wasTracking, setWasTracking] = useState(() => safeGetItem(WAS_TRACKING_KEY) === '1');
+  const [wakeLockOn, setWakeLockOn] = usePersistedToggle(WAKE_LOCK_KEY, true);
+  const wakeLock = useWakeLock(active && wakeLockOn);
   // Readouts show only while tracking is on and the fix is usable: a fix
   // cached from the ownship watch, or a lost/denied one, must not read as live.
   const usable = active && (gps.state === 'fresh' || gps.state === 'stale');
+  const stale = active && gps.state === 'stale';
   const fix = usable ? gps.fix : null;
   // Receipt time of `fix` (not render time): projectedEtaMs's drift must
   // reflect when the fix arrived.
   const fixAtMs = usable ? gps.fixAtMs : null;
-  const { hintVisible, dismissHint } = gps;
 
   useEffect(() => {
     onTrackingChange?.(active);
@@ -208,6 +234,23 @@ export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: 
     key: holdKey,
   });
 
+  // Active leg with hysteresis (ruling d). Derived in render from the previous
+  // render's result, reset when the plan, its recalculation or the rig changes.
+  // Both the readout and RouteLayer's highlight (via setActiveLegIndex below)
+  // read this one value.
+  const legPlanKey = plan ? `${plan.id}:${plan.createdAtMs}:${rig ?? ''}` : '';
+  const [legState, setLegState] = useState<{
+    fix: unknown;
+    planKey: string;
+    idx: number | null;
+  }>({ fix: null, planKey: legPlanKey, idx: null });
+  let legIdx = legState.idx;
+  if (legState.fix !== fix || legState.planKey !== legPlanKey) {
+    const prevIdx = legState.planKey === legPlanKey ? legState.idx : null;
+    legIdx = fix && legs.length > 0 ? stepActiveLeg(legs, fix.point, prevIdx) : null;
+    setLegState({ fix, planKey: legPlanKey, idx: legIdx });
+  }
+
   // Folding one probe observation into the hysteresis, shared by the fix
   // callback and the mask-arrival re-probe below. `nowMs` is
   // performance.now(), NOT Date.now(): the clear-timer must not be able to
@@ -220,8 +263,8 @@ export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: 
     safetyNow: number | null,
     keyNow: string,
     point: LatLon,
+    idx: number | null,
   ) => {
-    const idx = legsNow.length > 0 ? computeActiveLegIndex(legsNow, point) : null;
     const raw =
       idx !== null && safetyNow !== null
         ? checkHeadingDepth(maskNow, legsNow, idx, point, safetyNow)
@@ -235,9 +278,9 @@ export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: 
 
   // Ref mirror of the latest mask/legs/safetyDepthM/holdKey, written only in
   // an effect (post-commit), never during render.
-  const latestRef = useRef({ mask, legs, safetyDepthM, holdKey });
+  const latestRef = useRef({ mask, legs, safetyDepthM, holdKey, legIdx });
   useEffect(() => {
-    latestRef.current = { mask, legs, safetyDepthM, holdKey };
+    latestRef.current = { mask, legs, safetyDepthM, holdKey, legIdx };
   });
 
   // What the displayed hold was last folded against. A null mask is a real
@@ -263,14 +306,14 @@ export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: 
     if (probed.fix === fix && probed.mask === mask && probed.key === holdKey) return;
     probedRef.current = { fix, mask, key: holdKey };
     const cur = latestRef.current;
-    foldProbe(mask, cur.legs, cur.safetyDepthM, holdKey, fix.point);
+    foldProbe(mask, cur.legs, cur.safetyDepthM, holdKey, fix.point, cur.legIdx);
   }, [mask, fix, holdKey]);
 
-  const legIdx = fix && legs.length > 0 ? computeActiveLegIndex(legs, fix.point) : null;
-
+  // legPlanKey is a dep because AppState's setPlan nulls the shared index even
+  // when the recomputed one is unchanged.
   useEffect(() => {
     setActiveLegIndex(legIdx);
-  }, [legIdx, setActiveLegIndex]);
+  }, [legIdx, legPlanKey, setActiveLegIndex]);
 
   useEffect(() => {
     return () => setActiveLegIndex(null);
@@ -290,6 +333,27 @@ export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: 
   const depthCheck: HeadingDepthCheck =
     hold.key === holdKey ? hold.hold.shown : { state: 'unavailable' };
 
+  // Narrow layout: the card is docked in the map area while the bottom sheet
+  // (tab strip plus whatever panel content sits under it, e.g. the AIS list)
+  // is a sibling of unknown height. Dock above the sheet's measured top so the
+  // sheet never covers the card.
+  // The CSS fallback clears the tab strip plus a typical collapsed AIS row if this never runs.
+  const cardRef = useRef<HTMLDivElement>(null);
+  const cardMounted = Boolean(plan && result && legs.length > 0);
+  useLayoutEffect(() => {
+    const card = cardRef.current;
+    const sheet = document.querySelector<HTMLElement>('.app-bottom-sheet');
+    if (!card || !sheet || panelSlot || typeof ResizeObserver === 'undefined') return;
+    const sync = () => card.style.setProperty('--live-sheet-h', `${sheet.offsetHeight}px`);
+    sync();
+    const observer = new ResizeObserver(sync);
+    observer.observe(sheet);
+    return () => {
+      observer.disconnect();
+      card.style.removeProperty('--live-sheet-h');
+    };
+  }, [panelSlot, cardMounted]);
+
   // `!plan` is redundant with `!result` (result is derived from plan) — it is
   // here purely so TypeScript narrows `plan` for the caution note below, which
   // must render its safety depth WITHOUT a `safetyDepthM !== null` guard: a
@@ -307,6 +371,18 @@ export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: 
       ? projectedEtaMs(legs, legIdx, fix.point, fixAtMs)
       : null;
   const driftMs = etaMs !== null ? etaMs - legs[legs.length - 1].endTimeMs : null;
+  const progress =
+    fix && legIdx !== null && legIdx < legs.length
+      ? {
+          position: legPosition(legs, legIdx),
+          toGo: distanceToGoNm(legs, legIdx, fix.point),
+          xte: crossTrack(legs[legIdx], fix.point),
+        }
+      : null;
+  const xteSide =
+    progress && progress.xte.side !== null && progress.xte.distanceNm >= XTE_SIDE_DEADBAND_NM
+      ? progress.xte.side
+      : null;
 
   // Gates the readout data block: renders exactly when there is a fix with a
   // computable heading-to-steer. Bundling the narrowed non-null values keeps
@@ -320,12 +396,43 @@ export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: 
   // toggle-on-while-Live-active session never shows two.
   const steerable = fix !== null && hts !== null ? { fix, hts } : null;
 
-  const toggleActive = () => {
-    setActive(!active);
+  const startTracking = () => {
+    safeSetItem(WAS_TRACKING_KEY, '1');
+    setWasTracking(true);
+    setActive(true);
+  };
+  const stopTracking = () => {
+    safeSetItem(WAS_TRACKING_KEY, '0');
+    setWasTracking(false);
+    setActive(false);
+  };
+  const toggleActive = active ? stopTracking : startTracking;
+
+  const handover = harborHandoverLines(plan).length > 0;
+
+  const rr = gps.reroute;
+  const rerouteReason = (): string => {
+    if (simActive) return liveSimDict[lang]['liveSim.reroute.disabled'];
+    if (!active) return t('live.reroute.needFix');
+    switch (rr.reason) {
+      case 'waiting':
+        return t('live.reroute.reason.waiting');
+      case 'lost':
+        return t('live.reroute.reason.lost');
+      case 'denied':
+        return t('live.reroute.reason.denied');
+      case 'accuracy':
+        return t('live.reroute.reason.accuracy', {
+          accuracy: rr.accuracyM !== null ? String(Math.round(rr.accuracyM)) : '—',
+          threshold: String(rr.thresholdM),
+        });
+      case null:
+        return t('live.reroute.hint');
+    }
   };
 
   const readout = (
-    <div className="live-view">
+    <div className="live-view" ref={cardRef}>
       {/* #700: the sighted equivalent of aria-pressed — routed through the
           Button primitive so the pressed/on state reuses the SAME accent
           fill `.app-tabs button[aria-selected='true']`/`.rig-tabs` already
@@ -338,100 +445,200 @@ export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: 
         {active ? t('live.toggle.stop') : t('live.toggle')}
       </Button>
 
-      {hintVisible && (
-        <div role="status" className="live-view-gps-hint">
-          <p>{t('live.gpsHint')}</p>
-          <Button variant="ghost" onClick={dismissHint}>
-            {t('live.gpsHint.dismiss')}
+      {!active && wasTracking && (
+        <div role="status" className="live-view-resume">
+          <p>{t('live.resume.message')}</p>
+          <Button variant="primary" onClick={startTracking}>
+            {t('live.resume.action')}
           </Button>
         </div>
       )}
 
-      {steerable && (
-        <div className="live-view-data">
-          <div
-            className={
-              depthCheck.state === 'caution'
-                ? 'live-view-hts live-view-hts--caution'
-                : 'live-view-hts'
-            }
-          >
-            <span className="live-view-label">
-              {t('live.hts.label')}
-              {/* #713: German's label is already the full word 'Steuerkurs'
+      {handover && <p className="live-view-handover">{t('live.handover')}</p>}
+
+      {active && gps.state === 'waiting' && (
+        <p role="status" className="live-view-gps live-view-gps--waiting">
+          {t('live.gps.waiting')}
+        </p>
+      )}
+      {stale && (
+        <Chip role="status" className="live-view-gps-stale">
+          <span aria-hidden="true">{t('live.gps.stale', { age: gps.ageS ?? 0 })}</span>
+          <span className="sr-only">{t('live.gps.stale.announce')}</span>
+        </Chip>
+      )}
+      {active && gps.state === 'lost' && (
+        <div role="status" className="live-view-gps live-view-gps--lost">
+          <p className="live-view-gps-title">{t('live.gps.lost')}</p>
+          {gps.fix !== null && gps.fixAtMs !== null && (
+            <p>
+              {t('live.gps.lost.last', {
+                time: formatTime(gps.fixAtMs, lang),
+                position: formatLatLon(gps.fix.point),
+              })}
+            </p>
+          )}
+        </div>
+      )}
+      {active && gps.state === 'denied' && (
+        <div role="status" className="live-view-gps live-view-gps--denied">
+          <p className="live-view-gps-title">{t('live.gps.denied')}</p>
+          <p>{t('live.gps.denied.hint')}</p>
+        </div>
+      )}
+
+      {!wakeLock.supported ? (
+        <p className="live-view-wake">{t('live.wake.unsupported')}</p>
+      ) : (
+        <div className="live-view-wake">
+          <label>
+            <input
+              type="checkbox"
+              checked={wakeLockOn}
+              onChange={(e) => setWakeLockOn(e.target.checked)}
+            />
+            {t('live.wake.toggle')}
+          </label>
+          {active && (
+            <p role="status" className="live-view-wake-status">
+              {!wakeLockOn
+                ? t('live.wake.off')
+                : wakeLock.held
+                  ? t('live.wake.held')
+                  : t('live.wake.notHeld')}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Stays mounted through lost and denied once a fix has arrived: RouteLayer's
+          auto-fit latch reads its presence as "Live is active". */}
+      {(steerable !== null || (active && gps.fix !== null)) && (
+        <div className={stale ? 'live-view-data live-view-data--stale' : 'live-view-data'}>
+          {steerable && (
+            <>
+              <div
+                className={
+                  depthCheck.state === 'caution'
+                    ? 'live-view-hts live-view-hts--caution'
+                    : 'live-view-hts'
+                }
+              >
+                <span className="live-view-label">
+                  {t('live.hts.label')}
+                  {/* #713: German's label is already the full word 'Steuerkurs'
                   — only the bare English abbreviation needs an expansion, so
                   this is gated on lang rather than rendered unconditionally
                   with an unused German value. */}
-              {lang === 'en' && <span className="sr-only"> {t('live.hts.expansion')}</span>}
-            </span>
-            <span className="live-view-hts-value tabular-nums">{formatHeading(steerable.hts)}</span>
-          </div>
-          {depthCheck.state === 'caution' && (
-            <p className="live-view-hts-note live-view-hts-note--caution">
-              <WarningIcon />
-              {depthCheck.hazard === 'land'
-                ? t('live.hts.landCaution')
-                : t('live.hts.depthCaution', {
-                    // #596: through formatDepthM, not a bare `toFixed(1)` —
-                    // same locale-aware one-decimal form the sibling
-                    // route-level shallow banner uses for both of its depths
-                    // (RouteSummary.tsx), so the two depth warnings never
-                    // render the same number differently, IN EITHER
-                    // language (a bare `toFixed(1)` here would have left
-                    // this sentence point-formatted after RouteSummary's own
-                    // switched to comma-formatted German).
-                    depth: formatDepthM(depthCheck.shallowestM, lang),
-                    // #632: consumes the SAME guarded `safetyDepthM` local
-                    // computed above, never a fresh unguarded read.
-                    // Invariant: `depthCheck.state` can only reach
-                    // 'caution' through foldProbe's
-                    // `idx !== null && safetyNow !== null` gate (~:209),
-                    // and `safetyDepthM` is a stable function of the same
-                    // `plan` for the life of this `holdKey` — so the em-dash
-                    // branch below is provably unreachable. Narrowed this
-                    // way (not `!`, which would be the first production
-                    // non-null assertion in app/src/components/) purely to
-                    // satisfy TypeScript. Uses the same em-dash placeholder
-                    // as the COG/SOG fields below (`'—'`, not `''`) for
-                    // consistency with this file's existing missing-value
-                    // convention — an unreachable empty string would still
-                    // render as "…your safety depth ( m)", a malformed
-                    // sentence, if this invariant were ever violated.
-                    safety: safetyDepthM !== null ? formatDepthM(safetyDepthM, lang) : '—',
-                  })}
-            </p>
+                  {lang === 'en' && <span className="sr-only"> {t('live.hts.expansion')}</span>}
+                </span>
+                <span className="live-view-hts-value tabular-nums">
+                  {formatTrueHeading(steerable.hts)}
+                </span>
+              </div>
+              {depthCheck.state === 'caution' && (
+                <p className="live-view-hts-note live-view-hts-note--caution">
+                  <WarningIcon />
+                  {depthCheck.hazard === 'land'
+                    ? t('live.hts.landCaution')
+                    : t('live.hts.depthCaution', {
+                        // #596: through formatDepthM, not a bare `toFixed(1)` —
+                        // same locale-aware one-decimal form the sibling
+                        // route-level shallow banner uses for both of its depths
+                        // (RouteSummary.tsx), so the two depth warnings never
+                        // render the same number differently, IN EITHER
+                        // language (a bare `toFixed(1)` here would have left
+                        // this sentence point-formatted after RouteSummary's own
+                        // switched to comma-formatted German).
+                        depth: formatDepthM(depthCheck.shallowestM, lang),
+                        // #632: consumes the SAME guarded `safetyDepthM` local
+                        // computed above, never a fresh unguarded read.
+                        // Invariant: `depthCheck.state` can only reach
+                        // 'caution' through foldProbe's
+                        // `idx !== null && safetyNow !== null` gate (~:209),
+                        // and `safetyDepthM` is a stable function of the same
+                        // `plan` for the life of this `holdKey` — so the em-dash
+                        // branch below is provably unreachable. Narrowed this
+                        // way (not `!`, which would be the first production
+                        // non-null assertion in app/src/components/) purely to
+                        // satisfy TypeScript. Uses the same em-dash placeholder
+                        // as the COG/SOG fields below (`'—'`, not `''`) for
+                        // consistency with this file's existing missing-value
+                        // convention — an unreachable empty string would still
+                        // render as "…your safety depth ( m)", a malformed
+                        // sentence, if this invariant were ever violated.
+                        safety: safetyDepthM !== null ? formatDepthM(safetyDepthM, lang) : '—',
+                      })}
+                </p>
+              )}
+              {depthCheck.state === 'unavailable' && (
+                <p className="live-view-hts-note live-view-hts-note--muted">
+                  {t('live.hts.depthUnchecked')}
+                </p>
+              )}
+
+              <dl className="live-view-cogsog">
+                <dt>{t('live.cog.label')}</dt>
+                <dd className="tabular-nums">
+                  {steerable.fix.cogDeg !== null ? formatTrueHeading(steerable.fix.cogDeg) : '—'}
+                </dd>
+                <dt>{t('live.sog.label')}</dt>
+                <dd className="tabular-nums">
+                  {steerable.fix.sogKn !== null ? formatKn(steerable.fix.sogKn, lang) : '—'}
+                </dd>
+              </dl>
+
+              {progress && (
+                <dl className="live-view-progress">
+                  <div>
+                    <dt>{t('live.leg.label')}</dt>
+                    <dd className="tabular-nums">
+                      {t('live.leg.value', {
+                        current: String(progress.position.current),
+                        total: String(progress.position.total),
+                      })}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>{t('live.dtg.leg.label')}</dt>
+                    <dd className="tabular-nums">{formatLegNm(progress.toGo.legNm, lang)}</dd>
+                  </div>
+                  <div>
+                    <dt>{t('live.dtg.route.label')}</dt>
+                    <dd className="tabular-nums">{formatNm(progress.toGo.routeNm, lang)}</dd>
+                  </div>
+                  <div>
+                    <dt>{t('live.xte.label')}</dt>
+                    <dd className="tabular-nums">
+                      {progress.xte.clamped !== null
+                        ? '—'
+                        : xteSide === null
+                          ? formatLegNm(progress.xte.distanceNm, lang)
+                          : t('live.xte.value', {
+                              distance: formatLegNm(progress.xte.distanceNm, lang),
+                              side: t(xteSide === 'port' ? 'live.xte.port' : 'live.xte.starboard'),
+                            })}
+                    </dd>
+                  </div>
+                </dl>
+              )}
+
+              <p className="live-view-next-event">
+                {nextEvent
+                  ? `${t('live.nextEvent.label', { distance: formatNm(nextEvent.distNm, lang) })} ${t(
+                      nextEvent.kind === 'motor-start'
+                        ? 'live.nextEvent.motorStart'
+                        : MANEUVER_LABEL_KEY[nextEvent.kind],
+                    )}`
+                  : t('live.nextEvent.none')}
+              </p>
+
+              <p className="live-view-eta tabular-nums">
+                {t('live.eta.label')}: {etaMs !== null ? formatTime(etaMs, lang) : '—'}
+                {driftMs !== null && ` (${formatDriftMin(driftMs)})`}
+              </p>
+            </>
           )}
-          {depthCheck.state === 'unavailable' && (
-            <p className="live-view-hts-note live-view-hts-note--muted">
-              {t('live.hts.depthUnchecked')}
-            </p>
-          )}
-
-          <dl className="live-view-cogsog">
-            <dt>{t('live.cog.label')}</dt>
-            <dd className="tabular-nums">
-              {steerable.fix.cogDeg !== null ? formatHeading(steerable.fix.cogDeg) : '—'}
-            </dd>
-            <dt>{t('live.sog.label')}</dt>
-            <dd className="tabular-nums">
-              {steerable.fix.sogKn !== null ? formatKn(steerable.fix.sogKn, lang) : '—'}
-            </dd>
-          </dl>
-
-          <p className="live-view-next-event">
-            {nextEvent
-              ? `${t('live.nextEvent.label', { distance: formatNm(nextEvent.distNm, lang) })} ${t(
-                  nextEvent.kind === 'motor-start'
-                    ? 'live.nextEvent.motorStart'
-                    : MANEUVER_LABEL_KEY[nextEvent.kind],
-                )}`
-              : t('live.nextEvent.none')}
-          </p>
-
-          <p className="live-view-eta tabular-nums">
-            {t('live.eta.label')}: {etaMs !== null ? formatTime(etaMs, lang) : '—'}
-            {driftMs !== null && ` (${formatDriftMin(driftMs)})`}
-          </p>
         </div>
       )}
 
@@ -452,20 +659,17 @@ export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: 
         <div className="live-view-reroute">
           <Button
             variant="secondary"
-            disabled={simActive || fix === null || !gps.reroute.allowed || reroute.busy}
+            disabled={simActive || fix === null || !rr.allowed || reroute.busy}
             aria-busy={reroute.rerouting}
+            aria-describedby="live-reroute-reason"
             onClick={() => {
               if (fix) reroute.onReroute(fix.point);
             }}
           >
             {reroute.rerouting ? t('live.reroute.busy') : t('live.reroute.action')}
           </Button>
-          <p className="live-view-reroute-hint">
-            {simActive
-              ? liveSimDict[lang]['liveSim.reroute.disabled']
-              : fix === null
-                ? t('live.reroute.needFix')
-                : t('live.reroute.hint')}
+          <p id="live-reroute-reason" className="live-view-reroute-hint">
+            {rerouteReason()}
           </p>
         </div>
       )}

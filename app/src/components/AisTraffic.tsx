@@ -290,8 +290,10 @@ export default function AisTraffic({
     };
   }, [map]);
 
-  // #158: activeLegIndex is a hysteresis-free per-fix argmin — near a leg
-  // boundary GPS noise flips it between adjacent indices at fix rate. The
+  // #158: activeLegIndex still flips at fix rate near a leg boundary once the
+  // rival leg is nearer by LEG_SWITCH_MARGIN_NM (LiveView applies
+  // stepActiveLeg, #1803) — noise beyond that margin flips it between
+  // adjacent indices. The
   // corridor consumes it through the settle gate: a genuine leg advance is
   // adopted after 2 s; sustained boundary jitter never settles, so the memo
   // below never recomputes at fix rate. A plan/rig identity change is NEVER

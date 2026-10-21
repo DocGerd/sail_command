@@ -393,9 +393,6 @@ function AppShell() {
   const [liveTracking, setLiveTracking] = useState(false);
   const gps = useOwnshipGps(settings.showOwnship, liveTracking);
   const { fix: ownshipFix, hintVisible: ownshipHintVisible, dismissHint: dismissOwnshipHint } = gps;
-  // Ruling (h): never a confident marker at an old position. L3a replaces this
-  // with a stale marker style.
-  const markerFix = gps.state === 'fresh' || gps.state === 'stale' ? gps.fix : null;
 
   // #983: the app-level plan-completion announcement (PlanCompletionAnnouncer,
   // mounted unconditionally below, regardless of `tab`) — see that
@@ -1735,13 +1732,13 @@ function AppShell() {
             onArmedRouteTapInsert={handleRouteLineArmedTap}
           />
           {/* #25 addendum: the standalone ownship marker — always mounted
-              (like DataLayers above), gated only on there being a usable fix,
+              (like DataLayers above), gated only on there being a fix (kept through stale, lost and denied; drawn dimmed only when lost or denied),
               which useOwnshipGps produces while settings.showOwnship is on or
               Live tracking runs. Renders in ANY tab/plan state, Live View included; LiveView
               itself no longer renders a marker (see its #25 comment), so this
               is the single place BoatMarker ever renders — no dedupe logic
               needed beyond that. */}
-          <OwnshipMarker fix={markerFix} />
+          <OwnshipMarker fix={ownshipFix} stale={gps.state === 'lost' || gps.state === 'denied'} />
           {/* LiveView must live inside MapView's subtree: useMapInstance()
               (its BoatMarker child calls it) reads the map instance off a
               React context that MapView provides, and only descendants of
@@ -1926,9 +1923,7 @@ function AppShell() {
             and gating on settings alone both avoids that false positive AND
             covers exactly what's editable from a non-Plan tab). */}
         {settingsDirty && <Banner kind="warning">{t('planner.result.stale')}</Banner>}
-        {/* The shared GPS source's one-time hint (lib/gpsHint.ts's claim). On
-            the Live tab LiveView shows it inline instead, so it never shows
-            twice. */}
+        {/* The shared GPS source's one-time hint (lib/gpsHint.ts's claim). Hidden on the Live tab, where LiveView shows the waiting/lost/denied state every time instead. */}
         {ownshipHintVisible && tab !== 'live' && (
           <Banner kind="warning" onDismiss={dismissOwnshipHint} dismissLabel={t('banner.dismiss')}>
             {t('live.gpsHint')}
