@@ -167,6 +167,42 @@ describe('NavMask closure-free walkers vs the walkCells originals', () => {
   });
 });
 
+describe('NavMask walkers across an approach gate bounding-box edge', () => {
+  const centre = pointAt(100.5, 160.5);
+  const gate = approachGate(TEST_MASK_META, [centre], 3.0, [2.3], APPROACH_RADIUS_M);
+  const cellCentre = (row: number, col: number) => pointAt(row + 0.5, col + 0.5);
+
+  it('keeps the requested gate for bbox cells outside every disc and the relaxed gate inside one', () => {
+    if (gate.kind !== 'approach') throw new Error('expected an approach gate');
+    // Row 97 / col 155 is inside the union bbox but outside the ellipse.
+    expect(gate.rowLo).toBeLessThanOrEqual(97);
+    expect(gate.colLo).toBeLessThanOrEqual(155);
+    expect(gate.colLo).toBeGreaterThan(140);
+    const corner = makeMask((r, c) => (r === 97 && c === 155 ? 25 : 200));
+    const inDisc = makeMask((r, c) => (r === 100 && c === 160 ? 25 : 200));
+
+    const cornerOutcome = expectWalkersMatchOracle(
+      corner,
+      cellCentre(97, 140),
+      cellCentre(97, 180),
+      gate,
+      'bbox corner shoal',
+    );
+    expect(cornerOutcome.navigable).toBe(false);
+    expect(cornerOutcome.clearance).toBeNull();
+
+    const discOutcome = expectWalkersMatchOracle(
+      inDisc,
+      cellCentre(100, 140),
+      cellCentre(100, 180),
+      gate,
+      'in-disc shoal',
+    );
+    expect(discOutcome.navigable).toBe(true);
+    expect(discOutcome.clearance).toBe(2.5);
+  });
+});
+
 describe('NavMask per-gate byte tables', () => {
   const gates: number[] = [
     -Infinity,
