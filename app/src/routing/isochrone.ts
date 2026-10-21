@@ -279,7 +279,38 @@ export function defaultMaxFrontier(meta: {
  */
 export const DEADLINE_CHECK_NODES = 128;
 const EXTRA_TWAS = [45, 55, 65, 75, 85, 95, 105, 115, 125, 135, 145, 155, 165, 175];
-const MOTOR_TWAS = [0, 20, 35];
+// The fixed TWAs, already deduped among themselves (all >= 10 deg apart, and
+// -0 is dropped as +0 would drop it), so only the beat/gybe entries can collide.
+const FIXED_SAIL_TWAS = EXTRA_TWAS.flatMap((m) => [m, -m]);
+const FIXED_SAIL_MOTOR_TWAS = [...FIXED_SAIL_TWAS, 0, 20, -20, 35, -35];
+
+/** Signed TWA candidates for one node, deduped within 1 deg, plus the direct TWA. */
+export function sailCandidates(
+  beatDeg: number,
+  gybeDeg: number,
+  motorEnabled: boolean,
+  directTwa: number,
+): number[] {
+  const twas: number[] = [];
+  for (const m of [beatDeg, gybeDeg])
+    for (const s of [1, -1]) {
+      const t = s * m;
+      if (!twas.some((x) => Math.abs(x - t) < 1)) twas.push(t);
+    }
+  const nHead = twas.length;
+  for (const t of motorEnabled ? FIXED_SAIL_MOTOR_TWAS : FIXED_SAIL_TWAS) {
+    let hit = false;
+    for (let i = 0; i < nHead; i++)
+      if (Math.abs(twas[i] - t) < 1) {
+        hit = true;
+        break;
+      }
+    if (!hit) twas.push(t);
+  }
+  if (!twas.includes(180)) twas.push(180);
+  if (!twas.some((x) => Math.abs(x - directTwa) < 0.5)) twas.push(directTwa);
+  return twas;
+}
 // #885: a forced-motor segment has no sail up, so candidates are headings, not
 // TWAs. 10° spacing gives 36 headings (+ the direct bearing), against today's
 // ~39-entry per-node TWA set with motor enabled.
@@ -673,22 +704,12 @@ export function solve(p: SolveParams): SolveResult {
           ? FORCED_MOTOR_HEADINGS
           : [...FORCED_MOTOR_HEADINGS, bearingToDest];
       } else {
-        const mags = [
+        candidates = sailCandidates(
           polar.beatAngleDeg(w.speedKn),
           polar.gybeAngleDeg(w.speedKn),
-          ...EXTRA_TWAS,
-          ...(motorEnabled ? MOTOR_TWAS : []),
-        ];
-        const twas: number[] = [];
-        for (const m of mags)
-          for (const s of [1, -1]) {
-            const t = s * m;
-            if (!twas.some((x) => Math.abs(x - t) < 1)) twas.push(t);
-          }
-        if (!twas.includes(180)) twas.push(180);
-        const directTwa = normalizeDeg180(w.dirFromDeg - bearingToDest);
-        if (!twas.some((x) => Math.abs(x - directTwa) < 0.5)) twas.push(directTwa);
-        candidates = twas;
+          motorEnabled,
+          normalizeDeg180(w.dirFromDeg - bearingToDest),
+        );
       }
 
       let produced = 0;
