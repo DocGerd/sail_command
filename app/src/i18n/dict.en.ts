@@ -1295,6 +1295,7 @@ export const en = {
   'ais.status.off': 'AIS off — add a key under Boat › Live & AIS',
   'ais.status.connecting': 'AIS connecting…',
   'ais.status.live': 'AIS live · {count} vessels',
+  'ais.status.noTraffic': 'AIS connected · no traffic in view',
   'ais.status.offline': 'AIS offline',
   'ais.status.keyError': 'AIS: check your API key',
   'ais.status.liveRoute': 'AIS live · {count} vessels ({routeCount} along route)',

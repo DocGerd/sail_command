@@ -15,7 +15,7 @@ import {
 } from '../lib/aisTargets';
 import { countTargetsInCorridor } from '../lib/routeCorridor';
 
-export type AisStatus = 'off' | 'connecting' | 'live' | 'offline' | 'keyError';
+export type AisStatus = 'off' | 'connecting' | 'live' | 'noTraffic' | 'offline' | 'keyError';
 
 /**
  * #158: settle gate for jittery inputs. Returns `value` only once it has held
@@ -68,8 +68,16 @@ export interface UseAisTrafficInput {
   visible: boolean;
 }
 
+export interface AisClientOptions {
+  keyProven: boolean;
+}
+
 export interface UseAisTrafficDeps {
-  createClient?: (apiKey: string, callbacks: AisStreamCallbacks) => AisClientLike;
+  createClient?: (
+    apiKey: string,
+    callbacks: AisStreamCallbacks,
+    options: AisClientOptions,
+  ) => AisClientLike;
   now?: () => number;
 }
 
@@ -80,8 +88,38 @@ export interface UseAisTrafficResult {
   routeCount: number;
 }
 
-function defaultCreateClient(apiKey: string, callbacks: AisStreamCallbacks): AisClientLike {
-  return new AisStreamClient(apiKey, callbacks, { socketFactory: browserAisSocket });
+function defaultCreateClient(
+  apiKey: string,
+  callbacks: AisStreamCallbacks,
+  options: AisClientOptions,
+): AisClientLike {
+  return new AisStreamClient(apiKey, callbacks, {
+    socketFactory: browserAisSocket,
+    keyProven: options.keyProven,
+  });
+}
+
+function sameSnapshot(a: AisTargetSnapshot, b: AisTargetSnapshot): boolean {
+  return (
+    a.mmsi === b.mmsi &&
+    a.position.lat === b.position.lat &&
+    a.position.lon === b.position.lon &&
+    a.sogKn === b.sogKn &&
+    a.cogDeg === b.cogDeg &&
+    a.headingDeg === b.headingDeg &&
+    a.name === b.name &&
+    a.shipType === b.shipType &&
+    a.lastUpdateMs === b.lastUpdateMs &&
+    a.tier === b.tier
+  );
+}
+
+/** Order-sensitive; the store iterates in insertion order, so an idle sea is equal. */
+export function sameSnapshots(
+  a: readonly AisTargetSnapshot[],
+  b: readonly AisTargetSnapshot[],
+): boolean {
+  return a.length === b.length && a.every((t, i) => sameSnapshot(t, b[i]));
 }
 
 /**
@@ -106,6 +144,10 @@ export function useAisTraffic(
   const storeRef = useRef<Map<string, AisTarget>>(new Map());
   const clientRef = useRef<AisClientLike | null>(null);
   const clientKeyRef = useRef<string | null>(null);
+  // The key a client has already proven. Outlives the client: gates closing
+  // (offline, hidden tab) discard it, and a fresh one for the same key must not
+  // re-enter the wrong-key early-close path.
+  const provenKeyRef = useRef<string | null>(null);
   // ownMmsi read through a ref so the client's long-lived onMessage closure
   // always filters against the latest value without recreating the client.
   // Synced in an effect (not during render) — the react-hooks lint rule
@@ -120,6 +162,11 @@ export function useAisTraffic(
   useEffect(() => {
     corridorBoxesRef.current = corridorBoxes;
   }, [corridorBoxes]);
+  // The user's own transponder is never a target, including one stored before
+  // the MMSI was entered (ingest filters only what arrives afterwards).
+  useEffect(() => {
+    if (ownMmsi) storeRef.current.delete(ownMmsi);
+  }, [ownMmsi]);
 
   const [clientStatus, setClientStatus] = useState<AisClientStatus>('closed');
   const [targets, setTargets] = useState<AisTargetSnapshot[]>([]);
@@ -134,7 +181,9 @@ export function useAisTraffic(
       const t = now();
       sweepDropped(storeRef.current, t);
       const snap = snapshotTargets(storeRef.current, t);
-      setTargets(snap);
+      // An unchanged set keeps its identity, so AisLayer's setData effect and
+      // the in-view list skip their per-second work.
+      setTargets((prev) => (sameSnapshots(prev, snap) ? prev : snap));
       setRouteCount(countTargetsInCorridor(snap, corridorBoxesRef.current));
     }, 1000);
     return () => clearInterval(id);
@@ -160,10 +209,17 @@ export function useAisTraffic(
     }
     if (!clientRef.current || clientKeyRef.current !== apiKey) {
       clientRef.current?.stop();
-      const client = createClient(apiKey, {
-        onMessage: (msg) => mergeAisMessage(storeRef.current, msg, now(), ownMmsiRef.current),
-        onStatus: (s) => setClientStatus(s),
-      });
+      const client = createClient(
+        apiKey,
+        {
+          onMessage: (msg) => mergeAisMessage(storeRef.current, msg, now(), ownMmsiRef.current),
+          onStatus: (s) => setClientStatus(s),
+          onKeyProven: () => {
+            provenKeyRef.current = apiKey;
+          },
+        },
+        { keyProven: provenKeyRef.current === apiKey },
+      );
       clientRef.current = client;
       clientKeyRef.current = apiKey;
       client.start(bboxes);
@@ -200,7 +256,9 @@ export function useAisTraffic(
         ? 'keyError'
         : effectiveStatus === 'live'
           ? 'live'
-          : 'connecting';
+          : effectiveStatus === 'noTraffic'
+            ? 'noTraffic'
+            : 'connecting';
 
   return { status, targets, targetCount: targets.length, routeCount };
 }

@@ -1278,6 +1278,7 @@ export const de = {
   'ais.status.off': 'AIS aus — Schlüssel unter Boot › Live & AIS',
   'ais.status.connecting': 'AIS verbindet…',
   'ais.status.live': 'AIS live · {count} Schiffe',
+  'ais.status.noTraffic': 'AIS verbunden · kein Verkehr im Ausschnitt',
   'ais.status.offline': 'AIS offline',
   'ais.status.keyError': 'AIS: API-Schlüssel prüfen',
   'ais.status.liveRoute': 'AIS live · {count} Schiffe ({routeCount} entlang Route)',
