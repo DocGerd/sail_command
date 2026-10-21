@@ -628,6 +628,107 @@ describe('usePlanFlow', () => {
     });
   });
 
+  it('progress: a salvage second pass on the same rig still renders (#1779)', async () => {
+    const now = { value: 1_700_000_000_000 };
+    vi.spyOn(Date, 'now').mockImplementation(() => now.value);
+    const w = fakeWorker();
+    vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
+    const { result } = renderHook(
+      () =>
+        usePlanFlow({
+          fetchWind: vi.fn().mockResolvedValue(uniformWindGrid(12, 0)),
+          save: vi.fn<(plan: Plan) => Promise<void>>().mockResolvedValue(undefined),
+          makeClient: () => new RoutingClient(() => w as unknown as Worker),
+        }),
+      { wrapper: AppStateProvider },
+    );
+    let runPromise!: Promise<void>;
+    await act(async () => {
+      runPromise = result.current.run(REQ, 'Test plan');
+      await flush();
+    });
+    const planMsg = findPosted(w.posted, 'plan');
+    now.value += 150;
+    act(() => {
+      w.emit({ type: 'progress', id: planMsg.id, sailId: 'genoa', tMs: 1000, frontierSize: 3 });
+    });
+    expect(result.current.planning).toEqual({
+      phase: 'routing',
+      sailId: 'genoa',
+      index: 1,
+      total: 2,
+    });
+    now.value += 150;
+    act(() => {
+      w.emit({
+        type: 'progress',
+        id: planMsg.id,
+        sailId: 'genoa',
+        tMs: 1000,
+        frontierSize: 3,
+        secondPass: true,
+      });
+    });
+    expect(result.current.planning).toEqual({
+      phase: 'routing',
+      sailId: 'genoa',
+      index: 1,
+      total: 2,
+      secondPass: true,
+    });
+    await act(async () => {
+      w.emit({ type: 'result', id: planMsg.id, result: OK_RESULT });
+      await runPromise;
+    });
+  });
+
+  it('refusals: error to error with another key or other vars still renders (#1779)', async () => {
+    const w = fakeWorker();
+    vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
+    const via1 = { lat: 54.76, lon: 10.1 };
+    const via2 = destinationPoint(via1, 10, 50 / 1852);
+    const via3 = { lat: 54.8, lon: 10.2 };
+    const conflictAt2 = {
+      ...REQ,
+      viaPoints: [via1, via2],
+      segmentModes: [null, 'motor', 'sail'] as const,
+    };
+    const conflictAt3 = {
+      ...REQ,
+      viaPoints: [via3, via1, via2],
+      segmentModes: [null, null, 'motor', 'sail'] as const,
+    };
+    const { result } = renderHook(
+      () =>
+        usePlanFlow({
+          fetchWind: vi.fn().mockResolvedValue(uniformWindGrid(12, 0)),
+          makeClient: () => new RoutingClient(() => w as unknown as Worker),
+        }),
+      { wrapper: AppStateProvider },
+    );
+    await runExpectingRefusal(result, conflictAt2, 'A');
+    expect(result.current.planning).toMatchObject({ messageVars: { waypoint: 2 } });
+    await runExpectingRefusal(result, conflictAt3, 'B');
+    expect(result.current.planning).toMatchObject({ messageVars: { waypoint: 3 } });
+    vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false);
+    await runExpectingRefusal(result, REQ, 'C');
+    expect(result.current.planning).toEqual({ phase: 'error', messageKey: 'error.offline' });
+    vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(true);
+    await runExpectingRefusal(
+      result,
+      {
+        ...REQ,
+        settings: { ...REQ.settings, motorEnabled: false },
+        segmentModes: ['motor'] as const,
+      },
+      'D',
+    );
+    expect(result.current.planning).toEqual({
+      phase: 'error',
+      messageKey: 'error.noRoute.segmentModeConflict',
+    });
+  });
+
   it('a relaxed-depth probe enters probing-depth, and the relaxed re-solve renders as its own routing state — never a regression (#53/#68/#340)', async () => {
     let now = 1_700_000_000_000;
     vi.spyOn(Date, 'now').mockImplementation(() => now);
