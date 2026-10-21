@@ -1044,26 +1044,25 @@ describe('PlannerPanel', () => {
     expect(plannerStatus()).toHaveTextContent('Fetching wind forecast');
   });
 
-  // #340: the readout is a bounded phase indicator ("sail N of 2 (Rig)"),
-  // not a percentage — pinning literal text for both rigs so a mixed-up
-  // index/rig-name substitution would fail visibly.
-  it('renders the genoa routing phase as "sail 1 of 2 (Genoa)"', () => {
-    renderPanel({ planning: { phase: 'routing', sailId: 'genoa', index: 1, total: 2 } });
-    expect(plannerStatus()).toHaveTextContent('Calculating route… sail 1 of 2 (Genoa)');
-  });
+  // #340: the readout is a bounded phase indicator, not a percentage. Rigs
+  // may solve concurrently, so it names the phase, never a rig: progress
+  // from either rig must read the same.
+  it.each(['genoa', 'fock'] as const)(
+    'renders the routing phase without naming a rig (%s)',
+    (sailId) => {
+      renderPanel({
+        planning: { phase: 'routing', sailId, index: sailId === 'genoa' ? 1 : 2, total: 2 },
+      });
+      expect(plannerStatus()).toHaveTextContent('Calculating route for all sails…');
+      expect(plannerStatus()).not.toHaveTextContent(/Genoa|Fock|\bof 2\b/);
+    },
+  );
 
   it('#1136: renders a second-pass routing phase distinctly from the first pass', () => {
     renderPanel({
       planning: { phase: 'routing', sailId: 'genoa', index: 1, total: 2, secondPass: true },
     });
-    expect(plannerStatus()).toHaveTextContent(
-      'No route found — second search pass… sail 1 of 2 (Genoa)',
-    );
-  });
-
-  it('renders the fock routing phase as "sail 2 of 2 (Fock)" — the genoa->fock switch is not a regression', () => {
-    renderPanel({ planning: { phase: 'routing', sailId: 'fock', index: 2, total: 2 } });
-    expect(plannerStatus()).toHaveTextContent('Calculating route… sail 2 of 2 (Fock)');
+    expect(plannerStatus()).toHaveTextContent('No route found — second search pass for all sails…');
   });
 
   it('does NOT render a plan-run error inline (the App banner is the single alert surface)', () => {
