@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { watchPosition } from './geolocation';
+import { GPS_WATCH_MAXIMUM_AGE_MS, GPS_WATCH_TIMEOUT_MS, watchPosition } from './geolocation';
 
 function fakePosition(overrides: Partial<GeolocationCoordinates> = {}): GeolocationPosition {
   const coords: GeolocationCoordinates = {
@@ -35,24 +35,34 @@ afterEach(() => {
 describe('watchPosition', () => {
   it('passes enableHighAccuracy: true to navigator.geolocation.watchPosition', () => {
     const geoWatchPosition = vi.fn().mockReturnValue(1);
-    vi.stubGlobal('navigator', { geolocation: { watchPosition: geoWatchPosition, clearWatch: vi.fn() } });
+    vi.stubGlobal('navigator', {
+      geolocation: { watchPosition: geoWatchPosition, clearWatch: vi.fn() },
+    });
 
     watchPosition(vi.fn(), vi.fn());
 
     expect(geoWatchPosition).toHaveBeenCalledTimes(1);
     const opts = geoWatchPosition.mock.calls[0][2];
-    expect(opts).toMatchObject({ enableHighAccuracy: true });
+    expect(opts).toEqual({
+      enableHighAccuracy: true,
+      timeout: GPS_WATCH_TIMEOUT_MS,
+      maximumAge: GPS_WATCH_MAXIMUM_AGE_MS,
+    });
   });
 
   it('converts speed from m/s to knots and passes through position/heading/accuracy', () => {
     const geoWatchPosition = vi.fn().mockReturnValue(1);
-    vi.stubGlobal('navigator', { geolocation: { watchPosition: geoWatchPosition, clearWatch: vi.fn() } });
+    vi.stubGlobal('navigator', {
+      geolocation: { watchPosition: geoWatchPosition, clearWatch: vi.fn() },
+    });
 
     const onFix = vi.fn();
     watchPosition(onFix, vi.fn());
     const successCb = geoWatchPosition.mock.calls[0][0] as (pos: GeolocationPosition) => void;
 
-    successCb(fakePosition({ latitude: 54.8, longitude: 10.1, heading: 123.4, speed: 5, accuracy: 12 }));
+    successCb(
+      fakePosition({ latitude: 54.8, longitude: 10.1, heading: 123.4, speed: 5, accuracy: 12 }),
+    );
 
     expect(onFix).toHaveBeenCalledTimes(1);
     const fix = onFix.mock.calls[0][0];
@@ -64,7 +74,9 @@ describe('watchPosition', () => {
 
   it('is null-safe: missing heading/speed map to null, not NaN or 0', () => {
     const geoWatchPosition = vi.fn().mockReturnValue(1);
-    vi.stubGlobal('navigator', { geolocation: { watchPosition: geoWatchPosition, clearWatch: vi.fn() } });
+    vi.stubGlobal('navigator', {
+      geolocation: { watchPosition: geoWatchPosition, clearWatch: vi.fn() },
+    });
 
     const onFix = vi.fn();
     watchPosition(onFix, vi.fn());
@@ -72,14 +84,14 @@ describe('watchPosition', () => {
 
     successCb(fakePosition({ heading: null, speed: null }));
 
-    expect(onFix).toHaveBeenCalledWith(
-      expect.objectContaining({ cogDeg: null, sogKn: null }),
-    );
+    expect(onFix).toHaveBeenCalledWith(expect.objectContaining({ cogDeg: null, sogKn: null }));
   });
 
   it('maps a NaN heading to null, keeping a legitimate speed of 0 as 0 (not null) — spec: heading is NaN, not null, whenever speed is 0 (e.g. a stationary fix)', () => {
     const geoWatchPosition = vi.fn().mockReturnValue(1);
-    vi.stubGlobal('navigator', { geolocation: { watchPosition: geoWatchPosition, clearWatch: vi.fn() } });
+    vi.stubGlobal('navigator', {
+      geolocation: { watchPosition: geoWatchPosition, clearWatch: vi.fn() },
+    });
 
     const onFix = vi.fn();
     watchPosition(onFix, vi.fn());
@@ -94,7 +106,9 @@ describe('watchPosition', () => {
 
   it('maps a NaN speed to null, for symmetry with the heading guard above (the spec does not rule it out)', () => {
     const geoWatchPosition = vi.fn().mockReturnValue(1);
-    vi.stubGlobal('navigator', { geolocation: { watchPosition: geoWatchPosition, clearWatch: vi.fn() } });
+    vi.stubGlobal('navigator', {
+      geolocation: { watchPosition: geoWatchPosition, clearWatch: vi.fn() },
+    });
 
     const onFix = vi.fn();
     watchPosition(onFix, vi.fn());
@@ -109,7 +123,9 @@ describe('watchPosition', () => {
 
   it("maps PERMISSION_DENIED to 'denied'", () => {
     const geoWatchPosition = vi.fn().mockReturnValue(1);
-    vi.stubGlobal('navigator', { geolocation: { watchPosition: geoWatchPosition, clearWatch: vi.fn() } });
+    vi.stubGlobal('navigator', {
+      geolocation: { watchPosition: geoWatchPosition, clearWatch: vi.fn() },
+    });
 
     const onError = vi.fn();
     watchPosition(vi.fn(), onError);
@@ -119,16 +135,36 @@ describe('watchPosition', () => {
     expect(onError).toHaveBeenCalledWith('denied');
   });
 
-  it.each([2, 3])("maps error code %d (POSITION_UNAVAILABLE/TIMEOUT) to 'unavailable'", (code) => {
+  it.each([
+    [2, 'unavailable'],
+    [3, 'timeout'],
+  ])('maps error code %d to %s', (code, kind) => {
     const geoWatchPosition = vi.fn().mockReturnValue(1);
-    vi.stubGlobal('navigator', { geolocation: { watchPosition: geoWatchPosition, clearWatch: vi.fn() } });
+    vi.stubGlobal('navigator', {
+      geolocation: { watchPosition: geoWatchPosition, clearWatch: vi.fn() },
+    });
 
     const onError = vi.fn();
     watchPosition(vi.fn(), onError);
     const errorCb = geoWatchPosition.mock.calls[0][1] as (err: GeolocationPositionError) => void;
 
     errorCb(fakePositionError(code));
-    expect(onError).toHaveBeenCalledWith('unavailable');
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledWith(kind);
+  });
+
+  it('passes the device pos.timestamp through as timestampMs', () => {
+    const geoWatchPosition = vi.fn().mockReturnValue(1);
+    vi.stubGlobal('navigator', {
+      geolocation: { watchPosition: geoWatchPosition, clearWatch: vi.fn() },
+    });
+
+    const onFix = vi.fn();
+    watchPosition(onFix, vi.fn());
+    const successCb = geoWatchPosition.mock.calls[0][0] as (pos: GeolocationPosition) => void;
+    successCb(fakePosition());
+
+    expect(onFix.mock.calls[0][0].timestampMs).toBe(1_700_000_000_000);
   });
 
   it("calls onError('unavailable') synchronously and returns a no-op unsubscribe when geolocation is absent", () => {

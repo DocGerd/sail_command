@@ -386,14 +386,13 @@ function AppShell() {
   // RoutingClient via ensureClient and reuses the plan's STORED wind grid —
   // never refetches, so it stays available offline.
   const liveReroute = useLiveReroute(ensureClient);
-  // #25 addendum: standalone "show my position" marker, decoupled from Live
-  // View — subscribes to GPS whenever the setting is on, regardless of
-  // tab/plan/active state (see useOwnshipGps.ts and OwnshipMarker.tsx).
-  const {
-    fix: ownshipFix,
-    hintVisible: ownshipHintVisible,
-    dismissHint: dismissOwnshipHint,
-  } = useOwnshipGps(settings.showOwnship);
+  // #1800: the one GPS source behind the boat marker and Live. It runs while
+  // the showOwnship setting is on OR Live tracking is active (reported by
+  // LiveView; false whenever the Live tab is not mounted). The setting itself
+  // is never written. See useOwnshipGps.ts and OwnshipMarker.tsx.
+  const [liveTracking, setLiveTracking] = useState(false);
+  const gps = useOwnshipGps(settings.showOwnship, liveTracking);
+  const { fix: ownshipFix, hintVisible: ownshipHintVisible, dismissHint: dismissOwnshipHint } = gps;
 
   // #983: the app-level plan-completion announcement (PlanCompletionAnnouncer,
   // mounted unconditionally below, regardless of `tab`) — see that
@@ -1733,13 +1732,13 @@ function AppShell() {
             onArmedRouteTapInsert={handleRouteLineArmedTap}
           />
           {/* #25 addendum: the standalone ownship marker — always mounted
-              (like DataLayers above), gated only on there being a fix, which
-              useOwnshipGps only ever produces while settings.showOwnship is
-              on. Renders in ANY tab/plan state, Live View included; LiveView
+              (like DataLayers above), gated only on there being a fix (kept through stale, lost and denied; drawn dimmed only when lost or denied),
+              which useOwnshipGps produces while settings.showOwnship is on or
+              Live tracking runs. Renders in ANY tab/plan state, Live View included; LiveView
               itself no longer renders a marker (see its #25 comment), so this
               is the single place BoatMarker ever renders — no dedupe logic
               needed beyond that. */}
-          <OwnshipMarker fix={ownshipFix} />
+          <OwnshipMarker fix={ownshipFix} stale={gps.state === 'lost' || gps.state === 'denied'} />
           {/* LiveView must live inside MapView's subtree: useMapInstance()
               (its BoatMarker child calls it) reads the map instance off a
               React context that MapView provides, and only descendants of
@@ -1762,6 +1761,8 @@ function AppShell() {
                 panelSlot={aisInViewSlot}
               />
               <LiveView
+                gps={gps}
+                onTrackingChange={setLiveTracking}
                 panelSlot={isWide ? liveSlot : null}
                 reroute={{
                   busy: runBusy,
@@ -1922,11 +1923,8 @@ function AppShell() {
             and gating on settings alone both avoids that false positive AND
             covers exactly what's editable from a non-Plan tab). */}
         {settingsDirty && <Banner kind="warning">{t('planner.result.stale')}</Banner>}
-        {/* #25 addendum: reuses the SAME one-time hint LiveView shows on its
-            own GPS denial (lib/gpsHint.ts's shared claim, live.gpsHint copy)
-            — whichever of the two consumers hits the denial first is the one
-            that ever shows it, so this is not a second, separate hint. */}
-        {ownshipHintVisible && (
+        {/* The shared GPS source's one-time hint (lib/gpsHint.ts's claim). Hidden on the Live tab, where LiveView shows the waiting/lost/denied state every time instead. */}
+        {ownshipHintVisible && tab !== 'live' && (
           <Banner kind="warning" onDismiss={dismissOwnshipHint} dismissLabel={t('banner.dismiss')}>
             {t('live.gpsHint')}
           </Banner>

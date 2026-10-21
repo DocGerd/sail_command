@@ -1,9 +1,15 @@
+import { useEffect } from 'react';
 import BoatMarker from './BoatMarker';
+import { useMapInstance } from './MapView';
 import type { GpsFix } from '../services/geolocation';
 
 export interface OwnshipMarkerProps {
   fix: GpsFix | null;
+  /** The fix is no longer current (signal lost or denied): draw the marker dimmed, without its projection vector and accuracy circle. */
+  stale?: boolean;
 }
+
+const STALE_MAP_CLASS = 'live-gps-lost';
 
 // #25 addendum: the standalone "show my position" marker. Renders BoatMarker
 // (+ its accuracy circle, both UNCHANGED — see BoatMarker.tsx) in ANY map
@@ -28,15 +34,23 @@ export interface OwnshipMarkerProps {
 // Not unit-tested beyond the props contract (OwnshipMarker.test.tsx, with
 // BoatMarker mocked): jsdom has no MapLibre/WebGL runtime, mirroring
 // BoatMarker.tsx/RouteLayer.tsx's own "not unit-tested" notes.
-export default function OwnshipMarker({ fix }: OwnshipMarkerProps) {
+export default function OwnshipMarker({ fix, stale = false }: OwnshipMarkerProps) {
+  const map = useMapInstance();
+  // BoatMarker owns its element, so the stale style is a class on the map container that CSS keys on.
+  useEffect(() => {
+    const container = map?.getContainer();
+    if (!container) return;
+    container.classList.toggle(STALE_MAP_CLASS, stale);
+    return () => container.classList.remove(STALE_MAP_CLASS);
+  }, [map, stale]);
   if (!fix) return null;
   return (
     <BoatMarker
       point={fix.point}
       cogDeg={fix.cogDeg}
-      sogKn={fix.sogKn}
+      sogKn={stale ? null : fix.sogKn}
       headingToSteerDeg={fix.cogDeg ?? 0}
-      accuracyM={fix.accuracyM}
+      accuracyM={stale ? 0 : fix.accuracyM}
     />
   );
 }

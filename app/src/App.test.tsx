@@ -48,6 +48,15 @@ import { boatById, sailIdsOf } from './data/boats';
 import { sailInventoryStorageKey, usePersistedSailInventory } from './lib/sailInventory';
 import { PLAN_SCHEMA_VERSION } from './types';
 
+// #1800: the marker's own rendering is covered by OwnshipMarker.test.tsx; here
+// only whether App hands it a fix matters.
+vi.mock('./components/OwnshipMarker', () => ({
+  default: ({ fix, stale }: { fix: { point: { lat: number } } | null; stale?: boolean }) =>
+    fix ? (
+      <div data-testid="ownship-marker" data-lat={fix.point.lat} data-stale={String(stale)} />
+    ) : null,
+}));
+
 // jsdom has no WebGL/canvas backend, so MapLibre GL is mocked wholesale here
 // (mirrors the "not unit-tested" notes in RouteLayer.tsx/BoatMarker.tsx —
 // this is the first suite to mount MapView, so it's the one that needs the
@@ -3768,6 +3777,112 @@ describe('session restore (#113)', () => {
       'aria-selected',
       'false',
     );
+  });
+
+  describe('shared GPS source (#1800)', () => {
+    type PosCb = (pos: unknown) => void;
+    function stubGeolocation() {
+      const cbs: PosCb[] = [];
+      const clearWatch = vi.fn();
+      const watch = vi.fn((success: PosCb) => {
+        cbs.push(success);
+        return cbs.length;
+      });
+      Object.defineProperty(window.navigator, 'geolocation', {
+        value: { watchPosition: watch, clearWatch },
+        configurable: true,
+      });
+      const emit = (lat: number, timestamp: number) =>
+        act(() =>
+          cbs[cbs.length - 1]({
+            coords: { latitude: lat, longitude: 9.4, accuracy: 8, heading: null, speed: null },
+            timestamp,
+          }),
+        );
+      return { watch, clearWatch, emit };
+    }
+    afterEach(() => {
+      cleanup(); // unmount cleanups still call clearWatch
+      delete (window.navigator as { geolocation?: unknown }).geolocation;
+    });
+
+    it('showOwnship on with Live inactive: one watch, and the marker follows each fix', async () => {
+      const geo = stubGeolocation();
+      await db.saveSettings({ ...DEFAULT_SETTINGS, showOwnship: true });
+      renderApp();
+      await screen.findByRole('heading', { name: 'SailCommand' });
+      await waitFor(() => expect(geo.watch).toHaveBeenCalledTimes(1));
+      expect(screen.queryByTestId('ownship-marker')).toBeNull();
+
+      geo.emit(54.8, 1000);
+      expect(await screen.findByTestId('ownship-marker')).toHaveAttribute('data-lat', '54.8');
+      geo.emit(54.9, 2000);
+      expect(screen.getByTestId('ownship-marker')).toHaveAttribute('data-lat', '54.9');
+      expect(geo.watch).toHaveBeenCalledTimes(1);
+    });
+
+    it('Live tracking with showOwnship off shows the marker, shares one watch, and never writes the setting', async () => {
+      const geo = stubGeolocation();
+      const saveSettings = vi.spyOn(db, 'saveSettings');
+      await db.savePlan(savedPlan('gps-live'));
+      localStorage.setItem('sc-session', '{"v":1,"planId":"gps-live","tab":"live","rig":"genoa"}');
+      renderApp();
+      const toggle = await screen.findByRole('button', { name: de['live.toggle'] });
+      expect(geo.watch).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('ownship-marker')).toBeNull();
+
+      fireEvent.click(toggle);
+      await waitFor(() => expect(geo.watch).toHaveBeenCalledTimes(1));
+      geo.emit(54.8, 1000);
+      expect(await screen.findByTestId('ownship-marker')).toHaveAttribute('data-lat', '54.8');
+
+      fireEvent.click(screen.getByRole('button', { name: de['live.toggle.stop'] }));
+      await waitFor(() => expect(geo.clearWatch).toHaveBeenCalledTimes(1));
+      expect(screen.queryByTestId('ownship-marker')).toBeNull();
+      expect(saveSettings).not.toHaveBeenCalled();
+      expect((await db.loadSettings())?.showOwnship ?? false).toBe(false);
+    });
+
+    it('#1802: the marker is handed the stale style once the signal is lost, and loses it on a fresh fix', async () => {
+      const geo = stubGeolocation();
+      await db.savePlan(savedPlan('gps-lost'));
+      localStorage.setItem('sc-session', '{"v":1,"planId":"gps-lost","tab":"live","rig":"genoa"}');
+      renderApp();
+      const toggle = await screen.findByRole('button', { name: de['live.toggle'] });
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance', 'Date'] });
+      try {
+        fireEvent.click(toggle);
+        geo.emit(54.8, 1000);
+        expect(screen.getByTestId('ownship-marker')).toHaveAttribute('data-stale', 'false');
+        act(() => void vi.advanceTimersByTime(29_000));
+        expect(screen.getByTestId('ownship-marker')).toHaveAttribute('data-stale', 'false');
+        act(() => void vi.advanceTimersByTime(1_000));
+        expect(screen.getByTestId('ownship-marker')).toHaveAttribute('data-stale', 'true');
+        geo.emit(54.8, 2000);
+        expect(screen.getByTestId('ownship-marker')).toHaveAttribute('data-stale', 'false');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('leaving the Live tab stops tracking; returning does not restart it', async () => {
+      const geo = stubGeolocation();
+      await db.savePlan(savedPlan('gps-tab'));
+      localStorage.setItem('sc-session', '{"v":1,"planId":"gps-tab","tab":"live","rig":"genoa"}');
+      renderApp();
+      fireEvent.click(await screen.findByRole('button', { name: de['live.toggle'] }));
+      await waitFor(() => expect(geo.watch).toHaveBeenCalledTimes(1));
+
+      fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+      await waitFor(() => expect(geo.clearWatch).toHaveBeenCalledTimes(1));
+
+      fireEvent.click(screen.getByRole('tab', { name: de['nav.live'] }));
+      expect(await screen.findByRole('button', { name: de['live.toggle'] })).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      );
+      expect(geo.watch).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('restoring into the Live tab never starts a GPS watch — tracking stays opt-in', async () => {
