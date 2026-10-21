@@ -5,6 +5,13 @@ import { gateAtCell, uniformGate, type DepthGate } from './depthGate';
 const LAND = 0;
 const NM_PER_M = 1 / 1852;
 
+/** Same decoding as `NavMask.byteToDepthM`, tabulated: byte 255 is the 25.4 m cap. */
+const DEPTH_BY_BYTE = new Float64Array(256);
+for (let b = 0; b < 256; b++) DEPTH_BY_BYTE[b] = b === LAND ? 0 : b === 255 ? 25.4 : b / 10;
+
+const NAV_TABLE_CACHE_MAX = 64;
+const CLEAR_OFFSET = 256;
+
 /**
  * Mirrors pipeline/build_mask.py's TOLERANCE_M (mask-build tolerance) on the
  * TypeScript side — nothing compiles across that Python/TS boundary, so
@@ -191,6 +198,7 @@ export class NavMask {
   readonly meta: MaskMeta;
   private data: Uint8Array;
   readonly grid: MaskGrid;
+  private readonly navTables = new Map<number, Uint8Array>();
 
   constructor(meta: MaskMeta, data: Uint8Array) {
     if (data.length !== meta.rows * meta.cols)
@@ -265,6 +273,27 @@ export class NavMask {
   }
 
   /**
+   * Two 256-entry byte tables for the scalar `gateM`. `[byte]` is 1 exactly
+   * when `cellNavigable` accepts the byte (`>=` form); `[CLEAR_OFFSET + byte]`
+   * is 1 exactly when `segmentClearanceM` accepts it (`!(depth < gate)` form).
+   * They differ only for a NaN gate.
+   */
+  private navigableTable(gateM: number): Uint8Array {
+    let table = this.navTables.get(gateM);
+    if (table === undefined) {
+      if (this.navTables.size >= NAV_TABLE_CACHE_MAX) this.navTables.clear();
+      table = new Uint8Array(2 * CLEAR_OFFSET);
+      for (let b = 0; b < 256; b++) {
+        const d = DEPTH_BY_BYTE[b];
+        table[b] = b !== LAND && d >= gateM ? 1 : 0;
+        table[CLEAR_OFFSET + b] = b !== LAND && !(d < gateM) ? 1 : 0;
+      }
+      this.navTables.set(gateM, table);
+    }
+    return table;
+  }
+
+  /**
    * Amanatides–Woo grid traversal from a to b, visiting every touched cell in
    * order. `visit` returning false aborts the walk. Returns true only when the
    * walk reached b's cell with every visit accepting; false on an abort or
@@ -308,7 +337,54 @@ export class NavMask {
 
   /** Every cell the a→b segment touches must be navigable at the given gate. */
   segmentNavigable(a: LatLon, b: LatLon, gate: DepthGate): boolean {
-    return this.walkCells(a, b, (row, col) => this.cellNavigable(row, col, gate));
+    // Closure-free copy of walkCells' traversal (hot path): keep both in step.
+    const { lat, lon } = this.grid;
+    const { rows, cols } = this.meta;
+    const data = this.data;
+    const approach = gate.kind === 'approach' ? gate : null;
+    const table = this.navigableTable(gate.kind === 'uniform' ? gate.gateM : gate.requestedDepthM);
+    const x0 = lon.coord(a.lon);
+    const y0 = lat.coord(a.lat);
+    const x1 = lon.coord(b.lon);
+    const y1 = lat.coord(b.lat);
+    let cx = lon.index(a.lon);
+    let cy = lat.index(a.lat);
+    const ex = lon.index(b.lon);
+    const ey = lat.index(b.lat);
+    const dx = x1 - x0;
+    const dy = y1 - y0;
+    const stepX = dx > 0 ? 1 : dx < 0 ? -1 : 0;
+    const stepY = dy > 0 ? 1 : dy < 0 ? -1 : 0;
+    const tDeltaX = stepX === 0 ? Infinity : Math.abs(1 / dx);
+    const tDeltaY = stepY === 0 ? Infinity : Math.abs(1 / dy);
+    let tMaxX = stepX === 0 ? Infinity : (stepX > 0 ? cx + 1 - x0 : x0 - cx) * tDeltaX;
+    let tMaxY = stepY === 0 ? Infinity : (stepY > 0 ? cy + 1 - y0 : y0 - cy) * tDeltaY;
+    const maxIter = rows + cols + 4;
+
+    for (let iter = -1; iter < maxIter; iter++) {
+      if (iter >= 0) {
+        if (cx === ex && cy === ey) return true;
+        if (tMaxX < tMaxY) {
+          cx += stepX;
+          tMaxX += tDeltaX;
+        } else {
+          cy += stepY;
+          tMaxY += tDeltaY;
+        }
+      }
+      if (cy < 0 || cy >= rows || cx < 0 || cx >= cols) return false;
+      const byte = data[cy * cols + cx];
+      if (
+        approach !== null &&
+        cy >= approach.rowLo &&
+        cy <= approach.rowHi &&
+        cx >= approach.colLo &&
+        cx <= approach.colHi
+      ) {
+        if (byte === LAND || !(DEPTH_BY_BYTE[byte] >= gateAtCell(approach, cy, cx))) return false;
+      } else if (table[byte] === 0) return false;
+    }
+    return false;
   }
 
   /**
@@ -334,18 +410,57 @@ export class NavMask {
    * if either bound widens past 25.4 m.
    */
   segmentClearanceM(a: LatLon, b: LatLon, gate: DepthGate): number | null {
-    let min = Infinity;
+    // Closure-free copy of walkCells' traversal (hot path): keep both in step.
+    const { lat, lon } = this.grid;
     const { rows, cols } = this.meta;
-    const completed = this.walkCells(a, b, (row, col) => {
-      if (row < 0 || row >= rows || col < 0 || col >= cols) return false;
-      const byte = this.depthByte(row, col);
-      if (byte === LAND) return false;
-      const depthM = this.byteToDepthM(byte);
-      if (depthM < gateAtCell(gate, row, col)) return false;
+    const data = this.data;
+    const approach = gate.kind === 'approach' ? gate : null;
+    const table = this.navigableTable(gate.kind === 'uniform' ? gate.gateM : gate.requestedDepthM);
+    const x0 = lon.coord(a.lon);
+    const y0 = lat.coord(a.lat);
+    const x1 = lon.coord(b.lon);
+    const y1 = lat.coord(b.lat);
+    let cx = lon.index(a.lon);
+    let cy = lat.index(a.lat);
+    const ex = lon.index(b.lon);
+    const ey = lat.index(b.lat);
+    const dx = x1 - x0;
+    const dy = y1 - y0;
+    const stepX = dx > 0 ? 1 : dx < 0 ? -1 : 0;
+    const stepY = dy > 0 ? 1 : dy < 0 ? -1 : 0;
+    const tDeltaX = stepX === 0 ? Infinity : Math.abs(1 / dx);
+    const tDeltaY = stepY === 0 ? Infinity : Math.abs(1 / dy);
+    let tMaxX = stepX === 0 ? Infinity : (stepX > 0 ? cx + 1 - x0 : x0 - cx) * tDeltaX;
+    let tMaxY = stepY === 0 ? Infinity : (stepY > 0 ? cy + 1 - y0 : y0 - cy) * tDeltaY;
+    const maxIter = rows + cols + 4;
+    let min = Infinity;
+
+    for (let iter = -1; iter < maxIter; iter++) {
+      if (iter >= 0) {
+        if (cx === ex && cy === ey) return min;
+        if (tMaxX < tMaxY) {
+          cx += stepX;
+          tMaxX += tDeltaX;
+        } else {
+          cy += stepY;
+          tMaxY += tDeltaY;
+        }
+      }
+      if (cy < 0 || cy >= rows || cx < 0 || cx >= cols) return null;
+      const byte = data[cy * cols + cx];
+      const depthM = DEPTH_BY_BYTE[byte];
+      if (
+        approach !== null &&
+        cy >= approach.rowLo &&
+        cy <= approach.rowHi &&
+        cx >= approach.colLo &&
+        cx <= approach.colHi
+      ) {
+        if (byte === LAND || depthM < gateAtCell(approach, cy, cx)) return null;
+      } else if (table[CLEAR_OFFSET + byte] === 0) return null;
       if (depthM < min) min = depthM;
-      return true;
-    });
-    return completed ? min : null;
+    }
+    return null;
   }
 
   /**
