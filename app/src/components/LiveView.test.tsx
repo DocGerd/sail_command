@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useState, type ComponentProps, type ReactNode } from 'react';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppStateProvider, useActivePlan } from '../state/AppState';
@@ -11,6 +11,8 @@ import { formatHeading, formatNm } from '../lib/format';
 import type { GpsErrorKind, GpsFix } from '../services/geolocation';
 import { DEFAULT_SETTINGS, type Leg, type MaskMeta, type Plan } from '../types';
 import LiveView from './LiveView';
+import { useOwnshipGps } from '../state/useOwnshipGps';
+import type { watchPosition as realWatchPosition } from '../services/geolocation';
 // #25 addendum: LiveView no longer renders BoatMarker at all (that moved to
 // the standalone OwnshipMarker) — mocked here purely so the dedupe test
 // below can prove the import was actually removed, not just that this test
@@ -177,6 +179,20 @@ function ActiveLegProbe() {
   return <span data-testid="shared-active-leg">{activeLegIndex ?? 'none'}</span>;
 }
 
+// Mirrors App.tsx's wiring: one shared GPS source, tracking reported up.
+function LiveViewHost({
+  watchPosition,
+  showOwnship = false,
+  ...props
+}: { watchPosition: typeof realWatchPosition; showOwnship?: boolean } & Omit<
+  ComponentProps<typeof LiveView>,
+  'gps' | 'onTrackingChange'
+>) {
+  const [tracking, setTracking] = useState(false);
+  const gps = useOwnshipGps(showOwnship, tracking, watchPosition);
+  return <LiveView gps={gps} onTrackingChange={setTracking} {...props} />;
+}
+
 function fakeWatchPosition() {
   let onFixCb: ((fix: GpsFix) => void) | null = null;
   let onErrorCb: ((kind: GpsErrorKind) => void) | null = null;
@@ -210,7 +226,7 @@ function renderLive(
     <I18nProvider>
       <AppStateProvider>
         {plan && <TestSetPlan plan={plan} />}
-        <LiveView watchPosition={watchPosition} />
+        <LiveViewHost watchPosition={watchPosition} />
         {extra}
       </AppStateProvider>
     </I18nProvider>,
@@ -365,7 +381,7 @@ describe('LiveView', () => {
         <AppStateProvider>
           <TestSetPlan plan={TEST_PLAN} />
           <ActiveLegProbe />
-          {withLive && <LiveView watchPosition={wp} />}
+          {withLive && <LiveViewHost watchPosition={wp} />}
         </AppStateProvider>
       </I18nProvider>
     );
@@ -485,7 +501,7 @@ describe('LiveView', () => {
       <I18nProvider>
         <AppStateProvider>
           <TestSetPlan plan={TEST_PLAN} />
-          <LiveView watchPosition={wp} panelSlot={slot} />
+          <LiveViewHost watchPosition={wp} panelSlot={slot} />
         </AppStateProvider>
       </I18nProvider>,
     );
@@ -531,7 +547,7 @@ describe('LiveView', () => {
         <I18nProvider>
           <AppStateProvider>
             <TestSetPlan plan={plan} />
-            <LiveView watchPosition={wp} />
+            <LiveViewHost watchPosition={wp} />
           </AppStateProvider>
         </I18nProvider>
       );
@@ -583,7 +599,7 @@ describe('LiveView', () => {
         <I18nProvider>
           <AppStateProvider>
             <TestSetPlan plan={TEST_PLAN} />
-            <LiveView watchPosition={wp} />
+            <LiveViewHost watchPosition={wp} />
           </AppStateProvider>
         </I18nProvider>,
       );
@@ -921,7 +937,7 @@ describe('LiveView', () => {
         <I18nProvider>
           <AppStateProvider>
             <TestSetPlan plan={TEST_PLAN} />
-            <LiveView watchPosition={wp} reroute={controls} />
+            <LiveViewHost watchPosition={wp} reroute={controls} />
           </AppStateProvider>
         </I18nProvider>,
       );
@@ -983,6 +999,67 @@ describe('LiveView', () => {
       expect(screen.getByText(/needs an active gps fix/i)).toBeInTheDocument();
     });
 
+    it('is disabled when the fix accuracy is worse than the threshold, enabled at the threshold', async () => {
+      const { wp, emitFix } = fakeWatchPosition();
+      const onReroute = vi.fn();
+      renderWithReroute(wp, { busy: false, rerouting: false, onReroute });
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
+      act(() => emitFix({ point: FIX_POINT, cogDeg: 90, sogKn: 5, accuracyM: 100.5 }));
+      expect(screen.getByRole('button', { name: REROUTE_NAME })).toBeDisabled();
+
+      act(() => emitFix({ point: FIX_POINT, cogDeg: 90, sogKn: 5, accuracyM: 100 }));
+      expect(screen.getByRole('button', { name: REROUTE_NAME })).toBeEnabled();
+    });
+
+    it('a lost fix (30 s without a new one) hides the readout and disables reroute; a new fix restores both', async () => {
+      const { wp, emitFix } = fakeWatchPosition();
+      const onReroute = vi.fn();
+      renderWithReroute(wp, { busy: false, rerouting: false, onReroute });
+
+      const toggle = await screen.findByRole('button', { name: 'Start live view' });
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance', 'Date'] });
+      try {
+        fireEvent.click(toggle);
+        act(() => emitFix({ point: FIX_POINT, cogDeg: 90, sogKn: 5, accuracyM: 9 }));
+        expect(document.querySelector('.live-view-hts')).not.toBeNull();
+
+        act(() => void vi.advanceTimersByTime(15_000));
+        expect(screen.getByRole('button', { name: REROUTE_NAME })).toBeEnabled();
+        expect(document.querySelector('.live-view-hts')).not.toBeNull();
+
+        act(() => void vi.advanceTimersByTime(15_000));
+        expect(document.querySelector('.live-view-hts')).toBeNull();
+        expect(screen.getByRole('button', { name: REROUTE_NAME })).toBeDisabled();
+
+        act(() => emitFix({ point: FIX_POINT, cogDeg: 90, sogKn: 5, accuracyM: 9 }));
+        expect(document.querySelector('.live-view-hts')).not.toBeNull();
+        expect(screen.getByRole('button', { name: REROUTE_NAME })).toBeEnabled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('a fix already held by the ownship watch is not shown as live before tracking starts', async () => {
+      const { wp, emitFix } = fakeWatchPosition();
+      localStorage.setItem('sc-lang', 'en');
+      render(
+        <I18nProvider>
+          <AppStateProvider>
+            <TestSetPlan plan={TEST_PLAN} />
+            <LiveViewHost watchPosition={wp} showOwnship />
+          </AppStateProvider>
+        </I18nProvider>,
+      );
+      await screen.findByRole('button', { name: 'Start live view' });
+      act(() => emitFix({ point: FIX_POINT, cogDeg: 90, sogKn: 5, accuracyM: 9 }));
+      expect(document.querySelector('.live-view-hts')).toBeNull();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Start live view' }));
+      expect(document.querySelector('.live-view-hts')).not.toBeNull();
+      expect(wp).toHaveBeenCalledTimes(1);
+    });
+
     it('is disabled while ANY solver run is busy, and shows the in-flight label for its own solve', async () => {
       const { wp, emitFix } = fakeWatchPosition();
       const onReroute = vi.fn();
@@ -1014,7 +1091,10 @@ describe('LiveView', () => {
         <I18nProvider>
           <AppStateProvider>
             <TestSetPlan plan={TEST_PLAN} />
-            <LiveView watchPosition={wp} reroute={{ busy: false, rerouting: false, onReroute }} />
+            <LiveViewHost
+              watchPosition={wp}
+              reroute={{ busy: false, rerouting: false, onReroute }}
+            />
           </AppStateProvider>
         </I18nProvider>,
       );
@@ -1035,7 +1115,10 @@ describe('LiveView', () => {
         <I18nProvider>
           <AppStateProvider>
             <TestSetPlan plan={TEST_PLAN} />
-            <LiveView watchPosition={wp} reroute={{ busy: false, rerouting: false, onReroute }} />
+            <LiveViewHost
+              watchPosition={wp}
+              reroute={{ busy: false, rerouting: false, onReroute }}
+            />
           </AppStateProvider>
         </I18nProvider>,
       );
@@ -1061,7 +1144,7 @@ describe('LiveView', () => {
         <I18nProvider>
           <AppStateProvider>
             <TestSetPlan plan={TEST_PLAN} />
-            <LiveView watchPosition={wp} />
+            <LiveViewHost watchPosition={wp} />
           </AppStateProvider>
         </I18nProvider>,
       );
@@ -1163,7 +1246,7 @@ describe('LiveView', () => {
         <I18nProvider>
           <AppStateProvider>
             <TestSetPlan plan={TEST_PLAN} />
-            <LiveView watchPosition={wpDe} />
+            <LiveViewHost watchPosition={wpDe} />
           </AppStateProvider>
         </I18nProvider>,
       );

@@ -21,8 +21,7 @@ import type { NavMask } from '../lib/mask';
 import { useNavMask } from '../state/useNavMask';
 import { formatDepthM } from '../lib/depthDisclosure';
 import { formatDriftMin, formatHeading, formatKn, formatNm, formatTime } from '../lib/format';
-import { claimGpsHintOnce } from '../lib/gpsHint';
-import { watchPosition as realWatchPosition, type GpsFix } from '../services/geolocation';
+import type { GpsSource } from '../state/useGpsSource';
 import { isLiveSimRequested } from '../dev/liveSimulator';
 import LiveSimulatorControls from '../dev/LiveSimulatorControls';
 import { liveSimDict } from '../dev/LiveSimulatorControls.dict';
@@ -58,7 +57,10 @@ export interface LiveRerouteControls {
 }
 
 export interface LiveViewProps {
-  watchPosition?: typeof realWatchPosition;
+  // #1800: the GPS source App.tsx shares with the boat marker. Live no longer
+  // owns a watch; it reports whether tracking is active via onTrackingChange.
+  gps: GpsSource;
+  onTrackingChange?: (active: boolean) => void;
   // #31: when set (wide layout), the textual readout renders into this
   // panel-column slot via a portal instead of rendering inline in MapView's
   // subtree (the base bottom-sheet-region card). Null/undefined = render
@@ -101,27 +103,28 @@ function WarningIcon() {
   );
 }
 
-// GPS fix/error state is intentionally local to this component (not
-// AppState) — see AppState.tsx's docstring: 1 Hz position updates must not
-// re-render the whole app. Only the much-lower-frequency derived
-// activeLegIndex is pushed up, for RouteLayer's highlight.
-export default function LiveView({
-  watchPosition = realWatchPosition,
-  panelSlot,
-  reroute,
-}: LiveViewProps = {}) {
+// GPS fixes stay out of AppState (see its docstring: 1 Hz updates must not
+// re-render the whole app); they arrive via the `gps` prop. Only the
+// much-lower-frequency derived activeLegIndex is pushed up, for RouteLayer's
+// highlight.
+export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: LiveViewProps) {
   const t = useT();
   const [lang] = useLang();
   const { plan, rig, setActiveLegIndex } = useActivePlan();
   const [active, setActive] = useState(false);
-  const [fix, setFix] = useState<GpsFix | null>(null);
-  // Snapshot of Date.now() taken when `fix` arrived (in the event handler
-  // below), not read fresh at render time: projectedEtaMs's drift must
-  // reflect the fix's own arrival time, not whatever moment an unrelated
-  // re-render (e.g. a language toggle) happens to execute — and reading
-  // Date.now() during render is impure besides.
-  const [fixAtMs, setFixAtMs] = useState<number | null>(null);
-  const [hintVisible, setHintVisible] = useState(false);
+  // Readouts show only while tracking is on and the fix is usable: a fix
+  // cached from the ownship watch, or a lost/denied one, must not read as live.
+  const usable = active && (gps.state === 'fresh' || gps.state === 'stale');
+  const fix = usable ? gps.fix : null;
+  // Receipt time of `fix` (not render time): projectedEtaMs's drift must
+  // reflect when the fix arrived.
+  const fixAtMs = usable ? gps.fixAtMs : null;
+  const { hintVisible, dismissHint } = gps;
+
+  useEffect(() => {
+    onTrackingChange?.(active);
+    return () => onTrackingChange?.(false);
+  }, [active, onTrackingChange]);
 
   const result = plan && rig ? activeRigResult(plan, rig) : null;
   const legs = result?.legs ?? [];
@@ -140,16 +143,6 @@ export default function LiveView({
   // in every build, where `<LiveSimulatorControls>` itself is a whole
   // subtree that dead-code-eliminates out of the prod bundle when
   // `simActive` folds to `false` (see the module comment above).
-
-  // Both 'denied' and 'unavailable' get the identical treatment (spec §4:
-  // "App fully usable, no boat marker; hint shown once") — a zero-arg
-  // handler passed directly as watchPosition's onError, rather than a
-  // callback with an unused error-kind parameter. Shown once, ever, marked
-  // the moment it's displayed (not on dismiss), so a remount before the user
-  // dismisses it doesn't show it again.
-  const markGpsHintShownOnce = () => {
-    if (claimGpsHintOnce()) setHintVisible(true);
-  };
 
   // #251: heading-to-steer depth check. useNavMask is a hook and must run on
   // every render, so it (and the rest of this block) lives here — BEFORE the
@@ -209,17 +202,7 @@ export default function LiveView({
   const holdKey = `${plan?.id ?? ''}:${rig ?? ''}`;
 
   // Asymmetric hysteresis: engages instantly, drops only after a sustained
-  // clear run. Folded on each REAL GPS fix, inside the watchPosition
-  // callback below, NOT via an effect reacting to every derived-state change
-  // — this project's lint config (eslint-plugin-react-hooks's React Compiler
-  // rules) rejects both mutating a ref during render and calling a useState
-  // setter UNCONDITIONALLY in a plain effect body ("can trigger cascading
-  // renders"). Folding inside the same imperative callback that already
-  // sets fix/fixAtMs sidesteps both restrictions — it is an event handler,
-  // not a render-phase or bare-effect write. (The one exception is the
-  // mask-arrival re-probe below, which is guarded to fire at most once per
-  // mask identity and passes the rule on that basis — verified against the
-  // installed eslint-plugin-react-hooks@7, not assumed.)
+  // clear run. Folded by the gated effect below.
   const [hold, setHold] = useState<{ hold: HeadingDepthHold; key: string }>({
     hold: initialHold(),
     key: holdKey,
@@ -250,70 +233,35 @@ export default function LiveView({
     });
   };
 
-  // Keeps a ref mirror of everything the fix callback needs, so that
-  // long-lived callback (recreated only when [active, legs.length,
-  // watchPosition] change, not on every render) always reads the LATEST
-  // mask/legs/safetyDepthM/holdKey rather than a stale closure. Written only
-  // inside an effect (post-commit) — never assigned during render.
+  // Ref mirror of the latest mask/legs/safetyDepthM/holdKey, written only in
+  // an effect (post-commit), never during render.
   const latestRef = useRef({ mask, legs, safetyDepthM, holdKey });
   useEffect(() => {
     latestRef.current = { mask, legs, safetyDepthM, holdKey };
   });
 
-  // Which mask identity the displayed hold was last folded against. Written
-  // from the fix callback and the re-probe effect below (both post-render), so
-  // the effect can tell "already probed with this mask" from "the mask only
-  // just arrived". A null mask is a real value here — it records a fold that
-  // ran with no mask at all — so the "nothing folded yet" sentinel is the null
-  // KEY, which no holdKey can equal (it is always a `${id}:${rig}` string).
-  const probedRef = useRef<{ mask: NavMask | null; key: string | null }>({
+  // What the displayed hold was last folded against. A null mask is a real
+  // value (a fold that ran with no mask); the "nothing folded yet" sentinel is
+  // the null KEY, which no holdKey can equal.
+  const probedRef = useRef<{ fix: unknown; mask: NavMask | null; key: string | null }>({
+    fix: null,
     mask: null,
     key: null,
   });
 
+  // Folds once per distinct (fix, mask, holdKey): a new fix, the mask arriving
+  // after the last fix, or a plan/rig change (which resets the hysteresis by
+  // design, spec §3.2) must each re-probe from the fix already held, else
+  // "Depth not checked" would stay stale while fixes have stopped. The
+  // setState is reachable only past the guarded early returns and the ref
+  // gate, which keeps it clear of react-hooks/set-state-in-effect. The ref is
+  // written here, never during render; legs/safetyDepthM come from the
+  // latestRef mirror whose effect is declared above this one.
   useEffect(() => {
-    if (!active || legs.length === 0) return;
-    return watchPosition((f) => {
-      setFix(f);
-      setFixAtMs(Date.now());
-
-      const cur = latestRef.current;
-      probedRef.current = { mask: cur.mask, key: cur.holdKey };
-      foldProbe(cur.mask, cur.legs, cur.safetyDepthM, cur.holdKey, f.point);
-    }, markGpsHintShownOnce);
-  }, [active, legs.length, watchPosition]);
-
-  // The probe otherwise runs only inside the fix callback above, which leaves
-  // two ways for a held fix to sit on a stale answer, both of them the same
-  // shape — the inputs became checkable but nothing re-checked them:
-  //
-  //   1. the mask resolves AFTER the last fix (slow first load, or GPS having
-  //      gone quiet), so the readout claims "Depth not checked" for a bearing
-  //      that is now checkable;
-  //   2. the plan or rig changes, which resets the hysteresis by design (spec
-  //      §3.2) and falls back to "Depth not checked" — honest, but stale the
-  //      instant we could simply probe the NEW route's bearing from the fix we
-  //      already hold.
-  //
-  // Both are permanent if fixes have stopped. So the gate is the (mask
-  // identity, holdKey) PAIR: re-fold once per distinct pair whenever a fix is
-  // held. `legs`/`safetyDepthM` need no gate of their own — both are functions
-  // of (plan, rig), so holdKey already covers them.
-  //
-  // Shape matters: the setState is reachable only past two guarded early
-  // returns and the once-per-pair ref gate, which is what keeps it clear of
-  // react-hooks/set-state-in-effect (an UNCONDITIONAL setState in an effect
-  // body is what that rule rejects; verified against the installed plugin).
-  // The ref is written here in the effect, never during render.
-  useEffect(() => {
-    if (mask === null || fix === null) return;
+    if (fix === null) return;
     const probed = probedRef.current;
-    if (probed.mask === mask && probed.key === holdKey) return;
-    probedRef.current = { mask, key: holdKey };
-    // legs/safetyDepthM come from the same latestRef mirror the fix callback
-    // reads, for the same reason and with the same guarantee: the effect that
-    // writes it is declared above this one, so it has already committed this
-    // render's values.
+    if (probed.fix === fix && probed.mask === mask && probed.key === holdKey) return;
+    probedRef.current = { fix, mask, key: holdKey };
     const cur = latestRef.current;
     foldProbe(mask, cur.legs, cur.safetyDepthM, holdKey, fix.point);
   }, [mask, fix, holdKey]);
@@ -366,23 +314,14 @@ export default function LiveView({
   //
   // #25 addendum: the boat marker itself no longer renders here — it moved to
   // the standalone, settings-gated OwnshipMarker (App.tsx/useOwnshipGps.ts),
-  // which renders in ANY map context, Live View included. This component's
-  // own GPS watch (above) still exists for the readout data (HTS/COG/SOG,
-  // next maneuver, ETA) and the shared active-leg index, which stay
-  // plan-gated and unchanged; only the marker rendering was decoupled, and
-  // decoupling it here (rather than leaving a second copy) is what keeps a
-  // toggle-on-while-Live-active session from ever showing two markers.
+  // which renders in ANY map context, Live View included. The shared `gps`
+  // source feeds both that marker and the readout data here (HTS/COG/SOG,
+  // next maneuver, ETA); this component renders no marker, so a
+  // toggle-on-while-Live-active session never shows two.
   const steerable = fix !== null && hts !== null ? { fix, hts } : null;
 
   const toggleActive = () => {
-    const next = !active;
-    setActive(next);
-    // A stale fix from a previous tracking session must not linger once
-    // it's switched off.
-    if (!next) {
-      setFix(null);
-      setFixAtMs(null);
-    }
+    setActive(!active);
   };
 
   const readout = (
@@ -402,7 +341,7 @@ export default function LiveView({
       {hintVisible && (
         <div role="status" className="live-view-gps-hint">
           <p>{t('live.gpsHint')}</p>
-          <Button variant="ghost" onClick={() => setHintVisible(false)}>
+          <Button variant="ghost" onClick={dismissHint}>
             {t('live.gpsHint.dismiss')}
           </Button>
         </div>
@@ -513,7 +452,7 @@ export default function LiveView({
         <div className="live-view-reroute">
           <Button
             variant="secondary"
-            disabled={simActive || fix === null || reroute.busy}
+            disabled={simActive || fix === null || !gps.reroute.allowed || reroute.busy}
             aria-busy={reroute.rerouting}
             onClick={() => {
               if (fix) reroute.onReroute(fix.point);
