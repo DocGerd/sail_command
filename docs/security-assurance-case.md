@@ -91,8 +91,7 @@ sites with
 The selected boat id is stored in `localStorage`; it determines the draft and
 hence the derived safety depth gate, so it is validated against the
 catalogue on every read. The AIS key is not stored in `localStorage`; it is a
-`Settings` field held in the IndexedDB `settings` store, and saved plans and
-backup exports do not carry it (#1799). The only
+`Settings` field held in the IndexedDB `settings` store; plans saved since `v0.58.0` and all backup exports do not carry it (#1799), while plans stored earlier keep it until saved again (#1813). The only
 non-test `sessionStorage` calls under `app/src` (enumerate with
 `grep -rnE 'sessionStorage\.' app/src --exclude='*.test.*'`) are the read and
 write of the `sailcommand-sw-recovery-reloaded` flag in

@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Live keeps the screen awake while tracking, with a visible indicator, a toggle to release it for battery, and a notice where the browser does not support it (#1801).
+- Live holds a screen wake lock while tracking, with a visible indicator of whether it is held, a toggle to release it for battery, and a notice where the browser does not support it (#1801).
 - Live offers a resume prompt with a Resume button after a reload, crash or tab switch, and explains the uncomputed harbour approach on handover plans (#1802).
 - Live shows each GPS state on the card: waiting, a stale-age badge with dimmed readings, a signal-lost state with the last fix time and position instead of readings, and a denied state with recovery steps. Replanning is disabled with the reason, the boat marker is dimmed and drops its projection vector and accuracy circle once the signal is lost or location access is denied, and the card docks above the bottom sheet so the tab strip no longer covers its lower edge in portrait (#1802).
 - Live shows leg N of M, the distance to go on the leg and the whole route, and the cross-track distance with its side, labels the heading and COG readouts as degrees true, and keeps the active leg steady near leg boundaries through hysteresis, so the readout and the map highlight always agree (#1803).
@@ -28,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
-- Saved plans and backup exports no longer contain the AIS API key; the key stays in your settings on this device (#1799).
+- Plans saved from now on and all backup exports no longer contain the AIS API key; the key stays in your settings on this device. Plans stored earlier keep it until they are saved again (#1799).
 
 ## [0.57.0] - 2026-10-21
 
