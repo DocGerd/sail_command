@@ -1483,7 +1483,10 @@ making design-level decisions; do not silently deviate.
 - GPS dynamics ARE e2e-testable: `app/e2e/live.spec.ts` (#142) drives
   deterministic fix sequences via Playwright `context.setGeolocation` +
   `test.use({ permissions: ['geolocation'] })` against the real solver/mask —
-  extend it rather than claiming live behavior is untestable.
+  extend it rather than claiming live behavior is untestable. In Chromium a
+  PERMISSION_DENIED watch is dead (a re-grant needs a new `watchPosition`),
+  every `setGeolocation` is preceded by a transient POSITION_UNAVAILABLE, and
+  headless never changes `visibilityState` (probe on #1800's comments).
 - **maplibre-gl 6's worker must be BUNDLED, not copied** (#253): v6 loads its
   worker via `new Worker(url, {type:'module'})` from a URL built dynamically
   inside the library, which Vite cannot see — so nothing is emitted and the
@@ -1747,6 +1750,7 @@ making design-level decisions; do not silently deviate.
   | v0.55.2 | 2026-10-18 | 39 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 18:45:51Z, immediately before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `39155603832` (created 18:45:16Z) -> tag `39155657198` (created 18:45:55Z) on `0b0e419`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `7159063112`, `ref: v0.55.2`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-CdYs7uY6.js` at ``version:`v0.55.2` `` with ZERO suffixed matches. Release `isLatest: true`; tag object reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.56.0 | 2026-10-19 | 25 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 08:21:18Z, three seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `39222126524` (created 08:20:56Z) -> tag `39222174944` (created 08:21:21Z) on `607a4c8`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `7169026595`, `ref: v0.56.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-DMwoztuW.js` at ``version:`v0.56.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.57.0 | 2026-10-21 | 61 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 15:59:04Z, ten seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `39630498595` (created 15:58:13Z) -> tag `39630650653` (created 15:59:14Z) on `fb4fa6d`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `7230717657`, `ref: v0.57.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-jOtH7t_r.js` at ``version:`v0.57.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `30177e5` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
+  | v0.58.0 | 2026-10-21 | 45 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 20:09:02Z, eight seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `39667697615` (created 20:08:25Z) -> tag `39667801625` (created 20:09:10Z) on `93441cb`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `7236186642`, `ref: v0.58.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-ByTpDzGk.js` at ``version:`v0.58.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `493006a` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -2012,7 +2016,9 @@ making design-level decisions; do not silently deviate.
   this file — §2b, §5a, §5b, §5c and step 6, the back-merge that is also the
   #398 no-op remedy. A `/release` typed while a turn is running arrives as
   plain text and the skill does not load; end the turn and have it retyped
-  (observed at the v0.57.0 cut).
+  (observed at the v0.57.0 cut). Under a `/goal` Stop hook the turn cannot
+  end; at v0.58.0 the maintainer's explicit go let the session follow
+  `SKILL.md` by hand, stopping for them at §2 and step 4.
 - **`.claude/commands/release-cycle.md` provides `/release-cycle`** (#816, PR
   #817, merged 2026-09-01) — a six-phase (0–5) wrapper for a whole cycle:
   state discovery, approval-gated milestone re-triage, implementing the
@@ -2338,6 +2344,9 @@ making design-level decisions; do not silently deviate.
   re-syncs, and queue or idle waiting together) was 55% of summed PR lifetime.
   Batch only members whose OWN `app`+`e2e` are green: #1487 inherited one
   member's CI-only red and had to be rebuilt without it as #1489.
+  A PR head pushed while the PR conflicts with its base (`mergeable_state:
+  dirty`) got only `pull_request_target` runs (Labeler), no `pull_request` CI,
+  so a check-run watch on that head never completes (#1819, v0.58.0).
 - Multiple open PRs: develop in parallel, merge strictly serially — after each
   merge, re-sync the next branch from its base (`git merge origin/develop`, or
   `origin/main` for a hotfix/release PR) and let full CI (~10 min) re-run before
@@ -2416,6 +2425,11 @@ making design-level decisions; do not silently deviate.
   `width: 14rem` and `max-width: none`. The trade-off is measured and
   deliberately accepted in that commit's own comment (20rem rejected as map
   occlusion). Don't re-investigate it at the next ship gate.
+- **Headless Chromium paints a ghost band of the sticky `.planner-actions`
+  bar across the top of the map in narrow (820x1180) plan-tab screenshots.**
+  It is a capture artifact: it appears in headless-shell screenshots of both
+  prod v0.57.0 and UAT, disappears when `.planner-actions` is hidden, and is
+  absent headed (v0.58.0 gate). Don't re-investigate it either.
 - **The CHECK can be the thing that's wrong — and it fails by ACCUSING a
   correct artifact.** Verifying `CONTRIBUTING.md`'s "`v0.4.0` through
   `v0.12.0` are closed", a regex of `v0\.(4|…|12)\.` also matched the OPEN
