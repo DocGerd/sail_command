@@ -89,7 +89,7 @@ export function formatTrueHeading(deg: number): string {
   return `${formatHeading(deg)}T`;
 }
 
-function distanceToLegNm(p: LatLon, leg: Leg): number {
+export function legDistanceNm(p: LatLon, leg: Leg): number {
   const frac = Math.min(1, Math.max(0, alongTrackFraction(p, leg.start, leg.end)));
   if (frac === 0) return haversineNm(p, leg.start);
   if (frac === 1) return haversineNm(p, leg.end);
@@ -113,8 +113,9 @@ export interface LegSwitchInput {
 }
 
 /**
- * Hysteresis for the active leg (ruling d). Switching is asymmetric: a LATER
- * leg takes over at once when the boat has passed the current leg's end, and
+ * Hysteresis for the active leg (ruling d). Switching is asymmetric: a later
+ * leg (any later leg, not only the next) takes over at once when the boat has
+ * passed the current leg's end, and
  * otherwise (either direction) only when it is nearer by more than
  * LEG_SWITCH_MARGIN_NM. Noise around a joint therefore cannot flip it back.
  */
@@ -125,7 +126,9 @@ export function nextActiveLegIndex(s: LegSwitchInput): number {
   return s.prevDistNm - s.candidateDistNm > LEG_SWITCH_MARGIN_NM ? s.candidateIndex : s.prevIndex;
 }
 
-/** One hysteresis step for a fix; an out-of-range prevIndex (plan changed) acts as null. */
+/**
+ * One hysteresis step for a fix. Out-of-range prevIndex acts as null. The caller must pass null when the plan changes (new plan id); an in-range stale index is only released by the margin. Throws on empty `legs` (as activeLegIndex does); callers guard.
+ */
 export function stepActiveLeg(legs: Leg[], p: LatLon, prevIndex: number | null): number {
   const candidateIndex = activeLegIndex(legs, p);
   if (prevIndex === null || prevIndex < 0 || prevIndex >= legs.length) return candidateIndex;
@@ -133,8 +136,8 @@ export function stepActiveLeg(legs: Leg[], p: LatLon, prevIndex: number | null):
   return nextActiveLegIndex({
     prevIndex,
     candidateIndex,
-    prevDistNm: distanceToLegNm(p, prev),
-    candidateDistNm: distanceToLegNm(p, legs[candidateIndex]),
+    prevDistNm: legDistanceNm(p, prev),
+    candidateDistNm: legDistanceNm(p, legs[candidateIndex]),
     prevEndPassed: alongTrackFraction(p, prev.start, prev.end) > 1,
   });
 }

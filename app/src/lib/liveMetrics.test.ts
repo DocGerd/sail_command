@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { LatLon, Leg } from '../types';
 import { activeLegIndex } from './live';
+import { haversineNm } from './geo';
 import {
   LEG_SWITCH_MARGIN_NM,
   crossTrack,
+  legDistanceNm,
   distanceToGoNm,
   formatTrueHeading,
   legPosition,
@@ -212,8 +214,11 @@ describe('nextActiveLegIndex', () => {
   });
 });
 
+// distanceNm equal to the chord, so stepActiveLeg projects exactly as the geometry says.
+const chordLeg = (a: LatLon, b: LatLon): Leg => motorLeg(a, b, haversineNm(a, b));
+
 describe('stepActiveLeg (two legs meeting at a corner)', () => {
-  const legs = [LEG_N, LEG_E];
+  const legs = [chordLeg(LEG_N.start, LEG_N.end), chordLeg(LEG_E.start, LEG_E.end)];
 
   it('GPS noise near the joint does not flip to the next leg before the end is passed', () => {
     // Leg 0 is 0.0005 deg (0.030 nm) off, leg 1 is 0.0001 deg (0.006 nm) off: nearer, but inside the margin.
@@ -251,10 +256,29 @@ describe('stepActiveLeg (two legs meeting at a corner)', () => {
     expect(stepActiveLeg(legs, ll(0.09, 0), 1)).toBe(0);
   });
 
+  it('after a reroute, a stale in-range prevIndex is released by the margin', () => {
+    // New route: leg 0 lies under the boat, leg 1 starts about 4.8 nm away.
+    const rerouted = [chordLeg(ll(0.5, 0.5), ll(0.5, 0.6)), chordLeg(ll(0.5, 0.6), ll(0.6, 0.6))];
+    expect(stepActiveLeg(rerouted, ll(0.5, 0.52), 1)).toBe(0);
+  });
+
   it('without a usable previous index it equals activeLegIndex', () => {
     const p = ll(0.0999, 0.0005);
     expect(stepActiveLeg(legs, p, null)).toBe(1);
     expect(stepActiveLeg(legs, p, 7)).toBe(1);
     expect(stepActiveLeg(legs, p, -1)).toBe(1);
+  });
+});
+
+describe('legDistanceNm vs activeLegIndex (differential)', () => {
+  it('the nearest leg by legDistanceNm is activeLegIndex, over seeded random fixes', () => {
+    const legs = [LEG_N, LEG_E, LEG_LAST];
+    let seed = 12345;
+    const rnd = () => (seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296;
+    for (let n = 0; n < 500; n++) {
+      const p = ll(-0.03 + rnd() * 0.16, -0.03 + rnd() * 0.26);
+      const d = legs.map((l) => legDistanceNm(p, l));
+      expect(activeLegIndex(legs, p)).toBe(d.indexOf(Math.min(...d)));
+    }
   });
 });
