@@ -4,7 +4,7 @@ Status: maintainer-approved 2026-10-21 (recorded on #1790). Goal: lower route-pl
 
 ## Contract
 
-Every routing change is **byte-identical**: the full #282 sweep (`app/sweep/`) BASE vs HEAD shows identical arm hashes, and each new code path is pinned by a differential test against the code it replaces. Results never depend on thread count, pool size or cache state. Search parameters (frontier cap, step, prune grid) do not change.
+Every routing change is **byte-identical**: the full #282 sweep (`app/sweep/`) BASE vs HEAD shows identical arm hashes, and each new code path is pinned by a differential test against the code it replaces. Results never depend on cache state, and never on thread count or pool size for a plan that completes without a budget cut (under a cut the wall-clock budget is already timing-dependent, and a pool can change which rigs finish). Search parameters (frontier cap, step, prune grid) do not change.
 
 ## Lanes
 
