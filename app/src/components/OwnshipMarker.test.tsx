@@ -26,6 +26,11 @@ vi.mock('./BoatMarker', () => ({
   )),
 }));
 
+const container = document.createElement('div');
+vi.mock('./MapView', () => ({
+  useMapInstance: () => ({ getContainer: () => container }),
+}));
+
 const FIX: GpsFix = { point: { lat: 54.79, lon: 9.43 }, cogDeg: 91.4, sogKn: 6.3, accuracyM: 12 };
 
 describe('OwnshipMarker', () => {
@@ -59,5 +64,33 @@ describe('OwnshipMarker', () => {
   it('#141: forwards a null SOG untouched (BoatMarker suppresses the vector)', () => {
     render(<OwnshipMarker fix={{ ...FIX, sogKn: null }} />);
     expect(screen.getByTestId('ownship-boat-marker')).toHaveAttribute('data-sog', 'null');
+  });
+
+  describe('stale style (#1802)', () => {
+    it('toggles the Live-scoped class on the map container with the stale prop', () => {
+      const { rerender, unmount } = render(<OwnshipMarker fix={FIX} />);
+      expect(container).not.toHaveClass('live-gps-lost');
+      rerender(<OwnshipMarker fix={FIX} stale />);
+      expect(container).toHaveClass('live-gps-lost');
+      rerender(<OwnshipMarker fix={FIX} stale={false} />);
+      expect(container).not.toHaveClass('live-gps-lost');
+      rerender(<OwnshipMarker fix={FIX} stale />);
+      unmount();
+      expect(container).not.toHaveClass('live-gps-lost');
+    });
+
+    it('hides the accuracy circle (0 m) while stale and forwards the real accuracy otherwise', () => {
+      const { rerender } = render(<OwnshipMarker fix={FIX} stale />);
+      expect(screen.getByTestId('ownship-boat-marker')).toHaveAttribute('data-accuracy', '0');
+      rerender(<OwnshipMarker fix={FIX} />);
+      expect(screen.getByTestId('ownship-boat-marker')).toHaveAttribute('data-accuracy', '12');
+    });
+
+    it('drops the projection vector (SOG) while stale and keeps the position', () => {
+      render(<OwnshipMarker fix={FIX} stale />);
+      const el = screen.getByTestId('ownship-boat-marker');
+      expect(el).toHaveAttribute('data-sog', 'null');
+      expect(el).toHaveAttribute('data-lat', '54.79');
+    });
   });
 });

@@ -7,9 +7,10 @@ import { I18nProvider } from '../i18n';
 import { __resetDbForTests } from '../services/db';
 import { destinationPoint } from '../lib/geo';
 import { distanceToNextManeuverNm, headingToSteerDeg } from '../lib/live';
-import { formatHeading, formatNm } from '../lib/format';
+import { formatHeading, formatLatLon, formatNm } from '../lib/format';
 import type { GpsErrorKind, GpsFix } from '../services/geolocation';
 import { DEFAULT_SETTINGS, type Leg, type MaskMeta, type Plan } from '../types';
+import { withHarborHandover } from '../lib/harborHandover';
 import LiveView from './LiveView';
 import { useOwnshipGps } from '../state/useOwnshipGps';
 import type { watchPosition as realWatchPosition } from '../services/geolocation';
@@ -414,75 +415,473 @@ describe('LiveView', () => {
     expect(screen.queryByText(/projected eta/i)).not.toBeInTheDocument();
   });
 
-  it('a denied GPS error shows a one-time hint, recorded in localStorage, that does not reappear across remounts', async () => {
-    const { wp: wp1, emitError: emitError1 } = fakeWatchPosition();
-    const { unmount } = renderLive(wp1, TEST_PLAN);
-    fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
+  describe('resume prompt (#1802)', () => {
+    const WAS_TRACKING = 'sc-live-was-tracking';
 
-    act(() => emitError1('denied'));
-    expect(await screen.findByText(/location access/i)).toBeInTheDocument();
-    expect(localStorage.getItem('sc-gps-hint-shown')).toBe('1');
+    it('is absent on a first visit', async () => {
+      const { wp } = fakeWatchPosition();
+      renderLive(wp, TEST_PLAN);
+      await screen.findByRole('button', { name: 'Start live view' });
+      expect(screen.queryByText('Tracking stopped')).not.toBeInTheDocument();
+    });
 
-    unmount();
-    cleanup();
+    it('appears after a reload with the was-tracking flag, starts no GPS until the tap, and Resume starts it', async () => {
+      localStorage.setItem(WAS_TRACKING, '1');
+      const { wp } = fakeWatchPosition();
+      renderLive(wp, TEST_PLAN);
 
-    const { wp: wp2, emitError: emitError2 } = fakeWatchPosition();
-    renderLive(wp2, TEST_PLAN);
-    fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
-    act(() => emitError2('denied'));
+      expect(await screen.findByText('Tracking stopped')).toBeInTheDocument();
+      expect(wp).not.toHaveBeenCalled();
 
-    expect(screen.queryByText(/location access/i)).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Resume' }));
+      expect(wp).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText('Tracking stopped')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Stop live view' })).toBeInTheDocument();
+    });
+
+    it('returning to the Live tab (remount) shows it again after tracking was running', async () => {
+      const first = fakeWatchPosition();
+      const { unmount } = renderLive(first.wp, TEST_PLAN);
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
+      expect(localStorage.getItem(WAS_TRACKING)).toBe('1');
+      unmount();
+      cleanup();
+
+      const second = fakeWatchPosition();
+      renderLive(second.wp, TEST_PLAN);
+      expect(await screen.findByText('Tracking stopped')).toBeInTheDocument();
+      expect(second.wp).not.toHaveBeenCalled();
+    });
+
+    it('an explicit Stop clears the flag, so the prompt does not return', async () => {
+      const first = fakeWatchPosition();
+      const { unmount } = renderLive(first.wp, TEST_PLAN);
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Stop live view' }));
+      expect(localStorage.getItem(WAS_TRACKING)).toBe('0');
+      expect(screen.queryByText('Tracking stopped')).not.toBeInTheDocument();
+      unmount();
+      cleanup();
+
+      const second = fakeWatchPosition();
+      renderLive(second.wp, TEST_PLAN);
+      await screen.findByRole('button', { name: 'Start live view' });
+      expect(screen.queryByText('Tracking stopped')).not.toBeInTheDocument();
+    });
   });
 
-  it("#142: an 'unavailable' GPS error shows the same one-time hint as 'denied' (spec §4: identical treatment)", async () => {
-    const { wp, emitError } = fakeWatchPosition();
-    renderLive(wp, TEST_PLAN);
-    fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
+  describe('wake lock (#1801)', () => {
+    class FakeSentinel extends EventTarget {
+      release = vi.fn(async () => {
+        this.dispatchEvent(new Event('release'));
+      });
+    }
+    let sentinels: FakeSentinel[];
+    let request: ReturnType<typeof vi.fn>;
 
-    act(() => emitError('unavailable'));
+    function installWakeLock() {
+      request = vi.fn(async () => {
+        const s = new FakeSentinel();
+        sentinels.push(s);
+        return s;
+      });
+      Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request } });
+    }
 
-    expect(await screen.findByText(/location access/i)).toBeInTheDocument();
-    expect(localStorage.getItem('sc-gps-hint-shown')).toBe('1');
+    beforeEach(() => {
+      sentinels = [];
+      installWakeLock();
+    });
+    afterEach(() => {
+      Reflect.deleteProperty(navigator, 'wakeLock');
+    });
+
+    const flush = () => act(async () => {});
+    const checkbox = () => screen.getByRole('checkbox', { name: 'Keep screen on while tracking' });
+
+    it('is requested by default while tracking and the indicator says so', async () => {
+      const { wp } = fakeWatchPosition();
+      renderLive(wp, TEST_PLAN);
+      await screen.findByRole('button', { name: 'Start live view' });
+      expect(request).not.toHaveBeenCalled();
+      expect(checkbox()).toBeChecked();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Start live view' }));
+      await flush();
+      expect(request).toHaveBeenCalledExactlyOnceWith('screen');
+      expect(screen.getByText('Screen is kept awake')).toBeInTheDocument();
+    });
+
+    it("follows the sentinel's release event, not only the request", async () => {
+      const { wp } = fakeWatchPosition();
+      renderLive(wp, TEST_PLAN);
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
+      await flush();
+      expect(screen.getByText('Screen is kept awake')).toBeInTheDocument();
+
+      act(() => void sentinels[0].dispatchEvent(new Event('release')));
+      expect(screen.getByText('Screen may sleep — keep-awake is not active')).toBeInTheDocument();
+      expect(screen.queryByText('Screen is kept awake')).not.toBeInTheDocument();
+    });
+
+    it('the toggle releases the lock, is remembered across a remount, and keeps the lock off', async () => {
+      const first = fakeWatchPosition();
+      const { unmount } = renderLive(first.wp, TEST_PLAN);
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
+      await flush();
+
+      fireEvent.click(checkbox());
+      await flush();
+      expect(sentinels[0].release).toHaveBeenCalled();
+      expect(screen.getByText('Screen may sleep — keep-awake is off')).toBeInTheDocument();
+      expect(localStorage.getItem('sc-live-wake-lock')).toBe('0');
+      unmount();
+      cleanup();
+
+      request.mockClear();
+      const second = fakeWatchPosition();
+      renderLive(second.wp, TEST_PLAN);
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
+      await flush();
+      expect(checkbox()).not.toBeChecked();
+      expect(request).not.toHaveBeenCalled();
+    });
+
+    it('releases on Stop and when Live is left', async () => {
+      const first = fakeWatchPosition();
+      const { unmount } = renderLive(first.wp, TEST_PLAN);
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
+      await flush();
+      fireEvent.click(screen.getByRole('button', { name: 'Stop live view' }));
+      await flush();
+      expect(sentinels[0].release).toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Start live view' }));
+      await flush();
+      expect(sentinels).toHaveLength(2);
+      unmount();
+      await flush();
+      expect(sentinels[1].release).toHaveBeenCalled();
+    });
+
+    it('says so when the API is unsupported, with no toggle', async () => {
+      Reflect.deleteProperty(navigator, 'wakeLock');
+      const { wp } = fakeWatchPosition();
+      renderLive(wp, TEST_PLAN);
+      await screen.findByRole('button', { name: 'Start live view' });
+      expect(
+        screen.getByText('Screen may sleep — not supported on this browser'),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('checkbox', { name: 'Keep screen on while tracking' }),
+      ).not.toBeInTheDocument();
+    });
   });
 
-  it('the hint can be dismissed, and the app (the toggle) remains usable while GPS is denied', async () => {
-    const { wp, emitError } = fakeWatchPosition();
-    renderLive(wp, TEST_PLAN);
-    fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
+  describe('harbour handover notice (#1721)', () => {
+    it('shows live.handover only for a plan routed from/to a handover point', async () => {
+      if (TEST_PLAN.result.status !== 'ok') throw new Error('fixture must be ok');
+      const handoverPlan: Plan = {
+        ...TEST_PLAN,
+        result: withHarborHandover(TEST_PLAN.result, { origin: true }),
+      };
+      const { wp } = fakeWatchPosition();
+      const { unmount } = renderLive(wp, handoverPlan);
+      expect(await screen.findByText(/the route is not computed/)).toBeInTheDocument();
+      unmount();
+      cleanup();
 
-    act(() => emitError('denied'));
-    fireEvent.click(await screen.findByRole('button', { name: /got it/i }));
-
-    expect(screen.queryByText(/location access/i)).not.toBeInTheDocument();
-    // #700: tracking is still ON here (never toggled back off above), so the
-    // state-dependent label now reads the "stop" form, not the "start" form
-    // every other locator in this file targets.
-    expect(screen.getByRole('button', { name: 'Stop live view' })).toBeEnabled();
+      renderLive(wp, TEST_PLAN);
+      await screen.findByRole('button', { name: 'Start live view' });
+      expect(screen.queryByText(/the route is not computed/)).not.toBeInTheDocument();
+    });
   });
 
-  // #705: the gps-hint dismiss button was converted from a bare <button> to
-  // the Button primitive. Renders the null-render phase FIRST (no plan
-  // loaded yet, so the hint cannot exist at all) and only then transitions
-  // into the live state that shows it — a component with a null-render phase
-  // needs at least one test exercised this way (this repo shipped dead
-  // production code under an all-green suite once, from every test handing
-  // a component its live state at first render; see RouteLayer/#688 Major A
-  // in the routing history for the precedent).
-  it('#705: the gps-hint dismiss button is absent until shown, reachable by its accessible role/name once shown, and dismisses the hint on click', async () => {
-    const { wp, emitError } = fakeWatchPosition();
-    renderLive(wp, TEST_PLAN);
+  describe('docking above the bottom sheet (narrow layout)', () => {
+    let sheet: HTMLElement;
+    let sheetHeight = 123;
+    let resize: (() => void) | null = null;
+    const disconnect = vi.fn();
 
-    // Null-render phase: no GPS error has fired yet, so the hint (and its
-    // dismiss button) must not exist in the accessibility tree at all.
-    expect(screen.queryByRole('button', { name: 'Got it' })).not.toBeInTheDocument();
+    beforeEach(() => {
+      sheetHeight = 123;
+      resize = null;
+      sheet = document.createElement('div');
+      sheet.className = 'app-bottom-sheet';
+      Object.defineProperty(sheet, 'offsetHeight', { get: () => sheetHeight });
+      document.body.appendChild(sheet);
+      vi.stubGlobal(
+        'ResizeObserver',
+        class {
+          constructor(cb: () => void) {
+            resize = cb;
+          }
+          observe() {}
+          disconnect = disconnect;
+        },
+      );
+    });
+    afterEach(() => {
+      sheet.remove();
+      vi.unstubAllGlobals();
+      disconnect.mockClear();
+    });
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
-    act(() => emitError('denied'));
+    const card = () => document.querySelector<HTMLElement>('.live-view');
 
-    const dismissButton = await screen.findByRole('button', { name: 'Got it' });
-    fireEvent.click(dismissButton);
+    it('publishes the measured sheet height on the card and follows later resizes', async () => {
+      const { wp } = fakeWatchPosition();
+      renderLive(wp, TEST_PLAN);
+      await screen.findByRole('button', { name: 'Start live view' });
+      expect(card()?.style.getPropertyValue('--live-sheet-h')).toBe('123px');
+      sheetHeight = 200;
+      act(() => resize?.());
+      expect(card()?.style.getPropertyValue('--live-sheet-h')).toBe('200px');
+    });
 
-    expect(screen.queryByRole('button', { name: 'Got it' })).not.toBeInTheDocument();
+    it('stops observing on unmount', async () => {
+      const { wp } = fakeWatchPosition();
+      const { unmount } = renderLive(wp, TEST_PLAN);
+      await screen.findByRole('button', { name: 'Start live view' });
+      unmount();
+      expect(disconnect).toHaveBeenCalled();
+    });
+
+    it('does not measure when the readout is portaled into the wide panel column', async () => {
+      const slot = document.createElement('div');
+      document.body.appendChild(slot);
+      localStorage.setItem('sc-lang', 'en');
+      const { wp } = fakeWatchPosition();
+      render(
+        <I18nProvider>
+          <AppStateProvider>
+            <TestSetPlan plan={TEST_PLAN} />
+            <LiveViewHost watchPosition={wp} panelSlot={slot} />
+          </AppStateProvider>
+        </I18nProvider>,
+      );
+      await screen.findByRole('button', { name: 'Start live view' });
+      expect(
+        slot.querySelector<HTMLElement>('.live-view')?.style.getPropertyValue('--live-sheet-h'),
+      ).toBe('');
+      slot.remove();
+    });
+  });
+
+  describe('GPS states (#1802)', () => {
+    const REROUTE_NAME = 'Replan route from here';
+    const goodFix = (accuracyM = 9): GpsFix => ({
+      point: FIX_POINT,
+      cogDeg: 123.4,
+      sogKn: 5,
+      accuracyM,
+    });
+    const HTS = () => formatHeading(headingToSteerDeg(LEGS, 0, FIX_POINT));
+
+    afterEach(() => vi.useRealTimers());
+
+    // Fake timers go on AFTER the async plan/toggle lookup (findBy polls on
+    // real timers) and BEFORE tracking starts, so the hook's receipt clock is
+    // the faked one.
+    async function startTracking() {
+      const w = fakeWatchPosition();
+      localStorage.setItem('sc-lang', 'en');
+      const view = render(
+        <I18nProvider>
+          <AppStateProvider>
+            <TestSetPlan plan={TEST_PLAN} />
+            <LiveViewHost
+              watchPosition={w.wp}
+              reroute={{ busy: false, rerouting: false, onReroute: vi.fn() }}
+            />
+          </AppStateProvider>
+        </I18nProvider>,
+      );
+      const toggle = await screen.findByRole('button', { name: 'Start live view' });
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance', 'Date'] });
+      fireEvent.click(toggle);
+      return { ...w, view };
+    }
+    const advance = (ms: number) => act(() => void vi.advanceTimersByTime(ms));
+
+    it('waiting: shows the waiting status and a waiting reason on the disabled reroute button', async () => {
+      await startTracking();
+      expect(screen.getByText('Waiting for GPS fix…')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: REROUTE_NAME })).toBeDisabled();
+      expect(screen.getByText('Waiting for a GPS fix.')).toBeInTheDocument();
+    });
+
+    it('fresh: no stale badge, readouts at full strength', async () => {
+      const { emitFix } = await startTracking();
+      act(() => emitFix(goodFix()));
+      expect(screen.getByText(HTS())).toBeInTheDocument();
+      expect(screen.queryByText(/^Stale,/)).not.toBeInTheDocument();
+      expect(document.querySelector('.live-view-data--stale')).toBeNull();
+      expect(screen.queryByText('Waiting for GPS fix…')).not.toBeInTheDocument();
+    });
+
+    it('stale: shows the age badge and dims the readout, HTS included, while values stay visible', async () => {
+      const { emitFix } = await startTracking();
+      act(() => emitFix(goodFix()));
+      advance(10_000);
+      expect(screen.getByText('Stale, 10 s old')).toBeInTheDocument();
+      const data = document.querySelector('.live-view-data--stale');
+      expect(data).not.toBeNull();
+      expect(data).toContainElement(screen.getByText(HTS()));
+      expect(screen.getByText(/projected eta/i)).toBeInTheDocument();
+      advance(5_000);
+      expect(screen.getByText('Stale, 15 s old')).toBeInTheDocument();
+    });
+
+    it('stale: the depth caution is dimmed together with the heading', async () => {
+      vi.mocked(loadRoutingAssets).mockResolvedValue({
+        maskMeta: MASK_META,
+        maskBuffer: fullyDeepMaskBuffer(),
+      } as never);
+      vi.spyOn(NavMaskModule.NavMask.prototype, 'segmentShallowestBelow').mockReturnValue(2.1);
+      const { emitFix } = await startTracking();
+      act(() => emitFix(goodFix()));
+      await act(async () => {
+        await Promise.resolve();
+      });
+      advance(10_000);
+      const note = screen.getByText(/Bearing crosses 2\.1 m/);
+      expect(document.querySelector('.live-view-data--stale')).toContainElement(note);
+    });
+
+    it('lost: hides heading, its caution, COG, SOG, ETA and next event; shows the last fix time and position', async () => {
+      vi.mocked(loadRoutingAssets).mockResolvedValue({
+        maskMeta: MASK_META,
+        maskBuffer: fullyDeepMaskBuffer(),
+      } as never);
+      vi.spyOn(NavMaskModule.NavMask.prototype, 'segmentShallowestBelow').mockReturnValue(2.1);
+      const { emitFix } = await startTracking();
+      act(() => emitFix(goodFix()));
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(screen.getByText(/Bearing crosses 2\.1 m/)).toBeInTheDocument();
+      advance(30_000);
+
+      expect(screen.getByText('GPS signal lost')).toBeInTheDocument();
+      expect(screen.queryByText(HTS())).not.toBeInTheDocument();
+      expect(document.querySelector('.live-view-hts')).toBeNull();
+      expect(document.querySelector('.live-view-hts-note')).toBeNull();
+      expect(screen.queryByText('HTS')).not.toBeInTheDocument();
+      expect(screen.queryByText('COG')).not.toBeInTheDocument();
+      expect(screen.queryByText('SOG')).not.toBeInTheDocument();
+      expect(screen.queryByText(/projected eta/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/next in/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/^Stale,/)).not.toBeInTheDocument();
+      expect(
+        screen.getByText(new RegExp(`Last fix .* at ${formatLatLon(FIX_POINT)}`)),
+      ).toBeInTheDocument();
+    });
+
+    it('lost then fresh keeps the same readout element mounted (RouteLayer reads its presence as Live active)', async () => {
+      const { emitFix } = await startTracking();
+      act(() => emitFix(goodFix()));
+      const data = document.querySelector('.live-view-data');
+      expect(data).not.toBeNull();
+      advance(30_000);
+      expect(screen.getByText('GPS signal lost')).toBeInTheDocument();
+      expect(data?.isConnected).toBe(true);
+      expect(document.querySelector('.live-view-data')).toBe(data);
+      act(() => emitFix(goodFix()));
+      expect(document.querySelector('.live-view-data')).toBe(data);
+      expect(screen.getByText(HTS())).toBeInTheDocument();
+    });
+
+    it('does not mount the readout element before the first fix', async () => {
+      await startTracking();
+      expect(document.querySelector('.live-view-data')).toBeNull();
+    });
+
+    it('the stale badge is a status region announcing a static message, with the ticking age hidden from it', async () => {
+      const { emitFix } = await startTracking();
+      act(() => emitFix(goodFix()));
+      advance(10_000);
+      const badge = document.querySelector('.live-view-gps-stale');
+      expect(badge).toHaveAttribute('role', 'status');
+      expect(badge?.querySelector('[aria-hidden="true"]')).toHaveTextContent('Stale, 10 s old');
+      expect(badge?.querySelector('.sr-only')).toHaveTextContent('GPS position is stale');
+    });
+
+    it('lost: reroute is disabled with the lost reason; a fresh fix restores readouts and clears the state', async () => {
+      const { emitFix } = await startTracking();
+      act(() => emitFix(goodFix()));
+      advance(30_000);
+      expect(screen.getByRole('button', { name: REROUTE_NAME })).toBeDisabled();
+      expect(
+        screen.getByText(/replanning is unavailable until a new fix arrives/),
+      ).toBeInTheDocument();
+
+      act(() => emitFix(goodFix()));
+      expect(screen.queryByText('GPS signal lost')).not.toBeInTheDocument();
+      expect(screen.getByText(HTS())).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: REROUTE_NAME })).toBeEnabled();
+    });
+
+    it('denied: shows recovery copy distinct from loss, hides readouts, and disables reroute with a denied reason', async () => {
+      const { emitFix, emitError } = await startTracking();
+      act(() => emitFix(goodFix()));
+      act(() => emitError('denied'));
+      expect(screen.getByText('Location access is blocked')).toBeInTheDocument();
+      expect(screen.getByText(/Allow location for this site/)).toBeInTheDocument();
+      expect(screen.queryByText('GPS signal lost')).not.toBeInTheDocument();
+      expect(screen.queryByText(HTS())).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: REROUTE_NAME })).toBeDisabled();
+      expect(screen.getByText(/Location access is blocked — replanning/)).toBeInTheDocument();
+    });
+
+    it('denied shows every time, not once ever (a remount after a prior denial shows it again)', async () => {
+      const first = await startTracking();
+      act(() => first.emitError('denied'));
+      expect(screen.getByText('Location access is blocked')).toBeInTheDocument();
+      first.view.unmount();
+      cleanup();
+      vi.useRealTimers();
+
+      const second = await startTracking();
+      act(() => second.emitError('denied'));
+      expect(screen.getByText('Location access is blocked')).toBeInTheDocument();
+    });
+
+    it('timeout and unavailable errors never change what the card shows', async () => {
+      const { emitFix, emitError } = await startTracking();
+      act(() => emitFix(goodFix()));
+      act(() => emitError('timeout'));
+      act(() => emitError('unavailable'));
+      expect(screen.getByText(HTS())).toBeInTheDocument();
+      expect(screen.queryByText('Location access is blocked')).not.toBeInTheDocument();
+      expect(screen.queryByText('GPS signal lost')).not.toBeInTheDocument();
+    });
+
+    it('accuracy: the disabled reroute button states the current accuracy and the threshold; a good fix enables it', async () => {
+      const { emitFix } = await startTracking();
+      act(() => emitFix(goodFix(150.4)));
+      expect(screen.getByRole('button', { name: REROUTE_NAME })).toBeDisabled();
+      expect(
+        screen.getByText('GPS accuracy of 150 m is worse than the 100 m limit for replanning.'),
+      ).toBeInTheDocument();
+      act(() => emitFix(goodFix(50)));
+      expect(screen.getByRole('button', { name: REROUTE_NAME })).toBeEnabled();
+      expect(screen.queryByText(/worse than the/)).not.toBeInTheDocument();
+    });
+
+    it('the reroute button is described by its reason text', async () => {
+      await startTracking();
+      const button = screen.getByRole('button', { name: REROUTE_NAME });
+      const reason = document.getElementById(button.getAttribute('aria-describedby') ?? '');
+      expect(reason).toHaveTextContent('Waiting for a GPS fix.');
+    });
+
+    it('does not show GPS states while tracking is off', async () => {
+      const w = fakeWatchPosition();
+      renderLive(w.wp, TEST_PLAN);
+      await screen.findByRole('button', { name: 'Start live view' });
+      expect(screen.queryByText('Waiting for GPS fix…')).not.toBeInTheDocument();
+    });
   });
 
   it('renders its readout into the provided panel slot via a portal, with no map instance required', async () => {

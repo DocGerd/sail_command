@@ -51,8 +51,10 @@ import { PLAN_SCHEMA_VERSION } from './types';
 // #1800: the marker's own rendering is covered by OwnshipMarker.test.tsx; here
 // only whether App hands it a fix matters.
 vi.mock('./components/OwnshipMarker', () => ({
-  default: ({ fix }: { fix: { point: { lat: number } } | null }) =>
-    fix ? <div data-testid="ownship-marker" data-lat={fix.point.lat} /> : null,
+  default: ({ fix, stale }: { fix: { point: { lat: number } } | null; stale?: boolean }) =>
+    fix ? (
+      <div data-testid="ownship-marker" data-lat={fix.point.lat} data-stale={String(stale)} />
+    ) : null,
 }));
 
 // jsdom has no WebGL/canvas backend, so MapLibre GL is mocked wholesale here
@@ -3841,7 +3843,7 @@ describe('session restore (#113)', () => {
       expect((await db.loadSettings())?.showOwnship ?? false).toBe(false);
     });
 
-    it('a lost fix removes the marker (never a confident boat at an old position); a new fix restores it', async () => {
+    it('#1802: the marker is handed the stale style once the signal is lost, and loses it on a fresh fix', async () => {
       const geo = stubGeolocation();
       await db.savePlan(savedPlan('gps-lost'));
       localStorage.setItem('sc-session', '{"v":1,"planId":"gps-lost","tab":"live","rig":"genoa"}');
@@ -3851,16 +3853,13 @@ describe('session restore (#113)', () => {
       try {
         fireEvent.click(toggle);
         geo.emit(54.8, 1000);
-        expect(screen.getByTestId('ownship-marker')).toBeInTheDocument();
-
-        act(() => void vi.advanceTimersByTime(15_000));
-        expect(screen.getByTestId('ownship-marker')).toBeInTheDocument();
-
-        act(() => void vi.advanceTimersByTime(15_000));
-        expect(screen.queryByTestId('ownship-marker')).toBeNull();
-
-        geo.emit(54.9, 2000);
-        expect(screen.getByTestId('ownship-marker')).toHaveAttribute('data-lat', '54.9');
+        expect(screen.getByTestId('ownship-marker')).toHaveAttribute('data-stale', 'false');
+        act(() => void vi.advanceTimersByTime(29_000));
+        expect(screen.getByTestId('ownship-marker')).toHaveAttribute('data-stale', 'false');
+        act(() => void vi.advanceTimersByTime(1_000));
+        expect(screen.getByTestId('ownship-marker')).toHaveAttribute('data-stale', 'true');
+        geo.emit(54.8, 2000);
+        expect(screen.getByTestId('ownship-marker')).toHaveAttribute('data-stale', 'false');
       } finally {
         vi.useRealTimers();
       }

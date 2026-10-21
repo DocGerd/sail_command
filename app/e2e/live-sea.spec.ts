@@ -85,8 +85,8 @@ function readRecommendedLegs(page: Page): Promise<LegGeo[]> {
                 sails: { sailId: string; result: { legs: LegGeo[] } | null }[];
               };
             };
-            const legs = plan.result.sails.find((s) => s.sailId === plan.result.recommended)
-              ?.result?.legs;
+            const legs = plan.result.sails.find((s) => s.sailId === plan.result.recommended)?.result
+              ?.legs;
             if (!legs) {
               reject(new Error('recommended rig has no stored legs'));
               return;
@@ -322,7 +322,6 @@ for (const [name, viewport] of Object.entries(TABLET_VIEWPORTS)) {
     context,
   }) => {
     test.setTimeout(360_000);
-    const blockedBy1802 = name === 'tabletPortrait';
     await page.setViewportSize(viewport);
     const server = await startPreview(page);
     try {
@@ -359,18 +358,14 @@ for (const [name, viewport] of Object.entries(TABLET_VIEWPORTS)) {
           .toBe('ok');
       }
       for (const [label, locator] of bottomEdge) {
-        const verdict = expect.poll(() => topmostVerdict(locator), {
-          message: `${label} occluded`,
-          timeout: 10_000,
-        });
-        // #1802: remove this branch when the sheet stops covering the card.
-        if (blockedBy1802) await verdict.toMatch(/ hit /);
-        else await verdict.toBe('ok');
+        await expect
+          .poll(() => topmostVerdict(locator), { message: `${label} occluded`, timeout: 10_000 })
+          .toBe('ok');
       }
 
       // A click at the centre of each button still lands on it.
       await liveToggle.click({ trial: true });
-      if (!blockedBy1802) await rerouteButton.click({ trial: true });
+      await rerouteButton.click({ trial: true });
     } finally {
       server.kill();
     }

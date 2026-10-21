@@ -596,17 +596,16 @@ select {
 }
 
 /* Narrow-layout base: LiveView's readout DOM stays outside .app-panel, inside
-   MapView's subtree (for BoatMarker's map context), styled to dock in the same
-   visual region — directly above the always-visible .app-tabs strip (bottom:
-   var(--sc-tabbar-h), not 0, or the tab strip — painted later in DOM order —
-   would cover it). On wide the readout portals into .app-panel-live and these
-   absolute rules are neutralized (see the #31 block in the wide media query). */
+   MapView's subtree (for BoatMarker's map context), docked above .app-bottom-sheet.
+   `--live-sheet-h` is the sheet's measured height (set by LiveView); the fallback
+   clears the tab strip plus a typical collapsed AIS row if it never runs. On wide the readout portals into .app-panel-live
+   and these absolute rules are neutralized (see the #31 block in the wide media query). */
 .live-view {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: var(--sc-tabbar-h);
-  max-height: calc(55vh - var(--sc-tabbar-h));
+  bottom: var(--live-sheet-h, calc(var(--sc-tabbar-h) + 6rem));
+  max-height: max(12rem, calc(55vh - var(--live-sheet-h, calc(var(--sc-tabbar-h) + 6rem))));
   overflow-y: auto;
   background: var(--sc-bg);
   border-top: 1px solid var(--sc-border);
@@ -626,15 +625,88 @@ select {
   border-radius: 8px;
 }
 
-.live-view-gps-hint {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+/* GPS state block: waiting / lost / denied (warning banner wash). */
+.live-view-gps {
   padding: 0.5rem;
-  margin-bottom: 0.5rem;
+  margin: 0.5rem 0;
   background: var(--sc-banner-warning-bg);
   color: var(--sc-banner-warning-fg);
   border-radius: 6px;
+}
+
+.live-view-gps p {
+  margin: 0;
+}
+
+.live-view-gps-title {
+  font-weight: 700;
+}
+
+.chip.live-view-gps-stale {
+  margin: 0.5rem 0;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  background: var(--sc-banner-warning-bg);
+  color: var(--sc-banner-warning-fg);
+}
+
+/* Resume prompt after a reload, crash or tab switch: the card's most prominent element. */
+.live-view-resume {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  margin: 0.5rem 0;
+  background: var(--sc-banner-warning-bg);
+  color: var(--sc-banner-warning-fg);
+  border: 2px solid currentColor;
+  border-radius: 8px;
+  font-weight: 700;
+}
+
+.live-view-resume p {
+  margin: 0;
+}
+
+.live-view-handover {
+  margin: 0.5rem 0;
+  font-size: 0.85rem;
+}
+
+.live-view-wake {
+  margin: 0.5rem 0;
+  font-size: 0.85rem;
+}
+
+.live-view-wake label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.live-view-wake-status {
+  margin: 0.15rem 0 0;
+  opacity: 0.75;
+}
+
+/* Stale: values stay readable but visibly not current. */
+.live-view-data--stale {
+  opacity: 0.6;
+}
+
+/* Lost or denied: the boat marker must not read as a confident position
+   (OwnshipMarker toggles the class on the map container). */
+/* On the svg, not the marker element: MapLibre writes inline opacity there. */
+.live-gps-lost .sc-boat-marker svg {
+  opacity: 0.5;
+  filter: grayscale(1);
+}
+
+.live-gps-lost .sc-boat-marker polygon {
+  fill-opacity: 0.3;
+  stroke-dasharray: 3 2;
 }
 
 .live-view-data {
@@ -1973,7 +2045,7 @@ select {
      cap (146px at 740x360) suppresses ScaleBar with ZERO banners present —
      `liveLift` is already past the ceiling before any banner term enters
      the computation at all, because the card is BOTTOM-anchored
-     (`bottom: var(--sc-tabbar-h)`), so a taller capped box pushes its OWN
+     (`bottom: var(--sc-tabbar-h)` when measured; since #1802 `var(--live-sheet-h, ...)`), so a taller capped box pushes its OWN
      top edge further up the screen regardless of what pushed
      `.map-stack-tl`. Narrowing the cap by the SAME banner-sized amount this
      block uses for the sheet does NOT clear it either (still suppressed at
@@ -4517,7 +4589,7 @@ select {
 /* #652: distinguishes the "router cannot reach this harbor" disclosure from
    the neutral depth caveat below (.harbor-picker-caveat) — reuses the same
    --sc-banner-warning-fg token every other warning surface in the app
-   already uses (.banner-warning, .live-view-gps-hint), never a new colour.
+   already uses (.banner-warning, .live-view-gps), never a new colour.
    Unlike the caveat below, this line is NOT ellipsized: truncating a
    "cannot be routed to" disclosure would defeat the whole point of #652. No
    separate dark-mode block needed — the token already varies by mode, same
