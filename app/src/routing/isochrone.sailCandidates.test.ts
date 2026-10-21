@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import { Polar } from '../lib/polar';
+import type { PolarTable } from '../types';
 import { sailCandidates } from './isochrone';
+
+const polarTables = Object.values(
+  import.meta.glob<PolarTable>('../../public/data/polars/*.json', {
+    eager: true,
+    import: 'default',
+  }),
+);
 
 const EXTRA_TWAS = [45, 55, 65, 75, 85, 95, 105, 115, 125, 135, 145, 155, 165, 175];
 const MOTOR_TWAS = [0, 20, 35];
@@ -61,6 +70,26 @@ describe('sailCandidates', () => {
           n++;
         }
     expect(n).toBeGreaterThan(40_000);
+  });
+
+  it('matches on the beat and gybe angles of every shipped polar, and on NaN', () => {
+    expect(polarTables.length).toBeGreaterThanOrEqual(8);
+    const pairs: Array<[number, number]> = [[NaN, NaN]];
+    for (const table of polarTables) {
+      const polar = new Polar(table);
+      for (let k = 0; k <= 800; k++)
+        pairs.push([polar.beatAngleDeg(k / 20), polar.gybeAngleDeg(k / 20)]);
+    }
+    let n = 0;
+    for (const [beat, gybe] of pairs)
+      for (const motor of [true, false]) {
+        const direct = directs[n % directs.length];
+        const want = referenceCandidates(beat, gybe, motor, direct);
+        const got = sailCandidates(beat, gybe, motor, direct);
+        if (!sameArray(got, want)) expect(got).toEqual(want);
+        n++;
+      }
+    expect(n).toBeGreaterThan(10_000);
   });
 
   it('keeps +0 and drops -0 for the motor TWA, and covers beat/gybe collisions', () => {

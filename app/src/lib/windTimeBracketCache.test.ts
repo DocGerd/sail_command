@@ -105,6 +105,10 @@ describe('WindField.sample time-bracket cache', () => {
         T0 - 1,
         T0,
         T0 + 1,
+        // Sub-millisecond neighbours: a key that rounds tMs would alias these.
+        T0 + 0.25,
+        T0 + 0.5,
+        T0 + 1.25,
         last - 1,
         last,
         last + 1,
