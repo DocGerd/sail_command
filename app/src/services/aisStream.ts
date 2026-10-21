@@ -9,17 +9,27 @@ export const AIS_STREAM_URL = 'wss://stream.aisstream.io/v0/stream';
 // aisstream's BoundingBoxes element: [ [latSW, lonSW], [latNE, lonNE] ].
 export type AisBoundingBox = [[number, number], [number, number]];
 
+// Names per https://aisstream.io/documentation; the Class B field shapes per the
+// OpenAPI models it publishes (https://github.com/aisstream/ais-message-models).
+export const AIS_MESSAGE_TYPES = [
+  'PositionReport',
+  'ShipStaticData',
+  'StandardClassBPositionReport',
+  'ExtendedClassBPositionReport',
+  'StaticDataReport',
+] as const;
+
 export interface AisSubscription {
   APIKey: string;
   BoundingBoxes: AisBoundingBox[];
-  FilterMessageTypes: ['PositionReport', 'ShipStaticData'];
+  FilterMessageTypes: typeof AIS_MESSAGE_TYPES;
 }
 
 export function buildSubscription(apiKey: string, bboxes: AisBoundingBox[]): AisSubscription {
   return {
     APIKey: apiKey,
     BoundingBoxes: bboxes,
-    FilterMessageTypes: ['PositionReport', 'ShipStaticData'],
+    FilterMessageTypes: AIS_MESSAGE_TYPES,
   };
 }
 
@@ -125,8 +135,12 @@ export function parseAisMessage(raw: string): ParsedAisMessage | null {
   const mmsi = String(rawMmsi).padStart(9, '0');
   const metaName = cleanName(meta.ShipName);
 
-  if (messageType === 'PositionReport') {
-    const pr = message.PositionReport as Record<string, unknown> | undefined;
+  if (
+    messageType === 'PositionReport' ||
+    messageType === 'StandardClassBPositionReport' ||
+    messageType === 'ExtendedClassBPositionReport'
+  ) {
+    const pr = message[messageType] as Record<string, unknown> | undefined;
     if (!pr) return null;
     const lat = num(pr.Latitude);
     const lon = num(pr.Longitude);
@@ -138,7 +152,24 @@ export function parseAisMessage(raw: string): ParsedAisMessage | null {
     if (sog !== undefined) out.sogKn = sog;
     if (cog !== undefined) out.cogDeg = cog;
     if (heading !== undefined) out.headingDeg = heading;
-    if (metaName !== undefined) out.name = metaName;
+    const name =
+      (messageType === 'ExtendedClassBPositionReport' ? cleanName(pr.Name) : undefined) ?? metaName;
+    if (name !== undefined) out.name = name;
+    return out;
+  }
+
+  // Class B static data arrives in two parts (A: name, B: ship type); the
+  // part that does not apply carries an empty name / type 0.
+  if (messageType === 'StaticDataReport') {
+    const sd = message.StaticDataReport as Record<string, unknown> | undefined;
+    if (!sd) return null;
+    const reportA = sd.ReportA as Record<string, unknown> | undefined;
+    const reportB = sd.ReportB as Record<string, unknown> | undefined;
+    const out: ParsedAisData = { kind: 'static', mmsi };
+    const name = cleanName(reportA?.Name) ?? metaName;
+    const shipType = num(reportB?.ShipType);
+    if (name !== undefined) out.name = name;
+    if (shipType !== undefined && shipType > 0) out.shipType = shipType;
     return out;
   }
 
@@ -170,6 +201,15 @@ export const AIS_BACKOFF_CAP_MS = 60_000;
 export const AIS_AUTH_CLOSE_THRESHOLD = 3;
 export const AIS_AUTH_STABLE_MS = 30_000;
 
+// Inbound-silence watchdog. An open socket that delivers nothing is NOT
+// necessarily dead: a valid key over a vessel-empty bbox is silent indefinitely.
+// So silence first surfaces as the 'noTraffic' status, and only a much longer
+// silence recycles the socket (half-open TCP never fires onclose). The recycle
+// proves the key first, so it never counts as a wrong-key early close even when
+// the stability timer fired late; keep the threshold above AIS_AUTH_STABLE_MS.
+export const AIS_NO_TRAFFIC_MS = 20_000;
+export const AIS_SILENCE_RECONNECT_MS = 180_000;
+
 // Full-jitter capped exponential backoff. attempt is 1-based (consecutive
 // failed connects); delay in [0, min(cap, base * 2^(attempt-1))). random()
 // in [0,1) is injected for deterministic tests.
@@ -178,11 +218,14 @@ export function nextReconnectDelayMs(attempt: number, random: () => number): num
   return Math.floor(random() * ceiling);
 }
 
-export type AisClientStatus = 'connecting' | 'live' | 'keyError' | 'closed';
+export type AisClientStatus = 'connecting' | 'live' | 'noTraffic' | 'keyError' | 'closed';
 
 export interface AisStreamCallbacks {
   onMessage: (msg: ParsedAisData) => void; // position/static only; never error
   onStatus: (status: AisClientStatus) => void;
+  // Fired once when the key is first proven (see keyProven), so a caller that
+  // recreates the client can hand the fact to the next instance.
+  onKeyProven?: () => void;
 }
 
 // Minimal socket surface the client drives (a real WebSocket, or a fake).
@@ -222,6 +265,9 @@ export interface AisStreamDeps {
   random?: () => number;
   setTimer?: (fn: () => void, ms: number) => number;
   clearTimer?: (id: number) => void;
+  now?: () => number;
+  // The key is already known to work (a previous client for it was proven).
+  keyProven?: boolean;
 }
 
 export class AisStreamClient {
@@ -231,6 +277,7 @@ export class AisStreamClient {
   private readonly random: () => number;
   private readonly setTimer: (fn: () => void, ms: number) => number;
   private readonly clearTimer: (id: number) => void;
+  private readonly now: () => number;
 
   private socket: AisSocket | null = null;
   private socketOpen = false;
@@ -245,10 +292,15 @@ export class AisStreamClient {
   // Once true, the key demonstrably works (a message arrived, or a connection
   // survived AIS_AUTH_STABLE_MS with the socket open) — early closes can no
   // longer reach keyError. Deliberately NOT reset in start(): the key is fixed
-  // per client instance (the hook recreates the client on a key change).
-  private keyProven = false;
+  // per client instance (the hook recreates the client on a key change, and
+  // seeds a new instance for the SAME key via deps.keyProven).
+  private keyProven: boolean;
+  private lastInboundMs = 0;
   private timerId: number | null = null;
   private stabilityTimerId: number | null = null;
+  private livenessTimerId: number | null = null;
+  // Tears down the current connection exactly as a transport close would.
+  private recycleSocket: () => void = () => {};
   private currentBboxes: AisBoundingBox[] = [];
   private status: AisClientStatus = 'closed';
 
@@ -259,6 +311,8 @@ export class AisStreamClient {
     this.random = deps.random ?? Math.random;
     this.setTimer = deps.setTimer ?? ((fn, ms) => window.setTimeout(fn, ms));
     this.clearTimer = deps.clearTimer ?? ((id) => window.clearTimeout(id));
+    this.now = deps.now ?? Date.now;
+    this.keyProven = deps.keyProven ?? false;
   }
 
   start(bboxes: AisBoundingBox[]): void {
@@ -292,6 +346,7 @@ export class AisStreamClient {
       this.timerId = null;
     }
     this.clearStabilityTimer();
+    this.clearLivenessTimer();
     const s = this.socket;
     this.socket = null;
     this.socketOpen = false;
@@ -310,6 +365,7 @@ export class AisStreamClient {
       this.socket = null;
       this.socketOpen = false;
       this.clearStabilityTimer();
+      this.clearLivenessTimer();
       if (!this.running || this.authFailed) return;
       // Live-verified (#25 Task 8): a bad/revoked key produces NO error frame —
       // aisstream accepts the socket, takes the subscription, then closes bare
@@ -348,12 +404,16 @@ export class AisStreamClient {
         this.stabilityTimerId = this.setTimer(() => {
           this.stabilityTimerId = null;
           if (!this.socketOpen) return;
-          this.keyProven = true;
+          this.proveKey();
           this.earlyCloses = 0;
           this.attempt = 0;
         }, AIS_AUTH_STABLE_MS);
+        this.lastInboundMs = this.now();
+        this.armLivenessTimer(AIS_NO_TRAFFIC_MS);
       },
       onMessage: (data) => {
+        // Any frame proves the transport alive, parseable or not.
+        this.lastInboundMs = this.now();
         const parsed = parseAisMessage(data);
         if (!parsed) return;
         if (parsed.kind === 'error') {
@@ -361,6 +421,7 @@ export class AisStreamClient {
           this.authFailed = true;
           disconnected = true; // suppress the retry the imminent close would arm
           this.clearStabilityTimer();
+          this.clearLivenessTimer();
           this.emitStatus('keyError');
           const s = this.socket;
           this.socket = null;
@@ -372,14 +433,52 @@ export class AisStreamClient {
           this.receivedSinceConnect = true;
           this.attempt = 0; // a live subscription resets backoff
           this.earlyCloses = 0; // …and the wrong-key early-close streak
-          this.keyProven = true; // a delivered message proves the key outright
-          this.emitStatus('live');
+          this.proveKey(); // a delivered message proves the key outright
         }
+        if (this.status === 'noTraffic') this.armLivenessTimer(AIS_NO_TRAFFIC_MS); // its pending timer targets the reconnect threshold
+        this.emitStatus('live'); // also leaves 'noTraffic' when traffic resumes
         this.callbacks.onMessage(parsed);
       },
       onClose: handleDisconnect,
       onError: handleDisconnect,
     });
+    this.recycleSocket = () => {
+      const s = this.socket;
+      handleDisconnect();
+      s?.close();
+    };
+  }
+
+  private proveKey(): void {
+    if (this.keyProven) return;
+    this.keyProven = true;
+    this.callbacks.onKeyProven?.();
+  }
+
+  private armLivenessTimer(delayMs: number): void {
+    this.clearLivenessTimer();
+    this.livenessTimerId = this.setTimer(() => {
+      this.livenessTimerId = null;
+      if (!this.socketOpen) return;
+      const idleMs = this.now() - this.lastInboundMs;
+      if (idleMs >= AIS_SILENCE_RECONNECT_MS) {
+        // Open for the whole silence window by wall clock, even if the stability timer fired late.
+        this.proveKey();
+        this.recycleSocket();
+      } else if (idleMs >= AIS_NO_TRAFFIC_MS) {
+        this.emitStatus('noTraffic');
+        this.armLivenessTimer(AIS_SILENCE_RECONNECT_MS - idleMs);
+      } else {
+        this.armLivenessTimer(AIS_NO_TRAFFIC_MS - idleMs);
+      }
+    }, delayMs);
+  }
+
+  private clearLivenessTimer(): void {
+    if (this.livenessTimerId !== null) {
+      this.clearTimer(this.livenessTimerId);
+      this.livenessTimerId = null;
+    }
   }
 
   private sendSubscription(): void {
