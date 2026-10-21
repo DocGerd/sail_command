@@ -3,7 +3,15 @@ import type { Polar } from '../lib/polar';
 import type { WindField } from '../lib/wind';
 import type { NavMask } from '../lib/mask';
 import { gateFloorM, uniformGate, type DepthGate } from '../lib/depthGate';
-import { destinationPoint, haversineNm, initialBearingDeg, normalizeDeg180 } from '../lib/geo';
+import {
+  destinationPointFrom,
+  haversineNm,
+  haversineNmTo,
+  initialBearingDeg,
+  initialBearingDegFrom,
+  normalizeDeg180,
+  preparePoint,
+} from '../lib/geo';
 import { boardForCandidate, classifyManeuver } from './maneuver';
 
 export interface SolveParams {
@@ -271,7 +279,38 @@ export function defaultMaxFrontier(meta: {
  */
 export const DEADLINE_CHECK_NODES = 128;
 const EXTRA_TWAS = [45, 55, 65, 75, 85, 95, 105, 115, 125, 135, 145, 155, 165, 175];
-const MOTOR_TWAS = [0, 20, 35];
+// The fixed TWAs, already deduped among themselves (all >= 10 deg apart, and
+// -0 is dropped as +0 would drop it), so only the beat/gybe entries can collide.
+const FIXED_SAIL_TWAS = EXTRA_TWAS.flatMap((m) => [m, -m]);
+const FIXED_SAIL_MOTOR_TWAS = [...FIXED_SAIL_TWAS, 0, 20, -20, 35, -35];
+
+/** Signed TWA candidates for one node, deduped within 1 deg, plus the direct TWA. */
+export function sailCandidates(
+  beatDeg: number,
+  gybeDeg: number,
+  motorEnabled: boolean,
+  directTwa: number,
+): number[] {
+  const twas: number[] = [];
+  for (const m of [beatDeg, gybeDeg])
+    for (const s of [1, -1]) {
+      const t = s * m;
+      if (!twas.some((x) => Math.abs(x - t) < 1)) twas.push(t);
+    }
+  const nHead = twas.length;
+  for (const t of motorEnabled ? FIXED_SAIL_MOTOR_TWAS : FIXED_SAIL_TWAS) {
+    let hit = false;
+    for (let i = 0; i < nHead; i++)
+      if (Math.abs(twas[i] - t) < 1) {
+        hit = true;
+        break;
+      }
+    if (!hit) twas.push(t);
+  }
+  if (!twas.includes(180)) twas.push(180);
+  if (!twas.some((x) => Math.abs(x - directTwa) < 0.5)) twas.push(directTwa);
+  return twas;
+}
 // #885: a forced-motor segment has no sail up, so candidates are headings, not
 // TWAs. 10° spacing gives 36 headings (+ the direct bearing), against today's
 // ~39-entry per-node TWA set with motor enabled.
@@ -509,6 +548,7 @@ export function solve(p: SolveParams): SolveResult {
   // must never be constructed inside it or any loop body.
   const gate = p.gate ?? uniformGate(settings.safetyDepthM);
   const forcedKind = p.forcedKind;
+  const destinationP = preparePoint(destination);
   // #885: a forced-sail segment solves as motor-off. Absent forcedKind this is
   // exactly settings.motorEnabled, so every read below is unchanged.
   const motorEnabled = forcedKind === 'sail' ? false : settings.motorEnabled;
@@ -651,7 +691,8 @@ export function solve(p: SolveParams): SolveResult {
       }
       const from = { lat: node.lat, lon: node.lon };
       const w = wind.sample(from, node.tMs);
-      const bearingToDest = initialBearingDeg(from, destination);
+      const fromP = preparePoint(from);
+      const bearingToDest = initialBearingDegFrom(fromP, destinationP);
 
       // Candidates: signed TWAs (deduped within 1°) plus the direct TWA; on a
       // forced-motor segment, headings (#885) plus the direct bearing.
@@ -663,27 +704,18 @@ export function solve(p: SolveParams): SolveResult {
           ? FORCED_MOTOR_HEADINGS
           : [...FORCED_MOTOR_HEADINGS, bearingToDest];
       } else {
-        const mags = [
+        candidates = sailCandidates(
           polar.beatAngleDeg(w.speedKn),
           polar.gybeAngleDeg(w.speedKn),
-          ...EXTRA_TWAS,
-          ...(motorEnabled ? MOTOR_TWAS : []),
-        ];
-        const twas: number[] = [];
-        for (const m of mags)
-          for (const s of [1, -1]) {
-            const t = s * m;
-            if (!twas.some((x) => Math.abs(x - t) < 1)) twas.push(t);
-          }
-        if (!twas.includes(180)) twas.push(180);
-        const directTwa = normalizeDeg180(w.dirFromDeg - bearingToDest);
-        if (!twas.some((x) => Math.abs(x - directTwa) < 0.5)) twas.push(directTwa);
-        candidates = twas;
+          motorEnabled,
+          normalizeDeg180(w.dirFromDeg - bearingToDest),
+        );
       }
 
       let produced = 0;
       let sawBlocked = false;
       let sawCalm = false;
+      const twsBracket = polar.bracketTws(w.speedKn);
 
       for (const candidate of candidates) {
         let headingDeg: number;
@@ -698,7 +730,7 @@ export function solve(p: SolveParams): SolveResult {
         } else {
           twa = candidate;
           headingDeg = (((w.dirFromDeg - twa) % 360) + 360) % 360;
-          const sailSpeed = polar.speedKn(twa, w.speedKn);
+          const sailSpeed = polar.speedKnAt(twa, twsBracket);
           if (sailSpeed >= sailFloorKn) {
             kind = 'sail';
             speed = sailSpeed;
@@ -772,7 +804,7 @@ export function solve(p: SolveParams): SolveResult {
         }
 
         let stepMs = dtS * 1000;
-        let end = destinationPoint(from, headingDeg, distNm);
+        let end = destinationPointFrom(fromP, headingDeg, distNm);
         const fullFactor = edgeFactor(mask, from, end, gate, comfortDepthM);
         let factor: number;
         if (fullFactor !== null) {
@@ -793,7 +825,7 @@ export function solve(p: SolveParams): SolveResult {
             const subEffS = maneuver ? Math.max(subDtS - settings.maneuverPenaltyS, 0) : subDtS;
             const d = (speed * subEffS) / 3600;
             if (d <= 0) break; // maneuver penalty swallows this and every shorter substep
-            const e = destinationPoint(from, headingDeg, d);
+            const e = destinationPointFrom(fromP, headingDeg, d);
             const subFactor = edgeFactor(mask, from, e, gate, comfortDepthM);
             if (subFactor !== null) {
               end = e;
@@ -823,7 +855,7 @@ export function solve(p: SolveParams): SolveResult {
           twsKn: w.speedKn,
           maneuverAtStart: maneuver,
           maneuvers: node.maneuvers + (maneuver ? 1 : 0),
-          distToDestNm: haversineNm(end, destination),
+          distToDestNm: haversineNmTo(end, destinationP),
           parent: node,
         };
 

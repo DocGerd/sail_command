@@ -11,24 +11,19 @@ import {
 
 export type PlanFn = typeof planRoute;
 
+export type HandoverPlans = Generator<PlanRequest, PlanResult, PlanResult>;
+
 /**
- * #1721: plans as `planRoute` does; only when that fails for a harbour pick the
- * grid cannot connect at the requested gate does it re-plan from/to the
- * handover point on the side leading by water to the adjacent route point and
- * flag the substituted ends.
- * Gates on status and harbour state only, never on the failure reason (#282).
+ * The handover decision as one generator: it yields each request to plan and
+ * receives its result, so the sync and async wrappers share the logic.
  */
-export function planWithHarborHandover(
+function* handoverPlans(
   req: PlanRequest,
-  windGrid: WindGrid,
   deps: PlanDeps,
-  onProgress: RigProgress | undefined,
-  onProbe: ProbeProgress | undefined,
   deadline: PlanDeadline | undefined,
   knownDisconnectedIds: ReadonlySet<string>,
-  plan: PlanFn = planRoute,
-): PlanResult {
-  const r1 = plan(req, windGrid, deps, onProgress, onProbe, deadline);
+): HandoverPlans {
+  const r1 = yield req;
   if (r1.status !== 'error') return r1;
   if (deadline?.expired()) return r1;
 
@@ -62,18 +57,11 @@ export function planWithHarborHandover(
     return r1;
   }
 
-  const r2 = plan(
-    {
-      ...req,
-      origin: ends.origin ?? req.origin,
-      destination: ends.destination ?? req.destination,
-    },
-    windGrid,
-    deps,
-    onProgress,
-    onProbe,
-    deadline,
-  );
+  const r2 = yield {
+    ...req,
+    origin: ends.origin ?? req.origin,
+    destination: ends.destination ?? req.destination,
+  };
   if (r2.status === 'ok') {
     const flags: { origin?: true; destination?: true } = {};
     if (ends.origin !== undefined) flags.origin = true;
@@ -81,4 +69,43 @@ export function planWithHarborHandover(
     return withHarborHandover(r2, flags satisfies HarborHandoverEnds);
   }
   return deadline?.expired() ? r2 : r1;
+}
+
+/**
+ * #1721: plans as `planRoute` does; only when that fails for a harbour pick the
+ * grid cannot connect at the requested gate does it re-plan from/to the
+ * handover point on the side leading by water to the adjacent route point and
+ * flag the substituted ends.
+ * Gates on status and harbour state only, never on the failure reason (#282).
+ */
+export function planWithHarborHandover(
+  req: PlanRequest,
+  windGrid: WindGrid,
+  deps: PlanDeps,
+  onProgress: RigProgress | undefined,
+  onProbe: ProbeProgress | undefined,
+  deadline: PlanDeadline | undefined,
+  knownDisconnectedIds: ReadonlySet<string>,
+  plan: PlanFn = planRoute,
+): PlanResult {
+  const g = handoverPlans(req, deps, deadline, knownDisconnectedIds);
+  let next = g.next();
+  while (!next.done) {
+    next = g.next(plan(next.value, windGrid, deps, onProgress, onProbe, deadline));
+  }
+  return next.value;
+}
+
+/** As `planWithHarborHandover`, planning each request through `plan`. */
+export async function planWithHarborHandoverAsync(
+  req: PlanRequest,
+  deps: PlanDeps,
+  deadline: PlanDeadline | undefined,
+  knownDisconnectedIds: ReadonlySet<string>,
+  plan: (req: PlanRequest) => Promise<PlanResult>,
+): Promise<PlanResult> {
+  const g = handoverPlans(req, deps, deadline, knownDisconnectedIds);
+  let next = g.next();
+  while (!next.done) next = g.next(await plan(next.value));
+  return next.value;
 }
