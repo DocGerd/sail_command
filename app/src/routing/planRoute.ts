@@ -87,7 +87,7 @@ export const NO_ROUTE_LABEL_OF_CAUSE = {
   'forced-sail-calm': 'calm-sail-only',
 } as const satisfies Record<SolveFailureCause, NoRouteReason>;
 
-interface RunOut {
+export interface RunOut {
   sailId: SailId;
   rigResult: RigResult | null;
   /** Null exactly when `rigResult` is non-null. Never the user-facing label. */
@@ -95,8 +95,149 @@ interface RunOut {
 }
 
 /** #1136: a pass-2 run — salvage on, under pass 2's sub-deadline. */
-interface Pass2 {
+export interface Pass2 {
   deadline: SolveDeadline | undefined;
+  /** Pass 2's start instant; undefined exactly when the plan is unbudgeted. */
+  startMs: number | undefined;
+}
+
+/** Everything a rig solve needs besides its polar, gate and deadline. */
+export interface RigContext {
+  waypoints: readonly LatLon[];
+  departureMs: number;
+  settings: Settings;
+  segmentModes: PlanRequest['segmentModes'];
+  sailIds: readonly SailId[];
+  wind: WindField;
+  mask: NavMask;
+  polarFor: (sailId: SailId) => PolarTable;
+}
+
+/**
+ * One barrier of the ladder: solve every requested rig (`ctx.sailIds`, in that
+ * order) at this gate. Tier decisions read all of a step's results together.
+ */
+export interface RigStep {
+  ctx: RigContext;
+  gate: DepthGate;
+  comfortDepthM: number | undefined;
+  pass2: Pass2 | null;
+  /** The deadline this step's solves obey: the plan's, or pass 2's. */
+  deadline: SolveDeadline | undefined;
+}
+
+/**
+ * Pass 2's sub-deadline: the parent deadline, or `PASS2_BUDGET_MS` from
+ * `startMs`, whichever expires first.
+ */
+export function pass2DeadlineFrom(
+  parent: SolveDeadline,
+  startMs: number,
+  now: () => number,
+): SolveDeadline {
+  return { expired: () => parent.expired() || now() - startMs >= PASS2_BUDGET_MS };
+}
+
+/** One rig across all waypoint segments. */
+export function solveRig(
+  ctx: RigContext,
+  sailId: SailId,
+  table: PolarTable,
+  gate: DepthGate,
+  comfort: number | undefined,
+  secondPass: boolean,
+  deadline: SolveDeadline | undefined,
+  onProgress?: RigProgress,
+): RunOut {
+  const { waypoints, settings, segmentModes, wind, mask } = ctx;
+  const polar = new Polar(table, settings.performanceFactor);
+  const legs: Leg[] = [];
+  // Segments are solved sequentially, each departing at the previous
+  // segment's ETA. Maneuver state (board, tack/gybe count) is v1-simplified
+  // to reset at each via-point joint: a board change across a via is not
+  // charged a maneuver penalty.
+  let departureMs = ctx.departureMs;
+  for (let i = 0; i < waypoints.length - 1; i++) {
+    const forcedKind = segmentModes?.[i] ?? null;
+    const res = solve({
+      origin: waypoints[i],
+      destination: waypoints[i + 1],
+      departureMs,
+      polar,
+      wind,
+      mask,
+      settings,
+      gate,
+      onProgress: (info) => onProgress?.(sailId, secondPass ? { ...info, secondPass: true } : info),
+      ...(comfort !== undefined ? { comfortDepthM: comfort } : {}),
+      // exactOptionalPropertyTypes: omit the key entirely when unbudgeted.
+      ...(deadline !== undefined ? { deadline } : {}),
+      // #1136: key omitted in pass 1, so its SolveParams are unchanged.
+      ...(secondPass ? { salvage: true } : {}),
+      // #885: absent key when the solver decides — the byte-identical path.
+      ...(forcedKind !== null ? { forcedKind } : {}),
+    });
+    // #282: the solver's own cause, taken verbatim — no label ever exists on
+    // this path.
+    if (res.status !== 'ok') return { sailId, rigResult: null, cause: res.cause };
+    // #452 graft 5: the merge pass re-validates against the SAME gate this
+    // segment solved at — never a route-wide scalar.
+    const merged = mergeCollinearLegs(res.legs, mask, wind, gate, comfort);
+    // #885 R5: marked after the merge, which never crosses a via joint.
+    legs.push(...(forcedKind !== null ? merged.map(markForced) : merged));
+    departureMs = res.etaMs;
+  }
+  const etaMs = departureMs;
+  const rigResult: RigResult = {
+    sailId,
+    legs,
+    etaMs,
+    durationMs: etaMs - ctx.departureMs,
+    distanceNm: legs.reduce((d, l) => d + l.distanceNm, 0),
+    maneuverCount: legs.filter((l) => l.maneuverAtStart !== null).length,
+    motorDistanceNm: legs.filter((l) => l.kind === 'motor').reduce((d, l) => d + l.distanceNm, 0),
+  };
+  return { sailId, rigResult, cause: null };
+}
+
+/** The fail-closed per-sail polar lookup (#54, #601); see the comments inside. */
+export function polarLookup(
+  polars: Readonly<Record<string, PolarTable>>,
+  boatId: string,
+): (sailId: SailId) => PolarTable {
+  return (sailId) => {
+    const key = polarKey(boatId, sailId);
+    // #601: Object.hasOwn, not a `!== undefined` chain lookup. `in` and a
+    // bare property read both walk the PROTOTYPE CHAIN, so a key that
+    // happened to collide with an Object.prototype member name (toString,
+    // constructor, hasOwnProperty, ...) would silently resolve to an
+    // INHERITED function instead of tripping this fail-closed throw — every
+    // `Object.getOwnPropertyNames(Object.prototype)` member passes a bare
+    // `!== undefined` check. Unreachable today (every real key is
+    // `${boatId}/${sailId}` via polarKey() above, so it always contains a
+    // literal "/", which none of those 12 names do), but the guard is
+    // written to test what it means to test rather than lean on that shape
+    // holding forever.
+    if (!Object.hasOwn(polars, key)) throw new Error(`#54: no polar table for ${key}`);
+    return polars[key];
+  };
+}
+
+/** The sync driver's step runner: rigs one after the other, in `sailIds` order. */
+export function runStepSync(step: RigStep, onProgress?: RigProgress): RunOut[] {
+  const { ctx } = step;
+  return ctx.sailIds.map((sailId) =>
+    solveRig(
+      ctx,
+      sailId,
+      ctx.polarFor(sailId),
+      step.gate,
+      step.comfortDepthM,
+      step.pass2 !== null,
+      step.deadline,
+      onProgress,
+    ),
+  );
 }
 
 /** The user-facing label for a RunOut, or null when the rig actually solved. */
@@ -466,6 +607,49 @@ export function planRouteWithRecord(
   onProbe?: ProbeProgress,
   deadline?: PlanDeadline,
 ): { result: PlanResult; record: Pass1Record; pass2: Pass2Outcome } {
+  const { ladder, record, outcome } = openLadder(req, windGrid, deps, onProbe, deadline);
+  let next = ladder.next();
+  while (!next.done) next = ladder.next(runStepSync(next.value, onProgress));
+  return { result: next.value, record, pass2: outcome.pass2 };
+}
+
+/**
+ * The async driver over the same ladder: `runStep` solves one barrier's rigs
+ * (possibly concurrently) and resolves their results in `ctx.sailIds` order.
+ * Probes and relaxation run inline in the calling realm between steps.
+ * Results equal `planRouteWithRecord`'s whenever no budget cut occurs.
+ *
+ * Budget: every rig of a step obeys the one plan deadline, started once, so a
+ * tier waits for its slowest rig rather than the sum. The second rig is no
+ * longer starved by the first, so a cut is likelier to hit one rig only.
+ * `comparisonComplete` stays `!budgetCut` (any rig cut) and a mixed
+ * `ok` / `budget-exhausted` pair is still reachable and still reports it.
+ * A cut is wall-clock dependent, so only cut-free plans are pool-size
+ * independent.
+ */
+export async function planRouteWithRecordAsync(
+  req: PlanRequest,
+  windGrid: WindGrid,
+  deps: PlanDeps,
+  runStep: (step: RigStep) => Promise<RunOut[]>,
+  onProbe?: ProbeProgress,
+  deadline?: PlanDeadline,
+): Promise<{ result: PlanResult; record: Pass1Record; pass2: Pass2Outcome }> {
+  const { ladder, record, outcome } = openLadder(req, windGrid, deps, onProbe, deadline);
+  let next = ladder.next();
+  while (!next.done) next = ladder.next(await runStep(next.value));
+  return { result: next.value, record, pass2: outcome.pass2 };
+}
+
+type Ladder = Generator<RigStep, PlanResult, RunOut[]>;
+
+function openLadder(
+  req: PlanRequest,
+  windGrid: WindGrid,
+  deps: PlanDeps,
+  onProbe: ProbeProgress | undefined,
+  deadline: PlanDeadline | undefined,
+): { ladder: Ladder; record: Pass1Record; outcome: { pass2: Pass2Outcome } } {
   if (req.sailIds.length > MAX_HEADSAILS) {
     throw new Error(
       `#1661: ${req.sailIds.length} headsails requested, MAX_HEADSAILS is ${MAX_HEADSAILS}`,
@@ -474,20 +658,27 @@ export function planRouteWithRecord(
   const record: Pass1Record = { tiers: [], cause: null };
   // A sibling of `record`, not a member: `Pass1Record` describes pass 1 only.
   const outcome: { pass2: Pass2Outcome } = { pass2: 'not-admitted' };
-  const result = runLadder(record, outcome, req, windGrid, deps, onProgress, onProbe, deadline);
-  return { result, record, pass2: outcome.pass2 };
+  return {
+    ladder: runLadder(record, outcome, req, windGrid, deps, onProbe, deadline),
+    record,
+    outcome,
+  };
 }
 
-function runLadder(
+/**
+ * The tier ladder, shared by the sync and async drivers: every rig solve is a
+ * `yield` of a `RigStep` whose result array is sent back in. Tier decisions are
+ * pair-level, so each yield is a barrier.
+ */
+function* runLadder(
   record: Pass1Record,
   outcome: { pass2: Pass2Outcome },
   req: PlanRequest,
   windGrid: WindGrid,
   deps: PlanDeps,
-  onProgress: RigProgress | undefined,
   onProbe: ProbeProgress | undefined,
   deadline: PlanDeadline | undefined,
-): PlanResult {
+): Ladder {
   const { mask } = deps;
   const s = req.settings;
   // #885 §3.3: validated before any snap or solve. The R4 guarantee is this
@@ -551,105 +742,35 @@ function runLadder(
   // builds an ordinary `{}` object literal instead, so `deps.polars` is NOT
   // always null-prototype. Object.hasOwn below is what makes the guard
   // correct regardless of which shape a given caller passed.
-  const polarFor = (sailId: SailId): PolarTable => {
-    const key = polarKey(deps.boat.id, sailId);
-    // #601: Object.hasOwn, not a `!== undefined` chain lookup. `in` and a
-    // bare property read both walk the PROTOTYPE CHAIN, so a key that
-    // happened to collide with an Object.prototype member name (toString,
-    // constructor, hasOwnProperty, ...) would silently resolve to an
-    // INHERITED function instead of tripping this fail-closed throw — every
-    // `Object.getOwnPropertyNames(Object.prototype)` member passes a bare
-    // `!== undefined` check. Unreachable today (every real key is
-    // `${boatId}/${sailId}` via polarKey() above, so it always contains a
-    // literal "/", which none of those 12 names do), but the guard is
-    // written to test what it means to test rather than lean on that shape
-    // holding forever.
-    if (!Object.hasOwn(deps.polars, key)) throw new Error(`#54: no polar table for ${key}`);
-    return deps.polars[key];
+  const polarFor = polarLookup(deps.polars, deps.boat.id);
+  const ctx: RigContext = {
+    waypoints,
+    departureMs: req.departureMs,
+    settings: s,
+    segmentModes,
+    sailIds: req.sailIds,
+    wind,
+    mask,
+    polarFor,
   };
-  const run = (
-    sailId: SailId,
-    table: PolarTable,
-    settings: Settings,
-    gate: DepthGate,
-    comfort: number | undefined,
-    pass2: Pass2 | null,
-  ): RunOut => {
-    const polar = new Polar(table, settings.performanceFactor);
-    const solveDeadline = pass2 === null ? deadline : pass2.deadline;
-    const legs: Leg[] = [];
-    // Segments are solved sequentially, each departing at the previous
-    // segment's ETA. Maneuver state (board, tack/gybe count) is v1-simplified
-    // to reset at each via-point joint: a board change across a via is not
-    // charged a maneuver penalty.
-    let departureMs = req.departureMs;
-    for (let i = 0; i < waypoints.length - 1; i++) {
-      const forcedKind = segmentModes?.[i] ?? null;
-      const res = solve({
-        origin: waypoints[i],
-        destination: waypoints[i + 1],
-        departureMs,
-        polar,
-        wind,
-        mask,
-        settings,
-        gate,
-        onProgress: (info) =>
-          onProgress?.(sailId, pass2 === null ? info : { ...info, secondPass: true }),
-        ...(comfort !== undefined ? { comfortDepthM: comfort } : {}),
-        // exactOptionalPropertyTypes: omit the key entirely when unbudgeted,
-        // never pass `{ deadline: undefined }`. The SAME object goes to every
-        // pass-1 solve of this plan — see the `deadline` parameter's doc
-        // comment — and pass 2's sub-deadline to every pass-2 solve.
-        ...(solveDeadline !== undefined ? { deadline: solveDeadline } : {}),
-        // #1136: key omitted in pass 1, so its SolveParams are unchanged.
-        ...(pass2 !== null ? { salvage: true } : {}),
-        // #885: absent key when the solver decides — the byte-identical path.
-        ...(forcedKind !== null ? { forcedKind } : {}),
-      });
-      // #282: the solver's own cause, taken verbatim — no label ever exists on
-      // this path. #432's 'budget-exhausted' needs no branch of its own here:
-      // folding it into SolveFailureCause (rather than giving it a separate
-      // SolveResult arm, as this change's pre-#450 draft did) means it arrives
-      // through exactly this line like any other cause.
-      if (res.status !== 'ok') return { sailId, rigResult: null, cause: res.cause };
-      // #452 graft 5: the merge pass re-validates against the SAME gate this
-      // segment solved at — never a route-wide scalar.
-      const merged = mergeCollinearLegs(res.legs, mask, wind, gate, comfort);
-      // #885 R5: marked after the merge, which never crosses a via joint.
-      legs.push(...(forcedKind !== null ? merged.map(markForced) : merged));
-      departureMs = res.etaMs;
-    }
-    const etaMs = departureMs;
-    const rigResult: RigResult = {
-      sailId,
-      legs,
-      etaMs,
-      durationMs: etaMs - req.departureMs,
-      distanceNm: legs.reduce((d, l) => d + l.distanceNm, 0),
-      maneuverCount: legs.filter((l) => l.maneuverAtStart !== null).length,
-      motorDistanceNm: legs.filter((l) => l.kind === 'motor').reduce((d, l) => d + l.distanceNm, 0),
-    };
-    return { sailId, rigResult, cause: null };
-  };
-  // #340/#54 NAMED COUPLING: `.map()` over `req.sailIds` calls `run()` once
-  // per element, SYNCHRONOUSLY and in array order — no interleaving, sail
-  // i's solve (and every progress message it reports) fully completes before
-  // sail i+1's starts. That real order is asserted equal to
-  // `request.sailIds` by planRoute.test.ts's "#340/#54: solve order matches
-  // request.sailIds" guard test, observed from a real (small) solve. §E.3
-  // deleted the old `RIG_ORDER` module constant for exactly this reason: the
-  // REQUEST's own ordered list is now the one source of truth, not a
-  // separately-maintained constant that could drift from it. Reordering
-  // `req.sailIds` changes the real solve order and the guard test observes
-  // exactly that.
-  const runAll = (
-    settings: Settings,
+  // #340/#54 NAMED COUPLING: the sync driver solves a step's rigs one after
+  // the other in `req.sailIds` order, each rig's progress complete before the
+  // next starts (`runStepSync`); planRoute.test.ts's "#340/#54: solve order
+  // matches request.sailIds" guard observes that order. The async driver may
+  // solve them concurrently, so its progress is not ordered.
+  function* runAll(
     gate: DepthGate,
     comfort: number | undefined,
     pass2: Pass2 | null = null,
-  ): RunOut[] =>
-    req.sailIds.map((sailId) => run(sailId, polarFor(sailId), settings, gate, comfort, pass2));
+  ): Generator<RigStep, RunOut[], RunOut[]> {
+    return yield {
+      ctx,
+      gate,
+      comfortDepthM: comfort,
+      pass2,
+      deadline: pass2 === null ? deadline : pass2.deadline,
+    };
+  }
 
   /**
    * Spec §T.2: the comparison runs at every provenance tier; the estimate flag
@@ -788,14 +909,14 @@ function runLadder(
     );
   // Started when pass 2 starts; expires with the shared deadline or after
   // PASS2_BUDGET_MS, whichever is first.
-  const pass2Deadline = (): SolveDeadline | undefined => {
-    if (deadline === undefined) return undefined;
+  const startPass2 = (): Pass2 => {
+    if (deadline === undefined) return { deadline: undefined, startMs: undefined };
     const now = deadline.now ?? (() => Date.now());
     const startMs = now();
-    return { expired: () => deadline.expired() || now() - startMs >= PASS2_BUDGET_MS };
+    return { deadline: pass2DeadlineFrom(deadline, startMs, now), startMs };
   };
-  const replayWithSalvage = (): PlanResult | null => {
-    const pass2: Pass2 = { deadline: pass2Deadline() };
+  const replayWithSalvage = function* (): Generator<RigStep, PlanResult | null, RunOut[]> {
+    const pass2 = startPass2();
     const tiers = record.tiers;
     for (let i = 0; i < tiers.length; i++) {
       const first = tiers[i];
@@ -811,11 +932,11 @@ function runLadder(
         const budgetCut = sails.some((r) => r.cause === 'budget-exhausted');
         return assemble(masked, shallow, budgetCut);
       };
-      const firstRun = runAll(s, first.gate, first.comfortDepthM, pass2);
+      const firstRun = yield* runAll(first.gate, first.comfortDepthM, pass2);
       // Retry entry: pass 1 ran the retry tier and a sail still has no result.
       const retryRun =
         retryTier !== undefined && !firstRun.every(routed)
-          ? runAll(s, retryTier.gate, retryTier.comfortDepthM, pass2)
+          ? yield* runAll(retryTier.gate, retryTier.comfortDepthM, pass2)
           : null;
       // As in pass 1: the retry wins if it routed any sail, else the first tier
       // if it did. A budget-exhausted retry routes nothing, so the first tier
@@ -828,16 +949,16 @@ function runLadder(
   };
   // Every pass-1 return after the ladder starts goes through here. Pass 2
   // routing nothing, for any cause, returns pass 1 verbatim (ruling 4).
-  const finish = (pass1: PlanResult): PlanResult => {
+  const finish = function* (pass1: PlanResult): Generator<RigStep, PlanResult, RunOut[]> {
     if (!salvagePassAdmitted(pass1, record, s, deadline)) return pass1;
-    const rescued = replayWithSalvage();
+    const rescued = yield* replayWithSalvage();
     outcome.pass2 = rescued === null ? 'admitted-no-route' : 'rescued';
     return rescued ?? pass1;
   };
   if (connectedAt(requestedGate)) {
     // #243 tier 1: requested gate, preference on — the happy path, nothing
     // extra paid.
-    const tier1 = runAll(s, requestedGate, comfortDepthM);
+    const tier1 = yield* runAll(requestedGate, comfortDepthM);
     recordTier(record, 1, requestedGate, comfortDepthM, null, tier1);
     if (comfortDepthM !== undefined && needsUnpreferencedRetry(tier1)) {
       // #243 tier 2: requested gate, preference off — bit-identical to the
@@ -847,9 +968,9 @@ function runLadder(
       // sail failed with a reason it could plausibly have caused (see
       // needsUnpreferencedRetry) — this is what makes "no plan can get worse
       // than pre-#243" true by construction rather than by argument.
-      const tier2 = runAll(s, requestedGate, undefined);
+      const tier2 = yield* runAll(requestedGate, undefined);
       recordTier(record, 2, requestedGate, undefined, null, tier2);
-      if (tier2.some((r) => r.rigResult)) return finish(assemble(tier2, null));
+      if (tier2.some((r) => r.rigResult)) return yield* finish(assemble(tier2, null));
       // #243 fix-wave item 5: tier 2 failed on EVERY sail, but tier 1 may
       // still hold a genuinely successful one (the retry was triggered by
       // ANOTHER sail failing, per needsUnpreferencedRetry's per-sail check —
@@ -860,7 +981,7 @@ function runLadder(
       // because the retry didn't pan out — that would be strictly worse
       // than what tier 1 already had.
       if (tier1.some((r) => r.rigResult)) {
-        return finish(assemble(tier1, null));
+        return yield* finish(assemble(tier1, null));
       }
       // Arbitrary tie-break: take the first requested sail's cause (checked
       // first, per req.sailIds order); every sail solves identical
@@ -876,7 +997,7 @@ function runLadder(
       // to.
       cause = tier2[0]?.cause ?? 'mask-blocked';
     } else if (tier1.some((r) => r.rigResult)) {
-      return finish(assemble(tier1, null));
+      return yield* finish(assemble(tier1, null));
     } else {
       // Arbitrary tie-break: take the first requested sail's cause (checked
       // first); every sail solves identical mask/wind/waypoints and differs
@@ -963,15 +1084,15 @@ function runLadder(
       // relaxed value anywhere. The pre-#452 `{ ...s, safetyDepthM:
       // usedDepthM }` copy is deleted, which spike §7 records as a
       // correctness improvement independent of locality.
-      const tier3 = runAll(s, relaxedGate, comfortDepthM);
+      const tier3 = yield* runAll(relaxedGate, comfortDepthM);
       recordTier(record, 3, relaxedGate, comfortDepthM, usedDepthM, tier3);
       if (comfortDepthM !== undefined && needsUnpreferencedRetry(tier3)) {
         // #243 tier 4: relaxed gate, preference off.
-        const tier4 = runAll(s, relaxedGate, undefined);
+        const tier4 = yield* runAll(relaxedGate, undefined);
         recordTier(record, 4, relaxedGate, undefined, usedDepthM, tier4);
         if (tier4.some((r) => r.rigResult)) {
           const shallow = flagShallowLegs(mask, tier4, s.safetyDepthM, usedDepthM);
-          return finish(assemble(tier4, shallow));
+          return yield* finish(assemble(tier4, shallow));
         }
         // #243 fix-wave item 5 (mirrors the tier 1/2 fallback above): tier 4
         // failed on EVERY sail, but tier 3 may still hold a genuinely
@@ -981,7 +1102,7 @@ function runLadder(
         // stays apples-to-apples.
         if (tier3.some((r) => r.rigResult)) {
           const shallow = flagShallowLegs(mask, tier3, s.safetyDepthM, usedDepthM);
-          return finish(assemble(tier3, shallow));
+          return yield* finish(assemble(tier3, shallow));
         }
         // #68: relaxation FOUND a connected gate but every sail still failed
         // to solve there even without the preference, so this is no longer a
@@ -997,7 +1118,7 @@ function runLadder(
         cause = relaxedPlanCause(cause, combineAllCauses(tier4));
       } else if (tier3.some((r) => r.rigResult)) {
         const shallow = flagShallowLegs(mask, tier3, s.safetyDepthM, usedDepthM);
-        return finish(assemble(tier3, shallow));
+        return yield* finish(assemble(tier3, shallow));
       } else {
         // #68: relaxation FOUND a connected gate but every sail still failed
         // to solve there, so this is no longer a mask-level failure —
@@ -1020,5 +1141,5 @@ function runLadder(
   // deadline exit above leaves it null although the local `cause` still reads
   // 'mask-blocked' there.
   record.cause = cause;
-  return finish({ status: 'error', reason: NO_ROUTE_LABEL_OF_CAUSE[cause] });
+  return yield* finish({ status: 'error', reason: NO_ROUTE_LABEL_OF_CAUSE[cause] });
 }

@@ -348,14 +348,11 @@ export const de = {
   'planner.import.notice.multipleTracks':
     'Mehrere Tracks in der Datei — nur der erste wurde importiert.',
   'planner.status.fetching': 'Windvorhersage wird geladen…',
-  // #340/#54: phase readout, not a percentage — the router solves
-  // request.sailIds SEQUENTIALLY, so "Segel {index} von {total}" ({sail}
-  // already localized via sailLabelKey) is honest and bounded, unlike the
-  // removed percentage.
-  'planner.status.routingSail': 'Route wird berechnet… Segel {index} von {total} ({sail})',
+  // #340/#54: phase readout, not a percentage. The rigs may solve
+  // concurrently, so it names the phase rather than a rig or an index.
+  'planner.status.routingSail': 'Route wird für alle Segel berechnet…',
   // #1136: der Rettungslauf ohne Motor nach einer gescheiterten ersten Suche
-  'planner.status.routingSailSecondPass':
-    'Keine Route gefunden — zweiter Suchlauf… Segel {index} von {total} ({sail})',
+  'planner.status.routingSailSecondPass': 'Keine Route gefunden — zweiter Suchlauf für alle Segel…',
   // #53: relaxed-depth probe phase after an unreachable requested-depth solve
   'planner.status.probing':
     'Keine Route bei eingestellter Sicherheitstiefe — geringere Sicherheitstiefen werden geprüft…',

@@ -29,17 +29,15 @@ import {
 export type PlanningState =
   | { phase: 'idle' }
   | { phase: 'fetching-wind' }
-  // #340/#54: `sailId` is the only progress signal — the router runs
-  // req.sailIds SEQUENTIALLY (routing/planRoute.ts's `runAll` maps over
-  // them, one synchronous `run()` call per element, no interleaving), so
-  // "which sail is currently solving" is an honest, bounded phase indicator
-  // — unlike the removed simulatedToMs/FORECAST_HORIZON_MS percentage, which
-  // capped around 5% and reset to 0 at every sail switch (#340). `index`/
-  // `total` are computed HERE (from the same `req.sailIds` the solve order
-  // itself follows), not read from a module constant — §E.3 deleted the old
-  // `RIG_ORDER` for exactly this reason: the request's own ordered list is
-  // the one source of truth. PlannerPanel.tsx's "sail N of 2" phase readout
-  // renders these two fields directly.
+  // #340/#54: `sailId` is the only progress signal. With a pool size of 1 the
+  // router solves req.sailIds SEQUENTIALLY (planRoute.ts's sync driver runs
+  // one `solveRig()` per element in order), so `sailId` names the solving
+  // sail; with a sibling worker the rigs solve CONCURRENTLY and `sailId`
+  // follows whichever rig reported last, so it is not a stable phase
+  // indicator. `index`/`total` are computed HERE (from the same `req.sailIds`
+  // the solve order follows), not read from a module constant — §E.3 deleted
+  // the old `RIG_ORDER` for exactly this reason. PlannerPanel.tsx's status
+  // line names the phase only, never a rig or an index.
   // #1136: `secondPass` (present only when true) marks the salvage re-run.
   | { phase: 'routing'; sailId: SailId; index: number; total: number; secondPass?: true }
   // #53: the worker is probing relaxed depth gates (mask connectivity BFS)
@@ -49,6 +47,35 @@ export type PlanningState =
   | { phase: 'probing-depth' }
   // #885: `messageVars` fills a key's placeholders (the merge refusal names its waypoints).
   | { phase: 'error'; messageKey: MsgKey; messageVars?: MessageVars };
+
+function planningStatesEqual(a: PlanningState, b: PlanningState): boolean {
+  switch (a.phase) {
+    case 'idle':
+    case 'fetching-wind':
+    case 'probing-depth':
+      return b.phase === a.phase;
+    case 'routing':
+      return (
+        b.phase === 'routing' &&
+        a.sailId === b.sailId &&
+        a.index === b.index &&
+        a.total === b.total &&
+        a.secondPass === b.secondPass
+      );
+    case 'error': {
+      if (b.phase !== 'error' || a.messageKey !== b.messageKey) return false;
+      const av = a.messageVars;
+      const bv = b.messageVars;
+      if (av === bv) return true;
+      if (av === undefined || bv === undefined) return false;
+      const keys = Object.keys(av);
+      return (
+        keys.length === Object.keys(bv).length &&
+        keys.every((k) => Object.hasOwn(bv, k) && av[k] === bv[k])
+      );
+    }
+  }
+}
 
 export interface PlanFlowDeps {
   fetchWind?: typeof fetchWindGrid;
@@ -122,8 +149,15 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
   // render, but the guard must see a call's own 'fetching-wind' transition
   // immediately so a second synchronous call is rejected too.
   const phaseRef = useRef<PlanningState['phase']>('idle');
+  // Last state handed to setPlanning. Every state change goes through
+  // transition(), so this cannot drift from what React last received. A new
+  // object with equal content still re-renders the un-memoised shell, and
+  // progress repeats the same state many times per solve.
+  const lastPlanningRef = useRef<PlanningState>({ phase: 'idle' });
   const transition = useCallback((next: PlanningState) => {
     phaseRef.current = next.phase;
+    if (planningStatesEqual(lastPlanningRef.current, next)) return;
+    lastPlanningRef.current = next;
     setPlanning(next);
   }, []);
 

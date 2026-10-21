@@ -333,7 +333,7 @@ flowchart LR
   subgraph app ["Runtime — app/ (PWA, no backend)"]
     ASSETS --> UI["React + MapLibre GL UI"]
     OM["Open-Meteo hourly wind (browser-direct)"] --> UI
-    UI -->|"plan request + wind grid"| WORKER["isochrone router (Web Worker), tack/gybe time penalty, dual-rig"]
+    UI -->|"plan request + wind grid"| WORKER["isochrone router (Web Workers), tack/gybe time penalty, dual-rig"]
     WORKER -->|"Plan (legs, wind grid)"| UI
     UI <--> IDB[("IndexedDB — saved plans incl. their wind grids")]
     SW["service worker — ~40 MB precache + runtime font cache"] -.-> UI

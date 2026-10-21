@@ -48,8 +48,11 @@ export function windGridCoversBounds(
   );
 }
 
+const TIME_BRACKET_CACHE_MAX = 256;
+
 export class WindField {
   private grid: WindGrid;
+  private timeBrackets = new Map<number, { i: number; f: number }>();
 
   /**
    * #1178: `maskBounds` is OPTIONAL and deliberately not required. `bracket()`
@@ -124,11 +127,21 @@ export class WindField {
     return this.grid.timesMs[this.grid.timesMs.length - 1];
   }
 
+  private timeBracket(tMs: number): { i: number; f: number } {
+    let tt = this.timeBrackets.get(tMs);
+    if (tt === undefined) {
+      if (this.timeBrackets.size >= TIME_BRACKET_CACHE_MAX) this.timeBrackets.clear();
+      tt = bracket(this.grid.timesMs, tMs);
+      this.timeBrackets.set(tMs, tt);
+    }
+    return tt;
+  }
+
   sample(p: LatLon, tMs: number): WindSample {
     const { lats, lons, timesMs, speedKn, dirFromDeg, gustKn } = this.grid;
     const la = bracket(lats, p.lat);
     const lo = bracket(lons, p.lon);
-    const tt = bracket(timesMs, tMs);
+    const tt = this.timeBracket(tMs);
     const nLon = lons.length;
     const nLat = lats.length;
 
