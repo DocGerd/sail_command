@@ -1732,9 +1732,9 @@ function AppShell() {
             onArmedRouteTapInsert={handleRouteLineArmedTap}
           />
           {/* #25 addendum: the standalone ownship marker — always mounted
-              (like DataLayers above), gated only on there being a fix, which
-              useOwnshipGps only ever produces while settings.showOwnship is
-              on. Renders in ANY tab/plan state, Live View included; LiveView
+              (like DataLayers above), gated only on there being a fix (kept through stale, lost and denied, drawn stale),
+              which useOwnshipGps produces while settings.showOwnship is on or
+              Live tracking runs. Renders in ANY tab/plan state, Live View included; LiveView
               itself no longer renders a marker (see its #25 comment), so this
               is the single place BoatMarker ever renders — no dedupe logic
               needed beyond that. */}

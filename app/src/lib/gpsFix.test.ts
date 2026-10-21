@@ -35,7 +35,12 @@ describe('gpsState', () => {
       let track = emptyTrack<TimedFix>();
       for (let i = 0; i < 100; i++) {
         const mono = 1_000 * i;
-        track = acceptFix(track, fix(1_700_000_000_000 + offsetMs + mono), mono, 0);
+        track = acceptFix(
+          track,
+          fix(1_700_000_000_000 + offsetMs + mono),
+          mono,
+          1_700_000_000_000 + mono,
+        );
         expect(gpsState(track, mono + 900)).toBe('fresh');
       }
     }
@@ -46,8 +51,28 @@ describe('gpsState', () => {
     const again = acceptFix(first, fix(1000), 12_000, 0);
     expect(again).toBe(first);
     expect(gpsState(again, 12_000)).toBe('stale');
-    const older = acceptFix(first, fix(900), 12_000, 0);
+    const older = acceptFix(first, fix(900), 12_000, 12_000);
     expect(gpsState(older, 12_000)).toBe('stale');
+  });
+
+  it('a device clock step backwards mid-stream does not read as lost', () => {
+    const T0 = 1_700_000_000_000;
+    let track = emptyTrack<TimedFix>();
+    for (let i = 0; i < 60; i++) {
+      const mono = 1_000 * i;
+      // pos.timestamp and Date.now() share the device clock; both step back 120 s at i = 5.
+      const wall = T0 + mono - (i >= 5 ? 120_000 : 0);
+      track = acceptFix(track, fix(wall - 300), mono, wall);
+      expect(gpsState(track, mono + 900)).toBe('fresh');
+    }
+  });
+
+  it('an older cached fix delivered later still does not refresh the age', () => {
+    const T0 = 1_700_000_000_000;
+    const first = acceptFix(emptyTrack<TimedFix>(), fix(T0), 0, T0);
+    const cached = acceptFix(first, fix(T0 - 60_000), 12_000, T0 + 12_000);
+    expect(cached).toBe(first);
+    expect(gpsState(cached, 12_000)).toBe('stale');
   });
 
   it('a fix without a device timestamp always counts as new', () => {
@@ -81,6 +106,13 @@ describe('rerouteGate', () => {
 
   it('stale with good accuracy is still allowed', () => {
     expect(rerouteGate('stale', fix(1, 8), 15).allowed).toBe(true);
+  });
+
+  it('fails closed on a NaN accuracy', () => {
+    expect(rerouteGate('fresh', fix(1, Number.NaN), 1)).toMatchObject({
+      allowed: false,
+      reason: 'accuracy',
+    });
   });
 
   it.each(['waiting', 'denied', 'lost'] as const)('blocks while %s', (state) => {
