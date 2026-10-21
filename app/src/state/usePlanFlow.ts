@@ -48,6 +48,35 @@ export type PlanningState =
   // #885: `messageVars` fills a key's placeholders (the merge refusal names its waypoints).
   | { phase: 'error'; messageKey: MsgKey; messageVars?: MessageVars };
 
+function planningStatesEqual(a: PlanningState, b: PlanningState): boolean {
+  switch (a.phase) {
+    case 'idle':
+    case 'fetching-wind':
+    case 'probing-depth':
+      return b.phase === a.phase;
+    case 'routing':
+      return (
+        b.phase === 'routing' &&
+        a.sailId === b.sailId &&
+        a.index === b.index &&
+        a.total === b.total &&
+        a.secondPass === b.secondPass
+      );
+    case 'error': {
+      if (b.phase !== 'error' || a.messageKey !== b.messageKey) return false;
+      const av = a.messageVars;
+      const bv = b.messageVars;
+      if (av === bv) return true;
+      if (av === undefined || bv === undefined) return false;
+      const keys = Object.keys(av);
+      return (
+        keys.length === Object.keys(bv).length &&
+        keys.every((k) => Object.hasOwn(bv, k) && av[k] === bv[k])
+      );
+    }
+  }
+}
+
 export interface PlanFlowDeps {
   fetchWind?: typeof fetchWindGrid;
   makeClient?: () => RoutingClient;
@@ -120,8 +149,15 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
   // render, but the guard must see a call's own 'fetching-wind' transition
   // immediately so a second synchronous call is rejected too.
   const phaseRef = useRef<PlanningState['phase']>('idle');
+  // Last state handed to setPlanning. Every state change goes through
+  // transition(), so this cannot drift from what React last received. A new
+  // object with equal content still re-renders the un-memoised shell, and
+  // progress repeats the same state many times per solve.
+  const lastPlanningRef = useRef<PlanningState>({ phase: 'idle' });
   const transition = useCallback((next: PlanningState) => {
     phaseRef.current = next.phase;
+    if (planningStatesEqual(lastPlanningRef.current, next)) return;
+    lastPlanningRef.current = next;
     setPlanning(next);
   }, []);
 

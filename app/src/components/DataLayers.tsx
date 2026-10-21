@@ -38,6 +38,7 @@ import {
   depthCanvasRowMap,
   depthSourceCorners,
   hatchBandForZoom,
+  type HatchBand,
 } from '../lib/depthColor';
 import { installStyleSetup } from '../lib/styleReload';
 import { usePersistedToggle } from '../lib/usePersistedToggle';
@@ -235,6 +236,12 @@ function buildDepthCanvas(meta: MaskMeta, buffer: ArrayBuffer): HTMLCanvasElemen
   return canvas;
 }
 
+// What the hatch canvas currently shows: the gate and zoom band it was painted
+// with. A repaint whose key equals the painted one would write identical pixels.
+function hatchPaintKey(safetyDepthM: number, band: HatchBand): string {
+  return `${safetyDepthM}|${band.periodCells}/${band.stripeCells}`;
+}
+
 // #492: same shape as buildDepthCanvas above, but for the navigability-hatch
 // raster — a SEPARATE canvas/image, never merged into buildDepthCanvas's
 // buffer (depthColor.ts's HARD DOMAIN RULE). Built with the CURRENT
@@ -252,7 +259,7 @@ function buildHatchCanvas(
   meta: MaskMeta,
   buffer: ArrayBuffer,
   safetyDepthM: number,
-): HTMLCanvasElement | null {
+): { canvas: HTMLCanvasElement; paintKey: string } | null {
   const rowMap = depthCanvasRowMap(meta); // #1254, same rows as buildDepthCanvas
   const canvas = document.createElement('canvas');
   canvas.width = meta.cols;
@@ -260,6 +267,7 @@ function buildHatchCanvas(
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
   const image = ctx.createImageData(meta.cols, rowMap.length);
+  const band = hatchBandForZoom(map.getZoom());
   image.data.set(
     buildNavigabilityHatchImageData(
       new Uint8Array(buffer),
@@ -267,11 +275,11 @@ function buildHatchCanvas(
       meta.cols,
       safetyDepthM,
       rowMap,
-      hatchBandForZoom(map.getZoom()),
+      band,
     ),
   );
   ctx.putImageData(image, 0, 0);
-  return canvas;
+  return { canvas, paintKey: hatchPaintKey(safetyDepthM, band) };
 }
 
 // #492: repaints the ALREADY-CREATED hatch canvas in place (never
@@ -293,16 +301,20 @@ function rebuildHatchCanvas(
   meta: MaskMeta,
   maskBuffer: ArrayBuffer,
   safetyDepthM: number,
+  paintedKeyRef: { current: string | null },
 ): void {
   const source = map.getSource(DEPTH_HATCH_SOURCE) as CanvasSource | undefined;
   if (!source) return;
   const canvas = source.getCanvas();
   const ctx = canvas.getContext('2d');
   if (!ctx) return; // no 2D backend (jsdom) — matches buildHatchCanvas's own guard
-  const rowMap = depthCanvasRowMap(meta); // #1254, same rows as buildHatchCanvas
-  const image = ctx.createImageData(meta.cols, rowMap.length);
   // #599: same ordering rule as buildHatchCanvas — getZoom() sits behind both
   // bail-outs above, so jsdom (where the source never exists) never reaches it.
+  const band = hatchBandForZoom(map.getZoom());
+  const paintKey = hatchPaintKey(safetyDepthM, band);
+  if (paintKey === paintedKeyRef.current) return;
+  const rowMap = depthCanvasRowMap(meta); // #1254, same rows as buildHatchCanvas
+  const image = ctx.createImageData(meta.cols, rowMap.length);
   image.data.set(
     buildNavigabilityHatchImageData(
       new Uint8Array(maskBuffer),
@@ -310,10 +322,11 @@ function rebuildHatchCanvas(
       meta.cols,
       safetyDepthM,
       rowMap,
-      hatchBandForZoom(map.getZoom()),
+      band,
     ),
   );
   ctx.putImageData(image, 0, 0);
+  paintedKeyRef.current = paintKey;
   source.play();
   source.pause();
 }
@@ -360,6 +373,7 @@ function setupLayers(
   meta: MaskMeta,
   maskBuffer: ArrayBuffer,
   safetyDepthM: number,
+  hatchPaintedKeyRef: { current: string | null },
 ): void {
   // Anchor resolved at add time — see the ordering note above (#160).
   const beforeId = map.getLayer(AIS_STACK_BOTTOM_LAYER)
@@ -423,11 +437,12 @@ function setupLayers(
   // COMPOSITED layer, and merging the two canvases is the one thing the
   // HARD DOMAIN RULE separation exists to prevent.
   if (!map.getSource(DEPTH_HATCH_SOURCE)) {
-    const hatchCanvas = buildHatchCanvas(map, meta, maskBuffer, safetyDepthM);
-    if (hatchCanvas) {
+    const hatch = buildHatchCanvas(map, meta, maskBuffer, safetyDepthM);
+    if (hatch) {
+      hatchPaintedKeyRef.current = hatch.paintKey;
       map.addSource(DEPTH_HATCH_SOURCE, {
         type: 'canvas',
-        canvas: hatchCanvas,
+        canvas: hatch.canvas,
         animate: false,
         coordinates: depthSourceCorners(meta),
       });
@@ -776,6 +791,8 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
     safetyDepthMRef.current = safetyDepthM;
   });
   const setupRef = useRef<() => void>(() => {});
+  // Gate+band the hatch canvas was last painted with (null: never painted).
+  const hatchPaintedKeyRef = useRef<string | null>(null);
   // #599: a CHANGE TRIGGER for the hatch rebuild, not the band itself — the
   // rebuild reads the live zoom straight off the map (behind the jsdom
   // guards in rebuildHatchCanvas), so what this state has to carry is only
@@ -837,7 +854,8 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
       const a = assetsRef.current;
       if (!a) return; // assets still loading — the arrival effect calls back in
       const missing = !map.getSource(HARBOR_SOURCE);
-      if (missing) setupLayers(map, a.maskMeta, a.maskBuffer, safetyDepthMRef.current);
+      if (missing)
+        setupLayers(map, a.maskMeta, a.maskBuffer, safetyDepthMRef.current, hatchPaintedKeyRef);
       setStyleEpoch((e) => (missing || e === 0 ? e + 1 : e));
     };
     setupRef.current = setup;
@@ -905,9 +923,9 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
   // dependency array purely as that trigger; the band VALUE is re-read from
   // the map inside rebuildHatchCanvas, so a rebuild can never paint a band
   // staler than the current camera. Also fires once on initial setup (styleEpoch
-  // 0 -> 1), redundantly repainting the SAME data buildHatchCanvas already
-  // painted at creation — harmless (idempotent) and simpler than special-
-  // casing the first run. `map.getLayer(DEPTH_HATCH_LAYER)` inside the
+  // 0 -> 1) and after a style reload, where rebuildHatchCanvas skips the
+  // repaint because setupLayers' buildHatchCanvas already painted that gate
+  // and band. `map.getLayer(DEPTH_HATCH_LAYER)` inside the
   // timeout, not the effect guard, so a change queued just before a style
   // reload wipes the layer doesn't throw — it just quietly finds nothing to
   // repaint, matching the depthVisible effect's own no-op-when-absent shape.
@@ -928,7 +946,7 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
     if (!map || styleEpoch === 0 || !assets || !depthVisible || !hatchVisible) return;
     const timer = window.setTimeout(() => {
       if (!map.getLayer(DEPTH_HATCH_LAYER)) return;
-      rebuildHatchCanvas(map, assets.maskMeta, assets.maskBuffer, safetyDepthM);
+      rebuildHatchCanvas(map, assets.maskMeta, assets.maskBuffer, safetyDepthM, hatchPaintedKeyRef);
     }, DEPTH_HATCH_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
   }, [map, styleEpoch, assets, safetyDepthM, hatchBandKey, depthVisible, hatchVisible]);

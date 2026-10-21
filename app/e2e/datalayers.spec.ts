@@ -1543,3 +1543,70 @@ for (const [name, viewport] of [
     }
   });
 }
+
+// Hatch repaint count. DataLayers' startup paints the depth canvas and the
+// hatch canvas (buildDepthCanvas/buildHatchCanvas), then arms the debounced
+// hatch rebuild; an unmemoised rebuild repaints the same gate and band a
+// third time. jsdom cannot see this (getContext is stubbed to null), and the
+// third paint lands only after DEPTH_HATCH_DEBOUNCE_MS, so the read is taken
+// after the page clock has fast-forwarded past it.
+test('hatch raster is painted twice at startup, and once more per safetyDepthM change', async ({
+  page,
+}) => {
+  const server = await startPreview(page);
+  try {
+    const maskCols = (
+      JSON.parse(await (await fetch(`${server.url}data/mask.meta.json`)).text()) as {
+        cols: number;
+      }
+    ).cols;
+    await page.addInitScript((cols: number) => {
+      const w = window as unknown as { __scFullPaints: number };
+      w.__scFullPaints = 0;
+      const original = CanvasRenderingContext2D.prototype.putImageData;
+      CanvasRenderingContext2D.prototype.putImageData = function (
+        this: CanvasRenderingContext2D,
+        ...args: Parameters<typeof original>
+      ) {
+        if (this.canvas.width === cols) w.__scFullPaints++;
+        return original.apply(this, args);
+      } as typeof original;
+    }, maskCols);
+    await page.clock.install();
+    await page.goto(server.url);
+    await mapReady(page);
+
+    const paints = () =>
+      page.evaluate(() => (window as unknown as { __scFullPaints: number }).__scFullPaints);
+    const hatchVisible = () =>
+      page.evaluate(
+        () =>
+          (
+            window as unknown as {
+              __scE2eMap: { getLayoutProperty: (id: string, prop: string) => unknown };
+            }
+          ).__scE2eMap.getLayoutProperty('sc-depth-hatch', 'visibility') as string,
+      );
+
+    // The visibility sync shares a commit with the effect that arms the debounce.
+    await expect.poll(hatchVisible, { timeout: 30_000 }).toBe('visible');
+    await page.clock.fastForward(1_000);
+    await expect.poll(paints).toBeGreaterThanOrEqual(2);
+    await page.clock.fastForward(1_000);
+    expect(await paints()).toBe(2);
+
+    const safetyDepth = page.getByLabel('Sicherheitstiefe (m)');
+    await safetyDepth.fill('2.2');
+    await safetyDepth.blur();
+    await expect
+      .poll(async () => {
+        await page.clock.fastForward(1_000);
+        return paints();
+      })
+      .toBe(3);
+    await page.clock.fastForward(1_000);
+    expect(await paints()).toBe(3);
+  } finally {
+    server.kill();
+  }
+});
