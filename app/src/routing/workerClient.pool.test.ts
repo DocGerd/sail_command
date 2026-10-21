@@ -144,6 +144,40 @@ describe('RoutingClient with a sibling solve worker', () => {
     (ladder.posted[0] as { solverPort?: MessagePort }).solverPort?.close();
     ((solver.posted[0] as { port: MessagePort }).port as MessagePort).close();
   });
+
+  it('a sibling crash rejects the plan as worker-error', async () => {
+    const { ladder, solver, client } = pool();
+    void client.init(assets());
+    ladder.emit({ type: 'ready' });
+    solver.emit({ type: 'ready' });
+    const outcome = client.plan(REQUEST, uniformWindGrid(12, 0)).catch((e: unknown) => e);
+    await Promise.resolve();
+    await Promise.resolve();
+    solver.onerror?.({ message: 'boom' } as ErrorEvent);
+    const err = await outcome;
+    expect(err).toBeInstanceOf(RoutingError);
+    expect((err as RoutingError).kind).toBe('worker-error');
+    client.dispose();
+    (ladder.posted[0] as { solverPort?: MessagePort }).solverPort?.close();
+    ((solver.posted[0] as { port: MessagePort }).port as MessagePort).close();
+  });
+
+  it('a sibling messageerror rejects the plan as messageerror', async () => {
+    const { ladder, solver, client } = pool();
+    void client.init(assets());
+    ladder.emit({ type: 'ready' });
+    solver.emit({ type: 'ready' });
+    const outcome = client.plan(REQUEST, uniformWindGrid(12, 0)).catch((e: unknown) => e);
+    await Promise.resolve();
+    await Promise.resolve();
+    solver.onmessageerror?.({} as MessageEvent);
+    const err = await outcome;
+    expect(err).toBeInstanceOf(RoutingError);
+    expect((err as RoutingError).kind).toBe('messageerror');
+    client.dispose();
+    (ladder.posted[0] as { solverPort?: MessagePort }).solverPort?.close();
+    ((solver.posted[0] as { port: MessagePort }).port as MessagePort).close();
+  });
 });
 
 describe('liveness with two rigs in flight', () => {
