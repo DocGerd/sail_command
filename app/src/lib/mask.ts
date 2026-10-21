@@ -382,7 +382,7 @@ export class NavMask {
         cx <= approach.colHi
       ) {
         if (byte === LAND || !(DEPTH_BY_BYTE[byte] >= gateAtCell(approach, cy, cx))) return false;
-      } else if (table[byte] === 0) return false;
+      } else if (table[byte] !== 1) return false;
     }
     return false;
   }
