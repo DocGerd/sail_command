@@ -376,7 +376,12 @@ export default function SettingsPanel({
     if (result.settings !== null) {
       const clamped = clampSettingsToBounds(result.settings, safetyDepthField);
       clampedFields = clampedFieldLabels(result.settings, clamped, safetyDepthField, t);
-      onChange(clamped);
+      // Backups no longer carry the AIS key, so a restore must not erase this device's own.
+      onChange(
+        clamped.aisApiKey === undefined && value.aisApiKey !== undefined
+          ? { ...clamped, aisApiKey: value.aisApiKey }
+          : clamped,
+      );
     }
 
     const notices = [

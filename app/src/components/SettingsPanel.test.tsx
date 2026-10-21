@@ -838,6 +838,57 @@ describe('SettingsPanel (#849 local import/export)', () => {
     expect(waypoints).toEqual([TEST_WAYPOINT]);
   });
 
+  describe('restoring a backup and the device AIS key', () => {
+    const DEVICE_KEY = 'device-key-1234';
+    async function importWith(current: Settings, backupSettings: Settings) {
+      localStorage.setItem('sc-lang', 'en');
+      const onChange = vi.fn();
+      render(
+        <I18nProvider>
+          <SettingsPanel
+            value={current}
+            onChange={onChange}
+            boatId={DEFAULT_BOAT_ID}
+            onBoatIdChange={vi.fn()}
+            originHarborId={null}
+            destinationHarborId={null}
+          />
+        </I18nProvider>,
+      );
+      // Assigned after the build: the exporter strips the key, an older backup did not.
+      const envelope = { ...buildExportEnvelope([], null, []), settings: backupSettings };
+      const json = exportEnvelopeToJson(envelope);
+      const file = new File([json], 'sailcommand-export.json', { type: 'application/json' });
+      await act(async () => {
+        fireEvent.change(getFileInput(), { target: { files: [file] } });
+      });
+      await screen.findByText('Settings from the file were applied.', { exact: false });
+      return onChange;
+    }
+
+    it('keeps the current key when the key-less backup settings replace the rest', async () => {
+      const onChange = await importWith(
+        { ...DEFAULT_SETTINGS, aisApiKey: DEVICE_KEY },
+        IMPORTED_SETTINGS,
+      );
+      expect(onChange).toHaveBeenCalledWith({ ...IMPORTED_SETTINGS, aisApiKey: DEVICE_KEY });
+    });
+
+    it('still takes a key carried by an older backup', async () => {
+      const onChange = await importWith(
+        { ...DEFAULT_SETTINGS, aisApiKey: DEVICE_KEY },
+        { ...IMPORTED_SETTINGS, aisApiKey: 'old-backup-key' },
+      );
+      expect(onChange).toHaveBeenCalledWith({ ...IMPORTED_SETTINGS, aisApiKey: 'old-backup-key' });
+    });
+
+    it('adds no key property when neither side has one', async () => {
+      const onChange = await importWith(DEFAULT_SETTINGS, IMPORTED_SETTINGS);
+      expect(onChange).toHaveBeenCalledWith(IMPORTED_SETTINGS);
+      expect(Object.hasOwn(onChange.mock.calls[0][0] as Settings, 'aisApiKey')).toBe(false);
+    });
+  });
+
   it('reports a clear error, and touches no storage, for a file that is not a SailCommand export', async () => {
     renderPanel();
     const file = new File(['not json at all {{{'], 'garbage.json', {
