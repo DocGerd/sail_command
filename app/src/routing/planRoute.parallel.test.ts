@@ -308,12 +308,26 @@ describe('async driver equals the sync driver over the shared ladder', () => {
     expect(calls).toBeGreaterThan(0);
   });
 
+  it('a mixed ok / budget-exhausted pair is a partial comparison on both drivers', async () => {
+    script({
+      'p1:req:c5:genoa': ok(5),
+      'p1:req:c5:fock': fail('budget-exhausted'),
+    });
+    const h = run(DEFAULT_SETTINGS, 'open');
+    const { r } = await h.async();
+    expect(r).toEqual(h.sync);
+    const res = h.sync.result;
+    expect(res.status === 'ok' && res.comparisonComplete).toBe(false);
+    expect(res.status === 'ok' && res.rigRecommendation).toEqual({ kind: 'not-compared' });
+    expect(h.sync.record.tiers.map((t) => t.tier)).toEqual([1]);
+  });
+
   it('the scenarios cover a decided and a tied comparison', () => {
     const kinds = new Set<string>();
     for (const sc of SCENARIOS.slice(0, 2)) {
       script(sc.table);
       const { sync } = run(sc.settings, sc.where, sc.sailIds);
-      if (sync.result.status === 'ok') kinds.add(sync.result.rigRecommendation.kind);
+      if (sync.result.status === 'ok') kinds.add(sync.result.rigRecommendation?.kind ?? 'absent');
       solveMock.mockReset();
     }
     expect([...kinds].sort()).toEqual(['decided', 'tie']);

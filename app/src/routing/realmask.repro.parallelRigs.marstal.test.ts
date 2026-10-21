@@ -9,7 +9,16 @@ import {
 import { uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS, defaultBoatSnapshot } from '../types';
 import { solverTimeoutMs, SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
-import { SALONA_DEPS, FLENSBURG, MARSTAL, T0 } from '../test/realmaskFixtures';
+import { polarKey, DEFAULT_BOAT_ID, boatById } from '../data/boats';
+import {
+  mask,
+  polars,
+  SALONA_DEPS,
+  FLENSBURG,
+  GLUECKSBURG,
+  MARSTAL,
+  T0,
+} from '../test/realmaskFixtures';
 
 vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
 
@@ -64,4 +73,28 @@ describe('parallel-rig ladder on the real mask', () => {
       expect(async).toEqual(sync);
     },
   );
+  it('a real-mask route with identical rig tables ties, on both drivers', async () => {
+    const boat = boatById(DEFAULT_BOAT_ID);
+    const sameTables = {
+      ...polars,
+      [polarKey(boat.id, 'fock')]: polars[polarKey(boat.id, 'genoa')],
+    };
+    const deps = { polars: sameTables, boat, mask };
+    const req = {
+      origin: FLENSBURG,
+      destination: GLUECKSBURG,
+      viaPoints: [],
+      originHarborId: null,
+      destinationHarborId: null,
+      departureMs: T0,
+      settings: DEFAULT_SETTINGS,
+      sailIds: ['genoa', 'fock'] as const,
+      boat: defaultBoatSnapshot(),
+    };
+    const wind = uniformWindGrid(12, 270);
+    const sync = planRouteWithRecord(req, wind, deps);
+    const async = await planRouteWithRecordAsync(req, wind, deps, reverseRunner);
+    expect(sync.result.status === 'ok' && sync.result.rigRecommendation).toEqual({ kind: 'tie' });
+    expect(async).toEqual(sync);
+  });
 });

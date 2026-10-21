@@ -618,6 +618,14 @@ export function planRouteWithRecord(
  * (possibly concurrently) and resolves their results in `ctx.sailIds` order.
  * Probes and relaxation run inline in the calling realm between steps.
  * Results equal `planRouteWithRecord`'s whenever no budget cut occurs.
+ *
+ * Budget: every rig of a step obeys the one plan deadline, started once, so a
+ * tier waits for its slowest rig rather than the sum. The second rig is no
+ * longer starved by the first, so a cut is likelier to hit one rig only.
+ * `comparisonComplete` stays `!budgetCut` (any rig cut) and a mixed
+ * `ok` / `budget-exhausted` pair is still reachable and still reports it.
+ * A cut is wall-clock dependent, so only cut-free plans are pool-size
+ * independent.
  */
 export async function planRouteWithRecordAsync(
   req: PlanRequest,
