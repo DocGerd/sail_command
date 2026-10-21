@@ -155,7 +155,7 @@ const BFS_DCOL = [0, 0, -1, 1] as const;
  * prior revision cited a "cost report" in the sibling test file that does
  * not exist there).
  */
-function floodFromSeed(mask: NavMask, gateM: number): FloodResult {
+export function floodFromSeed(mask: NavMask, gateM: number): FloodResult {
   const { rows, cols } = mask.meta;
   const { lat: latAxis, lon: lonAxis } = mask.grid;
   const bits = new Uint8Array(Math.ceil((rows * cols) / 8));
