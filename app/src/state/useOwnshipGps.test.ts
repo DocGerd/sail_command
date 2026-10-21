@@ -34,17 +34,17 @@ afterEach(() => {
 });
 
 describe('useOwnshipGps', () => {
-  it('does not subscribe to watchPosition, and exposes a null fix, while disabled', () => {
+  it('does not subscribe, and exposes a null fix, while neither showOwnship nor Live tracking is on', () => {
     const { wp } = fakeWatchPosition();
-    const { result } = renderHook(() => useOwnshipGps(false, wp));
+    const { result } = renderHook(() => useOwnshipGps(false, false, wp));
 
     expect(wp).not.toHaveBeenCalled();
     expect(result.current.fix).toBeNull();
   });
 
-  it('subscribes to watchPosition when enabled, and exposes the emitted fix verbatim', () => {
+  it('showOwnship on with Live inactive still subscribes and exposes the emitted fix', () => {
     const { wp, emitFix } = fakeWatchPosition();
-    const { result } = renderHook(() => useOwnshipGps(true, wp));
+    const { result } = renderHook(() => useOwnshipGps(true, false, wp));
 
     expect(wp).toHaveBeenCalledTimes(1);
     expect(result.current.fix).toBeNull();
@@ -52,18 +52,46 @@ describe('useOwnshipGps', () => {
     act(() => emitFix(FIX));
 
     expect(result.current.fix).toEqual(FIX);
+    expect(result.current.state).toBe('fresh');
   });
 
-  it('unsubscribes and clears the fix when enabled flips back to false', () => {
+  it('Live tracking with showOwnship off subscribes and exposes the fix for the marker', () => {
+    const { wp, emitFix } = fakeWatchPosition();
+    const { result } = renderHook(() => useOwnshipGps(false, true, wp));
+
+    expect(wp).toHaveBeenCalledTimes(1);
+    act(() => emitFix(FIX));
+
+    expect(result.current.fix).toEqual(FIX);
+  });
+
+  it('keeps ONE watch when Live tracking starts while showOwnship is already on', () => {
     const { wp, unsubscribe, emitFix } = fakeWatchPosition();
-    const { result, rerender } = renderHook(({ enabled }) => useOwnshipGps(enabled, wp), {
-      initialProps: { enabled: true },
+    const { result, rerender } = renderHook(({ live }) => useOwnshipGps(true, live, wp), {
+      initialProps: { live: false },
+    });
+    act(() => emitFix(FIX));
+
+    rerender({ live: true });
+
+    expect(wp).toHaveBeenCalledTimes(1);
+    expect(unsubscribe).not.toHaveBeenCalled();
+    expect(result.current.fix).toEqual(FIX);
+
+    rerender({ live: false });
+    expect(unsubscribe).not.toHaveBeenCalled();
+  });
+
+  it('unsubscribes and clears the fix once both showOwnship and Live tracking are off', () => {
+    const { wp, unsubscribe, emitFix } = fakeWatchPosition();
+    const { result, rerender } = renderHook(({ live }) => useOwnshipGps(false, live, wp), {
+      initialProps: { live: true },
     });
 
     act(() => emitFix(FIX));
     expect(result.current.fix).toEqual(FIX);
 
-    rerender({ enabled: false });
+    rerender({ live: false });
 
     expect(unsubscribe).toHaveBeenCalledTimes(1);
     expect(result.current.fix).toBeNull();
@@ -71,22 +99,21 @@ describe('useOwnshipGps', () => {
 
   it("a 'denied' error claims the shared one-time hint (lib/gpsHint.ts's storage key)", () => {
     const { wp, emitError } = fakeWatchPosition();
-    const { result } = renderHook(() => useOwnshipGps(true, wp));
+    const { result } = renderHook(() => useOwnshipGps(true, false, wp));
 
     expect(result.current.hintVisible).toBe(false);
 
     act(() => emitError('denied'));
 
     expect(result.current.hintVisible).toBe(true);
-    // Same storage key LiveView.test.tsx pins for its own denial hint — this
-    // is the concrete evidence the two consumers share ONE claim, not two.
+    expect(result.current.state).toBe('denied');
     expect(localStorage.getItem('sc-gps-hint-shown')).toBe('1');
   });
 
-  it('does not show the hint at all if another GPS consumer already claimed it (e.g. LiveView, in a prior session)', () => {
+  it('does not show the hint at all if it was already claimed in a prior session', () => {
     localStorage.setItem('sc-gps-hint-shown', '1');
     const { wp, emitError } = fakeWatchPosition();
-    const { result } = renderHook(() => useOwnshipGps(true, wp));
+    const { result } = renderHook(() => useOwnshipGps(true, false, wp));
 
     act(() => emitError('unavailable'));
 
@@ -95,7 +122,7 @@ describe('useOwnshipGps', () => {
 
   it('dismissHint hides the hint without touching the storage claim', () => {
     const { wp, emitError } = fakeWatchPosition();
-    const { result } = renderHook(() => useOwnshipGps(true, wp));
+    const { result } = renderHook(() => useOwnshipGps(true, false, wp));
 
     act(() => emitError('denied'));
     expect(result.current.hintVisible).toBe(true);

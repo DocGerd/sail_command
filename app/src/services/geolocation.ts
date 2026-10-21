@@ -6,17 +6,23 @@ export interface GpsFix {
   cogDeg: number | null; // course over ground, degrees true; null if the device isn't reporting one
   sogKn: number | null; // speed over ground, knots; null if the device isn't reporting one
   accuracyM: number;
+  /** Device `pos.timestamp`; absent on synthetic (simulator) fixes. */
+  timestampMs?: number;
 }
 
-export type GpsErrorKind = 'denied' | 'unavailable';
+export type GpsErrorKind = 'denied' | 'unavailable' | 'timeout';
+
+// Longer than the stale threshold so a healthy stream never times out, shorter
+// than the lost threshold so a stall surfaces first. maximumAge 0: a cached
+// position must not enter as a fresh fix.
+export const GPS_WATCH_TIMEOUT_MS = 15_000;
+export const GPS_WATCH_MAXIMUM_AGE_MS = 0;
 
 const MS_TO_KN = 1.9438444924406046; // 1 m/s in knots
 
 function mapErrorKind(err: GeolocationPositionError): GpsErrorKind {
-  // POSITION_UNAVAILABLE and TIMEOUT are both transient/environmental
-  // failures the caller should treat the same way ("no fix right now"), as
-  // opposed to PERMISSION_DENIED, which needs the one-time hint (spec §4).
-  return err.code === err.PERMISSION_DENIED ? 'denied' : 'unavailable';
+  if (err.code === err.PERMISSION_DENIED) return 'denied';
+  return err.code === err.TIMEOUT ? 'timeout' : 'unavailable';
 }
 
 /**
@@ -24,8 +30,7 @@ function mapErrorKind(err: GeolocationPositionError): GpsErrorKind {
  * coords.speed (m/s) to knots, maps heading/speed nulls through untouched,
  * also collapses a NaN heading/speed to null (the device reports NaN rather
  * than null for a stationary fix — see the inline comment below), and
- * collapses the DOM's three-way error code into the two kinds the UI
- * distinguishes. Returns an unsubscribe function.
+ * maps the DOM's error codes onto the kinds callers distinguish. Returns an unsubscribe function.
  *
  * #143: this is the ONE export both GPS consumers (LiveView.tsx's prop
  * default and useOwnshipGps.ts's param default) fall back to, so gating the
@@ -73,10 +78,15 @@ export function watchPosition(
         cogDeg,
         sogKn,
         accuracyM: accuracy,
+        timestampMs: pos.timestamp,
       });
     },
     (err) => onError(mapErrorKind(err)),
-    { enableHighAccuracy: true },
+    {
+      enableHighAccuracy: true,
+      timeout: GPS_WATCH_TIMEOUT_MS,
+      maximumAge: GPS_WATCH_MAXIMUM_AGE_MS,
+    },
   );
 
   return () => navigator.geolocation.clearWatch(id);
