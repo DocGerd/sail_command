@@ -205,4 +205,37 @@ describe('useWakeLock', () => {
     unmount();
     expect(sentinels.every((s) => s.released)).toBe(true);
   });
+
+  it('ignores a rejection that settles after the caller stopped wanting the lock', async () => {
+    let reject!: (e: Error) => void;
+    installWakeLock(() => new Promise<FakeSentinel>((_, r) => (reject = r)));
+    const { result, rerender } = renderHook(({ w }) => useWakeLock(w), {
+      initialProps: { w: true },
+    });
+    rerender({ w: false });
+    await act(async () => {
+      reject(new Error('late'));
+    });
+    expect(result.current).toEqual({ supported: true, held: false, error: null });
+  });
+
+  it('a stale release event from a superseded sentinel does not clear the new lock', async () => {
+    const { result, rerender } = renderHook(({ w }) => useWakeLock(w), {
+      initialProps: { w: true },
+    });
+    await flush();
+    const first = sentinels[0]!;
+    // Real browsers dispatch `release` in a later task than release() returns.
+    first.release.mockImplementation(async () => {
+      first.released = true;
+      setTimeout(() => first.dispatchEvent(new Event('release')), 0);
+    });
+    rerender({ w: false });
+    rerender({ w: true });
+    await flush();
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 5));
+    });
+    expect(result.current.held).toBe(true);
+  });
 });

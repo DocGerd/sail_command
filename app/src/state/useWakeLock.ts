@@ -5,7 +5,7 @@ export interface WakeLockState {
   supported: boolean;
   /** A sentinel is currently held; follows the sentinel's `release` event. */
   held: boolean;
-  /** The last `request()` rejection, cleared by a later success or when no longer wanted. */
+  /** Diagnostic text of the last `request()` rejection (English, not for display); cleared by a later success or when no longer wanted. */
   error: string | null;
 }
 
