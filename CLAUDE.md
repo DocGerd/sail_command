@@ -625,8 +625,9 @@ making design-level decisions; do not silently deviate.
   NOT a required check, so alerts accumulate
   silently — triage the post-merge push run. Dismissal comments are capped at
   **280 chars**, so a dismissal must point at a linked evidence record (#600).
-  Moving the flagged code re-opens a dismissed alert under a NEW number
-  (#13 -> #52, #15 -> #51 after #1793): re-dismiss citing the original.
+  Moving the flagged code closes the dismissed alert as fixed and opens a NEW
+  one under a new number (#13 -> #52, #15 -> #51 after #1793): re-dismiss
+  citing the original.
 - **`code-scanning/alerts` returns Scorecard alerts ALONGSIDE CodeQL's, and
   they look alike until you read `.tool.name`.** Measured 2026-09-02: both
   alerts open that day were `tool.name: Scorecard`, each with `rule.severity`
@@ -2011,7 +2012,7 @@ making design-level decisions; do not silently deviate.
   this file — §2b, §5a, §5b, §5c and step 6, the back-merge that is also the
   #398 no-op remedy. A `/release` typed while a turn is running arrives as
   plain text and the skill does not load; end the turn and have it retyped
-  (v0.57.0; an active `/goal` stop hook needed a background wait to leave a gap).
+  (observed at the v0.57.0 cut).
 - **`.claude/commands/release-cycle.md` provides `/release-cycle`** (#816, PR
   #817, merged 2026-09-01) — a six-phase (0–5) wrapper for a whole cycle:
   state discovery, approval-gated milestone re-triage, implementing the
@@ -2748,9 +2749,10 @@ making design-level decisions; do not silently deviate.
   private `walkCells` DDA, deliberately, to keep `PlanResult` byte-identical
   so no #282 sweep is owed. Since #1778 `segmentNavigable`/`segmentClearanceM`
   carry their own closure-free copies too, pinned against `walkCells` by
-  `mask.walkers.test.ts`; the geo/polar/wind/candidate hoists from the same
-  change are pinned against verbatim BASE copies the same way. A duplicated TRAVERSAL fails as a subtly wrong
-  safety NUMBER with no signal at all.
+  `mask.walkers.test.ts`; the polar/wind/candidate hoists from the same
+  change are pinned against verbatim pre-change copies the same way, and the
+  geo hoist against the retained originals. A duplicated TRAVERSAL fails as
+  a subtly wrong safety NUMBER with no signal at all.
   Method that worked (#516/PR #523): a facade carrying the real `meta` plus a
   recording `depthInfoM` captures the shipped walk's visited-cell sequence,
   while `(mask as unknown as { walkCells }).walkCells` reaches the
@@ -4397,10 +4399,11 @@ making design-level decisions; do not silently deviate.
   deliberately NOT surfaced to the caller (plan-amendment pending), so
   implying such a failure is attributable is exactly backwards in a bullet
   about typed failures.
-  `planRoute()` and `solve()` are fully SYNCHRONOUS — no `await` and no
-  `async` anywhere on that path — so a posted cancel message would sit unread
-  in the queue until the solve returned, and `Worker.terminate()` is the ONLY
-  interrupt. That is what shaped #1193's cancel design: `cancel()` shares
+  `solve()` and the sync `planRoute()` are fully SYNCHRONOUS — no `await`
+  and no `async` — so a posted cancel message would sit unread in the queue
+  until the rig solve returned (the async driver awaits only between rig
+  steps), and `Worker.terminate()` is the ONLY interrupt. That is what
+  shaped #1193's cancel design: `cancel()` shares
   `dispose()`'s teardown rather than signalling the worker, and any future
   "ask it to stop" protocol is unimplementable without first making the solve
   loop yield.
