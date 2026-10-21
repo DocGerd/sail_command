@@ -1817,6 +1817,29 @@ describe('savePlan strips the AIS API key from the stored request settings', () 
     expect(rerouted.request.settings.aisApiKey).toBe(KEY);
   });
 
+  it('keeps the stored wind grid as intact Float32Arrays', async () => {
+    const windGrid: WindGrid = {
+      lats: [54.0],
+      lons: [9.0],
+      timesMs: [1000, 2000, 3000],
+      speedKn: new Float32Array([5.1, 6.2, 7.3]),
+      dirFromDeg: new Float32Array([90, 95, 100]),
+      gustKn: new Float32Array([7.1, 8.2, 9.3]),
+      fetchedAtMs: 1626340800000,
+      model: 'open-meteo',
+    };
+    const plan = { ...planWith({ ...DEFAULT_SETTINGS, aisApiKey: KEY }, 'ais-grid'), windGrid };
+
+    await savePlan(plan);
+
+    const stored = (await storedRecord('ais-grid')) as Plan;
+    expect(Object.hasOwn(settingsOf(stored), 'aisApiKey')).toBe(false);
+    for (const field of ['speedKn', 'dirFromDeg', 'gustKn'] as const) {
+      expect(Object.prototype.toString.call(stored.windGrid[field])).toBe('[object Float32Array]');
+      expect(Array.from(stored.windGrid[field])).toEqual(Array.from(windGrid[field]));
+    }
+  });
+
   it('leaves a plan without a key untouched', async () => {
     await savePlan(planWith({ ...DEFAULT_SETTINGS }));
     expect(settingsOf(await storedRecord('ais-plan'))).toEqual(DEFAULT_SETTINGS);

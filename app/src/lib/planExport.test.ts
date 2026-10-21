@@ -468,27 +468,23 @@ describe('exportFileName', () => {
   });
 });
 // SECURITY.md: the AIS key never leaves the device except to aisstream.io.
-describe("buildExportEnvelope never writes the AIS API key", () => {
-  const PLAN_KEY = "plan-key-AAAA1111";
-  const LIVE_KEY = "live-key-BBBB2222";
+describe('buildExportEnvelope never writes the AIS API key', () => {
+  const PLAN_KEY = 'plan-key-AAAA1111';
+  const LIVE_KEY = 'live-key-BBBB2222';
 
-  it("strips it from every plan snapshot and the top-level settings, in the serialized JSON", () => {
+  it('strips it from every plan snapshot and the top-level settings, in the serialized JSON', () => {
     const plan = makeTestPlan();
     plan.request = {
       ...plan.request,
       settings: { ...TEST_SETTINGS, aisApiKey: PLAN_KEY },
     };
     const json = exportEnvelopeToJson(
-      buildExportEnvelope(
-        [plan],
-        { ...TEST_SETTINGS, aisApiKey: LIVE_KEY },
-        [],
-      ),
+      buildExportEnvelope([plan], { ...TEST_SETTINGS, aisApiKey: LIVE_KEY }, []),
     );
 
     expect(json).not.toContain(PLAN_KEY);
     expect(json).not.toContain(LIVE_KEY);
-    expect(json).not.toContain("aisApiKey");
+    expect(json).not.toContain('aisApiKey');
     const parsed = parseExportFile(json);
     expect(parsed.plans[0]!.request.settings).toEqual(TEST_SETTINGS);
     expect(parsed.settings).toEqual(TEST_SETTINGS);
@@ -496,7 +492,16 @@ describe("buildExportEnvelope never writes the AIS API key", () => {
     expect(plan.request.settings.aisApiKey).toBe(PLAN_KEY);
   });
 
-  it("keeps the request object of a plan that carries no key", () => {
+  it.each([
+    ['absent settings', undefined],
+    ['null settings', null],
+  ])('exports a plan whose stored request has %s', (_label, settings) => {
+    const plan = makeTestPlan();
+    plan.request = { ...plan.request, settings } as unknown as typeof plan.request;
+    expect(() => buildExportEnvelope([plan], TEST_SETTINGS, [])).not.toThrow();
+  });
+
+  it('keeps the request object of a plan that carries no key', () => {
     const plan = makeTestPlan();
     const envelope = buildExportEnvelope([plan], TEST_SETTINGS, []);
     expect(envelope.plans[0]!.request).toBe(plan.request);
