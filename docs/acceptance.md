@@ -556,10 +556,11 @@ selected in §1.
       route is fitted again and the labels stay clear. A label at or under a
       control or the sheet is a defect.
 - [ ] **2.21 Planning progress names all sails (#1350).** Press "Plan route"
-      and read the planner's status line while it is busy: it refers to all
-      sails ("Calculating route for all sails…" / "Route wird für alle Segel
-      berechnet…"), never "sail 1 of 2" / "Segel 1 von 2". Cancelling still
-      behaves as in 2.18.
+      and read the planner's status line while it is busy. Once the routing
+      phase starts it refers to all sails ("Calculating route for all sails…"
+      / "Route wird für alle Segel berechnet…"), never "sail 1 of 2" / "Segel
+      1 von 2"; the fetching and depth-probing phases name no sail. Cancelling
+      still behaves as in 2.18.
 
 **Result:** Pass / Fail / Partial — notes: ___________________________
 

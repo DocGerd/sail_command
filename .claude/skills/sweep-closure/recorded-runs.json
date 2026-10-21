@@ -129,7 +129,7 @@
         "salona44-relaxation": "e738b8b81cee34c6",
         "short-horizon": "67629a697d3521eb"
       },
-      "note": "v0.57.0 BASE (4x5); matches v0.56.0 head1 at 3215f063 552/552"
+      "note": "v0.57.0 BASE, sharded 4x5; 552/552 byte-identical to the v0.56.0 head1 run at 3215f063; evidence #1778 comments"
     },
     {
       "sha": "e6a3e5e573a809b73133fc7dfee52d9cd68b8bce",
@@ -148,7 +148,7 @@
         "salona44-relaxation": "e738b8b81cee34c6",
         "short-horizon": "67629a697d3521eb"
       },
-      "note": "v0.57.0 HEAD (#1778 + #1793, 4x6); vs BASE 552/552 byte-identical"
+      "note": "v0.57.0 HEAD e6a3e5e (#1778 + #1793 + #1790's #1779/#1780), sharded 4x6; compare.mjs vs the 784dfb38 BASE: 552/552 plans byte-identical across 12 arms x 46 harbours; evidence #1778 comments"
     }
   ]
 }
