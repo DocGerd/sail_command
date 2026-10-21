@@ -710,7 +710,8 @@ select {
 
 /* Lost or denied: the boat marker must not read as a confident position
    (OwnshipMarker toggles the class on the map container). */
-.live-gps-lost .sc-boat-marker {
+/* On the svg, not the marker element: MapLibre writes inline opacity there. */
+.live-gps-lost .sc-boat-marker svg {
   opacity: 0.5;
   filter: grayscale(1);
 }
