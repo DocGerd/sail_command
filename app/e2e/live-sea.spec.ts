@@ -66,11 +66,11 @@ interface LegGeo {
   end: { lat: number; lon: number };
 }
 
-/** Every solved rig's legs of the first stored plan, read straight from IndexedDB. */
-function readStoredLegsBySail(page: Page): Promise<LegGeo[][]> {
+/** The recommended rig's legs of the first stored plan (the rig the app shows first), read from IndexedDB. */
+function readRecommendedLegs(page: Page): Promise<LegGeo[]> {
   return page.evaluate(
     () =>
-      new Promise<LegGeo[][]>((resolve, reject) => {
+      new Promise<LegGeo[]>((resolve, reject) => {
         const open = indexedDB.open('sailcommand');
         open.onerror = () => reject(open.error);
         open.onsuccess = () => {
@@ -80,13 +80,18 @@ function readStoredLegsBySail(page: Page): Promise<LegGeo[][]> {
           req.onsuccess = () => {
             db.close();
             const plan = req.result[0] as {
-              result: { sails: { result: { legs: LegGeo[] } | null }[] };
+              result: {
+                recommended: string;
+                sails: { sailId: string; result: { legs: LegGeo[] } | null }[];
+              };
             };
-            resolve(
-              plan.result.sails.flatMap((s) =>
-                s.result ? [s.result.legs.map((l) => ({ start: l.start, end: l.end }))] : [],
-              ),
-            );
+            const legs = plan.result.sails.find((s) => s.sailId === plan.result.recommended)
+              ?.result?.legs;
+            if (!legs) {
+              reject(new Error('recommended rig has no stored legs'));
+              return;
+            }
+            resolve(legs.map((l) => ({ start: l.start, end: l.end })));
           };
         };
       }),
@@ -132,20 +137,16 @@ function expectedHeadingToSteerDeg(
   return (Math.atan2(y, x) / rad + 360) % 360;
 }
 
-/** Smallest angular distance (degrees) between the shown heading and any rig's expected one. */
+/** Angular distance (degrees) between the shown heading and the oracle's. */
 function headingError(
   shown: string,
-  legsBySail: LegGeo[][],
+  legs: LegGeo[],
   fix: { latitude: number; longitude: number },
 ): number {
   const deg = Number.parseInt(shown, 10);
   if (Number.isNaN(deg)) return Number.POSITIVE_INFINITY;
-  return Math.min(
-    ...legsBySail.map((legs) => {
-      const d = Math.abs(deg - expectedHeadingToSteerDeg(legs, fix)) % 360;
-      return Math.min(d, 360 - d);
-    }),
-  );
+  const d = Math.abs(deg - expectedHeadingToSteerDeg(legs, fix)) % 360;
+  return Math.min(d, 360 - d);
 }
 
 /**
@@ -155,6 +156,7 @@ function headingError(
  */
 function topmostVerdict(target: Locator): Promise<string> {
   return target.evaluate((el) => {
+    // Scrolls first, so this is a reachable-by-scrolling verdict, not an at-rest one.
     el.scrollIntoView({ block: 'center', inline: 'nearest' });
     const r = el.getBoundingClientRect();
     if (r.width === 0 || r.height === 0) return 'zero-size box';
@@ -204,12 +206,12 @@ test('motion: a moving fix drives COG, SOG, heading-to-steer and ETA', async ({
     const sog = page.locator('.live-view-cogsog dd').nth(1);
     const eta = page.locator('.live-view-eta');
 
-    const legsBySail = await readStoredLegsBySail(page);
-    expect(legsBySail.length).toBeGreaterThan(0);
+    const legs = await readRecommendedLegs(page);
+    expect(legs.length).toBeGreaterThan(0);
     // The readout shows whole degrees, so allow the rounding.
     const expectHeadingToSteer = (fix: { latitude: number; longitude: number }) =>
       expect
-        .poll(async () => headingError((await hts.textContent()) ?? '', legsBySail, fix), {
+        .poll(async () => headingError((await hts.textContent()) ?? '', legs, fix), {
           timeout: 30_000,
         })
         .toBeLessThanOrEqual(1);
@@ -319,9 +321,8 @@ for (const [name, viewport] of Object.entries(TABLET_VIEWPORTS)) {
     page,
     context,
   }) => {
-    // Expected failure until #1802 lands: the sheet's tab strip covers the reroute button and hint.
-    test.fail(name === 'tabletPortrait', '#1802');
     test.setTimeout(360_000);
+    const blockedBy1802 = name === 'tabletPortrait';
     await page.setViewportSize(viewport);
     const server = await startPreview(page);
     try {
@@ -336,7 +337,9 @@ for (const [name, viewport] of Object.entries(TABLET_VIEWPORTS)) {
 
       const rerouteButton = page.getByRole('button', { name: 'Route ab hier neu planen' });
       await expect(rerouteButton).toBeEnabled({ timeout: 30_000 });
-      await expect(page.locator('.live-view-cogsog dd').nth(0)).toHaveText('045°');
+      await expect(page.locator('.live-view-cogsog dd').nth(0)).toHaveText('045°', {
+        timeout: 30_000,
+      });
 
       const clear: [string, Locator][] = [
         ['live toggle', liveToggle],
@@ -356,14 +359,18 @@ for (const [name, viewport] of Object.entries(TABLET_VIEWPORTS)) {
           .toBe('ok');
       }
       for (const [label, locator] of bottomEdge) {
-        await expect
-          .poll(() => topmostVerdict(locator), { message: `${label} occluded`, timeout: 10_000 })
-          .toBe('ok');
+        const verdict = expect.poll(() => topmostVerdict(locator), {
+          message: `${label} occluded`,
+          timeout: 10_000,
+        });
+        // #1802: remove this branch when the sheet stops covering the card.
+        if (blockedBy1802) await verdict.toMatch(/ hit /);
+        else await verdict.toBe('ok');
       }
 
       // A click at the centre of each button still lands on it.
       await liveToggle.click({ trial: true });
-      await rerouteButton.click({ trial: true });
+      if (!blockedBy1802) await rerouteButton.click({ trial: true });
     } finally {
       server.kill();
     }
