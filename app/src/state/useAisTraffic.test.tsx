@@ -157,6 +157,20 @@ describe('useAisTraffic', () => {
     expect(result.current.status).toBe('live');
   });
 
+  it('keeps live while stale targets are still drawn, noTraffic only when none are', () => {
+    const { clients, createClient } = fakeClients();
+    const { result } = renderHook(() => useAisTraffic(base, { createClient }));
+    act(() => clients[0].callbacks.onStatus('noTraffic'));
+    expect(result.current.status).toBe('noTraffic');
+    act(() => clients[0].callbacks.onMessage(POS));
+    act(() => vi.advanceTimersByTime(1000));
+    expect(result.current.targets).toHaveLength(1);
+    expect(result.current.status).toBe('live');
+    act(() => vi.advanceTimersByTime(11 * 60_000)); // past AIS_DROP_MS
+    expect(result.current.targets).toHaveLength(0);
+    expect(result.current.status).toBe('noTraffic');
+  });
+
   it('seeds a recreated client with the proven key, but not a different key', () => {
     const { clients, createClient } = fakeClients();
     const { rerender } = renderHook((props) => useAisTraffic(props, { createClient }), {

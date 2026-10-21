@@ -749,6 +749,18 @@ describe('AisStreamClient', () => {
       expect(fs.socket.close).not.toHaveBeenCalled();
     });
 
+    it('a silence reconnect never counts toward keyError even when the stability timer fired late', () => {
+      const { client, fs, timers, statuses, clock } = makeClient();
+      client.start([BBOX]);
+      for (let i = 0; i < 3; i++) {
+        fs.open();
+        clock.t += AIS_SILENCE_RECONNECT_MS;
+        timers.fireLiveness(); // no fireStability(): the key is still unproven here
+        timers.fireLast();
+      }
+      expect(statuses).not.toContain('keyError');
+    });
+
     it('a silence reconnect never counts toward keyError', () => {
       const { client, fs, timers, statuses, clock } = makeClient();
       client.start([BBOX]);

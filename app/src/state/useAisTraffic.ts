@@ -257,7 +257,10 @@ export function useAisTraffic(
         : effectiveStatus === 'live'
           ? 'live'
           : effectiveStatus === 'noTraffic'
-            ? 'noTraffic'
+            ? // Stale targets are still drawn and listed, so the chip must not say "no traffic".
+              targets.length === 0
+              ? 'noTraffic'
+              : 'live'
             : 'connecting';
 
   return { status, targets, targetCount: targets.length, routeCount };

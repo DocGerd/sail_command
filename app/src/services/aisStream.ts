@@ -204,9 +204,9 @@ export const AIS_AUTH_STABLE_MS = 30_000;
 // Inbound-silence watchdog. An open socket that delivers nothing is NOT
 // necessarily dead: a valid key over a vessel-empty bbox is silent indefinitely.
 // So silence first surfaces as the 'noTraffic' status, and only a much longer
-// silence recycles the socket (half-open TCP never fires onclose). Must stay
-// above AIS_AUTH_STABLE_MS so a silence reconnect can never count as a
-// wrong-key early close.
+// silence recycles the socket (half-open TCP never fires onclose). The recycle
+// proves the key first, so it never counts as a wrong-key early close even when
+// the stability timer fired late; keep the threshold above AIS_AUTH_STABLE_MS.
 export const AIS_NO_TRAFFIC_MS = 20_000;
 export const AIS_SILENCE_RECONNECT_MS = 180_000;
 
@@ -462,6 +462,8 @@ export class AisStreamClient {
       if (!this.socketOpen) return;
       const idleMs = this.now() - this.lastInboundMs;
       if (idleMs >= AIS_SILENCE_RECONNECT_MS) {
+        // Open for the whole silence window by wall clock, even if the stability timer fired late.
+        this.proveKey();
         this.recycleSocket();
       } else if (idleMs >= AIS_NO_TRAFFIC_MS) {
         this.emitStatus('noTraffic');
