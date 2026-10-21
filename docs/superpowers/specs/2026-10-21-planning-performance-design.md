@@ -17,7 +17,7 @@ Every routing change is **byte-identical**: the full #282 sweep (`app/sweep/`) B
 `state/usePlanFlow.ts` skips committing a planning state structurally equal to the last one, so throttled progress messages stop re-rendering `AppShell`. Evidence: zero host re-renders on repeated identical progress; a 1→2 change renders once.
 
 ### C — memory (P0, sweep-free)
-- `floodFromSeed`: a FIFO ring buffer (64K entries, doubling) replaces a per-gate full-raster `Int32Array` queue. No module-level full-size buffer.
+- `floodFromSeed`: a FIFO ring buffer (64K entries, doubling) replaces a per-gate full-raster `Int32Array` queue; `floodFromSeed` keeps no module-level full-size buffer (`clusterReachedFirst`'s grow-only scratch is unchanged).
 - `buildDepthImageData`: a Uint32 LUT write replaces the per-cell `subarray` copy.
 - `DataLayers`: the hatch memo key is recorded at setup, so the `styleEpoch` 0→1 transition no longer repaints.
 - Evidence: flood bitset and depth RGBA sha256 equal BASE goldens; e2e counts `putImageData` calls on the depth and hatch canvases after the hatch debounce has elapsed (a positive control at BASE reads 3 with both toggles on), and expects 2 after the change.
