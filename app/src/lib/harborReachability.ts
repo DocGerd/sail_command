@@ -143,6 +143,22 @@ function hasBit(bits: Uint8Array, idx: number): boolean {
 const BFS_DROW = [-1, 1, 0, 0] as const;
 const BFS_DCOL = [0, 0, -1, 1] as const;
 
+/** Power of two: the ring indexes with a mask. Grows by doubling; never sized to the grid. */
+const FLOOD_QUEUE_INITIAL_CAPACITY = 1 << 16;
+
+/**
+ * Test seam: `initialCapacity` (a power of two) forces the growth path,
+ * `peakCapacity` reports the result. The reachable set is independent of
+ * visit order, so `orderHash` (FNV-1a over the dequeue sequence, requested
+ * with `recordOrder`) is what makes a FIFO-order bug in the growth copy visible.
+ */
+export interface FloodQueueTrace {
+  initialCapacity?: number;
+  recordOrder?: boolean;
+  peakCapacity?: number;
+  orderHash?: number;
+}
+
 /**
  * One BFS from {@link SEED_POINT}, visiting every cell 4-connected to it at
  * `gateM` (uniform — the flood never applies a per-cell relaxation field;
@@ -155,7 +171,7 @@ const BFS_DCOL = [0, 0, -1, 1] as const;
  * prior revision cited a "cost report" in the sibling test file that does
  * not exist there).
  */
-function floodFromSeed(mask: NavMask, gateM: number): FloodResult {
+export function floodFromSeed(mask: NavMask, gateM: number, trace?: FloodQueueTrace): FloodResult {
   const { rows, cols } = mask.meta;
   const { lat: latAxis, lon: lonAxis } = mask.grid;
   const bits = new Uint8Array(Math.ceil((rows * cols) / 8));
@@ -182,14 +198,21 @@ function floodFromSeed(mask: NavMask, gateM: number): FloodResult {
     return { bits, rows, cols };
   }
 
-  const queue = new Int32Array(rows * cols);
+  let capacity = trace?.initialCapacity ?? FLOOD_QUEUE_INITIAL_CAPACITY;
+  let queue = new Int32Array(capacity);
   let head = 0;
   let tail = 0;
+  let count = 1;
   const startIdx = seedRow * cols + seedCol;
   setBit(bits, startIdx);
   queue[tail++] = startIdx;
-  while (head < tail) {
-    const idx = queue[head++];
+  const recordOrder = trace?.recordOrder === true;
+  let orderHash = 0x811c9dc5;
+  while (count > 0) {
+    const idx = queue[head];
+    if (recordOrder) orderHash = Math.imul(orderHash ^ idx, 0x01000193) >>> 0;
+    head = (head + 1) & (capacity - 1);
+    count--;
     const row = (idx / cols) | 0;
     const col = idx - row * cols;
     for (let k = 0; k < 4; k++) {
@@ -200,8 +223,22 @@ function floodFromSeed(mask: NavMask, gateM: number): FloodResult {
       if (hasBit(bits, nIdx)) continue;
       if (!mask.isNavigable(centerOf(nr, nc), gateM)) continue;
       setBit(bits, nIdx);
-      queue[tail++] = nIdx;
+      if (count === capacity) {
+        const grown = new Int32Array(capacity * 2);
+        for (let i = 0; i < count; i++) grown[i] = queue[(head + i) & (capacity - 1)];
+        queue = grown;
+        head = 0;
+        tail = count;
+        capacity *= 2;
+      }
+      queue[tail] = nIdx;
+      tail = (tail + 1) & (capacity - 1);
+      count++;
     }
+  }
+  if (trace) {
+    trace.peakCapacity = capacity;
+    if (recordOrder) trace.orderHash = orderHash;
   }
   return { bits, rows, cols };
 }

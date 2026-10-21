@@ -189,11 +189,13 @@ export function buildDepthImageData(
   for (let b = 0; b < 256; b++) lut.set(depthByteToRgba(b), b * 4);
   const outRows = rowMap.length;
   const out = new Uint8ClampedArray(outRows * cols * 4);
+  // Both views share the host's byte order, so a word copy preserves the RGBA bytes.
+  const lut32 = new Uint32Array(lut.buffer);
+  const out32 = new Uint32Array(out.buffer);
   for (let outRow = 0; outRow < outRows; outRow++) {
     const maskRow = rowMap[outRow];
     for (let col = 0; col < cols; col++) {
-      const byte = mask[maskRow * cols + col];
-      out.set(lut.subarray(byte * 4, byte * 4 + 4), (outRow * cols + col) * 4);
+      out32[outRow * cols + col] = lut32[mask[maskRow * cols + col]];
     }
   }
   return out;

@@ -452,8 +452,12 @@ describe('hatchBandForZoom (#599)', () => {
     const src = DATA_LAYERS_SOURCE;
     const calls = src.split('buildNavigabilityHatchImageData(').slice(1);
     expect(calls.length, 'expected DataLayers.tsx to still call the hatch builder').toBe(2);
+    // Each site reads the live zoom once into `band`, which feeds both the
+    // builder and the repaint-skip key.
+    const bandReads = src.split('const band = hatchBandForZoom(map.getZoom());').length - 1;
+    expect(bandReads).toBeGreaterThanOrEqual(2);
     for (const call of calls) {
-      expect(call.slice(0, 400)).toContain('hatchBandForZoom(map.getZoom())');
+      expect(call.slice(0, 400)).toMatch(/\bband,\s*\)/);
     }
   });
 });
