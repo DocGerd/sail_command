@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.58.0] - 2026-10-21
+
+### Added
+
+- Live keeps the screen awake while tracking, with a visible indicator, a toggle to release it for battery, and a notice where the browser does not support it (#1801).
+- Live offers a resume prompt with a Resume button after a reload, crash or tab switch, and explains the uncomputed harbour approach on handover plans (#1802).
+- Live shows each GPS state on the card: waiting, a stale-age badge with dimmed readings, a signal-lost state with the last fix time and position instead of readings, and a denied state with recovery steps. Replanning is disabled with the reason, the boat marker is dimmed and drops its projection vector and accuracy circle once the signal is lost or location access is denied, and the card docks above the bottom sheet so the tab strip no longer covers its lower edge in portrait (#1802).
+- Live shows leg N of M, the distance to go on the leg and the whole route, and the cross-track distance with its side, labels the heading and COG readouts as degrees true, and keeps the active leg steady near leg boundaries through hysteresis, so the readout and the map highlight always agree (#1803).
+- AIS now shows Class B vessels and tells a quiet sea (connected, no traffic in view) from a dead connection, reconnecting after a long silence (#1804).
+
+### Changed
+
+- Live and the boat marker now share one GPS source whose state follows the age of the last new fix (stale after 10 s, lost after 30 s); Live disables reroute without a usable fix (none yet, location access denied, signal lost, or accuracy worse than 100 m) (#1800).
+
+### Fixed
+
+- The map re-fit now keeps observing the Live readout after you have moved the map yourself (#1751).
+- AIS no longer lists your own boat once its MMSI is entered, and a proven API key stays proven across going offline or backgrounding the app (#1804).
+
+### Security
+
+- Saved plans and backup exports no longer contain the AIS API key; the key stays in your settings on this device (#1799).
+
 ## [0.57.0] - 2026-10-21
 
 ### Changed
@@ -1323,7 +1346,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.57.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.58.0...HEAD
+[0.58.0]: https://github.com/DocGerd/sail_command/compare/v0.57.0...v0.58.0
 [0.57.0]: https://github.com/DocGerd/sail_command/compare/v0.56.0...v0.57.0
 [0.56.0]: https://github.com/DocGerd/sail_command/compare/v0.55.2...v0.56.0
 [0.55.2]: https://github.com/DocGerd/sail_command/compare/v0.55.1...v0.55.2

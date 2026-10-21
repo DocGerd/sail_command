@@ -120,16 +120,21 @@ installs as a standalone icon and works fully offline after the first visit
   while under way, holding the last course if the fix drops out), and the
   scale bar re-labels itself in nautical miles, cables, or metres as you zoom.
 - **Live view**: while underway, GPS position, heading-to-steer, and ETA
-  against the active leg of a loaded plan, plus a short course/speed projection
-  on the boat marker. From the current GPS fix you can reroute to the plan's
-  destination using the plan's stored forecast — fully offline.
+  against the active leg of a loaded plan, plus leg N of M, distance to go and
+  the cross-track distance (information only), and a short course/speed
+  projection on the boat marker. The card shows waiting, stale, lost and denied
+  GPS states, offers a resume prompt after a reload, and keeps the screen awake
+  while tracking where the browser supports it. From the current GPS fix you can
+  reroute to the plan's destination using the plan's stored forecast — fully
+  offline.
 - **AIS traffic** (optional, online-only): paste a personal
   [aisstream.io](https://aisstream.io/) API key into the **Live & AIS** card on
   the Boat tab to see surrounding vessels on the Live view — course/heading,
   names, tap for details — including any within a ±5 nm corridor along the
   active route. The Live tab's panel also carries a keyboard-reachable "AIS
   vessels in view" list covering the vessels in the current map view. Off by default and fully inert without a key; your own vessel
-  is filtered out by MMSI.
+  is filtered out by MMSI. The key stays on the device and is not stored in
+  saved plans or backup exports.
 
 Planning a new route requires an internet connection (wind forecast fetch),
 except the **next passage** from a planned route, which reuses that route's
@@ -207,6 +212,9 @@ data; the code license is covered in the [License](#license) section below.
 
 ## Known limitations
 
+- Live mode has not yet been tested on the water; the on-water test protocol
+  for the first trip is tracked in
+  [#1808](https://github.com/DocGerd/sail_command/issues/1808).
 - Only a curated set of harbors is included; a handful of shallow/narrow
   approaches (Schlei fairway, Dyvig channel, Gråsten bridge) remain
   disconnected from the routable mask at sub-cell resolution. The harbor
