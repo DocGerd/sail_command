@@ -125,6 +125,17 @@ describe('useGpsSource', () => {
     },
   );
 
+  it('a device clock step backwards keeps a healthy stream fresh', () => {
+    const { wp, emitFix } = fakeWatch();
+    const { result } = renderHook(() => useGpsSource(true, wp));
+    for (let i = 0; i < 40; i++) {
+      if (i === 5) vi.setSystemTime(Date.now() - 120_000);
+      act(() => emitFix(fix(Date.now())));
+      act(() => void vi.advanceTimersByTime(1_000));
+      expect(result.current.state).toBe('fresh');
+    }
+  });
+
   it('a TIMEOUT error while fixes keep arriving changes nothing and keeps the watch', () => {
     const { wp, watches, emitFix, emitError } = fakeWatch();
     const { result } = renderHook(() => useGpsSource(true, wp));
@@ -186,6 +197,58 @@ describe('useGpsSource', () => {
     act(() => void window.dispatchEvent(new Event('pageshow')));
     expect(wp).toHaveBeenCalledTimes(3);
     expect(watches[1].unsubscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it('a persisted pageshow re-arms; the initial non-persisted one does not', () => {
+    const { wp } = fakeWatch();
+    renderHook(() => useGpsSource(true, wp));
+    act(() => void window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: false })));
+    expect(wp).toHaveBeenCalledTimes(1);
+    act(() => void window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })));
+    expect(wp).toHaveBeenCalledTimes(2);
+  });
+
+  describe('permission change while the page stays visible', () => {
+    afterEach(() => {
+      delete (navigator as { permissions?: unknown }).permissions;
+    });
+
+    function stubPermission() {
+      const status = { state: 'denied', onchange: null as (() => void) | null };
+      Object.defineProperty(navigator, 'permissions', {
+        configurable: true,
+        value: { query: vi.fn(() => Promise.resolve(status)) },
+      });
+      return status;
+    }
+
+    it('a change to granted starts a NEW watch; a change to denied does not', async () => {
+      const status = stubPermission();
+      const { wp, watches } = fakeWatch();
+      renderHook(() => useGpsSource(true, wp));
+      await act(async () => {});
+      expect(wp).toHaveBeenCalledTimes(1);
+
+      act(() => status.onchange?.());
+      expect(wp).toHaveBeenCalledTimes(1);
+
+      status.state = 'granted';
+      act(() => status.onchange?.());
+      expect(wp).toHaveBeenCalledTimes(2);
+      expect(watches[0].unsubscribe).toHaveBeenCalledTimes(1);
+    });
+
+    it('detaches the listener when deactivated', async () => {
+      const status = stubPermission();
+      const { wp } = fakeWatch();
+      const { rerender } = renderHook(({ a }) => useGpsSource(a, wp), {
+        initialProps: { a: true },
+      });
+      await act(async () => {});
+      expect(status.onchange).not.toBeNull();
+      rerender({ a: false });
+      expect(status.onchange).toBeNull();
+    });
   });
 
   it('a fix from the re-armed watch recovers from denied', () => {

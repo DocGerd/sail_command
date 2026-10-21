@@ -35,10 +35,16 @@ export function emptyTrack<F extends TimedFix>(): GpsTrack<F> {
   };
 }
 
+/** Largest shift in (wall clock at receipt − device timestamp) still read as one clock. */
+export const GPS_CLOCK_STEP_TOLERANCE_MS = 5_000;
+
 /**
  * Accepts `fix` only if its device timestamp advanced past the last accepted
- * one, so a re-delivered cached position cannot refresh the age. Returns the
- * same object when the fix is not new.
+ * one, so a re-delivered cached position cannot refresh the age. A timestamp
+ * that went backwards is accepted only as a device clock step: the wall clock
+ * stepped back with it, so their offset is unchanged, whereas an older cached
+ * fix shifts that offset by its age. Returns the same object when the fix is
+ * not new.
  */
 export function acceptFix<F extends TimedFix>(
   track: GpsTrack<F>,
@@ -47,8 +53,14 @@ export function acceptFix<F extends TimedFix>(
   wallNowMs: number,
 ): GpsTrack<F> {
   const ts = fix.timestampMs;
-  if (ts !== undefined && track.deviceTimestampMs !== null && ts <= track.deviceTimestampMs) {
-    return track;
+  const lastTs = track.deviceTimestampMs;
+  if (ts !== undefined && lastTs !== null && ts <= lastTs) {
+    const lastWall = track.receivedWallMs;
+    const clockStepped =
+      ts !== lastTs &&
+      lastWall !== null &&
+      Math.abs(wallNowMs - ts - (lastWall - lastTs)) <= GPS_CLOCK_STEP_TOLERANCE_MS;
+    if (!clockStepped) return track;
   }
   return {
     fix,
@@ -106,7 +118,7 @@ export function rerouteGate(
   if (state === 'waiting' || state === 'denied' || state === 'lost') {
     return { allowed: false, reason: state, ...base };
   }
-  if (fix === null || fix.accuracyM > REROUTE_MAX_ACCURACY_M) {
+  if (fix === null || !(fix.accuracyM <= REROUTE_MAX_ACCURACY_M)) {
     return { allowed: false, reason: 'accuracy', ...base };
   }
   return { allowed: true, reason: null, ...base };

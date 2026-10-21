@@ -73,13 +73,28 @@ export function useGpsSource(
         },
       );
     };
-    const rearm = () => {
+    const rearm = (e: Event) => {
+      if (e instanceof PageTransitionEvent && !e.persisted) return;
       if (document.visibilityState === 'visible') arm();
     };
     arm();
+    let disposed = false;
+    let perm: PermissionStatus | null = null;
+    navigator.permissions
+      ?.query({ name: 'geolocation' })
+      .then((s) => {
+        if (disposed) return;
+        perm = s;
+        s.onchange = () => {
+          if (s.state === 'granted') arm();
+        };
+      })
+      .catch(() => {});
     document.addEventListener('visibilitychange', rearm);
     window.addEventListener('pageshow', rearm);
     return () => {
+      disposed = true;
+      if (perm) perm.onchange = null;
       document.removeEventListener('visibilitychange', rearm);
       window.removeEventListener('pageshow', rearm);
       unsubscribe();

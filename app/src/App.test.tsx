@@ -3841,6 +3841,31 @@ describe('session restore (#113)', () => {
       expect((await db.loadSettings())?.showOwnship ?? false).toBe(false);
     });
 
+    it('a lost fix removes the marker (never a confident boat at an old position); a new fix restores it', async () => {
+      const geo = stubGeolocation();
+      await db.savePlan(savedPlan('gps-lost'));
+      localStorage.setItem('sc-session', '{"v":1,"planId":"gps-lost","tab":"live","rig":"genoa"}');
+      renderApp();
+      const toggle = await screen.findByRole('button', { name: de['live.toggle'] });
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance', 'Date'] });
+      try {
+        fireEvent.click(toggle);
+        geo.emit(54.8, 1000);
+        expect(screen.getByTestId('ownship-marker')).toBeInTheDocument();
+
+        act(() => void vi.advanceTimersByTime(15_000));
+        expect(screen.getByTestId('ownship-marker')).toBeInTheDocument();
+
+        act(() => void vi.advanceTimersByTime(15_000));
+        expect(screen.queryByTestId('ownship-marker')).toBeNull();
+
+        geo.emit(54.9, 2000);
+        expect(screen.getByTestId('ownship-marker')).toHaveAttribute('data-lat', '54.9');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('leaving the Live tab stops tracking; returning does not restart it', async () => {
       const geo = stubGeolocation();
       await db.savePlan(savedPlan('gps-tab'));

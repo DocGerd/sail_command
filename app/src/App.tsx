@@ -393,6 +393,9 @@ function AppShell() {
   const [liveTracking, setLiveTracking] = useState(false);
   const gps = useOwnshipGps(settings.showOwnship, liveTracking);
   const { fix: ownshipFix, hintVisible: ownshipHintVisible, dismissHint: dismissOwnshipHint } = gps;
+  // Ruling (h): never a confident marker at an old position. L3a replaces this
+  // with a stale marker style.
+  const markerFix = gps.state === 'fresh' || gps.state === 'stale' ? gps.fix : null;
 
   // #983: the app-level plan-completion announcement (PlanCompletionAnnouncer,
   // mounted unconditionally below, regardless of `tab`) — see that
@@ -1732,13 +1735,13 @@ function AppShell() {
             onArmedRouteTapInsert={handleRouteLineArmedTap}
           />
           {/* #25 addendum: the standalone ownship marker — always mounted
-              (like DataLayers above), gated only on there being a fix, which
-              useOwnshipGps only ever produces while settings.showOwnship is
-              on. Renders in ANY tab/plan state, Live View included; LiveView
+              (like DataLayers above), gated only on there being a usable fix,
+              which useOwnshipGps produces while settings.showOwnship is on or
+              Live tracking runs. Renders in ANY tab/plan state, Live View included; LiveView
               itself no longer renders a marker (see its #25 comment), so this
               is the single place BoatMarker ever renders — no dedupe logic
               needed beyond that. */}
-          <OwnshipMarker fix={ownshipFix} />
+          <OwnshipMarker fix={markerFix} />
           {/* LiveView must live inside MapView's subtree: useMapInstance()
               (its BoatMarker child calls it) reads the map instance off a
               React context that MapView provides, and only descendants of
