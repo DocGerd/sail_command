@@ -778,6 +778,35 @@ describe('LiveView', () => {
       ).toBeInTheDocument();
     });
 
+    it('lost then fresh keeps the same readout element mounted (RouteLayer reads its presence as Live active)', async () => {
+      const { emitFix } = await startTracking();
+      act(() => emitFix(goodFix()));
+      const data = document.querySelector('.live-view-data');
+      expect(data).not.toBeNull();
+      advance(30_000);
+      expect(screen.getByText('GPS signal lost')).toBeInTheDocument();
+      expect(data?.isConnected).toBe(true);
+      expect(document.querySelector('.live-view-data')).toBe(data);
+      act(() => emitFix(goodFix()));
+      expect(document.querySelector('.live-view-data')).toBe(data);
+      expect(screen.getByText(HTS())).toBeInTheDocument();
+    });
+
+    it('does not mount the readout element before the first fix', async () => {
+      await startTracking();
+      expect(document.querySelector('.live-view-data')).toBeNull();
+    });
+
+    it('the stale badge is a status region announcing a static message, with the ticking age hidden from it', async () => {
+      const { emitFix } = await startTracking();
+      act(() => emitFix(goodFix()));
+      advance(10_000);
+      const badge = document.querySelector('.live-view-gps-stale');
+      expect(badge).toHaveAttribute('role', 'status');
+      expect(badge?.querySelector('[aria-hidden="true"]')).toHaveTextContent('Stale, 10 s old');
+      expect(badge?.querySelector('.sr-only')).toHaveTextContent('GPS position is stale');
+    });
+
     it('lost: reroute is disabled with the lost reason; a fresh fix restores readouts and clears the state', async () => {
       const { emitFix } = await startTracking();
       act(() => emitFix(goodFix()));

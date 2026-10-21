@@ -1172,6 +1172,7 @@ export const en = {
     "Location access isn't available, so the boat position can't be shown on the map. Planning and the saved route still work fully — this is a passage-planning aid, not a navigation device.",
   'live.gps.waiting': 'Waiting for GPS fix…',
   'live.gps.stale': 'Stale, {age} s old',
+  'live.gps.stale.announce': 'GPS position is stale',
   'live.gps.lost': 'GPS signal lost',
   'live.gps.lost.last':
     'Last fix {time} at {position}. Readings are hidden until a new fix arrives.',

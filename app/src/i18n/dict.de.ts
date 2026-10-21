@@ -1166,6 +1166,7 @@ export const de = {
     'Standortzugriff ist nicht verfügbar, daher kann die Bootsposition nicht auf der Karte angezeigt werden. Planung und die gespeicherte Route funktionieren weiterhin uneingeschränkt — dies ist eine Törnplanungshilfe, kein Navigationsgerät.',
   'live.gps.waiting': 'Warte auf GPS-Position…',
   'live.gps.stale': 'Veraltet, {age} s alt',
+  'live.gps.stale.announce': 'GPS-Position ist veraltet',
   'live.gps.lost': 'GPS-Signal verloren',
   'live.gps.lost.last':
     'Letzte Position {time}: {position}. Anzeigen sind ausgeblendet, bis eine neue Position vorliegt.',

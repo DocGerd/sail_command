@@ -79,6 +79,13 @@ describe('OwnshipMarker', () => {
       expect(container).not.toHaveClass('live-gps-lost');
     });
 
+    it('hides the accuracy circle (0 m) while stale and forwards the real accuracy otherwise', () => {
+      const { rerender } = render(<OwnshipMarker fix={FIX} stale />);
+      expect(screen.getByTestId('ownship-boat-marker')).toHaveAttribute('data-accuracy', '0');
+      rerender(<OwnshipMarker fix={FIX} />);
+      expect(screen.getByTestId('ownship-boat-marker')).toHaveAttribute('data-accuracy', '12');
+    });
+
     it('drops the projection vector (SOG) while stale and keeps the position', () => {
       render(<OwnshipMarker fix={FIX} stale />);
       const el = screen.getByTestId('ownship-boat-marker');

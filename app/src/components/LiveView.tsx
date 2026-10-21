@@ -313,7 +313,8 @@ export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: 
   // Narrow layout: the card is docked in the map area while the bottom sheet
   // (tab strip plus whatever panel content sits under it, e.g. the AIS list)
   // is a sibling of unknown height. Dock above the sheet's measured top so the
-  // sheet never covers the card; the CSS fallback over-pushes if this never runs.
+  // sheet never covers the card.
+  // The CSS fallback clears the tab strip plus a typical collapsed AIS row if this never runs.
   const cardRef = useRef<HTMLDivElement>(null);
   const cardMounted = Boolean(plan && result && legs.length > 0);
   useLayoutEffect(() => {
@@ -426,7 +427,10 @@ export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: 
         </p>
       )}
       {stale && (
-        <Chip className="live-view-gps-stale">{t('live.gps.stale', { age: gps.ageS ?? 0 })}</Chip>
+        <Chip role="status" className="live-view-gps-stale">
+          <span aria-hidden="true">{t('live.gps.stale', { age: gps.ageS ?? 0 })}</span>
+          <span className="sr-only">{t('live.gps.stale.announce')}</span>
+        </Chip>
       )}
       {active && gps.state === 'lost' && (
         <div role="status" className="live-view-gps live-view-gps--lost">
@@ -472,91 +476,99 @@ export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: 
         </div>
       )}
 
-      {steerable && (
+      {/* Stays mounted through lost and denied once a fix has arrived: RouteLayer's
+          auto-fit latch reads its presence as "Live is active". */}
+      {(steerable !== null || (active && gps.fix !== null)) && (
         <div className={stale ? 'live-view-data live-view-data--stale' : 'live-view-data'}>
-          <div
-            className={
-              depthCheck.state === 'caution'
-                ? 'live-view-hts live-view-hts--caution'
-                : 'live-view-hts'
-            }
-          >
-            <span className="live-view-label">
-              {t('live.hts.label')}
-              {/* #713: German's label is already the full word 'Steuerkurs'
+          {steerable && (
+            <>
+              <div
+                className={
+                  depthCheck.state === 'caution'
+                    ? 'live-view-hts live-view-hts--caution'
+                    : 'live-view-hts'
+                }
+              >
+                <span className="live-view-label">
+                  {t('live.hts.label')}
+                  {/* #713: German's label is already the full word 'Steuerkurs'
                   — only the bare English abbreviation needs an expansion, so
                   this is gated on lang rather than rendered unconditionally
                   with an unused German value. */}
-              {lang === 'en' && <span className="sr-only"> {t('live.hts.expansion')}</span>}
-            </span>
-            <span className="live-view-hts-value tabular-nums">{formatHeading(steerable.hts)}</span>
-          </div>
-          {depthCheck.state === 'caution' && (
-            <p className="live-view-hts-note live-view-hts-note--caution">
-              <WarningIcon />
-              {depthCheck.hazard === 'land'
-                ? t('live.hts.landCaution')
-                : t('live.hts.depthCaution', {
-                    // #596: through formatDepthM, not a bare `toFixed(1)` —
-                    // same locale-aware one-decimal form the sibling
-                    // route-level shallow banner uses for both of its depths
-                    // (RouteSummary.tsx), so the two depth warnings never
-                    // render the same number differently, IN EITHER
-                    // language (a bare `toFixed(1)` here would have left
-                    // this sentence point-formatted after RouteSummary's own
-                    // switched to comma-formatted German).
-                    depth: formatDepthM(depthCheck.shallowestM, lang),
-                    // #632: consumes the SAME guarded `safetyDepthM` local
-                    // computed above, never a fresh unguarded read.
-                    // Invariant: `depthCheck.state` can only reach
-                    // 'caution' through foldProbe's
-                    // `idx !== null && safetyNow !== null` gate (~:209),
-                    // and `safetyDepthM` is a stable function of the same
-                    // `plan` for the life of this `holdKey` — so the em-dash
-                    // branch below is provably unreachable. Narrowed this
-                    // way (not `!`, which would be the first production
-                    // non-null assertion in app/src/components/) purely to
-                    // satisfy TypeScript. Uses the same em-dash placeholder
-                    // as the COG/SOG fields below (`'—'`, not `''`) for
-                    // consistency with this file's existing missing-value
-                    // convention — an unreachable empty string would still
-                    // render as "…your safety depth ( m)", a malformed
-                    // sentence, if this invariant were ever violated.
-                    safety: safetyDepthM !== null ? formatDepthM(safetyDepthM, lang) : '—',
-                  })}
-            </p>
+                  {lang === 'en' && <span className="sr-only"> {t('live.hts.expansion')}</span>}
+                </span>
+                <span className="live-view-hts-value tabular-nums">
+                  {formatHeading(steerable.hts)}
+                </span>
+              </div>
+              {depthCheck.state === 'caution' && (
+                <p className="live-view-hts-note live-view-hts-note--caution">
+                  <WarningIcon />
+                  {depthCheck.hazard === 'land'
+                    ? t('live.hts.landCaution')
+                    : t('live.hts.depthCaution', {
+                        // #596: through formatDepthM, not a bare `toFixed(1)` —
+                        // same locale-aware one-decimal form the sibling
+                        // route-level shallow banner uses for both of its depths
+                        // (RouteSummary.tsx), so the two depth warnings never
+                        // render the same number differently, IN EITHER
+                        // language (a bare `toFixed(1)` here would have left
+                        // this sentence point-formatted after RouteSummary's own
+                        // switched to comma-formatted German).
+                        depth: formatDepthM(depthCheck.shallowestM, lang),
+                        // #632: consumes the SAME guarded `safetyDepthM` local
+                        // computed above, never a fresh unguarded read.
+                        // Invariant: `depthCheck.state` can only reach
+                        // 'caution' through foldProbe's
+                        // `idx !== null && safetyNow !== null` gate (~:209),
+                        // and `safetyDepthM` is a stable function of the same
+                        // `plan` for the life of this `holdKey` — so the em-dash
+                        // branch below is provably unreachable. Narrowed this
+                        // way (not `!`, which would be the first production
+                        // non-null assertion in app/src/components/) purely to
+                        // satisfy TypeScript. Uses the same em-dash placeholder
+                        // as the COG/SOG fields below (`'—'`, not `''`) for
+                        // consistency with this file's existing missing-value
+                        // convention — an unreachable empty string would still
+                        // render as "…your safety depth ( m)", a malformed
+                        // sentence, if this invariant were ever violated.
+                        safety: safetyDepthM !== null ? formatDepthM(safetyDepthM, lang) : '—',
+                      })}
+                </p>
+              )}
+              {depthCheck.state === 'unavailable' && (
+                <p className="live-view-hts-note live-view-hts-note--muted">
+                  {t('live.hts.depthUnchecked')}
+                </p>
+              )}
+
+              <dl className="live-view-cogsog">
+                <dt>{t('live.cog.label')}</dt>
+                <dd className="tabular-nums">
+                  {steerable.fix.cogDeg !== null ? formatHeading(steerable.fix.cogDeg) : '—'}
+                </dd>
+                <dt>{t('live.sog.label')}</dt>
+                <dd className="tabular-nums">
+                  {steerable.fix.sogKn !== null ? formatKn(steerable.fix.sogKn, lang) : '—'}
+                </dd>
+              </dl>
+
+              <p className="live-view-next-event">
+                {nextEvent
+                  ? `${t('live.nextEvent.label', { distance: formatNm(nextEvent.distNm, lang) })} ${t(
+                      nextEvent.kind === 'motor-start'
+                        ? 'live.nextEvent.motorStart'
+                        : MANEUVER_LABEL_KEY[nextEvent.kind],
+                    )}`
+                  : t('live.nextEvent.none')}
+              </p>
+
+              <p className="live-view-eta tabular-nums">
+                {t('live.eta.label')}: {etaMs !== null ? formatTime(etaMs, lang) : '—'}
+                {driftMs !== null && ` (${formatDriftMin(driftMs)})`}
+              </p>
+            </>
           )}
-          {depthCheck.state === 'unavailable' && (
-            <p className="live-view-hts-note live-view-hts-note--muted">
-              {t('live.hts.depthUnchecked')}
-            </p>
-          )}
-
-          <dl className="live-view-cogsog">
-            <dt>{t('live.cog.label')}</dt>
-            <dd className="tabular-nums">
-              {steerable.fix.cogDeg !== null ? formatHeading(steerable.fix.cogDeg) : '—'}
-            </dd>
-            <dt>{t('live.sog.label')}</dt>
-            <dd className="tabular-nums">
-              {steerable.fix.sogKn !== null ? formatKn(steerable.fix.sogKn, lang) : '—'}
-            </dd>
-          </dl>
-
-          <p className="live-view-next-event">
-            {nextEvent
-              ? `${t('live.nextEvent.label', { distance: formatNm(nextEvent.distNm, lang) })} ${t(
-                  nextEvent.kind === 'motor-start'
-                    ? 'live.nextEvent.motorStart'
-                    : MANEUVER_LABEL_KEY[nextEvent.kind],
-                )}`
-              : t('live.nextEvent.none')}
-          </p>
-
-          <p className="live-view-eta tabular-nums">
-            {t('live.eta.label')}: {etaMs !== null ? formatTime(etaMs, lang) : '—'}
-            {driftMs !== null && ` (${formatDriftMin(driftMs)})`}
-          </p>
         </div>
       )}
 

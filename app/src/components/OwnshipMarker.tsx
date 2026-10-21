@@ -5,7 +5,7 @@ import type { GpsFix } from '../services/geolocation';
 
 export interface OwnshipMarkerProps {
   fix: GpsFix | null;
-  /** The fix is no longer current (signal lost or denied): draw the marker dimmed and without its projection vector. */
+  /** The fix is no longer current (signal lost or denied): draw the marker dimmed, without its projection vector and accuracy circle. */
   stale?: boolean;
 }
 
@@ -36,8 +36,7 @@ const STALE_MAP_CLASS = 'live-gps-lost';
 // BoatMarker.tsx/RouteLayer.tsx's own "not unit-tested" notes.
 export default function OwnshipMarker({ fix, stale = false }: OwnshipMarkerProps) {
   const map = useMapInstance();
-  // BoatMarker owns its element, so the stale style is a class on the map
-  // container that Live-scoped CSS keys on.
+  // BoatMarker owns its element, so the stale style is a class on the map container that CSS keys on.
   useEffect(() => {
     const container = map?.getContainer();
     if (!container) return;
@@ -51,7 +50,7 @@ export default function OwnshipMarker({ fix, stale = false }: OwnshipMarkerProps
       cogDeg={fix.cogDeg}
       sogKn={stale ? null : fix.sogKn}
       headingToSteerDeg={fix.cogDeg ?? 0}
-      accuracyM={fix.accuracyM}
+      accuracyM={stale ? 0 : fix.accuracyM}
     />
   );
 }
