@@ -1178,6 +1178,13 @@ export const de = {
   'live.reroute.reason.denied': 'Standortzugriff gesperrt — Neuplanung nicht möglich.',
   'live.reroute.reason.accuracy':
     'GPS-Genauigkeit von {accuracy} m ist schlechter als die Grenze von {threshold} m für die Neuplanung.',
+  'live.resume.message': 'Verfolgung angehalten',
+  'live.resume.action': 'Fortsetzen',
+  'live.wake.toggle': 'Bildschirm während der Verfolgung anlassen',
+  'live.wake.held': 'Bildschirm bleibt an',
+  'live.wake.notHeld': 'Bildschirm kann ausgehen — Dauer-An ist nicht aktiv',
+  'live.wake.off': 'Bildschirm kann ausgehen — Dauer-An ist aus',
+  'live.wake.unsupported': 'Bildschirm kann ausgehen — von diesem Browser nicht unterstützt',
   // #361: siehe englisches Dict für den Hintergrund.
   'live.ownship.marker': 'Aktuelle Bootsposition',
   // #115: manueller "Route ab hier"-Neuplan — Planungssprache, keine

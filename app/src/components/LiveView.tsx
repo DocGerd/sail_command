@@ -28,7 +28,11 @@ import {
   formatNm,
   formatTime,
 } from '../lib/format';
+import { harborHandoverLines } from '../lib/harborHandover';
+import { safeGetItem, safeSetItem } from '../lib/storage';
+import { usePersistedToggle } from '../lib/usePersistedToggle';
 import type { GpsSource } from '../state/useGpsSource';
+import { useWakeLock } from '../state/useWakeLock';
 import { isLiveSimRequested } from '../dev/liveSimulator';
 import LiveSimulatorControls from '../dev/LiveSimulatorControls';
 import { liveSimDict } from '../dev/LiveSimulatorControls.dict';
@@ -79,6 +83,11 @@ export interface LiveViewProps {
   reroute?: LiveRerouteControls | null;
 }
 
+// Set when the user starts tracking, cleared only by an explicit Stop, so a
+// reload, crash, app kill or tab switch leaves the resume prompt behind.
+const WAS_TRACKING_KEY = 'sc-live-was-tracking';
+const WAKE_LOCK_KEY = 'sc-live-wake-lock';
+
 const MANEUVER_LABEL_KEY: Record<ManeuverKind, MsgKey> = {
   tack: 'route.maneuver.tack',
   gybe: 'route.maneuver.gybe',
@@ -120,6 +129,9 @@ export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: 
   const [lang] = useLang();
   const { plan, rig, setActiveLegIndex } = useActivePlan();
   const [active, setActive] = useState(false);
+  const [wasTracking, setWasTracking] = useState(() => safeGetItem(WAS_TRACKING_KEY) === '1');
+  const [wakeLockOn, setWakeLockOn] = usePersistedToggle(WAKE_LOCK_KEY, true);
+  const wakeLock = useWakeLock(active && wakeLockOn);
   // Readouts show only while tracking is on and the fix is usable: a fix
   // cached from the ownship watch, or a lost/denied one, must not read as live.
   const usable = active && (gps.state === 'fresh' || gps.state === 'stale');
@@ -348,9 +360,19 @@ export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: 
   // toggle-on-while-Live-active session never shows two.
   const steerable = fix !== null && hts !== null ? { fix, hts } : null;
 
-  const toggleActive = () => {
-    setActive(!active);
+  const startTracking = () => {
+    safeSetItem(WAS_TRACKING_KEY, '1');
+    setWasTracking(true);
+    setActive(true);
   };
+  const stopTracking = () => {
+    safeSetItem(WAS_TRACKING_KEY, '0');
+    setWasTracking(false);
+    setActive(false);
+  };
+  const toggleActive = active ? stopTracking : startTracking;
+
+  const handover = harborHandoverLines(plan).length > 0;
 
   const rr = gps.reroute;
   const rerouteReason = (): string => {
@@ -387,6 +409,17 @@ export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: 
         {active ? t('live.toggle.stop') : t('live.toggle')}
       </Button>
 
+      {!active && wasTracking && (
+        <div role="status" className="live-view-resume">
+          <p>{t('live.resume.message')}</p>
+          <Button variant="primary" onClick={startTracking}>
+            {t('live.resume.action')}
+          </Button>
+        </div>
+      )}
+
+      {handover && <p className="live-view-handover">{t('live.handover')}</p>}
+
       {active && gps.state === 'waiting' && (
         <p role="status" className="live-view-gps live-view-gps--waiting">
           {t('live.gps.waiting')}
@@ -412,6 +445,30 @@ export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: 
         <div role="status" className="live-view-gps live-view-gps--denied">
           <p className="live-view-gps-title">{t('live.gps.denied')}</p>
           <p>{t('live.gps.denied.hint')}</p>
+        </div>
+      )}
+
+      {!wakeLock.supported ? (
+        <p className="live-view-wake">{t('live.wake.unsupported')}</p>
+      ) : (
+        <div className="live-view-wake">
+          <label>
+            <input
+              type="checkbox"
+              checked={wakeLockOn}
+              onChange={(e) => setWakeLockOn(e.target.checked)}
+            />{' '}
+            {t('live.wake.toggle')}
+          </label>
+          {active && (
+            <p role="status" className="live-view-wake-status">
+              {!wakeLockOn
+                ? t('live.wake.off')
+                : wakeLock.held
+                  ? t('live.wake.held')
+                  : t('live.wake.notHeld')}
+            </p>
+          )}
         </div>
       )}
 

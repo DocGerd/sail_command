@@ -1173,7 +1173,8 @@ export const en = {
   'live.gps.waiting': 'Waiting for GPS fix…',
   'live.gps.stale': 'Stale, {age} s old',
   'live.gps.lost': 'GPS signal lost',
-  'live.gps.lost.last': 'Last fix {time} at {position}. Readings are hidden until a new fix arrives.',
+  'live.gps.lost.last':
+    'Last fix {time} at {position}. Readings are hidden until a new fix arrives.',
   'live.gps.denied': 'Location access is blocked',
   'live.gps.denied.hint':
     'Allow location for this site (or the installed app) in your browser or device settings, then return here. If nothing changes, stop and start the live view again.',
@@ -1182,6 +1183,13 @@ export const en = {
   'live.reroute.reason.denied': 'Location access is blocked — replanning is unavailable.',
   'live.reroute.reason.accuracy':
     'GPS accuracy of {accuracy} m is worse than the {threshold} m limit for replanning.',
+  'live.resume.message': 'Tracking stopped',
+  'live.resume.action': 'Resume',
+  'live.wake.toggle': 'Keep screen on while tracking',
+  'live.wake.held': 'Screen is kept awake',
+  'live.wake.notHeld': 'Screen may sleep — keep-awake is not active',
+  'live.wake.off': 'Screen may sleep — keep-awake is off',
+  'live.wake.unsupported': 'Screen may sleep — not supported on this browser',
   // #361: maplibre-gl 6.1.0 stopped supplying a default aria-label/role for
   // markers built with a custom `element` — BoatMarker must set its own,
   // like ViaMarkers already does, independent of library defaults.

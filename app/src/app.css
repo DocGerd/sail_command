@@ -658,6 +658,40 @@ select {
   margin: 0.5rem 0;
 }
 
+/* Resume prompt after a reload, crash or tab switch: the card's most prominent element. */
+.live-view-resume {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  margin: 0.5rem 0;
+  background: var(--sc-banner-warning-bg);
+  color: var(--sc-banner-warning-fg);
+  border: 2px solid currentColor;
+  border-radius: 8px;
+  font-weight: 700;
+}
+
+.live-view-resume p {
+  margin: 0;
+}
+
+.live-view-handover {
+  margin: 0.5rem 0;
+  font-size: 0.85rem;
+}
+
+.live-view-wake {
+  margin: 0.5rem 0;
+  font-size: 0.85rem;
+}
+
+.live-view-wake-status {
+  margin: 0.15rem 0 0;
+  opacity: 0.75;
+}
+
 /* Stale: values stay readable but visibly not current. */
 .live-view-data--stale {
   opacity: 0.6;

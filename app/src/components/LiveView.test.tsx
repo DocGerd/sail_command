@@ -10,6 +10,7 @@ import { distanceToNextManeuverNm, headingToSteerDeg } from '../lib/live';
 import { formatHeading, formatLatLon, formatNm } from '../lib/format';
 import type { GpsErrorKind, GpsFix } from '../services/geolocation';
 import { DEFAULT_SETTINGS, type Leg, type MaskMeta, type Plan } from '../types';
+import { withHarborHandover } from '../lib/harborHandover';
 import LiveView from './LiveView';
 import { useOwnshipGps } from '../state/useOwnshipGps';
 import type { watchPosition as realWatchPosition } from '../services/geolocation';
@@ -412,6 +413,188 @@ describe('LiveView', () => {
     fireEvent.click(toggle); // off — fix cleared, data block unrendered
     expect(screen.queryByText(expectedHts)).not.toBeInTheDocument();
     expect(screen.queryByText(/projected eta/i)).not.toBeInTheDocument();
+  });
+
+  describe('resume prompt (#1802)', () => {
+    const WAS_TRACKING = 'sc-live-was-tracking';
+
+    it('is absent on a first visit', async () => {
+      const { wp } = fakeWatchPosition();
+      renderLive(wp, TEST_PLAN);
+      await screen.findByRole('button', { name: 'Start live view' });
+      expect(screen.queryByText('Tracking stopped')).not.toBeInTheDocument();
+    });
+
+    it('appears after a reload with the was-tracking flag, starts no GPS until the tap, and Resume starts it', async () => {
+      localStorage.setItem(WAS_TRACKING, '1');
+      const { wp } = fakeWatchPosition();
+      renderLive(wp, TEST_PLAN);
+
+      expect(await screen.findByText('Tracking stopped')).toBeInTheDocument();
+      expect(wp).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Resume' }));
+      expect(wp).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText('Tracking stopped')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Stop live view' })).toBeInTheDocument();
+    });
+
+    it('returning to the Live tab (remount) shows it again after tracking was running', async () => {
+      const first = fakeWatchPosition();
+      const { unmount } = renderLive(first.wp, TEST_PLAN);
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
+      expect(localStorage.getItem(WAS_TRACKING)).toBe('1');
+      unmount();
+      cleanup();
+
+      const second = fakeWatchPosition();
+      renderLive(second.wp, TEST_PLAN);
+      expect(await screen.findByText('Tracking stopped')).toBeInTheDocument();
+      expect(second.wp).not.toHaveBeenCalled();
+    });
+
+    it('an explicit Stop clears the flag, so the prompt does not return', async () => {
+      const first = fakeWatchPosition();
+      const { unmount } = renderLive(first.wp, TEST_PLAN);
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Stop live view' }));
+      expect(localStorage.getItem(WAS_TRACKING)).toBe('0');
+      expect(screen.queryByText('Tracking stopped')).not.toBeInTheDocument();
+      unmount();
+      cleanup();
+
+      const second = fakeWatchPosition();
+      renderLive(second.wp, TEST_PLAN);
+      await screen.findByRole('button', { name: 'Start live view' });
+      expect(screen.queryByText('Tracking stopped')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('wake lock (#1801)', () => {
+    class FakeSentinel extends EventTarget {
+      release = vi.fn(async () => {
+        this.dispatchEvent(new Event('release'));
+      });
+    }
+    let sentinels: FakeSentinel[];
+    let request: ReturnType<typeof vi.fn>;
+
+    function installWakeLock() {
+      request = vi.fn(async () => {
+        const s = new FakeSentinel();
+        sentinels.push(s);
+        return s;
+      });
+      Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request } });
+    }
+
+    beforeEach(() => {
+      sentinels = [];
+      installWakeLock();
+    });
+    afterEach(() => {
+      Reflect.deleteProperty(navigator, 'wakeLock');
+    });
+
+    const flush = () => act(async () => {});
+    const checkbox = () => screen.getByRole('checkbox', { name: 'Keep screen on while tracking' });
+
+    it('is requested by default while tracking and the indicator says so', async () => {
+      const { wp } = fakeWatchPosition();
+      renderLive(wp, TEST_PLAN);
+      await screen.findByRole('button', { name: 'Start live view' });
+      expect(request).not.toHaveBeenCalled();
+      expect(checkbox()).toBeChecked();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Start live view' }));
+      await flush();
+      expect(request).toHaveBeenCalledExactlyOnceWith('screen');
+      expect(screen.getByText('Screen is kept awake')).toBeInTheDocument();
+    });
+
+    it("follows the sentinel's release event, not only the request", async () => {
+      const { wp } = fakeWatchPosition();
+      renderLive(wp, TEST_PLAN);
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
+      await flush();
+      expect(screen.getByText('Screen is kept awake')).toBeInTheDocument();
+
+      act(() => void sentinels[0].dispatchEvent(new Event('release')));
+      expect(screen.getByText('Screen may sleep — keep-awake is not active')).toBeInTheDocument();
+      expect(screen.queryByText('Screen is kept awake')).not.toBeInTheDocument();
+    });
+
+    it('the toggle releases the lock, is remembered across a remount, and keeps the lock off', async () => {
+      const first = fakeWatchPosition();
+      const { unmount } = renderLive(first.wp, TEST_PLAN);
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
+      await flush();
+
+      fireEvent.click(checkbox());
+      await flush();
+      expect(sentinels[0].release).toHaveBeenCalled();
+      expect(screen.getByText('Screen may sleep — keep-awake is off')).toBeInTheDocument();
+      expect(localStorage.getItem('sc-live-wake-lock')).toBe('0');
+      unmount();
+      cleanup();
+
+      request.mockClear();
+      const second = fakeWatchPosition();
+      renderLive(second.wp, TEST_PLAN);
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
+      await flush();
+      expect(checkbox()).not.toBeChecked();
+      expect(request).not.toHaveBeenCalled();
+    });
+
+    it('releases on Stop and when Live is left', async () => {
+      const first = fakeWatchPosition();
+      const { unmount } = renderLive(first.wp, TEST_PLAN);
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
+      await flush();
+      fireEvent.click(screen.getByRole('button', { name: 'Stop live view' }));
+      await flush();
+      expect(sentinels[0].release).toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Start live view' }));
+      await flush();
+      expect(sentinels).toHaveLength(2);
+      unmount();
+      await flush();
+      expect(sentinels[1].release).toHaveBeenCalled();
+    });
+
+    it('says so when the API is unsupported, with no toggle', async () => {
+      Reflect.deleteProperty(navigator, 'wakeLock');
+      const { wp } = fakeWatchPosition();
+      renderLive(wp, TEST_PLAN);
+      await screen.findByRole('button', { name: 'Start live view' });
+      expect(
+        screen.getByText('Screen may sleep — not supported on this browser'),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('checkbox', { name: 'Keep screen on while tracking' }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  describe('harbour handover notice (#1721)', () => {
+    it('shows live.handover only for a plan routed from/to a handover point', async () => {
+      if (TEST_PLAN.result.status !== 'ok') throw new Error('fixture must be ok');
+      const handoverPlan: Plan = {
+        ...TEST_PLAN,
+        result: withHarborHandover(TEST_PLAN.result, { origin: true }),
+      };
+      const { wp } = fakeWatchPosition();
+      const { unmount } = renderLive(wp, handoverPlan);
+      expect(await screen.findByText(/the route is not computed/)).toBeInTheDocument();
+      unmount();
+      cleanup();
+
+      renderLive(wp, TEST_PLAN);
+      await screen.findByRole('button', { name: 'Start live view' });
+      expect(screen.queryByText(/the route is not computed/)).not.toBeInTheDocument();
+    });
   });
 
   describe('docking above the bottom sheet (narrow layout)', () => {
