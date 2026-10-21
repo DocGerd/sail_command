@@ -224,6 +224,17 @@ export interface ExportEnvelope {
   waypoints: SavedWaypoint[];
 }
 
+// The AIS key stays on the device (SECURITY.md); plans stored before it was
+// stripped at save time may still carry it, so export strips on read.
+function withoutAisApiKey(settings: Settings): Settings {
+  // Stored settings are not validated (migratePlan), so guard the shape.
+  const s: unknown = settings;
+  if (typeof s !== 'object' || s === null || !Object.hasOwn(s, 'aisApiKey')) return settings;
+  const rest = { ...settings };
+  delete rest.aisApiKey;
+  return rest;
+}
+
 /** Builds the envelope from live app state. Takes plain arrays/values — the
  * caller (SettingsPanel.tsx) is responsible for gathering them from
  * services/db.ts and the live Settings prop; this function does no I/O so
@@ -236,8 +247,18 @@ export function buildExportEnvelope(
   return {
     schemaVersion: EXPORT_SCHEMA_VERSION,
     exportedAtMs: Date.now(),
-    plans: plans.map((p) => ({ ...p, windGrid: encodeWindGrid(p.windGrid) })),
-    settings,
+    plans: plans.map((p) => {
+      const planSettings = withoutAisApiKey(p.request.settings);
+      return {
+        ...p,
+        request:
+          planSettings === p.request.settings
+            ? p.request
+            : { ...p.request, settings: planSettings },
+        windGrid: encodeWindGrid(p.windGrid),
+      };
+    }),
+    settings: settings === null ? null : withoutAisApiKey(settings),
     waypoints: [...waypoints],
   };
 }

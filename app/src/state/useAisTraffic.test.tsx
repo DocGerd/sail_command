@@ -4,6 +4,7 @@ import {
   useAisTraffic,
   useSettledValue,
   type AisClientLike,
+  type AisClientOptions,
   type UseAisTrafficInput,
 } from './useAisTraffic';
 import type { AisBoundingBox, AisStreamCallbacks, ParsedAisData } from '../services/aisStream';
@@ -18,14 +19,20 @@ function fakeClients() {
   const clients: {
     apiKey: string;
     callbacks: AisStreamCallbacks;
+    options: AisClientOptions;
     started: AisBoundingBox[][];
     bboxes: AisBoundingBox[][];
     stopped: number;
   }[] = [];
-  const createClient = (apiKey: string, callbacks: AisStreamCallbacks): AisClientLike => {
+  const createClient = (
+    apiKey: string,
+    callbacks: AisStreamCallbacks,
+    options: AisClientOptions,
+  ): AisClientLike => {
     const rec = {
       apiKey,
       callbacks,
+      options,
       started: [] as AisBoundingBox[][],
       bboxes: [] as AisBoundingBox[][],
       stopped: 0,
@@ -97,6 +104,89 @@ describe('useAisTraffic', () => {
     act(() => clients[0].callbacks.onMessage(POS));
     act(() => vi.advanceTimersByTime(1000));
     expect(result.current.targets).toHaveLength(0);
+  });
+
+  it('removes an already-stored target once its MMSI is entered as the own MMSI', () => {
+    const { clients, createClient } = fakeClients();
+    const { result, rerender } = renderHook((props) => useAisTraffic(props, { createClient }), {
+      initialProps: base,
+    });
+    act(() => clients[0].callbacks.onMessage(POS));
+    act(() => vi.advanceTimersByTime(1000));
+    expect(result.current.targets).toHaveLength(1);
+
+    rerender({ ...base, ownMmsi: POS.mmsi });
+    act(() => vi.advanceTimersByTime(1000));
+    expect(result.current.targets).toHaveLength(0);
+  });
+
+  it('keeps the published array identity while the target set is unchanged', () => {
+    const { clients, createClient } = fakeClients();
+    const { result } = renderHook(() => useAisTraffic(base, { createClient }));
+    act(() => clients[0].callbacks.onMessage(POS));
+    act(() => vi.advanceTimersByTime(1000));
+    const first = result.current.targets;
+    expect(first).toHaveLength(1);
+    act(() => vi.advanceTimersByTime(3000));
+    expect(result.current.targets).toBe(first);
+  });
+
+  it('publishes a new array when a target moves, updates, or ages into the stale tier', () => {
+    const { clients, createClient } = fakeClients();
+    const { result } = renderHook(() => useAisTraffic(base, { createClient }));
+    act(() => clients[0].callbacks.onMessage(POS));
+    act(() => vi.advanceTimersByTime(1000));
+    const first = result.current.targets;
+    act(() => clients[0].callbacks.onMessage({ ...POS, lat: 54.8 }));
+    act(() => vi.advanceTimersByTime(1000));
+    const moved = result.current.targets;
+    expect(moved).not.toBe(first);
+    expect(moved[0].position.lat).toBe(54.8);
+    act(() => vi.advanceTimersByTime(4 * 60_000));
+    expect(result.current.targets).not.toBe(moved);
+    expect(result.current.targets[0].tier).toBe('stale');
+  });
+
+  it('maps the client noTraffic status to its own chip state, distinct from connecting', () => {
+    const { clients, createClient } = fakeClients();
+    const { result } = renderHook(() => useAisTraffic(base, { createClient }));
+    expect(result.current.status).toBe('connecting');
+    act(() => clients[0].callbacks.onStatus('noTraffic'));
+    expect(result.current.status).toBe('noTraffic');
+    act(() => clients[0].callbacks.onStatus('live'));
+    expect(result.current.status).toBe('live');
+  });
+
+  it('keeps live while stale targets are still drawn, noTraffic only when none are', () => {
+    const { clients, createClient } = fakeClients();
+    const { result } = renderHook(() => useAisTraffic(base, { createClient }));
+    act(() => clients[0].callbacks.onStatus('noTraffic'));
+    expect(result.current.status).toBe('noTraffic');
+    act(() => clients[0].callbacks.onMessage(POS));
+    act(() => vi.advanceTimersByTime(1000));
+    expect(result.current.targets).toHaveLength(1);
+    expect(result.current.status).toBe('live');
+    act(() => vi.advanceTimersByTime(11 * 60_000)); // past AIS_DROP_MS
+    expect(result.current.targets).toHaveLength(0);
+    expect(result.current.status).toBe('noTraffic');
+  });
+
+  it('seeds a recreated client with the proven key, but not a different key', () => {
+    const { clients, createClient } = fakeClients();
+    const { rerender } = renderHook((props) => useAisTraffic(props, { createClient }), {
+      initialProps: base,
+    });
+    expect(clients[0].options.keyProven).toBe(false);
+    act(() => clients[0].callbacks.onKeyProven?.());
+
+    rerender({ ...base, online: false }); // gates close: client discarded
+    rerender(base); // gates reopen: new client, same key
+    expect(clients).toHaveLength(2);
+    expect(clients[1].options.keyProven).toBe(true);
+
+    rerender({ ...base, apiKey: 'OTHER' });
+    expect(clients).toHaveLength(3);
+    expect(clients[2].options.keyProven).toBe(false);
   });
 
   it('goes offline and stops the client, but keeps already-received targets', () => {

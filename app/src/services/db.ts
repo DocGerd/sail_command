@@ -242,8 +242,21 @@ export function summarizePlanRecord(raw: unknown, key?: unknown): PlanSummary {
   };
 }
 
+// SECURITY.md: the AIS key never leaves the device except to aisstream.io, so
+// the settings snapshot a plan carries must not hold it.
+function withoutAisApiKey(plan: Plan): Plan {
+  // savePlan also writes records migratePlan would refuse, so no field is trusted.
+  const settings: unknown = (plan.request as Partial<Plan['request']> | undefined)?.settings;
+  if (typeof settings !== 'object' || settings === null || !Object.hasOwn(settings, 'aisApiKey')) {
+    return plan;
+  }
+  const rest: Settings = { ...(settings as Settings) };
+  delete rest.aisApiKey;
+  return { ...plan, request: { ...plan.request, settings: rest } };
+}
+
 export async function savePlan(plan: Plan): Promise<void> {
-  await (await db()).put('plans', plan);
+  await (await db()).put('plans', withoutAisApiKey(plan));
 }
 
 export async function listPlans(): Promise<PlanSummary[]> {

@@ -847,6 +847,17 @@ describe('RouteLayer re-fit after a layout change (#1639)', () => {
     expect(targets()).toContain(live);
   });
 
+  it('observes a Live readout that mounts while the latch is released (#1751)', () => {
+    const map = setup();
+    userMove(map);
+    const live = mount('live-view');
+    resize();
+    expect(observers.flatMap((o) => o.targets)).toContain(live);
+    live.remove();
+    resize();
+    expect(observers.some((o) => o.unobserve.mock.calls.some((c) => c[0] === live))).toBe(true);
+  });
+
   it('pads for the Live readout', () => {
     const map = setup();
     mount('live-view');
