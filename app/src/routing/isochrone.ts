@@ -694,6 +694,7 @@ export function solve(p: SolveParams): SolveResult {
       let produced = 0;
       let sawBlocked = false;
       let sawCalm = false;
+      const twsBracket = polar.bracketTws(w.speedKn);
 
       for (const candidate of candidates) {
         let headingDeg: number;
@@ -708,7 +709,7 @@ export function solve(p: SolveParams): SolveResult {
         } else {
           twa = candidate;
           headingDeg = (((w.dirFromDeg - twa) % 360) + 360) % 360;
-          const sailSpeed = polar.speedKn(twa, w.speedKn);
+          const sailSpeed = polar.speedKnAt(twa, twsBracket);
           if (sailSpeed >= sailFloorKn) {
             kind = 'sail';
             speed = sailSpeed;
