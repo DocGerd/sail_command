@@ -376,10 +376,7 @@ export class NavMask {
       const byte = data[cy * cols + cx];
       if (
         approach !== null &&
-        cy >= approach.rowLo &&
-        cy <= approach.rowHi &&
-        cx >= approach.colLo &&
-        cx <= approach.colHi
+        !(cy < approach.rowLo || cy > approach.rowHi || cx < approach.colLo || cx > approach.colHi)
       ) {
         if (byte === LAND || !(DEPTH_BY_BYTE[byte] >= gateAtCell(approach, cy, cx))) return false;
       } else if (table[byte] !== 1) return false;
@@ -390,13 +387,11 @@ export class NavMask {
   /**
    * Minimum charted depth over every cell the a→b segment touches, or null
    * exactly when {@link segmentNavigable} would report false (any touched
-   * cell below its own cell's gate, land, or out of bounds) — one `walkCells` pass with
-   * the SAME gate check as `segmentNavigable`'s, inlined here (rather than
-   * calling `cellNavigable`, which would decode the same byte a second
-   * time per cell — this is a hot path, walked for every candidate edge the
-   * solver considers) so the set of cells visited and the abort condition
-   * stay identical to `segmentNavigable`'s. Used by #243's depth comfort
-   * preference to price a segment's clearance beyond the hard gate.
+   * cell below its own cell's gate, land, or out of bounds). Same traversal
+   * and per-cell gate check as `segmentNavigable`, so the cells visited and
+   * the abort condition match it; `mask.walkers.test.ts` pins both walkers
+   * against `walkCells`. Used by #243's depth comfort preference to price a
+   * segment's clearance beyond the hard gate.
    *
    * UNLIKE {@link segmentShallowestBelow}, deep-capped cells (byte 255)
    * count as a finite 25.4 m in the minimum here, NOT excluded —
@@ -451,10 +446,7 @@ export class NavMask {
       const depthM = DEPTH_BY_BYTE[byte];
       if (
         approach !== null &&
-        cy >= approach.rowLo &&
-        cy <= approach.rowHi &&
-        cx >= approach.colLo &&
-        cx <= approach.colHi
+        !(cy < approach.rowLo || cy > approach.rowHi || cx < approach.colLo || cx > approach.colHi)
       ) {
         if (byte === LAND || depthM < gateAtCell(approach, cy, cx)) return null;
       } else if (table[CLEAR_OFFSET + byte] === 0) return null;

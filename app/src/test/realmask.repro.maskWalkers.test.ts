@@ -17,8 +17,10 @@ import type { LatLon } from '../types';
 // Differential keeper for NavMask's closure-free segmentNavigable and
 // segmentClearanceM against the walkCells-based originals, on the real
 // committed mask. Synthetic shapes and exact ties live in
-// lib/mask.walkers.test.ts. The filename matches the tsconfig globs that
-// already carry a `node:fs` test program; renaming it needs those edited.
+// lib/mask.walkers.test.ts. The name keeps it in the `node:fs` tsconfig
+// program. It sits outside routing/ on purpose: CI's realmask exclude does
+// not reach it, so it runs on every PR, and from routing/ classify-realmask.sh's
+// drift check would flag its maskWalkerOracle.ts import.
 vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
 
 function gatesFor(a: LatLon, b: LatLon): DepthGate[] {

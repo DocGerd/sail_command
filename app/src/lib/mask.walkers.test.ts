@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { APPROACH_RADIUS_M, approachGate, uniformGate, type DepthGate } from './depthGate';
 import { NavMask } from './mask';
+import { toRad } from './geo';
 import {
   expectWalkersMatchOracle,
   navigableTableOf,
@@ -38,6 +39,7 @@ const hashByte = (row: number, col: number): number => {
 
 const mixed = makeMask(hashByte);
 const tieMixed = makeMask(hashByte, TIE_META);
+const allWater = makeMask(() => 200);
 
 const UNIFORM_GATES: readonly number[] = [-1, 0, 2.5, 2.9, 3.0, 3.1, 20, 25.4, 26, Infinity, NaN];
 
@@ -102,6 +104,8 @@ describe('NavMask closure-free walkers vs the walkCells originals', () => {
     ['NaN start', mixed, { lat: NaN, lon: NaN }, pointAt(40.5, 60.5)],
     ['NaN end', mixed, pointAt(40.5, 60.5), { lat: 54.5, lon: NaN }],
     ['infinite end', mixed, pointAt(40.5, 60.5), { lat: Infinity, lon: 10 }],
+    // Never moves, so only the iteration guard ends it.
+    ['stuck walk', allWater, pointAt(50.5, 50.5), { lat: pointAt(50.5, 50.5).lat, lon: NaN }],
     ['exact ties, ascending', tieMixed, tiePoint(10), tiePoint(60)],
     ['exact ties, descending', tieMixed, tiePoint(60), tiePoint(10)],
     ['exact ties, long', tieMixed, tiePoint(2), tiePoint(250)],
@@ -203,6 +207,68 @@ describe('NavMask walkers across an approach gate bounding-box edge', () => {
   });
 });
 
+describe('NavMask walkers on approach-gate edge cases gateAtCell decides', () => {
+  // Power-of-two grid: a radius of whole cells is exact, so each bbox edge
+  // cell lies ON the ellipse and gateAtCell relaxes it.
+  const step = 1 / 128;
+  const w = { lat: TIE_META.south + 100.5 * step, lon: TIE_META.west + 160.5 * step };
+  const at = (row: number, col: number): LatLon => ({
+    lat: TIE_META.south + (row + 0.5) * step,
+    lon: TIE_META.west + (col + 0.5) * step,
+  });
+  const rowGate = approachGate(TIE_META, [w], 3.0, [2.3], 3 * 111_320 * step);
+  const colGate = approachGate(
+    TIE_META,
+    [w],
+    3.0,
+    [2.3],
+    4 * 111_320 * step * Math.cos(toRad(w.lat)),
+  );
+
+  it('relaxes a shoal on each bbox edge', () => {
+    if (rowGate.kind !== 'approach' || colGate.kind !== 'approach')
+      throw new Error('expected approach gates');
+    expect([rowGate.rowLo, rowGate.rowHi, colGate.colLo, colGate.colHi]).toEqual([
+      97, 103, 156, 164,
+    ]);
+    const edges: Array<[DepthGate, number, number, LatLon, LatLon]> = [
+      [rowGate, 97, 160, at(90, 160), at(110, 160)],
+      [rowGate, 103, 160, at(90, 160), at(110, 160)],
+      [colGate, 100, 156, at(100, 150), at(100, 170)],
+      [colGate, 100, 164, at(100, 150), at(100, 170)],
+    ];
+    for (const [gate, r, c, a, b] of edges) {
+      const m = makeMask((rr, cc) => (rr === r && cc === c ? 25 : 200), TIE_META);
+      const o = expectWalkersMatchOracle(m, a, b, gate, `edge ${r},${c}`);
+      expect(o.navigable, `edge ${r},${c}`).toBe(true);
+      expect(o.clearance, `edge ${r},${c}`).toBe(2.5);
+    }
+  });
+
+  it('rejects land inside a disc whose gate is not above zero', () => {
+    const m = makeMask((r, c) => (r === 100 && c === 160 ? 0 : 200), TIE_META);
+    for (const g of [0, -0, -1]) {
+      const gate = approachGate(TIE_META, [w], 3.0, [g], APPROACH_RADIUS_M);
+      const o = expectWalkersMatchOracle(m, at(100, 150), at(100, 170), gate, `disc gate ${g}`);
+      expect(o.navigable).toBe(false);
+      expect(o.clearance).toBeNull();
+    }
+  });
+
+  it('lets the discs decide when a bbox bound is NaN', () => {
+    const m = makeMask((r, c) => (r === 100 && c === 160 ? 25 : 200), TIE_META);
+    const gate = approachGate(
+      TIE_META,
+      [w, { lat: NaN, lon: NaN }],
+      3.0,
+      [2.3, 2.3],
+      APPROACH_RADIUS_M,
+    );
+    const o = expectWalkersMatchOracle(m, at(100, 150), at(100, 170), gate, 'NaN bbox');
+    expect(o.navigable).toBe(true);
+  });
+});
+
 describe('NavMask per-gate byte tables', () => {
   const gates: number[] = [
     -Infinity,
@@ -222,15 +288,16 @@ describe('NavMask per-gate byte tables', () => {
     let accepted = 0;
     let rejected = 0;
     for (const g of gates) {
-      const table = navigableTableOf(mixed, g);
+      const expected = new Array<number>(512);
       for (let b = 0; b < 256; b++) {
         const nav = b !== 0 && referenceByteToDepthM(b) >= g;
-        const clear = b !== 0 && !(referenceByteToDepthM(b) < g);
-        expect(table[b], `nav byte ${b} gate ${g}`).toBe(nav ? 1 : 0);
-        expect(table[256 + b], `clearance byte ${b} gate ${g}`).toBe(clear ? 1 : 0);
+        expected[b] = nav ? 1 : 0;
+        expected[256 + b] = b !== 0 && !(referenceByteToDepthM(b) < g) ? 1 : 0;
         if (nav) accepted++;
         else rejected++;
       }
+      // One expect per gate, not per byte: keeps this under the default test timeout.
+      expect(Array.from(navigableTableOf(mixed, g)), `gate ${g}`).toEqual(expected);
     }
     expect(accepted).toBeGreaterThan(1000);
     expect(rejected).toBeGreaterThan(1000);
