@@ -46,6 +46,55 @@ export function destinationPoint(a: LatLon, bearingDeg: number, distNm: number):
   return { lat: toDeg(φ2), lon: normalizeDeg180(toDeg(λ2)) };
 }
 
+/** A point with its latitude trig precomputed, for repeated use as an origin or target. */
+export interface PreparedPoint {
+  readonly lat: number;
+  readonly lon: number;
+  readonly phi: number;
+  readonly lambda: number;
+  readonly sinPhi: number;
+  readonly cosPhi: number;
+}
+
+export function preparePoint(p: LatLon): PreparedPoint {
+  const phi = toRad(p.lat);
+  return {
+    lat: p.lat,
+    lon: p.lon,
+    phi,
+    lambda: toRad(p.lon),
+    sinPhi: Math.sin(phi),
+    cosPhi: Math.cos(phi),
+  };
+}
+
+/** Bit-identical to `haversineNm(a, b)`. */
+export function haversineNmTo(a: LatLon, b: PreparedPoint): number {
+  const dLat = toRad(b.lat - a.lat);
+  const dLon = toRad(b.lon - a.lon);
+  const s = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * b.cosPhi * Math.sin(dLon / 2) ** 2;
+  return 2 * EARTH_RADIUS_NM * Math.asin(Math.sqrt(s));
+}
+
+/** Bit-identical to `initialBearingDeg(a, b)`. */
+export function initialBearingDegFrom(a: PreparedPoint, b: PreparedPoint): number {
+  const Δλ = toRad(b.lon - a.lon);
+  const y = Math.sin(Δλ) * b.cosPhi;
+  const x = a.cosPhi * b.sinPhi - a.sinPhi * b.cosPhi * Math.cos(Δλ);
+  return normalizeDeg360(toDeg(Math.atan2(y, x)));
+}
+
+/** Bit-identical to `destinationPoint(a, bearingDeg, distNm)`. */
+export function destinationPointFrom(a: PreparedPoint, bearingDeg: number, distNm: number): LatLon {
+  const δ = distNm / EARTH_RADIUS_NM;
+  const θ = toRad(bearingDeg);
+  const φ2 = Math.asin(a.sinPhi * Math.cos(δ) + a.cosPhi * Math.sin(δ) * Math.cos(θ));
+  const λ2 =
+    a.lambda +
+    Math.atan2(Math.sin(θ) * Math.sin(δ) * a.cosPhi, Math.cos(δ) - a.sinPhi * Math.sin(φ2));
+  return { lat: toDeg(φ2), lon: normalizeDeg180(toDeg(λ2)) };
+}
+
 /** Signed cross-track distance (nm) of p from great-circle segment a→b. */
 export function crossTrackNm(p: LatLon, a: LatLon, b: LatLon): number {
   const d13 = haversineNm(a, p) / EARTH_RADIUS_NM;

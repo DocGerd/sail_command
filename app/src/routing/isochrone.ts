@@ -3,7 +3,15 @@ import type { Polar } from '../lib/polar';
 import type { WindField } from '../lib/wind';
 import type { NavMask } from '../lib/mask';
 import { gateFloorM, uniformGate, type DepthGate } from '../lib/depthGate';
-import { destinationPoint, haversineNm, initialBearingDeg, normalizeDeg180 } from '../lib/geo';
+import {
+  destinationPointFrom,
+  haversineNm,
+  haversineNmTo,
+  initialBearingDeg,
+  initialBearingDegFrom,
+  normalizeDeg180,
+  preparePoint,
+} from '../lib/geo';
 import { boardForCandidate, classifyManeuver } from './maneuver';
 
 export interface SolveParams {
@@ -509,6 +517,7 @@ export function solve(p: SolveParams): SolveResult {
   // must never be constructed inside it or any loop body.
   const gate = p.gate ?? uniformGate(settings.safetyDepthM);
   const forcedKind = p.forcedKind;
+  const destinationP = preparePoint(destination);
   // #885: a forced-sail segment solves as motor-off. Absent forcedKind this is
   // exactly settings.motorEnabled, so every read below is unchanged.
   const motorEnabled = forcedKind === 'sail' ? false : settings.motorEnabled;
@@ -651,7 +660,8 @@ export function solve(p: SolveParams): SolveResult {
       }
       const from = { lat: node.lat, lon: node.lon };
       const w = wind.sample(from, node.tMs);
-      const bearingToDest = initialBearingDeg(from, destination);
+      const fromP = preparePoint(from);
+      const bearingToDest = initialBearingDegFrom(fromP, destinationP);
 
       // Candidates: signed TWAs (deduped within 1°) plus the direct TWA; on a
       // forced-motor segment, headings (#885) plus the direct bearing.
@@ -772,7 +782,7 @@ export function solve(p: SolveParams): SolveResult {
         }
 
         let stepMs = dtS * 1000;
-        let end = destinationPoint(from, headingDeg, distNm);
+        let end = destinationPointFrom(fromP, headingDeg, distNm);
         const fullFactor = edgeFactor(mask, from, end, gate, comfortDepthM);
         let factor: number;
         if (fullFactor !== null) {
@@ -793,7 +803,7 @@ export function solve(p: SolveParams): SolveResult {
             const subEffS = maneuver ? Math.max(subDtS - settings.maneuverPenaltyS, 0) : subDtS;
             const d = (speed * subEffS) / 3600;
             if (d <= 0) break; // maneuver penalty swallows this and every shorter substep
-            const e = destinationPoint(from, headingDeg, d);
+            const e = destinationPointFrom(fromP, headingDeg, d);
             const subFactor = edgeFactor(mask, from, e, gate, comfortDepthM);
             if (subFactor !== null) {
               end = e;
@@ -823,7 +833,7 @@ export function solve(p: SolveParams): SolveResult {
           twsKn: w.speedKn,
           maneuverAtStart: maneuver,
           maneuvers: node.maneuvers + (maneuver ? 1 : 0),
-          distToDestNm: haversineNm(end, destination),
+          distToDestNm: haversineNmTo(end, destinationP),
           parent: node,
         };
 
