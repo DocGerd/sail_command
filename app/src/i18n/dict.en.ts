@@ -1160,6 +1160,14 @@ export const en = {
   'live.nextEvent.motorStart': 'Motor on',
   'live.nextEvent.none': 'No more maneuvers on this route',
   'live.eta.label': 'Projected ETA',
+  'live.leg.label': 'Leg',
+  'live.leg.value': '{current} of {total}',
+  'live.dtg.leg.label': 'To go, leg',
+  'live.dtg.route.label': 'To go, route',
+  'live.xte.label': 'Off track',
+  'live.xte.value': '{distance} {side}',
+  'live.xte.port': 'port of track',
+  'live.xte.starboard': 'starboard of track',
   // #251: the heading-to-steer is a bearing to the active waypoint, not a
   // depth-validated course. Never claims the course is safe.
   'live.hts.depthCaution':

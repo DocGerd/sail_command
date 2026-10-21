@@ -108,7 +108,7 @@ test('live view: emulated GPS drives readout, reroute-from-here, and leg advance
     await expect(liveToggle).toHaveAttribute('aria-pressed', 'true');
 
     const hts = page.locator('.live-view-hts-value');
-    await expect(hts).toHaveText(/^\d{3}°$/, { timeout: 30_000 });
+    await expect(hts).toHaveText(/^\d{3}°T$/, { timeout: 30_000 });
     // Chromium's emulated position carries no heading/speed -> the wrapper
     // maps both to null -> the readout shows the en-dash placeholders (the
     // degradation contract the component tests pin in jsdom, here proven
@@ -158,7 +158,7 @@ test('live view: emulated GPS drives readout, reroute-from-here, and leg advance
 
     // Re-acquire on the rerouted (now active) plan.
     await liveToggle.click();
-    await expect(hts).toHaveText(/^\d{3}°$/, { timeout: 30_000 });
+    await expect(hts).toHaveText(/^\d{3}°T$/, { timeout: 30_000 });
 
     // --- Leg advance: jump to the final approach off Sønderborg ---
     // Hand-derived expectation: heading-to-steer from this fix points toward

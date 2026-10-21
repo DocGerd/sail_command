@@ -4,12 +4,14 @@ import { useLang, useT } from '../i18n';
 import type { MsgKey } from '../i18n/dict.de';
 import { useActivePlan } from '../state/AppState';
 import { activeRigResult } from '../lib/plan';
+import { distanceToNextManeuverNm, headingToSteerDeg, projectedEtaMs } from '../lib/live';
 import {
-  activeLegIndex as computeActiveLegIndex,
-  distanceToNextManeuverNm,
-  headingToSteerDeg,
-  projectedEtaMs,
-} from '../lib/live';
+  crossTrack,
+  distanceToGoNm,
+  formatTrueHeading,
+  legPosition,
+  stepActiveLeg,
+} from '../lib/liveMetrics';
 import {
   advanceHold,
   checkHeadingDepth,
@@ -22,9 +24,9 @@ import { useNavMask } from '../state/useNavMask';
 import { formatDepthM } from '../lib/depthDisclosure';
 import {
   formatDriftMin,
-  formatHeading,
   formatKn,
   formatLatLon,
+  formatLegNm,
   formatNm,
   formatTime,
 } from '../lib/format';
@@ -87,6 +89,10 @@ export interface LiveViewProps {
 // reload, crash, app kill or tab switch leaves the resume prompt behind.
 const WAS_TRACKING_KEY = 'sc-live-was-tracking';
 const WAKE_LOCK_KEY = 'sc-live-wake-lock';
+
+// Below this the cross-track distance is shown without a side, so the side
+// cannot flip on GPS noise while the boat is on the line.
+export const XTE_SIDE_DEADBAND_NM = 0.01;
 
 const MANEUVER_LABEL_KEY: Record<ManeuverKind, MsgKey> = {
   tack: 'route.maneuver.tack',
@@ -228,6 +234,23 @@ export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: 
     key: holdKey,
   });
 
+  // Active leg with hysteresis (ruling d). Derived in render from the previous
+  // render's result, reset when the plan, its recalculation or the rig changes.
+  // Both the readout and RouteLayer's highlight (via setActiveLegIndex below)
+  // read this one value.
+  const legPlanKey = plan ? `${plan.id}:${plan.createdAtMs}:${rig ?? ''}` : '';
+  const [legState, setLegState] = useState<{
+    fix: unknown;
+    planKey: string;
+    idx: number | null;
+  }>({ fix: null, planKey: legPlanKey, idx: null });
+  let legIdx = legState.idx;
+  if (legState.fix !== fix || legState.planKey !== legPlanKey) {
+    const prevIdx = legState.planKey === legPlanKey ? legState.idx : null;
+    legIdx = fix && legs.length > 0 ? stepActiveLeg(legs, fix.point, prevIdx) : null;
+    setLegState({ fix, planKey: legPlanKey, idx: legIdx });
+  }
+
   // Folding one probe observation into the hysteresis, shared by the fix
   // callback and the mask-arrival re-probe below. `nowMs` is
   // performance.now(), NOT Date.now(): the clear-timer must not be able to
@@ -240,8 +263,8 @@ export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: 
     safetyNow: number | null,
     keyNow: string,
     point: LatLon,
+    idx: number | null,
   ) => {
-    const idx = legsNow.length > 0 ? computeActiveLegIndex(legsNow, point) : null;
     const raw =
       idx !== null && safetyNow !== null
         ? checkHeadingDepth(maskNow, legsNow, idx, point, safetyNow)
@@ -255,9 +278,9 @@ export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: 
 
   // Ref mirror of the latest mask/legs/safetyDepthM/holdKey, written only in
   // an effect (post-commit), never during render.
-  const latestRef = useRef({ mask, legs, safetyDepthM, holdKey });
+  const latestRef = useRef({ mask, legs, safetyDepthM, holdKey, legIdx });
   useEffect(() => {
-    latestRef.current = { mask, legs, safetyDepthM, holdKey };
+    latestRef.current = { mask, legs, safetyDepthM, holdKey, legIdx };
   });
 
   // What the displayed hold was last folded against. A null mask is a real
@@ -283,14 +306,14 @@ export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: 
     if (probed.fix === fix && probed.mask === mask && probed.key === holdKey) return;
     probedRef.current = { fix, mask, key: holdKey };
     const cur = latestRef.current;
-    foldProbe(mask, cur.legs, cur.safetyDepthM, holdKey, fix.point);
+    foldProbe(mask, cur.legs, cur.safetyDepthM, holdKey, fix.point, cur.legIdx);
   }, [mask, fix, holdKey]);
 
-  const legIdx = fix && legs.length > 0 ? computeActiveLegIndex(legs, fix.point) : null;
-
+  // legPlanKey is a dep because AppState's setPlan nulls the shared index even
+  // when the recomputed one is unchanged.
   useEffect(() => {
     setActiveLegIndex(legIdx);
-  }, [legIdx, setActiveLegIndex]);
+  }, [legIdx, legPlanKey, setActiveLegIndex]);
 
   useEffect(() => {
     return () => setActiveLegIndex(null);
@@ -348,6 +371,21 @@ export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: 
       ? projectedEtaMs(legs, legIdx, fix.point, fixAtMs)
       : null;
   const driftMs = etaMs !== null ? etaMs - legs[legs.length - 1].endTimeMs : null;
+  const progress =
+    fix && legIdx !== null && legIdx < legs.length
+      ? {
+          position: legPosition(legs, legIdx),
+          toGo: distanceToGoNm(legs, legIdx, fix.point),
+          xte: crossTrack(legs[legIdx], fix.point),
+        }
+      : null;
+  const xteSide =
+    progress &&
+    progress.xte.clamped === null &&
+    progress.xte.side !== null &&
+    progress.xte.distanceNm >= XTE_SIDE_DEADBAND_NM
+      ? progress.xte.side
+      : null;
 
   // Gates the readout data block: renders exactly when there is a fix with a
   // computable heading-to-steer. Bundling the narrowed non-null values keeps
@@ -498,7 +536,7 @@ export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: 
                   {lang === 'en' && <span className="sr-only"> {t('live.hts.expansion')}</span>}
                 </span>
                 <span className="live-view-hts-value tabular-nums">
-                  {formatHeading(steerable.hts)}
+                  {formatTrueHeading(steerable.hts)}
                 </span>
               </div>
               {depthCheck.state === 'caution' && (
@@ -545,13 +583,48 @@ export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: 
               <dl className="live-view-cogsog">
                 <dt>{t('live.cog.label')}</dt>
                 <dd className="tabular-nums">
-                  {steerable.fix.cogDeg !== null ? formatHeading(steerable.fix.cogDeg) : '—'}
+                  {steerable.fix.cogDeg !== null ? formatTrueHeading(steerable.fix.cogDeg) : '—'}
                 </dd>
                 <dt>{t('live.sog.label')}</dt>
                 <dd className="tabular-nums">
                   {steerable.fix.sogKn !== null ? formatKn(steerable.fix.sogKn, lang) : '—'}
                 </dd>
               </dl>
+
+              {progress && (
+                <dl className="live-view-progress">
+                  <div>
+                    <dt>{t('live.leg.label')}</dt>
+                    <dd className="tabular-nums">
+                      {t('live.leg.value', {
+                        current: String(progress.position.current),
+                        total: String(progress.position.total),
+                      })}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>{t('live.dtg.leg.label')}</dt>
+                    <dd className="tabular-nums">{formatLegNm(progress.toGo.legNm, lang)}</dd>
+                  </div>
+                  <div>
+                    <dt>{t('live.dtg.route.label')}</dt>
+                    <dd className="tabular-nums">{formatNm(progress.toGo.routeNm, lang)}</dd>
+                  </div>
+                  <div>
+                    <dt>{t('live.xte.label')}</dt>
+                    <dd className="tabular-nums">
+                      {progress.xte.clamped !== null
+                        ? '—'
+                        : xteSide === null
+                          ? formatLegNm(progress.xte.distanceNm, lang)
+                          : t('live.xte.value', {
+                              distance: formatLegNm(progress.xte.distanceNm, lang),
+                              side: t(xteSide === 'port' ? 'live.xte.port' : 'live.xte.starboard'),
+                            })}
+                    </dd>
+                  </div>
+                </dl>
+              )}
 
               <p className="live-view-next-event">
                 {nextEvent

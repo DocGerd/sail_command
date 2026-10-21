@@ -749,6 +749,25 @@ select {
   margin-inline-start: 0;
 }
 
+/* Leg position, distance to go and cross-track error: label above value,
+   two columns in the narrow panel column, more where there is room. */
+.live-view-progress {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+  gap: 0.35rem 0.75rem;
+  margin: 0;
+}
+
+.live-view-progress dt {
+  font-size: 0.8rem;
+  opacity: 0.75;
+}
+
+.live-view-progress dd {
+  margin-inline-start: 0;
+  font-weight: 600;
+}
+
 /* #115: manual "reroute from here" action + its hint (needs-a-fix reason
    while disabled, planning-aid framing while enabled). */
 .live-view-reroute {

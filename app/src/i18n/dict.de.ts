@@ -1154,6 +1154,14 @@ export const de = {
   'live.nextEvent.motorStart': 'Motor an',
   'live.nextEvent.none': 'Keine weiteren Manöver auf dieser Route',
   'live.eta.label': 'Voraussichtliche Ankunft',
+  'live.leg.label': 'Etappe',
+  'live.leg.value': '{current} von {total}',
+  'live.dtg.leg.label': 'Rest, Etappe',
+  'live.dtg.route.label': 'Rest, Route',
+  'live.xte.label': 'Querablage',
+  'live.xte.value': '{distance} {side}',
+  'live.xte.port': 'Backbord der Route',
+  'live.xte.starboard': 'Steuerbord der Route',
   // #251: der Steuerkurs ist eine Peilung zum aktiven Wegpunkt, kein
   // tiefengeprüfter Kurs. Behauptet nie, der Kurs sei sicher.
   'live.hts.depthCaution':

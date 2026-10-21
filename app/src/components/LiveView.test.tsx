@@ -7,11 +7,12 @@ import { I18nProvider } from '../i18n';
 import { __resetDbForTests } from '../services/db';
 import { destinationPoint } from '../lib/geo';
 import { distanceToNextManeuverNm, headingToSteerDeg } from '../lib/live';
-import { formatHeading, formatLatLon, formatNm } from '../lib/format';
+import { formatLatLon, formatNm } from '../lib/format';
+import { formatTrueHeading } from '../lib/liveMetrics';
 import type { GpsErrorKind, GpsFix } from '../services/geolocation';
 import { DEFAULT_SETTINGS, type Leg, type MaskMeta, type Plan } from '../types';
 import { withHarborHandover } from '../lib/harborHandover';
-import LiveView from './LiveView';
+import LiveView, { XTE_SIDE_DEADBAND_NM } from './LiveView';
 import { useOwnshipGps } from '../state/useOwnshipGps';
 import type { watchPosition as realWatchPosition } from '../services/geolocation';
 // #25 addendum: LiveView no longer renders BoatMarker at all (that moved to
@@ -268,7 +269,7 @@ describe('LiveView', () => {
     fireEvent.click(toggle);
     expect(wp).toHaveBeenCalledTimes(1);
 
-    const expectedHts = formatHeading(headingToSteerDeg(LEGS, 0, FIX_POINT));
+    const expectedHts = formatTrueHeading(headingToSteerDeg(LEGS, 0, FIX_POINT));
     const nextEvent = distanceToNextManeuverNm(LEGS, 0, FIX_POINT);
     if (!nextEvent) throw new Error('test fixture expected a next maneuver');
 
@@ -277,11 +278,11 @@ describe('LiveView', () => {
     });
 
     expect(screen.getByText(expectedHts)).toBeInTheDocument();
-    expect(screen.getByText(formatHeading(91.4))).toBeInTheDocument(); // COG
+    expect(screen.getByText(formatTrueHeading(91.4))).toBeInTheDocument(); // COG
     expect(screen.getByText('6.3 kn')).toBeInTheDocument(); // SOG
-    expect(
-      screen.getByText(new RegExp(formatNm(nextEvent.distNm, 'en').replace('.', '\\.'))),
-    ).toBeInTheDocument();
+    expect(document.querySelector('.live-view-next-event')).toHaveTextContent(
+      `Next in ${formatNm(nextEvent.distNm, 'en')} Tack`,
+    );
     expect(screen.getByText(/tack/i)).toBeInTheDocument();
     expect(screen.getByText(/projected eta/i)).toBeInTheDocument();
   });
@@ -296,7 +297,7 @@ describe('LiveView', () => {
     // Sanity: the readout DID render off this fix (steerable is non-null) —
     // otherwise "BoatMarker not called" would be true for the trivial wrong
     // reason (nothing rendered at all).
-    expect(screen.getByText(formatHeading(91.4))).toBeInTheDocument();
+    expect(screen.getByText(formatTrueHeading(91.4))).toBeInTheDocument();
     expect(BoatMarker).not.toHaveBeenCalled();
   });
 
@@ -403,7 +404,7 @@ describe('LiveView', () => {
     const toggle = await screen.findByRole('button', { name: 'Start live view' });
     fireEvent.click(toggle); // on
 
-    const expectedHts = formatHeading(headingToSteerDeg(LEGS, 0, FIX_POINT));
+    const expectedHts = formatTrueHeading(headingToSteerDeg(LEGS, 0, FIX_POINT));
     // COG 123.4, not 90: HTS on this due-east track is 090° and an identical
     // COG would render a second '090°', breaking the single-element query.
     act(() => emitFix({ point: FIX_POINT, cogDeg: 123.4, sogKn: 5, accuracyM: 9 }));
@@ -676,7 +677,7 @@ describe('LiveView', () => {
       sogKn: 5,
       accuracyM,
     });
-    const HTS = () => formatHeading(headingToSteerDeg(LEGS, 0, FIX_POINT));
+    const HTS = () => formatTrueHeading(headingToSteerDeg(LEGS, 0, FIX_POINT));
 
     afterEach(() => vi.useRealTimers());
 
@@ -776,6 +777,26 @@ describe('LiveView', () => {
       expect(
         screen.getByText(new RegExp(`Last fix .* at ${formatLatLon(FIX_POINT)}`)),
       ).toBeInTheDocument();
+    });
+
+    it('#1803: the distance, leg and cross-track rows are dimmed with the readout while stale', async () => {
+      const { emitFix } = await startTracking();
+      act(() => emitFix(goodFix()));
+      const progress = document.querySelector('.live-view-progress');
+      expect(progress?.closest('.live-view-data')).not.toHaveClass('live-view-data--stale');
+      advance(10_000);
+      expect(progress?.closest('.live-view-data')).toHaveClass('live-view-data--stale');
+      expect(within(progress as HTMLElement).getByText('To go, route')).toBeInTheDocument();
+    });
+
+    it('#1803: the new rows are hidden while lost, with the data block still mounted', async () => {
+      const { emitFix } = await startTracking();
+      act(() => emitFix(goodFix()));
+      expect(document.querySelector('.live-view-progress')).not.toBeNull();
+      advance(30_000);
+      expect(screen.getByText('GPS signal lost')).toBeInTheDocument();
+      expect(document.querySelector('.live-view-progress')).toBeNull();
+      expect(document.querySelector('.live-view-data')).not.toBeNull();
     });
 
     it('lost then fresh keeps the same readout element mounted (RouteLayer reads its presence as Live active)', async () => {
@@ -1031,7 +1052,7 @@ describe('LiveView', () => {
         emitFix({ point: FIX_POINT, cogDeg: 91.4, sogKn: 6.3, accuracyM: 9 });
       });
 
-      await screen.findByText(formatHeading(headingToSteerDeg(LEGS, 0, FIX_POINT)));
+      await screen.findByText(formatTrueHeading(headingToSteerDeg(LEGS, 0, FIX_POINT)));
       expect(screen.queryByText(/Bearing crosses/)).not.toBeInTheDocument();
       expect(screen.queryByText('Depth not checked')).not.toBeInTheDocument();
     });
@@ -1091,7 +1112,7 @@ describe('LiveView', () => {
       // The heading is still on screen: the requirement is that it is
       // ANNOTATED, not that the readout vanishes.
       expect(
-        screen.getByText(formatHeading(headingToSteerDeg(LEGS, 0, FIX_POINT))),
+        screen.getByText(formatTrueHeading(headingToSteerDeg(LEGS, 0, FIX_POINT))),
       ).toBeInTheDocument();
       expect(document.querySelectorAll('[role="alert"]')).toHaveLength(0);
     });
@@ -1114,7 +1135,7 @@ describe('LiveView', () => {
 
       expect(depthAnnotation()).toBe('Depth not checked');
       expect(
-        screen.getByText(formatHeading(headingToSteerDeg(LEGS, 0, FIX_POINT))),
+        screen.getByText(formatTrueHeading(headingToSteerDeg(LEGS, 0, FIX_POINT))),
       ).toBeInTheDocument();
       expect(warn).toHaveBeenCalled();
       expect(document.querySelectorAll('[role="alert"]')).toHaveLength(0);
@@ -1655,6 +1676,201 @@ describe('LiveView', () => {
       const deLabel = document.querySelector('.live-view-label');
       expect(deLabel?.textContent?.trim()).toBe('Steuerkurs');
       expect(deLabel?.querySelector('.sr-only')).toBeNull();
+    });
+  });
+  describe('readouts: distance to go, leg N of M, cross-track error (#1803)', () => {
+    const emit = (emitFix: (f: GpsFix) => void, point: GpsFix['point']) =>
+      act(() => emitFix({ point, cogDeg: 91.4, sogKn: 5, accuracyM: 9 }));
+    const progress = () => document.querySelector<HTMLElement>('.live-view-progress');
+    const rowOf = (label: string) => {
+      const dt = within(progress()!).getByText(label);
+      return dt.nextElementSibling as HTMLElement;
+    };
+
+    async function start() {
+      const w = fakeWatchPosition();
+      renderLive(w.wp, TEST_PLAN, <ActiveLegProbe />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
+      return w;
+    }
+
+    it('renders leg position, leg and route distance to go and the cross-track side from a hand-checkable fix', async () => {
+      const { emitFix } = await start();
+      // 2 nm into leg 0 (of 5), 0.12 nm north of it: port when travelling east.
+      emit(emitFix, destinationPoint(FIX_POINT, 0, 0.12));
+      expect(rowOf('Leg')).toHaveTextContent('1 of 2');
+      expect(rowOf('To go, leg')).toHaveTextContent('3.00 nm');
+      expect(rowOf('To go, route')).toHaveTextContent('8.0 nm');
+      expect(rowOf('Off track')).toHaveTextContent('0.12 nm port of track');
+    });
+
+    it('names the starboard side for a fix south of the track', async () => {
+      const { emitFix } = await start();
+      emit(emitFix, destinationPoint(FIX_POINT, 180, 0.12));
+      expect(rowOf('Off track')).toHaveTextContent('0.12 nm starboard of track');
+    });
+
+    it('German labels, decimal comma and side words', async () => {
+      localStorage.setItem('sc-lang', 'de');
+      const { wp, emitFix } = fakeWatchPosition();
+      render(
+        <I18nProvider>
+          <AppStateProvider>
+            <TestSetPlan plan={TEST_PLAN} />
+            <LiveViewHost watchPosition={wp} />
+          </AppStateProvider>
+        </I18nProvider>,
+      );
+      fireEvent.click(await screen.findByRole('button', { name: 'Live-Ansicht starten' }));
+      emit(emitFix, destinationPoint(FIX_POINT, 0, 0.12));
+      expect(rowOf('Etappe')).toHaveTextContent('1 von 2');
+      expect(rowOf('Rest, Etappe')).toHaveTextContent('3,00 nm');
+      expect(rowOf('Rest, Route')).toHaveTextContent('8,0 nm');
+      expect(rowOf('Querablage')).toHaveTextContent('0,12 nm Backbord der Route');
+    });
+
+    it('labels the heading-to-steer and COG readouts as true', async () => {
+      const { emitFix } = await start();
+      emit(emitFix, FIX_POINT);
+      expect(document.querySelector('.live-view-hts-value')).toHaveTextContent(/^090°T$/);
+      expect(document.querySelector('.live-view-cogsog dd')).toHaveTextContent(/^091°T$/);
+    });
+
+    it('shows the distance with no side inside the deadband, and the side again just outside it', async () => {
+      const { emitFix } = await start();
+      emit(emitFix, destinationPoint(FIX_POINT, 0, XTE_SIDE_DEADBAND_NM * 0.9));
+      expect(rowOf('Off track').textContent).toBe('0.01 nm');
+      emit(emitFix, destinationPoint(FIX_POINT, 0, 0.02));
+      expect(rowOf('Off track').textContent).toBe('0.02 nm port of track');
+    });
+
+    it('shows a dash, never a side or an endpoint distance, when the fix is beyond the end of the last leg', async () => {
+      const { emitFix } = await start();
+      emit(emitFix, destinationPoint(P0, 90, 11));
+      expect(rowOf('Off track').textContent).toBe('—');
+      emit(emitFix, destinationPoint(P0, 90, -1));
+      expect(rowOf('Off track').textContent).toBe('—');
+    });
+
+    it('hysteresis: noise around a joint keeps the leg, for the readout and the shared highlight alike', async () => {
+      const { emitFix } = await start();
+      emit(emitFix, destinationPoint(P0, 90, 7));
+      expect(screen.getByTestId('shared-active-leg')).toHaveTextContent('1');
+      expect(rowOf('Leg')).toHaveTextContent('2 of 2');
+      // 0.01 nm short of the joint: leg 0 is nearer, but not by the margin.
+      emit(emitFix, destinationPoint(P0, 90, 4.99));
+      expect(screen.getByTestId('shared-active-leg')).toHaveTextContent('1');
+      expect(rowOf('Leg')).toHaveTextContent('2 of 2');
+      // Clearly back on leg 0.
+      emit(emitFix, destinationPoint(P0, 90, 4));
+      expect(screen.getByTestId('shared-active-leg')).toHaveTextContent('0');
+      expect(rowOf('Leg')).toHaveTextContent('1 of 2');
+    });
+
+    it('a plan change resets the hysteresis and republishes the highlight', async () => {
+      const { wp, emitFix } = fakeWatchPosition();
+      localStorage.setItem('sc-lang', 'en');
+      const ui = (plan: Plan) => (
+        <I18nProvider>
+          <AppStateProvider>
+            <TestSetPlan plan={plan} />
+            <ActiveLegProbe />
+            <LiveViewHost watchPosition={wp} />
+          </AppStateProvider>
+        </I18nProvider>
+      );
+      const { rerender } = render(ui(TEST_PLAN));
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
+      emit(emitFix, destinationPoint(P0, 90, 7));
+      emit(emitFix, destinationPoint(P0, 90, 4.99));
+      expect(screen.getByTestId('shared-active-leg')).toHaveTextContent('1');
+
+      rerender(ui(REROUTED_PLAN));
+      // Nearest leg for the held fix, not the stale index.
+      expect(await screen.findByText('1 of 2')).toBeInTheDocument();
+      expect(screen.getByTestId('shared-active-leg')).toHaveTextContent('0');
+    });
+
+    it('a recalculation that keeps the plan id but changes createdAtMs resets the hysteresis', async () => {
+      const { wp, emitFix } = fakeWatchPosition();
+      localStorage.setItem('sc-lang', 'en');
+      const ui = (plan: Plan) => (
+        <I18nProvider>
+          <AppStateProvider>
+            <TestSetPlan plan={plan} />
+            <ActiveLegProbe />
+            <LiveViewHost watchPosition={wp} />
+          </AppStateProvider>
+        </I18nProvider>
+      );
+      const { rerender } = render(ui(TEST_PLAN));
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
+      emit(emitFix, destinationPoint(P0, 90, 7));
+      emit(emitFix, destinationPoint(P0, 90, 4.99));
+      expect(screen.getByTestId('shared-active-leg')).toHaveTextContent('1');
+
+      rerender(ui({ ...TEST_PLAN, createdAtMs: TEST_PLAN.createdAtMs + 1 }));
+      expect(await screen.findByText('1 of 2')).toBeInTheDocument();
+      expect(screen.getByTestId('shared-active-leg')).toHaveTextContent('0');
+    });
+
+    it('switching the rig resets the hysteresis', async () => {
+      const { wp, emitFix } = fakeWatchPosition();
+      localStorage.setItem('sc-lang', 'en');
+      const genoa = TEST_PLAN.result.sails[0];
+      const bothRigs: Plan = {
+        ...TEST_PLAN,
+        result: {
+          ...TEST_PLAN.result,
+          sails: [
+            genoa,
+            { ...genoa, sailId: 'fock', result: { ...genoa.result!, sailId: 'fock' } },
+          ],
+        },
+      };
+      function SwitchRig() {
+        const { setRig } = useActivePlan();
+        return <button onClick={() => setRig('fock')}>switch rig</button>;
+      }
+      render(
+        <I18nProvider>
+          <AppStateProvider>
+            <TestSetPlan plan={bothRigs} />
+            <ActiveLegProbe />
+            <SwitchRig />
+            <LiveViewHost watchPosition={wp} />
+          </AppStateProvider>
+        </I18nProvider>,
+      );
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
+      emit(emitFix, destinationPoint(P0, 90, 7));
+      emit(emitFix, destinationPoint(P0, 90, 4.99));
+      expect(screen.getByTestId('shared-active-leg')).toHaveTextContent('1');
+
+      fireEvent.click(screen.getByRole('button', { name: 'switch rig' }));
+      expect(await screen.findByText('1 of 2')).toBeInTheDocument();
+      expect(screen.getByTestId('shared-active-leg')).toHaveTextContent('0');
+    });
+
+    it('republishes the highlight after a plan change even when the active leg index is unchanged', async () => {
+      const { wp, emitFix } = fakeWatchPosition();
+      localStorage.setItem('sc-lang', 'en');
+      const ui = (plan: Plan) => (
+        <I18nProvider>
+          <AppStateProvider>
+            <TestSetPlan plan={plan} />
+            <ActiveLegProbe />
+            <LiveViewHost watchPosition={wp} />
+          </AppStateProvider>
+        </I18nProvider>
+      );
+      const { rerender } = render(ui(TEST_PLAN));
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
+      emit(emitFix, FIX_POINT);
+      expect(screen.getByTestId('shared-active-leg')).toHaveTextContent('0');
+      rerender(ui(REROUTED_PLAN));
+      await act(async () => {});
+      expect(screen.getByTestId('shared-active-leg')).toHaveTextContent('0');
     });
   });
 });
