@@ -34,7 +34,12 @@ import {
 import { activeRigResult, rigComparisonSuppressedByTier } from '../lib/plan';
 import { routingSettingsDirty } from '../lib/planForm';
 import { usePersistedSailInventory } from '../lib/sailInventory';
-import { renderFasterRig, renderRigVerdict, resultSummary, sailLabelKey } from '../lib/resultSummary';
+import {
+  renderFasterRig,
+  renderRigVerdict,
+  resultSummary,
+  sailLabelKey,
+} from '../lib/resultSummary';
 import { useRecentHarbors } from '../lib/useRecentHarbors';
 import { formatDepthM } from '../lib/depthDisclosure';
 import HarborPicker, { harborAccessCopy, useUnreachableBandOf } from './HarborPicker';
@@ -47,6 +52,7 @@ import Field from './Field';
 import Button from './Button';
 import Chip from './Chip';
 import Skeleton from './Skeleton';
+import PlanningElapsed from './PlanningElapsed';
 import Disclosure from './Disclosure';
 import NextPassageAction, { type NextPassageProps } from './NextPassageAction';
 import SegmentModeControl from './SegmentModeControl';
@@ -76,6 +82,8 @@ export type TapTarget = 'origin' | 'destination' | 'via';
 export type PlannerStatus =
   | { phase: 'idle' }
   | { phase: 'fetching' }
+  // #1775: routing assets + worker start-up, before the first solver progress
+  | { phase: 'starting' }
   | { phase: 'routing'; sailId: SailId; index: number; total: number; secondPass?: true }
   // #53: probing relaxed depth gates after an unreachable requested-depth solve
   | { phase: 'probing' }
@@ -185,6 +193,8 @@ export interface PlannerPanelProps {
   // that in-flight window, alongside the (necessarily disabled) Plan button.
   onCancelPlan: () => void;
   planning: PlannerStatus;
+  // #1775: start of the in-flight run for the elapsed readout; null/absent when idle.
+  planningStartedAtMs?: number | null;
   // #64 phase 3: the active plan + rig drive the compact Ergebnis strip and the
   // plan-completion announcement. Null before the first plan.
   plan: Plan | null;
@@ -289,6 +299,7 @@ export default function PlannerPanel({
   onPlan,
   onCancelPlan,
   planning,
+  planningStartedAtMs,
   plan,
   rig,
   formDirty,
@@ -875,6 +886,7 @@ export default function PlannerPanel({
   // region does not attempt to replace.
   let statusText = '';
   if (planning.phase === 'fetching') statusText = t('planner.status.fetching');
+  else if (planning.phase === 'starting') statusText = t('planner.status.starting');
   else if (planning.phase === 'routing')
     // #340/#54: phase readout ("sail N of 2") — index/total now come straight
     // off the PlannerStatus itself (usePlanFlow.ts derives them from
@@ -924,7 +936,10 @@ export default function PlannerPanel({
   // compact Ergebnis card. A replan of an existing plan keeps its card (summary
   // still present), so the skeleton is strictly a first-result placeholder.
   const isPlanningInFlight =
-    planning.phase === 'fetching' || planning.phase === 'routing' || planning.phase === 'probing';
+    planning.phase === 'fetching' ||
+    planning.phase === 'starting' ||
+    planning.phase === 'routing' ||
+    planning.phase === 'probing';
 
   // §3.5 empty/first-run: friendly guidance near the primary action while no
   // plan exists and an endpoint is unpicked. Suppressed offline — the
@@ -1604,6 +1619,9 @@ export default function PlannerPanel({
       >
         {statusText}
       </p>
+      {isPlanningInFlight && planningStartedAtMs != null && (
+        <PlanningElapsed key={planningStartedAtMs} startedAtMs={planningStartedAtMs} />
+      )}
       {/* Plan-run errors are NOT rendered inline here: the tab-independent
           <Banner> in App.tsx (banner-area) is the single alert surface, so the
           error isn't announced twice. */}

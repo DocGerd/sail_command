@@ -177,6 +177,8 @@ export function toPlannerStatus(
       return { phase: 'idle' };
     case 'fetching-wind':
       return { phase: 'fetching' };
+    case 'starting':
+      return { phase: 'starting' };
     case 'routing':
       return {
         phase: 'routing',
@@ -382,7 +384,7 @@ function AppShell() {
   // settle-gate reset key with no separate [plan, rig] tuple.
   const aisRoute = useMemo(() => (plan && rig ? activeRigResult(plan, rig) : null), [plan, rig]);
   const [settingsPersistenceError, clearSettingsPersistenceError] = useSettingsPersistenceError();
-  const { planning, run, ensureClient, cancel } = usePlanFlow();
+  const { planning, startedAtMs: planningStartedAtMs, run, ensureClient, cancel } = usePlanFlow();
   // #115: manual "reroute from here" (Live view). Shares the same singleton
   // RoutingClient via ensureClient and reuses the plan's STORED wind grid —
   // never refetches, so it stays available offline.
@@ -2186,6 +2188,7 @@ function AppShell() {
                   onPlan={handlePlan}
                   onCancelPlan={cancel}
                   planning={plannerStatus}
+                  planningStartedAtMs={planningStartedAtMs}
                   plan={plan}
                   rig={rig}
                   formDirty={formDirty}

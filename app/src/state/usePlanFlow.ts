@@ -30,6 +30,9 @@ import {
 export type PlanningState =
   | { phase: 'idle' }
   | { phase: 'fetching-wind' }
+  // #1775: routing assets load and the worker boots, before the first solver
+  // progress message. Distinct from 'fetching-wind' and from 'routing'.
+  | { phase: 'starting' }
   // #340/#54: `sailId` is the only progress signal. With a pool size of 1 the
   // router solves req.sailIds SEQUENTIALLY (planRoute.ts's sync driver runs
   // one `solveRig()` per element in order), so `sailId` names the solving
@@ -53,6 +56,7 @@ function planningStatesEqual(a: PlanningState, b: PlanningState): boolean {
   switch (a.phase) {
     case 'idle':
     case 'fetching-wind':
+    case 'starting':
     case 'probing-depth':
       return b.phase === a.phase;
     case 'routing':
@@ -145,6 +149,8 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 
 export function usePlanFlow(deps: PlanFlowDeps = {}): {
   planning: PlanningState;
+  // #1775: wall-clock start of the in-flight run; null while idle or erroring.
+  startedAtMs: number | null;
   run: (
     req: Omit<PlanRequest, 'settings'> & { settings: Settings },
     name: string,
@@ -180,8 +186,14 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
   // object with equal content still re-renders the un-memoised shell, and
   // progress repeats the same state many times per solve.
   const lastPlanningRef = useRef<PlanningState>({ phase: 'idle' });
+  const [startedAtMs, setStartedAtMs] = useState<number | null>(null);
   const transition = useCallback((next: PlanningState) => {
+    const wasBusy = phaseRef.current !== 'idle' && phaseRef.current !== 'error';
+    const isBusy = next.phase !== 'idle' && next.phase !== 'error';
     phaseRef.current = next.phase;
+    if (isBusy && !wasBusy) setStartedAtMs(Date.now());
+    else if (!isBusy && wasBusy) setStartedAtMs(null);
+
     if (planningStatesEqual(lastPlanningRef.current, next)) return;
     lastPlanningRef.current = next;
     setPlanning(next);
@@ -407,6 +419,8 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
               () => null,
             );
 
+      transition({ phase: 'starting' });
+
       // #1776: raced against cancel() so a cancel during start-up takes effect
       // at once. The start-up itself is shared with other consumers, so it is
       // left running, never disposed, and installs its client for later use.
@@ -427,6 +441,14 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
       if (!client) {
         transition({ phase: 'error', messageKey: ROUTING_FAILURE_MESSAGE_KEY['worker-init'] });
         return;
+      }
+
+      // #1775: start-up is over, so the status must stop saying so before the
+      // first solver message. The routing line names the phase only, so
+      // seeding the first rig is honest.
+      const firstSail = req.sailIds[0];
+      if (firstSail !== undefined) {
+        transition({ phase: 'routing', sailId: firstSail, index: 1, total: req.sailIds.length });
       }
 
       let result: PlanResult;
@@ -600,5 +622,5 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
     endWaveWaitRef.current?.();
   }, []);
 
-  return { planning, run, ensureClient, cancel };
+  return { planning, startedAtMs, run, ensureClient, cancel };
 }

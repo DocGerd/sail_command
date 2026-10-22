@@ -338,6 +338,7 @@ interface Overrides {
   onPlan?: () => void;
   onCancelPlan?: () => void;
   planning?: PlannerStatus;
+  planningStartedAtMs?: number | null;
   plan?: Plan | null;
   rig?: SailId | null;
   formDirty?: boolean;
@@ -1027,6 +1028,7 @@ describe('PlannerPanel', () => {
 
   it.each([
     ['fetching', { phase: 'fetching' } as PlannerStatus],
+    ['starting', { phase: 'starting' } as PlannerStatus],
     ['routing', { phase: 'routing', sailId: 'genoa', index: 1, total: 2 } as PlannerStatus],
     ['probing', { phase: 'probing' } as PlannerStatus],
   ])(
@@ -1042,6 +1044,28 @@ describe('PlannerPanel', () => {
   it('renders a fetching status message during planning.phase "fetching"', () => {
     renderPanel({ planning: { phase: 'fetching' } });
     expect(plannerStatus()).toHaveTextContent('Fetching wind forecast');
+  });
+
+  // #1775: start-up reads differently from both wind fetch and solving.
+  it('renders a distinct start-up status message during planning.phase "starting"', () => {
+    renderPanel({ planning: { phase: 'starting' } });
+    expect(plannerStatus()).toHaveTextContent('Preparing route calculation');
+    expect(plannerStatus()).not.toHaveTextContent('Fetching wind forecast');
+    expect(plannerStatus()).not.toHaveTextContent('Calculating route');
+  });
+
+  it('#1775: shows the elapsed readout while planning, outside the live region', () => {
+    renderPanel({ planning: { phase: 'fetching' }, planningStartedAtMs: Date.now() });
+    const elapsed = screen.getByText(/^Elapsed: \d+:\d{2}$/);
+    expect(plannerStatus()).not.toContainElement(elapsed);
+  });
+
+  it('#1775: shows no elapsed readout while idle or without a start time', () => {
+    renderPanel({ planning: { phase: 'idle' }, planningStartedAtMs: Date.now() });
+    expect(screen.queryByText(/Elapsed:/)).not.toBeInTheDocument();
+    cleanup();
+    renderPanel({ planning: { phase: 'routing', sailId: 'genoa', index: 1, total: 2 } });
+    expect(screen.queryByText(/Elapsed:/)).not.toBeInTheDocument();
   });
 
   // #340: the readout is a bounded phase indicator, not a percentage. Rigs

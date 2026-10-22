@@ -241,9 +241,8 @@ describe('usePlanFlow', () => {
       runPromise = result.current.flow.run(REQ, 'Flensburg → Marstal');
       await flush();
     });
-    expect(result.current.flow.planning).toEqual({ phase: 'fetching-wind' }); // still in flight
-
     await flush(); // let the fetch-wind/load-assets/init chain settle
+    expect(result.current.flow.planning).toMatchObject({ phase: 'routing' }); // still in flight
 
     const initMsg = findPosted(w.posted, 'init');
     // Binding contract: maskBuffer is transferred to the worker, so run()
@@ -420,8 +419,13 @@ describe('usePlanFlow', () => {
       }
     });
     expect((thrown as Error | null)?.message).toContain("progress for sail 'spinnaker'");
-    // Half one: the readout did not advance to 'routing' and nothing settled.
-    expect(result.current.planning).toEqual({ phase: 'fetching-wind' });
+    // Half one: the readout kept the seeded first rig, not the unknown one, and nothing settled.
+    expect(result.current.planning).toEqual({
+      phase: 'routing',
+      sailId: REQ.sailIds[0],
+      index: 1,
+      total: REQ.sailIds.length,
+    });
     expect(save).not.toHaveBeenCalled();
 
     // Half two: the very next message still completes the plan.
@@ -2541,5 +2545,60 @@ describe('#1776 bounded start-up and cancel during it', () => {
     }
     expect(makeClient).toHaveBeenCalledTimes(1);
     expect(save).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('#1775 start-up phase and run start time', () => {
+  it('reports starting while routing assets load, then routing before the first progress, and tracks startedAtMs', async () => {
+    let resolveAssets!: (a: assetsModule.RoutingAssets) => void;
+    vi.spyOn(assetsModule, 'loadRoutingAssets').mockReturnValue(
+      new Promise<assetsModule.RoutingAssets>((r) => {
+        resolveAssets = r;
+      }),
+    );
+    const w = fakeWorker();
+    const save = vi.fn<(plan: Plan) => Promise<void>>().mockResolvedValue(undefined);
+    const { result } = renderHook(
+      () =>
+        usePlanFlow({
+          fetchWind: vi.fn().mockResolvedValue(uniformWindGrid(12, 0)),
+          save,
+          makeClient: () => new RoutingClient(() => w as unknown as Worker),
+        }),
+      { wrapper: AppStateProvider },
+    );
+    expect(result.current.startedAtMs).toBeNull();
+
+    const before = Date.now();
+    let runPromise!: Promise<void>;
+    await act(async () => {
+      runPromise = result.current.run(REQ, 'Startup');
+      await flush();
+    });
+    expect(result.current.planning).toEqual({ phase: 'starting' });
+    const startedAt = result.current.startedAtMs;
+    expect(startedAt).not.toBeNull();
+    expect(startedAt).toBeGreaterThanOrEqual(before);
+
+    await act(async () => {
+      resolveAssets(ASSETS_FIXTURE);
+      await flush();
+    });
+    expect(result.current.planning).toEqual({
+      phase: 'routing',
+      sailId: 'genoa',
+      index: 1,
+      total: 2,
+    });
+    // One run, one start time: phase changes never restart the clock.
+    expect(result.current.startedAtMs).toBe(startedAt);
+
+    const planMsg = findPosted(w.posted, 'plan');
+    await act(async () => {
+      w.emit({ type: 'result', id: planMsg.id, result: OK_RESULT });
+      await runPromise;
+    });
+    expect(result.current.planning).toEqual({ phase: 'idle' });
+    expect(result.current.startedAtMs).toBeNull();
   });
 });

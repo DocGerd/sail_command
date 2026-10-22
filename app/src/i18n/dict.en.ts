@@ -336,6 +336,11 @@ export const en = {
   'planner.import.notice.multipleTracks':
     'Multiple tracks in the file — only the first was imported.',
   'planner.status.fetching': 'Fetching wind forecast…',
+  // #1775: start-up phase and a non-live elapsed readout
+  'planner.status.starting': 'Preparing route calculation — loading routing data…',
+  'planner.status.elapsed': 'Elapsed: {time}',
+  'planner.status.longRunning':
+    'This route is taking a while. Routes with several waypoints can take a few minutes; you can cancel at any time.',
   // #340/#54: phase readout, not a percentage. The rigs may solve
   // concurrently, so it names the phase rather than a rig or an index.
   'planner.status.routingSail': 'Calculating route for all sails…',

@@ -348,6 +348,11 @@ export const de = {
   'planner.import.notice.multipleTracks':
     'Mehrere Tracks in der Datei — nur der erste wurde importiert.',
   'planner.status.fetching': 'Windvorhersage wird geladen…',
+  // #1775: start-up phase and a non-live elapsed readout
+  'planner.status.starting': 'Routenberechnung wird vorbereitet — Routingdaten werden geladen…',
+  'planner.status.elapsed': 'Verstrichene Zeit: {time}',
+  'planner.status.longRunning':
+    'Diese Route braucht länger. Routen mit mehreren Wegpunkten können einige Minuten dauern; Sie können jederzeit abbrechen.',
   // #340/#54: phase readout, not a percentage. The rigs may solve
   // concurrently, so it names the phase rather than a rig or an index.
   'planner.status.routingSail': 'Route wird für alle Segel berechnet…',

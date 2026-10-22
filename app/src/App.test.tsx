@@ -3542,6 +3542,7 @@ describe('toPlannerStatus (#53: relaxed-depth probe phase mapping)', () => {
   it('maps the sibling planning phases to their own panel phases', () => {
     expect(toPlannerStatus({ phase: 'idle' }, t)).toEqual({ phase: 'idle' });
     expect(toPlannerStatus({ phase: 'fetching-wind' }, t)).toEqual({ phase: 'fetching' });
+    expect(toPlannerStatus({ phase: 'starting' }, t)).toEqual({ phase: 'starting' });
     expect(toPlannerStatus({ phase: 'error', messageKey: 'error.internal' }, t)).toEqual({
       phase: 'error',
       message: 'error.internal',
