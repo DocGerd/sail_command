@@ -159,6 +159,17 @@ describe('fetchWaveGrid (#1699)', () => {
     expect(vi.mocked(fetchFn).mock.calls[1]![0]).toMatch(/^https:\/\/api\.open-meteo\.com\//);
   });
 
+  it('owns a cache separate from wind: clearing wind leaves the wave entry', async () => {
+    const fetchFn = respond(buildWaveResponse());
+    await fetchWaveGrid({ fetchFn });
+    clearWindGridCache();
+    await fetchWaveGrid({ fetchFn });
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    clearWaveGridCache();
+    await fetchWaveGrid({ fetchFn });
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
+
   it('loads a fixture URL without the cache', async () => {
     const fetchFn = respond(buildWaveResponse());
     await fetchWaveGrid({ fetchFn, fixtureUrl: 'test-fixtures/wave-bands.json' });
