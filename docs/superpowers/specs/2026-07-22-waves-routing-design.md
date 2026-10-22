@@ -31,12 +31,15 @@ Derived for this slice, not ruled:
 - **No data is not calm.** A null Hs renders no symbol, never the calm band.
 - **Never reaches the worker.** `waveGrid` is not posted to the routing worker
   (superseding §3's cloned-to-worker sentence), so `PlanResult` stays byte-identical.
+- **Land points render nothing.** A lattice point whose cell centre is land in the nav
+  mask gets no fill and no arrow, as wind barbs already do.
 - **No layer registry.** §7's shared overlay-layer registry is deferred; layers keep the
   existing explicit `beforeId` anchoring.
 - **Lattice.** The marine fetch requests the wind fetch's fixed 14 × 23 lattice and `FORECAST_DAYS` window, not §4's "plan's bbox/time window".
 - **Persistence.** `migratePlan` rebuilds every read or imported plan's top level from named fields and drops any other top-level field, so it must carry `waveGrid` (as §S.4 requires for `sailPlan`), and `lib/planExport.ts` must encode and decode `waveGrid`'s `Float32Array`s, including the dimension check, as it does `windGrid`'s.
 - **Model.** Provisional: `ewam` (DWD, regional). Unverified: its horizon against
-  `FORECAST_DAYS`, fitting the wind lattice in one URL, and coastal nulls. Record the
+  `FORECAST_DAYS`, fitting the wind lattice in one URL, coastal nulls, and what
+  `cell_selection` returns for land points. Record the
   requested model in `WaveGrid.model`.
 
 Corrections to stale facts below:
