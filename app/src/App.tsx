@@ -1769,7 +1769,12 @@ function AppShell() {
                 reroute={{
                   busy: runBusy,
                   rerouting: liveReroute.state.rerouting,
+                  phase: liveReroute.state.phase,
+                  error: liveReroute.state.error,
+                  succeeded: liveReroute.state.succeeded,
                   onReroute: handleLiveReroute,
+                  onCancel: liveReroute.cancel,
+                  onDismissError: liveReroute.clearError,
                 }}
               />
             </>
@@ -1996,23 +2001,6 @@ function AppShell() {
                 activeRigResult() this file already resolves for #554/#25),
                 since there is nothing to tap otherwise. */}
             {tapTarget === 'via' && aisRoute && ` ${t('banner.tapPick.viaRouteLine')}`}
-          </Banner>
-        )}
-        {/* #115: live-reroute failures (stale stored forecast, fix outside
-            the region, no route) — honest error, never a truncated route.
-            #571 redesign: this used to sit alongside a via-replan error
-            banner (viaReplan.state.error) — REMOVED, since a via edit no
-            longer replans at all, so `useViaReplan` (state/replan.ts) has no
-            remaining UI caller and can never produce one. Live reroute is a
-            deliberately separate, manual feature (state/reroute.ts) and is
-            unaffected by that removal. */}
-        {liveReroute.state.error && (
-          <Banner
-            kind="error"
-            onDismiss={liveReroute.clearError}
-            dismissLabel={t('banner.dismiss')}
-          >
-            {t(liveReroute.state.error)}
           </Banner>
         )}
         {/* MAJOR 4 (review, #571 redesign): the last Plan-route press silently

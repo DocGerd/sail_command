@@ -469,6 +469,10 @@ export const de = {
     'Die gespeicherte Windvorhersage dieses Plans deckt die aktuelle Zeit nicht mehr ab — eine neue Route ab jetzt kann daraus nicht berechnet werden. Route neu planen, um eine aktuelle Vorhersage zu laden.',
   'error.rerouteFixOutside':
     'Die aktuelle GPS-Position liegt außerhalb des abgedeckten Seegebiets oder ist nicht befahrbar — von hier kann keine Route berechnet werden.',
+  // #1806: Abfahrt (jetzt) und Ziel sind bei der Neuplanung fest, daher kein
+  // Hinweis auf eine andere Abfahrtszeit.
+  'error.rerouteBeyondHorizon':
+    'Ab der aktuellen Position passt keine Route in die gespeicherte Windvorhersage. Route online neu planen, um eine neue Vorhersage zu laden.',
   'route.rig.genoa': 'Genua',
   'route.rig.fock': 'Fock',
   // Fallback label for a stored sail id the current catalogue no longer
@@ -1234,6 +1238,11 @@ export const de = {
   'live.reroute.hint':
     'Erstellt einen neuen Plan von der aktuellen Position zum Ziel mit der gespeicherten Windvorhersage; der ursprüngliche Plan bleibt erhalten. Wegpunkte und Abschnittsvorgaben werden nicht übernommen. Planungshilfe, keine Navigationsführung.',
   'live.reroute.name': '{name} (ab Position neu geplant)',
+  // #1806: Fortschritt, Abbruch, Erfolgshinweis und Fehler der Neuplanung in der Karte.
+  'live.reroute.phase.starting': 'Routenplaner wird gestartet…',
+  'live.reroute.cancel': 'Neuplanung abbrechen',
+  'live.reroute.success': 'Neue Route ab aktueller Position ist aktiv. Der ursprüngliche Plan bleibt erhalten.',
+  'live.reroute.error.dismiss': 'Fehlermeldung ausblenden',
   'nav.plan': 'Planen',
   'nav.routes': 'Routen',
   'nav.live': 'Live',

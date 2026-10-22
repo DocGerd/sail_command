@@ -34,6 +34,7 @@ import { harborHandoverLines } from '../lib/harborHandover';
 import { safeGetItem, safeSetItem } from '../lib/storage';
 import { usePersistedToggle } from '../lib/usePersistedToggle';
 import type { GpsSource } from '../state/useGpsSource';
+import type { ReroutePhase } from '../state/reroute';
 import { useWakeLock } from '../state/useWakeLock';
 import { isLiveSimRequested } from '../dev/liveSimulator';
 import LiveSimulatorControls from '../dev/LiveSimulatorControls';
@@ -64,11 +65,25 @@ import type { LatLon, Leg, ManeuverKind } from '../types';
 // this action's own in-flight solve (drives the busy label). The action stays
 // an explicit user decision — lib/live.ts's projection math never re-routes
 // (spec §2).
+// #1806: phase/error/succeeded and the two callbacks come from useLiveReroute;
+// the error renders in this card, not as an app banner.
 export interface LiveRerouteControls {
   busy: boolean;
   rerouting: boolean;
+  phase: ReroutePhase | null;
+  error: MsgKey | null;
+  succeeded: boolean;
   onReroute: (fixPoint: LatLon) => void;
+  onCancel: () => void;
+  onDismissError: () => void;
 }
+
+const REROUTE_PHASE_KEY: Record<ReroutePhase, MsgKey> = {
+  starting: 'live.reroute.phase.starting',
+  routing: 'planner.status.routingSail',
+  'routing-second-pass': 'planner.status.routingSailSecondPass',
+  probing: 'planner.status.probing',
+};
 
 export interface LiveViewProps {
   // #1800: the GPS source App.tsx shares with the boat marker. Live no longer
@@ -668,6 +683,36 @@ export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: 
           >
             {reroute.rerouting ? t('live.reroute.busy') : t('live.reroute.action')}
           </Button>
+          {reroute.rerouting && (
+            <Button variant="ghost" onClick={reroute.onCancel}>
+              {t('live.reroute.cancel')}
+            </Button>
+          )}
+          {/* One persistent live region: progress while rerouting, then the
+              success cue — mounted empty so its first text is announced. */}
+          <p
+            role="status"
+            aria-atomic="true"
+            className={
+              reroute.succeeded && !reroute.rerouting
+                ? 'live-view-reroute-status live-view-reroute-status--success'
+                : 'live-view-reroute-status'
+            }
+          >
+            {reroute.rerouting && reroute.phase !== null
+              ? t(REROUTE_PHASE_KEY[reroute.phase])
+              : reroute.succeeded
+                ? t('live.reroute.success')
+                : ''}
+          </p>
+          {reroute.error && (
+            <div role="alert" className="live-view-reroute-error">
+              <p>{t(reroute.error)}</p>
+              <Button variant="ghost" onClick={reroute.onDismissError}>
+                {t('live.reroute.error.dismiss')}
+              </Button>
+            </div>
+          )}
           <p id="live-reroute-reason" className="live-view-reroute-hint">
             {rerouteReason()}
           </p>

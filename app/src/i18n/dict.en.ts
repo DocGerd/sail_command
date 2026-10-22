@@ -458,6 +458,10 @@ export const en = {
     "This plan's stored wind forecast no longer covers the current time — a new route from now cannot be computed from it. Plan the route again to load a current forecast.",
   'error.rerouteFixOutside':
     'The current GPS position is outside the covered sea area or not navigable — no route can be computed from here.',
+  // #1806: departure (now) and destination are fixed in a reroute, so the
+  // planner's "different departure time" remedy is not offered.
+  'error.rerouteBeyondHorizon':
+    'No route from the current position fits within the stored wind forecast. Plan the route again while online to load a fresh forecast.',
   'route.rig.genoa': 'Genoa',
   'route.rig.fock': 'Fock',
   // Fallback label for a stored sail id the current catalogue no longer
@@ -1237,6 +1241,11 @@ export const en = {
   'live.reroute.hint':
     'Creates a new plan from the current position to the destination using the stored wind forecast; the original plan is kept. Waypoints and segment modes are not carried over. A planning aid, not navigation guidance.',
   'live.reroute.name': '{name} (replanned from position)',
+  // #1806: reroute progress, cancel, success cue and in-card error.
+  'live.reroute.phase.starting': 'Starting the route planner…',
+  'live.reroute.cancel': 'Stop replanning',
+  'live.reroute.success': 'New route from your position is active. The original plan is kept.',
+  'live.reroute.error.dismiss': 'Hide error message',
   'nav.plan': 'Plan',
   'nav.routes': 'Routes',
   'nav.live': 'Live',

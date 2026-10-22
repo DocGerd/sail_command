@@ -698,25 +698,34 @@ select {
   margin: 0;
 }
 
+/* #1806: Live is read at a glance in daylight, so its secondary copy stays at
+   full --sc-fg (no opacity dimming) and at least 0.95rem. */
 .live-view-handover {
   margin: 0.5rem 0;
-  font-size: 0.85rem;
+  font-size: 0.95rem;
 }
 
 .live-view-wake {
   margin: 0.5rem 0;
-  font-size: 0.85rem;
+  font-size: 0.95rem;
 }
 
+/* #1806: the label is the touch target, so it carries the 44px floor. */
 .live-view-wake label {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  min-height: 44px;
+}
+
+.live-view-wake input[type='checkbox'] {
+  width: 1.5rem;
+  height: 1.5rem;
+  flex: none;
 }
 
 .live-view-wake-status {
   margin: 0.15rem 0 0;
-  opacity: 0.75;
 }
 
 /* Stale: values stay readable but visibly not current. */
@@ -750,13 +759,14 @@ select {
 }
 
 .live-view-hts-value {
-  font-size: 1.8rem;
+  font-size: 2.5rem;
   font-weight: 700;
+  line-height: 1.1;
 }
 
 .live-view-label {
-  font-size: 0.8rem;
-  opacity: 0.75;
+  font-size: 0.95rem;
+  font-weight: 600;
 }
 
 /* #713: `display: grid` on the <dl> resets neither its own UA block margin
@@ -771,10 +781,16 @@ select {
   justify-content: start;
   gap: 0.25rem 0.75rem;
   margin: 0;
+  font-size: 1.2rem;
+}
+
+.live-view-cogsog dt {
+  font-weight: 600;
 }
 
 .live-view-cogsog dd {
   margin-inline-start: 0;
+  font-weight: 700;
 }
 
 /* Leg position, distance to go and cross-track error: label above value,
@@ -787,12 +803,20 @@ select {
 }
 
 .live-view-progress dt {
-  font-size: 0.8rem;
-  opacity: 0.75;
+  font-size: 0.95rem;
+  font-weight: 600;
 }
 
 .live-view-progress dd {
   margin-inline-start: 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.live-view-next-event,
+.live-view-eta {
+  margin: 0;
+  font-size: 1.1rem;
   font-weight: 600;
 }
 
@@ -808,9 +832,39 @@ select {
 }
 
 .live-view-reroute-hint {
-  font-size: 0.8rem;
-  opacity: 0.75;
+  font-size: 0.95rem;
   margin: 0;
+}
+
+/* #1806: one live region for reroute progress, then the success cue. The
+   wash is on the success modifier only, so the empty region takes no room. */
+.live-view-reroute-status {
+  margin: 0;
+  font-weight: 600;
+}
+
+.live-view-reroute-status--success {
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  background: var(--sc-banner-info-bg);
+  color: var(--sc-banner-info-fg);
+}
+
+/* #1806: reroute failures render here, beside the action, not as an app banner. */
+.live-view-reroute-error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  background: var(--sc-banner-error-bg);
+  color: var(--sc-banner-error-fg);
+}
+
+.live-view-reroute-error p {
+  margin: 0;
+  font-weight: 600;
 }
 
 /* #251: heading-to-steer depth check. Colour is never the only signal — the
@@ -860,10 +914,9 @@ select {
   background: var(--sc-depth-warning-bg);
 }
 
-/* No --sc-muted token exists in app.css (checked the :root token block) — the
-   nearest existing muted-text convention is local to this very component
-   (.live-view-label, .live-view-reroute-hint above): opacity 0.75 over the
-   default foreground. */
+/* No --sc-muted token exists in app.css (checked the :root token block), so
+   muting is opacity 0.75 over the default foreground. Since #1806 this note is
+   the only muted Live text left. */
 .live-view-hts-note--muted {
   color: var(--sc-fg);
   opacity: 0.75;
