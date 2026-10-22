@@ -124,6 +124,25 @@ export interface RunOptions {
 /** #1699: how long a solved plan waits for the marine fetch, which started before the solve. */
 export const WAVE_GRACE_MS = 3_000;
 
+/**
+ * #1776: bound on routing start-up (asset load + worker init). Generous: the
+ * first, uncached load downloads the whole mask, possibly over a slow mobile link.
+ */
+export const STARTUP_TIMEOUT_MS = 180_000;
+
+/** #1776: bound on persisting a solved plan; an IndexedDB open can block indefinitely. */
+export const SAVE_TIMEOUT_MS = 30_000;
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([
+    p,
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`timed out after ${ms}ms`)), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
 export function usePlanFlow(deps: PlanFlowDeps = {}): {
   planning: PlanningState;
   run: (
@@ -137,10 +156,10 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
   // with no production caller since #571 (see replan.ts's own comment) —
   // also called, live, by state/reroute.ts's useLiveReroute (App.tsx wires
   // the same ensureClient into both).
-  // Resolves null on a failed load/init (mirrors run()'s own recovery: the
-  // broken client is disposed and the singleton cleared so the next call
-  // starts fresh); callers must treat a null result as a real failure, not
-  // silently do nothing.
+  // Resolves null on a failed load/init, or one exceeding STARTUP_TIMEOUT_MS
+  // (#1776) (mirrors run()'s own recovery: the broken client is disposed and
+  // the singleton cleared so the next call starts fresh); callers must treat
+  // a null result as a real failure, not silently do nothing.
   ensureClient: () => Promise<RoutingClient | null>;
   // #1193: stop whatever run() call is currently in flight. A no-op while
   // idle/erroring — see cancelRequestedRef's own comment for how a cancel
@@ -180,11 +199,15 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
   // #1699: ends the post-solve wave wait at once, so a cancel never waits out the grace.
   const endWaveWaitRef = useRef<(() => void) | null>(null);
 
-  // Singleton client + its init() promise, created lazily on the first
-  // run() and reused for the hook's lifetime — init() transfers maskBuffer
-  // to the worker, so it must only ever be called once per client.
+  // Singleton client, created lazily on the first run() and reused for the
+  // hook's lifetime — init() transfers maskBuffer to the worker, so it must
+  // only ever be called once per client. #1776: `startupRef` is the one
+  // in-flight start-up every concurrent ensureClient() caller shares, so two
+  // callers can never build two clients; `clientRef` is set only once it succeeds.
   const clientRef = useRef<RoutingClient | null>(null);
-  const readyRef = useRef<Promise<void> | null>(null);
+  const startupRef = useRef<Promise<RoutingClient> | null>(null);
+  // #1776: resolved by cancel() to end run()'s wait on a start-up it does not own.
+  const endStartupWaitRef = useRef<(() => void) | null>(null);
 
   const fetchWind = deps.fetchWind ?? fetchWindGrid;
   const fetchWave = deps.fetchWave ?? fetchWaveGrid;
@@ -204,24 +227,32 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
   // useLiveReroute (App.tsx wires the same ensureClient into both). See the
   // return type's own docstring for the failure-recovery contract.
   const ensureClient = useCallback(async (): Promise<RoutingClient | null> => {
-    try {
-      // #432: the singleton may have been disposed by a caller that cannot
-      // reach these refs — state/replan.ts's and state/reroute.ts's plan()
-      // catches now tear the client down so a retry is not handed a worker
-      // still grinding on an abandoned solve. Without this check that
-      // teardown would be strictly HARMFUL: `clientRef.current` stays
-      // truthy and `readyRef.current` stays resolved, so the next call would
-      // return the dead client and every subsequent replan would fail with
-      // 'disposed' -> error.routingInterrupted. The dispose and this check
-      // are one fix in two halves, not two independent improvements.
-      if (clientRef.current?.isDisposed) {
-        clientRef.current = null;
-        readyRef.current = null;
-      }
-      if (!clientRef.current) {
+    // #432: the singleton may have been disposed by a caller that cannot
+    // reach these refs — state/replan.ts's and state/reroute.ts's plan()
+    // catches now tear the client down so a retry is not handed a worker
+    // still grinding on an abandoned solve. Without this check that
+    // teardown would be strictly HARMFUL: the refs would still hand back the
+    // dead client and every subsequent replan would fail with
+    // 'disposed' -> error.routingInterrupted. The dispose and this check
+    // are one fix in two halves, not two independent improvements.
+    if (clientRef.current?.isDisposed) {
+      clientRef.current = null;
+      startupRef.current = null;
+    }
+    if (clientRef.current) return clientRef.current;
+    startupRef.current ??= (async () => {
+      // A timed-out attempt is abandoned: its late continuation must not
+      // spawn a worker nobody owns, and a client it already built is
+      // disposed (which also rejects that client's pending init()).
+      const attempt: { client: RoutingClient | null; abandoned: boolean } = {
+        client: null,
+        abandoned: false,
+      };
+      const startup = (async () => {
         const assets = await loadRoutingAssets();
-        clientRef.current = makeClient();
-        readyRef.current = clientRef.current.init({
+        if (attempt.abandoned) throw new Error('start-up abandoned');
+        attempt.client = makeClient();
+        await attempt.client.init({
           maskMeta: assets.maskMeta,
           // Transferred to the worker on postMessage — always pass a
           // copy and keep assets.ts's module-cached original intact.
@@ -233,24 +264,34 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
             .filter((h) => h.knownDisconnected === true)
             .map((h) => h.id),
         });
-      }
-      await readyRef.current;
-      return clientRef.current;
-    } catch {
-      // A failed load/init leaves a permanently-rejected readyRef promise,
-      // and (if init() was reached) the broken client is still holding its
-      // Worker thread — dispose it (wrapped: dispose() on an already-dead
-      // or never-inited client must not throw and derail recovery) before
-      // clearing the singleton, so the next call builds a fresh client
-      // instead of re-awaiting the same broken one, or leaking the old
-      // Worker, forever.
+        return attempt.client;
+      })();
       try {
-        clientRef.current?.dispose();
-      } catch {
-        // Best-effort teardown of an already-broken client.
+        return await withTimeout(startup, STARTUP_TIMEOUT_MS);
+      } catch (err) {
+        attempt.abandoned = true;
+        // A failed init leaves the client holding its Worker thread —
+        // dispose it (wrapped: dispose() on an already-dead client must not
+        // throw and derail recovery) so it is not leaked.
+        try {
+          attempt.client?.dispose();
+        } catch {
+          // Best-effort teardown of an already-broken client.
+        }
+        throw err;
       }
-      clientRef.current = null;
-      readyRef.current = null;
+    })();
+    const startup = startupRef.current;
+    try {
+      const client = await startup;
+      // A teardown elsewhere may have cleared the refs while this awaited.
+      if (startupRef.current === startup) clientRef.current = client;
+      return client;
+    } catch {
+      // Cleared so the next call starts a fresh attempt instead of
+      // re-awaiting this failed one forever. A timeout fails every caller
+      // sharing this attempt.
+      if (startupRef.current === startup) startupRef.current = null;
       return null;
     }
   }, [makeClient]);
@@ -366,7 +407,17 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
               () => null,
             );
 
-      const client = await ensureClient();
+      // #1776: raced against cancel() so a cancel during start-up takes effect
+      // at once. The start-up itself is shared with other consumers, so it is
+      // left running, never disposed, and installs its client for later use.
+      const client = await Promise.race([
+        ensureClient(),
+        new Promise<null>((resolve) => {
+          endStartupWaitRef.current = () => resolve(null);
+        }),
+      ]).finally(() => {
+        endStartupWaitRef.current = null;
+      });
       // #1193: same reasoning as above — a cancel during a slow first-run
       // asset load (loadRoutingAssets + worker init) reaches nothing yet.
       if (cancelRequestedRef.current) {
@@ -458,7 +509,7 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
             // Best-effort teardown of an already-broken client.
           }
           clientRef.current = null;
-          readyRef.current = null;
+          startupRef.current = null;
         }
         // #433: client.plan() always rejects with a RoutingError (see
         // workerClient.ts) — classify by its typed `kind`, NEVER by matching
@@ -521,7 +572,9 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
         result,
       };
       try {
-        await save(plan);
+        // #1776: a write that lands after the timeout leaves the plan saved but
+        // unshown; the banner still says it was not saved.
+        await withTimeout(save(plan), SAVE_TIMEOUT_MS);
       } catch {
         transition({ phase: 'error', messageKey: ROUTING_FAILURE_MESSAGE_KEY['persist-failed'] });
         return;
@@ -543,6 +596,7 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
     if (phaseRef.current === 'idle' || phaseRef.current === 'error') return;
     cancelRequestedRef.current = true;
     clientRef.current?.cancel();
+    endStartupWaitRef.current?.();
     endWaveWaitRef.current?.();
   }, []);
 

@@ -2,7 +2,13 @@ import 'fake-indexeddb/auto';
 import { StrictMode, type ReactNode } from 'react';
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
-import { usePlanFlow, WAVE_GRACE_MS, type PlanFlowDeps } from './usePlanFlow';
+import {
+  SAVE_TIMEOUT_MS,
+  STARTUP_TIMEOUT_MS,
+  usePlanFlow,
+  WAVE_GRACE_MS,
+  type PlanFlowDeps,
+} from './usePlanFlow';
 import { useViaReplan } from './replan';
 import { AppStateProvider, useActivePlan } from './AppState';
 import {
@@ -2268,5 +2274,272 @@ describe('#1699 sea-state grid', () => {
 
     expect(h.save).not.toHaveBeenCalled();
     expect(h.result.current.planning).toEqual({ phase: 'idle' });
+  });
+});
+
+describe('#1776 bounded start-up and cancel during it', () => {
+  // Fake timers throughout, so save is always stubbed (fake-indexeddb needs
+  // real timers) and the wave fetch is injected.
+  const fetchWave = () => vi.fn().mockRejectedValue(new Error('no waves'));
+  const tick = () => vi.advanceTimersByTimeAsync(0);
+  function hungAssets() {
+    let resolve!: (a: assetsModule.RoutingAssets) => void;
+    const promise = new Promise<assetsModule.RoutingAssets>((r) => {
+      resolve = r;
+    });
+    return { promise, resolve };
+  }
+  function silentWorker() {
+    const w = fakeWorker();
+    w.postMessage = function (m: WorkerRequest) {
+      this.posted.push(m);
+    };
+    return w;
+  }
+  function settledFlag(p: Promise<unknown>) {
+    const flag = { settled: false };
+    void p.then(() => {
+      flag.settled = true;
+    });
+    return flag;
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('a hung asset load fails the run with error.workerInit, and its late resolution spawns no worker', async () => {
+    const hung = hungAssets();
+    vi.spyOn(assetsModule, 'loadRoutingAssets').mockReturnValue(hung.promise);
+    const makeClient = vi.fn(() => new RoutingClient(() => fakeWorker() as unknown as Worker));
+    const save = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(
+      () =>
+        usePlanFlow({
+          fetchWind: vi.fn().mockResolvedValue(uniformWindGrid(12, 0)),
+          fetchWave: fetchWave(),
+          pinRegions: vi.fn(),
+          save,
+          makeClient,
+        }),
+      { wrapper: AppStateProvider },
+    );
+    await act(async () => {
+      const p = result.current.run(REQ, 'Hung');
+      await tick();
+      await vi.advanceTimersByTimeAsync(STARTUP_TIMEOUT_MS);
+      await p;
+    });
+    expect(result.current.planning).toEqual({ phase: 'error', messageKey: 'error.workerInit' });
+
+    await act(async () => {
+      hung.resolve(ASSETS_FIXTURE);
+      await tick();
+    });
+    expect(makeClient, 'an abandoned start-up must not build a client').not.toHaveBeenCalled();
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('a worker that never reports ready is disposed at the timeout, and the retry starts afresh and plans', async () => {
+    const stuck = silentWorker();
+    const good = fakeWorker();
+    const makeClient = vi
+      .fn()
+      .mockImplementationOnce(() => new RoutingClient(() => stuck as unknown as Worker))
+      .mockImplementationOnce(() => new RoutingClient(() => good as unknown as Worker));
+    vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
+    const save = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(
+      () =>
+        usePlanFlow({
+          fetchWind: vi.fn().mockResolvedValue(uniformWindGrid(12, 0)),
+          fetchWave: fetchWave(),
+          pinRegions: vi.fn(),
+          save,
+          makeClient,
+        }),
+      { wrapper: AppStateProvider },
+    );
+
+    await act(async () => {
+      const p = result.current.run(REQ, 'Stuck init');
+      await tick();
+      findPosted(stuck.posted, 'init');
+      await vi.advanceTimersByTimeAsync(STARTUP_TIMEOUT_MS);
+      await p;
+    });
+    expect(result.current.planning).toEqual({ phase: 'error', messageKey: 'error.workerInit' });
+    expect(stuck.terminate, 'the stuck worker must be torn down, not leaked').toHaveBeenCalled();
+
+    await act(async () => {
+      const p = result.current.run(REQ, 'Retry');
+      await tick();
+      const planMsg = findPosted(good.posted, 'plan');
+      good.emit({ type: 'result', id: planMsg.id, result: OK_RESULT });
+      await tick();
+      await p;
+    });
+    expect(makeClient).toHaveBeenCalledTimes(2);
+    expect(result.current.planning).toEqual({ phase: 'idle' });
+    expect(save).toHaveBeenCalledTimes(1);
+  });
+
+  it('concurrent ensureClient() callers share one start-up, and a timeout fails all of them', async () => {
+    const hung = hungAssets();
+    const load = vi.spyOn(assetsModule, 'loadRoutingAssets').mockReturnValue(hung.promise);
+    const makeClient = vi.fn(() => new RoutingClient(() => fakeWorker() as unknown as Worker));
+    const { result } = renderHook(() => usePlanFlow({ makeClient }), {
+      wrapper: AppStateProvider,
+    });
+
+    let a!: Promise<RoutingClient | null>;
+    let b!: Promise<RoutingClient | null>;
+    await act(async () => {
+      a = result.current.ensureClient();
+      b = result.current.ensureClient();
+      await vi.advanceTimersByTimeAsync(STARTUP_TIMEOUT_MS);
+    });
+    expect(await a).toBeNull();
+    expect(await b).toBeNull();
+    expect(load).toHaveBeenCalledTimes(1);
+
+    // The failed attempt is cleared: the next call starts a new one and
+    // both concurrent callers get the same client.
+    load.mockResolvedValue(ASSETS_FIXTURE);
+    await act(async () => {
+      a = result.current.ensureClient();
+      b = result.current.ensureClient();
+      await tick();
+    });
+    const [ca, cb] = [await a, await b];
+    expect(ca).not.toBeNull();
+    expect(ca).toBe(cb);
+    expect(makeClient).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancel() during start-up returns to idle at once, without disposing the start-up another consumer awaits', async () => {
+    const hung = hungAssets();
+    const load = vi.spyOn(assetsModule, 'loadRoutingAssets').mockReturnValue(hung.promise);
+    const w = fakeWorker();
+    const makeClient = vi.fn(() => new RoutingClient(() => w as unknown as Worker));
+    const save = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(
+      () =>
+        usePlanFlow({
+          fetchWind: vi.fn().mockResolvedValue(uniformWindGrid(12, 0)),
+          fetchWave: fetchWave(),
+          pinRegions: vi.fn(),
+          save,
+          makeClient,
+        }),
+      { wrapper: AppStateProvider },
+    );
+
+    let runPromise!: Promise<void>;
+    let other!: Promise<RoutingClient | null>;
+    await act(async () => {
+      runPromise = result.current.run(REQ, 'Cancel during start-up');
+      other = result.current.ensureClient();
+      await tick();
+    });
+    const run = settledFlag(runPromise);
+    await act(async () => {
+      result.current.cancel();
+      await tick();
+    });
+    expect(run.settled, 'cancel must not wait for start-up to finish').toBe(true);
+    expect(result.current.planning).toEqual({ phase: 'idle' });
+
+    await act(async () => {
+      hung.resolve(ASSETS_FIXTURE);
+      await tick();
+    });
+    const client = await other;
+    expect(client, 'the other consumer still gets a live client').not.toBeNull();
+    expect(client?.isDisposed).toBe(false);
+    expect(w.terminate).not.toHaveBeenCalled();
+
+    // The next run reuses that client: no second load, no second worker.
+    await act(async () => {
+      const p = result.current.run(REQ, 'After cancel');
+      await tick();
+      const planMsg = findPosted(w.posted, 'plan');
+      w.emit({ type: 'result', id: planMsg.id, result: OK_RESULT });
+      await tick();
+      await p;
+    });
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(makeClient).toHaveBeenCalledTimes(1);
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(result.current.planning).toEqual({ phase: 'idle' });
+  });
+
+  it('a save that never settles fails the run with error.planSaveFailed', async () => {
+    const w = fakeWorker();
+    vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
+    const save = vi.fn(() => new Promise<void>(() => {}));
+    const { result } = renderHook(
+      () =>
+        usePlanFlow({
+          fetchWind: vi.fn().mockResolvedValue(uniformWindGrid(12, 0)),
+          fetchWave: fetchWave(),
+          pinRegions: vi.fn(),
+          save,
+          makeClient: () => new RoutingClient(() => w as unknown as Worker),
+        }),
+      { wrapper: AppStateProvider },
+    );
+
+    await act(async () => {
+      const p = result.current.run(REQ, 'Hung save');
+      await tick();
+      const planMsg = findPosted(w.posted, 'plan');
+      w.emit({ type: 'result', id: planMsg.id, result: OK_RESULT });
+      await tick();
+      expect(save).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(SAVE_TIMEOUT_MS);
+      await p;
+    });
+    expect(result.current.planning).toEqual({
+      phase: 'error',
+      messageKey: 'error.planSaveFailed',
+    });
+  });
+
+  it('control: a prompt start-up and save complete normally and the client is reused', async () => {
+    const w = fakeWorker();
+    vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
+    const makeClient = vi.fn(() => new RoutingClient(() => w as unknown as Worker));
+    const save = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(
+      () =>
+        usePlanFlow({
+          fetchWind: vi.fn().mockResolvedValue(uniformWindGrid(12, 0)),
+          fetchWave: fetchWave(),
+          pinRegions: vi.fn(),
+          save,
+          makeClient,
+        }),
+      { wrapper: AppStateProvider },
+    );
+
+    for (const name of ['First', 'Second']) {
+      await act(async () => {
+        const p = result.current.run(REQ, name);
+        await tick();
+        const planMsg = w.posted.filter((m) => m.type === 'plan').at(-1);
+        if (planMsg?.type !== 'plan') throw new Error('expected a plan message');
+        w.emit({ type: 'result', id: planMsg.id, result: OK_RESULT });
+        await tick();
+        await p;
+      });
+      expect(result.current.planning).toEqual({ phase: 'idle' });
+    }
+    expect(makeClient).toHaveBeenCalledTimes(1);
+    expect(save).toHaveBeenCalledTimes(2);
   });
 });
