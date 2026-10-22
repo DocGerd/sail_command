@@ -35,7 +35,8 @@ armBatchPinOnFirstControl();
 void scheduleGlyphWarmup();
 
 // #1813: drop the AIS key from plans stored before savePlan stopped keeping it.
-// Module-scope for the same once-per-load reason as above; it never rejects.
+// Module-scope for the same once-per-load reason as above; it never rejects
+// and skips the scan once a pass has completed.
 void scrubStoredAisApiKeys();
 
 createRoot(document.getElementById('root')!).render(

@@ -7,6 +7,7 @@ import {
   type Settings,
 } from '../types';
 import { rigEstimateBased } from '../lib/plan';
+import { safeGetItem, safeSetItem } from '../lib/storage';
 import { migratePlan } from './migratePlan';
 
 // #848: a user-authored, named, reusable place (spec §2.3 —
@@ -265,16 +266,24 @@ function withoutAisApiKey(plan: Plan): Plan {
   return (withoutAisApiKeyRecord(plan) as Plan | null) ?? plan;
 }
 
+const AIS_SCRUB_DONE_KEY = 'sc-ais-key-scrub-done';
+
 /**
- * #1813: one-off startup pass scrubbing `aisApiKey` from plans stored before
+ * #1813: startup pass scrubbing `aisApiKey` from plans stored before
  * savePlan began stripping it. Rewrites only records still carrying the key,
  * in ONE readwrite transaction, so it serialises against savePlan/deletePlan
  * and a failed write aborts the transaction. Each record is rewritten as
  * itself minus the key, never rebuilt through migratePlan. No
  * DB_VERSION bump (maintainer ruling on the issue). Never throws: a failed
  * pass leaves the key in place and retries on the next boot.
+ *
+ * A completed pass sets a localStorage flag and later boots skip the scan, as
+ * it deserialises every plan including wind grids. Residual: an older build
+ * sharing this origin (prod vs /uat/) can still write a key-bearing plan
+ * afterwards, which stays until the flag is cleared.
  */
 export async function scrubStoredAisApiKeys(): Promise<number> {
+  if (safeGetItem(AIS_SCRUB_DONE_KEY) === '1') return 0;
   try {
     const tx = (await db()).transaction('plans', 'readwrite');
     let scrubbed = 0;
@@ -288,6 +297,7 @@ export async function scrubStoredAisApiKeys(): Promise<number> {
       cursor = await cursor.continue();
     }
     await tx.done;
+    safeSetItem(AIS_SCRUB_DONE_KEY, '1');
     return scrubbed;
   } catch (err) {
     console.error('scrubStoredAisApiKeys: pass failed, records left unchanged', err);

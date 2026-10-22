@@ -1854,6 +1854,10 @@ describe('savePlan strips the AIS API key from the stored request settings', () 
     expect(await storedRecord('ais-plan')).toBeDefined();
   });
   describe('#1813: scrubStoredAisApiKeys', () => {
+    const DONE_KEY = 'sc-ais-key-scrub-done';
+    beforeEach(() => {
+      localStorage.removeItem(DONE_KEY);
+    });
     // Seeds raw records, bypassing savePlan's own stripping (legacy rows).
     async function seedRaw(...records: unknown[]): Promise<void> {
       await listPlans(); // creates the database through the app's own upgrade path
@@ -1950,6 +1954,33 @@ describe('savePlan strips the AIS API key from the stored request settings', () 
       }
       expect(settingsOf(await storedRecord('dirty')).aisApiKey).toBe(KEY);
       expect(await listPlans()).toHaveLength(1);
+      // A failed pass is not marked done, so the next boot retries it.
+      expect(localStorage.getItem(DONE_KEY)).toBeNull();
+      expect(await scrubStoredAisApiKeys()).toBe(1);
+      expect(JSON.stringify(await storedRecord('dirty'))).not.toContain(KEY);
+    });
+
+    it('marks a completed pass done and skips the scan on later boots', async () => {
+      await seedRaw(planWith({ ...DEFAULT_SETTINGS, aisApiKey: KEY }, 'dirty'));
+      expect(await scrubStoredAisApiKeys()).toBe(1);
+      expect(localStorage.getItem(DONE_KEY)).toBe('1');
+
+      // Residual: a record re-dirtied by an older build is left alone once flagged.
+      await seedRaw(planWith({ ...DEFAULT_SETTINGS, aisApiKey: KEY }, 're-dirtied'));
+      const open = vi.spyOn(IDBDatabase.prototype, 'transaction');
+      try {
+        expect(await scrubStoredAisApiKeys()).toBe(0);
+        expect(open).not.toHaveBeenCalled();
+      } finally {
+        open.mockRestore();
+      }
+      expect(settingsOf(await storedRecord('re-dirtied')).aisApiKey).toBe(KEY);
+    });
+
+    it('marks an empty store done too', async () => {
+      await listPlans();
+      expect(await scrubStoredAisApiKeys()).toBe(0);
+      expect(localStorage.getItem(DONE_KEY)).toBe('1');
     });
   });
 });
