@@ -1,9 +1,14 @@
-import { describe, expect, it } from 'vitest';
-import { backtrack } from './isochrone';
+import { describe, expect, it, vi } from 'vitest';
+import { backtrack, solve } from './isochrone';
 import { approachGate, APPROACH_RADIUS_M, gateFloorM, uniformGate } from '../lib/depthGate';
 import { initialBearingDeg, normalizeDeg180 } from '../lib/geo';
-import { makeMask } from '../test/fixtures';
-import type { MaskMeta } from '../types';
+import { Polar } from '../lib/polar';
+import { WindField } from '../lib/wind';
+import { makeMask, openWaterMask, TEST_POLAR, uniformWindGrid } from '../test/fixtures';
+import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
+import { DEFAULT_SETTINGS, type MaskMeta } from '../types';
+
+vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
 
 // #1705: backtrack's collinear merge must not emit a chord the gate rejects.
 const META: MaskMeta = { west: 9.9, south: 54.7, east: 10.1, north: 54.8, cols: 256, rows: 128 };
@@ -91,5 +96,48 @@ describe('backtrack collinear merge (#1705)', () => {
     expect(legs).toHaveLength(1);
     expect(legs[0].start).toEqual(A);
     expect(legs[0].end).toEqual(C);
+  });
+});
+
+// #1753: a backtrack handed any gate but the solve's own would silently disable the
+// merge check above, and open-water results would not show it.
+describe('solve hands backtrack its own gate (#1753)', () => {
+  it('every mask query, merge checks included, uses the gate solve was given', () => {
+    const mask = openWaterMask();
+    // Distinct from settings.safetyDepthM so a settings-derived substitute differs by value too.
+    const gate = uniformGate(2.5);
+    let calls = 0;
+    let foreign = 0;
+    const navigable = mask.segmentNavigable.bind(mask);
+    const clearance = mask.segmentClearanceM.bind(mask);
+    mask.segmentNavigable = (a, b, g) => {
+      calls++;
+      if (g !== gate) foreign++;
+      return navigable(a, b, g);
+    };
+    mask.segmentClearanceM = (a, b, g) => {
+      calls++;
+      if (g !== gate) foreign++;
+      return clearance(a, b, g);
+    };
+
+    const r = solve({
+      origin: { lat: 54.75, lon: 10.0 },
+      destination: { lat: 54.75, lon: 10.115 },
+      departureMs: Date.UTC(2026, 6, 15, 8),
+      polar: new Polar(TEST_POLAR, 1.0),
+      wind: new WindField(uniformWindGrid(12, 0)),
+      mask,
+      settings: { ...DEFAULT_SETTINGS, motorEnabled: false },
+      gate,
+    });
+
+    expect(r.status).toBe('ok');
+    if (r.status !== 'ok') return;
+    expect(calls).toBeGreaterThan(0);
+    // Longer than the solver's longest step (dtS): only backtrack's merge, which must
+    // pass segmentNavigable, can produce it, so backtrack's queries were recorded.
+    expect(Math.max(...r.legs.map((l) => l.endTimeMs - l.startTimeMs))).toBeGreaterThan(600_000);
+    expect(foreign).toBe(0);
   });
 });
