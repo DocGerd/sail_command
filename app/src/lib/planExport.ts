@@ -34,7 +34,7 @@
 // deliberately, per plan, rather than degrading fidelity for every export.
 import { migratePlan } from '../services/migratePlan';
 import type { SavedWaypoint } from '../services/db';
-import type { Plan, Settings, WindGrid } from '../types';
+import type { Plan, Settings, WaveGrid, WindGrid } from '../types';
 import { windGridCoversBounds, type WindLatticeCoverageBounds } from './wind';
 
 /** Bumped whenever the ENVELOPE shape changes (settings/waypoints presence,
@@ -112,6 +112,69 @@ function encodeWindGrid(grid: WindGrid): ExportedWindGrid {
     fetchedAtMs: grid.fetchedAtMs,
     model: grid.model,
   };
+}
+
+/** #1699: the on-disk `WaveGrid`, its three Float32Arrays base64-encoded.
+ * NaN ("no data") survives the byte copy. */
+export interface ExportedWaveGrid {
+  lats: number[];
+  lons: number[];
+  timesMs: number[];
+  waveHeightM: string;
+  wavePeriodS: string;
+  waveDirFromDeg: string;
+  fetchedAtMs: number;
+  model: string;
+}
+
+function encodeWaveGrid(grid: WaveGrid): ExportedWaveGrid {
+  return {
+    lats: grid.lats,
+    lons: grid.lons,
+    timesMs: grid.timesMs,
+    waveHeightM: float32ToBase64(grid.waveHeightM),
+    wavePeriodS: float32ToBase64(grid.wavePeriodS),
+    waveDirFromDeg: float32ToBase64(grid.waveDirFromDeg),
+    fetchedAtMs: grid.fetchedAtMs,
+    model: grid.model,
+  };
+}
+
+// Same contract as decodeWindGrid: null, never a throw, on any malformed shape,
+// undecodable base64 or dimension mismatch. No coverage check: the grid is
+// display-only and never reaches the router.
+function decodeWaveGrid(raw: unknown): WaveGrid | null {
+  if (!isRecord(raw)) return null;
+  const { lats, lons, timesMs, waveHeightM, wavePeriodS, waveDirFromDeg, fetchedAtMs, model } = raw;
+  if (!isNumberArray(lats) || !isNumberArray(lons) || !isNumberArray(timesMs)) return null;
+  if (!nonEmpty(lats) || !nonEmpty(lons) || !nonEmpty(timesMs)) return null;
+  if (
+    typeof waveHeightM !== 'string' ||
+    typeof wavePeriodS !== 'string' ||
+    typeof waveDirFromDeg !== 'string'
+  )
+    return null;
+  if (typeof fetchedAtMs !== 'number' || typeof model !== 'string') return null;
+  try {
+    const height = base64ToFloat32(waveHeightM);
+    const period = base64ToFloat32(wavePeriodS);
+    const dir = base64ToFloat32(waveDirFromDeg);
+    const expected = timesMs.length * lats.length * lons.length;
+    if (height.length !== expected || period.length !== expected || dir.length !== expected)
+      return null;
+    return {
+      lats,
+      lons,
+      timesMs,
+      waveHeightM: height,
+      wavePeriodS: period,
+      waveDirFromDeg: dir,
+      fetchedAtMs,
+      model,
+    };
+  } catch {
+    return null;
+  }
 }
 
 // The Open-Meteo lattice every plan saved before #295 carries: 11 lats x 17
@@ -210,8 +273,11 @@ function decodeWindGrid(raw: unknown, maskBounds?: WindLatticeCoverageBounds): W
 }
 
 /** The JSON-safe, on-disk shape of a `Plan` — every field identical except
- * `windGrid`. */
-export type ExportedPlan = Omit<Plan, 'windGrid' | 'waveGrid'> & { windGrid: ExportedWindGrid };
+ * `windGrid` and the optional `waveGrid`. */
+export type ExportedPlan = Omit<Plan, 'windGrid' | 'waveGrid'> & {
+  windGrid: ExportedWindGrid;
+  waveGrid?: ExportedWaveGrid;
+};
 
 /** The whole exported file's shape. `settings`/`waypoints` are independent
  * of `plans` — a user may export with zero saved plans, e.g. to back up
@@ -247,10 +313,7 @@ export function buildExportEnvelope(
   return {
     schemaVersion: EXPORT_SCHEMA_VERSION,
     exportedAtMs: Date.now(),
-    plans: plans.map((plan) => {
-      // #1699: the sea-state grid is not exported; only the wind grid has an encoder.
-      const p = { ...plan };
-      delete p.waveGrid;
+    plans: plans.map(({ waveGrid, ...p }) => {
       const planSettings = withoutAisApiKey(p.request.settings);
       return {
         ...p,
@@ -259,6 +322,8 @@ export function buildExportEnvelope(
             ? p.request
             : { ...p.request, settings: planSettings },
         windGrid: encodeWindGrid(p.windGrid),
+        // Destructured out above: raw Float32Arrays must not reach JSON.stringify.
+        ...(waveGrid !== undefined ? { waveGrid: encodeWaveGrid(waveGrid) } : {}),
       };
     }),
     settings: settings === null ? null : withoutAisApiKey(settings),
@@ -358,9 +423,10 @@ function decodePlan(raw: unknown, maskBounds?: WindLatticeCoverageBounds): Plan 
   if (!isRecord(raw)) return null;
   const windGrid = decodeWindGrid(raw.windGrid, maskBounds);
   if (windGrid === null) return null;
-  // #1699: a waveGrid in the file is JSON, never Float32Arrays, so
-  // migratePlan's shape check drops it.
-  return migratePlan({ ...raw, windGrid });
+  // #1699: a malformed wave grid drops only that field, never the plan.
+  const { waveGrid: rawWave, ...rest } = raw;
+  const waveGrid = rawWave === undefined ? null : decodeWaveGrid(rawWave);
+  return migratePlan({ ...rest, windGrid, ...(waveGrid !== null ? { waveGrid } : {}) });
 }
 
 /**
