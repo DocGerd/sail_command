@@ -174,7 +174,7 @@ describe('MapView async mount (#118 cancelled-flag window)', () => {
     holder.innerHTML = style.sources['protomaps']!.attribution;
     const anchors = Array.from(holder.querySelectorAll('a'));
     expect(anchors).toHaveLength(4);
-    const meteo = anchors.filter((a) => a.href.startsWith('https://open-meteo.com'));
+    const meteo = anchors.filter((a) => new URL(a.href).host === 'open-meteo.com');
     expect(meteo.map((a) => a.textContent)).toEqual(['Weather and marine data by Open-Meteo.com']);
   });
 
