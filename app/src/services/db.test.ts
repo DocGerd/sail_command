@@ -13,6 +13,7 @@ import {
   deleteWaypoint,
   saveRegionPin,
   getRegionPin,
+  scrubStoredAisApiKeys,
   __resetDbForTests,
   type SavedWaypoint,
   type RegionPinRecord,
@@ -1851,5 +1852,104 @@ describe('savePlan strips the AIS API key from the stored request settings', () 
   ])('still saves a record with %s', async (_label, settings) => {
     await savePlan(planWith(settings));
     expect(await storedRecord('ais-plan')).toBeDefined();
+  });
+  describe('#1813: scrubStoredAisApiKeys', () => {
+    // Seeds raw records, bypassing savePlan's own stripping (legacy rows).
+    async function seedRaw(...records: unknown[]): Promise<void> {
+      await listPlans(); // creates the database through the app's own upgrade path
+      const conn = await openDB('sailcommand');
+      try {
+        for (const r of records) await conn.put('plans', r);
+      } finally {
+        conn.close();
+      }
+    }
+    const windGrid = {
+      lats: [54],
+      lons: [9],
+      timesMs: [1000],
+      speedKn: new Float32Array([5.5]),
+      dirFromDeg: new Float32Array([90]),
+      gustKn: new Float32Array([7.5]),
+      fetchedAtMs: 1,
+      model: 'open-meteo',
+    };
+
+    it('removes the key from key-bearing records and changes nothing else', async () => {
+      const legacy = {
+        ...planWith({ ...DEFAULT_SETTINGS, aisApiKey: KEY }, 'legacy'),
+        windGrid,
+        extraLegacyField: { kept: true },
+      };
+      await seedRaw(legacy);
+
+      expect(await scrubStoredAisApiKeys()).toBe(1);
+
+      const stored = (await storedRecord('legacy')) as Record<string, unknown>;
+      expect(JSON.stringify(stored)).not.toContain(KEY);
+      expect(Object.hasOwn(settingsOf(stored), 'aisApiKey')).toBe(false);
+      const expectedSettings: Record<string, unknown> = { ...legacy.request.settings };
+      delete expectedSettings.aisApiKey;
+      // windGrid is compared separately: typed arrays cloned by fake-indexeddb
+      // are not toEqual-comparable to the jsdom-realm originals.
+      const { windGrid: storedGrid, ...storedRest } = stored;
+      const legacyRest: Record<string, unknown> = { ...legacy };
+      delete legacyRest.windGrid;
+      expect(storedRest).toEqual({
+        ...legacyRest,
+        request: { ...legacy.request, settings: expectedSettings },
+      });
+      expect(Array.from((storedGrid as WindGrid).speedKn)).toEqual(Array.from(windGrid.speedKn));
+      expect(Object.prototype.toString.call((storedGrid as WindGrid).speedKn)).toBe(
+        '[object Float32Array]',
+      );
+    });
+
+    it('rewrites only key-bearing records and is idempotent', async () => {
+      await seedRaw(
+        planWith({ ...DEFAULT_SETTINGS, aisApiKey: KEY }, 'dirty'),
+        planWith({ ...DEFAULT_SETTINGS }, 'clean'),
+        planWith({ ...DEFAULT_SETTINGS, aisApiKey: KEY }, 'dirty-2'),
+      );
+
+      expect(await scrubStoredAisApiKeys()).toBe(2);
+      expect(await scrubStoredAisApiKeys()).toBe(0);
+      expect(await listPlans()).toHaveLength(3);
+      expect(settingsOf(await storedRecord('clean'))).toEqual(DEFAULT_SETTINGS);
+    });
+
+    it('survives and keeps every record when the store holds odd shapes', async () => {
+      await seedRaw(
+        planWith(undefined, 'no-settings'),
+        planWith(null, 'null-settings'),
+        { id: 'no-request', name: 'x' },
+        planWith({ ...DEFAULT_SETTINGS, aisApiKey: KEY }, 'dirty'),
+      );
+      const before = await storedRecord('no-request');
+
+      expect(await scrubStoredAisApiKeys()).toBe(1);
+
+      expect(await storedRecord('no-request')).toEqual(before);
+      expect(await listPlans()).toHaveLength(4);
+      expect(JSON.stringify(await storedRecord('dirty'))).not.toContain(KEY);
+    });
+
+    it('never loses a plan when a write fails: resolves, logs, records unchanged', async () => {
+      await seedRaw(planWith({ ...DEFAULT_SETTINGS, aisApiKey: KEY }, 'dirty'));
+      const update = vi.spyOn(IDBCursor.prototype, 'update').mockImplementation(() => {
+        throw new Error('quota');
+      });
+      const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        expect(await scrubStoredAisApiKeys()).toBe(0);
+        expect(update).toHaveBeenCalled();
+        expect(err).toHaveBeenCalled();
+      } finally {
+        update.mockRestore();
+        err.mockRestore();
+      }
+      expect(settingsOf(await storedRecord('dirty')).aisApiKey).toBe(KEY);
+      expect(await listPlans()).toHaveLength(1);
+    });
   });
 });

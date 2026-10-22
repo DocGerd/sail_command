@@ -244,15 +244,55 @@ export function summarizePlanRecord(raw: unknown, key?: unknown): PlanSummary {
 
 // SECURITY.md: the AIS key never leaves the device except to aisstream.io, so
 // the settings snapshot a plan carries must not hold it.
-function withoutAisApiKey(plan: Plan): Plan {
+// Returns a copy without the key, or null when the record carries none (or is
+// not shaped like a plan): callers write only on non-null. Every other field is
+// kept as stored, so this is additive and safe on legacy or foreign records.
+function withoutAisApiKeyRecord(raw: unknown): object | null {
   // savePlan also writes records migratePlan would refuse, so no field is trusted.
-  const settings: unknown = (plan.request as Partial<Plan['request']> | undefined)?.settings;
+  if (typeof raw !== 'object' || raw === null) return null;
+  const request: unknown = (raw as { request?: unknown }).request;
+  if (typeof request !== 'object' || request === null) return null;
+  const settings: unknown = (request as { settings?: unknown }).settings;
   if (typeof settings !== 'object' || settings === null || !Object.hasOwn(settings, 'aisApiKey')) {
-    return plan;
+    return null;
   }
-  const rest: Settings = { ...(settings as Settings) };
+  const rest: Record<string, unknown> = { ...(settings as Record<string, unknown>) };
   delete rest.aisApiKey;
-  return { ...plan, request: { ...plan.request, settings: rest } };
+  return { ...raw, request: { ...request, settings: rest } };
+}
+
+function withoutAisApiKey(plan: Plan): Plan {
+  return (withoutAisApiKeyRecord(plan) as Plan | null) ?? plan;
+}
+
+/**
+ * #1813: one-off startup pass scrubbing `aisApiKey` from plans stored before
+ * savePlan began stripping it. Rewrites only records still carrying the key,
+ * in ONE readwrite transaction, so it serialises against savePlan/deletePlan
+ * and a failed write aborts the transaction. Each record is rewritten as
+ * itself minus the key, never rebuilt through migratePlan. No
+ * DB_VERSION bump (maintainer ruling on the issue). Never throws: a failed
+ * pass leaves the key in place and retries on the next boot.
+ */
+export async function scrubStoredAisApiKeys(): Promise<number> {
+  try {
+    const tx = (await db()).transaction('plans', 'readwrite');
+    let scrubbed = 0;
+    let cursor = await tx.store.openCursor();
+    while (cursor) {
+      const clean = withoutAisApiKeyRecord(cursor.value);
+      if (clean !== null) {
+        await cursor.update(clean as Plan);
+        scrubbed += 1;
+      }
+      cursor = await cursor.continue();
+    }
+    await tx.done;
+    return scrubbed;
+  } catch (err) {
+    console.error('scrubStoredAisApiKeys: pass failed, records left unchanged', err);
+    return 0;
+  }
 }
 
 export async function savePlan(plan: Plan): Promise<void> {

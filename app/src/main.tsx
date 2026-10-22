@@ -4,6 +4,7 @@ import { I18nProvider } from './i18n';
 import { initSwRecovery } from './services/swRecovery';
 import { armBatchPinOnFirstControl } from './services/firstControlPin';
 import { scheduleGlyphWarmup } from './services/glyphWarmup';
+import { scrubStoredAisApiKeys } from './services/db';
 import App from './App.tsx';
 import './app.css';
 
@@ -32,6 +33,10 @@ armBatchPinOnFirstControl();
 // dev it never starts at all: no SW registers, so it parks waiting for a
 // controller that never arrives.
 void scheduleGlyphWarmup();
+
+// #1813: drop the AIS key from plans stored before savePlan stopped keeping it.
+// Module-scope for the same once-per-load reason as above; it never rejects.
+void scrubStoredAisApiKeys();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
