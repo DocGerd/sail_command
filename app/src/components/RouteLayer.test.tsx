@@ -2638,6 +2638,8 @@ describe('sea-state toggle (#1699)', () => {
     expect(toggle).toBeChecked();
     expect(screen.queryByText(de['route.waves.unavailable'])).toBeNull();
     expect(map.layers.get(WAVE_FILL_LAYER)?.layout?.visibility).toBe('visible');
+    expect(map.layers.get(WAVE_ARROW_LAYER)?.layout?.visibility).toBe('visible');
+    expect(map.layers.get(WAVE_EDGE_LAYER)?.layout?.visibility).toBe('visible');
     fireEvent.click(toggle);
     expect(map.layers.get(WAVE_FILL_LAYER)?.layout?.visibility).toBe('none');
     expect(map.layers.get(WAVE_ARROW_LAYER)?.layout?.visibility).toBe('none');
