@@ -288,8 +288,10 @@ export function ShallowWarning({
   // a consequence of the above (PR #763 review Blocker 1, and round 3's
   // residual): Disclosure.tsx's `useState(defaultOpen)` seeds once and never
   // re-syncs, so a disclosure the USER opened on one plan would otherwise
-  // stay open across a swap to another. Both call sites pass
-  // `key={`${plan.id}-${plan.createdAtMs}`}`; `plan.id` ALONE is
+  // stay open across a swap to another. Both call sites key it on
+  // `plan.id` plus `plan.createdAtMs` (RouteSummary adds a
+  // `shallow-warning-` prefix so its plan-keyed siblings stay distinct,
+  // #1833); `plan.id` ALONE is
   // insufficient, because `usePlanFlow.ts`'s
   // `id: opts.replacePlanId ?? crypto.randomUUID()` keeps the id fixed
   // across a #114 recalculate-and-replace (App.tsx passes

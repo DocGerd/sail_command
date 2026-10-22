@@ -2393,3 +2393,77 @@ describe('#1707 next-passage action', () => {
     expect(screen.queryByRole('button', { name: 'Plan next passage' })).toBeNull();
   });
 });
+
+describe('#1833 plan-keyed Card children keep distinct keys', () => {
+  const DUP_KEY = 'Encountered two children with the same key';
+
+  function buildPlan(oneSail: boolean, shallow: boolean): Plan {
+    const plan = makePlan(oneSail ? { rigRecommendation: { kind: 'not-compared' } } : {});
+    if (oneSail) {
+      plan.result = {
+        ...plan.result,
+        sails: [{ sailId: 'genoa', result: GENOA_RESULT, reason: null }],
+      };
+    }
+    if (shallow) {
+      plan.result = {
+        ...plan.result,
+        shallow: { requestedDepthM: 3.0, usedDepthM: 2.5, minGateDepthM: 2.3 },
+      };
+    }
+    return plan;
+  }
+
+  // Renders once, re-renders three times, and returns per-render counts of
+  // `selector` plus every console.error line seen meanwhile.
+  function renderFourTimes(plan: Plan, withNext: boolean, selector: string) {
+    localStorage.setItem('sc-lang', 'en');
+    const errors: string[] = [];
+    vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+      errors.push(args.map(String).join(' '));
+    });
+    const next: NextPassageProps = { harbors: [], disabled: false, onNextPassage: vi.fn() };
+    const ui = () => (
+      <I18nProvider>
+        <RouteSummary
+          plan={plan}
+          rig="genoa"
+          onRigChange={vi.fn()}
+          {...(withNext ? { nextPassage: next } : {})}
+        />
+      </I18nProvider>
+    );
+    const { container, rerender } = render(ui());
+    const counts = [container.querySelectorAll(selector).length];
+    for (let i = 0; i < 3; i++) {
+      rerender(ui());
+      counts.push(container.querySelectorAll(selector).length);
+    }
+    return { counts, errors };
+  }
+
+  it('a single-sail plan with next passage keeps exactly one offline-map chip', () => {
+    const { counts } = renderFourTimes(buildPlan(true, false), true, '.chip-offline-map');
+    expect(counts).toEqual([1, 1, 1, 1]);
+  });
+
+  it('a two-sail shallow plan with next passage keeps exactly one shallow banner', () => {
+    const { counts } = renderFourTimes(
+      buildPlan(false, true),
+      true,
+      '.shallow-warning[role="alert"]',
+    );
+    expect(counts).toEqual([1, 1, 1, 1]);
+  });
+
+  it.each([
+    ['one sail, next passage', true, true, false],
+    ['two sails, next passage', false, true, false],
+    ['two sails, next passage, shallow', false, true, true],
+    ['one sail, next passage, shallow', true, true, true],
+    ['two sails, shallow', false, false, true],
+  ])('%s: React reports no duplicate child key', (_name, oneSail, withNext, shallow) => {
+    const { errors } = renderFourTimes(buildPlan(oneSail, shallow), withNext, '.chip-offline-map');
+    expect(errors.filter((e) => e.includes(DUP_KEY))).toEqual([]);
+  });
+});
