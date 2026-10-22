@@ -2456,6 +2456,35 @@ describe('#1833 plan-keyed Card children keep distinct keys', () => {
     expect(counts).toEqual([1, 1, 1, 1]);
   });
 
+  it('a single-sail shallow plan keeps one offline-map chip AND one shallow banner', () => {
+    const plan = buildPlan(true, true);
+    const chips = renderFourTimes(plan, true, '.chip-offline-map');
+    expect(chips.counts).toEqual([1, 1, 1, 1]);
+    cleanup();
+    const banners = renderFourTimes(plan, true, '.shallow-warning[role="alert"]');
+    expect(banners.counts).toEqual([1, 1, 1, 1]);
+  });
+
+  // Positive control: the console-string rows below only mean something if
+  // the spy really captures React's duplicate-key message.
+  it('control: the console.error spy captures React\'s duplicate-key message', () => {
+    const errors: string[] = [];
+    vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+      errors.push(args.map(String).join(' '));
+    });
+    function Twins({ tick }: { tick: number }) {
+      return (
+        <div>
+          <span key="same">{tick}</span>
+          <span key="same">{tick}</span>
+        </div>
+      );
+    }
+    const { rerender } = render(<Twins tick={0} />);
+    rerender(<Twins tick={1} />);
+    expect(errors.some((e) => e.includes(DUP_KEY))).toBe(true);
+  });
+
   it.each([
     ['one sail, next passage', true, true, false],
     ['two sails, next passage', false, true, false],
